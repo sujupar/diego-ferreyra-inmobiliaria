@@ -302,7 +302,7 @@ export const styles = StyleSheet.create({
         padding: 60,
     },
     dividerTitle: {
-        fontSize: 48,
+        fontSize: 36,
         fontWeight: 'bold',
         color: colors.white,
         textAlign: 'center',

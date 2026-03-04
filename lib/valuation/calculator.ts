@@ -3,34 +3,36 @@ import {
     DispositionType,
     QualityType,
     ConservationStateType,
-    PropertyType
+    calculateAgeStateCoefficient
 } from './rules'
-import { ScrapedProperty } from '../scraper/types'
 
 // Extended property features for valuation
 export interface ValuationFeatures {
-    coveredArea?: number
-    totalArea?: number
+    coveredArea?: number           // Superficie Cubierta (100%)
+    semiCoveredArea?: number       // Semi Cubierta (50%)
+    uncoveredArea?: number         // Superficie Descubierta (50%)
+    totalArea?: number             // Solo referencia
     floor?: number
     totalFloors?: number
     age?: number
     disposition?: DispositionType
     quality?: QualityType
     conservationState?: ConservationStateType
-    propertyType?: PropertyType
+    locationCoefficient?: number   // J - Coeficiente de Ubicación (default 1.0)
     bedrooms?: number
     bathrooms?: number
     garages?: number
+    rooms?: number                 // Ambientes
 }
 
-// Helper to get floor coefficient
-// Based on Excel formula:
-// IF(I="PB", 0.9, IF(I="PBP", 1, IF(I=1, 0.9, IF(I=2, 0.93, IF(I<=4, 1, IF(I<=6, 1.05, IF(I<=8, 1.1, IF(I>8, 1.15, 0))))))))
+/**
+ * Get floor coefficient based on Excel formula:
+ * IF(I="PB", 0.9, IF(I="PBP", 1, IF(I=1, 0.85, IF(I=2, 0.93, IF(I<=4, 1, IF(I<=6, 1.05, IF(I<=8, 1.1, IF(I>8, 1.15, 0))))))))
+ */
 function getFloorCoefficient(floor: number, totalFloors: number | null): number {
-    // PB (Planta Baja) = 0
     if (floor === 0) return VALUATION_RULES.FLOOR_COEFFICIENTS.GROUND_FLOOR // 0.90
-    if (floor === 1) return VALUATION_RULES.FLOOR_COEFFICIENTS.FLOOR_1 // 0.90
-    if (floor === 2) return 0.93 // Excel uses 0.93 for floor 2
+    if (floor === 1) return VALUATION_RULES.FLOOR_COEFFICIENTS.FLOOR_1 // 0.85
+    if (floor === 2) return VALUATION_RULES.FLOOR_COEFFICIENTS.FLOOR_2 // 0.93
     if (floor >= 3 && floor <= 4) return VALUATION_RULES.FLOOR_COEFFICIENTS.FLOOR_3_4 // 1.00
     if (floor >= 5 && floor <= 6) return VALUATION_RULES.FLOOR_COEFFICIENTS.FLOOR_5_6 // 1.05
     if (floor >= 7 && floor <= 8) return VALUATION_RULES.FLOOR_COEFFICIENTS.FLOOR_7_8 // 1.10
@@ -39,72 +41,48 @@ function getFloorCoefficient(floor: number, totalFloors: number | null): number 
     return 1.0
 }
 
-// Helper to get disposition coefficient
-// Based on Excel: IF(I="Fte", 1, IF(I="Cta Fte", 0.95, IF(I="Int", 0.9, IF(I="Lat", 0.93, 0))))
+/**
+ * Get disposition coefficient based on Excel formula:
+ * IF(I="Fte", 1, IF(I="Cta Fte", 0.95, IF(I="Int", 0.9, IF(I="Lat", 0.93, 0))))
+ */
 function getDispositionCoefficient(disposition?: DispositionType): number {
     if (!disposition) return 1.0
     return VALUATION_RULES.DISPOSITION_COEFFICIENTS[disposition] || 1.0
 }
 
-// Helper to get quality coefficient
+/**
+ * Get quality coefficient
+ */
 function getQualityCoefficient(quality?: QualityType): number {
     if (!quality) return VALUATION_RULES.QUALITY_COEFFICIENTS.GOOD_ECONOMIC
     return VALUATION_RULES.QUALITY_COEFFICIENTS[quality] || 1.0
 }
 
-// Get lifespan based on property type (default 70 years as per Excel)
-function getLifespan(propertyType?: PropertyType): number {
-    if (!propertyType) return 70 // Excel uses 70 as default
-    return VALUATION_RULES.LIFE_SPAN[propertyType] || 70
-}
-
-// Calculate age factor using Ross-Heidecke method
-// Based on Excel formulas:
-// S: MIN(99, IF(Q<=69, ROUND(100*Q/70,0), 99)) - % of life
-// U: VLOOKUP(S, cof!$A$3:$J$103, MATCH(T, cof!$A$3:$J$3, 0), 0) - K value from table
-// V: U/100 - convert to decimal
-// W: 1-(V/2) - THE KEY FORMULA for age factor
+/**
+ * Calculate age factor using Ross-Heidecke method
+ * Life span is always 70 years.
+ */
 function calculateAgeFactor(
     age: number,
     conservationState: ConservationStateType = 'STATE_2',
-    propertyType?: PropertyType
 ): number {
-    const lifespan = getLifespan(propertyType)
-
-    // Calculate percentage of life used (round to nearest 10, max 99)
-    // Excel: MIN(99, IF(Q<=69, ROUND(100*Q/70,0), 99))
-    let lifePercentage = Math.round((age / lifespan) * 100)
-    lifePercentage = Math.min(99, lifePercentage)
-
-    // Round to nearest 10 for table lookup
-    const tableKey = Math.min(100, Math.round(lifePercentage / 10) * 10)
-
-    // Get state index (0-4)
-    const stateIndex = parseInt(conservationState.replace('STATE_', '')) - 1
-
-    // Get K value from table
-    const kValues = VALUATION_RULES.ROSS_HEIDECKE_K[tableKey as keyof typeof VALUATION_RULES.ROSS_HEIDECKE_K]
-    if (!kValues) return 1.0 // Default to no adjustment
-
-    const k = kValues[stateIndex] || 0
-
-    // Excel formula: W = 1 - (K / 2)
-    // This gives values between 0.5 (worst) and 1.0 (best)
-    const ageFactor = 1 - (k / 2)
-
-    return ageFactor
+    return calculateAgeStateCoefficient(age, conservationState, 70)
 }
 
-// Calculate Homogenized Surface
-// Sup. Homogenizada = Cubierta + (Semicubierta * 0.5) + (Balcón * 0.5) + (Descubierta * 0.5)
+/**
+ * Calculate Homogenized Surface
+ * M2 Homologado = Cubierta (100%) + Semi-Cubierta (50%) + Descubierta (50%)
+ * Excel: G = (C) + (D*0.5) + (E*0.5)
+ * Example: 48m² cubiertos + 0m² semi + 12m² descubiertos = 48 + 0 + 6 = 54m² homologados
+ */
 export function calculateHomogenizedSurface(features: ValuationFeatures): number {
     const covered = features.coveredArea || 0
-    const total = features.totalArea || covered
-    const extra = Math.max(0, total - covered)
+    const semiCovered = features.semiCoveredArea || 0
+    const uncovered = features.uncoveredArea || 0
 
-    // We treat 'extra' as 50% value (could be balcony or patio)
-    return covered * VALUATION_RULES.SURFACE_COEFFICIENTS.COVERED +
-        extra * VALUATION_RULES.SURFACE_COEFFICIENTS.UNCOVERED
+    return (covered * VALUATION_RULES.SURFACE_COEFFICIENTS.COVERED) +
+        (semiCovered * VALUATION_RULES.SURFACE_COEFFICIENTS.SEMI_COVERED) +
+        (uncovered * VALUATION_RULES.SURFACE_COEFFICIENTS.UNCOVERED)
 }
 
 // Extended property for valuation
@@ -115,7 +93,7 @@ export interface ValuationProperty {
     location?: string
     images?: string[]
     description?: string
-    url?: string  // URL to the property listing
+    url?: string
     features: ValuationFeatures
 }
 
@@ -128,43 +106,88 @@ export interface ComparableAnalysis {
     property: ValuationProperty
     originalPriceM2: number
     homogenizedSurface: number
-    floorFactor: number
-    dispositionFactor: number
-    qualityFactor: number
-    ageFactor: number
-    totalAdjustment: number
-    adjustedPriceM2: number
+    locationCoefficient: number      // J - Ubicación
+    floorCoefficient: number         // K3 - Piso
+    dispositionCoefficient: number   // K4 - Disposición
+    qualityCoefficient: number       // M - Calidad Constructiva
+    ageCoefficient: number           // L/W - Edad Estado (Ross-Heidecke)
+    totalCoefficient: number         // N = J × K3 × K4 × L × M
+    adjustedPriceM2: number          // O = H / N
 }
 
 export interface ValuationResult {
     subjectSurface: number
+    subjectLocationCoef: number
+    subjectFloorCoef: number
+    subjectDispositionCoef: number
+    subjectQualityCoef: number
+    subjectAgeCoef: number
+    subjectTotalCoef: number
     comparableAnalysis: ComparableAnalysis[]
-    averagePriceM2: number
-    finalValue: number
+    averagePriceM2: number           // O25 = AVERAGE(O values)
+    subjectPriceM2: number           // H3 = O25 × N3
+    finalValue: number               // F3 = G3 × H3
+    publicationPrice: number         // ROUND(F3, -3) → nearest 1,000
+    noSaleZonePrice: number          // Zona de No Venta = Publicación × 1.05
+    // Cost calculations
+    saleValue: number                // Valor de Venta = Publicación × 0.95
+    deedValue: number                // Valor de Escritura = Venta × 0.70
+    stampsCost: number               // Sellos = Escritura × 1.35%
+    deedExpenses: number             // Gastos de Escritura = Venta × 1.5%
+    agencyFees: number               // Honorarios Inmobiliaria = Venta × 3%
+    totalExpenses: number            // Total gastos = sellos + escritura + honorarios
+    moneyInHand: number              // Dinero en mano = venta - total gastos
     currency: string
 }
 
+/**
+ * Main valuation calculation function
+ * Following Excel logic EXACTLY:
+ *
+ * For each comparable:
+ *   G = Cubierta + (SemiCubierta × 0.5) + (Descubierta × 0.5)
+ *   H = F / G (Precio / M2 Homologados = Precio por m² original)
+ *   N = J × K_piso × K_disp × L × M (Total = Ubic × Piso × Disp × Edad × Calidad)
+ *   O = H / N (Precio ajustado por m²)
+ *
+ * Then:
+ *   O25 = AVERAGE(all O values)
+ *   H3 = O25 × N3 (Subject $/m² = Average × Subject Total Coefficient)
+ *   F3 = G3 × H3 (Final Value = Subject M² × Subject $/m²)
+ *   Precio Publicación = ROUND(F3, -3) (rounded to nearest 1,000)
+ *   Zona de No Venta = Publicación × 1.05
+ *
+ * Cost calculations:
+ *   Valor de Venta = Publicación × 0.95
+ *   Valor de Escritura = Venta × 0.70
+ *   Sellos = Escritura × 1.35%
+ *   Gastos de Escritura = Venta × 1.5%
+ *   Honorarios Inmobiliaria = Venta × 3%
+ *   Dinero en mano = Venta - (Sellos + Gastos Escritura + Honorarios)
+ */
 export function calculateValuation({ subject, comparables }: ValuationInput): ValuationResult | null {
     if (!comparables.length || !subject) return null
 
-    // 1. Calculate Homogenized Surface of Subject
+    // Calculate Homogenized Surface of Subject (G3)
     const subjectSurface = calculateHomogenizedSurface(subject.features)
     if (subjectSurface === 0) return null
 
-    // Get subject coefficients
+    // Subject coefficients — Ubicación y Calidad siempre = 1.0 para el sujeto
+    const subjectLocationCoef = 1.0
     const subjectFloorCoef = getFloorCoefficient(
         subject.features.floor || 0,
         subject.features.totalFloors || null
     )
     const subjectDispositionCoef = getDispositionCoefficient(subject.features.disposition)
-    const subjectQualityCoef = getQualityCoefficient(subject.features.quality)
-    const subjectAgeFactor = calculateAgeFactor(
+    const subjectQualityCoef = 1.0
+    const subjectAgeCoef = calculateAgeFactor(
         subject.features.age || 0,
-        subject.features.conservationState,
-        subject.features.propertyType
+        subject.features.conservationState || 'STATE_2',
     )
+    // N3 = J × K_piso × K_disp × W × M
+    const subjectTotalCoef = subjectLocationCoef * subjectFloorCoef * subjectDispositionCoef * subjectQualityCoef * subjectAgeCoef
 
-    // 2. Process Comparables
+    // Process Comparables
     const comparableAnalysis: ComparableAnalysis[] = []
 
     for (const comp of comparables) {
@@ -174,73 +197,92 @@ export function calculateValuation({ subject, comparables }: ValuationInput): Va
         const compSurface = calculateHomogenizedSurface(comp.features)
         if (compSurface === 0) continue
 
+        // H = Precio / M² Homologados
         const originalPriceM2 = price / compSurface
 
         // Calculate comparable coefficients
-        const compFloorCoef = getFloorCoefficient(
+        const locationCoefficient = comp.features.locationCoefficient ?? 1.0
+        const floorCoefficient = getFloorCoefficient(
             comp.features.floor || 0,
             comp.features.totalFloors || null
         )
-        const compDispositionCoef = getDispositionCoefficient(comp.features.disposition)
-        const compQualityCoef = getQualityCoefficient(comp.features.quality)
-        const compAgeFactor = calculateAgeFactor(
+        const dispositionCoefficient = getDispositionCoefficient(comp.features.disposition)
+        const qualityCoefficient = getQualityCoefficient(comp.features.quality)
+        const ageCoefficient = calculateAgeFactor(
             comp.features.age || 0,
-            comp.features.conservationState,
-            comp.features.propertyType
+            comp.features.conservationState || 'STATE_2',
         )
 
-        // Calculate the total coefficient for the comparable
-        // Excel: N = Quality * Floor * Disposition * AgeFactor
-        const compTotalCoef = compQualityCoef * compFloorCoef * compDispositionCoef * compAgeFactor
+        // N = J × K_piso × K_disp × W × M (Total coefficient)
+        const totalCoefficient = locationCoefficient * floorCoefficient * dispositionCoefficient * qualityCoefficient * ageCoefficient
 
-        // Calculate the total coefficient for the subject
-        const subjectTotalCoef = subjectQualityCoef * subjectFloorCoef * subjectDispositionCoef * subjectAgeFactor
-
-        // Calculate individual adjustment factors (for display purposes)
-        // These show how much we're adjusting from comparable to subject
-        const floorFactor = subjectFloorCoef / compFloorCoef
-        const dispositionFactor = subjectDispositionCoef / compDispositionCoef
-        const qualityFactor = subjectQualityCoef / compQualityCoef
-        const ageFactor = subjectAgeFactor / compAgeFactor
-
-        // Total adjustment = Subject coefficient / Comparable coefficient
-        const totalAdjustment = subjectTotalCoef / compTotalCoef
-
-        // Adjusted price per m² = Original price / Comparable coefficient * Subject coefficient
-        // Or equivalently: Original price * (Subject coef / Comparable coef)
-        // But following Excel logic: O = H / N (price/m2 divided by total coefficient)
-        // Then multiply by subject coefficient to get adjusted price for subject
-        const adjustedPriceM2 = (originalPriceM2 / compTotalCoef) * subjectTotalCoef
+        // O = H / N (Precio por m² ajustado)
+        const adjustedPriceM2 = originalPriceM2 / totalCoefficient
 
         comparableAnalysis.push({
             property: comp,
             originalPriceM2,
             homogenizedSurface: compSurface,
-            floorFactor,
-            dispositionFactor,
-            qualityFactor,
-            ageFactor,
-            totalAdjustment,
+            locationCoefficient,
+            floorCoefficient,
+            dispositionCoefficient,
+            qualityCoefficient,
+            ageCoefficient,
+            totalCoefficient,
             adjustedPriceM2
         })
     }
 
     if (comparableAnalysis.length === 0) return null
 
-    // 3. Calculate average adjusted price per m2
+    // O25 = AVERAGE(all O values)
     const averagePriceM2 = comparableAnalysis.reduce((sum, c) => sum + c.adjustedPriceM2, 0) / comparableAnalysis.length
 
-    // 4. Final Value
-    const finalValue = Math.round(averagePriceM2 * subjectSurface)
+    // H3 = O25 × N3 (Subject's $/m² = Average × Subject's Total Coefficient)
+    const subjectPriceM2 = averagePriceM2 * subjectTotalCoef
 
-    // Determine currency (use first comparable's currency or default)
+    // F3 = G3 × H3 (Final Value = Subject M² × Subject $/m²)
+    const finalValue = subjectSurface * subjectPriceM2
+
+    // Precio de Publicación = redondeado al millar más cercano
+    const publicationPrice = Math.round(finalValue / 1000) * 1000
+
+    // Zona de No Venta = Publicación × 1.05 (5% por encima)
+    const noSaleZonePrice = Math.round((publicationPrice * 1.05) / 1000) * 1000
+
+    // ─── Cost calculations ───
+    const saleValue = Math.round(publicationPrice * 0.95)
+    const deedValue = Math.round(saleValue * 0.70)
+    const stampsCost = Math.round(deedValue * 0.0135)
+    const deedExpenses = Math.round(saleValue * 0.015)
+    const agencyFees = Math.round(saleValue * 0.03)
+    const totalExpenses = stampsCost + deedExpenses + agencyFees
+    const moneyInHand = saleValue - totalExpenses
+
+    // Determine currency
     const currency = comparables.find(c => c.currency)?.currency || 'USD'
 
     return {
         subjectSurface,
+        subjectLocationCoef,
+        subjectFloorCoef,
+        subjectDispositionCoef,
+        subjectQualityCoef,
+        subjectAgeCoef,
+        subjectTotalCoef,
         comparableAnalysis,
         averagePriceM2,
+        subjectPriceM2,
         finalValue,
+        publicationPrice,
+        noSaleZonePrice,
+        saleValue,
+        deedValue,
+        stampsCost,
+        deedExpenses,
+        agencyFees,
+        totalExpenses,
+        moneyInHand,
         currency
     }
 }

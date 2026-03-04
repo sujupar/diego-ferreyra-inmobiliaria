@@ -9,6 +9,7 @@ interface PDFReportProps {
     subject: ValuationProperty
     comparables: ValuationProperty[]
     valuationResult: ValuationResult
+    overpriced?: ValuationProperty[]
 }
 
 // Helper to extract neighborhood from location
@@ -33,74 +34,81 @@ function formatCurrency(value: number, currency: string = 'USD'): string {
     return `${currency} ${value.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 }
 
-export function PDFReportDocument({ subject, comparables, valuationResult }: PDFReportProps) {
+export function PDFReportDocument({ subject, comparables, valuationResult, overpriced = [] }: PDFReportProps) {
     const neighborhood = extractNeighborhood(subject.location || '')
     const marketAvg = valuationResult.averagePriceM2
-    const recommendedPrice = Math.round(valuationResult.finalValue)
-    const noSaleZone = Math.round(recommendedPrice * 1.02) // 2% above recommended
+    const recommendedPrice = valuationResult.publicationPrice
+    const noSaleZone = valuationResult.noSaleZonePrice
 
-    // Calculate days ago for comparables (placeholder - would come from scrapeDate)
-    const getDaysAgo = (index: number) => {
-        // Placeholder logic - in real implementation, calculate from scrapedAt date
-        const dayOptions = [11, 169, 205, 0] // "hoy" for 0
-        return dayOptions[index % 4]
+    // Helper: calculate homogenized surface for a comparable
+    const getHomogenizedSurface = (comp: ValuationProperty) => {
+        const covered = comp.features.coveredArea || 0
+        const semi = comp.features.semiCoveredArea || 0
+        const uncovered = comp.features.uncoveredArea || 0
+        return covered + (semi * 0.5) + (uncovered * 0.5)
     }
 
     return (
         <Document>
             {/* PAGE 1: PORTADA */}
             <Page size="A4" style={styles.page}>
-                <View style={{ padding: 60, alignItems: 'center' }}>
+                {/* Top section - centered content */}
+                <View style={{ paddingHorizontal: 60, paddingTop: 50, alignItems: 'center' }}>
                     {/* Title */}
-                    <Text style={[styles.h1, { color: colors.darkGray, marginTop: 40 }]}>
+                    <Text style={[styles.h1, { color: colors.primary, fontSize: 28, letterSpacing: 4 }]}>
                         INFORME DE TASACIÓN
                     </Text>
 
                     {/* Property Title */}
-                    <Text style={[styles.propertyTitle, { marginTop: 24, fontSize: 28 }]}>
+                    <Text style={[styles.propertyTitle, { marginTop: 16, fontSize: 32 }]}>
                         {subject.title || subject.location}
                     </Text>
 
-                    {/* Institutional Logos */}
-                    <View style={[styles.logosRow, { marginTop: 40 }]}>
+                    {/* Three Institutional Logos */}
+                    <View style={[styles.logosRow, { marginTop: 30 }]}>
                         <Image
-                            src="/pdf-assets/logos/Captura de pantalla 2025-12-30 a la(s) 4.27.51 p.m..png"
-                            style={{ height: 35, width: 120, objectFit: 'contain' }}
+                            src="/pdf-assets/logos/logos-institucionales.png"
+                            style={{ height: 50, width: 240, objectFit: 'contain' }}
                         />
                     </View>
 
-                    {/* Diego Ferreyra Logo */}
-                    <View style={{ marginTop: 60, alignItems: 'center' }}>
+                    {/* Diego Ferreyra Logo - prominent */}
+                    <View style={{ marginTop: 40, alignItems: 'center' }}>
                         <Image
                             src="/pdf-assets/logos/Logo Diego Ferreyra.png"
-                            style={{ height: 80, width: 300, objectFit: 'contain' }}
+                            style={{ height: 100, width: 350, objectFit: 'contain' }}
                         />
-                        <Text style={{ fontSize: 12, color: colors.mediumGray, fontStyle: 'italic', marginTop: 8 }}>
-                            Martillero Público - CUCICBA 8266
+                        <Text style={{ fontSize: 13, color: colors.mediumGray, fontStyle: 'italic', marginTop: 8 }}>
+                            Inmobiliaria - CUCICBA 8266
                         </Text>
                     </View>
-
-                    {/* Diego Photo */}
-                    <View style={{ position: 'absolute', bottom: 80, right: 0, width: 280 }}>
-                        <Image
-                            src="/pdf-assets/photos/Foto Diego.png"
-                            style={{ width: '100%', height: 380, objectFit: 'cover' }}
-                        />
-                    </View>
-
-                    {/* Decorative Wave */}
-                    <View style={{ position: 'absolute', bottom: 80, left: 0 }}>
-                        <Image
-                            src="/pdf-assets/graphics/wave-decoration.png"
-                            style={{ width: 200, height: 100, objectFit: 'contain', opacity: 0.3 }}
-                        />
-                    </View>
                 </View>
+
+                {/* Diego Photo - bottom-right, flush with footer */}
+                <View style={{ position: 'absolute', bottom: 48, right: 0, width: 280 }}>
+                    <Image
+                        src="/pdf-assets/photos/Foto Diego.png"
+                        style={{ width: '100%', height: 360, objectFit: 'cover' }}
+                    />
+                </View>
+
+                {/* City text - bottom-left, above footer */}
+                <Text style={{
+                    position: 'absolute',
+                    bottom: 55,
+                    left: 60,
+                    fontSize: 13,
+                    color: colors.darkGray,
+                    fontWeight: 'bold',
+                    lineHeight: 1.4
+                }}>
+                    Ciudad Autónoma{'\n'}de Buenos Aires
+                </Text>
 
                 {/* Footer */}
                 <View style={styles.footer}>
                     <Link src="https://diegoferreyraimmobiliaria.com/" style={styles.footerText}>
-                        https://diegoferreyraimmobiliaria.com/
+                        diegoferreyraimmobiliaria.com
                     </Link>
                 </View>
             </Page>
@@ -142,41 +150,46 @@ export function PDFReportDocument({ subject, comparables, valuationResult }: PDF
                 {/* Features Grid */}
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginBottom: 16 }}>
                     <View style={styles.featureItem}>
-                        <Text style={styles.featureText}>■ {subject.features.coveredArea} m²</Text>
+                        <Text style={styles.featureText}>■ {subject.features.coveredArea || 0} m² cubiertos</Text>
                     </View>
-                    <View style={styles.featureItem}>
-                        <Text style={styles.featureText}>■ {subject.features.bathrooms || 2} baños</Text>
-                    </View>
-                    <View style={styles.featureItem}>
-                        <Text style={styles.featureText}>■ 4 Amb.</Text>
-                    </View>
-                    <View style={styles.featureItem}>
-                        <Text style={styles.featureText}>■ {subject.features.bedrooms || 3} Dormitorios</Text>
-                    </View>
+                    {(subject.features.uncoveredArea ?? 0) > 0 && (
+                        <View style={styles.featureItem}>
+                            <Text style={styles.featureText}>■ {subject.features.uncoveredArea} m² descubiertos</Text>
+                        </View>
+                    )}
+                    {subject.features.rooms && (
+                        <View style={styles.featureItem}>
+                            <Text style={styles.featureText}>■ {subject.features.rooms} Amb.</Text>
+                        </View>
+                    )}
+                    {subject.features.bedrooms && (
+                        <View style={styles.featureItem}>
+                            <Text style={styles.featureText}>■ {subject.features.bedrooms} Dormitorios</Text>
+                        </View>
+                    )}
+                    {subject.features.bathrooms && (
+                        <View style={styles.featureItem}>
+                            <Text style={styles.featureText}>■ {subject.features.bathrooms} Baños</Text>
+                        </View>
+                    )}
                     <View style={styles.featureItem}>
                         <Text style={styles.featureText}>■ {subject.features.age || 0} años Antigüedad</Text>
                     </View>
+                    {subject.features.garages && (
+                        <View style={styles.featureItem}>
+                            <Text style={styles.featureText}>■ {subject.features.garages} Cochera{subject.features.garages > 1 ? 's' : ''}</Text>
+                        </View>
+                    )}
                 </View>
 
-                {/* Additional Features Checklist */}
-                <View style={styles.checkboxList}>
-                    <View style={styles.checkboxItem}>
-                        <View style={styles.checkboxChecked} />
-                        <Text style={styles.body}>Cómoda cochera</Text>
+                {/* Property Description */}
+                {subject.description && (
+                    <View style={styles.checkboxList}>
+                        <Text style={[styles.body, { fontSize: 10, color: colors.mediumGray }]}>
+                            {subject.description.slice(0, 300)}{subject.description.length > 300 ? '...' : ''}
+                        </Text>
                     </View>
-                    <View style={styles.checkboxItem}>
-                        <View style={styles.checkboxChecked} />
-                        <Text style={styles.body}>Piso completo</Text>
-                    </View>
-                    <View style={styles.checkboxItem}>
-                        <View style={styles.checkboxChecked} />
-                        <Text style={styles.body}>Buena iluminación</Text>
-                    </View>
-                    <View style={styles.checkboxItem}>
-                        <View style={styles.checkboxChecked} />
-                        <Text style={styles.body}>Calle tranquila en {neighborhood}</Text>
-                    </View>
-                </View>
+                )}
             </Page>
 
             {/* PAGE 3: MARKET DATA - CABA */}
@@ -189,13 +202,13 @@ export function PDFReportDocument({ subject, comparables, valuationResult }: PDF
                 <View style={{ marginTop: 60 }}>
                     <Text style={styles.h2}>Stock de Departamentos en venta en CABA</Text>
                     <Image
-                        src="/pdf-assets/monthly-data/Captura de pantalla 2025-12-30 a la(s) 4.29.03 p.m..png"
+                        src="/pdf-assets/monthly-data/stock-departamentos.png"
                         style={{ width: '100%', height: 'auto', marginBottom: 20 }}
                     />
 
                     <Text style={styles.h2}>Cantidad de Escrituras CABA</Text>
                     <Image
-                        src="/pdf-assets/monthly-data/Captura de pantalla 2025-12-30 a la(s) 4.29.11 p.m..png"
+                        src="/pdf-assets/monthly-data/escrituras-caba.png"
                         style={{ width: '100%', height: 'auto' }}
                     />
                 </View>
@@ -211,13 +224,13 @@ export function PDFReportDocument({ subject, comparables, valuationResult }: PDF
                 <View style={{ marginTop: 60 }}>
                     <Text style={styles.h2}>Datos de {neighborhood}, CABA</Text>
                     <Image
-                        src="/pdf-assets/monthly-data/Captura de pantalla 2025-12-30 a la(s) 4.29.18 p.m..png"
+                        src="/pdf-assets/monthly-data/datos-barrio.png"
                         style={{ width: '100%', height: 'auto', marginBottom: 20 }}
                     />
 
                     <Text style={styles.h2}>Tipos de propiedades en {neighborhood}</Text>
                     <Image
-                        src="/pdf-assets/monthly-data/Captura de pantalla 2025-12-30 a la(s) 4.30.21 p.m..png"
+                        src="/pdf-assets/monthly-data/tipos-propiedades.png"
                         style={{ width: '100%', height: 'auto' }}
                     />
                 </View>
@@ -226,29 +239,21 @@ export function PDFReportDocument({ subject, comparables, valuationResult }: PDF
             {/* PAGE 5: PROPIEDADES QUE COMPITEN (Divisor) */}
             <Page size="A4" style={styles.page}>
                 <View style={styles.backgroundPage}>
-                    {/* Background color overlay */}
-                    <View style={{ ...styles.backgroundOverlay, backgroundColor: 'rgba(26, 84, 144, 0.92)' }} />
-
-                    {/* Content */}
-                    <View style={styles.backgroundContent}>
-                        <Text style={styles.dividerTitle}>
-                            PROPIEDADES QUE{'\n'}COMPITEN
+                    <Image
+                        src="/pdf-assets/graphics/section-divider-bg.jpg"
+                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                    <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
+                        <Text style={[styles.dividerTitle, { textAlign: 'left' }]}>
+                            PROPIEDADES{'\n'}QUE COMPITEN
                         </Text>
-                        <View style={[styles.dividerText, { width: '70%', maxWidth: 500 }]}>
+                        <View style={[styles.dividerText, { width: '100%' }]}>
                             <Text style={{ fontSize: 13, lineHeight: 1.6 }}>
                                 Sabemos lo valiosa que es tu propiedad y para asegurarnos de que consigas una
                                 venta rápida y al mejor precio posible, veremos las propiedades con las que
                                 competís directamente.
                             </Text>
                         </View>
-                    </View>
-
-                    {/* Diego Photo */}
-                    <View style={{ position: 'absolute', bottom: 0, right: 0 }}>
-                        <Image
-                            src="/pdf-assets/photos/Foto Diego.png"
-                            style={{ width: 280, height: 400, objectFit: 'cover' }}
-                        />
                     </View>
                 </View>
             </Page>
@@ -346,10 +351,9 @@ export function PDFReportDocument({ subject, comparables, valuationResult }: PDF
                         <View style={{ marginTop: 70, gap: 24 }}>
                             {pageComparables.map((comp, index) => {
                                 const globalIndex = startIndex + index
-                                const compSurface = comp.features.coveredArea || 100
-                                const pricePerM2 = (comp.price || 0) / compSurface
+                                const homSurface = getHomogenizedSurface(comp)
+                                const pricePerM2 = homSurface > 0 ? (comp.price || 0) / homSurface : 0
                                 const semaphoreColor = getSemaphoreColor(pricePerM2, marketAvg)
-                                const daysAgo = getDaysAgo(globalIndex)
 
                                 return (
                                     <View key={globalIndex} style={{ flexDirection: 'row', gap: 16 }}>
@@ -383,10 +387,19 @@ export function PDFReportDocument({ subject, comparables, valuationResult }: PDF
 
                                             {/* Features grid */}
                                             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
-                                                <Text style={styles.featureText}>■ {compSurface}m²</Text>
-                                                <Text style={styles.featureText}>■ {comp.features.bathrooms || 2} baños</Text>
-                                                <Text style={styles.featureText}>■ 4 Amb.</Text>
-                                                <Text style={styles.featureText}>■ {comp.features.bedrooms || 3} Dormitorios</Text>
+                                                <Text style={styles.featureText}>■ {comp.features.coveredArea || 0}m² cub.</Text>
+                                                {(comp.features.uncoveredArea ?? 0) > 0 && (
+                                                    <Text style={styles.featureText}>■ {comp.features.uncoveredArea}m² desc.</Text>
+                                                )}
+                                                {comp.features.rooms && (
+                                                    <Text style={styles.featureText}>■ {comp.features.rooms} Amb.</Text>
+                                                )}
+                                                {comp.features.bedrooms && (
+                                                    <Text style={styles.featureText}>■ {comp.features.bedrooms} Dorm.</Text>
+                                                )}
+                                                {comp.features.bathrooms && (
+                                                    <Text style={styles.featureText}>■ {comp.features.bathrooms} Baños</Text>
+                                                )}
                                                 <Text style={styles.featureText}>■ {comp.features.age || 0} años</Text>
                                             </View>
 
@@ -401,7 +414,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult }: PDF
                                                 <View style={styles.priceBullet}>
                                                     <View style={styles.bullet} />
                                                     <Text style={styles.priceText}>
-                                                        Valor del m2 {Math.round(pricePerM2).toLocaleString()} {valuationResult.currency}
+                                                        Valor del m² hom. {Math.round(pricePerM2).toLocaleString()} {valuationResult.currency}
                                                     </Text>
                                                 </View>
                                             </View>
@@ -413,7 +426,104 @@ export function PDFReportDocument({ subject, comparables, valuationResult }: PDF
 
                                             {/* Metadata */}
                                             <Text style={styles.comparableMetadata}>
-                                                Publicado hace {daysAgo === 0 ? 'hoy' : `${daysAgo} días`} | Visualizaciones N/A
+                                                Publicado | {Math.round(homSurface)} m² homogeneizados
+                                            </Text>
+                                        </View>
+                                    </View>
+                                )
+                            })}
+                        </View>
+                    </Page>
+                )
+            })}
+
+            {/* OVERPRICED PROPERTIES PAGES (if any) */}
+            {overpriced.length > 0 && Array.from({ length: Math.ceil(overpriced.length / 2) }).map((_, pageIndex) => {
+                const startIndex = pageIndex * 2
+                const pageProps = overpriced.slice(startIndex, startIndex + 2)
+
+                return (
+                    <Page key={`overpriced-${pageIndex}`} size="A4" style={styles.pageWithPadding}>
+                        <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
+                            <Text style={[styles.headerTitle, { color: colors.semaphoreRed }]}>PROPIEDADES FUERA DE PRECIO</Text>
+                            <Text style={styles.headerSubtitle}>{neighborhood}, CABA</Text>
+                        </View>
+
+                        <View style={{ marginTop: 70, gap: 24 }}>
+                            {pageProps.map((prop, index) => {
+                                const globalIndex = startIndex + index
+                                const homSurface = getHomogenizedSurface(prop)
+                                const pricePerM2 = homSurface > 0 ? (prop.price || 0) / homSurface : 0
+
+                                return (
+                                    <View key={globalIndex} style={{ flexDirection: 'row', gap: 16 }}>
+                                        {/* Photo with red semaphore */}
+                                        <View style={{ position: 'relative', width: '35%' }}>
+                                            {prop.images && prop.images[0] ? (
+                                                <Image
+                                                    src={prop.images[0]}
+                                                    style={{ width: '100%', height: 160, objectFit: 'cover', border: `2px solid ${colors.semaphoreRed}` }}
+                                                />
+                                            ) : (
+                                                <View style={{ width: '100%', height: 160, backgroundColor: '#fef2f2', border: `2px solid ${colors.semaphoreRed}` }} />
+                                            )}
+                                            {/* Red semaphore indicator */}
+                                            <View style={{ position: 'absolute', top: 8, left: 8 }}>
+                                                <View style={{
+                                                    width: 36,
+                                                    height: 36,
+                                                    borderRadius: 18,
+                                                    backgroundColor: colors.semaphoreRed,
+                                                    border: `2px solid ${colors.white}`
+                                                }} />
+                                            </View>
+                                        </View>
+
+                                        {/* Info */}
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[styles.propertyTitle, { textAlign: 'left', fontSize: 16, marginBottom: 8, color: colors.darkGray }]}>
+                                                {prop.location || prop.title}
+                                            </Text>
+
+                                            {/* Basic features */}
+                                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+                                                {prop.features.coveredArea && (
+                                                    <Text style={styles.featureText}>■ {prop.features.coveredArea}m² cub.</Text>
+                                                )}
+                                                {(prop.features.uncoveredArea ?? 0) > 0 && (
+                                                    <Text style={styles.featureText}>■ {prop.features.uncoveredArea}m² desc.</Text>
+                                                )}
+                                                {prop.features.rooms && (
+                                                    <Text style={styles.featureText}>■ {prop.features.rooms} Amb.</Text>
+                                                )}
+                                            </View>
+
+                                            {/* Price */}
+                                            <View style={{ gap: 2, marginBottom: 8 }}>
+                                                <View style={styles.priceBullet}>
+                                                    <View style={[styles.bullet, { backgroundColor: colors.semaphoreRed }]} />
+                                                    <Text style={[styles.priceText, { color: colors.semaphoreRed }]}>
+                                                        {formatCurrency(prop.price || 0, valuationResult.currency)}
+                                                    </Text>
+                                                </View>
+                                                {pricePerM2 > 0 && (
+                                                    <View style={styles.priceBullet}>
+                                                        <View style={[styles.bullet, { backgroundColor: colors.semaphoreRed }]} />
+                                                        <Text style={[styles.priceText, { color: colors.semaphoreRed }]}>
+                                                            {Math.round(pricePerM2).toLocaleString()} {valuationResult.currency}/m²
+                                                        </Text>
+                                                    </View>
+                                                )}
+                                            </View>
+
+                                            {/* Link */}
+                                            <Link src={prop.url || '#'} style={styles.comparableLink}>
+                                                LINK DE LA PROPIEDAD
+                                            </Link>
+
+                                            {/* Overpriced label */}
+                                            <Text style={{ fontSize: 9, color: colors.semaphoreRed, fontWeight: 'bold', marginTop: 4 }}>
+                                                FUERA DE PRECIO
                                             </Text>
                                         </View>
                                     </View>
@@ -435,119 +545,247 @@ export function PDFReportDocument({ subject, comparables, valuationResult }: PDF
                 <View style={styles.divider} />
 
                 <Text style={styles.h2}>Mapa de Valor</Text>
-                <Text style={[styles.body, { marginBottom: 16 }]}>
-                    Para Tasar la propiedad se utilizó el método de comparables. Para llegar al valor se toman
-                    propiedades lo más similares y en un valor correcto de mercado. Finalmente se comparan variables
-                    como m2, ubicación, valor, antigüedad, estado, etc.
+                <Text style={[styles.body, { marginBottom: 12 }]}>
+                    Para tasar la propiedad se utilizó el método de comparables. Se toman propiedades similares
+                    a valor correcto de mercado y se comparan variables como superficie, ubicación, piso,
+                    disposición, antigüedad, estado de conservación y calidad constructiva.
                 </Text>
 
-                {/* Valuation Table */}
-                <View style={{ fontSize: 6, marginVertical: 12, border: `1px solid ${colors.lightGray}` }}>
+                {/* Valuation Table — decimal coefficients like spreadsheet */}
+                <View style={{ marginVertical: 8, border: `1px solid ${colors.darkGray}` }}>
                     {/* Table Header */}
-                    <View style={{ flexDirection: 'row', backgroundColor: '#f5ead6', borderBottom: `1px solid ${colors.darkGray}`, padding: 2 }}>
-                        <Text style={{ width: '12%', fontSize: 6, fontWeight: 'bold', padding: 1 }}>COMPARABLE</Text>
-                        <Text style={{ width: '6%', fontSize: 6, fontWeight: 'bold', padding: 1, textAlign: 'center' }}>SUP.{'\n'}HOM.</Text>
-                        <Text style={{ width: '9%', fontSize: 6, fontWeight: 'bold', padding: 1, textAlign: 'right' }}>$/m²{'\n'}ORIGINAL</Text>
-                        <Text style={{ width: '6%', fontSize: 6, fontWeight: 'bold', padding: 1, textAlign: 'center' }}>AJ.{'\n'}PISO</Text>
-                        <Text style={{ width: '6%', fontSize: 6, fontWeight: 'bold', padding: 1, textAlign: 'center' }}>AJ.{'\n'}DISP.</Text>
-                        <Text style={{ width: '7%', fontSize: 6, fontWeight: 'bold', padding: 1, textAlign: 'center' }}>AJ.{'\n'}CALIDAD</Text>
-                        <Text style={{ width: '7%', fontSize: 6, fontWeight: 'bold', padding: 1, textAlign: 'center' }}>AJ.{'\n'}EDAD</Text>
-                        <Text style={{ width: '9%', fontSize: 6, fontWeight: 'bold', padding: 1, textAlign: 'right' }}>$/m²{'\n'}AJUSTADO</Text>
+                    <View style={{ flexDirection: 'row', backgroundColor: '#f5ead6', borderBottom: `1px solid ${colors.darkGray}` }}>
+                        <Text style={{ width: '13%', fontSize: 5.5, fontWeight: 'bold', padding: 2 }}>Comparable</Text>
+                        <Text style={{ width: '7%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'right' }}>Valor</Text>
+                        <Text style={{ width: '5%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>M² Hom.</Text>
+                        <Text style={{ width: '7%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'right' }}>$/m²</Text>
+                        <Text style={{ width: '6%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Ubic.</Text>
+                        <Text style={{ width: '6%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Piso</Text>
+                        <Text style={{ width: '6%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Disp.</Text>
+                        <Text style={{ width: '7%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Edad{'\n'}Estado</Text>
+                        <Text style={{ width: '7%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Caract.{'\n'}Const.</Text>
+                        <Text style={{ width: '6%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Total</Text>
+                        <Text style={{ width: '8%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'right' }}>$/m²{'\n'}Result.</Text>
                     </View>
 
                     {/* Subject Row */}
-                    <View style={{ flexDirection: 'row', backgroundColor: '#fff9e6', borderBottom: `1px solid ${colors.lightGray}`, padding: 2 }}>
-                        <Text style={{ width: '12%', fontSize: 6, padding: 1 }}>{subject.location || 'Sujeto'}</Text>
-                        <Text style={{ width: '6%', fontSize: 6, padding: 1, textAlign: 'center' }}>{Math.round(valuationResult.subjectSurface)}</Text>
-                        <Text style={{ width: '9%', fontSize: 6, padding: 1, textAlign: 'right' }}>-</Text>
-                        <Text style={{ width: '6%', fontSize: 6, padding: 1, textAlign: 'center' }}>-</Text>
-                        <Text style={{ width: '6%', fontSize: 6, padding: 1, textAlign: 'center' }}>-</Text>
-                        <Text style={{ width: '7%', fontSize: 6, padding: 1, textAlign: 'center' }}>-</Text>
-                        <Text style={{ width: '7%', fontSize: 6, padding: 1, textAlign: 'center' }}>-</Text>
-                        <Text style={{ width: '9%', fontSize: 6, padding: 1, textAlign: 'right' }}>-</Text>
+                    <View style={{ flexDirection: 'row', backgroundColor: '#e8f4fd', borderBottom: `1.5px solid ${colors.primary}` }}>
+                        <Text style={{ width: '13%', fontSize: 5.5, fontWeight: 'bold', padding: 2, color: colors.primary }}>
+                            {(subject.location || 'Sujeto').slice(0, 28)}
+                        </Text>
+                        <Text style={{ width: '7%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'right', color: colors.primary }}>
+                            {formatCurrency(recommendedPrice, valuationResult.currency)}
+                        </Text>
+                        <Text style={{ width: '5%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {valuationResult.subjectSurface.toFixed(0)}
+                        </Text>
+                        <Text style={{ width: '7%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'right', color: colors.primary }}>
+                            {Math.round(valuationResult.subjectPriceM2).toLocaleString()}
+                        </Text>
+                        <Text style={{ width: '6%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {valuationResult.subjectLocationCoef.toFixed(2)}
+                        </Text>
+                        <Text style={{ width: '6%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {valuationResult.subjectFloorCoef.toFixed(2)}
+                        </Text>
+                        <Text style={{ width: '6%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {valuationResult.subjectDispositionCoef.toFixed(2)}
+                        </Text>
+                        <Text style={{ width: '7%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {valuationResult.subjectAgeCoef.toFixed(4)}
+                        </Text>
+                        <Text style={{ width: '7%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {valuationResult.subjectQualityCoef.toFixed(2)}
+                        </Text>
+                        <Text style={{ width: '6%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {valuationResult.subjectTotalCoef.toFixed(4)}
+                        </Text>
+                        <Text style={{ width: '8%', fontSize: 5.5, fontWeight: 'bold', padding: 2, textAlign: 'right', color: colors.primary }}>
+                            {Math.round(valuationResult.subjectPriceM2).toLocaleString()}
+                        </Text>
                     </View>
 
                     {/* Comparable Rows */}
                     {valuationResult.comparableAnalysis.map((analysis, index) => (
-                        <View key={index} style={{ flexDirection: 'row', borderBottom: `1px solid ${colors.lightGray}`, padding: 2 }}>
-                            <Text style={{ width: '12%', fontSize: 6, padding: 1 }}>
-                                {analysis.property.location || `Comp. ${index + 1}`}
+                        <View key={index} style={{ flexDirection: 'row', borderBottom: `0.5px solid ${colors.lightGray}`, backgroundColor: index % 2 === 0 ? '#ffffff' : '#fafafa' }}>
+                            <Text style={{ width: '13%', fontSize: 5.5, padding: 2 }}>
+                                {(analysis.property.location || `Comp. ${index + 1}`).slice(0, 28)}
                             </Text>
-                            <Text style={{ width: '6%', fontSize: 6, padding: 1, textAlign: 'center' }}>
-                                {Math.round(analysis.homogenizedSurface)}
+                            <Text style={{ width: '7%', fontSize: 5.5, padding: 2, textAlign: 'right' }}>
+                                {((analysis.property.price || 0) / 1000).toFixed(0)}k
                             </Text>
-                            <Text style={{ width: '9%', fontSize: 6, padding: 1, textAlign: 'right' }}>
-                                {formatCurrency(Math.round(analysis.originalPriceM2), valuationResult.currency)}
+                            <Text style={{ width: '5%', fontSize: 5.5, padding: 2, textAlign: 'center' }}>
+                                {analysis.homogenizedSurface.toFixed(0)}
                             </Text>
-                            <Text style={{ width: '6%', fontSize: 6, padding: 1, textAlign: 'center', color: analysis.floorFactor >= 1 ? colors.semaphoreGreen : colors.semaphoreRed }}>
-                                {((analysis.floorFactor - 1) * 100).toFixed(1)}%
+                            <Text style={{ width: '7%', fontSize: 5.5, padding: 2, textAlign: 'right' }}>
+                                {Math.round(analysis.originalPriceM2).toLocaleString()}
                             </Text>
-                            <Text style={{ width: '6%', fontSize: 6, padding: 1, textAlign: 'center', color: analysis.dispositionFactor >= 1 ? colors.semaphoreGreen : colors.semaphoreRed }}>
-                                {((analysis.dispositionFactor - 1) * 100).toFixed(1)}%
+                            <Text style={{ width: '6%', fontSize: 5.5, padding: 2, textAlign: 'center' }}>
+                                {analysis.locationCoefficient.toFixed(2)}
                             </Text>
-                            <Text style={{ width: '7%', fontSize: 6, padding: 1, textAlign: 'center', color: analysis.qualityFactor >= 1 ? colors.semaphoreGreen : colors.semaphoreRed }}>
-                                {((analysis.qualityFactor - 1) * 100).toFixed(1)}%
+                            <Text style={{ width: '6%', fontSize: 5.5, padding: 2, textAlign: 'center' }}>
+                                {analysis.floorCoefficient.toFixed(2)}
                             </Text>
-                            <Text style={{ width: '7%', fontSize: 6, padding: 1, textAlign: 'center', color: analysis.ageFactor >= 1 ? colors.semaphoreGreen : colors.semaphoreRed }}>
-                                {((analysis.ageFactor - 1) * 100).toFixed(1)}%
+                            <Text style={{ width: '6%', fontSize: 5.5, padding: 2, textAlign: 'center' }}>
+                                {analysis.dispositionCoefficient.toFixed(2)}
                             </Text>
-                            <Text style={{ width: '9%', fontSize: 6, padding: 1, textAlign: 'right', fontWeight: 'bold' }}>
-                                {formatCurrency(Math.round(analysis.adjustedPriceM2), valuationResult.currency)}
+                            <Text style={{ width: '7%', fontSize: 5.5, padding: 2, textAlign: 'center' }}>
+                                {analysis.ageCoefficient.toFixed(4)}
+                            </Text>
+                            <Text style={{ width: '7%', fontSize: 5.5, padding: 2, textAlign: 'center' }}>
+                                {analysis.qualityCoefficient.toFixed(2)}
+                            </Text>
+                            <Text style={{ width: '6%', fontSize: 5.5, padding: 2, textAlign: 'center', fontWeight: 'bold' }}>
+                                {analysis.totalCoefficient.toFixed(4)}
+                            </Text>
+                            <Text style={{ width: '8%', fontSize: 5.5, padding: 2, textAlign: 'right', fontWeight: 'bold' }}>
+                                {Math.round(analysis.adjustedPriceM2).toLocaleString()}
                             </Text>
                         </View>
                     ))}
 
-                    {/* Footer Row */}
-                    <View style={{ flexDirection: 'row', backgroundColor: '#fff9e6', padding: 2 }}>
-                        <Text style={{ width: '56%', fontSize: 7, padding: 1, textAlign: 'right', fontWeight: 'bold' }}>
+                    {/* Average Row */}
+                    <View style={{ flexDirection: 'row', backgroundColor: '#f5ead6', borderTop: `1px solid ${colors.darkGray}` }}>
+                        <Text style={{ width: '70%', fontSize: 6, fontWeight: 'bold', padding: 3, textAlign: 'right' }}>
                             Promedio $/m² Ajustado:
                         </Text>
-                        <Text style={{ width: '9%', fontSize: 7, padding: 1, textAlign: 'right', fontWeight: 'bold', color: colors.primary }}>
-                            {formatCurrency(Math.round(valuationResult.averagePriceM2), valuationResult.currency)}
+                        <Text style={{ width: '8%', fontSize: 7, fontWeight: 'bold', padding: 3, textAlign: 'right', color: colors.primary }}>
+                            {Math.round(valuationResult.averagePriceM2).toLocaleString()}
                         </Text>
                     </View>
                 </View>
 
-                {/* Semaphore Visualization */}
-                <View style={{ flexDirection: 'row', gap: 8, marginVertical: 16 }}>
-                    <View style={{ flex: 1, padding: 12, backgroundColor: colors.semaphoreGreen, alignItems: 'center' }}>
-                        <Text style={{ fontSize: 8, color: colors.white, fontWeight: 'bold' }}>PRECIO DE PUBLICACION</Text>
-                        <Text style={{ fontSize: 14, color: colors.white, fontWeight: 'bold', marginTop: 4 }}>
+                {/* Price boxes */}
+                <View style={{ flexDirection: 'row', gap: 8, marginVertical: 12 }}>
+                    <View style={{ flex: 1, padding: 12, backgroundColor: colors.semaphoreGreen, alignItems: 'center', borderRadius: 4 }}>
+                        <Text style={{ fontSize: 7, color: colors.white, fontWeight: 'bold', letterSpacing: 0.5 }}>PRECIO DE PUBLICACIÓN</Text>
+                        <Text style={{ fontSize: 16, color: colors.white, fontWeight: 'bold', marginTop: 4 }}>
                             {formatCurrency(recommendedPrice, valuationResult.currency)}
                         </Text>
                     </View>
-                    <View style={{ flex: 1, padding: 12, backgroundColor: colors.semaphoreRed, alignItems: 'center' }}>
-                        <Text style={{ fontSize: 8, color: colors.white, fontWeight: 'bold' }}>ZONA DE NO VENTA</Text>
-                        <Text style={{ fontSize: 14, color: colors.white, fontWeight: 'bold', marginTop: 4 }}>
+                    <View style={{ flex: 1, padding: 12, backgroundColor: colors.semaphoreRed, alignItems: 'center', borderRadius: 4 }}>
+                        <Text style={{ fontSize: 7, color: colors.white, fontWeight: 'bold', letterSpacing: 0.5 }}>ZONA DE NO VENTA</Text>
+                        <Text style={{ fontSize: 16, color: colors.white, fontWeight: 'bold', marginTop: 4 }}>
                             {formatCurrency(noSaleZone, valuationResult.currency)}
                         </Text>
                     </View>
                 </View>
 
                 {/* Analysis */}
-                <Text style={styles.h2}>Análisis</Text>
+                <Text style={[styles.h2, { fontSize: 18 }]}>Análisis</Text>
                 <Text style={styles.body}>
                     Debido a la competencia cerca de <Text style={{ color: colors.semaphoreRed, fontWeight: 'bold' }}>{formatCurrency(noSaleZone, valuationResult.currency)}</Text> es muy probable que
-                    el mercado no convalide el valor de venta. Para vender en el corto plazo recomiendo publicar en <Text style={{ color: colors.semaphoreYellow, fontWeight: 'bold' }}>{formatCurrency(recommendedPrice, valuationResult.currency)}</Text> y
+                    el mercado no convalide el valor de venta. Para vender en el corto plazo recomiendo publicar en <Text style={{ color: colors.semaphoreGreen, fontWeight: 'bold' }}>{formatCurrency(recommendedPrice, valuationResult.currency)}</Text> y
                     medir la respuesta del mercado.
                 </Text>
-                <Text style={[styles.body, { marginTop: 12 }]}>
-                    Una buena tasación, siempre es, vender al mejor valor que el mercado en 2 meses.
+                <Text style={[styles.body, { marginTop: 8 }]}>
+                    Una buena tasación, siempre es, vender al mejor valor que el mercado convalide en un plazo de 2 meses.
                 </Text>
             </Page>
 
-            {/* PAGE 10: ESTRATEGIA DE VENTA (Divisor) */}
+            {/* PAGE 10: COSTOS DE VENTA */}
+            <Page size="A4" style={styles.pageWithPadding}>
+                <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
+                    <Text style={styles.headerTitle}>COSTOS DE VENTA</Text>
+                </View>
+
+                <View style={{ marginTop: 50 }}>
+                    {/* Title */}
+                    <Text style={styles.h2}>
+                        Venta {subject.features.rooms ? `${subject.features.rooms} Ambientes` : ''} | {neighborhood}
+                    </Text>
+
+                    <View style={styles.divider} />
+
+                    {/* Three value boxes */}
+                    <View style={{ flexDirection: 'row', gap: 8, marginVertical: 12 }}>
+                        <View style={{ flex: 1, padding: 14, backgroundColor: colors.primary, alignItems: 'center', borderRadius: 4 }}>
+                            <Text style={{ fontSize: 8, color: colors.white, fontWeight: 'bold', letterSpacing: 0.5 }}>VALOR PUBLICACIÓN</Text>
+                            <Text style={{ fontSize: 18, color: colors.white, fontWeight: 'bold', marginTop: 6 }}>
+                                {formatCurrency(valuationResult.publicationPrice, valuationResult.currency)}
+                            </Text>
+                        </View>
+                        <View style={{ flex: 1, padding: 14, backgroundColor: colors.semaphoreGreen, alignItems: 'center', borderRadius: 4 }}>
+                            <Text style={{ fontSize: 8, color: colors.white, fontWeight: 'bold', letterSpacing: 0.5 }}>VALOR VENTA (-5%)</Text>
+                            <Text style={{ fontSize: 18, color: colors.white, fontWeight: 'bold', marginTop: 6 }}>
+                                {formatCurrency(valuationResult.saleValue, valuationResult.currency)}
+                            </Text>
+                        </View>
+                        <View style={{ flex: 1, padding: 14, backgroundColor: '#6b7280', alignItems: 'center', borderRadius: 4 }}>
+                            <Text style={{ fontSize: 8, color: colors.white, fontWeight: 'bold', letterSpacing: 0.5 }}>VALOR ESCRITURA (-30%)</Text>
+                            <Text style={{ fontSize: 18, color: colors.white, fontWeight: 'bold', marginTop: 6 }}>
+                                {formatCurrency(valuationResult.deedValue, valuationResult.currency)}
+                            </Text>
+                        </View>
+                    </View>
+
+                    {/* Expenses Table */}
+                    <View style={{ marginTop: 20, border: `1px solid ${colors.darkGray}` }}>
+                        {/* Table Header */}
+                        <View style={{ flexDirection: 'row', backgroundColor: '#f5ead6', borderBottom: `1px solid ${colors.darkGray}` }}>
+                            <Text style={{ width: '50%', fontSize: 9, fontWeight: 'bold', padding: 6 }}>Gastos de Venta</Text>
+                            <Text style={{ width: '25%', fontSize: 9, fontWeight: 'bold', padding: 6, textAlign: 'center' }}>%</Text>
+                            <Text style={{ width: '25%', fontSize: 9, fontWeight: 'bold', padding: 6, textAlign: 'right' }}>Monto</Text>
+                        </View>
+
+                        {/* Sellos */}
+                        <View style={{ flexDirection: 'row', borderBottom: `0.5px solid ${colors.lightGray}` }}>
+                            <Text style={{ width: '50%', fontSize: 10, padding: 6 }}>Sellos</Text>
+                            <Text style={{ width: '25%', fontSize: 10, padding: 6, textAlign: 'center', color: colors.mediumGray }}>1.35% s/escritura</Text>
+                            <Text style={{ width: '25%', fontSize: 10, padding: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                {formatCurrency(valuationResult.stampsCost, valuationResult.currency)}
+                            </Text>
+                        </View>
+
+                        {/* Gastos de Escritura */}
+                        <View style={{ flexDirection: 'row', borderBottom: `0.5px solid ${colors.lightGray}` }}>
+                            <Text style={{ width: '50%', fontSize: 10, padding: 6 }}>Gastos de Escritura</Text>
+                            <Text style={{ width: '25%', fontSize: 10, padding: 6, textAlign: 'center', color: colors.mediumGray }}>1.5% s/venta</Text>
+                            <Text style={{ width: '25%', fontSize: 10, padding: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                {formatCurrency(valuationResult.deedExpenses, valuationResult.currency)}
+                            </Text>
+                        </View>
+
+                        {/* Honorarios */}
+                        <View style={{ flexDirection: 'row', borderBottom: `1px solid ${colors.darkGray}` }}>
+                            <Text style={{ width: '50%', fontSize: 10, padding: 6 }}>Honorarios Inmobiliaria</Text>
+                            <Text style={{ width: '25%', fontSize: 10, padding: 6, textAlign: 'center', color: colors.mediumGray }}>3% s/venta</Text>
+                            <Text style={{ width: '25%', fontSize: 10, padding: 6, textAlign: 'right', fontWeight: 'bold' }}>
+                                {formatCurrency(valuationResult.agencyFees, valuationResult.currency)}
+                            </Text>
+                        </View>
+
+                        {/* Total */}
+                        <View style={{ flexDirection: 'row', backgroundColor: '#fef2f2' }}>
+                            <Text style={{ width: '50%', fontSize: 10, fontWeight: 'bold', padding: 6 }}>Total gastos de venta</Text>
+                            <Text style={{ width: '25%', fontSize: 10, padding: 6 }}></Text>
+                            <Text style={{ width: '25%', fontSize: 10, fontWeight: 'bold', padding: 6, textAlign: 'right', color: colors.semaphoreRed }}>
+                                {formatCurrency(valuationResult.totalExpenses, valuationResult.currency)}
+                            </Text>
+                        </View>
+                    </View>
+
+                    {/* Money in Hand */}
+                    <View style={{ marginTop: 20, padding: 16, backgroundColor: '#ecfdf5', borderRadius: 4, border: `1px solid ${colors.semaphoreGreen}`, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#065f46' }}>Dinero luego de venta</Text>
+                        <Text style={{ fontSize: 22, fontWeight: 'bold', color: colors.semaphoreGreen }}>
+                            {formatCurrency(valuationResult.moneyInHand, valuationResult.currency)}
+                        </Text>
+                    </View>
+                </View>
+            </Page>
+
+            {/* PAGE 11: ESTRATEGIA DE VENTA (Divisor) */}
             <Page size="A4" style={styles.page}>
                 <View style={styles.backgroundPage}>
-                    <View style={{ ...styles.backgroundOverlay, backgroundColor: 'rgba(26, 84, 144, 0.92)' }} />
-                    <View style={styles.backgroundContent}>
-                        <Text style={styles.dividerTitle}>ESTRATEGIA DE{'\n'}VENTA</Text>
-                    </View>
-                    <View style={{ position: 'absolute', bottom: 0, right: 0 }}>
-                        <Image
-                            src="/pdf-assets/photos/Foto Diego.png"
-                            style={{ width: 280, height: 400, objectFit: 'cover' }}
-                        />
+                    <Image
+                        src="/pdf-assets/graphics/section-divider-bg.jpg"
+                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                    <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
+                        <Text style={[styles.dividerTitle, { textAlign: 'left' }]}>
+                            ESTRATEGIA{'\n'}DE VENTA
+                        </Text>
                     </View>
                 </View>
             </Page>

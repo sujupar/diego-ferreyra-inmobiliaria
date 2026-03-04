@@ -57,8 +57,9 @@ export function extractArgenProp($: CheerioAPI, url: string): ScrapedProperty {
     const features: PropertyFeatures = {
         bedrooms: null,
         bathrooms: null,
-        totalArea: null,
         coveredArea: null,
+        uncoveredArea: null,
+        totalArea: null,
         age: null,
         floor: null,
         totalFloors: null,

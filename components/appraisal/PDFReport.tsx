@@ -156,18 +156,19 @@ const styles = StyleSheet.create({
     tableCellRight: {
         textAlign: 'right',
     },
-    // Anchos de columnas (total debe ser 100%)
-    col1: { width: '15%' }, // Comparable
-    col2: { width: '10%' }, // Precio
-    col3: { width: '8%' },  // Sup Total
-    col4: { width: '8%' },  // Sup Cub
-    col5: { width: '8%' },  // Sup Homog
-    col6: { width: '10%' }, // USD/m² Orig
-    col7: { width: '8%' },  // Coef Piso
-    col8: { width: '8%' },  // Coef Disp
-    col9: { width: '8%' },  // Coef Cal
-    col10: { width: '8%' }, // Coef Edad
-    col11: { width: '11%' }, // USD/m² Ajust
+    // Column widths (total = 100%)
+    col1: { width: '14%' },  // Comparable
+    col2: { width: '9%' },   // Precio
+    col3: { width: '7%' },   // Sup Total
+    col4: { width: '7%' },   // Sup Cub
+    col5: { width: '7%' },   // Sup Homog
+    col6: { width: '9%' },   // USD/m² Orig
+    colUbic: { width: '7%' }, // Coef Ubic
+    col7: { width: '7%' },   // Coef Piso
+    col8: { width: '7%' },   // Coef Disp
+    col9: { width: '7%' },   // Coef Cal
+    col10: { width: '7%' },  // Coef Edad
+    col11: { width: '10%' }, // USD/m² Ajust
 
     // VALOR OBJETIVO
     valorObjetivo: {
@@ -363,6 +364,7 @@ export function PDFReport({ subject, result }: PDFReportProps) {
                         <Text style={[styles.tableCellHeader, styles.col4]}>Sup. Cub.</Text>
                         <Text style={[styles.tableCellHeader, styles.col5]}>Sup. Homog.</Text>
                         <Text style={[styles.tableCellHeader, styles.col6]}>USD/m² Orig.</Text>
+                        <Text style={[styles.tableCellHeader, styles.colUbic]}>Coef. Ubic.</Text>
                         <Text style={[styles.tableCellHeader, styles.col7]}>Coef. Piso</Text>
                         <Text style={[styles.tableCellHeader, styles.col8]}>Coef. Disp.</Text>
                         <Text style={[styles.tableCellHeader, styles.col9]}>Coef. Cal.</Text>
@@ -397,17 +399,20 @@ export function PDFReport({ subject, result }: PDFReportProps) {
                             <Text style={[styles.tableCell, styles.tableCellRight, styles.col6]}>
                                 {formatNumber(analysis.originalPriceM2, 0)}
                             </Text>
+                            <Text style={[styles.tableCell, styles.colUbic]}>
+                                {formatNumber(analysis.locationCoefficient, 2)}
+                            </Text>
                             <Text style={[styles.tableCell, styles.col7]}>
-                                {formatNumber(analysis.floorFactor, 2)}
+                                {formatNumber(analysis.floorCoefficient, 2)}
                             </Text>
                             <Text style={[styles.tableCell, styles.col8]}>
-                                {formatNumber(analysis.dispositionFactor, 2)}
+                                {formatNumber(analysis.dispositionCoefficient, 2)}
                             </Text>
                             <Text style={[styles.tableCell, styles.col9]}>
-                                {formatNumber(analysis.qualityFactor, 2)}
+                                {formatNumber(analysis.qualityCoefficient, 2)}
                             </Text>
                             <Text style={[styles.tableCell, styles.col10]}>
-                                {formatNumber(analysis.ageFactor, 2)}
+                                {formatNumber(analysis.ageCoefficient, 2)}
                             </Text>
                             <Text style={[styles.tableCell, styles.tableCellRight, styles.col11, { fontWeight: 'bold', color: '#1a365d' }]}>
                                 {formatNumber(analysis.adjustedPriceM2, 0)}
@@ -428,13 +433,16 @@ export function PDFReport({ subject, result }: PDFReportProps) {
 
                 {/* VALOR OBJETIVO */}
                 <View style={styles.valorObjetivo}>
-                    <Text style={styles.valorObjetivoLabel}>VALOR OBJETIVO DE TASACIÓN</Text>
+                    <Text style={styles.valorObjetivoLabel}>PRECIO DE PUBLICACIÓN</Text>
                     <Text style={styles.valorObjetivoValue}>
-                        {formatCurrency(result.finalValue, result.currency)}
+                        {formatCurrency(result.publicationPrice, result.currency)}
                     </Text>
                     <Text style={{ fontSize: 10, color: '#FFFFFF', marginTop: 8 }}>
                         Superficie homogeneizada: {formatNumber(result.subjectSurface, 2)} m² |
                         Basado en {result.comparableAnalysis.length} comparables
+                    </Text>
+                    <Text style={{ fontSize: 10, color: '#ff6b35', marginTop: 5 }}>
+                        Zona de No Venta: {formatCurrency(result.noSaleZonePrice, result.currency)}
                     </Text>
                 </View>
 
