@@ -245,7 +245,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                     />
                     <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
                         <Text style={[styles.dividerTitle, { textAlign: 'left' }]}>
-                            PROPIEDADES{'\n'}QUE COMPITEN
+                            PROPIEDADES{'\n'}QUE{'\n'}COMPITEN
                         </Text>
                         <View style={[styles.dividerText, { width: '100%' }]}>
                             <Text style={{ fontSize: 13, lineHeight: 1.6 }}>
