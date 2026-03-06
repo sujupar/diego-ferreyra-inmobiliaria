@@ -50,14 +50,16 @@ export function PropertyForm({ onPropertyLoaded }: PropertyFormProps) {
                 body: JSON.stringify({ url: values.url }),
             })
 
+            const data = await response.json()
+
             if (!response.ok) {
-                throw new Error('Error al obtener datos de la propiedad')
+                throw new Error(data?.error || 'Error al obtener datos de la propiedad')
             }
 
-            const scrapedData = await response.json()
-            onPropertyLoaded(scrapedData)
+            onPropertyLoaded(data)
         } catch (err) {
-            setError('Error cargando la propiedad. Verifique la URL e intente de nuevo.')
+            const message = err instanceof Error ? err.message : 'Error cargando la propiedad'
+            setError(message)
         } finally {
             setIsLoading(false)
         }

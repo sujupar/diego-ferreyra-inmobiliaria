@@ -14,13 +14,12 @@ export async function POST(request: Request): Promise<Response> {
         const body = await request.json()
         const { url } = scrapeSchema.parse(body)
 
-        // Use the TypeScript scraper (Puppeteer + Cheerio)
         const result = await scrapeProperty(url)
 
         if (!result.success || !result.data) {
             return NextResponse.json(
                 { error: result.error || 'Failed to scrape property' },
-                { status: 500 }
+                { status: 422 }
             )
         }
 

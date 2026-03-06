@@ -9,6 +9,10 @@
   NODE_VERSION = "20"
   NPM_FLAGS = "--legacy-peer-deps"
 
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["cheerio"]
+
 # Security headers
 [[headers]]
   for = "/*"

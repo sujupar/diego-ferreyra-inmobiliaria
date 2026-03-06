@@ -33,13 +33,17 @@ export function ComparablesList({ comparables, onAddComparable, onRemoveComparab
                 body: JSON.stringify({ url }),
             })
 
-            if (!response.ok) throw new Error('Failed to fetch')
-
             const data = await response.json()
+
+            if (!response.ok) {
+                throw new Error(data?.error || 'Error al obtener datos de la propiedad')
+            }
+
             onAddComparable(data)
             setUrl('')
         } catch (err) {
-            setError('Error al cargar la propiedad comparable.')
+            const message = err instanceof Error ? err.message : 'Error al cargar la propiedad comparable'
+            setError(message)
         } finally {
             setIsLoading(false)
         }

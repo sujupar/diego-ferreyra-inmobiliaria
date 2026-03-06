@@ -14,8 +14,8 @@ const USER_AGENTS = [
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:125.0) Gecko/20100101 Firefox/125.0',
 ]
 
-const FETCH_TIMEOUT_MS = 15_000
-const MAX_RETRIES = 2
+const FETCH_TIMEOUT_MS = 8_000
+const MAX_RETRIES = 1
 
 /**
  * Fetches HTML from a URL with retry logic and User-Agent rotation
@@ -74,7 +74,7 @@ async function fetchHTML(url: string): Promise<string> {
             )
 
             if (attempt < MAX_RETRIES) {
-                await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 1000))
+                await new Promise(resolve => setTimeout(resolve, 1000))
             }
         }
     }
