@@ -100,14 +100,14 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
     const [isSaving, setIsSaving] = useState(false)
     const [savedMessage, setSavedMessage] = useState(false)
 
-    // Auto-calculate total area
+    // Auto-calculate total area (homogenized: covered 100% + semi 50% + uncovered 50%)
     useEffect(() => {
         const covered = Number(formData.coveredArea) || 0
         const semiCovered = Number(formData.semiCoveredArea) || 0
         const uncovered = Number(formData.uncoveredArea) || 0
-        const total = covered + semiCovered + uncovered
+        const total = covered + (semiCovered * 0.5) + (uncovered * 0.5)
 
-        if (total > 0 && formData.totalArea === '') {
+        if (total > 0) {
             setFormData(prev => ({ ...prev, totalArea: total }))
         }
     }, [formData.coveredArea, formData.semiCoveredArea, formData.uncoveredArea])
