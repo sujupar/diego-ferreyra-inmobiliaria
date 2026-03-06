@@ -14,22 +14,79 @@ const USER_AGENTS = [
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:125.0) Gecko/20100101 Firefox/125.0',
 ]
 
-const FETCH_TIMEOUT_MS = 8_000
+const DIRECT_TIMEOUT_MS = 8_000
+const SCRAPERAPI_TIMEOUT_MS = 30_000
 const MAX_RETRIES = 1
 
 /**
- * Fetches HTML from a URL with retry logic and User-Agent rotation
+ * Fetches HTML from a URL.
+ * Uses ScraperAPI proxy when SCRAPER_API_KEY is set (production),
+ * falls back to direct fetch (local dev).
  */
 async function fetchHTML(url: string): Promise<string> {
+    const apiKey = process.env.SCRAPER_API_KEY
+
+    if (apiKey) {
+        return fetchViaScraperAPI(url, apiKey)
+    }
+    return fetchDirect(url)
+}
+
+/**
+ * Fetches HTML through ScraperAPI proxy (handles proxies, CAPTCHAs, retries)
+ */
+async function fetchViaScraperAPI(url: string, apiKey: string): Promise<string> {
+    const proxyUrl = `https://api.scraperapi.com?api_key=${apiKey}&url=${encodeURIComponent(url)}`
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), SCRAPERAPI_TIMEOUT_MS)
+
+    try {
+        console.log(`[Scraper] Fetching via ScraperAPI: ${url}`)
+
+        const response = await fetch(proxyUrl, {
+            method: 'GET',
+            signal: controller.signal,
+        })
+
+        clearTimeout(timeout)
+
+        if (!response.ok) {
+            throw new Error(`ScraperAPI HTTP ${response.status}: ${response.statusText}`)
+        }
+
+        const html = await response.text()
+
+        if (html.length < 1000) {
+            throw new Error('Response too short - page may be blocked or empty')
+        }
+
+        console.log(`[Scraper] ScraperAPI success - received ${html.length} chars`)
+        return html
+
+    } catch (error) {
+        clearTimeout(timeout)
+        const isAbort = (error as Error).name === 'AbortError'
+        throw new Error(
+            isAbort
+                ? 'Request timed out. The portal may be slow — try again.'
+                : (error as Error).message
+        )
+    }
+}
+
+/**
+ * Fetches HTML directly with retry logic (for local development)
+ */
+async function fetchDirect(url: string): Promise<string> {
     let lastError: Error | null = null
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         const userAgent = USER_AGENTS[attempt % USER_AGENTS.length]
         const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+        const timeout = setTimeout(() => controller.abort(), DIRECT_TIMEOUT_MS)
 
         try {
-            console.log(`[Scraper] Fetch attempt ${attempt + 1}/${MAX_RETRIES + 1} for: ${url}`)
+            console.log(`[Scraper] Direct fetch attempt ${attempt + 1}/${MAX_RETRIES + 1}: ${url}`)
 
             const response = await fetch(url, {
                 method: 'GET',
