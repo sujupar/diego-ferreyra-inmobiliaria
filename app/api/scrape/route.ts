@@ -6,8 +6,8 @@ const scrapeSchema = z.object({
     url: z.string().url(),
 })
 
-// Allow up to 2 minutes for scraping (Puppeteer can be slow)
-export const maxDuration = 120
+// Allow up to 60 seconds for scraping (fetch with retry)
+export const maxDuration = 60
 
 export async function POST(request: Request): Promise<Response> {
     try {

@@ -1,92 +1,109 @@
-import puppeteer from 'puppeteer-extra'
-import StealthPlugin from 'puppeteer-extra-plugin-stealth'
 import * as cheerio from 'cheerio'
 import { ScrapedProperty, ScraperResult } from './types'
 import { extractZonaProp } from './zonaPropExtractor'
 import { extractArgenProp } from './argenPropExtractor'
 import { extractMercadoLibre } from './mercadoLibreExtractor'
 
-// Enable stealth plugin to bypass bot detection
-puppeteer.use(StealthPlugin())
-
 type Portal = 'Zonaprop' | 'Argenprop' | 'MercadoLibre' | 'Unknown'
+
+const USER_AGENTS = [
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:125.0) Gecko/20100101 Firefox/125.0',
+]
+
+const FETCH_TIMEOUT_MS = 15_000
+const MAX_RETRIES = 2
+
+/**
+ * Fetches HTML from a URL with retry logic and User-Agent rotation
+ */
+async function fetchHTML(url: string): Promise<string> {
+    let lastError: Error | null = null
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        const userAgent = USER_AGENTS[attempt % USER_AGENTS.length]
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+
+        try {
+            console.log(`[Scraper] Fetch attempt ${attempt + 1}/${MAX_RETRIES + 1} for: ${url}`)
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'User-Agent': userAgent,
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                    'Accept-Language': 'es-AR,es;q=0.9,en;q=0.8',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Sec-Fetch-User': '?1',
+                    'Upgrade-Insecure-Requests': '1',
+                },
+                signal: controller.signal,
+                redirect: 'follow',
+            })
+
+            clearTimeout(timeout)
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+            }
+
+            const html = await response.text()
+
+            if (html.length < 1000) {
+                throw new Error('Response too short - likely blocked or empty page')
+            }
+
+            return html
+
+        } catch (error) {
+            clearTimeout(timeout)
+            lastError = error as Error
+
+            const isAbort = (error as Error).name === 'AbortError'
+            console.warn(
+                `[Scraper] Attempt ${attempt + 1} failed: ${isAbort ? 'Timeout' : (error as Error).message}`
+            )
+
+            if (attempt < MAX_RETRIES) {
+                await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 1000))
+            }
+        }
+    }
+
+    throw new Error(
+        `Failed to fetch page after ${MAX_RETRIES + 1} attempts. Last error: ${lastError?.message}. ` +
+        `The portal may be blocking automated requests. Try entering property data manually.`
+    )
+}
 
 /**
  * Scrapes a property listing from supported real estate portals
  */
 export async function scrapeProperty(url: string): Promise<ScraperResult> {
-    let browser = null
-
     try {
         const portal = detectPortal(url)
 
         if (portal === 'Unknown') {
             return {
                 success: false,
-                error: `Unsupported portal. Please use ZonaProp, ArgenProp, or MercadoLibre URLs.`
+                error: 'Unsupported portal. Please use ZonaProp, ArgenProp, or MercadoLibre URLs.'
             }
         }
 
         console.log(`[Scraper] Starting scrape for ${portal}: ${url}`)
 
-        // Launch Puppeteer with stealth to avoid bot detection
-        browser = await puppeteer.launch({
-            headless: true,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-blink-features=AutomationControlled',
-                '--disable-web-security',
-                '--disable-features=IsolateOrigins,site-per-process'
-            ],
-        })
-        const page = await browser.newPage()
+        const html = await fetchHTML(url)
+        const $ = cheerio.load(html)
 
-        // Set viewport to look like a real browser
-        await page.setViewport({ width: 1920, height: 1080 })
-
-        // Set user agent to avoid bot detection
-        await page.setUserAgent(
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        )
-
-        // Set extra headers
-        await page.setExtraHTTPHeaders({
-            'Accept-Language': 'es-AR,es;q=0.9,en;q=0.8',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8'
-        })
-
-        // Navigate and wait for content
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 })
-
-        // Wait a bit for dynamic content
-        await new Promise(resolve => setTimeout(resolve, 2000))
-
-        // For MercadoLibre, click "Ver todas las características" if present
-        if (portal === 'MercadoLibre') {
-            try {
-                await page.waitForSelector('.ui-pdp-collapsable__action', { timeout: 5000 })
-                await page.click('.ui-pdp-collapsable__action')
-                await new Promise(resolve => setTimeout(resolve, 1000))
-            } catch {
-                // Button not found or already expanded - continue
-            }
-        }
-
-        // For ArgenProp, wait for the main content
-        if (portal === 'Argenprop') {
-            try {
-                await page.waitForSelector('.titlebar__price', { timeout: 10000 })
-            } catch {
-                console.log('[Scraper] ArgenProp: Price element not found, continuing anyway')
-            }
-        }
-
-        // Get page content
-        const content = await page.content()
-        const $ = cheerio.load(content)
-
-        // Extract using portal-specific extractor
         let property: ScrapedProperty
 
         switch (portal) {
@@ -112,8 +129,6 @@ export async function scrapeProperty(url: string): Promise<ScraperResult> {
     } catch (error) {
         console.error('[Scraper] Error:', error)
         return { success: false, error: (error as Error).message }
-    } finally {
-        if (browser) await browser.close()
     }
 }
 
