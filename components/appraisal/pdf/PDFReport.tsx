@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Document, Page, Text, View, Image, Link } from '@react-pdf/renderer'
+import { Document, Page, Text, View, Image, Link, Svg, Path, Circle as SvgCircle, Rect as SvgRect } from '@react-pdf/renderer'
 import { ValuationProperty, ValuationResult } from '@/lib/valuation/calculator'
 import { styles, colors } from './PDFStyles'
 
@@ -133,21 +133,28 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                     </View>
                 )}
 
-                {/* Features Grid — visual cards */}
+                {/* Features Grid — visual cards with SVG icons */}
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16, marginTop: 8 }}>
+                    {/* Sup. Cubierta — house icon */}
                     <View style={{ width: '30%', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8f9fa', padding: 8, borderRadius: 6, borderLeft: `3px solid ${colors.primary}` }}>
                         <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }}>
-                            <Text style={{ fontSize: 12, color: colors.white }}>{'⊞'}</Text>
+                            <Svg viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
+                                <Path d="M12 3L4 10H7V20H17V10H20L12 3Z" fill="white" />
+                            </Svg>
                         </View>
                         <View>
                             <Text style={{ fontSize: 7, color: colors.mediumGray }}>Sup. Cubierta</Text>
                             <Text style={{ fontSize: 11, fontWeight: 'bold', color: colors.darkGray }}>{subject.features.coveredArea || 0} m²</Text>
                         </View>
                     </View>
+                    {/* Sup. Descubierta — open/outdoor icon */}
                     {(subject.features.uncoveredArea ?? 0) > 0 && (
                         <View style={{ width: '30%', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8f9fa', padding: 8, borderRadius: 6, borderLeft: `3px solid ${colors.primary}` }}>
                             <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }}>
-                                <Text style={{ fontSize: 12, color: colors.white }}>{'⊡'}</Text>
+                                <Svg viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
+                                    <Path d="M3 20H21M5 20V12H19V20M5 12L12 6L19 12" stroke="white" strokeWidth={1.5} fill="none" />
+                                    <Path d="M9 12V8M15 12V8" stroke="white" strokeWidth={1.5} fill="none" />
+                                </Svg>
                             </View>
                             <View>
                                 <Text style={{ fontSize: 7, color: colors.mediumGray }}>Sup. Descubierta</Text>
@@ -155,10 +162,16 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                             </View>
                         </View>
                     )}
+                    {/* Ambientes — grid/layout icon */}
                     {subject.features.rooms && (
                         <View style={{ width: '30%', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8f9fa', padding: 8, borderRadius: 6, borderLeft: `3px solid ${colors.primary}` }}>
                             <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }}>
-                                <Text style={{ fontSize: 12, color: colors.white }}>{'▦'}</Text>
+                                <Svg viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
+                                    <SvgRect x={3} y={3} width={7} height={7} rx={1} fill="white" />
+                                    <SvgRect x={14} y={3} width={7} height={7} rx={1} fill="white" />
+                                    <SvgRect x={3} y={14} width={7} height={7} rx={1} fill="white" />
+                                    <SvgRect x={14} y={14} width={7} height={7} rx={1} fill="white" />
+                                </Svg>
                             </View>
                             <View>
                                 <Text style={{ fontSize: 7, color: colors.mediumGray }}>Ambientes</Text>
@@ -166,10 +179,14 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                             </View>
                         </View>
                     )}
+                    {/* Dormitorios — bed icon */}
                     {subject.features.bedrooms && (
                         <View style={{ width: '30%', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8f9fa', padding: 8, borderRadius: 6, borderLeft: `3px solid ${colors.primary}` }}>
                             <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }}>
-                                <Text style={{ fontSize: 12, color: colors.white }}>{'◈'}</Text>
+                                <Svg viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
+                                    <Path d="M3 18V13H21V18M3 13V9H9V13M3 18H21M21 13V18" stroke="white" strokeWidth={1.5} fill="none" />
+                                    <SvgCircle cx={6} cy={11} r={1.5} fill="white" />
+                                </Svg>
                             </View>
                             <View>
                                 <Text style={{ fontSize: 7, color: colors.mediumGray }}>Dormitorios</Text>
@@ -177,10 +194,13 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                             </View>
                         </View>
                     )}
+                    {/* Baños — water drop icon */}
                     {subject.features.bathrooms && (
                         <View style={{ width: '30%', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8f9fa', padding: 8, borderRadius: 6, borderLeft: `3px solid ${colors.primary}` }}>
                             <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }}>
-                                <Text style={{ fontSize: 12, color: colors.white }}>{'◉'}</Text>
+                                <Svg viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
+                                    <Path d="M12 4C12 4 6 11 6 15C6 18.3 8.7 21 12 21C15.3 21 18 18.3 18 15C18 11 12 4 12 4Z" fill="white" />
+                                </Svg>
                             </View>
                             <View>
                                 <Text style={{ fontSize: 7, color: colors.mediumGray }}>Baños</Text>
@@ -188,19 +208,29 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                             </View>
                         </View>
                     )}
+                    {/* Antigüedad — clock icon */}
                     <View style={{ width: '30%', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8f9fa', padding: 8, borderRadius: 6, borderLeft: `3px solid ${colors.primary}` }}>
                         <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }}>
-                            <Text style={{ fontSize: 12, color: colors.white }}>{'⏱'}</Text>
+                            <Svg viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
+                                <SvgCircle cx={12} cy={12} r={9} stroke="white" strokeWidth={1.5} fill="none" />
+                                <Path d="M12 7V12L15.5 14.5" stroke="white" strokeWidth={1.5} fill="none" />
+                            </Svg>
                         </View>
                         <View>
                             <Text style={{ fontSize: 7, color: colors.mediumGray }}>Antigüedad</Text>
                             <Text style={{ fontSize: 11, fontWeight: 'bold', color: colors.darkGray }}>{subject.features.age || 0} años</Text>
                         </View>
                     </View>
+                    {/* Cochera — car icon */}
                     {subject.features.garages && (
                         <View style={{ width: '30%', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8f9fa', padding: 8, borderRadius: 6, borderLeft: `3px solid ${colors.primary}` }}>
                             <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }}>
-                                <Text style={{ fontSize: 12, color: colors.white }}>{'▣'}</Text>
+                                <Svg viewBox="0 0 24 24" style={{ width: 14, height: 14 }}>
+                                    <Path d="M5 16H19V12L17 8H7L5 12V16Z" stroke="white" strokeWidth={1.5} fill="none" />
+                                    <SvgCircle cx={8} cy={14} r={1.2} fill="white" />
+                                    <SvgCircle cx={16} cy={14} r={1.2} fill="white" />
+                                    <Path d="M5 16V18H8V16M16 16V18H19V16" stroke="white" strokeWidth={1} fill="none" />
+                                </Svg>
                             </View>
                             <View>
                                 <Text style={{ fontSize: 7, color: colors.mediumGray }}>Cochera{subject.features.garages > 1 ? 's' : ''}</Text>
