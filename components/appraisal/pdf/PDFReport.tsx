@@ -133,49 +133,79 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                     </View>
                 )}
 
-                {/* Map Placeholder */}
-                <View style={{
-                    width: '100%',
-                    height: 200,
-                    backgroundColor: colors.lightGray,
-                    marginBottom: 20,
-                    justifyContent: 'center',
-                    alignItems: 'center'
-                }}>
-                    <Text style={styles.bodySecondary}>Mapa de ubicación: {subject.location}</Text>
-                </View>
-
-                {/* Features Grid */}
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginBottom: 16 }}>
-                    <View style={styles.featureItem}>
-                        <Text style={styles.featureText}>■ {subject.features.coveredArea || 0} m² cubiertos</Text>
+                {/* Features Grid — visual cards */}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16, marginTop: 8 }}>
+                    <View style={{ width: '30%', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8f9fa', padding: 8, borderRadius: 6, borderLeft: `3px solid ${colors.primary}` }}>
+                        <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 12, color: colors.white }}>{'⊞'}</Text>
+                        </View>
+                        <View>
+                            <Text style={{ fontSize: 7, color: colors.mediumGray }}>Sup. Cubierta</Text>
+                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: colors.darkGray }}>{subject.features.coveredArea || 0} m²</Text>
+                        </View>
                     </View>
                     {(subject.features.uncoveredArea ?? 0) > 0 && (
-                        <View style={styles.featureItem}>
-                            <Text style={styles.featureText}>■ {subject.features.uncoveredArea} m² descubiertos</Text>
+                        <View style={{ width: '30%', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8f9fa', padding: 8, borderRadius: 6, borderLeft: `3px solid ${colors.primary}` }}>
+                            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }}>
+                                <Text style={{ fontSize: 12, color: colors.white }}>{'⊡'}</Text>
+                            </View>
+                            <View>
+                                <Text style={{ fontSize: 7, color: colors.mediumGray }}>Sup. Descubierta</Text>
+                                <Text style={{ fontSize: 11, fontWeight: 'bold', color: colors.darkGray }}>{subject.features.uncoveredArea} m²</Text>
+                            </View>
                         </View>
                     )}
                     {subject.features.rooms && (
-                        <View style={styles.featureItem}>
-                            <Text style={styles.featureText}>■ {subject.features.rooms} Amb.</Text>
+                        <View style={{ width: '30%', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8f9fa', padding: 8, borderRadius: 6, borderLeft: `3px solid ${colors.primary}` }}>
+                            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }}>
+                                <Text style={{ fontSize: 12, color: colors.white }}>{'▦'}</Text>
+                            </View>
+                            <View>
+                                <Text style={{ fontSize: 7, color: colors.mediumGray }}>Ambientes</Text>
+                                <Text style={{ fontSize: 11, fontWeight: 'bold', color: colors.darkGray }}>{subject.features.rooms}</Text>
+                            </View>
                         </View>
                     )}
                     {subject.features.bedrooms && (
-                        <View style={styles.featureItem}>
-                            <Text style={styles.featureText}>■ {subject.features.bedrooms} Dormitorios</Text>
+                        <View style={{ width: '30%', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8f9fa', padding: 8, borderRadius: 6, borderLeft: `3px solid ${colors.primary}` }}>
+                            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }}>
+                                <Text style={{ fontSize: 12, color: colors.white }}>{'◈'}</Text>
+                            </View>
+                            <View>
+                                <Text style={{ fontSize: 7, color: colors.mediumGray }}>Dormitorios</Text>
+                                <Text style={{ fontSize: 11, fontWeight: 'bold', color: colors.darkGray }}>{subject.features.bedrooms}</Text>
+                            </View>
                         </View>
                     )}
                     {subject.features.bathrooms && (
-                        <View style={styles.featureItem}>
-                            <Text style={styles.featureText}>■ {subject.features.bathrooms} Baños</Text>
+                        <View style={{ width: '30%', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8f9fa', padding: 8, borderRadius: 6, borderLeft: `3px solid ${colors.primary}` }}>
+                            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }}>
+                                <Text style={{ fontSize: 12, color: colors.white }}>{'◉'}</Text>
+                            </View>
+                            <View>
+                                <Text style={{ fontSize: 7, color: colors.mediumGray }}>Baños</Text>
+                                <Text style={{ fontSize: 11, fontWeight: 'bold', color: colors.darkGray }}>{subject.features.bathrooms}</Text>
+                            </View>
                         </View>
                     )}
-                    <View style={styles.featureItem}>
-                        <Text style={styles.featureText}>■ {subject.features.age || 0} años Antigüedad</Text>
+                    <View style={{ width: '30%', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8f9fa', padding: 8, borderRadius: 6, borderLeft: `3px solid ${colors.primary}` }}>
+                        <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 12, color: colors.white }}>{'⏱'}</Text>
+                        </View>
+                        <View>
+                            <Text style={{ fontSize: 7, color: colors.mediumGray }}>Antigüedad</Text>
+                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: colors.darkGray }}>{subject.features.age || 0} años</Text>
+                        </View>
                     </View>
                     {subject.features.garages && (
-                        <View style={styles.featureItem}>
-                            <Text style={styles.featureText}>■ {subject.features.garages} Cochera{subject.features.garages > 1 ? 's' : ''}</Text>
+                        <View style={{ width: '30%', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f8f9fa', padding: 8, borderRadius: 6, borderLeft: `3px solid ${colors.primary}` }}>
+                            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }}>
+                                <Text style={{ fontSize: 12, color: colors.white }}>{'▣'}</Text>
+                            </View>
+                            <View>
+                                <Text style={{ fontSize: 7, color: colors.mediumGray }}>Cochera{subject.features.garages > 1 ? 's' : ''}</Text>
+                                <Text style={{ fontSize: 11, fontWeight: 'bold', color: colors.darkGray }}>{subject.features.garages}</Text>
+                            </View>
                         </View>
                     )}
                 </View>
@@ -564,68 +594,68 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 <View style={{ marginVertical: 8, border: `1px solid ${colors.darkGray}` }}>
                     {/* Table Header */}
                     <View style={{ flexDirection: 'row', backgroundColor: '#f5ead6', borderBottom: `1px solid ${colors.darkGray}` }}>
-                        <Text style={{ width: '10%', fontSize: 5, fontWeight: 'bold', padding: 2 }}>Comparable</Text>
-                        <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'right' }}>Valor</Text>
-                        <Text style={{ width: '4%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>M²{'\n'}Cub.</Text>
-                        <Text style={{ width: '4%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>M²{'\n'}Desc.</Text>
-                        <Text style={{ width: '4%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>M²{'\n'}Hom.</Text>
-                        <Text style={{ width: '3%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Edad</Text>
-                        <Text style={{ width: '3%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Amb.</Text>
-                        <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'right' }}>$/m²</Text>
-                        <Text style={{ width: '5%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Ubic.</Text>
-                        <Text style={{ width: '5%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Piso</Text>
-                        <Text style={{ width: '5%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Disp.</Text>
-                        <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Edad{'\n'}Estado</Text>
-                        <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Cal.{'\n'}Const.</Text>
-                        <Text style={{ width: '5%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Total</Text>
-                        <Text style={{ width: '7%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'right' }}>$/m²{'\n'}Result.</Text>
+                        <Text style={{ width: '12%', fontSize: 5, fontWeight: 'bold', padding: 2 }}>Comparable</Text>
+                        <Text style={{ width: '7%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'right' }}>Valor</Text>
+                        <Text style={{ width: '5%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>M²{'\n'}Cub.</Text>
+                        <Text style={{ width: '5%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>M²{'\n'}Desc.</Text>
+                        <Text style={{ width: '5%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>M²{'\n'}Hom.</Text>
+                        <Text style={{ width: '4%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Edad</Text>
+                        <Text style={{ width: '4%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Amb.</Text>
+                        <Text style={{ width: '7%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'right' }}>$/m²</Text>
+                        <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Ubic.</Text>
+                        <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Piso</Text>
+                        <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Disp.</Text>
+                        <Text style={{ width: '7%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Edad{'\n'}Estado</Text>
+                        <Text style={{ width: '7%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Cal.{'\n'}Const.</Text>
+                        <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center' }}>Total</Text>
+                        <Text style={{ width: '8%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'right' }}>$/m²{'\n'}Result.</Text>
                     </View>
 
                     {/* Subject Row */}
                     <View style={{ flexDirection: 'row', backgroundColor: '#e8f4fd', borderBottom: `1.5px solid ${colors.primary}` }}>
-                        <Text style={{ width: '10%', fontSize: 5, fontWeight: 'bold', padding: 2, color: colors.primary }}>
-                            {(subject.location || 'Sujeto').slice(0, 22)}
-                        </Text>
-                        <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'right', color: colors.primary }}>
-                            {formatCurrency(recommendedPrice, valuationResult.currency)}
-                        </Text>
-                        <Text style={{ width: '4%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
-                            {subject.features.coveredArea || '-'}
-                        </Text>
-                        <Text style={{ width: '4%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
-                            {subject.features.uncoveredArea || '-'}
-                        </Text>
-                        <Text style={{ width: '4%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
-                            {valuationResult.subjectSurface.toFixed(0)}
-                        </Text>
-                        <Text style={{ width: '3%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
-                            {subject.features.age ?? '-'}
-                        </Text>
-                        <Text style={{ width: '3%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
-                            {subject.features.rooms || '-'}
-                        </Text>
-                        <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'right', color: colors.primary }}>
-                            {Math.round(valuationResult.subjectPriceM2).toLocaleString()}
-                        </Text>
-                        <Text style={{ width: '5%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
-                            {valuationResult.subjectLocationCoef.toFixed(2)}
-                        </Text>
-                        <Text style={{ width: '5%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
-                            {valuationResult.subjectFloorCoef.toFixed(2)}
-                        </Text>
-                        <Text style={{ width: '5%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
-                            {valuationResult.subjectDispositionCoef.toFixed(2)}
-                        </Text>
-                        <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
-                            {valuationResult.subjectAgeCoef.toFixed(4)}
-                        </Text>
-                        <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
-                            {valuationResult.subjectQualityCoef.toFixed(2)}
-                        </Text>
-                        <Text style={{ width: '5%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
-                            {valuationResult.subjectTotalCoef.toFixed(4)}
+                        <Text style={{ width: '12%', fontSize: 5, fontWeight: 'bold', padding: 2, color: colors.primary }}>
+                            {(subject.location || 'Sujeto').slice(0, 26)}
                         </Text>
                         <Text style={{ width: '7%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'right', color: colors.primary }}>
+                            {formatCurrency(recommendedPrice, valuationResult.currency)}
+                        </Text>
+                        <Text style={{ width: '5%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {subject.features.coveredArea || '-'}
+                        </Text>
+                        <Text style={{ width: '5%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {subject.features.uncoveredArea || '-'}
+                        </Text>
+                        <Text style={{ width: '5%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {valuationResult.subjectSurface.toFixed(0)}
+                        </Text>
+                        <Text style={{ width: '4%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {subject.features.age ?? '-'}
+                        </Text>
+                        <Text style={{ width: '4%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {subject.features.rooms || '-'}
+                        </Text>
+                        <Text style={{ width: '7%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'right', color: colors.primary }}>
+                            {Math.round(valuationResult.subjectPriceM2).toLocaleString()}
+                        </Text>
+                        <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {valuationResult.subjectLocationCoef.toFixed(2)}
+                        </Text>
+                        <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {valuationResult.subjectFloorCoef.toFixed(2)}
+                        </Text>
+                        <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {valuationResult.subjectDispositionCoef.toFixed(2)}
+                        </Text>
+                        <Text style={{ width: '7%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {valuationResult.subjectAgeCoef.toFixed(4)}
+                        </Text>
+                        <Text style={{ width: '7%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {valuationResult.subjectQualityCoef.toFixed(2)}
+                        </Text>
+                        <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
+                            {valuationResult.subjectTotalCoef.toFixed(4)}
+                        </Text>
+                        <Text style={{ width: '8%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'right', color: colors.primary }}>
                             {Math.round(valuationResult.subjectPriceM2).toLocaleString()}
                         </Text>
                     </View>
@@ -633,49 +663,49 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                     {/* Comparable Rows */}
                     {valuationResult.comparableAnalysis.map((analysis, index) => (
                         <View key={index} style={{ flexDirection: 'row', borderBottom: `0.5px solid ${colors.lightGray}`, backgroundColor: index % 2 === 0 ? '#ffffff' : '#fafafa' }}>
-                            <Text style={{ width: '10%', fontSize: 5, padding: 2 }}>
-                                {(analysis.property.location || `Comp. ${index + 1}`).slice(0, 22)}
+                            <Text style={{ width: '12%', fontSize: 5, padding: 2 }}>
+                                {(analysis.property.location || `Comp. ${index + 1}`).slice(0, 26)}
                             </Text>
-                            <Text style={{ width: '6%', fontSize: 5, padding: 2, textAlign: 'right' }}>
+                            <Text style={{ width: '7%', fontSize: 5, padding: 2, textAlign: 'right' }}>
                                 {((analysis.property.price || 0) / 1000).toFixed(0)}k
                             </Text>
-                            <Text style={{ width: '4%', fontSize: 5, padding: 2, textAlign: 'center' }}>
+                            <Text style={{ width: '5%', fontSize: 5, padding: 2, textAlign: 'center' }}>
                                 {analysis.property.features.coveredArea || '-'}
                             </Text>
-                            <Text style={{ width: '4%', fontSize: 5, padding: 2, textAlign: 'center' }}>
+                            <Text style={{ width: '5%', fontSize: 5, padding: 2, textAlign: 'center' }}>
                                 {analysis.property.features.uncoveredArea || '-'}
                             </Text>
-                            <Text style={{ width: '4%', fontSize: 5, padding: 2, textAlign: 'center' }}>
+                            <Text style={{ width: '5%', fontSize: 5, padding: 2, textAlign: 'center' }}>
                                 {analysis.homogenizedSurface.toFixed(0)}
                             </Text>
-                            <Text style={{ width: '3%', fontSize: 5, padding: 2, textAlign: 'center' }}>
+                            <Text style={{ width: '4%', fontSize: 5, padding: 2, textAlign: 'center' }}>
                                 {analysis.property.features.age ?? '-'}
                             </Text>
-                            <Text style={{ width: '3%', fontSize: 5, padding: 2, textAlign: 'center' }}>
+                            <Text style={{ width: '4%', fontSize: 5, padding: 2, textAlign: 'center' }}>
                                 {analysis.property.features.rooms || '-'}
                             </Text>
-                            <Text style={{ width: '6%', fontSize: 5, padding: 2, textAlign: 'right' }}>
+                            <Text style={{ width: '7%', fontSize: 5, padding: 2, textAlign: 'right' }}>
                                 {Math.round(analysis.originalPriceM2).toLocaleString()}
                             </Text>
-                            <Text style={{ width: '5%', fontSize: 5, padding: 2, textAlign: 'center' }}>
+                            <Text style={{ width: '6%', fontSize: 5, padding: 2, textAlign: 'center' }}>
                                 {analysis.locationCoefficient.toFixed(2)}
                             </Text>
-                            <Text style={{ width: '5%', fontSize: 5, padding: 2, textAlign: 'center' }}>
+                            <Text style={{ width: '6%', fontSize: 5, padding: 2, textAlign: 'center' }}>
                                 {analysis.floorCoefficient.toFixed(2)}
                             </Text>
-                            <Text style={{ width: '5%', fontSize: 5, padding: 2, textAlign: 'center' }}>
+                            <Text style={{ width: '6%', fontSize: 5, padding: 2, textAlign: 'center' }}>
                                 {analysis.dispositionCoefficient.toFixed(2)}
                             </Text>
-                            <Text style={{ width: '6%', fontSize: 5, padding: 2, textAlign: 'center' }}>
+                            <Text style={{ width: '7%', fontSize: 5, padding: 2, textAlign: 'center' }}>
                                 {analysis.ageCoefficient.toFixed(4)}
                             </Text>
-                            <Text style={{ width: '6%', fontSize: 5, padding: 2, textAlign: 'center' }}>
+                            <Text style={{ width: '7%', fontSize: 5, padding: 2, textAlign: 'center' }}>
                                 {analysis.qualityCoefficient.toFixed(2)}
                             </Text>
-                            <Text style={{ width: '5%', fontSize: 5, padding: 2, textAlign: 'center', fontWeight: 'bold' }}>
+                            <Text style={{ width: '6%', fontSize: 5, padding: 2, textAlign: 'center', fontWeight: 'bold' }}>
                                 {analysis.totalCoefficient.toFixed(4)}
                             </Text>
-                            <Text style={{ width: '7%', fontSize: 5, padding: 2, textAlign: 'right', fontWeight: 'bold' }}>
+                            <Text style={{ width: '8%', fontSize: 5, padding: 2, textAlign: 'right', fontWeight: 'bold' }}>
                                 {Math.round(analysis.adjustedPriceM2).toLocaleString()}
                             </Text>
                         </View>
@@ -683,10 +713,10 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
                     {/* Average Row */}
                     <View style={{ flexDirection: 'row', backgroundColor: '#f5ead6', borderTop: `1px solid ${colors.darkGray}` }}>
-                        <Text style={{ width: '72%', fontSize: 6, fontWeight: 'bold', padding: 3, textAlign: 'right' }}>
+                        <Text style={{ width: '92%', fontSize: 6, fontWeight: 'bold', padding: 3, textAlign: 'right' }}>
                             Promedio $/m² Ajustado:
                         </Text>
-                        <Text style={{ width: '7%', fontSize: 7, fontWeight: 'bold', padding: 3, textAlign: 'right', color: colors.primary }}>
+                        <Text style={{ width: '8%', fontSize: 7, fontWeight: 'bold', padding: 3, textAlign: 'right', color: colors.primary }}>
                             {Math.round(valuationResult.averagePriceM2).toLocaleString()}
                         </Text>
                     </View>
