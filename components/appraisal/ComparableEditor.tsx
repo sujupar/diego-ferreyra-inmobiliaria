@@ -218,7 +218,7 @@ export function ComparableEditor({ property, onSave, onCancel }: ComparableEdito
                                 { value: 'FRONT', label: 'Frente (1.00)' },
                                 { value: 'BACK', label: 'Contrafrente (0.95)' },
                                 { value: 'LATERAL', label: 'Lateral (0.93)' },
-                                { value: 'INTERNAL', label: 'A patio interior (0.90)' },
+                                { value: 'INTERNAL', label: 'Interno (0.90)' },
                             ].map(opt => (
                                 <button
                                     key={opt.value}

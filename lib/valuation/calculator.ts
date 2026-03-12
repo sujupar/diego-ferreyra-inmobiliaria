@@ -97,9 +97,18 @@ export interface ValuationProperty {
     features: ValuationFeatures
 }
 
+export interface ExpenseRates {
+    saleDiscountPercent?: number      // Default 5 (sale = publication * 0.95)
+    deedDiscountPercent?: number      // Default 30 (deed = sale * 0.70)
+    stampsPercent?: number            // Default 1.35
+    deedExpensesPercent?: number      // Default 1.5
+    agencyFeesPercent?: number        // Default 3
+}
+
 export interface ValuationInput {
     subject: ValuationProperty
     comparables: ValuationProperty[]
+    expenseRates?: ExpenseRates
 }
 
 export interface ComparableAnalysis {
@@ -138,6 +147,7 @@ export interface ValuationResult {
     totalExpenses: number            // Total gastos = sellos + escritura + honorarios
     moneyInHand: number              // Dinero en mano = venta - total gastos
     currency: string
+    expenseRates: Required<ExpenseRates>  // Actual rates used (with defaults)
 }
 
 /**
@@ -165,7 +175,7 @@ export interface ValuationResult {
  *   Honorarios Inmobiliaria = Venta × 3%
  *   Dinero en mano = Venta - (Sellos + Gastos Escritura + Honorarios)
  */
-export function calculateValuation({ subject, comparables }: ValuationInput): ValuationResult | null {
+export function calculateValuation({ subject, comparables, expenseRates }: ValuationInput): ValuationResult | null {
     if (!comparables.length || !subject) return null
 
     // Calculate Homogenized Surface of Subject (G3)
@@ -250,12 +260,19 @@ export function calculateValuation({ subject, comparables }: ValuationInput): Va
     // Zona de No Venta = Publicación × 1.05 (5% por encima)
     const noSaleZonePrice = Math.round((publicationPrice * 1.05) / 1000) * 1000
 
-    // ─── Cost calculations ───
-    const saleValue = Math.round(publicationPrice * 0.95)
-    const deedValue = Math.round(saleValue * 0.70)
-    const stampsCost = Math.round(deedValue * 0.0135)
-    const deedExpenses = Math.round(saleValue * 0.015)
-    const agencyFees = Math.round(saleValue * 0.03)
+    // ─── Cost calculations (configurable rates) ───
+    const rates: Required<ExpenseRates> = {
+        saleDiscountPercent: expenseRates?.saleDiscountPercent ?? 5,
+        deedDiscountPercent: expenseRates?.deedDiscountPercent ?? 30,
+        stampsPercent: expenseRates?.stampsPercent ?? 1.35,
+        deedExpensesPercent: expenseRates?.deedExpensesPercent ?? 1.5,
+        agencyFeesPercent: expenseRates?.agencyFeesPercent ?? 3,
+    }
+    const saleValue = Math.round(publicationPrice * (1 - rates.saleDiscountPercent / 100))
+    const deedValue = Math.round(saleValue * (1 - rates.deedDiscountPercent / 100))
+    const stampsCost = Math.round(deedValue * (rates.stampsPercent / 100))
+    const deedExpenses = Math.round(saleValue * (rates.deedExpensesPercent / 100))
+    const agencyFees = Math.round(saleValue * (rates.agencyFeesPercent / 100))
     const totalExpenses = stampsCost + deedExpenses + agencyFees
     const moneyInHand = saleValue - totalExpenses
 
@@ -283,6 +300,7 @@ export function calculateValuation({ subject, comparables }: ValuationInput): Va
         agencyFees,
         totalExpenses,
         moneyInHand,
-        currency
+        currency,
+        expenseRates: rates,
     }
 }

@@ -87,7 +87,7 @@ export const DISPOSITION_LABELS: Record<DispositionType, string> = {
     FRONT: 'Frente',
     BACK: 'Contrafrente',
     LATERAL: 'Lateral',
-    INTERNAL: 'A patio interior',
+    INTERNAL: 'Interno',
 }
 
 export const DISPOSITION_COEFFICIENTS_DISPLAY: Record<DispositionType, string> = {

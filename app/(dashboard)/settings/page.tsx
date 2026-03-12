@@ -3,11 +3,14 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Upload, Loader2, ImageIcon, RefreshCw } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Upload, Loader2, ImageIcon, RefreshCw, Save } from 'lucide-react'
 
 interface ImageSlot {
     id: string
     label: string
+    description: string
     filename: string
     exists: boolean
     currentPath: string | null
@@ -17,6 +20,7 @@ export default function SettingsPage() {
     const [slots, setSlots] = useState<ImageSlot[]>([])
     const [loading, setLoading] = useState(true)
     const [uploading, setUploading] = useState<string | null>(null)
+    const [savingText, setSavingText] = useState<string | null>(null)
 
     useEffect(() => {
         fetch('/api/settings/market-images')
@@ -57,10 +61,31 @@ export default function SettingsPage() {
         }
     }
 
+    function handleTextChange(id: string, field: 'label' | 'description', value: string) {
+        setSlots(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s))
+    }
+
+    async function saveSlotText(id: string) {
+        const slot = slots.find(s => s.id === id)
+        if (!slot) return
+        setSavingText(id)
+        try {
+            await fetch('/api/settings/market-images', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, label: slot.label, description: slot.description }),
+            })
+        } catch (err) {
+            console.error('Save text failed:', err)
+        } finally {
+            setSavingText(null)
+        }
+    }
+
     return (
         <div className="max-w-4xl mx-auto space-y-8">
             <div>
-                <h1 className="text-3xl font-bold tracking-tight">Configuración</h1>
+                <h1 className="text-3xl font-bold tracking-tight">Configuracion</h1>
                 <p className="text-muted-foreground mt-1">Administra los datos del sistema</p>
             </div>
 
@@ -68,7 +93,7 @@ export default function SettingsPage() {
                 <div>
                     <h2 className="text-xl font-semibold">Datos de Mercado Mensuales</h2>
                     <p className="text-muted-foreground text-sm mt-1">
-                        Estas imágenes aparecen en las páginas 3 y 4 del informe PDF. Actualizar mensualmente.
+                        Estas imagenes aparecen en las paginas 3 y 4 del informe PDF. Actualizar mensualmente.
                     </p>
                 </div>
 
@@ -97,6 +122,35 @@ export default function SettingsPage() {
                                         <div className="aspect-video bg-muted rounded-lg flex items-center justify-center border border-dashed">
                                             <ImageIcon className="h-12 w-12 text-muted-foreground/30" />
                                         </div>
+                                    )}
+
+                                    {/* Editable label */}
+                                    <div className="space-y-1">
+                                        <Label className="text-xs text-muted-foreground">Titulo en el PDF</Label>
+                                        <Input
+                                            value={slot.label}
+                                            onChange={e => handleTextChange(slot.id, 'label', e.target.value)}
+                                            onBlur={() => saveSlotText(slot.id)}
+                                            className="text-sm"
+                                        />
+                                    </div>
+
+                                    {/* Editable description */}
+                                    <div className="space-y-1">
+                                        <Label className="text-xs text-muted-foreground">Descripcion adicional (opcional)</Label>
+                                        <textarea
+                                            value={slot.description}
+                                            onChange={e => handleTextChange(slot.id, 'description', e.target.value)}
+                                            onBlur={() => saveSlotText(slot.id)}
+                                            className="w-full text-sm border rounded-md p-2 min-h-[60px] resize-y bg-background"
+                                            placeholder="Texto adicional que aparece debajo de la imagen en el PDF..."
+                                        />
+                                    </div>
+
+                                    {savingText === slot.id && (
+                                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <Save className="h-3 w-3" /> Guardando...
+                                        </p>
                                     )}
 
                                     {/* Upload button */}

@@ -80,6 +80,27 @@ export interface Database {
                     }
                 ]
             }
+            market_image_settings: {
+                Row: {
+                    id: string
+                    label: string
+                    description: string | null
+                    updated_at: string
+                }
+                Insert: {
+                    id: string
+                    label: string
+                    description?: string | null
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    label?: string
+                    description?: string | null
+                    updated_at?: string
+                }
+                Relationships: []
+            }
             appraisal_comparables: {
                 Row: {
                     id: string

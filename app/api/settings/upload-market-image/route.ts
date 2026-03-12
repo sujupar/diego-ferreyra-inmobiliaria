@@ -1,14 +1,8 @@
 import { NextResponse } from 'next/server'
-import { writeFile, mkdir } from 'fs/promises'
-import path from 'path'
+import { createClient } from '@/lib/supabase/server'
+import { cookies } from 'next/headers'
 
-const VALID_SLOTS: Record<string, string> = {
-    'stock-departamentos': 'stock-departamentos.png',
-    'escrituras-caba': 'escrituras-caba.png',
-    'datos-barrio': 'datos-barrio.png',
-    'tipos-propiedades': 'tipos-propiedades.png',
-}
-
+const VALID_SLOTS = ['stock-departamentos', 'escrituras-caba', 'datos-barrio', 'tipos-propiedades']
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
 
 export async function POST(request: Request): Promise<Response> {
@@ -21,7 +15,7 @@ export async function POST(request: Request): Promise<Response> {
             return NextResponse.json({ error: 'File and slot are required' }, { status: 400 })
         }
 
-        if (!VALID_SLOTS[slot]) {
+        if (!VALID_SLOTS.includes(slot)) {
             return NextResponse.json({ error: 'Invalid slot identifier' }, { status: 400 })
         }
 
@@ -33,19 +27,31 @@ export async function POST(request: Request): Promise<Response> {
             return NextResponse.json({ error: 'File must be under 5 MB' }, { status: 400 })
         }
 
-        const bytes = await file.arrayBuffer()
-        const buffer = Buffer.from(bytes)
+        const cookieStore = await cookies()
+        const supabase = createClient(cookieStore)
 
-        const outputDir = path.join(process.cwd(), 'public', 'pdf-assets', 'monthly-data')
-        await mkdir(outputDir, { recursive: true })
+        const filename = `${slot}.png`
+        const buffer = Buffer.from(await file.arrayBuffer())
 
-        const filename = VALID_SLOTS[slot]
-        const outputPath = path.join(outputDir, filename)
+        // Upload (upsert) to Supabase Storage
+        const { error } = await supabase.storage
+            .from('market-images')
+            .upload(filename, buffer, {
+                contentType: file.type,
+                upsert: true,
+            })
 
-        await writeFile(outputPath, buffer)
+        if (error) {
+            console.error('Supabase storage upload error:', error)
+            return NextResponse.json({ error: 'Failed to upload image' }, { status: 500 })
+        }
 
-        const publicPath = `/pdf-assets/monthly-data/${filename}`
-        return NextResponse.json({ success: true, path: publicPath, slot, filename })
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+            .from('market-images')
+            .getPublicUrl(filename)
+
+        return NextResponse.json({ success: true, path: publicUrl, slot, filename })
     } catch (error) {
         console.error('Upload error:', error)
         return NextResponse.json({ error: 'Failed to upload image' }, { status: 500 })

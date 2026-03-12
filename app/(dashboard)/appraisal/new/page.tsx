@@ -1,13 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { PropertyWizard } from '@/components/appraisal/PropertyWizard'
 import { PropertyForm } from '@/components/appraisal/PropertyForm'
 import { ComparableEditor, ComparableMissingIndicator } from '@/components/appraisal/ComparableEditor'
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { ScrapedProperty } from '@/lib/scraper/types'
-import { calculateValuation, ValuationResult, ValuationProperty } from '@/lib/valuation/calculator'
+import { calculateValuation, ValuationResult, ValuationProperty, ExpenseRates } from '@/lib/valuation/calculator'
 import { saveAppraisal } from '@/lib/supabase/appraisals'
 import { Button } from '@/components/ui/button'
 import {
@@ -44,6 +44,38 @@ export default function NewAppraisalPage() {
     const [editingComparable, setEditingComparable] = useState<{ index: number; property: ScrapedProperty } | null>(null)
     const [pendingComparable, setPendingComparable] = useState<ScrapedProperty | null>(null)
     const [showPDFPreview, setShowPDFPreview] = useState(false)
+
+    // Expense rates
+    const [expenseRates, setExpenseRates] = useState<ExpenseRates>({
+        saleDiscountPercent: 5,
+        deedDiscountPercent: 30,
+        stampsPercent: 1.35,
+        deedExpensesPercent: 1.5,
+        agencyFeesPercent: 3,
+    })
+
+    // Market image data for PDF
+    const [marketImageLabels, setMarketImageLabels] = useState<Record<string, { label: string; description: string }>>({})
+    const [marketImageUrls, setMarketImageUrls] = useState<Record<string, string>>({})
+
+    // Fetch market image settings on mount
+    useEffect(() => {
+        fetch('/api/settings/market-images')
+            .then(res => res.json())
+            .then(data => {
+                if (data.slots) {
+                    const labels: Record<string, { label: string; description: string }> = {}
+                    const urls: Record<string, string> = {}
+                    for (const slot of data.slots) {
+                        labels[slot.id] = { label: slot.label, description: slot.description || '' }
+                        if (slot.currentPath) urls[slot.id] = slot.currentPath
+                    }
+                    setMarketImageLabels(labels)
+                    setMarketImageUrls(urls)
+                }
+            })
+            .catch(() => { /* use defaults */ })
+    }, [])
 
     // Auto-save state
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -105,7 +137,8 @@ export default function NewAppraisalPage() {
 
         const result = calculateValuation({
             subject: subjectValuation,
-            comparables: comparablesValuation
+            comparables: comparablesValuation,
+            expenseRates,
         })
 
         setValuationResult(result)
@@ -309,12 +342,12 @@ export default function NewAppraisalPage() {
                 </section>
             )}
 
-            {/* Step 3: Overpriced Properties (Optional) */}
+            {/* Step 3: Overpriced Properties (Optional - Manual Only) */}
             {subject && comparables.length > 0 && (
                 <section className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
                     <div className="flex items-center gap-4">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full font-bold shadow-sm bg-red-50 text-red-500">
-                            <TrendingDown className="h-5 w-5" />
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full font-bold shadow-sm bg-red-100 text-red-600 border-2 border-red-300">
+                            3
                         </div>
                         <div>
                             <h2 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
@@ -323,12 +356,17 @@ export default function NewAppraisalPage() {
                                 <span className="text-sm font-normal text-muted-foreground">(Opcional)</span>
                             </h2>
                             <p className="text-muted-foreground text-sm">
-                                Propiedades publicadas a precios superiores al mercado — aparecen en el PDF como referencia
+                                Agrega aqui propiedades publicadas a precios superiores al mercado. Solo las que tu agregues apareceran como fuera de precio en el PDF.
                             </p>
                         </div>
                     </div>
 
-                    <div className="bg-card rounded-2xl border shadow-sm p-6 md:p-8">
+                    <div className="bg-card rounded-2xl border-2 border-red-200 dark:border-red-900 shadow-sm p-6 md:p-8">
+                        <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg mb-4">
+                            <p className="text-sm text-amber-800 dark:text-amber-200">
+                                Esta seccion es manual. Las propiedades que agregues aqui apareceran con semaforo rojo en el informe PDF como referencia de propiedades fuera de precio.
+                            </p>
+                        </div>
                         <div className="mb-6">
                             <p className="text-sm text-muted-foreground mb-3">
                                 Ingresa la URL de una propiedad fuera de precio (ZonaProp, ArgenProp, MercadoLibre)
@@ -385,6 +423,61 @@ export default function NewAppraisalPage() {
                             </>
                         )}
                     </div>
+                </section>
+            )}
+
+            {/* Expense Rates (collapsible) */}
+            {subject && comparables.length > 0 && (
+                <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <details className="bg-card rounded-2xl border shadow-sm">
+                        <summary className="p-5 cursor-pointer font-semibold flex items-center gap-2 text-sm">
+                            <Calculator className="h-4 w-4 text-primary" />
+                            Porcentajes de Gastos de Venta
+                            <span className="text-xs font-normal text-muted-foreground ml-1">(click para ajustar)</span>
+                        </summary>
+                        <div className="px-5 pb-5 grid grid-cols-2 md:grid-cols-5 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-xs text-muted-foreground">Descuento venta %</label>
+                                <input type="number" step="0.1" min="0" max="50"
+                                    className="w-full rounded-md border px-3 py-2 text-sm"
+                                    value={expenseRates.saleDiscountPercent}
+                                    onChange={e => setExpenseRates(r => ({ ...r, saleDiscountPercent: Number(e.target.value) }))}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs text-muted-foreground">Desc. escritura %</label>
+                                <input type="number" step="0.1" min="0" max="50"
+                                    className="w-full rounded-md border px-3 py-2 text-sm"
+                                    value={expenseRates.deedDiscountPercent}
+                                    onChange={e => setExpenseRates(r => ({ ...r, deedDiscountPercent: Number(e.target.value) }))}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs text-muted-foreground">Sellos %</label>
+                                <input type="number" step="0.01" min="0" max="10"
+                                    className="w-full rounded-md border px-3 py-2 text-sm"
+                                    value={expenseRates.stampsPercent}
+                                    onChange={e => setExpenseRates(r => ({ ...r, stampsPercent: Number(e.target.value) }))}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs text-muted-foreground">Gastos escritura %</label>
+                                <input type="number" step="0.01" min="0" max="10"
+                                    className="w-full rounded-md border px-3 py-2 text-sm"
+                                    value={expenseRates.deedExpensesPercent}
+                                    onChange={e => setExpenseRates(r => ({ ...r, deedExpensesPercent: Number(e.target.value) }))}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs text-muted-foreground">Honorarios %</label>
+                                <input type="number" step="0.01" min="0" max="10"
+                                    className="w-full rounded-md border px-3 py-2 text-sm"
+                                    value={expenseRates.agencyFeesPercent}
+                                    onChange={e => setExpenseRates(r => ({ ...r, agencyFeesPercent: Number(e.target.value) }))}
+                                />
+                            </div>
+                        </div>
+                    </details>
                 </section>
             )}
 
@@ -521,6 +614,8 @@ export default function NewAppraisalPage() {
                         features: c.features as any
                     }))}
                     valuationResult={valuationResult}
+                    marketImageLabels={marketImageLabels}
+                    marketImageUrls={marketImageUrls}
                 />
             )}
         </div>

@@ -535,7 +535,7 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
                                         { value: 'FRONT', label: 'Frente', desc: 'Coef. 1.00' },
                                         { value: 'BACK', label: 'Contrafrente', desc: 'Coef. 0.95' },
                                         { value: 'LATERAL', label: 'Lateral', desc: 'Coef. 0.93' },
-                                        { value: 'INTERNAL', label: 'A patio interior', desc: 'Coef. 0.90' },
+                                        { value: 'INTERNAL', label: 'Interno', desc: 'Coef. 0.90' },
                                     ].map(opt => (
                                         <button
                                             key={opt.value}

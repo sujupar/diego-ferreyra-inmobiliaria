@@ -30,6 +30,8 @@ interface PDFPreviewModalProps {
     comparables: ValuationProperty[]
     valuationResult: ValuationResult
     overpriced?: ValuationProperty[]
+    marketImageLabels?: Record<string, { label: string; description: string }>
+    marketImageUrls?: Record<string, string>
 }
 
 export function PDFPreviewModal({
@@ -38,7 +40,9 @@ export function PDFPreviewModal({
     subject,
     comparables,
     valuationResult,
-    overpriced = []
+    overpriced = [],
+    marketImageLabels,
+    marketImageUrls,
 }: PDFPreviewModalProps) {
     const [isDownloading, setIsDownloading] = useState(false)
     const [isConverting, setIsConverting] = useState(false)
@@ -95,6 +99,8 @@ export function PDFPreviewModal({
                     comparables={readyComparables}
                     valuationResult={valuationResult}
                     overpriced={readyOverpriced}
+                    marketImageLabels={marketImageLabels}
+                    marketImageUrls={marketImageUrls}
                 />
             )
             const blob = await pdf(doc).toBlob()
@@ -160,6 +166,8 @@ export function PDFPreviewModal({
                                 comparables={readyComparables}
                                 valuationResult={valuationResult}
                                 overpriced={readyOverpriced}
+                                marketImageLabels={marketImageLabels}
+                                marketImageUrls={marketImageUrls}
                             />
                         </PDFViewer>
                     )}

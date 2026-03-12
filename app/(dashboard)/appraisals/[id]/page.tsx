@@ -22,6 +22,26 @@ export default function AppraisalDetailPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [showPDFPreview, setShowPDFPreview] = useState(false)
+    const [marketImageLabels, setMarketImageLabels] = useState<Record<string, { label: string; description: string }>>({})
+    const [marketImageUrls, setMarketImageUrls] = useState<Record<string, string>>({})
+
+    useEffect(() => {
+        fetch('/api/settings/market-images')
+            .then(res => res.json())
+            .then(data => {
+                if (data.slots) {
+                    const labels: Record<string, { label: string; description: string }> = {}
+                    const urls: Record<string, string> = {}
+                    for (const slot of data.slots) {
+                        labels[slot.id] = { label: slot.label, description: slot.description || '' }
+                        if (slot.currentPath) urls[slot.id] = slot.currentPath
+                    }
+                    setMarketImageLabels(labels)
+                    setMarketImageUrls(urls)
+                }
+            })
+            .catch(() => { /* use defaults */ })
+    }, [])
 
     useEffect(() => {
         const id = params.id as string
@@ -152,6 +172,8 @@ export default function AppraisalDetailPage() {
                     comparables={comparables}
                     valuationResult={result}
                     overpriced={overpriced}
+                    marketImageLabels={marketImageLabels}
+                    marketImageUrls={marketImageUrls}
                 />
             )}
         </div>
