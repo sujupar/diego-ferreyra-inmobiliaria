@@ -23,6 +23,9 @@ export default function DashboardLayout({
                         <Link href="/appraisals" className="text-sm font-medium hover:text-primary transition-colors text-muted-foreground">
                             Historial
                         </Link>
+                        <Link href="/marketing" className="text-sm font-medium hover:text-primary transition-colors text-muted-foreground">
+                            Marketing
+                        </Link>
                         <Link href="/settings" className="text-sm font-medium hover:text-primary transition-colors text-muted-foreground">
                             Configuración
                         </Link>

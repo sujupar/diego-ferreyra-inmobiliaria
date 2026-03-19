@@ -101,6 +101,147 @@ export interface Database {
                 }
                 Relationships: []
             }
+            meta_ads_daily: {
+                Row: {
+                    id: string
+                    date: string
+                    campaign_id: string
+                    campaign_name: string | null
+                    impressions: number
+                    clicks: number
+                    ctr: number
+                    spend: number
+                    leads: number
+                    cost_per_lead: number | null
+                    raw_data: Json | null
+                    fetched_at: string
+                }
+                Insert: {
+                    id?: string
+                    date: string
+                    campaign_id: string
+                    campaign_name?: string | null
+                    impressions?: number
+                    clicks?: number
+                    ctr?: number
+                    spend?: number
+                    leads?: number
+                    cost_per_lead?: number | null
+                    raw_data?: Json | null
+                    fetched_at?: string
+                }
+                Update: {
+                    id?: string
+                    date?: string
+                    campaign_id?: string
+                    campaign_name?: string | null
+                    impressions?: number
+                    clicks?: number
+                    ctr?: number
+                    spend?: number
+                    leads?: number
+                    cost_per_lead?: number | null
+                    raw_data?: Json | null
+                    fetched_at?: string
+                }
+                Relationships: []
+            }
+            ghl_pipeline_daily: {
+                Row: {
+                    id: string
+                    date: string
+                    pipeline_id: string
+                    pipeline_name: string | null
+                    stage_id: string
+                    stage_name: string | null
+                    contact_count: number
+                    opportunity_value: number
+                    fetched_at: string
+                }
+                Insert: {
+                    id?: string
+                    date: string
+                    pipeline_id: string
+                    pipeline_name?: string | null
+                    stage_id: string
+                    stage_name?: string | null
+                    contact_count?: number
+                    opportunity_value?: number
+                    fetched_at?: string
+                }
+                Update: {
+                    id?: string
+                    date?: string
+                    pipeline_id?: string
+                    pipeline_name?: string | null
+                    stage_id?: string
+                    stage_name?: string | null
+                    contact_count?: number
+                    opportunity_value?: number
+                    fetched_at?: string
+                }
+                Relationships: []
+            }
+            email_report_log: {
+                Row: {
+                    id: string
+                    report_type: string
+                    sent_at: string
+                    recipients: string[]
+                    subject: string | null
+                    status: string
+                    error_message: string | null
+                    data_snapshot: Json | null
+                }
+                Insert: {
+                    id?: string
+                    report_type: string
+                    sent_at?: string
+                    recipients: string[]
+                    subject?: string | null
+                    status?: string
+                    error_message?: string | null
+                    data_snapshot?: Json | null
+                }
+                Update: {
+                    id?: string
+                    report_type?: string
+                    sent_at?: string
+                    recipients?: string[]
+                    subject?: string | null
+                    status?: string
+                    error_message?: string | null
+                    data_snapshot?: Json | null
+                }
+                Relationships: []
+            }
+            report_settings: {
+                Row: {
+                    id: string
+                    recipients: string[]
+                    daily_enabled: boolean
+                    weekly_enabled: boolean
+                    monthly_enabled: boolean
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    recipients?: string[]
+                    daily_enabled?: boolean
+                    weekly_enabled?: boolean
+                    monthly_enabled?: boolean
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    recipients?: string[]
+                    daily_enabled?: boolean
+                    weekly_enabled?: boolean
+                    monthly_enabled?: boolean
+                    updated_at?: string
+                }
+                Relationships: []
+            }
             appraisal_comparables: {
                 Row: {
                     id: string

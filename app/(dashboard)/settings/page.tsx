@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Upload, Loader2, ImageIcon, RefreshCw, Save } from 'lucide-react'
+import { Upload, Loader2, ImageIcon, RefreshCw, Save, Mail, Plus, X } from 'lucide-react'
 
 interface ImageSlot {
     id: string
@@ -21,6 +21,60 @@ export default function SettingsPage() {
     const [loading, setLoading] = useState(true)
     const [uploading, setUploading] = useState<string | null>(null)
     const [savingText, setSavingText] = useState<string | null>(null)
+
+    // Report settings state
+    const [recipients, setRecipients] = useState<string[]>([])
+    const [newEmail, setNewEmail] = useState('')
+    const [dailyEnabled, setDailyEnabled] = useState(true)
+    const [weeklyEnabled, setWeeklyEnabled] = useState(true)
+    const [monthlyEnabled, setMonthlyEnabled] = useState(true)
+    const [reportLoading, setReportLoading] = useState(true)
+    const [reportSaving, setReportSaving] = useState(false)
+
+    useEffect(() => {
+        fetch('/api/settings/report-recipients')
+            .then(r => r.json())
+            .then(data => {
+                setRecipients(data.recipients || [])
+                setDailyEnabled(data.daily_enabled ?? true)
+                setWeeklyEnabled(data.weekly_enabled ?? true)
+                setMonthlyEnabled(data.monthly_enabled ?? true)
+                setReportLoading(false)
+            })
+            .catch(() => setReportLoading(false))
+    }, [])
+
+    function addRecipient() {
+        const email = newEmail.trim()
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return
+        if (recipients.includes(email)) return
+        setRecipients(prev => [...prev, email])
+        setNewEmail('')
+    }
+
+    function removeRecipient(email: string) {
+        setRecipients(prev => prev.filter(e => e !== email))
+    }
+
+    async function saveReportSettings() {
+        setReportSaving(true)
+        try {
+            await fetch('/api/settings/report-recipients', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    recipients,
+                    daily_enabled: dailyEnabled,
+                    weekly_enabled: weeklyEnabled,
+                    monthly_enabled: monthlyEnabled,
+                }),
+            })
+        } catch (err) {
+            console.error('Failed to save report settings:', err)
+        } finally {
+            setReportSaving(false)
+        }
+    }
 
     useEffect(() => {
         fetch('/api/settings/market-images')
@@ -184,6 +238,95 @@ export default function SettingsPage() {
                             </Card>
                         ))}
                     </div>
+                )}
+            </section>
+
+            {/* Report Recipients Section */}
+            <section className="space-y-6">
+                <div>
+                    <h2 className="text-xl font-semibold">Reportes de Marketing</h2>
+                    <p className="text-muted-foreground text-sm mt-1">
+                        Configura los destinatarios y frecuencia de los reportes automaticos de marketing.
+                    </p>
+                </div>
+
+                {reportLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                ) : (
+                    <Card>
+                        <CardHeader className="pb-3">
+                            <CardTitle className="text-base flex items-center gap-2">
+                                <Mail className="h-4 w-4" />
+                                Destinatarios
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {/* Email list */}
+                            {recipients.length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                    {recipients.map(email => (
+                                        <span key={email} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm">
+                                            {email}
+                                            <button onClick={() => removeRecipient(email)} className="hover:text-destructive">
+                                                <X className="h-3 w-3" />
+                                            </button>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Add email */}
+                            <div className="flex gap-2">
+                                <Input
+                                    type="email"
+                                    placeholder="email@ejemplo.com"
+                                    value={newEmail}
+                                    onChange={e => setNewEmail(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && addRecipient()}
+                                    className="flex-1"
+                                />
+                                <Button variant="outline" size="sm" onClick={addRecipient}>
+                                    <Plus className="h-4 w-4 mr-1" /> Agregar
+                                </Button>
+                            </div>
+
+                            {/* Report type toggles */}
+                            <div className="space-y-3 pt-2">
+                                <Label className="text-sm font-medium">Reportes activos</Label>
+                                <div className="space-y-2">
+                                    {[
+                                        { label: 'Reporte Diario', desc: 'Todos los dias a las 8:00 AM', value: dailyEnabled, setter: setDailyEnabled },
+                                        { label: 'Reporte Semanal', desc: 'Cada lunes a las 8:00 AM', value: weeklyEnabled, setter: setWeeklyEnabled },
+                                        { label: 'Reporte Mensual', desc: 'El 1ro de cada mes a las 8:00 AM', value: monthlyEnabled, setter: setMonthlyEnabled },
+                                    ].map(toggle => (
+                                        <label key={toggle.label} className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:bg-muted/50">
+                                            <div>
+                                                <p className="text-sm font-medium">{toggle.label}</p>
+                                                <p className="text-xs text-muted-foreground">{toggle.desc}</p>
+                                            </div>
+                                            <input
+                                                type="checkbox"
+                                                checked={toggle.value}
+                                                onChange={e => toggle.setter(e.target.checked)}
+                                                className="h-4 w-4 rounded border-gray-300"
+                                            />
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Save button */}
+                            <Button onClick={saveReportSettings} disabled={reportSaving} className="w-full">
+                                {reportSaving ? (
+                                    <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Guardando...</>
+                                ) : (
+                                    <><Save className="h-4 w-4 mr-2" /> Guardar configuracion</>
+                                )}
+                            </Button>
+                        </CardContent>
+                    </Card>
                 )}
             </section>
         </div>
