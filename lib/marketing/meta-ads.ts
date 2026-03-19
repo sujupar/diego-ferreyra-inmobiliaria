@@ -49,7 +49,7 @@ function parseInsight(insight: MetaCampaignInsight): MetaDailySnapshot {
       const match = insight.actions.find(a => a.action_type === actionType)
       if (match) {
         leadCount = parseInt(match.value, 10)
-        break
+        if (leadCount > 0) break
       }
     }
   }

@@ -58,7 +58,7 @@ export default async function handler() {
         if (actions) {
           for (const lt of LEAD_TYPES) {
             const match = actions.find(a => a.action_type === lt)
-            if (match) { leadCount = parseInt(match.value, 10); break }
+            if (match) { leadCount = parseInt(match.value, 10); if (leadCount > 0) break }
           }
         }
         const spend = parseFloat(insight.spend as string)

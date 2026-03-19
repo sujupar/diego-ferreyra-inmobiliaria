@@ -166,7 +166,7 @@ export async function fetchCallStats(dateFrom: string, dateTo: string): Promise<
     const startAfter = new Date(dateFrom + 'T00:00:00Z').toISOString()
     const startBefore = new Date(dateTo + 'T23:59:59Z').toISOString()
 
-    const url = `${GHL_API_BASE}/conversations/search?locationId=${locationId}&type=TYPE_CALL&startAfterDate=${encodeURIComponent(startAfter)}&limit=100`
+    const url = `${GHL_API_BASE}/conversations/search?locationId=${locationId}&type=TYPE_CALL&startAfterDate=${encodeURIComponent(startAfter)}&startBeforeDate=${encodeURIComponent(startBefore)}&limit=100`
 
     const response = await fetch(url, { headers: getGHLHeaders() })
 
@@ -231,6 +231,7 @@ export async function savePipelineSnapshot(snapshots: GHLStageSnapshot[]): Promi
     stage_id: s.stage_id,
     stage_name: s.stage_name,
     contact_count: s.contact_count,
+    new_contacts: s.new_contacts,
     opportunity_value: s.opportunity_value,
   }))
 

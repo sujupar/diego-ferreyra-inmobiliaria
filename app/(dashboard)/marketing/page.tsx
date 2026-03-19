@@ -25,6 +25,7 @@ interface PipelineRow {
   stage_id: string
   stage_name: string | null
   contact_count: number
+  new_contacts: number
   opportunity_value: number
 }
 
@@ -207,6 +208,10 @@ export default function MarketingPage() {
     }
   }
 
+  const totalNewContacts = Array.from(pipelineMap.values()).reduce(
+    (sum, p) => sum + Array.from(p.stages.values()).reduce((s, st) => s + (st.new_contacts || 0), 0),
+    0
+  )
   const totalPipelineContacts = Array.from(pipelineMap.values()).reduce(
     (sum, p) => sum + Array.from(p.stages.values()).reduce((s, st) => s + st.contact_count, 0),
     0
@@ -293,11 +298,12 @@ export default function MarketingPage() {
             </Card>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Pipeline CRM</CardTitle>
+                <CardTitle className="text-sm font-medium">Nuevos Pipeline</CardTitle>
                 <Users className="h-4 w-4 text-purple-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-purple-600">{totalPipelineContacts}</div>
+                <div className="text-3xl font-bold text-purple-600">{totalNewContacts}</div>
+                <p className="text-xs text-muted-foreground">de {totalPipelineContacts} totales</p>
               </CardContent>
             </Card>
           </div>
@@ -364,7 +370,9 @@ export default function MarketingPage() {
                   {Array.from(pipelineMap.entries()).map(([pipelineId, pipeline]) => {
                     const stages = Array.from(pipeline.stages.values())
                     const totalContacts = stages.reduce((s, st) => s + st.contact_count, 0)
+                    const totalNew = stages.reduce((s, st) => s + (st.new_contacts || 0), 0)
                     const totalValue = stages.reduce((s, st) => s + st.opportunity_value, 0)
+                    const maxNew = Math.max(...stages.map(st => st.new_contacts || 0), 1)
 
                     return (
                       <div key={pipelineId}>
@@ -373,7 +381,8 @@ export default function MarketingPage() {
                         {/* Visual funnel bars */}
                         <div className="mb-4 space-y-2">
                           {stages.map(stage => {
-                            const pct = totalContacts > 0 ? (stage.contact_count / totalContacts) * 100 : 0
+                            const newC = stage.new_contacts || 0
+                            const pct = maxNew > 0 ? (newC / maxNew) * 100 : 0
                             return (
                               <div key={stage.stage_id} className="flex items-center gap-3">
                                 <span className="w-32 truncate text-sm text-muted-foreground">{stage.stage_name}</span>
@@ -381,12 +390,15 @@ export default function MarketingPage() {
                                   <div className="h-6 rounded bg-muted">
                                     <div
                                       className="flex h-6 items-center rounded bg-purple-500 px-2 text-xs font-medium text-white transition-all"
-                                      style={{ width: `${Math.max(pct, 8)}%` }}
+                                      style={{ width: `${Math.max(pct, newC > 0 ? 8 : 3)}%` }}
                                     >
-                                      {stage.contact_count}
+                                      {newC}
                                     </div>
                                   </div>
                                 </div>
+                                <span className="w-16 text-right text-xs text-muted-foreground" title="Total histórico">
+                                  ({stage.contact_count})
+                                </span>
                                 <span className="w-24 text-right text-sm text-muted-foreground">
                                   {formatCurrency(stage.opportunity_value)}
                                 </span>
@@ -396,7 +408,8 @@ export default function MarketingPage() {
                         </div>
 
                         <div className="flex gap-4 text-sm text-muted-foreground">
-                          <span>Total contactos: <strong className="text-foreground">{totalContacts}</strong></span>
+                          <span>Nuevos en período: <strong className="text-foreground">{totalNew}</strong></span>
+                          <span>Total histórico: <strong className="text-foreground">{totalContacts}</strong></span>
                           <span>Valor total: <strong className="text-foreground">{formatCurrency(totalValue)}</strong></span>
                         </div>
                       </div>
