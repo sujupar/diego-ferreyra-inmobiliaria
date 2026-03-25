@@ -76,7 +76,6 @@ export default function MarketingPage() {
   const [reportLog, setReportLog] = useState<ReportLogRow[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [sendingReport, setSendingReport] = useState(false)
 
   const getEffectiveRange = useCallback(() => {
     if (range === 'custom' && customFrom && customTo) {
@@ -145,25 +144,59 @@ export default function MarketingPage() {
     }
   }
 
-  async function handleSendTestReport() {
-    setSendingReport(true)
+  const [sendingReportType, setSendingReportType] = useState<string | null>(null)
+  const [lastReportResult, setLastReportResult] = useState<{ success: boolean; message: string; errors?: Record<string, string> } | null>(null)
+
+  async function handleSendReport(reportRange: 'yesterday' | '7days' | '30days') {
+    setSendingReportType(reportRange)
+    setLastReportResult(null)
     try {
+      const today = new Date()
+      let dateFrom: string
+      let dateTo: string
+      let type: string
+
+      if (reportRange === 'yesterday') {
+        const yesterday = new Date(today)
+        yesterday.setDate(today.getDate() - 1)
+        dateFrom = yesterday.toISOString().split('T')[0]
+        dateTo = dateFrom
+        type = 'daily'
+      } else if (reportRange === '7days') {
+        const to = new Date(today); to.setDate(today.getDate() - 1)
+        const from = new Date(to); from.setDate(to.getDate() - 6)
+        dateFrom = from.toISOString().split('T')[0]
+        dateTo = to.toISOString().split('T')[0]
+        type = 'weekly'
+      } else {
+        const to = new Date(today); to.setDate(today.getDate() - 1)
+        const from = new Date(today); from.setDate(today.getDate() - 30)
+        dateFrom = from.toISOString().split('T')[0]
+        dateTo = to.toISOString().split('T')[0]
+        type = 'monthly'
+      }
+
       const res = await fetch('/api/marketing/reports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'daily' }),
+        body: JSON.stringify({ type, dateFrom, dateTo }),
       })
       const result = await res.json()
       if (result.success) {
-        alert('Reporte enviado exitosamente')
+        const errCount = result.report?.errors ? Object.keys(result.report.errors).length : 0
+        setLastReportResult({
+          success: true,
+          message: `Reporte enviado (${result.report?.meta_campaigns || 0} campanas, ${result.report?.pipeline_stages || 0} etapas)${errCount > 0 ? ` — ${errCount} fuente(s) con error` : ''}`,
+          errors: result.report?.errors,
+        })
         await fetchData()
       } else {
-        alert(`Error: ${result.error}`)
+        setLastReportResult({ success: false, message: result.error || 'Error desconocido' })
       }
     } catch {
-      alert('Error al enviar el reporte')
+      setLastReportResult({ success: false, message: 'Error de red al enviar el reporte' })
     } finally {
-      setSendingReport(false)
+      setSendingReportType(null)
     }
   }
 
@@ -458,17 +491,69 @@ export default function MarketingPage() {
             </Card>
           )}
 
-          {/* Report Log + Send Test */}
+          {/* Report Send + Log */}
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Send className="h-5 w-5" />
-                Reportes Enviados
+                Enviar Reporte
               </CardTitle>
-              <Button size="sm" onClick={handleSendTestReport} disabled={sendingReport}>
-                {sendingReport ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                Enviar reporte de prueba
-              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">Envia un reporte por email con datos reales de las APIs:</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleSendReport('yesterday')}
+                  disabled={sendingReportType !== null}
+                >
+                  {sendingReportType === 'yesterday' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                  Ayer (diario)
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleSendReport('7days')}
+                  disabled={sendingReportType !== null}
+                >
+                  {sendingReportType === '7days' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                  7 dias (semanal)
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleSendReport('30days')}
+                  disabled={sendingReportType !== null}
+                >
+                  {sendingReportType === '30days' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                  30 dias (mensual)
+                </Button>
+              </div>
+              {lastReportResult && (
+                <div className={`rounded-lg border p-3 text-sm ${lastReportResult.success ? 'border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200' : 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200'}`}>
+                  <p className="font-medium">{lastReportResult.success ? 'Enviado' : 'Error'}: {lastReportResult.message}</p>
+                  {lastReportResult.errors && (
+                    <ul className="mt-2 space-y-1">
+                      {Object.entries(lastReportResult.errors).map(([source, error]) => (
+                        <li key={source} className="text-xs text-red-600 dark:text-red-400">
+                          {source === 'meta_ads' ? 'Meta Ads' : source === 'ghl_pipeline' ? 'Pipeline CRM' : source === 'ghl_calls' ? 'Llamadas GHL' : source}: {error}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Report Log */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Send className="h-5 w-5" />
+                Historial de Reportes
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {reportLog.length > 0 ? (

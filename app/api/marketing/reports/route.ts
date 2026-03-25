@@ -9,8 +9,9 @@ export const maxDuration = 60
 
 /**
  * POST /api/marketing/reports
- * Body: { type: "daily" | "weekly" | "monthly" }
- * Manually triggers a report: fetches data, saves, and sends email
+ * Body: { type: "daily" | "weekly" | "monthly", dateFrom?: string, dateTo?: string }
+ * Manually triggers a report: fetches data, saves, and sends email.
+ * If dateFrom/dateTo are provided, uses those dates instead of auto-calculating.
  */
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -21,27 +22,43 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ error: 'Invalid report type' }, { status: 400 })
     }
 
-    const today = new Date()
     let dateFrom: string
     let dateTo: string
 
-    if (type === 'daily') {
-      const yesterday = new Date(today)
-      yesterday.setDate(today.getDate() - 1)
-      dateFrom = yesterday.toISOString().split('T')[0]
-      dateTo = dateFrom
-    } else if (type === 'weekly') {
-      const weekAgo = new Date(today)
-      weekAgo.setDate(today.getDate() - 7)
-      dateFrom = weekAgo.toISOString().split('T')[0]
-      dateTo = new Date(today.getTime() - 86400000).toISOString().split('T')[0]
+    // Allow custom date range override
+    if (body.dateFrom && body.dateTo) {
+      dateFrom = body.dateFrom
+      dateTo = body.dateTo
+    } else if (body.dateFrom) {
+      dateFrom = body.dateFrom
+      dateTo = body.dateFrom
     } else {
-      // monthly: last 30 days
-      const monthAgo = new Date(today)
-      monthAgo.setDate(today.getDate() - 30)
-      dateFrom = monthAgo.toISOString().split('T')[0]
-      dateTo = new Date(today.getTime() - 86400000).toISOString().split('T')[0]
+      const today = new Date()
+      if (type === 'daily') {
+        const yesterday = new Date(today)
+        yesterday.setDate(today.getDate() - 1)
+        dateFrom = yesterday.toISOString().split('T')[0]
+        dateTo = dateFrom
+      } else if (type === 'weekly') {
+        const datToDate = new Date(today)
+        datToDate.setDate(today.getDate() - 1)
+        const dateFromDate = new Date(datToDate)
+        dateFromDate.setDate(datToDate.getDate() - 6)
+        dateFrom = dateFromDate.toISOString().split('T')[0]
+        dateTo = datToDate.toISOString().split('T')[0]
+      } else {
+        // monthly: last 30 days
+        const datToDate = new Date(today)
+        datToDate.setDate(today.getDate() - 1)
+        const dateFromDate = new Date(today)
+        dateFromDate.setDate(today.getDate() - 30)
+        dateFrom = dateFromDate.toISOString().split('T')[0]
+        dateTo = datToDate.toISOString().split('T')[0]
+      }
     }
+
+    // Data source error tracking
+    const errors: Record<string, string> = {}
 
     // Fetch fresh data from all APIs
     let metaSnapshots: MetaDailySnapshot[] = []
@@ -49,27 +66,33 @@ export async function POST(request: Request): Promise<Response> {
     let callStats: GHLCallStats | undefined
 
     try {
-      if (type === 'daily') {
+      if (dateFrom === dateTo) {
         metaSnapshots = await fetchDailyInsights(dateFrom)
       } else {
         metaSnapshots = await fetchInsightsRange(dateFrom, dateTo)
       }
       await saveDailySnapshot(metaSnapshots)
     } catch (err) {
-      console.error('Failed to fetch Meta data:', err)
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      console.error('Failed to fetch Meta data:', msg)
+      errors.meta_ads = msg
     }
 
     try {
       pipelineSnapshots = await buildPipelineSnapshot(dateFrom, dateTo)
       await savePipelineSnapshot(pipelineSnapshots)
     } catch (err) {
-      console.error('Failed to fetch GHL data:', err)
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      console.error('Failed to fetch GHL pipeline data:', msg)
+      errors.ghl_pipeline = msg
     }
 
     try {
       callStats = await fetchCallStats(dateFrom, dateTo)
     } catch (err) {
-      console.error('Failed to fetch GHL call stats:', err)
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      console.error('Failed to fetch GHL call stats:', msg)
+      errors.ghl_calls = msg
     }
 
     // Check token expiry
@@ -88,6 +111,8 @@ export async function POST(request: Request): Promise<Response> {
         date_to: dateTo,
         meta_campaigns: metaSnapshots.length,
         pipeline_stages: pipelineSnapshots.length,
+        call_stats: callStats,
+        errors: Object.keys(errors).length > 0 ? errors : undefined,
       },
     })
   } catch (error) {
