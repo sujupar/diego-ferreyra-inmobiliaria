@@ -150,7 +150,14 @@ export async function buildPipelineSnapshot(dateFrom: string, dateTo: string): P
 }
 
 /**
- * Fetch call statistics from GHL for a date range
+ * Fetch call statistics from GHL for a date range.
+ *
+ * GHL conversations API notes:
+ * - Conversations are TYPE_PHONE, not TYPE_CALL
+ * - Calls are identified by lastMessageType === 'TYPE_CALL'
+ * - Date fields (dateAdded, lastMessageDate) are epoch milliseconds
+ * - The API date filter params also expect epoch milliseconds
+ * - Call detail (duration, status) is not available in API v2021-07-28
  */
 export async function fetchCallStats(dateFrom: string, dateTo: string): Promise<GHLCallStats> {
   const { locationId } = getGHLConfig()
@@ -163,52 +170,77 @@ export async function fetchCallStats(dateFrom: string, dateTo: string): Promise<
   }
 
   try {
-    const startAfter = new Date(dateFrom + 'T00:00:00Z').toISOString()
-    const startBefore = new Date(dateTo + 'T23:59:59Z').toISOString()
+    // GHL uses epoch milliseconds for date filtering
+    const startEpoch = new Date(dateFrom + 'T00:00:00Z').getTime()
+    const endEpoch = new Date(dateTo + 'T23:59:59Z').getTime()
 
-    const url = `${GHL_API_BASE}/conversations/search?locationId=${locationId}&type=TYPE_CALL&startAfterDate=${encodeURIComponent(startAfter)}&startBeforeDate=${encodeURIComponent(startBefore)}&limit=100`
+    // Paginate through all conversations to find calls
+    // We search all conversations (not filtered by type) and look for lastMessageType === TYPE_CALL
+    let allCallConversations: Array<Record<string, unknown>> = []
+    let hasMore = true
+    let startAfterCursor: number | null = null
+    let startAfterIdCursor: string | null = null
+    let page = 0
 
-    const response = await fetch(url, { headers: getGHLHeaders() })
+    while (hasMore && page < 40) {
+      let url = `${GHL_API_BASE}/conversations/search?locationId=${locationId}&limit=100`
+      if (startAfterCursor !== null && startAfterIdCursor !== null) {
+        url += `&startAfter=${startAfterCursor}&startAfterId=${startAfterIdCursor}`
+      }
 
-    if (!response.ok) {
-      console.error(`GHL Calls API error (${response.status}):`, await response.text())
-      return stats
-    }
+      const response = await fetch(url, { headers: getGHLHeaders() })
 
-    const data = await response.json()
-    const conversations = data.conversations || []
+      if (!response.ok) {
+        const errBody = await response.text()
+        console.error(`GHL Calls API error (${response.status}):`, errBody)
+        throw new Error(`GHL conversations HTTP ${response.status}: ${errBody.substring(0, 200)}`)
+      }
 
-    // Filter by date range (in case API doesn't filter precisely)
-    const startDate = new Date(dateFrom + 'T00:00:00Z')
-    const endDate = new Date(dateTo + 'T23:59:59Z')
+      const data = await response.json()
+      const conversations: Array<Record<string, unknown>> = data.conversations || []
 
-    for (const conv of conversations) {
-      const convDate = new Date(conv.dateAdded || conv.createdAt)
-      if (convDate < startDate || convDate > endDate) continue
+      if (conversations.length === 0) break
 
-      stats.total_calls++
+      // Filter for call conversations within date range
+      for (const conv of conversations) {
+        if (conv.lastMessageType !== 'TYPE_CALL') continue
 
-      const callStatus = conv.callStatus || conv.status || ''
-      if (callStatus === 'completed' || callStatus === 'answered') {
-        stats.answered_calls++
-        const duration = conv.callDuration || conv.duration || 0
-        stats.total_duration_seconds += duration
-      } else if (callStatus === 'missed' || callStatus === 'no-answer' || callStatus === 'busy') {
-        stats.missed_calls++
-      } else {
-        // Unknown status - count as answered if there's duration
-        if (conv.callDuration || conv.duration) {
-          stats.answered_calls++
-          stats.total_duration_seconds += conv.callDuration || conv.duration || 0
-        } else {
-          stats.missed_calls++
+        const msgDate = (conv.lastMessageDate as number) || 0
+        if (msgDate >= startEpoch && msgDate <= endEpoch) {
+          allCallConversations.push(conv)
         }
       }
+
+      // Check if oldest conversation in this batch is before our start date
+      // If so, we've gone far enough back in time
+      const oldestInBatch = conversations[conversations.length - 1]
+      const oldestDate = (oldestInBatch.lastMessageDate as number) || (oldestInBatch.dateAdded as number) || 0
+      if (oldestDate < startEpoch) {
+        // All remaining conversations are older than our range
+        break
+      }
+
+      // Cursor-based pagination using sort field
+      const lastConv = conversations[conversations.length - 1]
+      const sortArr = lastConv.sort as number[] | undefined
+      if (sortArr && sortArr.length > 0) {
+        startAfterCursor = sortArr[0]
+        startAfterIdCursor = lastConv.id as string
+      } else {
+        break
+      }
+
+      hasMore = conversations.length >= 100
+      page++
     }
 
-    if (stats.answered_calls > 0) {
-      stats.average_duration_seconds = Math.round(stats.total_duration_seconds / stats.answered_calls)
-    }
+    console.log(`GHL calls: found ${allCallConversations.length} call conversations in date range (scanned ${page + 1} pages)`)
+
+    // Count all call conversations as total calls
+    // GHL API v2021-07-28 doesn't provide call duration or answered/missed status
+    stats.total_calls = allCallConversations.length
+    // Without call status data, we count all as answered (they had a call interaction)
+    stats.answered_calls = allCallConversations.length
   } catch (err) {
     console.error('GHL Calls fetch error:', err)
   }

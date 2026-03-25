@@ -203,6 +203,8 @@ export default async function handler() {
   }
 
   // 2b. Fetch GHL call stats
+  // GHL conversations: type=TYPE_PHONE, calls identified by lastMessageType=TYPE_CALL
+  // Dates are epoch milliseconds, not ISO strings
   let callStats = { total: 0, answered: 0, missed: 0, totalDuration: 0, avgDuration: 0 }
   try {
     const ghlHeaders = {
@@ -210,61 +212,62 @@ export default async function handler() {
       'Version': '2021-07-28',
       'Content-Type': 'application/json',
     }
-    const startAfter = new Date(dateStr + 'T00:00:00Z').toISOString()
-    const startBefore = new Date(dateStr + 'T23:59:59Z').toISOString()
+    const startEpoch = new Date(dateStr + 'T00:00:00Z').getTime()
+    const endEpoch = new Date(dateStr + 'T23:59:59Z').getTime()
 
-    // Paginated fetch of calls
-    let allConversations: Array<Record<string, unknown>> = []
-    let page = 1
+    let callCount = 0
     let hasMore = true
-    while (hasMore && page <= 20) {
-      const callsUrl = `${GHL_API_BASE}/conversations/search?locationId=${process.env.GHL_LOCATION_ID}&type=TYPE_CALL&startAfterDate=${encodeURIComponent(startAfter)}&startBeforeDate=${encodeURIComponent(startBefore)}&limit=100`
+    let startAfterCursor: number | null = null
+    let startAfterIdCursor: string | null = null
+    let pagesScanned = 0
+
+    while (hasMore && pagesScanned < 40) {
+      let callsUrl = `${GHL_API_BASE}/conversations/search?locationId=${process.env.GHL_LOCATION_ID}&limit=100`
+      if (startAfterCursor !== null && startAfterIdCursor !== null) {
+        callsUrl += `&startAfter=${startAfterCursor}&startAfterId=${startAfterIdCursor}`
+      }
+
       const callsRes = await fetch(callsUrl, { headers: ghlHeaders })
       if (!callsRes.ok) {
         const errBody = await callsRes.text()
-        throw new Error(`GHL calls HTTP ${callsRes.status}: ${errBody.substring(0, 200)}`)
+        throw new Error(`GHL conversations HTTP ${callsRes.status}: ${errBody.substring(0, 200)}`)
       }
       const callsData = await callsRes.json()
-      const conversations = callsData.conversations || []
+      const conversations: Array<Record<string, unknown>> = callsData.conversations || []
 
-      // Log raw response structure for debugging (first page only)
-      if (page === 1) {
-        console.log(`[Daily Report] GHL calls response keys: ${Object.keys(callsData).join(', ')}`)
-        console.log(`[Daily Report] GHL calls conversations count: ${conversations.length}`)
-        if (conversations.length > 0) {
-          console.log(`[Daily Report] GHL calls sample conv keys: ${Object.keys(conversations[0]).join(', ')}`)
-          console.log(`[Daily Report] GHL calls sample conv: ${JSON.stringify(conversations[0]).substring(0, 500)}`)
+      if (conversations.length === 0) break
+
+      for (const conv of conversations) {
+        if (conv.lastMessageType !== 'TYPE_CALL') continue
+        const msgDate = (conv.lastMessageDate as number) || 0
+        if (msgDate >= startEpoch && msgDate <= endEpoch) {
+          callCount++
         }
       }
 
-      allConversations.push(...conversations)
-      // GHL conversations search doesn't have standard pagination meta - if we got less than limit, stop
+      // Stop if we've gone past our date range
+      const oldestInBatch = conversations[conversations.length - 1]
+      const oldestDate = (oldestInBatch.lastMessageDate as number) || (oldestInBatch.dateAdded as number) || 0
+      if (oldestDate < startEpoch) break
+
+      // Cursor-based pagination
+      const lastConv = conversations[conversations.length - 1]
+      const sortArr = lastConv.sort as number[] | undefined
+      if (sortArr && sortArr.length > 0) {
+        startAfterCursor = sortArr[0]
+        startAfterIdCursor = lastConv.id as string
+      } else {
+        break
+      }
+
       hasMore = conversations.length >= 100
-      page++
+      pagesScanned++
     }
 
-    const startDate = new Date(dateStr + 'T00:00:00Z')
-    const endDate = new Date(dateStr + 'T23:59:59Z')
-    for (const conv of allConversations) {
-      const convDate = new Date((conv.dateAdded || conv.createdAt) as string)
-      if (convDate < startDate || convDate > endDate) continue
-      callStats.total++
-      const status = (conv.callStatus || conv.status || '') as string
-      if (status === 'completed' || status === 'answered') {
-        callStats.answered++
-        callStats.totalDuration += ((conv.callDuration || conv.duration) as number) || 0
-      } else if (status === 'missed' || status === 'no-answer' || status === 'busy') {
-        callStats.missed++
-      } else if (conv.callDuration || conv.duration) {
-        callStats.answered++
-        callStats.totalDuration += ((conv.callDuration || conv.duration) as number) || 0
-      } else {
-        callStats.missed++
-      }
-    }
-    if (callStats.answered > 0) callStats.avgDuration = Math.round(callStats.totalDuration / callStats.answered)
+    callStats.total = callCount
+    callStats.answered = callCount // GHL API v2021-07-28 doesn't provide call status details
     dataSourceStatus.ghl_calls = { ok: true, count: callStats.total }
-    console.log(`[Daily Report] GHL calls: ${callStats.total} total, ${callStats.answered} answered, ${callStats.missed} missed`)
+    console.log(`[Daily Report] GHL calls: ${callStats.total} call conversations found (${pagesScanned + 1} pages scanned)`)
   } catch (err) {
     console.error('[Daily Report] GHL calls error:', err)
     dataSourceStatus.ghl_calls = { ok: false, error: err instanceof Error ? err.message : 'Unknown error' }
