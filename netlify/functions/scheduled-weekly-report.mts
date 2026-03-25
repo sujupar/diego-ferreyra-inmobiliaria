@@ -11,6 +11,8 @@ const META_API_BASE = 'https://graph.facebook.com/v21.0'
 const GHL_API_BASE = 'https://services.leadconnectorhq.com'
 
 export default async function handler() {
+  console.log(`[Weekly Report] Triggered at: ${new Date().toISOString()}`)
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -32,6 +34,13 @@ export default async function handler() {
   const dateFrom = new Date(dateTo); dateFrom.setDate(dateTo.getDate() - 6)
   const dateToStr = dateTo.toISOString().split('T')[0]
   const dateFromStr = dateFrom.toISOString().split('T')[0]
+
+  // Data source status tracker
+  const dataSourceStatus: Record<string, { ok: boolean; error?: string; count?: number }> = {
+    meta_ads: { ok: false },
+    ghl_pipeline: { ok: false },
+    ghl_calls: { ok: false },
+  }
 
   // Fetch Meta Ads for the week
   let metaSnapshots: Array<{
@@ -72,9 +81,15 @@ export default async function handler() {
           cost_per_lead: leadCount > 0 ? spend / leadCount : null,
         }
       })
+      dataSourceStatus.meta_ads = { ok: true, count: metaSnapshots.length }
+    } else {
+      const errorBody = await res.text()
+      console.error(`[Weekly Report] Meta API HTTP ${res.status}:`, errorBody)
+      dataSourceStatus.meta_ads = { ok: false, error: `HTTP ${res.status}: ${errorBody.substring(0, 200)}` }
     }
   } catch (err) {
-    console.error('Meta API error:', err)
+    console.error('[Weekly Report] Meta API error:', err)
+    dataSourceStatus.meta_ads = { ok: false, error: err instanceof Error ? err.message : 'Unknown error' }
   }
 
   // Fetch GHL pipeline (filtered by creation date)
@@ -93,18 +108,41 @@ export default async function handler() {
     if (pRes.ok) {
       const { pipelines: allPipelines } = await pRes.json()
       const pipelines = allPipelines.filter((p: { name: string }) => p.name === 'Embudo Propietarios LP')
+
+      if (pipelines.length === 0) {
+        console.warn('[Weekly Report] Pipeline "Embudo Propietarios LP" not found')
+        dataSourceStatus.ghl_pipeline = { ok: false, error: 'Pipeline "Embudo Propietarios LP" no encontrado' }
+      }
+
       for (const pipeline of pipelines) {
-        const oRes = await fetch(`${GHL_API_BASE}/opportunities/search?location_id=${process.env.GHL_LOCATION_ID}&pipeline_id=${pipeline.id}&limit=100`, { headers: ghlHeaders })
-        const oData = oRes.ok ? await oRes.json() : { opportunities: [] }
+        // Paginated fetch of all opportunities
+        let allOpportunities: Array<Record<string, unknown>> = []
+        let page = 1
+        let hasMore = true
+        while (hasMore && page <= 50) {
+          const oRes = await fetch(
+            `${GHL_API_BASE}/opportunities/search?location_id=${process.env.GHL_LOCATION_ID}&pipeline_id=${pipeline.id}&limit=100&page=${page}`,
+            { headers: ghlHeaders }
+          )
+          if (!oRes.ok) {
+            const errText = await oRes.text()
+            throw new Error(`GHL opportunities HTTP ${oRes.status}: ${errText.substring(0, 200)}`)
+          }
+          const oData = await oRes.json()
+          allOpportunities.push(...(oData.opportunities || []))
+          hasMore = oData.meta?.nextPage != null
+          page++
+        }
+        console.log(`[Weekly Report] GHL pipeline "${pipeline.name}": ${allOpportunities.length} opportunities fetched (${page - 1} pages)`)
 
         const stageCounts = new Map<string, { name: string; count: number; newCount: number; value: number }>()
         for (const stage of pipeline.stages) stageCounts.set(stage.id, { name: stage.name, count: 0, newCount: 0, value: 0 })
-        for (const opp of oData.opportunities) {
-          const sc = stageCounts.get(opp.pipelineStageId)
+        for (const opp of allOpportunities) {
+          const sc = stageCounts.get(opp.pipelineStageId as string)
           if (sc) {
             sc.count++
-            sc.value += opp.monetaryValue || 0
-            const createdAt = new Date(opp.createdAt)
+            sc.value += (opp.monetaryValue as number) || 0
+            const createdAt = new Date(opp.createdAt as string)
             if (createdAt >= startOfRange && createdAt <= endOfRange) sc.newCount++
           }
         }
@@ -112,10 +150,16 @@ export default async function handler() {
         pipelineStages.push(...Array.from(stageCounts.values()).map(sc => ({
           stage_name: sc.name, contact_count: sc.count, new_contacts: sc.newCount, opportunity_value: sc.value,
         })))
+        dataSourceStatus.ghl_pipeline = { ok: true, count: allOpportunities.length }
       }
+    } else {
+      const errorBody = await pRes.text()
+      console.error(`[Weekly Report] GHL Pipelines HTTP ${pRes.status}:`, errorBody)
+      dataSourceStatus.ghl_pipeline = { ok: false, error: `HTTP ${pRes.status}: ${errorBody.substring(0, 200)}` }
     }
   } catch (err) {
-    console.error('GHL error:', err)
+    console.error('[Weekly Report] GHL pipeline error:', err)
+    dataSourceStatus.ghl_pipeline = { ok: false, error: err instanceof Error ? err.message : 'Unknown error' }
   }
 
   // Fetch GHL call stats
@@ -123,23 +167,69 @@ export default async function handler() {
   try {
     const ghlHeaders = { 'Authorization': `Bearer ${process.env.GHL_API_KEY}`, 'Version': '2021-07-28', 'Content-Type': 'application/json' }
     const startAfter = new Date(dateFromStr + 'T00:00:00Z').toISOString()
-    const callsRes = await fetch(`${GHL_API_BASE}/conversations/search?locationId=${process.env.GHL_LOCATION_ID}&type=TYPE_CALL&startAfterDate=${encodeURIComponent(startAfter)}&limit=100`, { headers: ghlHeaders })
-    if (callsRes.ok) {
-      const callsData = await callsRes.json()
-      const startDate = new Date(dateFromStr + 'T00:00:00Z'), endDate = new Date(dateToStr + 'T23:59:59Z')
-      for (const conv of (callsData.conversations || [])) {
-        const convDate = new Date(conv.dateAdded || conv.createdAt)
-        if (convDate < startDate || convDate > endDate) continue
-        callStats.total++
-        const status = conv.callStatus || conv.status || ''
-        if (status === 'completed' || status === 'answered') { callStats.answered++; callStats.totalDuration += conv.callDuration || conv.duration || 0 }
-        else if (status === 'missed' || status === 'no-answer' || status === 'busy') { callStats.missed++ }
-        else if (conv.callDuration || conv.duration) { callStats.answered++; callStats.totalDuration += conv.callDuration || conv.duration || 0 }
-        else { callStats.missed++ }
+    const startBefore = new Date(dateToStr + 'T23:59:59Z').toISOString()
+
+    // Paginated fetch of calls
+    let allConversations: Array<Record<string, unknown>> = []
+    let page = 1
+    let hasMore = true
+    while (hasMore && page <= 20) {
+      const callsRes = await fetch(
+        `${GHL_API_BASE}/conversations/search?locationId=${process.env.GHL_LOCATION_ID}&type=TYPE_CALL&startAfterDate=${encodeURIComponent(startAfter)}&startBeforeDate=${encodeURIComponent(startBefore)}&limit=100`,
+        { headers: ghlHeaders }
+      )
+      if (!callsRes.ok) {
+        const errBody = await callsRes.text()
+        throw new Error(`GHL calls HTTP ${callsRes.status}: ${errBody.substring(0, 200)}`)
       }
-      if (callStats.answered > 0) callStats.avgDuration = Math.round(callStats.totalDuration / callStats.answered)
+      const callsData = await callsRes.json()
+      const conversations = callsData.conversations || []
+
+      if (page === 1) {
+        console.log(`[Weekly Report] GHL calls response keys: ${Object.keys(callsData).join(', ')}`)
+        console.log(`[Weekly Report] GHL calls conversations count: ${conversations.length}`)
+        if (conversations.length > 0) {
+          console.log(`[Weekly Report] GHL calls sample conv keys: ${Object.keys(conversations[0]).join(', ')}`)
+        }
+      }
+
+      allConversations.push(...conversations)
+      hasMore = conversations.length >= 100
+      page++
     }
-  } catch (err) { console.error('GHL calls error:', err) }
+
+    const startDate = new Date(dateFromStr + 'T00:00:00Z'), endDate = new Date(dateToStr + 'T23:59:59Z')
+    for (const conv of allConversations) {
+      const convDate = new Date((conv.dateAdded || conv.createdAt) as string)
+      if (convDate < startDate || convDate > endDate) continue
+      callStats.total++
+      const status = (conv.callStatus || conv.status || '') as string
+      if (status === 'completed' || status === 'answered') { callStats.answered++; callStats.totalDuration += ((conv.callDuration || conv.duration) as number) || 0 }
+      else if (status === 'missed' || status === 'no-answer' || status === 'busy') { callStats.missed++ }
+      else if (conv.callDuration || conv.duration) { callStats.answered++; callStats.totalDuration += ((conv.callDuration || conv.duration) as number) || 0 }
+      else { callStats.missed++ }
+    }
+    if (callStats.answered > 0) callStats.avgDuration = Math.round(callStats.totalDuration / callStats.answered)
+    dataSourceStatus.ghl_calls = { ok: true, count: callStats.total }
+    console.log(`[Weekly Report] GHL calls: ${callStats.total} total, ${callStats.answered} answered, ${callStats.missed} missed`)
+  } catch (err) {
+    console.error('[Weekly Report] GHL calls error:', err)
+    dataSourceStatus.ghl_calls = { ok: false, error: err instanceof Error ? err.message : 'Unknown error' }
+  }
+
+  // Build health banner
+  const failedSources = Object.entries(dataSourceStatus).filter(([, s]) => !s.ok)
+  let healthBanner = ''
+  if (failedSources.length > 0) {
+    const labels: Record<string, string> = { meta_ads: 'Meta Ads', ghl_pipeline: 'Pipeline CRM', ghl_calls: 'Llamadas GHL' }
+    const failedList = failedSources.map(([name, s]) =>
+      `<li style="color:#dc2626;font-size:13px;margin-bottom:4px;">${labels[name] || name}: ${s.error || 'Sin datos'}</li>`
+    ).join('')
+    healthBanner = `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;margin-bottom:24px;">
+      <p style="color:#991b1b;font-weight:600;font-size:14px;margin:0 0 8px;">Advertencia: Algunas fuentes de datos fallaron</p>
+      <ul style="margin:0;padding-left:20px;">${failedList}</ul>
+    </div>`
+  }
 
   // Build email
   const totalLeads = metaSnapshots.reduce((s, c) => s + c.leads, 0)
@@ -171,9 +261,16 @@ export default async function handler() {
     <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;font-weight:600;color:#7c3aed;">${s.new_contacts}</td>
     <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;color:#6b7280;">${s.contact_count}</td>
     <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;">${fmt(s.opportunity_value)}</td>
-  </tr>`).join('')}</tbody></table>` : '<p style="color:#9ca3af;">No hay datos de pipeline.</p>'
+  </tr>`).join('')}</tbody></table>` : (
+    dataSourceStatus.ghl_pipeline.ok
+      ? '<p style="color:#9ca3af;">Sin datos de pipeline para este periodo.</p>'
+      : '<p style="color:#9ca3af;">No hay datos de pipeline.</p>'
+  )
 
-  const callsHtml = callStats.total > 0 ? `
+  // Always show calls section
+  let callsHtml = ''
+  if (dataSourceStatus.ghl_calls.ok && callStats.total > 0) {
+    callsHtml = `
     <h2 style="color:#1f2937;font-size:18px;margin:24px 0 12px;">Llamadas</h2>
     <div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap;">
       <div style="flex:1;min-width:120px;background:#eff6ff;border-radius:8px;padding:16px;text-align:center;">
@@ -192,7 +289,20 @@ export default async function handler() {
         <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Duracion Prom.</p>
         <p style="color:#7e22ce;font-size:28px;font-weight:700;margin:4px 0 0;">${callStats.avgDuration > 0 ? `${Math.floor(callStats.avgDuration / 60)}m ${callStats.avgDuration % 60}s` : '—'}</p>
       </div>
-    </div>` : ''
+    </div>`
+  } else if (!dataSourceStatus.ghl_calls.ok) {
+    callsHtml = `
+    <h2 style="color:#1f2937;font-size:18px;margin:24px 0 12px;">Llamadas</h2>
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;margin-bottom:24px;">
+      <p style="color:#dc2626;font-size:14px;margin:0;">Error al obtener datos de llamadas: ${dataSourceStatus.ghl_calls.error || 'Error desconocido'}</p>
+    </div>`
+  } else {
+    callsHtml = `
+    <h2 style="color:#1f2937;font-size:18px;margin:24px 0 12px;">Llamadas</h2>
+    <p style="color:#9ca3af;font-size:14px;">Sin llamadas registradas en este periodo.</p>`
+  }
+
+  const subjectPrefix = failedSources.length > 0 ? '[DATOS INCOMPLETOS] ' : ''
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
@@ -203,6 +313,7 @@ export default async function handler() {
   </div>
   <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;padding:32px;">
     <p style="color:#6b7280;font-size:14px;margin:0 0 24px;">Periodo: <strong>${fmtD(dateFromStr)} — ${fmtD(dateToStr)}</strong></p>
+    ${healthBanner}
     <div style="display:flex;gap:12px;margin-bottom:32px;flex-wrap:wrap;">
       <div style="flex:1;min-width:140px;background:#eff6ff;border-radius:8px;padding:16px;">
         <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Leads</p>
@@ -229,7 +340,11 @@ export default async function handler() {
       <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;">LEADS</th>
       <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;">GASTO</th>
       <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;">CPL</th>
-    </tr></thead><tbody>${campaignRows}</tbody></table>` : '<p style="color:#9ca3af;">No hay datos de campanas.</p>'}
+    </tr></thead><tbody>${campaignRows}</tbody></table>` : (
+      dataSourceStatus.meta_ads.ok
+        ? '<p style="color:#9ca3af;margin-bottom:32px;">Sin campanas activas en este periodo.</p>'
+        : '<p style="color:#9ca3af;margin-bottom:32px;">No hay datos de campanas.</p>'
+    )}
     <h2 style="color:#1f2937;font-size:18px;margin:0 0 12px;">Pipeline CRM</h2>
     ${pipelineHtml}
     ${callsHtml}
@@ -237,7 +352,7 @@ export default async function handler() {
   <div style="text-align:center;padding:16px;"><p style="color:#9ca3af;font-size:12px;">Reporte generado automaticamente</p></div>
 </div></body></html>`
 
-  const subject = `Semanal Marketing — ${totalLeads} leads | CPL ${avgCpl !== null ? fmt(avgCpl) : 'N/A'} | ${fmtD(dateFromStr)} - ${fmtD(dateToStr)}`
+  const subject = `${subjectPrefix}Semanal Marketing — ${totalLeads} leads | CPL ${avgCpl !== null ? fmt(avgCpl) : 'N/A'} | ${fmtD(dateFromStr)} - ${fmtD(dateToStr)}`
 
   try {
     const transporter = nodemailer.createTransport({
@@ -256,17 +371,26 @@ export default async function handler() {
       recipients: settings.recipients,
       subject,
       status: 'sent',
-      data_snapshot: { total_leads: totalLeads, total_spend: totalSpend, avg_ctr: avgCtr, avg_cpl: avgCpl },
+      data_snapshot: {
+        total_leads: totalLeads,
+        total_spend: totalSpend,
+        avg_ctr: avgCtr,
+        avg_cpl: avgCpl,
+        data_sources: dataSourceStatus,
+        pipeline_stages_count: pipelineStages.length,
+        call_stats: callStats,
+      },
     })
-    console.log('Weekly report sent')
+    console.log('[Weekly Report] Sent successfully')
   } catch (err) {
-    console.error('Send error:', err)
+    console.error('[Weekly Report] Send error:', err)
     await supabase.from('email_report_log').insert({
       report_type: 'weekly',
       recipients: settings.recipients,
       subject,
       status: 'failed',
       error_message: err instanceof Error ? err.message : 'Unknown error',
+      data_snapshot: { data_sources: dataSourceStatus },
     })
   }
 }
