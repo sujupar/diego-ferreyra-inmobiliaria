@@ -452,7 +452,7 @@ export default async function handler() {
 <body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 <div style="max-width:680px;margin:0 auto;padding:32px 16px;">
   <div style="background:#111827;border-radius:12px 12px 0 0;padding:24px 32px;">
-    <img src="https://meek-belekoy-dcf620.netlify.app/pdf-assets/logos/logos-institucionales.png" alt="Diego Ferreyra Inmobiliaria" style="height:44px;margin-bottom:12px;" />
+    <img src="https://meek-belekoy-dcf620.netlify.app/pdf-assets/logos/Logo%20Diego%20Ferreyra.png" alt="Diego Ferreyra Inmobiliaria" style="height:44px;margin-bottom:12px;" />
     <p style="color:#9ca3af;font-size:14px;margin:4px 0 0;">Reporte Diario de Marketing</p>
   </div>
   <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;padding:32px;">

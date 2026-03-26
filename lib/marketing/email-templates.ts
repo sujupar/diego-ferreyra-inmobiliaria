@@ -120,7 +120,7 @@ export function buildReportHtml(data: ReportData): string {
 
     <!-- Header with Logo -->
     <div style="background: linear-gradient(135deg, #111827 0%, #1f2937 100%); border-radius: 16px 16px 0 0; padding: 28px 32px; text-align: center;">
-      <img src="https://meek-belekoy-dcf620.netlify.app/pdf-assets/logos/logos-institucionales.png" alt="Diego Ferreyra Inmobiliaria" style="height: 44px; margin-bottom: 12px;" />
+      <img src="https://meek-belekoy-dcf620.netlify.app/pdf-assets/logos/Logo%20Diego%20Ferreyra.png" alt="Diego Ferreyra Inmobiliaria" style="height: 44px; margin-bottom: 12px;" />
       <div style="border-top: 1px solid rgba(255,255,255,0.15); padding-top: 14px; margin-top: 4px;">
         <p style="color: #d1d5db; font-size: 14px; margin: 0; letter-spacing: 0.3px;">${title}</p>
       </div>
