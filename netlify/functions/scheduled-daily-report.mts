@@ -38,9 +38,27 @@ export default async function handler() {
     return
   }
 
+  // Deduplication: skip if already sent today
+  const { data: existingReport } = await supabase
+    .from('email_report_log')
+    .select('id')
+    .eq('report_type', 'daily')
+    .gte('sent_at', new Date().toISOString().split('T')[0] + 'T00:00:00Z')
+    .eq('status', 'sent')
+    .limit(1)
+
+  if (existingReport && existingReport.length > 0) {
+    console.log('[Daily Report] Already sent today, skipping duplicate')
+    return
+  }
+
   const yesterday = new Date()
   yesterday.setDate(yesterday.getDate() - 1)
   const dateStr = yesterday.toISOString().split('T')[0]
+
+  const dayBefore = new Date(yesterday)
+  dayBefore.setDate(dayBefore.getDate() - 1)
+  const prevDateStr = dayBefore.toISOString().split('T')[0]
 
   // Data source status tracker
   const dataSourceStatus: Record<string, { ok: boolean; error?: string; count?: number }> = {
@@ -127,11 +145,11 @@ export default async function handler() {
     const pipelinesRes = await fetch(`${GHL_API_BASE}/opportunities/pipelines?locationId=${locationId}`, { headers: ghlHeaders })
     if (pipelinesRes.ok) {
       const { pipelines: allPipelines } = await pipelinesRes.json()
-      const pipelines = allPipelines.filter((p: { name: string }) => p.name === 'Embudo Propietarios LP')
+      const pipelines = allPipelines.filter((p: { name: string }) => p.name === '🟢 GESTIÓN COMERCIAL - PROPIETARIOS')
 
       if (pipelines.length === 0) {
-        console.warn('[Daily Report] Pipeline "Embudo Propietarios LP" not found')
-        dataSourceStatus.ghl_pipeline = { ok: false, error: 'Pipeline "Embudo Propietarios LP" no encontrado' }
+        console.warn('[Daily Report] Pipeline "🟢 GESTIÓN COMERCIAL - PROPIETARIOS" not found')
+        dataSourceStatus.ghl_pipeline = { ok: false, error: 'Pipeline "🟢 GESTIÓN COMERCIAL - PROPIETARIOS" no encontrado' }
       }
 
       for (const pipeline of pipelines) {
@@ -200,6 +218,53 @@ export default async function handler() {
   } catch (err) {
     console.error('[Daily Report] GHL pipeline error:', err)
     dataSourceStatus.ghl_pipeline = { ok: false, error: err instanceof Error ? err.message : 'Unknown error' }
+  }
+
+  // 2a-prev. Fetch previous day pipeline for comparison
+  let prevPipelineStages: Array<{
+    stage_name: string; contact_count: number; new_contacts: number; opportunity_value: number;
+  }> = []
+
+  try {
+    const ghlHeaders = {
+      'Authorization': `Bearer ${process.env.GHL_API_KEY}`,
+      'Version': '2021-07-28',
+      'Content-Type': 'application/json',
+    }
+    const prevStartOfDay = new Date(prevDateStr + 'T00:00:00Z')
+    const prevEndOfDay = new Date(prevDateStr + 'T23:59:59Z')
+
+    const pRes = await fetch(`${GHL_API_BASE}/opportunities/pipelines?locationId=${process.env.GHL_LOCATION_ID}`, { headers: ghlHeaders })
+    if (pRes.ok) {
+      const { pipelines: allPipelines } = await pRes.json()
+      const pipelines = allPipelines.filter((p: { name: string }) => p.name === '🟢 GESTIÓN COMERCIAL - PROPIETARIOS')
+      for (const pipeline of pipelines) {
+        let allOpps: Array<Record<string, unknown>> = []
+        let pg = 1; let more = true
+        while (more && pg <= 50) {
+          const r = await fetch(`${GHL_API_BASE}/opportunities/search?location_id=${process.env.GHL_LOCATION_ID}&pipeline_id=${pipeline.id}&limit=100&page=${pg}`, { headers: ghlHeaders })
+          if (!r.ok) break
+          const d = await r.json()
+          allOpps.push(...(d.opportunities || []))
+          more = d.meta?.nextPage != null; pg++
+        }
+        const sc = new Map<string, { name: string; count: number; newCount: number; value: number }>()
+        for (const stage of pipeline.stages) sc.set(stage.id, { name: stage.name, count: 0, newCount: 0, value: 0 })
+        for (const opp of allOpps) {
+          const s = sc.get(opp.pipelineStageId as string)
+          if (s) {
+            s.count++; s.value += (opp.monetaryValue as number) || 0
+            const ca = new Date(opp.createdAt as string)
+            if (ca >= prevStartOfDay && ca <= prevEndOfDay) s.newCount++
+          }
+        }
+        prevPipelineStages.push(...Array.from(sc.values()).map(s => ({
+          stage_name: s.name, contact_count: s.count, new_contacts: s.newCount, opportunity_value: s.value,
+        })))
+      }
+    }
+  } catch (err) {
+    console.error('[Daily Report] Previous pipeline fetch error:', err)
   }
 
   // 2b. Fetch GHL call stats
@@ -329,44 +394,45 @@ export default async function handler() {
     <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;">${c.cost_per_lead !== null ? fmt(c.cost_per_lead) : '—'}</td>
   </tr>`).join('')
 
+  // Build pipeline comparison HTML with delta indicators
+  const changeBadge = (current: number, prev: number, isCurrency = false) => {
+    const diff = current - prev
+    if (diff === 0 || prev === 0) return ''
+    const color = diff > 0 ? '#15803d' : '#dc2626'
+    const arrow = diff > 0 ? '&#9650;' : '&#9660;'
+    const val = isCurrency ? fmt(Math.abs(diff)) : Math.abs(diff).toString()
+    return ` <span style="color:${color};font-size:11px;font-weight:600;">${arrow}${val}</span>`
+  }
+
   const pipelineHtml = pipelineStages.length > 0 ? `<table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#f3f4f6;">
     <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;">Etapa</th>
+    <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;text-transform:uppercase;">Contactos</th>
     <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;text-transform:uppercase;">Nuevos</th>
-    <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;text-transform:uppercase;">Total</th>
     <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;text-transform:uppercase;">Valor</th>
-  </tr></thead><tbody>${pipelineStages.map(s => `<tr>
+  </tr></thead><tbody>${pipelineStages.map(s => {
+    const prev = prevPipelineStages.find(p => p.stage_name === s.stage_name)
+    const prevCount = prev?.contact_count ?? 0
+    const prevValue = prev?.opportunity_value ?? 0
+    return `<tr>
     <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;">${s.stage_name}</td>
+    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;">${s.contact_count}${changeBadge(s.contact_count, prevCount)}</td>
     <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;font-weight:600;color:#7c3aed;">${s.new_contacts}</td>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;color:#6b7280;">${s.contact_count}</td>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;">${fmt(s.opportunity_value)}</td>
-  </tr>`).join('')}</tbody></table>` : (
+    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;">${fmt(s.opportunity_value)}${changeBadge(s.opportunity_value, prevValue, true)}</td>
+  </tr>`
+  }).join('')}</tbody></table>${prevPipelineStages.length > 0 ? `<p style="color:#9ca3af;font-size:11px;margin:8px 0 0;">Comparado con el dia anterior</p>` : ''}` : (
     dataSourceStatus.ghl_pipeline.ok
       ? '<p style="color:#9ca3af;font-size:14px;">Sin datos de pipeline para este periodo.</p>'
       : '<p style="color:#9ca3af;font-size:14px;">No hay datos de pipeline.</p>'
   )
 
-  // Always show calls section (3 states: data, error, or empty)
+  // Calls section - simplified (GHL API doesn't provide duration/status details)
   let callsHtml = ''
   if (dataSourceStatus.ghl_calls.ok && callStats.total > 0) {
     callsHtml = `
     <h2 style="color:#1f2937;font-size:18px;margin:24px 0 12px;">Llamadas</h2>
-    <div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap;">
-      <div style="flex:1;min-width:120px;background:#eff6ff;border-radius:8px;padding:16px;text-align:center;">
-        <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Total</p>
-        <p style="color:#1d4ed8;font-size:28px;font-weight:700;margin:4px 0 0;">${callStats.total}</p>
-      </div>
-      <div style="flex:1;min-width:120px;background:#f0fdf4;border-radius:8px;padding:16px;text-align:center;">
-        <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Contestadas</p>
-        <p style="color:#15803d;font-size:28px;font-weight:700;margin:4px 0 0;">${callStats.answered}</p>
-      </div>
-      <div style="flex:1;min-width:120px;background:#fef2f2;border-radius:8px;padding:16px;text-align:center;">
-        <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Perdidas</p>
-        <p style="color:#dc2626;font-size:28px;font-weight:700;margin:4px 0 0;">${callStats.missed}</p>
-      </div>
-      <div style="flex:1;min-width:120px;background:#faf5ff;border-radius:8px;padding:16px;text-align:center;">
-        <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Duracion Prom.</p>
-        <p style="color:#7e22ce;font-size:28px;font-weight:700;margin:4px 0 0;">${callStats.avgDuration > 0 ? `${Math.floor(callStats.avgDuration / 60)}m ${callStats.avgDuration % 60}s` : '—'}</p>
-      </div>
+    <div style="background:#eff6ff;border-radius:8px;padding:16px;text-align:center;margin-bottom:24px;">
+      <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Total de llamadas</p>
+      <p style="color:#1d4ed8;font-size:28px;font-weight:700;margin:4px 0 0;">${callStats.total}</p>
     </div>`
   } else if (!dataSourceStatus.ghl_calls.ok) {
     callsHtml = `

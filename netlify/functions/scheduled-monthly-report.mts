@@ -29,6 +29,20 @@ export default async function handler() {
     return
   }
 
+  // Deduplication: skip if already sent this month
+  const { data: existingReport } = await supabase
+    .from('email_report_log')
+    .select('id')
+    .eq('report_type', 'monthly')
+    .gte('sent_at', new Date().toISOString().split('T')[0] + 'T00:00:00Z')
+    .eq('status', 'sent')
+    .limit(1)
+
+  if (existingReport && existingReport.length > 0) {
+    console.log('[Monthly Report] Already sent today, skipping duplicate')
+    return
+  }
+
   // Previous calendar month
   const today = new Date()
   const firstOfThisMonth = new Date(today.getFullYear(), today.getMonth(), 1)
@@ -37,6 +51,12 @@ export default async function handler() {
 
   const dateFromStr = firstOfPrevMonth.toISOString().split('T')[0]
   const dateToStr = lastOfPrevMonth.toISOString().split('T')[0]
+
+  // Previous month for comparison
+  const prevMonthLast = new Date(firstOfPrevMonth.getTime() - 86400000)
+  const prevMonthFirst = new Date(prevMonthLast.getFullYear(), prevMonthLast.getMonth(), 1)
+  const prevFromStr = prevMonthFirst.toISOString().split('T')[0]
+  const prevToStr = prevMonthLast.toISOString().split('T')[0]
 
   // Data source status tracker
   const dataSourceStatus: Record<string, { ok: boolean; error?: string; count?: number }> = {
@@ -110,11 +130,11 @@ export default async function handler() {
     const pRes = await fetch(`${GHL_API_BASE}/opportunities/pipelines?locationId=${process.env.GHL_LOCATION_ID}`, { headers: ghlHeaders })
     if (pRes.ok) {
       const { pipelines: allPipelines } = await pRes.json()
-      const pipelines = allPipelines.filter((p: { name: string }) => p.name === 'Embudo Propietarios LP')
+      const pipelines = allPipelines.filter((p: { name: string }) => p.name === '🟢 GESTIÓN COMERCIAL - PROPIETARIOS')
 
       if (pipelines.length === 0) {
-        console.warn('[Monthly Report] Pipeline "Embudo Propietarios LP" not found')
-        dataSourceStatus.ghl_pipeline = { ok: false, error: 'Pipeline "Embudo Propietarios LP" no encontrado' }
+        console.warn('[Monthly Report] Pipeline "🟢 GESTIÓN COMERCIAL - PROPIETARIOS" not found')
+        dataSourceStatus.ghl_pipeline = { ok: false, error: 'Pipeline "🟢 GESTIÓN COMERCIAL - PROPIETARIOS" no encontrado' }
       }
 
       for (const pipeline of pipelines) {
@@ -163,6 +183,61 @@ export default async function handler() {
   } catch (err) {
     console.error('[Monthly Report] GHL pipeline error:', err)
     dataSourceStatus.ghl_pipeline = { ok: false, error: err instanceof Error ? err.message : 'Unknown error' }
+  }
+
+  // Fetch previous period pipeline for comparison
+  let prevPipelineStages: Array<{ stage_name: string; contact_count: number; new_contacts: number; opportunity_value: number }> = []
+
+  try {
+    const ghlHeaders = {
+      'Authorization': `Bearer ${process.env.GHL_API_KEY}`,
+      'Version': '2021-07-28',
+      'Content-Type': 'application/json',
+    }
+    const prevStartOfRange = new Date(prevFromStr + 'T00:00:00Z')
+    const prevEndOfRange = new Date(prevToStr + 'T23:59:59Z')
+
+    const pRes = await fetch(`${GHL_API_BASE}/opportunities/pipelines?locationId=${process.env.GHL_LOCATION_ID}`, { headers: ghlHeaders })
+    if (pRes.ok) {
+      const { pipelines: allPipelines } = await pRes.json()
+      const pipelines = allPipelines.filter((p: { name: string }) => p.name === '🟢 GESTIÓN COMERCIAL - PROPIETARIOS')
+
+      for (const pipeline of pipelines) {
+        let allOpportunities: Array<Record<string, unknown>> = []
+        let page = 1
+        let hasMore = true
+        while (hasMore && page <= 50) {
+          const oRes = await fetch(
+            `${GHL_API_BASE}/opportunities/search?location_id=${process.env.GHL_LOCATION_ID}&pipeline_id=${pipeline.id}&limit=100&page=${page}`,
+            { headers: ghlHeaders }
+          )
+          if (!oRes.ok) break
+          const oData = await oRes.json()
+          allOpportunities.push(...(oData.opportunities || []))
+          hasMore = oData.meta?.nextPage != null
+          page++
+        }
+        console.log(`[Monthly Report] GHL prev period pipeline: ${allOpportunities.length} opportunities fetched`)
+
+        const stageCounts = new Map<string, { name: string; count: number; newCount: number; value: number }>()
+        for (const stage of pipeline.stages) stageCounts.set(stage.id, { name: stage.name, count: 0, newCount: 0, value: 0 })
+        for (const opp of allOpportunities) {
+          const sc = stageCounts.get(opp.pipelineStageId as string)
+          if (sc) {
+            sc.count++
+            sc.value += (opp.monetaryValue as number) || 0
+            const createdAt = new Date(opp.createdAt as string)
+            if (createdAt >= prevStartOfRange && createdAt <= prevEndOfRange) sc.newCount++
+          }
+        }
+
+        prevPipelineStages.push(...Array.from(stageCounts.values()).map(sc => ({
+          stage_name: sc.name, contact_count: sc.count, new_contacts: sc.newCount, opportunity_value: sc.value,
+        })))
+      }
+    }
+  } catch (err) {
+    console.error('[Monthly Report] GHL prev period pipeline error:', err)
   }
 
   // Fetch GHL call stats
@@ -260,17 +335,32 @@ export default async function handler() {
     <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;">${c.cost_per_lead !== null ? fmt(c.cost_per_lead) : '—'}</td>
   </tr>`).join('')
 
+  const changeBadge = (current: number, prev: number, isCurrency = false) => {
+    const diff = current - prev
+    if (diff === 0 || prev === 0) return ''
+    const color = diff > 0 ? '#15803d' : '#dc2626'
+    const arrow = diff > 0 ? '&#9650;' : '&#9660;'
+    const val = isCurrency ? fmt(Math.abs(diff)) : Math.abs(diff).toString()
+    return ` <span style="color:${color};font-size:11px;font-weight:600;">${arrow}${val}</span>`
+  }
+
   const pipelineHtml = pipelineStages.length > 0 ? `<table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#f3f4f6;">
     <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;">ETAPA</th>
+    <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;">CONTACTOS</th>
     <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;">NUEVOS</th>
-    <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;">TOTAL</th>
     <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;">VALOR</th>
-  </tr></thead><tbody>${pipelineStages.map(s => `<tr>
+  </tr></thead><tbody>${pipelineStages.map(s => {
+    const prev = prevPipelineStages.find(p => p.stage_name === s.stage_name)
+    const prevCount = prev?.contact_count ?? 0
+    const prevValue = prev?.opportunity_value ?? 0
+    return `<tr>
     <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;">${s.stage_name}</td>
+    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;">${s.contact_count}${changeBadge(s.contact_count, prevCount)}</td>
     <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;font-weight:600;color:#7c3aed;">${s.new_contacts}</td>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;color:#6b7280;">${s.contact_count}</td>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;">${fmt(s.opportunity_value)}</td>
-  </tr>`).join('')}</tbody></table>` : (
+    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;">${fmt(s.opportunity_value)}${changeBadge(s.opportunity_value, prevValue, true)}</td>
+  </tr>`
+  }).join('')}</tbody></table>
+  <p style="color:#9ca3af;font-size:11px;margin:4px 0 0;">Comparado con el mes anterior</p>` : (
     dataSourceStatus.ghl_pipeline.ok
       ? '<p style="color:#9ca3af;">Sin datos de pipeline para este periodo.</p>'
       : '<p style="color:#9ca3af;">No hay datos de pipeline.</p>'
@@ -281,23 +371,9 @@ export default async function handler() {
   if (dataSourceStatus.ghl_calls.ok && callStats.total > 0) {
     callsHtml = `
     <h2 style="color:#1f2937;font-size:18px;margin:24px 0 12px;">Llamadas</h2>
-    <div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap;">
-      <div style="flex:1;min-width:120px;background:#eff6ff;border-radius:8px;padding:16px;text-align:center;">
-        <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Total</p>
-        <p style="color:#1d4ed8;font-size:28px;font-weight:700;margin:4px 0 0;">${callStats.total}</p>
-      </div>
-      <div style="flex:1;min-width:120px;background:#f0fdf4;border-radius:8px;padding:16px;text-align:center;">
-        <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Contestadas</p>
-        <p style="color:#15803d;font-size:28px;font-weight:700;margin:4px 0 0;">${callStats.answered}</p>
-      </div>
-      <div style="flex:1;min-width:120px;background:#fef2f2;border-radius:8px;padding:16px;text-align:center;">
-        <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Perdidas</p>
-        <p style="color:#dc2626;font-size:28px;font-weight:700;margin:4px 0 0;">${callStats.missed}</p>
-      </div>
-      <div style="flex:1;min-width:120px;background:#faf5ff;border-radius:8px;padding:16px;text-align:center;">
-        <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Duracion Prom.</p>
-        <p style="color:#7e22ce;font-size:28px;font-weight:700;margin:4px 0 0;">${callStats.avgDuration > 0 ? `${Math.floor(callStats.avgDuration / 60)}m ${callStats.avgDuration % 60}s` : '—'}</p>
-      </div>
+    <div style="background:#eff6ff;border-radius:8px;padding:16px;text-align:center;margin-bottom:24px;">
+      <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Total Llamadas</p>
+      <p style="color:#1d4ed8;font-size:28px;font-weight:700;margin:4px 0 0;">${callStats.total}</p>
     </div>`
   } else if (!dataSourceStatus.ghl_calls.ok) {
     callsHtml = `

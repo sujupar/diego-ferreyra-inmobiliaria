@@ -9,7 +9,7 @@ import type {
 } from './types'
 
 const GHL_API_BASE = 'https://services.leadconnectorhq.com'
-const TARGET_PIPELINE_NAME = 'Embudo Propietarios LP'
+const TARGET_PIPELINE_NAME = '🟢 GESTIÓN COMERCIAL - PROPIETARIOS'
 
 function getGHLConfig() {
   const apiKey = process.env.GHL_API_KEY
