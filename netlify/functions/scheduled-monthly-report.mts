@@ -483,5 +483,5 @@ export default async function handler() {
 }
 
 export const config: Config = {
-  schedule: '0 11 1 * *', // 1st of month, 11:00 UTC = 8:00 AM Argentina
+  schedule: '0 9 1-7 * 6', // First Saturday of month, 09:00 UTC = 6:00 AM Argentina (UTC-3)
 }
