@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { getAppraisals, deleteAppraisal, AppraisalSummary } from '@/lib/supabase/appraisals'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -14,7 +15,8 @@ import {
     Loader2,
     FileText,
     MapPin,
-    Calendar
+    Calendar,
+    Edit2
 } from 'lucide-react'
 
 function formatCurrency(value: number, currency: string = 'USD'): string {
@@ -82,10 +84,20 @@ export default function AppraisalsHistoryPage() {
                 </Link>
             </div>
 
-            {/* Loading */}
+            {/* Loading skeletons */}
             {loading && (
-                <div className="flex items-center justify-center py-20">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} className="rounded-xl border overflow-hidden">
+                            <div className="aspect-video bg-muted animate-pulse" />
+                            <div className="p-4 space-y-3">
+                                <div className="h-5 bg-muted animate-pulse rounded w-3/4" />
+                                <div className="h-4 bg-muted animate-pulse rounded w-1/2" />
+                                <div className="h-4 bg-muted animate-pulse rounded w-1/3" />
+                                <div className="h-6 bg-muted animate-pulse rounded w-2/5 mt-4" />
+                            </div>
+                        </div>
+                    ))}
                 </div>
             )}
 
@@ -112,11 +124,15 @@ export default function AppraisalsHistoryPage() {
                             <Card className="h-full hover:shadow-md transition-all duration-200 cursor-pointer group">
                                 {/* Image */}
                                 {appraisal.property_images?.[0] ? (
-                                    <div className="aspect-video overflow-hidden rounded-t-xl">
-                                        <img
+                                    <div className="aspect-video overflow-hidden rounded-t-xl relative">
+                                        <Image
                                             src={appraisal.property_images[0]}
                                             alt={appraisal.property_title || 'Propiedad'}
-                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                            fill
+                                            sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                                            className="object-cover group-hover:scale-105 transition-transform duration-300"
+                                            loading="lazy"
+                                            unoptimized
                                         />
                                     </div>
                                 ) : (
@@ -159,19 +175,32 @@ export default function AppraisalsHistoryPage() {
                                                 {appraisal.comparable_count} comp.
                                             </Badge>
                                         </div>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
-                                            onClick={(e) => handleDelete(e, appraisal.id)}
-                                            disabled={deleting === appraisal.id}
-                                        >
-                                            {deleting === appraisal.id ? (
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                            ) : (
-                                                <Trash2 className="h-4 w-4" />
-                                            )}
-                                        </Button>
+                                        <div className="flex items-center gap-1">
+                                            <Button
+                                                asChild
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 text-muted-foreground hover:text-primary shrink-0"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <Link href={`/appraisal/new?editId=${appraisal.id}`}>
+                                                    <Edit2 className="h-4 w-4" />
+                                                </Link>
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+                                                onClick={(e) => handleDelete(e, appraisal.id)}
+                                                disabled={deleting === appraisal.id}
+                                            >
+                                                {deleting === appraisal.id ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <Trash2 className="h-4 w-4" />
+                                                )}
+                                            </Button>
+                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>

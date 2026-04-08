@@ -38,9 +38,14 @@ function getMissingFields(property: ScrapedProperty): string[] {
 }
 
 export function ComparableEditor({ property, onSave, onCancel }: ComparableEditorProps) {
-    const [editedProperty, setEditedProperty] = useState<ScrapedProperty>({
-        ...property,
-        features: { ...property.features }
+    const [editedProperty, setEditedProperty] = useState<ScrapedProperty>(() => {
+        const f = { ...property.features }
+        // Safety net: derive uncovered area if the portal only exposed total + covered
+        if (f.uncoveredArea == null && f.totalArea != null && f.coveredArea != null) {
+            const diff = f.totalArea - f.coveredArea
+            f.uncoveredArea = diff > 0 ? diff : 0
+        }
+        return { ...property, features: f }
     })
 
     const missingFields = getMissingFields(editedProperty)

@@ -9,7 +9,7 @@ import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { PDFDownloadButton } from '@/components/appraisal/PDFDownloadButton'
 import { ValuationProperty, ValuationResult } from '@/lib/valuation/calculator'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Loader2, FileText, AlertCircle } from 'lucide-react'
+import { ArrowLeft, FileText, AlertCircle, Edit2 } from 'lucide-react'
 
 const PDFPreviewModal = dynamic(
     () => import('@/components/appraisal/PDFPreviewModal').then(m => m.PDFPreviewModal),
@@ -22,26 +22,8 @@ export default function AppraisalDetailPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [showPDFPreview, setShowPDFPreview] = useState(false)
-    const [marketImageLabels, setMarketImageLabels] = useState<Record<string, { label: string; description: string }>>({})
-    const [marketImageUrls, setMarketImageUrls] = useState<Record<string, string>>({})
 
-    useEffect(() => {
-        fetch('/api/settings/market-images')
-            .then(res => res.json())
-            .then(data => {
-                if (data.slots) {
-                    const labels: Record<string, { label: string; description: string }> = {}
-                    const urls: Record<string, string> = {}
-                    for (const slot of data.slots) {
-                        labels[slot.id] = { label: slot.label, description: slot.description || '' }
-                        if (slot.currentPath) urls[slot.id] = slot.currentPath
-                    }
-                    setMarketImageLabels(labels)
-                    setMarketImageUrls(urls)
-                }
-            })
-            .catch(() => { /* use defaults */ })
-    }, [])
+    // Market image settings are loaded lazily by PDFPreviewModal on open
 
     useEffect(() => {
         const id = params.id as string
@@ -61,8 +43,34 @@ export default function AppraisalDetailPage() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center py-20">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="max-w-5xl mx-auto space-y-8 pb-20">
+                {/* Header skeleton */}
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+                        <div className="space-y-2">
+                            <div className="h-6 w-64 bg-muted animate-pulse rounded" />
+                            <div className="h-4 w-40 bg-muted animate-pulse rounded" />
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <div className="h-10 w-36 bg-muted animate-pulse rounded" />
+                        <div className="h-10 w-40 bg-muted animate-pulse rounded" />
+                    </div>
+                </div>
+                {/* Report skeleton */}
+                <div className="bg-card rounded-xl border p-8 space-y-6">
+                    <div className="h-8 w-56 bg-muted animate-pulse rounded" />
+                    <div className="grid grid-cols-4 gap-6">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                            <div key={i} className="space-y-2">
+                                <div className="h-3 w-24 bg-muted animate-pulse rounded" />
+                                <div className="h-6 w-32 bg-muted animate-pulse rounded" />
+                            </div>
+                        ))}
+                    </div>
+                    <div className="h-48 bg-muted animate-pulse rounded" />
+                </div>
             </div>
         )
     }
@@ -154,16 +162,24 @@ export default function AppraisalDetailPage() {
                     </div>
                 </div>
 
-                <Button className="gap-2" onClick={() => setShowPDFPreview(true)}>
-                    <FileText className="h-4 w-4" />
-                    Vista Previa PDF
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Link href={`/appraisal/new?editId=${appraisal.id}`}>
+                        <Button variant="outline" className="gap-2">
+                            <Edit2 className="h-4 w-4" />
+                            Editar Tasación
+                        </Button>
+                    </Link>
+                    <Button className="gap-2" onClick={() => setShowPDFPreview(true)}>
+                        <FileText className="h-4 w-4" />
+                        Vista Previa PDF
+                    </Button>
+                </div>
             </div>
 
             {/* Report */}
             <ValuationReport subject={subject} result={result} />
 
-            {/* PDF Preview Modal */}
+            {/* PDF Preview Modal — market image settings are loaded lazily by the modal itself */}
             {showPDFPreview && (
                 <PDFPreviewModal
                     open={showPDFPreview}
@@ -172,8 +188,6 @@ export default function AppraisalDetailPage() {
                     comparables={comparables}
                     valuationResult={result}
                     overpriced={overpriced}
-                    marketImageLabels={marketImageLabels}
-                    marketImageUrls={marketImageUrls}
                 />
             )}
         </div>

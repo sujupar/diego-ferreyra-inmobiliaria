@@ -189,3 +189,89 @@ export async function deleteAppraisal(id: string): Promise<void> {
     const { error } = await supabase.from('appraisals').delete().eq('id', id)
     if (error) throw error
 }
+
+export async function updateAppraisal(id: string, input: SaveAppraisalInput): Promise<void> {
+    const supabase = createClient()
+    const { subject, comparables, valuationResult, notes } = input
+
+    // 1. Update main appraisal row
+    const { error: updateError } = await supabase
+        .from('appraisals')
+        .update({
+            property_title: subject.title,
+            property_location: subject.location,
+            property_description: subject.description,
+            property_url: subject.url,
+            property_price: subject.price,
+            property_currency: subject.currency,
+            property_images: subject.images,
+            property_features: subject.features as any,
+            valuation_result: valuationResult as any,
+            publication_price: valuationResult.publicationPrice,
+            sale_value: valuationResult.saleValue,
+            money_in_hand: valuationResult.moneyInHand,
+            currency: valuationResult.currency,
+            comparable_count: comparables.length,
+            notes,
+        })
+        .eq('id', id)
+
+    if (updateError) throw updateError
+
+    // 2. Delete existing comparables (simpler than reconciling row-by-row)
+    const { error: deleteError } = await supabase
+        .from('appraisal_comparables')
+        .delete()
+        .eq('appraisal_id', id)
+
+    if (deleteError) throw deleteError
+
+    // 3. Re-insert comparables (same shape as saveAppraisal)
+    const comparableRows = comparables.map((comp, index) => {
+        const analysis = valuationResult.comparableAnalysis[index]
+        const { property: _property, ...analysisData } = analysis || {} as any
+
+        return {
+            appraisal_id: id,
+            title: comp.title,
+            location: comp.location,
+            url: comp.url,
+            price: comp.price,
+            currency: comp.currency,
+            description: comp.description,
+            images: comp.images,
+            features: comp.features as any,
+            analysis: analysisData as any,
+            sort_order: index,
+        }
+    })
+
+    if (comparableRows.length > 0) {
+        const { error: compError } = await supabase
+            .from('appraisal_comparables')
+            .insert(comparableRows)
+        if (compError) throw compError
+    }
+
+    // 4. Re-insert overpriced
+    const overpricedRows = (input.overpriced || []).map((prop, index) => ({
+        appraisal_id: id,
+        title: prop.title,
+        location: prop.location,
+        url: prop.url,
+        price: prop.price,
+        currency: prop.currency,
+        description: prop.description,
+        images: prop.images,
+        features: prop.features as any,
+        analysis: { propertyType: 'overpriced' } as any,
+        sort_order: 1000 + index,
+    }))
+
+    if (overpricedRows.length > 0) {
+        const { error: opError } = await supabase
+            .from('appraisal_comparables')
+            .insert(overpricedRows)
+        if (opError) throw opError
+    }
+}

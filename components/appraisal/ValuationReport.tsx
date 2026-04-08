@@ -1,5 +1,6 @@
 'use client'
 
+import { memo, useState } from 'react'
 import { ValuationResult, ValuationProperty } from '@/lib/valuation/calculator'
 import {
     DISPOSITION_LABELS,
@@ -12,11 +13,22 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { Button } from '@/components/ui/button'
+import { Edit2, Check } from 'lucide-react'
 
 interface ValuationReportProps {
     subject: ValuationProperty
     result: ValuationResult
+    editable?: boolean
+    onComparableFeaturesChange?: (index: number, features: Record<string, unknown>) => void
+    onSubjectFeaturesChange?: (features: Record<string, unknown>) => void
 }
+
+const DISPOSITION_OPTIONS: DispositionType[] = ['FRONT', 'BACK', 'LATERAL', 'INTERNAL']
+const QUALITY_OPTIONS: QualityType[] = ['ECONOMIC', 'GOOD_ECONOMIC', 'GOOD', 'VERY_GOOD', 'EXCELLENT']
+const CONSERVATION_OPTIONS: ConservationStateType[] = [
+    'STATE_1', 'STATE_1_5', 'STATE_2', 'STATE_2_5', 'STATE_3', 'STATE_3_5', 'STATE_4', 'STATE_4_5', 'STATE_5'
+]
 
 function formatCurrency(value: number, currency: string = 'USD'): string {
     return new Intl.NumberFormat('es-AR', {
@@ -32,12 +44,38 @@ function formatNumber(value: number, decimals: number = 2): string {
 }
 
 
-export function ValuationReport({ subject, result }: ValuationReportProps) {
+function ValuationReportInner({
+    subject,
+    result,
+    editable = false,
+    onComparableFeaturesChange,
+    onSubjectFeaturesChange,
+}: ValuationReportProps) {
+    const [isEditing, setIsEditing] = useState(false)
+
     const today = new Date().toLocaleDateString('es-AR', {
         year: 'numeric',
         month: 'long',
         day: 'numeric'
     })
+
+    const updateCompFeature = (index: number, key: string, value: unknown) => {
+        if (!onComparableFeaturesChange) return
+        const current = result.comparableAnalysis[index]?.property.features || {}
+        onComparableFeaturesChange(index, { ...current, [key]: value })
+    }
+
+    const updateSubjectFeature = (key: string, value: unknown) => {
+        if (!onSubjectFeaturesChange) return
+        const current = subject.features || {}
+        onSubjectFeaturesChange({ ...current, [key]: value })
+    }
+
+    const parseNum = (v: string): number | null => {
+        if (v === '') return null
+        const n = parseFloat(v)
+        return isNaN(n) ? null : n
+    }
 
     return (
         <div className="bg-card rounded-xl shadow-sm border p-8 print:shadow-none print:border-none" id="valuation-report">
@@ -107,8 +145,12 @@ export function ValuationReport({ subject, result }: ValuationReportProps) {
                                 <p className="font-medium text-foreground">{subject.features.coveredArea || '-'} m²</p>
                             </div>
                             <div>
-                                <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">Sup. Total</p>
-                                <p className="font-medium text-foreground">{subject.features.totalArea || '-'} m²</p>
+                                <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">Sup. Descubierta</p>
+                                <p className="font-medium text-foreground">{(subject.features as any).uncoveredArea || '-'} m²</p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">Sup. Homogeneizada</p>
+                                <p className="font-medium text-primary">{formatNumber(result.subjectSurface, 2)} m²</p>
                             </div>
                             <div>
                                 <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">Antigüedad</p>
@@ -149,7 +191,35 @@ export function ValuationReport({ subject, result }: ValuationReportProps) {
 
             {/* Comparables Analysis Table */}
             <div className="mb-10">
-                <h2 className="text-xl font-semibold text-foreground mb-4">Mapa de Valor — Análisis de Comparables</h2>
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-semibold text-foreground">Mapa de Valor — Análisis de Comparables</h2>
+                    {editable && (
+                        <Button
+                            variant={isEditing ? 'default' : 'outline'}
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => setIsEditing(!isEditing)}
+                        >
+                            {isEditing ? (
+                                <>
+                                    <Check className="h-4 w-4" />
+                                    Cerrar Edición
+                                </>
+                            ) : (
+                                <>
+                                    <Edit2 className="h-4 w-4" />
+                                    Editar Análisis
+                                </>
+                            )}
+                        </Button>
+                    )}
+                </div>
+                {isEditing && (
+                    <div className="mb-4 p-3 rounded-lg bg-primary/5 border border-primary/20 text-sm text-primary">
+                        <strong>Modo edición activado.</strong> Al cambiar cualquier valor (piso, disposición, calidad, edad/estado o ubicación),
+                        todo el análisis se recalcula automáticamente: coeficientes, $/m² ajustado, promedio y precio de publicación.
+                    </div>
+                )}
                 <div className="overflow-hidden rounded-lg border border-border">
                     <div className="overflow-x-auto">
                         <table className="min-w-full divide-y divide-border">
@@ -186,10 +256,66 @@ export function ValuationReport({ subject, result }: ValuationReportProps) {
                                     <td className="px-3 py-3 text-sm text-right font-medium text-primary">
                                         {formatCurrency(result.subjectPriceM2, result.currency)}
                                     </td>
+                                    {/* Ubic. — subject always fixed at 1.00 */}
                                     <td className="px-3 py-3 text-sm text-center font-medium text-primary">{formatNumber(result.subjectLocationCoef, 2)}</td>
-                                    <td className="px-3 py-3 text-sm text-center font-medium text-primary">{formatNumber(result.subjectFloorCoef, 2)}</td>
-                                    <td className="px-3 py-3 text-sm text-center font-medium text-primary">{formatNumber(result.subjectDispositionCoef, 2)}</td>
-                                    <td className="px-3 py-3 text-sm text-center font-medium text-primary">{formatNumber(result.subjectAgeCoef, 4)}</td>
+                                    {/* Piso — editable (number) */}
+                                    <td className="px-3 py-3 text-sm text-center font-medium text-primary">
+                                        {isEditing ? (
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                className="w-16 px-2 py-1 text-center text-xs rounded border border-primary/30 bg-background"
+                                                value={subject.features.floor ?? ''}
+                                                onChange={(e) => updateSubjectFeature('floor', parseNum(e.target.value))}
+                                            />
+                                        ) : (
+                                            formatNumber(result.subjectFloorCoef, 2)
+                                        )}
+                                    </td>
+                                    {/* Disp. — editable (select) */}
+                                    <td className="px-3 py-3 text-sm text-center font-medium text-primary">
+                                        {isEditing ? (
+                                            <select
+                                                className="px-2 py-1 text-xs rounded border border-primary/30 bg-background"
+                                                value={(subject.features.disposition as string) || ''}
+                                                onChange={(e) => updateSubjectFeature('disposition', e.target.value || null)}
+                                            >
+                                                <option value="">—</option>
+                                                {DISPOSITION_OPTIONS.map(d => (
+                                                    <option key={d} value={d}>{DISPOSITION_LABELS[d]}</option>
+                                                ))}
+                                            </select>
+                                        ) : (
+                                            formatNumber(result.subjectDispositionCoef, 2)
+                                        )}
+                                    </td>
+                                    {/* Edad/Est. — editable (two inputs) */}
+                                    <td className="px-3 py-3 text-sm text-center font-medium text-primary">
+                                        {isEditing ? (
+                                            <div className="flex gap-1 items-center justify-center">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    placeholder="años"
+                                                    className="w-14 px-1 py-1 text-center text-xs rounded border border-primary/30 bg-background"
+                                                    value={subject.features.age ?? ''}
+                                                    onChange={(e) => updateSubjectFeature('age', parseNum(e.target.value))}
+                                                />
+                                                <select
+                                                    className="px-1 py-1 text-xs rounded border border-primary/30 bg-background"
+                                                    value={(subject.features.conservationState as string) || 'STATE_2'}
+                                                    onChange={(e) => updateSubjectFeature('conservationState', e.target.value)}
+                                                >
+                                                    {CONSERVATION_OPTIONS.map(s => (
+                                                        <option key={s} value={s}>{CONSERVATION_LABELS[s]}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        ) : (
+                                            formatNumber(result.subjectAgeCoef, 4)
+                                        )}
+                                    </td>
+                                    {/* Calidad — subject always fixed at 1.00 */}
                                     <td className="px-3 py-3 text-sm text-center font-medium text-primary">{formatNumber(result.subjectQualityCoef, 2)}</td>
                                     <td className="px-3 py-3 text-sm text-center font-bold text-primary">{formatNumber(result.subjectTotalCoef, 4)}</td>
                                     <td className="px-3 py-3 text-sm text-right font-bold text-primary">
@@ -197,34 +323,122 @@ export function ValuationReport({ subject, result }: ValuationReportProps) {
                                     </td>
                                 </tr>
                                 {/* Comparable rows */}
-                                {result.comparableAnalysis.map((analysis, index) => (
-                                    <tr key={index} className="hover:bg-muted/50 transition-colors">
-                                        <td className="px-3 py-3 text-sm">
-                                            <p className="font-medium text-foreground">Comp. {index + 1}</p>
-                                            <p className="text-xs text-muted-foreground truncate max-w-[180px]" title={analysis.property.title}>
-                                                {analysis.property.location || analysis.property.title || 'Sin ubicación'}
-                                            </p>
-                                        </td>
-                                        <td className="px-3 py-3 text-sm text-right font-medium text-foreground/80">
-                                            {formatCurrency(analysis.property.price || 0, result.currency)}
-                                        </td>
-                                        <td className="px-3 py-3 text-sm text-right text-muted-foreground">
-                                            {formatNumber(analysis.homogenizedSurface)} m²
-                                        </td>
-                                        <td className="px-3 py-3 text-sm text-right text-muted-foreground">
-                                            {formatCurrency(analysis.originalPriceM2, result.currency)}
-                                        </td>
-                                        <td className="px-3 py-3 text-sm text-center font-medium">{formatNumber(analysis.locationCoefficient, 2)}</td>
-                                        <td className="px-3 py-3 text-sm text-center font-medium">{formatNumber(analysis.floorCoefficient, 2)}</td>
-                                        <td className="px-3 py-3 text-sm text-center font-medium">{formatNumber(analysis.dispositionCoefficient, 2)}</td>
-                                        <td className="px-3 py-3 text-sm text-center font-medium">{formatNumber(analysis.ageCoefficient, 4)}</td>
-                                        <td className="px-3 py-3 text-sm text-center font-medium">{formatNumber(analysis.qualityCoefficient, 2)}</td>
-                                        <td className="px-3 py-3 text-sm text-center font-bold">{formatNumber(analysis.totalCoefficient, 4)}</td>
-                                        <td className="px-3 py-3 text-sm text-right font-bold text-primary">
-                                            {formatCurrency(analysis.adjustedPriceM2, result.currency)}
-                                        </td>
-                                    </tr>
-                                ))}
+                                {result.comparableAnalysis.map((analysis, index) => {
+                                    const f = (analysis.property.features || {}) as Record<string, unknown>
+                                    return (
+                                        <tr key={index} className="hover:bg-muted/50 transition-colors">
+                                            <td className="px-3 py-3 text-sm">
+                                                <p className="font-medium text-foreground">Comp. {index + 1}</p>
+                                                <p className="text-xs text-muted-foreground truncate max-w-[180px]" title={analysis.property.title}>
+                                                    {analysis.property.location || analysis.property.title || 'Sin ubicación'}
+                                                </p>
+                                            </td>
+                                            <td className="px-3 py-3 text-sm text-right font-medium text-foreground/80">
+                                                {formatCurrency(analysis.property.price || 0, result.currency)}
+                                            </td>
+                                            <td className="px-3 py-3 text-sm text-right text-muted-foreground">
+                                                {formatNumber(analysis.homogenizedSurface)} m²
+                                            </td>
+                                            <td className="px-3 py-3 text-sm text-right text-muted-foreground">
+                                                {formatCurrency(analysis.originalPriceM2, result.currency)}
+                                            </td>
+                                            {/* Ubic. — editable (number override) */}
+                                            <td className="px-3 py-3 text-sm text-center font-medium">
+                                                {isEditing ? (
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0.5"
+                                                        max="1.5"
+                                                        className="w-16 px-2 py-1 text-center text-xs rounded border border-border bg-background"
+                                                        value={(f.locationCoefficient as number | undefined) ?? 1.0}
+                                                        onChange={(e) => updateCompFeature(index, 'locationCoefficient', parseNum(e.target.value) ?? 1.0)}
+                                                    />
+                                                ) : (
+                                                    formatNumber(analysis.locationCoefficient, 2)
+                                                )}
+                                            </td>
+                                            {/* Piso — editable (number) */}
+                                            <td className="px-3 py-3 text-sm text-center font-medium">
+                                                {isEditing ? (
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        className="w-16 px-2 py-1 text-center text-xs rounded border border-border bg-background"
+                                                        value={(f.floor as number | undefined) ?? ''}
+                                                        onChange={(e) => updateCompFeature(index, 'floor', parseNum(e.target.value))}
+                                                    />
+                                                ) : (
+                                                    formatNumber(analysis.floorCoefficient, 2)
+                                                )}
+                                            </td>
+                                            {/* Disp. — editable (select) */}
+                                            <td className="px-3 py-3 text-sm text-center font-medium">
+                                                {isEditing ? (
+                                                    <select
+                                                        className="px-2 py-1 text-xs rounded border border-border bg-background"
+                                                        value={(f.disposition as string) || ''}
+                                                        onChange={(e) => updateCompFeature(index, 'disposition', e.target.value || null)}
+                                                    >
+                                                        <option value="">—</option>
+                                                        {DISPOSITION_OPTIONS.map(d => (
+                                                            <option key={d} value={d}>{DISPOSITION_LABELS[d]}</option>
+                                                        ))}
+                                                    </select>
+                                                ) : (
+                                                    formatNumber(analysis.dispositionCoefficient, 2)
+                                                )}
+                                            </td>
+                                            {/* Edad/Est. — editable (age + state) */}
+                                            <td className="px-3 py-3 text-sm text-center font-medium">
+                                                {isEditing ? (
+                                                    <div className="flex gap-1 items-center justify-center">
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            placeholder="años"
+                                                            className="w-14 px-1 py-1 text-center text-xs rounded border border-border bg-background"
+                                                            value={(f.age as number | undefined) ?? ''}
+                                                            onChange={(e) => updateCompFeature(index, 'age', parseNum(e.target.value))}
+                                                        />
+                                                        <select
+                                                            className="px-1 py-1 text-xs rounded border border-border bg-background"
+                                                            value={(f.conservationState as string) || 'STATE_2'}
+                                                            onChange={(e) => updateCompFeature(index, 'conservationState', e.target.value)}
+                                                        >
+                                                            {CONSERVATION_OPTIONS.map(s => (
+                                                                <option key={s} value={s}>{CONSERVATION_LABELS[s]}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                ) : (
+                                                    formatNumber(analysis.ageCoefficient, 4)
+                                                )}
+                                            </td>
+                                            {/* Calidad — editable (select) */}
+                                            <td className="px-3 py-3 text-sm text-center font-medium">
+                                                {isEditing ? (
+                                                    <select
+                                                        className="px-2 py-1 text-xs rounded border border-border bg-background"
+                                                        value={(f.quality as string) || ''}
+                                                        onChange={(e) => updateCompFeature(index, 'quality', e.target.value || null)}
+                                                    >
+                                                        <option value="">—</option>
+                                                        {QUALITY_OPTIONS.map(q => (
+                                                            <option key={q} value={q}>{QUALITY_LABELS[q]}</option>
+                                                        ))}
+                                                    </select>
+                                                ) : (
+                                                    formatNumber(analysis.qualityCoefficient, 2)
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-3 text-sm text-center font-bold">{formatNumber(analysis.totalCoefficient, 4)}</td>
+                                            <td className="px-3 py-3 text-sm text-right font-bold text-primary">
+                                                {formatCurrency(analysis.adjustedPriceM2, result.currency)}
+                                            </td>
+                                        </tr>
+                                    )
+                                })}
                             </tbody>
                             <tfoot className="bg-secondary/40 font-medium">
                                 <tr>
@@ -361,3 +575,5 @@ export function ValuationReport({ subject, result }: ValuationReportProps) {
         </div>
     )
 }
+
+export const ValuationReport = memo(ValuationReportInner)

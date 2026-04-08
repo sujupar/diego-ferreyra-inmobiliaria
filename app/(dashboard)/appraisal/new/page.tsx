@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { PropertyWizard } from '@/components/appraisal/PropertyWizard'
 import { PropertyForm } from '@/components/appraisal/PropertyForm'
@@ -8,7 +9,7 @@ import { ComparableEditor, ComparableMissingIndicator } from '@/components/appra
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { ScrapedProperty } from '@/lib/scraper/types'
 import { calculateValuation, ValuationResult, ValuationProperty, ExpenseRates } from '@/lib/valuation/calculator'
-import { saveAppraisal } from '@/lib/supabase/appraisals'
+import { saveAppraisal, updateAppraisal, getAppraisal } from '@/lib/supabase/appraisals'
 import { Button } from '@/components/ui/button'
 import {
     Calculator,
@@ -34,11 +35,63 @@ const PDFPreviewModal = dynamic(
     { ssr: false }
 )
 
+// Map an existing ScrapedProperty back to PropertyWizard's initialData shape.
+// Splits "address, neighborhood, city" from location if possible; otherwise
+// falls back to putting the whole location in the address field.
+function mapSubjectToFormData(subject: ScrapedProperty): Record<string, unknown> {
+    const f = subject.features || {}
+    const parts = (subject.location || '').split(',').map(s => s.trim()).filter(Boolean)
+    const address = subject.title || parts[0] || ''
+    const neighborhood = parts[1] || ''
+    const city = parts.slice(2).join(', ') || ''
+    return {
+        address,
+        neighborhood,
+        city,
+        coveredArea: (f as any).coveredArea ?? '',
+        semiCoveredArea: (f as any).semiCoveredArea ?? '',
+        uncoveredArea: (f as any).uncoveredArea ?? '',
+        totalArea: (f as any).totalArea ?? '',
+        rooms: (f as any).rooms ?? '',
+        bedrooms: (f as any).bedrooms ?? '',
+        bathrooms: (f as any).bathrooms ?? '',
+        garages: (f as any).garages ?? '',
+        floor: (f as any).floor ?? '',
+        totalFloors: (f as any).totalFloors ?? '',
+        age: (f as any).age ?? '',
+        disposition: (f as any).disposition ?? '',
+        quality: (f as any).quality ?? '',
+        conservationState: (f as any).conservationState ?? '',
+        images: subject.images || [],
+    }
+}
+
 export default function NewAppraisalPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex items-center justify-center py-32">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        }>
+            <NewAppraisalPageContent />
+        </Suspense>
+    )
+}
+
+function NewAppraisalPageContent() {
+    const searchParams = useSearchParams()
+    const editId = searchParams.get('editId')
+    const editMode = Boolean(editId)
+
     const [subject, setSubject] = useState<ScrapedProperty | null>(null)
     const [comparables, setComparables] = useState<ScrapedProperty[]>([])
     const [overpriced, setOverpriced] = useState<ScrapedProperty[]>([])
     const [valuationResult, setValuationResult] = useState<ValuationResult | null>(null)
+
+    // Edit mode state
+    const [editLoading, setEditLoading] = useState(editMode)
+    const [editLoadError, setEditLoadError] = useState<string | null>(null)
+    const [isEditingSubject, setIsEditingSubject] = useState(false)
 
     // Modal states
     const [editingComparable, setEditingComparable] = useState<{ index: number; property: ScrapedProperty } | null>(null)
@@ -54,31 +107,79 @@ export default function NewAppraisalPage() {
         agencyFeesPercent: 3,
     })
 
-    // Market image data for PDF
-    const [marketImageLabels, setMarketImageLabels] = useState<Record<string, { label: string; description: string }>>({})
-    const [marketImageUrls, setMarketImageUrls] = useState<Record<string, string>>({})
-
-    // Fetch market image settings on mount
-    useEffect(() => {
-        fetch('/api/settings/market-images')
-            .then(res => res.json())
-            .then(data => {
-                if (data.slots) {
-                    const labels: Record<string, { label: string; description: string }> = {}
-                    const urls: Record<string, string> = {}
-                    for (const slot of data.slots) {
-                        labels[slot.id] = { label: slot.label, description: slot.description || '' }
-                        if (slot.currentPath) urls[slot.id] = slot.currentPath
-                    }
-                    setMarketImageLabels(labels)
-                    setMarketImageUrls(urls)
-                }
-            })
-            .catch(() => { /* use defaults */ })
-    }, [])
+    // Market image settings are loaded lazily by PDFPreviewModal itself when opened
 
     // Auto-save state
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+
+    // Load existing appraisal when in edit mode
+    useEffect(() => {
+        if (!editId) return
+        let cancelled = false
+        setEditLoading(true)
+        setEditLoadError(null)
+        getAppraisal(editId)
+            .then(detail => {
+                if (cancelled || !detail) {
+                    if (!detail) setEditLoadError('Tasación no encontrada')
+                    return
+                }
+
+                // Reconstruct subject as ScrapedProperty
+                const reconstructedSubject: ScrapedProperty = {
+                    title: detail.property_title ?? '',
+                    location: detail.property_location,
+                    description: detail.property_description ?? '',
+                    url: detail.property_url ?? '',
+                    price: detail.property_price ?? null,
+                    currency: (detail.property_currency as 'USD' | 'ARS' | null) ?? null,
+                    images: detail.property_images ?? [],
+                    portal: 'manual',
+                    features: detail.property_features || {},
+                }
+
+                // Split comparables vs overpriced based on analysis.propertyType
+                const normalComps: ScrapedProperty[] = []
+                const overpricedComps: ScrapedProperty[] = []
+                for (const c of detail.comparables) {
+                    const mapped: ScrapedProperty = {
+                        title: c.title ?? '',
+                        location: c.location ?? '',
+                        description: c.description ?? '',
+                        url: c.url ?? '',
+                        price: c.price ?? null,
+                        currency: (c.currency as 'USD' | 'ARS' | null) ?? null,
+                        images: c.images ?? [],
+                        portal: 'manual',
+                        features: c.features || {},
+                    }
+                    const analysisObj = c.analysis as Record<string, unknown> | null
+                    if (analysisObj?.propertyType === 'overpriced') {
+                        overpricedComps.push(mapped)
+                    } else {
+                        normalComps.push(mapped)
+                    }
+                }
+
+                setSubject(reconstructedSubject)
+                setComparables(normalComps)
+                setOverpriced(overpricedComps)
+                setValuationResult(detail.valuation_result)
+
+                // Restore expenseRates from the stored result if present
+                if (detail.valuation_result?.expenseRates) {
+                    setExpenseRates(detail.valuation_result.expenseRates)
+                }
+            })
+            .catch(err => {
+                console.error('Error loading appraisal for edit:', err)
+                if (!cancelled) setEditLoadError('Error al cargar la tasación')
+            })
+            .finally(() => {
+                if (!cancelled) setEditLoading(false)
+            })
+        return () => { cancelled = true }
+    }, [editId])
 
     function handleSubjectComplete(property: ScrapedProperty) {
         setSubject(property)
@@ -115,6 +216,49 @@ export default function NewAppraisalPage() {
         setComparables(comparables.filter((_, i) => i !== index))
     }
 
+    // Live-edit handlers: update a single comparable's or subject's features
+    // from the ValuationReport editable cells. The useEffect below re-runs the
+    // calculation whenever these values change.
+    function handleComparableFeaturesChange(index: number, newFeatures: Record<string, unknown>) {
+        setComparables(prev => {
+            const updated = [...prev]
+            updated[index] = { ...updated[index], features: newFeatures as any }
+            return updated
+        })
+    }
+
+    function handleSubjectFeaturesChange(newFeatures: Record<string, unknown>) {
+        setSubject(prev => prev ? { ...prev, features: newFeatures as any } : prev)
+    }
+
+    // Re-run calculation whenever subject/comparables/expenseRates change,
+    // but ONLY if a valuationResult already exists (i.e. user has calculated at least once).
+    // Do NOT depend on `valuationResult` here to avoid infinite loops.
+    useEffect(() => {
+        if (!valuationResult || !subject) return
+        const subjectVal: ValuationProperty = {
+            price: subject.price,
+            currency: subject.currency,
+            title: subject.title,
+            location: subject.location,
+            features: subject.features as any,
+        }
+        const compsVal: ValuationProperty[] = comparables.map(c => ({
+            price: c.price,
+            currency: c.currency,
+            title: c.title,
+            location: c.location,
+            features: c.features as any,
+        }))
+        const next = calculateValuation({
+            subject: subjectVal,
+            comparables: compsVal,
+            expenseRates,
+        })
+        if (next) setValuationResult(next)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [subject, comparables, expenseRates])
+
     function handleCalculate() {
         if (!subject) return
 
@@ -148,10 +292,14 @@ export default function NewAppraisalPage() {
             document.getElementById('valuation-report')?.scrollIntoView({ behavior: 'smooth' })
         }, 100)
 
-        // Auto-save to Supabase
+        // Auto-save to Supabase — update existing or create new based on mode
         if (result) {
             setSaveStatus('saving')
-            saveAppraisal({ subject, comparables, overpriced, valuationResult: result })
+            const payload = { subject, comparables, overpriced, valuationResult: result }
+            const promise = editMode && editId
+                ? updateAppraisal(editId, payload)
+                : saveAppraisal(payload)
+            promise
                 .then(() => setSaveStatus('saved'))
                 .catch((err) => {
                     console.error('Error al guardar tasación:', err)
@@ -170,15 +318,35 @@ export default function NewAppraisalPage() {
         return c.price && f.coveredArea && f.age !== null && f.disposition && f.quality && f.conservationState
     })
 
+    if (editMode && editLoading) {
+        return (
+            <div className="flex items-center justify-center py-32">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        )
+    }
+
+    if (editMode && editLoadError) {
+        return (
+            <div className="max-w-5xl mx-auto text-center py-20">
+                <AlertCircle className="h-12 w-12 mx-auto mb-4 text-destructive" />
+                <h2 className="text-xl font-semibold mb-2">{editLoadError}</h2>
+                <p className="text-muted-foreground">La tasación que intentás editar no existe o no se pudo cargar.</p>
+            </div>
+        )
+    }
+
     return (
         <div className="max-w-5xl mx-auto space-y-12 pb-20">
             {/* Header / Hero */}
             <div className="text-center space-y-4 py-8 animate-in fade-in slide-in-from-top-4 duration-700">
                 <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-primary">
-                    Nueva Tasación
+                    {editMode ? 'Editar Tasación' : 'Nueva Tasación'}
                 </h1>
                 <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                    Genera informes de valor precisos y profesionales utilizando el método de comparables de mercado.
+                    {editMode
+                        ? 'Modificá los datos del sujeto, comparables o el análisis de valor. Los cambios se guardan al presionar "Recalcular y Guardar".'
+                        : 'Genera informes de valor precisos y profesionales utilizando el método de comparables de mercado.'}
                 </p>
             </div>
 
@@ -200,9 +368,19 @@ export default function NewAppraisalPage() {
                     </div>
                 </div>
 
-                {!subject ? (
+                {!subject || isEditingSubject ? (
                     <div className="bg-card rounded-2xl border shadow-sm p-6 md:p-8 transition-all duration-300 hover:shadow-md">
-                        <PropertyWizard onComplete={handleSubjectComplete} />
+                        <PropertyWizard
+                            onComplete={(p) => { handleSubjectComplete(p); setIsEditingSubject(false) }}
+                            initialData={subject ? mapSubjectToFormData(subject) : undefined}
+                        />
+                        {isEditingSubject && (
+                            <div className="mt-4 flex justify-end">
+                                <Button variant="ghost" size="sm" onClick={() => setIsEditingSubject(false)}>
+                                    Cancelar edición
+                                </Button>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="bg-card rounded-2xl border shadow-sm p-6 transition-all duration-300 animate-in fade-in slide-in-from-top-4">
@@ -228,8 +406,8 @@ export default function NewAppraisalPage() {
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => setSubject(null)}
-                                className="text-muted-foreground hover:text-destructive"
+                                onClick={() => setIsEditingSubject(true)}
+                                className="text-muted-foreground hover:text-primary"
                             >
                                 <Edit2 className="h-4 w-4 mr-1" />
                                 Modificar
@@ -521,6 +699,9 @@ export default function NewAppraisalPage() {
                             features: subject.features as any
                         }}
                         result={valuationResult}
+                        editable
+                        onComparableFeaturesChange={handleComparableFeaturesChange}
+                        onSubjectFeaturesChange={handleSubjectFeaturesChange}
                     />
 
                     {/* Save status indicator */}
@@ -614,8 +795,6 @@ export default function NewAppraisalPage() {
                         features: c.features as any
                     }))}
                     valuationResult={valuationResult}
-                    marketImageLabels={marketImageLabels}
-                    marketImageUrls={marketImageUrls}
                 />
             )}
         </div>

@@ -118,6 +118,12 @@ export function extractZonaProp($: CheerioAPI, url: string): ScrapedProperty {
         }
     })
 
+    // Derive uncovered area when portal only exposes total + covered
+    if (features.uncoveredArea === null && features.totalArea !== null && features.coveredArea !== null) {
+        const diff = features.totalArea - features.coveredArea
+        features.uncoveredArea = diff > 0 ? diff : 0
+    }
+
     // Images
     const images = extractImages($, [
         '.gallery-section img',

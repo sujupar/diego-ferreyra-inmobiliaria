@@ -23,6 +23,37 @@ const PDFViewer = dynamic(
     }
 )
 
+// Module-level cache for market image settings so it's fetched only once per session
+type MarketImageCache = {
+    labels: Record<string, { label: string; description: string }>
+    urls: Record<string, string>
+}
+let marketImageCache: MarketImageCache | null = null
+let marketImageCachePromise: Promise<MarketImageCache> | null = null
+
+async function loadMarketImageSettings(): Promise<MarketImageCache> {
+    if (marketImageCache) return marketImageCache
+    if (marketImageCachePromise) return marketImageCachePromise
+    marketImageCachePromise = fetch('/api/settings/market-images')
+        .then(res => res.json())
+        .then(data => {
+            const labels: Record<string, { label: string; description: string }> = {}
+            const urls: Record<string, string> = {}
+            for (const slot of (data.slots || [])) {
+                labels[slot.id] = { label: slot.label, description: slot.description || '' }
+                if (slot.currentPath) urls[slot.id] = slot.currentPath
+            }
+            marketImageCache = { labels, urls }
+            return marketImageCache
+        })
+        .catch(() => {
+            const empty: MarketImageCache = { labels: {}, urls: {} }
+            marketImageCache = empty
+            return empty
+        })
+    return marketImageCachePromise
+}
+
 interface PDFPreviewModalProps {
     open: boolean
     onOpenChange: (open: boolean) => void
@@ -49,6 +80,26 @@ export function PDFPreviewModal({
     const [convertedSubject, setConvertedSubject] = useState<ValuationProperty | null>(null)
     const [convertedComparables, setConvertedComparables] = useState<ValuationProperty[] | null>(null)
     const [convertedOverpriced, setConvertedOverpriced] = useState<ValuationProperty[] | null>(null)
+
+    // Lazy-loaded market image settings (only fetched when modal opens, cached)
+    const [lazyLabels, setLazyLabels] = useState<Record<string, { label: string; description: string }> | null>(null)
+    const [lazyUrls, setLazyUrls] = useState<Record<string, string> | null>(null)
+
+    useEffect(() => {
+        if (!open) return
+        // If parent provided settings, use them directly; otherwise lazy-load from cache/API
+        if (marketImageLabels && marketImageUrls && Object.keys(marketImageUrls).length > 0) return
+        let cancelled = false
+        loadMarketImageSettings().then(({ labels, urls }) => {
+            if (cancelled) return
+            setLazyLabels(labels)
+            setLazyUrls(urls)
+        })
+        return () => { cancelled = true }
+    }, [open, marketImageLabels, marketImageUrls])
+
+    const effectiveLabels = (marketImageLabels && Object.keys(marketImageLabels).length > 0) ? marketImageLabels : (lazyLabels || undefined)
+    const effectiveUrls = (marketImageUrls && Object.keys(marketImageUrls).length > 0) ? marketImageUrls : (lazyUrls || undefined)
 
     // Convert images when modal opens
     useEffect(() => {
@@ -99,8 +150,8 @@ export function PDFPreviewModal({
                     comparables={readyComparables}
                     valuationResult={valuationResult}
                     overpriced={readyOverpriced}
-                    marketImageLabels={marketImageLabels}
-                    marketImageUrls={marketImageUrls}
+                    marketImageLabels={effectiveLabels}
+                    marketImageUrls={effectiveUrls}
                 />
             )
             const blob = await pdf(doc).toBlob()
