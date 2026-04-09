@@ -144,6 +144,22 @@ export function buildReportHtml(data: ReportData): string {
         </tr>
       </table>
 
+      ${data.commercial_actions ? `
+      <!-- Divider -->
+      <div style="border-top: 2px solid #f3f4f6; margin: 0 0 28px 0;"></div>
+
+      <!-- Commercial Actions -->
+      <h2 style="color: #111827; font-size: 17px; margin: 0 0 16px 0; font-weight: 700;">&#9733; Acciones Comerciales</h2>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 32px;" cellpadding="0" cellspacing="0">
+        <tr>
+          ${kpiCard('Tasaciones Solicitadas', String(data.commercial_actions.tasaciones_solicitadas), '#eff6ff', '#1d4ed8')}
+          ${kpiCard('Tasaciones Coordinadas', String(data.commercial_actions.tasaciones_coordinadas), '#fefce8', '#d97706')}
+          ${kpiCard('Tasaciones Realizadas', String(data.commercial_actions.tasaciones_realizadas), '#f0fdf4', '#15803d')}
+          ${kpiCard('Captaciones', String(data.commercial_actions.captaciones), '#faf5ff', '#7c3aed')}
+        </tr>
+      </table>
+      ` : ''}
+
       <!-- Divider -->
       <div style="border-top: 2px solid #f3f4f6; margin: 0 0 28px 0;"></div>
 
@@ -223,5 +239,13 @@ export function buildReportSubject(data: ReportData): string {
     weekly: 'Semanal',
     monthly: 'Mensual',
   }
-  return `${typeLabels[data.type]} Marketing — ${data.meta.total_leads} leads | CPL ${data.meta.average_cost_per_lead !== null ? formatCurrency(data.meta.average_cost_per_lead) : 'N/A'} | ${formatDate(data.date_to)}`
+  const parts = [`${data.meta.total_leads} leads`]
+  if (data.commercial_actions) {
+    const ca = data.commercial_actions
+    if (ca.tasaciones_coordinadas > 0) parts.push(`${ca.tasaciones_coordinadas} tasac. coord.`)
+    if (ca.tasaciones_realizadas > 0) parts.push(`${ca.tasaciones_realizadas} tasac. realiz.`)
+    if (ca.captaciones > 0) parts.push(`${ca.captaciones} captac.`)
+  }
+  parts.push(`CPL ${data.meta.average_cost_per_lead !== null ? formatCurrency(data.meta.average_cost_per_lead) : 'N/A'}`)
+  return `${typeLabels[data.type]} Marketing — ${parts.join(' | ')} | ${formatDate(data.date_to)}`
 }

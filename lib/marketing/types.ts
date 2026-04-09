@@ -72,6 +72,13 @@ export interface GHLPipelinesResponse {
   pipelines: GHLPipeline[]
 }
 
+export interface GHLCustomField {
+  id: string
+  key: string
+  value: string
+  field_value?: string
+}
+
 export interface GHLOpportunity {
   id: string
   name: string
@@ -85,6 +92,7 @@ export interface GHLOpportunity {
     email?: string
     phone?: string
   }
+  customFields?: GHLCustomField[]
   createdAt: string
   updatedAt: string
 }
@@ -120,6 +128,13 @@ export interface GHLCallStats {
   missed_calls: number
   total_duration_seconds: number
   average_duration_seconds: number
+}
+
+export interface GHLCommercialActions {
+  tasaciones_solicitadas: number
+  tasaciones_coordinadas: number
+  tasaciones_realizadas: number
+  captaciones: number
 }
 
 // ============================================================
@@ -160,6 +175,7 @@ export interface ReportData {
   meta: MetaSummary
   pipelines: PipelineSummary[]
   call_stats?: GHLCallStats
+  commercial_actions?: GHLCommercialActions
   meta_token_expires_at?: number | null
 }
 

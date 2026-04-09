@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { buildPipelineSnapshot, savePipelineSnapshot, getStoredPipelineData, fetchCallStats } from '@/lib/marketing/ghl'
+import { buildFullGHLSnapshot, savePipelineSnapshot, saveCommercialActions, getStoredPipelineData, getStoredCommercialActions, fetchCallStats } from '@/lib/marketing/ghl'
 
 export const maxDuration = 30
 
@@ -20,12 +20,13 @@ export async function GET(request: Request): Promise<Response> {
       )
     }
 
-    const [data, callStats] = await Promise.all([
+    const [data, callStats, commercialActions] = await Promise.all([
       getStoredPipelineData(from, to),
       fetchCallStats(from, to).catch(() => null),
+      getStoredCommercialActions(from, to).catch(() => null),
     ])
 
-    return NextResponse.json({ data, call_stats: callStats })
+    return NextResponse.json({ data, call_stats: callStats, commercial_actions: commercialActions })
   } catch (error) {
     console.error('GHL GET error:', error)
     return NextResponse.json(
@@ -47,13 +48,17 @@ export async function POST(request: Request): Promise<Response> {
     const dateFrom = body.from || body.date || today
     const dateTo = body.to || body.date || today
 
-    const snapshots = await buildPipelineSnapshot(dateFrom, dateTo)
-    await savePipelineSnapshot(snapshots)
+    const { stageSnapshots, commercialActions } = await buildFullGHLSnapshot(dateFrom, dateTo)
+    await Promise.all([
+      savePipelineSnapshot(stageSnapshots),
+      saveCommercialActions(dateTo, commercialActions),
+    ])
 
     return NextResponse.json({
       success: true,
-      count: snapshots.length,
-      data: snapshots,
+      count: stageSnapshots.length,
+      data: stageSnapshots,
+      commercial_actions: commercialActions,
     })
   } catch (error) {
     console.error('GHL POST error:', error)

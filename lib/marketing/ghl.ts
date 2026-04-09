@@ -6,10 +6,23 @@ import type {
   GHLOpportunitiesResponse,
   GHLStageSnapshot,
   GHLCallStats,
+  GHLCommercialActions,
 } from './types'
 
 const GHL_API_BASE = 'https://services.leadconnectorhq.com'
 const TARGET_PIPELINE_NAME = '🟢 GESTIÓN COMERCIAL - PROPIETARIOS'
+
+/**
+ * Custom field keys for commercial actions tracking.
+ * These must match the custom fields created in GHL admin.
+ * We use .includes() matching since GHL may prefix keys with "contact." or "opportunity."
+ */
+const COMMERCIAL_ACTION_FIELDS = {
+  tasaciones_solicitadas: 'fecha_solicitud_tasacin',
+  tasaciones_coordinadas: 'fecha_coordinacin_tasacin',
+  tasaciones_realizadas: 'fecha_realizacin_tasacin',
+  captaciones: 'fecha_de_captacin_de_propiedad',
+} as const
 
 function getGHLConfig() {
   const apiKey = process.env.GHL_API_KEY
@@ -93,15 +106,26 @@ export async function fetchOpportunitiesByPipeline(pipelineId: string) {
 }
 
 /**
- * Build a snapshot of pipeline stages with total counts AND new contacts for a date range
+ * Build a full GHL snapshot: pipeline stages + commercial actions from custom fields.
+ * Single API call to avoid duplicating requests.
  */
-export async function buildPipelineSnapshot(dateFrom: string, dateTo: string): Promise<GHLStageSnapshot[]> {
+export async function buildFullGHLSnapshot(dateFrom: string, dateTo: string): Promise<{
+  stageSnapshots: GHLStageSnapshot[]
+  commercialActions: GHLCommercialActions
+}> {
   const allPipelines = await fetchPipelines()
   const pipelines = allPipelines.filter(p => p.name === TARGET_PIPELINE_NAME)
 
+  const commercialActions: GHLCommercialActions = {
+    tasaciones_solicitadas: 0,
+    tasaciones_coordinadas: 0,
+    tasaciones_realizadas: 0,
+    captaciones: 0,
+  }
+
   if (pipelines.length === 0) {
     console.warn(`Pipeline "${TARGET_PIPELINE_NAME}" not found`)
-    return []
+    return { stageSnapshots: [], commercialActions }
   }
 
   const snapshots: GHLStageSnapshot[] = []
@@ -118,15 +142,29 @@ export async function buildPipelineSnapshot(dateFrom: string, dateTo: string): P
     }
 
     for (const opp of opportunities) {
+      // Stage counting
       const current = stageCounts.get(opp.pipelineStageId)
       if (current) {
         current.count++
         current.value += opp.monetaryValue || 0
 
-        // Check if created within the date range
         const createdAt = new Date(opp.createdAt)
         if (createdAt >= startOfDay && createdAt <= endOfDay) {
           current.newCount++
+        }
+      }
+
+      // Commercial actions from custom fields
+      const customFields = opp.customFields || []
+      for (const field of customFields) {
+        const dateVal = (field.value || '').substring(0, 10) // Normalize to YYYY-MM-DD
+        if (!dateVal || dateVal < dateFrom || dateVal > dateTo) continue
+
+        for (const [actionKey, fieldKeyFragment] of Object.entries(COMMERCIAL_ACTION_FIELDS)) {
+          if (field.key.includes(fieldKeyFragment)) {
+            commercialActions[actionKey as keyof GHLCommercialActions]++
+            break
+          }
         }
       }
     }
@@ -146,7 +184,15 @@ export async function buildPipelineSnapshot(dateFrom: string, dateTo: string): P
     }
   }
 
-  return snapshots
+  return { stageSnapshots: snapshots, commercialActions }
+}
+
+/**
+ * Wrapper for backward compatibility — returns only stage snapshots
+ */
+export async function buildPipelineSnapshot(dateFrom: string, dateTo: string): Promise<GHLStageSnapshot[]> {
+  const { stageSnapshots } = await buildFullGHLSnapshot(dateFrom, dateTo)
+  return stageSnapshots
 }
 
 /**
@@ -274,6 +320,60 @@ export async function savePipelineSnapshot(snapshots: GHLStageSnapshot[]): Promi
   if (error) {
     throw new Error(`Failed to save GHL snapshots: ${error.message}`)
   }
+}
+
+/**
+ * Save commercial actions snapshot to Supabase (upsert by date)
+ */
+export async function saveCommercialActions(date: string, actions: GHLCommercialActions): Promise<void> {
+  const supabase = getSupabaseAdmin()
+
+  const { error } = await supabase
+    .from('ghl_commercial_actions_daily')
+    .upsert({
+      date,
+      tasaciones_solicitadas: actions.tasaciones_solicitadas,
+      tasaciones_coordinadas: actions.tasaciones_coordinadas,
+      tasaciones_realizadas: actions.tasaciones_realizadas,
+      captaciones: actions.captaciones,
+    }, { onConflict: 'date' })
+
+  if (error) {
+    throw new Error(`Failed to save commercial actions: ${error.message}`)
+  }
+}
+
+/**
+ * Get stored commercial actions from Supabase for a date range (summed)
+ */
+export async function getStoredCommercialActions(startDate: string, endDate: string): Promise<GHLCommercialActions> {
+  const supabase = getSupabaseAdmin()
+
+  const { data, error } = await supabase
+    .from('ghl_commercial_actions_daily')
+    .select('*')
+    .gte('date', startDate)
+    .lte('date', endDate)
+
+  if (error) {
+    throw new Error(`Failed to fetch commercial actions: ${error.message}`)
+  }
+
+  const result: GHLCommercialActions = {
+    tasaciones_solicitadas: 0,
+    tasaciones_coordinadas: 0,
+    tasaciones_realizadas: 0,
+    captaciones: 0,
+  }
+
+  for (const row of data || []) {
+    result.tasaciones_solicitadas += row.tasaciones_solicitadas || 0
+    result.tasaciones_coordinadas += row.tasaciones_coordinadas || 0
+    result.tasaciones_realizadas += row.tasaciones_realizadas || 0
+    result.captaciones += row.captaciones || 0
+  }
+
+  return result
 }
 
 /**

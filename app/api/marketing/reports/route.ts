@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { fetchDailyInsights, fetchInsightsRange, saveDailySnapshot, checkTokenExpiry } from '@/lib/marketing/meta-ads'
-import { buildPipelineSnapshot, savePipelineSnapshot, fetchCallStats } from '@/lib/marketing/ghl'
+import { buildFullGHLSnapshot, savePipelineSnapshot, saveCommercialActions, fetchCallStats } from '@/lib/marketing/ghl'
 import { buildReportData } from '@/lib/marketing/aggregator'
 import { sendReport } from '@/lib/marketing/send-report'
-import type { ReportType, MetaDailySnapshot, GHLStageSnapshot, GHLCallStats } from '@/lib/marketing/types'
+import type { ReportType, MetaDailySnapshot, GHLStageSnapshot, GHLCallStats, GHLCommercialActions } from '@/lib/marketing/types'
 
 export const maxDuration = 60
 
@@ -64,6 +64,7 @@ export async function POST(request: Request): Promise<Response> {
     let metaSnapshots: MetaDailySnapshot[] = []
     let pipelineSnapshots: GHLStageSnapshot[] = []
     let callStats: GHLCallStats | undefined
+    let commercialActions: GHLCommercialActions | undefined
 
     try {
       if (dateFrom === dateTo) {
@@ -79,8 +80,13 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     try {
-      pipelineSnapshots = await buildPipelineSnapshot(dateFrom, dateTo)
-      await savePipelineSnapshot(pipelineSnapshots)
+      const { stageSnapshots, commercialActions: ca } = await buildFullGHLSnapshot(dateFrom, dateTo)
+      pipelineSnapshots = stageSnapshots
+      commercialActions = ca
+      await Promise.all([
+        savePipelineSnapshot(stageSnapshots),
+        saveCommercialActions(dateTo, ca),
+      ])
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error'
       console.error('Failed to fetch GHL pipeline data:', msg)
@@ -99,7 +105,7 @@ export async function POST(request: Request): Promise<Response> {
     const tokenExpiresAt = await checkTokenExpiry()
 
     // Build and send report
-    const reportData = buildReportData(type, dateFrom, dateTo, metaSnapshots, pipelineSnapshots, tokenExpiresAt, callStats)
+    const reportData = buildReportData(type, dateFrom, dateTo, metaSnapshots, pipelineSnapshots, tokenExpiresAt, callStats, commercialActions)
     const result = await sendReport(reportData)
 
     return NextResponse.json({

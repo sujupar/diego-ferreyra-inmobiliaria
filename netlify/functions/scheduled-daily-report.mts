@@ -65,7 +65,11 @@ export default async function handler() {
     meta_ads: { ok: false },
     ghl_pipeline: { ok: false },
     ghl_calls: { ok: false },
+    ghl_commercial: { ok: false },
   }
+
+  // Commercial actions tracking
+  const commercialActions = { tasaciones_solicitadas: 0, tasaciones_coordinadas: 0, tasaciones_realizadas: 0, captaciones: 0 }
 
   // 1. Fetch Meta Ads data
   let metaSnapshots: Array<{
@@ -187,6 +191,17 @@ export default async function handler() {
               sc.newCount++
             }
           }
+
+          // Commercial actions from custom fields
+          const cf = (opp.customFields as Array<{key: string, value: string}>) || []
+          for (const field of cf) {
+            const dateVal = (field.value || '').substring(0, 10)
+            if (dateVal !== dateStr) continue
+            if (field.key.includes('fecha_solicitud_tasacin')) commercialActions.tasaciones_solicitadas++
+            else if (field.key.includes('fecha_coordinacin_tasacin')) commercialActions.tasaciones_coordinadas++
+            else if (field.key.includes('fecha_realizacin_tasacin')) commercialActions.tasaciones_realizadas++
+            else if (field.key.includes('fecha_de_captacin_de_propiedad')) commercialActions.captaciones++
+          }
         }
 
         const rows = Array.from(stageCounts.entries()).map(([stageId, sc]) => ({
@@ -209,6 +224,14 @@ export default async function handler() {
 
         await supabase.from('ghl_pipeline_daily').upsert(rows, { onConflict: 'date,pipeline_id,stage_id' })
         dataSourceStatus.ghl_pipeline = { ok: true, count: allOpportunities.length }
+
+        // Save commercial actions
+        await supabase.from('ghl_commercial_actions_daily').upsert(
+          { date: dateStr, ...commercialActions },
+          { onConflict: 'date' }
+        )
+        dataSourceStatus.ghl_commercial = { ok: true }
+        console.log(`[Daily Report] Commercial actions: ${JSON.stringify(commercialActions)}`)
       }
     } else {
       const errorBody = await pipelinesRes.text()
@@ -477,6 +500,27 @@ export default async function handler() {
         <p style="color:#7e22ce;font-size:28px;font-weight:700;margin:4px 0 0;">${avgCtr.toFixed(2)}%</p>
       </div>
     </div>
+    <div style="border-top:2px solid #f3f4f6;margin:0 0 24px;"></div>
+    <h2 style="color:#1f2937;font-size:18px;margin:0 0 12px;">&#9733; Acciones Comerciales</h2>
+    <div style="display:flex;gap:12px;margin-bottom:32px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:140px;background:#eff6ff;border-radius:8px;padding:16px;text-align:center;">
+        <p style="color:#6b7280;font-size:11px;margin:0;text-transform:uppercase;">Tasaciones Solicitadas</p>
+        <p style="color:#1d4ed8;font-size:28px;font-weight:700;margin:4px 0 0;">${commercialActions.tasaciones_solicitadas}</p>
+      </div>
+      <div style="flex:1;min-width:140px;background:#fefce8;border-radius:8px;padding:16px;text-align:center;">
+        <p style="color:#6b7280;font-size:11px;margin:0;text-transform:uppercase;">Tasaciones Coordinadas</p>
+        <p style="color:#d97706;font-size:28px;font-weight:700;margin:4px 0 0;">${commercialActions.tasaciones_coordinadas}</p>
+      </div>
+      <div style="flex:1;min-width:140px;background:#f0fdf4;border-radius:8px;padding:16px;text-align:center;">
+        <p style="color:#6b7280;font-size:11px;margin:0;text-transform:uppercase;">Tasaciones Realizadas</p>
+        <p style="color:#15803d;font-size:28px;font-weight:700;margin:4px 0 0;">${commercialActions.tasaciones_realizadas}</p>
+      </div>
+      <div style="flex:1;min-width:140px;background:#faf5ff;border-radius:8px;padding:16px;text-align:center;">
+        <p style="color:#6b7280;font-size:11px;margin:0;text-transform:uppercase;">Captaciones</p>
+        <p style="color:#7c3aed;font-size:28px;font-weight:700;margin:4px 0 0;">${commercialActions.captaciones}</p>
+      </div>
+    </div>
+    <div style="border-top:2px solid #f3f4f6;margin:0 0 24px;"></div>
     <h2 style="color:#1f2937;font-size:18px;margin:0 0 12px;">Meta Ads</h2>
     ${metaSnapshots.length > 0 ? `<table style="width:100%;border-collapse:collapse;margin-bottom:32px;"><thead><tr style="background:#f3f4f6;">
       <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;">Campana</th>
@@ -498,7 +542,12 @@ export default async function handler() {
   <div style="text-align:center;padding:16px;"><p style="color:#9ca3af;font-size:12px;margin:0;">Reporte generado automaticamente</p></div>
 </div></body></html>`
 
-  const subject = `${subjectPrefix}Diario Marketing — ${totalLeads} leads | CPL ${avgCpl !== null ? fmt(avgCpl) : 'N/A'} | ${fmtDate}`
+  const caSubjectParts = []
+  if (commercialActions.tasaciones_coordinadas > 0) caSubjectParts.push(`${commercialActions.tasaciones_coordinadas} tasac. coord.`)
+  if (commercialActions.tasaciones_realizadas > 0) caSubjectParts.push(`${commercialActions.tasaciones_realizadas} tasac. realiz.`)
+  if (commercialActions.captaciones > 0) caSubjectParts.push(`${commercialActions.captaciones} captac.`)
+  const caSubject = caSubjectParts.length > 0 ? ` | ${caSubjectParts.join(' | ')}` : ''
+  const subject = `${subjectPrefix}Diario Marketing — ${totalLeads} leads${caSubject} | CPL ${avgCpl !== null ? fmt(avgCpl) : 'N/A'} | ${fmtDate}`
 
   // 6. Send email via Gmail SMTP
   try {

@@ -37,6 +37,13 @@ interface CallStats {
   average_duration_seconds: number
 }
 
+interface CommercialActions {
+  tasaciones_solicitadas: number
+  tasaciones_coordinadas: number
+  tasaciones_realizadas: number
+  captaciones: number
+}
+
 interface ReportLogRow {
   id: string
   report_type: string
@@ -73,6 +80,7 @@ export default function MarketingPage() {
   const [metaData, setMetaData] = useState<MetaRow[]>([])
   const [pipelineData, setPipelineData] = useState<PipelineRow[]>([])
   const [callStats, setCallStats] = useState<CallStats | null>(null)
+  const [commercialActions, setCommercialActions] = useState<CommercialActions | null>(null)
   const [reportLog, setReportLog] = useState<ReportLogRow[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -103,6 +111,7 @@ export default function MarketingPage() {
         const ghl = await ghlRes.json()
         setPipelineData(ghl.data || [])
         setCallStats(ghl.call_stats || null)
+        setCommercialActions(ghl.commercial_actions || null)
       }
       if (logRes.ok) {
         const log = await logRes.json()
@@ -340,6 +349,38 @@ export default function MarketingPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Commercial Actions */}
+          {commercialActions && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <span className="text-lg">&#9733;</span>
+                  Acciones Comerciales
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                  <div className="rounded-lg bg-blue-50 p-4 text-center dark:bg-blue-950">
+                    <p className="text-xs font-medium uppercase text-muted-foreground">Tasaciones Solicitadas</p>
+                    <p className="mt-1 text-3xl font-bold text-blue-600">{commercialActions.tasaciones_solicitadas}</p>
+                  </div>
+                  <div className="rounded-lg bg-amber-50 p-4 text-center dark:bg-amber-950">
+                    <p className="text-xs font-medium uppercase text-muted-foreground">Tasaciones Coordinadas</p>
+                    <p className="mt-1 text-3xl font-bold text-amber-600">{commercialActions.tasaciones_coordinadas}</p>
+                  </div>
+                  <div className="rounded-lg bg-green-50 p-4 text-center dark:bg-green-950">
+                    <p className="text-xs font-medium uppercase text-muted-foreground">Tasaciones Realizadas</p>
+                    <p className="mt-1 text-3xl font-bold text-green-600">{commercialActions.tasaciones_realizadas}</p>
+                  </div>
+                  <div className="rounded-lg bg-purple-50 p-4 text-center dark:bg-purple-950">
+                    <p className="text-xs font-medium uppercase text-muted-foreground">Captaciones</p>
+                    <p className="mt-1 text-3xl font-bold text-purple-600">{commercialActions.captaciones}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Meta Ads Campaigns Table */}
           <Card>

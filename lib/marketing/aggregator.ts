@@ -4,6 +4,7 @@ import type {
   PipelineSummary,
   GHLStageSnapshot,
   GHLCallStats,
+  GHLCommercialActions,
   ReportData,
   ReportType,
 } from './types'
@@ -128,7 +129,8 @@ export function buildReportData(
   metaSnapshots: MetaDailySnapshot[],
   pipelineSnapshots: GHLStageSnapshot[],
   tokenExpiresAt?: number | null,
-  callStats?: GHLCallStats
+  callStats?: GHLCallStats,
+  commercialActions?: GHLCommercialActions
 ): ReportData {
   return {
     type,
@@ -138,5 +140,6 @@ export function buildReportData(
     pipelines: aggregatePipelineData(pipelineSnapshots),
     meta_token_expires_at: tokenExpiresAt,
     call_stats: callStats,
+    commercial_actions: commercialActions,
   }
 }

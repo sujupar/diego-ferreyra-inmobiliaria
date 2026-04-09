@@ -182,6 +182,36 @@ export interface Database {
                 }
                 Relationships: []
             }
+            ghl_commercial_actions_daily: {
+                Row: {
+                    id: string
+                    date: string
+                    tasaciones_solicitadas: number
+                    tasaciones_coordinadas: number
+                    tasaciones_realizadas: number
+                    captaciones: number
+                    fetched_at: string
+                }
+                Insert: {
+                    id?: string
+                    date: string
+                    tasaciones_solicitadas?: number
+                    tasaciones_coordinadas?: number
+                    tasaciones_realizadas?: number
+                    captaciones?: number
+                    fetched_at?: string
+                }
+                Update: {
+                    id?: string
+                    date?: string
+                    tasaciones_solicitadas?: number
+                    tasaciones_coordinadas?: number
+                    tasaciones_realizadas?: number
+                    captaciones?: number
+                    fetched_at?: string
+                }
+                Relationships: []
+            }
             email_report_log: {
                 Row: {
                     id: string
