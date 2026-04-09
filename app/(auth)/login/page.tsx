@@ -38,7 +38,7 @@ function LoginPage() {
         setError(null)
 
         const supabase = createClient()
-        const { error: signInError } = await supabase.auth.signInWithPassword({
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({
             email,
             password,
         })
@@ -53,8 +53,13 @@ function LoginPage() {
             return
         }
 
-        router.push(redirectTo)
-        router.refresh()
+        if (!data.session) {
+            setError('No se pudo crear la sesión. Verifica tus credenciales.')
+            setLoading(false)
+            return
+        }
+
+        window.location.href = redirectTo
     }
 
     return (

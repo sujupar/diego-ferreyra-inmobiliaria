@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 // Routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/accept-invite']
+const PUBLIC_ROUTES = ['/login', '/accept-invite', '/api/']
 
 export async function updateSession(request: NextRequest) {
     let supabaseResponse = NextResponse.next({
@@ -32,25 +32,22 @@ export async function updateSession(request: NextRequest) {
         }
     )
 
-    const { data: { user } } = await supabase.auth.getUser()
     const pathname = request.nextUrl.pathname
 
-    // Check if current route is public
+    // Check if current route is public — do this BEFORE calling getUser to avoid redirect loops
     const isPublicRoute = PUBLIC_ROUTES.some(route => pathname.startsWith(route))
+    if (isPublicRoute) {
+        return supabaseResponse
+    }
 
-    // If not authenticated and trying to access protected route, redirect to login
-    if (!user && !isPublicRoute) {
+    const { data: { user } } = await supabase.auth.getUser()
+
+    // If not authenticated, redirect to login
+    if (!user) {
         const loginUrl = request.nextUrl.clone()
         loginUrl.pathname = '/login'
         loginUrl.searchParams.set('redirectTo', pathname)
         return NextResponse.redirect(loginUrl)
-    }
-
-    // If authenticated and trying to access login/accept-invite, redirect to dashboard
-    if (user && pathname === '/login') {
-        const dashboardUrl = request.nextUrl.clone()
-        dashboardUrl.pathname = '/'
-        return NextResponse.redirect(dashboardUrl)
     }
 
     return supabaseResponse
