@@ -10,6 +10,7 @@ export interface SaveAppraisalInput {
     valuationResult: ValuationResult
     overpriced?: ScrapedProperty[]
     notes?: string
+    userId?: string
 }
 
 export interface AppraisalSummary {
@@ -62,12 +63,13 @@ interface ComparableRow {
 
 export async function saveAppraisal(input: SaveAppraisalInput): Promise<string> {
     const supabase = createClient()
-    const { subject, comparables, valuationResult, notes } = input
+    const { subject, comparables, valuationResult, notes, userId } = input
 
     // Insert main appraisal
     const { data: appraisal, error: appraisalError } = await supabase
         .from('appraisals')
         .insert({
+            user_id: userId || null,
             property_title: subject.title,
             property_location: subject.location,
             property_description: subject.description,

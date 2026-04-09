@@ -9,9 +9,87 @@ export type Json =
 export interface Database {
     public: {
         Tables: {
+            profiles: {
+                Row: {
+                    id: string
+                    email: string
+                    full_name: string
+                    role: string
+                    phone: string | null
+                    avatar_url: string | null
+                    is_active: boolean
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id: string
+                    email: string
+                    full_name: string
+                    role: string
+                    phone?: string | null
+                    avatar_url?: string | null
+                    is_active?: boolean
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    email?: string
+                    full_name?: string
+                    role?: string
+                    phone?: string | null
+                    avatar_url?: string | null
+                    is_active?: boolean
+                    created_at?: string
+                    updated_at?: string
+                }
+                Relationships: []
+            }
+            invitations: {
+                Row: {
+                    id: string
+                    email: string
+                    role: string
+                    invited_by: string | null
+                    token: string
+                    accepted_at: string | null
+                    expires_at: string
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    email: string
+                    role: string
+                    invited_by?: string | null
+                    token?: string
+                    accepted_at?: string | null
+                    expires_at?: string
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    email?: string
+                    role?: string
+                    invited_by?: string | null
+                    token?: string
+                    accepted_at?: string | null
+                    expires_at?: string
+                    created_at?: string
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "invitations_invited_by_fkey"
+                        columns: ["invited_by"]
+                        isOneToOne: false
+                        referencedRelation: "profiles"
+                        referencedColumns: ["id"]
+                    }
+                ]
+            }
             appraisals: {
                 Row: {
                     id: string
+                    user_id: string | null
                     property_title: string | null
                     property_location: string
                     property_description: string | null
@@ -32,6 +110,7 @@ export interface Database {
                 }
                 Insert: {
                     id?: string
+                    user_id?: string | null
                     property_title?: string | null
                     property_location: string
                     property_description?: string | null
@@ -52,6 +131,7 @@ export interface Database {
                 }
                 Update: {
                     id?: string
+                    user_id?: string | null
                     property_title?: string | null
                     property_location?: string
                     property_description?: string | null
