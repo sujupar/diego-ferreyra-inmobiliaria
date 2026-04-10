@@ -207,41 +207,39 @@ export default function MetricsPage() {
             </div>
           </div>
 
-          {/* Etapas del Pipeline */}
-          {pipelineStages.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Etapas del Pipeline
-              </h2>
+          {/* Resumen del Pipeline Interno */}
+          <div>
+            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Resumen Interno
+            </h2>
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
               <Card>
                 <CardContent className="pt-6">
-                  <div className="space-y-3">
-                    {pipelineStages.map((stage, i) => {
-                      const maxCount = Math.max(...pipelineStages.map(s => s.new_contacts || 0), 1)
-                      const pct = maxCount > 0 ? ((stage.new_contacts || 0) / maxCount) * 100 : 0
-                      return (
-                        <div key={i} className="flex items-center gap-3">
-                          <span className="w-40 truncate text-sm text-muted-foreground">{stage.stage_name}</span>
-                          <div className="flex-1">
-                            <div className="h-6 rounded bg-muted">
-                              <div
-                                className="h-6 rounded bg-purple-500 flex items-center px-2 text-xs font-medium text-white transition-all"
-                                style={{ width: `${Math.max(pct, (stage.new_contacts || 0) > 0 ? 8 : 3)}%` }}
-                              >
-                                {stage.new_contacts || 0}
-                              </div>
-                            </div>
-                          </div>
-                          <span className="w-12 text-right text-xs text-muted-foreground">({stage.contact_count})</span>
-                        </div>
-                      )
-                    })}
-                  </div>
+                  <p className="text-xs font-medium uppercase text-muted-foreground">Tasaciones por Embudo</p>
+                  <p className="text-2xl font-bold text-blue-600 mt-1">{ca?.tasaciones_solicitadas ?? 0}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">Conversion Tasacion → Captacion</p>
+                  <p className="text-2xl font-bold text-green-600 mt-1">
+                    {(ca?.tasaciones_realizadas ?? 0) > 0
+                      ? `${Math.round(((ca?.captaciones ?? 0) / (ca?.tasaciones_realizadas ?? 1)) * 100)}%`
+                      : '—'}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">CPL promedio</p>
+                  <p className="text-2xl font-bold text-amber-600 mt-1">
+                    {metaLeads > 0 ? `$${Math.round(metaSpend / metaLeads).toLocaleString('es-AR')}` : '—'}
+                  </p>
                 </CardContent>
               </Card>
             </div>
-          )}
+          </div>
         </>
       )}
     </div>

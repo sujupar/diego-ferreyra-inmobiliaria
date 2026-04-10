@@ -409,41 +409,6 @@ function NewAppraisalPageContent() {
                 </p>
             </div>
 
-            {/* Origin & Assignment */}
-            {!editMode && (
-              <section className="rounded-xl border bg-card p-6 space-y-4">
-                <h2 className="text-lg font-semibold">Datos Iniciales</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Origen *</label>
-                    <select
-                      value={origin}
-                      onChange={e => setOrigin(e.target.value)}
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    >
-                      <option value="">Seleccionar origen...</option>
-                      <option value="embudo">Embudo (Landing Page)</option>
-                      <option value="referido">Referido</option>
-                      <option value="historico">Historico</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Asesor asignado</label>
-                    <select
-                      value={assignedTo}
-                      onChange={e => setAssignedTo(e.target.value)}
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    >
-                      <option value="">Sin asignar</option>
-                      {advisors.map(a => (
-                        <option key={a.id} value={a.id}>{a.full_name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </section>
-            )}
-
             {/* Step 1: Subject Property - Manual Entry */}
             <section className="space-y-6">
                 <div className="flex items-center gap-4">

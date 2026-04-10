@@ -1,38 +1,77 @@
 import Link from 'next/link'
 import { getUser, isImpersonating } from '@/lib/auth/get-user'
 import { redirect } from 'next/navigation'
-import { hasPermission } from '@/lib/auth/roles'
+import { hasPermission, hasAnyPermission } from '@/lib/auth/roles'
 import { UserMenu } from '@/components/auth/UserMenu'
 import { ImpersonationBanner } from '@/components/auth/ImpersonationBanner'
+import { DashboardNav } from './DashboardNav'
 import { Role } from '@/types/auth.types'
 import { Permission } from '@/lib/auth/roles'
 
-interface NavItem {
-    href: string
+interface NavSection {
     label: string
-    permission?: Permission
-    roles?: Role[]
+    href?: string
+    items?: Array<{ href: string; label: string }>
 }
 
-const NAV_ITEMS: NavItem[] = [
-    { href: '/pipeline', label: 'Pipeline' },
-    { href: '/pipeline/new', label: 'Agendar Tasacion', roles: ['admin', 'coordinador'] },
-    { href: '/appraisal/new', label: 'Nueva Tasacion', permission: 'appraisal.create' },
-    { href: '/appraisals', label: 'Historial' },
-    { href: '/properties', label: 'Propiedades', permission: 'properties.view_all' },
-    { href: '/properties/review', label: 'Revision Legal', permission: 'properties.review' },
-    { href: '/metrics', label: 'Metricas', permission: 'metrics.view' },
-    { href: '/marketing', label: 'Marketing', permission: 'metrics.view' },
-    { href: '/settings', label: 'Configuracion', permission: 'settings.manage' },
-    { href: '/users', label: 'Usuarios', permission: 'users.manage' },
-]
+function getNavSections(role: Role): NavSection[] {
+    const can = (p: Permission) => hasPermission(role, p)
 
-function getVisibleNavItems(role: Role): NavItem[] {
-    return NAV_ITEMS.filter(item => {
-        if (item.roles) return item.roles.includes(role)
-        if (item.permission) return hasPermission(role, item.permission)
-        return true
-    })
+    switch (role) {
+        case 'abogado':
+            return [
+                { label: 'Revision Legal', href: '/properties/review' },
+                { label: 'Historial', href: '/appraisals' },
+            ]
+
+        case 'asesor':
+            return [
+                { label: 'Mi Pipeline', href: '/pipeline' },
+                { label: 'Nueva Tasacion', href: '/appraisal/new' },
+                { label: 'Mis Contactos', href: '/contacts' },
+                { label: 'Mis Propiedades', href: '/properties' },
+            ]
+
+        case 'coordinador':
+            return [
+                { label: 'Pipeline', href: '/pipeline' },
+                { label: 'Tasaciones', items: [
+                    { href: '/pipeline/new', label: 'Agendar' },
+                    { href: '/appraisals', label: 'Historial' },
+                ]},
+                { label: 'Propiedades', items: [
+                    { href: '/properties', label: 'Listado' },
+                    { href: '/properties/new', label: 'Nueva' },
+                ]},
+                { label: 'Contactos', href: '/contacts' },
+            ]
+
+        default: // admin, dueno
+            return [
+                { label: 'Pipeline', href: '/pipeline' },
+                { label: 'Tasaciones', items: [
+                    { href: '/pipeline/new', label: 'Agendar' },
+                    { href: '/appraisal/new', label: 'Nueva Tasacion' },
+                    { href: '/appraisals', label: 'Historial' },
+                ]},
+                { label: 'Propiedades', items: [
+                    { href: '/properties', label: 'Listado' },
+                    { href: '/properties/new', label: 'Nueva' },
+                    ...(can('properties.review') ? [{ href: '/properties/review', label: 'Revision Legal' }] : []),
+                ]},
+                { label: 'Contactos', href: '/contacts' },
+                ...(can('metrics.view') ? [
+                    { label: 'Metricas', href: '/metrics' },
+                    { label: 'Marketing', href: '/marketing' },
+                ] : []),
+                ...(can('settings.manage') || can('users.manage') ? [{
+                    label: 'Admin', items: [
+                        ...(can('settings.manage') ? [{ href: '/settings', label: 'Configuracion' }] : []),
+                        ...(can('users.manage') ? [{ href: '/users', label: 'Usuarios' }] : []),
+                    ]
+                }] : []),
+            ]
+    }
 }
 
 export default async function DashboardLayout({
@@ -44,7 +83,7 @@ export default async function DashboardLayout({
     if (!user) redirect('/login')
 
     const impersonating = await isImpersonating()
-    const visibleNav = getVisibleNavItems(user.profile.role)
+    const navSections = getNavSections(user.profile.role)
 
     return (
         <div className="min-h-screen flex flex-col bg-secondary/30">
@@ -65,17 +104,7 @@ export default async function DashboardLayout({
                             />
                         </Link>
                     </div>
-                    <nav className="flex gap-6 items-center overflow-x-auto">
-                        {visibleNav.map(item => (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                className="text-sm font-medium hover:text-primary transition-colors text-muted-foreground whitespace-nowrap"
-                            >
-                                {item.label}
-                            </Link>
-                        ))}
-                    </nav>
+                    <DashboardNav sections={navSections} />
                     <UserMenu profile={user.profile} />
                 </div>
             </header>
