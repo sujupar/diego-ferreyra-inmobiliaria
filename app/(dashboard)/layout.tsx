@@ -19,6 +19,7 @@ const NAV_ITEMS: NavItem[] = [
     { href: '/appraisal/new', label: 'Nueva Tasacion', permission: 'appraisal.create' },
     { href: '/appraisals', label: 'Historial' },
     { href: '/properties', label: 'Propiedades', permission: 'properties.view_all' },
+    { href: '/properties/review', label: 'Revision Legal', permission: 'properties.review' },
     { href: '/metrics', label: 'Metricas', permission: 'metrics.view' },
     { href: '/marketing', label: 'Marketing', permission: 'metrics.view' },
     { href: '/settings', label: 'Configuracion', permission: 'settings.manage' },

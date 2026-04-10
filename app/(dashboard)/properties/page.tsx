@@ -1,123 +1,126 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import Link from 'next/link'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Building2, MapPin, Calendar, Loader2 } from 'lucide-react'
-import { getAppraisals, AppraisalSummary } from '@/lib/supabase/appraisals'
+import { Building2, Plus, MapPin, Calendar, Loader2, ChevronRight } from 'lucide-react'
 
-function formatCurrency(value: number, currency: string = 'USD'): string {
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: currency === 'ARS' ? 'ARS' : 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value)
+const STATUS_INFO: Record<string, { label: string; color: string }> = {
+  draft: { label: 'Borrador', color: 'bg-gray-400' },
+  pending_docs: { label: 'Pend. Docs', color: 'bg-amber-500' },
+  pending_photos: { label: 'Pend. Fotos', color: 'bg-orange-500' },
+  pending_review: { label: 'En Revision', color: 'bg-purple-500' },
+  approved: { label: 'Aprobada', color: 'bg-green-500' },
+  rejected: { label: 'Rechazada', color: 'bg-red-500' },
+  active: { label: 'Activa', color: 'bg-emerald-600' },
 }
 
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  })
+interface Property {
+  id: string
+  address: string
+  neighborhood: string
+  city: string
+  property_type: string
+  asking_price: number
+  currency: string
+  status: string
+  origin: string | null
+  photos: string[]
+  created_at: string
+}
+
+function formatCurrency(v: number, c: string = 'USD') {
+  return new Intl.NumberFormat('es-AR', { style: 'currency', currency: c === 'ARS' ? 'ARS' : 'USD', minimumFractionDigits: 0 }).format(v)
+}
+
+function formatDate(d: string) {
+  return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
 export default function PropertiesPage() {
-  const [properties, setProperties] = useState<AppraisalSummary[]>([])
+  const [properties, setProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(true)
-  const [totalCount, setTotalCount] = useState(0)
+  const [filterStatus, setFilterStatus] = useState<string>('')
 
   useEffect(() => {
-    getAppraisals(1, 50)
-      .then(({ data, count }) => {
-        setProperties(data)
-        setTotalCount(count)
-      })
-      .catch(err => console.error('Error loading properties:', err))
+    const url = filterStatus ? `/api/properties?status=${filterStatus}` : '/api/properties'
+    setLoading(true)
+    fetch(url)
+      .then(r => r.json())
+      .then(({ data }) => setProperties(data || []))
+      .catch(err => console.error(err))
       .finally(() => setLoading(false))
-  }, [])
+  }, [filterStatus])
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Propiedades</h1>
-          <p className="text-muted-foreground">
-            {totalCount} propiedad{totalCount !== 1 ? 'es' : ''} tasada{totalCount !== 1 ? 's' : ''}
-          </p>
+          <p className="text-muted-foreground">{properties.length} propiedad{properties.length !== 1 ? 'es' : ''}</p>
         </div>
+        <Link href="/properties/new">
+          <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nueva Propiedad</Button>
+        </Link>
+      </div>
+
+      {/* Status filter */}
+      <div className="flex gap-2 flex-wrap">
+        <Button variant={filterStatus === '' ? 'default' : 'outline'} size="sm" onClick={() => setFilterStatus('')}>Todas</Button>
+        {Object.entries(STATUS_INFO).map(([key, info]) => (
+          <Button key={key} variant={filterStatus === key ? 'default' : 'outline'} size="sm" onClick={() => setFilterStatus(key)}>
+            {info.label}
+          </Button>
+        ))}
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
+        <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
       ) : properties.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <Building2 className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-1">Sin propiedades</h3>
-            <p className="text-sm text-muted-foreground">
-              Las propiedades aparecen aqui cuando se realizan tasaciones.
-            </p>
+            <p className="text-sm text-muted-foreground mb-4">Crea tu primera propiedad captada.</p>
+            <Link href="/properties/new"><Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nueva Propiedad</Button></Link>
           </CardContent>
         </Card>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left">
-                <th className="pb-3 font-medium text-muted-foreground">Propiedad</th>
-                <th className="pb-3 font-medium text-muted-foreground">Ubicacion</th>
-                <th className="pb-3 text-right font-medium text-muted-foreground">Precio Publicacion</th>
-                <th className="pb-3 text-right font-medium text-muted-foreground">Comparables</th>
-                <th className="pb-3 text-right font-medium text-muted-foreground">Fecha</th>
-              </tr>
-            </thead>
-            <tbody>
-              {properties.map(prop => (
-                <tr key={prop.id} className="border-b last:border-0 hover:bg-muted/50">
-                  <td className="py-3">
-                    <div className="flex items-center gap-3">
-                      {prop.property_images?.[0] ? (
-                        <img
-                          src={prop.property_images[0]}
-                          alt=""
-                          className="h-10 w-10 rounded object-cover"
-                        />
-                      ) : (
-                        <div className="h-10 w-10 rounded bg-muted flex items-center justify-center">
-                          <Building2 className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                      )}
-                      <span className="font-medium truncate max-w-[250px]">
-                        {prop.property_title || 'Sin titulo'}
-                      </span>
+        <div className="space-y-3">
+          {properties.map(prop => {
+            const statusInfo = STATUS_INFO[prop.status] || { label: prop.status, color: 'bg-gray-400' }
+            return (
+              <Link key={prop.id} href={`/properties/${prop.id}`}>
+                <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
+                  <CardContent className="flex items-center gap-4 py-4">
+                    {prop.photos?.[0] ? (
+                      <img src={prop.photos[0]} alt="" className="h-14 w-14 rounded-lg object-cover" />
+                    ) : (
+                      <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center">
+                        <Building2 className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-medium truncate">{prop.address}</span>
+                        <Badge className={`text-xs text-white ${statusInfo.color}`}>{statusInfo.label}</Badge>
+                        {prop.origin && <Badge variant="secondary" className="text-xs capitalize">{prop.origin}</Badge>}
+                      </div>
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{prop.neighborhood}</span>
+                        <span className="capitalize">{prop.property_type}</span>
+                        <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{formatDate(prop.created_at)}</span>
+                      </div>
                     </div>
-                  </td>
-                  <td className="py-3">
-                    <div className="flex items-center gap-1 text-muted-foreground">
-                      <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
-                      <span className="truncate max-w-[200px]">{prop.property_location}</span>
-                    </div>
-                  </td>
-                  <td className="py-3 text-right font-medium">
-                    {formatCurrency(prop.publication_price, prop.currency || 'USD')}
-                  </td>
-                  <td className="py-3 text-right">
-                    <Badge variant="secondary">{prop.comparable_count}</Badge>
-                  </td>
-                  <td className="py-3 text-right text-muted-foreground">
-                    <div className="flex items-center justify-end gap-1">
-                      <Calendar className="h-3.5 w-3.5" />
-                      {formatDate(prop.created_at)}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <span className="text-sm font-medium">{formatCurrency(prop.asking_price, prop.currency)}</span>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  </CardContent>
+                </Card>
+              </Link>
+            )
+          })}
         </div>
       )}
     </div>
