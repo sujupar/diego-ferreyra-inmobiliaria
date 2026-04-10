@@ -180,6 +180,54 @@ export function extractImages($: CheerioAPI, selectors: string[]): string[] {
 }
 
 /**
+ * Parses view count from text
+ * Examples: "234 personas ya vieron este aviso", "198 visualizaciones", "56 visitas"
+ */
+export function parseViews(text: string): number | null {
+    if (!text) return null
+
+    const match = text.match(/(\d[\d.,]*)\s*(?:personas|visualizaciones?|visitas?)/i)
+    if (match) {
+        return parseInt(match[1].replace(/\./g, ''), 10)
+    }
+    // Fallback: just a number near "vieron"
+    const altMatch = text.match(/(\d+)\s*(?:personas?\s+)?(?:ya\s+)?vieron/i)
+    if (altMatch) {
+        return parseInt(altMatch[1], 10)
+    }
+    return null
+}
+
+/**
+ * Parses published date text
+ * Examples: "Publicado hace 35 días", "hace 3 meses", "Hace 1 año"
+ */
+export function parsePublishedDate(text: string): string | null {
+    if (!text) return null
+
+    const cleaned = text.toLowerCase().trim()
+
+    // Match patterns like "publicado hace X días/meses/años" or just "hace X días"
+    const match = cleaned.match(/(?:publicado\s+)?hace\s+(\d+)\s+(d[ií]as?|meses?|años?|semanas?|horas?)/i)
+    if (match) {
+        return `Hace ${match[1]} ${match[2]}`
+    }
+
+    // Match "Publicado el DD/MM/YYYY" or similar date
+    const dateMatch = cleaned.match(/publicado\s+(?:el\s+)?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/)
+    if (dateMatch) {
+        return `Publicado el ${dateMatch[1]}`
+    }
+
+    // If the text itself contains "hace" just return it cleaned
+    if (cleaned.includes('hace')) {
+        return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+    }
+
+    return null
+}
+
+/**
  * Finds a value in a specs table by label
  */
 export function findSpecByLabel($: CheerioAPI, rowSelector: string, labelSelector: string, valueSelector: string, labelText: string): string {

@@ -23,6 +23,8 @@ export interface ValuationFeatures {
     bathrooms?: number
     garages?: number
     rooms?: number                 // Ambientes
+    views?: number | null          // Visualizaciones (solo Zonaprop)
+    publishedDate?: string | null  // "Publicado hace X días"
 }
 
 /**
@@ -105,6 +107,32 @@ export interface ExpenseRates {
     agencyFeesPercent?: number        // Default 3
 }
 
+export interface PurchaseExpenseRates {
+    purchaseDiscountPercent?: number   // Default 0 (configurable)
+    deedDiscountPercent?: number       // Default 30
+    stampsPercent?: number             // Sellos: 1.75%
+    notaryFeesPercent?: number         // Honorarios Escribano: 1%
+    deedExpensesPercent?: number       // Gastos Escritura: 1.75%
+    buyerCommissionPercent?: number    // Honorarios Inmobiliaria: 4%
+}
+
+export interface PurchaseResult {
+    selectedPropertyTitle: string
+    publicationPrice: number
+    purchasePrice: number
+    deedValue: number
+    stampsCost: number
+    notaryFees: number
+    deedExpenses: number
+    buyerCommission: number
+    totalPurchaseCosts: number
+    totalCostWithPurchase: number
+    moneyFromSale: number
+    moneyNeededForPurchase: number
+    remainingMoney: number
+    purchaseExpenseRates: Required<PurchaseExpenseRates>
+}
+
 export interface ValuationInput {
     subject: ValuationProperty
     comparables: ValuationProperty[]
@@ -148,6 +176,7 @@ export interface ValuationResult {
     moneyInHand: number              // Dinero en mano = venta - total gastos
     currency: string
     expenseRates: Required<ExpenseRates>  // Actual rates used (with defaults)
+    purchaseResult?: PurchaseResult       // Present when purchase properties selected
 }
 
 /**
@@ -302,5 +331,60 @@ export function calculateValuation({ subject, comparables, expenseRates }: Valua
         moneyInHand,
         currency,
         expenseRates: rates,
+    }
+}
+
+/**
+ * Calculate purchase costs for a selected property
+ *
+ * Based on the reference PDF (Pichincha 105):
+ *   Valor de Publicación → Valor de Compra (with optional discount) → Valor de Escritura
+ *   Gastos de Compra:
+ *     - Sellos 1.75%
+ *     - Honorarios de Escribano 1%
+ *     - Gastos de Escritura 1.75%
+ *     - Honorarios Inmobiliaria 4%
+ */
+export function calculatePurchaseCosts(
+    purchasePublicationPrice: number,
+    purchaseTitle: string,
+    moneyFromSale: number,
+    rates?: PurchaseExpenseRates,
+): PurchaseResult {
+    const r: Required<PurchaseExpenseRates> = {
+        purchaseDiscountPercent: rates?.purchaseDiscountPercent ?? 0,
+        deedDiscountPercent: rates?.deedDiscountPercent ?? 30,
+        stampsPercent: rates?.stampsPercent ?? 1.75,
+        notaryFeesPercent: rates?.notaryFeesPercent ?? 1,
+        deedExpensesPercent: rates?.deedExpensesPercent ?? 1.75,
+        buyerCommissionPercent: rates?.buyerCommissionPercent ?? 4,
+    }
+
+    const purchasePrice = Math.round(purchasePublicationPrice * (1 - r.purchaseDiscountPercent / 100))
+    const deedValue = Math.round(purchasePrice * (1 - r.deedDiscountPercent / 100))
+
+    // Gastos de compra - based on reference PDF table
+    const stampsCost = Math.round(deedValue * (r.stampsPercent / 100))
+    const notaryFees = Math.round(deedValue * (r.notaryFeesPercent / 100))
+    const deedExpenses = Math.round(deedValue * (r.deedExpensesPercent / 100))
+    const buyerCommission = Math.round(purchasePrice * (r.buyerCommissionPercent / 100))
+    const totalPurchaseCosts = stampsCost + notaryFees + deedExpenses + buyerCommission
+    const totalCostWithPurchase = purchasePrice + totalPurchaseCosts
+
+    return {
+        selectedPropertyTitle: purchaseTitle,
+        publicationPrice: purchasePublicationPrice,
+        purchasePrice,
+        deedValue,
+        stampsCost,
+        notaryFees,
+        deedExpenses,
+        buyerCommission,
+        totalPurchaseCosts,
+        totalCostWithPurchase,
+        moneyFromSale,
+        moneyNeededForPurchase: totalCostWithPurchase,
+        remainingMoney: moneyFromSale - totalCostWithPurchase,
+        purchaseExpenseRates: r,
     }
 }

@@ -7,6 +7,7 @@ import {
     parseInteger,
     parseExpenses,
     parseFloor,
+    parsePublishedDate,
     getText,
     extractImages,
     cleanText
@@ -141,6 +142,29 @@ export function extractMercadoLibre($: CheerioAPI, url: string): ScrapedProperty
     if (features.uncoveredArea === null && features.totalArea !== null && features.coveredArea !== null) {
         const diff = features.totalArea - features.coveredArea
         features.uncoveredArea = diff > 0 ? diff : 0
+    }
+
+    // Published date - MercadoLibre specific
+    const pubDateText = getText($, [
+        '.ui-pdp-header__bottom-info',
+        '.ui-pdp-header__title-container time',
+        '[class*="publishing-date"]',
+    ])
+    if (pubDateText) {
+        features.publishedDate = parsePublishedDate(pubDateText)
+    }
+    // Fallback: search for "Publicado hace" text
+    if (!features.publishedDate) {
+        $('span, p, div, time').each((_, el) => {
+            const t = $(el).text()
+            if (t.toLowerCase().includes('publicado') || (t.toLowerCase().includes('hace') && t.toLowerCase().match(/d[ií]as?|meses?|años?/))) {
+                const d = parsePublishedDate(t)
+                if (d) {
+                    features.publishedDate = d
+                    return false
+                }
+            }
+        })
     }
 
     // Images

@@ -2,8 +2,9 @@
 
 import React from 'react'
 import { Document, Page, Text, View, Image, Link, Svg, Path, Circle as SvgCircle, Rect as SvgRect } from '@react-pdf/renderer'
-import { ValuationProperty, ValuationResult } from '@/lib/valuation/calculator'
+import { ValuationProperty, ValuationResult, PurchaseResult } from '@/lib/valuation/calculator'
 import { styles, colors } from './PDFStyles'
+import { ReportEdits, SemaphoreColor } from '@/lib/types/report-edits'
 
 interface MarketImageLabel {
     label: string
@@ -15,8 +16,20 @@ interface PDFReportProps {
     comparables: ValuationProperty[]
     valuationResult: ValuationResult
     overpriced?: ValuationProperty[]
+    purchaseProperties?: ValuationProperty[]
+    purchaseResult?: PurchaseResult
     marketImageLabels?: Record<string, MarketImageLabel>
     marketImageUrls?: Record<string, string>
+    reportEdits?: ReportEdits
+}
+
+// Map semaphore color names to actual color values
+function getSemaphoreColorValue(color: SemaphoreColor): string {
+    switch (color) {
+        case 'green': return colors.semaphoreGreen
+        case 'yellow': return colors.semaphoreYellow
+        case 'red': return colors.semaphoreRed
+    }
 }
 
 // Helper to extract neighborhood from location
@@ -33,7 +46,7 @@ function formatCurrency(value: number, currency: string = 'USD'): string {
     return `${currency} ${value.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 }
 
-export function PDFReportDocument({ subject, comparables, valuationResult, overpriced = [], marketImageLabels = {}, marketImageUrls = {} }: PDFReportProps) {
+export function PDFReportDocument({ subject, comparables, valuationResult, overpriced = [], purchaseProperties = [], purchaseResult, marketImageLabels = {}, marketImageUrls = {}, reportEdits }: PDFReportProps) {
     const neighborhood = extractNeighborhood(subject.location || '')
     const recommendedPrice = valuationResult.publicationPrice
     const noSaleZone = valuationResult.noSaleZonePrice
@@ -54,12 +67,12 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 <View style={{ paddingHorizontal: 60, paddingTop: 50, alignItems: 'center' }}>
                     {/* Title */}
                     <Text style={[styles.h1, { color: colors.primary, fontSize: 28, letterSpacing: 4 }]}>
-                        INFORME DE TASACIÓN
+                        {reportEdits?.coverTitle || 'INFORME DE TASACIÓN'}
                     </Text>
 
                     {/* Property Title */}
                     <Text style={[styles.propertyTitle, { marginTop: 16, fontSize: 32 }]}>
-                        {subject.title || subject.location}
+                        {reportEdits?.coverPropertyTitle || subject.title || subject.location}
                     </Text>
 
                     {/* Three Institutional Logos */}
@@ -436,13 +449,13 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                             ) : (
                                                 <View style={{ width: '100%', height: 160, backgroundColor: colors.lightGray }} />
                                             )}
-                                            {/* Semaphore indicator — always green for comparables */}
+                                            {/* Semaphore indicator — configurable color */}
                                             <View style={{ position: 'absolute', top: 8, left: 8 }}>
                                                 <View style={{
                                                     width: 36,
                                                     height: 36,
                                                     borderRadius: 18,
-                                                    backgroundColor: colors.semaphoreGreen,
+                                                    backgroundColor: getSemaphoreColorValue(reportEdits?.semaphoreOverrides?.[`comparable-${globalIndex}`] || 'green'),
                                                     border: `2px solid ${colors.white}`
                                                 }} />
                                             </View>
@@ -493,9 +506,9 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                                 LINK DE LA PROPIEDAD
                                             </Link>
 
-                                            {/* Metadata */}
+                                            {/* Metadata: published date + views */}
                                             <Text style={styles.comparableMetadata}>
-                                                Publicado | {Math.round(homSurface)} m² homogeneizados
+                                                {comp.features.publishedDate || 'Publicado'}{comp.features.views ? ` | ${comp.features.views} visualizaciones` : ''}
                                             </Text>
                                         </View>
                                     </View>
@@ -536,13 +549,13 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                             ) : (
                                                 <View style={{ width: '100%', height: 160, backgroundColor: '#fef2f2', border: `2px solid ${colors.semaphoreRed}` }} />
                                             )}
-                                            {/* Red semaphore indicator */}
+                                            {/* Semaphore indicator — configurable color */}
                                             <View style={{ position: 'absolute', top: 8, left: 8 }}>
                                                 <View style={{
                                                     width: 36,
                                                     height: 36,
                                                     borderRadius: 18,
-                                                    backgroundColor: colors.semaphoreRed,
+                                                    backgroundColor: getSemaphoreColorValue(reportEdits?.semaphoreOverrides?.[`overpriced-${globalIndex}`] || 'red'),
                                                     border: `2px solid ${colors.white}`
                                                 }} />
                                             </View>
@@ -615,9 +628,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
                 <Text style={styles.h2}>Mapa de Valor</Text>
                 <Text style={[styles.body, { marginBottom: 12 }]}>
-                    Para tasar la propiedad se utilizó el método de comparables. Se toman propiedades similares
-                    a valor correcto de mercado y se comparan variables como superficie, ubicación, piso,
-                    disposición, antigüedad, estado de conservación y calidad constructiva.
+                    {reportEdits?.analysisMethodText || 'Para tasar la propiedad se utilizó el método de comparables. Se toman propiedades similares a valor correcto de mercado y se comparan variables como superficie, ubicación, piso, disposición, antigüedad, estado de conservación y calidad constructiva.'}
                 </Text>
 
                 {/* Valuation Table — complete with all property data + coefficients */}
@@ -770,11 +781,13 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
                 {/* Analysis */}
                 <Text style={[styles.h2, { fontSize: 18 }]}>Análisis</Text>
-                <Text style={styles.body}>
-                    Debido a la competencia cerca de <Text style={{ color: colors.semaphoreRed, fontWeight: 'bold' }}>{formatCurrency(noSaleZone, valuationResult.currency)}</Text> es muy probable que
-                    el mercado no convalide el valor de venta. Para vender en el corto plazo recomiendo publicar en <Text style={{ color: colors.semaphoreGreen, fontWeight: 'bold' }}>{formatCurrency(recommendedPrice, valuationResult.currency)}</Text> y
-                    medir la respuesta del mercado.
-                </Text>
+                {reportEdits?.analysisText ? (
+                    <Text style={styles.body}>{reportEdits.analysisText}</Text>
+                ) : (
+                    <Text style={styles.body}>
+                        Debido a la competencia para tener visitas y potencial de venta la propiedad se debería publicar en <Text style={{ color: colors.semaphoreGreen, fontWeight: 'bold' }}>{formatCurrency(recommendedPrice, valuationResult.currency)}.</Text>
+                    </Text>
+                )}
                 <Text style={[styles.body, { marginTop: 8 }]}>
                     Una buena tasación, siempre es, vender al mejor valor que el mercado convalide en un plazo de 2 meses.
                 </Text>
@@ -872,6 +885,256 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 </View>
             </Page>
 
+            {/* PURCHASE PROPERTIES SECTION (conditional) */}
+            {purchaseProperties.length > 0 && (
+                <>
+                    {/* PURCHASE DIVIDER PAGE */}
+                    <Page size="A4" style={styles.page}>
+                        <View style={styles.backgroundPage}>
+                            <Image
+                                src="/pdf-assets/graphics/section-divider-bg.jpg"
+                                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                            <View style={styles.backgroundOverlay} />
+                            <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
+                                <Text style={[styles.dividerTitle, { textAlign: 'left' }]}>
+                                    PROPIEDADES{'\n'}PARA COMPRA
+                                </Text>
+                            </View>
+                            <Image
+                                src="/pdf-assets/photos/Foto Diego.png"
+                                style={styles.dividerPhoto}
+                            />
+                        </View>
+                    </Page>
+
+                    {/* PURCHASE PROPERTY CARDS (2 per page) */}
+                    {Array.from({ length: Math.ceil(purchaseProperties.length / 2) }).map((_, pageIndex) => {
+                        const startIndex = pageIndex * 2
+                        const pageProps = purchaseProperties.slice(startIndex, startIndex + 2)
+
+                        return (
+                            <Page key={`purchase-${pageIndex}`} size="A4" style={styles.pageWithPadding}>
+                                <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
+                                    <Text style={[styles.headerTitle, { color: colors.primary }]}>PROPIEDADES EN VENTA</Text>
+                                    <Text style={styles.headerSubtitle}>CABA</Text>
+                                </View>
+
+                                <View style={{ marginTop: 70, gap: 24 }}>
+                                    {pageProps.map((prop, index) => {
+                                        const globalIndex = startIndex + index
+                                        const homSurface = getHomogenizedSurface(prop)
+                                        const pricePerM2 = homSurface > 0 ? (prop.price || 0) / homSurface : 0
+
+                                        return (
+                                            <View key={globalIndex} style={{ flexDirection: 'row', gap: 16 }}>
+                                                {/* Photo (no semaphore for purchase) */}
+                                                <View style={{ width: '35%' }}>
+                                                    {prop.images && prop.images[0] ? (
+                                                        <Image
+                                                            src={prop.images[0]}
+                                                            style={{ width: '100%', height: 160, objectFit: 'cover', border: `1px solid ${colors.lightGray}` }}
+                                                        />
+                                                    ) : (
+                                                        <View style={{ width: '100%', height: 160, backgroundColor: colors.lightGray }} />
+                                                    )}
+                                                </View>
+
+                                                {/* Info */}
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={[styles.propertyTitle, { textAlign: 'left', fontSize: 16, marginBottom: 8 }]}>
+                                                        {prop.location || prop.title}
+                                                    </Text>
+
+                                                    {/* Features grid */}
+                                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+                                                        <Text style={styles.featureText}>■ {prop.features.coveredArea || 0}m²</Text>
+                                                        {prop.features.rooms && (
+                                                            <Text style={styles.featureText}>■ {prop.features.rooms} Amb.</Text>
+                                                        )}
+                                                        {prop.features.bedrooms && (
+                                                            <Text style={styles.featureText}>■ {prop.features.bedrooms} Dorm.</Text>
+                                                        )}
+                                                        {prop.features.bathrooms && (
+                                                            <Text style={styles.featureText}>■ {prop.features.bathrooms} Baños</Text>
+                                                        )}
+                                                        <Text style={styles.featureText}>■ {prop.features.age || 0} años</Text>
+                                                    </View>
+
+                                                    {/* Price */}
+                                                    <View style={{ gap: 2, marginBottom: 8 }}>
+                                                        <View style={styles.priceBullet}>
+                                                            <View style={styles.bullet} />
+                                                            <Text style={styles.priceText}>
+                                                                {formatCurrency(prop.price || 0, valuationResult.currency)}
+                                                            </Text>
+                                                        </View>
+                                                        {pricePerM2 > 0 && (
+                                                            <View style={styles.priceBullet}>
+                                                                <View style={styles.bullet} />
+                                                                <Text style={styles.priceText}>
+                                                                    Valor del m² {Math.round(pricePerM2).toLocaleString()} {valuationResult.currency}
+                                                                </Text>
+                                                            </View>
+                                                        )}
+                                                    </View>
+
+                                                    {/* Link */}
+                                                    <Link src={prop.url || '#'} style={styles.comparableLink}>
+                                                        LINK DE LA PROPIEDAD
+                                                    </Link>
+                                                </View>
+                                            </View>
+                                        )
+                                    })}
+                                </View>
+                            </Page>
+                        )
+                    })}
+
+                    {/* SIMULATION DIVIDER PAGE */}
+                    {purchaseResult && (
+                        <Page size="A4" style={styles.page}>
+                            <View style={styles.backgroundPage}>
+                                <Image
+                                    src="/pdf-assets/graphics/section-divider-bg.jpg"
+                                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                                />
+                                <View style={styles.backgroundOverlay} />
+                                <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
+                                    <Text style={[styles.dividerTitle, { textAlign: 'left' }]}>
+                                        SIMULACIÓN{'\n'}COMPRA Y VENTA
+                                    </Text>
+                                </View>
+                                <Image
+                                    src="/pdf-assets/photos/Foto Diego.png"
+                                    style={styles.dividerPhoto}
+                                />
+                            </View>
+                        </Page>
+                    )}
+
+                    {/* SIMULATION TABLE PAGE */}
+                    {purchaseResult && (
+                        <Page size="A4" style={styles.pageWithPadding}>
+                            <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
+                                <Text style={styles.headerTitle}>PROPIEDADES EN VENTA</Text>
+                            </View>
+
+                            <View style={{ marginTop: 60 }}>
+                                <Text style={[styles.h2, { textAlign: 'center', marginBottom: 24 }]}>
+                                    SIMULACIÓN DE COMPRA y VENTA
+                                </Text>
+
+                                {/* Side-by-side tables */}
+                                <View style={{ flexDirection: 'row', gap: 12 }}>
+                                    {/* SALE TABLE */}
+                                    <View style={{ flex: 1 }}>
+                                        {/* Header */}
+                                        <View style={{ backgroundColor: '#fff3e0', padding: 6, borderWidth: 1, borderColor: colors.orange, marginBottom: 0 }}>
+                                            <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center', color: colors.darkGray }}>
+                                                VENTA {subject.features.rooms ? `${subject.features.rooms} AMBIENTES` : ''} | {neighborhood}
+                                            </Text>
+                                        </View>
+                                        {/* Values row */}
+                                        <View style={{ flexDirection: 'row', borderWidth: 1, borderColor: colors.lightGray, borderTopWidth: 0 }}>
+                                            <View style={{ flex: 1, padding: 4, borderRightWidth: 1, borderColor: colors.lightGray }}>
+                                                <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Publicación</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>u$d{valuationResult.publicationPrice.toLocaleString()}</Text>
+                                            </View>
+                                            <View style={{ flex: 1, padding: 4, borderRightWidth: 1, borderColor: colors.lightGray }}>
+                                                <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Venta</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>u$d{valuationResult.saleValue.toLocaleString()}</Text>
+                                            </View>
+                                            <View style={{ flex: 1, padding: 4 }}>
+                                                <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Escritura</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>u$d{valuationResult.deedValue.toLocaleString()}</Text>
+                                            </View>
+                                        </View>
+                                        {/* Gastos de venta header */}
+                                        <View style={{ backgroundColor: '#e8f4fd', padding: 4, borderWidth: 1, borderColor: colors.lightGray, borderTopWidth: 0 }}>
+                                            <Text style={{ fontSize: 7, fontWeight: 'bold', textAlign: 'center' }}>Gastos de venta</Text>
+                                        </View>
+                                        {/* Sale expense rows */}
+                                        {[
+                                            { label: `Sellos ${valuationResult.expenseRates.stampsPercent}%`, value: valuationResult.stampsCost },
+                                            { label: `Gastos Escritura ${valuationResult.expenseRates.deedExpensesPercent}%`, value: valuationResult.deedExpenses },
+                                            { label: `Honorarios Inmobiliaria ${valuationResult.expenseRates.agencyFeesPercent}%`, value: valuationResult.agencyFees },
+                                        ].map((row, i) => (
+                                            <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 4, borderWidth: 1, borderColor: colors.lightGray, borderTopWidth: 0 }}>
+                                                <Text style={{ fontSize: 7 }}>{row.label}</Text>
+                                                <Text style={{ fontSize: 7 }}>u$d{row.value.toLocaleString()}</Text>
+                                            </View>
+                                        ))}
+                                        {/* Total */}
+                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 4, borderWidth: 1, borderColor: colors.darkGray, borderTopWidth: 0, backgroundColor: '#f5f5f5' }}>
+                                            <Text style={{ fontSize: 7, fontWeight: 'bold' }}>Total gastos venta</Text>
+                                            <Text style={{ fontSize: 7, fontWeight: 'bold' }}>u$d{valuationResult.totalExpenses.toLocaleString()}</Text>
+                                        </View>
+                                        {/* Money after sale */}
+                                        <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'space-between', padding: 6, backgroundColor: '#ecfdf5', borderRadius: 2 }}>
+                                            <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#065f46' }}>Dinero luego de venta</Text>
+                                            <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.semaphoreGreen }}>u$d{valuationResult.moneyInHand.toLocaleString()}</Text>
+                                        </View>
+                                    </View>
+
+                                    {/* PURCHASE TABLE */}
+                                    <View style={{ flex: 1 }}>
+                                        {/* Header */}
+                                        <View style={{ backgroundColor: '#e8f4fd', padding: 6, borderWidth: 1, borderColor: colors.primary, marginBottom: 0 }}>
+                                            <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center', color: colors.darkGray }}>
+                                                COMPRA {purchaseResult.selectedPropertyTitle ? `| ${purchaseResult.selectedPropertyTitle}` : 'AMBIENTES'}
+                                            </Text>
+                                        </View>
+                                        {/* Values row */}
+                                        <View style={{ flexDirection: 'row', borderWidth: 1, borderColor: colors.lightGray, borderTopWidth: 0 }}>
+                                            <View style={{ flex: 1, padding: 4, borderRightWidth: 1, borderColor: colors.lightGray }}>
+                                                <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Publicación</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>u$d{purchaseResult.publicationPrice.toLocaleString()}</Text>
+                                            </View>
+                                            <View style={{ flex: 1, padding: 4, borderRightWidth: 1, borderColor: colors.lightGray }}>
+                                                <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Compra</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>u$d{purchaseResult.purchasePrice.toLocaleString()}</Text>
+                                            </View>
+                                            <View style={{ flex: 1, padding: 4 }}>
+                                                <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Escritura</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>u$d{purchaseResult.deedValue.toLocaleString()}</Text>
+                                            </View>
+                                        </View>
+                                        {/* Gastos de compra header */}
+                                        <View style={{ backgroundColor: '#e8f4fd', padding: 4, borderWidth: 1, borderColor: colors.lightGray, borderTopWidth: 0 }}>
+                                            <Text style={{ fontSize: 7, fontWeight: 'bold', textAlign: 'center' }}>Gastos de Compra</Text>
+                                        </View>
+                                        {/* Purchase expense rows */}
+                                        {[
+                                            { label: `Sellos ${purchaseResult.purchaseExpenseRates.stampsPercent}%`, value: purchaseResult.stampsCost },
+                                            { label: `Honorarios de Escribano ${purchaseResult.purchaseExpenseRates.notaryFeesPercent}%`, value: purchaseResult.notaryFees },
+                                            { label: `Gastos de Escritura ${purchaseResult.purchaseExpenseRates.deedExpensesPercent}%`, value: purchaseResult.deedExpenses },
+                                            { label: `Honorarios Inmobiliaria ${purchaseResult.purchaseExpenseRates.buyerCommissionPercent}%`, value: purchaseResult.buyerCommission },
+                                        ].map((row, i) => (
+                                            <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 4, borderWidth: 1, borderColor: colors.lightGray, borderTopWidth: 0 }}>
+                                                <Text style={{ fontSize: 7 }}>{row.label}</Text>
+                                                <Text style={{ fontSize: 7 }}>u$d{row.value.toLocaleString()}</Text>
+                                            </View>
+                                        ))}
+                                        {/* Total */}
+                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 4, borderWidth: 1, borderColor: colors.darkGray, borderTopWidth: 0, backgroundColor: '#f5f5f5' }}>
+                                            <Text style={{ fontSize: 7, fontWeight: 'bold' }}>Total gastos compra</Text>
+                                            <Text style={{ fontSize: 7, fontWeight: 'bold' }}>u$d{purchaseResult.totalPurchaseCosts.toLocaleString()}</Text>
+                                        </View>
+                                        {/* Cost of purchase */}
+                                        <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'space-between', padding: 6, backgroundColor: '#eff6ff', borderRadius: 2 }}>
+                                            <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#1e40af' }}>Costo de compra</Text>
+                                            <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.primary }}>u$d{purchaseResult.totalCostWithPurchase.toLocaleString()}</Text>
+                                        </View>
+                                    </View>
+                                </View>
+                            </View>
+                        </Page>
+                    )}
+                </>
+            )}
+
             {/* PAGE 11: ESTRATEGIA DE VENTA (Divisor) */}
             <Page size="A4" style={styles.page}>
                 <View style={styles.backgroundPage}>
@@ -894,25 +1157,23 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 <View style={{ marginTop: 60 }}>
                     <Text style={styles.h2}>Estrategia de Precio</Text>
 
-                    <Text style={styles.body}>
-                        La zona de no venta está en torno a los <Text style={{ color: colors.semaphoreRed, fontWeight: 'bold' }}>{formatCurrency(noSaleZone, valuationResult.currency)}.</Text>
-                    </Text>
-                    <Text style={[styles.body, { marginTop: 8, marginBottom: 16 }]}>
-                        El valor de publicación recomendado es: <Text style={{ color: colors.semaphoreGreen, fontWeight: 'bold' }}>{formatCurrency(recommendedPrice, valuationResult.currency)}.</Text>
-                    </Text>
-
-                    <Text style={[styles.body, { marginBottom: 24 }]}>
-                        Hoy las propiedades que están en un valor interesante para el mercado tienen cerca de 6 visitas
-                        mensuales y con el método por etapas, cada 12 visitas hay una reserva en promedio.
-                    </Text>
+                    {reportEdits?.strategyPriceText ? (
+                        <Text style={[styles.body, { marginBottom: 24 }]}>{reportEdits.strategyPriceText}</Text>
+                    ) : (
+                        <>
+                            <Text style={styles.body}>
+                                El valor de publicación recomendado es: <Text style={{ color: colors.semaphoreGreen, fontWeight: 'bold' }}>{formatCurrency(recommendedPrice, valuationResult.currency)}.</Text>
+                            </Text>
+                            <Text style={[styles.body, { marginTop: 8, marginBottom: 16 }]}>
+                                Hoy las propiedades que están en un valor interesante para el mercado tienen cerca de 8 visitas
+                                mensuales y con el método por etapas, cada 10 visitas hay una reserva en promedio.
+                            </Text>
+                        </>
+                    )}
 
                     <Text style={styles.h2}>Máxima Difusión</Text>
                     <Text style={[styles.body, { marginBottom: 12 }]}>
-                        Tu propiedad merece tener máxima difusión. Que la vean en excelencia, todos los potenciales compradores.
-                        Para ello haremos fotos, video, tour virtual con profesional, publicaremos en todos los portales
-                        inmobiliarios de forma destacada, crearemos una página web para la propiedad y haremos campañas
-                        publicitarias en las redes sociales. Con esta estrategia tu propiedad la verán el triple de potenciales
-                        compradores.
+                        {reportEdits?.strategyDiffusionText || 'Tu propiedad merece tener máxima difusión. Que la vean en excelencia, todos los potenciales compradores. Para ello haremos fotos, video, tour virtual con profesional, publicaremos en todos los portales inmobiliarios de forma destacada, crearemos una página web para la propiedad y haremos campañas publicitarias en las redes sociales. Con esta estrategia tu propiedad la verán el triple de potenciales compradores.'}
                     </Text>
                     <Text style={[styles.body, { marginBottom: 24 }]}>
                         Si tenes el precio adecuado y máxima difusión, vas a tener consultas y visitas a tu propiedad
@@ -920,9 +1181,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
                     <Text style={styles.h2}>Seguimiento y Mejora Continua</Text>
                     <Text style={styles.body}>
-                        Cada 15 días se harán informes de gestión quincenal donde te enviaremos las métricas de los portales,
-                        la información que dejaron los compradores en la ficha de visitas y un análisis con la mejora que
-                        debemos realizar en la estrategia para lograr vender en los próximos 15 días.
+                        {reportEdits?.strategyFollowupText || 'Cada 15 días se harán informes de gestión quincenal donde te enviaremos las métricas de los portales, la información que dejaron los compradores en la ficha de visitas y un análisis con la mejora que debemos realizar en la estrategia para lograr vender en los próximos 15 días.'}
                     </Text>
                 </View>
             </Page>
@@ -934,15 +1193,12 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 <View style={{ marginTop: 60 }}>
                     <Text style={styles.h3}>Autorización Exclusiva, Compartida</Text>
                     <Text style={[styles.body, { marginBottom: 24 }]}>
-                        La autorización es exclusiva y la propiedad se compartirá con todas las inmobiliarias. Seré el
-                        máximo responsable e interlocutor principal para que se logre la operación exitosamente. El plazo
-                        de la autorización para conseguir resultados óptimos es de 120 días.
+                        {reportEdits?.authorizationText || 'La autorización es exclusiva y la propiedad se compartirá con todas las inmobiliarias. Seré el máximo responsable e interlocutor principal para que se logre la operación exitosamente. El plazo de la autorización para conseguir resultados óptimos es de 120 días.'}
                     </Text>
 
                     <Text style={styles.h3}>Honorarios</Text>
                     <Text style={[styles.body, { marginBottom: 32 }]}>
-                        La retribución en concepto de honorarios por el servicio a brindar es del 3% (tres por ciento),
-                        calculado sobre el monto de venta final de la operación.
+                        {reportEdits?.feesText || 'La retribución en concepto de honorarios por el servicio a brindar es del 3% (tres por ciento), calculado sobre el monto de venta final de la operación.'}
                     </Text>
 
                     {/* Branding Section */}

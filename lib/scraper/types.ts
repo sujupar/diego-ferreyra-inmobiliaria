@@ -15,6 +15,8 @@ export interface PropertyFeatures {
     condition: string | null // Estado (legacy)
     rooms?: number | null // Ambientes
     garages?: number | null
+    views?: number | null // Visualizaciones (solo Zonaprop)
+    publishedDate?: string | null // "Publicado hace X días"
     // Valuation-specific fields
     disposition?: DispositionType
     quality?: QualityType

@@ -1,14 +1,17 @@
 import { StyleSheet, Font } from '@react-pdf/renderer'
 
-// Register fonts if needed
-// Font.register({
-//   family: 'Helvetica',
-//   src: 'https://fonts.gstatic.com/s/helvetica/...'
-// })
+// Register Montserrat font for a more premium look
+Font.register({
+    family: 'Montserrat',
+    fonts: [
+        { src: 'https://fonts.gstatic.com/s/montserrat/v26/JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCtr6Hw5aX8.ttf', fontWeight: 'normal' },
+        { src: 'https://fonts.gstatic.com/s/montserrat/v26/JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCuM73w5aX8.ttf', fontWeight: 'bold' },
+    ],
+})
 
 export const colors = {
     primary: '#1a5490',      // Diego Ferreyra blue
-    orange: '#ff8c42',       // Property titles
+    orange: '#e8823a',       // Property titles (refined, more premium)
     darkGray: '#2d3748',     // Headers, main text
     mediumGray: '#718096',   // Secondary text
     lightGray: '#e2e8f0',    // Backgrounds, dividers
@@ -23,13 +26,13 @@ export const styles = StyleSheet.create({
     page: {
         flexDirection: 'column',
         backgroundColor: colors.white,
-        fontFamily: 'Helvetica',
+        fontFamily: 'Montserrat',
     },
     pageWithPadding: {
         flexDirection: 'column',
         backgroundColor: colors.white,
-        padding: 40,
-        fontFamily: 'Helvetica',
+        padding: 48,
+        fontFamily: 'Montserrat',
     },
 
     // Headers
@@ -230,18 +233,18 @@ export const styles = StyleSheet.create({
     },
     tableCell: {
         fontSize: 7,
-        padding: 2,
+        padding: 3,
         textAlign: 'center',
     },
     tableCellLeft: {
         fontSize: 7,
-        padding: 2,
+        padding: 3,
         textAlign: 'left',
     },
     tableCellHeader: {
-        fontSize: 6,
+        fontSize: 6.5,
         fontWeight: 'bold',
-        padding: 2,
+        padding: 3,
         textAlign: 'center',
         color: colors.darkGray,
     },
@@ -402,5 +405,31 @@ export const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: colors.darkGray,
         backgroundColor: colors.darkGray,
+    },
+
+    // Accent line (orange decorative bar)
+    accentLine: {
+        width: 60,
+        height: 3,
+        backgroundColor: colors.orange,
+        marginVertical: 8,
+    },
+
+    // Section line (full-width separator)
+    sectionLine: {
+        width: '100%',
+        height: 2,
+        backgroundColor: colors.orange,
+        marginVertical: 12,
+    },
+
+    // Footer bar (blue bar at bottom of pages)
+    footerBar: {
+        position: 'absolute' as const,
+        bottom: 0,
+        left: 0,
+        width: '100%',
+        height: 8,
+        backgroundColor: colors.primary,
     },
 })

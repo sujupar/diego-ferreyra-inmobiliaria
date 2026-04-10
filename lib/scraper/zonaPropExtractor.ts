@@ -7,6 +7,8 @@ import {
     parseInteger,
     parseExpenses,
     parseFloor,
+    parseViews,
+    parsePublishedDate,
     getText,
     extractImages,
     cleanText
@@ -122,6 +124,52 @@ export function extractZonaProp($: CheerioAPI, url: string): ScrapedProperty {
     if (features.uncoveredArea === null && features.totalArea !== null && features.coveredArea !== null) {
         const diff = features.totalArea - features.coveredArea
         features.uncoveredArea = diff > 0 ? diff : 0
+    }
+
+    // Views (visualizaciones) - Zonaprop specific
+    const viewsText = getText($, [
+        '[class*="views"]',
+        '[class*="Views"]',
+        '.section-icon-features [class*="view"]',
+    ])
+    if (viewsText) {
+        features.views = parseViews(viewsText)
+    }
+    // Fallback: search full page text for views pattern
+    if (!features.views) {
+        $('span, p, div').each((_, el) => {
+            const t = $(el).text()
+            if ((t.includes('personas') && t.includes('vieron')) || t.includes('visualizacion')) {
+                const v = parseViews(t)
+                if (v && v > 0) {
+                    features.views = v
+                    return false
+                }
+            }
+        })
+    }
+
+    // Published date - Zonaprop specific
+    const pubDateText = getText($, [
+        '.posting-date',
+        '[class*="publishing-date"]',
+        '[class*="PublishDate"]',
+    ])
+    if (pubDateText) {
+        features.publishedDate = parsePublishedDate(pubDateText)
+    }
+    // Fallback: search for "Publicado hace" text
+    if (!features.publishedDate) {
+        $('span, p, div, time').each((_, el) => {
+            const t = $(el).text()
+            if (t.toLowerCase().includes('publicado hace') || (t.toLowerCase().includes('hace') && t.toLowerCase().match(/d[ií]as?|meses?|años?/))) {
+                const d = parsePublishedDate(t)
+                if (d) {
+                    features.publishedDate = d
+                    return false
+                }
+            }
+        })
     }
 
     // Images

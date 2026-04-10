@@ -4,8 +4,11 @@ import { useState, useCallback, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Download, X, Loader2 } from 'lucide-react'
-import { ValuationProperty, ValuationResult } from '@/lib/valuation/calculator'
+import { Download, X, Loader2, Edit3, Eye } from 'lucide-react'
+import { ReportEditor } from './ReportEditor'
+import { DEFAULT_REPORT_EDITS } from '@/lib/types/report-edits'
+import { ValuationProperty, ValuationResult, PurchaseResult } from '@/lib/valuation/calculator'
+import { ReportEdits } from '@/lib/types/report-edits'
 import { PDFReportDocument } from './pdf/PDFReport'
 import { pdf } from '@react-pdf/renderer'
 import { convertImagesToBase64 } from '@/lib/pdf/imageUtils'
@@ -61,8 +64,12 @@ interface PDFPreviewModalProps {
     comparables: ValuationProperty[]
     valuationResult: ValuationResult
     overpriced?: ValuationProperty[]
+    purchaseProperties?: ValuationProperty[]
+    purchaseResult?: PurchaseResult
     marketImageLabels?: Record<string, { label: string; description: string }>
     marketImageUrls?: Record<string, string>
+    reportEdits?: ReportEdits
+    onReportEditsChange?: (edits: ReportEdits) => void
 }
 
 export function PDFPreviewModal({
@@ -72,9 +79,14 @@ export function PDFPreviewModal({
     comparables,
     valuationResult,
     overpriced = [],
+    purchaseProperties = [],
+    purchaseResult,
     marketImageLabels,
     marketImageUrls,
+    reportEdits,
+    onReportEditsChange,
 }: PDFPreviewModalProps) {
+    const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor')
     const [isDownloading, setIsDownloading] = useState(false)
     const [isConverting, setIsConverting] = useState(false)
     const [convertedSubject, setConvertedSubject] = useState<ValuationProperty | null>(null)
@@ -150,8 +162,11 @@ export function PDFPreviewModal({
                     comparables={readyComparables}
                     valuationResult={valuationResult}
                     overpriced={readyOverpriced}
+                    purchaseProperties={purchaseProperties}
+                    purchaseResult={purchaseResult}
                     marketImageLabels={effectiveLabels}
                     marketImageUrls={effectiveUrls}
+                    reportEdits={reportEdits}
                 />
             )
             const blob = await pdf(doc).toBlob()
@@ -178,9 +193,26 @@ export function PDFPreviewModal({
                 {/* Toolbar */}
                 <div className="flex items-center justify-between px-6 py-3 border-b bg-muted/30">
                     <DialogTitle className="text-lg font-semibold">
-                        Vista Previa del Informe
+                        {activeTab === 'editor' ? 'Editar Informe' : 'Vista Previa PDF'}
                     </DialogTitle>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                        {/* Tab buttons */}
+                        <div className="flex bg-muted rounded-lg p-0.5 mr-2">
+                            <button
+                                onClick={() => setActiveTab('editor')}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-all ${activeTab === 'editor' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
+                            >
+                                <Edit3 className="h-3.5 w-3.5" />
+                                Editar
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('preview')}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-all ${activeTab === 'preview' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
+                            >
+                                <Eye className="h-3.5 w-3.5" />
+                                Vista Previa
+                            </button>
+                        </div>
                         <Button
                             onClick={handleDownload}
                             disabled={isDownloading || isConverting}
@@ -203,9 +235,22 @@ export function PDFPreviewModal({
                     </div>
                 </div>
 
-                {/* PDF Viewer */}
+                {/* Content area */}
                 <div className="flex-1 overflow-hidden" style={{ height: 'calc(90vh - 56px)' }}>
-                    {isConverting ? (
+                    {activeTab === 'editor' ? (
+                        <div className="h-full overflow-y-auto">
+                            <ReportEditor
+                                subject={subject}
+                                comparables={comparables}
+                                overpriced={overpriced}
+                                purchaseProperties={purchaseProperties}
+                                valuationResult={valuationResult}
+                                purchaseResult={purchaseResult}
+                                reportEdits={reportEdits || DEFAULT_REPORT_EDITS}
+                                onReportEditsChange={(edits) => onReportEditsChange?.(edits)}
+                            />
+                        </div>
+                    ) : isConverting ? (
                         <div className="flex flex-col items-center justify-center h-full gap-3">
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
                             <p className="text-sm text-muted-foreground">Preparando imagenes...</p>
@@ -217,8 +262,11 @@ export function PDFPreviewModal({
                                 comparables={readyComparables}
                                 valuationResult={valuationResult}
                                 overpriced={readyOverpriced}
+                                purchaseProperties={purchaseProperties}
+                                purchaseResult={purchaseResult}
                                 marketImageLabels={marketImageLabels}
                                 marketImageUrls={marketImageUrls}
+                                reportEdits={reportEdits}
                             />
                         </PDFViewer>
                     )}

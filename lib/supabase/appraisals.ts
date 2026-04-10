@@ -9,6 +9,7 @@ export interface SaveAppraisalInput {
     comparables: ScrapedProperty[]
     valuationResult: ValuationResult
     overpriced?: ScrapedProperty[]
+    purchaseProperties?: ScrapedProperty[]
     notes?: string
     userId?: string
     origin?: string
@@ -145,6 +146,28 @@ export async function saveAppraisal(input: SaveAppraisalInput): Promise<string> 
         if (opError) throw opError
     }
 
+    // Insert purchase properties (same table, marked via analysis field)
+    const purchaseRows = (input.purchaseProperties || []).map((prop, index) => ({
+        appraisal_id: appraisal.id,
+        title: prop.title,
+        location: prop.location,
+        url: prop.url,
+        price: prop.price,
+        currency: prop.currency,
+        description: prop.description,
+        images: prop.images,
+        features: prop.features as any,
+        analysis: { propertyType: 'purchase' } as any,
+        sort_order: 2000 + index,
+    }))
+
+    if (purchaseRows.length > 0) {
+        const { error: purchaseError } = await supabase
+            .from('appraisal_comparables')
+            .insert(purchaseRows)
+        if (purchaseError) throw purchaseError
+    }
+
     return appraisal.id
 }
 
@@ -279,5 +302,27 @@ export async function updateAppraisal(id: string, input: SaveAppraisalInput): Pr
             .from('appraisal_comparables')
             .insert(overpricedRows)
         if (opError) throw opError
+    }
+
+    // 5. Re-insert purchase properties
+    const purchaseRows = (input.purchaseProperties || []).map((prop, index) => ({
+        appraisal_id: id,
+        title: prop.title,
+        location: prop.location,
+        url: prop.url,
+        price: prop.price,
+        currency: prop.currency,
+        description: prop.description,
+        images: prop.images,
+        features: prop.features as any,
+        analysis: { propertyType: 'purchase' } as any,
+        sort_order: 2000 + index,
+    }))
+
+    if (purchaseRows.length > 0) {
+        const { error: purchaseError } = await supabase
+            .from('appraisal_comparables')
+            .insert(purchaseRows)
+        if (purchaseError) throw purchaseError
     }
 }

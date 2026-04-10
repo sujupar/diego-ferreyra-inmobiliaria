@@ -8,7 +8,8 @@ import { PropertyForm } from '@/components/appraisal/PropertyForm'
 import { ComparableEditor, ComparableMissingIndicator } from '@/components/appraisal/ComparableEditor'
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { ScrapedProperty } from '@/lib/scraper/types'
-import { calculateValuation, ValuationResult, ValuationProperty, ExpenseRates } from '@/lib/valuation/calculator'
+import { calculateValuation, calculatePurchaseCosts, ValuationResult, ValuationProperty, ExpenseRates, PurchaseExpenseRates, PurchaseResult } from '@/lib/valuation/calculator'
+import { ReportEdits, DEFAULT_REPORT_EDITS } from '@/lib/types/report-edits'
 import { saveAppraisal, updateAppraisal, getAppraisal } from '@/lib/supabase/appraisals'
 import { Button } from '@/components/ui/button'
 import {
@@ -26,7 +27,8 @@ import {
     Loader2,
     CheckCheck,
     AlertCircle,
-    TrendingDown
+    TrendingDown,
+    ShoppingBag
 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 
@@ -120,6 +122,22 @@ function NewAppraisalPageContent() {
         agencyFeesPercent: 3,
     })
 
+    // Purchase properties
+    const [purchaseProperties, setPurchaseProperties] = useState<ScrapedProperty[]>([])
+    const [purchaseExpenseRates, setPurchaseExpenseRates] = useState<PurchaseExpenseRates>({
+        purchaseDiscountPercent: 0,
+        deedDiscountPercent: 30,
+        stampsPercent: 1.75,
+        notaryFeesPercent: 1,
+        deedExpensesPercent: 1.75,
+        buyerCommissionPercent: 4,
+    })
+    const [selectedPurchaseIndex, setSelectedPurchaseIndex] = useState<number | null>(null)
+    const [purchaseResult, setPurchaseResult] = useState<PurchaseResult | null>(null)
+
+    // Report edits (semaphores, text overrides)
+    const [reportEdits, setReportEdits] = useState<ReportEdits>(DEFAULT_REPORT_EDITS)
+
     // Market image settings are loaded lazily by PDFPreviewModal itself when opened
 
     // Auto-save state
@@ -151,9 +169,10 @@ function NewAppraisalPageContent() {
                     features: detail.property_features || {},
                 }
 
-                // Split comparables vs overpriced based on analysis.propertyType
+                // Split comparables vs overpriced vs purchase based on analysis.propertyType
                 const normalComps: ScrapedProperty[] = []
                 const overpricedComps: ScrapedProperty[] = []
+                const purchaseComps: ScrapedProperty[] = []
                 for (const c of detail.comparables) {
                     const mapped: ScrapedProperty = {
                         title: c.title ?? '',
@@ -169,6 +188,8 @@ function NewAppraisalPageContent() {
                     const analysisObj = c.analysis as Record<string, unknown> | null
                     if (analysisObj?.propertyType === 'overpriced') {
                         overpricedComps.push(mapped)
+                    } else if (analysisObj?.propertyType === 'purchase') {
+                        purchaseComps.push(mapped)
                     } else {
                         normalComps.push(mapped)
                     }
@@ -177,7 +198,13 @@ function NewAppraisalPageContent() {
                 setSubject(reconstructedSubject)
                 setComparables(normalComps)
                 setOverpriced(overpricedComps)
+                setPurchaseProperties(purchaseComps)
                 setValuationResult(detail.valuation_result)
+
+                // Restore purchaseResult if present
+                if (detail.valuation_result?.purchaseResult) {
+                    setPurchaseResult(detail.valuation_result.purchaseResult)
+                }
 
                 // Restore expenseRates from the stored result if present
                 if (detail.valuation_result?.expenseRates) {
@@ -292,11 +319,27 @@ function NewAppraisalPageContent() {
             features: c.features as any
         }))
 
-        const result = calculateValuation({
+        let result = calculateValuation({
             subject: subjectValuation,
             comparables: comparablesValuation,
             expenseRates,
         })
+
+        // Calculate purchase costs if a purchase property is selected
+        let pResult: PurchaseResult | undefined
+        if (result && selectedPurchaseIndex !== null && purchaseProperties[selectedPurchaseIndex]) {
+            const selectedPurchase = purchaseProperties[selectedPurchaseIndex]
+            pResult = calculatePurchaseCosts(
+                selectedPurchase.price || 0,
+                selectedPurchase.title || selectedPurchase.location || 'Propiedad',
+                result.moneyInHand,
+                purchaseExpenseRates,
+            )
+            result = { ...result, purchaseResult: pResult }
+            setPurchaseResult(pResult)
+        } else {
+            setPurchaseResult(null)
+        }
 
         setValuationResult(result)
 
@@ -308,7 +351,10 @@ function NewAppraisalPageContent() {
         // Auto-save to Supabase — update existing or create new based on mode
         if (result) {
             setSaveStatus('saving')
-            const payload = { subject, comparables, overpriced, valuationResult: result, origin: origin || undefined, assignedTo: assignedTo || undefined }
+            const payload = {
+                subject, comparables, overpriced, purchaseProperties,
+                valuationResult: result, origin: origin || undefined, assignedTo: assignedTo || undefined,
+            }
             const promise = editMode && editId
                 ? updateAppraisal(editId, payload)
                 : saveAppraisal(payload)
@@ -652,6 +698,172 @@ function NewAppraisalPageContent() {
                 </section>
             )}
 
+            {/* Step 4: Purchase Properties (Optional) */}
+            {subject && comparables.length > 0 && (
+                <section className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
+                    <div className="flex items-center gap-4">
+                        <div className={`flex h-10 w-10 items-center justify-center rounded-full font-bold shadow-sm ${purchaseProperties.length > 0 ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-600 border-2 border-blue-300'}`}>
+                            {purchaseProperties.length > 0 ? <CheckCircle2 className="h-5 w-5" /> : '4'}
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
+                                <ShoppingBag className="h-6 w-6 text-blue-500" />
+                                Propiedades para la Compra
+                                <span className="text-sm font-normal text-muted-foreground">(Opcional)</span>
+                            </h2>
+                            <p className="text-muted-foreground text-sm">
+                                Agrega propiedades que el vendedor quiere comprar. Se incluiran en la simulacion de compra y venta del informe.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="bg-card rounded-2xl border-2 border-blue-200 dark:border-blue-900 shadow-sm p-6 md:p-8">
+                        <div className="mb-6">
+                            <p className="text-sm text-muted-foreground mb-3">
+                                Ingresa la URL de una propiedad para compra (ZonaProp, ArgenProp, MercadoLibre)
+                            </p>
+                            <PropertyForm onPropertyLoaded={(prop) => setPurchaseProperties([...purchaseProperties, prop])} />
+                        </div>
+
+                        {purchaseProperties.length > 0 && (
+                            <>
+                                <Separator className="my-6" />
+                                <div className="space-y-4">
+                                    <h3 className="font-medium text-blue-600">
+                                        Propiedades para compra ({purchaseProperties.length})
+                                    </h3>
+                                    <div className="grid gap-3">
+                                        {purchaseProperties.map((prop, index) => {
+                                            const homSurface = (prop.features.coveredArea || 0) + ((prop.features.uncoveredArea || 0) * 0.5)
+                                            const pricePerM2 = homSurface > 0 ? (prop.price || 0) / homSurface : 0
+                                            return (
+                                                <div
+                                                    key={index}
+                                                    className={`flex items-center gap-4 p-4 rounded-xl border transition-all duration-200 ${selectedPurchaseIndex === index
+                                                        ? 'bg-blue-50 dark:bg-blue-950/20 border-blue-400 ring-2 ring-blue-200'
+                                                        : 'bg-muted/30 border-border hover:shadow-sm'
+                                                    }`}
+                                                >
+                                                    <input
+                                                        type="radio"
+                                                        name="selectedPurchase"
+                                                        checked={selectedPurchaseIndex === index}
+                                                        onChange={() => setSelectedPurchaseIndex(index)}
+                                                        className="h-4 w-4 text-blue-600"
+                                                    />
+                                                    {prop.images?.[0] && (
+                                                        <img
+                                                            src={prop.images[0]}
+                                                            alt="Compra"
+                                                            className="w-16 h-16 rounded-lg object-cover"
+                                                        />
+                                                    )}
+                                                    <div className="flex-1 min-w-0">
+                                                        <h4 className="font-medium text-sm line-clamp-1">{prop.title || prop.location}</h4>
+                                                        <p className="text-xs text-muted-foreground line-clamp-1">{prop.location}</p>
+                                                        <div className="flex items-center gap-3 mt-1">
+                                                            <span className="text-sm font-semibold text-blue-600">
+                                                                {prop.price ? `USD ${prop.price.toLocaleString()}` : 'Sin precio'}
+                                                            </span>
+                                                            {prop.features.coveredArea && (
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    {prop.features.coveredArea}m²
+                                                                </span>
+                                                            )}
+                                                            {pricePerM2 > 0 && (
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    {Math.round(pricePerM2).toLocaleString()} USD/m²
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => {
+                                                            setPurchaseProperties(purchaseProperties.filter((_, i) => i !== index))
+                                                            if (selectedPurchaseIndex === index) setSelectedPurchaseIndex(null)
+                                                            else if (selectedPurchaseIndex !== null && selectedPurchaseIndex > index) setSelectedPurchaseIndex(selectedPurchaseIndex - 1)
+                                                        }}
+                                                        className="h-8 w-8 text-destructive hover:text-destructive"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                    {selectedPurchaseIndex === null && (
+                                        <p className="text-xs text-amber-600">Selecciona una propiedad para incluirla en la simulacion de compra y venta</p>
+                                    )}
+                                </div>
+                            </>
+                        )}
+
+                        {/* Purchase Expense Rates */}
+                        {purchaseProperties.length > 0 && selectedPurchaseIndex !== null && (
+                            <details className="mt-6">
+                                <summary className="cursor-pointer font-semibold text-sm flex items-center gap-2">
+                                    <Calculator className="h-4 w-4 text-blue-500" />
+                                    Porcentajes de Gastos de Compra
+                                    <span className="text-xs font-normal text-muted-foreground ml-1">(click para ajustar)</span>
+                                </summary>
+                                <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-muted-foreground">Descuento compra %</label>
+                                        <input type="number" step="0.1" min="0" max="50"
+                                            className="w-full rounded-md border px-3 py-2 text-sm"
+                                            value={purchaseExpenseRates.purchaseDiscountPercent}
+                                            onChange={e => setPurchaseExpenseRates(r => ({ ...r, purchaseDiscountPercent: Number(e.target.value) }))}
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-muted-foreground">Desc. escritura %</label>
+                                        <input type="number" step="0.1" min="0" max="50"
+                                            className="w-full rounded-md border px-3 py-2 text-sm"
+                                            value={purchaseExpenseRates.deedDiscountPercent}
+                                            onChange={e => setPurchaseExpenseRates(r => ({ ...r, deedDiscountPercent: Number(e.target.value) }))}
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-muted-foreground">Sellos %</label>
+                                        <input type="number" step="0.01" min="0" max="10"
+                                            className="w-full rounded-md border px-3 py-2 text-sm"
+                                            value={purchaseExpenseRates.stampsPercent}
+                                            onChange={e => setPurchaseExpenseRates(r => ({ ...r, stampsPercent: Number(e.target.value) }))}
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-muted-foreground">Hon. Escribano %</label>
+                                        <input type="number" step="0.01" min="0" max="10"
+                                            className="w-full rounded-md border px-3 py-2 text-sm"
+                                            value={purchaseExpenseRates.notaryFeesPercent}
+                                            onChange={e => setPurchaseExpenseRates(r => ({ ...r, notaryFeesPercent: Number(e.target.value) }))}
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-muted-foreground">Gastos escritura %</label>
+                                        <input type="number" step="0.01" min="0" max="10"
+                                            className="w-full rounded-md border px-3 py-2 text-sm"
+                                            value={purchaseExpenseRates.deedExpensesPercent}
+                                            onChange={e => setPurchaseExpenseRates(r => ({ ...r, deedExpensesPercent: Number(e.target.value) }))}
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs text-muted-foreground">Hon. Inmobiliaria %</label>
+                                        <input type="number" step="0.01" min="0" max="10"
+                                            className="w-full rounded-md border px-3 py-2 text-sm"
+                                            value={purchaseExpenseRates.buyerCommissionPercent}
+                                            onChange={e => setPurchaseExpenseRates(r => ({ ...r, buyerCommissionPercent: Number(e.target.value) }))}
+                                        />
+                                    </div>
+                                </div>
+                            </details>
+                        )}
+                    </div>
+                </section>
+            )}
+
             {/* Expense Rates (collapsible) */}
             {subject && comparables.length > 0 && (
                 <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -766,7 +978,7 @@ function NewAppraisalPageContent() {
                                     <Button variant="ghost" size="sm" className="text-red-500 h-auto p-0 underline" onClick={() => {
                                         if (!subject || !valuationResult) return
                                         setSaveStatus('saving')
-                                        saveAppraisal({ subject, comparables, overpriced, valuationResult })
+                                        saveAppraisal({ subject, comparables, overpriced, purchaseProperties, valuationResult })
                                             .then(() => setSaveStatus('saved'))
                                             .catch(() => setSaveStatus('error'))
                                     }}>Reintentar</Button>
@@ -843,6 +1055,19 @@ function NewAppraisalPageContent() {
                         features: c.features as any
                     }))}
                     valuationResult={valuationResult}
+                    purchaseProperties={purchaseProperties.map(c => ({
+                        price: c.price,
+                        currency: c.currency,
+                        title: c.title,
+                        location: c.location,
+                        images: c.images,
+                        description: c.description,
+                        url: c.url,
+                        features: c.features as any
+                    }))}
+                    purchaseResult={purchaseResult || undefined}
+                    reportEdits={reportEdits}
+                    onReportEditsChange={setReportEdits}
                 />
             )}
         </div>
