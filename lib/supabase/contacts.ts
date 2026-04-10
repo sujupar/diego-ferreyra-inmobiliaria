@@ -20,10 +20,12 @@ export async function createContact(input: ContactInput) {
   return data.id as string
 }
 
-export async function getContacts(filters?: { assigned_to?: string; origin?: string }) {
+export async function getContacts(filters?: { assigned_to?: string; origin?: string; from?: string; to?: string }) {
   let query = getAdmin().from('contacts').select('*').order('created_at', { ascending: false })
   if (filters?.assigned_to) query = query.eq('assigned_to', filters.assigned_to)
   if (filters?.origin) query = query.eq('origin', filters.origin)
+  if (filters?.from) query = query.gte('created_at', filters.from + 'T00:00:00Z')
+  if (filters?.to) query = query.lte('created_at', filters.to + 'T23:59:59Z')
   const { data, error } = await query.limit(200)
   if (error) throw error
   return data || []

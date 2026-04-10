@@ -50,7 +50,7 @@ export default function ContactsPage() {
           <h1 className="text-2xl font-bold tracking-tight">Contactos</h1>
           <p className="text-muted-foreground">{contacts.length} contacto{contacts.length !== 1 ? 's' : ''}</p>
         </div>
-        <Link href="/pipeline/new">
+        <Link href="/contacts/new">
           <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nuevo Contacto</Button>
         </Link>
       </div>

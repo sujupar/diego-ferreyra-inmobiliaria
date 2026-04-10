@@ -8,10 +8,10 @@ export default async function Home() {
 
   // Role-based default landing page
   switch (user.profile.role) {
+    case 'abogado':
+      redirect('/properties/review')
     case 'coordinador':
-      redirect('/pipeline')
     case 'asesor':
-      redirect('/pipeline')
     case 'dueno':
     case 'admin':
     default:

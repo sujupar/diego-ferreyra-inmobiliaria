@@ -1,19 +1,28 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const from = searchParams.get('from')
+    const to = searchParams.get('to')
+
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
     // Fetch appraisals with assigned user name
-    const { data: appraisalsRaw, error: apprErr } = await supabase
+    let appraisalQuery = supabase
       .from('appraisals')
       .select('id, property_title, property_location, origin, assigned_to, created_at, publication_price, currency')
       .order('created_at', { ascending: false })
       .limit(200)
+
+    if (from) appraisalQuery = appraisalQuery.gte('created_at', from + 'T00:00:00Z')
+    if (to) appraisalQuery = appraisalQuery.lte('created_at', to + 'T23:59:59Z')
+
+    const { data: appraisalsRaw, error: apprErr } = await appraisalQuery
 
     if (apprErr) throw apprErr
 
@@ -44,11 +53,16 @@ export async function GET() {
     }))
 
     // Fetch properties
-    const { data: propertiesRaw, error: propErr } = await supabase
+    let propQuery = supabase
       .from('properties')
       .select('id, address, neighborhood, origin, status, created_at, asking_price, currency, assigned_to')
       .order('created_at', { ascending: false })
       .limit(200)
+
+    if (from) propQuery = propQuery.gte('created_at', from + 'T00:00:00Z')
+    if (to) propQuery = propQuery.lte('created_at', to + 'T23:59:59Z')
+
+    const { data: propertiesRaw, error: propErr } = await propQuery
 
     if (propErr) throw propErr
 

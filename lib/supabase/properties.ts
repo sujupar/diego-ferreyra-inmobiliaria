@@ -42,7 +42,7 @@ export async function createProperty(input: PropertyInput) {
   return data.id as string
 }
 
-export async function getProperties(filters?: { status?: string; origin?: string }) {
+export async function getProperties(filters?: { status?: string; origin?: string; from?: string; to?: string }) {
   const supabase = getAdmin()
   let query = supabase
     .from('properties')
@@ -51,6 +51,8 @@ export async function getProperties(filters?: { status?: string; origin?: string
 
   if (filters?.status) query = query.eq('status', filters.status)
   if (filters?.origin) query = query.eq('origin', filters.origin)
+  if (filters?.from) query = query.gte('created_at', filters.from + 'T00:00:00Z')
+  if (filters?.to) query = query.lte('created_at', filters.to + 'T23:59:59Z')
 
   const { data, error } = await query.limit(200)
   if (error) throw error
