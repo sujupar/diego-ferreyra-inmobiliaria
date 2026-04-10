@@ -88,6 +88,19 @@ function NewAppraisalPageContent() {
     const [overpriced, setOverpriced] = useState<ScrapedProperty[]>([])
     const [valuationResult, setValuationResult] = useState<ValuationResult | null>(null)
 
+    // Origin and assignment
+    const [origin, setOrigin] = useState<string>('')
+    const [assignedTo, setAssignedTo] = useState<string>('')
+    const [advisors, setAdvisors] = useState<Array<{ id: string; full_name: string }>>([])
+
+    // Load advisors list
+    useEffect(() => {
+        fetch('/api/users/advisors')
+            .then(res => res.ok ? res.json() : { data: [] })
+            .then(json => setAdvisors(json.data || []))
+            .catch(() => {})
+    }, [])
+
     // Edit mode state
     const [editLoading, setEditLoading] = useState(editMode)
     const [editLoadError, setEditLoadError] = useState<string | null>(null)
@@ -295,7 +308,7 @@ function NewAppraisalPageContent() {
         // Auto-save to Supabase — update existing or create new based on mode
         if (result) {
             setSaveStatus('saving')
-            const payload = { subject, comparables, overpriced, valuationResult: result }
+            const payload = { subject, comparables, overpriced, valuationResult: result, origin: origin || undefined, assignedTo: assignedTo || undefined }
             const promise = editMode && editId
                 ? updateAppraisal(editId, payload)
                 : saveAppraisal(payload)
@@ -349,6 +362,41 @@ function NewAppraisalPageContent() {
                         : 'Genera informes de valor precisos y profesionales utilizando el método de comparables de mercado.'}
                 </p>
             </div>
+
+            {/* Origin & Assignment */}
+            {!editMode && (
+              <section className="rounded-xl border bg-card p-6 space-y-4">
+                <h2 className="text-lg font-semibold">Datos Iniciales</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Origen *</label>
+                    <select
+                      value={origin}
+                      onChange={e => setOrigin(e.target.value)}
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">Seleccionar origen...</option>
+                      <option value="embudo">Embudo (Landing Page)</option>
+                      <option value="referido">Referido</option>
+                      <option value="historico">Historico</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Asesor asignado</label>
+                    <select
+                      value={assignedTo}
+                      onChange={e => setAssignedTo(e.target.value)}
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">Sin asignar</option>
+                      {advisors.map(a => (
+                        <option key={a.id} value={a.id}>{a.full_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </section>
+            )}
 
             {/* Step 1: Subject Property - Manual Entry */}
             <section className="space-y-6">

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { invitationEmailHtml } from '@/lib/auth/email-templates'
 import { Role } from '@/types/auth.types'
@@ -9,36 +10,46 @@ function getResend() {
     return new Resend(process.env.RESEND_API_KEY)
 }
 
+function getAdminClient() {
+    return createSupabaseClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+}
+
 export async function POST(request: NextRequest) {
     try {
         const cookieStore = await cookies()
         const supabase = createClient(cookieStore)
 
-        // Verify the requester is an admin
+        // Verify the requester is an admin or dueno
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) {
             return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
         }
 
-        const { data: profile } = await supabase
+        // Use service_role to bypass RLS for profile lookup
+        const adminClient = getAdminClient()
+
+        const { data: profile } = await adminClient
             .from('profiles')
             .select('role, full_name')
             .eq('id', user.id)
             .single()
 
-        if (!profile || profile.role !== 'admin') {
-            return NextResponse.json({ error: 'Solo el admin puede enviar invitaciones' }, { status: 403 })
+        if (!profile || !['admin', 'dueno'].includes(profile.role)) {
+            return NextResponse.json({ error: 'Solo administradores pueden enviar invitaciones' }, { status: 403 })
         }
 
         const { email, role } = await request.json() as { email: string; role: string }
 
         // Validate role
-        if (!['dueno', 'coordinador', 'asesor'].includes(role)) {
+        if (!['dueno', 'coordinador', 'asesor', 'abogado'].includes(role)) {
             return NextResponse.json({ error: 'Rol invalido' }, { status: 400 })
         }
 
         // Check if user already exists
-        const { data: existingProfile } = await supabase
+        const { data: existingProfile } = await adminClient
             .from('profiles')
             .select('id')
             .eq('email', email)
@@ -48,8 +59,8 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Ya existe un usuario con ese email' }, { status: 409 })
         }
 
-        // Create invitation
-        const { data: invitation, error: invError } = await supabase
+        // Create invitation using admin client to bypass RLS
+        const { data: invitation, error: invError } = await adminClient
             .from('invitations')
             .insert({ email, role, invited_by: user.id })
             .select('token')

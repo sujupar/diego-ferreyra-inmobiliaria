@@ -1,14 +1,16 @@
 import { requireRole } from '@/lib/auth/require-role'
-import { cookies } from 'next/headers'
-import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { UsersClient } from './users-client'
 import { Profile, Invitation } from '@/types/auth.types'
 
 export default async function UsersPage() {
-    await requireRole('admin')
+    await requireRole('admin', 'dueno')
 
-    const cookieStore = await cookies()
-    const supabase = createClient(cookieStore)
+    // Use service_role to bypass RLS for admin queries
+    const supabase = createSupabaseClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
 
     const [profilesRes, invitationsRes] = await Promise.all([
         supabase.from('profiles').select('*').order('created_at', { ascending: false }),

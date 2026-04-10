@@ -16,6 +16,7 @@ const ROLE_COLORS: Record<Role, string> = {
     dueno: 'bg-blue-100 text-blue-800',
     coordinador: 'bg-purple-100 text-purple-800',
     asesor: 'bg-green-100 text-green-800',
+    abogado: 'bg-amber-100 text-amber-800',
     agent: 'bg-gray-100 text-gray-800',
     viewer: 'bg-gray-100 text-gray-800',
 }
@@ -117,6 +118,7 @@ export function UsersClient({
                                 <option value="dueno">Dueno</option>
                                 <option value="coordinador">Coordinador</option>
                                 <option value="asesor">Asesor</option>
+                                <option value="abogado">Abogado</option>
                             </select>
                         </div>
                         <Button type="submit" className="w-full" disabled={sending || !role}>

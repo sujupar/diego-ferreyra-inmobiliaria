@@ -107,6 +107,8 @@ export interface Database {
                     created_at: string
                     updated_at: string
                     notes: string | null
+                    origin: string | null
+                    assigned_to: string | null
                 }
                 Insert: {
                     id?: string
@@ -128,6 +130,8 @@ export interface Database {
                     created_at?: string
                     updated_at?: string
                     notes?: string | null
+                    origin?: string | null
+                    assigned_to?: string | null
                 }
                 Update: {
                     id?: string
@@ -149,6 +153,8 @@ export interface Database {
                     created_at?: string
                     updated_at?: string
                     notes?: string | null
+                    origin?: string | null
+                    assigned_to?: string | null
                 }
                 Relationships: [
                     {
@@ -259,6 +265,108 @@ export interface Database {
                     contact_count?: number
                     opportunity_value?: number
                     fetched_at?: string
+                }
+                Relationships: []
+            }
+            properties: {
+                Row: {
+                    id: string
+                    appraisal_id: string | null
+                    address: string
+                    neighborhood: string
+                    city: string
+                    property_type: string
+                    rooms: number | null
+                    bedrooms: number | null
+                    bathrooms: number | null
+                    garages: number | null
+                    covered_area: number | null
+                    total_area: number | null
+                    floor: number | null
+                    age: number | null
+                    asking_price: number
+                    currency: string
+                    commission_percentage: number
+                    contract_start_date: string | null
+                    contract_end_date: string | null
+                    origin: string | null
+                    status: string
+                    documents: Json
+                    photos: string[]
+                    legal_status: string
+                    legal_reviewer_id: string | null
+                    legal_notes: string | null
+                    legal_reviewed_at: string | null
+                    created_by: string | null
+                    assigned_to: string | null
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    appraisal_id?: string | null
+                    address: string
+                    neighborhood: string
+                    city?: string
+                    property_type?: string
+                    rooms?: number | null
+                    bedrooms?: number | null
+                    bathrooms?: number | null
+                    garages?: number | null
+                    covered_area?: number | null
+                    total_area?: number | null
+                    floor?: number | null
+                    age?: number | null
+                    asking_price: number
+                    currency?: string
+                    commission_percentage?: number
+                    contract_start_date?: string | null
+                    contract_end_date?: string | null
+                    origin?: string | null
+                    status?: string
+                    documents?: Json
+                    photos?: string[]
+                    legal_status?: string
+                    legal_reviewer_id?: string | null
+                    legal_notes?: string | null
+                    legal_reviewed_at?: string | null
+                    created_by?: string | null
+                    assigned_to?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    appraisal_id?: string | null
+                    address?: string
+                    neighborhood?: string
+                    city?: string
+                    property_type?: string
+                    rooms?: number | null
+                    bedrooms?: number | null
+                    bathrooms?: number | null
+                    garages?: number | null
+                    covered_area?: number | null
+                    total_area?: number | null
+                    floor?: number | null
+                    age?: number | null
+                    asking_price?: number
+                    currency?: string
+                    commission_percentage?: number
+                    contract_start_date?: string | null
+                    contract_end_date?: string | null
+                    origin?: string | null
+                    status?: string
+                    documents?: Json
+                    photos?: string[]
+                    legal_status?: string
+                    legal_reviewer_id?: string | null
+                    legal_notes?: string | null
+                    legal_reviewed_at?: string | null
+                    created_by?: string | null
+                    assigned_to?: string | null
+                    created_at?: string
+                    updated_at?: string
                 }
                 Relationships: []
             }

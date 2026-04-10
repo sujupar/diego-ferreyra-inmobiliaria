@@ -1,5 +1,5 @@
 // Maps to Postgres enum `app_role`. Includes legacy values (agent, viewer) from original schema.
-export type Role = 'admin' | 'dueno' | 'coordinador' | 'asesor' | 'agent' | 'viewer'
+export type Role = 'admin' | 'dueno' | 'coordinador' | 'asesor' | 'abogado' | 'agent' | 'viewer'
 
 export interface Profile {
   id: string
