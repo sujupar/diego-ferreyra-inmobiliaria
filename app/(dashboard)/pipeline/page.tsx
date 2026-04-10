@@ -66,15 +66,20 @@ export default function PipelinePage() {
   const [filterOrigin, setFilterOrigin] = useState<string>('')
   const [viewMode, setViewMode] = useState<'list' | 'table'>('table')
   const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: '', to: '' })
+  const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
+  }, [])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      let url = '/api/pipeline'
       const params = new URLSearchParams()
       if (dateRange.from) params.set('from', dateRange.from)
       if (dateRange.to) params.set('to', dateRange.to)
-      if (params.toString()) url += '?' + params.toString()
+      if (userInfo?.role === 'asesor') params.set('assigned_to', userInfo.id)
+      const url = '/api/pipeline' + (params.toString() ? '?' + params.toString() : '')
 
       const res = await fetch(url)
       if (res.ok) {
@@ -87,7 +92,7 @@ export default function PipelinePage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [dateRange, userInfo])
 
   useEffect(() => { fetchData() }, [fetchData])
 

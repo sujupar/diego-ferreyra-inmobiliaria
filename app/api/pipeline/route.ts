@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const from = searchParams.get('from')
     const to = searchParams.get('to')
+    const assignedTo = searchParams.get('assigned_to')
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest) {
 
     if (from) appraisalQuery = appraisalQuery.gte('created_at', from + 'T00:00:00Z')
     if (to) appraisalQuery = appraisalQuery.lte('created_at', to + 'T23:59:59Z')
+    if (assignedTo) appraisalQuery = appraisalQuery.eq('assigned_to', assignedTo)
 
     const { data: appraisalsRaw, error: apprErr } = await appraisalQuery
 
@@ -61,6 +63,7 @@ export async function GET(request: NextRequest) {
 
     if (from) propQuery = propQuery.gte('created_at', from + 'T00:00:00Z')
     if (to) propQuery = propQuery.lte('created_at', to + 'T23:59:59Z')
+    if (assignedTo) propQuery = propQuery.eq('assigned_to', assignedTo)
 
     const { data: propertiesRaw, error: propErr } = await propQuery
 

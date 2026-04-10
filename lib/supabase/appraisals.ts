@@ -173,20 +173,26 @@ export async function saveAppraisal(input: SaveAppraisalInput): Promise<string> 
 
 export async function getAppraisals(
     page: number = 1,
-    pageSize: number = 12
+    pageSize: number = 12,
+    filters?: { from?: string; to?: string; assignedTo?: string }
 ): Promise<{ data: AppraisalSummary[]; count: number }> {
     const supabase = createClient()
-    const from = (page - 1) * pageSize
-    const to = from + pageSize - 1
+    const rangeFrom = (page - 1) * pageSize
+    const rangeTo = rangeFrom + pageSize - 1
 
-    const { data, error, count } = await supabase
+    let query = supabase
         .from('appraisals')
         .select(
             'id, property_title, property_location, property_images, publication_price, currency, comparable_count, created_at',
             { count: 'exact' }
         )
         .order('created_at', { ascending: false })
-        .range(from, to)
+
+    if (filters?.from) query = query.gte('created_at', filters.from + 'T00:00:00Z')
+    if (filters?.to) query = query.lte('created_at', filters.to + 'T23:59:59Z')
+    if (filters?.assignedTo) query = query.eq('assigned_to', filters.assignedTo)
+
+    const { data, error, count } = await query.range(rangeFrom, rangeTo)
 
     if (error) throw error
     return { data: (data || []) as AppraisalSummary[], count: count || 0 }

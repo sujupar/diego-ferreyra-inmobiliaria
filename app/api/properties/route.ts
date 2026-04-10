@@ -8,7 +8,8 @@ export async function GET(request: NextRequest) {
     const origin = searchParams.get('origin') || undefined
     const from = searchParams.get('from') || undefined
     const to = searchParams.get('to') || undefined
-    const data = await getProperties({ status, origin, from, to })
+    const assigned_to = searchParams.get('assigned_to') || undefined
+    const data = await getProperties({ status, origin, from, to, assigned_to })
     return NextResponse.json({ data })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error' }, { status: 500 })

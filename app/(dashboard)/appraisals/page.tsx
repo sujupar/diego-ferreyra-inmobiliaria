@@ -2,63 +2,73 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
+import { useRouter } from 'next/navigation'
 import { getAppraisals, deleteAppraisal, AppraisalSummary } from '@/lib/supabase/appraisals'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
+import { DataTable, Column } from '@/components/ui/DataTable'
 import {
-    Trash2,
-    ChevronLeft,
-    ChevronRight,
-    Plus,
-    Loader2,
-    FileText,
-    MapPin,
-    Calendar,
-    Edit2
+    Trash2, ChevronLeft, ChevronRight, Plus, Loader2, FileText,
+    MapPin, Calendar, Edit2, LayoutList, Table2
 } from 'lucide-react'
 
 function formatCurrency(value: number, currency: string = 'USD'): string {
     return new Intl.NumberFormat('es-AR', {
-        style: 'currency',
-        currency: currency === 'ARS' ? 'ARS' : 'USD',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
+        style: 'currency', currency: currency === 'ARS' ? 'ARS' : 'USD',
+        minimumFractionDigits: 0, maximumFractionDigits: 0,
     }).format(value)
 }
 
+function formatDate(d: string) {
+    return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
 export default function AppraisalsHistoryPage() {
+    const router = useRouter()
     const [appraisals, setAppraisals] = useState<AppraisalSummary[]>([])
     const [totalCount, setTotalCount] = useState(0)
     const [page, setPage] = useState(1)
     const [loading, setLoading] = useState(true)
     const [deleting, setDeleting] = useState<string | null>(null)
+    const [viewMode, setViewMode] = useState<'cards' | 'table'>('table')
+    const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: '', to: '' })
+    const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
     const pageSize = 12
+
+    // Get current user info for role-based filtering
+    useEffect(() => {
+        fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
+    }, [])
 
     useEffect(() => {
         setLoading(true)
-        getAppraisals(page, pageSize)
+        const filters: { from?: string; to?: string; assignedTo?: string } = {}
+        if (dateRange.from) filters.from = dateRange.from
+        if (dateRange.to) filters.to = dateRange.to
+        if (userInfo?.role === 'asesor') filters.assignedTo = userInfo.id
+
+        getAppraisals(page, pageSize, filters)
             .then(({ data, count }) => {
                 setAppraisals(data)
                 setTotalCount(count)
             })
             .catch(err => console.error('Error loading appraisals:', err))
             .finally(() => setLoading(false))
-    }, [page])
+    }, [page, dateRange, userInfo])
 
     async function handleDelete(e: React.MouseEvent, id: string) {
         e.preventDefault()
         e.stopPropagation()
-        if (!window.confirm('¿Estás seguro de que deseas eliminar esta tasación?')) return
-
+        if (!confirm('Eliminar esta tasacion?')) return
         setDeleting(id)
         try {
             await deleteAppraisal(id)
             setAppraisals(prev => prev.filter(a => a.id !== id))
             setTotalCount(prev => prev - 1)
         } catch (err) {
-            console.error('Error deleting appraisal:', err)
+            console.error('Delete error:', err)
         } finally {
             setDeleting(null)
         }
@@ -66,140 +76,77 @@ export default function AppraisalsHistoryPage() {
 
     const totalPages = Math.ceil(totalCount / pageSize)
 
-    return (
-        <div className="max-w-6xl mx-auto space-y-8">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Historial de Tasaciones</h1>
-                    <p className="text-muted-foreground mt-1">
-                        {totalCount > 0 ? `${totalCount} tasación${totalCount !== 1 ? 'es' : ''} guardada${totalCount !== 1 ? 's' : ''}` : 'Sin tasaciones guardadas'}
-                    </p>
-                </div>
-                <Link href="/appraisal/new">
-                    <Button className="gap-2">
-                        <Plus className="h-4 w-4" />
-                        Nueva Tasación
-                    </Button>
+    const columns: Column<AppraisalSummary>[] = [
+        { key: 'property_title', label: 'Propiedad', sortable: true, render: r => <span className="font-medium">{r.property_title || 'Sin titulo'}</span> },
+        { key: 'property_location', label: 'Ubicacion', sortable: true, render: r => <span className="text-muted-foreground truncate max-w-[200px] block">{r.property_location}</span> },
+        { key: 'publication_price', label: 'Precio', sortable: true, className: 'text-right', render: r => <span className="font-medium">{formatCurrency(r.publication_price, r.currency || 'USD')}</span> },
+        { key: 'comparable_count', label: 'Comp.', sortable: true, className: 'text-center', render: r => <Badge variant="secondary">{r.comparable_count}</Badge> },
+        { key: 'created_at', label: 'Fecha', sortable: true, render: r => <span className="text-sm text-muted-foreground">{formatDate(r.created_at)}</span> },
+        { key: 'actions', label: '', render: r => (
+            <div className="flex gap-1">
+                <Link href={`/appraisal/new?editId=${r.id}`} onClick={e => e.stopPropagation()}>
+                    <Button variant="ghost" size="sm"><Edit2 className="h-3.5 w-3.5" /></Button>
                 </Link>
+                <Button variant="ghost" size="sm" onClick={e => handleDelete(e, r.id)} disabled={deleting === r.id}>
+                    {deleting === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 text-destructive" />}
+                </Button>
             </div>
+        )},
+    ]
 
-            {/* Loading skeletons */}
-            {loading && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                        <div key={i} className="rounded-xl border overflow-hidden">
-                            <div className="aspect-video bg-muted animate-pulse" />
-                            <div className="p-4 space-y-3">
-                                <div className="h-5 bg-muted animate-pulse rounded w-3/4" />
-                                <div className="h-4 bg-muted animate-pulse rounded w-1/2" />
-                                <div className="h-4 bg-muted animate-pulse rounded w-1/3" />
-                                <div className="h-6 bg-muted animate-pulse rounded w-2/5 mt-4" />
-                            </div>
-                        </div>
-                    ))}
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold">Historial de Tasaciones</h1>
+                    <p className="text-sm text-muted-foreground">{totalCount} tasacion{totalCount !== 1 ? 'es' : ''}</p>
                 </div>
-            )}
-
-            {/* Empty state */}
-            {!loading && appraisals.length === 0 && (
-                <div className="text-center py-20">
-                    <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
-                    <h2 className="text-xl font-semibold text-muted-foreground mb-2">Sin tasaciones</h2>
-                    <p className="text-muted-foreground mb-6">Las tasaciones se guardan automáticamente al calcular el valor de mercado.</p>
+                <div className="flex items-center gap-2">
+                    <div className="flex rounded-md border">
+                        <button onClick={() => setViewMode('cards')} className={`p-2 ${viewMode === 'cards' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}><LayoutList className="h-4 w-4" /></button>
+                        <button onClick={() => setViewMode('table')} className={`p-2 ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}><Table2 className="h-4 w-4" /></button>
+                    </div>
                     <Link href="/appraisal/new">
-                        <Button className="gap-2">
-                            <Plus className="h-4 w-4" />
-                            Crear primera tasación
-                        </Button>
+                        <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nueva</Button>
                     </Link>
                 </div>
-            )}
+            </div>
 
-            {/* Grid */}
-            {!loading && appraisals.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {appraisals.map(appraisal => (
-                        <Link key={appraisal.id} href={`/appraisals/${appraisal.id}`}>
-                            <Card className="h-full hover:shadow-md transition-all duration-200 cursor-pointer group">
-                                {/* Image */}
-                                {appraisal.property_images?.[0] ? (
-                                    <div className="aspect-video overflow-hidden rounded-t-xl relative">
-                                        <Image
-                                            src={appraisal.property_images[0]}
-                                            alt={appraisal.property_title || 'Propiedad'}
-                                            fill
-                                            sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                                            className="object-cover group-hover:scale-105 transition-transform duration-300"
-                                            loading="lazy"
-                                            unoptimized
-                                        />
-                                    </div>
-                                ) : (
-                                    <div className="aspect-video bg-muted rounded-t-xl flex items-center justify-center">
-                                        <FileText className="h-12 w-12 text-muted-foreground/30" />
-                                    </div>
-                                )}
+            <DateRangeFilter onChange={setDateRange} />
 
-                                <CardContent className="p-4 space-y-3">
-                                    {/* Title */}
-                                    <h3 className="font-semibold text-base line-clamp-1">
-                                        {appraisal.property_title || appraisal.property_location}
-                                    </h3>
-
-                                    {/* Location */}
-                                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                                        <MapPin className="h-3.5 w-3.5 shrink-0" />
-                                        <span className="line-clamp-1">{appraisal.property_location}</span>
-                                    </div>
-
-                                    {/* Date */}
-                                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                                        <Calendar className="h-3.5 w-3.5 shrink-0" />
-                                        <span>
-                                            {new Date(appraisal.created_at).toLocaleDateString('es-AR', {
-                                                year: 'numeric',
-                                                month: 'short',
-                                                day: 'numeric'
-                                            })}
-                                        </span>
-                                    </div>
-
-                                    {/* Price + Badge + Delete */}
-                                    <div className="flex items-center justify-between pt-2 border-t">
+            {loading ? (
+                <div className="flex items-center justify-center py-20">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+            ) : appraisals.length === 0 ? (
+                <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-16">
+                        <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+                        <h3 className="text-lg font-medium mb-1">Sin tasaciones</h3>
+                        <p className="text-sm text-muted-foreground mb-4">Crea tu primera tasacion.</p>
+                        <Link href="/appraisal/new"><Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nueva Tasacion</Button></Link>
+                    </CardContent>
+                </Card>
+            ) : viewMode === 'table' ? (
+                <DataTable
+                    data={appraisals}
+                    columns={columns}
+                    getRowKey={r => r.id}
+                    onRowClick={r => router.push(`/appraisals/${r.id}`)}
+                />
+            ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {appraisals.map(a => (
+                        <Link key={a.id} href={`/appraisals/${a.id}`}>
+                            <Card className="overflow-hidden hover:shadow-md transition-shadow cursor-pointer h-full">
+                                <CardContent className="p-4">
+                                    <h3 className="font-medium mb-1 truncate">{a.property_title || 'Sin titulo'}</h3>
+                                    <p className="text-sm text-muted-foreground flex items-center gap-1 mb-2"><MapPin className="h-3.5 w-3.5" />{a.property_location}</p>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-lg font-bold">{formatCurrency(a.publication_price, a.currency || 'USD')}</span>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-lg font-bold text-primary">
-                                                {formatCurrency(appraisal.publication_price, appraisal.currency || 'USD')}
-                                            </span>
-                                            <Badge variant="secondary" className="text-xs">
-                                                {appraisal.comparable_count} comp.
-                                            </Badge>
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            <Button
-                                                asChild
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 text-muted-foreground hover:text-primary shrink-0"
-                                                onClick={(e) => e.stopPropagation()}
-                                            >
-                                                <Link href={`/appraisal/new?editId=${appraisal.id}`}>
-                                                    <Edit2 className="h-4 w-4" />
-                                                </Link>
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
-                                                onClick={(e) => handleDelete(e, appraisal.id)}
-                                                disabled={deleting === appraisal.id}
-                                            >
-                                                {deleting === appraisal.id ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                    <Trash2 className="h-4 w-4" />
-                                                )}
-                                            </Button>
+                                            <Badge variant="secondary">{a.comparable_count} comp.</Badge>
+                                            <span className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" />{formatDate(a.created_at)}</span>
                                         </div>
                                     </div>
                                 </CardContent>
@@ -211,28 +158,12 @@ export default function AppraisalsHistoryPage() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-4 pt-4">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPage(p => Math.max(1, p - 1))}
-                        disabled={page === 1}
-                        className="gap-1"
-                    >
+                <div className="flex items-center justify-center gap-2">
+                    <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
                         <ChevronLeft className="h-4 w-4" />
-                        Anterior
                     </Button>
-                    <span className="text-sm text-muted-foreground">
-                        Página {page} de {totalPages}
-                    </span>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                        disabled={page === totalPages}
-                        className="gap-1"
-                    >
-                        Siguiente
+                    <span className="text-sm text-muted-foreground">Pagina {page} de {totalPages}</span>
+                    <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
                         <ChevronRight className="h-4 w-4" />
                     </Button>
                 </div>
