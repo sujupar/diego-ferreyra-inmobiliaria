@@ -72,30 +72,30 @@ export async function POST(request: NextRequest) {
         const baseUrl = request.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || ''
         const acceptUrl = `${baseUrl}/accept-invite?token=${invitation.token}`
 
-        // Send email
-        const resend = getResend()
-        const { error: emailError } = await resend.emails.send({
-            from: process.env.RESEND_FROM_EMAIL || 'Diego Ferreyra Inmobiliaria <noreply@diegofeinmobiliaria.com>',
-            to: email,
-            subject: 'Invitacion a Diego Ferreyra Inmobiliaria',
-            html: invitationEmailHtml({
-                role: role as Role,
-                inviterName: profile.full_name,
-                acceptUrl,
-            }),
-        })
-
-        if (emailError) {
-            console.error('Resend error:', emailError)
-            // Invitation was created even if email fails - admin can share the link manually
+        // Try to send email (optional - works without Resend API key)
+        try {
+            if (!process.env.RESEND_API_KEY) throw new Error('No RESEND_API_KEY')
+            const resend = getResend()
+            const { error: emailError } = await resend.emails.send({
+                from: process.env.RESEND_FROM_EMAIL || 'Diego Ferreyra Inmobiliaria <noreply@diegofeinmobiliaria.com>',
+                to: email,
+                subject: 'Invitacion a Diego Ferreyra Inmobiliaria',
+                html: invitationEmailHtml({
+                    role: role as Role,
+                    inviterName: profile.full_name,
+                    acceptUrl,
+                }),
+            })
+            if (emailError) throw emailError
+            return NextResponse.json({ success: true })
+        } catch (emailErr) {
+            console.error('Email send error (non-blocking):', emailErr)
             return NextResponse.json({
                 success: true,
-                warning: 'Invitacion creada pero el email no se pudo enviar. Comparte el link manualmente.',
+                warning: 'Invitacion creada. Comparte este link manualmente:',
                 acceptUrl,
             })
         }
-
-        return NextResponse.json({ success: true })
     } catch (error: any) {
         console.error('Invite error:', error)
         return NextResponse.json({ error: error.message || 'Error interno' }, { status: 500 })

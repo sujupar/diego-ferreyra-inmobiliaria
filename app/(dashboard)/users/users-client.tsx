@@ -57,7 +57,9 @@ export function UsersClient({
 
             setMessage({
                 type: 'success',
-                text: data.warning || 'Invitacion enviada correctamente',
+                text: data.acceptUrl
+                    ? `${data.warning}\n${data.acceptUrl}`
+                    : 'Invitacion enviada correctamente',
             })
             setEmail('')
             setRole('')
