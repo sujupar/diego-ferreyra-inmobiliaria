@@ -2,13 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
 import { invitationEmailHtml } from '@/lib/auth/email-templates'
 import { Role } from '@/types/auth.types'
-
-function getResend() {
-    return new Resend(process.env.RESEND_API_KEY)
-}
 
 function getAdminClient() {
     return createSupabaseClient(
@@ -28,7 +24,6 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
         }
 
-        // Use service_role to bypass RLS for profile lookup
         const adminClient = getAdminClient()
 
         const { data: profile } = await adminClient
@@ -43,12 +38,10 @@ export async function POST(request: NextRequest) {
 
         const { email, role } = await request.json() as { email: string; role: string }
 
-        // Validate role
         if (!['dueno', 'coordinador', 'asesor', 'abogado'].includes(role)) {
             return NextResponse.json({ error: 'Rol invalido' }, { status: 400 })
         }
 
-        // Check if user already exists
         const { data: existingProfile } = await adminClient
             .from('profiles')
             .select('id')
@@ -59,7 +52,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Ya existe un usuario con ese email' }, { status: 409 })
         }
 
-        // Create invitation using admin client to bypass RLS
+        // Create invitation
         const { data: invitation, error: invError } = await adminClient
             .from('invitations')
             .insert({ email, role, invited_by: user.id })
@@ -68,31 +61,49 @@ export async function POST(request: NextRequest) {
 
         if (invError) throw invError
 
-        // Build accept URL
         const baseUrl = request.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || ''
         const acceptUrl = `${baseUrl}/accept-invite?token=${invitation.token}`
 
-        // Try to send email (optional - works without Resend API key)
+        // Send email via Gmail SMTP (same as marketing reports)
+        const gmailUser = process.env.GMAIL_USER
+        const gmailPass = process.env.GMAIL_APP_PASSWORD
+
+        if (!gmailUser || !gmailPass) {
+            return NextResponse.json({
+                success: true,
+                warning: 'Invitacion creada pero no hay Gmail configurado. Comparte este link:',
+                acceptUrl,
+            })
+        }
+
         try {
-            if (!process.env.RESEND_API_KEY) throw new Error('No RESEND_API_KEY')
-            const resend = getResend()
-            const { error: emailError } = await resend.emails.send({
-                from: process.env.RESEND_FROM_EMAIL || 'Diego Ferreyra Inmobiliaria <noreply@diegofeinmobiliaria.com>',
+            const transporter = nodemailer.createTransport({
+                service: 'gmail',
+                auth: { user: gmailUser, pass: gmailPass },
+            })
+
+            const ROLE_LABELS: Record<string, string> = {
+                dueno: 'Dueño', coordinador: 'Coordinador',
+                asesor: 'Asesor', abogado: 'Abogado',
+            }
+
+            await transporter.sendMail({
+                from: `Diego Ferreyra Inmobiliaria <${gmailUser}>`,
                 to: email,
-                subject: 'Invitacion a Diego Ferreyra Inmobiliaria',
+                subject: `Invitacion a Diego Ferreyra Inmobiliaria — Rol: ${ROLE_LABELS[role] || role}`,
                 html: invitationEmailHtml({
                     role: role as Role,
                     inviterName: profile.full_name,
                     acceptUrl,
                 }),
             })
-            if (emailError) throw emailError
+
             return NextResponse.json({ success: true })
         } catch (emailErr) {
-            console.error('Email send error (non-blocking):', emailErr)
+            console.error('Gmail send error:', emailErr)
             return NextResponse.json({
                 success: true,
-                warning: 'Invitacion creada. Comparte este link manualmente:',
+                warning: 'Invitacion creada pero el email fallo. Comparte este link:',
                 acceptUrl,
             })
         }
