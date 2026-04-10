@@ -146,9 +146,24 @@ export function UsersClient({
                                     <p className="text-sm font-medium">{profile.full_name}</p>
                                     <p className="text-xs text-muted-foreground">{profile.email}</p>
                                 </div>
-                                <Badge variant="secondary" className={ROLE_COLORS[profile.role]}>
-                                    {ROLE_LABELS[profile.role]}
-                                </Badge>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={async () => {
+                                            await fetch('/api/admin/impersonate', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ userId: profile.id }),
+                                            })
+                                            window.location.href = '/'
+                                        }}
+                                        className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors"
+                                    >
+                                        Ver como
+                                    </button>
+                                    <Badge variant="secondary" className={ROLE_COLORS[profile.role]}>
+                                        {ROLE_LABELS[profile.role]}
+                                    </Badge>
+                                </div>
                             </div>
                         ))}
                         {profiles.length === 0 && (

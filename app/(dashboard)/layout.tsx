@@ -1,8 +1,9 @@
 import Link from 'next/link'
-import { getUser } from '@/lib/auth/get-user'
+import { getUser, isImpersonating } from '@/lib/auth/get-user'
 import { redirect } from 'next/navigation'
 import { hasPermission } from '@/lib/auth/roles'
 import { UserMenu } from '@/components/auth/UserMenu'
+import { ImpersonationBanner } from '@/components/auth/ImpersonationBanner'
 import { Role } from '@/types/auth.types'
 import { Permission } from '@/lib/auth/roles'
 
@@ -42,10 +43,17 @@ export default async function DashboardLayout({
     const user = await getUser()
     if (!user) redirect('/login')
 
+    const impersonating = await isImpersonating()
     const visibleNav = getVisibleNavItems(user.profile.role)
 
     return (
         <div className="min-h-screen flex flex-col bg-secondary/30">
+            {impersonating && (
+                <ImpersonationBanner
+                    name={user.profile.full_name}
+                    role={user.profile.role}
+                />
+            )}
             <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
                 <div className="container mx-auto h-16 flex items-center justify-between px-4">
                     <div className="flex items-center gap-2">

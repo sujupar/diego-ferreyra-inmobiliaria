@@ -28,4 +28,5 @@ export interface UserWithProfile {
   id: string
   email: string
   profile: Profile
+  _impersonatedBy?: string
 }
