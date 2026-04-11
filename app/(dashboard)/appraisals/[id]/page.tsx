@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { getAppraisal, AppraisalDetail } from '@/lib/supabase/appraisals'
+import type { AppraisalDetail } from '@/lib/supabase/appraisals'
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { PDFDownloadButton } from '@/components/appraisal/PDFDownloadButton'
 import { ValuationProperty, ValuationResult } from '@/lib/valuation/calculator'
@@ -29,10 +29,14 @@ export default function AppraisalDetailPage() {
         const id = params.id as string
         if (!id) return
 
-        getAppraisal(id)
-            .then(data => {
+        fetch(`/api/appraisals/${id}`)
+            .then(r => {
+                if (!r.ok) throw new Error('Not found')
+                return r.json()
+            })
+            .then(({ data }) => {
                 if (!data) setError('Tasación no encontrada')
-                else setAppraisal(data)
+                else setAppraisal(data as AppraisalDetail)
             })
             .catch(err => {
                 console.error('Error loading appraisal:', err)

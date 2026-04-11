@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { getAppraisals, deleteAppraisal, AppraisalSummary } from '@/lib/supabase/appraisals'
+import type { AppraisalSummary } from '@/lib/supabase/appraisals'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -44,15 +44,18 @@ export default function AppraisalsHistoryPage() {
 
     useEffect(() => {
         setLoading(true)
-        const filters: { from?: string; to?: string; assignedTo?: string } = {}
-        if (dateRange.from) filters.from = dateRange.from
-        if (dateRange.to) filters.to = dateRange.to
-        if (userInfo?.role === 'asesor') filters.assignedTo = userInfo.id
+        const params = new URLSearchParams()
+        params.set('page', String(page))
+        params.set('limit', String(pageSize))
+        if (dateRange.from) params.set('from', dateRange.from)
+        if (dateRange.to) params.set('to', dateRange.to)
+        if (userInfo?.role === 'asesor') params.set('assigned_to', userInfo.id)
 
-        getAppraisals(page, pageSize, filters)
+        fetch(`/api/appraisals?${params}`)
+            .then(r => r.json())
             .then(({ data, count }) => {
-                setAppraisals(data)
-                setTotalCount(count)
+                setAppraisals(data || [])
+                setTotalCount(count || 0)
             })
             .catch(err => console.error('Error loading appraisals:', err))
             .finally(() => setLoading(false))
@@ -64,7 +67,7 @@ export default function AppraisalsHistoryPage() {
         if (!confirm('Eliminar esta tasacion?')) return
         setDeleting(id)
         try {
-            await deleteAppraisal(id)
+            await fetch(`/api/appraisals/${id}`, { method: 'DELETE' })
             setAppraisals(prev => prev.filter(a => a.id !== id))
             setTotalCount(prev => prev - 1)
         } catch (err) {
