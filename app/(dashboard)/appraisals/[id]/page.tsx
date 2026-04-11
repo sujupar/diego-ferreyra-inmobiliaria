@@ -8,6 +8,7 @@ import type { AppraisalDetail } from '@/lib/supabase/appraisals'
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { PDFDownloadButton } from '@/components/appraisal/PDFDownloadButton'
 import { ValuationProperty, ValuationResult } from '@/lib/valuation/calculator'
+import { ReportEdits, buildDefaultEdits } from '@/lib/types/report-edits'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, FileText, AlertCircle, Edit2 } from 'lucide-react'
 
@@ -22,6 +23,7 @@ export default function AppraisalDetailPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [showPDFPreview, setShowPDFPreview] = useState(false)
+    const [reportEdits, setReportEdits] = useState<ReportEdits | null>(null)
 
     // Market image settings are loaded lazily by PDFPreviewModal on open
 
@@ -207,6 +209,11 @@ export default function AppraisalDetailPage() {
                     comparables={comparables}
                     valuationResult={result}
                     overpriced={overpriced}
+                    reportEdits={reportEdits || buildDefaultEdits(
+                        { title: appraisal.property_title || '', location: appraisal.property_location, description: appraisal.property_description || '' },
+                        result
+                    )}
+                    onReportEditsChange={setReportEdits}
                 />
             )}
         </div>

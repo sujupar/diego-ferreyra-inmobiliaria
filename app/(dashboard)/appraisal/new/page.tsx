@@ -9,7 +9,7 @@ import { ComparableEditor, ComparableMissingIndicator } from '@/components/appra
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { ScrapedProperty } from '@/lib/scraper/types'
 import { calculateValuation, calculatePurchaseCosts, ValuationResult, ValuationProperty, ExpenseRates, PurchaseExpenseRates, PurchaseResult } from '@/lib/valuation/calculator'
-import { ReportEdits, DEFAULT_REPORT_EDITS } from '@/lib/types/report-edits'
+import { ReportEdits, DEFAULT_REPORT_EDITS, buildDefaultEdits } from '@/lib/types/report-edits'
 import { saveAppraisal, updateAppraisal, getAppraisal } from '@/lib/supabase/appraisals'
 import { Button } from '@/components/ui/button'
 import {
@@ -342,6 +342,14 @@ function NewAppraisalPageContent() {
         }
 
         setValuationResult(result)
+
+        // Pre-fill report edits with real data
+        if (subject && result) {
+            setReportEdits(buildDefaultEdits(
+                { title: subject.title, location: subject.location, description: subject.description },
+                { publicationPrice: result.publicationPrice, currency: result.currency, noSaleZonePrice: result.noSaleZonePrice }
+            ))
+        }
 
         // Scroll to results
         setTimeout(() => {
