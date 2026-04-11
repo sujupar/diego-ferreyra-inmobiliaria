@@ -193,26 +193,9 @@ export function PDFPreviewModal({
                 {/* Toolbar */}
                 <div className="flex items-center justify-between px-6 py-3 border-b bg-muted/30">
                     <DialogTitle className="text-lg font-semibold">
-                        {activeTab === 'editor' ? 'Editar Informe' : 'Vista Previa PDF'}
+                        Vista Previa PDF
                     </DialogTitle>
                     <div className="flex items-center gap-2">
-                        {/* Tab buttons */}
-                        <div className="flex bg-muted rounded-lg p-0.5 mr-2">
-                            <button
-                                onClick={() => setActiveTab('editor')}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-all ${activeTab === 'editor' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
-                            >
-                                <Edit3 className="h-3.5 w-3.5" />
-                                Editar
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('preview')}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-all ${activeTab === 'preview' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
-                            >
-                                <Eye className="h-3.5 w-3.5" />
-                                Vista Previa
-                            </button>
-                        </div>
                         <Button
                             onClick={handleDownload}
                             disabled={isDownloading || isConverting}
@@ -237,20 +220,7 @@ export function PDFPreviewModal({
 
                 {/* Content area */}
                 <div className="flex-1 overflow-hidden" style={{ height: 'calc(90vh - 56px)' }}>
-                    {activeTab === 'editor' ? (
-                        <div className="h-full overflow-y-auto">
-                            <ReportEditor
-                                subject={subject}
-                                comparables={comparables}
-                                overpriced={overpriced}
-                                purchaseProperties={purchaseProperties}
-                                valuationResult={valuationResult}
-                                purchaseResult={purchaseResult}
-                                reportEdits={reportEdits || DEFAULT_REPORT_EDITS}
-                                onReportEditsChange={(edits) => onReportEditsChange?.(edits)}
-                            />
-                        </div>
-                    ) : isConverting ? (
+                    {isConverting ? (
                         <div className="flex flex-col items-center justify-center h-full gap-3">
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
                             <p className="text-sm text-muted-foreground">Preparando imagenes...</p>

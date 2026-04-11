@@ -280,14 +280,16 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                         <Text style={{ fontSize: 8, color: colors.mediumGray, marginBottom: 16 }}>{marketImageLabels['stock-departamentos'].description}</Text>
                     ) : <View style={{ marginBottom: 16 }} />}
 
-                    <Text style={styles.h2}>{marketImageLabels['escrituras-caba']?.label || 'Cantidad de Escrituras CABA'}</Text>
-                    <Image
-                        src={marketImageUrls['escrituras-caba'] || '/pdf-assets/monthly-data/escrituras-caba.png'}
-                        style={{ width: '100%', height: 'auto', marginBottom: 4 }}
-                    />
-                    {marketImageLabels['escrituras-caba']?.description ? (
-                        <Text style={{ fontSize: 8, color: colors.mediumGray }}>{marketImageLabels['escrituras-caba'].description}</Text>
-                    ) : null}
+                    <View wrap={false}>
+                        <Text style={styles.h2}>{marketImageLabels['escrituras-caba']?.label || 'Cantidad de Escrituras CABA'}</Text>
+                        <Image
+                            src={marketImageUrls['escrituras-caba'] || '/pdf-assets/monthly-data/escrituras-caba.png'}
+                            style={{ width: '100%', height: 'auto', marginBottom: 4 }}
+                        />
+                        {marketImageLabels['escrituras-caba']?.description ? (
+                            <Text style={{ fontSize: 8, color: colors.mediumGray }}>{marketImageLabels['escrituras-caba'].description}</Text>
+                        ) : null}
+                    </View>
                 </View>
             </Page>
 
@@ -419,21 +421,17 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 </View>
             </Page>
 
-            {/* PAGES 7-8+: COMPARABLES (2 per page) */}
-            {Array.from({ length: Math.ceil(comparables.length / 2) }).map((_, pageIndex) => {
-                const startIndex = pageIndex * 2
-                const pageComparables = comparables.slice(startIndex, startIndex + 2)
-
+            {/* PAGES 7+: COMPARABLES (1 per page for clean layout) */}
+            {comparables.map((comp, globalIndex) => {
                 return (
-                    <Page key={`comparables-${pageIndex}`} size="A4" style={styles.pageWithPadding}>
+                    <Page key={`comparable-${globalIndex}`} size="A4" style={styles.pageWithPadding}>
                         <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
                             <Text style={styles.headerTitle}>PROPIEDADES EN VENTA</Text>
                             <Text style={styles.headerSubtitle}>{neighborhood}, CABA</Text>
                         </View>
 
-                        <View style={{ marginTop: 70, gap: 24 }}>
-                            {pageComparables.map((comp, index) => {
-                                const globalIndex = startIndex + index
+                        <View style={{ marginTop: 70 }}>
+                            {(() => {
                                 const homSurface = getHomogenizedSurface(comp)
                                 const pricePerM2 = homSurface > 0 ? (comp.price || 0) / homSurface : 0
 
@@ -513,7 +511,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                         </View>
                                     </View>
                                 )
-                            })}
+                            })()}
                         </View>
                     </Page>
                 )
