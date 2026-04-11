@@ -433,38 +433,40 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 </View>
             </Page>
 
-            {/* PAGES 7+: COMPARABLES (1 per page for clean layout) */}
-            {comparables.map((comp, globalIndex) => {
+            {/* PAGES 7+: COMPARABLES (3 per page, compact layout) */}
+            {Array.from({ length: Math.ceil(comparables.length / 3) }).map((_, pageIndex) => {
+                const pageComps = comparables.slice(pageIndex * 3, pageIndex * 3 + 3)
                 return (
-                    <Page key={`comparable-${globalIndex}`} size="A4" style={styles.pageWithPadding}>
+                    <Page key={`comparables-${pageIndex}`} size="A4" style={styles.pageWithPadding}>
                         <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
                             <Text style={styles.headerTitle}>PROPIEDADES EN VENTA</Text>
                             <Text style={styles.headerSubtitle}>{neighborhood}, CABA</Text>
                         </View>
 
-                        <View style={{ marginTop: 70 }}>
-                            {(() => {
+                        <View style={{ marginTop: 60, gap: 16 }}>
+                            {pageComps.map((comp, index) => {
+                            const globalIndex = pageIndex * 3 + index
                                 const homSurface = getHomogenizedSurface(comp)
                                 const pricePerM2 = homSurface > 0 ? (comp.price || 0) / homSurface : 0
 
                                 return (
-                                    <View key={globalIndex} style={{ flexDirection: 'row', gap: 16 }}>
+                                    <View key={globalIndex} wrap={false} style={{ flexDirection: 'row', gap: 12 }}>
                                         {/* Photo with semaphore */}
-                                        <View style={{ position: 'relative', width: '35%' }}>
+                                        <View style={{ position: 'relative', width: '30%' }}>
                                             {comp.images && comp.images[0] ? (
                                                 <Image
                                                     src={comp.images[0]}
-                                                    style={{ width: '100%', height: 160, objectFit: 'cover', border: `1px solid ${colors.lightGray}` }}
+                                                    style={{ width: '100%', height: 130, objectFit: 'cover', border: `1px solid ${colors.lightGray}` }}
                                                 />
                                             ) : (
-                                                <View style={{ width: '100%', height: 160, backgroundColor: colors.lightGray }} />
+                                                <View style={{ width: '100%', height: 130, backgroundColor: colors.lightGray }} />
                                             )}
                                             {/* Semaphore indicator — configurable color */}
-                                            <View style={{ position: 'absolute', top: 8, left: 8 }}>
+                                            <View style={{ position: 'absolute', top: 6, left: 6 }}>
                                                 <View style={{
-                                                    width: 36,
-                                                    height: 36,
-                                                    borderRadius: 18,
+                                                    width: 28,
+                                                    height: 28,
+                                                    borderRadius: 14,
                                                     backgroundColor: getSemaphoreColorValue(reportEdits?.semaphoreOverrides?.[`comparable-${globalIndex}`] || 'green'),
                                                     border: `2px solid ${colors.white}`
                                                 }} />
@@ -473,12 +475,12 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
                                         {/* Info */}
                                         <View style={{ flex: 1 }}>
-                                            <Text style={[styles.propertyTitle, { textAlign: 'left', fontSize: 16, marginBottom: 8 }]}>
+                                            <Text style={[styles.propertyTitle, { textAlign: 'left', fontSize: 13, marginBottom: 4 }]}>
                                                 {comp.location || comp.title}
                                             </Text>
 
                                             {/* Features grid */}
-                                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+                                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
                                                 <Text style={styles.featureText}>■ {comp.features.coveredArea || 0}m² cub.</Text>
                                                 {(comp.features.uncoveredArea ?? 0) > 0 && (
                                                     <Text style={styles.featureText}>■ {comp.features.uncoveredArea}m² desc.</Text>
@@ -523,7 +525,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                         </View>
                                     </View>
                                 )
-                            })()}
+                            })}
                         </View>
                     </Page>
                 )
