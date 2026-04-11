@@ -26,8 +26,11 @@ function getNavSections(role: Role): NavSection[] {
 
         case 'asesor':
             return [
-                { label: 'Mi Pipeline', href: '/pipeline' },
-                { label: 'Nueva Tasacion', href: '/appraisal/new' },
+                { label: 'Procesos', href: '/pipeline' },
+                { label: 'Tasaciones', items: [
+                    { href: '/appraisal/new', label: 'Nueva Tasacion' },
+                    { href: '/appraisals', label: 'Historial' },
+                ]},
                 { label: 'Mis Contactos', href: '/contacts' },
                 { label: 'Mis Propiedades', href: '/properties' },
             ]

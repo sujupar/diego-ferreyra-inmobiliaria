@@ -380,6 +380,30 @@ function NewAppraisalPageContent() {
                             })
                         } catch (e) { console.error('Error linking deal:', e) }
                     }
+                    // Auto-create deal for tasaciones without a process
+                    if (!dealId && !editMode && appraisalId && subject) {
+                        try {
+                            await fetch('/api/deals', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    contact_name: subject.title || subject.location || 'Sin nombre',
+                                    property_address: subject.location || subject.title || '',
+                                    origin: origin || 'historico',
+                                }),
+                            }).then(async (res) => {
+                                if (res.ok) {
+                                    const { id: newDealId } = await res.json()
+                                    // Link the appraisal to the auto-created deal
+                                    await fetch(`/api/deals/${newDealId}/advance`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ stage: 'appraisal_sent', appraisal_id: appraisalId }),
+                                    })
+                                }
+                            })
+                        } catch (e) { console.error('Error auto-creating deal:', e) }
+                    }
                 })
                 .catch((err) => {
                     console.error('Error al guardar tasación:', err)
