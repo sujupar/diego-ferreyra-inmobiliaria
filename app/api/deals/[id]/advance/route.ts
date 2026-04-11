@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { updateDealStage, linkAppraisalToDeal, linkPropertyToDeal, DealStage } from '@/lib/supabase/deals'
+import { updateDealStage, linkAppraisalToDeal, linkPropertyToDeal, getDeal, DealStage } from '@/lib/supabase/deals'
+import { createTaskForRole } from '@/lib/supabase/tasks'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -14,6 +15,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // If linking an appraisal, use the dedicated function
     if (appraisal_id && stage === 'appraisal_sent') {
       await linkAppraisalToDeal(id, appraisal_id)
+
+      // Create task for coordinadores to update contact data
+      try {
+        const deal = await getDeal(id)
+        await createTaskForRole('coordinador', {
+          type: 'update_contact',
+          title: `Actualizar contacto: ${deal.property_address}`,
+          description: `El asesor creo una tasacion. Verificar y completar datos del contacto.`,
+          deal_id: id,
+          contact_id: deal.contact_id,
+          appraisal_id,
+        })
+      } catch (e) { console.error('Task creation error:', e) }
+
       return NextResponse.json({ success: true })
     }
 

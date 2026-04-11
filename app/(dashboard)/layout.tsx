@@ -20,12 +20,14 @@ function getNavSections(role: Role): NavSection[] {
     switch (role) {
         case 'abogado':
             return [
+                { label: 'Pendientes', href: '/tasks' },
                 { label: 'Revision Legal', href: '/properties/review' },
                 { label: 'Historial', href: '/appraisals' },
             ]
 
         case 'asesor':
             return [
+                { label: 'Pendientes', href: '/tasks' },
                 { label: 'Procesos', href: '/pipeline' },
                 { label: 'Tasaciones', items: [
                     { href: '/appraisal/new', label: 'Nueva Tasacion' },
@@ -37,6 +39,7 @@ function getNavSections(role: Role): NavSection[] {
 
         case 'coordinador':
             return [
+                { label: 'Pendientes', href: '/tasks' },
                 { label: 'Pipeline', href: '/pipeline' },
                 { label: 'Tasaciones', items: [
                     { href: '/pipeline/new', label: 'Agendar' },

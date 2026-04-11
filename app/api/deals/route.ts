@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createDeal, getDeals } from '@/lib/supabase/deals'
+import { createTask, createTaskForRole } from '@/lib/supabase/tasks'
 import { createClient } from '@supabase/supabase-js'
 
 function getAdmin() {
@@ -78,6 +79,21 @@ export async function POST(request: NextRequest) {
       assigned_to: assigned_to || null,
       notes: notes || null,
     })
+
+    // Auto-create tasks
+    try {
+      if (assigned_to) {
+        // Task for asesor: new assignment
+        await createTask({
+          type: 'new_assignment',
+          title: `Nueva tasacion agendada: ${property_address}`,
+          description: `Contacto: ${contact_name}. Fecha: ${scheduled_date || 'Por definir'}`,
+          assigned_to,
+          deal_id: dealId,
+          contact_id: contactId,
+        })
+      }
+    } catch (e) { console.error('Task creation error:', e) }
 
     return NextResponse.json({ success: true, id: dealId, contact_id: contactId })
   } catch (error) {
