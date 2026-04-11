@@ -41,7 +41,7 @@ export default function AgendarTasacionPage() {
     setLoading(true)
 
     try {
-      const res = await fetch('/api/pipeline/schedule', {
+      const res = await fetch('/api/deals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -268,6 +268,49 @@ export interface Database {
                 }
                 Relationships: []
             }
+            deals: {
+                Row: {
+                    id: string
+                    contact_id: string
+                    stage: string
+                    property_address: string
+                    scheduled_date: string | null
+                    scheduled_time: string | null
+                    origin: string | null
+                    assigned_to: string | null
+                    created_by: string | null
+                    appraisal_id: string | null
+                    property_id: string | null
+                    notes: string | null
+                    stage_changed_at: string
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    contact_id: string
+                    stage?: string
+                    property_address: string
+                    scheduled_date?: string | null
+                    scheduled_time?: string | null
+                    origin?: string | null
+                    assigned_to?: string | null
+                    created_by?: string | null
+                    appraisal_id?: string | null
+                    property_id?: string | null
+                    notes?: string | null
+                }
+                Update: {
+                    stage?: string
+                    appraisal_id?: string | null
+                    property_id?: string | null
+                    notes?: string | null
+                    assigned_to?: string | null
+                    stage_changed_at?: string
+                    updated_at?: string
+                }
+                Relationships: []
+            }
             properties: {
                 Row: {
                     id: string

@@ -83,6 +83,7 @@ export default function NewAppraisalPage() {
 function NewAppraisalPageContent() {
     const searchParams = useSearchParams()
     const editId = searchParams.get('editId')
+    const dealId = searchParams.get('dealId')
     const editMode = Boolean(editId)
 
     const [subject, setSubject] = useState<ScrapedProperty | null>(null)
@@ -367,7 +368,19 @@ function NewAppraisalPageContent() {
                 ? updateAppraisal(editId, payload)
                 : saveAppraisal(payload)
             promise
-                .then(() => setSaveStatus('saved'))
+                .then(async (appraisalId) => {
+                    setSaveStatus('saved')
+                    // Link appraisal to deal if came from a deal
+                    if (dealId && appraisalId) {
+                        try {
+                            await fetch(`/api/deals/${dealId}/advance`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ stage: 'appraisal_sent', appraisal_id: appraisalId }),
+                            })
+                        } catch (e) { console.error('Error linking deal:', e) }
+                    }
+                })
                 .catch((err) => {
                     console.error('Error al guardar tasación:', err)
                     setSaveStatus('error')
