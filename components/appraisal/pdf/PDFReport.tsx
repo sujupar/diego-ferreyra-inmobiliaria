@@ -46,6 +46,18 @@ function formatCurrency(value: number, currency: string = 'USD'): string {
     return `${currency} ${value.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 }
 
+/** Strip HTML tags, collapse whitespace, and limit length */
+function cleanText(str: string | undefined | null, maxLen: number = 300): string {
+    if (!str) return ''
+    // Remove HTML tags
+    let clean = str.replace(/<[^>]*>/g, ' ')
+    // Remove excessive whitespace/newlines
+    clean = clean.replace(/\s+/g, ' ').trim()
+    // Limit length
+    if (clean.length > maxLen) clean = clean.slice(0, maxLen) + '...'
+    return clean
+}
+
 export function PDFReportDocument({ subject, comparables, valuationResult, overpriced = [], purchaseProperties = [], purchaseResult, marketImageLabels = {}, marketImageUrls = {}, reportEdits }: PDFReportProps) {
     const neighborhood = extractNeighborhood(subject.location || '')
     const recommendedPrice = valuationResult.publicationPrice
@@ -254,10 +266,10 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 </View>
 
                 {/* Property Description */}
-                {subject.description && (
+                {subject.description && cleanText(subject.description) && (
                     <View style={styles.checkboxList}>
                         <Text style={[styles.body, { fontSize: 10, color: colors.mediumGray }]}>
-                            {subject.description.slice(0, 300)}{subject.description.length > 300 ? '...' : ''}
+                            {cleanText(subject.description, 300)}
                         </Text>
                     </View>
                 )}
@@ -506,7 +518,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
                                             {/* Metadata: published date + views */}
                                             <Text style={styles.comparableMetadata}>
-                                                {comp.features.publishedDate || 'Publicado'}{comp.features.views ? ` | ${comp.features.views} visualizaciones` : ''}
+                                                {cleanText(comp.features.publishedDate as string, 50) || 'Publicado'}{comp.features.views ? ` | ${cleanText(String(comp.features.views), 20)} visualizaciones` : ''}
                                             </Text>
                                         </View>
                                     </View>
@@ -906,26 +918,20 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                         </View>
                     </Page>
 
-                    {/* PURCHASE PROPERTY CARDS (2 per page) */}
-                    {Array.from({ length: Math.ceil(purchaseProperties.length / 2) }).map((_, pageIndex) => {
-                        const startIndex = pageIndex * 2
-                        const pageProps = purchaseProperties.slice(startIndex, startIndex + 2)
+                    {/* PURCHASE PROPERTY CARDS (1 per page) */}
+                    {purchaseProperties.map((prop, globalIndex) => {
+                        const homSurface = getHomogenizedSurface(prop)
+                        const pricePerM2 = homSurface > 0 ? (prop.price || 0) / homSurface : 0
 
                         return (
-                            <Page key={`purchase-${pageIndex}`} size="A4" style={styles.pageWithPadding}>
+                            <Page key={`purchase-${globalIndex}`} size="A4" style={styles.pageWithPadding}>
                                 <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
                                     <Text style={[styles.headerTitle, { color: colors.primary }]}>PROPIEDADES EN VENTA</Text>
                                     <Text style={styles.headerSubtitle}>CABA</Text>
                                 </View>
 
-                                <View style={{ marginTop: 70, gap: 24 }}>
-                                    {pageProps.map((prop, index) => {
-                                        const globalIndex = startIndex + index
-                                        const homSurface = getHomogenizedSurface(prop)
-                                        const pricePerM2 = homSurface > 0 ? (prop.price || 0) / homSurface : 0
-
-                                        return (
-                                            <View key={globalIndex} style={{ flexDirection: 'row', gap: 16 }}>
+                                <View style={{ marginTop: 70 }}>
+                                            <View wrap={false} style={{ flexDirection: 'row', gap: 16 }}>
                                                 {/* Photo (no semaphore for purchase) */}
                                                 <View style={{ width: '35%' }}>
                                                     {prop.images && prop.images[0] ? (
@@ -983,8 +989,6 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                                     </Link>
                                                 </View>
                                             </View>
-                                        )
-                                    })}
                                 </View>
                             </Page>
                         )
