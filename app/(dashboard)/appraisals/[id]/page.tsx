@@ -133,7 +133,8 @@ export default function AppraisalDetailPage() {
         features: c.features,
     }))
 
-    const result: ValuationResult = appraisal.valuation_result
+    const result: ValuationResult = appraisal.valuation_result || {} as ValuationResult
+    const hasFullValuation = result.subjectSurface != null && result.comparableAnalysis?.length > 0
 
     return (
         <div className="max-w-5xl mx-auto space-y-8 pb-20">
@@ -177,7 +178,21 @@ export default function AppraisalDetailPage() {
             </div>
 
             {/* Report */}
-            <ValuationReport subject={subject} result={result} />
+            {hasFullValuation ? (
+                <ValuationReport subject={subject} result={result} />
+            ) : (
+                <div className="rounded-lg border p-6 space-y-4">
+                    <h2 className="text-lg font-semibold">Resumen de Tasacion</h2>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                        <div><span className="text-muted-foreground">Precio Publicacion:</span> <span className="font-bold">{result.publicationPrice ? `USD ${result.publicationPrice.toLocaleString('es-AR')}` : '—'}</span></div>
+                        <div><span className="text-muted-foreground">Valor de Venta:</span> <span className="font-bold">{result.saleValue ? `USD ${result.saleValue.toLocaleString('es-AR')}` : '—'}</span></div>
+                        <div><span className="text-muted-foreground">Dinero en Mano:</span> <span className="font-bold">{result.moneyInHand ? `USD ${result.moneyInHand.toLocaleString('es-AR')}` : '—'}</span></div>
+                        <div><span className="text-muted-foreground">Comparables:</span> <span>{appraisal.comparable_count}</span></div>
+                        <div><span className="text-muted-foreground">Ubicacion:</span> <span>{appraisal.property_location}</span></div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Tasacion simplificada — sin analisis detallado de comparables.</p>
+                </div>
+            )}
 
             {/* PDF Preview Modal — market image settings are loaded lazily by the modal itself */}
             {showPDFPreview && (

@@ -39,7 +39,8 @@ function formatCurrency(value: number, currency: string = 'USD'): string {
     }).format(value)
 }
 
-function formatNumber(value: number, decimals: number = 2): string {
+function formatNumber(value: number | undefined | null, decimals: number = 2): string {
+    if (value == null || isNaN(value)) return '—'
     return value.toFixed(decimals)
 }
 

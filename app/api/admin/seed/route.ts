@@ -54,8 +54,29 @@ export async function POST() {
 
     results.users_created = Object.keys(userIds).length
 
-    // 2. Create 10 random appraisals
     const assignableIds = Object.values(userIds)
+
+    // 2. Create contacts
+    const NOMBRES = ['Ana Garcia', 'Pedro Lopez', 'Lucia Fernandez', 'Martin Diaz', 'Sofia Ruiz', 'Diego Torres', 'Valentina Castro', 'Mateo Romero', 'Camila Morales', 'Nicolas Herrera']
+    const contactIds: string[] = []
+
+    for (const nombre of NOMBRES) {
+      const { data: contact } = await supabase
+        .from('contacts')
+        .insert({
+          full_name: nombre,
+          phone: `+54 11 ${rand(1000, 9999)}-${rand(1000, 9999)}`,
+          email: `${nombre.toLowerCase().replace(' ', '.')}@email.com`,
+          origin: pick(ORIGENES),
+          assigned_to: assignableIds.length > 0 ? pick(assignableIds) : null,
+        })
+        .select('id')
+        .single()
+      if (contact) contactIds.push(contact.id)
+    }
+    results.contacts_created = contactIds.length
+
+    // 3. Create 10 random appraisals associated to contacts
     const appraisalIds: string[] = []
 
     for (let i = 0; i < 10; i++) {
@@ -96,6 +117,7 @@ export async function POST() {
         comparable_count: rand(3, 8),
         origin,
         assigned_to: assignedTo,
+        contact_id: contactIds.length > 0 ? contactIds[i % contactIds.length] : null,
         created_at: new Date(Date.now() - rand(0, 30) * 86400000).toISOString(),
       }).select('id').single()
 
@@ -130,6 +152,7 @@ export async function POST() {
         origin: pick(ORIGENES),
         status,
         assigned_to: assignableIds.length > 0 ? pick(assignableIds) : null,
+        contact_id: contactIds.length > 0 ? contactIds[i % contactIds.length] : null,
         legal_status: status === 'approved' ? 'approved' : 'pending',
         created_at: new Date(Date.now() - rand(0, 15) * 86400000).toISOString(),
       })
