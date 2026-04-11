@@ -86,7 +86,7 @@ export function PDFPreviewModal({
     reportEdits,
     onReportEditsChange,
 }: PDFPreviewModalProps) {
-    const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor')
+    const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('preview')
     const [isDownloading, setIsDownloading] = useState(false)
     const [isConverting, setIsConverting] = useState(false)
     const [convertedSubject, setConvertedSubject] = useState<ValuationProperty | null>(null)

@@ -6,6 +6,8 @@ Font.register({
     fonts: [
         { src: 'https://fonts.gstatic.com/s/montserrat/v26/JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCtr6Hw5aX8.ttf', fontWeight: 'normal' },
         { src: 'https://fonts.gstatic.com/s/montserrat/v26/JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCuM73w5aX8.ttf', fontWeight: 'bold' },
+        { src: 'https://fonts.gstatic.com/s/montserrat/v26/JTUFjIg1_i6t8kCHKm459Wx7xQYXK0vOoz6jq6R8aX8.ttf', fontWeight: 'normal', fontStyle: 'italic' },
+        { src: 'https://fonts.gstatic.com/s/montserrat/v26/JTUFjIg1_i6t8kCHKm459Wx7xQYXK0vOoz6jqxp5aX8.ttf', fontWeight: 'bold', fontStyle: 'italic' },
     ],
 })
 
