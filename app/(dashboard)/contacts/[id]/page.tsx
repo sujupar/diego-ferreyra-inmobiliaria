@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, ArrowLeft, User, Phone, Mail, FileCheck, Home, Calendar, Tag } from 'lucide-react'
+import { Loader2, ArrowLeft, User, Phone, Mail, FileCheck, Home, Calendar, Tag, Briefcase } from 'lucide-react'
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -17,6 +17,17 @@ function formatCurrency(v: number, c: string = 'USD') {
 }
 
 const ORIGIN_LABELS: Record<string, string> = { embudo: 'Embudo', referido: 'Referido', historico: 'Historico', tasacion: 'Tasacion' }
+
+const STAGE_LABELS: Record<string, string> = {
+  scheduled: 'Agendada', visited: 'Visita Realizada',
+  appraisal_sent: 'Tasación Entregada', followup: 'En Seguimiento',
+  captured: 'Captada', lost: 'Perdido',
+}
+const STAGE_COLORS: Record<string, string> = {
+  scheduled: 'bg-blue-500', visited: 'bg-amber-500',
+  appraisal_sent: 'bg-purple-500', followup: 'bg-orange-500',
+  captured: 'bg-green-500', lost: 'bg-red-500',
+}
 
 export default function ContactDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -35,7 +46,7 @@ export default function ContactDetailPage() {
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin" /></div>
   if (!data?.contact) return <div className="text-center py-20"><p>Contacto no encontrado</p></div>
 
-  const { contact, appraisals, properties, scheduled } = data
+  const { contact, appraisals, properties, scheduled, deals } = data
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -84,6 +95,31 @@ export default function ContactDetailPage() {
           </Card>
         )}
 
+        {/* Deals / Procesos Comerciales */}
+        {deals?.length > 0 && (
+          <Card>
+            <CardHeader><CardTitle className="text-base flex items-center gap-2"><Briefcase className="h-5 w-5" />Procesos Comerciales ({deals.length})</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              {deals.map((d: any) => (
+                <Link key={d.id} href={`/pipeline/${d.id}`}>
+                  <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors cursor-pointer">
+                    <div>
+                      <p className="text-sm font-medium">{d.property_address}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDate(d.created_at)}
+                        {d.profiles?.full_name && ` · Asesor: ${d.profiles.full_name}`}
+                      </p>
+                    </div>
+                    <Badge className={`text-white text-xs ${STAGE_COLORS[d.stage] || 'bg-gray-400'}`}>
+                      {STAGE_LABELS[d.stage] || d.stage}
+                    </Badge>
+                  </div>
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Appraisals */}
         {appraisals.length > 0 && (
           <Card>
@@ -127,7 +163,7 @@ export default function ContactDetailPage() {
           </Card>
         )}
 
-        {scheduled.length === 0 && appraisals.length === 0 && properties.length === 0 && (
+        {scheduled.length === 0 && appraisals.length === 0 && properties.length === 0 && (!deals || deals.length === 0) && (
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
               No hay actividad registrada para este contacto.

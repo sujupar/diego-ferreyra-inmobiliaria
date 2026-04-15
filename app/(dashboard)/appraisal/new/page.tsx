@@ -96,6 +96,13 @@ function NewAppraisalPageContent() {
     const [assignedTo, setAssignedTo] = useState<string>('')
     const [advisors, setAdvisors] = useState<Array<{ id: string; full_name: string }>>([])
 
+    // Clear stale PropertyWizard draft when starting a fresh creation
+    useEffect(() => {
+        if (!editId) {
+            localStorage.removeItem('propertyWizardDraft')
+        }
+    }, [editId])
+
     // Load advisors list
     useEffect(() => {
         fetch('/api/users/advisors')
@@ -103,6 +110,20 @@ function NewAppraisalPageContent() {
             .then(json => setAdvisors(json.data || []))
             .catch(() => {})
     }, [])
+
+    // Deal pre-load state (when creating from a deal)
+    const [dealData, setDealData] = useState<any>(null)
+    const [dealLoading, setDealLoading] = useState(Boolean(dealId))
+
+    useEffect(() => {
+        if (!dealId) return
+        setDealLoading(true)
+        fetch(`/api/deals/${dealId}`)
+            .then(r => r.json())
+            .then(json => setDealData(json.data))
+            .catch(err => console.error('Error loading deal:', err))
+            .finally(() => setDealLoading(false))
+    }, [dealId])
 
     // Edit mode state
     const [editLoading, setEditLoading] = useState(editMode)
@@ -430,6 +451,14 @@ function NewAppraisalPageContent() {
         )
     }
 
+    if (dealLoading) {
+        return (
+            <div className="flex items-center justify-center py-32">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        )
+    }
+
     if (editMode && editLoadError) {
         return (
             <div className="max-w-5xl mx-auto text-center py-20">
@@ -454,6 +483,21 @@ function NewAppraisalPageContent() {
                 </p>
             </div>
 
+            {/* Deal context banner */}
+            {dealData && (
+                <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex items-center gap-3">
+                    <Home className="h-5 w-5 text-blue-600 shrink-0" />
+                    <div>
+                        <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                            Creando tasación para {dealData.contacts?.full_name || 'contacto'}
+                        </p>
+                        <p className="text-xs text-blue-700 dark:text-blue-300">
+                            {dealData.property_address}
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {/* Step 1: Subject Property - Manual Entry */}
             <section className="space-y-6">
                 <div className="flex items-center gap-4">
@@ -476,7 +520,7 @@ function NewAppraisalPageContent() {
                     <div className="bg-card rounded-2xl border shadow-sm p-6 md:p-8 transition-all duration-300 hover:shadow-md">
                         <PropertyWizard
                             onComplete={(p) => { handleSubjectComplete(p); setIsEditingSubject(false) }}
-                            initialData={subject ? mapSubjectToFormData(subject) : undefined}
+                            initialData={subject ? mapSubjectToFormData(subject) : dealData ? { address: dealData.property_address || '' } : undefined}
                         />
                         {isEditingSubject && (
                             <div className="mt-4 flex justify-end">

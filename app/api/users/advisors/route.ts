@@ -11,7 +11,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from('profiles')
       .select('id, full_name')
-      .in('role', ['asesor', 'coordinador', 'admin', 'dueno'])
+      .in('role', ['asesor', 'dueno'])
       .eq('is_active', true)
       .order('full_name')
 

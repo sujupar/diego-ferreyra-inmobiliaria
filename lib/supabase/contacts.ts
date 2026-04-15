@@ -33,11 +33,16 @@ export async function getContacts(filters?: { assigned_to?: string; origin?: str
 
 export async function getContact(id: string) {
   const supabase = getAdmin()
-  const [contactRes, appraisalsRes, propertiesRes, scheduledRes] = await Promise.all([
+  const [contactRes, appraisalsRes, propertiesRes, scheduledRes, dealsRes] = await Promise.all([
     supabase.from('contacts').select('*').eq('id', id).single(),
     supabase.from('appraisals').select('id, property_title, property_location, publication_price, currency, created_at, origin').eq('contact_id', id).order('created_at', { ascending: false }),
     supabase.from('properties').select('id, address, neighborhood, asking_price, currency, status, created_at').eq('contact_id', id).order('created_at', { ascending: false }),
     supabase.from('scheduled_appraisals').select('id, property_address, scheduled_date, status, origin, created_at').eq('contact_id', id).order('created_at', { ascending: false }),
+    supabase.from('deals').select(`
+      id, stage, property_address, scheduled_date, origin,
+      appraisal_id, property_id, stage_changed_at, created_at,
+      profiles:assigned_to ( id, full_name )
+    `).eq('contact_id', id).order('created_at', { ascending: false }),
   ])
 
   if (contactRes.error) throw contactRes.error
@@ -47,6 +52,7 @@ export async function getContact(id: string) {
     appraisals: appraisalsRes.data || [],
     properties: propertiesRes.data || [],
     scheduled: scheduledRes.data || [],
+    deals: dealsRes.data || [],
   }
 }
 

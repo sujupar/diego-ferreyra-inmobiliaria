@@ -51,7 +51,10 @@ async function fetchViaScraperAPI(url: string, apiKey: string): Promise<string> 
         clearTimeout(timeout)
 
         if (!response.ok) {
-            throw new Error(`ScraperAPI HTTP ${response.status}: ${response.statusText}`)
+            const msg = response.status === 403
+                ? 'ScraperAPI sin créditos disponibles. Contactar al administrador para renovar el plan.'
+                : `ScraperAPI HTTP ${response.status}: ${response.statusText}`
+            throw new Error(msg)
         }
 
         const html = await response.text()

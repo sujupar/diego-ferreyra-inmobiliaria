@@ -164,15 +164,20 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
         return () => clearTimeout(timeout)
     }, [currentStep, autoSave])
 
-    // Load saved draft on mount
+    // Load saved draft on mount — only when editing an in-progress draft (no initialData)
     useEffect(() => {
+        if (initialData) {
+            // Clear any stale draft when pre-loaded data is provided
+            localStorage.removeItem('propertyWizardDraft')
+            return
+        }
         const saved = localStorage.getItem('propertyWizardDraft')
-        if (saved && !initialData) {
+        if (saved) {
             try {
                 const parsed = JSON.parse(saved)
                 setFormData(prev => ({ ...prev, ...parsed }))
             } catch (e) {
-                console.error('Error loading draft:', e)
+                localStorage.removeItem('propertyWizardDraft')
             }
         }
     }, [initialData])
