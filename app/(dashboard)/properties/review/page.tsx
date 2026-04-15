@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, CheckCircle, XCircle, FileText, Image, MapPin, Scale } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 
 interface ReviewProperty {
   id: string
@@ -33,9 +32,8 @@ export default function PropertyReviewPage() {
   const [userId, setUserId] = useState<string | null>(null)
 
   useEffect(() => {
-    // Get current user ID
-    const supabase = createClient()
-    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id || null))
+    // Get current user ID via cookie-based auth
+    fetch('/api/auth/me').then(r => r.json()).then(u => setUserId(u.id || null)).catch(() => {})
 
     fetch('/api/properties?status=pending_review')
       .then(r => r.json())

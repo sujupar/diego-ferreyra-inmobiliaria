@@ -5,8 +5,6 @@ import { useParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Loader2, Upload, FileText, Image, CheckCircle, XCircle, Send, ArrowLeft, MapPin, Home } from 'lucide-react'
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -133,17 +131,24 @@ export default function PropertyDetailPage() {
       <Card>
         <CardContent className="py-4">
           <div className="flex items-center gap-2 overflow-x-auto">
-            {['pending_docs', 'pending_photos', 'pending_review', 'approved'].map((step, i) => {
-              const stepInfo = STATUS_LABELS[step]
-              const isActive = property.status === step
-              const isPast = ['pending_docs', 'pending_photos', 'pending_review', 'approved', 'active'].indexOf(property.status) > i
+            {[
+              { key: 'pending_docs', label: 'Documentos y Fotos' },
+              { key: 'pending_review', label: 'Revisión Legal' },
+              { key: 'approved', label: 'Aprobada' },
+            ].map((step, i) => {
+              const statusOrder = ['pending_docs', 'pending_photos', 'pending_review', 'approved', 'active']
+              const currentIdx = statusOrder.indexOf(property.status)
+              const stepIdx = statusOrder.indexOf(step.key)
+              const isActive = property.status === step.key || (step.key === 'pending_docs' && property.status === 'pending_photos')
+              const isPast = currentIdx > stepIdx && !isActive
+              const stepColor = STATUS_LABELS[step.key]?.color || 'bg-gray-400'
               return (
-                <div key={step} className="flex items-center gap-2">
-                  <div className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${isActive ? `${stepInfo.color} text-white` : isPast ? 'bg-green-100 text-green-800' : 'bg-muted text-muted-foreground'}`}>
-                    {isPast && !isActive && <CheckCircle className="h-3.5 w-3.5" />}
-                    {stepInfo.label}
+                <div key={step.key} className="flex items-center gap-2">
+                  <div className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${isActive ? `${stepColor} text-white` : isPast ? 'bg-green-100 text-green-800' : 'bg-muted text-muted-foreground'}`}>
+                    {isPast && <CheckCircle className="h-3.5 w-3.5" />}
+                    {step.label}
                   </div>
-                  {i < 3 && <div className="w-6 h-0.5 bg-muted" />}
+                  {i < 2 && <div className="w-6 h-0.5 bg-muted" />}
                 </div>
               )
             })}
@@ -254,18 +259,23 @@ export default function PropertyDetailPage() {
       )}
 
       {/* Actions */}
-      <div className="flex gap-3 flex-wrap">
-        {property.status === 'pending_docs' && docs.length > 0 && (
-          <Button onClick={() => handleUpdateStatus('pending_photos')} disabled={submitting}>
-            {submitting && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
-            Documentos completos - Avanzar a Fotos
+      <div className="space-y-3">
+        {(property.status === 'pending_docs' || property.status === 'pending_photos') && docs.length > 0 && (
+          <Button onClick={() => handleUpdateStatus('pending_review')} disabled={submitting} size="lg" className="w-full">
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+            Enviar a Revisión Legal
           </Button>
         )}
-        {property.status === 'pending_photos' && photos.length > 0 && (
-          <Button onClick={() => handleUpdateStatus('pending_review')} disabled={submitting}>
-            {submitting && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
-            <Send className="h-4 w-4 mr-1" /> Enviar a Revision Legal
-          </Button>
+        {property.status === 'pending_review' && (
+          <Card className="border-purple-300 bg-purple-50/50 dark:bg-purple-950/20">
+            <CardContent className="py-4 flex items-center gap-3">
+              <div className="h-3 w-3 rounded-full bg-purple-500 animate-pulse" />
+              <div>
+                <p className="font-medium text-purple-900 dark:text-purple-100">En Revisión Legal</p>
+                <p className="text-sm text-purple-700 dark:text-purple-300">La documentación fue enviada al abogado para su revisión.</p>
+              </div>
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>
