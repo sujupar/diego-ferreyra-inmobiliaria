@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,14 +8,15 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
   Loader2, ArrowLeft, User, MapPin, Calendar, Phone, Mail,
-  ChevronRight, FileCheck, Home, Eye, MessageSquare, XCircle, Tag
+  ChevronRight, FileCheck, Home, Eye, MessageSquare, XCircle, Tag,
+  Edit2, Send, Mic, MicOff, Square
 } from 'lucide-react'
 
 const STAGES = [
-  { key: 'scheduled', label: 'Agendada', color: 'bg-blue-500', next: 'visited', nextLabel: 'Marcar Visita Realizada', nextIcon: Eye },
-  { key: 'visited', label: 'Visita Realizada', color: 'bg-amber-500', next: 'appraisal_sent', nextLabel: 'Crear Tasación', nextIcon: FileCheck, isLink: true },
-  { key: 'appraisal_sent', label: 'Tasación Entregada', color: 'bg-purple-500', next: 'followup', nextLabel: 'Marcar en Seguimiento', nextIcon: MessageSquare },
-  { key: 'followup', label: 'En Seguimiento', color: 'bg-orange-500', next: 'captured', nextLabel: 'Captar Propiedad', nextIcon: Home, isLink: true },
+  { key: 'scheduled', label: 'Agendada', color: 'bg-blue-500' },
+  { key: 'visited', label: 'Visita Realizada', color: 'bg-amber-500' },
+  { key: 'appraisal_sent', label: 'Tasación Entregada', color: 'bg-purple-500' },
+  { key: 'followup', label: 'En Seguimiento', color: 'bg-orange-500' },
   { key: 'captured', label: 'Captada', color: 'bg-green-500' },
   { key: 'lost', label: 'Perdido', color: 'bg-red-500' },
 ]
@@ -34,6 +35,15 @@ export default function DealDetailPage() {
   const [advancing, setAdvancing] = useState(false)
   const [notes, setNotes] = useState('')
 
+  // Followup modal
+  const [showFollowupModal, setShowFollowupModal] = useState(false)
+  const [followupNotes, setFollowupNotes] = useState('')
+
+  // Audio transcription
+  const [isRecording, setIsRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const recognitionRef = useRef<any>(null)
+
   async function fetchDeal() {
     try {
       const res = await fetch(`/api/deals/${id}`)
@@ -48,13 +58,13 @@ export default function DealDetailPage() {
 
   useEffect(() => { fetchDeal() }, [id])
 
-  async function handleAdvance(nextStage: string) {
+  async function handleAdvance(nextStage: string, extraNotes?: string) {
     setAdvancing(true)
     try {
       await fetch(`/api/deals/${id}/advance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stage: nextStage, notes }),
+        body: JSON.stringify({ stage: nextStage, notes: extraNotes || notes }),
       })
       await fetchDeal()
     } catch (err) { alert('Error al avanzar') }
@@ -62,7 +72,7 @@ export default function DealDetailPage() {
   }
 
   async function handleLost() {
-    if (!confirm('Marcar como perdido?')) return
+    if (!confirm('¿Marcar como perdido?')) return
     setAdvancing(true)
     try {
       await fetch(`/api/deals/${id}/advance`, {
@@ -73,6 +83,80 @@ export default function DealDetailPage() {
       await fetchDeal()
     } catch (err) { alert('Error') }
     finally { setAdvancing(false) }
+  }
+
+  // Save notes independently
+  async function handleSaveNotes() {
+    try {
+      await fetch(`/api/deals/${id}/advance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage: deal.stage, notes }),
+      })
+    } catch (err) { console.error(err) }
+  }
+
+  // Followup submission
+  function handleFollowupSubmit() {
+    if (!followupNotes.trim()) {
+      alert('Debes describir el seguimiento antes de continuar.')
+      return
+    }
+    const combinedNotes = notes
+      ? `${notes}\n\n--- Seguimiento (${new Date().toLocaleDateString('es-AR')}) ---\n${followupNotes}`
+      : `--- Seguimiento (${new Date().toLocaleDateString('es-AR')}) ---\n${followupNotes}`
+    handleAdvance('followup', combinedNotes)
+    setShowFollowupModal(false)
+    setFollowupNotes('')
+  }
+
+  // Speech-to-text
+  function toggleRecording() {
+    if (isRecording) {
+      recognitionRef.current?.stop()
+      setIsRecording(false)
+      return
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      alert('Tu navegador no soporta transcripción de voz. Usa Chrome o Edge.')
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    recognition.lang = 'es-AR'
+    recognition.continuous = true
+    recognition.interimResults = true
+
+    recognition.onresult = (event: any) => {
+      let finalTranscript = ''
+      let interimTranscript = ''
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + ' '
+        } else {
+          interimTranscript = transcript
+        }
+      }
+      if (finalTranscript) {
+        setFollowupNotes(prev => prev + finalTranscript)
+      }
+    }
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error)
+      setIsRecording(false)
+    }
+
+    recognition.onend = () => {
+      setIsRecording(false)
+    }
+
+    recognitionRef.current = recognition
+    recognition.start()
+    setIsRecording(true)
   }
 
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin" /></div>
@@ -133,26 +217,33 @@ export default function DealDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Linked appraisal */}
+      {/* Linked appraisal — always show if exists */}
       {deal.appraisal_id && (
-        <Link href={`/appraisals/${deal.appraisal_id}`}>
-          <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
-            <CardContent className="flex items-center gap-3 py-4">
+        <Card className="border-purple-200 bg-purple-50/50 dark:bg-purple-950/20">
+          <CardContent className="py-4 space-y-3">
+            <div className="flex items-center gap-3">
               <FileCheck className="h-5 w-5 text-purple-600" />
-              <span className="font-medium">Ver Tasación Generada</span>
-              <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto" />
-            </CardContent>
-          </Card>
-        </Link>
+              <span className="font-medium text-purple-900 dark:text-purple-100">Tasación Generada</span>
+            </div>
+            <div className="flex gap-2">
+              <Link href={`/appraisals/${deal.appraisal_id}`} className="flex-1">
+                <Button variant="outline" className="w-full"><Eye className="h-4 w-4 mr-1" />Ver Tasación</Button>
+              </Link>
+              <Link href={`/appraisal/new?editId=${deal.appraisal_id}`} className="flex-1">
+                <Button variant="outline" className="w-full"><Edit2 className="h-4 w-4 mr-1" />Editar Tasación</Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Linked property */}
       {deal.property_id && (
         <Link href={`/properties/${deal.property_id}`}>
-          <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
+          <Card className="hover:bg-muted/50 transition-colors cursor-pointer border-green-200 bg-green-50/50 dark:bg-green-950/20">
             <CardContent className="flex items-center gap-3 py-4">
               <Home className="h-5 w-5 text-green-600" />
-              <span className="font-medium">Ver Propiedad Captada</span>
+              <span className="font-medium text-green-900 dark:text-green-100">Ver Propiedad Captada</span>
               <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto" />
             </CardContent>
           </Card>
@@ -167,42 +258,176 @@ export default function DealDetailPage() {
             className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
             value={notes}
             onChange={e => setNotes(e.target.value)}
+            onBlur={handleSaveNotes}
             placeholder="Agregar notas sobre este proceso..."
           />
         </CardContent>
       </Card>
 
-      {/* Action buttons */}
+      {/* === STAGE-SPECIFIC ACTION BUTTONS === */}
       {deal.stage !== 'captured' && deal.stage !== 'lost' && (
-        <div className="flex gap-3 flex-wrap">
-          {currentStage?.next && !currentStage.isLink && (
-            <Button onClick={() => handleAdvance(currentStage.next!)} disabled={advancing} className="flex-1">
-              {advancing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : currentStage.nextIcon && <currentStage.nextIcon className="h-4 w-4 mr-1" />}
-              {currentStage.nextLabel}
-            </Button>
-          )}
+        <Card className="border-2">
+          <CardHeader><CardTitle className="text-lg">Acciones</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
 
-          {deal.stage === 'visited' && !deal.appraisal_id && (
-            <Link href={`/appraisal/new?dealId=${deal.id}`} className="flex-1">
-              <Button className="w-full"><FileCheck className="h-4 w-4 mr-1" /> Crear Tasación</Button>
-            </Link>
-          )}
+            {/* SCHEDULED: Mark visit done */}
+            {deal.stage === 'scheduled' && (
+              <Button onClick={() => handleAdvance('visited')} disabled={advancing} className="w-full" size="lg">
+                {advancing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
+                Marcar Visita Realizada
+              </Button>
+            )}
 
-          {deal.stage === 'followup' && !deal.property_id && (
-            <Link href={`/properties/new?dealId=${deal.id}`} className="flex-1">
-              <Button className="w-full"><Home className="h-4 w-4 mr-1" /> Captar Propiedad</Button>
-            </Link>
-          )}
+            {/* VISITED: Create or view tasación + mark as delivered */}
+            {deal.stage === 'visited' && (
+              <>
+                {!deal.appraisal_id ? (
+                  <Link href={`/appraisal/new?dealId=${deal.id}`} className="block">
+                    <Button className="w-full" size="lg">
+                      <FileCheck className="h-4 w-4 mr-2" />Crear Tasación
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button onClick={() => handleAdvance('appraisal_sent')} disabled={advancing} className="w-full" size="lg">
+                    {advancing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+                    Marcar Tasación Entregada
+                  </Button>
+                )}
+              </>
+            )}
 
-          <Button variant="destructive" size="sm" onClick={handleLost} disabled={advancing}>
-            <XCircle className="h-4 w-4 mr-1" /> Marcar Perdido
-          </Button>
-        </div>
+            {/* APPRAISAL_SENT: Two clear options */}
+            {deal.stage === 'appraisal_sent' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Button
+                  onClick={() => setShowFollowupModal(true)}
+                  disabled={advancing}
+                  variant="outline"
+                  size="lg"
+                  className="border-orange-300 text-orange-700 hover:bg-orange-50"
+                >
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Seguimiento
+                </Button>
+                <Link href={`/properties/new?dealId=${deal.id}`}>
+                  <Button size="lg" className="w-full bg-green-600 hover:bg-green-700">
+                    <Home className="h-4 w-4 mr-2" />
+                    Captar Propiedad
+                  </Button>
+                </Link>
+              </div>
+            )}
+
+            {/* FOLLOWUP: Same two options */}
+            {deal.stage === 'followup' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Button
+                  onClick={() => setShowFollowupModal(true)}
+                  disabled={advancing}
+                  variant="outline"
+                  size="lg"
+                  className="border-orange-300 text-orange-700 hover:bg-orange-50"
+                >
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Agregar Seguimiento
+                </Button>
+                {!deal.property_id ? (
+                  <Link href={`/properties/new?dealId=${deal.id}`}>
+                    <Button size="lg" className="w-full bg-green-600 hover:bg-green-700">
+                      <Home className="h-4 w-4 mr-2" />
+                      Captar Propiedad
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button onClick={() => handleAdvance('captured')} disabled={advancing} size="lg" className="bg-green-600 hover:bg-green-700">
+                    {advancing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Home className="h-4 w-4 mr-2" />}
+                    Marcar como Captada
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* Always show Lost button */}
+            <div className="pt-2 border-t">
+              <Button variant="ghost" size="sm" onClick={handleLost} disabled={advancing} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                <XCircle className="h-4 w-4 mr-1" /> Marcar Perdido
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <p className="text-xs text-muted-foreground text-center">
         Creado: {formatDate(deal.created_at)} | Última actualización: {formatDate(deal.stage_changed_at || deal.updated_at)}
       </p>
+
+      {/* Followup Modal */}
+      {showFollowupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowFollowupModal(false)}>
+          <div className="bg-background rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-orange-600" />
+              Registrar Seguimiento
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Describe el estado del seguimiento, la conversación con el cliente, o próximos pasos.
+            </p>
+
+            <div className="space-y-2">
+              <textarea
+                className="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={followupNotes}
+                onChange={e => setFollowupNotes(e.target.value)}
+                placeholder="Ej: Hablé con el cliente, está interesado pero quiere ver otra propiedad antes de decidir..."
+                autoFocus
+              />
+
+              {/* Audio button */}
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant={isRecording ? 'destructive' : 'outline'}
+                  size="sm"
+                  onClick={toggleRecording}
+                  className="gap-1"
+                >
+                  {isRecording ? (
+                    <>
+                      <Square className="h-3.5 w-3.5" />
+                      Detener
+                    </>
+                  ) : (
+                    <>
+                      <Mic className="h-3.5 w-3.5" />
+                      Dictar con voz
+                    </>
+                  )}
+                </Button>
+                {isRecording && (
+                  <span className="text-xs text-red-600 animate-pulse flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-red-500" />
+                    Grabando...
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button variant="outline" onClick={() => { setShowFollowupModal(false); setFollowupNotes(''); recognitionRef.current?.stop(); setIsRecording(false) }} className="flex-1">
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleFollowupSubmit}
+                disabled={!followupNotes.trim() || advancing}
+                className="flex-1 bg-orange-600 hover:bg-orange-700"
+              >
+                {advancing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <MessageSquare className="h-4 w-4 mr-2" />}
+                Confirmar Seguimiento
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

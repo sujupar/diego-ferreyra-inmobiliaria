@@ -391,13 +391,13 @@ function NewAppraisalPageContent() {
             promise
                 .then(async (appraisalId) => {
                     setSaveStatus('saved')
-                    // Link appraisal to deal if came from a deal
+                    // Link appraisal to deal without advancing stage (asesor marks it manually)
                     if (dealId && appraisalId) {
                         try {
-                            await fetch(`/api/deals/${dealId}/advance`, {
+                            await fetch(`/api/deals/${dealId}/link-appraisal`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ stage: 'appraisal_sent', appraisal_id: appraisalId }),
+                                body: JSON.stringify({ appraisal_id: appraisalId }),
                             })
                         } catch (e) { console.error('Error linking deal:', e) }
                     }
