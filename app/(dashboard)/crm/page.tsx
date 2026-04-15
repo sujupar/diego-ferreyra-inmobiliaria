@@ -10,47 +10,99 @@ import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import {
   Loader2, RefreshCw, ChevronRight, User, MapPin, Calendar,
-  LayoutList, Table2, Phone, Filter
+  LayoutList, Table2, Filter, SlidersHorizontal,
+  CalendarPlus, CalendarCheck, CalendarX, Eye, FileCheck,
+  Send, MessageSquare, Home, XCircle, Phone, Mail, Clock
 } from 'lucide-react'
 
-// ── CRM Stages: derived from deal data ──────────────────────────
+// ── CRM Stage Configuration ─────────────────────────────────────
 interface CRMStage {
   key: string
   label: string
-  color: string
-  badgeColor: string
+  icon: typeof User
+  gradient: string
+  badgeBg: string
+  badgeText: string
+  ringColor: string
+  dotColor: string
 }
 
 const CRM_STAGES: CRMStage[] = [
-  { key: 'solicitud', label: 'Solicitud', color: 'bg-sky-500', badgeColor: 'bg-sky-500 text-white' },
-  { key: 'coordinada', label: 'Coordinada', color: 'bg-blue-500', badgeColor: 'bg-blue-500 text-white' },
-  { key: 'no_realizada', label: 'No Realizada', color: 'bg-rose-400', badgeColor: 'bg-rose-400 text-white' },
-  { key: 'visitada', label: 'Visitada', color: 'bg-amber-500', badgeColor: 'bg-amber-500 text-white' },
-  { key: 'tasacion_creada', label: 'Tasación Creada', color: 'bg-indigo-500', badgeColor: 'bg-indigo-500 text-white' },
-  { key: 'entregada', label: 'Entregada', color: 'bg-purple-500', badgeColor: 'bg-purple-500 text-white' },
-  { key: 'seguimiento', label: 'Seguimiento', color: 'bg-orange-500', badgeColor: 'bg-orange-500 text-white' },
-  { key: 'captada', label: 'Captada', color: 'bg-green-500', badgeColor: 'bg-green-500 text-white' },
-  { key: 'descartado', label: 'Descartado', color: 'bg-red-500', badgeColor: 'bg-red-500 text-white' },
+  {
+    key: 'solicitud', label: 'Solicitud',
+    icon: CalendarPlus,
+    gradient: 'from-sky-50 to-sky-100/60 dark:from-sky-950/40 dark:to-sky-900/20',
+    badgeBg: 'bg-sky-100 dark:bg-sky-900/50', badgeText: 'text-sky-700 dark:text-sky-300',
+    ringColor: 'ring-sky-400', dotColor: 'bg-sky-500',
+  },
+  {
+    key: 'coordinada', label: 'Coordinada',
+    icon: CalendarCheck,
+    gradient: 'from-blue-50 to-blue-100/60 dark:from-blue-950/40 dark:to-blue-900/20',
+    badgeBg: 'bg-blue-100 dark:bg-blue-900/50', badgeText: 'text-blue-700 dark:text-blue-300',
+    ringColor: 'ring-blue-400', dotColor: 'bg-blue-500',
+  },
+  {
+    key: 'no_realizada', label: 'No Realizada',
+    icon: CalendarX,
+    gradient: 'from-rose-50 to-rose-100/60 dark:from-rose-950/40 dark:to-rose-900/20',
+    badgeBg: 'bg-rose-100 dark:bg-rose-900/50', badgeText: 'text-rose-700 dark:text-rose-300',
+    ringColor: 'ring-rose-400', dotColor: 'bg-rose-500',
+  },
+  {
+    key: 'visitada', label: 'Visitada',
+    icon: Eye,
+    gradient: 'from-amber-50 to-amber-100/60 dark:from-amber-950/40 dark:to-amber-900/20',
+    badgeBg: 'bg-amber-100 dark:bg-amber-900/50', badgeText: 'text-amber-700 dark:text-amber-300',
+    ringColor: 'ring-amber-400', dotColor: 'bg-amber-500',
+  },
+  {
+    key: 'tasacion_creada', label: 'Tasación',
+    icon: FileCheck,
+    gradient: 'from-indigo-50 to-indigo-100/60 dark:from-indigo-950/40 dark:to-indigo-900/20',
+    badgeBg: 'bg-indigo-100 dark:bg-indigo-900/50', badgeText: 'text-indigo-700 dark:text-indigo-300',
+    ringColor: 'ring-indigo-400', dotColor: 'bg-indigo-500',
+  },
+  {
+    key: 'entregada', label: 'Entregada',
+    icon: Send,
+    gradient: 'from-purple-50 to-purple-100/60 dark:from-purple-950/40 dark:to-purple-900/20',
+    badgeBg: 'bg-purple-100 dark:bg-purple-900/50', badgeText: 'text-purple-700 dark:text-purple-300',
+    ringColor: 'ring-purple-400', dotColor: 'bg-purple-500',
+  },
+  {
+    key: 'seguimiento', label: 'Seguimiento',
+    icon: MessageSquare,
+    gradient: 'from-orange-50 to-orange-100/60 dark:from-orange-950/40 dark:to-orange-900/20',
+    badgeBg: 'bg-orange-100 dark:bg-orange-900/50', badgeText: 'text-orange-700 dark:text-orange-300',
+    ringColor: 'ring-orange-400', dotColor: 'bg-orange-500',
+  },
+  {
+    key: 'captada', label: 'Captada',
+    icon: Home,
+    gradient: 'from-emerald-50 to-emerald-100/60 dark:from-emerald-950/40 dark:to-emerald-900/20',
+    badgeBg: 'bg-emerald-100 dark:bg-emerald-900/50', badgeText: 'text-emerald-700 dark:text-emerald-300',
+    ringColor: 'ring-emerald-400', dotColor: 'bg-emerald-500',
+  },
+  {
+    key: 'descartado', label: 'Descartado',
+    icon: XCircle,
+    gradient: 'from-red-50 to-red-100/60 dark:from-red-950/40 dark:to-red-900/20',
+    badgeBg: 'bg-red-100 dark:bg-red-900/50', badgeText: 'text-red-700 dark:text-red-300',
+    ringColor: 'ring-red-400', dotColor: 'bg-red-500',
+  },
 ]
 
 function deriveCRMStage(deal: Deal): string {
   switch (deal.stage) {
-    case 'scheduled':
-      return deal.scheduled_date ? 'coordinada' : 'solicitud'
-    case 'not_visited':
-      return 'no_realizada'
-    case 'visited':
-      return deal.appraisal_id ? 'tasacion_creada' : 'visitada'
-    case 'appraisal_sent':
-      return 'entregada'
-    case 'followup':
-      return 'seguimiento'
-    case 'captured':
-      return 'captada'
-    case 'lost':
-      return 'descartado'
-    default:
-      return 'solicitud'
+    case 'scheduled': return deal.scheduled_date ? 'coordinada' : 'solicitud'
+    case 'not_visited': return 'no_realizada'
+    case 'visited': return deal.appraisal_id ? 'tasacion_creada' : 'visitada'
+    case 'appraisal_sent': return 'entregada'
+    case 'followup': return 'seguimiento'
+    case 'captured': return 'captada'
+    case 'lost': return 'descartado'
+    default: return 'solicitud'
   }
 }
 
@@ -86,6 +138,16 @@ function formatDateTime(d: string) {
   return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+function timeAgo(d: string) {
+  const diff = Date.now() - new Date(d).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 60) return `hace ${mins}m`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `hace ${hrs}h`
+  const days = Math.floor(hrs / 24)
+  return `hace ${days}d`
+}
+
 // ── Component ────────────────────────────────────────────────────
 export default function CRMPage() {
   const router = useRouter()
@@ -94,7 +156,7 @@ export default function CRMPage() {
   const [filterCRMStage, setFilterCRMStage] = useState('')
   const [filterOrigin, setFilterOrigin] = useState('')
   const [filterAdvisor, setFilterAdvisor] = useState('')
-  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards')
   const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: '', to: '' })
   const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
   const [advisors, setAdvisors] = useState<Array<{ id: string; full_name: string }>>([])
@@ -111,8 +173,6 @@ export default function CRMPage() {
     if (filterOrigin) params.set('origin', filterOrigin)
     if (dateRange.from) params.set('from', dateRange.from)
     if (dateRange.to) params.set('to', dateRange.to)
-
-    // Role-based filtering
     if (userInfo?.role === 'asesor') {
       params.set('assigned_to', userInfo.id)
     } else if (filterAdvisor) {
@@ -134,124 +194,184 @@ export default function CRMPage() {
 
   useEffect(() => { if (userInfo) fetchData() }, [fetchData, userInfo])
 
-  // Derive CRM stages and filter
   const dealsWithCRM = deals.map(d => ({ ...d, crmStage: deriveCRMStage(d) }))
   const filteredDeals = filterCRMStage
     ? dealsWithCRM.filter(d => d.crmStage === filterCRMStage)
     : dealsWithCRM
 
-  // KPI counts (always from full dataset, not filtered by stage)
   const stageCounts = dealsWithCRM.reduce((acc, d) => {
     acc[d.crmStage] = (acc[d.crmStage] || 0) + 1
     return acc
   }, {} as Record<string, number>)
 
+  const totalDeals = dealsWithCRM.length
   const isGlobal = userInfo && ['dueno', 'admin', 'coordinador'].includes(userInfo.role)
 
   const columns: Column<(typeof dealsWithCRM)[0]>[] = [
     { key: 'contact_name', label: 'Contacto', sortable: true, render: r => (
-      <div>
-        <span className="font-medium">{r.contact_name}</span>
-        {r.contact_phone && <span className="block text-xs text-muted-foreground">{r.contact_phone}</span>}
+      <div className="flex items-center gap-3">
+        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center shrink-0">
+          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{r.contact_name.charAt(0).toUpperCase()}</span>
+        </div>
+        <div>
+          <span className="font-medium text-sm">{r.contact_name}</span>
+          {r.contact_phone && <span className="block text-xs text-muted-foreground">{r.contact_phone}</span>}
+        </div>
       </div>
     )},
-    { key: 'property_address', label: 'Dirección', sortable: true, render: r => <span className="text-muted-foreground truncate max-w-[200px] block">{r.property_address}</span> },
+    { key: 'property_address', label: 'Propiedad', sortable: true, render: r => (
+      <span className="text-muted-foreground text-sm truncate max-w-[220px] block">{r.property_address}</span>
+    )},
     { key: 'crmStage', label: 'Etapa', sortable: true, render: r => {
       const s = getCRMStageInfo(r.crmStage)
-      return <Badge className={`text-xs ${s.badgeColor}`}>{s.label}</Badge>
+      return (
+        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${s.badgeBg} ${s.badgeText}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${s.dotColor}`} />
+          {s.label}
+        </span>
+      )
     }},
-    { key: 'origin', label: 'Origen', sortable: true, render: r => r.origin ? <Badge variant="secondary" className="text-xs">{ORIGIN_LABELS[r.origin] || r.origin}</Badge> : <span className="text-muted-foreground">—</span> },
-    ...(isGlobal ? [{ key: 'assigned_to_name' as const, label: 'Asesor', sortable: true, render: (r: (typeof dealsWithCRM)[0]) => <span className="text-sm">{r.assigned_to_name || '—'}</span> }] : []),
-    { key: 'scheduled_date', label: 'Agendada', sortable: true, render: r => <span className="text-sm text-muted-foreground">{r.scheduled_date ? formatDate(r.scheduled_date) : '—'}</span> },
-    { key: 'stage_changed_at', label: 'Actualización', sortable: true, render: r => <span className="text-xs text-muted-foreground">{formatDateTime(r.stage_changed_at)}</span> },
+    { key: 'origin', label: 'Origen', sortable: true, render: r => r.origin ? <Badge variant="secondary" className="text-xs font-normal">{ORIGIN_LABELS[r.origin] || r.origin}</Badge> : <span className="text-muted-foreground text-xs">—</span> },
+    ...(isGlobal ? [{ key: 'assigned_to_name' as const, label: 'Asesor', sortable: true, render: (r: (typeof dealsWithCRM)[0]) => <span className="text-sm text-muted-foreground">{r.assigned_to_name || '—'}</span> }] : []),
+    { key: 'stage_changed_at', label: 'Actualizado', sortable: true, render: r => (
+      <span className="text-xs text-muted-foreground flex items-center gap-1">
+        <Clock className="h-3 w-3" />
+        {timeAgo(r.stage_changed_at)}
+      </span>
+    )},
   ]
 
+  const activeStageInfo = filterCRMStage ? getCRMStageInfo(filterCRMStage) : null
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-8">
+      {/* ── Header ──────────────────────────────────────────── */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">CRM</h1>
-          <p className="text-muted-foreground">
-            {filteredDeals.length} proceso{filteredDeals.length !== 1 ? 's' : ''}
-            {filterCRMStage && ` · ${getCRMStageInfo(filterCRMStage).label}`}
+          <h1 className="text-3xl font-bold tracking-tight">CRM</h1>
+          <p className="text-muted-foreground mt-1">
+            {totalDeals} proceso{totalDeals !== 1 ? 's' : ''} comercial{totalDeals !== 1 ? 'es' : ''}
+            {filterCRMStage && (
+              <span className={`ml-2 inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${activeStageInfo?.badgeBg} ${activeStageInfo?.badgeText}`}>
+                {activeStageInfo?.label}
+                <button onClick={() => setFilterCRMStage('')} className="ml-0.5 hover:opacity-70">&times;</button>
+              </span>
+            )}
           </p>
         </div>
-        <div className="flex gap-2">
-          <div className="flex rounded-md border">
-            <button onClick={() => setViewMode('table')} className={`p-2 ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'} rounded-l-md`}><Table2 className="h-4 w-4" /></button>
-            <button onClick={() => setViewMode('cards')} className={`p-2 ${viewMode === 'cards' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'} rounded-r-md`}><LayoutList className="h-4 w-4" /></button>
+        <div className="flex items-center gap-2">
+          {/* View toggle */}
+          <div className="flex rounded-lg border bg-muted/40 p-0.5">
+            <button
+              onClick={() => setViewMode('cards')}
+              className={`p-1.5 rounded-md transition-all ${viewMode === 'cards' ? 'bg-background shadow-sm' : 'hover:bg-background/50'}`}
+            >
+              <LayoutList className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-1.5 rounded-md transition-all ${viewMode === 'table' ? 'bg-background shadow-sm' : 'hover:bg-background/50'}`}
+            >
+              <Table2 className="h-4 w-4" />
+            </button>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
-            <Filter className="h-4 w-4 mr-1" /> Filtros
+          <Button
+            variant={showFilters ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+            className="gap-1.5"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" /> Filtros
           </Button>
-          <Button variant="outline" size="sm" onClick={fetchData}><RefreshCw className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fetchData}>
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
       </div>
 
-      {/* KPI Stage Cards */}
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-9">
-        {CRM_STAGES.map(s => {
+      {/* ── Stage Pipeline ──────────────────────────────────── */}
+      <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 lg:grid-cols-9">
+        {CRM_STAGES.map((s) => {
           const count = stageCounts[s.key] || 0
           const isActive = filterCRMStage === s.key
+          const Icon = s.icon
           return (
-            <Card
+            <button
               key={s.key}
-              className={`cursor-pointer transition-all ${isActive ? 'ring-2 ring-primary shadow-md' : 'hover:shadow-md'}`}
               onClick={() => setFilterCRMStage(isActive ? '' : s.key)}
+              className={`
+                group relative rounded-xl border p-3 text-left transition-all duration-200
+                bg-gradient-to-br ${s.gradient}
+                ${isActive
+                  ? `ring-2 ${s.ringColor} shadow-lg scale-[1.02]`
+                  : 'hover:shadow-md hover:scale-[1.01] border-transparent'
+                }
+              `}
             >
-              <CardContent className="py-2 px-3 text-center">
-                <p className="text-[10px] text-muted-foreground leading-tight truncate">{s.label}</p>
-                <p className="text-xl font-bold mt-0.5">{count}</p>
-              </CardContent>
-            </Card>
+              <div className="flex items-center justify-between mb-2">
+                <div className={`h-7 w-7 rounded-lg flex items-center justify-center ${s.badgeBg}`}>
+                  <Icon className={`h-3.5 w-3.5 ${s.badgeText}`} />
+                </div>
+                {count > 0 && (
+                  <span className={`h-5 min-w-5 px-1 rounded-full flex items-center justify-center text-[10px] font-bold ${s.dotColor} text-white`}>
+                    {count}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs font-medium truncate">{s.label}</p>
+              <p className="text-2xl font-bold tracking-tight mt-0.5">{count}</p>
+            </button>
           )
         })}
       </div>
 
-      {/* Date Filter */}
-      <DateRangeFilter onChange={setDateRange} />
+      {/* ── Filters Bar ─────────────────────────────────────── */}
+      <div className="space-y-3">
+        <DateRangeFilter onChange={setDateRange} />
 
-      {/* Additional Filters */}
-      {showFilters && (
-        <div className="flex gap-3 flex-wrap items-center p-3 bg-muted/50 rounded-lg">
-          {/* Origin filter */}
-          <div className="flex gap-1 flex-wrap">
-            <span className="text-xs text-muted-foreground self-center mr-1">Origen:</span>
-            <Button variant={filterOrigin === '' ? 'default' : 'outline'} size="sm" className="h-7 text-xs" onClick={() => setFilterOrigin('')}>Todos</Button>
-            {Object.entries(ORIGIN_LABELS).map(([key, label]) => (
-              <Button key={key} variant={filterOrigin === key ? 'default' : 'outline'} size="sm" className="h-7 text-xs" onClick={() => setFilterOrigin(key)}>{label}</Button>
-            ))}
-          </div>
-
-          {/* Advisor filter (only for global roles) */}
-          {isGlobal && advisors.length > 0 && (
-            <div className="flex gap-1 items-center">
-              <span className="text-xs text-muted-foreground mr-1">Asesor:</span>
-              <select
-                value={filterAdvisor}
-                onChange={e => setFilterAdvisor(e.target.value)}
-                className="h-7 text-xs rounded-md border border-input bg-background px-2"
-              >
-                <option value="">Todos</option>
-                {advisors.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
-              </select>
+        {showFilters && (
+          <div className="flex gap-4 flex-wrap items-center p-4 bg-muted/30 rounded-xl border border-border/50">
+            <div className="flex gap-1.5 flex-wrap items-center">
+              <span className="text-xs font-medium text-muted-foreground mr-1">Origen</span>
+              <Button variant={filterOrigin === '' ? 'default' : 'outline'} size="sm" className="h-7 text-xs rounded-full" onClick={() => setFilterOrigin('')}>Todos</Button>
+              {Object.entries(ORIGIN_LABELS).map(([key, label]) => (
+                <Button key={key} variant={filterOrigin === key ? 'default' : 'outline'} size="sm" className="h-7 text-xs rounded-full" onClick={() => setFilterOrigin(key)}>{label}</Button>
+              ))}
             </div>
-          )}
-        </div>
-      )}
 
-      {/* Content */}
+            {isGlobal && advisors.length > 0 && (
+              <div className="flex gap-1.5 items-center">
+                <span className="text-xs font-medium text-muted-foreground mr-1">Asesor</span>
+                <select
+                  value={filterAdvisor}
+                  onChange={e => setFilterAdvisor(e.target.value)}
+                  className="h-7 text-xs rounded-full border border-input bg-background px-3 pr-6 appearance-none"
+                >
+                  <option value="">Todos</option>
+                  {advisors.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Content ─────────────────────────────────────────── */}
       {loading ? (
-        <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+        <div className="flex flex-col items-center justify-center py-24 gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/50" />
+          <p className="text-sm text-muted-foreground">Cargando procesos...</p>
+        </div>
       ) : filteredDeals.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <User className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-1">Sin procesos</h3>
-            <p className="text-sm text-muted-foreground">No hay procesos que coincidan con los filtros seleccionados.</p>
-          </CardContent>
-        </Card>
+        <div className="flex flex-col items-center justify-center py-24 gap-4">
+          <div className="h-16 w-16 rounded-2xl bg-muted/50 flex items-center justify-center">
+            <User className="h-8 w-8 text-muted-foreground/40" />
+          </div>
+          <div className="text-center">
+            <h3 className="font-semibold mb-1">Sin procesos</h3>
+            <p className="text-sm text-muted-foreground max-w-xs">No hay procesos que coincidan con los filtros seleccionados.</p>
+          </div>
+        </div>
       ) : viewMode === 'table' ? (
         <DataTable
           data={filteredDeals}
@@ -263,28 +383,52 @@ export default function CRMPage() {
         <div className="space-y-2">
           {filteredDeals.map(deal => {
             const stageInfo = getCRMStageInfo(deal.crmStage)
+            const Icon = stageInfo.icon
             return (
               <Link key={deal.id} href={`/pipeline/${deal.id}`}>
-                <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
-                  <CardContent className="flex items-center gap-4 py-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      <User className="h-5 w-5 text-primary" />
+                <div className="group flex items-center gap-4 p-4 rounded-xl border bg-card hover:bg-muted/30 transition-all duration-200 cursor-pointer hover:shadow-sm">
+                  {/* Avatar */}
+                  <div className="h-11 w-11 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center shrink-0">
+                    <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+                      {deal.contact_name.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="font-semibold text-sm">{deal.contact_name}</span>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${stageInfo.badgeBg} ${stageInfo.badgeText}`}>
+                        <Icon className="h-3 w-3" />
+                        {stageInfo.label}
+                      </span>
+                      {deal.origin && (
+                        <span className="text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{ORIGIN_LABELS[deal.origin] || deal.origin}</span>
+                      )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="font-medium">{deal.contact_name}</span>
-                        <Badge className={`text-xs ${stageInfo.badgeColor}`}>{stageInfo.label}</Badge>
-                        {deal.origin && <Badge variant="secondary" className="text-xs">{ORIGIN_LABELS[deal.origin] || deal.origin}</Badge>}
-                      </div>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
-                        <span className="flex items-center gap-1 truncate"><MapPin className="h-3.5 w-3.5 shrink-0" />{deal.property_address}</span>
-                        {deal.scheduled_date && <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{formatDate(deal.scheduled_date)}</span>}
-                        {isGlobal && deal.assigned_to_name && <span className="text-xs">{deal.assigned_to_name}</span>}
-                      </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                      <span className="flex items-center gap-1 truncate max-w-[250px]">
+                        <MapPin className="h-3 w-3 shrink-0" />{deal.property_address}
+                      </span>
+                      {deal.scheduled_date && (
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />{formatDate(deal.scheduled_date)}
+                        </span>
+                      )}
+                      {isGlobal && deal.assigned_to_name && (
+                        <span className="flex items-center gap-1">
+                          <User className="h-3 w-3" />{deal.assigned_to_name}
+                        </span>
+                      )}
                     </div>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                  </CardContent>
-                </Card>
+                  </div>
+
+                  {/* Right side */}
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-xs text-muted-foreground hidden sm:block">{timeAgo(deal.stage_changed_at)}</span>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-foreground transition-colors" />
+                  </div>
+                </div>
               </Link>
             )
           })}
