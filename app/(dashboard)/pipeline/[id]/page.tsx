@@ -14,6 +14,7 @@ import {
 
 const STAGES = [
   { key: 'scheduled', label: 'Agendada', color: 'bg-blue-500' },
+  { key: 'not_visited', label: 'No Realizada', color: 'bg-rose-400' },
   { key: 'visited', label: 'Visita Realizada', color: 'bg-amber-500' },
   { key: 'appraisal_sent', label: 'Tasación Entregada', color: 'bg-purple-500' },
   { key: 'followup', label: 'En Seguimiento', color: 'bg-orange-500' },
@@ -184,7 +185,7 @@ export default function DealDetailPage() {
       <Card>
         <CardContent className="py-4">
           <div className="flex items-center gap-1 overflow-x-auto">
-            {STAGES.filter(s => s.key !== 'lost').map((s, i) => {
+            {STAGES.filter(s => s.key !== 'lost' && s.key !== 'not_visited').map((s, i) => {
               const stageIdx = STAGES.findIndex(x => x.key === deal.stage)
               const thisIdx = STAGES.findIndex(x => x.key === s.key)
               const isPast = thisIdx < stageIdx
@@ -270,12 +271,26 @@ export default function DealDetailPage() {
           <CardHeader><CardTitle className="text-lg">Acciones</CardTitle></CardHeader>
           <CardContent className="space-y-3">
 
-            {/* SCHEDULED: Mark visit done */}
+            {/* SCHEDULED: Mark visit done or not done */}
             {deal.stage === 'scheduled' && (
-              <Button onClick={() => handleAdvance('visited')} disabled={advancing} className="w-full" size="lg">
-                {advancing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
-                Marcar Visita Realizada
-              </Button>
+              <div className="space-y-2">
+                <Button onClick={() => handleAdvance('visited')} disabled={advancing} className="w-full" size="lg">
+                  {advancing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
+                  Marcar Visita Realizada
+                </Button>
+                <Button onClick={() => handleAdvance('not_visited')} disabled={advancing} variant="outline" className="w-full border-rose-300 text-rose-700 hover:bg-rose-50" size="lg">
+                  No Se Realizó la Visita
+                </Button>
+              </div>
+            )}
+
+            {/* NOT_VISITED: Reschedule or mark lost */}
+            {deal.stage === 'not_visited' && (
+              <div className="space-y-2">
+                <Button onClick={() => handleAdvance('scheduled')} disabled={advancing} className="w-full" size="lg">
+                  Reagendar Visita
+                </Button>
+              </div>
             )}
 
             {/* VISITED: Create or view tasación + mark as delivered */}

@@ -16,6 +16,7 @@ const PRESETS = [
   { label: '7d', days: 7 },
   { label: '15d', days: 15 },
   { label: '30d', days: 30 },
+  { label: '90d', days: 90 },
 ] as const
 
 export function DateRangeFilter({ onChange }: DateRangeFilterProps) {

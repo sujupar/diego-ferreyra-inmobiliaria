@@ -9,7 +9,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     if (!stage) return NextResponse.json({ error: 'Missing stage' }, { status: 400 })
 
-    const validStages: DealStage[] = ['scheduled', 'visited', 'appraisal_sent', 'followup', 'captured', 'lost']
+    const validStages: DealStage[] = ['scheduled', 'not_visited', 'visited', 'appraisal_sent', 'followup', 'captured', 'lost']
     if (!validStages.includes(stage)) return NextResponse.json({ error: 'Invalid stage' }, { status: 400 })
 
     // If linking an appraisal, use the dedicated function

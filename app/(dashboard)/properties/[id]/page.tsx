@@ -136,7 +136,13 @@ export default function PropertyDetailPage() {
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin" /></div>
   if (!property) return <div className="text-center py-20"><p>Propiedad no encontrada</p></div>
 
-  const statusInfo = STATUS_LABELS[property.status] || { label: property.status, color: 'bg-gray-400' }
+  // Derive smart status label based on both status and legal_status
+  const statusInfo = (() => {
+    if (property.status === 'pending_review' && property.legal_status === 'approved') {
+      return { label: 'Pendiente Fotos', color: 'bg-amber-500' }
+    }
+    return STATUS_LABELS[property.status] || { label: property.status, color: 'bg-gray-400' }
+  })()
   const docs = Array.isArray(property.documents) ? property.documents : []
   const photos = property.photos || []
   const isAbogado = userInfo?.role === 'abogado'

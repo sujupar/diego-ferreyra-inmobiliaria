@@ -4,10 +4,11 @@ function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
-export type DealStage = 'scheduled' | 'visited' | 'appraisal_sent' | 'followup' | 'captured' | 'lost'
+export type DealStage = 'scheduled' | 'not_visited' | 'visited' | 'appraisal_sent' | 'followup' | 'captured' | 'lost'
 
 export const DEAL_STAGES: { key: DealStage; label: string; color: string }[] = [
   { key: 'scheduled', label: 'Agendada', color: 'bg-blue-500' },
+  { key: 'not_visited', label: 'No Realizada', color: 'bg-rose-400' },
   { key: 'visited', label: 'Visita Realizada', color: 'bg-amber-500' },
   { key: 'appraisal_sent', label: 'Tasación Entregada', color: 'bg-purple-500' },
   { key: 'followup', label: 'En Seguimiento', color: 'bg-orange-500' },

@@ -23,7 +23,14 @@ const STATUS_INFO: Record<string, { label: string; color: string }> = {
 interface Property {
   id: string; address: string; neighborhood: string; city: string; property_type: string
   asking_price: number; currency: string; status: string; origin: string | null
-  photos: string[]; created_at: string
+  photos: string[]; created_at: string; legal_status?: string
+}
+
+function getPropertyStatusInfo(p: Property) {
+  if (p.status === 'pending_review' && p.legal_status === 'approved') {
+    return { label: 'Pend. Fotos', color: 'bg-amber-500' }
+  }
+  return STATUS_INFO[p.status] || { label: p.status, color: 'bg-gray-400' }
 }
 
 function formatCurrency(v: number, c: string = 'USD') {
@@ -66,7 +73,7 @@ export default function PropertiesPage() {
     { key: 'neighborhood', label: 'Barrio', sortable: true, render: r => <span className="text-muted-foreground">{r.neighborhood}</span> },
     { key: 'property_type', label: 'Tipo', sortable: true, render: r => <span className="capitalize">{r.property_type}</span> },
     { key: 'asking_price', label: 'Precio', sortable: true, className: 'text-right', render: r => <span className="font-medium">{formatCurrency(r.asking_price, r.currency)}</span> },
-    { key: 'status', label: 'Estado', sortable: true, render: r => { const s = STATUS_INFO[r.status]; return s ? <Badge className={`text-xs text-white ${s.color}`}>{s.label}</Badge> : <span>{r.status}</span> } },
+    { key: 'status', label: 'Estado', sortable: true, render: r => { const s = getPropertyStatusInfo(r); return <Badge className={`text-xs text-white ${s.color}`}>{s.label}</Badge> } },
     { key: 'origin', label: 'Origen', sortable: true, render: r => r.origin ? <Badge variant="secondary" className="text-xs capitalize">{r.origin}</Badge> : <span>—</span> },
     { key: 'created_at', label: 'Fecha', sortable: true, render: r => <span className="text-sm text-muted-foreground">{formatDate(r.created_at)}</span> },
   ]
@@ -113,7 +120,7 @@ export default function PropertiesPage() {
       ) : (
         <div className="space-y-3">
           {properties.map(prop => {
-            const statusInfo = STATUS_INFO[prop.status] || { label: prop.status, color: 'bg-gray-400' }
+            const statusInfo = getPropertyStatusInfo(prop)
             return (
               <Link key={prop.id} href={`/properties/${prop.id}`}>
                 <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
