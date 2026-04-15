@@ -82,16 +82,57 @@ export async function updateProperty(id: string, updates: Partial<PropertyInput>
 
 export async function reviewProperty(id: string, approved: boolean, reviewerId: string, notes?: string) {
   const supabase = getAdmin()
+
+  if (!approved) {
+    // Rejected — set both legal and property status to rejected
+    const { error } = await supabase
+      .from('properties')
+      .update({
+        legal_status: 'rejected',
+        legal_reviewer_id: reviewerId,
+        legal_notes: notes || null,
+        legal_reviewed_at: new Date().toISOString(),
+        status: 'rejected',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+    if (error) throw error
+    return
+  }
+
+  // Approved — check if photos are uploaded before setting final status
+  const prop = await getProperty(id)
+  const hasPhotos = Array.isArray(prop.photos) && prop.photos.length > 0
+  const finalStatus = hasPhotos ? 'approved' : 'pending_review'
+
   const { error } = await supabase
     .from('properties')
     .update({
-      legal_status: approved ? 'approved' : 'rejected',
+      legal_status: 'approved',
       legal_reviewer_id: reviewerId,
       legal_notes: notes || null,
       legal_reviewed_at: new Date().toISOString(),
-      status: approved ? 'approved' : 'rejected',
+      status: finalStatus,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
   if (error) throw error
+}
+
+/** Check if property should auto-advance to approved (both legal + photos done) */
+export async function checkAndAdvanceProperty(id: string) {
+  const supabase = getAdmin()
+  const prop = await getProperty(id)
+  const hasPhotos = Array.isArray(prop.photos) && prop.photos.length > 0
+  const legalApproved = prop.legal_status === 'approved'
+
+  if (hasPhotos && legalApproved && prop.status !== 'approved') {
+    const { error } = await supabase
+      .from('properties')
+      .update({ status: 'approved', updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (error) throw error
+    return true
+  }
+  return false
 }

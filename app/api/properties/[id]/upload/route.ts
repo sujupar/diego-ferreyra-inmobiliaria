@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { updateProperty } from '@/lib/supabase/properties'
+import { updateProperty, checkAndAdvanceProperty } from '@/lib/supabase/properties'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -39,6 +39,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     } else {
       const docs = [...(Array.isArray(property?.documents) ? property.documents : []), { name: file.name, url: publicUrl, uploaded_at: new Date().toISOString() }]
       await updateProperty(id, { documents: docs } as any)
+    }
+
+    // Auto-advance if both legal approved + photos now exist
+    if (type === 'photo') {
+      try { await checkAndAdvanceProperty(id) } catch (e) { console.error('Auto-advance error:', e) }
     }
 
     return NextResponse.json({ success: true, url: publicUrl })
