@@ -9,6 +9,9 @@ import {
   Loader2, Upload, FileText, Image, CheckCircle, XCircle,
   Send, ArrowLeft, MapPin, Home, Scale, Camera, AlertTriangle
 } from 'lucide-react'
+import { LegalDocsChecklist } from '@/components/properties/LegalDocsChecklist'
+import { LegalReviewHistory } from '@/components/properties/LegalReviewHistory'
+import type { LegalDocsState, LegalFlags } from '@/types/legal-docs.types'
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: 'Borrador', color: 'bg-gray-400' },
@@ -60,6 +63,7 @@ export default function PropertyDetailPage() {
   // User info for role-based actions
   const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
   const [reviewNotes, setReviewNotes] = useState('')
+  const [legalDocsData, setLegalDocsData] = useState<{ docs: LegalDocsState; flags: LegalFlags } | null>(null)
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
@@ -80,6 +84,20 @@ export default function PropertyDetailPage() {
   }
 
   useEffect(() => { fetchProperty() }, [id])
+
+  async function fetchLegalDocs() {
+    try {
+      const res = await fetch(`/api/properties/${id}/legal-docs`)
+      if (res.ok) {
+        const { data } = await res.json()
+        setLegalDocsData(data)
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  useEffect(() => { fetchLegalDocs() }, [id])
 
   async function handleUpload(file: File, type: 'photo' | 'document') {
     setUploading(true)
@@ -219,11 +237,14 @@ export default function PropertyDetailPage() {
       </Card>
 
       {/* Details */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className={`grid grid-cols-1 ${isAbogado ? '' : 'lg:grid-cols-2'} gap-6`}>
         <Card>
           <CardHeader><CardTitle className="text-lg"><Home className="h-5 w-5 inline mr-2" />Datos de la Propiedad</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="grid grid-cols-2 gap-2">
+              <span className="text-muted-foreground">Dirección:</span><span className="font-semibold">{property.address}</span>
+              <span className="text-muted-foreground">Barrio:</span><span>{property.neighborhood}</span>
+              {property.city && <><span className="text-muted-foreground">Ciudad:</span><span>{property.city}</span></>}
               <span className="text-muted-foreground">Tipo:</span><span className="capitalize">{property.property_type}</span>
               {property.rooms && <><span className="text-muted-foreground">Ambientes:</span><span>{property.rooms}</span></>}
               {property.bedrooms && <><span className="text-muted-foreground">Dormitorios:</span><span>{property.bedrooms}</span></>}
@@ -235,59 +256,40 @@ export default function PropertyDetailPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader><CardTitle className="text-lg">Datos Comerciales</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="grid grid-cols-2 gap-2">
-              <span className="text-muted-foreground">Precio:</span>
-              <span className="font-bold">{new Intl.NumberFormat('es-AR', { style: 'currency', currency: property.currency, minimumFractionDigits: 0 }).format(property.asking_price)}</span>
-              <span className="text-muted-foreground">Comisión:</span><span>{property.commission_percentage}%</span>
-              {property.contract_start_date && <><span className="text-muted-foreground">Inicio contrato:</span><span>{property.contract_start_date}</span></>}
-              {property.contract_end_date && <><span className="text-muted-foreground">Fin contrato:</span><span>{property.contract_end_date}</span></>}
-              {property.origin && <><span className="text-muted-foreground">Origen:</span><span className="capitalize">{property.origin}</span></>}
-            </div>
-          </CardContent>
-        </Card>
+        {/* Datos Comerciales: oculto al abogado */}
+        {!isAbogado && (
+          <Card>
+            <CardHeader><CardTitle className="text-lg">Datos Comerciales</CardTitle></CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <span className="text-muted-foreground">Precio:</span>
+                <span className="font-bold">{new Intl.NumberFormat('es-AR', { style: 'currency', currency: property.currency, minimumFractionDigits: 0 }).format(property.asking_price)}</span>
+                <span className="text-muted-foreground">Comisión:</span><span>{property.commission_percentage}%</span>
+                {property.contract_start_date && <><span className="text-muted-foreground">Inicio contrato:</span><span>{property.contract_start_date}</span></>}
+                {property.contract_end_date && <><span className="text-muted-foreground">Fin contrato:</span><span>{property.contract_end_date}</span></>}
+                {property.origin && <><span className="text-muted-foreground">Origen:</span><span className="capitalize">{property.origin}</span></>}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      {/* Documents */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg"><FileText className="h-5 w-5 inline mr-2" />Documentación ({docs.length})</CardTitle>
-            {!isAbogado && (
-              <div>
-                <input ref={docRef} type="file" className="hidden" accept=".pdf,.doc,.docx,.jpg,.png" onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0], 'document')} />
-                <Button size="sm" variant="outline" onClick={() => docRef.current?.click()} disabled={uploading}>
-                  {uploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
-                  Subir Documento
-                </Button>
-              </div>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {docs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay documentos subidos.</p>
-          ) : (
-            <ul className="space-y-2">
-              {docs.map((doc, i) => (
-                <li key={i} className="flex items-center gap-2 text-sm">
-                  <FileText className="h-4 w-4 text-muted-foreground" />
-                  <a href={doc.url} target="_blank" rel="noopener" className="hover:underline text-blue-600">{doc.name}</a>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      {/* Legal Docs Checklist */}
+      <LegalDocsChecklist
+        propertyId={property.id}
+        propertyType={property.property_type || ''}
+        docs={legalDocsData?.docs || {}}
+        flags={legalDocsData?.flags || { has_succession: false, has_divorce: false, has_powers: false, is_credit_purchase: false }}
+        isAbogado={isAbogado}
+        onUpdated={fetchLegalDocs}
+      />
 
-      {/* Photos */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg"><Image className="h-5 w-5 inline mr-2" />Fotos ({photos.length})</CardTitle>
-            {!isAbogado && (
+      {/* Photos: oculto al abogado */}
+      {!isAbogado && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg"><Image className="h-5 w-5 inline mr-2" />Fotos ({photos.length})</CardTitle>
               <div>
                 <input ref={photoRef} type="file" className="hidden" accept="image/*" onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0], 'photo')} />
                 <Button size="sm" variant="outline" onClick={() => photoRef.current?.click()} disabled={uploading}>
@@ -295,21 +297,21 @@ export default function PropertyDetailPage() {
                   Subir Foto
                 </Button>
               </div>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {photos.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay fotos subidas.</p>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {photos.map((url, i) => (
-                <img key={i} src={url} alt={`Foto ${i + 1}`} className="rounded-lg h-32 w-full object-cover" />
-              ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent>
+            {photos.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay fotos subidas.</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {photos.map((url, i) => (
+                  <img key={i} src={url} alt={`Foto ${i + 1}`} className="rounded-lg h-32 w-full object-cover" />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Legal Review Result (for non-abogado when already reviewed) */}
       {!isAbogado && (legalApproved || legalRejected) && (
@@ -405,6 +407,9 @@ export default function PropertyDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Track record histórico de revisión legal */}
+      <LegalReviewHistory propertyId={property.id} />
     </div>
   )
 }
