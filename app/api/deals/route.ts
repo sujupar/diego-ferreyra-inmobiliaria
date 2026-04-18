@@ -11,12 +11,16 @@ function getAdmin() {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const data = await getDeals({
+    const limitParam = searchParams.get('limit')
+    const offsetParam = searchParams.get('offset')
+    const { data, total, stageCounts } = await getDeals({
       stage: searchParams.get('stage') || undefined,
       origin: searchParams.get('origin') || undefined,
       assigned_to: searchParams.get('assigned_to') || undefined,
       from: searchParams.get('from') || undefined,
       to: searchParams.get('to') || undefined,
+      limit: limitParam ? parseInt(limitParam, 10) : undefined,
+      offset: offsetParam ? parseInt(offsetParam, 10) : undefined,
     })
 
     // Get advisor names
@@ -35,7 +39,7 @@ export async function GET(request: NextRequest) {
       assigned_to_name: d.assigned_to ? profileMap[d.assigned_to] || '' : '',
     }))
 
-    return NextResponse.json({ data: enriched })
+    return NextResponse.json({ data: enriched, total, stageCounts })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error' }, { status: 500 })
   }
