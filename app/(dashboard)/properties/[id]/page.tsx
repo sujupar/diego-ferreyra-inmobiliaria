@@ -197,8 +197,8 @@ export default function PropertyDetailPage() {
           {/* Track 1: Legal Review */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-full bg-[color:var(--brass-soft)]/40 flex items-center justify-center">
-                <Scale className="h-4 w-4 text-[color:var(--brass)]" />
+              <div className="h-8 w-8 rounded-full bg-[color:var(--brand-soft)]/40 flex items-center justify-center">
+                <Scale className="h-4 w-4 text-[color:var(--brand)]" />
               </div>
               <span className="text-sm font-medium">Revisión Legal</span>
             </div>

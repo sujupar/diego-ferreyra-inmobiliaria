@@ -83,7 +83,7 @@ export function LegalReviewHistory({ propertyId }: { propertyId: string }) {
                     {ev.actor_role}
                   </p>
                   {ev.notes && (
-                    <p className="text-sm mt-2 italic text-muted-foreground border-l-2 border-[color:var(--brass)]/30 pl-3 font-[family-name:var(--font-serif)]">
+                    <p className="text-sm mt-2 italic text-muted-foreground border-l-2 border-[color:var(--brand)]/30 pl-3">
                       &ldquo;{ev.notes}&rdquo;
                     </p>
                   )}

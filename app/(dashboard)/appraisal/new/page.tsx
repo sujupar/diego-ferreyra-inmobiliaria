@@ -428,8 +428,57 @@ function NewAppraisalPageContent() {
                                 })
                             } catch (e) { console.error('Error linking deal:', e) }
                         } else if (subject) {
-                            // Auto-create deal for tasaciones without a process
+                            // Auto-create deal for tasaciones without a process.
+                            //
+                            // Derive property fields from subject features so the auto-created deal
+                            // passes /api/deals POST validation AND the deal's "Propiedad" card shows
+                            // the data the asesor entered in the wizard.
                             try {
+                                const features = (subject.features || {}) as any
+                                // Try to extract neighborhood from the location string ("address, neighborhood, city")
+                                const locationParts = (subject.location || '').split(',').map((s: string) => s.trim()).filter(Boolean)
+                                const neighborhood = locationParts[1] || locationParts[0] || 'Sin definir'
+
+                                // Build a minimal sale snapshot from the wizard data so visit-prefill works
+                                // in reverse (if someone later wants to "Marcar Visita Realizada" on this deal,
+                                // the form will be pre-populated with what the asesor already entered).
+                                const saleSnapshot = {
+                                    property_type: 'departamento' as const,  // wizard is apt-centric (Ross-Heidecke)
+                                    rooms: features.rooms ?? null,
+                                    bedrooms: features.bedrooms ?? null,
+                                    bathrooms: features.bathrooms ?? null,
+                                    garages: features.garages ?? null,
+                                    covered_m2: features.coveredArea ?? null,
+                                    semi_covered_m2: features.semiCoveredArea ?? null,
+                                    uncovered_m2: features.uncoveredArea ?? null,
+                                    total_m2: features.totalArea ?? null,
+                                    terrain_m2: null,
+                                    age_years: features.age ?? null,
+                                    is_refurbished: false,
+                                    orientation: null,
+                                    floor: features.floor ?? null,
+                                    total_floors: features.totalFloors ?? null,
+                                    disposition: features.disposition === 'FRONT' ? 'frente'
+                                        : features.disposition === 'BACK' ? 'contrafrente'
+                                        : features.disposition === 'LATERAL' ? 'lateral'
+                                        : features.disposition === 'INTERNAL' ? 'interno'
+                                        : null,
+                                    quality: features.quality === 'ECONOMIC' ? 'economica'
+                                        : features.quality === 'GOOD_ECONOMIC' ? 'buena_economica'
+                                        : features.quality === 'GOOD' ? 'buena'
+                                        : features.quality === 'VERY_GOOD' ? 'muy_buena'
+                                        : features.quality === 'EXCELLENT' ? 'excelente'
+                                        : null,
+                                    conservation: features.conservationState
+                                        ? features.conservationState.toLowerCase().replace(/^state_/, 'estado_')
+                                        : null,
+                                    construction_features: [],
+                                    reason_for_sale: null,
+                                    sale_timeframe: null,
+                                    strong_points: [],
+                                    extra_notes: null,
+                                }
+
                                 const res = await fetch('/api/deals', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
@@ -437,10 +486,23 @@ function NewAppraisalPageContent() {
                                         contact_name: subject.title || subject.location || 'Sin nombre',
                                         property_address: subject.location || subject.title || '',
                                         origin: origin || 'historico',
+                                        property_type: 'departamento',  // wizard is apt-only for now
+                                        neighborhood,
+                                        rooms: features.rooms ?? 1,
+                                        covered_area: features.coveredArea ?? null,
                                     }),
                                 })
                                 if (res.ok) {
                                     const { id: newDealId } = await res.json()
+                                    // Save the wizard snapshot to the deal so visit-prefill works in reverse
+                                    try {
+                                        await fetch(`/api/deals/${newDealId}/visit-data`, {
+                                            method: 'PATCH',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ snapshot: { sale: saleSnapshot } }),
+                                        })
+                                    } catch (e) { console.error('Error saving visit snapshot:', e) }
+                                    // Then advance to appraisal_sent and link
                                     await fetch(`/api/deals/${newDealId}/advance`, {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
