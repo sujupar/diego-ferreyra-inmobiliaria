@@ -11,6 +11,7 @@ import { ScrapedProperty } from '@/lib/scraper/types'
 import { calculateValuation, calculatePurchaseCosts, ValuationResult, ValuationProperty, ExpenseRates, PurchaseExpenseRates, PurchaseResult } from '@/lib/valuation/calculator'
 import { ReportEdits, DEFAULT_REPORT_EDITS, buildDefaultEdits } from '@/lib/types/report-edits'
 import { saveAppraisal, updateAppraisal, getAppraisal } from '@/lib/supabase/appraisals'
+import { mapDealToWizardInitialData, hasSaleVisitPrefill } from '@/lib/mapping/visit-to-wizard'
 import { Button } from '@/components/ui/button'
 import {
     Calculator,
@@ -498,6 +499,16 @@ function NewAppraisalPageContent() {
                 </div>
             )}
 
+            {/* Prefill-from-visit banner: only when deal has a visit_data.sale snapshot */}
+            {dealData && hasSaleVisitPrefill(dealData) && !subject && (
+                <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 text-sm text-emerald-900 flex items-start gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <p>
+                        Datos de la propiedad prellenados desde la visita realizada. Revisá y ajustá si es necesario antes de continuar con los comparables.
+                    </p>
+                </div>
+            )}
+
             {/* Step 1: Subject Property - Manual Entry */}
             <section className="space-y-6">
                 <div className="flex items-center gap-4">
@@ -520,7 +531,13 @@ function NewAppraisalPageContent() {
                     <div className="bg-card rounded-2xl border shadow-sm p-6 md:p-8 transition-all duration-300 hover:shadow-md">
                         <PropertyWizard
                             onComplete={(p) => { handleSubjectComplete(p); setIsEditingSubject(false) }}
-                            initialData={subject ? mapSubjectToFormData(subject) : dealData ? { address: dealData.property_address || '' } : undefined}
+                            initialData={
+                                subject
+                                    ? mapSubjectToFormData(subject)
+                                    : dealData
+                                        ? mapDealToWizardInitialData(dealData)
+                                        : undefined
+                            }
                         />
                         {isEditingSubject && (
                             <div className="mt-4 flex justify-end">
