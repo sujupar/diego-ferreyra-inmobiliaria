@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Home, ShoppingCart, Save, Loader2, CheckCircle2 } from 'lucide-react'
+import { Home, ShoppingCart, Save, Loader2, CheckCircle2, Ruler, Building2, Hammer, Clock, Star, StickyNote, Wallet, MapPin } from 'lucide-react'
 import type {
   VisitDataSnapshot, SaleVisitData, PurchaseVisitData,
   PropertyTypeVenta, Disposition, Orientation, Quality, ConservationState,
@@ -111,26 +111,35 @@ export function VisitDataForm({ dealId, initial, onCompleted }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Status indicator */}
-      <div className="flex items-center justify-between">
-        <div className="flex rounded-lg border bg-muted/40 p-0.5">
+      {/* Tab pills + status indicator */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="inline-flex rounded-xl border bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-1 shadow-sm">
           <button
             onClick={() => setActiveTab('sale')}
-            className={`px-4 py-2 rounded-md text-sm flex items-center gap-2 transition-all ${activeTab === 'sale' ? 'bg-background shadow-sm font-semibold' : 'text-muted-foreground'}`}
+            className={`px-5 py-2 rounded-lg text-sm flex items-center gap-2 transition-all duration-200 ${
+              activeTab === 'sale'
+                ? 'bg-background shadow-md font-semibold text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
           >
             <Home className="h-4 w-4" /> Venta (Propiedad)
           </button>
           <button
             onClick={() => setActiveTab('purchase')}
-            className={`px-4 py-2 rounded-md text-sm flex items-center gap-2 transition-all ${activeTab === 'purchase' ? 'bg-background shadow-sm font-semibold' : 'text-muted-foreground'}`}
+            className={`px-5 py-2 rounded-lg text-sm flex items-center gap-2 transition-all duration-200 ${
+              activeTab === 'purchase'
+                ? 'bg-background shadow-md font-semibold text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
           >
             <ShoppingCart className="h-4 w-4" /> Compra (Interesado)
           </button>
         </div>
-        <div className="flex items-center gap-2 text-xs">
-          {savingStatus === 'saving' && <><Loader2 className="h-3 w-3 animate-spin" /> Guardando...</>}
-          {savingStatus === 'saved' && <><CheckCircle2 className="h-3 w-3 text-green-600" /> Guardado</>}
-          {savingStatus === 'error' && <span className="text-red-600">Error — reintenta</span>}
+        <div className="flex items-center gap-1.5 text-xs h-7 px-3 rounded-full bg-muted/50 min-w-[90px] justify-center">
+          {savingStatus === 'idle' && <span className="text-muted-foreground">Auto-guardado</span>}
+          {savingStatus === 'saving' && <><Loader2 className="h-3 w-3 animate-spin text-muted-foreground" /> <span className="text-muted-foreground">Guardando...</span></>}
+          {savingStatus === 'saved' && <><CheckCircle2 className="h-3 w-3 text-green-600" /> <span className="text-green-700 font-medium">Guardado</span></>}
+          {savingStatus === 'error' && <span className="text-red-600 font-medium">Error — reintenta</span>}
         </div>
       </div>
 
@@ -156,6 +165,16 @@ export function VisitDataForm({ dealId, initial, onCompleted }: Props) {
   )
 }
 
+// Small reusable section header with icon
+function SectionTitle({ icon: Icon, children }: { icon: any; children: React.ReactNode }) {
+  return (
+    <CardTitle className="text-base font-semibold flex items-center gap-2">
+      <Icon className="h-4 w-4 text-muted-foreground" />
+      {children}
+    </CardTitle>
+  )
+}
+
 // ──── SaleSection ────
 function SaleSection({
   sale, onUpdate, onToggleFeature, onAddStrongPoint,
@@ -169,8 +188,8 @@ function SaleSection({
   return (
     <div className="space-y-4">
       {/* Características Básicas */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Características Básicas</CardTitle></CardHeader>
+      <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
+        <CardHeader><SectionTitle icon={Home}>Características Básicas</SectionTitle></CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
           <div><Label>Tipo</Label>
             <select value={sale.property_type} onChange={e => onUpdate('property_type', e.target.value as PropertyTypeVenta)} className="w-full rounded-md border px-3 py-2">
@@ -201,8 +220,8 @@ function SaleSection({
       </Card>
 
       {/* Metrajes */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Metrajes (m²)</CardTitle></CardHeader>
+      <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
+        <CardHeader><SectionTitle icon={Ruler}>Metrajes (m²)</SectionTitle></CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
           <div><Label>Cubiertos</Label><Input type="number" value={sale.covered_m2 ?? ''} onChange={e => onUpdate('covered_m2', e.target.value ? +e.target.value : null)} /></div>
           <div><Label>Semi-cubiertos</Label><Input type="number" value={sale.semi_covered_m2 ?? ''} onChange={e => onUpdate('semi_covered_m2', e.target.value ? +e.target.value : null)} /></div>
@@ -213,15 +232,15 @@ function SaleSection({
       </Card>
 
       {/* Antigüedad y Estado */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Antigüedad, Orientación, Estado</CardTitle></CardHeader>
+      <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
+        <CardHeader><SectionTitle icon={Building2}>Antigüedad, Orientación, Estado</SectionTitle></CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
           <div><Label>Antigüedad (años)</Label>
             <Input type="number" min="0" value={sale.age_years ?? ''} onChange={e => onUpdate('age_years', e.target.value ? +e.target.value : null)} />
           </div>
           <div><Label>¿Refaccionado?</Label>
             <div className="flex items-center gap-2 pt-2">
-              <input type="checkbox" checked={sale.is_refurbished} onChange={e => onUpdate('is_refurbished', e.target.checked)} className="h-4 w-4" />
+              <input type="checkbox" checked={sale.is_refurbished} onChange={e => onUpdate('is_refurbished', e.target.checked)} className="h-4 w-4 rounded" />
               <span>Sí, refaccionado</span>
             </div>
           </div>
@@ -262,14 +281,14 @@ function SaleSection({
       </Card>
 
       {/* Características constructivas */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Características Constructivas</CardTitle></CardHeader>
+      <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
+        <CardHeader><SectionTitle icon={Hammer}>Características Constructivas</SectionTitle></CardHeader>
         <CardContent className="flex flex-wrap gap-2">
           {CONSTRUCTION_FEATURES_OPTIONS.map(f => (
             <Badge
               key={f}
               variant={sale.construction_features.includes(f) ? 'default' : 'outline'}
-              className="cursor-pointer"
+              className="cursor-pointer transition-all duration-200 hover:shadow-sm"
               onClick={() => onToggleFeature(f)}
             >
               {f}
@@ -279,13 +298,13 @@ function SaleSection({
       </Card>
 
       {/* Motivación de venta */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Motivación y Tiempos</CardTitle></CardHeader>
+      <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
+        <CardHeader><SectionTitle icon={Clock}>Motivación y Tiempos</SectionTitle></CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div>
             <Label>¿Por qué quiere vender?</Label>
             <textarea
-              className="w-full min-h-[80px] rounded-md border px-3 py-2"
+              className="w-full min-h-[80px] rounded-md border px-3 py-2 transition-all duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               value={sale.reason_for_sale ?? ''}
               onChange={e => onUpdate('reason_for_sale', e.target.value || null)}
               placeholder="Mudanza, separación, inversión, etc."
@@ -309,8 +328,8 @@ function SaleSection({
       </Card>
 
       {/* Puntos fuertes */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Puntos Estratégicos (Fortalezas)</CardTitle></CardHeader>
+      <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
+        <CardHeader><SectionTitle icon={Star}>Puntos Estratégicos (Fortalezas)</SectionTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="flex gap-2">
             <Input
@@ -321,26 +340,33 @@ function SaleSection({
             />
             <Button type="button" size="sm" onClick={() => { onAddStrongPoint(newPoint); setNewPoint('') }}>Agregar</Button>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {sale.strong_points.map((p, i) => (
-              <Badge key={i} variant="secondary" className="gap-1 pr-1">
-                {p}
-                <button
-                  onClick={() => onUpdate('strong_points', sale.strong_points.filter((_, ix) => ix !== i))}
-                  className="ml-1 hover:text-red-600"
-                >&times;</button>
-              </Badge>
-            ))}
-          </div>
+          {sale.strong_points.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic">
+              Aún no hay fortalezas registradas. Anotá lo que destaque la propiedad.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {sale.strong_points.map((p, i) => (
+                <Badge key={i} variant="secondary" className="gap-1 pr-1 transition-all duration-200">
+                  {p}
+                  <button
+                    onClick={() => onUpdate('strong_points', sale.strong_points.filter((_, ix) => ix !== i))}
+                    className="ml-1 h-4 w-4 rounded-full flex items-center justify-center text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors"
+                    aria-label={`Quitar ${p}`}
+                  >&times;</button>
+                </Badge>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {/* Notas adicionales */}
-      <Card>
-        <CardContent className="pt-6">
-          <Label>Notas adicionales</Label>
+      <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
+        <CardHeader><SectionTitle icon={StickyNote}>Notas adicionales</SectionTitle></CardHeader>
+        <CardContent>
           <textarea
-            className="w-full min-h-[80px] rounded-md border px-3 py-2 mt-2"
+            className="w-full min-h-[80px] rounded-md border px-3 py-2 transition-all duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             value={sale.extra_notes ?? ''}
             onChange={e => onUpdate('extra_notes', e.target.value || null)}
             placeholder="Observaciones libres..."
@@ -358,25 +384,30 @@ function PurchaseSection({ purchase, onUpdate }: {
 }) {
   return (
     <div className="space-y-4">
-      <Card>
+      <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
         <CardContent className="pt-6 space-y-3">
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
               checked={purchase.interested_in_purchase}
               onChange={e => onUpdate('interested_in_purchase', e.target.checked)}
-              className="h-4 w-4"
+              className="h-4 w-4 rounded"
               id="interested"
             />
-            <Label htmlFor="interested" className="font-semibold">¿El cliente también está buscando comprar?</Label>
+            <Label htmlFor="interested" className="font-semibold cursor-pointer">¿El cliente también está buscando comprar?</Label>
           </div>
+          {!purchase.interested_in_purchase && (
+            <p className="text-xs text-muted-foreground italic">
+              Tildá la casilla si además de vender, el cliente está interesado en comprar otra propiedad.
+            </p>
+          )}
         </CardContent>
       </Card>
 
       {purchase.interested_in_purchase && (
         <>
-          <Card>
-            <CardHeader><CardTitle className="text-base">Preferencias de Compra</CardTitle></CardHeader>
+          <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
+            <CardHeader><SectionTitle icon={ShoppingCart}>Preferencias de Compra</SectionTitle></CardHeader>
             <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
               <div><Label>Tipo buscado</Label>
                 <select value={purchase.property_type_target ?? ''} onChange={e => onUpdate('property_type_target', (e.target.value || null) as PropertyTypeVenta | null)} className="w-full rounded-md border px-3 py-2">
@@ -402,8 +433,8 @@ function PurchaseSection({ purchase, onUpdate }: {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader><CardTitle className="text-base">Presupuesto</CardTitle></CardHeader>
+          <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
+            <CardHeader><SectionTitle icon={Wallet}>Presupuesto</SectionTitle></CardHeader>
             <CardContent className="grid grid-cols-3 gap-3 text-sm">
               <div><Label>Mínimo</Label><Input type="number" value={purchase.budget_min ?? ''} onChange={e => onUpdate('budget_min', e.target.value ? +e.target.value : null)} /></div>
               <div><Label>Máximo</Label><Input type="number" value={purchase.budget_max ?? ''} onChange={e => onUpdate('budget_max', e.target.value ? +e.target.value : null)} /></div>
@@ -416,8 +447,9 @@ function PurchaseSection({ purchase, onUpdate }: {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="pt-6 space-y-3">
+          <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
+            <CardHeader><SectionTitle icon={MapPin}>Zonas y Requisitos</SectionTitle></CardHeader>
+            <CardContent className="space-y-3">
               <div>
                 <Label>Barrios de interés (separados por coma)</Label>
                 <Input
@@ -436,7 +468,11 @@ function PurchaseSection({ purchase, onUpdate }: {
               </div>
               <div>
                 <Label>Notas</Label>
-                <textarea className="w-full min-h-[80px] rounded-md border px-3 py-2" value={purchase.extra_notes ?? ''} onChange={e => onUpdate('extra_notes', e.target.value || null)} />
+                <textarea
+                  className="w-full min-h-[80px] rounded-md border px-3 py-2 transition-all duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  value={purchase.extra_notes ?? ''}
+                  onChange={e => onUpdate('extra_notes', e.target.value || null)}
+                />
               </div>
             </CardContent>
           </Card>

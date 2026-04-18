@@ -4,7 +4,15 @@ import { useState, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Upload, FileText, CheckCircle, XCircle, AlertTriangle, Clock, Loader2 } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Upload, FileText, CheckCircle, XCircle, AlertTriangle, Clock, Loader2, Scale, FileCheck2, CalendarClock, FilePlus2 } from 'lucide-react'
 import type { LegalDocsState, LegalFlags, DocItemState, LegalDocDefinition } from '@/types/legal-docs.types'
 import { LEGAL_DOCS_CATALOG, getApplicableDocs } from '@/types/legal-docs.types'
 
@@ -17,10 +25,29 @@ interface Props {
   onUpdated: () => void
 }
 
+// Colored status icon wrapper
+function StatusIcon({ status }: { status: DocItemState['status'] }) {
+  const configs: Record<DocItemState['status'], { icon: any; bg: string; fg: string }> = {
+    approved: { icon: CheckCircle, bg: 'bg-green-100', fg: 'text-green-700' },
+    rejected: { icon: XCircle, bg: 'bg-red-100', fg: 'text-red-700' },
+    pending: { icon: Clock, bg: 'bg-amber-100', fg: 'text-amber-700' },
+    missing: { icon: AlertTriangle, bg: 'bg-slate-100 dark:bg-slate-800', fg: 'text-slate-500' },
+  }
+  const { icon: Icon, bg, fg } = configs[status]
+  return (
+    <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 ${bg}`}>
+      <Icon className={`h-5 w-5 ${fg}`} />
+    </div>
+  )
+}
+
 export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAbogado, onUpdated }: Props) {
   const [uploadingKey, setUploadingKey] = useState<string | null>(null)
   const [savingFlags, setSavingFlags] = useState(false)
   const [reviewingKey, setReviewingKey] = useState<string | null>(null)
+  const [rejectDialog, setRejectDialog] = useState<{ open: boolean; itemKey: string; label: string; notes: string }>(
+    { open: false, itemKey: '', label: '', notes: '' }
+  )
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({})
 
   const applicable = getApplicableDocs(flags, propertyType)
@@ -62,26 +89,43 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
     } finally { setReviewingKey(null) }
   }
 
+  function openRejectDialog(itemKey: string, label: string) {
+    setRejectDialog({ open: true, itemKey, label, notes: '' })
+  }
+
+  async function confirmReject() {
+    if (!rejectDialog.notes.trim()) return
+    const { itemKey, notes } = rejectDialog
+    setRejectDialog(prev => ({ ...prev, open: false }))
+    await handleReviewItem(itemKey, false, notes.trim())
+  }
+
   const renderItem = (def: LegalDocDefinition) => {
     const state: DocItemState = docs[def.key] || { status: 'missing' }
     const hasFile = !!state.file_url
     const canReview = isAbogado && hasFile && (state.status === 'pending' || state.status === 'rejected')
+
+    // Subtle background tint based on status
+    const statusTint =
+      state.status === 'approved' ? 'border-green-200 bg-green-50/40 dark:bg-green-950/20' :
+      state.status === 'rejected' ? 'border-red-200 bg-red-50/40 dark:bg-red-950/20' :
+      state.status === 'pending' ? 'border-amber-200 bg-amber-50/30 dark:bg-amber-950/20' :
+      'border-border bg-card'
+
     return (
-      <div key={def.key} className="flex items-center gap-3 p-3 rounded-lg border bg-card">
-        <div className="shrink-0">
-          {state.status === 'approved' && <CheckCircle className="h-5 w-5 text-green-600" />}
-          {state.status === 'rejected' && <XCircle className="h-5 w-5 text-red-600" />}
-          {state.status === 'pending' && <Clock className="h-5 w-5 text-amber-500" />}
-          {state.status === 'missing' && <AlertTriangle className="h-5 w-5 text-gray-400" />}
-        </div>
+      <div
+        key={def.key}
+        className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-200 hover:shadow-sm ${statusTint}`}
+      >
+        <StatusIcon status={state.status} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm">{def.label}</span>
             {def.category === 'mandatory' && <Badge variant="destructive" className="text-xs">Obligatorio</Badge>}
-            {def.category === 'temporal' && <Badge className="text-xs bg-amber-500">Temporal</Badge>}
+            {def.category === 'temporal' && <Badge className="text-xs bg-amber-500 hover:bg-amber-500/90">Temporal</Badge>}
             {def.category === 'optional' && <Badge variant="secondary" className="text-xs">Opcional</Badge>}
             {state.status === 'rejected' && <Badge variant="destructive" className="text-xs">Rechazado</Badge>}
-            {state.status === 'approved' && <Badge className="text-xs bg-green-600">Aprobado</Badge>}
+            {state.status === 'approved' && <Badge className="text-xs bg-green-600 hover:bg-green-600/90">Aprobado</Badge>}
           </div>
           {def.description && <p className="text-xs text-muted-foreground mt-0.5">{def.description}</p>}
           {hasFile && (
@@ -109,10 +153,11 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
               variant={hasFile ? 'outline' : 'default'}
               onClick={() => fileInputs.current[def.key]?.click()}
               disabled={uploadingKey === def.key}
+              className="gap-1"
             >
               {uploadingKey === def.key
                 ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <><Upload className="h-3.5 w-3.5 mr-1" />{hasFile ? 'Reemplazar' : 'Subir'}</>
+                : <><Upload className="h-3.5 w-3.5" />{hasFile ? 'Reemplazar' : 'Subir'}</>
               }
             </Button>
           </div>
@@ -122,9 +167,10 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
             <Button
               size="sm"
               variant="outline"
-              className="text-green-700 border-green-300"
+              className="text-green-700 border-green-300 hover:bg-green-50 hover:text-green-800 transition-all duration-200"
               onClick={() => handleReviewItem(def.key, true)}
               disabled={reviewingKey === def.key}
+              aria-label="Aprobar documento"
             >
               {reviewingKey === def.key
                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -133,12 +179,10 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
             <Button
               size="sm"
               variant="outline"
-              className="text-red-700 border-red-300"
-              onClick={() => {
-                const note = prompt('Motivo del rechazo (requerido):')
-                if (note) handleReviewItem(def.key, false, note)
-              }}
+              className="text-red-700 border-red-300 hover:bg-red-50 hover:text-red-800 transition-all duration-200"
+              onClick={() => openRejectDialog(def.key, def.label)}
               disabled={reviewingKey === def.key}
+              aria-label="Rechazar documento"
             >
               <XCircle className="h-3.5 w-3.5" />
             </Button>
@@ -148,52 +192,101 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
     )
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Flags condicionales (solo asesor puede cambiar) */}
-      {!isAbogado && (
-        <Card>
-          <CardHeader><CardTitle className="text-base">Situación Jurídica</CardTitle></CardHeader>
-          <CardContent className="grid grid-cols-2 gap-3 text-sm">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={flags.has_succession} onChange={e => handleFlagChange('has_succession', e.target.checked)} disabled={savingFlags} />
-              ¿Hay sucesión?
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={flags.has_divorce} onChange={e => handleFlagChange('has_divorce', e.target.checked)} disabled={savingFlags} />
-              ¿Hay divorcio?
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={flags.has_powers} onChange={e => handleFlagChange('has_powers', e.target.checked)} disabled={savingFlags} />
-              ¿Hay poderes?
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={flags.is_credit_purchase} onChange={e => handleFlagChange('is_credit_purchase', e.target.checked)} disabled={savingFlags} />
-              ¿Compra a crédito?
-            </label>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader><CardTitle className="text-base">Documentos Obligatorios</CardTitle></CardHeader>
-        <CardContent className="space-y-2">{mandatory.map(renderItem)}</CardContent>
+  // Consistent card + header styling
+  const sectionCard = (icon: any, title: string, items: LegalDocDefinition[], emptyCopy?: string) => {
+    const Icon = icon
+    return (
+      <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Icon className="h-4 w-4 text-muted-foreground" />
+            {title}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {items.length === 0
+            ? <p className="text-xs text-muted-foreground italic">{emptyCopy || 'No hay documentos en esta sección.'}</p>
+            : items.map(renderItem)}
+        </CardContent>
       </Card>
+    )
+  }
 
-      {temporal.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle className="text-base">Documentos Temporales (con alerta)</CardTitle></CardHeader>
-          <CardContent className="space-y-2">{temporal.map(renderItem)}</CardContent>
-        </Card>
-      )}
+  return (
+    <>
+      <div className="space-y-6">
+        {/* Flags condicionales (solo asesor puede cambiar) */}
+        {!isAbogado && (
+          <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
+            <CardHeader>
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Scale className="h-4 w-4 text-muted-foreground" />
+                Situación Jurídica
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-3 text-sm">
+              <label className="flex items-center gap-2 cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50">
+                <input type="checkbox" checked={flags.has_succession} onChange={e => handleFlagChange('has_succession', e.target.checked)} disabled={savingFlags} className="h-4 w-4 rounded" />
+                ¿Hay sucesión?
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50">
+                <input type="checkbox" checked={flags.has_divorce} onChange={e => handleFlagChange('has_divorce', e.target.checked)} disabled={savingFlags} className="h-4 w-4 rounded" />
+                ¿Hay divorcio?
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50">
+                <input type="checkbox" checked={flags.has_powers} onChange={e => handleFlagChange('has_powers', e.target.checked)} disabled={savingFlags} className="h-4 w-4 rounded" />
+                ¿Hay poderes?
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50">
+                <input type="checkbox" checked={flags.is_credit_purchase} onChange={e => handleFlagChange('is_credit_purchase', e.target.checked)} disabled={savingFlags} className="h-4 w-4 rounded" />
+                ¿Compra a crédito?
+              </label>
+            </CardContent>
+          </Card>
+        )}
 
-      {optional.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle className="text-base">Documentos Opcionales</CardTitle></CardHeader>
-          <CardContent className="space-y-2">{optional.map(renderItem)}</CardContent>
-        </Card>
-      )}
-    </div>
+        {sectionCard(FileCheck2, 'Documentos Obligatorios', mandatory, 'No hay documentos obligatorios para este tipo de propiedad.')}
+
+        {temporal.length > 0 && sectionCard(CalendarClock, 'Documentos Temporales (con alerta)', temporal)}
+
+        {optional.length > 0 && sectionCard(FilePlus2, 'Documentos Opcionales', optional)}
+      </div>
+
+      {/* Reject dialog */}
+      <Dialog open={rejectDialog.open} onOpenChange={(open) => setRejectDialog(prev => ({ ...prev, open }))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rechazar documento</DialogTitle>
+            <DialogDescription>
+              {rejectDialog.label} — indicá el motivo para que el asesor pueda corregirlo.
+            </DialogDescription>
+          </DialogHeader>
+          <textarea
+            className="w-full min-h-[100px] rounded-md border px-3 py-2 text-sm transition-all duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            placeholder="Ej: La escritura está vencida, falta firma del titular, etc."
+            value={rejectDialog.notes}
+            onChange={e => setRejectDialog(prev => ({ ...prev, notes: e.target.value }))}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectDialog(prev => ({ ...prev, open: false }))}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmReject}
+              disabled={!rejectDialog.notes.trim() || reviewingKey === rejectDialog.itemKey}
+              className="gap-1"
+            >
+              {reviewingKey === rejectDialog.itemKey
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <XCircle className="h-4 w-4" />}
+              Confirmar rechazo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
