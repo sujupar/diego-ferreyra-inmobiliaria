@@ -32,6 +32,12 @@ yarn-error.log*
 # vercel
 .vercel
 
+# netlify local
+.netlify/
+
+# deno (not used — avoid accidental commits)
+deno.lock
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
