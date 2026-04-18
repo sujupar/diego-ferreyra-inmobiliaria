@@ -9,6 +9,9 @@ import {
   Loader2, Upload, FileText, Image, CheckCircle, XCircle,
   Send, ArrowLeft, MapPin, Home, Scale, Camera, AlertTriangle
 } from 'lucide-react'
+import { LegalDocsChecklist } from '@/components/properties/LegalDocsChecklist'
+import { LegalReviewHistory } from '@/components/properties/LegalReviewHistory'
+import type { LegalDocsState, LegalFlags } from '@/types/legal-docs.types'
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: 'Borrador', color: 'bg-gray-400' },
@@ -60,6 +63,7 @@ export default function PropertyDetailPage() {
   // User info for role-based actions
   const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
   const [reviewNotes, setReviewNotes] = useState('')
+  const [legalDocsData, setLegalDocsData] = useState<{ docs: LegalDocsState; flags: LegalFlags } | null>(null)
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
@@ -80,6 +84,20 @@ export default function PropertyDetailPage() {
   }
 
   useEffect(() => { fetchProperty() }, [id])
+
+  async function fetchLegalDocs() {
+    try {
+      const res = await fetch(`/api/properties/${id}/legal-docs`)
+      if (res.ok) {
+        const { data } = await res.json()
+        setLegalDocsData(data)
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  useEffect(() => { fetchLegalDocs() }, [id])
 
   async function handleUpload(file: File, type: 'photo' | 'document') {
     setUploading(true)
@@ -121,7 +139,7 @@ export default function PropertyDetailPage() {
       const res = await fetch(`/api/properties/${id}/review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approved, reviewer_id: userInfo.id, notes: reviewNotes }),
+        body: JSON.stringify({ approved, notes: reviewNotes }),
       })
       if (!res.ok) throw new Error('Error')
       setReviewNotes('')
@@ -161,12 +179,16 @@ export default function PropertyDetailPage() {
       </div>
 
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{property.address}</h1>
-          <p className="text-muted-foreground flex items-center gap-1"><MapPin className="h-4 w-4" />{property.neighborhood}, {property.city}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <p className="eyebrow">Propiedad</p>
+          <h1 className="display text-3xl">{property.address}</h1>
+          <p className="text-muted-foreground flex items-center gap-1 text-sm"><MapPin className="h-4 w-4" />{property.neighborhood}, {property.city}</p>
         </div>
-        <Badge className={`text-white ${statusInfo.color}`}>{statusInfo.label}</Badge>
+        <div className="flex flex-col items-end gap-1">
+          <span className="eyebrow">Estado</span>
+          <Badge className={`text-white text-xs ${statusInfo.color}`}>{statusInfo.label}</Badge>
+        </div>
       </div>
 
       {/* Dual-track Progress */}
@@ -174,14 +196,16 @@ export default function PropertyDetailPage() {
         <CardContent className="py-4 space-y-3">
           {/* Track 1: Legal Review */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Scale className="h-4 w-4 text-muted-foreground" />
+            <div className="flex items-center gap-2.5">
+              <div className="h-8 w-8 rounded-full bg-[color:var(--brass-soft)]/40 flex items-center justify-center">
+                <Scale className="h-4 w-4 text-[color:var(--brass)]" />
+              </div>
               <span className="text-sm font-medium">Revisión Legal</span>
             </div>
             {legalApproved ? (
-              <Badge className="bg-green-500 text-white text-xs"><CheckCircle className="h-3 w-3 mr-1" />Aprobada</Badge>
+              <Badge className="bg-emerald-600/90 text-white text-xs"><CheckCircle className="h-3 w-3 mr-1" />Aprobada</Badge>
             ) : legalRejected ? (
-              <Badge className="bg-red-500 text-white text-xs"><XCircle className="h-3 w-3 mr-1" />Rechazada</Badge>
+              <Badge className="bg-[color:var(--destructive)] text-white text-xs"><XCircle className="h-3 w-3 mr-1" />Rechazada</Badge>
             ) : property.status === 'pending_review' ? (
               <Badge className="bg-purple-500 text-white text-xs"><div className="h-2 w-2 rounded-full bg-white animate-pulse mr-1" />En revisión</Badge>
             ) : (
@@ -191,12 +215,14 @@ export default function PropertyDetailPage() {
 
           {/* Track 2: Photos */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Camera className="h-4 w-4 text-muted-foreground" />
+            <div className="flex items-center gap-2.5">
+              <div className="h-8 w-8 rounded-full bg-amber-100/60 dark:bg-amber-950/30 flex items-center justify-center">
+                <Camera className="h-4 w-4 text-amber-700 dark:text-amber-400" />
+              </div>
               <span className="text-sm font-medium">Fotos de la Propiedad</span>
             </div>
             {hasPhotos ? (
-              <Badge className="bg-green-500 text-white text-xs"><CheckCircle className="h-3 w-3 mr-1" />{photos.length} foto{photos.length !== 1 ? 's' : ''}</Badge>
+              <Badge className="bg-emerald-600/90 text-white text-xs"><CheckCircle className="h-3 w-3 mr-1" /><span className="tabular-n">{photos.length}</span> foto{photos.length !== 1 ? 's' : ''}</Badge>
             ) : (
               <Badge variant="secondary" className="text-xs"><AlertTriangle className="h-3 w-3 mr-1" />Sin fotos</Badge>
             )}
@@ -205,11 +231,11 @@ export default function PropertyDetailPage() {
           {/* Overall Status */}
           <div className="border-t pt-3 mt-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold">Estado de Captación</span>
+              <span className="eyebrow">Estado de Captación</span>
               {isFullyApproved ? (
-                <Badge className="bg-green-600 text-white"><CheckCircle className="h-3.5 w-3.5 mr-1" />Captación Completa</Badge>
+                <Badge className="bg-emerald-700 text-white"><CheckCircle className="h-3.5 w-3.5 mr-1" />Captación Completa</Badge>
               ) : legalRejected ? (
-                <Badge className="bg-red-500 text-white">Documentación Rechazada</Badge>
+                <Badge className="bg-[color:var(--destructive)] text-white">Documentación Rechazada</Badge>
               ) : (
                 <Badge variant="outline" className="text-amber-700 border-amber-300">En proceso</Badge>
               )}
@@ -219,75 +245,66 @@ export default function PropertyDetailPage() {
       </Card>
 
       {/* Details */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className={`grid grid-cols-1 ${isAbogado ? '' : 'lg:grid-cols-2'} gap-6`}>
         <Card>
-          <CardHeader><CardTitle className="text-lg"><Home className="h-5 w-5 inline mr-2" />Datos de la Propiedad</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="grid grid-cols-2 gap-2">
-              <span className="text-muted-foreground">Tipo:</span><span className="capitalize">{property.property_type}</span>
-              {property.rooms && <><span className="text-muted-foreground">Ambientes:</span><span>{property.rooms}</span></>}
-              {property.bedrooms && <><span className="text-muted-foreground">Dormitorios:</span><span>{property.bedrooms}</span></>}
-              {property.bathrooms && <><span className="text-muted-foreground">Baños:</span><span>{property.bathrooms}</span></>}
-              {property.garages && <><span className="text-muted-foreground">Cocheras:</span><span>{property.garages}</span></>}
-              {property.covered_area && <><span className="text-muted-foreground">Sup. Cubierta:</span><span>{property.covered_area} m²</span></>}
-              {property.total_area && <><span className="text-muted-foreground">Sup. Total:</span><span>{property.total_area} m²</span></>}
+          <CardHeader>
+            <CardTitle className="display text-base flex items-center gap-2">
+              <Home className="h-4 w-4 text-muted-foreground" />
+              Datos de la Propiedad
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+              <span className="eyebrow">Dirección</span><span className="font-medium">{property.address}</span>
+              <span className="eyebrow">Barrio</span><span>{property.neighborhood}</span>
+              {property.city && <><span className="eyebrow">Ciudad</span><span>{property.city}</span></>}
+              <span className="eyebrow">Tipo</span><span className="capitalize">{property.property_type}</span>
+              {property.rooms && <><span className="eyebrow">Ambientes</span><span className="tabular-n">{property.rooms}</span></>}
+              {property.bedrooms && <><span className="eyebrow">Dormitorios</span><span className="tabular-n">{property.bedrooms}</span></>}
+              {property.bathrooms && <><span className="eyebrow">Baños</span><span className="tabular-n">{property.bathrooms}</span></>}
+              {property.garages && <><span className="eyebrow">Cocheras</span><span className="tabular-n">{property.garages}</span></>}
+              {property.covered_area && <><span className="eyebrow">Sup. Cubierta</span><span className="tabular-n">{property.covered_area} m²</span></>}
+              {property.total_area && <><span className="eyebrow">Sup. Total</span><span className="tabular-n">{property.total_area} m²</span></>}
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader><CardTitle className="text-lg">Datos Comerciales</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="grid grid-cols-2 gap-2">
-              <span className="text-muted-foreground">Precio:</span>
-              <span className="font-bold">{new Intl.NumberFormat('es-AR', { style: 'currency', currency: property.currency, minimumFractionDigits: 0 }).format(property.asking_price)}</span>
-              <span className="text-muted-foreground">Comisión:</span><span>{property.commission_percentage}%</span>
-              {property.contract_start_date && <><span className="text-muted-foreground">Inicio contrato:</span><span>{property.contract_start_date}</span></>}
-              {property.contract_end_date && <><span className="text-muted-foreground">Fin contrato:</span><span>{property.contract_end_date}</span></>}
-              {property.origin && <><span className="text-muted-foreground">Origen:</span><span className="capitalize">{property.origin}</span></>}
-            </div>
-          </CardContent>
-        </Card>
+        {/* Datos Comerciales: oculto al abogado */}
+        {!isAbogado && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="display text-base">Datos Comerciales</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                <span className="eyebrow">Precio</span>
+                <span className="tabular-n text-base">{new Intl.NumberFormat('es-AR', { style: 'currency', currency: property.currency, minimumFractionDigits: 0 }).format(property.asking_price)}</span>
+                <span className="eyebrow">Comisión</span><span className="tabular-n">{property.commission_percentage}%</span>
+                {property.contract_start_date && <><span className="eyebrow">Inicio contrato</span><span className="tabular-n">{property.contract_start_date}</span></>}
+                {property.contract_end_date && <><span className="eyebrow">Fin contrato</span><span className="tabular-n">{property.contract_end_date}</span></>}
+                {property.origin && <><span className="eyebrow">Origen</span><span className="capitalize">{property.origin}</span></>}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      {/* Documents */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg"><FileText className="h-5 w-5 inline mr-2" />Documentación ({docs.length})</CardTitle>
-            {!isAbogado && (
-              <div>
-                <input ref={docRef} type="file" className="hidden" accept=".pdf,.doc,.docx,.jpg,.png" onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0], 'document')} />
-                <Button size="sm" variant="outline" onClick={() => docRef.current?.click()} disabled={uploading}>
-                  {uploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
-                  Subir Documento
-                </Button>
-              </div>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {docs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay documentos subidos.</p>
-          ) : (
-            <ul className="space-y-2">
-              {docs.map((doc, i) => (
-                <li key={i} className="flex items-center gap-2 text-sm">
-                  <FileText className="h-4 w-4 text-muted-foreground" />
-                  <a href={doc.url} target="_blank" rel="noopener" className="hover:underline text-blue-600">{doc.name}</a>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      {/* Legal Docs Checklist */}
+      <LegalDocsChecklist
+        propertyId={property.id}
+        propertyType={property.property_type || ''}
+        docs={legalDocsData?.docs || {}}
+        flags={legalDocsData?.flags || { has_succession: false, has_divorce: false, has_powers: false, is_credit_purchase: false }}
+        isAbogado={isAbogado}
+        onUpdated={fetchLegalDocs}
+      />
 
-      {/* Photos */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg"><Image className="h-5 w-5 inline mr-2" />Fotos ({photos.length})</CardTitle>
-            {!isAbogado && (
+      {/* Photos: oculto al abogado */}
+      {!isAbogado && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg"><Image className="h-5 w-5 inline mr-2" />Fotos ({photos.length})</CardTitle>
               <div>
                 <input ref={photoRef} type="file" className="hidden" accept="image/*" onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0], 'photo')} />
                 <Button size="sm" variant="outline" onClick={() => photoRef.current?.click()} disabled={uploading}>
@@ -295,21 +312,21 @@ export default function PropertyDetailPage() {
                   Subir Foto
                 </Button>
               </div>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {photos.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No hay fotos subidas.</p>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {photos.map((url, i) => (
-                <img key={i} src={url} alt={`Foto ${i + 1}`} className="rounded-lg h-32 w-full object-cover" />
-              ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent>
+            {photos.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay fotos subidas.</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {photos.map((url, i) => (
+                  <img key={i} src={url} alt={`Foto ${i + 1}`} className="rounded-lg h-32 w-full object-cover" />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Legal Review Result (for non-abogado when already reviewed) */}
       {!isAbogado && (legalApproved || legalRejected) && (
@@ -405,6 +422,9 @@ export default function PropertyDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Track record histórico de revisión legal */}
+      <LegalReviewHistory propertyId={property.id} />
     </div>
   )
 }

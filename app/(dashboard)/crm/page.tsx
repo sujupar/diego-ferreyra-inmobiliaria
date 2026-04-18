@@ -110,6 +110,24 @@ function getCRMStageInfo(key: string): CRMStage {
   return CRM_STAGES.find(s => s.key === key) || CRM_STAGES[0]
 }
 
+// Map raw deals.stage → CRM stage key for server-side aggregated counts.
+// Approximate: server doesn't distinguish solicitud vs coordinada (by scheduled_date)
+// or visitada vs tasacion_creada (by appraisal_id). Acceptable for MVP.
+function mapStageToCRM(stage: string): string {
+  switch (stage) {
+    case 'scheduled': return 'coordinada'
+    case 'not_visited': return 'no_realizada'
+    case 'visited': return 'visitada'
+    case 'appraisal_sent': return 'entregada'
+    case 'followup': return 'seguimiento'
+    case 'captured': return 'captada'
+    case 'lost': return 'descartado'
+    default: return 'solicitud'
+  }
+}
+
+const PAGE_SIZE = 50
+
 const ORIGIN_LABELS: Record<string, string> = { embudo: 'Embudo', referido: 'Referido', historico: 'Historico' }
 
 // ── Types ────────────────────────────────────────────────────────
@@ -161,14 +179,29 @@ export default function CRMPage() {
   const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
   const [advisors, setAdvisors] = useState<Array<{ id: string; full_name: string }>>([])
   const [showFilters, setShowFilters] = useState(false)
+  const [page, setPage] = useState(0)
+  const [total, setTotal] = useState(0)
+  const [serverStageCounts, setServerStageCounts] = useState<Record<string, number>>({})
+  const [loadingMore, setLoadingMore] = useState(false)
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
     fetch('/api/users/advisors').then(r => r.ok ? r.json() : { data: [] }).then(j => setAdvisors(j.data || [])).catch(() => {})
   }, [])
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
+  // Abogados don't belong in CRM — they work from /properties/review
+  useEffect(() => {
+    if (userInfo?.role === 'abogado') {
+      router.replace('/properties/review')
+    }
+  }, [userInfo, router])
+
+  const fetchData = useCallback(async (opts?: { append?: boolean; pageOverride?: number }) => {
+    const append = opts?.append === true
+    const targetPage = opts?.pageOverride ?? (append ? page : 0)
+    if (append) setLoadingMore(true)
+    else setLoading(true)
+
     const params = new URLSearchParams()
     if (filterOrigin) params.set('origin', filterOrigin)
     if (dateRange.from) params.set('from', dateRange.from)
@@ -178,33 +211,59 @@ export default function CRMPage() {
     } else if (filterAdvisor) {
       params.set('assigned_to', filterAdvisor)
     }
+    params.set('limit', String(PAGE_SIZE))
+    params.set('offset', String(targetPage * PAGE_SIZE))
 
     try {
       const res = await fetch(`/api/deals?${params}`)
       if (res.ok) {
-        const { data } = await res.json()
-        setDeals(data || [])
+        const { data, total: t, stageCounts: sc } = await res.json()
+        if (append) setDeals(prev => [...prev, ...(data || [])])
+        else setDeals(data || [])
+        setTotal(t ?? 0)
+        setServerStageCounts(sc || {})
+        setPage(targetPage)
       }
     } catch (err) {
       console.error('CRM fetch error:', err)
     } finally {
-      setLoading(false)
+      if (append) setLoadingMore(false)
+      else setLoading(false)
     }
+  }, [filterOrigin, filterAdvisor, dateRange, userInfo, page])
+
+  // Reset page to 0 whenever filters change (fetchData w/ append=false starts at page 0)
+  useEffect(() => {
+    if (userInfo) fetchData({ append: false, pageOverride: 0 })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterOrigin, filterAdvisor, dateRange, userInfo])
 
-  useEffect(() => { if (userInfo) fetchData() }, [fetchData, userInfo])
-
   const dealsWithCRM = deals.map(d => ({ ...d, crmStage: deriveCRMStage(d) }))
-  const filteredDeals = filterCRMStage
-    ? dealsWithCRM.filter(d => d.crmStage === filterCRMStage)
+
+  // Asesor role: hide 'solicitud' stage entirely (they only work from coordinada onward)
+  const roleFilteredDeals = userInfo?.role === 'asesor'
+    ? dealsWithCRM.filter(d => d.crmStage !== 'solicitud')
     : dealsWithCRM
 
-  const stageCounts = dealsWithCRM.reduce((acc, d) => {
-    acc[d.crmStage] = (acc[d.crmStage] || 0) + 1
-    return acc
-  }, {} as Record<string, number>)
+  const filteredDeals = filterCRMStage
+    ? roleFilteredDeals.filter(d => d.crmStage === filterCRMStage)
+    : roleFilteredDeals
 
-  const totalDeals = dealsWithCRM.length
+  // Server-provided stageCounts (all pages, not just loaded slice).
+  // Map raw deals.stage → CRM stage key. Approximate (see mapStageToCRM comment).
+  const stageCounts: Record<string, number> = {}
+  for (const [rawStage, n] of Object.entries(serverStageCounts)) {
+    const k = mapStageToCRM(rawStage)
+    stageCounts[k] = (stageCounts[k] || 0) + (n as number)
+  }
+  // For asesor: zero out solicitud count (they don't see that stage)
+  if (userInfo?.role === 'asesor') {
+    stageCounts['solicitud'] = 0
+  }
+
+  // For asesor we approximate by using the loaded-slice filtered count (since we
+  // can't distinguish solicitud vs coordinada server-side).
+  const totalDealsDisplay = userInfo?.role === 'asesor' ? roleFilteredDeals.length : total
   const isGlobal = userInfo && ['dueno', 'admin', 'coordinador'].includes(userInfo.role)
 
   const columns: Column<(typeof dealsWithCRM)[0]>[] = [
@@ -236,7 +295,7 @@ export default function CRMPage() {
     { key: 'stage_changed_at', label: 'Actualizado', sortable: true, render: r => (
       <span className="text-xs text-muted-foreground flex items-center gap-1">
         <Clock className="h-3 w-3" />
-        {timeAgo(r.stage_changed_at)}
+        <span className="tabular-n">{timeAgo(r.stage_changed_at)}</span>
       </span>
     )},
   ]
@@ -247,10 +306,11 @@ export default function CRMPage() {
     <div className="space-y-8">
       {/* ── Header ──────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">CRM</h1>
-          <p className="text-muted-foreground mt-1">
-            {totalDeals} proceso{totalDeals !== 1 ? 's' : ''} comercial{totalDeals !== 1 ? 'es' : ''}
+        <div className="space-y-2">
+          <p className="eyebrow">Dashboard · Procesos</p>
+          <h1 className="display text-4xl">CRM</h1>
+          <p className="text-muted-foreground text-sm">
+            <span className="tabular-n">{totalDealsDisplay}</span> proceso{totalDealsDisplay !== 1 ? 's' : ''} comercial{totalDealsDisplay !== 1 ? 'es' : ''}
             {filterCRMStage && (
               <span className={`ml-2 inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${activeStageInfo?.badgeBg} ${activeStageInfo?.badgeText}`}>
                 {activeStageInfo?.label}
@@ -283,7 +343,7 @@ export default function CRMPage() {
           >
             <SlidersHorizontal className="h-3.5 w-3.5" /> Filtros
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fetchData}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => fetchData({ append: false, pageOverride: 0 })}>
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
@@ -291,7 +351,9 @@ export default function CRMPage() {
 
       {/* ── Stage Pipeline ──────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 lg:grid-cols-9">
-        {CRM_STAGES.map((s) => {
+        {CRM_STAGES
+          .filter(s => !(userInfo?.role === 'asesor' && s.key === 'solicitud'))
+          .map((s) => {
           const count = stageCounts[s.key] || 0
           const isActive = filterCRMStage === s.key
           const Icon = s.icon
@@ -308,18 +370,16 @@ export default function CRMPage() {
                 }
               `}
             >
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-3">
                 <div className={`h-7 w-7 rounded-lg flex items-center justify-center ${s.badgeBg}`}>
                   <Icon className={`h-3.5 w-3.5 ${s.badgeText}`} />
                 </div>
                 {count > 0 && (
-                  <span className={`h-5 min-w-5 px-1 rounded-full flex items-center justify-center text-[10px] font-bold ${s.dotColor} text-white`}>
-                    {count}
-                  </span>
+                  <span className={`h-1.5 w-1.5 rounded-full ${s.dotColor}`} />
                 )}
               </div>
-              <p className="text-xs font-medium truncate">{s.label}</p>
-              <p className="text-2xl font-bold tracking-tight mt-0.5">{count}</p>
+              <p className="eyebrow truncate">{s.label}</p>
+              <p className="display text-3xl tabular-nums mt-1">{count}</p>
             </button>
           )
         })}
@@ -381,12 +441,17 @@ export default function CRMPage() {
         />
       ) : (
         <div className="space-y-2">
-          {filteredDeals.map(deal => {
+          {filteredDeals.map((deal, idx) => {
             const stageInfo = getCRMStageInfo(deal.crmStage)
             const Icon = stageInfo.icon
             return (
               <Link key={deal.id} href={`/pipeline/${deal.id}`}>
                 <div className="group flex items-center gap-4 p-4 rounded-xl border bg-card hover:bg-muted/30 transition-all duration-200 cursor-pointer hover:shadow-sm">
+                  {/* Number prefix */}
+                  <span className="number-prefix text-lg leading-none w-7 text-right shrink-0 tabular-nums">
+                    {String(idx + 1).padStart(2, '0')}
+                  </span>
+
                   {/* Avatar */}
                   <div className="h-11 w-11 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center shrink-0">
                     <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">
@@ -412,7 +477,7 @@ export default function CRMPage() {
                       </span>
                       {deal.scheduled_date && (
                         <span className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />{formatDate(deal.scheduled_date)}
+                          <Calendar className="h-3 w-3" /><span className="tabular-n">{formatDate(deal.scheduled_date)}</span>
                         </span>
                       )}
                       {isGlobal && deal.assigned_to_name && (
@@ -425,13 +490,31 @@ export default function CRMPage() {
 
                   {/* Right side */}
                   <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-xs text-muted-foreground hidden sm:block">{timeAgo(deal.stage_changed_at)}</span>
+                    <span className="tabular-n text-[11px] text-muted-foreground hidden sm:block">{timeAgo(deal.stage_changed_at)}</span>
                     <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-foreground transition-colors" />
                   </div>
                 </div>
               </Link>
             )
           })}
+        </div>
+      )}
+
+      {/* Cargar más — only when there are more records on the server */}
+      {!loading && deals.length < total && (
+        <div className="flex justify-center pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={loadingMore}
+            onClick={() => fetchData({ append: true, pageOverride: page + 1 })}
+          >
+            {loadingMore ? (
+              <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Cargando…</>
+            ) : (
+              <>Cargar más ({deals.length} / {total})</>
+            )}
+          </Button>
         </div>
       )}
     </div>

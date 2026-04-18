@@ -19,9 +19,9 @@ function formatCurrency(v: number, c: string = 'USD') {
 const ORIGIN_LABELS: Record<string, string> = { embudo: 'Embudo', referido: 'Referido', historico: 'Historico', tasacion: 'Tasacion' }
 
 const STAGE_LABELS: Record<string, string> = {
-  scheduled: 'Agendada', visited: 'Visita Realizada',
+  scheduled: 'Coordinada', visited: 'Visita Realizada',
   appraisal_sent: 'Tasación Entregada', followup: 'En Seguimiento',
-  captured: 'Captada', lost: 'Perdido',
+  captured: 'Captada', lost: 'Descartado',
 }
 const STAGE_COLORS: Record<string, string> = {
   scheduled: 'bg-blue-500', visited: 'bg-amber-500',
@@ -78,16 +78,16 @@ export default function ContactDetailPage() {
         {/* Scheduled appraisals */}
         {scheduled.length > 0 && (
           <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><Calendar className="h-5 w-5" />Tasaciones Agendadas ({scheduled.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base flex items-center gap-2"><Calendar className="h-5 w-5" />Tasaciones Coordinadas ({scheduled.length})</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               {scheduled.map((s: any) => (
                 <div key={s.id} className="flex items-center justify-between p-3 rounded-lg border">
                   <div>
                     <p className="text-sm font-medium">{s.property_address}</p>
-                    <p className="text-xs text-muted-foreground">Agendada: {formatDate(s.scheduled_date)}</p>
+                    <p className="text-xs text-muted-foreground">Coordinada: {formatDate(s.scheduled_date)}</p>
                   </div>
                   <Badge variant={s.status === 'completed' ? 'default' : s.status === 'cancelled' ? 'destructive' : 'secondary'}>
-                    {s.status === 'completed' ? 'Completada' : s.status === 'cancelled' ? 'Cancelada' : 'Agendada'}
+                    {s.status === 'completed' ? 'Completada' : s.status === 'cancelled' ? 'Cancelada' : 'Coordinada'}
                   </Badge>
                 </div>
               ))}

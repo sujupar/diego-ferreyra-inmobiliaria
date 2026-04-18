@@ -29,8 +29,8 @@ function getNavSections(role: Role): NavSection[] {
             return [
                 { label: 'Pendientes', href: '/tasks' },
                 { label: 'CRM', href: '/crm' },
-                { label: 'Procesos', href: '/pipeline' },
                 { label: 'Tasaciones', items: [
+                    { href: '/pipeline/new', label: 'Coordinar' },
                     { href: '/appraisal/new', label: 'Nueva Tasacion' },
                     { href: '/appraisals', label: 'Historial' },
                 ]},
@@ -42,9 +42,8 @@ function getNavSections(role: Role): NavSection[] {
             return [
                 { label: 'Pendientes', href: '/tasks' },
                 { label: 'CRM', href: '/crm' },
-                { label: 'Pipeline', href: '/pipeline' },
                 { label: 'Tasaciones', items: [
-                    { href: '/pipeline/new', label: 'Agendar' },
+                    { href: '/pipeline/new', label: 'Coordinar' },
                     { href: '/appraisals', label: 'Historial' },
                 ]},
                 { label: 'Propiedades', items: [
@@ -56,10 +55,10 @@ function getNavSections(role: Role): NavSection[] {
 
         default: // admin, dueno
             return [
+                { label: 'Pendientes', href: '/tasks' },
                 { label: 'CRM', href: '/crm' },
-                { label: 'Pipeline', href: '/pipeline' },
                 { label: 'Tasaciones', items: [
-                    { href: '/pipeline/new', label: 'Agendar' },
+                    { href: '/pipeline/new', label: 'Coordinar' },
                     { href: '/appraisal/new', label: 'Nueva Tasacion' },
                     { href: '/appraisals', label: 'Historial' },
                 ]},
@@ -104,13 +103,16 @@ export default async function DashboardLayout({
             )}
             <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
                 <div className="container mx-auto h-16 flex items-center justify-between px-4">
-                    <div className="flex items-center gap-2">
-                        <Link href="/">
+                    <div className="flex items-center gap-3">
+                        <Link href="/" className="flex items-center gap-3">
                             <img
                                 src="https://storage.googleapis.com/msgsndr/Zd3mW81lbIpC8mi06Cgf/media/682c6cc8e10a088724d26be6.png"
                                 alt="Diego Ferreyra Inmobiliaria"
                                 className="h-8 w-auto object-contain"
                             />
+                            <span className="eyebrow hidden sm:inline-block border-l border-border pl-3">
+                                Inmobiliaria
+                            </span>
                         </Link>
                     </div>
                     <DashboardNav sections={navSections} />

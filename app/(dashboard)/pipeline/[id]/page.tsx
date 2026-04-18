@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -12,14 +13,22 @@ import {
   Edit2, Send, Mic, MicOff, Square
 } from 'lucide-react'
 
+const VisitDataForm = dynamic(
+  () => import('@/components/pipeline/VisitDataForm').then(m => ({ default: m.VisitDataForm })),
+  {
+    ssr: false,
+    loading: () => <Loader2 className="h-6 w-6 animate-spin mx-auto" />,
+  }
+)
+
 const STAGES = [
-  { key: 'scheduled', label: 'Agendada', color: 'bg-blue-500' },
+  { key: 'scheduled', label: 'Coordinada', color: 'bg-blue-500' },
   { key: 'not_visited', label: 'No Realizada', color: 'bg-rose-400' },
   { key: 'visited', label: 'Visita Realizada', color: 'bg-amber-500' },
   { key: 'appraisal_sent', label: 'Tasación Entregada', color: 'bg-purple-500' },
   { key: 'followup', label: 'En Seguimiento', color: 'bg-orange-500' },
   { key: 'captured', label: 'Captada', color: 'bg-green-500' },
-  { key: 'lost', label: 'Perdido', color: 'bg-red-500' },
+  { key: 'lost', label: 'Descartado', color: 'bg-red-500' },
 ]
 
 function formatDate(d: string) {
@@ -39,6 +48,9 @@ export default function DealDetailPage() {
   // Followup modal
   const [showFollowupModal, setShowFollowupModal] = useState(false)
   const [followupNotes, setFollowupNotes] = useState('')
+
+  // Visit modal
+  const [showVisitModal, setShowVisitModal] = useState(false)
 
   // Audio transcription
   const [isRecording, setIsRecording] = useState(false)
@@ -73,7 +85,7 @@ export default function DealDetailPage() {
   }
 
   async function handleLost() {
-    if (!confirm('¿Marcar como perdido?')) return
+    if (!confirm('¿Descartar este proceso?')) return
     setAdvancing(true)
     try {
       await fetch(`/api/deals/${id}/advance`, {
@@ -89,10 +101,10 @@ export default function DealDetailPage() {
   // Save notes independently
   async function handleSaveNotes() {
     try {
-      await fetch(`/api/deals/${id}/advance`, {
-        method: 'POST',
+      await fetch(`/api/deals/${id}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stage: deal.stage, notes }),
+        body: JSON.stringify({ notes }),
       })
     } catch (err) { console.error(err) }
   }
@@ -173,12 +185,16 @@ export default function DealDetailPage() {
       </Button>
 
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{contact.full_name || 'Sin nombre'}</h1>
-          <p className="text-muted-foreground flex items-center gap-1 mt-1"><MapPin className="h-4 w-4" />{deal.property_address}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <p className="eyebrow">Proceso Nº {String(deal.id).slice(-6).toUpperCase()}</p>
+          <h1 className="display text-3xl">{contact.full_name || 'Sin nombre'}</h1>
+          <p className="text-muted-foreground flex items-center gap-1 text-sm"><MapPin className="h-4 w-4" />{deal.property_address}</p>
         </div>
-        <Badge className={`text-white text-sm ${currentStage?.color || 'bg-gray-400'}`}>{currentStage?.label || deal.stage}</Badge>
+        <div className="flex flex-col items-end gap-1">
+          <span className="eyebrow">Etapa Actual</span>
+          <Badge className={`text-white text-xs ${currentStage?.color || 'bg-gray-400'}`}>{currentStage?.label || deal.stage}</Badge>
+        </div>
       </div>
 
       {/* Progress bar */}
@@ -214,6 +230,25 @@ export default function DealDetailPage() {
             {deal.origin && <><span className="text-muted-foreground flex items-center gap-1"><Tag className="h-3.5 w-3.5" />Origen:</span><span>{ORIGIN_LABELS[deal.origin] || deal.origin}</span></>}
             {deal.scheduled_date && <><span className="text-muted-foreground flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />Fecha agendada:</span><span>{deal.scheduled_date}{deal.scheduled_time ? ` ${deal.scheduled_time}` : ''}</span></>}
             {deal.profiles && <><span className="text-muted-foreground">Asesor:</span><span>{deal.profiles.full_name}</span></>}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Propiedad */}
+      <Card>
+        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Home className="h-5 w-5" />Propiedad</CardTitle></CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <div className="grid grid-cols-2 gap-2">
+            <span className="text-muted-foreground">Dirección:</span><span className="font-medium">{deal.property_address}</span>
+            {deal.property_type && (
+              <>
+                <span className="text-muted-foreground">Tipo:</span>
+                <span className="capitalize">{deal.property_type === 'otro' ? deal.property_type_other : deal.property_type}</span>
+              </>
+            )}
+            {deal.neighborhood && <><span className="text-muted-foreground">Barrio:</span><span>{deal.neighborhood}</span></>}
+            {deal.rooms && <><span className="text-muted-foreground">Ambientes:</span><span>{deal.rooms}</span></>}
+            {deal.covered_area && <><span className="text-muted-foreground">M² cubiertos:</span><span>{deal.covered_area} m²</span></>}
           </div>
         </CardContent>
       </Card>
@@ -274,11 +309,16 @@ export default function DealDetailPage() {
             {/* SCHEDULED: Mark visit done or not done */}
             {deal.stage === 'scheduled' && (
               <div className="space-y-2">
-                <Button onClick={() => handleAdvance('visited')} disabled={advancing} className="w-full" size="lg">
+                <Button
+                  onClick={() => setShowVisitModal(true)}
+                  disabled={advancing}
+                  className="w-full bg-[color:var(--brass)] text-white hover:bg-[color:var(--brass)]/90"
+                  size="lg"
+                >
                   {advancing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
                   Marcar Visita Realizada
                 </Button>
-                <Button onClick={() => handleAdvance('not_visited')} disabled={advancing} variant="outline" className="w-full border-rose-300 text-rose-700 hover:bg-rose-50" size="lg">
+                <Button onClick={() => handleAdvance('not_visited')} disabled={advancing} variant="outline" className="w-full" size="lg">
                   No Se Realizó la Visita
                 </Button>
               </div>
@@ -287,7 +327,12 @@ export default function DealDetailPage() {
             {/* NOT_VISITED: Reschedule or mark lost */}
             {deal.stage === 'not_visited' && (
               <div className="space-y-2">
-                <Button onClick={() => handleAdvance('scheduled')} disabled={advancing} className="w-full" size="lg">
+                <Button
+                  onClick={() => handleAdvance('scheduled')}
+                  disabled={advancing}
+                  className="w-full bg-[color:var(--brass)] text-white hover:bg-[color:var(--brass)]/90"
+                  size="lg"
+                >
                   Reagendar Visita
                 </Button>
               </div>
@@ -298,12 +343,17 @@ export default function DealDetailPage() {
               <>
                 {!deal.appraisal_id ? (
                   <Link href={`/appraisal/new?dealId=${deal.id}`} className="block">
-                    <Button className="w-full" size="lg">
+                    <Button className="w-full bg-[color:var(--brass)] text-white hover:bg-[color:var(--brass)]/90" size="lg">
                       <FileCheck className="h-4 w-4 mr-2" />Crear Tasación
                     </Button>
                   </Link>
                 ) : (
-                  <Button onClick={() => handleAdvance('appraisal_sent')} disabled={advancing} className="w-full" size="lg">
+                  <Button
+                    onClick={() => handleAdvance('appraisal_sent')}
+                    disabled={advancing}
+                    className="w-full bg-[color:var(--brass)] text-white hover:bg-[color:var(--brass)]/90"
+                    size="lg"
+                  >
                     {advancing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
                     Marcar Tasación Entregada
                   </Button>
@@ -319,13 +369,12 @@ export default function DealDetailPage() {
                   disabled={advancing}
                   variant="outline"
                   size="lg"
-                  className="border-orange-300 text-orange-700 hover:bg-orange-50"
                 >
                   <MessageSquare className="h-4 w-4 mr-2" />
                   Seguimiento
                 </Button>
                 <Link href={`/properties/new?dealId=${deal.id}`}>
-                  <Button size="lg" className="w-full bg-green-600 hover:bg-green-700">
+                  <Button size="lg" className="w-full bg-[color:var(--brass)] text-white hover:bg-[color:var(--brass)]/90">
                     <Home className="h-4 w-4 mr-2" />
                     Captar Propiedad
                   </Button>
@@ -341,20 +390,24 @@ export default function DealDetailPage() {
                   disabled={advancing}
                   variant="outline"
                   size="lg"
-                  className="border-orange-300 text-orange-700 hover:bg-orange-50"
                 >
                   <MessageSquare className="h-4 w-4 mr-2" />
                   Agregar Seguimiento
                 </Button>
                 {!deal.property_id ? (
                   <Link href={`/properties/new?dealId=${deal.id}`}>
-                    <Button size="lg" className="w-full bg-green-600 hover:bg-green-700">
+                    <Button size="lg" className="w-full bg-[color:var(--brass)] text-white hover:bg-[color:var(--brass)]/90">
                       <Home className="h-4 w-4 mr-2" />
                       Captar Propiedad
                     </Button>
                   </Link>
                 ) : (
-                  <Button onClick={() => handleAdvance('captured')} disabled={advancing} size="lg" className="bg-green-600 hover:bg-green-700">
+                  <Button
+                    onClick={() => handleAdvance('captured')}
+                    disabled={advancing}
+                    size="lg"
+                    className="bg-[color:var(--brass)] text-white hover:bg-[color:var(--brass)]/90"
+                  >
                     {advancing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Home className="h-4 w-4 mr-2" />}
                     Marcar como Captada
                   </Button>
@@ -364,8 +417,14 @@ export default function DealDetailPage() {
 
             {/* Always show Lost button */}
             <div className="pt-2 border-t">
-              <Button variant="ghost" size="sm" onClick={handleLost} disabled={advancing} className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                <XCircle className="h-4 w-4 mr-1" /> Marcar Perdido
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLost}
+                disabled={advancing}
+                className="text-muted-foreground hover:text-[color:var(--destructive)] hover:bg-transparent"
+              >
+                <XCircle className="h-4 w-4 mr-1" /> Descartar
               </Button>
             </div>
           </CardContent>
@@ -380,10 +439,13 @@ export default function DealDetailPage() {
       {showFollowupModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowFollowupModal(false)}>
           <div className="bg-background rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6 space-y-4" onClick={e => e.stopPropagation()}>
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-orange-600" />
-              Registrar Seguimiento
-            </h2>
+            <div className="space-y-1">
+              <p className="eyebrow">Seguimiento</p>
+              <h2 className="display text-2xl flex items-center gap-2">
+                <MessageSquare className="h-5 w-5 text-muted-foreground" />
+                Registrar Seguimiento
+              </h2>
+            </div>
             <p className="text-sm text-muted-foreground">
               Describe el estado del seguimiento, la conversación con el cliente, o próximos pasos.
             </p>
@@ -440,6 +502,33 @@ export default function DealDetailPage() {
                 Confirmar Seguimiento
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Visit Data Modal */}
+      {showVisitModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto" onClick={() => setShowVisitModal(false)}>
+          <div className="bg-background rounded-2xl shadow-xl w-full max-w-4xl my-8 p-6 space-y-4 max-h-[95vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between sticky top-0 bg-background pb-3 border-b z-10">
+              <div className="space-y-1">
+                <p className="eyebrow">Visita Realizada</p>
+                <h2 className="display text-2xl flex items-center gap-2">
+                  <Eye className="h-5 w-5 text-[color:var(--brass)]" />
+                  Datos de la Visita
+                </h2>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setShowVisitModal(false)}>&times;</Button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Recolectá los datos de la propiedad durante la visita. Todo se guarda automáticamente.
+              Al finalizar, el proceso pasa a "Visita Realizada".
+            </p>
+            <VisitDataForm
+              dealId={deal.id}
+              initial={deal.visit_data || null}
+              onCompleted={() => { setShowVisitModal(false); fetchDeal() }}
+            />
           </div>
         </div>
       )}

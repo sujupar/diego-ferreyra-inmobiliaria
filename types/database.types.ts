@@ -285,6 +285,13 @@ export interface Database {
                     stage_changed_at: string
                     created_at: string
                     updated_at: string
+                    property_type: string | null
+                    property_type_other: string | null
+                    neighborhood: string | null
+                    rooms: number | null
+                    covered_area: number | null
+                    visit_data: Json | null
+                    visit_completed_at: string | null
                 }
                 Insert: {
                     id?: string
@@ -299,6 +306,13 @@ export interface Database {
                     appraisal_id?: string | null
                     property_id?: string | null
                     notes?: string | null
+                    property_type?: string | null
+                    property_type_other?: string | null
+                    neighborhood?: string | null
+                    rooms?: number | null
+                    covered_area?: number | null
+                    visit_data?: Json | null
+                    visit_completed_at?: string | null
                 }
                 Update: {
                     stage?: string
@@ -308,6 +322,13 @@ export interface Database {
                     assigned_to?: string | null
                     stage_changed_at?: string
                     updated_at?: string
+                    property_type?: string | null
+                    property_type_other?: string | null
+                    neighborhood?: string | null
+                    rooms?: number | null
+                    covered_area?: number | null
+                    visit_data?: Json | null
+                    visit_completed_at?: string | null
                 }
                 Relationships: []
             }
@@ -340,6 +361,8 @@ export interface Database {
                     legal_reviewer_id: string | null
                     legal_notes: string | null
                     legal_reviewed_at: string | null
+                    legal_docs: Json | null
+                    legal_flags: Json | null
                     created_by: string | null
                     assigned_to: string | null
                     created_at: string
@@ -373,6 +396,8 @@ export interface Database {
                     legal_reviewer_id?: string | null
                     legal_notes?: string | null
                     legal_reviewed_at?: string | null
+                    legal_docs?: Json | null
+                    legal_flags?: Json | null
                     created_by?: string | null
                     assigned_to?: string | null
                     created_at?: string
@@ -406,6 +431,8 @@ export interface Database {
                     legal_reviewer_id?: string | null
                     legal_notes?: string | null
                     legal_reviewed_at?: string | null
+                    legal_docs?: Json | null
+                    legal_flags?: Json | null
                     created_by?: string | null
                     assigned_to?: string | null
                     created_at?: string
@@ -559,12 +586,63 @@ export interface Database {
                     }
                 ]
             }
+            legal_review_events: {
+                Row: {
+                    id: string
+                    property_id: string
+                    actor_id: string | null
+                    actor_role: string
+                    action: string
+                    item_key: string | null
+                    notes: string | null
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    property_id: string
+                    actor_id?: string | null
+                    actor_role: string
+                    action: string
+                    item_key?: string | null
+                    notes?: string | null
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    property_id?: string
+                    actor_id?: string | null
+                    actor_role?: string
+                    action?: string
+                    item_key?: string | null
+                    notes?: string | null
+                    created_at?: string
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "legal_review_events_property_id_fkey"
+                        columns: ["property_id"]
+                        isOneToOne: false
+                        referencedRelation: "properties"
+                        referencedColumns: ["id"]
+                    },
+                    {
+                        foreignKeyName: "legal_review_events_actor_id_fkey"
+                        columns: ["actor_id"]
+                        isOneToOne: false
+                        referencedRelation: "profiles"
+                        referencedColumns: ["id"]
+                    }
+                ]
+            }
         }
         Views: {
             [_ in never]: never
         }
         Functions: {
-            [_ in never]: never
+            merge_deal_visit_data: {
+                Args: { p_deal_id: string; p_patch: Json }
+                Returns: Json
+            }
         }
         Enums: {
             [_ in never]: never

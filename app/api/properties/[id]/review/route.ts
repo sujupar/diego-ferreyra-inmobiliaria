@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { reviewProperty, getProperty } from '@/lib/supabase/properties'
 import { createTask } from '@/lib/supabase/tasks'
+import { requireAuth } from '@/lib/auth/require-role'
+import { logLegalEvent } from '@/lib/supabase/legal-events'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const user = await requireAuth()
     const { id } = await params
-    const { approved, reviewer_id, notes } = await request.json()
+    const { approved, notes } = await request.json()
 
-    if (typeof approved !== 'boolean' || !reviewer_id) {
-      return NextResponse.json({ error: 'Missing approved or reviewer_id' }, { status: 400 })
+    if (typeof approved !== 'boolean') {
+      return NextResponse.json({ error: 'Missing approved' }, { status: 400 })
     }
 
-    await reviewProperty(id, approved, reviewer_id, notes)
+    await reviewProperty(id, approved, user.id, notes)
 
     // If rejected, create task for the assigned asesor
     if (!approved) {
@@ -28,6 +31,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         }
       } catch (e) { console.error('Task creation error:', e) }
     }
+
+    try {
+      await logLegalEvent({
+        property_id: id,
+        actor_id: user.id,
+        actor_role: user.profile.role,
+        action: approved ? 'approved_all' : 'rejected_all',
+        item_key: null,
+        notes: notes || null,
+      })
+    } catch (e) { console.error('logLegalEvent error:', e) }
 
     return NextResponse.json({ success: true })
   } catch (error) {

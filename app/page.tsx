@@ -15,6 +15,6 @@ export default async function Home() {
     case 'dueno':
     case 'admin':
     default:
-      redirect('/pipeline')
+      redirect('/tasks')
   }
 }
