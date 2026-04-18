@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createDeal, getDeals } from '@/lib/supabase/deals'
 import { createTask, createTaskForRole } from '@/lib/supabase/tasks'
 import { createClient } from '@supabase/supabase-js'
+import { requirePermission } from '@/lib/auth/require-role'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -42,6 +43,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await requirePermission('pipeline.schedule')
     const body = await request.json()
     const { contact_name, contact_phone, contact_email, property_address, scheduled_date, scheduled_time, origin, assigned_to, notes } = body
 

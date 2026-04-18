@@ -77,7 +77,7 @@ export default function AgendarTasacionPage() {
         <Card className="w-full max-w-md text-center">
           <CardContent className="py-12">
             <div className="text-4xl mb-4">&#10003;</div>
-            <h2 className="text-xl font-bold mb-2">Tasacion Agendada</h2>
+            <h2 className="text-xl font-bold mb-2">Tasación Coordinada</h2>
             <p className="text-muted-foreground">Redirigiendo al pipeline...</p>
           </CardContent>
         </Card>
@@ -88,8 +88,8 @@ export default function AgendarTasacionPage() {
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Agendar Tasacion</h1>
-        <p className="text-muted-foreground">Programa una nueva tasacion para un prospecto</p>
+        <h1 className="text-2xl font-bold tracking-tight">Coordinar Tasación</h1>
+        <p className="text-muted-foreground">Coordiná una nueva tasación para un prospecto</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -211,7 +211,7 @@ export default function AgendarTasacionPage() {
           <Button type="button" variant="outline" onClick={() => router.back()}>Cancelar</Button>
           <Button type="submit" disabled={loading} className="flex-1">
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Agendar Tasacion
+            Coordinar Tasación
           </Button>
         </div>
       </form>

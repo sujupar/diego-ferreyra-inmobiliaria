@@ -15,12 +15,12 @@ import {
 
 const STAGES = [
   { key: '', label: 'Todas' },
-  { key: 'scheduled', label: 'Agendadas', color: 'bg-blue-500' },
+  { key: 'scheduled', label: 'Coordinadas', color: 'bg-blue-500' },
   { key: 'visited', label: 'Visitadas', color: 'bg-amber-500' },
   { key: 'appraisal_sent', label: 'Entregadas', color: 'bg-purple-500' },
   { key: 'followup', label: 'Seguimiento', color: 'bg-orange-500' },
   { key: 'captured', label: 'Captadas', color: 'bg-green-500' },
-  { key: 'lost', label: 'Perdidas', color: 'bg-red-500' },
+  { key: 'lost', label: 'Descartadas', color: 'bg-red-500' },
 ]
 
 const ORIGIN_LABELS: Record<string, string> = { embudo: 'Embudo', referido: 'Referido', historico: 'Historico' }

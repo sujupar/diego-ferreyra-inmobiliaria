@@ -29,8 +29,9 @@ function getNavSections(role: Role): NavSection[] {
             return [
                 { label: 'Pendientes', href: '/tasks' },
                 { label: 'CRM', href: '/crm' },
-                { label: 'Procesos', href: '/pipeline' },
+                { label: 'Procesos', href: '/pipeline' }, // keep for now, removed in Fase 11
                 { label: 'Tasaciones', items: [
+                    { href: '/pipeline/new', label: 'Coordinar' },
                     { href: '/appraisal/new', label: 'Nueva Tasacion' },
                     { href: '/appraisals', label: 'Historial' },
                 ]},
@@ -44,7 +45,7 @@ function getNavSections(role: Role): NavSection[] {
                 { label: 'CRM', href: '/crm' },
                 { label: 'Pipeline', href: '/pipeline' },
                 { label: 'Tasaciones', items: [
-                    { href: '/pipeline/new', label: 'Agendar' },
+                    { href: '/pipeline/new', label: 'Coordinar' },
                     { href: '/appraisals', label: 'Historial' },
                 ]},
                 { label: 'Propiedades', items: [
@@ -59,7 +60,7 @@ function getNavSections(role: Role): NavSection[] {
                 { label: 'CRM', href: '/crm' },
                 { label: 'Pipeline', href: '/pipeline' },
                 { label: 'Tasaciones', items: [
-                    { href: '/pipeline/new', label: 'Agendar' },
+                    { href: '/pipeline/new', label: 'Coordinar' },
                     { href: '/appraisal/new', label: 'Nueva Tasacion' },
                     { href: '/appraisals', label: 'Historial' },
                 ]},

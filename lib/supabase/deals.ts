@@ -7,13 +7,13 @@ function getAdmin() {
 export type DealStage = 'scheduled' | 'not_visited' | 'visited' | 'appraisal_sent' | 'followup' | 'captured' | 'lost'
 
 export const DEAL_STAGES: { key: DealStage; label: string; color: string }[] = [
-  { key: 'scheduled', label: 'Agendada', color: 'bg-blue-500' },
+  { key: 'scheduled', label: 'Coordinada', color: 'bg-blue-500' },
   { key: 'not_visited', label: 'No Realizada', color: 'bg-rose-400' },
   { key: 'visited', label: 'Visita Realizada', color: 'bg-amber-500' },
   { key: 'appraisal_sent', label: 'Tasación Entregada', color: 'bg-purple-500' },
   { key: 'followup', label: 'En Seguimiento', color: 'bg-orange-500' },
   { key: 'captured', label: 'Captada', color: 'bg-green-500' },
-  { key: 'lost', label: 'Perdido', color: 'bg-red-500' },
+  { key: 'lost', label: 'Descartado', color: 'bg-red-500' },
 ]
 
 export interface DealInput {

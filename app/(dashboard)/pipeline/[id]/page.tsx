@@ -13,13 +13,13 @@ import {
 } from 'lucide-react'
 
 const STAGES = [
-  { key: 'scheduled', label: 'Agendada', color: 'bg-blue-500' },
+  { key: 'scheduled', label: 'Coordinada', color: 'bg-blue-500' },
   { key: 'not_visited', label: 'No Realizada', color: 'bg-rose-400' },
   { key: 'visited', label: 'Visita Realizada', color: 'bg-amber-500' },
   { key: 'appraisal_sent', label: 'Tasación Entregada', color: 'bg-purple-500' },
   { key: 'followup', label: 'En Seguimiento', color: 'bg-orange-500' },
   { key: 'captured', label: 'Captada', color: 'bg-green-500' },
-  { key: 'lost', label: 'Perdido', color: 'bg-red-500' },
+  { key: 'lost', label: 'Descartado', color: 'bg-red-500' },
 ]
 
 function formatDate(d: string) {
@@ -73,7 +73,7 @@ export default function DealDetailPage() {
   }
 
   async function handleLost() {
-    if (!confirm('¿Marcar como perdido?')) return
+    if (!confirm('¿Descartar este proceso?')) return
     setAdvancing(true)
     try {
       await fetch(`/api/deals/${id}/advance`, {
@@ -365,7 +365,7 @@ export default function DealDetailPage() {
             {/* Always show Lost button */}
             <div className="pt-2 border-t">
               <Button variant="ghost" size="sm" onClick={handleLost} disabled={advancing} className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                <XCircle className="h-4 w-4 mr-1" /> Marcar Perdido
+                <XCircle className="h-4 w-4 mr-1" /> Descartar
               </Button>
             </div>
           </CardContent>
