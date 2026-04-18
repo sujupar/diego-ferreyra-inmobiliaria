@@ -26,6 +26,7 @@ export async function setLegalFlags(propertyId: string, flags: Partial<LegalFlag
     p_flags_patch: flags,
   })
   if (error) throw error
+  if (!data) throw new Error(`Property ${propertyId} not found or not updated`)
   return data as LegalFlags
 }
 
@@ -36,6 +37,7 @@ export async function upsertLegalDocItem(propertyId: string, itemKey: string, st
     p_item_patch: state,
   })
   if (error) throw error
+  if (!data) throw new Error(`Property ${propertyId} not found or not updated`)
   const docs = data as LegalDocsState
   return docs[itemKey]
 }

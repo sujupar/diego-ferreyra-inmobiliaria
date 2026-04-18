@@ -12,6 +12,7 @@ export async function saveVisitData(dealId: string, snapshot: Partial<VisitDataS
     p_patch: patch,
   })
   if (error) throw error
+  if (!data) throw new Error(`Deal ${dealId} not found or not updated`)
   return data as VisitDataSnapshot
 }
 

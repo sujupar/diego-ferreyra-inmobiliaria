@@ -139,7 +139,7 @@ export default function PropertyDetailPage() {
       const res = await fetch(`/api/properties/${id}/review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approved, reviewer_id: userInfo.id, notes: reviewNotes }),
+        body: JSON.stringify({ approved, notes: reviewNotes }),
       })
       if (!res.ok) throw new Error('Error')
       setReviewNotes('')

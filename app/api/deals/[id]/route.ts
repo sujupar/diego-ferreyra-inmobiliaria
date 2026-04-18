@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDeal } from '@/lib/supabase/deals'
-import { createClient } from '@supabase/supabase-js'
+import { getDeal, updateDealNotes } from '@/lib/supabase/deals'
+import { requireAuth } from '@/lib/auth/require-role'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requireAuth()
     const { id } = await params
     const data = await getDeal(id)
     return NextResponse.json({ data })
@@ -14,13 +15,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requireAuth()
     const { id } = await params
     const body = await request.json()
-    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-    const { error } = await supabase.from('deals').update({ ...body, updated_at: new Date().toISOString() }).eq('id', id)
-    if (error) throw error
+    const { notes } = body
+    if (typeof notes !== 'string') {
+      return NextResponse.json({ error: 'notes required (string)' }, { status: 400 })
+    }
+    await updateDealNotes(id, notes)
     return NextResponse.json({ success: true })
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Error' }, { status: 500 })
+    console.error('PUT /api/deals/[id] error:', error)
+    return NextResponse.json({ error: 'Failed to update deal' }, { status: 500 })
   }
 }

@@ -118,6 +118,14 @@ export async function updateDealStage(id: string, stage: DealStage, notes?: stri
   if (error) throw error
 }
 
+export async function updateDealNotes(id: string, notes: string) {
+  const { error } = await getAdmin()
+    .from('deals')
+    .update({ notes, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export async function linkAppraisalToDeal(dealId: string, appraisalId: string) {
   const { error } = await getAdmin()
     .from('deals')

@@ -101,10 +101,10 @@ export default function DealDetailPage() {
   // Save notes independently
   async function handleSaveNotes() {
     try {
-      await fetch(`/api/deals/${id}/advance`, {
-        method: 'POST',
+      await fetch(`/api/deals/${id}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stage: deal.stage, notes }),
+        body: JSON.stringify({ notes }),
       })
     } catch (err) { console.error(err) }
   }
