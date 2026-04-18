@@ -167,7 +167,7 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
             <Button
               size="sm"
               variant="outline"
-              className="border-[color:var(--brass)]/30 text-[color:var(--brass)] hover:bg-[color:var(--brass-soft)]/40 hover:text-[color:var(--brass)] transition-all duration-200"
+              className="border-[color:var(--brand)]/30 text-[color:var(--brand)] hover:bg-[color:var(--brand-soft)]/40 hover:text-[color:var(--brand)] transition-all duration-200"
               onClick={() => handleReviewItem(def.key, true)}
               disabled={reviewingKey === def.key}
               aria-label="Aprobar documento"

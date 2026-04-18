@@ -12,7 +12,7 @@ import {
 
 const TYPE_CONFIG: Record<string, { icon: typeof Bell; color: string; label: string; urgent?: boolean }> = {
   update_contact: { icon: User, color: 'bg-amber-100 text-amber-800', label: 'Actualizar Contacto' },
-  new_assignment: { icon: FileCheck, color: 'bg-[color:var(--brass)] text-white', label: 'Tasación Coordinada', urgent: true },
+  new_assignment: { icon: FileCheck, color: 'bg-[color:var(--brand)] text-white', label: 'Tasación Coordinada', urgent: true },
   review_property: { icon: Scale, color: 'bg-purple-100 text-purple-800', label: 'Revisión Legal' },
   rejected_docs: { icon: AlertTriangle, color: 'bg-red-100 text-red-800', label: 'Docs Rechazados' },
 }
@@ -123,7 +123,7 @@ export default function TasksPage() {
               <Card
                 key={task.id}
                 className={`transition-all ${config.urgent
-                  ? 'border-[color:var(--brass)]/40 shadow-[inset_0_1px_0_0_color-mix(in_oklch,var(--brass)_30%,transparent)] bg-[color:var(--brass-soft)]/30 hover:shadow-md'
+                  ? 'border-[color:var(--brand)]/40 shadow-[inset_0_1px_0_0_color-mix(in_oklch,var(--brand)_30%,transparent)] bg-[color:var(--brand-soft)]/30 hover:shadow-md'
                   : 'hover:bg-muted/30'}`}
               >
                 <CardContent className="flex items-center gap-4 py-3">
@@ -135,7 +135,7 @@ export default function TasksPage() {
                       <span className={`font-medium ${config.urgent ? 'text-foreground' : ''}`}>{task.title}</span>
                       <span className="eyebrow">{config.label}</span>
                       {config.urgent && (
-                        <span className="eyebrow text-[color:var(--brass)] border-l border-[color:var(--brass)]/30 pl-2">
+                        <span className="eyebrow text-[color:var(--brand)] border-l border-[color:var(--brand)]/30 pl-2">
                           Acción Requerida
                         </span>
                       )}
@@ -158,7 +158,7 @@ export default function TasksPage() {
                       <Button
                         size="sm"
                         variant={config.urgent ? 'default' : 'ghost'}
-                        className={config.urgent ? 'bg-[color:var(--brass)] text-white hover:bg-[color:var(--brass)]/90' : ''}
+                        className={config.urgent ? 'bg-[color:var(--brand)] text-white hover:bg-[color:var(--brand)]/90' : ''}
                       >
                         <ChevronRight className="h-4 w-4" />
                       </Button>

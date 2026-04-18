@@ -127,7 +127,7 @@ export function VisitDataForm({ dealId, initial, onCompleted }: Props) {
             onClick={() => setActiveTab('sale')}
             className={`relative px-5 py-2 rounded-lg text-sm flex items-center gap-2 transition-all duration-200 ${
               activeTab === 'sale'
-                ? 'bg-background font-semibold text-foreground after:content-[""] after:absolute after:left-4 after:right-4 after:-bottom-[5px] after:h-[2px] after:bg-[color:var(--brass)] after:rounded-full'
+                ? 'bg-background font-semibold text-foreground after:content-[""] after:absolute after:left-4 after:right-4 after:-bottom-[5px] after:h-[2px] after:bg-[color:var(--brand)] after:rounded-full'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -137,16 +137,16 @@ export function VisitDataForm({ dealId, initial, onCompleted }: Props) {
             onClick={() => setActiveTab('purchase')}
             className={`relative px-5 py-2 rounded-lg text-sm flex items-center gap-2 transition-all duration-200 ${
               activeTab === 'purchase'
-                ? 'bg-background font-semibold text-foreground after:content-[""] after:absolute after:left-4 after:right-4 after:-bottom-[5px] after:h-[2px] after:bg-[color:var(--brass)] after:rounded-full'
+                ? 'bg-background font-semibold text-foreground after:content-[""] after:absolute after:left-4 after:right-4 after:-bottom-[5px] after:h-[2px] after:bg-[color:var(--brand)] after:rounded-full'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             <ShoppingCart className="h-4 w-4" /> Compra (Interesado)
           </button>
         </div>
-        <div className={`flex items-center gap-1.5 text-xs h-7 px-3 rounded-full min-w-[90px] justify-center transition-colors ${savingStatus === 'saving' ? 'bg-[color:var(--brass-soft)]/50' : 'bg-muted/40'}`}>
+        <div className={`flex items-center gap-1.5 text-xs h-7 px-3 rounded-full min-w-[90px] justify-center transition-colors ${savingStatus === 'saving' ? 'bg-[color:var(--brand-soft)]/50' : 'bg-muted/40'}`}>
           {savingStatus === 'idle' && <span className="eyebrow">Auto-guardado</span>}
-          {savingStatus === 'saving' && <><Loader2 className="h-3 w-3 animate-spin text-[color:var(--brass)]" /> <span className="text-[color:var(--brass)] font-medium">Guardando…</span></>}
+          {savingStatus === 'saving' && <><Loader2 className="h-3 w-3 animate-spin text-[color:var(--brand)]" /> <span className="text-[color:var(--brand)] font-medium">Guardando…</span></>}
           {savingStatus === 'saved' && <><CheckCircle2 className="h-3 w-3 text-emerald-600" /> <span className="text-emerald-700 font-medium">Guardado</span></>}
           {savingStatus === 'error' && <span className="text-[color:var(--destructive)] font-medium">Error — reintenta</span>}
         </div>

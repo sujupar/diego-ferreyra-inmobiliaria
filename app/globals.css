@@ -8,10 +8,9 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-serif: var(--font-serif);
-  --color-brass: var(--brass);
-  --color-brass-foreground: var(--brass-foreground);
-  --color-brass-soft: var(--brass-soft);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-soft: var(--brand-soft);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -52,47 +51,47 @@
 
 :root {
   --radius: 0.75rem;
-  
+
   /* Premium Light Mode Palette (Apple-inspired) */
   --background: oklch(0.985 0.002 247.839); /* Slightly warm off-white */
   --foreground: oklch(0.13 0.01 260);        /* Deep charcoal, not pure black */
-  
+
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.13 0.01 260);
-  
+
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.13 0.01 260);
-  
+
   --primary: oklch(0.13 0.01 260);           /* Dark primary for contrast */
   --primary-foreground: oklch(1 0 0);
-  
+
   --secondary: oklch(0.96 0.005 247.839);    /* Very light gray for backgrounds */
   --secondary-foreground: oklch(0.13 0.01 260);
-  
+
   --muted: oklch(0.96 0.005 247.839);
   --muted-foreground: oklch(0.55 0.01 260);  /* Soft gray text */
-  
+
   --accent: oklch(0.94 0.005 247.839);
   --accent-foreground: oklch(0.13 0.01 260);
-  
+
   --destructive: oklch(0.6 0.18 25);         /* Refined red */
   --destructive-foreground: oklch(1 0 0);
 
-  /* Editorial accent — burnished brass */
-  --brass: oklch(0.65 0.12 75);              /* Warm Argentine accent */
-  --brass-foreground: oklch(0.99 0 0);
-  --brass-soft: oklch(0.93 0.04 75);         /* Tints / backgrounds */
+  /* Brand accent — deep navy blue from the logo */
+  --brand: oklch(0.40 0.18 260);
+  --brand-foreground: oklch(0.99 0 0);
+  --brand-soft: oklch(0.93 0.05 260);
 
   --border: oklch(0.92 0.005 247.839);
   --input: oklch(0.92 0.005 247.839);
   --ring: oklch(0.13 0.01 260);
-  
+
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  
+
   --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.13 0.01 260);
   --sidebar-primary: oklch(0.13 0.01 260);
@@ -107,43 +106,43 @@
   /* Premium Dark Mode Palette */
   --background: oklch(0.13 0.01 260);        /* Deep charcoal background */
   --foreground: oklch(0.98 0.002 247.839);
-  
+
   --card: oklch(0.18 0.01 260);              /* Slightly lighter card */
   --card-foreground: oklch(0.98 0.002 247.839);
-  
+
   --popover: oklch(0.18 0.01 260);
   --popover-foreground: oklch(0.98 0.002 247.839);
-  
+
   --primary: oklch(0.98 0.002 247.839);      /* Light primary for dark mode */
   --primary-foreground: oklch(0.13 0.01 260);
-  
+
   --secondary: oklch(0.22 0.01 260);
   --secondary-foreground: oklch(0.98 0.002 247.839);
-  
+
   --muted: oklch(0.22 0.01 260);
   --muted-foreground: oklch(0.65 0.01 260);
-  
+
   --accent: oklch(0.22 0.01 260);
   --accent-foreground: oklch(0.98 0.002 247.839);
-  
+
   --destructive: oklch(0.6 0.18 25);
   --destructive-foreground: oklch(1 0 0);
 
-  /* Editorial accent — burnished brass (dark mode) */
-  --brass: oklch(0.72 0.12 75);
-  --brass-foreground: oklch(0.13 0.01 260);
-  --brass-soft: oklch(0.28 0.06 75);
+  /* Brand accent — deep navy blue (dark mode) */
+  --brand: oklch(0.60 0.18 260);
+  --brand-foreground: oklch(0.13 0.01 260);
+  --brand-soft: oklch(0.28 0.08 260);
 
   --border: oklch(0.25 0.01 260);
   --input: oklch(0.25 0.01 260);
   --ring: oklch(0.8 0.01 260);
-  
+
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  
+
   --sidebar: oklch(0.15 0.01 260);
   --sidebar-foreground: oklch(0.98 0.002 247.839);
   --sidebar-primary: oklch(0.98 0.002 247.839);
@@ -175,9 +174,8 @@
 }
 
 @utility display {
-  font-family: var(--font-serif);
-  font-weight: 400;
-  letter-spacing: -0.01em;
+  font-family: var(--font-sans);
+  @apply font-bold tracking-tight;
 }
 
 @utility tabular-n {
@@ -187,9 +185,8 @@
 }
 
 @utility number-prefix {
-  font-family: var(--font-serif);
-  font-style: italic;
-  color: color-mix(in oklch, var(--muted-foreground) 60%, transparent);
+  font-family: var(--font-sans);
+  @apply font-medium text-muted-foreground/60 tabular-nums;
 }
 
 @utility editorial-divider {

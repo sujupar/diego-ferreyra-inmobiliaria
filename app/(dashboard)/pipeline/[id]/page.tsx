@@ -312,7 +312,7 @@ export default function DealDetailPage() {
                 <Button
                   onClick={() => setShowVisitModal(true)}
                   disabled={advancing}
-                  className="w-full bg-[color:var(--brass)] text-white hover:bg-[color:var(--brass)]/90"
+                  className="w-full bg-[color:var(--brand)] text-white hover:bg-[color:var(--brand)]/90"
                   size="lg"
                 >
                   {advancing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
@@ -330,7 +330,7 @@ export default function DealDetailPage() {
                 <Button
                   onClick={() => handleAdvance('scheduled')}
                   disabled={advancing}
-                  className="w-full bg-[color:var(--brass)] text-white hover:bg-[color:var(--brass)]/90"
+                  className="w-full bg-[color:var(--brand)] text-white hover:bg-[color:var(--brand)]/90"
                   size="lg"
                 >
                   Reagendar Visita
@@ -343,7 +343,7 @@ export default function DealDetailPage() {
               <>
                 {!deal.appraisal_id ? (
                   <Link href={`/appraisal/new?dealId=${deal.id}`} className="block">
-                    <Button className="w-full bg-[color:var(--brass)] text-white hover:bg-[color:var(--brass)]/90" size="lg">
+                    <Button className="w-full bg-[color:var(--brand)] text-white hover:bg-[color:var(--brand)]/90" size="lg">
                       <FileCheck className="h-4 w-4 mr-2" />Crear Tasación
                     </Button>
                   </Link>
@@ -351,7 +351,7 @@ export default function DealDetailPage() {
                   <Button
                     onClick={() => handleAdvance('appraisal_sent')}
                     disabled={advancing}
-                    className="w-full bg-[color:var(--brass)] text-white hover:bg-[color:var(--brass)]/90"
+                    className="w-full bg-[color:var(--brand)] text-white hover:bg-[color:var(--brand)]/90"
                     size="lg"
                   >
                     {advancing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
@@ -374,7 +374,7 @@ export default function DealDetailPage() {
                   Seguimiento
                 </Button>
                 <Link href={`/properties/new?dealId=${deal.id}`}>
-                  <Button size="lg" className="w-full bg-[color:var(--brass)] text-white hover:bg-[color:var(--brass)]/90">
+                  <Button size="lg" className="w-full bg-[color:var(--brand)] text-white hover:bg-[color:var(--brand)]/90">
                     <Home className="h-4 w-4 mr-2" />
                     Captar Propiedad
                   </Button>
@@ -396,7 +396,7 @@ export default function DealDetailPage() {
                 </Button>
                 {!deal.property_id ? (
                   <Link href={`/properties/new?dealId=${deal.id}`}>
-                    <Button size="lg" className="w-full bg-[color:var(--brass)] text-white hover:bg-[color:var(--brass)]/90">
+                    <Button size="lg" className="w-full bg-[color:var(--brand)] text-white hover:bg-[color:var(--brand)]/90">
                       <Home className="h-4 w-4 mr-2" />
                       Captar Propiedad
                     </Button>
@@ -406,7 +406,7 @@ export default function DealDetailPage() {
                     onClick={() => handleAdvance('captured')}
                     disabled={advancing}
                     size="lg"
-                    className="bg-[color:var(--brass)] text-white hover:bg-[color:var(--brass)]/90"
+                    className="bg-[color:var(--brand)] text-white hover:bg-[color:var(--brand)]/90"
                   >
                     {advancing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Home className="h-4 w-4 mr-2" />}
                     Marcar como Captada
@@ -514,7 +514,7 @@ export default function DealDetailPage() {
               <div className="space-y-1">
                 <p className="eyebrow">Visita Realizada</p>
                 <h2 className="display text-2xl flex items-center gap-2">
-                  <Eye className="h-5 w-5 text-[color:var(--brass)]" />
+                  <Eye className="h-5 w-5 text-[color:var(--brand)]" />
                   Datos de la Visita
                 </h2>
               </div>

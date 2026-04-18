@@ -10,9 +10,9 @@ import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import {
   Loader2, RefreshCw, ChevronRight, User, MapPin, Calendar,
-  LayoutList, Table2, Filter, SlidersHorizontal,
-  CalendarPlus, CalendarCheck, CalendarX, Eye, FileCheck,
-  Send, MessageSquare, Home, XCircle, Phone, Mail, Clock
+  LayoutList, Table2, SlidersHorizontal,
+  CalendarPlus, CalendarCheck, CalendarX, Eye,
+  Send, MessageSquare, Home, XCircle, Clock
 } from 'lucide-react'
 
 // ── CRM Stage Configuration ─────────────────────────────────────
@@ -50,18 +50,11 @@ const CRM_STAGES: CRMStage[] = [
     ringColor: 'ring-rose-400', dotColor: 'bg-rose-500',
   },
   {
-    key: 'visitada', label: 'Visitada',
+    key: 'realizada', label: 'Realizada',
     icon: Eye,
     gradient: 'from-amber-50 to-amber-100/60 dark:from-amber-950/40 dark:to-amber-900/20',
     badgeBg: 'bg-amber-100 dark:bg-amber-900/50', badgeText: 'text-amber-700 dark:text-amber-300',
     ringColor: 'ring-amber-400', dotColor: 'bg-amber-500',
-  },
-  {
-    key: 'tasacion_creada', label: 'Tasación',
-    icon: FileCheck,
-    gradient: 'from-indigo-50 to-indigo-100/60 dark:from-indigo-950/40 dark:to-indigo-900/20',
-    badgeBg: 'bg-indigo-100 dark:bg-indigo-900/50', badgeText: 'text-indigo-700 dark:text-indigo-300',
-    ringColor: 'ring-indigo-400', dotColor: 'bg-indigo-500',
   },
   {
     key: 'entregada', label: 'Entregada',
@@ -97,7 +90,7 @@ function deriveCRMStage(deal: Deal): string {
   switch (deal.stage) {
     case 'scheduled': return deal.scheduled_date ? 'coordinada' : 'solicitud'
     case 'not_visited': return 'no_realizada'
-    case 'visited': return deal.appraisal_id ? 'tasacion_creada' : 'visitada'
+    case 'visited': return 'realizada'
     case 'appraisal_sent': return 'entregada'
     case 'followup': return 'seguimiento'
     case 'captured': return 'captada'
@@ -111,13 +104,13 @@ function getCRMStageInfo(key: string): CRMStage {
 }
 
 // Map raw deals.stage → CRM stage key for server-side aggregated counts.
-// Approximate: server doesn't distinguish solicitud vs coordinada (by scheduled_date)
-// or visitada vs tasacion_creada (by appraisal_id). Acceptable for MVP.
+// Approximate: server doesn't distinguish solicitud vs coordinada (by scheduled_date).
+// Acceptable for MVP.
 function mapStageToCRM(stage: string): string {
   switch (stage) {
     case 'scheduled': return 'coordinada'
     case 'not_visited': return 'no_realizada'
-    case 'visited': return 'visitada'
+    case 'visited': return 'realizada'
     case 'appraisal_sent': return 'entregada'
     case 'followup': return 'seguimiento'
     case 'captured': return 'captada'
