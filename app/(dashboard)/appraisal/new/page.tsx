@@ -469,9 +469,14 @@ function NewAppraisalPageContent() {
                                         : features.quality === 'VERY_GOOD' ? 'muy_buena'
                                         : features.quality === 'EXCELLENT' ? 'excelente'
                                         : null,
-                                    conservation: features.conservationState
-                                        ? features.conservationState.toLowerCase().replace(/^state_/, 'estado_')
-                                        : null,
+                                    // Conservation: map STATE_X → estado_X with whitelist guard so an
+                                    // unexpected value never lands in the JSONB column as garbage.
+                                    conservation: (() => {
+                                        const valid = new Set(['estado_1','estado_1_5','estado_2','estado_2_5','estado_3','estado_3_5','estado_4','estado_4_5','estado_5'])
+                                        if (!features.conservationState) return null
+                                        const mapped = features.conservationState.toLowerCase().replace(/^state_/, 'estado_')
+                                        return valid.has(mapped) ? mapped : null
+                                    })(),
                                     construction_features: [],
                                     reason_for_sale: null,
                                     sale_timeframe: null,
@@ -488,8 +493,10 @@ function NewAppraisalPageContent() {
                                         origin: origin || 'historico',
                                         property_type: 'departamento',  // wizard is apt-only for now
                                         neighborhood,
-                                        rooms: features.rooms ?? 1,
-                                        covered_area: features.coveredArea ?? null,
+                                        // Belt-and-suspenders: PropertyWizard validates rooms > 0 before
+                                        // emitting, but coerce explicitly in case features.rooms is ever ''.
+                                        rooms: Number(features.rooms) || 1,
+                                        covered_area: features.coveredArea ? Number(features.coveredArea) : null,
                                     }),
                                 })
                                 if (res.ok) {
