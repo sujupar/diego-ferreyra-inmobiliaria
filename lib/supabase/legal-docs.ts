@@ -21,21 +21,23 @@ export async function getLegalDocs(propertyId: string) {
 }
 
 export async function setLegalFlags(propertyId: string, flags: Partial<LegalFlags>) {
-  const current = await getLegalDocs(propertyId)
-  const merged: LegalFlags = { ...current.flags, ...flags }
-  const { error } = await getAdmin().from('properties').update({ legal_flags: merged, updated_at: new Date().toISOString() }).eq('id', propertyId)
+  const { data, error } = await getAdmin().rpc('merge_property_legal_flags', {
+    p_property_id: propertyId,
+    p_flags_patch: flags,
+  })
   if (error) throw error
-  return merged
+  return data as LegalFlags
 }
 
 export async function upsertLegalDocItem(propertyId: string, itemKey: string, state: Partial<DocItemState>) {
-  const current = await getLegalDocs(propertyId)
-  const existing = current.docs[itemKey] || { status: 'missing' as const }
-  const merged: DocItemState = { ...existing, ...state }
-  const next: LegalDocsState = { ...current.docs, [itemKey]: merged }
-  const { error } = await getAdmin().from('properties').update({ legal_docs: next, updated_at: new Date().toISOString() }).eq('id', propertyId)
+  const { data, error } = await getAdmin().rpc('merge_property_legal_doc', {
+    p_property_id: propertyId,
+    p_item_key: itemKey,
+    p_item_patch: state,
+  })
   if (error) throw error
-  return merged
+  const docs = data as LegalDocsState
+  return docs[itemKey]
 }
 
 /**
@@ -50,7 +52,11 @@ export async function checkGlobalApproval(propertyId: string) {
   const { docs, flags, propertyType } = await getLegalDocs(propertyId)
   const applicable = getApplicableDocs(flags, propertyType)
   const mustApprove = applicable.filter(d => d.category === 'mandatory' || d.category === 'temporal')
-  const allApproved = mustApprove.length > 0 && mustApprove.every(d => docs[d.key]?.status === 'approved')
+  if (mustApprove.length === 0) {
+    console.warn(`checkGlobalApproval: no mandatory/temporal docs resolved for property ${propertyId} (property_type="${propertyType}"). Not escalating to approved.`)
+    return false
+  }
+  const allApproved = mustApprove.every(d => docs[d.key]?.status === 'approved')
 
   if (allApproved) {
     const { error } = await getAdmin().from('properties').update({

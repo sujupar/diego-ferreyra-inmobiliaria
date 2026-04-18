@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { updateDealStage, linkAppraisalToDeal, linkPropertyToDeal, getDeal, DealStage } from '@/lib/supabase/deals'
 import { createTaskForRole } from '@/lib/supabase/tasks'
+import { requirePermission } from '@/lib/auth/require-role'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requirePermission('pipeline.advance')
     const { id } = await params
     const { stage, notes, appraisal_id, property_id } = await request.json()
 

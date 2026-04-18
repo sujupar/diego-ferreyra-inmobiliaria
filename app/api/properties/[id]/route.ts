@@ -6,6 +6,7 @@ import { logLegalEvent } from '@/lib/supabase/legal-events'
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await requireAuth()
     const { id } = await params
     const data = await getProperty(id)
     return NextResponse.json({ data })

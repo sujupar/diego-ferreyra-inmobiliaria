@@ -8,13 +8,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const user = await requireAuth()
     const { id } = await params
-    const { approved, reviewer_id, notes } = await request.json()
+    const { approved, notes } = await request.json()
 
-    if (typeof approved !== 'boolean' || !reviewer_id) {
-      return NextResponse.json({ error: 'Missing approved or reviewer_id' }, { status: 400 })
+    if (typeof approved !== 'boolean') {
+      return NextResponse.json({ error: 'Missing approved' }, { status: 400 })
     }
 
-    await reviewProperty(id, approved, reviewer_id, notes)
+    await reviewProperty(id, approved, user.id, notes)
 
     // If rejected, create task for the assigned asesor
     if (!approved) {
