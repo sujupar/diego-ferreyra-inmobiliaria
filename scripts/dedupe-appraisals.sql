@@ -95,6 +95,17 @@ LIMIT 50;
 -- Asegurate de que el preview anterior te haya mostrado un número razonable
 -- antes de descomentar. Una vez corras esto, las tasaciones borradas no
 -- se pueden recuperar.
+--
+-- ⚠️  EDGE CASE A REVISAR EN EL PREVIEW:
+-- Si una propiedad tiene tanto duplicados (<1h entre sí) COMO una re-tasación
+-- legítima posterior (>1h después), keeper_id va a ser la re-tasación más
+-- reciente del partition completo. Esto re-apunta los deals/properties que
+-- pertenecían a los duplicados al keeper "más nuevo" — incluso si ese
+-- keeper es semánticamente una tasación distinta (re-tasación meses después).
+--
+-- Validá manualmente en el preview los keeper_id antes de correr la cleanup,
+-- especialmente para propiedades con dup_count >= 2 cuya latest_dup_created
+-- esté lejos del primer registro de la propiedad.
 
 /*
 -- Identificá los duplicados a borrar (CTE materializada en tabla temporal
@@ -129,6 +140,7 @@ FROM dup_appraisals da
 WHERE d.appraisal_id = da.dup_id;
 
 -- 2.2 Re-apuntar properties.appraisal_id de duplicados al keeper
+-- (properties.updated_at debe existir en el schema; si no, remové esa línea)
 UPDATE properties p
 SET appraisal_id = da.keeper_id,
     updated_at = NOW()

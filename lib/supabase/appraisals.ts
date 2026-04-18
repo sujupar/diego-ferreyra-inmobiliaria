@@ -227,28 +227,35 @@ export async function deleteAppraisal(id: string): Promise<void> {
 
 export async function updateAppraisal(id: string, input: SaveAppraisalInput): Promise<void> {
     const supabase = createClient()
-    const { subject, comparables, valuationResult, notes } = input
+    const { subject, comparables, valuationResult, notes, origin, assignedTo } = input
 
-    // 1. Update main appraisal row
+    // 1. Update main appraisal row.
+    // origin and assigned_to are persisted on every update so the dropdowns
+    // stay in sync after recalcs (otherwise a user changing the asesor and
+    // clicking "Recalcular" would silently lose the change).
+    const updatePayload: Record<string, unknown> = {
+        property_title: subject.title,
+        property_location: subject.location,
+        property_description: subject.description,
+        property_url: subject.url,
+        property_price: subject.price,
+        property_currency: subject.currency,
+        property_images: subject.images,
+        property_features: subject.features as any,
+        valuation_result: valuationResult as any,
+        publication_price: valuationResult.publicationPrice,
+        sale_value: valuationResult.saleValue,
+        money_in_hand: valuationResult.moneyInHand,
+        currency: valuationResult.currency,
+        comparable_count: comparables.length,
+        notes,
+    }
+    if (origin !== undefined) updatePayload.origin = origin || null
+    if (assignedTo !== undefined) updatePayload.assigned_to = assignedTo || null
+
     const { error: updateError } = await supabase
         .from('appraisals')
-        .update({
-            property_title: subject.title,
-            property_location: subject.location,
-            property_description: subject.description,
-            property_url: subject.url,
-            property_price: subject.price,
-            property_currency: subject.currency,
-            property_images: subject.images,
-            property_features: subject.features as any,
-            valuation_result: valuationResult as any,
-            publication_price: valuationResult.publicationPrice,
-            sale_value: valuationResult.saleValue,
-            money_in_hand: valuationResult.moneyInHand,
-            currency: valuationResult.currency,
-            comparable_count: comparables.length,
-            notes,
-        })
+        .update(updatePayload)
         .eq('id', id)
 
     if (updateError) throw updateError
