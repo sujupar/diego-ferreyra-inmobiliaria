@@ -66,10 +66,16 @@ export async function POST(request: NextRequest) {
 
     const supabase = getAdmin()
 
-    // Create or find contact
+    // Create or find contact — dedupe by email first, then phone. The original
+    // bug surfaced this gap: when only phone was provided, every coordinar
+    // produced a brand-new contact, leaving the contacts table littered.
     let contactId: string | null = null
     if (contact_email) {
-      const { data: existing } = await supabase.from('contacts').select('id').eq('email', contact_email).single()
+      const { data: existing } = await supabase.from('contacts').select('id').eq('email', contact_email).maybeSingle()
+      if (existing) contactId = existing.id
+    }
+    if (!contactId && contact_phone) {
+      const { data: existing } = await supabase.from('contacts').select('id').eq('phone', contact_phone).maybeSingle()
       if (existing) contactId = existing.id
     }
 

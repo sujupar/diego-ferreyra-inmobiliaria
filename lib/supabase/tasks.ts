@@ -48,10 +48,12 @@ async function pendingTaskExists(assignedTo: string, type: TaskType, entity: Ret
     .eq('type', type)
     .eq('status', 'pending')
     .eq(entity.column, entity.value)
-  if (error) {
-    console.error('pendingTaskExists check failed:', error)
-    return false // err on the side of allowing creation
-  }
+  // Throw on error: silently returning false would let callers insert duplicates
+  // during transient DB issues, recreating the original 16-pendientes bug. The
+  // callers in advance/route.ts and deals/route.ts already wrap createTask*
+  // calls in try/catch + console.error, so a thrown error here just makes the
+  // task creation fail-loudly rather than fail-open.
+  if (error) throw new Error(`pendingTaskExists check failed: ${error.message}`)
   return (count ?? 0) > 0
 }
 
