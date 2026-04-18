@@ -42,10 +42,13 @@ export function LegalReviewHistory({ propertyId }: { propertyId: string }) {
   return (
     <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
       <CardHeader>
-        <CardTitle className="text-base font-semibold flex items-center gap-2">
-          <Clock className="h-4 w-4 text-muted-foreground" />
-          Historial de Revisión Legal
-        </CardTitle>
+        <div className="space-y-1">
+          <p className="eyebrow">Trazabilidad</p>
+          <CardTitle className="display text-base flex items-center gap-2">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            Historial de Revisión Legal
+          </CardTitle>
+        </div>
       </CardHeader>
       <CardContent>
         <ol className="relative">
@@ -65,19 +68,22 @@ export function LegalReviewHistory({ propertyId }: { propertyId: string }) {
                 {/* Content */}
                 <div className={`flex-1 ${isLast ? 'pb-0' : 'pb-4'}`}>
                   <div className="flex items-start justify-between gap-2 flex-wrap">
-                    <span className="font-medium text-sm">
-                      {meta.label}
-                      {ev.item_key && <span className="text-muted-foreground ml-1">· {getItemLabel(ev.item_key)}</span>}
-                    </span>
-                    <span className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+                    <div className="space-y-0.5">
+                      <p className="eyebrow">
+                        {meta.label}
+                        {ev.item_key && <span className="normal-case tracking-normal font-normal text-muted-foreground"> · {getItemLabel(ev.item_key)}</span>}
+                      </p>
+                      <p className="text-sm font-medium">{ev.actor_name}</p>
+                    </div>
+                    <span className="tabular-n text-[11px] text-muted-foreground whitespace-nowrap">
                       {formatDateTime(ev.created_at)}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {ev.actor_name} ({ev.actor_role})
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {ev.actor_role}
                   </p>
                   {ev.notes && (
-                    <p className="text-sm mt-1 italic text-muted-foreground border-l-2 border-muted pl-2">
+                    <p className="text-sm mt-2 italic text-muted-foreground border-l-2 border-[color:var(--brass)]/30 pl-3 font-[family-name:var(--font-serif)]">
                       &ldquo;{ev.notes}&rdquo;
                     </p>
                   )}

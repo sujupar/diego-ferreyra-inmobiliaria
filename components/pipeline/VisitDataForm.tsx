@@ -122,12 +122,12 @@ export function VisitDataForm({ dealId, initial, onCompleted }: Props) {
     <div className="space-y-4">
       {/* Tab pills + status indicator */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="inline-flex rounded-xl border bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-1 shadow-sm">
+        <div className="inline-flex rounded-xl border bg-muted/30 p-1">
           <button
             onClick={() => setActiveTab('sale')}
-            className={`px-5 py-2 rounded-lg text-sm flex items-center gap-2 transition-all duration-200 ${
+            className={`relative px-5 py-2 rounded-lg text-sm flex items-center gap-2 transition-all duration-200 ${
               activeTab === 'sale'
-                ? 'bg-background shadow-md font-semibold text-foreground'
+                ? 'bg-background font-semibold text-foreground after:content-[""] after:absolute after:left-4 after:right-4 after:-bottom-[5px] after:h-[2px] after:bg-[color:var(--brass)] after:rounded-full'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -135,20 +135,20 @@ export function VisitDataForm({ dealId, initial, onCompleted }: Props) {
           </button>
           <button
             onClick={() => setActiveTab('purchase')}
-            className={`px-5 py-2 rounded-lg text-sm flex items-center gap-2 transition-all duration-200 ${
+            className={`relative px-5 py-2 rounded-lg text-sm flex items-center gap-2 transition-all duration-200 ${
               activeTab === 'purchase'
-                ? 'bg-background shadow-md font-semibold text-foreground'
+                ? 'bg-background font-semibold text-foreground after:content-[""] after:absolute after:left-4 after:right-4 after:-bottom-[5px] after:h-[2px] after:bg-[color:var(--brass)] after:rounded-full'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             <ShoppingCart className="h-4 w-4" /> Compra (Interesado)
           </button>
         </div>
-        <div className="flex items-center gap-1.5 text-xs h-7 px-3 rounded-full bg-muted/50 min-w-[90px] justify-center">
-          {savingStatus === 'idle' && <span className="text-muted-foreground">Auto-guardado</span>}
-          {savingStatus === 'saving' && <><Loader2 className="h-3 w-3 animate-spin text-muted-foreground" /> <span className="text-muted-foreground">Guardando...</span></>}
-          {savingStatus === 'saved' && <><CheckCircle2 className="h-3 w-3 text-green-600" /> <span className="text-green-700 font-medium">Guardado</span></>}
-          {savingStatus === 'error' && <span className="text-red-600 font-medium">Error — reintenta</span>}
+        <div className={`flex items-center gap-1.5 text-xs h-7 px-3 rounded-full min-w-[90px] justify-center transition-colors ${savingStatus === 'saving' ? 'bg-[color:var(--brass-soft)]/50' : 'bg-muted/40'}`}>
+          {savingStatus === 'idle' && <span className="eyebrow">Auto-guardado</span>}
+          {savingStatus === 'saving' && <><Loader2 className="h-3 w-3 animate-spin text-[color:var(--brass)]" /> <span className="text-[color:var(--brass)] font-medium">Guardando…</span></>}
+          {savingStatus === 'saved' && <><CheckCircle2 className="h-3 w-3 text-emerald-600" /> <span className="text-emerald-700 font-medium">Guardado</span></>}
+          {savingStatus === 'error' && <span className="text-[color:var(--destructive)] font-medium">Error — reintenta</span>}
         </div>
       </div>
 
@@ -174,13 +174,16 @@ export function VisitDataForm({ dealId, initial, onCompleted }: Props) {
   )
 }
 
-// Small reusable section header with icon
-function SectionTitle({ icon: Icon, children }: { icon: any; children: React.ReactNode }) {
+// Small reusable section header with icon + eyebrow
+function SectionTitle({ icon: Icon, eyebrow, children }: { icon: any; eyebrow?: string; children: React.ReactNode }) {
   return (
-    <CardTitle className="text-base font-semibold flex items-center gap-2">
-      <Icon className="h-4 w-4 text-muted-foreground" />
-      {children}
-    </CardTitle>
+    <div className="space-y-1">
+      {eyebrow && <p className="eyebrow">{eyebrow}</p>}
+      <CardTitle className="display text-base flex items-center gap-2">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        {children}
+      </CardTitle>
+    </div>
   )
 }
 
@@ -198,7 +201,7 @@ function SaleSection({
     <div className="space-y-4">
       {/* Características Básicas */}
       <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
-        <CardHeader><SectionTitle icon={Home}>Características Básicas</SectionTitle></CardHeader>
+        <CardHeader><SectionTitle icon={Home} eyebrow="Sección 01">Características Básicas</SectionTitle></CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
           <div><Label>Tipo</Label>
             <select value={sale.property_type} onChange={e => onUpdate('property_type', e.target.value as PropertyTypeVenta)} className="w-full rounded-md border px-3 py-2">
@@ -230,7 +233,7 @@ function SaleSection({
 
       {/* Metrajes */}
       <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
-        <CardHeader><SectionTitle icon={Ruler}>Metrajes (m²)</SectionTitle></CardHeader>
+        <CardHeader><SectionTitle icon={Ruler} eyebrow="Sección 02">Metrajes (m²)</SectionTitle></CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
           <div><Label>Cubiertos</Label><Input type="number" value={sale.covered_m2 ?? ''} onChange={e => onUpdate('covered_m2', e.target.value ? +e.target.value : null)} /></div>
           <div><Label>Semi-cubiertos</Label><Input type="number" value={sale.semi_covered_m2 ?? ''} onChange={e => onUpdate('semi_covered_m2', e.target.value ? +e.target.value : null)} /></div>
@@ -242,7 +245,7 @@ function SaleSection({
 
       {/* Antigüedad y Estado */}
       <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
-        <CardHeader><SectionTitle icon={Building2}>Antigüedad, Orientación, Estado</SectionTitle></CardHeader>
+        <CardHeader><SectionTitle icon={Building2} eyebrow="Sección 03">Antigüedad, Orientación, Estado</SectionTitle></CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
           <div><Label>Antigüedad (años)</Label>
             <Input type="number" min="0" value={sale.age_years ?? ''} onChange={e => onUpdate('age_years', e.target.value ? +e.target.value : null)} />
@@ -299,7 +302,7 @@ function SaleSection({
 
       {/* Características constructivas */}
       <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
-        <CardHeader><SectionTitle icon={Hammer}>Características Constructivas</SectionTitle></CardHeader>
+        <CardHeader><SectionTitle icon={Hammer} eyebrow="Sección 04">Características Constructivas</SectionTitle></CardHeader>
         <CardContent className="flex flex-wrap gap-2">
           {CONSTRUCTION_FEATURES_OPTIONS.map(f => (
             <Badge
@@ -316,7 +319,7 @@ function SaleSection({
 
       {/* Motivación de venta */}
       <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
-        <CardHeader><SectionTitle icon={Clock}>Motivación y Tiempos</SectionTitle></CardHeader>
+        <CardHeader><SectionTitle icon={Clock} eyebrow="Sección 05">Motivación y Tiempos</SectionTitle></CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div>
             <Label>¿Por qué quiere vender?</Label>
@@ -346,7 +349,7 @@ function SaleSection({
 
       {/* Puntos fuertes */}
       <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
-        <CardHeader><SectionTitle icon={Star}>Puntos Estratégicos (Fortalezas)</SectionTitle></CardHeader>
+        <CardHeader><SectionTitle icon={Star} eyebrow="Sección 06">Puntos Estratégicos (Fortalezas)</SectionTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="flex gap-2">
             <Input
@@ -380,7 +383,7 @@ function SaleSection({
 
       {/* Notas adicionales */}
       <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
-        <CardHeader><SectionTitle icon={StickyNote}>Notas adicionales</SectionTitle></CardHeader>
+        <CardHeader><SectionTitle icon={StickyNote} eyebrow="Sección 07">Notas adicionales</SectionTitle></CardHeader>
         <CardContent>
           <textarea
             className="w-full min-h-[80px] rounded-md border px-3 py-2 transition-all duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"

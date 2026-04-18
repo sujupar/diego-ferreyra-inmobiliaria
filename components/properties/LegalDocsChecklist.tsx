@@ -25,13 +25,13 @@ interface Props {
   onUpdated: () => void
 }
 
-// Colored status icon wrapper
+// Colored status icon wrapper — muted editorial palette
 function StatusIcon({ status }: { status: DocItemState['status'] }) {
   const configs: Record<DocItemState['status'], { icon: any; bg: string; fg: string }> = {
-    approved: { icon: CheckCircle, bg: 'bg-green-100', fg: 'text-green-700' },
-    rejected: { icon: XCircle, bg: 'bg-red-100', fg: 'text-red-700' },
-    pending: { icon: Clock, bg: 'bg-amber-100', fg: 'text-amber-700' },
-    missing: { icon: AlertTriangle, bg: 'bg-slate-100 dark:bg-slate-800', fg: 'text-slate-500' },
+    approved: { icon: CheckCircle, bg: 'bg-emerald-50 dark:bg-emerald-950/30', fg: 'text-emerald-700 dark:text-emerald-400' },
+    rejected: { icon: XCircle, bg: 'bg-red-50 dark:bg-red-950/30', fg: 'text-[color:var(--destructive)]' },
+    pending: { icon: Clock, bg: 'bg-amber-50 dark:bg-amber-950/30', fg: 'text-amber-700 dark:text-amber-400' },
+    missing: { icon: AlertTriangle, bg: 'bg-muted/60', fg: 'text-muted-foreground' },
   }
   const { icon: Icon, bg, fg } = configs[status]
   return (
@@ -105,11 +105,11 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
     const hasFile = !!state.file_url
     const canReview = isAbogado && hasFile && (state.status === 'pending' || state.status === 'rejected')
 
-    // Subtle background tint based on status
+    // Subtle background tint based on status — muted editorial palette
     const statusTint =
-      state.status === 'approved' ? 'border-green-200 bg-green-50/40 dark:bg-green-950/20' :
-      state.status === 'rejected' ? 'border-red-200 bg-red-50/40 dark:bg-red-950/20' :
-      state.status === 'pending' ? 'border-amber-200 bg-amber-50/30 dark:bg-amber-950/20' :
+      state.status === 'approved' ? 'border-emerald-200/70 bg-emerald-50/30 dark:bg-emerald-950/15' :
+      state.status === 'rejected' ? 'border-red-200/70 bg-red-50/30 dark:bg-red-950/15' :
+      state.status === 'pending' ? 'border-amber-200/70 bg-amber-50/25 dark:bg-amber-950/15' :
       'border-border bg-card'
 
     return (
@@ -167,7 +167,7 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
             <Button
               size="sm"
               variant="outline"
-              className="text-green-700 border-green-300 hover:bg-green-50 hover:text-green-800 transition-all duration-200"
+              className="border-[color:var(--brass)]/30 text-[color:var(--brass)] hover:bg-[color:var(--brass-soft)]/40 hover:text-[color:var(--brass)] transition-all duration-200"
               onClick={() => handleReviewItem(def.key, true)}
               disabled={reviewingKey === def.key}
               aria-label="Aprobar documento"
@@ -179,7 +179,7 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
             <Button
               size="sm"
               variant="outline"
-              className="text-red-700 border-red-300 hover:bg-red-50 hover:text-red-800 transition-all duration-200"
+              className="border-red-200 text-[color:var(--destructive)]/80 hover:bg-red-50 hover:text-[color:var(--destructive)] transition-all duration-200"
               onClick={() => openRejectDialog(def.key, def.label)}
               disabled={reviewingKey === def.key}
               aria-label="Rechazar documento"
@@ -192,16 +192,19 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
     )
   }
 
-  // Consistent card + header styling
-  const sectionCard = (icon: any, title: string, items: LegalDocDefinition[], emptyCopy?: string) => {
+  // Consistent card + header styling — editorial
+  const sectionCard = (icon: any, title: string, eyebrowLabel: string, items: LegalDocDefinition[], emptyCopy?: string) => {
     const Icon = icon
     return (
       <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
         <CardHeader>
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <Icon className="h-4 w-4 text-muted-foreground" />
-            {title}
-          </CardTitle>
+          <div className="space-y-1">
+            <p className="eyebrow">{eyebrowLabel}</p>
+            <CardTitle className="display text-base flex items-center gap-2">
+              <Icon className="h-4 w-4 text-muted-foreground" />
+              {title}
+            </CardTitle>
+          </div>
         </CardHeader>
         <CardContent className="space-y-2">
           {items.length === 0
@@ -219,10 +222,13 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
         {!isAbogado && (
           <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
             <CardHeader>
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Scale className="h-4 w-4 text-muted-foreground" />
-                Situación Jurídica
-              </CardTitle>
+              <div className="space-y-1">
+                <p className="eyebrow">Contexto</p>
+                <CardTitle className="display text-base flex items-center gap-2">
+                  <Scale className="h-4 w-4 text-muted-foreground" />
+                  Situación Jurídica
+                </CardTitle>
+              </div>
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-3 text-sm">
               <label className="flex items-center gap-2 cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50">
@@ -245,11 +251,11 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
           </Card>
         )}
 
-        {sectionCard(FileCheck2, 'Documentos Obligatorios', mandatory, 'No hay documentos obligatorios para este tipo de propiedad.')}
+        {sectionCard(FileCheck2, 'Documentos Obligatorios', 'Obligatorios', mandatory, 'No hay documentos obligatorios para este tipo de propiedad.')}
 
-        {temporal.length > 0 && sectionCard(CalendarClock, 'Documentos Temporales (con alerta)', temporal)}
+        {temporal.length > 0 && sectionCard(CalendarClock, 'Documentos Temporales (con alerta)', 'Temporales', temporal)}
 
-        {optional.length > 0 && sectionCard(FilePlus2, 'Documentos Opcionales', optional)}
+        {optional.length > 0 && sectionCard(FilePlus2, 'Documentos Opcionales', 'Opcionales', optional)}
       </div>
 
       {/* Reject dialog */}

@@ -12,7 +12,7 @@ import {
 
 const TYPE_CONFIG: Record<string, { icon: typeof Bell; color: string; label: string; urgent?: boolean }> = {
   update_contact: { icon: User, color: 'bg-amber-100 text-amber-800', label: 'Actualizar Contacto' },
-  new_assignment: { icon: FileCheck, color: 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white', label: 'Tasación Coordinada', urgent: true },
+  new_assignment: { icon: FileCheck, color: 'bg-[color:var(--brass)] text-white', label: 'Tasación Coordinada', urgent: true },
   review_property: { icon: Scale, color: 'bg-purple-100 text-purple-800', label: 'Revisión Legal' },
   rejected_docs: { icon: AlertTriangle, color: 'bg-red-100 text-red-800', label: 'Docs Rechazados' },
 }
@@ -85,12 +85,15 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Bell className="h-6 w-6" /> Pendientes
-        </h1>
-        <p className="text-muted-foreground">{tasks.length} tarea{tasks.length !== 1 ? 's' : ''} {filter === 'pending' ? 'pendiente' + (tasks.length !== 1 ? 's' : '') : ''}</p>
+    <div className="space-y-8">
+      <div className="space-y-2">
+        <p className="eyebrow">Hoy · Bandeja</p>
+        <div className="flex items-end justify-between gap-4 flex-wrap">
+          <h1 className="display text-4xl">Pendientes</h1>
+          <p className="text-sm text-muted-foreground tabular-n">
+            {tasks.length} tarea{tasks.length !== 1 ? 's' : ''}{filter === 'pending' ? ` pendiente${tasks.length !== 1 ? 's' : ''}` : ''}
+          </p>
+        </div>
       </div>
 
       <div className="flex gap-2">
@@ -103,9 +106,9 @@ export default function TasksPage() {
         <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
       ) : tasks.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
-            <h3 className="text-lg font-medium">Todo al dia</h3>
+          <CardContent className="flex flex-col items-center justify-center py-16 gap-3">
+            <CheckCircle className="h-10 w-10 text-muted-foreground/40" />
+            <h3 className="display text-2xl">Todo al día</h3>
             <p className="text-sm text-muted-foreground">No hay tareas pendientes.</p>
           </CardContent>
         </Card>
@@ -119,20 +122,26 @@ export default function TasksPage() {
             return (
               <Card
                 key={task.id}
-                className={`transition-all ${config.urgent ? 'border-2 border-blue-500 shadow-lg ring-2 ring-blue-500/20 hover:shadow-xl' : 'hover:bg-muted/30'}`}
+                className={`transition-all ${config.urgent
+                  ? 'border-[color:var(--brass)]/40 shadow-[inset_0_1px_0_0_color-mix(in_oklch,var(--brass)_30%,transparent)] bg-[color:var(--brass-soft)]/30 hover:shadow-md'
+                  : 'hover:bg-muted/30'}`}
               >
                 <CardContent className="flex items-center gap-4 py-3">
-                  <div className={`h-10 w-10 rounded-full flex items-center justify-center ${config.color} ${config.urgent ? 'animate-pulse shadow-md' : ''}`}>
+                  <div className={`h-10 w-10 rounded-full flex items-center justify-center ${config.color} ${config.urgent ? 'ring-1 ring-inset ring-white/30' : ''}`}>
                     <Icon className="h-5 w-5" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                      <span className={`font-medium ${config.urgent ? 'text-blue-900 dark:text-blue-100 font-semibold' : ''}`}>{task.title}</span>
-                      <Badge variant={config.urgent ? 'default' : 'secondary'} className={`text-xs ${config.urgent ? 'bg-blue-600' : ''}`}>{config.label}</Badge>
-                      {config.urgent && <Badge variant="destructive" className="text-xs animate-pulse">¡Acción requerida!</Badge>}
+                      <span className={`font-medium ${config.urgent ? 'text-foreground' : ''}`}>{task.title}</span>
+                      <span className="eyebrow">{config.label}</span>
+                      {config.urgent && (
+                        <span className="eyebrow text-[color:var(--brass)] border-l border-[color:var(--brass)]/30 pl-2">
+                          Acción Requerida
+                        </span>
+                      )}
                     </div>
                     {task.description && <p className="text-sm text-muted-foreground truncate">{task.description}</p>}
-                    <p className="text-xs text-muted-foreground mt-0.5">{formatDate(task.created_at)}</p>
+                    <p className="tabular-n text-[11px] text-muted-foreground mt-0.5">{formatDate(task.created_at)}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     {task.status === 'pending' && (
@@ -146,7 +155,11 @@ export default function TasksPage() {
                       </>
                     )}
                     <Link href={link}>
-                      <Button size="sm" variant={config.urgent ? 'default' : 'ghost'} className={config.urgent ? 'bg-blue-600 hover:bg-blue-700' : ''}>
+                      <Button
+                        size="sm"
+                        variant={config.urgent ? 'default' : 'ghost'}
+                        className={config.urgent ? 'bg-[color:var(--brass)] text-white hover:bg-[color:var(--brass)]/90' : ''}
+                      >
                         <ChevronRight className="h-4 w-4" />
                       </Button>
                     </Link>

@@ -295,7 +295,7 @@ export default function CRMPage() {
     { key: 'stage_changed_at', label: 'Actualizado', sortable: true, render: r => (
       <span className="text-xs text-muted-foreground flex items-center gap-1">
         <Clock className="h-3 w-3" />
-        {timeAgo(r.stage_changed_at)}
+        <span className="tabular-n">{timeAgo(r.stage_changed_at)}</span>
       </span>
     )},
   ]
@@ -306,10 +306,11 @@ export default function CRMPage() {
     <div className="space-y-8">
       {/* ── Header ──────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">CRM</h1>
-          <p className="text-muted-foreground mt-1">
-            {totalDealsDisplay} proceso{totalDealsDisplay !== 1 ? 's' : ''} comercial{totalDealsDisplay !== 1 ? 'es' : ''}
+        <div className="space-y-2">
+          <p className="eyebrow">Dashboard · Procesos</p>
+          <h1 className="display text-4xl">CRM</h1>
+          <p className="text-muted-foreground text-sm">
+            <span className="tabular-n">{totalDealsDisplay}</span> proceso{totalDealsDisplay !== 1 ? 's' : ''} comercial{totalDealsDisplay !== 1 ? 'es' : ''}
             {filterCRMStage && (
               <span className={`ml-2 inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${activeStageInfo?.badgeBg} ${activeStageInfo?.badgeText}`}>
                 {activeStageInfo?.label}
@@ -369,18 +370,16 @@ export default function CRMPage() {
                 }
               `}
             >
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-3">
                 <div className={`h-7 w-7 rounded-lg flex items-center justify-center ${s.badgeBg}`}>
                   <Icon className={`h-3.5 w-3.5 ${s.badgeText}`} />
                 </div>
                 {count > 0 && (
-                  <span className={`h-5 min-w-5 px-1 rounded-full flex items-center justify-center text-[10px] font-bold ${s.dotColor} text-white`}>
-                    {count}
-                  </span>
+                  <span className={`h-1.5 w-1.5 rounded-full ${s.dotColor}`} />
                 )}
               </div>
-              <p className="text-xs font-medium truncate">{s.label}</p>
-              <p className="text-2xl font-bold tracking-tight mt-0.5">{count}</p>
+              <p className="eyebrow truncate">{s.label}</p>
+              <p className="display text-3xl tabular-nums mt-1">{count}</p>
             </button>
           )
         })}
@@ -442,12 +441,17 @@ export default function CRMPage() {
         />
       ) : (
         <div className="space-y-2">
-          {filteredDeals.map(deal => {
+          {filteredDeals.map((deal, idx) => {
             const stageInfo = getCRMStageInfo(deal.crmStage)
             const Icon = stageInfo.icon
             return (
               <Link key={deal.id} href={`/pipeline/${deal.id}`}>
                 <div className="group flex items-center gap-4 p-4 rounded-xl border bg-card hover:bg-muted/30 transition-all duration-200 cursor-pointer hover:shadow-sm">
+                  {/* Number prefix */}
+                  <span className="number-prefix text-lg leading-none w-7 text-right shrink-0 tabular-nums">
+                    {String(idx + 1).padStart(2, '0')}
+                  </span>
+
                   {/* Avatar */}
                   <div className="h-11 w-11 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center shrink-0">
                     <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">
@@ -473,7 +477,7 @@ export default function CRMPage() {
                       </span>
                       {deal.scheduled_date && (
                         <span className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />{formatDate(deal.scheduled_date)}
+                          <Calendar className="h-3 w-3" /><span className="tabular-n">{formatDate(deal.scheduled_date)}</span>
                         </span>
                       )}
                       {isGlobal && deal.assigned_to_name && (
@@ -486,7 +490,7 @@ export default function CRMPage() {
 
                   {/* Right side */}
                   <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-xs text-muted-foreground hidden sm:block">{timeAgo(deal.stage_changed_at)}</span>
+                    <span className="tabular-n text-[11px] text-muted-foreground hidden sm:block">{timeAgo(deal.stage_changed_at)}</span>
                     <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-foreground transition-colors" />
                   </div>
                 </div>
