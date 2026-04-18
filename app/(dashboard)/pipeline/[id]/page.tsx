@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +12,14 @@ import {
   ChevronRight, FileCheck, Home, Eye, MessageSquare, XCircle, Tag,
   Edit2, Send, Mic, MicOff, Square
 } from 'lucide-react'
+
+const VisitDataForm = dynamic(
+  () => import('@/components/pipeline/VisitDataForm').then(m => ({ default: m.VisitDataForm })),
+  {
+    ssr: false,
+    loading: () => <Loader2 className="h-6 w-6 animate-spin mx-auto" />,
+  }
+)
 
 const STAGES = [
   { key: 'scheduled', label: 'Coordinada', color: 'bg-blue-500' },
@@ -39,6 +48,9 @@ export default function DealDetailPage() {
   // Followup modal
   const [showFollowupModal, setShowFollowupModal] = useState(false)
   const [followupNotes, setFollowupNotes] = useState('')
+
+  // Visit modal
+  const [showVisitModal, setShowVisitModal] = useState(false)
 
   // Audio transcription
   const [isRecording, setIsRecording] = useState(false)
@@ -293,7 +305,7 @@ export default function DealDetailPage() {
             {/* SCHEDULED: Mark visit done or not done */}
             {deal.stage === 'scheduled' && (
               <div className="space-y-2">
-                <Button onClick={() => handleAdvance('visited')} disabled={advancing} className="w-full" size="lg">
+                <Button onClick={() => setShowVisitModal(true)} disabled={advancing} className="w-full" size="lg">
                   {advancing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
                   Marcar Visita Realizada
                 </Button>
@@ -459,6 +471,30 @@ export default function DealDetailPage() {
                 Confirmar Seguimiento
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Visit Data Modal */}
+      {showVisitModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto" onClick={() => setShowVisitModal(false)}>
+          <div className="bg-background rounded-2xl shadow-xl w-full max-w-4xl my-8 p-6 space-y-4 max-h-[95vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between sticky top-0 bg-background pb-2 border-b z-10">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Eye className="h-5 w-5 text-amber-600" />
+                Datos de la Visita Realizada
+              </h2>
+              <Button variant="ghost" size="sm" onClick={() => setShowVisitModal(false)}>&times;</Button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Recolectá los datos de la propiedad durante la visita. Todo se guarda automáticamente.
+              Al finalizar, el proceso pasa a "Visita Realizada".
+            </p>
+            <VisitDataForm
+              dealId={deal.id}
+              initial={deal.visit_data || null}
+              onCompleted={() => { setShowVisitModal(false); fetchDeal() }}
+            />
           </div>
         </div>
       )}
