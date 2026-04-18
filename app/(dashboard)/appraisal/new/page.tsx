@@ -1027,7 +1027,7 @@ function NewAppraisalPageContent() {
                         size="lg"
                         className="h-14 px-8 rounded-full text-lg shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 bg-primary text-primary-foreground gap-2"
                         onClick={handleCalculate}
-                        disabled={!allComparablesComplete}
+                        disabled={!allComparablesComplete || saveStatus === 'saving'}
                     >
                         <Calculator className="h-5 w-5" />
                         Calcular Valor de Mercado
@@ -1073,12 +1073,19 @@ function NewAppraisalPageContent() {
                                     <Button variant="ghost" size="sm" className="text-red-500 h-auto p-0 underline" onClick={() => {
                                         if (!subject || !valuationResult) return
                                         setSaveStatus('saving')
-                                        const payload = { subject, comparables, overpriced, purchaseProperties, valuationResult }
+                                        const payload = { subject, comparables, overpriced, purchaseProperties, valuationResult, origin: origin || undefined, assignedTo: assignedTo || undefined }
                                         // Use the same id-tracking logic: if we already saved once, UPDATE not INSERT.
                                         const existingId = editId || savedAppraisalId
                                         const promise = existingId
                                             ? updateAppraisal(existingId, payload)
-                                            : saveAppraisal(payload).then(newId => { setSavedAppraisalId(newId); return newId })
+                                            : saveAppraisal(payload).then(newId => {
+                                                setSavedAppraisalId(newId)
+                                                // Mirror the URL update so a refresh after retry stays in edit mode.
+                                                const params = new URLSearchParams(searchParams.toString())
+                                                params.set('editId', newId)
+                                                router.replace(`/appraisal/new?${params.toString()}`, { scroll: false })
+                                                return newId
+                                            })
                                         promise
                                             .then(() => setSaveStatus('saved'))
                                             .catch(() => setSaveStatus('error'))
