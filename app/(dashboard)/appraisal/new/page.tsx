@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { PropertyWizard } from '@/components/appraisal/PropertyWizard'
 import { PropertyForm } from '@/components/appraisal/PropertyForm'
@@ -83,9 +83,13 @@ export default function NewAppraisalPage() {
 
 function NewAppraisalPageContent() {
     const searchParams = useSearchParams()
+    const router = useRouter()
     const editId = searchParams.get('editId')
     const dealId = searchParams.get('dealId')
     const editMode = Boolean(editId)
+    // Local fallback for the saved id, used between the moment we INSERT and
+    // the moment React picks up the new editId from the URL replace.
+    const [savedAppraisalId, setSavedAppraisalId] = useState<string | null>(editId)
 
     const [subject, setSubject] = useState<ScrapedProperty | null>(null)
     const [comparables, setComparables] = useState<ScrapedProperty[]>([])
@@ -379,52 +383,72 @@ function NewAppraisalPageContent() {
             document.getElementById('valuation-report')?.scrollIntoView({ behavior: 'smooth' })
         }, 100)
 
-        // Auto-save to Supabase — update existing or create new based on mode
+        // Auto-save to Supabase — update existing or create new based on mode.
+        // CRITICAL: after the first INSERT we update the URL with ?editId=... so
+        // every subsequent click on "Calcular" goes through updateAppraisal()
+        // instead of creating a duplicate row.
         if (result) {
             setSaveStatus('saving')
             const payload = {
                 subject, comparables, overpriced, purchaseProperties,
                 valuationResult: result, origin: origin || undefined, assignedTo: assignedTo || undefined,
             }
-            const promise = editMode && editId
-                ? updateAppraisal(editId, payload)
+            // Prefer the URL editId, fall back to the locally-tracked id from a
+            // previous insert in this session. Either way, if we already have an
+            // id we MUST update — never insert again.
+            const existingId = editId || savedAppraisalId
+            const isUpdate = Boolean(existingId)
+            const promise = isUpdate
+                ? updateAppraisal(existingId!, payload).then(() => existingId!)
                 : saveAppraisal(payload)
             promise
                 .then(async (appraisalId) => {
                     setSaveStatus('saved')
-                    // Link appraisal to deal without advancing stage (asesor marks it manually)
-                    if (dealId && appraisalId) {
-                        try {
-                            await fetch(`/api/deals/${dealId}/link-appraisal`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ appraisal_id: appraisalId }),
-                            })
-                        } catch (e) { console.error('Error linking deal:', e) }
+
+                    // First insert in this session: capture the new id and reflect
+                    // it in the URL so future calcs are updates, not inserts.
+                    if (!isUpdate && appraisalId) {
+                        setSavedAppraisalId(appraisalId)
+                        const params = new URLSearchParams(searchParams.toString())
+                        params.set('editId', appraisalId)
+                        router.replace(`/appraisal/new?${params.toString()}`, { scroll: false })
                     }
-                    // Auto-create deal for tasaciones without a process
-                    if (!dealId && !editMode && appraisalId && subject) {
-                        try {
-                            await fetch('/api/deals', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    contact_name: subject.title || subject.location || 'Sin nombre',
-                                    property_address: subject.location || subject.title || '',
-                                    origin: origin || 'historico',
-                                }),
-                            }).then(async (res) => {
+
+                    // Side-effects (link to deal, auto-create deal) only run on
+                    // the FIRST insert — guarded by !isUpdate to avoid creating
+                    // multiple deals for the same appraisal across recalcs.
+                    if (!isUpdate && appraisalId) {
+                        // Link appraisal to deal without advancing stage (asesor marks it manually)
+                        if (dealId) {
+                            try {
+                                await fetch(`/api/deals/${dealId}/link-appraisal`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ appraisal_id: appraisalId }),
+                                })
+                            } catch (e) { console.error('Error linking deal:', e) }
+                        } else if (subject) {
+                            // Auto-create deal for tasaciones without a process
+                            try {
+                                const res = await fetch('/api/deals', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        contact_name: subject.title || subject.location || 'Sin nombre',
+                                        property_address: subject.location || subject.title || '',
+                                        origin: origin || 'historico',
+                                    }),
+                                })
                                 if (res.ok) {
                                     const { id: newDealId } = await res.json()
-                                    // Link the appraisal to the auto-created deal
                                     await fetch(`/api/deals/${newDealId}/advance`, {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({ stage: 'appraisal_sent', appraisal_id: appraisalId }),
                                     })
                                 }
-                            })
-                        } catch (e) { console.error('Error auto-creating deal:', e) }
+                            } catch (e) { console.error('Error auto-creating deal:', e) }
+                        }
                     }
                 })
                 .catch((err) => {
@@ -1049,7 +1073,13 @@ function NewAppraisalPageContent() {
                                     <Button variant="ghost" size="sm" className="text-red-500 h-auto p-0 underline" onClick={() => {
                                         if (!subject || !valuationResult) return
                                         setSaveStatus('saving')
-                                        saveAppraisal({ subject, comparables, overpriced, purchaseProperties, valuationResult })
+                                        const payload = { subject, comparables, overpriced, purchaseProperties, valuationResult }
+                                        // Use the same id-tracking logic: if we already saved once, UPDATE not INSERT.
+                                        const existingId = editId || savedAppraisalId
+                                        const promise = existingId
+                                            ? updateAppraisal(existingId, payload)
+                                            : saveAppraisal(payload).then(newId => { setSavedAppraisalId(newId); return newId })
+                                        promise
                                             .then(() => setSaveStatus('saved'))
                                             .catch(() => setSaveStatus('error'))
                                     }}>Reintentar</Button>
