@@ -167,6 +167,13 @@ export default function CRMPage() {
     fetch('/api/users/advisors').then(r => r.ok ? r.json() : { data: [] }).then(j => setAdvisors(j.data || [])).catch(() => {})
   }, [])
 
+  // Abogados don't belong in CRM — they work from /properties/review
+  useEffect(() => {
+    if (userInfo?.role === 'abogado') {
+      router.replace('/properties/review')
+    }
+  }, [userInfo, router])
+
   const fetchData = useCallback(async () => {
     setLoading(true)
     const params = new URLSearchParams()
@@ -195,16 +202,22 @@ export default function CRMPage() {
   useEffect(() => { if (userInfo) fetchData() }, [fetchData, userInfo])
 
   const dealsWithCRM = deals.map(d => ({ ...d, crmStage: deriveCRMStage(d) }))
-  const filteredDeals = filterCRMStage
-    ? dealsWithCRM.filter(d => d.crmStage === filterCRMStage)
+
+  // Asesor role: hide 'solicitud' stage entirely (they only work from coordinada onward)
+  const roleFilteredDeals = userInfo?.role === 'asesor'
+    ? dealsWithCRM.filter(d => d.crmStage !== 'solicitud')
     : dealsWithCRM
 
-  const stageCounts = dealsWithCRM.reduce((acc, d) => {
+  const filteredDeals = filterCRMStage
+    ? roleFilteredDeals.filter(d => d.crmStage === filterCRMStage)
+    : roleFilteredDeals
+
+  const stageCounts = roleFilteredDeals.reduce((acc, d) => {
     acc[d.crmStage] = (acc[d.crmStage] || 0) + 1
     return acc
   }, {} as Record<string, number>)
 
-  const totalDeals = dealsWithCRM.length
+  const totalDeals = roleFilteredDeals.length
   const isGlobal = userInfo && ['dueno', 'admin', 'coordinador'].includes(userInfo.role)
 
   const columns: Column<(typeof dealsWithCRM)[0]>[] = [
@@ -291,7 +304,9 @@ export default function CRMPage() {
 
       {/* ── Stage Pipeline ──────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 lg:grid-cols-9">
-        {CRM_STAGES.map((s) => {
+        {CRM_STAGES
+          .filter(s => !(userInfo?.role === 'asesor' && s.key === 'solicitud'))
+          .map((s) => {
           const count = stageCounts[s.key] || 0
           const isActive = filterCRMStage === s.key
           const Icon = s.icon
