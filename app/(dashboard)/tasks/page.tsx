@@ -10,10 +10,10 @@ import {
   AlertTriangle, ChevronRight, Bell
 } from 'lucide-react'
 
-const TYPE_CONFIG: Record<string, { icon: typeof Bell; color: string; label: string }> = {
+const TYPE_CONFIG: Record<string, { icon: typeof Bell; color: string; label: string; urgent?: boolean }> = {
   update_contact: { icon: User, color: 'bg-amber-100 text-amber-800', label: 'Actualizar Contacto' },
-  new_assignment: { icon: FileCheck, color: 'bg-blue-100 text-blue-800', label: 'Nueva Asignacion' },
-  review_property: { icon: Scale, color: 'bg-purple-100 text-purple-800', label: 'Revision Legal' },
+  new_assignment: { icon: FileCheck, color: 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white', label: 'Tasación Coordinada', urgent: true },
+  review_property: { icon: Scale, color: 'bg-purple-100 text-purple-800', label: 'Revisión Legal' },
   rejected_docs: { icon: AlertTriangle, color: 'bg-red-100 text-red-800', label: 'Docs Rechazados' },
 }
 
@@ -59,7 +59,14 @@ export default function TasksPage() {
     const status = filter === 'all' ? '' : filter
     fetch(`/api/tasks?user_id=${userInfo.id}${status ? `&status=${status}` : ''}`)
       .then(r => r.json())
-      .then(({ data }) => setTasks(data || []))
+      .then(({ data }) => {
+        const sorted = (data || []).slice().sort((a: Task, b: Task) => {
+          const aUrgent = a.type === 'new_assignment' ? 1 : 0
+          const bUrgent = b.type === 'new_assignment' ? 1 : 0
+          return bUrgent - aUrgent
+        })
+        setTasks(sorted)
+      })
       .catch(err => console.error(err))
       .finally(() => setLoading(false))
   }, [userInfo, filter])
@@ -110,15 +117,19 @@ export default function TasksPage() {
             const link = getTaskLink(task)
 
             return (
-              <Card key={task.id} className="hover:bg-muted/30 transition-colors">
+              <Card
+                key={task.id}
+                className={`transition-all ${config.urgent ? 'border-2 border-blue-500 shadow-lg ring-2 ring-blue-500/20 hover:shadow-xl' : 'hover:bg-muted/30'}`}
+              >
                 <CardContent className="flex items-center gap-4 py-3">
-                  <div className={`h-10 w-10 rounded-full flex items-center justify-center ${config.color}`}>
+                  <div className={`h-10 w-10 rounded-full flex items-center justify-center ${config.color} ${config.urgent ? 'animate-pulse shadow-md' : ''}`}>
                     <Icon className="h-5 w-5" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="font-medium">{task.title}</span>
-                      <Badge variant="secondary" className="text-xs">{config.label}</Badge>
+                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                      <span className={`font-medium ${config.urgent ? 'text-blue-900 dark:text-blue-100 font-semibold' : ''}`}>{task.title}</span>
+                      <Badge variant={config.urgent ? 'default' : 'secondary'} className={`text-xs ${config.urgent ? 'bg-blue-600' : ''}`}>{config.label}</Badge>
+                      {config.urgent && <Badge variant="destructive" className="text-xs animate-pulse">¡Acción requerida!</Badge>}
                     </div>
                     {task.description && <p className="text-sm text-muted-foreground truncate">{task.description}</p>}
                     <p className="text-xs text-muted-foreground mt-0.5">{formatDate(task.created_at)}</p>
@@ -135,7 +146,9 @@ export default function TasksPage() {
                       </>
                     )}
                     <Link href={link}>
-                      <Button size="sm" variant="ghost"><ChevronRight className="h-4 w-4" /></Button>
+                      <Button size="sm" variant={config.urgent ? 'default' : 'ghost'} className={config.urgent ? 'bg-blue-600 hover:bg-blue-700' : ''}>
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
                     </Link>
                   </div>
                 </CardContent>

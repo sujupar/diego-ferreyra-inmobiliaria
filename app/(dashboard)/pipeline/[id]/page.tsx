@@ -218,6 +218,25 @@ export default function DealDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Propiedad */}
+      <Card>
+        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Home className="h-5 w-5" />Propiedad</CardTitle></CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <div className="grid grid-cols-2 gap-2">
+            <span className="text-muted-foreground">Dirección:</span><span className="font-medium">{deal.property_address}</span>
+            {deal.property_type && (
+              <>
+                <span className="text-muted-foreground">Tipo:</span>
+                <span className="capitalize">{deal.property_type === 'otro' ? deal.property_type_other : deal.property_type}</span>
+              </>
+            )}
+            {deal.neighborhood && <><span className="text-muted-foreground">Barrio:</span><span>{deal.neighborhood}</span></>}
+            {deal.rooms && <><span className="text-muted-foreground">Ambientes:</span><span>{deal.rooms}</span></>}
+            {deal.covered_area && <><span className="text-muted-foreground">M² cubiertos:</span><span>{deal.covered_area} m²</span></>}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Linked appraisal — always show if exists */}
       {deal.appraisal_id && (
         <Card className="border-purple-200 bg-purple-50/50 dark:bg-purple-950/20">

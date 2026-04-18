@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Loader2, CalendarDays, MapPin, User, FileText, Tag } from 'lucide-react'
+import { Loader2, CalendarDays, MapPin, User, FileText, Tag, Home } from 'lucide-react'
 
 export default function AgendarTasacionPage() {
   const router = useRouter()
@@ -23,6 +23,11 @@ export default function AgendarTasacionPage() {
     origin: '',
     assignedTo: '',
     notes: '',
+    propertyType: '' as '' | 'departamento' | 'casa' | 'ph' | 'otro',
+    propertyTypeOther: '',
+    neighborhood: '',
+    rooms: '' as string,
+    coveredArea: '' as string,
   })
 
   useEffect(() => {
@@ -54,6 +59,11 @@ export default function AgendarTasacionPage() {
           origin: form.origin || null,
           assigned_to: form.assignedTo || null,
           notes: form.notes || null,
+          property_type: form.propertyType,
+          property_type_other: form.propertyType === 'otro' ? form.propertyTypeOther : null,
+          neighborhood: form.neighborhood,
+          rooms: form.rooms ? parseInt(form.rooms, 10) : null,
+          covered_area: form.coveredArea ? parseFloat(form.coveredArea) : null,
         }),
       })
 
@@ -159,6 +169,90 @@ export default function AgendarTasacionPage() {
             <div className="space-y-2">
               <Label htmlFor="contactEmail">Email</Label>
               <Input id="contactEmail" type="email" value={form.contactEmail} onChange={e => updateField('contactEmail', e.target.value)} placeholder="juan@email.com" />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Datos de la Propiedad */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Home className="h-5 w-5" />
+              Datos de la Propiedad
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="propertyType">Tipo de Propiedad *</Label>
+                <select
+                  id="propertyType"
+                  value={form.propertyType}
+                  onChange={e => updateField('propertyType', e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  required
+                >
+                  <option value="">Seleccionar...</option>
+                  <option value="departamento">Departamento</option>
+                  <option value="casa">Casa</option>
+                  <option value="ph">PH</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </div>
+              {form.propertyType === 'otro' && (
+                <div className="space-y-2">
+                  <Label htmlFor="propertyTypeOther">Especificar tipo *</Label>
+                  <Input
+                    id="propertyTypeOther"
+                    value={form.propertyTypeOther}
+                    onChange={e => updateField('propertyTypeOther', e.target.value)}
+                    placeholder="Ej: Local comercial, Terreno..."
+                    required
+                  />
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="neighborhood">Barrio *</Label>
+                <Input
+                  id="neighborhood"
+                  value={form.neighborhood}
+                  onChange={e => updateField('neighborhood', e.target.value)}
+                  placeholder="Ej: Palermo, Belgrano, CABA"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="rooms">Cantidad de Ambientes *</Label>
+                <select
+                  id="rooms"
+                  value={form.rooms}
+                  onChange={e => updateField('rooms', e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  required
+                >
+                  <option value="">Seleccionar...</option>
+                  <option value="1">1 ambiente (monoambiente)</option>
+                  <option value="2">2 ambientes</option>
+                  <option value="3">3 ambientes</option>
+                  <option value="4">4 ambientes</option>
+                  <option value="5">5 ambientes</option>
+                  <option value="6">6 o más</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="coveredArea">
+                  Metros cuadrados cubiertos <span className="text-muted-foreground text-xs">(opcional)</span>
+                </Label>
+                <Input
+                  id="coveredArea"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={form.coveredArea}
+                  onChange={e => updateField('coveredArea', e.target.value)}
+                  placeholder="Ej: 75"
+                />
+              </div>
             </div>
           </CardContent>
         </Card>

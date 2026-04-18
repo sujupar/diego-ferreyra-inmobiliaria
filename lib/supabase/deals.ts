@@ -25,6 +25,11 @@ export interface DealInput {
   assigned_to?: string
   created_by?: string
   notes?: string
+  property_type: 'departamento' | 'casa' | 'ph' | 'otro'
+  property_type_other?: string | null
+  neighborhood: string
+  rooms: number
+  covered_area?: number | null
 }
 
 export async function createDeal(input: DealInput) {
