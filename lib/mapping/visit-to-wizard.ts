@@ -13,17 +13,20 @@
 //     images }
 //
 // Source types are defined in `types/visit-data.types.ts`
-// (SaleVisitData). Enums differ between visit and wizard, so we translate:
+// (SaleVisitData). As of the Venta/Compra template alignment, Quality and
+// ConservationState on the visit side match the wizard's enums 1-to-1. Only
+// Disposition still needs translation (Spanish visit tokens → English wizard
+// codes):
 //
 //   disposition:   frente → FRONT, contrafrente → BACK, lateral → LATERAL, interno → INTERNAL
-//   quality:       6-level scale (baja..premium) collapsed onto wizard's 5-level
-//                  ECONOMIC..EXCELLENT. `media-baja` and `media` both map to
-//                  GOOD_ECONOMIC because the wizard has no equivalent mid-low bucket.
-//   conservation:  visit uses descriptive tags (a_refaccionar/bueno/muy_bueno/
-//                  excelente/a_estrenar). We map each to the closest Ross-Heidecke
-//                  state the wizard exposes. `a_refaccionar` → STATE_3
-//                  (reparaciones sencillas) is a deliberate middle-ground choice;
-//                  the asesor can revise it in the wizard step 5.
+//   quality:       5-level scale aligned with wizard — direct passthrough
+//                  (economica → ECONOMIC, buena_economica → GOOD_ECONOMIC,
+//                   buena → GOOD, muy_buena → VERY_GOOD, excelente → EXCELLENT).
+//   conservation:  9-level Ross-Heidecke scale aligned with wizard — direct
+//                  passthrough (estado_1 → STATE_1, estado_1_5 → STATE_1_5, …,
+//                   estado_5 → STATE_5). Decision: Option A (extend visit to 9
+//                  states matching the wizard) — no data loss, no semantic
+//                  collapse; the wizard already exposes all 9 states.
 //
 // Fields in SaleVisitData that the wizard does not support (property_type,
 // terrain_m2, is_refurbished, orientation, construction_features, reason_for_sale,
@@ -76,31 +79,31 @@ function mapDisposition(d: Disposition | null | undefined): DispositionType | ''
 }
 
 function mapQuality(q: Quality | null | undefined): QualityType | '' {
-  // Visit has 6 buckets, wizard has 5. Both `media-baja` and `media` collapse
-  // onto GOOD_ECONOMIC (the wizard's neutral middle). `premium` and `alta`
-  // collapse onto EXCELLENT/VERY_GOOD respectively.
-  switch (q) {
-    case 'baja': return 'ECONOMIC'
-    case 'media-baja': return 'GOOD_ECONOMIC'
-    case 'media': return 'GOOD_ECONOMIC'
-    case 'media-alta': return 'GOOD'
-    case 'alta': return 'VERY_GOOD'
-    case 'premium': return 'EXCELLENT'
-    default: return ''
+  if (!q) return ''
+  const map: Record<Quality, QualityType> = {
+    economica: 'ECONOMIC',
+    buena_economica: 'GOOD_ECONOMIC',
+    buena: 'GOOD',
+    muy_buena: 'VERY_GOOD',
+    excelente: 'EXCELLENT',
   }
+  return map[q]
 }
 
 function mapConservation(c: ConservationState | null | undefined): ConservationStateType | '' {
-  // Visit uses descriptive categories; wizard uses Ross-Heidecke states 1..5
-  // with half-steps. We pick the closest integer-state; asesor can refine.
-  switch (c) {
-    case 'a_estrenar': return 'STATE_1'
-    case 'excelente': return 'STATE_1_5'
-    case 'muy_bueno': return 'STATE_2'
-    case 'bueno': return 'STATE_2_5'
-    case 'a_refaccionar': return 'STATE_3'
-    default: return ''
+  if (!c) return ''
+  const map: Record<ConservationState, ConservationStateType> = {
+    estado_1: 'STATE_1',
+    estado_1_5: 'STATE_1_5',
+    estado_2: 'STATE_2',
+    estado_2_5: 'STATE_2_5',
+    estado_3: 'STATE_3',
+    estado_3_5: 'STATE_3_5',
+    estado_4: 'STATE_4',
+    estado_4_5: 'STATE_4_5',
+    estado_5: 'STATE_5',
   }
+  return map[c]
 }
 
 // Convert a nullable number from SaleVisitData to the wizard's `number | ''`

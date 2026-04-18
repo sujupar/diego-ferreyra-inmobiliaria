@@ -27,10 +27,19 @@ const EMPTY_SALE: SaleVisitData = {
 
 const EMPTY_PURCHASE: PurchaseVisitData = {
   interested_in_purchase: false,
-  property_type_target: null, rooms_target: null,
+  property_type_target: null,
+  property_type_other: null,
+  neighborhood_target: null,
+  rooms_target: null, bedrooms_target: null, bathrooms_target: null, garages_target: null,
+  covered_m2_target: null, semi_covered_m2_target: null, uncovered_m2_target: null,
+  total_m2_target: null, terrain_m2_target: null,
+  age_years_target: null, is_refurbished_target: false,
+  orientation_target: null, floor_target: null, total_floors_target: null,
+  disposition_target: null, quality_target: null, conservation_target: null,
+  construction_features_target: [],
+  stamps_amount: null, fees_amount: null,
   budget_min: null, budget_max: null, budget_currency: 'USD',
-  neighborhoods_target: [], required_features: [],
-  purchase_timeframe: null, extra_notes: null,
+  purchase_timeframe: null, required_features: [], extra_notes: null,
 }
 
 interface Props {
@@ -264,17 +273,25 @@ function SaleSection({
           <div><Label>Calidad</Label>
             <select value={sale.quality ?? ''} onChange={e => onUpdate('quality', (e.target.value || null) as Quality | null)} className="w-full rounded-md border px-3 py-2">
               <option value="">Sin definir</option>
-              {['baja','media-baja','media','media-alta','alta','premium'].map(q => <option key={q} value={q}>{q}</option>)}
+              <option value="economica">Económica</option>
+              <option value="buena_economica">Buena Económica</option>
+              <option value="buena">Buena</option>
+              <option value="muy_buena">Muy Buena</option>
+              <option value="excelente">Excelente</option>
             </select>
           </div>
           <div><Label>Estado conservación</Label>
             <select value={sale.conservation ?? ''} onChange={e => onUpdate('conservation', (e.target.value || null) as ConservationState | null)} className="w-full rounded-md border px-3 py-2">
               <option value="">Sin definir</option>
-              <option value="a_refaccionar">A refaccionar</option>
-              <option value="bueno">Bueno</option>
-              <option value="muy_bueno">Muy bueno</option>
-              <option value="excelente">Excelente</option>
-              <option value="a_estrenar">A estrenar</option>
+              <option value="estado_1">Estado 1 — Nuevo (0%)</option>
+              <option value="estado_1_5">Estado 1.5 — Entre nuevo y normal</option>
+              <option value="estado_2">Estado 2 — Normal (2.52%)</option>
+              <option value="estado_2_5">Estado 2.5 — Entre normal y reparaciones</option>
+              <option value="estado_3">Estado 3 — Reparaciones (18.10%)</option>
+              <option value="estado_3_5">Estado 3.5 — Entre sencillas e importantes</option>
+              <option value="estado_4">Estado 4 — Reparaciones Importantes (52.6%)</option>
+              <option value="estado_4_5">Estado 4.5 — Entre importantes y demolición</option>
+              <option value="estado_5">Estado 5 — Demolición (100%)</option>
             </select>
           </div>
         </CardContent>
@@ -382,8 +399,16 @@ function PurchaseSection({ purchase, onUpdate }: {
   purchase: PurchaseVisitData
   onUpdate: <K extends keyof PurchaseVisitData>(k: K, v: PurchaseVisitData[K]) => void
 }) {
+  const toggleFeatureTarget = (f: string) => {
+    const next = purchase.construction_features_target.includes(f)
+      ? purchase.construction_features_target.filter(x => x !== f)
+      : [...purchase.construction_features_target, f]
+    onUpdate('construction_features_target', next)
+  }
+
   return (
     <div className="space-y-4">
+      {/* Card 1: Interés */}
       <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
         <CardContent className="pt-6 space-y-3">
           <div className="flex items-center gap-2">
@@ -406,8 +431,9 @@ function PurchaseSection({ purchase, onUpdate }: {
 
       {purchase.interested_in_purchase && (
         <>
+          {/* Card 2: Tipo y Ubicación */}
           <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
-            <CardHeader><SectionTitle icon={ShoppingCart}>Preferencias de Compra</SectionTitle></CardHeader>
+            <CardHeader><SectionTitle icon={ShoppingCart}>Tipo y Ubicación</SectionTitle></CardHeader>
             <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
               <div><Label>Tipo buscado</Label>
                 <select value={purchase.property_type_target ?? ''} onChange={e => onUpdate('property_type_target', (e.target.value || null) as PropertyTypeVenta | null)} className="w-full rounded-md border px-3 py-2">
@@ -418,45 +444,160 @@ function PurchaseSection({ purchase, onUpdate }: {
                   <option value="otro">Otro</option>
                 </select>
               </div>
-              <div><Label>Ambientes</Label>
-                <Input type="number" value={purchase.rooms_target ?? ''} onChange={e => onUpdate('rooms_target', e.target.value ? +e.target.value : null)} />
+              {purchase.property_type_target === 'otro' && (
+                <div><Label>Especificar</Label>
+                  <Input value={purchase.property_type_other || ''} onChange={e => onUpdate('property_type_other', e.target.value || null)} />
+                </div>
+              )}
+              <div><Label>Barrio buscado</Label>
+                <Input
+                  value={purchase.neighborhood_target ?? ''}
+                  onChange={e => onUpdate('neighborhood_target', e.target.value || null)}
+                  placeholder="Palermo, Belgrano, Recoleta..."
+                />
               </div>
-              <div><Label>Plazo de compra</Label>
-                <select value={purchase.purchase_timeframe ?? ''} onChange={e => onUpdate('purchase_timeframe', e.target.value || null)} className="w-full rounded-md border px-3 py-2">
+            </CardContent>
+          </Card>
+
+          {/* Card 3: Características Básicas */}
+          <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
+            <CardHeader><SectionTitle icon={Home}>Características Básicas</SectionTitle></CardHeader>
+            <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              <div><Label>Ambientes</Label>
+                <Input type="number" min="0" value={purchase.rooms_target ?? ''} onChange={e => onUpdate('rooms_target', e.target.value ? +e.target.value : null)} />
+              </div>
+              <div><Label>Dormitorios</Label>
+                <Input type="number" min="0" value={purchase.bedrooms_target ?? ''} onChange={e => onUpdate('bedrooms_target', e.target.value ? +e.target.value : null)} />
+              </div>
+              <div><Label>Baños</Label>
+                <Input type="number" min="0" value={purchase.bathrooms_target ?? ''} onChange={e => onUpdate('bathrooms_target', e.target.value ? +e.target.value : null)} />
+              </div>
+              <div><Label>Cocheras</Label>
+                <Input type="number" min="0" value={purchase.garages_target ?? ''} onChange={e => onUpdate('garages_target', e.target.value ? +e.target.value : null)} />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Card 4: Metrajes (m²) */}
+          <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
+            <CardHeader><SectionTitle icon={Ruler}>Metrajes (m²)</SectionTitle></CardHeader>
+            <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              <div><Label>Cubiertos</Label><Input type="number" value={purchase.covered_m2_target ?? ''} onChange={e => onUpdate('covered_m2_target', e.target.value ? +e.target.value : null)} /></div>
+              <div><Label>Semi-cubiertos</Label><Input type="number" value={purchase.semi_covered_m2_target ?? ''} onChange={e => onUpdate('semi_covered_m2_target', e.target.value ? +e.target.value : null)} /></div>
+              <div><Label>Descubiertos</Label><Input type="number" value={purchase.uncovered_m2_target ?? ''} onChange={e => onUpdate('uncovered_m2_target', e.target.value ? +e.target.value : null)} /></div>
+              <div><Label>Totales</Label><Input type="number" value={purchase.total_m2_target ?? ''} onChange={e => onUpdate('total_m2_target', e.target.value ? +e.target.value : null)} /></div>
+              <div><Label>Terreno</Label><Input type="number" value={purchase.terrain_m2_target ?? ''} onChange={e => onUpdate('terrain_m2_target', e.target.value ? +e.target.value : null)} /></div>
+            </CardContent>
+          </Card>
+
+          {/* Card 5: Antigüedad, Orientación, Estado */}
+          <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
+            <CardHeader><SectionTitle icon={Building2}>Antigüedad, Orientación, Estado</SectionTitle></CardHeader>
+            <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              <div><Label>Antigüedad (años)</Label>
+                <Input type="number" min="0" value={purchase.age_years_target ?? ''} onChange={e => onUpdate('age_years_target', e.target.value ? +e.target.value : null)} />
+              </div>
+              <div><Label>¿Refaccionado?</Label>
+                <div className="flex items-center gap-2 pt-2">
+                  <input type="checkbox" checked={purchase.is_refurbished_target} onChange={e => onUpdate('is_refurbished_target', e.target.checked)} className="h-4 w-4 rounded" />
+                  <span>Sí, refaccionado</span>
+                </div>
+              </div>
+              <div><Label>Orientación</Label>
+                <select value={purchase.orientation_target ?? ''} onChange={e => onUpdate('orientation_target', (e.target.value || null) as Orientation | null)} className="w-full rounded-md border px-3 py-2">
                   <option value="">Sin definir</option>
-                  <option value="urgente">Urgente</option>
-                  <option value="1-3_meses">1–3 meses</option>
-                  <option value="3-6_meses">3–6 meses</option>
-                  <option value="6+_meses">Más de 6 meses</option>
+                  {['N','S','E','O','NE','NO','SE','SO'].map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              <div><Label>Piso</Label><Input type="number" value={purchase.floor_target ?? ''} onChange={e => onUpdate('floor_target', e.target.value ? +e.target.value : null)} /></div>
+              <div><Label>Plantas totales</Label><Input type="number" value={purchase.total_floors_target ?? ''} onChange={e => onUpdate('total_floors_target', e.target.value ? +e.target.value : null)} /></div>
+              <div><Label>Disposición</Label>
+                <select value={purchase.disposition_target ?? ''} onChange={e => onUpdate('disposition_target', (e.target.value || null) as Disposition | null)} className="w-full rounded-md border px-3 py-2">
+                  <option value="">Sin definir</option>
+                  <option value="frente">Frente</option>
+                  <option value="contrafrente">Contrafrente</option>
+                  <option value="interno">Interno</option>
+                  <option value="lateral">Lateral</option>
+                </select>
+              </div>
+              <div><Label>Calidad</Label>
+                <select value={purchase.quality_target ?? ''} onChange={e => onUpdate('quality_target', (e.target.value || null) as Quality | null)} className="w-full rounded-md border px-3 py-2">
+                  <option value="">Sin definir</option>
+                  <option value="economica">Económica</option>
+                  <option value="buena_economica">Buena Económica</option>
+                  <option value="buena">Buena</option>
+                  <option value="muy_buena">Muy Buena</option>
+                  <option value="excelente">Excelente</option>
+                </select>
+              </div>
+              <div><Label>Estado conservación</Label>
+                <select value={purchase.conservation_target ?? ''} onChange={e => onUpdate('conservation_target', (e.target.value || null) as ConservationState | null)} className="w-full rounded-md border px-3 py-2">
+                  <option value="">Sin definir</option>
+                  <option value="estado_1">Estado 1 — Nuevo (0%)</option>
+                  <option value="estado_1_5">Estado 1.5 — Entre nuevo y normal</option>
+                  <option value="estado_2">Estado 2 — Normal (2.52%)</option>
+                  <option value="estado_2_5">Estado 2.5 — Entre normal y reparaciones</option>
+                  <option value="estado_3">Estado 3 — Reparaciones (18.10%)</option>
+                  <option value="estado_3_5">Estado 3.5 — Entre sencillas e importantes</option>
+                  <option value="estado_4">Estado 4 — Reparaciones Importantes (52.6%)</option>
+                  <option value="estado_4_5">Estado 4.5 — Entre importantes y demolición</option>
+                  <option value="estado_5">Estado 5 — Demolición (100%)</option>
                 </select>
               </div>
             </CardContent>
           </Card>
 
+          {/* Card 6: Características Constructivas */}
           <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
-            <CardHeader><SectionTitle icon={Wallet}>Presupuesto</SectionTitle></CardHeader>
-            <CardContent className="grid grid-cols-3 gap-3 text-sm">
-              <div><Label>Mínimo</Label><Input type="number" value={purchase.budget_min ?? ''} onChange={e => onUpdate('budget_min', e.target.value ? +e.target.value : null)} /></div>
-              <div><Label>Máximo</Label><Input type="number" value={purchase.budget_max ?? ''} onChange={e => onUpdate('budget_max', e.target.value ? +e.target.value : null)} /></div>
+            <CardHeader><SectionTitle icon={Hammer}>Características Constructivas</SectionTitle></CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
+              {CONSTRUCTION_FEATURES_OPTIONS.map(f => (
+                <Badge
+                  key={f}
+                  variant={purchase.construction_features_target.includes(f) ? 'default' : 'outline'}
+                  className="cursor-pointer transition-all duration-200 hover:shadow-sm"
+                  onClick={() => toggleFeatureTarget(f)}
+                >
+                  {f}
+                </Badge>
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Card 7: Presupuesto e Impositivo */}
+          <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
+            <CardHeader><SectionTitle icon={Wallet}>Presupuesto e Impositivo</SectionTitle></CardHeader>
+            <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              <div><Label>Presupuesto Mínimo</Label><Input type="number" value={purchase.budget_min ?? ''} onChange={e => onUpdate('budget_min', e.target.value ? +e.target.value : null)} /></div>
+              <div><Label>Presupuesto Máximo</Label><Input type="number" value={purchase.budget_max ?? ''} onChange={e => onUpdate('budget_max', e.target.value ? +e.target.value : null)} /></div>
               <div><Label>Moneda</Label>
                 <select value={purchase.budget_currency} onChange={e => onUpdate('budget_currency', e.target.value as 'USD' | 'ARS')} className="w-full rounded-md border px-3 py-2">
                   <option value="USD">USD</option>
                   <option value="ARS">ARS</option>
                 </select>
               </div>
+              <div><Label>IMP Sellos (monto)</Label>
+                <Input type="number" value={purchase.stamps_amount ?? ''} onChange={e => onUpdate('stamps_amount', e.target.value ? +e.target.value : null)} />
+              </div>
+              <div><Label>Honorarios (monto)</Label>
+                <Input type="number" value={purchase.fees_amount ?? ''} onChange={e => onUpdate('fees_amount', e.target.value ? +e.target.value : null)} />
+              </div>
             </CardContent>
           </Card>
 
+          {/* Card 8: Plazo y Notas */}
           <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
-            <CardHeader><SectionTitle icon={MapPin}>Zonas y Requisitos</SectionTitle></CardHeader>
-            <CardContent className="space-y-3">
+            <CardHeader><SectionTitle icon={Clock}>Plazo y Notas</SectionTitle></CardHeader>
+            <CardContent className="space-y-3 text-sm">
               <div>
-                <Label>Barrios de interés (separados por coma)</Label>
-                <Input
-                  value={purchase.neighborhoods_target.join(', ')}
-                  onChange={e => onUpdate('neighborhoods_target', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                  placeholder="Palermo, Belgrano, Recoleta..."
-                />
+                <Label>Plazo de compra</Label>
+                <select value={purchase.purchase_timeframe ?? ''} onChange={e => onUpdate('purchase_timeframe', e.target.value || null)} className="w-full rounded-md border px-3 py-2">
+                  <option value="">Sin definir</option>
+                  <option value="urgente">Urgente (&lt;1 mes)</option>
+                  <option value="1-3_meses">1–3 meses</option>
+                  <option value="3-6_meses">3–6 meses</option>
+                  <option value="6+_meses">Más de 6 meses</option>
+                </select>
               </div>
               <div>
                 <Label>Características requeridas (separadas por coma)</Label>

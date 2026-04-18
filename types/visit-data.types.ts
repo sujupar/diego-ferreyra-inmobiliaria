@@ -5,8 +5,8 @@
 export type PropertyTypeVenta = 'departamento' | 'casa' | 'ph' | 'otro'
 export type Disposition = 'frente' | 'contrafrente' | 'interno' | 'lateral'
 export type Orientation = 'N' | 'S' | 'E' | 'O' | 'NE' | 'NO' | 'SE' | 'SO'
-export type Quality = 'baja' | 'media-baja' | 'media' | 'media-alta' | 'alta' | 'premium'
-export type ConservationState = 'a_refaccionar' | 'bueno' | 'muy_bueno' | 'excelente' | 'a_estrenar'
+export type Quality = 'economica' | 'buena_economica' | 'buena' | 'muy_buena' | 'excelente'
+export type ConservationState = 'estado_1' | 'estado_1_5' | 'estado_2' | 'estado_2_5' | 'estado_3' | 'estado_3_5' | 'estado_4' | 'estado_4_5' | 'estado_5'
 
 export interface SaleVisitData {
   property_type: PropertyTypeVenta
@@ -37,14 +37,36 @@ export interface SaleVisitData {
 
 export interface PurchaseVisitData {
   interested_in_purchase: boolean
+  // Características de la propiedad que BUSCA comprar
   property_type_target: PropertyTypeVenta | null
+  property_type_other?: string | null
+  neighborhood_target: string | null              // barrio singular (era array)
   rooms_target: number | null
+  bedrooms_target: number | null
+  bathrooms_target: number | null
+  garages_target: number | null
+  covered_m2_target: number | null
+  semi_covered_m2_target: number | null
+  uncovered_m2_target: number | null
+  total_m2_target: number | null
+  terrain_m2_target: number | null
+  age_years_target: number | null
+  is_refurbished_target: boolean
+  orientation_target: Orientation | null
+  floor_target: number | null
+  total_floors_target: number | null
+  disposition_target: Disposition | null
+  quality_target: Quality | null
+  conservation_target: ConservationState | null
+  construction_features_target: string[]
+  // Bloque impositivo
+  stamps_amount: number | null                    // IMP Sellos (monto absoluto)
+  fees_amount: number | null                      // Honorarios (monto absoluto)
   budget_min: number | null
   budget_max: number | null
   budget_currency: 'USD' | 'ARS'
-  neighborhoods_target: string[]
-  required_features: string[]
   purchase_timeframe: string | null
+  required_features: string[]
   extra_notes: string | null
 }
 
