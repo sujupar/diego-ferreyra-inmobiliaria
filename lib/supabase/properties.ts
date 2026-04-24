@@ -1,5 +1,19 @@
 import { createClient } from '@supabase/supabase-js'
 
+/**
+ * Fire N8A (congratulations asesor) + N8B (captación admins) when a property
+ * transitions to status='approved'. Dynamic import to keep this module usable
+ * from scripts/tests that don't include the email stack.
+ */
+async function firePropertyCapturedNotifications(propertyId: string) {
+  try {
+    const mod = await import('@/lib/email/notifications/property-captured')
+    await mod.notifyPropertyCaptured(propertyId)
+  } catch (err) {
+    console.error('[notify] property-captured hook failed:', err)
+  }
+}
+
 function getAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -117,6 +131,15 @@ export async function reviewProperty(id: string, approved: boolean, reviewerId: 
     })
     .eq('id', id)
   if (error) throw error
+
+  // N8A+N8B: captación 100% solo cuando status efectivamente pasa a 'approved'
+  // (requiere fotos + legal). Si legal aprueba pero faltan fotos, el disparo
+  // real ocurre después en checkAndAdvanceProperty() al subir la primera foto.
+  // UNIQUE INDEX garantiza que aunque este hook y el de upload/route.ts
+  // disparen la misma notificación, solo se envía una vez por destinatario.
+  if (finalStatus === 'approved' && prop.status !== 'approved') {
+    await firePropertyCapturedNotifications(id)
+  }
 }
 
 /** Check if property should auto-advance to approved (both legal + photos done) */
@@ -132,6 +155,8 @@ export async function checkAndAdvanceProperty(id: string) {
       .update({ status: 'approved', updated_at: new Date().toISOString() })
       .eq('id', id)
     if (error) throw error
+    // N8A+N8B: captación 100% desde el camino "fotos después de aprobación legal".
+    await firePropertyCapturedNotifications(id)
     return true
   }
   return false

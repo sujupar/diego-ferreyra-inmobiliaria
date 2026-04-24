@@ -40,7 +40,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'pipeline.schedule', 'pipeline.view_all', 'pipeline.advance',
     'appraisal.view_all',
     'properties.view_all', 'properties.create',
-    'metrics.view', 'users.manage',
+    'metrics.view', 'settings.manage', 'users.manage',
   ],
   coordinador: [
     'pipeline.create', 'pipeline.schedule', 'pipeline.view_all', 'pipeline.advance',

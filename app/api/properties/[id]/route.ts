@@ -3,6 +3,8 @@ import { getProperty, updateProperty } from '@/lib/supabase/properties'
 import { createTaskForRole } from '@/lib/supabase/tasks'
 import { requireAuth } from '@/lib/auth/require-role'
 import { logLegalEvent } from '@/lib/supabase/legal-events'
+import { notifyDocsReadyForLawyer } from '@/lib/email/notifications/docs-ready-for-lawyer'
+import { notifyAdminEmailFailure } from '@/lib/email/notifications/admin-failure-alert'
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -44,6 +46,25 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           notes: null,
         })
       } catch (e) { console.error('logLegalEvent error:', e) }
+
+      // N5: notificar a TODOS los abogados activos. Repetible por ciclo — el
+      // entity_id lleva el número de submissions previas del property para que
+      // cada ciclo re-dispare aunque el property-id sea el mismo. Si falla,
+      // alertamos al admin porque este email es crítico (sin él, el abogado
+      // no sabe que tiene trabajo).
+      try {
+        await notifyDocsReadyForLawyer(id)
+      } catch (err) {
+        console.error('[notify] docs-ready-for-lawyer:', err)
+        try {
+          await notifyAdminEmailFailure({
+            failedNotificationType: 'docs_ready_for_lawyer',
+            entityType: 'property',
+            entityId: id,
+            errors: [err instanceof Error ? err.message : String(err)],
+          })
+        } catch { /* swallow — never recurse on failure alerts */ }
+      }
     }
 
     return NextResponse.json({ success: true })

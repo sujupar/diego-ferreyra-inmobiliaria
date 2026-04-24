@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { updateDealStage, linkAppraisalToDeal, linkPropertyToDeal, getDeal, DealStage } from '@/lib/supabase/deals'
 import { createTaskForRole } from '@/lib/supabase/tasks'
 import { requirePermission } from '@/lib/auth/require-role'
+import { notifyAppraisalSent } from '@/lib/email/notifications/appraisal-sent'
+import { notifyVisitCompleted } from '@/lib/email/notifications/visit-completed'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -31,6 +33,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         })
       } catch (e) { console.error('Task creation error:', e) }
 
+      // N3: tasación entregada — notifica coordinador+admins+dueños con PDF adjunto.
+      try { await notifyAppraisalSent(id, appraisal_id) } catch (err) { console.error('[notify] appraisal-sent:', err) }
+
       return NextResponse.json({ success: true })
     }
 
@@ -42,6 +47,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Otherwise just update the stage
     await updateDealStage(id, stage, notes)
+
+    // N2: visita realizada — notificar coordinador+admins+dueños.
+    if (stage === 'visited') {
+      try { await notifyVisitCompleted(id) } catch (err) { console.error('[notify] visit-completed:', err) }
+    }
+
     return NextResponse.json({ success: true })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error' }, { status: 500 })

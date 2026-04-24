@@ -1,6 +1,26 @@
 import type { Config } from '@netlify/functions'
 import { createClient } from '@supabase/supabase-js'
-import nodemailer from 'nodemailer'
+// Resend via fetch — no SDK import to keep the function bundle lean.
+const RESEND_FROM = process.env.EMAIL_FROM_REPORTS
+  ?? 'Diego Ferreyra Inmobiliaria <reportes@inmodf.com.ar>'
+const RESEND_REPLY_TO = process.env.EMAIL_REPLY_TO
+  ?? 'contacto.julianparra@gmail.com'
+
+async function sendViaResend(opts: { to: string[]; subject: string; html: string }) {
+  if (!process.env.RESEND_API_KEY) throw new Error('RESEND_API_KEY not set')
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ from: RESEND_FROM, to: opts.to, replyTo: RESEND_REPLY_TO, subject: opts.subject, html: opts.html }),
+  })
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`Resend ${res.status}: ${body}`)
+  }
+}
 
 /**
  * Daily Marketing Report - runs at 8:00 AM Argentina (UTC-3)
@@ -549,18 +569,9 @@ export default async function handler() {
   const caSubject = caSubjectParts.length > 0 ? ` | ${caSubjectParts.join(' | ')}` : ''
   const subject = `${subjectPrefix}Diario Marketing — ${totalLeads} leads${caSubject} | CPL ${avgCpl !== null ? fmt(avgCpl) : 'N/A'} | ${fmtDate}`
 
-  // 6. Send email via Gmail SMTP
+  // 6. Send email via Resend
   try {
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
-    })
-    await transporter.sendMail({
-      from: `Diego Ferreyra Inmobiliaria <${process.env.GMAIL_USER}>`,
-      to: reportSettings.recipients.join(', '),
-      subject,
-      html,
-    })
+    await sendViaResend({ to: reportSettings.recipients, subject, html })
 
     await supabase.from('email_report_log').insert({
       report_type: 'daily',

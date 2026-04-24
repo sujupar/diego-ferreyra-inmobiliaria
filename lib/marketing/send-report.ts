@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer'
+import { Resend } from 'resend'
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import type { ReportData, ReportSettings } from './types'
@@ -11,15 +11,18 @@ function getSupabaseAdmin() {
   )
 }
 
-function createTransporter() {
-  return nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD,
-    },
-  })
+let resend: Resend | null = null
+function getResend(): Resend | null {
+  if (resend) return resend
+  if (!process.env.RESEND_API_KEY) return null
+  resend = new Resend(process.env.RESEND_API_KEY)
+  return resend
 }
+
+const FROM = process.env.EMAIL_FROM_REPORTS
+  ?? 'Diego Ferreyra Inmobiliaria <reportes@inmodf.com.ar>'
+const REPLY_TO = process.env.EMAIL_REPLY_TO
+  ?? 'contacto.julianparra@gmail.com'
 
 /**
  * Get report settings (recipients, enabled flags) from Supabase
@@ -73,14 +76,14 @@ export async function updateReportSettings(
 }
 
 /**
- * Send a marketing report email via Gmail SMTP
+ * Send a marketing report email via Resend. Logs result to email_report_log.
  */
 export async function sendReport(reportData: ReportData): Promise<{ success: boolean; error?: string }> {
-  const gmailUser = process.env.GMAIL_USER
-  const gmailPass = process.env.GMAIL_APP_PASSWORD
-
-  if (!gmailUser || !gmailPass) {
-    return { success: false, error: 'Missing GMAIL_USER or GMAIL_APP_PASSWORD' }
+  const client = getResend()
+  if (!client) {
+    const msg = 'RESEND_API_KEY not set; cannot send report'
+    console.error(`[send-report] ${msg}`)
+    return { success: false, error: msg }
   }
 
   // Get recipients from settings
@@ -100,13 +103,14 @@ export async function sendReport(reportData: ReportData): Promise<{ success: boo
   const subject = buildReportSubject(reportData)
 
   try {
-    const transporter = createTransporter()
-    await transporter.sendMail({
-      from: `Diego Ferreyra Inmobiliaria <${gmailUser}>`,
-      to: settings.recipients.join(', '),
+    const { data, error } = await client.emails.send({
+      from: FROM,
+      to: settings.recipients,
+      replyTo: REPLY_TO,
       subject,
       html,
     })
+    if (error) throw new Error(error.message)
 
     await logReport(reportData, settings.recipients, subject, 'sent')
     return { success: true }

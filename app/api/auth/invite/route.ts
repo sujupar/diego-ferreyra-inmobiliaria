@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import nodemailer from 'nodemailer'
-import { invitationEmailHtml } from '@/lib/auth/email-templates'
-import { Role } from '@/types/auth.types'
+import { notifyInvitation } from '@/lib/email/notifications/invitation'
 
 function getAdminClient() {
     return createSupabaseClient(
@@ -12,6 +10,15 @@ function getAdminClient() {
         process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 }
+
+const ROLE_LABELS: Record<string, string> = {
+    dueno: 'Dueño',
+    coordinador: 'Coordinador',
+    asesor: 'Asesor',
+    abogado: 'Abogado',
+}
+
+const INVITE_EXPIRES_IN_DAYS = 7
 
 export async function POST(request: NextRequest) {
     try {
@@ -28,7 +35,7 @@ export async function POST(request: NextRequest) {
 
         const { data: profile } = await adminClient
             .from('profiles')
-            .select('role, full_name')
+            .select('role, full_name, email')
             .eq('id', user.id)
             .single()
 
@@ -61,52 +68,32 @@ export async function POST(request: NextRequest) {
 
         if (invError) throw invError
 
-        const baseUrl = request.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || ''
+        const baseUrl = request.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'https://inmodf.com.ar'
         const acceptUrl = `${baseUrl}/accept-invite?token=${invitation.token}`
 
-        // Send email via Gmail SMTP (same as marketing reports)
-        const gmailUser = process.env.GMAIL_USER
-        const gmailPass = process.env.GMAIL_APP_PASSWORD
+        // Send invitation email via Resend. notifyInvitation never throws — it returns
+        // { ok, errors } so we can report the exact failure reason to the UI and fall
+        // back to showing the accept URL if Resend is misconfigured (DNS still
+        // propagating, missing API key, etc.).
+        const result = await notifyInvitation({
+            inviteeEmail: email,
+            roleLabel: ROLE_LABELS[role] || role,
+            inviterName: profile.full_name || 'Administrador',
+            inviterEmail: profile.email,
+            acceptUrl,
+            expiresInDays: INVITE_EXPIRES_IN_DAYS,
+        })
 
-        if (!gmailUser || !gmailPass) {
+        if (!result.ok || result.sent === 0) {
             return NextResponse.json({
                 success: true,
-                warning: 'Invitacion creada pero no hay Gmail configurado. Comparte este link:',
+                warning: 'Invitación creada pero el email falló. Compartí este link manualmente:',
                 acceptUrl,
+                errors: result.errors,
             })
         }
 
-        try {
-            const transporter = nodemailer.createTransport({
-                service: 'gmail',
-                auth: { user: gmailUser, pass: gmailPass },
-            })
-
-            const ROLE_LABELS: Record<string, string> = {
-                dueno: 'Dueño', coordinador: 'Coordinador',
-                asesor: 'Asesor', abogado: 'Abogado',
-            }
-
-            await transporter.sendMail({
-                from: `Diego Ferreyra Inmobiliaria <${gmailUser}>`,
-                to: email,
-                subject: `Invitacion a Diego Ferreyra Inmobiliaria — Rol: ${ROLE_LABELS[role] || role}`,
-                html: invitationEmailHtml({
-                    role: role as Role,
-                    inviterName: profile.full_name,
-                    acceptUrl,
-                }),
-            })
-
-            return NextResponse.json({ success: true })
-        } catch (emailErr) {
-            console.error('Gmail send error:', emailErr)
-            return NextResponse.json({
-                success: true,
-                warning: 'Invitacion creada pero el email fallo. Comparte este link:',
-                acceptUrl,
-            })
-        }
+        return NextResponse.json({ success: true })
     } catch (error: any) {
         console.error('Invite error:', error)
         return NextResponse.json({ error: error.message || 'Error interno' }, { status: 500 })

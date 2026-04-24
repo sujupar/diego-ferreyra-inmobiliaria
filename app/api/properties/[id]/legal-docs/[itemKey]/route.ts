@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { upsertLegalDocItem } from '@/lib/supabase/legal-docs'
+import { upsertLegalDocItem, getLegalDocs } from '@/lib/supabase/legal-docs'
 import { requireAuth } from '@/lib/auth/require-role'
 import { createClient } from '@supabase/supabase-js'
+import { notifyDocsResubmitted } from '@/lib/email/notifications/docs-resubmitted'
 
 function getStorage() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!).storage
@@ -22,6 +23,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
   const { data: { publicUrl } } = bucket.getPublicUrl(path)
 
+  // Capture previous state BEFORE upsert so we can detect rejected→pending
+  // transitions and fire N7 only on genuine resubmissions.
+  let previousStatus: string | null = null
+  let previousReviewerId: string | null = null
+  try {
+    const { docs } = await getLegalDocs(id)
+    previousStatus = docs[itemKey]?.status ?? null
+    previousReviewerId = docs[itemKey]?.reviewed_by ?? null
+  } catch (e) { console.error('[legal-docs upload] previous-state check failed:', e) }
+
   const item = await upsertLegalDocItem(id, itemKey, {
     file_url: publicUrl,
     file_name: file.name,
@@ -31,6 +42,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     reviewer_notes: null,
     reviewed_by: null,
   })
+
+  // N7: asesor resube tras rechazo — notificar al abogado original si lo tenemos,
+  // fallback a todos los abogados activos. Idempotente=false: cada ciclo debe avisar.
+  if (previousStatus === 'rejected') {
+    try {
+      await notifyDocsResubmitted({ propertyId: id, itemKey, previousReviewerId })
+    } catch (err) { console.error('[notify] docs-resubmitted:', err) }
+  }
 
   return NextResponse.json({ data: item })
 }

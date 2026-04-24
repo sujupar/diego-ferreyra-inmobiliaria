@@ -3,6 +3,7 @@ import { createDeal, getDeals } from '@/lib/supabase/deals'
 import { createTask, createTaskForRole } from '@/lib/supabase/tasks'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth, requirePermission } from '@/lib/auth/require-role'
+import { notifyDealCreated } from '@/lib/email/notifications/deal-created'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requirePermission('pipeline.schedule')
+    const user = await requirePermission('pipeline.schedule')
     const body = await request.json()
     const { contact_name, contact_phone, contact_email, property_address, scheduled_date, scheduled_time, origin, assigned_to, notes, property_type, property_type_other, neighborhood, rooms, covered_area } = body
 
@@ -90,7 +91,8 @@ export async function POST(request: NextRequest) {
 
     if (!contactId) throw new Error('No se pudo crear/encontrar el contacto')
 
-    // Create deal
+    // Create deal. created_by persists who coordinated so notifyDealCreated
+    // can resolve the coordinador later even if the cookie session changes.
     const dealId = await createDeal({
       contact_id: contactId,
       property_address,
@@ -98,6 +100,7 @@ export async function POST(request: NextRequest) {
       scheduled_time: scheduled_time || null,
       origin: origin || null,
       assigned_to: assigned_to || null,
+      created_by: user.id,
       notes: notes || null,
       property_type,
       property_type_other: property_type === 'otro' ? property_type_other : null,
@@ -123,6 +126,10 @@ export async function POST(request: NextRequest) {
         // Don't fail the whole request if task creation fails
       }
     }
+
+    // N1: notificar al asesor asignado y a admins+dueños. fire-and-forget con
+    // try/catch para no bloquear la respuesta ante un fallo del proveedor.
+    try { await notifyDealCreated({ dealId }) } catch (err) { console.error('[notify] deal-created:', err) }
 
     return NextResponse.json({ success: true, id: dealId, contact_id: contactId })
   } catch (error) {

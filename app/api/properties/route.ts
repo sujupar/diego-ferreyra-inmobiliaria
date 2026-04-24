@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createProperty, getProperties } from '@/lib/supabase/properties'
+import { requireAuth } from '@/lib/auth/require-role'
+import { notifyPropertyCreated } from '@/lib/email/notifications/property-created'
 
 export async function GET(request: NextRequest) {
   try {
+    await requireAuth()
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status') || undefined
     const origin = searchParams.get('origin') || undefined
@@ -18,8 +21,20 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await requireAuth()
     const body = await request.json()
-    const id = await createProperty(body)
+    // Default assigned_to / created_by to current user unless the caller
+    // explicitly overrides (e.g., admin creating on behalf of an asesor).
+    const payload = {
+      ...body,
+      created_by: body.created_by ?? user.id,
+      assigned_to: body.assigned_to ?? user.id,
+    }
+    const id = await createProperty(payload)
+
+    // N4: notificar coordinador+admins+dueños (y asesor como CC).
+    try { await notifyPropertyCreated(id) } catch (err) { console.error('[notify] property-created:', err) }
+
     return NextResponse.json({ success: true, id })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error' }, { status: 500 })
