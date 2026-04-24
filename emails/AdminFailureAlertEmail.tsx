@@ -8,11 +8,18 @@ export interface AdminFailureAlertEmailProps {
   entityId: string
   errors: string[]
   detailUrl?: string
+  testMode?: boolean
+  originalRecipients?: string[]
 }
 
 export function AdminFailureAlertEmail(props: AdminFailureAlertEmailProps) {
   return (
-    <EmailLayout preheader={`Falló el envío de ${props.failedNotificationType} (entity ${props.entityId}).`} recipientRole="administrador">
+    <EmailLayout
+      preheader={`Falló el envío de ${props.failedNotificationType} (entity ${props.entityId}).`}
+      recipientRole="administrador"
+      testMode={props.testMode}
+      originalRecipients={props.originalRecipients}
+    >
       <Heading>Falló una notificación crítica</Heading>
       <Paragraph>
         El sistema intentó enviar una notificación y algunos destinatarios fallaron. Revisalo desde el historial para reenviar manualmente.

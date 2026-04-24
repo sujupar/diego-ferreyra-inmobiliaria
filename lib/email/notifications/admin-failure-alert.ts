@@ -23,12 +23,21 @@ export async function notifyAdminEmailFailure(params: {
   const to = emailsOf(admins)
   if (to.length === 0) return
 
+  // Apply test-mode to be able to show the [MODO PRUEBA] banner inside the
+  // rendered body. The redirection itself happens again in sendEmail, which is
+  // idempotent with this call — we only use the result here to populate the
+  // visual banner props.
+  const { applyTestMode } = await import('../test-mode')
+  const testCtx = await applyTestMode(to, `Falló notificación ${params.failedNotificationType}`)
+
   const html = await renderEmail(
     AdminFailureAlertEmail({
       failedNotificationType: params.failedNotificationType,
       entityType: params.entityType,
       entityId: params.entityId,
       errors: params.errors,
+      testMode: testCtx.testModeOn,
+      originalRecipients: testCtx.originalTo,
     }) as any
   )
   await sendEmail({

@@ -21,6 +21,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'notificationType y entityId requeridos' }, { status: 400 })
     }
 
+    // Snapshot log counts BEFORE the manual resend, so we can report how many
+    // new rows ended up with status='sent' after the retry. This is the most
+    // pragmatic way to inform the admin what actually happened given that the
+    // notify helpers don't currently propagate their SendEmailResult back.
+    const { createClient } = await import('@supabase/supabase-js')
+    const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+    const startedAt = new Date().toISOString()
+
     switch (notificationType) {
       case 'deal_created_advisor':
       case 'deal_created_admins':
@@ -47,7 +55,22 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: `Tipo no soportado: ${notificationType}` }, { status: 400 })
     }
 
-    return NextResponse.json({ success: true })
+    // Inspect log rows created since startedAt to report what really happened.
+    const { data: newRows } = await admin
+      .from('email_notifications_log')
+      .select('status, recipient_email, error_message')
+      .gte('sent_at', startedAt)
+      .order('sent_at', { ascending: false })
+      .limit(50)
+    const counts = (newRows || []).reduce(
+      (acc: Record<string, number>, r: any) => {
+        acc[r.status] = (acc[r.status] || 0) + 1
+        return acc
+      },
+      {}
+    )
+
+    return NextResponse.json({ success: true, counts, rows: newRows ?? [] })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error' }, { status: 500 })
   }

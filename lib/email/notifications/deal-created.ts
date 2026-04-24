@@ -2,7 +2,6 @@ import 'server-only'
 import { sendEmail } from '../resend-client'
 import { renderEmail } from '../render'
 import { getDealStakeholders, dedupEmails, emailsOf } from '../recipients'
-import { getNotificationSettings } from '../settings'
 import { applyTestMode } from '../test-mode'
 import { DealCreatedAdvisorEmail } from '@/emails/DealCreatedAdvisorEmail'
 import { DealCreatedAdminsEmail } from '@/emails/DealCreatedAdminsEmail'
@@ -10,15 +9,14 @@ import { firstName, formatDate, propertyTypeLabel } from '../format'
 
 export interface NotifyDealCreatedOptions {
   dealId: string
-  /** Fallback coordinador id from the auth context when deal.created_by is null. */
-  fallbackCoordinadorId?: string | null
 }
 
 /**
  * Disparar las 2 variantes del email de "deal creado":
- *   A — al asesor asignado (con BCC al coordinador).
- *   B — a admins+dueños.
- * Dedupa: el coordinador no recibe A si además es admin/dueño (recibiría B).
+ *   A — al asesor asignado.
+ *   B — a coordinador + admins+dueños (el coordinador que agendó también recibe
+ *       aunque no sea admin, para tener confirmación de su propia acción).
+ * Dedupa: si el asesor también es admin/dueño, no recibe B (ya recibió A).
  */
 export async function notifyDealCreated({ dealId }: NotifyDealCreatedOptions) {
   const { asesor, coordinador, adminsOwners, contact, dealRow } = await getDealStakeholders(dealId)
@@ -27,8 +25,6 @@ export async function notifyDealCreated({ dealId }: NotifyDealCreatedOptions) {
   const coordinadorName = coordinador?.full_name || 'Coordinador'
   const advisorName = asesor?.full_name || null
   const propertyTypeLbl = propertyTypeLabel(dealRow.property_type, dealRow.property_type_other)
-
-  const settings = await getNotificationSettings()
 
   // === Variante A: al asesor ===
   if (asesor?.email) {
@@ -63,14 +59,16 @@ export async function notifyDealCreated({ dealId }: NotifyDealCreatedOptions) {
     })
   }
 
-  // === Variante B: a admins+dueños ===
-  // Evitamos duplicar al asesor si también es admin.
+  // === Variante B: a coordinador + admins + dueños ===
+  // El coordinador recibe confirmación de su acción (con subject informativo en
+  // vez del asignado al asesor). Admins/dueños reciben la misma pieza.
+  // Dedup: si el asesor también está en la lista (porque es admin/dueño) se
+  // filtra — ya recibió A. dedupEmails además deduplica coordinador si resulta
+  // ser también admin.
   const adminEmails = dedupEmails(
+    coordinador?.email ? [coordinador.email] : [],
     emailsOf(adminsOwners),
-    // Si el coordinador NO es admin/dueño, igual le llega un email informativo
-    // por B (se asume que también quiere saber). Si es admin/dueño ya está en la lista.
   )
-  // Quitamos al asesor si aparece entre admins para no duplicar con A.
   const filteredAdminEmails = asesor?.email
     ? adminEmails.filter(e => e.toLowerCase() !== asesor.email!.toLowerCase())
     : adminEmails

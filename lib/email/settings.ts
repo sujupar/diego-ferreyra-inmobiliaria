@@ -41,10 +41,13 @@ export async function getNotificationSettings(): Promise<NotificationSettings> {
 
 export async function updateNotificationSettings(patch: Partial<Pick<NotificationSettings,
   'test_mode_enabled' | 'test_recipient_email' | 'alert_admins_on_lawyer_failure'>>) {
+  // Upsert en vez de update para cubrir el caso donde la migration aún no corrió
+  // o el row 'default' no fue insertado. Sin esto, un PATCH devolvía success
+  // pero afectaba 0 rows y el GET posterior mostraba los defaults en memoria —
+  // el usuario pensaba que guardó la config pero no.
   const { error } = await getAdmin()
     .from('notification_settings')
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq('id', 'default')
+    .upsert({ id: 'default', ...patch, updated_at: new Date().toISOString() }, { onConflict: 'id' })
   if (error) throw error
   invalidateSettingsCache()
 }

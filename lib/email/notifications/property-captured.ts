@@ -6,11 +6,6 @@ import { applyTestMode } from '../test-mode'
 import { PropertyCapturedEmail } from '@/emails/PropertyCapturedEmail'
 import { CongratulationsAsesorEmail } from '@/emails/CongratulationsAsesorEmail'
 import { firstName, formatDate, formatMoney, propertyTypeLabel } from '../format'
-import { createClient } from '@supabase/supabase-js'
-
-function getAdmin() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-}
 
 /**
  * N8A + N8B: captación al 100%.
@@ -20,7 +15,7 @@ function getAdmin() {
  * cuando la captación se alcanza desde el camino abogado-aprueba o fotos-subidas.
  */
 export async function notifyPropertyCaptured(propertyId: string) {
-  const { asesor, coordinador, adminsOwners, propertyRow } = await getPropertyStakeholders(propertyId)
+  const { asesor, coordinador, adminsOwners, propertyRow, linkedDeal } = await getPropertyStakeholders(propertyId)
   if (!propertyRow) return
 
   const lawyer = propertyRow.legal_reviewer_id ? await getUserById(propertyRow.legal_reviewer_id) : null
@@ -29,13 +24,9 @@ export async function notifyPropertyCaptured(propertyId: string) {
 
   const capturedAt = formatDate(propertyRow.legal_reviewed_at || propertyRow.updated_at || new Date().toISOString())
 
-  // Days from deal creation to capture (informative KPI).
+  // Days from deal creation to capture (informative KPI). linkedDeal viene del
+  // stakeholders helper — evita segundo query a deals.
   let daysFromDealToCapture: number | null = null
-  const { data: linkedDeal } = await getAdmin()
-    .from('deals')
-    .select('created_at')
-    .eq('property_id', propertyId)
-    .maybeSingle()
   if (linkedDeal?.created_at && propertyRow.legal_reviewed_at) {
     const start = new Date(linkedDeal.created_at).getTime()
     const end = new Date(propertyRow.legal_reviewed_at).getTime()

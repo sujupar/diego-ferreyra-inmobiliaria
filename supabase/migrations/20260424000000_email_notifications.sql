@@ -24,6 +24,16 @@ insert into public.notification_settings (id)
 
 alter table public.notification_settings enable row level security;
 
+-- Explicit deny for anon/authenticated. All legitimate access goes through
+-- the service role (lib/email/settings.ts). A restrictive policy that evaluates
+-- to false on USING is the explicit way to lock down accidental client reads.
+create policy "notification_settings_deny_non_service"
+  on public.notification_settings
+  as restrictive
+  for all
+  using (false)
+  with check (false);
+
 -- =====================================================================
 -- email_notifications_log: un registro por envío (1 destinatario = 1 registro)
 -- =====================================================================
@@ -58,3 +68,13 @@ create unique index if not exists idx_email_log_idempotency
   where status = 'sent' and entity_id is not null;
 
 alter table public.email_notifications_log enable row level security;
+
+-- Same deny-all-non-service pattern as notification_settings. Admin access to
+-- the history goes through /api/settings/notifications/history which uses the
+-- service role internally.
+create policy "email_notifications_log_deny_non_service"
+  on public.email_notifications_log
+  as restrictive
+  for all
+  using (false)
+  with check (false);

@@ -44,7 +44,9 @@ export function AppraisalSentEmail(props: AppraisalSentEmailProps) {
         { label: 'Barrio', value: props.neighborhood || '—' },
         { label: 'Tasó', value: props.advisorName },
         { label: 'Fecha de entrega', value: props.fecha },
-        { label: 'Adjunto', value: `${props.pdfFilename}` },
+        ...(props.pdfFilename
+          ? [{ label: 'Adjunto', value: props.pdfFilename }]
+          : [{ label: 'Adjunto', value: 'Sin PDF (ver en la plataforma)' }]),
       ]} />
 
       <Button href={`${BASE_URL()}/appraisals/${props.appraisalId}`}>Ver tasación en la plataforma</Button>

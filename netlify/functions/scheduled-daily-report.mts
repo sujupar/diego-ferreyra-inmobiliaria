@@ -603,5 +603,5 @@ export default async function handler() {
 }
 
 export const config: Config = {
-  schedule: '0 9 * * *', // 09:00 UTC = 6:00 AM Argentina (UTC-3)
+  schedule: '0 9 * * *', // 09:00 UTC = 06:00 Argentina (UTC-3, sin horario de verano)
 }

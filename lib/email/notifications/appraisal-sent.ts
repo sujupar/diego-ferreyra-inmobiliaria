@@ -37,9 +37,11 @@ export async function notifyAppraisalSent(dealId: string, appraisalId: string) {
   const valorStr = formatMoney(price, currency) || 'valor a confirmar'
 
   // Generate PDF. This can take 500–1500ms; we accept it inside the request to
-  // ensure the buffer survives the serverless lifecycle.
+  // ensure the buffer survives the serverless lifecycle. If generation fails,
+  // the email goes WITHOUT attachment — we pass pdfFilename=null so the
+  // template knows not to show a "PDF adjunto" line for a file that doesn't exist.
   let attachments: { filename: string; content: Buffer }[] | undefined
-  let pdfFilename = `tasacion.pdf`
+  let pdfFilename: string | null = null
   try {
     const { buffer, filename } = await generateAppraisalPdfBuffer(appraisalId)
     attachments = [{ filename, content: buffer }]
@@ -60,7 +62,7 @@ export async function notifyAppraisalSent(dealId: string, appraisalId: string) {
       valorMin: null,
       valorMax: null,
       fecha: formatDate(appraisal?.created_at || new Date().toISOString()),
-      pdfFilename,
+      pdfFilename: pdfFilename ?? '',
       testMode: testCtx.testModeOn,
       originalRecipients: testCtx.originalTo,
       recipientRole: 'parte del equipo',

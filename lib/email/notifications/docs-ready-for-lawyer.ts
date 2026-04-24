@@ -30,12 +30,18 @@ export async function notifyDocsReadyForLawyer(propertyId: string) {
   }
 
   // Count submissions so this notification is idempotent per cycle.
+  // We add +1 defensively: if the caller's logLegalEvent call failed and was
+  // swallowed, the count would be stale and collide with the previous cycle's
+  // entity_id, making the UNIQUE INDEX skip this send silently. +1 with a
+  // timestamp suffix makes each notify call unique enough to always go through
+  // while still keeping a human-readable ordinal for the admin UI.
   const { count: submissionCount } = await getAdmin()
     .from('legal_review_events')
     .select('id', { count: 'exact', head: true })
     .eq('property_id', propertyId)
     .eq('action', 'submitted')
-  const cycle = submissionCount ?? 1
+  const cycle = (submissionCount ?? 0) + 1
+  const cycleKey = `${cycle}-${Date.now()}`
 
   const { data: docRows } = await getAdmin()
     .from('properties')
@@ -79,7 +85,7 @@ export async function notifyDocsReadyForLawyer(propertyId: string) {
   await sendEmail({
     notificationType: 'docs_ready_for_lawyer',
     entityType: 'property',
-    entityId: `${propertyId}:${cycle}`,
+    entityId: `${propertyId}:${cycleKey}`,
     to,
     subject: `Documentos listos para revisar — ${propertyRow.address}`,
     html,
