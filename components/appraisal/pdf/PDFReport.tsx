@@ -53,6 +53,22 @@ function cleanText(str: string | undefined | null, maxLen: number = 300): string
     return clean
 }
 
+function FeatureChip({ label }: { label: string }) {
+    return (
+        <View style={{
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            backgroundColor: '#f1f5f9',
+            borderWidth: 1,
+            borderColor: '#cbd5e1',
+            borderStyle: 'solid',
+            borderRadius: 3,
+        }}>
+            <Text style={{ fontSize: 8, color: '#1f2937', fontWeight: 'bold' }}>{label}</Text>
+        </View>
+    )
+}
+
 export function PDFReportDocument({ subject, comparables, valuationResult, overpriced = [], purchaseProperties = [], purchaseResult, marketImageLabels = {}, marketImageUrls = {}, reportEdits }: PDFReportProps) {
     const neighborhood = extractNeighborhood(subject.location || '')
     const recommendedPrice = valuationResult.publicationPrice
@@ -471,25 +487,19 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                         {/* Info */}
                                         <View style={{ flex: 1 }}>
                                             <Text style={[styles.propertyTitle, { textAlign: 'left', fontSize: 13, marginBottom: 4 }]}>
-                                                {comp.location || comp.title}
+                                                {extractAddress(comp.location || comp.title)}
                                             </Text>
 
-                                            {/* Features grid */}
-                                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
-                                                <Text style={styles.featureText}>■ {comp.features.coveredArea || 0}m² cub.</Text>
+                                            {/* Features grid — chips con borde para separación visual */}
+                                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+                                                <FeatureChip label={`${comp.features.coveredArea || 0} m² cub.`} />
                                                 {(comp.features.uncoveredArea ?? 0) > 0 && (
-                                                    <Text style={styles.featureText}>■ {comp.features.uncoveredArea}m² desc.</Text>
+                                                    <FeatureChip label={`${comp.features.uncoveredArea} m² desc.`} />
                                                 )}
-                                                {comp.features.rooms && (
-                                                    <Text style={styles.featureText}>■ {comp.features.rooms} Amb.</Text>
-                                                )}
-                                                {comp.features.bedrooms && (
-                                                    <Text style={styles.featureText}>■ {comp.features.bedrooms} Dorm.</Text>
-                                                )}
-                                                {comp.features.bathrooms && (
-                                                    <Text style={styles.featureText}>■ {comp.features.bathrooms} Baños</Text>
-                                                )}
-                                                <Text style={styles.featureText}>■ {comp.features.age || 0} años</Text>
+                                                {comp.features.rooms ? <FeatureChip label={`${comp.features.rooms} amb.`} /> : null}
+                                                {comp.features.bedrooms ? <FeatureChip label={`${comp.features.bedrooms} dorm.`} /> : null}
+                                                {comp.features.bathrooms ? <FeatureChip label={`${comp.features.bathrooms} baños`} /> : null}
+                                                <FeatureChip label={`${comp.features.age || 0} años`} />
                                             </View>
 
                                             {/* Price */}
@@ -509,13 +519,16 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                             </View>
 
                                             {/* Link */}
-                                            <Link src={comp.url || '#'} style={styles.comparableLink}>
-                                                LINK DE LA PROPIEDAD
+                                            <Link src={comp.url || '#'} style={{ textDecoration: 'none' }}>
+                                                <View style={styles.comparableLink}>
+                                                    <Text style={{ color: colors.white, fontSize: 9, fontWeight: 'bold' }}>VER PUBLICACIÓN →</Text>
+                                                </View>
                                             </Link>
 
                                             {/* Metadata: published date + views */}
                                             <Text style={styles.comparableMetadata}>
-                                                {cleanText(comp.features.publishedDate as string, 50) || 'Publicado'}{comp.features.views ? ` | ${cleanText(String(comp.features.views), 20)} visualizaciones` : ''}
+                                                {(comp.features.publishedDate as string) || 'Sin fecha de publicación'}
+                                                {comp.features.views ? ` · ${comp.features.views} visualizaciones` : ''}
                                             </Text>
                                         </View>
                                     </View>
