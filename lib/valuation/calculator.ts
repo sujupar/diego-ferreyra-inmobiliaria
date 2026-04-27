@@ -133,6 +133,37 @@ export interface PurchaseResult {
     purchaseExpenseRates: Required<PurchaseExpenseRates>
 }
 
+export type PurchaseScenarioId = 'conservative' | 'medium' | 'aggressive'
+
+export interface PurchaseScenarioRates {
+    stampsPercent: number
+    notaryFeesPercent: number
+    deedExpensesPercent: number
+    buyerCommissionPercent: number
+}
+
+export interface PurchaseScenarioInput {
+    id: PurchaseScenarioId
+    label: string
+    publicationPrice: number
+    purchaseDiscountPercent: number
+    deedDiscountPercent: number
+    rates: PurchaseScenarioRates
+}
+
+export interface PurchaseScenarioResult extends PurchaseScenarioInput {
+    purchasePrice: number
+    deedValue: number
+    stampsCost: number
+    notaryFees: number
+    deedExpenses: number
+    buyerCommission: number
+    totalPurchaseCosts: number
+    totalCostWithPurchase: number
+    moneyFromSale: number
+    remainingMoney: number
+}
+
 export interface ValuationInput {
     subject: ValuationProperty
     comparables: ValuationProperty[]
@@ -177,6 +208,10 @@ export interface ValuationResult {
     currency: string
     expenseRates: Required<ExpenseRates>  // Actual rates used (with defaults)
     purchaseResult?: PurchaseResult       // Present when purchase properties selected
+    /** Escenarios de compra calculados (Conservador / Medio / Agresivo). */
+    purchaseScenarios?: PurchaseScenarioResult[]
+    /** IDs seleccionados para mostrar en el PDF. */
+    selectedScenarioIds?: PurchaseScenarioId[]
 }
 
 /**
