@@ -645,10 +645,8 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
             {/* PAGES 7+: COMPARABLES (balanced pagination) */}
             {(() => {
                 const pages = paginateBalanced(comparables, 3)
-                let globalCursor = 0
                 return pages.map((pageComps, pageIndex) => {
-                    const startGlobal = globalCursor
-                    globalCursor += pageComps.length
+                    const startGlobal = pages.slice(0, pageIndex).reduce((sum, p) => sum + p.length, 0)
                     return (
                     <Page key={`comparables-${pageIndex}`} size="A4" style={styles.pageWithPadding}>
                         <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
@@ -745,10 +743,8 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
             {/* OVERPRICED PROPERTIES PAGES (if any) */}
             {overpriced.length > 0 && (() => {
                 const pages = paginateBalanced(overpriced, 2)
-                let globalCursor = 0
                 return pages.map((pageProps, pageIndex) => {
-                    const startGlobal = globalCursor
-                    globalCursor += pageProps.length
+                    const startGlobal = pages.slice(0, pageIndex).reduce((sum, p) => sum + p.length, 0)
                     return (
                     <Page key={`overpriced-${pageIndex}`} size="A4" style={styles.pageWithPadding}>
                         <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
