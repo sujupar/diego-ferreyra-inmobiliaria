@@ -903,9 +903,9 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                 style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                             />
                             <View style={styles.backgroundOverlay} />
-                            <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
-                                <Text style={[styles.dividerTitle, { textAlign: 'left' }]}>
-                                    PROPIEDADES{'\n'}PARA COMPRA
+                            <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: 280 }]}>
+                                <Text style={[styles.dividerTitle, { textAlign: 'left', fontSize: 32 }]}>
+                                    PROPIEDADES PARA COMPRA
                                 </Text>
                             </View>
                             <Image
@@ -1000,9 +1000,9 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                     style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                                 />
                                 <View style={styles.backgroundOverlay} />
-                                <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
-                                    <Text style={[styles.dividerTitle, { textAlign: 'left' }]}>
-                                        SIMULACIÓN{'\n'}COMPRA Y VENTA
+                                <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: 280 }]}>
+                                    <Text style={[styles.dividerTitle, { textAlign: 'left', fontSize: 32 }]}>
+                                        SIMULACIÓN COMPRA Y VENTA
                                     </Text>
                                 </View>
                                 <Image
