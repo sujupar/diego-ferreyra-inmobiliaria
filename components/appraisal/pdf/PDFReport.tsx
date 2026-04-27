@@ -23,6 +23,8 @@ interface PDFReportProps {
     marketImageLabels?: Record<string, MarketImageLabel>
     marketImageUrls?: Record<string, string>
     reportEdits?: ReportEdits
+    /** ISO date string (e.g. appraisal.created_at). Used in page-2 footer. */
+    appraisalDate?: string
 }
 
 // Map semaphore color names to actual color values
@@ -88,7 +90,7 @@ function FeatureChip({ label }: { label: string }) {
     )
 }
 
-export function PDFReportDocument({ subject, comparables, valuationResult, overpriced = [], purchaseProperties = [], purchaseResult, marketImageLabels = {}, marketImageUrls = {}, reportEdits }: PDFReportProps) {
+export function PDFReportDocument({ subject, comparables, valuationResult, overpriced = [], purchaseProperties = [], purchaseResult, marketImageLabels = {}, marketImageUrls = {}, reportEdits, appraisalDate }: PDFReportProps) {
     const neighborhood = extractNeighborhood(subject.location || '')
     const recommendedPrice = valuationResult.publicationPrice
     const noSaleZone = valuationResult.noSaleZonePrice
@@ -183,7 +185,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                     <View style={{ marginBottom: 12, border: `1px solid ${colors.lightGray}` }}>
                         <Image
                             src={subject.images[0]}
-                            style={{ width: '100%', height: 250, objectFit: 'cover' }}
+                            style={{ width: '100%', height: 220, objectFit: 'cover' }}
                         />
                     </View>
                 )}
@@ -303,6 +305,49 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                         </Text>
                     </View>
                 )}
+
+                {/* Footer info card — fills bottom space with agent + appraisal date */}
+                <View style={{
+                    position: 'absolute',
+                    bottom: 40,
+                    left: 40,
+                    right: 40,
+                    padding: 16,
+                    backgroundColor: '#f8f9fa',
+                    borderRadius: 8,
+                    borderLeftWidth: 4,
+                    borderLeftColor: colors.primary,
+                    borderLeftStyle: 'solid',
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                }}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 11, fontWeight: 'bold', color: colors.darkGray }}>
+                            Diego Ferreyra
+                        </Text>
+                        <Text style={{ fontSize: 9, color: colors.mediumGray, marginTop: 2 }}>
+                            Asesor inmobiliario · CUCICBA 8266
+                        </Text>
+                        <Text style={{ fontSize: 9, color: colors.mediumGray, marginTop: 2 }}>
+                            diegoferreyraInmobiliaria.com
+                        </Text>
+                    </View>
+                    <View style={{
+                        paddingLeft: 12,
+                        borderLeftWidth: 1,
+                        borderLeftColor: colors.lightGray,
+                        borderLeftStyle: 'solid',
+                        alignItems: 'flex-end',
+                    }}>
+                        <Text style={{ fontSize: 9, color: colors.mediumGray }}>Tasación realizada el</Text>
+                        <Text style={{ fontSize: 11, fontWeight: 'bold', color: colors.darkGray, marginTop: 2 }}>
+                            {(appraisalDate ? new Date(appraisalDate) : new Date()).toLocaleDateString('es-AR', {
+                                day: '2-digit', month: 'long', year: 'numeric',
+                            })}
+                        </Text>
+                    </View>
+                </View>
             </Page>
 
             {/* PAGE 3: MARKET DATA - CABA */}

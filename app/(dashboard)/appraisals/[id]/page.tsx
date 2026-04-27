@@ -319,6 +319,7 @@ export default function AppraisalDetailPage() {
                         result
                     )}
                     onReportEditsChange={setReportEdits}
+                    appraisalDate={appraisal.created_at}
                 />
             )}
         </div>

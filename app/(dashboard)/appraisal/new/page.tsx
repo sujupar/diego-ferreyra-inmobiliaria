@@ -1245,6 +1245,7 @@ function NewAppraisalPageContent() {
                     purchaseResult={purchaseResult || undefined}
                     reportEdits={reportEdits}
                     onReportEditsChange={setReportEdits}
+                    appraisalDate={new Date().toISOString()}
                 />
             )}
         </div>
