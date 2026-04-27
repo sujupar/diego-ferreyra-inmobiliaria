@@ -5,12 +5,14 @@ import { useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import type { AppraisalDetail } from '@/lib/supabase/appraisals'
+import { updateAppraisal } from '@/lib/supabase/appraisals'
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { PDFDownloadButton } from '@/components/appraisal/PDFDownloadButton'
-import { ValuationProperty, ValuationResult } from '@/lib/valuation/calculator'
+import { ValuationProperty, ValuationResult, calculateValuation } from '@/lib/valuation/calculator'
 import { ReportEdits, buildDefaultEdits } from '@/lib/types/report-edits'
+import type { PropertyFeatures, ScrapedProperty } from '@/lib/scraper/types'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, FileText, AlertCircle, Edit2 } from 'lucide-react'
+import { ArrowLeft, FileText, AlertCircle, Edit2, Loader2 } from 'lucide-react'
 
 const PDFPreviewModal = dynamic(
     () => import('@/components/appraisal/PDFPreviewModal').then(m => m.PDFPreviewModal),
@@ -24,6 +26,9 @@ export default function AppraisalDetailPage() {
     const [error, setError] = useState<string | null>(null)
     const [showPDFPreview, setShowPDFPreview] = useState(false)
     const [reportEdits, setReportEdits] = useState<ReportEdits | null>(null)
+    const [subjectFeaturesOverride, setSubjectFeaturesOverride] = useState<PropertyFeatures | null>(null)
+    const [valuationOverride, setValuationOverride] = useState<ValuationResult | null>(null)
+    const [savingFeatures, setSavingFeatures] = useState(false)
 
     // Market image settings are loaded lazily by PDFPreviewModal on open
 
@@ -96,7 +101,9 @@ export default function AppraisalDetailPage() {
         )
     }
 
-    // Reconstruct ValuationProperty from stored data
+    // Reconstruct ValuationProperty from stored data, with optional overrides
+    // from inline editing of subject features.
+    const effectiveFeatures: PropertyFeatures = subjectFeaturesOverride ?? appraisal.property_features
     const subject: ValuationProperty = {
         price: appraisal.property_price,
         currency: appraisal.property_currency,
@@ -104,13 +111,13 @@ export default function AppraisalDetailPage() {
         location: appraisal.property_location,
         images: appraisal.property_images || undefined,
         description: appraisal.property_description || undefined,
-        features: appraisal.property_features,
+        features: effectiveFeatures as unknown as ValuationProperty['features'],
     }
 
-    // Separate normal comparables from overpriced properties
+    // Separate normal comparables from overpriced (and purchase) properties
     const normalComps = appraisal.comparables.filter(c => {
         const analysis = c.analysis as Record<string, unknown> | null
-        return analysis?.propertyType !== 'overpriced'
+        return analysis?.propertyType !== 'overpriced' && analysis?.propertyType !== 'purchase'
     })
     const overpricedComps = appraisal.comparables.filter(c => {
         const analysis = c.analysis as Record<string, unknown> | null
@@ -139,8 +146,93 @@ export default function AppraisalDetailPage() {
         features: c.features,
     }))
 
-    const result: ValuationResult = appraisal.valuation_result || {} as ValuationResult
+    const result: ValuationResult = valuationOverride ?? (appraisal.valuation_result || {} as ValuationResult)
     const hasFullValuation = result.subjectSurface != null && result.comparableAnalysis?.length > 0
+
+    async function handleSubjectFeaturesChange(features: PropertyFeatures) {
+        if (!appraisal) return
+        // Optimistic UI update
+        setSubjectFeaturesOverride(features)
+        setSavingFeatures(true)
+        try {
+            // Filter out overpriced AND purchase properties before recalculation —
+            // only normal comparables contribute to the average $/m².
+            const onlyNormalRows = appraisal.comparables.filter(c => {
+                const a = c.analysis as Record<string, unknown> | null
+                return a?.propertyType !== 'overpriced' && a?.propertyType !== 'purchase'
+            })
+            const recalc = calculateValuation({
+                subject: { ...subject, features: features as unknown as ValuationProperty['features'] },
+                comparables: onlyNormalRows.map(c => ({
+                    price: c.price,
+                    currency: c.currency,
+                    title: c.title || undefined,
+                    location: c.location || undefined,
+                    features: c.features as ValuationProperty['features'],
+                })),
+                expenseRates: result?.expenseRates,
+            })
+            if (recalc) {
+                const merged: ValuationResult = {
+                    ...recalc,
+                    purchaseResult: result?.purchaseResult,
+                    purchaseScenarios: result?.purchaseScenarios,
+                    selectedScenarioIds: result?.selectedScenarioIds,
+                }
+                setValuationOverride(merged)
+
+                // Persist via updateAppraisal — we must rebuild the input shape
+                // (subject as ScrapedProperty + comparables as ScrapedProperty[]).
+                const subjectScraped: ScrapedProperty = {
+                    url: appraisal.property_url || '',
+                    title: appraisal.property_title || '',
+                    price: appraisal.property_price,
+                    currency: (appraisal.property_currency as 'USD' | 'ARS' | null) ?? null,
+                    location: appraisal.property_location,
+                    description: appraisal.property_description || '',
+                    features,
+                    images: appraisal.property_images || [],
+                    portal: '',
+                }
+                const allComparablesScraped: ScrapedProperty[] = appraisal.comparables.map(c => ({
+                    url: c.url || '',
+                    title: c.title || '',
+                    price: c.price,
+                    currency: (c.currency as 'USD' | 'ARS' | null) ?? null,
+                    location: c.location || '',
+                    description: c.description || '',
+                    features: c.features as PropertyFeatures,
+                    images: c.images || [],
+                    portal: '',
+                }))
+                // Split for updateAppraisal payload (it accepts overpriced/purchase separately).
+                const normalScraped = allComparablesScraped.filter((_, i) => {
+                    const a = appraisal.comparables[i].analysis as Record<string, unknown> | null
+                    return a?.propertyType !== 'overpriced' && a?.propertyType !== 'purchase'
+                })
+                const overpricedScraped = allComparablesScraped.filter((_, i) => {
+                    const a = appraisal.comparables[i].analysis as Record<string, unknown> | null
+                    return a?.propertyType === 'overpriced'
+                })
+                const purchaseScraped = allComparablesScraped.filter((_, i) => {
+                    const a = appraisal.comparables[i].analysis as Record<string, unknown> | null
+                    return a?.propertyType === 'purchase'
+                })
+
+                await updateAppraisal(appraisal.id, {
+                    subject: subjectScraped,
+                    comparables: normalScraped,
+                    overpriced: overpricedScraped,
+                    purchaseProperties: purchaseScraped,
+                    valuationResult: merged,
+                })
+            }
+        } catch (err) {
+            console.error('handleSubjectFeaturesChange error:', err)
+        } finally {
+            setSavingFeatures(false)
+        }
+    }
 
     return (
         <div className="max-w-5xl mx-auto space-y-8 pb-20">
@@ -183,9 +275,22 @@ export default function AppraisalDetailPage() {
                 </div>
             </div>
 
+            {/* Saving indicator */}
+            {savingFeatures && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Guardando cambios...
+                </div>
+            )}
+
             {/* Report */}
             {hasFullValuation ? (
-                <ValuationReport subject={subject} result={result} />
+                <ValuationReport
+                    subject={subject}
+                    result={result}
+                    editable
+                    onSubjectFeaturesChange={handleSubjectFeaturesChange}
+                />
             ) : (
                 <div className="rounded-lg border p-6 space-y-4">
                     <h2 className="text-lg font-semibold">Resumen de Tasacion</h2>
