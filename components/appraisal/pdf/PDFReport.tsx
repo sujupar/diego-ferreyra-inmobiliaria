@@ -6,6 +6,7 @@ import { ValuationProperty, ValuationResult, PurchaseResult } from '@/lib/valuat
 import { formatCurrency } from '@/lib/valuation/utils'
 import { styles, colors } from './PDFStyles'
 import { ReportEdits, SemaphoreColor } from '@/lib/types/report-edits'
+import { extractAddress } from '@/lib/valuation/addressUtils'
 
 interface MarketImageLabel {
     label: string
@@ -78,7 +79,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
                     {/* Property Title */}
                     <Text style={[styles.propertyTitle, { marginTop: 16, fontSize: 32 }]}>
-                        {reportEdits?.coverPropertyTitle || subject.title || subject.location}
+                        {reportEdits?.coverPropertyTitle || extractAddress(subject.location || subject.title)}
                     </Text>
 
                     {/* Three Institutional Logos */}
@@ -105,7 +106,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 <View style={{ position: 'absolute', bottom: 48, right: 0, width: 280 }}>
                     <Image
                         src="/pdf-assets/photos/Foto Diego.png"
-                        style={{ width: '100%', height: 360, objectFit: 'cover' }}
+                        style={{ width: '100%', height: 420, objectFit: 'contain' }}
                     />
                 </View>
 
