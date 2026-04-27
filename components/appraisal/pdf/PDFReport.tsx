@@ -41,6 +41,25 @@ function extractNeighborhood(location: string): string {
 }
 
 
+/**
+ * Distribuye items en páginas con max=N por página, balanceando para evitar páginas con solo 1 item.
+ * Ej: 4 items → [2, 2] en vez de [3, 1]. 5 items → [3, 2]. 7 items → [3, 2, 2].
+ */
+function paginateBalanced<T>(items: T[], maxPerPage = 3): T[][] {
+    if (items.length <= maxPerPage) return [items]
+    const totalPages = Math.ceil(items.length / maxPerPage)
+    const baseSize = Math.floor(items.length / totalPages)
+    const remainder = items.length % totalPages
+    const pages: T[][] = []
+    let cursor = 0
+    for (let i = 0; i < totalPages; i++) {
+        const size = i < remainder ? baseSize + 1 : baseSize
+        pages.push(items.slice(cursor, cursor + size))
+        cursor += size
+    }
+    return pages
+}
+
 /** Strip HTML tags, collapse whitespace, and limit length */
 function cleanText(str: string | undefined | null, maxLen: number = 300): string {
     if (!str) return ''
@@ -444,10 +463,14 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 </View>
             </Page>
 
-            {/* PAGES 7+: COMPARABLES (3 per page, compact layout) */}
-            {Array.from({ length: Math.ceil(comparables.length / 3) }).map((_, pageIndex) => {
-                const pageComps = comparables.slice(pageIndex * 3, pageIndex * 3 + 3)
-                return (
+            {/* PAGES 7+: COMPARABLES (balanced pagination) */}
+            {(() => {
+                const pages = paginateBalanced(comparables, 3)
+                let globalCursor = 0
+                return pages.map((pageComps, pageIndex) => {
+                    const startGlobal = globalCursor
+                    globalCursor += pageComps.length
+                    return (
                     <Page key={`comparables-${pageIndex}`} size="A4" style={styles.pageWithPadding}>
                         <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
                             <Text style={styles.headerTitle}>PROPIEDADES EN VENTA</Text>
@@ -456,7 +479,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
                         <View style={{ marginTop: 60, gap: 16 }}>
                             {pageComps.map((comp, index) => {
-                            const globalIndex = pageIndex * 3 + index
+                            const globalIndex = startGlobal + index
                                 const homSurface = getHomogenizedSurface(comp)
                                 const pricePerM2 = homSurface > 0 ? (comp.price || 0) / homSurface : 0
 
@@ -536,15 +559,18 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                             })}
                         </View>
                     </Page>
-                )
-            })}
+                    )
+                })
+            })()}
 
             {/* OVERPRICED PROPERTIES PAGES (if any) */}
-            {overpriced.length > 0 && Array.from({ length: Math.ceil(overpriced.length / 2) }).map((_, pageIndex) => {
-                const startIndex = pageIndex * 2
-                const pageProps = overpriced.slice(startIndex, startIndex + 2)
-
-                return (
+            {overpriced.length > 0 && (() => {
+                const pages = paginateBalanced(overpriced, 2)
+                let globalCursor = 0
+                return pages.map((pageProps, pageIndex) => {
+                    const startGlobal = globalCursor
+                    globalCursor += pageProps.length
+                    return (
                     <Page key={`overpriced-${pageIndex}`} size="A4" style={styles.pageWithPadding}>
                         <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
                             <Text style={[styles.headerTitle, { color: colors.semaphoreRed }]}>PROPIEDADES FUERA DE PRECIO</Text>
@@ -553,7 +579,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
                         <View style={{ marginTop: 70, gap: 24 }}>
                             {pageProps.map((prop, index) => {
-                                const globalIndex = startIndex + index
+                                const globalIndex = startGlobal + index
                                 const homSurface = getHomogenizedSurface(prop)
                                 const pricePerM2 = homSurface > 0 ? (prop.price || 0) / homSurface : 0
 
@@ -633,8 +659,9 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                             })}
                         </View>
                     </Page>
-                )
-            })}
+                    )
+                })
+            })()}
 
             {/* PAGE 9: MAPA DE VALOR (Valuation Table) - CRITICAL */}
 
