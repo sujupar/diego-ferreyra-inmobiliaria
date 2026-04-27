@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { Document, Page, Text, View, Image, Link, Svg, Path, Circle as SvgCircle, Rect as SvgRect } from '@react-pdf/renderer'
-import { ValuationProperty, ValuationResult, PurchaseResult } from '@/lib/valuation/calculator'
+import { ValuationProperty, ValuationResult, PurchaseResult, PurchaseScenarioResult } from '@/lib/valuation/calculator'
 import { formatCurrency } from '@/lib/valuation/utils'
 import { styles, colors } from './PDFStyles'
 import { ReportEdits, SemaphoreColor } from '@/lib/types/report-edits'
@@ -86,6 +86,140 @@ function FeatureChip({ label }: { label: string }) {
             borderRadius: 3,
         }}>
             <Text style={{ fontSize: 8, color: '#1f2937', fontWeight: 'bold' }}>{label}</Text>
+        </View>
+    )
+}
+
+// ─── Helpers para Simulación Gastos e Impuestos ───
+function ValueCell({ label, value, flex }: { label: string; value: string; flex?: boolean }) {
+    return (
+        <View style={[
+            { padding: 4, borderRightWidth: 1, borderRightColor: colors.lightGray, borderRightStyle: 'solid' },
+            flex ? { flex: 1 } : {},
+        ]}>
+            <Text style={{ fontSize: 7, color: colors.mediumGray, textAlign: 'center' }}>{label}</Text>
+            <Text style={{ fontSize: 9, fontWeight: 'bold', textAlign: 'center' }}>{value}</Text>
+        </View>
+    )
+}
+
+function ExpRow({ label, value, bold }: { label: string; value: number; currency: string; bold?: boolean }) {
+    return (
+        <View style={{
+            flexDirection: 'row', justifyContent: 'space-between', padding: 4,
+            borderWidth: 1,
+            borderColor: bold ? colors.darkGray : colors.lightGray,
+            borderStyle: 'solid',
+            borderTopWidth: 0,
+            backgroundColor: bold ? '#f5f5f5' : undefined,
+        }}>
+            <Text style={{ fontSize: 8, fontWeight: bold ? 'bold' : 'normal' }}>{label}</Text>
+            <Text style={{ fontSize: 8, fontWeight: bold ? 'bold' : 'normal' }}>
+                u$d{value.toLocaleString()}
+            </Text>
+        </View>
+    )
+}
+
+function SaleSimTable({
+    valuationResult, subject, neighborhood,
+}: { valuationResult: ValuationResult; subject: ValuationProperty; neighborhood: string }) {
+    const r = valuationResult
+    const rates = r.expenseRates
+    return (
+        <View style={{ marginBottom: 14 }}>
+            <View style={{
+                backgroundColor: '#fff3e0', padding: 6,
+                borderWidth: 1, borderColor: colors.orange, borderStyle: 'solid',
+            }}>
+                <Text style={{ fontSize: 9, fontWeight: 'bold', textAlign: 'center', color: colors.darkGray }}>
+                    VENTA {subject.features.rooms ? `${subject.features.rooms} AMBIENTES` : ''} | {neighborhood}
+                </Text>
+            </View>
+            <View style={{
+                flexDirection: 'row',
+                borderWidth: 1, borderColor: colors.lightGray, borderStyle: 'solid',
+                borderTopWidth: 0,
+            }}>
+                <ValueCell label="Valor de Publicación" value={`u$d${r.publicationPrice.toLocaleString()}`} flex />
+                <ValueCell label="Valor de Venta" value={`u$d${r.saleValue.toLocaleString()}`} flex />
+                <ValueCell label="Valor de Escritura" value={`u$d${r.deedValue.toLocaleString()}`} flex />
+            </View>
+            <View style={{
+                backgroundColor: '#e8f4fd', padding: 4,
+                borderWidth: 1, borderColor: colors.lightGray, borderStyle: 'solid',
+                borderTopWidth: 0,
+            }}>
+                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>Gastos de Venta</Text>
+            </View>
+            <ExpRow label={`Sellos ${rates.stampsPercent}% s/escritura`} value={r.stampsCost} currency={r.currency} />
+            <ExpRow label={`Gastos Escritura ${rates.deedExpensesPercent}% s/venta`} value={r.deedExpenses} currency={r.currency} />
+            <ExpRow label={`Honorarios Inmobiliaria ${rates.agencyFeesPercent}% s/venta`} value={r.agencyFees} currency={r.currency} />
+            <ExpRow label="Total gastos venta" value={r.totalExpenses} currency={r.currency} bold />
+            <View style={{
+                marginTop: 6, flexDirection: 'row', justifyContent: 'space-between',
+                padding: 6, backgroundColor: '#ecfdf5', borderRadius: 2,
+            }}>
+                <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#065f46' }}>Dinero luego de venta</Text>
+                <Text style={{ fontSize: 9, fontWeight: 'bold', color: colors.semaphoreGreen }}>
+                    u$d{r.moneyInHand.toLocaleString()}
+                </Text>
+            </View>
+        </View>
+    )
+}
+
+function PurchaseSimTable({
+    scenario, currency, width,
+}: { scenario: PurchaseScenarioResult; currency: string; width: string }) {
+    return (
+        <View style={{ width }}>
+            <View style={{
+                backgroundColor: '#e8f4fd', padding: 6,
+                borderWidth: 1, borderColor: colors.primary, borderStyle: 'solid',
+            }}>
+                <Text style={{ fontSize: 9, fontWeight: 'bold', textAlign: 'center', color: colors.darkGray }}>
+                    COMPRA — {scenario.label.toUpperCase()}
+                </Text>
+            </View>
+            <View style={{
+                flexDirection: 'row',
+                borderWidth: 1, borderColor: colors.lightGray, borderStyle: 'solid',
+                borderTopWidth: 0,
+            }}>
+                <ValueCell label="Publicación" value={`u$d${scenario.publicationPrice.toLocaleString()}`} flex />
+                <ValueCell label="Compra" value={`u$d${scenario.purchasePrice.toLocaleString()}`} flex />
+                <ValueCell label="Escritura" value={`u$d${scenario.deedValue.toLocaleString()}`} flex />
+            </View>
+            <View style={{
+                backgroundColor: '#e8f4fd', padding: 4,
+                borderWidth: 1, borderColor: colors.lightGray, borderStyle: 'solid',
+                borderTopWidth: 0,
+            }}>
+                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>Gastos de Compra</Text>
+            </View>
+            <ExpRow label={`Sellos ${scenario.rates.stampsPercent}%`} value={scenario.stampsCost} currency={currency} />
+            <ExpRow label={`Honor. Escribano ${scenario.rates.notaryFeesPercent}%`} value={scenario.notaryFees} currency={currency} />
+            <ExpRow label={`Gastos Escritura ${scenario.rates.deedExpensesPercent}%`} value={scenario.deedExpenses} currency={currency} />
+            <ExpRow label={`Honor. Inmob. ${scenario.rates.buyerCommissionPercent}%`} value={scenario.buyerCommission} currency={currency} />
+            <ExpRow label="Total gastos compra" value={scenario.totalPurchaseCosts} currency={currency} bold />
+            <View style={{ marginTop: 6, padding: 6, backgroundColor: '#eff6ff', borderRadius: 2 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#1e40af' }}>Costo total</Text>
+                    <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.primary }}>
+                        u$d{scenario.totalCostWithPurchase.toLocaleString()}
+                    </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+                    <Text style={{ fontSize: 8, fontWeight: 'bold' }}>En mano final</Text>
+                    <Text style={{
+                        fontSize: 8, fontWeight: 'bold',
+                        color: scenario.remainingMoney >= 0 ? colors.semaphoreGreen : colors.semaphoreRed,
+                    }}>
+                        u$d{scenario.remainingMoney.toLocaleString()}
+                    </Text>
+                </View>
+            </View>
         </View>
     )
 }
@@ -885,7 +1019,8 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 </Text>
             </Page>
 
-            {/* PAGE 10: COSTOS DE VENTA */}
+            {/* PAGE 10: COSTOS DE VENTA — solo si NO hay propiedades de compra */}
+            {purchaseProperties.length === 0 && (
             <Page size="A4" style={styles.pageWithPadding}>
                 <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
                     <Text style={styles.headerTitle}>COSTOS DE VENTA</Text>
@@ -976,6 +1111,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                     </View>
                 </View>
             </Page>
+            )}
 
             {/* PURCHASE PROPERTIES SECTION (conditional) */}
             {purchaseProperties.length > 0 && (
@@ -1076,8 +1212,8 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                         )
                     })}
 
-                    {/* SIMULATION DIVIDER PAGE */}
-                    {purchaseResult && (
+                    {/* SIMULATION DIVIDER PAGE — solo si hay escenarios o purchaseResult legacy */}
+                    {((valuationResult.purchaseScenarios && valuationResult.purchaseScenarios.length > 0) || purchaseResult) && (
                         <Page size="A4" style={styles.page}>
                             <View style={styles.backgroundPage}>
                                 <Image
@@ -1087,7 +1223,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                 <View style={styles.backgroundOverlay} />
                                 <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: 280 }]}>
                                     <Text style={[styles.dividerTitle, { textAlign: 'left', fontSize: 32 }]}>
-                                        SIMULACIÓN COMPRA Y VENTA
+                                        SIMULACIÓN GASTOS E IMPUESTOS
                                     </Text>
                                 </View>
                                 <Image
@@ -1098,8 +1234,39 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                         </Page>
                     )}
 
-                    {/* SIMULATION TABLE PAGE */}
-                    {purchaseResult && (
+                    {/* SIMULATION SCENARIOS PAGE — tabla venta + 1-3 escenarios de compra */}
+                    {valuationResult.purchaseScenarios && valuationResult.purchaseScenarios.length > 0 && (() => {
+                        const selectedIds = valuationResult.selectedScenarioIds || ['conservative', 'medium', 'aggressive']
+                        const visibleScenarios = valuationResult.purchaseScenarios.filter(s => selectedIds.includes(s.id))
+                        return (
+                            <Page size="A4" style={styles.pageWithPadding}>
+                                <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
+                                    <Text style={styles.headerTitle}>SIMULACIÓN GASTOS E IMPUESTOS</Text>
+                                </View>
+                                <View style={{ marginTop: 60 }}>
+                                    <SaleSimTable valuationResult={valuationResult} subject={subject} neighborhood={neighborhood} />
+                                    {visibleScenarios.length > 0 && (
+                                        <View style={{ marginTop: 12 }}>
+                                            <Text style={[styles.h3, { marginBottom: 8 }]}>Escenarios de Compra</Text>
+                                            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                                                {visibleScenarios.map(scenario => (
+                                                    <PurchaseSimTable
+                                                        key={scenario.id}
+                                                        scenario={scenario}
+                                                        currency={valuationResult.currency}
+                                                        width={visibleScenarios.length === 1 ? '100%' : visibleScenarios.length === 2 ? '49%' : '32.6%'}
+                                                    />
+                                                ))}
+                                            </View>
+                                        </View>
+                                    )}
+                                </View>
+                            </Page>
+                        )
+                    })()}
+
+                    {/* FALLBACK LEGACY: tabla side-by-side si no hay scenarios pero sí purchaseResult */}
+                    {(!valuationResult.purchaseScenarios || valuationResult.purchaseScenarios.length === 0) && purchaseResult && (
                         <Page size="A4" style={styles.pageWithPadding}>
                             <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
                                 <Text style={styles.headerTitle}>PROPIEDADES EN VENTA</Text>
