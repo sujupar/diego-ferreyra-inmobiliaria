@@ -9,6 +9,9 @@ import { ComparableEditor, ComparableMissingIndicator } from '@/components/appra
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { ScrapedProperty, PropertyFeatures } from '@/lib/scraper/types'
 import { calculateValuation, calculatePurchaseCosts, ValuationResult, ValuationProperty, ExpenseRates, PurchaseExpenseRates, PurchaseResult } from '@/lib/valuation/calculator'
+import type { PurchaseScenarioId, PurchaseScenarioInput } from '@/lib/valuation/calculator'
+import { buildDefaultScenarios, calculateAllScenarios } from '@/lib/valuation/purchase-scenarios'
+import { PurchaseScenariosEditor } from '@/components/appraisal/PurchaseScenariosEditor'
 import { ReportEdits, DEFAULT_REPORT_EDITS, buildDefaultEdits } from '@/lib/types/report-edits'
 import { saveAppraisal, updateAppraisal, getAppraisal } from '@/lib/supabase/appraisals'
 import { mapDealToWizardInitialData, hasSaleVisitPrefill } from '@/lib/mapping/visit-to-wizard'
@@ -180,6 +183,19 @@ function NewAppraisalPageContent() {
     const [selectedPurchaseIndex, setSelectedPurchaseIndex] = useState<number | null>(null)
     const [purchaseResult, setPurchaseResult] = useState<PurchaseResult | null>(null)
 
+    // Escenarios de compra (Conservador / Medio / Agresivo)
+    const [purchaseScenarios, setPurchaseScenarios] = useState<PurchaseScenarioInput[]>([])
+    const [selectedScenarioIds, setSelectedScenarioIds] = useState<PurchaseScenarioId[]>([])
+
+    // Inicializar escenarios cuando se agrega la primera propiedad de compra
+    useEffect(() => {
+        if (purchaseProperties.length > 0 && purchaseScenarios.length === 0) {
+            const basePrice = purchaseProperties[0].price || 100000
+            setPurchaseScenarios(buildDefaultScenarios(basePrice))
+            setSelectedScenarioIds(['conservative', 'medium', 'aggressive'])
+        }
+    }, [purchaseProperties, purchaseScenarios.length])
+
     // Report edits (semaphores, text overrides)
     const [reportEdits, setReportEdits] = useState<ReportEdits>(DEFAULT_REPORT_EDITS)
 
@@ -254,6 +270,21 @@ function NewAppraisalPageContent() {
                 // Restore expenseRates from the stored result if present
                 if (detail.valuation_result?.expenseRates) {
                     setExpenseRates(detail.valuation_result.expenseRates)
+                }
+
+                // Restore escenarios de compra if present
+                if (detail.valuation_result?.purchaseScenarios) {
+                    setPurchaseScenarios(detail.valuation_result.purchaseScenarios.map((s: any) => ({
+                        id: s.id,
+                        label: s.label,
+                        publicationPrice: s.publicationPrice,
+                        purchaseDiscountPercent: s.purchaseDiscountPercent,
+                        deedDiscountPercent: s.deedDiscountPercent,
+                        rates: s.rates,
+                    })))
+                }
+                if (detail.valuation_result?.selectedScenarioIds) {
+                    setSelectedScenarioIds(detail.valuation_result.selectedScenarioIds)
                 }
             })
             .catch(err => {
@@ -341,12 +372,16 @@ function NewAppraisalPageContent() {
             expenseRates,
         })
         if (!next) return
+        // Calcular escenarios si los hay
+        const scenarioResults = purchaseScenarios.length > 0
+            ? calculateAllScenarios(purchaseScenarios, next.moneyInHand)
+            : undefined
         // Preserve purchase data that lives outside calculateValuation
         const merged: ValuationResult = {
             ...next,
             purchaseResult: valuationResult.purchaseResult,
-            purchaseScenarios: valuationResult.purchaseScenarios,
-            selectedScenarioIds: valuationResult.selectedScenarioIds,
+            purchaseScenarios: scenarioResults,
+            selectedScenarioIds: scenarioResults ? selectedScenarioIds : valuationResult.selectedScenarioIds,
         }
         setValuationResult(merged)
 
@@ -369,7 +404,7 @@ function NewAppraisalPageContent() {
             }).catch(err => console.error('Auto-save error:', err))
         }, 800)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [subject, comparables, expenseRates])
+    }, [subject, comparables, expenseRates, purchaseScenarios, selectedScenarioIds])
 
     function handleCalculate() {
         if (!subject) return
@@ -1071,6 +1106,21 @@ function NewAppraisalPageContent() {
                                     </div>
                                 </div>
                             </details>
+                        )}
+
+                        {/* Escenarios de compra (Conservador / Medio / Agresivo) */}
+                        {purchaseProperties.length > 0 && purchaseScenarios.length > 0 && valuationResult && (
+                            <div className="mt-6">
+                                <PurchaseScenariosEditor
+                                    scenarios={purchaseScenarios}
+                                    results={valuationResult.purchaseScenarios || []}
+                                    selectedIds={selectedScenarioIds}
+                                    currency={valuationResult.currency}
+                                    moneyFromSale={valuationResult.moneyInHand}
+                                    onScenariosChange={setPurchaseScenarios}
+                                    onSelectedIdsChange={setSelectedScenarioIds}
+                                />
+                            </div>
                         )}
                     </div>
                 </section>
