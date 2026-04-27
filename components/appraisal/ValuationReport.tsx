@@ -2,6 +2,7 @@
 
 import { memo, useState } from 'react'
 import { ValuationResult, ValuationProperty } from '@/lib/valuation/calculator'
+import { formatCurrency } from '@/lib/valuation/utils'
 import {
     DISPOSITION_LABELS,
     QUALITY_LABELS,
@@ -30,14 +31,6 @@ const CONSERVATION_OPTIONS: ConservationStateType[] = [
     'STATE_1', 'STATE_1_5', 'STATE_2', 'STATE_2_5', 'STATE_3', 'STATE_3_5', 'STATE_4', 'STATE_4_5', 'STATE_5'
 ]
 
-function formatCurrency(value: number, currency: string = 'USD'): string {
-    return new Intl.NumberFormat('es-AR', {
-        style: 'currency',
-        currency: currency === 'ARS' ? 'ARS' : 'USD',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-    }).format(value)
-}
 
 function formatNumber(value: number | undefined | null, decimals: number = 2): string {
     if (value == null || isNaN(value)) return '—'

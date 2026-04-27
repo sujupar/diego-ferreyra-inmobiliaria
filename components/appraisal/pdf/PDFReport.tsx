@@ -3,6 +3,7 @@
 import React from 'react'
 import { Document, Page, Text, View, Image, Link, Svg, Path, Circle as SvgCircle, Rect as SvgRect } from '@react-pdf/renderer'
 import { ValuationProperty, ValuationResult, PurchaseResult } from '@/lib/valuation/calculator'
+import { formatCurrency } from '@/lib/valuation/utils'
 import { styles, colors } from './PDFStyles'
 import { ReportEdits, SemaphoreColor } from '@/lib/types/report-edits'
 
@@ -38,13 +39,6 @@ function extractNeighborhood(location: string): string {
     return match ? match[1].trim() : 'CABA'
 }
 
-//Helper to format currency
-function formatCurrency(value: number, currency: string = 'USD'): string {
-    if (currency === 'USD') {
-        return `USD ${value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-    }
-    return `${currency} ${value.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-}
 
 /** Strip HTML tags, collapse whitespace, and limit length */
 function cleanText(str: string | undefined | null, maxLen: number = 300): string {
