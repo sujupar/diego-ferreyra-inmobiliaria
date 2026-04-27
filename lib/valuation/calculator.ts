@@ -55,7 +55,7 @@ function getDispositionCoefficient(disposition?: DispositionType): number {
 /**
  * Get quality coefficient
  */
-function getQualityCoefficient(quality?: QualityType): number {
+export function getQualityCoefficient(quality?: QualityType): number {
     if (!quality) return VALUATION_RULES.QUALITY_COEFFICIENTS.GOOD_ECONOMIC
     return VALUATION_RULES.QUALITY_COEFFICIENTS[quality] || 1.0
 }
@@ -246,14 +246,14 @@ export function calculateValuation({ subject, comparables, expenseRates }: Valua
     const subjectSurface = calculateHomogenizedSurface(subject.features)
     if (subjectSurface === 0) return null
 
-    // Subject coefficients — Ubicación y Calidad siempre = 1.0 para el sujeto
-    const subjectLocationCoef = 1.0
+    // Subject coefficients — aplicar coeficientes según selección del usuario
+    const subjectLocationCoef = subject.features.locationCoefficient ?? 1.0
     const subjectFloorCoef = getFloorCoefficient(
         subject.features.floor || 0,
         subject.features.totalFloors || null
     )
     const subjectDispositionCoef = getDispositionCoefficient(subject.features.disposition)
-    const subjectQualityCoef = 1.0
+    const subjectQualityCoef = getQualityCoefficient(subject.features.quality)
     const subjectAgeCoef = calculateAgeFactor(
         subject.features.age || 0,
         subject.features.conservationState || 'STATE_2',

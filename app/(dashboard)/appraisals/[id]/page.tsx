@@ -8,7 +8,7 @@ import type { AppraisalDetail } from '@/lib/supabase/appraisals'
 import { updateAppraisal } from '@/lib/supabase/appraisals'
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { PDFDownloadButton } from '@/components/appraisal/PDFDownloadButton'
-import { ValuationProperty, ValuationResult, calculateValuation } from '@/lib/valuation/calculator'
+import { ValuationProperty, ValuationResult, calculateValuation, getQualityCoefficient } from '@/lib/valuation/calculator'
 import { ReportEdits, buildDefaultEdits } from '@/lib/types/report-edits'
 import type { PropertyFeatures, ScrapedProperty } from '@/lib/scraper/types'
 import { Button } from '@/components/ui/button'
@@ -149,6 +149,15 @@ export default function AppraisalDetailPage() {
     const result: ValuationResult = valuationOverride ?? (appraisal.valuation_result || {} as ValuationResult)
     const hasFullValuation = result.subjectSurface != null && result.comparableAnalysis?.length > 0
 
+    // Detect coefficient drift: tasaciones guardadas antes del fix tenían subjectQualityCoef = 1.0 hardcoded.
+    // El nuevo cálculo usa el coeficiente real según features.quality del subject.
+    const subjectQuality = appraisal.property_features?.quality
+    const expectedQualityCoef = getQualityCoefficient(subjectQuality)
+    const storedQualityCoef = result?.subjectQualityCoef
+    const qualityCoefficientChanged =
+        typeof storedQualityCoef === 'number' &&
+        Math.abs(storedQualityCoef - expectedQualityCoef) > 0.01
+
     async function handleSubjectFeaturesChange(features: PropertyFeatures) {
         if (!appraisal) return
         // Optimistic UI update
@@ -280,6 +289,19 @@ export default function AppraisalDetailPage() {
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Guardando cambios...
+                </div>
+            )}
+
+            {/* Banner: coeficiente de calidad constructiva desactualizado */}
+            {qualityCoefficientChanged && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm">
+                    <strong className="text-amber-800">Aviso de actualización del motor de cálculo</strong>
+                    <p className="mt-1 text-amber-700">
+                        Esta tasación fue creada con un coeficiente de calidad constructiva fijo (1.0).
+                        Al editar cualquier dato se recalculará usando el coeficiente real de la calidad
+                        seleccionada ({subjectQuality ?? 'no definida'} = {expectedQualityCoef.toFixed(2)}).
+                        Esto puede modificar el precio de publicación.
+                    </p>
                 </div>
             )}
 
