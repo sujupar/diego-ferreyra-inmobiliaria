@@ -7,7 +7,7 @@ import { PropertyWizard } from '@/components/appraisal/PropertyWizard'
 import { PropertyForm } from '@/components/appraisal/PropertyForm'
 import { ComparableEditor, ComparableMissingIndicator } from '@/components/appraisal/ComparableEditor'
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
-import { ScrapedProperty } from '@/lib/scraper/types'
+import { ScrapedProperty, PropertyFeatures } from '@/lib/scraper/types'
 import { calculateValuation, calculatePurchaseCosts, ValuationResult, ValuationProperty, ExpenseRates, PurchaseExpenseRates, PurchaseResult } from '@/lib/valuation/calculator'
 import { ReportEdits, DEFAULT_REPORT_EDITS, buildDefaultEdits } from '@/lib/types/report-edits'
 import { saveAppraisal, updateAppraisal, getAppraisal } from '@/lib/supabase/appraisals'
@@ -294,8 +294,8 @@ function NewAppraisalPageContent() {
         })
     }
 
-    function handleSubjectFeaturesChange(newFeatures: Record<string, unknown>) {
-        setSubject(prev => prev ? { ...prev, features: newFeatures as any } : prev)
+    function handleSubjectFeaturesChange(newFeatures: PropertyFeatures) {
+        setSubject(prev => prev ? { ...prev, features: newFeatures } : prev)
     }
 
     // Re-run calculation whenever subject/comparables/expenseRates change,

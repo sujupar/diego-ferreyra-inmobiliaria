@@ -16,13 +16,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { Edit2, Check } from 'lucide-react'
+import type { PropertyFeatures } from '@/lib/scraper/types'
+import { SubjectFeaturesEditor } from './SubjectFeaturesEditor'
 
 interface ValuationReportProps {
     subject: ValuationProperty
     result: ValuationResult
     editable?: boolean
     onComparableFeaturesChange?: (index: number, features: Record<string, unknown>) => void
-    onSubjectFeaturesChange?: (features: Record<string, unknown>) => void
+    onSubjectFeaturesChange?: (features: PropertyFeatures) => void
 }
 
 const DISPOSITION_OPTIONS: DispositionType[] = ['FRONT', 'BACK', 'LATERAL', 'INTERNAL']
@@ -61,8 +63,8 @@ function ValuationReportInner({
 
     const updateSubjectFeature = (key: string, value: unknown) => {
         if (!onSubjectFeaturesChange) return
-        const current = subject.features || {}
-        onSubjectFeaturesChange({ ...current, [key]: value })
+        const current = subject.features || ({} as PropertyFeatures)
+        onSubjectFeaturesChange({ ...current, [key]: value } as PropertyFeatures)
     }
 
     const parseNum = (v: string): number | null => {
@@ -181,6 +183,24 @@ function ValuationReportInner({
                         </div>
                     </CardContent>
                 </Card>
+                {editable && onSubjectFeaturesChange && (
+                    <div className="mt-4">
+                        <SubjectFeaturesEditor
+                            value={{
+                                coveredArea: subject.features.coveredArea ?? null,
+                                uncoveredArea: subject.features.uncoveredArea ?? null,
+                                rooms: subject.features.rooms ?? null,
+                                bedrooms: subject.features.bedrooms ?? null,
+                                bathrooms: subject.features.bathrooms ?? null,
+                                age: subject.features.age ?? null,
+                                floor: subject.features.floor ?? null,
+                                totalFloors: subject.features.totalFloors ?? null,
+                                garages: subject.features.garages ?? null,
+                            }}
+                            onChange={next => onSubjectFeaturesChange?.({ ...subject.features, ...next } as PropertyFeatures)}
+                        />
+                    </div>
+                )}
             </div>
 
             {/* Comparables Analysis Table */}
