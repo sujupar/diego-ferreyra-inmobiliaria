@@ -8,7 +8,7 @@ import type { AppraisalDetail } from '@/lib/supabase/appraisals'
 import { updateAppraisal } from '@/lib/supabase/appraisals'
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { PDFDownloadButton } from '@/components/appraisal/PDFDownloadButton'
-import { ValuationProperty, ValuationResult, calculateValuation, getQualityCoefficient } from '@/lib/valuation/calculator'
+import { ValuationProperty, ValuationResult, calculateValuation, getQualityCoefficient, ExpenseRates } from '@/lib/valuation/calculator'
 import { ReportEdits, buildDefaultEdits } from '@/lib/types/report-edits'
 import type { PropertyFeatures, ScrapedProperty } from '@/lib/scraper/types'
 import { Button } from '@/components/ui/button'
@@ -243,6 +243,96 @@ export default function AppraisalDetailPage() {
         }
     }
 
+    async function handleExpenseRatesChange(next: Partial<ExpenseRates>) {
+        if (!appraisal || !appraisal.valuation_result) return
+        const currentRates = (valuationOverride?.expenseRates ?? appraisal.valuation_result.expenseRates) || {
+            saleDiscountPercent: 5,
+            deedDiscountPercent: 30,
+            stampsPercent: 1.35,
+            deedExpensesPercent: 1.5,
+            agencyFeesPercent: 3,
+        }
+        const newRates: Required<ExpenseRates> = { ...currentRates, ...next } as Required<ExpenseRates>
+        setSavingFeatures(true)
+        try {
+            // Filter out overpriced AND purchase properties — only normal comparables
+            // contribute to the average $/m².
+            const onlyNormalRows = appraisal.comparables.filter(c => {
+                const a = c.analysis as Record<string, unknown> | null
+                return a?.propertyType !== 'overpriced' && a?.propertyType !== 'purchase'
+            })
+            const recalc = calculateValuation({
+                subject,
+                comparables: onlyNormalRows.map(c => ({
+                    price: c.price,
+                    currency: c.currency,
+                    title: c.title || undefined,
+                    location: c.location || undefined,
+                    features: c.features as ValuationProperty['features'],
+                })),
+                expenseRates: newRates,
+            })
+            if (recalc) {
+                const merged: ValuationResult = {
+                    ...recalc,
+                    purchaseResult: result?.purchaseResult,
+                    purchaseScenarios: result?.purchaseScenarios,
+                    selectedScenarioIds: result?.selectedScenarioIds,
+                }
+                setValuationOverride(merged)
+
+                // Persist via updateAppraisal — same payload-rebuilding pattern as
+                // handleSubjectFeaturesChange.
+                const subjectScraped: ScrapedProperty = {
+                    url: appraisal.property_url || '',
+                    title: appraisal.property_title || '',
+                    price: appraisal.property_price,
+                    currency: (appraisal.property_currency as 'USD' | 'ARS' | null) ?? null,
+                    location: appraisal.property_location,
+                    description: appraisal.property_description || '',
+                    features: effectiveFeatures,
+                    images: appraisal.property_images || [],
+                    portal: '',
+                }
+                const allComparablesScraped: ScrapedProperty[] = appraisal.comparables.map(c => ({
+                    url: c.url || '',
+                    title: c.title || '',
+                    price: c.price,
+                    currency: (c.currency as 'USD' | 'ARS' | null) ?? null,
+                    location: c.location || '',
+                    description: c.description || '',
+                    features: c.features as PropertyFeatures,
+                    images: c.images || [],
+                    portal: '',
+                }))
+                const normalScraped = allComparablesScraped.filter((_, i) => {
+                    const a = appraisal.comparables[i].analysis as Record<string, unknown> | null
+                    return a?.propertyType !== 'overpriced' && a?.propertyType !== 'purchase'
+                })
+                const overpricedScraped = allComparablesScraped.filter((_, i) => {
+                    const a = appraisal.comparables[i].analysis as Record<string, unknown> | null
+                    return a?.propertyType === 'overpriced'
+                })
+                const purchaseScraped = allComparablesScraped.filter((_, i) => {
+                    const a = appraisal.comparables[i].analysis as Record<string, unknown> | null
+                    return a?.propertyType === 'purchase'
+                })
+
+                await updateAppraisal(appraisal.id, {
+                    subject: subjectScraped,
+                    comparables: normalScraped,
+                    overpriced: overpricedScraped,
+                    purchaseProperties: purchaseScraped,
+                    valuationResult: merged,
+                })
+            }
+        } catch (err) {
+            console.error('handleExpenseRatesChange error:', err)
+        } finally {
+            setSavingFeatures(false)
+        }
+    }
+
     return (
         <div className="max-w-5xl mx-auto space-y-8 pb-20">
             {/* Header */}
@@ -312,6 +402,8 @@ export default function AppraisalDetailPage() {
                     result={result}
                     editable
                     onSubjectFeaturesChange={handleSubjectFeaturesChange}
+                    expenseRates={(valuationOverride?.expenseRates ?? appraisal.valuation_result?.expenseRates) || undefined}
+                    onExpenseRatesChange={handleExpenseRatesChange}
                 />
             ) : (
                 <div className="rounded-lg border p-6 space-y-4">

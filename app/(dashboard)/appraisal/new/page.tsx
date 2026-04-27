@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { PropertyWizard } from '@/components/appraisal/PropertyWizard'
@@ -91,6 +91,12 @@ function NewAppraisalPageContent() {
     // the moment React picks up the new editId from the URL replace.
     const [savedAppraisalId, setSavedAppraisalId] = useState<string | null>(editId)
 
+    // Synchronous ref for the latest persisted id — avoids race condition with
+    // setSavedAppraisalId being asynchronous when the recalc useEffect fires.
+    const savedAppraisalIdRef = useRef<string | null>(editId || null)
+    // Debounce timer for auto-save on rate/feature edits
+    const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
     const [subject, setSubject] = useState<ScrapedProperty | null>(null)
     const [comparables, setComparables] = useState<ScrapedProperty[]>([])
     const [overpriced, setOverpriced] = useState<ScrapedProperty[]>([])
@@ -107,6 +113,18 @@ function NewAppraisalPageContent() {
             localStorage.removeItem('propertyWizardDraft')
         }
     }, [editId])
+
+    // Keep the ref in sync with whichever id is current (URL or in-session insert)
+    useEffect(() => {
+        savedAppraisalIdRef.current = editId || savedAppraisalId || null
+    }, [editId, savedAppraisalId])
+
+    // Cleanup any pending debounced save on unmount
+    useEffect(() => {
+        return () => {
+            if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+        }
+    }, [])
 
     // Load advisors list
     useEffect(() => {
@@ -322,7 +340,34 @@ function NewAppraisalPageContent() {
             comparables: compsVal,
             expenseRates,
         })
-        if (next) setValuationResult(next)
+        if (!next) return
+        // Preserve purchase data that lives outside calculateValuation
+        const merged: ValuationResult = {
+            ...next,
+            purchaseResult: valuationResult.purchaseResult,
+            purchaseScenarios: valuationResult.purchaseScenarios,
+            selectedScenarioIds: valuationResult.selectedScenarioIds,
+        }
+        setValuationResult(merged)
+
+        // Auto-save with 800ms debounce using the synchronous ref.
+        // We DO NOT use savedAppraisalId state here because it's async and
+        // may not be set yet when this effect fires right after handleCalculate.
+        const persistedId = savedAppraisalIdRef.current
+        if (!persistedId) return  // first INSERT is handled inside handleCalculate
+
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+        autoSaveTimerRef.current = setTimeout(() => {
+            updateAppraisal(persistedId, {
+                subject,
+                comparables,
+                overpriced,
+                purchaseProperties,
+                valuationResult: merged,
+                origin: origin || undefined,
+                assignedTo: assignedTo || undefined,
+            }).catch(err => console.error('Auto-save error:', err))
+        }, 800)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [subject, comparables, expenseRates])
 
@@ -409,6 +454,9 @@ function NewAppraisalPageContent() {
                     // it in the URL so future calcs are updates, not inserts.
                     if (!isUpdate && appraisalId) {
                         setSavedAppraisalId(appraisalId)
+                        // Sync the ref synchronously — the recalc useEffect
+                        // may fire before setSavedAppraisalId flushes to state.
+                        savedAppraisalIdRef.current = appraisalId
                         const params = new URLSearchParams(searchParams.toString())
                         params.set('editId', appraisalId)
                         router.replace(`/appraisal/new?${params.toString()}`, { scroll: false })
@@ -1126,6 +1174,8 @@ function NewAppraisalPageContent() {
                         editable
                         onComparableFeaturesChange={handleComparableFeaturesChange}
                         onSubjectFeaturesChange={handleSubjectFeaturesChange}
+                        expenseRates={valuationResult.expenseRates}
+                        onExpenseRatesChange={(next) => setExpenseRates(prev => ({ ...prev, ...next }))}
                     />
 
                     {/* Save status indicator */}
@@ -1149,6 +1199,7 @@ function NewAppraisalPageContent() {
                                             ? updateAppraisal(existingId, payload)
                                             : saveAppraisal(payload).then(newId => {
                                                 setSavedAppraisalId(newId)
+                                                savedAppraisalIdRef.current = newId
                                                 // Mirror the URL update so a refresh after retry stays in edit mode.
                                                 const params = new URLSearchParams(searchParams.toString())
                                                 params.set('editId', newId)

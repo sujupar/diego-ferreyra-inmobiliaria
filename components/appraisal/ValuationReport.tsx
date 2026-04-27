@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useState } from 'react'
-import { ValuationResult, ValuationProperty } from '@/lib/valuation/calculator'
+import { ValuationResult, ValuationProperty, ExpenseRates } from '@/lib/valuation/calculator'
 import { formatCurrency } from '@/lib/valuation/utils'
 import {
     DISPOSITION_LABELS,
@@ -25,6 +25,8 @@ interface ValuationReportProps {
     editable?: boolean
     onComparableFeaturesChange?: (index: number, features: Record<string, unknown>) => void
     onSubjectFeaturesChange?: (features: PropertyFeatures) => void
+    expenseRates?: Required<ExpenseRates>
+    onExpenseRatesChange?: (next: Partial<ExpenseRates>) => void
 }
 
 const DISPOSITION_OPTIONS: DispositionType[] = ['FRONT', 'BACK', 'LATERAL', 'INTERNAL']
@@ -46,7 +48,18 @@ function ValuationReportInner({
     editable = false,
     onComparableFeaturesChange,
     onSubjectFeaturesChange,
+    expenseRates,
+    onExpenseRatesChange,
 }: ValuationReportProps) {
+    // Effective rates with fallback to result.expenseRates or hardcoded defaults
+    const effectiveRates: Required<ExpenseRates> = expenseRates ?? result.expenseRates ?? {
+        saleDiscountPercent: 5,
+        deedDiscountPercent: 30,
+        stampsPercent: 1.35,
+        deedExpensesPercent: 1.5,
+        agencyFeesPercent: 3,
+    }
+    const ratesEditable = editable && Boolean(onExpenseRatesChange)
     const [isEditing, setIsEditing] = useState(false)
 
     const today = new Date().toLocaleDateString('es-AR', {
@@ -527,13 +540,53 @@ function ValuationReportInner({
                     </Card>
                     <Card className="shadow-none bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800">
                         <CardContent className="p-4 text-center">
-                            <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">Valor Venta (-5%)</p>
+                            <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">
+                                Valor Venta (
+                                {ratesEditable ? (
+                                    <span className="inline-flex items-center">
+                                        -
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min={0}
+                                            max={100}
+                                            value={effectiveRates.saleDiscountPercent}
+                                            onChange={e => onExpenseRatesChange!({ saleDiscountPercent: Number(e.target.value) })}
+                                            className="w-12 mx-1 rounded border px-1 py-0.5 text-xs text-right bg-background"
+                                        />
+                                        %
+                                    </span>
+                                ) : (
+                                    <>-{effectiveRates.saleDiscountPercent}%</>
+                                )}
+                                )
+                            </p>
                             <p className="text-2xl font-bold text-green-700 dark:text-green-400">{formatCurrency(result.saleValue, result.currency)}</p>
                         </CardContent>
                     </Card>
                     <Card className="shadow-none bg-secondary/20">
                         <CardContent className="p-4 text-center">
-                            <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">Valor Escritura (-30%)</p>
+                            <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">
+                                Valor Escritura (
+                                {ratesEditable ? (
+                                    <span className="inline-flex items-center">
+                                        -
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min={0}
+                                            max={100}
+                                            value={effectiveRates.deedDiscountPercent}
+                                            onChange={e => onExpenseRatesChange!({ deedDiscountPercent: Number(e.target.value) })}
+                                            className="w-12 mx-1 rounded border px-1 py-0.5 text-xs text-right bg-background"
+                                        />
+                                        %
+                                    </span>
+                                ) : (
+                                    <>-{effectiveRates.deedDiscountPercent}%</>
+                                )}
+                                )
+                            </p>
                             <p className="text-2xl font-bold text-foreground">{formatCurrency(result.deedValue, result.currency)}</p>
                         </CardContent>
                     </Card>
@@ -552,17 +605,68 @@ function ValuationReportInner({
                         <tbody className="bg-card divide-y divide-border">
                             <tr>
                                 <td className="px-4 py-3 text-sm">Sellos</td>
-                                <td className="px-4 py-3 text-sm text-right text-muted-foreground">1.35% s/escritura</td>
+                                <td className="px-4 py-3 text-sm text-right text-muted-foreground">
+                                    {ratesEditable ? (
+                                        <span className="inline-flex items-center gap-1 justify-end">
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min={0}
+                                                max={100}
+                                                value={effectiveRates.stampsPercent}
+                                                onChange={e => onExpenseRatesChange!({ stampsPercent: Number(e.target.value) })}
+                                                className="w-16 rounded border px-1 py-0.5 text-sm text-right bg-background"
+                                            />
+                                            <span>% s/escritura</span>
+                                        </span>
+                                    ) : (
+                                        <>{effectiveRates.stampsPercent}% s/escritura</>
+                                    )}
+                                </td>
                                 <td className="px-4 py-3 text-sm text-right font-medium">{formatCurrency(result.stampsCost, result.currency)}</td>
                             </tr>
                             <tr>
                                 <td className="px-4 py-3 text-sm">Gastos de Escritura</td>
-                                <td className="px-4 py-3 text-sm text-right text-muted-foreground">1.5% s/venta</td>
+                                <td className="px-4 py-3 text-sm text-right text-muted-foreground">
+                                    {ratesEditable ? (
+                                        <span className="inline-flex items-center gap-1 justify-end">
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min={0}
+                                                max={100}
+                                                value={effectiveRates.deedExpensesPercent}
+                                                onChange={e => onExpenseRatesChange!({ deedExpensesPercent: Number(e.target.value) })}
+                                                className="w-16 rounded border px-1 py-0.5 text-sm text-right bg-background"
+                                            />
+                                            <span>% s/venta</span>
+                                        </span>
+                                    ) : (
+                                        <>{effectiveRates.deedExpensesPercent}% s/venta</>
+                                    )}
+                                </td>
                                 <td className="px-4 py-3 text-sm text-right font-medium">{formatCurrency(result.deedExpenses, result.currency)}</td>
                             </tr>
                             <tr>
                                 <td className="px-4 py-3 text-sm">Honorarios Inmobiliaria</td>
-                                <td className="px-4 py-3 text-sm text-right text-muted-foreground">3% s/venta</td>
+                                <td className="px-4 py-3 text-sm text-right text-muted-foreground">
+                                    {ratesEditable ? (
+                                        <span className="inline-flex items-center gap-1 justify-end">
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min={0}
+                                                max={100}
+                                                value={effectiveRates.agencyFeesPercent}
+                                                onChange={e => onExpenseRatesChange!({ agencyFeesPercent: Number(e.target.value) })}
+                                                className="w-16 rounded border px-1 py-0.5 text-sm text-right bg-background"
+                                            />
+                                            <span>% s/venta</span>
+                                        </span>
+                                    ) : (
+                                        <>{effectiveRates.agencyFeesPercent}% s/venta</>
+                                    )}
+                                </td>
                                 <td className="px-4 py-3 text-sm text-right font-medium">{formatCurrency(result.agencyFees, result.currency)}</td>
                             </tr>
                         </tbody>
