@@ -9,6 +9,7 @@ import {
     parseFloor,
     parseViews,
     parsePublishedDate,
+    normalizePublishedText,
     getText,
     extractImages,
     cleanText
@@ -156,14 +157,14 @@ export function extractZonaProp($: CheerioAPI, url: string): ScrapedProperty {
         '[class*="PublishDate"]',
     ])
     if (pubDateText) {
-        features.publishedDate = parsePublishedDate(pubDateText)
+        features.publishedDate = normalizePublishedText(parsePublishedDate(pubDateText))
     }
     // Fallback: search for "Publicado hace" text
     if (!features.publishedDate) {
         $('span, p, div, time').each((_, el) => {
             const t = $(el).text()
             if (t.toLowerCase().includes('publicado hace') || (t.toLowerCase().includes('hace') && t.toLowerCase().match(/d[ií]as?|meses?|años?/))) {
-                const d = parsePublishedDate(t)
+                const d = normalizePublishedText(parsePublishedDate(t))
                 if (d) {
                     features.publishedDate = d
                     return false

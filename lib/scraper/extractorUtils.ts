@@ -228,6 +228,27 @@ export function parsePublishedDate(text: string): string | null {
 }
 
 /**
+ * Normaliza el texto de publicación para mostrar "Publicado hace X" consistente.
+ * Acepta: "hace 5 días", "Publicado hace 2 meses", "5 días", "Hace 1 año"
+ * Devuelve null si no se puede parsear; devuelve el texto original como fallback si tiene contenido.
+ */
+export function normalizePublishedText(raw: string | null | undefined): string | null {
+    if (!raw) return null
+    const text = String(raw).trim()
+    if (!text) return null
+
+    if (/^publicado\s+hace/i.test(text)) return text
+    if (/^hace\s+/i.test(text)) return `Publicado ${text.toLowerCase()}`
+    if (/^\d+\s+(día|mes|año|hora|minuto|semana)/i.test(text)) {
+        return `Publicado hace ${text.toLowerCase()}`
+    }
+    if (/(día|mes|año|semana)/i.test(text)) {
+        return `Publicado ${text}`
+    }
+    return text
+}
+
+/**
  * Finds a value in a specs table by label
  */
 export function findSpecByLabel($: CheerioAPI, rowSelector: string, labelSelector: string, valueSelector: string, labelText: string): string {
