@@ -248,9 +248,9 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                         {reportEdits?.coverTitle || 'INFORME DE TASACIÓN'}
                     </Text>
 
-                    {/* Property Title */}
+                    {/* Property Title — siempre solo dirección, incluso si reportEdits guardó el título completo (legacy) */}
                     <Text style={[styles.propertyTitle, { marginTop: 16, fontSize: 32 }]}>
-                        {reportEdits?.coverPropertyTitle || extractAddress(subject.location || subject.title)}
+                        {extractAddress(reportEdits?.coverPropertyTitle || subject.location || subject.title)}
                     </Text>
 
                     {/* Three Institutional Logos */}
@@ -273,20 +273,18 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                     </View>
                 </View>
 
-                {/* Diego Photo - bottom-right, flush with footer */}
-                <View style={{ position: 'absolute', bottom: 48, right: 0, width: 280 }}>
-                    <Image
-                        src="/pdf-assets/photos/Foto Diego.png"
-                        style={{ width: '100%', height: 420, objectFit: 'contain' }}
-                    />
-                </View>
+                {/* Diego Photo — mismo tratamiento que dividers (cover, full-bleed bottom-right) */}
+                <Image
+                    src="/pdf-assets/photos/Foto Diego.png"
+                    style={styles.dividerPhoto}
+                />
 
-                {/* City text - bottom-left, above footer */}
+                {/* City text - bottom-left, posicionado por encima de la zona de la foto */}
                 <Text style={{
                     position: 'absolute',
-                    bottom: 55,
+                    bottom: 220,
                     left: 60,
-                    fontSize: 13,
+                    fontSize: 14,
                     color: colors.darkGray,
                     fontWeight: 'bold',
                     lineHeight: 1.4
@@ -309,17 +307,23 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                     <Text>PROPIEDADES EN VENTA</Text>
                 </View>
 
-                {/* Property Title */}
+                {/* Property Title — solo dirección */}
                 <Text style={[styles.propertyTitle, { marginTop: 40 }]}>
-                    {subject.title || subject.location}
+                    {extractAddress(subject.title || subject.location)}
                 </Text>
 
-                {/* Main Photo */}
+                {/* Main Photo — más grande para mejor protagonismo */}
                 {subject.images && subject.images[0] && (
-                    <View style={{ marginBottom: 12, border: `1px solid ${colors.lightGray}` }}>
+                    <View style={{
+                        marginTop: 8,
+                        marginBottom: 24,
+                        borderWidth: 1,
+                        borderColor: colors.lightGray,
+                        borderStyle: 'solid',
+                    }}>
                         <Image
                             src={subject.images[0]}
-                            style={{ width: '100%', height: 220, objectFit: 'cover' }}
+                            style={{ width: '100%', height: 320, objectFit: 'cover' }}
                         />
                     </View>
                 )}
@@ -642,9 +646,9 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 </View>
             </Page>
 
-            {/* PAGES 7+: COMPARABLES (balanced pagination) */}
+            {/* PAGES 7+: COMPARABLES — 2 por página garantizado para evitar overlap */}
             {(() => {
-                const pages = paginateBalanced(comparables, 3)
+                const pages = paginateBalanced(comparables, 2)
                 return pages.map((pageComps, pageIndex) => {
                     const startGlobal = pages.slice(0, pageIndex).reduce((sum, p) => sum + p.length, 0)
                     return (
@@ -654,44 +658,60 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                             <Text style={styles.headerSubtitle}>{neighborhood}, CABA</Text>
                         </View>
 
-                        <View style={{ marginTop: 60, gap: 16 }}>
+                        <View style={{ marginTop: 70, gap: 28 }}>
                             {pageComps.map((comp, index) => {
                             const globalIndex = startGlobal + index
                                 const homSurface = getHomogenizedSurface(comp)
                                 const pricePerM2 = homSurface > 0 ? (comp.price || 0) / homSurface : 0
 
                                 return (
-                                    <View key={globalIndex} wrap={false} style={{ flexDirection: 'row', gap: 12 }}>
+                                    <View key={globalIndex} wrap={false} style={{
+                                        flexDirection: 'row',
+                                        gap: 16,
+                                        paddingBottom: 16,
+                                        borderBottomWidth: 1,
+                                        borderBottomColor: '#e2e8f0',
+                                        borderBottomStyle: 'solid',
+                                    }}>
                                         {/* Photo with semaphore */}
-                                        <View style={{ position: 'relative', width: '30%' }}>
+                                        <View style={{ position: 'relative', width: '32%' }}>
                                             {comp.images && comp.images[0] ? (
                                                 <Image
                                                     src={comp.images[0]}
-                                                    style={{ width: '100%', height: 130, objectFit: 'cover', border: `1px solid ${colors.lightGray}` }}
+                                                    style={{
+                                                        width: '100%',
+                                                        height: 200,
+                                                        objectFit: 'cover',
+                                                        borderWidth: 1,
+                                                        borderColor: colors.lightGray,
+                                                        borderStyle: 'solid',
+                                                    }}
                                                 />
                                             ) : (
-                                                <View style={{ width: '100%', height: 130, backgroundColor: colors.lightGray }} />
+                                                <View style={{ width: '100%', height: 200, backgroundColor: colors.lightGray }} />
                                             )}
                                             {/* Semaphore indicator — configurable color */}
-                                            <View style={{ position: 'absolute', top: 6, left: 6 }}>
+                                            <View style={{ position: 'absolute', top: 8, left: 8 }}>
                                                 <View style={{
-                                                    width: 28,
-                                                    height: 28,
-                                                    borderRadius: 14,
+                                                    width: 32,
+                                                    height: 32,
+                                                    borderRadius: 16,
                                                     backgroundColor: getSemaphoreColorValue(reportEdits?.semaphoreOverrides?.[`comparable-${globalIndex}`] || 'green'),
-                                                    border: `2px solid ${colors.white}`
+                                                    borderWidth: 2,
+                                                    borderColor: colors.white,
+                                                    borderStyle: 'solid',
                                                 }} />
                                             </View>
                                         </View>
 
                                         {/* Info */}
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={[styles.propertyTitle, { textAlign: 'left', fontSize: 13, marginBottom: 4 }]}>
+                                        <View style={{ flex: 1, justifyContent: 'flex-start' }}>
+                                            <Text style={[styles.propertyTitle, { textAlign: 'left', fontSize: 14, marginBottom: 6 }]}>
                                                 {extractAddress(comp.location || comp.title)}
                                             </Text>
 
                                             {/* Features grid — chips con borde para separación visual */}
-                                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+                                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
                                                 <FeatureChip label={`${comp.features.coveredArea || 0} m² cub.`} />
                                                 {(comp.features.uncoveredArea ?? 0) > 0 && (
                                                     <FeatureChip label={`${comp.features.uncoveredArea} m² desc.`} />
@@ -703,7 +723,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                             </View>
 
                                             {/* Price */}
-                                            <View style={{ gap: 2, marginBottom: 8 }}>
+                                            <View style={{ gap: 3, marginBottom: 10 }}>
                                                 <View style={styles.priceBullet}>
                                                     <View style={styles.bullet} />
                                                     <Text style={styles.priceText}>
@@ -726,7 +746,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                             </Link>
 
                                             {/* Metadata: published date + views */}
-                                            <Text style={styles.comparableMetadata}>
+                                            <Text style={[styles.comparableMetadata, { marginTop: 6 }]}>
                                                 {(comp.features.publishedDate as string) || 'Sin fecha de publicación'}
                                                 {comp.features.views ? ` · ${comp.features.views} visualizaciones` : ''}
                                             </Text>

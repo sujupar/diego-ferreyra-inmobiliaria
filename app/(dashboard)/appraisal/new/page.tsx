@@ -401,7 +401,15 @@ function NewAppraisalPageContent() {
                 valuationResult: merged,
                 origin: origin || undefined,
                 assignedTo: assignedTo || undefined,
-            }).catch(err => console.error('Auto-save error:', err))
+            }).catch(err => {
+                console.error('[auto-save] updateAppraisal failed for id', persistedId, {
+                    message: err?.message,
+                    details: err?.details,
+                    hint: err?.hint,
+                    code: err?.code,
+                    raw: err,
+                })
+            })
         }, 800)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [subject, comparables, expenseRates, purchaseScenarios, selectedScenarioIds])
