@@ -252,62 +252,50 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
     return (
         <Document>
-            {/* PAGE 1: PORTADA — mismo tratamiento visual que dividers (fondo edificios + foto Diego prominente) */}
+            {/* PAGE 1: PORTADA — fondo blanco, texto azul, logos sin cards. La foto de Diego es la actual `Foto Diego.png` renderizada con dividerPhoto bottom-right. */}
             <Page size="A4" style={styles.page}>
-                {/* Background image (edificios) — full bleed */}
-                <Image
-                    src="/pdf-assets/graphics/section-divider-bg.jpg"
-                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-                {/* Overlay azul translúcido para legibilidad del contenido */}
-                <View style={{
-                    position: 'absolute', top: 0, left: 0,
-                    width: '100%', height: '100%',
-                    backgroundColor: 'rgba(26, 84, 144, 0.92)',
-                }} />
-
-                {/* Top section — texto blanco sobre el overlay */}
-                <View style={{ paddingHorizontal: 60, paddingTop: 60, alignItems: 'center' }}>
+                {/* Top section - centered content */}
+                <View style={{ paddingHorizontal: 60, paddingTop: 50, alignItems: 'center' }}>
                     {/* Title */}
-                    <Text style={[styles.h1, { color: colors.white, fontSize: 28, letterSpacing: 4 }]}>
+                    <Text style={[styles.h1, { color: colors.primary, fontSize: 28, letterSpacing: 4 }]}>
                         {reportEdits?.coverTitle || 'INFORME DE TASACIÓN'}
                     </Text>
 
-                    {/* Property Title — solo dirección */}
-                    <Text style={[styles.propertyTitle, { marginTop: 16, fontSize: 32, color: colors.white }]}>
+                    {/* Property Title — siempre solo dirección, incluso si reportEdits guardó el título completo (legacy) */}
+                    <Text style={[styles.propertyTitle, { marginTop: 16, fontSize: 32 }]}>
                         {extractAddress(reportEdits?.coverPropertyTitle || subject.location || subject.title)}
                     </Text>
 
-                    {/* Three Institutional Logos — fondo blanco contenedor para que se vean */}
-                    <View style={{ marginTop: 32, padding: 12, backgroundColor: colors.white, borderRadius: 6 }}>
+                    {/* Three Institutional Logos */}
+                    <View style={[styles.logosRow, { marginTop: 30 }]}>
                         <Image
                             src="/pdf-assets/logos/logos-institucionales.png"
-                            style={{ height: 44, width: 220, objectFit: 'contain' }}
+                            style={{ height: 50, width: 240, objectFit: 'contain' }}
                         />
                     </View>
 
-                    {/* Diego Ferreyra Logo — fondo blanco contenedor */}
-                    <View style={{ marginTop: 28, padding: 14, backgroundColor: colors.white, borderRadius: 6, alignItems: 'center' }}>
+                    {/* Diego Ferreyra Logo - prominent. El texto "Martillero Público - CUCICBA 8266" ya viene en el PNG. */}
+                    <View style={{ marginTop: 40, alignItems: 'center' }}>
                         <Image
                             src="/pdf-assets/logos/Logo Diego Ferreyra.png"
-                            style={{ height: 72, width: 280, objectFit: 'contain' }}
+                            style={{ height: 100, width: 350, objectFit: 'contain' }}
                         />
                     </View>
                 </View>
 
-                {/* Diego Photo — full bleed bottom-right igual que los dividers */}
+                {/* Diego Photo — mismo tratamiento que dividers (cover, full-bleed bottom-right) */}
                 <Image
                     src="/pdf-assets/photos/Foto Diego.png"
                     style={styles.dividerPhoto}
                 />
 
-                {/* City text — abajo izquierda, sobre el overlay azul */}
+                {/* City text - bottom-left, posicionado por encima de la zona de la foto */}
                 <Text style={{
                     position: 'absolute',
-                    bottom: 110,
+                    bottom: 220,
                     left: 60,
-                    fontSize: 16,
-                    color: colors.white,
+                    fontSize: 14,
+                    color: colors.darkGray,
                     fontWeight: 'bold',
                     lineHeight: 1.4,
                 }}>
