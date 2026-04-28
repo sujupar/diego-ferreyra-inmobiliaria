@@ -230,12 +230,19 @@ export function parsePublishedDate(text: string): string | null {
 /**
  * Normaliza el texto de publicación para mostrar "Publicado hace X" consistente.
  * Acepta: "hace 5 días", "Publicado hace 2 meses", "5 días", "Hace 1 año"
- * Devuelve null si no se puede parsear; devuelve el texto original como fallback si tiene contenido.
+ * Devuelve null si el texto NO es claramente una fecha de publicación
+ * (rechaza menús de UI scraped accidentalmente como "Fotos / videos / planos").
  */
+const UI_NOISE_PATTERNS = /(fotos|videos|planos|ubicaci[oó]n|360|mensaje|anunciante|favorito|compartir|denunciar|contactar|whatsapp|tel[eé]fono|llamar)/i
+
 export function normalizePublishedText(raw: string | null | undefined): string | null {
     if (!raw) return null
     const text = String(raw).trim()
     if (!text) return null
+
+    // Rechazar texto largo (>60 chars) o que contenga keywords de UI scrapeada
+    if (text.length > 60) return null
+    if (UI_NOISE_PATTERNS.test(text)) return null
 
     if (/^publicado\s+hace/i.test(text)) return text
     if (/^hace\s+/i.test(text)) return `Publicado ${text.toLowerCase()}`
@@ -245,7 +252,8 @@ export function normalizePublishedText(raw: string | null | undefined): string |
     if (/(día|mes|año|semana)/i.test(text)) {
         return `Publicado ${text}`
     }
-    return text
+    // Si no encaja en ninguno de los patrones temporales, descartar para evitar romper el layout
+    return null
 }
 
 /**

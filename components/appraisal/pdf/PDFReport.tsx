@@ -74,6 +74,19 @@ function cleanText(str: string | undefined | null, maxLen: number = 300): string
     return clean
 }
 
+/**
+ * Sanitiza el `publishedDate` de un comparable. Rechaza textos largos o con
+ * keywords de UI scrapeada (Fotos, videos, planos, ubicación, 360, etc.) que
+ * algunos scrapers viejos guardaron y rompen el layout del PDF.
+ */
+const PUBLISHED_UI_NOISE = /(fotos|videos|planos|ubicaci[oó]n|360|mensaje|anunciante|favorito|compartir|denunciar|contactar|whatsapp|tel[eé]fono)/i
+function sanitizePublishedDate(raw: string | null | undefined): string {
+    if (!raw) return 'Sin fecha de publicación'
+    const text = String(raw).trim()
+    if (!text || text.length > 60 || PUBLISHED_UI_NOISE.test(text)) return 'Sin fecha de publicación'
+    return text
+}
+
 function FeatureChip({ label }: { label: string }) {
     return (
         <View style={{
@@ -115,7 +128,7 @@ function ExpRow({ label, value, bold }: { label: string; value: number; currency
         }}>
             <Text style={{ fontSize: 8, fontWeight: bold ? 'bold' : 'normal' }}>{label}</Text>
             <Text style={{ fontSize: 8, fontWeight: bold ? 'bold' : 'normal' }}>
-                u$d{value.toLocaleString()}
+                USD {value.toLocaleString()}
             </Text>
         </View>
     )
@@ -141,9 +154,9 @@ function SaleSimTable({
                 borderWidth: 1, borderColor: colors.lightGray, borderStyle: 'solid',
                 borderTopWidth: 0,
             }}>
-                <ValueCell label="Valor de Publicación" value={`u$d${r.publicationPrice.toLocaleString()}`} flex />
-                <ValueCell label="Valor de Venta" value={`u$d${r.saleValue.toLocaleString()}`} flex />
-                <ValueCell label="Valor de Escritura" value={`u$d${r.deedValue.toLocaleString()}`} flex />
+                <ValueCell label="Valor de Publicación" value={`USD ${r.publicationPrice.toLocaleString()}`} flex />
+                <ValueCell label="Valor de Venta" value={`USD ${r.saleValue.toLocaleString()}`} flex />
+                <ValueCell label="Valor de Escritura" value={`USD ${r.deedValue.toLocaleString()}`} flex />
             </View>
             <View style={{
                 backgroundColor: '#e8f4fd', padding: 4,
@@ -162,7 +175,7 @@ function SaleSimTable({
             }}>
                 <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#065f46' }}>Dinero luego de venta</Text>
                 <Text style={{ fontSize: 9, fontWeight: 'bold', color: colors.semaphoreGreen }}>
-                    u$d{r.moneyInHand.toLocaleString()}
+                    USD {r.moneyInHand.toLocaleString()}
                 </Text>
             </View>
         </View>
@@ -187,9 +200,9 @@ function PurchaseSimTable({
                 borderWidth: 1, borderColor: colors.lightGray, borderStyle: 'solid',
                 borderTopWidth: 0,
             }}>
-                <ValueCell label="Publicación" value={`u$d${scenario.publicationPrice.toLocaleString()}`} flex />
-                <ValueCell label="Compra" value={`u$d${scenario.purchasePrice.toLocaleString()}`} flex />
-                <ValueCell label="Escritura" value={`u$d${scenario.deedValue.toLocaleString()}`} flex />
+                <ValueCell label="Publicación" value={`USD ${scenario.publicationPrice.toLocaleString()}`} flex />
+                <ValueCell label="Compra" value={`USD ${scenario.purchasePrice.toLocaleString()}`} flex />
+                <ValueCell label="Escritura" value={`USD ${scenario.deedValue.toLocaleString()}`} flex />
             </View>
             <View style={{
                 backgroundColor: '#e8f4fd', padding: 4,
@@ -207,7 +220,7 @@ function PurchaseSimTable({
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                     <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#1e40af' }}>Costo total</Text>
                     <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.primary }}>
-                        u$d{scenario.totalCostWithPurchase.toLocaleString()}
+                        USD {scenario.totalCostWithPurchase.toLocaleString()}
                     </Text>
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
@@ -216,7 +229,7 @@ function PurchaseSimTable({
                         fontSize: 8, fontWeight: 'bold',
                         color: scenario.remainingMoney >= 0 ? colors.semaphoreGreen : colors.semaphoreRed,
                     }}>
-                        u$d{scenario.remainingMoney.toLocaleString()}
+                        USD {scenario.remainingMoney.toLocaleString()}
                     </Text>
                 </View>
             </View>
@@ -239,55 +252,64 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
     return (
         <Document>
-            {/* PAGE 1: PORTADA */}
+            {/* PAGE 1: PORTADA — mismo tratamiento visual que dividers (fondo edificios + foto Diego prominente) */}
             <Page size="A4" style={styles.page}>
-                {/* Top section - centered content */}
-                <View style={{ paddingHorizontal: 60, paddingTop: 50, alignItems: 'center' }}>
+                {/* Background image (edificios) — full bleed */}
+                <Image
+                    src="/pdf-assets/graphics/section-divider-bg.jpg"
+                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+                {/* Overlay azul translúcido para legibilidad del contenido */}
+                <View style={{
+                    position: 'absolute', top: 0, left: 0,
+                    width: '100%', height: '100%',
+                    backgroundColor: 'rgba(26, 84, 144, 0.92)',
+                }} />
+
+                {/* Top section — texto blanco sobre el overlay */}
+                <View style={{ paddingHorizontal: 60, paddingTop: 60, alignItems: 'center' }}>
                     {/* Title */}
-                    <Text style={[styles.h1, { color: colors.primary, fontSize: 28, letterSpacing: 4 }]}>
+                    <Text style={[styles.h1, { color: colors.white, fontSize: 28, letterSpacing: 4 }]}>
                         {reportEdits?.coverTitle || 'INFORME DE TASACIÓN'}
                     </Text>
 
-                    {/* Property Title — siempre solo dirección, incluso si reportEdits guardó el título completo (legacy) */}
-                    <Text style={[styles.propertyTitle, { marginTop: 16, fontSize: 32 }]}>
+                    {/* Property Title — solo dirección */}
+                    <Text style={[styles.propertyTitle, { marginTop: 16, fontSize: 32, color: colors.white }]}>
                         {extractAddress(reportEdits?.coverPropertyTitle || subject.location || subject.title)}
                     </Text>
 
-                    {/* Three Institutional Logos */}
-                    <View style={[styles.logosRow, { marginTop: 30 }]}>
+                    {/* Three Institutional Logos — fondo blanco contenedor para que se vean */}
+                    <View style={{ marginTop: 32, padding: 12, backgroundColor: colors.white, borderRadius: 6 }}>
                         <Image
                             src="/pdf-assets/logos/logos-institucionales.png"
-                            style={{ height: 50, width: 240, objectFit: 'contain' }}
+                            style={{ height: 44, width: 220, objectFit: 'contain' }}
                         />
                     </View>
 
-                    {/* Diego Ferreyra Logo - prominent */}
-                    <View style={{ marginTop: 40, alignItems: 'center' }}>
+                    {/* Diego Ferreyra Logo — fondo blanco contenedor */}
+                    <View style={{ marginTop: 28, padding: 14, backgroundColor: colors.white, borderRadius: 6, alignItems: 'center' }}>
                         <Image
                             src="/pdf-assets/logos/Logo Diego Ferreyra.png"
-                            style={{ height: 100, width: 350, objectFit: 'contain' }}
+                            style={{ height: 72, width: 280, objectFit: 'contain' }}
                         />
-                        <Text style={{ fontSize: 13, color: colors.mediumGray, fontStyle: 'italic', marginTop: 8 }}>
-                            Inmobiliaria - CUCICBA 8266
-                        </Text>
                     </View>
                 </View>
 
-                {/* Diego Photo — mismo tratamiento que dividers (cover, full-bleed bottom-right) */}
+                {/* Diego Photo — full bleed bottom-right igual que los dividers */}
                 <Image
                     src="/pdf-assets/photos/Foto Diego.png"
                     style={styles.dividerPhoto}
                 />
 
-                {/* City text - bottom-left, posicionado por encima de la zona de la foto */}
+                {/* City text — abajo izquierda, sobre el overlay azul */}
                 <Text style={{
                     position: 'absolute',
-                    bottom: 220,
+                    bottom: 110,
                     left: 60,
-                    fontSize: 14,
-                    color: colors.darkGray,
+                    fontSize: 16,
+                    color: colors.white,
                     fontWeight: 'bold',
-                    lineHeight: 1.4
+                    lineHeight: 1.4,
                 }}>
                     Ciudad Autónoma{'\n'}de Buenos Aires
                 </Text>
@@ -745,9 +767,9 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                                 </View>
                                             </Link>
 
-                                            {/* Metadata: published date + views */}
+                                            {/* Metadata: published date + views — sanitizado para tasaciones legacy con basura del scraper */}
                                             <Text style={[styles.comparableMetadata, { marginTop: 6 }]}>
-                                                {(comp.features.publishedDate as string) || 'Sin fecha de publicación'}
+                                                {sanitizePublishedDate(comp.features.publishedDate as string)}
                                                 {comp.features.views ? ` · ${comp.features.views} visualizaciones` : ''}
                                             </Text>
                                         </View>
@@ -1307,15 +1329,15 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                         <View style={{ flexDirection: 'row', borderWidth: 1, borderColor: colors.lightGray, borderTopWidth: 0 }}>
                                             <View style={{ flex: 1, padding: 4, borderRightWidth: 1, borderColor: colors.lightGray }}>
                                                 <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Publicación</Text>
-                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>u$d{valuationResult.publicationPrice.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {valuationResult.publicationPrice.toLocaleString()}</Text>
                                             </View>
                                             <View style={{ flex: 1, padding: 4, borderRightWidth: 1, borderColor: colors.lightGray }}>
                                                 <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Venta</Text>
-                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>u$d{valuationResult.saleValue.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {valuationResult.saleValue.toLocaleString()}</Text>
                                             </View>
                                             <View style={{ flex: 1, padding: 4 }}>
                                                 <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Escritura</Text>
-                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>u$d{valuationResult.deedValue.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {valuationResult.deedValue.toLocaleString()}</Text>
                                             </View>
                                         </View>
                                         {/* Gastos de venta header */}
@@ -1330,18 +1352,18 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                         ].map((row, i) => (
                                             <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 4, borderWidth: 1, borderColor: colors.lightGray, borderTopWidth: 0 }}>
                                                 <Text style={{ fontSize: 7 }}>{row.label}</Text>
-                                                <Text style={{ fontSize: 7 }}>u$d{row.value.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 7 }}>USD {row.value.toLocaleString()}</Text>
                                             </View>
                                         ))}
                                         {/* Total */}
                                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 4, borderWidth: 1, borderColor: colors.darkGray, borderTopWidth: 0, backgroundColor: '#f5f5f5' }}>
                                             <Text style={{ fontSize: 7, fontWeight: 'bold' }}>Total gastos venta</Text>
-                                            <Text style={{ fontSize: 7, fontWeight: 'bold' }}>u$d{valuationResult.totalExpenses.toLocaleString()}</Text>
+                                            <Text style={{ fontSize: 7, fontWeight: 'bold' }}>USD {valuationResult.totalExpenses.toLocaleString()}</Text>
                                         </View>
                                         {/* Money after sale */}
                                         <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'space-between', padding: 6, backgroundColor: '#ecfdf5', borderRadius: 2 }}>
                                             <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#065f46' }}>Dinero luego de venta</Text>
-                                            <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.semaphoreGreen }}>u$d{valuationResult.moneyInHand.toLocaleString()}</Text>
+                                            <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.semaphoreGreen }}>USD {valuationResult.moneyInHand.toLocaleString()}</Text>
                                         </View>
                                     </View>
 
@@ -1357,15 +1379,15 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                         <View style={{ flexDirection: 'row', borderWidth: 1, borderColor: colors.lightGray, borderTopWidth: 0 }}>
                                             <View style={{ flex: 1, padding: 4, borderRightWidth: 1, borderColor: colors.lightGray }}>
                                                 <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Publicación</Text>
-                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>u$d{purchaseResult.publicationPrice.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {purchaseResult.publicationPrice.toLocaleString()}</Text>
                                             </View>
                                             <View style={{ flex: 1, padding: 4, borderRightWidth: 1, borderColor: colors.lightGray }}>
                                                 <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Compra</Text>
-                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>u$d{purchaseResult.purchasePrice.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {purchaseResult.purchasePrice.toLocaleString()}</Text>
                                             </View>
                                             <View style={{ flex: 1, padding: 4 }}>
                                                 <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Escritura</Text>
-                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>u$d{purchaseResult.deedValue.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {purchaseResult.deedValue.toLocaleString()}</Text>
                                             </View>
                                         </View>
                                         {/* Gastos de compra header */}
@@ -1381,18 +1403,18 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                         ].map((row, i) => (
                                             <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 4, borderWidth: 1, borderColor: colors.lightGray, borderTopWidth: 0 }}>
                                                 <Text style={{ fontSize: 7 }}>{row.label}</Text>
-                                                <Text style={{ fontSize: 7 }}>u$d{row.value.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 7 }}>USD {row.value.toLocaleString()}</Text>
                                             </View>
                                         ))}
                                         {/* Total */}
                                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 4, borderWidth: 1, borderColor: colors.darkGray, borderTopWidth: 0, backgroundColor: '#f5f5f5' }}>
                                             <Text style={{ fontSize: 7, fontWeight: 'bold' }}>Total gastos compra</Text>
-                                            <Text style={{ fontSize: 7, fontWeight: 'bold' }}>u$d{purchaseResult.totalPurchaseCosts.toLocaleString()}</Text>
+                                            <Text style={{ fontSize: 7, fontWeight: 'bold' }}>USD {purchaseResult.totalPurchaseCosts.toLocaleString()}</Text>
                                         </View>
                                         {/* Cost of purchase */}
                                         <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'space-between', padding: 6, backgroundColor: '#eff6ff', borderRadius: 2 }}>
                                             <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#1e40af' }}>Costo de compra</Text>
-                                            <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.primary }}>u$d{purchaseResult.totalCostWithPurchase.toLocaleString()}</Text>
+                                            <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.primary }}>USD {purchaseResult.totalCostWithPurchase.toLocaleString()}</Text>
                                         </View>
                                     </View>
                                 </View>
@@ -1468,25 +1490,15 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                         {reportEdits?.feesText || 'La retribución en concepto de honorarios por el servicio a brindar es del 3% (tres por ciento), calculado sobre el monto de venta final de la operación.'}
                     </Text>
 
-                    {/* Branding Section */}
+                    {/* Branding Section — sin duplicar el texto que ya está dentro del logo */}
                     <View style={{ flexDirection: 'row', gap: 24, alignItems: 'center', marginTop: 24 }}>
                         <View style={{ flex: 1 }}>
                             <Image
                                 src="/pdf-assets/logos/Logo Diego Ferreyra.png"
-                                style={{ height: 60, width: '100%', objectFit: 'contain' }}
+                                style={{ height: 80, width: '100%', objectFit: 'contain' }}
                             />
-                            <Text style={{ fontSize: 10, color: colors.mediumGray, fontStyle: 'italic', textAlign: 'center', marginTop: 6 }}>
-                                Inmobiliaria - CUCICBA 8266
-                            </Text>
 
-                            {/* Social Icons Placeholder */}
-                            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 12, marginTop: 12 }}>
-                                <Text style={{ fontSize: 20, color: colors.primary }}>📱</Text>
-                                <Text style={{ fontSize: 20, color: colors.primary }}>📷</Text>
-                                <Text style={{ fontSize: 20, color: colors.primary }}>▶️</Text>
-                            </View>
-
-                            <Link src="https://diegoferreyraInmobiliaria.com/" style={{ fontSize: 11, color: colors.primary, textAlign: 'center', marginTop: 12, textDecoration: 'underline' }}>
+                            <Link src="https://diegoferreyraInmobiliaria.com/" style={{ fontSize: 12, color: colors.primary, textAlign: 'center', marginTop: 16, textDecoration: 'underline' }}>
                                 diegoferreyraInmobiliaria.com
                             </Link>
                         </View>
@@ -1501,34 +1513,28 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 </View>
             </Page>
 
-            {/* PAGE 13: BACK COVER */}
+            {/* PAGE 13: BACK COVER — sin texto duplicado y sin emojis no soportados */}
             <Page size="A4" style={[styles.page, { justifyContent: 'center', alignItems: 'center', padding: 60 }]}>
                 {/* Circular Photo */}
-                <View style={{ width: 180, height: 180, borderRadius: 90, overflow: 'hidden', border: `4px solid ${colors.primary}`, marginBottom: 32 }}>
+                <View style={{
+                    width: 180, height: 180, borderRadius: 90, overflow: 'hidden',
+                    borderWidth: 4, borderColor: colors.primary, borderStyle: 'solid',
+                    marginBottom: 40,
+                }}>
                     <Image
                         src="/pdf-assets/photos/Foto Diego.png"
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />
                 </View>
 
-                {/* Logo */}
+                {/* Logo — el texto "Martillero Público - CUCICBA 8266" ya está integrado en el PNG */}
                 <Image
                     src="/pdf-assets/logos/Logo Diego Ferreyra.png"
-                    style={{ height: 70, width: 300, objectFit: 'contain', marginBottom: 8 }}
+                    style={{ height: 90, width: 340, objectFit: 'contain', marginBottom: 28 }}
                 />
-                <Text style={{ fontSize: 12, color: colors.mediumGray, fontStyle: 'italic', marginBottom: 24 }}>
-                    Inmobiliaria - CUCICBA 8266
-                </Text>
-
-                {/* Social Icons */}
-                <View style={{ flexDirection: 'row', gap: 16, marginBottom: 20 }}>
-                    <Text style={{ fontSize: 28, color: colors.primary }}>📱</Text>
-                    <Text style={{ fontSize: 28, color: colors.primary }}>📷</Text>
-                    <Text style={{ fontSize: 28, color: colors.primary }}>▶️</Text>
-                </View>
 
                 {/* Website */}
-                <Link src="https://diegoferreyraInmobiliaria.com/" style={{ fontSize: 13, color: colors.primary, textDecoration: 'underline' }}>
+                <Link src="https://diegoferreyraInmobiliaria.com/" style={{ fontSize: 14, color: colors.primary, textDecoration: 'underline' }}>
                     diegoferreyraInmobiliaria.com
                 </Link>
             </Page>
