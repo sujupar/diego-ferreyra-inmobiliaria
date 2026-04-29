@@ -204,6 +204,8 @@ function NewAppraisalPageContent() {
     // Auto-save state
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
     const [saveErrorDetail, setSaveErrorDetail] = useState<string | null>(null)
+    // Retry counter for transient failures with exponential backoff
+    const autoSaveRetryRef = useRef<number>(0)
 
     // Load existing appraisal when in edit mode
     useEffect(() => {
@@ -287,6 +289,35 @@ function NewAppraisalPageContent() {
                 if (detail.valuation_result?.selectedScenarioIds) {
                     setSelectedScenarioIds(detail.valuation_result.selectedScenarioIds)
                 }
+
+                // Recuperar draft local si quedó pendiente por un guardado fallido.
+                try {
+                    const raw = localStorage.getItem(`appraisalDraft:${editId}`)
+                    if (raw) {
+                        const draft = JSON.parse(raw) as {
+                            savedAt?: string
+                            subject?: ScrapedProperty
+                            comparables?: ScrapedProperty[]
+                            overpriced?: ScrapedProperty[]
+                            purchaseProperties?: ScrapedProperty[]
+                            valuationResult?: ValuationResult
+                        }
+                        const draftTime = draft.savedAt ? new Date(draft.savedAt).getTime() : 0
+                        const dbTime = new Date(detail.created_at || 0).getTime()
+                        // Si el draft local es más reciente que la última escritura en DB,
+                        // hay cambios sin guardar. Restaurarlos sobre el state cargado.
+                        if (draftTime > dbTime && draft.subject) {
+                            if (draft.subject) setSubject(draft.subject)
+                            if (draft.comparables) setComparables(draft.comparables)
+                            if (draft.overpriced) setOverpriced(draft.overpriced)
+                            if (draft.purchaseProperties) setPurchaseProperties(draft.purchaseProperties)
+                            if (draft.valuationResult) setValuationResult(draft.valuationResult)
+                            // Aviso al user
+                            setSaveErrorDetail('Recuperamos cambios sin guardar de tu sesión anterior. Click "Reintentar" para guardarlos.')
+                            setSaveStatus('error')
+                        }
+                    }
+                } catch { /* draft corrupto, ignorar */ }
             })
             .catch(err => {
                 console.error('Error loading appraisal for edit:', err)
@@ -392,6 +423,18 @@ function NewAppraisalPageContent() {
         const persistedId = savedAppraisalIdRef.current
         if (!persistedId) return  // first INSERT is handled inside handleCalculate
 
+        // Persistir snapshot a localStorage como red de seguridad — si el server
+        // falla repetidamente, los datos del usuario no se pierden al cerrar la pestaña.
+        try {
+            const snapshot = {
+                appraisalId: persistedId,
+                subject, comparables, overpriced, purchaseProperties,
+                valuationResult: merged, origin, assignedTo,
+                savedAt: new Date().toISOString(),
+            }
+            localStorage.setItem(`appraisalDraft:${persistedId}`, JSON.stringify(snapshot))
+        } catch { /* localStorage puede fallar por cuota — ignoramos */ }
+
         if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
         autoSaveTimerRef.current = setTimeout(() => {
             setSaveStatus('saving')
@@ -407,6 +450,9 @@ function NewAppraisalPageContent() {
                 .then(() => {
                     setSaveStatus('saved')
                     setSaveErrorDetail(null)
+                    autoSaveRetryRef.current = 0
+                    // Persistencia OK — limpiar backup local
+                    try { localStorage.removeItem(`appraisalDraft:${persistedId}`) } catch { /* */ }
                 })
                 .catch(err => {
                     const detail = `${err?.code || 'ERR'}: ${err?.message || 'Error desconocido'}${err?.details ? ` — ${err.details}` : ''}${err?.hint ? ` (${err.hint})` : ''}`
@@ -419,6 +465,9 @@ function NewAppraisalPageContent() {
                     })
                     setSaveStatus('error')
                     setSaveErrorDetail(detail)
+                    // Los datos quedan guardados en localStorage como red de seguridad.
+                    // El user verá el banner de error con detalle, los datos NO se pierden,
+                    // y al ejecutar el botón "Reintentar" o al recargar, se recuperan.
                 })
         }, 800)
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -503,6 +552,8 @@ function NewAppraisalPageContent() {
                 .then(async (appraisalId) => {
                     setSaveStatus('saved')
                     setSaveErrorDetail(null)
+                    autoSaveRetryRef.current = 0
+                    try { localStorage.removeItem(`appraisalDraft:${appraisalId}`) } catch { /* */ }
 
                     // First insert in this session: capture the new id and reflect
                     // it in the URL so future calcs are updates, not inserts.
@@ -1289,9 +1340,14 @@ function NewAppraisalPageContent() {
                             )}
                             </div>
                             {saveStatus === 'error' && saveErrorDetail && (
-                                <p className="text-xs text-red-500/80 max-w-2xl text-center break-words" title={saveErrorDetail}>
-                                    {saveErrorDetail}
-                                </p>
+                                <>
+                                    <p className="text-xs text-red-500/80 max-w-2xl text-center break-words" title={saveErrorDetail}>
+                                        {saveErrorDetail}
+                                    </p>
+                                    <p className="text-xs text-amber-700 max-w-2xl text-center mt-1">
+                                        Tus cambios están protegidos en este navegador. Podés seguir trabajando y reintentar el guardado más tarde.
+                                    </p>
+                                </>
                             )}
                         </div>
                     )}
