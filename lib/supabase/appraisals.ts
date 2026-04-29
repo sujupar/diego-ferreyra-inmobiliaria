@@ -62,11 +62,51 @@ interface ComparableRow {
     sort_order: number
 }
 
+// ---- Helpers ----
+
+/**
+ * Sanitiza el ValuationResult para guardar en DB.
+ *
+ * El ValuationResult de runtime contiene `comparableAnalysis[i].property` con
+ * el ScrapedProperty COMPLETO (incluyendo arrays de imágenes — URLs de portales
+ * o data-URLs base64 si fueron cargadas localmente). Esos datos YA están
+ * persistidos en la tabla `appraisal_comparables` (columna `images`/`features`/etc).
+ *
+ * Si guardamos el valuation_result tal cual:
+ *   - Duplicamos todos los datos del comparable (varios MB potenciales con base64).
+ *   - El payload del PATCH `appraisals` puede superar el límite del REST API
+ *     de Supabase (default ~6MB) y devolver 500.
+ *
+ * Este helper devuelve un valuation_result "lean" sin el campo `property`
+ * dentro de comparableAnalysis. Al cargar la tasación, el `property` se
+ * reconstruye desde la tabla `appraisal_comparables` (ver getAppraisal).
+ *
+ * También elimina cualquier valor NaN/Infinity numérico que rompería JSONB.
+ */
+export function sanitizeValuationResultForStorage(vr: ValuationResult): ValuationResult {
+    const lean: ValuationResult = {
+        ...vr,
+        comparableAnalysis: (vr.comparableAnalysis || []).map(a => {
+            // Strip the nested `property` (ya está en appraisal_comparables).
+            const { property: _property, ...rest } = a as unknown as Record<string, unknown>
+            return rest as unknown as typeof a
+        }),
+    }
+    // Sanear NaN/Infinity en campos numéricos
+    return JSON.parse(JSON.stringify(lean, (_k, v) => {
+        if (typeof v === 'number' && !Number.isFinite(v)) return null
+        return v
+    })) as ValuationResult
+}
+
 // ---- CRUD Functions ----
 
 export async function saveAppraisal(input: SaveAppraisalInput): Promise<string> {
     const supabase = createClient()
     const { subject, comparables, valuationResult, notes, userId, origin, assignedTo } = input
+
+    // Lean valuation_result para evitar payload gigante (ver helper).
+    const leanValuation = sanitizeValuationResultForStorage(valuationResult)
 
     // Insert main appraisal
     const { data: appraisal, error: appraisalError } = await supabase
@@ -81,11 +121,11 @@ export async function saveAppraisal(input: SaveAppraisalInput): Promise<string> 
             property_currency: subject.currency,
             property_images: subject.images,
             property_features: subject.features as any,
-            valuation_result: valuationResult as any,
-            publication_price: valuationResult.publicationPrice,
-            sale_value: valuationResult.saleValue,
-            money_in_hand: valuationResult.moneyInHand,
-            currency: valuationResult.currency,
+            valuation_result: leanValuation as any,
+            publication_price: leanValuation.publicationPrice,
+            sale_value: leanValuation.saleValue,
+            money_in_hand: leanValuation.moneyInHand,
+            currency: leanValuation.currency,
             comparable_count: comparables.length,
             notes,
             origin: origin || null,
@@ -212,10 +252,41 @@ export async function getAppraisal(id: string): Promise<AppraisalDetail | null> 
     }
     if (!appraisalRes.data) return null
 
+    const allComparableRows = (comparablesRes.data || []) as ComparableRow[]
+    const valuationResult = appraisalRes.data.valuation_result as unknown as ValuationResult
+
+    // Rehidratar `comparableAnalysis[i].property` desde los rows correspondientes.
+    // Como guardamos lean (sin `property`), el render del PDF/UI necesita la
+    // referencia para mostrar título/imagen/etc. Match por sort_order: rows
+    // 0..999 son comparables normales en orden.
+    if (valuationResult?.comparableAnalysis?.length) {
+        const normalRows = allComparableRows
+            .filter(r => {
+                const a = r.analysis as Record<string, unknown> | null
+                return a?.propertyType !== 'overpriced' && a?.propertyType !== 'purchase'
+            })
+            .sort((a, b) => a.sort_order - b.sort_order)
+        valuationResult.comparableAnalysis = valuationResult.comparableAnalysis.map((analysis, i) => {
+            const row = normalRows[i]
+            if (!row) return analysis
+            const property: ValuationProperty = {
+                title: row.title || '',
+                location: row.location || '',
+                description: row.description || '',
+                url: row.url || '',
+                price: row.price ?? null,
+                currency: (row.currency as 'USD' | 'ARS' | null) ?? null,
+                images: row.images ?? [],
+                features: row.features || {},
+            } as ValuationProperty
+            return { ...analysis, property }
+        })
+    }
+
     return {
         ...appraisalRes.data,
-        valuation_result: appraisalRes.data.valuation_result as unknown as ValuationResult,
-        comparables: (comparablesRes.data || []) as ComparableRow[],
+        valuation_result: valuationResult,
+        comparables: allComparableRows,
     } as AppraisalDetail
 }
 
@@ -228,6 +299,9 @@ export async function deleteAppraisal(id: string): Promise<void> {
 export async function updateAppraisal(id: string, input: SaveAppraisalInput): Promise<void> {
     const supabase = createClient()
     const { subject, comparables, valuationResult, notes, origin, assignedTo } = input
+
+    // Lean valuation_result para evitar payload gigante (ver helper).
+    const leanValuation = sanitizeValuationResultForStorage(valuationResult)
 
     // 1. Update main appraisal row.
     // origin and assigned_to are persisted on every update so the dropdowns
@@ -242,11 +316,11 @@ export async function updateAppraisal(id: string, input: SaveAppraisalInput): Pr
         property_currency: subject.currency,
         property_images: subject.images,
         property_features: subject.features as any,
-        valuation_result: valuationResult as any,
-        publication_price: valuationResult.publicationPrice,
-        sale_value: valuationResult.saleValue,
-        money_in_hand: valuationResult.moneyInHand,
-        currency: valuationResult.currency,
+        valuation_result: leanValuation as any,
+        publication_price: leanValuation.publicationPrice,
+        sale_value: leanValuation.saleValue,
+        money_in_hand: leanValuation.moneyInHand,
+        currency: leanValuation.currency,
         comparable_count: comparables.length,
         notes,
     }

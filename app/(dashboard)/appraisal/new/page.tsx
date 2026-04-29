@@ -203,6 +203,7 @@ function NewAppraisalPageContent() {
 
     // Auto-save state
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+    const [saveErrorDetail, setSaveErrorDetail] = useState<string | null>(null)
 
     // Load existing appraisal when in edit mode
     useEffect(() => {
@@ -393,6 +394,7 @@ function NewAppraisalPageContent() {
 
         if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
         autoSaveTimerRef.current = setTimeout(() => {
+            setSaveStatus('saving')
             updateAppraisal(persistedId, {
                 subject,
                 comparables,
@@ -401,15 +403,23 @@ function NewAppraisalPageContent() {
                 valuationResult: merged,
                 origin: origin || undefined,
                 assignedTo: assignedTo || undefined,
-            }).catch(err => {
-                console.error('[auto-save] updateAppraisal failed for id', persistedId, {
-                    message: err?.message,
-                    details: err?.details,
-                    hint: err?.hint,
-                    code: err?.code,
-                    raw: err,
-                })
             })
+                .then(() => {
+                    setSaveStatus('saved')
+                    setSaveErrorDetail(null)
+                })
+                .catch(err => {
+                    const detail = `${err?.code || 'ERR'}: ${err?.message || 'Error desconocido'}${err?.details ? ` — ${err.details}` : ''}${err?.hint ? ` (${err.hint})` : ''}`
+                    console.error('[auto-save] updateAppraisal failed for id', persistedId, {
+                        message: err?.message,
+                        details: err?.details,
+                        hint: err?.hint,
+                        code: err?.code,
+                        raw: err,
+                    })
+                    setSaveStatus('error')
+                    setSaveErrorDetail(detail)
+                })
         }, 800)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [subject, comparables, expenseRates, purchaseScenarios, selectedScenarioIds])
@@ -492,6 +502,7 @@ function NewAppraisalPageContent() {
             promise
                 .then(async (appraisalId) => {
                     setSaveStatus('saved')
+                    setSaveErrorDetail(null)
 
                     // First insert in this session: capture the new id and reflect
                     // it in the URL so future calcs are updates, not inserts.
@@ -611,9 +622,11 @@ function NewAppraisalPageContent() {
                         }
                     }
                 })
-                .catch((err) => {
-                    console.error('Error al guardar tasación:', err)
+                .catch((err: { code?: string; message?: string; details?: string; hint?: string }) => {
+                    const detail = `${err?.code || 'ERR'}: ${err?.message || 'Error desconocido'}${err?.details ? ` — ${err.details}` : ''}${err?.hint ? ` (${err.hint})` : ''}`
+                    console.error('Error al guardar tasación:', { code: err?.code, message: err?.message, details: err?.details, hint: err?.hint, raw: err })
                     setSaveStatus('error')
+                    setSaveErrorDetail(detail)
                 })
         }
     }
@@ -1238,7 +1251,8 @@ function NewAppraisalPageContent() {
 
                     {/* Save status indicator */}
                     {saveStatus !== 'idle' && (
-                        <div className="flex items-center justify-center gap-2 text-sm print:hidden">
+                        <div className="flex flex-col items-center justify-center gap-1 text-sm print:hidden">
+                            <div className="flex items-center justify-center gap-2">
                             {saveStatus === 'saving' && (
                                 <><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /><span className="text-muted-foreground">Guardando...</span></>
                             )}
@@ -1265,10 +1279,19 @@ function NewAppraisalPageContent() {
                                                 return newId
                                             })
                                         promise
-                                            .then(() => setSaveStatus('saved'))
-                                            .catch(() => setSaveStatus('error'))
+                                            .then(() => { setSaveStatus('saved'); setSaveErrorDetail(null) })
+                                            .catch((err: { code?: string; message?: string; details?: string; hint?: string }) => {
+                                                setSaveStatus('error')
+                                                setSaveErrorDetail(`${err?.code || 'ERR'}: ${err?.message || 'Error desconocido'}${err?.details ? ` — ${err.details}` : ''}${err?.hint ? ` (${err.hint})` : ''}`)
+                                            })
                                     }}>Reintentar</Button>
                                 </>
+                            )}
+                            </div>
+                            {saveStatus === 'error' && saveErrorDetail && (
+                                <p className="text-xs text-red-500/80 max-w-2xl text-center break-words" title={saveErrorDetail}>
+                                    {saveErrorDetail}
+                                </p>
                             )}
                         </div>
                     )}
