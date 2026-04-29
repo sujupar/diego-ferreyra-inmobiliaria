@@ -70,7 +70,9 @@ function ValuationReportInner({
 
     const updateCompFeature = (index: number, key: string, value: unknown) => {
         if (!onComparableFeaturesChange) return
-        const current = result.comparableAnalysis[index]?.property.features || {}
+        // Defensa: tasaciones cargadas con rehidratación incompleta pueden tener
+        // analysis.property como objeto vacío. Usar optional chaining en ambos niveles.
+        const current = result.comparableAnalysis[index]?.property?.features || {}
         onComparableFeaturesChange(index, { ...current, [key]: value })
     }
 
@@ -351,17 +353,20 @@ function ValuationReportInner({
                                 </tr>
                                 {/* Comparable rows */}
                                 {result.comparableAnalysis.map((analysis, index) => {
-                                    const f = (analysis.property.features || {}) as Record<string, unknown>
+                                    // Defensa: property puede llegar como objeto vacío si la rehidratación
+                                    // no encontró un row matching (tasación legacy con datos huérfanos).
+                                    const prop = analysis.property || ({} as ValuationProperty)
+                                    const f = (prop.features || {}) as Record<string, unknown>
                                     return (
                                         <tr key={index} className="hover:bg-muted/50 transition-colors">
                                             <td className="px-3 py-3 text-sm">
                                                 <p className="font-medium text-foreground">Comp. {index + 1}</p>
-                                                <p className="text-xs text-muted-foreground truncate max-w-[180px]" title={analysis.property.title}>
-                                                    {analysis.property.location || analysis.property.title || 'Sin ubicación'}
+                                                <p className="text-xs text-muted-foreground truncate max-w-[180px]" title={prop.title}>
+                                                    {prop.location || prop.title || 'Sin ubicación'}
                                                 </p>
                                             </td>
                                             <td className="px-3 py-3 text-sm text-right font-medium text-foreground/80">
-                                                {formatCurrency(analysis.property.price || 0, result.currency)}
+                                                {formatCurrency(prop.price || 0, result.currency)}
                                             </td>
                                             <td className="px-3 py-3 text-sm text-right text-muted-foreground">
                                                 {formatNumber(analysis.homogenizedSurface)} m²

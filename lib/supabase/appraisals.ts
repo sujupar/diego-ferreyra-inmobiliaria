@@ -268,17 +268,30 @@ export async function getAppraisal(id: string): Promise<AppraisalDetail | null> 
             .sort((a, b) => a.sort_order - b.sort_order)
         valuationResult.comparableAnalysis = valuationResult.comparableAnalysis.map((analysis, i) => {
             const row = normalRows[i]
-            if (!row) return analysis
-            const property: ValuationProperty = {
-                title: row.title || '',
-                location: row.location || '',
-                description: row.description || '',
-                url: row.url || '',
-                price: row.price ?? null,
-                currency: (row.currency as 'USD' | 'ARS' | null) ?? null,
-                images: row.images ?? [],
-                features: row.features || {},
-            } as ValuationProperty
+            // CRÍTICO: si no hay row matching, devolver un property "vacío" en lugar
+            // de undefined — algunos consumidores (ValuationReport) acceden a
+            // `analysis.property.features` sin guard y crashearían.
+            const property: ValuationProperty = row
+                ? {
+                    title: row.title || '',
+                    location: row.location || '',
+                    description: row.description || '',
+                    url: row.url || '',
+                    price: row.price ?? null,
+                    currency: (row.currency as 'USD' | 'ARS' | null) ?? null,
+                    images: row.images ?? [],
+                    features: row.features || {},
+                } as ValuationProperty
+                : {
+                    title: '',
+                    location: '',
+                    description: '',
+                    url: '',
+                    price: null,
+                    currency: null,
+                    images: [],
+                    features: {},
+                } as ValuationProperty
             return { ...analysis, property }
         })
     }

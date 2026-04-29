@@ -422,7 +422,7 @@ function NewAppraisalPageContent() {
                 })
         }, 800)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [subject, comparables, expenseRates, purchaseScenarios, selectedScenarioIds])
+    }, [subject, comparables, overpriced, purchaseProperties, expenseRates, purchaseScenarios, selectedScenarioIds])
 
     function handleCalculate() {
         if (!subject) return

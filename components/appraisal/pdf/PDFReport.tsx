@@ -954,28 +954,31 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                     </View>
 
                     {/* Comparable Rows */}
-                    {valuationResult.comparableAnalysis.map((analysis, index) => (
+                    {valuationResult.comparableAnalysis.map((analysis, index) => {
+                        const prop = analysis.property || {} as typeof analysis.property
+                        const propFeatures = (prop?.features || {}) as Record<string, number | undefined | null>
+                        return (
                         <View key={index} style={{ flexDirection: 'row', borderBottom: `0.5px solid ${colors.lightGray}`, backgroundColor: index % 2 === 0 ? '#ffffff' : '#fafafa' }}>
                             <Text style={{ width: '12%', fontSize: 5, padding: 2 }}>
-                                {(analysis.property.location || `Comp. ${index + 1}`).slice(0, 26)}
+                                {(prop.location || `Comp. ${index + 1}`).slice(0, 26)}
                             </Text>
                             <Text style={{ width: '7%', fontSize: 5, padding: 2, textAlign: 'right' }}>
-                                {((analysis.property.price || 0) / 1000).toFixed(0)}k
+                                {((prop.price || 0) / 1000).toFixed(0)}k
                             </Text>
                             <Text style={{ width: '5%', fontSize: 5, padding: 2, textAlign: 'center' }}>
-                                {analysis.property.features.coveredArea || '-'}
+                                {propFeatures.coveredArea || '-'}
                             </Text>
                             <Text style={{ width: '5%', fontSize: 5, padding: 2, textAlign: 'center' }}>
-                                {analysis.property.features.uncoveredArea || '-'}
+                                {propFeatures.uncoveredArea || '-'}
                             </Text>
                             <Text style={{ width: '5%', fontSize: 5, padding: 2, textAlign: 'center' }}>
                                 {analysis.homogenizedSurface.toFixed(0)}
                             </Text>
                             <Text style={{ width: '4%', fontSize: 5, padding: 2, textAlign: 'center' }}>
-                                {analysis.property.features.age ?? '-'}
+                                {propFeatures.age ?? '-'}
                             </Text>
                             <Text style={{ width: '4%', fontSize: 5, padding: 2, textAlign: 'center' }}>
-                                {analysis.property.features.rooms || '-'}
+                                {propFeatures.rooms || '-'}
                             </Text>
                             <Text style={{ width: '7%', fontSize: 5, padding: 2, textAlign: 'right' }}>
                                 {Math.round(analysis.originalPriceM2).toLocaleString()}
@@ -1002,7 +1005,8 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                 {Math.round(analysis.adjustedPriceM2).toLocaleString()}
                             </Text>
                         </View>
-                    ))}
+                        )
+                    })}
 
                     {/* Average Row */}
                     <View style={{ flexDirection: 'row', backgroundColor: '#f5ead6', borderTop: `1px solid ${colors.darkGray}` }}>
