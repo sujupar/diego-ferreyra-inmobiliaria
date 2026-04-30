@@ -184,9 +184,14 @@ function SaleSimTable({
 
 function PurchaseSimTable({
     scenario, currency, width,
-}: { scenario: PurchaseScenarioResult; currency: string; width: string }) {
+}: { scenario: PurchaseScenarioResult; currency: string; width?: string | number }) {
+    // Si no se pasa width específico, usar flex: 1 para distribuirse uniformemente
+    // entre escenarios visibles dentro del contenedor row.
+    const wrapperStyle = width !== undefined
+        ? { width }
+        : { flex: 1, minWidth: 0 }
     return (
-        <View style={{ width }}>
+        <View style={wrapperStyle}>
             <View style={{
                 backgroundColor: '#e8f4fd', padding: 6,
                 borderWidth: 1, borderColor: colors.primary, borderStyle: 'solid',
@@ -1180,22 +1185,29 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
                                 <View style={{ marginTop: 70 }}>
                                             <View wrap={false} style={{ flexDirection: 'row', gap: 16 }}>
-                                                {/* Photo (no semaphore for purchase) */}
+                                                {/* Photo (no semaphore for purchase) — borderWidth/Color/Style separados (react-pdf no soporta shorthand) */}
                                                 <View style={{ width: '35%' }}>
                                                     {prop.images && prop.images[0] ? (
                                                         <Image
                                                             src={prop.images[0]}
-                                                            style={{ width: '100%', height: 160, objectFit: 'cover', border: `1px solid ${colors.lightGray}` }}
+                                                            style={{
+                                                                width: '100%',
+                                                                height: 220,
+                                                                objectFit: 'cover',
+                                                                borderWidth: 1,
+                                                                borderColor: colors.lightGray,
+                                                                borderStyle: 'solid',
+                                                            }}
                                                         />
                                                     ) : (
-                                                        <View style={{ width: '100%', height: 160, backgroundColor: colors.lightGray }} />
+                                                        <View style={{ width: '100%', height: 220, backgroundColor: colors.lightGray }} />
                                                     )}
                                                 </View>
 
                                                 {/* Info */}
                                                 <View style={{ flex: 1 }}>
                                                     <Text style={[styles.propertyTitle, { textAlign: 'left', fontSize: 16, marginBottom: 8 }]}>
-                                                        {prop.location || prop.title}
+                                                        {extractAddress(prop.location || prop.title)}
                                                     </Text>
 
                                                     {/* Features grid */}
@@ -1231,9 +1243,11 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                                         )}
                                                     </View>
 
-                                                    {/* Link */}
-                                                    <Link src={prop.url || '#'} style={styles.comparableLink}>
-                                                        LINK DE LA PROPIEDAD
+                                                    {/* Link como botón consistente con comparables */}
+                                                    <Link src={prop.url || '#'} style={{ textDecoration: 'none' }}>
+                                                        <View style={styles.comparableLink}>
+                                                            <Text style={{ color: colors.white, fontSize: 9, fontWeight: 'bold' }}>VER PUBLICACIÓN →</Text>
+                                                        </View>
                                                     </Link>
                                                 </View>
                                             </View>
@@ -1276,15 +1290,25 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                 <View style={{ marginTop: 60 }}>
                                     <SaleSimTable valuationResult={valuationResult} subject={subject} neighborhood={neighborhood} />
                                     {visibleScenarios.length > 0 && (
-                                        <View style={{ marginTop: 12 }}>
-                                            <Text style={[styles.h3, { marginBottom: 8 }]}>Escenarios de Compra</Text>
-                                            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                                        <View style={{ marginTop: 16 }}>
+                                            <Text style={[styles.h3, { marginBottom: 10, textAlign: 'center' }]}>Escenarios de Compra</Text>
+                                            {/* Distribución uniforme:
+                                                - 1 escenario: ancho completo
+                                                - 2 escenarios: cada uno mitad del ancho
+                                                - 3 escenarios: cada uno tercio del ancho
+                                                Usamos flex: 1 (sin width fija) para que se distribuyan automáticamente
+                                                ocupando todo el espacio disponible con gap consistente. */}
+                                            <View style={{
+                                                flexDirection: 'row',
+                                                gap: 12,
+                                                alignItems: 'flex-start',
+                                            }}>
                                                 {visibleScenarios.map(scenario => (
                                                     <PurchaseSimTable
                                                         key={scenario.id}
                                                         scenario={scenario}
                                                         currency={valuationResult.currency}
-                                                        width={visibleScenarios.length === 1 ? '100%' : visibleScenarios.length === 2 ? '49%' : '32.6%'}
+                                                        // No pasar width → el componente usa flex: 1 internamente
                                                     />
                                                 ))}
                                             </View>
