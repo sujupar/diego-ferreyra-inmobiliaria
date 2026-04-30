@@ -94,6 +94,7 @@ export function PDFPreviewModal({
     const [convertedSubject, setConvertedSubject] = useState<ValuationProperty | null>(null)
     const [convertedComparables, setConvertedComparables] = useState<ValuationProperty[] | null>(null)
     const [convertedOverpriced, setConvertedOverpriced] = useState<ValuationProperty[] | null>(null)
+    const [convertedPurchase, setConvertedPurchase] = useState<ValuationProperty[] | null>(null)
 
     // Lazy-loaded market image settings (only fetched when modal opens, cached)
     const [lazyLabels, setLazyLabels] = useState<Record<string, { label: string; description: string }> | null>(null)
@@ -121,39 +122,48 @@ export function PDFPreviewModal({
             setConvertedSubject(null)
             setConvertedComparables(null)
             setConvertedOverpriced(null)
+            setConvertedPurchase(null)
             return
         }
 
         let cancelled = false
         setIsConverting(true)
 
-        convertImagesToBase64(subject, comparables, overpriced).then(({ subjectImages, comparableImages, overpricedImages }) => {
-            if (cancelled) return
+        convertImagesToBase64(subject, comparables, overpriced, purchaseProperties)
+            .then(({ subjectImages, comparableImages, overpricedImages, purchaseImages }) => {
+                if (cancelled) return
 
-            setConvertedSubject({ ...subject, images: subjectImages })
-            setConvertedComparables(comparables.map((comp, i) => ({
-                ...comp,
-                images: comparableImages[i] || comp.images || [],
-            })))
-            setConvertedOverpriced(overpriced.map((prop, i) => ({
-                ...prop,
-                images: overpricedImages[i] || prop.images || [],
-            })))
-            setIsConverting(false)
-        }).catch(() => {
-            if (cancelled) return
-            setConvertedSubject(subject)
-            setConvertedComparables(comparables)
-            setConvertedOverpriced(overpriced)
-            setIsConverting(false)
-        })
+                setConvertedSubject({ ...subject, images: subjectImages })
+                setConvertedComparables(comparables.map((comp, i) => ({
+                    ...comp,
+                    images: comparableImages[i] || comp.images || [],
+                })))
+                setConvertedOverpriced(overpriced.map((prop, i) => ({
+                    ...prop,
+                    images: overpricedImages[i] || prop.images || [],
+                })))
+                setConvertedPurchase(purchaseProperties.map((prop, i) => ({
+                    ...prop,
+                    images: purchaseImages[i] || prop.images || [],
+                })))
+                setIsConverting(false)
+            })
+            .catch(() => {
+                if (cancelled) return
+                setConvertedSubject(subject)
+                setConvertedComparables(comparables)
+                setConvertedOverpriced(overpriced)
+                setConvertedPurchase(purchaseProperties)
+                setIsConverting(false)
+            })
 
         return () => { cancelled = true }
-    }, [open, subject, comparables, overpriced])
+    }, [open, subject, comparables, overpriced, purchaseProperties])
 
     const readySubject = convertedSubject || subject
     const readyComparables = convertedComparables || comparables
     const readyOverpriced = convertedOverpriced || overpriced
+    const readyPurchase = convertedPurchase || purchaseProperties
 
     const handleDownload = useCallback(async () => {
         setIsDownloading(true)
@@ -164,7 +174,7 @@ export function PDFPreviewModal({
                     comparables={readyComparables}
                     valuationResult={valuationResult}
                     overpriced={readyOverpriced}
-                    purchaseProperties={purchaseProperties}
+                    purchaseProperties={readyPurchase}
                     purchaseResult={purchaseResult}
                     marketImageLabels={effectiveLabels}
                     marketImageUrls={effectiveUrls}
@@ -245,7 +255,7 @@ export function PDFPreviewModal({
                                 subject={subject}
                                 comparables={comparables}
                                 overpriced={overpriced}
-                                purchaseProperties={purchaseProperties}
+                                purchaseProperties={readyPurchase}
                                 valuationResult={valuationResult}
                                 purchaseResult={purchaseResult}
                                 reportEdits={reportEdits || DEFAULT_REPORT_EDITS}
@@ -264,7 +274,7 @@ export function PDFPreviewModal({
                                 comparables={readyComparables}
                                 valuationResult={valuationResult}
                                 overpriced={readyOverpriced}
-                                purchaseProperties={purchaseProperties}
+                                purchaseProperties={readyPurchase}
                                 purchaseResult={purchaseResult}
                                 marketImageLabels={marketImageLabels}
                                 marketImageUrls={marketImageUrls}

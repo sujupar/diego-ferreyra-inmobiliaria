@@ -24,8 +24,14 @@ async function convertUrlToBase64(url: string): Promise<string> {
 export async function convertImagesToBase64(
     subject: ImageHolder,
     comparables: ImageHolder[],
-    overpriced: ImageHolder[] = []
-): Promise<{ subjectImages: string[], comparableImages: string[][], overpricedImages: string[][] }> {
+    overpriced: ImageHolder[] = [],
+    purchaseProperties: ImageHolder[] = [],
+): Promise<{
+    subjectImages: string[]
+    comparableImages: string[][]
+    overpricedImages: string[][]
+    purchaseImages: string[][]
+}> {
     const subjectPromise = subject.images?.[0]
         ? convertUrlToBase64(subject.images[0]).then(img => [img])
         : Promise.resolve([] as string[])
@@ -44,14 +50,25 @@ export async function convertImagesToBase64(
         return Promise.resolve([] as string[])
     })
 
+    // Purchase properties: scrapeadas de portales externos, sus URLs típicamente
+    // bloquean hotlinking. Convertir a base64 vía proxy igual que comparables.
+    const purchasePromises = purchaseProperties.map(prop => {
+        if (prop.images?.[0]) {
+            return convertUrlToBase64(prop.images[0]).then(img => [img])
+        }
+        return Promise.resolve([] as string[])
+    })
+
     const [subjectImages, ...restImages] = await Promise.all([
         subjectPromise,
         ...comparablePromises,
         ...overpricedPromises,
+        ...purchasePromises,
     ])
 
     const comparableImages = restImages.slice(0, comparables.length)
-    const overpricedImages = restImages.slice(comparables.length)
+    const overpricedImages = restImages.slice(comparables.length, comparables.length + overpriced.length)
+    const purchaseImages = restImages.slice(comparables.length + overpriced.length)
 
-    return { subjectImages, comparableImages, overpricedImages }
+    return { subjectImages, comparableImages, overpricedImages, purchaseImages }
 }
