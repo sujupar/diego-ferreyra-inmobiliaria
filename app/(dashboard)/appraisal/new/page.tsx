@@ -282,6 +282,13 @@ function NewAppraisalPageContent() {
                     setExpenseRates(detail.valuation_result.expenseRates)
                 }
 
+                // Restore report_edits (textos custom del PDF) si la tasación los tiene.
+                // Sin esto, los cambios en estrategia/conclusiones/títulos custom
+                // se perderían en cada recarga.
+                if (detail.report_edits) {
+                    setReportEdits(detail.report_edits as ReportEdits)
+                }
+
                 // Restore escenarios de compra if present
                 if (detail.valuation_result?.purchaseScenarios) {
                     setPurchaseScenarios(detail.valuation_result.purchaseScenarios.map((s: any) => ({
@@ -480,6 +487,7 @@ function NewAppraisalPageContent() {
                 valuationResult: merged,
                 origin: origin || undefined,
                 assignedTo: assignedTo || undefined,
+                reportEdits,
             })
                 .then(() => {
                     setSaveStatus('saved')
@@ -505,7 +513,7 @@ function NewAppraisalPageContent() {
                 })
         }, 800)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [subject, comparables, overpriced, purchaseProperties, expenseRates, purchaseScenarios, selectedScenarioIds])
+    }, [subject, comparables, overpriced, purchaseProperties, expenseRates, purchaseScenarios, selectedScenarioIds, reportEdits])
 
     function handleCalculate() {
         if (!subject) return
@@ -573,6 +581,7 @@ function NewAppraisalPageContent() {
             const payload = {
                 subject, comparables, overpriced, purchaseProperties,
                 valuationResult: result, origin: origin || undefined, assignedTo: assignedTo || undefined,
+                reportEdits,
             }
             // Prefer the URL editId, fall back to the locally-tracked id from a
             // previous insert in this session. Either way, if we already have an
@@ -1362,7 +1371,7 @@ function NewAppraisalPageContent() {
                                     <Button variant="ghost" size="sm" className="text-red-500 h-auto p-0 underline" onClick={() => {
                                         if (!subject || !valuationResult) return
                                         setSaveStatus('saving')
-                                        const payload = { subject, comparables, overpriced, purchaseProperties, valuationResult, origin: origin || undefined, assignedTo: assignedTo || undefined }
+                                        const payload = { subject, comparables, overpriced, purchaseProperties, valuationResult, origin: origin || undefined, assignedTo: assignedTo || undefined, reportEdits }
                                         // Use the same id-tracking logic: if we already saved once, UPDATE not INSERT.
                                         const existingId = editId || savedAppraisalId
                                         const promise = existingId

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client'
 import { ValuationResult, ValuationProperty } from '@/lib/valuation/calculator'
 import { ScrapedProperty } from '@/lib/scraper/types'
+import type { ReportEdits } from '@/lib/types/report-edits'
 
 // ---- Input/Output Types ----
 
@@ -14,6 +15,7 @@ export interface SaveAppraisalInput {
     userId?: string
     origin?: string
     assignedTo?: string
+    reportEdits?: ReportEdits
 }
 
 export interface AppraisalSummary {
@@ -46,6 +48,7 @@ export interface AppraisalDetail {
     created_at: string
     updated_at: string
     notes: string | null
+    report_edits: ReportEdits | null
     comparables: ComparableRow[]
 }
 
@@ -131,6 +134,7 @@ export async function saveAppraisal(input: SaveAppraisalInput): Promise<string> 
             notes,
             origin: origin || null,
             assigned_to: assignedTo || null,
+            report_edits: input.reportEdits ?? null,
         })
         .select('id')
         .single()
@@ -297,11 +301,16 @@ export async function getAppraisal(id: string): Promise<AppraisalDetail | null> 
         })
     }
 
+    // Cast via unknown porque los tipos generados de Supabase aún no incluyen
+    // `report_edits` (se agrega vía migración). El runtime ya devuelve el campo
+    // si la columna existe; si no, queda undefined y el consumer lo trata como null.
+    const row = appraisalRes.data as Record<string, unknown>
     return {
         ...appraisalRes.data,
         valuation_result: valuationResult,
+        report_edits: (row.report_edits as ReportEdits | null | undefined) ?? null,
         comparables: allComparableRows,
-    } as AppraisalDetail
+    } as unknown as AppraisalDetail
 }
 
 export async function deleteAppraisal(id: string): Promise<void> {
@@ -337,6 +346,7 @@ export async function updateAppraisal(id: string, input: SaveAppraisalInput): Pr
         currency: leanValuation.currency,
         comparable_count: comparables.length,
         notes,
+        report_edits: input.reportEdits ?? null,
     }
     if (origin !== undefined) updatePayload.origin = origin || null
     if (assignedTo !== undefined) updatePayload.assigned_to = assignedTo || null
