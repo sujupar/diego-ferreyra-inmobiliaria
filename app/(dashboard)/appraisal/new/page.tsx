@@ -403,7 +403,18 @@ function NewAppraisalPageContent() {
             comparables: compsVal,
             expenseRates,
         })
-        if (!next) return
+        if (!next) {
+            // Datos inválidos: subject sin features mínimas o comparables sin precio.
+            // Preservar el último resultado válido y avisar en el banner.
+            console.warn('[recalc] calculateValuation devolvió null — datos insuficientes', {
+                hasSubject: !!subject,
+                comparableCount: comparables.length,
+                comparablesConPrecio: comparables.filter(c => c.price).length,
+            })
+            setSaveStatus('error')
+            setSaveErrorDetail('No se puede recalcular: revisá que el subject y los comparables tengan datos completos (precios, superficies).')
+            return
+        }
         // Calcular escenarios si los hay
         const scenarioResults = purchaseScenarios.length > 0
             ? calculateAllScenarios(purchaseScenarios, next.moneyInHand)
