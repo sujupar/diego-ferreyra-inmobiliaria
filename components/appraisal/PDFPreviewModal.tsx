@@ -91,7 +91,6 @@ export function PDFPreviewModal({
     const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('preview')
     const [isDownloading, setIsDownloading] = useState(false)
     const [isConverting, setIsConverting] = useState(false)
-    const [conversionProgress, setConversionProgress] = useState<{ loaded: number; total: number }>({ loaded: 0, total: 0 })
     const [convertedSubject, setConvertedSubject] = useState<ValuationProperty | null>(null)
     const [convertedComparables, setConvertedComparables] = useState<ValuationProperty[] | null>(null)
     const [convertedOverpriced, setConvertedOverpriced] = useState<ValuationProperty[] | null>(null)
@@ -129,13 +128,8 @@ export function PDFPreviewModal({
 
         let cancelled = false
         setIsConverting(true)
-        setConversionProgress({ loaded: 0, total: 0 })
 
-        convertImagesToBase64(subject, comparables, overpriced, purchaseProperties, {
-            onProgress: (loaded, total) => {
-                if (!cancelled) setConversionProgress({ loaded, total })
-            },
-        })
+        convertImagesToBase64(subject, comparables, overpriced, purchaseProperties)
             .then(({ subjectImages, comparableImages, overpricedImages, purchaseImages }) => {
                 if (cancelled) return
 
@@ -269,21 +263,9 @@ export function PDFPreviewModal({
                             />
                         </div>
                     ) : isConverting ? (
-                        <div className="flex flex-col items-center justify-center h-full gap-3 px-8">
+                        <div className="flex flex-col items-center justify-center h-full gap-3">
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                            <p className="text-sm text-muted-foreground">
-                                {conversionProgress.total > 0
-                                    ? `Procesando ${conversionProgress.loaded} de ${conversionProgress.total} imágenes...`
-                                    : 'Preparando imágenes...'}
-                            </p>
-                            {conversionProgress.total > 0 && (
-                                <div className="w-64 h-1.5 bg-muted rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-primary transition-[width] duration-200 ease-out"
-                                        style={{ width: `${(conversionProgress.loaded / conversionProgress.total) * 100}%` }}
-                                    />
-                                </div>
-                            )}
+                            <p className="text-sm text-muted-foreground">Preparando imagenes...</p>
                         </div>
                     ) : (
                         <PDFViewer width="100%" height="100%" showToolbar={false}>

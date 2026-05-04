@@ -40,14 +40,7 @@ export async function POST(request: Request): Promise<Response> {
         const base64 = Buffer.from(buffer).toString('base64')
         const dataUrl = `data:${contentType};base64,${base64}`
 
-        // Cache de 1 hora en el browser. Las URLs de portales (zonaprop, ML, etc)
-        // son estables — la imagen no cambia. Esto evita re-fetches en sesiones
-        // largas o entre tabs del mismo usuario.
-        return NextResponse.json({ dataUrl }, {
-            headers: {
-                'Cache-Control': 'private, max-age=3600',
-            },
-        })
+        return NextResponse.json({ dataUrl })
     } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
             return NextResponse.json({ error: 'Image fetch timed out' }, { status: 504 })
