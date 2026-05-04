@@ -294,8 +294,8 @@ export function PDFPreviewModal({
                                 overpriced={readyOverpriced}
                                 purchaseProperties={readyPurchase}
                                 purchaseResult={purchaseResult}
-                                marketImageLabels={marketImageLabels}
-                                marketImageUrls={marketImageUrls}
+                                marketImageLabels={effectiveLabels}
+                                marketImageUrls={effectiveUrls}
                                 reportEdits={reportEdits}
                                 appraisalDate={appraisalDate}
                             />
