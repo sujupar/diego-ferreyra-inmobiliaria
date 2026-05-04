@@ -303,7 +303,7 @@ function NewAppraisalPageContent() {
                             valuationResult?: ValuationResult
                         }
                         const draftTime = draft.savedAt ? new Date(draft.savedAt).getTime() : 0
-                        const dbTime = new Date(detail.created_at || 0).getTime()
+                        const dbTime = new Date(detail.updated_at || detail.created_at || 0).getTime()
                         // Si el draft local es más reciente que la última escritura en DB,
                         // hay cambios sin guardar. Restaurarlos sobre el state cargado.
                         if (draftTime > dbTime && draft.subject) {

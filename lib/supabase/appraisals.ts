@@ -44,6 +44,7 @@ export interface AppraisalDetail {
     currency: string | null
     comparable_count: number
     created_at: string
+    updated_at: string
     notes: string | null
     comparables: ComparableRow[]
 }
