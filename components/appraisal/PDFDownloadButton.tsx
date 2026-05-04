@@ -3,9 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Download, Loader2 } from 'lucide-react'
-import { ValuationProperty, ValuationResult } from '@/lib/valuation/calculator'
-import { PDFReportDocument } from './pdf/PDFReport'
-import { pdf } from '@react-pdf/renderer'
+import type { ValuationProperty, ValuationResult } from '@/lib/valuation/calculator'
 
 interface PDFDownloadButtonProps {
     subject: ValuationProperty
@@ -20,6 +18,12 @@ export function PDFDownloadButton({ subject, comparables, valuationResult, appra
     const handleDownload = async () => {
         try {
             setIsGenerating(true)
+
+            // Cargar bundle PDF SOLO al click — no entra al bundle inicial.
+            const [{ pdf }, { PDFReportDocument }] = await Promise.all([
+                import('@react-pdf/renderer'),
+                import('./pdf/PDFReport'),
+            ])
 
             // Generate PDF blob
             const doc = <PDFReportDocument
