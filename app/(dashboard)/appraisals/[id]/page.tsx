@@ -51,20 +51,10 @@ export default function AppraisalDetailPage() {
                 // Pre-fetch en background de las imágenes del PDF — cuando el user
                 // haga click en "Vista Previa PDF", las imágenes ya van a estar
                 // cacheadas y la apertura del modal será instantánea.
-                // CRÍTICO: incluir TODOS los tipos (subject + normales + overpriced + purchase)
-                // para que el prefetch cubra la totalidad del PDF.
                 import('@/lib/pdf/imageUtils').then(({ prefetchImagesInBackground }) => {
                     const subjectShape = { images: detail.property_images ?? undefined }
-                    const allComparables = detail.comparables || []
-                    const isOverpriced = (a: unknown) => (a as Record<string, unknown> | null)?.propertyType === 'overpriced'
-                    const isPurchase = (a: unknown) => (a as Record<string, unknown> | null)?.propertyType === 'purchase'
-                    const normalShapes = allComparables.filter(c => !isOverpriced(c.analysis) && !isPurchase(c.analysis))
-                        .map(c => ({ images: c.images ?? undefined }))
-                    const overpricedShapes = allComparables.filter(c => isOverpriced(c.analysis))
-                        .map(c => ({ images: c.images ?? undefined }))
-                    const purchaseShapes = allComparables.filter(c => isPurchase(c.analysis))
-                        .map(c => ({ images: c.images ?? undefined }))
-                    prefetchImagesInBackground(subjectShape, normalShapes, overpricedShapes, purchaseShapes)
+                    const compShapes = (detail.comparables || []).map(c => ({ images: c.images ?? undefined }))
+                    prefetchImagesInBackground(subjectShape, compShapes)
                 }).catch(() => { /* silencioso — el modal real reintenta */ })
             })
             .catch(err => {
