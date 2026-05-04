@@ -419,12 +419,19 @@ function NewAppraisalPageContent() {
         const scenarioResults = purchaseScenarios.length > 0
             ? calculateAllScenarios(purchaseScenarios, next.moneyInHand)
             : undefined
+        // Si hay escenarios calculados, preservar la selección del usuario filtrada a IDs que existen.
+        // Si NO hay (porque borró las purchase properties), limpiar selectedIds y purchaseResult —
+        // preservar IDs huérfanos haría que el PDF intente renderizar tablas inexistentes.
+        const mergedScenarios = scenarioResults && scenarioResults.length > 0 ? scenarioResults : undefined
+        const mergedSelectedIds = mergedScenarios
+            ? selectedScenarioIds.filter(id => mergedScenarios.some(s => s.id === id))
+            : []
         // Preserve purchase data that lives outside calculateValuation
         const merged: ValuationResult = {
             ...next,
-            purchaseResult: valuationResult.purchaseResult,
-            purchaseScenarios: scenarioResults,
-            selectedScenarioIds: scenarioResults ? selectedScenarioIds : valuationResult.selectedScenarioIds,
+            purchaseResult: mergedScenarios ? valuationResult.purchaseResult : undefined,
+            purchaseScenarios: mergedScenarios,
+            selectedScenarioIds: mergedSelectedIds,
         }
         setValuationResult(merged)
 
