@@ -2,21 +2,43 @@ interface ImageHolder {
     images?: string[] | null
 }
 
+/**
+ * Cache module-level simple de URL → data URL base64.
+ * Persiste durante la sesión del browser para que re-abrir la vista previa
+ * de una tasación ya procesada sea instantáneo.
+ */
+const imageCache = new Map<string, string>()
+
+/** Timeout en ms para una imagen individual antes de darnos por vencidos. */
+const PER_IMAGE_TIMEOUT_MS = 12000
+
 async function convertUrlToBase64(url: string): Promise<string> {
     if (!url || url.startsWith('data:')) return url
 
+    const cached = imageCache.get(url)
+    if (cached !== undefined) return cached
+
     try {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), PER_IMAGE_TIMEOUT_MS)
+
         const res = await fetch('/api/proxy-image', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url }),
+            signal: controller.signal,
         })
+        clearTimeout(timer)
 
         if (!res.ok) return ''
 
         const { dataUrl } = await res.json()
-        return dataUrl || ''
+        const result = dataUrl || ''
+        if (result) imageCache.set(url, result)
+        return result
     } catch {
+        // Timeout, network error, etc — devolver string vacío para que el PDF
+        // muestre placeholder en lugar de bloquear el render entero.
         return ''
     }
 }
