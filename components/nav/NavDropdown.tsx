@@ -45,6 +45,7 @@ export function NavDropdown({ label, items }: NavDropdownProps) {
             <Link
               key={item.href}
               href={item.href}
+              prefetch={true}
               onClick={() => setOpen(false)}
               className={`block px-4 py-2 text-sm transition-colors ${pathname === item.href ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}`}
             >
@@ -64,6 +65,7 @@ export function NavLink({ href, label }: NavLink) {
   return (
     <Link
       href={href}
+      prefetch={true}
       className={`text-sm font-medium transition-colors whitespace-nowrap ${isActive ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`}
     >
       {label}
@@ -99,7 +101,7 @@ export function MobileNav({ sections }: MobileNavProps) {
             {sections.map(section => (
               <div key={section.label}>
                 {section.href ? (
-                  <Link href={section.href} onClick={() => setOpen(false)}
+                  <Link href={section.href} prefetch={true} onClick={() => setOpen(false)}
                     className={`block px-3 py-2.5 rounded-md text-sm font-medium ${pathname === section.href ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent'}`}>
                     {section.label}
                   </Link>
@@ -107,7 +109,7 @@ export function MobileNav({ sections }: MobileNavProps) {
                   <>
                     <p className="px-3 py-2 text-xs font-semibold uppercase text-muted-foreground tracking-wider">{section.label}</p>
                     {section.items?.map(item => (
-                      <Link key={item.href} href={item.href} onClick={() => setOpen(false)}
+                      <Link key={item.href} href={item.href} prefetch={true} onClick={() => setOpen(false)}
                         className={`block px-6 py-2.5 rounded-md text-sm ${pathname === item.href ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:bg-accent'}`}>
                         {item.label}
                       </Link>
