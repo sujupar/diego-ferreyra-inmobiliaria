@@ -8,7 +8,7 @@ import { PropertyForm } from '@/components/appraisal/PropertyForm'
 import { ComparableEditor, ComparableMissingIndicator } from '@/components/appraisal/ComparableEditor'
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { ScrapedProperty, PropertyFeatures } from '@/lib/scraper/types'
-import { calculateValuation, calculatePurchaseCosts, ValuationResult, ValuationProperty, ExpenseRates, PurchaseExpenseRates, PurchaseResult } from '@/lib/valuation/calculator'
+import { calculateValuation, calculatePurchaseCosts, getQualityCoefficient, ValuationResult, ValuationProperty, ExpenseRates, PurchaseExpenseRates, PurchaseResult } from '@/lib/valuation/calculator'
 import type { PurchaseScenarioId, PurchaseScenarioInput } from '@/lib/valuation/calculator'
 import { buildDefaultScenarios, calculateAllScenarios } from '@/lib/valuation/purchase-scenarios'
 import { PurchaseScenariosEditor } from '@/components/appraisal/PurchaseScenariosEditor'
@@ -207,6 +207,13 @@ function NewAppraisalPageContent() {
     // Retry counter for transient failures with exponential backoff
     const autoSaveRetryRef = useRef<number>(0)
 
+    // Coefficient drift warning: legacy appraisals stored subjectQualityCoef = 1.0 hardcoded.
+    const [coefficientDriftWarning, setCoefficientDriftWarning] = useState<{
+        storedCoef: number
+        expectedCoef: number
+        quality: string
+    } | null>(null)
+
     // Load existing appraisal when in edit mode
     useEffect(() => {
         if (!editId) return
@@ -288,6 +295,15 @@ function NewAppraisalPageContent() {
                 }
                 if (detail.valuation_result?.selectedScenarioIds) {
                     setSelectedScenarioIds(detail.valuation_result.selectedScenarioIds)
+                }
+
+                // Aviso si la tasación legacy tiene un coeficiente de calidad hardcoded a 1.0.
+                // Al recalcular, el precio puede cambiar significativamente.
+                const storedCoef = detail.valuation_result?.subjectQualityCoef
+                const subjectQuality = (detail.property_features as Record<string, unknown> | undefined)?.quality as string | undefined
+                const expectedCoef = getQualityCoefficient(subjectQuality as Parameters<typeof getQualityCoefficient>[0])
+                if (typeof storedCoef === 'number' && Math.abs(storedCoef - expectedCoef) > 0.01) {
+                    setCoefficientDriftWarning({ storedCoef, expectedCoef, quality: subjectQuality || 'no definida' })
                 }
 
                 // Recuperar draft local si quedó pendiente por un guardado fallido.
@@ -771,6 +787,19 @@ function NewAppraisalPageContent() {
                     <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
                     <p>
                         Datos de la propiedad prellenados desde la visita realizada. Revisá y ajustá si es necesario antes de continuar con los comparables.
+                    </p>
+                </div>
+            )}
+
+            {/* Banner: coeficiente de calidad constructiva desactualizado */}
+            {coefficientDriftWarning && (
+                <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm">
+                    <strong className="text-amber-800">⚠️ Aviso de actualización del motor de cálculo</strong>
+                    <p className="mt-1 text-amber-700">
+                        Esta tasación fue creada con un coeficiente de calidad fijo en {coefficientDriftWarning.storedCoef.toFixed(2)}.
+                        Al editar y recalcular se aplicará el coeficiente real de la calidad seleccionada
+                        (<strong>{coefficientDriftWarning.quality} = {coefficientDriftWarning.expectedCoef.toFixed(3)}</strong>).
+                        Esto puede modificar el precio de publicación.
                     </p>
                 </div>
             )}
