@@ -4,13 +4,50 @@ interface ImageHolder {
 
 /**
  * Cache module-level simple de URL → data URL base64.
- * Persiste durante la sesión del browser para que re-abrir la vista previa
- * de una tasación ya procesada sea instantáneo.
+ * Persiste durante la sesión del browser; re-abrir el preview de una tasación
+ * ya procesada es instantáneo.
  */
 const imageCache = new Map<string, string>()
 
-/** Timeout en ms para una imagen individual antes de darnos por vencidos. */
-const PER_IMAGE_TIMEOUT_MS = 12000
+/** Timeout per-image. Si una URL externa cuelga por más de esto, abortamos. */
+const PER_IMAGE_TIMEOUT_MS = 8000
+
+/** Hard deadline global para TODA la conversión. Si se cumple, devolvemos
+ *  lo que tengamos hasta ahora — el PDF se renderiza con placeholders donde
+ *  no haya imagen. */
+const GLOBAL_TIMEOUT_MS = 25000
+
+/**
+ * Wraps a promise with a hard deadline. If the deadline expires first,
+ * resolves with `fallback` instead of rejecting — el caller sigue corriendo.
+ */
+function withDeadline<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+    return new Promise<T>(resolve => {
+        let settled = false
+        const timer = setTimeout(() => {
+            if (!settled) {
+                settled = true
+                resolve(fallback)
+            }
+        }, ms)
+        promise.then(
+            value => {
+                if (!settled) {
+                    settled = true
+                    clearTimeout(timer)
+                    resolve(value)
+                }
+            },
+            () => {
+                if (!settled) {
+                    settled = true
+                    clearTimeout(timer)
+                    resolve(fallback)
+                }
+            },
+        )
+    })
+}
 
 async function convertUrlToBase64(url: string): Promise<string> {
     if (!url || url.startsWith('data:')) return url
@@ -18,29 +55,46 @@ async function convertUrlToBase64(url: string): Promise<string> {
     const cached = imageCache.get(url)
     if (cached !== undefined) return cached
 
-    try {
-        const controller = new AbortController()
-        const timer = setTimeout(() => controller.abort(), PER_IMAGE_TIMEOUT_MS)
+    const startTs = typeof performance !== 'undefined' ? performance.now() : Date.now()
+    const inner = (async () => {
+        try {
+            const controller = new AbortController()
+            const fetchTimer = setTimeout(() => controller.abort(), PER_IMAGE_TIMEOUT_MS)
+            const res = await fetch('/api/proxy-image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url }),
+                signal: controller.signal,
+            })
+            clearTimeout(fetchTimer)
+            if (!res.ok) {
+                console.warn('[imageUtils] proxy responded', res.status, 'for', url.slice(0, 80))
+                return ''
+            }
+            // res.json() también puede colgar si el body se streamea lento — protegemos con su propio timeout.
+            const jsonTimer = new AbortController()
+            const jsonDeadline = setTimeout(() => jsonTimer.abort(), PER_IMAGE_TIMEOUT_MS)
+            try {
+                const { dataUrl } = (await res.json()) as { dataUrl?: string }
+                clearTimeout(jsonDeadline)
+                const result = dataUrl || ''
+                if (result) imageCache.set(url, result)
+                return result
+            } catch (err) {
+                clearTimeout(jsonDeadline)
+                console.warn('[imageUtils] failed parsing json for', url.slice(0, 80), err)
+                return ''
+            }
+        } catch (err) {
+            const elapsed = Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - startTs))
+            console.warn(`[imageUtils] error after ${elapsed}ms for`, url.slice(0, 80), err)
+            return ''
+        }
+    })()
 
-        const res = await fetch('/api/proxy-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url }),
-            signal: controller.signal,
-        })
-        clearTimeout(timer)
-
-        if (!res.ok) return ''
-
-        const { dataUrl } = await res.json()
-        const result = dataUrl || ''
-        if (result) imageCache.set(url, result)
-        return result
-    } catch {
-        // Timeout, network error, etc — devolver string vacío para que el PDF
-        // muestre placeholder en lugar de bloquear el render entero.
-        return ''
-    }
+    // Defensa adicional: si por cualquier razón el fetch+json sigue colgado,
+    // cortamos a 1.5x el per-image timeout. Devuelve string vacío.
+    return withDeadline(inner, PER_IMAGE_TIMEOUT_MS * 1.5, '')
 }
 
 export async function convertImagesToBase64(
@@ -54,6 +108,8 @@ export async function convertImagesToBase64(
     overpricedImages: string[][]
     purchaseImages: string[][]
 }> {
+    const startTs = typeof performance !== 'undefined' ? performance.now() : Date.now()
+
     const subjectPromise = subject.images?.[0]
         ? convertUrlToBase64(subject.images[0]).then(img => [img])
         : Promise.resolve([] as string[])
@@ -72,8 +128,6 @@ export async function convertImagesToBase64(
         return Promise.resolve([] as string[])
     })
 
-    // Purchase properties: scrapeadas de portales externos, sus URLs típicamente
-    // bloquean hotlinking. Convertir a base64 vía proxy igual que comparables.
     const purchasePromises = purchaseProperties.map(prop => {
         if (prop.images?.[0]) {
             return convertUrlToBase64(prop.images[0]).then(img => [img])
@@ -81,13 +135,29 @@ export async function convertImagesToBase64(
         return Promise.resolve([] as string[])
     })
 
-    const [subjectImages, ...restImages] = await Promise.all([
+    // Hard deadline global. Si se cumple, devolvemos arrays vacíos para todo
+    // lo que aún no haya completado y dejamos que el PDF se renderice con
+    // placeholders en lugar de quedar colgado para siempre.
+    const allPromise = Promise.all([
         subjectPromise,
         ...comparablePromises,
         ...overpricedPromises,
         ...purchasePromises,
     ])
 
+    const total = comparables.length + overpriced.length + purchaseProperties.length + 1
+    const fallback: string[][] = Array.from({ length: total }, () => [])
+
+    const result = await withDeadline(allPromise, GLOBAL_TIMEOUT_MS, fallback)
+
+    const elapsed = Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - startTs))
+    if (elapsed >= GLOBAL_TIMEOUT_MS) {
+        console.warn(`[imageUtils] global timeout reached after ${elapsed}ms — rendering with whatever loaded`)
+    } else {
+        console.info(`[imageUtils] all images processed in ${elapsed}ms`)
+    }
+
+    const [subjectImages, ...restImages] = result
     const comparableImages = restImages.slice(0, comparables.length)
     const overpricedImages = restImages.slice(comparables.length, comparables.length + overpriced.length)
     const purchaseImages = restImages.slice(comparables.length + overpriced.length)
