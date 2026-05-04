@@ -71,20 +71,16 @@ async function convertUrlToBase64(url: string): Promise<string> {
                 console.warn('[imageUtils] proxy responded', res.status, 'for', url.slice(0, 80))
                 return ''
             }
-            // res.json() también puede colgar si el body se streamea lento — protegemos con su propio timeout.
-            const jsonTimer = new AbortController()
-            const jsonDeadline = setTimeout(() => jsonTimer.abort(), PER_IMAGE_TIMEOUT_MS)
-            try {
-                const { dataUrl } = (await res.json()) as { dataUrl?: string }
-                clearTimeout(jsonDeadline)
-                const result = dataUrl || ''
-                if (result) imageCache.set(url, result)
-                return result
-            } catch (err) {
-                clearTimeout(jsonDeadline)
-                console.warn('[imageUtils] failed parsing json for', url.slice(0, 80), err)
-                return ''
-            }
+            // res.json() NO es abortable con AbortSignal (la API no lo acepta).
+            // Si el body se streamea lento, usamos withDeadline como protección real.
+            const parsed = await withDeadline(
+                res.json().catch(() => ({ dataUrl: undefined })) as Promise<{ dataUrl?: string }>,
+                PER_IMAGE_TIMEOUT_MS,
+                { dataUrl: undefined },
+            )
+            const result = parsed.dataUrl || ''
+            if (result) imageCache.set(url, result)
+            return result
         } catch (err) {
             const elapsed = Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - startTs))
             console.warn(`[imageUtils] error after ${elapsed}ms for`, url.slice(0, 80), err)
