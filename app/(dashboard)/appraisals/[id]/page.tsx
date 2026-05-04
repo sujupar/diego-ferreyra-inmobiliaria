@@ -52,6 +52,65 @@ export default function AppraisalDetailPage() {
             .finally(() => setLoading(false))
     }, [params.id])
 
+    // CRÍTICO: los useMemo deben llamarse SIEMPRE — antes de cualquier early
+    // return — porque las reglas de hooks de React requieren orden estable.
+    // Manejamos el caso `appraisal === null` con fallbacks adentro.
+    const effectiveFeatures: PropertyFeatures | null =
+        subjectFeaturesOverride ?? (appraisal?.property_features ?? null)
+
+    const subject: ValuationProperty | null = useMemo(() => {
+        if (!appraisal) return null
+        return {
+            price: appraisal.property_price,
+            currency: appraisal.property_currency,
+            title: appraisal.property_title || undefined,
+            location: appraisal.property_location,
+            images: appraisal.property_images || undefined,
+            description: appraisal.property_description || undefined,
+            features: (effectiveFeatures ?? {}) as unknown as ValuationProperty['features'],
+        }
+    }, [appraisal, effectiveFeatures])
+
+    const { comparables, overpriced } = useMemo<{
+        comparables: ValuationProperty[]
+        overpriced: ValuationProperty[]
+    }>(() => {
+        if (!appraisal) return { comparables: [], overpriced: [] }
+
+        const normalComps = appraisal.comparables.filter(c => {
+            const analysis = c.analysis as Record<string, unknown> | null
+            return analysis?.propertyType !== 'overpriced' && analysis?.propertyType !== 'purchase'
+        })
+        const overpricedComps = appraisal.comparables.filter(c => {
+            const analysis = c.analysis as Record<string, unknown> | null
+            return analysis?.propertyType === 'overpriced'
+        })
+
+        const comparablesArr: ValuationProperty[] = normalComps.map(c => ({
+            price: c.price,
+            currency: c.currency,
+            title: c.title || undefined,
+            location: c.location || undefined,
+            url: c.url || undefined,
+            images: c.images || undefined,
+            description: c.description || undefined,
+            features: c.features,
+        }))
+
+        const overpricedArr: ValuationProperty[] = overpricedComps.map(c => ({
+            price: c.price,
+            currency: c.currency,
+            title: c.title || undefined,
+            location: c.location || undefined,
+            url: c.url || undefined,
+            images: c.images || undefined,
+            description: c.description || undefined,
+            features: c.features,
+        }))
+
+        return { comparables: comparablesArr, overpriced: overpricedArr }
+    }, [appraisal])
+
     if (loading) {
         return (
             <div className="max-w-5xl mx-auto space-y-8 pb-20">
@@ -86,7 +145,7 @@ export default function AppraisalDetailPage() {
         )
     }
 
-    if (error || !appraisal) {
+    if (error || !appraisal || !subject) {
         return (
             <div className="max-w-5xl mx-auto text-center py-20">
                 <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
@@ -100,62 +159,6 @@ export default function AppraisalDetailPage() {
             </div>
         )
     }
-
-    // Reconstruct ValuationProperty from stored data, with optional overrides
-    // from inline editing of subject features.
-    //
-    // CRÍTICO: estas reconstrucciones DEBEN memoizarse. Cuando el PDFPreviewModal
-    // se monta, su useEffect tiene `[subject, comparables, overpriced, ...]` como
-    // dependencias. Si las refs cambian en cada render del detail page, el effect
-    // se vuelve a disparar repetidamente, cancela la conversión anterior y arranca
-    // una nueva — el modal queda colgado en "Preparando imágenes..." indefinidamente.
-    const effectiveFeatures: PropertyFeatures = subjectFeaturesOverride ?? appraisal.property_features
-
-    const subject: ValuationProperty = useMemo(() => ({
-        price: appraisal.property_price,
-        currency: appraisal.property_currency,
-        title: appraisal.property_title || undefined,
-        location: appraisal.property_location,
-        images: appraisal.property_images || undefined,
-        description: appraisal.property_description || undefined,
-        features: effectiveFeatures as unknown as ValuationProperty['features'],
-    }), [appraisal, effectiveFeatures])
-
-    // Separate normal comparables from overpriced (and purchase) properties
-    const { comparables, overpriced } = useMemo(() => {
-        const normalComps = appraisal.comparables.filter(c => {
-            const analysis = c.analysis as Record<string, unknown> | null
-            return analysis?.propertyType !== 'overpriced' && analysis?.propertyType !== 'purchase'
-        })
-        const overpricedComps = appraisal.comparables.filter(c => {
-            const analysis = c.analysis as Record<string, unknown> | null
-            return analysis?.propertyType === 'overpriced'
-        })
-
-        const comparablesArr: ValuationProperty[] = normalComps.map(c => ({
-            price: c.price,
-            currency: c.currency,
-            title: c.title || undefined,
-            location: c.location || undefined,
-            url: c.url || undefined,
-            images: c.images || undefined,
-            description: c.description || undefined,
-            features: c.features,
-        }))
-
-        const overpricedArr: ValuationProperty[] = overpricedComps.map(c => ({
-            price: c.price,
-            currency: c.currency,
-            title: c.title || undefined,
-            location: c.location || undefined,
-            url: c.url || undefined,
-            images: c.images || undefined,
-            description: c.description || undefined,
-            features: c.features,
-        }))
-
-        return { comparables: comparablesArr, overpriced: overpricedArr }
-    }, [appraisal.comparables])
 
     const result: ValuationResult = valuationOverride ?? (appraisal.valuation_result || {} as ValuationResult)
     const hasFullValuation = result.subjectSurface != null && result.comparableAnalysis?.length > 0
@@ -272,8 +275,13 @@ export default function AppraisalDetailPage() {
                 const a = c.analysis as Record<string, unknown> | null
                 return a?.propertyType !== 'overpriced' && a?.propertyType !== 'purchase'
             })
+            // En este punto subject e effectiveFeatures son no-null (early return
+            // del render lo garantiza, y la función solo se llama desde JSX renderizado
+            // post-early-return). Casts para satisfacer al type checker.
+            const safeSubject = subject as ValuationProperty
+            const safeFeatures = (effectiveFeatures ?? {}) as PropertyFeatures
             const recalc = calculateValuation({
-                subject,
+                subject: safeSubject,
                 comparables: onlyNormalRows.map(c => ({
                     price: c.price,
                     currency: c.currency,
@@ -301,7 +309,7 @@ export default function AppraisalDetailPage() {
                     currency: (appraisal.property_currency as 'USD' | 'ARS' | null) ?? null,
                     location: appraisal.property_location,
                     description: appraisal.property_description || '',
-                    features: effectiveFeatures,
+                    features: safeFeatures,
                     images: appraisal.property_images || [],
                     portal: '',
                 }
