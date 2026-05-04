@@ -7,6 +7,7 @@ import { ImpersonationBanner } from '@/components/auth/ImpersonationBanner'
 import { DashboardNav } from './DashboardNav'
 import { Role } from '@/types/auth.types'
 import { Permission } from '@/lib/auth/roles'
+import { NavigationProgress } from '@/components/dashboard/NavigationProgress'
 
 interface NavSection {
     label: string
@@ -96,6 +97,7 @@ export default async function DashboardLayout({
 
     return (
         <div className="min-h-screen flex flex-col bg-secondary/30">
+            <NavigationProgress />
             {impersonating && (
                 <ImpersonationBanner
                     name={user.profile.full_name}
