@@ -87,10 +87,11 @@ export default async function DashboardLayout({
 }: {
     children: React.ReactNode
 }) {
-    const user = await getUser()
+    const [user, impersonating] = await Promise.all([
+        getUser(),
+        isImpersonating(),
+    ])
     if (!user) redirect('/login')
-
-    const impersonating = await isImpersonating()
     const navSections = getNavSections(user.profile.role)
 
     return (
