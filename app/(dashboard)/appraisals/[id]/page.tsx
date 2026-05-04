@@ -42,8 +42,20 @@ export default function AppraisalDetailPage() {
                 return r.json()
             })
             .then(({ data }) => {
-                if (!data) setError('Tasación no encontrada')
-                else setAppraisal(data as AppraisalDetail)
+                if (!data) {
+                    setError('Tasación no encontrada')
+                    return
+                }
+                const detail = data as AppraisalDetail
+                setAppraisal(detail)
+                // Pre-fetch en background de las imágenes del PDF — cuando el user
+                // haga click en "Vista Previa PDF", las imágenes ya van a estar
+                // cacheadas y la apertura del modal será instantánea.
+                import('@/lib/pdf/imageUtils').then(({ prefetchImagesInBackground }) => {
+                    const subjectShape = { images: detail.property_images ?? undefined }
+                    const compShapes = (detail.comparables || []).map(c => ({ images: c.images ?? undefined }))
+                    prefetchImagesInBackground(subjectShape, compShapes)
+                }).catch(() => { /* silencioso — el modal real reintenta */ })
             })
             .catch(err => {
                 console.error('Error loading appraisal:', err)
