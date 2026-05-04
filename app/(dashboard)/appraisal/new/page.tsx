@@ -1324,9 +1324,18 @@ function NewAppraisalPageContent() {
                         onClick={handleCalculate}
                         disabled={!allComparablesComplete || saveStatus === 'saving'}
                     >
-                        <Calculator className="h-5 w-5" />
-                        Calcular Valor de Mercado
-                        <ArrowRight className="h-5 w-5 opacity-50" />
+                        {saveStatus === 'saving' ? (
+                            <>
+                                <Loader2 className="h-5 w-5 animate-spin" />
+                                Calculando...
+                            </>
+                        ) : (
+                            <>
+                                <Calculator className="h-5 w-5" />
+                                Calcular Valor de Mercado
+                                <ArrowRight className="h-5 w-5 opacity-50" />
+                            </>
+                        )}
                     </Button>
                 </section>
             )}
