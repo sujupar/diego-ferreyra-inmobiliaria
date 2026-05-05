@@ -71,11 +71,12 @@ export default function AppraisalDetailPage() {
         }
     }, [appraisal, effectiveFeatures])
 
-    const { comparables, overpriced } = useMemo<{
+    const { comparables, overpriced, purchaseProperties } = useMemo<{
         comparables: ValuationProperty[]
         overpriced: ValuationProperty[]
+        purchaseProperties: ValuationProperty[]
     }>(() => {
-        if (!appraisal) return { comparables: [], overpriced: [] }
+        if (!appraisal) return { comparables: [], overpriced: [], purchaseProperties: [] }
 
         const normalComps = appraisal.comparables.filter(c => {
             const analysis = c.analysis as Record<string, unknown> | null
@@ -85,8 +86,12 @@ export default function AppraisalDetailPage() {
             const analysis = c.analysis as Record<string, unknown> | null
             return analysis?.propertyType === 'overpriced'
         })
+        const purchaseComps = appraisal.comparables.filter(c => {
+            const analysis = c.analysis as Record<string, unknown> | null
+            return analysis?.propertyType === 'purchase'
+        })
 
-        const comparablesArr: ValuationProperty[] = normalComps.map(c => ({
+        const mapToValuation = (c: typeof appraisal.comparables[number]): ValuationProperty => ({
             price: c.price,
             currency: c.currency,
             title: c.title || undefined,
@@ -95,20 +100,13 @@ export default function AppraisalDetailPage() {
             images: c.images || undefined,
             description: c.description || undefined,
             features: c.features,
-        }))
+        })
 
-        const overpricedArr: ValuationProperty[] = overpricedComps.map(c => ({
-            price: c.price,
-            currency: c.currency,
-            title: c.title || undefined,
-            location: c.location || undefined,
-            url: c.url || undefined,
-            images: c.images || undefined,
-            description: c.description || undefined,
-            features: c.features,
-        }))
-
-        return { comparables: comparablesArr, overpriced: overpricedArr }
+        return {
+            comparables: normalComps.map(mapToValuation),
+            overpriced: overpricedComps.map(mapToValuation),
+            purchaseProperties: purchaseComps.map(mapToValuation),
+        }
     }, [appraisal])
 
     if (loading) {
@@ -447,6 +445,8 @@ export default function AppraisalDetailPage() {
                     comparables={comparables}
                     valuationResult={result}
                     overpriced={overpriced}
+                    purchaseProperties={purchaseProperties}
+                    purchaseResult={result.purchaseResult}
                     reportEdits={reportEdits || buildDefaultEdits(
                         { title: appraisal.property_title || '', location: appraisal.property_location, description: appraisal.property_description || '' },
                         result

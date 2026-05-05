@@ -34,6 +34,11 @@ type MarketImageCache = {
 let marketImageCache: MarketImageCache | null = null
 let marketImageCachePromise: Promise<MarketImageCache> | null = null
 
+// Referencias estables para defaults — sin esto, el destructuring default `= []`
+// crea un array nuevo en cada render del modal, lo que invalida las deps del
+// useEffect de conversión de imágenes y causa un loop infinito que tilda el tab.
+const EMPTY_PROPERTIES: ValuationProperty[] = []
+
 async function loadMarketImageSettings(): Promise<MarketImageCache> {
     if (marketImageCache) return marketImageCache
     if (marketImageCachePromise) return marketImageCachePromise
@@ -79,8 +84,8 @@ export function PDFPreviewModal({
     subject,
     comparables,
     valuationResult,
-    overpriced = [],
-    purchaseProperties = [],
+    overpriced = EMPTY_PROPERTIES,
+    purchaseProperties = EMPTY_PROPERTIES,
     purchaseResult,
     marketImageLabels,
     marketImageUrls,
