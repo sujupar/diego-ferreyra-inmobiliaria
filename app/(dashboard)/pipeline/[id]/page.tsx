@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,8 +10,9 @@ import { Badge } from '@/components/ui/badge'
 import {
   Loader2, ArrowLeft, User, MapPin, Calendar, Phone, Mail,
   ChevronRight, FileCheck, Home, Eye, MessageSquare, XCircle, Tag,
-  Edit2, Send, Mic, MicOff, Square
+  Edit2, Send, Mic, MicOff, Square, UserCog
 } from 'lucide-react'
+import { ContactEditor } from '@/components/contacts/ContactEditor'
 
 const VisitDataForm = dynamic(
   () => import('@/components/pipeline/VisitDataForm').then(m => ({ default: m.VisitDataForm })),
@@ -40,10 +41,12 @@ const ORIGIN_LABELS: Record<string, string> = { embudo: 'Embudo', referido: 'Ref
 export default function DealDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [deal, setDeal] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [advancing, setAdvancing] = useState(false)
   const [notes, setNotes] = useState('')
+  const [contactEditorOpen, setContactEditorOpen] = useState(false)
 
   // Followup modal
   const [showFollowupModal, setShowFollowupModal] = useState(false)
@@ -70,6 +73,11 @@ export default function DealDetailPage() {
   }
 
   useEffect(() => { fetchDeal() }, [id])
+
+  // Auto-abre el editor cuando llegamos con ?editContact=1 (desde tasks).
+  useEffect(() => {
+    if (searchParams.get('editContact') === '1') setContactEditorOpen(true)
+  }, [searchParams])
 
   async function handleAdvance(nextStage: string, extraNotes?: string) {
     setAdvancing(true)
@@ -221,7 +229,13 @@ export default function DealDetailPage() {
 
       {/* Contact info */}
       <Card>
-        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><User className="h-5 w-5" />Contacto</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-lg flex items-center gap-2"><User className="h-5 w-5" />Contacto</CardTitle>
+          <Button variant="outline" size="sm" onClick={() => setContactEditorOpen(true)} className="gap-1.5">
+            <UserCog className="h-3.5 w-3.5" />
+            {deal.contact_id ? 'Editar' : 'Asignar'}
+          </Button>
+        </CardHeader>
         <CardContent className="space-y-2 text-sm">
           <div className="grid grid-cols-2 gap-2">
             <span className="text-muted-foreground">Nombre:</span><span className="font-medium">{contact.full_name}</span>
@@ -233,6 +247,15 @@ export default function DealDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      <ContactEditor
+        open={contactEditorOpen}
+        onOpenChange={setContactEditorOpen}
+        contactId={deal.contact_id}
+        dealId={deal.id}
+        initial={{ full_name: contact?.full_name || deal.property_address || '' }}
+        onSaved={() => fetchDeal()}
+      />
 
       {/* Propiedad */}
       <Card>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import type { AppraisalDetail } from '@/lib/supabase/appraisals'
@@ -12,7 +12,8 @@ import { ValuationProperty, ValuationResult, calculateValuation, getQualityCoeff
 import { ReportEdits, buildDefaultEdits } from '@/lib/types/report-edits'
 import type { PropertyFeatures, ScrapedProperty } from '@/lib/scraper/types'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, FileText, AlertCircle, Edit2, Loader2 } from 'lucide-react'
+import { ArrowLeft, FileText, AlertCircle, Edit2, Loader2, UserCog } from 'lucide-react'
+import { ContactEditor } from '@/components/contacts/ContactEditor'
 
 const PDFPreviewModal = dynamic(
     () => import('@/components/appraisal/PDFPreviewModal').then(m => m.PDFPreviewModal),
@@ -21,10 +22,12 @@ const PDFPreviewModal = dynamic(
 
 export default function AppraisalDetailPage() {
     const params = useParams()
+    const searchParams = useSearchParams()
     const [appraisal, setAppraisal] = useState<AppraisalDetail | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [showPDFPreview, setShowPDFPreview] = useState(false)
+    const [contactEditorOpen, setContactEditorOpen] = useState(false)
     const [reportEdits, setReportEdits] = useState<ReportEdits | null>(null)
     const [subjectFeaturesOverride, setSubjectFeaturesOverride] = useState<PropertyFeatures | null>(null)
     const [valuationOverride, setValuationOverride] = useState<ValuationResult | null>(null)
@@ -32,11 +35,10 @@ export default function AppraisalDetailPage() {
 
     // Market image settings are loaded lazily by PDFPreviewModal on open
 
-    useEffect(() => {
+    function loadAppraisal() {
         const id = params.id as string
         if (!id) return
-
-        fetch(`/api/appraisals/${id}`)
+        return fetch(`/api/appraisals/${id}`)
             .then(r => {
                 if (!r.ok) throw new Error('Not found')
                 return r.json()
@@ -50,7 +52,17 @@ export default function AppraisalDetailPage() {
                 setError('Error al cargar la tasación')
             })
             .finally(() => setLoading(false))
+    }
+
+    useEffect(() => {
+        loadAppraisal()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [params.id])
+
+    // Si llegamos con ?editContact=1 (típicamente desde tasks), abrimos el editor.
+    useEffect(() => {
+        if (searchParams.get('editContact') === '1') setContactEditorOpen(true)
+    }, [searchParams])
 
     // CRÍTICO: los useMemo deben llamarse SIEMPRE — antes de cualquier early
     // return — porque las reglas de hooks de React requieren orden estable.
@@ -377,7 +389,11 @@ export default function AppraisalDetailPage() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <Button variant="outline" className="gap-2" onClick={() => setContactEditorOpen(true)}>
+                        <UserCog className="h-4 w-4" />
+                        {appraisal.contact_id ? 'Editar Contacto' : 'Asignar Contacto'}
+                    </Button>
                     <Link href={`/appraisal/new?editId=${appraisal.id}`}>
                         <Button variant="outline" className="gap-2">
                             <Edit2 className="h-4 w-4" />
@@ -390,6 +406,18 @@ export default function AppraisalDetailPage() {
                     </Button>
                 </div>
             </div>
+
+            <ContactEditor
+                open={contactEditorOpen}
+                onOpenChange={setContactEditorOpen}
+                contactId={appraisal.contact_id}
+                appraisalId={appraisal.id}
+                initial={{
+                    full_name: appraisal.property_title || '',
+                    origin: 'tasacion',
+                }}
+                onSaved={() => loadAppraisal()}
+            />
 
             {/* Saving indicator */}
             {savingFeatures && (

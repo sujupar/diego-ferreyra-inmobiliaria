@@ -35,6 +35,15 @@ function formatDate(d: string) {
 }
 
 function getTaskLink(task: Task): string {
+  // Para tareas de "actualizar contacto", abrimos directamente el editor
+  // en la superficie más útil (deal > appraisal > contact directo).
+  // El query param dispara el modal en la página destino.
+  if (task.type === 'update_contact') {
+    if (task.deal_id) return `/pipeline/${task.deal_id}?editContact=1`
+    if (task.appraisal_id) return `/appraisals/${task.appraisal_id}?editContact=1`
+    if (task.contact_id) return `/contacts/${task.contact_id}?edit=1`
+    return '#'
+  }
   if (task.deal_id) return `/pipeline/${task.deal_id}`
   if (task.property_id) return `/properties/${task.property_id}`
   if (task.appraisal_id) return `/appraisals/${task.appraisal_id}`

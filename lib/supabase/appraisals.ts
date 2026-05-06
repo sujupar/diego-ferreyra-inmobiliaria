@@ -31,6 +31,7 @@ export interface AppraisalSummary {
 
 export interface AppraisalDetail {
     id: string
+    contact_id: string | null
     property_title: string | null
     property_location: string
     property_description: string | null

@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, ArrowLeft, User, Phone, Mail, FileCheck, Home, Calendar, Tag, Briefcase } from 'lucide-react'
+import { Loader2, ArrowLeft, User, Phone, Mail, FileCheck, Home, Calendar, Tag, Briefcase, Pencil } from 'lucide-react'
+import { ContactEditor } from '@/components/contacts/ContactEditor'
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -32,16 +33,29 @@ const STAGE_COLORS: Record<string, string> = {
 export default function ContactDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [editorOpen, setEditorOpen] = useState(false)
 
-  useEffect(() => {
+  function loadData() {
+    setLoading(true)
     fetch(`/api/contacts/${id}`)
       .then(r => r.json())
       .then(setData)
       .catch(err => console.error(err))
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  // Si llegamos con ?edit=1 (típicamente desde la pestaña de tareas), abrimos el editor.
+  useEffect(() => {
+    if (searchParams.get('edit') === '1') setEditorOpen(true)
+  }, [searchParams])
 
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin" /></div>
   if (!data?.contact) return <div className="text-center py-20"><p>Contacto no encontrado</p></div>
@@ -50,9 +64,14 @@ export default function ContactDetailPage() {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      <Button variant="ghost" size="sm" onClick={() => router.back()}>
-        <ArrowLeft className="h-4 w-4 mr-1" /> Volver
-      </Button>
+      <div className="flex items-center justify-between">
+        <Button variant="ghost" size="sm" onClick={() => router.back()}>
+          <ArrowLeft className="h-4 w-4 mr-1" /> Volver
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setEditorOpen(true)} className="gap-2">
+          <Pencil className="h-4 w-4" /> Editar Contacto
+        </Button>
+      </div>
 
       {/* Contact header */}
       <Card>
@@ -70,6 +89,13 @@ export default function ContactDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      <ContactEditor
+        open={editorOpen}
+        onOpenChange={setEditorOpen}
+        contactId={contact.id}
+        onSaved={() => loadData()}
+      />
 
       {/* Timeline */}
       <div className="space-y-4">
