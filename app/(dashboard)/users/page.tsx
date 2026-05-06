@@ -4,7 +4,7 @@ import { UsersClient } from './users-client'
 import { Profile, Invitation } from '@/types/auth.types'
 
 export default async function UsersPage() {
-    await requireRole('admin', 'dueno')
+    const user = await requireRole('admin', 'dueno')
 
     // Use service_role to bypass RLS for admin queries
     const supabase = createSupabaseClient(
@@ -26,6 +26,7 @@ export default async function UsersPage() {
             <UsersClient
                 profiles={(profilesRes.data || []) as unknown as Profile[]}
                 invitations={(invitationsRes.data || []) as unknown as Invitation[]}
+                currentUserId={user.id}
             />
         </div>
     )
