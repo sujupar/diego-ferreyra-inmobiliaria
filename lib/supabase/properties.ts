@@ -23,6 +23,7 @@ function getAdmin() {
 
 export interface PropertyInput {
   appraisal_id?: string
+  contact_id?: string
   address: string
   neighborhood: string
   city?: string
@@ -43,6 +44,9 @@ export interface PropertyInput {
   origin?: string
   created_by?: string
   assigned_to?: string
+  description?: string
+  photos?: string[]
+  status?: string
 }
 
 export async function createProperty(input: PropertyInput) {
