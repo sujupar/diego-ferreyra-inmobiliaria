@@ -1,4 +1,5 @@
 import 'server-only'
+import { timingSafeEqual } from 'node:crypto'
 import { DealStage } from '@/lib/supabase/deals'
 
 /**
@@ -6,17 +7,22 @@ import { DealStage } from '@/lib/supabase/deals'
  * Acepta tanto "Bearer <secret>" como el secret directo (algunos workflows
  * GHL no permiten escribir "Bearer " literal en el header).
  *
+ * Usa timingSafeEqual para no filtrar el secret via timing attack.
  * Devuelve true si el secret matchea Y la env var está seteada.
  */
 export function verifyGhlWebhookSecret(authHeader: string | null): boolean {
-    const expected = process.env.GHL_WEBHOOK_SECRET
+    const expected = process.env.GHL_WEBHOOK_SECRET?.trim()
     if (!expected) {
         console.error('[ghl-webhook] GHL_WEBHOOK_SECRET no está seteado')
         return false
     }
     if (!authHeader) return false
-    const provided = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader
-    return provided.trim() === expected.trim()
+    const provided = (authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader).trim()
+
+    const a = Buffer.from(provided, 'utf8')
+    const b = Buffer.from(expected, 'utf8')
+    if (a.length !== b.length) return false
+    return timingSafeEqual(a, b)
 }
 
 export interface GhlFormSubmission {

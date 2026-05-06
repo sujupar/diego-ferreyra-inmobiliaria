@@ -72,11 +72,26 @@ export async function createTask(input: CreateTaskInput) {
 /** Create a task for ALL active users with a specific role (idempotent per recipient). */
 export async function createTaskForRole(role: string, input: Omit<CreateTaskInput, 'assigned_to'>) {
   const supabase = getAdmin()
-  const { data: profiles } = await supabase.from('profiles').select('id').eq('role', role).eq('is_active', true)
+  const { data: profiles, error: profilesError } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('role', role)
+    .eq('is_active', true)
+  if (profilesError) {
+    console.error(`[createTaskForRole] failed to load profiles for role=${role}:`, profilesError.message)
+    return
+  }
   const entity = pickEntityFilter(input)
   for (const p of profiles || []) {
-    if (await pendingTaskExists(p.id, input.type, entity)) continue
-    await supabase.from('tasks').insert({ ...input, assigned_to: p.id })
+    try {
+      if (await pendingTaskExists(p.id, input.type, entity)) continue
+      const { error } = await supabase.from('tasks').insert({ ...input, assigned_to: p.id })
+      if (error) {
+        console.error(`[createTaskForRole] insert failed for assignee=${p.id} type=${input.type}:`, error.message)
+      }
+    } catch (err) {
+      console.error(`[createTaskForRole] unexpected error for assignee=${p.id}:`, err)
+    }
   }
 }
 

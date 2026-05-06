@@ -48,12 +48,17 @@ export async function POST(request: NextRequest) {
 
         const stage = mapFormToStage(submission.formName, submission.formId)
         if (!stage) {
-            console.warn('[ghl-webhook] form no mapeado:', submission.formName, submission.formId)
+            // Devolvemos 200 con `action: 'ignored'` adrede: GHL reintenta los
+            // 4xx/5xx indefinidamente y un form sin mapping no es un error
+            // recuperable. El log queda para auditar formularios nuevos.
+            console.warn('[ghl-webhook] form no mapeado, ignorando:', submission.formName, submission.formId)
             return NextResponse.json({
-                error: 'Form no reconocido',
+                ok: true,
+                action: 'ignored',
+                reason: 'form_not_mapped',
                 formName: submission.formName,
                 formId: submission.formId,
-            }, { status: 400 })
+            })
         }
 
         const supabase = getAdmin()
@@ -101,12 +106,21 @@ export async function POST(request: NextRequest) {
             `Origen: GHL form "${submission.formName || submission.formId || 'desconocido'}"`,
             `Recibido: ${submission.submittedAt}`,
         ]
+        if (submission.contactEmail) noteParts.push(`Email: ${submission.contactEmail}`)
+        if (submission.contactPhone) noteParts.push(`Teléfono: ${submission.contactPhone}`)
         if (submission.message) noteParts.push(`Mensaje: ${submission.message}`)
         const notes = noteParts.join('\n')
 
+        // property_address es required en el schema deals. El lead todavía no
+        // proveyó la dirección de la propiedad — usamos el nombre del lead como
+        // identificador temporal para que los emails de notificación tengan
+        // contexto útil (subject incluye property_address). Coordinador después
+        // edita el deal y completa la dirección real.
+        const placeholderAddress = `${STAGE_LABELS[stage]} — ${submission.contactName}`
+
         const dealId = await createDeal({
             contact_id: contactId,
-            property_address: '',
+            property_address: placeholderAddress,
             origin: stage === 'clase_gratuita' ? 'clase_gratuita' : 'embudo',
             notes,
             stage,
