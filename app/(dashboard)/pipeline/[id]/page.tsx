@@ -23,6 +23,8 @@ const VisitDataForm = dynamic(
 )
 
 const STAGES = [
+  { key: 'clase_gratuita', label: 'Clase Gratuita', color: 'bg-cyan-500' },
+  { key: 'request', label: 'Solicitud', color: 'bg-sky-500' },
   { key: 'scheduled', label: 'Coordinada', color: 'bg-blue-500' },
   { key: 'not_visited', label: 'No Realizada', color: 'bg-rose-400' },
   { key: 'visited', label: 'Visita Realizada', color: 'bg-amber-500' },

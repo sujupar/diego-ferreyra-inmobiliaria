@@ -12,7 +12,7 @@ import {
   Loader2, RefreshCw, ChevronRight, User, MapPin, Calendar,
   LayoutList, Table2, SlidersHorizontal,
   CalendarPlus, CalendarCheck, CalendarX, Eye,
-  Send, MessageSquare, Home, XCircle, Clock
+  Send, MessageSquare, Home, XCircle, Clock, GraduationCap
 } from 'lucide-react'
 
 // ── CRM Stage Configuration ─────────────────────────────────────
@@ -28,6 +28,13 @@ interface CRMStage {
 }
 
 const CRM_STAGES: CRMStage[] = [
+  {
+    key: 'clase_gratuita', label: 'Clase Gratuita',
+    icon: GraduationCap,
+    gradient: 'from-cyan-50 to-cyan-100/60 dark:from-cyan-950/40 dark:to-cyan-900/20',
+    badgeBg: 'bg-cyan-100 dark:bg-cyan-900/50', badgeText: 'text-cyan-700 dark:text-cyan-300',
+    ringColor: 'ring-cyan-400', dotColor: 'bg-cyan-500',
+  },
   {
     key: 'solicitud', label: 'Solicitud',
     icon: CalendarPlus,
@@ -88,6 +95,11 @@ const CRM_STAGES: CRMStage[] = [
 
 function deriveCRMStage(deal: Deal): string {
   switch (deal.stage) {
+    case 'clase_gratuita': return 'clase_gratuita'
+    case 'request': return 'solicitud'
+    // Compat: deals viejos con stage='scheduled' sin scheduled_date son
+    // "Solicitudes" pre-migración. La migración 20260506000001 ya los
+    // backfilleó, pero mantenemos el fallback por defensa.
     case 'scheduled': return deal.scheduled_date ? 'coordinada' : 'solicitud'
     case 'not_visited': return 'no_realizada'
     case 'visited': return 'realizada'
@@ -108,6 +120,8 @@ function getCRMStageInfo(key: string): CRMStage {
 // Acceptable for MVP.
 function mapStageToCRM(stage: string): string {
   switch (stage) {
+    case 'clase_gratuita': return 'clase_gratuita'
+    case 'request': return 'solicitud'
     case 'scheduled': return 'coordinada'
     case 'not_visited': return 'no_realizada'
     case 'visited': return 'realizada'
@@ -233,9 +247,11 @@ export default function CRMPage() {
 
   const dealsWithCRM = deals.map(d => ({ ...d, crmStage: deriveCRMStage(d) }))
 
-  // Asesor role: hide 'solicitud' stage entirely (they only work from coordinada onward)
+  // Asesor role: hide stages pre-asignación (clase_gratuita, solicitud).
+  // Esos los maneja exclusivamente el coordinador antes de asignar asesor.
+  const PRE_ASSIGNMENT_STAGES = ['clase_gratuita', 'solicitud']
   const roleFilteredDeals = userInfo?.role === 'asesor'
-    ? dealsWithCRM.filter(d => d.crmStage !== 'solicitud')
+    ? dealsWithCRM.filter(d => !PRE_ASSIGNMENT_STAGES.includes(d.crmStage))
     : dealsWithCRM
 
   const filteredDeals = filterCRMStage
@@ -243,15 +259,14 @@ export default function CRMPage() {
     : roleFilteredDeals
 
   // Server-provided stageCounts (all pages, not just loaded slice).
-  // Map raw deals.stage → CRM stage key. Approximate (see mapStageToCRM comment).
   const stageCounts: Record<string, number> = {}
   for (const [rawStage, n] of Object.entries(serverStageCounts)) {
     const k = mapStageToCRM(rawStage)
     stageCounts[k] = (stageCounts[k] || 0) + (n as number)
   }
-  // For asesor: zero out solicitud count (they don't see that stage)
+  // For asesor: zero out pre-asignación stages
   if (userInfo?.role === 'asesor') {
-    stageCounts['solicitud'] = 0
+    for (const k of PRE_ASSIGNMENT_STAGES) stageCounts[k] = 0
   }
 
   // For asesor we approximate by using the loaded-slice filtered count (since we
