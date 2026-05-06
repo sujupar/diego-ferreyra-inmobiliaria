@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -59,10 +59,28 @@ export function ContactEditor({
         notes: '',
     })
 
-    // Cargar contacto en modo edición; o resetear con `initial` en modo crear.
+    // Cargar contacto / resetear el form SOLO cuando el modal se abre
+    // (open: false → true). No dependemos de `initial.*` para evitar loops
+    // cuando el caller pasa un objeto inline que se recrea en cada render
+    // del padre.
+    //
+    // `initial` se lee via ref para tener siempre el último valor sin
+    // disparar re-runs del effect.
+    const initialRef = useRef(initial)
+    useEffect(() => { initialRef.current = initial })
+    const wasOpenRef = useRef(false)
+
     useEffect(() => {
-        if (!open) return
+        if (!open) {
+            wasOpenRef.current = false
+            return
+        }
+        // Solo correr la lógica cuando el modal acaba de abrir.
+        if (wasOpenRef.current) return
+        wasOpenRef.current = true
+
         setError(null)
+        const seed = initialRef.current
 
         if (contactId) {
             setLoading(true)
@@ -87,14 +105,14 @@ export function ContactEditor({
                 .finally(() => setLoading(false))
         } else {
             setForm({
-                full_name: initial?.full_name || '',
-                phone: initial?.phone || '',
-                email: initial?.email || '',
-                origin: initial?.origin || (appraisalId ? 'tasacion' : ''),
-                notes: initial?.notes || '',
+                full_name: seed?.full_name || '',
+                phone: seed?.phone || '',
+                email: seed?.email || '',
+                origin: seed?.origin || (appraisalId ? 'tasacion' : ''),
+                notes: seed?.notes || '',
             })
         }
-    }, [open, contactId, appraisalId, initial?.full_name, initial?.phone, initial?.email, initial?.origin, initial?.notes])
+    }, [open, contactId, appraisalId])
 
     function update<K extends keyof ContactPayload>(field: K, value: ContactPayload[K]) {
         setForm(prev => ({ ...prev, [field]: value }))
@@ -144,30 +162,38 @@ export function ContactEditor({
                 const j = await r.json()
                 resultId = j.id
 
-                // Asociar a la tasación si vino con appraisalId.
+                // Asociar a la tasación / deal si vinieron con esos IDs.
+                // Si la asociación falla, mostramos el error pero NO cerramos —
+                // el contacto YA fue creado y dejarlo desligado en silencio
+                // confunde al usuario.
+                const linkErrors: string[] = []
                 if (appraisalId) {
-                    try {
-                        await fetch(`/api/appraisals/${appraisalId}/contact`, {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ contact_id: resultId }),
-                        })
-                    } catch (err) {
-                        console.error('[ContactEditor] link to appraisal:', err)
+                    const r = await fetch(`/api/appraisals/${appraisalId}/contact`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contact_id: resultId }),
+                    }).catch(() => null)
+                    if (!r || !r.ok) {
+                        const j = r ? await r.json().catch(() => ({})) : {}
+                        linkErrors.push(`No se pudo asociar el contacto a la tasación${j?.error ? `: ${j.error}` : ''}`)
+                    }
+                }
+                if (dealId) {
+                    const r = await fetch(`/api/deals/${dealId}/contact`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contact_id: resultId }),
+                    }).catch(() => null)
+                    if (!r || !r.ok) {
+                        const j = r ? await r.json().catch(() => ({})) : {}
+                        linkErrors.push(`No se pudo asociar el contacto al proceso${j?.error ? `: ${j.error}` : ''}`)
                     }
                 }
 
-                // Asociar al deal si vino con dealId.
-                if (dealId) {
-                    try {
-                        await fetch(`/api/deals/${dealId}/contact`, {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ contact_id: resultId }),
-                        })
-                    } catch (err) {
-                        console.error('[ContactEditor] link to deal:', err)
-                    }
+                if (linkErrors.length > 0) {
+                    setError(`Contacto creado, pero: ${linkErrors.join(' / ')}. Asocialo manualmente.`)
+                    onSaved?.(resultId)
+                    return
                 }
             }
 
