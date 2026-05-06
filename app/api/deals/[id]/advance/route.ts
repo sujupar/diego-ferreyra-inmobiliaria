@@ -4,6 +4,7 @@ import { createTaskForRole } from '@/lib/supabase/tasks'
 import { requirePermission } from '@/lib/auth/require-role'
 import { notifyAppraisalSent } from '@/lib/email/notifications/appraisal-sent'
 import { notifyVisitCompleted } from '@/lib/email/notifications/visit-completed'
+import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -34,7 +35,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       } catch (e) { console.error('Task creation error:', e) }
 
       // N3: tasación entregada — notifica coordinador+admins+dueños con PDF adjunto.
-      try { await notifyAppraisalSent(id, appraisal_id) } catch (err) { console.error('[notify] appraisal-sent:', err) }
+      // Si falla (ej: PDF no se pudo generar), escala a admins.
+      await notifyWithEscalation(
+        () => notifyAppraisalSent(id, appraisal_id),
+        { failedNotificationType: 'appraisal_sent', entityType: 'deal', entityId: id },
+      )
 
       return NextResponse.json({ success: true })
     }
@@ -50,7 +55,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // N2: visita realizada — notificar coordinador+admins+dueños.
     if (stage === 'visited') {
-      try { await notifyVisitCompleted(id) } catch (err) { console.error('[notify] visit-completed:', err) }
+      await notifyWithEscalation(
+        () => notifyVisitCompleted(id),
+        { failedNotificationType: 'visit_completed', entityType: 'deal', entityId: id },
+      )
     }
 
     return NextResponse.json({ success: true })

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createProperty, getProperties } from '@/lib/supabase/properties'
 import { requireAuth } from '@/lib/auth/require-role'
 import { notifyPropertyCreated } from '@/lib/email/notifications/property-created'
+import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,7 +34,11 @@ export async function POST(request: NextRequest) {
     const id = await createProperty(payload)
 
     // N4: notificar coordinador+admins+dueños (y asesor como CC).
-    try { await notifyPropertyCreated(id) } catch (err) { console.error('[notify] property-created:', err) }
+    // Si falla, escala a admins.
+    await notifyWithEscalation(
+      () => notifyPropertyCreated(id),
+      { failedNotificationType: 'property_created', entityType: 'property', entityId: id },
+    )
 
     return NextResponse.json({ success: true, id })
   } catch (error) {

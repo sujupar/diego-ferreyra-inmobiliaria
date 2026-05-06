@@ -8,6 +8,7 @@ import { DashboardNav } from './DashboardNav'
 import { Role } from '@/types/auth.types'
 import { Permission } from '@/lib/auth/roles'
 import { NavigationProgress } from '@/components/dashboard/NavigationProgress'
+import { getNotificationSettings } from '@/lib/email/settings'
 
 interface NavSection {
     label: string
@@ -76,6 +77,7 @@ function getNavSections(role: Role): NavSection[] {
                 ...(can('settings.manage') || can('users.manage') ? [{
                     label: 'Admin', items: [
                         ...(can('settings.manage') ? [{ href: '/settings', label: 'Configuracion' }] : []),
+                        ...(can('settings.manage') ? [{ href: '/admin/email-test', label: 'Test de Emails' }] : []),
                         ...(can('users.manage') ? [{ href: '/users', label: 'Usuarios' }] : []),
                     ]
                 }] : []),
@@ -88,16 +90,28 @@ export default async function DashboardLayout({
 }: {
     children: React.ReactNode
 }) {
-    const [user, impersonating] = await Promise.all([
+    const [user, impersonating, notifSettings] = await Promise.all([
         getUser(),
         isImpersonating(),
+        // Soft-fail: si la tabla no existe (env nuevo), no rompemos el layout.
+        getNotificationSettings().catch(() => null),
     ])
     if (!user) redirect('/login')
     const navSections = getNavSections(user.profile.role)
+    const testModeActive = !!notifSettings?.test_mode_enabled
 
     return (
         <div className="min-h-screen flex flex-col bg-secondary/30">
             <NavigationProgress />
+            {testModeActive && (
+                <div className="bg-amber-500 text-amber-950 text-sm px-4 py-2 text-center font-medium border-b border-amber-600">
+                    ⚠️ MODO PRUEBA ACTIVO — Todos los emails se redirigen a{' '}
+                    <span className="font-mono">{notifSettings?.test_recipient_email || 'destinatario configurado'}</span>.{' '}
+                    {hasPermission(user.profile.role, 'settings.manage') && (
+                        <Link href="/admin/email-test" className="underline">Desactivar</Link>
+                    )}
+                </div>
+            )}
             {impersonating && (
                 <ImpersonationBanner
                     name={user.profile.full_name}

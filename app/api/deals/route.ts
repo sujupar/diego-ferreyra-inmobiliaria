@@ -4,6 +4,7 @@ import { createTask, createTaskForRole } from '@/lib/supabase/tasks'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth, requirePermission } from '@/lib/auth/require-role'
 import { notifyDealCreated } from '@/lib/email/notifications/deal-created'
+import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -127,9 +128,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // N1: notificar al asesor asignado y a admins+dueños. fire-and-forget con
-    // try/catch para no bloquear la respuesta ante un fallo del proveedor.
-    try { await notifyDealCreated({ dealId }) } catch (err) { console.error('[notify] deal-created:', err) }
+    // N1: notificar al asesor asignado y a admins+dueños.
+    // Si el envío falla, escala a admins via notifyAdminEmailFailure.
+    await notifyWithEscalation(
+      () => notifyDealCreated({ dealId }),
+      { failedNotificationType: 'deal_created', entityType: 'deal', entityId: dealId },
+    )
 
     return NextResponse.json({ success: true, id: dealId, contact_id: contactId })
   } catch (error) {

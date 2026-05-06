@@ -3,6 +3,7 @@ import { upsertLegalDocItem, getLegalDocs } from '@/lib/supabase/legal-docs'
 import { requireAuth } from '@/lib/auth/require-role'
 import { createClient } from '@supabase/supabase-js'
 import { notifyDocsResubmitted } from '@/lib/email/notifications/docs-resubmitted'
+import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
 
 function getStorage() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!).storage
@@ -45,10 +46,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // N7: asesor resube tras rechazo — notificar al abogado original si lo tenemos,
   // fallback a todos los abogados activos. Idempotente=false: cada ciclo debe avisar.
+  // Si falla, escala a admins.
   if (previousStatus === 'rejected') {
-    try {
-      await notifyDocsResubmitted({ propertyId: id, itemKey, previousReviewerId })
-    } catch (err) { console.error('[notify] docs-resubmitted:', err) }
+    await notifyWithEscalation(
+      () => notifyDocsResubmitted({ propertyId: id, itemKey, previousReviewerId }),
+      { failedNotificationType: 'docs_resubmitted', entityType: 'property', entityId: id },
+    )
   }
 
   return NextResponse.json({ data: item })
