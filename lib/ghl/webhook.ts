@@ -2,27 +2,48 @@ import 'server-only'
 import { timingSafeEqual } from 'node:crypto'
 import { DealStage } from '@/lib/supabase/deals'
 
+function constantTimeEquals(a: string, b: string): boolean {
+    const aBuf = Buffer.from(a, 'utf8')
+    const bBuf = Buffer.from(b, 'utf8')
+    if (aBuf.length !== bBuf.length) return false
+    return timingSafeEqual(aBuf, bBuf)
+}
+
 /**
- * Verifica el header Authorization del webhook GHL contra GHL_WEBHOOK_SECRET.
- * Acepta tanto "Bearer <secret>" como el secret directo (algunos workflows
- * GHL no permiten escribir "Bearer " literal en el header).
+ * Verifica que el request trae el GHL_WEBHOOK_SECRET correcto.
  *
- * Usa timingSafeEqual para no filtrar el secret via timing attack.
- * Devuelve true si el secret matchea Y la env var está seteada.
+ * Aceptamos el secret por CUALQUIERA de estos canales (el primero que matchea
+ * vale). Esto cubre las distintas formas en que GHL/Ninja Sales Funnels
+ * permite configurar la auth del webhook según la versión del plan:
+ *
+ *  1. Header `Authorization: Bearer <secret>`  ← preferido
+ *  2. Header `Authorization: <secret>`         ← sin "Bearer " literal
+ *  3. Header `X-Webhook-Secret: <secret>`      ← header custom
+ *  4. Query string `?secret=<secret>`          ← más simple si nada más anda
+ *
+ * Devuelve true sólo si la env var está seteada Y algún canal matchea.
  */
-export function verifyGhlWebhookSecret(authHeader: string | null): boolean {
+export function verifyGhlWebhookSecret(opts: {
+    authHeader: string | null
+    customSecretHeader: string | null
+    querySecret: string | null
+}): boolean {
     const expected = process.env.GHL_WEBHOOK_SECRET?.trim()
     if (!expected) {
         console.error('[ghl-webhook] GHL_WEBHOOK_SECRET no está seteado')
         return false
     }
-    if (!authHeader) return false
-    const provided = (authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader).trim()
 
-    const a = Buffer.from(provided, 'utf8')
-    const b = Buffer.from(expected, 'utf8')
-    if (a.length !== b.length) return false
-    return timingSafeEqual(a, b)
+    const candidates: string[] = []
+    if (opts.authHeader) {
+        const auth = opts.authHeader.trim()
+        const withoutBearer = auth.startsWith('Bearer ') ? auth.slice(7).trim() : auth
+        candidates.push(withoutBearer)
+    }
+    if (opts.customSecretHeader) candidates.push(opts.customSecretHeader.trim())
+    if (opts.querySecret) candidates.push(opts.querySecret.trim())
+
+    return candidates.some(c => constantTimeEquals(c, expected))
 }
 
 export interface GhlFormSubmission {

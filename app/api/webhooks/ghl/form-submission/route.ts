@@ -34,13 +34,50 @@ const STAGE_LABELS: Record<string, string> = {
  * encuentra el mismo contact pero CREA un deal nuevo cada vez (un mismo
  * contacto puede llenar el form múltiples veces).
  */
+async function readRequestBody(request: NextRequest): Promise<Record<string, unknown> | null> {
+    const contentType = (request.headers.get('content-type') || '').toLowerCase()
+
+    if (contentType.includes('application/json')) {
+        return await request.json().catch(() => null)
+    }
+
+    if (contentType.includes('application/x-www-form-urlencoded')) {
+        const text = await request.text().catch(() => '')
+        const params = new URLSearchParams(text)
+        const obj: Record<string, unknown> = {}
+        for (const [k, v] of params.entries()) obj[k] = v
+        return Object.keys(obj).length ? obj : null
+    }
+
+    if (contentType.includes('multipart/form-data')) {
+        const form = await request.formData().catch(() => null)
+        if (!form) return null
+        const obj: Record<string, unknown> = {}
+        for (const [k, v] of form.entries()) obj[k] = typeof v === 'string' ? v : v.name
+        return Object.keys(obj).length ? obj : null
+    }
+
+    // Fallback: intentar JSON aunque no haya content-type, después text como
+    // último recurso (algunos clientes mandan sin header).
+    const jsonAttempt = await request.json().catch(() => null)
+    if (jsonAttempt && typeof jsonAttempt === 'object') return jsonAttempt as Record<string, unknown>
+    return null
+}
+
 export async function POST(request: NextRequest) {
     try {
-        if (!verifyGhlWebhookSecret(request.headers.get('authorization'))) {
+        const { searchParams } = new URL(request.url)
+        const querySecret = searchParams.get('secret')
+        const authOk = verifyGhlWebhookSecret({
+            authHeader: request.headers.get('authorization'),
+            customSecretHeader: request.headers.get('x-webhook-secret'),
+            querySecret,
+        })
+        if (!authOk) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        const body = await request.json().catch(() => null)
+        const body = await readRequestBody(request)
         const submission = parseGhlFormPayload(body)
         if (!submission) {
             return NextResponse.json({ error: 'Payload inválido o sin identificador de contacto' }, { status: 400 })
@@ -165,7 +202,13 @@ export async function POST(request: NextRequest) {
  * Devuelve 200 si secret válido, 401 si no. Sin secret → 401.
  */
 export async function GET(request: NextRequest) {
-    if (!verifyGhlWebhookSecret(request.headers.get('authorization'))) {
+    const { searchParams } = new URL(request.url)
+    const authOk = verifyGhlWebhookSecret({
+        authHeader: request.headers.get('authorization'),
+        customSecretHeader: request.headers.get('x-webhook-secret'),
+        querySecret: searchParams.get('secret'),
+    })
+    if (!authOk) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     return NextResponse.json({ ok: true, endpoint: 'ghl/form-submission' })
