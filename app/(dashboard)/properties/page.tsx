@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
 import { DataTable, Column } from '@/components/ui/DataTable'
-import { Building2, Plus, MapPin, Calendar, Loader2, ChevronRight, LayoutList, Table2 } from 'lucide-react'
+import { BulkActionsBar } from '@/components/ui/BulkActionsBar'
+import { Building2, Plus, MapPin, Calendar, Loader2, ChevronRight, LayoutList, Table2, Archive, Trash2 } from 'lucide-react'
 
 const STATUS_INFO: Record<string, { label: string; color: string }> = {
   draft: { label: 'Borrador', color: 'bg-gray-400' },
@@ -49,6 +50,9 @@ export default function PropertiesPage() {
   const [viewMode, setViewMode] = useState<'list' | 'table'>('table')
   const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: '', to: '' })
   const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkActioning, setBulkActioning] = useState(false)
+  const canHardDelete = userInfo?.role === 'admin' || userInfo?.role === 'dueno'
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
@@ -67,7 +71,59 @@ export default function PropertiesPage() {
       .then(({ data }) => setProperties(data || []))
       .catch(err => console.error(err))
       .finally(() => setLoading(false))
+    // Limpiar selección al cambiar filtros
+    setSelectedIds(new Set())
   }, [filterStatus, dateRange, userInfo])
+
+  async function refreshProperties() {
+    const params = new URLSearchParams()
+    if (filterStatus) params.set('status', filterStatus)
+    if (dateRange.from) params.set('from', dateRange.from)
+    if (dateRange.to) params.set('to', dateRange.to)
+    if (userInfo?.role === 'asesor') params.set('assigned_to', userInfo.id)
+    const res = await fetch(`/api/properties?${params}`)
+    const { data } = await res.json()
+    setProperties(data || [])
+  }
+
+  async function handleBulkDiscard() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    if (!confirm(`¿Descartar ${ids.length} propiedad${ids.length !== 1 ? 'es' : ''}?\n\nQuedan guardadas en el sistema con status="Descartada" y se pueden restaurar.`)) return
+    setBulkActioning(true)
+    const results = await Promise.allSettled(
+      ids.map(id => fetch(`/api/properties/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'descartada' }),
+      }))
+    )
+    const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok)).length
+    setBulkActioning(false)
+    setSelectedIds(new Set())
+    await refreshProperties()
+    if (failed > 0) alert(`${failed} no se pudieron descartar. Revisá la consola.`)
+  }
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    const confirmation = prompt(
+      `Vas a ELIMINAR DEFINITIVAMENTE ${ids.length} propiedad${ids.length !== 1 ? 'es' : ''}.\n\n` +
+      `Esta acción no se puede deshacer. Se borran publicaciones, métricas, fotos y eventos legales asociados.\n\n` +
+      `Para confirmar, escribí ELIMINAR:`
+    )
+    if (confirmation !== 'ELIMINAR') return
+    setBulkActioning(true)
+    const results = await Promise.allSettled(
+      ids.map(id => fetch(`/api/properties/${id}`, { method: 'DELETE' }))
+    )
+    const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok)).length
+    setBulkActioning(false)
+    setSelectedIds(new Set())
+    await refreshProperties()
+    if (failed > 0) alert(`${failed} no se pudieron eliminar. Probablemente requieren permisos de admin/dueño.`)
+  }
 
   const columns: Column<Property>[] = [
     { key: 'address', label: 'Direccion', sortable: true, render: r => <span className="font-medium">{r.address}</span> },
@@ -105,6 +161,16 @@ export default function PropertiesPage() {
         ))}
       </div>
 
+      <BulkActionsBar
+        count={selectedIds.size}
+        onClear={() => setSelectedIds(new Set())}
+        noun="propiedades"
+        actions={[
+          { label: 'Descartar', icon: <Archive className="h-4 w-4 mr-1" />, onClick: handleBulkDiscard, disabled: bulkActioning },
+          ...(canHardDelete ? [{ label: 'Eliminar', icon: <Trash2 className="h-4 w-4 mr-1" />, variant: 'destructive' as const, onClick: handleBulkDelete, disabled: bulkActioning }] : []),
+        ]}
+      />
+
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
       ) : properties.length === 0 ? (
@@ -117,7 +183,15 @@ export default function PropertiesPage() {
           </CardContent>
         </Card>
       ) : viewMode === 'table' ? (
-        <DataTable data={properties} columns={columns} getRowKey={r => r.id} onRowClick={r => router.push(`/properties/${r.id}`)} />
+        <DataTable
+          data={properties}
+          columns={columns}
+          getRowKey={r => r.id}
+          onRowClick={r => router.push(`/properties/${r.id}`)}
+          selectable
+          selectedIds={selectedIds}
+          onSelectionChange={setSelectedIds}
+        />
       ) : (
         <div className="space-y-3">
           {properties.map(prop => {

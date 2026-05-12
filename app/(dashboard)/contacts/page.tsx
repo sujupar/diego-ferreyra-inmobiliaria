@@ -9,7 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
 import { DataTable, Column } from '@/components/ui/DataTable'
-import { Loader2, Plus, User, Phone, Mail, Calendar, ChevronRight, Search, LayoutList, Table2 } from 'lucide-react'
+import { BulkActionsBar } from '@/components/ui/BulkActionsBar'
+import { Loader2, Plus, User, Phone, Mail, Calendar, ChevronRight, Search, LayoutList, Table2, Trash2 } from 'lucide-react'
 
 interface Contact {
   id: string; full_name: string; phone: string | null; email: string | null
@@ -31,10 +32,36 @@ export default function ContactsPage() {
   const [viewMode, setViewMode] = useState<'list' | 'table'>('table')
   const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: '', to: '' })
   const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkActioning, setBulkActioning] = useState(false)
+  const canHardDelete = userInfo?.role === 'admin' || userInfo?.role === 'dueno'
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
   }, [])
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    const confirmation = prompt(
+      `Vas a ELIMINAR DEFINITIVAMENTE ${ids.length} contacto${ids.length !== 1 ? 's' : ''}.\n\n` +
+      `Las tasaciones, propiedades, agendas y deals asociados quedan con contact_id en blanco.\n\n` +
+      `Para confirmar, escribí ELIMINAR:`
+    )
+    if (confirmation !== 'ELIMINAR') return
+    setBulkActioning(true)
+    const results = await Promise.allSettled(
+      ids.map(id => fetch(`/api/contacts/${id}`, { method: 'DELETE' }))
+    )
+    const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok)).length
+    const deletedIds = new Set(
+      ids.filter((_, i) => results[i].status === 'fulfilled' && (results[i] as PromiseFulfilledResult<Response>).value.ok)
+    )
+    setContacts(prev => prev.filter(c => !deletedIds.has(c.id)))
+    setSelectedIds(new Set())
+    setBulkActioning(false)
+    if (failed > 0) alert(`${failed} no se pudieron eliminar. Probablemente requieren permisos de admin/dueño.`)
+  }
 
   useEffect(() => {
     const params = new URLSearchParams()
@@ -94,6 +121,17 @@ export default function ContactsPage() {
         </div>
       </div>
 
+      {canHardDelete && (
+        <BulkActionsBar
+          count={selectedIds.size}
+          onClear={() => setSelectedIds(new Set())}
+          noun="contactos"
+          actions={[
+            { label: 'Eliminar', icon: <Trash2 className="h-4 w-4 mr-1" />, variant: 'destructive', onClick: handleBulkDelete, disabled: bulkActioning },
+          ]}
+        />
+      )}
+
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
       ) : filtered.length === 0 ? (
@@ -106,7 +144,15 @@ export default function ContactsPage() {
           </CardContent>
         </Card>
       ) : viewMode === 'table' ? (
-        <DataTable data={filtered} columns={columns} getRowKey={r => r.id} onRowClick={r => router.push(`/contacts/${r.id}`)} />
+        <DataTable
+          data={filtered}
+          columns={columns}
+          getRowKey={r => r.id}
+          onRowClick={r => router.push(`/contacts/${r.id}`)}
+          selectable={canHardDelete}
+          selectedIds={selectedIds}
+          onSelectionChange={setSelectedIds}
+        />
       ) : (
         <div className="space-y-2">
           {filtered.map(c => (

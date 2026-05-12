@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 
 export interface Column<T> {
@@ -17,9 +17,33 @@ interface DataTableProps<T> {
   onRowClick?: (row: T) => void
   getRowKey: (row: T) => string
   emptyMessage?: string
+  /** Si true, muestra una columna de checkboxes por fila + checkbox master en el header. */
+  selectable?: boolean
+  /** IDs seleccionados (solo si selectable). */
+  selectedIds?: Set<string>
+  /** Callback con el nuevo set. */
+  onSelectionChange?: (selected: Set<string>) => void
 }
 
-export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessage }: DataTableProps<T>) {
+function HeaderCheckbox({ checked, indeterminate, onChange }: { checked: boolean; indeterminate: boolean; onChange: (v: boolean) => void }) {
+  const ref = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate
+  }, [indeterminate])
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      onChange={e => onChange(e.target.checked)}
+      onClick={e => e.stopPropagation()}
+      className="h-4 w-4 rounded border-input cursor-pointer"
+      aria-label="Seleccionar todo"
+    />
+  )
+}
+
+export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessage, selectable, selectedIds, onSelectionChange }: DataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
@@ -54,11 +78,41 @@ export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessag
     )
   }
 
+  const selSet = selectedIds || new Set<string>()
+  const allKeys = data.map(getRowKey)
+  const allSelected = selectable && allKeys.length > 0 && allKeys.every(k => selSet.has(k))
+  const someSelected = selectable && !allSelected && allKeys.some(k => selSet.has(k))
+
+  function toggleAll(checked: boolean) {
+    if (!onSelectionChange) return
+    const next = new Set(selSet)
+    if (checked) allKeys.forEach(k => next.add(k))
+    else allKeys.forEach(k => next.delete(k))
+    onSelectionChange(next)
+  }
+
+  function toggleRow(key: string) {
+    if (!onSelectionChange) return
+    const next = new Set(selSet)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    onSelectionChange(next)
+  }
+
   return (
     <div className="overflow-x-auto rounded-lg border">
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-muted/50">
+            {selectable && (
+              <th className="w-10 px-3 py-3">
+                <HeaderCheckbox
+                  checked={!!allSelected}
+                  indeterminate={!!someSelected}
+                  onChange={toggleAll}
+                />
+              </th>
+            )}
             {columns.map(col => (
               <th
                 key={col.key}
@@ -76,19 +130,34 @@ export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessag
           </tr>
         </thead>
         <tbody>
-          {sorted.map(row => (
-            <tr
-              key={getRowKey(row)}
-              onClick={onRowClick ? () => onRowClick(row) : undefined}
-              className={`border-t ${onRowClick ? 'cursor-pointer hover:bg-muted/50 transition-colors' : ''}`}
-            >
-              {columns.map(col => (
-                <td key={col.key} className={`px-4 py-3 whitespace-nowrap ${col.className || ''}`}>
-                  {col.render(row)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {sorted.map(row => {
+            const key = getRowKey(row)
+            const isSelected = selectable && selSet.has(key)
+            return (
+              <tr
+                key={key}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                className={`border-t ${onRowClick ? 'cursor-pointer hover:bg-muted/50 transition-colors' : ''} ${isSelected ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''}`}
+              >
+                {selectable && (
+                  <td className="w-10 px-3 py-3" onClick={e => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={!!isSelected}
+                      onChange={() => toggleRow(key)}
+                      className="h-4 w-4 rounded border-input cursor-pointer"
+                      aria-label="Seleccionar fila"
+                    />
+                  </td>
+                )}
+                {columns.map(col => (
+                  <td key={col.key} className={`px-4 py-3 whitespace-nowrap ${col.className || ''}`}>
+                    {col.render(row)}
+                  </td>
+                ))}
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>

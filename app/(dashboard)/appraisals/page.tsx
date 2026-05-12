@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
 import { DataTable, Column } from '@/components/ui/DataTable'
+import { BulkActionsBar } from '@/components/ui/BulkActionsBar'
 import {
     Trash2, ChevronLeft, ChevronRight, Plus, Loader2, FileText,
     MapPin, Calendar, Edit2, LayoutList, Table2
@@ -35,6 +36,8 @@ export default function AppraisalsHistoryPage() {
     const [viewMode, setViewMode] = useState<'cards' | 'table'>('table')
     const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: '', to: '' })
     const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+    const [bulkActioning, setBulkActioning] = useState(false)
     const pageSize = 12
 
     // Get current user info for role-based filtering
@@ -77,6 +80,29 @@ export default function AppraisalsHistoryPage() {
         }
     }
 
+    async function handleBulkDelete() {
+        const ids = Array.from(selectedIds)
+        if (ids.length === 0) return
+        const confirmation = prompt(
+            `Vas a ELIMINAR DEFINITIVAMENTE ${ids.length} tasacion${ids.length !== 1 ? 'es' : ''}.\n\n` +
+            `Para confirmar, escribí ELIMINAR:`
+        )
+        if (confirmation !== 'ELIMINAR') return
+        setBulkActioning(true)
+        const results = await Promise.allSettled(
+            ids.map(id => fetch(`/api/appraisals/${id}`, { method: 'DELETE' }))
+        )
+        const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok)).length
+        const deletedIds = new Set(
+            ids.filter((_, i) => results[i].status === 'fulfilled' && (results[i] as PromiseFulfilledResult<Response>).value.ok)
+        )
+        setAppraisals(prev => prev.filter(a => !deletedIds.has(a.id)))
+        setTotalCount(prev => prev - deletedIds.size)
+        setSelectedIds(new Set())
+        setBulkActioning(false)
+        if (failed > 0) alert(`${failed} no se pudieron eliminar.`)
+    }
+
     const totalPages = Math.ceil(totalCount / pageSize)
 
     const columns: Column<AppraisalSummary>[] = [
@@ -117,6 +143,15 @@ export default function AppraisalsHistoryPage() {
 
             <DateRangeFilter onChange={setDateRange} />
 
+            <BulkActionsBar
+                count={selectedIds.size}
+                onClear={() => setSelectedIds(new Set())}
+                noun="tasaciones"
+                actions={[
+                    { label: 'Eliminar', icon: <Trash2 className="h-4 w-4 mr-1" />, variant: 'destructive', onClick: handleBulkDelete, disabled: bulkActioning },
+                ]}
+            />
+
             {loading ? (
                 <div className="flex items-center justify-center py-20">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -136,6 +171,9 @@ export default function AppraisalsHistoryPage() {
                     columns={columns}
                     getRowKey={r => r.id}
                     onRowClick={r => router.push(`/appraisals/${r.id}`)}
+                    selectable
+                    selectedIds={selectedIds}
+                    onSelectionChange={setSelectedIds}
                 />
             ) : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
