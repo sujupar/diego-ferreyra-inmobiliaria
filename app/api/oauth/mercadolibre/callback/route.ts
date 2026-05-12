@@ -1,12 +1,28 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
+import { requireRole } from '@/lib/auth/require-role'
 import type { Database } from '@/types/database.types'
 
 export async function GET(request: Request) {
+  // Solo admin/dueño pueden completar el OAuth de portales
+  await requireRole('admin', 'dueno')
+
   const url = new URL(request.url)
   const code = url.searchParams.get('code')
+  const stateParam = url.searchParams.get('state')
   if (!code) {
     return NextResponse.json({ error: 'no code' }, { status: 400 })
+  }
+
+  // CSRF: validar state contra cookie
+  const cookieStore = await cookies()
+  const stateCookie = cookieStore.get('ml_oauth_state')?.value
+  if (!stateParam || !stateCookie || stateParam !== stateCookie) {
+    return NextResponse.json(
+      { error: 'invalid or missing state (possible CSRF)' },
+      { status: 403 },
+    )
   }
 
   const appId = process.env.ML_APP_ID
@@ -63,7 +79,10 @@ export async function GET(request: Request) {
     metadata: { user_id: data.user_id },
   })
 
-  return NextResponse.redirect(
+  const res = NextResponse.redirect(
     `${appUrl}/settings/portals?oauth=mercadolibre_ok`,
   )
+  // Limpiar cookie de state
+  res.cookies.delete('ml_oauth_state')
+  return res
 }

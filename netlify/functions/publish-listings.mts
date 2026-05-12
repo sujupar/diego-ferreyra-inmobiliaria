@@ -43,9 +43,26 @@ async function processUnpublishes(supabase: ReturnType<typeof createClient<Datab
   for (const listing of listings ?? []) {
     const adapter = getAdapter(listing.portal as PortalName)
     if (!adapter || !adapter.enabled || !listing.external_id) continue
+
+    // Lock atomic: consumir el flag needs_unpublish antes de llamar al portal.
+    // Si otro worker corrió primero, el WHERE no matchea y skipeamos.
+    const metaWithProgress = {
+      ...(listing.metadata as Record<string, unknown>),
+      unpublish_in_progress: true,
+    }
+    delete (metaWithProgress as Record<string, unknown>).needs_unpublish
+    const { data: locked } = await supabase
+      .from('property_listings')
+      .update({ metadata: metaWithProgress as never })
+      .eq('id', listing.id)
+      .contains('metadata', { needs_unpublish: true })
+      .select()
+      .maybeSingle()
+    if (!locked) continue
+
     try {
       await adapter.unpublish(listing.external_id)
-      const meta = stripFlag(listing.metadata, 'needs_unpublish')
+      const meta = stripFlag(locked.metadata, 'unpublish_in_progress')
       await supabase.from('property_listings').update({
         status: 'paused',
         metadata: meta as never,
@@ -57,6 +74,10 @@ async function processUnpublishes(supabase: ReturnType<typeof createClient<Datab
         eventType: 'unpublished',
       })
     } catch (err) {
+      // Restaurar el flag para reintento en próximo tick (drop in_progress)
+      const meta = stripFlag(locked.metadata, 'unpublish_in_progress')
+      ;(meta as Record<string, unknown>).needs_unpublish = true
+      await supabase.from('property_listings').update({ metadata: meta as never }).eq('id', listing.id)
       console.error(`[unpublish-listing] ${listing.portal} ${listing.id}`, err)
     }
   }
@@ -74,16 +95,35 @@ async function processUpdates(supabase: ReturnType<typeof createClient<Database>
     const adapter = getAdapter(listing.portal as PortalName)
     if (!adapter || !adapter.enabled || !listing.external_id) continue
 
+    // Lock atomic: consumir el flag needs_update antes de llamar al portal
+    const metaWithProgress = {
+      ...(listing.metadata as Record<string, unknown>),
+      update_in_progress: true,
+    }
+    delete (metaWithProgress as Record<string, unknown>).needs_update
+    const { data: locked } = await supabase
+      .from('property_listings')
+      .update({ metadata: metaWithProgress as never })
+      .eq('id', listing.id)
+      .contains('metadata', { needs_update: true })
+      .select()
+      .maybeSingle()
+    if (!locked) continue
+
     const { data: property } = await supabase
       .from('properties')
       .select('*')
       .eq('id', listing.property_id)
       .single()
-    if (!property) continue
+    if (!property) {
+      const meta = stripFlag(locked.metadata, 'update_in_progress')
+      await supabase.from('property_listings').update({ metadata: meta as never }).eq('id', listing.id)
+      continue
+    }
 
     try {
       await adapter.update(property, listing.external_id)
-      const meta = stripFlag(listing.metadata, 'needs_update')
+      const meta = stripFlag(locked.metadata, 'update_in_progress')
       await supabase.from('property_listings').update({ metadata: meta as never }).eq('id', listing.id)
       await writeAudit(supabase, {
         listingId: listing.id,
@@ -92,6 +132,10 @@ async function processUpdates(supabase: ReturnType<typeof createClient<Database>
         eventType: 'updated',
       })
     } catch (err) {
+      // Restaurar needs_update para reintento
+      const meta = stripFlag(locked.metadata, 'update_in_progress')
+      ;(meta as Record<string, unknown>).needs_update = true
+      await supabase.from('property_listings').update({ metadata: meta as never }).eq('id', listing.id)
       console.error(`[update-listing] ${listing.portal} ${listing.id}`, err)
     }
   }

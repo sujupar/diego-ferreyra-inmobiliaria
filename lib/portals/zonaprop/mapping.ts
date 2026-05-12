@@ -38,6 +38,9 @@ function buildTitle(property: Property): string {
 }
 
 export function propertyToZpPayload(property: Property): ZpPayload {
+  if (property.latitude == null || property.longitude == null) {
+    throw new Error('propertyToZpPayload: lat/lng requeridos (corré validate antes)')
+  }
   return {
     operationType: property.operation_type || 'venta',
     propertyType: property.property_type || 'departamento',
@@ -50,8 +53,8 @@ export function propertyToZpPayload(property: Property): ZpPayload {
       address: property.address,
       neighborhood: property.neighborhood,
       city: property.city || 'CABA',
-      latitude: property.latitude!,
-      longitude: property.longitude!,
+      latitude: property.latitude,
+      longitude: property.longitude,
       postalCode: property.postal_code ?? undefined,
     },
     characteristics: {

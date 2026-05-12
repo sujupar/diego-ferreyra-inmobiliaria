@@ -87,6 +87,10 @@ CREATE INDEX IF NOT EXISTS idx_property_metrics_property_date
   ON public.property_metrics_daily (property_id, date DESC);
 
 -- 4. portal_credentials: una fila por portal con enabled flag
+-- TODO seguridad (post-MVP): los campos access_token/refresh_token están en
+-- texto plano. RLS los protege de queries authenticated normales, pero un
+-- dump de DB o backup leak los expondría. Evaluar pgsodium para cifrarlos
+-- antes de operar en producción a alto volumen.
 CREATE TABLE IF NOT EXISTS public.portal_credentials (
   portal text PRIMARY KEY,
   enabled boolean NOT NULL DEFAULT false,

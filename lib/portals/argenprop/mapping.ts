@@ -39,6 +39,9 @@ function buildTitle(property: Property): string {
 }
 
 export function propertyToApPayload(property: Property): ApPayload {
+  if (property.latitude == null || property.longitude == null) {
+    throw new Error('propertyToApPayload: lat/lng requeridos (corré validate antes)')
+  }
   return {
     operation: property.operation_type || 'venta',
     propertyType: property.property_type || 'departamento',
@@ -52,8 +55,8 @@ export function propertyToApPayload(property: Property): ApPayload {
       street: property.address,
       neighborhood: property.neighborhood,
       city: property.city || 'CABA',
-      lat: property.latitude!,
-      lng: property.longitude!,
+      lat: property.latitude,
+      lng: property.longitude,
       postalCode: property.postal_code ?? undefined,
     },
     features: {

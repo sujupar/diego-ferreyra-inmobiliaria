@@ -80,6 +80,9 @@ function buildAttributes(property: Property): { id: string; value_name: string }
 }
 
 export function propertyToMlPayload(property: Property): MlPayload {
+  if (property.latitude == null || property.longitude == null) {
+    throw new Error('propertyToMlPayload: lat/lng requeridos (corré validate antes)')
+  }
   const operation = property.operation_type || 'venta'
   const type = (property.property_type || 'departamento').toLowerCase()
   const category = pickCategory(operation, type)
@@ -99,8 +102,8 @@ export function propertyToMlPayload(property: Property): MlPayload {
     },
     attributes: buildAttributes(property),
     location: {
-      latitude: property.latitude!,
-      longitude: property.longitude!,
+      latitude: property.latitude,
+      longitude: property.longitude,
       address_line: `${property.address}, ${property.neighborhood}, ${property.city}`,
     },
   }

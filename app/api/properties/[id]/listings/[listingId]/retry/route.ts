@@ -17,6 +17,13 @@ export async function POST(
   try {
     const user = await requireAuth()
     const { id, listingId } = await params
+
+    // Solo roles operativos pueden gatillar retry de publicación
+    const allowedRoles = ['admin', 'dueno', 'coordinador', 'asesor']
+    if (!allowedRoles.includes(user.profile.role)) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
+
     const supabase = getAdmin()
 
     if (user.profile.role === 'asesor') {
