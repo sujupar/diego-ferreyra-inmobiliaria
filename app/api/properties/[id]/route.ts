@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { getProperty, updateProperty } from '@/lib/supabase/properties'
 import { createTaskForRole } from '@/lib/supabase/tasks'
-import { requireAuth } from '@/lib/auth/require-role'
+import { requireAuth, requireRole } from '@/lib/auth/require-role'
 import { logLegalEvent } from '@/lib/supabase/legal-events'
 import { notifyDocsReadyForLawyer } from '@/lib/email/notifications/docs-ready-for-lawyer'
 import { notifyAdminEmailFailure } from '@/lib/email/notifications/admin-failure-alert'
@@ -69,6 +70,36 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Error' }, { status: 500 })
+  }
+}
+
+/**
+ * DELETE /api/properties/[id]
+ *
+ * Borra la propiedad definitivamente. Sus FKs descendientes (property_listings,
+ * legal_review_events, property_metrics_daily, property_publish_events) caen
+ * por CASCADE; FKs externas (deals, tasks, etc.) quedan con NULL gracias a la
+ * migración 20260512000004 (ON DELETE SET NULL).
+ *
+ * Solo admin/dueño. Para descartar sin borrar histórico, usar PUT con
+ * `status: 'descartada'`.
+ */
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    await requireRole('admin', 'dueno')
+    const { id } = await params
+
+    const supabase = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    )
+    const { error } = await supabase.from('properties').delete().eq('id', id)
+    if (error) throw error
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('DELETE /api/properties/[id] error:', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error' }, { status: 500 })
   }
 }

@@ -18,6 +18,7 @@ const STATUS_INFO: Record<string, { label: string; color: string }> = {
   approved: { label: 'Aprobada', color: 'bg-green-500' },
   rejected: { label: 'Rechazada', color: 'bg-red-500' },
   active: { label: 'Activa', color: 'bg-emerald-600' },
+  descartada: { label: 'Descartada', color: 'bg-slate-500' },
 }
 
 interface Property {

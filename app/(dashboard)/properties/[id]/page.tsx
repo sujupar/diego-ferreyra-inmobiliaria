@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
   Loader2, Upload, FileText, Image, CheckCircle, XCircle,
-  Send, ArrowLeft, MapPin, Home, Scale, Camera, AlertTriangle
+  Send, ArrowLeft, MapPin, Home, Scale, Camera, AlertTriangle,
+  Archive, Trash2, RotateCcw
 } from 'lucide-react'
 import { LegalDocsChecklist } from '@/components/properties/LegalDocsChecklist'
 import { LegalReviewHistory } from '@/components/properties/LegalReviewHistory'
@@ -23,6 +24,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   approved: { label: 'Captación Completa', color: 'bg-green-500' },
   rejected: { label: 'Rechazada', color: 'bg-red-500' },
   active: { label: 'Activa', color: 'bg-emerald-600' },
+  descartada: { label: 'Descartada', color: 'bg-slate-500' },
 }
 
 interface PropertyData {
@@ -134,6 +136,65 @@ export default function PropertyDetailPage() {
     }
   }
 
+  async function handleDiscard() {
+    if (!confirm(`¿Descartar la propiedad "${property?.address}"?\n\nQueda guardada en el sistema (status="Descartada") y se puede restaurar cambiándola de estado, pero no avanza más en el flujo de captación.`)) return
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/properties/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'descartada' }),
+      })
+      if (!res.ok) throw new Error('Error')
+      await fetchProperty()
+    } catch {
+      alert('Error al descartar')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleRestore() {
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/properties/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'draft' }),
+      })
+      if (!res.ok) throw new Error('Error')
+      await fetchProperty()
+    } catch {
+      alert('Error al restaurar')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!property) return
+    const confirmation = prompt(
+      `Vas a ELIMINAR DEFINITIVAMENTE la propiedad "${property.address}".\n\n` +
+      `Esta acción no se puede deshacer. Se borran también sus publicaciones en portales, métricas, fotos, eventos legales y revisiones.\n\n` +
+      `Para confirmar, escribí ELIMINAR:`
+    )
+    if (confirmation !== 'ELIMINAR') return
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/properties/${id}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data.error || 'Error al eliminar')
+        setSubmitting(false)
+        return
+      }
+      router.push('/properties')
+    } catch {
+      alert('Error al eliminar')
+      setSubmitting(false)
+    }
+  }
+
   async function handleReview(approved: boolean) {
     if (!userInfo?.id) return
     setSubmitting(true)
@@ -166,11 +227,13 @@ export default function PropertyDetailPage() {
   const docs = Array.isArray(property.documents) ? property.documents : []
   const photos = property.photos || []
   const isAbogado = userInfo?.role === 'abogado'
+  const canHardDelete = userInfo?.role === 'admin' || userInfo?.role === 'dueno'
   const legalApproved = property.legal_status === 'approved'
   const legalRejected = property.legal_status === 'rejected'
   const legalPending = !legalApproved && !legalRejected
   const hasPhotos = photos.length > 0
   const isFullyApproved = legalApproved && hasPhotos
+  const isDiscarded = property.status === 'descartada'
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -434,6 +497,57 @@ export default function PropertyDetailPage() {
           <PortalListingsCard propertyId={property.id} />
           <PortalMetricsChart propertyId={property.id} />
         </>
+      )}
+
+      {/* Acciones de descarte y eliminación — oculto al abogado */}
+      {!isAbogado && (
+        <Card className={isDiscarded ? 'border-slate-300' : 'border-dashed border-muted-foreground/30'}>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2 text-muted-foreground">
+              <AlertTriangle className="h-4 w-4" />
+              Acciones de archivo
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {isDiscarded ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Esta propiedad está descartada. Podés restaurarla a borrador para volver a trabajarla, o eliminarla definitivamente.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={handleRestore} disabled={submitting}>
+                    {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RotateCcw className="h-4 w-4 mr-1" />}
+                    Restaurar a borrador
+                  </Button>
+                  {canHardDelete && (
+                    <Button variant="destructive" size="sm" onClick={handleDelete} disabled={submitting}>
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Eliminar definitivamente
+                    </Button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Descartar deja la propiedad guardada pero fuera del flujo activo. Eliminar la borra para siempre junto con sus publicaciones, métricas y eventos legales.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={handleDiscard} disabled={submitting}>
+                    {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Archive className="h-4 w-4 mr-1" />}
+                    Descartar
+                  </Button>
+                  {canHardDelete && (
+                    <Button variant="destructive" size="sm" onClick={handleDelete} disabled={submitting}>
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Eliminar definitivamente
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   )
