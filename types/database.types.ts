@@ -367,6 +367,16 @@ export interface Database {
                     assigned_to: string | null
                     created_at: string
                     updated_at: string
+                    description: string | null
+                    latitude: number | null
+                    longitude: number | null
+                    video_url: string | null
+                    tour_3d_url: string | null
+                    expensas: number | null
+                    amenities: Json
+                    operation_type: string
+                    title: string | null
+                    postal_code: string | null
                 }
                 Insert: {
                     id?: string
@@ -402,6 +412,16 @@ export interface Database {
                     assigned_to?: string | null
                     created_at?: string
                     updated_at?: string
+                    description?: string | null
+                    latitude?: number | null
+                    longitude?: number | null
+                    video_url?: string | null
+                    tour_3d_url?: string | null
+                    expensas?: number | null
+                    amenities?: Json
+                    operation_type?: string
+                    title?: string | null
+                    postal_code?: string | null
                 }
                 Update: {
                     id?: string
@@ -437,6 +457,163 @@ export interface Database {
                     assigned_to?: string | null
                     created_at?: string
                     updated_at?: string
+                    description?: string | null
+                    latitude?: number | null
+                    longitude?: number | null
+                    video_url?: string | null
+                    tour_3d_url?: string | null
+                    expensas?: number | null
+                    amenities?: Json
+                    operation_type?: string
+                    title?: string | null
+                    postal_code?: string | null
+                }
+                Relationships: []
+            }
+            property_listings: {
+                Row: {
+                    id: string
+                    property_id: string
+                    portal: string
+                    status: string
+                    external_id: string | null
+                    external_url: string | null
+                    attempts: number
+                    next_attempt_at: string | null
+                    last_published_at: string | null
+                    last_error: string | null
+                    metadata: Json
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    property_id: string
+                    portal: string
+                    status?: string
+                    external_id?: string | null
+                    external_url?: string | null
+                    attempts?: number
+                    next_attempt_at?: string | null
+                    last_published_at?: string | null
+                    last_error?: string | null
+                    metadata?: Json
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    property_id?: string
+                    portal?: string
+                    status?: string
+                    external_id?: string | null
+                    external_url?: string | null
+                    attempts?: number
+                    next_attempt_at?: string | null
+                    last_published_at?: string | null
+                    last_error?: string | null
+                    metadata?: Json
+                    created_at?: string
+                    updated_at?: string
+                }
+                Relationships: []
+            }
+            property_metrics_daily: {
+                Row: {
+                    property_id: string
+                    portal: string
+                    date: string
+                    views: number
+                    contacts: number
+                    favorites: number
+                    whatsapps: number
+                    raw: Json
+                }
+                Insert: {
+                    property_id: string
+                    portal: string
+                    date: string
+                    views?: number
+                    contacts?: number
+                    favorites?: number
+                    whatsapps?: number
+                    raw?: Json
+                }
+                Update: {
+                    property_id?: string
+                    portal?: string
+                    date?: string
+                    views?: number
+                    contacts?: number
+                    favorites?: number
+                    whatsapps?: number
+                    raw?: Json
+                }
+                Relationships: []
+            }
+            portal_credentials: {
+                Row: {
+                    portal: string
+                    enabled: boolean
+                    access_token: string | null
+                    refresh_token: string | null
+                    expires_at: string | null
+                    metadata: Json
+                    updated_at: string
+                }
+                Insert: {
+                    portal: string
+                    enabled?: boolean
+                    access_token?: string | null
+                    refresh_token?: string | null
+                    expires_at?: string | null
+                    metadata?: Json
+                    updated_at?: string
+                }
+                Update: {
+                    portal?: string
+                    enabled?: boolean
+                    access_token?: string | null
+                    refresh_token?: string | null
+                    expires_at?: string | null
+                    metadata?: Json
+                    updated_at?: string
+                }
+                Relationships: []
+            }
+            property_publish_events: {
+                Row: {
+                    id: string
+                    listing_id: string | null
+                    property_id: string | null
+                    portal: string
+                    event_type: string
+                    payload: Json | null
+                    error_message: string | null
+                    actor: string
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    listing_id?: string | null
+                    property_id?: string | null
+                    portal: string
+                    event_type: string
+                    payload?: Json | null
+                    error_message?: string | null
+                    actor?: string
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    listing_id?: string | null
+                    property_id?: string | null
+                    portal?: string
+                    event_type?: string
+                    payload?: Json | null
+                    error_message?: string | null
+                    actor?: string
+                    created_at?: string
                 }
                 Relationships: []
             }
