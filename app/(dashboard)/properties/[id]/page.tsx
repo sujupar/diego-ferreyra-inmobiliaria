@@ -11,6 +11,8 @@ import {
 } from 'lucide-react'
 import { LegalDocsChecklist } from '@/components/properties/LegalDocsChecklist'
 import { LegalReviewHistory } from '@/components/properties/LegalReviewHistory'
+import { PortalListingsCard } from '@/components/properties/PortalListingsCard'
+import { PortalMetricsChart } from '@/components/properties/PortalMetricsChart'
 import type { LegalDocsState, LegalFlags } from '@/types/legal-docs.types'
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -425,6 +427,14 @@ export default function PropertyDetailPage() {
 
       {/* Track record histórico de revisión legal */}
       <LegalReviewHistory propertyId={property.id} />
+
+      {/* Publicación en portales + métricas (visible una vez captada la propiedad) */}
+      {!isAbogado && property.status === 'approved' && (
+        <>
+          <PortalListingsCard propertyId={property.id} />
+          <PortalMetricsChart propertyId={property.id} />
+        </>
+      )}
     </div>
   )
 }
