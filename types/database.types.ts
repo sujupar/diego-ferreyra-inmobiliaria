@@ -911,6 +911,95 @@ export interface Database {
                     }
                 ]
             }
+            property_visits: {
+                Row: {
+                    id: string
+                    property_id: string
+                    advisor_id: string | null
+                    contact_id: string | null
+                    client_name: string
+                    client_email: string | null
+                    client_phone: string | null
+                    scheduled_at: string
+                    duration_minutes: number | null
+                    notes: string | null
+                    status: string
+                    completed_at: string | null
+                    completion_notes: string | null
+                    reminder_sent_at: string | null
+                    created_at: string
+                    updated_at: string
+                    created_by: string | null
+                }
+                Insert: {
+                    id?: string
+                    property_id: string
+                    advisor_id?: string | null
+                    contact_id?: string | null
+                    client_name: string
+                    client_email?: string | null
+                    client_phone?: string | null
+                    scheduled_at: string
+                    duration_minutes?: number | null
+                    notes?: string | null
+                    status?: string
+                    completed_at?: string | null
+                    completion_notes?: string | null
+                    reminder_sent_at?: string | null
+                    created_at?: string
+                    updated_at?: string
+                    created_by?: string | null
+                }
+                Update: {
+                    id?: string
+                    property_id?: string
+                    advisor_id?: string | null
+                    contact_id?: string | null
+                    client_name?: string
+                    client_email?: string | null
+                    client_phone?: string | null
+                    scheduled_at?: string
+                    duration_minutes?: number | null
+                    notes?: string | null
+                    status?: string
+                    completed_at?: string | null
+                    completion_notes?: string | null
+                    reminder_sent_at?: string | null
+                    created_at?: string
+                    updated_at?: string
+                    created_by?: string | null
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "property_visits_property_id_fkey"
+                        columns: ["property_id"]
+                        isOneToOne: false
+                        referencedRelation: "properties"
+                        referencedColumns: ["id"]
+                    },
+                    {
+                        foreignKeyName: "property_visits_advisor_id_fkey"
+                        columns: ["advisor_id"]
+                        isOneToOne: false
+                        referencedRelation: "profiles"
+                        referencedColumns: ["id"]
+                    },
+                    {
+                        foreignKeyName: "property_visits_contact_id_fkey"
+                        columns: ["contact_id"]
+                        isOneToOne: false
+                        referencedRelation: "contacts"
+                        referencedColumns: ["id"]
+                    },
+                    {
+                        foreignKeyName: "property_visits_created_by_fkey"
+                        columns: ["created_by"]
+                        isOneToOne: false
+                        referencedRelation: "profiles"
+                        referencedColumns: ["id"]
+                    }
+                ]
+            }
         }
         Views: {
             [_ in never]: never
