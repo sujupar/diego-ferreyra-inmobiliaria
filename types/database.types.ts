@@ -1000,6 +1000,91 @@ export interface Database {
                     }
                 ]
             }
+            visit_questionnaires: {
+                Row: {
+                    id: string
+                    visit_id: string
+                    response_source: string
+                    liked: boolean | null
+                    most_liked: string | null
+                    least_liked: string | null
+                    in_price: boolean | null
+                    hypothetical_offer: number | null
+                    responded_at: string
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    visit_id: string
+                    response_source: string
+                    liked?: boolean | null
+                    most_liked?: string | null
+                    least_liked?: string | null
+                    in_price?: boolean | null
+                    hypothetical_offer?: number | null
+                    responded_at?: string
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    visit_id?: string
+                    response_source?: string
+                    liked?: boolean | null
+                    most_liked?: string | null
+                    least_liked?: string | null
+                    in_price?: boolean | null
+                    hypothetical_offer?: number | null
+                    responded_at?: string
+                    created_at?: string
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "visit_questionnaires_visit_id_fkey"
+                        columns: ["visit_id"]
+                        isOneToOne: false
+                        referencedRelation: "property_visits"
+                        referencedColumns: ["id"]
+                    }
+                ]
+            }
+            visit_questionnaire_tokens: {
+                Row: {
+                    id: string
+                    visit_id: string
+                    token: string
+                    expires_at: string
+                    used_at: string | null
+                    sent_to: string
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    visit_id: string
+                    token: string
+                    expires_at: string
+                    used_at?: string | null
+                    sent_to: string
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    visit_id?: string
+                    token?: string
+                    expires_at?: string
+                    used_at?: string | null
+                    sent_to?: string
+                    created_at?: string
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "visit_questionnaire_tokens_visit_id_fkey"
+                        columns: ["visit_id"]
+                        isOneToOne: false
+                        referencedRelation: "property_visits"
+                        referencedColumns: ["id"]
+                    }
+                ]
+            }
         }
         Views: {
             [_ in never]: never
