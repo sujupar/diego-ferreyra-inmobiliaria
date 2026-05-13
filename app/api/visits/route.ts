@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getUser } from '@/lib/auth/get-user'
 import { createVisit, listVisits } from '@/lib/supabase/visits'
+import { sendVisitScheduledToClient } from '@/lib/email/notifications/visit-scheduled-client'
 
 const createSchema = z.object({
   property_id: z.string().uuid(),
@@ -51,13 +52,8 @@ export async function POST(req: NextRequest) {
       created_by: user.id,
     })
 
-    // Dispatch email (non-blocking). Module is created in Task 4.4.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const emailModule = '@/lib/email/notifications/visit-scheduled-client'
-    import(emailModule)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .then((mod: any) => mod.sendVisitScheduledToClient(visit.id))
-      .catch((err: unknown) => console.error('[visits] email dispatch failed', err))
+    // Fire-and-forget — email failure shouldn't block visit creation.
+    sendVisitScheduledToClient(visit.id).catch(err => console.error('[visits] email dispatch failed', err))
 
     return NextResponse.json({ data: visit }, { status: 201 })
   } catch (err) {

@@ -66,6 +66,11 @@ export function PropertyCard({ property, currentUserId, statusInfo, onClick }: P
             fill
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             className="object-cover transition-transform group-hover:scale-105"
+            unoptimized
+            onError={(e) => {
+              const target = e.currentTarget as HTMLImageElement
+              target.style.display = 'none'
+            }}
           />
         ) : (
           <div className="flex h-full items-center justify-center text-muted-foreground text-sm">

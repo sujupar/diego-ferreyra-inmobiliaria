@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
+import { getUser } from '@/lib/auth/get-user'
 
 export async function GET(req: NextRequest) {
+  const user = await getUser()
+  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+
   const sp = req.nextUrl.searchParams
   const propertyId = sp.get('propertyId')
   const appraisalId = sp.get('appraisalId')

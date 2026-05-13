@@ -51,29 +51,56 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   }
 
   const supabase = svc()
-  const { data: t } = await supabase
+  const nowIso = new Date().toISOString()
+
+  // Atomic claim: only marks the token used if it is still pending and not expired.
+  const { data: claimed, error: claimErr } = await supabase
     .from('visit_questionnaire_tokens')
-    .select('visit_id, expires_at, used_at')
+    .update({ used_at: nowIso })
     .eq('token', token)
+    .is('used_at', null)
+    .gt('expires_at', nowIso)
+    .select('visit_id')
     .maybeSingle()
 
-  if (!t) return NextResponse.json({ error: 'invalid_token' }, { status: 404 })
-  if (t.used_at) return NextResponse.json({ error: 'already_used' }, { status: 410 })
-  if (new Date(t.expires_at) < new Date()) return NextResponse.json({ error: 'expired' }, { status: 410 })
+  if (claimErr) {
+    console.error('[questionnaire POST] claim error', claimErr)
+    return NextResponse.json({ error: 'claim_failed' }, { status: 500 })
+  }
+
+  if (!claimed) {
+    // Distinguish reasons by reading the token state (best-effort).
+    const { data: t } = await supabase
+      .from('visit_questionnaire_tokens')
+      .select('used_at, expires_at')
+      .eq('token', token)
+      .maybeSingle()
+    if (!t) return NextResponse.json({ error: 'invalid_token' }, { status: 404 })
+    if (t.used_at) return NextResponse.json({ error: 'already_used' }, { status: 410 })
+    if (new Date(t.expires_at) < new Date()) return NextResponse.json({ error: 'expired' }, { status: 410 })
+    return NextResponse.json({ error: 'invalid_token' }, { status: 404 })
+  }
 
   const { error: insErr } = await supabase.from('visit_questionnaires').insert({
-    visit_id: t.visit_id,
+    visit_id: claimed.visit_id,
     response_source: 'client',
     liked: parsed.data.liked,
     most_liked: parsed.data.most_liked,
     least_liked: parsed.data.least_liked,
     in_price: parsed.data.in_price,
     hypothetical_offer: parsed.data.hypothetical_offer,
-    responded_at: new Date().toISOString(),
+    responded_at: nowIso,
   })
-  if (insErr) return NextResponse.json({ error: 'insert_failed' }, { status: 500 })
 
-  await supabase.from('visit_questionnaire_tokens').update({ used_at: new Date().toISOString() }).eq('token', token)
+  if (insErr) {
+    // Rollback the claim so the user can retry.
+    await supabase
+      .from('visit_questionnaire_tokens')
+      .update({ used_at: null })
+      .eq('token', token)
+    console.error('[questionnaire POST] insert error', insErr)
+    return NextResponse.json({ error: 'insert_failed' }, { status: 500 })
+  }
 
   return NextResponse.json({ ok: true })
 }

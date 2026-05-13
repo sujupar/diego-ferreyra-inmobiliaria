@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     .select('id')
     .eq('status', 'scheduled')
     .lt('scheduled_at', new Date().toISOString())
+    .gte('scheduled_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
     .is('reminder_sent_at', null)
 
   let sent = 0
