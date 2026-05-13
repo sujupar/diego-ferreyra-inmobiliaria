@@ -52,6 +52,7 @@ export default function PropertiesPage() {
   const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkActioning, setBulkActioning] = useState(false)
+  const [onlyMine, setOnlyMine] = useState(false)
   const canHardDelete = userInfo?.role === 'admin' || userInfo?.role === 'dueno'
 
   useEffect(() => {
@@ -63,7 +64,7 @@ export default function PropertiesPage() {
     if (filterStatus) params.set('status', filterStatus)
     if (dateRange.from) params.set('from', dateRange.from)
     if (dateRange.to) params.set('to', dateRange.to)
-    if (userInfo?.role === 'asesor') params.set('assigned_to', userInfo.id)
+    if (onlyMine && userInfo?.id) params.set('assigned_to', userInfo.id)
 
     setLoading(true)
     fetch(`/api/properties?${params}`)
@@ -73,14 +74,14 @@ export default function PropertiesPage() {
       .finally(() => setLoading(false))
     // Limpiar selección al cambiar filtros
     setSelectedIds(new Set())
-  }, [filterStatus, dateRange, userInfo])
+  }, [filterStatus, dateRange, userInfo, onlyMine])
 
   async function refreshProperties() {
     const params = new URLSearchParams()
     if (filterStatus) params.set('status', filterStatus)
     if (dateRange.from) params.set('from', dateRange.from)
     if (dateRange.to) params.set('to', dateRange.to)
-    if (userInfo?.role === 'asesor') params.set('assigned_to', userInfo.id)
+    if (onlyMine && userInfo?.id) params.set('assigned_to', userInfo.id)
     const res = await fetch(`/api/properties?${params}`)
     const { data } = await res.json()
     setProperties(data || [])
@@ -159,6 +160,13 @@ export default function PropertiesPage() {
         {Object.entries(STATUS_INFO).map(([key, info]) => (
           <Button key={key} variant={filterStatus === key ? 'default' : 'outline'} size="sm" onClick={() => setFilterStatus(key)}>{info.label}</Button>
         ))}
+        <Button
+          size="sm"
+          variant={onlyMine ? 'default' : 'outline'}
+          onClick={() => setOnlyMine(!onlyMine)}
+        >
+          {onlyMine ? '✓ Solo mías' : 'Solo mías'}
+        </Button>
       </div>
 
       <BulkActionsBar
