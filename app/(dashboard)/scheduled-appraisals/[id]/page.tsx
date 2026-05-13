@@ -34,7 +34,20 @@ export default async function ScheduledAppraisalDetailPage(
             Agendada: {new Date(`${item.scheduled_date}T${item.scheduled_time ?? '00:00'}`).toLocaleString('es-AR')}
           </p>
         </div>
-        <Badge>{item.status}</Badge>
+        <div className="flex items-center gap-3">
+          <Badge>{item.status}</Badge>
+          <Button asChild>
+            <Link
+              href={
+                item.appraisal
+                  ? `/properties/new?appraisalId=${item.appraisal.id}`
+                  : `/properties/new?scheduledAppraisalId=${item.id}`
+              }
+            >
+              Captar como propiedad
+            </Link>
+          </Button>
+        </div>
       </header>
 
       <section className="grid md:grid-cols-2 gap-4">

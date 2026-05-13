@@ -12,7 +12,7 @@ import { ValuationProperty, ValuationResult, calculateValuation, getQualityCoeff
 import { ReportEdits, buildDefaultEdits } from '@/lib/types/report-edits'
 import type { PropertyFeatures, ScrapedProperty } from '@/lib/scraper/types'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, FileText, AlertCircle, Edit2, Loader2, UserCog } from 'lucide-react'
+import { ArrowLeft, FileText, AlertCircle, Edit2, Loader2, UserCog, Home } from 'lucide-react'
 import { ContactEditor } from '@/components/contacts/ContactEditor'
 import { FlowHistoryCard, type FlowHistoryData } from '@/app/(dashboard)/_components/FlowHistoryCard'
 
@@ -409,6 +409,12 @@ export default function AppraisalDetailPage() {
                         <Button variant="outline" className="gap-2">
                             <Edit2 className="h-4 w-4" />
                             Editar Tasación
+                        </Button>
+                    </Link>
+                    <Link href={`/properties/new?appraisalId=${appraisal.id}`}>
+                        <Button variant="outline" className="gap-2">
+                            <Home className="h-4 w-4" />
+                            Captar como propiedad
                         </Button>
                     </Link>
                     <Button className="gap-2" onClick={() => setShowPDFPreview(true)}>
