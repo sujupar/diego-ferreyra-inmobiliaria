@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 // Routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/accept-invite', '/api/', '/questionnaire']
+const PUBLIC_ROUTES = ['/login', '/accept-invite', '/api/', '/questionnaire', '/privacidad', '/eliminacion-de-datos']
 
 export async function updateSession(request: NextRequest) {
     let supabaseResponse = NextResponse.next({
