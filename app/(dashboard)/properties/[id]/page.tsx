@@ -15,6 +15,7 @@ import { LegalReviewHistory } from '@/components/properties/LegalReviewHistory'
 import { PortalListingsCard } from '@/components/properties/PortalListingsCard'
 import { PortalMetricsChart } from '@/components/properties/PortalMetricsChart'
 import type { LegalDocsState, LegalFlags } from '@/types/legal-docs.types'
+import { FlowHistoryCard, type FlowHistoryData } from '@/app/(dashboard)/_components/FlowHistoryCard'
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: 'Borrador', color: 'bg-gray-400' },
@@ -68,6 +69,7 @@ export default function PropertyDetailPage() {
   const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
   const [reviewNotes, setReviewNotes] = useState('')
   const [legalDocsData, setLegalDocsData] = useState<{ docs: LegalDocsState; flags: LegalFlags } | null>(null)
+  const [flowHistory, setFlowHistory] = useState<FlowHistoryData | null>(null)
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
@@ -88,6 +90,13 @@ export default function PropertyDetailPage() {
   }
 
   useEffect(() => { fetchProperty() }, [id])
+
+  useEffect(() => {
+    fetch(`/api/flow-history?propertyId=${id}`)
+      .then(r => r.json())
+      .then(({ data }) => setFlowHistory(data))
+      .catch(() => setFlowHistory(null))
+  }, [id])
 
   async function fetchLegalDocs() {
     try {
@@ -308,6 +317,9 @@ export default function PropertyDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Flow process history */}
+      <FlowHistoryCard data={flowHistory} />
 
       {/* Details */}
       <div className={`grid grid-cols-1 ${isAbogado ? '' : 'lg:grid-cols-2'} gap-6`}>
