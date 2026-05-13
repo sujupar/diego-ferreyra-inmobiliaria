@@ -11,6 +11,7 @@ import { DataTable, Column } from '@/components/ui/DataTable'
 import { BulkActionsBar } from '@/components/ui/BulkActionsBar'
 import { Building2, Plus, MapPin, Calendar, Loader2, ChevronRight, LayoutList, LayoutGrid, Table2, Archive, Trash2 } from 'lucide-react'
 import { PropertyCard } from './_components/PropertyCard'
+import { PropertyDetailModal, type DetailProperty } from './_components/PropertyDetailModal'
 
 const STATUS_INFO: Record<string, { label: string; color: string }> = {
   draft: { label: 'Borrador', color: 'bg-gray-400' },
@@ -28,6 +29,8 @@ interface Property {
   asking_price: number; currency: string; status: string; origin: string | null
   photos: string[]; created_at: string; legal_status?: string
   assigned_to?: string | null; rooms?: number | null; bathrooms?: number | null; covered_area?: number | null
+  // optional fields returned by API, used by PropertyDetailModal
+  description?: string | null; video_url?: string | null; tour_3d_url?: string | null; total_area?: number | null
 }
 
 function getPropertyStatusInfo(p: Property) {
@@ -55,6 +58,8 @@ export default function PropertiesPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkActioning, setBulkActioning] = useState(false)
   const [onlyMine, setOnlyMine] = useState(false)
+  const [modalProperty, setModalProperty] = useState<DetailProperty | null>(null)
+  const [modalOpen, setModalOpen] = useState(false)
   const canHardDelete = userInfo?.role === 'admin' || userInfo?.role === 'dueno'
 
   useEffect(() => {
@@ -215,7 +220,7 @@ export default function PropertiesPage() {
               property={p}
               currentUserId={userInfo?.id}
               statusInfo={getPropertyStatusInfo(p)}
-              onClick={() => router.push(`/properties/${p.id}`)}
+              onClick={() => { setModalProperty(p); setModalOpen(true) }}
             />
           ))}
         </div>
@@ -261,6 +266,18 @@ export default function PropertiesPage() {
           })}
         </div>
       )}
+
+      <PropertyDetailModal
+        property={modalProperty}
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        currentUserId={userInfo?.id}
+        onScheduleVisit={(id) => {
+          console.log('TODO: open ScheduleVisitDialog for property', id)
+          setModalOpen(false)
+          // Task 4.5 will wire ScheduleVisitDialog here.
+        }}
+      />
     </div>
   )
 }
