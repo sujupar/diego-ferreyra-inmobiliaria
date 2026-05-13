@@ -71,6 +71,19 @@ export default function PropertyDetailPage() {
   const [legalDocsData, setLegalDocsData] = useState<{ docs: LegalDocsState; flags: LegalFlags } | null>(null)
   const [flowHistory, setFlowHistory] = useState<FlowHistoryData | null>(null)
 
+  interface FeedbackRow {
+    id: string
+    response_source: 'advisor' | 'client'
+    liked: boolean | null
+    most_liked: string | null
+    least_liked: string | null
+    in_price: boolean | null
+    hypothetical_offer: number | null
+    responded_at: string
+    visit: { id: string; scheduled_at: string; client_name: string } | null
+  }
+  const [feedback, setFeedback] = useState<FeedbackRow[]>([])
+
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
   }, [])
@@ -96,6 +109,14 @@ export default function PropertyDetailPage() {
       .then(r => r.json())
       .then(({ data }) => setFlowHistory(data))
       .catch(() => setFlowHistory(null))
+  }, [id])
+
+  useEffect(() => {
+    if (!id) return
+    fetch(`/api/properties/${id}/feedback`)
+      .then(r => r.ok ? r.json() : { data: [] })
+      .then(({ data }) => setFeedback(Array.isArray(data) ? data : []))
+      .catch(() => setFeedback([]))
   }, [id])
 
   async function fetchLegalDocs() {
@@ -320,6 +341,32 @@ export default function PropertyDetailPage() {
 
       {/* Flow process history */}
       <FlowHistoryCard data={flowHistory} />
+
+      {/* Feedback de visitas */}
+      {feedback.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Feedback de visitas ({feedback.length})</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {feedback.map(f => (
+              <div key={f.id} className="border rounded p-3 space-y-1 text-sm">
+                <div className="flex items-center gap-2">
+                  <Badge>{f.response_source === 'client' ? 'Cliente' : 'Asesor'}</Badge>
+                  <span className="text-muted-foreground text-xs">
+                    {f.visit?.client_name} · visita {f.visit ? new Date(f.visit.scheduled_at).toLocaleDateString('es-AR') : ''}
+                  </span>
+                </div>
+                <p>¿Le gustó? <strong>{f.liked === null ? '-' : f.liked ? 'Sí' : 'No'}</strong></p>
+                {f.most_liked && <p>Más le gustó: {f.most_liked}</p>}
+                {f.least_liked && <p>Menos le gustó: {f.least_liked}</p>}
+                <p>¿En precio? <strong>{f.in_price === null ? '-' : f.in_price ? 'Sí' : 'No'}</strong></p>
+                <p>Oferta hipotética: USD {f.hypothetical_offer ?? '-'}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Details */}
       <div className={`grid grid-cols-1 ${isAbogado ? '' : 'lg:grid-cols-2'} gap-6`}>
