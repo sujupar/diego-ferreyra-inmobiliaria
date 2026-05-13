@@ -166,6 +166,95 @@ export interface Database {
                     }
                 ]
             }
+            scheduled_appraisals: {
+                Row: {
+                    id: string
+                    contact_name: string
+                    contact_phone: string | null
+                    contact_email: string | null
+                    contact_id: string | null
+                    property_address: string
+                    scheduled_date: string
+                    scheduled_time: string | null
+                    origin: string | null
+                    assigned_to: string | null
+                    status: string
+                    appraisal_id: string | null
+                    notes: string | null
+                    scheduling_notes: string | null
+                    buyer_interest: Json | null
+                    created_by: string | null
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    contact_name: string
+                    contact_phone?: string | null
+                    contact_email?: string | null
+                    contact_id?: string | null
+                    property_address: string
+                    scheduled_date: string
+                    scheduled_time?: string | null
+                    origin?: string | null
+                    assigned_to?: string | null
+                    status?: string
+                    appraisal_id?: string | null
+                    notes?: string | null
+                    scheduling_notes?: string | null
+                    buyer_interest?: Json | null
+                    created_by?: string | null
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    contact_name?: string
+                    contact_phone?: string | null
+                    contact_email?: string | null
+                    contact_id?: string | null
+                    property_address?: string
+                    scheduled_date?: string
+                    scheduled_time?: string | null
+                    origin?: string | null
+                    assigned_to?: string | null
+                    status?: string
+                    appraisal_id?: string | null
+                    notes?: string | null
+                    scheduling_notes?: string | null
+                    buyer_interest?: Json | null
+                    created_by?: string | null
+                    created_at?: string
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "scheduled_appraisals_contact_id_fkey"
+                        columns: ["contact_id"]
+                        isOneToOne: false
+                        referencedRelation: "contacts"
+                        referencedColumns: ["id"]
+                    },
+                    {
+                        foreignKeyName: "scheduled_appraisals_assigned_to_fkey"
+                        columns: ["assigned_to"]
+                        isOneToOne: false
+                        referencedRelation: "profiles"
+                        referencedColumns: ["id"]
+                    },
+                    {
+                        foreignKeyName: "scheduled_appraisals_appraisal_id_fkey"
+                        columns: ["appraisal_id"]
+                        isOneToOne: false
+                        referencedRelation: "appraisals"
+                        referencedColumns: ["id"]
+                    },
+                    {
+                        foreignKeyName: "scheduled_appraisals_created_by_fkey"
+                        columns: ["created_by"]
+                        isOneToOne: false
+                        referencedRelation: "profiles"
+                        referencedColumns: ["id"]
+                    }
+                ]
+            }
             market_image_settings: {
                 Row: {
                     id: string
@@ -280,6 +369,7 @@ export interface Database {
                     assigned_to: string | null
                     created_by: string | null
                     appraisal_id: string | null
+                    scheduled_appraisal_id: string | null
                     property_id: string | null
                     notes: string | null
                     stage_changed_at: string
@@ -304,6 +394,7 @@ export interface Database {
                     assigned_to?: string | null
                     created_by?: string | null
                     appraisal_id?: string | null
+                    scheduled_appraisal_id?: string | null
                     property_id?: string | null
                     notes?: string | null
                     property_type?: string | null
@@ -317,6 +408,7 @@ export interface Database {
                 Update: {
                     stage?: string
                     appraisal_id?: string | null
+                    scheduled_appraisal_id?: string | null
                     property_id?: string | null
                     notes?: string | null
                     assigned_to?: string | null
@@ -330,7 +422,15 @@ export interface Database {
                     visit_data?: Json | null
                     visit_completed_at?: string | null
                 }
-                Relationships: []
+                Relationships: [
+                    {
+                        foreignKeyName: "deals_scheduled_appraisal_id_fkey"
+                        columns: ["scheduled_appraisal_id"]
+                        isOneToOne: false
+                        referencedRelation: "scheduled_appraisals"
+                        referencedColumns: ["id"]
+                    }
+                ]
             }
             properties: {
                 Row: {
