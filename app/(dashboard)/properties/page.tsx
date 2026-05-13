@@ -12,6 +12,7 @@ import { BulkActionsBar } from '@/components/ui/BulkActionsBar'
 import { Building2, Plus, MapPin, Calendar, Loader2, ChevronRight, LayoutList, LayoutGrid, Table2, Archive, Trash2 } from 'lucide-react'
 import { PropertyCard } from './_components/PropertyCard'
 import { PropertyDetailModal, type DetailProperty } from './_components/PropertyDetailModal'
+import { ScheduleVisitDialog } from './_components/ScheduleVisitDialog'
 
 const STATUS_INFO: Record<string, { label: string; color: string }> = {
   draft: { label: 'Borrador', color: 'bg-gray-400' },
@@ -60,6 +61,8 @@ export default function PropertiesPage() {
   const [onlyMine, setOnlyMine] = useState(false)
   const [modalProperty, setModalProperty] = useState<DetailProperty | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [scheduleVisitOpen, setScheduleVisitOpen] = useState(false)
+  const [scheduleForPropertyId, setScheduleForPropertyId] = useState<string | null>(null)
   const canHardDelete = userInfo?.role === 'admin' || userInfo?.role === 'dueno'
 
   useEffect(() => {
@@ -273,10 +276,17 @@ export default function PropertiesPage() {
         onOpenChange={setModalOpen}
         currentUserId={userInfo?.id}
         onScheduleVisit={(id) => {
-          console.log('TODO: open ScheduleVisitDialog for property', id)
+          setScheduleForPropertyId(id)
+          setScheduleVisitOpen(true)
           setModalOpen(false)
-          // Task 4.5 will wire ScheduleVisitDialog here.
         }}
+      />
+
+      <ScheduleVisitDialog
+        propertyId={scheduleForPropertyId}
+        propertyAddress={properties.find(p => p.id === scheduleForPropertyId)?.address}
+        open={scheduleVisitOpen}
+        onOpenChange={setScheduleVisitOpen}
       />
     </div>
   )
