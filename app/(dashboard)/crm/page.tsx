@@ -14,7 +14,7 @@ import {
   LayoutList, Table2, SlidersHorizontal,
   CalendarPlus, CalendarCheck, CalendarX, Eye,
   Send, MessageSquare, Home, XCircle, Clock, GraduationCap,
-  CheckSquare, Square, Trash2
+  CheckSquare, Square, Trash2, ShoppingCart, Users
 } from 'lucide-react'
 
 // ── CRM Stage Configuration ─────────────────────────────────────
@@ -93,6 +93,13 @@ const CRM_STAGES: CRMStage[] = [
     badgeBg: 'bg-red-100 dark:bg-red-900/50', badgeText: 'text-red-700 dark:text-red-300',
     ringColor: 'ring-red-400', dotColor: 'bg-red-500',
   },
+  {
+    key: 'comprador', label: 'Comprador',
+    icon: ShoppingCart,
+    gradient: 'from-teal-50 to-teal-100/60 dark:from-teal-950/40 dark:to-teal-900/20',
+    badgeBg: 'bg-teal-100 dark:bg-teal-900/50', badgeText: 'text-teal-700 dark:text-teal-300',
+    ringColor: 'ring-teal-400', dotColor: 'bg-teal-500',
+  },
 ]
 
 function deriveCRMStage(deal: Deal): string {
@@ -109,6 +116,7 @@ function deriveCRMStage(deal: Deal): string {
     case 'followup': return 'seguimiento'
     case 'captured': return 'captada'
     case 'lost': return 'descartado'
+    case 'comprador': return 'comprador'
     default: return 'solicitud'
   }
 }
@@ -131,6 +139,7 @@ function mapStageToCRM(stage: string): string {
     case 'followup': return 'seguimiento'
     case 'captured': return 'captada'
     case 'lost': return 'descartado'
+    case 'comprador': return 'comprador'
     default: return 'solicitud'
   }
 }
@@ -155,6 +164,7 @@ interface Deal {
   property_id: string | null
   stage_changed_at: string
   created_at: string
+  tags?: string[] | null
 }
 
 function formatDate(d: string) {
@@ -195,6 +205,7 @@ export default function CRMPage() {
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkActioning, setBulkActioning] = useState(false)
+  const [showColegas, setShowColegas] = useState(false)
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
@@ -298,9 +309,17 @@ export default function CRMPage() {
     ? dealsWithCRM.filter(d => !PRE_ASSIGNMENT_STAGES.includes(d.crmStage))
     : dealsWithCRM
 
+  // Por defecto ocultamos deals tag='colega' (vienen importados de GHL).
+  // Se ven con el toggle "Mostrar colegas".
+  const colegaFilteredDeals = showColegas
+    ? roleFilteredDeals
+    : roleFilteredDeals.filter(d => !(d.tags || []).includes('colega'))
+
   const filteredDeals = filterCRMStage
-    ? roleFilteredDeals.filter(d => d.crmStage === filterCRMStage)
-    : roleFilteredDeals
+    ? colegaFilteredDeals.filter(d => d.crmStage === filterCRMStage)
+    : colegaFilteredDeals
+
+  const colegaCount = roleFilteredDeals.filter(d => (d.tags || []).includes('colega')).length
 
   // Server-provided stageCounts (all pages, not just loaded slice).
   const stageCounts: Record<string, number> = {}
@@ -485,6 +504,21 @@ export default function CRMPage() {
                   <option value="">Todos</option>
                   {advisors.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
                 </select>
+              </div>
+            )}
+
+            {colegaCount > 0 && (
+              <div className="flex gap-1.5 items-center">
+                <span className="text-xs font-medium text-muted-foreground mr-1">Colegas</span>
+                <Button
+                  variant={showColegas ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-7 text-xs rounded-full gap-1.5"
+                  onClick={() => setShowColegas(prev => !prev)}
+                >
+                  <Users className="h-3 w-3" />
+                  {showColegas ? `Ocultar (${colegaCount})` : `Mostrar (${colegaCount})`}
+                </Button>
               </div>
             )}
           </div>

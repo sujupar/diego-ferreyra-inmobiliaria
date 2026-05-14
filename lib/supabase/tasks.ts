@@ -4,7 +4,7 @@ function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
-export type TaskType = 'update_contact' | 'new_assignment' | 'review_property' | 'rejected_docs'
+export type TaskType = 'update_contact' | 'new_assignment' | 'review_property' | 'rejected_docs' | 'complete_imported_property'
 
 export interface CreateTaskInput {
   type: TaskType

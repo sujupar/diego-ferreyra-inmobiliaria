@@ -14,6 +14,7 @@ export type DealStage =
   | 'followup'
   | 'captured'
   | 'lost'
+  | 'comprador'
 
 export const DEAL_STAGES: { key: DealStage; label: string; color: string }[] = [
   { key: 'clase_gratuita', label: 'Clase Gratuita', color: 'bg-cyan-500' },
@@ -25,6 +26,7 @@ export const DEAL_STAGES: { key: DealStage; label: string; color: string }[] = [
   { key: 'followup', label: 'En Seguimiento', color: 'bg-orange-500' },
   { key: 'captured', label: 'Captada', color: 'bg-green-500' },
   { key: 'lost', label: 'Descartado', color: 'bg-red-500' },
+  { key: 'comprador', label: 'Comprador', color: 'bg-teal-500' },
 ]
 
 export interface DealInput {

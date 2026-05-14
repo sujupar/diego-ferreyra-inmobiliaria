@@ -53,6 +53,8 @@ interface PropertyData {
   legal_notes: string | null
   legal_reviewed_at: string | null
   created_at: string
+  ghl_imported?: boolean
+  ghl_custom_fields?: Record<string, string | null> | null
 }
 
 export default function PropertyDetailPage() {
@@ -285,6 +287,45 @@ export default function PropertyDetailPage() {
           <Badge className={`text-white text-xs ${statusInfo.color}`}>{statusInfo.label}</Badge>
         </div>
       </div>
+
+      {/* Banner: Importada de GHL — completar datos */}
+      {property.ghl_imported && (() => {
+        const missing: string[] = []
+        if (!property.address || property.address.startsWith('[PENDIENTE') || property.address.startsWith('[Importado GHL')) missing.push('dirección')
+        if (!property.neighborhood || property.neighborhood.startsWith('[PENDIENTE')) missing.push('barrio')
+        if (!property.asking_price || property.asking_price <= 0) missing.push('precio de venta')
+        if (!property.commission_percentage) missing.push('comisión')
+        if (!property.covered_area) missing.push('m² cubiertos')
+        if (!property.total_area) missing.push('m² totales')
+        if (!Array.isArray(property.photos) || property.photos.length === 0) missing.push('fotos')
+
+        return (
+          <Card className="border-amber-300 bg-amber-50/50 dark:bg-amber-950/20">
+            <CardContent className="py-4 flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-medium text-amber-900 dark:text-amber-100">Propiedad importada desde GHL</p>
+                <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                  Esta propiedad fue importada del historial de GHL como ya captada. Revisá los datos y completá los campos faltantes para que quede operativa.
+                </p>
+                {missing.length > 0 && (
+                  <p className="text-sm text-amber-800 dark:text-amber-200 mt-2">
+                    <strong>Faltan:</strong> {missing.join(', ')}
+                  </p>
+                )}
+                {property.ghl_custom_fields && Object.keys(property.ghl_custom_fields).length > 0 && (
+                  <details className="text-xs text-amber-700 dark:text-amber-300 mt-2">
+                    <summary className="cursor-pointer">Ver datos crudos importados de GHL ({Object.keys(property.ghl_custom_fields).length} campos)</summary>
+                    <pre className="mt-2 p-2 bg-amber-100/60 dark:bg-amber-900/30 rounded text-[11px] overflow-x-auto whitespace-pre-wrap">
+                      {JSON.stringify(property.ghl_custom_fields, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* Dual-track Progress */}
       <Card>
