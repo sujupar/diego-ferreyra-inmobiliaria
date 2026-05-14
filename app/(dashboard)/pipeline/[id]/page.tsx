@@ -207,24 +207,37 @@ export default function DealDetailPage() {
         </div>
       </div>
 
-      {/* Progress bar */}
+      {/* Progress bar — solo muestra el flow lineal aplicable a este deal.
+          Clase Gratuita solo aparece si el deal vino por ese origen.
+          Comprador es una rama separada y reemplaza al flow normal. */}
       <Card>
         <CardContent className="py-4">
           <div className="flex items-center gap-1 overflow-x-auto">
-            {STAGES.filter(s => s.key !== 'lost' && s.key !== 'not_visited').map((s, i) => {
-              const stageIdx = STAGES.findIndex(x => x.key === deal.stage)
-              const thisIdx = STAGES.findIndex(x => x.key === s.key)
-              const isPast = thisIdx < stageIdx
-              const isCurrent = s.key === deal.stage
-              return (
-                <div key={s.key} className="flex items-center gap-1">
-                  <div className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${isCurrent ? `${s.color} text-white` : isPast ? 'bg-green-100 text-green-800' : 'bg-muted text-muted-foreground'}`}>
-                    {s.label}
+            {(() => {
+              const cameFromClase = deal.origin === 'clase_gratuita' || deal.stage === 'clase_gratuita'
+              const isComprador = deal.stage === 'comprador'
+              const flowStages = isComprador
+                ? STAGES.filter(s => s.key === 'comprador')
+                : STAGES.filter(s =>
+                    s.key !== 'lost' &&
+                    s.key !== 'not_visited' &&
+                    s.key !== 'comprador' &&
+                    (s.key !== 'clase_gratuita' || cameFromClase),
+                  )
+              const stageIdx = flowStages.findIndex(x => x.key === deal.stage)
+              return flowStages.map((s, i) => {
+                const isPast = i < stageIdx
+                const isCurrent = s.key === deal.stage
+                return (
+                  <div key={s.key} className="flex items-center gap-1">
+                    <div className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${isCurrent ? `${s.color} text-white` : isPast ? 'bg-green-100 text-green-800' : 'bg-muted text-muted-foreground'}`}>
+                      {s.label}
+                    </div>
+                    {i < flowStages.length - 1 && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
                   </div>
-                  {i < 4 && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
-                </div>
-              )
-            })}
+                )
+              })
+            })()}
           </div>
         </CardContent>
       </Card>

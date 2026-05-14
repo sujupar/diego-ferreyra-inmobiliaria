@@ -132,6 +132,18 @@ function mapGhlStageName(name: string): MappedStage {
   return { stage: 'lost', extraTags: ['ghl_sin_mapeo'] }
 }
 
+/** Orden de "madurez" del flujo. Más alto = más avanzado. Sirve para decidir
+ * si un claim avanza el stage o no lo retrocede. lost/comprador son ramas
+ * separadas, las tratamos como neutrales (no comparan vs flow lineal). */
+function stageOrder(stage: string): number {
+  const order: Record<string, number> = {
+    clase_gratuita: 0, request: 1, scheduled: 2, not_visited: 3,
+    visited: 4, appraisal_sent: 5, followup: 6, captured: 7,
+    lost: -1, comprador: -1,
+  }
+  return order[stage] ?? -1
+}
+
 // ── Source → origin ──────────────────────────────────────────────────────────
 function deriveOrigin(oppSource: string | null | undefined, contactSource: string | null | undefined, stage: DealStage): string {
   const s = (oppSource || contactSource || '').toLowerCase()
@@ -271,6 +283,28 @@ async function findContactByPhone(supabase: SupabaseClient, phone: string): Prom
   return data?.id || null
 }
 
+/**
+ * Busca un deal "abierto" del contacto al que podamos pegarle el ghl_opportunity_id.
+ *
+ * Un deal abierto es uno cuya stage NO es 'captured' ni 'lost' y no tiene ya
+ * un ghl_opportunity_id distinto. Si encontramos uno, lo "claimamos" — la
+ * historia de GHL pisa al deal pre-existente en vez de duplicarlo.
+ *
+ * Heurística: el deal más reciente del contacto que esté abierto.
+ */
+async function findClaimableDeal(supabase: SupabaseClient, contactId: string): Promise<{ id: string; stage: string; tags: string[] | null; notes: string | null } | null> {
+  const { data } = await supabase
+    .from('deals')
+    .select('id, stage, tags, notes, ghl_opportunity_id')
+    .eq('contact_id', contactId)
+    .is('ghl_opportunity_id', null)
+    .not('stage', 'in', '(captured,lost)')
+    .order('created_at', { ascending: false })
+    .limit(1)
+  if (!data || data.length === 0) return null
+  return data[0] as any
+}
+
 // ── Stats ────────────────────────────────────────────────────────────────────
 const stats = {
   total: 0,
@@ -279,6 +313,7 @@ const stats = {
   contacts_created: 0,
   contacts_reused: 0,
   deals_created: 0,
+  deals_claimed: 0,
   properties_created: 0,
   tasks_created: 0,
   errors: 0,
@@ -377,7 +412,7 @@ async function processOpportunity(supabase: SupabaseClient, opp: Opportunity, gh
     stats.contacts_reused++
   }
 
-  // 4. Crear el deal
+  // 4. Crear o claimar el deal
   const propertyAddressForDeal =
     getCF(ghlContact, CONTACT_CF_MAP.address) ||
     `[Importado GHL] ${contactName}`
@@ -396,31 +431,68 @@ async function processOpportunity(supabase: SupabaseClient, opp: Opportunity, gh
     getCF(ghlContact, CONTACT_CF_MAP.advisor_name) ? `Asesor GHL: ${getCF(ghlContact, CONTACT_CF_MAP.advisor_name)}` : null,
   ].filter(Boolean).join('\n')
 
+  // Buscar un deal abierto del mismo contacto que ya exista en nuestra DB
+  // (típicamente creado por el webhook GHL anterior). Si lo encontramos,
+  // claimamos ese en lugar de crear uno nuevo — eso evita duplicados.
+  const claimable = ourContactId.startsWith('<dry-run')
+    ? null
+    : await findClaimableDeal(supabase, ourContactId)
+
   let dealId: string | null = null
-  if (!DRY_RUN) {
-    const { data, error } = await supabase.from('deals').insert({
-      contact_id: ourContactId,
-      property_address: propertyAddressForDeal,
-      origin,
-      notes: dealNotes,
-      stage: mapping.stage,
-      neighborhood: neighborhoodFromCF,
-      tags: finalTags,
-      ghl_opportunity_id: opp.id,
-      ghl_contact_id: contactId,
-      stage_changed_at: opp.updatedAt || opp.createdAt,
-      created_at: opp.createdAt,
-    }).select('id').single()
-    if (error) {
-      console.warn(`  ⚠ insert deal falló: ${error.message}`)
-      stats.errors++
-      return
+  if (claimable) {
+    // CLAIM: merge data del import en el deal existente.
+    const mergedTags = Array.from(new Set([...(claimable.tags || []), ...finalTags]))
+    const mergedNotes = [claimable.notes || '', '', '── Datos del import GHL ──', dealNotes]
+      .filter(s => s !== null && s !== undefined).join('\n').trim()
+    if (!DRY_RUN) {
+      const { error } = await supabase.from('deals').update({
+        ghl_opportunity_id: opp.id,
+        ghl_contact_id: contactId,
+        tags: mergedTags,
+        notes: mergedNotes,
+        // Si nuestro deal está en un stage ANTERIOR al de GHL, lo avanzamos.
+        // Si nuestro stage es POSTERIOR (más maduro), no retrocedemos.
+        stage: stageOrder(claimable.stage) < stageOrder(mapping.stage) ? mapping.stage : claimable.stage,
+        stage_changed_at: opp.updatedAt || opp.createdAt,
+        neighborhood: neighborhoodFromCF || undefined,
+      }).eq('id', claimable.id)
+      if (error) {
+        console.warn(`  ⚠ claim deal falló: ${error.message}`)
+        stats.errors++
+        return
+      }
+      dealId = claimable.id
+    } else {
+      dealId = claimable.id
     }
-    dealId = data.id
+    stats.deals_claimed++
   } else {
-    dealId = '<dry-run-new-deal>'
+    // CREATE: no hay deal abierto, creamos uno nuevo.
+    if (!DRY_RUN) {
+      const { data, error } = await supabase.from('deals').insert({
+        contact_id: ourContactId,
+        property_address: propertyAddressForDeal,
+        origin,
+        notes: dealNotes,
+        stage: mapping.stage,
+        neighborhood: neighborhoodFromCF,
+        tags: finalTags,
+        ghl_opportunity_id: opp.id,
+        ghl_contact_id: contactId,
+        stage_changed_at: opp.updatedAt || opp.createdAt,
+        created_at: opp.createdAt,
+      }).select('id').single()
+      if (error) {
+        console.warn(`  ⚠ insert deal falló: ${error.message}`)
+        stats.errors++
+        return
+      }
+      dealId = data.id
+    } else {
+      dealId = '<dry-run-new-deal>'
+    }
+    stats.deals_created++
   }
-  stats.deals_created++
 
   // 5. Si es captada → crear property + task
   if (mapping.createProperty) {
@@ -550,6 +622,7 @@ async function main() {
   console.log(`Contactos creados:       ${stats.contacts_created}`)
   console.log(`Contactos reusados:      ${stats.contacts_reused}`)
   console.log(`Deals creados:           ${stats.deals_created}`)
+  console.log(`Deals reusados (merge):  ${stats.deals_claimed}`)
   console.log(`Properties creadas:      ${stats.properties_created}`)
   console.log(`Tasks creadas:           ${stats.tasks_created}`)
   console.log(`Errores:                 ${stats.errors}`)
