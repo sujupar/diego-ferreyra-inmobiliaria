@@ -30,6 +30,7 @@ function getNavSections(role: Role): NavSection[] {
         case 'asesor':
             return [
                 { label: 'Pendientes', href: '/tasks' },
+                { label: 'Inbox', href: '/inbox' },
                 { label: 'CRM', href: '/crm' },
                 { label: 'Tasaciones', items: [
                     { href: '/pipeline/new', label: 'Coordinar' },
@@ -44,6 +45,7 @@ function getNavSections(role: Role): NavSection[] {
         case 'coordinador':
             return [
                 { label: 'Pendientes', href: '/tasks' },
+                { label: 'Inbox', href: '/inbox' },
                 { label: 'CRM', href: '/crm' },
                 { label: 'Tasaciones', items: [
                     { href: '/pipeline/new', label: 'Coordinar' },
@@ -60,6 +62,7 @@ function getNavSections(role: Role): NavSection[] {
         default: // admin, dueno
             return [
                 { label: 'Pendientes', href: '/tasks' },
+                { label: 'Inbox', href: '/inbox' },
                 { label: 'CRM', href: '/crm' },
                 { label: 'Tasaciones', items: [
                     { href: '/pipeline/new', label: 'Coordinar' },

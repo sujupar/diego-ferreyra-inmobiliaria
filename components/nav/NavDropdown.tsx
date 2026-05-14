@@ -58,7 +58,7 @@ export function NavDropdown({ label, items }: NavDropdownProps) {
   )
 }
 
-export function NavLink({ href, label }: NavLink) {
+export function NavLink({ href, label, badge }: NavLink & { badge?: number }) {
   const pathname = usePathname()
   const isActive = pathname === href || pathname.startsWith(href + '/')
 
@@ -66,9 +66,14 @@ export function NavLink({ href, label }: NavLink) {
     <Link
       href={href}
       prefetch={true}
-      className={`text-sm font-medium transition-colors whitespace-nowrap ${isActive ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`}
+      className={`relative text-sm font-medium transition-colors whitespace-nowrap inline-flex items-center gap-1.5 ${isActive ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`}
     >
       {label}
+      {badge != null && badge > 0 && (
+        <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-[color:var(--brand)] text-white text-[10px] font-semibold tabular-nums">
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </Link>
   )
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@supabase/supabase-js'
+import { requireAuth } from '@/lib/auth/require-role'
 import type { Database } from '@/types/database.types'
 
 function getAdmin() {
@@ -8,6 +9,84 @@ function getAdmin() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   )
+}
+
+/**
+ * GET /api/leads?status=X&propertyId=Y&source=Z&days=N&assignedTo=me
+ * Lista leads filtrados según RLS por rol.
+ */
+export async function GET(req: Request) {
+  try {
+    const user = await requireAuth()
+    const role = user.profile.role
+    if (!['admin', 'dueno', 'coordinador', 'asesor'].includes(role)) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
+
+    const url = new URL(req.url)
+    const status = url.searchParams.get('status')
+    const propertyId = url.searchParams.get('propertyId')
+    const source = url.searchParams.get('source')
+    const days = parseInt(url.searchParams.get('days') ?? '30', 10)
+    const assignedToMe = url.searchParams.get('assignedTo') === 'me'
+    const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '100', 10), 500)
+
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+
+    const supabase = getAdmin()
+
+    // Asesor: pre-filtrar por propiedades asignadas a él
+    let allowedPropertyIds: string[] | null = null
+    if (role === 'asesor') {
+      const { data: props } = await supabase
+        .from('properties')
+        .select('id')
+        .eq('assigned_to', user.id)
+      allowedPropertyIds = (props ?? []).map(p => p.id)
+      if (allowedPropertyIds.length === 0) {
+        return NextResponse.json({ data: [] })
+      }
+    }
+
+    let query = supabase
+      .from('property_leads')
+      .select('id, property_id, name, email, phone, message, source, status, assigned_to, notes, created_at')
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (status) query = query.eq('status', status)
+    if (propertyId) query = query.eq('property_id', propertyId)
+    if (source) query = query.eq('source', source)
+    if (allowedPropertyIds) query = query.in('property_id', allowedPropertyIds)
+    if (assignedToMe && role !== 'asesor') query = query.eq('assigned_to', user.id)
+
+    const { data: leads, error } = await query
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // Hidratar con info básica de la propiedad
+    const propIds = Array.from(new Set((leads ?? []).map(l => l.property_id)))
+    let propsMap: Map<string, { address: string; title: string | null; neighborhood: string | null; assigned_to: string | null }> = new Map()
+    if (propIds.length > 0) {
+      const { data: props } = await supabase
+        .from('properties')
+        .select('id, address, title, neighborhood, assigned_to')
+        .in('id', propIds)
+      propsMap = new Map((props ?? []).map(p => [p.id, p]))
+    }
+
+    const enriched = (leads ?? []).map(l => ({
+      ...l,
+      properties: propsMap.get(l.property_id) ?? null,
+    }))
+
+    return NextResponse.json({ data: enriched })
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Error' },
+      { status: 500 },
+    )
+  }
 }
 
 const LeadSchema = z.object({
