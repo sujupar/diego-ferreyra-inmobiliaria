@@ -31,12 +31,19 @@ export async function GET() {
         .select('id')
         .eq('assigned_to', user.id)
       const propIds = (props ?? []).map(p => p.id)
-      if (propIds.length === 0) return NextResponse.json({ new: 0 })
-      const { count } = await supabase
+
+      let query = supabase
         .from('property_leads')
         .select('id', { count: 'exact', head: true })
         .eq('status', 'new')
-        .in('property_id', propIds)
+
+      if (propIds.length > 0) {
+        const propsList = propIds.map(id => `property_id.eq.${id}`).join(',')
+        query = query.or(`assigned_to.eq.${user.id},${propsList}`)
+      } else {
+        query = query.eq('assigned_to', user.id)
+      }
+      const { count } = await query
       return NextResponse.json({ new: count ?? 0 })
     }
 

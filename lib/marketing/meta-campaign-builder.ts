@@ -135,6 +135,21 @@ export async function createCampaignForProperty(
     }),
   })
 
+  // 1.5. Persistir la campaign en DB ya con status='provisioning' para
+  // que si los pasos siguientes fallan, en el reintento del worker
+  // detecte que ya existe y no cree una campaign duplicada en Meta.
+  const supabase = getSupabase()
+  await supabase.from('property_meta_campaigns').insert({
+    property_id: property.id,
+    campaign_id: campaign.id,
+    status: 'provisioning',
+    budget_daily: budget.dailyArs,
+    budget_currency: 'ARS',
+    targeting: targeting.spec as never,
+    copy: copy as never,
+    landing_url: landingUrl,
+  })
+
   // 2. Subir imagen hero
   const imageHash = await uploadAdImage(property.photos[0])
 
@@ -188,29 +203,20 @@ export async function createCampaignForProperty(
   // 6. Smoke test de la landing antes de activar
   const landingOk = await smokeTestLanding(landingUrl)
 
-  // 7. Persistir en DB
-  const supabase = getSupabase()
-  await supabase.from('property_meta_campaigns').insert({
-    property_id: property.id,
-    campaign_id: campaign.id,
-    adset_id: adset.id,
-    ad_ids: [ad.id],
-    status: landingOk ? 'provisioning' : 'failed',
-    budget_daily: budget.dailyArs,
-    budget_currency: 'ARS',
-    targeting: targeting.spec as never,
-    copy: copy as never,
-    landing_url: landingUrl,
-    last_error: landingOk ? null : 'Smoke test de landing falló',
-  })
+  // 7. Actualizar la fila ya creada en 1.5 con adset_id + ad_ids + status final
+  await supabase
+    .from('property_meta_campaigns')
+    .update({
+      adset_id: adset.id,
+      ad_ids: [ad.id],
+      status: landingOk ? 'active' : 'failed',
+      last_error: landingOk ? null : 'Smoke test de landing falló',
+    })
+    .eq('campaign_id', campaign.id)
 
-  // 8. Si la landing responde OK, activar campaign + adset + ad
+  // 8. Si la landing responde OK, activar campaign + adset + ad en Meta
   if (landingOk) {
     await activateCampaign(campaign.id, adset.id, [ad.id])
-    await supabase
-      .from('property_meta_campaigns')
-      .update({ status: 'active' })
-      .eq('campaign_id', campaign.id)
   }
 
   return {

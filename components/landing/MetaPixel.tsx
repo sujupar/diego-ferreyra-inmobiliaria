@@ -44,7 +44,9 @@ export function MetaPixel({ pixelId, propertyId, propertyTitle }: MetaPixelProps
     return () => clearTimeout(timer)
   }, [pixelId, propertyId, propertyTitle])
 
-  if (!pixelId) return null
+  // Defensa en profundidad: pixelId solo puede ser dígitos (Meta Pixel IDs).
+  // Si la env var fue corrompida, no renderizamos.
+  if (!pixelId || !/^\d+$/.test(pixelId)) return null
 
   return (
     <>

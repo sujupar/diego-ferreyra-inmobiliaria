@@ -35,17 +35,16 @@ export async function GET(req: Request) {
 
     const supabase = getAdmin()
 
-    // Asesor: pre-filtrar por propiedades asignadas a él
-    let allowedPropertyIds: string[] | null = null
+    // Asesor: ver leads de sus propiedades O asignados directamente a él.
+    // El RLS de property_leads ya tiene este criterio, pero como usamos
+    // getAdmin() bypasseamos RLS y replicamos la lógica acá.
+    let asesorPropertyIds: string[] | null = null
     if (role === 'asesor') {
       const { data: props } = await supabase
         .from('properties')
         .select('id')
         .eq('assigned_to', user.id)
-      allowedPropertyIds = (props ?? []).map(p => p.id)
-      if (allowedPropertyIds.length === 0) {
-        return NextResponse.json({ data: [] })
-      }
+      asesorPropertyIds = (props ?? []).map(p => p.id)
     }
 
     let query = supabase
@@ -58,8 +57,19 @@ export async function GET(req: Request) {
     if (status) query = query.eq('status', status)
     if (propertyId) query = query.eq('property_id', propertyId)
     if (source) query = query.eq('source', source)
-    if (allowedPropertyIds) query = query.in('property_id', allowedPropertyIds)
-    if (assignedToMe && role !== 'asesor') query = query.eq('assigned_to', user.id)
+
+    if (role === 'asesor') {
+      // OR de: lead.assigned_to = user.id  OR  property_id IN [sus propiedades]
+      if (asesorPropertyIds && asesorPropertyIds.length > 0) {
+        const propsList = asesorPropertyIds.map(id => `property_id.eq.${id}`).join(',')
+        query = query.or(`assigned_to.eq.${user.id},${propsList}`)
+      } else {
+        // No tiene propiedades asignadas → solo los leads asignados directos
+        query = query.eq('assigned_to', user.id)
+      }
+    } else if (assignedToMe) {
+      query = query.eq('assigned_to', user.id)
+    }
 
     const { data: leads, error } = await query
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -107,9 +117,11 @@ const LeadSchema = z.object({
   utm: z.record(z.string(), z.string()).optional().default({}),
 })
 
+// Rate limit best-effort por IP (no sobrevive entre instancias serverless).
+// La defensa real contra spam la da isDuplicate() en DB.
 const SIMPLE_RATE: Map<string, number[]> = new Map()
 const RATE_WINDOW_MS = 60_000
-const RATE_MAX = 5 // 5 leads por minuto por IP
+const RATE_MAX = 5
 
 function rateLimited(ip: string): boolean {
   const now = Date.now()
@@ -118,6 +130,35 @@ function rateLimited(ip: string): boolean {
   hits.push(now)
   SIMPLE_RATE.set(ip, hits)
   return false
+}
+
+/**
+ * Defensa contra spam de leads: chequea si el mismo (email OR phone) ya
+ * envió a esta propiedad en los últimos 5 minutos. Funciona entre instancias
+ * serverless (a diferencia del rate limit in-memory).
+ */
+async function isDuplicate(
+  supabase: ReturnType<typeof getAdmin>,
+  propertyId: string,
+  email: string | null,
+  phone: string | null,
+): Promise<boolean> {
+  if (!email && !phone) return false
+  const since = new Date(Date.now() - 5 * 60_000).toISOString()
+  let query = supabase
+    .from('property_leads')
+    .select('id', { count: 'exact', head: true })
+    .eq('property_id', propertyId)
+    .gte('created_at', since)
+  if (email && phone) {
+    query = query.or(`email.eq.${email},phone.eq.${phone}`)
+  } else if (email) {
+    query = query.eq('email', email)
+  } else if (phone) {
+    query = query.eq('phone', phone)
+  }
+  const { count } = await query
+  return (count ?? 0) > 0
 }
 
 export async function POST(req: Request) {
@@ -164,6 +205,15 @@ export async function POST(req: Request) {
         { error: 'Esta propiedad no está disponible para consultas' },
         { status: 410 },
       )
+    }
+
+    // Dedup: mismo (email OR phone) en los últimos 5 min para la misma property
+    if (await isDuplicate(supabase, prop.id, parsed.data.email ?? null, parsed.data.phone ?? null)) {
+      return NextResponse.json({
+        ok: true,
+        deduplicated: true,
+        message: 'Ya recibimos tu consulta hace unos minutos. Te vamos a contactar a la brevedad.',
+      })
     }
 
     const { data: lead, error: insErr } = await supabase
