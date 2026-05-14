@@ -136,6 +136,10 @@ function rateLimited(ip: string): boolean {
  * Defensa contra spam de leads: chequea si el mismo (email OR phone) ya
  * envió a esta propiedad en los últimos 5 minutos. Funciona entre instancias
  * serverless (a diferencia del rate limit in-memory).
+ *
+ * Usa dos queries separadas con .eq() en lugar de .or() con strings
+ * interpolados, para evitar inyección de sintaxis PostgREST si email/phone
+ * traen comas, puntos u operadores reservados.
  */
 async function isDuplicate(
   supabase: ReturnType<typeof getAdmin>,
@@ -145,20 +149,28 @@ async function isDuplicate(
 ): Promise<boolean> {
   if (!email && !phone) return false
   const since = new Date(Date.now() - 5 * 60_000).toISOString()
-  let query = supabase
-    .from('property_leads')
-    .select('id', { count: 'exact', head: true })
-    .eq('property_id', propertyId)
-    .gte('created_at', since)
-  if (email && phone) {
-    query = query.or(`email.eq.${email},phone.eq.${phone}`)
-  } else if (email) {
-    query = query.eq('email', email)
-  } else if (phone) {
-    query = query.eq('phone', phone)
+
+  if (email) {
+    const { count } = await supabase
+      .from('property_leads')
+      .select('id', { count: 'exact', head: true })
+      .eq('property_id', propertyId)
+      .eq('email', email)
+      .gte('created_at', since)
+    if ((count ?? 0) > 0) return true
   }
-  const { count } = await query
-  return (count ?? 0) > 0
+
+  if (phone) {
+    const { count } = await supabase
+      .from('property_leads')
+      .select('id', { count: 'exact', head: true })
+      .eq('property_id', propertyId)
+      .eq('phone', phone)
+      .gte('created_at', since)
+    if ((count ?? 0) > 0) return true
+  }
+
+  return false
 }
 
 export async function POST(req: Request) {

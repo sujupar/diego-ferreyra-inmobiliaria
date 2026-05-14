@@ -30,4 +30,12 @@ describe('normalizePhone', () => {
   it('sin código país de 12+ dígitos prepend 54', () => {
     expect(normalizePhone('9111234567890')).toBe('549111234567890')
   })
+
+  it('celular BA viejo con 15 inicial → strip 15 + prepend 5411', () => {
+    expect(normalizePhone('1512345678')).toBe('541112345678')
+  })
+
+  it('celular BA con 011-15 → strip ambos prefijos', () => {
+    expect(normalizePhone('011-15-1234-5678')).toBe('54111512345678')
+  })
 })

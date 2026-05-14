@@ -102,14 +102,26 @@ export async function POST(
       return NextResponse.json({ ok: true, url, mode: 'external-server' })
     }
 
-    // Modo 3: devolver props para render manual
+    // Modo 3: devolver props para render manual.
+    // Damos el comando en formato file-based para evitar shell injection con
+    // caracteres especiales (comillas, $, backticks) en los datos de la
+    // propiedad. El asesor guarda el JSON a un archivo y pasa la ruta.
+    const filename = `props-${id}.json`
+    const outputName = `property-${id}.mp4`
     return NextResponse.json({
       ok: true,
       mode: 'manual',
       compositionId: parsed.data.compositionId,
       inputProps: tourProps,
-      cliCommand: `npx remotion render remotion/index.ts ${parsed.data.compositionId} property-${id}.mp4 --props='${JSON.stringify(tourProps).replace(/'/g, "'\\''")}'`,
-      note: 'No hay servidor de render configurado. Usá el CLI command o configurá REMOTION_RENDER_URL.',
+      cliCommand: [
+        `# 1. Guardá inputProps en un archivo:`,
+        `echo '<pegar acá el JSON de inputProps>' > ${filename}`,
+        `# 2. Renderizá:`,
+        `npx remotion render remotion/index.ts ${parsed.data.compositionId} ${outputName} --props=./${filename}`,
+      ].join('\n'),
+      note:
+        'No hay servidor de render configurado. Guardá inputProps en un archivo JSON y pasalo a Remotion vía --props=./archivo.json. ' +
+        'Para automatizar, configurá REMOTION_RENDER_URL apuntando a tu servidor de render.',
     })
   } catch (err) {
     return NextResponse.json(

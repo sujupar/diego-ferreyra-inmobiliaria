@@ -38,24 +38,37 @@ interface MetaWhatsAppResponse {
 }
 
 /**
- * Normaliza un número telefónico a formato E.164 sin "+".
- * Maneja números argentinos típicos: "+54 11 1234-5678", "11-1234-5678", etc.
- * Si ya viene con código de país (+54 o 54), lo respeta.
- * Si empieza con 0 o 15, asume Argentina (54) + Buenos Aires (11).
+ * Normaliza un número telefónico argentino a formato E.164 sin "+".
+ *
+ * Maneja:
+ *  - "+54 11 1234-5678" → "541112345678"
+ *  - "5491145678901" (ya con código) → respeta
+ *  - "1145678901" (10 dígitos área+local) → prepend 54
+ *  - "01145678901" (11 dígitos con 0 de área) → strip 0 + prepend 54
+ *  - "1512345678" (celular BA viejo con 15) → 5411 + número (sin 15)
+ *
+ * Limitaciones conocidas:
+ *  - Para celulares de provincias con prefijo 15 (ej. Córdoba "351-15-..."),
+ *    el código asume BA. El asesor debe ingresar el teléfono en formato
+ *    internacional (+54 ...) para máxima seguridad.
  */
 export function normalizePhone(raw: string | null | undefined): string | null {
   if (!raw) return null
-  const cleaned = raw.replace(/[^\d]/g, '')
+  let cleaned = raw.replace(/[^\d]/g, '')
   if (!cleaned) return null
-  // Si empieza con 54, asumimos que ya está formateado
+
+  // Si ya empieza con 54, asumimos que está formateado correctamente
   if (cleaned.startsWith('54')) return cleaned
-  // Si tiene 10 dígitos (ej. 1145678901), prepend 54
-  if (cleaned.length === 10) return `54${cleaned}`
-  // Si tiene 11 dígitos y empieza con 0, sacar el 0 y prepend 54
-  if (cleaned.length === 11 && cleaned.startsWith('0')) {
-    return `54${cleaned.slice(1)}`
+
+  // Strip 0 inicial (código de área AR usa 0 en formato nacional)
+  if (cleaned.startsWith('0')) cleaned = cleaned.slice(1)
+
+  // Strip 15 inicial de celulares BA viejos: 15-xxxx-xxxx → 11-xxxx-xxxx.
+  // Solo si después de sacar el 0, queda 10 dígitos empezando con 15.
+  if (cleaned.startsWith('15') && cleaned.length === 10) {
+    cleaned = `11${cleaned.slice(2)}`
   }
-  // Default: prepend 54
+
   return `54${cleaned}`
 }
 
