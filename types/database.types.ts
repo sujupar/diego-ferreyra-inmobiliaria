@@ -109,6 +109,7 @@ export interface Database {
                     notes: string | null
                     origin: string | null
                     assigned_to: string | null
+                    report_edits: Json | null
                 }
                 Insert: {
                     id?: string
@@ -132,6 +133,7 @@ export interface Database {
                     notes?: string | null
                     origin?: string | null
                     assigned_to?: string | null
+                    report_edits?: Json | null
                 }
                 Update: {
                     id?: string
@@ -155,6 +157,7 @@ export interface Database {
                     notes?: string | null
                     origin?: string | null
                     assigned_to?: string | null
+                    report_edits?: Json | null
                 }
                 Relationships: [
                     {
@@ -330,6 +333,7 @@ export interface Database {
                     stage_id: string
                     stage_name: string | null
                     contact_count: number
+                    new_contacts: number
                     opportunity_value: number
                     fetched_at: string
                 }
@@ -341,6 +345,7 @@ export interface Database {
                     stage_id: string
                     stage_name?: string | null
                     contact_count?: number
+                    new_contacts?: number
                     opportunity_value?: number
                     fetched_at?: string
                 }
@@ -352,6 +357,7 @@ export interface Database {
                     stage_id?: string
                     stage_name?: string | null
                     contact_count?: number
+                    new_contacts?: number
                     opportunity_value?: number
                     fetched_at?: string
                 }
@@ -477,6 +483,7 @@ export interface Database {
                     operation_type: string
                     title: string | null
                     postal_code: string | null
+                    public_slug: string | null
                 }
                 Insert: {
                     id?: string
@@ -522,6 +529,7 @@ export interface Database {
                     operation_type?: string
                     title?: string | null
                     postal_code?: string | null
+                    public_slug?: string | null
                 }
                 Update: {
                     id?: string
@@ -567,6 +575,7 @@ export interface Database {
                     operation_type?: string
                     title?: string | null
                     postal_code?: string | null
+                    public_slug?: string | null
                 }
                 Relationships: []
             }
@@ -677,6 +686,57 @@ export interface Database {
                     refresh_token?: string | null
                     expires_at?: string | null
                     metadata?: Json
+                    updated_at?: string
+                }
+                Relationships: []
+            }
+            property_leads: {
+                Row: {
+                    id: string
+                    property_id: string
+                    name: string
+                    email: string | null
+                    phone: string | null
+                    message: string | null
+                    source: string
+                    utm: Json
+                    status: string
+                    assigned_to: string | null
+                    meta_lead_id: string | null
+                    notes: string | null
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    property_id: string
+                    name: string
+                    email?: string | null
+                    phone?: string | null
+                    message?: string | null
+                    source?: string
+                    utm?: Json
+                    status?: string
+                    assigned_to?: string | null
+                    meta_lead_id?: string | null
+                    notes?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    property_id?: string
+                    name?: string
+                    email?: string | null
+                    phone?: string | null
+                    message?: string | null
+                    source?: string
+                    utm?: Json
+                    status?: string
+                    assigned_to?: string | null
+                    meta_lead_id?: string | null
+                    notes?: string | null
+                    created_at?: string
                     updated_at?: string
                 }
                 Relationships: []

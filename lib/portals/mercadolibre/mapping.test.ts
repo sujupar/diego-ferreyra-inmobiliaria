@@ -24,6 +24,7 @@ function makeProperty(overrides: Partial<Property> = {}): Property {
     video_url: null, tour_3d_url: null,
     expensas: 50000, amenities: ['pileta', 'parrilla'],
     operation_type: 'venta', title: null, postal_code: '1414',
+    public_slug: null,
     ...overrides,
   }
 }

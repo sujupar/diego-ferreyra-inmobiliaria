@@ -5,6 +5,7 @@ import { initPortals, getAdapter } from '@/lib/portals'
 import { writeAudit } from '@/lib/portals/audit'
 import type { PortalName } from '@/lib/portals/types'
 import { nextStateAfterError, stripFlag, swapFlag } from '@/lib/portals/worker-logic'
+import { ensurePublicSlug } from '@/lib/landing/assign-slug'
 
 /**
  * Worker que corre cada 1 minuto.
@@ -204,6 +205,12 @@ async function processPublishes(supabase: ReturnType<typeof createClient<Databas
         eventType: 'published',
         payload: { externalId: result.externalId, externalUrl: result.externalUrl },
       })
+      // Asegurar public_slug para landing page (idempotente)
+      try {
+        await ensurePublicSlug(supabase, listing.property_id)
+      } catch (slugErr) {
+        console.warn('[publish-listings] ensurePublicSlug failed', slugErr)
+      }
     } catch (err) {
       const state = nextStateAfterError(listing.attempts ?? 0, err)
       await supabase.from('property_listings').update({

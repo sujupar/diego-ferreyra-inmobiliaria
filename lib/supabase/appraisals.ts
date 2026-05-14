@@ -135,7 +135,7 @@ export async function saveAppraisal(input: SaveAppraisalInput): Promise<string> 
             notes,
             origin: origin || null,
             assigned_to: assignedTo || null,
-            report_edits: input.reportEdits ?? null,
+            report_edits: (input.reportEdits ?? null) as never,
         })
         .select('id')
         .single()
@@ -354,7 +354,7 @@ export async function updateAppraisal(id: string, input: SaveAppraisalInput): Pr
 
     const { error: updateError } = await supabase
         .from('appraisals')
-        .update(updatePayload)
+        .update(updatePayload as never)
         .eq('id', id)
 
     if (updateError) throw updateError

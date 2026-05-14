@@ -47,6 +47,7 @@ function makeProperty(overrides: Partial<Property> = {}): Property {
     operation_type: 'venta',
     title: null,
     postal_code: null,
+    public_slug: null,
     ...overrides,
   }
 }
