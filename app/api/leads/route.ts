@@ -266,13 +266,6 @@ export async function POST(req: Request) {
         utm: (lead.utm as Record<string, string>) ?? {},
         createdAt: lead.created_at,
       })
-      notifyAdvisorWhatsAppAsync({
-        assignedTo: prop.assigned_to,
-        leadName: lead.name,
-        leadPhone: lead.phone,
-        leadEmail: lead.email,
-        propertyAddress: prop.address,
-      })
     }
 
     return NextResponse.json({ ok: true, id: lead.id })
@@ -306,41 +299,3 @@ function notifyAdvisorAsync(input: {
     .catch(err => console.error('[lead notification]', err))
 }
 
-/**
- * Notificación WhatsApp al asesor — fire-and-forget.
- * Si WhatsApp Cloud API no está configurada, simplemente no envía.
- * No bloquea la respuesta al cliente que envió el lead.
- */
-function notifyAdvisorWhatsAppAsync(input: {
-  assignedTo: string
-  leadName: string
-  leadPhone: string | null
-  leadEmail: string | null
-  propertyAddress: string
-}) {
-  ;(async () => {
-    try {
-      const supabase = getAdmin()
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name, phone')
-        .eq('id', input.assignedTo)
-        .single()
-      if (!profile?.phone) return // sin teléfono del asesor → skip
-      const { notifyLeadByWhatsApp } = await import('@/lib/messaging/whatsapp-cloud')
-      const result = await notifyLeadByWhatsApp({
-        advisorPhone: profile.phone,
-        advisorName: profile.full_name || 'Asesor',
-        leadName: input.leadName,
-        leadPhone: input.leadPhone,
-        leadEmail: input.leadEmail,
-        propertyAddress: input.propertyAddress,
-      })
-      if (!result.ok && result.skipped !== 'not_configured') {
-        console.warn('[whatsapp lead]', result.error ?? result.skipped)
-      }
-    } catch (err) {
-      console.error('[whatsapp lead]', err)
-    }
-  })()
-}

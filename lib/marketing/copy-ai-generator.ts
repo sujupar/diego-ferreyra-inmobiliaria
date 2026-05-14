@@ -14,6 +14,7 @@
  * reintentos. El builder pasa el resultado completo de aquí.
  */
 import type { Property } from '@/lib/portals/types'
+import { chatCompletion, hasAiConfigured } from '@/lib/ai/chat-client'
 import { buildAdCopy, type AdCopy } from './copy-templates'
 
 export interface AdCopyVariations {
@@ -21,10 +22,6 @@ export interface AdCopyVariations {
   headlines: string[] // 3 variaciones
   description: string
   source: 'ai' | 'template'
-}
-
-interface OpenAIResponse {
-  choices: Array<{ message: { content: string } }>
 }
 
 const SYSTEM_PROMPT = `
@@ -66,14 +63,6 @@ Sos un copywriter de Meta Ads para una inmobiliaria argentina (Diego Ferreyra In
 - Output: SOLO el JSON. Sin texto antes ni después.
 `
 
-function getApiKey(): string | null {
-  return process.env.OPENAI_API_KEY ?? null
-}
-
-function getModel(): string {
-  return process.env.OPENAI_MODEL ?? 'gpt-4o-mini'
-}
-
 function buildUserPayload(property: Property, landingUrl: string): string {
   const amenities = Array.isArray(property.amenities)
     ? (property.amenities as string[])
@@ -108,37 +97,22 @@ function buildUserPayload(property: Property, landingUrl: string): string {
     .join('\n')
 }
 
-async function callOpenAI(
+async function callAi(
   property: Property,
   landingUrl: string,
 ): Promise<AdCopyVariations | null> {
-  const apiKey = getApiKey()
-  if (!apiKey) return null
+  if (!hasAiConfigured()) return null
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: getModel(),
-        response_format: { type: 'json_object' },
-        temperature: 0.8, // un poco más creativo que el de portales
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: buildUserPayload(property, landingUrl) },
-        ],
-      }),
+    const res = await chatCompletion({
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: buildUserPayload(property, landingUrl) },
+      ],
+      temperature: 0.8, // un poco más creativo que el de portales
+      jsonMode: true,
     })
-    if (!res.ok) {
-      const text = await res.text()
-      console.warn(`[copy-ai] OpenAI ${res.status}: ${text.slice(0, 200)}`)
-      return null
-    }
-    const data = (await res.json()) as OpenAIResponse
-    const content = data.choices?.[0]?.message?.content
+    const content = res.content
     if (!content) return null
     const parsed = JSON.parse(content) as Partial<AdCopyVariations>
     if (
@@ -173,7 +147,7 @@ export async function generateAdCopyVariations(
   property: Property,
   landingUrl: string,
 ): Promise<AdCopyVariations> {
-  const aiResult = await callOpenAI(property, landingUrl)
+  const aiResult = await callAi(property, landingUrl)
   if (aiResult) return aiResult
 
   // Fallback determinístico

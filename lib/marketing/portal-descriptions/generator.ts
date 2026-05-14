@@ -1,11 +1,11 @@
 /**
- * Generador de descripciones para portales usando OpenAI.
- * System prompt: "GPT Portales" de Diego (ver system-prompt.ts).
+ * Generador de descripciones para portales usando un proveedor AI
+ * (DeepSeek por default, OpenAI fallback automático según env).
  *
- * Modelo: gpt-4o-mini (cheap, fast, calidad suficiente). Si se necesita más
- * calidad puede subirse a gpt-4o vía env OPENAI_MODEL.
+ * System prompt: "GPT Portales" de Diego (ver system-prompt.ts).
  */
 import type { Property } from '@/lib/portals/types'
+import { chatCompletion } from '@/lib/ai/chat-client'
 import { PORTAL_DESCRIPTION_SYSTEM_PROMPT } from './system-prompt'
 
 export interface GeneratedDescription {
@@ -16,22 +16,8 @@ export interface GeneratedDescription {
 
 export interface GenerateInput {
   property: Property
-  buyerProfile?: string // ej: "familia con dos hijos", "pareja joven inversionista"
-  extraNotes?: string // notas libres del asesor que enriquecen el contexto
-}
-
-interface OpenAIResponse {
-  choices: Array<{ message: { content: string } }>
-}
-
-function getApiKey(): string {
-  const k = process.env.OPENAI_API_KEY
-  if (!k) throw new Error('OPENAI_API_KEY no configurada')
-  return k
-}
-
-function getModel(): string {
-  return process.env.OPENAI_MODEL ?? 'gpt-4o-mini'
+  buyerProfile?: string
+  extraNotes?: string
 }
 
 const TIPOLOGIA_MAP: Record<string, string> = {
@@ -39,7 +25,7 @@ const TIPOLOGIA_MAP: Record<string, string> = {
   departamento: 'DEPARTAMENTO',
   depto: 'DEPARTAMENTO',
   ph: 'PH',
-  oficina: 'DEPARTAMENTO', // fallback estructural
+  oficina: 'DEPARTAMENTO',
   local: 'DEPARTAMENTO',
   terreno: 'CASA',
 }
@@ -83,7 +69,9 @@ function buildUserPayload(input: GenerateInput): string {
     ``,
     input.buyerProfile ? `# Comprador ideal\n${input.buyerProfile}` : null,
     input.extraNotes ? `# Notas adicionales del asesor\n${input.extraNotes}` : null,
-    p.description ? `# Descripción manual previa (referencia, podés mejorarla)\n${p.description}` : null,
+    p.description
+      ? `# Descripción manual previa (referencia, podés mejorarla)\n${p.description}`
+      : null,
     ``,
     `# Tarea`,
     `Generá el title, subtitle y body para esta propiedad siguiendo TODAS las reglas del system prompt. Devolvé solo el JSON.`,
@@ -97,37 +85,20 @@ export async function generatePortalDescription(
 ): Promise<GeneratedDescription> {
   const userMessage = buildUserPayload(input)
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${getApiKey()}`,
-    },
-    body: JSON.stringify({
-      model: getModel(),
-      response_format: { type: 'json_object' },
-      temperature: 0.7,
-      messages: [
-        { role: 'system', content: PORTAL_DESCRIPTION_SYSTEM_PROMPT },
-        { role: 'user', content: userMessage },
-      ],
-    }),
+  const res = await chatCompletion({
+    messages: [
+      { role: 'system', content: PORTAL_DESCRIPTION_SYSTEM_PROMPT },
+      { role: 'user', content: userMessage },
+    ],
+    temperature: 0.7,
+    jsonMode: true,
   })
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`OpenAI ${res.status}: ${text}`)
-  }
-
-  const data = (await res.json()) as OpenAIResponse
-  const content = data.choices?.[0]?.message?.content
-  if (!content) throw new Error('OpenAI no devolvió contenido')
 
   let parsed: unknown
   try {
-    parsed = JSON.parse(content)
+    parsed = JSON.parse(res.content)
   } catch {
-    throw new Error(`OpenAI devolvió JSON inválido: ${content.slice(0, 200)}`)
+    throw new Error(`${res.provider} devolvió JSON inválido: ${res.content.slice(0, 200)}`)
   }
 
   const result = parsed as Partial<GeneratedDescription>
