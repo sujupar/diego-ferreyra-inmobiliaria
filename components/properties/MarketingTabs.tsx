@@ -2,11 +2,12 @@
 
 import { useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Megaphone, Building2, BarChart3, Mail } from 'lucide-react'
+import { Megaphone, Building2, BarChart3, Mail, Film } from 'lucide-react'
 import { PortalListingsCard } from './PortalListingsCard'
 import { PortalMetricsChart } from './PortalMetricsChart'
 import { MetaCampaignCard } from './MetaCampaignCard'
 import { PropertyLeadsCard } from './PropertyLeadsCard'
+import { RenderVideoCard } from './RenderVideoCard'
 
 interface TabProps {
   propertyId: string
@@ -18,6 +19,7 @@ const TABS = [
   { key: 'portales', label: 'Portales', icon: Building2 },
   { key: 'meta', label: 'Meta Ads', icon: BarChart3 },
   { key: 'leads', label: 'Leads', icon: Mail },
+  { key: 'video', label: 'Video', icon: Film },
 ] as const
 
 type TabKey = (typeof TABS)[number]['key']
@@ -73,6 +75,8 @@ export function MarketingTabs({ propertyId, canManage }: TabProps) {
       )}
 
       {active === 'leads' && <PropertyLeadsCard propertyId={propertyId} />}
+
+      {active === 'video' && <RenderVideoCard propertyId={propertyId} />}
     </div>
   )
 }
