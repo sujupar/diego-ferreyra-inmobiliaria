@@ -5,8 +5,10 @@
 -- CONTEXTO
 -- --------
 -- Cada propiedad publicada en al menos un portal tendrá su propia landing
--- page en un subdominio: [slug].inmodf.com.ar. El slug se genera del address
--- + barrio + sufijo random, persistido en properties.public_slug (UNIQUE).
+-- page en una URL pública: inmodf.com.ar/p/[slug]. El slug se genera del
+-- address + barrio + sufijo random, persistido en properties.public_slug
+-- (UNIQUE). Decisión 2026-05-14: usar path-based en lugar de subdomain
+-- (mejor SEO + sin costo extra de wildcard SSL).
 --
 -- Los leads que llegan vía la landing se guardan en property_leads, con
 -- assignment automático al asesor de la propiedad.
@@ -27,7 +29,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_properties_public_slug
   WHERE public_slug IS NOT NULL;
 
 COMMENT ON COLUMN public.properties.public_slug IS
-  'Slug único para landing pública en [slug].inmodf.com.ar';
+  'Slug único para landing pública en inmodf.com.ar/p/[slug]';
 
 -- 2. property_leads: leads que llegan desde landing/Meta/portales
 CREATE TABLE IF NOT EXISTS public.property_leads (
