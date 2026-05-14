@@ -22,6 +22,7 @@ import type { Property } from '@/lib/portals/types'
 import { decideBudget } from './budget-rules'
 import { decideTargeting } from './targeting-rules'
 import { buildAdCopy } from './copy-templates'
+import { getUsdToArs } from './usd-rate'
 
 const META_API = 'https://graph.facebook.com/v21.0'
 
@@ -111,18 +112,25 @@ export async function createCampaignForProperty(
   const { accountId, pageId } = getMeta()
   const landingUrl = `${getAppUrl()}/p/${property.public_slug}`
 
-  const budget = decideBudget(property.asking_price, property.currency)
-  const targeting = decideTargeting(property)
+  // Tipo de cambio USD→ARS fresco (Bluelytics, cached 1h)
+  const { rate: usdToArs, source: rateSource } = await getUsdToArs()
+
+  const budget = decideBudget(property.asking_price, property.currency, usdToArs)
+  const targeting = decideTargeting(property, usdToArs)
   const copy = buildAdCopy(property)
 
   // 1. Crear Campaign (paused)
+  // NOTA: en Argentina las campañas de real estate NO requieren la categoría
+  // especial HOUSING (es una regulación específica de EEUU/Canadá). Diego ya
+  // corre campañas residenciales sin esta categoría exitosamente. Si en algún
+  // momento Meta lo exige, se agrega aquí especial_ad_categories: ['HOUSING'].
   const campaign = await metaFetch<{ id: string }>(`/${accountId}/campaigns`, {
     method: 'POST',
     body: JSON.stringify({
       name: `[Auto] ${property.title ?? property.address} (${property.public_slug})`,
       objective: 'OUTCOME_LEADS',
       status: 'PAUSED',
-      special_ad_categories: ['HOUSING'], // Required for housing ads
+      special_ad_categories: [], // Sin restricciones especiales en AR
       buying_type: 'AUCTION',
     }),
   })
@@ -163,7 +171,6 @@ export async function createCampaignForProperty(
       targeting: targeting.spec,
       status: 'PAUSED',
       start_time: startTime,
-      special_ad_categories: ['HOUSING'],
     }),
   })
 

@@ -7,6 +7,7 @@ import {
   archiveCampaign,
 } from '@/lib/marketing/meta-campaign-builder'
 import { nextBackoff, isoFromNow } from '@/lib/portals/backoff'
+import { ensurePublicSlug } from '@/lib/landing/assign-slug'
 
 /**
  * Worker que procesa la cola de jobs Meta cada 2 min.
@@ -97,12 +98,14 @@ async function runJob(
   if (!property) throw new Error(`Property ${job.property_id} no encontrada`)
 
   switch (job.action) {
-    case 'create_campaign':
-      if (!property.public_slug) {
-        throw new Error('Property aún no tiene public_slug — esperando')
-      }
-      await createCampaignForProperty(property)
+    case 'create_campaign': {
+      // Asegurar public_slug just-in-time: la campaign necesita una landing URL
+      // pero no dependemos de que un portal haya publicado primero.
+      const slug = property.public_slug ?? (await ensurePublicSlug(supabase, property.id))
+      const enrichedProperty = { ...property, public_slug: slug }
+      await createCampaignForProperty(enrichedProperty)
       return
+    }
 
     case 'pause_campaign': {
       const { data: camps } = await supabase

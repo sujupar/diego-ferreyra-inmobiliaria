@@ -38,8 +38,7 @@ const REAL_ESTATE_INTERESTS = [
   { id: '6003348604581', name: 'Mortgage loan' },
 ]
 
-function priceInUsd(property: Property): number {
-  const usdToArs = parseFloat(process.env.USD_TO_ARS ?? '1200') || 1200
+function priceInUsd(property: Property, usdToArs: number): number {
   if (property.currency === 'USD') return property.asking_price
   if (property.currency === 'ARS') return property.asking_price / usdToArs
   return property.asking_price
@@ -65,11 +64,14 @@ export interface TargetingDecision {
   reasoning: string
 }
 
-export function decideTargeting(property: Property): TargetingDecision {
+export function decideTargeting(
+  property: Property,
+  usdToArs: number,
+): TargetingDecision {
   if (property.latitude == null || property.longitude == null) {
     throw new Error('decideTargeting: requiere lat/lng en la propiedad')
   }
-  const usd = priceInUsd(property)
+  const usd = priceInUsd(property, usdToArs)
   const radius = radiusKm(usd)
 
   const spec: MetaTargetingSpec = {

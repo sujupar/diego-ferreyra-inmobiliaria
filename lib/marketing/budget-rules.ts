@@ -26,25 +26,16 @@ const DEFAULT_TIERS: BudgetTier[] = [
   { maxUsd: null, dailyArs: 25_000, label: 'Premium (>USD 600k)' },
 ]
 
-const USD_TO_ARS_DEFAULT = 1200 // fallback conservador si no hay env
-
-function getUsdToArs(): number {
-  const fromEnv = process.env.USD_TO_ARS
-  if (fromEnv) {
-    const n = parseFloat(fromEnv)
-    if (Number.isFinite(n) && n > 0) return n
-  }
-  return USD_TO_ARS_DEFAULT
-}
-
 /**
  * Convierte el precio de la propiedad a USD (si no lo está ya).
+ * El rate USD→ARS se inyecta para mantener la función pura/testeable.
+ * Quien orquesta llama a getUsdToArs() (lib/marketing/usd-rate.ts) primero
+ * y pasa el resultado acá.
  */
-function priceInUsd(price: number, currency: string): number {
+function priceInUsd(price: number, currency: string, usdToArs: number): number {
   if (currency === 'USD') return price
-  if (currency === 'ARS') return price / getUsdToArs()
-  // Fallback conservador: asumimos USD
-  return price
+  if (currency === 'ARS') return price / usdToArs
+  return price // fallback: asumimos USD
 }
 
 export interface BudgetDecision {
@@ -59,9 +50,10 @@ export interface BudgetDecision {
 export function decideBudget(
   price: number,
   currency: string,
+  usdToArs: number,
   tiers: BudgetTier[] = DEFAULT_TIERS,
 ): BudgetDecision {
-  const usd = priceInUsd(price, currency)
+  const usd = priceInUsd(price, currency, usdToArs)
   const tier =
     tiers.find(t => t.maxUsd === null || usd <= t.maxUsd) ?? tiers[tiers.length - 1]
   return {
