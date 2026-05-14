@@ -17,6 +17,8 @@ const PORTAL_LABEL: Record<string, string> = {
   mercadolibre: 'MercadoLibre',
   argenprop: 'Argenprop',
   zonaprop: 'ZonaProp',
+  properati: 'Properati',
+  mudafy: 'Mudafy',
 }
 
 export function PortalMetricsChart({ propertyId }: { propertyId: string }) {

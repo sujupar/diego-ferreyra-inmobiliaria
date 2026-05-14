@@ -1,6 +1,11 @@
 import type { Database, Json } from '@/types/database.types'
 
-export type PortalName = 'mercadolibre' | 'argenprop' | 'zonaprop'
+export type PortalName =
+  | 'mercadolibre'
+  | 'argenprop'
+  | 'zonaprop'
+  | 'properati'
+  | 'mudafy'
 
 export type ListingStatus =
   | 'pending'

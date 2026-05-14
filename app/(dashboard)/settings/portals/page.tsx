@@ -17,6 +17,8 @@ const PORTAL_LABEL: Record<string, string> = {
   mercadolibre: 'MercadoLibre',
   argenprop: 'Argenprop',
   zonaprop: 'ZonaProp',
+  properati: 'Properati',
+  mudafy: 'Mudafy',
 }
 
 export default function PortalsSettingsPage() {
@@ -140,6 +142,20 @@ export default function PortalsSettingsPage() {
               <p className="text-xs text-muted-foreground">
                 Setear <code>ZONAPROP_API_KEY</code> y{' '}
                 <code>ZONAPROP_CLIENT_CODE</code> en env vars de Netlify y
+                volver acá a activar.
+              </p>
+            )}
+            {c.portal === 'properati' && !c.enabled && (
+              <p className="text-xs text-muted-foreground">
+                Setear <code>PROPERATI_API_KEY</code> y{' '}
+                <code>PROPERATI_CLIENT_CODE</code> en env vars de Netlify y
+                volver acá a activar.
+              </p>
+            )}
+            {c.portal === 'mudafy' && !c.enabled && (
+              <p className="text-xs text-muted-foreground">
+                Setear <code>MUDAFY_API_KEY</code> y{' '}
+                <code>MUDAFY_CLIENT_CODE</code> en env vars de Netlify y
                 volver acá a activar.
               </p>
             )}
