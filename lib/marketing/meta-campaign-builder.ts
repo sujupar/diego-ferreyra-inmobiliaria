@@ -21,7 +21,7 @@ import type { Database } from '@/types/database.types'
 import type { Property } from '@/lib/portals/types'
 import { decideBudget } from './budget-rules'
 import { decideTargeting } from './targeting-rules'
-import { buildAdCopy } from './copy-templates'
+import { generateAdCopyVariations, variationsToPrimary } from './copy-ai-generator'
 import { getUsdToArs } from './usd-rate'
 
 const META_API = 'https://graph.facebook.com/v21.0'
@@ -117,7 +117,11 @@ export async function createCampaignForProperty(
 
   const budget = decideBudget(property.asking_price, property.currency, usdToArs)
   const targeting = decideTargeting(property, usdToArs)
-  const copy = buildAdCopy(property)
+  // Copy con OpenAI (fallback a templates si falla / no hay API key).
+  // Las 3 variaciones se guardan en property_meta_campaigns.copy para
+  // futuros A/B tests; el ad usa la primera de cada array.
+  const copyVariations = await generateAdCopyVariations(property, landingUrl)
+  const copy = variationsToPrimary(copyVariations)
 
   // 1. Crear Campaign (paused)
   // NOTA: en Argentina las campañas de real estate NO requieren la categoría
@@ -146,7 +150,7 @@ export async function createCampaignForProperty(
     budget_daily: budget.dailyArs,
     budget_currency: 'ARS',
     targeting: targeting.spec as never,
-    copy: copy as never,
+    copy: copyVariations as never,
     landing_url: landingUrl,
   })
 
