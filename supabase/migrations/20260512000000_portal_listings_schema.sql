@@ -26,7 +26,11 @@
 -- =============================================================================
 
 -- 1. Extender properties con campos para portales
+-- description se incluye defensivamente: aunque viene de la migration
+-- 20260506000000_properties_description.sql, si por algún motivo no se aplicó
+-- esto la crea acá (IF NOT EXISTS).
 ALTER TABLE public.properties
+  ADD COLUMN IF NOT EXISTS description text,
   ADD COLUMN IF NOT EXISTS latitude numeric,
   ADD COLUMN IF NOT EXISTS longitude numeric,
   ADD COLUMN IF NOT EXISTS video_url text,

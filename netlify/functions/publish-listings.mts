@@ -2,10 +2,9 @@ import type { Config } from '@netlify/functions'
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import { initPortals, getAdapter } from '@/lib/portals'
-import { nextBackoff, isoFromNow } from '@/lib/portals/backoff'
 import { writeAudit } from '@/lib/portals/audit'
-import { PortalAdapterError } from '@/lib/portals/types'
 import type { PortalName } from '@/lib/portals/types'
+import { nextStateAfterError, stripFlag, swapFlag } from '@/lib/portals/worker-logic'
 
 /**
  * Worker que corre cada 1 minuto.
@@ -46,11 +45,7 @@ async function processUnpublishes(supabase: ReturnType<typeof createClient<Datab
 
     // Lock atomic: consumir el flag needs_unpublish antes de llamar al portal.
     // Si otro worker corrió primero, el WHERE no matchea y skipeamos.
-    const metaWithProgress = {
-      ...(listing.metadata as Record<string, unknown>),
-      unpublish_in_progress: true,
-    }
-    delete (metaWithProgress as Record<string, unknown>).needs_unpublish
+    const metaWithProgress = swapFlag(listing.metadata, 'needs_unpublish', 'unpublish_in_progress')
     const { data: locked } = await supabase
       .from('property_listings')
       .update({ metadata: metaWithProgress as never })
@@ -96,11 +91,7 @@ async function processUpdates(supabase: ReturnType<typeof createClient<Database>
     if (!adapter || !adapter.enabled || !listing.external_id) continue
 
     // Lock atomic: consumir el flag needs_update antes de llamar al portal
-    const metaWithProgress = {
-      ...(listing.metadata as Record<string, unknown>),
-      update_in_progress: true,
-    }
-    delete (metaWithProgress as Record<string, unknown>).needs_update
+    const metaWithProgress = swapFlag(listing.metadata, 'needs_update', 'update_in_progress')
     const { data: locked } = await supabase
       .from('property_listings')
       .update({ metadata: metaWithProgress as never })
@@ -214,49 +205,25 @@ async function processPublishes(supabase: ReturnType<typeof createClient<Databas
         payload: { externalId: result.externalId, externalUrl: result.externalUrl },
       })
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      const attempts = (listing.attempts ?? 0) + 1
-      const isRetryable =
-        err instanceof PortalAdapterError ? err.retryable !== false : true
-      const backoff = isRetryable ? nextBackoff(attempts - 1) : null
-
-      if (backoff !== null) {
-        await supabase.from('property_listings').update({
-          status: 'pending',
-          attempts,
-          next_attempt_at: isoFromNow(backoff),
-          last_error: message,
-        }).eq('id', listing.id)
-        await writeAudit(supabase, {
-          listingId: listing.id,
-          propertyId: listing.property_id,
-          portal: listing.portal as PortalName,
-          eventType: 'retried',
-          errorMessage: message,
-          payload: { attempts, backoff_seconds: backoff },
-        })
-      } else {
-        await supabase.from('property_listings').update({
-          status: 'failed',
-          attempts,
-          last_error: message,
-        }).eq('id', listing.id)
-        await writeAudit(supabase, {
-          listingId: listing.id,
-          propertyId: listing.property_id,
-          portal: listing.portal as PortalName,
-          eventType: 'failed',
-          errorMessage: message,
-        })
-      }
+      const state = nextStateAfterError(listing.attempts ?? 0, err)
+      await supabase.from('property_listings').update({
+        status: state.status,
+        attempts: state.attempts,
+        next_attempt_at: state.next_attempt_at,
+        last_error: state.last_error,
+      }).eq('id', listing.id)
+      await writeAudit(supabase, {
+        listingId: listing.id,
+        propertyId: listing.property_id,
+        portal: listing.portal as PortalName,
+        eventType: state.status === 'pending' ? 'retried' : 'failed',
+        errorMessage: state.last_error,
+        payload: state.status === 'pending'
+          ? { attempts: state.attempts, next_attempt_at: state.next_attempt_at }
+          : undefined,
+      })
     }
   }
-}
-
-function stripFlag(metadata: unknown, key: string): Record<string, unknown> {
-  const m = { ...((metadata as Record<string, unknown>) ?? {}) }
-  delete m[key]
-  return m
 }
 
 export const config: Config = {
