@@ -9,6 +9,7 @@ import {
   Loader2, CheckCircle, X, User, FileCheck, Home, Scale,
   AlertTriangle, ChevronRight, Bell
 } from 'lucide-react'
+import type { PropertyVisitWithRelations } from '@/types/visits.types'
 
 const TYPE_CONFIG: Record<string, { icon: typeof Bell; color: string; label: string; urgent?: boolean }> = {
   update_contact: { icon: User, color: 'bg-amber-100 text-amber-800', label: 'Actualizar Contacto' },
@@ -57,10 +58,19 @@ export default function TasksPage() {
   const [filter, setFilter] = useState<'pending' | 'completed' | 'all'>('pending')
   const [userInfo, setUserInfo] = useState<{ id: string } | null>(null)
   const [completing, setCompleting] = useState<string | null>(null)
+  const [overdueVisits, setOverdueVisits] = useState<PropertyVisitWithRelations[]>([])
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!userInfo?.id) return
+    fetch(`/api/visits?advisor_id=${userInfo.id}&status=scheduled&to=${encodeURIComponent(new Date().toISOString())}`)
+      .then(r => r.json())
+      .then(({ data }) => setOverdueVisits(Array.isArray(data) ? data : []))
+      .catch(() => setOverdueVisits([]))
+  }, [userInfo])
 
   useEffect(() => {
     if (!userInfo?.id) return
@@ -95,6 +105,29 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-8">
+      {overdueVisits.length > 0 && (
+        <Card className="border-orange-500 border-2 mb-4">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-orange-700">
+                Visitas pendientes de marcar ({overdueVisits.length})
+              </h3>
+              <Link href="/visits" className="text-sm text-primary underline">Ver todas</Link>
+            </div>
+            <ul className="space-y-2">
+              {overdueVisits.map(v => (
+                <li key={v.id} className="text-sm">
+                  <Link href={`/visits/${v.id}`} className="hover:underline">
+                    <span className="font-medium">{v.property?.address ?? '-'}</span>
+                    <span className="text-muted-foreground"> · {v.client_name} · {new Date(v.scheduled_at).toLocaleString('es-AR')}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="space-y-2">
         <p className="eyebrow">Hoy · Bandeja</p>
         <div className="flex items-end justify-between gap-4 flex-wrap">

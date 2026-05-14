@@ -9,7 +9,10 @@ import { Badge } from '@/components/ui/badge'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { BulkActionsBar } from '@/components/ui/BulkActionsBar'
-import { Building2, Plus, MapPin, Calendar, Loader2, ChevronRight, LayoutList, Table2, Archive, Trash2 } from 'lucide-react'
+import { Building2, Plus, MapPin, Calendar, Loader2, ChevronRight, LayoutList, LayoutGrid, Table2, Archive, Trash2 } from 'lucide-react'
+import { PropertyCard } from './_components/PropertyCard'
+import { PropertyDetailModal, type DetailProperty } from './_components/PropertyDetailModal'
+import { ScheduleVisitDialog } from './_components/ScheduleVisitDialog'
 
 const STATUS_INFO: Record<string, { label: string; color: string }> = {
   draft: { label: 'Borrador', color: 'bg-gray-400' },
@@ -26,6 +29,9 @@ interface Property {
   id: string; address: string; neighborhood: string; city: string; property_type: string
   asking_price: number; currency: string; status: string; origin: string | null
   photos: string[]; created_at: string; legal_status?: string
+  assigned_to?: string | null; rooms?: number | null; bathrooms?: number | null; covered_area?: number | null
+  // optional fields returned by API, used by PropertyDetailModal
+  description?: string | null; video_url?: string | null; tour_3d_url?: string | null; total_area?: number | null
 }
 
 function getPropertyStatusInfo(p: Property) {
@@ -47,12 +53,25 @@ export default function PropertiesPage() {
   const [properties, setProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(true)
   const [filterStatus, setFilterStatus] = useState('')
-  const [viewMode, setViewMode] = useState<'list' | 'table'>('table')
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'table'>('grid')
   const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: '', to: '' })
   const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkActioning, setBulkActioning] = useState(false)
+  const [onlyMine, setOnlyMine] = useState(false)
+  const [modalProperty, setModalProperty] = useState<DetailProperty | null>(null)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [scheduleVisitOpen, setScheduleVisitOpen] = useState(false)
+  const [scheduleForPropertyId, setScheduleForPropertyId] = useState<string | null>(null)
   const canHardDelete = userInfo?.role === 'admin' || userInfo?.role === 'dueno'
+
+  useEffect(() => {
+    const saved = localStorage.getItem('propertiesViewMode') as 'grid' | 'list' | 'table' | null
+    if (saved === 'grid' || saved === 'list' || saved === 'table') setViewMode(saved)
+  }, [])
+  useEffect(() => {
+    localStorage.setItem('propertiesViewMode', viewMode)
+  }, [viewMode])
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
@@ -63,7 +82,7 @@ export default function PropertiesPage() {
     if (filterStatus) params.set('status', filterStatus)
     if (dateRange.from) params.set('from', dateRange.from)
     if (dateRange.to) params.set('to', dateRange.to)
-    if (userInfo?.role === 'asesor') params.set('assigned_to', userInfo.id)
+    if (onlyMine && userInfo?.id) params.set('assigned_to', userInfo.id)
 
     setLoading(true)
     fetch(`/api/properties?${params}`)
@@ -73,14 +92,14 @@ export default function PropertiesPage() {
       .finally(() => setLoading(false))
     // Limpiar selección al cambiar filtros
     setSelectedIds(new Set())
-  }, [filterStatus, dateRange, userInfo])
+  }, [filterStatus, dateRange, userInfo, onlyMine])
 
   async function refreshProperties() {
     const params = new URLSearchParams()
     if (filterStatus) params.set('status', filterStatus)
     if (dateRange.from) params.set('from', dateRange.from)
     if (dateRange.to) params.set('to', dateRange.to)
-    if (userInfo?.role === 'asesor') params.set('assigned_to', userInfo.id)
+    if (onlyMine && userInfo?.id) params.set('assigned_to', userInfo.id)
     const res = await fetch(`/api/properties?${params}`)
     const { data } = await res.json()
     setProperties(data || [])
@@ -143,9 +162,16 @@ export default function PropertiesPage() {
           <p className="text-muted-foreground">{properties.length} propiedad{properties.length !== 1 ? 'es' : ''}</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-md border">
-            <button onClick={() => setViewMode('list')} className={`p-2 ${viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}><LayoutList className="h-4 w-4" /></button>
-            <button onClick={() => setViewMode('table')} className={`p-2 ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}><Table2 className="h-4 w-4" /></button>
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant={viewMode === 'grid' ? 'default' : 'outline'} onClick={() => setViewMode('grid')} title="Vista grid">
+              <LayoutGrid className="size-4" />
+            </Button>
+            <Button size="sm" variant={viewMode === 'list' ? 'default' : 'outline'} onClick={() => setViewMode('list')} title="Vista lista">
+              <LayoutList className="size-4" />
+            </Button>
+            <Button size="sm" variant={viewMode === 'table' ? 'default' : 'outline'} onClick={() => setViewMode('table')} title="Vista tabla">
+              <Table2 className="size-4" />
+            </Button>
           </div>
           <Link href="/properties/new"><Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nueva</Button></Link>
         </div>
@@ -159,6 +185,13 @@ export default function PropertiesPage() {
         {Object.entries(STATUS_INFO).map(([key, info]) => (
           <Button key={key} variant={filterStatus === key ? 'default' : 'outline'} size="sm" onClick={() => setFilterStatus(key)}>{info.label}</Button>
         ))}
+        <Button
+          size="sm"
+          variant={onlyMine ? 'default' : 'outline'}
+          onClick={() => setOnlyMine(!onlyMine)}
+        >
+          {onlyMine ? '✓ Solo mías' : 'Solo mías'}
+        </Button>
       </div>
 
       <BulkActionsBar
@@ -182,6 +215,18 @@ export default function PropertiesPage() {
             <Link href="/properties/new"><Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nueva</Button></Link>
           </CardContent>
         </Card>
+      ) : viewMode === 'grid' ? (
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {properties.map(p => (
+            <PropertyCard
+              key={p.id}
+              property={p}
+              currentUserId={userInfo?.id}
+              statusInfo={getPropertyStatusInfo(p)}
+              onClick={() => { setModalProperty(p); setModalOpen(true) }}
+            />
+          ))}
+        </div>
       ) : viewMode === 'table' ? (
         <DataTable
           data={properties}
@@ -224,6 +269,25 @@ export default function PropertiesPage() {
           })}
         </div>
       )}
+
+      <PropertyDetailModal
+        property={modalProperty}
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        currentUserId={userInfo?.id}
+        onScheduleVisit={(id) => {
+          setScheduleForPropertyId(id)
+          setScheduleVisitOpen(true)
+          setModalOpen(false)
+        }}
+      />
+
+      <ScheduleVisitDialog
+        propertyId={scheduleForPropertyId}
+        propertyAddress={properties.find(p => p.id === scheduleForPropertyId)?.address}
+        open={scheduleVisitOpen}
+        onOpenChange={setScheduleVisitOpen}
+      />
     </div>
   )
 }

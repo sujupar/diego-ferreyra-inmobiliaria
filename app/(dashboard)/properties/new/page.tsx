@@ -27,9 +27,10 @@ function NewPropertyContent() {
     const searchParams = useSearchParams()
     const appraisalIdParam = searchParams.get('appraisalId')
     const dealId = searchParams.get('dealId')
+    const scheduledAppraisalId = searchParams.get('scheduledAppraisalId')
 
     const [loading, setLoading] = useState(false)
-    const [prefilling, setPrefilling] = useState(!!appraisalIdParam || !!dealId)
+    const [prefilling, setPrefilling] = useState(!!appraisalIdParam || !!dealId || !!scheduledAppraisalId)
     const [advisors, setAdvisors] = useState<Array<{ id: string; full_name: string }>>([])
     const [dealData, setDealData] = useState<{ contact_id?: string; appraisal_id?: string; assigned_to?: string; property_address?: string; contacts?: { full_name?: string }; profiles?: { full_name?: string } } | null>(null)
     const [prefillIds, setPrefillIds] = useState<PrefillState>({ appraisalId: null, contactId: null })
@@ -58,7 +59,7 @@ function NewPropertyContent() {
         let cancelled = false
 
         async function loadPrefill() {
-            if (!dealId && !appraisalIdParam) {
+            if (!dealId && !appraisalIdParam && !scheduledAppraisalId) {
                 setPrefilling(false)
                 return
             }
@@ -81,6 +82,33 @@ function NewPropertyContent() {
                         dealContactId = deal.contact_id
                         dealAssignedTo = deal.assigned_to
                         dealAddress = deal.property_address
+                    }
+                }
+
+                if (!appraisalId && scheduledAppraisalId) {
+                    // No deal ni appraisal directa — precargamos desde la tasación agendada.
+                    const sr = await fetch(`/api/scheduled-appraisals/${scheduledAppraisalId}`)
+                    if (!sr.ok) {
+                        setPrefillIds({ appraisalId: null, contactId: null })
+                        return
+                    }
+                    const sj = await sr.json()
+                    const scheduled = sj.data
+                    if (cancelled || !scheduled) return
+
+                    if (scheduled.appraisal_id) {
+                        // Si ya tiene tasación vinculada, la usamos para prefill completo.
+                        appraisalId = scheduled.appraisal_id
+                    } else {
+                        // Sin tasación: precarga mínima desde la scheduled_appraisal.
+                        setForm(prev => ({
+                            ...prev,
+                            address: scheduled.property_address || prev.address,
+                            origin: 'tasacion',
+                            assigned_to: scheduled.assigned_to || prev.assigned_to,
+                        }))
+                        setPrefillIds({ appraisalId: null, contactId: scheduled.contact_id || null })
+                        return
                     }
                 }
 
@@ -135,7 +163,7 @@ function NewPropertyContent() {
 
         loadPrefill()
         return () => { cancelled = true }
-    }, [dealId, appraisalIdParam])
+    }, [dealId, appraisalIdParam, scheduledAppraisalId])
 
     function updateField(field: string, value: string) {
         setForm(prev => ({ ...prev, [field]: value }))

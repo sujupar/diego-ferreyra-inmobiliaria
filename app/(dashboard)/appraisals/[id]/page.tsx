@@ -12,8 +12,9 @@ import { ValuationProperty, ValuationResult, calculateValuation, getQualityCoeff
 import { ReportEdits, buildDefaultEdits } from '@/lib/types/report-edits'
 import type { PropertyFeatures, ScrapedProperty } from '@/lib/scraper/types'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, FileText, AlertCircle, Edit2, Loader2, UserCog } from 'lucide-react'
+import { ArrowLeft, FileText, AlertCircle, Edit2, Loader2, UserCog, Home } from 'lucide-react'
 import { ContactEditor } from '@/components/contacts/ContactEditor'
+import { FlowHistoryCard, type FlowHistoryData } from '@/app/(dashboard)/_components/FlowHistoryCard'
 
 const PDFPreviewModal = dynamic(
     () => import('@/components/appraisal/PDFPreviewModal').then(m => m.PDFPreviewModal),
@@ -29,6 +30,7 @@ export default function AppraisalDetailPage() {
     const [showPDFPreview, setShowPDFPreview] = useState(false)
     const [contactEditorOpen, setContactEditorOpen] = useState(false)
     const [reportEdits, setReportEdits] = useState<ReportEdits | null>(null)
+    const [flowHistory, setFlowHistory] = useState<FlowHistoryData | null>(null)
     const [subjectFeaturesOverride, setSubjectFeaturesOverride] = useState<PropertyFeatures | null>(null)
     const [valuationOverride, setValuationOverride] = useState<ValuationResult | null>(null)
     const [savingFeatures, setSavingFeatures] = useState(false)
@@ -57,6 +59,15 @@ export default function AppraisalDetailPage() {
     useEffect(() => {
         loadAppraisal()
         // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [params.id])
+
+    useEffect(() => {
+        const id = params.id as string
+        if (!id) return
+        fetch(`/api/flow-history?appraisalId=${id}`)
+            .then(r => r.json())
+            .then(({ data }) => setFlowHistory(data))
+            .catch(() => setFlowHistory(null))
     }, [params.id])
 
     // Si llegamos con ?editContact=1 (típicamente desde tasks), abrimos el editor.
@@ -400,6 +411,12 @@ export default function AppraisalDetailPage() {
                             Editar Tasación
                         </Button>
                     </Link>
+                    <Link href={`/properties/new?appraisalId=${appraisal.id}`}>
+                        <Button variant="outline" className="gap-2">
+                            <Home className="h-4 w-4" />
+                            Captar como propiedad
+                        </Button>
+                    </Link>
                     <Button className="gap-2" onClick={() => setShowPDFPreview(true)}>
                         <FileText className="h-4 w-4" />
                         Vista Previa PDF
@@ -426,6 +443,9 @@ export default function AppraisalDetailPage() {
                     Guardando cambios...
                 </div>
             )}
+
+            {/* Flow process history */}
+            <FlowHistoryCard data={flowHistory} />
 
             {/* Banner: coeficiente de calidad constructiva desactualizado */}
             {qualityCoefficientChanged && (

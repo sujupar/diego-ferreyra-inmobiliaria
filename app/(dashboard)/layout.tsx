@@ -37,6 +37,7 @@ function getNavSections(role: Role): NavSection[] {
                     { href: '/appraisals', label: 'Historial' },
                 ]},
                 { label: 'Mis Contactos', href: '/contacts' },
+                { label: 'Visitas', href: '/visits' },
                 { label: 'Mis Propiedades', href: '/properties' },
             ]
 
@@ -52,6 +53,7 @@ function getNavSections(role: Role): NavSection[] {
                     { href: '/properties', label: 'Listado' },
                     { href: '/properties/new', label: 'Nueva' },
                 ]},
+                { label: 'Visitas', href: '/visits' },
                 { label: 'Contactos', href: '/contacts' },
             ]
 
@@ -69,6 +71,7 @@ function getNavSections(role: Role): NavSection[] {
                     { href: '/properties/new', label: 'Nueva' },
                     ...(can('properties.review') ? [{ href: '/properties/review', label: 'Revision Legal' }] : []),
                 ]},
+                { label: 'Visitas', href: '/visits' },
                 { label: 'Contactos', href: '/contacts' },
                 ...(can('metrics.view') ? [
                     { label: 'Metricas', href: '/metrics' },

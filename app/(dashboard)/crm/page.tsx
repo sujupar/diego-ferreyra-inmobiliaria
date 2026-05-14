@@ -8,11 +8,13 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
 import { DataTable, Column } from '@/components/ui/DataTable'
+import { BulkActionsBar } from '@/components/ui/BulkActionsBar'
 import {
   Loader2, RefreshCw, ChevronRight, User, MapPin, Calendar,
   LayoutList, Table2, SlidersHorizontal,
   CalendarPlus, CalendarCheck, CalendarX, Eye,
-  Send, MessageSquare, Home, XCircle, Clock, GraduationCap
+  Send, MessageSquare, Home, XCircle, Clock, GraduationCap,
+  CheckSquare, Square, Trash2
 } from 'lucide-react'
 
 // ── CRM Stage Configuration ─────────────────────────────────────
@@ -190,6 +192,9 @@ export default function CRMPage() {
   const [total, setTotal] = useState(0)
   const [serverStageCounts, setServerStageCounts] = useState<Record<string, number>>({})
   const [loadingMore, setLoadingMore] = useState(false)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkActioning, setBulkActioning] = useState(false)
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
@@ -244,6 +249,45 @@ export default function CRMPage() {
     if (userInfo) fetchData({ append: false, pageOverride: 0 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterOrigin, filterAdvisor, dateRange, userInfo])
+
+  const canHardDelete = userInfo?.role === 'admin' || userInfo?.role === 'dueno'
+
+  function toggleSelectMode() {
+    setSelectMode(prev => {
+      if (prev) setSelectedIds(new Set())
+      return !prev
+    })
+  }
+
+  function toggleSelection(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    const confirmation = prompt(
+      `Vas a ELIMINAR DEFINITIVAMENTE ${ids.length} proceso${ids.length !== 1 ? 's' : ''} comercial${ids.length !== 1 ? 'es' : ''}.\n\n` +
+      `Esta acción no se puede deshacer. Las tasaciones, propiedades y contactos asociados quedan intactos — solo desaparece el proceso del CRM.\n\n` +
+      `Para confirmar, escribí ELIMINAR:`
+    )
+    if (confirmation !== 'ELIMINAR') return
+    setBulkActioning(true)
+    const results = await Promise.allSettled(
+      ids.map(id => fetch(`/api/deals/${id}`, { method: 'DELETE' }))
+    )
+    const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok)).length
+    setBulkActioning(false)
+    setSelectedIds(new Set())
+    setSelectMode(false)
+    await fetchData({ append: false, pageOverride: 0 })
+    if (failed > 0) alert(`${failed} no se pudieron eliminar. Probablemente requieren permisos de admin/dueño.`)
+  }
 
   const dealsWithCRM = deals.map(d => ({ ...d, crmStage: deriveCRMStage(d) }))
 
@@ -351,11 +395,34 @@ export default function CRMPage() {
           >
             <SlidersHorizontal className="h-3.5 w-3.5" /> Filtros
           </Button>
+          {canHardDelete && (
+            <Button
+              variant={selectMode ? 'default' : 'outline'}
+              size="sm"
+              onClick={toggleSelectMode}
+              className="gap-1.5"
+            >
+              {selectMode ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+              {selectMode ? 'Cancelar' : 'Seleccionar'}
+            </Button>
+          )}
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => fetchData({ append: false, pageOverride: 0 })}>
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </div>
+
+      {/* Bulk actions bar — visible cuando hay selección */}
+      {selectMode && (
+        <BulkActionsBar
+          count={selectedIds.size}
+          onClear={() => setSelectedIds(new Set())}
+          noun="procesos"
+          actions={[
+            { label: 'Eliminar', icon: <Trash2 className="h-4 w-4 mr-1" />, variant: 'destructive', onClick: handleBulkDelete, disabled: bulkActioning },
+          ]}
+        />
+      )}
 
       {/* ── Stage Pipeline ──────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 lg:grid-cols-9">
@@ -445,16 +512,29 @@ export default function CRMPage() {
           data={filteredDeals}
           columns={columns}
           getRowKey={r => r.id}
-          onRowClick={r => router.push(`/pipeline/${r.id}`)}
+          onRowClick={selectMode ? undefined : r => router.push(`/pipeline/${r.id}`)}
+          selectable={selectMode}
+          selectedIds={selectedIds}
+          onSelectionChange={setSelectedIds}
         />
       ) : (
         <div className="space-y-2">
           {filteredDeals.map((deal, idx) => {
             const stageInfo = getCRMStageInfo(deal.crmStage)
             const Icon = stageInfo.icon
-            return (
-              <Link key={deal.id} href={`/pipeline/${deal.id}`}>
-                <div className="group flex items-center gap-4 p-4 rounded-xl border bg-card hover:bg-muted/30 transition-all duration-200 cursor-pointer hover:shadow-sm">
+            const isSelected = selectedIds.has(deal.id)
+            const rowInner = (
+              <div className={`group flex items-center gap-4 p-4 rounded-xl border bg-card transition-all duration-200 cursor-pointer hover:shadow-sm ${isSelected ? 'border-amber-400 bg-amber-50/40 dark:bg-amber-950/20' : 'hover:bg-muted/30'}`}>
+                  {selectMode && (
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelection(deal.id)}
+                      onClick={e => e.stopPropagation()}
+                      className="h-4 w-4 rounded border-input cursor-pointer shrink-0"
+                      aria-label="Seleccionar proceso"
+                    />
+                  )}
                   {/* Number prefix */}
                   <span className="number-prefix text-lg leading-none w-7 text-right shrink-0 tabular-nums">
                     {String(idx + 1).padStart(2, '0')}
@@ -499,9 +579,17 @@ export default function CRMPage() {
                   {/* Right side */}
                   <div className="flex items-center gap-3 shrink-0">
                     <span className="tabular-n text-[11px] text-muted-foreground hidden sm:block">{timeAgo(deal.stage_changed_at)}</span>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-foreground transition-colors" />
+                    {!selectMode && <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-foreground transition-colors" />}
                   </div>
                 </div>
+            )
+            return selectMode ? (
+              <div key={deal.id} onClick={() => toggleSelection(deal.id)} role="button" tabIndex={0}>
+                {rowInner}
+              </div>
+            ) : (
+              <Link key={deal.id} href={`/pipeline/${deal.id}`}>
+                {rowInner}
               </Link>
             )
           })}
