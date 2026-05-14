@@ -10,6 +10,7 @@ import { LandingFeatures } from '@/components/landing/Features'
 import { LandingDescription } from '@/components/landing/Description'
 import { LandingLocationMap } from '@/components/landing/LocationMap'
 import { LandingLeadForm } from '@/components/landing/LeadForm'
+import { MetaPixel } from '@/components/landing/MetaPixel'
 
 function getAdmin() {
   return createClient<Database>(
@@ -77,8 +78,17 @@ export default async function PropertyLandingPage({
   const heroTitle =
     property.title ?? `${property.property_type} en ${property.neighborhood}`
 
+  const pixelId = process.env.META_PIXEL_ID ?? ''
+
   return (
     <main className="min-h-screen bg-background">
+      {pixelId && (
+        <MetaPixel
+          pixelId={pixelId}
+          propertyId={property.id}
+          propertyTitle={heroTitle}
+        />
+      )}
       <LandingHero
         title={heroTitle}
         address={property.address}

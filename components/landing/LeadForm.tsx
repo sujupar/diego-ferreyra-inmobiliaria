@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Loader2, CheckCircle2 } from 'lucide-react'
+import { trackLead } from './MetaPixel'
 
 interface LeadFormProps {
   propertyId: string
@@ -58,6 +59,8 @@ export function LandingLeadForm({ propertyId, propertyTitle }: LeadFormProps) {
         const { error } = await res.json().catch(() => ({ error: 'Error' }))
         throw new Error(error || 'No pudimos enviar el formulario')
       }
+      // Disparar evento Lead en Meta Pixel (si está configurado)
+      trackLead({ propertyId })
       setStatus('ok')
       setForm(INITIAL)
     } catch (err) {

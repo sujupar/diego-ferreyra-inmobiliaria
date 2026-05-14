@@ -12,9 +12,8 @@ import {
 } from 'lucide-react'
 import { LegalDocsChecklist } from '@/components/properties/LegalDocsChecklist'
 import { LegalReviewHistory } from '@/components/properties/LegalReviewHistory'
-import { PortalListingsCard } from '@/components/properties/PortalListingsCard'
-import { PortalMetricsChart } from '@/components/properties/PortalMetricsChart'
-import { MetaCampaignCard } from '@/components/properties/MetaCampaignCard'
+import { MarketingTabs } from '@/components/properties/MarketingTabs'
+import { GenerateDescriptionCard } from '@/components/properties/GenerateDescriptionCard'
 import type { LegalDocsState, LegalFlags } from '@/types/legal-docs.types'
 import { FlowHistoryCard, type FlowHistoryData } from '@/app/(dashboard)/_components/FlowHistoryCard'
 
@@ -592,16 +591,21 @@ export default function PropertyDetailPage() {
       {/* Track record histórico de revisión legal */}
       <LegalReviewHistory propertyId={property.id} />
 
-      {/* Publicación en portales + métricas (visible una vez captada la propiedad) */}
+      {/* Sección Marketing: portales + Meta Ads + leads, visible una vez captada */}
       {!isAbogado && property.status === 'approved' && (
-        <>
-          <PortalListingsCard propertyId={property.id} />
-          <PortalMetricsChart propertyId={property.id} />
-          <MetaCampaignCard
+        <div className="space-y-3">
+          <div className="border-t pt-6">
+            <p className="eyebrow">Marketing</p>
+            <h2 className="display text-xl mt-1">
+              Difusión y resultados
+            </h2>
+          </div>
+          <GenerateDescriptionCard propertyId={property.id} />
+          <MarketingTabs
             propertyId={property.id}
             canManage={['admin', 'dueno', 'coordinador'].includes(userInfo?.role ?? '')}
           />
-        </>
+        </div>
       )}
 
       {/* Acciones de descarte y eliminación — oculto al abogado */}
