@@ -14,6 +14,7 @@ import { LegalDocsChecklist } from '@/components/properties/LegalDocsChecklist'
 import { LegalReviewHistory } from '@/components/properties/LegalReviewHistory'
 import { PortalListingsCard } from '@/components/properties/PortalListingsCard'
 import { PortalMetricsChart } from '@/components/properties/PortalMetricsChart'
+import { MetaCampaignCard } from '@/components/properties/MetaCampaignCard'
 import type { LegalDocsState, LegalFlags } from '@/types/legal-docs.types'
 import { FlowHistoryCard, type FlowHistoryData } from '@/app/(dashboard)/_components/FlowHistoryCard'
 
@@ -596,6 +597,10 @@ export default function PropertyDetailPage() {
         <>
           <PortalListingsCard propertyId={property.id} />
           <PortalMetricsChart propertyId={property.id} />
+          <MetaCampaignCard
+            propertyId={property.id}
+            canManage={['admin', 'dueno', 'coordinador'].includes(userInfo?.role ?? '')}
+          />
         </>
       )}
 

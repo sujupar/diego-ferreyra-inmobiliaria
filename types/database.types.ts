@@ -741,6 +741,144 @@ export interface Database {
                 }
                 Relationships: []
             }
+            property_meta_campaigns: {
+                Row: {
+                    id: string
+                    property_id: string
+                    campaign_id: string
+                    adset_id: string | null
+                    ad_ids: string[]
+                    status: string
+                    budget_daily: number | null
+                    budget_currency: string | null
+                    targeting: Json
+                    copy: Json
+                    landing_url: string | null
+                    created_at: string
+                    updated_at: string
+                    paused_at: string | null
+                    last_error: string | null
+                    attempts: number
+                }
+                Insert: {
+                    id?: string
+                    property_id: string
+                    campaign_id: string
+                    adset_id?: string | null
+                    ad_ids?: string[]
+                    status?: string
+                    budget_daily?: number | null
+                    budget_currency?: string | null
+                    targeting?: Json
+                    copy?: Json
+                    landing_url?: string | null
+                    created_at?: string
+                    updated_at?: string
+                    paused_at?: string | null
+                    last_error?: string | null
+                    attempts?: number
+                }
+                Update: {
+                    id?: string
+                    property_id?: string
+                    campaign_id?: string
+                    adset_id?: string | null
+                    ad_ids?: string[]
+                    status?: string
+                    budget_daily?: number | null
+                    budget_currency?: string | null
+                    targeting?: Json
+                    copy?: Json
+                    landing_url?: string | null
+                    created_at?: string
+                    updated_at?: string
+                    paused_at?: string | null
+                    last_error?: string | null
+                    attempts?: number
+                }
+                Relationships: []
+            }
+            property_meta_metrics_daily: {
+                Row: {
+                    property_id: string
+                    campaign_id: string
+                    date: string
+                    impressions: number
+                    clicks: number
+                    ctr: number | null
+                    spend: number
+                    leads: number
+                    cost_per_lead: number | null
+                    reach: number
+                    raw: Json
+                }
+                Insert: {
+                    property_id: string
+                    campaign_id: string
+                    date: string
+                    impressions?: number
+                    clicks?: number
+                    ctr?: number | null
+                    spend?: number
+                    leads?: number
+                    cost_per_lead?: number | null
+                    reach?: number
+                    raw?: Json
+                }
+                Update: {
+                    property_id?: string
+                    campaign_id?: string
+                    date?: string
+                    impressions?: number
+                    clicks?: number
+                    ctr?: number | null
+                    spend?: number
+                    leads?: number
+                    cost_per_lead?: number | null
+                    reach?: number
+                    raw?: Json
+                }
+                Relationships: []
+            }
+            meta_provision_jobs: {
+                Row: {
+                    id: string
+                    property_id: string
+                    action: string
+                    status: string
+                    attempts: number
+                    next_attempt_at: string | null
+                    last_error: string | null
+                    payload: Json
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    property_id: string
+                    action: string
+                    status?: string
+                    attempts?: number
+                    next_attempt_at?: string | null
+                    last_error?: string | null
+                    payload?: Json
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    property_id?: string
+                    action?: string
+                    status?: string
+                    attempts?: number
+                    next_attempt_at?: string | null
+                    last_error?: string | null
+                    payload?: Json
+                    created_at?: string
+                    updated_at?: string
+                }
+                Relationships: []
+            }
             property_publish_events: {
                 Row: {
                     id: string
