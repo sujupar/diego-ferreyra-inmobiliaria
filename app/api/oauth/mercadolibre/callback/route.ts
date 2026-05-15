@@ -25,6 +25,16 @@ export async function GET(request: Request) {
     )
   }
 
+  // PKCE: code_verifier guardado en cookie en /start, requerido por ML
+  // para cuentas con identidad verificada.
+  const codeVerifier = cookieStore.get('ml_oauth_verifier')?.value
+  if (!codeVerifier) {
+    return NextResponse.json(
+      { error: 'missing code_verifier (PKCE) — iniciá el flow desde /api/oauth/mercadolibre/start' },
+      { status: 400 },
+    )
+  }
+
   const appId = process.env.ML_APP_ID
   const secret = process.env.ML_SECRET_KEY
   if (!appId || !secret) {
@@ -45,6 +55,7 @@ export async function GET(request: Request) {
       client_secret: secret,
       code,
       redirect_uri: redirectUri,
+      code_verifier: codeVerifier,
     }),
   })
 
@@ -82,7 +93,8 @@ export async function GET(request: Request) {
   const res = NextResponse.redirect(
     `${appUrl}/settings/portals?oauth=mercadolibre_ok`,
   )
-  // Limpiar cookie de state
+  // Limpiar cookies del flow
   res.cookies.delete('ml_oauth_state')
+  res.cookies.delete('ml_oauth_verifier')
   return res
 }

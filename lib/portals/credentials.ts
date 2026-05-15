@@ -23,8 +23,6 @@ const ENV_MAP: Record<PortalName, { appId?: string; secret?: string; apiKey?: st
   mercadolibre: { appId: 'ML_APP_ID', secret: 'ML_SECRET_KEY' },
   argenprop: { apiKey: 'ARGENPROP_API_KEY', clientCode: 'ARGENPROP_CLIENT_CODE' },
   zonaprop: { apiKey: 'ZONAPROP_API_KEY', clientCode: 'ZONAPROP_CLIENT_CODE' },
-  properati: { apiKey: 'PROPERATI_API_KEY', clientCode: 'PROPERATI_CLIENT_CODE' },
-  mudafy: { apiKey: 'MUDAFY_API_KEY', clientCode: 'MUDAFY_CLIENT_CODE' },
 }
 
 /**

@@ -52,6 +52,9 @@ next-env.d.ts
 *.swo
 *~
 
+# Claude Code local settings (machine-specific permissions, not for team)
+.claude/settings.local.json
+
 # OS
 .DS_Store
 Thumbs.db
@@ -73,3 +76,17 @@ __pycache__/
 .Python
 venv/
 env/
+
+# Marketing assets (videos, fotos crudas, estado de campañas) — solo local
+marketing-assets/
+
+# Capturas de pantalla locales
+Capturas de pantalla/
+
+# GPT Portales: docs fuente locales (el prompt ya está en lib/marketing/portal-descriptions/)
+GPT Portales/
+
+# Videos crudos
+*.MOV
+*.mov
+*.HEIC

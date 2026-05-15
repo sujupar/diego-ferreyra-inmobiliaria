@@ -5,8 +5,6 @@ import { resolveCredentials } from './credentials'
 import { MercadoLibreAdapter } from './mercadolibre/adapter'
 import { ArgenpropAdapter } from './argenprop/adapter'
 import { ZonapropAdapter } from './zonaprop/adapter'
-import { PropertiAdapter } from './properati/adapter'
-import { MudafyAdapter } from './mudafy/adapter'
 
 let initialized = false
 
@@ -25,19 +23,15 @@ export async function initPortals(force = false): Promise<void> {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   )
 
-  const [mlCreds, apCreds, zpCreds, prCreds, mfCreds] = await Promise.all([
+  const [mlCreds, apCreds, zpCreds] = await Promise.all([
     resolveCredentials('mercadolibre', { env: process.env, supabase }),
     resolveCredentials('argenprop', { env: process.env, supabase }),
     resolveCredentials('zonaprop', { env: process.env, supabase }),
-    resolveCredentials('properati', { env: process.env, supabase }),
-    resolveCredentials('mudafy', { env: process.env, supabase }),
   ])
 
   registerAdapter(new MercadoLibreAdapter(mlCreds.enabled))
   registerAdapter(new ArgenpropAdapter(apCreds.enabled))
   registerAdapter(new ZonapropAdapter(zpCreds.enabled))
-  registerAdapter(new PropertiAdapter(prCreds.enabled))
-  registerAdapter(new MudafyAdapter(mfCreds.enabled))
 
   initialized = true
 }
