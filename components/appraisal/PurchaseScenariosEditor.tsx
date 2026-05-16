@@ -42,72 +42,96 @@ export function PurchaseScenariosEditor({
         }
     }
 
+    // Agrupar escenarios por propertyKey preservando el orden de aparición.
+    const groups: Array<{ propertyKey: string; propertyLabel: string; indices: number[] }> = []
+    scenarios.forEach((s, idx) => {
+        let g = groups.find(gr => gr.propertyKey === s.propertyKey)
+        if (!g) {
+            g = { propertyKey: s.propertyKey, propertyLabel: s.propertyLabel, indices: [] }
+            groups.push(g)
+        }
+        g.indices.push(idx)
+    })
+
     return (
-        <section className="space-y-4">
+        <section className="space-y-6">
             <div className="flex items-center justify-between">
                 <h3 className="text-base font-semibold">Escenarios de Compra</h3>
                 <p className="text-xs text-muted-foreground">
-                    Marcá los que querés incluir en el informe
+                    Marcá los escenarios que querés incluir en el informe
                 </p>
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {scenarios.map((s, idx) => {
-                    const r = results[idx]
-                    if (!r) return null
-                    return (
-                        <div
-                            key={s.id}
-                            className={`rounded-lg border bg-card p-4 space-y-3 ${
-                                selectedIds.includes(s.id) ? 'ring-2 ring-primary' : ''
-                            }`}
-                        >
-                            <div className="flex items-center justify-between">
-                                <h4 className="font-semibold">{s.label}</h4>
-                                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
-                                        checked={selectedIds.includes(s.id)}
-                                        onChange={() => toggleSelected(s.id)}
-                                    />
-                                    Incluir
-                                </label>
-                            </div>
-                            <div className="space-y-2">
-                                <FieldNum
-                                    label="Valor publicación"
-                                    value={s.publicationPrice}
-                                    onChange={v => updateScenario(idx, { publicationPrice: v })}
-                                />
-                                <FieldNum
-                                    label="% Descuento de compra"
-                                    value={s.purchaseDiscountPercent}
-                                    step="0.1"
-                                    onChange={v => updateScenario(idx, { purchaseDiscountPercent: v })}
-                                />
-                                <FieldNum
-                                    label="% Descuento escritura"
-                                    value={s.deedDiscountPercent}
-                                    step="0.1"
-                                    onChange={v => updateScenario(idx, { deedDiscountPercent: v })}
-                                />
-                                <div className="grid grid-cols-2 gap-2">
-                                    <FieldNum label="Sellos %" value={s.rates.stampsPercent} step="0.01" onChange={v => updateRates(idx, { stampsPercent: v })} />
-                                    <FieldNum label="Honor. escribano %" value={s.rates.notaryFeesPercent} step="0.01" onChange={v => updateRates(idx, { notaryFeesPercent: v })} />
-                                    <FieldNum label="Gastos escritura %" value={s.rates.deedExpensesPercent} step="0.01" onChange={v => updateRates(idx, { deedExpensesPercent: v })} />
-                                    <FieldNum label="Honor. inmob. %" value={s.rates.buyerCommissionPercent} step="0.01" onChange={v => updateRates(idx, { buyerCommissionPercent: v })} />
-                                </div>
-                            </div>
-                            <div className="border-t pt-3 space-y-1 text-sm">
-                                <RowKV k="Valor de compra" v={formatCurrency(r.purchasePrice, currency)} />
-                                <RowKV k="Total gastos compra" v={formatCurrency(r.totalPurchaseCosts, currency)} />
-                                <RowKV k="Costo total" v={formatCurrency(r.totalCostWithPurchase, currency)} bold />
-                                <RowKV k="En mano luego compra" v={formatCurrency(r.remainingMoney, currency)} color={r.remainingMoney >= 0 ? 'green' : 'red'} bold />
-                            </div>
+            {groups.map(group => (
+                <div key={group.propertyKey} className="space-y-3">
+                    {groups.length > 1 && (
+                        <div className="flex items-center gap-2 pb-1 border-b">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-blue-600">
+                                Propiedad
+                            </span>
+                            <h4 className="text-sm font-medium line-clamp-1">{group.propertyLabel}</h4>
                         </div>
-                    )
-                })}
-            </div>
+                    )}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        {group.indices.map(idx => {
+                            const s = scenarios[idx]
+                            const r = results.find(x => x.id === s.id) || results[idx]
+                            if (!r) return null
+                            return (
+                                <div
+                                    key={s.id}
+                                    className={`rounded-lg border bg-card p-4 space-y-3 ${
+                                        selectedIds.includes(s.id) ? 'ring-2 ring-primary' : ''
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="font-semibold">{s.label}</h4>
+                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
+                                                checked={selectedIds.includes(s.id)}
+                                                onChange={() => toggleSelected(s.id)}
+                                            />
+                                            Incluir
+                                        </label>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <FieldNum
+                                            label="Valor publicación"
+                                            value={s.publicationPrice}
+                                            onChange={v => updateScenario(idx, { publicationPrice: v })}
+                                        />
+                                        <FieldNum
+                                            label="% Descuento de compra"
+                                            value={s.purchaseDiscountPercent}
+                                            step="0.1"
+                                            onChange={v => updateScenario(idx, { purchaseDiscountPercent: v })}
+                                        />
+                                        <FieldNum
+                                            label="% Descuento escritura"
+                                            value={s.deedDiscountPercent}
+                                            step="0.1"
+                                            onChange={v => updateScenario(idx, { deedDiscountPercent: v })}
+                                        />
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <FieldNum label="Sellos %" value={s.rates.stampsPercent} step="0.01" onChange={v => updateRates(idx, { stampsPercent: v })} />
+                                            <FieldNum label="Honor. escribano %" value={s.rates.notaryFeesPercent} step="0.01" onChange={v => updateRates(idx, { notaryFeesPercent: v })} />
+                                            <FieldNum label="Gastos escritura %" value={s.rates.deedExpensesPercent} step="0.01" onChange={v => updateRates(idx, { deedExpensesPercent: v })} />
+                                            <FieldNum label="Honor. inmob. %" value={s.rates.buyerCommissionPercent} step="0.01" onChange={v => updateRates(idx, { buyerCommissionPercent: v })} />
+                                        </div>
+                                    </div>
+                                    <div className="border-t pt-3 space-y-1 text-sm">
+                                        <RowKV k="Valor de compra" v={formatCurrency(r.purchasePrice, currency)} />
+                                        <RowKV k="Total gastos compra" v={formatCurrency(r.totalPurchaseCosts, currency)} />
+                                        <RowKV k="Costo total" v={formatCurrency(r.totalCostWithPurchase, currency)} bold />
+                                        <RowKV k="Diferencia en mano" v={formatCurrency(r.remainingMoney, currency)} color={r.remainingMoney >= 0 ? 'green' : 'red'} bold />
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
+                </div>
+            ))}
         </section>
     )
 }

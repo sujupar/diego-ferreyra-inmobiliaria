@@ -689,6 +689,14 @@ function ValuationReportInner({
                     <span className="text-base font-semibold text-green-800 dark:text-green-300">Dinero luego de venta</span>
                     <span className="text-3xl font-bold text-green-700 dark:text-green-400">{formatCurrency(result.moneyInHand, result.currency)}</span>
                 </div>
+                {typeof result.ownerSharePercent === 'number' && result.ownerSharePercent < 100 && typeof result.ownerShareMoney === 'number' && (
+                    <div className="mt-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-6 flex justify-between items-center">
+                        <span className="text-base font-semibold text-amber-800 dark:text-amber-300">
+                            Parte del Propietario ({result.ownerSharePercent}%)
+                        </span>
+                        <span className="text-3xl font-bold text-amber-700 dark:text-amber-400">{formatCurrency(result.ownerShareMoney, result.currency)}</span>
+                    </div>
+                )}
             </div>
 
             {/* Footer */}

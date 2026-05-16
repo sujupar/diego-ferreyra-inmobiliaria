@@ -139,6 +139,7 @@ function SaleSimTable({
 }: { valuationResult: ValuationResult; subject: ValuationProperty; neighborhood: string }) {
     const r = valuationResult
     const rates = r.expenseRates
+    const showOwnerShare = typeof r.ownerSharePercent === 'number' && r.ownerSharePercent < 100 && typeof r.ownerShareMoney === 'number'
     return (
         <View style={{ marginBottom: 14 }}>
             <View style={{
@@ -178,26 +179,47 @@ function SaleSimTable({
                     USD {r.moneyInHand.toLocaleString()}
                 </Text>
             </View>
+            {showOwnerShare && (
+                <View style={{
+                    marginTop: 4, flexDirection: 'row', justifyContent: 'space-between',
+                    padding: 6, backgroundColor: '#fef3c7', borderRadius: 2,
+                }}>
+                    <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#92400e' }}>
+                        Parte del Propietario ({r.ownerSharePercent}%)
+                    </Text>
+                    <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#92400e' }}>
+                        USD {(r.ownerShareMoney as number).toLocaleString()}
+                    </Text>
+                </View>
+            )}
         </View>
     )
 }
 
 function PurchaseSimTable({
-    scenario, currency, width,
-}: { scenario: PurchaseScenarioResult; currency: string; width?: string | number }) {
+    scenario, currency, width, showPropertyLabel,
+}: { scenario: PurchaseScenarioResult; currency: string; width?: string | number; showPropertyLabel?: boolean }) {
     // Si no se pasa width específico, usar flex: 1 para distribuirse uniformemente
     // entre escenarios visibles dentro del contenedor row.
     const wrapperStyle = width !== undefined
         ? { width }
         : { flex: 1, minWidth: 0 }
+    // El propertyLabel sólo se muestra si hay más de una propiedad en juego (showPropertyLabel=true)
+    // o si el escenario tiene propertyLabel explícito y no es legacy.
+    const header = showPropertyLabel && scenario.propertyLabel
+        ? `COMPRA — ${scenario.propertyLabel.toUpperCase()} · ${scenario.label.toUpperCase()}`
+        : `COMPRA — ${scenario.label.toUpperCase()}`
     return (
         <View style={wrapperStyle}>
             <View style={{
                 backgroundColor: '#e8f4fd', padding: 6,
                 borderWidth: 1, borderColor: colors.primary, borderStyle: 'solid',
             }}>
-                <Text style={{ fontSize: 9, fontWeight: 'bold', textAlign: 'center', color: colors.darkGray }}>
-                    COMPRA — {scenario.label.toUpperCase()}
+                <Text
+                    style={{ fontSize: 9, fontWeight: 'bold', textAlign: 'center', color: colors.darkGray }}
+                    wrap={false}
+                >
+                    {header}
                 </Text>
             </View>
             <View style={{
@@ -229,7 +251,7 @@ function PurchaseSimTable({
                     </Text>
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
-                    <Text style={{ fontSize: 8, fontWeight: 'bold' }}>En mano final</Text>
+                    <Text style={{ fontSize: 8, fontWeight: 'bold' }}>Diferencia En Mano</Text>
                     <Text style={{
                         fontSize: 8, fontWeight: 'bold',
                         color: scenario.remainingMoney >= 0 ? colors.semaphoreGreen : colors.semaphoreRed,
@@ -1278,10 +1300,17 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                         </Page>
                     )}
 
-                    {/* SIMULATION SCENARIOS PAGE — tabla venta + 1-3 escenarios de compra */}
+                    {/* SIMULATION SCENARIOS PAGE — tabla venta + N escenarios de compra */}
                     {valuationResult.purchaseScenarios && valuationResult.purchaseScenarios.length > 0 && (() => {
-                        const selectedIds = valuationResult.selectedScenarioIds || ['conservative', 'medium', 'aggressive']
-                        const visibleScenarios = valuationResult.purchaseScenarios.filter(s => selectedIds.includes(s.id))
+                        const allScenarios = valuationResult.purchaseScenarios
+                        const fallbackIds = allScenarios.map(s => s.id)
+                        const selectedIds = valuationResult.selectedScenarioIds && valuationResult.selectedScenarioIds.length > 0
+                            ? valuationResult.selectedScenarioIds
+                            : fallbackIds
+                        const visibleScenarios = allScenarios.filter(s => selectedIds.includes(s.id))
+                        // Mostrar el propertyLabel en el header sólo si hay propiedades distintas en las columnas.
+                        const uniquePropertyKeys = new Set(visibleScenarios.map(s => s.propertyKey))
+                        const showPropertyLabel = uniquePropertyKeys.size > 1
                         return (
                             <Page size="A4" style={styles.pageWithPadding}>
                                 <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
@@ -1292,15 +1321,12 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                     {visibleScenarios.length > 0 && (
                                         <View style={{ marginTop: 16 }}>
                                             <Text style={[styles.h3, { marginBottom: 10, textAlign: 'center' }]}>Escenarios de Compra</Text>
-                                            {/* Distribución uniforme:
-                                                - 1 escenario: ancho completo
-                                                - 2 escenarios: cada uno mitad del ancho
-                                                - 3 escenarios: cada uno tercio del ancho
-                                                Usamos flex: 1 (sin width fija) para que se distribuyan automáticamente
-                                                ocupando todo el espacio disponible con gap consistente. */}
+                                            {/* Distribución uniforme: flex: 1 reparte el ancho disponible entre N escenarios.
+                                                Si entran muchos, el flexWrap los baja a una segunda fila manteniendo gap. */}
                                             <View style={{
                                                 flexDirection: 'row',
                                                 gap: 12,
+                                                flexWrap: 'wrap',
                                                 alignItems: 'flex-start',
                                             }}>
                                                 {visibleScenarios.map(scenario => (
@@ -1308,7 +1334,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                                         key={scenario.id}
                                                         scenario={scenario}
                                                         currency={valuationResult.currency}
-                                                        // No pasar width → el componente usa flex: 1 internamente
+                                                        showPropertyLabel={showPropertyLabel}
                                                     />
                                                 ))}
                                             </View>

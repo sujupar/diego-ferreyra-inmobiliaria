@@ -133,7 +133,14 @@ export interface PurchaseResult {
     purchaseExpenseRates: Required<PurchaseExpenseRates>
 }
 
-export type PurchaseScenarioId = 'conservative' | 'medium' | 'aggressive'
+export type PurchaseScenarioLevel = 'conservative' | 'medium' | 'aggressive'
+
+/**
+ * Composite scenario id: `${propertyKey}:${level}`.
+ * Legacy data (sólo un property en juego) puede traer un literal sin `:`; el wizard se encarga
+ * de migrarlo on-the-fly al cargar la tasación.
+ */
+export type PurchaseScenarioId = string
 
 export interface PurchaseScenarioRates {
     stampsPercent: number
@@ -144,6 +151,13 @@ export interface PurchaseScenarioRates {
 
 export interface PurchaseScenarioInput {
     id: PurchaseScenarioId
+    /** Nivel del escenario (independiente de la propiedad). */
+    level: PurchaseScenarioLevel
+    /** Clave estable que identifica a la propiedad de compra (p.ej. `prop_0`). */
+    propertyKey: string
+    /** Etiqueta legible de la propiedad — se muestra en el editor y en el PDF. */
+    propertyLabel: string
+    /** Etiqueta del nivel (Conservador / Medio / Agresivo). */
     label: string
     publicationPrice: number
     purchaseDiscountPercent: number
@@ -208,10 +222,15 @@ export interface ValuationResult {
     currency: string
     expenseRates: Required<ExpenseRates>  // Actual rates used (with defaults)
     purchaseResult?: PurchaseResult       // Present when purchase properties selected
-    /** Escenarios de compra calculados (Conservador / Medio / Agresivo). */
+    /** Escenarios de compra calculados (Conservador / Medio / Agresivo) — por propiedad. */
     purchaseScenarios?: PurchaseScenarioResult[]
-    /** IDs seleccionados para mostrar en el PDF. */
+    /** IDs compuestos seleccionados para mostrar en el PDF. Formato: `${propertyKey}:${level}`. */
     selectedScenarioIds?: PurchaseScenarioId[]
+    /** % de la venta que le queda al propietario (default 100). Útil cuando la propiedad
+     * está dividida entre herederos. */
+    ownerSharePercent?: number
+    /** moneyInHand × ownerSharePercent / 100. Lo que el propietario tiene disponible para comprar. */
+    ownerShareMoney?: number
 }
 
 /**

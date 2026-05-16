@@ -1,6 +1,7 @@
 import type {
     PurchaseScenarioId,
     PurchaseScenarioInput,
+    PurchaseScenarioLevel,
     PurchaseScenarioResult,
 } from './calculator'
 
@@ -11,40 +12,51 @@ const DEFAULT_RATES = {
     buyerCommissionPercent: 4.0,
 }
 
+const LEVELS: { level: PurchaseScenarioLevel; label: string; purchaseDiscount: number }[] = [
+    { level: 'conservative', label: 'Conservador', purchaseDiscount: 5 },
+    { level: 'medium', label: 'Medio', purchaseDiscount: 10 },
+    { level: 'aggressive', label: 'Agresivo', purchaseDiscount: 15 },
+]
+
+export function buildScenarioId(propertyKey: string, level: PurchaseScenarioLevel): PurchaseScenarioId {
+    return `${propertyKey}:${level}`
+}
+
+export function parseScenarioId(id: PurchaseScenarioId): { propertyKey: string; level: PurchaseScenarioLevel } {
+    const idx = id.indexOf(':')
+    if (idx < 0) {
+        // Legacy: id literal sin propertyKey ⇒ asumimos prop_0.
+        return { propertyKey: 'prop_0', level: id as PurchaseScenarioLevel }
+    }
+    return {
+        propertyKey: id.slice(0, idx),
+        level: id.slice(idx + 1) as PurchaseScenarioLevel,
+    }
+}
+
 /**
- * Genera 3 escenarios prellenados a partir de un precio base de publicación.
+ * Genera 3 escenarios prellenados para UNA propiedad de compra.
  *
  * - Conservador: descuento 5% (paga más por la propiedad)
  * - Medio: descuento 10%
  * - Agresivo: descuento 15% (paga menos)
  */
-export function buildDefaultScenarios(publicationPrice: number): PurchaseScenarioInput[] {
-    return [
-        {
-            id: 'conservative',
-            label: 'Conservador',
-            publicationPrice,
-            purchaseDiscountPercent: 5,
-            deedDiscountPercent: 30,
-            rates: { ...DEFAULT_RATES },
-        },
-        {
-            id: 'medium',
-            label: 'Medio',
-            publicationPrice,
-            purchaseDiscountPercent: 10,
-            deedDiscountPercent: 30,
-            rates: { ...DEFAULT_RATES },
-        },
-        {
-            id: 'aggressive',
-            label: 'Agresivo',
-            publicationPrice,
-            purchaseDiscountPercent: 15,
-            deedDiscountPercent: 30,
-            rates: { ...DEFAULT_RATES },
-        },
-    ]
+export function buildDefaultScenarios(
+    publicationPrice: number,
+    propertyKey: string,
+    propertyLabel: string,
+): PurchaseScenarioInput[] {
+    return LEVELS.map(({ level, label, purchaseDiscount }) => ({
+        id: buildScenarioId(propertyKey, level),
+        level,
+        propertyKey,
+        propertyLabel,
+        label,
+        publicationPrice,
+        purchaseDiscountPercent: purchaseDiscount,
+        deedDiscountPercent: 30,
+        rates: { ...DEFAULT_RATES },
+    }))
 }
 
 /** Calcula resultados financieros para un escenario. */
@@ -78,7 +90,7 @@ export function calculateScenario(
     }
 }
 
-/** Calcula los 3 escenarios. */
+/** Calcula todos los escenarios pasados. */
 export function calculateAllScenarios(
     scenarios: PurchaseScenarioInput[],
     moneyFromSale: number,
@@ -86,5 +98,5 @@ export function calculateAllScenarios(
     return scenarios.map(s => calculateScenario(s, moneyFromSale))
 }
 
-// Re-export type for convenience
-export type { PurchaseScenarioId }
+// Re-export types for convenience
+export type { PurchaseScenarioId, PurchaseScenarioLevel }

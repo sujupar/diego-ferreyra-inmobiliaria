@@ -8,7 +8,7 @@ import { PropertyForm } from '@/components/appraisal/PropertyForm'
 import { ComparableEditor, ComparableMissingIndicator } from '@/components/appraisal/ComparableEditor'
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { ScrapedProperty, PropertyFeatures } from '@/lib/scraper/types'
-import { calculateValuation, calculatePurchaseCosts, getQualityCoefficient, ValuationResult, ValuationProperty, ExpenseRates, PurchaseExpenseRates, PurchaseResult } from '@/lib/valuation/calculator'
+import { calculateValuation, getQualityCoefficient, ValuationResult, ValuationProperty, ExpenseRates, PurchaseResult } from '@/lib/valuation/calculator'
 import type { PurchaseScenarioId, PurchaseScenarioInput } from '@/lib/valuation/calculator'
 import { buildDefaultScenarios, calculateAllScenarios } from '@/lib/valuation/purchase-scenarios'
 import { PurchaseScenariosEditor } from '@/components/appraisal/PurchaseScenariosEditor'
@@ -172,29 +172,58 @@ function NewAppraisalPageContent() {
 
     // Purchase properties
     const [purchaseProperties, setPurchaseProperties] = useState<ScrapedProperty[]>([])
-    const [purchaseExpenseRates, setPurchaseExpenseRates] = useState<PurchaseExpenseRates>({
-        purchaseDiscountPercent: 0,
-        deedDiscountPercent: 30,
-        stampsPercent: 1.75,
-        notaryFeesPercent: 1,
-        deedExpensesPercent: 1.75,
-        buyerCommissionPercent: 4,
-    })
-    const [selectedPurchaseIndex, setSelectedPurchaseIndex] = useState<number | null>(null)
+    // Múltiples propiedades de compra pueden estar marcadas para comparar lado-a-lado.
+    const [selectedPurchaseIndices, setSelectedPurchaseIndices] = useState<number[]>([])
+    // Legacy: tasaciones viejas guardaron un PurchaseResult único. Se preserva sólo para
+    // back-compat de lectura; el nuevo flujo siempre usa purchaseScenarios.
     const [purchaseResult, setPurchaseResult] = useState<PurchaseResult | null>(null)
 
-    // Escenarios de compra (Conservador / Medio / Agresivo)
+    // Escenarios de compra (Conservador / Medio / Agresivo) — uno por propiedad seleccionada.
     const [purchaseScenarios, setPurchaseScenarios] = useState<PurchaseScenarioInput[]>([])
     const [selectedScenarioIds, setSelectedScenarioIds] = useState<PurchaseScenarioId[]>([])
 
-    // Inicializar escenarios cuando se agrega la primera propiedad de compra
+    // % de la venta que le queda al propietario (default 100). 50/33/25 cuando la propiedad
+    // está dividida entre herederos.
+    const [ownerSharePercent, setOwnerSharePercent] = useState<number>(100)
+
+    // Mantener escenarios sincronizados con las propiedades de compra seleccionadas:
+    // - Marcar una propiedad ⇒ generar sus 3 escenarios + auto-incluir "conservative"
+    // - Desmarcar una propiedad ⇒ remover sus escenarios y limpiar selectedScenarioIds
     useEffect(() => {
-        if (purchaseProperties.length > 0 && purchaseScenarios.length === 0) {
-            const basePrice = purchaseProperties[0].price || 100000
-            setPurchaseScenarios(buildDefaultScenarios(basePrice))
-            setSelectedScenarioIds(['conservative', 'medium', 'aggressive'])
-        }
-    }, [purchaseProperties, purchaseScenarios.length])
+        setPurchaseScenarios(prev => {
+            const wantedKeys = selectedPurchaseIndices.map(idx => `prop_${idx}`)
+            // Preserve existing scenarios whose property is still selected.
+            const kept = prev.filter(s => wantedKeys.includes(s.propertyKey))
+            // For each selected property without scenarios, build defaults.
+            const next = [...kept]
+            for (const idx of selectedPurchaseIndices) {
+                const propertyKey = `prop_${idx}`
+                if (next.some(s => s.propertyKey === propertyKey)) continue
+                const prop = purchaseProperties[idx]
+                if (!prop) continue
+                const basePrice = prop.price || 100000
+                const propertyLabel = prop.title || prop.location || `Propiedad ${idx + 1}`
+                next.push(...buildDefaultScenarios(basePrice, propertyKey, propertyLabel))
+            }
+            return next
+        })
+        setSelectedScenarioIds(prev => {
+            const wantedKeys = new Set(selectedPurchaseIndices.map(idx => `prop_${idx}`))
+            // Drop selections whose property no longer exists.
+            const kept = prev.filter(id => {
+                const propKey = id.includes(':') ? id.slice(0, id.indexOf(':')) : 'prop_0'
+                return wantedKeys.has(propKey)
+            })
+            // For each newly-selected property without any selection, auto-include conservative.
+            const next = [...kept]
+            for (const idx of selectedPurchaseIndices) {
+                const propertyKey = `prop_${idx}`
+                const hasAny = next.some(id => id.startsWith(`${propertyKey}:`))
+                if (!hasAny) next.push(`${propertyKey}:conservative`)
+            }
+            return next
+        })
+    }, [selectedPurchaseIndices, purchaseProperties])
 
     // Report edits (semaphores, text overrides)
     const [reportEdits, setReportEdits] = useState<ReportEdits>(DEFAULT_REPORT_EDITS)
@@ -289,19 +318,63 @@ function NewAppraisalPageContent() {
                     setReportEdits(detail.report_edits as ReportEdits)
                 }
 
-                // Restore escenarios de compra if present
+                // Restore escenarios de compra if present.
+                // Migración legacy: tasaciones viejas guardaron `id='conservative'` (literal)
+                // y no tenían propertyKey/propertyLabel/level. Cuando detectamos eso,
+                // asumimos que el escenario pertenece a la primera (y única) propiedad de compra.
                 if (detail.valuation_result?.purchaseScenarios) {
-                    setPurchaseScenarios(detail.valuation_result.purchaseScenarios.map((s: any) => ({
-                        id: s.id,
-                        label: s.label,
-                        publicationPrice: s.publicationPrice,
-                        purchaseDiscountPercent: s.purchaseDiscountPercent,
-                        deedDiscountPercent: s.deedDiscountPercent,
-                        rates: s.rates,
-                    })))
+                    const legacyPropLabel =
+                        purchaseComps[0]?.title || purchaseComps[0]?.location || 'Propiedad 1'
+                    const migrated = detail.valuation_result.purchaseScenarios.map((s: any) => {
+                        const hasComposite = typeof s.id === 'string' && s.id.includes(':')
+                        const level = (s.level as 'conservative' | 'medium' | 'aggressive')
+                            ?? (hasComposite ? s.id.split(':')[1] : s.id)
+                        const propertyKey = s.propertyKey ?? (hasComposite ? s.id.split(':')[0] : 'prop_0')
+                        const id = hasComposite ? s.id : `${propertyKey}:${level}`
+                        const propertyLabel = s.propertyLabel ?? legacyPropLabel
+                        return {
+                            id,
+                            level,
+                            propertyKey,
+                            propertyLabel,
+                            label: s.label,
+                            publicationPrice: s.publicationPrice,
+                            purchaseDiscountPercent: s.purchaseDiscountPercent,
+                            deedDiscountPercent: s.deedDiscountPercent,
+                            rates: s.rates,
+                        }
+                    })
+                    setPurchaseScenarios(migrated)
                 }
                 if (detail.valuation_result?.selectedScenarioIds) {
-                    setSelectedScenarioIds(detail.valuation_result.selectedScenarioIds)
+                    const migratedIds = detail.valuation_result.selectedScenarioIds.map((id: string) =>
+                        id.includes(':') ? id : `prop_0:${id}`
+                    )
+                    setSelectedScenarioIds(migratedIds)
+                }
+                // Restore ownerSharePercent
+                if (typeof detail.valuation_result?.ownerSharePercent === 'number') {
+                    setOwnerSharePercent(detail.valuation_result.ownerSharePercent)
+                }
+                // Restore selectedPurchaseIndices — necesitamos saber qué propiedades estaban
+                // seleccionadas. Si la tasación tiene purchase props y escenarios, marcamos los
+                // index correspondientes a los propertyKey ('prop_<i>') que aparecen.
+                if (detail.valuation_result?.purchaseScenarios && purchaseComps.length > 0) {
+                    const keys = new Set<string>()
+                    for (const s of detail.valuation_result.purchaseScenarios as any[]) {
+                        const k = s.propertyKey
+                            ?? (typeof s.id === 'string' && s.id.includes(':') ? s.id.split(':')[0] : 'prop_0')
+                        keys.add(k)
+                    }
+                    const idxs: number[] = []
+                    for (const k of keys) {
+                        const m = /^prop_(\d+)$/.exec(k)
+                        if (m) {
+                            const i = Number(m[1])
+                            if (i >= 0 && i < purchaseComps.length) idxs.push(i)
+                        }
+                    }
+                    if (idxs.length > 0) setSelectedPurchaseIndices(idxs.sort((a, b) => a - b))
                 }
 
                 // Aviso si la tasación legacy tiene un coeficiente de calidad hardcoded a 1.0.
@@ -438,9 +511,11 @@ function NewAppraisalPageContent() {
             setSaveErrorDetail('No se puede recalcular: revisá que el subject y los comparables tengan datos completos (precios, superficies).')
             return
         }
-        // Calcular escenarios si los hay
+        // Parte del propietario: cuando la propiedad está dividida entre herederos.
+        const ownerShareMoney = Math.round(next.moneyInHand * (ownerSharePercent / 100))
+        // Calcular escenarios si los hay — usan la parte del propietario como base.
         const scenarioResults = purchaseScenarios.length > 0
-            ? calculateAllScenarios(purchaseScenarios, next.moneyInHand)
+            ? calculateAllScenarios(purchaseScenarios, ownerShareMoney)
             : undefined
         // Si hay escenarios calculados, preservar la selección del usuario filtrada a IDs que existen.
         // Si NO hay (porque borró las purchase properties), limpiar selectedIds y purchaseResult —
@@ -455,6 +530,8 @@ function NewAppraisalPageContent() {
             purchaseResult: mergedScenarios ? valuationResult.purchaseResult : undefined,
             purchaseScenarios: mergedScenarios,
             selectedScenarioIds: mergedSelectedIds,
+            ownerSharePercent,
+            ownerShareMoney,
         }
         setValuationResult(merged)
 
@@ -541,21 +618,44 @@ function NewAppraisalPageContent() {
             expenseRates,
         })
 
-        // Calculate purchase costs if a purchase property is selected
-        let pResult: PurchaseResult | undefined
-        if (result && selectedPurchaseIndex !== null && purchaseProperties[selectedPurchaseIndex]) {
-            const selectedPurchase = purchaseProperties[selectedPurchaseIndex]
-            pResult = calculatePurchaseCosts(
-                selectedPurchase.price || 0,
-                selectedPurchase.title || selectedPurchase.location || 'Propiedad',
-                result.moneyInHand,
-                purchaseExpenseRates,
-            )
-            result = { ...result, purchaseResult: pResult }
-            setPurchaseResult(pResult)
-        } else {
-            setPurchaseResult(null)
+        // Parte del propietario (default 100%). Aplicada también en handleCalculate para que el
+        // primer cálculo (sin haber entrado al efecto de recálculo) ya refleje el descuento.
+        const ownerShareMoney = result ? Math.round(result.moneyInHand * (ownerSharePercent / 100)) : 0
+
+        // Calcular escenarios para todas las propiedades seleccionadas usando la parte del propietario.
+        let scenariosForCalc = purchaseScenarios
+        if (result && selectedPurchaseIndices.length > 0 && purchaseScenarios.length === 0) {
+            // Caso edge: usuario tocó "Calcular" justo antes de que el efecto sincronizara escenarios.
+            // Generamos en el momento.
+            scenariosForCalc = []
+            for (const idx of selectedPurchaseIndices) {
+                const prop = purchaseProperties[idx]
+                if (!prop) continue
+                const propertyKey = `prop_${idx}`
+                const basePrice = prop.price || 100000
+                const propertyLabel = prop.title || prop.location || `Propiedad ${idx + 1}`
+                scenariosForCalc.push(...buildDefaultScenarios(basePrice, propertyKey, propertyLabel))
+            }
+            setPurchaseScenarios(scenariosForCalc)
         }
+
+        const scenarioResults = result && scenariosForCalc.length > 0
+            ? calculateAllScenarios(scenariosForCalc, ownerShareMoney)
+            : undefined
+
+        if (result) {
+            result = {
+                ...result,
+                purchaseScenarios: scenarioResults,
+                selectedScenarioIds: scenarioResults
+                    ? selectedScenarioIds.filter(id => scenarioResults.some(s => s.id === id))
+                    : [],
+                ownerSharePercent,
+                ownerShareMoney,
+            }
+        }
+        // El purchaseResult legacy (single property) ya no se genera por el nuevo flujo.
+        setPurchaseResult(null)
 
         setValuationResult(result)
 
@@ -1111,20 +1211,26 @@ function NewAppraisalPageContent() {
                                         {purchaseProperties.map((prop, index) => {
                                             const homSurface = (prop.features.coveredArea || 0) + ((prop.features.uncoveredArea || 0) * 0.5)
                                             const pricePerM2 = homSurface > 0 ? (prop.price || 0) / homSurface : 0
+                                            const isSelected = selectedPurchaseIndices.includes(index)
                                             return (
                                                 <div
                                                     key={index}
-                                                    className={`flex items-center gap-4 p-4 rounded-xl border transition-all duration-200 ${selectedPurchaseIndex === index
+                                                    className={`flex items-center gap-4 p-4 rounded-xl border transition-all duration-200 ${isSelected
                                                         ? 'bg-blue-50 dark:bg-blue-950/20 border-blue-400 ring-2 ring-blue-200'
                                                         : 'bg-muted/30 border-border hover:shadow-sm'
                                                     }`}
                                                 >
                                                     <input
-                                                        type="radio"
-                                                        name="selectedPurchase"
-                                                        checked={selectedPurchaseIndex === index}
-                                                        onChange={() => setSelectedPurchaseIndex(index)}
-                                                        className="h-4 w-4 text-blue-600"
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => {
+                                                            setSelectedPurchaseIndices(prev =>
+                                                                prev.includes(index)
+                                                                    ? prev.filter(i => i !== index)
+                                                                    : [...prev, index].sort((a, b) => a - b)
+                                                            )
+                                                        }}
+                                                        className="h-4 w-4 rounded text-blue-600 accent-blue-600"
                                                     />
                                                     {prop.images?.[0] && (
                                                         <img
@@ -1156,9 +1262,14 @@ function NewAppraisalPageContent() {
                                                         variant="ghost"
                                                         size="icon"
                                                         onClick={() => {
-                                                            setPurchaseProperties(purchaseProperties.filter((_, i) => i !== index))
-                                                            if (selectedPurchaseIndex === index) setSelectedPurchaseIndex(null)
-                                                            else if (selectedPurchaseIndex !== null && selectedPurchaseIndex > index) setSelectedPurchaseIndex(selectedPurchaseIndex - 1)
+                                                            const newProps = purchaseProperties.filter((_, i) => i !== index)
+                                                            setPurchaseProperties(newProps)
+                                                            // Reajustar indices: remover el borrado y decrementar los mayores.
+                                                            setSelectedPurchaseIndices(prev =>
+                                                                prev
+                                                                    .filter(i => i !== index)
+                                                                    .map(i => (i > index ? i - 1 : i))
+                                                            )
                                                         }}
                                                         className="h-8 w-8 text-destructive hover:text-destructive"
                                                     >
@@ -1168,75 +1279,46 @@ function NewAppraisalPageContent() {
                                             )
                                         })}
                                     </div>
-                                    {selectedPurchaseIndex === null && (
-                                        <p className="text-xs text-amber-600">Selecciona una propiedad para incluirla en la simulacion de compra y venta</p>
+                                    {selectedPurchaseIndices.length === 0 && (
+                                        <p className="text-xs text-amber-600">Marcá una o más propiedades para compararlas en el informe</p>
                                     )}
                                 </div>
                             </>
                         )}
 
-                        {/* Purchase Expense Rates */}
-                        {purchaseProperties.length > 0 && selectedPurchaseIndex !== null && (
-                            <details className="mt-6">
-                                <summary className="cursor-pointer font-semibold text-sm flex items-center gap-2">
-                                    <Calculator className="h-4 w-4 text-blue-500" />
-                                    Porcentajes de Gastos de Compra
-                                    <span className="text-xs font-normal text-muted-foreground ml-1">(click para ajustar)</span>
-                                </summary>
-                                <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
-                                    <div className="space-y-1">
-                                        <label className="text-xs text-muted-foreground">Descuento compra %</label>
-                                        <input type="number" step="0.1" min="0" max="50"
-                                            className="w-full rounded-md border px-3 py-2 text-sm"
-                                            value={purchaseExpenseRates.purchaseDiscountPercent}
-                                            onChange={e => setPurchaseExpenseRates(r => ({ ...r, purchaseDiscountPercent: Number(e.target.value) }))}
-                                        />
+                        {/* Parte del Propietario — visible cuando hay propiedades de compra marcadas */}
+                        {selectedPurchaseIndices.length > 0 && (
+                            <div className="mt-6 p-4 rounded-xl border bg-amber-50/60 dark:bg-amber-950/20 border-amber-200">
+                                <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-6">
+                                    <div className="flex-1">
+                                        <label className="text-sm font-semibold flex items-center gap-2">
+                                            <Calculator className="h-4 w-4 text-amber-600" />
+                                            % Parte del Propietario
+                                        </label>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Si la propiedad está dividida entre herederos, ingresá el porcentaje que le toca al propietario (ej: 50 si son dos partes iguales). Default 100%.
+                                        </p>
                                     </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs text-muted-foreground">Desc. escritura %</label>
-                                        <input type="number" step="0.1" min="0" max="50"
-                                            className="w-full rounded-md border px-3 py-2 text-sm"
-                                            value={purchaseExpenseRates.deedDiscountPercent}
-                                            onChange={e => setPurchaseExpenseRates(r => ({ ...r, deedDiscountPercent: Number(e.target.value) }))}
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={100}
+                                            step={1}
+                                            value={ownerSharePercent}
+                                            onChange={e => {
+                                                const v = Number(e.target.value)
+                                                if (Number.isFinite(v) && v >= 1 && v <= 100) setOwnerSharePercent(v)
+                                            }}
+                                            className="w-24 rounded-md border px-3 py-2 text-sm text-right"
                                         />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs text-muted-foreground">Sellos %</label>
-                                        <input type="number" step="0.01" min="0" max="10"
-                                            className="w-full rounded-md border px-3 py-2 text-sm"
-                                            value={purchaseExpenseRates.stampsPercent}
-                                            onChange={e => setPurchaseExpenseRates(r => ({ ...r, stampsPercent: Number(e.target.value) }))}
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs text-muted-foreground">Hon. Escribano %</label>
-                                        <input type="number" step="0.01" min="0" max="10"
-                                            className="w-full rounded-md border px-3 py-2 text-sm"
-                                            value={purchaseExpenseRates.notaryFeesPercent}
-                                            onChange={e => setPurchaseExpenseRates(r => ({ ...r, notaryFeesPercent: Number(e.target.value) }))}
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs text-muted-foreground">Gastos escritura %</label>
-                                        <input type="number" step="0.01" min="0" max="10"
-                                            className="w-full rounded-md border px-3 py-2 text-sm"
-                                            value={purchaseExpenseRates.deedExpensesPercent}
-                                            onChange={e => setPurchaseExpenseRates(r => ({ ...r, deedExpensesPercent: Number(e.target.value) }))}
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs text-muted-foreground">Hon. Inmobiliaria %</label>
-                                        <input type="number" step="0.01" min="0" max="10"
-                                            className="w-full rounded-md border px-3 py-2 text-sm"
-                                            value={purchaseExpenseRates.buyerCommissionPercent}
-                                            onChange={e => setPurchaseExpenseRates(r => ({ ...r, buyerCommissionPercent: Number(e.target.value) }))}
-                                        />
+                                        <span className="text-sm text-muted-foreground">%</span>
                                     </div>
                                 </div>
-                            </details>
+                            </div>
                         )}
 
-                        {/* Escenarios de compra (Conservador / Medio / Agresivo) */}
+                        {/* Escenarios de compra (Conservador / Medio / Agresivo) — agrupados por propiedad */}
                         {purchaseProperties.length > 0 && purchaseScenarios.length > 0 && valuationResult && (
                             <div className="mt-6">
                                 <PurchaseScenariosEditor
