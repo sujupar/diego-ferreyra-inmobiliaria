@@ -84,6 +84,7 @@ function getNavSections(role: Role): NavSection[] {
                     label: 'Admin', items: [
                         ...(can('settings.manage') ? [{ href: '/settings', label: 'Configuracion' }] : []),
                         ...(can('settings.manage') ? [{ href: '/settings/portals', label: 'Portales' }] : []),
+                        ...(can('settings.manage') ? [{ href: '/admin/pipeline-test', label: 'Probar sistema (auditoría)' }] : []),
                         ...(can('settings.manage') ? [{ href: '/admin/email-test', label: 'Test de Emails' }] : []),
                         ...(can('users.manage') ? [{ href: '/users', label: 'Usuarios' }] : []),
                     ]

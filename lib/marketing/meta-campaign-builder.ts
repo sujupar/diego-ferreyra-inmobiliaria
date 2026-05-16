@@ -98,6 +98,7 @@ async function uploadAdImage(photoUrl: string): Promise<string> {
 
 export async function createCampaignForProperty(
   property: Property,
+  options: { dryRun?: boolean } = {},
 ): Promise<CampaignResult> {
   if (!property.public_slug) {
     throw new Error('Property sin public_slug — asignar antes de crear campaign')
@@ -204,22 +205,30 @@ export async function createCampaignForProperty(
     }),
   })
 
-  // 6. Smoke test de la landing antes de activar
-  const landingOk = await smokeTestLanding(landingUrl)
+  // 6. Smoke test de la landing antes de activar (skipear en dryRun)
+  const landingOk = options.dryRun ? false : await smokeTestLanding(landingUrl)
 
-  // 7. Actualizar la fila ya creada en 1.5 con adset_id + ad_ids + status final
+  // 7. Actualizar la fila ya creada en 1.5 con adset_id + ad_ids + status final.
+  // En dryRun queda 'paused' para auditoría manual.
+  const finalStatus = options.dryRun
+    ? 'paused'
+    : landingOk
+      ? 'active'
+      : 'failed'
   await supabase
     .from('property_meta_campaigns')
     .update({
       adset_id: adset.id,
       ad_ids: [ad.id],
-      status: landingOk ? 'active' : 'failed',
-      last_error: landingOk ? null : 'Smoke test de landing falló',
+      status: finalStatus,
+      last_error:
+        !options.dryRun && !landingOk ? 'Smoke test de landing falló' : null,
     })
     .eq('campaign_id', campaign.id)
 
-  // 8. Si la landing responde OK, activar campaign + adset + ad en Meta
-  if (landingOk) {
+  // 8. Si la landing responde OK y no es dryRun, activar todo en Meta.
+  // En dryRun queda PAUSED para que el usuario audite antes de activar.
+  if (landingOk && !options.dryRun) {
     await activateCampaign(campaign.id, adset.id, [ad.id])
   }
 
