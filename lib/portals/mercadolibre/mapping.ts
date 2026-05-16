@@ -12,7 +12,15 @@ export interface MlPayload {
   pictures: { source: string }[]
   description: { plain_text: string }
   attributes: { id: string; value_name: string }[]
-  location: { latitude: number; longitude: number; address_line: string }
+  location: {
+    latitude: number
+    longitude: number
+    address_line: string
+    country: { name: string }
+    state: { name: string }
+    city: { name: string }
+    neighborhood?: { name: string }
+  }
   video_id?: string
 }
 
@@ -71,12 +79,48 @@ function buildAttributes(property: Property): { id: string; value_name: string }
     attrs.push({ id: 'MAINTENANCE_FEE', value_name: `${property.expensas} ARS` })
   }
   if (property.age != null) {
-    attrs.push({ id: 'PROPERTY_AGE', value_name: String(property.age) })
+    // ML exige unidad explícita ("años", "meses", "días" o sufijos como m, s).
+    // Sin la unidad: "Attribute PROPERTY_AGE with value X was omitted."
+    attrs.push({
+      id: 'PROPERTY_AGE',
+      value_name: property.age === 0 ? 'A estrenar' : `${property.age} años`,
+    })
   }
   if (property.floor != null) {
     attrs.push({ id: 'FLOORS', value_name: String(property.floor) })
   }
   return attrs
+}
+
+/**
+ * Construye el objeto location que ML espera con todos los niveles
+ * requeridos: country, state, city. Sin estos campos ML devuelve:
+ *   "Field 'location' requires up to city level."
+ *
+ * Para propiedades en CABA: state = "Capital Federal", city = barrio.
+ * Para el resto: state = "Buenos Aires" (o lo que indique property.city),
+ * city = property.city.
+ */
+function buildLocation(property: Property) {
+  const cityRaw = (property.city ?? '').trim()
+  const isCaba =
+    !cityRaw ||
+    /^caba$/i.test(cityRaw) ||
+    /capital federal/i.test(cityRaw) ||
+    /ciudad aut[oó]noma/i.test(cityRaw)
+
+  const stateName = isCaba ? 'Capital Federal' : 'Buenos Aires'
+  const cityName = isCaba ? property.neighborhood : cityRaw
+
+  return {
+    latitude: property.latitude!,
+    longitude: property.longitude!,
+    address_line: `${property.address}, ${property.neighborhood}, ${cityRaw || 'CABA'}`,
+    country: { name: 'Argentina' },
+    state: { name: stateName },
+    city: { name: cityName },
+    neighborhood: { name: property.neighborhood },
+  }
 }
 
 export function propertyToMlPayload(property: Property): MlPayload {
@@ -101,10 +145,6 @@ export function propertyToMlPayload(property: Property): MlPayload {
       plain_text: property.description || buildTitle(property),
     },
     attributes: buildAttributes(property),
-    location: {
-      latitude: property.latitude,
-      longitude: property.longitude,
-      address_line: `${property.address}, ${property.neighborhood}, ${property.city}`,
-    },
+    location: buildLocation(property),
   }
 }
