@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -143,10 +144,15 @@ export default function PropertyDetailPage() {
       formData.append('type', type)
 
       const res = await fetch(`/api/properties/${id}/upload`, { method: 'POST', body: formData })
-      if (!res.ok) throw new Error('Upload failed')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data?.error || 'Error al subir archivo')
+        return
+      }
       await fetchProperty()
+      toast.success(type === 'photo' ? 'Foto subida' : 'Documento subido')
     } catch (err) {
-      alert('Error al subir archivo')
+      toast.error(err instanceof Error ? err.message : 'Error al subir archivo')
     } finally {
       setUploading(false)
     }

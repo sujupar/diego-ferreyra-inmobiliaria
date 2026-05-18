@@ -4,14 +4,23 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
+import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
   Loader2, ArrowLeft, User, MapPin, Calendar, Phone, Mail,
   ChevronRight, FileCheck, Home, Eye, MessageSquare, XCircle, Tag,
-  Edit2, Send, Mic, MicOff, Square, UserCog
+  Edit2, Send, Mic, MicOff, Square, UserCog, Clock
 } from 'lucide-react'
+
+type FollowUpChannel = 'call' | 'email' | 'message'
+const CHANNEL_LABEL: Record<FollowUpChannel, string> = {
+  call: 'Llamada',
+  email: 'Correo',
+  message: 'Mensaje',
+}
+const todayIsoDate = () => new Date().toISOString().slice(0, 10)
 import { ContactEditor } from '@/components/contacts/ContactEditor'
 
 const VisitDataForm = dynamic(
@@ -53,6 +62,10 @@ export default function DealDetailPage() {
   // Followup modal
   const [showFollowupModal, setShowFollowupModal] = useState(false)
   const [followupNotes, setFollowupNotes] = useState('')
+  const [followupChannel, setFollowupChannel] = useState<FollowUpChannel>('call')
+  const [followupDate, setFollowupDate] = useState<string>(todayIsoDate())
+  const [followupAllDay, setFollowupAllDay] = useState<boolean>(true)
+  const [followupTime, setFollowupTime] = useState<string>('09:00')
 
   // Visit modal
   const [showVisitModal, setShowVisitModal] = useState(false)
@@ -119,18 +132,66 @@ export default function DealDetailPage() {
     } catch (err) { console.error(err) }
   }
 
-  // Followup submission
-  function handleFollowupSubmit() {
+  // Followup submission: 1) crea task con fecha + canal, 2) avanza stage a followup
+  // preservando el historial en deals.notes.
+  async function handleFollowupSubmit() {
     if (!followupNotes.trim()) {
-      alert('Debes describir el seguimiento antes de continuar.')
+      toast.error('Describí el seguimiento antes de continuar.')
       return
     }
-    const combinedNotes = notes
-      ? `${notes}\n\n--- Seguimiento (${new Date().toLocaleDateString('es-AR')}) ---\n${followupNotes}`
-      : `--- Seguimiento (${new Date().toLocaleDateString('es-AR')}) ---\n${followupNotes}`
-    handleAdvance('followup', combinedNotes)
-    setShowFollowupModal(false)
-    setFollowupNotes('')
+    if (followupDate < todayIsoDate()) {
+      toast.error('La fecha no puede ser anterior a hoy.')
+      return
+    }
+    if (!followupAllDay && !followupTime) {
+      toast.error('Indicá una hora o marcá "Todo el día".')
+      return
+    }
+
+    setAdvancing(true)
+    const channelLabel = CHANNEL_LABEL[followupChannel]
+    const contactName = deal?.contacts?.full_name || 'sin contacto'
+    const dateLabel = new Date(followupDate + 'T00:00:00').toLocaleDateString('es-AR')
+    const timeLabel = followupAllDay ? 'todo el día' : followupTime
+
+    try {
+      const taskRes = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'follow_up',
+          title: `Seguimiento ${channelLabel.toLowerCase()}: ${contactName}`,
+          description: followupNotes.trim(),
+          deal_id: id,
+          channel: followupChannel,
+          due_date: followupDate,
+          all_day: followupAllDay,
+          due_time: followupAllDay ? null : followupTime,
+        }),
+      })
+      const taskData = await taskRes.json().catch(() => ({}))
+      if (!taskRes.ok) {
+        toast.error(taskData?.error || 'No se pudo guardar el seguimiento.')
+        setAdvancing(false)
+        return
+      }
+
+      // Preserve historial en notes
+      const header = `--- Seguimiento ${channelLabel} (${dateLabel} ${timeLabel}) ---`
+      const combinedNotes = notes ? `${notes}\n\n${header}\n${followupNotes.trim()}` : `${header}\n${followupNotes.trim()}`
+      await handleAdvance('followup', combinedNotes)
+      toast.success(`Seguimiento agendado para el ${dateLabel}`)
+      setShowFollowupModal(false)
+      setFollowupNotes('')
+      setFollowupChannel('call')
+      setFollowupDate(todayIsoDate())
+      setFollowupAllDay(true)
+      setFollowupTime('09:00')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al guardar el seguimiento.')
+    } finally {
+      setAdvancing(false)
+    }
   }
 
   // Speech-to-text
@@ -475,25 +536,86 @@ export default function DealDetailPage() {
 
       {/* Followup Modal */}
       {showFollowupModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowFollowupModal(false)}>
-          <div className="bg-background rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto" onClick={() => setShowFollowupModal(false)}>
+          <div className="bg-background rounded-2xl shadow-xl w-full max-w-lg my-8 p-6 space-y-4 max-h-[95vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="space-y-1">
               <p className="eyebrow">Seguimiento</p>
               <h2 className="display text-2xl flex items-center gap-2">
                 <MessageSquare className="h-5 w-5 text-muted-foreground" />
-                Registrar Seguimiento
+                Agendar Seguimiento
               </h2>
             </div>
             <p className="text-sm text-muted-foreground">
-              Describe el estado del seguimiento, la conversación con el cliente, o próximos pasos.
+              Generá una tarea para llamar, escribir un mail o mandar un mensaje al cliente. Aparecerá en tus pendientes el día acordado.
             </p>
 
+            {/* Canal */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Canal</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['call', 'email', 'message'] as FollowUpChannel[]).map(c => {
+                  const ChannelIcon = c === 'call' ? Phone : c === 'email' ? Mail : MessageSquare
+                  const active = followupChannel === c
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setFollowupChannel(c)}
+                      className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${active ? 'border-orange-500 bg-orange-50 text-orange-900 font-medium' : 'border-input bg-background hover:bg-muted/50'}`}
+                    >
+                      <ChannelIcon className="h-4 w-4" />
+                      {CHANNEL_LABEL[c]}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Fecha + Hora */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                  <Calendar className="h-3.5 w-3.5" /> Fecha
+                </label>
+                <input
+                  type="date"
+                  min={todayIsoDate()}
+                  value={followupDate}
+                  onChange={e => setFollowupDate(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                  <Clock className="h-3.5 w-3.5" /> Hora
+                </label>
+                <input
+                  type="time"
+                  value={followupTime}
+                  disabled={followupAllDay}
+                  onChange={e => setFollowupTime(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:bg-muted/50 disabled:cursor-not-allowed"
+                />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={followupAllDay}
+                onChange={e => setFollowupAllDay(e.target.checked)}
+                className="h-4 w-4 rounded"
+              />
+              Todo el día
+            </label>
+
+            {/* Notas */}
             <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Detalle / próximos pasos</label>
               <textarea
-                className="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm"
                 value={followupNotes}
                 onChange={e => setFollowupNotes(e.target.value)}
-                placeholder="Ej: Hablé con el cliente, está interesado pero quiere ver otra propiedad antes de decidir..."
+                placeholder="Ej: Llamar al cliente para confirmar interés en la propiedad y agendar visita."
                 autoFocus
               />
 
@@ -537,7 +659,7 @@ export default function DealDetailPage() {
                 className="flex-1 bg-orange-600 hover:bg-orange-700"
               >
                 {advancing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <MessageSquare className="h-4 w-4 mr-2" />}
-                Confirmar Seguimiento
+                Agendar
               </Button>
             </div>
           </div>

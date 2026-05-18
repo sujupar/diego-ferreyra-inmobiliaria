@@ -29,6 +29,10 @@ export const LEGAL_DOCS_CATALOG: LegalDocDefinition[] = [
 
   // OPCIONALES
   { key: 'estado_parcelario', label: 'Estado Parcelario', category: 'optional', description: 'Opcional. Aplica a PH, casa en provincia o casa en CABA.' },
+  { key: 'servicio_agua', label: 'Servicio de Agua (AySA)', category: 'optional', description: 'Última factura paga del servicio de agua.' },
+  { key: 'servicio_luz', label: 'Servicio de Luz (Edenor / Edesur)', category: 'optional', description: 'Última factura paga del servicio eléctrico.' },
+  { key: 'servicio_gas', label: 'Servicio de Gas (Metrogas / Naturgy)', category: 'optional', description: 'Última factura paga del servicio de gas.' },
+  { key: 'abl', label: 'ABL / Impuesto Inmobiliario', category: 'optional', description: 'Última boleta paga de ABL (CABA) o impuesto inmobiliario (provincia).' },
 ]
 
 export type DocItemStatus = 'missing' | 'pending' | 'approved' | 'rejected'

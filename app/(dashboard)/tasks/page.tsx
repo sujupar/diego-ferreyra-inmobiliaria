@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
   Loader2, CheckCircle, X, User, FileCheck, Home, Scale,
-  AlertTriangle, ChevronRight, Bell
+  AlertTriangle, ChevronRight, Bell, MessageSquare, Phone, Mail, Calendar, Clock
 } from 'lucide-react'
 import type { PropertyVisitWithRelations } from '@/types/visits.types'
 
@@ -16,6 +16,14 @@ const TYPE_CONFIG: Record<string, { icon: typeof Bell; color: string; label: str
   new_assignment: { icon: FileCheck, color: 'bg-[color:var(--brand)] text-white', label: 'Tasación Coordinada', urgent: true },
   review_property: { icon: Scale, color: 'bg-purple-100 text-purple-800', label: 'Revisión Legal' },
   rejected_docs: { icon: AlertTriangle, color: 'bg-red-100 text-red-800', label: 'Docs Rechazados' },
+  follow_up: { icon: MessageSquare, color: 'bg-orange-100 text-orange-800', label: 'Seguimiento' },
+  complete_imported_property: { icon: Home, color: 'bg-blue-100 text-blue-800', label: 'Completar Propiedad' },
+}
+
+const CHANNEL_CONFIG: Record<string, { icon: typeof Phone; label: string }> = {
+  call: { icon: Phone, label: 'Llamada' },
+  email: { icon: Mail, label: 'Correo' },
+  message: { icon: MessageSquare, label: 'Mensaje' },
 }
 
 interface Task {
@@ -29,6 +37,10 @@ interface Task {
   contact_id: string | null
   status: string
   created_at: string
+  due_date: string | null
+  due_time: string | null
+  all_day: boolean | null
+  channel: 'call' | 'email' | 'message' | null
 }
 
 function formatDate(d: string) {
@@ -79,10 +91,22 @@ export default function TasksPage() {
     fetch(`/api/tasks?user_id=${userInfo.id}${status ? `&status=${status}` : ''}`)
       .then(r => r.json())
       .then(({ data }) => {
+        const today = new Date().toISOString().slice(0, 10)
+        // Sort: urgentes (new_assignment) → atrasadas → hoy → sin fecha → futuras
+        const priorityOf = (t: Task): number => {
+          if (t.type === 'new_assignment') return 0
+          if (!t.due_date) return 3
+          if (t.due_date < today) return 1
+          if (t.due_date === today) return 2
+          return 4
+        }
         const sorted = (data || []).slice().sort((a: Task, b: Task) => {
-          const aUrgent = a.type === 'new_assignment' ? 1 : 0
-          const bUrgent = b.type === 'new_assignment' ? 1 : 0
-          return bUrgent - aUrgent
+          const pa = priorityOf(a), pb = priorityOf(b)
+          if (pa !== pb) return pa - pb
+          // Dentro del mismo bucket, ordenar por due_date ASC luego por hora
+          if (a.due_date && b.due_date && a.due_date !== b.due_date) return a.due_date < b.due_date ? -1 : 1
+          if (a.due_time && b.due_time && a.due_time !== b.due_time) return a.due_time < b.due_time ? -1 : 1
+          return 0
         })
         setTasks(sorted)
       })
@@ -176,6 +200,15 @@ export default function TasksPage() {
                     <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                       <span className={`font-medium ${config.urgent ? 'text-foreground' : ''}`}>{task.title}</span>
                       <span className="eyebrow">{config.label}</span>
+                      {task.channel && CHANNEL_CONFIG[task.channel] && (() => {
+                        const ChIcon = CHANNEL_CONFIG[task.channel].icon
+                        return (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-50 text-orange-800 text-[10px] font-medium">
+                            <ChIcon className="h-3 w-3" />
+                            {CHANNEL_CONFIG[task.channel].label}
+                          </span>
+                        )
+                      })()}
                       {config.urgent && (
                         <span className="eyebrow text-[color:var(--brand)] border-l border-[color:var(--brand)]/30 pl-2">
                           Acción Requerida
@@ -183,7 +216,27 @@ export default function TasksPage() {
                       )}
                     </div>
                     {task.description && <p className="text-sm text-muted-foreground truncate">{task.description}</p>}
-                    <p className="tabular-n text-[11px] text-muted-foreground mt-0.5">{formatDate(task.created_at)}</p>
+                    <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground tabular-n">
+                      {task.due_date && (() => {
+                        const today = new Date().toISOString().slice(0, 10)
+                        const isOverdue = task.due_date < today
+                        const isToday = task.due_date === today
+                        const dateLabel = new Date(task.due_date + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+                        return (
+                          <span className={`inline-flex items-center gap-1 ${isOverdue ? 'text-red-700 font-medium' : isToday ? 'text-orange-700 font-medium' : ''}`}>
+                            <Calendar className="h-3 w-3" />
+                            {isToday ? 'Hoy' : isOverdue ? `Vencida (${dateLabel})` : dateLabel}
+                            {!task.all_day && task.due_time && (
+                              <>
+                                <Clock className="h-3 w-3 ml-1" />
+                                {task.due_time.slice(0, 5)}
+                              </>
+                            )}
+                          </span>
+                        )
+                      })()}
+                      {!task.due_date && <span>{formatDate(task.created_at)}</span>}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {task.status === 'pending' && (

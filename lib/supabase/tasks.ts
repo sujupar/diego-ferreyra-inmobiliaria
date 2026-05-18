@@ -4,7 +4,15 @@ function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
-export type TaskType = 'update_contact' | 'new_assignment' | 'review_property' | 'rejected_docs' | 'complete_imported_property'
+export type TaskType =
+  | 'update_contact'
+  | 'new_assignment'
+  | 'review_property'
+  | 'rejected_docs'
+  | 'complete_imported_property'
+  | 'follow_up'
+
+export type FollowUpChannel = 'call' | 'email' | 'message'
 
 export interface CreateTaskInput {
   type: TaskType
@@ -15,6 +23,12 @@ export interface CreateTaskInput {
   appraisal_id?: string
   property_id?: string
   contact_id?: string
+  // Follow-up specific (used when type === 'follow_up')
+  channel?: FollowUpChannel
+  due_date?: string // YYYY-MM-DD
+  due_time?: string | null // HH:MM (24h), null si all_day
+  all_day?: boolean
+  created_by?: string
 }
 
 /**
@@ -59,9 +73,9 @@ async function pendingTaskExists(assignedTo: string, type: TaskType, entity: Ret
 
 export async function createTask(input: CreateTaskInput) {
   const entity = pickEntityFilter(input)
-  // Skip if an equivalent pending task already exists — keeps the creators
-  // idempotent against retries / multi-fires.
-  if (await pendingTaskExists(input.assigned_to, input.type, entity)) {
+  // Follow-ups son agendados manualmente y pueden coexistir múltiples por entidad
+  // (uno hoy, otro la próxima semana, etc.) — saltar el dedupe.
+  if (input.type !== 'follow_up' && await pendingTaskExists(input.assigned_to, input.type, entity)) {
     return null
   }
   const { data, error } = await getAdmin().from('tasks').insert(input).select('id').single()
@@ -102,8 +116,15 @@ export async function getMyTasks(userId: string, status?: string) {
     .eq('assigned_to', userId)
     .order('created_at', { ascending: false })
 
-  if (status) query = query.eq('status', status)
-  else query = query.eq('status', 'pending')
+  const effectiveStatus = status ?? 'pending'
+  query = query.eq('status', effectiveStatus)
+
+  // Para tareas pending, ocultar las que están agendadas a futuro: solo se ven
+  // las que vencen hoy o antes (atrasadas), o las legacy sin due_date.
+  if (effectiveStatus === 'pending') {
+    const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+    query = query.or(`due_date.is.null,due_date.lte.${today}`)
+  }
 
   const { data, error } = await query.limit(50)
   if (error) throw error

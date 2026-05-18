@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -72,8 +73,16 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
     try {
       const fd = new FormData()
       fd.append('file', file)
-      await fetch(`/api/properties/${propertyId}/legal-docs/${itemKey}`, { method: 'POST', body: fd })
+      const res = await fetch(`/api/properties/${propertyId}/legal-docs/${itemKey}`, { method: 'POST', body: fd })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data?.error || 'Error al subir el documento')
+        return
+      }
       onUpdated()
+      toast.success('Documento subido — en revisión')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al subir el documento')
     } finally { setUploadingKey(null) }
   }
 

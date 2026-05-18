@@ -76,14 +76,33 @@ export function VisitDataForm({ dealId, initial, onCompleted }: Props) {
     }, 500)
   }, [dealId])
 
+  // Total = cubiertos + (semicubiertos * 0.5) + (descubiertos * 0.5). Null si los tres están vacíos.
+  const computeSaleTotal = (s: SaleVisitData): number | null => {
+    const c = s.covered_m2, sc = s.semi_covered_m2, u = s.uncovered_m2
+    if (c == null && sc == null && u == null) return null
+    return (c ?? 0) + 0.5 * (sc ?? 0) + 0.5 * (u ?? 0)
+  }
+
+  const computePurchaseTotal = (p: PurchaseVisitData): number | null => {
+    const c = p.covered_m2_target, sc = p.semi_covered_m2_target, u = p.uncovered_m2_target
+    if (c == null && sc == null && u == null) return null
+    return (c ?? 0) + 0.5 * (sc ?? 0) + 0.5 * (u ?? 0)
+  }
+
   const updateSale = <K extends keyof SaleVisitData>(key: K, value: SaleVisitData[K]) => {
-    const next = { ...sale, [key]: value }
+    let next = { ...sale, [key]: value }
+    if (key === 'covered_m2' || key === 'semi_covered_m2' || key === 'uncovered_m2') {
+      next = { ...next, total_m2: computeSaleTotal(next) }
+    }
     setSale(next)
     triggerAutoSave({ sale: next })
   }
 
   const updatePurchase = <K extends keyof PurchaseVisitData>(key: K, value: PurchaseVisitData[K]) => {
-    const next = { ...purchase, [key]: value }
+    let next = { ...purchase, [key]: value }
+    if (key === 'covered_m2_target' || key === 'semi_covered_m2_target' || key === 'uncovered_m2_target') {
+      next = { ...next, total_m2_target: computePurchaseTotal(next) }
+    }
     setPurchase(next)
     triggerAutoSave({ purchase: next })
   }
@@ -238,7 +257,11 @@ function SaleSection({
           <div><Label>Cubiertos</Label><Input type="number" value={sale.covered_m2 ?? ''} onChange={e => onUpdate('covered_m2', e.target.value ? +e.target.value : null)} /></div>
           <div><Label>Semi-cubiertos</Label><Input type="number" value={sale.semi_covered_m2 ?? ''} onChange={e => onUpdate('semi_covered_m2', e.target.value ? +e.target.value : null)} /></div>
           <div><Label>Descubiertos</Label><Input type="number" value={sale.uncovered_m2 ?? ''} onChange={e => onUpdate('uncovered_m2', e.target.value ? +e.target.value : null)} /></div>
-          <div><Label>Totales</Label><Input type="number" value={sale.total_m2 ?? ''} onChange={e => onUpdate('total_m2', e.target.value ? +e.target.value : null)} /></div>
+          <div>
+            <Label>Totales</Label>
+            <Input type="number" readOnly value={sale.total_m2 ?? ''} className="bg-muted/50 cursor-not-allowed" tabIndex={-1} />
+            <p className="text-[10px] text-muted-foreground mt-1">Cubiertos + ½ semi + ½ descubiertos</p>
+          </div>
           <div><Label>Terreno</Label><Input type="number" value={sale.terrain_m2 ?? ''} onChange={e => onUpdate('terrain_m2', e.target.value ? +e.target.value : null)} /></div>
         </CardContent>
       </Card>
@@ -488,7 +511,11 @@ function PurchaseSection({ purchase, onUpdate }: {
               <div><Label>Cubiertos</Label><Input type="number" value={purchase.covered_m2_target ?? ''} onChange={e => onUpdate('covered_m2_target', e.target.value ? +e.target.value : null)} /></div>
               <div><Label>Semi-cubiertos</Label><Input type="number" value={purchase.semi_covered_m2_target ?? ''} onChange={e => onUpdate('semi_covered_m2_target', e.target.value ? +e.target.value : null)} /></div>
               <div><Label>Descubiertos</Label><Input type="number" value={purchase.uncovered_m2_target ?? ''} onChange={e => onUpdate('uncovered_m2_target', e.target.value ? +e.target.value : null)} /></div>
-              <div><Label>Totales</Label><Input type="number" value={purchase.total_m2_target ?? ''} onChange={e => onUpdate('total_m2_target', e.target.value ? +e.target.value : null)} /></div>
+              <div>
+                <Label>Totales</Label>
+                <Input type="number" readOnly value={purchase.total_m2_target ?? ''} className="bg-muted/50 cursor-not-allowed" tabIndex={-1} />
+                <p className="text-[10px] text-muted-foreground mt-1">Cubiertos + ½ semi + ½ descubiertos</p>
+              </div>
               <div><Label>Terreno</Label><Input type="number" value={purchase.terrain_m2_target ?? ''} onChange={e => onUpdate('terrain_m2_target', e.target.value ? +e.target.value : null)} /></div>
             </CardContent>
           </Card>
