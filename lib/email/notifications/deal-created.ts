@@ -22,6 +22,14 @@ export async function notifyDealCreated({ dealId }: NotifyDealCreatedOptions) {
   const { asesor, coordinador, adminsOwners, contact, dealRow } = await getDealStakeholders(dealId)
   if (!dealRow) return
 
+  // Guard: los registros de clase gratuita NO son solicitudes de tasación.
+  // Deben usar notifyClassRegistration, no este flow — el template y el subject
+  // de este email hablan de "Tasación agendada" y contaminan la percepción de
+  // solicitudes reales en el inbox del equipo.
+  if (dealRow.origin === 'clase_gratuita') {
+    throw new Error(`notifyDealCreated invoked for clase_gratuita deal ${dealId}; use notifyClassRegistration instead`)
+  }
+
   const coordinadorName = coordinador?.full_name || 'Coordinador'
   const advisorName = asesor?.full_name || null
   const propertyTypeLbl = propertyTypeLabel(dealRow.property_type, dealRow.property_type_other)

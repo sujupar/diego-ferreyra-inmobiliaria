@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createDeal } from '@/lib/supabase/deals'
 import { createTaskForRole } from '@/lib/supabase/tasks'
 import { notifyDealCreated } from '@/lib/email/notifications/deal-created'
+import { notifyClassRegistration } from '@/lib/email/notifications/class-registration'
 import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
 import { verifyGhlWebhookSecret, parseGhlFormPayload, mapFormToStage } from '@/lib/ghl/webhook'
 
@@ -177,11 +178,24 @@ export async function POST(request: NextRequest) {
             // No bloqueamos el webhook por una falla de tarea.
         }
 
-        // Notificación a coordinador+admins (mismo flow que form interno).
-        await notifyWithEscalation(
-            () => notifyDealCreated({ dealId }),
-            { failedNotificationType: 'deal_created', entityType: 'deal', entityId: dealId },
-        )
+        // Notificación a coordinador+admins. Branchear por stage:
+        // - clase_gratuita → email "Nuevo registro a clase gratuita" (NO menciona
+        //   tasación; aclara que requiere contacto manual del equipo).
+        // - resto         → email "Tasación agendada" (flow original).
+        // Importante: NO mezclar — el template de tasación habla de "agendada" y
+        // contamina la percepción de solicitudes reales si se dispara para clase
+        // gratuita (bug reportado por el usuario).
+        if (stage === 'clase_gratuita') {
+            await notifyWithEscalation(
+                () => notifyClassRegistration({ dealId, formName: submission.formName }),
+                { failedNotificationType: 'class_registration_admins', entityType: 'deal', entityId: dealId },
+            )
+        } else {
+            await notifyWithEscalation(
+                () => notifyDealCreated({ dealId }),
+                { failedNotificationType: 'deal_created', entityType: 'deal', entityId: dealId },
+            )
+        }
 
         return NextResponse.json({
             success: true,
