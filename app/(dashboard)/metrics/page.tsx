@@ -1,247 +1,118 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { BarChart3, TrendingUp, Home, Users, Phone, Loader2, RefreshCw } from 'lucide-react'
+import { DateRangePicker, type DateRange } from '@/components/metrics/DateRangePicker'
+import { FunnelChart } from '@/components/metrics/FunnelChart'
+import { MetricsTable } from '@/components/metrics/MetricsTable'
+import { CampaignBreakdown } from '@/components/metrics/CampaignBreakdown'
+import { FunnelByDayChart } from '@/components/metrics/FunnelByDayChart'
+import type {
+  MetricsComparison,
+  FunnelMetrics,
+  CampaignFunnelRow,
+  FunnelDayRow,
+} from '@/lib/metrics/types'
 
-interface CommercialActions {
-  tasaciones_solicitadas: number
-  tasaciones_coordinadas: number
-  tasaciones_realizadas: number
-  captaciones: number
-}
-
-interface CallStats {
-  total_calls: number
-  answered_calls: number
-  missed_calls: number
-}
-
-interface PipelineStage {
-  stage_name: string
-  contact_count: number
-  new_contacts: number
-  opportunity_value: number
-}
-
-function getDateRange(days: number) {
-  const to = new Date()
-  to.setDate(to.getDate() - 1)
-  const from = new Date(to)
-  from.setDate(from.getDate() - days + 1)
+function defaultRange(): DateRange {
+  const today = new Date()
+  const to = new Date(today); to.setUTCDate(to.getUTCDate() - 1)
+  const from = new Date(to); from.setUTCDate(from.getUTCDate() - 6)
   return {
-    from: from.toISOString().split('T')[0],
-    to: to.toISOString().split('T')[0],
+    from: from.toISOString().slice(0, 10),
+    to: to.toISOString().slice(0, 10),
   }
 }
 
 export default function MetricsPage() {
-  const [range, setRange] = useState<'7' | '30' | 'custom'>('30')
-  const [customFrom, setCustomFrom] = useState('')
-  const [customTo, setCustomTo] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [commercialActions, setCommercialActions] = useState<CommercialActions | null>(null)
-  const [callStats, setCallStats] = useState<CallStats | null>(null)
-  const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([])
-  const [totalNewContacts, setTotalNewContacts] = useState(0)
-  const [metaLeads, setMetaLeads] = useState(0)
-  const [metaSpend, setMetaSpend] = useState(0)
+  const [range, setRange] = useState<DateRange>(defaultRange())
+  const [funnel, setFunnel] = useState<MetricsComparison<FunnelMetrics> | null>(null)
+  const [campaigns, setCampaigns] = useState<CampaignFunnelRow[]>([])
+  const [byDay, setByDay] = useState<FunnelDayRow[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const getEffectiveRange = useCallback(() => {
-    if (range === 'custom' && customFrom && customTo) return { from: customFrom, to: customTo }
-    return getDateRange(range === '7' ? 7 : 30)
-  }, [range, customFrom, customTo])
-
-  const fetchData = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
     setLoading(true)
-    const { from, to } = getEffectiveRange()
-
+    setError(null)
     try {
-      const [metaRes, ghlRes] = await Promise.all([
-        fetch(`/api/marketing/meta?from=${from}&to=${to}`),
-        fetch(`/api/marketing/ghl?from=${from}&to=${to}`),
+      const qs = `?from=${range.from}&to=${range.to}`
+      const [fRes, cRes, dRes] = await Promise.all([
+        fetch(`/api/metrics/funnel${qs}`),
+        fetch(`/api/metrics/funnel-by-campaign${qs}`),
+        fetch(`/api/metrics/funnel-by-day${qs}`),
       ])
-
-      if (metaRes.ok) {
-        const meta = await metaRes.json()
-        const rows = meta.data || []
-        setMetaLeads(rows.reduce((s: number, r: { leads: number }) => s + r.leads, 0))
-        setMetaSpend(rows.reduce((s: number, r: { spend: number }) => s + r.spend, 0))
-      }
-
-      if (ghlRes.ok) {
-        const ghl = await ghlRes.json()
-        setCommercialActions(ghl.commercial_actions || null)
-        setCallStats(ghl.call_stats || null)
-
-        const stages = (ghl.data || []) as PipelineStage[]
-        setPipelineStages(stages)
-        setTotalNewContacts(stages.reduce((s, st) => s + (st.new_contacts || 0), 0))
-      }
-    } catch (err) {
-      console.error('Error fetching metrics:', err)
+      if (!fRes.ok) throw new Error(`funnel: ${fRes.status}`)
+      const f = await fRes.json()
+      const c = cRes.ok ? await cRes.json() : []
+      const d = dRes.ok ? await dRes.json() : []
+      setFunnel(f)
+      setCampaigns(Array.isArray(c) ? c : [])
+      setByDay(Array.isArray(d) ? d : [])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error cargando métricas')
     } finally {
       setLoading(false)
     }
-  }, [getEffectiveRange])
+  }, [range.from, range.to])
 
-  useEffect(() => { fetchData() }, [fetchData])
-
-  const ca = commercialActions
+  useEffect(() => {
+    fetchAll()
+  }, [fetchAll])
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-6 p-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Metricas</h1>
-          <p className="text-muted-foreground">Rendimiento comercial y marketing</p>
+          <h1 className="text-2xl font-bold">Métricas</h1>
+          <p className="text-sm text-muted-foreground">
+            Embudo completo · {range.from} a {range.to}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-md border">
-            {(['7', '30'] as const).map(d => (
-              <button
-                key={d}
-                onClick={() => setRange(d)}
-                className={`px-3 py-1.5 text-sm transition-colors ${range === d ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-              >
-                {d}d
-              </button>
-            ))}
-            <button
-              onClick={() => setRange('custom')}
-              className={`px-3 py-1.5 text-sm transition-colors ${range === 'custom' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-            >
-              Custom
-            </button>
-          </div>
-          <Button variant="outline" size="sm" onClick={fetchData}>
-            <RefreshCw className="h-4 w-4" />
+          <DateRangePicker value={range} onChange={setRange} />
+          <Button variant="outline" size="icon" onClick={fetchAll} disabled={loading} aria-label="Refrescar">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           </Button>
         </div>
-      </div>
+      </header>
 
-      {range === 'custom' && (
-        <div className="flex items-center gap-2">
-          <Input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="w-40" />
-          <span className="text-muted-foreground">—</span>
-          <Input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="w-40" />
-          <Button size="sm" onClick={fetchData}>Aplicar</Button>
+      {error && (
+        <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+          {error}
         </div>
       )}
 
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      ) : (
-        <>
-          {/* Acciones Comerciales */}
-          <div>
-            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
-              Acciones Comerciales
-            </h2>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">Tasaciones Solicitadas</p>
-                  <p className="text-3xl font-bold text-blue-600 mt-1">{ca?.tasaciones_solicitadas ?? 0}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">Tasaciones Coordinadas</p>
-                  <p className="text-3xl font-bold text-amber-600 mt-1">{ca?.tasaciones_coordinadas ?? 0}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">Tasaciones Realizadas</p>
-                  <p className="text-3xl font-bold text-green-600 mt-1">{ca?.tasaciones_realizadas ?? 0}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">Captaciones</p>
-                  <p className="text-3xl font-bold text-purple-600 mt-1">{ca?.captaciones ?? 0}</p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+      <section className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle>Embudo</CardTitle></CardHeader>
+          <CardContent>
+            {funnel ? <FunnelChart metrics={funnel.current} /> : <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>Comparativa vs período anterior</CardTitle></CardHeader>
+          <CardContent>
+            {funnel ? <MetricsTable data={funnel} /> : <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+          </CardContent>
+        </Card>
+      </section>
 
-          {/* Pipeline y Leads */}
-          <div>
-            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" />
-              Embudo Comercial
-            </h2>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">Leads Meta</p>
-                  <p className="text-3xl font-bold text-blue-600 mt-1">{metaLeads}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">Nuevos en Pipeline</p>
-                  <p className="text-3xl font-bold text-green-600 mt-1">{totalNewContacts}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">Gasto Meta Ads</p>
-                  <p className="text-3xl font-bold text-amber-600 mt-1">
-                    ${metaSpend.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">Llamadas</p>
-                  <p className="text-3xl font-bold text-purple-600 mt-1">{callStats?.total_calls ?? 0}</p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+      <Card>
+        <CardHeader><CardTitle>Evolución diaria</CardTitle></CardHeader>
+        <CardContent>
+          <FunnelByDayChart rows={byDay} />
+        </CardContent>
+      </Card>
 
-          {/* Resumen del Pipeline Interno */}
-          <div>
-            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Resumen Interno
-            </h2>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">Tasaciones por Embudo</p>
-                  <p className="text-2xl font-bold text-blue-600 mt-1">{ca?.tasaciones_solicitadas ?? 0}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">Conversion Tasacion → Captacion</p>
-                  <p className="text-2xl font-bold text-green-600 mt-1">
-                    {(ca?.tasaciones_realizadas ?? 0) > 0
-                      ? `${Math.round(((ca?.captaciones ?? 0) / (ca?.tasaciones_realizadas ?? 1)) * 100)}%`
-                      : '—'}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">CPL promedio</p>
-                  <p className="text-2xl font-bold text-amber-600 mt-1">
-                    {metaLeads > 0 ? `$${Math.round(metaSpend / metaLeads).toLocaleString('es-AR')}` : '—'}
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </>
-      )}
+      <Card>
+        <CardHeader><CardTitle>Rendimiento publicitario (Meta Ads)</CardTitle></CardHeader>
+        <CardContent>
+          <CampaignBreakdown rows={campaigns} />
+        </CardContent>
+      </Card>
     </div>
   )
 }
