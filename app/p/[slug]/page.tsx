@@ -11,6 +11,7 @@ import { LandingDescription } from '@/components/landing/Description'
 import { LandingLocationMap } from '@/components/landing/LocationMap'
 import { LandingLeadForm } from '@/components/landing/LeadForm'
 import { MetaPixel } from '@/components/landing/MetaPixel'
+import { LandingVisitTracker } from '@/components/landing/LandingVisitTracker'
 
 function getAdmin() {
   return createClient<Database>(
@@ -82,6 +83,7 @@ export default async function PropertyLandingPage({
 
   return (
     <main className="min-h-screen bg-background">
+      <LandingVisitTracker slug={slug} funnelType="otro" />
       {pixelId && (
         <MetaPixel
           pixelId={pixelId}
