@@ -30,6 +30,56 @@ async function sendViaResend(opts: { to: string[]; subject: string; html: string
 const META_API_BASE = 'https://graph.facebook.com/v21.0'
 const GHL_API_BASE = 'https://services.leadconnectorhq.com'
 
+// ===== Excel-table-builder inline (Fase 6) =====
+const _TH = 'padding:6px 10px;border:1px solid #9ca3af;background:#e5e7eb;color:#374151;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;'
+const _TD = 'padding:6px 10px;border:1px solid #d1d5db;font-size:13px;color:#1f2937;'
+function _excelTable(title: string, cols: string[], rows: string[][]): string {
+  if (rows.length === 0) return `<h3 style="font-family:Arial,sans-serif;margin:18px 0 6px 0;font-size:14px;color:#111827;">${title}</h3><p style="font-family:Arial,sans-serif;font-size:13px;color:#6b7280;margin:0 0 18px 0;">Sin datos.</p>`
+  const head = cols.map((c, i) => `<th style="${_TH}text-align:${i === 0 ? 'left' : 'right'};">${c}</th>`).join('')
+  const body = rows.map(r => '<tr>' + r.map((v, i) => {
+    let color = ''; const text = v
+    if (/^\+\d/.test(text)) color = 'color:#15803d;'
+    else if (/^-\d/.test(text)) color = 'color:#dc2626;'
+    const align = i === 0 ? 'left' : 'right'
+    const bold = i === 0 ? 'font-weight:600;' : ''
+    return `<td style="${_TD}text-align:${align};${bold}${color}">${text}</td>`
+  }).join('') + '</tr>').join('')
+  return `<h3 style="font-family:Arial,sans-serif;margin:18px 0 6px 0;font-size:14px;color:#111827;">${title}</h3>
+<table style="border-collapse:collapse;font-family:Arial,sans-serif;width:100%;max-width:720px;margin-bottom:18px;">
+  <thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
+}
+function _fmtDelta(cur: number, prev: number): string {
+  if (cur === 0 && prev === 0) return '—'
+  if (prev === 0) return '+∞'
+  const pct = Math.round(((cur - prev) / prev) * 100)
+  if (pct === 0) return '0%'
+  return pct > 0 ? `+${pct}%` : `${pct}%`
+}
+const FUNNEL_LABELS: Record<string, string> = {
+  class_registrations:    'Registros a clase gratuita',
+  appraisal_requests:     'Solicitudes de tasación',
+  appointments_scheduled: 'Tasaciones agendadas',
+  visits_completed:       'Visitas realizadas',
+  appraisals_delivered:   'Tasaciones entregadas',
+  properties_captured:    'Propiedades captadas',
+  deals_lost:             'Deals perdidos',
+}
+const FUNNEL_ORDER = ['class_registrations','appraisal_requests','appointments_scheduled','visits_completed','appraisals_delivered','properties_captured','deals_lost']
+async function _fetchFunnelMetrics(supabase: unknown, from: string, to: string): Promise<Record<string, number>> {
+  const { data, error } = await (supabase as { rpc: (n: string, args: unknown) => Promise<{ data: unknown; error: { message: string } | null }> })
+    .rpc('get_funnel_metrics', { p_from: from, p_to: to })
+  if (error) { console.error('[Report] get_funnel_metrics error:', error.message); return {} }
+  const out: Record<string, number> = {}
+  for (const r of ((data ?? []) as Array<{ metric: string; value: number | string }>)) out[r.metric] = Number(r.value)
+  return out
+}
+function _buildFunnelSection(today: Record<string, number>, prev: Record<string, number>, label: string): string {
+  const rows = FUNNEL_ORDER.map(k => [
+    FUNNEL_LABELS[k], String(today[k] ?? 0), String(prev[k] ?? 0), _fmtDelta(today[k] ?? 0, prev[k] ?? 0),
+  ])
+  return _excelTable(`Embudo CRM — ${label}`, ['Métrica', 'Actual', 'Anterior', 'Δ %'], rows)
+}
+
 export default async function handler() {
   console.log(`[Weekly Report] Triggered at: ${new Date().toISOString()}`)
 
@@ -81,6 +131,19 @@ export default async function handler() {
     ghl_pipeline: { ok: false },
     ghl_calls: { ok: false },
     ghl_commercial: { ok: false },
+    funnel_crm: { ok: false },
+  }
+
+  // Fase 6 — Embudo CRM (RPCs de Fase 3): rango actual vs período inmediatamente anterior
+  let funnelSection = ''
+  try {
+    const todayFunnel = await _fetchFunnelMetrics(supabase, dateFromStr, dateToStr)
+    const prevFunnel = await _fetchFunnelMetrics(supabase, prevFromStr, prevToStr)
+    funnelSection = _buildFunnelSection(todayFunnel, prevFunnel, `${dateFromStr} a ${dateToStr}`)
+    dataSourceStatus.funnel_crm = { ok: true }
+  } catch (err) {
+    console.error('[Weekly Report] funnel CRM error:', err)
+    dataSourceStatus.funnel_crm = { ok: false, error: err instanceof Error ? err.message : 'Unknown error' }
   }
 
   // Commercial actions tracking
@@ -420,6 +483,7 @@ export default async function handler() {
   <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;padding:32px;">
     <p style="color:#6b7280;font-size:14px;margin:0 0 24px;">Periodo: <strong>${fmtD(dateFromStr)} — ${fmtD(dateToStr)}</strong></p>
     ${healthBanner}
+    ${funnelSection}
     <div style="display:flex;gap:12px;margin-bottom:32px;flex-wrap:wrap;">
       <div style="flex:1;min-width:140px;background:#eff6ff;border-radius:8px;padding:16px;">
         <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Leads</p>
