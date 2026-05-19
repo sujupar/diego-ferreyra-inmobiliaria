@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { getDeal, updateDealNotes } from '@/lib/supabase/deals'
+import { getDeal, updateDealNotes, updateDealSchedule } from '@/lib/supabase/deals'
 import { requireAuth, requireRole } from '@/lib/auth/require-role'
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+const TIME_RE = /^\d{2}:\d{2}(:\d{2})?$/
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -19,11 +22,40 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     await requireAuth()
     const { id } = await params
     const body = await request.json()
-    const { notes } = body
-    if (typeof notes !== 'string') {
-      return NextResponse.json({ error: 'notes required (string)' }, { status: 400 })
+
+    const hasNotes = typeof body?.notes === 'string'
+    const hasSchedule = 'scheduled_date' in (body ?? {}) || 'scheduled_time' in (body ?? {})
+
+    if (!hasNotes && !hasSchedule) {
+      return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
     }
-    await updateDealNotes(id, notes)
+
+    if (hasNotes) {
+      await updateDealNotes(id, body.notes)
+    }
+
+    if (hasSchedule) {
+      const rawDate = body.scheduled_date
+      const rawTime = body.scheduled_time
+
+      const scheduledDate =
+        rawDate === undefined || rawDate === null || rawDate === '' ? null : String(rawDate)
+      const scheduledTime =
+        rawTime === undefined || rawTime === null || rawTime === '' ? null : String(rawTime)
+
+      if (scheduledDate !== null && !DATE_RE.test(scheduledDate)) {
+        return NextResponse.json({ error: 'scheduled_date inválida (YYYY-MM-DD)' }, { status: 400 })
+      }
+      if (scheduledTime !== null && !TIME_RE.test(scheduledTime)) {
+        return NextResponse.json({ error: 'scheduled_time inválida (HH:MM)' }, { status: 400 })
+      }
+
+      await updateDealSchedule(id, {
+        scheduled_date: scheduledDate,
+        scheduled_time: scheduledTime,
+      })
+    }
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('PUT /api/deals/[id] error:', error)

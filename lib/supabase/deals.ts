@@ -145,6 +145,21 @@ export async function updateDealNotes(id: string, notes: string) {
   if (error) throw error
 }
 
+export async function updateDealSchedule(
+  id: string,
+  schedule: { scheduled_date: string | null; scheduled_time: string | null },
+) {
+  const { error } = await getAdmin()
+    .from('deals')
+    .update({
+      scheduled_date: schedule.scheduled_date,
+      scheduled_time: schedule.scheduled_time,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export async function linkAppraisalToDeal(dealId: string, appraisalId: string) {
   const { error } = await getAdmin()
     .from('deals')

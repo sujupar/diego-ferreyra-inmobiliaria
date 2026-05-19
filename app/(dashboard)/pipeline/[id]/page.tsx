@@ -70,6 +70,12 @@ export default function DealDetailPage() {
   // Visit modal
   const [showVisitModal, setShowVisitModal] = useState(false)
 
+  // Reschedule modal — permite editar fecha/hora de una tasación ya coordinada.
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [scheduleDate, setScheduleDate] = useState<string>('')
+  const [scheduleTime, setScheduleTime] = useState<string>('')
+  const [savingSchedule, setSavingSchedule] = useState(false)
+
   // Audio transcription
   const [isRecording, setIsRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
@@ -119,6 +125,42 @@ export default function DealDetailPage() {
       await fetchDeal()
     } catch (err) { alert('Error') }
     finally { setAdvancing(false) }
+  }
+
+  function openScheduleModal() {
+    setScheduleDate(deal?.scheduled_date || '')
+    setScheduleTime(deal?.scheduled_time ? String(deal.scheduled_time).slice(0, 5) : '')
+    setShowScheduleModal(true)
+  }
+
+  async function handleSaveSchedule() {
+    if (!scheduleDate) {
+      toast.error('La fecha es obligatoria.')
+      return
+    }
+    setSavingSchedule(true)
+    try {
+      const res = await fetch(`/api/deals/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scheduled_date: scheduleDate,
+          scheduled_time: scheduleTime || null,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data?.error || 'No se pudo actualizar la fecha.')
+        return
+      }
+      toast.success('Fecha y hora actualizadas.')
+      setShowScheduleModal(false)
+      await fetchDeal()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al guardar la fecha.')
+    } finally {
+      setSavingSchedule(false)
+    }
   }
 
   // Save notes independently
@@ -318,7 +360,27 @@ export default function DealDetailPage() {
             {contact.phone && <><span className="text-muted-foreground flex items-center gap-1"><Phone className="h-3.5 w-3.5" />Teléfono:</span><span>{contact.phone}</span></>}
             {contact.email && <><span className="text-muted-foreground flex items-center gap-1"><Mail className="h-3.5 w-3.5" />Email:</span><span>{contact.email}</span></>}
             {deal.origin && <><span className="text-muted-foreground flex items-center gap-1"><Tag className="h-3.5 w-3.5" />Origen:</span><span>{ORIGIN_LABELS[deal.origin] || deal.origin}</span></>}
-            {deal.scheduled_date && <><span className="text-muted-foreground flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />Fecha agendada:</span><span>{deal.scheduled_date}{deal.scheduled_time ? ` ${deal.scheduled_time}` : ''}</span></>}
+            {deal.scheduled_date && (
+              <>
+                <span className="text-muted-foreground flex items-center gap-1">
+                  <Calendar className="h-3.5 w-3.5" />Fecha agendada:
+                </span>
+                <span className="flex items-center gap-2">
+                  <span>{deal.scheduled_date}{deal.scheduled_time ? ` ${String(deal.scheduled_time).slice(0, 5)}` : ''}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={openScheduleModal}
+                    className="h-6 px-2 text-xs gap-1"
+                    aria-label="Editar fecha y hora"
+                  >
+                    <Edit2 className="h-3 w-3" />
+                    Editar
+                  </Button>
+                </span>
+              </>
+            )}
             {deal.profiles && <><span className="text-muted-foreground">Asesor:</span><span>{deal.profiles.full_name}</span></>}
           </div>
         </CardContent>
@@ -689,6 +751,74 @@ export default function DealDetailPage() {
               initial={deal.visit_data || null}
               onCompleted={() => { setShowVisitModal(false); fetchDeal() }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Reschedule Modal — editar fecha/hora de una tasación ya coordinada */}
+      {showScheduleModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+          onClick={() => !savingSchedule && setShowScheduleModal(false)}
+        >
+          <div
+            className="bg-background rounded-2xl shadow-xl w-full max-w-md my-8 p-6 space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="space-y-1">
+              <p className="eyebrow">Reagendar</p>
+              <h2 className="display text-2xl flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-muted-foreground" />
+                Editar fecha y hora
+              </h2>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Modificá la fecha y la hora de la tasación coordinada. El resto del proceso queda igual.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                  <Calendar className="h-3.5 w-3.5" /> Fecha
+                </label>
+                <input
+                  type="date"
+                  value={scheduleDate}
+                  onChange={e => setScheduleDate(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                  <Clock className="h-3.5 w-3.5" /> Hora
+                </label>
+                <input
+                  type="time"
+                  value={scheduleTime}
+                  onChange={e => setScheduleTime(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowScheduleModal(false)}
+                disabled={savingSchedule}
+                className="flex-1"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleSaveSchedule}
+                disabled={savingSchedule || !scheduleDate}
+                className="flex-1 bg-[color:var(--brand)] text-white hover:bg-[color:var(--brand)]/90"
+              >
+                {savingSchedule ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Guardar
+              </Button>
+            </div>
           </div>
         </div>
       )}
