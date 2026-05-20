@@ -9,6 +9,7 @@ import { FunnelChart } from '@/components/metrics/FunnelChart'
 import { MetricsTable } from '@/components/metrics/MetricsTable'
 import { CampaignBreakdown } from '@/components/metrics/CampaignBreakdown'
 import { FunnelByDayChart } from '@/components/metrics/FunnelByDayChart'
+import { SendTestReport } from '@/components/metrics/SendTestReport'
 import type {
   MetricsComparison,
   FunnelMetrics,
@@ -113,6 +114,8 @@ export default function MetricsPage() {
           <CampaignBreakdown rows={campaigns} />
         </CardContent>
       </Card>
+
+      <SendTestReport />
     </div>
   )
 }

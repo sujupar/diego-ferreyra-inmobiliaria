@@ -5,6 +5,7 @@ import type {
   GHLStageSnapshot,
   GHLCallStats,
   GHLCommercialActions,
+  FunnelCRMSummary,
   ReportData,
   ReportType,
 } from './types'
@@ -130,7 +131,8 @@ export function buildReportData(
   pipelineSnapshots: GHLStageSnapshot[],
   tokenExpiresAt?: number | null,
   callStats?: GHLCallStats,
-  commercialActions?: GHLCommercialActions
+  commercialActions?: GHLCommercialActions,
+  funnelCRM?: FunnelCRMSummary,
 ): ReportData {
   return {
     type,
@@ -141,5 +143,6 @@ export function buildReportData(
     meta_token_expires_at: tokenExpiresAt,
     call_stats: callStats,
     commercial_actions: commercialActions,
+    funnel_crm: funnelCRM,
   }
 }

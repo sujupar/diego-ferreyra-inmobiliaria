@@ -168,6 +168,29 @@ export interface PipelineSummary {
   total_value: number
 }
 
+export interface FunnelCRMSummary {
+  /** Etiqueta del rango comparado (ej: "2026-05-17 vs 2026-05-16"). */
+  rangeLabel: string
+  current: {
+    class_registrations: number
+    appraisal_requests: number
+    appointments_scheduled: number
+    visits_completed: number
+    appraisals_delivered: number
+    properties_captured: number
+    deals_lost: number
+  }
+  previous: {
+    class_registrations: number
+    appraisal_requests: number
+    appointments_scheduled: number
+    visits_completed: number
+    appraisals_delivered: number
+    properties_captured: number
+    deals_lost: number
+  }
+}
+
 export interface ReportData {
   type: ReportType
   date_from: string
@@ -177,6 +200,8 @@ export interface ReportData {
   call_stats?: GHLCallStats
   commercial_actions?: GHLCommercialActions
   meta_token_expires_at?: number | null
+  /** Fase 6 — sección Embudo CRM en formato tabla Excel (opcional). */
+  funnel_crm?: FunnelCRMSummary
 }
 
 export interface ReportSettings {

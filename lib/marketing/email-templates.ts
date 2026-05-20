@@ -39,6 +39,61 @@ function tokenWarningHtml(expiresAt: number | null | undefined): string {
   `
 }
 
+/**
+ * Renderiza la sección "Embudo CRM" en formato tabla densa estilo Excel.
+ * Solo se inserta si data.funnel_crm está presente (Fase 6).
+ */
+function funnelCRMHtml(funnel: import('./types').FunnelCRMSummary | undefined): string {
+  if (!funnel) return ''
+
+  const fmtDelta = (cur: number, prev: number): string => {
+    if (cur === 0 && prev === 0) return '<span style="color:#9ca3af;">&mdash;</span>'
+    if (prev === 0) return '<span style="color:#15803d;">+&infin;</span>'
+    const pct = Math.round(((cur - prev) / prev) * 100)
+    if (pct === 0) return '<span style="color:#9ca3af;">0%</span>'
+    const color = pct > 0 ? '#15803d' : '#dc2626'
+    return `<span style="color:${color};">${pct > 0 ? '+' : ''}${pct}%</span>`
+  }
+
+  const rows: Array<{ label: string; cur: number; prev: number }> = [
+    { label: 'Registros a clase gratuita',  cur: funnel.current.class_registrations,    prev: funnel.previous.class_registrations },
+    { label: 'Solicitudes de tasación',     cur: funnel.current.appraisal_requests,     prev: funnel.previous.appraisal_requests },
+    { label: 'Tasaciones agendadas',        cur: funnel.current.appointments_scheduled, prev: funnel.previous.appointments_scheduled },
+    { label: 'Visitas realizadas',          cur: funnel.current.visits_completed,       prev: funnel.previous.visits_completed },
+    { label: 'Tasaciones entregadas',       cur: funnel.current.appraisals_delivered,   prev: funnel.previous.appraisals_delivered },
+    { label: 'Propiedades captadas',        cur: funnel.current.properties_captured,    prev: funnel.previous.properties_captured },
+    { label: 'Deals perdidos',              cur: funnel.current.deals_lost,             prev: funnel.previous.deals_lost },
+  ]
+
+  const TH = 'padding:6px 10px;border:1px solid #9ca3af;background:#e5e7eb;color:#374151;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;'
+  const TD = 'padding:6px 10px;border:1px solid #d1d5db;font-size:13px;color:#1f2937;'
+
+  const tbody = rows.map(r => `
+    <tr>
+      <td style="${TD}font-weight:600;">${r.label}</td>
+      <td style="${TD}text-align:right;">${r.cur}</td>
+      <td style="${TD}text-align:right;color:#6b7280;">${r.prev}</td>
+      <td style="${TD}text-align:right;">${fmtDelta(r.cur, r.prev)}</td>
+    </tr>`).join('')
+
+  return `
+    <h2 style="color: #111827; font-size: 17px; margin: 0 0 6px 0; font-weight: 700;">Embudo CRM</h2>
+    <p style="color: #6b7280; font-size: 12px; margin: 0 0 12px 0;">${funnel.rangeLabel}</p>
+    <table style="border-collapse:collapse;width:100%;max-width:720px;margin-bottom:28px;">
+      <thead>
+        <tr>
+          <th style="${TH}text-align:left;">Métrica</th>
+          <th style="${TH}text-align:right;">Actual</th>
+          <th style="${TH}text-align:right;">Anterior</th>
+          <th style="${TH}text-align:right;">Δ %</th>
+        </tr>
+      </thead>
+      <tbody>${tbody}</tbody>
+    </table>
+    <div style="border-top: 2px solid #f3f4f6; margin: 0 0 28px 0;"></div>
+  `
+}
+
 function kpiCard(label: string, value: string, bgColor: string, textColor: string): string {
   return `
     <td style="padding: 0 6px;">
@@ -133,6 +188,8 @@ export function buildReportHtml(data: ReportData): string {
       <p style="color: #6b7280; font-size: 13px; margin: 0 0 24px 0;">Periodo: <strong style="color: #374151;">${periodLabel}</strong></p>
 
       ${tokenWarningHtml(data.meta_token_expires_at)}
+
+      ${funnelCRMHtml(data.funnel_crm)}
 
       <!-- KPI Cards -->
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 32px;" cellpadding="0" cellspacing="0">
