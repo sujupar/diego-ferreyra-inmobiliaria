@@ -28,6 +28,17 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 - **Regla general:** Si un trigger necesita escribir en otra tabla con FK al row del trigger, ESE INSERT debe ir en un trigger `AFTER`, nunca en `BEFORE`. Si el trigger BEFORE también necesita modificar `NEW`, separar en dos triggers/funciones — no combinarlos.
 - **Detection:** Antes de declarar completa cualquier migración con trigger nuevo en tabla mutable (`deals`, `contacts`, `properties`, `appraisals`), hacer un INSERT real desde el flow de la app (no solo SQL Editor) y confirmar que no devuelve 500. Si el trigger escribe en otra tabla, verificar también que esa tabla tiene política RLS apropiada para el operation type.
 
+### Supabase upsert con `onConflict` requiere UNIQUE constraint
+
+- **Symptom:** Métricas de Meta Ads aparecían infladas en rangos multi-día del dashboard `/metrics`. Filtro "Ayer" mostraba números correctos pero "Últimos 7/30 días" o "Mes corriente" daban valores absurdos (suma de filas duplicadas).
+- **Root cause:** El cliente Supabase JS interpreta `.upsert(rows, { onConflict: 'col_a,col_b' })` como "si existe conflicto en esa combinación de columnas, UPDATE, si no INSERT". Pero **requiere que esa combinación tenga UNIQUE constraint en la DB**. Sin la constraint, Postgres no detecta conflicto → upsert se comporta como INSERT puro → duplicados se acumulan. Esto fue invisible mucho tiempo porque 3 scheduled functions (daily/weekly/monthly report) escriben en `meta_ads_daily` cada una.
+- **Fix:** Cada vez que agregues `.upsert(..., { onConflict: 'X' })`, confirmá con un SELECT en `pg_constraint` que existe la UNIQUE correspondiente. Si no, agregarla. Migración `20260520000002_meta_ads_daily_dedup.sql` agregó constraints faltantes en `meta_ads_daily(date, campaign_id)`, `ghl_pipeline_daily(date, pipeline_id, stage_id)`, `ghl_commercial_actions_daily(date)`.
+- **Detection:** Si un dashboard muestra métricas que duplican o triplican el valor real cuando ampliás el rango, primero ejecutar:
+  ```sql
+  SELECT col_a, col_b, COUNT(*) FROM tabla
+  GROUP BY col_a, col_b HAVING COUNT(*) > 1 LIMIT 20;
+  ```
+
 ### Email stack 100% Resend (no Gmail/nodemailer)
 
 - **Symptom:** Si por error se vuelve a usar nodemailer/Gmail, los emails no llegan o caen en spam.
