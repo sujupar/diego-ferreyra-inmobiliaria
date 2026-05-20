@@ -1,0 +1,59 @@
+# Diego Ferreyra Inmobiliaria — Operational Notes
+
+## Stack
+Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. shadcn/ui (new-york). Recharts para gráficos. @react-pdf/renderer para PDFs cliente.
+
+## Deploy
+- Repo privado en GitHub `sujupar/diego-ferreyra-inmobiliaria`.
+- Netlify auto-deploya en cada push a `main` (webhook nativo, NO usa GitHub Actions).
+- Site ID `b7e73ba5-3bfb-4604-b7bf-353169dd912a`.
+- Commit author DEBE ser `Sujupar <redstyle50@gmail.com>` o el deploy falla.
+
+## Supabase
+- CLI no conecta (auth issue) — el usuario corre SQL en el Dashboard SQL Editor manualmente.
+- RLS habilitada granular por rol (admin, dueno, coordinador, asesor, abogado) desde migración `20260505000001_rls_per_role_safe.sql`.
+
+---
+
+## Operational Gotchas / Lessons Learned
+
+### Postgres triggers que insertan en otra tabla con FK al row actual
+
+- **Symptom:** `POST /api/deals` devolvía 500 al "Coordinar Tasación". En logs: foreign key violation sobre `deal_stage_history.deal_id`. También afectaba a cualquier flow que hiciera UPDATE de `deals.stage`.
+- **Root cause:** El trigger `trg_deals_stage_change` (migración `20260518000002_deal_stage_history.sql`) era `BEFORE INSERT OR UPDATE OF stage` y dentro hacía `INSERT INTO deal_stage_history (deal_id, ...) VALUES (NEW.id, ...)`. En `BEFORE INSERT` el row aún no está persistido en la tabla original, así que el FK `deal_stage_history.deal_id REFERENCES deals(id)` falla con violación. Bonus: la tabla `deal_stage_history` solo tenía política RLS SELECT, no INSERT → segundo bloqueo.
+- **Fix:** Split en 2 triggers (migración hotfix `20260520000001_fix_deal_stage_history_trigger.sql`):
+  1. `BEFORE INSERT OR UPDATE OF stage` → solo modifica `NEW` para poblar columnas `*_at` del propio deal.
+  2. `AFTER INSERT OR UPDATE OF stage` → inserta en `deal_stage_history` cuando el deal ya existe. Marcado `SECURITY DEFINER` para bypass de RLS.
+  Además, agregar política `FOR INSERT TO authenticated WITH CHECK (true)` en `deal_stage_history` como defense-in-depth.
+- **Regla general:** Si un trigger necesita escribir en otra tabla con FK al row del trigger, ESE INSERT debe ir en un trigger `AFTER`, nunca en `BEFORE`. Si el trigger BEFORE también necesita modificar `NEW`, separar en dos triggers/funciones — no combinarlos.
+- **Detection:** Antes de declarar completa cualquier migración con trigger nuevo en tabla mutable (`deals`, `contacts`, `properties`, `appraisals`), hacer un INSERT real desde el flow de la app (no solo SQL Editor) y confirmar que no devuelve 500. Si el trigger escribe en otra tabla, verificar también que esa tabla tiene política RLS apropiada para el operation type.
+
+### Email stack 100% Resend (no Gmail/nodemailer)
+
+- **Symptom:** Si por error se vuelve a usar nodemailer/Gmail, los emails no llegan o caen en spam.
+- **Root cause:** Migración a Resend completada 2026-04-24 (commits ff3c90f + f9e4dd8). Dominio configurado con SPF/DKIM en Resend: `inmodf.com.ar`.
+- **Fix:** Usar siempre el helper `lib/email/resend-client.ts` (`sendEmail()`) que envuelve Resend SDK + idempotencia + test mode. Variables de entorno requeridas: `RESEND_API_KEY`, `EMAIL_FROM_DEFAULT`, `EMAIL_FROM_INVITATIONS`, `EMAIL_FROM_REPORTS`, `EMAIL_REPLY_TO`.
+
+### Netlify Functions no pueden importar `@/`-aliases
+
+- **Symptom:** Build de Netlify Functions falla con "Cannot find module '@/lib/...'".
+- **Root cause:** Las functions en `netlify/functions/*.mts` se bundlean con esbuild aparte de Next.js — el `tsconfig.paths` no aplica.
+- **Fix:** Inlinear el código necesario dentro del archivo `.mts`. Si hay duplicación con `lib/`, documentar "mantener sincronizado" en comentario. Ejemplo concreto: `_excelTable()` y `_fetchFunnelMetrics()` están inlineados en cada `scheduled-*-report.mts` aunque existen en `lib/email/reports/excel-table-builder.ts`.
+
+### Scraper proxy obligatorio (ScraperAPI, no Puppeteer)
+
+- **Symptom:** Scraping directo desde Netlify falla con 403 / captcha / IP bloqueada en portales (MercadoLibre, Argenprop, ZonaProp).
+- **Root cause:** Los portales rate-limitan IPs de cloud providers. Puppeteer también — además es muy pesado para Netlify Functions.
+- **Fix:** Usar `fetch` plano + ScraperAPI proxy (`SCRAPER_API_KEY` env var). NO reintroducir Puppeteer ni `serverExternalPackages: ['puppeteer']` en `next.config.ts`.
+
+### File names con Unicode U+202F (narrow no-break space)
+
+- **Symptom:** Operaciones de FS sobre archivos en `public/pdf-assets/monthly-data/` fallan en bash (path mismatch).
+- **Root cause:** Algunos archivos viejos tienen ` ` en el nombre (espacio no rompible angosto). Bash glob no lo matchea sin escapado.
+- **Fix:** Usar Python para listar/renombrar esos archivos. Nombres estandarizados nuevos sí están sin Unicode: `stock-departamentos.png`, `escrituras-caba.png`, `datos-barrio.png`, `tipos-propiedades.png`.
+
+### Foreign keys a `profiles(id)` deben ser `ON DELETE SET NULL`
+
+- **Symptom:** Borrar un usuario desde Supabase Auth devuelve "Database error deleting user".
+- **Root cause:** Si una FK apunta a `profiles(id)` con `ON DELETE NO ACTION` (default), el borrado del auth user cascadea a profiles pero falla por las FKs.
+- **Fix:** Toda nueva FK que apunte a `profiles(id)` debe usar `ON DELETE SET NULL` (o `CASCADE` si la entidad dependiente no tiene sentido sin el usuario). Ej: `deal_stage_history.changed_by UUID REFERENCES profiles(id) ON DELETE SET NULL`.
