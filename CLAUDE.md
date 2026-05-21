@@ -42,6 +42,13 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
   ```
   Y revisar si la vista incluye orígenes que no deberían contar.
 
+### Postgres: cambiar return type de una función requiere DROP previo
+
+- **Symptom:** `ERROR: 42P13: cannot change return type of existing function` al correr una migración que usa `CREATE OR REPLACE FUNCTION` sobre una función ya existente cuyo `RETURNS TABLE` cambió.
+- **Root cause:** `CREATE OR REPLACE` solo permite cambiar el cuerpo, no la signature. Si cambia el tipo de retorno (nueva columna, tipo distinto, etc.), Postgres rechaza el reemplazo.
+- **Fix:** Hacer `DROP FUNCTION IF EXISTS fn_name(arg_types) CASCADE;` ANTES del `CREATE`. Si la función es usada por otra (ej. `RETURNS SETOF vista`), el CASCADE las dropea — recordá recrearlas también.
+- **Detection:** Cualquier migración que toque una función ya existente y modifique su `RETURNS TABLE (...)` o tipo escalar debe llevar `DROP FUNCTION` arriba.
+
 ### Meta Ads: medir "Visitas a la página", no "Clics"
 
 - **Symptom:** Las métricas Meta del dashboard mostraban "clics" pero el usuario quiere medir cuántas personas LLEGARON a la landing — son cosas distintas.
