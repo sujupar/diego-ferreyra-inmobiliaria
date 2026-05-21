@@ -42,6 +42,11 @@ const LEAD_ACTION_TYPES = [
   'offsite_conversion.fb_pixel_complete_registration',
 ]
 
+// landing_page_view = el usuario llegó a la página (vs link_click que cuenta
+// el clic en el ad). Es la métrica que pidió el usuario para "visitas a la
+// página". Si Meta no la reporta (campañas viejas), cae 0.
+const LANDING_PAGE_VIEW_ACTION = 'landing_page_view'
+
 function parseInsight(insight: MetaCampaignInsight): MetaDailySnapshot {
   let leadCount = 0
   if (insight.actions) {
@@ -53,6 +58,13 @@ function parseInsight(insight: MetaCampaignInsight): MetaDailySnapshot {
       }
     }
   }
+
+  let landingPageViews = 0
+  if (insight.actions) {
+    const lpv = insight.actions.find(a => a.action_type === LANDING_PAGE_VIEW_ACTION)
+    if (lpv) landingPageViews = parseInt(lpv.value, 10) || 0
+  }
+
   const spend = parseFloat(insight.spend)
 
   return {
@@ -61,6 +73,7 @@ function parseInsight(insight: MetaCampaignInsight): MetaDailySnapshot {
     campaign_name: insight.campaign_name,
     impressions: parseInt(insight.impressions, 10),
     clicks: parseInt(insight.clicks, 10),
+    landing_page_views: landingPageViews,
     ctr: parseFloat(insight.ctr),
     spend,
     leads: leadCount,
@@ -127,6 +140,7 @@ export async function saveDailySnapshot(snapshots: MetaDailySnapshot[]): Promise
     campaign_name: s.campaign_name,
     impressions: s.impressions,
     clicks: s.clicks,
+    landing_page_views: s.landing_page_views,
     ctr: s.ctr,
     spend: s.spend,
     leads: s.leads,

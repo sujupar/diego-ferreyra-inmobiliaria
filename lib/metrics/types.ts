@@ -58,6 +58,10 @@ export interface CampaignFunnelRow {
   funnel_type: FunnelType
   impressions: number
   clicks: number
+  /** Visitas reales a la landing (action_type=landing_page_view en Meta).
+   * Mostrado en el dashboard como "Visitas a la página" en lugar de clicks. */
+  landing_page_views: number
+  /** CTR ahora se calcula como landing_page_views / impressions (no clicks). */
   ctr: number
   spend: number
   registrations: number

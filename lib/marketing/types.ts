@@ -34,6 +34,9 @@ export interface MetaDailySnapshot {
   campaign_name: string
   impressions: number
   clicks: number
+  /** Visitas a la landing (action_type='landing_page_view'). Mejor proxy de
+   * "tráfico llegado a la página" que clicks (excluye rebotes pre-carga). */
+  landing_page_views: number
   ctr: number
   spend: number
   leads: number

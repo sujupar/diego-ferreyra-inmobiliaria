@@ -28,6 +28,26 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 - **Regla general:** Si un trigger necesita escribir en otra tabla con FK al row del trigger, ESE INSERT debe ir en un trigger `AFTER`, nunca en `BEFORE`. Si el trigger BEFORE también necesita modificar `NEW`, separar en dos triggers/funciones — no combinarlos.
 - **Detection:** Antes de declarar completa cualquier migración con trigger nuevo en tabla mutable (`deals`, `contacts`, `properties`, `appraisals`), hacer un INSERT real desde el flow de la app (no solo SQL Editor) y confirmar que no devuelve 500. Si el trigger escribe en otra tabla, verificar también que esa tabla tiene política RLS apropiada para el operation type.
 
+### Métricas del embudo CRM: definir QUÉ origin contar
+
+- **Symptom:** El usuario reportó que `/metrics` mostraba números "exagerados" del embudo CRM (3-5x los reales del pipeline). El conteo de "solicitudes de tasación" no coincidía con lo que veía en el CRM por la misma fecha.
+- **Root cause:** La vista `vw_funnel_daily` original contaba `appraisal_requests` como cualquier deal con `origin IS DISTINCT FROM 'clase_gratuita'`. Eso incluía `origin='referido'` (cargados manualmente), `origin='historico'` (data heredada pre-sistema), `origin='comprador'` (otro pipeline), `origin=NULL` (deals creados desde la UI sin marcar origen). Ninguno de esos es "solicitud de tasación del embudo de marketing", pero todos sumaban.
+- **Fix:** Migración `20260520000004_funnel_definitions_fix.sql` restringió:
+  - `appraisal_requests` → solo `origin = 'embudo'` (registros vía GHL form de "Tasación Directa").
+  - Eventos del embudo (agendadas, visitas, entregadas, captadas, perdidas) → solo deals con `origin IN ('embudo','clase_gratuita')` (los del funnel medible, no referidos/históricos/comprador).
+- **Regla general:** Antes de definir una métrica del embudo, decidir QUÉ valores de `origin` cuentan. `IS DISTINCT FROM X` raramente es lo correcto — usar enumeración explícita (`origin = 'embudo'` o `origin IN (...)`).
+- **Detection:** Si los números del dashboard difieren del CRM en >30%, primero correr:
+  ```sql
+  SELECT origin, COUNT(*) FROM deals GROUP BY origin ORDER BY COUNT(*) DESC;
+  ```
+  Y revisar si la vista incluye orígenes que no deberían contar.
+
+### Meta Ads: medir "Visitas a la página", no "Clics"
+
+- **Symptom:** Las métricas Meta del dashboard mostraban "clics" pero el usuario quiere medir cuántas personas LLEGARON a la landing — son cosas distintas.
+- **Root cause:** Meta API expone tanto `clicks` (raw click events, incluye rebotes pre-carga) como el action `landing_page_view` (página efectivamente cargada). El código contaba solo `clicks`.
+- **Fix:** Migración `20260520000003_meta_ads_landing_page_views.sql` agregó columna `landing_page_views`. `lib/marketing/meta-ads.ts` (función `parseInsight`) y las 4 Netlify Functions extraen `actions.find(a => a.action_type === 'landing_page_view')`. La RPC `get_meta_funnel_by_campaign` ahora devuelve LPV y recalcula CTR como `LPV/impressions`. El componente `CampaignBreakdown.tsx` muestra "Visitas a la página" en la columna que antes era "Clics".
+
 ### Supabase upsert con `onConflict` requiere UNIQUE constraint
 
 - **Symptom:** Métricas de Meta Ads aparecían infladas en rangos multi-día del dashboard `/metrics`. Filtro "Ayer" mostraba números correctos pero "Últimos 7/30 días" o "Mes corriente" daban valores absurdos (suma de filas duplicadas).

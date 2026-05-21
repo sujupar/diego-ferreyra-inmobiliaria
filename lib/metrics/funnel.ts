@@ -74,6 +74,7 @@ export async function getFunnelByCampaign(range: RangeFilter, opts: FunnelOption
     funnel_type: (r.funnel_type as FunnelType) ?? 'otro',
     impressions: Number(r.impressions),
     clicks: Number(r.clicks),
+    landing_page_views: Number(r.landing_page_views ?? 0),
     ctr: Number(r.ctr),
     spend: Number(r.spend),
     registrations: Number(r.registrations),

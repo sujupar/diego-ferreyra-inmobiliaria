@@ -120,12 +120,18 @@ export default async function handler() {
             if (match) { leadCount = parseInt(match.value, 10); if (leadCount > 0) break }
           }
         }
+        let landingPageViews = 0
+        if (actions) {
+          const lpv = actions.find(a => a.action_type === 'landing_page_view')
+          if (lpv) landingPageViews = parseInt(lpv.value, 10) || 0
+        }
         const spend = parseFloat(insight.spend as string)
         return {
           campaign_id: insight.campaign_id as string,
           campaign_name: insight.campaign_name as string,
           impressions: parseInt(insight.impressions as string, 10),
           clicks: parseInt(insight.clicks as string, 10),
+          landing_page_views: landingPageViews,
           spend,
           leads: leadCount,
           cost_per_lead: leadCount > 0 ? spend / leadCount : null,

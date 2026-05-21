@@ -30,13 +30,13 @@ export function CampaignBreakdown({ rows }: { rows: CampaignFunnelRow[] }) {
         const totals = slice.reduce(
           (a, r) => ({
             impressions: a.impressions + r.impressions,
-            clicks: a.clicks + r.clicks,
+            landing_page_views: a.landing_page_views + r.landing_page_views,
             spend: a.spend + r.spend,
             registrations: a.registrations + r.registrations,
           }),
-          { impressions: 0, clicks: 0, spend: 0, registrations: 0 },
+          { impressions: 0, landing_page_views: 0, spend: 0, registrations: 0 },
         )
-        const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0
+        const ctr = totals.impressions > 0 ? (totals.landing_page_views / totals.impressions) * 100 : 0
         const cpr = totals.registrations > 0 ? totals.spend / totals.registrations : null
 
         return (
@@ -48,7 +48,7 @@ export function CampaignBreakdown({ rows }: { rows: CampaignFunnelRow[] }) {
                   <tr className="bg-muted text-muted-foreground">
                     <th className="text-left py-2 px-3 border font-medium">Campaña</th>
                     <th className="text-right py-2 px-3 border font-medium">Impresiones</th>
-                    <th className="text-right py-2 px-3 border font-medium">Clics</th>
+                    <th className="text-right py-2 px-3 border font-medium">Visitas a la página</th>
                     <th className="text-right py-2 px-3 border font-medium">CTR</th>
                     <th className="text-right py-2 px-3 border font-medium">Gasto</th>
                     <th className="text-right py-2 px-3 border font-medium">Registros</th>
@@ -60,7 +60,7 @@ export function CampaignBreakdown({ rows }: { rows: CampaignFunnelRow[] }) {
                     <tr key={r.campaign_id} className="hover:bg-muted/40">
                       <td className="py-2 px-3 border">{r.campaign_name || r.campaign_id}</td>
                       <td className="py-2 px-3 border text-right">{r.impressions}</td>
-                      <td className="py-2 px-3 border text-right">{r.clicks}</td>
+                      <td className="py-2 px-3 border text-right">{r.landing_page_views}</td>
                       <td className="py-2 px-3 border text-right">{fmtPct(r.ctr)}</td>
                       <td className="py-2 px-3 border text-right">${fmtMoney(r.spend)}</td>
                       <td className="py-2 px-3 border text-right">{r.registrations}</td>
@@ -72,7 +72,7 @@ export function CampaignBreakdown({ rows }: { rows: CampaignFunnelRow[] }) {
                   <tr className="font-semibold bg-muted/30">
                     <td className="py-2 px-3 border">Total</td>
                     <td className="py-2 px-3 border text-right">{totals.impressions}</td>
-                    <td className="py-2 px-3 border text-right">{totals.clicks}</td>
+                    <td className="py-2 px-3 border text-right">{totals.landing_page_views}</td>
                     <td className="py-2 px-3 border text-right">{fmtPct(ctr)}</td>
                     <td className="py-2 px-3 border text-right">${fmtMoney(totals.spend)}</td>
                     <td className="py-2 px-3 border text-right">{totals.registrations}</td>
