@@ -382,6 +382,7 @@ export default function CRMPage() {
           <h1 className="display text-4xl">CRM</h1>
           <p className="text-muted-foreground text-sm">
             <span className="tabular-n">{totalDealsDisplay}</span> proceso{totalDealsDisplay !== 1 ? 's' : ''} comercial{totalDealsDisplay !== 1 ? 'es' : ''}
+            <span className="ml-2 text-xs opacity-70">· estado actual del pipeline</span>
             {filterCRMStage && (
               <span className={`ml-2 inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${activeStageInfo?.badgeBg} ${activeStageInfo?.badgeText}`}>
                 {activeStageInfo?.label}

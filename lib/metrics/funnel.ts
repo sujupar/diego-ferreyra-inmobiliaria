@@ -7,6 +7,8 @@ import type {
   CampaignFunnelRow,
   FunnelDayRow,
   FunnelType,
+  CurrentStateRow,
+  DealStageKey,
 } from './types'
 import { FUNNEL_METRIC_KEYS } from './types'
 
@@ -79,6 +81,23 @@ export async function getFunnelByCampaign(range: RangeFilter, opts: FunnelOption
     spend: Number(r.spend),
     registrations: Number(r.registrations),
     cost_per_registration: r.cost_per_registration == null ? null : Number(r.cost_per_registration),
+  }))
+}
+
+/**
+ * Estado actual del pipeline para deals creados en el rango. Coincide 1:1
+ * con las cards del CRM. Distinto a getFunnelMetrics (que mide eventos).
+ */
+export async function getDealsCurrentState(range: RangeFilter, opts: FunnelOptions = {}): Promise<CurrentStateRow[]> {
+  const supabase = await getSupabase(opts.serviceRole)
+  const { data, error } = await (supabase as any).rpc('get_deals_current_state', {
+    p_from: range.from,
+    p_to: range.to,
+  })
+  if (error) throw new Error(`get_deals_current_state: ${error.message}`)
+  return (data ?? []).map((r: any) => ({
+    stage: r.stage as DealStageKey,
+    count: Number(r.count),
   }))
 }
 

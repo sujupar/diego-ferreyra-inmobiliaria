@@ -84,3 +84,53 @@ export interface MetricsComparison<T> {
   previous: T
   delta_pct: Partial<Record<keyof T, number>>
 }
+
+/**
+ * Stages canónicos del pipeline (mismo orden que las cards del CRM).
+ */
+export type DealStageKey =
+  | 'clase_gratuita'
+  | 'request'
+  | 'scheduled'
+  | 'not_visited'
+  | 'visited'
+  | 'appraisal_sent'
+  | 'followup'
+  | 'captured'
+  | 'lost'
+  | 'comprador'
+
+export const DEAL_STAGE_ORDER: DealStageKey[] = [
+  'clase_gratuita',
+  'request',
+  'scheduled',
+  'not_visited',
+  'visited',
+  'appraisal_sent',
+  'followup',
+  'captured',
+  'lost',
+  'comprador',
+]
+
+export const DEAL_STAGE_LABELS: Record<DealStageKey, string> = {
+  clase_gratuita: 'Clase gratuita',
+  request:        'Solicitud',
+  scheduled:      'Coordinada',
+  not_visited:    'No realizada',
+  visited:        'Visita realizada',
+  appraisal_sent: 'Tasación entregada',
+  followup:       'En seguimiento',
+  captured:       'Captada',
+  lost:           'Descartado',
+  comprador:      'Comprador',
+}
+
+/**
+ * Estado actual del pipeline (Opción B): coincide 1:1 con las cards del CRM.
+ * Cuenta deals creados en el rango, agrupados por su stage actual.
+ */
+export interface CurrentStateRow {
+  stage: DealStageKey
+  count: number
+}
