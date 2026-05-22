@@ -1,0 +1,223 @@
+import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { requireAuth } from '@/lib/auth/require-role'
+import { initPortals, getAdapter } from '@/lib/portals'
+import { MercadoLibreAdapter } from '@/lib/portals/mercadolibre/adapter'
+import type { Database } from '@/types/database.types'
+
+function getAdmin() {
+  return createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+}
+
+async function authorize(propertyId: string, userId: string, role: string) {
+  if (role === 'asesor') {
+    const supabase = getAdmin()
+    const { data } = await supabase
+      .from('properties')
+      .select('assigned_to')
+      .eq('id', propertyId)
+      .single()
+    return data?.assigned_to === userId
+  }
+  // abogado queda excluido explícitamente
+  return ['admin', 'dueno', 'coordinador'].includes(role)
+}
+
+/**
+ * POST → publica la propiedad en MercadoLibre desde el wizard.
+ *
+ * Lee la propiedad fresca, construye el payload con propertyToMlPayload, llama
+ * a adapter.publish, persiste en property_listings y audita en
+ * property_publish_events.
+ *
+ * NO pausa automáticamente. La propiedad queda en el estado que ML le asigne
+ * (typicamente `not_yet_active` → `active` después de la validación interna).
+ * Si el usuario quiere pausarla después, el wizard tiene su propio botón.
+ */
+export async function POST(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const user = await requireAuth()
+    const { id } = await params
+    if (!(await authorize(id, user.id, user.profile.role))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
+
+    const supabase = getAdmin()
+    const { data: property, error } = await supabase
+      .from('properties')
+      .select('*')
+      .eq('id', id)
+      .single()
+    if (error || !property) {
+      return NextResponse.json({ error: 'property not found' }, { status: 404 })
+    }
+
+    await initPortals(true)
+    const ml = getAdapter('mercadolibre')
+    if (!ml?.enabled) {
+      return NextResponse.json(
+        {
+          error:
+            'MercadoLibre no está conectado. Andá a Settings → Portales y completá el OAuth.',
+        },
+        { status: 412 },
+      )
+    }
+
+    let pubResult: { externalId: string; externalUrl: string }
+    try {
+      pubResult = await ml.publish(property)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      await supabase
+        .from('property_listings')
+        .upsert(
+          {
+            property_id: id,
+            portal: 'mercadolibre',
+            status: 'failed',
+            last_error: msg,
+            attempts: 1,
+          },
+          { onConflict: 'property_id,portal' },
+        )
+      await supabase.from('property_publish_events').insert({
+        property_id: id,
+        portal: 'mercadolibre',
+        event_type: 'failed',
+        error_message: msg,
+        actor: user.profile.full_name ?? user.id,
+      })
+      return NextResponse.json({ error: msg }, { status: 502 })
+    }
+
+    await supabase
+      .from('property_listings')
+      .upsert(
+        {
+          property_id: id,
+          portal: 'mercadolibre',
+          status: 'published',
+          external_id: pubResult.externalId,
+          external_url: pubResult.externalUrl,
+          last_published_at: new Date().toISOString(),
+          attempts: 1,
+          last_error: null,
+        },
+        { onConflict: 'property_id,portal' },
+      )
+
+    await supabase.from('property_publish_events').insert({
+      property_id: id,
+      portal: 'mercadolibre',
+      event_type: 'published',
+      payload: { externalId: pubResult.externalId, externalUrl: pubResult.externalUrl },
+      actor: user.profile.full_name ?? user.id,
+    })
+
+    return NextResponse.json({
+      ok: true,
+      externalId: pubResult.externalId,
+      externalUrl: pubResult.externalUrl,
+    })
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Error' },
+      { status: 500 },
+    )
+  }
+}
+
+/**
+ * DELETE → pausa el aviso en MercadoLibre (status: paused).
+ *
+ * Se llama desde el wizard cuando el asesor pulsa "Pausar". A diferencia de
+ * unpublish() del adapter (que hace status: closed, definitivo), aquí queremos
+ * que sea reversible.
+ *
+ * Si ML rechaza el pause (item en not_yet_active), marcamos
+ * `needs_pause_after_active` para que el worker termine el trabajo.
+ */
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const user = await requireAuth()
+    const { id } = await params
+    if (!(await authorize(id, user.id, user.profile.role))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
+    const supabase = getAdmin()
+    const { data: listing } = await supabase
+      .from('property_listings')
+      .select('external_id, metadata')
+      .eq('property_id', id)
+      .eq('portal', 'mercadolibre')
+      .maybeSingle()
+    if (!listing?.external_id) {
+      return NextResponse.json({ error: 'no published listing to pause' }, { status: 404 })
+    }
+
+    await initPortals(true)
+    const ml = getAdapter('mercadolibre')
+    if (!ml?.enabled) {
+      return NextResponse.json({ error: 'ML not connected' }, { status: 412 })
+    }
+    let finalDbStatus: 'paused' | 'published' = 'paused'
+    let needsRetry = false
+    try {
+      // ml.pause hace status: paused. Si el item está en not_yet_active,
+      // ML responde 400 — manejamos abajo.
+      const adapter = ml as MercadoLibreAdapter
+      await adapter.pause(listing.external_id)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (/not_yet_active/i.test(msg)) {
+        // No es un error fatal — el worker termina el job cuando ML active el item.
+        finalDbStatus = 'published' // sigue público hasta que el worker lo pause
+        needsRetry = true
+      } else {
+        return NextResponse.json({ error: 'pause falló: ' + msg }, { status: 502 })
+      }
+    }
+
+    const newMetadata = needsRetry
+      ? { ...(listing.metadata as Record<string, unknown> ?? {}), needs_pause_after_active: true }
+      : listing.metadata
+
+    await supabase
+      .from('property_listings')
+      .update({
+        status: finalDbStatus,
+        metadata: newMetadata as never,
+      })
+      .eq('property_id', id)
+      .eq('portal', 'mercadolibre')
+
+    await supabase.from('property_publish_events').insert({
+      property_id: id,
+      portal: 'mercadolibre',
+      event_type: needsRetry ? 'retried' : 'unpublished',
+      payload: { action: 'pause', status: finalDbStatus, needs_retry: needsRetry },
+      actor: user.profile.full_name ?? user.id,
+    })
+
+    return NextResponse.json({
+      ok: true,
+      status: finalDbStatus,
+      needs_retry: needsRetry,
+    })
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Error' },
+      { status: 500 },
+    )
+  }
+}

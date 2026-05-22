@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +14,7 @@ import {
   ExternalLink,
   AlertTriangle,
   Sparkles,
+  Plug,
 } from 'lucide-react'
 
 interface StepResult {
@@ -56,6 +58,20 @@ interface CleanupResult {
   property: { ok: boolean; error?: string }
 }
 
+interface PreflightStatus {
+  mercadolibre: {
+    enabled: boolean
+    hasEnvVars: boolean
+    hasOAuth: boolean
+    expiresAt: string | null
+    reason: string | null
+  }
+  meta: {
+    enabled: boolean
+    reason: string | null
+  }
+}
+
 function StatusIcon({ ok, attempted }: { ok: boolean; attempted?: boolean }) {
   if (attempted === false) {
     return <AlertTriangle className="h-5 w-5 text-amber-500" />
@@ -73,6 +89,27 @@ export function PipelineTestClient() {
   const [result, setResult] = useState<TestRunResult | null>(null)
   const [cleanup, setCleanup] = useState<CleanupResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [preflight, setPreflight] = useState<PreflightStatus | null>(null)
+  const [loadingPreflight, setLoadingPreflight] = useState(true)
+
+  async function loadPreflight() {
+    setLoadingPreflight(true)
+    try {
+      const r = await fetch('/api/admin/pipeline-test')
+      if (r.ok) {
+        const data = await r.json()
+        setPreflight(data.preflight)
+      }
+    } catch (err) {
+      console.error('[pipeline-test] preflight failed', err)
+    } finally {
+      setLoadingPreflight(false)
+    }
+  }
+
+  useEffect(() => {
+    loadPreflight()
+  }, [])
 
   async function runTest() {
     if (
@@ -152,6 +189,68 @@ export function PipelineTestClient() {
         </p>
       </div>
 
+      {/* Estado de conexiones (pre-flight) */}
+      {!result && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Plug className="h-4 w-4" />
+              Estado de conexiones
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {loadingPreflight && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Verificando conexiones…
+              </div>
+            )}
+            {!loadingPreflight && preflight && (
+              <>
+                <div className="flex items-start justify-between gap-3 border-b pb-3">
+                  <div className="flex items-start gap-3">
+                    <StatusIcon ok={preflight.mercadolibre.enabled} />
+                    <div>
+                      <p className="font-medium text-sm">MercadoLibre</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {preflight.mercadolibre.enabled
+                          ? `OAuth conectado${
+                              preflight.mercadolibre.expiresAt
+                                ? `. Token expira ${new Date(preflight.mercadolibre.expiresAt).toLocaleString('es-AR')}`
+                                : ''
+                            }`
+                          : preflight.mercadolibre.reason ?? 'No conectado'}
+                      </p>
+                    </div>
+                  </div>
+                  {!preflight.mercadolibre.enabled && (
+                    <Link
+                      href="/settings/portals"
+                      className="text-xs underline text-[color:var(--brand)] shrink-0"
+                    >
+                      Conectar →
+                    </Link>
+                  )}
+                </div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <StatusIcon ok={preflight.meta.enabled} />
+                    <div>
+                      <p className="font-medium text-sm">Meta Ads</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {preflight.meta.enabled
+                          ? 'Variables de entorno configuradas'
+                          : preflight.meta.reason ?? 'No configurado'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Botón de arranque */}
       {!result && !error && (
         <Card>
@@ -163,10 +262,22 @@ export function PipelineTestClient() {
               con todas las fotos y datos completos, y vamos a empujar todo el
               flujo automático.
             </p>
+            {preflight && !preflight.mercadolibre.enabled && (
+              <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-xs text-amber-900 max-w-md mx-auto">
+                <strong>Atención:</strong> MercadoLibre no está conectado. La
+                prueba va a correr igual pero el paso de publicación va a
+                quedar marcado como "no intentado". Si querés probar la
+                publicación, primero{' '}
+                <Link href="/settings/portals" className="underline">
+                  conectá la cuenta acá
+                </Link>
+                .
+              </div>
+            )}
             <Button
               size="lg"
               onClick={runTest}
-              disabled={running}
+              disabled={running || loadingPreflight}
               className="mt-4"
             >
               {running ? (

@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Loader2, CheckCircle2 } from 'lucide-react'
-import { trackLead } from './MetaPixel'
+import { trackLead, getMetaCookie } from './MetaPixel'
 
 interface LeadFormProps {
   propertyId: string
@@ -32,16 +32,28 @@ export function LandingLeadForm({ propertyId, propertyTitle }: LeadFormProps) {
   const [form, setForm] = useState<FormState>(INITIAL)
   const [status, setStatus] = useState<'idle' | 'sending' | 'ok' | 'err'>('idle')
   const [errorMsg, setErrorMsg] = useState<string>('')
+  // Ref guard contra double-submit (double tap mobile, double click rápido).
+  // El state `status` actualiza async — un ref sync bloquea inmediatamente.
+  // Defense-in-depth además del dedup por (email/phone, 5 min) del backend.
+  const submittingRef = useRef(false)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    if (submittingRef.current) return
     if (!form.name.trim() || (!form.email.trim() && !form.phone.trim())) {
       setStatus('err')
       setErrorMsg('Necesitamos tu nombre y al menos un contacto (email o teléfono).')
       return
     }
+    submittingRef.current = true
     setStatus('sending')
     setErrorMsg('')
+    // Generamos un eventId único compartido entre Pixel (browser) y CAPI
+    // (server). Meta dedupea los dos eventos con este ID.
+    const eventId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`
     try {
       const res = await fetch('/api/leads', {
         method: 'POST',
@@ -53,19 +65,26 @@ export function LandingLeadForm({ propertyId, propertyTitle }: LeadFormProps) {
           phone: form.phone.trim() || null,
           message: form.message.trim() || null,
           utm: getUtmFromUrl(),
+          // Datos para CAPI server-side
+          eventId,
+          fbp: getMetaCookie('_fbp'),
+          fbc: getMetaCookie('_fbc'),
+          eventSourceUrl: typeof window !== 'undefined' ? window.location.href : null,
         }),
       })
       if (!res.ok) {
         const { error } = await res.json().catch(() => ({ error: 'Error' }))
         throw new Error(error || 'No pudimos enviar el formulario')
       }
-      // Disparar evento Lead en Meta Pixel (si está configurado)
-      trackLead({ propertyId })
+      // Pixel Lead event con el MISMO eventId para que Meta dedupe.
+      trackLead({ propertyId, eventId })
       setStatus('ok')
       setForm(INITIAL)
     } catch (err) {
       setStatus('err')
       setErrorMsg(err instanceof Error ? err.message : 'Error desconocido')
+    } finally {
+      submittingRef.current = false
     }
   }
 

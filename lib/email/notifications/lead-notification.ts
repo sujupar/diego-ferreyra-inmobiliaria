@@ -3,7 +3,7 @@ import { sendEmail } from '../resend-client'
 import { renderEmail } from '../render'
 import { getUserById } from '../recipients'
 import { applyTestMode } from '../test-mode'
-import { LeadNotificationEmail } from '@/emails/LeadNotificationEmail'
+import { NewLeadAlertEmail } from '@/emails/NewLeadAlertEmail'
 import { firstName, formatDate } from '../format'
 
 export interface NotifyLeadInput {
@@ -20,6 +20,10 @@ export interface NotifyLeadInput {
   source: string
   utm: Record<string, string>
   createdAt: string
+  // Campos extra para el email comercial (rediseñado)
+  photoUrl?: string | null
+  askingPrice?: number | null
+  currency?: string
 }
 
 /**
@@ -38,14 +42,20 @@ export async function notifyLeadReceived(input: NotifyLeadInput): Promise<void> 
     return
   }
 
-  const test = await applyTestMode([advisor.email], 'Nueva consulta sobre tu propiedad')
+  // Subject orientado a acción comercial (no operacional).
+  // Mobile-first: el subject se ve en preview list.
+  const subject = `🔔 Nuevo lead: ${input.leadName} quiere ver ${input.propertyTitle ?? input.propertyAddress}`
+  const test = await applyTestMode([advisor.email], subject)
   const html = await renderEmail(
-    LeadNotificationEmail({
+    NewLeadAlertEmail({
       advisorFirstName: firstName(advisor.full_name) || 'asesor',
       propertyId: input.propertyId,
       propertyAddress: input.propertyAddress,
       propertyTitle: input.propertyTitle,
       neighborhood: input.neighborhood,
+      photoUrl: input.photoUrl ?? null,
+      askingPrice: input.askingPrice ?? null,
+      currency: input.currency ?? 'USD',
       leadName: input.leadName,
       leadEmail: input.leadEmail,
       leadPhone: input.leadPhone,
@@ -63,7 +73,7 @@ export async function notifyLeadReceived(input: NotifyLeadInput): Promise<void> 
     entityType: 'property',
     entityId: input.propertyId,
     to: advisor.email,
-    subject: `Nueva consulta: ${input.propertyAddress}`,
+    subject: test.subject,
     html,
     idempotent: false, // cada lead es un evento nuevo, no deduplicar
   })

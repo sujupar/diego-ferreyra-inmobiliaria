@@ -115,6 +115,11 @@ const LeadSchema = z.object({
     ])
     .default('landing'),
   utm: z.record(z.string(), z.string()).optional().default({}),
+  // Campos opcionales para Meta CAPI deduplication (vienen del LeadForm)
+  eventId: z.string().min(8).max(128).optional(),
+  fbp: z.string().max(200).nullable().optional(),
+  fbc: z.string().max(300).nullable().optional(),
+  eventSourceUrl: z.string().url().nullable().optional(),
 })
 
 // Rate limit best-effort por IP (no sobrevive entre instancias serverless).
@@ -206,7 +211,7 @@ export async function POST(req: Request) {
     const supabase = getAdmin()
     const { data: prop, error: propErr } = await supabase
       .from('properties')
-      .select('id, address, title, neighborhood, assigned_to, status')
+      .select('id, address, title, neighborhood, assigned_to, status, photos, asking_price, currency')
       .eq('id', parsed.data.propertyId)
       .single()
     if (propErr || !prop) {
@@ -265,7 +270,40 @@ export async function POST(req: Request) {
         source: lead.source,
         utm: (lead.utm as Record<string, string>) ?? {},
         createdAt: lead.created_at,
+        photoUrl: prop.photos?.[0] ?? null,
+        askingPrice: prop.asking_price,
+        currency: prop.currency,
       })
+    }
+
+    // Disparar Meta CAPI SYNC (no fire-and-forget). En Netlify los procesos
+    // serverless pueden congelarse después de responder al cliente, lo que
+    // mata fetches pendientes. Por eso lo hacemos awaited con timeout 3s
+    // interno — agregamos hasta 3s al peor caso del endpoint, pero
+    // garantizamos que el evento se manda (o se loggea el error).
+    // El Pixel client ya disparó el evento Lead con el mismo eventId
+    // (Meta dedupea automáticamente).
+    if (parsed.data.eventId) {
+      try {
+        await sendLeadToCapi({
+          eventId: parsed.data.eventId,
+          propertyId: prop.id,
+          propertyTitle: prop.title ?? prop.address,
+          askingPrice: prop.asking_price,
+          currency: prop.currency,
+          leadName: lead.name,
+          leadEmail: lead.email,
+          leadPhone: lead.phone,
+          eventSourceUrl: parsed.data.eventSourceUrl ?? `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://inmodf.com.ar'}/p/${prop.id}`,
+          fbp: parsed.data.fbp ?? null,
+          fbc: parsed.data.fbc ?? null,
+          clientIp: ip !== 'unknown' ? ip : null,
+          clientUserAgent: req.headers.get('user-agent'),
+        })
+      } catch (err) {
+        // Nunca fallar el response del lead por un error de CAPI.
+        console.error('[capi lead] failed (lead still saved)', err)
+      }
     }
 
     return NextResponse.json({ ok: true, id: lead.id })
@@ -292,10 +330,63 @@ function notifyAdvisorAsync(input: {
   source: string
   utm: Record<string, string>
   createdAt: string
+  photoUrl: string | null
+  askingPrice: number
+  currency: string
 }) {
   // Dynamic import + fire-and-forget (no bloquea la respuesta al usuario)
   import('@/lib/email/notifications/lead-notification')
     .then(({ notifyLeadReceived }) => notifyLeadReceived(input))
     .catch(err => console.error('[lead notification]', err))
+}
+
+async function sendLeadToCapi(input: {
+  eventId: string
+  propertyId: string
+  propertyTitle: string
+  askingPrice: number
+  currency: string
+  leadName: string
+  leadEmail: string | null
+  leadPhone: string | null
+  eventSourceUrl: string
+  fbp: string | null
+  fbc: string | null
+  clientIp: string | null
+  clientUserAgent: string | null
+}): Promise<void> {
+  // Split name → firstName/lastName por convención Meta (mejor match rate).
+  const [firstName, ...rest] = input.leadName.trim().split(/\s+/)
+  const lastName = rest.join(' ') || null
+
+  const { sendCapiEvent } = await import('@/lib/marketing/meta-capi')
+  const result = await sendCapiEvent({
+    eventName: 'Lead',
+    eventId: input.eventId,
+    eventSourceUrl: input.eventSourceUrl,
+    userData: {
+      email: input.leadEmail,
+      phone: input.leadPhone,
+      firstName,
+      lastName,
+      countryCode: 'ar',
+      fbp: input.fbp,
+      fbc: input.fbc,
+      clientIpAddress: input.clientIp,
+      clientUserAgent: input.clientUserAgent,
+    },
+    customData: {
+      contentIds: [input.propertyId],
+      contentName: input.propertyTitle,
+      contentType: 'property',
+      contentCategory: 'real_estate',
+      value: input.askingPrice,
+      currency: input.currency,
+    },
+    testEventCode: process.env.META_TEST_EVENT_CODE || undefined,
+  })
+  if (!result.ok) {
+    console.warn('[capi lead] failed', result.error, result.fbtraceId)
+  }
 }
 

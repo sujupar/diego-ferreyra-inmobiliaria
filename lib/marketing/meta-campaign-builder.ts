@@ -110,6 +110,26 @@ export async function createCampaignForProperty(
     throw new Error('Property sin lat/lng — no se puede armar targeting')
   }
 
+  // Idempotencia: si ya existe una campaña no archivada para esta propiedad,
+  // no creamos una segunda. Devolvemos la existente para que el wizard la
+  // muestre en lugar de duplicar gasto.
+  const supabasePre = getSupabase()
+  const { data: existing } = await supabasePre
+    .from('property_meta_campaigns')
+    .select('campaign_id, adset_id, ad_ids, budget_daily, landing_url')
+    .eq('property_id', property.id)
+    .neq('status', 'archived')
+    .maybeSingle()
+  if (existing?.campaign_id) {
+    return {
+      campaignId: existing.campaign_id,
+      adsetId: existing.adset_id ?? '',
+      adIds: (existing.ad_ids as string[] | null) ?? [],
+      budgetDailyArs: existing.budget_daily ?? 0,
+      landingUrl: existing.landing_url ?? `${getAppUrl()}/p/${property.public_slug}`,
+    }
+  }
+
   const { accountId, pageId } = getMeta()
   const landingUrl = `${getAppUrl()}/p/${property.public_slug}`
 
@@ -143,8 +163,11 @@ export async function createCampaignForProperty(
   // 1.5. Persistir la campaign en DB ya con status='provisioning' para
   // que si los pasos siguientes fallan, en el reintento del worker
   // detecte que ya existe y no cree una campaign duplicada en Meta.
+  // CRÍTICO: si el insert falla, archivamos la campaña en Meta para evitar
+  // huérfanos. Sin esto, una falla acá deja la campaña pagable en Meta sin
+  // tracking interno y los siguientes intentos crean duplicados.
   const supabase = getSupabase()
-  await supabase.from('property_meta_campaigns').insert({
+  const { error: insertError } = await supabase.from('property_meta_campaigns').insert({
     property_id: property.id,
     campaign_id: campaign.id,
     status: 'provisioning',
@@ -154,6 +177,18 @@ export async function createCampaignForProperty(
     copy: copyVariations as never,
     landing_url: landingUrl,
   })
+  if (insertError) {
+    console.error('[meta-builder] insert falló, archivando campaign para evitar huérfano', insertError)
+    try {
+      await metaFetch(`/${campaign.id}`, {
+        method: 'POST',
+        body: JSON.stringify({ status: 'ARCHIVED' }),
+      })
+    } catch (archiveErr) {
+      console.error('[meta-builder] archivado de rollback también falló', archiveErr)
+    }
+    throw new Error(`No se pudo persistir la campaña en DB: ${insertError.message}`)
+  }
 
   // 2. Subir imagen hero
   const imageHash = await uploadAdImage(property.photos[0])

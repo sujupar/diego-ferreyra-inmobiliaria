@@ -14,6 +14,7 @@ import {
 import { LegalDocsChecklist } from '@/components/properties/LegalDocsChecklist'
 import { LegalReviewHistory } from '@/components/properties/LegalReviewHistory'
 import { MarketingTabs } from '@/components/properties/MarketingTabs'
+import { PostCaptureActions } from '@/components/properties/PostCaptureActions'
 import { GenerateDescriptionCard } from '@/components/properties/GenerateDescriptionCard'
 import type { LegalDocsState, LegalFlags } from '@/types/legal-docs.types'
 import { FlowHistoryCard, type FlowHistoryData } from '@/app/(dashboard)/_components/FlowHistoryCard'
@@ -599,13 +600,15 @@ export default function PropertyDetailPage() {
 
       {/* Sección Marketing: portales + Meta Ads + leads, visible una vez captada */}
       {!isAbogado && property.status === 'approved' && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="border-t pt-6">
             <p className="eyebrow">Marketing</p>
             <h2 className="display text-xl mt-1">
               Difusión y resultados
             </h2>
           </div>
+          {/* Call-to-action principal: el asesor decide qué hacer */}
+          <PostCaptureActions propertyId={property.id} />
           <GenerateDescriptionCard propertyId={property.id} />
           <MarketingTabs
             propertyId={property.id}

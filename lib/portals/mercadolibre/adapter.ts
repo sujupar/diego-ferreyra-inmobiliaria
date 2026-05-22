@@ -62,16 +62,50 @@ export class MercadoLibreAdapter implements PortalAdapter {
     const updateable: Partial<typeof payload> = { ...payload }
     delete updateable.category_id
     delete (updateable as { listing_type_id?: string }).listing_type_id
+    // ML rechaza atributos "calculados" si se envían como input. Los detecta
+    // y los marca como warnings (cause_id 3611). Para evitar ruido en logs y
+    // posibles 400 en updates parciales, filtramos los conocidos.
+    const CALCULATED_ATTRS = new Set([
+      'HAS_LOWER_PRICE',
+      'BASE_PRICE',
+      'PRICE_TO_PAY',
+      'HAS_DISCOUNT',
+    ])
+    if (updateable.attributes) {
+      updateable.attributes = updateable.attributes.filter(
+        a => !CALCULATED_ATTRS.has(a.id),
+      )
+    }
     await mlFetch(`/items/${externalId}`, {
       method: 'PUT',
       body: JSON.stringify(updateable),
     })
   }
 
+  /**
+   * unpublish cierra el item definitivamente (status: closed). NO se puede
+   * reactivar después — para "ocultar temporalmente" usar pause() del wrapper
+   * del wizard que hace status: paused.
+   *
+   * Se usa desde el worker (needs_unpublish flag) cuando la propiedad se vende
+   * o se descarta, y desde el cleanup del pipeline-test.
+   */
   async unpublish(externalId: string): Promise<void> {
     await mlFetch(`/items/${externalId}`, {
       method: 'PUT',
       body: JSON.stringify({ status: 'closed' }),
+    })
+  }
+
+  /**
+   * pause oculta el item pero lo deja reactivable (status: paused).
+   * Si el item está en not_yet_active, ML rechaza el cambio — el caller debe
+   * manejar ese error (típicamente esperar a active vía polling).
+   */
+  async pause(externalId: string): Promise<void> {
+    await mlFetch(`/items/${externalId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: 'paused' }),
     })
   }
 

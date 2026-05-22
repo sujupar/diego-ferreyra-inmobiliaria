@@ -83,19 +83,39 @@ export function MetaPixel({ pixelId, propertyId, propertyTitle }: MetaPixelProps
 }
 
 /**
- * Dispara el evento Lead. Llamado desde LeadForm tras submit exitoso.
+ * Dispara el evento Lead en el Pixel. Llamado desde LeadForm tras submit
+ * exitoso. El `eventId` se pasa para deduplicación con el evento que CAPI
+ * envía en paralelo desde el server.
  */
 export function trackLead(input: {
   propertyId: string
+  eventId: string // UUID v4 compartido con el body del POST → CAPI
   value?: number
   currency?: string
 }): void {
   if (typeof window === 'undefined' || typeof window.fbq !== 'function') return
-  window.fbq('track', 'Lead', {
-    content_ids: [input.propertyId],
-    content_type: 'property',
-    content_category: 'real_estate',
-    value: input.value,
-    currency: input.currency,
-  })
+  window.fbq(
+    'track',
+    'Lead',
+    {
+      content_ids: [input.propertyId],
+      content_type: 'property',
+      content_category: 'real_estate',
+      value: input.value,
+      currency: input.currency,
+    },
+    { eventID: input.eventId },
+  )
+}
+
+/**
+ * Lee la cookie `name` del navegador. Usado para leer _fbp y _fbc de Meta,
+ * que mejoran el match rate de CAPI con el evento del Pixel.
+ */
+export function getMetaCookie(name: '_fbp' | '_fbc'): string | null {
+  if (typeof document === 'undefined') return null
+  const match = document.cookie.match(
+    new RegExp('(?:^|; )' + name.replace(/[.$?*|{}()[\]\\/+^]/g, '\\$&') + '=([^;]*)'),
+  )
+  return match ? decodeURIComponent(match[1]) : null
 }

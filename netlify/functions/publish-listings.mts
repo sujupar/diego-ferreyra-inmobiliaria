@@ -6,6 +6,7 @@ import { writeAudit } from '@/lib/portals/audit'
 import type { PortalName } from '@/lib/portals/types'
 import { nextStateAfterError, stripFlag, swapFlag } from '@/lib/portals/worker-logic'
 import { ensurePublicSlug } from '@/lib/landing/assign-slug'
+import { mlFetch } from '@/lib/portals/mercadolibre/client'
 
 /**
  * Worker que corre cada 1 minuto.
@@ -27,9 +28,81 @@ export default async () => {
 
   await processUnpublishes(supabase)
   await processUpdates(supabase)
+  await processPausesAfterActive(supabase)
   await processPublishes(supabase)
 
   return new Response('ok', { status: 200 })
+}
+
+/**
+ * Procesa items marcados con `metadata.needs_pause_after_active = true`.
+ *
+ * El pipeline-test setea este flag cuando ML retiene el item en `not_yet_active`
+ * por más de 50s (no se puede pausar desde ese estado). El worker chequea cada
+ * tick si el item ya pasó a `active` y, si sí, lo pausa.
+ *
+ * Solo aplica a portal mercadolibre.
+ */
+async function processPausesAfterActive(
+  supabase: ReturnType<typeof createClient<Database>>,
+) {
+  const { data: listings } = await supabase
+    .from('property_listings')
+    .select('*')
+    .eq('portal', 'mercadolibre')
+    .contains('metadata', { needs_pause_after_active: true })
+    .limit(10)
+
+  if (!listings || listings.length === 0) return
+
+  for (const listing of listings) {
+    if (!listing.external_id) {
+      // Sin external_id no podemos hacer nada — limpiamos el flag y seguimos.
+      await supabase
+        .from('property_listings')
+        .update({ metadata: stripFlag(listing.metadata, 'needs_pause_after_active') as never })
+        .eq('id', listing.id)
+      continue
+    }
+    try {
+      const item = await mlFetch<{ status: string }>(
+        `/items/${listing.external_id}?attributes=status`,
+      )
+      if (item.status === 'active') {
+        await mlFetch(`/items/${listing.external_id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: 'paused' }),
+        })
+        await supabase
+          .from('property_listings')
+          .update({
+            status: 'paused',
+            metadata: stripFlag(listing.metadata, 'needs_pause_after_active') as never,
+            last_error: null,
+          })
+          .eq('id', listing.id)
+        await writeAudit(supabase, {
+          listingId: listing.id,
+          propertyId: listing.property_id,
+          portal: 'mercadolibre',
+          eventType: 'unpublished',
+        })
+      } else if (item.status === 'closed' || item.status === 'paused') {
+        // Ya está cerrado o pausado — limpiar el flag.
+        await supabase
+          .from('property_listings')
+          .update({
+            status: item.status,
+            metadata: stripFlag(listing.metadata, 'needs_pause_after_active') as never,
+          })
+          .eq('id', listing.id)
+      }
+      // Si sigue not_yet_active, dejamos el flag para el próximo tick.
+    } catch (err) {
+      console.error(`[pause-after-active] ${listing.external_id}`, err)
+      // No tocamos el flag: reintentamos en el próximo tick.
+    }
+  }
 }
 
 async function processUnpublishes(supabase: ReturnType<typeof createClient<Database>>) {
