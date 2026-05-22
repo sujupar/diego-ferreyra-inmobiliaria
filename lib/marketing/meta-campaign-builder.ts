@@ -149,6 +149,12 @@ export async function createCampaignForProperty(
   // especial HOUSING (es una regulación específica de EEUU/Canadá). Diego ya
   // corre campañas residenciales sin esta categoría exitosamente. Si en algún
   // momento Meta lo exige, se agrega aquí especial_ad_categories: ['HOUSING'].
+  //
+  // `is_adset_budget_sharing_enabled` es REQUERIDO por Meta desde 2025 cuando
+  // la campaña no usa CBO (Campaign Budget Optimization). Como nosotros ponemos
+  // budget a nivel adset (no campaign-level), va false. Si en el futuro queremos
+  // CBO entre múltiples adsets, mover `daily_budget` a la Campaign y poner true.
+  // Sin este campo: ML devuelve error 400 subcode 4834011.
   const campaign = await metaFetch<{ id: string }>(`/${accountId}/campaigns`, {
     method: 'POST',
     body: JSON.stringify({
@@ -157,6 +163,7 @@ export async function createCampaignForProperty(
       status: 'PAUSED',
       special_ad_categories: [], // Sin restricciones especiales en AR
       buying_type: 'AUCTION',
+      is_adset_budget_sharing_enabled: false,
     }),
   })
 

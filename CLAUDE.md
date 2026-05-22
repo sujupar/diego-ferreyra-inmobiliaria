@@ -90,6 +90,13 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 - **Root cause:** Algunos archivos viejos tienen ` ` en el nombre (espacio no rompible angosto). Bash glob no lo matchea sin escapado.
 - **Fix:** Usar Python para listar/renombrar esos archivos. Nombres estandarizados nuevos sí están sin Unicode: `stock-departamentos.png`, `escrituras-caba.png`, `datos-barrio.png`, `tipos-propiedades.png`.
 
+### Meta Marketing API: `is_adset_budget_sharing_enabled` es obligatorio al crear Campaigns
+
+- **Symptom:** `POST /act_XXX/campaigns` devuelve `Meta 400 — Invalid parameter — error_subcode 4834011 — "Debes indicar True o False en el campo is_adset_budget_sharing_enabled"`.
+- **Root cause:** Meta actualizó la API en 2025 — cualquier Campaign que no use CBO (Campaign Budget Optimization, i.e. budget a nivel Campaign) ahora debe especificar explícitamente este campo. Antes era inferido.
+- **Fix:** En `lib/marketing/meta-campaign-builder.ts` agregar `is_adset_budget_sharing_enabled: false` al body del POST de campaign cuando el budget está a nivel adset (nuestro caso default). Si en el futuro querés CBO entre múltiples adsets, mover el `daily_budget` a la Campaign y poner `true`.
+- **Detection:** Antes de declarar una integración Meta completa, hacer un test end-to-end real de creación de Campaign — no solo unit tests del builder.
+
 ### Foreign keys a `profiles(id)` deben ser `ON DELETE SET NULL`
 
 - **Symptom:** Borrar un usuario desde Supabase Auth devuelve "Database error deleting user".
