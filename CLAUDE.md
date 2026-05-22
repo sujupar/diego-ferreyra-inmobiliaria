@@ -97,6 +97,13 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 - **Fix:** En `lib/marketing/meta-campaign-builder.ts` agregar `is_adset_budget_sharing_enabled: false` al body del POST de campaign cuando el budget está a nivel adset (nuestro caso default). Si en el futuro querés CBO entre múltiples adsets, mover el `daily_budget` a la Campaign y poner `true`.
 - **Detection:** Antes de declarar una integración Meta completa, hacer un test end-to-end real de creación de Campaign — no solo unit tests del builder.
 
+### Meta `/adimages?url=` requiere capability avanzada — usar multipart bytes
+
+- **Symptom:** `POST /act_XXX/adimages?url=<URL>` devuelve `Meta 400 — (#3) Application does not have the capability to make this API call — type: OAuthException`.
+- **Root cause:** El endpoint `/adimages` tiene dos modos: (a) `?url=<URL>` donde Meta descarga la imagen desde su servidor (requiere capability "Marketing API Standard Access" en Advanced Access), y (b) multipart bytes donde nosotros descargamos y subimos. La mayoría de las apps de Meta no tienen Advanced Access aprobado por App Review, así que el modo (a) falla con error code 3.
+- **Fix:** Implementar el upload con bytes multipart. Descargar la imagen con `fetch`, convertir a `Buffer`, mandar como `FormData` con field `access_token` + un field cuyo nombre es el filename y cuyo valor es el `Blob`. Soporta jpeg/png/gif/webp.
+- **Detection:** Si Campaign + AdCreative funcionan pero falla al subir imágenes, mirar el subcode/code del error. `code: 3` típicamente significa "tu app necesita una capability más avanzada para esta llamada específica".
+
 ### Foreign keys a `profiles(id)` deben ser `ON DELETE SET NULL`
 
 - **Symptom:** Borrar un usuario desde Supabase Auth devuelve "Database error deleting user".

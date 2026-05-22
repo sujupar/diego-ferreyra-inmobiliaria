@@ -84,14 +84,56 @@ export interface CampaignResult {
 
 /**
  * Sube una foto a Meta como ad image. Devuelve el hash.
+ *
+ * Estrategia: descargar la imagen y subirla como bytes multipart. NO usar el
+ * modo `?url=<URL>` porque requiere la capability avanzada "Marketing API
+ * Standard Access" que la mayoría de las apps de Meta no tienen por defecto
+ * (devuelve error code 3: "Application does not have the capability to make
+ * this API call"). El modo multipart funciona con permisos básicos de
+ * ads_management.
  */
 async function uploadAdImage(photoUrl: string): Promise<string> {
-  const { accountId } = getMeta()
-  const res = await metaFetch<{ images: Record<string, { hash: string }> }>(
-    `/${accountId}/adimages?url=${encodeURIComponent(photoUrl)}`,
-    { method: 'POST' },
-  )
-  const first = Object.values(res.images)[0]
+  const { accountId, accessToken } = getMeta()
+
+  // 1. Descargar la imagen
+  const imgRes = await fetch(photoUrl)
+  if (!imgRes.ok) {
+    throw new MetaApiError(
+      `No se pudo descargar la foto ${photoUrl}: ${imgRes.status}`,
+      imgRes.status,
+      imgRes.status >= 500,
+    )
+  }
+  const buf = Buffer.from(await imgRes.arrayBuffer())
+  const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
+  // Meta acepta: jpeg, png, gif, webp, bmp, tiff. Default jpeg si no detectamos.
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+  const mimeType = allowedTypes.find(t => contentType.startsWith(t)) ?? 'image/jpeg'
+
+  // 2. Construir filename razonable (Meta lo usa como key en la respuesta)
+  const rawName = photoUrl.split('/').pop()?.split('?')[0] ?? 'image'
+  const ext = mimeType.split('/')[1] ?? 'jpg'
+  const filename = rawName.includes('.') ? rawName : `${rawName}.${ext}`
+
+  // 3. Multipart POST a /adimages
+  const form = new FormData()
+  form.set('access_token', accessToken)
+  form.set(filename, new Blob([new Uint8Array(buf)], { type: mimeType }), filename)
+
+  const res = await fetch(`${META_API}/${accountId}/adimages`, {
+    method: 'POST',
+    body: form,
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new MetaApiError(
+      `Meta adimages ${res.status}: ${text}`,
+      res.status,
+      res.status >= 500 || res.status === 429,
+    )
+  }
+  const data = (await res.json()) as { images?: Record<string, { hash: string }> }
+  const first = Object.values(data.images ?? {})[0]
   if (!first?.hash) throw new MetaApiError('No image hash en respuesta', 500, true)
   return first.hash
 }
@@ -110,23 +152,48 @@ export async function createCampaignForProperty(
     throw new Error('Property sin lat/lng — no se puede armar targeting')
   }
 
-  // Idempotencia: si ya existe una campaña no archivada para esta propiedad,
-  // no creamos una segunda. Devolvemos la existente para que el wizard la
-  // muestre en lugar de duplicar gasto.
+  // Idempotencia: si ya existe una campaña no archivada para esta propiedad…
   const supabasePre = getSupabase()
   const { data: existing } = await supabasePre
     .from('property_meta_campaigns')
-    .select('campaign_id, adset_id, ad_ids, budget_daily, landing_url')
+    .select('campaign_id, adset_id, ad_ids, status, budget_daily, landing_url')
     .eq('property_id', property.id)
     .neq('status', 'archived')
     .maybeSingle()
   if (existing?.campaign_id) {
-    return {
-      campaignId: existing.campaign_id,
-      adsetId: existing.adset_id ?? '',
-      adIds: (existing.ad_ids as string[] | null) ?? [],
-      budgetDailyArs: existing.budget_daily ?? 0,
-      landingUrl: existing.landing_url ?? `${getAppUrl()}/p/${property.public_slug}`,
+    const isIncomplete =
+      existing.status === 'provisioning' &&
+      (!existing.adset_id || !Array.isArray(existing.ad_ids) || existing.ad_ids.length === 0)
+
+    if (isIncomplete) {
+      // Un intento anterior falló a mitad de camino (típicamente en uploadAdImage
+      // o creación de AdSet/Ad). La Campaign quedó huérfana en Meta y la fila en
+      // DB en 'provisioning'. Archivamos ambas y empezamos de nuevo desde cero.
+      console.log(
+        `[meta-builder] retry: archiving incomplete campaign ${existing.campaign_id}`,
+      )
+      try {
+        await metaFetch(`/${existing.campaign_id}`, {
+          method: 'POST',
+          body: JSON.stringify({ status: 'ARCHIVED' }),
+        })
+      } catch (err) {
+        console.warn('[meta-builder] could not archive in Meta (continuing)', err)
+      }
+      await supabasePre
+        .from('property_meta_campaigns')
+        .update({ status: 'archived', last_error: 'Archivada por reintento (intento previo incompleto)' })
+        .eq('campaign_id', existing.campaign_id)
+      // Caemos al flow normal de creación abajo
+    } else {
+      // Campaña completa existente — devolvemos la existente, no duplicamos.
+      return {
+        campaignId: existing.campaign_id,
+        adsetId: existing.adset_id ?? '',
+        adIds: (existing.ad_ids as string[] | null) ?? [],
+        budgetDailyArs: existing.budget_daily ?? 0,
+        landingUrl: existing.landing_url ?? `${getAppUrl()}/p/${property.public_slug}`,
+      }
     }
   }
 
