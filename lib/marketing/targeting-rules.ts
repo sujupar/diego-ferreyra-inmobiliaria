@@ -28,15 +28,20 @@ export interface MetaTargetingSpec {
 }
 
 /**
- * Intereses Meta relevantes para real estate Argentina.
- * IDs reales del Targeting API (verificados al construir la campaña).
+ * Intereses Meta — REMOVIDOS de targeting por defecto.
+ *
+ * Razón: los interest IDs hardcoded de Meta se deprecan periódicamente sin
+ * aviso. Ejemplo: el ID 6003315098934 ("Property") fue invalidado y Meta
+ * rechaza el AdSet entero con error 1487079 si lo enviamos.
+ *
+ * Para inmobiliaria, targeting geo + edad + publisher_platforms ya tiene
+ * muy buen alcance y resultados. Los interests son refinamiento opcional.
+ *
+ * Si más adelante querés agregar interests, usar Targeting Search API
+ * dinámicamente:
+ *   GET /search?type=adinterest&q=real+estate
+ * y cachear el resultado por 24h en lugar de hardcodear IDs.
  */
-const REAL_ESTATE_INTERESTS = [
-  { id: '6003397425735', name: 'Real estate' },
-  { id: '6003315098934', name: 'Property' },
-  { id: '6003393295343', name: 'Home buying' },
-  { id: '6003348604581', name: 'Mortgage loan' },
-]
 
 function priceInUsd(property: Property, usdToArs: number): number {
   if (property.currency === 'USD') return property.asking_price
@@ -88,7 +93,7 @@ export function decideTargeting(
     },
     age_min: 25,
     age_max: 65,
-    flexible_spec: [{ interests: REAL_ESTATE_INTERESTS }],
+    // flexible_spec.interests removido — ver comentario arriba.
     publisher_platforms: ['facebook', 'instagram'],
     facebook_positions: ['feed', 'story', 'instream_video'],
     instagram_positions: ['stream', 'story', 'explore', 'reels'],
@@ -96,6 +101,6 @@ export function decideTargeting(
 
   return {
     spec,
-    reasoning: `Precio USD ${usd.toFixed(0)} → radio ${radius}km en CABA/GBA, intereses real estate, 25-65 años`,
+    reasoning: `Precio USD ${usd.toFixed(0)} → radio ${radius}km en CABA/GBA, 25-65 años`,
   }
 }

@@ -97,6 +97,13 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 - **Fix:** En `lib/marketing/meta-campaign-builder.ts` agregar `is_adset_budget_sharing_enabled: false` al body del POST de campaign cuando el budget está a nivel adset (nuestro caso default). Si en el futuro querés CBO entre múltiples adsets, mover el `daily_budget` a la Campaign y poner `true`.
 - **Detection:** Antes de declarar una integración Meta completa, hacer un test end-to-end real de creación de Campaign — no solo unit tests del builder.
 
+### Meta interest IDs hardcoded se deprecan — NO usarlos en targeting fijo
+
+- **Symptom:** `POST /act_XXX/adsets` devuelve `Meta 400 — error_subcode 1487079 — "Especificación de segmentación no válida — El interés con el identificador XXXXX no es válido"`.
+- **Root cause:** Meta deprecá interest IDs periódicamente sin avisar. Ej: `6003315098934` ("Property") fue invalidado en 2026. Cualquier AdSet que lo incluya falla entero.
+- **Fix:** No hardcodear interest IDs. Targeting con geo + age + publisher_platforms ya tiene muy buen alcance para inmobiliaria. Si necesitás interests, hacelo dinámico via `GET /search?type=adinterest&q=...` (Targeting Search API) y cacheá el resultado por 24h.
+- **Detection:** Si AdSet falla con subcode 1487079, alguno de los interests/behaviors hardcoded está deprecado.
+
 ### Meta `/adimages?url=` requiere capability avanzada — usar multipart bytes
 
 - **Symptom:** `POST /act_XXX/adimages?url=<URL>` devuelve `Meta 400 — (#3) Application does not have the capability to make this API call — type: OAuthException`.
