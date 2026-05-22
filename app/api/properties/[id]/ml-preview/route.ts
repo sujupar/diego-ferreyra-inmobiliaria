@@ -50,6 +50,15 @@ export async function GET(
       return NextResponse.json({ error: 'property not found' }, { status: 404 })
     }
 
+    // Estado actual del listing ML (si ya se publicó alguna vez).
+    // El wizard usa esto para mostrar modo "preview/publish" vs "gestionar".
+    const { data: listing } = await supabase
+      .from('property_listings')
+      .select('status, external_id, external_url, last_published_at, last_error')
+      .eq('property_id', id)
+      .eq('portal', 'mercadolibre')
+      .maybeSingle()
+
     // El payload exige lat/lng — si no hay, devolvemos solo validation
     if (property.latitude == null || property.longitude == null) {
       return NextResponse.json({
@@ -60,6 +69,7 @@ export async function GET(
           errors: ['Falta geolocalización (lat/lng) — completar en la ficha antes de publicar'],
           warnings: [],
         },
+        listing: listing ?? null,
       })
     }
 
@@ -71,7 +81,7 @@ export async function GET(
       validation.ok = false
     }
 
-    return NextResponse.json({ property, payload, validation })
+    return NextResponse.json({ property, payload, validation, listing: listing ?? null })
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Error' },

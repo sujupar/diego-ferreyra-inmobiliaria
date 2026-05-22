@@ -135,14 +135,123 @@ export async function POST(
 }
 
 /**
- * DELETE → pausa el aviso en MercadoLibre (status: paused).
+ * PATCH → cambia el estado del aviso ML.
+ *   body: { action: 'pause' | 'close' | 'activate' }
  *
- * Se llama desde el wizard cuando el asesor pulsa "Pausar". A diferencia de
- * unpublish() del adapter (que hace status: closed, definitivo), aquí queremos
- * que sea reversible.
+ * - 'pause'    → status: paused (reversible, no visible al público)
+ * - 'close'    → status: closed (definitivo, NO se puede reactivar)
+ * - 'activate' → status: active (volver a publicar tras un pause)
  *
- * Si ML rechaza el pause (item en not_yet_active), marcamos
+ * Si el item está en not_yet_active, ML rechaza la transición — marcamos
  * `needs_pause_after_active` para que el worker termine el trabajo.
+ */
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const user = await requireAuth()
+    const { id } = await params
+    if (!(await authorize(id, user.id, user.profile.role))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
+    const body = (await req.json().catch(() => ({}))) as { action?: string }
+    const action = body.action
+    if (action !== 'pause' && action !== 'close' && action !== 'activate') {
+      return NextResponse.json(
+        { error: 'action debe ser "pause", "close" o "activate"' },
+        { status: 400 },
+      )
+    }
+
+    const supabase = getAdmin()
+    const { data: listing } = await supabase
+      .from('property_listings')
+      .select('external_id, metadata')
+      .eq('property_id', id)
+      .eq('portal', 'mercadolibre')
+      .maybeSingle()
+    if (!listing?.external_id) {
+      return NextResponse.json({ error: 'no listing to modify' }, { status: 404 })
+    }
+
+    await initPortals(true)
+    const ml = getAdapter('mercadolibre')
+    if (!ml?.enabled) {
+      return NextResponse.json({ error: 'ML not connected' }, { status: 412 })
+    }
+    const adapter = ml as MercadoLibreAdapter
+
+    const newMlStatus = action === 'pause'
+      ? 'paused'
+      : action === 'close'
+        ? 'closed'
+        : 'active'
+
+    try {
+      if (action === 'pause') await adapter.pause(listing.external_id)
+      else if (action === 'close') await adapter.unpublish(listing.external_id)
+      else {
+        // 'activate' — usamos mlFetch directo porque el adapter no expone activate
+        const { mlFetch } = await import('@/lib/portals/mercadolibre/client')
+        await mlFetch(`/items/${listing.external_id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: 'active' }),
+        })
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (action === 'pause' && /not_yet_active/i.test(msg)) {
+        // Marcamos el flag para que el worker termine cuando ML active el item.
+        await supabase
+          .from('property_listings')
+          .update({
+            metadata: {
+              ...(listing.metadata as Record<string, unknown> ?? {}),
+              needs_pause_after_active: true,
+            } as never,
+            last_error: 'ML retiene el item en validación. Se pausará automáticamente cuando se active.',
+          })
+          .eq('property_id', id)
+          .eq('portal', 'mercadolibre')
+        return NextResponse.json({
+          ok: true,
+          status: 'published',
+          needs_retry: true,
+          message: 'ML está validando el aviso. Se pausará automáticamente.',
+        })
+      }
+      return NextResponse.json({ error: `${action} falló: ${msg}` }, { status: 502 })
+    }
+
+    await supabase
+      .from('property_listings')
+      .update({
+        status: newMlStatus,
+        last_error: null,
+      })
+      .eq('property_id', id)
+      .eq('portal', 'mercadolibre')
+
+    await supabase.from('property_publish_events').insert({
+      property_id: id,
+      portal: 'mercadolibre',
+      event_type: action === 'close' ? 'unpublished' : 'updated',
+      payload: { action, status: newMlStatus },
+      actor: user.profile.full_name ?? user.id,
+    })
+
+    return NextResponse.json({ ok: true, status: newMlStatus })
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Error' },
+      { status: 500 },
+    )
+  }
+}
+
+/**
+ * DELETE → equivalente a PATCH action='pause' (legacy alias).
  */
 export async function DELETE(
   _req: Request,
