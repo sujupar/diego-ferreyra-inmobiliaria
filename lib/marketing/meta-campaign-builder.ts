@@ -364,18 +364,25 @@ export async function createCampaignForProperty(
   // aprende quién convierte y busca gente similar — vale la pena dejarlo.
   // Centralizado acá en el builder para no tocar cada preset/spec.
   //
-  // RESTRICCIÓN Advantage+: cuando advantage_audience=1, Meta NO permite
-  // `age_min > 25`. Con este flag activado, todo el control de edad mínima
-  // se trata como "sugerencia" y Meta lo expande automáticamente. Si pasamos
-  // age_min=30 por ejemplo, rechaza con subcode 1870188.
-  // Fix: cap age_min en 25. La edad sugerida del buyer persona se mantiene
-  // como age_max (que no tiene esa restricción).
+  // RESTRICCIONES Advantage+: cuando advantage_audience=1, Meta trata el
+  // control de edad como "sugerencia" y lo expande automáticamente.
+  // Por eso impone límites en lo que podés especificar:
+  //  - age_min NO puede ser > 25 (subcode 1870188)
+  //  - age_max NO puede ser < 65 (subcode 1870189)
+  // Los valores del buyer persona se mantienen como hint dentro de esos
+  // límites; Meta usa ML para encontrar la audiencia óptima dentro del rango.
+  //
+  // Estos caps SE APLICAN TANTO al spec automático (decideTargeting) como
+  // a cualquier targetingOverride que mande el wizard — por eso el
+  // procesamiento es acá, después de resolver targeting.spec.
   const baseSpec = targeting.spec as Record<string, unknown> & {
     age_min?: number
+    age_max?: number
   }
   const targetingWithAdvantage = {
     ...baseSpec,
     age_min: Math.min(baseSpec.age_min ?? 25, 25),
+    age_max: Math.max(baseSpec.age_max ?? 65, 65),
     targeting_automation: { advantage_audience: 1 },
   }
 

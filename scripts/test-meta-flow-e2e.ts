@@ -188,7 +188,10 @@ const ERROR_HINTS: Record<number, string> = {
   1487079: 'targeting inválido — algún interest/behavior deprecado',
 }
 
-async function runOnce(propertyId: string): Promise<RunResult> {
+async function runOnce(
+  propertyId: string,
+  mode: 'auto' | 'wizard' = 'auto',
+): Promise<RunResult> {
   // Import dinámico para que ngeresar al script no rompa si hay errores TS al cargar
   const { createCampaignForProperty } = await import('../lib/marketing/meta-campaign-builder.ts')
   const client = supa()
@@ -199,8 +202,36 @@ async function runOnce(propertyId: string): Promise<RunResult> {
     .single()
   if (error || !property) throw new Error('No se pudo cargar property: ' + error?.message)
 
+  // En modo 'wizard' simulamos los overrides que manda el wizard real:
+  // budget editado, geo preset elegido, copy variant, hero foto del highlight.
+  // Esto descubre bugs que el modo 'auto' no encuentra porque el wizard
+  // sobreescribe el spec automático con valores del buyer persona.
+  let overrides: Record<string, unknown> | undefined
+  if (mode === 'wizard') {
+    const { analyzePropertyPhotos } = await import('../lib/marketing/property-vision-analyzer.ts')
+    const { generateBuyerPersona } = await import('../lib/marketing/buyer-persona-generator.ts')
+    const { buildGeoPresets, recommendPreset } = await import('../lib/marketing/geo-targeting-presets.ts')
+    const vision = await analyzePropertyPhotos(property as never)
+    const persona = generateBuyerPersona({ property: property as never, vision })
+    const presets = buildGeoPresets(property as never, persona)
+    const recommended = recommendPreset(persona)
+    const preset = presets.find(p => p.id === recommended) ?? presets[0]
+    overrides = {
+      dailyBudgetArs: 10_000,
+      copyVariantIdx: 0,
+      targetingOverride: preset.spec,
+      heroPhotoUrl:
+        (property.photos as string[] | null)?.[vision.bestPhotoIndex ?? 0] ??
+        (property.photos as string[] | null)?.[0],
+    }
+    console.log(`[QA-E2E wizard mode] preset: ${preset.id}, persona age: ${persona.ageRange[0]}-${persona.ageRange[1]}`)
+  }
+
   try {
-    const result = await createCampaignForProperty(property as never, { dryRun: true })
+    const result = await createCampaignForProperty(property as never, {
+      dryRun: true,
+      overrides: overrides as never,
+    })
     return { ok: true, step: 'complete', campaignId: result.campaignId }
   } catch (err) {
     // Parsear el error de Meta del mensaje (formato: "Meta XXX /path: {...}")
@@ -291,31 +322,39 @@ async function main() {
   const propertyId = await ensureTestProperty()
   console.log(`[QA-E2E] property_id: ${propertyId}\n`)
 
-  const result = await runOnce(propertyId)
+  // Probamos AMBOS modos:
+  // 1. auto: builder con defaults (lo que pasaría sin wizard)
+  // 2. wizard: simula los overrides reales del wizard (que es lo que usa el usuario)
+  console.log('--- Test 1/2: modo auto (builder defaults) ---')
+  const autoResult = await runOnce(propertyId, 'auto')
+  reportResult('auto', autoResult)
+  if (!KEEP) await cleanup(propertyId)
 
+  console.log('\n--- Test 2/2: modo wizard (con overrides reales) ---')
+  const wizardResult = await runOnce(propertyId, 'wizard')
+  reportResult('wizard', wizardResult)
+  if (!KEEP) await cleanup(propertyId)
+
+  const bothOk = autoResult.ok && wizardResult.ok
+  process.exit(bothOk ? 0 : 1)
+}
+
+function reportResult(label: string, result: RunResult) {
   if (result.ok) {
-    console.log('✅ FLOW COMPLETO end-to-end!')
-    console.log(`   Campaign creada: ${result.campaignId}`)
-    console.log('   Steps: Campaign → Image → Creative → AdSet → Ad ✓\n')
+    console.log(`✅ ${label}: FLOW COMPLETO end-to-end`)
+    console.log(`   Campaign: ${result.campaignId}`)
   } else {
-    console.log(`❌ FALLÓ en step: ${result.step}`)
+    console.log(`❌ ${label}: falló en step: ${result.step}`)
     if (result.error?.subcode) {
       console.log(`   subcode: ${result.error.subcode}`)
       const hint = ERROR_HINTS[result.error.subcode]
-      if (hint) console.log(`   💡 Sugerencia: ${hint}`)
+      if (hint) console.log(`   💡 ${hint}`)
     }
     if (result.error?.blameField) {
       console.log(`   blame_field: ${result.error.blameField}`)
     }
-    console.log(`\n   Mensaje completo:\n   ${result.error?.message}\n`)
+    console.log(`\n   Mensaje:\n   ${result.error?.message}\n`)
   }
-
-  if (!KEEP) {
-    await cleanup(propertyId)
-  } else {
-    console.log('[QA-E2E] --keep — no archivamos. Revisalo en Ads Manager.')
-  }
-  process.exit(result.ok ? 0 : 1)
 }
 
 main().catch(err => {

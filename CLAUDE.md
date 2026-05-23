@@ -104,12 +104,16 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 - **Fix:** Usar UNO solo. Para targeting con radio alrededor de la propiedad: solo `custom_locations`. Para targeting país-entero: solo `countries`. Nunca ambos en el mismo `geo_locations`.
 - **Detection:** Si AdSet falla con subcode 1487756, hay `custom_locations` + `countries` simultáneos.
 
-### Meta `age_min` con `advantage_audience=1` no puede ser > 25
+### Meta `age_min` y `age_max` con `advantage_audience=1` tienen rango restringido
 
-- **Symptom:** `POST /act_XXX/adsets` devuelve `Meta 400 — subcode 1870188 — "La edad mínima supera el límite — Con los conjuntos de anuncios que usan el público Advantage+, el control de público de edad mínima no se puede establecer en más de 25 años"`.
-- **Root cause:** Cuando `advantage_audience=1`, Meta trata la edad mínima como sugerencia y la expande automáticamente para encontrar más conversiones. Si pasás `age_min > 25` con Advantage activado, lo rechaza.
-- **Fix:** Cap `age_min` en 25 cuando hay Advantage. El `age_max` no tiene esa restricción.
-- **Detection:** Si AdSet falla con subcode 1870188, hay `age_min > 25` combinado con advantage_audience=1.
+- **Symptom 1:** `POST /act_XXX/adsets` devuelve `Meta 400 — subcode 1870188 — "Edad mínima supera el límite"`.
+- **Symptom 2:** Idem con `subcode 1870189 — "Edad máxima está por debajo del límite permitido"`.
+- **Root cause:** Cuando `advantage_audience=1`, Meta trata la edad como sugerencia y la expande automáticamente. Impone límites estrictos en lo que podés especificar:
+  - `age_min ≤ 25` (sino sube el suelo)
+  - `age_max ≥ 65` (sino baja el techo)
+- **Fix:** En el builder, después de resolver el spec (sea automático o `targetingOverride` del wizard), aplicar `age_min = min(actual, 25)` y `age_max = max(actual, 65)`. Las edades del buyer persona se mantienen como hint dentro de esos límites.
+- **Detection:** Si AdSet falla con 1870188 o 1870189, hay valores fuera del rango permitido por Advantage+.
+- **Trampa típica:** un fix en el builder para `decideTargeting()` no aplica si el wizard pasa `targetingOverride` con sus propios valores. Aplicar el cap **después** de resolver el spec final, no antes.
 
 ### Meta `targeting_automation.advantage_audience` es obligatorio en AdSets desde 2024-2025
 
