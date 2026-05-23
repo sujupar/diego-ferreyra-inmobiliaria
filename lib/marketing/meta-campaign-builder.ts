@@ -24,6 +24,7 @@ import { decideTargeting } from './targeting-rules'
 import { generateAdCopyVariations, variationsToPrimary } from './copy-ai-generator'
 import { getUsdToArs } from './usd-rate'
 import { analyzePropertyPhotos, type PropertyHighlight } from './property-vision-analyzer'
+import { generateAdImage } from './ad-image-generator'
 
 const META_API = 'https://graph.facebook.com/v21.0'
 
@@ -84,42 +85,21 @@ export interface CampaignResult {
 }
 
 /**
- * Sube una foto a Meta como ad image. Devuelve el hash.
+ * Sube bytes a Meta como ad image. Devuelve el hash.
  *
- * Estrategia: descargar la imagen y subirla como bytes multipart. NO usar el
- * modo `?url=<URL>` porque requiere la capability avanzada "Marketing API
- * Standard Access" que la mayoría de las apps de Meta no tienen por defecto
- * (devuelve error code 3: "Application does not have the capability to make
- * this API call"). El modo multipart funciona con permisos básicos de
- * ads_management.
+ * Estrategia: multipart bytes (NO el modo `?url=` que requiere capability
+ * avanzada que la mayoría de apps no tienen). Funciona con permisos básicos
+ * de ads_management.
  */
-async function uploadAdImage(photoUrl: string): Promise<string> {
+async function uploadAdImageBytes(
+  buffer: Buffer,
+  mimeType: string,
+  filename: string,
+): Promise<string> {
   const { accountId, accessToken } = getMeta()
-
-  // 1. Descargar la imagen
-  const imgRes = await fetch(photoUrl)
-  if (!imgRes.ok) {
-    throw new MetaApiError(
-      `No se pudo descargar la foto ${photoUrl}: ${imgRes.status}`,
-      imgRes.status,
-      imgRes.status >= 500,
-    )
-  }
-  const buf = Buffer.from(await imgRes.arrayBuffer())
-  const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
-  // Meta acepta: jpeg, png, gif, webp, bmp, tiff. Default jpeg si no detectamos.
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-  const mimeType = allowedTypes.find(t => contentType.startsWith(t)) ?? 'image/jpeg'
-
-  // 2. Construir filename razonable (Meta lo usa como key en la respuesta)
-  const rawName = photoUrl.split('/').pop()?.split('?')[0] ?? 'image'
-  const ext = mimeType.split('/')[1] ?? 'jpg'
-  const filename = rawName.includes('.') ? rawName : `${rawName}.${ext}`
-
-  // 3. Multipart POST a /adimages
   const form = new FormData()
   form.set('access_token', accessToken)
-  form.set(filename, new Blob([new Uint8Array(buf)], { type: mimeType }), filename)
+  form.set(filename, new Blob([new Uint8Array(buffer)], { type: mimeType }), filename)
 
   const res = await fetch(`${META_API}/${accountId}/adimages`, {
     method: 'POST',
@@ -137,6 +117,130 @@ async function uploadAdImage(photoUrl: string): Promise<string> {
   const first = Object.values(data.images ?? {})[0]
   if (!first?.hash) throw new MetaApiError('No image hash en respuesta', 500, true)
   return first.hash
+}
+
+/**
+ * Wrapper que acepta una URL pública de foto. Descarga y sube los bytes.
+ */
+async function uploadAdImage(photoUrl: string): Promise<string> {
+  const imgRes = await fetch(photoUrl)
+  if (!imgRes.ok) {
+    throw new MetaApiError(
+      `No se pudo descargar la foto ${photoUrl}: ${imgRes.status}`,
+      imgRes.status,
+      imgRes.status >= 500,
+    )
+  }
+  const buf = Buffer.from(await imgRes.arrayBuffer())
+  const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+  const mimeType = allowedTypes.find(t => contentType.startsWith(t)) ?? 'image/jpeg'
+  const rawName = photoUrl.split('/').pop()?.split('?')[0] ?? 'image'
+  const ext = mimeType.split('/')[1] ?? 'jpg'
+  const filename = rawName.includes('.') ? rawName : `${rawName}.${ext}`
+  return uploadAdImageBytes(buf, mimeType, filename)
+}
+
+/**
+ * Obtiene o genera la imagen del anuncio para un highlight específico.
+ *
+ * Flow con cache:
+ *  1. Mirar `property_ad_assets` si ya hay meta_image_hash para
+ *     (property, highlight, format). Si sí → reusar.
+ *  2. Si no, generar con Gemini 2.5 Flash Image.
+ *  3. Si Gemini falla → fallback a la foto original (sin texto/overlay).
+ *  4. Subir bytes a Meta /adimages.
+ *  5. Persistir hash en property_ad_assets.
+ *
+ * Devuelve el meta_image_hash listo para usar en el AdCreative.
+ */
+async function getOrGenerateAdImageHash(input: {
+  property: Property
+  highlight: PropertyHighlight
+  copyHeadline: string
+  format?: 'feed_square' | 'feed_vertical' | 'story_vertical'
+}): Promise<string> {
+  const format = input.format ?? 'feed_square'
+  const supabase = getSupabase()
+
+  // 1. Cache hit?
+  // Cast porque property_ad_assets no está en types/database.types.ts todavía
+  // (la migración 20260523000001 la ejecuta el usuario manualmente en SQL Editor).
+  // Después del primer SELECT exitoso podemos regenerar types.
+  type AdAssetRow = { meta_image_hash: string | null }
+  const cacheRes = await (supabase as unknown as {
+    from: (t: string) => {
+      select: (s: string) => {
+        eq: (a: string, b: string) => {
+          eq: (a: string, b: string) => {
+            eq: (a: string, b: string) => {
+              maybeSingle: () => Promise<{ data: AdAssetRow | null }>
+            }
+          }
+        }
+      }
+    }
+  })
+    .from('property_ad_assets')
+    .select('meta_image_hash')
+    .eq('property_id', input.property.id)
+    .eq('highlight_id', input.highlight.id)
+    .eq('format', format)
+    .maybeSingle()
+  if (cacheRes.data?.meta_image_hash) {
+    return cacheRes.data.meta_image_hash
+  }
+
+  // 2. Intentar generar con Gemini
+  const generated = await generateAdImage({
+    property: input.property,
+    highlight: input.highlight,
+    copyHeadline: input.copyHeadline,
+    format,
+  })
+
+  let metaHash: string
+  let promptHash: string | null = null
+  if (generated) {
+    promptHash = generated.promptHash
+    metaHash = await uploadAdImageBytes(
+      generated.buffer,
+      generated.mimeType,
+      `${input.property.public_slug ?? input.property.id}_${input.highlight.id}_${format}.jpg`,
+    )
+  } else {
+    // 3. Fallback: foto original
+    const photoUrl =
+      input.property.photos[input.highlight.photoIndex] ?? input.property.photos[0]
+    metaHash = await uploadAdImage(photoUrl)
+  }
+
+  // 5. Persistir cache (best-effort, no fallar si el insert falla)
+  try {
+    await (supabase as unknown as {
+      from: (t: string) => {
+        upsert: (
+          row: Record<string, unknown>,
+          opts: { onConflict: string },
+        ) => Promise<unknown>
+      }
+    })
+      .from('property_ad_assets')
+      .upsert(
+        {
+          property_id: input.property.id,
+          highlight_id: input.highlight.id,
+          format,
+          prompt_hash: promptHash ?? 'fallback_original_photo',
+          meta_image_hash: metaHash,
+        },
+        { onConflict: 'property_id,highlight_id,format' },
+      )
+  } catch (err) {
+    console.warn('[ad-image cache] upsert failed (continuing):', err)
+  }
+
+  return metaHash
 }
 
 export interface CampaignOverrides {
@@ -440,7 +544,15 @@ export async function createCampaignForProperty(
     const variantPrimaryText =
       copyVariations.primaryTexts[i] ?? copyVariations.primaryTexts[0]
 
-    const imageHash = await uploadAdImage(photoUrl)
+    // Genera (o reusa cache) la imagen premium con Gemini, hace upload a
+    // Meta y devuelve el hash. Si Gemini falla, hace fallback transparente
+    // a la foto original.
+    const imageHash = await getOrGenerateAdImageHash({
+      property,
+      highlight,
+      copyHeadline: variantHeadline,
+      format: 'feed_square',
+    })
 
     const creative = await metaFetch<{ id: string }>(`/${accountId}/adcreatives`, {
       method: 'POST',
