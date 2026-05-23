@@ -97,6 +97,20 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 - **Fix:** En `lib/marketing/meta-campaign-builder.ts` agregar `is_adset_budget_sharing_enabled: false` al body del POST de campaign cuando el budget está a nivel adset (nuestro caso default). Si en el futuro querés CBO entre múltiples adsets, mover el `daily_budget` a la Campaign y poner `true`.
 - **Detection:** Antes de declarar una integración Meta completa, hacer un test end-to-end real de creación de Campaign — no solo unit tests del builder.
 
+### Meta geo_locations: NO mezclar `custom_locations` con `countries`
+
+- **Symptom:** `POST /act_XXX/adsets` devuelve `Meta 400 — subcode 1487756 — "No se pueden usar los lugares — Algunos de tus lugares se superponen"`.
+- **Root cause:** Meta detecta superposición cuando especificás un `custom_locations` (lat/lng + radio) y al mismo tiempo `countries: ['AR']`. El radio ya está dentro de AR — Meta considera redundante incluir el país.
+- **Fix:** Usar UNO solo. Para targeting con radio alrededor de la propiedad: solo `custom_locations`. Para targeting país-entero: solo `countries`. Nunca ambos en el mismo `geo_locations`.
+- **Detection:** Si AdSet falla con subcode 1487756, hay `custom_locations` + `countries` simultáneos.
+
+### Meta `age_min` con `advantage_audience=1` no puede ser > 25
+
+- **Symptom:** `POST /act_XXX/adsets` devuelve `Meta 400 — subcode 1870188 — "La edad mínima supera el límite — Con los conjuntos de anuncios que usan el público Advantage+, el control de público de edad mínima no se puede establecer en más de 25 años"`.
+- **Root cause:** Cuando `advantage_audience=1`, Meta trata la edad mínima como sugerencia y la expande automáticamente para encontrar más conversiones. Si pasás `age_min > 25` con Advantage activado, lo rechaza.
+- **Fix:** Cap `age_min` en 25 cuando hay Advantage. El `age_max` no tiene esa restricción.
+- **Detection:** Si AdSet falla con subcode 1870188, hay `age_min > 25` combinado con advantage_audience=1.
+
 ### Meta `targeting_automation.advantage_audience` es obligatorio en AdSets desde 2024-2025
 
 - **Symptom:** `POST /act_XXX/adsets` devuelve `Meta 400 — subcode 1870227 — "Se requiere la marca de público Advantage — Para crear el conjunto de anuncios, debes activar o desactivar la función de público Advantage"`.

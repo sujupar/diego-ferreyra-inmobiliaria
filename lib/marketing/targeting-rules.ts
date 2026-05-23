@@ -79,6 +79,10 @@ export function decideTargeting(
   const usd = priceInUsd(property, usdToArs)
   const radius = radiusKm(usd)
 
+  // NO mezclar custom_locations + countries — Meta detecta superposición
+  // (el radio incluye Argentina y "AR" también) y rechaza con subcode 1487756.
+  // Como el targeting principal es radio alrededor de la propiedad, dejamos
+  // solo custom_locations.
   const spec: MetaTargetingSpec = {
     geo_locations: {
       custom_locations: [
@@ -89,7 +93,6 @@ export function decideTargeting(
           distance_unit: 'kilometer',
         },
       ],
-      countries: ['AR'],
     },
     age_min: 25,
     age_max: 65,

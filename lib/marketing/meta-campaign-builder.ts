@@ -363,8 +363,19 @@ export async function createCampaignForProperty(
   // Default 1 porque para campañas de conversion (OFFSITE_CONVERSIONS) Meta
   // aprende quién convierte y busca gente similar — vale la pena dejarlo.
   // Centralizado acá en el builder para no tocar cada preset/spec.
+  //
+  // RESTRICCIÓN Advantage+: cuando advantage_audience=1, Meta NO permite
+  // `age_min > 25`. Con este flag activado, todo el control de edad mínima
+  // se trata como "sugerencia" y Meta lo expande automáticamente. Si pasamos
+  // age_min=30 por ejemplo, rechaza con subcode 1870188.
+  // Fix: cap age_min en 25. La edad sugerida del buyer persona se mantiene
+  // como age_max (que no tiene esa restricción).
+  const baseSpec = targeting.spec as Record<string, unknown> & {
+    age_min?: number
+  }
   const targetingWithAdvantage = {
-    ...targeting.spec,
+    ...baseSpec,
+    age_min: Math.min(baseSpec.age_min ?? 25, 25),
     targeting_automation: { advantage_audience: 1 },
   }
 
