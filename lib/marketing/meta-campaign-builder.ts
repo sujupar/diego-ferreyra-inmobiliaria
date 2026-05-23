@@ -23,6 +23,7 @@ import { decideBudget } from './budget-rules'
 import { decideTargeting } from './targeting-rules'
 import { generateAdCopyVariations, variationsToPrimary } from './copy-ai-generator'
 import { getUsdToArs } from './usd-rate'
+import { analyzePropertyPhotos, type PropertyHighlight } from './property-vision-analyzer'
 
 const META_API = 'https://graph.facebook.com/v21.0'
 
@@ -148,6 +149,11 @@ export interface CampaignOverrides {
   targetingOverride?: Record<string, unknown>
   /** URL específica de foto a usar como hero (por defecto property.photos[0]) */
   heroPhotoUrl?: string
+  /** Highlights del análisis de visión (si el wizard los pasa, se reusan;
+   *  si no, el builder llama a analyzePropertyPhotos de nuevo). */
+  highlights?: PropertyHighlight[]
+  /** Cuántos ads variants generar (default 3). Cap a min(highlights.length, copy.length). */
+  variantCount?: number
 }
 
 export async function createCampaignForProperty(
@@ -302,28 +308,41 @@ export async function createCampaignForProperty(
     throw new Error(`No se pudo persistir la campaña en DB: ${insertError.message}`)
   }
 
-  // 2. Subir imagen hero (override del asesor o la primera por default)
-  const heroUrl = overrides.heroPhotoUrl ?? property.photos[0]
-  const imageHash = await uploadAdImage(heroUrl)
+  // 2. Resolver los highlights que vamos a usar para las variantes de ad.
+  //    Si el wizard ya los analizó, los reusa. Sino, los pide al vision
+  //    analyzer (cache automático del runtime).
+  const highlights =
+    overrides.highlights && overrides.highlights.length > 0
+      ? overrides.highlights
+      : (await analyzePropertyPhotos(property)).highlights
 
-  // 3. Crear AdCreative
-  const creative = await metaFetch<{ id: string }>(`/${accountId}/adcreatives`, {
-    method: 'POST',
-    body: JSON.stringify({
-      name: `Hero ${property.public_slug}`,
-      object_story_spec: {
-        page_id: pageId,
-        link_data: {
-          image_hash: imageHash,
-          link: landingUrl,
-          message: copy.primaryText,
-          name: copy.headline,
-          description: copy.description,
-          call_to_action: { type: 'LEARN_MORE', value: { link: landingUrl } },
-        },
-      },
-    }),
-  })
+  // 3. Determinar cuántas variantes de ad vamos a crear.
+  //    Default 3 — uno por top highlight. Cap a la cantidad de copy variants
+  //    disponibles para que cada ad tenga su headline/primaryText único.
+  const requestedVariants = overrides.variantCount ?? 3
+  const variantCount = Math.max(
+    1,
+    Math.min(
+      requestedVariants,
+      highlights.length,
+      copyVariations.primaryTexts.length,
+      copyVariations.headlines.length,
+    ),
+  )
+
+  // 4. Para cada variante: subir foto + crear creative + crear ad.
+  //    Todas comparten el mismo AdSet (lo creamos abajo).
+  //    Si una falla, las anteriores ya están creadas — la idempotencia se
+  //    encarga de archivar la campaña en el siguiente intento.
+  const adIds: string[] = []
+  const variantPayloads: Array<{
+    adId: string
+    creativeId: string
+    highlightId: string
+    headline: string
+    primaryText: string
+    photoUrl: string
+  }> = []
 
   // 4. Crear AdSet (con conversion location WEBSITE para que apunte a la landing)
   //
@@ -408,16 +427,60 @@ export async function createCampaignForProperty(
     }),
   })
 
-  // 5. Crear Ad
-  const ad = await metaFetch<{ id: string }>(`/${accountId}/ads`, {
-    method: 'POST',
-    body: JSON.stringify({
-      name: `Ad ${property.public_slug}`,
-      adset_id: adset.id,
-      creative: { creative_id: creative.id },
-      status: 'PAUSED',
-    }),
-  })
+  // 5. Crear N AdCreatives + N Ads (uno por highlight, cada uno con su copy).
+  //    Todos los Ads van al mismo AdSet — Meta optimiza entre ellos (A/B/n auto).
+  //
+  //    Si una variante falla a mitad, las anteriores quedan creadas. El próximo
+  //    intento las archiva via idempotencia (status='provisioning' incompleto).
+  for (let i = 0; i < variantCount; i++) {
+    const highlight = highlights[i]
+    const photoUrl = property.photos[highlight.photoIndex] ?? property.photos[0]
+    const variantHeadline =
+      copyVariations.headlines[i] ?? copyVariations.headlines[0]
+    const variantPrimaryText =
+      copyVariations.primaryTexts[i] ?? copyVariations.primaryTexts[0]
+
+    const imageHash = await uploadAdImage(photoUrl)
+
+    const creative = await metaFetch<{ id: string }>(`/${accountId}/adcreatives`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: `${property.public_slug} — ${highlight.id}`.slice(0, 80),
+        object_story_spec: {
+          page_id: pageId,
+          link_data: {
+            image_hash: imageHash,
+            link: landingUrl,
+            message: variantPrimaryText,
+            name: variantHeadline,
+            description: copyVariations.description,
+            // SEE_MORE = "Ver más" — más compacto que LEARN_MORE.
+            call_to_action: { type: 'SEE_MORE', value: { link: landingUrl } },
+          },
+        },
+      }),
+    })
+
+    const ad = await metaFetch<{ id: string }>(`/${accountId}/ads`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: `Ad ${i + 1}: ${highlight.label}`.slice(0, 80),
+        adset_id: adset.id,
+        creative: { creative_id: creative.id },
+        status: 'PAUSED',
+      }),
+    })
+
+    adIds.push(ad.id)
+    variantPayloads.push({
+      adId: ad.id,
+      creativeId: creative.id,
+      highlightId: highlight.id,
+      headline: variantHeadline,
+      primaryText: variantPrimaryText,
+      photoUrl,
+    })
+  }
 
   // 6. Smoke test de la landing antes de activar (skipear en dryRun)
   const landingOk = options.dryRun ? false : await smokeTestLanding(landingUrl)
@@ -429,11 +492,18 @@ export async function createCampaignForProperty(
     : landingOk
       ? 'active'
       : 'failed'
+  // Persistir todos los IDs + el detalle de cada variante (para que el inbox
+  // pueda mostrar "este lead vino del ad del balcón" en el futuro).
+  const copyWithVariants = {
+    ...copyVariations,
+    variants: variantPayloads,
+  }
   await supabase
     .from('property_meta_campaigns')
     .update({
       adset_id: adset.id,
-      ad_ids: [ad.id],
+      ad_ids: adIds,
+      copy: copyWithVariants as never,
       status: finalStatus,
       last_error:
         !options.dryRun && !landingOk ? 'Smoke test de landing falló' : null,
@@ -443,13 +513,13 @@ export async function createCampaignForProperty(
   // 8. Si la landing responde OK y no es dryRun, activar todo en Meta.
   // En dryRun queda PAUSED para que el usuario audite antes de activar.
   if (landingOk && !options.dryRun) {
-    await activateCampaign(campaign.id, adset.id, [ad.id])
+    await activateCampaign(campaign.id, adset.id, adIds)
   }
 
   return {
     campaignId: campaign.id,
     adsetId: adset.id,
-    adIds: [ad.id],
+    adIds,
     budgetDailyArs: budget.dailyArs,
     landingUrl,
   }

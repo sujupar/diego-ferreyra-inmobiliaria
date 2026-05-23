@@ -1,18 +1,21 @@
 /**
- * Presets geográficos simples para el wizard de Meta Ads.
+ * Presets geográficos profesionales para el wizard de Meta Ads.
  *
  * Tres opciones que el asesor entiende sin saber de Meta:
- *   1. "Cercanos" — radio de 3-5km desde la propiedad
- *   2. "Barrios similares" — clusters socioeconómicos parecidos
- *   3. "Amplio" — todo CABA + GBA Norte (premium / inversores)
+ *   1. "Cercanos" — un pin de 2km en la propiedad. Hipersegmentación local.
+ *   2. "Barrios similares" — múltiples pines de 2km en barrios del mismo cluster
+ *      socioeconómico. Más alcance pero manteniendo perfil de comprador.
+ *   3. "Amplio" — radio grande para premium / inversores que vienen de cualquier zona.
  *
  * Cada preset devuelve un `targeting.spec` compatible con la Meta Marketing API.
  *
- * Los clusters están hardcoded — si en el futuro necesitan editarse desde UI,
- * se mueven a una tabla `neighborhood_clusters` en Supabase.
+ * Cambio importante 2026-05-23: antes "similares" usaba 1 pin de 10km que
+ * cubría todo Buenos Aires y degradaba la performance. Ahora usa pines de
+ * 2km en los barrios del cluster, lo que mantiene precisión + alcance.
  */
 import type { Property } from '@/lib/portals/types'
 import type { BuyerPersona } from './buyer-persona-generator'
+import { siblingNeighborhoods, findNeighborhood } from './neighborhood-data'
 
 export type GeoPresetId = 'cercanos' | 'similares' | 'amplio'
 
@@ -42,24 +45,8 @@ export interface GeoPreset {
   spec: MetaTargetingSpec
 }
 
-// Clusters CABA por nivel socioeconómico (simplificado)
-const CLUSTERS = {
-  premium: ['Recoleta', 'Puerto Madero', 'Núñez', 'Belgrano'],
-  alto: ['Palermo', 'Belgrano', 'Núñez', 'Caballito', 'Villa Urquiza', 'Colegiales'],
-  medio_alto: [
-    'Palermo',
-    'Villa Crespo',
-    'Caballito',
-    'Almagro',
-    'Colegiales',
-    'Chacarita',
-  ],
-  medio: ['Almagro', 'Flores', 'Boedo', 'Villa Crespo', 'San Telmo'],
-}
-
-function clusterFor(persona: BuyerPersona): string[] {
-  return CLUSTERS[persona.incomeLevel] ?? CLUSTERS.medio
-}
+/** Radio default por pin: 2km. Hipersegmentación efectiva para inmobiliaria. */
+const PIN_RADIUS_KM = 2
 
 export function buildGeoPresets(
   property: Property,
@@ -71,20 +58,20 @@ export function buildGeoPresets(
 
   const presets: GeoPreset[] = []
 
-  // 1. Cercanos: radio 3km (entry/medio) o 5km (alto+)
-  const radiusKm = persona.incomeLevel === 'premium' || persona.incomeLevel === 'alto' ? 5 : 3
+  // 1. Cercanos: UN pin de 2km en la propiedad.
+  //    Hipersegmentación local — gente que vive o trabaja muy cerca.
   presets.push({
     id: 'cercanos',
     label: 'Personas cercanas',
-    description: `Gente que vive o trabaja a menos de ${radiusKm} km de la propiedad. Bueno para barrios con identidad fuerte.`,
-    estimatedReach: persona.incomeLevel === 'premium' ? '~80k personas' : '~200k personas',
+    description: `Gente que vive o trabaja a menos de ${PIN_RADIUS_KM} km de la propiedad. Hipersegmentación: bajo alcance pero alta relevancia.`,
+    estimatedReach: persona.incomeLevel === 'premium' ? '~30k personas' : '~80k personas',
     spec: {
       geo_locations: {
         custom_locations: [
           {
             latitude: property.latitude,
             longitude: property.longitude,
-            radius: radiusKm,
+            radius: PIN_RADIUS_KM,
             distance_unit: 'kilometer',
           },
         ],
@@ -95,25 +82,46 @@ export function buildGeoPresets(
     },
   })
 
-  // 2. Similares: clusters socioeconómicos parecidos
-  const cluster = clusterFor(persona)
+  // 2. Similares: MÚLTIPLES pines de 2km — uno en el barrio de la propiedad +
+  //    uno en cada barrio del mismo cluster socioeconómico.
+  //    Esto es lo que el usuario pidió: mantener precisión (2km) pero ampliar
+  //    alcance a barrios con perfil de comprador similar. No es un único radio
+  //    grande que diluye el targeting — son varios pines acotados que apuntan
+  //    a personas concretas.
+  const siblings = siblingNeighborhoods(property.neighborhood, 6)
+  const foundProperty = findNeighborhood(property.neighborhood)
+  const similarPins = [
+    // Pin en el barrio actual (re-usa lat/lng exacto de la propiedad)
+    {
+      latitude: property.latitude,
+      longitude: property.longitude,
+      radius: PIN_RADIUS_KM,
+      distance_unit: 'kilometer' as const,
+    },
+    // Pines en barrios del mismo cluster
+    ...siblings.map(n => ({
+      latitude: n.lat,
+      longitude: n.lng,
+      radius: PIN_RADIUS_KM,
+      distance_unit: 'kilometer' as const,
+    })),
+  ]
+  const siblingNames = siblings.map(n => n.name).slice(0, 4).join(', ')
   presets.push({
     id: 'similares',
     label: 'Barrios con perfil parecido',
-    description: `Gente en barrios de poder adquisitivo similar: ${cluster.slice(0, 4).join(', ')}…`,
-    estimatedReach: '~500k personas',
+    description: foundProperty
+      ? `${similarPins.length} pines de ${PIN_RADIUS_KM} km cada uno, en ${property.neighborhood} y barrios con perfil similar (${siblingNames}…). Más alcance manteniendo el perfil de comprador.`
+      : `${similarPins.length} pines de ${PIN_RADIUS_KM} km cada uno, en barrios con perfil parecido al de la propiedad.`,
+    estimatedReach:
+      foundProperty?.cluster === 'premium'
+        ? '~200k personas'
+        : foundProperty?.cluster === 'alto'
+          ? '~450k personas'
+          : '~700k personas',
     spec: {
       geo_locations: {
-        // Sin city keys reales (requeriría /search Meta API). Por ahora usamos
-        // ubicación de la propiedad + radio amplio para aproximar cluster.
-        custom_locations: [
-          {
-            latitude: property.latitude,
-            longitude: property.longitude,
-            radius: 10,
-            distance_unit: 'kilometer',
-          },
-        ],
+        custom_locations: similarPins,
       },
       age_min: persona.ageRange[0],
       age_max: persona.ageRange[1],
@@ -121,12 +129,13 @@ export function buildGeoPresets(
     },
   })
 
-  // 3. Amplio: toda CABA
+  // 3. Amplio: radio grande centrado en Obelisco — para premium / inversores
+  //    que vienen de cualquier zona.
   presets.push({
     id: 'amplio',
     label: 'Toda CABA (premium / inversores)',
     description:
-      'Para propiedades premium o de inversión donde el comprador puede venir de cualquier zona.',
+      'Para propiedades premium o de inversión donde el comprador puede venir de cualquier zona de CABA.',
     estimatedReach: '~3M personas',
     spec: {
       geo_locations: {

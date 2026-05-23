@@ -15,10 +15,16 @@ export interface PropertyHighlight {
   label: string // "Pileta y solárium del edificio"
   reasoning: string // por qué este es un highlight
   photoIndex: number // índice en property.photos donde se ve mejor
+  /** Datos concretos para usar en el copy: ej. "70 m² cubiertos", "3 ambientes" */
+  copyHooks?: string[]
+  /** Estética/mood sugerida para la pieza gráfica del ad */
+  mood?: 'luminoso' | 'cálido' | 'moderno' | 'clásico' | 'amplio' | 'industrial' | 'aspiracional' | 'familiar'
+  /** Score de impacto 0-100; el orden del array ya lo refleja pero esto es info adicional */
+  impactScore?: number
 }
 
 export interface PropertyVisionAnalysis {
-  highlights: PropertyHighlight[] // top 3 atributos visuales más fuertes
+  highlights: PropertyHighlight[] // 5 atributos visuales más fuertes, ordenados por impacto
   detectedFeatures: string[] // lista de features visibles (objetiva)
   bestPhotoIndex: number // foto principal para el ad creative
   ambience: 'luminoso' | 'cálido' | 'moderno' | 'clásico' | 'amplio' | 'industrial'
@@ -26,28 +32,61 @@ export interface PropertyVisionAnalysis {
   source: 'vision' | 'template'
 }
 
-const SYSTEM_PROMPT = `Sos un agente que analiza fotos de propiedades inmobiliarias para una inmobiliaria argentina. Tu trabajo es identificar los 3 highlights visuales más fuertes (lo que hace que esta propiedad se destaque), detectar features visibles concretos, y elegir cuál foto debería ser la "principal" del aviso publicitario.
+const SYSTEM_PROMPT = `Sos un director creativo de una inmobiliaria premium argentina. Tu trabajo es analizar las fotos de una propiedad e identificar los 5 mejores ángulos comerciales para vender o alquilar.
 
-Devolvé un JSON con esta estructura exacta:
+Cada "highlight" es un argumento de venta visualmente respaldado por una foto. Tu output va a alimentar:
+1. La selección del feature destacado en la pieza gráfica.
+2. El generador de imágenes de anuncio (Gemini 2.5 Flash Image) — el "mood" guía el estilo gráfico.
+3. El copywriter — los "copyHooks" son datos concretos que el copy puede usar.
+
+Devolvé un JSON con esta estructura EXACTA:
 
 {
   "highlights": [
-    { "id": "slug", "label": "Descripción humana 60 chars max", "reasoning": "Por qué destaca esto", "photoIndex": 0 },
-    ... (3 items)
+    {
+      "id": "slug_kebab_es",
+      "label": "Descripción comercial humana (máx 60 chars)",
+      "reasoning": "Por qué este highlight vende: 1-2 oraciones",
+      "photoIndex": 0,
+      "copyHooks": ["dato 1 concreto", "dato 2 concreto", "dato 3 concreto"],
+      "mood": "luminoso" | "cálido" | "moderno" | "clásico" | "amplio" | "industrial" | "aspiracional" | "familiar",
+      "impactScore": 0-100
+    },
+    ... (EXACTAMENTE 5 items, ordenados de mayor a menor impactScore)
   ],
-  "detectedFeatures": ["pileta", "balcón aterrazado", "parrilla", "vista despejada", "cocina integrada", "amplios ventanales", ...],
+  "detectedFeatures": ["lista exhaustiva pero objetiva de features visibles"],
   "bestPhotoIndex": 0,
   "ambience": "luminoso" | "cálido" | "moderno" | "clásico" | "amplio" | "industrial",
   "summary": "1-2 oraciones objetivas para alimentar copy del ad"
 }
 
-Reglas:
-- highlights[].id: kebab_case en español (pileta, balcon_aterrazado, vista_panoramica, parrilla_quincho, jardin_propio, cocina_integrada, vestidor, dependencia, lavadero, terraza_uso_exclusivo, etc).
-- Si ves pileta, balcón aterrazado o vista panorámica, esos casi siempre son los #1 highlights.
-- bestPhotoIndex: la foto que tenga el mejor combo de luz + features. NO siempre es la primera.
-- detectedFeatures: lista exhaustiva pero objetiva (sin inventar).
-- Sin clichés ("oportunidad única", "una joya"). Lenguaje preciso.
-- Output SOLO el JSON. Sin texto antes ni después.`
+Guía de cada campo:
+
+**highlights[].id**: kebab_case en español. Ejemplos: pileta, balcon_aterrazado, vista_panoramica, parrilla_quincho, jardin_propio, cocina_integrada, living_amplio, vestidor, dependencia_servicio, lavadero, terraza_uso_exclusivo, ventanales_piso_techo, doble_orientacion, luz_natural, espacios_abiertos, edificio_premium, sum_amenities, gimnasio, seguridad_24hs, cocheras_dobles.
+
+**highlights[].label**: tono comercial pero sobrio. NO usar: "oportunidad única", "una joya", "imperdible", "una belleza". SÍ usar: "Pileta climatizada del edificio", "Balcón aterrazado con vista al verde", "Cocina integrada con isla".
+
+**highlights[].reasoning**: explicación corta de por qué este highlight es un argumento de venta fuerte. Ej. "La pileta climatizada del edificio es un amenity premium que diferencia a esta propiedad del resto del barrio y agrega percepción de valor sin importar la estación del año."
+
+**highlights[].copyHooks**: datos CONCRETOS para que el copywriter use directamente. Si la foto muestra una cocina integrada con isla y vos ves bachas dobles, el hook es "cocina integrada con isla y bacha doble". Si ves un balcón con cobertura, "balcón aterrazado de aprox. X m²". Sin inventar números: si no podés medir, no menciones m². Mínimo 2, máximo 4 hooks.
+
+**highlights[].mood**: la estética/tono que la pieza gráfica del ad debería tener para resaltar este highlight. Si el highlight es "vista panorámica desde el piso 12", mood = "aspiracional". Si es "living comedor amplio con luz natural", mood = "luminoso". Si es "cocina con detalles en madera y bronce", mood = "cálido". Si es "espacios abiertos minimalistas en blanco", mood = "moderno". Es la guía estética que vamos a pasarle al generador de imágenes.
+
+**highlights[].impactScore**: 0-100. 100 = highlight diferencial absoluto que la mayoría de competidores del barrio no tienen (ej. pileta, vista panorámica, balcón aterrazado grande, terraza propia). 60-80 = highlight valioso pero común en el segmento (cocina integrada, ventanales, dormitorios amplios). 30-60 = highlight base esperable (1 baño completo, lavadero, cochera). Ordenar el array por este score descendente.
+
+**detectedFeatures**: lista exhaustiva pero ESTRICTAMENTE objetiva. Solo lo que se VE en las fotos. Sin inventar amenities no visibles. Sin asumir lo que hay detrás de una puerta cerrada.
+
+**bestPhotoIndex**: la foto con mejor combo de luz + composición + feature destacado. Suele ser un living luminoso o una vista, no siempre es la primera de la lista. Si todas las fotos son medias, elegir la menos genérica.
+
+**ambience**: tono general dominante de las fotos. Es distinto al mood de cada highlight — es el tono GLOBAL del listing.
+
+**summary**: 1-2 oraciones que un copywriter pueda usar como brief inicial. Sin clichés. Ejemplo válido: "Departamento de 3 ambientes en piso 5 con luz natural y balcón aterrazado, en edificio premium con pileta climatizada y SUM."
+
+REGLAS DE ORO:
+- Si ves pileta, balcón aterrazado, vista panorámica, terraza propia o jardín → casi siempre van en el top 2 (impactScore ≥ 85).
+- Si NO ves un feature, NO lo inventes. El asesor puede agregarlo manual después.
+- Devolvé EXACTAMENTE 5 highlights. Si la propiedad es muy básica, los últimos pueden tener impactScore bajo (40-50) y describir cosas como "buena luz natural", "amplios espacios", "ubicación estratégica" — pero siempre 5.
+- Output SOLO el JSON. Sin markdown, sin fences, sin texto antes ni después.`
 
 interface GeminiResponse {
   candidates?: Array<{
@@ -163,13 +202,37 @@ async function callGeminiVision(photos: string[]): Promise<PropertyVisionAnalysi
       console.warn('[vision] JSON shape inválido')
       return null
     }
+    const VALID_MOODS = new Set([
+      'luminoso',
+      'cálido',
+      'moderno',
+      'clásico',
+      'amplio',
+      'industrial',
+      'aspiracional',
+      'familiar',
+    ])
     return {
-      highlights: parsed.highlights.slice(0, 3).map(h => ({
-        id: String(h.id).slice(0, 40),
-        label: String(h.label).slice(0, 80),
-        reasoning: String(h.reasoning).slice(0, 200),
-        photoIndex: Number(h.photoIndex) || 0,
-      })),
+      highlights: parsed.highlights.slice(0, 5).map(h => {
+        const moodRaw = (h as { mood?: string }).mood
+        const hooks = (h as { copyHooks?: unknown }).copyHooks
+        return {
+          id: String(h.id).slice(0, 40),
+          label: String(h.label).slice(0, 80),
+          reasoning: String(h.reasoning).slice(0, 300),
+          photoIndex: Number(h.photoIndex) || 0,
+          mood: VALID_MOODS.has(String(moodRaw))
+            ? (moodRaw as PropertyHighlight['mood'])
+            : undefined,
+          copyHooks: Array.isArray(hooks)
+            ? hooks.slice(0, 4).map(s => String(s).slice(0, 100))
+            : undefined,
+          impactScore: Math.max(
+            0,
+            Math.min(100, Number((h as { impactScore?: number }).impactScore) || 0),
+          ),
+        }
+      }),
       detectedFeatures: parsed.detectedFeatures.slice(0, 20).map(String),
       bestPhotoIndex: parsed.bestPhotoIndex,
       ambience: (parsed.ambience as PropertyVisionAnalysis['ambience']) ?? 'luminoso',
@@ -198,52 +261,84 @@ function templateAnalysis(property: Property): PropertyVisionAnalysis {
     : []
   const highlights: PropertyHighlight[] = []
 
-  // Priorización por orden conocido de "vendido"
-  const PRIORITY = [
-    ['pileta', 'Pileta del edificio', 'pileta'],
-    ['parrilla', 'Parrilla / quincho', 'parrilla_quincho'],
-    ['sum', 'SUM y áreas comunes', 'sum'],
-    ['gimnasio', 'Gimnasio del edificio', 'gimnasio'],
-    ['seguridad', 'Seguridad 24hs', 'seguridad_24hs'],
-    ['cochera', 'Cochera propia', 'cochera_propia'],
-    ['balcón', 'Balcón', 'balcon'],
-  ] as const
+  // Priorización por orden conocido de "vendido". Cada entry: [needle, label, id, mood, score]
+  const PRIORITY: Array<[
+    string,
+    string,
+    string,
+    PropertyHighlight['mood'],
+    number,
+  ]> = [
+    ['pileta', 'Pileta del edificio', 'pileta', 'aspiracional', 95],
+    ['parrilla', 'Parrilla y quincho', 'parrilla_quincho', 'cálido', 85],
+    ['terraza', 'Terraza propia', 'terraza_uso_exclusivo', 'aspiracional', 90],
+    ['sum', 'SUM y áreas comunes', 'sum', 'moderno', 75],
+    ['gimnasio', 'Gimnasio del edificio', 'gimnasio', 'moderno', 80],
+    ['seguridad', 'Seguridad 24hs', 'seguridad_24hs', 'clásico', 70],
+    ['cochera', 'Cochera propia', 'cochera_propia', 'clásico', 65],
+    ['balcón', 'Balcón aterrazado', 'balcon_aterrazado', 'aspiracional', 80],
+    ['jardin', 'Jardín propio', 'jardin_propio', 'familiar', 88],
+  ]
 
-  for (const [needle, label, id] of PRIORITY) {
-    if (highlights.length >= 3) break
+  for (const [needle, label, id, mood, score] of PRIORITY) {
+    if (highlights.length >= 5) break
     if (amenities.some(a => a.toLowerCase().includes(needle))) {
       highlights.push({
         id,
         label,
-        reasoning: `Listado en amenities de la propiedad`,
+        reasoning: `${label} — feature destacado en los amenities de la propiedad`,
         photoIndex: 0,
+        mood,
+        impactScore: score,
+        copyHooks: [label.toLowerCase()],
       })
     }
   }
 
-  // Si no llegamos a 3, completar con highlights basados en metadata
-  if (highlights.length < 3 && property.rooms && property.rooms >= 3) {
+  // Si no llegamos a 5, completar con highlights basados en metadata
+  if (highlights.length < 5 && property.rooms && property.rooms >= 3) {
     highlights.push({
       id: 'amb_amplio',
       label: `${property.rooms} ambientes amplios`,
-      reasoning: 'Cantidad de ambientes',
+      reasoning: 'Cantidad de ambientes amplia para el segmento del barrio',
       photoIndex: 0,
+      mood: 'amplio',
+      impactScore: 60,
+      copyHooks: [`${property.rooms} ambientes`],
     })
   }
-  if (highlights.length < 3 && property.covered_area && property.covered_area >= 80) {
+  if (highlights.length < 5 && property.covered_area && property.covered_area >= 80) {
     highlights.push({
       id: 'm2_amplio',
       label: `${property.covered_area} m² cubiertos`,
       reasoning: 'Metraje generoso',
       photoIndex: 0,
+      mood: 'amplio',
+      impactScore: 55,
+      copyHooks: [`${property.covered_area} m² cubiertos`],
     })
   }
-  if (highlights.length < 3) {
+  if (highlights.length < 5 && property.floor && property.floor >= 5) {
     highlights.push({
-      id: 'ubicacion_estrategica',
-      label: `Ubicación en ${property.neighborhood}`,
-      reasoning: 'Barrio como diferencial',
+      id: 'piso_alto',
+      label: `Piso ${property.floor} con buena vista`,
+      reasoning: 'Piso alto mejora luminosidad y vista',
       photoIndex: 0,
+      mood: 'aspiracional',
+      impactScore: 65,
+      copyHooks: [`piso ${property.floor}`],
+    })
+  }
+  // Completar hasta 5 con ubicación si hace falta
+  while (highlights.length < 5) {
+    highlights.push({
+      id: `ubicacion_estrategica_${highlights.length}`,
+      label: `Ubicación estratégica en ${property.neighborhood}`,
+      reasoning: `${property.neighborhood} es uno de los barrios más demandados del segmento`,
+      photoIndex: 0,
+      mood: 'clásico',
+      impactScore: 45,
+      copyHooks: [property.neighborhood],
     })
   }
 
