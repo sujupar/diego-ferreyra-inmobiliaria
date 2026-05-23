@@ -22,8 +22,18 @@ import {
   Camera,
 } from 'lucide-react'
 
+interface VisionHighlight {
+  id: string
+  label: string
+  reasoning: string
+  photoIndex: number
+  copyHooks?: string[]
+  mood?: string
+  impactScore?: number
+}
+
 interface VisionData {
-  highlights: Array<{ id: string; label: string; reasoning: string; photoIndex: number }>
+  highlights: VisionHighlight[]
   detectedFeatures: string[]
   bestPhotoIndex: number
   ambience: string
@@ -300,18 +310,23 @@ export function MetaAdsWizard({ propertyId }: Props) {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Esto es lo que el aviso va a destacar. Elegí UNO como protagonista.
+              El sistema identificó <strong>{data.vision.highlights.length} highlights</strong>{' '}
+              en la propiedad. Marcá el más importante (el #1 del aviso), pero{' '}
+              <strong>vamos a generar 3 anuncios distintos</strong> usando los top 3 —
+              Meta va a optimizar entre ellos automáticamente.
               {data.vision.source === 'template' &&
                 ' Como no hay análisis con IA configurado, te muestro las opciones derivadas de los amenities.'}
             </p>
             <div className="space-y-2">
-              {data.vision.highlights.map(h => (
+              {data.vision.highlights.map((h, idx) => (
                 <label
                   key={h.id}
                   className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition ${
                     highlightId === h.id
                       ? 'border-[color:var(--brand)] bg-[color:var(--brand)]/5'
-                      : 'hover:bg-muted/30'
+                      : idx < 3
+                        ? 'border-emerald-200 bg-emerald-50/30 hover:bg-emerald-50/50'
+                        : 'hover:bg-muted/30'
                   }`}
                 >
                   <input
@@ -321,20 +336,49 @@ export function MetaAdsWizard({ propertyId }: Props) {
                     onChange={() => setHighlightId(h.id)}
                     className="mt-1"
                   />
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">{h.label}</p>
-                    <p className="text-xs text-muted-foreground">{h.reasoning}</p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium text-sm">{h.label}</p>
+                      {idx < 3 && (
+                        <Badge className="bg-emerald-600 text-white text-[10px] h-4">
+                          Va al aviso #{idx + 1}
+                        </Badge>
+                      )}
+                      {h.mood && (
+                        <Badge variant="outline" className="text-[10px] h-4 capitalize">
+                          {h.mood}
+                        </Badge>
+                      )}
+                      {h.impactScore != null && h.impactScore > 0 && (
+                        <Badge variant="outline" className="text-[10px] h-4">
+                          Impacto {h.impactScore}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">{h.reasoning}</p>
+                    {h.copyHooks && h.copyHooks.length > 0 && (
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        <span className="font-medium">Datos para el copy:</span>{' '}
+                        {h.copyHooks.join(' · ')}
+                      </p>
+                    )}
                   </div>
                   {data.property.photos[h.photoIndex] && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={data.property.photos[h.photoIndex]}
                       alt=""
-                      className="h-14 w-20 object-cover rounded"
+                      className="h-16 w-20 object-cover rounded shrink-0"
                     />
                   )}
                 </label>
               ))}
+            </div>
+            <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-900">
+              <strong>Cómo funciona:</strong> los top 3 highlights se convierten en 3
+              anuncios distintos dentro de la misma campaña. Cada uno con su propia
+              foto, su propio copy y su propia pieza gráfica generada con IA. Meta
+              optimiza automáticamente entre ellos.
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">
@@ -485,41 +529,46 @@ export function MetaAdsWizard({ propertyId }: Props) {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <PenTool className="h-4 w-4" />
-              El aviso
+              Los avisos
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              El sistema te propone 3 versiones del copy. Elegí cuál preferís —
-              también podés ajustar el presupuesto.
+              Vamos a crear <strong>3 anuncios</strong> distintos. Cada uno con un
+              titular y copy específico para su highlight. Vas a ver las 3
+              combinaciones abajo — Meta optimiza entre ellos.
             </p>
-            <div className="space-y-2">
-              {data.copy.primaryTexts.map((pt, i) => (
-                <label
-                  key={i}
-                  className={`block p-3 rounded-lg border cursor-pointer transition ${
-                    copyIdx === i
-                      ? 'border-[color:var(--brand)] bg-[color:var(--brand)]/5'
-                      : 'hover:bg-muted/30'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <input
-                      type="radio"
-                      name="copy"
-                      checked={copyIdx === i}
-                      onChange={() => setCopyIdx(i)}
-                      className="mt-1"
-                    />
-                    <div className="flex-1 space-y-1">
-                      <p className="font-medium text-sm">
-                        {data.copy.headlines[i] ?? data.copy.headlines[0]}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{pt}</p>
+            <div className="space-y-3">
+              {data.copy.primaryTexts.slice(0, 3).map((pt, i) => {
+                const linkedHighlight = data.vision.highlights[i]
+                return (
+                  <div
+                    key={i}
+                    className="rounded-lg border p-3 space-y-2 bg-card"
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge className="bg-[color:var(--brand)] text-white text-[10px] h-4">
+                        Aviso {i + 1}
+                      </Badge>
+                      {linkedHighlight && (
+                        <span className="text-xs text-muted-foreground">
+                          Highlight: <strong>{linkedHighlight.label}</strong>
+                        </span>
+                      )}
                     </div>
+                    <p className="font-medium text-sm">
+                      {data.copy.headlines[i] ?? data.copy.headlines[0]}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{pt}</p>
                   </div>
-                </label>
-              ))}
+                )
+              })}
+            </div>
+            <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-900">
+              <strong>Generación de piezas con IA:</strong> al lanzar la campaña, el
+              sistema va a generar una pieza gráfica premium con Gemini para cada
+              aviso, basada en el highlight correspondiente. Si la generación falla
+              o no está habilitada, usa la foto original.
             </div>
 
             <div className="space-y-1.5 pt-2">
@@ -566,10 +615,6 @@ export function MetaAdsWizard({ propertyId }: Props) {
                 <strong>Propiedad:</strong> {data.property.address}
               </p>
               <p>
-                <strong>Destacamos:</strong>{' '}
-                {data.vision.highlights.find(h => h.id === highlightId)?.label}
-              </p>
-              <p>
                 <strong>Mostramos a:</strong>{' '}
                 {data.presets.find(p => p.id === geoPresetId)?.label}
               </p>
@@ -587,11 +632,24 @@ export function MetaAdsWizard({ propertyId }: Props) {
                   {data.landingUrl}
                 </a>
               </p>
+              <div className="border-t border-emerald-200 pt-2 mt-2">
+                <p className="font-medium text-xs text-emerald-900 mb-1">
+                  3 anuncios que vamos a crear:
+                </p>
+                <ul className="text-xs text-emerald-900 space-y-1 ml-4 list-disc">
+                  {data.vision.highlights.slice(0, 3).map((h, i) => (
+                    <li key={h.id}>
+                      <strong>Aviso {i + 1}:</strong> {h.label}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              La campaña va a quedar <strong>en PAUSADO</strong> en Meta Ads. Vas a
-              poder revisarla en el panel de Meta antes de activarla. No gasta
-              presupuesto hasta que la actives.
+              La campaña va a quedar <strong>en PAUSADO</strong> en Meta Ads. Cada
+              aviso lleva una pieza gráfica generada con IA (si Gemini está habilitado)
+              o la foto original. Vas a poder revisar todo en el panel de Meta antes
+              de activar. No gasta presupuesto hasta que la actives.
             </p>
             <div className="flex gap-2">
               <Button onClick={goBack} variant="outline">
