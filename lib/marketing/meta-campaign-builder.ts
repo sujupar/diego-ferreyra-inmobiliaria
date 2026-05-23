@@ -339,6 +339,11 @@ export async function createCampaignForProperty(
   if (!pixelId) {
     throw new Error('META_PIXEL_ID requerido para AdSet con OUTCOME_LEADS')
   }
+  // promoted_object con destination_type=WEBSITE necesita pixel_id +
+  // custom_event_type. El custom_event_type le dice a Meta cuál evento del
+  // Pixel cuenta como conversión. Para inmobiliaria → 'LEAD'.
+  // Sin custom_event_type: Meta rechaza con subcode 1885014 "combinación
+  // de parámetros no válida".
   const adset = await metaFetch<{ id: string }>(`/${accountId}/adsets`, {
     method: 'POST',
     body: JSON.stringify({
@@ -348,7 +353,10 @@ export async function createCampaignForProperty(
       billing_event: 'IMPRESSIONS',
       optimization_goal: 'LEAD_GENERATION',
       destination_type: 'WEBSITE',
-      promoted_object: { pixel_id: pixelId },
+      promoted_object: {
+        pixel_id: pixelId,
+        custom_event_type: 'LEAD',
+      },
       // bid_strategy va acá (no en Campaign) porque el budget también está acá.
       // LOWEST_COST_WITHOUT_CAP = "Volumen más alto" — la más simple, sin tope.
       bid_strategy: 'LOWEST_COST_WITHOUT_CAP',

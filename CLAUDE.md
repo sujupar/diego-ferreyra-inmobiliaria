@@ -97,6 +97,13 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 - **Fix:** En `lib/marketing/meta-campaign-builder.ts` agregar `is_adset_budget_sharing_enabled: false` al body del POST de campaign cuando el budget está a nivel adset (nuestro caso default). Si en el futuro querés CBO entre múltiples adsets, mover el `daily_budget` a la Campaign y poner `true`.
 - **Detection:** Antes de declarar una integración Meta completa, hacer un test end-to-end real de creación de Campaign — no solo unit tests del builder.
 
+### Meta `promoted_object` con `destination_type=WEBSITE` requiere `custom_event_type`
+
+- **Symptom:** `POST /act_XXX/adsets` devuelve `Meta 400 — subcode 1885014 — "Objeto promocionado no válido — El objeto promocionado que especificaste tiene una combinación no válida de parámetros"`.
+- **Root cause:** Para AdSets con `destination_type: 'WEBSITE'` + `optimization_goal: 'LEAD_GENERATION'`, Meta exige que `promoted_object` tenga TANTO `pixel_id` COMO `custom_event_type`. El `custom_event_type` le dice a Meta cuál evento del Pixel/CAPI cuenta como conversión.
+- **Fix:** Pasar `promoted_object: { pixel_id: META_PIXEL_ID, custom_event_type: 'LEAD' }`. Valores válidos de custom_event_type: `'LEAD'`, `'PURCHASE'`, `'COMPLETE_REGISTRATION'`, `'VIEW_CONTENT'`, `'ADD_TO_CART'`, etc. Para inmobiliaria → siempre `'LEAD'`.
+- **Detection:** Si AdSet falla con subcode 1885014, probablemente el promoted_object está incompleto.
+
 ### Meta `bid_strategy` debe ir en el AdSet (no en Campaign) cuando el budget es a nivel AdSet
 
 - **Symptom 1:** `POST /act_XXX/adsets` devuelve `Meta 400 — subcode 2490487 — "Se requiere un importe o limitaciones de puja para la estrategia"` cuando no especificás `bid_strategy` en ningún lado.
