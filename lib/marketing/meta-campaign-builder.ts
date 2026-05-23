@@ -339,11 +339,19 @@ export async function createCampaignForProperty(
   if (!pixelId) {
     throw new Error('META_PIXEL_ID requerido para AdSet con OUTCOME_LEADS')
   }
+  // optimization_goal según destination_type:
+  //  - WEBSITE  → 'OFFSITE_CONVERSIONS' (Meta optimiza para conversiones en el
+  //    Pixel/CAPI según custom_event_type)
+  //  - ON_AD    → 'LEAD_GENERATION' (para Instant Forms nativos de Meta)
+  //
+  // Como nosotros mandamos tráfico a una landing externa (destination_type:
+  // WEBSITE), el goal correcto es OFFSITE_CONVERSIONS. Si combinamos WEBSITE
+  // + LEAD_GENERATION, Meta rechaza con subcode 2490408: "El objetivo de
+  // rendimiento no está disponible".
+  //
   // promoted_object con destination_type=WEBSITE necesita pixel_id +
   // custom_event_type. El custom_event_type le dice a Meta cuál evento del
   // Pixel cuenta como conversión. Para inmobiliaria → 'LEAD'.
-  // Sin custom_event_type: Meta rechaza con subcode 1885014 "combinación
-  // de parámetros no válida".
   const adset = await metaFetch<{ id: string }>(`/${accountId}/adsets`, {
     method: 'POST',
     body: JSON.stringify({
@@ -351,7 +359,7 @@ export async function createCampaignForProperty(
       campaign_id: campaign.id,
       daily_budget: Math.round(budget.dailyArs * 100), // Meta espera centavos
       billing_event: 'IMPRESSIONS',
-      optimization_goal: 'LEAD_GENERATION',
+      optimization_goal: 'OFFSITE_CONVERSIONS',
       destination_type: 'WEBSITE',
       promoted_object: {
         pixel_id: pixelId,

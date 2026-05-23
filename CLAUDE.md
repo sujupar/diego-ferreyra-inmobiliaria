@@ -97,6 +97,16 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 - **Fix:** En `lib/marketing/meta-campaign-builder.ts` agregar `is_adset_budget_sharing_enabled: false` al body del POST de campaign cuando el budget está a nivel adset (nuestro caso default). Si en el futuro querés CBO entre múltiples adsets, mover el `daily_budget` a la Campaign y poner `true`.
 - **Detection:** Antes de declarar una integración Meta completa, hacer un test end-to-end real de creación de Campaign — no solo unit tests del builder.
 
+### Meta `optimization_goal` debe coincidir con `destination_type`
+
+- **Symptom:** `POST /act_XXX/adsets` devuelve `Meta 400 — subcode 2490408 — "El objetivo de rendimiento no está disponible — No puedes usar el objetivo de rendimiento seleccionado con tu objetivo de campaña"`. El `blame_field_specs` apunta a `optimization_goal`.
+- **Root cause:** Meta restringe qué optimization_goals son compatibles con qué destination_type:
+  - `destination_type: 'WEBSITE'` → usar `optimization_goal: 'OFFSITE_CONVERSIONS'`. Meta optimiza para personas más propensas a generar el evento del Pixel definido en `promoted_object.custom_event_type`.
+  - `destination_type: 'ON_AD'` (Instant Forms nativos) → usar `optimization_goal: 'LEAD_GENERATION'`.
+  - Mezclar WEBSITE + LEAD_GENERATION rompe — LEAD_GENERATION solo aplica a Instant Forms.
+- **Fix:** Para campañas que mandan tráfico a landing externa: `optimization_goal: 'OFFSITE_CONVERSIONS'` + `destination_type: 'WEBSITE'` + `promoted_object: { pixel_id, custom_event_type: 'LEAD' }`.
+- **Detection:** Si AdSet falla con subcode 2490408 y `blame_field_specs: [["optimization_goal"]]`, hay incompatibilidad goal/destination.
+
 ### Meta `promoted_object` con `destination_type=WEBSITE` requiere `custom_event_type`
 
 - **Symptom:** `POST /act_XXX/adsets` devuelve `Meta 400 — subcode 1885014 — "Objeto promocionado no válido — El objeto promocionado que especificaste tiene una combinación no válida de parámetros"`.
