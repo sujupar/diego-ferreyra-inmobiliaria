@@ -254,6 +254,13 @@ export async function createCampaignForProperty(
   // budget a nivel adset (no campaign-level), va false. Si en el futuro queremos
   // CBO entre múltiples adsets, mover `daily_budget` a la Campaign y poner true.
   // Sin este campo: ML devuelve error 400 subcode 4834011.
+  //
+  // `bid_strategy: LOWEST_COST_WITHOUT_CAP` ("Highest Volume" en UI) es la
+  // estrategia más simple — Meta gasta el budget automáticamente sin límite
+  // de bid por resultado. Si la cuenta tiene un default distinto (ej. COST_CAP),
+  // Meta exige bid_amount → error subcode 2490487. Setearla explícitamente
+  // resuelve eso para cualquier cuenta. Si más adelante querés control de costo,
+  // se puede cambiar a 'COST_CAP' + bid_constraints.
   const campaign = await metaFetch<{ id: string }>(`/${accountId}/campaigns`, {
     method: 'POST',
     body: JSON.stringify({
@@ -263,6 +270,7 @@ export async function createCampaignForProperty(
       special_ad_categories: [], // Sin restricciones especiales en AR
       buying_type: 'AUCTION',
       is_adset_budget_sharing_enabled: false,
+      bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
     }),
   })
 
