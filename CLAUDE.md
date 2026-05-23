@@ -97,12 +97,15 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 - **Fix:** En `lib/marketing/meta-campaign-builder.ts` agregar `is_adset_budget_sharing_enabled: false` al body del POST de campaign cuando el budget está a nivel adset (nuestro caso default). Si en el futuro querés CBO entre múltiples adsets, mover el `daily_budget` a la Campaign y poner `true`.
 - **Detection:** Antes de declarar una integración Meta completa, hacer un test end-to-end real de creación de Campaign — no solo unit tests del builder.
 
-### Meta `bid_strategy` debe especificarse explícitamente al crear Campaign
+### Meta `bid_strategy` debe ir en el AdSet (no en Campaign) cuando el budget es a nivel AdSet
 
-- **Symptom:** `POST /act_XXX/adsets` devuelve `Meta 400 — error_subcode 2490487 — "Se requiere un importe o limitaciones de puja para la estrategia"`.
-- **Root cause:** Si la cuenta publicitaria tiene como default `COST_CAP` o `LOWEST_COST_WITH_BID_CAP` (que algunas cuentas configuran), Meta exige `bid_amount` y/o `bid_constraints` cuando creamos el AdSet. Sin especificar `bid_strategy` en la Campaign, hereda el default de la cuenta y rompe el AdSet.
-- **Fix:** En `lib/marketing/meta-campaign-builder.ts` setear `bid_strategy: 'LOWEST_COST_WITHOUT_CAP'` en el body de creación de Campaign. Es la estrategia más simple — Meta optimiza gasto automáticamente sin tope de bid. Si querés control de costo por lead, cambiar a `COST_CAP` + `bid_constraints: { roas_average_floor }` o `bid_amount` en el AdSet.
-- **Detection:** Si un AdSet falla con error sobre "bid amount" o "limitaciones de puja", probablemente la Campaign no tiene bid_strategy especificada.
+- **Symptom 1:** `POST /act_XXX/adsets` devuelve `Meta 400 — subcode 2490487 — "Se requiere un importe o limitaciones de puja para la estrategia"` cuando no especificás `bid_strategy` en ningún lado.
+- **Symptom 2:** `POST /act_XXX/campaigns` devuelve `Meta 400 — subcode 1885737 — "Campaña sin presupuesto. Agregá uno para editar la estrategia de puja"` cuando ponés `bid_strategy` en la Campaign pero el budget está en el AdSet.
+- **Root cause:** Meta exige que `bid_strategy` y `daily_budget`/`lifetime_budget` vayan **en la misma entidad**. Si usás CBO (budget en Campaign), ambos van en Campaign. Si usás budget a nivel adset (nuestro caso), ambos van en AdSet. Mezclar entidades rompe.
+- **Fix:** En `lib/marketing/meta-campaign-builder.ts`:
+  - NO especificar `bid_strategy` en el POST de Campaign.
+  - Sí especificar `bid_strategy: 'LOWEST_COST_WITHOUT_CAP'` en el POST de AdSet (junto al daily_budget).
+- **Detection:** Si ves errores de "bid amount required" o "campaña sin presupuesto", probablemente el `bid_strategy` está en el lugar equivocado.
 
 ### Meta interest IDs hardcoded se deprecan — NO usarlos en targeting fijo
 
