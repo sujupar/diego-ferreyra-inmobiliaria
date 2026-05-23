@@ -82,11 +82,22 @@ export function PostCaptureActions({ propertyId }: Props) {
         const r = await fetch(`/api/properties/${propertyId}/meta-campaign`)
         if (r.ok) {
           const { campaign }: MetaResponse = await r.json()
+          // El status en DB se guarda en lowercase ('active', 'paused',
+          // 'provisioning', 'failed', 'archived'). Antes comparábamos con
+          // uppercase y siempre caía en sin_campana — el asesor veía
+          // "Sin campaña" después de haber lanzado una.
+          const status = campaign?.status?.toLowerCase()
           if (!campaign) {
             setMetaState({ status: 'sin_campana' })
-          } else if (campaign.status === 'ACTIVE') {
+          } else if (status === 'active') {
             setMetaState({ status: 'activa', campaignId: campaign.campaign_id })
-          } else if (campaign.status === 'PAUSED') {
+          } else if (status === 'paused') {
+            setMetaState({ status: 'pausada', campaignId: campaign.campaign_id })
+          } else if (status === 'failed') {
+            setMetaState({ status: 'error', campaignId: campaign.campaign_id })
+          } else if (status === 'provisioning') {
+            // Está creándose en este momento. Mostrar como "pausada" porque
+            // el flow final deja PAUSED.
             setMetaState({ status: 'pausada', campaignId: campaign.campaign_id })
           } else {
             setMetaState({ status: 'sin_campana' })

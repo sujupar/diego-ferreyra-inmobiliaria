@@ -48,10 +48,15 @@ export async function POST(
     if (!(await authorize(id, user.id, user.profile.role))) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
-    // En el futuro podemos aceptar overrides aquí (budget, targeting, copy).
-    // Por ahora delegamos al builder estándar — todo el customization viene
-    // de los pasos previos del wizard que ya modificaron la propiedad.
-    await req.json().catch(() => ({}))
+    // Overrides desde el wizard (presupuesto, geo preset, copy variant, hero foto).
+    // Si el asesor editó el budget o eligió un preset distinto al recomendado,
+    // esos valores llegan acá y se pasan al builder.
+    const body = (await req.json().catch(() => ({}))) as {
+      dailyBudgetArs?: number
+      copyVariantIdx?: number
+      targetingOverride?: Record<string, unknown>
+      heroPhotoUrl?: string
+    }
 
     const supabase = getAdmin()
     const { data: property, error } = await supabase
@@ -66,7 +71,15 @@ export async function POST(
     try {
       // Siempre dryRun: true — la campaña queda PAUSED para que el asesor la
       // active manualmente desde Ads Manager después de auditar.
-      const result = await createCampaignForProperty(property, { dryRun: true })
+      const result = await createCampaignForProperty(property, {
+        dryRun: true,
+        overrides: {
+          dailyBudgetArs: body.dailyBudgetArs,
+          copyVariantIdx: body.copyVariantIdx,
+          targetingOverride: body.targetingOverride,
+          heroPhotoUrl: body.heroPhotoUrl,
+        },
+      })
       const adsManagerUrl = `https://business.facebook.com/adsmanager/manage/campaigns?act=${(process.env.META_AD_ACCOUNT_ID ?? '').replace('act_', '')}&selected_campaign_ids=${result.campaignId}`
       return NextResponse.json({ ok: true, ...result, adsManagerUrl })
     } catch (err) {

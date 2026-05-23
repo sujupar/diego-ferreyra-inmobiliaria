@@ -90,10 +90,12 @@ async function callGeminiVision(photos: string[]): Promise<PropertyVisionAnalysi
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) return null
 
-  // Timeout global 25s para el flujo entero (descargas + Gemini). El endpoint
-  // de Next.js suele tener 30s; dejamos margen para serializar la respuesta.
+  // Timeout global 15s (download + Gemini). El endpoint meta-wizard también
+  // hace generateAdCopyVariations (OpenAI, 5-15s) y getUsdToArs (1-2s) en
+  // paralelo después — total worst case ~30s que es el límite de Netlify.
+  // Dejamos 15s a Gemini para tener margen contra el límite del runtime.
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 25_000)
+  const timeoutId = setTimeout(() => controller.abort(), 15_000)
 
   try {
     // Descargamos hasta 8 fotos en paralelo y filtramos las que fallaron.
@@ -176,7 +178,7 @@ async function callGeminiVision(photos: string[]): Promise<PropertyVisionAnalysi
     }
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
-      console.warn('[vision] Gemini timeout (>25s), usando fallback')
+      console.warn('[vision] Gemini timeout (>15s), usando fallback')
     } else {
       console.warn('[vision] error', err)
     }

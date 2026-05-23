@@ -46,6 +46,7 @@ interface GeoPreset {
   label: string
   description: string
   estimatedReach: string
+  spec?: Record<string, unknown> // MetaTargetingSpec del backend — pasado al builder
 }
 
 interface CopyData {
@@ -137,13 +138,32 @@ export function MetaAdsWizard({ propertyId }: Props) {
   }, [propertyId])
 
   async function launch() {
+    if (!data) {
+      toast.error('Datos del asistente no cargados')
+      return
+    }
     setLaunching(true)
     try {
-      // El endpoint siempre crea la campaña en PAUSED — no necesita parámetros
+      // Pasamos las selecciones del asesor al builder. El endpoint siempre
+      // deja la campaña PAUSED — pero usa estos overrides en lugar del
+      // budget/targeting/copy/foto automáticos.
+      const selectedPreset = data.presets.find(p => p.id === geoPresetId)
+      // El preset.spec viene del backend con shape MetaTargetingSpec — lo
+      // mandamos tal cual al builder vía targetingOverride.
+      const presetSpec = selectedPreset?.spec
+      const selectedHighlight = data.vision.highlights.find(h => h.id === highlightId)
+      const heroPhoto = selectedHighlight
+        ? data.property.photos[selectedHighlight.photoIndex] ?? data.property.photos[0]
+        : data.property.photos[0]
       const r = await fetch(`/api/properties/${propertyId}/meta-launch`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          dailyBudgetArs: dailyBudget,
+          copyVariantIdx: copyIdx,
+          targetingOverride: presetSpec,
+          heroPhotoUrl: heroPhoto,
+        }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error ?? 'Error al lanzar campaña')

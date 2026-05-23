@@ -138,9 +138,21 @@ async function uploadAdImage(photoUrl: string): Promise<string> {
   return first.hash
 }
 
+export interface CampaignOverrides {
+  /** Budget diario en ARS — override del decideBudget automático */
+  dailyBudgetArs?: number
+  /** Índice de la variante de copy a usar (0..N-1) — override del default 0 */
+  copyVariantIdx?: number
+  /** Spec de targeting completa — override del decideTargeting automático.
+   *  Si se pasa, ignora geo automático y usa el preset que eligió el asesor. */
+  targetingOverride?: Record<string, unknown>
+  /** URL específica de foto a usar como hero (por defecto property.photos[0]) */
+  heroPhotoUrl?: string
+}
+
 export async function createCampaignForProperty(
   property: Property,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; overrides?: CampaignOverrides } = {},
 ): Promise<CampaignResult> {
   if (!property.public_slug) {
     throw new Error('Property sin public_slug — asignar antes de crear campaign')
@@ -199,17 +211,37 @@ export async function createCampaignForProperty(
 
   const { accountId, pageId } = getMeta()
   const landingUrl = `${getAppUrl()}/p/${property.public_slug}`
+  const overrides = options.overrides ?? {}
 
   // Tipo de cambio USD→ARS fresco (Bluelytics, cached 1h)
-  const { rate: usdToArs, source: rateSource } = await getUsdToArs()
+  const { rate: usdToArs } = await getUsdToArs()
 
-  const budget = decideBudget(property.asking_price, property.currency, usdToArs)
-  const targeting = decideTargeting(property, usdToArs)
+  // Budget: override del asesor o cálculo automático
+  const autoBudget = decideBudget(property.asking_price, property.currency, usdToArs)
+  const budget = overrides.dailyBudgetArs != null && overrides.dailyBudgetArs > 0
+    ? { ...autoBudget, dailyArs: overrides.dailyBudgetArs }
+    : autoBudget
+
+  // Targeting: override del asesor (preset geográfico que eligió) o automático
+  const autoTargeting = decideTargeting(property, usdToArs)
+  const targeting = overrides.targetingOverride
+    ? { spec: overrides.targetingOverride, reasoning: 'Override desde wizard' }
+    : autoTargeting
+
   // Copy con OpenAI (fallback a templates si falla / no hay API key).
-  // Las 3 variaciones se guardan en property_meta_campaigns.copy para
-  // futuros A/B tests; el ad usa la primera de cada array.
   const copyVariations = await generateAdCopyVariations(property, landingUrl)
-  const copy = variationsToPrimary(copyVariations)
+  // Variante elegida por el asesor (default 0 = primera)
+  const variantIdx = Math.min(
+    Math.max(overrides.copyVariantIdx ?? 0, 0),
+    copyVariations.primaryTexts.length - 1,
+  )
+  const copy = {
+    primaryText: copyVariations.primaryTexts[variantIdx] ?? copyVariations.primaryTexts[0],
+    headline: copyVariations.headlines[variantIdx] ?? copyVariations.headlines[0],
+    description: copyVariations.description,
+  }
+  // (eslint usado intencionalmente arriba para soportar variantIdx)
+  void variationsToPrimary // mantiene el import por compatibilidad histórica
 
   // 1. Crear Campaign (paused)
   // NOTA: en Argentina las campañas de real estate NO requieren la categoría
@@ -264,8 +296,9 @@ export async function createCampaignForProperty(
     throw new Error(`No se pudo persistir la campaña en DB: ${insertError.message}`)
   }
 
-  // 2. Subir imagen hero
-  const imageHash = await uploadAdImage(property.photos[0])
+  // 2. Subir imagen hero (override del asesor o la primera por default)
+  const heroUrl = overrides.heroPhotoUrl ?? property.photos[0]
+  const imageHash = await uploadAdImage(heroUrl)
 
   // 3. Crear AdCreative
   const creative = await metaFetch<{ id: string }>(`/${accountId}/adcreatives`, {
@@ -287,7 +320,19 @@ export async function createCampaignForProperty(
   })
 
   // 4. Crear AdSet (con conversion location WEBSITE para que apunte a la landing)
-  const startTime = new Date(Date.now() + 60_000).toISOString() // 1min en el futuro
+  //
+  // `promoted_object` con pixel_id es REQUERIDO para Campaigns con objective
+  // OUTCOME_LEADS + optimization_goal LEAD_GENERATION + destination_type WEBSITE.
+  // Sin esto Meta devuelve error 400 "Missing required parameter".
+  //
+  // `start_time` a 5 min en el futuro (no 1 min) para tener margen contra
+  // delays de red y desfase de reloj del server — Meta rechaza si start_time
+  // queda en el pasado al momento de procesar el request.
+  const startTime = new Date(Date.now() + 5 * 60_000).toISOString()
+  const pixelId = process.env.META_PIXEL_ID
+  if (!pixelId) {
+    throw new Error('META_PIXEL_ID requerido para AdSet con OUTCOME_LEADS')
+  }
   const adset = await metaFetch<{ id: string }>(`/${accountId}/adsets`, {
     method: 'POST',
     body: JSON.stringify({
@@ -297,6 +342,7 @@ export async function createCampaignForProperty(
       billing_event: 'IMPRESSIONS',
       optimization_goal: 'LEAD_GENERATION',
       destination_type: 'WEBSITE',
+      promoted_object: { pixel_id: pixelId },
       targeting: targeting.spec,
       status: 'PAUSED',
       start_time: startTime,

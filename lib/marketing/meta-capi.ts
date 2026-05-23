@@ -186,7 +186,7 @@ export async function sendCapiEvent(input: SendCapiEventInput): Promise<CapiSend
     }
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
-      return { ok: false, error: 'CAPI timeout (>8s)' }
+      return { ok: false, error: 'CAPI timeout (>3s)' }
     }
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
   } finally {
