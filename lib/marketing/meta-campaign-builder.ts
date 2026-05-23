@@ -352,6 +352,22 @@ export async function createCampaignForProperty(
   // promoted_object con destination_type=WEBSITE necesita pixel_id +
   // custom_event_type. El custom_event_type le dice a Meta cuál evento del
   // Pixel cuenta como conversión. Para inmobiliaria → 'LEAD'.
+  // Meta exige desde 2024-2025 que `advantage_audience` esté explícitamente
+  // declarado en `targeting.targeting_automation`. Si no lo seteamos, rechaza
+  // con subcode 1870227.
+  //  - advantage_audience: 1 → Meta puede expandir el público con ML (mejor
+  //    performance promedio, especialmente para conversiones)
+  //  - advantage_audience: 0 → Meta respeta exactamente el targeting que
+  //    definimos (más preciso pero suele tener menos volumen)
+  //
+  // Default 1 porque para campañas de conversion (OFFSITE_CONVERSIONS) Meta
+  // aprende quién convierte y busca gente similar — vale la pena dejarlo.
+  // Centralizado acá en el builder para no tocar cada preset/spec.
+  const targetingWithAdvantage = {
+    ...targeting.spec,
+    targeting_automation: { advantage_audience: 1 },
+  }
+
   const adset = await metaFetch<{ id: string }>(`/${accountId}/adsets`, {
     method: 'POST',
     body: JSON.stringify({
@@ -368,7 +384,7 @@ export async function createCampaignForProperty(
       // bid_strategy va acá (no en Campaign) porque el budget también está acá.
       // LOWEST_COST_WITHOUT_CAP = "Volumen más alto" — la más simple, sin tope.
       bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
-      targeting: targeting.spec,
+      targeting: targetingWithAdvantage,
       status: 'PAUSED',
       start_time: startTime,
     }),

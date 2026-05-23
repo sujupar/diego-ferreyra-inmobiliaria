@@ -97,6 +97,13 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 - **Fix:** En `lib/marketing/meta-campaign-builder.ts` agregar `is_adset_budget_sharing_enabled: false` al body del POST de campaign cuando el budget está a nivel adset (nuestro caso default). Si en el futuro querés CBO entre múltiples adsets, mover el `daily_budget` a la Campaign y poner `true`.
 - **Detection:** Antes de declarar una integración Meta completa, hacer un test end-to-end real de creación de Campaign — no solo unit tests del builder.
 
+### Meta `targeting_automation.advantage_audience` es obligatorio en AdSets desde 2024-2025
+
+- **Symptom:** `POST /act_XXX/adsets` devuelve `Meta 400 — subcode 1870227 — "Se requiere la marca de público Advantage — Para crear el conjunto de anuncios, debes activar o desactivar la función de público Advantage"`.
+- **Root cause:** Meta ahora exige que cada AdSet declare explícitamente si Advantage Audience (machine learning para expandir el público) está activado (`1`) o desactivado (`0`). Sin este campo, el AdSet no se puede crear.
+- **Fix:** En el spec de targeting agregar `targeting_automation: { advantage_audience: 1 }`. Para campañas de conversion (OFFSITE_CONVERSIONS) tiene sentido `1` — Meta aprende quién convierte y busca gente similar. Para campañas con targeting muy específico que no querés que Meta toque, usar `0`.
+- **Detection:** Si AdSet falla con subcode 1870227, falta `targeting_automation.advantage_audience`.
+
 ### Meta `optimization_goal` debe coincidir con `destination_type`
 
 - **Symptom:** `POST /act_XXX/adsets` devuelve `Meta 400 — subcode 2490408 — "El objetivo de rendimiento no está disponible — No puedes usar el objetivo de rendimiento seleccionado con tu objetivo de campaña"`. El `blame_field_specs` apunta a `optimization_goal`.
