@@ -159,14 +159,25 @@ async function getOrGenerateAdImageHash(input: {
   highlight: PropertyHighlight
   copyHeadline: string
   format?: 'feed_square' | 'feed_vertical' | 'story_vertical'
+  compositionStyle?:
+    | 'hero_full_bleed'
+    | 'split_photo_info'
+    | 'editorial_magazine'
+    | 'minimalist_whitespace'
+    | 'color_overlay_solid'
+    | 'typography_dominant'
+  /** Sufijo extra para el cache key — útil para distinguir estilos distintos
+   *  del mismo highlight. Si se setea, la cache key efectiva es
+   *  highlight_id + cacheKeySuffix. */
+  cacheKeySuffix?: string
 }): Promise<string> {
   const format = input.format ?? 'feed_square'
   const supabase = getSupabase()
+  const cacheHighlightKey = input.highlight.id + (input.cacheKeySuffix ?? '')
 
   // 1. Cache hit?
   // Cast porque property_ad_assets no está en types/database.types.ts todavía
   // (la migración 20260523000001 la ejecuta el usuario manualmente en SQL Editor).
-  // Después del primer SELECT exitoso podemos regenerar types.
   type AdAssetRow = { meta_image_hash: string | null }
   const cacheRes = await (supabase as unknown as {
     from: (t: string) => {
@@ -184,7 +195,7 @@ async function getOrGenerateAdImageHash(input: {
     .from('property_ad_assets')
     .select('meta_image_hash')
     .eq('property_id', input.property.id)
-    .eq('highlight_id', input.highlight.id)
+    .eq('highlight_id', cacheHighlightKey)
     .eq('format', format)
     .maybeSingle()
   if (cacheRes.data?.meta_image_hash) {
@@ -197,6 +208,7 @@ async function getOrGenerateAdImageHash(input: {
     highlight: input.highlight,
     copyHeadline: input.copyHeadline,
     format,
+    compositionStyle: input.compositionStyle,
   })
 
   let metaHash: string
@@ -229,7 +241,7 @@ async function getOrGenerateAdImageHash(input: {
       .upsert(
         {
           property_id: input.property.id,
-          highlight_id: input.highlight.id,
+          highlight_id: cacheHighlightKey,
           format,
           prompt_hash: promptHash ?? 'fallback_original_photo',
           meta_image_hash: metaHash,
@@ -320,7 +332,29 @@ export async function createCampaignForProperty(
   }
 
   const { accountId, pageId } = getMeta()
-  const landingUrl = `${getAppUrl()}/p/${property.public_slug}`
+  // Landing URL CON UTMs + dynamic placeholders de Meta.
+  //  - utm_source=meta / utm_medium=paid_social: identifica origen (estándar GA4).
+  //  - utm_campaign=propiedad_<slug>: para agrupar por propiedad en analytics.
+  //  - utm_content={{ad.id}}: Meta lo reemplaza por el ad_id real al servir
+  //    el anuncio. Permite atribución exacta: este lead vino del ad X.
+  //  - utm_term={{placement}}: feed, story, reels, etc. — para evaluar qué
+  //    placement convierte mejor.
+  //  Sin UTMs no podemos saber qué ad/placement trajo cada lead.
+  const landingBaseUrl = `${getAppUrl()}/p/${property.public_slug}`
+  const utmParams = new URLSearchParams({
+    utm_source: 'meta',
+    utm_medium: 'paid_social',
+    utm_campaign: `propiedad_${property.public_slug}`,
+    utm_content: '{{ad.id}}',
+    utm_term: '{{placement}}',
+  })
+  // Importante: Meta requiere que los placeholders dinámicos NO estén
+  // URL-encoded (las llaves {{ }} se mantienen tal cual). URLSearchParams
+  // los encodea como %7B%7B, hay que des-encodearlos:
+  const landingUrl = `${landingBaseUrl}?${utmParams
+    .toString()
+    .replaceAll('%7B%7B', '{{')
+    .replaceAll('%7D%7D', '}}')}`
   const overrides = options.overrides ?? {}
 
   // Tipo de cambio USD→ARS fresco (Bluelytics, cached 1h)
@@ -421,18 +455,41 @@ export async function createCampaignForProperty(
       : (await analyzePropertyPhotos(property)).highlights
 
   // 3. Determinar cuántas variantes de ad vamos a crear.
-  //    Default 3 — uno por top highlight. Cap a la cantidad de copy variants
-  //    disponibles para que cada ad tenga su headline/primaryText único.
-  const requestedVariants = overrides.variantCount ?? 3
+  //    Default 10 — Meta Andrómeda recompensa MUCHA variedad creativa. Más
+  //    variantes = mejor optimización por parte del delivery system.
+  //    Cap superior a la cantidad de copy variants disponibles (10).
+  //    Si hay menos highlights que variantes (caso común: 5 highlights, 10
+  //    variantes), ciclamos los highlights con DIFERENTES estilos gráficos
+  //    para que ningún ad sea visualmente idéntico — Andrómeda penaliza ads
+  //    idénticos como "spam creativo".
+  const requestedVariants = overrides.variantCount ?? 10
   const variantCount = Math.max(
     1,
     Math.min(
       requestedVariants,
-      highlights.length,
       copyVariations.primaryTexts.length,
       copyVariations.headlines.length,
+      10, // cap absoluto — 10 ads es el sweet spot Andrómeda
     ),
   )
+
+  // Rotación de estilos de composición para que las 10 piezas sean distintas
+  // visualmente. Cada índice i recibe styleRotation[i % 6].
+  const styleRotation: Array<
+    'hero_full_bleed'
+    | 'split_photo_info'
+    | 'editorial_magazine'
+    | 'minimalist_whitespace'
+    | 'color_overlay_solid'
+    | 'typography_dominant'
+  > = [
+    'split_photo_info',
+    'hero_full_bleed',
+    'editorial_magazine',
+    'color_overlay_solid',
+    'minimalist_whitespace',
+    'typography_dominant',
+  ]
 
   // 4. Para cada variante: subir foto + crear creative + crear ad.
   //    Todas comparten el mismo AdSet (lo creamos abajo).
@@ -537,12 +594,16 @@ export async function createCampaignForProperty(
   //    Si una variante falla a mitad, las anteriores quedan creadas. El próximo
   //    intento las archiva via idempotencia (status='provisioning' incompleto).
   for (let i = 0; i < variantCount; i++) {
-    const highlight = highlights[i]
+    // Ciclar highlights si hay menos que variantes (típico: 5 highlights → 10 ads)
+    const highlight = highlights[i % highlights.length]
     const photoUrl = property.photos[highlight.photoIndex] ?? property.photos[0]
     const variantHeadline =
       copyVariations.headlines[i] ?? copyVariations.headlines[0]
     const variantPrimaryText =
       copyVariations.primaryTexts[i] ?? copyVariations.primaryTexts[0]
+    // Cada variant usa un estilo gráfico distinto (rotación 6 estilos → 10 ads
+    // garantiza que los mismos highlights no se vean idénticos).
+    const compositionStyle = styleRotation[i % styleRotation.length]
 
     // Genera (o reusa cache) la imagen premium con Gemini, hace upload a
     // Meta y devuelve el hash. Si Gemini falla, hace fallback transparente
@@ -552,6 +613,10 @@ export async function createCampaignForProperty(
       highlight,
       copyHeadline: variantHeadline,
       format: 'feed_square',
+      compositionStyle,
+      // El sufijo del cache_key incluye el styleIndex para que distintos
+      // estilos del mismo highlight no se sobreescriban en el cache.
+      cacheKeySuffix: `_style_${compositionStyle}`,
     })
 
     const creative = await metaFetch<{ id: string }>(`/${accountId}/adcreatives`, {
@@ -566,8 +631,13 @@ export async function createCampaignForProperty(
             message: variantPrimaryText,
             name: variantHeadline,
             description: copyVariations.description,
-            // SEE_MORE = "Ver más" — más compacto que LEARN_MORE.
-            call_to_action: { type: 'SEE_MORE', value: { link: landingUrl } },
+            // CTA estándar de Meta para link ads. LEARN_MORE se renderiza como
+            // "Más información" en es-AR (traducción garantizada por Meta).
+            // SEE_MORE NO es un valor canónico de Meta API — al usarlo, Meta lo
+            // toma como string libre y lo muestra "See More" en inglés sin
+            // localizar. No hay un CTA estándar que diga exactamente "Ver más"
+            // en es-AR para link ads (WATCH_MORE es solo para video creatives).
+            call_to_action: { type: 'LEARN_MORE', value: { link: landingUrl } },
           },
         },
       }),

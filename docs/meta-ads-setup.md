@@ -80,3 +80,44 @@ Después del deploy, andá a `/admin/pipeline-test`. En la sección **"Estado de
 - ❌ Compartirlo por Slack/email/Notion.
 
 El token sale del System User una sola vez, va directo a Netlify, y nunca más se ve.
+
+## Evento de conversión: `Lead` vs `CompleteRegistration`
+
+Nuestras campañas tienen `objective: 'OUTCOME_LEADS'` y el AdSet usa
+`promoted_object: { pixel_id, custom_event_type: 'LEAD' }`. Eso significa
+que Meta optimiza para encontrar gente que dispare el evento `Lead` del
+Pixel (cuando alguien completa el form de contacto en la landing).
+
+### ¿Cuándo usar `LEAD`?
+
+- ✅ Form de contacto en landing (nuestro caso actual).
+- ✅ Click en WhatsApp / teléfono (también dispara `Lead`).
+- ✅ Cualquier "soft conversion" donde la persona deja datos para que la contactemos.
+
+### ¿Cuándo usar `CompleteRegistration`?
+
+- Cuando la landing pide crear una cuenta de usuario.
+- Cuando el visitante completa un onboarding multi-step (ej. cuestionario de
+  pre-calificación crediticia con 5+ pasos).
+- Para suscripciones a newsletter / programas de membresía.
+
+### Nuestra recomendación: mantener `LEAD`
+
+`Lead` es el evento estándar para inmobiliaria con landing + form de contacto.
+Cambiar a `CompleteRegistration` solo tendría sentido si en el futuro el flow
+de la landing se vuelve más profundo (ej. "Agendá visita virtual con
+cuestionario de pre-aprobación"). Mientras la landing solo tenga un form de
+contacto simple, `LEAD` es lo correcto.
+
+### Si cambiás de evento
+
+En `lib/marketing/meta-campaign-builder.ts`, modificar:
+```ts
+promoted_object: {
+  pixel_id: pixelId,
+  custom_event_type: 'LEAD', // ← cambiar acá
+}
+```
+
+Y asegurar que el Pixel + CAPI estén disparando el evento correspondiente
+en la landing (ver `components/landing/MetaPixel.tsx` + `lib/marketing/meta-capi.ts`).

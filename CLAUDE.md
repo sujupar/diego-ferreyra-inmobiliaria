@@ -97,6 +97,23 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 - **Fix:** En `lib/marketing/meta-campaign-builder.ts` agregar `is_adset_budget_sharing_enabled: false` al body del POST de campaign cuando el budget está a nivel adset (nuestro caso default). Si en el futuro querés CBO entre múltiples adsets, mover el `daily_budget` a la Campaign y poner `true`.
 - **Detection:** Antes de declarar una integración Meta completa, hacer un test end-to-end real de creación de Campaign — no solo unit tests del builder.
 
+### Meta CTA: NO existe "Ver más" estándar para link ads — usar LEARN_MORE
+
+- **Symptom:** El botón del ad aparece en inglés ("See More" / "Watch More") en lugar de "Más información" en español.
+- **Root cause:** El `call_to_action.type` que se envía a Meta solo se traduce a es-AR si es un valor canónico de la enumeración oficial. Valores como `SEE_MORE`, `VIEW_MORE` NO son canónicos para link_data — Meta los acepta como string libre pero los muestra crudos en inglés sin localización.
+- **Valores canónicos con traducción es-AR garantizada (link_data):**
+  - `LEARN_MORE` → "Más información" ✅ (el más usado para inmobiliaria)
+  - `CONTACT_US` → "Contactarnos"
+  - `BOOK_NOW` → "Reservar"
+  - `SIGN_UP` → "Registrarse"
+  - `SHOP_NOW` → "Comprar ahora"
+  - `GET_QUOTE` → "Obtener presupuesto"
+  - `DOWNLOAD` → "Descargar"
+  - `MESSAGE_PAGE` → "Mensaje"
+  - `WHATSAPP_MESSAGE` → "Enviar WhatsApp"
+- **Notar:** `WATCH_MORE` se renderiza "Ver más" en es-AR PERO solo aplica a video creatives (no a link ads con imagen estática). Para inmobiliaria que envía a landing externa, el más sobrio y profesional es `LEARN_MORE`.
+- **Fix:** Usar `LEARN_MORE` en link_data.
+
 ### Meta geo_locations: NO mezclar `custom_locations` con `countries`
 
 - **Symptom:** `POST /act_XXX/adsets` devuelve `Meta 400 — subcode 1487756 — "No se pueden usar los lugares — Algunos de tus lugares se superponen"`.

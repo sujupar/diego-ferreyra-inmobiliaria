@@ -16,7 +16,7 @@
 import sharp from 'sharp'
 import type { Property } from '@/lib/portals/types'
 import type { PropertyHighlight } from './property-vision-analyzer'
-import { buildAdImagePrompt, type AdFormat } from './ad-image-prompts'
+import { buildAdImagePrompt, type AdFormat, type CompositionStyle } from './ad-image-prompts'
 
 interface FormatDimensions {
   width: number
@@ -42,6 +42,7 @@ interface GenerateInput {
   highlight: PropertyHighlight
   copyHeadline: string
   format: AdFormat
+  compositionStyle?: CompositionStyle
 }
 
 interface GeminiImageResponse {
@@ -117,6 +118,7 @@ export async function generateAdImage(
     highlight: input.highlight,
     format: input.format,
     copyHeadline: input.copyHeadline,
+    compositionStyle: input.compositionStyle,
   })
   const promptHash = hashString(prompt)
 

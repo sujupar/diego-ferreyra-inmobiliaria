@@ -20,6 +20,18 @@ import type { PropertyHighlight } from './property-vision-analyzer'
 
 export type AdFormat = 'feed_square' | 'feed_vertical' | 'story_vertical'
 
+/**
+ * Estilo de composición de la pieza gráfica. Variar entre las 10 generaciones
+ * para que Meta Andrómeda tenga variedad creativa real, no clones.
+ */
+export type CompositionStyle =
+  | 'hero_full_bleed' // foto cubre todo el frame, overlay translúcida en bottom
+  | 'split_photo_info' // foto 65% + banda inferior 35% con info
+  | 'editorial_magazine' // estilo revista AD/Living
+  | 'minimalist_whitespace' // foto pequeña + mucho aire + tipo editorial
+  | 'color_overlay_solid' // foto + área sólida de color paleta del mood
+  | 'typography_dominant' // texto grande hero, foto en miniatura abajo
+
 interface FormatSpec {
   width: number
   height: number
@@ -60,11 +72,15 @@ interface BuildPromptInput {
   highlight: PropertyHighlight
   format: AdFormat
   copyHeadline: string
+  /** Estilo gráfico — default 'split_photo_info' si no se especifica. */
+  compositionStyle?: CompositionStyle
 }
 
 export function buildAdImagePrompt(input: BuildPromptInput): string {
   const { property, highlight, format, copyHeadline } = input
+  const compositionStyle = input.compositionStyle ?? 'split_photo_info'
   const spec = FORMAT_SPECS[format]
+  const compositionGuidance = buildCompositionGuidance(compositionStyle, format)
   const operation = (property.operation_type ?? 'venta').toLowerCase()
   const operationLabel = operation === 'venta' ? 'Venta' : operation === 'alquiler' ? 'Alquiler' : 'Temporario'
   const amenities = Array.isArray(property.amenities)
@@ -139,6 +155,12 @@ ${moodGuidance}
 ## COMPOSICIÓN REQUERIDA (formato ${spec.aspect})
 
 Esta pieza es para **${spec.placement}**, resolución final ${spec.width}×${spec.height}.
+
+### Estilo de composición elegido para esta pieza: ${compositionStyle}
+
+${compositionGuidance}
+
+### Composición base del formato
 
 ${spec.composition}
 
@@ -315,4 +337,28 @@ function formatPriceForOverlay(price: number, currency: string): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(price)
+}
+
+function buildCompositionGuidance(
+  style: CompositionStyle,
+  format: AdFormat,
+): string {
+  const guides: Record<CompositionStyle, string> = {
+    hero_full_bleed:
+      'Foto edge-to-edge ocupando el 100% del frame. Sobre ella, en la zona inferior (último 30% vertical), aplicar un degradé sutil de negro al 40% opacidad para que el texto se lea sin tapar la foto. El precio y el headline van centrados-izquierda sobre ese degradé. Sin bandas ni cajas con bordes. Tipografía blanca pura. La estética es de editorial fotográfico — foto siendo la protagonista absoluta. Cero elementos decorativos. Solo: foto + texto sutil + logo discreto en esquina inferior derecha.',
+    split_photo_info:
+      'División horizontal 65/35. Top 65%: foto de la propiedad mejorada (luz, contraste, claridad — sin alterar el contenido). Bottom 35%: panel sólido de color (paleta del mood) con texto en 3 niveles jerárquicos: 1) precio en grande, 2) headline a la izquierda, 3) specs compactos en una línea separados por · o |. Layout limpio, asimétrico hacia la izquierda. Sin marcos ni borders. Es el formato más conservador y profesional — el que usa Engel & Völkers, Sotheby\'s.',
+    editorial_magazine:
+      'Composición tipo revista AD o Living. Foto de la propiedad ocupa la mitad izquierda o el centro (depende del formato). El otro lado contiene tipografía editorial: título grande (puede ser serif elegante tipo Söhne, Tiempos, Adelle), bajada en sans-serif. Estilo "spread de revista". Whitespace generoso. Numeración o detalle de página opcional ("Casa Nº 042") como elemento de identidad. Cero ruido. Es la opción más sofisticada — para propiedades premium.',
+    minimalist_whitespace:
+      'Foto pequeña (50% del ancho máximo) centrada o ligeramente desplazada hacia un cuadrante. El resto del frame es whitespace puro (paleta blanca/off-white). Tipografía minimalista en una esquina o en bloque centrado. Mucho aire. Es la estética más "less is more" — usado por marcas como Aesop, COS, Apple en sus avisos. Comunica calma absoluta y precisión. Para propiedades en barrios premium tranquilos.',
+    color_overlay_solid:
+      'Foto de la propiedad ocupa la mayoría del frame. Sobre ella, una superposición sólida de UN color de la paleta del mood (no semi-transparente — sólido, en una zona definida) que cubre 30-40% del frame y donde va el texto. Por ejemplo, un rectángulo de color crema (#F2EDE3) que ocupa el cuarto inferior izquierdo con todo el texto encima. La división color/foto es nítida, geométrica. Es la estética más contemporánea — usado por brands tipo Aman Resorts, Hermès.',
+    typography_dominant:
+      'El texto es el elemento protagonista, no la foto. Tipografía display grande que ocupa el 60-70% del frame con el headline. La foto va como mini-imagen (200-300px) en una esquina o en el bottom. Es la estética más "design forward" — para llamar la atención por el copy y la tipografía. Apropiado para los ángulos emocionales (refugio, ritual, pertenencia) donde la palabra importa más que el feature visual.',
+  }
+  const note = format === 'story_vertical'
+    ? '\n\nAJUSTE PARA STORY 9:16: en formato story vertical, todos los elementos deben respetar la zona safe (entre 250px del top y 250px del bottom). El bottom 25% suele ser tapado por la UI de Instagram (link sticker, perfil). El top 15% por la barra de progreso. Mantené texto importante en el centro vertical (zona 30%-75%).'
+    : ''
+  return guides[style] + note
 }

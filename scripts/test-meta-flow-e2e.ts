@@ -232,6 +232,27 @@ async function runOnce(
       dryRun: true,
       overrides: overrides as never,
     })
+    // Validaciones adicionales del output esperado tras la optimización
+    // Andrómeda: 10 ads, UTMs en el link, CTA LEARN_MORE.
+    const validations: string[] = []
+    if (result.adIds.length < 10) {
+      validations.push(`solo ${result.adIds.length}/10 ads creados`)
+    }
+    if (!result.landingUrl.includes('utm_source=meta')) {
+      validations.push('falta utm_source=meta en landingUrl')
+    }
+    if (!result.landingUrl.includes('{{ad.id}}')) {
+      validations.push('falta placeholder {{ad.id}} en utm_content')
+    }
+    if (validations.length > 0) {
+      return {
+        ok: false,
+        step: 'validation',
+        error: {
+          message: `Validaciones post-build fallaron: ${validations.join('; ')}`,
+        },
+      }
+    }
     return { ok: true, step: 'complete', campaignId: result.campaignId }
   } catch (err) {
     // Parsear el error de Meta del mensaje (formato: "Meta XXX /path: {...}")
