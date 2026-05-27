@@ -43,6 +43,10 @@ interface GenerateInput {
   copyHeadline: string
   format: AdFormat
   compositionStyle?: CompositionStyle
+  /** Sobreescribe la foto base que se va a usar para la generación.
+   *  Si no se pasa, usa property.photos[highlight.photoIndex]. Útil cuando
+   *  el builder está rotando fotos para crear variedad. */
+  overridePhotoUrl?: string
 }
 
 interface GeminiImageResponse {
@@ -101,7 +105,9 @@ export async function generateAdImage(
   }
 
   const basePhotoUrl =
-    input.property.photos[input.highlight.photoIndex] ?? input.property.photos[0]
+    input.overridePhotoUrl ??
+    input.property.photos[input.highlight.photoIndex] ??
+    input.property.photos[0]
   if (!basePhotoUrl) {
     console.warn('[ad-image-gen] propiedad sin fotos — no se puede generar')
     return null

@@ -74,8 +74,94 @@ export async function GET(
 }
 
 /**
+ * PATCH /api/properties/[id]/meta-campaign
+ * Ejecuta INMEDIATAMENTE una acción sobre la campaña Meta (sync, no encolada).
+ * body: { action: 'pause' | 'activate' | 'archive' }
+ *
+ * Diferencia con POST: POST encola un job para que el worker lo procese
+ * (eventual). PATCH llama a Meta API directo y espera respuesta.
+ * Usar PATCH desde el UI para feedback inmediato al usuario.
+ */
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const user = await requireAuth()
+    const allowed = ['admin', 'dueno', 'coordinador']
+    if (!allowed.includes(user.profile.role)) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
+    const { id } = await params
+    const body = (await req.json().catch(() => ({}))) as { action?: string }
+    const action = body.action
+    if (!['pause', 'activate', 'archive'].includes(action ?? '')) {
+      return NextResponse.json(
+        { error: 'action debe ser pause, activate o archive' },
+        { status: 400 },
+      )
+    }
+
+    const supabase = getAdmin()
+    const { data: campaign } = await supabase
+      .from('property_meta_campaigns')
+      .select('campaign_id, adset_id, ad_ids, status')
+      .eq('property_id', id)
+      .neq('status', 'archived')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (!campaign?.campaign_id) {
+      return NextResponse.json(
+        { error: 'No hay campaña activa para esta propiedad' },
+        { status: 404 },
+      )
+    }
+
+    const { pauseCampaign, activateCampaign, archiveCampaign } = await import(
+      '@/lib/marketing/meta-campaign-builder'
+    )
+
+    try {
+      if (action === 'pause') {
+        await pauseCampaign(campaign.campaign_id)
+      } else if (action === 'archive') {
+        await archiveCampaign(campaign.campaign_id)
+      } else if (action === 'activate') {
+        if (!campaign.adset_id || !campaign.ad_ids?.length) {
+          return NextResponse.json(
+            { error: 'Campaña incompleta — no se puede activar' },
+            { status: 422 },
+          )
+        }
+        await activateCampaign(
+          campaign.campaign_id,
+          campaign.adset_id,
+          campaign.ad_ids as string[],
+        )
+        await supabase
+          .from('property_meta_campaigns')
+          .update({ status: 'active' })
+          .eq('campaign_id', campaign.campaign_id)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return NextResponse.json({ error: `${action} falló: ${msg}` }, { status: 502 })
+    }
+
+    return NextResponse.json({ ok: true, action })
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Error' },
+      { status: 500 },
+    )
+  }
+}
+
+/**
  * POST /api/properties/[id]/meta-campaign/pause
- * Pausa manualmente la campaña activa de una propiedad.
+ * Pausa manualmente la campaña activa de una propiedad (via job encolado).
  * (Action via body: { action: 'pause' | 'activate' })
  */
 export async function POST(

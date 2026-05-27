@@ -20,6 +20,10 @@ import {
   Rocket,
   ExternalLink,
   Camera,
+  Pause,
+  Play,
+  Trash2,
+  Building2,
 } from 'lucide-react'
 
 interface VisionHighlight {
@@ -107,6 +111,17 @@ const STEPS: Array<{ key: Step; label: string; icon: React.ComponentType<{ class
   { key: 'launch', label: 'Lanzar', icon: Rocket },
 ]
 
+interface ExistingCampaign {
+  campaign_id: string
+  adset_id: string | null
+  ad_ids: string[] | null
+  status: string
+  budget_daily: number | null
+  landing_url: string | null
+  last_error: string | null
+  created_at: string
+}
+
 export function MetaAdsWizard({ propertyId }: Props) {
   const router = useRouter()
   const [step, setStep] = useState<Step>('overview')
@@ -114,6 +129,12 @@ export function MetaAdsWizard({ propertyId }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [launching, setLaunching] = useState(false)
+  // Si la propiedad YA tiene una campaña no archivada, mostramos panel de
+  // gestión en lugar del wizard. Detectado al cargar via /meta-campaign GET.
+  const [existing, setExisting] = useState<ExistingCampaign | null>(null)
+  const [managing, setManaging] = useState<'pause' | 'activate' | 'archive' | null>(
+    null,
+  )
 
   // Selecciones del asesor
   const [highlightId, setHighlightId] = useState<string>('')
@@ -131,6 +152,22 @@ export function MetaAdsWizard({ propertyId }: Props) {
   useEffect(() => {
     async function load() {
       try {
+        // Primero chequear si ya hay una campaña creada (no archivada).
+        // Si existe, NO cargar el wizard — pasar directo a pantalla de gestión.
+        const camp = await fetch(`/api/properties/${propertyId}/meta-campaign`)
+        if (camp.ok) {
+          const cd = await camp.json()
+          if (
+            cd.campaign?.campaign_id &&
+            cd.campaign.status !== 'archived' &&
+            cd.campaign.status !== 'failed'
+          ) {
+            setExisting(cd.campaign as ExistingCampaign)
+            setLoading(false)
+            return
+          }
+        }
+        // Si no hay campaña existente, cargar wizard.
         const r = await fetch(`/api/properties/${propertyId}/meta-wizard`)
         const j = await r.json()
         if (!r.ok) throw new Error(j.error ?? 'Error cargando el asistente')
@@ -147,11 +184,55 @@ export function MetaAdsWizard({ propertyId }: Props) {
     load()
   }, [propertyId])
 
+  async function manageCampaign(action: 'pause' | 'activate' | 'archive') {
+    const confirmMsgs = {
+      pause: '¿Pausar la campaña? Deja de gastar presupuesto pero se puede reactivar.',
+      activate: '¿Reactivar la campaña? Empieza a gastar presupuesto.',
+      archive:
+        '¿Archivar definitivamente? La campaña se elimina de Meta Ads Manager (no se puede deshacer).',
+    }
+    if (!confirm(confirmMsgs[action])) return
+    setManaging(action)
+    try {
+      const r = await fetch(`/api/properties/${propertyId}/meta-campaign`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error ?? 'Error')
+      if (action === 'pause') toast.success('Campaña pausada')
+      else if (action === 'activate') toast.success('Campaña reactivada')
+      else toast.success('Campaña archivada')
+      // Recargar estado
+      if (action === 'archive') {
+        setExisting(null)
+        // Recargar el wizard limpio
+        window.location.reload()
+      } else {
+        const camp = await fetch(`/api/properties/${propertyId}/meta-campaign`)
+        if (camp.ok) {
+          const cd = await camp.json()
+          if (cd.campaign) setExisting(cd.campaign as ExistingCampaign)
+        }
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error')
+    } finally {
+      setManaging(null)
+    }
+  }
+
   async function launch() {
     if (!data) {
       toast.error('Datos del asistente no cargados')
       return
     }
+    // Guard contra doble click: si ya está lanzando, no permitir otro intento.
+    // CRÍTICO: el endpoint tarda 60-150s (generación de 10 imágenes con Gemini).
+    // Sin este guard, si el cliente recibe timeout y el usuario reintenta,
+    // se crean campañas duplicadas en Meta = doble gasto.
+    if (launching) return
     setLaunching(true)
     try {
       // Pasamos las selecciones del asesor al builder. El endpoint siempre
@@ -180,8 +261,39 @@ export function MetaAdsWizard({ propertyId }: Props) {
       setLaunchResult(j)
       setStep('done')
     } catch (err) {
+      // Si recibimos error (típicamente timeout 504 después de 30s), la
+      // campaña PUEDE haberse creado igual en el backend. Hacemos poll al
+      // endpoint de meta-campaign para detectarlo antes de mostrar error.
+      try {
+        const pollRes = await fetch(`/api/properties/${propertyId}/meta-campaign`)
+        if (pollRes.ok) {
+          const pollData = await pollRes.json()
+          if (pollData.campaign?.campaign_id) {
+            // La campaña sí existe — el error fue solo timeout de respuesta.
+            toast.success(
+              'La campaña se creó correctamente (el error anterior fue solo timeout de respuesta).',
+            )
+            const adAccountId = (process.env.NEXT_PUBLIC_META_AD_ACCOUNT_ID ?? '').replace('act_', '')
+            setLaunchResult({
+              campaignId: pollData.campaign.campaign_id,
+              adsetId: pollData.campaign.adset_id ?? '',
+              adIds: pollData.campaign.ad_ids ?? [],
+              adsManagerUrl: adAccountId
+                ? `https://business.facebook.com/adsmanager/manage/campaigns?act=${adAccountId}&selected_campaign_ids=${pollData.campaign.campaign_id}`
+                : '',
+            })
+            setStep('done')
+            // NO setear launching=false — dejamos el botón locked hasta navegar.
+            return
+          }
+        }
+      } catch {
+        // ignore poll error
+      }
       toast.error(err instanceof Error ? err.message : 'Error')
-    } finally {
+      // En este caso sí dejamos al usuario reintentar (la campaña realmente
+      // no se creó). El server-side lock atómico (UNIQUE PARTIAL en DB)
+      // previene duplicados si el primer intento sí había avanzado.
       setLaunching(false)
     }
   }
@@ -193,6 +305,147 @@ export function MetaAdsWizard({ propertyId }: Props) {
       </div>
     )
   }
+
+  // Si ya existe una campaña activa/pausada, mostrar panel de GESTIÓN en
+  // lugar del wizard de creación. Esto previene crear campañas duplicadas
+  // por accidente cuando el asesor entra para "ver" la campaña.
+  if (existing) {
+    const adAccountId = (process.env.NEXT_PUBLIC_META_AD_ACCOUNT_ID ?? '').replace(
+      'act_',
+      '',
+    )
+    const adsManagerUrl = adAccountId
+      ? `https://business.facebook.com/adsmanager/manage/campaigns?act=${adAccountId}&selected_campaign_ids=${existing.campaign_id}`
+      : null
+    const statusMap: Record<string, { label: string; color: string }> = {
+      active: { label: 'Activa', color: 'bg-emerald-600' },
+      paused: { label: 'Pausada', color: 'bg-amber-500' },
+      provisioning: { label: 'Creándose…', color: 'bg-blue-500' },
+      failed: { label: 'Error', color: 'bg-red-500' },
+    }
+    const sInfo = statusMap[existing.status] ?? { label: existing.status, color: 'bg-gray-400' }
+    const isActive = existing.status === 'active'
+    const isPaused = existing.status === 'paused'
+    const isProvisioning = existing.status === 'provisioning'
+
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between text-base">
+            <span className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-[color:var(--brand)]" />
+              Campaña Meta Ads
+            </span>
+            <Badge className={`${sInfo.color} text-white text-[10px] h-5`}>
+              {sInfo.label}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg bg-muted/30 p-4 space-y-2 text-sm">
+            <p className="text-muted-foreground text-xs">
+              ID de campaña: <code className="text-foreground">{existing.campaign_id}</code>
+            </p>
+            <p className="text-muted-foreground text-xs">
+              Presupuesto: ARS {(existing.budget_daily ?? 0).toLocaleString('es-AR')} / día
+            </p>
+            <p className="text-muted-foreground text-xs">
+              Creada: {new Date(existing.created_at).toLocaleString('es-AR')}
+            </p>
+            <p className="text-muted-foreground text-xs">
+              {existing.ad_ids?.length ?? 0} anuncios en el conjunto
+            </p>
+            {existing.last_error && (
+              <p className="text-xs text-amber-700 mt-1">⚠ {existing.last_error}</p>
+            )}
+            {adsManagerUrl && (
+              <a
+                href={adsManagerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm text-[color:var(--brand)] underline mt-2"
+              >
+                Abrir en Meta Ads Manager
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+          </div>
+
+          {!isProvisioning && (
+            <div className="border-t pt-4 space-y-2">
+              <p className="text-sm font-medium">¿Qué querés hacer?</p>
+              {isActive && (
+                <Button
+                  onClick={() => manageCampaign('pause')}
+                  disabled={managing !== null}
+                  variant="outline"
+                  className="w-full justify-start"
+                >
+                  {managing === 'pause' ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Pause className="h-4 w-4 mr-2" />
+                  )}
+                  Pausar campaña (reversible)
+                </Button>
+              )}
+              {isPaused && (
+                <Button
+                  onClick={() => manageCampaign('activate')}
+                  disabled={managing !== null}
+                  variant="outline"
+                  className="w-full justify-start"
+                >
+                  {managing === 'activate' ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Play className="h-4 w-4 mr-2" />
+                  )}
+                  Reactivar campaña
+                </Button>
+              )}
+              <Button
+                onClick={() => manageCampaign('archive')}
+                disabled={managing !== null}
+                variant="destructive"
+                className="w-full justify-start"
+              >
+                {managing === 'archive' ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Trash2 className="h-4 w-4 mr-2" />
+                )}
+                Archivar campaña (eliminar)
+              </Button>
+              <p className="text-xs text-muted-foreground pt-1">
+                <strong>Pausar:</strong> deja de gastar pero podés reactivar.
+                <strong> Archivar:</strong> elimina definitivamente de Meta Ads. No
+                se puede deshacer — para volver a anunciar habría que crear todo de
+                nuevo.
+              </p>
+            </div>
+          )}
+
+          {isProvisioning && (
+            <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-900">
+              <strong>La campaña se está creando.</strong> Esperá 1-2 minutos y
+              refrescá la página. Si después de 5 min sigue así, contactá a
+              soporte — puede haber quedado a mitad.
+            </div>
+          )}
+
+          <Button
+            onClick={() => router.push(`/properties/${propertyId}`)}
+            variant="ghost"
+            className="w-full mt-2"
+          >
+            ← Volver al detalle de la propiedad
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
   if (error || !data) {
     return (
       <Card className="border-red-300">

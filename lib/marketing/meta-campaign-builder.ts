@@ -166,6 +166,8 @@ async function getOrGenerateAdImageHash(input: {
     | 'minimalist_whitespace'
     | 'color_overlay_solid'
     | 'typography_dominant'
+  /** Sobreescribe la foto base que va a usar Gemini (no usa la del highlight). */
+  overridePhotoUrl?: string
   /** Sufijo extra para el cache key — útil para distinguir estilos distintos
    *  del mismo highlight. Si se setea, la cache key efectiva es
    *  highlight_id + cacheKeySuffix. */
@@ -209,6 +211,7 @@ async function getOrGenerateAdImageHash(input: {
     copyHeadline: input.copyHeadline,
     format,
     compositionStyle: input.compositionStyle,
+    overridePhotoUrl: input.overridePhotoUrl,
   })
 
   let metaHash: string
@@ -221,9 +224,12 @@ async function getOrGenerateAdImageHash(input: {
       `${input.property.public_slug ?? input.property.id}_${input.highlight.id}_${format}.jpg`,
     )
   } else {
-    // 3. Fallback: foto original
+    // 3. Fallback: foto rotada (no la #0 por default — eso causaba 10 ads
+    //    con la misma foto).
     const photoUrl =
-      input.property.photos[input.highlight.photoIndex] ?? input.property.photos[0]
+      input.overridePhotoUrl ??
+      input.property.photos[input.highlight.photoIndex] ??
+      input.property.photos[0]
     metaHash = await uploadAdImage(photoUrl)
   }
 
@@ -416,12 +422,13 @@ export async function createCampaignForProperty(
     }),
   })
 
-  // 1.5. Persistir la campaign en DB ya con status='provisioning' para
-  // que si los pasos siguientes fallan, en el reintento del worker
-  // detecte que ya existe y no cree una campaign duplicada en Meta.
-  // CRÍTICO: si el insert falla, archivamos la campaña en Meta para evitar
-  // huérfanos. Sin esto, una falla acá deja la campaña pagable en Meta sin
-  // tracking interno y los siguientes intentos crean duplicados.
+  // 1.5. Persistir la campaign en DB con status='provisioning'.
+  // CRÍTICO doble: (1) si el insert falla por OTRA razón, archivar la
+  // campaña en Meta para evitar huérfanos. (2) si el insert falla por
+  // UNIQUE violation (índice idx_property_meta_campaigns_one_active),
+  // significa que OTRO request paralelo ya está creando una campaña para
+  // esta property. Aborta el actual y archiva la campaña que recién
+  // creamos en Meta para no dejarla huérfana.
   const supabase = getSupabase()
   const { error: insertError } = await supabase.from('property_meta_campaigns').insert({
     property_id: property.id,
@@ -434,7 +441,18 @@ export async function createCampaignForProperty(
     landing_url: landingUrl,
   })
   if (insertError) {
-    console.error('[meta-builder] insert falló, archivando campaign para evitar huérfano', insertError)
+    const isUniqueViolation =
+      insertError.code === '23505' ||
+      /duplicate key|unique constraint/i.test(insertError.message)
+    if (isUniqueViolation) {
+      console.warn(
+        '[meta-builder] doble click detectado — ya hay otra campaña en curso. Archivando duplicada en Meta.',
+      )
+    } else {
+      console.error('[meta-builder] insert falló por otra razón:', insertError)
+    }
+    // En ambos casos archivamos la Campaign que recién creamos en Meta
+    // para que no quede huérfana acumulando gasto potencial.
     try {
       await metaFetch(`/${campaign.id}`, {
         method: 'POST',
@@ -442,6 +460,24 @@ export async function createCampaignForProperty(
       })
     } catch (archiveErr) {
       console.error('[meta-builder] archivado de rollback también falló', archiveErr)
+    }
+    if (isUniqueViolation) {
+      // Devolver la campaña existente (la que ganó la carrera) en lugar de error.
+      const { data: winner } = await supabase
+        .from('property_meta_campaigns')
+        .select('campaign_id, adset_id, ad_ids, budget_daily, landing_url')
+        .eq('property_id', property.id)
+        .neq('status', 'archived')
+        .maybeSingle()
+      if (winner?.campaign_id) {
+        return {
+          campaignId: winner.campaign_id,
+          adsetId: winner.adset_id ?? '',
+          adIds: (winner.ad_ids as string[] | null) ?? [],
+          budgetDailyArs: winner.budget_daily ?? 0,
+          landingUrl: winner.landing_url ?? landingUrl,
+        }
+      }
     }
     throw new Error(`No se pudo persistir la campaña en DB: ${insertError.message}`)
   }
@@ -596,7 +632,6 @@ export async function createCampaignForProperty(
   for (let i = 0; i < variantCount; i++) {
     // Ciclar highlights si hay menos que variantes (típico: 5 highlights → 10 ads)
     const highlight = highlights[i % highlights.length]
-    const photoUrl = property.photos[highlight.photoIndex] ?? property.photos[0]
     const variantHeadline =
       copyVariations.headlines[i] ?? copyVariations.headlines[0]
     const variantPrimaryText =
@@ -605,18 +640,44 @@ export async function createCampaignForProperty(
     // garantiza que los mismos highlights no se vean idénticos).
     const compositionStyle = styleRotation[i % styleRotation.length]
 
+    // ROTACIÓN DE FOTOS: Gemini Vision a veces pone `photoIndex: 0` en TODOS
+    // los highlights (porque no sabe asociar fotos a highlights bien). Si
+    // confiamos solo en `highlight.photoIndex`, todos los 10 ads terminan
+    // usando la misma foto → Andrómeda los considera duplicados.
+    //
+    // Estrategia: ciclo i-ésimo de un highlight repetido USA OTRA FOTO.
+    //   - i=0 hl[0] → foto 0
+    //   - i=1 hl[1] → foto 1
+    //   - i=4 hl[4] → foto 4
+    //   - i=5 hl[0] OTRA VEZ → foto 5 (el "ciclo 2" agrega +N)
+    //   - i=9 hl[4] OTRA VEZ → foto 9 (módulo fotos disponibles)
+    //
+    // El highlight.photoIndex sigue siendo el "preferido" para la PRIMERA
+    // aparición, pero en repeticiones rotamos para crear variedad real.
+    const photosAvailable = property.photos.length
+    const baseIdx =
+      typeof highlight.photoIndex === 'number' &&
+      highlight.photoIndex >= 0 &&
+      highlight.photoIndex < photosAvailable
+        ? highlight.photoIndex
+        : i % photosAvailable
+    const cycleNum = Math.floor(i / highlights.length)
+    const photoIndex = (baseIdx + cycleNum) % photosAvailable
+    const photoUrl = property.photos[photoIndex] ?? property.photos[0]
+
     // Genera (o reusa cache) la imagen premium con Gemini, hace upload a
-    // Meta y devuelve el hash. Si Gemini falla, hace fallback transparente
-    // a la foto original.
+    // Meta y devuelve el hash. Si Gemini falla, hace fallback a la foto
+    // rotada (no la #0 por default — para evitar 10 ads con la misma foto).
     const imageHash = await getOrGenerateAdImageHash({
       property,
       highlight,
       copyHeadline: variantHeadline,
       format: 'feed_square',
       compositionStyle,
-      // El sufijo del cache_key incluye el styleIndex para que distintos
-      // estilos del mismo highlight no se sobreescriban en el cache.
-      cacheKeySuffix: `_style_${compositionStyle}`,
+      overridePhotoUrl: photoUrl,
+      // El sufijo del cache key incluye style + photoIndex para que
+      // (mismo highlight) × (otro estilo) × (otra foto) sea cache distinto.
+      cacheKeySuffix: `_style_${compositionStyle}_p${photoIndex}`,
     })
 
     const creative = await metaFetch<{ id: string }>(`/${accountId}/adcreatives`, {
