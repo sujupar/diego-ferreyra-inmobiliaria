@@ -87,6 +87,38 @@ export function calculateHomogenizedSurface(features: ValuationFeatures): number
         (uncovered * VALUATION_RULES.SURFACE_COEFFICIENTS.UNCOVERED)
 }
 
+/**
+ * Calculate Weighted Price per m² (precio por m² ponderado).
+ *
+ * Fórmula estándar argentina: divide el precio total por la superficie
+ * homologada (cubierta + 0.5·semi + 0.5·descubierta). Refleja el "verdadero"
+ * costo por metro útil del comparable, ignorando inflación por balcones o
+ * patios grandes.
+ *
+ * Acepta features con null o undefined (compat con scraper PropertyFeatures
+ * y con ValuationFeatures). Returns null si no hay precio o si la superficie
+ * homologada es 0.
+ */
+export function calculateWeightedPricePerM2(
+    price: number | null | undefined,
+    features: {
+        coveredArea?: number | null
+        semiCoveredArea?: number | null
+        uncoveredArea?: number | null
+    },
+): number | null {
+    if (!price || price <= 0) return null
+    const covered = features.coveredArea || 0
+    const semiCovered = features.semiCoveredArea || 0
+    const uncovered = features.uncoveredArea || 0
+    const surface =
+        covered * VALUATION_RULES.SURFACE_COEFFICIENTS.COVERED +
+        semiCovered * VALUATION_RULES.SURFACE_COEFFICIENTS.SEMI_COVERED +
+        uncovered * VALUATION_RULES.SURFACE_COEFFICIENTS.UNCOVERED
+    if (surface <= 0) return null
+    return price / surface
+}
+
 // Extended property for valuation
 export interface ValuationProperty {
     price?: number | null

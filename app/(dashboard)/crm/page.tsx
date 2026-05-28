@@ -201,6 +201,7 @@ export default function CRMPage() {
   const [page, setPage] = useState(0)
   const [total, setTotal] = useState(0)
   const [serverStageCounts, setServerStageCounts] = useState<Record<string, number>>({})
+  const [serverCrmStageCounts, setServerCrmStageCounts] = useState<Record<string, number>>({})
   const [loadingMore, setLoadingMore] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -226,6 +227,7 @@ export default function CRMPage() {
     else setLoading(true)
 
     const params = new URLSearchParams()
+    if (filterCRMStage) params.set('crm_stage', filterCRMStage)
     if (filterOrigin) params.set('origin', filterOrigin)
     if (dateRange.from) params.set('from', dateRange.from)
     if (dateRange.to) params.set('to', dateRange.to)
@@ -240,11 +242,12 @@ export default function CRMPage() {
     try {
       const res = await fetch(`/api/deals?${params}`)
       if (res.ok) {
-        const { data, total: t, stageCounts: sc } = await res.json()
+        const { data, total: t, stageCounts: sc, crmStageCounts: csc } = await res.json()
         if (append) setDeals(prev => [...prev, ...(data || [])])
         else setDeals(data || [])
         setTotal(t ?? 0)
         setServerStageCounts(sc || {})
+        setServerCrmStageCounts(csc || {})
         setPage(targetPage)
       }
     } catch (err) {
@@ -253,13 +256,13 @@ export default function CRMPage() {
       if (append) setLoadingMore(false)
       else setLoading(false)
     }
-  }, [filterOrigin, filterAdvisor, dateRange, userInfo, page])
+  }, [filterCRMStage, filterOrigin, filterAdvisor, dateRange, userInfo, page])
 
   // Reset page to 0 whenever filters change (fetchData w/ append=false starts at page 0)
   useEffect(() => {
     if (userInfo) fetchData({ append: false, pageOverride: 0 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterOrigin, filterAdvisor, dateRange, userInfo])
+  }, [filterCRMStage, filterOrigin, filterAdvisor, dateRange, userInfo])
 
   const canHardDelete = userInfo?.role === 'admin' || userInfo?.role === 'dueno'
 
@@ -321,11 +324,14 @@ export default function CRMPage() {
 
   const colegaCount = roleFilteredDeals.filter(d => (d.tags || []).includes('colega')).length
 
-  // Server-provided stageCounts (all pages, not just loaded slice).
-  const stageCounts: Record<string, number> = {}
-  for (const [rawStage, n] of Object.entries(serverStageCounts)) {
-    const k = mapStageToCRM(rawStage)
-    stageCounts[k] = (stageCounts[k] || 0) + (n as number)
+  // Server-provided CRM-stage counts (handles scheduled→solicitud/coordinada split).
+  // Fallback al mapeo desde stageCounts crudo si el server viejo no manda crmStageCounts.
+  const stageCounts: Record<string, number> = { ...serverCrmStageCounts }
+  if (Object.keys(stageCounts).length === 0) {
+    for (const [rawStage, n] of Object.entries(serverStageCounts)) {
+      const k = mapStageToCRM(rawStage)
+      stageCounts[k] = (stageCounts[k] || 0) + (n as number)
+    }
   }
   // For asesor: zero out pre-asignación stages
   if (userInfo?.role === 'asesor') {

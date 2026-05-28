@@ -24,7 +24,7 @@ export const LEGAL_DOCS_CATALOG: LegalDocDefinition[] = [
 
   // TEMPORALES (obligatorios con alertas)
   { key: 'reglamento', label: 'Reglamento de Copropiedad', category: 'temporal', condition: 'apt_or_ph', description: 'Requerido para departamentos y PH.', alertDaysRemaining: 15 },
-  { key: 'plano', label: 'Plano de la Propiedad', category: 'temporal', condition: 'credit_purchase', description: 'Requerido si el comprador adquiere con crédito.', alertDaysRemaining: 15 },
+  { key: 'plano', label: 'Plano de la Propiedad', category: 'temporal', description: 'Plano de la propiedad (siempre requerido para tasación y comercialización).', alertDaysRemaining: 15 },
   { key: 'poderes', label: 'Poderes', category: 'temporal', condition: 'powers', description: 'Requerido si hay representación por poder.', alertDaysRemaining: 15 },
 
   // OPCIONALES

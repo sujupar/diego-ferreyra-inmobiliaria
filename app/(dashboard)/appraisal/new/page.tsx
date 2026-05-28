@@ -8,7 +8,7 @@ import { PropertyForm } from '@/components/appraisal/PropertyForm'
 import { ComparableEditor, ComparableMissingIndicator } from '@/components/appraisal/ComparableEditor'
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { ScrapedProperty, PropertyFeatures } from '@/lib/scraper/types'
-import { calculateValuation, getQualityCoefficient, ValuationResult, ValuationProperty, ExpenseRates, PurchaseResult } from '@/lib/valuation/calculator'
+import { calculateValuation, getQualityCoefficient, calculateWeightedPricePerM2, ValuationResult, ValuationProperty, ExpenseRates, PurchaseResult } from '@/lib/valuation/calculator'
 import type { PurchaseScenarioId, PurchaseScenarioInput } from '@/lib/valuation/calculator'
 import { buildDefaultScenarios, calculateAllScenarios } from '@/lib/valuation/purchase-scenarios'
 import { PurchaseScenariosEditor } from '@/components/appraisal/PurchaseScenariosEditor'
@@ -1037,7 +1037,22 @@ function NewAppraisalPageContent() {
                                 </div>
                             ) : (
                                 <div className="grid gap-3">
-                                    {comparables.map((comp, index) => (
+                                    {(() => {
+                                        // Precio/m² ponderado por cada comparable y promedio del set para
+                                        // semáforo (verde = ≤10% del promedio, ámbar = ≤25%, rojo = >25%).
+                                        const weighted = comparables.map(c => calculateWeightedPricePerM2(c.price, c.features))
+                                        const valid = weighted.filter((v): v is number => typeof v === 'number' && v > 0)
+                                        const avg = valid.length > 0 ? valid.reduce((s, v) => s + v, 0) / valid.length : null
+                                        return comparables.map((comp, index) => {
+                                            const wppm = weighted[index]
+                                            const delta = wppm !== null && avg !== null && avg > 0 ? (wppm - avg) / avg : null
+                                            const deltaAbs = delta !== null ? Math.abs(delta) : null
+                                            const semaforo =
+                                                deltaAbs === null ? 'bg-slate-100 text-slate-700 border-slate-200' :
+                                                deltaAbs <= 0.10 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                deltaAbs <= 0.25 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                'bg-red-50 text-red-700 border-red-200'
+                                            return (
                                         <div
                                             key={index}
                                             className="flex items-center gap-4 p-4 bg-muted/30 rounded-xl border transition-all duration-200 hover:shadow-sm"
@@ -1052,13 +1067,26 @@ function NewAppraisalPageContent() {
                                             <div className="flex-1 min-w-0">
                                                 <h4 className="font-medium text-sm line-clamp-1">{comp.title}</h4>
                                                 <p className="text-xs text-muted-foreground line-clamp-1">{comp.location}</p>
-                                                <div className="flex items-center gap-3 mt-1">
+                                                <div className="flex items-center gap-3 mt-1 flex-wrap">
                                                     <span className="text-sm font-semibold text-primary">
                                                         {comp.price ? `USD ${comp.price.toLocaleString()}` : 'Sin precio'}
                                                     </span>
                                                     <span className="text-xs text-muted-foreground">
                                                         {comp.features.coveredArea}m²
                                                     </span>
+                                                    {wppm !== null && (
+                                                        <span
+                                                            className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full border tabular-nums ${semaforo}`}
+                                                            title="Precio por m² ponderado = precio / (cubierta + 0.5·semi + 0.5·descubierta)"
+                                                        >
+                                                            USD {Math.round(wppm).toLocaleString()}/m² pond.
+                                                            {delta !== null && valid.length >= 2 && (
+                                                                <span className="opacity-80">
+                                                                    ({delta >= 0 ? '+' : ''}{Math.round(delta * 100)}% vs prom.)
+                                                                </span>
+                                                            )}
+                                                        </span>
+                                                    )}
                                                     <ComparableMissingIndicator property={comp} />
                                                 </div>
                                             </div>
@@ -1081,7 +1109,9 @@ function NewAppraisalPageContent() {
                                                 </Button>
                                             </div>
                                         </div>
-                                    ))}
+                                            )
+                                        })
+                                    })()}
                                 </div>
                             )}
                         </div>

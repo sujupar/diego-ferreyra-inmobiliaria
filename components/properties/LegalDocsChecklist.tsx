@@ -44,6 +44,7 @@ function StatusIcon({ status }: { status: DocItemState['status'] }) {
 
 export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAbogado, onUpdated }: Props) {
   const [uploadingKey, setUploadingKey] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<number>(0)
   const [savingFlags, setSavingFlags] = useState(false)
   const [reviewingKey, setReviewingKey] = useState<string | null>(null)
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; itemKey: string; label: string; notes: string }>(
@@ -70,20 +71,68 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
 
   async function handleUpload(itemKey: string, file: File) {
     setUploadingKey(itemKey)
+    setUploadProgress(0)
+    const sizeLabel = `${(file.size / 1024 / 1024).toFixed(1)} MB`
+    const loadingToast = toast.loading(`Subiendo ${file.name} (${sizeLabel})…`)
+
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await fetch(`/api/properties/${propertyId}/legal-docs/${itemKey}`, { method: 'POST', body: fd })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast.error(data?.error || 'Error al subir el documento')
+      // 1) Pedir signed upload URL
+      const initRes = await fetch(`/api/properties/${propertyId}/legal-docs/${itemKey}/upload-init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: file.name, fileSize: file.size, contentType: file.type }),
+      })
+      const initData = await initRes.json().catch(() => ({}))
+      if (!initRes.ok) {
+        toast.error(initData?.error || 'No se pudo iniciar la subida', { id: loadingToast })
         return
       }
+      const { signedUrl, path, token } = initData as { signedUrl: string; path: string; token: string }
+
+      // 2) Upload directo a Storage con XHR para progreso real
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('PUT', signedUrl, true)
+        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
+        xhr.setRequestHeader('x-upsert', 'true')
+        // Token también pasado como header por compat con SDK
+        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100)
+            setUploadProgress(pct)
+            toast.loading(`Subiendo ${file.name} — ${pct}%`, { id: loadingToast })
+          }
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve()
+          else reject(new Error(`HTTP ${xhr.status}: ${xhr.responseText || 'Error de Storage'}`))
+        }
+        xhr.onerror = () => reject(new Error('Error de red durante el upload'))
+        xhr.onabort = () => reject(new Error('Upload cancelado'))
+        xhr.send(file)
+      })
+
+      // 3) Commit metadata
+      const commitRes = await fetch(`/api/properties/${propertyId}/legal-docs/${itemKey}/upload-commit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, fileName: file.name }),
+      })
+      const commitData = await commitRes.json().catch(() => ({}))
+      if (!commitRes.ok) {
+        toast.error(commitData?.error || 'No se pudo registrar el documento', { id: loadingToast })
+        return
+      }
+
       onUpdated()
-      toast.success('Documento subido — en revisión')
+      toast.success(`Documento subido (${sizeLabel}) — en revisión`, { id: loadingToast })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al subir el documento')
-    } finally { setUploadingKey(null) }
+      toast.error(err instanceof Error ? err.message : 'Error al subir el documento', { id: loadingToast })
+    } finally {
+      setUploadingKey(null)
+      setUploadProgress(0)
+    }
   }
 
   async function handleReviewItem(itemKey: string, approved: boolean, notes?: string) {
@@ -154,7 +203,7 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
               ref={el => { fileInputs.current[def.key] = el }}
               type="file"
               className="hidden"
-              accept=".pdf,.doc,.docx,.jpg,.png"
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff"
               onChange={e => e.target.files?.[0] && handleUpload(def.key, e.target.files[0])}
             />
             <Button
@@ -162,10 +211,10 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
               variant={hasFile ? 'outline' : 'default'}
               onClick={() => fileInputs.current[def.key]?.click()}
               disabled={uploadingKey === def.key}
-              className="gap-1"
+              className="gap-1 min-w-[110px] tabular-nums"
             >
               {uploadingKey === def.key
-                ? <Loader2 className="h-4 w-4 animate-spin" />
+                ? <><Loader2 className="h-4 w-4 animate-spin" />{uploadProgress > 0 ? `${uploadProgress}%` : '…'}</>
                 : <><Upload className="h-3.5 w-3.5" />{hasFile ? 'Reemplazar' : 'Subir'}</>
               }
             </Button>

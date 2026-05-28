@@ -61,16 +61,48 @@ export async function createDeal(input: DealInput) {
   return data.id as string
 }
 
+/**
+ * Apply CRM-stage semantics to a query.
+ *
+ * The CRM exposes 10 stages, but the DB has 10 raw stages where `scheduled`
+ * splits into TWO CRM stages depending on whether `scheduled_date` is set:
+ *  - scheduled + scheduled_date NULL  → "solicitud"
+ *  - scheduled + scheduled_date NOT NULL → "coordinada"
+ *
+ * "solicitud" also includes raw stage='request' (the GHL webhook variant).
+ */
+function applyCRMStageFilter<T>(q: T, crmStage: string): T {
+  const query = q as any
+  switch (crmStage) {
+    case 'clase_gratuita': return query.eq('stage', 'clase_gratuita')
+    case 'solicitud':
+      // (stage='request') OR (stage='scheduled' AND scheduled_date IS NULL)
+      return query.or('stage.eq.request,and(stage.eq.scheduled,scheduled_date.is.null)')
+    case 'coordinada':
+      return query.eq('stage', 'scheduled').not('scheduled_date', 'is', null)
+    case 'no_realizada': return query.eq('stage', 'not_visited')
+    case 'realizada': return query.eq('stage', 'visited')
+    case 'entregada': return query.eq('stage', 'appraisal_sent')
+    case 'seguimiento': return query.eq('stage', 'followup')
+    case 'captada': return query.eq('stage', 'captured')
+    case 'descartado': return query.eq('stage', 'lost')
+    case 'comprador': return query.eq('stage', 'comprador')
+    default: return query
+  }
+}
+
 export async function getDeals(filters?: {
-  stage?: string; origin?: string; assigned_to?: string; from?: string; to?: string;
-  limit?: number; offset?: number;
+  stage?: string; crm_stage?: string; origin?: string; assigned_to?: string;
+  from?: string; to?: string; limit?: number; offset?: number;
 }) {
   const limit = filters?.limit ?? 50
   const offset = filters?.offset ?? 0
 
   function applyFilters<T>(q: T): T {
     let query = q as any
-    if (filters?.stage) query = query.eq('stage', filters.stage)
+    // crm_stage takes precedence over raw stage when both are present
+    if (filters?.crm_stage) query = applyCRMStageFilter(query, filters.crm_stage)
+    else if (filters?.stage) query = query.eq('stage', filters.stage)
     if (filters?.origin) query = query.eq('origin', filters.origin)
     if (filters?.assigned_to) query = query.eq('assigned_to', filters.assigned_to)
     if (filters?.from) query = query.gte('created_at', filters.from + 'T00:00:00Z')
@@ -93,8 +125,12 @@ export async function getDeals(filters?: {
   const { data, error, count } = await dataQuery.range(offset, offset + limit - 1)
   if (error) throw error
 
-  // stageCounts — all stages (not filtered by stage, but filtered by other filters)
-  const countQuery = getAdmin().from('deals').select('stage')
+  // stageCounts — counts per RAW stage, ignoring stage/crm_stage filter so the
+  // pipeline tarjetas siempre muestran totales completos del usuario. Origin,
+  // assigned_to y rango de fecha sí se respetan.
+  // Para distinguir solicitud vs coordinada (ambas viven en stage='scheduled')
+  // contamos por separado las que tienen scheduled_date NULL.
+  const countQuery = getAdmin().from('deals').select('stage, scheduled_date')
   let cq = countQuery
   if (filters?.origin) cq = cq.eq('origin', filters.origin)
   if (filters?.assigned_to) cq = cq.eq('assigned_to', filters.assigned_to)
@@ -104,11 +140,28 @@ export async function getDeals(filters?: {
   if (stageErr) throw stageErr
 
   const stageCounts: Record<string, number> = {}
+  const crmStageCounts: Record<string, number> = {}
   for (const row of stageRows || []) {
     stageCounts[row.stage] = (stageCounts[row.stage] || 0) + 1
+    // Derive CRM stage for the per-stage UI count (handles scheduled split).
+    let crmKey: string
+    switch (row.stage) {
+      case 'clase_gratuita': crmKey = 'clase_gratuita'; break
+      case 'request': crmKey = 'solicitud'; break
+      case 'scheduled': crmKey = row.scheduled_date ? 'coordinada' : 'solicitud'; break
+      case 'not_visited': crmKey = 'no_realizada'; break
+      case 'visited': crmKey = 'realizada'; break
+      case 'appraisal_sent': crmKey = 'entregada'; break
+      case 'followup': crmKey = 'seguimiento'; break
+      case 'captured': crmKey = 'captada'; break
+      case 'lost': crmKey = 'descartado'; break
+      case 'comprador': crmKey = 'comprador'; break
+      default: crmKey = 'solicitud'
+    }
+    crmStageCounts[crmKey] = (crmStageCounts[crmKey] || 0) + 1
   }
 
-  return { data: data || [], total: count ?? 0, stageCounts }
+  return { data: data || [], total: count ?? 0, stageCounts, crmStageCounts }
 }
 
 export async function getDeal(id: string) {

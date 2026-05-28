@@ -16,8 +16,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const limitParam = searchParams.get('limit')
     const offsetParam = searchParams.get('offset')
-    const { data, total, stageCounts } = await getDeals({
+    const { data, total, stageCounts, crmStageCounts } = await getDeals({
       stage: searchParams.get('stage') || undefined,
+      crm_stage: searchParams.get('crm_stage') || undefined,
       origin: searchParams.get('origin') || undefined,
       assigned_to: searchParams.get('assigned_to') || undefined,
       from: searchParams.get('from') || undefined,
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
       assigned_to_name: d.assigned_to ? profileMap[d.assigned_to] || '' : '',
     }))
 
-    return NextResponse.json({ data: enriched, total, stageCounts })
+    return NextResponse.json({ data: enriched, total, stageCounts, crmStageCounts })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error' }, { status: 500 })
   }
