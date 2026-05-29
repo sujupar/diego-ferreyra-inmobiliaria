@@ -1278,8 +1278,10 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                         )
                     })}
 
-                    {/* SIMULATION DIVIDER PAGE — solo si hay escenarios o purchaseResult legacy */}
-                    {((valuationResult.purchaseScenarios && valuationResult.purchaseScenarios.length > 0) || purchaseResult) && (
+                    {/* SIMULATION DIVIDER PAGE — SIEMPRE (toda tasación tiene gastos e
+                        impuestos de venta). Antes se gateaba detrás de purchaseScenarios y
+                        desaparecía por completo en una tasación de venta normal. */}
+                    {valuationResult && (
                         <Page size="A4" style={styles.page}>
                             <View style={styles.backgroundPage}>
                                 <Image
@@ -1300,9 +1302,12 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                         </Page>
                     )}
 
-                    {/* SIMULATION SCENARIOS PAGE — tabla venta + N escenarios de compra */}
-                    {valuationResult.purchaseScenarios && valuationResult.purchaseScenarios.length > 0 && (() => {
-                        const allScenarios = valuationResult.purchaseScenarios
+                    {/* SALE EXPENSES/TAXES PAGE — SaleSimTable (sellos, gastos escritura,
+                        honorarios, total, dinero en mano) se muestra SIEMPRE. Los escenarios
+                        de compra sólo si existen. Antes TODA esta página se gateaba detrás de
+                        purchaseScenarios → era la causa de "el PDF no muestra impuestos". */}
+                    {valuationResult && (() => {
+                        const allScenarios = valuationResult.purchaseScenarios || []
                         const fallbackIds = allScenarios.map(s => s.id)
                         const selectedIds = valuationResult.selectedScenarioIds && valuationResult.selectedScenarioIds.length > 0
                             ? valuationResult.selectedScenarioIds

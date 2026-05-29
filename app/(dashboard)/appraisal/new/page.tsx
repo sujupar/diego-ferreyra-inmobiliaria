@@ -236,6 +236,20 @@ function NewAppraisalPageContent() {
     // Retry counter for transient failures with exponential backoff
     const autoSaveRetryRef = useRef<number>(0)
 
+    // Guard contra navegar/cerrar mientras se está guardando — avisa al usuario
+    // (prompt nativo) para que no abandone con un guardado en vuelo. Si confirma
+    // irse igual, el request se aborta; por eso la protección principal es el
+    // guardado server-side awaited + el banner de error, no este guard.
+    useEffect(() => {
+        if (saveStatus !== 'saving') return
+        const handler = (e: BeforeUnloadEvent) => {
+            e.preventDefault()
+            e.returnValue = ''
+        }
+        window.addEventListener('beforeunload', handler)
+        return () => window.removeEventListener('beforeunload', handler)
+    }, [saveStatus])
+
     // Coefficient drift warning: legacy appraisals stored subjectQualityCoef = 1.0 hardcoded.
     const [coefficientDriftWarning, setCoefficientDriftWarning] = useState<{
         storedCoef: number
@@ -659,12 +673,17 @@ function NewAppraisalPageContent() {
 
         setValuationResult(result)
 
-        // Pre-fill report edits with real data
+        // Pre-fill report edits with real data.
+        // Capturamos el valor en una variable local para usarlo en el payload —
+        // setReportEdits es async y `reportEdits` (closure) seguiría siendo el
+        // valor viejo al construir el payload más abajo (stale closure bug).
+        let nextReportEdits = reportEdits
         if (subject && result) {
-            setReportEdits(buildDefaultEdits(
+            nextReportEdits = buildDefaultEdits(
                 { title: subject.title, location: subject.location, description: subject.description },
                 { publicationPrice: result.publicationPrice, currency: result.currency, noSaleZonePrice: result.noSaleZonePrice }
-            ))
+            )
+            setReportEdits(nextReportEdits)
         }
 
         // Scroll to results
@@ -678,16 +697,25 @@ function NewAppraisalPageContent() {
         // instead of creating a duplicate row.
         if (result) {
             setSaveStatus('saving')
+            // Usamos el REF (sincrónico), no el state (async): si el usuario
+            // clickea "Calcular" dos veces rápido antes de que React refleje el
+            // id del primer insert, el state seguiría null y haríamos un segundo
+            // INSERT (fila duplicada). El ref ya tiene el id apenas se guardó.
+            const isUpdate = Boolean(editId || savedAppraisalIdRef.current)
             const payload = {
                 subject, comparables, overpriced, purchaseProperties,
                 valuationResult: result, origin: origin || undefined, assignedTo: assignedTo || undefined,
-                reportEdits,
+                reportEdits: nextReportEdits,
+                // En el primer insert pasamos el dealId para que el endpoint
+                // vincule la tasación al proceso server-side (confiable). En
+                // updates no hace falta (ya está vinculada).
+                ...(!isUpdate && dealId ? { dealId } : {}),
             }
-            // Prefer the URL editId, fall back to the locally-tracked id from a
-            // previous insert in this session. Either way, if we already have an
-            // id we MUST update — never insert again.
-            const existingId = editId || savedAppraisalId
-            const isUpdate = Boolean(existingId)
+
+            // Prefer the URL editId, fall back to the synchronous ref of the id
+            // from a previous insert in this session. Either way, if we already
+            // have an id we MUST update — never insert again. (isUpdate arriba)
+            const existingId = editId || savedAppraisalIdRef.current
             const promise = isUpdate
                 ? updateAppraisal(existingId!, payload).then(() => existingId!)
                 : saveAppraisal(payload)
@@ -710,20 +738,17 @@ function NewAppraisalPageContent() {
                         router.replace(`/appraisal/new?${params.toString()}`, { scroll: false })
                     }
 
-                    // Side-effects (link to deal, auto-create deal) only run on
-                    // the FIRST insert — guarded by !isUpdate to avoid creating
-                    // multiple deals for the same appraisal across recalcs.
+                    // Side-effects (auto-create deal) only run on the FIRST
+                    // insert — guarded by !isUpdate to avoid creating multiple
+                    // deals for the same appraisal across recalcs.
+                    //
+                    // NOTA: el vínculo con un PROCESO EXISTENTE (dealId) ya lo
+                    // resolvió el endpoint POST /api/appraisals en la misma
+                    // request (server-side, service role, confiable). Antes se
+                    // hacía con un fetch aparte cuyo error se tragaba — esa era
+                    // una de las causas de "la tasación no quedó vinculada".
                     if (!isUpdate && appraisalId) {
-                        // Link appraisal to deal without advancing stage (asesor marks it manually)
-                        if (dealId) {
-                            try {
-                                await fetch(`/api/deals/${dealId}/link-appraisal`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ appraisal_id: appraisalId }),
-                                })
-                            } catch (e) { console.error('Error linking deal:', e) }
-                        } else if (subject) {
+                        if (!dealId && subject) {
                             // Auto-create deal for tasaciones without a process.
                             //
                             // Derive property fields from subject features so the auto-created deal
@@ -1492,9 +1517,17 @@ function NewAppraisalPageContent() {
                                     <Button variant="ghost" size="sm" className="text-red-500 h-auto p-0 underline" onClick={() => {
                                         if (!subject || !valuationResult) return
                                         setSaveStatus('saving')
-                                        const payload = { subject, comparables, overpriced, purchaseProperties, valuationResult, origin: origin || undefined, assignedTo: assignedTo || undefined, reportEdits }
-                                        // Use the same id-tracking logic: if we already saved once, UPDATE not INSERT.
-                                        const existingId = editId || savedAppraisalId
+                                        // Usamos el REF (sincrónico), no el state, por el mismo motivo
+                                        // que el guardado principal: evitar un INSERT duplicado si el id
+                                        // del primer guardado aún no se reflejó en el state.
+                                        const existingId = editId || savedAppraisalIdRef.current
+                                        const payload = {
+                                            subject, comparables, overpriced, purchaseProperties, valuationResult,
+                                            origin: origin || undefined, assignedTo: assignedTo || undefined, reportEdits,
+                                            // En un reintento de PRIMER insert, pasar dealId para que el
+                                            // endpoint vincule la tasación al proceso (igual que el flujo normal).
+                                            ...(!existingId && dealId ? { dealId } : {}),
+                                        }
                                         const promise = existingId
                                             ? updateAppraisal(existingId, payload)
                                             : saveAppraisal(payload).then(newId => {

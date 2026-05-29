@@ -16,6 +16,9 @@ export interface SaveAppraisalInput {
     origin?: string
     assignedTo?: string
     reportEdits?: ReportEdits
+    /** Si se provee, el endpoint POST vincula la tasación a este proceso (deal)
+     *  en la misma request (sin avanzar el stage). Solo aplica al primer insert. */
+    dealId?: string
 }
 
 export interface AppraisalSummary {
@@ -106,115 +109,40 @@ export function sanitizeValuationResultForStorage(vr: ValuationResult): Valuatio
 
 // ---- CRUD Functions ----
 
+/**
+ * Construye un Error enriquecido con code/details/hint a partir de la respuesta
+ * de los endpoints, para que los consumidores (banner del wizard) muestren el
+ * detalle real del fallo igual que antes (cuando el error venía de PostgREST).
+ */
+function buildApiError(data: Record<string, unknown> | null, fallback: string): Error {
+    const err = new Error((data?.error as string) || fallback) as Error & {
+        code?: string; details?: string; hint?: string
+    }
+    if (data?.code) err.code = String(data.code)
+    if (data?.detail) err.details = String(data.detail)
+    if (data?.hint) err.hint = String(data.hint)
+    return err
+}
+
+/**
+ * Crea una tasación. Persiste SERVER-SIDE vía `POST /api/appraisals`
+ * (service role, atómico con cleanup compensatorio). Si `input.dealId` está
+ * presente, el endpoint vincula la tasación al proceso en la misma request.
+ *
+ * Mantiene la firma original (`Promise<string>` con el id) para no romper a los
+ * consumidores existentes.
+ */
 export async function saveAppraisal(input: SaveAppraisalInput): Promise<string> {
-    const supabase = createClient()
-    const { subject, comparables, valuationResult, notes, userId, origin, assignedTo } = input
-
-    // Lean valuation_result para evitar payload gigante (ver helper).
-    const leanValuation = sanitizeValuationResultForStorage(valuationResult)
-
-    // Insert main appraisal
-    const { data: appraisal, error: appraisalError } = await supabase
-        .from('appraisals')
-        .insert({
-            user_id: userId || null,
-            property_title: subject.title,
-            property_location: subject.location,
-            property_description: subject.description,
-            property_url: subject.url,
-            property_price: subject.price,
-            property_currency: subject.currency,
-            property_images: subject.images,
-            property_features: subject.features as any,
-            valuation_result: leanValuation as any,
-            publication_price: leanValuation.publicationPrice,
-            sale_value: leanValuation.saleValue,
-            money_in_hand: leanValuation.moneyInHand,
-            currency: leanValuation.currency,
-            comparable_count: comparables.length,
-            notes,
-            origin: origin || null,
-            assigned_to: assignedTo || null,
-            report_edits: (input.reportEdits ?? null) as never,
-        })
-        .select('id')
-        .single()
-
-    if (appraisalError) throw appraisalError
-
-    // Insert comparables with their analysis data
-    const comparableRows = comparables.map((comp, index) => {
-        const analysis = valuationResult.comparableAnalysis[index]
-        // Strip the nested property from analysis to avoid data duplication
-        const { property: _property, ...analysisData } = analysis || {} as any
-
-        return {
-            appraisal_id: appraisal.id,
-            title: comp.title,
-            location: comp.location,
-            url: comp.url,
-            price: comp.price,
-            currency: comp.currency,
-            description: comp.description,
-            images: comp.images,
-            features: comp.features as any,
-            analysis: analysisData as any,
-            sort_order: index,
-        }
+    const res = await fetch('/api/appraisals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
     })
-
-    if (comparableRows.length > 0) {
-        const { error: compError } = await supabase
-            .from('appraisal_comparables')
-            .insert(comparableRows)
-        if (compError) throw compError
+    const data = await res.json().catch(() => null)
+    if (!res.ok || !data?.id) {
+        throw buildApiError(data, 'No se pudo guardar la tasación')
     }
-
-    // Insert overpriced properties (same table, marked via analysis field)
-    const overpricedRows = (input.overpriced || []).map((prop, index) => ({
-        appraisal_id: appraisal.id,
-        title: prop.title,
-        location: prop.location,
-        url: prop.url,
-        price: prop.price,
-        currency: prop.currency,
-        description: prop.description,
-        images: prop.images,
-        features: prop.features as any,
-        analysis: { propertyType: 'overpriced' } as any,
-        sort_order: 1000 + index,
-    }))
-
-    if (overpricedRows.length > 0) {
-        const { error: opError } = await supabase
-            .from('appraisal_comparables')
-            .insert(overpricedRows)
-        if (opError) throw opError
-    }
-
-    // Insert purchase properties (same table, marked via analysis field)
-    const purchaseRows = (input.purchaseProperties || []).map((prop, index) => ({
-        appraisal_id: appraisal.id,
-        title: prop.title,
-        location: prop.location,
-        url: prop.url,
-        price: prop.price,
-        currency: prop.currency,
-        description: prop.description,
-        images: prop.images,
-        features: prop.features as any,
-        analysis: { propertyType: 'purchase' } as any,
-        sort_order: 2000 + index,
-    }))
-
-    if (purchaseRows.length > 0) {
-        const { error: purchaseError } = await supabase
-            .from('appraisal_comparables')
-            .insert(purchaseRows)
-        if (purchaseError) throw purchaseError
-    }
-
-    return appraisal.id
+    return data.id as string
 }
 
 export async function getAppraisals(
@@ -320,121 +248,19 @@ export async function deleteAppraisal(id: string): Promise<void> {
     if (error) throw error
 }
 
+/**
+ * Actualiza una tasación existente. Persiste SERVER-SIDE vía
+ * `PUT /api/appraisals/[id]` (service role: update row + replace comparables).
+ * Mantiene la firma original (`Promise<void>`).
+ */
 export async function updateAppraisal(id: string, input: SaveAppraisalInput): Promise<void> {
-    const supabase = createClient()
-    const { subject, comparables, valuationResult, notes, origin, assignedTo } = input
-
-    // Lean valuation_result para evitar payload gigante (ver helper).
-    const leanValuation = sanitizeValuationResultForStorage(valuationResult)
-
-    // 1. Update main appraisal row.
-    // origin and assigned_to are persisted on every update so the dropdowns
-    // stay in sync after recalcs (otherwise a user changing the asesor and
-    // clicking "Recalcular" would silently lose the change).
-    const updatePayload: Record<string, unknown> = {
-        property_title: subject.title,
-        property_location: subject.location,
-        property_description: subject.description,
-        property_url: subject.url,
-        property_price: subject.price,
-        property_currency: subject.currency,
-        property_images: subject.images,
-        property_features: subject.features as any,
-        valuation_result: leanValuation as any,
-        publication_price: leanValuation.publicationPrice,
-        sale_value: leanValuation.saleValue,
-        money_in_hand: leanValuation.moneyInHand,
-        currency: leanValuation.currency,
-        comparable_count: comparables.length,
-        notes,
-        report_edits: input.reportEdits ?? null,
-    }
-    if (origin !== undefined) updatePayload.origin = origin || null
-    if (assignedTo !== undefined) updatePayload.assigned_to = assignedTo || null
-
-    const { error: updateError } = await supabase
-        .from('appraisals')
-        .update(updatePayload as never)
-        .eq('id', id)
-
-    if (updateError) throw updateError
-
-    // 2. Delete existing comparables (simpler than reconciling row-by-row)
-    const { error: deleteError } = await supabase
-        .from('appraisal_comparables')
-        .delete()
-        .eq('appraisal_id', id)
-
-    if (deleteError) throw deleteError
-
-    // 3. Re-insert comparables (same shape as saveAppraisal)
-    const comparableRows = comparables.map((comp, index) => {
-        const analysis = valuationResult.comparableAnalysis[index]
-        const { property: _property, ...analysisData } = analysis || {} as any
-
-        return {
-            appraisal_id: id,
-            title: comp.title,
-            location: comp.location,
-            url: comp.url,
-            price: comp.price,
-            currency: comp.currency,
-            description: comp.description,
-            images: comp.images,
-            features: comp.features as any,
-            analysis: analysisData as any,
-            sort_order: index,
-        }
+    const res = await fetch(`/api/appraisals/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
     })
-
-    if (comparableRows.length > 0) {
-        const { error: compError } = await supabase
-            .from('appraisal_comparables')
-            .insert(comparableRows)
-        if (compError) throw compError
-    }
-
-    // 4. Re-insert overpriced
-    const overpricedRows = (input.overpriced || []).map((prop, index) => ({
-        appraisal_id: id,
-        title: prop.title,
-        location: prop.location,
-        url: prop.url,
-        price: prop.price,
-        currency: prop.currency,
-        description: prop.description,
-        images: prop.images,
-        features: prop.features as any,
-        analysis: { propertyType: 'overpriced' } as any,
-        sort_order: 1000 + index,
-    }))
-
-    if (overpricedRows.length > 0) {
-        const { error: opError } = await supabase
-            .from('appraisal_comparables')
-            .insert(overpricedRows)
-        if (opError) throw opError
-    }
-
-    // 5. Re-insert purchase properties
-    const purchaseRows = (input.purchaseProperties || []).map((prop, index) => ({
-        appraisal_id: id,
-        title: prop.title,
-        location: prop.location,
-        url: prop.url,
-        price: prop.price,
-        currency: prop.currency,
-        description: prop.description,
-        images: prop.images,
-        features: prop.features as any,
-        analysis: { propertyType: 'purchase' } as any,
-        sort_order: 2000 + index,
-    }))
-
-    if (purchaseRows.length > 0) {
-        const { error: purchaseError } = await supabase
-            .from('appraisal_comparables')
-            .insert(purchaseRows)
-        if (purchaseError) throw purchaseError
+    if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw buildApiError(data, 'No se pudo actualizar la tasación')
     }
 }
