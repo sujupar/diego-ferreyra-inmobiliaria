@@ -321,11 +321,11 @@ export default function PropertyDetailPage() {
                   </p>
                 )}
                 {property.ghl_custom_fields && Object.keys(property.ghl_custom_fields).length > 0 && (
-                  <details className="text-xs text-amber-700 dark:text-amber-300 mt-2">
-                    <summary className="cursor-pointer">Ver datos crudos importados de GHL ({Object.keys(property.ghl_custom_fields).length} campos)</summary>
-                    <pre className="mt-2 p-2 bg-amber-100/60 dark:bg-amber-900/30 rounded text-[11px] overflow-x-auto whitespace-pre-wrap">
-                      {JSON.stringify(property.ghl_custom_fields, null, 2)}
-                    </pre>
+                  <details className="text-sm text-amber-800 dark:text-amber-200 mt-2">
+                    <summary className="cursor-pointer text-xs">Ver datos importados de GHL ({Object.keys(property.ghl_custom_fields).length} campos)</summary>
+                    <div className="mt-2 p-3 bg-amber-100/60 dark:bg-amber-900/30 rounded">
+                      <VisitDataView data={property.ghl_custom_fields} />
+                    </div>
                   </details>
                 )}
               </div>
