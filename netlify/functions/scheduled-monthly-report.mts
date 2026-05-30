@@ -1,611 +1,234 @@
 import type { Config } from '@netlify/functions'
 import { createClient } from '@supabase/supabase-js'
-// Resend via fetch — no SDK import to keep the function bundle lean.
-const RESEND_FROM = process.env.EMAIL_FROM_REPORTS
-  ?? 'Diego Ferreyra Inmobiliaria <reportes@inmodf.com.ar>'
-const RESEND_REPLY_TO = process.env.EMAIL_REPLY_TO
-  ?? 'contacto.julianparra@gmail.com'
 
+/**
+ * Reporte Mensual de Marketing — corre el primer sábado del mes 06:00 AM
+ * Argentina (09:00 UTC). Ventana: mes calendario ANTERIOR completo.
+ *
+ * Contenido: UNA sola tabla de embudo (cantidades, % conversión, costo ARS/USD).
+ * Fuentes: Meta Ads (account-level) + Embudo CRM (RPC get_funnel_metrics).
+ * Helpers inlineados (no se puede importar @/lib en Netlify). Mantener
+ * sincronizado con lib/marketing/funnel-report.ts y las otras 3 funciones.
+ */
+
+const META_API_BASE = 'https://graph.facebook.com/v21.0'
+const RESEND_FROM = process.env.EMAIL_FROM_REPORTS ?? 'Diego Ferreyra Inmobiliaria <reportes@inmodf.com.ar>'
+const RESEND_REPLY_TO = process.env.EMAIL_REPLY_TO ?? 'contacto.julianparra@gmail.com'
+
+// ===================== Helpers compartidos (sincronizar entre las 4) =====================
 async function sendViaResend(opts: { to: string[]; subject: string; html: string }) {
   if (!process.env.RESEND_API_KEY) throw new Error('RESEND_API_KEY not set')
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ from: RESEND_FROM, to: opts.to, replyTo: RESEND_REPLY_TO, subject: opts.subject, html: opts.html }),
   })
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`Resend ${res.status}: ${body}`)
-  }
+  if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text()}`)
 }
 
-/**
- * Monthly Marketing Report - runs 1st of each month at 8:00 AM Argentina (UTC-3)
- * Aggregates data from the previous calendar month.
- */
-
-const META_API_BASE = 'https://graph.facebook.com/v21.0'
-const GHL_API_BASE = 'https://services.leadconnectorhq.com'
-
-// ===== Excel-table-builder inline (Fase 6) =====
-const _TH = 'padding:6px 10px;border:1px solid #9ca3af;background:#e5e7eb;color:#374151;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;'
-const _TD = 'padding:6px 10px;border:1px solid #d1d5db;font-size:13px;color:#1f2937;'
-function _excelTable(title: string, cols: string[], rows: string[][]): string {
-  if (rows.length === 0) return `<h3 style="font-family:Arial,sans-serif;margin:18px 0 6px 0;font-size:14px;color:#111827;">${title}</h3><p style="font-family:Arial,sans-serif;font-size:13px;color:#6b7280;margin:0 0 18px 0;">Sin datos.</p>`
-  const head = cols.map((c, i) => `<th style="${_TH}text-align:${i === 0 ? 'left' : 'right'};">${c}</th>`).join('')
-  const body = rows.map(r => '<tr>' + r.map((v, i) => {
-    let color = ''; const text = v
-    if (/^\+\d/.test(text)) color = 'color:#15803d;'
-    else if (/^-\d/.test(text)) color = 'color:#dc2626;'
-    const align = i === 0 ? 'left' : 'right'
-    const bold = i === 0 ? 'font-weight:600;' : ''
-    return `<td style="${_TD}text-align:${align};${bold}${color}">${text}</td>`
-  }).join('') + '</tr>').join('')
-  return `<h3 style="font-family:Arial,sans-serif;margin:18px 0 6px 0;font-size:14px;color:#111827;">${title}</h3>
-<table style="border-collapse:collapse;font-family:Arial,sans-serif;width:100%;max-width:720px;margin-bottom:18px;">
-  <thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
-}
-function _fmtDelta(cur: number, prev: number): string {
-  if (cur === 0 && prev === 0) return '—'
-  if (prev === 0) return '+∞'
-  const pct = Math.round(((cur - prev) / prev) * 100)
-  if (pct === 0) return '0%'
-  return pct > 0 ? `+${pct}%` : `${pct}%`
-}
-const FUNNEL_LABELS: Record<string, string> = {
-  class_registrations:    'Registros a clase gratuita',
-  appraisal_requests:     'Solicitudes de tasación',
-  appointments_scheduled: 'Tasaciones agendadas',
-  visits_completed:       'Visitas realizadas',
-  appraisals_delivered:   'Tasaciones entregadas',
-  properties_captured:    'Propiedades captadas',
-  deals_lost:             'Deals perdidos',
-}
-const FUNNEL_ORDER = ['class_registrations','appraisal_requests','appointments_scheduled','visits_completed','appraisals_delivered','properties_captured','deals_lost']
-async function _fetchFunnelMetrics(supabase: unknown, from: string, to: string): Promise<Record<string, number>> {
-  const { data, error } = await (supabase as { rpc: (n: string, args: unknown) => Promise<{ data: unknown; error: { message: string } | null }> })
-    .rpc('get_funnel_metrics', { p_from: from, p_to: to })
-  if (error) { console.error('[Report] get_funnel_metrics error:', error.message); return {} }
-  const out: Record<string, number> = {}
-  for (const r of ((data ?? []) as Array<{ metric: string; value: number | string }>)) out[r.metric] = Number(r.value)
-  return out
-}
-function _buildFunnelSection(today: Record<string, number>, prev: Record<string, number>, label: string): string {
-  const rows = FUNNEL_ORDER.map(k => [
-    FUNNEL_LABELS[k], String(today[k] ?? 0), String(prev[k] ?? 0), _fmtDelta(today[k] ?? 0, prev[k] ?? 0),
-  ])
-  return _excelTable(`Embudo CRM — ${label}`, ['Métrica', 'Actual', 'Anterior', 'Δ %'], rows)
-}
-
-export default async function handler() {
-  console.log(`[Monthly Report] Triggered at: ${new Date().toISOString()}`)
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-
-  const { data: settings } = await supabase
-    .from('report_settings')
-    .select('recipients, monthly_enabled')
-    .eq('id', 'default')
-    .single()
-
-  if (!settings?.monthly_enabled || !settings.recipients?.length) {
-    console.log('Monthly report disabled or no recipients')
-    return
-  }
-
-  // Deduplication: skip if already sent this month
-  const { data: existingReport } = await supabase
-    .from('email_report_log')
-    .select('id')
-    .eq('report_type', 'monthly')
-    .gte('sent_at', new Date().toISOString().split('T')[0] + 'T00:00:00Z')
-    .eq('status', 'sent')
-    .limit(1)
-
-  if (existingReport && existingReport.length > 0) {
-    console.log('[Monthly Report] Already sent today, skipping duplicate')
-    return
-  }
-
-  // Previous calendar month
-  const today = new Date()
-  const firstOfThisMonth = new Date(today.getFullYear(), today.getMonth(), 1)
-  const lastOfPrevMonth = new Date(firstOfThisMonth.getTime() - 86400000)
-  const firstOfPrevMonth = new Date(lastOfPrevMonth.getFullYear(), lastOfPrevMonth.getMonth(), 1)
-
-  const dateFromStr = firstOfPrevMonth.toISOString().split('T')[0]
-  const dateToStr = lastOfPrevMonth.toISOString().split('T')[0]
-
-  // Previous month for comparison
-  const prevMonthLast = new Date(firstOfPrevMonth.getTime() - 86400000)
-  const prevMonthFirst = new Date(prevMonthLast.getFullYear(), prevMonthLast.getMonth(), 1)
-  const prevFromStr = prevMonthFirst.toISOString().split('T')[0]
-  const prevToStr = prevMonthLast.toISOString().split('T')[0]
-
-  // Data source status tracker
-  const dataSourceStatus: Record<string, { ok: boolean; error?: string; count?: number }> = {
-    meta_ads: { ok: false },
-    ghl_pipeline: { ok: false },
-    ghl_calls: { ok: false },
-    ghl_commercial: { ok: false },
-    funnel_crm: { ok: false },
-  }
-
-  // Fase 6 — Embudo CRM (RPCs de Fase 3)
-  let funnelSection = ''
+async function _getUsdToArs(): Promise<number> {
+  const env = process.env.USD_TO_ARS
+  if (env) { const n = parseFloat(env); if (Number.isFinite(n) && n > 0) return n }
   try {
-    const todayFunnel = await _fetchFunnelMetrics(supabase, dateFromStr, dateToStr)
-    const prevFunnel = await _fetchFunnelMetrics(supabase, prevFromStr, prevToStr)
-    funnelSection = _buildFunnelSection(todayFunnel, prevFunnel, `${dateFromStr} a ${dateToStr}`)
-    dataSourceStatus.funnel_crm = { ok: true }
-  } catch (err) {
-    console.error('[Monthly Report] funnel CRM error:', err)
-    dataSourceStatus.funnel_crm = { ok: false, error: err instanceof Error ? err.message : 'Unknown error' }
-  }
-
-  // Commercial actions tracking
-  const commercialActions = { tasaciones_solicitadas: 0, tasaciones_coordinadas: 0, tasaciones_realizadas: 0, captaciones: 0 }
-
-  // Fetch Meta Ads for the month
-  let metaSnapshots: Array<{
-    campaign_id: string; campaign_name: string; impressions: number;
-    clicks: number; spend: number; leads: number; cost_per_lead: number | null;
-  }> = []
-
-  try {
-    const adAccountId = process.env.META_AD_ACCOUNT_ID?.startsWith('act_')
-      ? process.env.META_AD_ACCOUNT_ID
-      : `act_${process.env.META_AD_ACCOUNT_ID}`
-
-    const fields = 'campaign_id,campaign_name,impressions,clicks,ctr,spend,actions'
-    const timeRange = JSON.stringify({ since: dateFromStr, until: dateToStr })
-    const url = `${META_API_BASE}/${adAccountId}/insights?fields=${fields}&time_range=${encodeURIComponent(timeRange)}&level=campaign&access_token=${process.env.META_ACCESS_TOKEN}`
-
-    const res = await fetch(url)
+    const res = await fetch('https://api.bluelytics.com.ar/v2/latest', { signal: AbortSignal.timeout(5000), headers: { accept: 'application/json' } })
     if (res.ok) {
-      const data = await res.json()
-      metaSnapshots = (data.data || []).map((insight: Record<string, unknown>) => {
-        const actions = insight.actions as Array<{ action_type: string; value: string }> | undefined
-        const LEAD_TYPES = ['lead', 'complete_registration', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead', 'offsite_conversion.fb_pixel_complete_registration']
-        let leadCount = 0
-        if (actions) {
-          for (const lt of LEAD_TYPES) {
-            const match = actions.find(a => a.action_type === lt)
-            if (match) { leadCount = parseInt(match.value, 10); if (leadCount > 0) break }
-          }
-        }
-        let landingPageViews = 0
-        if (actions) {
-          const lpv = actions.find(a => a.action_type === 'landing_page_view')
-          if (lpv) landingPageViews = parseInt(lpv.value, 10) || 0
-        }
-        const spend = parseFloat(insight.spend as string)
-        return {
-          campaign_id: insight.campaign_id as string,
-          campaign_name: insight.campaign_name as string,
-          impressions: parseInt(insight.impressions as string, 10),
-          clicks: parseInt(insight.clicks as string, 10),
-          landing_page_views: landingPageViews,
-          spend,
-          leads: leadCount,
-          cost_per_lead: leadCount > 0 ? spend / leadCount : null,
-        }
-      })
-      dataSourceStatus.meta_ads = { ok: true, count: metaSnapshots.length }
-    } else {
-      const errorBody = await res.text()
-      console.error(`[Monthly Report] Meta API HTTP ${res.status}:`, errorBody)
-      dataSourceStatus.meta_ads = { ok: false, error: `HTTP ${res.status}: ${errorBody.substring(0, 200)}` }
+      const d = await res.json()
+      const blue = d.blue?.value_avg
+      if (blue && Number.isFinite(blue) && blue > 0) return blue
+      const oficial = d.oficial?.value_avg
+      if (oficial && Number.isFinite(oficial) && oficial > 0) return oficial
     }
-  } catch (err) {
-    console.error('[Monthly Report] Meta API error:', err)
-    dataSourceStatus.meta_ads = { ok: false, error: err instanceof Error ? err.message : 'Unknown error' }
+  } catch { /* fallback abajo */ }
+  return 1200
+}
+
+const _ars = (v: number) => '$' + Math.round(v).toLocaleString('es-AR')
+const _usd = (v: number) => 'US$' + v.toLocaleString('es-AR', v > 0 && v < 1 ? { minimumFractionDigits: 2, maximumFractionDigits: 4 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const _int = (v: number) => v.toLocaleString('es-AR')
+const _pct = (num: number, den: number) => den > 0 ? (num / den * 100).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%' : '—'
+const _fmtDate = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+
+interface FunnelData {
+  spendArs: number; reach: number; landingPageViews: number; metaLeads: number
+  appraisalRequests: number; appointmentsScheduled: number; appraisalsDelivered: number; propertiesCaptured: number
+}
+
+const LEAD_ACTION_TYPES = ['lead', 'complete_registration', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead', 'offsite_conversion.fb_pixel_complete_registration']
+
+async function _fetchMetaAccount(from: string, to: string): Promise<{ spendArs: number; reach: number; landingPageViews: number; metaLeads: number }> {
+  const raw = process.env.META_AD_ACCOUNT_ID
+  const token = process.env.META_ACCESS_TOKEN
+  if (!raw || !token) throw new Error('Falta META_AD_ACCOUNT_ID o META_ACCESS_TOKEN')
+  const accountId = raw.startsWith('act_') ? raw : `act_${raw}`
+  const timeRange = JSON.stringify({ since: from, until: to })
+  const url = `${META_API_BASE}/${accountId}/insights?fields=spend,impressions,reach,actions&time_range=${encodeURIComponent(timeRange)}&access_token=${token}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Meta API HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  const json = await res.json()
+  const row = json.data?.[0]
+  if (!row) return { spendArs: 0, reach: 0, landingPageViews: 0, metaLeads: 0 }
+  const actions = (row.actions ?? []) as Array<{ action_type: string; value: string }>
+  let metaLeads = 0
+  for (const t of LEAD_ACTION_TYPES) { const m = actions.find(a => a.action_type === t); if (m) { metaLeads = parseInt(m.value, 10) || 0; if (metaLeads > 0) break } }
+  const lpv = actions.find(a => a.action_type === 'landing_page_view')
+  return {
+    spendArs: parseFloat(row.spend ?? '0') || 0,
+    reach: parseInt(row.reach ?? '0', 10) || 0,
+    landingPageViews: lpv ? (parseInt(lpv.value, 10) || 0) : 0,
+    metaLeads,
   }
+}
 
-  // Fetch GHL pipeline (filtered by creation date)
-  let pipelineStages: Array<{ stage_name: string; contact_count: number; new_contacts: number; opportunity_value: number }> = []
-
-  try {
-    const ghlHeaders = {
-      'Authorization': `Bearer ${process.env.GHL_API_KEY}`,
-      'Version': '2021-07-28',
-      'Content-Type': 'application/json',
-    }
-    const startOfRange = new Date(dateFromStr + 'T00:00:00Z')
-    const endOfRange = new Date(dateToStr + 'T23:59:59Z')
-
-    const pRes = await fetch(`${GHL_API_BASE}/opportunities/pipelines?locationId=${process.env.GHL_LOCATION_ID}`, { headers: ghlHeaders })
-    if (pRes.ok) {
-      const { pipelines: allPipelines } = await pRes.json()
-      const pipelines = allPipelines.filter((p: { name: string }) => p.name === '🟢 GESTIÓN COMERCIAL - PROPIETARIOS')
-
-      if (pipelines.length === 0) {
-        console.warn('[Monthly Report] Pipeline "🟢 GESTIÓN COMERCIAL - PROPIETARIOS" not found')
-        dataSourceStatus.ghl_pipeline = { ok: false, error: 'Pipeline "🟢 GESTIÓN COMERCIAL - PROPIETARIOS" no encontrado' }
-      }
-
-      for (const pipeline of pipelines) {
-        // Paginated fetch of all opportunities
-        let allOpportunities: Array<Record<string, unknown>> = []
-        let page = 1
-        let hasMore = true
-        while (hasMore && page <= 50) {
-          const oRes = await fetch(
-            `${GHL_API_BASE}/opportunities/search?location_id=${process.env.GHL_LOCATION_ID}&pipeline_id=${pipeline.id}&limit=100&page=${page}`,
-            { headers: ghlHeaders }
-          )
-          if (!oRes.ok) {
-            const errText = await oRes.text()
-            throw new Error(`GHL opportunities HTTP ${oRes.status}: ${errText.substring(0, 200)}`)
-          }
-          const oData = await oRes.json()
-          allOpportunities.push(...(oData.opportunities || []))
-          hasMore = oData.meta?.nextPage != null
-          page++
-        }
-        console.log(`[Monthly Report] GHL pipeline "${pipeline.name}": ${allOpportunities.length} opportunities fetched (${page - 1} pages)`)
-
-        const stageCounts = new Map<string, { name: string; count: number; newCount: number; value: number }>()
-        for (const stage of pipeline.stages) stageCounts.set(stage.id, { name: stage.name, count: 0, newCount: 0, value: 0 })
-        for (const opp of allOpportunities) {
-          const sc = stageCounts.get(opp.pipelineStageId as string)
-          if (sc) {
-            sc.count++
-            sc.value += (opp.monetaryValue as number) || 0
-            const createdAt = new Date(opp.createdAt as string)
-            if (createdAt >= startOfRange && createdAt <= endOfRange) sc.newCount++
-          }
-
-          // Commercial actions from custom fields
-          const cf = (opp.customFields as Array<{key: string, value: string}>) || []
-          for (const field of cf) {
-            const dateVal = (field.value || '').substring(0, 10)
-            if (dateVal < dateFromStr || dateVal > dateToStr) continue
-            if (field.key.includes('fecha_solicitud_tasacin')) commercialActions.tasaciones_solicitadas++
-            else if (field.key.includes('fecha_coordinacin_tasacin')) commercialActions.tasaciones_coordinadas++
-            else if (field.key.includes('fecha_realizacin_tasacin')) commercialActions.tasaciones_realizadas++
-            else if (field.key.includes('fecha_de_captacin_de_propiedad')) commercialActions.captaciones++
-          }
-        }
-
-        pipelineStages.push(...Array.from(stageCounts.values()).map(sc => ({
-          stage_name: sc.name, contact_count: sc.count, new_contacts: sc.newCount, opportunity_value: sc.value,
-        })))
-        dataSourceStatus.ghl_pipeline = { ok: true, count: allOpportunities.length }
-        dataSourceStatus.ghl_commercial = { ok: true }
-        console.log(`[Monthly Report] Commercial actions: ${JSON.stringify(commercialActions)}`)
-      }
-    } else {
-      const errorBody = await pRes.text()
-      console.error(`[Monthly Report] GHL Pipelines HTTP ${pRes.status}:`, errorBody)
-      dataSourceStatus.ghl_pipeline = { ok: false, error: `HTTP ${pRes.status}: ${errorBody.substring(0, 200)}` }
-    }
-  } catch (err) {
-    console.error('[Monthly Report] GHL pipeline error:', err)
-    dataSourceStatus.ghl_pipeline = { ok: false, error: err instanceof Error ? err.message : 'Unknown error' }
+interface FunnelRpcRow { metric: string; value: number | string }
+async function _fetchCrmFunnel(supabase: unknown, from: string, to: string): Promise<{ appraisalRequests: number; appointmentsScheduled: number; appraisalsDelivered: number; propertiesCaptured: number }> {
+  const { data, error } = await (supabase as { rpc: (n: string, a: unknown) => Promise<{ data: unknown; error: { message: string } | null }> }).rpc('get_funnel_metrics', { p_from: from, p_to: to })
+  if (error) throw new Error(`get_funnel_metrics: ${error.message}`)
+  const map = Object.fromEntries(((data ?? []) as FunnelRpcRow[]).map(r => [r.metric, Number(r.value)]))
+  return {
+    appraisalRequests: map.appraisal_requests ?? 0,
+    appointmentsScheduled: map.appointments_scheduled ?? 0,
+    appraisalsDelivered: map.appraisals_delivered ?? 0,
+    propertiesCaptured: map.properties_captured ?? 0,
   }
+}
 
-  // Fetch previous period pipeline for comparison
-  let prevPipelineStages: Array<{ stage_name: string; contact_count: number; new_contacts: number; opportunity_value: number }> = []
+const _TH = 'padding:8px 12px;border:1px solid #9ca3af;background:#111827;color:#fff;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;'
+const _TD = 'padding:8px 12px;border:1px solid #d1d5db;font-size:13px;color:#1f2937;'
+const _TITLE: Record<string, string> = { daily: 'Reporte Diario', weekly: 'Reporte Semanal', biweekly: 'Reporte Quincenal', monthly: 'Reporte Mensual' }
+const _SHORT: Record<string, string> = { daily: 'Diario', weekly: 'Semanal', biweekly: 'Quincenal', monthly: 'Mensual' }
 
-  try {
-    const ghlHeaders = {
-      'Authorization': `Bearer ${process.env.GHL_API_KEY}`,
-      'Version': '2021-07-28',
-      'Content-Type': 'application/json',
-    }
-    const prevStartOfRange = new Date(prevFromStr + 'T00:00:00Z')
-    const prevEndOfRange = new Date(prevToStr + 'T23:59:59Z')
+function _buildFunnelEmail(type: string, from: string, to: string, data: FunnelData, rate: number, warnings: string[]): { subject: string; html: string } {
+  const spendUsd = rate > 0 ? data.spendArs / rate : 0
+  const cost = (n: number) => n > 0 ? { ars: _ars(data.spendArs / n), usd: _usd(spendUsd / n) } : { ars: '—', usd: '—' }
+  const period = from === to ? _fmtDate(to) : `${_fmtDate(from)} — ${_fmtDate(to)}`
 
-    const pRes = await fetch(`${GHL_API_BASE}/opportunities/pipelines?locationId=${process.env.GHL_LOCATION_ID}`, { headers: ghlHeaders })
-    if (pRes.ok) {
-      const { pipelines: allPipelines } = await pRes.json()
-      const pipelines = allPipelines.filter((p: { name: string }) => p.name === '🟢 GESTIÓN COMERCIAL - PROPIETARIOS')
+  const head = '<tr>' + ['Etapa', 'Cantidad', 'Conversión', 'Costo ARS', 'Costo USD'].map((c, i) => `<th style="${_TH}text-align:${i === 0 ? 'left' : 'right'};">${c}</th>`).join('') + '</tr>'
+  const row = (cells: string[], opts: { bold?: boolean; hi?: boolean } = {}) => '<tr>' + cells.map((v, i) => {
+    const align = i === 0 ? 'left' : 'right'
+    const weight = (i === 0 || opts.bold) ? 'font-weight:700;' : ''
+    const bg = opts.hi ? 'background:#f9fafb;' : ''
+    return `<td style="${_TD}${bg}text-align:${align};${weight}">${v}</td>`
+  }).join('') + '</tr>'
 
-      for (const pipeline of pipelines) {
-        let allOpportunities: Array<Record<string, unknown>> = []
-        let page = 1
-        let hasMore = true
-        while (hasMore && page <= 50) {
-          const oRes = await fetch(
-            `${GHL_API_BASE}/opportunities/search?location_id=${process.env.GHL_LOCATION_ID}&pipeline_id=${pipeline.id}&limit=100&page=${page}`,
-            { headers: ghlHeaders }
-          )
-          if (!oRes.ok) break
-          const oData = await oRes.json()
-          allOpportunities.push(...(oData.opportunities || []))
-          hasMore = oData.meta?.nextPage != null
-          page++
-        }
-        console.log(`[Monthly Report] GHL prev period pipeline: ${allOpportunities.length} opportunities fetched`)
+  const steps: Array<{ label: string; count: number; prev: number | null }> = [
+    { label: 'Alcance', count: data.reach, prev: null },
+    { label: 'Visitas a la landing', count: data.landingPageViews, prev: data.reach },
+    { label: 'Descarga Guía / Prospectos', count: data.metaLeads, prev: data.landingPageViews },
+    { label: 'Leads de Tasación', count: data.appraisalRequests, prev: data.metaLeads },
+    { label: 'Tasaciones Agendadas', count: data.appointmentsScheduled, prev: data.appraisalRequests },
+    { label: 'Tasaciones Hechas', count: data.appraisalsDelivered, prev: data.appointmentsScheduled },
+    { label: 'Captaciones', count: data.propertiesCaptured, prev: data.appraisalsDelivered },
+  ]
+  const invRow = row(['Inversión Embudo', '—', '—', _ars(data.spendArs), _usd(spendUsd)], { bold: true, hi: true })
+  const stepRows = steps.map(s => { const c = cost(s.count); return row([s.label, _int(s.count), s.prev === null ? '—' : _pct(s.count, s.prev), c.ars, c.usd]) }).join('')
 
-        const stageCounts = new Map<string, { name: string; count: number; newCount: number; value: number }>()
-        for (const stage of pipeline.stages) stageCounts.set(stage.id, { name: stage.name, count: 0, newCount: 0, value: 0 })
-        for (const opp of allOpportunities) {
-          const sc = stageCounts.get(opp.pipelineStageId as string)
-          if (sc) {
-            sc.count++
-            sc.value += (opp.monetaryValue as number) || 0
-            const createdAt = new Date(opp.createdAt as string)
-            if (createdAt >= prevStartOfRange && createdAt <= prevEndOfRange) sc.newCount++
-          }
-        }
+  const warnBanner = warnings.length === 0 ? '' : `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;margin-bottom:20px;"><p style="color:#991b1b;font-weight:600;font-size:13px;margin:0 0 4px;">Algunas fuentes de datos fallaron (valores posiblemente incompletos):</p><ul style="margin:0;padding-left:18px;">${warnings.map(w => `<li style="color:#dc2626;font-size:12px;">${w}</li>`).join('')}</ul></div>`
 
-        prevPipelineStages.push(...Array.from(stageCounts.values()).map(sc => ({
-          stage_name: sc.name, contact_count: sc.count, new_contacts: sc.newCount, opportunity_value: sc.value,
-        })))
-      }
-    }
-  } catch (err) {
-    console.error('[Monthly Report] GHL prev period pipeline error:', err)
-  }
-
-  // Fetch GHL call stats
-  // GHL conversations: type=TYPE_PHONE, calls identified by lastMessageType=TYPE_CALL, dates are epoch millis
-  let callStats = { total: 0, answered: 0, missed: 0, totalDuration: 0, avgDuration: 0 }
-  try {
-    const ghlHeaders = { 'Authorization': `Bearer ${process.env.GHL_API_KEY}`, 'Version': '2021-07-28', 'Content-Type': 'application/json' }
-    const startEpoch = new Date(dateFromStr + 'T00:00:00Z').getTime()
-    const endEpoch = new Date(dateToStr + 'T23:59:59Z').getTime()
-
-    let callCount = 0
-    let hasMore = true
-    let startAfterCursor: number | null = null
-    let startAfterIdCursor: string | null = null
-    let pagesScanned = 0
-
-    while (hasMore && pagesScanned < 40) {
-      let callsUrl = `${GHL_API_BASE}/conversations/search?locationId=${process.env.GHL_LOCATION_ID}&limit=100`
-      if (startAfterCursor !== null && startAfterIdCursor !== null) {
-        callsUrl += `&startAfter=${startAfterCursor}&startAfterId=${startAfterIdCursor}`
-      }
-      const callsRes = await fetch(callsUrl, { headers: ghlHeaders })
-      if (!callsRes.ok) {
-        const errBody = await callsRes.text()
-        throw new Error(`GHL conversations HTTP ${callsRes.status}: ${errBody.substring(0, 200)}`)
-      }
-      const callsData = await callsRes.json()
-      const conversations: Array<Record<string, unknown>> = callsData.conversations || []
-      if (conversations.length === 0) break
-
-      for (const conv of conversations) {
-        if (conv.lastMessageType !== 'TYPE_CALL') continue
-        const msgDate = (conv.lastMessageDate as number) || 0
-        if (msgDate >= startEpoch && msgDate <= endEpoch) callCount++
-      }
-
-      const oldestInBatch = conversations[conversations.length - 1]
-      const oldestDate = (oldestInBatch.lastMessageDate as number) || (oldestInBatch.dateAdded as number) || 0
-      if (oldestDate < startEpoch) break
-
-      const lastConv = conversations[conversations.length - 1]
-      const sortArr = lastConv.sort as number[] | undefined
-      if (sortArr && sortArr.length > 0) {
-        startAfterCursor = sortArr[0]
-        startAfterIdCursor = lastConv.id as string
-      } else break
-
-      hasMore = conversations.length >= 100
-      pagesScanned++
-    }
-
-    callStats.total = callCount
-    callStats.answered = callCount
-    dataSourceStatus.ghl_calls = { ok: true, count: callStats.total }
-    console.log(`[Monthly Report] GHL calls: ${callStats.total} call conversations found (${pagesScanned + 1} pages scanned)`)
-  } catch (err) {
-    console.error('[Monthly Report] GHL calls error:', err)
-    dataSourceStatus.ghl_calls = { ok: false, error: err instanceof Error ? err.message : 'Unknown error' }
-  }
-
-  // Build health banner
-  const failedSources = Object.entries(dataSourceStatus).filter(([, s]) => !s.ok)
-  let healthBanner = ''
-  if (failedSources.length > 0) {
-    const labels: Record<string, string> = { meta_ads: 'Meta Ads', ghl_pipeline: 'Pipeline CRM', ghl_calls: 'Llamadas GHL' }
-    const failedList = failedSources.map(([name, s]) =>
-      `<li style="color:#dc2626;font-size:13px;margin-bottom:4px;">${labels[name] || name}: ${s.error || 'Sin datos'}</li>`
-    ).join('')
-    healthBanner = `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;margin-bottom:24px;">
-      <p style="color:#991b1b;font-weight:600;font-size:14px;margin:0 0 8px;">Advertencia: Algunas fuentes de datos fallaron</p>
-      <ul style="margin:0;padding-left:20px;">${failedList}</ul>
-    </div>`
-  }
-
-  // Build email
-  const totalLeads = metaSnapshots.reduce((s, c) => s + c.leads, 0)
-  const totalSpend = metaSnapshots.reduce((s, c) => s + c.spend, 0)
-  const totalClicks = metaSnapshots.reduce((s, c) => s + c.clicks, 0)
-  const totalImpressions = metaSnapshots.reduce((s, c) => s + c.impressions, 0)
-  const avgCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0
-  const avgCpl = totalLeads > 0 ? totalSpend / totalLeads : null
-
-  const fmt = (v: number) => `$${v.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  const fmtD = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-
-  const monthName = firstOfPrevMonth.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
-  const totalNewContacts = pipelineStages.reduce((s, st) => s + st.new_contacts, 0)
-
-  const campaignRows = metaSnapshots.map(c => `<tr>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;">${c.campaign_name}</td>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;">${c.impressions.toLocaleString('es-AR')}</td>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;">${c.clicks.toLocaleString('es-AR')}</td>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;">${c.leads}</td>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;">${fmt(c.spend)}</td>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;">${c.cost_per_lead !== null ? fmt(c.cost_per_lead) : '—'}</td>
-  </tr>`).join('')
-
-  const changeBadge = (current: number, prev: number, isCurrency = false) => {
-    const diff = current - prev
-    if (diff === 0 || prev === 0) return ''
-    const color = diff > 0 ? '#15803d' : '#dc2626'
-    const arrow = diff > 0 ? '&#9650;' : '&#9660;'
-    const val = isCurrency ? fmt(Math.abs(diff)) : Math.abs(diff).toString()
-    return ` <span style="color:${color};font-size:11px;font-weight:600;">${arrow}${val}</span>`
-  }
-
-  const pipelineHtml = pipelineStages.length > 0 ? `<table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#f3f4f6;">
-    <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;">ETAPA</th>
-    <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;">CONTACTOS</th>
-    <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;">NUEVOS</th>
-    <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;">VALOR</th>
-  </tr></thead><tbody>${pipelineStages.map(s => {
-    const prev = prevPipelineStages.find(p => p.stage_name === s.stage_name)
-    const prevCount = prev?.contact_count ?? 0
-    const prevValue = prev?.opportunity_value ?? 0
-    return `<tr>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;">${s.stage_name}</td>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;">${s.contact_count}${changeBadge(s.contact_count, prevCount)}</td>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;font-weight:600;color:#7c3aed;">${s.new_contacts}</td>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;text-align:right;">${fmt(s.opportunity_value)}${changeBadge(s.opportunity_value, prevValue, true)}</td>
-  </tr>`
-  }).join('')}</tbody></table>
-  <p style="color:#9ca3af;font-size:11px;margin:4px 0 0;">Comparado con el mes anterior</p>` : (
-    dataSourceStatus.ghl_pipeline.ok
-      ? '<p style="color:#9ca3af;">Sin datos de pipeline para este periodo.</p>'
-      : '<p style="color:#9ca3af;">No hay datos de pipeline.</p>'
-  )
-
-  // Always show calls section
-  let callsHtml = ''
-  if (dataSourceStatus.ghl_calls.ok && callStats.total > 0) {
-    callsHtml = `
-    <h2 style="color:#1f2937;font-size:18px;margin:24px 0 12px;">Llamadas</h2>
-    <div style="background:#eff6ff;border-radius:8px;padding:16px;text-align:center;margin-bottom:24px;">
-      <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Total Llamadas</p>
-      <p style="color:#1d4ed8;font-size:28px;font-weight:700;margin:4px 0 0;">${callStats.total}</p>
-    </div>`
-  } else if (!dataSourceStatus.ghl_calls.ok) {
-    callsHtml = `
-    <h2 style="color:#1f2937;font-size:18px;margin:24px 0 12px;">Llamadas</h2>
-    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;margin-bottom:24px;">
-      <p style="color:#dc2626;font-size:14px;margin:0;">Error al obtener datos de llamadas: ${dataSourceStatus.ghl_calls.error || 'Error desconocido'}</p>
-    </div>`
-  } else {
-    callsHtml = `
-    <h2 style="color:#1f2937;font-size:18px;margin:24px 0 12px;">Llamadas</h2>
-    <p style="color:#9ca3af;font-size:14px;">Sin llamadas registradas en este periodo.</p>`
-  }
-
-  const subjectPrefix = failedSources.length > 0 ? '[DATOS INCOMPLETOS] ' : ''
-  const totalPipelineContacts = pipelineStages.reduce((s, st) => s + st.contact_count, 0)
-
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:Arial,Helvetica,sans-serif;">
 <div style="max-width:680px;margin:0 auto;padding:32px 16px;">
   <div style="background:#111827;border-radius:12px 12px 0 0;padding:24px 32px;">
     <img src="https://meek-belekoy-dcf620.netlify.app/pdf-assets/logos/Logo%20Diego%20Ferreyra.png" alt="Diego Ferreyra Inmobiliaria" style="height:44px;margin-bottom:12px;" />
-    <p style="color:#9ca3af;font-size:14px;margin:4px 0 0;">Reporte Mensual de Marketing — ${monthName}</p>
+    <p style="color:#9ca3af;font-size:14px;margin:4px 0 0;">${_TITLE[type]} de Marketing</p>
   </div>
   <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;padding:32px;">
-    <p style="color:#6b7280;font-size:14px;margin:0 0 24px;">Periodo: <strong>${fmtD(dateFromStr)} — ${fmtD(dateToStr)}</strong></p>
-    ${healthBanner}
-    ${funnelSection}
-    <div style="display:flex;gap:12px;margin-bottom:32px;flex-wrap:wrap;">
-      <div style="flex:1;min-width:140px;background:#eff6ff;border-radius:8px;padding:16px;">
-        <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Leads del Mes</p>
-        <p style="color:#1d4ed8;font-size:28px;font-weight:700;margin:4px 0 0;">${totalLeads}</p>
-      </div>
-      <div style="flex:1;min-width:140px;background:#f0fdf4;border-radius:8px;padding:16px;">
-        <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Costo/Lead</p>
-        <p style="color:#15803d;font-size:28px;font-weight:700;margin:4px 0 0;">${avgCpl !== null ? fmt(avgCpl) : '—'}</p>
-      </div>
-      <div style="flex:1;min-width:140px;background:#fefce8;border-radius:8px;padding:16px;">
-        <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Gasto Total</p>
-        <p style="color:#a16207;font-size:28px;font-weight:700;margin:4px 0 0;">${fmt(totalSpend)}</p>
-      </div>
-      <div style="flex:1;min-width:140px;background:#faf5ff;border-radius:8px;padding:16px;">
-        <p style="color:#6b7280;font-size:12px;margin:0;text-transform:uppercase;">Nuevos Pipeline</p>
-        <p style="color:#7e22ce;font-size:28px;font-weight:700;margin:4px 0 0;">${totalNewContacts}</p>
-      </div>
-    </div>
-    <div style="border-top:2px solid #f3f4f6;margin:0 0 24px;"></div>
-    <h2 style="color:#1f2937;font-size:18px;margin:0 0 12px;">&#9733; Acciones Comerciales del Mes</h2>
-    <div style="display:flex;gap:12px;margin-bottom:32px;flex-wrap:wrap;">
-      <div style="flex:1;min-width:140px;background:#eff6ff;border-radius:8px;padding:16px;text-align:center;">
-        <p style="color:#6b7280;font-size:11px;margin:0;text-transform:uppercase;">Tasaciones Solicitadas</p>
-        <p style="color:#1d4ed8;font-size:28px;font-weight:700;margin:4px 0 0;">${commercialActions.tasaciones_solicitadas}</p>
-      </div>
-      <div style="flex:1;min-width:140px;background:#fefce8;border-radius:8px;padding:16px;text-align:center;">
-        <p style="color:#6b7280;font-size:11px;margin:0;text-transform:uppercase;">Tasaciones Coordinadas</p>
-        <p style="color:#d97706;font-size:28px;font-weight:700;margin:4px 0 0;">${commercialActions.tasaciones_coordinadas}</p>
-      </div>
-      <div style="flex:1;min-width:140px;background:#f0fdf4;border-radius:8px;padding:16px;text-align:center;">
-        <p style="color:#6b7280;font-size:11px;margin:0;text-transform:uppercase;">Tasaciones Realizadas</p>
-        <p style="color:#15803d;font-size:28px;font-weight:700;margin:4px 0 0;">${commercialActions.tasaciones_realizadas}</p>
-      </div>
-      <div style="flex:1;min-width:140px;background:#faf5ff;border-radius:8px;padding:16px;text-align:center;">
-        <p style="color:#6b7280;font-size:11px;margin:0;text-transform:uppercase;">Captaciones</p>
-        <p style="color:#7c3aed;font-size:28px;font-weight:700;margin:4px 0 0;">${commercialActions.captaciones}</p>
-      </div>
-    </div>
-    <div style="border-top:2px solid #f3f4f6;margin:0 0 24px;"></div>
-    <h2 style="color:#1f2937;font-size:18px;margin:0 0 12px;">Meta Ads — Resumen del Mes</h2>
-    ${metaSnapshots.length > 0 ? `<table style="width:100%;border-collapse:collapse;margin-bottom:32px;"><thead><tr style="background:#f3f4f6;">
-      <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;">CAMPANA</th>
-      <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;">IMPRESIONES</th>
-      <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;">CLICKS</th>
-      <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;">LEADS</th>
-      <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;">GASTO</th>
-      <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;">CPL</th>
-    </tr></thead><tbody>${campaignRows}</tbody></table>` : (
-      dataSourceStatus.meta_ads.ok
-        ? '<p style="color:#9ca3af;margin-bottom:32px;">Sin campanas activas en este periodo.</p>'
-        : '<p style="color:#9ca3af;margin-bottom:32px;">No hay datos de campanas.</p>'
-    )}
-    <h2 style="color:#1f2937;font-size:18px;margin:0 0 12px;">Pipeline CRM</h2>
-    ${pipelineHtml}
-    ${callsHtml}
+    <p style="color:#6b7280;font-size:14px;margin:0 0 20px;">Período: <strong style="color:#374151;">${period}</strong></p>
+    ${warnBanner}
+    <h2 style="color:#111827;font-size:18px;margin:0 0 12px;">Embudo de Captación</h2>
+    <table style="border-collapse:collapse;width:100%;max-width:680px;"><thead>${head}</thead><tbody>${invRow}${stepRows}</tbody></table>
+    <p style="color:#9ca3af;font-size:12px;margin:14px 0 0;">El costo de cada etapa es la inversión total dividida por la cantidad de esa etapa. Tipo de cambio: dólar blue.</p>
   </div>
-  <div style="text-align:center;padding:16px;"><p style="color:#9ca3af;font-size:12px;">Reporte generado automaticamente</p></div>
+  <div style="text-align:center;padding:16px;"><p style="color:#9ca3af;font-size:12px;margin:0;">Reporte generado automáticamente</p></div>
 </div></body></html>`
 
-  const caSubjectParts: string[] = []
-  if (commercialActions.tasaciones_coordinadas > 0) caSubjectParts.push(`${commercialActions.tasaciones_coordinadas} tasac. coord.`)
-  if (commercialActions.tasaciones_realizadas > 0) caSubjectParts.push(`${commercialActions.tasaciones_realizadas} tasac. realiz.`)
-  if (commercialActions.captaciones > 0) caSubjectParts.push(`${commercialActions.captaciones} captac.`)
-  const caSubject = caSubjectParts.length > 0 ? ` | ${caSubjectParts.join(' | ')}` : ''
-  const subject = `${subjectPrefix}Mensual Marketing (${monthName}) — ${totalLeads} leads${caSubject} | Gasto ${fmt(totalSpend)} | CPL ${avgCpl !== null ? fmt(avgCpl) : 'N/A'}`
+  const subject = `Embudo ${_SHORT[type]} — ${data.propertiesCaptured} captac. · ${data.appraisalRequests} leads tasación · ${period}`
+  return { subject, html }
+}
+
+async function _logRow(supabase: unknown, type: string, recipients: string[], subject: string, status: string, errorMessage: string | null, snapshot?: Record<string, unknown>) {
+  try {
+    await (supabase as { from: (t: string) => { insert: (v: unknown) => Promise<unknown> } }).from('email_report_log').insert({
+      report_type: type, recipients, subject, status, error_message: errorMessage, data_snapshot: snapshot ?? null,
+    })
+  } catch (e) {
+    console.error('[Report] no se pudo loguear en email_report_log:', e)
+  }
+}
+// =========================================================================================
+
+const REPORT_TYPE = 'monthly'
+
+export default async function handler() {
+  console.log(`[Monthly Report] Triggered at: ${new Date().toISOString()}`)
+  let supabase: ReturnType<typeof createClient>
+  try {
+    supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+  } catch (err) {
+    console.error('[Monthly Report] No se pudo crear el cliente Supabase:', err)
+    return
+  }
 
   try {
-    await sendViaResend({ to: settings.recipients, subject, html })
+    const { data: settings } = await supabase
+      .from('report_settings')
+      .select('recipients, monthly_enabled')
+      .eq('id', 'default')
+      .maybeSingle()
+    const s = settings as { recipients?: string[]; monthly_enabled?: boolean } | null
+    const recipients = s?.recipients ?? []
+    if (!s || s.monthly_enabled !== true || recipients.length === 0) {
+      const reason = !s ? 'no existe la fila report_settings (id=default)' : s.monthly_enabled !== true ? 'reporte mensual deshabilitado' : 'no hay destinatarios configurados'
+      console.log(`[Monthly Report] Omitido: ${reason}`)
+      await _logRow(supabase, REPORT_TYPE, recipients, '(monthly) omitido', 'skipped', reason)
+      return
+    }
 
-    await supabase.from('email_report_log').insert({
-      report_type: 'monthly',
-      recipients: settings.recipients,
-      subject,
-      status: 'sent',
-      data_snapshot: {
-        month: monthName,
-        total_leads: totalLeads,
-        total_spend: totalSpend,
-        avg_ctr: avgCtr,
-        avg_cpl: avgCpl,
-        data_sources: dataSourceStatus,
-        pipeline_stages_count: pipelineStages.length,
-        call_stats: callStats,
-      },
-    })
-    console.log('[Monthly Report] Sent successfully')
+    const { data: existing } = await supabase
+      .from('email_report_log')
+      .select('id')
+      .eq('report_type', REPORT_TYPE)
+      .gte('sent_at', new Date().toISOString().split('T')[0] + 'T00:00:00Z')
+      .eq('status', 'sent')
+      .limit(1)
+    if (existing && existing.length > 0) {
+      console.log('[Monthly Report] Ya enviado hoy, se omite duplicado')
+      await _logRow(supabase, REPORT_TYPE, recipients, '(monthly) duplicado', 'skipped', 'ya enviado hoy')
+      return
+    }
+
+    // Rango: mes calendario anterior completo (en UTC).
+    const today = new Date()
+    const firstOfThisMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1))
+    const lastOfPrevMonth = new Date(firstOfThisMonth.getTime() - 86400000)
+    const firstOfPrevMonth = new Date(Date.UTC(lastOfPrevMonth.getUTCFullYear(), lastOfPrevMonth.getUTCMonth(), 1))
+    const from = firstOfPrevMonth.toISOString().split('T')[0]
+    const to = lastOfPrevMonth.toISOString().split('T')[0]
+
+    const warnings: string[] = []
+    let meta = { spendArs: 0, reach: 0, landingPageViews: 0, metaLeads: 0 }
+    try { meta = await _fetchMetaAccount(from, to) } catch (e) { warnings.push('Meta Ads: ' + (e instanceof Error ? e.message : 'error')) }
+    let crm = { appraisalRequests: 0, appointmentsScheduled: 0, appraisalsDelivered: 0, propertiesCaptured: 0 }
+    try { crm = await _fetchCrmFunnel(supabase, from, to) } catch (e) { warnings.push('Embudo CRM: ' + (e instanceof Error ? e.message : 'error')) }
+    const data: FunnelData = { ...meta, ...crm }
+    const rate = await _getUsdToArs()
+
+    const { subject, html } = _buildFunnelEmail(REPORT_TYPE, from, to, data, rate, warnings)
+    try {
+      await sendViaResend({ to: recipients, subject, html })
+      await _logRow(supabase, REPORT_TYPE, recipients, subject, 'sent', warnings.length ? warnings.join(' | ') : null, { from, to, rate, ...data })
+      console.log('[Monthly Report] Enviado OK')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      console.error('[Monthly Report] Error al enviar:', msg)
+      await _logRow(supabase, REPORT_TYPE, recipients, subject, 'failed', msg, { from, to, ...data })
+    }
   } catch (err) {
-    console.error('[Monthly Report] Send error:', err)
-    await supabase.from('email_report_log').insert({
-      report_type: 'monthly',
-      recipients: settings.recipients,
-      subject,
-      status: 'failed',
-      error_message: err instanceof Error ? err.message : 'Unknown error',
-      data_snapshot: { data_sources: dataSourceStatus },
-    })
+    const msg = err instanceof Error ? err.message : 'Unknown error'
+    console.error('[Monthly Report] Error inesperado:', msg)
+    await _logRow(supabase, REPORT_TYPE, [], '(monthly) error', 'failed', msg)
   }
 }
 
 export const config: Config = {
-  schedule: '0 9 1-7 * 6', // First Saturday of month, 09:00 UTC = 6:00 AM Argentina (UTC-3)
+  schedule: '0 9 1-7 * 6', // Primer sábado del mes 09:00 UTC = 06:00 AM Argentina
 }
