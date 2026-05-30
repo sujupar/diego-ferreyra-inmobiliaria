@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { VisitDataView } from '@/components/pipeline/VisitDataView'
 
 export default async function ScheduledAppraisalDetailPage(
   { params }: { params: Promise<{ id: string }> }
@@ -88,9 +89,7 @@ export default async function ScheduledAppraisalDetailPage(
               </p>
             </CardHeader>
             <CardContent>
-              <pre className="text-xs bg-muted p-3 rounded overflow-auto max-h-96">
-                {JSON.stringify(deal.visit_data, null, 2)}
-              </pre>
+              <VisitDataView data={deal.visit_data} />
             </CardContent>
           </Card>
         )}

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { VisitDataView } from '@/components/pipeline/VisitDataView'
 
 interface FlowItem {
   label: string
@@ -34,11 +35,7 @@ export function FlowHistoryCard({
   if (data.buyerInterest && Object.keys(data.buyerInterest).length > 0) {
     items.push({
       label: 'Interés de compra',
-      value: (
-        <pre className="text-xs bg-muted p-2 rounded">
-          {JSON.stringify(data.buyerInterest, null, 2)}
-        </pre>
-      ),
+      value: <VisitDataView data={data.buyerInterest} />,
     })
   }
   if (data.visitData && Object.keys(data.visitData).length > 0) {
@@ -46,11 +43,7 @@ export function FlowHistoryCard({
       label: data.visitCompletedAt
         ? `Datos relevados en visita (${new Date(data.visitCompletedAt).toLocaleString('es-AR')})`
         : 'Datos relevados en visita',
-      value: (
-        <pre className="text-xs bg-muted p-2 rounded max-h-64 overflow-auto">
-          {JSON.stringify(data.visitData, null, 2)}
-        </pre>
-      ),
+      value: <VisitDataView data={data.visitData} />,
     })
   }
 

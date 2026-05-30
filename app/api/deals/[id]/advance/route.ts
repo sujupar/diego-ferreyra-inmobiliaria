@@ -17,7 +17,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const validStages: DealStage[] = ['clase_gratuita', 'request', 'scheduled', 'not_visited', 'visited', 'appraisal_sent', 'followup', 'captured', 'lost']
     if (!validStages.includes(stage)) return NextResponse.json({ error: 'Invalid stage' }, { status: 400 })
 
-    // If linking an appraisal, use the dedicated function
+    // VINCULAR la tasación al proceso (esto pasa al CREAR el documento, NO al
+    // entregarlo). Solo enlaza + crea la tarea de coordinación. NO avanza el
+    // stage y NO envía el email "Tasación entregada": crear ≠ entregar.
     if (appraisal_id && stage === 'appraisal_sent') {
       await linkAppraisalToDeal(id, appraisal_id)
 
@@ -34,13 +36,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         })
       } catch (e) { console.error('Task creation error:', e) }
 
-      // N3: tasación entregada — notifica coordinador+admins+dueños con PDF adjunto.
-      // Si falla (ej: PDF no se pudo generar), escala a admins.
-      await notifyWithEscalation(
-        () => notifyAppraisalSent(id, appraisal_id),
-        { failedNotificationType: 'appraisal_sent', entityType: 'deal', entityId: id },
-      )
-
       return NextResponse.json({ success: true })
     }
 
@@ -50,14 +45,37 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ success: true })
     }
 
+    // Capturamos el estado PREVIO antes de actualizar, para disparar emails solo
+    // en una TRANSICIÓN real de stage (evita reenviar la notificación si se vuelve
+    // a marcar el mismo stage — p.ej. doble click en "Marcar Tasación Entregada").
+    let priorStage: string | null = null
+    let linkedAppraisalId: string | null = null
+    try {
+      const prev = await getDeal(id)
+      priorStage = prev?.stage ?? null
+      linkedAppraisalId = prev?.appraisal_id ?? null
+    } catch (e) { console.error('advance: prior-state fetch error:', e) }
+
     // Otherwise just update the stage
     await updateDealStage(id, stage, notes)
 
-    // N2: visita realizada — notificar coordinador+admins+dueños.
-    if (stage === 'visited') {
+    // N2: visita realizada — notificar coordinador+admins+dueños (solo en transición).
+    if (stage === 'visited' && priorStage !== 'visited') {
       await notifyWithEscalation(
         () => notifyVisitCompleted(id),
         { failedNotificationType: 'visit_completed', entityType: 'deal', entityId: id },
+      )
+    }
+
+    // N3: TASACIÓN ENTREGADA — momento correcto: el asesor marcó manualmente
+    // "Marcar Tasación Entregada" (avanza a appraisal_sent SIN appraisal_id en el
+    // request; la tasación ya estaba vinculada al crearla). Enviamos el email con
+    // el PDF SOLO si: (a) es una transición real (no estaba ya en appraisal_sent)
+    // y (b) hay una tasación vinculada que entregar.
+    if (stage === 'appraisal_sent' && priorStage !== 'appraisal_sent' && linkedAppraisalId) {
+      await notifyWithEscalation(
+        () => notifyAppraisalSent(id, linkedAppraisalId!),
+        { failedNotificationType: 'appraisal_sent', entityType: 'deal', entityId: id },
       )
     }
 
