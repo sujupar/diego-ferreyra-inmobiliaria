@@ -18,6 +18,7 @@ import { PostCaptureActions } from '@/components/properties/PostCaptureActions'
 import { GenerateDescriptionCard } from '@/components/properties/GenerateDescriptionCard'
 import type { LegalDocsState, LegalFlags } from '@/types/legal-docs.types'
 import { FlowHistoryCard, type FlowHistoryData } from '@/app/(dashboard)/_components/FlowHistoryCard'
+import { VisitDataView } from '@/components/pipeline/VisitDataView'
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   draft: { label: 'Borrador', color: 'bg-gray-400' },
