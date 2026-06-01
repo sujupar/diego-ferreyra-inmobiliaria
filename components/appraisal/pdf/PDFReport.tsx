@@ -1173,48 +1173,62 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
             {/* PURCHASE PROPERTIES SECTION (conditional) */}
             {purchaseProperties.length > 0 && (
                 <>
-                    {/* PURCHASE DIVIDER PAGE */}
+                    {/* PURCHASE DIVIDER PAGE — mismo tratamiento que "PROPIEDADES QUE
+                        COMPITEN": el fondo section-divider-bg.jpg YA incluye a Diego, así
+                        que NO se agrega overlay azul ni foto sobrepuesta (eso causaba el
+                        doble-Diego: la foto encima tapando al Diego del fondo). */}
                     <Page size="A4" style={styles.page}>
                         <View style={styles.backgroundPage}>
                             <Image
                                 src="/pdf-assets/graphics/section-divider-bg.jpg"
                                 style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                             />
-                            <View style={styles.backgroundOverlay} />
-                            <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: 280 }]}>
-                                <Text style={[styles.dividerTitle, { textAlign: 'left', fontSize: 32 }]}>
-                                    PROPIEDADES PARA COMPRA
+                            <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
+                                <Text style={[styles.dividerTitle, { textAlign: 'left' }]}>
+                                    PROPIEDADES{'\n'}PARA{'\n'}COMPRA
                                 </Text>
                             </View>
-                            <Image
-                                src="/pdf-assets/photos/Foto Diego.png"
-                                style={styles.dividerPhoto}
-                            />
                         </View>
                     </Page>
 
-                    {/* PURCHASE PROPERTY CARDS (1 per page) */}
-                    {purchaseProperties.map((prop, globalIndex) => {
-                        const homSurface = getHomogenizedSurface(prop)
-                        const pricePerM2 = homSurface > 0 ? (prop.price || 0) / homSurface : 0
-
-                        return (
-                            <Page key={`purchase-${globalIndex}`} size="A4" style={styles.pageWithPadding}>
+                    {/* PURCHASE PROPERTY CARDS — 2 por página (mismo layout que
+                        "PROPIEDADES QUE COMPITEN"). Antes cada propiedad ocupaba una
+                        página entera; ahora se paginan en tarjetas tipo fila para
+                        optimizar el espacio. Sin semáforo (no aplica a compra). */}
+                    {(() => {
+                        const pages = paginateBalanced(purchaseProperties, 2)
+                        return pages.map((pageProps, pageIndex) => {
+                            const startGlobal = pages.slice(0, pageIndex).reduce((sum, p) => sum + p.length, 0)
+                            return (
+                            <Page key={`purchase-${pageIndex}`} size="A4" style={styles.pageWithPadding}>
                                 <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
                                     <Text style={[styles.headerTitle, { color: colors.primary }]}>PROPIEDADES EN VENTA</Text>
                                     <Text style={styles.headerSubtitle}>CABA</Text>
                                 </View>
 
-                                <View style={{ marginTop: 70 }}>
-                                            <View wrap={false} style={{ flexDirection: 'row', gap: 16 }}>
+                                <View style={{ marginTop: 70, gap: 28 }}>
+                                    {pageProps.map((prop, index) => {
+                                        const globalIndex = startGlobal + index
+                                        const homSurface = getHomogenizedSurface(prop)
+                                        const pricePerM2 = homSurface > 0 ? (prop.price || 0) / homSurface : 0
+
+                                        return (
+                                            <View key={globalIndex} wrap={false} style={{
+                                                flexDirection: 'row',
+                                                gap: 16,
+                                                paddingBottom: 16,
+                                                borderBottomWidth: 1,
+                                                borderBottomColor: '#e2e8f0',
+                                                borderBottomStyle: 'solid',
+                                            }}>
                                                 {/* Photo (no semaphore for purchase) — borderWidth/Color/Style separados (react-pdf no soporta shorthand) */}
-                                                <View style={{ width: '35%' }}>
+                                                <View style={{ width: '32%' }}>
                                                     {prop.images && prop.images[0] ? (
                                                         <Image
                                                             src={prop.images[0]}
                                                             style={{
                                                                 width: '100%',
-                                                                height: 220,
+                                                                height: 200,
                                                                 objectFit: 'cover',
                                                                 borderWidth: 1,
                                                                 borderColor: colors.lightGray,
@@ -1222,33 +1236,30 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                                             }}
                                                         />
                                                     ) : (
-                                                        <View style={{ width: '100%', height: 220, backgroundColor: colors.lightGray }} />
+                                                        <View style={{ width: '100%', height: 200, backgroundColor: colors.lightGray }} />
                                                     )}
                                                 </View>
 
                                                 {/* Info */}
-                                                <View style={{ flex: 1 }}>
-                                                    <Text style={[styles.propertyTitle, { textAlign: 'left', fontSize: 16, marginBottom: 8 }]}>
+                                                <View style={{ flex: 1, justifyContent: 'flex-start' }}>
+                                                    <Text style={[styles.propertyTitle, { textAlign: 'left', fontSize: 14, marginBottom: 6 }]}>
                                                         {extractAddress(prop.location || prop.title)}
                                                     </Text>
 
-                                                    {/* Features grid */}
-                                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
-                                                        <Text style={styles.featureText}>■ {prop.features.coveredArea || 0}m²</Text>
-                                                        {prop.features.rooms && (
-                                                            <Text style={styles.featureText}>■ {prop.features.rooms} Amb.</Text>
+                                                    {/* Features grid — chips con borde (igual que comparables) */}
+                                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                                                        <FeatureChip label={`${prop.features.coveredArea || 0} m² cub.`} />
+                                                        {(prop.features.uncoveredArea ?? 0) > 0 && (
+                                                            <FeatureChip label={`${prop.features.uncoveredArea} m² desc.`} />
                                                         )}
-                                                        {prop.features.bedrooms && (
-                                                            <Text style={styles.featureText}>■ {prop.features.bedrooms} Dorm.</Text>
-                                                        )}
-                                                        {prop.features.bathrooms && (
-                                                            <Text style={styles.featureText}>■ {prop.features.bathrooms} Baños</Text>
-                                                        )}
-                                                        <Text style={styles.featureText}>■ {prop.features.age || 0} años</Text>
+                                                        {prop.features.rooms ? <FeatureChip label={`${prop.features.rooms} amb.`} /> : null}
+                                                        {prop.features.bedrooms ? <FeatureChip label={`${prop.features.bedrooms} dorm.`} /> : null}
+                                                        {prop.features.bathrooms ? <FeatureChip label={`${prop.features.bathrooms} baños`} /> : null}
+                                                        <FeatureChip label={`${prop.features.age || 0} años`} />
                                                     </View>
 
                                                     {/* Price */}
-                                                    <View style={{ gap: 2, marginBottom: 8 }}>
+                                                    <View style={{ gap: 3, marginBottom: 10 }}>
                                                         <View style={styles.priceBullet}>
                                                             <View style={styles.bullet} />
                                                             <Text style={styles.priceText}>
@@ -1273,10 +1284,13 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                                     </Link>
                                                 </View>
                                             </View>
+                                        )
+                                    })}
                                 </View>
                             </Page>
-                        )
-                    })}
+                            )
+                        })
+                    })()}
 
                     {/* SIMULATION DIVIDER PAGE — SIEMPRE (toda tasación tiene gastos e
                         impuestos de venta). Antes se gateaba detrás de purchaseScenarios y
@@ -1288,16 +1302,13 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                     src="/pdf-assets/graphics/section-divider-bg.jpg"
                                     style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                                 />
-                                <View style={styles.backgroundOverlay} />
-                                <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: 280 }]}>
-                                    <Text style={[styles.dividerTitle, { textAlign: 'left', fontSize: 32 }]}>
-                                        SIMULACIÓN GASTOS E IMPUESTOS
+                                {/* Sin overlay ni foto sobrepuesta — Diego ya está en el fondo
+                                    (igual que "QUE COMPITEN" y "PARA COMPRA"). */}
+                                <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
+                                    <Text style={[styles.dividerTitle, { textAlign: 'left', fontSize: 30 }]}>
+                                        SIMULACIÓN{'\n'}GASTOS E{'\n'}IMPUESTOS
                                     </Text>
                                 </View>
-                                <Image
-                                    src="/pdf-assets/photos/Foto Diego.png"
-                                    style={styles.dividerPhoto}
-                                />
                             </View>
                         </Page>
                     )}
