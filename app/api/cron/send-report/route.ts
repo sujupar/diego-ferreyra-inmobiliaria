@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { sendFunnelReport, type FunnelReportType } from '@/lib/marketing/funnel-report'
 
 export const dynamic = 'force-dynamic'
@@ -13,8 +14,12 @@ export const maxDuration = 60 // el reporte pega a Meta + Supabase + Resend; nec
  * sitio (bug @netlify/plugin-nextjs + Next 16 — ver CLAUDE.md). Reutiliza la
  * MISMA función que la ruta manual: sendFunnelReport() — cero duplicación.
  *
- * Auth: header `x-cron-secret` debe matchear env var CRON_SECRET (misma
- * convención que /api/cron/ghl-poll, /api/cron/portal-inquiries, /api/cron/visit-reminders).
+ * Auth: header `x-cron-secret` debe matchear, EN ESTE ORDEN:
+ *   1) env var CRON_SECRET (si existe), o
+ *   2) el valor de la fila public.cron_config(key='send_report').value
+ * Se usa (2) porque CRON_SECRET no está seteada en Netlify y no hay acceso al
+ * panel de Netlify — así el secreto vive en Supabase (bajo control del usuario,
+ * que ya corre SQL ahí) y la ruta lo lee con el service role.
  *
  * `from`/`to` opcionales: permiten forzar un rango y así re-testear el mismo día
  * (sendFunnelReport no deduplica; el reporte se envía siempre).
@@ -22,13 +27,32 @@ export const maxDuration = 60 // el reporte pega a Meta + Supabase + Resend; nec
 
 const VALID: FunnelReportType[] = ['daily', 'weekly', 'biweekly', 'monthly']
 
+/** Secreto esperado: env var CRON_SECRET o, si no existe, public.cron_config. */
+async function isAuthorized(provided: string | null): Promise<boolean> {
+  if (!provided) return false
+  if (process.env.CRON_SECRET && provided === process.env.CRON_SECRET) return true
+  try {
+    const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+    const { data } = await sb.from('cron_config').select('value').eq('key', 'send_report').maybeSingle()
+    const dbSecret = (data as { value?: string } | null)?.value
+    return !!dbSecret && provided === dbSecret
+  } catch {
+    return false
+  }
+}
+
 async function handle(req: NextRequest): Promise<Response> {
-  const secret = req.headers.get('x-cron-secret')
-  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+  const { searchParams } = new URL(req.url)
+
+  // ?ping=1 → confirma que ESTE deploy está vivo, sin auth ni efectos (para verificar el deploy).
+  if (searchParams.get('ping') === '1') {
+    return NextResponse.json({ ok: true, route: 'send-report', auth: 'db+env' })
+  }
+
+  if (!(await isAuthorized(req.headers.get('x-cron-secret')))) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
 
-  const { searchParams } = new URL(req.url)
   const type = (searchParams.get('type') ?? 'daily') as FunnelReportType
   if (!VALID.includes(type)) {
     return NextResponse.json({ error: 'invalid type' }, { status: 400 })

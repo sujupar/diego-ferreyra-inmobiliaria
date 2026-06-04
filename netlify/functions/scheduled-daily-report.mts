@@ -131,7 +131,7 @@ function _buildFunnelEmail(type: string, from: string, to: string, data: FunnelD
 <body style="margin:0;padding:0;background:#f9fafb;font-family:Arial,Helvetica,sans-serif;">
 <div style="max-width:680px;margin:0 auto;padding:32px 16px;">
   <div style="background:#111827;border-radius:12px 12px 0 0;padding:24px 32px;">
-    <img src="https://meek-belekoy-dcf620.netlify.app/pdf-assets/logos/Logo%20Diego%20Ferreyra.png" alt="Diego Ferreyra Inmobiliaria" style="height:44px;margin-bottom:12px;" />
+    <img src="https://inmodf.com.ar/pdf-assets/logos/Logo%20Diego%20Ferreyra.png" alt="Diego Ferreyra Inmobiliaria" style="height:44px;margin-bottom:12px;" />
     <p style="color:#9ca3af;font-size:14px;margin:4px 0 0;">${_TITLE[type]} de Marketing</p>
   </div>
   <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;padding:32px;">
