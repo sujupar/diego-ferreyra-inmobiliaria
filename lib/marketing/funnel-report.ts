@@ -238,27 +238,36 @@ async function logRow(type: FunnelReportType, recipients: string[], subject: str
  */
 export async function sendFunnelReport(
   type: FunnelReportType,
-  opts: { from?: string; to?: string } = {}
+  opts: { from?: string; to?: string; recipientsOverride?: string[] } = {}
 ): Promise<{ success: boolean; error?: string; skipped?: boolean; subject?: string; recipients?: string[]; from?: string; to?: string }> {
-  // 1) Settings (recipients + enabled). maybeSingle → no tira si hay 0 filas.
-  let settings: Record<string, unknown> | null = null
-  try {
-    const { data } = await admin().from('report_settings').select('*').eq('id', 'default').maybeSingle()
-    settings = (data ?? null) as Record<string, unknown> | null
-  } catch (e) {
-    const reason = 'No se pudo leer report_settings: ' + (e instanceof Error ? e.message : 'error')
-    await logRow(type, [], `(${type}) sin enviar`, 'failed', reason)
-    return { success: false, error: reason }
-  }
+  // recipientsOverride: para pruebas (ej. mandar solo a vos sin tocar report_settings).
+  // Si viene, se ignora el gate de settings (enabled/recipients) y se usa esa lista.
+  const override = (opts.recipientsOverride ?? []).filter(Boolean)
+  let recipients: string[]
 
-  const enabledKey = `${type}_enabled`
-  const recipients = (settings?.recipients as string[] | undefined) ?? []
-  if (!settings || settings[enabledKey] !== true || recipients.length === 0) {
-    const reason = !settings ? 'no existe la fila report_settings (id=default)'
-      : settings[enabledKey] !== true ? `el reporte ${type} está deshabilitado`
-      : 'no hay destinatarios configurados'
-    await logRow(type, recipients, `(${type}) omitido`, 'skipped', reason)
-    return { success: false, skipped: true, error: reason, recipients }
+  if (override.length > 0) {
+    recipients = override
+  } else {
+    // 1) Settings (recipients + enabled). maybeSingle → no tira si hay 0 filas.
+    let settings: Record<string, unknown> | null = null
+    try {
+      const { data } = await admin().from('report_settings').select('*').eq('id', 'default').maybeSingle()
+      settings = (data ?? null) as Record<string, unknown> | null
+    } catch (e) {
+      const reason = 'No se pudo leer report_settings: ' + (e instanceof Error ? e.message : 'error')
+      await logRow(type, [], `(${type}) sin enviar`, 'failed', reason)
+      return { success: false, error: reason }
+    }
+
+    const enabledKey = `${type}_enabled`
+    recipients = (settings?.recipients as string[] | undefined) ?? []
+    if (!settings || settings[enabledKey] !== true || recipients.length === 0) {
+      const reason = !settings ? 'no existe la fila report_settings (id=default)'
+        : settings[enabledKey] !== true ? `el reporte ${type} está deshabilitado`
+        : 'no hay destinatarios configurados'
+      await logRow(type, recipients, `(${type}) omitido`, 'skipped', reason)
+      return { success: false, skipped: true, error: reason, recipients }
+    }
   }
 
   // 2) Datos + tipo de cambio

@@ -36,8 +36,14 @@ async function handle(req: NextRequest): Promise<Response> {
 
   const from = searchParams.get('from') ?? undefined
   const to = searchParams.get('to') ?? from ?? undefined
+  // ?email=a@b.com,c@d.com → manda SOLO a esas direcciones (para pruebas), sin tocar report_settings.
+  const emailParam = searchParams.get('email')
+  const recipientsOverride = emailParam ? emailParam.split(',').map(e => e.trim()).filter(Boolean) : undefined
 
-  const result = await sendFunnelReport(type, from && to ? { from, to } : {})
+  const result = await sendFunnelReport(type, {
+    ...(from && to ? { from, to } : {}),
+    ...(recipientsOverride ? { recipientsOverride } : {}),
+  })
 
   return NextResponse.json(
     {
