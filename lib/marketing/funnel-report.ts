@@ -289,8 +289,19 @@ async function logRow(type: FunnelReportType, recipients: string[], subject: str
  */
 export async function sendFunnelReport(
   type: FunnelReportType,
-  opts: { from?: string; to?: string; recipientsOverride?: string[] } = {}
-): Promise<{ success: boolean; error?: string; skipped?: boolean; subject?: string; recipients?: string[]; from?: string; to?: string }> {
+  opts: { from?: string; to?: string; recipientsOverride?: string[]; dryRun?: boolean } = {}
+): Promise<{ success: boolean; error?: string; skipped?: boolean; subject?: string; recipients?: string[]; from?: string; to?: string; dryRun?: boolean; sample?: unknown }> {
+  // dryRun: arma el reporte (Meta + CRM por origen) y devuelve el subject + un
+  // sample de las dos tablas, SIN enviar ni loguear. Sirve para verificar qué
+  // versión está desplegada sin mandar emails.
+  if (opts.dryRun) {
+    const { from, to } = opts.from && opts.to ? { from: opts.from, to: opts.to } : computeRange(type)
+    const { data, warnings } = await gatherFunnelData(from, to)
+    const { rate } = await getUsdToArs()
+    const { subject } = renderFunnelEmail(type, from, to, data, rate, warnings)
+    return { success: true, dryRun: true, subject, from, to, recipients: [], sample: { clase: data.clase, tasacion: data.tasacion } }
+  }
+
   // recipientsOverride: para pruebas (ej. mandar solo a vos sin tocar report_settings).
   // Si viene, se ignora el gate de settings (enabled/recipients) y se usa esa lista.
   const override = (opts.recipientsOverride ?? []).filter(Boolean)

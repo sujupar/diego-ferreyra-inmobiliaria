@@ -63,22 +63,27 @@ async function handle(req: NextRequest): Promise<Response> {
   // ?email=a@b.com,c@d.com → manda SOLO a esas direcciones (para pruebas), sin tocar report_settings.
   const emailParam = searchParams.get('email')
   const recipientsOverride = emailParam ? emailParam.split(',').map(e => e.trim()).filter(Boolean) : undefined
+  // ?dryrun=1 → arma el reporte y devuelve el subject + sample SIN enviar email.
+  const dryRun = searchParams.get('dryrun') === '1'
 
   const result = await sendFunnelReport(type, {
     ...(from && to ? { from, to } : {}),
     ...(recipientsOverride ? { recipientsOverride } : {}),
+    ...(dryRun ? { dryRun } : {}),
   })
 
   return NextResponse.json(
     {
       ok: result.success,
       skipped: result.skipped ?? false,
+      dryRun: result.dryRun ?? false,
       error: result.error,
       type,
       from: result.from,
       to: result.to,
       subject: result.subject,
       recipients: result.recipients,
+      sample: result.sample,
       firedAt: new Date().toISOString(),
     },
     { status: result.success || result.skipped ? 200 : 500 }
