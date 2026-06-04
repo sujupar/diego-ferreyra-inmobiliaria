@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 /**
  * Reporte Diario de Marketing — corre 06:00 AM Argentina (09:00 UTC).
  *
- * Contenido: UNA sola tabla de embudo (cantidades, % de conversión y costo por
+ * Contenido: DOS tablas de embudo (una por origen: clase gratuita y tasación) (cantidades, % de conversión y costo por
  * unidad en ARS y USD). Fuentes: Meta Ads (account-level) + Embudo CRM (RPC
  * get_funnel_metrics, tabla deals). No usa GoHighLevel.
  *
@@ -51,46 +51,64 @@ const _int = (v: number) => v.toLocaleString('es-AR')
 const _pct = (num: number, den: number) => den > 0 ? (num / den * 100).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%' : '—'
 const _fmtDate = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
-interface FunnelData {
-  spendArs: number; reach: number; landingPageViews: number; classRegistrations: number
-  appraisalRequests: number; appointmentsScheduled: number; appraisalsDelivered: number; propertiesCaptured: number
+interface OriginSlice {
+  spendArs: number; reach: number; landingPageViews: number
+  leads: number; appointmentsScheduled: number; appraisalsDelivered: number; propertiesCaptured: number
+}
+interface FunnelData { clase: OriginSlice; tasacion: OriginSlice }
+
+function _nextDay(d: string): string {
+  const dt = new Date(d + 'T00:00:00Z'); dt.setUTCDate(dt.getUTCDate() + 1)
+  return dt.toISOString().slice(0, 10)
 }
 
 const LEAD_ACTION_TYPES = ['lead', 'complete_registration', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead', 'offsite_conversion.fb_pixel_complete_registration']
 
-async function _fetchMetaAccount(from: string, to: string): Promise<{ spendArs: number; reach: number; landingPageViews: number }> {
+// Meta a nivel CAMPAÑA, clasificando por nombre: %clase%/%curso% → clase ;
+// %tasaci% → tasación (igual que vw_meta_ads_funnel_daily). spend/visitas se
+// atribuyen limpio; reach se suma por campaña (puede solapar; aceptado).
+async function _fetchMetaByOrigin(from: string, to: string): Promise<{ clase: { spendArs: number; reach: number; landingPageViews: number }; tasacion: { spendArs: number; reach: number; landingPageViews: number } }> {
   const raw = process.env.META_AD_ACCOUNT_ID
   const token = process.env.META_ACCESS_TOKEN
   if (!raw || !token) throw new Error('Falta META_AD_ACCOUNT_ID o META_ACCESS_TOKEN')
   const accountId = raw.startsWith('act_') ? raw : `act_${raw}`
   const timeRange = JSON.stringify({ since: from, until: to })
-  const url = `${META_API_BASE}/${accountId}/insights?fields=spend,impressions,reach,actions&time_range=${encodeURIComponent(timeRange)}&access_token=${token}`
+  const url = `${META_API_BASE}/${accountId}/insights?fields=campaign_name,spend,reach,actions&time_range=${encodeURIComponent(timeRange)}&level=campaign&access_token=${token}`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Meta API HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
   const json = await res.json()
-  const row = json.data?.[0]
-  if (!row) return { spendArs: 0, reach: 0, landingPageViews: 0 }
-  const actions = (row.actions ?? []) as Array<{ action_type: string; value: string }>
-  const lpv = actions.find(a => a.action_type === 'landing_page_view')
-  return {
-    spendArs: parseFloat(row.spend ?? '0') || 0,
-    reach: parseInt(row.reach ?? '0', 10) || 0,
-    landingPageViews: lpv ? (parseInt(lpv.value, 10) || 0) : 0,
+  const clase = { spendArs: 0, reach: 0, landingPageViews: 0 }
+  const tasacion = { spendArs: 0, reach: 0, landingPageViews: 0 }
+  for (const row of (json.data ?? []) as Array<Record<string, unknown>>) {
+    const name = String(row.campaign_name ?? '').toLowerCase()
+    const slice = (name.includes('clase') || name.includes('curso')) ? clase : (name.includes('tasaci') ? tasacion : null)
+    if (!slice) continue
+    slice.spendArs += parseFloat(String(row.spend ?? '0')) || 0
+    slice.reach += parseInt(String(row.reach ?? '0'), 10) || 0
+    const actions = (row.actions ?? []) as Array<{ action_type: string; value: string }>
+    const lpv = actions.find(a => a.action_type === 'landing_page_view')
+    slice.landingPageViews += lpv ? (parseInt(lpv.value, 10) || 0) : 0
   }
+  return { clase, tasacion }
 }
 
-interface FunnelRpcRow { metric: string; value: number | string }
-async function _fetchCrmFunnel(supabase: unknown, from: string, to: string): Promise<{ classRegistrations: number; appraisalRequests: number; appointmentsScheduled: number; appraisalsDelivered: number; propertiesCaptured: number }> {
-  const { data, error } = await (supabase as { rpc: (n: string, a: unknown) => Promise<{ data: unknown; error: { message: string } | null }> }).rpc('get_funnel_metrics', { p_from: from, p_to: to })
-  if (error) throw new Error(`get_funnel_metrics: ${error.message}`)
-  const map = Object.fromEntries(((data ?? []) as FunnelRpcRow[]).map(r => [r.metric, Number(r.value)]))
-  return {
-    classRegistrations: map.class_registrations ?? 0,
-    appraisalRequests: map.appraisal_requests ?? 0,
-    appointmentsScheduled: map.appointments_scheduled ?? 0,
-    appraisalsDelivered: map.appraisals_delivered ?? 0,
-    propertiesCaptured: map.properties_captured ?? 0,
+// Embudo CRM POR ORIGEN: cada etapa atribuida al origin FIJO del deal, por su
+// propia columna de fecha en [from, to] (límites UTC = a col::date BETWEEN).
+async function _fetchCrmByOrigin(supabase: unknown, from: string, to: string): Promise<{ clase: { leads: number; appointmentsScheduled: number; appraisalsDelivered: number; propertiesCaptured: number }; tasacion: { leads: number; appointmentsScheduled: number; appraisalsDelivered: number; propertiesCaptured: number } }> {
+  const sb = supabase as { from: (t: string) => { select: (c: string, o: unknown) => { eq: (k: string, v: string) => { gte: (k: string, v: string) => { lt: (k: string, v: string) => Promise<{ count: number | null }> } } } } }
+  const toNext = _nextDay(to)
+  const count = async (origin: string, col: string): Promise<number> => {
+    const { count } = await sb.from('deals').select('id', { count: 'exact', head: true }).eq('origin', origin).gte(col, from).lt(col, toNext)
+    return count ?? 0
   }
+  const sliceFor = async (origin: string) => {
+    const [leads, appointmentsScheduled, appraisalsDelivered, propertiesCaptured] = await Promise.all([
+      count(origin, 'created_at'), count(origin, 'scheduled_at'), count(origin, 'delivered_at'), count(origin, 'captured_at'),
+    ])
+    return { leads, appointmentsScheduled, appraisalsDelivered, propertiesCaptured }
+  }
+  const [clase, tasacion] = await Promise.all([sliceFor('clase_gratuita'), sliceFor('embudo')])
+  return { clase, tasacion }
 }
 
 const _TH = 'padding:8px 12px;border:1px solid #9ca3af;background:#111827;color:#fff;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;'
@@ -99,10 +117,7 @@ const _TITLE: Record<string, string> = { daily: 'Reporte Diario', weekly: 'Repor
 const _SHORT: Record<string, string> = { daily: 'Diario', weekly: 'Semanal', biweekly: 'Quincenal', monthly: 'Mensual' }
 
 function _buildFunnelEmail(type: string, from: string, to: string, data: FunnelData, rate: number, warnings: string[]): { subject: string; html: string } {
-  const spendUsd = rate > 0 ? data.spendArs / rate : 0
-  const cost = (n: number) => n > 0 ? { ars: _ars(data.spendArs / n), usd: _usd(spendUsd / n) } : { ars: '—', usd: '—' }
   const period = from === to ? _fmtDate(to) : `${_fmtDate(from)} — ${_fmtDate(to)}`
-
   const head = '<tr>' + ['Etapa', 'Cantidad', 'Conversión', 'Costo ARS', 'Costo USD'].map((c, i) => `<th style="${_TH}text-align:${i === 0 ? 'left' : 'right'};">${c}</th>`).join('') + '</tr>'
   const row = (cells: string[], opts: { bold?: boolean; hi?: boolean } = {}) => '<tr>' + cells.map((v, i) => {
     const align = i === 0 ? 'left' : 'right'
@@ -111,20 +126,24 @@ function _buildFunnelEmail(type: string, from: string, to: string, data: FunnelD
     return `<td style="${_TD}${bg}text-align:${align};${weight}">${v}</td>`
   }).join('') + '</tr>'
 
-  // Clase Gratuita y Tasación = registros PARALELOS (cada uno vs Visitas, no se
-  // encadenan). Agendadas convierte desde la SUMA de ambos registros.
-  const registros = data.classRegistrations + data.appraisalRequests
-  const steps: Array<{ label: string; count: number; convNum: number | null; convDen: number | null }> = [
-    { label: 'Alcance', count: data.reach, convNum: null, convDen: null },
-    { label: 'Visitas a la landing', count: data.landingPageViews, convNum: data.landingPageViews, convDen: data.reach },
-    { label: 'Leads Clase Gratuita', count: data.classRegistrations, convNum: data.classRegistrations, convDen: data.landingPageViews },
-    { label: 'Leads de Tasación', count: data.appraisalRequests, convNum: data.appraisalRequests, convDen: data.landingPageViews },
-    { label: 'Tasaciones Agendadas', count: data.appointmentsScheduled, convNum: data.appointmentsScheduled, convDen: registros },
-    { label: 'Tasaciones Hechas', count: data.appraisalsDelivered, convNum: data.appraisalsDelivered, convDen: data.appointmentsScheduled },
-    { label: 'Captaciones', count: data.propertiesCaptured, convNum: data.propertiesCaptured, convDen: data.appraisalsDelivered },
-  ]
-  const invRow = row(['Inversión Embudo', '—', '—', _ars(data.spendArs), _usd(spendUsd)], { bold: true, hi: true })
-  const stepRows = steps.map(s => { const c = cost(s.count); return row([s.label, _int(s.count), s.convDen === null ? '—' : _pct(s.convNum as number, s.convDen), c.ars, c.usd]) }).join('')
+  // Una tabla por origen, encadenada: cada % vs la fila de arriba (Agendadas vs Leads de ESA tabla).
+  const table = (title: string, leadLabel: string, s: OriginSlice): string => {
+    const spendUsd = rate > 0 ? s.spendArs / rate : 0
+    const cost = (n: number) => n > 0 ? { ars: _ars(s.spendArs / n), usd: _usd(spendUsd / n) } : { ars: '—', usd: '—' }
+    const steps: Array<{ label: string; count: number; convNum: number | null; convDen: number | null }> = [
+      { label: 'Alcance', count: s.reach, convNum: null, convDen: null },
+      { label: 'Visitas a la landing', count: s.landingPageViews, convNum: s.landingPageViews, convDen: s.reach },
+      { label: leadLabel, count: s.leads, convNum: s.leads, convDen: s.landingPageViews },
+      { label: 'Tasaciones Agendadas', count: s.appointmentsScheduled, convNum: s.appointmentsScheduled, convDen: s.leads },
+      { label: 'Tasaciones Hechas', count: s.appraisalsDelivered, convNum: s.appraisalsDelivered, convDen: s.appointmentsScheduled },
+      { label: 'Captaciones', count: s.propertiesCaptured, convNum: s.propertiesCaptured, convDen: s.appraisalsDelivered },
+    ]
+    const invRow = row(['Inversión Embudo', '—', '—', _ars(s.spendArs), _usd(spendUsd)], { bold: true, hi: true })
+    const stepRows = steps.map(st => { const c = cost(st.count); return row([st.label, _int(st.count), st.convDen === null ? '—' : _pct(st.convNum as number, st.convDen), c.ars, c.usd]) }).join('')
+    return `<h2 style="color:#111827;font-size:17px;margin:24px 0 10px;">${title}</h2><table style="border-collapse:collapse;width:100%;max-width:680px;"><thead>${head}</thead><tbody>${invRow}${stepRows}</tbody></table>`
+  }
+  const tablaClase = table('Embudo — Clase Gratuita', 'Leads Clase Gratuita', data.clase)
+  const tablaTasacion = table('Embudo — Tasación Directa', 'Leads de Tasación', data.tasacion)
 
   const warnBanner = warnings.length === 0 ? '' : `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;margin-bottom:20px;"><p style="color:#991b1b;font-weight:600;font-size:13px;margin:0 0 4px;">Algunas fuentes de datos fallaron (valores posiblemente incompletos):</p><ul style="margin:0;padding-left:18px;">${warnings.map(w => `<li style="color:#dc2626;font-size:12px;">${w}</li>`).join('')}</ul></div>`
 
@@ -136,16 +155,17 @@ function _buildFunnelEmail(type: string, from: string, to: string, data: FunnelD
     <p style="color:#9ca3af;font-size:14px;margin:4px 0 0;">${_TITLE[type]} de Marketing</p>
   </div>
   <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;padding:32px;">
-    <p style="color:#6b7280;font-size:14px;margin:0 0 20px;">Período: <strong style="color:#374151;">${period}</strong></p>
+    <p style="color:#6b7280;font-size:14px;margin:0 0 4px;">Período: <strong style="color:#374151;">${period}</strong></p>
+    <p style="color:#9ca3af;font-size:12px;margin:0 0 16px;">Dos embudos separados por origen del lead. Cada etapa (agendada/hecha/captación) cuenta en la tabla del origen del que provino ese lead.</p>
     ${warnBanner}
-    <h2 style="color:#111827;font-size:18px;margin:0 0 12px;">Embudo de Captación</h2>
-    <table style="border-collapse:collapse;width:100%;max-width:680px;"><thead>${head}</thead><tbody>${invRow}${stepRows}</tbody></table>
-    <p style="color:#9ca3af;font-size:12px;margin:14px 0 0;">El costo de cada etapa es la inversión total dividida por la cantidad de esa etapa. Tipo de cambio: dólar blue.</p>
+    ${tablaClase}
+    ${tablaTasacion}
+    <p style="color:#9ca3af;font-size:12px;margin:16px 0 0;">El costo de cada etapa = inversión de ESA tabla / cantidad. Tipo de cambio: dólar blue. Alcance: sumado por campaña del embudo (puede solapar levemente entre campañas del mismo origen).</p>
   </div>
   <div style="text-align:center;padding:16px;"><p style="color:#9ca3af;font-size:12px;margin:0;">Reporte generado automáticamente</p></div>
 </div></body></html>`
 
-  const subject = `Embudo ${_SHORT[type]} — ${data.propertiesCaptured} captac. · ${data.appraisalRequests} leads tasación · ${period}`
+  const subject = `Embudo ${_SHORT[type]} — Tasación ${data.tasacion.leads}L/${data.tasacion.propertiesCaptured}C · Clase ${data.clase.leads}L/${data.clase.propertiesCaptured}C · ${period}`
   return { subject, html }
 }
 
@@ -209,11 +229,11 @@ export default async function handler() {
 
     // 4) Datos (resiliente) + tipo de cambio.
     const warnings: string[] = []
-    let meta = { spendArs: 0, reach: 0, landingPageViews: 0 }
-    try { meta = await _fetchMetaAccount(from, to) } catch (e) { warnings.push('Meta Ads: ' + (e instanceof Error ? e.message : 'error')) }
-    let crm = { classRegistrations: 0, appraisalRequests: 0, appointmentsScheduled: 0, appraisalsDelivered: 0, propertiesCaptured: 0 }
-    try { crm = await _fetchCrmFunnel(supabase, from, to) } catch (e) { warnings.push('Embudo CRM: ' + (e instanceof Error ? e.message : 'error')) }
-    const data: FunnelData = { ...meta, ...crm }
+    let meta = { clase: { spendArs: 0, reach: 0, landingPageViews: 0 }, tasacion: { spendArs: 0, reach: 0, landingPageViews: 0 } }
+    try { meta = await _fetchMetaByOrigin(from, to) } catch (e) { warnings.push('Meta Ads: ' + (e instanceof Error ? e.message : 'error')) }
+    let crm = { clase: { leads: 0, appointmentsScheduled: 0, appraisalsDelivered: 0, propertiesCaptured: 0 }, tasacion: { leads: 0, appointmentsScheduled: 0, appraisalsDelivered: 0, propertiesCaptured: 0 } }
+    try { crm = await _fetchCrmByOrigin(supabase, from, to) } catch (e) { warnings.push('Embudo CRM: ' + (e instanceof Error ? e.message : 'error')) }
+    const data: FunnelData = { clase: { ...meta.clase, ...crm.clase }, tasacion: { ...meta.tasacion, ...crm.tasacion } }
     const rate = await _getUsdToArs()
 
     // 4b) Solo el diario: poblar meta_ads_daily a nivel campaña (storage del dashboard).
