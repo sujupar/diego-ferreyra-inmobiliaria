@@ -52,13 +52,13 @@ const _pct = (num: number, den: number) => den > 0 ? (num / den * 100).toLocaleS
 const _fmtDate = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
 interface FunnelData {
-  spendArs: number; reach: number; landingPageViews: number; metaLeads: number
+  spendArs: number; reach: number; landingPageViews: number; classRegistrations: number
   appraisalRequests: number; appointmentsScheduled: number; appraisalsDelivered: number; propertiesCaptured: number
 }
 
 const LEAD_ACTION_TYPES = ['lead', 'complete_registration', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead', 'offsite_conversion.fb_pixel_complete_registration']
 
-async function _fetchMetaAccount(from: string, to: string): Promise<{ spendArs: number; reach: number; landingPageViews: number; metaLeads: number }> {
+async function _fetchMetaAccount(from: string, to: string): Promise<{ spendArs: number; reach: number; landingPageViews: number }> {
   const raw = process.env.META_AD_ACCOUNT_ID
   const token = process.env.META_ACCESS_TOKEN
   if (!raw || !token) throw new Error('Falta META_AD_ACCOUNT_ID o META_ACCESS_TOKEN')
@@ -69,25 +69,23 @@ async function _fetchMetaAccount(from: string, to: string): Promise<{ spendArs: 
   if (!res.ok) throw new Error(`Meta API HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
   const json = await res.json()
   const row = json.data?.[0]
-  if (!row) return { spendArs: 0, reach: 0, landingPageViews: 0, metaLeads: 0 }
+  if (!row) return { spendArs: 0, reach: 0, landingPageViews: 0 }
   const actions = (row.actions ?? []) as Array<{ action_type: string; value: string }>
-  let metaLeads = 0
-  for (const t of LEAD_ACTION_TYPES) { const m = actions.find(a => a.action_type === t); if (m) { metaLeads = parseInt(m.value, 10) || 0; if (metaLeads > 0) break } }
   const lpv = actions.find(a => a.action_type === 'landing_page_view')
   return {
     spendArs: parseFloat(row.spend ?? '0') || 0,
     reach: parseInt(row.reach ?? '0', 10) || 0,
     landingPageViews: lpv ? (parseInt(lpv.value, 10) || 0) : 0,
-    metaLeads,
   }
 }
 
 interface FunnelRpcRow { metric: string; value: number | string }
-async function _fetchCrmFunnel(supabase: unknown, from: string, to: string): Promise<{ appraisalRequests: number; appointmentsScheduled: number; appraisalsDelivered: number; propertiesCaptured: number }> {
+async function _fetchCrmFunnel(supabase: unknown, from: string, to: string): Promise<{ classRegistrations: number; appraisalRequests: number; appointmentsScheduled: number; appraisalsDelivered: number; propertiesCaptured: number }> {
   const { data, error } = await (supabase as { rpc: (n: string, a: unknown) => Promise<{ data: unknown; error: { message: string } | null }> }).rpc('get_funnel_metrics', { p_from: from, p_to: to })
   if (error) throw new Error(`get_funnel_metrics: ${error.message}`)
   const map = Object.fromEntries(((data ?? []) as FunnelRpcRow[]).map(r => [r.metric, Number(r.value)]))
   return {
+    classRegistrations: map.class_registrations ?? 0,
     appraisalRequests: map.appraisal_requests ?? 0,
     appointmentsScheduled: map.appointments_scheduled ?? 0,
     appraisalsDelivered: map.appraisals_delivered ?? 0,
@@ -113,17 +111,20 @@ function _buildFunnelEmail(type: string, from: string, to: string, data: FunnelD
     return `<td style="${_TD}${bg}text-align:${align};${weight}">${v}</td>`
   }).join('') + '</tr>'
 
-  const steps: Array<{ label: string; count: number; prev: number | null }> = [
-    { label: 'Alcance', count: data.reach, prev: null },
-    { label: 'Visitas a la landing', count: data.landingPageViews, prev: data.reach },
-    { label: 'Descarga Guía / Prospectos', count: data.metaLeads, prev: data.landingPageViews },
-    { label: 'Leads de Tasación', count: data.appraisalRequests, prev: data.metaLeads },
-    { label: 'Tasaciones Agendadas', count: data.appointmentsScheduled, prev: data.appraisalRequests },
-    { label: 'Tasaciones Hechas', count: data.appraisalsDelivered, prev: data.appointmentsScheduled },
-    { label: 'Captaciones', count: data.propertiesCaptured, prev: data.appraisalsDelivered },
+  // Clase Gratuita y Tasación = registros PARALELOS (cada uno vs Visitas, no se
+  // encadenan). Agendadas convierte desde la SUMA de ambos registros.
+  const registros = data.classRegistrations + data.appraisalRequests
+  const steps: Array<{ label: string; count: number; convNum: number | null; convDen: number | null }> = [
+    { label: 'Alcance', count: data.reach, convNum: null, convDen: null },
+    { label: 'Visitas a la landing', count: data.landingPageViews, convNum: data.landingPageViews, convDen: data.reach },
+    { label: 'Leads Clase Gratuita', count: data.classRegistrations, convNum: data.classRegistrations, convDen: data.landingPageViews },
+    { label: 'Leads de Tasación', count: data.appraisalRequests, convNum: data.appraisalRequests, convDen: data.landingPageViews },
+    { label: 'Tasaciones Agendadas', count: data.appointmentsScheduled, convNum: data.appointmentsScheduled, convDen: registros },
+    { label: 'Tasaciones Hechas', count: data.appraisalsDelivered, convNum: data.appraisalsDelivered, convDen: data.appointmentsScheduled },
+    { label: 'Captaciones', count: data.propertiesCaptured, convNum: data.propertiesCaptured, convDen: data.appraisalsDelivered },
   ]
   const invRow = row(['Inversión Embudo', '—', '—', _ars(data.spendArs), _usd(spendUsd)], { bold: true, hi: true })
-  const stepRows = steps.map(s => { const c = cost(s.count); return row([s.label, _int(s.count), s.prev === null ? '—' : _pct(s.count, s.prev), c.ars, c.usd]) }).join('')
+  const stepRows = steps.map(s => { const c = cost(s.count); return row([s.label, _int(s.count), s.convDen === null ? '—' : _pct(s.convNum as number, s.convDen), c.ars, c.usd]) }).join('')
 
   const warnBanner = warnings.length === 0 ? '' : `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;margin-bottom:20px;"><p style="color:#991b1b;font-weight:600;font-size:13px;margin:0 0 4px;">Algunas fuentes de datos fallaron (valores posiblemente incompletos):</p><ul style="margin:0;padding-left:18px;">${warnings.map(w => `<li style="color:#dc2626;font-size:12px;">${w}</li>`).join('')}</ul></div>`
 
@@ -208,9 +209,9 @@ export default async function handler() {
 
     // 4) Datos (resiliente) + tipo de cambio.
     const warnings: string[] = []
-    let meta = { spendArs: 0, reach: 0, landingPageViews: 0, metaLeads: 0 }
+    let meta = { spendArs: 0, reach: 0, landingPageViews: 0 }
     try { meta = await _fetchMetaAccount(from, to) } catch (e) { warnings.push('Meta Ads: ' + (e instanceof Error ? e.message : 'error')) }
-    let crm = { appraisalRequests: 0, appointmentsScheduled: 0, appraisalsDelivered: 0, propertiesCaptured: 0 }
+    let crm = { classRegistrations: 0, appraisalRequests: 0, appointmentsScheduled: 0, appraisalsDelivered: 0, propertiesCaptured: 0 }
     try { crm = await _fetchCrmFunnel(supabase, from, to) } catch (e) { warnings.push('Embudo CRM: ' + (e instanceof Error ? e.message : 'error')) }
     const data: FunnelData = { ...meta, ...crm }
     const rate = await _getUsdToArs()

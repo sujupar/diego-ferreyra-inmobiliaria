@@ -6,11 +6,15 @@
  *   1. Inversión Embudo        → Meta Ads `spend` del período (total)
  *   2. Alcance                 → Meta Ads `reach` (account-level, deduplicado)
  *   3. Visitas a la landing    → Meta Ads action `landing_page_view`
- *   4. Descarga Guía/Prospectos→ Meta Ads leads (opt-in en la landing)
- *   5. Leads de Tasación       → CRM `appraisal_requests` (deals origin='embudo')
- *   6. Tasaciones Agendadas    → CRM `appointments_scheduled`
- *   7. Tasaciones Hechas       → CRM `appraisals_delivered`
- *   8. Captaciones             → CRM `properties_captured`
+ *   4. Leads Clase Gratuita    → CRM `class_registrations`  ┐ registros PARALELOS:
+ *   5. Leads de Tasación       → CRM `appraisal_requests`   ┘ cada uno % vs Visitas
+ *   6. Tasaciones Agendadas    → CRM `appointments_scheduled` (% vs SUMA de 4+5)
+ *   7. Tasaciones Hechas       → CRM `appraisals_delivered`   (% vs Agendadas)
+ *   8. Captaciones             → CRM `properties_captured`    (% vs Hechas)
+ *
+ * Clase gratuita y tasación NO se encadenan entre sí (son dos tipos de registro
+ * distintos). Los leads NO salen de Meta (`complete_registration` los duplica),
+ * salen del CRM vía get_funnel_metrics.
  *
  * El costo por unidad de cada fila = gasto_total / cantidad (consistente en ARS
  * y USD). Tipo de cambio: dólar blue (Bluelytics) vía getUsdToArs().
@@ -47,8 +51,8 @@ export interface FunnelData {
   spendArs: number
   reach: number
   landingPageViews: number
-  metaLeads: number
-  appraisalRequests: number
+  classRegistrations: number   // Leads de clase gratuita (CRM) — registro PARALELO a tasación
+  appraisalRequests: number    // Leads de tasación (CRM)
   appointmentsScheduled: number
   appraisalsDelivered: number
   propertiesCaptured: number
@@ -61,10 +65,13 @@ function admin() {
   )
 }
 
-const LEAD_ACTION_TYPES = ['lead', 'complete_registration', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead', 'offsite_conversion.fb_pixel_complete_registration']
-
-/** Insights a nivel CUENTA (no por campaña) para tener un `reach` deduplicado. */
-export async function fetchMetaAccountInsights(from: string, to: string): Promise<Pick<FunnelData, 'spendArs' | 'reach' | 'landingPageViews' | 'metaLeads'>> {
+/**
+ * Insights a nivel CUENTA (no por campaña) para tener un `reach` deduplicado.
+ * Solo gasto, alcance y visitas a la landing. Los "leads" NO salen de Meta:
+ * clase gratuita y tasación se cuentan en el CRM (ver fetchCrmFunnel), porque
+ * el evento de Meta `complete_registration` mezcla/duplica esos registros.
+ */
+export async function fetchMetaAccountInsights(from: string, to: string): Promise<Pick<FunnelData, 'spendArs' | 'reach' | 'landingPageViews'>> {
   const raw = process.env.META_AD_ACCOUNT_ID
   const token = process.env.META_ACCESS_TOKEN
   if (!raw || !token) throw new Error('Falta META_AD_ACCOUNT_ID o META_ACCESS_TOKEN')
@@ -76,29 +83,24 @@ export async function fetchMetaAccountInsights(from: string, to: string): Promis
   if (!res.ok) throw new Error(`Meta API HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
   const json = await res.json()
   const row = json.data?.[0]
-  if (!row) return { spendArs: 0, reach: 0, landingPageViews: 0, metaLeads: 0 }
+  if (!row) return { spendArs: 0, reach: 0, landingPageViews: 0 }
   const actions = (row.actions ?? []) as Array<{ action_type: string; value: string }>
-  let metaLeads = 0
-  for (const t of LEAD_ACTION_TYPES) {
-    const m = actions.find(a => a.action_type === t)
-    if (m) { metaLeads = parseInt(m.value, 10) || 0; if (metaLeads > 0) break }
-  }
   const lpv = actions.find(a => a.action_type === 'landing_page_view')
   return {
     spendArs: parseFloat(row.spend ?? '0') || 0,
     reach: parseInt(row.reach ?? '0', 10) || 0,
     landingPageViews: lpv ? (parseInt(lpv.value, 10) || 0) : 0,
-    metaLeads,
   }
 }
 
 interface FunnelRpcRow { metric: string; value: number | string }
-export async function fetchCrmFunnel(from: string, to: string): Promise<Pick<FunnelData, 'appraisalRequests' | 'appointmentsScheduled' | 'appraisalsDelivered' | 'propertiesCaptured'>> {
+export async function fetchCrmFunnel(from: string, to: string): Promise<Pick<FunnelData, 'classRegistrations' | 'appraisalRequests' | 'appointmentsScheduled' | 'appraisalsDelivered' | 'propertiesCaptured'>> {
   const supabase = admin()
   const { data, error } = await supabase.rpc('get_funnel_metrics' as never, { p_from: from, p_to: to } as never)
   if (error) throw new Error(`get_funnel_metrics: ${error.message}`)
   const map = Object.fromEntries(((data ?? []) as FunnelRpcRow[]).map(r => [r.metric, Number(r.value)]))
   return {
+    classRegistrations: map.class_registrations ?? 0,
     appraisalRequests: map.appraisal_requests ?? 0,
     appointmentsScheduled: map.appointments_scheduled ?? 0,
     appraisalsDelivered: map.appraisals_delivered ?? 0,
@@ -109,10 +111,10 @@ export async function fetchCrmFunnel(from: string, to: string): Promise<Pick<Fun
 /** Trae Meta + CRM de forma resiliente (si una fuente falla, devuelve 0 + warning). */
 export async function gatherFunnelData(from: string, to: string): Promise<{ data: FunnelData; warnings: string[] }> {
   const warnings: string[] = []
-  let meta = { spendArs: 0, reach: 0, landingPageViews: 0, metaLeads: 0 }
+  let meta = { spendArs: 0, reach: 0, landingPageViews: 0 }
   try { meta = await fetchMetaAccountInsights(from, to) }
   catch (e) { warnings.push('Meta Ads: ' + (e instanceof Error ? e.message : 'error')) }
-  let crm = { appraisalRequests: 0, appointmentsScheduled: 0, appraisalsDelivered: 0, propertiesCaptured: 0 }
+  let crm = { classRegistrations: 0, appraisalRequests: 0, appointmentsScheduled: 0, appraisalsDelivered: 0, propertiesCaptured: 0 }
   try { crm = await fetchCrmFunnel(from, to) }
   catch (e) { warnings.push('Embudo CRM: ' + (e instanceof Error ? e.message : 'error')) }
   return { data: { ...meta, ...crm }, warnings }
@@ -166,15 +168,19 @@ export function renderFunnelEmail(type: FunnelReportType, from: string, to: stri
     ? { ars: _ars(data.spendArs / n), usd: _usd(spendUsd / n) }
     : { ars: '—', usd: '—' }
 
-  // Cadena del embudo: cantidad + conversión vs fila anterior.
-  const steps: Array<{ label: string; count: number; prev: number | null }> = [
-    { label: 'Alcance', count: data.reach, prev: null },
-    { label: 'Visitas a la landing', count: data.landingPageViews, prev: data.reach },
-    { label: 'Descarga Guía / Prospectos', count: data.metaLeads, prev: data.landingPageViews },
-    { label: 'Leads de Tasación', count: data.appraisalRequests, prev: data.metaLeads },
-    { label: 'Tasaciones Agendadas', count: data.appointmentsScheduled, prev: data.appraisalRequests },
-    { label: 'Tasaciones Hechas', count: data.appraisalsDelivered, prev: data.appointmentsScheduled },
-    { label: 'Captaciones', count: data.propertiesCaptured, prev: data.appraisalsDelivered },
+  // Embudo. Clase Gratuita y Tasación son registros PARALELOS: cada uno convierte
+  // desde las visitas (no se encadenan entre sí). Agendadas convierte desde la
+  // SUMA de ambos registros. Hechas/Captaciones siguen encadenadas hacia abajo.
+  // convNum/convDen explícitos por fila ('—' si convDen es null o 0).
+  const registros = data.classRegistrations + data.appraisalRequests
+  const steps: Array<{ label: string; count: number; convNum: number | null; convDen: number | null }> = [
+    { label: 'Alcance', count: data.reach, convNum: null, convDen: null },
+    { label: 'Visitas a la landing', count: data.landingPageViews, convNum: data.landingPageViews, convDen: data.reach },
+    { label: 'Leads Clase Gratuita', count: data.classRegistrations, convNum: data.classRegistrations, convDen: data.landingPageViews },
+    { label: 'Leads de Tasación', count: data.appraisalRequests, convNum: data.appraisalRequests, convDen: data.landingPageViews },
+    { label: 'Tasaciones Agendadas', count: data.appointmentsScheduled, convNum: data.appointmentsScheduled, convDen: registros },
+    { label: 'Tasaciones Hechas', count: data.appraisalsDelivered, convNum: data.appraisalsDelivered, convDen: data.appointmentsScheduled },
+    { label: 'Captaciones', count: data.propertiesCaptured, convNum: data.propertiesCaptured, convDen: data.appraisalsDelivered },
   ]
 
   const head = headHtml(['Etapa', 'Cantidad', 'Conversión', 'Costo ARS', 'Costo USD'])
@@ -182,7 +188,7 @@ export function renderFunnelEmail(type: FunnelReportType, from: string, to: stri
   const invRow = rowHtml(['Inversión Embudo', '—', '—', _ars(data.spendArs), _usd(spendUsd)], { bold: true, highlight: true })
   const stepRows = steps.map(s => {
     const c = cost(s.count)
-    const conv = s.prev === null ? '—' : _pct(s.count, s.prev)
+    const conv = s.convDen === null ? '—' : _pct(s.convNum as number, s.convDen)
     return rowHtml([s.label, _int(s.count), conv, c.ars, c.usd])
   }).join('')
 
