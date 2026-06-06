@@ -78,14 +78,20 @@ async function publish(propertyId: string) {
   const { required, recommended } = await fetchCategoryAttributes(categoryId)
   const allowedAttributeIds = new Set([...required, ...recommended].map(a => a.id))
 
-  // Atributos derivados que el mapping ya agrega solo (no hace falta override):
-  const DERIVED = new Set(['ROOMS', 'BEDROOMS', 'FULL_BATHROOMS', 'PARKING_LOTS', 'COVERED_AREA', 'TOTAL_AREA', 'MAINTENANCE_FEE', 'PROPERTY_AGE', 'FLOORS'])
-  // Auto-completar los REQUERIDOS que no son derivables (para QA: valores plausibles).
+  // ¿Qué atributos derivados agrega el mapping solo? (misma truthiness que derivedAttributes)
+  const derivedPresent: Record<string, boolean> = {
+    ROOMS: !!property.rooms, BEDROOMS: !!property.bedrooms, FULL_BATHROOMS: !!property.bathrooms,
+    PARKING_LOTS: !!property.garages, COVERED_AREA: !!property.covered_area, TOTAL_AREA: !!property.total_area,
+    MAINTENANCE_FEE: !!property.expensas, PROPERTY_AGE: property.age != null, FLOORS: property.floor != null,
+  }
+  // Auto-completar los REQUERIDOS que el mapping NO provee (para QA: valores plausibles).
   const attributeOverrides: Record<string, { value_name?: string; value_id?: string }> = {}
   for (const a of required) {
-    if (DERIVED.has(a.id)) continue
+    if (derivedPresent[a.id]) continue // el mapping ya lo agrega desde la propiedad
     if (a.valueType === 'list' && a.allowedValues?.length) attributeOverrides[a.id] = { value_id: a.allowedValues[0].id }
     else if (a.valueType === 'boolean') attributeOverrides[a.id] = { value_name: 'No' }
+    else if (a.id === 'PARKING_LOTS') attributeOverrides[a.id] = { value_name: '0' }
+    else if (a.valueType === 'number_unit') attributeOverrides[a.id] = { value_name: '1 m²' }
     else attributeOverrides[a.id] = { value_name: '1' }
   }
 
