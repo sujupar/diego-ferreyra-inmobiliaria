@@ -1,0 +1,283 @@
+import { createClient } from '@supabase/supabase-js'
+import type { Database } from '@/types/database.types'
+import { initPortals, getAdapter } from '@/lib/portals'
+import { writeAudit } from '@/lib/portals/audit'
+import type { PortalName } from '@/lib/portals/types'
+import { nextStateAfterError, stripFlag, swapFlag } from '@/lib/portals/worker-logic'
+import { ensurePublicSlug } from '@/lib/landing/assign-slug'
+import { mlFetch } from '@/lib/portals/mercadolibre/client'
+
+type SB = ReturnType<typeof createClient<Database>>
+
+/**
+ * Worker de publicación de portales. Procesa, en orden:
+ *   1. Listings con metadata.needs_unpublish = true → adapter.unpublish
+ *   2. Listings con metadata.needs_update = true → adapter.update
+ *   3. Listings con metadata.needs_pause_after_active = true → pausa cuando ML los activa
+ *   4. Listings status='pending' cuyo next_attempt_at <= NOW → adapter.publish
+ *
+ * Corre vía pg_cron → POST /api/cron/publish-listings (el scheduler de Netlify no
+ * dispara en este sitio — ver CLAUDE.md). Pura lógica de orquestación, sin schedule.
+ */
+export async function runPublishWorker(): Promise<{ ok: true }> {
+  await initPortals()
+  const supabase = createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+  await processUnpublishes(supabase)
+  await processUpdates(supabase)
+  await processPausesAfterActive(supabase)
+  await processPublishes(supabase)
+  return { ok: true }
+}
+
+async function processPausesAfterActive(supabase: SB) {
+  const { data: listings } = await supabase
+    .from('property_listings')
+    .select('*')
+    .eq('portal', 'mercadolibre')
+    .contains('metadata', { needs_pause_after_active: true })
+    .limit(10)
+
+  if (!listings || listings.length === 0) return
+
+  for (const listing of listings) {
+    if (!listing.external_id) {
+      await supabase
+        .from('property_listings')
+        .update({ metadata: stripFlag(listing.metadata, 'needs_pause_after_active') as never })
+        .eq('id', listing.id)
+      continue
+    }
+    try {
+      const item = await mlFetch<{ status: string }>(
+        `/items/${listing.external_id}?attributes=status`,
+      )
+      if (item.status === 'active') {
+        await mlFetch(`/items/${listing.external_id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: 'paused' }),
+        })
+        await supabase
+          .from('property_listings')
+          .update({
+            status: 'paused',
+            metadata: stripFlag(listing.metadata, 'needs_pause_after_active') as never,
+            last_error: null,
+          })
+          .eq('id', listing.id)
+        await writeAudit(supabase, {
+          listingId: listing.id,
+          propertyId: listing.property_id,
+          portal: 'mercadolibre',
+          eventType: 'unpublished',
+        })
+      } else if (item.status === 'closed' || item.status === 'paused') {
+        await supabase
+          .from('property_listings')
+          .update({
+            status: item.status,
+            metadata: stripFlag(listing.metadata, 'needs_pause_after_active') as never,
+          })
+          .eq('id', listing.id)
+      }
+    } catch (err) {
+      console.error(`[pause-after-active] ${listing.external_id}`, err)
+    }
+  }
+}
+
+async function processUnpublishes(supabase: SB) {
+  const { data: listings } = await supabase
+    .from('property_listings')
+    .select('*')
+    .eq('status', 'published')
+    .contains('metadata', { needs_unpublish: true })
+    .limit(10)
+
+  for (const listing of listings ?? []) {
+    const adapter = getAdapter(listing.portal as PortalName)
+    if (!adapter || !adapter.enabled || !listing.external_id) continue
+
+    const metaWithProgress = swapFlag(listing.metadata, 'needs_unpublish', 'unpublish_in_progress')
+    const { data: locked } = await supabase
+      .from('property_listings')
+      .update({ metadata: metaWithProgress as never })
+      .eq('id', listing.id)
+      .contains('metadata', { needs_unpublish: true })
+      .select()
+      .maybeSingle()
+    if (!locked) continue
+
+    try {
+      await adapter.unpublish(listing.external_id)
+      const meta = stripFlag(locked.metadata, 'unpublish_in_progress')
+      await supabase.from('property_listings').update({
+        status: 'paused',
+        metadata: meta as never,
+      }).eq('id', listing.id)
+      await writeAudit(supabase, {
+        listingId: listing.id,
+        propertyId: listing.property_id,
+        portal: listing.portal as PortalName,
+        eventType: 'unpublished',
+      })
+    } catch (err) {
+      const meta = stripFlag(locked.metadata, 'unpublish_in_progress')
+      ;(meta as Record<string, unknown>).needs_unpublish = true
+      await supabase.from('property_listings').update({ metadata: meta as never }).eq('id', listing.id)
+      console.error(`[unpublish-listing] ${listing.portal} ${listing.id}`, err)
+    }
+  }
+}
+
+async function processUpdates(supabase: SB) {
+  const { data: listings } = await supabase
+    .from('property_listings')
+    .select('*')
+    .eq('status', 'published')
+    .contains('metadata', { needs_update: true })
+    .limit(10)
+
+  for (const listing of listings ?? []) {
+    const adapter = getAdapter(listing.portal as PortalName)
+    if (!adapter || !adapter.enabled || !listing.external_id) continue
+
+    const metaWithProgress = swapFlag(listing.metadata, 'needs_update', 'update_in_progress')
+    const { data: locked } = await supabase
+      .from('property_listings')
+      .update({ metadata: metaWithProgress as never })
+      .eq('id', listing.id)
+      .contains('metadata', { needs_update: true })
+      .select()
+      .maybeSingle()
+    if (!locked) continue
+
+    const { data: property } = await supabase
+      .from('properties')
+      .select('*')
+      .eq('id', listing.property_id)
+      .single()
+    if (!property) {
+      const meta = stripFlag(locked.metadata, 'update_in_progress')
+      await supabase.from('property_listings').update({ metadata: meta as never }).eq('id', listing.id)
+      continue
+    }
+
+    try {
+      await adapter.update(property, listing.external_id)
+      const meta = stripFlag(locked.metadata, 'update_in_progress')
+      await supabase.from('property_listings').update({ metadata: meta as never }).eq('id', listing.id)
+      await writeAudit(supabase, {
+        listingId: listing.id,
+        propertyId: listing.property_id,
+        portal: listing.portal as PortalName,
+        eventType: 'updated',
+      })
+    } catch (err) {
+      const meta = stripFlag(locked.metadata, 'update_in_progress')
+      ;(meta as Record<string, unknown>).needs_update = true
+      await supabase.from('property_listings').update({ metadata: meta as never }).eq('id', listing.id)
+      console.error(`[update-listing] ${listing.portal} ${listing.id}`, err)
+    }
+  }
+}
+
+async function processPublishes(supabase: SB) {
+  const { data: listings, error } = await supabase
+    .from('property_listings')
+    .select('*')
+    .eq('status', 'pending')
+    .lte('next_attempt_at', new Date().toISOString())
+    .order('next_attempt_at', { ascending: true })
+    .limit(10)
+
+  if (error) {
+    console.error('[publish-listings] fetch error', error)
+    return
+  }
+  if (!listings || listings.length === 0) return
+
+  for (const listing of listings) {
+    const adapter = getAdapter(listing.portal as PortalName)
+    if (!adapter) {
+      console.warn(`[publish-listings] no adapter for ${listing.portal}`)
+      continue
+    }
+    if (!adapter.enabled) {
+      await writeAudit(supabase, {
+        listingId: listing.id,
+        propertyId: listing.property_id,
+        portal: listing.portal as PortalName,
+        eventType: 'skipped_disabled',
+      })
+      continue
+    }
+
+    const { data: locked } = await supabase
+      .from('property_listings')
+      .update({ status: 'publishing' })
+      .eq('id', listing.id)
+      .eq('status', 'pending')
+      .select()
+      .maybeSingle()
+    if (!locked) continue
+
+    const { data: property } = await supabase
+      .from('properties')
+      .select('*')
+      .eq('id', listing.property_id)
+      .single()
+
+    if (!property) {
+      await supabase.from('property_listings').update({
+        status: 'failed',
+        last_error: 'Property not found',
+      }).eq('id', listing.id)
+      continue
+    }
+
+    try {
+      const result = await adapter.publish(property)
+      await supabase.from('property_listings').update({
+        status: 'published',
+        external_id: result.externalId,
+        external_url: result.externalUrl,
+        last_published_at: new Date().toISOString(),
+        last_error: null,
+        attempts: (listing.attempts ?? 0) + 1,
+      }).eq('id', listing.id)
+      await writeAudit(supabase, {
+        listingId: listing.id,
+        propertyId: listing.property_id,
+        portal: listing.portal as PortalName,
+        eventType: 'published',
+        payload: { externalId: result.externalId, externalUrl: result.externalUrl },
+      })
+      try {
+        await ensurePublicSlug(supabase, listing.property_id)
+      } catch (slugErr) {
+        console.warn('[publish-listings] ensurePublicSlug failed', slugErr)
+      }
+    } catch (err) {
+      const state = nextStateAfterError(listing.attempts ?? 0, err)
+      await supabase.from('property_listings').update({
+        status: state.status,
+        attempts: state.attempts,
+        next_attempt_at: state.next_attempt_at,
+        last_error: state.last_error,
+      }).eq('id', listing.id)
+      await writeAudit(supabase, {
+        listingId: listing.id,
+        propertyId: listing.property_id,
+        portal: listing.portal as PortalName,
+        eventType: state.status === 'pending' ? 'retried' : 'failed',
+        errorMessage: state.last_error,
+        payload: state.status === 'pending'
+          ? { attempts: state.attempts, next_attempt_at: state.next_attempt_at }
+          : undefined,
+      })
+    }
+  }
+}
