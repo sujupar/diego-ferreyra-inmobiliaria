@@ -65,6 +65,18 @@ export class MercadoLibreAdapter implements PortalAdapter {
           method: 'POST',
           body: JSON.stringify(payload),
         })
+        // ML NO publica la descripción inline del POST /items: hay que setearla
+        // como sub-recurso aparte. Sin esto el aviso queda SIN descripción.
+        const plainText = payload.description?.plain_text
+        if (plainText) {
+          await mlFetch(`/items/${created.id}/description`, {
+            method: 'POST',
+            body: JSON.stringify({ plain_text: plainText }),
+          }).catch(err => {
+            // No abortamos la publicación por la descripción, pero lo registramos.
+            console.error(`[ml.publish] descripción falló para ${created.id}`, err)
+          })
+        }
         return {
           externalId: created.id,
           externalUrl: created.permalink,
@@ -73,7 +85,8 @@ export class MercadoLibreAdapter implements PortalAdapter {
       } catch (err) {
         lastErr = err
         const msg = err instanceof Error ? err.message : String(err)
-        if (/available quota/i.test(msg)) continue // sin cupo para este tier → probar el siguiente
+        // Sin cupo para este tier, o el tier no aplica a la categoría → probar el siguiente.
+        if (/available quota/i.test(msg) || /listing.?type/i.test(msg)) continue
         throw err
       }
     }
@@ -100,10 +113,19 @@ export class MercadoLibreAdapter implements PortalAdapter {
         a => !CALCULATED_ATTRS.has(a.id),
       )
     }
+    // La descripción se actualiza por su sub-recurso, no en el PUT del item.
+    const plainText = updateable.description?.plain_text
+    delete updateable.description
     await mlFetch(`/items/${externalId}`, {
       method: 'PUT',
       body: JSON.stringify(updateable),
     })
+    if (plainText) {
+      await mlFetch(`/items/${externalId}/description`, {
+        method: 'PUT',
+        body: JSON.stringify({ plain_text: plainText }),
+      }).catch(err => console.error(`[ml.update] descripción falló para ${externalId}`, err))
+    }
   }
 
   /**

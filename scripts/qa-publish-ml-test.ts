@@ -125,15 +125,42 @@ async function verify(propertyId: string) {
   if (!listing?.external_id) throw new Error('sin external_id (no publicado)')
   const item = await mlFetch(`/items/${listing.external_id}`)
   console.log(JSON.stringify(item, null, 2))
+  // La descripción de ML vive en un sub-recurso aparte.
+  try {
+    const desc = await mlFetch<{ plain_text?: string }>(`/items/${listing.external_id}/description`)
+    console.log('=== DESCRIPCIÓN (sub-recurso) ===')
+    console.log('chars:', (desc.plain_text ?? '').length)
+    console.log((desc.plain_text ?? '').slice(0, 300))
+  } catch (e) {
+    console.log('=== DESCRIPCIÓN: NO existe sub-recurso ===', e instanceof Error ? e.message : e)
+  }
 }
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 async function teardown(propertyId: string) {
   await assertTest(propertyId)
   const { data: listing } = await sb().from('property_listings').select('external_id').eq('property_id', propertyId).eq('portal', 'mercadolibre').maybeSingle()
   if (!listing?.external_id) throw new Error('sin external_id (no publicado)')
-  await mlFetch(`/items/${listing.external_id}`, { method: 'PUT', body: JSON.stringify({ status: 'closed' }) })
+  const id = listing.external_id
+  const close = () => mlFetch(`/items/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'closed' }) })
+  try {
+    await close()
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (!/not_yet_active/.test(msg)) throw e
+    // ML solo permite cerrar desde 'active': activar → esperar → cerrar.
+    console.log('item en not_yet_active → activando para poder cerrar…')
+    await mlFetch(`/items/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'active' }) })
+    for (let i = 0; i < 12; i++) {
+      await sleep(2500)
+      const it = await mlFetch<{ status: string }>(`/items/${id}?attributes=status`)
+      if (it.status === 'active') break
+    }
+    await close()
+  }
   await sb().from('property_listings').update({ status: 'closed' }).eq('property_id', propertyId).eq('portal', 'mercadolibre')
-  console.log(`OK: item ${listing.external_id} cerrado. Propiedad ${propertyId} INTACTA.`)
+  console.log(`OK: item ${id} cerrado. Propiedad ${propertyId} INTACTA.`)
 }
 
 async function main() {

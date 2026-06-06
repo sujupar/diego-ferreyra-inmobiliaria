@@ -40,10 +40,13 @@ export interface MlPayloadOptions {
   allowedAttributeIds?: Set<string>
 }
 
-/** Listing types de inmuebles MLA, de mayor a menor exposición. Default gold_premium. */
+/**
+ * Listing types válidos para inmuebles MLA, de mayor a menor exposición.
+ * Default gold_premium. (gold_special NO aplica a inmuebles — ML lo rechaza con
+ * listing_type.invalid para MLA1473/casas/PH.)
+ */
 export const ML_LISTING_TYPES: { id: string; label: string }[] = [
   { id: 'gold_premium', label: 'Premium (máxima exposición)' },
-  { id: 'gold_special', label: 'Destacada' },
   { id: 'silver', label: 'Clásica' },
   { id: 'free', label: 'Gratuita' },
 ]
