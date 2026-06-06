@@ -70,9 +70,31 @@ export async function POST(
       )
     }
 
+    // Leer el draft de publicación (atributos/medios/listingType) y resolver
+    // qué atributos acepta la categoría para filtrar antes de publicar.
+    const { data: listingDraft } = await supabase
+      .from('property_listings')
+      .select('metadata')
+      .eq('property_id', id).eq('portal', 'mercadolibre').maybeSingle()
+    const meta = (listingDraft?.metadata ?? {}) as Record<string, unknown>
+    let allowedAttributeIds: Set<string> | undefined
+    try {
+      const { resolveCategory } = await import('@/lib/portals/mercadolibre/mapping')
+      const { fetchCategoryAttributes } = await import('@/lib/portals/mercadolibre/category-attributes')
+      const { required, recommended } = await fetchCategoryAttributes(resolveCategory(property))
+      allowedAttributeIds = new Set([...required, ...recommended].map(a => a.id))
+    } catch {
+      allowedAttributeIds = undefined
+    }
+
     let pubResult: { externalId: string; externalUrl: string }
     try {
-      pubResult = await ml.publish(property)
+      pubResult = await (ml as MercadoLibreAdapter).publish(property, {
+        attributeOverrides: (meta.ml_attributes ?? {}) as Record<string, { value_name?: string; value_id?: string }>,
+        mediaChoice: (meta.media_choice as 'video' | 'tour' | 'none') ?? 'none',
+        listingType: (meta.listing_type as string) ?? 'gold_premium',
+        allowedAttributeIds,
+      })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       await supabase

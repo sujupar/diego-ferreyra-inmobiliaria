@@ -1,5 +1,5 @@
 import { mlFetch } from './client'
-import { propertyToMlPayload } from './mapping'
+import { propertyToMlPayload, type MlPayloadOptions } from './mapping'
 import { validateCommon } from '../validation'
 import { PortalAdapterError } from '../types'
 import type {
@@ -38,7 +38,7 @@ export class MercadoLibreAdapter implements PortalAdapter {
     return { ok: errors.length === 0, errors, warnings }
   }
 
-  async publish(property: Property): Promise<PublishResult> {
+  async publish(property: Property, opts: MlPayloadOptions = {}): Promise<PublishResult> {
     const validation = this.validate(property)
     if (!validation.ok) {
       throw new PortalAdapterError(
@@ -48,7 +48,7 @@ export class MercadoLibreAdapter implements PortalAdapter {
         false,
       )
     }
-    const payload = propertyToMlPayload(property)
+    const payload = propertyToMlPayload(property, opts)
     const created = await mlFetch<MlItemCreated>('/items', {
       method: 'POST',
       body: JSON.stringify(payload),
