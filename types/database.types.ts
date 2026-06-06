@@ -9,6 +9,24 @@ export type Json =
 export interface Database {
     public: {
         Tables: {
+            ml_category_attributes: {
+                Row: {
+                    category_id: string
+                    attributes: Json
+                    fetched_at: string
+                }
+                Insert: {
+                    category_id: string
+                    attributes: Json
+                    fetched_at?: string
+                }
+                Update: {
+                    category_id?: string
+                    attributes?: Json
+                    fetched_at?: string
+                }
+                Relationships: []
+            }
             profiles: {
                 Row: {
                     id: string
