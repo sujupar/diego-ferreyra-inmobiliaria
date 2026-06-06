@@ -143,19 +143,22 @@ async function teardown(propertyId: string) {
   const { data: listing } = await sb().from('property_listings').select('external_id').eq('property_id', propertyId).eq('portal', 'mercadolibre').maybeSingle()
   if (!listing?.external_id) throw new Error('sin external_id (no publicado)')
   const id = listing.external_id
+  const getStatus = async () => (await mlFetch<{ status: string }>(`/items/${id}?attributes=status`)).status
   const close = () => mlFetch(`/items/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'closed' }) })
-  try {
-    await close()
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    if (!/not_yet_active/.test(msg)) throw e
-    // ML solo permite cerrar desde 'active': activar → esperar → cerrar.
-    console.log('item en not_yet_active → activando para poder cerrar…')
-    await mlFetch(`/items/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'active' }) })
-    for (let i = 0; i < 12; i++) {
-      await sleep(2500)
-      const it = await mlFetch<{ status: string }>(`/items/${id}?attributes=status`)
-      if (it.status === 'active') break
+
+  let status = await getStatus()
+  console.log('estado actual:', status)
+  if (status === 'closed') { console.log('ya estaba cerrado'); }
+  else {
+    // ML solo permite cerrar desde 'active'/'paused'. Si está not_yet_active,
+    // pedir activación y esperar (la transición es asíncrona, puede tardar minutos).
+    if (status === 'not_yet_active') {
+      await mlFetch(`/items/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'active' }) }).catch(() => {})
+      for (let i = 0; i < 36 && status === 'not_yet_active'; i++) {
+        await sleep(5000)
+        status = await getStatus()
+        if (i % 3 === 0) console.log(`  esperando activación… (${status})`)
+      }
     }
     await close()
   }
