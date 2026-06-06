@@ -109,10 +109,14 @@ async function publish(propertyId: string) {
       property_id: propertyId, portal: 'mercadolibre', status: 'published',
       external_id: result.externalId, external_url: result.externalUrl,
       last_published_at: new Date().toISOString(), last_error: null,
+      metadata: { listing_type: (result.metadata?.listingTypeUsed as string) ?? 'gold_premium' } as never,
     },
     { onConflict: 'property_id,portal' },
   )
   console.log('OK publicado:', result)
+  if (result.metadata?.downgradedFrom) {
+    console.log(`⚠ Tier degradado: se pidió ${result.metadata.downgradedFrom} pero ML solo tenía cupo para ${result.metadata.listingTypeUsed}`)
+  }
 }
 
 async function verify(propertyId: string) {

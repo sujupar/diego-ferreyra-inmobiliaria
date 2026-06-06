@@ -1,5 +1,5 @@
 import { mlFetch } from './client'
-import { propertyToMlPayload, type MlPayloadOptions } from './mapping'
+import { propertyToMlPayload, ML_LISTING_TYPES, type MlPayloadOptions } from './mapping'
 import { validateCommon } from '../validation'
 import { PortalAdapterError } from '../types'
 import type {
@@ -48,12 +48,36 @@ export class MercadoLibreAdapter implements PortalAdapter {
         false,
       )
     }
-    const payload = propertyToMlPayload(property, opts)
-    const created = await mlFetch<MlItemCreated>('/items', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    })
-    return { externalId: created.id, externalUrl: created.permalink }
+
+    // Fallback de tier: intentamos el listing_type pedido (default gold_premium) y,
+    // si ML responde "Not available quota" (la cuenta no tiene cupo para ese tier
+    // pago), bajamos al siguiente tier disponible. Cualquier otro error se propaga.
+    const requested = opts.listingType || 'gold_premium'
+    const order = ML_LISTING_TYPES.map(t => t.id)
+    const startIdx = Math.max(0, order.indexOf(requested))
+    const tiersToTry = order.slice(startIdx)
+
+    let lastErr: unknown
+    for (const tier of tiersToTry) {
+      try {
+        const payload = propertyToMlPayload(property, { ...opts, listingType: tier })
+        const created = await mlFetch<MlItemCreated>('/items', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        })
+        return {
+          externalId: created.id,
+          externalUrl: created.permalink,
+          metadata: { listingTypeUsed: tier, ...(tier !== requested ? { downgradedFrom: requested } : {}) },
+        }
+      } catch (err) {
+        lastErr = err
+        const msg = err instanceof Error ? err.message : String(err)
+        if (/available quota/i.test(msg)) continue // sin cupo para este tier → probar el siguiente
+        throw err
+      }
+    }
+    throw lastErr
   }
 
   async update(property: Property, externalId: string): Promise<void> {
