@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Building2 } from 'lucide-react'
-import { MercadoLibreWizard } from '@/components/properties/wizards/MercadoLibreWizard'
+import { MercadoLibreWizard } from '@/components/properties/wizards/ml/MercadoLibreWizard'
 
 export const metadata = { title: 'Publicar en MercadoLibre' }
 
