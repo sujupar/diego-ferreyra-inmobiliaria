@@ -28,6 +28,9 @@ export async function POST(
     const { id, jobId } = await params
     const supabase = getAdmin()
 
+    if (user.profile.role === 'abogado') {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     if (user.profile.role === 'asesor') {
       const { data: prop } = await supabase
         .from('properties')
@@ -47,11 +50,16 @@ export async function POST(
       )
     }
 
+    // CRÍTICO: filtrar por id + property_id para evitar cross-tenant access
+    // (un asesor de propiedad A no debe poder modificar jobs de propiedad B
+    //  pasando jobId arbitrario).
     const { data: job } = await (supabase as unknown as {
       from: (t: string) => {
         select: (s: string) => {
           eq: (a: string, b: string) => {
-            maybeSingle: () => Promise<{ data: { generated_avatars: { avatars?: BuyerAvatar[] } } | null }>
+            eq: (a: string, b: string) => {
+              maybeSingle: () => Promise<{ data: { generated_avatars: { avatars?: BuyerAvatar[] } } | null }>
+            }
           }
         }
       }
@@ -59,6 +67,7 @@ export async function POST(
       .from('meta_launch_jobs')
       .select('generated_avatars')
       .eq('id', jobId)
+      .eq('property_id', id)
       .maybeSingle()
     if (!job?.generated_avatars?.avatars) {
       return NextResponse.json({ error: 'Job no tiene avatares' }, { status: 404 })
@@ -92,11 +101,13 @@ export async function POST(
       )
     }
 
-    // Guardar en el job
+    // Guardar en el job (también filtrando por property_id por defensa)
     await (supabase as unknown as {
       from: (t: string) => {
         update: (f: Record<string, unknown>) => {
-          eq: (a: string, b: string) => Promise<unknown>
+          eq: (a: string, b: string) => {
+            eq: (a: string, b: string) => Promise<unknown>
+          }
         }
       }
     })
@@ -107,6 +118,7 @@ export async function POST(
         optimized_avatar: optimized,
       })
       .eq('id', jobId)
+      .eq('property_id', id)
 
     return NextResponse.json({ optimized })
   } catch (err) {

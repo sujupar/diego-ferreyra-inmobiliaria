@@ -19,6 +19,10 @@ import { generateThreeAvatars } from '@/lib/marketing/buyer-avatar-generator'
 import { getOrGenerateBridgedDescription } from '@/lib/marketing/portal-description-bridge'
 import type { Database } from '@/types/database.types'
 
+// Máximo timeout Netlify Pro — start corre análisis Vision + 3 avatares en
+// cadena, ~30-50s worst case. Default de 26s no alcanza.
+export const maxDuration = 60
+
 function getAdmin() {
   return createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

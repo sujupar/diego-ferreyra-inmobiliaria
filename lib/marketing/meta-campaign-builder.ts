@@ -266,6 +266,11 @@ export interface CampaignOverrides {
   dailyBudgetArs?: number
   /** Índice de la variante de copy a usar (0..N-1) — override del default 0 */
   copyVariantIdx?: number
+  /** Hashes de imágenes pre-generadas (wizard v2) — si se pasan, el builder
+   *  los usa directamente en lugar de generar/subir nuevas piezas. Permite
+   *  que las 27 piezas generadas por el async runner se conviertan en los
+   *  10 Ads de la campaña sin regenerar. */
+  preGeneratedImageHashes?: string[]
   /** Spec de targeting completa — override del decideTargeting automático.
    *  Si se pasa, ignora geo automático y usa el preset que eligió el asesor. */
   targetingOverride?: Record<string, unknown>
@@ -491,21 +496,20 @@ export async function createCampaignForProperty(
       : (await analyzePropertyPhotos(property)).highlights
 
   // 3. Determinar cuántas variantes de ad vamos a crear.
-  //    Default 10 — Meta Andrómeda recompensa MUCHA variedad creativa. Más
-  //    variantes = mejor optimización por parte del delivery system.
-  //    Cap superior a la cantidad de copy variants disponibles (10).
-  //    Si hay menos highlights que variantes (caso común: 5 highlights, 10
-  //    variantes), ciclamos los highlights con DIFERENTES estilos gráficos
-  //    para que ningún ad sea visualmente idéntico — Andrómeda penaliza ads
-  //    idénticos como "spam creativo".
-  const requestedVariants = overrides.variantCount ?? 10
+  //    Si el wizard v2 nos pasa imágenes pre-generadas, las usamos directo
+  //    (typically 10 hashes elegidos de las 27 piezas que el async runner
+  //    generó). Esto es lo que hace que las piezas premium efectivamente
+  //    aparezcan en la campaña, en lugar de la foto cruda.
+  const preGeneratedHashes = overrides.preGeneratedImageHashes ?? []
+  const hasPreGenerated = preGeneratedHashes.length > 0
+  const requestedVariants = overrides.variantCount ?? (hasPreGenerated ? preGeneratedHashes.length : 10)
   const variantCount = Math.max(
     1,
     Math.min(
       requestedVariants,
       copyVariations.primaryTexts.length,
       copyVariations.headlines.length,
-      10, // cap absoluto — 10 ads es el sweet spot Andrómeda
+      hasPreGenerated ? preGeneratedHashes.length : 10, // si tenemos pre-generadas, no exceder esa cantidad
     ),
   )
 
@@ -665,20 +669,27 @@ export async function createCampaignForProperty(
     const photoIndex = (baseIdx + cycleNum) % photosAvailable
     const photoUrl = property.photos[photoIndex] ?? property.photos[0]
 
-    // Genera (o reusa cache) la imagen premium con Gemini, hace upload a
-    // Meta y devuelve el hash. Si Gemini falla, hace fallback a la foto
-    // rotada (no la #0 por default — para evitar 10 ads con la misma foto).
-    const imageHash = await getOrGenerateAdImageHash({
-      property,
-      highlight,
-      copyHeadline: variantHeadline,
-      format: 'feed_square',
-      compositionStyle,
-      overridePhotoUrl: photoUrl,
-      // El sufijo del cache key incluye style + photoIndex para que
-      // (mismo highlight) × (otro estilo) × (otra foto) sea cache distinto.
-      cacheKeySuffix: `_style_${compositionStyle}_p${photoIndex}`,
-    })
+    // Si el wizard v2 nos pasó imágenes pre-generadas (typically las 10
+    // mejores piezas de las 27 que generó el async runner), usamos ese hash
+    // directo. Sino, generamos en vivo con Gemini (camino del v1).
+    //
+    // CRÍTICO para que el feature del wizard v2 NO sea teatro: sin esta rama,
+    // toda la generación de 27 piezas Gemini se desperdicia y la campaña
+    // termina usando la foto cruda de property.photos[0].
+    let imageHash: string
+    if (hasPreGenerated && preGeneratedHashes[i]) {
+      imageHash = preGeneratedHashes[i]
+    } else {
+      imageHash = await getOrGenerateAdImageHash({
+        property,
+        highlight,
+        copyHeadline: variantHeadline,
+        format: 'feed_square',
+        compositionStyle,
+        overridePhotoUrl: photoUrl,
+        cacheKeySuffix: `_style_${compositionStyle}_p${photoIndex}`,
+      })
+    }
 
     const creative = await metaFetch<{ id: string }>(`/${accountId}/adcreatives`, {
       method: 'POST',

@@ -33,6 +33,9 @@ export async function POST(
     const { id, jobId } = await params
     const supabase = getAdmin()
 
+    if (user.profile.role === 'abogado') {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     if (user.profile.role === 'asesor') {
       const { data: prop } = await supabase
         .from('properties')

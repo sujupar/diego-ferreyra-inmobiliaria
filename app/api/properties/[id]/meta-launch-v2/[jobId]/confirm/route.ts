@@ -90,10 +90,44 @@ export async function POST(
       .update({ status: 'publishing', current_step: 'creating_campaign', progress_percent: 10 })
       .eq('id', jobId)
 
+    // CRÍTICO: cargar las piezas pre-generadas (formato feed_square — Meta usa
+    // ese para feed). Pasamos sus meta_image_hash al builder así crea Ads con
+    // las piezas premium del wizard v2 (no con la foto cruda).
+    // Tomamos hasta 10 (sweet spot Andrómeda) ordenadas por created_at.
+    const { data: preGenAssets } = await (supabase as unknown as {
+      from: (t: string) => {
+        select: (s: string) => {
+          eq: (a: string, b: string) => {
+            eq: (a: string, b: string) => {
+              order: (
+                a: string,
+                opts: { ascending: boolean },
+              ) => { limit: (n: number) => Promise<{ data: Array<{ meta_image_hash: string | null }> | null }> }
+            }
+          }
+        }
+      }
+    })
+      .from('property_ad_assets')
+      .select('meta_image_hash')
+      .eq('launch_job_id', jobId)
+      .eq('format', 'feed_square')
+      .order('created_at', { ascending: true })
+      .limit(10)
+    const preGeneratedImageHashes: string[] = (preGenAssets ?? [])
+      .map(a => a.meta_image_hash)
+      .filter((h): h is string => typeof h === 'string' && h.length > 0)
+
     // Crear campaña (el builder maneja idempotencia con UNIQUE PARTIAL)
     let campaign
     try {
-      campaign = await createCampaignForProperty(property as never, { dryRun: true })
+      campaign = await createCampaignForProperty(property as never, {
+        dryRun: true,
+        overrides: {
+          preGeneratedImageHashes,
+          variantCount: Math.min(preGeneratedImageHashes.length, 10),
+        },
+      })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       await (supabase as unknown as {

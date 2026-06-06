@@ -39,6 +39,9 @@ export async function PATCH(
     const supabase = getAdmin()
 
     // Autorización
+    if (user.profile.role === 'abogado') {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     if (user.profile.role === 'asesor') {
       const { data: prop } = await supabase
         .from('properties')
@@ -78,6 +81,23 @@ export async function PATCH(
       update.videos_to_include = body.videosToInclude.slice(0, 5).map(String)
     }
     if (body.readyToGenerate === true) {
+      // Validar prerequisites antes de transicionar a 'generating'.
+      // Sin esto, el runner se queda atascado con error genérico cuando
+      // faltan datos (ej. ningún avatar o ningún starred photo).
+      const finalStarred = (update.starred_photo_indices as number[] | undefined) ?? null
+      const finalAvatar = (update.selected_avatar_id as string | undefined) ?? null
+      if (!finalAvatar) {
+        return NextResponse.json(
+          { error: 'Falta seleccionar un avatar antes de generar' },
+          { status: 400 },
+        )
+      }
+      if (!finalStarred || finalStarred.length !== 3) {
+        return NextResponse.json(
+          { error: 'Necesitás marcar exactamente 3 fotos con estrella antes de generar' },
+          { status: 400 },
+        )
+      }
       update.status = 'generating'
       update.current_step = 'starting_generation'
       update.progress_percent = 0

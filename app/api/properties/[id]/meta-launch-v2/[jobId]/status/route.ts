@@ -60,6 +60,9 @@ export async function GET(
     const supabase = getAdmin()
 
     // Autorización
+    if (user.profile.role === 'abogado') {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     if (user.profile.role === 'asesor') {
       const { data: prop } = await supabase
         .from('properties')

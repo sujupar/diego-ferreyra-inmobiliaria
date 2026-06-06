@@ -275,7 +275,30 @@ Output: JSON con el avatar optimizado en la MISMA estructura que recibís (id, s
     const text = data.candidates?.[0]?.content?.parts?.find(p => p.text)?.text
     if (!text) return null
     const cleaned = text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
-    return JSON.parse(cleaned) as BuyerAvatar
+    const parsed = JSON.parse(cleaned) as Partial<BuyerAvatar>
+    // Shape validation — Gemini puede devolver partial JSON bajo rate limit.
+    // Sin esto el optimized_avatar quedaría malformado en la DB.
+    if (
+      typeof parsed.id !== 'string' ||
+      typeof parsed.shortLabel !== 'string' ||
+      typeof parsed.motivation !== 'string'
+    ) {
+      console.warn('[buyer-avatars optimize] shape inválido', JSON.stringify(parsed).slice(0, 200))
+      return null
+    }
+    return {
+      id: String(parsed.id),
+      shortLabel: String(parsed.shortLabel).slice(0, 120),
+      ageRange: String(parsed.ageRange ?? input.avatar.ageRange),
+      occupation: String(parsed.occupation ?? input.avatar.occupation),
+      lifeMoment: String(parsed.lifeMoment ?? input.avatar.lifeMoment),
+      motivation: String(parsed.motivation),
+      concerns: Array.isArray(parsed.concerns) ? parsed.concerns.slice(0, 5).map(String) : input.avatar.concerns,
+      communicationTone: (parsed.communicationTone as BuyerAvatar['communicationTone']) ?? input.avatar.communicationTone,
+      visualCue: (parsed.visualCue as BuyerAvatar['visualCue']) ?? input.avatar.visualCue,
+      hooks: Array.isArray(parsed.hooks) ? parsed.hooks.slice(0, 4).map(String) : input.avatar.hooks,
+      reasoning: String(parsed.reasoning ?? input.avatar.reasoning).slice(0, 300),
+    }
   } catch (err) {
     console.warn('[buyer-avatars optimize] exception:', err)
     return null

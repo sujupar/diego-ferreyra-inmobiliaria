@@ -143,7 +143,12 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
   const [geoPresetId, setGeoPresetId] = useState<string>('similares')
   const [dailyBudget, setDailyBudget] = useState<number>(10_000)
   const [generationProgress, setGenerationProgress] = useState<{ generated: number; total: number; failures: number }>({ generated: 0, total: 27, failures: 0 })
-  const [generatingBatch, setGeneratingBatch] = useState(false)
+  // CRÍTICO: usar useRef en vez de useState. El recursive runNextBatch lee
+  // este flag sincrónicamente — si fuera useState, la closure capturada lee
+  // un valor stale y la cadena se rompe después del primer batch.
+  const generatingBatchRef = useRef(false)
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
   const [finalResult, setFinalResult] = useState<{ campaignId: string; adsManagerUrl: string } | null>(null)
 
   // Polling helper
@@ -266,8 +271,12 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
   }
 
   async function runNextBatch() {
-    if (!jobId || generatingBatch) return
-    setGeneratingBatch(true)
+    if (!jobId) return
+    // Guard sincrónico vía ref (no state) para que las llamadas encadenadas
+    // detecten el lock inmediatamente, no en el próximo render.
+    if (generatingBatchRef.current) return
+    if (!mountedRef.current) return
+    generatingBatchRef.current = true
     try {
       const r = await fetch(
         `/api/properties/${propertyId}/meta-launch-v2/${jobId}/generate-batch`,
@@ -279,19 +288,23 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
       )
       const data = await r.json()
       if (!r.ok) throw new Error(data.error ?? 'Error generando batch')
-      setGenerationProgress({
-        generated: data.totalGenerated,
-        total: data.totalPieces,
-        failures: data.failures,
-      })
-      if (!data.done) {
-        // Chain next batch
+      if (mountedRef.current) {
+        setGenerationProgress({
+          generated: data.totalGenerated,
+          total: data.totalPieces,
+          failures: data.failures,
+        })
+      }
+      // Liberar el lock ANTES de la recursión (sino la recursión la skipea)
+      generatingBatchRef.current = false
+      if (!data.done && mountedRef.current) {
         void runNextBatch()
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error')
-    } finally {
-      setGeneratingBatch(false)
+      generatingBatchRef.current = false
+      if (mountedRef.current) {
+        toast.error(err instanceof Error ? err.message : 'Error')
+      }
     }
   }
 
