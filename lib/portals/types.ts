@@ -40,7 +40,9 @@ export interface PortalAdapter {
   readonly enabled: boolean
 
   validate(property: Property): ValidationResult
-  publish(property: Property): Promise<PublishResult>
+  // opts es portal-específico (MercadoLibre usa MlPayloadOptions). Se tipa unknown
+  // acá para no acoplar la interfaz a un portal; cada adapter lo refina.
+  publish(property: Property, opts?: unknown): Promise<PublishResult>
   update(property: Property, externalId: string): Promise<void>
   unpublish(externalId: string): Promise<void>
   fetchMetrics(externalId: string, since: Date): Promise<PortalMetricsPoint[]>

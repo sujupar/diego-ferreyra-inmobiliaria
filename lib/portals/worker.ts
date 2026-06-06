@@ -6,8 +6,35 @@ import type { PortalName } from '@/lib/portals/types'
 import { nextStateAfterError, stripFlag, swapFlag } from '@/lib/portals/worker-logic'
 import { ensurePublicSlug } from '@/lib/landing/assign-slug'
 import { mlFetch } from '@/lib/portals/mercadolibre/client'
+import { resolveCategory } from '@/lib/portals/mercadolibre/mapping'
+import { fetchCategoryAttributes } from '@/lib/portals/mercadolibre/category-attributes'
+import type { Property } from '@/lib/portals/types'
 
 type SB = ReturnType<typeof createClient<Database>>
+
+/**
+ * Para MercadoLibre, reconstruye las MlPayloadOptions desde el draft guardado en
+ * property_listings.metadata (lo mismo que hace la ruta POST /ml-publish), para
+ * que el worker (retries) publique con la configuración del wizard, no con los
+ * defaults. Para otros portales devuelve {} (sus adapters ignoran opts).
+ */
+async function buildPublishOpts(portal: PortalName, property: Property, metadata: unknown): Promise<unknown> {
+  if (portal !== 'mercadolibre') return {}
+  const meta = (metadata ?? {}) as Record<string, unknown>
+  let allowedAttributeIds: Set<string> | undefined
+  try {
+    const { required, recommended } = await fetchCategoryAttributes(resolveCategory(property))
+    allowedAttributeIds = new Set([...required, ...recommended].map(a => a.id))
+  } catch {
+    allowedAttributeIds = undefined
+  }
+  return {
+    attributeOverrides: (meta.ml_attributes ?? {}) as Record<string, { value_name?: string; value_id?: string }>,
+    mediaChoice: (meta.media_choice as 'video' | 'tour' | 'none') ?? 'none',
+    listingType: (meta.listing_type as string) ?? 'gold_premium',
+    allowedAttributeIds,
+  }
+}
 
 /**
  * Worker de publicación de portales. Procesa, en orden:
@@ -239,7 +266,15 @@ async function processPublishes(supabase: SB) {
     }
 
     try {
-      const result = await adapter.publish(property)
+      // Para MercadoLibre, publicar con el draft que persistió el wizard
+      // (atributos/medios/listing_type) + filtro de atributos por categoría.
+      // Sin esto el worker republicaría ignorando toda la configuración.
+      const publishOpts = await buildPublishOpts(listing.portal as PortalName, property, listing.metadata)
+      const result = await adapter.publish(property, publishOpts)
+      const usedTier = (result.metadata?.listingTypeUsed as string | undefined)
+      const mergedMeta = usedTier
+        ? { ...((listing.metadata as Record<string, unknown>) ?? {}), listing_type: usedTier }
+        : (listing.metadata as Record<string, unknown>)
       await supabase.from('property_listings').update({
         status: 'published',
         external_id: result.externalId,
@@ -247,6 +282,7 @@ async function processPublishes(supabase: SB) {
         last_published_at: new Date().toISOString(),
         last_error: null,
         attempts: (listing.attempts ?? 0) + 1,
+        metadata: mergedMeta as never,
       }).eq('id', listing.id)
       await writeAudit(supabase, {
         listingId: listing.id,

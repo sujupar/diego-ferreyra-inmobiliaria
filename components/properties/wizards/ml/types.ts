@@ -11,6 +11,7 @@ export interface MlPreviewProperty {
   currency: string
   address: string
   neighborhood: string
+  city: string
   rooms: number | null
   bedrooms: number | null
   bathrooms: number | null

@@ -87,7 +87,7 @@ export async function POST(
       allowedAttributeIds = undefined
     }
 
-    let pubResult: { externalId: string; externalUrl: string }
+    let pubResult: { externalId: string; externalUrl: string; metadata?: Record<string, unknown> }
     try {
       pubResult = await (ml as MercadoLibreAdapter).publish(property, {
         attributeOverrides: (meta.ml_attributes ?? {}) as Record<string, { value_name?: string; value_id?: string }>,
@@ -119,6 +119,11 @@ export async function POST(
       return NextResponse.json({ error: msg }, { status: 502 })
     }
 
+    // Persistir el tier REALMENTE usado (el adapter degrada gold_premium → silver/free
+    // si la cuenta no tiene cupo). Sin esto, metadata.listing_type quedaría con el
+    // tier pedido y el update() del worker reintentaría con un tier sin cupo.
+    const usedTier = (pubResult.metadata?.listingTypeUsed as string | undefined)
+    const mergedMeta = { ...meta, ...(usedTier ? { listing_type: usedTier } : {}) }
     await supabase
       .from('property_listings')
       .upsert(
@@ -131,6 +136,7 @@ export async function POST(
           last_published_at: new Date().toISOString(),
           attempts: 1,
           last_error: null,
+          metadata: mergedMeta as never,
         },
         { onConflict: 'property_id,portal' },
       )

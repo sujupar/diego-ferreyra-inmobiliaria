@@ -51,12 +51,17 @@ export function GeoPinMap({ lat, lng, onChange }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Sincroniza el pin si lat/lng cambian desde afuera (ej. geocoding)
+  // Sincroniza el pin SOLO si lat/lng cambian desde afuera (ej. geocoding).
+  // Si el cambio vino del drag del propio marker, éste ya está en esa posición
+  // → evitamos re-centrar/re-zoomear y pelear con el pan/zoom del usuario.
   useEffect(() => {
-    if (markerRef.current && mapRef.current) {
-      markerRef.current.setLatLng([lat, lng])
-      mapRef.current.setView([lat, lng], 16)
-    }
+    const m = markerRef.current
+    const map = mapRef.current
+    if (!m || !map) return
+    const cur = m.getLatLng()
+    if (Math.abs(cur.lat - lat) < 1e-7 && Math.abs(cur.lng - lng) < 1e-7) return
+    m.setLatLng([lat, lng])
+    map.setView([lat, lng], 16)
   }, [lat, lng])
 
   return <div ref={ref} className="h-56 w-full rounded-lg border z-0" />

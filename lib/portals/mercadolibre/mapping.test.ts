@@ -116,6 +116,11 @@ describe('propertyToMlPayload con opts', () => {
     const p = propertyToMlPayload(makeProperty({ video_url: 'https://youtu.be/dQw4w9WgXcQ' }), { mediaChoice: 'tour' })
     expect(p.video_id).toBeUndefined()
   })
+  it('mediaChoice=tour agrega el link del recorrido a la descripción', () => {
+    const p = propertyToMlPayload(makeProperty({ tour_3d_url: 'https://my.matterport.com/show/?m=abc' }), { mediaChoice: 'tour' })
+    expect(p.description.plain_text).toContain('https://my.matterport.com/show/?m=abc')
+    expect(p.description.plain_text).toContain('Recorrido virtual')
+  })
 })
 
 describe('resolveCategory / ML_LISTING_TYPES', () => {

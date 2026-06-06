@@ -193,7 +193,11 @@ export async function PATCH(
         .eq('property_id', id).eq('portal', 'mercadolibre').maybeSingle()
       const mergedMeta = { ...((existing?.metadata as Record<string, unknown>) ?? {}), ...draftPatch }
       const row: Record<string, unknown> = { property_id: id, portal: 'mercadolibre', metadata: mergedMeta }
-      if (!existing) row.status = 'pending'
+      // CRÍTICO: el draft del wizard usa status 'draft', NO 'pending'. Una fila
+      // 'pending' con next_attempt_at = NOW() (default) la levanta el worker
+      // pg_cron y publicaría el aviso a medio configurar (mientras el asesor está
+      // en el paso 2 de 6). El publish real (POST /ml-publish) la pasa a 'published'.
+      if (!existing) row.status = 'draft'
       await supabase.from('property_listings').upsert(row as never, { onConflict: 'property_id,portal' })
     }
 

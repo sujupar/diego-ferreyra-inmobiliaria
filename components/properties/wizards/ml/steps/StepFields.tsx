@@ -95,10 +95,13 @@ export function StepFields({ property, attrs, draft, onChange, onValidityChange 
   async function geocode() {
     setGeocoding(true)
     try {
+      const addressQuery = [property.address, property.neighborhood, property.city || 'CABA']
+        .filter(Boolean)
+        .join(', ')
       const r = await fetch('/api/geocode', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ address: `${property.address}, ${property.neighborhood}, ${property.neighborhood ? 'CABA' : ''}` }),
+        body: JSON.stringify({ address: addressQuery }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error)

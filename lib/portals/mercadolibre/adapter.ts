@@ -85,8 +85,15 @@ export class MercadoLibreAdapter implements PortalAdapter {
       } catch (err) {
         lastErr = err
         const msg = err instanceof Error ? err.message : String(err)
-        // Sin cupo para este tier, o el tier no aplica a la categoría → probar el siguiente.
-        if (/available quota/i.test(msg) || /listing.?type/i.test(msg)) continue
+        // Solo reintentamos con el siguiente tier ante errores ESPECÍFICOS de
+        // disponibilidad del tier: sin cupo, o el tier no se ofrece para la
+        // categoría. Cualquier otro error (incluidos otros de listing_type) se
+        // propaga tal cual para no enmascarar la causa real.
+        const tierUnavailable =
+          /available quota/i.test(msg) ||
+          /listing_type\.invalid/i.test(msg) ||
+          /listing type was null/i.test(msg)
+        if (tierUnavailable) continue
         throw err
       }
     }

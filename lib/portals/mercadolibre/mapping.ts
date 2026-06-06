@@ -176,6 +176,10 @@ export function propertyToMlPayload(property: Property, opts: MlPayloadOptions =
   if (opts.mediaChoice === 'video') {
     const ytId = extractYouTubeId(property.video_url)
     if (ytId) payload.video_id = ytId
+  } else if (opts.mediaChoice === 'tour' && property.tour_3d_url) {
+    // ML no tiene campo nativo de recorrido 3D → lo agregamos como link al final
+    // de la descripción (StepMedia se lo promete así al asesor).
+    payload.description.plain_text = `${payload.description.plain_text}\n\nRecorrido virtual 360°: ${property.tour_3d_url}`
   }
   return payload
 }
