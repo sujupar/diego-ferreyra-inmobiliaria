@@ -15,6 +15,77 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 
 ---
 
+## Meta Ads — Arquitectura actual (2026-06-06)
+
+Hay DOS wizards de campaña Meta coexistiendo:
+
+- **`MetaAdsWizard` (v1)**: el original. Hoy solo se usa cuando la propiedad
+  YA tiene una campaña no archivada — sirve como panel de gestión
+  (Pausar / Reactivar / Archivar / link a Ads Manager).
+- **`MetaAdsWizardV2`**: el nuevo flow de 11 etapas. Se usa cuando la
+  propiedad NO tiene campaña.
+
+El router está en `app/(dashboard)/properties/[id]/marketing/meta-ads/page.tsx`.
+
+### Flujo del wizard v2 (Business Intelligence)
+
+1. Confirmar datos de la propiedad
+2. Recuperar descripción de portal (si está publicada) o generarla
+3. Análisis con Gemini Vision (todas las fotos)
+4. 3 avatares de comprador (Gemini text). El asesor puede comentar para refinar uno
+5. Galería con estrellas: elegir 3 fotos principales
+6. Ubicaciones (3 presets — Cercanos / Similares / Toda CABA)
+7. **Generación de 27 piezas** = 3 fotos × 3 estilos × 3 formatos. Async con polling
+8. Videos opcionales
+9. Presupuesto en ARS
+10. Revisión final
+11. Publicar = Campaign + 10 Ads + 2 Custom Audiences
+
+### Endpoints clave
+
+```
+POST   /api/properties/[id]/meta-launch-v2/start
+GET    /api/properties/[id]/meta-launch-v2/[jobId]/status
+PATCH  /api/properties/[id]/meta-launch-v2/[jobId]/save-input
+POST   /api/properties/[id]/meta-launch-v2/[jobId]/generate-batch
+POST   /api/properties/[id]/meta-launch-v2/[jobId]/optimize-avatar
+POST   /api/properties/[id]/meta-launch-v2/[jobId]/confirm
+POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
+```
+
+### Modelos de Gemini
+
+- **Vision (análisis de fotos):** `gemini-2.0-flash` (var: `GEMINI_VISION_MODEL`)
+- **Text (avatares + copy):** `gemini-2.0-flash` (var: `GEMINI_TEXT_MODEL`)
+- **Image (generación de piezas):** **`gemini-2.5-flash-image`** (var: `GEMINI_IMAGE_MODEL`)
+  - **OJO:** `gemini-2.5-flash-image-preview` NO existe (404). El nombre correcto
+    es `gemini-2.5-flash-image` (sin `-preview`). Verificado empíricamente 2026-06-06.
+- Todos requieren `GEMINI_API_KEY` en Netlify env vars.
+- El modelo de imagen requiere billing habilitado en el proyecto Google AI Studio.
+
+### Costos
+
+- 27 piezas Gemini Image × $0.04 ≈ $1.08 por campaña
+- Optimizar avatar con comentario: ~$0.01 cada vez
+- A 50 campañas/mes: ~$54/mes en Gemini
+
+### Tablas relacionadas
+
+- `meta_launch_jobs` — estado del proceso multi-etapa. UNIQUE PARTIAL en property_id WHERE status IN ('analyzing','awaiting_user_input','generating','awaiting_confirm','publishing') previene jobs paralelos.
+- `property_meta_campaigns` — campañas creadas (UNIQUE PARTIAL en property_id WHERE status<>'archived' previene duplicados de Meta)
+- `property_meta_audiences` — Custom Audiences creados al lanzar
+- `property_ad_assets` — cache de imágenes generadas (incluye `storage_url`, `photo_source_index`, `composition_variant`, `launch_job_id`)
+
+### Migraciones que el usuario debe ejecutar manualmente
+
+```
+20260523000001_ad_assets.sql                — cache base
+20260527000001_meta_campaign_lock.sql       — anti-duplicado de campañas
+20260606000001_meta_business_intelligence.sql — wizard v2
+```
+
+---
+
 ## Operational Gotchas / Lessons Learned
 
 ### Postgres triggers que insertan en otra tabla con FK al row actual
@@ -96,6 +167,20 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 - **Root cause:** Meta actualizó la API en 2025 — cualquier Campaign que no use CBO (Campaign Budget Optimization, i.e. budget a nivel Campaign) ahora debe especificar explícitamente este campo. Antes era inferido.
 - **Fix:** En `lib/marketing/meta-campaign-builder.ts` agregar `is_adset_budget_sharing_enabled: false` al body del POST de campaign cuando el budget está a nivel adset (nuestro caso default). Si en el futuro querés CBO entre múltiples adsets, mover el `daily_budget` a la Campaign y poner `true`.
 - **Detection:** Antes de declarar una integración Meta completa, hacer un test end-to-end real de creación de Campaign — no solo unit tests del builder.
+
+### Gemini Image: el modelo `-preview` NO existe — usar GA sin sufijo
+
+- **Symptom:** Generación de imágenes con Gemini cae siempre a fallback silencioso (foto cruda). Los logs muestran `[ad-image-gen] Gemini 404: models/gemini-2.5-flash-image-preview is not found for API version v1beta`.
+- **Root cause:** El nombre `gemini-2.5-flash-image-preview` NO existe. Google nunca tuvo ese sufijo `-preview` público. El modelo GA correcto es `gemini-2.5-flash-image` (apodo "Nano Banana"). Verificado empíricamente 2026-06-06 con curl directo a la API.
+- **Fix:** En `lib/marketing/ad-image-generator.ts` y `GEMINI_IMAGE_MODEL` env var, usar `gemini-2.5-flash-image`.
+- **Verificación rápida sin código:**
+  ```bash
+  curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/<NOMBRE>:generateContent?key=$GEMINI_API_KEY" \
+    -H "content-type: application/json" \
+    -d '{"contents":[{"parts":[{"text":"hi"}]}]}'
+  ```
+  Si responde 404 NOT_FOUND, el nombre del modelo está mal. Si responde 400 INVALID_ARGUMENT, hay otro error pero el modelo SÍ existe.
+- **Atención:** los modelos de imagen de Gemini requieren billing habilitado en el proyecto Google AI Studio. Las llamadas de TEXTO funcionan en free tier, las de IMAGEN no.
 
 ### Meta CTA: NO existe "Ver más" estándar para link ads — usar LEARN_MORE
 
