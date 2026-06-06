@@ -1,6 +1,6 @@
 /**
  * Generador de imágenes premium para anuncios Meta Ads usando Gemini 2.5
- * Flash Image (modelo `gemini-2.5-flash-image-preview` o GA equivalente).
+ * Flash Image (modelo `gemini-2.5-flash-image` GA).
  *
  * Flow:
  *  1. Descarga la foto base de la propiedad (URL pública).
@@ -128,7 +128,10 @@ export async function generateAdImage(
   })
   const promptHash = hashString(prompt)
 
-  const model = process.env.GEMINI_IMAGE_MODEL ?? 'gemini-2.5-flash-image-preview'
+  // CRÍTICO: `gemini-2.5-flash-image-preview` NO existe (devuelve 404).
+  // El nombre correcto del modelo GA es `gemini-2.5-flash-image`.
+  // Verificado empíricamente: el modelo edita la foto y devuelve PNG ~2MB.
+  const model = process.env.GEMINI_IMAGE_MODEL ?? 'gemini-2.5-flash-image'
 
   // Timeout 30s para generación de imagen. Gemini Image suele tardar 8-15s.
   const controller = new AbortController()
