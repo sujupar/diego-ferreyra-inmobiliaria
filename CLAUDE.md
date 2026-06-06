@@ -286,3 +286,44 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Fix (confiable + verificable): Supabase pg_cron + pg_net → ruta Next.js segura.** El scheduler vive en Supabase (donde el usuario ya corre SQL), totalmente bajo control e inspeccionable server-side. Ruta `app/api/cron/send-report` (POST/GET, `maxDuration=60`) valida `x-cron-secret == CRON_SECRET` (misma convención que `/api/cron/ghl-poll`, `portal-inquiries`, `visit-reminders`) y llama a `sendFunnelReport(type)` (cero duplicación). El job: `cron.schedule('report-daily','0 9 * * *', $$select net.http_post(url:='https://<site>/api/cron/send-report?type=daily', headers:=jsonb_build_object('x-cron-secret','<CRON_SECRET>'), body:='{}'::jsonb, timeout_milliseconds:=30000);$$)`. Cambiar la hora = `cron.alter_job(jobid, schedule:='...')`.
 - **Gotchas pg_net/pg_cron:** (1) `net.http_post` es async/fire-and-forget → `cron.job_run_details.status='succeeded'` NO prueba que el HTTP haya dado 2xx; verificar SIEMPRE `net._http_response.status_code` (retiene ~6h) + `email_report_log`. (2) timeout default de pg_net es 2000ms → subir a 30000 (el reporte pega a Meta+Supabase+Resend). (3) pg_net es solo POST. (4) NO leer el secreto de Vault en runtime dentro del job (en el worker de pg_cron Vault puede no estar disponible → header NULL → 403 silencioso); inlinear el secreto o resolverlo una vez al crear el job. (5) Si algún día Netlify vuelve a disparar las .mts, hay riesgo de doble envío (el dedup de las .mts mitiga el diario, pero `sendFunnelReport` no deduplica) — documentar y, si se confirma, sacarles el `export const config.schedule`.
 - **Verificación de 3 capas:** `cron.job_run_details` (corrió el SQL) → `net._http_response.status_code` (el endpoint dio 200) → `email_report_log` + inbox (se envió). Para test en el día sin que el dedup interfiera: pasar `?from=YYYY-MM-DD&to=YYYY-MM-DD` (la ruta no deduplica).
+
+---
+
+## Publicación en portales — Wizard de MercadoLibre (rework 2026-06-06)
+
+### Arquitectura del nuevo wizard de publicación ML
+
+- **UI (6 pasos):** `components/properties/wizards/ml/MercadoLibreWizard.tsx` (shell con stepper + framer-motion) orquesta 6 steps en `components/properties/wizards/ml/steps/`: `StepImages` (drag&drop, portada + 2 secundarias, reordena `properties.photos`) → `StepMedia` (video YouTube **o** tour 3D) → `StepFields` (campos dinámicos de ML + `GeoPinMap` Leaflet/OSM) → `StepDescription` (genera con `generatePortalDescription`) → `StepReview` → `StepConfirm`. Estado en `useMlPublishDraft.ts`. La página `app/(dashboard)/properties/[id]/marketing/mercadolibre/page.tsx` importa de `wizards/ml/`.
+- **Atributos dinámicos:** `lib/portals/mercadolibre/category-attributes.ts` consulta `GET /categories/{id}/attributes` (público, no requiere auth) y cachea 24h en la tabla `ml_category_attributes` (migración `20260606000001`). Clasifica en required/recommended (excluye `tags.hidden/read_only/variation_attribute`). NO hardcodear atributos.
+- **Mapping:** `propertyToMlPayload(property, opts)` acepta `MlPayloadOptions { attributeOverrides, mediaChoice, listingType, allowedAttributeIds }`. `allowedAttributeIds` filtra los atributos contra el schema de la categoría (evita 400 por atributo inválido). Default `listing_type_id = gold_premium`.
+- **Draft:** lo que el asesor configura en el wizard se persiste en `property_listings.metadata` (`ml_attributes`, `media_choice`, `listing_type`) vía `PATCH /api/properties/[id]/ml-preview`. El schema dinámico + prefill lo sirve `GET /api/properties/[id]/ml-attributes`.
+- **Worker:** migrado de `netlify/functions/publish-listings.mts` (scheduler muerto) a `lib/portals/worker.ts` + ruta `app/api/cron/publish-listings` (pg_cron, migración `20260606000002`). El `.mts` quedó como handler on-demand SIN `config.schedule` (evita doble envío).
+- **QA tool:** `scripts/qa-publish-ml-test.ts` (recon/publish/verify/teardown). Correr con `node --env-file=.env.local --import tsx`. SOLO opera sobre propiedades con título que empieza con `[TEST`.
+
+### ML: la descripción del item NO se publica inline — usar `POST /items/{id}/description`
+
+- **Symptom:** El aviso queda publicado pero SIN descripción; `GET /items/{id}/description` devuelve 404.
+- **Root cause:** Poner `description: { plain_text }` en el body de `POST /items` NO crea la descripción (ML la ignora). La descripción es un **sub-recurso** aparte. Bug latente: el código viejo mandaba la descripción inline y nunca llegaba a ML.
+- **Fix:** Tras crear el item, `POST /items/{id}/description` con `{ plain_text }`. Para updates, `PUT /items/{id}/description`. Implementado en `lib/portals/mercadolibre/adapter.ts` (`publish` y `update`). En el PUT del item, sacar `description` del body (va por su endpoint).
+- **Detection:** En QA, verificar SIEMPRE `GET /items/{id}/description` aparte del `GET /items/{id}`.
+
+### ML `listing_type`: `gold_premium` requiere cupo pago; `gold_special` no aplica a inmuebles — fallback de tier
+
+- **Symptom 1:** `POST /items` devuelve `400 "Not available quota"` (`bad_request`) al pedir `gold_premium`.
+- **Symptom 2:** `400 listing_type.invalid` / "Listing type was null" al pedir `gold_special` en inmuebles (MLA1473 etc.).
+- **Root cause:** `gold_premium` es un tier PAGO; consume cupo de publicaciones premium que la cuenta puede no tener. `gold_special` directamente no existe para inmuebles. Tiers válidos de inmuebles: `gold_premium`, `silver`, `free` (`ML_LISTING_TYPES` en `mapping.ts`).
+- **Fix:** `adapter.publish` intenta el tier pedido y, SOLO ante `"available quota"` / `listing_type.invalid` / "listing type was null", baja al siguiente tier (`gold_premium → silver → free`), devolviendo `metadata.listingTypeUsed`/`downgradedFrom`. La ruta y el worker persisten el tier REALMENTE usado en `metadata.listing_type`. NO ensanchar el match a `/listing.?type/i` (tragaría errores legítimos).
+- **Nota de negocio:** para publicar de verdad como `gold_premium` (default, máxima exposición HNWI), la cuenta de ML necesita tener cupo premium disponible. Si no, el sistema degrada automáticamente y avisa.
+
+### ML: cerrar un item en `not_yet_active` requiere activar→esperar→cerrar
+
+- **Symptom:** `PUT /items/{id}` con `{status:'closed'}` devuelve `400 item.status.invalid — "Item in status not_yet_active is not possible to change to status closed. Valid transitions are [active, not_yet_active]"`.
+- **Root cause:** Un item recién creado queda en `not_yet_active` mientras ML lo valida (asíncrono, puede tardar ~1–2 min). Desde ese estado solo se puede ir a `active`.
+- **Fix:** Para cerrar: `PUT status:'active'` → pollear `GET /items/{id}?attributes=status` hasta `active` (esperar minutos, no segundos) → `PUT status:'closed'`. Ver `scripts/qa-publish-ml-test.ts` (teardown) y `scripts/force-close-ml-item.ts`. Para PAUSAR un item en not_yet_active, el worker usa el flag `needs_pause_after_active`.
+
+### Draft del wizard vs worker pg_cron: usar status `'draft'`, NO `'pending'`
+
+- **Symptom:** Un asesor entra al wizard, toca "Siguiente" en el paso 1, y a los <60s el aviso se publica solo (a medio configurar). Al volver, el wizard muestra el panel de gestión y ya no puede terminar.
+- **Root cause:** El autosave del draft (`PATCH /ml-preview`) creaba la fila `property_listings` con `status:'pending'`. La columna `next_attempt_at` tiene `DEFAULT NOW()`, y el worker pg_cron (`processPublishes`) levanta `status='pending' AND next_attempt_at <= NOW()` → publica de inmediato. El status `pending` históricamente significaba "listo, publicar ya".
+- **Fix:** El draft del wizard usa `status:'draft'`. El worker solo toca `'pending'`. El publish real (`POST /ml-publish`) pasa la fila a `'published'`. **Regla:** cualquier fila `property_listings` en `'pending'` será publicada por el worker — no usar `'pending'` para borradores/configuración intermedia.
+- **Relacionado:** el worker DEBE reconstruir las `MlPayloadOptions` desde `property_listings.metadata` antes de publicar (`buildPublishOpts` en `lib/portals/worker.ts`); si llama `adapter.publish(property)` sin opts, ignora todo el draft (atributos/medios/tier) y republica con defaults.
