@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { propertyToMlPayload } from './mapping'
+import { propertyToMlPayload, resolveCategory, ML_LISTING_TYPES } from './mapping'
 import type { Property } from '../types'
 
 function makeProperty(overrides: Partial<Property> = {}): Property {
@@ -76,5 +76,53 @@ describe('propertyToMlPayload', () => {
   it('falls back to address in description when description is empty', () => {
     const payload = propertyToMlPayload(makeProperty({ description: null }))
     expect(payload.description.plain_text.length).toBeGreaterThan(0)
+  })
+})
+
+describe('propertyToMlPayload con opts', () => {
+  it('default listing_type_id = gold_premium', () => {
+    const p = propertyToMlPayload(makeProperty())
+    expect(p.listing_type_id).toBe('gold_premium')
+  })
+  it('respeta el listingType pasado', () => {
+    const p = propertyToMlPayload(makeProperty(), { listingType: 'silver' })
+    expect(p.listing_type_id).toBe('silver')
+  })
+  it('aplica attributeOverrides (value_id para list)', () => {
+    const p = propertyToMlPayload(makeProperty(), {
+      attributeOverrides: { ORIENTATION: { value_id: '1' } },
+    })
+    expect(p.attributes).toContainEqual({ id: 'ORIENTATION', value_id: '1' })
+  })
+  it('override vacío limpia el atributo derivado', () => {
+    const p = propertyToMlPayload(makeProperty(), {
+      attributeOverrides: { ROOMS: {} },
+    })
+    expect(p.attributes.find(a => a.id === 'ROOMS')).toBeUndefined()
+  })
+  it('filtra atributos no permitidos por la categoría', () => {
+    const p = propertyToMlPayload(makeProperty(), {
+      allowedAttributeIds: new Set(['ROOMS', 'BEDROOMS']),
+    })
+    const ids = p.attributes.map(a => a.id)
+    expect(ids).toEqual(expect.arrayContaining(['ROOMS', 'BEDROOMS']))
+    expect(ids).not.toContain('FLOORS')
+  })
+  it('mediaChoice=video setea video_id desde video_url', () => {
+    const p = propertyToMlPayload(makeProperty({ video_url: 'https://youtu.be/dQw4w9WgXcQ' }), { mediaChoice: 'video' })
+    expect(p.video_id).toBe('dQw4w9WgXcQ')
+  })
+  it('mediaChoice=tour NO setea video_id', () => {
+    const p = propertyToMlPayload(makeProperty({ video_url: 'https://youtu.be/dQw4w9WgXcQ' }), { mediaChoice: 'tour' })
+    expect(p.video_id).toBeUndefined()
+  })
+})
+
+describe('resolveCategory / ML_LISTING_TYPES', () => {
+  it('depto venta -> MLA1473', () => {
+    expect(resolveCategory(makeProperty())).toBe('MLA1473')
+  })
+  it('gold_premium es el primer listing type', () => {
+    expect(ML_LISTING_TYPES[0].id).toBe('gold_premium')
   })
 })
