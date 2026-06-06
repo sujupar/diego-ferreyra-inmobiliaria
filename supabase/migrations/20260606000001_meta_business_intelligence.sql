@@ -12,9 +12,56 @@
 --     frontend haga polling sin perder el estado si refresca la página.
 --  2. `property_meta_audiences`: custom audiences creadas (visitantes,
 --     converters, lookalike) por campaña.
---  3. Ampliación de `property_ad_assets` con storage_url, dimensiones, etc.
+--  3. `property_ad_assets` (si no existe) + columnas nuevas.
 --
+-- IDEMPOTENTE: si la migración 20260523000001_ad_assets.sql ya se ejecutó,
+-- las cláusulas IF NOT EXISTS hacen no-op. Si NO se ejecutó, la creamos
+-- acá. Así no rompemos nada — la migración se puede correr sola.
 -- =============================================================================
+
+-- 0. Crear property_ad_assets si no existe (defensiva — esta tabla viene de
+--    la migración 20260523000001_ad_assets.sql).
+--    Si ya existe (porque esa migración corrió antes), CREATE IF NOT EXISTS
+--    no hace nada. Si NO existe, la creamos con la misma estructura.
+CREATE TABLE IF NOT EXISTS public.property_ad_assets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  property_id uuid NOT NULL REFERENCES public.properties(id) ON DELETE CASCADE,
+  highlight_id text NOT NULL,
+  format text NOT NULL CHECK (format IN ('feed_square', 'feed_vertical', 'story_vertical')),
+  prompt_hash text NOT NULL,
+  storage_path text,
+  meta_image_hash text,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW(),
+  UNIQUE (property_id, highlight_id, format)
+);
+
+CREATE INDEX IF NOT EXISTS idx_property_ad_assets_property
+  ON public.property_ad_assets (property_id);
+
+DROP TRIGGER IF EXISTS trg_touch_property_ad_assets ON public.property_ad_assets;
+CREATE TRIGGER trg_touch_property_ad_assets
+  BEFORE UPDATE ON public.property_ad_assets
+  FOR EACH ROW EXECUTE FUNCTION public.touch_updated_at();
+
+ALTER TABLE public.property_ad_assets ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS ad_assets_select ON public.property_ad_assets;
+CREATE POLICY ad_assets_select ON public.property_ad_assets
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND (
+          p.role IN ('admin', 'dueno', 'coordinador')
+          OR (p.role = 'asesor' AND EXISTS (
+            SELECT 1 FROM public.properties pr
+            WHERE pr.id = property_ad_assets.property_id AND pr.assigned_to = p.id
+          ))
+        )
+    )
+  );
 
 -- 1. Jobs de lanzamiento (proceso multi-etapa)
 CREATE TABLE IF NOT EXISTS public.meta_launch_jobs (
