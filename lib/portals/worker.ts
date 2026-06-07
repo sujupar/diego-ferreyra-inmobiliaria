@@ -31,7 +31,7 @@ async function buildPublishOpts(portal: PortalName, property: Property, metadata
   return {
     attributeOverrides: (meta.ml_attributes ?? {}) as Record<string, { value_name?: string; value_id?: string }>,
     mediaChoice: (meta.media_choice as 'video' | 'tour' | 'none') ?? 'none',
-    listingType: (meta.listing_type as string) ?? 'gold_premium',
+    listingType: (meta.listing_type as string) ?? 'free',
     allowedAttributeIds,
   }
 }

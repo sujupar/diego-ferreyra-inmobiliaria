@@ -165,7 +165,7 @@ export function StepFields({ property, attrs, draft, onChange, onValidityChange 
           onChange={e => onChange({ listingType: e.target.value })}
           className="w-full rounded-md border border-input px-3 py-2 text-sm"
         >
-          {(attrs?.listingTypes ?? [{ id: 'gold_premium', label: 'Premium' }]).map(t => (
+          {(attrs?.listingTypes ?? [{ id: 'free', label: 'Gratuita' }]).map(t => (
             <option key={t.id} value={t.id}>{t.label}</option>
           ))}
         </select>

@@ -42,8 +42,9 @@ export interface MlPayloadOptions {
 
 /**
  * Listing types válidos para inmuebles MLA, de mayor a menor exposición.
- * Default gold_premium. (gold_special NO aplica a inmuebles — ML lo rechaza con
- * listing_type.invalid para MLA1473/casas/PH.)
+ * Default `free` (publicación gratuita — decisión del usuario). El orden DEBE quedar
+ * descendente para que el fallback del adapter pruebe el tier inferior. (gold_special
+ * NO aplica a inmuebles — ML lo rechaza con listing_type.invalid para MLA1473/casas/PH.)
  */
 export const ML_LISTING_TYPES: { id: string; label: string }[] = [
   { id: 'gold_premium', label: 'Premium (máxima exposición)' },
@@ -182,7 +183,7 @@ export function propertyToMlPayload(property: Property, opts: MlPayloadOptions =
     currency_id: property.currency || 'USD',
     available_quantity: 1,
     buying_mode: 'classified',
-    listing_type_id: opts.listingType || 'gold_premium',
+    listing_type_id: opts.listingType || 'free',
     condition: 'new',
     pictures: (property.photos ?? []).slice(0, 12).map(source => ({ source })),
     description: { plain_text: property.description || buildTitle(property) },

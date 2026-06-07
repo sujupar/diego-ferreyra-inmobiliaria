@@ -38,7 +38,7 @@ export function useMlPublishDraft(propertyId: string) {
         tour3dUrl: prev.property.tour_3d_url,
         mediaChoice: attrJson?.mediaChoice ?? (prev.property.video_url ? 'video' : prev.property.tour_3d_url ? 'tour' : 'none'),
         mlAttributes: attrJson?.prefill ?? {},
-        listingType: attrJson?.listingTypeSelected ?? 'gold_premium',
+        listingType: attrJson?.listingTypeSelected ?? 'free',
         title: prev.property.title ?? '',
         description: prev.property.description ?? '',
         askingPrice: prev.property.asking_price,

@@ -80,9 +80,9 @@ describe('propertyToMlPayload', () => {
 })
 
 describe('propertyToMlPayload con opts', () => {
-  it('default listing_type_id = gold_premium', () => {
+  it('default listing_type_id = free (publicación gratuita)', () => {
     const p = propertyToMlPayload(makeProperty())
-    expect(p.listing_type_id).toBe('gold_premium')
+    expect(p.listing_type_id).toBe('free')
   })
   it('respeta el listingType pasado', () => {
     const p = propertyToMlPayload(makeProperty(), { listingType: 'silver' })

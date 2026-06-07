@@ -61,7 +61,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       recommended,
       prefill,
       listingTypes: ML_LISTING_TYPES,
-      listingTypeSelected: (meta.listing_type as string) ?? 'gold_premium',
+      listingTypeSelected: (meta.listing_type as string) ?? 'free',
       mediaChoice: (meta.media_choice as string) ?? 'none',
     })
   } catch (err) {

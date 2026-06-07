@@ -49,10 +49,10 @@ export class MercadoLibreAdapter implements PortalAdapter {
       )
     }
 
-    // Fallback de tier: intentamos el listing_type pedido (default gold_premium) y,
-    // si ML responde "Not available quota" (la cuenta no tiene cupo para ese tier
-    // pago), bajamos al siguiente tier disponible. Cualquier otro error se propaga.
-    const requested = opts.listingType || 'gold_premium'
+    // Fallback de tier: intentamos el listing_type pedido (default `free`) y, si ML
+    // responde "Not available quota" (la cuenta no tiene cupo para un tier pago) o el
+    // tier no aplica a la categoría, bajamos al siguiente tier. Otro error se propaga.
+    const requested = opts.listingType || 'free'
     const order = ML_LISTING_TYPES.map(t => t.id)
     const startIdx = Math.max(0, order.indexOf(requested))
     const tiersToTry = order.slice(startIdx)
