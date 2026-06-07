@@ -1,5 +1,6 @@
 import { mlFetch } from './client'
-import { propertyToMlPayload, ML_LISTING_TYPES, type MlPayloadOptions } from './mapping'
+import { propertyToMlPayload, resolveCategory, ML_LISTING_TYPES, type MlPayloadOptions } from './mapping'
+import { fetchAvailableListingTypes } from './listing-types'
 import { validateCommon } from '../validation'
 import { PortalAdapterError } from '../types'
 import type {
@@ -49,13 +50,19 @@ export class MercadoLibreAdapter implements PortalAdapter {
       )
     }
 
-    // Fallback de tier: intentamos el listing_type pedido (default `free`) y, si ML
-    // responde "Not available quota" (la cuenta no tiene cupo para un tier pago) o el
-    // tier no aplica a la categoría, bajamos al siguiente tier. Otro error se propaga.
+    // Fallback de tier robusto: probamos el listing_type pedido y, si ML responde
+    // "Not available quota" / tier inválido para la categoría, seguimos con los tiers
+    // REALMENTE disponibles para la cuenta+categoría (los trae ML, más barato primero).
+    // La disponibilidad es por categoría: depto/casa suelen tener solo 'silver', PH 'free'.
     const requested = opts.listingType || 'free'
-    const order = ML_LISTING_TYPES.map(t => t.id)
-    const startIdx = Math.max(0, order.indexOf(requested))
-    const tiersToTry = order.slice(startIdx)
+    const tiersToTry: string[] = [requested]
+    try {
+      const avail = await fetchAvailableListingTypes(resolveCategory(property))
+      for (const t of avail) if (!tiersToTry.includes(t.id)) tiersToTry.push(t.id)
+    } catch {
+      // Si no se pudo consultar la disponibilidad, caemos al orden estático conocido.
+      for (const t of ML_LISTING_TYPES) if (!tiersToTry.includes(t.id)) tiersToTry.push(t.id)
+    }
 
     let lastErr: unknown
     for (const tier of tiersToTry) {

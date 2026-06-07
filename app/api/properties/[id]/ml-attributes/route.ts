@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { resolveCategory, ML_LISTING_TYPES } from '@/lib/portals/mercadolibre/mapping'
 import { fetchCategoryAttributes, type AttributeOverride } from '@/lib/portals/mercadolibre/category-attributes'
+import { fetchAvailableListingTypes } from '@/lib/portals/mercadolibre/listing-types'
 import type { Database } from '@/types/database.types'
 
 type PropertyRow = Database['public']['Tables']['properties']['Row']
@@ -55,13 +56,32 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       ...saved, // lo guardado pisa lo derivado
     }
 
+    // Tipos de publicación REALMENTE disponibles para la cuenta en esta categoría
+    // (varía por categoría: depto/casa suelen tener solo 'silver', PH 'free', etc.).
+    let listingTypes: { id: string; label: string }[]
+    let defaultTier: string
+    try {
+      const avail = await fetchAvailableListingTypes(categoryId)
+      listingTypes = avail.map(t => ({
+        id: t.id,
+        label: t.remaining != null ? `${t.name} (${t.remaining} disponibles)` : t.name,
+      }))
+      defaultTier = avail[0]?.id ?? 'free' // el más barato disponible
+    } catch {
+      listingTypes = ML_LISTING_TYPES
+      defaultTier = 'free'
+    }
+    const savedTier = meta.listing_type as string | undefined
+    const listingTypeSelected =
+      savedTier && listingTypes.some(t => t.id === savedTier) ? savedTier : defaultTier
+
     return NextResponse.json({
       categoryId,
       required,
       recommended,
       prefill,
-      listingTypes: ML_LISTING_TYPES,
-      listingTypeSelected: (meta.listing_type as string) ?? 'free',
+      listingTypes,
+      listingTypeSelected,
       mediaChoice: (meta.media_choice as string) ?? 'none',
     })
   } catch (err) {

@@ -97,11 +97,11 @@ async function publish(propertyId: string) {
 
   const ytId = /youtu\.?be/.test(property.video_url ?? '') ? 'video' : 'none'
   const adapter = new MercadoLibreAdapter(true)
-  console.log('Publicando con:', { categoryId, listingType: 'gold_premium', mediaChoice: ytId, overrides: Object.keys(attributeOverrides) })
+  console.log('Publicando con:', { categoryId, listingType: 'free (con fallback)', mediaChoice: ytId, overrides: Object.keys(attributeOverrides) })
   const result = await adapter.publish(property as never, {
     attributeOverrides,
     mediaChoice: ytId as 'video' | 'none',
-    listingType: 'gold_premium',
+    listingType: 'free', // replica el escenario real: free no disponible para depto → fallback
     allowedAttributeIds,
   })
   await sb().from('property_listings').upsert(
@@ -166,9 +166,24 @@ async function teardown(propertyId: string) {
   console.log(`OK: item ${id} cerrado. Propiedad ${propertyId} INTACTA.`)
 }
 
+async function listingTypes() {
+  const me = await mlFetch<{ id: number; nickname?: string }>('/users/me')
+  console.log('user_id:', me.id, 'nick:', me.nickname)
+  for (const cat of ['MLA1473', 'MLA1472', 'MLA1471']) {
+    try {
+      const types = await mlFetch(`/users/${me.id}/available_listing_types?category_id=${cat}`)
+      console.log(`\n=== available_listing_types para ${cat} ===`)
+      console.log(JSON.stringify(types, null, 2))
+    } catch (e) {
+      console.log(`\n${cat}: error`, e instanceof Error ? e.message : e)
+    }
+  }
+}
+
 async function main() {
   const [cmd, propertyId] = process.argv.slice(2)
   if (cmd === 'recon') return recon(propertyId)
+  if (cmd === 'listingtypes') return listingTypes()
   if (!propertyId) { console.error('uso: <recon|publish|verify|teardown> <propertyId>'); process.exit(1) }
   if (cmd === 'publish') return publish(propertyId)
   if (cmd === 'verify') return verify(propertyId)
