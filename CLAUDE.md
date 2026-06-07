@@ -326,7 +326,8 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 
 - **Symptom:** `PUT /items/{id}` con `{status:'closed'}` devuelve `400 item.status.invalid — "Item in status not_yet_active is not possible to change to status closed. Valid transitions are [active, not_yet_active]"`.
 - **Root cause:** Un item recién creado queda en `not_yet_active` mientras ML lo valida (asíncrono, puede tardar ~1–2 min). Desde ese estado solo se puede ir a `active`.
-- **Fix:** Para cerrar: `PUT status:'active'` → pollear `GET /items/{id}?attributes=status` hasta `active` (esperar minutos, no segundos) → `PUT status:'closed'`. Ver `scripts/qa-publish-ml-test.ts` (teardown) y `scripts/force-close-ml-item.ts`. Para PAUSAR un item en not_yet_active, el worker usa el flag `needs_pause_after_active`.
+- **Fix (script/manual):** Para cerrar a mano: `PUT status:'active'` → pollear `GET /items/{id}?attributes=status` hasta `active` (esperar minutos, no segundos) → `PUT status:'closed'`. Ver `scripts/qa-publish-ml-test.ts` (`teardown` por propertyId con guard `[TEST`, o `force-close <itemId>` por id directo + sync DB) y `scripts/force-close-ml-item.ts`.
+- **Fix (wizard, async):** El botón "Pausar"/"Cerrar definitivamente" del wizard, si el item está en `not_yet_active`, NO falla: la ruta `PATCH /ml-publish` marca el flag `needs_pause_after_active` / `needs_close_after_active` en `property_listings.metadata` y el worker pg_cron (`processPausesAfterActive` / `processClosesAfterActive` en `lib/portals/worker.ts`) lo pausa/cierra cuando ML lo activa (~1-2 min). La UI muestra "se cerrará automáticamente en 1-2 minutos".
 
 ### Draft del wizard vs worker pg_cron: usar status `'draft'`, NO `'pending'`
 
