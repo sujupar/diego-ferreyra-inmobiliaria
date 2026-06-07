@@ -180,10 +180,34 @@ async function listingTypes() {
   }
 }
 
+/** Cierra un item de ML por ID (robusto: activa→espera→cierra). Sin guard [TEST:
+ *  para cerrar un aviso puntual autorizado explícitamente. Uso: force-close <itemId> */
+async function forceClose(itemId: string) {
+  const getStatus = async () => (await mlFetch<{ status: string }>(`/items/${itemId}?attributes=status`)).status
+  const close = () => mlFetch(`/items/${itemId}`, { method: 'PUT', body: JSON.stringify({ status: 'closed' }) })
+  let status = await getStatus()
+  console.log('estado actual:', status)
+  if (status === 'not_yet_active') {
+    await mlFetch(`/items/${itemId}`, { method: 'PUT', body: JSON.stringify({ status: 'active' }) }).catch(() => {})
+    for (let i = 0; i < 48 && status === 'not_yet_active'; i++) {
+      await sleep(5000)
+      status = await getStatus()
+      if (i % 2 === 0) console.log(`  esperando activación… (${status})`)
+    }
+  }
+  if (status !== 'closed') await close()
+  await sb().from('property_listings').update({ status: 'closed' }).eq('external_id', itemId).eq('portal', 'mercadolibre')
+  console.log(`OK: item ${itemId} CERRADO (ML + DB sincronizada).`)
+}
+
 async function main() {
   const [cmd, propertyId] = process.argv.slice(2)
   if (cmd === 'recon') return recon(propertyId)
   if (cmd === 'listingtypes') return listingTypes()
+  if (cmd === 'force-close') {
+    if (!propertyId) { console.error('uso: force-close <itemId>'); process.exit(1) }
+    return forceClose(propertyId)
+  }
   if (!propertyId) { console.error('uso: <recon|publish|verify|teardown> <propertyId>'); process.exit(1) }
   if (cmd === 'publish') return publish(propertyId)
   if (cmd === 'verify') return verify(propertyId)

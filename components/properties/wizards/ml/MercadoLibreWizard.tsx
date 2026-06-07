@@ -48,7 +48,12 @@ export function MercadoLibreWizard({ propertyId }: { propertyId: string }) {
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error)
-      toast.success('Listo')
+      if (j.needs_retry) {
+        // ML retiene el item en validación: el worker lo pausa/cierra en 1-2 min.
+        toast.info(j.message ?? 'ML está validando el aviso. Se completará automáticamente en 1-2 minutos.')
+      } else {
+        toast.success(action === 'close' ? 'Aviso cerrado' : action === 'pause' ? 'Aviso pausado' : 'Aviso reactivado')
+      }
       await reload()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error')

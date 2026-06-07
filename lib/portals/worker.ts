@@ -55,8 +55,70 @@ export async function runPublishWorker(): Promise<{ ok: true }> {
   await processUnpublishes(supabase)
   await processUpdates(supabase)
   await processPausesAfterActive(supabase)
+  await processClosesAfterActive(supabase)
   await processPublishes(supabase)
   return { ok: true }
+}
+
+/**
+ * Cierra items marcados con `metadata.needs_close_after_active = true`.
+ * El wizard setea el flag cuando el asesor toca "Cerrar definitivamente" pero el
+ * item está en `not_yet_active` (ML solo permite cerrar desde `active`). Este
+ * tick chequea si ya pasó a `active` y lo cierra. Solo MercadoLibre.
+ */
+async function processClosesAfterActive(supabase: SB) {
+  const { data: listings } = await supabase
+    .from('property_listings')
+    .select('*')
+    .eq('portal', 'mercadolibre')
+    .contains('metadata', { needs_close_after_active: true })
+    .limit(10)
+
+  if (!listings || listings.length === 0) return
+
+  for (const listing of listings) {
+    if (!listing.external_id) {
+      await supabase
+        .from('property_listings')
+        .update({ metadata: stripFlag(listing.metadata, 'needs_close_after_active') as never })
+        .eq('id', listing.id)
+      continue
+    }
+    try {
+      const item = await mlFetch<{ status: string }>(`/items/${listing.external_id}?attributes=status`)
+      if (item.status === 'active') {
+        await mlFetch(`/items/${listing.external_id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: 'closed' }),
+        })
+        await supabase
+          .from('property_listings')
+          .update({
+            status: 'closed',
+            metadata: stripFlag(listing.metadata, 'needs_close_after_active') as never,
+            last_error: null,
+          })
+          .eq('id', listing.id)
+        await writeAudit(supabase, {
+          listingId: listing.id,
+          propertyId: listing.property_id,
+          portal: 'mercadolibre',
+          eventType: 'unpublished',
+        })
+      } else if (item.status === 'closed') {
+        await supabase
+          .from('property_listings')
+          .update({
+            status: 'closed',
+            metadata: stripFlag(listing.metadata, 'needs_close_after_active') as never,
+          })
+          .eq('id', listing.id)
+      }
+      // Si sigue not_yet_active, dejamos el flag para el próximo tick.
+    } catch (err) {
+      console.error(`[close-after-active] ${listing.external_id}`, err)
+    }
+  }
 }
 
 async function processPausesAfterActive(supabase: SB) {

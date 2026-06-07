@@ -229,16 +229,20 @@ export async function PATCH(
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      if (action === 'pause' && /not_yet_active/i.test(msg)) {
-        // Marcamos el flag para que el worker termine cuando ML active el item.
+      // ML solo permite pausar/cerrar desde 'active'. Si el item está en
+      // 'not_yet_active' (validación interna, ~1-2 min), marcamos un flag y el
+      // worker pg_cron lo pausa/cierra automáticamente cuando ML lo active.
+      if ((action === 'pause' || action === 'close') && /not_yet_active/i.test(msg)) {
+        const flag = action === 'pause' ? 'needs_pause_after_active' : 'needs_close_after_active'
+        const verbo = action === 'pause' ? 'pausará' : 'cerrará'
         await supabase
           .from('property_listings')
           .update({
             metadata: {
               ...(listing.metadata as Record<string, unknown> ?? {}),
-              needs_pause_after_active: true,
+              [flag]: true,
             } as never,
-            last_error: 'ML retiene el item en validación. Se pausará automáticamente cuando se active.',
+            last_error: `ML está validando el aviso. Se ${verbo} automáticamente cuando se active (1-2 min).`,
           })
           .eq('property_id', id)
           .eq('portal', 'mercadolibre')
@@ -246,7 +250,7 @@ export async function PATCH(
           ok: true,
           status: 'published',
           needs_retry: true,
-          message: 'ML está validando el aviso. Se pausará automáticamente.',
+          message: `ML está validando el aviso. Se ${verbo} automáticamente en 1-2 minutos.`,
         })
       }
       return NextResponse.json({ error: `${action} falló: ${msg}` }, { status: 502 })
