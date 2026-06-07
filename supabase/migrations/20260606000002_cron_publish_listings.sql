@@ -1,40 +1,39 @@
 -- Worker de publicación de portales vía pg_cron (el scheduler de Netlify no dispara
--- en este sitio — ver CLAUDE.md). Mismo patrón que el job report-daily.
+-- en este sitio — ver CLAUDE.md). Mismo patrón que los demás crons (report-daily,
+-- ghl-poll, etc.).
 --
--- AUTO-SUFICIENTE: este script copia solo el x-cron-secret del job 'report-daily'
--- que ya funciona, así no hay que pegar ninguna contraseña a mano. Es idempotente:
--- si el job 'publish-listings' ya existía (aunque haya quedado mal), lo recrea bien.
+-- AUTO-SUFICIENTE Y A PRUEBA DE BALAS: en vez de pegar el x-cron-secret a mano,
+-- copia el comando completo de CUALQUIER cron que ya pegue a /api/cron/ (todos
+-- comparten el mismo secreto, sea inline o desde cron_config) y solo le cambia la
+-- URL al endpoint de publish-listings. Idempotente: recrea el job si ya existía.
 -- Correr tal cual.
 DO $$
 DECLARE
-  v_secret text;
+  v_cmd text;
 BEGIN
-  -- 1. Sacar el secreto del comando del job report-daily (está inlineado ahí).
-  SELECT (regexp_match(command, 'x-cron-secret''\s*,\s*''([^'']+)'''))[1]
-    INTO v_secret
+  SELECT command INTO v_cmd
   FROM cron.job
-  WHERE jobname = 'report-daily'
+  WHERE command ILIKE '%/api/cron/%'
+    AND jobname <> 'publish-listings'
   LIMIT 1;
 
-  IF v_secret IS NULL OR v_secret = '<CRON_SECRET>' THEN
-    RAISE EXCEPTION 'No pude extraer el x-cron-secret de report-daily. Corré: SELECT command FROM cron.job WHERE jobname = ''report-daily'';  y pasámelo.';
+  IF v_cmd IS NULL THEN
+    RAISE EXCEPTION 'No encontré ningún cron que pegue a /api/cron/. Corré: SELECT jobname, command FROM cron.job;';
   END IF;
 
-  -- 2. Si el job ya existía (p. ej. creado antes con el placeholder), borrarlo.
+  -- Cambiar solo el endpoint (saca cualquier ?querystring del cron copiado).
+  v_cmd := regexp_replace(
+    v_cmd,
+    'https?://[^'']*?/api/cron/[a-z0-9-]+(\?[^'']*)?',
+    'https://inmodf.com.ar/api/cron/publish-listings'
+  );
+
   IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'publish-listings') THEN
     PERFORM cron.unschedule('publish-listings');
   END IF;
 
-  -- 3. Crear el job con el secreto real (format %L escapa la cadena de forma segura).
-  PERFORM cron.schedule(
-    'publish-listings',
-    '* * * * *',
-    format(
-      $f$select net.http_post(url := 'https://inmodf.com.ar/api/cron/publish-listings', headers := jsonb_build_object('x-cron-secret', %L), body := '{}'::jsonb, timeout_milliseconds := 30000);$f$,
-      v_secret
-    )
-  );
-  RAISE NOTICE 'Job publish-listings creado con el secreto de report-daily.';
+  PERFORM cron.schedule('publish-listings', '* * * * *', v_cmd);
+  RAISE NOTICE 'OK: job publish-listings creado copiando el mecanismo de otro cron.';
 END $$;
 
 -- VERIFICACIÓN (3 capas):
@@ -42,7 +41,7 @@ END $$;
 --   2. SELECT status, return_message FROM cron.job_run_details
 --        WHERE jobid = (SELECT jobid FROM cron.job WHERE jobname='publish-listings')
 --        ORDER BY start_time DESC LIMIT 5;
---   3. SELECT status_code FROM net._http_response ORDER BY created DESC LIMIT 5;  -- esperar 200/403
+--   3. SELECT status_code FROM net._http_response ORDER BY created DESC LIMIT 5;  -- esperar 200
 --      (403 = el secreto no coincide; 200 = OK)
 --
 -- Para cambiar la frecuencia: select cron.alter_job(
