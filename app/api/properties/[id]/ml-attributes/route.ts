@@ -17,10 +17,11 @@ function derivedPrefill(property: PropertyRow): Record<string, AttributeOverride
   if (property.bedrooms) out.BEDROOMS = { value_name: String(property.bedrooms) }
   if (property.bathrooms) out.FULL_BATHROOMS = { value_name: String(property.bathrooms) }
   if (property.garages) out.PARKING_LOTS = { value_name: String(property.garages) }
-  if (property.covered_area) out.COVERED_AREA = { value_name: String(property.covered_area) }
-  if (property.total_area) out.TOTAL_AREA = { value_name: String(property.total_area) }
-  if (property.expensas) out.MAINTENANCE_FEE = { value_name: String(property.expensas) }
-  if (property.age != null) out.PROPERTY_AGE = { value_name: property.age === 0 ? 'A estrenar' : String(property.age) }
+  // number_unit: ML exige unidad explícita (sino rechaza el aviso). Mismo formato que derivedAttributes.
+  if (property.covered_area) out.COVERED_AREA = { value_name: `${property.covered_area} m²` }
+  if (property.total_area) out.TOTAL_AREA = { value_name: `${property.total_area} m²` }
+  if (property.expensas) out.MAINTENANCE_FEE = { value_name: `${property.expensas} ARS` }
+  if (property.age != null) out.PROPERTY_AGE = { value_name: property.age === 0 ? 'A estrenar' : `${property.age} años` }
   if (property.floor != null) out.FLOORS = { value_name: String(property.floor) }
   return out
 }

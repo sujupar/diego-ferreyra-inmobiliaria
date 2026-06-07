@@ -114,6 +114,22 @@ function derivedAttributes(property: Property): MlAttribute[] {
   return attrs
 }
 
+/**
+ * ML exige unidad explícita en los atributos `number_unit` (superficies, antigüedad).
+ * Si un valor llega como número pelado ("95"), ML lo rechaza:
+ *   "Attribute COVERED_AREA ... is required and was omitted. The provided unit is not valid."
+ * Esto pasa cuando un override del wizard (o el prefill) trae el número sin unidad.
+ * Normalizamos al chokepoint: a los *_AREA les ponemos "m²" y a PROPERTY_AGE "años".
+ */
+function normalizeUnit(attr: MlAttribute): MlAttribute {
+  if (!attr.value_name) return attr
+  const v = attr.value_name.trim()
+  if (!/^[\d.,]+$/.test(v)) return attr // ya tiene unidad, o es texto (ej. "A estrenar")
+  if (/_AREA$/.test(attr.id)) return { ...attr, value_name: `${v} m²` }
+  if (attr.id === 'PROPERTY_AGE') return { ...attr, value_name: `${v} años` }
+  return attr
+}
+
 function buildAttributes(property: Property, opts: MlPayloadOptions): MlAttribute[] {
   const map = new Map<string, MlAttribute>()
   for (const a of derivedAttributes(property)) map.set(a.id, a)
@@ -122,7 +138,7 @@ function buildAttributes(property: Property, opts: MlPayloadOptions): MlAttribut
     else if (ov.value_name != null && ov.value_name !== '') map.set(id, { id, value_name: ov.value_name })
     else map.delete(id) // override vacío = limpiar
   }
-  let result = [...map.values()]
+  let result = [...map.values()].map(normalizeUnit)
   if (opts.allowedAttributeIds) result = result.filter(a => opts.allowedAttributeIds!.has(a.id))
   return result
 }

@@ -116,6 +116,25 @@ describe('propertyToMlPayload con opts', () => {
     const p = propertyToMlPayload(makeProperty({ video_url: 'https://youtu.be/dQw4w9WgXcQ' }), { mediaChoice: 'tour' })
     expect(p.video_id).toBeUndefined()
   })
+  it('normaliza number_unit sin unidad (override "95" -> "95 m²", age "15" -> "15 años")', () => {
+    const p = propertyToMlPayload(makeProperty(), {
+      attributeOverrides: {
+        COVERED_AREA: { value_name: '95' },
+        TOTAL_AREA: { value_name: '105' },
+        PROPERTY_AGE: { value_name: '15' },
+      },
+    })
+    expect(p.attributes).toContainEqual({ id: 'COVERED_AREA', value_name: '95 m²' })
+    expect(p.attributes).toContainEqual({ id: 'TOTAL_AREA', value_name: '105 m²' })
+    expect(p.attributes).toContainEqual({ id: 'PROPERTY_AGE', value_name: '15 años' })
+  })
+  it('no toca un number_unit que ya trae unidad', () => {
+    const p = propertyToMlPayload(makeProperty(), {
+      attributeOverrides: { COVERED_AREA: { value_name: '95 m²' } },
+    })
+    expect(p.attributes).toContainEqual({ id: 'COVERED_AREA', value_name: '95 m²' })
+  })
+
   it('mediaChoice=tour agrega el link del recorrido a la descripción', () => {
     const p = propertyToMlPayload(makeProperty({ tour_3d_url: 'https://my.matterport.com/show/?m=abc' }), { mediaChoice: 'tour' })
     expect(p.description.plain_text).toContain('https://my.matterport.com/show/?m=abc')
