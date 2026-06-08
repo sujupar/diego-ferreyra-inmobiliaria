@@ -21,7 +21,7 @@ function makeProperty(overrides: Partial<Property> = {}): Property {
     created_at: '2026-05-12T00:00:00Z', updated_at: '2026-05-12T00:00:00Z',
     description: 'Departamento luminoso de 3 ambientes con balcón aterrazado, muy cerca del subte D y de Palermo Hollywood. Vista despejada al frente y luz natural durante todo el día.',
     latitude: -34.58, longitude: -58.43,
-    video_url: null, tour_3d_url: null,
+    video_url: null, tour_3d_url: null, video_file_url: null,
     expensas: 50000, amenities: ['pileta', 'parrilla'],
     operation_type: 'venta', title: null, postal_code: '1414',
     public_slug: null,

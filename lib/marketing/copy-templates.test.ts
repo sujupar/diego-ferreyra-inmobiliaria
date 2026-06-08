@@ -42,6 +42,7 @@ function makeProperty(o: Partial<Property> = {}): Property {
     longitude: -58.43,
     video_url: null,
     tour_3d_url: null,
+    video_file_url: null,
     expensas: 50000,
     amenities: ['pileta', 'parrilla', 'sum'],
     operation_type: 'venta',
