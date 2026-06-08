@@ -238,6 +238,27 @@ Esta es una lista negra explícita. Cualquiera de estos elementos hace que el av
 - **Formato:** JPG o PNG. JPG si la pieza es predominantemente fotográfica (menor peso). PNG si tiene áreas de texto extensas (mejor renderizado tipográfico).
 - **Peso máximo objetivo:** 1.5 MB (Meta acepta hasta 8 MB pero piezas livianas cargan más rápido).
 
+## SAFE ZONE — REGLA CRÍTICA PARA QUE EL TEXTO NO QUEDE CORTADO
+
+Esto es la regla más importante de la pieza. Si la violás, el aviso no sirve.
+
+Trazá mentalmente un **rectángulo interior** dentro del frame, con un **margen de al menos 8% en todos los bordes** (eso es ~86px para el lado de 1080px). TODO el texto importante — precio, headline, specs — debe vivir DENTRO de ese rectángulo interior. NUNCA tocar los bordes externos. NUNCA dejar que la última letra de una palabra quede a menos de 80px del borde.
+
+Especificaciones por formato:
+- **Cuadrado 1:1 (1080×1080):** safe zone = 86px de margen en cada lado. Todo el texto entre x=86 y x=994, y=86 y y=994.
+- **Vertical 4:5 (1080×1350):** safe zone = 86px arriba/abajo MÍNIMO. Pero idealmente el texto principal vive en la mitad inferior, con su última línea no más abajo de y=1264 (86px del borde inferior).
+- **Story 9:16 (1080×1920):** safe zone TOP 250px (la barra de progreso de Stories tapa esa zona), safe zone BOTTOM 350px (la UI de Instagram tapa esa zona: profile, link sticker, swipe-up). El texto importante DEBE estar entre y=250 y y=1570. Todo lo que pongas fuera de esa franja NO SE VA A VER en el feed real.
+
+Si la composición requiere que el texto esté en una banda inferior (como el split 65/35), esa banda DEBE estar dentro del safe zone — no en el borde mismo. Si querés que el precio sea grande, hacelo grande pero MANTENELO dentro de los 86px de margen.
+
+Antes de devolver la imagen, repasá mentalmente:
+1. ¿La última letra del precio está a ≥80px del borde derecho? Sí/no.
+2. ¿La primera línea del headline está a ≥80px del borde superior de su zona? Sí/no.
+3. ¿La línea de specs no toca ningún borde? Sí/no.
+4. Si es Story 9:16: ¿el texto principal está entre los 250px del top y 350px del bottom? Sí/no.
+
+Si alguna respuesta es "no", recomponé antes de devolver.
+
 ## REFERENCIAS MENTALES (sin copiar)
 
 Pensá en la estética de:

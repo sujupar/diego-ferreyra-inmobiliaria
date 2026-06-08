@@ -137,6 +137,15 @@ export async function generateAdImage(
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 30_000)
 
+  // Aspect ratio explícito para Gemini Image: si no lo pedimos, devuelve ~1:1
+  // por default y después sharp con fit:'cover' RECORTA los bordes, comiéndose
+  // el precio/headline. Con el AR correcto, Gemini compone respetando los
+  // bordes y sharp solo normaliza dimensiones sin recortar.
+  const aspectRatio =
+    input.format === 'feed_square' ? '1:1' :
+    input.format === 'feed_vertical' ? '4:5' :
+    '9:16'
+
   try {
     const body = {
       contents: [
@@ -151,6 +160,7 @@ export async function generateAdImage(
       generationConfig: {
         responseModalities: ['IMAGE'],
         temperature: 0.4,
+        imageConfig: { aspectRatio },
       },
     }
 
@@ -183,10 +193,20 @@ export async function generateAdImage(
     }
 
     const rawBuffer = Buffer.from(inline.data, 'base64')
-    // Convertir/normalizar al formato exacto requerido por Meta
+    // Convertir/normalizar al formato exacto requerido por Meta.
+    // NUNCA usar fit:'cover' — recortaría los bordes y se comería el precio /
+    // headline cuando Gemini entrega ratio levemente distinto al pedido. Usamos
+    // 'contain' con background blanco crema neutro: si Gemini ya respetó el
+    // aspect ratio (lo hace cuando le pasamos imageConfig.aspectRatio), no hay
+    // ningún banding visible — solo resize. Si por algún motivo difiere, mejor
+    // banda blanca a borde cortado.
     const targetDim = FORMAT_DIMENSIONS[input.format]
     const finalBuffer = await sharp(rawBuffer)
-      .resize(targetDim.width, targetDim.height, { fit: 'cover', position: 'center' })
+      .resize(targetDim.width, targetDim.height, {
+        fit: 'contain',
+        position: 'center',
+        background: { r: 250, g: 248, b: 244, alpha: 1 }, // off-white cálido neutral
+      })
       .jpeg({ quality: 88, progressive: true })
       .toBuffer()
 

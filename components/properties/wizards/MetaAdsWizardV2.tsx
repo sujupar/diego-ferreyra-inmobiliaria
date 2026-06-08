@@ -168,6 +168,29 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
       if (data.job?.status === 'awaiting_confirm' && step === 'generating') {
         setStep('review_and_publish')
       }
+
+      // Sincronizar el contador desde DB durante generating: si el response
+      // del batch no llegó (timeout en cliente) pero el server SÍ guardó
+      // piezas, el assets.length real del polling avanza igual y se ve
+      // progreso en pantalla. Tomamos el MÁXIMO entre el contador local y
+      // el de DB para nunca retroceder.
+      if (step === 'generating' && Array.isArray(data.assets)) {
+        setGenerationProgress(prev => ({
+          ...prev,
+          generated: Math.max(prev.generated, data.assets.length),
+        }))
+        // Si el server marcó el job como awaiting_confirm pero el batch
+        // local no chained (timeout), el polling lo detectó y la UI saltó
+        // arriba. Si en cambio el server sigue en 'generating' y el cliente
+        // dejó de hacer batches (lock liberado por error), retomamos.
+        if (
+          data.job?.status === 'generating' &&
+          !generatingBatchRef.current &&
+          data.assets.length < 27
+        ) {
+          void runNextBatch()
+        }
+      }
       if (data.job?.status === 'published') {
         setStep('done')
         setFinalResult({
@@ -270,10 +293,12 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
     }
   }
 
+  // Contador de fallos consecutivos del cliente. Si llega a 3, paramos y
+  // mostramos error claro al asesor (en vez de spinear infinitamente).
+  const consecutiveBatchFailuresRef = useRef(0)
+
   async function runNextBatch() {
     if (!jobId) return
-    // Guard sincrónico vía ref (no state) para que las llamadas encadenadas
-    // detecten el lock inmediatamente, no en el próximo render.
     if (generatingBatchRef.current) return
     if (!mountedRef.current) return
     generatingBatchRef.current = true
@@ -283,7 +308,11 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ batchSize: 3 }),
+          // batchSize=2: cada batch ~20-30s en server, deja margen seguro
+          // antes del maxDuration=60s de Netlify. Antes batchSize=3 quedaba
+          // al filo del timeout en el peor caso (3 piezas × 18s = 54s + I/O
+          // a Meta + DB) y la response no llegaba al cliente.
+          body: JSON.stringify({ batchSize: 2 }),
         },
       )
       const data = await r.json()
@@ -295,15 +324,31 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
           failures: data.failures,
         })
       }
-      // Liberar el lock ANTES de la recursión (sino la recursión la skipea)
+      consecutiveBatchFailuresRef.current = 0 // reset al éxito
       generatingBatchRef.current = false
       if (!data.done && mountedRef.current) {
         void runNextBatch()
       }
     } catch (err) {
       generatingBatchRef.current = false
-      if (mountedRef.current) {
-        toast.error(err instanceof Error ? err.message : 'Error')
+      consecutiveBatchFailuresRef.current += 1
+      const failures = consecutiveBatchFailuresRef.current
+      // Reintento automático con backoff: muchos errores del batch son
+      // transitorios (timeout 504 de Netlify, 5xx de Gemini bajo carga,
+      // rate-limit). Volvemos a llamar runNextBatch — runBatch del server
+      // es idempotente porque cuenta las piezas YA persistidas por
+      // launch_job_id antes de calcular startIdx. Si el batch fallido
+      // alcanzó a guardar piezas, el siguiente las salta.
+      if (failures < 3 && mountedRef.current) {
+        const backoffMs = failures === 1 ? 3_000 : 6_000
+        console.warn(`[wizard v2] batch falló (intento ${failures}/3), reintentando en ${backoffMs}ms`, err)
+        setTimeout(() => {
+          if (mountedRef.current) void runNextBatch()
+        }, backoffMs)
+      } else if (mountedRef.current) {
+        toast.error(
+          `La generación se detuvo después de 3 fallos consecutivos. Último error: ${err instanceof Error ? err.message : 'desconocido'}`,
+        )
       }
     }
   }
