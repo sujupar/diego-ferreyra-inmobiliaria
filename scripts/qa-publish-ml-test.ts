@@ -123,7 +123,13 @@ async function verify(propertyId: string) {
   await assertTest(propertyId)
   const { data: listing } = await sb().from('property_listings').select('external_id').eq('property_id', propertyId).eq('portal', 'mercadolibre').maybeSingle()
   if (!listing?.external_id) throw new Error('sin external_id (no publicado)')
-  const item = await mlFetch(`/items/${listing.external_id}`)
+  const item = await mlFetch<{ status: string; pictures?: Record<string, unknown>[] }>(`/items/${listing.external_id}`)
+  console.log('status:', item.status)
+  console.log('=== PICTURES (detalle) ===')
+  for (const pic of item.pictures ?? []) {
+    console.log(JSON.stringify({ id: pic.id, size: pic.size, max_size: pic.max_size, quality: pic.quality, secure_url: typeof pic.secure_url === 'string' ? (pic.secure_url as string).slice(0, 90) : pic.secure_url }))
+  }
+  console.log('=== ITEM COMPLETO ===')
   console.log(JSON.stringify(item, null, 2))
   // La descripción de ML vive en un sub-recurso aparte.
   try {
@@ -200,10 +206,58 @@ async function forceClose(itemId: string) {
   console.log(`OK: item ${itemId} CERRADO (ML + DB sincronizada).`)
 }
 
+/** Audita las URLs de fotos de las últimas propiedades publicadas en ML: ¿son
+ *  accesibles públicamente para que ML las descargue? Uso: photos-audit */
+async function photosAudit() {
+  const { data: listings } = await sb()
+    .from('property_listings')
+    .select('property_id, external_id, status, updated_at')
+    .eq('portal', 'mercadolibre')
+    .order('updated_at', { ascending: false })
+    .limit(6)
+  for (const l of listings ?? []) {
+    const { data: p } = await sb().from('properties').select('title, photos').eq('id', l.property_id).maybeSingle()
+    console.log(`\n### ${p?.title} — listing ${l.external_id ?? '(sin id)'} [${l.status}]`)
+    const urls = (p?.photos ?? []) as string[]
+    console.log(`   ${urls.length} fotos en la DB`)
+    for (const url of urls) {
+      try {
+        const r = await fetch(url, { method: 'GET', headers: { range: 'bytes=0-0' } })
+        console.log(`   ${r.status} ${r.headers.get('content-type') ?? '?'} | ${url.slice(0, 100)}`)
+      } catch (e) {
+        console.log(`   ERR ${e instanceof Error ? e.message : e} | ${url.slice(0, 100)}`)
+      }
+    }
+    // Si el item sigue vivo en ML, ver el estado real de sus pictures.
+    if (l.external_id && l.status !== 'closed') {
+      try {
+        const item = await mlFetch<{ pictures?: { id: string; secure_url?: string; size?: string }[] }>(`/items/${l.external_id}`)
+        console.log(`   ML pictures: ${(item.pictures ?? []).map(pi => `${pi.id}(${pi.size ?? '?'})`).join(', ') || '(ninguna)'}`)
+      } catch { /* item puede no existir */ }
+    }
+  }
+}
+
 async function main() {
   const [cmd, propertyId] = process.argv.slice(2)
   if (cmd === 'recon') return recon(propertyId)
   if (cmd === 'listingtypes') return listingTypes()
+  if (cmd === 'photos-audit') return photosAudit()
+  if (cmd === 'picswatch') {
+    const { data: listing } = await sb().from('property_listings').select('external_id').eq('property_id', propertyId).eq('portal', 'mercadolibre').maybeSingle()
+    const id = listing?.external_id
+    if (!id) { console.error('sin external_id'); process.exit(1) }
+    for (let i = 0; i < 14; i++) {
+      const item = await mlFetch<{ status: string; pictures?: { secure_url?: string; max_size?: string }[] }>(`/items/${id}`)
+      const pics = item.pictures ?? []
+      const processing = pics.filter(p => String(p.secure_url ?? '').includes('processing-image')).length
+      const sizes = pics.map(p => p.max_size).join(',')
+      console.log(`t=${i * 10}s status=${item.status} pics=${pics.length} procesando=${processing} listas=${pics.length - processing} sizes=[${sizes}]`)
+      if (pics.length > 0 && processing === 0) { console.log('>>> TODAS LAS FOTOS LISTAS'); break }
+      await sleep(10000)
+    }
+    return
+  }
   if (cmd === 'force-close') {
     if (!propertyId) { console.error('uso: force-close <itemId>'); process.exit(1) }
     return forceClose(propertyId)
