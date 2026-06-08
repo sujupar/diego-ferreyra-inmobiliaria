@@ -1,8 +1,23 @@
-import type { CategoryAttribute, AttributeOverride } from '@/lib/portals/mercadolibre/category-attributes'
+export type ApValueType = 'string' | 'number' | 'number_unit' | 'boolean' | 'list'
+
+export interface ApField {
+  id: string
+  name: string
+  valueType: ApValueType
+  required: boolean
+  allowedValues?: { id: string; name: string }[]
+  allowedUnits?: string[]
+  hint?: string
+}
+
+export interface AttributeOverride {
+  value_name?: string
+  value_id?: string
+}
 
 export type StepId = 'images' | 'media' | 'fields' | 'description' | 'review' | 'confirm'
 
-export interface MlPreviewProperty {
+export interface ApPreviewProperty {
   id: string
   title: string | null
   description: string | null
@@ -23,22 +38,22 @@ export interface MlPreviewProperty {
   tour_3d_url: string | null
 }
 
-export interface MlAttributesResponse {
+export interface ApAttributesResponse {
   categoryId: string
-  required: CategoryAttribute[]
-  recommended: CategoryAttribute[]
+  required: ApField[]
+  recommended: ApField[]
   prefill: Record<string, AttributeOverride>
   listingTypes: { id: string; label: string }[]
   listingTypeSelected: string
   mediaChoice: 'video' | 'tour' | 'none'
 }
 
-export interface MlDraft {
+export interface ApDraft {
   photos: string[]
   videoUrl: string | null
   tour3dUrl: string | null
   mediaChoice: 'video' | 'tour' | 'none'
-  mlAttributes: Record<string, AttributeOverride>
+  apAttributes: Record<string, AttributeOverride>
   listingType: string
   title: string
   description: string
@@ -47,7 +62,7 @@ export interface MlDraft {
   longitude: number | null
 }
 
-export interface MlListing {
+export interface ApListing {
   status: string
   external_id: string | null
   external_url: string | null
