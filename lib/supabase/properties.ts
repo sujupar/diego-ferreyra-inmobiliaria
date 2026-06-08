@@ -47,6 +47,9 @@ export interface PropertyInput {
   description?: string
   photos?: string[]
   status?: string
+  video_url?: string | null
+  tour_3d_url?: string | null
+  video_file_url?: string | null
 }
 
 export async function createProperty(input: PropertyInput) {
@@ -89,7 +92,7 @@ export async function getProperty(id: string) {
   return data
 }
 
-export async function updateProperty(id: string, updates: Partial<PropertyInput> & { status?: string; documents?: any; photos?: string[] }) {
+export async function updateProperty(id: string, updates: Partial<PropertyInput> & { status?: string; documents?: any; photos?: string[]; video_url?: string | null; tour_3d_url?: string | null; video_file_url?: string | null }) {
   const supabase = getAdmin()
   const { error } = await supabase
     .from('properties')

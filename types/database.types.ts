@@ -496,6 +496,7 @@ export interface Database {
                     longitude: number | null
                     video_url: string | null
                     tour_3d_url: string | null
+                    video_file_url: string | null
                     expensas: number | null
                     amenities: Json
                     operation_type: string
@@ -542,6 +543,7 @@ export interface Database {
                     longitude?: number | null
                     video_url?: string | null
                     tour_3d_url?: string | null
+                    video_file_url?: string | null
                     expensas?: number | null
                     amenities?: Json
                     operation_type?: string
@@ -588,6 +590,7 @@ export interface Database {
                     longitude?: number | null
                     video_url?: string | null
                     tour_3d_url?: string | null
+                    video_file_url?: string | null
                     expensas?: number | null
                     amenities?: Json
                     operation_type?: string
