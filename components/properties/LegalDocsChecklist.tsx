@@ -13,9 +13,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Upload, FileText, CheckCircle, XCircle, AlertTriangle, Clock, Loader2, Scale, FileCheck2, CalendarClock, FilePlus2 } from 'lucide-react'
+import { Upload, FileText, CheckCircle, XCircle, AlertTriangle, Clock, Loader2, Scale, FileCheck2, CalendarClock, FilePlus2, ChevronDown } from 'lucide-react'
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import type { LegalDocsState, LegalFlags, DocItemState, LegalDocDefinition } from '@/types/legal-docs.types'
-import { LEGAL_DOCS_CATALOG, getApplicableDocs } from '@/types/legal-docs.types'
+import { LEGAL_DOCS_CATALOG, getApplicableDocs, summarizeLegalDocs } from '@/types/legal-docs.types'
 
 interface Props {
   propertyId: string
@@ -56,6 +57,12 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
   const mandatory = applicable.filter(d => d.category === 'mandatory')
   const temporal = applicable.filter(d => d.category === 'temporal')
   const optional = applicable.filter(d => d.category === 'optional')
+
+  const summary = summarizeLegalDocs(docs, applicable.map(d => d.key))
+  const summaryPill =
+    summary.tone === 'bad' ? 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400' :
+    summary.tone === 'warn' ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400' :
+    'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400'
 
   async function handleFlagChange(flag: keyof LegalFlags, value: boolean) {
     setSavingFlags(true)
@@ -275,7 +282,23 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
 
   return (
     <>
-      <div className="space-y-6">
+      <Collapsible defaultOpen={summary.tone !== 'ok'}>
+        <Card className="rounded-xl">
+          <CollapsibleTrigger asChild>
+            <button className="group w-full flex items-center gap-3 px-6 py-4 text-left">
+              <span className="h-9 w-9 rounded-full bg-[color:var(--brand-soft)]/40 flex items-center justify-center shrink-0">
+                <Scale className="h-5 w-5 text-[color:var(--brand)]" />
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="eyebrow block">Documentación</span>
+                <span className="display text-base">Documentación Legal</span>
+              </span>
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${summaryPill}`}>{summary.label}</span>
+              <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180 shrink-0" />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="px-6 pb-6 space-y-6">
         {/* Flags condicionales (solo asesor puede cambiar) */}
         {!isAbogado && (
           <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
@@ -314,7 +337,10 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
         {temporal.length > 0 && sectionCard(CalendarClock, 'Documentos Temporales (con alerta)', 'Temporales', temporal)}
 
         {optional.length > 0 && sectionCard(FilePlus2, 'Documentos Opcionales', 'Opcionales', optional)}
-      </div>
+            </div>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
 
       {/* Reject dialog */}
       <Dialog open={rejectDialog.open} onOpenChange={(open) => setRejectDialog(prev => ({ ...prev, open }))}>
