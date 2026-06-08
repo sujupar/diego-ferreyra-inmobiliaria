@@ -43,6 +43,10 @@ export function PostCaptureActions({ propertyId }: Props) {
     url?: string
     error?: string
   }>({ status: 'loading' })
+  const [apState, setApState] = useState<{
+    status: 'no_publicado' | 'publicado' | 'baja' | 'error' | 'loading'
+    url?: string; error?: string
+  }>({ status: 'loading' })
   const [metaState, setMetaState] = useState<{
     status: 'sin_campana' | 'activa' | 'pausada' | 'error' | 'loading'
     campaignId?: string
@@ -71,11 +75,20 @@ export function PostCaptureActions({ propertyId }: Props) {
           } else {
             setMlState({ status: 'no_publicado' })
           }
+
+          const apr = data?.find(d => d.portal === 'argenprop')
+          if (!apr) setApState({ status: 'no_publicado' })
+          else if (apr.status === 'published') setApState({ status: 'publicado', url: apr.external_url ?? undefined })
+          else if (apr.status === 'paused') setApState({ status: 'baja', url: apr.external_url ?? undefined })
+          else if (apr.status === 'failed') setApState({ status: 'error', error: apr.last_error ?? 'Error' })
+          else setApState({ status: 'no_publicado' })
         } else {
           setMlState({ status: 'no_publicado' })
+          setApState({ status: 'no_publicado' })
         }
       } catch {
         setMlState({ status: 'no_publicado' })
+        setApState({ status: 'no_publicado' })
       }
 
       try {
@@ -131,7 +144,7 @@ export function PostCaptureActions({ propertyId }: Props) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* MercadoLibre */}
           <div className="rounded-lg border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -173,6 +186,44 @@ export function PostCaptureActions({ propertyId }: Props) {
                   <a href={mlState.url} target="_blank" rel="noopener noreferrer">
                     Abrir
                   </a>
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Argenprop */}
+          <div className="rounded-lg border bg-card p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium text-sm">Argenprop</span>
+              </div>
+              <Badge
+                variant={apState.status === 'publicado' ? undefined : 'outline'}
+                className={apState.status === 'publicado' ? 'bg-emerald-600 text-white text-[10px] h-5' : 'text-[10px] h-5'}
+              >
+                {apState.status === 'publicado' ? 'Publicado'
+                  : apState.status === 'baja' ? 'De baja'
+                  : apState.status === 'error' ? 'Error' : 'No publicado'}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground min-h-[2.5em]">
+              {apState.status === 'no_publicado' && 'Campos prellenados, edición y publicación en Argenprop en un click.'}
+              {apState.status === 'publicado' && 'El aviso está activo en Argenprop.'}
+              {apState.status === 'baja' && 'Aviso dado de baja.'}
+              {apState.status === 'error' && (apState.error ?? 'Error de publicación.')}
+              {apState.status === 'loading' && 'Cargando estado…'}
+            </p>
+            <div className="flex gap-2">
+              <Button asChild size="sm" className="flex-1" variant={apState.status === 'no_publicado' ? 'default' : 'outline'}>
+                <Link href={`/properties/${propertyId}/marketing/argenprop`}>
+                  {apState.status === 'no_publicado' ? 'Publicar en Argenprop' : 'Ver / Gestionar'}
+                  <ArrowRight className="h-4 w-4 ml-1" />
+                </Link>
+              </Button>
+              {apState.url && (
+                <Button asChild size="sm" variant="ghost">
+                  <a href={apState.url} target="_blank" rel="noopener noreferrer">Abrir</a>
                 </Button>
               )}
             </div>
