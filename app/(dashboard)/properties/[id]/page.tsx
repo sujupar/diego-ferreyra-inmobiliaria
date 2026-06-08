@@ -1,17 +1,19 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
-  Loader2, Upload, FileText, Image, CheckCircle, XCircle,
+  Loader2, CheckCircle, XCircle,
   Send, ArrowLeft, MapPin, Home, Scale, Camera, AlertTriangle,
-  Archive, Trash2, RotateCcw
+  Archive, Trash2, RotateCcw, ChevronDown
 } from 'lucide-react'
 import { LegalDocsChecklist } from '@/components/properties/LegalDocsChecklist'
+import { PropertyMediaCard } from '@/components/properties/PropertyMediaCard'
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { LegalReviewHistory } from '@/components/properties/LegalReviewHistory'
 import { MarketingTabs } from '@/components/properties/MarketingTabs'
 import { PostCaptureActions } from '@/components/properties/PostCaptureActions'
@@ -52,6 +54,8 @@ interface PropertyData {
   status: string
   documents: Array<{ name: string; url: string }>
   photos: string[]
+  video_file_url: string | null
+  tour_3d_url: string | null
   legal_status: string
   legal_notes: string | null
   legal_reviewed_at: string | null
@@ -60,15 +64,29 @@ interface PropertyData {
   ghl_custom_fields?: Record<string, string | null> | null
 }
 
+function CollapsibleSection({ eyebrow, title, defaultOpen = false, children }: { eyebrow: string; title: string; defaultOpen?: boolean; children: ReactNode }) {
+  return (
+    <Collapsible defaultOpen={defaultOpen} className="border-t pt-2">
+      <CollapsibleTrigger asChild>
+        <button className="group w-full flex items-center gap-3 py-2 text-left">
+          <span className="flex-1 min-w-0">
+            <span className="eyebrow block">{eyebrow}</span>
+            <span className="display text-base">{title}</span>
+          </span>
+          <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180 shrink-0" />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pt-3">{children}</CollapsibleContent>
+    </Collapsible>
+  )
+}
+
 export default function PropertyDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const [property, setProperty] = useState<PropertyData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [uploading, setUploading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const photoRef = useRef<HTMLInputElement>(null)
-  const docRef = useRef<HTMLInputElement>(null)
 
   // User info for role-based actions
   const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
@@ -137,28 +155,6 @@ export default function PropertyDetailPage() {
   }
 
   useEffect(() => { fetchLegalDocs() }, [id])
-
-  async function handleUpload(file: File, type: 'photo' | 'document') {
-    setUploading(true)
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('type', type)
-
-      const res = await fetch(`/api/properties/${id}/upload`, { method: 'POST', body: formData })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast.error(data?.error || 'Error al subir archivo')
-        return
-      }
-      await fetchProperty()
-      toast.success(type === 'photo' ? 'Foto subida' : 'Documento subido')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Error al subir archivo')
-    } finally {
-      setUploading(false)
-    }
-  }
 
   async function handleUpdateStatus(newStatus: string) {
     setSubmitting(true)
@@ -388,118 +384,7 @@ export default function PropertyDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Flow process history */}
-      <FlowHistoryCard data={flowHistory} />
-
-      {/* Feedback de visitas */}
-      {feedback.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Feedback de visitas ({feedback.length})</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {feedback.map(f => (
-              <div key={f.id} className="border rounded p-3 space-y-1 text-sm">
-                <div className="flex items-center gap-2">
-                  <Badge>{f.response_source === 'client' ? 'Cliente' : 'Asesor'}</Badge>
-                  <span className="text-muted-foreground text-xs">
-                    {f.visit?.client_name} · visita {f.visit ? new Date(f.visit.scheduled_at).toLocaleDateString('es-AR') : ''}
-                  </span>
-                </div>
-                <p>¿Le gustó? <strong>{f.liked === null ? '-' : f.liked ? 'Sí' : 'No'}</strong></p>
-                {f.most_liked && <p>Más le gustó: {f.most_liked}</p>}
-                {f.least_liked && <p>Menos le gustó: {f.least_liked}</p>}
-                <p>¿En precio? <strong>{f.in_price === null ? '-' : f.in_price ? 'Sí' : 'No'}</strong></p>
-                <p>Oferta hipotética: USD {f.hypothetical_offer ?? '-'}</p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Details */}
-      <div className={`grid grid-cols-1 ${isAbogado ? '' : 'lg:grid-cols-2'} gap-6`}>
-        <Card>
-          <CardHeader>
-            <CardTitle className="display text-base flex items-center gap-2">
-              <Home className="h-4 w-4 text-muted-foreground" />
-              Datos de la Propiedad
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              <span className="eyebrow">Dirección</span><span className="font-medium">{property.address}</span>
-              <span className="eyebrow">Barrio</span><span>{property.neighborhood}</span>
-              {property.city && <><span className="eyebrow">Ciudad</span><span>{property.city}</span></>}
-              <span className="eyebrow">Tipo</span><span className="capitalize">{property.property_type}</span>
-              {property.rooms && <><span className="eyebrow">Ambientes</span><span className="tabular-n">{property.rooms}</span></>}
-              {property.bedrooms && <><span className="eyebrow">Dormitorios</span><span className="tabular-n">{property.bedrooms}</span></>}
-              {property.bathrooms && <><span className="eyebrow">Baños</span><span className="tabular-n">{property.bathrooms}</span></>}
-              {property.garages && <><span className="eyebrow">Cocheras</span><span className="tabular-n">{property.garages}</span></>}
-              {property.covered_area && <><span className="eyebrow">Sup. Cubierta</span><span className="tabular-n">{property.covered_area} m²</span></>}
-              {property.total_area && <><span className="eyebrow">Sup. Total</span><span className="tabular-n">{property.total_area} m²</span></>}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Datos Comerciales: oculto al abogado */}
-        {!isAbogado && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="display text-base">Datos Comerciales</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                <span className="eyebrow">Precio</span>
-                <span className="tabular-n text-base">{new Intl.NumberFormat('es-AR', { style: 'currency', currency: property.currency, minimumFractionDigits: 0 }).format(property.asking_price)}</span>
-                <span className="eyebrow">Comisión</span><span className="tabular-n">{property.commission_percentage}%</span>
-                {property.contract_start_date && <><span className="eyebrow">Inicio contrato</span><span className="tabular-n">{property.contract_start_date}</span></>}
-                {property.contract_end_date && <><span className="eyebrow">Fin contrato</span><span className="tabular-n">{property.contract_end_date}</span></>}
-                {property.origin && <><span className="eyebrow">Origen</span><span className="capitalize">{property.origin}</span></>}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {/* Legal Docs Checklist */}
-      <LegalDocsChecklist
-        propertyId={property.id}
-        propertyType={property.property_type || ''}
-        docs={legalDocsData?.docs || {}}
-        flags={legalDocsData?.flags || { has_succession: false, has_divorce: false, has_powers: false, is_credit_purchase: false }}
-        isAbogado={isAbogado}
-        onUpdated={fetchLegalDocs}
-      />
-
-      {/* Photos: oculto al abogado */}
-      {!isAbogado && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg"><Image className="h-5 w-5 inline mr-2" />Fotos ({photos.length})</CardTitle>
-              <div>
-                <input ref={photoRef} type="file" className="hidden" accept="image/*" onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0], 'photo')} />
-                <Button size="sm" variant="outline" onClick={() => photoRef.current?.click()} disabled={uploading}>
-                  {uploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
-                  Subir Foto
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {photos.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No hay fotos subidas.</p>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {photos.map((url, i) => (
-                  <img key={i} src={url} alt={`Foto ${i + 1}`} className="rounded-lg h-32 w-full object-cover" />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* === ACCIÓN PRINCIPAL + ESTADO === */}
 
       {/* Legal Review Result (for non-abogado when already reviewed) */}
       {!isAbogado && (legalApproved || legalRejected) && (
@@ -513,8 +398,6 @@ export default function PropertyDetailPage() {
           </CardContent>
         </Card>
       )}
-
-      {/* === ACTIONS === */}
 
       {/* Asesor: Send to legal review */}
       {!isAbogado && (property.status === 'pending_docs' || property.status === 'pending_photos') && docs.length > 0 && (
@@ -596,8 +479,106 @@ export default function PropertyDetailPage() {
         </Card>
       )}
 
-      {/* Track record histórico de revisión legal */}
-      <LegalReviewHistory propertyId={property.id} />
+      {/* === MULTIMEDIA === */}
+      {!isAbogado && (
+        <PropertyMediaCard
+          propertyId={property.id}
+          photos={photos}
+          videoFileUrl={property.video_file_url ?? null}
+          tourUrl={property.tour_3d_url ?? null}
+          onChanged={fetchProperty}
+        />
+      )}
+
+      {/* Legal Docs Checklist */}
+      <LegalDocsChecklist
+        propertyId={property.id}
+        propertyType={property.property_type || ''}
+        docs={legalDocsData?.docs || {}}
+        flags={legalDocsData?.flags || { has_succession: false, has_divorce: false, has_powers: false, is_credit_purchase: false }}
+        isAbogado={isAbogado}
+        onUpdated={fetchLegalDocs}
+      />
+
+      {/* === DATOS === */}
+      <CollapsibleSection eyebrow="Detalle" title="Datos de la propiedad">
+        <div className={`grid grid-cols-1 ${isAbogado ? '' : 'lg:grid-cols-2'} gap-6`}>
+          <Card>
+            <CardHeader>
+              <CardTitle className="display text-base flex items-center gap-2">
+                <Home className="h-4 w-4 text-muted-foreground" />
+                Datos de la Propiedad
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                <span className="eyebrow">Dirección</span><span className="font-medium">{property.address}</span>
+                <span className="eyebrow">Barrio</span><span>{property.neighborhood}</span>
+                {property.city && <><span className="eyebrow">Ciudad</span><span>{property.city}</span></>}
+                <span className="eyebrow">Tipo</span><span className="capitalize">{property.property_type}</span>
+                {property.rooms && <><span className="eyebrow">Ambientes</span><span className="tabular-n">{property.rooms}</span></>}
+                {property.bedrooms && <><span className="eyebrow">Dormitorios</span><span className="tabular-n">{property.bedrooms}</span></>}
+                {property.bathrooms && <><span className="eyebrow">Baños</span><span className="tabular-n">{property.bathrooms}</span></>}
+                {property.garages && <><span className="eyebrow">Cocheras</span><span className="tabular-n">{property.garages}</span></>}
+                {property.covered_area && <><span className="eyebrow">Sup. Cubierta</span><span className="tabular-n">{property.covered_area} m²</span></>}
+                {property.total_area && <><span className="eyebrow">Sup. Total</span><span className="tabular-n">{property.total_area} m²</span></>}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Datos Comerciales: oculto al abogado */}
+          {!isAbogado && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="display text-base">Datos Comerciales</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                  <span className="eyebrow">Precio</span>
+                  <span className="tabular-n text-base">{new Intl.NumberFormat('es-AR', { style: 'currency', currency: property.currency, minimumFractionDigits: 0 }).format(property.asking_price)}</span>
+                  <span className="eyebrow">Comisión</span><span className="tabular-n">{property.commission_percentage}%</span>
+                  {property.contract_start_date && <><span className="eyebrow">Inicio contrato</span><span className="tabular-n">{property.contract_start_date}</span></>}
+                  {property.contract_end_date && <><span className="eyebrow">Fin contrato</span><span className="tabular-n">{property.contract_end_date}</span></>}
+                  {property.origin && <><span className="eyebrow">Origen</span><span className="capitalize">{property.origin}</span></>}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </CollapsibleSection>
+
+      {/* === HISTORIAL === */}
+      <CollapsibleSection eyebrow="Seguimiento" title="Historial">
+        <div className="space-y-6">
+          <FlowHistoryCard data={flowHistory} />
+          {/* Feedback de visitas */}
+          {feedback.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Feedback de visitas ({feedback.length})</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {feedback.map(f => (
+                  <div key={f.id} className="border rounded p-3 space-y-1 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Badge>{f.response_source === 'client' ? 'Cliente' : 'Asesor'}</Badge>
+                      <span className="text-muted-foreground text-xs">
+                        {f.visit?.client_name} · visita {f.visit ? new Date(f.visit.scheduled_at).toLocaleDateString('es-AR') : ''}
+                      </span>
+                    </div>
+                    <p>¿Le gustó? <strong>{f.liked === null ? '-' : f.liked ? 'Sí' : 'No'}</strong></p>
+                    {f.most_liked && <p>Más le gustó: {f.most_liked}</p>}
+                    {f.least_liked && <p>Menos le gustó: {f.least_liked}</p>}
+                    <p>¿En precio? <strong>{f.in_price === null ? '-' : f.in_price ? 'Sí' : 'No'}</strong></p>
+                    <p>Oferta hipotética: USD {f.hypothetical_offer ?? '-'}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+          <LegalReviewHistory propertyId={property.id} />
+        </div>
+      </CollapsibleSection>
 
       {/* Sección Marketing: portales + Meta Ads + leads, visible una vez captada */}
       {!isAbogado && property.status === 'approved' && (
