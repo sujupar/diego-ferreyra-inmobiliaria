@@ -92,8 +92,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (typeof body.asking_price === 'number' && body.asking_price > 0) {
       update.asking_price = Math.min(body.asking_price, 100_000_000)
     }
-    if (body.videoUrl !== undefined) update.video_url = body.videoUrl
-    if (body.tour3dUrl !== undefined) update.tour_3d_url = body.tour3dUrl
+    // Validar esquema https:// antes de guardar: tour_3d_url se embebe como <iframe src>
+    // y video_url se renderiza — un javascript:/data: sería XSS almacenado (también en
+    // la landing pública app/p/[slug]). Mismo criterio que la ruta /media (CLAUDE.md).
+    if (body.videoUrl !== undefined) {
+      update.video_url = body.videoUrl === null || /^https:\/\//i.test(body.videoUrl) ? body.videoUrl : null
+    }
+    if (body.tour3dUrl !== undefined) {
+      update.tour_3d_url = body.tour3dUrl === null || /^https:\/\//i.test(body.tour3dUrl) ? body.tour3dUrl : null
+    }
     if (typeof body.latitude === 'number') update.latitude = body.latitude
     if (typeof body.longitude === 'number') update.longitude = body.longitude
 
