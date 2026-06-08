@@ -1,6 +1,6 @@
 import { requireAuth } from '@/lib/auth/require-role'
 import { redirect } from 'next/navigation'
-import { InboxClient } from './InboxClient'
+import { InboxTabs } from './InboxTabs'
 
 export const metadata = { title: 'Inbox de leads' }
 
@@ -10,5 +10,5 @@ export default async function InboxPage() {
   if (!['admin', 'dueno', 'coordinador', 'asesor'].includes(role)) {
     redirect('/')
   }
-  return <InboxClient userRole={role} userId={user.id} />
+  return <InboxTabs userRole={role} userId={user.id} />
 }
