@@ -55,11 +55,20 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 
 ### Modelos de Gemini
 
-- **Vision (análisis de fotos):** `gemini-2.0-flash` (var: `GEMINI_VISION_MODEL`)
-- **Text (avatares + copy):** `gemini-2.0-flash` (var: `GEMINI_TEXT_MODEL`)
+- **Vision (análisis de fotos):** `gemini-2.5-flash` (var: `GEMINI_VISION_MODEL`)
+- **Text (avatares + copy):** `gemini-2.5-flash` (var: `GEMINI_TEXT_MODEL`)
 - **Image (generación de piezas):** **`gemini-2.5-flash-image`** (var: `GEMINI_IMAGE_MODEL`)
-  - **OJO:** `gemini-2.5-flash-image-preview` NO existe (404). El nombre correcto
+  - **OJO 1:** `gemini-2.5-flash-image-preview` NO existe (404). El nombre correcto
     es `gemini-2.5-flash-image` (sin `-preview`). Verificado empíricamente 2026-06-06.
+  - **OJO 2 (2026-06-08):** `gemini-2.0-flash` fue deprecado. El probe a
+    `/v1beta/models/gemini-2.0-flash:generateContent` responde
+    `404 NOT_FOUND — "This model models/gemini-2.0-flash is no longer
+    available. Please update your code to use a newer model"`. Reemplazado
+    en código por `gemini-2.5-flash` (sucesor canónico). Si en Netlify las
+    env vars `GEMINI_TEXT_MODEL` / `GEMINI_VISION_MODEL` quedaron con
+    `gemini-2.0-flash`, **borrarlas** (para que use el default del código)
+    o actualizarlas a `gemini-2.5-flash`. Verificable con
+    `GET /api/marketing/diag-gemini`.
 - Todos requieren `GEMINI_API_KEY` en Netlify env vars.
 - El modelo de imagen requiere billing habilitado en el proyecto Google AI Studio.
 

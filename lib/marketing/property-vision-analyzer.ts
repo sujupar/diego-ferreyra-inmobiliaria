@@ -2,7 +2,7 @@
  * Análisis de fotos de la propiedad para el wizard inteligente de Meta Ads.
  *
  * Usa Google Gemini (vision-capable, modelo configurable via GEMINI_VISION_MODEL,
- * default gemini-2.0-flash). Si no hay GEMINI_API_KEY configurada, hace fallback
+ * default gemini-2.5-flash). Si no hay GEMINI_API_KEY configurada, hace fallback
  * a un análisis basado en metadata + amenities.
  *
  * Caching: el resultado se guarda en properties.metadata.vision_analysis (si
@@ -149,7 +149,7 @@ async function callGeminiVision(photos: string[]): Promise<PropertyVisionAnalysi
       return null
     }
 
-    const model = process.env.GEMINI_VISION_MODEL ?? 'gemini-2.0-flash'
+    const model = process.env.GEMINI_VISION_MODEL ?? 'gemini-2.5-flash'
     const body = {
       systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
       contents: [

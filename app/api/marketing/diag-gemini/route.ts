@@ -28,8 +28,8 @@ export async function GET() {
     }
 
     const apiKey = process.env.GEMINI_API_KEY
-    const textModel = process.env.GEMINI_TEXT_MODEL ?? 'gemini-2.0-flash'
-    const visionModel = process.env.GEMINI_VISION_MODEL ?? 'gemini-2.0-flash'
+    const textModel = process.env.GEMINI_TEXT_MODEL ?? 'gemini-2.5-flash'
+    const visionModel = process.env.GEMINI_VISION_MODEL ?? 'gemini-2.5-flash'
     const imageModel = process.env.GEMINI_IMAGE_MODEL ?? 'gemini-2.5-flash-image'
 
     const envState = {

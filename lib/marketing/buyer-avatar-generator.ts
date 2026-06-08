@@ -236,7 +236,7 @@ export async function generateThreeAvatars(input: {
   }
 
   const brief = buildUserBrief(input.property, input.vision ?? null)
-  const model = process.env.GEMINI_TEXT_MODEL ?? 'gemini-2.0-flash'
+  const model = process.env.GEMINI_TEXT_MODEL ?? 'gemini-2.5-flash'
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 25_000)
@@ -342,7 +342,7 @@ Output: JSON con el avatar optimizado en la MISMA estructura que recibís (id, s
     `Devolvé el avatar optimizado.`,
   ].join('\n')
 
-  const model = process.env.GEMINI_TEXT_MODEL ?? 'gemini-2.0-flash'
+  const model = process.env.GEMINI_TEXT_MODEL ?? 'gemini-2.5-flash'
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 20_000)
   try {
