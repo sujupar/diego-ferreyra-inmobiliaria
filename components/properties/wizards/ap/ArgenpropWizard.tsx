@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { Loader2, ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { useMlPublishDraft } from './useMlPublishDraft'
+import { useApPublishDraft } from './useApPublishDraft'
 import { ManageListingPanel } from './ManageListingPanel'
 import { StepImages } from './steps/StepImages'
 import { StepMedia } from './steps/StepMedia'
@@ -24,36 +24,29 @@ const STEPS = [
   { id: 'confirm', label: '🚀 Publicar' },
 ] as const
 
-export function MercadoLibreWizard({ propertyId }: { propertyId: string }) {
+export function ArgenpropWizard({ propertyId }: { propertyId: string }) {
   const router = useRouter()
-  const { loading, property, attrs, listing, validation, draft, patch, save, reload } = useMlPublishDraft(propertyId)
+  const { loading, property, attrs, listing, validation, draft, patch, save, reload } = useApPublishDraft(propertyId)
   const [idx, setIdx] = useState(0)
   const [stepValid, setStepValid] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [managing, setManaging] = useState<'pause' | 'close' | 'activate' | null>(null)
+  const [managing, setManaging] = useState<'baja' | 'republish' | null>(null)
 
-  async function changeStatus(action: 'pause' | 'close' | 'activate') {
-    const msg = action === 'close'
-      ? '¿Cerrar el aviso DEFINITIVAMENTE? No se puede deshacer.'
-      : action === 'pause'
-        ? '¿Pausar el aviso? Deja de ser visible pero se puede reactivar.'
-        : '¿Reactivar el aviso?'
+  async function changeStatus(action: 'baja' | 'republish') {
+    const msg = action === 'baja'
+      ? '¿Dar de baja el aviso en Argenprop? Deja de publicarse.'
+      : '¿Volver a publicar el aviso?'
     if (!confirm(msg)) return
     setManaging(action)
     try {
-      const r = await fetch(`/api/properties/${propertyId}/ml-publish`, {
+      const r = await fetch(`/api/properties/${propertyId}/ap-publish`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error)
-      if (j.needs_retry) {
-        // ML retiene el item en validación: el worker lo pausa/cierra en 1-2 min.
-        toast.info(j.message ?? 'ML está validando el aviso. Se completará automáticamente en 1-2 minutos.')
-      } else {
-        toast.success(action === 'close' ? 'Aviso cerrado' : action === 'pause' ? 'Aviso pausado' : 'Aviso reactivado')
-      }
+      toast.success(action === 'baja' ? 'Aviso dado de baja' : 'Aviso republicado')
       await reload()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error')
