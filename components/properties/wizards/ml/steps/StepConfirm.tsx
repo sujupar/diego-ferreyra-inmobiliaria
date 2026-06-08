@@ -39,8 +39,11 @@ export function StepConfirm({ propertyId, draft, currency, canPublish, onBack }:
         <CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto" />
         <h3 className="font-semibold text-lg">¡Aviso publicado!</h3>
         <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          ML está validando el aviso. Queda visible al público cuando termine (30s a varios minutos).
+          MercadoLibre está validando el aviso (1-2 minutos). Queda visible al público cuando termine.
         </p>
+        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 max-w-md mx-auto">
+          📷 <strong>Las fotos tardan ~1-2 min en aparecer.</strong> MercadoLibre las descarga y procesa en segundo plano: al principio vas a ver un cartel de “procesando imagen”, y cuando el aviso pasa a <em>activo</em> se ven en alta resolución. Es normal.
+        </div>
         <p className="text-xs text-muted-foreground">ID: <code>{result.externalId}</code></p>
         <div className="space-y-2 max-w-sm mx-auto">
           <Button asChild className="w-full">
