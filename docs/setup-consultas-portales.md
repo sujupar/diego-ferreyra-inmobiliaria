@@ -91,15 +91,22 @@ WHATSAPP_FALLBACK_PHONE = <tel de Diego en formato 549...>  # opcional
 
 ---
 
-## 5) Deploy
+## 5) Deploy + cron (pg_cron, NO Netlify)
 
-Commit + push a `main` (autor Sujupar). Netlify auto-deploya **y registra el cron**.
-Verificación post-deploy: Netlify → Functions → debe aparecer `scheduled-portal-inquiries`
-con schedule `*/5 * * * *`, y tras una corrida `portal_inquiry_poll_state.last_run_stats`
-debe poblarse (`status: ok | skipped | failed`).
+⚠️ **Las Netlify Scheduled Functions NO se disparan en este sitio** (Next 16 + plugin v5,
+ver CLAUDE.md). El cron de consultas corre vía **Supabase pg_cron**, igual que los reportes
+y `publish-listings`. La ruta `/api/cron/portal-inquiries` (GET+POST) ya está deployada.
 
-> Si deployás antes de aplicar el SQL, el cron va a tirar error cada 5 min (inofensivo
-> pero ruidoso). Por eso: primero SQL, después deploy.
+1. Commit + push a `main` (autor Sujupar) — ya hecho: el código del sistema está en producción.
+2. En Supabase → SQL Editor, correr `supabase/migrations/20260608000001_cron_portal_inquiries.sql`
+   (auto-suficiente: copia el secreto de otro cron y agenda el job cada 5 min). Correr **después**
+   de que el deploy de Netlify haya terminado (sino el job pega a una ruta que aún no existe → 404).
+
+Verificación post-deploy (3 capas):
+- `SELECT * FROM cron.job WHERE jobname='portal-inquiries';`
+- `SELECT status_code FROM net._http_response ORDER BY created DESC LIMIT 5;`  → esperar **200**
+- `SELECT last_polled_at, last_run_stats FROM portal_inquiry_poll_state WHERE id=1;`
+  → `last_run_stats.status` debe ser `ok | skipped | failed` (skipped = Gmail no configurado todavía).
 
 ---
 
