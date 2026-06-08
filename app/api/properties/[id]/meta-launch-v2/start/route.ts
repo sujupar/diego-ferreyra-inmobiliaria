@@ -180,6 +180,29 @@ export async function POST(
         vision,
       })
 
+      // Guard: si por cualquier motivo NO hay avatares (Gemini caído sin que
+      // el fallback determinístico haya entrado), marcar failed en vez de
+      // transicionar a awaiting_user_input con [] — eso dejaba la UI atascada
+      // en el paso 4 sin nada que mostrar.
+      if (!avatars || avatars.length === 0) {
+        await (supabase as unknown as {
+          from: (t: string) => {
+            update: (f: Record<string, unknown>) => {
+              eq: (a: string, b: string) => Promise<unknown>
+            }
+          }
+        })
+          .from('meta_launch_jobs')
+          .update({
+            status: 'failed',
+            error_message:
+              'No se pudieron generar los avatares de comprador. Verificá que GEMINI_API_KEY esté cargada en Netlify y que el proyecto Google AI tenga billing habilitado.',
+            current_step: 'avatars_empty',
+          })
+          .eq('id', jobId)
+        return NextResponse.json({ jobId, error: 'avatars_empty' }, { status: 200 })
+      }
+
       // Persistir todo y pasar a awaiting_user_input
       await (supabase as unknown as {
         from: (t: string) => {

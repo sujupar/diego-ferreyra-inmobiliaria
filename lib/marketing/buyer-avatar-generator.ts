@@ -129,14 +129,110 @@ function buildUserBrief(
   return lines.filter(l => l !== null).join('\n')
 }
 
+/**
+ * Fallback determinístico cuando Gemini no está disponible o falla.
+ * Genera 3 avatares plausibles para inmobiliaria CABA basados en metadata
+ * de la propiedad (precio + barrio + ambientes). No reemplazan a Gemini
+ * pero al menos el wizard puede continuar.
+ */
+function buildFallbackAvatars(property: Property): BuyerAvatar[] {
+  const barrio = property.neighborhood
+  const rooms = property.rooms ?? 3
+  const priceUsd = property.currency === 'USD' ? property.asking_price : property.asking_price / 1000
+  const tier = priceUsd > 400_000 ? 'premium' : priceUsd > 200_000 ? 'alto' : 'medio'
+
+  return [
+    {
+      id: 'avatar_0',
+      shortLabel:
+        rooms <= 2
+          ? `Profesional joven en ${barrio}`
+          : `Familia chica buscando crecer en ${barrio}`,
+      ageRange: rooms <= 2 ? '28-38 años' : '32-42 años',
+      occupation:
+        rooms <= 2
+          ? 'Profesional independiente o empleado con buen salario, trabajo híbrido'
+          : 'Pareja de profesionales con un hijo o planeando familia',
+      lifeMoment:
+        rooms <= 2
+          ? 'Saliendo del alquiler, comprando su primera propiedad'
+          : 'Necesita más espacio, mudándose desde un dos ambientes',
+      motivation:
+        rooms <= 2
+          ? `Quiere dejar de tirar el alquiler y empezar a construir patrimonio en ${barrio}`
+          : `Busca el espacio para que la familia se desarrolle, en un barrio con buenos colegios y servicios`,
+      concerns: [
+        'Cuánto suben las expensas',
+        'Cuánto tarda en valorizarse',
+        rooms <= 2 ? 'Si el lugar tiene buena reventa' : 'Si el barrio es seguro para chicos',
+      ],
+      communicationTone: rooms <= 2 ? 'práctico' : 'familiar',
+      visualCue: rooms <= 2 ? 'pareja_joven' : 'familia',
+      hooks: [
+        `Vivir en ${barrio}`,
+        rooms <= 2 ? 'Patrimonio que crece' : 'Espacio para crecer',
+        'Cerca de todo',
+      ],
+      reasoning: `Perfil generado sin IA (fallback). ${rooms} ambientes en ${barrio} tier ${tier} sugiere ${rooms <= 2 ? 'profesional joven o pareja sin hijos' : 'familia chica'}.`,
+    },
+    {
+      id: 'avatar_1',
+      shortLabel:
+        tier === 'premium'
+          ? `Comprador establecido buscando upgrade en ${barrio}`
+          : `Inversor que conoce ${barrio}`,
+      ageRange: tier === 'premium' ? '45-58 años' : '38-52 años',
+      occupation:
+        tier === 'premium'
+          ? 'Empresario o profesional senior con cartera diversificada'
+          : 'Profesional con experiencia comprando para alquilar o reventa',
+      lifeMoment:
+        tier === 'premium'
+          ? 'Buscando una propiedad para mudarse o para uso ocasional'
+          : 'Buscando dónde colocar excedente con buena renta',
+      motivation:
+        tier === 'premium'
+          ? `Una propiedad en ${barrio} que mejore su calidad de vida o esté lista para mudar la familia mayor`
+          : `Ubicación con potencial de revalorización a 5-10 años en una zona con demanda firme`,
+      concerns: [
+        'Estado real de la propiedad y mantenimiento',
+        'Liquidez del barrio para reventa',
+        tier === 'premium' ? 'Detalles de terminaciones y vista' : 'Renta esperada vs. tasa',
+      ],
+      communicationTone: tier === 'premium' ? 'sofisticado' : 'práctico',
+      visualCue: tier === 'premium' ? 'pareja_senior' : 'inversor',
+      hooks: [`Inversión en ${barrio}`, 'Revalorización a largo plazo', 'Demanda firme'],
+      reasoning: `Perfil generado sin IA (fallback). Tier ${tier} en ${barrio} con ${rooms} amb apunta a ${tier === 'premium' ? 'comprador maduro' : 'inversor experimentado'}.`,
+    },
+    {
+      id: 'avatar_2',
+      shortLabel: `Quien valora la ubicación y los detalles`,
+      ageRange: '35-50 años',
+      occupation: 'Profesional con criterio, ha mirado muchas propiedades',
+      lifeMoment: 'Busca la propiedad correcta, no la primera que aparece',
+      motivation: `Encontró este aviso después de buscar mucho y reconoce el valor de la ubicación en ${barrio}, los amenities y el estado de la propiedad`,
+      concerns: [
+        'Que la propiedad sea realmente como la publican',
+        'Cuán negociable está el precio',
+        'Estado de la documentación y plazos',
+      ],
+      communicationTone: 'sofisticado',
+      visualCue: 'profesional_solo',
+      hooks: ['Para quien sabe buscar', 'Lo miraste todo. Vení a verla', 'Atención al detalle'],
+      reasoning:
+        'Perfil generado sin IA (fallback). Ángulo "decisión inteligente" — apela al comprador analítico que valora encontrar la propiedad correcta.',
+    },
+  ]
+}
+
 export async function generateThreeAvatars(input: {
   property: Property
   vision?: PropertyVisionAnalysis | null
 }): Promise<BuyerAvatar[] | null> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
-    console.warn('[buyer-avatars] sin GEMINI_API_KEY — devolviendo null')
-    return null
+    console.warn('[buyer-avatars] sin GEMINI_API_KEY — usando fallback determinístico')
+    return buildFallbackAvatars(input.property)
   }
 
   const brief = buildUserBrief(input.property, input.vision ?? null)

@@ -308,6 +308,28 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
     }
   }
 
+  async function cancelAndReset() {
+    if (!jobId) return
+    try {
+      await fetch(`/api/properties/${propertyId}/meta-launch-v2/${jobId}/cancel`, {
+        method: 'POST',
+      })
+    } catch {
+      // ignoramos errores; igual reseteamos el wizard
+    } finally {
+      setJobId(null)
+      setJob(null)
+      setAssets([])
+      setStep('confirm_data')
+      setSelectedAvatarId('')
+      setAvatarComment('')
+      setOptimizedAvatar(null)
+      setStarredPhotos([])
+      setGenerationProgress({ generated: 0, total: 27, failures: 0 })
+      generatingBatchRef.current = false
+    }
+  }
+
   async function confirmAndPublish() {
     if (!jobId) return
     setLoading(true)
@@ -333,6 +355,46 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
   }
 
   // === Renders por step ===
+
+  // Estado de falla global: si el backend marcó el job como failed, mostramos
+  // un panel claro con el motivo + botón para cancelar y volver a empezar.
+  // Esto evita el "wizard atascado en paso 4 sin nada que mostrar" cuando los
+  // avatares no se generan (p.ej. GEMINI_API_KEY ausente).
+  if (job?.status === 'failed') {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base text-rose-700">
+            <AlertTriangle className="h-4 w-4" />
+            El análisis no pudo completarse
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-md bg-rose-50 border border-rose-200 p-3 text-sm text-rose-900">
+            <p className="font-medium mb-1">Motivo:</p>
+            <p>{job.error_message ?? 'Error desconocido en el análisis con IA.'}</p>
+          </div>
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p className="font-medium">Pasos típicos para resolver:</p>
+            <ol className="list-decimal pl-4 space-y-0.5">
+              <li>Verificá que <code>GEMINI_API_KEY</code> esté cargada en Netlify Site settings → Environment variables.</li>
+              <li>Verificá que el proyecto de Google AI Studio tenga billing habilitado (el modelo de imagen no funciona en free tier).</li>
+              <li>Re-deployá el sitio para que tome las env vars nuevas.</li>
+              <li>Volvé a intentar.</li>
+            </ol>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={cancelAndReset} className="flex-1">
+              <RefreshCw className="h-4 w-4 mr-1" /> Cancelar y volver a empezar
+            </Button>
+            <Button onClick={() => router.push(`/properties/${propertyId}`)} variant="ghost">
+              Volver al detalle
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   if (step === 'confirm_data') {
     return (
@@ -407,6 +469,29 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
 
   if (step === 'avatar_select') {
     const avatars = job?.generated_avatars?.avatars ?? []
+    // Defensa: si llegamos a este paso sin avatares (job mal persistido), no
+    // mostramos un card vacío — ofrecemos cancelar y reiniciar.
+    if (avatars.length === 0) {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base text-amber-700">
+              <AlertTriangle className="h-4 w-4" />
+              No hay avatares para mostrar
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm">
+              El análisis terminó pero no llegaron perfiles de comprador. Esto suele pasar
+              cuando la API de Gemini no está disponible. Cancelá y volvé a intentar.
+            </p>
+            <Button onClick={cancelAndReset} className="w-full">
+              <RefreshCw className="h-4 w-4 mr-1" /> Cancelar y volver a empezar
+            </Button>
+          </CardContent>
+        </Card>
+      )
+    }
     return (
       <Card>
         <CardHeader>
