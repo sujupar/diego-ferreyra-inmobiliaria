@@ -30,7 +30,7 @@ export async function initPortals(force = false): Promise<void> {
   ])
 
   registerAdapter(new MercadoLibreAdapter(mlCreds.enabled))
-  registerAdapter(new ArgenpropAdapter(apCreds.enabled))
+  registerAdapter(new ArgenpropAdapter(apCreds.enabled, apCreds.ap))
   registerAdapter(new ZonapropAdapter(zpCreds.enabled))
 
   initialized = true
