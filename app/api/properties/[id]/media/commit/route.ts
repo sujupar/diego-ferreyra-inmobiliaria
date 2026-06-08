@@ -16,7 +16,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (urls.length === 0) {
         return NextResponse.json({ error: 'No se enviaron URLs' }, { status: 400 })
       }
-      const photoPrefix = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/property-files/properties/${id}/photos/`
+      const storageBase = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/+$/, '')
+      const photoPrefix = `${storageBase}/storage/v1/object/public/property-files/properties/${id}/photos/`
       if (!urls.every((u) => u.startsWith(photoPrefix))) {
         return NextResponse.json({ error: 'URL de foto inválida' }, { status: 400 })
       }
@@ -32,7 +33,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (typeof body.url !== 'string' || !body.url) {
         return NextResponse.json({ error: 'url de video requerida' }, { status: 400 })
       }
-      const videoPrefix = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/property-files/properties/${id}/video/`
+      const storageBase = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/+$/, '')
+      const videoPrefix = `${storageBase}/storage/v1/object/public/property-files/properties/${id}/video/`
       if (!body.url.startsWith(videoPrefix)) {
         return NextResponse.json({ error: 'URL de video inválida' }, { status: 400 })
       }

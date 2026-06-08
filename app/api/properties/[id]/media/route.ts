@@ -25,9 +25,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { id } = await params
     const body = await req.json().catch(() => ({}))
 
-    // Reordenar / elegir portada: setea el array completo (un solo write).
+    // Reordenar / elegir portada: el array debe ser una PERMUTACIÓN de las fotos
+    // actuales (mismo conjunto) — así no se inyectan URLs arbitrarias y un
+    // reorder desactualizado se rechaza en vez de pisar un borrado reciente.
     if (Array.isArray(body.photos)) {
-      const photos = body.photos.filter((u: unknown) => typeof u === 'string')
+      const photos = body.photos.filter((u: unknown) => typeof u === 'string') as string[]
+      const prop = await getProperty(id)
+      const existing = Array.isArray(prop.photos) ? prop.photos : []
+      const sameSet =
+        photos.length === existing.length &&
+        [...photos].sort().join(' ') === [...existing].sort().join(' ')
+      if (!sameSet) {
+        return NextResponse.json({ error: 'El orden no coincide con las fotos actuales' }, { status: 400 })
+      }
       await updateProperty(id, { photos })
       return NextResponse.json({ success: true })
     }
@@ -53,9 +63,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ success: true })
     }
 
-    // Setear o limpiar el recorrido virtual (enlace).
+    // Setear o limpiar el recorrido virtual (enlace). Debe ser https:// para
+    // evitar javascript:/data: (XSS almacenado al embeberlo en <iframe>).
     if ('tour_3d_url' in body) {
-      const val: string | null = typeof body.tour_3d_url === 'string' && body.tour_3d_url.trim() ? body.tour_3d_url.trim() : null
+      const raw = typeof body.tour_3d_url === 'string' ? body.tour_3d_url.trim() : ''
+      let val: string | null = null
+      if (raw) {
+        let isHttps = false
+        try { isHttps = new URL(raw).protocol === 'https:' } catch { isHttps = false }
+        if (!isHttps) {
+          return NextResponse.json({ error: 'El recorrido debe ser un enlace https válido' }, { status: 400 })
+        }
+        val = raw
+      }
       await updateProperty(id, { tour_3d_url: val })
       return NextResponse.json({ success: true })
     }

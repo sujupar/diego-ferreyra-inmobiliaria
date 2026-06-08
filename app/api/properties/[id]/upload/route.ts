@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'crypto'
 import { updateProperty, checkAndAdvanceProperty } from '@/lib/supabase/properties'
+import { requireAuth } from '@/lib/auth/require-role'
 
 // Límites razonables. Si los superamos, devolvemos 400 con mensaje claro
 // en vez de dejar que Supabase Storage devuelva un error genérico.
@@ -13,6 +14,10 @@ const ALLOWED_DOC_EXT = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp']
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   try {
+    const user = await requireAuth()
+    if (user.profile.role === 'abogado') {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+    }
     const formData = await request.formData()
     const file = formData.get('file') as File | null
     const type = formData.get('type') as string | null
