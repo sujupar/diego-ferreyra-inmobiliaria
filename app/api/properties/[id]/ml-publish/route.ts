@@ -26,6 +26,46 @@ async function authorize(propertyId: string, userId: string, role: string) {
   return ['admin', 'dueno', 'coordinador'].includes(role)
 }
 
+type PropertyRow = Database['public']['Tables']['properties']['Row']
+
+// Cliente "suelto" para escribir en portal_property_map, tabla del sistema de
+// consultas (WIP, no tipada en database.types aún). Best-effort.
+type LooseQuery = {
+  delete: () => LooseQuery
+  insert: (row: Record<string, unknown>) => Promise<unknown>
+  eq: (column: string, value: unknown) => LooseQuery & Promise<unknown>
+}
+
+/**
+ * BRIDGE publicación → routing de consultas. Registra el aviso recién publicado en
+ * portal_property_map (external_code = id del aviso ML, external_url = permalink,
+ * + dirección/título para fallback fuzzy, + assigned_to de la propiedad). Así, cuando
+ * llega una consulta de ESTE aviso, el matcher la rutea al asesor correcto.
+ * Idempotente por propiedad vía `notes` ("property:<id>"): borra la fila anterior de
+ * esta propiedad antes de insertar la nueva (re-publicaciones generan nuevo id de aviso).
+ */
+async function syncPortalPropertyMap(
+  supabase: ReturnType<typeof getAdmin>,
+  property: PropertyRow,
+  externalId: string,
+  externalUrl: string,
+) {
+  const noteKey = `property:${property.id}`
+  const db = supabase as unknown as { from: (table: string) => LooseQuery }
+  await db.from('portal_property_map').delete().eq('portal', 'mercadolibre').eq('notes', noteKey)
+  await db.from('portal_property_map').insert({
+    portal: 'mercadolibre',
+    external_code: externalId,
+    external_url: externalUrl,
+    address: property.address,
+    neighborhood: property.neighborhood,
+    title: property.title ?? property.address,
+    assigned_to: property.assigned_to,
+    active: true,
+    notes: noteKey,
+  })
+}
+
 /**
  * POST → publica la propiedad en MercadoLibre desde el wizard.
  *
@@ -123,7 +163,10 @@ export async function POST(
     // si la cuenta no tiene cupo). Sin esto, metadata.listing_type quedaría con el
     // tier pedido y el update() del worker reintentaría con un tier sin cupo.
     const usedTier = (pubResult.metadata?.listingTypeUsed as string | undefined)
-    const mergedMeta = { ...meta, ...(usedTier ? { listing_type: usedTier } : {}) }
+    // needs_picture_check: el worker pg_cron verifica, cuando el item pase a 'active',
+    // que ML haya descargado las fotos OK (procesa async ~1-2 min). Si alguna falla,
+    // marca metadata.picture_issues.
+    const mergedMeta = { ...meta, ...(usedTier ? { listing_type: usedTier } : {}), needs_picture_check: true }
     await supabase
       .from('property_listings')
       .upsert(
@@ -148,6 +191,16 @@ export async function POST(
       payload: { externalId: pubResult.externalId, externalUrl: pubResult.externalUrl },
       actor: user.profile.full_name ?? user.id,
     })
+
+    // BRIDGE publicación → routing de consultas: registrar el aviso en
+    // portal_property_map para que las consultas de ESTE aviso (matcheadas por
+    // external_code/url) ruteen al asesor de la propiedad. Best-effort: si la tabla
+    // del sistema de consultas no existe todavía, no rompemos el publish.
+    try {
+      await syncPortalPropertyMap(supabase, property, pubResult.externalId, pubResult.externalUrl)
+    } catch (bridgeErr) {
+      console.warn('[ml-publish] no se pudo sincronizar portal_property_map', bridgeErr)
+    }
 
     return NextResponse.json({
       ok: true,

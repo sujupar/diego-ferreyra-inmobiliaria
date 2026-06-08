@@ -298,7 +298,15 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Mapping:** `propertyToMlPayload(property, opts)` acepta `MlPayloadOptions { attributeOverrides, mediaChoice, listingType, allowedAttributeIds }`. `allowedAttributeIds` filtra los atributos contra el schema de la categoría (evita 400 por atributo inválido). Default `listing_type_id = free` (publicación gratuita — decisión del usuario; el asesor puede subir de tier en el paso 3).
 - **Draft:** lo que el asesor configura en el wizard se persiste en `property_listings.metadata` (`ml_attributes`, `media_choice`, `listing_type`) vía `PATCH /api/properties/[id]/ml-preview`. El schema dinámico + prefill lo sirve `GET /api/properties/[id]/ml-attributes`.
 - **Worker:** migrado de `netlify/functions/publish-listings.mts` (scheduler muerto) a `lib/portals/worker.ts` + ruta `app/api/cron/publish-listings` (pg_cron, migración `20260606000002`). El `.mts` quedó como handler on-demand SIN `config.schedule` (evita doble envío).
-- **QA tool:** `scripts/qa-publish-ml-test.ts` (recon/publish/verify/teardown). Correr con `node --env-file=.env.local --import tsx`. SOLO opera sobre propiedades con título que empieza con `[TEST`.
+- **QA tool:** `scripts/qa-publish-ml-test.ts` (recon/publish/verify/teardown/`force-close <itemId>`/`photos-audit`/`picswatch`/`inquiry-status`/`listingtypes`). Correr con `node --env-file=.env.local --import tsx`. publish/verify/teardown SOLO operan sobre propiedades con título que empieza con `[TEST`; `force-close <itemId>` opera por id directo (sin guard).
+- **Bridge publicación → consultas:** al publicar (`POST /ml-publish`), `syncPortalPropertyMap` inserta el aviso en `portal_property_map` (external_code = id del aviso, external_url, address/neighborhood/title, assigned_to de la propiedad, `notes='property:<id>'` para dedup). Así las consultas de ese aviso rutean al asesor de la propiedad SIN cargar el CSV a mano. Best-effort (try/catch): si la tabla del sistema de consultas no existe aún, no rompe el publish.
+
+### ML procesa las fotos de forma ASÍNCRONA (~1-2 min) — no es bug
+
+- **Symptom:** Recién publicado, el aviso "no tiene fotos" aunque la propiedad sí las tiene.
+- **Root cause:** ML descarga las pictures desde la URL `source` de forma async. Mientras el item está `not_yet_active`, `pictures[].secure_url` apunta al placeholder `.../processing-image/.../O-ES.jpg` (size 500x500). Recién cuando el item pasa a `active` (~80-100s) las fotos quedan en full resolución. Verificado en vivo: t=0 placeholder → t=100s las 3 en 1920px + status active.
+- **Fix (UX + verificación):** El wizard avisa en la pantalla de éxito que las fotos tardan ~1-2 min. Además, el publish setea `metadata.needs_picture_check=true` y el worker (`processPictureChecks`) verifica, una vez `active`, que las pictures no hayan quedado en placeholder ni falten respecto a las enviadas; si fallan, marca `metadata.picture_issues` + `last_error`. Diagnóstico manual: `scripts/qa-publish-ml-test.ts picswatch <propertyId>`.
+- **Regla:** NUNCA juzgar si las fotos subieron mirando el aviso en `not_yet_active`. Esperar a `active` o usar `GET /items/{id}` + chequear `pictures[].secure_url` (que NO contenga "processing-image").
 
 ### ML: la descripción del item NO se publica inline — usar `POST /items/{id}/description`
 

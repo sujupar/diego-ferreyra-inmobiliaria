@@ -14,6 +14,7 @@ import type {
 interface MlItemCreated {
   id: string
   permalink: string
+  warnings?: { code?: string; message?: string }[]
 }
 
 interface MlVisitsResponse {
@@ -84,10 +85,17 @@ export class MercadoLibreAdapter implements PortalAdapter {
             console.error(`[ml.publish] descripción falló para ${created.id}`, err)
           })
         }
+        if (created.warnings?.length) {
+          console.warn(`[ml.publish] ML devolvió warnings para ${created.id}`, created.warnings)
+        }
         return {
           externalId: created.id,
           externalUrl: created.permalink,
-          metadata: { listingTypeUsed: tier, ...(tier !== requested ? { downgradedFrom: requested } : {}) },
+          metadata: {
+            listingTypeUsed: tier,
+            ...(tier !== requested ? { downgradedFrom: requested } : {}),
+            ...(created.warnings?.length ? { warnings: created.warnings } : {}),
+          },
         }
       } catch (err) {
         lastErr = err

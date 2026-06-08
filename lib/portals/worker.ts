@@ -56,8 +56,67 @@ export async function runPublishWorker(): Promise<{ ok: true }> {
   await processUpdates(supabase)
   await processPausesAfterActive(supabase)
   await processClosesAfterActive(supabase)
+  await processPictureChecks(supabase)
   await processPublishes(supabase)
   return { ok: true }
+}
+
+/**
+ * Verifica que ML haya descargado las fotos OK. ML procesa las pictures de forma
+ * asíncrona (~1-2 min): mientras el item está not_yet_active muestra un placeholder
+ * "processing-image". El wizard setea `needs_picture_check` al publicar; este tick,
+ * una vez que el item pasa a active, lee pictures[] y si alguna quedó en placeholder
+ * (falló la descarga) o faltan respecto a las enviadas, marca metadata.picture_issues.
+ */
+async function processPictureChecks(supabase: SB) {
+  const { data: listings } = await supabase
+    .from('property_listings')
+    .select('*')
+    .eq('portal', 'mercadolibre')
+    .contains('metadata', { needs_picture_check: true })
+    .limit(10)
+
+  if (!listings || listings.length === 0) return
+
+  for (const listing of listings) {
+    if (!listing.external_id) {
+      await supabase
+        .from('property_listings')
+        .update({ metadata: stripFlag(listing.metadata, 'needs_picture_check') as never })
+        .eq('id', listing.id)
+      continue
+    }
+    try {
+      const item = await mlFetch<{ status: string; pictures?: { secure_url?: string }[] }>(`/items/${listing.external_id}`)
+      if (item.status === 'not_yet_active') continue // ML todavía procesa; reintentar próximo tick
+
+      const pics = item.pictures ?? []
+      const failed = pics.filter(p => !p.secure_url || String(p.secure_url).includes('processing-image')).length
+      const { data: prop } = await supabase.from('properties').select('photos').eq('id', listing.property_id).maybeSingle()
+      const expected = Math.min(((prop?.photos as string[] | null) ?? []).length, 12)
+      const missing = Math.max(0, expected - pics.length)
+
+      const meta = stripFlag(listing.metadata, 'needs_picture_check')
+      if (failed > 0 || missing > 0) {
+        ;(meta as Record<string, unknown>).picture_issues = { expected, registered: pics.length, failed, missing }
+        await supabase.from('property_listings').update({
+          metadata: meta as never,
+          last_error: `Fotos: ${pics.length - failed}/${expected} OK en ML (${failed} fallaron, ${missing} no se registraron).`,
+        }).eq('id', listing.id)
+        await writeAudit(supabase, {
+          listingId: listing.id,
+          propertyId: listing.property_id,
+          portal: 'mercadolibre',
+          eventType: 'updated',
+          errorMessage: `picture_issues: ${failed} fallaron, ${missing} faltan de ${expected}`,
+        })
+      } else {
+        await supabase.from('property_listings').update({ metadata: meta as never }).eq('id', listing.id)
+      }
+    } catch (err) {
+      console.error(`[picture-check] ${listing.external_id}`, err)
+    }
+  }
 }
 
 /**
