@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -22,6 +22,8 @@ export function PropertyMediaCard({ propertyId, photos, videoFileUrl, tourUrl, o
   const [videoProgress, setVideoProgress] = useState(0)
   const [tourValue, setTourValue] = useState(tourUrl || '')
   const [savingTour, setSavingTour] = useState(false)
+
+  useEffect(() => { setTourValue(tourUrl || '') }, [tourUrl])
 
   async function uploadVideo(file: File) {
     setVideoUploading(true); setVideoProgress(0)
@@ -53,7 +55,7 @@ export function PropertyMediaCard({ propertyId, photos, videoFileUrl, tourUrl, o
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kind: 'video', url: u.publicUrl }),
       })
-      if (!commitRes.ok) { const d = await commitRes.json().catch(() => ({})); toast.error(d?.error || 'No se pudo registrar el video', { id: t }); return }
+      if (!commitRes.ok) { const d = await commitRes.json().catch(() => ({})); console.warn('[PropertyMediaCard] video subido pero commit falló (queda huérfano en Storage):', u.publicUrl); toast.error(d?.error || 'No se pudo registrar el video', { id: t }); return }
       toast.success('Video subido', { id: t })
       onChanged()
     } catch (e) {
@@ -147,7 +149,7 @@ export function PropertyMediaCard({ propertyId, photos, videoFileUrl, tourUrl, o
                 <div className="rounded-xl overflow-hidden border aspect-video bg-muted">
                   <iframe src={tourUrl} className="w-full h-full" allowFullScreen loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
                 </div>
-                <a href={tourUrl} target="_blank" rel="noopener" className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1">
+                <a href={tourUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1">
                   <ExternalLink className="h-3 w-3" />Abrir en pestaña nueva
                 </a>
               </div>
