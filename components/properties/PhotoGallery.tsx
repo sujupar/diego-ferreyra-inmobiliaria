@@ -78,49 +78,61 @@ export function PhotoGallery({ propertyId, photos, onChanged }: Props) {
   async function uploadFiles(fileList: FileList) {
     const list = Array.from(fileList)
     if (list.length === 0) return
+    const total = list.length
     setUploading(true); setProgress(0)
-    const t = toast.loading(`Subiendo ${list.length} foto(s)…`)
+    const t = toast.loading(`Subiendo ${total} foto(s)…`)
+    const CHUNK = 30
+    const chunks: File[][] = []
+    for (let i = 0; i < list.length; i += CHUNK) chunks.push(list.slice(i, i + CHUNK))
+    let totalDone = 0
+    let totalOk = 0
     try {
-      const initRes = await fetch(`/api/properties/${propertyId}/media/upload-init`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind: 'photo', files: list.map(f => ({ fileName: f.name, fileSize: f.size, contentType: f.type })) }),
-      })
-      const initData = await initRes.json().catch(() => ({}))
-      if (!initRes.ok) { toast.error(initData?.error || 'No se pudo iniciar la subida', { id: t }); return }
-      const uploads = initData.uploads as Array<{ signedUrl: string; token: string; path: string; publicUrl: string }>
-      const okUrls: string[] = []
-      let done = 0
-      await Promise.all(uploads.map((u, i) => new Promise<void>((resolve) => {
-        const xhr = new XMLHttpRequest()
-        xhr.open('PUT', u.signedUrl, true)
-        xhr.setRequestHeader('Content-Type', list[i].type || 'application/octet-stream')
-        xhr.setRequestHeader('x-upsert', 'true')
-        if (u.token) xhr.setRequestHeader('Authorization', `Bearer ${u.token}`)
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) okUrls.push(u.publicUrl)
-          done++; setProgress(Math.round((done / uploads.length) * 100))
-          toast.loading(`Subiendo ${done}/${uploads.length}…`, { id: t })
-          resolve()
+      for (const group of chunks) {
+        const initRes = await fetch(`/api/properties/${propertyId}/media/upload-init`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind: 'photo', files: group.map(f => ({ fileName: f.name, fileSize: f.size, contentType: f.type })) }),
+        })
+        const initData = await initRes.json().catch(() => ({}))
+        if (!initRes.ok) { toast.error(initData?.error || 'No se pudo iniciar la subida', { id: t }); return }
+        const uploads = initData.uploads as Array<{ signedUrl: string; token: string; publicUrl: string }>
+        // Slots por índice: preservan el orden de selección sin importar el orden de finalización.
+        const slots: (string | null)[] = new Array(uploads.length).fill(null)
+        await Promise.all(uploads.map((u, i) => new Promise<void>((resolve) => {
+          const xhr = new XMLHttpRequest()
+          xhr.open('PUT', u.signedUrl, true)
+          xhr.setRequestHeader('Content-Type', group[i].type || 'application/octet-stream')
+          xhr.setRequestHeader('x-upsert', 'true')
+          if (u.token) xhr.setRequestHeader('Authorization', `Bearer ${u.token}`)
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) slots[i] = u.publicUrl
+            totalDone++; setProgress(Math.round((totalDone / total) * 100))
+            toast.loading(`Subiendo ${totalDone}/${total}…`, { id: t })
+            resolve()
+          }
+          xhr.onerror = () => { totalDone++; resolve() }
+          xhr.send(group[i])
+        })))
+        const okUrls = slots.filter((u): u is string => u !== null)
+        if (okUrls.length > 0) {
+          const commitRes = await fetch(`/api/properties/${propertyId}/media/commit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kind: 'photo', urls: okUrls }),
+          })
+          if (!commitRes.ok) { const d = await commitRes.json().catch(() => ({})); toast.error(d?.error || 'No se pudieron registrar las fotos', { id: t }); return }
+          totalOk += okUrls.length
         }
-        xhr.onerror = () => { done++; resolve() }
-        xhr.send(list[i])
-      })))
-      if (okUrls.length === 0) { toast.error('No se pudo subir ninguna foto', { id: t }); return }
-      const commitRes = await fetch(`/api/properties/${propertyId}/media/commit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind: 'photo', urls: okUrls }),
-      })
-      if (!commitRes.ok) { const d = await commitRes.json().catch(() => ({})); toast.error(d?.error || 'No se pudieron registrar las fotos', { id: t }); return }
-      const failed = uploads.length - okUrls.length
-      toast.success(failed > 0 ? `${okUrls.length} subidas · ${failed} fallaron` : `${okUrls.length} foto(s) subida(s)`, { id: t })
-      onChanged()
+      }
+      if (totalOk === 0) { toast.error('No se pudo subir ninguna foto', { id: t }); return }
+      const failed = total - totalOk
+      toast.success(failed > 0 ? `${totalOk} subidas · ${failed} fallaron` : `${totalOk} foto(s) subida(s)`, { id: t })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al subir', { id: t })
     } finally {
       setUploading(false); setProgress(0)
       if (inputRef.current) inputRef.current.value = ''
+      if (totalOk > 0) onChanged()
     }
   }
 
