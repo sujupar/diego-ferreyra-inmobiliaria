@@ -57,6 +57,7 @@ export function PhotoGallery({ propertyId, photos, onChanged }: Props) {
       })
       if (!res.ok) throw new Error()
       toast.success('Guardado')
+      onChanged()
     } catch {
       toast.error('No se pudo guardar el orden')
       onChanged()
@@ -135,6 +136,7 @@ export function PhotoGallery({ propertyId, photos, onChanged }: Props) {
       })
       if (!res.ok) throw new Error()
       toast.success('Foto eliminada')
+      onChanged()
     } catch {
       toast.error('No se pudo eliminar')
       onChanged()
