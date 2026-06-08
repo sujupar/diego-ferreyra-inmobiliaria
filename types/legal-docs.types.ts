@@ -69,3 +69,45 @@ export function getApplicableDocs(flags: LegalFlags, propertyType: string): Lega
     return true
   })
 }
+
+export type LegalSummaryTone = 'ok' | 'warn' | 'bad'
+
+export interface LegalDocsSummary {
+  approved: number
+  pending: number
+  rejected: number
+  missing: number
+  total: number
+  tone: LegalSummaryTone
+  label: string
+}
+
+/**
+ * Resume el estado de los documentos APLICABLES para mostrarlo en el
+ * encabezado plegado de la sección legal. `applicableKeys` son las keys
+ * que devuelve getApplicableDocs() para esta propiedad.
+ */
+export function summarizeLegalDocs(docs: LegalDocsState, applicableKeys: string[]): LegalDocsSummary {
+  let approved = 0, pending = 0, rejected = 0, missing = 0
+  for (const key of applicableKeys) {
+    const status = docs[key]?.status ?? 'missing'
+    if (status === 'approved') approved++
+    else if (status === 'pending') pending++
+    else if (status === 'rejected') rejected++
+    else missing++
+  }
+  const total = applicableKeys.length
+  let tone: LegalSummaryTone
+  let label: string
+  if (rejected > 0) {
+    tone = 'bad'
+    label = `${rejected} rechazado${rejected !== 1 ? 's' : ''} · revisar`
+  } else if (pending + missing > 0) {
+    tone = 'warn'
+    label = `${approved}/${total} aprobados`
+  } else {
+    tone = 'ok'
+    label = `${total}/${total} aprobados`
+  }
+  return { approved, pending, rejected, missing, total, tone, label }
+}
