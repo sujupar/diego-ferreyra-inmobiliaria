@@ -4,11 +4,11 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Loader2, Rocket, CheckCircle2, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import type { MlDraft } from '../types'
+import type { ApDraft } from '../types'
 
 interface Props {
   propertyId: string
-  draft: MlDraft
+  draft: ApDraft
   currency: string
   canPublish: boolean
   onBack: () => void
@@ -22,7 +22,7 @@ export function StepConfirm({ propertyId, draft, currency, canPublish, onBack }:
   async function publish() {
     setPublishing(true)
     try {
-      const r = await fetch(`/api/properties/${propertyId}/ml-publish`, { method: 'POST' })
+      const r = await fetch(`/api/properties/${propertyId}/ap-publish`, { method: 'POST' })
       const j = await r.json()
       if (!r.ok || !j.ok) throw new Error(j.error ?? 'Error al publicar')
       setResult({ externalId: j.externalId, externalUrl: j.externalUrl })
@@ -39,16 +39,13 @@ export function StepConfirm({ propertyId, draft, currency, canPublish, onBack }:
         <CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto" />
         <h3 className="font-semibold text-lg">¡Aviso publicado!</h3>
         <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          MercadoLibre está validando el aviso (1-2 minutos). Queda visible al público cuando termine.
+          Argenprop procesa el aviso. Vas a poder verlo y, si es una prueba, darlo de baja desde el panel de gestión.
         </p>
-        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 max-w-md mx-auto">
-          📷 <strong>Las fotos tardan ~1-2 min en aparecer.</strong> MercadoLibre las descarga y procesa en segundo plano: al principio vas a ver un cartel de “procesando imagen”, y cuando el aviso pasa a <em>activo</em> se ven en alta resolución. Es normal.
-        </div>
         <p className="text-xs text-muted-foreground">ID: <code>{result.externalId}</code></p>
         <div className="space-y-2 max-w-sm mx-auto">
           <Button asChild className="w-full">
             <a href={result.externalUrl} target="_blank" rel="noopener noreferrer">
-              Abrir en MercadoLibre <ExternalLink className="h-4 w-4 ml-1" />
+              Abrir en Argenprop <ExternalLink className="h-4 w-4 ml-1" />
             </a>
           </Button>
           <Button variant="outline" className="w-full" onClick={() => router.push(`/properties/${propertyId}`)}>
@@ -63,14 +60,14 @@ export function StepConfirm({ propertyId, draft, currency, canPublish, onBack }:
     <div className="space-y-4">
       <h3 className="text-base font-medium flex items-center gap-2"><Rocket className="h-4 w-4 text-emerald-700" />Confirmar y publicar</h3>
       <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 text-sm space-y-1">
-        <p className="font-medium">Vas a publicar este aviso en MercadoLibre:</p>
+        <p className="font-medium">Vas a publicar este aviso en Argenprop:</p>
         <p><strong>Título:</strong> {draft.title}</p>
         <p><strong>Precio:</strong> {new Intl.NumberFormat('es-AR', { style: 'currency', currency, minimumFractionDigits: 0 }).format(draft.askingPrice)}</p>
         <p><strong>Fotos:</strong> {draft.photos.length}</p>
         <p><strong>Tipo:</strong> {draft.listingType}</p>
       </div>
       <p className="text-xs text-muted-foreground">
-        ML valida el aviso (30s a varios minutos). Después podés pausarlo o cerrarlo desde el panel de gestión.
+        Argenprop procesa el aviso. Vas a poder verlo y, si es una prueba, darlo de baja desde el panel de gestión.
       </p>
       <div className="flex gap-2">
         <button onClick={onBack} className="rounded-md border px-4 py-2 text-sm">Editar</button>

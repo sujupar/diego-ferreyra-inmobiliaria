@@ -3,12 +3,12 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Loader2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import type { MlDraft } from '../types'
+import type { ApDraft } from '../types'
 
 interface Props {
   propertyId: string
-  draft: MlDraft
-  onChange: (p: Partial<MlDraft>) => void
+  draft: ApDraft
+  onChange: (p: Partial<ApDraft>) => void
   onValidityChange: (ok: boolean) => void
 }
 

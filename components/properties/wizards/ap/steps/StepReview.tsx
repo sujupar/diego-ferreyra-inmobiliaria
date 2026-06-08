@@ -1,9 +1,9 @@
 'use client'
-import type { MlAttributesResponse, MlDraft } from '../types'
+import type { ApAttributesResponse, ApDraft } from '../types'
 
 interface Props {
-  draft: MlDraft
-  attrs: MlAttributesResponse | null
+  draft: ApDraft
+  attrs: ApAttributesResponse | null
   currency: string
   address: string
   neighborhood: string
@@ -16,7 +16,7 @@ export function StepReview({ draft, attrs, currency, address, neighborhood, onEd
   const filledAttrs = [...(attrs?.required ?? []), ...(attrs?.recommended ?? [])]
     .map(a => ({
       name: a.name,
-      val: draft.mlAttributes[a.id]?.value_name ?? a.allowedValues?.find(v => v.id === draft.mlAttributes[a.id]?.value_id)?.name,
+      val: draft.apAttributes[a.id]?.value_name ?? a.allowedValues?.find(v => v.id === draft.apAttributes[a.id]?.value_id)?.name,
     }))
     .filter(x => x.val)
 

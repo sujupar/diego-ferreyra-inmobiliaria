@@ -1,11 +1,11 @@
 'use client'
 import { useEffect } from 'react'
-import type { MlDraft } from '../types'
+import type { ApDraft } from '../types'
 import { extractYouTubeId } from '@/lib/portals/mercadolibre/media'
 
 interface Props {
-  draft: MlDraft
-  onChange: (p: Partial<MlDraft>) => void
+  draft: ApDraft
+  onChange: (p: Partial<ApDraft>) => void
   onValidityChange: (ok: boolean) => void
 }
 
@@ -21,7 +21,7 @@ export function StepMedia({ draft, onChange, onValidityChange }: Props) {
     <div className="space-y-5">
       <div>
         <h3 className="text-base font-medium">Video y recorrido</h3>
-        <p className="text-sm text-muted-foreground">ML acepta un video de YouTube. Elegí qué mandar (uno u otro).</p>
+        <p className="text-sm text-muted-foreground">Argenprop acepta un video de YouTube. Elegí qué mandar (uno u otro).</p>
       </div>
 
       <label className="block space-y-1.5">
@@ -47,7 +47,7 @@ export function StepMedia({ draft, onChange, onValidityChange }: Props) {
       </label>
 
       <div className="space-y-2">
-        <span className="text-sm font-medium">¿Qué mandamos a MercadoLibre?</span>
+        <span className="text-sm font-medium">¿Qué mandamos a Argenprop?</span>
         <div className="grid grid-cols-3 gap-2">
           {([['video', '🎬 Video'], ['tour', '🏠 Recorrido'], ['none', '— Ninguno']] as const).map(([val, label]) => {
             const disabled = (val === 'video' && !ytId) || (val === 'tour' && !draft.tour3dUrl)
@@ -64,7 +64,7 @@ export function StepMedia({ draft, onChange, onValidityChange }: Props) {
             )
           })}
         </div>
-        <p className="text-xs text-muted-foreground">El recorrido 3D se incluye como link en la descripción; ML solo acepta video nativo.</p>
+        <p className="text-xs text-muted-foreground">El recorrido 3D se incluye como link en la descripción; Argenprop solo acepta video nativo.</p>
       </div>
     </div>
   )
