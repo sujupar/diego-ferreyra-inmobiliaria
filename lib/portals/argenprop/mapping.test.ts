@@ -37,7 +37,7 @@ describe('flattenForm', () => {
 describe('propertyToApForm', () => {
   it('incluye auth, tipoPropiedad, precio y IdOrigen del aviso', () => {
     const f = propertyToApForm(prop, {
-      creds: { publishUrl: '', usr: 'u', psd: 'p', idSistema: '10', idVendedor: '281022', idOrigen: '60U6_', userAgent: 'ua' },
+      creds: { publishUrl: '', usr: 'u', psd: 'p', idSistema: '10', idVendedor: '281022', idOrigen: '60U6_', userAgent: 'ua', template: 'ua' },
       idOrigen: 'df-abc',
     })
     expect(f['usr']).toBe('u')
@@ -51,7 +51,7 @@ describe('propertyToApForm', () => {
   })
   it('aplana las fotos como imagenes[i].url', () => {
     const f = propertyToApForm(prop, {
-      creds: { publishUrl: '', usr: 'u', psd: 'p', idSistema: '10', idVendedor: '281022', idOrigen: '60U6_', userAgent: 'ua' },
+      creds: { publishUrl: '', usr: 'u', psd: 'p', idSistema: '10', idVendedor: '281022', idOrigen: '60U6_', userAgent: 'ua', template: 'ua' },
       idOrigen: 'df-abc',
     })
     expect(f['imagenes[0].url']).toBe('https://cdn/x/1.jpg')
@@ -59,7 +59,7 @@ describe('propertyToApForm', () => {
   })
   it('estado=Baja cuando opts.estado=Baja (para dar de baja)', () => {
     const f = propertyToApForm(prop, {
-      creds: { publishUrl: '', usr: 'u', psd: 'p', idSistema: '10', idVendedor: '281022', idOrigen: '60U6_', userAgent: 'ua' },
+      creds: { publishUrl: '', usr: 'u', psd: 'p', idSistema: '10', idVendedor: '281022', idOrigen: '60U6_', userAgent: 'ua', template: 'ua' },
       idOrigen: 'df-abc', estado: 'Baja',
     })
     expect(f['aviso.Estado']).toBe('Baja')

@@ -10,6 +10,10 @@ export interface ApCredentials {
   idVendedor: string
   idOrigen: string
   userAgent: string
+  /** Valor del header `templateadinco` que identifica al CRM ante Argenprop
+   *  (sin él, el endpoint responde 401 "CRM no autorizado"). Lo asigna Argenprop;
+   *  para esta cuenta es el mismo string que el User-Agent (diego-ferreyra-crm). */
+  template: string
 }
 
 export interface ResolvedCredentials {
@@ -81,6 +85,9 @@ export async function resolveCredentials(
         idVendedor: env.ARGENPROP_ID_VENDEDOR ?? '',
         idOrigen: env.ARGENPROP_ID_ORIGEN ?? '',
         userAgent: env.ARGENPROP_USER_AGENT ?? 'diego-ferreyra-crm',
+        // Para esta cuenta el identificador de CRM (header templateadinco) es el
+        // mismo string que el User-Agent. Override con ARGENPROP_TEMPLATE si difiere.
+        template: env.ARGENPROP_TEMPLATE ?? env.ARGENPROP_USER_AGENT ?? 'diego-ferreyra-crm',
       }
     : undefined
 

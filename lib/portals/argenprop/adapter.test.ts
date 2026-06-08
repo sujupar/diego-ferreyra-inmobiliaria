@@ -14,7 +14,7 @@ const prop = {
 
 const creds = {
   publishUrl: 'http://x/PublicarIntranet?contentType=json',
-  usr: 'u', psd: 'p', idSistema: '10', idVendedor: '281022', idOrigen: '60U6_', userAgent: 'ua',
+  usr: 'u', psd: 'p', idSistema: '10', idVendedor: '281022', idOrigen: '60U6_', userAgent: 'ua', template: 'ua',
 }
 
 afterEach(() => vi.restoreAllMocks())

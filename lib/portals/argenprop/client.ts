@@ -57,6 +57,9 @@ export async function apPublish(form: Record<string, string>, creds: ApCredentia
     headers: {
       'content-type': 'application/x-www-form-urlencoded',
       'user-agent': creds.userAgent,
+      // Header obligatorio: identifica al CRM ante Argenprop. Sin él → 401
+      // "CRM no autorizado para usar este endpoint" (verificado en vivo 2026-06-08).
+      ...(creds.template ? { templateadinco: creds.template } : {}),
     },
     body: encodeForm(form),
   })
