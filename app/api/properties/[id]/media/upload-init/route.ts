@@ -28,6 +28,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'No se enviaron archivos' }, { status: 400 })
     }
 
+    const MAX_FILES_PER_REQUEST = 30
+    if (files.length > MAX_FILES_PER_REQUEST) {
+      return NextResponse.json({ error: `Máximo ${MAX_FILES_PER_REQUEST} archivos por lote` }, { status: 400 })
+    }
+
     const allowed = kind === 'photo' ? (PHOTO_EXTS as readonly string[]) : (VIDEO_EXTS as readonly string[])
     const maxBytes = kind === 'photo' ? MAX_PHOTO_BYTES : MAX_VIDEO_BYTES
     const folder = kind === 'photo' ? 'photos' : 'video'
