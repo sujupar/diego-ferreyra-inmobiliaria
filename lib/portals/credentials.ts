@@ -2,6 +2,16 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import type { PortalName } from './types'
 
+export interface ApCredentials {
+  publishUrl: string
+  usr: string
+  psd: string
+  idSistema: string
+  idVendedor: string
+  idOrigen: string
+  userAgent: string
+}
+
 export interface ResolvedCredentials {
   portal: PortalName
   enabled: boolean
@@ -11,6 +21,7 @@ export interface ResolvedCredentials {
   refreshToken?: string
   apiKey?: string
   clientCode?: string
+  ap?: ApCredentials            // <-- nuevo
   metadata: Record<string, unknown>
 }
 
@@ -19,9 +30,12 @@ interface ResolveOpts {
   supabase: SupabaseClient<Database>
 }
 
-const ENV_MAP: Record<PortalName, { appId?: string; secret?: string; apiKey?: string; clientCode?: string }> = {
+const ENV_MAP: Record<
+  PortalName,
+  { appId?: string; secret?: string; apiKey?: string; clientCode?: string; ap?: true }
+> = {
   mercadolibre: { appId: 'ML_APP_ID', secret: 'ML_SECRET_KEY' },
-  argenprop: { apiKey: 'ARGENPROP_API_KEY', clientCode: 'ARGENPROP_CLIENT_CODE' },
+  argenprop: { ap: true },
   zonaprop: { apiKey: 'ZONAPROP_API_KEY', clientCode: 'ZONAPROP_CLIENT_CODE' },
 }
 
@@ -58,9 +72,24 @@ export async function resolveCredentials(
   const refreshToken = row?.refresh_token ?? undefined
   const metadata = (row?.metadata as Record<string, unknown>) ?? {}
 
-  const envEnabled = portal === 'mercadolibre'
-    ? Boolean(fromEnv.appId && fromEnv.secretKey)
-    : Boolean(fromEnv.apiKey && fromEnv.clientCode)
+  const ap: ApCredentials | undefined = portal === 'argenprop'
+    ? {
+        publishUrl: env.ARGENPROP_PUBLISH_URL ?? '',
+        usr: env.ARGENPROP_USR ?? '',
+        psd: env.ARGENPROP_PSD ?? '',
+        idSistema: env.ARGENPROP_ID_SISTEMA ?? '',
+        idVendedor: env.ARGENPROP_ID_VENDEDOR ?? '',
+        idOrigen: env.ARGENPROP_ID_ORIGEN ?? '',
+        userAgent: env.ARGENPROP_USER_AGENT ?? 'diego-ferreyra-crm',
+      }
+    : undefined
+
+  const envEnabled =
+    portal === 'mercadolibre'
+      ? Boolean(fromEnv.appId && fromEnv.secretKey)
+      : portal === 'argenprop'
+        ? Boolean(ap?.usr && ap?.psd && ap?.publishUrl)
+        : Boolean(fromEnv.apiKey && fromEnv.clientCode)
 
   // Para ML necesitamos además que haya access_token en DB (después del OAuth flow)
   const mlReady = portal === 'mercadolibre' ? Boolean(accessToken) : true
@@ -75,6 +104,7 @@ export async function resolveCredentials(
     refreshToken,
     apiKey: fromEnv.apiKey,
     clientCode: fromEnv.clientCode,
+    ap,
     metadata,
   }
 }
