@@ -17,5 +17,10 @@ export function storagePathFromPublicUrl(url: string): string | null {
   const i = url.indexOf(marker)
   if (i === -1) return null
   const path = url.slice(i + marker.length)
-  return path ? decodeURIComponent(path) : null
+  if (!path) return null
+  try {
+    return decodeURIComponent(path)
+  } catch {
+    return null
+  }
 }
