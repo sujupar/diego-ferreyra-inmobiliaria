@@ -243,6 +243,18 @@ async function main() {
   if (cmd === 'recon') return recon(propertyId)
   if (cmd === 'listingtypes') return listingTypes()
   if (cmd === 'photos-audit') return photosAudit()
+  if (cmd === 'inquiry-status') {
+    const { data: poll } = await sb().from('portal_inquiry_poll_state').select('*').limit(1).maybeSingle()
+    console.log('=== portal_inquiry_poll_state ===')
+    console.log(poll ?? '(vacío / nunca corrió)')
+    const { count } = await sb().from('portal_inquiries').select('*', { count: 'exact', head: true })
+    console.log('total portal_inquiries:', count)
+    const { data: recent } = await sb().from('portal_inquiries').select('seq, portal, property_title, assigned_to, is_unmatched, created_at').order('created_at', { ascending: false }).limit(5)
+    console.log('últimas consultas:', recent ?? [])
+    const { count: mapCount } = await sb().from('portal_property_map').select('*', { count: 'exact', head: true })
+    console.log('filas en portal_property_map:', mapCount)
+    return
+  }
   if (cmd === 'picswatch') {
     const { data: listing } = await sb().from('property_listings').select('external_id').eq('property_id', propertyId).eq('portal', 'mercadolibre').maybeSingle()
     const id = listing?.external_id
