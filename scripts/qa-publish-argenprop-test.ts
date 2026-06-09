@@ -153,42 +153,50 @@ async function forceBaja(idOrigen: string) {
  */
 async function probeTemplate(extra?: string) {
   const c = await creds()
-  const bajaBody = new URLSearchParams({
+  const slug = 'diego-ferreyra-crm'
+  const token = c.template // ARGENPROP_TEMPLATE = el token del BO
+  const bajaFields: Record<string, string> = {
     usr: c.usr, psd: c.psd,
     'aviso.IdOrigen': 'df-PROBE-NOEXISTE-0000',
     'aviso.Estado': 'Baja',
     'aviso.Vendedor.SistemaOrigen.Id': c.idSistema,
     'aviso.Vendedor.IdOrigen': c.idVendedor,
-  }).toString()
+  }
 
-  const candidates: [string, Record<string, string>][] = [
-    ['(sin header templateadinco)', {}],
-    [`templateadinco = ${c.template} (ARGENPROP_TEMPLATE actual)`, { templateadinco: c.template }],
-    ['templateadinco = diego-ferreyra-crm', { templateadinco: 'diego-ferreyra-crm' }],
-    [`templateadinco = ${c.idOrigen} (IdOrigen)`, { templateadinco: c.idOrigen }],
-    [`templateadinco = ${c.idSistema} (IdSistema)`, { templateadinco: c.idSistema }],
-    [`templateadinco = ${c.idVendedor} (IdVendedor)`, { templateadinco: c.idVendedor }],
-    [`templateadinco = ${c.usr} (usuario)`, { templateadinco: c.usr }],
+  // [label, headersExtra, bodyExtra?] — combinaciones slug+token (uno identifica, otro autentica)
+  const candidates: [string, Record<string, string>, Record<string, string>?][] = [
+    ['solo templateadinco=slug', { templateadinco: slug }],
+    ['solo templateadinco=token', { templateadinco: token }],
+    ['templateadinco=slug + tokenadinco=token', { templateadinco: slug, tokenadinco: token }],
+    ['templateadinco=token + tokenadinco=slug', { templateadinco: token, tokenadinco: slug }],
+    ['solo tokenadinco=token', { tokenadinco: token }],
+    ['templateadinco="slug:token"', { templateadinco: `${slug}:${token}` }],
+    ['templateadinco="slug|token"', { templateadinco: `${slug}|${token}` }],
+    ['templateadinco=slug + Authorization: Bearer token', { templateadinco: slug, authorization: `Bearer ${token}` }],
+    ['templateadinco=slug + header token=token', { templateadinco: slug, token }],
+    ['templateadinco=slug + body token=token', { templateadinco: slug }, { token }],
+    ['templateadinco=token + body crm=slug', { templateadinco: token }, { crm: slug }],
   ]
-  if (extra) candidates.push([`templateadinco = ${extra} (valor que pasaste)`, { templateadinco: extra }])
+  if (extra) candidates.push([`templateadinco=${extra} (valor que pasaste)`, { templateadinco: extra }])
 
-  console.log('Probando valores de templateadinco con una BAJA de aviso inexistente (NO publica nada)...\n')
-  for (const [label, headers] of candidates) {
+  console.log('Probando combinaciones slug+token (BAJA de aviso inexistente, NO publica nada)...\n')
+  for (const [label, headersExtra, bodyExtra] of candidates) {
     try {
+      const body = new URLSearchParams({ ...bajaFields, ...(bodyExtra ?? {}) }).toString()
       const res = await fetch(c.publishUrl, {
         method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': c.userAgent, ...headers },
-        body: bajaBody,
+        headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': c.userAgent, ...headersExtra },
+        body,
       })
       const text = await res.text()
       const blocked = /CRM no autorizado/i.test(text)
-      console.log(`${blocked ? '❌ 401 bloqueado' : '✅ PASÓ EL GATE'} | ${label} → ${res.status}: ${text.slice(0, 120).replace(/\s+/g, ' ')}`)
+      console.log(`${blocked ? '❌ 401' : '✅ PASÓ'} | ${label} → ${res.status}: ${text.slice(0, 110).replace(/\s+/g, ' ')}`)
     } catch (e) {
       console.log(`ERR | ${label}: ${e instanceof Error ? e.message : e}`)
     }
   }
-  console.log('\n→ Si alguno dice "PASÓ EL GATE", ese es el valor correcto: pasámelo y lo dejo fijo.')
-  console.log('→ Si TODOS dicen "401 bloqueado", lo más probable es whitelist de IP (no es un tema de valor).')
+  console.log('\n→ "✅ PASÓ" = esa combinación destraba el gate (avisame cuál y lo dejo fijo).')
+  console.log('→ Todas "❌ 401" = casi seguro whitelist de IP (no es tema de header/valor).')
 }
 
 async function main() {
