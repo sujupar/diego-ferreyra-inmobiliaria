@@ -80,17 +80,17 @@ export async function POST(
       })
     }
 
-    // Idempotencia 2: status === 'publishing' significa que un confirm previo
-    // arrancó pero no terminó (timeout 502 típicamente). Vamos a verificar el
-    // estado REAL de la campaña en DB antes de marcar nada como published.
+    // Idempotencia 2: status === 'publishing' O 'failed' — ambos casos
+    // significan que un confirm previo arrancó pero no terminó bien (timeout
+    // 502 → publishing; error explícito del builder → failed). En lugar de
+    // bloquear con 409, recuperamos: si la campaña terminó completa la
+    // adoptamos; si quedó zombi la archivamos; en cualquier caso reseteamos
+    // el job a awaiting_confirm para reintentar limpio.
     //
     // ANTES del fix (incidente 2026-06-09): el código SOLO chequeaba que
-    // existiera campaign_id, sin verificar adset_id ni ad_ids. Una campaña
-    // con Campaign+AdSet+0 Ads (timeout en el loop) se marcaba como
-    // 'published' falsamente, devolvía 200, y dejaba al usuario atrapado en
-    // V1 "Creándose" sin Ads. Now usamos isCampaignComplete como predicado
-    // canónico.
-    if (job.status === 'publishing') {
+    // existiera campaign_id, sin verificar adset_id ni ad_ids. Y solo
+    // manejaba 'publishing' — 'failed' tiraba 409 sin recovery.
+    if (job.status === 'publishing' || job.status === 'failed') {
       type CampaignRow = {
         campaign_id: string | null
         adset_id: string | null
