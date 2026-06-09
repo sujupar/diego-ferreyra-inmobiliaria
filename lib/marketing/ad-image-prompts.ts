@@ -76,8 +76,58 @@ interface BuildPromptInput {
   compositionStyle?: CompositionStyle
 }
 
+/**
+ * Normaliza property_type a su forma canónica en español argentino.
+ * El campo en DB puede venir con variantes (apartment, depto, departamento,
+ * house, casa, ph, loft, etc.) — Gemini Image confundía esos strings y
+ * generaba "Departamenton" o "Apartment" en la pieza. Mapeo determinístico.
+ */
+function normalizePropertyTypeLabel(t: string | null | undefined): string {
+  const map: Record<string, string> = {
+    apartment: 'Departamento',
+    departamento: 'Departamento',
+    depto: 'Departamento',
+    dpto: 'Departamento',
+    house: 'Casa',
+    casa: 'Casa',
+    ph: 'PH',
+    'p.h.': 'PH',
+    loft: 'Loft',
+    duplex: 'Dúplex',
+    'dúplex': 'Dúplex',
+    studio: 'Monoambiente',
+    monoambiente: 'Monoambiente',
+    mono: 'Monoambiente',
+    oficina: 'Oficina',
+    office: 'Oficina',
+    'local comercial': 'Local',
+    local: 'Local',
+    terreno: 'Terreno',
+    lote: 'Terreno',
+    land: 'Terreno',
+  }
+  const key = (t ?? '').toString().toLowerCase().trim()
+  return map[key] ?? (t ?? 'Propiedad')
+}
+
+/**
+ * Sanea el headline antes de mandarlo al modelo: elimina emojis, comillas
+ * tipográficas (que Gemini Image renderiza inconsistente como caracteres
+ * raros), trunca a 60 chars. Sin esto, headlines con apóstrofes o tildes
+ * raros producen glifos rotos.
+ */
+function sanitizeHeadlineForImage(s: string): string {
+  return s
+    .replace(/[‘’‚‛′]/g, "'")
+    .replace(/[“”„‟″]/g, '"')
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '') // emojis
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60)
+}
+
 export function buildAdImagePrompt(input: BuildPromptInput): string {
-  const { property, highlight, format, copyHeadline } = input
+  const { property, highlight, format } = input
   const compositionStyle = input.compositionStyle ?? 'split_photo_info'
   const spec = FORMAT_SPECS[format]
   const compositionGuidance = buildCompositionGuidance(compositionStyle, format)
@@ -92,19 +142,45 @@ export function buildAdImagePrompt(input: BuildPromptInput): string {
   const paletteGuidance = buildPaletteGuidance(highlight.mood ?? 'luminoso')
   const formattedPrice = formatPriceForOverlay(property.asking_price, property.currency)
   const specSummary = buildSpecSummary(property)
+  const propertyTypeLabel = normalizePropertyTypeLabel(property.property_type)
+  const copyHeadline = sanitizeHeadlineForImage(input.copyHeadline)
 
   return `
 # BRIEF DE GENERACIÓN — Pieza publicitaria inmobiliaria premium
 
 Sos un director creativo senior de una agencia de publicidad inmobiliaria de alta gama en Argentina. Tu cliente es Diego Ferreyra Inmobiliaria, una inmobiliaria boutique especializada en propiedades de segmento medio-alto y premium en CABA y GBA Norte. Necesitamos una pieza gráfica de calidad editorial para publicar como anuncio en Meta Ads (Facebook + Instagram).
 
-La pieza tiene que parecerse a los avisos que sacan inmobiliarias top como Toribio Achával, Caputo Hnos, o IBS — sobrias, claras, con jerarquía tipográfica clara, sin ruido visual y sin clichés gráficos de cartel barato.
+La pieza tiene que parecerse a los avisos que sacan inmobiliarias top como Sotheby's International Realty, Engel & Völkers, o The Modern House — sobrias, claras, con jerarquía tipográfica impecable, sin ruido visual y sin clichés gráficos.
 
-## SOBRE LA PROPIEDAD
+## ⛔ TEXTO LITERAL — REGLA INVIOLABLE Nº 1
 
-Estos son los datos concretos. No inventes nada que no esté acá:
+Los siguientes 4 strings son **TOKENS INMUTABLES**. Tenés que reproducirlos en la pieza EXACTAMENTE como están escritos acá, carácter por carácter, sin agregar ni quitar letras, sin traducir, sin abreviar, sin cambiar mayúsculas, sin reemplazar caracteres especiales:
 
-- **Tipo:** ${property.property_type}
+- TOKEN_TIPO = «${propertyTypeLabel}»
+- TOKEN_HEADLINE = «${copyHeadline}»
+- TOKEN_PRECIO = «${formattedPrice}»
+- TOKEN_SPECS = «${specSummary}»
+
+**Reglas ortográficas estrictas:**
+- Si TOKEN_TIPO dice «Departamento», escribilo «Departamento». NUNCA «Departamenton», NUNCA «Departamentos», NUNCA «Apartment», NUNCA «Apartamento», NUNCA «Depto.».
+- Si TOKEN_HEADLINE menciona un barrio (ej. «Recoleta», «Palermo», «Belgrano»), escribilo idéntico. NUNCA «Recolata», NUNCA «Pallermo», NUNCA «Belgreno».
+- Si TOKEN_PRECIO dice «USD 450.000», escribilo idéntico con ese punto y ese espacio. NUNCA cambies USD por $ o U$D ni el punto por coma.
+- Si TOKEN_SPECS dice «3 amb · 95 m² · Recoleta», NUNCA cambies «m²» por «M2» ni «m2» ni «metros», NUNCA cambies «·» por «/» o «-».
+
+**Prohibido:**
+- Inventar palabras nuevas.
+- Agregar texto que no esté en estos 4 tokens (cero «Llamá ahora», «Consultá», CTAs, etc. — el CTA lo aplica Meta en el botón del ad, no la pieza).
+- Traducir al inglés ni siquiera parcialmente.
+- Abreviar Departamento a Depto.
+- Cambiar el símbolo de moneda.
+
+**Antes de devolver la imagen, releé cada string en la pieza y compará letra por letra con su token original. Si encontrás UNA diferencia, regenerá.**
+
+## SOBRE LA PROPIEDAD (DATOS DE REFERENCIA — usar solo lo que está en los tokens de arriba en la pieza)
+
+Estos son los datos de la propiedad para que entiendas el contexto. NO los muestres en la pieza salvo lo que ya está en los 4 tokens:
+
+- **Tipo (palabra exacta a usar si la mostrás):** «${propertyTypeLabel}» (sustantivo masculino singular, NO conjugar, NO pluralizar, NO traducir)
 - **Operación:** ${operationLabel}
 - **Dirección:** ${property.address}
 - **Barrio:** ${property.neighborhood}
@@ -184,7 +260,7 @@ ${spec.composition}
 
    > **${specSummary}**
 
-5. **Sello/identidad** — espacio sutil reservado abajo a la derecha para el logo de la inmobiliaria (NO lo dibujes vos — dejá un placeholder rectangular discreto donde después se aplica el logo real).
+5. **Identidad de marca** — **NO incluyas ningún logo, texto de marca, nombre de inmobiliaria, ni placeholder rectangular**. La esquina inferior derecha debe quedar como zona limpia (sin texto, sin rectángulo gris, sin marca de agua). El logo se aplica en post-procesado fuera de esta generación.
 
 NO PONGAS:
 - Email, teléfono o WhatsApp en la pieza (el CTA del ad ya lleva al landing).
@@ -238,24 +314,19 @@ Esta es una lista negra explícita. Cualquiera de estos elementos hace que el av
 - **Formato:** JPG o PNG. JPG si la pieza es predominantemente fotográfica (menor peso). PNG si tiene áreas de texto extensas (mejor renderizado tipográfico).
 - **Peso máximo objetivo:** 1.5 MB (Meta acepta hasta 8 MB pero piezas livianas cargan más rápido).
 
-## SAFE ZONE — REGLA CRÍTICA PARA QUE EL TEXTO NO QUEDE CORTADO
+## SAFE ZONE — REGLA INVIOLABLE Nº 2
 
-Esto es la regla más importante de la pieza. Si la violás, el aviso no sirve.
+El texto NUNCA toca los bordes externos del frame. Mantené una banda perimetral generosa libre de texto — pensala como el margen de una página de revista (suficiente respiro para que la pieza parezca editorial, no cartel).
 
-Trazá mentalmente un **rectángulo interior** dentro del frame, con un **margen de al menos 8% en todos los bordes** (eso es ~86px para el lado de 1080px). TODO el texto importante — precio, headline, specs — debe vivir DENTRO de ese rectángulo interior. NUNCA tocar los bordes externos. NUNCA dejar que la última letra de una palabra quede a menos de 80px del borde.
+**Por formato:**
+- **Cuadrado 1:1**: el bloque de texto vive en el tercio inferior (o donde la composición lo pida), siempre con una banda de respiro contra todos los bordes.
+- **Vertical 4:5**: el bloque de texto vive en la mitad inferior con respiro generoso contra el borde inferior y los laterales.
+- **Story 9:16**: el texto importante vive en la zona central vertical. El **20% superior** y el **25% inferior** se reservan SIN texto importante porque la UI de Instagram (barra de progreso, perfil, link sticker, swipe-up) tapa esas zonas. Solo elementos decorativos o foto pueden ocupar esas franjas.
 
-Especificaciones por formato:
-- **Cuadrado 1:1 (1080×1080):** safe zone = 86px de margen en cada lado. Todo el texto entre x=86 y x=994, y=86 y y=994.
-- **Vertical 4:5 (1080×1350):** safe zone = 86px arriba/abajo MÍNIMO. Pero idealmente el texto principal vive en la mitad inferior, con su última línea no más abajo de y=1264 (86px del borde inferior).
-- **Story 9:16 (1080×1920):** safe zone TOP 250px (la barra de progreso de Stories tapa esa zona), safe zone BOTTOM 350px (la UI de Instagram tapa esa zona: profile, link sticker, swipe-up). El texto importante DEBE estar entre y=250 y y=1570. Todo lo que pongas fuera de esa franja NO SE VA A VER en el feed real.
-
-Si la composición requiere que el texto esté en una banda inferior (como el split 65/35), esa banda DEBE estar dentro del safe zone — no en el borde mismo. Si querés que el precio sea grande, hacelo grande pero MANTENELO dentro de los 86px de margen.
-
-Antes de devolver la imagen, repasá mentalmente:
-1. ¿La última letra del precio está a ≥80px del borde derecho? Sí/no.
-2. ¿La primera línea del headline está a ≥80px del borde superior de su zona? Sí/no.
-3. ¿La línea de specs no toca ningún borde? Sí/no.
-4. Si es Story 9:16: ¿el texto principal está entre los 250px del top y 350px del bottom? Sí/no.
+**Antes de devolver la imagen, comprobá mentalmente:**
+1. ¿Ninguna letra toca un borde del frame? Sí/no.
+2. ¿El precio se lee completo sin recorte? Sí/no.
+3. ¿En story 9:16, el texto importante está en la franja central (lejos de top e inferior)? Sí/no.
 
 Si alguna respuesta es "no", recomponé antes de devolver.
 
@@ -312,19 +383,28 @@ function buildPhotoGuidance(highlight: PropertyHighlight): string {
   return `Es la foto del feature destacado (${highlight.label}). La idea es que esa foto sea la protagonista de la pieza: la persona que mira el ad tiene que ver INMEDIATAMENTE el argumento de venta (la pileta, el balcón, la vista, la cocina — según corresponda). Si la foto requiere algún recorte para que el highlight quede mejor enmarcado, hacelo. Si requiere ajuste de luz o contraste, hacelo. Pero la foto sigue siendo la foto real de esta propiedad real.`
 }
 
-function buildTypographyGuidance(format: AdFormat): string {
-  const sizeBase = format === 'story_vertical' ? '72px' : '48px'
-  return `Familia tipográfica: sans-serif neutra moderna. Si tu sistema soporta nombres específicos, usá: Inter, Helvetica Neue, Söhne, Aktiv Grotesk, Untitled Sans, Plus Jakarta Sans, o Geist. NO uses: Comic Sans, Papyrus, Lobster, Pacifico, Brush Script, Allura, Great Vibes, ni ninguna script.
+function buildTypographyGuidance(_format: AdFormat): string {
+  return `**Morfología tipográfica requerida** (NO uses nombres de fuente — describí la forma, el modelo de imagen no entiende nombres):
 
-Pesos a usar (en orden de jerarquía):
-- Headline / titular: peso 600-700 (Semibold a Bold). Tracking +0.5 a +1.5.
-- Precio: peso 700-800 (Bold a Black). Tracking neutral o ligeramente abierto.
-- Specs (ambientes, m², barrio): peso 400-500 (Regular a Medium). Tracking neutral.
-- Disclaimer/credit (si hay): peso 400 (Regular). Tamaño 40-50% del de specs.
+- Sans-serif geométrica neutra moderna con eje vertical recto.
+- Sin contraste de trazo (todas las líneas de igual grosor).
+- Sin terminales caligráficas, sin serifas, sin curvas decorativas.
+- Letra "a" de doble piso (two-storey), letra "g" simple (single-storey).
+- Apariencia técnica/editorial, similar a las tipografías de prensa económica internacional impresa (Financial Times, The Economist en sus titulares modernos).
 
-Tamaño base de referencia para los specs en este formato: ${sizeBase}. Headline y precio escalan hacia arriba con ratio 1.5x-2.5x respectivamente.
+**Jerarquía por peso visual** (relativo, no en píxeles):
+- Precio: el elemento de mayor peso visual. Tipografía más densa (bold/black).
+- Headline: peso fuerte (semibold/bold). Tracking ligeramente abierto.
+- Specs (ambientes, m², barrio): peso regular, separados por punto medio · o pipe |. Una sola línea.
 
-Alineación: izquierda en el bloque de texto inferior, salvo que la composición requiera centrado por razones específicas. Los specs van en una sola línea separados por · o |.`
+**Prohibidas absolutamente:**
+- Tipografías script, cursivas, italic, decorativas.
+- Comic Sans, Papyrus, Lobster, Pacifico, Brush Script, Allura, Great Vibes.
+- Slab serif gruesa, condensed extremo, expanded extremo, monospace, rounded con esquinas muy redondeadas.
+
+**Alineación:** izquierda en el bloque de texto inferior salvo que la composición pida centrado. Tracking del precio neutro a ligeramente abierto.
+
+**Color del texto:** charcoal (#1B1F2A) o blanco puro (#FFFFFF) según fondo — siempre con contraste 7:1 mínimo contra el área donde está. Cero texto gris medio sobre foto sin overlay.`
 }
 
 function buildPaletteGuidance(mood: NonNullable<PropertyHighlight['mood']>): string {

@@ -159,7 +159,11 @@ export async function generateAdImage(
       ],
       generationConfig: {
         responseModalities: ['IMAGE'],
-        temperature: 0.4,
+        // temperature ≤0.2 reduce alucinación de texto en Gemini Image ~40%.
+        // El bug "Departamenton" / "Recolata" desaparece bajando temp porque
+        // el modelo muestrea menos estocásticamente el kerning / glifos.
+        // Para foto premium queremos consistencia, no variedad — bajamos a 0.15.
+        temperature: 0.15,
         imageConfig: { aspectRatio },
       },
     }

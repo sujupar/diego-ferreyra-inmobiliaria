@@ -512,36 +512,77 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
   // Esto evita el "wizard atascado en paso 4 sin nada que mostrar" cuando los
   // avatares no se generan (p.ej. GEMINI_API_KEY ausente).
   if (job?.status === 'failed') {
+    // Distinguir error de PUBLICACIÓN (las 27 piezas están bien, falló crear
+    // la campaña en Meta) de error de ANÁLISIS (Gemini/billing). Solo el
+    // primero permite "Reintentar publicar" sin regenerar nada — caro.
+    const errMsg = job.error_message ?? ''
+    const isPublishError = /^(Campaign:|Publish:|Meta API|Bad Gateway|timeout|504|502|adset|adcreative|ads)/i.test(errMsg)
+      || (job.current_step ?? '').startsWith('creating_campaign')
+      || (assets.length >= 9) // si hay piezas generadas, lo que falló fue el publish, no el análisis
     return (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base text-rose-700">
             <AlertTriangle className="h-4 w-4" />
-            El análisis no pudo completarse
+            {isPublishError ? 'No pudimos publicar la campaña en Meta' : 'El análisis no pudo completarse'}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="rounded-md bg-rose-50 border border-rose-200 p-3 text-sm text-rose-900">
             <p className="font-medium mb-1">Motivo:</p>
-            <p>{job.error_message ?? 'Error desconocido en el análisis con IA.'}</p>
+            <p className="break-words">{errMsg || 'Error desconocido.'}</p>
           </div>
-          <div className="text-xs text-muted-foreground space-y-1">
-            <p className="font-medium">Pasos típicos para resolver:</p>
-            <ol className="list-decimal pl-4 space-y-0.5">
-              <li>Verificá que <code>GEMINI_API_KEY</code> esté cargada en Netlify Site settings → Environment variables.</li>
-              <li>Verificá que el proyecto de Google AI Studio tenga billing habilitado (el modelo de imagen no funciona en free tier).</li>
-              <li>Re-deployá el sitio para que tome las env vars nuevas.</li>
-              <li>Volvé a intentar.</li>
-            </ol>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={cancelAndReset} className="flex-1">
-              <RefreshCw className="h-4 w-4 mr-1" /> Cancelar y volver a empezar
-            </Button>
-            <Button onClick={() => router.push(`/properties/${propertyId}`)} variant="ghost">
-              Volver al detalle
-            </Button>
-          </div>
+          {isPublishError ? (
+            <>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>
+                  Las <strong>{assets.length} piezas gráficas</strong> que generamos están guardadas — no se pierden.
+                  Reintentá la publicación; el sistema sabe recuperar el estado de Meta automáticamente.
+                </p>
+                <p className="font-medium pt-1">Si el reintento vuelve a fallar:</p>
+                <ol className="list-decimal pl-4 space-y-0.5">
+                  <li>Verificá que <code>META_ACCESS_TOKEN</code> sigue válido en Netlify env vars.</li>
+                  <li>Verificá que <code>META_PIXEL_ID</code> y <code>META_AD_ACCOUNT_ID</code> apunten a la cuenta correcta.</li>
+                  <li>Si Meta está caído (raro), esperá 5-10 min y reintentá.</li>
+                </ol>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={confirmAndPublish} disabled={loading} className="flex-1">
+                  {loading ? (
+                    <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Reintentando…</>
+                  ) : (
+                    <><Rocket className="h-4 w-4 mr-1" /> Reintentar publicar</>
+                  )}
+                </Button>
+                <Button onClick={cancelAndReset} variant="outline">
+                  <RefreshCw className="h-4 w-4 mr-1" /> Cancelar y empezar de cero
+                </Button>
+                <Button onClick={() => router.push(`/properties/${propertyId}`)} variant="ghost">
+                  Volver
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p className="font-medium">Pasos típicos para resolver:</p>
+                <ol className="list-decimal pl-4 space-y-0.5">
+                  <li>Verificá que <code>GEMINI_API_KEY</code> esté cargada en Netlify Site settings → Environment variables.</li>
+                  <li>Verificá que el proyecto de Google AI Studio tenga billing habilitado.</li>
+                  <li>Re-deployá el sitio para que tome las env vars nuevas.</li>
+                  <li>Volvé a intentar.</li>
+                </ol>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={cancelAndReset} className="flex-1">
+                  <RefreshCw className="h-4 w-4 mr-1" /> Cancelar y volver a empezar
+                </Button>
+                <Button onClick={() => router.push(`/properties/${propertyId}`)} variant="ghost">
+                  Volver al detalle
+                </Button>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     )

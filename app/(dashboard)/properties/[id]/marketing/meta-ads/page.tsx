@@ -86,7 +86,12 @@ export default async function MetaAdsWizardPage({
       .from('meta_launch_jobs')
       .select('id, status')
       .eq('property_id', id)
-      .in('status', ['analyzing', 'awaiting_user_input', 'generating', 'awaiting_confirm', 'publishing'])
+      // 'failed' incluido: un job que el confirm marcó failed sigue siendo
+      // recuperable (las 27 piezas quedan en property_ad_assets, el wizard
+      // puede ofrecer "Reintentar publicar" sin regenerar nada). Si se
+      // excluyera, el usuario al refrescar perdería el contexto y arrancaría
+      // un job nuevo desde cero — gasto innecesario.
+      .in('status', ['analyzing', 'awaiting_user_input', 'generating', 'awaiting_confirm', 'publishing', 'failed'])
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
