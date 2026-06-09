@@ -199,10 +199,53 @@ async function probeTemplate(extra?: string) {
   console.log('→ Todas "❌ 401" = casi seguro whitelist de IP (no es tema de header/valor).')
 }
 
+/**
+ * Imprime el request EXACTO que mandamos al publicar (curl + campos + respuesta),
+ * para enviárselo al equipo de Sistemas de Argenprop. OJO: incluye usr/psd/token
+ * → compartir SOLO con Argenprop.
+ */
+async function showRequest(propertyId?: string) {
+  const c = await creds()
+  const id = propertyId ?? (await findTestPropertyId())
+  if (!id) throw new Error('no hay propiedad de prueba')
+  const { data: p } = await sb().from('properties').select('*').eq('id', id).single()
+  const form = propertyToApForm(p as never, { creds: c, idOrigen: apAvisoId(p as never), estado: 'Activo' })
+  const body = encodeForm(form)
+
+  console.log('================= REQUEST QUE HACEMOS =================')
+  console.log(`POST ${c.publishUrl}`)
+  console.log('Headers:')
+  console.log(`  Content-Type: application/x-www-form-urlencoded`)
+  console.log(`  User-Agent: ${c.userAgent}`)
+  console.log(`  templateadinco: ${c.template}`)
+  console.log('\n----- CURL (lo pueden correr tal cual) -----')
+  console.log(`curl -i -X POST '${c.publishUrl}' \\
+  -H 'Content-Type: application/x-www-form-urlencoded' \\
+  -H 'User-Agent: ${c.userAgent}' \\
+  -H 'templateadinco: ${c.template}' \\
+  --data '${body}'`)
+  console.log('\n----- CAMPOS DEL BODY (legible) -----')
+  for (const [k, v] of Object.entries(form)) console.log(`  ${k} = ${v}`)
+
+  console.log('\n================= RESPUESTA QUE RECIBIMOS =================')
+  const res = await fetch(c.publishUrl, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': c.userAgent, templateadinco: c.template },
+    body,
+  })
+  const text = await res.text()
+  const h: Record<string, string> = {}
+  res.headers.forEach((v, k) => { h[k] = v })
+  console.log('HTTP status:', res.status, res.statusText)
+  console.log('Response body:', text)
+  console.log('Response headers:', JSON.stringify(h, null, 1))
+}
+
 async function main() {
   const [cmd, arg] = process.argv.slice(2)
   if (cmd === 'recon') return recon(arg)
   if (cmd === 'probe') return probe()
+  if (cmd === 'show-request') return showRequest(arg)
   if (cmd === 'probe-template') return probeTemplate(arg)
   if (cmd === 'force-baja') { if (!arg) { console.error('uso: force-baja <idOrigen>'); process.exit(1) } return forceBaja(arg) }
   if (!arg) { console.error('uso: <recon|probe|probe-template|publish|verify|baja> [propertyId]'); process.exit(1) }
