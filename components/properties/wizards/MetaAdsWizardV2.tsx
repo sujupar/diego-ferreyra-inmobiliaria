@@ -161,12 +161,28 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
       setJob(data.job)
       setAssets(data.assets ?? [])
 
-      // Sincronizar UI step con job status
-      if (data.job?.status === 'awaiting_user_input' && step === 'analyzing') {
+      // Sincronizar UI step con job status. Función de remap server→UI:
+      // necesitamos manejar TODAS las transiciones, no solo las "felices",
+      // porque al resumir un job activo el step inicial es 'analyzing' pero
+      // el server puede estar en cualquier punto (generating con 3 piezas
+      // ya guardadas, awaiting_confirm con 27, etc.). Sin esto, el wizard
+      // quedaba para siempre en "Paso 2-4 — Analizando" mientras el server
+      // seguía trabajando — el famoso "no avanza".
+      const serverStatus = data.job?.status as string | undefined
+      if (serverStatus === 'awaiting_user_input' && step === 'analyzing') {
         setStep('avatar_select')
-      }
-      if (data.job?.status === 'awaiting_confirm' && step === 'generating') {
+      } else if (
+        serverStatus === 'generating' &&
+        (step === 'analyzing' || step === 'confirm_data')
+      ) {
+        setStep('generating')
+      } else if (
+        serverStatus === 'awaiting_confirm' &&
+        (step === 'generating' || step === 'analyzing')
+      ) {
         setStep('review_and_publish')
+      } else if (serverStatus === 'publishing' && step !== 'publishing') {
+        setStep('publishing')
       }
 
       // Sincronizar el contador desde DB durante generating: si el response
@@ -507,6 +523,11 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
             <li>{(job?.progress_percent ?? 0) >= 65 ? '✓' : '◌'} Detectando fortalezas y debilidades</li>
             <li>{(job?.progress_percent ?? 0) >= 90 ? '✓' : '◌'} Generando 3 perfiles de comprador ideal</li>
           </ul>
+          {/* Escape hatch: si el análisis lleva mucho tiempo sin avanzar, el
+              asesor siempre puede cancelar. Nunca debe quedar trapeado. */}
+          <Button onClick={cancelAndReset} variant="ghost" size="sm" className="text-xs text-muted-foreground">
+            Cancelar este intento
+          </Button>
         </CardContent>
       </Card>
     )
@@ -806,6 +827,11 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
               ))}
             </div>
           )}
+          {/* Mismo escape hatch que en analyzing: si la generación se atasca
+              y los reintentos no logran avanzar, cancelar siempre disponible. */}
+          <Button onClick={cancelAndReset} variant="ghost" size="sm" className="text-xs text-muted-foreground">
+            Cancelar este intento
+          </Button>
         </CardContent>
       </Card>
     )
