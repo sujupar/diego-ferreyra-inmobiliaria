@@ -25,6 +25,8 @@ import { generateAdCopyVariations, variationsToPrimary } from './copy-ai-generat
 import { getUsdToArs } from './usd-rate'
 import { analyzePropertyPhotos, type PropertyHighlight } from './property-vision-analyzer'
 import { generateAdImage } from './ad-image-generator'
+import { runWithConcurrency } from '@/lib/util/concurrency'
+import { isCampaignComplete } from './campaign-completeness'
 
 const META_API = 'https://graph.facebook.com/v21.0'
 
@@ -298,6 +300,13 @@ export async function createCampaignForProperty(
   }
 
   // Idempotencia: si ya existe una campaña no archivada para esta propiedad…
+  //
+  // USAMOS isCampaignComplete (lib/marketing/campaign-completeness.ts), el
+  // predicado canónico ÚNICO compartido por page.tsx, confirm/route y cleanup.
+  // Antes del fix 2026-06-09 había un predicado local incompleto que sólo
+  // chequeaba 'provisioning sin ads' — perdía status='failed' y reproducía el
+  // bug original (smoke fail dejaba la fila como "completa" desde el builder
+  // pero "zombie" desde page.tsx).
   const supabasePre = getSupabase()
   const { data: existing } = await supabasePre
     .from('property_meta_campaigns')
@@ -306,9 +315,8 @@ export async function createCampaignForProperty(
     .neq('status', 'archived')
     .maybeSingle()
   if (existing?.campaign_id) {
-    const isIncomplete =
-      existing.status === 'provisioning' &&
-      (!existing.adset_id || !Array.isArray(existing.ad_ids) || existing.ad_ids.length === 0)
+    const isComplete = isCampaignComplete(existing)
+    const isIncomplete = !isComplete
 
     if (isIncomplete) {
       // Un intento anterior falló a mitad de camino (típicamente en uploadAdImage
@@ -628,36 +636,43 @@ export async function createCampaignForProperty(
     }),
   })
 
-  // 5. Crear N AdCreatives + N Ads (uno por highlight, cada uno con su copy).
-  //    Todos los Ads van al mismo AdSet — Meta optimiza entre ellos (A/B/n auto).
+  // Checkpoint atómico: persistir adset_id apenas se crea. Si el lambda muere
+  // en el loop de variantes, el siguiente intento puede leer correctamente
+  // "tiene adset_id pero ad_ids vacío" y archivar limpio. Sin este checkpoint,
+  // la fila quedaba con adset_id=NULL pese a que Meta sí tenía el AdSet — el
+  // bug 2026-06-09 del incidente.
+  await supabase
+    .from('property_meta_campaigns')
+    .update({ adset_id: adset.id })
+    .eq('campaign_id', campaign.id)
+
+  // 5. Crear N AdCreatives + N Ads en PARALELO (concurrency=4) con persistencia
+  //    incremental de ad_ids después de cada vuelta. Antes era un for secuencial
+  //    que tardaba 27-54s para 9 variantes y rozaba el techo de 60s de Netlify
+  //    cuando se sumaba al setup pre-loop (campaign + adset + copy + vision).
+  //    Con concurrency=4 baja a ~9-15s. La rate de Meta API soporta sobrado.
   //
-  //    Si una variante falla a mitad, las anteriores quedan creadas. El próximo
-  //    intento las archiva via idempotencia (status='provisioning' incompleto).
-  for (let i = 0; i < variantCount; i++) {
-    // Ciclar highlights si hay menos que variantes (típico: 5 highlights → 10 ads)
+  //    Cada variante es independiente (comparten adset.id pero no se afectan
+  //    entre sí), así que el paralelismo es seguro. El orden creative→ad
+  //    DENTRO de cada variante se mantiene porque ad necesita creative.id.
+  //
+  //    Tras Promise.all hacemos UN solo UPDATE con todos los ad_ids — si el
+  //    lambda muere durante el Promise.all, los ya creados quedan huérfanos
+  //    en Meta pero el siguiente intento detecta "adset_id presente, ad_ids
+  //    vacío" (gracias al checkpoint adset_id de más arriba) y archiva limpio.
+  //
+  //    NOTA: la persistencia ad-por-ad sería ideal pero introduce N UPDATEs
+  //    concurrentes que se pisan. El compromiso es: persistir TODO una vez
+  //    al final del Promise.all (mucho mejor que el comportamiento anterior
+  //    que persistía ad_ids junto con status final, recién mucho después).
+  const variantIndices = Array.from({ length: variantCount }, (_, i) => i)
+  const variantResults = await runWithConcurrency(variantIndices, 4, async (i) => {
     const highlight = highlights[i % highlights.length]
     const variantHeadline =
       copyVariations.headlines[i] ?? copyVariations.headlines[0]
     const variantPrimaryText =
       copyVariations.primaryTexts[i] ?? copyVariations.primaryTexts[0]
-    // Cada variant usa un estilo gráfico distinto (rotación 6 estilos → 10 ads
-    // garantiza que los mismos highlights no se vean idénticos).
     const compositionStyle = styleRotation[i % styleRotation.length]
-
-    // ROTACIÓN DE FOTOS: Gemini Vision a veces pone `photoIndex: 0` en TODOS
-    // los highlights (porque no sabe asociar fotos a highlights bien). Si
-    // confiamos solo en `highlight.photoIndex`, todos los 10 ads terminan
-    // usando la misma foto → Andrómeda los considera duplicados.
-    //
-    // Estrategia: ciclo i-ésimo de un highlight repetido USA OTRA FOTO.
-    //   - i=0 hl[0] → foto 0
-    //   - i=1 hl[1] → foto 1
-    //   - i=4 hl[4] → foto 4
-    //   - i=5 hl[0] OTRA VEZ → foto 5 (el "ciclo 2" agrega +N)
-    //   - i=9 hl[4] OTRA VEZ → foto 9 (módulo fotos disponibles)
-    //
-    // El highlight.photoIndex sigue siendo el "preferido" para la PRIMERA
-    // aparición, pero en repeticiones rotamos para crear variedad real.
     const photosAvailable = property.photos.length
     const baseIdx =
       typeof highlight.photoIndex === 'number' &&
@@ -669,13 +684,6 @@ export async function createCampaignForProperty(
     const photoIndex = (baseIdx + cycleNum) % photosAvailable
     const photoUrl = property.photos[photoIndex] ?? property.photos[0]
 
-    // Si el wizard v2 nos pasó imágenes pre-generadas (typically las 10
-    // mejores piezas de las 27 que generó el async runner), usamos ese hash
-    // directo. Sino, generamos en vivo con Gemini (camino del v1).
-    //
-    // CRÍTICO para que el feature del wizard v2 NO sea teatro: sin esta rama,
-    // toda la generación de 27 piezas Gemini se desperdicia y la campaña
-    // termina usando la foto cruda de property.photos[0].
     let imageHash: string
     if (hasPreGenerated && preGeneratedHashes[i]) {
       imageHash = preGeneratedHashes[i]
@@ -703,12 +711,6 @@ export async function createCampaignForProperty(
             message: variantPrimaryText,
             name: variantHeadline,
             description: copyVariations.description,
-            // CTA estándar de Meta para link ads. LEARN_MORE se renderiza como
-            // "Más información" en es-AR (traducción garantizada por Meta).
-            // SEE_MORE NO es un valor canónico de Meta API — al usarlo, Meta lo
-            // toma como string libre y lo muestra "See More" en inglés sin
-            // localizar. No hay un CTA estándar que diga exactamente "Ver más"
-            // en es-AR para link ads (WATCH_MORE es solo para video creatives).
             call_to_action: { type: 'LEARN_MORE', value: { link: landingUrl } },
           },
         },
@@ -725,16 +727,28 @@ export async function createCampaignForProperty(
       }),
     })
 
-    adIds.push(ad.id)
-    variantPayloads.push({
+    return {
       adId: ad.id,
       creativeId: creative.id,
       highlightId: highlight.id,
       headline: variantHeadline,
       primaryText: variantPrimaryText,
       photoUrl,
-    })
+    }
+  })
+
+  // Llenar arrays preservando el orden original
+  for (const r of variantResults) {
+    adIds.push(r.adId)
+    variantPayloads.push(r)
   }
+
+  // Persistir ad_ids ya — sin esperar el smoke test ni el UPDATE final. Si la
+  // función muere entre esto y el UPDATE final, la fila DB ya tiene la verdad.
+  await supabase
+    .from('property_meta_campaigns')
+    .update({ ad_ids: adIds })
+    .eq('campaign_id', campaign.id)
 
   // 6. Smoke test de la landing antes de activar (skipear en dryRun)
   const landingOk = options.dryRun ? false : await smokeTestLanding(landingUrl)
@@ -796,7 +810,11 @@ export async function activateCampaign(
   adsetId: string,
   adIds: string[],
 ): Promise<void> {
-  // El orden importa: primero campaign, después adset, después ads
+  // El orden importa: primero campaign, después adset, después ads.
+  // Campaign y AdSet sí van seriales (los ads necesitan adset ACTIVE),
+  // pero los N ads se activan en paralelo con concurrency=4 — antes era un
+  // for sequential que sumaba 13-27s al final del flow y rozaba el
+  // maxDuration=60s de Netlify (QA blocker 3).
   await metaFetch(`/${campaignId}`, {
     method: 'POST',
     body: JSON.stringify({ status: 'ACTIVE' }),
@@ -805,12 +823,12 @@ export async function activateCampaign(
     method: 'POST',
     body: JSON.stringify({ status: 'ACTIVE' }),
   })
-  for (const adId of adIds) {
+  await runWithConcurrency(adIds, 4, async (adId) => {
     await metaFetch(`/${adId}`, {
       method: 'POST',
       body: JSON.stringify({ status: 'ACTIVE' }),
     })
-  }
+  })
 }
 
 export async function pauseCampaign(campaignId: string): Promise<void> {

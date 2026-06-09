@@ -100,6 +100,7 @@ interface PropertyMinimal {
 }
 
 type WizardStep =
+  | 'cleanup_required' // hay una campaña zombi que hay que archivar antes de continuar
   | 'confirm_data'
   | 'analyzing' // 2-3-4 fusionados (descripción + vision + avatares)
   | 'avatar_select'
@@ -114,6 +115,14 @@ type WizardStep =
 interface Props {
   propertyId: string
   property: PropertyMinimal
+  /** Si hay un job vivo (analyzing/awaiting/generating/awaiting_confirm/publishing)
+   *  para esta property, el server lo pasa para que retomemos sin perder las
+   *  27 piezas pre-generadas. */
+  existingJobId?: string | null
+  /** True cuando hay una fila property_meta_campaigns no-archived que NO está
+   *  completa (Campaign+AdSet+0 Ads del incidente 2026-06-09). Bloquea el
+   *  flow hasta que el asesor confirme el cleanup. */
+  hasZombieCampaign?: boolean
 }
 
 const GEO_PRESETS = [
@@ -124,10 +133,17 @@ const GEO_PRESETS = [
 
 const BUDGET_OPTIONS = [5_000, 10_000, 15_000, 25_000, 50_000] as const
 
-export function MetaAdsWizardV2({ propertyId, property }: Props) {
+export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombieCampaign }: Props) {
   const router = useRouter()
-  const [step, setStep] = useState<WizardStep>('confirm_data')
-  const [jobId, setJobId] = useState<string | null>(null)
+  // Si llegamos con una campaña zombi (timeout previo), bloqueamos el flow en
+  // un step inicial 'cleanup_required' que muestra el problema + un botón
+  // para archivar y empezar de cero. Sin esto, el confirm fallaría con
+  // "Campaign sin Ads" o crearía dos campañas en Meta.
+  const [step, setStep] = useState<WizardStep>(hasZombieCampaign ? 'cleanup_required' : 'confirm_data')
+  // Si el server detectó un job vivo, arrancamos con su id (resume) y el
+  // polling va a saltar al paso correcto según el status.
+  const [jobId, setJobId] = useState<string | null>(existingJobId ?? null)
+  const [cleaningUp, setCleaningUp] = useState(false)
   const [job, setJob] = useState<JobData | null>(null)
   const [assets, setAssets] = useState<AssetPreview[]>([])
   const [loading, setLoading] = useState(false)
@@ -169,7 +185,10 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
       // quedaba para siempre en "Paso 2-4 — Analizando" mientras el server
       // seguía trabajando — el famoso "no avanza".
       const serverStatus = data.job?.status as string | undefined
-      if (serverStatus === 'awaiting_user_input' && step === 'analyzing') {
+      // Sincronizar el step UI con el status real del job. Si arrancamos en
+      // confirm_data por defecto pero el server dice que el job está en
+      // awaiting_user_input/awaiting_confirm/etc, saltamos al paso correcto.
+      if (serverStatus === 'awaiting_user_input' && (step === 'analyzing' || step === 'confirm_data')) {
         setStep('avatar_select')
       } else if (
         serverStatus === 'generating' &&
@@ -178,7 +197,7 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
         setStep('generating')
       } else if (
         serverStatus === 'awaiting_confirm' &&
-        (step === 'generating' || step === 'analyzing')
+        (step === 'generating' || step === 'analyzing' || step === 'confirm_data')
       ) {
         setStep('review_and_publish')
       } else if (serverStatus === 'publishing' && step !== 'publishing') {
@@ -222,11 +241,18 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
     }
   }
 
-  // Setup polling solo cuando estamos en analyzing/generating
+  // Setup polling: además de analyzing/generating, hacemos UN poll inicial
+  // cuando arrancamos con existingJobId (resume) — el polling syncroniza el
+  // step al status real del server.
   useEffect(() => {
-    if (step === 'analyzing' || step === 'generating') {
+    if (step === 'analyzing' || step === 'generating' || step === 'publishing') {
       pollStatus()
       pollIntervalRef.current = setInterval(pollStatus, 3000)
+    } else if (jobId && step === 'confirm_data') {
+      // Caso resume: el server pasó un job vivo al cliente. Hacemos UN poll
+      // para detectar el status real y saltar al paso correcto sin requerir
+      // que el asesor toque "Confirmar y comenzar análisis" de nuevo.
+      pollStatus()
     }
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
@@ -369,6 +395,29 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
     }
   }
 
+  async function runCleanup() {
+    setCleaningUp(true)
+    try {
+      const r = await fetch(`/api/properties/${propertyId}/meta-campaign/cleanup`, {
+        method: 'POST',
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error ?? 'No se pudo limpiar')
+      toast.success(
+        `Limpieza OK: ${data.archivedCampaignIds?.length ?? 0} campañas archivadas, ${data.cancelledJobIds?.length ?? 0} jobs cancelados`,
+      )
+      // Recargar la página para que el router reevalúe y muestre V2 limpio
+      router.refresh()
+      // Salimos del step cleanup_required para que si el refresh tarda, el
+      // asesor vea el confirm_data normal.
+      setStep('confirm_data')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error en cleanup')
+    } finally {
+      setCleaningUp(false)
+    }
+  }
+
   async function cancelAndReset() {
     if (!jobId) return
     try {
@@ -416,6 +465,47 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
   }
 
   // === Renders por step ===
+
+  // Step cleanup_required: bloqueo previo. Hay una campaña no archivada en
+  // property_meta_campaigns que NO está completa — típicamente del incidente
+  // 2026-06-09. Hasta que el asesor confirme el cleanup, no podemos continuar
+  // porque el UNIQUE PARTIAL impide crear una nueva.
+  if (step === 'cleanup_required') {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base text-amber-700">
+            <AlertTriangle className="h-4 w-4" />
+            Una campaña anterior quedó a medio crear
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm">
+            Un intento previo de publicar la campaña quedó incompleto (probablemente por
+            un timeout). En Meta hay una <strong>Campaign + AdSet sin anuncios</strong> que
+            está bloqueando que arranquemos uno nuevo.
+          </p>
+          <p className="text-sm">
+            Tenés que <strong>archivar esa campaña fallida</strong> para poder lanzar una limpia.
+            Esto no borra las 27 piezas gráficas ya generadas si las tenés en cache —
+            quedan disponibles para el próximo intento.
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={runCleanup} disabled={cleaningUp} className="flex-1">
+              {cleaningUp ? (
+                <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Archivando…</>
+              ) : (
+                <><RefreshCw className="h-4 w-4 mr-1" /> Archivar y empezar limpio</>
+              )}
+            </Button>
+            <Button onClick={() => router.push(`/properties/${propertyId}`)} variant="ghost">
+              Volver al detalle
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   // Estado de falla global: si el backend marcó el job como failed, mostramos
   // un panel claro con el motivo + botón para cancelar y volver a empezar.

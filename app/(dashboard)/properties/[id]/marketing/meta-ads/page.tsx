@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { ArrowLeft, Megaphone } from 'lucide-react'
 import { MetaAdsWizard } from '@/components/properties/wizards/MetaAdsWizard'
 import { MetaAdsWizardV2 } from '@/components/properties/wizards/MetaAdsWizardV2'
+import { isCampaignComplete } from '@/lib/marketing/campaign-completeness'
 import type { Database } from '@/types/database.types'
 
 export const metadata = { title: 'Lanzar campaña Meta Ads' }
@@ -27,20 +28,70 @@ export default async function MetaAdsWizardPage({
   const { id } = await params
 
   // Decidir qué wizard mostrar:
-  //  - Si la propiedad YA tiene campaña no archivada → wizard v1 (que tiene
-  //    pantalla de gestión: pausar/reactivar/archivar).
-  //  - Si NO tiene campaña → wizard v2 (flujo de 11 etapas con generación
-  //    asíncrona de 27 piezas).
+  //  - Si la propiedad ya tiene campaña REALMENTE completa (Campaign + AdSet +
+  //    Ads + status active/paused/done) → wizard V1 (panel de gestión).
+  //  - Si la fila existe pero la campaña está zombi (provisioning sin Ads,
+  //    típicamente por timeout del incidente 2026-06-09) → V2 con el flag de
+  //    cleanup necesario, así el asesor puede archivar y empezar limpio.
+  //  - Si NO hay fila → V2 fresh.
+  //
+  // CRÍTICO: distinguir zombi VIEJO de publish EN CURSO. Si en este mismo
+  // instante hay un /confirm corriendo (job en 'publishing' con updated_at
+  // reciente y fila property_meta_campaigns recién creada), NO mostrar
+  // cleanup — sino el asesor archivaría una campaña legítima en construcción.
   const supabase = getAdmin()
   const { data: existingCampaign } = await supabase
     .from('property_meta_campaigns')
-    .select('campaign_id, status')
+    .select('campaign_id, adset_id, ad_ids, status, created_at')
     .eq('property_id', id)
     .neq('status', 'archived')
     .neq('status', 'failed')
     .maybeSingle()
 
-  const useV2 = !existingCampaign
+  // Detectar si hay un publish en curso ahora mismo
+  const { data: publishingJob } = await supabase
+    .from('meta_launch_jobs')
+    .select('id, status, updated_at')
+    .eq('property_id', id)
+    .eq('status', 'publishing')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const nowMs = Date.now()
+  const campaignCreatedMsAgo = existingCampaign?.created_at
+    ? nowMs - new Date(existingCampaign.created_at).getTime()
+    : Infinity
+  const publishingJobAgeMs = publishingJob?.updated_at
+    ? nowMs - new Date(publishingJob.updated_at).getTime()
+    : Infinity
+
+  // In-flight = fila joven (<2 min) + job de publishing con activity reciente (<60s)
+  const isInFlightPublish =
+    !!existingCampaign &&
+    campaignCreatedMsAgo < 2 * 60_000 &&
+    !!publishingJob &&
+    publishingJobAgeMs < 60_000
+
+  const isComplete = isCampaignComplete(existingCampaign)
+  const useV2 = !isComplete
+  // Sólo es zombi si NO está completa Y NO es in-flight. In-flight es legítimo.
+  const hasZombieCampaign = !!existingCampaign && !isComplete && !isInFlightPublish
+
+  // Si V2 y hay un job vivo del wizard, lo pasamos al cliente para que retome
+  // (no regenera 27 piezas — recupera el jobId existente).
+  let existingJobId: string | null = null
+  if (useV2) {
+    const { data: liveJob } = await supabase
+      .from('meta_launch_jobs')
+      .select('id, status')
+      .eq('property_id', id)
+      .in('status', ['analyzing', 'awaiting_user_input', 'generating', 'awaiting_confirm', 'publishing'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    existingJobId = liveJob?.id ?? null
+  }
 
   let propertyMinimal = null
   if (useV2) {
@@ -79,6 +130,8 @@ export default async function MetaAdsWizardPage({
         <MetaAdsWizardV2
           propertyId={id}
           property={propertyMinimal as never}
+          existingJobId={existingJobId}
+          hasZombieCampaign={hasZombieCampaign}
         />
       ) : (
         <MetaAdsWizard propertyId={id} />

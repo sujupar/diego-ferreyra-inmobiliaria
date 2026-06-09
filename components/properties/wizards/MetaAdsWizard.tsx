@@ -426,13 +426,52 @@ export function MetaAdsWizard({ propertyId }: Props) {
             </div>
           )}
 
-          {isProvisioning && (
-            <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-900">
-              <strong>La campaña se está creando.</strong> Esperá 1-2 minutos y
-              refrescá la página. Si después de 5 min sigue así, contactá a
-              soporte — puede haber quedado a mitad.
-            </div>
-          )}
+          {isProvisioning && (() => {
+            // Ventana de tolerancia: 2 minutos desde created_at. Antes mostramos
+            // "Esperá 1-2 min". Después mostramos "Quedó a medio crear" +
+            // botón directo para llamar a /cleanup, sin pedir "contactá a
+            // soporte" — el flujo manual era la causa raíz del atrapamiento.
+            const createdMsAgo = Date.now() - new Date(existing.created_at).getTime()
+            const isStillFresh = createdMsAgo < 2 * 60_000
+            if (isStillFresh) {
+              return (
+                <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-900">
+                  <strong>La campaña se está creando.</strong> Esperá 1-2 minutos y
+                  refrescá la página.
+                </div>
+              )
+            }
+            return (
+              <div className="space-y-2">
+                <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
+                  <strong>La campaña quedó a medio crear.</strong> Esto suele pasar
+                  cuando el proceso anterior excedió el tiempo límite. Tenés que
+                  archivarla para empezar limpio — no se pierden las piezas gráficas
+                  ya generadas.
+                </div>
+                <Button
+                  onClick={async () => {
+                    try {
+                      const r = await fetch(
+                        `/api/properties/${propertyId}/meta-campaign/cleanup`,
+                        { method: 'POST' },
+                      )
+                      const d = await r.json()
+                      if (!r.ok) throw new Error(d.error ?? 'cleanup falló')
+                      router.refresh()
+                    } catch (err) {
+                      alert(err instanceof Error ? err.message : 'Error en cleanup')
+                    }
+                  }}
+                  variant="destructive"
+                  className="w-full justify-start"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Archivar y volver al asistente
+                </Button>
+              </div>
+            )
+          })()}
 
           <Button
             onClick={() => router.push(`/properties/${propertyId}`)}

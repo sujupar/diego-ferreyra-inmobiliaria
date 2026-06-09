@@ -18,6 +18,7 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { createCampaignForProperty } from '@/lib/marketing/meta-campaign-builder'
 import { createAudiencesForCampaign } from '@/lib/marketing/meta-custom-audiences'
+import { isCampaignComplete } from '@/lib/marketing/campaign-completeness'
 import type { Database } from '@/types/database.types'
 
 export const maxDuration = 60
@@ -80,12 +81,22 @@ export async function POST(
     }
 
     // Idempotencia 2: status === 'publishing' significa que un confirm previo
-    // arrancó pero no terminó (timeout 502 típicamente). Verificamos si la
-    // Campaign efectivamente se llegó a crear en Meta (vive en
-    // property_meta_campaigns) — si sí, recuperamos su ID y marcamos
-    // published. Sin esto, el job quedaba huérfano en 'publishing' para
-    // siempre con 409 en cada retry.
+    // arrancó pero no terminó (timeout 502 típicamente). Vamos a verificar el
+    // estado REAL de la campaña en DB antes de marcar nada como published.
+    //
+    // ANTES del fix (incidente 2026-06-09): el código SOLO chequeaba que
+    // existiera campaign_id, sin verificar adset_id ni ad_ids. Una campaña
+    // con Campaign+AdSet+0 Ads (timeout en el loop) se marcaba como
+    // 'published' falsamente, devolvía 200, y dejaba al usuario atrapado en
+    // V1 "Creándose" sin Ads. Now usamos isCampaignComplete como predicado
+    // canónico.
     if (job.status === 'publishing') {
+      type CampaignRow = {
+        campaign_id: string | null
+        adset_id: string | null
+        ad_ids: string[] | null
+        status: string
+      }
       const { data: existingCampaign } = await (supabase as unknown as {
         from: (t: string) => {
           select: (s: string) => {
@@ -94,22 +105,23 @@ export async function POST(
                 order: (
                   a: string,
                   opts: { ascending: boolean },
-                ) => { limit: (n: number) => { maybeSingle: () => Promise<{ data: { campaign_id: string } | null }> } }
+                ) => { limit: (n: number) => { maybeSingle: () => Promise<{ data: CampaignRow | null }> } }
               }
             }
           }
         }
       })
         .from('property_meta_campaigns')
-        .select('campaign_id')
+        .select('campaign_id, adset_id, ad_ids, status')
         .eq('property_id', id)
         .neq('status', 'archived')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
 
-      if (existingCampaign?.campaign_id) {
-        // La campaign sí existe en Meta — marcamos published y devolvemos.
+      if (isCampaignComplete(existingCampaign)) {
+        // ✓ Campaña REALMENTE completa (Campaign+AdSet+≥1 Ads, status no
+        // provisioning/failed). Marcamos published.
         await (supabase as unknown as {
           from: (t: string) => {
             update: (f: Record<string, unknown>) => {
@@ -122,21 +134,52 @@ export async function POST(
             status: 'published',
             current_step: 'done_recovered',
             progress_percent: 100,
-            result_campaign_id: existingCampaign.campaign_id,
+            result_campaign_id: existingCampaign!.campaign_id,
           })
           .eq('id', jobId)
-        const adsManagerUrl = `https://business.facebook.com/adsmanager/manage/campaigns?act=${(process.env.META_AD_ACCOUNT_ID ?? '').replace('act_', '')}&selected_campaign_ids=${existingCampaign.campaign_id}`
+        const adsManagerUrl = `https://business.facebook.com/adsmanager/manage/campaigns?act=${(process.env.META_AD_ACCOUNT_ID ?? '').replace('act_', '')}&selected_campaign_ids=${existingCampaign!.campaign_id}`
         return NextResponse.json({
           ok: true,
-          campaignId: existingCampaign.campaign_id,
+          campaignId: existingCampaign!.campaign_id,
           adsManagerUrl,
           audienceIds: [],
           resumed: true,
           message: 'La campaña ya estaba creada — recuperada de Meta.',
         })
       }
-      // status='publishing' SIN campaign → el intento anterior se cortó muy
-      // temprano. Volvemos a 'awaiting_confirm' para reintentar limpio.
+
+      // Caso zombi: hay una fila con campaign_id pero NO está completa
+      // (timeout en el medio del builder). Archivamos en Meta + DB para que
+      // el siguiente paso del confirm pueda crear una limpia. Sin esto, el
+      // builder.isIncomplete check archivaría también, pero antes el confirm
+      // ya habría devuelto "ok" sobre una campaña incompleta.
+      if (existingCampaign?.campaign_id) {
+        try {
+          const token = process.env.META_ACCESS_TOKEN
+          if (token) {
+            await fetch(
+              `https://graph.facebook.com/v21.0/${existingCampaign.campaign_id}?access_token=${encodeURIComponent(token)}`,
+              {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ status: 'ARCHIVED' }),
+              },
+            )
+          }
+        } catch (err) {
+          console.warn('[confirm] cleanup of zombie campaign in Meta failed (continuing):', err)
+        }
+        await supabase
+          .from('property_meta_campaigns')
+          .update({
+            status: 'archived',
+            last_error: 'auto_cleanup_zombie_in_confirm_retry',
+          })
+          .eq('campaign_id', existingCampaign.campaign_id)
+      }
+
+      // Restaurar el job a 'awaiting_confirm' y caer al flow normal (que va a
+      // crear una campaña limpia con el builder).
       await (supabase as unknown as {
         from: (t: string) => {
           update: (f: Record<string, unknown>) => {
@@ -147,12 +190,40 @@ export async function POST(
         .from('meta_launch_jobs')
         .update({ status: 'awaiting_confirm', current_step: 'retry_after_timeout', progress_percent: 100 })
         .eq('id', jobId)
-      // Y continuamos con el flow normal: el código de abajo lo levanta como
-      // si fuera la primera vez.
     } else if (job.status !== 'awaiting_confirm') {
       return NextResponse.json(
         { error: `Job en status ${job.status} — no se puede confirmar` },
         { status: 409 },
+      )
+    }
+
+    // Lock atómico: UPDATE condicional para que dos confirms simultáneos no
+    // disparen dos builders en paralelo. Si el job ya estaba en 'publishing'
+    // (otro request ya tomó el lock antes), devolvemos 423 Locked para que el
+    // cliente espere y refresque en vez de duplicar trabajo. Esto reemplaza
+    // el `update({status:'publishing'})` que estaba más abajo y que no era
+    // atómico contra reads paralelos.
+    const { data: lockResult } = await (supabase as unknown as {
+      from: (t: string) => {
+        update: (f: Record<string, unknown>) => {
+          eq: (a: string, b: string) => {
+            eq: (a: string, b: string) => {
+              select: (s: string) => Promise<{ data: Array<{ id: string }> | null }>
+            }
+          }
+        }
+      }
+    })
+      .from('meta_launch_jobs')
+      .update({ status: 'publishing', current_step: 'creating_campaign', progress_percent: 10 })
+      .eq('id', jobId)
+      .eq('status', 'awaiting_confirm')
+      .select('id')
+
+    if (!Array.isArray(lockResult) || lockResult.length === 0) {
+      return NextResponse.json(
+        { error: 'Otra publicación está en curso. Esperá 30s y refrescá.', code: 'locked' },
+        { status: 423 },
       )
     }
 
@@ -165,17 +236,7 @@ export async function POST(
       return NextResponse.json({ error: 'property not found' }, { status: 404 })
     }
 
-    // Transicionar a publishing
-    await (supabase as unknown as {
-      from: (t: string) => {
-        update: (f: Record<string, unknown>) => {
-          eq: (a: string, b: string) => Promise<unknown>
-        }
-      }
-    })
-      .from('meta_launch_jobs')
-      .update({ status: 'publishing', current_step: 'creating_campaign', progress_percent: 10 })
-      .eq('id', jobId)
+    // (El lock atómico de más arriba ya transicionó el job a 'publishing'.)
 
     // CRÍTICO: cargar las piezas pre-generadas (formato feed_square — Meta usa
     // ese para feed). Pasamos sus meta_image_hash al builder así crea Ads con

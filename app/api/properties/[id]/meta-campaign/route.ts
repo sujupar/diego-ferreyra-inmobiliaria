@@ -88,8 +88,7 @@ export async function PATCH(
 ) {
   try {
     const user = await requireAuth()
-    const allowed = ['admin', 'dueno', 'coordinador']
-    if (!allowed.includes(user.profile.role)) {
+    if (user.profile.role === 'abogado') {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
     const { id } = await params
@@ -100,6 +99,27 @@ export async function PATCH(
         { error: 'action debe ser pause, activate o archive' },
         { status: 400 },
       )
+    }
+
+    // Permisos por acción:
+    //  - admin/dueno/coordinador: todas las acciones
+    //  - asesor: SOLO archive sobre su propia propiedad (para escapar del
+    //    bloqueo cuando una campaña previa quedó zombi). NO puede pausar ni
+    //    activar — esas decisiones siguen siendo del manager.
+    const isManager = ['admin', 'dueno', 'coordinador'].includes(user.profile.role)
+    if (!isManager) {
+      if (user.profile.role !== 'asesor' || action !== 'archive') {
+        return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+      }
+      const supabaseAuth = getAdmin()
+      const { data: prop } = await supabaseAuth
+        .from('properties')
+        .select('assigned_to')
+        .eq('id', id)
+        .single()
+      if (prop?.assigned_to !== user.id) {
+        return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+      }
     }
 
     const supabase = getAdmin()
