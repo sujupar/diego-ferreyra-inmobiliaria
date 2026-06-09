@@ -48,15 +48,31 @@ export default async function MetaAdsWizardPage({
     .neq('status', 'failed')
     .maybeSingle()
 
-  // Detectar si hay un publish en curso ahora mismo
-  const { data: publishingJob } = await supabase
+  // Detectar si hay un publish en curso ahora mismo.
+  // meta_launch_jobs no está en types/database.types (el usuario corre las
+  // migraciones manualmente), por eso el cast.
+  const { data: publishingJob } = (await (supabase as unknown as {
+    from: (t: string) => {
+      select: (s: string) => {
+        eq: (a: string, b: string) => {
+          eq: (a: string, b: string) => {
+            order: (a: string, opts: { ascending: boolean }) => {
+              limit: (n: number) => {
+                maybeSingle: () => Promise<{ data: { id: string; status: string; updated_at: string } | null }>
+              }
+            }
+          }
+        }
+      }
+    }
+  })
     .from('meta_launch_jobs')
     .select('id, status, updated_at')
     .eq('property_id', id)
     .eq('status', 'publishing')
     .order('updated_at', { ascending: false })
     .limit(1)
-    .maybeSingle()
+    .maybeSingle())
 
   const nowMs = Date.now()
   const campaignCreatedMsAgo = existingCampaign?.created_at
@@ -82,19 +98,31 @@ export default async function MetaAdsWizardPage({
   // (no regenera 27 piezas — recupera el jobId existente).
   let existingJobId: string | null = null
   if (useV2) {
-    const { data: liveJob } = await supabase
+    const { data: liveJob } = (await (supabase as unknown as {
+      from: (t: string) => {
+        select: (s: string) => {
+          eq: (a: string, b: string) => {
+            in: (a: string, b: string[]) => {
+              order: (a: string, opts: { ascending: boolean }) => {
+                limit: (n: number) => {
+                  maybeSingle: () => Promise<{ data: { id: string; status: string } | null }>
+                }
+              }
+            }
+          }
+        }
+      }
+    })
       .from('meta_launch_jobs')
       .select('id, status')
       .eq('property_id', id)
       // 'failed' incluido: un job que el confirm marcó failed sigue siendo
       // recuperable (las 27 piezas quedan en property_ad_assets, el wizard
-      // puede ofrecer "Reintentar publicar" sin regenerar nada). Si se
-      // excluyera, el usuario al refrescar perdería el contexto y arrancaría
-      // un job nuevo desde cero — gasto innecesario.
+      // puede ofrecer "Reintentar publicar" sin regenerar nada).
       .in('status', ['analyzing', 'awaiting_user_input', 'generating', 'awaiting_confirm', 'publishing', 'failed'])
       .order('created_at', { ascending: false })
       .limit(1)
-      .maybeSingle()
+      .maybeSingle())
     existingJobId = liveJob?.id ?? null
   }
 

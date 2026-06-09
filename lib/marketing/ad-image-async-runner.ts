@@ -15,8 +15,21 @@ import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import type { Property } from '@/lib/portals/types'
 import { generateAdImage } from './ad-image-generator'
+import { generateAdImageV2 } from './ad-image-generator-v2'
 import type { CompositionStyle, AdFormat } from './ad-image-prompts'
 import type { PropertyHighlight } from './property-vision-analyzer'
+
+/**
+ * Feature flag para el pipeline 2-stage (Gemini foto + satori overlay).
+ * Cuando se setea USE_V2_PIPELINE=true en Netlify env vars, el runner usa
+ * el nuevo generator que SEPARA foto (IA) de tipografía (vectorial). Eso
+ * elimina errores ortográficos por construcción ("Departamenton" → 0%) y
+ * mejora calidad tipográfica al nivel agencia.
+ *
+ * Default OFF: cualquier campaña que se gatille sin la env var sigue usando
+ * el pipeline v1 (Gemini para todo). Permite rollback inmediato si v2 falla.
+ */
+const USE_V2_PIPELINE = process.env.USE_V2_PIPELINE === 'true'
 
 function getAdmin() {
   return createClient<Database>(
@@ -204,7 +217,9 @@ export async function runBatch(input: {
   jobId: string
   batchSize?: number
 }): Promise<RunBatchResult> {
-  const batchSize = input.batchSize ?? 3
+  // Default 2 (no 3): worst case 2 piezas × ~20s Gemini = 40s con margen
+  // dentro del maxDuration=60s de Netlify. Antes era 3 y rozaba el límite.
+  const batchSize = input.batchSize ?? 2
   const job = await loadJob(input.jobId)
   if (!job) throw new Error(`Job ${input.jobId} no existe`)
   if (job.status !== 'generating' && job.status !== 'analyzing') {
@@ -283,14 +298,27 @@ export async function runBatch(input: {
     }
 
     try {
-      const generated_image = await generateAdImage({
-        property,
-        highlight: fakeHighlight,
-        copyHeadline: avatar?.hooks?.[coords.styleIdx] ?? fallbackHeadline,
-        format: coords.format,
-        compositionStyle: coords.style,
-        overridePhotoUrl: photoUrl,
-      })
+      // V2 pipeline: Gemini procesa SOLO foto, satori dibuja el texto. El
+      // bug "Departamenton" es imposible aquí porque el texto NO pasa por
+      // modelo IA — viene de tokens determinísticos.
+      // V1 pipeline (default): Gemini intenta hacer todo de una.
+      const generated_image = USE_V2_PIPELINE
+        ? await generateAdImageV2({
+            property,
+            highlight: fakeHighlight,
+            copyHeadline: avatar?.hooks?.[coords.styleIdx] ?? fallbackHeadline,
+            format: coords.format,
+            compositionStyle: coords.style,
+            overridePhotoUrl: photoUrl,
+          })
+        : await generateAdImage({
+            property,
+            highlight: fakeHighlight,
+            copyHeadline: avatar?.hooks?.[coords.styleIdx] ?? fallbackHeadline,
+            format: coords.format,
+            compositionStyle: coords.style,
+            overridePhotoUrl: photoUrl,
+          })
 
       let metaHash: string
       let metaUrl: string | null = null
