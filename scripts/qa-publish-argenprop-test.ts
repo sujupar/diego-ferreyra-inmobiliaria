@@ -145,12 +145,59 @@ async function forceBaja(idOrigen: string) {
   console.log(`OK: aviso ${idOrigen} dado de baja (Argenprop + DB).`)
 }
 
+/**
+ * Prueba varios valores posibles del header `templateadinco` haciendo una BAJA de
+ * un aviso inexistente → NUNCA publica nada, solo aprende si el valor destraba el
+ * 401 "CRM no autorizado". Si pasás un valor extra como argumento, también lo prueba.
+ * Uso: probe-template [valorExtraAprobar]
+ */
+async function probeTemplate(extra?: string) {
+  const c = await creds()
+  const bajaBody = new URLSearchParams({
+    usr: c.usr, psd: c.psd,
+    'aviso.IdOrigen': 'df-PROBE-NOEXISTE-0000',
+    'aviso.Estado': 'Baja',
+    'aviso.Vendedor.SistemaOrigen.Id': c.idSistema,
+    'aviso.Vendedor.IdOrigen': c.idVendedor,
+  }).toString()
+
+  const candidates: [string, Record<string, string>][] = [
+    ['(sin header templateadinco)', {}],
+    [`templateadinco = ${c.template} (ARGENPROP_TEMPLATE actual)`, { templateadinco: c.template }],
+    ['templateadinco = diego-ferreyra-crm', { templateadinco: 'diego-ferreyra-crm' }],
+    [`templateadinco = ${c.idOrigen} (IdOrigen)`, { templateadinco: c.idOrigen }],
+    [`templateadinco = ${c.idSistema} (IdSistema)`, { templateadinco: c.idSistema }],
+    [`templateadinco = ${c.idVendedor} (IdVendedor)`, { templateadinco: c.idVendedor }],
+    [`templateadinco = ${c.usr} (usuario)`, { templateadinco: c.usr }],
+  ]
+  if (extra) candidates.push([`templateadinco = ${extra} (valor que pasaste)`, { templateadinco: extra }])
+
+  console.log('Probando valores de templateadinco con una BAJA de aviso inexistente (NO publica nada)...\n')
+  for (const [label, headers] of candidates) {
+    try {
+      const res = await fetch(c.publishUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': c.userAgent, ...headers },
+        body: bajaBody,
+      })
+      const text = await res.text()
+      const blocked = /CRM no autorizado/i.test(text)
+      console.log(`${blocked ? '❌ 401 bloqueado' : '✅ PASÓ EL GATE'} | ${label} → ${res.status}: ${text.slice(0, 120).replace(/\s+/g, ' ')}`)
+    } catch (e) {
+      console.log(`ERR | ${label}: ${e instanceof Error ? e.message : e}`)
+    }
+  }
+  console.log('\n→ Si alguno dice "PASÓ EL GATE", ese es el valor correcto: pasámelo y lo dejo fijo.')
+  console.log('→ Si TODOS dicen "401 bloqueado", lo más probable es whitelist de IP (no es un tema de valor).')
+}
+
 async function main() {
   const [cmd, arg] = process.argv.slice(2)
   if (cmd === 'recon') return recon(arg)
   if (cmd === 'probe') return probe()
+  if (cmd === 'probe-template') return probeTemplate(arg)
   if (cmd === 'force-baja') { if (!arg) { console.error('uso: force-baja <idOrigen>'); process.exit(1) } return forceBaja(arg) }
-  if (!arg) { console.error('uso: <recon|probe|publish|verify|baja> [propertyId]'); process.exit(1) }
+  if (!arg) { console.error('uso: <recon|probe|probe-template|publish|verify|baja> [propertyId]'); process.exit(1) }
   if (cmd === 'publish') return publish(arg)
   if (cmd === 'verify') return verify(arg)
   if (cmd === 'baja') return baja(arg)
