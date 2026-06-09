@@ -849,9 +849,17 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
         <CardContent className="space-y-4">
           <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 space-y-1 text-sm">
             <p><strong>Propiedad:</strong> {property.address}</p>
-            <p><strong>Avatar elegido:</strong> {optimizedAvatar?.shortLabel ?? job?.generated_avatars?.avatars?.find(a => a.id === selectedAvatarId)?.shortLabel}</p>
-            <p><strong>Geo:</strong> {GEO_PRESETS.find(p => p.id === geoPresetId)?.label}</p>
-            <p><strong>Presupuesto:</strong> ARS {dailyBudget.toLocaleString('es-AR')} / día</p>
+            {/* Avatar: si el wizard fue reanudado, selectedAvatarId del state
+                local quedó vacío. Caemos al job.selected_avatar_id que sí está
+                persistido server-side desde el save-input que lo guardó. */}
+            <p><strong>Avatar elegido:</strong> {
+              optimizedAvatar?.shortLabel
+              ?? job?.optimized_avatar?.shortLabel
+              ?? job?.generated_avatars?.avatars?.find(a => a.id === (selectedAvatarId || job?.selected_avatar_id))?.shortLabel
+              ?? '— sin avatar (job reanudado) —'
+            }</p>
+            <p><strong>Geo:</strong> {GEO_PRESETS.find(p => p.id === (geoPresetId || job?.geo_preset_id))?.label}</p>
+            <p><strong>Presupuesto:</strong> ARS {(dailyBudget || job?.daily_budget_ars || 0).toLocaleString('es-AR')} / día</p>
             <p><strong>Piezas generadas:</strong> {assets.length}</p>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -861,6 +869,9 @@ export function MetaAdsWizardV2({ propertyId, property }: Props) {
           <Button onClick={confirmAndPublish} disabled={loading} className="w-full bg-emerald-700 hover:bg-emerald-800" size="lg">
             {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Rocket className="h-4 w-4 mr-2" />}
             Publicar campaña (queda pausada)
+          </Button>
+          <Button onClick={cancelAndReset} variant="ghost" size="sm" className="text-xs text-muted-foreground w-full">
+            Cancelar este intento y volver al principio
           </Button>
         </CardContent>
       </Card>

@@ -62,7 +62,94 @@ export async function POST(
     if (!job) {
       return NextResponse.json({ error: 'Job no encontrado' }, { status: 404 })
     }
-    if (job.status !== 'awaiting_confirm') {
+
+    // Idempotencia 1: si el job ya está published (un confirm previo completó
+    // pero el cliente perdió la response por timeout), devolvemos el resultado
+    // existente. Sin esto, retry tira 409 y el asesor cree que "se rompió"
+    // cuando en realidad la campaña ya existe.
+    if (job.status === 'published' && typeof job.result_campaign_id === 'string') {
+      const campaignId = job.result_campaign_id as string
+      const adsManagerUrl = `https://business.facebook.com/adsmanager/manage/campaigns?act=${(process.env.META_AD_ACCOUNT_ID ?? '').replace('act_', '')}&selected_campaign_ids=${campaignId}`
+      return NextResponse.json({
+        ok: true,
+        campaignId,
+        adsManagerUrl,
+        audienceIds: (job.result_audience_ids ?? []) as string[],
+        resumed: true,
+      })
+    }
+
+    // Idempotencia 2: status === 'publishing' significa que un confirm previo
+    // arrancó pero no terminó (timeout 502 típicamente). Verificamos si la
+    // Campaign efectivamente se llegó a crear en Meta (vive en
+    // property_meta_campaigns) — si sí, recuperamos su ID y marcamos
+    // published. Sin esto, el job quedaba huérfano en 'publishing' para
+    // siempre con 409 en cada retry.
+    if (job.status === 'publishing') {
+      const { data: existingCampaign } = await (supabase as unknown as {
+        from: (t: string) => {
+          select: (s: string) => {
+            eq: (a: string, b: string) => {
+              neq: (a: string, b: string) => {
+                order: (
+                  a: string,
+                  opts: { ascending: boolean },
+                ) => { limit: (n: number) => { maybeSingle: () => Promise<{ data: { campaign_id: string } | null }> } }
+              }
+            }
+          }
+        }
+      })
+        .from('property_meta_campaigns')
+        .select('campaign_id')
+        .eq('property_id', id)
+        .neq('status', 'archived')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (existingCampaign?.campaign_id) {
+        // La campaign sí existe en Meta — marcamos published y devolvemos.
+        await (supabase as unknown as {
+          from: (t: string) => {
+            update: (f: Record<string, unknown>) => {
+              eq: (a: string, b: string) => Promise<unknown>
+            }
+          }
+        })
+          .from('meta_launch_jobs')
+          .update({
+            status: 'published',
+            current_step: 'done_recovered',
+            progress_percent: 100,
+            result_campaign_id: existingCampaign.campaign_id,
+          })
+          .eq('id', jobId)
+        const adsManagerUrl = `https://business.facebook.com/adsmanager/manage/campaigns?act=${(process.env.META_AD_ACCOUNT_ID ?? '').replace('act_', '')}&selected_campaign_ids=${existingCampaign.campaign_id}`
+        return NextResponse.json({
+          ok: true,
+          campaignId: existingCampaign.campaign_id,
+          adsManagerUrl,
+          audienceIds: [],
+          resumed: true,
+          message: 'La campaña ya estaba creada — recuperada de Meta.',
+        })
+      }
+      // status='publishing' SIN campaign → el intento anterior se cortó muy
+      // temprano. Volvemos a 'awaiting_confirm' para reintentar limpio.
+      await (supabase as unknown as {
+        from: (t: string) => {
+          update: (f: Record<string, unknown>) => {
+            eq: (a: string, b: string) => Promise<unknown>
+          }
+        }
+      })
+        .from('meta_launch_jobs')
+        .update({ status: 'awaiting_confirm', current_step: 'retry_after_timeout', progress_percent: 100 })
+        .eq('id', jobId)
+      // Y continuamos con el flow normal: el código de abajo lo levanta como
+      // si fuera la primera vez.
+    } else if (job.status !== 'awaiting_confirm') {
       return NextResponse.json(
         { error: `Job en status ${job.status} — no se puede confirmar` },
         { status: 409 },
