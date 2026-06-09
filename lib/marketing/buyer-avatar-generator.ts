@@ -261,20 +261,27 @@ export async function generateThreeAvatars(input: {
       },
     )
     if (!res.ok) {
-      console.warn(`[buyer-avatars] Gemini ${res.status}:`, (await res.text()).slice(0, 300))
-      return null
+      const errText = (await res.text()).slice(0, 300)
+      console.warn(`[buyer-avatars] Gemini ${res.status} — usando fallback. Body:`, errText)
+      return buildFallbackAvatars(input.property)
     }
     const data = (await res.json()) as GeminiTextResponse
     const text = data.candidates?.[0]?.content?.parts?.find(p => p.text)?.text
     if (!text) {
-      console.warn('[buyer-avatars] respuesta sin texto')
-      return null
+      console.warn('[buyer-avatars] respuesta sin texto — usando fallback. Data:', JSON.stringify(data).slice(0, 300))
+      return buildFallbackAvatars(input.property)
     }
     const cleaned = text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
-    const parsed = JSON.parse(cleaned) as { avatars?: BuyerAvatar[] }
+    let parsed: { avatars?: BuyerAvatar[] }
+    try {
+      parsed = JSON.parse(cleaned) as { avatars?: BuyerAvatar[] }
+    } catch (parseErr) {
+      console.warn('[buyer-avatars] JSON parse falló — usando fallback. Snippet:', cleaned.slice(0, 200), parseErr)
+      return buildFallbackAvatars(input.property)
+    }
     if (!Array.isArray(parsed.avatars) || parsed.avatars.length === 0) {
-      console.warn('[buyer-avatars] JSON shape inválido')
-      return null
+      console.warn('[buyer-avatars] JSON shape inválido — usando fallback. Got:', JSON.stringify(parsed).slice(0, 200))
+      return buildFallbackAvatars(input.property)
     }
     return parsed.avatars.slice(0, 3).map((a, i) => ({
       id: a.id || `avatar_${i}`,
@@ -297,11 +304,11 @@ export async function generateThreeAvatars(input: {
     }))
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
-      console.warn('[buyer-avatars] timeout (>25s)')
+      console.warn('[buyer-avatars] timeout (>25s) — usando fallback')
     } else {
-      console.warn('[buyer-avatars] error:', err)
+      console.warn('[buyer-avatars] error — usando fallback:', err)
     }
-    return null
+    return buildFallbackAvatars(input.property)
   } finally {
     clearTimeout(timeoutId)
   }
