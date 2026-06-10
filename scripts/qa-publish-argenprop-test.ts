@@ -1,42 +1,37 @@
 /**
- * QA del wizard de publicación en Argenprop (PublicarIntranet).
+ * QA del wizard de publicación en Argenprop (API REST integradores.api.sosiva451.com v1).
  *
  * Uso: node --env-file=.env.local --import tsx scripts/qa-publish-argenprop-test.ts <cmd> [arg]
- *   recon [propertyId]    -> read-only: estado de la propiedad de prueba + listing + creds
- *   probe                 -> request mínimo real al endpoint para DESCUBRIR el contrato
- *                            (publica un aviso mínimo y lo da de baja inmediatamente)
- *   publish <propertyId>  -> publica la propiedad de prueba en Argenprop
- *   verify <propertyId>   -> imprime el listing + visibilidadIds + intenta abrir la URL
- *   baja <propertyId>     -> da de baja (Estado=Baja) SIN borrar la propiedad
- *   force-baja <idOrigen> -> baja por IdOrigen directo (sin guard [TEST)
+ *   recon [propertyId]      -> read-only: propiedad + listing + login + barrio resuelto
+ *   publish <propertyId>    -> publica el aviso (POST /v1/avisos)
+ *   verify <propertyId>     -> GET /v1/avisos/{codigo} (muestra el aviso publicado)
+ *   baja <propertyId>       -> suspende el aviso (estado/suspendido, reversible)
+ *   eliminar <propertyId>   -> ELIMINA el aviso (estado/eliminado, IRREVERSIBLE) — teardown de test
+ *   force-eliminar <codigo> -> elimina por Codigo directo (sin guard [TEST)
  *
- * SEGURIDAD: publish/verify/baja SOLO operan sobre propiedades cuyo título empiece
- * con "[TEST". `probe` y `force-baja` no tienen guard (operan sobre datos sintéticos
- * o un idOrigen explícito).
+ * SEGURIDAD: publish/verify/baja/eliminar SOLO operan sobre propiedades cuyo título
+ * empiece con "[TEST". `force-eliminar` opera por Codigo explícito.
  */
 import { createClient } from '@supabase/supabase-js'
 import { resolveCredentials } from '../lib/portals/credentials'
 import { ArgenpropAdapter } from '../lib/portals/argenprop/adapter'
-import { apAvisoId } from '../lib/portals/argenprop/field-schema'
-import { propertyToApForm } from '../lib/portals/argenprop/mapping'
-import { apPublish, encodeForm } from '../lib/portals/argenprop/client'
+import { apCodigo, apCategoria } from '../lib/portals/argenprop/field-schema'
+import { resolveCabaBarrioId } from '../lib/portals/argenprop/catalog'
+import { login, apFetch } from '../lib/portals/argenprop/client'
 
 function sb() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
-
 async function creds() {
   const c = await resolveCredentials('argenprop', { env: process.env, supabase: sb() as never })
   if (!c.ap) throw new Error('Faltan credenciales ARGENPROP_* en .env.local')
   return c.ap
 }
-
 async function findTestPropertyId(): Promise<string | null> {
   const { data } = await sb().from('properties').select('id, title, created_at')
     .ilike('title', '[TEST%').order('created_at', { ascending: false }).limit(1)
   return data?.[0]?.id ?? null
 }
-
 async function assertTest(propertyId: string) {
   const { data: prop } = await sb().from('properties').select('title').eq('id', propertyId).maybeSingle()
   if (!prop) throw new Error('propiedad no encontrada')
@@ -47,45 +42,24 @@ async function assertTest(propertyId: string) {
 
 async function recon(propertyId?: string) {
   const id = propertyId ?? (await findTestPropertyId())
-  if (!id) { console.log('No se encontró propiedad de prueba ([TEST...).'); return }
+  if (!id) { console.log('No hay propiedad de prueba ([TEST...).'); return }
   const { data: p } = await sb().from('properties').select('*').eq('id', id).maybeSingle()
   if (!p) { console.log('propiedad no encontrada'); return }
-  console.log('=== PROPIEDAD DE PRUEBA ===')
+  console.log('=== PROPIEDAD ===')
   console.log({ id: p.id, title: p.title, status: p.status, legal_status: p.legal_status,
-    lat: p.latitude, lng: p.longitude, photos: (p.photos ?? []).length,
-    desc_chars: (p.description ?? '').length, idOrigen: apAvisoId(p as never) })
+    lat: p.latitude, lng: p.longitude, photos: (p.photos ?? []).length, desc_chars: (p.description ?? '').length,
+    codigo: apCodigo(p as never), categoria: apCategoria(p as never) })
   const { data: listing } = await sb().from('property_listings').select('*')
     .eq('property_id', id).eq('portal', 'argenprop').maybeSingle()
-  console.log('=== LISTING ARGENPROP ===')
-  console.log(listing ?? '(sin listing)')
+  console.log('=== LISTING ===', listing ?? '(sin listing)')
   const c = await creds().catch(e => { console.log('creds:', e.message); return null })
-  console.log('=== CREDS ===', c ? { usr: c.usr, idSistema: c.idSistema, idVendedor: c.idVendedor, publishUrl: c.publishUrl, enabled: true } : '(faltan)')
-}
-
-/**
- * Descubre el contrato real: arma el form de la propiedad de prueba, lo IMPRIME
- * (sin publicar), después hace UN publish real y lo da de baja inmediatamente.
- * Imprime la respuesta cruda para confirmar nombres de campos / shape de error.
- */
-async function probe() {
-  const c = await creds()
-  const id = await findTestPropertyId()
-  if (!id) throw new Error('necesito una propiedad [TEST para el probe')
-  const { data: p } = await sb().from('properties').select('*').eq('id', id).single()
-  const form = propertyToApForm(p as never, { creds: c, idOrigen: apAvisoId(p as never), estado: 'Activo' })
-  console.log('=== FORM (claves) ===')
-  console.log(Object.keys(form).join('\n'))
-  console.log('=== BODY urlencoded (primeros 800 chars) ===')
-  console.log(encodeForm(form).slice(0, 800))
-  console.log('\n=== PUBLICANDO (real) ===')
-  try {
-    const res = await apPublish(form, c)
-    console.log('OK respuesta:', JSON.stringify(res, null, 2))
-    console.log('\n=== DANDO DE BAJA inmediatamente ===')
-    await new ArgenpropAdapter(true, c).unpublish(apAvisoId(p as never))
-    console.log('baja OK')
-  } catch (e) {
-    console.log('ERROR (esto enseña el contrato):', e instanceof Error ? e.message : e)
+  if (c) {
+    const token = await login(c).catch(e => { console.log('LOGIN FALLÓ:', e.message); return null })
+    console.log('=== AUTH ===', token ? `login OK (token len ${token.length})` : 'login FALLÓ')
+    if (token) {
+      const barrio = await resolveCabaBarrioId(c, p.neighborhood).catch(() => null)
+      console.log('=== BARRIO ===', `"${p.neighborhood}" → ${barrio ?? '(no resuelto)'}`)
+    }
   }
 }
 
@@ -97,162 +71,58 @@ async function publish(propertyId: string) {
   const { data: listing } = await sb().from('property_listings').select('metadata')
     .eq('property_id', propertyId).eq('portal', 'argenprop').maybeSingle()
   const meta = (listing?.metadata ?? {}) as Record<string, unknown>
-  const adapter = new ArgenpropAdapter(true, c)
-  const result = await adapter.publish(property as never, {
+  const result = await new ArgenpropAdapter(true, c).publish(property as never, {
     attributeOverrides: (meta.ap_attributes ?? {}) as Record<string, { value_name?: string; value_id?: string }>,
   })
   await sb().from('property_listings').upsert({
     property_id: propertyId, portal: 'argenprop', status: 'published',
     external_id: result.externalId, external_url: result.externalUrl,
     last_published_at: new Date().toISOString(), last_error: null,
-    metadata: { ...meta, visibilidad_ids: result.metadata?.visibilidadIds ?? [] } as never,
+    metadata: { ...meta, aviso_id: result.metadata?.avisoId ?? null, codigo: result.externalId } as never,
   }, { onConflict: 'property_id,portal' })
   console.log('OK publicado:', result)
 }
 
 async function verify(propertyId: string) {
   await assertTest(propertyId)
+  const c = await creds()
   const { data: listing } = await sb().from('property_listings').select('*')
     .eq('property_id', propertyId).eq('portal', 'argenprop').maybeSingle()
   if (!listing?.external_id) throw new Error('sin external_id (no publicado)')
-  console.log('=== LISTING ===', { status: listing.status, external_id: listing.external_id,
-    external_url: listing.external_url, metadata: listing.metadata })
-  if (listing.external_url) {
-    try {
-      const r = await fetch(listing.external_url, { method: 'GET' })
-      console.log(`URL ${listing.external_url} → HTTP ${r.status}`)
-    } catch (e) { console.log('URL no alcanzable:', e instanceof Error ? e.message : e) }
-  }
+  console.log('=== LISTING DB ===', { status: listing.status, external_id: listing.external_id, metadata: listing.metadata })
+  const aviso = await apFetch(c, `/v1/avisos/${encodeURIComponent(listing.external_id)}`).catch(e => ({ error: e.message }))
+  console.log('=== GET /v1/avisos/{codigo} ===')
+  console.log(JSON.stringify(aviso, null, 1).slice(0, 1500))
 }
 
-async function baja(propertyId: string) {
+async function setEstado(propertyId: string, estado: 'suspendido' | 'eliminado') {
   await assertTest(propertyId)
   const c = await creds()
   const { data: listing } = await sb().from('property_listings').select('external_id')
     .eq('property_id', propertyId).eq('portal', 'argenprop').maybeSingle()
   if (!listing?.external_id) throw new Error('sin external_id (no publicado)')
-  await new ArgenpropAdapter(true, c).unpublish(listing.external_id)
-  await sb().from('property_listings').update({ status: 'paused' })
+  await new ArgenpropAdapter(true, c).setEstado(listing.external_id, estado)
+  await sb().from('property_listings').update({ status: estado === 'eliminado' ? 'closed' : 'paused' })
     .eq('property_id', propertyId).eq('portal', 'argenprop')
-  console.log(`OK: aviso ${listing.external_id} dado de baja. Propiedad ${propertyId} INTACTA.`)
+  console.log(`OK: aviso ${listing.external_id} → estado ${estado}. Propiedad ${propertyId} INTACTA.`)
 }
 
-async function forceBaja(idOrigen: string) {
+async function forceEliminar(codigo: string) {
   const c = await creds()
-  await new ArgenpropAdapter(true, c).unpublish(idOrigen)
-  await sb().from('property_listings').update({ status: 'paused' })
-    .eq('external_id', idOrigen).eq('portal', 'argenprop')
-  console.log(`OK: aviso ${idOrigen} dado de baja (Argenprop + DB).`)
-}
-
-/**
- * Prueba varios valores posibles del header `templateadinco` haciendo una BAJA de
- * un aviso inexistente → NUNCA publica nada, solo aprende si el valor destraba el
- * 401 "CRM no autorizado". Si pasás un valor extra como argumento, también lo prueba.
- * Uso: probe-template [valorExtraAprobar]
- */
-async function probeTemplate(extra?: string) {
-  const c = await creds()
-  const slug = 'diego-ferreyra-crm'
-  const token = c.template // ARGENPROP_TEMPLATE = el token del BO
-  const bajaFields: Record<string, string> = {
-    usr: c.usr, psd: c.psd,
-    'aviso.IdOrigen': 'df-PROBE-NOEXISTE-0000',
-    'aviso.Estado': 'Baja',
-    'aviso.Vendedor.SistemaOrigen.Id': c.idSistema,
-    'aviso.Vendedor.IdOrigen': c.idVendedor,
-  }
-
-  // [label, headersExtra, bodyExtra?] — combinaciones slug+token (uno identifica, otro autentica)
-  const candidates: [string, Record<string, string>, Record<string, string>?][] = [
-    ['solo templateadinco=slug', { templateadinco: slug }],
-    ['solo templateadinco=token', { templateadinco: token }],
-    ['templateadinco=slug + tokenadinco=token', { templateadinco: slug, tokenadinco: token }],
-    ['templateadinco=token + tokenadinco=slug', { templateadinco: token, tokenadinco: slug }],
-    ['solo tokenadinco=token', { tokenadinco: token }],
-    ['templateadinco="slug:token"', { templateadinco: `${slug}:${token}` }],
-    ['templateadinco="slug|token"', { templateadinco: `${slug}|${token}` }],
-    ['templateadinco=slug + Authorization: Bearer token', { templateadinco: slug, authorization: `Bearer ${token}` }],
-    ['templateadinco=slug + header token=token', { templateadinco: slug, token }],
-    ['templateadinco=slug + body token=token', { templateadinco: slug }, { token }],
-    ['templateadinco=token + body crm=slug', { templateadinco: token }, { crm: slug }],
-  ]
-  if (extra) candidates.push([`templateadinco=${extra} (valor que pasaste)`, { templateadinco: extra }])
-
-  console.log('Probando combinaciones slug+token (BAJA de aviso inexistente, NO publica nada)...\n')
-  for (const [label, headersExtra, bodyExtra] of candidates) {
-    try {
-      const body = new URLSearchParams({ ...bajaFields, ...(bodyExtra ?? {}) }).toString()
-      const res = await fetch(c.publishUrl, {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': c.userAgent, ...headersExtra },
-        body,
-      })
-      const text = await res.text()
-      const blocked = /CRM no autorizado/i.test(text)
-      console.log(`${blocked ? '❌ 401' : '✅ PASÓ'} | ${label} → ${res.status}: ${text.slice(0, 110).replace(/\s+/g, ' ')}`)
-    } catch (e) {
-      console.log(`ERR | ${label}: ${e instanceof Error ? e.message : e}`)
-    }
-  }
-  console.log('\n→ "✅ PASÓ" = esa combinación destraba el gate (avisame cuál y lo dejo fijo).')
-  console.log('→ Todas "❌ 401" = casi seguro whitelist de IP (no es tema de header/valor).')
-}
-
-/**
- * Imprime el request EXACTO que mandamos al publicar (curl + campos + respuesta),
- * para enviárselo al equipo de Sistemas de Argenprop. OJO: incluye usr/psd/token
- * → compartir SOLO con Argenprop.
- */
-async function showRequest(propertyId?: string) {
-  const c = await creds()
-  const id = propertyId ?? (await findTestPropertyId())
-  if (!id) throw new Error('no hay propiedad de prueba')
-  const { data: p } = await sb().from('properties').select('*').eq('id', id).single()
-  const form = propertyToApForm(p as never, { creds: c, idOrigen: apAvisoId(p as never), estado: 'Activo' })
-  const body = encodeForm(form)
-
-  console.log('================= REQUEST QUE HACEMOS =================')
-  console.log(`POST ${c.publishUrl}`)
-  console.log('Headers:')
-  console.log(`  Content-Type: application/x-www-form-urlencoded`)
-  console.log(`  User-Agent: ${c.userAgent}`)
-  console.log(`  templateadinco: ${c.template}`)
-  console.log('\n----- CURL (lo pueden correr tal cual) -----')
-  console.log(`curl -i -X POST '${c.publishUrl}' \\
-  -H 'Content-Type: application/x-www-form-urlencoded' \\
-  -H 'User-Agent: ${c.userAgent}' \\
-  -H 'templateadinco: ${c.template}' \\
-  --data '${body}'`)
-  console.log('\n----- CAMPOS DEL BODY (legible) -----')
-  for (const [k, v] of Object.entries(form)) console.log(`  ${k} = ${v}`)
-
-  console.log('\n================= RESPUESTA QUE RECIBIMOS =================')
-  const res = await fetch(c.publishUrl, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': c.userAgent, templateadinco: c.template },
-    body,
-  })
-  const text = await res.text()
-  const h: Record<string, string> = {}
-  res.headers.forEach((v, k) => { h[k] = v })
-  console.log('HTTP status:', res.status, res.statusText)
-  console.log('Response body:', text)
-  console.log('Response headers:', JSON.stringify(h, null, 1))
+  await new ArgenpropAdapter(true, c).setEstado(codigo, 'eliminado')
+  await sb().from('property_listings').update({ status: 'closed' }).eq('external_id', codigo).eq('portal', 'argenprop')
+  console.log(`OK: aviso ${codigo} eliminado (Argenprop + DB).`)
 }
 
 async function main() {
   const [cmd, arg] = process.argv.slice(2)
   if (cmd === 'recon') return recon(arg)
-  if (cmd === 'probe') return probe()
-  if (cmd === 'show-request') return showRequest(arg)
-  if (cmd === 'probe-template') return probeTemplate(arg)
-  if (cmd === 'force-baja') { if (!arg) { console.error('uso: force-baja <idOrigen>'); process.exit(1) } return forceBaja(arg) }
-  if (!arg) { console.error('uso: <recon|probe|probe-template|publish|verify|baja> [propertyId]'); process.exit(1) }
+  if (cmd === 'force-eliminar') { if (!arg) { console.error('uso: force-eliminar <codigo>'); process.exit(1) } return forceEliminar(arg) }
+  if (!arg) { console.error('uso: <recon|publish|verify|baja|eliminar> [propertyId]'); process.exit(1) }
   if (cmd === 'publish') return publish(arg)
   if (cmd === 'verify') return verify(arg)
-  if (cmd === 'baja') return baja(arg)
+  if (cmd === 'baja') return setEstado(arg, 'suspendido')
+  if (cmd === 'eliminar') return setEstado(arg, 'eliminado')
   console.error(`comando desconocido: ${cmd}`); process.exit(1)
 }
-
 main().catch(e => { console.error(e); process.exit(1) })

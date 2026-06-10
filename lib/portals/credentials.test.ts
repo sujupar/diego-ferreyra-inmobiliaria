@@ -36,16 +36,13 @@ describe('resolveCredentials', () => {
     expect(result.enabled).toBe(false)
   })
 
-  it('returns enabled for argenprop when new env vars present (usr/psd/publishUrl)', async () => {
+  it('returns enabled for argenprop when API REST env vars present', async () => {
     const result = await resolveCredentials('argenprop', {
       env: {
+        ARGENPROP_TOKEN_CRM: 'tok',
         ARGENPROP_USR: 'u@api.com',
         ARGENPROP_PSD: 'p',
-        ARGENPROP_PUBLISH_URL: 'http://x/PublicarIntranet?contentType=json',
-        ARGENPROP_ID_SISTEMA: '10',
-        ARGENPROP_ID_VENDEDOR: '281022',
-        ARGENPROP_ID_ORIGEN: '60U6_',
-        ARGENPROP_USER_AGENT: 'diego-ferreyra-crm',
+        ARGENPROP_ID_ANUNCIANTE: '281022',
       },
       supabase: makeSupabase(null),
     })
@@ -85,29 +82,36 @@ describe('resolveCredentials', () => {
   })
 })
 
-describe('resolveCredentials argenprop', () => {
-  it('enabled=true cuando usr+psd+publishUrl están en env', async () => {
+describe('resolveCredentials argenprop (API REST)', () => {
+  it('enabled=true cuando tokenCrm+usr+psd+idAnunciante están en env', async () => {
     const creds = await resolveCredentials('argenprop', {
       env: {
+        ARGENPROP_API_BASE: 'https://integradores.api.sosiva451.com',
+        ARGENPROP_TOKEN_CRM: '3072955a',
         ARGENPROP_USR: 'u@api.com',
         ARGENPROP_PSD: 'p',
-        ARGENPROP_PUBLISH_URL: 'http://x/PublicarIntranet?contentType=json',
-        ARGENPROP_ID_SISTEMA: '10',
-        ARGENPROP_ID_VENDEDOR: '281022',
-        ARGENPROP_ID_ORIGEN: '60U6_',
-        ARGENPROP_USER_AGENT: 'diego-ferreyra-crm',
+        ARGENPROP_ID_ANUNCIANTE: '281022',
       },
       supabase: fakeSupabase({ portal: 'argenprop', enabled: false, metadata: {} }),
     })
     expect(creds.enabled).toBe(true)
     expect(creds.ap?.usr).toBe('u@api.com')
-    expect(creds.ap?.idSistema).toBe('10')
-    expect(creds.ap?.publishUrl).toContain('PublicarIntranet')
+    expect(creds.ap?.tokenCrm).toBe('3072955a')
+    expect(creds.ap?.idAnunciante).toBe(281022)
+    expect(creds.ap?.apiBase).toContain('sosiva451')
   })
 
-  it('enabled=false si falta psd', async () => {
+  it('default apiBase cuando no se pasa', async () => {
     const creds = await resolveCredentials('argenprop', {
-      env: { ARGENPROP_USR: 'u@api.com', ARGENPROP_PUBLISH_URL: 'http://x' },
+      env: { ARGENPROP_TOKEN_CRM: 't', ARGENPROP_USR: 'u', ARGENPROP_PSD: 'p', ARGENPROP_ID_ANUNCIANTE: '1' },
+      supabase: fakeSupabase(null),
+    })
+    expect(creds.ap?.apiBase).toBe('https://integradores.api.sosiva451.com')
+  })
+
+  it('enabled=false si falta idAnunciante', async () => {
+    const creds = await resolveCredentials('argenprop', {
+      env: { ARGENPROP_TOKEN_CRM: 't', ARGENPROP_USR: 'u@api.com', ARGENPROP_PSD: 'p' },
       supabase: fakeSupabase(null),
     })
     expect(creds.enabled).toBe(false)

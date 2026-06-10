@@ -2,18 +2,17 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import type { PortalName } from './types'
 
+/**
+ * Credenciales de la API REST de Argenprop (integradores.api.sosiva451.com, v1).
+ * Auth doble: header X-Token-CRM (fijo del CRM) + Authorization: Bearer (token de
+ * usuario obtenido vía POST /v1/auth/login con usr/psd). Ver lib/portals/argenprop/client.ts.
+ */
 export interface ApCredentials {
-  publishUrl: string
-  usr: string
-  psd: string
-  idSistema: string
-  idVendedor: string
-  idOrigen: string
-  userAgent: string
-  /** Valor del header `templateadinco` que identifica al CRM ante Argenprop
-   *  (sin él, el endpoint responde 401 "CRM no autorizado"). Lo asigna Argenprop;
-   *  para esta cuenta es el mismo string que el User-Agent (diego-ferreyra-crm). */
-  template: string
+  apiBase: string       // https://integradores.api.sosiva451.com
+  tokenCrm: string      // X-Token-CRM (token fijo del integrador)
+  usr: string           // usuario de login (email)
+  psd: string           // contraseña de login
+  idAnunciante: number  // Id de la inmobiliaria (va en cada AvisoPublicacionDto)
 }
 
 export interface ResolvedCredentials {
@@ -78,16 +77,11 @@ export async function resolveCredentials(
 
   const ap: ApCredentials | undefined = portal === 'argenprop'
     ? {
-        publishUrl: env.ARGENPROP_PUBLISH_URL ?? '',
+        apiBase: env.ARGENPROP_API_BASE ?? 'https://integradores.api.sosiva451.com',
+        tokenCrm: env.ARGENPROP_TOKEN_CRM ?? '',
         usr: env.ARGENPROP_USR ?? '',
         psd: env.ARGENPROP_PSD ?? '',
-        idSistema: env.ARGENPROP_ID_SISTEMA ?? '',
-        idVendedor: env.ARGENPROP_ID_VENDEDOR ?? '',
-        idOrigen: env.ARGENPROP_ID_ORIGEN ?? '',
-        userAgent: env.ARGENPROP_USER_AGENT ?? 'diego-ferreyra-crm',
-        // Para esta cuenta el identificador de CRM (header templateadinco) es el
-        // mismo string que el User-Agent. Override con ARGENPROP_TEMPLATE si difiere.
-        template: env.ARGENPROP_TEMPLATE ?? env.ARGENPROP_USER_AGENT ?? 'diego-ferreyra-crm',
+        idAnunciante: Number(env.ARGENPROP_ID_ANUNCIANTE ?? '') || 0,
       }
     : undefined
 
@@ -95,7 +89,7 @@ export async function resolveCredentials(
     portal === 'mercadolibre'
       ? Boolean(fromEnv.appId && fromEnv.secretKey)
       : portal === 'argenprop'
-        ? Boolean(ap?.usr && ap?.psd && ap?.publishUrl)
+        ? Boolean(ap?.tokenCrm && ap?.usr && ap?.psd && ap?.idAnunciante)
         : Boolean(fromEnv.apiKey && fromEnv.clientCode)
 
   // Para ML necesitamos además que haya access_token en DB (después del OAuth flow)

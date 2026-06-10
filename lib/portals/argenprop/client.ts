@@ -1,86 +1,140 @@
+import { createClient } from '@supabase/supabase-js'
+import type { Database } from '@/types/database.types'
 import { PortalAdapterError } from '../types'
 import type { ApCredentials } from '../credentials'
 
-export interface ApPublishResponse {
-  ok: boolean
-  visibilidadIds: string[]
-  errorMessage?: string
-  raw: unknown
-}
-
-/** Codifica un Record<string,string> a application/x-www-form-urlencoded. */
-export function encodeForm(form: Record<string, string>): string {
-  return Object.entries(form)
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-    .join('&')
-}
-
 /**
- * Parsea la respuesta JSON de PublicarIntranet.
- * CONTRACT ASSUMPTION: éxito = colección con ids de visibilidad; error = envelope
- * con Error/Mensaje. El probe corrige el shape real acá.
+ * Cliente de la API REST de Argenprop (integradores.api.sosiva451.com, v1).
+ *
+ * Auth doble (sección 3 de la doc oficial):
+ *   - X-Token-CRM: token fijo del integrador, en TODAS las llamadas (incluido login).
+ *   - Authorization: Bearer <AuthenticationToken>: token del usuario, obtenido vía
+ *     POST /v1/auth/login. NO vence → se cachea en portal_credentials.access_token.
+ *
+ * La mayoría de las respuestas usan el envoltorio ApiResult { Status, Result, Detail,
+ * ErrorCode, Errors, Title, TraceId }. `apFetch` devuelve el body parseado entero;
+ * cada caller extrae `.Result`. El login responde { AuthenticationToken } sin envoltorio.
  */
-export function parseApResponse(json: unknown): ApPublishResponse {
-  // Caso éxito: array de objetos con id (visibilidades creadas)
-  if (Array.isArray(json)) {
-    const ids = json
-      .map(x => (x && typeof x === 'object' && 'id' in x ? String((x as { id: unknown }).id) : null))
-      .filter((x): x is string => !!x)
-    return { ok: ids.length > 0, visibilidadIds: ids, raw: json }
-  }
-  // Caso envelope de error
-  if (json && typeof json === 'object') {
-    const o = json as Record<string, unknown>
-    const errFlag = o.Error === true || o.error === true || typeof o.Mensaje === 'string' || typeof o.mensaje === 'string'
-    const msg = (o.Mensaje ?? o.mensaje ?? o.Message ?? o.message) as string | undefined
-    // Algunas respuestas exitosas pueden venir como objeto con una colección anidada.
-    const nested = (o.visibilidades ?? o.Visibilidades ?? o.ids ?? o.Ids) as unknown
-    if (Array.isArray(nested)) {
-      const ids = nested.map(x => String((x as { id?: unknown })?.id ?? x)).filter(Boolean)
-      return { ok: ids.length > 0, visibilidadIds: ids, raw: json }
-    }
-    if (errFlag) return { ok: false, visibilidadIds: [], errorMessage: msg ?? 'Error de Argenprop', raw: json }
-  }
-  return { ok: false, visibilidadIds: [], errorMessage: 'Respuesta no reconocida', raw: json }
+
+function getSupabase() {
+  return createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
 }
 
-/**
- * POST a PublicarIntranet con el form aplanado. Transporte form-urlencoded;
- * `?contentType=json` (ya en la URL) hace que la respuesta venga en JSON.
- */
-export async function apPublish(form: Record<string, string>, creds: ApCredentials): Promise<ApPublishResponse> {
-  if (!creds.publishUrl || !creds.usr || !creds.psd) {
-    throw new PortalAdapterError('Missing Argenprop credentials', 'argenprop', 'auth', false)
-  }
-  const res = await fetch(creds.publishUrl, {
+// Cache en memoria por proceso (evita pegar a DB en cada llamada dentro del mismo runtime).
+let memoToken: string | null = null
+
+interface ApiResult<T> {
+  Status?: number
+  Result?: T
+  Detail?: string
+  ErrorCode?: string
+  Title?: string
+  TraceId?: string
+  Errors?: Record<string, string> | null
+}
+
+/** POST /v1/auth/login → AuthenticationToken (no vence). */
+export async function login(creds: ApCredentials): Promise<string> {
+  const res = await fetch(`${creds.apiBase}/v1/auth/login`, {
     method: 'POST',
     headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      'user-agent': creds.userAgent,
-      // Header obligatorio: identifica al CRM ante Argenprop. Sin él → 401
-      // "CRM no autorizado para usar este endpoint" (verificado en vivo 2026-06-08).
-      ...(creds.template ? { templateadinco: creds.template } : {}),
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'X-Token-CRM': creds.tokenCrm,
     },
-    body: encodeForm(form),
+    body: JSON.stringify({ Usuario: creds.usr, Password: creds.psd }),
   })
   const text = await res.text()
-  if (!res.ok) {
-    const retryable = res.status >= 500 || res.status === 429
+  let json: { AuthenticationToken?: string } & ApiResult<unknown>
+  try { json = JSON.parse(text) } catch { json = {} }
+  const token = json.AuthenticationToken
+  if (!res.ok || !token) {
     throw new PortalAdapterError(
-      `Argenprop ${res.status}: ${text.slice(0, 500)}`,
+      `Argenprop login falló (${res.status}): ${json.ErrorCode ?? ''} ${json.Detail ?? text.slice(0, 200)}`.trim(),
+      'argenprop', 'auth', res.status >= 500,
+    )
+  }
+  return token
+}
+
+/** Token de usuario cacheado (memoria → DB → login). */
+export async function getAuthToken(creds: ApCredentials, forceRefresh = false): Promise<string> {
+  if (!forceRefresh && memoToken) return memoToken
+  const supabase = getSupabase()
+  if (!forceRefresh) {
+    const { data } = await supabase
+      .from('portal_credentials').select('access_token')
+      .eq('portal', 'argenprop').maybeSingle()
+    if (data?.access_token) {
+      memoToken = data.access_token
+      return data.access_token
+    }
+  }
+  const token = await login(creds)
+  memoToken = token
+  await supabase.from('portal_credentials').upsert(
+    { portal: 'argenprop', access_token: token, updated_at: new Date().toISOString() },
+    { onConflict: 'portal' },
+  )
+  return token
+}
+
+function clearAuthToken(): void {
+  memoToken = null
+}
+
+/**
+ * Llamada autenticada a la API. Setea X-Token-CRM + Bearer. Ante 401 (token de
+ * usuario invalidado) reintenta UNA vez con login fresco. Lanza PortalAdapterError
+ * con ErrorCode/Detail de la API ante !ok. Devuelve el body parseado (el caller
+ * extrae `.Result`).
+ */
+export async function apFetch<T = unknown>(
+  creds: ApCredentials,
+  path: string,
+  init: RequestInit = {},
+  _isRetry = false,
+): Promise<ApiResult<T>> {
+  const token = await getAuthToken(creds)
+  const res = await fetch(`${creds.apiBase}${path}`, {
+    ...init,
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'X-Token-CRM': creds.tokenCrm,
+      authorization: `Bearer ${token}`,
+      ...(init.headers ?? {}),
+    },
+  })
+  const text = await res.text()
+  let json: ApiResult<T>
+  try { json = text ? JSON.parse(text) : {} } catch { json = {} as ApiResult<T> }
+
+  if (res.status === 401 && !_isRetry) {
+    // Token de usuario expirado/invalidado → relogin y reintento único.
+    clearAuthToken()
+    await getAuthToken(creds, true)
+    return apFetch<T>(creds, path, init, true)
+  }
+  if (!res.ok) {
+    const code = json.ErrorCode ?? ''
+    const detail = json.Detail ?? json.Title ?? text.slice(0, 300)
+    const errors = json.Errors ? ` ${JSON.stringify(json.Errors)}` : ''
+    throw new PortalAdapterError(
+      `Argenprop ${res.status} ${code} ${path}: ${detail}${errors}`.trim(),
       'argenprop',
       res.status === 401 || res.status === 403 ? 'auth' : res.status === 429 ? 'rate_limit' : 'unknown',
-      retryable,
+      res.status >= 500 || res.status === 429,
     )
   }
-  let json: unknown
-  try { json = JSON.parse(text) } catch { json = text }
-  const parsed = parseApResponse(json)
-  if (!parsed.ok) {
-    throw new PortalAdapterError(
-      `Argenprop rechazó la publicación: ${parsed.errorMessage ?? text.slice(0, 300)}`,
-      'argenprop', 'unknown', false,
-    )
-  }
-  return parsed
+  return json
+}
+
+/** Helper: GET y devuelve el `.Result` (catálogos, localización, lecturas). */
+export async function apGet<T = unknown>(creds: ApCredentials, path: string): Promise<T> {
+  const json = await apFetch<T>(creds, path)
+  return (json.Result ?? json) as T
 }

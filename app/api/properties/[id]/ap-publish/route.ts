@@ -84,7 +84,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: msg }, { status: 502 })
     }
 
-    const mergedMeta = { ...meta, visibilidad_ids: pub.metadata?.visibilidadIds ?? [] }
+    const mergedMeta = { ...meta, aviso_id: pub.metadata?.avisoId ?? null, codigo: pub.metadata?.codigo ?? pub.externalId }
     await supabase.from('property_listings').upsert(
       {
         property_id: id, portal: 'argenprop', status: 'published',
@@ -96,7 +96,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     )
     await supabase.from('property_publish_events').insert({
       property_id: id, portal: 'argenprop', event_type: 'published',
-      payload: { externalId: pub.externalId, externalUrl: pub.externalUrl, visibilidadIds: (pub.metadata?.visibilidadIds ?? []) as string[] },
+      payload: { externalId: pub.externalId, externalUrl: pub.externalUrl, avisoId: (pub.metadata?.avisoId ?? null) as number | null },
       actor: user.profile.full_name ?? user.id,
     })
 
@@ -114,8 +114,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
 /**
  * PATCH → { action: 'baja' | 'republish' }
- *  - 'baja'      → Estado=Baja (deja de publicarse). status DB = 'paused'.
- *  - 'republish' → re-POST Activo (status DB = 'published').
+ *  - 'baja'      → PUT estado/suspendido (reversible). status DB = 'paused'.
+ *  - 'republish' → PUT estado/publicado (vuelve a Vigente). status DB = 'published'.
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -142,11 +142,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     try {
       if (action === 'baja') {
-        await adapter.unpublish(listing.external_id)
+        await adapter.unpublish(listing.external_id) // suspende (reversible)
       } else {
-        const { data: property } = await supabase.from('properties').select('*').eq('id', id).single()
-        if (!property) return NextResponse.json({ error: 'property not found' }, { status: 404 })
-        await adapter.update(property, listing.external_id)
+        await adapter.republicar(listing.external_id) // vuelve a Vigente
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

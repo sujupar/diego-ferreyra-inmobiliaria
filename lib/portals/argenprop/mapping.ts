@@ -1,112 +1,105 @@
 import type { Property } from '../types'
-import type { ApCredentials } from '../credentials'
-import { apTipoPropiedad } from './field-schema'
-import type { AttributeOverride } from './field-schema'
+import { apCategoria, derivedPrefill, getApSchema, type ApField, type AttributeOverride } from './field-schema'
 
-export interface ApFormOptions {
-  creds: ApCredentials
-  idOrigen: string
-  /** 'Activo' (default) | 'Baja' | 'Suspendido' | 'Reservado'. */
-  estado?: string
-  /** Overrides del wizard (claves = ApField.id). */
+/** AvisoPublicacionDto — body de POST/PUT /v1/avisos (sección 6 doc). */
+export interface AvisoPublicacionDto {
+  IdAnunciante: number
+  Titulo: string
+  Descripcion: string
+  Codigo: string
+  AptoCredito?: boolean
+  Categoria: { Tipo: string; Subtipo?: string }
+  Publicacion: { Visible: boolean }
+  Precio: { Monto: number; Moneda: string; Operacion: string; Mostrar: boolean }
+  Caracteristicas: { Id: string; Valor: string | number | boolean }[]
+  Multimedia: { Tipo: string; Url: string }[]
+  Localizacion: {
+    Calle?: { Nombre: string; Numero: string }
+    Latitud?: number
+    Longitud?: number
+    Localidad: { Id: string }
+    Barrio?: { Id: string }
+  }
+}
+
+export interface ApMappingOptions {
+  idAnunciante: number
+  codigo: string
+  /** Id de localidad (LOCALIDAD_2102 para CABA). */
+  localidadId: string
+  /** Id de barrio (obligatorio en CABA). null si no se pudo resolver. */
+  barrioId?: string | null
+  /** Overrides del wizard (claves = ApField.id). Pisan el prellenado derivado. */
   attributeOverrides?: Record<string, AttributeOverride>
 }
 
-type FormValue = string | number | boolean | null | undefined | FormObject | FormArray
-interface FormObject { [k: string]: FormValue }
-type FormArray = FormValue[]
+// Campos del schema que NO son Caracteristicas (van a Precio/Categoria).
+const SPECIAL_FIELDS = new Set(['TIPO_OPERACION', 'MONEDA', 'SUBTIPO'])
 
-/**
- * Aplana un objeto anidado a un Record<string,string> con la convención de
- * PublicarIntranet: objetos → claves con punto (`aviso.Precio`), arrays → claves
- * indexadas (`imagenes[0].url`). Omite null/undefined. Todo se stringifica.
- */
-export function flattenForm(obj: FormObject, prefix = ''): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const [k, v] of Object.entries(obj)) {
-    if (v === null || v === undefined) continue
-    const key = prefix ? `${prefix}.${k}` : k
-    if (Array.isArray(v)) {
-      v.forEach((item, i) => {
-        const idxKey = `${key}[${i}]`
-        if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
-          Object.assign(out, flattenForm(item as FormObject, idxKey))
-        } else if (item !== null && item !== undefined) {
-          out[idxKey] = String(item)
-        }
-      })
-    } else if (typeof v === 'object') {
-      Object.assign(out, flattenForm(v as FormObject, key))
+function buildTitulo(property: Property): string {
+  if (property.title) return property.title.slice(0, 80)
+  const tipo = property.property_type || 'Propiedad'
+  const amb = property.rooms ? `${property.rooms} amb` : ''
+  return [tipo.charAt(0).toUpperCase() + tipo.slice(1), amb, 'en', property.neighborhood].filter(Boolean).join(' ').slice(0, 80)
+}
+
+/** Separa "Av. Cabildo 1234" → { Nombre: "Av. Cabildo", Numero: "1234" }. */
+function parseCalle(address: string): { Nombre: string; Numero: string } {
+  const m = address.trim().match(/^(.*?)[\s,]+(\d+)\s*$/)
+  if (m) return { Nombre: m[1].trim().replace(/,$/, ''), Numero: m[2] }
+  return { Nombre: address.trim(), Numero: 'S/N' }
+}
+
+export function propertyToAvisoDto(property: Property, opts: ApMappingOptions): AvisoPublicacionDto {
+  const { tipo, subtipo: defaultSubtipo } = apCategoria(property)
+  const eff: Record<string, AttributeOverride> = { ...derivedPrefill(property), ...(opts.attributeOverrides ?? {}) }
+
+  const operacion = eff.TIPO_OPERACION?.value_id ?? 'VENTA'
+  const moneda = eff.MONEDA?.value_id ?? (property.currency || 'USD').toUpperCase()
+  const subtipo = eff.SUBTIPO?.value_id ?? defaultSubtipo
+
+  // Caracteristicas: el resto de los campos del schema, tipados según su valueType.
+  const fieldById = new Map<string, ApField>()
+  const schema = getApSchema(property)
+  for (const f of [...schema.required, ...schema.recommended]) fieldById.set(f.id, f)
+
+  const caracteristicas: { Id: string; Valor: string | number | boolean }[] = []
+  for (const [id, ov] of Object.entries(eff)) {
+    if (SPECIAL_FIELDS.has(id)) continue
+    const field = fieldById.get(id)
+    const raw = ov.value_id ?? ov.value_name
+    if (raw == null || raw === '') continue
+    if (field && (field.valueType === 'number' || field.valueType === 'number_unit')) {
+      const n = Number(String(raw).replace(/[^\d.-]/g, ''))
+      if (!Number.isNaN(n)) caracteristicas.push({ Id: id, Valor: n })
+    } else if (field && field.valueType === 'boolean') {
+      caracteristicas.push({ Id: id, Valor: /^(s[ií]|true|1)$/i.test(String(raw)) })
     } else {
-      out[key] = String(v)
+      caracteristicas.push({ Id: id, Valor: String(raw) })
     }
   }
-  return out
-}
 
-function ov(overrides: Record<string, AttributeOverride> | undefined, id: string): string | undefined {
-  const o = overrides?.[id]
-  if (!o) return undefined
-  return o.value_id ?? o.value_name
-}
+  const multimedia: { Tipo: string; Url: string }[] = []
+  for (const url of (property.photos ?? []).slice(0, 30)) multimedia.push({ Tipo: 'FOTO', Url: url })
+  if (property.video_url) multimedia.push({ Tipo: 'VIDEO', Url: property.video_url })
+  if (property.tour_3d_url) multimedia.push({ Tipo: 'TOUR', Url: property.tour_3d_url })
 
-function buildTitle(property: Property): string {
-  if (property.title) return property.title
-  return `${property.property_type || 'Propiedad'} en ${property.neighborhood}`
-}
-
-/**
- * Construye el body form-urlencoded (aplanado) para PublicarIntranet.
- * CONTRACT ASSUMPTION: nombres de campos `aviso.*`/`propiedad.*` del spec v4.0.
- * El probe (Fase 4/5) corrige los nombres exactos en UN solo lugar (acá).
- */
-export function propertyToApForm(property: Property, opts: ApFormOptions): Record<string, string> {
-  if (property.latitude == null || property.longitude == null) {
-    throw new Error('propertyToApForm: lat/lng requeridos (corré validate antes)')
-  }
-  const { creds, idOrigen, estado = 'Activo', attributeOverrides: o } = opts
-
-  const tree: FormObject = {
-    // Auth (per-request, en el body)
-    usr: creds.usr,
-    psd: creds.psd,
-    // Tipo de propiedad (top-level según spec)
-    tipoPropiedad: apTipoPropiedad(property),
-    aviso: {
-      IdOrigen: idOrigen, // clave de idempotencia que generamos nosotros
-      Estado: estado,
-      TipoOperacion: ov(o, 'TIPO_OPERACION') ?? property.operation_type ?? 'venta',
-      Titulo: buildTitle(property),
-      Descripcion: property.description || buildTitle(property),
-      Precio: property.asking_price,
-      Moneda: ov(o, 'MONEDA') ?? property.currency ?? 'USD',
-      Vendedor: {
-        SistemaOrigen: { Id: creds.idSistema }, // IdSistema
-        IdOrigen: creds.idVendedor,             // IdVendedor
-        OrigenCuenta: creds.idOrigen,           // ARGENPROP_ID_ORIGEN (60U6_) — CONTRACT ASSUMPTION
-      },
+  return {
+    IdAnunciante: opts.idAnunciante,
+    Titulo: buildTitulo(property),
+    Descripcion: property.description || buildTitulo(property),
+    Codigo: opts.codigo,
+    Categoria: { Tipo: tipo, ...(subtipo ? { Subtipo: subtipo } : {}) },
+    Publicacion: { Visible: true },
+    Precio: { Monto: Math.round(property.asking_price), Moneda: moneda, Operacion: operacion, Mostrar: true },
+    Caracteristicas: caracteristicas,
+    Multimedia: multimedia,
+    Localizacion: {
+      Calle: parseCalle(property.address),
+      Latitud: property.latitude ?? undefined,
+      Longitud: property.longitude ?? undefined,
+      Localidad: { Id: opts.localidadId },
+      ...(opts.barrioId ? { Barrio: { Id: opts.barrioId } } : {}),
     },
-    propiedad: {
-      Ambientes: ov(o, 'AMBIENTES') ?? property.rooms ?? undefined,
-      Dormitorios: ov(o, 'DORMITORIOS') ?? property.bedrooms ?? undefined,
-      Banos: ov(o, 'BANOS') ?? property.bathrooms ?? undefined,
-      Cocheras: ov(o, 'COCHERAS') ?? property.garages ?? undefined,
-      SuperficieCubierta: ov(o, 'SUP_CUBIERTA') ?? property.covered_area ?? undefined,
-      SuperficieTotal: ov(o, 'SUP_TOTAL') ?? property.total_area ?? undefined,
-      Antiguedad: ov(o, 'ANTIGUEDAD') ?? (property.age != null ? property.age : undefined),
-      Expensas: ov(o, 'EXPENSAS') ?? property.expensas ?? undefined,
-      Orientacion: ov(o, 'ORIENTACION') ?? undefined,
-      Disposicion: ov(o, 'DISPOSICION') ?? undefined,
-      Direccion: property.address,
-      Localidad: property.neighborhood,
-      Ciudad: property.city || 'CABA',
-      Latitud: property.latitude,
-      Longitud: property.longitude,
-      CodigoPostal: property.postal_code ?? undefined,
-    },
-    // Fotos por URL (Argenprop las descarga). CONTRACT ASSUMPTION: `imagenes[i].url`.
-    imagenes: (property.photos ?? []).slice(0, 20).map((url, i) => ({ url, orden: i, principal: i === 0 })),
   }
-
-  return flattenForm(tree)
 }
