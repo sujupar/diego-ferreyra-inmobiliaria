@@ -92,13 +92,16 @@ export class ArgenpropAdapter implements PortalAdapter {
   }
 
   /** Update = PUT /v1/avisos con el mismo JSON; el aviso se identifica por Codigo. */
-  async update(property: Property, _externalId: string): Promise<void> {
+  async update(property: Property, _externalId: string, opts: ApPublishOptions = {}): Promise<void> {
     const v = this.validate(property)
     if (!v.ok) throw new PortalAdapterError(`Validación falló: ${v.errors.join(', ')}`, 'argenprop', 'validation', false)
     const creds = this.requireCreds()
     const codigo = apCodigo(property)
     const { localidadId, barrioId } = await this.resolveLocalizacion(property)
-    const dto = propertyToAvisoDto(property, { idAnunciante: creds.idAnunciante, codigo, localidadId, barrioId })
+    const dto = propertyToAvisoDto(property, {
+      idAnunciante: creds.idAnunciante, codigo, localidadId, barrioId,
+      attributeOverrides: opts.attributeOverrides,
+    })
     await apFetch(creds, '/v1/avisos', { method: 'PUT', body: JSON.stringify(dto) })
   }
 

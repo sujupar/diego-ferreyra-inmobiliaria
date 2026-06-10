@@ -75,9 +75,12 @@ export async function resolveCabaBarrioId(creds: ApCredentials, neighborhood: st
   const nameOf = (b: CatalogItem) => norm(b.Nombre ?? b.Descripcion ?? '')
   const exact = barrios.find(b => nameOf(b) === target)
   if (exact) return exact.Id
-  const partial = barrios.find(b => {
-    const n = nameOf(b)
-    return n.length > 2 && (n.includes(target) || target.includes(n))
-  })
-  return partial?.Id ?? null
+  // Fallback seguro: barrio cuyo nombre está CONTENIDO en el del input (el input es
+  // más específico, ej. "Palermo Soho" → "Palermo"), prefiriendo el match más largo.
+  // No usamos la dirección inversa (catálogo contiene input) para que un sub-barrio
+  // ("Palermo Chico") no le robe el match a "Palermo".
+  const contained = barrios
+    .filter(b => { const n = nameOf(b); return n.length > 2 && target.includes(n) })
+    .sort((a, b) => nameOf(b).length - nameOf(a).length)
+  return contained[0]?.Id ?? null
 }
