@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { AP_CATEGORIA, apCategoria, getApSchema, derivedPrefill, apCodigo } from './field-schema'
+import { AP_CATEGORIA, apCategoria, getApSchema, derivedPrefill, apCodigo, apPublicUrl } from './field-schema'
 
 const baseProp = {
   id: '11111111-2222-3333-4444-555566667777',
@@ -45,5 +45,12 @@ describe('field-schema argenprop', () => {
     const a = apCodigo(baseProp)
     expect(a).toBe(apCodigo(baseProp))
     expect(a).toMatch(/^60U6_[0-9a-f]{12}$/)
+  })
+
+  it('apPublicUrl arma argenprop.com/{slug}--{idAviso}', () => {
+    const u = apPublicUrl({ property_type: 'departamento', operation_type: 'venta', neighborhood: 'Palermo' } as never, 19840713)
+    expect(u).toBe('https://www.argenprop.com/departamento-en-venta-palermo--19840713')
+    const alq = apPublicUrl({ property_type: 'casa', operation_type: 'alquiler', neighborhood: 'Villa Crespo' } as never, 5)
+    expect(alq).toBe('https://www.argenprop.com/casa-en-alquiler-villa-crespo--5')
   })
 })

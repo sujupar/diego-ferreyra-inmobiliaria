@@ -118,3 +118,23 @@ export function derivedPrefill(property: Property): Record<string, AttributeOver
 export function apCodigo(property: Property): string {
   return `60U6_${property.id.replace(/-/g, '').slice(0, 12)}`
 }
+
+function slugify(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+}
+
+/**
+ * URL pública del aviso en argenprop.com. La API NO la devuelve, pero el portal
+ * resuelve por el IdAviso al final: `…/{slug}--{IdAviso}` (verificado en vivo, el
+ * slug es descriptivo/SEO y Argenprop matchea por el id). `avisoId` = IdAviso numérico
+ * que devuelve POST /v1/avisos en `Result` (lo guardamos en metadata.aviso_id).
+ */
+export function apPublicUrl(property: Property, avisoId: number | string): string {
+  const tipo = slugify(property.property_type || 'departamento')
+  const op = property.operation_type === 'alquiler' ? 'en-alquiler'
+    : property.operation_type === 'temporario' ? 'en-alquiler-temporal' : 'en-venta'
+  const barrio = slugify(property.neighborhood || '')
+  const slug = [tipo, op, barrio].filter(Boolean).join('-')
+  return `https://www.argenprop.com/${slug}--${avisoId}`
+}

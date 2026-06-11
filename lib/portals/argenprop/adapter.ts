@@ -1,6 +1,6 @@
 import { apFetch } from './client'
 import { propertyToAvisoDto } from './mapping'
-import { apCodigo, type AttributeOverride } from './field-schema'
+import { apCodigo, apPublicUrl, type AttributeOverride } from './field-schema'
 import { resolveCabaBarrioId, CABA_LOCALIDAD_ID } from './catalog'
 import { validateCommon } from '../validation'
 import { PortalAdapterError } from '../types'
@@ -86,7 +86,7 @@ export class ArgenpropAdapter implements PortalAdapter {
 
     return {
       externalId: codigo, // el Codigo es nuestro handle para estados/lecturas
-      externalUrl: '',    // la API no devuelve URL pública directa; se completa si GET la expone
+      externalUrl: avisoId ? apPublicUrl(property, avisoId) : '',
       metadata: { avisoId, codigo },
     }
   }
