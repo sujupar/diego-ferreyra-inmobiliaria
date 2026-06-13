@@ -202,26 +202,53 @@ export function parseViews(text: string): number | null {
  * Parses published date text
  * Examples: "Publicado hace 35 días", "hace 3 meses", "Hace 1 año"
  */
+function toISODate(d: Date): string {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+}
+
+/**
+ * Resuelve la fecha de publicación a una **fecha absoluta ISO (YYYY-MM-DD)**.
+ * Las fechas relativas ("hace X días") se desactualizan y a veces el scraper
+ * confunde la antigüedad de la propiedad con la fecha de publicación (ej.
+ * "hace 8 años"); por eso convertimos a fecha absoluta al scrapear y
+ * rechazamos valores implausibles para un aviso activo (años, o meses > 18).
+ * El render recalcula "Publicado hace X" fresco desde esta fecha absoluta.
+ * Devuelve null si no hay una fecha confiable.
+ */
 export function parsePublishedDate(text: string): string | null {
     if (!text) return null
 
     const cleaned = text.toLowerCase().trim()
 
-    // Match patterns like "publicado hace X días/meses/años" or just "hace X días"
-    const match = cleaned.match(/(?:publicado\s+)?hace\s+(\d+)\s+(d[ií]as?|meses?|años?|semanas?|horas?)/i)
-    if (match) {
-        return `Hace ${match[1]} ${match[2]}`
+    // "hace X horas/días/semanas/meses/años" → fecha absoluta
+    const rel = cleaned.match(/(?:publicado\s+)?hace\s+(\d+)\s+(d[ií]as?|semanas?|meses?|años?|horas?)/i)
+    if (rel) {
+        const n = parseInt(rel[1], 10)
+        const unit = rel[2].toLowerCase()
+        // Rechazar implausibles para un aviso activo (casi siempre misparse).
+        if (unit.startsWith('año')) return null
+        if (unit.startsWith('mes') && n > 18) return null
+        const d = new Date()
+        if (unit.startsWith('hora')) { /* mismo día */ }
+        else if (unit.startsWith('semana')) d.setDate(d.getDate() - n * 7)
+        else if (unit.startsWith('mes')) d.setMonth(d.getMonth() - n)
+        else d.setDate(d.getDate() - n) // días
+        return toISODate(d)
     }
 
-    // Match "Publicado el DD/MM/YYYY" or similar date
-    const dateMatch = cleaned.match(/publicado\s+(?:el\s+)?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/)
-    if (dateMatch) {
-        return `Publicado el ${dateMatch[1]}`
-    }
-
-    // If the text itself contains "hace" just return it cleaned
-    if (cleaned.includes('hace')) {
-        return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+    // "Publicado el DD/MM/YYYY" (o DD-MM-YY) → fecha absoluta
+    const abs = cleaned.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/)
+    if (abs) {
+        const dd = parseInt(abs[1], 10)
+        const mm = parseInt(abs[2], 10)
+        let yyyy = parseInt(abs[3], 10)
+        if (yyyy < 100) yyyy += 2000
+        if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+            return toISODate(new Date(yyyy, mm - 1, dd))
+        }
     }
 
     return null
@@ -243,6 +270,9 @@ export function normalizePublishedText(raw: string | null | undefined): string |
     // Rechazar texto largo (>60 chars) o que contenga keywords de UI scrapeada
     if (text.length > 60) return null
     if (UI_NOISE_PATTERNS.test(text)) return null
+
+    // Fecha absoluta ISO (la produce parsePublishedDate) → pasa tal cual.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text
 
     if (/^publicado\s+hace/i.test(text)) return text
     if (/^hace\s+/i.test(text)) return `Publicado ${text.toLowerCase()}`

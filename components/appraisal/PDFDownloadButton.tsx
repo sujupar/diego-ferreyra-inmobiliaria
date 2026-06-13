@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Download, Loader2 } from 'lucide-react'
 import type { ValuationProperty, ValuationResult } from '@/lib/valuation/calculator'
+import { buildAppraisalFilename } from '@/lib/valuation/utils'
 
 interface PDFDownloadButtonProps {
     subject: ValuationProperty
@@ -41,11 +42,9 @@ export function PDFDownloadButton({ subject, comparables, valuationResult, appra
             const link = document.createElement('a')
             link.href = url
 
-            // Generate filename from property title
+            // Nombre de archivo limpio y reenviable (sin "_" por acentos)
             const propertyName = subject.title || subject.location || 'Propiedad'
-            const filename = `Informe_Tasacion_${propertyName.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
-
-            link.download = filename
+            link.download = buildAppraisalFilename(propertyName)
             document.body.appendChild(link)
             link.click()
             document.body.removeChild(link)

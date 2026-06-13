@@ -278,6 +278,100 @@ export default function AppraisalDetailPage() {
         }
     }
 
+    async function handleComparableFeaturesChange(index: number, newFeatures: Record<string, unknown>) {
+        if (!appraisal) return
+        // El `index` que envía ValuationReport indexa result.comparableAnalysis,
+        // que son SOLO los comparables normales (overpriced/purchase van aparte).
+        // Mapeamos ese índice a la i-ésima fila normal dentro de appraisal.comparables.
+        setSavingFeatures(true)
+        try {
+            let normalIdx = -1
+            const updatedRows = appraisal.comparables.map(c => {
+                const a = c.analysis as Record<string, unknown> | null
+                const isNormal = a?.propertyType !== 'overpriced' && a?.propertyType !== 'purchase'
+                if (!isNormal) return c
+                normalIdx++
+                if (normalIdx === index) {
+                    return { ...c, features: newFeatures as unknown as typeof c.features }
+                }
+                return c
+            })
+
+            const isNormalRow = (c: typeof updatedRows[number]) => {
+                const a = c.analysis as Record<string, unknown> | null
+                return a?.propertyType !== 'overpriced' && a?.propertyType !== 'purchase'
+            }
+            const normalRows = updatedRows.filter(isNormalRow)
+
+            // Subject: mantener las features efectivas actuales (sin tocar).
+            const safeSubjectFeatures = (effectiveFeatures ?? {}) as PropertyFeatures
+            const recalc = calculateValuation({
+                subject: { ...subject, features: safeSubjectFeatures as unknown as ValuationProperty['features'] },
+                comparables: normalRows.map(c => ({
+                    price: c.price,
+                    currency: c.currency,
+                    title: c.title || undefined,
+                    location: c.location || undefined,
+                    features: c.features as ValuationProperty['features'],
+                })),
+                expenseRates: result?.expenseRates,
+            })
+            if (recalc) {
+                const merged: ValuationResult = {
+                    ...recalc,
+                    purchaseResult: result?.purchaseResult,
+                    purchaseScenarios: result?.purchaseScenarios,
+                    selectedScenarioIds: result?.selectedScenarioIds,
+                }
+                setValuationOverride(merged)
+
+                // Persistir: reconstruir el payload de updateAppraisal desde updatedRows
+                // (para que las features editadas del comparable queden guardadas).
+                const subjectScraped: ScrapedProperty = {
+                    url: appraisal.property_url || '',
+                    title: appraisal.property_title || '',
+                    price: appraisal.property_price,
+                    currency: (appraisal.property_currency as 'USD' | 'ARS' | null) ?? null,
+                    location: appraisal.property_location,
+                    description: appraisal.property_description || '',
+                    features: safeSubjectFeatures,
+                    images: appraisal.property_images || [],
+                    portal: '',
+                }
+                const toScraped = (c: typeof updatedRows[number]): ScrapedProperty => ({
+                    url: c.url || '',
+                    title: c.title || '',
+                    price: c.price,
+                    currency: (c.currency as 'USD' | 'ARS' | null) ?? null,
+                    location: c.location || '',
+                    description: c.description || '',
+                    features: c.features as PropertyFeatures,
+                    images: c.images || [],
+                    portal: '',
+                })
+                const normalScraped = updatedRows.filter(isNormalRow).map(toScraped)
+                const overpricedScraped = updatedRows
+                    .filter(c => (c.analysis as Record<string, unknown> | null)?.propertyType === 'overpriced')
+                    .map(toScraped)
+                const purchaseScraped = updatedRows
+                    .filter(c => (c.analysis as Record<string, unknown> | null)?.propertyType === 'purchase')
+                    .map(toScraped)
+
+                await updateAppraisal(appraisal.id, {
+                    subject: subjectScraped,
+                    comparables: normalScraped,
+                    overpriced: overpricedScraped,
+                    purchaseProperties: purchaseScraped,
+                    valuationResult: merged,
+                })
+            }
+        } catch (err) {
+            console.error('handleComparableFeaturesChange error:', err)
+        } finally {
+            setSavingFeatures(false)
+        }
+    }
+
     async function handleExpenseRatesChange(next: Partial<ExpenseRates>) {
         if (!appraisal || !appraisal.valuation_result) return
         const currentRates = (valuationOverride?.expenseRates ?? appraisal.valuation_result.expenseRates) || {
@@ -467,6 +561,7 @@ export default function AppraisalDetailPage() {
                     result={result}
                     editable
                     onSubjectFeaturesChange={handleSubjectFeaturesChange}
+                    onComparableFeaturesChange={handleComparableFeaturesChange}
                     expenseRates={(valuationOverride?.expenseRates ?? appraisal.valuation_result?.expenseRates) || undefined}
                     onExpenseRatesChange={handleExpenseRatesChange}
                 />

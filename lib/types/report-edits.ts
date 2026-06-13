@@ -68,11 +68,11 @@ export function buildDefaultEdits(
 
         analysisMethodText: 'Para tasar la propiedad se utilizó el método de comparables. Se toman propiedades similares a valor correcto de mercado y se comparan variables como superficie, ubicación, piso, disposición, antigüedad, estado de conservación y calidad constructiva.',
 
-        analysisText: `Debido a la competencia para tener visitas y potencial de venta la propiedad se debería publicar en ${formattedPrice}.\n\nUna buena tasación, siempre es, vender al mejor valor que el mercado convalide en un plazo de 2 meses.`,
+        analysisText: `Debido a la competencia para tener visitas y potencial de venta la propiedad se debería publicar en ${formattedPrice}.\n\nUna buena tasación siempre es vender al mejor valor que el mercado convalide en un plazo de 2 meses.`,
 
         strategyPriceText: `El valor de publicación recomendado es: ${formattedPrice}.\n\nHoy las propiedades que están en un valor interesante para el mercado tienen cerca de 8 visitas mensuales y con el método por etapas, cada 10 visitas hay una reserva en promedio.`,
 
-        strategyDiffusionText: 'Tu propiedad merece tener máxima difusión. Que la vean en excelencia, todos los potenciales compradores. Para ello haremos fotos, video, tour virtual con profesional, publicaremos en todos los portales inmobiliarios de forma destacada, crearemos una página web para la propiedad y haremos campañas publicitarias en las redes sociales. Con esta estrategia tu propiedad la verán el triple de potenciales compradores.\n\nSi tenes el precio adecuado y máxima difusión, vas a tener consultas y visitas a tu propiedad.',
+        strategyDiffusionText: 'Tu propiedad merece tener máxima difusión. Que la vean en excelencia, todos los potenciales compradores. Para ello haremos fotos, video, tour virtual con profesional, publicaremos en todos los portales inmobiliarios de forma destacada, crearemos una página web para la propiedad y haremos campañas publicitarias en las redes sociales. Con esta estrategia tu propiedad la verán el triple de potenciales compradores.\n\nSi tenés el precio adecuado y máxima difusión, vas a tener consultas y visitas a tu propiedad.',
 
         strategyFollowupText: 'Cada 15 días se harán informes de gestión quincenal donde te enviaremos las métricas de los portales, la información que dejaron los compradores en la ficha de visitas y un análisis con la mejora que debemos realizar en la estrategia para lograr vender en los próximos 15 días.',
 

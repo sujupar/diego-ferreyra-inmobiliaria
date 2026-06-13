@@ -75,15 +75,34 @@ function cleanText(str: string | undefined | null, maxLen: number = 300): string
 }
 
 /**
- * Sanitiza el `publishedDate` de un comparable. Rechaza textos largos o con
- * keywords de UI scrapeada (Fotos, videos, planos, ubicación, 360, etc.) que
- * algunos scrapers viejos guardaron y rompen el layout del PDF.
+ * Formatea el `publishedDate` de un comparable para mostrar "Publicado hace X".
+ * - Formato nuevo: fecha absoluta ISO (YYYY-MM-DD) → se calcula "hace X" FRESCO
+ *   al renderizar, así nunca se desactualiza.
+ * - Rechaza valores implausibles para un aviso activo (años, > ~18 meses) y
+ *   ruido de UI scrapeada. Devuelve '' cuando no hay fecha confiable, y el caller
+ *   OCULTA la línea (en vez de mostrar "Sin fecha de publicación").
  */
 const PUBLISHED_UI_NOISE = /(fotos|videos|planos|ubicaci[oó]n|360|mensaje|anunciante|favorito|compartir|denunciar|contactar|whatsapp|tel[eé]fono)/i
-function sanitizePublishedDate(raw: string | null | undefined): string {
-    if (!raw) return 'Sin fecha de publicación'
+function formatPublishedDate(raw: string | null | undefined): string {
+    if (!raw) return ''
     const text = String(raw).trim()
-    if (!text || text.length > 60 || PUBLISHED_UI_NOISE.test(text)) return 'Sin fecha de publicación'
+    if (!text || text.length > 60 || PUBLISHED_UI_NOISE.test(text)) return ''
+
+    // Formato nuevo: fecha absoluta ISO → "Publicado hace X" recalculado fresco.
+    const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (iso) {
+        const then = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
+        const days = Math.floor((Date.now() - then.getTime()) / 86400000)
+        if (days < 0 || days > 550) return '' // futuro o > ~18 meses: implausible
+        if (days <= 1) return 'Publicado hoy'
+        if (days < 14) return `Publicado hace ${days} días`
+        if (days < 60) return `Publicado hace ${Math.round(days / 7)} semanas`
+        const months = Math.round(days / 30)
+        return `Publicado hace ${months} ${months === 1 ? 'mes' : 'meses'}`
+    }
+
+    // Legacy: strings relativos viejos. Rechazar "año(s)" (casi siempre misparse).
+    if (/\baños?\b/i.test(text)) return ''
     return text
 }
 
@@ -749,7 +768,9 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
                                             {/* Features grid — chips con borde para separación visual */}
                                             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
-                                                <FeatureChip label={`${comp.features.coveredArea || 0} m² cub.`} />
+                                                {(comp.features.coveredArea ?? 0) > 0 && (
+                                                    <FeatureChip label={`${comp.features.coveredArea} m² cub.`} />
+                                                )}
                                                 {(comp.features.uncoveredArea ?? 0) > 0 && (
                                                     <FeatureChip label={`${comp.features.uncoveredArea} m² desc.`} />
                                                 )}
@@ -782,11 +803,15 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                                 </View>
                                             </Link>
 
-                                            {/* Metadata: published date + views — sanitizado para tasaciones legacy con basura del scraper */}
-                                            <Text style={[styles.comparableMetadata, { marginTop: 6 }]}>
-                                                {sanitizePublishedDate(comp.features.publishedDate as string)}
-                                                {comp.features.views ? ` · ${comp.features.views} visualizaciones` : ''}
-                                            </Text>
+                                            {/* Metadata: fecha de publicación (oculta la línea si no hay fecha confiable) + visualizaciones */}
+                                            {(() => {
+                                                const pub = formatPublishedDate(comp.features.publishedDate as string)
+                                                const views = comp.features.views ? `${comp.features.views} visualizaciones` : ''
+                                                const meta = [pub, views].filter(Boolean).join(' · ')
+                                                return meta ? (
+                                                    <Text style={[styles.comparableMetadata, { marginTop: 6 }]}>{meta}</Text>
+                                                ) : null
+                                            })()}
                                         </View>
                                     </View>
                                 )
@@ -1065,15 +1090,19 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 {/* Analysis */}
                 <Text style={[styles.h2, { fontSize: 18 }]}>Análisis</Text>
                 {reportEdits?.analysisText ? (
+                    // El analysisText editable YA incluye la frase de cierre ("Una buena
+                    // tasación..."), así que NO se agrega la línea estática (evita duplicado).
                     <Text style={styles.body}>{reportEdits.analysisText}</Text>
                 ) : (
-                    <Text style={styles.body}>
-                        Debido a la competencia para tener visitas y potencial de venta la propiedad se debería publicar en <Text style={{ color: colors.semaphoreGreen, fontWeight: 'bold' }}>{formatCurrency(recommendedPrice, valuationResult.currency)}.</Text>
-                    </Text>
+                    <>
+                        <Text style={styles.body}>
+                            Debido a la competencia para tener visitas y potencial de venta la propiedad se debería publicar en <Text style={{ color: colors.semaphoreGreen, fontWeight: 'bold' }}>{formatCurrency(recommendedPrice, valuationResult.currency)}.</Text>
+                        </Text>
+                        <Text style={[styles.body, { marginTop: 8 }]}>
+                            Una buena tasación siempre es vender al mejor valor que el mercado convalide en un plazo de 2 meses.
+                        </Text>
+                    </>
                 )}
-                <Text style={[styles.body, { marginTop: 8 }]}>
-                    Una buena tasación, siempre es, vender al mejor valor que el mercado convalide en un plazo de 2 meses.
-                </Text>
             </Page>
 
             {/* PAGE 10: COSTOS DE VENTA — solo si NO hay propiedades de compra */}
@@ -1248,7 +1277,9 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
                                                     {/* Features grid — chips con borde (igual que comparables) */}
                                                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
-                                                        <FeatureChip label={`${prop.features.coveredArea || 0} m² cub.`} />
+                                                        {(prop.features.coveredArea ?? 0) > 0 && (
+                                                            <FeatureChip label={`${prop.features.coveredArea} m² cub.`} />
+                                                        )}
                                                         {(prop.features.uncoveredArea ?? 0) > 0 && (
                                                             <FeatureChip label={`${prop.features.uncoveredArea} m² desc.`} />
                                                         )}
@@ -1519,12 +1550,16 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                     )}
 
                     <Text style={styles.h2}>Máxima Difusión</Text>
-                    <Text style={[styles.body, { marginBottom: 12 }]}>
+                    <Text style={[styles.body, { marginBottom: reportEdits?.strategyDiffusionText ? 24 : 12 }]}>
                         {reportEdits?.strategyDiffusionText || 'Tu propiedad merece tener máxima difusión. Que la vean en excelencia, todos los potenciales compradores. Para ello haremos fotos, video, tour virtual con profesional, publicaremos en todos los portales inmobiliarios de forma destacada, crearemos una página web para la propiedad y haremos campañas publicitarias en las redes sociales. Con esta estrategia tu propiedad la verán el triple de potenciales compradores.'}
                     </Text>
-                    <Text style={[styles.body, { marginBottom: 24 }]}>
-                        Si tenes el precio adecuado y máxima difusión, vas a tener consultas y visitas a tu propiedad
-                    </Text>
+                    {/* La frase de cierre solo cuando NO hay strategyDiffusionText editable
+                        (el default editable ya la incluye → evita duplicado). */}
+                    {!reportEdits?.strategyDiffusionText && (
+                        <Text style={[styles.body, { marginBottom: 24 }]}>
+                            Si tenés el precio adecuado y máxima difusión, vas a tener consultas y visitas a tu propiedad.
+                        </Text>
+                    )}
 
                     <Text style={styles.h2}>Seguimiento y Mejora Continua</Text>
                     <Text style={styles.body}>

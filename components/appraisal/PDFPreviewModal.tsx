@@ -8,6 +8,7 @@ import { Download, X, Loader2, Edit3, Eye } from 'lucide-react'
 import { ReportEditor } from './ReportEditor'
 import { DEFAULT_REPORT_EDITS } from '@/lib/types/report-edits'
 import { ValuationProperty, ValuationResult, PurchaseResult } from '@/lib/valuation/calculator'
+import { buildAppraisalFilename } from '@/lib/valuation/utils'
 import { ReportEdits } from '@/lib/types/report-edits'
 import { PDFReportDocument } from './pdf/PDFReport'
 import { pdf } from '@react-pdf/renderer'
@@ -192,7 +193,7 @@ export function PDFPreviewModal({
             const link = document.createElement('a')
             link.href = url
             const propertyName = subject.title || subject.location || 'Propiedad'
-            link.download = `Informe_Tasacion_${propertyName.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
+            link.download = buildAppraisalFilename(propertyName)
             document.body.appendChild(link)
             link.click()
             document.body.removeChild(link)
