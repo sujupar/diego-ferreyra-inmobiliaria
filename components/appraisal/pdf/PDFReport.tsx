@@ -25,6 +25,10 @@ interface PDFReportProps {
     reportEdits?: ReportEdits
     /** ISO date string (e.g. appraisal.created_at). Used in page-2 footer. */
     appraisalDate?: string
+    /** Foto del asesor que firma el informe (portada + páginas finales). Por agente:
+     *  se resuelve desde el perfil del agente asignado a la tasación; si no hay,
+     *  default = foto de Diego. */
+    advisorPhotoUrl?: string
 }
 
 // Map semaphore color names to actual color values
@@ -286,7 +290,7 @@ function PurchaseSimTable({
     )
 }
 
-export function PDFReportDocument({ subject, comparables, valuationResult, overpriced = [], purchaseProperties = [], purchaseResult, marketImageLabels = {}, marketImageUrls = {}, reportEdits, appraisalDate }: PDFReportProps) {
+export function PDFReportDocument({ subject, comparables, valuationResult, overpriced = [], purchaseProperties = [], purchaseResult, marketImageLabels = {}, marketImageUrls = {}, reportEdits, appraisalDate, advisorPhotoUrl = '/pdf-assets/photos/Foto Diego.png' }: PDFReportProps) {
     const neighborhood = extractNeighborhood(subject.location || '')
     const recommendedPrice = valuationResult.publicationPrice
     const noSaleZone = valuationResult.noSaleZonePrice
@@ -334,7 +338,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
                 {/* Diego Photo — mismo tratamiento que dividers (cover, full-bleed bottom-right) */}
                 <Image
-                    src="/pdf-assets/photos/Foto Diego.png"
+                    src={advisorPhotoUrl}
                     style={styles.dividerPhoto}
                 />
 
@@ -1612,7 +1616,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
                         <View style={{ width: 260 }}>
                             <Image
-                                src="/pdf-assets/photos/Foto Diego.png"
+                                src={advisorPhotoUrl}
                                 style={{ width: '100%', height: 320, objectFit: 'cover' }}
                             />
                         </View>
@@ -1629,7 +1633,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                     marginBottom: 40,
                 }}>
                     <Image
-                        src="/pdf-assets/photos/Foto Diego.png"
+                        src={advisorPhotoUrl}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />
                 </View>
