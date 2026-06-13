@@ -1016,7 +1016,10 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
 
                     {/* Comparable Rows */}
                     {valuationResult.comparableAnalysis.map((analysis, index) => {
-                        const prop = analysis.property || {} as typeof analysis.property
+                        // Fallback a `comparables[index]`: al previsualizar una tasación GUARDADA,
+                        // el valuation_result viene sin `analysis.property` (se quita al guardar),
+                        // y sin esto la tabla muestra Valor "0k" y M²/Edad/Amb en "-".
+                        const prop = analysis.property || comparables[index] || ({} as typeof analysis.property)
                         const propFeatures = (prop?.features || {}) as Record<string, number | undefined | null>
                         return (
                         <View key={index} style={{ flexDirection: 'row', borderBottom: `0.5px solid ${colors.lightGray}`, backgroundColor: index % 2 === 0 ? '#ffffff' : '#fafafa' }}>
