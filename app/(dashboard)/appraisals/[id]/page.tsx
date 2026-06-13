@@ -34,6 +34,7 @@ export default function AppraisalDetailPage() {
     const [subjectFeaturesOverride, setSubjectFeaturesOverride] = useState<PropertyFeatures | null>(null)
     const [valuationOverride, setValuationOverride] = useState<ValuationResult | null>(null)
     const [savingFeatures, setSavingFeatures] = useState(false)
+    const [advisorPhotoUrl, setAdvisorPhotoUrl] = useState<string | undefined>(undefined)
 
     // Market image settings are loaded lazily by PDFPreviewModal on open
 
@@ -74,6 +75,17 @@ export default function AppraisalDetailPage() {
     useEffect(() => {
         if (searchParams.get('editContact') === '1') setContactEditorOpen(true)
     }, [searchParams])
+
+    // Foto del asesor: resolver desde el agente asignado a la tasación. Si no está
+    // autorizado / no subió foto, queda undefined y el PDF usa la foto default (Diego).
+    useEffect(() => {
+        const agentId = appraisal?.assigned_to
+        if (!agentId) { setAdvisorPhotoUrl(undefined); return }
+        fetch(`/api/advisor-photo?id=${agentId}`)
+            .then(r => r.json())
+            .then(({ url }) => setAdvisorPhotoUrl(url || undefined))
+            .catch(() => setAdvisorPhotoUrl(undefined))
+    }, [appraisal?.assigned_to])
 
     // CRÍTICO: los useMemo deben llamarse SIEMPRE — antes de cualquier early
     // return — porque las reglas de hooks de React requieren orden estable.
@@ -596,6 +608,7 @@ export default function AppraisalDetailPage() {
                     )}
                     onReportEditsChange={setReportEdits}
                     appraisalDate={appraisal.created_at}
+                    advisorPhotoUrl={advisorPhotoUrl}
                 />
             )}
         </div>

@@ -108,6 +108,7 @@ function NewAppraisalPageContent() {
     // Origin and assignment
     const [origin, setOrigin] = useState<string>('')
     const [assignedTo, setAssignedTo] = useState<string>('')
+    const [advisorPhotoUrl, setAdvisorPhotoUrl] = useState<string | undefined>(undefined)
     const [advisors, setAdvisors] = useState<Array<{ id: string; full_name: string }>>([])
 
     // Clear stale PropertyWizard draft when starting a fresh creation
@@ -605,6 +606,16 @@ function NewAppraisalPageContent() {
         }, 800)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [subject, comparables, overpriced, purchaseProperties, expenseRates, purchaseScenarios, selectedScenarioIds, reportEdits])
+
+    // Foto del asesor para el PDF: resolver desde el agente asignado. Sin asignar /
+    // no autorizado / sin foto → undefined → el PDF usa la foto default (Diego).
+    useEffect(() => {
+        if (!assignedTo) { setAdvisorPhotoUrl(undefined); return }
+        fetch(`/api/advisor-photo?id=${assignedTo}`)
+            .then(r => r.json())
+            .then(({ url }) => setAdvisorPhotoUrl(url || undefined))
+            .catch(() => setAdvisorPhotoUrl(undefined))
+    }, [assignedTo])
 
     function handleCalculate() {
         if (!subject) return
@@ -1644,6 +1655,7 @@ function NewAppraisalPageContent() {
                     reportEdits={reportEdits}
                     onReportEditsChange={setReportEdits}
                     appraisalDate={new Date().toISOString()}
+                    advisorPhotoUrl={advisorPhotoUrl}
                 />
             )}
         </div>

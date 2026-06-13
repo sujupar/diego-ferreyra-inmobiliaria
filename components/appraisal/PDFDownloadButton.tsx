@@ -11,9 +11,10 @@ interface PDFDownloadButtonProps {
     comparables: ValuationProperty[]
     valuationResult: ValuationResult
     appraisalDate?: string
+    advisorPhotoUrl?: string
 }
 
-export function PDFDownloadButton({ subject, comparables, valuationResult, appraisalDate }: PDFDownloadButtonProps) {
+export function PDFDownloadButton({ subject, comparables, valuationResult, appraisalDate, advisorPhotoUrl }: PDFDownloadButtonProps) {
     const [isGenerating, setIsGenerating] = useState(false)
 
     const handleDownload = async () => {
@@ -32,6 +33,7 @@ export function PDFDownloadButton({ subject, comparables, valuationResult, appra
                 comparables={comparables}
                 valuationResult={valuationResult}
                 appraisalDate={appraisalDate}
+                advisorPhotoUrl={advisorPhotoUrl}
             />
 
             const asPdf = pdf(doc)

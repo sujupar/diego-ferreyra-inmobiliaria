@@ -25,12 +25,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         const { id } = await params
         const body = await request.json()
 
-        if (id === user.id) {
-            return NextResponse.json({ error: 'No puedes modificar tu propio estado' }, { status: 400 })
-        }
-
         const patch: Record<string, unknown> = {}
-        if (typeof body.is_active === 'boolean') patch.is_active = body.is_active
+        // is_active: no permitido cambiarse a uno mismo (lockout).
+        if (typeof body.is_active === 'boolean') {
+            if (id === user.id) {
+                return NextResponse.json({ error: 'No puedes modificar tu propio estado' }, { status: 400 })
+            }
+            patch.is_active = body.is_active
+        }
+        // report_in_pdf: autorizar que el perfil aparezca con su foto en el informe
+        // (un admin sí puede autorizarse a sí mismo).
+        if (typeof body.report_in_pdf === 'boolean') patch.report_in_pdf = body.report_in_pdf
 
         if (Object.keys(patch).length === 0) {
             return NextResponse.json({ error: 'Nada para actualizar' }, { status: 400 })

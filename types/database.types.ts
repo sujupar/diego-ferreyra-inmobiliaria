@@ -36,6 +36,8 @@ export interface Database {
                     phone: string | null
                     avatar_url: string | null
                     is_active: boolean
+                    report_photo_url: string | null
+                    report_in_pdf: boolean
                     created_at: string
                     updated_at: string
                 }
@@ -47,6 +49,8 @@ export interface Database {
                     phone?: string | null
                     avatar_url?: string | null
                     is_active?: boolean
+                    report_photo_url?: string | null
+                    report_in_pdf?: boolean
                     created_at?: string
                     updated_at?: string
                 }
@@ -58,6 +62,8 @@ export interface Database {
                     phone?: string | null
                     avatar_url?: string | null
                     is_active?: boolean
+                    report_photo_url?: string | null
+                    report_in_pdf?: boolean
                     created_at?: string
                     updated_at?: string
                 }

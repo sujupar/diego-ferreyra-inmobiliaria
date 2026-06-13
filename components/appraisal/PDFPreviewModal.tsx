@@ -77,6 +77,7 @@ interface PDFPreviewModalProps {
     reportEdits?: ReportEdits
     onReportEditsChange?: (edits: ReportEdits) => void
     appraisalDate?: string
+    advisorPhotoUrl?: string
 }
 
 export function PDFPreviewModal({
@@ -93,6 +94,7 @@ export function PDFPreviewModal({
     reportEdits,
     onReportEditsChange,
     appraisalDate,
+    advisorPhotoUrl,
 }: PDFPreviewModalProps) {
     const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('preview')
     const [isDownloading, setIsDownloading] = useState(false)
@@ -186,6 +188,7 @@ export function PDFPreviewModal({
                     marketImageUrls={effectiveUrls}
                     reportEdits={reportEdits}
                     appraisalDate={appraisalDate}
+                    advisorPhotoUrl={advisorPhotoUrl}
                 />
             )
             const blob = await pdf(doc).toBlob()
@@ -286,6 +289,7 @@ export function PDFPreviewModal({
                                 marketImageUrls={marketImageUrls}
                                 reportEdits={reportEdits}
                                 appraisalDate={appraisalDate}
+                                advisorPhotoUrl={advisorPhotoUrl}
                             />
                         </PDFViewer>
                     )}

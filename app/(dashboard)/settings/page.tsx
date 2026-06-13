@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Upload, Loader2, ImageIcon, RefreshCw, Save, Mail, Plus, X } from 'lucide-react'
+import { ReportPhotoSettings } from '@/components/settings/ReportPhotoSettings'
 
 interface ImageSlot {
     id: string
@@ -142,6 +143,8 @@ export default function SettingsPage() {
                 <h1 className="text-3xl font-bold tracking-tight">Configuracion</h1>
                 <p className="text-muted-foreground mt-1">Administra los datos del sistema</p>
             </div>
+
+            <ReportPhotoSettings />
 
             <section className="space-y-6">
                 <div>
