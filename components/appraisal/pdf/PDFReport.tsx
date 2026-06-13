@@ -290,7 +290,7 @@ function PurchaseSimTable({
     )
 }
 
-export function PDFReportDocument({ subject, comparables, valuationResult, overpriced = [], purchaseProperties = [], purchaseResult, marketImageLabels = {}, marketImageUrls = {}, reportEdits, appraisalDate, advisorPhotoUrl = '/pdf-assets/photos/Foto Diego.png' }: PDFReportProps) {
+export function PDFReportDocument({ subject, comparables, valuationResult, overpriced = [], purchaseProperties = [], purchaseResult, marketImageLabels = {}, marketImageUrls = {}, reportEdits, appraisalDate, advisorPhotoUrl = '/pdf-assets/photos/advisor-default.png' }: PDFReportProps) {
     const neighborhood = extractNeighborhood(subject.location || '')
     const recommendedPrice = valuationResult.publicationPrice
     const noSaleZone = valuationResult.noSaleZonePrice
@@ -613,9 +613,11 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
             <Page size="A4" style={styles.page}>
                 <View style={styles.backgroundPage}>
                     <Image
-                        src="/pdf-assets/graphics/section-divider-bg.jpg"
+                        src="/pdf-assets/graphics/section-divider-bg-clean.png"
                         style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                     />
+                    {/* Foto del asesor superpuesta (dinámica por agente; default = Diego) */}
+                    <Image src={advisorPhotoUrl} style={styles.dividerPhoto} />
                     <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
                         <Text style={[styles.dividerTitle, { textAlign: 'left' }]}>
                             PROPIEDADES{'\n'}QUE{'\n'}COMPITEN
@@ -1209,16 +1211,15 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
             {/* PURCHASE PROPERTIES SECTION (conditional) */}
             {purchaseProperties.length > 0 && (
                 <>
-                    {/* PURCHASE DIVIDER PAGE — mismo tratamiento que "PROPIEDADES QUE
-                        COMPITEN": el fondo section-divider-bg.jpg YA incluye a Diego, así
-                        que NO se agrega overlay azul ni foto sobrepuesta (eso causaba el
-                        doble-Diego: la foto encima tapando al Diego del fondo). */}
+                    {/* PURCHASE DIVIDER PAGE — fondo sin persona + foto del asesor
+                        superpuesta (dinámica por agente; default = Diego). */}
                     <Page size="A4" style={styles.page}>
                         <View style={styles.backgroundPage}>
                             <Image
-                                src="/pdf-assets/graphics/section-divider-bg.jpg"
+                                src="/pdf-assets/graphics/section-divider-bg-clean.png"
                                 style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                             />
+                            <Image src={advisorPhotoUrl} style={styles.dividerPhoto} />
                             <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
                                 <Text style={[styles.dividerTitle, { textAlign: 'left' }]}>
                                     PROPIEDADES{'\n'}PARA{'\n'}COMPRA
@@ -1348,11 +1349,10 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                         <Page size="A4" style={styles.page}>
                             <View style={styles.backgroundPage}>
                                 <Image
-                                    src="/pdf-assets/graphics/section-divider-bg.jpg"
+                                    src="/pdf-assets/graphics/section-divider-bg-clean.png"
                                     style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                                 />
-                                {/* Sin overlay ni foto sobrepuesta — Diego ya está en el fondo
-                                    (igual que "QUE COMPITEN" y "PARA COMPRA"). */}
+                                <Image src={advisorPhotoUrl} style={styles.dividerPhoto} />
                                 <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
                                     <Text style={[styles.dividerTitle, { textAlign: 'left', fontSize: 30 }]}>
                                         SIMULACIÓN{'\n'}GASTOS E{'\n'}IMPUESTOS
@@ -1535,9 +1535,10 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
             <Page size="A4" style={styles.page}>
                 <View style={styles.backgroundPage}>
                     <Image
-                        src="/pdf-assets/graphics/section-divider-bg.jpg"
+                        src="/pdf-assets/graphics/section-divider-bg-clean.png"
                         style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                     />
+                    <Image src={advisorPhotoUrl} style={styles.dividerPhoto} />
                     <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
                         <Text style={[styles.dividerTitle, { textAlign: 'left' }]}>
                             ESTRATEGIA{'\n'}DE VENTA
@@ -1617,7 +1618,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                         <View style={{ width: 260 }}>
                             <Image
                                 src={advisorPhotoUrl}
-                                style={{ width: '100%', height: 320, objectFit: 'cover' }}
+                                style={{ width: '100%', height: 320, objectFit: 'cover', objectPosition: 'top' }}
                             />
                         </View>
                     </View>
@@ -1634,7 +1635,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 }}>
                     <Image
                         src={advisorPhotoUrl}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }}
                     />
                 </View>
 

@@ -334,9 +334,11 @@ export const styles = StyleSheet.create({
         position: 'absolute',
         bottom: 0,
         right: 0,
-        width: 280,
-        height: 400,
-        objectFit: 'cover',
+        // Cutout de cuerpo entero (transparente) abajo-derecha. `contain` muestra
+        // a la persona completa sin recortar; el box respeta el aspecto 640:1067.
+        width: 276,
+        height: 460,
+        objectFit: 'contain',
     },
 
     // Footer (Page 1)
