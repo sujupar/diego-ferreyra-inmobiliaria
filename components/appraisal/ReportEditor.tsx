@@ -177,6 +177,40 @@ export function ReportEditor({
                 </section>
             )}
 
+            {/* 5b. PROPIEDADES PARA COMPRA - Semaphore picker */}
+            {purchaseProperties.length > 0 && (
+                <section className="space-y-4">
+                    <h3 className="text-lg font-semibold text-primary border-b pb-2">
+                        Propiedades para Compra — Color del Semaforo
+                    </h3>
+                    <div className="space-y-3">
+                        {purchaseProperties.map((prop, index) => (
+                            <div key={index} className="flex items-center gap-4 p-3 bg-muted/30 rounded-lg">
+                                <span className="text-sm font-medium flex-1 truncate">
+                                    {prop.location || prop.title || `Compra ${index + 1}`}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                    {formatCurrency(prop.price || 0, valuationResult.currency)}
+                                </span>
+                                <div className="flex gap-2">
+                                    {SEMAPHORE_COLORS.map(sc => (
+                                        <button
+                                            key={sc.value}
+                                            onClick={() => updateSemaphore(`purchase-${index}`, sc.value)}
+                                            className={`w-7 h-7 rounded-full ${sc.bg} transition-all ${getSemaphore(`purchase-${index}`, 'green') === sc.value
+                                                ? `ring-2 ${sc.ring} scale-110`
+                                                : 'opacity-40 hover:opacity-70'
+                                            }`}
+                                            title={sc.label}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
+
             {/* 6. MAPA DE VALOR */}
             <section className="space-y-4">
                 <h3 className="text-lg font-semibold text-primary border-b pb-2">Mapa de Valor</h3>

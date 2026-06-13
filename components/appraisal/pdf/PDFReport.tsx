@@ -189,12 +189,13 @@ function SaleSimTable({
             <ExpRow label={`Gastos Escritura ${rates.deedExpensesPercent}% s/venta`} value={r.deedExpenses} currency={r.currency} />
             <ExpRow label={`Honorarios Inmobiliaria ${rates.agencyFeesPercent}% s/venta`} value={r.agencyFees} currency={r.currency} />
             <ExpRow label="Total gastos venta" value={r.totalExpenses} currency={r.currency} bold />
+            {/* Dinero luego de venta — el dato clave: caja verde prominente */}
             <View style={{
-                marginTop: 6, flexDirection: 'row', justifyContent: 'space-between',
-                padding: 6, backgroundColor: '#ecfdf5', borderRadius: 2,
+                marginTop: 8, padding: 12, backgroundColor: colors.semaphoreGreen, borderRadius: 4,
+                alignItems: 'center',
             }}>
-                <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#065f46' }}>Dinero luego de venta</Text>
-                <Text style={{ fontSize: 9, fontWeight: 'bold', color: colors.semaphoreGreen }}>
+                <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.white, letterSpacing: 0.5 }}>DINERO LUEGO DE VENTA</Text>
+                <Text style={{ fontSize: 20, fontWeight: 'bold', color: colors.white, marginTop: 3 }}>
                     USD {r.moneyInHand.toLocaleString()}
                 </Text>
             </View>
@@ -262,19 +263,21 @@ function PurchaseSimTable({
             <ExpRow label={`Gastos Escritura ${scenario.rates.deedExpensesPercent}%`} value={scenario.deedExpenses} currency={currency} />
             <ExpRow label={`Honor. Inmob. ${scenario.rates.buyerCommissionPercent}%`} value={scenario.buyerCommission} currency={currency} />
             <ExpRow label="Total gastos compra" value={scenario.totalPurchaseCosts} currency={currency} bold />
-            <View style={{ marginTop: 6, padding: 6, backgroundColor: '#eff6ff', borderRadius: 2 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#1e40af' }}>Costo total</Text>
-                    <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.primary }}>
+            {/* Costo total + Diferencia En Mano en cajas (Diferencia = el dato más
+                importante: caja verde/rojo, la más grande). */}
+            <View style={{ marginTop: 6 }}>
+                <View style={{ padding: 7, backgroundColor: colors.primary, borderRadius: 3, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 6.5, fontWeight: 'bold', color: colors.white, letterSpacing: 0.3 }}>COSTO TOTAL</Text>
+                    <Text style={{ fontSize: 12, fontWeight: 'bold', color: colors.white, marginTop: 1 }} wrap={false}>
                         USD {scenario.totalCostWithPurchase.toLocaleString()}
                     </Text>
                 </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
-                    <Text style={{ fontSize: 8, fontWeight: 'bold' }}>Diferencia En Mano</Text>
-                    <Text style={{
-                        fontSize: 8, fontWeight: 'bold',
-                        color: scenario.remainingMoney >= 0 ? colors.semaphoreGreen : colors.semaphoreRed,
-                    }}>
+                <View style={{
+                    marginTop: 4, padding: 9, borderRadius: 3, alignItems: 'center',
+                    backgroundColor: scenario.remainingMoney >= 0 ? colors.semaphoreGreen : colors.semaphoreRed,
+                }}>
+                    <Text style={{ fontSize: 6.5, fontWeight: 'bold', color: colors.white, letterSpacing: 0.3 }}>DIFERENCIA EN MANO</Text>
+                    <Text style={{ fontSize: 15, fontWeight: 'bold', color: colors.white, marginTop: 1 }} wrap={false}>
                         USD {scenario.remainingMoney.toLocaleString()}
                     </Text>
                 </View>
@@ -1250,8 +1253,8 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                                 borderBottomColor: '#e2e8f0',
                                                 borderBottomStyle: 'solid',
                                             }}>
-                                                {/* Photo (no semaphore for purchase) — borderWidth/Color/Style separados (react-pdf no soporta shorthand) */}
-                                                <View style={{ width: '32%' }}>
+                                                {/* Photo con semáforo configurable (default verde; el asesor puede poner amarillo/rojo) */}
+                                                <View style={{ position: 'relative', width: '32%' }}>
                                                     {prop.images && prop.images[0] ? (
                                                         <Image
                                                             src={prop.images[0]}
@@ -1267,6 +1270,17 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                                     ) : (
                                                         <View style={{ width: '100%', height: 200, backgroundColor: colors.lightGray }} />
                                                     )}
+                                                    <View style={{ position: 'absolute', top: 8, left: 8 }}>
+                                                        <View style={{
+                                                            width: 32,
+                                                            height: 32,
+                                                            borderRadius: 16,
+                                                            backgroundColor: getSemaphoreColorValue(reportEdits?.semaphoreOverrides?.[`purchase-${globalIndex}`] || 'green'),
+                                                            borderWidth: 2,
+                                                            borderColor: colors.white,
+                                                            borderStyle: 'solid',
+                                                        }} />
+                                                    </View>
                                                 </View>
 
                                                 {/* Info */}
@@ -1367,7 +1381,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                     <SaleSimTable valuationResult={valuationResult} subject={subject} neighborhood={neighborhood} />
                                     {visibleScenarios.length > 0 && (
                                         <View style={{ marginTop: 16 }}>
-                                            <Text style={[styles.h3, { marginBottom: 10, textAlign: 'center' }]}>Escenarios de Compra</Text>
+                                            <Text style={[styles.h3, { fontSize: 20, marginBottom: 12, textAlign: 'center' }]}>Escenarios de Compra</Text>
                                             {/* Distribución uniforme: flex: 1 reparte el ancho disponible entre N escenarios.
                                                 Si entran muchos, el flexWrap los baja a una segunda fila manteniendo gap. */}
                                             <View style={{
