@@ -26,7 +26,7 @@ Las dos landings:
 |---|----------|----------|
 | 1 | Alcance GHL | **Retiro total.** El CRM/pipeline queda 100% en esta plataforma como única fuente de verdad. Se desmantelan `ghl-poll` + webhook GHL. |
 | 2 | Dominio de campaña | `inmobiliariadiegoferreyra.com` (dominio propio, distinto de `inmodf.com.ar` donde corre la app). Paths exactos a preservar: `/tasacion-directa` y `/vsl-clase-propietarios`. DNS reapuntable → el link de campaña **no cambia**. |
-| 3 | Pixel Meta | **Unificar todo en UN pixel/dataset.** (Prerrequisito: confirmar si `589579724932979` es el mismo que `META_PIXEL_ID` o cuál se elige como maestro.) |
+| 3 | Pixel Meta | **Unificar todo en UN pixel/dataset.** ✅ Confirmado por el usuario (2026-06-15): el pixel `589579724932979` de la clase **es el mismo** que `META_PIXEL_ID` de campañas → es el pixel maestro. |
 | 4 | Datos del lead | **Formularios mínimos + enriquecer con señales automáticas** (fbp/fbc/click-id/IP/UA + ciudad/país derivados + external_id). No agregar campos que bajen conversión. |
 | 5 | Públicos Meta | **Un público por etapa clave + mover al lead al avanzar (DELETE del anterior, POST al nuevo) + EXCLUIR convertidos** (`captured`/`lost`) del prospecting. |
 | 6 | Portadas de testimonios | **Frame real del video, tratado** (encuadre, color, marca sutil, badge con nombre + resultado, play premium). 100% auténtico — la cara es la persona real. |
@@ -81,8 +81,11 @@ Principio rector: **construir reutilizando lo que ya existe** (Pixel `MetaPixel.
 
 ### 4.4 Media re-alojada en Supabase Storage
 
-- **URGENTE (Fase 0):** descargar de los CDN de GHL **antes** de que cierre la cuenta: 1 video hero VSL (clase), 1 video hero (tasación), 3 videos de testimonios (uno es `.MOV` → transcodificar a MP4 H.264 para compatibilidad cross-browser), y los posters PNG.
-- Subir a Supabase Storage (bucket público o con signed URLs, según patrón de media de propiedades). Reemplazar todas las URLs `filesafe.space` / `storage.googleapis.com/msgsndr` / `images.leadconnectorhq.com`.
+- ✅ **Fase 0 EJECUTADA (2026-06-15).** Las 12 piezas se descargaron de los CDN de GHL y se subieron al bucket público **`funnel-media`** de Supabase. Inventario completo en [`2026-06-15-fase0-media-rescue-manifest.json`](./2026-06-15-fase0-media-rescue-manifest.json). Detalle:
+  - **2 heroes** (tasación 3:15 / clase VSL 3:45) eran **HEVC 1080p** (242MB/196MB) → exceden el límite global de Storage (~50MB) **y** HEVC no reproduce en Chrome/Firefox. Se transcodificaron a **H.264 720p (~21/22MB)** en `funnel-media/web/` (`tasacion-hero-web.mp4`, `clase-vsl-web.mp4`). El RAW HEVC master quedó **solo en local** (`media-rescue/raw/`, gitignored) — archivar aparte si se sube el límite del proyecto.
+  - **3 videos de testimonios** (verticales) en `funnel-media/raw/`: Pablo (h264 480x848) y Claudia (h264 720x1280) ya web-ready; **Federico** es `.mov` **HEVC** → pendiente transcodificar a H.264 en Fase 1.
+  - **7 imágenes** en `funnel-media/raw/`: 3 posters de testimonios (1280x720, landscape — no coinciden con los videos verticales), logo "DIEGO FERREYRA / Martillero CUCICBA 8266", headshot de Diego, gráfico decorativo "VIP TICKET", y el poster-frame del VSL.
+- Fase 1 reemplaza todas las URLs `filesafe.space` / `storage.googleapis.com/msgsndr` / `images.leadconnectorhq.com` por las de `funnel-media`, y trata las portadas de testimonios (frame real + badge).
 
 ---
 
@@ -288,19 +291,20 @@ Reutilizar: `landing_page_visits` (ya acepta `funnel_type` `clase_gratuita`/`tas
 
 ## 14. Prerrequisitos del usuario (acciones manuales)
 
-- [ ] Confirmar el **pixel maestro** (¿`589579724932979` == `META_PIXEL_ID`? si no, elegir uno).
+- [x] Confirmar el **pixel maestro** → ✅ `589579724932979` = `META_PIXEL_ID` (confirmado 2026-06-15).
+- [x] **Rescatar la media de GHL** → ✅ Fase 0 ejecutada: 12 piezas en el bucket `funnel-media` (+ heroes transcodificados a H.264). Ver manifest.
 - [ ] Aceptar los **Custom Audience Terms** en el UI de Meta con el usuario/sistema del negocio (`facebook.com/ads/manage/customaudiences/tos`).
 - [ ] Confirmar **Advanced Access `ads_management`** (App Review) para escribir miembros (`/users`).
 - [ ] Acceso al **DNS** de `inmobiliariadiegoferreyra.com` (registrador) + bajar TTL antes del corte.
-- [ ] **URGENTE:** facilitar/confirmar los **videos** (hero VSL clase, hero tasación, 3 testimonios) — se bajan de GHL ahora, antes de que cierre.
-- [ ] Correr las **migraciones** en el SQL Editor de Supabase.
+- [ ] Correr las **migraciones** en el SQL Editor de Supabase (cuando estén escritas por fase).
 - [ ] Cargar **env vars** en Netlify (`CRON_SECRET`, `META_*`, `IP_HASH_SALT`, Turnstile/hCaptcha keys, etc.).
+- [ ] (Opcional) Subir el **límite global de Storage** del proyecto si se quieren archivar los heroes RAW HEVC en Supabase (hoy solo en local).
 
 ---
 
 ## 15. Fases de implementación (cada una → su propio plan)
 
-- **Fase 0 — Rescate de assets + prerrequisitos.** Bajar media de GHL (URGENTE), confirmar pixel, scaffolding de env/migraciones.
+- **Fase 0 — Rescate de assets + prerrequisitos.** ✅ **HECHO (2026-06-15):** media bajada de GHL + subida a `funnel-media` (heroes transcodificados a H.264), pixel maestro confirmado. Pendientes manuales del usuario: ToS Custom Audiences, Advanced Access, acceso DNS, env vars (ver §14).
 - **Fase 1 — Páginas nativas.** Rutas, componentes premium (motion+gsap), testimonios en DB, media en Storage, páginas de gracias. En staging `inmodf.com.ar`.
 - **Fase 2 — Captura de leads.** Lib compartido `createFunnelLead`, endpoints públicos anti-spam, paridad de origin/notificación.
 - **Fase 3 — Conversión Meta unificada.** Pixel (eventos del embudo) + CAPI inline + `event_id` compartido + advanced matching + validación test events.

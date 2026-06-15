@@ -1,0 +1,116 @@
+{
+  "_comment": "Fase 0 — rescate de media de las landings HighLevel. Generado 2026-06-15. Los bytes RAW están en media-rescue/raw/ (gitignored, ~545MB) y subidos a Supabase Storage bucket público 'funnel-media'. Los 2 heroes RAW son HEVC 1080p y EXCEDEN el límite global de Storage (~50MB) → se subió una versión web H.264 720p a funnel-media/web/; el RAW HEVC master queda SOLO en local (archivar aparte si se sube el límite del proyecto).",
+  "storage_bucket": "funnel-media",
+  "public_url_base": "https://mncsnastmcjdjxrehdep.supabase.co/storage/v1/object/public/funnel-media",
+  "ghl_location_id": "Zd3mW81lbIpC8mi06Cgf",
+  "meta_pixel_id": "589579724932979",
+  "assets": [
+    {
+      "role": "hero_video_tasacion",
+      "page": "tasacion-directa",
+      "source_url": "https://assets.cdn.filesafe.space/Zd3mW81lbIpC8mi06Cgf/media/69b98a87f8443c2fb85b1044.mp4",
+      "raw_local": "media-rescue/raw/69b98a87f8443c2fb85b1044.mp4",
+      "raw_codec": "hevc 1920x1080 10.2Mbps 195.7s 242MB",
+      "raw_in_storage": false,
+      "web_storage_path": "web/tasacion-hero-web.mp4",
+      "web_codec": "h264 720p ~21MB",
+      "notes": "Video de ventas (~3:15). RAW HEVC excede límite Storage; usar la versión web H.264."
+    },
+    {
+      "role": "hero_video_clase_vsl",
+      "page": "vsl-clase-propietarios",
+      "source_url": "https://storage.googleapis.com/msgsndr/Zd3mW81lbIpC8mi06Cgf/media/689250d66c57ca70e107a704.mp4",
+      "raw_local": "media-rescue/raw/689250d66c57ca70e107a704.mp4",
+      "raw_codec": "hevc 1920x1080 7.1Mbps 225s 196MB",
+      "raw_in_storage": false,
+      "web_storage_path": "web/clase-vsl-web.mp4",
+      "web_codec": "h264 720p ~22MB",
+      "notes": "VSL principal (~3:45). RAW HEVC excede límite Storage; usar la versión web H.264."
+    },
+    {
+      "role": "testimonial_video_federico",
+      "client": "Federico",
+      "source_url": "https://storage.googleapis.com/msgsndr/Zd3mW81lbIpC8mi06Cgf/media/689e7b82d382f2bce214fe23.mov",
+      "raw_local": "media-rescue/raw/689e7b82d382f2bce214fe23.mov",
+      "raw_codec": "hevc 1920x1080 (MOV/QuickTime) 31MB",
+      "raw_in_storage": true,
+      "storage_path": "raw/689e7b82d382f2bce214fe23.mov",
+      "todo_fase1": "Transcodificar a H.264 MP4 para compatibilidad cross-browser (HEVC no reproduce en Chrome/Firefox)."
+    },
+    {
+      "role": "testimonial_video_pablo",
+      "client": "Pablo",
+      "source_url": "https://storage.googleapis.com/msgsndr/Zd3mW81lbIpC8mi06Cgf/media/689e7b82960f1a6cf1509715.mp4",
+      "raw_local": "media-rescue/raw/689e7b82960f1a6cf1509715.mp4",
+      "raw_codec": "h264 480x848 (vertical) 8MB",
+      "raw_in_storage": true,
+      "storage_path": "raw/689e7b82960f1a6cf1509715.mp4",
+      "notes": "Vertical, ya H.264 (web-ready). Baja resolución (480w)."
+    },
+    {
+      "role": "testimonial_video_claudia",
+      "client": "Claudia",
+      "source_url": "https://storage.googleapis.com/msgsndr/Zd3mW81lbIpC8mi06Cgf/media/689e7b82f0feb60dbaa365e5.mp4",
+      "raw_local": "media-rescue/raw/689e7b82f0feb60dbaa365e5.mp4",
+      "raw_codec": "h264 720x1280 (vertical) 18MB",
+      "raw_in_storage": true,
+      "storage_path": "raw/689e7b82f0feb60dbaa365e5.mp4",
+      "notes": "Vertical, ya H.264 (web-ready)."
+    },
+    {
+      "role": "testimonial_poster_federico",
+      "source_url": "https://assets.cdn.filesafe.space/Zd3mW81lbIpC8mi06Cgf/media/689e7ad2a58c4c5536acec70.png",
+      "storage_path": "raw/689e7ad2a58c4c5536acec70.png",
+      "raw_in_storage": true,
+      "dims": "1280x720 (landscape, NO coincide con el video vertical)",
+      "todo_fase1": "Portada = frame real del video + badge 'Vendió en 25 días'."
+    },
+    {
+      "role": "testimonial_poster_pablo",
+      "source_url": "https://assets.cdn.filesafe.space/Zd3mW81lbIpC8mi06Cgf/media/689e7ad2f0feb6b89ca35965.png",
+      "storage_path": "raw/689e7ad2f0feb6b89ca35965.png",
+      "raw_in_storage": true,
+      "dims": "1280x720"
+    },
+    {
+      "role": "testimonial_poster_claudia",
+      "source_url": "https://assets.cdn.filesafe.space/Zd3mW81lbIpC8mi06Cgf/media/689e7ad2960f1aed2e508aae.png",
+      "storage_path": "raw/689e7ad2960f1aed2e508aae.png",
+      "raw_in_storage": true,
+      "dims": "1280x720"
+    },
+    {
+      "role": "logo_diego_ferreyra",
+      "source_url": "https://assets.cdn.filesafe.space/Zd3mW81lbIpC8mi06Cgf/media/682c6cc8e10a088724d26be6.png",
+      "storage_path": "raw/682c6cc8e10a088724d26be6.png",
+      "raw_in_storage": true,
+      "dims": "2500x547 (wordmark sobre transparente)",
+      "content": "Logo 'DIEGO FERREYRA — Martillero Público - CUCICBA 8266'"
+    },
+    {
+      "role": "headshot_diego",
+      "source_url": "https://assets.cdn.filesafe.space/Zd3mW81lbIpC8mi06Cgf/media/68669289ec92f406df0238d6.png",
+      "storage_path": "raw/68669289ec92f406df0238d6.png",
+      "raw_in_storage": true,
+      "dims": "640x641",
+      "content": "Foto de perfil de Diego Ferreyra (saco azul, fondo blanco) — sección '¿Quién Soy?'"
+    },
+    {
+      "role": "decorative_vip_ticket",
+      "source_url": "https://assets.cdn.filesafe.space/Zd3mW81lbIpC8mi06Cgf/media/68669663006fa74080328b4e.png",
+      "storage_path": "raw/68669663006fa74080328b4e.png",
+      "raw_in_storage": true,
+      "dims": "692x360",
+      "content": "Gráfico 'VIP TICKET / ADMIT ONE' (dorado/negro) — elemento decorativo CTA clase. Evaluar si se conserva."
+    },
+    {
+      "role": "vsl_poster_frame",
+      "page": "vsl-clase-propietarios",
+      "source_url": "https://assets.cdn.filesafe.space/Zd3mW81lbIpC8mi06Cgf/media/689e7d20f20a61e8e7ecf499.png",
+      "storage_path": "raw/689e7d20f20a61e8e7ecf499.png",
+      "raw_in_storage": true,
+      "dims": "3018x1648",
+      "content": "Frame poster del VSL (Diego en cámara, pared de ladrillo, caption 'impuestos por vender')."
+    }
+  ]
+}
