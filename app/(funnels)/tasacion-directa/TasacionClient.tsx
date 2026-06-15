@@ -10,6 +10,21 @@ import type { FunnelLeadValues } from '@/components/funnel/FunnelLeadForm'
 import type { FunnelTestimonial } from '@/lib/funnel/testimonials'
 import { TASACION_CONTENT as C, BRAND } from '@/lib/funnel/content'
 
+function Cta({ onClick, label, note }: { onClick: () => void; label: string; note?: string }) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <button
+        type="button"
+        onClick={onClick}
+        className="rounded-xl bg-[#00BF63] px-8 py-4 text-lg font-extrabold text-white shadow-xl transition hover:scale-[1.02] hover:brightness-95"
+      >
+        {label}
+      </button>
+      {note && <p className="text-sm text-[#777]">{note}</p>}
+    </div>
+  )
+}
+
 export function TasacionClient({
   testimonials,
   heroVideoUrl,
@@ -25,19 +40,6 @@ export function TasacionClient({
   async function handleSubmit(_values: FunnelLeadValues) {
     await new Promise((r) => setTimeout(r, 400))
   }
-
-  const Cta = ({ note }: { note?: string }) => (
-    <div className="flex flex-col items-center gap-2">
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="rounded-xl bg-[#00BF63] px-8 py-4 text-lg font-extrabold text-white shadow-xl transition hover:scale-[1.02] hover:brightness-95"
-      >
-        {C.cta.label}
-      </button>
-      {note && <p className="text-sm text-[#777]">{note}</p>}
-    </div>
-  )
 
   return (
     <main>
@@ -59,7 +61,7 @@ export function TasacionClient({
           <FunnelHeroVideo src={heroVideoUrl} className="aspect-video" />
         </div>
         <div className="mt-8">
-          <Cta note={C.cta.note} />
+          <Cta onClick={() => setOpen(true)} label={C.cta.label} note={C.cta.note} />
         </div>
       </section>
 
@@ -107,7 +109,7 @@ export function TasacionClient({
           {C.finalHeading}
         </h2>
         <div className="mt-8">
-          <Cta />
+          <Cta onClick={() => setOpen(true)} label={C.cta.label} />
         </div>
       </section>
 
