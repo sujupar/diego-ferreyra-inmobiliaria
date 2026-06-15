@@ -10,6 +10,21 @@ import type { FunnelLeadValues } from '@/components/funnel/FunnelLeadForm'
 import type { FunnelTestimonial } from '@/lib/funnel/testimonials'
 import { CLASE_CONTENT as C, BRAND } from '@/lib/funnel/content'
 
+function Cta({ onClick, label, note }: { onClick: () => void; label: string; note?: string }) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <button
+        type="button"
+        onClick={onClick}
+        className="rounded-xl bg-[#00BF63] px-10 py-4 text-lg font-extrabold text-white shadow-xl transition hover:scale-[1.02] hover:brightness-95"
+      >
+        {label}
+      </button>
+      {note && <p className="text-sm text-[#777]">{note}</p>}
+    </div>
+  )
+}
+
 export function ClaseClient({
   testimonials,
   vslUrl,
@@ -27,19 +42,6 @@ export function ClaseClient({
   async function handleSubmit(_values: FunnelLeadValues) {
     await new Promise((r) => setTimeout(r, 400))
   }
-
-  const Cta = () => (
-    <div className="flex flex-col items-center gap-2">
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="rounded-xl bg-[#00BF63] px-10 py-4 text-lg font-extrabold text-white shadow-xl transition hover:scale-[1.02] hover:brightness-95"
-      >
-        {C.cta.label}
-      </button>
-      <p className="text-sm text-[#777]">{C.cta.note}</p>
-    </div>
-  )
 
   return (
     <main>
@@ -61,7 +63,7 @@ export function ClaseClient({
           <FunnelHeroVideo src={vslUrl} poster={vslPoster} className="aspect-video" />
         </div>
         <div className="mt-8">
-          <Cta />
+          <Cta onClick={() => setOpen(true)} label={C.cta.label} note={C.cta.note} />
         </div>
       </section>
 
@@ -99,7 +101,7 @@ export function ClaseClient({
       <section className="bg-[#0d2d49] py-16 text-center">
         <ScrollReveal>
           <div className="px-4">
-            <Cta />
+            <Cta onClick={() => setOpen(true)} label={C.cta.label} note={C.cta.note} />
           </div>
         </ScrollReveal>
       </section>
