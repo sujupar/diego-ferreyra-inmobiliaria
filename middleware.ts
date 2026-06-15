@@ -3,7 +3,17 @@ import { updateSession } from '@/lib/supabase/middleware'
 
 export async function middleware(request: NextRequest) {
   // Rutas públicas de landing (no requieren auth)
-  if (request.nextUrl.pathname.startsWith('/p/')) {
+  // Rutas públicas de funnels (no requieren auth) — staging + producción
+  const publicFunnelPaths = [
+    '/tasacion-directa',
+    '/vsl-clase-propietarios',
+    '/gracias-tasacion',
+    '/gracias-clase',
+  ]
+  if (
+    request.nextUrl.pathname.startsWith('/p/') ||
+    publicFunnelPaths.some((p) => request.nextUrl.pathname === p || request.nextUrl.pathname.startsWith(p + '/'))
+  ) {
     return NextResponse.next()
   }
   return await updateSession(request)
