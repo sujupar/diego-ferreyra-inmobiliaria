@@ -9,6 +9,57 @@ export type Json =
 export interface Database {
     public: {
         Tables: {
+            funnel_testimonials: {
+                Row: {
+                    id: string
+                    key: string
+                    client_name: string
+                    location: string
+                    title: string
+                    result_badge: string | null
+                    quote: string
+                    video_url: string
+                    poster_url: string
+                    is_vertical: boolean
+                    sort_order: number
+                    active: boolean
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    key: string
+                    client_name: string
+                    location: string
+                    title: string
+                    result_badge?: string | null
+                    quote: string
+                    video_url: string
+                    poster_url: string
+                    is_vertical?: boolean
+                    sort_order?: number
+                    active?: boolean
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    key?: string
+                    client_name?: string
+                    location?: string
+                    title?: string
+                    result_badge?: string | null
+                    quote?: string
+                    video_url?: string
+                    poster_url?: string
+                    is_vertical?: boolean
+                    sort_order?: number
+                    active?: boolean
+                    created_at?: string
+                    updated_at?: string
+                }
+                Relationships: []
+            }
             ml_category_attributes: {
                 Row: {
                     category_id: string
