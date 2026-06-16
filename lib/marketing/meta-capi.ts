@@ -25,6 +25,7 @@
  * Docs: https://developers.facebook.com/docs/marketing-api/conversions-api/
  */
 import { createHash } from 'node:crypto'
+import { normalizeArPhone } from './normalize-phone'
 
 const META_API_VERSION = 'v21.0'
 
@@ -43,6 +44,8 @@ export interface CapiUserData {
   /** IP y User-Agent del request original */
   clientIpAddress?: string | null
   clientUserAgent?: string | null
+  /** ID estable del prospecto (ej. contact_id). Alto valor de match. Se hashea SHA-256. */
+  externalId?: string | null
 }
 
 export interface CapiCustomData {
@@ -75,9 +78,11 @@ function hashEmail(email: string): string {
 }
 
 function hashPhone(phone: string): string {
-  // Meta espera solo dígitos, sin '+' ni espacios
-  const digitsOnly = phone.replace(/\D/g, '')
-  return sha256(digitsOnly)
+  // Meta espera solo dígitos, sin '+' ni espacios. Normalizamos AR (cód. país 54 + 9
+  // para móviles, sin 0 de área ni 15) para maximizar el match rate.
+  const normalized = normalizeArPhone(phone)
+  if (!normalized) return ''
+  return sha256(normalized)
 }
 
 function hashName(name: string): string {
@@ -87,11 +92,15 @@ function hashName(name: string): string {
 function buildHashedUserData(input: CapiUserData): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   if (input.email) out.em = [hashEmail(input.email)]
-  if (input.phone) out.ph = [hashPhone(input.phone)]
+  if (input.phone) {
+    const ph = hashPhone(input.phone)
+    if (ph) out.ph = [ph]
+  }
   if (input.firstName) out.fn = [hashName(input.firstName)]
   if (input.lastName) out.ln = [hashName(input.lastName)]
   if (input.city) out.ct = [sha256(input.city.trim().toLowerCase().replace(/\s+/g, ''))]
   if (input.countryCode) out.country = [sha256(input.countryCode.trim().toLowerCase())]
+  if (input.externalId) out.external_id = [sha256(input.externalId.trim().toLowerCase())]
   // _fbp y _fbc no se hashean (van en plano por contrato Meta)
   if (input.fbp) out.fbp = input.fbp
   if (input.fbc) out.fbc = input.fbc
