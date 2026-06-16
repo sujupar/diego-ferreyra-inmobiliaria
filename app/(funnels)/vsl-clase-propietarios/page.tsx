@@ -14,6 +14,7 @@ export const metadata: Metadata = {
 
 export default async function ClasePage() {
   const testimonials = await getActiveTestimonials()
+  const pixelId = process.env.META_PIXEL_ID ?? ''
   return (
     <>
       <LandingVisitTracker slug="vsl-clase-propietarios" funnelType="clase_gratuita" />
@@ -22,6 +23,7 @@ export default async function ClasePage() {
         vslUrl={funnelMediaUrl(CLASE_CONTENT.hero.videoPath)}
         vslPoster={funnelMediaUrl(CLASE_CONTENT.hero.posterPath)}
         headshotUrl={funnelMediaUrl(CLASE_CONTENT.bio.headshotPath)}
+        pixelId={pixelId}
       />
     </>
   )

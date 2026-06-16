@@ -6,6 +6,7 @@ import { ScrollReveal } from '@/components/funnel/ScrollReveal'
 import { FunnelHeroVideo } from '@/components/funnel/FunnelHeroVideo'
 import { TestimonialCard } from '@/components/funnel/TestimonialCard'
 import { FunnelLeadModal } from '@/components/funnel/FunnelLeadModal'
+import { FunnelMetaPixel, trackFunnelConversion, getMetaCookie } from '@/components/funnel/FunnelMetaPixel'
 import type { FunnelLeadValues } from '@/components/funnel/FunnelLeadForm'
 import type { FunnelTestimonial } from '@/lib/funnel/testimonials'
 import { TASACION_CONTENT as C, BRAND } from '@/lib/funnel/content'
@@ -29,10 +30,12 @@ export function TasacionClient({
   testimonials,
   heroVideoUrl,
   logoUrl,
+  pixelId,
 }: {
   testimonials: FunnelTestimonial[]
   heroVideoUrl: string
   logoUrl: string
+  pixelId: string
 }) {
   const [open, setOpen] = useState(false)
 
@@ -41,6 +44,8 @@ export function TasacionClient({
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const fbp = getMetaCookie('_fbp')
+    const fbc = getMetaCookie('_fbc')
     const res = await fetch('/api/funnel/submit', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -53,15 +58,19 @@ export function TasacionClient({
         company: values.company,
         eventId,
         eventSourceUrl: typeof window !== 'undefined' ? window.location.href : undefined,
+        fbp,
+        fbc,
       }),
     })
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean; redirect?: string; error?: string }
     if (!res.ok || !data.ok) throw new Error(data.error ?? 'No pudimos procesar tu envío.')
+    trackFunnelConversion({ eventName: 'Lead', eventId, contentName: 'Tasación Directa' })
     if (data.redirect && typeof window !== 'undefined') window.location.href = data.redirect
   }
 
   return (
     <main>
+      <FunnelMetaPixel pixelId={pixelId} contentName="Tasación Directa" />
       {/* Topbar */}
       <div className="bg-[#0d2d49] py-2 text-center text-xs font-semibold uppercase tracking-wide text-white">
         {C.topbar}
