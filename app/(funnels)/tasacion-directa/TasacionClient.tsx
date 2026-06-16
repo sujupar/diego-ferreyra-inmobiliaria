@@ -36,9 +36,28 @@ export function TasacionClient({
 }) {
   const [open, setOpen] = useState(false)
 
-  // Fase 2 reemplaza este stub por el POST real a /api/funnel/submit
-  async function handleSubmit(_values: FunnelLeadValues) {
-    await new Promise((r) => setTimeout(r, 400))
+  async function handleSubmit(values: FunnelLeadValues) {
+    const eventId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const res = await fetch('/api/funnel/submit', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        funnel: 'tasacion',
+        name: values.name,
+        email: values.email,
+        phone: values.phone,
+        propertyLocation: values.propertyLocation,
+        company: values.company,
+        eventId,
+        eventSourceUrl: typeof window !== 'undefined' ? window.location.href : undefined,
+      }),
+    })
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; redirect?: string; error?: string }
+    if (!res.ok || !data.ok) throw new Error(data.error ?? 'No pudimos procesar tu envío.')
+    if (data.redirect && typeof window !== 'undefined') window.location.href = data.redirect
   }
 
   return (
