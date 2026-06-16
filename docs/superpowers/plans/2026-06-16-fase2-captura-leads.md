@@ -540,7 +540,15 @@ Expected: tests verdes, eslint 0 errores, tsc sin errores de funnel.
 Run: `npx next build --webpack 2>&1 | tail -20`
 Expected: si falla, confirmar que el ÚNICO error es el preexistente de `@react-pdf/renderer` (ESM) — NO en archivos de funnel. (No es gate de Fase 2.)
 
-- [ ] **Step 3: Smoke con lead de PRUEBA (crea un deal real → limpiarlo después)**
+- [ ] **Step 3a: Activar modo prueba de email (proteger al equipo del smoke)**
+
+El smoke crea un deal real que dispara notificaciones por email. `notification_settings.test_mode_enabled` está hoy en `false`, así que sin esto los emails irían al EQUIPO real. Activar el modo prueba (redirige TODO email a `test_recipient_email` = contacto.julianparra@gmail.com con prefijo `[PRUEBA]`):
+```sql
+update public.notification_settings set test_mode_enabled = true, updated_at = now() where id = 'default';
+```
+El cache de settings es de 5s — esperar ~6s antes del smoke. Se RESTAURA a `false` en el Step 6.
+
+- [ ] **Step 3b: Smoke con lead de PRUEBA (crea un deal real → limpiarlo después)**
 
 Levantar dev: `PORT=3100 npm run dev` (background). Enviar un lead de prueba CLARAMENTE identificable:
 ```bash
@@ -572,7 +580,19 @@ Verificar que NO quedó nada de prueba y que NO se tocó data real (el filtro es
 
 Confirmar que el deal de prueba (mientras existió) contaba como `appraisal_requests` (origin='embudo') / `class_registrations` (origin='clase_gratuita') en `vw_funnel_daily` — i.e. el origin es el correcto. (Ya verificado en Step 3 por el origin del deal.) Detener el dev server: `lsof -ti:3100 | xargs kill`.
 
-- [ ] **Step 6: Commit final (si hubo ajustes)**
+- [ ] **Step 6: RESTAURAR modo prueba de email a OFF (estado original)**
+
+CRÍTICO — dejar `notification_settings` como estaba (test_mode OFF) para que en producción las notificaciones reales lleguen al equipo:
+```sql
+update public.notification_settings set test_mode_enabled = false, updated_at = now() where id = 'default';
+```
+Verificar:
+```sql
+select test_mode_enabled, test_recipient_email from public.notification_settings where id = 'default';
+-- Expected: test_mode_enabled = false
+```
+
+- [ ] **Step 7: Commit final (si hubo ajustes)**
 
 ```bash
 git add -A -- lib/funnel app/api/funnel "app/(funnels)" components/funnel
