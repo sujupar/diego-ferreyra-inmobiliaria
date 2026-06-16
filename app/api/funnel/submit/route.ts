@@ -23,6 +23,8 @@ const Schema = z
     company: z.string().max(200).optional(), // honeypot
     eventId: z.string().min(8).max(128).optional(),
     eventSourceUrl: z.string().url().max(500).nullable().optional(),
+    fbp: z.string().max(200).nullable().optional(),
+    fbc: z.string().max(300).nullable().optional(),
   })
   .refine((d) => !!(d.email || d.phone), { message: 'Se requiere email o teléfono.' })
 
@@ -123,6 +125,42 @@ export async function POST(req: NextRequest) {
     deal_id: result.dealId,
     event_id: d.eventId ?? null,
   })
+
+  // --- CAPI (Fase 3): conversión server-side con el MISMO event_id que el Pixel ---
+  const eventName = d.funnel === 'clase' ? 'CompleteRegistration' : 'Lead'
+  const contentName = d.funnel === 'clase' ? 'Clase Gratuita' : 'Tasación Directa'
+  if (d.eventId) {
+    const [firstName, ...rest] = d.name.trim().split(/\s+/)
+    const userAgent = req.headers.get('user-agent')
+    try {
+      const { sendCapiEvent } = await import('@/lib/marketing/meta-capi')
+      const capi = await sendCapiEvent({
+        eventName,
+        eventId: d.eventId,
+        eventSourceUrl:
+          d.eventSourceUrl ??
+          `https://inmodf.com.ar/${d.funnel === 'clase' ? 'vsl-clase-propietarios' : 'tasacion-directa'}`,
+        userData: {
+          email: d.email ?? null,
+          phone: d.phone ?? null,
+          firstName: firstName ?? null,
+          lastName: rest.join(' ') || null,
+          city: d.funnel === 'tasacion' ? (d.propertyLocation ?? null) : null,
+          countryCode: 'ar',
+          externalId: result.contactId, // alto valor de match (hasheado en meta-capi)
+          fbp: d.fbp ?? null,
+          fbc: d.fbc ?? null,
+          clientIpAddress: ip === 'unknown' ? null : ip,
+          clientUserAgent: userAgent,
+        },
+        customData: { contentName },
+        testEventCode: process.env.META_TEST_EVENT_CODE || undefined,
+      })
+      if (!capi.ok) console.warn('[funnel/submit capi] failed', capi.error, capi.fbtraceId)
+    } catch (e) {
+      console.warn('[funnel/submit capi] threw', e)
+    }
+  }
 
   return NextResponse.json({ ok: true, redirect: redirectFor(d.funnel) })
 }
