@@ -51,6 +51,39 @@ function getSupabase() {
   )
 }
 
+/**
+ * Lee los audience_ids de las etapas marcadas `exclude_from_prospecting=true`
+ * (Captado/Perdido) en `funnel_meta_audiences`, para excluirlos del targeting
+ * de prospecting (no re-impactar a quien ya captamos o perdimos).
+ *
+ * Best-effort: si la tabla no existe (migración Fase 4 sin aplicar todavía),
+ * la query falla, o no hay públicos marcados, devuelve [] y la campaña se
+ * arma SIN exclusión (no rompe el flow). Cliente admin SIN tipar: la tabla
+ * `funnel_meta_audiences` no está en types/database.types.ts.
+ */
+async function getProspectingExclusionAudienceIds(): Promise<string[]> {
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    )
+    const { data, error } = await supabase
+      .from('funnel_meta_audiences')
+      .select('audience_id')
+      .eq('exclude_from_prospecting', true)
+    if (error) {
+      console.warn('[meta-builder] no se pudieron leer públicos a excluir (continuando):', error.message)
+      return []
+    }
+    return ((data ?? []) as { audience_id: string | null }[])
+      .map((r) => r.audience_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+  } catch (err) {
+    console.warn('[meta-builder] excepción leyendo públicos a excluir (continuando):', err)
+    return []
+  }
+}
+
 function getAppUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL ?? 'https://inmodf.com.ar'
 }
@@ -607,11 +640,20 @@ export async function createCampaignForProperty(
     age_min?: number
     age_max?: number
   }
+  // EXCLUSIÓN de prospecting (Fase 4): los públicos Captado/Perdido
+  // (exclude_from_prospecting=true en funnel_meta_audiences) se agregan como
+  // excluded_custom_audiences para no re-impactar a quien ya captamos o
+  // perdimos. ADITIVO + best-effort: si no hay públicos o la query falla,
+  // la lista queda vacía y la campaña se arma SIN exclusión.
+  const exclusionAudienceIds = await getProspectingExclusionAudienceIds()
   const targetingWithAdvantage = {
     ...baseSpec,
     age_min: Math.min(baseSpec.age_min ?? 25, 25),
     age_max: Math.max(baseSpec.age_max ?? 65, 65),
     targeting_automation: { advantage_audience: 1 },
+    ...(exclusionAudienceIds.length > 0
+      ? { excluded_custom_audiences: exclusionAudienceIds.map((id) => ({ id })) }
+      : {}),
   }
 
   const adset = await metaFetch<{ id: string }>(`/${accountId}/adsets`, {
