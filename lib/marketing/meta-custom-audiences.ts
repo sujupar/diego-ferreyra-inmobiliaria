@@ -167,3 +167,73 @@ export async function createAudiencesForCampaign(
 
   return { visitors, converters }
 }
+
+/**
+ * Crea una audiencia customer-list (CUSTOM, `USER_PROVIDED_ONLY`). Devuelve el audience_id.
+ *
+ * A diferencia de las audiences WEBSITE (que Meta llena solo via pixel),
+ * estas se pueblan a mano con `addUsersToAudience` (PII hasheada SHA-256).
+ * Usada por la sincronización de públicos por etapa del embudo (Fase 4).
+ */
+export async function createCustomerListAudience(name: string, description: string): Promise<string> {
+  const { accountId, accessToken } = getMeta()
+  const res = await fetch(
+    `${META}/${META_API_VERSION}/${accountId}/customaudiences?access_token=${encodeURIComponent(accessToken)}`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: name.slice(0, 50),
+        description: description.slice(0, 200),
+        subtype: 'CUSTOM',
+        customer_file_source: 'USER_PROVIDED_ONLY',
+      }),
+    },
+  )
+  const json = (await res.json()) as { id?: string; error?: { message: string; error_subcode?: number } }
+  if (!res.ok || !json.id) {
+    throw new Error(
+      `createCustomerListAudience failed: ${json.error?.message ?? res.status} (subcode ${json.error?.error_subcode ?? '-'})`,
+    )
+  }
+  return json.id
+}
+
+// Schema fijo de las filas de hashes enviadas a /users (alineado con audience-hash.ts).
+const SCHEMA = ['EMAIL', 'PHONE', 'FN', 'LN', 'CT', 'COUNTRY']
+
+async function usersOp(
+  method: 'POST' | 'DELETE',
+  audienceId: string,
+  rows: string[][],
+): Promise<{ ok: boolean; numReceived: number; error?: string }> {
+  if (rows.length === 0) return { ok: true, numReceived: 0 }
+  const { accessToken } = getMeta()
+  const res = await fetch(
+    `${META}/${META_API_VERSION}/${audienceId}/users?access_token=${encodeURIComponent(accessToken)}`,
+    {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ payload: { schema: SCHEMA, data: rows } }),
+    },
+  )
+  const json = (await res.json()) as { num_received?: number; error?: { message: string; error_subcode?: number } }
+  if (!res.ok) {
+    return {
+      ok: false,
+      numReceived: 0,
+      error: `${json.error?.message ?? res.status} (subcode ${json.error?.error_subcode ?? '-'})`,
+    }
+  }
+  return { ok: true, numReceived: json.num_received ?? 0 }
+}
+
+/** Alta de miembros (batch ≤10k). `rows` = filas de hashes alineadas a SCHEMA. Best-effort: nunca lanza. */
+export async function addUsersToAudience(audienceId: string, rows: string[][]) {
+  return usersOp('POST', audienceId, rows)
+}
+
+/** Baja de miembros (mismos hashes que el alta). Best-effort: nunca lanza. */
+export async function removeUsersFromAudience(audienceId: string, rows: string[][]) {
+  return usersOp('DELETE', audienceId, rows)
+}
