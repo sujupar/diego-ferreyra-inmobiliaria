@@ -103,6 +103,24 @@ export default function PrivacidadPage() {
                 <p>
                     No vendemos ni alquilamos tus datos personales a terceros.
                 </p>
+                <p>
+                    En particular, los datos de contacto de quienes se registran en nuestros
+                    embudos publicitarios (por ejemplo, email y teléfono) pueden utilizarse para
+                    crear <span className="font-medium">Públicos Personalizados</span> en Meta
+                    (Facebook e Instagram) con fines publicitarios. Esa información se transmite a
+                    Meta de forma <span className="font-medium">hasheada</span> (cifrada de manera
+                    irreversible), de modo que Meta sólo la usa para emparejar a las personas que
+                    ya forman parte de nuestra base con sus cuentas y mostrarles avisos más
+                    relevantes. Podés solicitar tu exclusión de estos públicos en cualquier
+                    momento escribiéndonos a{" "}
+                    <a
+                        href={`mailto:${CONTACT_EMAIL}`}
+                        className="font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900"
+                    >
+                        {CONTACT_EMAIL}
+                    </a>
+                    .
+                </p>
 
                 <h2 className="mt-10 text-xl font-semibold text-neutral-900">
                     4. Compartición con terceros
