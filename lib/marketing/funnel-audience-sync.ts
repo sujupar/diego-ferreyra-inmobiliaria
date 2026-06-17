@@ -97,9 +97,15 @@ export async function syncAllStages(): Promise<{ stage: string; added: number; r
       const { toAdd, toRemove } = computeDiff(desired, ledger)
 
       // Altas
+      // OJO (idempotencia): persistir 'active' en el ledger SOLO si Meta confirmó
+      // el alta. Si chequeáramos `r.ok` después del upsert, un rechazo de Meta
+      // (rate limit/política/token) dejaría contactos marcados 'active' que nunca
+      // entraron al público → computeDiff los vería en el ledger → toAdd vacío →
+      // jamás se reintentarían. Por eso `if (!r.ok) throw` va ANTES del upsert.
       if (toAdd.length) {
         const rows = toAdd.map((cid) => hashContactRow(desiredMap.get(cid)!))
         const r = await addUsersToAudience(audienceId, rows)
+        if (!r.ok) throw new Error(r.error)
         for (const cid of toAdd) {
           const mk = memberKey(desiredMap.get(cid)!)
           await supabase.from('funnel_meta_audience_members').upsert(
@@ -107,9 +113,12 @@ export async function syncAllStages(): Promise<{ stage: string; added: number; r
             { onConflict: 'stage,contact_id' },
           )
         }
-        if (!r.ok) throw new Error(r.error)
       }
       // Bajas (mismos hashes guardados en el ledger → reconstruir fila desde hashed_*)
+      // Mismo principio que en Altas: tocar el ledger ('removed') SOLO si Meta
+      // confirmó la baja. Acá el riesgo es menor (un contacto ya fuera de `desired`
+      // no vuelve a `toAdd`), pero por consistencia chequeamos `r.ok` antes de
+      // escribir el ledger.
       if (toRemove.length) {
         const { data: rows2 } = await supabase
           .from('funnel_meta_audience_members')
@@ -117,10 +126,10 @@ export async function syncAllStages(): Promise<{ stage: string; added: number; r
         const delRows = ((rows2 ?? []) as { hashed_email: string | null; hashed_phone: string | null }[])
           .map((m) => [m.hashed_email ?? '', m.hashed_phone ?? '', '', '', '', ''])
         const r = await removeUsersFromAudience(audienceId, delRows)
+        if (!r.ok) throw new Error(r.error)
         await supabase.from('funnel_meta_audience_members')
           .update({ status: 'removed', last_synced_at: new Date().toISOString() })
           .eq('stage', a.stage).in('contact_id', toRemove)
-        if (!r.ok) throw new Error(r.error)
       }
 
       await supabase.from('funnel_meta_sync_log').insert({ stage: a.stage, added: toAdd.length, removed: toRemove.length })
