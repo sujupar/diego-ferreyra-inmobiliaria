@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
         customData: { contentName },
         testEventCode: process.env.META_TEST_EVENT_CODE || undefined,
       })
-      if (!capi.ok) console.warn('[funnel/submit capi] failed', capi.error, capi.fbtraceId)
+      console.log('[funnel/submit capi]', { ok: capi.ok, received: capi.eventsReceived, error: capi.error, fbtrace: capi.fbtraceId, hasTestCode: !!process.env.META_TEST_EVENT_CODE, event: eventName })
     } catch (e) {
       console.warn('[funnel/submit capi] threw', e)
     }

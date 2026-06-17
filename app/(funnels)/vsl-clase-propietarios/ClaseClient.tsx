@@ -64,9 +64,10 @@ export function ClaseClient({
         fbc,
       }),
     })
-    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; redirect?: string; error?: string }
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; redirect?: string; error?: string; deduplicated?: boolean }
     if (!res.ok || !data.ok) throw new Error(data.error ?? 'No pudimos procesar tu envío.')
-    trackFunnelConversion({ eventName: 'CompleteRegistration', eventId, contentName: 'Clase Gratuita' })
+    // Pixel SOLO si no fue un envío deduplicado (en dedup el CAPI no dispara → un Pixel solo inflaría la conversión)
+    if (!data.deduplicated) trackFunnelConversion({ eventName: 'CompleteRegistration', eventId, contentName: 'Clase Gratuita' })
     if (data.redirect && typeof window !== 'undefined') window.location.href = data.redirect
   }
 
