@@ -78,6 +78,7 @@ function getNavSections(role: Role): NavSection[] {
                 { label: 'Contactos', href: '/contacts' },
                 ...(can('metrics.view') ? [
                     { label: 'Metricas', href: '/metrics' },
+                    { label: 'Embudos', href: '/embudos' },
                 ] : []),
                 ...(can('settings.manage') || can('users.manage') ? [{
                     label: 'Admin', items: [
