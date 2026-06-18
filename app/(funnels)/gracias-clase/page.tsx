@@ -1,17 +1,20 @@
 import type { Metadata } from 'next'
+import { funnelMediaUrl } from '@/lib/funnel/media'
+import { GraciasClaseClient } from './GraciasClaseClient'
 
-export const metadata: Metadata = { title: '¡Gracias! | Clase', robots: { index: false, follow: false } }
+export const metadata: Metadata = {
+  title: '¡Ya estás dentro! | Clase',
+  robots: { index: false, follow: false },
+}
 
 export default function GraciasClase() {
+  const pixelId = process.env.META_PIXEL_ID ?? ''
   return (
-    <main className="mx-auto flex min-h-[70vh] max-w-xl flex-col items-center justify-center px-4 text-center">
-      <h1 className="font-[family-name:var(--font-funnel-head)] text-3xl font-extrabold text-[#0d2d49]">
-        ¡Estás anotado! 🎉
-      </h1>
-      <p className="mt-4 text-[#555]">
-        Te enviamos el acceso a la clase por email y WhatsApp. Revisá tu bandeja (y el spam, por las
-        dudas).
-      </p>
-    </main>
+    <GraciasClaseClient
+      pixelId={pixelId}
+      logoUrl={funnelMediaUrl('raw/682c6cc8e10a088724d26be6.png')}
+      videoUrl={funnelMediaUrl('web/clase-gracias-720p.mp4')}
+      posterUrl={funnelMediaUrl('web/clase-gracias-poster.jpg')}
+    />
   )
 }
