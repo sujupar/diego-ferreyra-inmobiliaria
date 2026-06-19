@@ -265,20 +265,3 @@ export async function updateAppraisal(id: string, input: SaveAppraisalInput): Pr
         throw buildApiError(data, 'No se pudo actualizar la tasación')
     }
 }
-
-/**
- * Guarda SOLO los ajustes de presentación del informe (textos, overrides de precio,
- * layout de páginas) vía `PATCH /api/appraisals/[id]`. No toca comparables ni el
- * valuation_result — seguro para llamar desde el modal de preview.
- */
-export async function saveReportEdits(id: string, reportEdits: ReportEdits): Promise<void> {
-    const res = await fetch(`/api/appraisals/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reportEdits }),
-    })
-    if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        throw buildApiError(data, 'No se pudieron guardar los ajustes del informe')
-    }
-}

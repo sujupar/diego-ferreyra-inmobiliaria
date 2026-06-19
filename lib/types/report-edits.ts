@@ -32,28 +32,6 @@ export interface ReportEdits {
     comparableOverrides?: Record<number, { title?: string; description?: string }>
     overpricedOverrides?: Record<number, { title?: string }>
     purchaseOverrides?: Record<number, { title?: string }>
-
-    // Override MANUAL de los precios mostrados (independientes, sin recálculo de la
-    // cadena derivada). undefined = usar el valor calculado. El de no-venta es el más
-    // pedido. NO actualiza las menciones de precio dentro de analysisText/strategyPriceText
-    // (esos textos se editan aparte).
-    priceOverrides?: {
-        publicationPrice?: number
-        saleValue?: number
-        noSaleZonePrice?: number
-    }
-
-    // Layout de páginas del PDF (editor de la vista previa). Index-based con guarda por
-    // `pageCount`: el layout SOLO se aplica si el PDF renderizado tiene exactamente
-    // `pageCount` páginas (misma estructura). Si el contenido cambió (otra cantidad de
-    // páginas), se ignora de forma segura — nunca puede mapear mal una página.
-    //  - order:  índices 0-based en el orden deseado (subconjunto/permutación de 0..pageCount-1)
-    //  - hidden: índices 0-based a ocultar/borrar
-    pdfLayout?: {
-        order: number[]
-        hidden: number[]
-        pageCount: number
-    }
 }
 
 export const DEFAULT_REPORT_EDITS: ReportEdits = {

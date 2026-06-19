@@ -596,7 +596,6 @@ export default function AppraisalDetailPage() {
                 <PDFPreviewModal
                     open={showPDFPreview}
                     onOpenChange={setShowPDFPreview}
-                    appraisalId={appraisal.id}
                     subject={subject}
                     comparables={comparables}
                     valuationResult={result}

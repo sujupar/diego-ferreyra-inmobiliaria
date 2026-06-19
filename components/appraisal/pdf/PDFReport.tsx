@@ -158,13 +158,9 @@ function ExpRow({ label, value, bold }: { label: string; value: number; currency
 }
 
 function SaleSimTable({
-    valuationResult, subject, neighborhood, pubDisplay, saleDisplay,
-}: { valuationResult: ValuationResult; subject: ValuationProperty; neighborhood: string; pubDisplay?: number; saleDisplay?: number }) {
+    valuationResult, subject, neighborhood,
+}: { valuationResult: ValuationResult; subject: ValuationProperty; neighborhood: string }) {
     const r = valuationResult
-    // Override de display de los precios (mismo criterio que la página de Costos): no
-    // recalcula gastos/dinero-en-mano, solo muestra el valor cargado a mano si existe.
-    const pub = pubDisplay ?? r.publicationPrice
-    const sale = saleDisplay ?? r.saleValue
     const rates = r.expenseRates
     const showOwnerShare = typeof r.ownerSharePercent === 'number' && r.ownerSharePercent < 100 && typeof r.ownerShareMoney === 'number'
     return (
@@ -182,8 +178,8 @@ function SaleSimTable({
                 borderWidth: 1, borderColor: colors.lightGray, borderStyle: 'solid',
                 borderTopWidth: 0,
             }}>
-                <ValueCell label="Valor de Publicación" value={`USD ${pub.toLocaleString()}`} flex />
-                <ValueCell label="Valor de Venta" value={`USD ${sale.toLocaleString()}`} flex />
+                <ValueCell label="Valor de Publicación" value={`USD ${r.publicationPrice.toLocaleString()}`} flex />
+                <ValueCell label="Valor de Venta" value={`USD ${r.saleValue.toLocaleString()}`} flex />
                 <ValueCell label="Valor de Escritura" value={`USD ${r.deedValue.toLocaleString()}`} flex />
             </View>
             <View style={{
@@ -296,11 +292,8 @@ function PurchaseSimTable({
 
 export function PDFReportDocument({ subject, comparables, valuationResult, overpriced = [], purchaseProperties = [], purchaseResult, marketImageLabels = {}, marketImageUrls = {}, reportEdits, appraisalDate, advisorPhotoUrl = '/pdf-assets/photos/advisor-default.png' }: PDFReportProps) {
     const neighborhood = extractNeighborhood(subject.location || '')
-    // Precios mostrados: override manual (reportEdits.priceOverrides) o el valor calculado.
-    // Override de display puro: NO recalcula la cadena de costos/gastos ni los textos.
-    const recommendedPrice = reportEdits?.priceOverrides?.publicationPrice ?? valuationResult.publicationPrice
-    const noSaleZone = reportEdits?.priceOverrides?.noSaleZonePrice ?? valuationResult.noSaleZonePrice
-    const saleValueDisplay = reportEdits?.priceOverrides?.saleValue ?? valuationResult.saleValue
+    const recommendedPrice = valuationResult.publicationPrice
+    const noSaleZone = valuationResult.noSaleZonePrice
 
     // Helper: calculate homogenized surface for a comparable
     const getHomogenizedSurface = (comp: ValuationProperty) => {
@@ -1144,13 +1137,13 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                         <View style={{ flex: 1, padding: 14, backgroundColor: colors.primary, alignItems: 'center', borderRadius: 4 }}>
                             <Text style={{ fontSize: 8, color: colors.white, fontWeight: 'bold', letterSpacing: 0.5 }}>VALOR PUBLICACIÓN</Text>
                             <Text style={{ fontSize: 18, color: colors.white, fontWeight: 'bold', marginTop: 6 }}>
-                                {formatCurrency(recommendedPrice, valuationResult.currency)}
+                                {formatCurrency(valuationResult.publicationPrice, valuationResult.currency)}
                             </Text>
                         </View>
                         <View style={{ flex: 1, padding: 14, backgroundColor: colors.semaphoreGreen, alignItems: 'center', borderRadius: 4 }}>
                             <Text style={{ fontSize: 8, color: colors.white, fontWeight: 'bold', letterSpacing: 0.5 }}>VALOR VENTA (-{valuationResult.expenseRates?.saleDiscountPercent ?? 5}%)</Text>
                             <Text style={{ fontSize: 18, color: colors.white, fontWeight: 'bold', marginTop: 6 }}>
-                                {formatCurrency(saleValueDisplay, valuationResult.currency)}
+                                {formatCurrency(valuationResult.saleValue, valuationResult.currency)}
                             </Text>
                         </View>
                         <View style={{ flex: 1, padding: 14, backgroundColor: '#6b7280', alignItems: 'center', borderRadius: 4 }}>
@@ -1392,7 +1385,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                     <Text style={styles.headerTitle}>SIMULACIÓN GASTOS E IMPUESTOS</Text>
                                 </View>
                                 <View style={{ marginTop: 60 }}>
-                                    <SaleSimTable valuationResult={valuationResult} subject={subject} neighborhood={neighborhood} pubDisplay={recommendedPrice} saleDisplay={saleValueDisplay} />
+                                    <SaleSimTable valuationResult={valuationResult} subject={subject} neighborhood={neighborhood} />
                                     {visibleScenarios.length > 0 && (
                                         <View style={{ marginTop: 16 }}>
                                             <Text style={[styles.h3, { fontSize: 20, marginBottom: 12, textAlign: 'center' }]}>Escenarios de Compra</Text>
@@ -1446,11 +1439,11 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                         <View style={{ flexDirection: 'row', borderWidth: 1, borderColor: colors.lightGray, borderTopWidth: 0 }}>
                                             <View style={{ flex: 1, padding: 4, borderRightWidth: 1, borderColor: colors.lightGray }}>
                                                 <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Publicación</Text>
-                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {recommendedPrice.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {valuationResult.publicationPrice.toLocaleString()}</Text>
                                             </View>
                                             <View style={{ flex: 1, padding: 4, borderRightWidth: 1, borderColor: colors.lightGray }}>
                                                 <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Venta</Text>
-                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {saleValueDisplay.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {valuationResult.saleValue.toLocaleString()}</Text>
                                             </View>
                                             <View style={{ flex: 1, padding: 4 }}>
                                                 <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Escritura</Text>

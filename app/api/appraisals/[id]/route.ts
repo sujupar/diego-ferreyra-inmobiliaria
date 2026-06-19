@@ -64,33 +64,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 }
 
-/**
- * Actualiza SOLO `report_edits` (textos, overrides de precio, layout de páginas del PDF).
- * NO toca comparables ni el valuation_result — a diferencia del PUT, no borra/reinserta
- * nada. Es el camino seguro para guardar ajustes de presentación desde el modal de preview.
- */
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireAuth()
-  try {
-    const { id } = await params
-    const body = (await req.json()) as { reportEdits?: unknown }
-    if (body?.reportEdits === undefined) {
-      return NextResponse.json({ error: 'reportEdits es requerido' }, { status: 400 })
-    }
-    const supabase = getAdmin()
-    const { error } = await supabase
-      .from('appraisals')
-      .update({ report_edits: body.reportEdits } as never)
-      .eq('id', id)
-    if (error) throw error
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    const e = error as { message?: string }
-    console.error('[PATCH /api/appraisals/[id]] report_edits update failed', error)
-    return NextResponse.json({ error: e?.message || 'Error al guardar los ajustes del informe' }, { status: 500 })
-  }
-}
-
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params

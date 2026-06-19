@@ -38,17 +38,6 @@ export function ReportEditor({
         onReportEditsChange({ ...reportEdits, [key]: value })
     }
 
-    type PriceKey = 'publicationPrice' | 'saleValue' | 'noSaleZonePrice'
-    function updatePriceOverride(key: PriceKey, value: number | undefined) {
-        const next = { ...(reportEdits.priceOverrides || {}) }
-        if (value === undefined || Number.isNaN(value)) delete next[key]
-        else next[key] = value
-        onReportEditsChange({
-            ...reportEdits,
-            priceOverrides: Object.keys(next).length > 0 ? next : undefined,
-        })
-    }
-
     function updateSemaphore(key: string, color: SemaphoreColor) {
         onReportEditsChange({
             ...reportEdits,
@@ -69,52 +58,6 @@ export function ReportEditor({
                     Edita los textos y colores del semaforo antes de generar el PDF final
                 </p>
             </div>
-
-            {/* 0. PRECIOS (override manual) */}
-            <section className="space-y-4">
-                <h3 className="text-lg font-semibold text-primary border-b pb-2">Precios (manual)</h3>
-                <p className="text-xs text-muted-foreground -mt-2">
-                    Estos valores reemplazan los calculados en el PDF. Dejá el campo vacío para usar el valor
-                    calculado. No actualiza las menciones de precio dentro de los textos de Análisis/Estrategia
-                    (editá esos textos si querés reflejarlo ahí).
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {([
-                        { key: 'publicationPrice', label: 'Precio de Publicación', calc: valuationResult.publicationPrice },
-                        { key: 'saleValue', label: 'Precio de Venta', calc: valuationResult.saleValue },
-                        { key: 'noSaleZonePrice', label: 'Precio de No Venta', calc: valuationResult.noSaleZonePrice },
-                    ] as const).map(({ key, label, calc }) => {
-                        const override = reportEdits.priceOverrides?.[key]
-                        return (
-                            <div key={key} className="space-y-1.5">
-                                <label className="text-sm font-medium">{label}</label>
-                                <input
-                                    type="number"
-                                    inputMode="numeric"
-                                    className="w-full rounded-md border px-3 py-2 text-sm"
-                                    placeholder={`${valuationResult.currency} ${calc.toLocaleString('en-US')}`}
-                                    value={override ?? ''}
-                                    onChange={e => updatePriceOverride(key, e.target.value === '' ? undefined : Number(e.target.value))}
-                                />
-                                <div className="flex items-center justify-between gap-2">
-                                    <span className="text-[11px] text-muted-foreground">
-                                        Calculado: {formatCurrency(calc, valuationResult.currency)}
-                                    </span>
-                                    {override !== undefined && (
-                                        <button
-                                            type="button"
-                                            onClick={() => updatePriceOverride(key, undefined)}
-                                            className="text-[11px] text-primary underline hover:no-underline whitespace-nowrap"
-                                        >
-                                            Restablecer
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        )
-                    })}
-                </div>
-            </section>
 
             {/* 1. PORTADA */}
             <section className="space-y-4">
