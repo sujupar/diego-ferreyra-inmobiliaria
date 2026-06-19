@@ -79,16 +79,17 @@ export default function AppraisalDetailPage() {
         if (searchParams.get('editContact') === '1') setContactEditorOpen(true)
     }, [searchParams])
 
-    // Foto del asesor: resolver desde el agente asignado a la tasación. Si no está
-    // autorizado / no subió foto, queda undefined y el PDF usa la foto default (Diego).
+    // Foto del asesor de la tasación: el ASIGNADO o, si no hay, el CREADOR (user_id).
+    // Así las tasaciones que hizo el asesor (aunque queden sin assigned_to) salen con
+    // su foto. Si no está autorizado / no subió foto, queda undefined → default (Diego).
     useEffect(() => {
-        const agentId = appraisal?.assigned_to
+        const agentId = appraisal?.assigned_to ?? appraisal?.user_id
         if (!agentId) { setAdvisorPhotoUrl(undefined); return }
         fetch(`/api/advisor-photo?id=${agentId}`)
             .then(r => r.json())
             .then(({ url }) => setAdvisorPhotoUrl(url || undefined))
             .catch(() => setAdvisorPhotoUrl(undefined))
-    }, [appraisal?.assigned_to])
+    }, [appraisal?.assigned_to, appraisal?.user_id])
 
     // CRÍTICO: los useMemo deben llamarse SIEMPRE — antes de cualquier early
     // return — porque las reglas de hooks de React requieren orden estable.

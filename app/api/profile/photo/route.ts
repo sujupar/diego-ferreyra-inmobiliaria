@@ -47,7 +47,10 @@ export async function POST(request: Request) {
 
         const { error: dbErr } = await admin
             .from('profiles')
-            .update({ report_photo_url: url, updated_at: new Date().toISOString() })
+            // Subir la foto AUTO-AUTORIZA el perfil para aparecer en informes
+            // (report_in_pdf=true). Si subiste la foto, querés que aparezca. El admin
+            // igual puede desactivarla desde Configuración → "Autorizar perfiles".
+            .update({ report_photo_url: url, report_in_pdf: true, updated_at: new Date().toISOString() })
             .eq('id', user.id)
         if (dbErr) {
             console.error('profile photo db error:', dbErr)

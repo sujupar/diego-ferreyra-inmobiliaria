@@ -61,6 +61,8 @@ export function ReportPhotoSettings() {
             const json = await res.json()
             if (!res.ok) { setError(json.error || 'No se pudo subir la foto'); return }
             setMyPhoto(json.url)
+            // Subir auto-autoriza (el server setea report_in_pdf=true) → ocultar el aviso.
+            setMe(prev => prev ? { ...prev, report_in_pdf: true } : prev)
         } catch {
             setError('Error al subir la foto')
         } finally {
