@@ -347,46 +347,50 @@ export function PDFPreviewModal({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-[95vw] max-h-[95vh] w-full h-[90vh] p-0 gap-0 [&>button]:hidden">
-                {/* Toolbar */}
-                <div className="flex items-center justify-between px-6 py-3 border-b bg-muted/30">
-                    <DialogTitle className="text-lg font-semibold">{tabTitle}</DialogTitle>
-                    <div className="flex items-center gap-2">
-                        <div className="flex bg-muted rounded-lg p-0.5 mr-2">
-                            <button
-                                onClick={() => setActiveTab('editor')}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-all ${activeTab === 'editor' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
-                            >
-                                <Edit3 className="h-3.5 w-3.5" />
-                                Editar
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('preview')}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-all ${activeTab === 'preview' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
-                            >
-                                <Eye className="h-3.5 w-3.5" />
-                                Vista Previa
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('organize')}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-all ${activeTab === 'organize' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
-                            >
-                                <LayoutGrid className="h-3.5 w-3.5" />
-                                Organizar
-                            </button>
-                        </div>
-                        <Button onClick={handleDownload} disabled={isDownloading || isConverting} className="gap-2">
+            <DialogContent className="flex flex-col max-w-[95vw] max-h-[95vh] w-full h-[90vh] p-0 gap-0 [&>button]:hidden">
+                {/* Toolbar — responsive: título solo a11y (sr-only); tabs y botón pasan a
+                    íconos en pantallas chicas para que nunca se desborde / se parta. */}
+                <div className="flex shrink-0 items-center gap-1.5 sm:gap-2 px-3 sm:px-6 py-2.5 sm:py-3 border-b bg-muted/30">
+                    <DialogTitle className="sr-only">{tabTitle}</DialogTitle>
+                    <div className="flex shrink-0 bg-muted rounded-lg p-0.5">
+                        <button
+                            onClick={() => setActiveTab('editor')}
+                            title="Editar"
+                            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-all ${activeTab === 'editor' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            <Edit3 className="h-3.5 w-3.5 shrink-0" />
+                            <span className="hidden md:inline">Editar</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('preview')}
+                            title="Vista Previa"
+                            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-all ${activeTab === 'preview' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            <Eye className="h-3.5 w-3.5 shrink-0" />
+                            <span className="hidden md:inline">Vista Previa</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('organize')}
+                            title="Organizar"
+                            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-all ${activeTab === 'organize' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            <LayoutGrid className="h-3.5 w-3.5 shrink-0" />
+                            <span className="hidden md:inline">Organizar</span>
+                        </button>
+                    </div>
+                    <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+                        <Button onClick={handleDownload} disabled={isDownloading || isConverting} title="Descargar PDF" className="gap-1.5 px-2.5 sm:px-4">
                             {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                            Descargar PDF
+                            <span className="hidden sm:inline">Descargar PDF</span>
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
+                        <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)} className="shrink-0">
                             <X className="h-4 w-4" />
                         </Button>
                     </div>
                 </div>
 
                 {/* Content area */}
-                <div className="flex-1 overflow-hidden" style={{ height: 'calc(90vh - 56px)' }}>
+                <div className="flex-1 min-h-0 overflow-hidden">
                     <PreviewErrorBoundary key={activeTab}>
                     {activeTab === 'editor' ? (
                         <div className="h-full overflow-y-auto">
