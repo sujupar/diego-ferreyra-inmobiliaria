@@ -624,7 +624,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                         style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                     />
                     {/* Foto del asesor superpuesta (dinámica por agente; default = Diego) */}
-                    <Image src={advisorPhotoUrl} style={styles.dividerPhoto} />
+                    <Image src={advisorPhotoUrl} style={[styles.dividerPhoto, styles.dividerPhotoBottom]} />
                     <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
                         <Text style={[styles.dividerTitle, { textAlign: 'left' }]}>
                             PROPIEDADES{'\n'}QUE{'\n'}COMPITEN
@@ -1229,7 +1229,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                 src="/pdf-assets/graphics/section-divider-bg-clean.png"
                                 style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                             />
-                            <Image src={advisorPhotoUrl} style={styles.dividerPhoto} />
+                            <Image src={advisorPhotoUrl} style={[styles.dividerPhoto, styles.dividerPhotoBottom]} />
                             <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
                                 <Text style={[styles.dividerTitle, { textAlign: 'left' }]}>
                                     PROPIEDADES{'\n'}PARA{'\n'}COMPRA
@@ -1362,7 +1362,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                     src="/pdf-assets/graphics/section-divider-bg-clean.png"
                                     style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                                 />
-                                <Image src={advisorPhotoUrl} style={styles.dividerPhoto} />
+                                <Image src={advisorPhotoUrl} style={[styles.dividerPhoto, styles.dividerPhotoBottom]} />
                                 <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
                                     <Text style={[styles.dividerTitle, { textAlign: 'left', fontSize: 30 }]}>
                                         SIMULACIÓN{'\n'}GASTOS E{'\n'}IMPUESTOS
@@ -1548,7 +1548,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                         src="/pdf-assets/graphics/section-divider-bg-clean.png"
                         style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                     />
-                    <Image src={advisorPhotoUrl} style={styles.dividerPhoto} />
+                    <Image src={advisorPhotoUrl} style={[styles.dividerPhoto, styles.dividerPhotoBottom]} />
                     <View style={[styles.backgroundContent, { alignItems: 'flex-start', paddingLeft: 50, paddingRight: '50%' }]}>
                         <Text style={[styles.dividerTitle, { textAlign: 'left' }]}>
                             ESTRATEGIA{'\n'}DE VENTA

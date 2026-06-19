@@ -340,6 +340,15 @@ export const styles = StyleSheet.create({
         height: 460,
         objectFit: 'contain',
     },
+    // Ancla la foto al fondo de la caja (pies pegados al borde inferior) en los
+    // DIVISORES. Con `contain`, una foto cuyo aspecto NO sea 640:1067 (0.6) se
+    // centra verticalmente y deja un hueco azul abajo. `objectPositionY: '100%'`
+    // la alinea abajo. La foto de Diego (ratio 0.6 exacto) ya llena la caja
+    // (yOffset=0), así que este override no la cambia. La portada NO lo usa
+    // (ahí el hueco queda tapado por la banda del footer).
+    dividerPhotoBottom: {
+        objectPositionY: '100%',
+    },
 
     // Footer (Page 1)
     footer: {
