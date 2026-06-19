@@ -13,7 +13,8 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { LogOut, User } from 'lucide-react'
+import { LogOut, User, UserCog } from 'lucide-react'
+import Link from 'next/link'
 
 function getInitials(name: string): string {
     return name
@@ -58,6 +59,12 @@ export function UserMenu({ profile }: { profile: Profile }) {
                     </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                    <Link href="/mi-perfil" className="cursor-pointer">
+                        <UserCog className="mr-2 h-4 w-4" />
+                        Mi perfil
+                    </Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem className="text-muted-foreground">
                     <User className="mr-2 h-4 w-4" />
                     {ROLE_LABELS[profile.role]}

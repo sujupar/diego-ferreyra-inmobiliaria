@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import type { AppraisalDetail } from '@/lib/supabase/appraisals'
-import { updateAppraisal } from '@/lib/supabase/appraisals'
+import { updateAppraisal, saveReportEdits } from '@/lib/supabase/appraisals'
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { PDFDownloadButton } from '@/components/appraisal/PDFDownloadButton'
 import { ValuationProperty, ValuationResult, calculateValuation, getQualityCoefficient, ExpenseRates } from '@/lib/valuation/calculator'
@@ -47,8 +47,11 @@ export default function AppraisalDetailPage() {
                 return r.json()
             })
             .then(({ data }) => {
-                if (!data) setError('Tasación no encontrada')
-                else setAppraisal(data as AppraisalDetail)
+                if (!data) { setError('Tasación no encontrada'); return }
+                setAppraisal(data as AppraisalDetail)
+                // Cargar los ajustes guardados (textos, semáforos, overrides de precio) para
+                // que el informe web y el modal muestren lo persistido (ej. Zona de No Venta).
+                if (data.report_edits) setReportEdits(data.report_edits as ReportEdits)
             })
             .catch(err => {
                 console.error('Error loading appraisal:', err)
@@ -479,6 +482,22 @@ export default function AppraisalDetailPage() {
         }
     }
 
+    // Override manual de la Zona de No Venta. Se guarda en reportEdits.priceOverrides
+    // (mismo store que usa el PDF) vía PATCH liviano — no toca comparables.
+    function handleNoSaleZoneOverride(value: number | undefined) {
+        if (!appraisal) return
+        const base = reportEdits || buildDefaultEdits(
+            { title: appraisal.property_title || '', location: appraisal.property_location, description: appraisal.property_description || '' },
+            result,
+        )
+        const nextPO = { ...(base.priceOverrides || {}) }
+        if (value === undefined || Number.isNaN(value)) delete nextPO.noSaleZonePrice
+        else nextPO.noSaleZonePrice = value
+        const next: ReportEdits = { ...base, priceOverrides: Object.keys(nextPO).length > 0 ? nextPO : undefined }
+        setReportEdits(next)
+        saveReportEdits(appraisal.id, next).catch(err => console.error('saveReportEdits (no-sale-zone) error:', err))
+    }
+
     return (
         <div className="max-w-5xl mx-auto space-y-8 pb-20">
             {/* Header */}
@@ -576,6 +595,8 @@ export default function AppraisalDetailPage() {
                     onComparableFeaturesChange={handleComparableFeaturesChange}
                     expenseRates={(valuationOverride?.expenseRates ?? appraisal.valuation_result?.expenseRates) || undefined}
                     onExpenseRatesChange={handleExpenseRatesChange}
+                    noSaleZoneOverride={reportEdits?.priceOverrides?.noSaleZonePrice}
+                    onNoSaleZoneOverrideChange={handleNoSaleZoneOverride}
                 />
             ) : (
                 <div className="rounded-lg border p-6 space-y-4">

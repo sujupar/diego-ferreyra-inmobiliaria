@@ -27,6 +27,10 @@ interface ValuationReportProps {
     onSubjectFeaturesChange?: (features: PropertyFeatures) => void
     expenseRates?: Required<ExpenseRates>
     onExpenseRatesChange?: (next: Partial<ExpenseRates>) => void
+    /** Override manual de la "Zona de No Venta" (se persiste en reportEdits.priceOverrides
+     *  y aplica también al PDF). undefined = usar el valor calculado (publicación × 1.05). */
+    noSaleZoneOverride?: number
+    onNoSaleZoneOverrideChange?: (value: number | undefined) => void
 }
 
 const DISPOSITION_OPTIONS: DispositionType[] = ['FRONT', 'BACK', 'LATERAL', 'INTERNAL']
@@ -50,7 +54,12 @@ function ValuationReportInner({
     onSubjectFeaturesChange,
     expenseRates,
     onExpenseRatesChange,
+    noSaleZoneOverride,
+    onNoSaleZoneOverrideChange,
 }: ValuationReportProps) {
+    // Zona de No Venta: valor mostrado = override manual o el calculado.
+    const effectiveNoSaleZone = noSaleZoneOverride ?? result.noSaleZonePrice
+    const noSaleZoneEditable = editable && Boolean(onNoSaleZoneOverrideChange)
     // Effective rates with fallback to result.expenseRates or hardcoded defaults
     const effectiveRates: Required<ExpenseRates> = expenseRates ?? result.expenseRates ?? {
         saleDiscountPercent: 5,
@@ -134,9 +143,34 @@ function ValuationReportInner({
                     </div>
                     <div className="flex justify-between items-center">
                         <span className="text-base font-medium text-foreground/70">ZONA DE NO VENTA</span>
-                        <span className="text-3xl font-bold text-red-500">
-                            {formatCurrency(result.noSaleZonePrice, result.currency)}
-                        </span>
+                        {noSaleZoneEditable ? (
+                            <div className="flex flex-col items-end">
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-base font-bold text-red-500">{result.currency}</span>
+                                    <input
+                                        type="number"
+                                        inputMode="numeric"
+                                        aria-label="Zona de No Venta (editable)"
+                                        className="w-36 bg-transparent text-right text-3xl font-bold text-red-500 outline-none border-b border-red-300 focus:border-red-500 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                        value={effectiveNoSaleZone ?? ''}
+                                        onChange={e => onNoSaleZoneOverrideChange!(e.target.value === '' ? undefined : Number(e.target.value))}
+                                    />
+                                </div>
+                                {noSaleZoneOverride !== undefined && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onNoSaleZoneOverrideChange!(undefined)}
+                                        className="mt-0.5 text-[11px] text-muted-foreground underline hover:no-underline"
+                                    >
+                                        volver al calculado ({formatCurrency(result.noSaleZonePrice, result.currency)})
+                                    </button>
+                                )}
+                            </div>
+                        ) : (
+                            <span className="text-3xl font-bold text-red-500">
+                                {formatCurrency(effectiveNoSaleZone, result.currency)}
+                            </span>
+                        )}
                     </div>
                 </div>
             </div>
@@ -524,7 +558,7 @@ function ValuationReportInner({
                 <div className="bg-red-600 text-white rounded-2xl p-8 text-center shadow-lg relative overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
                     <p className="text-base opacity-90 mb-2 font-medium tracking-wide">ZONA DE NO VENTA</p>
-                    <p className="text-4xl font-extrabold tracking-tight mb-3">{formatCurrency(result.noSaleZonePrice, result.currency)}</p>
+                    <p className="text-4xl font-extrabold tracking-tight mb-3">{formatCurrency(effectiveNoSaleZone, result.currency)}</p>
                     <p className="text-sm opacity-75">Precio por encima del cual la propiedad no se vende</p>
                 </div>
             </div>
