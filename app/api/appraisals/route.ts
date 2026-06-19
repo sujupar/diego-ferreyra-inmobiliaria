@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
+import { getUser } from '@/lib/auth/get-user'
 import { insertAppraisalWithComparables } from '@/lib/supabase/appraisals-write'
 import type { SaveAppraisalInput } from '@/lib/supabase/appraisals'
 
@@ -10,6 +11,12 @@ function getAdmin() {
 
 export async function GET(request: NextRequest) {
   try {
+    // Usuario EFECTIVO (impersonation-aware: si un admin está "viendo como" un asesor,
+    // me.id es el del asesor). El scope del asesor se decide acá en el server, no en el
+    // cliente — así no se puede falsear el query param para ver tasaciones ajenas.
+    const me = await getUser()
+    if (!me) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '12')
@@ -35,7 +42,15 @@ export async function GET(request: NextRequest) {
 
     if (from) query = query.gte('created_at', from + 'T00:00:00Z')
     if (to) query = query.lte('created_at', to + 'T23:59:59Z')
-    if (assignedTo) query = query.eq('assigned_to', assignedTo)
+
+    // El asesor SOLO ve sus tasaciones: las que creó (user_id) O las que tiene asignadas
+    // (assigned_to). Antes filtraba solo por assigned_to → si la tasación no se asignaba
+    // explícitamente, no aparecía (mostraba 0). Coordinador/admin ven todo (o filtrado).
+    if (me.profile.role === 'asesor') {
+      query = query.or(`assigned_to.eq.${me.id},user_id.eq.${me.id}`)
+    } else if (assignedTo) {
+      query = query.eq('assigned_to', assignedTo)
+    }
 
     const { data, error, count } = await query.range(rangeFrom, rangeTo)
 
@@ -74,6 +89,11 @@ export async function POST(request: NextRequest) {
     // Atribuir la tasación al usuario autenticado (el browser no manda userId).
     // Mejora la trazabilidad y la visibilidad por RLS (user_id = auth.uid()).
     if (!input.userId) input.userId = user.id
+
+    // Si un ASESOR crea la tasación y no eligió asignado, se la asignamos a él mismo
+    // (user vía requireAuth → impersonation-aware). Así aparece en SU historial y su
+    // foto sale en el informe (la foto del asesor se resuelve por assigned_to).
+    if (!input.assignedTo && user.profile.role === 'asesor') input.assignedTo = user.id
 
     const supabase = getAdmin()
     const appraisalId = await insertAppraisalWithComparables(supabase, input)
