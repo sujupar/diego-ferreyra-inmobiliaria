@@ -85,6 +85,37 @@ function pct(conversions: number, visits: number): number {
   return Math.round((conversions / visits) * 10000) / 100
 }
 
+// --- Fase 4: tipos de los RPC de agregación + breakdown por campaña ---
+interface VideoStatRow {
+  funnel: string
+  video_key: string
+  segment: 'no_registrado' | 'registrado' | string
+  stage: string | null
+  viewers: number
+  avg_max_percent: number | null
+  avg_attention: number | null
+  completed: number
+  q25: number; q50: number; q75: number; q95: number; q100: number
+}
+interface VisitCampRow { funnel_type: string; campaign: string; visits: number }
+interface ConvCampRow { funnel: string; campaign: string; conversions: number }
+interface SpendRow { campaign_name: string | null; spend: number | null }
+
+/** Llama un RPC de agregación; si la migración aún no corrió, degrada a []. */
+async function safeRpc<T>(supabase: AdminClient, fn: string, args: Record<string, string>): Promise<T[]> {
+  try {
+    const { data, error } = await supabase.rpc(fn, args)
+    if (error) {
+      console.warn(`[funnels/metrics] ${fn}: ${error.message}`)
+      return []
+    }
+    return (data ?? []) as T[]
+  } catch (e) {
+    console.warn(`[funnels/metrics] ${fn} threw`, e)
+    return []
+  }
+}
+
 /**
  * GET /api/funnels/metrics?from=YYYY-MM-DD&to=YYYY-MM-DD
  *
@@ -162,7 +193,77 @@ export async function GET(req: NextRequest) {
       }),
     )
 
-    return NextResponse.json({ from, to, funnels })
+    // --- Fase 4: analítica de video (por segmento/etapa) + breakdown por campaña ---
+    const startIso = `${from}T00:00:00Z`
+    const endEx = new Date(`${to}T00:00:00Z`)
+    endEx.setUTCDate(endEx.getUTCDate() + 1)
+    const endIso = endEx.toISOString()
+    const rpcArgs = { p_from: startIso, p_to: endIso }
+
+    const [videoRows, visitCampaigns, convCampaigns, spendRows] = await Promise.all([
+      safeRpc<VideoStatRow>(supabase, 'funnel_video_stats', rpcArgs),
+      safeRpc<VisitCampRow>(supabase, 'funnel_campaign_visits', rpcArgs),
+      safeRpc<ConvCampRow>(supabase, 'funnel_campaign_conversions', rpcArgs),
+      (async (): Promise<SpendRow[]> => {
+        try {
+          const { data } = await supabase
+            .from('meta_ads_daily')
+            .select('campaign_name, spend')
+            .gte('date', from)
+            .lte('date', to)
+          return (data ?? []) as SpendRow[]
+        } catch {
+          return []
+        }
+      })(),
+    ])
+
+    const spendByCampaign = new Map<string, number>()
+    for (const r of spendRows) {
+      const name = (r.campaign_name ?? '').trim()
+      if (!name) continue
+      spendByCampaign.set(name, (spendByCampaign.get(name) ?? 0) + (Number(r.spend) || 0))
+    }
+
+    const enriched = funnels.map((f) => {
+      const meta = FUNNELS.find((x) => x.key === f.key)!
+      const videoRowsForFunnel = videoRows.filter((r) => r.funnel === f.key)
+
+      const campMap = new Map<string, { campaign: string; visits: number; conversions: number; spend: number }>()
+      const getC = (name: string) => {
+        let c = campMap.get(name)
+        if (!c) {
+          c = { campaign: name, visits: 0, conversions: 0, spend: 0 }
+          campMap.set(name, c)
+        }
+        return c
+      }
+      for (const v of visitCampaigns) {
+        if (v.funnel_type === meta.visitFunnelType) getC(v.campaign).visits += Number(v.visits) || 0
+      }
+      for (const cv of convCampaigns) {
+        if (cv.funnel === meta.submissionFunnel) getC(cv.campaign).conversions += Number(cv.conversions) || 0
+      }
+      for (const c of campMap.values()) {
+        if (c.campaign !== '(directo)') c.spend = spendByCampaign.get(c.campaign) ?? 0
+      }
+
+      const byCampaign = [...campMap.values()]
+        .map((c) => ({
+          campaign: c.campaign,
+          visits: c.visits,
+          conversions: c.conversions,
+          pct: pct(c.conversions, c.visits),
+          spend: Math.round(c.spend * 100) / 100,
+          cpa: c.conversions > 0 && c.spend > 0 ? Math.round((c.spend / c.conversions) * 100) / 100 : null,
+        }))
+        .sort((a, b) => b.visits - a.visits || b.conversions - a.conversions)
+        .slice(0, 25)
+
+      return { ...f, videoRows: videoRowsForFunnel, byCampaign }
+    })
+
+    return NextResponse.json({ from, to, funnels: enriched })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Internal error'
     console.error('[api/funnels/metrics]', msg)

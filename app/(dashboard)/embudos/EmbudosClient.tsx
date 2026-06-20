@@ -22,6 +22,31 @@ interface FunnelByDayRow {
   conversions: number
 }
 
+interface VideoStatRow {
+  funnel: string
+  video_key: string
+  segment: string
+  stage: string | null
+  viewers: number
+  avg_max_percent: number | null
+  avg_attention: number | null
+  completed: number
+  q25: number
+  q50: number
+  q75: number
+  q95: number
+  q100: number
+}
+
+interface CampaignRow {
+  campaign: string
+  visits: number
+  conversions: number
+  pct: number
+  spend: number
+  cpa: number | null
+}
+
 interface FunnelMetrics {
   key: string
   label: string
@@ -30,6 +55,8 @@ interface FunnelMetrics {
   conversions: number
   conversionPct: number
   byDay: FunnelByDayRow[]
+  videoRows?: VideoStatRow[]
+  byCampaign?: CampaignRow[]
 }
 
 interface FunnelsResponse {
@@ -122,6 +149,168 @@ function CopyLinkButton({ url }: { url: string }) {
   )
 }
 
+const STAGE_LABELS: Record<string, string> = {
+  request: 'Solicitud',
+  scheduled: 'Coordinada',
+  not_visited: 'No realizada',
+  visited: 'Visita realizada',
+  appraisal_sent: 'Tasación entregada',
+  followup: 'Seguimiento',
+  captured: 'Captada',
+  lost: 'Descartado',
+  clase_gratuita: 'Clase gratuita',
+  comprador: 'Comprador',
+}
+const VIDEO_LABELS: Record<string, string> = {
+  'hero-tasacion': 'Video del hero',
+  'hero-clase': 'Video del hero',
+  'clase-completa': 'Clase completa (página de gracias)',
+}
+
+interface VideoAgg {
+  viewers: number
+  attention: number | null
+  depth: number | null
+  completed: number
+  q: [number, number, number, number, number]
+}
+
+function aggregateVideo(rows: VideoStatRow[]): VideoAgg {
+  let viewers = 0, attW = 0, attN = 0, depW = 0, depN = 0, completed = 0
+  const q: [number, number, number, number, number] = [0, 0, 0, 0, 0]
+  for (const r of rows) {
+    viewers += r.viewers
+    completed += r.completed
+    if (r.avg_attention != null) { attW += r.avg_attention * r.viewers; attN += r.viewers }
+    if (r.avg_max_percent != null) { depW += r.avg_max_percent * r.viewers; depN += r.viewers }
+    q[0] += r.q25; q[1] += r.q50; q[2] += r.q75; q[3] += r.q95; q[4] += r.q100
+  }
+  return {
+    viewers,
+    attention: attN > 0 ? Math.round((attW / attN) * 10) / 10 : null,
+    depth: depN > 0 ? Math.round((depW / depN) * 10) / 10 : null,
+    completed,
+    q,
+  }
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="font-bold tabular-nums">{value}</p>
+    </div>
+  )
+}
+
+function VideoAnalytics({ rows }: { rows: VideoStatRow[] }) {
+  const [filter, setFilter] = useState('all')
+  if (rows.length === 0) {
+    return <p className="text-sm text-muted-foreground">Sin datos de video para el rango.</p>
+  }
+  const stages = Array.from(
+    new Set(rows.filter((r) => r.segment === 'registrado' && r.stage).map((r) => r.stage as string)),
+  )
+  const filtered = rows.filter((r) => {
+    if (filter === 'all') return true
+    if (filter === 'anon') return r.segment === 'no_registrado'
+    if (filter === 'reg') return r.segment === 'registrado'
+    if (filter.startsWith('stage:')) return r.segment === 'registrado' && r.stage === filter.slice(6)
+    return true
+  })
+  const videoKeys = Array.from(new Set(filtered.map((r) => r.video_key)))
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-muted-foreground">Analítica de video (% visto)</p>
+        <select
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          className="rounded-md border bg-background px-2 py-1 text-xs"
+          aria-label="Filtrar por segmento o etapa"
+        >
+          <option value="all">Todos</option>
+          <option value="anon">No registrados</option>
+          <option value="reg">Registrados</option>
+          {stages.map((s) => (
+            <option key={s} value={`stage:${s}`}>{`Etapa: ${STAGE_LABELS[s] || s}`}</option>
+          ))}
+        </select>
+      </div>
+      {videoKeys.length === 0 && (
+        <p className="text-xs text-muted-foreground">Sin datos para este filtro.</p>
+      )}
+      {videoKeys.map((vk) => {
+        const agg = aggregateVideo(filtered.filter((r) => r.video_key === vk))
+        const pctOf = (n: number) => (agg.viewers > 0 ? Math.round((n / agg.viewers) * 100) : 0)
+        const bars: ReadonlyArray<readonly [string, number]> = [
+          ['25%', agg.q[0]], ['50%', agg.q[1]], ['75%', agg.q[2]], ['95%', agg.q[3]], ['100%', agg.q[4]],
+        ]
+        return (
+          <div key={vk} className="rounded-lg border p-3">
+            <p className="text-sm font-medium">{VIDEO_LABELS[vk] || vk}</p>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+              <Stat label="Vistas" value={NUM.format(agg.viewers)} />
+              <Stat label="Atención media" value={agg.attention != null ? `${agg.attention}%` : '—'} />
+              <Stat label="Profundidad media" value={agg.depth != null ? `${agg.depth}%` : '—'} />
+              <Stat label="Completaron" value={`${pctOf(agg.completed)}%`} />
+            </div>
+            <div className="mt-3 space-y-1">
+              {bars.map(([lbl, val]) => (
+                <div key={lbl} className="flex items-center gap-2 text-xs">
+                  <span className="w-8 text-muted-foreground">{lbl}</span>
+                  <div className="h-2 flex-1 overflow-hidden rounded bg-muted">
+                    <div className="h-full bg-primary" style={{ width: `${pctOf(val)}%` }} />
+                  </div>
+                  <span className="w-20 text-right tabular-nums text-muted-foreground">
+                    {pctOf(val)}% ({NUM.format(val)})
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function CampaignTable({ rows }: { rows: CampaignRow[] }) {
+  if (rows.length === 0) {
+    return <p className="text-sm text-muted-foreground">Sin datos de campaña para el rango.</p>
+  }
+  const ars = (n: number) => (n > 0 ? `$${NUM.format(Math.round(n))}` : '—')
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b text-left text-muted-foreground">
+            <th className="py-1 pr-2">Campaña</th>
+            <th className="px-2 py-1 text-right">Visitas</th>
+            <th className="px-2 py-1 text-right">Conv.</th>
+            <th className="px-2 py-1 text-right">%</th>
+            <th className="px-2 py-1 text-right">Gasto</th>
+            <th className="py-1 pl-2 text-right">CPA</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((c) => (
+            <tr key={c.campaign} className="border-b last:border-0">
+              <td className="max-w-[160px] truncate py-1 pr-2" title={c.campaign}>{c.campaign}</td>
+              <td className="px-2 py-1 text-right tabular-nums">{NUM.format(c.visits)}</td>
+              <td className="px-2 py-1 text-right tabular-nums">{NUM.format(c.conversions)}</td>
+              <td className="px-2 py-1 text-right tabular-nums">{c.pct}%</td>
+              <td className="px-2 py-1 text-right tabular-nums">{ars(c.spend)}</td>
+              <td className="py-1 pl-2 text-right tabular-nums">{c.cpa != null ? `$${NUM.format(Math.round(c.cpa))}` : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function FunnelCard({ funnel }: { funnel: FunnelMetrics }) {
   return (
     <Card>
@@ -157,6 +346,13 @@ function FunnelCard({ funnel }: { funnel: FunnelMetrics }) {
         <div>
           <p className="mb-2 text-xs text-muted-foreground">Visitas vs conversiones por día</p>
           <FunnelByDayChart rows={funnel.byDay} />
+        </div>
+        <div className="border-t pt-4">
+          <VideoAnalytics rows={funnel.videoRows ?? []} />
+        </div>
+        <div className="border-t pt-4">
+          <p className="mb-2 text-xs font-medium text-muted-foreground">Por campaña</p>
+          <CampaignTable rows={funnel.byCampaign ?? []} />
         </div>
       </CardContent>
     </Card>
