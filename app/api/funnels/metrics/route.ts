@@ -104,6 +104,10 @@ interface SpendRow { campaign_name: string | null; spend: number | null }
 interface RetentionRow { funnel: string; video_key: string; segment: string; stage: string | null; percent: number; viewers: number }
 // v2: retención momento a momento (qué % vio cada tramo del video)
 interface HeatmapRow { funnel: string; video_key: string; segment: string; stage: string | null; bucket: number; viewers: number }
+// Mapa de calor de página (interno)
+interface HeatSectionRow { page: string; section: string; segment: string; stage: string | null; device: string; reached: number; avg_visible_ms: number; clicks: number }
+interface HeatTotalRow { page: string; segment: string; stage: string | null; device: string; sessions: number; avg_scroll: number }
+interface HeatGridRow { page: string; section: string; segment: string; device: string; x_bin: number; y_bin: number; clicks: number; rage: number }
 
 /** Llama un RPC de agregación; si la migración aún no corrió, degrada a []. */
 async function safeRpc<T>(supabase: AdminClient, fn: string, args: Record<string, string>): Promise<T[]> {
@@ -204,10 +208,13 @@ export async function GET(req: NextRequest) {
     const endIso = endEx.toISOString()
     const rpcArgs = { p_from: startIso, p_to: endIso }
 
-    const [videoRows, retentionAll, heatmapAll, visitCampaigns, convCampaigns, spendRows] = await Promise.all([
+    const [videoRows, retentionAll, heatmapAll, heatSections, heatTotals, heatGrid, visitCampaigns, convCampaigns, spendRows] = await Promise.all([
       safeRpc<VideoStatRow>(supabase, 'funnel_video_stats', rpcArgs),
       safeRpc<RetentionRow>(supabase, 'funnel_video_retention', rpcArgs),
       safeRpc<HeatmapRow>(supabase, 'funnel_video_heatmap', rpcArgs),
+      safeRpc<HeatSectionRow>(supabase, 'heatmap_section_stats', rpcArgs),
+      safeRpc<HeatTotalRow>(supabase, 'heatmap_session_totals', rpcArgs),
+      safeRpc<HeatGridRow>(supabase, 'heatmap_clicks_grid', rpcArgs),
       safeRpc<VisitCampRow>(supabase, 'funnel_campaign_visits', rpcArgs),
       safeRpc<ConvCampRow>(supabase, 'funnel_campaign_conversions', rpcArgs),
       (async (): Promise<SpendRow[]> => {
@@ -272,6 +279,9 @@ export async function GET(req: NextRequest) {
         retentionRows: retentionAll.filter((r) => r.funnel === f.key),
         heatmapRows: heatmapAll.filter((r) => r.funnel === f.key),
         byCampaign,
+        pageHeatSections: heatSections.filter((r) => r.page === f.key),
+        pageHeatTotals: heatTotals.filter((r) => r.page === f.key),
+        pageHeatGrid: heatGrid.filter((r) => r.page === f.key),
       }
     })
 

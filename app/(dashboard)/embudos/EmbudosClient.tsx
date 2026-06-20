@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Check, Copy, Loader2, RefreshCw } from 'lucide-react'
 import { DateRangePicker, type DateRange } from '@/components/metrics/DateRangePicker'
+import { HeatmapPanel, type HeatSectionRow, type HeatTotalRow, type HeatGridRow } from '@/components/embudos/HeatmapPanel'
 
 interface FunnelByDayRow {
   day: string
@@ -78,6 +79,9 @@ interface FunnelMetrics {
   retentionRows?: RetentionRow[]
   heatmapRows?: HeatmapRow[]
   byCampaign?: CampaignRow[]
+  pageHeatSections?: HeatSectionRow[]
+  pageHeatTotals?: HeatTotalRow[]
+  pageHeatGrid?: HeatGridRow[]
 }
 
 interface FunnelsResponse {
@@ -445,6 +449,14 @@ function FunnelCard({ funnel }: { funnel: FunnelMetrics }) {
         <div className="border-t pt-4">
           <p className="mb-2 text-xs font-medium text-muted-foreground">Por campaña</p>
           <CampaignTable rows={funnel.byCampaign ?? []} />
+        </div>
+        <div className="border-t pt-4">
+          <HeatmapPanel
+            page={funnel.key}
+            sections={funnel.pageHeatSections ?? []}
+            totals={funnel.pageHeatTotals ?? []}
+            grid={funnel.pageHeatGrid ?? []}
+          />
         </div>
       </CardContent>
     </Card>
