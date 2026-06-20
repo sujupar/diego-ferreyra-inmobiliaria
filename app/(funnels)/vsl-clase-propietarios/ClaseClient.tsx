@@ -7,6 +7,7 @@ import { ScrollReveal } from '@/components/funnel/ScrollReveal'
 import { FunnelClickToPlayVideo } from '@/components/funnel/FunnelClickToPlayVideo'
 import { TestimonialCard } from '@/components/funnel/TestimonialCard'
 import { FunnelMetaPixel, trackFunnelConversion, getMetaCookie } from '@/components/funnel/FunnelMetaPixel'
+import { readAnonId } from '@/lib/funnel/anon-id'
 import type { FunnelLeadValues } from '@/components/funnel/FunnelLeadForm'
 import type { FunnelTestimonial } from '@/lib/funnel/testimonials'
 import { CLASE_CONTENT as C, BRAND } from '@/lib/funnel/content'
@@ -86,6 +87,7 @@ export function ClaseClient({
         eventSourceUrl: typeof window !== 'undefined' ? window.location.href : undefined,
         fbp,
         fbc,
+        anonId: readAnonId() || undefined,
       }),
     })
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean; redirect?: string; error?: string; deduplicated?: boolean }
@@ -113,7 +115,14 @@ export function ClaseClient({
           {C.hero.subhead}
         </p>
         <div className="mx-auto mt-8 max-w-3xl">
-          <FunnelClickToPlayVideo src={vslUrl} poster={vslPoster} priority />
+          <FunnelClickToPlayVideo
+            src={vslUrl}
+            poster={vslPoster}
+            priority
+            trackKey="hero-clase"
+            funnel="clase"
+            context="hero"
+          />
         </div>
         <div className="mt-8">
           <Cta onClick={openModal} onPrime={prime} label={C.cta.label} note={C.cta.note} />

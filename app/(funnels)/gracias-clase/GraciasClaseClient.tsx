@@ -36,7 +36,14 @@ export function GraciasClaseClient({ pixelId, logoUrl, videoUrl, posterUrl }: Gr
       </p>
 
       <div className="mt-8 w-full max-w-3xl">
-        <FunnelClickToPlayVideo src={videoUrl} poster={posterUrl} className="aspect-video" />
+        <FunnelClickToPlayVideo
+          src={videoUrl}
+          poster={posterUrl}
+          className="aspect-video"
+          trackKey="clase-completa"
+          funnel="clase"
+          context="clase"
+        />
       </div>
 
       <p className="mt-8 text-[#555]">

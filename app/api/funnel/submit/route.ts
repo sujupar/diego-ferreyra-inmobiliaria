@@ -25,6 +25,7 @@ const Schema = z
     eventSourceUrl: z.string().url().max(500).nullable().optional(),
     fbp: z.string().max(200).nullable().optional(),
     fbc: z.string().max(300).nullable().optional(),
+    anonId: z.string().min(8).max(64).nullable().optional(), // sesión anónima de video → stitching
   })
   .refine((d) => !!(d.email || d.phone), { message: 'Se requiere email o teléfono.' })
 
@@ -113,6 +114,15 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error('[funnel/submit] createFunnelLead failed', e)
     return NextResponse.json({ error: 'No pudimos procesar tu envío. Probá de nuevo.' }, { status: 500 })
+  }
+
+  // Stitching: vincular la sesión anónima (analítica de video) al contacto + back-fill.
+  if (d.anonId) {
+    try {
+      await supabase.rpc('link_anon_to_contact', { p_anon_id: d.anonId, p_contact_id: result.contactId })
+    } catch (e) {
+      console.warn('[funnel/submit] link_anon_to_contact failed', e)
+    }
   }
 
   // Log del submission (rate-limit/dedup futuros + event_id para Fase 3)
