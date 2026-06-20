@@ -7,8 +7,7 @@ import { ScrollReveal } from '@/components/funnel/ScrollReveal'
 import { FunnelClickToPlayVideo } from '@/components/funnel/FunnelClickToPlayVideo'
 import { TestimonialCard } from '@/components/funnel/TestimonialCard'
 import { FunnelMetaPixel, trackFunnelConversion, getMetaCookie } from '@/components/funnel/FunnelMetaPixel'
-import { FunnelHeatmap } from '@/components/funnel/FunnelHeatmap'
-import { markRegisteredForHeatmap } from '@/lib/funnel/heatmap-segment'
+import { FunnelHeatmapTracker } from '@/components/funnel/FunnelHeatmapTracker'
 import { readAnonId } from '@/lib/funnel/anon-id'
 import { readStoredAttribution } from '@/lib/funnel/attribution'
 import type { FunnelLeadValues } from '@/components/funnel/FunnelLeadForm'
@@ -54,14 +53,12 @@ export function TasacionClient({
   heroPosterUrl,
   logoUrl,
   pixelId,
-  clarityId,
 }: {
   testimonials: FunnelTestimonial[]
   heroVideoUrl: string
   heroPosterUrl: string
   logoUrl: string
   pixelId: string
-  clarityId: string
 }) {
   const [open, setOpen] = useState(false)
   // Precarga el chunk del modal en el primer gesto del CTA (hover/focus/click).
@@ -101,22 +98,20 @@ export function TasacionClient({
     if (!res.ok || !data.ok) throw new Error(data.error ?? 'No pudimos procesar tu envío.')
     // Pixel SOLO si no fue un envío deduplicado (en dedup el CAPI no dispara → un Pixel solo inflaría la conversión)
     if (!data.deduplicated) trackFunnelConversion({ eventName: 'Lead', eventId, contentName: 'Tasación Directa' })
-    // Marca al visitante como 'registrado' en el mapa de calor (Clarity).
-    markRegisteredForHeatmap(data.contactId)
     if (data.redirect && typeof window !== 'undefined') window.location.href = data.redirect
   }
 
   return (
     <main>
       <FunnelMetaPixel pixelId={pixelId} contentName="Tasación Directa" />
-      <FunnelHeatmap projectId={clarityId} contentName="Tasación Directa" />
+      <FunnelHeatmapTracker page="tasacion" funnel="tasacion" />
       {/* Topbar */}
-      <div className="bg-[#0d2d49] py-2 text-center text-xs font-semibold uppercase tracking-wide text-white">
+      <div data-hm="topbar" className="bg-[#0d2d49] py-2 text-center text-xs font-semibold uppercase tracking-wide text-white">
         {C.topbar}
       </div>
 
       {/* Hero */}
-      <section className="mx-auto max-w-4xl px-4 py-10 text-center">
+      <section data-hm="hero" className="mx-auto max-w-4xl px-4 py-10 text-center">
         <Image src={logoUrl} alt="Diego Ferreyra" width={260} height={57} className="mx-auto mb-8 w-[240px]" style={{ height: 'auto' }} priority />
         <h1 className="font-[family-name:var(--font-funnel-head)] text-3xl font-extrabold leading-tight text-[#0d2d49] md:text-5xl">
           {C.hero.headline}
@@ -140,7 +135,7 @@ export function TasacionClient({
       </section>
 
       {/* Benefits */}
-      <section className="bg-[#F8F9FA] py-14">
+      <section data-hm="benefits" className="bg-[#F8F9FA] py-14">
         <div className="mx-auto grid max-w-5xl gap-6 px-4 md:grid-cols-3">
           {C.benefits.map((b, i) => (
             <ScrollReveal key={b.title} delay={i * 0.1}>
@@ -154,7 +149,7 @@ export function TasacionClient({
       </section>
 
       {/* Stat band */}
-      <section className="bg-[#0d2d49] py-16 text-center text-white">
+      <section data-hm="stat" className="bg-[#0d2d49] py-16 text-center text-white">
         <ScrollReveal>
           <p className="font-[family-name:var(--font-funnel-head)] text-6xl font-extrabold text-[#00BF63] md:text-7xl">
             {C.stat.number}
@@ -165,7 +160,7 @@ export function TasacionClient({
 
       {/* Testimonios */}
       {testimonials.length > 0 && (
-        <section className="mx-auto max-w-6xl px-4 py-16">
+        <section data-hm="testimonios" className="mx-auto max-w-6xl px-4 py-16">
           <h2 className="text-center font-[family-name:var(--font-funnel-head)] text-2xl font-bold text-[#0d2d49] md:text-3xl">
             {C.testimonialsHeading}
           </h2>
@@ -178,7 +173,7 @@ export function TasacionClient({
       )}
 
       {/* Final CTA */}
-      <section className="bg-[#F8F9FA] py-16 text-center">
+      <section data-hm="cta-final" className="bg-[#F8F9FA] py-16 text-center">
         <h2 className="mx-auto max-w-2xl px-4 font-[family-name:var(--font-funnel-head)] text-2xl font-bold text-[#0d2d49]">
           {C.finalHeading}
         </h2>
@@ -187,7 +182,7 @@ export function TasacionClient({
         </div>
       </section>
 
-      <footer className="bg-[#0d2d49] py-6 text-center text-xs text-white/70">
+      <footer data-hm="footer" className="bg-[#0d2d49] py-6 text-center text-xs text-white/70">
         © {new Date().getFullYear()} {BRAND.footer}
       </footer>
 

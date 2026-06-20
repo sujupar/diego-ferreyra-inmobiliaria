@@ -31,7 +31,6 @@ export default function FunnelLayout({ children }: { children: ReactNode }) {
       {/* React 19 sube estos <link> al <head>. Acelera el poster (LCP) y el Pixel sin bloquear. */}
       {SUPABASE_ORIGIN && <link rel="preconnect" href={SUPABASE_ORIGIN} crossOrigin="anonymous" />}
       <link rel="preconnect" href="https://connect.facebook.net" />
-      <link rel="preconnect" href="https://www.clarity.ms" />
       {children}
     </div>
   )

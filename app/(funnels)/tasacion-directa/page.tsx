@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import { LandingVisitTracker } from '@/components/landing/LandingVisitTracker'
 import { getActiveTestimonials } from '@/lib/funnel/testimonials'
 import { funnelMediaUrl } from '@/lib/funnel/media'
-import { CLARITY_PROJECT_ID } from '@/lib/funnel/clarity'
 import { TASACION_CONTENT, BRAND } from '@/lib/funnel/content'
 import { TasacionClient } from './TasacionClient'
 
@@ -29,7 +28,6 @@ export default async function TasacionPage() {
         heroPosterUrl={funnelMediaUrl(TASACION_CONTENT.hero.posterPath)}
         logoUrl={funnelMediaUrl(BRAND.logoPath)}
         pixelId={pixelId}
-        clarityId={CLARITY_PROJECT_ID}
       />
     </>
   )

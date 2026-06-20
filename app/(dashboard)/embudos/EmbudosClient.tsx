@@ -13,12 +13,8 @@ import {
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Check, Copy, Loader2, RefreshCw, Flame } from 'lucide-react'
+import { Check, Copy, Loader2, RefreshCw } from 'lucide-react'
 import { DateRangePicker, type DateRange } from '@/components/metrics/DateRangePicker'
-import { CLARITY_PROJECT_ID } from '@/lib/funnel/clarity'
-
-// Mapa de calor (Microsoft Clarity) — el dashboard vive en Clarity; linkeamos a él.
-const CLARITY_ID = CLARITY_PROJECT_ID
 
 interface FunnelByDayRow {
   day: string
@@ -494,17 +490,6 @@ export function EmbudosClient() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {CLARITY_ID && (
-            <a
-              href={`https://clarity.microsoft.com/projects/view/${CLARITY_ID}/dashboard`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-sm transition hover:bg-muted"
-            >
-              <Flame className="h-4 w-4 text-orange-500" />
-              Ver mapa de calor
-            </a>
-          )}
           <DateRangePicker value={range} onChange={setRange} defaultPreset="30d" includeToday />
           <Button
             variant="outline"
