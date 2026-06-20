@@ -745,6 +745,10 @@ export async function createCampaignForProperty(
       method: 'POST',
       body: JSON.stringify({
         name: `${property.public_slug} — ${highlight.id}`.slice(0, 80),
+        // Macros de Meta → atribución por campaña/conjunto/anuncio en el CRM.
+        // Meta sustituye {{...}}: nombres (legibles) + IDs (inmutables).
+        url_tags:
+          'utm_source={{site_source_name}}&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&utm_term={{adset.name}}&fb_campaign_id={{campaign.id}}&fb_adset_id={{adset.id}}&fb_ad_id={{ad.id}}&fb_placement={{placement}}',
         object_story_spec: {
           page_id: pageId,
           link_data: {

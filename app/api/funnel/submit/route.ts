@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { createClient } from '@supabase/supabase-js'
 import { createFunnelLead } from '@/lib/funnel/create-funnel-lead'
+import { attributionToDealColumns } from '@/lib/funnel/attribution'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -26,6 +27,21 @@ const Schema = z
     fbp: z.string().max(200).nullable().optional(),
     fbc: z.string().max(300).nullable().optional(),
     anonId: z.string().min(8).max(64).nullable().optional(), // sesión anónima de video → stitching
+    attribution: z
+      .object({
+        utm_source: z.string().max(200).nullable().optional(),
+        utm_medium: z.string().max(200).nullable().optional(),
+        utm_campaign: z.string().max(200).nullable().optional(),
+        utm_content: z.string().max(200).nullable().optional(),
+        utm_term: z.string().max(200).nullable().optional(),
+        fb_campaign_id: z.string().max(200).nullable().optional(),
+        fb_adset_id: z.string().max(200).nullable().optional(),
+        fb_ad_id: z.string().max(200).nullable().optional(),
+        fb_placement: z.string().max(200).nullable().optional(),
+      })
+      .partial()
+      .nullable()
+      .optional(),
   })
   .refine((d) => !!(d.email || d.phone), { message: 'Se requiere email o teléfono.' })
 
@@ -123,6 +139,16 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       console.warn('[funnel/submit] link_anon_to_contact failed', e)
     }
+  }
+
+  // Atribución de campaña → columnas meta_* del deal (lo que el asesor ve en el CRM).
+  try {
+    const metaCols = attributionToDealColumns(d.attribution)
+    if (Object.keys(metaCols).length > 0) {
+      await supabase.from('deals').update(metaCols).eq('id', result.dealId)
+    }
+  } catch (e) {
+    console.warn('[funnel/submit] meta attribution update failed', e)
   }
 
   // Log del submission (rate-limit/dedup futuros + event_id para Fase 3)

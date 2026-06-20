@@ -16,6 +16,10 @@ interface TrackBody {
   fbclid?: string
   gclid?: string
   referrer?: string
+  fb_campaign_id?: string
+  fb_adset_id?: string
+  fb_ad_id?: string
+  fb_placement?: string
 }
 
 const ALLOWED_FUNNELS = new Set(['clase_gratuita', 'tasacion', 'otro'])
@@ -65,6 +69,10 @@ export async function POST(req: NextRequest) {
       utm_term:      cap(utm.utm_term, 200),
       fbclid:        cap(body.fbclid, 200),
       gclid:         cap(body.gclid, 200),
+      fb_campaign_id: cap(body.fb_campaign_id, 200),
+      fb_adset_id:   cap(body.fb_adset_id, 200),
+      fb_ad_id:      cap(body.fb_ad_id, 200),
+      fb_placement:  cap(body.fb_placement, 200),
       referrer:      cap(body.referrer, 500),
       user_agent:    cap(req.headers.get('user-agent'), 500),
       ip_hash:       ipHash,

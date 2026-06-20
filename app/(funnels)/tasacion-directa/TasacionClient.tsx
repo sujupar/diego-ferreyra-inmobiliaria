@@ -8,6 +8,7 @@ import { FunnelClickToPlayVideo } from '@/components/funnel/FunnelClickToPlayVid
 import { TestimonialCard } from '@/components/funnel/TestimonialCard'
 import { FunnelMetaPixel, trackFunnelConversion, getMetaCookie } from '@/components/funnel/FunnelMetaPixel'
 import { readAnonId } from '@/lib/funnel/anon-id'
+import { readStoredAttribution } from '@/lib/funnel/attribution'
 import type { FunnelLeadValues } from '@/components/funnel/FunnelLeadForm'
 import type { FunnelTestimonial } from '@/lib/funnel/testimonials'
 import { TASACION_CONTENT as C, BRAND } from '@/lib/funnel/content'
@@ -89,6 +90,7 @@ export function TasacionClient({
         fbp,
         fbc,
         anonId: readAnonId() || undefined,
+        attribution: readStoredAttribution() ?? undefined,
       }),
     })
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean; redirect?: string; error?: string; deduplicated?: boolean }

@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   Loader2, ArrowLeft, User, MapPin, Calendar, Phone, Mail,
   ChevronRight, FileCheck, Home, Eye, MessageSquare, XCircle, Tag,
-  Edit2, Send, Mic, MicOff, Square, UserCog, Clock
+  Edit2, Send, Mic, MicOff, Square, UserCog, Clock, Megaphone, ExternalLink
 } from 'lucide-react'
 
 type FollowUpChannel = 'call' | 'email' | 'message'
@@ -48,6 +48,7 @@ function formatDate(d: string) {
 }
 
 const ORIGIN_LABELS: Record<string, string> = { embudo: 'Embudo', referido: 'Referido', historico: 'Historico' }
+const PLATFORM_LABELS: Record<string, string> = { fb: 'Facebook', ig: 'Instagram', msg: 'Messenger', an: 'Audience Network', facebook: 'Facebook', instagram: 'Instagram' }
 
 export default function DealDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -360,6 +361,10 @@ export default function DealDetailPage() {
             {contact.phone && <><span className="text-muted-foreground flex items-center gap-1"><Phone className="h-3.5 w-3.5" />Teléfono:</span><span>{contact.phone}</span></>}
             {contact.email && <><span className="text-muted-foreground flex items-center gap-1"><Mail className="h-3.5 w-3.5" />Email:</span><span>{contact.email}</span></>}
             {deal.origin && <><span className="text-muted-foreground flex items-center gap-1"><Tag className="h-3.5 w-3.5" />Origen:</span><span>{ORIGIN_LABELS[deal.origin] || deal.origin}</span></>}
+            {deal.meta_campaign_name && <><span className="text-muted-foreground flex items-center gap-1"><Megaphone className="h-3.5 w-3.5" />Campaña:</span><span className="font-medium">{deal.meta_campaign_name}</span></>}
+            {deal.meta_adset_name && <><span className="text-muted-foreground">Conjunto:</span><span>{deal.meta_adset_name}</span></>}
+            {deal.meta_ad_name && <><span className="text-muted-foreground">Anuncio:</span><span>{deal.meta_ad_id ? <a href={`https://www.facebook.com/adsmanager/manage/ads?selected_ad_ids=${deal.meta_ad_id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">{deal.meta_ad_name}<ExternalLink className="h-3 w-3" /></a> : deal.meta_ad_name}</span></>}
+            {deal.meta_site_source && <><span className="text-muted-foreground">Plataforma:</span><span>{PLATFORM_LABELS[deal.meta_site_source] || deal.meta_site_source}{deal.meta_placement ? ` · ${deal.meta_placement}` : ''}</span></>}
             {deal.scheduled_date && (
               <>
                 <span className="text-muted-foreground flex items-center gap-1">
