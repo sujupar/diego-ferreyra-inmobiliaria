@@ -16,7 +16,10 @@ const PRESETS: { key: PresetKey; label: string }[] = [
   { key: 'custom',        label: 'Personalizado' },
 ]
 
-function presetToRange(key: PresetKey, today = new Date()): DateRange | null {
+// `includeToday`: si true, los presets relativos (7d/30d) TERMINAN HOY en vez de
+// ayer. Solo lo usa el panel Embudos (analítica en tiempo real); /metrics lo deja
+// en false (sus datos diarios de "hoy" son parciales y no deben entrar en comparativas).
+function presetToRange(key: PresetKey, today = new Date(), includeToday = false): DateRange | null {
   const t = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()))
   const fmt = (d: Date) => d.toISOString().slice(0, 10)
 
@@ -25,12 +28,12 @@ function presetToRange(key: PresetKey, today = new Date()): DateRange | null {
     return { from: fmt(y), to: fmt(y) }
   }
   if (key === '7d') {
-    const to = new Date(t); to.setUTCDate(to.getUTCDate() - 1)
+    const to = new Date(t); if (!includeToday) to.setUTCDate(to.getUTCDate() - 1)
     const from = new Date(to); from.setUTCDate(from.getUTCDate() - 6)
     return { from: fmt(from), to: fmt(to) }
   }
   if (key === '30d') {
-    const to = new Date(t); to.setUTCDate(to.getUTCDate() - 1)
+    const to = new Date(t); if (!includeToday) to.setUTCDate(to.getUTCDate() - 1)
     const from = new Date(to); from.setUTCDate(from.getUTCDate() - 29)
     return { from: fmt(from), to: fmt(to) }
   }
@@ -50,15 +53,17 @@ interface Props {
   value: DateRange
   onChange: (r: DateRange) => void
   defaultPreset?: PresetKey
+  /** Si true, los presets 7d/30d incluyen HOY (solo Embudos). Default false. */
+  includeToday?: boolean
 }
 
-export function DateRangePicker({ value, onChange, defaultPreset = '7d' }: Props) {
+export function DateRangePicker({ value, onChange, defaultPreset = '7d', includeToday = false }: Props) {
   const [preset, setPreset] = useState<PresetKey>(defaultPreset)
 
   const apply = (key: PresetKey) => {
     setPreset(key)
     if (key === 'custom') return
-    const r = presetToRange(key)
+    const r = presetToRange(key, new Date(), includeToday)
     if (r) onChange(r)
   }
 

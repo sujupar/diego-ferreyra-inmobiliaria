@@ -66,10 +66,11 @@ interface FunnelsResponse {
 }
 
 function defaultRange(): DateRange {
-  // 30d: ayer hacia atrás 30 días (inclusive), igual que el preset '30d'.
-  const today = new Date()
-  const to = new Date(today)
-  to.setUTCDate(to.getUTCDate() - 1)
+  // 30 días INCLUYENDO hoy: la analítica de video/visitas es en tiempo real, así
+  // que lo de hoy debe contar (a diferencia de /metrics, que corta en ayer).
+  // Normalizamos a medianoche UTC con Date.UTC para no tener bug de huso horario.
+  const now = new Date()
+  const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
   const from = new Date(to)
   from.setUTCDate(from.getUTCDate() - 29)
   return {
@@ -398,7 +399,7 @@ export function EmbudosClient() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <DateRangePicker value={range} onChange={setRange} defaultPreset="30d" />
+          <DateRangePicker value={range} onChange={setRange} defaultPreset="30d" includeToday />
           <Button
             variant="outline"
             size="icon"
