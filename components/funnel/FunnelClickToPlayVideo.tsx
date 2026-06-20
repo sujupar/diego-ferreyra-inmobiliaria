@@ -7,6 +7,8 @@ interface FunnelClickToPlayVideoProps {
   src: string
   poster?: string
   className?: string
+  /** true para el poster del hero (LCP): lo marca priority/fetchPriority=high. */
+  priority?: boolean
 }
 
 /**
@@ -18,7 +20,7 @@ interface FunnelClickToPlayVideoProps {
  *
  * Mobile-first: contenedor relative w-full aspect-video.
  */
-export function FunnelClickToPlayVideo({ src, poster, className }: FunnelClickToPlayVideoProps) {
+export function FunnelClickToPlayVideo({ src, poster, className, priority = false }: FunnelClickToPlayVideoProps) {
   const [playing, setPlaying] = useState(false)
 
   return (
@@ -47,6 +49,8 @@ export function FunnelClickToPlayVideo({ src, poster, className }: FunnelClickTo
               src={poster}
               alt=""
               fill
+              priority={priority}
+              quality={60}
               sizes="(max-width: 768px) 100vw, 768px"
               className="object-cover"
             />

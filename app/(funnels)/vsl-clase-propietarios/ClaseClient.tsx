@@ -1,22 +1,40 @@
 'use client'
 
 import { useState } from 'react'
+import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import { ScrollReveal } from '@/components/funnel/ScrollReveal'
-import { FunnelHeroVideo } from '@/components/funnel/FunnelHeroVideo'
+import { FunnelClickToPlayVideo } from '@/components/funnel/FunnelClickToPlayVideo'
 import { TestimonialCard } from '@/components/funnel/TestimonialCard'
-import { FunnelLeadModal } from '@/components/funnel/FunnelLeadModal'
 import { FunnelMetaPixel, trackFunnelConversion, getMetaCookie } from '@/components/funnel/FunnelMetaPixel'
 import type { FunnelLeadValues } from '@/components/funnel/FunnelLeadForm'
 import type { FunnelTestimonial } from '@/lib/funnel/testimonials'
 import { CLASE_CONTENT as C, BRAND } from '@/lib/funnel/content'
 
-function Cta({ onClick, label, note }: { onClick: () => void; label: string; note?: string }) {
+// El modal solo se necesita tras un click/hover del CTA → fuera del bundle inicial.
+const FunnelLeadModal = dynamic(
+  () => import('@/components/funnel/FunnelLeadModal').then((m) => m.FunnelLeadModal),
+  { ssr: false },
+)
+
+function Cta({
+  onClick,
+  onPrime,
+  label,
+  note,
+}: {
+  onClick: () => void
+  onPrime?: () => void
+  label: string
+  note?: string
+}) {
   return (
     <div className="flex flex-col items-center gap-2">
       <button
         type="button"
         onClick={onClick}
+        onMouseEnter={onPrime}
+        onFocus={onPrime}
         className="rounded-xl bg-[#00BF63] px-10 py-4 text-lg font-extrabold text-white shadow-xl transition hover:scale-[1.02] hover:brightness-95"
       >
         {label}
@@ -40,6 +58,12 @@ export function ClaseClient({
   pixelId: string
 }) {
   const [open, setOpen] = useState(false)
+  const [modalReady, setModalReady] = useState(false)
+  const prime = () => setModalReady(true)
+  const openModal = () => {
+    setModalReady(true)
+    setOpen(true)
+  }
 
   async function handleSubmit(values: FunnelLeadValues) {
     const eventId =
@@ -89,10 +113,10 @@ export function ClaseClient({
           {C.hero.subhead}
         </p>
         <div className="mx-auto mt-8 max-w-3xl">
-          <FunnelHeroVideo src={vslUrl} poster={vslPoster} className="aspect-video" />
+          <FunnelClickToPlayVideo src={vslUrl} poster={vslPoster} priority />
         </div>
         <div className="mt-8">
-          <Cta onClick={() => setOpen(true)} label={C.cta.label} note={C.cta.note} />
+          <Cta onClick={openModal} onPrime={prime} label={C.cta.label} note={C.cta.note} />
         </div>
       </section>
 
@@ -130,7 +154,7 @@ export function ClaseClient({
       <section className="bg-[#0d2d49] py-16 text-center">
         <ScrollReveal>
           <div className="px-4">
-            <Cta onClick={() => setOpen(true)} label={C.cta.label} note={C.cta.note} />
+            <Cta onClick={openModal} onPrime={prime} label={C.cta.label} note={C.cta.note} />
           </div>
         </ScrollReveal>
       </section>
@@ -139,17 +163,19 @@ export function ClaseClient({
         © {new Date().getFullYear()} {BRAND.footer}
       </footer>
 
-      <FunnelLeadModal
-        open={open}
-        onClose={() => setOpen(false)}
-        title={C.form.heading}
-        subtitle={C.form.subtitle}
-        variant="clase"
-        submitLabel={C.form.submitLabel}
-        tipoClienteLabel={C.form.tipoClienteLabel}
-        tipoClienteOptions={C.form.tipoClienteOptions}
-        onSubmit={handleSubmit}
-      />
+      {modalReady && (
+        <FunnelLeadModal
+          open={open}
+          onClose={() => setOpen(false)}
+          title={C.form.heading}
+          subtitle={C.form.subtitle}
+          variant="clase"
+          submitLabel={C.form.submitLabel}
+          tipoClienteLabel={C.form.tipoClienteLabel}
+          tipoClienteOptions={C.form.tipoClienteOptions}
+          onSubmit={handleSubmit}
+        />
+      )}
     </main>
   )
 }

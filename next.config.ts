@@ -7,6 +7,11 @@ const nextConfig: NextConfig = {
     // (lib/marketing/ad-image-*.ts → satori + resvg + sharp).
     serverExternalPackages: ['@resvg/resvg-js', 'satori', 'sharp'],
     images: {
+        // Next 16 NO trae AVIF por default (-20-30% de peso en el poster LCP).
+        formats: ['image/avif', 'image/webp'],
+        // Next 16 coacciona cualquier `quality` fuera de la lista al más cercano.
+        // 60 → poster del hero (suficiente bajo el overlay + botón play); 75 → resto.
+        qualities: [60, 75],
         remotePatterns: [
             { protocol: 'https', hostname: '**.zonaprop.com.ar' },
             { protocol: 'https', hostname: '**.naventcdn.com' },

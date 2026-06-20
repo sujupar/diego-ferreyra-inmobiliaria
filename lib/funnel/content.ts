@@ -5,6 +5,7 @@ export const TASACION_CONTENT = {
     subhead:
       'La mayoría de los propietarios se enfoca en el "precio de venta". Nosotros nos enfocamos en cuánto te queda en mano. Descubrí cómo la mayoría pierde miles de dólares sin darse cuenta en impuestos evitables, IVA, gastos, comisiones y malas negociaciones.',
     videoPath: 'web/tasacion-hero-web.mp4',
+    posterPath: 'web/tasacion-hero-poster.jpg',
   },
   benefits: [
     {

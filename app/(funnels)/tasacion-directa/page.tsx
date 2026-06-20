@@ -25,6 +25,7 @@ export default async function TasacionPage() {
       <TasacionClient
         testimonials={testimonials}
         heroVideoUrl={funnelMediaUrl(TASACION_CONTENT.hero.videoPath)}
+        heroPosterUrl={funnelMediaUrl(TASACION_CONTENT.hero.posterPath)}
         logoUrl={funnelMediaUrl(BRAND.logoPath)}
         pixelId={pixelId}
       />

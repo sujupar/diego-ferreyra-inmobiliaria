@@ -1,22 +1,40 @@
 'use client'
 
 import { useState } from 'react'
+import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import { ScrollReveal } from '@/components/funnel/ScrollReveal'
-import { FunnelHeroVideo } from '@/components/funnel/FunnelHeroVideo'
+import { FunnelClickToPlayVideo } from '@/components/funnel/FunnelClickToPlayVideo'
 import { TestimonialCard } from '@/components/funnel/TestimonialCard'
-import { FunnelLeadModal } from '@/components/funnel/FunnelLeadModal'
 import { FunnelMetaPixel, trackFunnelConversion, getMetaCookie } from '@/components/funnel/FunnelMetaPixel'
 import type { FunnelLeadValues } from '@/components/funnel/FunnelLeadForm'
 import type { FunnelTestimonial } from '@/lib/funnel/testimonials'
 import { TASACION_CONTENT as C, BRAND } from '@/lib/funnel/content'
 
-function Cta({ onClick, label, note }: { onClick: () => void; label: string; note?: string }) {
+// El modal solo se necesita tras un click/hover del CTA → fuera del bundle inicial.
+const FunnelLeadModal = dynamic(
+  () => import('@/components/funnel/FunnelLeadModal').then((m) => m.FunnelLeadModal),
+  { ssr: false },
+)
+
+function Cta({
+  onClick,
+  onPrime,
+  label,
+  note,
+}: {
+  onClick: () => void
+  onPrime?: () => void
+  label: string
+  note?: string
+}) {
   return (
     <div className="flex flex-col items-center gap-2">
       <button
         type="button"
         onClick={onClick}
+        onMouseEnter={onPrime}
+        onFocus={onPrime}
         className="rounded-xl bg-[#00BF63] px-8 py-4 text-lg font-extrabold text-white shadow-xl transition hover:scale-[1.02] hover:brightness-95"
       >
         {label}
@@ -29,15 +47,24 @@ function Cta({ onClick, label, note }: { onClick: () => void; label: string; not
 export function TasacionClient({
   testimonials,
   heroVideoUrl,
+  heroPosterUrl,
   logoUrl,
   pixelId,
 }: {
   testimonials: FunnelTestimonial[]
   heroVideoUrl: string
+  heroPosterUrl: string
   logoUrl: string
   pixelId: string
 }) {
   const [open, setOpen] = useState(false)
+  // Precarga el chunk del modal en el primer gesto del CTA (hover/focus/click).
+  const [modalReady, setModalReady] = useState(false)
+  const prime = () => setModalReady(true)
+  const openModal = () => {
+    setModalReady(true)
+    setOpen(true)
+  }
 
   async function handleSubmit(values: FunnelLeadValues) {
     const eventId =
@@ -79,7 +106,7 @@ export function TasacionClient({
 
       {/* Hero */}
       <section className="mx-auto max-w-4xl px-4 py-10 text-center">
-        <Image src={logoUrl} alt="Diego Ferreyra" width={260} height={57} className="mx-auto mb-8 h-auto w-[240px]" priority />
+        <Image src={logoUrl} alt="Diego Ferreyra" width={260} height={57} className="mx-auto mb-8 w-[240px]" style={{ height: 'auto' }} priority />
         <h1 className="font-[family-name:var(--font-funnel-head)] text-3xl font-extrabold leading-tight text-[#0d2d49] md:text-5xl">
           {C.hero.headline}
         </h1>
@@ -87,10 +114,10 @@ export function TasacionClient({
           {C.hero.subhead}
         </p>
         <div className="mx-auto mt-8 max-w-3xl">
-          <FunnelHeroVideo src={heroVideoUrl} className="aspect-video" />
+          <FunnelClickToPlayVideo src={heroVideoUrl} poster={heroPosterUrl} priority />
         </div>
         <div className="mt-8">
-          <Cta onClick={() => setOpen(true)} label={C.cta.label} note={C.cta.note} />
+          <Cta onClick={openModal} onPrime={prime} label={C.cta.label} note={C.cta.note} />
         </div>
       </section>
 
@@ -138,7 +165,7 @@ export function TasacionClient({
           {C.finalHeading}
         </h2>
         <div className="mt-8">
-          <Cta onClick={() => setOpen(true)} label={C.cta.label} />
+          <Cta onClick={openModal} onPrime={prime} label={C.cta.label} />
         </div>
       </section>
 
@@ -146,15 +173,17 @@ export function TasacionClient({
         © {new Date().getFullYear()} {BRAND.footer}
       </footer>
 
-      <FunnelLeadModal
-        open={open}
-        onClose={() => setOpen(false)}
-        title={C.form.title}
-        subtitle={C.form.subtitle}
-        variant="tasacion"
-        submitLabel={C.cta.label}
-        onSubmit={handleSubmit}
-      />
+      {modalReady && (
+        <FunnelLeadModal
+          open={open}
+          onClose={() => setOpen(false)}
+          title={C.form.title}
+          subtitle={C.form.subtitle}
+          variant="tasacion"
+          submitLabel={C.cta.label}
+          onSubmit={handleSubmit}
+        />
+      )}
     </main>
   )
 }
