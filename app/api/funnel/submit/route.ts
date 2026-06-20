@@ -105,13 +105,17 @@ export async function POST(req: NextRequest) {
   const dedupSince = new Date(Date.now() - DEDUP_WINDOW_MS).toISOString()
   for (const [col, val] of [['email', d.email], ['phone', d.phone]] as const) {
     if (!val) continue
-    const { count } = await supabase
+    const { data: dup } = await supabase
       .from('funnel_lead_submissions')
-      .select('id', { count: 'exact', head: true })
+      .select('contact_id')
       .eq(col, val)
       .gte('created_at', dedupSince)
-    if ((count ?? 0) > 0) {
-      return NextResponse.json({ ok: true, deduplicated: true, redirect: redirectFor(d.funnel) })
+      .order('created_at', { ascending: false })
+      .limit(1)
+    if (dup && dup.length > 0) {
+      // Ya está registrado → devolvemos su contactId para marcar 'registrado' en el heatmap.
+      const cid = (dup[0] as { contact_id?: string | null }).contact_id ?? null
+      return NextResponse.json({ ok: true, deduplicated: true, contactId: cid, redirect: redirectFor(d.funnel) })
     }
   }
 
@@ -198,5 +202,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, redirect: redirectFor(d.funnel) })
+  return NextResponse.json({ ok: true, contactId: result.contactId, redirect: redirectFor(d.funnel) })
 }

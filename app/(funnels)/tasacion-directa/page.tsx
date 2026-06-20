@@ -28,6 +28,7 @@ export default async function TasacionPage() {
         heroPosterUrl={funnelMediaUrl(TASACION_CONTENT.hero.posterPath)}
         logoUrl={funnelMediaUrl(BRAND.logoPath)}
         pixelId={pixelId}
+        clarityId={process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID ?? ''}
       />
     </>
   )

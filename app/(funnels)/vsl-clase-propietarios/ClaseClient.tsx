@@ -7,6 +7,8 @@ import { ScrollReveal } from '@/components/funnel/ScrollReveal'
 import { FunnelClickToPlayVideo } from '@/components/funnel/FunnelClickToPlayVideo'
 import { TestimonialCard } from '@/components/funnel/TestimonialCard'
 import { FunnelMetaPixel, trackFunnelConversion, getMetaCookie } from '@/components/funnel/FunnelMetaPixel'
+import { FunnelHeatmap } from '@/components/funnel/FunnelHeatmap'
+import { markRegisteredForHeatmap } from '@/lib/funnel/heatmap-segment'
 import { readAnonId } from '@/lib/funnel/anon-id'
 import { readStoredAttribution } from '@/lib/funnel/attribution'
 import type { FunnelLeadValues } from '@/components/funnel/FunnelLeadForm'
@@ -52,12 +54,14 @@ export function ClaseClient({
   vslPoster,
   headshotUrl,
   pixelId,
+  clarityId,
 }: {
   testimonials: FunnelTestimonial[]
   vslUrl: string
   vslPoster: string
   headshotUrl: string
   pixelId: string
+  clarityId: string
 }) {
   const [open, setOpen] = useState(false)
   const [modalReady, setModalReady] = useState(false)
@@ -92,16 +96,19 @@ export function ClaseClient({
         attribution: readStoredAttribution() ?? undefined,
       }),
     })
-    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; redirect?: string; error?: string; deduplicated?: boolean }
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; redirect?: string; error?: string; deduplicated?: boolean; contactId?: string }
     if (!res.ok || !data.ok) throw new Error(data.error ?? 'No pudimos procesar tu envío.')
     // Pixel SOLO si no fue un envío deduplicado (en dedup el CAPI no dispara → un Pixel solo inflaría la conversión)
     if (!data.deduplicated) trackFunnelConversion({ eventName: 'CompleteRegistration', eventId, contentName: 'Clase Gratuita' })
+    // Marca al visitante como 'registrado' en el mapa de calor (Clarity).
+    markRegisteredForHeatmap(data.contactId)
     if (data.redirect && typeof window !== 'undefined') window.location.href = data.redirect
   }
 
   return (
     <main>
       <FunnelMetaPixel pixelId={pixelId} contentName="Clase Gratuita" />
+      <FunnelHeatmap projectId={clarityId} contentName="Clase Gratuita" />
       <div className="bg-[#0d2d49] py-2 text-center text-xs font-semibold uppercase tracking-wide text-white">
         {C.topbar}
       </div>

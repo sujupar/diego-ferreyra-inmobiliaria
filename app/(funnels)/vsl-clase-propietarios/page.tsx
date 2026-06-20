@@ -24,6 +24,7 @@ export default async function ClasePage() {
         vslPoster={funnelMediaUrl(CLASE_CONTENT.hero.posterPath)}
         headshotUrl={funnelMediaUrl(CLASE_CONTENT.bio.headshotPath)}
         pixelId={pixelId}
+        clarityId={process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID ?? ''}
       />
     </>
   )

@@ -68,6 +68,7 @@ export function FunnelLeadForm({
         placeholder="Tu nombre..."
         value={values.name}
         onChange={(e) => set('name', e.target.value)}
+        data-clarity-mask="true"
         className="rounded-lg border border-[#DEE2E6] px-4 py-3"
       />
       <input
@@ -76,6 +77,7 @@ export function FunnelLeadForm({
         placeholder="Tu número de teléfono..."
         value={values.phone}
         onChange={(e) => set('phone', e.target.value)}
+        data-clarity-mask="true"
         className="rounded-lg border border-[#DEE2E6] px-4 py-3"
       />
       <input
@@ -84,6 +86,7 @@ export function FunnelLeadForm({
         placeholder="Tu mejor email..."
         value={values.email}
         onChange={(e) => set('email', e.target.value)}
+        data-clarity-mask="true"
         className="rounded-lg border border-[#DEE2E6] px-4 py-3"
       />
       {variant === 'tasacion' && (
@@ -92,6 +95,7 @@ export function FunnelLeadForm({
           placeholder="Barrio o dirección de tu propiedad..."
           value={values.propertyLocation ?? ''}
           onChange={(e) => set('propertyLocation', e.target.value)}
+          data-clarity-mask="true"
           className="rounded-lg border border-[#DEE2E6] px-4 py-3"
         />
       )}
