@@ -373,7 +373,6 @@ function CampaignTable({ rows }: { rows: CampaignRow[] }) {
   if (rows.length === 0) {
     return <p className="text-sm text-muted-foreground">Sin datos de campaña para el rango.</p>
   }
-  const ars = (n: number) => (n > 0 ? `$${NUM.format(Math.round(n))}` : '—')
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
@@ -382,20 +381,16 @@ function CampaignTable({ rows }: { rows: CampaignRow[] }) {
             <th className="py-1 pr-2">Campaña</th>
             <th className="px-2 py-1 text-right">Visitas</th>
             <th className="px-2 py-1 text-right">Conv.</th>
-            <th className="px-2 py-1 text-right">%</th>
-            <th className="px-2 py-1 text-right">Gasto</th>
-            <th className="py-1 pl-2 text-right">CPA</th>
+            <th className="py-1 pl-2 text-right">%</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((c) => (
             <tr key={c.campaign} className="border-b last:border-0">
-              <td className="max-w-[160px] truncate py-1 pr-2" title={c.campaign}>{c.campaign}</td>
+              <td className="max-w-[220px] truncate py-1 pr-2" title={c.campaign}>{c.campaign}</td>
               <td className="px-2 py-1 text-right tabular-nums">{NUM.format(c.visits)}</td>
               <td className="px-2 py-1 text-right tabular-nums">{NUM.format(c.conversions)}</td>
-              <td className="px-2 py-1 text-right tabular-nums">{c.pct}%</td>
-              <td className="px-2 py-1 text-right tabular-nums">{ars(c.spend)}</td>
-              <td className="py-1 pl-2 text-right tabular-nums">{c.cpa != null ? `$${NUM.format(Math.round(c.cpa))}` : '—'}</td>
+              <td className="py-1 pl-2 text-right tabular-nums">{c.pct}%</td>
             </tr>
           ))}
         </tbody>
