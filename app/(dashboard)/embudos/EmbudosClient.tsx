@@ -47,6 +47,25 @@ interface CampaignRow {
   cpa: number | null
 }
 
+// v1: histograma de profundidad (dónde dejó de ver cada uno)
+interface RetentionRow {
+  funnel: string
+  video_key: string
+  segment: string
+  stage: string | null
+  percent: number
+  viewers: number
+}
+// v2: retención momento a momento (qué % vio cada tramo)
+interface HeatmapRow {
+  funnel: string
+  video_key: string
+  segment: string
+  stage: string | null
+  bucket: number
+  viewers: number
+}
+
 interface FunnelMetrics {
   key: string
   label: string
@@ -56,6 +75,8 @@ interface FunnelMetrics {
   conversionPct: number
   byDay: FunnelByDayRow[]
   videoRows?: VideoStatRow[]
+  retentionRows?: RetentionRow[]
+  heatmapRows?: HeatmapRow[]
   byCampaign?: CampaignRow[]
 }
 
@@ -204,50 +225,112 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
-function VideoAnalytics({ rows }: { rows: VideoStatRow[] }) {
+function matchesFilter(row: { segment: string; stage: string | null }, filter: string): boolean {
+  if (filter === 'all') return true
+  if (filter === 'anon') return row.segment === 'no_registrado'
+  if (filter === 'reg') return row.segment === 'registrado'
+  if (filter.startsWith('stage:')) return row.segment === 'registrado' && row.stage === filter.slice(6)
+  return true
+}
+
+/** % de profundidad bajo el cual quedó la mitad de los espectadores (mediana de max_percent). */
+function medianDepth(rows: { percent: number; viewers: number }[], total: number): number | null {
+  if (total <= 0) return null
+  const sorted = [...rows].sort((a, b) => a.percent - b.percent)
+  let acc = 0
+  for (const r of sorted) {
+    acc += r.viewers
+    if (acc >= total / 2) return r.percent
+  }
+  return sorted.length ? sorted[sorted.length - 1].percent : null
+}
+
+function VideoAnalytics({
+  stats,
+  retention,
+  heatmap,
+}: {
+  stats: VideoStatRow[]
+  retention: RetentionRow[]
+  heatmap: HeatmapRow[]
+}) {
   const [filter, setFilter] = useState('all')
-  if (rows.length === 0) {
+  const [res, setRes] = useState(5)
+
+  if (stats.length === 0) {
     return <p className="text-sm text-muted-foreground">Sin datos de video para el rango.</p>
   }
+
   const stages = Array.from(
-    new Set(rows.filter((r) => r.segment === 'registrado' && r.stage).map((r) => r.stage as string)),
+    new Set(stats.filter((r) => r.segment === 'registrado' && r.stage).map((r) => r.stage as string)),
   )
-  const filtered = rows.filter((r) => {
-    if (filter === 'all') return true
-    if (filter === 'anon') return r.segment === 'no_registrado'
-    if (filter === 'reg') return r.segment === 'registrado'
-    if (filter.startsWith('stage:')) return r.segment === 'registrado' && r.stage === filter.slice(6)
-    return true
-  })
-  const videoKeys = Array.from(new Set(filtered.map((r) => r.video_key)))
+  const sFiltered = stats.filter((r) => matchesFilter(r, filter))
+  const rFiltered = retention.filter((r) => matchesFilter(r, filter))
+  const hFiltered = heatmap.filter((r) => matchesFilter(r, filter))
+  const videoKeys = Array.from(new Set(sFiltered.map((r) => r.video_key)))
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-muted-foreground">Analítica de video (% visto)</p>
-        <select
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="rounded-md border bg-background px-2 py-1 text-xs"
-          aria-label="Filtrar por segmento o etapa"
-        >
-          <option value="all">Todos</option>
-          <option value="anon">No registrados</option>
-          <option value="reg">Registrados</option>
-          {stages.map((s) => (
-            <option key={s} value={`stage:${s}`}>{`Etapa: ${STAGE_LABELS[s] || s}`}</option>
-          ))}
-        </select>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium text-muted-foreground">Retención de video (% que ve cada tramo)</p>
+        <div className="flex items-center gap-2">
+          <select
+            value={res}
+            onChange={(e) => setRes(Number(e.target.value))}
+            className="rounded-md border bg-background px-2 py-1 text-xs"
+            aria-label="Resolución de la curva"
+          >
+            <option value={10}>cada 10%</option>
+            <option value={5}>cada 5%</option>
+            <option value={1}>cada 1%</option>
+          </select>
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="rounded-md border bg-background px-2 py-1 text-xs"
+            aria-label="Filtrar por segmento o etapa"
+          >
+            <option value="all">Todos</option>
+            <option value="anon">No registrados</option>
+            <option value="reg">Registrados</option>
+            {stages.map((s) => (
+              <option key={s} value={`stage:${s}`}>{`Etapa: ${STAGE_LABELS[s] || s}`}</option>
+            ))}
+          </select>
+        </div>
       </div>
       {videoKeys.length === 0 && (
         <p className="text-xs text-muted-foreground">Sin datos para este filtro.</p>
       )}
       {videoKeys.map((vk) => {
-        const agg = aggregateVideo(filtered.filter((r) => r.video_key === vk))
-        const pctOf = (n: number) => (agg.viewers > 0 ? Math.round((n / agg.viewers) * 100) : 0)
-        const bars: ReadonlyArray<readonly [string, number]> = [
-          ['25%', agg.q[0]], ['50%', agg.q[1]], ['75%', agg.q[2]], ['95%', agg.q[3]], ['100%', agg.q[4]],
-        ]
+        const agg = aggregateVideo(sFiltered.filter((r) => r.video_key === vk))
+        const total = agg.viewers
+        const pctOf = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0)
+
+        // v2 — curva momento a momento: viewers por bucket (0..99) a la resolución elegida.
+        const perBucket = new Array<number>(100).fill(0)
+        for (const r of hFiltered) if (r.video_key === vk) perBucket[r.bucket] += r.viewers
+        const curve: { x: number; pct: number }[] = []
+        for (let p = 0; p < 100; p += res) {
+          let sum = 0
+          let n = 0
+          for (let b = p; b < Math.min(100, p + res); b++) { sum += perBucket[b]; n++ }
+          const avg = n > 0 ? sum / n : 0
+          curve.push({ x: p, pct: total > 0 ? Math.round((avg / total) * 1000) / 10 : 0 })
+        }
+
+        // v1 — abandono por profundidad (max_percent): mediana + mayor caída de la curva.
+        const percents = rFiltered
+          .filter((r) => r.video_key === vk)
+          .map((r) => ({ percent: r.percent, viewers: r.viewers }))
+        const totalDrop = percents.reduce((s, r) => s + r.viewers, 0)
+        const median = medianDepth(percents, totalDrop)
+        let dropFrom = 0, dropTo = 0, dropMax = 0
+        for (let i = 0; i < curve.length - 1; i++) {
+          const d = curve[i].pct - curve[i + 1].pct
+          if (d > dropMax) { dropMax = d; dropFrom = curve[i].x; dropTo = curve[i + 1].x }
+        }
+
         return (
           <div key={vk} className="rounded-lg border p-3">
             <p className="text-sm font-medium">{VIDEO_LABELS[vk] || vk}</p>
@@ -257,18 +340,27 @@ function VideoAnalytics({ rows }: { rows: VideoStatRow[] }) {
               <Stat label="Profundidad media" value={agg.depth != null ? `${agg.depth}%` : '—'} />
               <Stat label="Completaron" value={`${pctOf(agg.completed)}%`} />
             </div>
-            <div className="mt-3 space-y-1">
-              {bars.map(([lbl, val]) => (
-                <div key={lbl} className="flex items-center gap-2 text-xs">
-                  <span className="w-8 text-muted-foreground">{lbl}</span>
-                  <div className="h-2 flex-1 overflow-hidden rounded bg-muted">
-                    <div className="h-full bg-primary" style={{ width: `${pctOf(val)}%` }} />
-                  </div>
-                  <span className="w-20 text-right tabular-nums text-muted-foreground">
-                    {pctOf(val)}% ({NUM.format(val)})
-                  </span>
-                </div>
-              ))}
+            <div className="mt-3">
+              <ResponsiveContainer width="100%" height={170}>
+                <LineChart data={curve} margin={{ top: 6, right: 12, left: -8, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#eef0fb" />
+                  <XAxis dataKey="x" tickFormatter={(v) => `${v}%`} tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                  <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 10 }} width={36} />
+                  <Tooltip
+                    formatter={((val: unknown) => [`${val}% viendo`, '']) as never}
+                    labelFormatter={((l: unknown) => `Punto ${l}% del video`) as never}
+                  />
+                  <Line type="monotone" dataKey="pct" name="% viendo" stroke="#2A3B84" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              {median != null && (
+                <span>La mitad de la audiencia no pasó del <b className="text-foreground">{median}%</b></span>
+              )}
+              {dropMax > 0 && (
+                <span>Mayor caída entre <b className="text-foreground">{dropFrom}%</b> y <b className="text-foreground">{dropTo}%</b></span>
+              )}
             </div>
           </div>
         )
@@ -349,7 +441,11 @@ function FunnelCard({ funnel }: { funnel: FunnelMetrics }) {
           <FunnelByDayChart rows={funnel.byDay} />
         </div>
         <div className="border-t pt-4">
-          <VideoAnalytics rows={funnel.videoRows ?? []} />
+          <VideoAnalytics
+            stats={funnel.videoRows ?? []}
+            retention={funnel.retentionRows ?? []}
+            heatmap={funnel.heatmapRows ?? []}
+          />
         </div>
         <div className="border-t pt-4">
           <p className="mb-2 text-xs font-medium text-muted-foreground">Por campaña</p>

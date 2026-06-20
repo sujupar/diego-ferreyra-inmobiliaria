@@ -100,6 +100,10 @@ interface VideoStatRow {
 interface VisitCampRow { funnel_type: string; campaign: string; visits: number }
 interface ConvCampRow { funnel: string; campaign: string; conversions: number }
 interface SpendRow { campaign_name: string | null; spend: number | null }
+// v1: histograma de profundidad (dónde dejó de ver cada uno)
+interface RetentionRow { funnel: string; video_key: string; segment: string; stage: string | null; percent: number; viewers: number }
+// v2: retención momento a momento (qué % vio cada tramo del video)
+interface HeatmapRow { funnel: string; video_key: string; segment: string; stage: string | null; bucket: number; viewers: number }
 
 /** Llama un RPC de agregación; si la migración aún no corrió, degrada a []. */
 async function safeRpc<T>(supabase: AdminClient, fn: string, args: Record<string, string>): Promise<T[]> {
@@ -200,8 +204,10 @@ export async function GET(req: NextRequest) {
     const endIso = endEx.toISOString()
     const rpcArgs = { p_from: startIso, p_to: endIso }
 
-    const [videoRows, visitCampaigns, convCampaigns, spendRows] = await Promise.all([
+    const [videoRows, retentionAll, heatmapAll, visitCampaigns, convCampaigns, spendRows] = await Promise.all([
       safeRpc<VideoStatRow>(supabase, 'funnel_video_stats', rpcArgs),
+      safeRpc<RetentionRow>(supabase, 'funnel_video_retention', rpcArgs),
+      safeRpc<HeatmapRow>(supabase, 'funnel_video_heatmap', rpcArgs),
       safeRpc<VisitCampRow>(supabase, 'funnel_campaign_visits', rpcArgs),
       safeRpc<ConvCampRow>(supabase, 'funnel_campaign_conversions', rpcArgs),
       (async (): Promise<SpendRow[]> => {
@@ -260,7 +266,13 @@ export async function GET(req: NextRequest) {
         .sort((a, b) => b.visits - a.visits || b.conversions - a.conversions)
         .slice(0, 25)
 
-      return { ...f, videoRows: videoRowsForFunnel, byCampaign }
+      return {
+        ...f,
+        videoRows: videoRowsForFunnel,
+        retentionRows: retentionAll.filter((r) => r.funnel === f.key),
+        heatmapRows: heatmapAll.filter((r) => r.funnel === f.key),
+        byCampaign,
+      }
     })
 
     return NextResponse.json({ from, to, funnels: enriched })

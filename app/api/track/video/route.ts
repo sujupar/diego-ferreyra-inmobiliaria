@@ -19,6 +19,7 @@ const Schema = z.object({
   quartiles: z.number().int().min(0).max(31),
   completed: z.boolean(),
   fbp: z.string().max(200).nullable().optional(),
+  watchedBuckets: z.string().regex(/^[01]{100}$/).nullable().optional(), // bitmap de 100 tramos
 })
 
 // Cliente admin sin tipar (convención del repo: el tipo Database no incluye estas tablas).
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
       p_completed: d.completed,
       p_funnel: d.funnel ?? null,
       p_fbp: d.fbp ?? null,
+      p_watched_buckets: d.watchedBuckets ?? null,
     })
     if (error) {
       console.warn('[track/video] rpc error', error.message)

@@ -19,6 +19,8 @@ export interface VideoProgressSnapshot {
   quartiles: number
   completed: boolean
   durationS: number
+  /** Bitmap de 100 chars '0'/'1': qué tramos (1% c/u) del video se vieron. null si no hay duración. */
+  watchedBuckets: string | null
 }
 
 export class VideoProgressTracker {
@@ -48,6 +50,23 @@ export class VideoProgressTracker {
       }
       if (pct >= 100) this._quartiles |= QUARTILE_BITS.p100
     }
+  }
+
+  /**
+   * Bitmap de `buckets` chars '0'/'1': marca qué tramos del video se vieron
+   * (cada bucket = 1/buckets de la duración). Permite la retención momento a
+   * momento (qué % ve cada tramo, detecta saltos). null si no hay duración.
+   */
+  bucketString(buckets = 100): string | null {
+    if (this._duration <= 0) return null
+    const arr = new Array<string>(buckets).fill('0')
+    for (const sec of this.seconds) {
+      let b = Math.floor((sec / this._duration) * buckets)
+      if (b < 0) b = 0
+      if (b >= buckets) b = buckets - 1
+      arr[b] = '1'
+    }
+    return arr.join('')
   }
 
   /** Llamar en el evento `ended`: marca completado aunque el último sample no llegue a 100. */
@@ -80,6 +99,7 @@ export class VideoProgressTracker {
       quartiles: this._quartiles,
       completed: this._completed,
       durationS: this._duration,
+      watchedBuckets: this.bucketString(),
     }
   }
 }

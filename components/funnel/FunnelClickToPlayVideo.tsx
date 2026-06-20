@@ -59,6 +59,7 @@ export function FunnelClickToPlayVideo({
         maxPercent: snap.maxPercent,
         quartiles: snap.quartiles,
         completed: snap.completed,
+        watchedBuckets: snap.watchedBuckets,
       }
       const url = '/api/track/video'
       try {
