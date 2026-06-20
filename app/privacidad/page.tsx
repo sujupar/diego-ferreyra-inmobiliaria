@@ -71,7 +71,10 @@ export default function PrivacidadPage() {
                     <li>
                         <span className="font-medium">Datos de navegación</span>: eventos del
                         Píxel de Meta y otras cookies analíticas (vista de página, clicks,
-                        finalización de formulario).
+                        finalización de formulario), y mapas de calor / grabaciones de sesión de
+                        nuestras landings mediante Microsoft Clarity (movimientos, clicks y scroll,
+                        con los campos del formulario enmascarados). No incluyen tus datos
+                        personales del formulario.
                     </li>
                     <li>
                         <span className="font-medium">Datos de comunicación</span>: mensajes que
@@ -141,6 +144,11 @@ export default function PrivacidadPage() {
                     <li>
                         <span className="font-medium">Proveedores de CRM y base de datos</span>{" "}
                         (Supabase, GoHighLevel) para gestionar internamente tu consulta.
+                    </li>
+                    <li>
+                        <span className="font-medium">Microsoft Clarity</span> para analítica de uso
+                        (mapas de calor y grabaciones de sesión de las landings), con enmascarado de
+                        los campos del formulario.
                     </li>
                 </ul>
 
