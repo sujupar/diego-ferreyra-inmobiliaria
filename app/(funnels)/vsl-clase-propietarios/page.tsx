@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { LandingVisitTracker } from '@/components/landing/LandingVisitTracker'
 import { getActiveTestimonials } from '@/lib/funnel/testimonials'
 import { funnelMediaUrl } from '@/lib/funnel/media'
+import { CLARITY_PROJECT_ID } from '@/lib/funnel/clarity'
 import { CLASE_CONTENT } from '@/lib/funnel/content'
 import { ClaseClient } from './ClaseClient'
 
@@ -24,7 +25,7 @@ export default async function ClasePage() {
         vslPoster={funnelMediaUrl(CLASE_CONTENT.hero.posterPath)}
         headshotUrl={funnelMediaUrl(CLASE_CONTENT.bio.headshotPath)}
         pixelId={pixelId}
-        clarityId={process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID ?? ''}
+        clarityId={CLARITY_PROJECT_ID}
       />
     </>
   )

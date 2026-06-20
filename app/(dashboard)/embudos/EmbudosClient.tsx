@@ -15,9 +15,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Check, Copy, Loader2, RefreshCw, Flame } from 'lucide-react'
 import { DateRangePicker, type DateRange } from '@/components/metrics/DateRangePicker'
+import { CLARITY_PROJECT_ID } from '@/lib/funnel/clarity'
 
 // Mapa de calor (Microsoft Clarity) — el dashboard vive en Clarity; linkeamos a él.
-const CLARITY_ID = process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID ?? ''
+const CLARITY_ID = CLARITY_PROJECT_ID
 
 interface FunnelByDayRow {
   day: string
