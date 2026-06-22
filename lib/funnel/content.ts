@@ -33,9 +33,9 @@ export const TASACION_CONTENT = {
   finalHeading:
     '¿Listo para conocer el mejor precio de tu propiedad y el dinero que te quedará en mano?',
   form: {
-    title: 'Completá los Datos',
+    title: 'Coordiná tu Tasación Gratuita',
     subtitle:
-      'Para crear tu Análisis Estratégico, nuestro equipo necesita 2 datos clave de tu propiedad.',
+      'Dejanos tus datos y te llamamos para coordinar tu tasación presencial y sin cargo. Vas a conocer el precio real de tu propiedad y cuánto te queda en mano — 100% sin compromiso.',
   },
 } as const
 
@@ -61,8 +61,9 @@ export const CLASE_CONTENT = {
     role: 'Martillero Público — CUCICBA 8266',
   },
   form: {
-    heading: 'Registrate a la Clase',
-    subtitle: 'Ingresá tus datos para verla...',
+    heading: 'Registrate a la Clase Gratuita',
+    subtitle:
+      'Ingresá tus datos y accedé ya a la clase: el método paso a paso para vender tu propiedad al mejor precio y en menos de 30 días.',
     submitLabel: '¡Ver Clase GRATIS!',
     tipoClienteLabel: 'Soy...',
     tipoClienteOptions: ['Trabajo en el sector', 'Soy Propietario/a'] as const,
