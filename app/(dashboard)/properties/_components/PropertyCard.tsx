@@ -21,6 +21,8 @@ export interface PropertyCardData {
   bathrooms?: number | null
   covered_area?: number | null
   assigned_to?: string | null
+  legal_docs_pending?: boolean | null
+  origin_pending?: boolean | null
 }
 
 interface Props {
@@ -77,8 +79,14 @@ export function PropertyCard({ property, currentUserId, statusInfo, onClick }: P
             Sin foto
           </div>
         )}
-        <div className="absolute top-2 left-2 flex gap-1">
+        <div className="absolute top-2 left-2 flex gap-1 flex-wrap max-w-[80%]">
           <Badge className={cn('text-white', statusInfo.color)}>{statusInfo.label}</Badge>
+          {property.legal_docs_pending && (
+            <Badge className="bg-amber-500 text-white text-[10px]" title="Aprobada legalmente, faltan subir los archivos">Docs pendientes</Badge>
+          )}
+          {property.origin_pending && (
+            <Badge className="bg-orange-500 text-white text-[10px]" title="Falta asignar el origen del lead">Origen?</Badge>
+          )}
         </div>
         <div className="absolute top-2 right-2">
           <OwnershipBadge isMine={isMine} />

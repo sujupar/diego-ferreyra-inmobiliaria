@@ -61,6 +61,9 @@ interface PropertyData {
   created_at: string
   ghl_imported?: boolean
   ghl_custom_fields?: Record<string, string | null> | null
+  import_source?: string | null
+  legal_docs_pending?: boolean | null
+  origin_pending?: boolean | null
 }
 
 function CollapsibleSection({ eyebrow, title, defaultOpen = false, children }: { eyebrow: string; title: string; defaultOpen?: boolean; children: ReactNode }) {
@@ -329,6 +332,29 @@ export default function PropertyDetailPage() {
           </Card>
         )
       })()}
+
+      {/* Banner: Importada pre-captada (CSV) — faltan archivos legales / origen */}
+      {(property.import_source === 'csv_precaptada' || property.legal_docs_pending || property.origin_pending) && (
+        <Card className="border-amber-300 bg-amber-50/50 dark:bg-amber-950/20">
+          <CardContent className="py-4 flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-medium text-amber-900 dark:text-amber-100">Propiedad captada importada</p>
+              <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                Es una propiedad ya captada y aprobada (subida en bloque). Quedan estos pendientes:
+              </p>
+              <ul className="text-sm text-amber-800 dark:text-amber-200 mt-2 list-disc pl-5 space-y-1">
+                {property.legal_docs_pending && (
+                  <li><strong>Faltan subir los archivos de la documentación legal</strong> — está aprobada administrativamente, pero los documentos todavía no se cargaron. Subilos desde el checklist legal de abajo.</li>
+                )}
+                {property.origin_pending && (
+                  <li><strong>Falta asignar el origen del lead</strong> — editá la propiedad y completá el campo Origen.</li>
+                )}
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Dual-track Progress */}
       <Card>

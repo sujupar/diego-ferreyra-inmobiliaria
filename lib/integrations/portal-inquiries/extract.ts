@@ -18,6 +18,30 @@ export function detectPortal(from: string, subject = ''): Portal | null {
 }
 
 /**
+ * ¿Este correo es una CONSULTA real (no factura/marketing/soporte)? Calibrado
+ * con correos reales de la casilla:
+ *  - ZonaProp: los leads llegan vía el relay `<algo>@usuarios.zonaprop.com.ar`.
+ *    (Marketing/avisos administrativos llegan desde @zonaprop.com.ar → se ignoran.)
+ *  - Argenprop: los leads llegan desde `noresponder@argenprop.com`.
+ *    (Soporte/respuestas humanas: soporte@, ebazan@, lsanchezlorca@ → se ignoran.)
+ *  - MercadoLibre: no tenemos muestra de lead aún. Excluimos marketing
+ *    (info.mercadolibre) y exigimos un asunto de pregunta/consulta.
+ */
+export function isLeadEmail(from: string, subject: string, portal: Portal): boolean {
+  const f = (from ?? '').toLowerCase()
+  const s = (subject ?? '').toLowerCase()
+  switch (portal) {
+    case 'zonaprop':
+      return f.includes('usuarios.zonaprop.com.ar')
+    case 'argenprop':
+      return f.includes('noresponder@argenprop.com')
+    case 'mercadolibre':
+      if (f.includes('info.mercadolibre')) return false // marketing
+      return /pregunta|consulta|interesad|te\s+contact|quiere/.test(s)
+  }
+}
+
+/**
  * Detecta el canal de la consulta ("Tipo" en la notificación). Los portales
  * mandan emails distintos según el lead haya escrito por WhatsApp, dejado el
  * teléfono para que lo llamen, o enviado una consulta por mail/formulario.

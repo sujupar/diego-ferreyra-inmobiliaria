@@ -1,17 +1,32 @@
 import { describe, it, expect } from 'vitest'
-import { parseInquiry, detectPortal, buildGmailQuery, PORTAL_SENDERS } from './index'
+import { parseInquiry, detectPortal, isLeadEmail, buildGmailQuery, PORTAL_SENDERS } from './index'
 import { htmlToText, valueAfterLabel, extractPhone, firstLeadEmail } from './extract'
 import type { RawEmail } from './types'
 
-// NOTA: estos cuerpos son plausibles pero SINTÉTICOS. Cuando lleguen 2-3 emails
-// reales por portal, reemplazar/ampliar estos fixtures con los HTML reales.
+// Fixtures basados en los formatos REALES de la casilla (PII anonimizada).
 
 describe('detectPortal', () => {
   it('detecta por remitente', () => {
-    expect(detectPortal('ZonaProp <noreply@zonaprop.com.ar>')).toBe('zonaprop')
-    expect(detectPortal('MercadoLibre <ventas@mercadolibre.com.ar>')).toBe('mercadolibre')
-    expect(detectPortal('Argenprop <info@argenprop.com>')).toBe('argenprop')
+    expect(detectPortal('Laura mediante ZonaProp <x@usuarios.zonaprop.com.ar>')).toBe('zonaprop')
+    expect(detectPortal('Argenprop <noresponder@argenprop.com>')).toBe('argenprop')
+    expect(detectPortal('Mercado Libre <no-responder@mercadolibre.com.ar>')).toBe('mercadolibre')
     expect(detectPortal('Random <hola@gmail.com>')).toBeNull()
+  })
+})
+
+describe('isLeadEmail (filtra ruido)', () => {
+  it('ZonaProp: lead solo vía relay usuarios.zonaprop.com.ar', () => {
+    expect(isLeadEmail('Laura mediante ZonaProp <l@usuarios.zonaprop.com.ar>', 'consulta', 'zonaprop')).toBe(true)
+    expect(isLeadEmail('ZonaProp <news@zonaprop.com.ar>', 'novedades', 'zonaprop')).toBe(false)
+  })
+  it('Argenprop: lead solo desde noresponder@', () => {
+    expect(isLeadEmail('Argenprop <noresponder@argenprop.com>', 'x contactó por y', 'argenprop')).toBe(true)
+    expect(isLeadEmail('Soporte <soporte@argenprop.com>', 'Estimados…', 'argenprop')).toBe(false)
+  })
+  it('MercadoLibre: factura/marketing se ignoran; pregunta es lead', () => {
+    expect(isLeadEmail('ML <no-responder@mercadolibre.com.ar>', 'Tu factura ya está paga', 'mercadolibre')).toBe(false)
+    expect(isLeadEmail('ML <info@info.mercadolibre.com.ar>', 'Conocé tu desempeño', 'mercadolibre')).toBe(false)
+    expect(isLeadEmail('ML <noreply@mercadolibre.com>', 'Te hicieron una pregunta', 'mercadolibre')).toBe(true)
   })
 })
 
@@ -36,74 +51,59 @@ describe('utilidades de extracción', () => {
   })
 })
 
-const whatsappLeadEmail: RawEmail = {
-  from: 'ZonaProp <noreply@zonaprop.com.ar>',
-  subject: 'Te contactaron por WhatsApp',
-  text: 'Un interesado quiere contactarte por WhatsApp.\nNombre: Pedro\nTeléfono: 11 9999 8888',
-  html: '',
-}
-
-describe('detectInquiryType', () => {
-  it('marca whatsapp cuando el email lo menciona', () => {
-    expect(parseInquiry(whatsappLeadEmail)!.inquiryType).toBe('whatsapp')
-  })
-})
-
+// --- ZonaProp (formato real) ---------------------------------------------
 const zonapropEmail: RawEmail = {
-  from: 'ZonaProp <noreply@zonaprop.com.ar>',
-  subject: 'Nueva consulta por tu aviso',
+  from: '"Laura mediante ZonaProp" <laura@usuarios.zonaprop.com.ar>',
+  subject: '📱 ¡Consultaron tu WhatsApp en el aviso Venta Casa 4 Ambientes con Cochera + Patio y P ...! CÓD:2CBSS6 - REF:#306958245#',
   text: '',
   html: `<html><body>
-    <p>Recibiste una nueva consulta por tu aviso en Zonaprop.</p>
-    <table>
-      <tr><td>Nombre:</td><td>Juan Pérez</td></tr>
-      <tr><td>Email:</td><td>juan.perez@gmail.com</td></tr>
-      <tr><td>Teléfono:</td><td>11 2233 4455</td></tr>
-      <tr><td>Mensaje:</td><td>Hola, me interesa la propiedad, ¿puedo coordinar una visita?</td></tr>
-    </table>
-    <p>Aviso: Departamento 3 ambientes en Palermo</p>
-    <a href="https://www.zonaprop.com.ar/propiedades/depto-palermo-49012345.html">Ver aviso</a>
+    <p>¡Hola, Diego Ferreyra Inmobiliaria! Hay interesados que consultaron tu número de WhatsApp por el siguiente aviso:</p>
+    <p>Teléfono: +54 9 11 5323 7239</p>
+    <p>Email: laura.buyer@gmail.com</p>
   </body></html>`,
 }
 
 describe('parser ZonaProp', () => {
   const r = parseInquiry(zonapropEmail)!
   it('detecta el portal', () => expect(r.portal).toBe('zonaprop'))
-  it('marca el tipo como mail (consulta por formulario)', () => expect(r.inquiryType).toBe('mail'))
-  it('extrae el nombre', () => expect(r.leadName).toBe('Juan Pérez'))
-  it('extrae el email', () => expect(r.leadEmail).toBe('juan.perez@gmail.com'))
-  it('extrae el teléfono', () => expect(r.leadPhone).toMatch(/2233/))
-  it('extrae el mensaje', () => expect(r.message).toMatch(/me interesa/i))
-  it('extrae el código desde la URL', () => expect(r.propertyCode).toBe('49012345'))
-  it('extrae la URL del aviso', () => expect(r.propertyUrl).toContain('zonaprop.com.ar'))
-  it('extrae el título', () => expect(r.propertyTitle).toMatch(/Palermo/))
+  it('tipo whatsapp (asunto lo indica)', () => expect(r.inquiryType).toBe('whatsapp'))
+  it('nombre desde el remitente', () => expect(r.leadName).toBe('Laura'))
+  it('email del interesado del body', () => expect(r.leadEmail).toBe('laura.buyer@gmail.com'))
+  it('teléfono del body', () => expect(r.leadPhone).toMatch(/5323/))
+  it('código = CÓD del anunciante', () => expect(r.propertyCode).toBe('2CBSS6'))
+  it('título del aviso desde el asunto', () => expect(r.propertyTitle).toMatch(/Venta Casa 4 Ambientes/))
 })
 
+// --- Argenprop (formato real) --------------------------------------------
+const avisoJson = JSON.stringify({ u: 30952215, v: 2, url: 'https://www.argenprop.com/aviso--18191220' })
+const mandrillUrl = `https://mandrillapp.com/track/click/30952215/www.argenprop.com?p=${Buffer.from(avisoJson).toString('base64')}`
 const argenpropEmail: RawEmail = {
-  from: 'Argenprop <info@argenprop.com>',
-  subject: 'Tenés una nueva consulta',
-  text: `Tenés una nueva consulta en Argenprop.
-Nombre: María Gómez
-Email: maria.gomez@hotmail.com
-Teléfono: 351 444 5566
-Mensaje: ¿La propiedad acepta crédito hipotecario?
-Propiedad: Casa en Nueva Córdoba
-Ver: https://www.argenprop.com/casa-en-venta-nueva-cordoba--7654321`,
+  from: 'Argenprop <noresponder@argenprop.com>',
+  subject: 'juan.perez@gmail.com contactó por Agüero 900 en Palermo',
+  text: `Tenés una nueva consulta.
+Nombre: Juan Pérez
+Email: juan.perez@gmail.com
+Teléfono: 11 6682 8072
+Ver aviso: ${mandrillUrl}`,
   html: '',
 }
 
 describe('parser Argenprop', () => {
   const r = parseInquiry(argenpropEmail)!
   it('detecta el portal', () => expect(r.portal).toBe('argenprop'))
-  it('extrae el nombre', () => expect(r.leadName).toBe('María Gómez'))
-  it('extrae el email', () => expect(r.leadEmail).toBe('maria.gomez@hotmail.com'))
-  it('extrae el teléfono', () => expect(r.leadPhone).toMatch(/444/))
-  it('extrae el código desde la URL', () => expect(r.propertyCode).toBe('7654321'))
-  it('extrae el título', () => expect(r.propertyTitle).toMatch(/Nueva Córdoba/))
+  it('dirección desde el asunto', () => expect(r.propertyAddress).toBe('Agüero 900'))
+  it('título incluye dirección y barrio', () => expect(r.propertyTitle).toMatch(/Agüero 900.*Palermo/))
+  it('email del interesado', () => expect(r.leadEmail).toBe('juan.perez@gmail.com'))
+  it('teléfono del body', () => expect(r.leadPhone).toMatch(/6682/))
+  it('código = aviso real (decodificado del link Mandrill, no el tracking id)', () => {
+    expect(r.propertyCode).toBe('18191220')
+  })
+  it('URL = aviso limpio de Argenprop', () => expect(r.propertyUrl).toBe('https://www.argenprop.com/aviso--18191220'))
 })
 
+// --- MercadoLibre (sin muestra real; formato genérico de pregunta) --------
 const meliEmail: RawEmail = {
-  from: 'MercadoLibre <noreply@mercadolibre.com.ar>',
+  from: 'MercadoLibre <noreply@mercadolibre.com>',
   subject: 'Tenés una nueva pregunta',
   text: '',
   html: `<html><body>
@@ -116,22 +116,18 @@ const meliEmail: RawEmail = {
 
 describe('parser MercadoLibre', () => {
   const r = parseInquiry(meliEmail)!
-  it('detecta el portal', () => expect(r.portal).toBe('mercadolibre'))
+  it('es lead (asunto de pregunta)', () => expect(isLeadEmail(meliEmail.from, meliEmail.subject, 'mercadolibre')).toBe(true))
   it('extrae el código MLA del ítem', () => expect(r.propertyCode).toBe('MLA1234567890'))
   it('extrae la pregunta como mensaje', () => expect(r.message).toMatch(/visitar/i))
   it('extrae el título de la publicación', () => expect(r.propertyTitle).toMatch(/Caballito/))
-  it('email y teléfono quedan null (ML los oculta)', () => {
-    expect(r.leadEmail).toBeNull()
-    expect(r.leadPhone).toBeNull()
-  })
 })
 
 describe('buildGmailQuery', () => {
-  it('incluye los remitentes de los 3 portales', () => {
+  it('usa los remitentes de leads reales', () => {
     const q = buildGmailQuery(2)
-    expect(q).toContain('from:zonaprop.com.ar')
-    expect(q).toContain('from:argenprop.com')
-    expect(q).toContain('from:mercadolibre.com.ar')
+    expect(q).toContain('from:usuarios.zonaprop.com.ar')
+    expect(q).toContain('from:noresponder@argenprop.com')
+    expect(q).toContain('from:mercadolibre.com')
     expect(q).toContain('newer_than:2d')
   })
   it('tiene remitentes definidos para cada portal', () => {

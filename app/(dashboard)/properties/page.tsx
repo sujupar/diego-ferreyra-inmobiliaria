@@ -32,6 +32,7 @@ interface Property {
   assigned_to?: string | null; rooms?: number | null; bathrooms?: number | null; covered_area?: number | null
   // optional fields returned by API, used by PropertyDetailModal
   description?: string | null; video_url?: string | null; tour_3d_url?: string | null; total_area?: number | null
+  legal_docs_pending?: boolean | null; origin_pending?: boolean | null
 }
 
 function getPropertyStatusInfo(p: Property) {

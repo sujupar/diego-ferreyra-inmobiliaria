@@ -41,6 +41,7 @@ loadEnvLocal()
 const args = process.argv.slice(2)
 const COMMIT = args.includes('--commit')
 const DRY_RUN = !COMMIT
+const RESET = args.includes('--reset') // borra TODO el mapa antes de sembrar (reemplazo limpio)
 const fileIdx = args.indexOf('--file')
 const FILE = fileIdx >= 0 ? args[fileIdx + 1] : ''
 
@@ -153,6 +154,12 @@ async function main() {
   const { data: profilesData } = await supabase.from('profiles').select('id, full_name, email, role').eq('is_active', true)
   const profiles = (profilesData ?? []) as ProfileLite[]
   const resolveAdvisor = buildAdvisorResolver(profiles)
+
+  if (RESET && COMMIT) {
+    const { error } = await supabase.from('portal_property_map').delete().not('id', 'is', null)
+    if (error) { console.error('reset falló:', error.message); process.exit(1) }
+    console.log('🗑️  Mapa borrado (reset) — se reconstruye desde el CSV.\n')
+  }
 
   const rows = loadRows()
   console.log(`\n${DRY_RUN ? '🔎 DRY-RUN' : '✍️  COMMIT'} — ${rows.length} filas desde ${FILE}\n`)

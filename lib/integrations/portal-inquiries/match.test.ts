@@ -61,3 +61,34 @@ describe('pickBestMatch', () => {
     expect(r.method).toBe('none')
   })
 })
+
+// Match de dirección por nombre de calle con datos reales (número aproximado +
+// abreviaturas): la consulta del portal trae un número distinto al de la lista.
+describe('pickBestMatch — dirección por calle (Argenprop)', () => {
+  const map: PortalMapRow[] = [
+    { id: 'd1', portal: 'argenprop', external_code: null, external_url: null, address: 'Agüero 950', title: null, assigned_to: DIEGO, active: true },
+    { id: 'd2', portal: 'argenprop', external_code: null, external_url: null, address: 'Entre Ríos 2333', title: null, assigned_to: DIEGO, active: true },
+    { id: 'd3', portal: 'argenprop', external_code: null, external_url: null, address: 'Gabriela Mistral 2750', title: null, assigned_to: DIEGO, active: true },
+    { id: 'd4', portal: 'argenprop', external_code: null, external_url: null, address: 'Avenida Ángel Gallardo 200', title: null, assigned_to: DIEGO, active: true },
+    { id: 'l1', portal: 'argenprop', external_code: null, external_url: null, address: 'Coronel Ramón Lorenzo Falcón 2500', title: null, assigned_to: LUCAS, active: true },
+    { id: 'l2', portal: 'argenprop', external_code: null, external_url: null, address: 'Santo Tomé 2600', title: null, assigned_to: LUCAS, active: true },
+    { id: 'l3', portal: 'argenprop', external_code: null, external_url: null, address: 'Juan B. Ambrosetti 95', title: null, assigned_to: LUCAS, active: true },
+    { id: 'l4', portal: 'argenprop', external_code: null, external_url: null, address: 'Lares de Canning', title: null, assigned_to: LUCAS, active: true },
+  ]
+  const ap = (address: string) => pickBestMatch(inquiry({ portal: 'argenprop', propertyAddress: address }), map)
+
+  it('número aproximado: "Agüero 900" → Agüero 950 (Diego)', () => expect(ap('Agüero 900').assignedTo).toBe(DIEGO))
+  it('número aproximado: "ENTRE RIOS 2300" → 2333 (Diego)', () => expect(ap('ENTRE RIOS 2300').assignedTo).toBe(DIEGO))
+  it('mayúsc/acentos: "GABRIELA MISTRAL 2700" → 2750 (Diego)', () => expect(ap('GABRIELA MISTRAL 2700').assignedTo).toBe(DIEGO))
+  it('acentos: "Avenida Angel Gallardo 200" (Diego)', () => expect(ap('Avenida Angel Gallardo 200').assignedTo).toBe(DIEGO))
+  it('abreviatura: "Cnel. Ramón L. Falcón 2500" → Coronel … (Lucas)', () => expect(ap('Cnel. Ramón L. Falcón 2500').assignedTo).toBe(LUCAS))
+  it('"SANTO TOME  2600" → Santo Tomé 2600 (Lucas)', () => expect(ap('SANTO TOME  2600').assignedTo).toBe(LUCAS))
+  it('"Juan B. Ambrosetti 0" → 95 (Lucas)', () => expect(ap('Juan B. Ambrosetti 0').assignedTo).toBe(LUCAS))
+  it('sin número: "Lares de Canning" (Lucas)', () => expect(ap('Lares de Canning').assignedTo).toBe(LUCAS))
+  it('no está en la lista: "Avenida de Los Incas 5200" → none', () => expect(ap('Avenida de Los Incas 5200').method).toBe('none'))
+  it('misma calle pero número lejano NO matchea: "Gabriela Mistral 4200" ≠ 2750', () => expect(ap('Gabriela Mistral 4200').method).toBe('none'))
+  it('redondeo cercano sí: "Carlos Antonio López 2530" → 2500 (no está en este map → none)', () => {
+    // (no hay Carlos Antonio López en este map de prueba; valida que no explote)
+    expect(ap('Carlos Antonio López 2530').method).toBe('none')
+  })
+})

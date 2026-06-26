@@ -42,6 +42,69 @@ function normCode(s: string | null | undefined): string {
   return (s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 }
 
+// Los portales mandan la dirección con número APROXIMADO y abreviaturas (ej.
+// "Agüero 900" vs "Agüero 950"; "Cnel. Falcón" vs "Coronel Falcón"). Por eso el
+// match de dirección compara por NOMBRE DE CALLE (sin número ni abreviaturas).
+const STREET_STOPWORDS = new Set([
+  'de', 'del', 'la', 'las', 'los', 'el', 'y', 'av', 'avda', 'avenida', 'calle',
+  'pasaje', 'psje', 'diag', 'diagonal', 'bv', 'blvd', 'boulevard', 'nro', 'altura',
+])
+const STREET_ABBREV: Record<string, string> = {
+  cnel: 'coronel', cnl: 'coronel', gral: 'general', grl: 'general',
+  dr: 'doctor', dra: 'doctora', pte: 'presidente', ing: 'ingeniero',
+  tte: 'teniente', pje: 'pasaje', prof: 'profesor',
+}
+
+export function streetTokens(s: string | null | undefined): string[] {
+  const out: string[] = []
+  for (const raw of normText(s).split(' ')) {
+    if (!raw || /^\d+$/.test(raw) || raw.length < 2) continue // número de puerta / letras sueltas
+    const tok = STREET_ABBREV[raw] ?? raw
+    if (STREET_STOPWORDS.has(tok)) continue
+    out.push(tok)
+  }
+  return out
+}
+
+/**
+ * True si dos calles son "la misma": el conjunto de tokens más chico está
+ * contenido en el otro y comparten al menos un token distintivo (≥4 letras).
+ */
+export function streetMatches(a: string[], b: string[]): boolean {
+  if (a.length === 0 || b.length === 0) return false
+  const setB = new Set(b)
+  const inter = a.filter(t => setB.has(t))
+  if (inter.length === 0) return false
+  const subset = inter.length === Math.min(a.length, b.length)
+  const distinctive = inter.some(t => t.length >= 4)
+  return subset && distinctive
+}
+
+// Número de puerta (último número de la dirección).
+function buildingNumber(s: string | null | undefined): number | null {
+  const nums = normText(s).match(/\d+/g)
+  if (!nums || nums.length === 0) return null
+  const n = parseInt(nums[nums.length - 1], 10)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+// Tolerancia del número: los portales redondean (Agüero 900↔950, 2300↔2333),
+// pero 2750 vs 4200 en la misma calle son propiedades distintas.
+const NUMBER_TOLERANCE = 100
+
+/**
+ * Dos direcciones son la misma propiedad si coincide el nombre de calle Y el
+ * número está cerca. Si alguno no tiene número (oculto / "0"), se matchea por
+ * calle solamente.
+ */
+export function addressMatches(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!streetMatches(streetTokens(a), streetTokens(b))) return false
+  const na = buildingNumber(a)
+  const nb = buildingNumber(b)
+  if (na === null || nb === null) return true
+  return Math.abs(na - nb) <= NUMBER_TOLERANCE
+}
+
 const NONE: MatchResult = { mapId: null, assignedTo: null, method: 'none' }
 
 export function pickBestMatch(parsed: ParsedInquiry, rows: PortalMapRow[]): MatchResult {
@@ -72,16 +135,10 @@ export function pickBestMatch(parsed: ParsedInquiry, rows: PortalMapRow[]): Matc
     }
   }
 
-  // 3. Dirección (fuzzy por contención).
+  // 3. Dirección: nombre de calle + número cercano (tolera redondeo del portal).
   if (parsed.propertyAddress) {
-    const pa = normText(parsed.propertyAddress)
-    if (pa.length >= 5) {
-      const r = active.find(x => {
-        const xa = normText(x.address)
-        return xa.length >= 5 && (xa.includes(pa) || pa.includes(xa))
-      })
-      if (r) return hit(r, 'address')
-    }
+    const r = active.find(x => addressMatches(parsed.propertyAddress, x.address))
+    if (r) return hit(r, 'address')
   }
 
   // 4. Título (fuzzy por contención).

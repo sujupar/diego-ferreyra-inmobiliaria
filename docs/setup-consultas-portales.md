@@ -20,39 +20,76 @@ Verificación: `SELECT * FROM portal_inquiry_poll_state;` debe devolver 1 fila (
 
 ---
 
-## 2) Gmail — conectar la casilla (cuenta de servicio + delegación)
+## 2) Gmail — conectar la casilla
 
-La casilla `contacto@diegoferreyrainmobiliaria.com` es de **Google Workspace**, así
-que usamos una "cuenta de servicio" con delegación. **Esto NO se hace en nuestra
-plataforma** — se hace en Google Cloud + el panel de administración de Google.
+Hay dos métodos. **Usá el A (OAuth)** porque el B (cuenta de servicio) suele estar
+bloqueado por una org policy de Google (`iam.disableServiceAccountKeyCreation`, no
+deja crear keys). El A no necesita key.
 
-### 2a. Crear la cuenta de servicio (Google Cloud Console)
-1. Andá a https://console.cloud.google.com → crear (o elegir) un proyecto.
-2. Menú → **APIs y servicios → Biblioteca** → buscá **Gmail API** → **Habilitar**.
-3. Menú → **APIs y servicios → Credenciales** → **Crear credenciales → Cuenta de servicio**.
-   - Nombre: `gmail-consultas-portales`. Crear.
-4. Entrá a la cuenta de servicio creada → pestaña **Claves** → **Agregar clave → Crear clave nueva → JSON**. Se descarga un archivo `.json`. **Guardalo bien.**
-   - De ese JSON salen dos env vars: `client_email` → `GMAIL_SA_CLIENT_EMAIL`, y `private_key` → `GMAIL_SA_PRIVATE_KEY`.
-5. En la misma cuenta de servicio, **Detalles avanzados** → copiá el **Client ID** (un número largo, ej. `1078...`). Lo necesitás en el paso 2b.
+### Método A (RECOMENDADO) — OAuth con refresh token
 
-### 2b. Autorizar la delegación (Google Admin Console) ← "dónde se autoriza el Client ID"
-Esto lo hace **quien administra el dominio** `diegoferreyrainmobiliaria.com` en https://admin.google.com:
-1. **Seguridad → Acceso y control de datos → Controles de API → Delegación de todo el dominio** (Domain-wide Delegation).
-2. **Agregar nuevo**.
-3. **ID de cliente:** pegá el **Client ID** del paso 2a.5.
-4. **Permisos de OAuth (scopes):** `https://www.googleapis.com/auth/gmail.readonly`
-5. **Autorizar.**
+**2a. Pantalla de consentimiento (una vez)**
+1. https://console.cloud.google.com → elegí/creá un proyecto.
+2. **APIs y servicios → Biblioteca** → **Gmail API** → **Habilitar**.
+3. **APIs y servicios → Pantalla de consentimiento de OAuth** → tipo de usuario
+   **Interno** (Internal). *Importante:* Interno = no requiere verificación de
+   Google y el refresh token NO expira. Guardar.
 
-> En resumen: el Client ID NO se carga en nuestra plataforma. Se autoriza en el
-> panel de administración de Google Workspace (admin.google.com). Nuestra plataforma
-> solo usa el JSON de la cuenta de servicio (vía env vars).
+**2b. Crear el ID de cliente OAuth**
+1. **APIs y servicios → Credenciales → Crear credenciales → ID de cliente de OAuth**.
+2. Tipo de aplicación: **App de escritorio (Desktop app)**. Crear.
+3. Copiá el **Client ID** y el **Client Secret**.
 
-### 2c. Env vars (en Netlify → Site settings → Environment variables)
+**2c. Obtener el refresh token (login una vez, en tu compu)**
+1. Poné en `.env.local`:
+   ```
+   GMAIL_OAUTH_CLIENT_ID=<Client ID del 2b>
+   GMAIL_OAUTH_CLIENT_SECRET=<Client Secret del 2b>
+   GMAIL_IMPERSONATE_EMAIL=contacto@diegoferreyrainmobiliaria.com
+   ```
+2. Corré:
+   ```
+   npx tsx scripts/gmail-oauth-setup.ts
+   ```
+3. Se abre el navegador → **iniciá sesión COMO `contacto@diegoferreyrainmobiliaria.com`**
+   → Aceptar. El script imprime `GMAIL_OAUTH_REFRESH_TOKEN=...`.
+4. Pegá esa línea en `.env.local` (y luego en Netlify para producción).
+
+> Si al aceptar dice "app no verificada", es normal para apps internas: entrá por
+> "Configuración avanzada → Ir a (la app)". Con tipo **Interno** no hace falta verificación.
+
+### Método B (alternativo) — Cuenta de servicio + delegación
+Solo si tu organización permite crear keys de service account (si te dio el error
+"Service account key creation is disabled", usá el método A).
+1. Google Cloud → **Cuenta de servicio** → **Claves → JSON** (descarga). De ahí:
+   `client_email` → `GMAIL_SA_CLIENT_EMAIL`, `private_key` → `GMAIL_SA_PRIVATE_KEY`.
+2. Copiá el **Client ID** de la SA (Detalles avanzados).
+3. En https://admin.google.com (admin del dominio): **Seguridad → Controles de API →
+   Delegación de todo el dominio → Agregar** → pegá el Client ID + scope
+   `https://www.googleapis.com/auth/gmail.readonly`.
+
+### 2c. Env vars
+En **Netlify** → Site settings → Environment variables (para producción) **y** en
+`.env.local` (para probar local — paso 2d):
 ```
 GMAIL_SA_CLIENT_EMAIL = <client_email del JSON>
-GMAIL_SA_PRIVATE_KEY  = <private_key del JSON, con los \n tal cual>
+GMAIL_SA_PRIVATE_KEY  = <private_key del JSON, en UNA línea, con los \n tal cual>
 GMAIL_IMPERSONATE_EMAIL = contacto@diegoferreyrainmobiliaria.com
 ```
+> La `GMAIL_SA_PRIVATE_KEY` debe ir en **una sola línea** (copiala tal cual del JSON,
+> donde ya viene como `"-----BEGIN...\n...\n-----END...\n"` — incluí las comillas).
+
+### 2d. Probar la conexión LOCAL (sin base de datos, sin WhatsApp)
+Con las 3 vars en `.env.local`, corré el diagnóstico:
+```
+npx tsx scripts/gmail-portal-diagnostic.ts --days 60
+```
+Esto se conecta a Gmail, busca los correos de MercadoLibre/ZonaProp/Argenprop de los
+últimos 60 días y muestra, por cada uno: remitente, asunto, portal detectado, y cómo
+quedó parseado (nombre, tel, email, código, dirección). También lista los **remitentes
+reales** encontrados. Si alguno aparece como "⚠️ NO RECONOCIDO" o "fuera de
+PORTAL_SENDERS", pasámelo y ajusto el detector. **Recién cuando esto se ve bien,
+seguí con el SQL.**
 
 ---
 

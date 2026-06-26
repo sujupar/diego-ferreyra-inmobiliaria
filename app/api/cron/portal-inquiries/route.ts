@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { gmailConfigured, getMessage, listMessages } from '@/lib/integrations/gmail/client'
-import { buildGmailQuery, parseInquiry } from '@/lib/integrations/portal-inquiries'
+import { buildGmailQuery, detectPortal, isLeadEmail, parseByPortal } from '@/lib/integrations/portal-inquiries'
 import { matchProperty } from '@/lib/integrations/portal-inquiries/match'
 import { notifyInquiry } from '@/lib/integrations/portal-inquiries/notify'
 
@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
     inserted: 0,
     duplicates: 0,
     ignored: 0, // remitente no reconocido
+    skippedNotLead: 0, // del portal pero no es consulta (factura/marketing/soporte)
     unmatched: 0, // sin asesor → fallback a Diego
     notifySent: 0,
     notifySkipped: 0,
@@ -86,11 +87,17 @@ export async function GET(req: NextRequest) {
         }
 
         const full = await getMessage(m.id)
-        const parsed = parseInquiry({ from: full.from, subject: full.subject, text: full.text, html: full.html })
-        if (!parsed) {
+        const portal = detectPortal(full.from, full.subject)
+        if (!portal) {
           stats.ignored++
           continue
         }
+        // Filtrar facturas/marketing/soporte: solo procesar consultas reales.
+        if (!isLeadEmail(full.from, full.subject, portal)) {
+          stats.skippedNotLead++
+          continue
+        }
+        const parsed = parseByPortal(portal, { from: full.from, subject: full.subject, text: full.text, html: full.html })
         stats.parsed++
 
         const match = await matchProperty(supabase, parsed)

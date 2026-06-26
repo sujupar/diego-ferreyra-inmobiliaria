@@ -5,7 +5,7 @@ import { parseZonaprop } from './parsers/zonaprop'
 import { parseArgenprop } from './parsers/argenprop'
 
 export type { ParsedInquiry, Portal, RawEmail } from './types'
-export { detectPortal } from './extract'
+export { detectPortal, isLeadEmail } from './extract'
 
 /**
  * Detecta el portal del email y lo parsea. Devuelve null si el remitente no
@@ -28,11 +28,16 @@ export function parseByPortal(portal: Portal, email: RawEmail): ParsedInquiry {
   }
 }
 
-/** Remitentes conocidos por portal — para armar el query `from:(...)` de Gmail. */
+/**
+ * Remitentes de LEADS por portal — para armar el query `from:(...)` de Gmail.
+ * Calibrado con correos reales: ZonaProp relaya por `usuarios.zonaprop.com.ar`
+ * y Argenprop por `noresponder@argenprop.com`. MercadoLibre queda amplio (no
+ * tenemos remitente de lead confirmado) y se filtra con isLeadEmail por asunto.
+ */
 export const PORTAL_SENDERS: Record<Portal, string[]> = {
-  mercadolibre: ['mercadolibre.com', 'mercadolibre.com.ar', 'mercadolivre.com'],
-  zonaprop: ['zonaprop.com.ar', 'zonaprop.com'],
-  argenprop: ['argenprop.com'],
+  mercadolibre: ['mercadolibre.com'],
+  zonaprop: ['usuarios.zonaprop.com.ar'],
+  argenprop: ['noresponder@argenprop.com'],
 }
 
 /** Construye el query de búsqueda de Gmail para los 3 portales. */
