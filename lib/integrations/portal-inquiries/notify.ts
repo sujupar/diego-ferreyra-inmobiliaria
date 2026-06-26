@@ -199,6 +199,7 @@ export async function notifyInquiry(supabase: SupabaseClient, inq: NotifyInquiry
     inq.propertyLabel,
   )
   const bodyParams = buildBodyParams(inq, advisorLabel, replyLink)
+  const attemptedPhones = new Set<string>()
 
   for (const r of recipients) {
     const phone =
@@ -213,6 +214,7 @@ export async function notifyInquiry(supabase: SupabaseClient, inq: NotifyInquiry
       result.skipped++
       continue
     }
+    attemptedPhones.add(phone)
 
     if (await alreadySent(supabase, inq.id, phone)) {
       result.skipped++
@@ -224,6 +226,31 @@ export async function notifyInquiry(supabase: SupabaseClient, inq: NotifyInquiry
     await logNotif(supabase, inq.id, {
       recipient_phone: phone,
       recipient_profile_id: r.id,
+      status,
+      provider_message_id: send.messageId,
+      error_message: send.error,
+      test_mode: send.skipped,
+    })
+    if (status === 'sent') result.sent++
+    else if (status === 'failed') result.failed++
+    else result.skipped++
+  }
+
+  // CC de supervisión: números que SIEMPRE reciben (oversight), además del asesor + dueño.
+  // Coma-separados en WHATSAPP_CC_PHONES (E.164 sin '+'). Dedup contra los ya notificados.
+  for (const raw of (process.env.WHATSAPP_CC_PHONES ?? '').split(',')) {
+    const cc = normalizePhone(raw.trim())
+    if (!cc || attemptedPhones.has(cc)) continue
+    attemptedPhones.add(cc)
+    if (await alreadySent(supabase, inq.id, cc)) {
+      result.skipped++
+      continue
+    }
+    const send = await sendWhatsappTemplate({ to: cc, templateName: TEMPLATE, languageCode: LANG, bodyParams })
+    const status: 'sent' | 'failed' | 'skipped' = send.ok ? (send.skipped ? 'skipped' : 'sent') : 'failed'
+    await logNotif(supabase, inq.id, {
+      recipient_phone: cc,
+      recipient_profile_id: null,
       status,
       provider_message_id: send.messageId,
       error_message: send.error,
