@@ -248,6 +248,6 @@ export default async function handler() {
   }
 }
 
-export const config: Config = {
-  schedule: '0 9 1-7 * 6', // Primer sábado del mes 09:00 UTC = 06:00 AM Argentina
-}
+// schedule REMOVIDO 2026-06-26: el cron real corre por pg_cron (job report-monthly).
+// Sin schedule = handler on-demand; evita doble envío si el scheduler de Netlify reviviera.
+export const config: Config = {}
