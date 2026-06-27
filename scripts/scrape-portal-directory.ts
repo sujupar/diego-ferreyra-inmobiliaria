@@ -36,7 +36,7 @@ const BASE_URL = urlIdx >= 0 ? args[urlIdx + 1] : 'https://www.zonaprop.com.ar/i
 const pagesIdx = args.indexOf('--pages')
 const MAX_PAGES = pagesIdx >= 0 ? parseInt(args[pagesIdx + 1] || '3', 10) : 3
 
-interface Posting { postingCode: string; address: string; title: string }
+interface Posting { postingId: string; postingCode: string; address: string; title: string }
 
 async function fetchPage(url: string): Promise<string> {
   const key = process.env.SCRAPER_API_KEY!
@@ -60,30 +60,32 @@ function extractPostings(html: string): Posting[] {
   const out: Posting[] = []
   const parts = html.split('"postingId":"')
   for (let i = 1; i < parts.length; i++) {
+    const postingId = parts[i].match(/^(\d+)/)?.[1] ?? ''
     const seg = parts[i].slice(0, 15000) // un objeto-aviso entra holgado
     const code = seg.match(/"postingCode":"([^"]+)"/)?.[1]
-    if (!code) continue
+    if (!code || code.includes('/') || code.includes(':')) continue // descarta URLs (no son CÓD)
     const title = seg.match(/"title":"((?:[^"\\]|\\.)*)"/)?.[1] ?? ''
     // postingLocation.address.name (la primera dirección del objeto).
     const addrM = seg.match(/"address":\{"name":"((?:[^"\\]|\\.)*)"/)
-    out.push({ postingCode: code, address: addrM ? unescapeJson(addrM[1]) : '', title: unescapeJson(title) })
+    out.push({ postingId, postingCode: code, address: addrM ? unescapeJson(addrM[1]) : '', title: unescapeJson(title) })
   }
   return out
 }
 
-interface MapRow { id: string; address: string | null; assigned_to: string | null }
+interface PropRef { id: string; address: string | null; assigned_to: string | null; import_external_id: string | null }
 
 async function main() {
   if (!process.env.SCRAPER_API_KEY) { console.error('Falta SCRAPER_API_KEY'); process.exit(1) }
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
-  // Lista de referencia (dirección → asesor) desde lo ya sembrado.
-  const { data: mapRows, error: mapErr } = await supabase
-    .from('portal_property_map')
-    .select('id, address, assigned_to')
+  // Referencia (ID/dirección → asesor) desde PROPERTIES (fuente autoritativa: todas).
+  const { data: propRows, error: propErr } = await supabase
+    .from('properties')
+    .select('id, address, assigned_to, import_external_id')
     .not('assigned_to', 'is', null)
-  if (mapErr) { console.error('Error leyendo portal_property_map:', mapErr.message); process.exit(1) }
-  const refs = (mapRows ?? []).filter((r: MapRow) => r.address) as MapRow[]
+  if (propErr) { console.error('Error leyendo properties:', propErr.message); process.exit(1) }
+  const props = (propRows ?? []) as PropRef[]
+  console.log(`Refs: ${props.length} propiedades con asesor (${props.filter(p => p.import_external_id).length} con ID Zonaprop)`)
 
   // Scrape de las páginas del directorio.
   const seen = new Set<string>()
@@ -103,14 +105,17 @@ async function main() {
 
   let matched = 0, unmatched = 0, inserted = 0, updated = 0
   for (const p of postings) {
-    const ref = p.address ? refs.find(r => addressMatches(p.address, r.address)) : undefined
+    // 1º match EXACTO por postingId == properties.import_external_id; 2º por dirección.
+    const byId = p.postingId ? props.find(r => r.import_external_id && String(r.import_external_id) === p.postingId) : undefined
+    const byAddr = p.address ? props.find(r => addressMatches(p.address, r.address)) : undefined
+    const ref = byId ?? byAddr
     if (!ref || !ref.assigned_to) {
-      console.log(`  ✗ ${p.postingCode} · dir="${p.address || '(oculta)'}" · ${p.title.slice(0, 50)} → sin match`)
+      console.log(`  ✗ ${p.postingCode} (id ${p.postingId}) · dir="${p.address || '(oculta)'}" → sin match`)
       unmatched++
       continue
     }
     matched++
-    const label = `${p.postingCode} · ${p.address} → asesor de "${ref.address}"`
+    const label = `${p.postingCode} (id ${p.postingId}) → asesor de "${ref.address}" [${byId ? 'ID' : 'dir'}]`
     if (!COMMIT) { console.log(`  ✓ ${label}`); continue }
 
     // upsert por (portal, external_code)
