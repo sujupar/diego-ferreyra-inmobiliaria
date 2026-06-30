@@ -65,8 +65,49 @@ async function readRequestBody(request: NextRequest): Promise<Record<string, unk
     return null
 }
 
-export async function POST(request: NextRequest) {
+/**
+ * Log best-effort de CADA recepción del webhook → tabla ghl_webhook_log.
+ * Va en su propio try/catch: si el log falla, NUNCA tumba el webhook (un 500 haría
+ * que GHL reintente y duplique el lead). Guarda el raw_payload para poder recuperar
+ * un lead que no se haya creado (caso Serfaty).
+ */
+async function logWebhook(
+    supabase: ReturnType<typeof getAdmin>,
+    row: {
+        status: 'created' | 'ignored' | 'invalid' | 'auth_failed' | 'error'
+        formName?: string | null
+        formId?: string | null
+        leadName?: string | null
+        leadEmail?: string | null
+        leadPhone?: string | null
+        dealId?: string | null
+        errorMessage?: string | null
+        rawPayload?: unknown
+    },
+) {
     try {
+        await supabase.from('ghl_webhook_log').insert({
+            status: row.status,
+            form_name: row.formName ?? null,
+            form_id: row.formId ?? null,
+            lead_name: row.leadName ?? null,
+            lead_email: row.leadEmail ?? null,
+            lead_phone: row.leadPhone ?? null,
+            deal_id: row.dealId ?? null,
+            error_message: row.errorMessage ?? null,
+            raw_payload: (row.rawPayload ?? null) as never,
+        })
+    } catch (err) {
+        console.error('[ghl-webhook] log insert failed:', err)
+    }
+}
+
+export async function POST(request: NextRequest) {
+    const supabase = getAdmin()
+    let body: Record<string, unknown> | null = null
+    try {
+        body = await readRequestBody(request)
+
         const { searchParams } = new URL(request.url)
         const querySecret = searchParams.get('secret')
         const authOk = verifyGhlWebhookSecret({
@@ -75,12 +116,13 @@ export async function POST(request: NextRequest) {
             querySecret,
         })
         if (!authOk) {
+            await logWebhook(supabase, { status: 'auth_failed', rawPayload: body })
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        const body = await readRequestBody(request)
         const submission = parseGhlFormPayload(body)
         if (!submission) {
+            await logWebhook(supabase, { status: 'invalid', rawPayload: body })
             return NextResponse.json({ error: 'Payload inválido o sin identificador de contacto' }, { status: 400 })
         }
 
@@ -90,6 +132,12 @@ export async function POST(request: NextRequest) {
             // 4xx/5xx indefinidamente y un form sin mapping no es un error
             // recuperable. El log queda para auditar formularios nuevos.
             console.warn('[ghl-webhook] form no mapeado, ignorando:', submission.formName, submission.formId)
+            await logWebhook(supabase, {
+                status: 'ignored',
+                formName: submission.formName, formId: submission.formId,
+                leadName: submission.contactName, leadEmail: submission.contactEmail, leadPhone: submission.contactPhone,
+                rawPayload: body,
+            })
             return NextResponse.json({
                 ok: true,
                 action: 'ignored',
@@ -98,8 +146,6 @@ export async function POST(request: NextRequest) {
                 formId: submission.formId,
             })
         }
-
-        const supabase = getAdmin()
 
         // Dedup contact: email → phone → crear nuevo.
         let contactId: string | null = null
@@ -197,6 +243,13 @@ export async function POST(request: NextRequest) {
             )
         }
 
+        await logWebhook(supabase, {
+            status: 'created',
+            formName: submission.formName, formId: submission.formId,
+            leadName: submission.contactName, leadEmail: submission.contactEmail, leadPhone: submission.contactPhone,
+            dealId, rawPayload: body,
+        })
+
         return NextResponse.json({
             success: true,
             dealId,
@@ -205,6 +258,11 @@ export async function POST(request: NextRequest) {
         })
     } catch (error) {
         console.error('[ghl-webhook] error:', error)
+        await logWebhook(supabase, {
+            status: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Error',
+            rawPayload: body,
+        })
         return NextResponse.json({
             error: error instanceof Error ? error.message : 'Error',
         }, { status: 500 })
