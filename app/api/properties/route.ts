@@ -24,12 +24,16 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth()
     const body = await request.json()
-    // Default assigned_to / created_by to current user unless the caller
-    // explicitly overrides (e.g., admin creating on behalf of an asesor).
+    // El asesor (quién la muestra) es OBLIGATORIO: define a quién se rutean las
+    // consultas de portales. Antes había un default silencioso a user.id que
+    // asignaba a quien cargaba el alta (no necesariamente quién la muestra).
+    if (!body.assigned_to || typeof body.assigned_to !== 'string') {
+      return NextResponse.json({ error: 'Debe asignarse un asesor (quién muestra la propiedad).' }, { status: 400 })
+    }
     const payload = {
       ...body,
       created_by: body.created_by ?? user.id,
-      assigned_to: body.assigned_to ?? user.id,
+      assigned_to: body.assigned_to,
     }
     const id = await createProperty(payload)
 

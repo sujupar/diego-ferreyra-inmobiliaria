@@ -104,6 +104,22 @@ export async function GET(req: NextRequest) {
         const isUnmatched = !match.assignedTo
         if (isUnmatched) stats.unmatched++
 
+        // Auto-aprendizaje del mapa: si matcheó por DIRECCIÓN y la consulta trae
+        // código, guardamos ese código en la fila del mapa → las próximas consultas
+        // de ese aviso (que pueden venir SIN dirección, típico de algunos portales)
+        // matchean por código directo. Solo desde matches por dirección (alta
+        // confianza); NUNCA por título (ambiguo, envenenaría el mapa). Best-effort.
+        if (match.method === 'address' && match.mapId && parsed.propertyCode) {
+          try {
+            await supabase.from('portal_property_map')
+              .update({ external_code: parsed.propertyCode })
+              .eq('id', match.mapId)
+              .is('external_code', null)
+          } catch (e) {
+            console.warn('[portal-inquiries] no se pudo auto-aprender el código', e)
+          }
+        }
+
         const { data: inserted, error: insErr } = await supabase
           .from('portal_inquiries')
           .insert({

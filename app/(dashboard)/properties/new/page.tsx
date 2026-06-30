@@ -175,6 +175,10 @@ function NewPropertyContent() {
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
+        if (!form.assigned_to) {
+            alert('Elegí quién muestra la propiedad (Diego o Lucas) antes de captarla. Eso define a quién le llegan las consultas.')
+            return
+        }
         setLoading(true)
 
         try {
@@ -399,11 +403,11 @@ function NewPropertyContent() {
                     </CardContent>
                 </Card>
 
-                {!dealData && (
-                    <Card>
-                        <CardHeader><CardTitle className="text-lg flex items-center gap-2"><FileText className="h-5 w-5" />Origen y Asignación</CardTitle></CardHeader>
-                        <CardContent>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Card>
+                    <CardHeader><CardTitle className="text-lg flex items-center gap-2"><FileText className="h-5 w-5" />{dealData ? 'Asignación' : 'Origen y Asignación'}</CardTitle></CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {!dealData && (
                                 <div className="space-y-2">
                                     <Label>Origen</Label>
                                     <select value={form.origin} onChange={e => updateField('origin', e.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
@@ -414,21 +418,22 @@ function NewPropertyContent() {
                                         <option value="tasacion">Tasacion</option>
                                     </select>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Asesor asignado</Label>
-                                    <select value={form.assigned_to} onChange={e => updateField('assigned_to', e.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                                        <option value="">Sin asignar</option>
-                                        {advisors.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
-                                    </select>
-                                </div>
+                            )}
+                            <div className="space-y-2">
+                                <Label>Asesor que la muestra <span className="text-red-500">*</span></Label>
+                                <select value={form.assigned_to} onChange={e => updateField('assigned_to', e.target.value)} required className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                                    <option value="" disabled>Elegí quién la muestra…</option>
+                                    {advisors.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
+                                </select>
+                                <p className="text-xs text-muted-foreground">Define a quién le llegan las consultas de los portales de esta propiedad.</p>
                             </div>
-                        </CardContent>
-                    </Card>
-                )}
+                        </div>
+                    </CardContent>
+                </Card>
 
                 <div className="flex gap-3">
                     <Button type="button" variant="outline" onClick={() => router.back()}>Cancelar</Button>
-                    <Button type="submit" disabled={loading} className="flex-1 bg-green-600 hover:bg-green-700">
+                    <Button type="submit" disabled={loading || !form.assigned_to} className="flex-1 bg-green-600 hover:bg-green-700">
                         {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Captar Propiedad
                     </Button>
