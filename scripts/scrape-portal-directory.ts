@@ -1,20 +1,17 @@
 #!/usr/bin/env tsx
 /**
- * Scrapea el directorio de ZonaProp de la inmobiliaria (vía ScraperAPI), extrae
- * por aviso { postingCode (CÓD), dirección, título }, matchea la dirección contra
- * las filas ya cargadas en portal_property_map (address → asesor) y siembra filas
- * portal='zonaprop' con external_code = postingCode → mismo asesor.
+ * CLI para refrescar el mapa de ZonaProp (CÓD↔dirección↔asesor) desde el directorio
+ * público de la inmobiliaria. La lógica vive en lib/portals/refresh-zonaprop-map.ts
+ * (compartida con el cron app/api/cron/refresh-portal-map).
  *
- * Así las consultas de ZonaProp (que traen el CÓD) se asignan solas.
- *
- *   npx tsx scripts/scrape-portal-directory.ts --dry-run
- *   npx tsx scripts/scrape-portal-directory.ts --commit
- *   (opcional: --url <dir> --pages 3)
+ *   node --import tsx scripts/scrape-portal-directory.ts            # dry-run
+ *   node --import tsx scripts/scrape-portal-directory.ts --commit
+ *   (opcional: --url <dir> --pages 5)
  */
 import fs from 'node:fs'
 import path from 'node:path'
 import { createClient } from '@supabase/supabase-js'
-import { addressMatches } from '../lib/integrations/portal-inquiries/match'
+import { refreshZonaPropMap, ZONAPROP_DIRECTORY_URL } from '../lib/portals/refresh-zonaprop-map'
 
 function loadEnvLocal() {
   const p = path.resolve(process.cwd(), '.env.local')
@@ -32,115 +29,20 @@ loadEnvLocal()
 const args = process.argv.slice(2)
 const COMMIT = args.includes('--commit')
 const urlIdx = args.indexOf('--url')
-const BASE_URL = urlIdx >= 0 ? args[urlIdx + 1] : 'https://www.zonaprop.com.ar/inmobiliarias/diego-ferreyra-inmobiliaria_30463329-inmuebles.html'
+const baseUrl = urlIdx >= 0 ? args[urlIdx + 1] : ZONAPROP_DIRECTORY_URL
 const pagesIdx = args.indexOf('--pages')
-const MAX_PAGES = pagesIdx >= 0 ? parseInt(args[pagesIdx + 1] || '3', 10) : 3
-
-interface Posting { postingId: string; postingCode: string; address: string; title: string }
-
-async function fetchPage(url: string): Promise<string> {
-  const key = process.env.SCRAPER_API_KEY!
-  const proxy = `https://api.scraperapi.com?api_key=${key}&url=${encodeURIComponent(url)}&country_code=ar`
-  const res = await fetch(proxy)
-  if (!res.ok) throw new Error(`ScraperAPI HTTP ${res.status}`)
-  return res.text()
-}
-
-function pageUrl(base: string, n: number): string {
-  if (n === 1) return base
-  return base.replace(/\.html$/, `-pagina-${n}.html`)
-}
-
-function unescapeJson(s: string): string {
-  try { return JSON.parse(`"${s}"`) } catch { return s.replace(/\\"/g, '"') }
-}
-
-/** Extrae los avisos del JSON embebido: partiendo por aviso (postingId). */
-function extractPostings(html: string): Posting[] {
-  const out: Posting[] = []
-  const parts = html.split('"postingId":"')
-  for (let i = 1; i < parts.length; i++) {
-    const postingId = parts[i].match(/^(\d+)/)?.[1] ?? ''
-    const seg = parts[i].slice(0, 15000) // un objeto-aviso entra holgado
-    const code = seg.match(/"postingCode":"([^"]+)"/)?.[1]
-    if (!code || code.includes('/') || code.includes(':')) continue // descarta URLs (no son CÓD)
-    const title = seg.match(/"title":"((?:[^"\\]|\\.)*)"/)?.[1] ?? ''
-    // postingLocation.address.name (la primera dirección del objeto).
-    const addrM = seg.match(/"address":\{"name":"((?:[^"\\]|\\.)*)"/)
-    out.push({ postingId, postingCode: code, address: addrM ? unescapeJson(addrM[1]) : '', title: unescapeJson(title) })
-  }
-  return out
-}
-
-interface PropRef { id: string; address: string | null; assigned_to: string | null; import_external_id: string | null }
+const maxPages = pagesIdx >= 0 ? parseInt(args[pagesIdx + 1] || '5', 10) : 5
 
 async function main() {
   if (!process.env.SCRAPER_API_KEY) { console.error('Falta SCRAPER_API_KEY'); process.exit(1) }
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-
-  // Referencia (ID/dirección → asesor) desde PROPERTIES (fuente autoritativa: todas).
-  const { data: propRows, error: propErr } = await supabase
-    .from('properties')
-    .select('id, address, assigned_to, import_external_id')
-    .not('assigned_to', 'is', null)
-  if (propErr) { console.error('Error leyendo properties:', propErr.message); process.exit(1) }
-  const props = (propRows ?? []) as PropRef[]
-  console.log(`Refs: ${props.length} propiedades con asesor (${props.filter(p => p.import_external_id).length} con ID Zonaprop)`)
-
-  // Scrape de las páginas del directorio.
-  const seen = new Set<string>()
-  const postings: Posting[] = []
-  for (let n = 1; n <= MAX_PAGES; n++) {
-    const url = pageUrl(BASE_URL, n)
-    console.log(`Scrapeando página ${n}: ${url}`)
-    let html: string
-    try { html = await fetchPage(url) } catch (e) { console.warn(`  página ${n} falló: ${e instanceof Error ? e.message : e}`); break }
-    const found = extractPostings(html).filter(p => !seen.has(p.postingCode))
-    found.forEach(p => seen.add(p.postingCode))
-    console.log(`  avisos nuevos: ${found.length}`)
-    postings.push(...found)
-    if (found.length === 0) break
-  }
-  console.log(`\nTotal avisos ZonaProp: ${postings.length}\n`)
-
-  let matched = 0, unmatched = 0, inserted = 0, updated = 0
-  for (const p of postings) {
-    // 1º match EXACTO por postingId == properties.import_external_id; 2º por dirección.
-    const byId = p.postingId ? props.find(r => r.import_external_id && String(r.import_external_id) === p.postingId) : undefined
-    const byAddr = p.address ? props.find(r => addressMatches(p.address, r.address)) : undefined
-    const ref = byId ?? byAddr
-    if (!ref || !ref.assigned_to) {
-      console.log(`  ✗ ${p.postingCode} (id ${p.postingId}) · dir="${p.address || '(oculta)'}" → sin match`)
-      unmatched++
-      continue
-    }
-    matched++
-    const label = `${p.postingCode} (id ${p.postingId}) → asesor de "${ref.address}" [${byId ? 'ID' : 'dir'}]`
-    if (!COMMIT) { console.log(`  ✓ ${label}`); continue }
-
-    // upsert por (portal, external_code)
-    const { data: existing } = await supabase
-      .from('portal_property_map')
-      .select('id')
-      .eq('portal', 'zonaprop')
-      .eq('external_code', p.postingCode)
-      .maybeSingle()
-    const record = { portal: 'zonaprop', external_code: p.postingCode, address: p.address || null, title: p.title || null, assigned_to: ref.assigned_to, active: true }
-    if (existing) {
-      const { error } = await supabase.from('portal_property_map').update(record).eq('id', existing.id)
-      if (error) { console.error(`  ✗ update ${p.postingCode}: ${error.message}`); continue }
-      console.log(`  ↻ ${label}`); updated++
-    } else {
-      const { error } = await supabase.from('portal_property_map').insert(record)
-      if (error) { console.error(`  ✗ insert ${p.postingCode}: ${error.message}`); continue }
-      console.log(`  + ${label}`); inserted++
-    }
-  }
-
-  console.log(`\n=== Resumen ===`)
-  console.log(`  Avisos: ${postings.length} · con match: ${matched} · sin match: ${unmatched}`)
-  if (COMMIT) console.log(`  Sembradas zonaprop: ${inserted} nuevas, ${updated} actualizadas`)
-  else console.log(`  (DRY-RUN: no se sembró. Repetí con --commit.)`)
+  console.log(`Scrapeando directorio ZonaProp (${COMMIT ? 'COMMIT' : 'DRY-RUN'})...`)
+  const stats = await refreshZonaPropMap(supabase, { commit: COMMIT, baseUrl, maxPages, log: m => console.log('  ' + m) })
+  console.log('\n=== Resumen ===')
+  console.log(`  Avisos: ${stats.avisos} · con match: ${stats.matched} · sin match: ${stats.unmatched}`)
+  if (stats.error) console.error(`  ERROR: ${stats.error}`)
+  if (COMMIT) console.log(`  Sembradas zonaprop: ${stats.inserted} nuevas, ${stats.updated} actualizadas`)
+  else console.log('  (DRY-RUN: no se sembró. Repetí con --commit.)')
   console.log('')
 }
 
