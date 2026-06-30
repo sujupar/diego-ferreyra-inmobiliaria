@@ -49,7 +49,7 @@ async function main() {
     const match = await matchProperty(supabase, parsed)
     const newAssigned = match.assignedTo
     const newUnmatched = !newAssigned
-    if (newAssigned === r.assigned_to && newUnmatched === r.is_unmatched) continue
+    if (newAssigned === r.assigned_to && newUnmatched === r.is_unmatched && match.mapId === r.matched_map_id) continue
     changed++
     console.log(`  #${r.seq} ${r.portal} ${r.property_external_code || r.property_address || ''} → ${newAssigned ? 'ASIGNADA' : 'sin asignar'} (${match.method})`)
     if (COMMIT) {
