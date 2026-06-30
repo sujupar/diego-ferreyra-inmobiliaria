@@ -101,7 +101,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     })
 
     try {
-      await syncPortalPropertyMap(supabase, property, pub.externalId, pub.externalUrl)
+      // external_code = avisoId numérico (lo que trae el email de consulta de Argenprop),
+      // NO el IdOrigen alfanumérico → así las consultas matchean por código y por URL.
+      await syncPortalPropertyMap(supabase, property, String(pub.metadata?.avisoId ?? pub.externalId), pub.externalUrl)
     } catch (bridgeErr) {
       console.warn('[ap-publish] no se pudo sincronizar portal_property_map', bridgeErr)
     }

@@ -19,7 +19,7 @@ function inquiry(over: Partial<ParsedInquiry>): ParsedInquiry {
 describe('pickBestMatch', () => {
   it('matchea por código exacto (normalizado)', () => {
     const r = pickBestMatch(inquiry({ portal: 'mercadolibre', propertyCode: 'MLA-1234567890' }), rows)
-    expect(r).toEqual({ mapId: 'm1', assignedTo: LUCAS, method: 'code' })
+    expect(r).toEqual({ mapId: 'm1', assignedTo: LUCAS, method: 'code', address: 'Av. Cabildo 2000', title: 'Depto Belgrano' })
   })
 
   it('matchea por URL (contención)', () => {
@@ -48,7 +48,7 @@ describe('pickBestMatch', () => {
 
   it('devuelve none si no hay match', () => {
     const r = pickBestMatch(inquiry({ portal: 'zonaprop', propertyCode: 'NOEXISTE', propertyAddress: 'Calle Falsa 123' }), rows)
-    expect(r).toEqual({ mapId: null, assignedTo: null, method: 'none' })
+    expect(r).toEqual({ mapId: null, assignedTo: null, method: 'none', address: null, title: null })
   })
 
   it('no considera filas de otro portal', () => {

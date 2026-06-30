@@ -118,7 +118,7 @@ export async function GET(req: NextRequest) {
             lead_message: parsed.message,
             property_external_code: parsed.propertyCode,
             property_url: parsed.propertyUrl,
-            property_address: parsed.propertyAddress,
+            property_address: parsed.propertyAddress ?? match.address, // si el email no trajo dirección pero matcheó, guardamos la del mapa (identificable en el inbox)
             matched_map_id: match.mapId,
             assigned_to: match.assignedTo, // null si unmatched → notify usa al dueño
             is_unmatched: isUnmatched,
@@ -140,10 +140,16 @@ export async function GET(req: NextRequest) {
         }
         stats.inserted++
 
+        // Propiedad identificable para el WhatsApp: si la consulta MATCHEÓ una
+        // propiedad, usar su dirección/título REALES del mapa (no el código pelado
+        // que a veces trae el email, típico de Argenprop). Sin match: lo que trajo
+        // el email; el código solo como último recurso, formateado como "Aviso #".
         const propertyLabel =
-          parsed.propertyAddress || parsed.propertyTitle || parsed.propertyCode || parsed.propertyUrl || '(propiedad sin identificar)'
+          match.address || parsed.propertyAddress || match.title || parsed.propertyTitle ||
+          (parsed.propertyCode ? `Aviso #${parsed.propertyCode}` : null) ||
+          parsed.propertyUrl || '(propiedad sin identificar)'
         const avisoLabel =
-          parsed.propertyTitle || parsed.propertyCode || parsed.propertyUrl || propertyLabel
+          match.title || parsed.propertyTitle || parsed.propertyUrl || parsed.propertyCode || propertyLabel
 
         const n = await notifyInquiry(supabase, {
           id: inserted.id,
