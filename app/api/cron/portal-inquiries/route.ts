@@ -164,8 +164,11 @@ export async function GET(req: NextRequest) {
           match.address || parsed.propertyAddress || match.title || parsed.propertyTitle ||
           (parsed.propertyCode ? `Aviso #${parsed.propertyCode}` : null) ||
           parsed.propertyUrl || '(propiedad sin identificar)'
+        // El "Aviso" SIEMPRE muestra el LINK al aviso del portal cuando lo tenemos:
+        // del mail (ML/Argenprop) o del mapa scrapeado (ZonaProp). Clickeable → Diego
+        // abre la propiedad en el portal directo.
         const avisoLabel =
-          match.title || parsed.propertyTitle || parsed.propertyUrl || parsed.propertyCode || propertyLabel
+          match.external_url || parsed.propertyUrl || match.title || parsed.propertyTitle || parsed.propertyCode || propertyLabel
 
         const n = await notifyInquiry(supabase, {
           id: inserted.id,

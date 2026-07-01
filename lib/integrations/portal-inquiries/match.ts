@@ -29,6 +29,7 @@ export interface MatchResult {
   method: MatchMethod
   address: string | null
   title: string | null
+  external_url: string | null
 }
 
 function normText(s: string | null | undefined): string {
@@ -107,11 +108,11 @@ export function addressMatches(a: string | null | undefined, b: string | null | 
   return Math.abs(na - nb) <= NUMBER_TOLERANCE
 }
 
-const NONE: MatchResult = { mapId: null, assignedTo: null, method: 'none', address: null, title: null }
+const NONE: MatchResult = { mapId: null, assignedTo: null, method: 'none', address: null, title: null, external_url: null }
 
 export function pickBestMatch(parsed: ParsedInquiry, rows: PortalMapRow[]): MatchResult {
   const active = rows.filter(r => r.active && r.portal === parsed.portal)
-  const hit = (r: PortalMapRow, method: MatchMethod): MatchResult => ({ mapId: r.id, assignedTo: r.assigned_to, method, address: r.address, title: r.title })
+  const hit = (r: PortalMapRow, method: MatchMethod): MatchResult => ({ mapId: r.id, assignedTo: r.assigned_to, method, address: r.address, title: r.title, external_url: r.external_url })
 
   // 1. Código exacto.
   if (parsed.propertyCode) {

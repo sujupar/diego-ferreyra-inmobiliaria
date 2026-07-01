@@ -16,7 +16,7 @@ import { addressMatches } from '../integrations/portal-inquiries/match'
 export const ZONAPROP_DIRECTORY_URL =
   'https://www.zonaprop.com.ar/inmobiliarias/diego-ferreyra-inmobiliaria_30463329-inmuebles.html'
 
-interface Posting { postingId: string; postingCode: string; address: string; title: string }
+interface Posting { postingId: string; postingCode: string; address: string; title: string; url: string }
 interface PropRef { id: string; address: string | null; assigned_to: string | null; import_external_id: string | null }
 
 export interface RefreshMapStats {
@@ -57,7 +57,11 @@ function extractPostings(html: string): Posting[] {
     if (!code || code.includes('/') || code.includes(':')) continue // descarta URLs
     const title = seg.match(/"title":"((?:[^"\\]|\\.)*)"/)?.[1] ?? ''
     const addrM = seg.match(/"address":\{"name":"((?:[^"\\]|\\.)*)"/)
-    out.push({ postingId, postingCode: code, address: addrM ? unescapeJson(addrM[1]) : '', title: unescapeJson(title) })
+    // URL del aviso: la única "url" que arranca con /propiedades/ (las otras son del
+    // directorio/logo/chat). Absoluta → clickeable en el WhatsApp.
+    const urlM = seg.match(/"url":"(\/propiedades\/[^"]+\.html)"/)
+    const url = urlM ? `https://www.zonaprop.com.ar${urlM[1]}` : ''
+    out.push({ postingId, postingCode: code, address: addrM ? unescapeJson(addrM[1]) : '', title: unescapeJson(title), url })
   }
   return out
 }
@@ -115,8 +119,8 @@ export async function refreshZonaPropMap(
       .eq('external_code', p.postingCode)
       .maybeSingle()
     const record = {
-      portal: 'zonaprop', external_code: p.postingCode, address: p.address || null,
-      title: p.title || null, assigned_to: ref.assigned_to, active: true,
+      portal: 'zonaprop', external_code: p.postingCode, external_url: p.url || null,
+      address: p.address || null, title: p.title || null, assigned_to: ref.assigned_to, active: true,
     }
     if (existing) {
       const { error } = await supabase.from('portal_property_map').update(record).eq('id', existing.id)

@@ -68,13 +68,12 @@ function firstNameUpper(fullName: string | null): string {
  * Link wa.me para que el asesor responda al interesado con un saludo pre-armado.
  * Si no hay teléfono válido, devuelve el aviso (como en la captura del usuario).
  */
-function buildReplyLink(leadPhone: string | null, leadName: string | null, advisorName: string, propertyLabel: string): string {
+function buildReplyLink(leadPhone: string | null, leadName: string | null): string {
   const phone = normalizePhone(leadPhone)
   if (!phone) return '⚠️ No pude armar el link porque falta un teléfono válido'
-  const greeting =
-    `Hola ${(leadName ?? '').trim()}, buen día! Mi nombre es ${advisorName}, un gusto saludarte. ` +
-    `Te escribo por tu consulta de la propiedad en ${propertyLabel}.`
-  return `https://wa.me/${phone}?text=${encodeURIComponent(greeting.replace(/\s+/g, ' ').trim())}`
+  // Saludo CORTO → link wa.me más corto (pedido del usuario).
+  const greeting = `Hola ${(leadName ?? '').trim()}, te escribo por tu consulta.`.replace(/\s+/g, ' ').trim()
+  return `https://wa.me/${phone}?text=${encodeURIComponent(greeting)}`
 }
 
 /**
@@ -189,15 +188,8 @@ export async function notifyInquiry(supabase: SupabaseClient, inq: NotifyInquiry
     return result
   }
 
-  // El que responde (y firma el saludo) es el asesor asignado; sin match, Diego.
-  const respondingProfile = assignedProfile ?? owner
   const advisorLabel = firstNameUpper(assignedProfile?.full_name ?? null)
-  const replyLink = buildReplyLink(
-    inq.leadPhone,
-    inq.leadName,
-    respondingProfile?.full_name ?? 'el equipo',
-    inq.propertyLabel,
-  )
+  const replyLink = buildReplyLink(inq.leadPhone, inq.leadName)
   const bodyParams = buildBodyParams(inq, advisorLabel, replyLink)
   const attemptedPhones = new Set<string>()
 
