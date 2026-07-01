@@ -68,12 +68,34 @@ function firstNameUpper(fullName: string | null): string {
  * Link wa.me para que el asesor responda al interesado con un saludo pre-armado.
  * Si no hay teléfono válido, devuelve el aviso (como en la captura del usuario).
  */
-function buildReplyLink(leadPhone: string | null, leadName: string | null): string {
+/** Acorta una URL con TinyURL (sin auth). Si falla, devuelve la URL original. */
+async function shortenUrl(url: string): Promise<string> {
+  try {
+    const res = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(url)}`, {
+      signal: AbortSignal.timeout(5000),
+    })
+    if (res.ok) {
+      const short = (await res.text()).trim()
+      if (/^https?:\/\//.test(short)) return short
+    }
+  } catch {
+    // TinyURL caído / rate-limit → usamos la URL completa (larga pero funcional).
+  }
+  return url
+}
+
+async function buildReplyLink(
+  leadPhone: string | null, leadName: string | null, advisorName: string, propertyLabel: string,
+): Promise<string> {
   const phone = normalizePhone(leadPhone)
   if (!phone) return '⚠️ No pude armar el link porque falta un teléfono válido'
-  // Saludo CORTO → link wa.me más corto (pedido del usuario).
-  const greeting = `Hola ${(leadName ?? '').trim()}, te escribo por tu consulta.`.replace(/\s+/g, ' ').trim()
-  return `https://wa.me/${phone}?text=${encodeURIComponent(greeting)}`
+  // Saludo COMPLETO y bien estructurado para contactar al prospecto; el link se
+  // acorta con TinyURL (queda tipo tinyurl.com/xxxx en el WhatsApp).
+  const greeting =
+    `Hola ${(leadName ?? '').trim()}, buen día! Mi nombre es ${advisorName}, un gusto saludarte. ` +
+    `Te escribo por tu consulta de la propiedad en ${propertyLabel}.`
+  const longUrl = `https://wa.me/${phone}?text=${encodeURIComponent(greeting.replace(/\s+/g, ' ').trim())}`
+  return await shortenUrl(longUrl)
 }
 
 /**
@@ -188,8 +210,12 @@ export async function notifyInquiry(supabase: SupabaseClient, inq: NotifyInquiry
     return result
   }
 
+  // El que responde (y firma el saludo) es el asesor asignado; sin match, Diego.
+  const respondingProfile = assignedProfile ?? owner
   const advisorLabel = firstNameUpper(assignedProfile?.full_name ?? null)
-  const replyLink = buildReplyLink(inq.leadPhone, inq.leadName)
+  const replyLink = await buildReplyLink(
+    inq.leadPhone, inq.leadName, respondingProfile?.full_name ?? 'el equipo', inq.propertyLabel,
+  )
   const bodyParams = buildBodyParams(inq, advisorLabel, replyLink)
   const attemptedPhones = new Set<string>()
 
