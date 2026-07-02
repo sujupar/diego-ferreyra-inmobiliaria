@@ -1,8 +1,10 @@
 /* Genera lib/market-data/caba-map-paths.ts desde el SVG inline de monitorinmobiliario.com.
  * Correr: node --import tsx scripts/extract-caba-map.ts
- * Re-correr solo si la fuente cambia su mapa (el módulo generado se commitea). */
+ * Re-correr solo si la fuente cambia su mapa (el módulo generado se commitea).
+ * Tras regenerar, correr SIEMPRE: npm test -- lib/market-data/caba-map-paths */
 import { writeFileSync } from 'fs'
 import { join } from 'path'
+import { ALL_CABA_SLUGS } from '../lib/market-data/neighborhoods'
 
 const OUT = join(process.cwd(), 'lib/market-data/caba-map-paths.ts')
 
@@ -60,6 +62,15 @@ async function main() {
 
     const ids = entries.map(e => e.id)
     if (new Set(ids).size !== 48) throw new Error(`ids duplicados tras el fix: ${ids.filter((v, i) => ids.indexOf(v) !== i).join(',')}`)
+
+    // Validar que los ids extraídos coincidan EXACTAMENTE con el catálogo canónico.
+    // Si falla: hay aliases nuevos o la fuente cambió su nomenclatura — actualizar ALIASES arriba.
+    const canonical = new Set(ALL_CABA_SLUGS)
+    const extra = ids.filter(id => !canonical.has(id))
+    const missing = ALL_CABA_SLUGS.filter(s => !ids.includes(s))
+    if (extra.length || missing.length) {
+        throw new Error(`ids no canónicos tras aliases — extra: [${extra.join(', ')}] · faltan: [${missing.join(', ')}]. Actualizar ALIASES en este script.`)
+    }
 
     // viewBox del bbox REAL de las coordenadas (+padding), NO del <svg> del documento.
     let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9
