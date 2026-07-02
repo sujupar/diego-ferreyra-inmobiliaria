@@ -194,12 +194,24 @@ export default function SettingsPage() {
                             </Button>
                         </div>
                     </div>
-                    {[mdStatus?.core, mdStatus?.zonaprop].filter(Boolean).map((s: any) => (
-                        <p key={s.id} className={`text-xs ${s.last_status === 'ok' ? 'text-green-600' : s.last_status === 'partial' ? 'text-amber-600' : 'text-red-600'}`}>
-                            {s.id}: {s.last_status} · {s.last_run_at ? new Date(s.last_run_at).toLocaleString('es-AR') : 'nunca corrió'}
-                            {s.last_error ? ` · ${s.last_error}` : ''}
-                        </p>
-                    ))}
+                    {[mdStatus?.core, mdStatus?.zonaprop].filter(Boolean).map((s: any) => {
+                        // Texto humano: nada de jerga técnica cruda en el panel. El detalle
+                        // completo sigue en market_data_refresh_state.last_error (DB).
+                        const nombre = s.id === 'core' ? 'Fuentes (precios + escrituras)' : 'Tipos de propiedades (Zonaprop)'
+                        const estado = s.last_status === 'ok' ? '✓ al día'
+                            : s.last_status === 'partial' ? 'parcial' : 'con errores'
+                        const esDiferidaInfogram = s.id === 'core' && s.last_status === 'partial'
+                            && typeof s.last_error === 'string' && s.last_error.includes('DIFERIDA')
+                        const detalle = esDiferidaInfogram
+                            ? 'La composición del stock viene de una fuente que requiere acceso especial: esa sección usa la imagen del override manual. Todo lo demás se actualiza solo.'
+                            : (s.last_error ? String(s.last_error).slice(0, 160) + (String(s.last_error).length > 160 ? '…' : '') : '')
+                        return (
+                            <p key={s.id} className={`text-xs ${s.last_status === 'ok' ? 'text-green-600' : s.last_status === 'partial' ? 'text-amber-600' : 'text-red-600'}`}>
+                                {nombre}: {estado} · {s.last_run_at ? new Date(s.last_run_at).toLocaleString('es-AR') : 'nunca corrió'}
+                                {detalle ? ` · ${detalle}` : ''}
+                            </p>
+                        )
+                    })}
                 </div>
 
                 <details className="rounded-xl border bg-card p-4">
