@@ -28,5 +28,9 @@ export async function GET() {
             total: ALL_CABA_SLUGS.length,
         },
         cabaListo: !!(cabaRow?.stock && cabaRow?.escrituras),
+        // La composición del stock (Infogram) está diferida: si falta stock.tipos,
+        // la sección Stock del PDF usa la imagen del override manual. El panel lo
+        // dice explícito para no contradecir el estado 'partial' de core.
+        stockCompleto: !!((cabaRow?.stock as { tipos?: unknown[] } | null)?.tipos?.length),
     })
 }

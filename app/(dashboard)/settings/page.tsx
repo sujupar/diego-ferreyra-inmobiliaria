@@ -180,7 +180,7 @@ export default function SettingsPage() {
                         <div>
                             <h3 className="font-medium">Actualización automática</h3>
                             <p className="text-xs text-muted-foreground">
-                                Mes vigente: {mdStatus?.period || '…'} · CABA {mdStatus?.cabaListo ? '✓ completo' : 'pendiente'} ·
+                                Mes vigente: {mdStatus?.period || '…'} · CABA {mdStatus?.cabaListo ? (mdStatus?.stockCompleto ? '✓ completo' : '✓ (stock: override manual)') : 'pendiente'} ·
                                 precio {mdStatus?.counts?.barriosConPrecio ?? 0}/{mdStatus?.counts?.total ?? 48} barrios ·
                                 tipos {mdStatus?.counts?.barriosConTipos ?? 0}/{mdStatus?.counts?.total ?? 48} barrios
                             </p>
