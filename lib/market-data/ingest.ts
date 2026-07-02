@@ -23,6 +23,14 @@ export function pickPendingSlugs(done: Set<string>, all: string[], limit: number
     return all.filter(s => !done.has(s)).slice(0, limit)
 }
 
+/** true si el objeto es null/undefined/vacío o TODOS sus valores son null/undefined.
+ *  Usado para detectar sub-objetos "degradados" (ej. fallback sin esa data) que
+ *  NO deben pisar un sub-objeto ya capturado a nivel de clave superior. */
+export function allNull(obj: Record<string, unknown> | null | undefined): boolean {
+    if (!obj) return true
+    return Object.values(obj).every(v => v === null || v === undefined)
+}
+
 async function writeState(
     supabase: SupabaseClient, id: 'core' | 'zonaprop', period: string,
     status: 'ok' | 'partial' | 'failed', error: string | null, stats: Record<string, unknown>,
@@ -35,7 +43,13 @@ async function writeState(
     if (e) console.error('[market-data] writeState falló', e)
 }
 
-export interface CoreStats { bryn: boolean; infogram: boolean; colegio: boolean; barriosUpserted: number; errors: string[] }
+export interface CoreStats {
+    bryn: boolean; infogram: boolean; colegio: boolean; barriosUpserted: number; errors: string[]
+    /** true cuando Bryn respondió OK pero cabaPrice llegó todo-null (fallback del
+     *  mapa sin kpis) — se omitió el patch de price_caba a propósito para no pisar
+     *  un valor bueno ya capturado. No es un error. */
+    priceCabaSkipped?: boolean
+}
 
 /** Fuentes baratas: Bryn (precio 48 barrios + kpis) + Infogram (composición) +
  *  Colegio (escrituras: baja el JPEG a Storage). Corre diario (idempotente). */
@@ -53,7 +67,13 @@ export async function refreshCore(supabase: SupabaseClient, period: string): Pro
 
         if (bryn.ok) {
             stats.bryn = true
-            patch.price_caba = bryn.data.cabaPrice
+            // Si Bryn cayó al fallback del mapa (sin kpis), cabaPrice viene todo-null.
+            // No pisar un price_caba bueno ya capturado con un objeto degradado.
+            if (!allNull(bryn.data.cabaPrice as unknown as Record<string, unknown>)) {
+                patch.price_caba = bryn.data.cabaPrice
+            } else {
+                stats.priceCabaSkipped = true
+            }
             // El stock combina kpis (Bryn) + composición (Infogram): merge sobre lo previo.
             const prevStock = (existing?.stock || {}) as Partial<StockComposition>
             patch.stock = mergeJsonb(prevStock as Record<string, unknown>, {
@@ -91,7 +111,10 @@ export async function refreshCore(supabase: SupabaseClient, period: string): Pro
                 } catch (e) { stats.errors.push(`descarga imagen colegio: ${(e as Error).message}`) }
             }
             const { imageSourceUrl: _drop, ...rest } = colegio.data
-            patch.escrituras = { ...rest, imageUrl }
+            // Merge campo por campo con lo ya capturado: si la descarga/upload de la
+            // imagen falla en esta corrida (imageUrl null), NO pisa un imageUrl bueno
+            // de una corrida anterior del mismo período.
+            patch.escrituras = mergeJsonb((existing?.escrituras as Record<string, unknown>) || {}, { ...rest, imageUrl })
             meta.colegio = { ok: true, at: new Date().toISOString() }
         } else { stats.errors.push(colegio.error); meta.colegio = { ok: false, error: colegio.error } }
 
@@ -106,11 +129,23 @@ export async function refreshCore(supabase: SupabaseClient, period: string): Pro
             const { data: nbRows, error: nbErr } = await supabase.from('neighborhoods').select('id, slug')
             if (nbErr || !nbRows?.length) throw new Error(`neighborhoods: ${nbErr?.message || 'vacía — ¿corriste las migraciones?'}`)
             const idBySlug = new Map(nbRows.map(r => [r.slug as string, r.id as string]))
+
+            // Fila previa del período por barrio: el fallback del mapa trae
+            // usado/pozo/estrenar/alq2amb en null — merge campo por campo para no
+            // pisar valores buenos ya capturados de una corrida con el JSON completo.
+            const { data: existingRows } = await supabase.from('market_snapshot_neighborhood')
+                .select('neighborhood_slug, price').eq('period', period)
+            const prevBySlug = new Map((existingRows || []).map(r => [r.neighborhood_slug as string, r.price]))
+
             const rows = bryn.data.barrios
                 .filter(b => idBySlug.has(b.slug))
                 .map(b => ({
                     neighborhood_id: idBySlug.get(b.slug)!, neighborhood_slug: b.slug, period,
-                    price: b.price, captured_at: new Date().toISOString(),
+                    price: mergeJsonb(
+                        (prevBySlug.get(b.slug) as Record<string, unknown> | null) || {},
+                        b.price as unknown as Record<string, unknown>,
+                    ),
+                    captured_at: new Date().toISOString(),
                 }))
             const { error: bErr } = await supabase.from('market_snapshot_neighborhood')
                 .upsert(rows, { onConflict: 'neighborhood_id,period' })
