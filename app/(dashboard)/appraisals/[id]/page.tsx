@@ -11,6 +11,7 @@ import { PDFDownloadButton } from '@/components/appraisal/PDFDownloadButton'
 import { ValuationProperty, ValuationResult, calculateValuation, getQualityCoefficient, ExpenseRates } from '@/lib/valuation/calculator'
 import { ReportEdits, buildDefaultEdits } from '@/lib/types/report-edits'
 import type { PropertyFeatures, ScrapedProperty } from '@/lib/scraper/types'
+import type { MarketDataForReport } from '@/lib/market-data/types'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, FileText, AlertCircle, Edit2, Loader2, UserCog, Home } from 'lucide-react'
 import { ContactEditor } from '@/components/contacts/ContactEditor'
@@ -90,6 +91,23 @@ export default function AppraisalDetailPage() {
             .then(({ url }) => setAdvisorPhotoUrl(url || undefined))
             .catch(() => setAdvisorPhotoUrl(undefined))
     }, [appraisal?.assigned_to, appraisal?.user_id])
+
+    const [marketData, setMarketData] = useState<MarketDataForReport | null>(null)
+
+    // Datos de mercado CONGELADOS de la tasación: (barrio, período de creación).
+    // Tasaciones legacy (sin slug) → null → el PDF usa el camino de imágenes actual.
+    useEffect(() => {
+        const slug = appraisal?.neighborhood_slug
+        if (!slug) { setMarketData(null); return }
+        const period = appraisal?.market_period
+        const qs = `neighborhood=${encodeURIComponent(slug)}${period ? `&period=${period}` : ''}`
+        let cancelled = false
+        fetch(`/api/market-data?${qs}`)
+            .then(r => r.json())
+            .then(({ data }) => { if (!cancelled) setMarketData(data || null) })
+            .catch(() => { if (!cancelled) setMarketData(null) })
+        return () => { cancelled = true }
+    }, [appraisal?.neighborhood_slug, appraisal?.market_period])
 
     // CRÍTICO: los useMemo deben llamarse SIEMPRE — antes de cualquier early
     // return — porque las reglas de hooks de React requieren orden estable.
@@ -632,6 +650,8 @@ export default function AppraisalDetailPage() {
                     onReportEditsChange={setReportEdits}
                     appraisalDate={appraisal.created_at}
                     advisorPhotoUrl={advisorPhotoUrl}
+                    marketData={marketData}
+                    neighborhoodName={marketData?.neighborhood.name}
                 />
             )}
         </div>

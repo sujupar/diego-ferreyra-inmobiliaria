@@ -19,6 +19,7 @@ import type { PageLayoutState } from './pdf/PageOrganizer'
 import { PDFReportDocument } from './pdf/PDFReport'
 import { pdf } from '@react-pdf/renderer'
 import { convertImagesToBase64 } from '@/lib/pdf/imageUtils'
+import type { MarketDataForReport } from '@/lib/market-data/types'
 
 // Dynamic import of PDFViewer — browser-only, no SSR
 const PDFViewer = dynamic(
@@ -122,6 +123,8 @@ interface PDFPreviewModalProps {
     onReportEditsChange?: (edits: ReportEdits) => void
     appraisalDate?: string
     advisorPhotoUrl?: string
+    marketData?: MarketDataForReport | null
+    neighborhoodName?: string
 }
 
 export function PDFPreviewModal({
@@ -140,6 +143,8 @@ export function PDFPreviewModal({
     onReportEditsChange,
     appraisalDate,
     advisorPhotoUrl,
+    marketData,
+    neighborhoodName,
 }: PDFPreviewModalProps) {
     const [activeTab, setActiveTab] = useState<'editor' | 'preview' | 'organize'>('preview')
     const [isDownloading, setIsDownloading] = useState(false)
@@ -226,8 +231,10 @@ export function PDFPreviewModal({
             reportEdits={reportEdits}
             appraisalDate={appraisalDate}
             advisorPhotoUrl={advisorPhotoUrl}
+            marketData={marketData}
+            neighborhoodName={neighborhoodName}
         />
-    ), [readySubject, readyComparables, valuationResult, readyOverpriced, readyPurchase, purchaseResult, effectiveLabels, effectiveUrls, reportEdits, appraisalDate, advisorPhotoUrl])
+    ), [readySubject, readyComparables, valuationResult, readyOverpriced, readyPurchase, purchaseResult, effectiveLabels, effectiveUrls, reportEdits, appraisalDate, advisorPhotoUrl, marketData, neighborhoodName])
 
     // --- Persistencia de reportEdits (textos + precios + layout) ---
     const reportEditsRef = useRef(reportEdits)
@@ -463,6 +470,8 @@ export function PDFPreviewModal({
                                 reportEdits={reportEdits}
                                 appraisalDate={appraisalDate}
                                 advisorPhotoUrl={advisorPhotoUrl}
+                                marketData={marketData}
+                                neighborhoodName={neighborhoodName}
                             />
                         </PDFViewer>
                     )}

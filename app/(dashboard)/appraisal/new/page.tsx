@@ -16,6 +16,7 @@ import { ReportEdits, DEFAULT_REPORT_EDITS, buildDefaultEdits } from '@/lib/type
 import { saveAppraisal, updateAppraisal, getAppraisal } from '@/lib/supabase/appraisals'
 import { mapDealToWizardInitialData, hasSaleVisitPrefill } from '@/lib/mapping/visit-to-wizard'
 import { findByText } from '@/lib/market-data/neighborhoods'
+import type { MarketDataForReport } from '@/lib/market-data/types'
 import { Button } from '@/components/ui/button'
 import {
     Calculator,
@@ -622,6 +623,19 @@ function NewAppraisalPageContent() {
             .then(({ url }) => setAdvisorPhotoUrl(url || undefined))
             .catch(() => setAdvisorPhotoUrl(undefined))
     }, [assignedTo])
+
+    const [marketData, setMarketData] = useState<MarketDataForReport | null>(null)
+
+    useEffect(() => {
+        const slug = subject?.neighborhoodSlug
+        if (!slug) { setMarketData(null); return }
+        let cancelled = false
+        fetch(`/api/market-data?neighborhood=${encodeURIComponent(slug)}`)
+            .then(r => r.json())
+            .then(({ data }) => { if (!cancelled) setMarketData(data || null) })
+            .catch(() => { if (!cancelled) setMarketData(null) })
+        return () => { cancelled = true }
+    }, [subject?.neighborhoodSlug])
 
     function handleCalculate() {
         if (!subject) return
@@ -1662,6 +1676,8 @@ function NewAppraisalPageContent() {
                     onReportEditsChange={setReportEdits}
                     appraisalDate={new Date().toISOString()}
                     advisorPhotoUrl={advisorPhotoUrl}
+                    marketData={marketData}
+                    neighborhoodName={marketData?.neighborhood.name}
                 />
             )}
         </div>

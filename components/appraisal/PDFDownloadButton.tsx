@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Download, Loader2 } from 'lucide-react'
 import type { ValuationProperty, ValuationResult } from '@/lib/valuation/calculator'
 import { buildAppraisalFilename } from '@/lib/valuation/utils'
+import type { MarketDataForReport } from '@/lib/market-data/types'
 
 interface PDFDownloadButtonProps {
     subject: ValuationProperty
@@ -12,9 +13,11 @@ interface PDFDownloadButtonProps {
     valuationResult: ValuationResult
     appraisalDate?: string
     advisorPhotoUrl?: string
+    marketData?: MarketDataForReport | null
+    neighborhoodName?: string
 }
 
-export function PDFDownloadButton({ subject, comparables, valuationResult, appraisalDate, advisorPhotoUrl }: PDFDownloadButtonProps) {
+export function PDFDownloadButton({ subject, comparables, valuationResult, appraisalDate, advisorPhotoUrl, marketData, neighborhoodName }: PDFDownloadButtonProps) {
     const [isGenerating, setIsGenerating] = useState(false)
 
     const handleDownload = async () => {
@@ -34,6 +37,8 @@ export function PDFDownloadButton({ subject, comparables, valuationResult, appra
                 valuationResult={valuationResult}
                 appraisalDate={appraisalDate}
                 advisorPhotoUrl={advisorPhotoUrl}
+                marketData={marketData}
+                neighborhoodName={neighborhoodName}
             />
 
             const asPdf = pdf(doc)
