@@ -324,6 +324,14 @@ function NewAppraisalPageContent() {
                 setPurchaseProperties(purchaseComps)
                 setValuationResult(detail.valuation_result)
 
+                // Período de mercado CONGELADO al momento de crear esta tasación.
+                // El preview del PDF en modo edición debe usar este período (no el
+                // vigente) para coincidir con lo que muestra el detalle guardado.
+                // Tasaciones legacy (sin market_period) → null → el efecto de abajo
+                // no manda &period y la API resuelve al vigente (mismo comportamiento
+                // que create mode).
+                setFrozenMarketPeriod(detail.market_period ?? null)
+
                 // Restore purchaseResult if present
                 if (detail.valuation_result?.purchaseResult) {
                     setPurchaseResult(detail.valuation_result.purchaseResult)
@@ -626,17 +634,24 @@ function NewAppraisalPageContent() {
     }, [assignedTo])
 
     const [marketData, setMarketData] = useState<MarketDataForReport | null>(null)
+    // Período de mercado CONGELADO de la tasación que se está editando (barrio,
+    // período de creación). null en create mode → la API resuelve al vigente.
+    const [frozenMarketPeriod, setFrozenMarketPeriod] = useState<string | null>(null)
 
+    // Datos de mercado del preview: en modo edición usa el período CONGELADO de
+    // la tasación (mismo que el detalle guardado), no el vigente. Tasaciones
+    // legacy (sin slug) → null → el PDF usa el camino de imágenes actual.
     useEffect(() => {
         const slug = subject?.neighborhoodSlug
         if (!slug) { setMarketData(null); return }
+        const qs = `neighborhood=${encodeURIComponent(slug)}${frozenMarketPeriod ? `&period=${frozenMarketPeriod}` : ''}`
         let cancelled = false
-        fetch(`/api/market-data?neighborhood=${encodeURIComponent(slug)}`)
+        fetch(`/api/market-data?${qs}`)
             .then(r => r.json())
             .then(({ data }) => { if (!cancelled) setMarketData(data || null) })
             .catch(() => { if (!cancelled) setMarketData(null) })
         return () => { cancelled = true }
-    }, [subject?.neighborhoodSlug])
+    }, [subject?.neighborhoodSlug, frozenMarketPeriod])
 
     function handleCalculate() {
         if (!subject) return
