@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth/require-role'
 import { getUser } from '@/lib/auth/get-user'
 import { insertAppraisalWithComparables } from '@/lib/supabase/appraisals-write'
 import type { SaveAppraisalInput } from '@/lib/supabase/appraisals'
+import { currentPeriod } from '@/lib/market-data/period'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -94,6 +95,9 @@ export async function POST(request: NextRequest) {
     // (user vía requireAuth → impersonation-aware). Así aparece en SU historial y su
     // foto sale en el informe (la foto del asesor se resuelve por assigned_to).
     if (!input.assignedTo && user.profile.role === 'asesor') input.assignedTo = user.id
+
+    // Congelar el período de datos de mercado al mes de creación (server-authoritative).
+    if (!input.marketPeriod) input.marketPeriod = currentPeriod()
 
     const supabase = getAdmin()
     const appraisalId = await insertAppraisalWithComparables(supabase, input)

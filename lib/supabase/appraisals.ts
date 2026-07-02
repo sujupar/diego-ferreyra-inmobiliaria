@@ -16,6 +16,9 @@ export interface SaveAppraisalInput {
     origin?: string
     assignedTo?: string
     reportEdits?: ReportEdits
+    /** Período de datos de mercado (YYYY-MM-01) al que se congela la tasación.
+     *  Solo lo setea el server (POST) al crear — NUNCA se toca en updates. */
+    marketPeriod?: string
     /** Si se provee, el endpoint POST vincula la tasación a este proceso (deal)
      *  en la misma request (sin avanzar el stage). Solo aplica al primer insert. */
     dealId?: string
@@ -37,6 +40,8 @@ export interface AppraisalDetail {
     contact_id: string | null
     assigned_to: string | null
     user_id: string | null
+    neighborhood_slug: string | null
+    market_period: string | null
     property_title: string | null
     property_location: string
     property_description: string | null

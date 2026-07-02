@@ -15,6 +15,7 @@ import { PurchaseScenariosEditor } from '@/components/appraisal/PurchaseScenario
 import { ReportEdits, DEFAULT_REPORT_EDITS, buildDefaultEdits } from '@/lib/types/report-edits'
 import { saveAppraisal, updateAppraisal, getAppraisal } from '@/lib/supabase/appraisals'
 import { mapDealToWizardInitialData, hasSaleVisitPrefill } from '@/lib/mapping/visit-to-wizard'
+import { findByText } from '@/lib/market-data/neighborhoods'
 import { Button } from '@/components/ui/button'
 import {
     Calculator,
@@ -50,9 +51,14 @@ function mapSubjectToFormData(subject: ScrapedProperty): Record<string, unknown>
     const address = subject.title || parts[0] || ''
     const neighborhood = parts[1] || ''
     const city = parts.slice(2).join(', ') || ''
+    // Barrio canónico: del subject si ya lo tiene; si no, mapear el texto legacy.
+    const neighborhoodSlug = subject.neighborhoodSlug
+        || findByText(neighborhood)?.slug
+        || ''
     return {
         address,
         neighborhood,
+        neighborhoodSlug,
         city,
         coveredArea: (f as any).coveredArea ?? '',
         semiCoveredArea: (f as any).semiCoveredArea ?? '',

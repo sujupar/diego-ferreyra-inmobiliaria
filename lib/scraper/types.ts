@@ -32,6 +32,9 @@ export interface ScrapedProperty {
     price: number | null
     currency: 'USD' | 'ARS' | null
     location: string
+    /** Barrio canónico (slug del catálogo de datos de mercado). Solo lo setea el
+     *  wizard manual; los scrapers de portales no lo conocen. */
+    neighborhoodSlug?: string
     description: string
     features: PropertyFeatures
     images: string[]

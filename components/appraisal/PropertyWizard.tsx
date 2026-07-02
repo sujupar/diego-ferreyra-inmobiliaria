@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Stepper, StepContent } from '@/components/ui/stepper'
+import { NeighborhoodSelect } from './NeighborhoodSelect'
 import { ScrapedProperty, PropertyFeatures } from '@/lib/scraper/types'
 import { DispositionType, QualityType, ConservationStateType } from '@/lib/valuation/rules'
 import {
@@ -36,6 +37,7 @@ interface PropertyFormData {
     // Step 1: Location
     address: string
     neighborhood: string
+    neighborhoodSlug: string
     city: string
 
     // Step 2: Surfaces
@@ -67,6 +69,7 @@ interface PropertyFormData {
 const initialFormData: PropertyFormData = {
     address: '',
     neighborhood: '',
+    neighborhoodSlug: '',
     city: 'Ciudad Autónoma de Buenos Aires',
     coveredArea: '',
     semiCoveredArea: '',
@@ -175,7 +178,9 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
         if (saved) {
             try {
                 const parsed = JSON.parse(saved)
-                setFormData(prev => ({ ...prev, ...parsed }))
+                // Drafts viejos (pre-Task 12) no tienen neighborhoodSlug — defaultear a ''
+                // para que no crasheen y caigan al camino legacy (texto libre).
+                setFormData(prev => ({ ...prev, ...parsed, neighborhoodSlug: parsed.neighborhoodSlug ?? '' }))
             } catch (e) {
                 localStorage.removeItem('propertyWizardDraft')
             }
@@ -208,6 +213,7 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
         const property: ScrapedProperty = {
             title: formData.address,
             location: `${formData.address}, ${formData.neighborhood}, ${formData.city}`,
+            neighborhoodSlug: formData.neighborhoodSlug || undefined,
             price: null,
             currency: 'USD',
             images: formData.images,
@@ -318,12 +324,13 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="neighborhood">Barrio *</Label>
-                                    <Input
-                                        id="neighborhood"
-                                        placeholder="Ej: Palermo"
-                                        value={formData.neighborhood}
-                                        onChange={(e) => updateField('neighborhood', e.target.value)}
-                                        className="h-12"
+                                    <NeighborhoodSelect
+                                        valueSlug={formData.neighborhoodSlug}
+                                        valueName={formData.neighborhood}
+                                        onChange={(slug, name) => {
+                                            updateField('neighborhoodSlug', slug)
+                                            updateField('neighborhood', name)
+                                        }}
                                     />
                                 </div>
                                 <div className="space-y-2">

@@ -118,6 +118,8 @@ export async function insertAppraisalWithComparables(
             notes,
             origin: origin || null,
             assigned_to: assignedTo || null,
+            neighborhood_slug: subject.neighborhoodSlug ?? null,
+            market_period: input.marketPeriod ?? null,
             report_edits: (input.reportEdits ?? null) as never,
         })
         .select('id')
@@ -177,6 +179,8 @@ export async function replaceAppraisalComparables(
         currency: leanValuation.currency,
         comparable_count: comparables.length,
         notes,
+        neighborhood_slug: subject.neighborhoodSlug ?? null,
+        // market_period NO se toca en updates: el mes queda CONGELADO al de creación.
     }
     // Solo tocamos report_edits si el caller los provee. La página de detalle
     // edita features/rates SIN pasar reportEdits — si lo seteáramos a null acá,
