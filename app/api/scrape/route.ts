@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { scrapeProperty } from '@/lib/scraper'
+import { getUser } from '@/lib/auth/get-user'
 
 const scrapeSchema = z.object({
     url: z.string().url(),
@@ -11,6 +12,9 @@ export const maxDuration = 60
 
 export async function POST(request: Request): Promise<Response> {
     try {
+        const me = await getUser()
+        if (!me) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
         const body = await request.json()
         const { url } = scrapeSchema.parse(body)
 
