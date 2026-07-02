@@ -7,6 +7,10 @@ import { formatCurrency } from '@/lib/valuation/utils'
 import { styles, colors } from './PDFStyles'
 import { ReportEdits, SemaphoreColor } from '@/lib/types/report-edits'
 import { extractAddress } from '@/lib/valuation/addressUtils'
+import { StockDashboardPDF } from './market/StockDashboardPDF'
+import { EscriturasPDF } from './market/EscriturasPDF'
+import { BarrioPanelPDF } from './market/BarrioPanelPDF'
+import { TiposPDF } from './market/TiposPDF'
 
 interface MarketImageLabel {
     label: string
@@ -29,6 +33,11 @@ interface PDFReportProps {
      *  se resuelve desde el perfil del agente asignado a la tasación; si no hay,
      *  default = foto de Diego. */
     advisorPhotoUrl?: string
+    /** Datos de mercado resueltos por (barrio, período congelado). Si falta/null,
+     *  las páginas de mercado renderizan el camino LEGACY de imágenes (idéntico a hoy). */
+    marketData?: import('@/lib/market-data/types').MarketDataForReport | null
+    /** Barrio canónico (evita el regex frágil de extractNeighborhood). */
+    neighborhoodName?: string
 }
 
 // Map semaphore color names to actual color values
@@ -294,8 +303,8 @@ function PurchaseSimTable({
     )
 }
 
-export function PDFReportDocument({ subject, comparables, valuationResult, overpriced = [], purchaseProperties = [], purchaseResult, marketImageLabels = {}, marketImageUrls = {}, reportEdits, appraisalDate, advisorPhotoUrl = '/pdf-assets/photos/advisor-default.png' }: PDFReportProps) {
-    const neighborhood = extractNeighborhood(subject.location || '')
+export function PDFReportDocument({ subject, comparables, valuationResult, overpriced = [], purchaseProperties = [], purchaseResult, marketImageLabels = {}, marketImageUrls = {}, reportEdits, appraisalDate, advisorPhotoUrl = '/pdf-assets/photos/advisor-default.png', marketData, neighborhoodName }: PDFReportProps) {
+    const neighborhood = neighborhoodName || extractNeighborhood(subject.location || '')
     // Precios mostrados: override manual (reportEdits.priceOverrides) o el valor calculado.
     // Override de display puro: NO recalcula la cadena de costos/gastos ni los textos.
     const recommendedPrice = reportEdits?.priceOverrides?.publicationPrice ?? valuationResult.publicationPrice
@@ -558,63 +567,91 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 </View>
             </Page>
 
-            {/* PAGE 3: MARKET DATA - CABA */}
-            <Page size="A4" style={styles.pageWithPadding}>
-                <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
-                    <Text style={styles.headerTitle}>DATOS REFERENCIALES</Text>
-                    <Text style={styles.headerSubtitle}>{neighborhood}, CABA</Text>
-                </View>
-
-                <View style={{ marginTop: 60 }}>
-                    <Text style={styles.h2}>{marketImageLabels['stock-departamentos']?.label || 'Stock de Departamentos en venta en CABA'}</Text>
-                    <Image
-                        src={marketImageUrls['stock-departamentos'] || '/pdf-assets/monthly-data/stock-departamentos.png'}
-                        style={{ width: '100%', height: 'auto', marginBottom: 4 }}
-                    />
-                    {marketImageLabels['stock-departamentos']?.description ? (
-                        <Text style={{ fontSize: 8, color: colors.mediumGray, marginBottom: 16 }}>{marketImageLabels['stock-departamentos'].description}</Text>
-                    ) : <View style={{ marginBottom: 16 }} />}
-
+            {(() => {
+                // Bloque legacy de UN slot — markup idéntico al histórico.
+                const MarketImageSection = ({ slot, defaultLabel, defaultSrc, last }: { slot: string; defaultLabel: string; defaultSrc: string; last?: boolean }) => (
                     <View wrap={false}>
-                        <Text style={styles.h2}>{marketImageLabels['escrituras-caba']?.label || 'Cantidad de Escrituras CABA'}</Text>
+                        <Text style={styles.h2}>{marketImageLabels[slot]?.label || defaultLabel}</Text>
                         <Image
-                            src={marketImageUrls['escrituras-caba'] || '/pdf-assets/monthly-data/escrituras-caba.png'}
+                            src={marketImageUrls[slot] || defaultSrc}
                             style={{ width: '100%', height: 'auto', marginBottom: 4 }}
                         />
-                        {marketImageLabels['escrituras-caba']?.description ? (
-                            <Text style={{ fontSize: 8, color: colors.mediumGray }}>{marketImageLabels['escrituras-caba'].description}</Text>
-                        ) : null}
+                        {marketImageLabels[slot]?.description ? (
+                            <Text style={{ fontSize: 8, color: colors.mediumGray, marginBottom: last ? 0 : 16 }}>{marketImageLabels[slot].description}</Text>
+                        ) : (last ? null : <View style={{ marginBottom: 16 }} />)}
                     </View>
-                </View>
-            </Page>
-
-            {/* PAGE 4: MARKET DATA - NEIGHBORHOOD */}
-            <Page size="A4" style={styles.pageWithPadding}>
-                <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
-                    <Text style={styles.headerTitle}>DATOS REFERENCIALES</Text>
-                    <Text style={styles.headerSubtitle}>{neighborhood}, CABA</Text>
-                </View>
-
-                <View style={{ marginTop: 60 }}>
-                    <Text style={styles.h2}>{marketImageLabels['datos-barrio']?.label || `Datos de ${neighborhood}, CABA`}</Text>
-                    <Image
-                        src={marketImageUrls['datos-barrio'] || '/pdf-assets/monthly-data/datos-barrio.png'}
-                        style={{ width: '100%', height: 'auto', marginBottom: 4 }}
-                    />
-                    {marketImageLabels['datos-barrio']?.description ? (
-                        <Text style={{ fontSize: 8, color: colors.mediumGray, marginBottom: 16 }}>{marketImageLabels['datos-barrio'].description}</Text>
-                    ) : <View style={{ marginBottom: 16 }} />}
-
-                    <Text style={styles.h2}>{marketImageLabels['tipos-propiedades']?.label || `Tipos de propiedades en ${neighborhood}`}</Text>
-                    <Image
-                        src={marketImageUrls['tipos-propiedades'] || '/pdf-assets/monthly-data/tipos-propiedades.png'}
-                        style={{ width: '100%', height: 'auto', marginBottom: 4 }}
-                    />
-                    {marketImageLabels['tipos-propiedades']?.description ? (
-                        <Text style={{ fontSize: 8, color: colors.mediumGray }}>{marketImageLabels['tipos-propiedades'].description}</Text>
-                    ) : null}
-                </View>
-            </Page>
+                )
+                const MarketHeader = () => (
+                    <View style={[styles.headerWithSubtitle, { position: 'absolute', top: 20, right: 40 }]}>
+                        <Text style={styles.headerTitle}>DATOS REFERENCIALES</Text>
+                        <Text style={styles.headerSubtitle}>{neighborhood === 'CABA' ? 'CABA' : `${neighborhood}, CABA`}</Text>
+                    </View>
+                )
+                const md = marketData
+                if (!md) {
+                    // ===== CAMINO LEGACY (tasaciones sin snapshot): 2 páginas, igual que siempre =====
+                    return (
+                        <>
+                            <Page size="A4" style={styles.pageWithPadding}>
+                                <MarketHeader />
+                                <View style={{ marginTop: 60 }}>
+                                    <MarketImageSection slot="stock-departamentos" defaultLabel="Stock de Departamentos en venta en CABA" defaultSrc="/pdf-assets/monthly-data/stock-departamentos.png" />
+                                    <MarketImageSection slot="escrituras-caba" defaultLabel="Cantidad de Escrituras CABA" defaultSrc="/pdf-assets/monthly-data/escrituras-caba.png" last />
+                                </View>
+                            </Page>
+                            <Page size="A4" style={styles.pageWithPadding}>
+                                <MarketHeader />
+                                <View style={{ marginTop: 60 }}>
+                                    <MarketImageSection slot="datos-barrio" defaultLabel={`Datos de ${neighborhood}, CABA`} defaultSrc="/pdf-assets/monthly-data/datos-barrio.png" />
+                                    <MarketImageSection slot="tipos-propiedades" defaultLabel={`Tipos de propiedades en ${neighborhood}`} defaultSrc="/pdf-assets/monthly-data/tipos-propiedades.png" last />
+                                </View>
+                            </Page>
+                        </>
+                    )
+                }
+                // ===== CAMINO DATA-DRIVEN: 4 páginas; cada sección cae a su imagen legacy si SU dato falta =====
+                const barrioTitle = md.neighborhood.isGeneral ? 'CABA (general)' : md.neighborhood.name
+                return (
+                    <>
+                        <Page size="A4" style={styles.pageWithPadding}>
+                            <MarketHeader />
+                            <View style={{ marginTop: 60 }}>
+                                <Text style={styles.h2}>Stock de inmuebles en venta en CABA</Text>
+                                {md.caba.stock && md.caba.stock.tipos?.length
+                                    ? <StockDashboardPDF stock={md.caba.stock} />
+                                    : <MarketImageSection slot="stock-departamentos" defaultLabel="Stock de Departamentos en venta en CABA" defaultSrc="/pdf-assets/monthly-data/stock-departamentos.png" last />}
+                            </View>
+                        </Page>
+                        <Page size="A4" style={styles.pageWithPadding}>
+                            <MarketHeader />
+                            <View style={{ marginTop: 60 }}>
+                                <Text style={styles.h2}>Cantidad de Escrituras CABA</Text>
+                                {md.caba.escrituras
+                                    ? <EscriturasPDF escrituras={md.caba.escrituras} />
+                                    : <MarketImageSection slot="escrituras-caba" defaultLabel="Cantidad de Escrituras CABA" defaultSrc="/pdf-assets/monthly-data/escrituras-caba.png" last />}
+                            </View>
+                        </Page>
+                        <Page size="A4" style={styles.pageWithPadding}>
+                            <MarketHeader />
+                            <View style={{ marginTop: 60 }}>
+                                <Text style={styles.h2}>{`Datos de ${barrioTitle}`}</Text>
+                                {md.barrio.price
+                                    ? <BarrioPanelPDF name={md.neighborhood.name} price={md.barrio.price} highlightSlug={md.neighborhood.slug} isGeneral={md.neighborhood.isGeneral} />
+                                    : <MarketImageSection slot="datos-barrio" defaultLabel={`Datos de ${neighborhood}, CABA`} defaultSrc="/pdf-assets/monthly-data/datos-barrio.png" last />}
+                            </View>
+                        </Page>
+                        <Page size="A4" style={styles.pageWithPadding}>
+                            <MarketHeader />
+                            <View style={{ marginTop: 60 }}>
+                                <Text style={styles.h2}>{`Tipos de propiedades en ${barrioTitle}`}</Text>
+                                {md.barrio.propertyTypes
+                                    ? <TiposPDF tipos={md.barrio.propertyTypes} />
+                                    : <MarketImageSection slot="tipos-propiedades" defaultLabel={`Tipos de propiedades en ${neighborhood}`} defaultSrc="/pdf-assets/monthly-data/tipos-propiedades.png" last />}
+                            </View>
+                        </Page>
+                    </>
+                )
+            })()}
 
             {/* PAGE 5: PROPIEDADES QUE COMPITEN (Divisor) */}
             <Page size="A4" style={styles.page}>
