@@ -179,7 +179,6 @@ export async function replaceAppraisalComparables(
         currency: leanValuation.currency,
         comparable_count: comparables.length,
         notes,
-        neighborhood_slug: subject.neighborhoodSlug ?? null,
         // market_period NO se toca en updates: el mes queda CONGELADO al de creación.
     }
     // Solo tocamos report_edits si el caller los provee. La página de detalle
@@ -189,6 +188,12 @@ export async function replaceAppraisalComparables(
     if (input.reportEdits !== undefined) updatePayload.report_edits = input.reportEdits
     if (origin !== undefined) updatePayload.origin = origin || null
     if (assignedTo !== undefined) updatePayload.assigned_to = assignedTo || null
+    // Barrio canónico: solo si el caller lo provee (undefined = preservar el
+    // congelado; '' o null explícitos = limpiar). Evita que los updates de
+    // edición (que reconstruyen el subject) borren el barrio de la tasación.
+    if (subject.neighborhoodSlug !== undefined) {
+        updatePayload.neighborhood_slug = subject.neighborhoodSlug || null
+    }
 
     const { error: updateError } = await supabase
         .from('appraisals')

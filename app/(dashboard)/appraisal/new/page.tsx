@@ -289,6 +289,7 @@ function NewAppraisalPageContent() {
                     images: detail.property_images ?? [],
                     portal: 'manual',
                     features: detail.property_features || {},
+                    neighborhoodSlug: detail.neighborhood_slug ?? undefined,
                 }
 
                 // Split comparables vs overpriced vs purchase based on analysis.propertyType

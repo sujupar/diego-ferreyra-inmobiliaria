@@ -271,6 +271,7 @@ export default function AppraisalDetailPage() {
                     features,
                     images: appraisal.property_images || [],
                     portal: '',
+                    neighborhoodSlug: appraisal.neighborhood_slug ?? undefined,
                 }
                 const allComparablesScraped: ScrapedProperty[] = appraisal.comparables.map(c => ({
                     url: c.url || '',
@@ -371,6 +372,7 @@ export default function AppraisalDetailPage() {
                     features: safeSubjectFeatures,
                     images: appraisal.property_images || [],
                     portal: '',
+                    neighborhoodSlug: appraisal.neighborhood_slug ?? undefined,
                 }
                 const toScraped = (c: typeof updatedRows[number]): ScrapedProperty => ({
                     url: c.url || '',
@@ -461,6 +463,7 @@ export default function AppraisalDetailPage() {
                     features: safeFeatures,
                     images: appraisal.property_images || [],
                     portal: '',
+                    neighborhoodSlug: appraisal.neighborhood_slug ?? undefined,
                 }
                 const allComparablesScraped: ScrapedProperty[] = appraisal.comparables.map(c => ({
                     url: c.url || '',
