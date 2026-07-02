@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -87,6 +87,26 @@ export default function SettingsPage() {
             .catch(() => setLoading(false))
     }, [])
 
+    // Datos de mercado por barrio — estado de la actualización automática
+    const [mdStatus, setMdStatus] = useState<any>(null)
+    const [refreshing, setRefreshing] = useState<string | null>(null)
+
+    const loadMdStatus = useCallback(() => {
+        fetch('/api/market-data/status').then(r => r.json()).then(setMdStatus).catch(() => {})
+    }, [])
+    useEffect(() => { loadMdStatus() }, [loadMdStatus])
+
+    async function handleMdRefresh(part: 'core' | 'zonaprop') {
+        setRefreshing(part)
+        try {
+            await fetch('/api/market-data/refresh', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ part }),
+            })
+            loadMdStatus()
+        } finally { setRefreshing(null) }
+    }
+
     async function handleUpload(slotId: string, file: File) {
         setUploading(slotId)
         const formData = new FormData()
@@ -154,13 +174,46 @@ export default function SettingsPage() {
                     </p>
                 </div>
 
-                {loading ? (
-                    <div className="flex items-center justify-center py-12">
-                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                {/* Estado de la actualización automática (pg_cron) */}
+                <div className="rounded-xl border bg-card p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="font-medium">Actualización automática</h3>
+                            <p className="text-xs text-muted-foreground">
+                                Mes vigente: {mdStatus?.period || '…'} · CABA {mdStatus?.cabaListo ? '✓ completo' : 'pendiente'} ·
+                                precio {mdStatus?.counts?.barriosConPrecio ?? 0}/{mdStatus?.counts?.total ?? 48} barrios ·
+                                tipos {mdStatus?.counts?.barriosConTipos ?? 0}/{mdStatus?.counts?.total ?? 48} barrios
+                            </p>
+                        </div>
+                        <div className="flex gap-2">
+                            <Button size="sm" variant="outline" disabled={!!refreshing} onClick={() => handleMdRefresh('core')}>
+                                {refreshing === 'core' ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refrescar fuentes'}
+                            </Button>
+                            <Button size="sm" variant="outline" disabled={!!refreshing} onClick={() => handleMdRefresh('zonaprop')}>
+                                {refreshing === 'zonaprop' ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refrescar tipos (lote)'}
+                            </Button>
+                        </div>
                     </div>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {slots.map(slot => (
+                    {[mdStatus?.core, mdStatus?.zonaprop].filter(Boolean).map((s: any) => (
+                        <p key={s.id} className={`text-xs ${s.last_status === 'ok' ? 'text-green-600' : s.last_status === 'partial' ? 'text-amber-600' : 'text-red-600'}`}>
+                            {s.id}: {s.last_status} · {s.last_run_at ? new Date(s.last_run_at).toLocaleString('es-AR') : 'nunca corrió'}
+                            {s.last_error ? ` · ${s.last_error}` : ''}
+                        </p>
+                    ))}
+                </div>
+
+                <details className="rounded-xl border bg-card p-4">
+                    <summary className="cursor-pointer text-sm font-medium">
+                        Override manual (emergencia) — subir imágenes fijas si una fuente falla
+                    </summary>
+                    <div className="mt-4">
+                        {loading ? (
+                            <div className="flex items-center justify-center py-12">
+                                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {slots.map(slot => (
                             <Card key={slot.id}>
                                 <CardHeader className="pb-3">
                                     <CardTitle className="text-base">{slot.label}</CardTitle>
@@ -239,9 +292,11 @@ export default function SettingsPage() {
                                     </label>
                                 </CardContent>
                             </Card>
-                        ))}
+                                ))}
+                            </div>
+                        )}
                     </div>
-                )}
+                </details>
             </section>
 
             {/* Report Recipients Section */}
