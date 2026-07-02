@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MarketDataForReport, NeighborhoodPrice, PropertyTypesCounts, StockComposition, EscriturasData } from './types'
-import { findBySlug, GENERAL_SLUG } from './neighborhoods'
+import { findBySlug } from './neighborhoods'
 
 export function sumPropertyTypes(rows: PropertyTypesCounts[]): PropertyTypesCounts {
     const acc: PropertyTypesCounts = { departamentos: 0, terrenos: 0, locales: 0, casas: 0, ph: 0, oficinas: 0, total: 0 }
@@ -64,7 +64,7 @@ export async function getMarketData(
     }
 
     return {
-        period, resolvedPeriod,
+        period, resolvedPeriod, cabaResolvedPeriod: caba.period,
         neighborhood: { slug: canonical.slug, name: canonical.name, isGeneral: !!canonical.isGeneral },
         caba: { stock: caba.stock, escrituras: caba.escrituras, price: caba.price_caba },
         barrio: { price: barrioPrice, propertyTypes: barrioTipos },

@@ -54,6 +54,17 @@ describe('getMarketData', () => {
     it('slug desconocido → null', async () => {
         expect(await getMarketData(fakeSupabase(CABA, NB), 'narnia', '2026-06-01')).toBeNull()
     })
+    it('períodos divergentes: caba y barrio resuelven fallbacks distintos → cabaResolvedPeriod no se pisa', async () => {
+        const cabaMay = [{ period: '2026-05-01', stock: { stockDeptos: 70000 }, escrituras: { cantidad: 5000 }, price_caba: { prom: 2400 } }]
+        const nbJune = [
+            { neighborhood_slug: 'palermo', period: '2026-06-01', price: { prom: 3500 }, property_types: { departamentos: 16000, total: 18500 } },
+        ]
+        const d = await getMarketData(fakeSupabase(cabaMay, nbJune), 'palermo', '2026-06-01')
+        expect(d?.resolvedPeriod).toBe('2026-06-01')
+        expect(d?.cabaResolvedPeriod).toBe('2026-05-01')
+        expect(d?.caba.stock?.stockDeptos).toBe(70000)
+        expect(d?.barrio.price?.prom).toBe(3500)
+    })
 })
 
 describe('sumPropertyTypes', () => {

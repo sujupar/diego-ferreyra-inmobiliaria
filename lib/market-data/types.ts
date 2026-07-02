@@ -42,7 +42,13 @@ export interface PropertyTypesCounts {
 export interface MarketDataForReport {
     /** Período pedido (congelado en la tasación) y el efectivamente servido. */
     period: string
+    /** Período efectivamente servido para los datos del BARRIO (o de CABA si es
+     *  general/sin fila de barrio). Bajo fallos parciales de ingesta, los datos
+     *  CABA-wide pueden provenir de otro período: ver cabaResolvedPeriod. */
     resolvedPeriod: string
+    /** Período efectivamente servido para caba.* (stock/escrituras/price). Suele
+     *  coincidir con resolvedPeriod; difiere solo con huecos de ingesta parciales. */
+    cabaResolvedPeriod: string
     neighborhood: { slug: string; name: string; isGeneral: boolean }
     caba: {
         stock: StockComposition | null
