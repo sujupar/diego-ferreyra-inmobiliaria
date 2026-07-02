@@ -26,7 +26,7 @@ INSERT INTO public.neighborhoods (slug, name, zonaprop_slug, sort_order) VALUES
   ('floresta','Floresta','floresta',13),('la-boca','La Boca','la-boca',14),
   ('la-paternal','La Paternal','la-paternal',15),('liniers','Liniers','liniers',16),
   ('mataderos','Mataderos','mataderos',17),('monserrat','Monserrat','monserrat',18),
-  ('monte-castro','Monte Castro','monte-castro',19),('nueva-pompeya','Nueva Pompeya','nueva-pompeya',20),
+  ('monte-castro','Monte Castro','monte-castro',19),('nueva-pompeya','Nueva Pompeya','pompeya',20),
   ('nunez','Núñez','nunez',21),('palermo','Palermo','palermo',22),
   ('parque-avellaneda','Parque Avellaneda','parque-avellaneda',23),
   ('parque-chacabuco','Parque Chacabuco','parque-chacabuco',24),

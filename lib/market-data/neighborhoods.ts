@@ -21,13 +21,18 @@ const N = (name: string, zonapropSlug?: string): CanonicalNeighborhood => ({
 })
 
 /** Los 48 barrios oficiales de CABA — nombres EXACTOS del JSON de Bryn (fuente
- *  autoritativa de matching). zonapropSlug se corrige en Task 6 si el verificador
- *  de slugs encuentra 404s (ej. San Nicolás suele ser "centro-microcentro"). */
+ *  autoritativa de matching). zonapropSlug verificado contra Zonaprop real
+ *  (2026-07-02) vía `scripts/verify-zonaprop-slugs.ts`: 47/48 coinciden con el
+ *  slug normalizado por defecto. Única excepción confirmada: Nueva Pompeya usa
+ *  "pompeya" (sin el prefijo "nueva-"), verificado extrayendo el link real
+ *  desde `https://www.zonaprop.com.ar/barrios/` (`href="capital-federal/pompeya"`).
+ *  San Nicolás SÍ resuelve con el slug por defecto "san-nicolas" (no hace falta
+ *  "centro-microcentro" como se hipotetizaba antes de tener acceso real). */
 export const CABA_BARRIOS: CanonicalNeighborhood[] = [
     N('Agronomía'), N('Almagro'), N('Balvanera'), N('Barracas'), N('Belgrano'),
     N('Boedo'), N('Caballito'), N('Chacarita'), N('Coghlan'), N('Colegiales'),
     N('Constitución'), N('Flores'), N('Floresta'), N('La Boca'), N('La Paternal'),
-    N('Liniers'), N('Mataderos'), N('Monserrat'), N('Monte Castro'), N('Nueva Pompeya'),
+    N('Liniers'), N('Mataderos'), N('Monserrat'), N('Monte Castro'), N('Nueva Pompeya', 'pompeya'),
     N('Núñez'), N('Palermo'), N('Parque Avellaneda'), N('Parque Chacabuco'), N('Parque Chas'),
     N('Parque Patricios'), N('Puerto Madero'), N('Recoleta'), N('Retiro'), N('Saavedra'),
     N('San Cristóbal'), N('San Nicolás'), N('San Telmo'), N('Vélez Sarsfield'), N('Versalles'),

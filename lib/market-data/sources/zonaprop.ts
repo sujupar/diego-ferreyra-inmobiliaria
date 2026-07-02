@@ -1,24 +1,39 @@
-/* ⚠️ NO VERIFICADO CONTRA HTML REAL DE ZONAPROP (2026-07-01).
- * ScraperAPI se quedó sin créditos este ciclo de facturación (403 "exhausted
- * API Credits", confirmado durante Task 3) — no hubo forma de alcanzar Zonaprop
- * para hacer el discovery del Step 1 del brief ni capturar el fixture real
- * (`lib/market-data/__fixtures__/zonaprop-palermo.html`). El parser de abajo
- * implementa la estrategia por capas del brief (JSON embebido → DOM visible)
- * pero sus selectores/regex son UNA HIPÓTESIS, no un hallazgo confirmado.
- * Por diseño FALLA RUIDOSO (throws) si no logra extraer al menos departamentos
- * + 2 tipos más — así un shape real distinto NUNCA devuelve conteos silenciosamente
- * incorrectos; `fetchZonapropTipos` atrapa ese throw y lo convierte en
- * `{ok:false}`, que el ingest (Task 7) acumula como error de barrio ('partial')
- * y el PDF cubre con fallback a imagen legacy — falla segura.
+/* ✅ VERIFICADO CONTRA HTML REAL DE ZONAPROP (2026-07-02).
+ * Con los créditos de ScraperAPI recargados se capturó el fixture real
+ * (`lib/market-data/__fixtures__/zonaprop-palermo.html`, HTTP 200 vía proxy,
+ * ~60KB). Estructura REAL confirmada:
  *
- * Pendiente cuando se renueven los créditos de ScraperAPI:
- *   1. node --env-file=.env.local --import tsx scripts/capture-market-fixtures.ts
- *      (baja lib/market-data/__fixtures__/zonaprop-palermo.html)
- *   2. Correr el test con fixture (hoy SKIPPED vía it.skipIf) y ver si pasa.
- *   3. Si falla, inspeccionar el HTML real y adaptar Capa 1 (regex JSON) y/o
- *      Capa 2 (regex DOM) de abajo — mantener firma y el throw ruidoso.
- *   4. node --env-file=.env.local --import tsx scripts/verify-zonaprop-slugs.ts
- *      para corregir zonapropSlug de los 48 barrios en neighborhoods.ts. */
+ * - La página `/barrios/capital-federal/{slug}` es HTML server-rendered
+ *   PLANO (JSP/Spring, no SPA) — NO hay `__NEXT_DATA__`, `preloadedState` ni
+ *   ningún blob JSON con pares label/count. La hipótesis "Capa 1: JSON
+ *   embebido" del diseño original era incorrecta — se eliminó.
+ * - Los 6 conteos viven en un bloque DOM bien delimitado:
+ *     <div class="row en-numeros">
+ *       <div class="col-... custom-chart-legend">
+ *         <span class="custom-chart-point custom-chart-legend-blue"></span>
+ *         <span class="number">15.983</span>
+ *         <span>Departamentos</span>
+ *       </div>
+ *       ... (6 divs .custom-chart-legend en total, repartidos en 2 filas
+ *            .en-numeros: Departamentos/Terrenos/Locales Comerciales,
+ *            Casas/PH/Oficinas)
+ *     </div>
+ *   El número está en `.number`, la etiqueta es el ÚLTIMO `<span>` del div
+ *   (sin clase). Selector CSS específico → muy robusto ante cambios de copy.
+ * - Ojo: el párrafo intro ("El barrio de Palermo ... cuenta con 251 casas y
+ *   15.983 departamentos en Zonaprop") repite los valores de Departamentos y
+ *   Casas en texto libre ANTES del bloque `.en-numeros` — coincide con el
+ *   widget (misma fuente de datos) pero por eso el fallback Capa 2 (texto
+ *   plano de toda la página) NO se usa como capa 1: el selector DOM
+ *   específico es preferible porque apunta exactamente al widget de los 6
+ *   tipos y no depende de que el copy narrativo siga mencionando los mismos
+ *   valores en el futuro.
+ *
+ * Por diseño sigue FALLANDO RUIDOSO (throws) si no logra extraer al menos
+ * departamentos + 2 tipos más — así un shape real distinto NUNCA devuelve
+ * conteos silenciosamente incorrectos; `fetchZonapropTipos` atrapa ese throw
+ * y lo convierte en `{ok:false}`, que el ingest acumula como error de barrio
+ * ('partial') y el PDF cubre con fallback a imagen legacy — falla segura. */
 import * as cheerio from 'cheerio'
 import type { PropertyTypesCounts, SourceResult } from '../types'
 
@@ -34,8 +49,10 @@ const LABELS: Array<[keyof Omit<PropertyTypesCounts, 'total'>, RegExp]> = [
     ['oficinas', /oficinas?/i],
 ]
 
-/** Extrae los 6 conteos. Capa 1: pares label/número en el/los blobs JSON embebidos
- *  (__NEXT_DATA__ / preloadedState). Capa 2: texto del DOM ("15.983 Departamentos").
+/** Extrae los 6 conteos. Capa 1: bloque DOM `.en-numeros .custom-chart-legend`
+ *  (verificado contra HTML real, ver header). Capa 2 (fallback): texto plano
+ *  de todo el documento, por si el markup cambia pero el patrón
+ *  "15.983 Departamentos" se mantiene en algún lado de la página.
  *  FALLA RUIDOSO si no encuentra al menos departamentos + otros 2 tipos. */
 export function parseZonapropBarrioHtml(html: string): PropertyTypesCounts {
     const out: PropertyTypesCounts = {
@@ -44,17 +61,25 @@ export function parseZonapropBarrioHtml(html: string): PropertyTypesCounts {
     const assign = (key: keyof Omit<PropertyTypesCounts, 'total'>, n: number) => {
         if (out[key] === null && Number.isFinite(n) && n >= 0) out[key] = n
     }
-
-    // Capa 1: pares en JSON embebido — busca "label":"Departamentos"..."count":15983 y variantes.
-    for (const [key, re] of LABELS) {
-        const m = html.match(new RegExp(`"(?:label|name|title)"\\s*:\\s*"[^"]*${re.source}[^"]*"[^}]{0,120}?"(?:count|value|total|amount)"\\s*:\\s*(\\d+)`, 'i'))
-            || html.match(new RegExp(`(\\d[\\d.]{1,9})\\s*(?:</[a-z]+>\\s*)*${re.source}`, 'i'))
-        if (m) assign(key, parseInt(String(m[1]).replace(/\./g, ''), 10))
+    const matchLabel = (label: string): (keyof Omit<PropertyTypesCounts, 'total'>) | null => {
+        for (const [key, re] of LABELS) if (re.test(label)) return key
+        return null
     }
 
-    // Capa 2: DOM visible ("• 15.983 Departamentos")
+    const $ = cheerio.load(html)
+
+    // Capa 1: bloque específico de "Tipos de propiedades" — un <div class="custom-chart-legend">
+    // por tipo, con el número en .number y la etiqueta en el último <span>.
+    $('.en-numeros .custom-chart-legend').each((_, el) => {
+        const $el = $(el)
+        const numTxt = $el.find('.number').first().text().trim()
+        const labelTxt = $el.find('span').last().text().trim()
+        const key = labelTxt ? matchLabel(labelTxt) : null
+        if (key && numTxt) assign(key, parseInt(numTxt.replace(/\./g, ''), 10))
+    })
+
+    // Capa 2 (fallback): texto plano de toda la página ("15.983 Departamentos").
     if (out.departamentos === null) {
-        const $ = cheerio.load(html)
         const text = $.root().text().replace(/\s+/g, ' ')
         for (const [key, re] of LABELS) {
             const m = text.match(new RegExp(`([\\d.]{1,9})\\s+${re.source}`, 'i'))
