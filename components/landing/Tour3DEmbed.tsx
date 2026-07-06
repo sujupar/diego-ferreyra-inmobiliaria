@@ -3,6 +3,9 @@ interface Tour3DProps {
 }
 
 export function LandingTour3DEmbed({ url }: Tour3DProps) {
+  // Defensa en lectura contra XSS almacenado: esta URL va a <iframe src> en la
+  // landing pública. Solo https:// (bloquea javascript:/data: de filas legacy).
+  if (typeof url !== 'string' || !/^https:\/\//i.test(url.trim())) return null
   return (
     <section className="py-12 md:py-16 px-6 md:px-12 lg:px-20 max-w-5xl mx-auto">
       <h2 className="text-2xl md:text-3xl font-medium mb-2">Tour 3D</h2>

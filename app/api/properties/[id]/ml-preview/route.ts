@@ -15,6 +15,20 @@ function getAdmin() {
   )
 }
 
+/**
+ * Sanitiza una URL de media (video/tour) antes de persistir. Estas URLs se
+ * renderizan como <iframe src> en la landing pública (app/p/[slug]); sin este
+ * chequeo, un `javascript:`/`data:text/html` queda como XSS almacenado. Solo se
+ * acepta https://; cualquier otra cosa (incluido string vacío) se guarda como null.
+ */
+function sanitizeHttpsUrl(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const s = v.trim()
+  if (!s || s.length > 2000) return null
+  if (!/^https:\/\//i.test(s)) return null
+  return s
+}
+
 async function authorize(propertyId: string, userId: string, role: string) {
   if (role === 'abogado') return false // El abogado no participa de marketing
   if (role !== 'asesor') return true
@@ -166,8 +180,9 @@ export async function PATCH(
     if (typeof body.asking_price === 'number' && body.asking_price > 0) {
       update.asking_price = Math.min(body.asking_price, 100_000_000)
     }
-    if (body.videoUrl !== undefined) update.video_url = body.videoUrl
-    if (body.tour3dUrl !== undefined) update.tour_3d_url = body.tour3dUrl
+    // XSS almacenado: estas URLs van a <iframe src> en la landing pública → exigir https://
+    if (body.videoUrl !== undefined) update.video_url = sanitizeHttpsUrl(body.videoUrl)
+    if (body.tour3dUrl !== undefined) update.tour_3d_url = sanitizeHttpsUrl(body.tour3dUrl)
     if (typeof body.latitude === 'number') update.latitude = body.latitude
     if (typeof body.longitude === 'number') update.longitude = body.longitude
 

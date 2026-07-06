@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { getContact, updateContact } from '@/lib/supabase/contacts'
-import { requireRole } from '@/lib/auth/require-role'
+import { requireAuth, requireRole } from '@/lib/auth/require-role'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  // Cierra la lectura anónima de un contacto (PII + historial comercial completo).
+  await requireAuth()
   try {
     const { id } = await params
     const data = await getContact(id)
@@ -14,6 +16,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  // Cierra la modificación anónima de contactos (robo de leads vía assigned_to).
+  await requireAuth()
   try {
     const { id } = await params
     const body = await request.json()

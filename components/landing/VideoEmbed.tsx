@@ -3,7 +3,10 @@ interface VideoProps {
 }
 
 // Detecta YouTube/Vimeo/mp4 y devuelve el iframe correcto.
-function getEmbedUrl(url: string): { kind: 'iframe' | 'video'; src: string } {
+// Devuelve null si la URL no es https:// (defensa contra XSS almacenado: el caso
+// default y el de <video> usan la URL cruda como src).
+function getEmbedUrl(url: string): { kind: 'iframe' | 'video'; src: string } | null {
+  if (typeof url !== 'string' || !/^https:\/\//i.test(url.trim())) return null
   // YouTube: https://www.youtube.com/watch?v=ID o https://youtu.be/ID
   const ytMatch = url.match(
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
@@ -25,7 +28,9 @@ function getEmbedUrl(url: string): { kind: 'iframe' | 'video'; src: string } {
 }
 
 export function LandingVideoEmbed({ url }: VideoProps) {
-  const { kind, src } = getEmbedUrl(url)
+  const embed = getEmbedUrl(url)
+  if (!embed) return null
+  const { kind, src } = embed
 
   return (
     <section className="py-12 md:py-16 px-6 md:px-12 lg:px-20 max-w-5xl mx-auto">

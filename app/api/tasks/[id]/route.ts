@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { completeTask, dismissTask } from '@/lib/supabase/tasks'
+import { requireAuth } from '@/lib/auth/require-role'
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  // Cierra el complete/dismiss anónimo de cualquier tarea (sabotaje de workflow).
+  await requireAuth()
   try {
     const { id } = await params
     const { action } = await request.json()

@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server'
 import { getReportSettings, updateReportSettings } from '@/lib/marketing/send-report'
+import { requireAuth } from '@/lib/auth/require-role'
 
 /**
  * GET /api/settings/report-recipients
  * Returns current report settings (recipients, enabled flags)
  */
 export async function GET(): Promise<Response> {
+  // Cierra la lectura anónima de la config de reportes. El scoping a settings.manage se afina en la ola 2.
+  await requireAuth()
   try {
     const settings = await getReportSettings()
     return NextResponse.json(settings)
@@ -23,6 +26,8 @@ export async function GET(): Promise<Response> {
  * Body: { recipients?: string[], daily_enabled?: boolean, weekly_enabled?: boolean, monthly_enabled?: boolean }
  */
 export async function PUT(request: Request): Promise<Response> {
+  // Cierra el secuestro anónimo de destinatarios de reportes de negocio.
+  await requireAuth()
   try {
     const body = await request.json()
 

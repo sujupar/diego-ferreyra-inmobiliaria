@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { sendFunnelReport, type FunnelReportType } from '@/lib/marketing/funnel-report'
+import { requireAuth } from '@/lib/auth/require-role'
 
 export const maxDuration = 60
 
@@ -15,6 +16,8 @@ const VALID_TYPES: FunnelReportType[] = ['daily', 'weekly', 'biweekly', 'monthly
  * body se usan; si no, se calcula el rango por defecto del tipo.
  */
 export async function POST(request: Request): Promise<Response> {
+  // Sin auth, cualquiera podía disparar envíos de reporte por email en loop (spam/costo).
+  await requireAuth()
   try {
     const body = await request.json().catch(() => ({}))
     const type: FunnelReportType = body.type || 'daily'

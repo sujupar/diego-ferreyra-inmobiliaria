@@ -9,6 +9,9 @@ function getAdmin() {
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  // Guard fuera del try para que el NEXT_REDIRECT de requireAuth propague a Next
+  // en vez de convertirse en un 500. Cierra el acceso anónimo (data de cliente + valuación).
+  await requireAuth()
   try {
     const { id } = await params
     const supabase = getAdmin()
@@ -92,6 +95,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  // Cierra el DELETE anónimo (destrucción masiva de tasaciones). El scoping por
+  // ownership/rol se afina en la ola 2; acá el objetivo es matar el acceso sin sesión.
+  await requireAuth()
   try {
     const { id } = await params
     const supabase = getAdmin()

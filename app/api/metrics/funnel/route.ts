@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getFunnelComparison } from '@/lib/metrics/comparison'
+import { requireAuth } from '@/lib/auth/require-role'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,6 +13,8 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
  * length + delta % per metric.
  */
 export async function GET(req: NextRequest) {
+  // Cierra la exposición anónima de métricas de negocio (BI/ad-spend).
+  await requireAuth()
   const sp = req.nextUrl.searchParams
   const from = sp.get('from')
   const to = sp.get('to')
