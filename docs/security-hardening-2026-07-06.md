@@ -53,9 +53,11 @@ UPDATE public.profiles SET role='admin' WHERE id = auth.uid();
 - Helper `lib/auth/entity-access.ts`: solo el rol **asesor** se acota a filas propias
   (`assigned_to`; appraisals además por `user_id`); el resto de roles mantiene su acceso
   amplio actual → cero cambio de comportamiento para ellos. Falla cerrado.
-- Aplicado a: properties/[id] (GET/PUT), deals/[id] (GET/PUT), appraisals/[id]
-  (GET/PUT/PATCH/DELETE), properties/[id]/media/{upload-init,commit,route},
-  meta-launch-v2/generate-batch (el `jobId` debe pertenecer a la propiedad).
+- Aplicado a: properties/[id] **solo en mutaciones** (PUT + media; el GET quedó en
+  requireAuth porque el listado muestra todas las propiedades a todo el staff — ver
+  commit `f0fd702`), deals/[id] (GET/PUT), appraisals/[id] (GET/PUT/PATCH/DELETE),
+  properties/[id]/media/{upload-init,commit,route}, meta-launch-v2/generate-batch
+  (el `jobId` debe pertenecer a la propiedad).
 - **`is_active`** ahora se enforza en `getUser()` → un usuario dado de baja se trata como
   no autenticado en todo consumidor (la impersonación por admin no se afecta).
 - **Least-privilege vertical** (confirmado no-breaking por el gating del nav): metrics/* →
