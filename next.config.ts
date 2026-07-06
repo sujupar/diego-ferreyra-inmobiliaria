@@ -6,6 +6,12 @@ const nextConfig: NextConfig = {
     // para que se require en runtime y el build no rompa. Los usa el pipeline Meta Ads v2
     // (lib/marketing/ad-image-*.ts → satori + resvg + sharp).
     serverExternalPackages: ['@resvg/resvg-js', 'satori', 'sharp'],
+    // Commit deployado, horneado en el BUILD (Netlify inyecta COMMIT_REF al buildear).
+    // Lo expone GET /api/version — permite verificar QUÉ código sirve producción
+    // (los deploys de Netlify pueden fallar en silencio para nosotros).
+    env: {
+        NEXT_PUBLIC_COMMIT_REF: process.env.COMMIT_REF ?? '',
+    },
     images: {
         // Next 16 NO trae AVIF por default (-20-30% de peso en el poster LCP).
         formats: ['image/avif', 'image/webp'],
