@@ -2,14 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { getDeal, updateDealNotes, updateDealSchedule } from '@/lib/supabase/deals'
 import { requireAuth, requireRole } from '@/lib/auth/require-role'
+import { canAccessDeal } from '@/lib/auth/entity-access'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const TIME_RE = /^\d{2}:\d{2}(:\d{2})?$/
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireAuth()
+    const user = await requireAuth()
     const { id } = await params
+    if (!(await canAccessDeal(user, id))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     const data = await getDeal(id)
     return NextResponse.json({ data })
   } catch (error) {
@@ -19,8 +23,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireAuth()
+    const user = await requireAuth()
     const { id } = await params
+    if (!(await canAccessDeal(user, id))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     const body = await request.json()
 
     const hasNotes = typeof body?.notes === 'string'

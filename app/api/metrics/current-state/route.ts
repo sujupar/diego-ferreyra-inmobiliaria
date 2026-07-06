@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDealsCurrentState } from '@/lib/metrics/funnel'
-import { requireAuth } from '@/lib/auth/require-role'
+import { requirePermission } from '@/lib/auth/require-role'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,7 +15,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
  */
 export async function GET(req: NextRequest) {
   // Cierra la exposición anónima del estado actual de deals.
-  await requireAuth()
+  await requirePermission('metrics.view')
   const sp = req.nextUrl.searchParams
   const from = sp.get('from')
   const to = sp.get('to')

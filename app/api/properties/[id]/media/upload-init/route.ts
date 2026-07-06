@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/require-role'
+import { canAccessProperty } from '@/lib/auth/entity-access'
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'crypto'
 import { PHOTO_EXTS, VIDEO_EXTS, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES } from '@/lib/properties/media'
@@ -17,6 +18,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
     }
     const { id } = await params
+    // Anti-IDOR: un asesor solo puede subir media a SUS propiedades (evita minar
+    // signed URLs contra el prefijo de storage de una propiedad ajena).
+    if (!(await canAccessProperty(user, id))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     const body = await req.json().catch(() => ({}))
     const kind = body.kind as 'photo' | 'video'
     const files: FileMeta[] = Array.isArray(body.files) ? body.files : []

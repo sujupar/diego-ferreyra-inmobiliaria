@@ -3,14 +3,26 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { getProperty, updateProperty } from '@/lib/supabase/properties'
 import { createTaskForRole } from '@/lib/supabase/tasks'
 import { requireAuth, requireRole } from '@/lib/auth/require-role'
+import { canAccessProperty } from '@/lib/auth/entity-access'
 import { logLegalEvent } from '@/lib/supabase/legal-events'
 import { notifyDocsReadyForLawyer } from '@/lib/email/notifications/docs-ready-for-lawyer'
 import { notifyAdminEmailFailure } from '@/lib/email/notifications/admin-failure-alert'
 
+/** URL de media → <iframe src> en landing pública: solo https:// (anti XSS almacenado). */
+function sanitizeHttpsUrl(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const s = v.trim()
+  if (!s || s.length > 2000) return null
+  return /^https:\/\//i.test(s) ? s : null
+}
+
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireAuth()
+    const user = await requireAuth()
     const { id } = await params
+    if (!(await canAccessProperty(user, id))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     const data = await getProperty(id)
     return NextResponse.json({ data })
   } catch (error) {
@@ -22,7 +34,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const user = await requireAuth()
     const { id } = await params
+    if (!(await canAccessProperty(user, id))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     const body = await request.json()
+    // Anti XSS almacenado: si por esta ruta genérica llegan URLs de media, forzar https://.
+    if (body && typeof body === 'object') {
+      if ('tour_3d_url' in body) body.tour_3d_url = sanitizeHttpsUrl(body.tour_3d_url)
+      if ('video_url' in body) body.video_url = sanitizeHttpsUrl(body.video_url)
+    }
     await updateProperty(id, body)
 
     // Auto-create task for abogados when property sent for review

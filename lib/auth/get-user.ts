@@ -64,6 +64,13 @@ export async function getUser(): Promise<UserWithProfile | null> {
 
   if (profileError || !profile) return null
 
+  // Enforce is_active a nivel getUser(): un usuario desactivado se trata como no
+  // autenticado en TODO consumidor (getUser directo + requireAuth). Sin esto, las
+  // ~rutas que llaman getUser() sin requireAuth dejaban entrar a cuentas dadas de baja.
+  // (La rama de impersonación arriba NO pasa por acá: solo un admin/dueno activo la
+  // alcanza, y puede necesitar impersonar una cuenta inactiva para diagnosticar.)
+  if ((profile as Profile).is_active === false) return null
+
   return {
     id: user.id,
     email: user.email!,

@@ -47,6 +47,28 @@ export async function POST(
       }
     }
 
+    // Anti-IDOR: el jobId de la URL DEBE pertenecer a esta propiedad. Sin esto, un
+    // asesor con acceso a la propiedad A podría pasar el jobId de la propiedad B y
+    // generar piezas (quemar costo Gemini) contra el job ajeno.
+    // meta_launch_jobs no está en los tipos generados → cast puntual (patrón del resto
+    // de las rutas meta-launch-v2, p.ej. cancel/route.ts).
+    const jobRes = await (supabase as unknown as {
+      from: (t: string) => {
+        select: (c: string) => {
+          eq: (a: string, b: string) => {
+            maybeSingle: () => Promise<{ data: { property_id?: string } | null }>
+          }
+        }
+      }
+    })
+      .from('meta_launch_jobs')
+      .select('property_id')
+      .eq('id', jobId)
+      .maybeSingle()
+    if (!jobRes.data || jobRes.data.property_id !== id) {
+      return NextResponse.json({ error: 'job no pertenece a la propiedad' }, { status: 403 })
+    }
+
     const body = (await req.json().catch(() => ({}))) as { batchSize?: number }
     const batchSize = Math.max(1, Math.min(body.batchSize ?? 3, 5))
 

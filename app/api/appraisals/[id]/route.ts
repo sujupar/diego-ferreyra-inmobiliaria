@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
+import { canAccessAppraisal } from '@/lib/auth/entity-access'
 import { replaceAppraisalComparables } from '@/lib/supabase/appraisals-write'
 import type { SaveAppraisalInput } from '@/lib/supabase/appraisals'
 
@@ -11,9 +12,12 @@ function getAdmin() {
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Guard fuera del try para que el NEXT_REDIRECT de requireAuth propague a Next
   // en vez de convertirse en un 500. Cierra el acceso anónimo (data de cliente + valuación).
-  await requireAuth()
+  const user = await requireAuth()
   try {
     const { id } = await params
+    if (!(await canAccessAppraisal(user, id))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     const supabase = getAdmin()
 
     const [appraisalRes, comparablesRes] = await Promise.all([
@@ -41,9 +45,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // requireAuth() puede llamar redirect() (throw NEXT_REDIRECT). Va FUERA del
   // try para que el redirect propague a Next.js en vez de convertirse en 500.
-  await requireAuth()
+  const user = await requireAuth()
   try {
     const { id } = await params
+    if (!(await canAccessAppraisal(user, id))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     const input = (await req.json()) as SaveAppraisalInput
 
     if (!input?.subject || !input?.valuationResult) {
@@ -73,9 +80,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
  * nada. Es el camino seguro para guardar ajustes de presentación desde el modal de preview.
  */
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireAuth()
+  const user = await requireAuth()
   try {
     const { id } = await params
+    if (!(await canAccessAppraisal(user, id))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     const body = (await req.json()) as { reportEdits?: unknown }
     if (body?.reportEdits === undefined) {
       return NextResponse.json({ error: 'reportEdits es requerido' }, { status: 400 })
@@ -95,11 +105,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  // Cierra el DELETE anónimo (destrucción masiva de tasaciones). El scoping por
-  // ownership/rol se afina en la ola 2; acá el objetivo es matar el acceso sin sesión.
-  await requireAuth()
+  const user = await requireAuth()
   try {
     const { id } = await params
+    // Asesor solo borra sus propias tasaciones; admin/dueno/coordinador cualquiera.
+    if (!(await canAccessAppraisal(user, id))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     const supabase = getAdmin()
     const { error } = await supabase.from('appraisals').delete().eq('id', id)
     if (error) throw error

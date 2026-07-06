@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/require-role'
+import { canAccessProperty } from '@/lib/auth/entity-access'
 import { createClient } from '@supabase/supabase-js'
 import { getProperty, updateProperty } from '@/lib/supabase/properties'
 import { storagePathFromPublicUrl } from '@/lib/properties/media'
@@ -23,6 +24,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
     }
     const { id } = await params
+    if (!(await canAccessProperty(user, id))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     const body = await req.json().catch(() => ({}))
 
     // Reordenar / elegir portada: el array debe ser una PERMUTACIÓN de las fotos
