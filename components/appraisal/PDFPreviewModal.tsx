@@ -453,7 +453,18 @@ export function PDFPreviewModal({
                             <p className="text-sm text-muted-foreground">Preparando imagenes...</p>
                         </div>
                     ) : (
-                        <PDFViewer width="100%" height="100%" showToolbar={false}>
+                        <PDFViewer
+                            /* CAUSA RAÍZ del crash "n1 is not a function" (2026-07-06, y el histórico):
+                               el host-config de @react-pdf NO implementa `detachDeletedInstance`, pero el
+                               reconciler de React lo llama al ELIMINAR nodos en un update en vivo. Un
+                               render fresco nunca elimina nada; un cambio ESTRUCTURAL del documento con
+                               el visor montado (ej.: marketData llega por fetch ~1s después de que la
+                               conversión de imágenes ya montó el visor → legacy 2 págs → data-driven) sí.
+                               FIX: `key` con los insumos estructurales async → al cambiar, React
+                               desmonta y remonta el visor completo (camino seguro, igual que cambiar de
+                               tab) en vez de difear en el lugar. NO quitar este key. */
+                            key={`${marketData ? `md-${marketData.neighborhood.slug}-${marketData.resolvedPeriod}` : 'legacy'}|${advisorPhotoUrl || 'def'}`}
+                            width="100%" height="100%" showToolbar={false}>
                             {/* Preview = código ORIGINAL exacto (inline, props crudas de market
                                 images). NO usa buildDoc/effectiveLabels: ese cambio en el render
                                 en vivo del PDFViewer era el que rompía. La descarga sí usa
