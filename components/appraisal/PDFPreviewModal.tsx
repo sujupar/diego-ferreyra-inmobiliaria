@@ -15,6 +15,7 @@ import { saveReportEdits } from '@/lib/supabase/appraisals'
 // handleDownload — NO estático — para que pdf-lib NO esté en el chunk del modal
 // cuando @react-pdf renderiza la Vista Previa. Co-bundlear pdf-lib con el render de
 // @react-pdf rompía el reconciler en el browser ("n1 is not a function").
+import { flushSync } from 'react-dom'
 import type { PageLayoutState } from './pdf/PageOrganizer'
 import { PDFReportDocument } from './pdf/PDFReport'
 import { pdf } from '@react-pdf/renderer'
@@ -306,7 +307,12 @@ export function PDFPreviewModal({
     }, [activeTab, isConverting])
 
     const handleDownload = useCallback(async () => {
-        setIsDownloading(true)
+        // flushSync: DESMONTAR el PDFViewer ANTES de arrancar el render del blob.
+        // Dos renders de @react-pdf co-presentes (visor montado + pdf().toBlob())
+        // comparten estado interno del motor y corrompen el visor vivo → el mismo
+        // "n1 is not a function" del host-config sin detachDeletedInstance. Con el
+        // visor desmontado durante la descarga, nunca hay co-presencia.
+        flushSync(() => setIsDownloading(true))
         try {
             // @react-pdf PRIMERO (genera el blob), recién DESPUÉS cargamos pdf-lib (lazy)
             // para post-procesar. Así pdf-lib nunca está co-presente con el render de
@@ -451,6 +457,15 @@ export function PDFPreviewModal({
                         <div className="flex flex-col items-center justify-center h-full gap-3">
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
                             <p className="text-sm text-muted-foreground">Preparando imagenes...</p>
+                        </div>
+                    ) : isDownloading ? (
+                        /* Visor DESMONTADO durante la descarga (ver comentario en
+                           handleDownload): evita la co-presencia de dos renders de
+                           @react-pdf que corrompía el visor vivo. Al terminar, el
+                           visor remonta fresco solo. */
+                        <div className="flex flex-col items-center justify-center h-full gap-3">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                            <p className="text-sm text-muted-foreground">Generando el PDF para descargar...</p>
                         </div>
                     ) : (
                         <PDFViewer
