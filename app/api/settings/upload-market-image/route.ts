@@ -22,8 +22,11 @@ export async function POST(request: Request): Promise<Response> {
             return NextResponse.json({ error: 'Invalid slot identifier' }, { status: 400 })
         }
 
-        if (!file.type.startsWith('image/')) {
-            return NextResponse.json({ error: 'File must be an image' }, { status: 400 })
+        // image/svg+xml pasa "image/" pero permite XSS almacenado (se sirve inline
+        // desde Storage). Restringir a formatos raster seguros.
+        const SAFE_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp']
+        if (!SAFE_IMAGE_TYPES.includes(file.type)) {
+            return NextResponse.json({ error: 'Formato no permitido (usar PNG/JPEG/WebP)' }, { status: 400 })
         }
 
         if (file.size > MAX_FILE_SIZE) {

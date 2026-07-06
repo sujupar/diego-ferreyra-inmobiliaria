@@ -48,6 +48,11 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 })
         }
 
+        // Política mínima de contraseña (ASVS L1): ≥ 12 caracteres.
+        if (typeof password !== 'string' || password.length < 12) {
+            return NextResponse.json({ error: 'La contraseña debe tener al menos 12 caracteres' }, { status: 400 })
+        }
+
         // Fetch and validate invitation
         const { data: invitation, error: invError } = await supabaseAdmin
             .from('invitations')

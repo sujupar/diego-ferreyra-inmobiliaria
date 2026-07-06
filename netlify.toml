@@ -22,3 +22,7 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    # HSTS: fuerza https y evita downgrade/SSL-stripping. El sitio ya sirve 100% TLS
+    # (Netlify). Sin includeSubDomains/preload por ahora para no comprometer subdominios
+    # que pudieran no estar en https; subir a includeSubDomains + preload cuando se confirme.
+    Strict-Transport-Security = "max-age=31536000"
