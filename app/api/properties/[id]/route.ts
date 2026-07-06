@@ -18,11 +18,12 @@ function sanitizeHttpsUrl(v: unknown): string | null {
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireAuth()
+    // Solo requireAuth en la LECTURA: el listado de propiedades (properties/page.tsx)
+    // muestra TODAS a cualquier staff autenticado por diseño (toggle "solo mías" off por
+    // default), así que un asesor puede abrir el detalle de cualquiera. El IDOR severo
+    // (editar/borrar/media/marketing ajeno) se cierra en las MUTACIONES, no en el read.
+    await requireAuth()
     const { id } = await params
-    if (!(await canAccessProperty(user, id))) {
-      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
-    }
     const data = await getProperty(id)
     return NextResponse.json({ data })
   } catch (error) {
