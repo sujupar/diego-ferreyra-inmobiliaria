@@ -635,20 +635,19 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                     : <MarketImageSection slot="escrituras-caba" defaultLabel="Cantidad de Escrituras CABA" defaultSrc="/pdf-assets/monthly-data/escrituras-caba.png" last />}
                             </View>
                         </Page>
+                        {/* Datos del barrio + Tipos de propiedades: UNA sola página (pedido del
+                            usuario 2026-07-06, mismo agrupado que el layout legacy original). */}
                         <Page size="A4" style={styles.pageWithPadding}>
                             <MarketHeader />
                             <View style={{ marginTop: 60 }}>
-                                {md.barrio.price
-                                    ? (<>
-                                        <Text style={styles.h2}>{`Datos de ${barrioTitle}`}</Text>
-                                        <BarrioPanelPDF name={md.neighborhood.name} price={md.barrio.price} highlightSlug={md.neighborhood.slug} isGeneral={md.neighborhood.isGeneral} />
-                                    </>)
-                                    : <MarketImageSection slot="datos-barrio" defaultLabel={`Datos de ${neighborhood}, CABA`} defaultSrc="/pdf-assets/monthly-data/datos-barrio.png" last />}
-                            </View>
-                        </Page>
-                        <Page size="A4" style={styles.pageWithPadding}>
-                            <MarketHeader />
-                            <View style={{ marginTop: 60 }}>
+                                <View style={{ marginBottom: 28 }}>
+                                    {md.barrio.price
+                                        ? (<>
+                                            <Text style={styles.h2}>{`Datos de ${barrioTitle}`}</Text>
+                                            <BarrioPanelPDF name={md.neighborhood.name} price={md.barrio.price} highlightSlug={md.neighborhood.slug} isGeneral={md.neighborhood.isGeneral} />
+                                        </>)
+                                        : <MarketImageSection slot="datos-barrio" defaultLabel={`Datos de ${neighborhood}, CABA`} defaultSrc="/pdf-assets/monthly-data/datos-barrio.png" />}
+                                </View>
                                 {md.barrio.propertyTypes
                                     ? (<>
                                         <Text style={styles.h2}>{`Tipos de propiedades en ${barrioTitle}`}</Text>

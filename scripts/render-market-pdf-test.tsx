@@ -44,13 +44,13 @@ fs.readFile = (p: any, ...rest: any[]) => {
 // ValuationResult (subjectSurface, coeficientes, comparableAnalysis[].* etc.).
 // Completamos el mock usando la función real `calculateValuation` — así el
 // shape queda 100% correcto sin tocar PDFReport.tsx para acomodar el mock.
-const subject: ValuationProperty = {
+export const subject: ValuationProperty = {
     title: 'Miranda 5211', location: 'Miranda 5211, Palermo, Ciudad Autónoma de Buenos Aires',
     price: 120000, currency: 'USD', images: [], description: '', url: '',
     features: { coveredArea: 50, totalArea: 54, uncoveredArea: 4, rooms: 2, bedrooms: 1, bathrooms: 1, garages: 1, age: 6, floor: 3 },
 }
-const comparable: ValuationProperty = { ...subject, title: 'Comparable 1', price: 115000 }
-const valuationResult = calculateValuation({ subject, comparables: [comparable] })
+export const comparable: ValuationProperty = { ...subject, title: 'Comparable 1', price: 115000 }
+export const valuationResult = calculateValuation({ subject, comparables: [comparable] })
 if (!valuationResult) throw new Error('calculateValuation devolvió null — revisar el mock de subject/comparable')
 const marketData: MarketDataForReport = {
     period: '2026-07-01', resolvedPeriod: '2026-07-01', cabaResolvedPeriod: '2026-07-01',
@@ -103,4 +103,7 @@ async function main() {
     execSync('pdftoppm -png -r 60 -f 3 -l 6 /tmp/market-data.pdf /tmp/market-page && pdftoppm -png -r 60 -f 3 -l 4 /tmp/market-legacy.pdf /tmp/legacy-page')
     console.log('PNGs: /tmp/market-page-*.png /tmp/legacy-page-*.png')
 }
-main().catch(e => { console.error(e); process.exit(1) })
+// Guard: correr solo como entrypoint (los mocks exportados se importan sin ejecutar el render).
+if (process.argv[1]?.includes('render-market-pdf-test')) {
+    main().catch(e => { console.error(e); process.exit(1) })
+}
