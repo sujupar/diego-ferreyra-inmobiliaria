@@ -26,17 +26,31 @@ export const maxDuration = 60 // segundos — el polling cada 10 min trae lotes 
  * Primera corrida: last_polled_at es null → setea a now() y NO importa nada.
  * El backfill histórico ya se hizo con scripts/ghl-import.ts.
  */
-export async function GET(req: NextRequest) {
+/** Auth DUAL: env CRON_SECRET O el secreto de cron_config (los jobs de pg_cron
+ *  mandan este último — ver CLAUDE.md "2 secretos coexisten"). Mismo patrón que
+ *  refresh-market-data. Con env-only, los jobs actuales daban 403. */
+async function isAuthorized(req: NextRequest, supabase: ReturnType<typeof createClient>): Promise<boolean> {
   const secret = req.headers.get('x-cron-secret')
-  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+  if (!secret) return false
+  if (process.env.CRON_SECRET && secret === process.env.CRON_SECRET) return true
+  try {
+    const { data } = await supabase.from('cron_config').select('value').eq('key', 'send_report').maybeSingle()
+    return !!data?.value && secret === data.value
+  } catch {
+    return false
   }
+}
 
-  const startedAt = new Date()
+export async function GET(req: NextRequest) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   )
+  if (!(await isAuthorized(req, supabase))) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+  }
+
+  const startedAt = new Date()
 
   // 1. Leer estado
   const { data: state } = await supabase
