@@ -8,6 +8,7 @@ import { FunnelClickToPlayVideo } from '@/components/funnel/FunnelClickToPlayVid
 import { TestimonialCard } from '@/components/funnel/TestimonialCard'
 import { FunnelMetaPixel, trackFunnelConversion, getMetaCookie } from '@/components/funnel/FunnelMetaPixel'
 import { FunnelHeatmapTracker } from '@/components/funnel/FunnelHeatmapTracker'
+import { HeatmapOverlay } from '@/components/funnel/HeatmapOverlay'
 import { readAnonId } from '@/lib/funnel/anon-id'
 import { readStoredAttribution } from '@/lib/funnel/attribution'
 import type { FunnelLeadValues } from '@/components/funnel/FunnelLeadForm'
@@ -105,6 +106,7 @@ export function TasacionClient({
     <main>
       <FunnelMetaPixel pixelId={pixelId} contentName="Tasación Directa" />
       <FunnelHeatmapTracker page="tasacion" funnel="tasacion" />
+      <HeatmapOverlay />
       {/* Topbar */}
       <div data-hm="topbar" className="bg-[#0d2d49] py-2 text-center text-xs font-semibold uppercase tracking-wide text-white">
         {C.topbar}

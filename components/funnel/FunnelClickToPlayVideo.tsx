@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from 'r
 import Image from 'next/image'
 import { VideoProgressTracker } from '@/lib/funnel/video-progress'
 import { getOrCreateAnonId } from '@/lib/funnel/anon-id'
+import { isHeatmapPreview } from '@/lib/funnel/heatmap-preview'
 
 interface FunnelClickToPlayVideoProps {
   src: string
@@ -46,6 +47,7 @@ export function FunnelClickToPlayVideo({
     (useBeacon: boolean) => {
       const tr = trackerRef.current
       if (!trackKey || !tr || tr.watchSeconds <= 0) return
+      if (isHeatmapPreview()) return // visor del panel: no trackear
       if (!anonIdRef.current) anonIdRef.current = getOrCreateAnonId()
       const snap = tr.snapshot()
       const payload = {

@@ -455,7 +455,6 @@ function FunnelCard({ funnel }: { funnel: FunnelMetrics }) {
             page={funnel.key}
             sections={funnel.pageHeatSections ?? []}
             totals={funnel.pageHeatTotals ?? []}
-            grid={funnel.pageHeatGrid ?? []}
           />
         </div>
       </CardContent>

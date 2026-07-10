@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { getOrCreateAnonId } from '@/lib/funnel/anon-id'
 import { HeatmapSession } from '@/lib/funnel/heatmap-session'
+import { isHeatmapPreview } from '@/lib/funnel/heatmap-preview'
 
 function deviceBucket(): string {
   const w = window.innerWidth
@@ -16,6 +17,7 @@ function deviceBucket(): string {
  */
 export function FunnelHeatmapTracker({ page, funnel }: { page: string; funnel: string }) {
   useEffect(() => {
+    if (isHeatmapPreview()) return // visor del panel: no trackear al admin mirando el mapa
     const session = new HeatmapSession()
     const els = Array.from(document.querySelectorAll<HTMLElement>('[data-hm]'))
     session.registerSections(els.map((e) => e.dataset.hm ?? '').filter(Boolean))

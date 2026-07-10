@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
+import { Flame } from 'lucide-react'
 
 export interface HeatSectionRow {
   page: string
@@ -66,12 +68,10 @@ export function HeatmapPanel({
   page,
   sections,
   totals,
-  grid,
 }: {
   page: string
   sections: HeatSectionRow[]
   totals: HeatTotalRow[]
-  grid: HeatGridRow[]
 }) {
   const [seg, setSeg] = useState('all')
   const [dev, setDev] = useState('all')
@@ -149,47 +149,14 @@ export function HeatmapPanel({
         })}
       </div>
 
-      {/* v2 — overlay de densidad de clics por sección */}
-      <div>
-        <p className="mb-2 text-xs font-medium text-muted-foreground">Dónde hacen clic (densidad)</p>
-        <div className="mx-auto max-w-md space-y-1">
-          {order.map((key) => {
-            const cells = grid.filter((g) => g.section === key && matchSeg({ segment: g.segment, stage: null }, seg === 'all' || seg === 'anon' || seg === 'reg' ? seg : 'reg') && matchDev(g.device, dev))
-            const max = cells.reduce((m, c) => Math.max(m, c.clicks), 0)
-            return (
-              <div key={key} className="relative h-16 overflow-hidden rounded-md border bg-[#0d2d49]/[0.03]">
-                <span className="absolute left-1.5 top-1 z-10 text-[9px] uppercase tracking-wide text-muted-foreground">
-                  {SECTION_LABELS[key] || key}
-                </span>
-                {cells.map((c, idx) => {
-                  const intensity = max > 0 ? c.clicks / max : 0
-                  return (
-                    <div
-                      key={idx}
-                      className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
-                      style={{
-                        left: `${c.x_bin * 5 + 2.5}%`,
-                        top: `${c.y_bin * 5 + 2.5}%`,
-                        width: 26,
-                        height: 26,
-                        background: `radial-gradient(circle, rgba(255,${Math.round(120 - intensity * 120)},0,${0.25 + intensity * 0.55}) 0%, rgba(255,0,0,0) 70%)`,
-                      }}
-                    />
-                  )
-                })}
-                {max === 0 && (
-                  <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground/50">
-                    sin clics
-                  </span>
-                )}
-              </div>
-            )
-          })}
-        </div>
-        <p className="mt-1 text-[10px] text-muted-foreground/70">
-          Posición relativa a cada sección (responsive). Más rojo = más clics.
-        </p>
-      </div>
+      {/* El "dónde hacen clic" visual vive en el visor sobre la página real. */}
+      <Link
+        href={`/embudos/heatmap/${page}`}
+        className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-orange-300 bg-orange-50/50 px-4 py-3 text-sm font-medium text-orange-700 transition hover:bg-orange-50"
+      >
+        <Flame className="h-4 w-4" />
+        Ver mapa de calor sobre la página
+      </Link>
     </div>
   )
 }

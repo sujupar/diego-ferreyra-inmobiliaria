@@ -23,6 +23,8 @@ export function LandingVisitTracker({ slug, funnelType = 'otro' }: Props) {
   useEffect(() => {
     if (sent.current) return
     sent.current = true
+    // Visor del mapa de calor (?hm_preview=1): no registrar la visita del admin.
+    if (/[?&]hm_preview=1/.test(window.location.search)) return
 
     const params = new URLSearchParams(window.location.search)
     const utm = {

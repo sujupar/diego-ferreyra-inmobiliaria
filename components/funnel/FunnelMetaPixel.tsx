@@ -21,6 +21,8 @@ export function FunnelMetaPixel({ pixelId, contentName }: FunnelMetaPixelProps) 
 
   useEffect(() => {
     if (!valid || typeof window === 'undefined' || typeof window.fbq !== 'function') return
+    // Visor del mapa de calor (?hm_preview=1): no disparar eventos del Pixel.
+    if (/[?&]hm_preview=1/.test(window.location.search)) return
     window.fbq('track', 'ViewContent', {
       content_name: contentName,
       content_category: 'real_estate',
@@ -32,7 +34,7 @@ export function FunnelMetaPixel({ pixelId, contentName }: FunnelMetaPixelProps) 
 
   return (
     <Script id="funnel-meta-pixel" strategy="afterInteractive">
-      {`!function(f,b,e,v,n,t,s)
+      {`if(!/[?&]hm_preview=1/.test(location.search)){!function(f,b,e,v,n,t,s)
       {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
       n.callMethod.apply(n,arguments):n.queue.push(arguments)};
       if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
@@ -40,7 +42,7 @@ export function FunnelMetaPixel({ pixelId, contentName }: FunnelMetaPixelProps) 
       t.src=v;s=b.getElementsByTagName(e)[0];
       s.parentNode.insertBefore(t,s)}(window,document,'script',
       'https://connect.facebook.net/en_US/fbevents.js');
-      fbq('init','${pixelId}');fbq('track','PageView');`}
+      fbq('init','${pixelId}');fbq('track','PageView');}`}
     </Script>
   )
 }
