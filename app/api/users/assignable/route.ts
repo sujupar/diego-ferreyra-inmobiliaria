@@ -8,7 +8,13 @@ import { requireAuth } from '@/lib/auth/require-role'
  * para poblar el selector "Asignar a" del AddTaskDialog.
  */
 export async function GET() {
-  await requireAuth()
+  // Solo los roles que pueden asignar tareas a otros consumen este listado; el
+  // resto no lo necesita (se auto-asignan). Least-privilege: no exponer el roster
+  // a asesores/abogados por esta vía.
+  const user = await requireAuth()
+  if (!['admin', 'dueno', 'coordinador'].includes(user.profile.role)) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+  }
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

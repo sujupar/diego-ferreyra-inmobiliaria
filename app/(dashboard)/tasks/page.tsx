@@ -45,7 +45,7 @@ interface Task {
   due_date: string | null
   due_time: string | null
   all_day: boolean | null
-  channel: 'call' | 'email' | 'message' | null
+  channel: 'call' | 'email' | 'message' | 'visit' | 'document' | 'other' | null
 }
 
 function formatDate(d: string) {
