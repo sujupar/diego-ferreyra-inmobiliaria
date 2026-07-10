@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import type { TaskChannel } from '@/lib/tasks/validate-task-input'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -12,23 +13,26 @@ export type TaskType =
   | 'complete_imported_property'
   | 'follow_up'
 
+// Los 3 canales de contacto originales del modal de Seguimiento. Se conserva por
+// compatibilidad (lo importa el pipeline). El set completo de "tipos" de tarea de
+// usuario es TaskChannel (call/email/message/visit/document/other).
 export type FollowUpChannel = 'call' | 'email' | 'message'
 
 export interface CreateTaskInput {
   type: TaskType
   title: string
-  description?: string
+  description?: string | null
   assigned_to: string
-  deal_id?: string
-  appraisal_id?: string
-  property_id?: string
-  contact_id?: string
+  deal_id?: string | null
+  appraisal_id?: string | null
+  property_id?: string | null
+  contact_id?: string | null
   // Follow-up specific (used when type === 'follow_up')
-  channel?: FollowUpChannel
+  channel?: TaskChannel
   due_date?: string // YYYY-MM-DD
   due_time?: string | null // HH:MM (24h), null si all_day
   all_day?: boolean
-  created_by?: string
+  created_by?: string | null
 }
 
 /**
