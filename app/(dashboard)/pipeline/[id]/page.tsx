@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { toast } from 'sonner'
+import { AddTaskDialog } from '@/components/tasks/AddTaskDialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -294,9 +295,12 @@ export default function DealDetailPage() {
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
-      <Button variant="ghost" size="sm" onClick={() => router.push('/pipeline')}>
-        <ArrowLeft className="h-4 w-4 mr-1" /> Pipeline
-      </Button>
+      <div className="flex items-center justify-between gap-4">
+        <Button variant="ghost" size="sm" onClick={() => router.push('/pipeline')}>
+          <ArrowLeft className="h-4 w-4 mr-1" /> Pipeline
+        </Button>
+        <AddTaskDialog entity={{ kind: 'deal', id, label: contact.full_name || deal.property_address }} />
+      </div>
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">

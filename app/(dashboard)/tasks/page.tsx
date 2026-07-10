@@ -1,14 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
   Loader2, CheckCircle, X, User, FileCheck, Home, Scale,
-  AlertTriangle, ChevronRight, Bell, MessageSquare, Phone, Mail, Calendar, Clock
+  AlertTriangle, ChevronRight, Bell, MessageSquare, Phone, Mail, Calendar, Clock,
+  MapPin, FileText, Plus
 } from 'lucide-react'
+import { AddTaskDialog } from '@/components/tasks/AddTaskDialog'
 import type { PropertyVisitWithRelations } from '@/types/visits.types'
 
 const TYPE_CONFIG: Record<string, { icon: typeof Bell; color: string; label: string; urgent?: boolean }> = {
@@ -24,6 +26,9 @@ const CHANNEL_CONFIG: Record<string, { icon: typeof Phone; label: string }> = {
   call: { icon: Phone, label: 'Llamada' },
   email: { icon: Mail, label: 'Correo' },
   message: { icon: MessageSquare, label: 'Mensaje' },
+  visit: { icon: MapPin, label: 'Visita' },
+  document: { icon: FileText, label: 'Documentación' },
+  other: { icon: Bell, label: 'Otro' },
 }
 
 interface Task {
@@ -84,7 +89,7 @@ export default function TasksPage() {
       .catch(() => setOverdueVisits([]))
   }, [userInfo])
 
-  useEffect(() => {
+  const loadTasks = useCallback(() => {
     if (!userInfo?.id) return
     setLoading(true)
     const status = filter === 'all' ? '' : filter
@@ -113,6 +118,8 @@ export default function TasksPage() {
       .catch(err => console.error(err))
       .finally(() => setLoading(false))
   }, [userInfo, filter])
+
+  useEffect(() => { loadTasks() }, [loadTasks])
 
   async function handleAction(taskId: string, action: 'complete' | 'dismiss') {
     setCompleting(taskId)
@@ -156,9 +163,15 @@ export default function TasksPage() {
         <p className="eyebrow">Hoy · Bandeja</p>
         <div className="flex items-end justify-between gap-4 flex-wrap">
           <h1 className="display text-4xl">Pendientes</h1>
-          <p className="text-sm text-muted-foreground tabular-n">
-            {tasks.length} tarea{tasks.length !== 1 ? 's' : ''}{filter === 'pending' ? ` pendiente${tasks.length !== 1 ? 's' : ''}` : ''}
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-muted-foreground tabular-n">
+              {tasks.length} tarea{tasks.length !== 1 ? 's' : ''}{filter === 'pending' ? ` pendiente${tasks.length !== 1 ? 's' : ''}` : ''}
+            </p>
+            <AddTaskDialog
+              onCreated={loadTasks}
+              trigger={<Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nueva tarea</Button>}
+            />
+          </div>
         </div>
       </div>
 
@@ -249,15 +262,17 @@ export default function TasksPage() {
                         </Button>
                       </>
                     )}
-                    <Link href={link}>
-                      <Button
-                        size="sm"
-                        variant={config.urgent ? 'default' : 'ghost'}
-                        className={config.urgent ? 'bg-[color:var(--brand)] text-white hover:bg-[color:var(--brand)]/90' : ''}
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </Link>
+                    {link !== '#' && (
+                      <Link href={link}>
+                        <Button
+                          size="sm"
+                          variant={config.urgent ? 'default' : 'ghost'}
+                          className={config.urgent ? 'bg-[color:var(--brand)] text-white hover:bg-[color:var(--brand)]/90' : ''}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    )}
                   </div>
                 </CardContent>
               </Card>

@@ -15,6 +15,7 @@ import type { MarketDataForReport } from '@/lib/market-data/types'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, FileText, AlertCircle, Edit2, Loader2, UserCog, Home } from 'lucide-react'
 import { ContactEditor } from '@/components/contacts/ContactEditor'
+import { AddTaskDialog } from '@/components/tasks/AddTaskDialog'
 import { FlowHistoryCard, type FlowHistoryData } from '@/app/(dashboard)/_components/FlowHistoryCard'
 
 const PDFPreviewModal = dynamic(
@@ -548,6 +549,7 @@ export default function AppraisalDetailPage() {
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
+                    <AddTaskDialog entity={{ kind: 'appraisal', id: appraisal.id, label: appraisal.property_title || appraisal.property_location }} />
                     <Button variant="outline" className="gap-2" onClick={() => setContactEditorOpen(true)}>
                         <UserCog className="h-4 w-4" />
                         {appraisal.contact_id ? 'Editar Contacto' : 'Asignar Contacto'}

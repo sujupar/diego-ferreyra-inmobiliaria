@@ -16,6 +16,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/component
 import { LegalReviewHistory } from '@/components/properties/LegalReviewHistory'
 import { MarketingTabs } from '@/components/properties/MarketingTabs'
 import { PostCaptureActions } from '@/components/properties/PostCaptureActions'
+import { AddTaskDialog } from '@/components/tasks/AddTaskDialog'
 import { GenerateDescriptionCard } from '@/components/properties/GenerateDescriptionCard'
 import type { LegalDocsState, LegalFlags } from '@/types/legal-docs.types'
 import { FlowHistoryCard, type FlowHistoryData } from '@/app/(dashboard)/_components/FlowHistoryCard'
@@ -275,10 +276,11 @@ export default function PropertyDetailPage() {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between gap-4">
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
           <ArrowLeft className="h-4 w-4 mr-1" /> Volver
         </Button>
+        <AddTaskDialog entity={{ kind: 'property', id: property.id, label: property.address }} />
       </div>
 
       {/* Header */}

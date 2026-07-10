@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, ArrowLeft, User, Phone, Mail, FileCheck, Home, Calendar, Tag, Briefcase, Pencil } from 'lucide-react'
 import { ContactEditor } from '@/components/contacts/ContactEditor'
+import { AddTaskDialog } from '@/components/tasks/AddTaskDialog'
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -68,9 +69,12 @@ export default function ContactDetailPage() {
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
           <ArrowLeft className="h-4 w-4 mr-1" /> Volver
         </Button>
-        <Button variant="outline" size="sm" onClick={() => setEditorOpen(true)} className="gap-2">
-          <Pencil className="h-4 w-4" /> Editar Contacto
-        </Button>
+        <div className="flex items-center gap-2">
+          <AddTaskDialog entity={{ kind: 'contact', id: contact.id, label: contact.full_name }} />
+          <Button variant="outline" size="sm" onClick={() => setEditorOpen(true)} className="gap-2">
+            <Pencil className="h-4 w-4" /> Editar Contacto
+          </Button>
+        </div>
       </div>
 
       {/* Contact header */}
