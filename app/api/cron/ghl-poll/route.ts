@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import {
   fetchPipelines, fetchOpportunities, importOpportunity,
   TARGET_PIPELINE_NAME, type ImportResult,
@@ -29,7 +29,7 @@ export const maxDuration = 60 // segundos — el polling cada 10 min trae lotes 
 /** Auth DUAL: env CRON_SECRET O el secreto de cron_config (los jobs de pg_cron
  *  mandan este último — ver CLAUDE.md "2 secretos coexisten"). Mismo patrón que
  *  refresh-market-data. Con env-only, los jobs actuales daban 403. */
-async function isAuthorized(req: NextRequest, supabase: ReturnType<typeof createClient>): Promise<boolean> {
+async function isAuthorized(req: NextRequest, supabase: SupabaseClient): Promise<boolean> {
   const secret = req.headers.get('x-cron-secret')
   if (!secret) return false
   if (process.env.CRON_SECRET && secret === process.env.CRON_SECRET) return true
