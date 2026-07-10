@@ -24,7 +24,7 @@
 ### Task 1: Migración aditiva — ampliar el CHECK de `channel`
 
 **Files:**
-- Create: `supabase/migrations/20260710000001_tasks_universal_channel.sql`
+- Create: `supabase/migrations/20260710000002_tasks_universal_channel.sql`
 
 **Interfaces:**
 - Produces: la columna `tasks.channel` acepta `{call,email,message,visit,document,other}`.
@@ -48,7 +48,7 @@ ALTER TABLE public.tasks
 - [ ] **Step 2: Commit**
 
 ```bash
-git add supabase/migrations/20260710000001_tasks_universal_channel.sql
+git add supabase/migrations/20260710000002_tasks_universal_channel.sql
 git commit -m "feat(tareas): migración amplía tasks.channel a 6 tipos"
 ```
 
@@ -771,7 +771,7 @@ Expected: build sin errores.
   4. `/tasks` muestra los tipos nuevos y las tareas sin entidad sin flecha.
   5. Reportar pass/fail por caso.
 
-- [ ] **Step 3: Avisar al usuario** que el QA pasó y que puede hacer la prueba real. Recordar correr la migración `20260710000001_tasks_universal_channel.sql` en el Dashboard antes de probar los tipos nuevos.
+- [ ] **Step 3: Avisar al usuario** que el QA pasó y que puede hacer la prueba real. Recordar correr la migración `20260710000002_tasks_universal_channel.sql` en el Dashboard antes de probar los tipos nuevos.
 
 ---
 
