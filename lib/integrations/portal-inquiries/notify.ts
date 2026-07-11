@@ -10,7 +10,12 @@ import { sendWhatsappTemplate, normalizePhone } from '../whatsapp/meta-cloud'
  *  - registra cada intento en portal_inquiry_notifications (sent/failed/skipped).
  */
 
-const TEMPLATE = process.env.WHATSAPP_TEMPLATE_NAME ?? 'nueva_consulta_portal'
+// Default UTILITY (no el MARKETING viejo): las notificaciones de consulta son
+// mensajes de servicio disparados por una acción del lead → categoría UTILITY,
+// SIN tope de frecuencia. El template MARKETING `nueva_consulta_portal` se acepta
+// (status=sent) pero Meta lo RETIENE por el tope de marketing (no entrega). Ver
+// CLAUDE.md / memory portal_inquiries_whatsapp. NUNCA volver a MARKETING acá.
+const TEMPLATE = process.env.WHATSAPP_TEMPLATE_NAME ?? 'consulta_portal_util'
 const LANG = process.env.WHATSAPP_TEMPLATE_LANG ?? 'es_AR'
 
 const PORTAL_LABEL: Record<Portal, string> = {

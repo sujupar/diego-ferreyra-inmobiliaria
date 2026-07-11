@@ -49,7 +49,7 @@ async function main() {
     process.exit(1)
   }
 
-  const templateName = process.env.WHATSAPP_TEMPLATE_NAME ?? 'nueva_consulta_portal'
+  const templateName = process.env.WHATSAPP_TEMPLATE_NAME ?? 'consulta_portal_util'
   const languageCode = process.env.WHATSAPP_TEMPLATE_LANG ?? 'es_AR'
 
   // 10 parámetros, en el MISMO orden que la plantilla nueva_consulta_portal.
