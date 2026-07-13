@@ -32,7 +32,7 @@ async function main() {
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
   const { data: rows, error } = await supabase
     .from('portal_inquiries')
-    .select('id, seq, portal, property_external_code, property_url, property_address, assigned_to, matched_map_id, is_unmatched')
+    .select('id, seq, portal, property_external_code, property_url, property_address, assigned_to, matched_map_id, property_id, is_unmatched')
   if (error) { console.error(error.message); process.exit(1) }
 
   let changed = 0
@@ -49,12 +49,12 @@ async function main() {
     const match = await matchProperty(supabase, parsed)
     const newAssigned = match.assignedTo
     const newUnmatched = !newAssigned
-    if (newAssigned === r.assigned_to && newUnmatched === r.is_unmatched && match.mapId === r.matched_map_id) continue
+    if (newAssigned === r.assigned_to && newUnmatched === r.is_unmatched && match.mapId === r.matched_map_id && match.propertyId === r.property_id) continue
     changed++
     console.log(`  #${r.seq} ${r.portal} ${r.property_external_code || r.property_address || ''} → ${newAssigned ? 'ASIGNADA' : 'sin asignar'} (${match.method})`)
     if (COMMIT) {
       await supabase.from('portal_inquiries').update({
-        assigned_to: newAssigned, matched_map_id: match.mapId, is_unmatched: newUnmatched,
+        assigned_to: newAssigned, matched_map_id: match.mapId, is_unmatched: newUnmatched, property_id: match.propertyId,
       }).eq('id', r.id)
     }
   }

@@ -136,6 +136,7 @@ export async function GET(req: NextRequest) {
             property_url: parsed.propertyUrl,
             property_address: parsed.propertyAddress ?? match.address, // si el email no trajo dirección pero matcheó, guardamos la del mapa (identificable en el inbox)
             matched_map_id: match.mapId,
+            property_id: match.propertyId, // FK real a properties (null = sin identificar)
             assigned_to: match.assignedTo, // null si unmatched → notify usa al dueño
             is_unmatched: isUnmatched,
             raw_subject: full.subject,
