@@ -10,6 +10,7 @@ import { MetricsTable } from '@/components/metrics/MetricsTable'
 import { CampaignBreakdown } from '@/components/metrics/CampaignBreakdown'
 import { FunnelByDayChart } from '@/components/metrics/FunnelByDayChart'
 import { CurrentStateBreakdown } from '@/components/metrics/CurrentStateBreakdown'
+import { PropertyInquiriesPanel } from '@/components/metrics/PropertyInquiriesPanel'
 import { SendTestReport } from '@/components/metrics/SendTestReport'
 import type {
   MetricsComparison,
@@ -145,6 +146,8 @@ export default function MetricsPage() {
           <CampaignBreakdown rows={campaigns} />
         </CardContent>
       </Card>
+
+      <PropertyInquiriesPanel range={range} />
 
       <SendTestReport />
     </div>
