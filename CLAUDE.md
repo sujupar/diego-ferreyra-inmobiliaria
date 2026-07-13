@@ -274,6 +274,13 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Fix:** Implementar el upload con bytes multipart. Descargar la imagen con `fetch`, convertir a `Buffer`, mandar como `FormData` con field `access_token` + un field cuyo nombre es el filename y cuyo valor es el `Blob`. Soporta jpeg/png/gif/webp.
 - **Detection:** Si Campaign + AdCreative funcionan pero falla al subir imágenes, mirar el subcode/code del error. `code: 3` típicamente significa "tu app necesita una capability más avanzada para esta llamada específica".
 
+### properties.status: el CHECK original no incluía 'descartada'
+
+- **Symptom:** `UPDATE properties SET status='descartada'` (el descarte de la app y el archivado de fusiones) falla con `23514 check_violation`.
+- **Root cause:** la tabla `properties` fue creada fuera de migraciones con un CHECK de status que no contempla `'descartada'`, aunque la app lo usa como valor oficial de descarte (`PUT /api/properties/[id]`).
+- **Fix:** migración `20260713000001_properties_status_descartada.sql` recrea el CHECK con la lista completa de STATUS_LABELS (incluye `descartada`). Si aparece un status nuevo en la app, actualizar TAMBIÉN el CHECK.
+- **Fusión de duplicados (2026-07-13):** las fichas duplicadas del import CSV se fusionaron (deal/contacto/tasación → la copia publicada; la vieja queda `status='descartada'` con address `[FUSIONADA-><id8>] ...`). Script reutilizable de linkeo mapa→propiedad: `scripts/backfill-map-property-links.ts`. Evidencia usada para NO fusionar: posting IDs de ZonaProp distintos = avisos/propiedades distintas (Agüero 950 Palermo vs Balvanera; G. Mistral 2750 vs 2751).
+
 ### Foreign keys a `profiles(id)` deben ser `ON DELETE SET NULL`
 
 - **Symptom:** Borrar un usuario desde Supabase Auth devuelve "Database error deleting user".
