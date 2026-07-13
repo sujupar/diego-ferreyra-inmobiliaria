@@ -363,6 +363,22 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **UI:** los primitivos `components/ui/collapsible.tsx` y `tabs.tsx` se importan del paquete bundleado `radix-ui` (NO `@radix-ui/react-*` standalone). Galería con `@dnd-kit/*`. La página de detalle (`app/(dashboard)/properties/[id]/page.tsx`) es estilo iOS: documentación legal en desplegable maestro con resumen de estado, secciones (Datos, Historial) plegables, y el orden = resumen+acción arriba, historiales plegados abajo. El abogado NO ve Multimedia/Marketing/Archivar.
 - **Limitaciones conocidas (aceptadas):** el append de `photos` en commit y el reorder son read-modify-write (no atómicos) — race posible bajo subidas concurrentes, baja probabilidad en uso real (un asesor por propiedad); un fix atómico requeriría RPC + migración. Ante fallo de commit tras un PUT exitoso queda un objeto huérfano en Storage (solo `console.warn`); costo tolerable.
 
+### Consultas por propiedad: FK real, no la convención notes
+
+- Desde la migración `20260711000001`, `portal_inquiries.property_id` y
+  `portal_property_map.property_id` son FKs reales a `properties(id)` (ON DELETE
+  SET NULL). La convención `notes='property:<id>'` SIGUE VIVA solo como clave de
+  dedup de `syncPortalPropertyMap` — NO usarla para joins nuevos; usar la FK.
+- Métricas: RPCs `get_property_inquiry_counts` / `get_inquiries_summary`
+  (`20260711000002`), base temporal `COALESCE(received_at, created_at)::date`.
+  Panel en `/metrics` + pestaña Consultas en la ficha. Conteo query-time; si el
+  volumen algún día lo exige, agregar rollup DETRÁS de la misma RPC.
+- Gate de deploy: esas 2 migraciones deben correrse ANTES de deployar código que
+  escribe `property_id` (el INSERT del cron falla sin la columna → se rompe la
+  ingesta de consultas).
+- Tras el deploy, re-correr el UPDATE #4 de la migración `20260711000001`
+  (idempotente) para cubrir consultas ingresadas entre migración y deploy.
+
 ---
 
 ## Datos de Mercado por Barrio (tasador) — 2026-07
