@@ -376,8 +376,12 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - Gate de deploy: esas 2 migraciones deben correrse ANTES de deployar código que
   escribe `property_id` (el INSERT del cron falla sin la columna → se rompe la
   ingesta de consultas).
-- Tras el deploy, re-correr el UPDATE #4 de la migración `20260711000001`
-  (idempotente) para cubrir consultas ingresadas entre migración y deploy.
+- Tras el deploy, en orden: (1) correr `scripts/backfill-map-property-links.ts
+  --commit` (linkea filas del mapa sin FK — p. ej. las sembradas por CSV — a
+  properties por dirección); (2) esperar/forzar una corrida de
+  `refresh-portal-map` (cura las filas zonaprop legacy sin notes); (3) re-correr
+  el UPDATE #4 de la migración `20260711000001` (idempotente) — propaga la FK a
+  las consultas históricas y a las ingresadas entre migración y deploy.
 
 ---
 
