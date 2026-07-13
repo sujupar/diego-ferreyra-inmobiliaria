@@ -120,7 +120,8 @@ export async function refreshZonaPropMap(
       .maybeSingle()
     const record = {
       portal: 'zonaprop', external_code: p.postingCode, external_url: p.url || null,
-      address: p.address || null, title: p.title || null, assigned_to: ref.assigned_to, active: true,
+      address: p.address || null, title: p.title || null, assigned_to: ref.assigned_to,
+      property_id: ref.id, active: true,
     }
     if (existing) {
       const { error } = await supabase.from('portal_property_map').update(record).eq('id', existing.id)

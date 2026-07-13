@@ -54,7 +54,7 @@ async function main() {
     if (existing.some(m => addressMatches(p.address, m.address))) { skipped++; continue }
     console.log(`  + ${PORTAL}: "${p.address}"`)
     if (COMMIT) {
-      const rec = { portal: PORTAL, address: p.address, neighborhood: p.neighborhood, title: p.address, assigned_to: p.assigned_to, active: true, notes: `property:${p.id}` }
+      const rec = { portal: PORTAL, address: p.address, neighborhood: p.neighborhood, title: p.address, assigned_to: p.assigned_to, active: true, notes: `property:${p.id}`, property_id: p.id }
       const { error } = await supabase.from('portal_property_map').insert(rec)
       if (error) { console.error(`    ✗ ${error.message}`); continue }
     }

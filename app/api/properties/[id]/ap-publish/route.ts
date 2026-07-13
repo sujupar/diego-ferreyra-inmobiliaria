@@ -36,7 +36,7 @@ async function syncPortalPropertyMap(
     portal: 'argenprop', external_code: externalId, external_url: externalUrl,
     address: property.address, neighborhood: property.neighborhood,
     title: property.title ?? property.address, assigned_to: property.assigned_to,
-    active: true, notes: noteKey,
+    property_id: property.id, active: true, notes: noteKey,
   })
 }
 

@@ -61,6 +61,7 @@ async function syncPortalPropertyMap(
     neighborhood: property.neighborhood,
     title: property.title ?? property.address,
     assigned_to: property.assigned_to,
+    property_id: property.id,
     active: true,
     notes: noteKey,
   })
