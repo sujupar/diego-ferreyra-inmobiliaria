@@ -6,10 +6,10 @@ const DIEGO = 'diego-uuid'
 const LUCAS = 'lucas-uuid'
 
 const rows: PortalMapRow[] = [
-  { id: 'm1', portal: 'mercadolibre', external_code: 'MLA1234567890', external_url: 'https://articulo.mercadolibre.com.ar/MLA-1234567890', address: 'Av. Cabildo 2000', title: 'Depto Belgrano', assigned_to: LUCAS, active: true },
-  { id: 'm2', portal: 'zonaprop', external_code: null, external_url: 'https://www.zonaprop.com.ar/propiedades/depto-palermo-49012345.html', address: 'Honduras 5000', title: 'Departamento 3 ambientes en Palermo', assigned_to: DIEGO, active: true },
-  { id: 'm3', portal: 'argenprop', external_code: '7654321', external_url: null, address: null, title: 'Casa en Nueva Córdoba', assigned_to: DIEGO, active: true },
-  { id: 'm4', portal: 'zonaprop', external_code: null, external_url: 'https://www.zonaprop.com.ar/x-999.html', address: 'Inactiva 1', title: 'Inactiva', assigned_to: LUCAS, active: false },
+  { id: 'm1', portal: 'mercadolibre', external_code: 'MLA1234567890', external_url: 'https://articulo.mercadolibre.com.ar/MLA-1234567890', address: 'Av. Cabildo 2000', title: 'Depto Belgrano', assigned_to: LUCAS, active: true, property_id: 'prop-m1' },
+  { id: 'm2', portal: 'zonaprop', external_code: null, external_url: 'https://www.zonaprop.com.ar/propiedades/depto-palermo-49012345.html', address: 'Honduras 5000', title: 'Departamento 3 ambientes en Palermo', assigned_to: DIEGO, active: true, property_id: 'prop-m2' },
+  { id: 'm3', portal: 'argenprop', external_code: '7654321', external_url: null, address: null, title: 'Casa en Nueva Córdoba', assigned_to: DIEGO, active: true, property_id: null },
+  { id: 'm4', portal: 'zonaprop', external_code: null, external_url: 'https://www.zonaprop.com.ar/x-999.html', address: 'Inactiva 1', title: 'Inactiva', assigned_to: LUCAS, active: false, property_id: null },
 ]
 
 function inquiry(over: Partial<ParsedInquiry>): ParsedInquiry {
@@ -19,7 +19,7 @@ function inquiry(over: Partial<ParsedInquiry>): ParsedInquiry {
 describe('pickBestMatch', () => {
   it('matchea por código exacto (normalizado)', () => {
     const r = pickBestMatch(inquiry({ portal: 'mercadolibre', propertyCode: 'MLA-1234567890' }), rows)
-    expect(r).toEqual({ mapId: 'm1', assignedTo: LUCAS, method: 'code', address: 'Av. Cabildo 2000', title: 'Depto Belgrano', external_url: 'https://articulo.mercadolibre.com.ar/MLA-1234567890' })
+    expect(r).toEqual({ mapId: 'm1', assignedTo: LUCAS, method: 'code', address: 'Av. Cabildo 2000', title: 'Depto Belgrano', external_url: 'https://articulo.mercadolibre.com.ar/MLA-1234567890', propertyId: 'prop-m1' })
   })
 
   it('matchea por URL (contención)', () => {
@@ -48,7 +48,7 @@ describe('pickBestMatch', () => {
 
   it('devuelve none si no hay match', () => {
     const r = pickBestMatch(inquiry({ portal: 'zonaprop', propertyCode: 'NOEXISTE', propertyAddress: 'Calle Falsa 123' }), rows)
-    expect(r).toEqual({ mapId: null, assignedTo: null, method: 'none', address: null, title: null, external_url: null })
+    expect(r).toEqual({ mapId: null, assignedTo: null, method: 'none', address: null, title: null, external_url: null, propertyId: null })
   })
 
   it('no considera filas de otro portal', () => {
@@ -60,20 +60,31 @@ describe('pickBestMatch', () => {
     const r = pickBestMatch(inquiry({ portal: 'zonaprop', propertyUrl: 'https://www.zonaprop.com.ar/x-999.html' }), rows)
     expect(r.method).toBe('none')
   })
+
+  it('propaga propertyId del mapa cuando la fila tiene FK', () => {
+    const r = pickBestMatch(inquiry({ portal: 'zonaprop', propertyAddress: 'Honduras 5000' }), rows)
+    expect(r.propertyId).toBe('prop-m2')
+  })
+
+  it('propertyId null cuando la fila del mapa no tiene FK (fila legacy)', () => {
+    const r = pickBestMatch(inquiry({ portal: 'argenprop', propertyCode: '7654321' }), rows)
+    expect(r.assignedTo).toBe(DIEGO)
+    expect(r.propertyId).toBeNull()
+  })
 })
 
 // Match de dirección por nombre de calle con datos reales (número aproximado +
 // abreviaturas): la consulta del portal trae un número distinto al de la lista.
 describe('pickBestMatch — dirección por calle (Argenprop)', () => {
   const map: PortalMapRow[] = [
-    { id: 'd1', portal: 'argenprop', external_code: null, external_url: null, address: 'Agüero 950', title: null, assigned_to: DIEGO, active: true },
-    { id: 'd2', portal: 'argenprop', external_code: null, external_url: null, address: 'Entre Ríos 2333', title: null, assigned_to: DIEGO, active: true },
-    { id: 'd3', portal: 'argenprop', external_code: null, external_url: null, address: 'Gabriela Mistral 2750', title: null, assigned_to: DIEGO, active: true },
-    { id: 'd4', portal: 'argenprop', external_code: null, external_url: null, address: 'Avenida Ángel Gallardo 200', title: null, assigned_to: DIEGO, active: true },
-    { id: 'l1', portal: 'argenprop', external_code: null, external_url: null, address: 'Coronel Ramón Lorenzo Falcón 2500', title: null, assigned_to: LUCAS, active: true },
-    { id: 'l2', portal: 'argenprop', external_code: null, external_url: null, address: 'Santo Tomé 2600', title: null, assigned_to: LUCAS, active: true },
-    { id: 'l3', portal: 'argenprop', external_code: null, external_url: null, address: 'Juan B. Ambrosetti 95', title: null, assigned_to: LUCAS, active: true },
-    { id: 'l4', portal: 'argenprop', external_code: null, external_url: null, address: 'Lares de Canning', title: null, assigned_to: LUCAS, active: true },
+    { id: 'd1', portal: 'argenprop', external_code: null, external_url: null, address: 'Agüero 950', title: null, assigned_to: DIEGO, active: true, property_id: null },
+    { id: 'd2', portal: 'argenprop', external_code: null, external_url: null, address: 'Entre Ríos 2333', title: null, assigned_to: DIEGO, active: true, property_id: null },
+    { id: 'd3', portal: 'argenprop', external_code: null, external_url: null, address: 'Gabriela Mistral 2750', title: null, assigned_to: DIEGO, active: true, property_id: null },
+    { id: 'd4', portal: 'argenprop', external_code: null, external_url: null, address: 'Avenida Ángel Gallardo 200', title: null, assigned_to: DIEGO, active: true, property_id: null },
+    { id: 'l1', portal: 'argenprop', external_code: null, external_url: null, address: 'Coronel Ramón Lorenzo Falcón 2500', title: null, assigned_to: LUCAS, active: true, property_id: null },
+    { id: 'l2', portal: 'argenprop', external_code: null, external_url: null, address: 'Santo Tomé 2600', title: null, assigned_to: LUCAS, active: true, property_id: null },
+    { id: 'l3', portal: 'argenprop', external_code: null, external_url: null, address: 'Juan B. Ambrosetti 95', title: null, assigned_to: LUCAS, active: true, property_id: null },
+    { id: 'l4', portal: 'argenprop', external_code: null, external_url: null, address: 'Lares de Canning', title: null, assigned_to: LUCAS, active: true, property_id: null },
   ]
   const ap = (address: string) => pickBestMatch(inquiry({ portal: 'argenprop', propertyAddress: address }), map)
 

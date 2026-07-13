@@ -18,6 +18,7 @@ export interface PortalMapRow {
   address: string | null
   title: string | null
   assigned_to: string | null
+  property_id: string | null
   active: boolean
 }
 
@@ -26,6 +27,7 @@ export type MatchMethod = 'code' | 'url' | 'address' | 'title' | 'none'
 export interface MatchResult {
   mapId: string | null
   assignedTo: string | null
+  propertyId: string | null
   method: MatchMethod
   address: string | null
   title: string | null
@@ -108,11 +110,11 @@ export function addressMatches(a: string | null | undefined, b: string | null | 
   return Math.abs(na - nb) <= NUMBER_TOLERANCE
 }
 
-const NONE: MatchResult = { mapId: null, assignedTo: null, method: 'none', address: null, title: null, external_url: null }
+const NONE: MatchResult = { mapId: null, assignedTo: null, propertyId: null, method: 'none', address: null, title: null, external_url: null }
 
 export function pickBestMatch(parsed: ParsedInquiry, rows: PortalMapRow[]): MatchResult {
   const active = rows.filter(r => r.active && r.portal === parsed.portal)
-  const hit = (r: PortalMapRow, method: MatchMethod): MatchResult => ({ mapId: r.id, assignedTo: r.assigned_to, method, address: r.address, title: r.title, external_url: r.external_url })
+  const hit = (r: PortalMapRow, method: MatchMethod): MatchResult => ({ mapId: r.id, assignedTo: r.assigned_to, propertyId: r.property_id, method, address: r.address, title: r.title, external_url: r.external_url })
 
   // 1. Código exacto.
   if (parsed.propertyCode) {
@@ -165,7 +167,7 @@ export async function matchProperty(
 ): Promise<MatchResult> {
   const { data, error } = await supabase
     .from('portal_property_map')
-    .select('id, portal, external_code, external_url, address, title, assigned_to, active')
+    .select('id, portal, external_code, external_url, address, title, assigned_to, property_id, active')
     .eq('portal', parsed.portal)
     .eq('active', true)
   if (error) {
