@@ -6,7 +6,10 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://inmodf.com.ar'
+// Dominio PÚBLICO de las landings (el de los anuncios de Meta, migrado de GHL
+// 2026-07-17). Distinto de NEXT_PUBLIC_APP_URL (dominio del dashboard).
+const FUNNEL_PUBLIC_BASE =
+  process.env.NEXT_PUBLIC_FUNNEL_PUBLIC_URL ?? 'https://inmobiliariadiegoferreyra.com'
 
 // Cliente admin SIN tipar: las tablas de funnel no están en el tipo Database.
 type AdminClient = SupabaseClient
@@ -161,14 +164,14 @@ export async function GET(req: NextRequest) {
       {
         key: 'tasacion' as const,
         label: 'Tasación Directa',
-        url: `${APP_URL}/tasacion-directa`,
+        url: `${FUNNEL_PUBLIC_BASE}/tasacion-directa`,
         visitFunnelType: 'tasacion',
         submissionFunnel: 'tasacion',
       },
       {
         key: 'clase' as const,
         label: 'Clase Gratuita',
-        url: `${APP_URL}/vsl-clase-propietarios`,
+        url: `${FUNNEL_PUBLIC_BASE}/vsl-clase-propietarios`,
         visitFunnelType: 'clase_gratuita',
         submissionFunnel: 'clase',
       },
