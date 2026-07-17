@@ -41,7 +41,7 @@ async function isAuthorized(req: NextRequest, supabase: SupabaseClient): Promise
   }
 }
 
-export async function GET(req: NextRequest) {
+async function handle(req: NextRequest) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -154,3 +154,8 @@ export async function GET(req: NextRequest) {
     ...counters,
   })
 }
+
+// pg_cron dispara con net.http_post (pg_net) → aceptar POST además de GET.
+// Sin esto, cada tick del job daba 405 silencioso y el poll nunca corría solo.
+export async function GET(req: NextRequest) { return handle(req) }
+export async function POST(req: NextRequest) { return handle(req) }
