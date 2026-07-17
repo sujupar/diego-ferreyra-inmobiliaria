@@ -43,6 +43,15 @@ export function readAttributionFromParams(search: string): FunnelAttribution {
     const v = p.get(f)
     if (v) out[f] = v.slice(0, 200)
   }
+  // Compat con el formato de los ADS ACTIVOS (era GHL, verificado en la API de
+  // Meta 2026-07-17): utm_source=fb_ad + utm_medium={{adset.name}} +
+  // campaign_id={{campaign.id}} (sin prefijo fb_). No tocamos los anuncios:
+  // adaptamos la lectura.
+  const cid = p.get('campaign_id')
+  if (cid && !out.fb_campaign_id) out.fb_campaign_id = cid.slice(0, 200)
+  if (!out.utm_term && out.utm_medium && (out.utm_source ?? '').toLowerCase().startsWith('fb')) {
+    out.utm_term = out.utm_medium // en ese formato, el conjunto viaja en utm_medium
+  }
   return out
 }
 

@@ -49,7 +49,7 @@ function formatDate(d: string) {
 }
 
 const ORIGIN_LABELS: Record<string, string> = { embudo: 'Embudo', referido: 'Referido', historico: 'Historico' }
-const PLATFORM_LABELS: Record<string, string> = { fb: 'Facebook', ig: 'Instagram', msg: 'Messenger', an: 'Audience Network', facebook: 'Facebook', instagram: 'Instagram' }
+const PLATFORM_LABELS: Record<string, string> = { fb: 'Facebook', ig: 'Instagram', msg: 'Messenger', an: 'Audience Network', facebook: 'Facebook', instagram: 'Instagram', fb_ad: 'Facebook Ads' }
 
 export default function DealDetailPage() {
   const { id } = useParams<{ id: string }>()
