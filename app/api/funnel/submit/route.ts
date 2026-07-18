@@ -167,7 +167,10 @@ export async function POST(req: NextRequest) {
   })
 
   // --- CAPI (Fase 3): conversión server-side con el MISMO event_id que el Pixel ---
-  const eventName = d.funnel === 'clase' ? 'CompleteRegistration' : 'Lead'
+  // AMBOS embudos disparan CompleteRegistration: las campañas Meta optimizan por
+  // COMPLETE_REGISTRATION (promoted_object de los 4 adsets activos). Cambiar esto
+  // desalinearía el conteo de resultados en Ads Manager — decisión 2026-07-17.
+  const eventName = 'CompleteRegistration'
   const contentName = d.funnel === 'clase' ? 'Clase Gratuita' : 'Tasación Directa'
   if (d.eventId) {
     const [firstName, ...rest] = d.name.trim().split(/\s+/)
@@ -179,7 +182,7 @@ export async function POST(req: NextRequest) {
         eventId: d.eventId,
         eventSourceUrl:
           d.eventSourceUrl ??
-          `https://inmodf.com.ar/${d.funnel === 'clase' ? 'vsl-clase-propietarios' : 'tasacion-directa'}`,
+          `${process.env.NEXT_PUBLIC_FUNNEL_PUBLIC_URL ?? 'https://inmobiliariadiegoferreyra.com'}/${d.funnel === 'clase' ? 'vsl-clase-propietarios' : 'tasacion-directa'}`,
         userData: {
           email: d.email ?? null,
           phone: d.phone ?? null,

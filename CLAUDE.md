@@ -13,6 +13,12 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 - CLI no conecta (auth issue) — el usuario corre SQL en el Dashboard SQL Editor manualmente.
 - RLS habilitada granular por rol (admin, dueno, coordinador, asesor, abogado) desde migración `20260505000001_rls_per_role_safe.sql`.
 
+## GHL (GoHighLevel) DECOMISADO — 2026-07-17
+
+- **GHL ya NO es parte de ningún proceso.** Las landings del embudo son 100% propias (`app/(funnels)/tasacion-directa` y `/vsl-clase-propietarios`, dominio público `inmobiliariadiegoferreyra.com` en env `NEXT_PUBLIC_FUNNEL_PUBLIC_URL`), y la conversión entra por `POST /api/funnel/submit` → `create-funnel-lead` (deal + notificación + tarea + Píxel/CAPI dedup). NO reintroducir integraciones GHL.
+- Vestigios en cuarentena (no activos): `app/api/webhooks/ghl/form-submission` (GHL dejó de POSTear el 2026-07-02), `app/api/cron/ghl-poll` + `lib/ghl/import.ts` (el job pg_cron `ghl-poll` debe estar **unscheduled** — `SELECT cron.unschedule('ghl-poll');`). Si un lead aparece como `[Importado GHL]` después del decomiso, algo lo re-encendió.
+- **Evento de conversión Meta de AMBOS embudos: `CompleteRegistration`** (los adsets optimizan por COMPLETE_REGISTRATION). NO cambiar a `Lead` — desalinearía el conteo de resultados en Ads Manager. Definido en `TasacionClient.tsx`/`ClaseClient.tsx` (Pixel) y `app/api/funnel/submit/route.ts` (CAPI).
+
 ---
 
 ## Meta Ads — Arquitectura actual (2026-06-06)

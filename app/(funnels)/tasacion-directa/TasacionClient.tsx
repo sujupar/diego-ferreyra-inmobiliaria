@@ -97,8 +97,10 @@ export function TasacionClient({
     })
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean; redirect?: string; error?: string; deduplicated?: boolean; contactId?: string }
     if (!res.ok || !data.ok) throw new Error(data.error ?? 'No pudimos procesar tu envío.')
-    // Pixel SOLO si no fue un envío deduplicado (en dedup el CAPI no dispara → un Pixel solo inflaría la conversión)
-    if (!data.deduplicated) trackFunnelConversion({ eventName: 'Lead', eventId, contentName: 'Tasación Directa' })
+    // Pixel SOLO si no fue un envío deduplicado (en dedup el CAPI no dispara → un Pixel solo inflaría la conversión).
+    // CompleteRegistration (no Lead): las campañas Meta del embudo optimizan por
+    // COMPLETE_REGISTRATION (promoted_object de los adsets) — decisión 2026-07-17.
+    if (!data.deduplicated) trackFunnelConversion({ eventName: 'CompleteRegistration', eventId, contentName: 'Tasación Directa' })
     if (data.redirect && typeof window !== 'undefined') window.location.href = data.redirect
   }
 
