@@ -3,7 +3,7 @@ import { requireAuth } from '@/lib/auth/require-role'
 import { canAccessProperty } from '@/lib/auth/entity-access'
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'crypto'
-import { PHOTO_EXTS, VIDEO_EXTS, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES } from '@/lib/properties/media'
+import { PHOTO_EXTS, VIDEO_EXTS, PLAN_EXTS, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES, MAX_PLAN_BYTES, sanitizeFileBase } from '@/lib/properties/media'
 
 function getStorage() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!).storage
@@ -24,11 +24,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
     const body = await req.json().catch(() => ({}))
-    const kind = body.kind as 'photo' | 'video'
+    const kind = body.kind as 'photo' | 'video' | 'plan'
     const files: FileMeta[] = Array.isArray(body.files) ? body.files : []
 
-    if (kind !== 'photo' && kind !== 'video') {
-      return NextResponse.json({ error: 'kind inválido (photo|video)' }, { status: 400 })
+    if (kind !== 'photo' && kind !== 'video' && kind !== 'plan') {
+      return NextResponse.json({ error: 'kind inválido (photo|video|plan)' }, { status: 400 })
     }
     if (files.length === 0) {
       return NextResponse.json({ error: 'No se enviaron archivos' }, { status: 400 })
@@ -39,9 +39,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: `Máximo ${MAX_FILES_PER_REQUEST} archivos por lote` }, { status: 400 })
     }
 
-    const allowed = kind === 'photo' ? (PHOTO_EXTS as readonly string[]) : (VIDEO_EXTS as readonly string[])
-    const maxBytes = kind === 'photo' ? MAX_PHOTO_BYTES : MAX_VIDEO_BYTES
-    const folder = kind === 'photo' ? 'photos' : 'video'
+    const allowed: readonly string[] =
+      kind === 'photo' ? PHOTO_EXTS : kind === 'plan' ? PLAN_EXTS : VIDEO_EXTS
+    const maxBytes = kind === 'photo' ? MAX_PHOTO_BYTES : kind === 'plan' ? MAX_PLAN_BYTES : MAX_VIDEO_BYTES
+    const folder = kind === 'photo' ? 'photos' : kind === 'plan' ? 'plans' : 'video'
     const bucket = getStorage().from('property-files')
 
     const uploads: Array<{ signedUrl: string; token: string; path: string; publicUrl: string; contentType: string }> = []
@@ -56,7 +57,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (f.fileSize > maxBytes) {
         return NextResponse.json({ error: `"${f.fileName}" supera el máximo de ${(maxBytes / 1024 / 1024).toFixed(0)} MB.` }, { status: 413 })
       }
-      const path = `properties/${id}/${folder}/${randomUUID()}.${ext}`
+      // Los planos llevan el nombre original saneado en el path para poder
+      // mostrar una etiqueta legible en la UI (planLabelFromUrl).
+      const path = kind === 'plan'
+        ? `properties/${id}/${folder}/${randomUUID()}-${sanitizeFileBase(f.fileName || '')}.${ext}`
+        : `properties/${id}/${folder}/${randomUUID()}.${ext}`
       const { data, error } = await bucket.createSignedUploadUrl(path)
       if (error || !data) {
         return NextResponse.json({ error: error?.message || 'No se pudo generar URL de subida' }, { status: 500 })

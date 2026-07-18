@@ -5,18 +5,20 @@ import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { Image as ImageIcon, Film, Globe, Loader2, Upload, Trash2, Check, ExternalLink } from 'lucide-react'
+import { Image as ImageIcon, Film, Globe, Layers, Loader2, Upload, Trash2, Check, ExternalLink } from 'lucide-react'
 import { PhotoGallery } from './PhotoGallery'
+import { PlansPanel } from './PlansPanel'
 
 interface Props {
   propertyId: string
   photos: string[]
+  plans: string[]
   videoFileUrl: string | null
   tourUrl: string | null
   onChanged: () => void
 }
 
-export function PropertyMediaCard({ propertyId, photos, videoFileUrl, tourUrl, onChanged }: Props) {
+export function PropertyMediaCard({ propertyId, photos, plans, videoFileUrl, tourUrl, onChanged }: Props) {
   const videoInput = useRef<HTMLInputElement>(null)
   const [videoUploading, setVideoUploading] = useState(false)
   const [videoProgress, setVideoProgress] = useState(0)
@@ -106,12 +108,17 @@ export function PropertyMediaCard({ propertyId, photos, videoFileUrl, tourUrl, o
         <Tabs defaultValue="fotos">
           <TabsList className="w-full">
             <TabsTrigger value="fotos"><ImageIcon className="h-4 w-4" />Fotos{photos.length > 0 && <span className="tabular-n text-xs">· {photos.length}</span>}</TabsTrigger>
+            <TabsTrigger value="planos"><Layers className="h-4 w-4" />Planos{plans.length > 0 && <span className="tabular-n text-xs">· {plans.length}</span>}</TabsTrigger>
             <TabsTrigger value="video"><Film className="h-4 w-4" />Video{videoFileUrl && <Check className="h-3.5 w-3.5 text-emerald-600" />}</TabsTrigger>
             <TabsTrigger value="recorrido"><Globe className="h-4 w-4" />Recorrido{tourUrl && <Check className="h-3.5 w-3.5 text-emerald-600" />}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="fotos" className="pt-4">
             <PhotoGallery propertyId={propertyId} photos={photos} onChanged={onChanged} />
+          </TabsContent>
+
+          <TabsContent value="planos" className="pt-4">
+            <PlansPanel propertyId={propertyId} plans={plans} onChanged={onChanged} />
           </TabsContent>
 
           <TabsContent value="video" className="pt-4 space-y-3">

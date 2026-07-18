@@ -33,6 +33,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ success: true })
     }
 
+    if (body.kind === 'plan') {
+      const urls: string[] = Array.isArray(body.urls) ? body.urls.filter((u: unknown) => typeof u === 'string') : []
+      if (urls.length === 0) {
+        return NextResponse.json({ error: 'No se enviaron URLs' }, { status: 400 })
+      }
+      const storageBase = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/+$/, '')
+      const planPrefix = `${storageBase}/storage/v1/object/public/property-files/properties/${id}/plans/`
+      if (!urls.every((u) => u.startsWith(planPrefix))) {
+        return NextResponse.json({ error: 'URL de plano inválida' }, { status: 400 })
+      }
+      const prop = await getProperty(id)
+      const existing = Array.isArray(prop.plans) ? prop.plans : []
+      // Los planos NO participan del auto-avance de captación — no llamar
+      // a checkAndAdvanceProperty acá.
+      await updateProperty(id, { plans: [...existing, ...urls] })
+      return NextResponse.json({ success: true })
+    }
+
     if (body.kind === 'video') {
       if (typeof body.url !== 'string' || !body.url) {
         return NextResponse.json({ error: 'url de video requerida' }, { status: 400 })
@@ -46,7 +64,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ success: true })
     }
 
-    return NextResponse.json({ error: 'kind inválido (photo|video)' }, { status: 400 })
+    return NextResponse.json({ error: 'kind inválido (photo|video|plan)' }, { status: 400 })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error' }, { status: 500 })
   }

@@ -1,13 +1,15 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Image from 'next/image'
+import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Loader2, Home, DollarSign, FileText, MapPin, ArrowLeft, User, ImageIcon } from 'lucide-react'
+import { Loader2, Home, DollarSign, FileText, MapPin, ArrowLeft, User, ImageIcon, Layers, Upload, Trash2 } from 'lucide-react'
+import { uploadPlans, validatePlanFile } from '@/lib/properties/upload-plans'
 
 export default function NewPropertyPage() {
     return (
@@ -44,6 +46,9 @@ function NewPropertyContent() {
         description: '',
     })
     const [photos, setPhotos] = useState<string[]>([])
+    const [planFiles, setPlanFiles] = useState<File[]>([])
+    const [uploadingPlans, setUploadingPlans] = useState(false)
+    const planInput = useRef<HTMLInputElement>(null)
 
     // Cargar lista de asesores
     useEffect(() => {
@@ -173,6 +178,33 @@ function NewPropertyContent() {
         setPhotos(prev => prev.filter((_, i) => i !== idx))
     }
 
+    function addPlanFiles(list: FileList | null) {
+        const incoming = Array.from(list || [])
+        if (incoming.length === 0) return
+        const valid: File[] = []
+        for (const f of incoming) {
+            const err = validatePlanFile(f)
+            if (err) { toast.error(err); continue }
+            valid.push(f)
+        }
+        setPlanFiles(prev => {
+            const seen = new Set(prev.map(f => `${f.name}|${f.size}`))
+            const next = [...prev]
+            for (const f of valid) {
+                const key = `${f.name}|${f.size}`
+                if (seen.has(key)) continue
+                seen.add(key)
+                next.push(f)
+            }
+            return next
+        })
+        if (planInput.current) planInput.current.value = ''
+    }
+
+    function removePlanFile(idx: number) {
+        setPlanFiles(prev => prev.filter((_, i) => i !== idx))
+    }
+
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
         if (!form.assigned_to) {
@@ -222,6 +254,9 @@ function NewPropertyContent() {
 
             const { id } = await res.json()
 
+            // Avanzar el deal ANTES de subir planos: la subida puede tardar
+            // (PDFs grandes) y si se cierra la pestaña a mitad, el deal ya
+            // quedó en "captured".
             if (dealId) {
                 try {
                     await fetch(`/api/deals/${dealId}/advance`, {
@@ -230,6 +265,20 @@ function NewPropertyContent() {
                         body: JSON.stringify({ stage: 'captured', property_id: id }),
                     })
                 } catch (e) { console.error('Error linking deal:', e) }
+            }
+
+            // Subir los planos elegidos (la propiedad ya existe; si falla,
+            // se pueden subir después desde la ficha, pestaña Planos).
+            if (planFiles.length > 0) {
+                setUploadingPlans(true)
+                try {
+                    await uploadPlans(id, planFiles)
+                    toast.success(planFiles.length === 1 ? 'Plano subido' : `${planFiles.length} planos subidos`)
+                } catch (e) {
+                    toast.error(`La propiedad se creó, pero falló la subida de planos: ${e instanceof Error ? e.message : 'error'}. Podés subirlos desde la ficha (Multimedia → Planos).`)
+                } finally {
+                    setUploadingPlans(false)
+                }
             }
 
             router.push(`/properties/${id}`)
@@ -340,6 +389,44 @@ function NewPropertyContent() {
                     </CardContent>
                 </Card>
 
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                            <Layers className="h-5 w-5" />Planos {planFiles.length > 0 && <span className="text-sm font-normal text-muted-foreground">({planFiles.length})</span>}
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                        <input
+                            ref={planInput}
+                            type="file"
+                            multiple
+                            accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif"
+                            className="hidden"
+                            onChange={e => addPlanFiles(e.target.files)}
+                        />
+                        {planFiles.length > 0 && (
+                            <ul className="rounded-md border divide-y">
+                                {planFiles.map((f, i) => (
+                                    <li key={`${f.name}-${f.size}-${i}`} className="flex items-center gap-3 px-3 py-2">
+                                        <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                                        <span className="flex-1 truncate text-sm" title={f.name}>{f.name}</span>
+                                        <span className="text-xs text-muted-foreground tabular-nums shrink-0">{(f.size / 1024 / 1024).toFixed(1)} MB</span>
+                                        <button type="button" onClick={() => removePlanFile(i)} className="text-muted-foreground hover:text-destructive shrink-0">
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                        <Button type="button" size="sm" variant="outline" onClick={() => planInput.current?.click()}>
+                            <Upload className="h-4 w-4 mr-1" />{planFiles.length > 0 ? 'Agregar más planos' : 'Elegir planos'}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                            Opcional. PDF o imagen, varios archivos, hasta 100 MB cada uno. Se suben al captar la propiedad.
+                        </p>
+                    </CardContent>
+                </Card>
+
                 {photos.length > 0 && (
                     <Card>
                         <CardHeader>
@@ -435,7 +522,7 @@ function NewPropertyContent() {
                     <Button type="button" variant="outline" onClick={() => router.back()}>Cancelar</Button>
                     <Button type="submit" disabled={loading || !form.assigned_to} className="flex-1 bg-green-600 hover:bg-green-700">
                         {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Captar Propiedad
+                        {uploadingPlans ? 'Subiendo planos…' : 'Captar Propiedad'}
                     </Button>
                 </div>
             </form>

@@ -56,6 +56,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ success: true })
     }
 
+    // Borrar un plano: saca del array + borra de Storage.
+    if (typeof body.deletePlan === 'string') {
+      const prop = await getProperty(id)
+      const existing = Array.isArray(prop.plans) ? prop.plans : []
+      const plans = existing.filter((u: string) => u !== body.deletePlan)
+      await updateProperty(id, { plans })
+      await removeFromStorage(body.deletePlan)
+      return NextResponse.json({ success: true })
+    }
+
     // Setear o limpiar el video subido.
     if ('video_file_url' in body) {
       const val: string | null = typeof body.video_file_url === 'string' && body.video_file_url ? body.video_file_url : null
