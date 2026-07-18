@@ -11,6 +11,8 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 
 ## Supabase
 - CLI no conecta (auth issue) — el usuario corre SQL en el Dashboard SQL Editor manualmente.
+- **PERO las migraciones SÍ se pueden aplicar desde acá (descubierto 2026-07-18):** conexión directa Postgres vía session pooler `aws-0-us-west-2.pooler.supabase.com:5432`, user `postgres.mncsnastmcjdjxrehdep`, password en `SUPABASE_DB_PASSWORD` (.env.local), con `npm i --no-save pg`. Ejemplo: `scripts/apply-plans-migration-pg.ts`. La conexión directa `db.<ref>.supabase.co` es IPv6-only (esta red no tiene ruta IPv6) y el `SUPABASE_ACCESS_TOKEN` de .env.local es un placeholder (Management API da 401).
+- **OJO: hay más de un proyecto en el Dashboard.** El de la app es `mncsnastmcjdjxrehdep` (= `NEXT_PUBLIC_SUPABASE_URL`). El 2026-07-18 el usuario corrió una migración "en el Dashboard" y la columna no apareció — la corrió en otro proyecto. Verificar siempre contra la API (`select` de la columna) después de una migración manual.
 - RLS habilitada granular por rol (admin, dueno, coordinador, asesor, abogado) desde migración `20260505000001_rls_per_role_safe.sql`.
 
 ## GHL (GoHighLevel) DECOMISADO — 2026-07-17
