@@ -7,7 +7,7 @@
 import { join } from 'node:path'
 import { composeSlide } from './compose'
 import { generateScene, generateBackground, FACIAL_LOCK } from './openai'
-import { uploadSlidePng, uploadRawScene, admin } from './storage'
+import { uploadSlidePng, uploadRawScene, downloadPng, admin } from './storage'
 import type { ScriptSlide } from './brand-bible'
 
 const DIEGO_REFS = [
@@ -36,7 +36,7 @@ export function slideToRow(slide: ScriptSlide, position: number) {
   }
 }
 
-function rowToScriptSlide(row: any): ScriptSlide {
+export function rowToScriptSlide(row: any): ScriptSlide {
   const c = row.copy || {}
   return {
     role: row.role,
@@ -123,4 +123,58 @@ export async function processNextSlide(carouselId: string): Promise<{ done: bool
     await db.from('social_carousels').update({ status: 'failed', error_message: msg, updated_at: new Date().toISOString() }).eq('id', carouselId)
     throw e
   }
+}
+
+// ---- Edición post-generación ----
+async function genScene(slide: ScriptSlide): Promise<{ raw?: Buffer; uri?: string }> {
+  let raw: Buffer | undefined
+  if (slide.image_kind === 'concept' && slide.image_prompt) {
+    raw = await generateBackground(slide.image_prompt, { size: '1024x1536', quality: 'high' })
+  } else if (slide.image_kind === 'diego') {
+    raw = await generateScene({ prompt: diegoPrompt(slide.image_prompt), referencePaths: DIEGO_REFS, size: '1024x1536', quality: 'high' })
+  }
+  return { raw, uri: raw ? `data:image/png;base64,${raw.toString('base64')}` : undefined }
+}
+
+async function slideCount(carouselId: string): Promise<number> {
+  const { count } = await admin()
+    .from('social_carousel_slides')
+    .select('id', { count: 'exact', head: true })
+    .eq('carousel_id', carouselId)
+  return count || 0
+}
+
+/** Regenera la IMAGEN de un slide (cuesta 1 gpt-image-2) y recompone. */
+export async function regenerateSlideImage(carouselId: string, position: number, imagePromptOverride?: string): Promise<void> {
+  const db = admin()
+  const { data: row } = await db.from('social_carousel_slides').select('*').eq('carousel_id', carouselId).eq('position', position).single()
+  if (!row) throw new Error('slide no existe')
+  const slide = rowToScriptSlide(row)
+  if (imagePromptOverride) slide.image_prompt = imagePromptOverride
+  const total = await slideCount(carouselId)
+  const { raw, uri } = await genScene(slide)
+  const png = await composeSlide(slide, uri, { page: position, total })
+  const storagePath = await uploadSlidePng(carouselId, position, png)
+  const rawPath = raw ? await uploadRawScene(carouselId, position, raw) : (row as any).image_storage_url
+  await db.from('social_carousel_slides')
+    .update({ storage_url: storagePath, image_storage_url: rawPath, image_prompt: slide.image_prompt, status: 'composed' })
+    .eq('id', (row as any).id)
+}
+
+/** Edita el COPY de un slide y re-renderiza el texto sobre la escena cacheada (sin gastar imagen). */
+export async function recomposeSlideText(carouselId: string, position: number, newCopy: Record<string, any>): Promise<void> {
+  const db = admin()
+  const { data: row } = await db.from('social_carousel_slides').select('*').eq('carousel_id', carouselId).eq('position', position).single()
+  if (!row) throw new Error('slide no existe')
+  const merged = { ...((row as any).copy || {}), ...newCopy }
+  const slide = rowToScriptSlide({ ...(row as any), copy: merged })
+  let uri: string | undefined
+  if ((row as any).image_storage_url) {
+    const buf = await downloadPng((row as any).image_storage_url)
+    uri = `data:image/png;base64,${buf.toString('base64')}`
+  }
+  const total = await slideCount(carouselId)
+  const png = await composeSlide(slide, uri, { page: position, total })
+  const storagePath = await uploadSlidePng(carouselId, position, png)
+  await db.from('social_carousel_slides').update({ copy: merged, storage_url: storagePath }).eq('id', (row as any).id)
 }
