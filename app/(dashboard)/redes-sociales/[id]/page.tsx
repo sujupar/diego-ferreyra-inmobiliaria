@@ -15,7 +15,7 @@ interface SlideCopy { eyebrow?: string; title?: string; body?: string; cta_label
 interface SlideView { position: number; role: string; layout: string; status: string; image_kind: string; copy: SlideCopy; url: string | null; error?: string | null }
 interface Detail {
   id: string; status: string; progress: number; title: string; topic: string
-  cta_type: string; caption: string; hashtags: string[]; error: string | null; slides: SlideView[]
+  cta_type: string; caption: string; hashtags: string[]; error: string | null; step: string | null; slides: SlideView[]
 }
 
 export default function CarruselDetailPage() {
@@ -26,28 +26,47 @@ export default function CarruselDetailPage() {
   const [regenerating, setRegenerating] = useState<number | null>(null)
   const [exporting, setExporting] = useState(false)
   const polling = useRef(false)
+  const stopped = useRef(false)
 
   const load = useCallback(async (): Promise<Detail | null> => {
-    const res = await fetch(`/api/social/carousels/${id}`)
-    const d = await res.json()
-    if (!res.ok) { setError(d.error || 'Error'); return null }
-    setData(d)
-    return d
+    try {
+      const res = await fetch(`/api/social/carousels/${id}`)
+      const d = await res.json()
+      if (!res.ok) { setError(d.error || 'Error'); return null }
+      setData(d)
+      return d
+    } catch (e) {
+      setError('No se pudo cargar el estado: ' + (e as Error).message)
+      return null
+    }
   }, [id])
 
-  useEffect(() => {
-    let cancelled = false
-    async function chain() {
-      if (polling.current) return
-      polling.current = true
+  // Carga instantánea + loop de procesamiento desacoplado: cada vuelta pide procesar
+  // UN slide (POST /process, trabajo pesado) y refresca el estado (GET, instantáneo).
+  const runLoop = useCallback(async () => {
+    if (polling.current) return
+    polling.current = true
+    stopped.current = false
+    try {
       let d = await load()
-      // Cada GET procesa el próximo slide pendiente (continuación del lado del cliente).
-      while (!cancelled && d && d.status === 'generating_images') d = await load()
-      polling.current = false
-    }
-    chain()
-    return () => { cancelled = true }
-  }, [load])
+      while (!stopped.current && d && d.status === 'generating_images') {
+        try {
+          await fetch(`/api/social/carousels/${id}/process`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+        } catch { /* timeout de red: el slide sigue pendiente; se reintenta en la próxima vuelta */ }
+        d = await load()
+      }
+    } finally { polling.current = false }
+  }, [id, load])
+
+  useEffect(() => { runLoop(); return () => { stopped.current = true } }, [runLoop])
+
+  async function retry() {
+    stopped.current = false
+    try {
+      await fetch(`/api/social/carousels/${id}/process`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ retry: true }) })
+    } catch { /* noop */ }
+    runLoop()
+  }
 
   async function saveCopy(position: number, copy: SlideCopy) {
     await fetch(`/api/social/carousels/${id}/slides/${position}`, {
@@ -102,13 +121,22 @@ export default function CarruselDetailPage() {
       {generating && (
         <div className="mb-6">
           <div className="flex items-center justify-between text-sm mb-2">
-            <span>Generando el carrusel… (cada imagen tarda ~40s)</span>
+            <span>{data.step || 'Preparando la generación…'}</span>
             <span className="tabular-nums">{data.progress}%</span>
           </div>
           <Progress value={data.progress} />
+          <p className="text-xs text-muted-foreground mt-2">
+            Cada imagen tarda ~15–40s. Los slides van apareciendo abajo a medida que se generan; podés dejar esta pantalla abierta.
+          </p>
         </div>
       )}
-      {data.status === 'failed' && <p className="text-red-600 mb-4">Falló: {data.error}</p>}
+      {data.status === 'failed' && (
+        <div className="mb-6 rounded-lg border border-red-300 bg-red-50 p-4">
+          <p className="text-sm font-medium text-red-700">Se cortó la generación</p>
+          <p className="text-sm text-red-600 mt-1 break-words">{data.error || 'Error desconocido'}</p>
+          <Button size="sm" variant="outline" className="mt-3" onClick={retry}>Reintentar desde donde quedó</Button>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
         {data.slides.map((s) => (

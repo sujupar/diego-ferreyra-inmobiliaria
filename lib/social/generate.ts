@@ -6,7 +6,7 @@
  */
 import { join } from 'node:path'
 import { composeSlide } from './compose'
-import { generateScene, generateBackground, FACIAL_LOCK } from './openai'
+import { generateScene, generateBackground, FACIAL_LOCK, IMAGE_QUALITY } from './openai'
 import { uploadSlidePng, uploadRawScene, downloadPng, admin } from './storage'
 import type { ScriptSlide } from './brand-bible'
 
@@ -92,9 +92,9 @@ export async function processNextSlide(carouselId: string): Promise<{ done: bool
     // 1. Generar la escena (si aplica).
     let rawScene: Buffer | undefined
     if (slide.image_kind === 'concept' && slide.image_prompt) {
-      rawScene = await generateBackground(slide.image_prompt, { size: '1024x1536', quality: 'high' })
+      rawScene = await generateBackground(slide.image_prompt, { size: '1024x1536', quality: IMAGE_QUALITY })
     } else if (slide.image_kind === 'diego') {
-      rawScene = await generateScene({ prompt: diegoPrompt(slide.image_prompt), referencePaths: DIEGO_REFS, size: '1024x1536', quality: 'high' })
+      rawScene = await generateScene({ prompt: diegoPrompt(slide.image_prompt), referencePaths: DIEGO_REFS, size: '1024x1536', quality: IMAGE_QUALITY })
     }
     const sceneUri = rawScene ? `data:image/png;base64,${rawScene.toString('base64')}` : undefined
 
@@ -129,9 +129,9 @@ export async function processNextSlide(carouselId: string): Promise<{ done: bool
 async function genScene(slide: ScriptSlide): Promise<{ raw?: Buffer; uri?: string }> {
   let raw: Buffer | undefined
   if (slide.image_kind === 'concept' && slide.image_prompt) {
-    raw = await generateBackground(slide.image_prompt, { size: '1024x1536', quality: 'high' })
+    raw = await generateBackground(slide.image_prompt, { size: '1024x1536', quality: IMAGE_QUALITY })
   } else if (slide.image_kind === 'diego') {
-    raw = await generateScene({ prompt: diegoPrompt(slide.image_prompt), referencePaths: DIEGO_REFS, size: '1024x1536', quality: 'high' })
+    raw = await generateScene({ prompt: diegoPrompt(slide.image_prompt), referencePaths: DIEGO_REFS, size: '1024x1536', quality: IMAGE_QUALITY })
   }
   return { raw, uri: raw ? `data:image/png;base64,${raw.toString('base64')}` : undefined }
 }

@@ -78,11 +78,13 @@ function getNavSections(role: Role): NavSection[] {
                 ]},
                 { label: 'Visitas', href: '/visits' },
                 { label: 'Contactos', href: '/contacts' },
-                { label: 'Redes Sociales', href: '/redes-sociales' },
-                ...(can('metrics.view') ? [
-                    { label: 'Metricas', href: '/metrics' },
-                    { label: 'Embudos', href: '/embudos' },
-                ] : []),
+                { label: 'Marketing', items: [
+                    { href: '/redes-sociales', label: 'Redes Sociales' },
+                    ...(can('metrics.view') ? [
+                        { href: '/metrics', label: 'Metricas' },
+                        { href: '/embudos', label: 'Embudos' },
+                    ] : []),
+                ]},
                 ...(can('settings.manage') || can('users.manage') ? [{
                     label: 'Admin', items: [
                         ...(can('settings.manage') ? [{ href: '/settings', label: 'Configuracion' }] : []),

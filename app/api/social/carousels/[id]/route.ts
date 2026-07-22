@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
 import { socialAuth, canAccessCarousel } from '@/lib/social/route-auth'
-import { processNextSlide } from '@/lib/social/generate'
 import { admin, signedUrl } from '@/lib/social/storage'
 
 export const maxDuration = 60
 
-// GET: estado del carrusel + slides. Si está generando, procesa UN slide pendiente
-// (continuación del lado del cliente: cada poll empuja la generación un paso).
+// GET: estado del carrusel + slides. LECTURA PURA E INSTANTÁNEA — no genera nada
+// (el procesamiento pesado va en POST /process, para no chocar con el límite de
+// tiempo de las funciones de Netlify y dar visibilidad inmediata).
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await socialAuth()
   if (auth.error || !auth.user) return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -17,11 +17,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!carousel) return NextResponse.json({ error: 'No existe' }, { status: 404 })
   if (!canAccessCarousel(carousel as any, auth.user.id, auth.isOps)) return NextResponse.json({ error: 'Sin acceso' }, { status: 403 })
 
-  if ((carousel as any).status === 'generating_images') {
-    try { await processNextSlide(id) } catch { /* el slide quedó marcado failed */ }
-  }
-
-  const { data: fresh } = await db.from('social_carousels').select('*').eq('id', id).single()
   const { data: slides } = await db.from('social_carousel_slides').select('*').eq('carousel_id', id).order('position', { ascending: true })
 
   const slidesOut = await Promise.all((slides || []).map(async (s: any) => ({
@@ -30,11 +25,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     status: s.status, error: s.error_message, url: await signedUrl(s.storage_url),
   })))
 
-  const c = fresh as any
+  const c = carousel as any
+  const total = slidesOut.length
+  const composed = slidesOut.filter((s) => s.status === 'composed').length
+  const nextPending = slidesOut.find((s) => s.status === 'pending')
+  const step = c.status === 'generating_images' && nextPending ? `Generando slide ${nextPending.position} de ${total}…` : null
+
   return NextResponse.json({
-    id, status: c.status, progress: c.progress_percent, title: c.title,
-    topic: c.topic, cta_type: c.cta_type, caption: c.caption, hashtags: c.hashtags,
-    error: c.error_message, slides: slidesOut,
+    id, status: c.status, progress: c.progress_percent ?? Math.round((composed / Math.max(total, 1)) * 100),
+    title: c.title, topic: c.topic, cta_type: c.cta_type, caption: c.caption, hashtags: c.hashtags,
+    error: c.error_message, step, slides: slidesOut,
   })
 }
 

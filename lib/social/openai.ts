@@ -9,6 +9,11 @@ import { basename } from 'node:path'
 const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2'
 const TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || 'gpt-4.1'
 
+// Calidad de imagen configurable por env (sin redeploy). 'medium' es más rápida
+// que 'high' → cabe mejor en el límite de tiempo de las funciones de Netlify.
+// Si persisten timeouts, setear OPENAI_IMAGE_QUALITY=low en Netlify.
+export const IMAGE_QUALITY = (process.env.OPENAI_IMAGE_QUALITY || 'medium') as 'low' | 'medium' | 'high' | 'auto'
+
 function key(): string {
   const k = process.env.OPENAI_API_KEY
   if (!k) throw new Error('OPENAI_API_KEY no está seteada')
