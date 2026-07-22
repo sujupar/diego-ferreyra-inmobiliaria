@@ -40,6 +40,7 @@ function getNavSections(role: Role): NavSection[] {
                 { label: 'Mis Contactos', href: '/contacts' },
                 { label: 'Visitas', href: '/visits' },
                 { label: 'Mis Propiedades', href: '/properties' },
+                { label: 'Redes Sociales', href: '/redes-sociales' },
             ]
 
         case 'coordinador':
@@ -57,6 +58,7 @@ function getNavSections(role: Role): NavSection[] {
                 ]},
                 { label: 'Visitas', href: '/visits' },
                 { label: 'Contactos', href: '/contacts' },
+                { label: 'Redes Sociales', href: '/redes-sociales' },
             ]
 
         default: // admin, dueno
@@ -76,6 +78,7 @@ function getNavSections(role: Role): NavSection[] {
                 ]},
                 { label: 'Visitas', href: '/visits' },
                 { label: 'Contactos', href: '/contacts' },
+                { label: 'Redes Sociales', href: '/redes-sociales' },
                 ...(can('metrics.view') ? [
                     { label: 'Metricas', href: '/metrics' },
                     { label: 'Embudos', href: '/embudos' },
