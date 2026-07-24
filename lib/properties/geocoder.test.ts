@@ -50,6 +50,22 @@ describe('geocodeAddress (OSM, sin key de Google)', () => {
     const r = await geocodeAddress('Calle inexistente 999, Nada, Argentina')
     expect(r).toBeNull()
   })
+
+  it('fallback: si la query con sub-barrio no resuelve, reintenta sin la localidad', async () => {
+    // La query completa (con "Flores Norte", que OSM no conoce) → sin resultado.
+    // El fallback (calle + CABA + Argentina, sin el sub-barrio) → resuelve.
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      const hasBarrio = /Flores(%20| )Norte/i.test(String(url))
+      return Promise.resolve({ ok: true, json: async () => (hasBarrio ? [] : OSM_ROOFTOP) } as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const r = await geocodeAddress(
+      'Coronel Falcón 2500, Flores Norte, Ciudad Autónoma de Buenos Aires, Argentina',
+      { isCaba: true, province: 'CABA', locality: 'Flores Norte' },
+    )
+    expect(r).not.toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(2) // query completa (miss) + fallback (hit)
+  })
 })
 
 describe('geocodeAddress (Google primero cuando hay key)', () => {

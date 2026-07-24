@@ -36,6 +36,18 @@ describe('parseAddress', () => {
     expect(p.number).toBeNull()
     expect(p.street).toBeTruthy()
   })
+
+  it('extrae la altura ignorando el sufijo de depto ("935 5 A")', () => {
+    const p = parseAddress('Aguero 935 5 A')
+    expect(p.street).toBe('Aguero')
+    expect(p.number).toBe('935')
+  })
+
+  it('no se confunde con calle que tiene número en el nombre ("Avenida 9 de Julio 1234")', () => {
+    const p = parseAddress('Avenida 9 de Julio 1234, San Nicolás, Capital Federal')
+    expect(p.number).toBe('1234')
+    expect(p.street).toBe('Avenida 9 de Julio')
+  })
 })
 
 describe('buildGeocodeQuery', () => {

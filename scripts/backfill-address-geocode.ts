@@ -63,6 +63,7 @@ async function main() {
     .from('properties')
     .select('id, address, neighborhood, city, province, import_external_id')
     .is('latitude', null)
+    .neq('status', 'descartada') // no geocodificar duplicados fusionados (status descartada)
   if (error) { console.error('fetch error:', error.message); process.exit(1) }
   if (!properties?.length) { console.log('Nada para backfillear.'); return }
 

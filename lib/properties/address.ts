@@ -77,7 +77,11 @@ export function parseAddress(
   const segments = raw.split(',').map(s => s.trim()).filter(Boolean)
   const streetSeg = segments[0] ?? ''
   // La altura es el último número del primer segmento (calle + altura).
-  const m = streetSeg.match(/^(.*?)\s+(\d+)\s*$/)
+  // Fallback: si el segmento no termina en número (ej. "Aguero 935 5 A" con
+  // depto), tomar la PRIMERA altura tras el nombre de la calle e ignorar el
+  // sufijo de piso/depto. No aplica a "Avenida 9 de Julio 1234" porque ahí el
+  // primer match (termina-en-número) ya captura 1234.
+  const m = streetSeg.match(/^(.*?)\s+(\d+)\s*$/) ?? streetSeg.match(/^(.+?)\s+(\d{1,6})(?=\s|$)/)
   const street = m ? m[1].trim() : (streetSeg || null)
   const number = m ? m[2] : null
 

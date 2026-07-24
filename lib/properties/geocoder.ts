@@ -127,7 +127,7 @@ async function geocodeOsm(query: string, expected?: GeocodeExpected): Promise<Ge
   return { lat: Number(r.lat), lng: Number(r.lon), formatted: r.display_name, confidence: conf, provider: 'osm' }
 }
 
-export async function geocodeAddress(query: string, expected?: GeocodeExpected): Promise<GeocodeResult | null> {
+async function geocodeOnce(query: string, expected?: GeocodeExpected): Promise<GeocodeResult | null> {
   const key = process.env.GOOGLE_GEOCODING_API_KEY
   if (key) {
     try {
@@ -140,4 +140,26 @@ export async function geocodeAddress(query: string, expected?: GeocodeExpected):
   } catch {
     return null
   }
+}
+
+/**
+ * Geocodifica con un fallback: si la query completa (calle, localidad/barrio,
+ * provincia, país) no resuelve, reintenta SIN la localidad del medio — típico en
+ * CABA con sub-barrios que OSM no conoce ("Flores Norte", "Parque Rivadavia",
+ * "Caballito Norte"): "Coronel Falcón 2500, Ciudad Autónoma de Buenos Aires,
+ * Argentina" sí resuelve. Al soltar la localidad, no la exigimos en el scoring.
+ */
+export async function geocodeAddress(query: string, expected?: GeocodeExpected): Promise<GeocodeResult | null> {
+  const primary = await geocodeOnce(query, expected)
+  if (primary) return primary
+
+  const segs = query.split(',').map(s => s.trim()).filter(Boolean)
+  if (segs.length >= 4) {
+    // calle + (provincia, país) — descarta los segmentos intermedios (localidad/barrio)
+    const simplified = [segs[0], segs[segs.length - 2], segs[segs.length - 1]].join(', ')
+    if (simplified !== query) {
+      return geocodeOnce(simplified, expected ? { ...expected, locality: null } : undefined)
+    }
+  }
+  return null
 }
