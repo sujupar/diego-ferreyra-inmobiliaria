@@ -1,0 +1,286 @@
+'use client'
+
+/**
+ * E1.8 — Captura de leads por POPUP (no formulario al pie).
+ *
+ * Provee `useLeadCapture().open()` a los CTAs de la landing (que son client
+ * components dentro del árbol, aunque los envuelvan server components — el
+ * contexto de un provider client SÍ llega a los client components descendientes).
+ * Renderiza un modal accesible con nombre / email / teléfono / intención, y
+ * reusa el mismo submit que el form legacy (POST /api/leads + Pixel/CAPI dedup).
+ */
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
+import { Loader2, CheckCircle2, X } from 'lucide-react'
+import { trackLead, getMetaCookie } from './MetaPixel'
+
+interface LeadCaptureCtx {
+  open: (source?: string) => void
+}
+const Ctx = createContext<LeadCaptureCtx | null>(null)
+
+export function useLeadCapture(): LeadCaptureCtx {
+  const ctx = useContext(Ctx)
+  // Fallback no-op: si por algún motivo un CTA queda fuera del provider, no
+  // rompe (mejor un botón inerte que un crash en una landing en vivo).
+  return ctx ?? { open: () => {} }
+}
+
+interface FormState {
+  name: string
+  email: string
+  phone: string
+  intent: string
+}
+const INITIAL: FormState = { name: '', email: '', phone: '', intent: 'Coordinar una visita' }
+const INTENTS = ['Coordinar una visita', 'Que me contacten', 'Recibir más información']
+
+function getUtmFromUrl(): Record<string, string> {
+  if (typeof window === 'undefined') return {}
+  const params = new URLSearchParams(window.location.search)
+  const utm: Record<string, string> = {}
+  for (const [k, v] of params.entries()) {
+    if (k.startsWith('utm_') || k.startsWith('fb_') || k === 'fbclid' || k === 'gclid') utm[k] = v
+  }
+  return utm
+}
+
+export function LeadCaptureProvider({
+  propertyId,
+  propertyTitle,
+  children,
+}: {
+  propertyId: string
+  propertyTitle: string
+  children: ReactNode
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [source, setSource] = useState<string>('cta')
+  const [form, setForm] = useState<FormState>(INITIAL)
+  const [status, setStatus] = useState<'idle' | 'sending' | 'ok' | 'err'>('idle')
+  const [errorMsg, setErrorMsg] = useState('')
+  const submittingRef = useRef(false)
+  const firstFieldRef = useRef<HTMLInputElement>(null)
+  const closeBtnRef = useRef<HTMLButtonElement>(null)
+
+  const open = useCallback((src?: string) => {
+    setSource(src ?? 'cta')
+    setStatus('idle')
+    setErrorMsg('')
+    setIsOpen(true)
+  }, [])
+
+  const close = useCallback(() => setIsOpen(false), [])
+
+  // Bloquea el scroll del fondo + cierra con ESC + foco al primer campo.
+  useEffect(() => {
+    if (!isOpen) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close()
+    }
+    document.addEventListener('keydown', onKey)
+    // Foco al primer input (o al cerrar si ya está enviado).
+    const t = setTimeout(() => firstFieldRef.current?.focus(), 40)
+    return () => {
+      document.body.style.overflow = prevOverflow
+      document.removeEventListener('keydown', onKey)
+      clearTimeout(t)
+    }
+  }, [isOpen, close])
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (submittingRef.current) return
+    if (!form.name.trim() || (!form.email.trim() && !form.phone.trim())) {
+      setStatus('err')
+      setErrorMsg('Necesitamos tu nombre y al menos un contacto (email o teléfono).')
+      return
+    }
+    submittingRef.current = true
+    setStatus('sending')
+    setErrorMsg('')
+    const eventId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    try {
+      const res = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          propertyId,
+          name: form.name.trim(),
+          email: form.email.trim() || null,
+          phone: form.phone.trim() || null,
+          message: `${form.intent}${source ? ` · ${source}` : ''}`,
+          utm: getUtmFromUrl(),
+          eventId,
+          fbp: getMetaCookie('_fbp'),
+          fbc: getMetaCookie('_fbc'),
+          eventSourceUrl: typeof window !== 'undefined' ? window.location.href : null,
+        }),
+      })
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({ error: 'Error' }))
+        throw new Error(error || 'No pudimos enviar tus datos')
+      }
+      trackLead({ propertyId, eventId })
+      setStatus('ok')
+      setForm(INITIAL)
+    } catch (err) {
+      setStatus('err')
+      setErrorMsg(err instanceof Error ? err.message : 'Error desconocido')
+    } finally {
+      submittingRef.current = false
+    }
+  }
+
+  return (
+    <Ctx.Provider value={{ open }}>
+      {children}
+
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="lead-modal-title"
+        >
+          {/* Backdrop */}
+          <button
+            type="button"
+            aria-label="Cerrar"
+            onClick={close}
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200"
+          />
+          {/* Panel */}
+          <div className="relative z-10 w-full max-w-md rounded-t-2xl bg-white p-6 text-slate-900 shadow-2xl sm:rounded-2xl sm:p-8 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:slide-in-from-bottom-2 motion-safe:duration-300">
+            <button
+              ref={closeBtnRef}
+              type="button"
+              aria-label="Cerrar"
+              onClick={close}
+              className="absolute right-4 top-4 rounded-full p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            {status === 'ok' ? (
+              <div className="flex flex-col items-center gap-3 py-6 text-center">
+                <CheckCircle2 className="h-12 w-12 text-emerald-600" />
+                <p className="text-lg font-medium">¡Gracias! Recibimos tus datos.</p>
+                <p className="text-sm text-slate-500">Un asesor te va a contactar muy pronto.</p>
+                <button
+                  type="button"
+                  onClick={close}
+                  className="mt-2 rounded-full bg-slate-900 px-6 py-2.5 text-sm font-medium text-white"
+                >
+                  Cerrar
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={submit} className="space-y-4">
+                <div>
+                  <h2 id="lead-modal-title" className="text-xl font-semibold">
+                    Dejanos tus datos
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Un asesor te contacta para lo que necesites — sin compromiso.
+                  </p>
+                </div>
+                <input type="hidden" value={propertyTitle} readOnly />
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium" htmlFor="lc-name">
+                    Nombre y apellido <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    ref={firstFieldRef}
+                    id="lc-name"
+                    type="text"
+                    required
+                    value={form.name}
+                    onChange={e => setForm({ ...form, name: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base outline-none focus:border-slate-900"
+                    placeholder="Juan Pérez"
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium" htmlFor="lc-email">
+                      Email
+                    </label>
+                    <input
+                      id="lc-email"
+                      type="email"
+                      value={form.email}
+                      onChange={e => setForm({ ...form, email: e.target.value })}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base outline-none focus:border-slate-900"
+                      placeholder="juan@ejemplo.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium" htmlFor="lc-phone">
+                      Teléfono / WhatsApp
+                    </label>
+                    <input
+                      id="lc-phone"
+                      type="tel"
+                      value={form.phone}
+                      onChange={e => setForm({ ...form, phone: e.target.value })}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base outline-none focus:border-slate-900"
+                      placeholder="+54 11 XXXX XXXX"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium" htmlFor="lc-intent">
+                    ¿Qué te interesa?
+                  </label>
+                  <select
+                    id="lc-intent"
+                    value={form.intent}
+                    onChange={e => setForm({ ...form, intent: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base outline-none focus:border-slate-900"
+                  >
+                    {INTENTS.map(i => (
+                      <option key={i} value={i}>
+                        {i}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {status === 'err' && errorMsg && <p className="text-sm text-red-600">{errorMsg}</p>}
+
+                <button
+                  type="submit"
+                  disabled={status === 'sending'}
+                  className="flex w-full items-center justify-center gap-2 rounded-full bg-slate-900 px-6 py-3.5 text-base font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
+                >
+                  {status === 'sending' && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Me interesa, quiero que me contacten
+                </button>
+                <p className="text-center text-xs text-slate-400">
+                  Al enviar aceptás nuestra{' '}
+                  <a href="https://inmodf.com.ar/privacidad" className="underline">
+                    política de privacidad
+                  </a>
+                  .
+                </p>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+    </Ctx.Provider>
+  )
+}

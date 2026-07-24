@@ -17,12 +17,93 @@ import { z } from 'zod'
 const HeroBlock = z.object({
   id: z.string(),
   type: z.literal('hero'),
-  /** Sobrescribe el título; si falta, se deriva de property.title. */
-  titleOverride: z.string().max(140).optional(),
+  /** Titular (tipo + ubicación + beneficio principal). Si falta, se deriva. */
+  titleOverride: z.string().max(160).optional(),
+  /** Subtítulo del hero (segunda línea, refuerza el beneficio). */
+  subtitle: z.string().max(200).optional(),
+  /** Descripción corta bajo el titular/video. */
+  shortDesc: z.string().max(280).optional(),
+  /** Texto del CTA del hero (abre el popup). Default "Quiero saber más". */
+  ctaLabel: z.string().max(40).optional(),
   /** Índice en property.photos para el fondo del hero. Default 0. */
   heroPhotoIndex: z.number().int().min(0).optional(),
-  /** Variante visual (para templates premium en E1.7). */
+  /**
+   * Protagonista del hero:
+   *  'auto'  → video si la propiedad tiene, sino foto (default, E1.8)
+   *  'photo' → siempre la foto
+   *  'video' → fuerza el video (si existe)
+   */
+  mediaMode: z.enum(['auto', 'photo', 'video']).optional(),
+  /** Variante visual. */
   variant: z.enum(['classic', 'cinematic', 'split']).optional(),
+})
+
+// ---- E1.8 · Bloques de CONVERSIÓN (beneficios intangibles, no ficha de portal) ----
+
+const BenefitItem = z.object({
+  /** A qué se ata el beneficio (para el ícono/encuadre). */
+  tie: z.enum(['propiedad', 'ubicacion', 'amenities', 'otro']),
+  title: z.string().max(80),
+  body: z.string().max(320),
+})
+
+/** Los 3 beneficios INTANGIBLES (propiedad / ubicación / amenities). */
+const IntangibleBenefitsBlock = z.object({
+  id: z.string(),
+  type: z.literal('intangible_benefits'),
+  eyebrow: z.string().max(60).optional(),
+  items: z.array(BenefitItem).min(1).max(4),
+})
+
+/** Beneficio principal + slides de imágenes que lo refuerzan. */
+const BenefitShowcaseBlock = z.object({
+  id: z.string(),
+  type: z.literal('benefit_showcase'),
+  headline: z.string().max(160),
+  body: z.string().max(400).optional(),
+  /** Índices de property.photos para las slides. Si falta, las primeras. */
+  photoIndices: z.array(z.number().int().min(0)).optional(),
+})
+
+/** "Sobre esta propiedad" — storytelling. */
+const StoryBlock = z.object({
+  id: z.string(),
+  type: z.literal('story'),
+  title: z.string().max(80).optional(),
+  /** Si falta, usa property.description. */
+  body: z.string().optional(),
+})
+
+/** Beneficio principal destacado (declaración grande, centrada). */
+const MainBenefitBlock = z.object({
+  id: z.string(),
+  type: z.literal('main_benefit'),
+  headline: z.string().max(200),
+  body: z.string().max(300).optional(),
+})
+
+/** Solo lo ESENCIAL (3-4 datos tangibles) — gancho, no ficha completa. */
+const EssentialSpecsBlock = z.object({
+  id: z.string(),
+  type: z.literal('essential_specs'),
+})
+
+/** Ubicación SUTIL: barrio + una línea de beneficio de zona. SIN mapa ni botón. */
+const LocationNoteBlock = z.object({
+  id: z.string(),
+  type: z.literal('location_note'),
+  text: z.string().max(240).optional(),
+})
+
+/** Banda de CTA que abre el popup. Se usa 2-3 veces distribuida hacia abajo. */
+const CtaBlock = z.object({
+  id: z.string(),
+  type: z.literal('cta'),
+  /** Texto del botón. Default "Quiero saber más". */
+  label: z.string().max(40).optional(),
+  /** Título opcional sobre el botón. */
+  headline: z.string().max(160).optional(),
+  subtext: z.string().max(200).optional(),
 })
 
 const FeaturesBlock = z.object({
@@ -89,6 +170,14 @@ export const LandingBlock = z.discriminatedUnion('type', [
   LocationMapBlock,
   ProofBarBlock,
   LeadFormBlock,
+  // E1.8 — conversión
+  IntangibleBenefitsBlock,
+  BenefitShowcaseBlock,
+  StoryBlock,
+  MainBenefitBlock,
+  EssentialSpecsBlock,
+  LocationNoteBlock,
+  CtaBlock,
 ])
 export type LandingBlock = z.infer<typeof LandingBlock>
 export type LandingBlockType = LandingBlock['type']
@@ -110,13 +199,14 @@ export const LandingDocument = z
     theme: LandingTheme.default({}),
   })
   .superRefine((doc, ctx) => {
-    // Invariante de conversión: EXACTAMENTE un lead_form. Es el objetivo de la
-    // landing; sin él no hay conversión, con dos se dispersa.
-    const forms = doc.blocks.filter(b => b.type === 'lead_form')
-    if (forms.length !== 1) {
+    // Invariante de conversión: al menos UN disparador de conversión. En el
+    // modelo E1.8 son los `cta` (abren el popup); el `lead_form` inline queda
+    // soportado para landings legacy. Sin ninguno no hay conversión.
+    const triggers = doc.blocks.filter(b => b.type === 'lead_form' || b.type === 'cta')
+    if (triggers.length < 1) {
       ctx.addIssue({
         code: 'custom',
-        message: `La landing debe tener exactamente 1 formulario (tiene ${forms.length}).`,
+        message: 'La landing debe tener al menos 1 CTA (o formulario) de conversión.',
         path: ['blocks'],
       })
     }

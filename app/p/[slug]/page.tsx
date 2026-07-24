@@ -5,8 +5,9 @@ import type { Database } from '@/types/database.types'
 import { MetaPixel } from '@/components/landing/MetaPixel'
 import { LandingVisitTracker } from '@/components/landing/LandingVisitTracker'
 import { LandingRenderer } from '@/components/landing/LandingRenderer'
+import { LeadCaptureProvider } from '@/components/landing/LeadCaptureProvider'
 import { getPublishedLanding } from '@/lib/landing/get-landing'
-import { legacyFallbackDocument } from '@/lib/landing/legacy-fallback'
+import { conversionTemplate } from '@/lib/landing/templates/conversion'
 import { deriveFunnelType } from '@/lib/landing/funnel-type'
 
 function getAdmin() {
@@ -77,11 +78,11 @@ export default async function PropertyLandingPage({
 
   const pixelId = process.env.META_PIXEL_ID ?? ''
 
-  // E1.2 — Render schema-driven. Si la propiedad tiene una landing PUBLICADA,
-  // se usa su documento (bloques editables). Si no, el fallback legacy produce
-  // exactamente el layout de siempre (cero landings rotas el día del deploy).
+  // E1.2/E1.8 — Render schema-driven. Si la propiedad tiene una landing PUBLICADA,
+  // se usa su documento (bloques editables). Si no, se sirve la estructura de
+  // CONVERSIÓN (beneficios intangibles + CTAs a popup) con copy determinístico.
   const published = await getPublishedLanding(property.id)
-  const document = published?.document ?? legacyFallbackDocument()
+  const document = published?.document ?? conversionTemplate.build(property)
 
   // E1.0 — funnel_type real. Prioriza el congelado en la landing publicada;
   // si no hay, se deriva de la propiedad (server-side, nunca desde la URL).
@@ -97,7 +98,10 @@ export default async function PropertyLandingPage({
           propertyTitle={heroTitle}
         />
       )}
-      <LandingRenderer document={document} property={property} />
+      {/* Los CTAs de la landing abren este popup (LeadCaptureProvider). */}
+      <LeadCaptureProvider propertyId={property.id} propertyTitle={heroTitle}>
+        <LandingRenderer document={document} property={property} />
+      </LeadCaptureProvider>
     </main>
   )
 }

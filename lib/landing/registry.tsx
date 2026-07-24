@@ -22,6 +22,14 @@ import { LandingDescription } from '@/components/landing/Description'
 import { LandingLocationMap } from '@/components/landing/LocationMap'
 import { LandingProofBar } from '@/components/landing/ProofBar'
 import { LandingLeadForm } from '@/components/landing/LeadForm'
+// E1.8 — conversión
+import { LandingIntangibleBenefits } from '@/components/landing/IntangibleBenefits'
+import { LandingBenefitShowcase } from '@/components/landing/BenefitShowcase'
+import { LandingStory } from '@/components/landing/Story'
+import { LandingMainBenefit } from '@/components/landing/MainBenefit'
+import { LandingEssentialSpecs } from '@/components/landing/EssentialSpecs'
+import { LandingLocationNote } from '@/components/landing/LocationNote'
+import { LandingCtaBand } from '@/components/landing/CtaBand'
 
 export type LandingProperty = Database['public']['Tables']['properties']['Row']
 
@@ -54,6 +62,9 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
       return (
         <LandingHero
           title={heroTitle(property, block.titleOverride)}
+          subtitle={block.subtitle}
+          shortDesc={block.shortDesc}
+          ctaLabel={block.ctaLabel}
           address={property.address}
           neighborhood={property.neighborhood}
           city={property.city}
@@ -61,6 +72,9 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
           currency={property.currency}
           operationType={property.operation_type}
           heroImage={photos[idx] ?? photos[0]}
+          videoUrl={property.video_url}
+          videoFileUrl={property.video_file_url}
+          mediaMode={block.mediaMode}
         />
       )
     },
@@ -164,6 +178,90 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
         <LandingLeadForm
           propertyId={property.id}
           propertyTitle={heroTitle(property)}
+        />
+      )
+    },
+  },
+
+  // ── E1.8 · Bloques de conversión ──────────────────────────────────────────
+  intangible_benefits: {
+    label: 'Beneficios',
+    render: (block) => {
+      if (block.type !== 'intangible_benefits') return null
+      return <LandingIntangibleBenefits eyebrow={block.eyebrow} items={block.items} />
+    },
+  },
+
+  benefit_showcase: {
+    label: 'Showcase',
+    render: (block, { property }) => {
+      if (block.type !== 'benefit_showcase') return null
+      const all = property.photos ?? []
+      const photos = block.photoIndices?.length
+        ? block.photoIndices.map(i => all[i]).filter((p): p is string => typeof p === 'string')
+        : all.slice(0, 4)
+      return <LandingBenefitShowcase headline={block.headline} body={block.body} photos={photos} />
+    },
+  },
+
+  story: {
+    label: 'Storytelling',
+    render: (block, { property }) => {
+      if (block.type !== 'story') return null
+      const body = block.body ?? property.description ?? ''
+      if (!body.trim()) return null
+      return <LandingStory title={block.title ?? 'Sobre esta propiedad'} body={body} />
+    },
+  },
+
+  main_benefit: {
+    label: 'Beneficio principal',
+    render: (block) => {
+      if (block.type !== 'main_benefit') return null
+      return <LandingMainBenefit headline={block.headline} body={block.body} />
+    },
+  },
+
+  essential_specs: {
+    label: 'Datos esenciales',
+    render: (block, { property }) => {
+      if (block.type !== 'essential_specs') return null
+      return (
+        <LandingEssentialSpecs
+          rooms={property.rooms}
+          bedrooms={property.bedrooms}
+          bathrooms={property.bathrooms}
+          garages={property.garages}
+          coveredArea={property.covered_area}
+        />
+      )
+    },
+  },
+
+  location_note: {
+    label: 'Ubicación',
+    render: (block, { property }) => {
+      if (block.type !== 'location_note') return null
+      return (
+        <LandingLocationNote
+          neighborhood={property.neighborhood}
+          city={property.city}
+          note={block.text}
+        />
+      )
+    },
+  },
+
+  cta: {
+    label: 'CTA',
+    render: (block) => {
+      if (block.type !== 'cta') return null
+      return (
+        <LandingCtaBand
+          label={block.label ?? 'Quiero saber más'}
+          headline={block.headline}
+          subtext={block.subtext}
+          source={block.id}
         />
       )
     },

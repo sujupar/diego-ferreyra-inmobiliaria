@@ -18,6 +18,8 @@ import { getOrGenerateBridgedDescription } from '@/lib/marketing/portal-descript
 import { analyzePropertyPhotos } from '@/lib/marketing/property-vision-analyzer'
 import { deriveFunnelType, type PropertyFunnelType } from './funnel-type'
 import { buildFromTemplate, suggestTemplateId, getTemplate } from './templates'
+import { buildConversionDocument } from './templates/conversion'
+import { generateConversionCopy } from './conversion-copy'
 import { buildUtmBase } from './utm'
 import { LandingDocument, safeParseLandingDocument } from './schema'
 import { generateEmpathyAvatars } from '@/lib/marketing/empathy-avatar-generator'
@@ -117,8 +119,12 @@ export async function startCoCreation(propertyId: string, userId: string | null)
     generateCoCreationQuestions({ property, visionSummary, description }),
   ])
 
-  const templateId = suggestTemplateId(funnelType)
-  const { document } = buildFromTemplate(templateId, property)
+  // E1.8 — landing de CONVERSIÓN con copy IA (beneficios intangibles + dolor),
+  // personalizado con el avatar. Queda editable; si la IA falla, cae al copy
+  // determinístico internamente (generateConversionCopy nunca tira).
+  const templateId = suggestTemplateId(funnelType) // 'conversion'
+  const { copy } = await generateConversionCopy({ property, avatar: avatars[0] })
+  const document = buildConversionDocument(property, copy)
 
   const wizard_state: WizardState = {
     step: 'questions',
@@ -234,9 +240,9 @@ export async function publishLanding(propertyId: string, appUrl: string, userId:
   const landing = await getLanding(propertyId)
   if (!landing) throw new Error('landing not found')
 
-  // 1. content válido (invariante: exactamente 1 lead_form).
+  // 1. content válido (invariante: al menos 1 CTA/lead_form de conversión).
   const doc = safeParseLandingDocument(landing.content)
-  if (!doc) throw new Error('La landing no tiene un diseño válido. Revisá que tenga un formulario.')
+  if (!doc) throw new Error('La landing no tiene un diseño válido. Revisá que tenga al menos un CTA.')
 
   // 2. avatar elegido → primary (si el asesor seleccionó uno de los candidatos).
   let avatarId = landing.avatar_id
