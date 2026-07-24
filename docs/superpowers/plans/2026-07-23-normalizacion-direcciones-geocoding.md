@@ -199,6 +199,10 @@ describe('normalizeNeighborhood', () => {
   it('title-case', () => {
     expect(normalizeNeighborhood('villa devoto')).toBe('Villa Devoto')
   })
+  it('title-case accent-safe (no mayusculiza letras internas acentuadas)', () => {
+    expect(normalizeNeighborhood('núñez')).toBe('Núñez')
+    expect(normalizeNeighborhood('villa general mitre')).toBe('Villa General Mitre')
+  })
   it('null-safe', () => {
     expect(normalizeNeighborhood('')).toBeNull()
     expect(normalizeNeighborhood(null)).toBeNull()
@@ -276,7 +280,9 @@ function stripAccentsLower(s: string): string {
 }
 
 function titleCase(s: string): string {
-  return s.toLowerCase().replace(/\b([\p{L}])/gu, m => m.toUpperCase())
+  // Accent-safe: mayusculiza la primera letra tras inicio/espacio/guion/apóstrofo/punto.
+  // (No usar \b: en JS no es unicode-aware y rompe con acentos, ej. "núñez" → "NÚñez".)
+  return s.toLowerCase().replace(/(^|[\s\-'.])(\p{L})/gu, (_, sep, ch) => sep + ch.toUpperCase())
 }
 
 // Alias de barrios: nombre del CSV/usuario → nombre canónico para geocoding/portales.
