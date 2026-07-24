@@ -3,6 +3,7 @@ import { createProperty, getProperties } from '@/lib/supabase/properties'
 import { requireAuth } from '@/lib/auth/require-role'
 import { notifyPropertyCreated } from '@/lib/email/notifications/property-created'
 import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
+import { geocodePropertyBestEffort } from '@/lib/properties/geocode-on-write'
 
 export async function GET(request: NextRequest) {
   try {
@@ -36,6 +37,8 @@ export async function POST(request: NextRequest) {
       assigned_to: body.assigned_to,
     }
     const id = await createProperty(payload)
+
+    await geocodePropertyBestEffort(id) // best-effort, nunca lanza
 
     // N4: notificar coordinador+admins+dueños (y asesor como CC).
     // Si falla, escala a admins.
