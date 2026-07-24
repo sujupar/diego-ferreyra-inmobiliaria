@@ -43,7 +43,7 @@ El router está en `app/(dashboard)/properties/[id]/marketing/meta-ads/page.tsx`
 4. 3 avatares de comprador (Gemini text). El asesor puede comentar para refinar uno
 5. Galería con estrellas: elegir 3 fotos principales
 6. Ubicaciones (3 presets — Cercanos / Similares / Toda CABA)
-7. **Generación de 27 piezas** = 3 fotos × 3 estilos × 3 formatos. Async con polling
+7. **Generación de 12 piezas** = 3 fotos × 2 estilos × 2 formatos (E2.5, 2026-07-24; antes eran 27 con Gemini). Async con polling
 8. Videos opcionales
 9. Presupuesto en ARS
 10. Revisión final
@@ -61,11 +61,29 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/confirm
 POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 ```
 
-### Modelos de Gemini
+### Motor de imágenes de campaña (E2.5, 2026-07-24)
+
+- **Foto de la pieza (Stage A):** **OpenAI `gpt-image-2`** vía `images/edits` con la
+  foto REAL como referencia (preserva la propiedad). Calidad `'low'` por default
+  (var `AD_IMAGE_OPENAI_QUALITY`): verificada en ~26s (cabe en el maxDuration=60s
+  de Netlify), fiel a la propiedad y barata. `'medium'` mide ~65s → NO usar (excede
+  el límite). Prompt foto-only, sin texto.
+- **Texto de la pieza (Stage B):** overlay VECTORIAL (satori + resvg) → el texto
+  NUNCA pasa por IA, cero errores ortográficos. Estilos usados: `editorial_magazine`
+  + `hero_full_bleed` (los 2 verificados que llenan 4:5 y 9:16 sin espacio muerto).
+- **Cache:** la foto mejorada se cachea en Storage (`social-carousels/ad-enhanced/{jobId}/r{idx}.jpg`)
+  por foto de origen → OpenAI corre **~3 veces por campaña** (1 por foto), no 12. Un
+  reintento NO regenera lo hecho. Rollback: `AD_IMAGE_ENGINE=gemini` (V2 con Gemini)
+  o `=legacy` (v1 all-in-one). Motor pluggable en `lib/marketing/ad-image-generator-v2.ts`.
+- **OJO:** los 4 templates `split_photo_info`, `color_overlay_solid`, `minimalist_whitespace`,
+  `typography_dominant` tienen bugs de satori (undefined/`display`) o dejan espacio
+  muerto en 9:16 — NO usarlos en `STYLE_DUO` sin arreglarlos y re-renderizar antes.
+
+### Modelos de Gemini (texto/visión; imagen migrada a OpenAI arriba)
 
 - **Vision (análisis de fotos):** `gemini-2.5-flash` (var: `GEMINI_VISION_MODEL`)
 - **Text (avatares + copy):** `gemini-2.5-flash` (var: `GEMINI_TEXT_MODEL`)
-- **Image (generación de piezas):** **`gemini-2.5-flash-image`** (var: `GEMINI_IMAGE_MODEL`)
+- **Image (legacy, solo si `AD_IMAGE_ENGINE=gemini|legacy`):** **`gemini-2.5-flash-image`** (var: `GEMINI_IMAGE_MODEL`)
   - **OJO 1:** `gemini-2.5-flash-image-preview` NO existe (404). El nombre correcto
     es `gemini-2.5-flash-image` (sin `-preview`). Verificado empíricamente 2026-06-06.
   - **OJO 2 (2026-06-08):** `gemini-2.0-flash` fue deprecado. El probe a
@@ -82,9 +100,12 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 
 ### Costos
 
-- 27 piezas Gemini Image × $0.04 ≈ $1.08 por campaña
-- Optimizar avatar con comentario: ~$0.01 cada vez
-- A 50 campañas/mes: ~$54/mes en Gemini
+- Imágenes: gracias al cache, **~3 llamadas a `gpt-image-2` `'low'` por campaña**
+  (1 por foto de origen), no 12 — las otras 9 piezas solo hacen overlay vectorial
+  (gratis). El costo por campaña = 3 × lo que OpenAI cobre por `gpt-image-2` `'low'`
+  (mucho menos que las 27 generaciones Gemini de antes). Verificar el precio real
+  en la cuenta OpenAI — no está hardcodeado acá.
+- Optimizar avatar con comentario: ~$0.01 cada vez (Gemini text).
 
 ### Tablas relacionadas
 

@@ -1,14 +1,15 @@
 'use client'
 
 /**
- * Wizard de Meta Ads v2 — flujo de 11 etapas con generación async de 27 piezas.
+ * Wizard de Meta Ads v2 — flujo de 11 etapas con generación async de 12 piezas.
  * Reemplaza progresivamente al MetaAdsWizard (que queda como fallback).
  *
  * Arquitectura:
  *  - Crea un meta_launch_job al iniciar.
  *  - Polling cada 3s mientras el job está en estados analyzing/generating.
  *  - Cada paso del UI guarda input via PATCH save-input.
- *  - Generación de 27 piezas en batches de 3 (frontend dispara 9 llamadas).
+ *  - Generación de 12 piezas (3 fotos × 2 estilos × 2 formatos) en batches;
+ *    el motor (E2.5) es OpenAI gpt-image-2 + overlay vectorial.
  *  - Confirm crea campaña + custom audiences.
  */
 
@@ -113,7 +114,7 @@ type WizardStep =
   | 'photo_stars'
   | 'geo'
   | 'budget'
-  | 'generating' // 27 piezas
+  | 'generating' // 12 piezas
   | 'review_and_publish'
   | 'publishing'
   | 'done'
@@ -123,7 +124,7 @@ interface Props {
   property: PropertyMinimal
   /** Si hay un job vivo (analyzing/awaiting/generating/awaiting_confirm/publishing)
    *  para esta property, el server lo pasa para que retomemos sin perder las
-   *  27 piezas pre-generadas. */
+   *  12 piezas pre-generadas. */
   existingJobId?: string | null
   /** True cuando hay una fila property_meta_campaigns no-archived que NO está
    *  completa (Campaign+AdSet+0 Ads del incidente 2026-06-09). Bloquea el
@@ -175,7 +176,7 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
   // Clamp duro a [MIN, MAX]: imposible setear fuera de rango desde la UI.
   const setBudgetClamped = (v: number) =>
     setDailyBudget(Math.min(META_MAX_DAILY_ARS, Math.max(META_MIN_DAILY_ARS, Math.floor(v) || META_MIN_DAILY_ARS)))
-  const [generationProgress, setGenerationProgress] = useState<{ generated: number; total: number; failures: number }>({ generated: 0, total: 27, failures: 0 })
+  const [generationProgress, setGenerationProgress] = useState<{ generated: number; total: number; failures: number }>({ generated: 0, total: 12, failures: 0 })
   // CRÍTICO: usar useRef en vez de useState. El recursive runNextBatch lee
   // este flag sincrónicamente — si fuera useState, la closure capturada lee
   // un valor stale y la cadena se rompe después del primer batch.
@@ -198,7 +199,7 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
       // necesitamos manejar TODAS las transiciones, no solo las "felices",
       // porque al resumir un job activo el step inicial es 'analyzing' pero
       // el server puede estar en cualquier punto (generating con 3 piezas
-      // ya guardadas, awaiting_confirm con 27, etc.). Sin esto, el wizard
+      // ya guardadas, awaiting_confirm con 12, etc.). Sin esto, el wizard
       // quedaba para siempre en "Paso 2-4 — Analizando" mientras el server
       // seguía trabajando — el famoso "no avanza".
       const serverStatus = data.job?.status as string | undefined
@@ -238,7 +239,7 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
         if (
           data.job?.status === 'generating' &&
           !generatingBatchRef.current &&
-          data.assets.length < 27
+          data.assets.length < 12
         ) {
           void runNextBatch()
         }
@@ -459,7 +460,7 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
       setAvatarComment('')
       setOptimizedAvatar(null)
       setStarredPhotos([])
-      setGenerationProgress({ generated: 0, total: 27, failures: 0 })
+      setGenerationProgress({ generated: 0, total: 12, failures: 0 })
       generatingBatchRef.current = false
     }
   }
@@ -537,7 +538,7 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
           </p>
           <p className="text-sm">
             Tenés que <strong>archivar esa campaña fallida</strong> para poder lanzar una limpia.
-            Esto no borra las 27 piezas gráficas ya generadas si las tenés en cache —
+            Esto no borra las 12 piezas gráficas ya generadas si las tenés en cache —
             quedan disponibles para el próximo intento.
           </p>
           <div className="flex gap-2">
@@ -562,7 +563,7 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
   // Esto evita el "wizard atascado en paso 4 sin nada que mostrar" cuando los
   // avatares no se generan (p.ej. GEMINI_API_KEY ausente).
   if (job?.status === 'failed') {
-    // Distinguir error de PUBLICACIÓN (las 27 piezas están bien, falló crear
+    // Distinguir error de PUBLICACIÓN (las 12 piezas están bien, falló crear
     // la campaña en Meta) de error de ANÁLISIS (Gemini/billing). Solo el
     // primero permite "Reintentar publicar" sin regenerar nada — caro.
     const errMsg = job.error_message ?? ''
@@ -850,8 +851,8 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
             Marcá con estrella las <strong>3 fotos que mejor venden</strong> esta propiedad.
-            Vamos a usar cada una como base para generar 3 piezas gráficas distintas
-            (9 piezas por foto × 3 fotos = <strong>27 anuncios</strong>).
+            Vamos a usar cada una como base para generar piezas gráficas distintas
+            (4 piezas por foto × 3 fotos = <strong>12 anuncios</strong>).
           </p>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {property.photos.map((url, idx) => {
@@ -1012,7 +1013,7 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Paso 7 — Generando 27 piezas gráficas con IA
+            Paso 7 — Generando 12 piezas gráficas con IA
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">

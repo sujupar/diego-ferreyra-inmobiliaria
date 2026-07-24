@@ -1,12 +1,19 @@
 /**
- * Runner asíncrono para generar las 27 piezas gráficas de una campaña.
+ * Runner asíncrono para generar las 12 piezas gráficas de una campaña.
  *
- * Genera: 3 fotos seleccionadas × 3 composiciones × 3 formatos = 27 piezas.
+ * Genera: 2 fotos seleccionadas × 2 composiciones × 3 formatos = 12 piezas.
  *
- * Por timeout de Netlify Functions (60s con maxDuration=60), las 27 piezas
+ * Motor (E2.5): OpenAI gpt-image-2 mejora la foto (Stage A) + overlay vectorial
+ * (Stage B). El texto NUNCA pasa por IA → cero errores ortográficos. La foto
+ * mejorada se CACHEA por foto de origen (bucket social-carousels): solo se llama
+ * a OpenAI 1 vez por foto (no 1 vez por pieza) y un reintento NO regenera nada.
+ *
+ * Por timeout de Netlify Functions (60s con maxDuration=60), las 12 piezas
  * NO se pueden generar en una sola request. La estrategia es generar en
- * batches de 3 piezas (~30-45s cada batch) coordinados desde el frontend
- * que va llamando `runBatch` hasta que progress=100%.
+ * batches chicos coordinados desde el frontend que va llamando `runBatch`
+ * hasta que progress=100%. Las piezas "frías" (primera de cada foto) llaman a
+ * OpenAI (~26s); las "tibias" (misma foto, otro estilo/formato) solo hacen el
+ * overlay (~3s) reusando la foto cacheada.
  *
  * El estado del job vive en `meta_launch_jobs`; cada pieza generada se
  * persiste en `property_ad_assets` con el `launch_job_id`.
@@ -15,21 +22,19 @@ import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import type { Property } from '@/lib/portals/types'
 import { generateAdImage } from './ad-image-generator'
-import { generateAdImageV2 } from './ad-image-generator-v2'
+import { generateAdImageV2, type GeneratedAdImage as GeneratedAdImageV2 } from './ad-image-generator-v2'
 import type { CompositionStyle, AdFormat } from './ad-image-prompts'
 import type { PropertyHighlight } from './property-vision-analyzer'
+import { downloadAdEnhanced, uploadAdEnhanced } from '@/lib/social/storage'
 
 /**
- * Feature flag para el pipeline 2-stage (Gemini foto + satori overlay).
- * Cuando se setea USE_V2_PIPELINE=true en Netlify env vars, el runner usa
- * el nuevo generator que SEPARA foto (IA) de tipografía (vectorial). Eso
- * elimina errores ortográficos por construcción ("Departamenton" → 0%) y
- * mejora calidad tipográfica al nivel agencia.
- *
- * Default OFF: cualquier campaña que se gatille sin la env var sigue usando
- * el pipeline v1 (Gemini para todo). Permite rollback inmediato si v2 falla.
+ * Motor de imágenes (E2.5). Default 'openai' (gpt-image-2 + overlay vectorial).
+ * Rollback vía env AD_IMAGE_ENGINE:
+ *   'openai' (default) → V2 con OpenAI en la foto
+ *   'gemini'           → V2 con Gemini en la foto (motor anterior)
+ *   'legacy'           → v1 all-in-one (Gemini hace todo; puede tener typos)
  */
-const USE_V2_PIPELINE = process.env.USE_V2_PIPELINE === 'true'
+const AD_IMAGE_ENGINE = (process.env.AD_IMAGE_ENGINE ?? 'openai') as 'openai' | 'gemini' | 'legacy'
 
 function getAdmin() {
   return createClient<Database>(
@@ -41,46 +46,61 @@ function getAdmin() {
 const META_API = 'https://graph.facebook.com/v21.0'
 
 /**
- * Estructura de las 27 piezas: ordenadas en una grilla determinística para
- * que el "índice de pieza" sea estable entre reintentos.
+ * Estructura de las 12 piezas: ordenadas en una grilla determinística para
+ * que el "índice de pieza" sea estable entre reintentos. IMPORTANTE: las 4
+ * piezas de una misma foto van CONSECUTIVAS (idx 0-3 = foto 0, 4-7 = foto 1,
+ * 8-11 = foto 2) para que la PRIMERA pieza de cada foto llame a OpenAI y las 3
+ * siguientes reusen la foto mejorada del cache (OpenAI corre 3 veces, no 12).
  *
- *   idx 0:  photo 0 × style 0 × format 0 (feed_square)
- *   idx 1:  photo 0 × style 0 × format 1 (feed_vertical)
- *   idx 2:  photo 0 × style 0 × format 2 (story_vertical)
- *   idx 3:  photo 0 × style 1 × format 0
+ *   idx 0:  photo 0 × style 0 × format 0 (feed_vertical 4:5)
+ *   idx 1:  photo 0 × style 0 × format 1 (story_vertical 9:16)
+ *   idx 2:  photo 0 × style 1 × format 0
+ *   idx 3:  photo 0 × style 1 × format 1
+ *   idx 4:  photo 1 × style 0 × format 0  ← fría (nueva foto)
  *   ...
- *   idx 26: photo 2 × style 2 × format 2
+ *   idx 8:  photo 2 × style 0 × format 0  ← fría (nueva foto)
+ *   idx 11: photo 2 × style 1 × format 1
  *
- * Total: 3 × 3 × 3 = 27.
+ * Total: 3 fotos × 2 estilos × 2 formatos = 12. Se dejó feed_square afuera:
+ * 4:5 ya cubre el feed y 9:16 cubre stories/reels (cobertura de placements
+ * moderna), y priorizamos variedad de FOTOS (mejor contra fatiga del anuncio).
  */
-const STYLE_TRIO: CompositionStyle[] = [
-  'split_photo_info',
+// Los 2 estilos verificados que se ven premium Y llenan el frame en ambos
+// formatos (4:5 y 9:16): editorial (magazine, foto grande + texto) y hero
+// (foto a sangre completa con degradado, cinematográfico). Otros templates
+// (split_photo_info, color_overlay_solid, minimalist, typography) quedan fuera:
+// dejan espacio muerto en 9:16 o tienen bugs de satori pendientes.
+const STYLE_DUO: CompositionStyle[] = [
   'editorial_magazine',
-  'color_overlay_solid',
+  'hero_full_bleed',
 ]
-const FORMAT_TRIO: AdFormat[] = ['feed_square', 'feed_vertical', 'story_vertical']
-const TOTAL_PIECES = 27
+const FORMAT_DUO: AdFormat[] = ['feed_vertical', 'story_vertical']
+const PHOTO_COUNT = 3
+const STYLE_COUNT = STYLE_DUO.length // 2
+const FORMAT_COUNT = FORMAT_DUO.length // 2
+const PIECES_PER_PHOTO = STYLE_COUNT * FORMAT_COUNT // 4
+const TOTAL_PIECES = PHOTO_COUNT * PIECES_PER_PHOTO // 12
 
 interface PieceCoords {
   pieceIdx: number
-  photoSourceIdx: number // 0, 1, 2 (índice dentro de las 3 starred photos)
-  styleIdx: number // 0, 1, 2
-  formatIdx: number // 0, 1, 2
+  photoSourceIdx: number // 0, 1, 2 (índice dentro de las starred photos)
+  styleIdx: number // 0, 1
+  formatIdx: number // 0, 1
   style: CompositionStyle
   format: AdFormat
 }
 
 function pieceCoordsAt(idx: number): PieceCoords {
-  const formatIdx = idx % 3
-  const styleIdx = Math.floor(idx / 3) % 3
-  const photoSourceIdx = Math.floor(idx / 9) // 0, 1, 2
+  const formatIdx = idx % FORMAT_COUNT
+  const styleIdx = Math.floor(idx / FORMAT_COUNT) % STYLE_COUNT
+  const photoSourceIdx = Math.floor(idx / PIECES_PER_PHOTO) // 0, 1, 2
   return {
     pieceIdx: idx,
     photoSourceIdx,
     styleIdx,
     formatIdx,
-    style: STYLE_TRIO[styleIdx],
-    format: FORMAT_TRIO[formatIdx],
+    style: STYLE_DUO[styleIdx],
+    format: FORMAT_DUO[formatIdx],
   }
 }
 
@@ -217,9 +237,10 @@ export async function runBatch(input: {
   jobId: string
   batchSize?: number
 }): Promise<RunBatchResult> {
-  // Default 2 (no 3): worst case 2 piezas × ~20s Gemini = 40s con margen
-  // dentro del maxDuration=60s de Netlify. Antes era 3 y rozaba el límite.
-  const batchSize = input.batchSize ?? 2
+  // Con el cache de fotos mejoradas, las piezas "frías" (que llaman a OpenAI
+  // ~26s) están espaciadas 4 índices (1 por foto). Capamos a 4 para que ninguna
+  // ventana contenga 2 frías → worst case ~26s (1 fría) + ~3s×3 (tibias) < 60s.
+  const batchSize = Math.min(input.batchSize ?? 2, 4)
   const job = await loadJob(input.jobId)
   if (!job) throw new Error(`Job ${input.jobId} no existe`)
   if (job.status !== 'generating' && job.status !== 'analyzing') {
@@ -269,6 +290,11 @@ export async function runBatch(input: {
   let failures = 0
   const endIdx = Math.min(startIdx + batchSize, TOTAL_PIECES)
 
+  // Cache en memoria de fotos mejoradas por índice REAL de foto, para reusarlas
+  // dentro de este batch sin round-trip a Storage. Se puebla desde Storage (si
+  // una corrida anterior ya mejoró esa foto) o desde la primera pieza fría.
+  const enhancedByRealPhoto = new Map<number, { buffer: Buffer; mime: string }>()
+
   // Determinar el highlight semilla del avatar para el copy de la pieza
   const avatar = (job.optimized_avatar ?? null) as
     | { hooks?: string[]; shortLabel?: string }
@@ -277,7 +303,9 @@ export async function runBatch(input: {
 
   for (let i = startIdx; i < endIdx; i++) {
     const coords = pieceCoordsAt(i)
-    const realPhotoIdx = starredPhotos[coords.photoSourceIdx]
+    // Wrap-around: si el asesor eligió menos fotos que PHOTO_COUNT, se reutilizan
+    // (mismo realPhotoIdx → el cache dedupe, no vuelve a llamar a OpenAI).
+    const realPhotoIdx = starredPhotos[coords.photoSourceIdx % starredPhotos.length]
     const photoUrl = (property.photos as string[])[realPhotoIdx] ?? (property.photos as string[])[0]
 
     // Update progress al iniciar la pieza
@@ -298,27 +326,61 @@ export async function runBatch(input: {
     }
 
     try {
-      // V2 pipeline: Gemini procesa SOLO foto, satori dibuja el texto. El
-      // bug "Departamenton" es imposible aquí porque el texto NO pasa por
-      // modelo IA — viene de tokens determinísticos.
-      // V1 pipeline (default): Gemini intenta hacer todo de una.
-      const generated_image = USE_V2_PIPELINE
-        ? await generateAdImageV2({
-            property,
-            highlight: fakeHighlight,
-            copyHeadline: avatar?.hooks?.[coords.styleIdx] ?? fallbackHeadline,
-            format: coords.format,
-            compositionStyle: coords.style,
-            overridePhotoUrl: photoUrl,
-          })
-        : await generateAdImage({
-            property,
-            highlight: fakeHighlight,
-            copyHeadline: avatar?.hooks?.[coords.styleIdx] ?? fallbackHeadline,
-            format: coords.format,
-            compositionStyle: coords.style,
-            overridePhotoUrl: photoUrl,
-          })
+      // Motor E2.5 (default 'openai'): OpenAI mejora la foto (Stage A) + overlay
+      // vectorial (Stage B). El texto NO pasa por IA → cero errores ortográficos.
+      // La foto mejorada se cachea por foto de origen → OpenAI corre 1 vez por
+      // foto, no 1 vez por pieza. 'legacy' = v1 Gemini all-in-one (rollback).
+      let generated_image: { buffer: Buffer; promptHash: string } | null
+
+      if (AD_IMAGE_ENGINE === 'legacy') {
+        generated_image = await generateAdImage({
+          property,
+          highlight: fakeHighlight,
+          copyHeadline: avatar?.hooks?.[coords.styleIdx] ?? fallbackHeadline,
+          format: coords.format,
+          compositionStyle: coords.style,
+          overridePhotoUrl: photoUrl,
+        })
+      } else {
+        // ¿Ya tenemos la foto mejorada de esta foto de origen? (memoria → Storage)
+        let pre = enhancedByRealPhoto.get(realPhotoIdx) ?? null
+        if (!pre) {
+          const cached = await downloadAdEnhanced(input.jobId, realPhotoIdx)
+          if (cached) {
+            pre = { buffer: cached, mime: 'image/jpeg' }
+            enhancedByRealPhoto.set(realPhotoIdx, pre)
+          }
+        }
+
+        const v2: GeneratedAdImageV2 | null = await generateAdImageV2({
+          property,
+          highlight: fakeHighlight,
+          copyHeadline: avatar?.hooks?.[coords.styleIdx] ?? fallbackHeadline,
+          format: coords.format,
+          compositionStyle: coords.style,
+          overridePhotoUrl: photoUrl,
+          enhanceEngine: AD_IMAGE_ENGINE === 'gemini' ? 'gemini' : 'openai',
+          preEnhancedPhoto: pre ?? undefined,
+        })
+        generated_image = v2
+
+        // Si esta pieza mejoró la foto por primera vez (no vino del cache),
+        // guardarla para las demás piezas de la misma foto (memoria + Storage).
+        if (
+          v2 &&
+          !pre &&
+          v2.enhancedPhotoBuffer &&
+          (v2.photoSource === 'openai' || v2.photoSource === 'gemini')
+        ) {
+          const fresh = { buffer: v2.enhancedPhotoBuffer, mime: v2.enhancedPhotoMime ?? 'image/jpeg' }
+          enhancedByRealPhoto.set(realPhotoIdx, fresh)
+          try {
+            await uploadAdEnhanced(input.jobId, realPhotoIdx, v2.enhancedPhotoBuffer)
+          } catch (e) {
+            console.warn(`[async-runner] no se pudo cachear foto mejorada r${realPhotoIdx}:`, e)
+          }
+        }
+      }
 
       let metaHash: string
       let metaUrl: string | null = null

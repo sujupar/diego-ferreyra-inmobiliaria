@@ -273,9 +273,18 @@ function heroFullBleedTemplate(p: TemplateProps): ReactNode {
 function editorialMagazineTemplate(p: TemplateProps): ReactNode {
   const { width, height } = DIM[p.format]
   const isStory = p.format === 'story_vertical'
-  const photoTop = isStory ? STORY_SAFE_TOP + 60 : 80
-  const photoH = isStory ? height - STORY_SAFE_BOTTOM - photoTop - 380 : Math.round(height * 0.5)
   const padding = 80
+  // Layout por posiciones ABSOLUTAS con alturas EXPLÍCITAS (satori honra esto
+  // de forma confiable; flex-grow + height:'100%' NO crece). Así la foto llena
+  // el espacio entre el header y el footer sin dejar espacio muerto en 4:5 ni 9:16.
+  const headerTop = isStory ? STORY_SAFE_TOP : 60
+  const photoTop = headerTop + 66
+  const bottomMargin = isStory ? STORY_SAFE_BOTTOM : padding
+  const footerH = isStory ? 300 : 260
+  const gap = 36
+  const photoH = height - photoTop - gap - footerH - bottomMargin
+  const footerTop = photoTop + photoH + gap
+  const innerW = width - padding * 2
 
   return (
     <div
@@ -284,23 +293,21 @@ function editorialMagazineTemplate(p: TemplateProps): ReactNode {
         height,
         backgroundColor: p.palette.bg,
         display: 'flex',
-        flexDirection: 'column',
+        position: 'relative',
         fontFamily: 'Inter',
-        paddingTop: photoTop,
-        paddingLeft: padding,
-        paddingRight: padding,
-        paddingBottom: padding,
       }}
     >
       <div
         style={{
+          position: 'absolute',
+          top: headerTop,
+          left: padding,
           fontSize: 22,
           fontWeight: 400,
           color: p.palette.text,
           opacity: 0.6,
           letterSpacing: 6,
           textTransform: 'uppercase',
-          marginBottom: 30,
         }}
       >
         Diego Ferreyra · Boutique · CABA
@@ -308,53 +315,67 @@ function editorialMagazineTemplate(p: TemplateProps): ReactNode {
       <img
         src={p.photoDataUrl}
         style={{
-          width: width - padding * 2,
+          position: 'absolute',
+          top: photoTop,
+          left: padding,
+          width: innerW,
           height: photoH,
           objectFit: 'cover',
-          marginBottom: 36,
         }}
       />
       <div
         style={{
-          fontFamily: 'Cormorant Garamond',
-          fontSize: isStory ? 76 : 64,
-          fontWeight: 400,
-          color: p.palette.text,
-          lineHeight: 1.05,
-          marginBottom: 24,
-          maxWidth: width - padding * 2 - 100,
-        }}
-      >
-        {p.tokens.headline}
-      </div>
-      <div
-        style={{
+          position: 'absolute',
+          top: footerTop,
+          left: padding,
+          width: innerW,
+          height: footerH,
           display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'baseline',
-          width: '100%',
+          flexDirection: 'column',
         }}
       >
         <div
           style={{
-            fontSize: 24,
+            fontFamily: 'Cormorant Garamond',
+            fontSize: isStory ? 76 : 64,
             fontWeight: 400,
             color: p.palette.text,
-            opacity: 0.75,
-            maxWidth: width * 0.55,
+            lineHeight: 1.05,
+            marginBottom: 24,
+            maxWidth: innerW - 100,
           }}
         >
-          {p.tokens.specs}
+          {p.tokens.headline}
         </div>
         <div
           style={{
-            fontSize: 52,
-            fontWeight: 700,
-            color: p.palette.accent,
-            letterSpacing: -0.5,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            width: '100%',
           }}
         >
-          {p.tokens.price}
+          <div
+            style={{
+              fontSize: 24,
+              fontWeight: 400,
+              color: p.palette.text,
+              opacity: 0.75,
+              maxWidth: width * 0.55,
+            }}
+          >
+            {p.tokens.specs}
+          </div>
+          <div
+            style={{
+              fontSize: 52,
+              fontWeight: 700,
+              color: p.palette.accent,
+              letterSpacing: -0.5,
+            }}
+          >
+            {p.tokens.price}
+          </div>
         </div>
       </div>
     </div>
