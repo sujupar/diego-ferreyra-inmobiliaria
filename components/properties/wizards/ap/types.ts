@@ -27,6 +27,7 @@ export interface ApPreviewProperty {
   address: string
   neighborhood: string
   city: string
+  province?: string | null
   rooms: number | null
   bedrooms: number | null
   bathrooms: number | null
@@ -60,6 +61,8 @@ export interface ApDraft {
   askingPrice: number
   latitude: number | null
   longitude: number | null
+  address?: string
+  geoConfidence?: 'high' | 'medium' | 'low' | 'manual'
 }
 
 export interface ApListing {

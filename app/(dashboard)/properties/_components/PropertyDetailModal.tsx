@@ -50,17 +50,17 @@ export function PropertyDetailModal({ property, open, onOpenChange, currentUserI
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto p-0">
-        <div className="p-6 space-y-6">
+      <DialogContent className="max-w-5xl max-h-[90vh] p-0 flex flex-col overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-6 space-y-6">
           <header className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
-              <DialogTitle className="text-2xl">{property.address}</DialogTitle>
+            <div className="space-y-1 min-w-0">
+              <DialogTitle className="text-2xl break-words">{property.address}</DialogTitle>
               <p className="flex items-center gap-1 text-muted-foreground text-sm">
-                <MapPin className="size-4" /> {property.neighborhood}, {property.city}
+                <MapPin className="size-4 shrink-0" /> <span className="break-words">{property.neighborhood}, {property.city}</span>
               </p>
               <p className="text-3xl font-bold pt-2">{formatCurrency(property.asking_price, property.currency)}</p>
             </div>
-            <div className="flex flex-col gap-2 items-end">
+            <div className="flex flex-col gap-2 items-end shrink-0">
               <Badge>{property.property_type}</Badge>
               <OwnershipBadge isMine={isMine} />
             </div>
@@ -105,20 +105,20 @@ export function PropertyDetailModal({ property, open, onOpenChange, currentUserI
           {property.description && (
             <section>
               <h3 className="font-semibold mb-2">Descripción</h3>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{property.description}</p>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">{property.description}</p>
             </section>
           )}
-
-          <footer className="sticky bottom-0 -mx-6 -mb-6 px-6 py-4 bg-background border-t flex flex-wrap gap-2 justify-end">
-            <Button variant="outline" asChild>
-              <Link href={`/properties/${property.id}`}>Ver detalle completo</Link>
-            </Button>
-            <Button onClick={() => onScheduleVisit(property.id)} className="gap-2">
-              <Calendar className="size-4" />
-              Agendar visita
-            </Button>
-          </footer>
         </div>
+
+        <footer className="shrink-0 px-6 py-4 bg-background border-t flex flex-wrap gap-2 justify-end">
+          <Button variant="outline" asChild>
+            <Link href={`/properties/${property.id}`}>Ver detalle completo</Link>
+          </Button>
+          <Button onClick={() => onScheduleVisit(property.id)} className="gap-2">
+            <Calendar className="size-4" />
+            Agendar visita
+          </Button>
+        </footer>
       </DialogContent>
     </Dialog>
   )

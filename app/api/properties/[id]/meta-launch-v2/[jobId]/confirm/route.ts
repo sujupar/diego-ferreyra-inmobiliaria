@@ -20,6 +20,7 @@ import { createCampaignForProperty } from '@/lib/marketing/meta-campaign-builder
 import { createAudiencesForCampaign } from '@/lib/marketing/meta-custom-audiences'
 import { isCampaignComplete } from '@/lib/marketing/campaign-completeness'
 import { validateDailyBudgetArs } from '@/lib/marketing/budget-limits'
+import { geoSpecForPreset, type GeoPresetId } from '@/lib/marketing/geo-targeting-presets'
 import type { Database } from '@/types/database.types'
 
 export const maxDuration = 60
@@ -301,6 +302,15 @@ export async function POST(
       budgetOverride = rawBudget
     }
 
+    // Traducimos el preset geográfico que el asesor eligió en el wizard
+    // (job.geo_preset_id) a un targetingOverride concreto — sin esto el
+    // builder ignoraba el preset y siempre decidía por precio (decideTargeting).
+    const presetId = (typeof job.geo_preset_id === 'string' ? job.geo_preset_id : 'cercanos') as GeoPresetId
+    let targetingOverride: Record<string, unknown> | undefined
+    try {
+      targetingOverride = geoSpecForPreset(property as never, presetId) as unknown as Record<string, unknown>
+    } catch { targetingOverride = undefined } // sin lat/lng el builder ya tira; dejamos que decida
+
     // Crear campaña (el builder maneja idempotencia con UNIQUE PARTIAL)
     let campaign
     try {
@@ -312,6 +322,7 @@ export async function POST(
           // ENTERO en ARS, sin ×100. La conversión a unidad mínima de Meta
           // ocurre UNA sola vez dentro del builder (daily_budget).
           ...(budgetOverride != null ? { dailyBudgetArs: budgetOverride } : {}),
+          ...(targetingOverride ? { targetingOverride } : {}),
         },
       })
     } catch (err) {

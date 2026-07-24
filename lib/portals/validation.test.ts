@@ -49,6 +49,10 @@ function makeProperty(overrides: Partial<Property> = {}): Property {
     title: null,
     postal_code: null,
     public_slug: null,
+    province: null,
+    geo_confidence: null,
+    geocoded_at: null,
+    import_external_id: null,
     ...overrides,
   }
 }

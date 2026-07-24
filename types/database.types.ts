@@ -560,6 +560,10 @@ export interface Database {
                     title: string | null
                     postal_code: string | null
                     public_slug: string | null
+                    province: string | null
+                    geo_confidence: string | null
+                    geocoded_at: string | null
+                    import_external_id: string | null
                 }
                 Insert: {
                     id?: string
@@ -607,6 +611,10 @@ export interface Database {
                     title?: string | null
                     postal_code?: string | null
                     public_slug?: string | null
+                    province?: string | null
+                    geo_confidence?: string | null
+                    geocoded_at?: string | null
+                    import_external_id?: string | null
                 }
                 Update: {
                     id?: string
@@ -654,6 +662,10 @@ export interface Database {
                     title?: string | null
                     postal_code?: string | null
                     public_slug?: string | null
+                    province?: string | null
+                    geo_confidence?: string | null
+                    geocoded_at?: string | null
+                    import_external_id?: string | null
                 }
                 Relationships: []
             }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { propertyToAvisoDto } from './mapping'
+import { propertyToAvisoDto, parseCalleFromAddress } from './mapping'
 
 const prop = {
   id: '11111111-2222-3333-4444-555566667777',
@@ -67,5 +67,18 @@ describe('propertyToAvisoDto', () => {
   it('sin barrio no incluye Barrio en Localizacion', () => {
     const d3 = propertyToAvisoDto(prop, { ...opts, barrioId: null })
     expect(d3.Localizacion.Barrio).toBeUndefined()
+  })
+})
+
+describe('parseCalleFromAddress', () => {
+  it('extrae calle + altura de un blob con sufijo barrio/ciudad', () => {
+    expect(parseCalleFromAddress('José Luis Cantilo 4300, Villa Devoto, Capital Federal'))
+      .toEqual({ Nombre: 'José Luis Cantilo', Numero: '4300' })
+  })
+  it('formato simple "Calle 1234"', () => {
+    expect(parseCalleFromAddress('Av. Cabildo 1234')).toEqual({ Nombre: 'Av. Cabildo', Numero: '1234' })
+  })
+  it('sin altura → S/N', () => {
+    expect(parseCalleFromAddress('Lares de Canning, Lares de Canning, Tristán Suárez').Numero).toBe('S/N')
   })
 })

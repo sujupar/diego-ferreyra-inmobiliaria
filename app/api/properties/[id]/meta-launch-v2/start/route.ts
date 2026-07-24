@@ -69,6 +69,12 @@ export async function POST(
         { status: 412 },
       )
     }
+    if (property.latitude == null || property.longitude == null) {
+      return NextResponse.json(
+        { error: 'Falta geolocalización (lat/lng). Confirmá el pin en el wizard de publicación antes de lanzar Meta.' },
+        { status: 412 },
+      )
+    }
 
     // 1. Idempotencia: si ya hay un job activo, devolverlo
     const { data: existing } = await (supabase as unknown as {

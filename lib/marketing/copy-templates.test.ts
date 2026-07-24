@@ -49,6 +49,10 @@ function makeProperty(o: Partial<Property> = {}): Property {
     title: null,
     postal_code: '1414',
     public_slug: null,
+    province: null,
+    geo_confidence: null,
+    geocoded_at: null,
+    import_external_id: null,
     ...o,
   }
 }

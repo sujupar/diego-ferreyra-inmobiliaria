@@ -4,6 +4,8 @@ import dynamic from 'next/dynamic'
 import { toast } from 'sonner'
 import type { ApField, AttributeOverride } from '../types'
 import type { ApAttributesResponse, ApDraft, ApPreviewProperty } from '../types'
+import { parseAddress, buildGeocodeQuery } from '@/lib/properties/address'
+import { findNeighborhood } from '@/lib/marketing/neighborhood-data'
 
 const GeoPinMap = dynamic(() => import('../GeoPinMap').then(m => m.GeoPinMap), { ssr: false })
 
@@ -13,6 +15,11 @@ interface Props {
   draft: ApDraft
   onChange: (p: Partial<ApDraft>) => void
   onValidityChange: (ok: boolean) => void
+}
+
+function geoDefaultCenter(neighborhood: string): [number, number] {
+  const n = findNeighborhood(neighborhood)
+  return n ? [n.lat, n.lng] : [-34.6037, -58.3816] // fallback: Obelisco / CABA
 }
 
 function hasValue(v: AttributeOverride | undefined): boolean {
@@ -95,18 +102,27 @@ export function StepFields({ property, attrs, draft, onChange, onValidityChange 
   async function geocode() {
     setGeocoding(true)
     try {
-      const addressQuery = [property.address, property.neighborhood, property.city || 'CABA']
-        .filter(Boolean)
-        .join(', ')
+      const parts = parseAddress(draft.address ?? property.address, {
+        neighborhood: property.neighborhood,
+        city: property.city,
+        province: property.province ?? null,
+      })
+      const addressQuery = buildGeocodeQuery(parts)
       const r = await fetch('/api/geocode', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ address: addressQuery }),
+        body: JSON.stringify({
+          address: addressQuery,
+          expected: { province: parts.province, locality: parts.isCaba ? parts.neighborhood : parts.locality, number: parts.number, isCaba: parts.isCaba },
+        }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error)
-      onChange({ latitude: j.lat, longitude: j.lng })
-      toast.success('Ubicación encontrada — ajustá el pin si hace falta')
+      onChange({ latitude: j.lat, longitude: j.lng, geoConfidence: j.confidence })
+      const msg = j.confidence === 'high'
+        ? 'Ubicación encontrada — verificá el pin.'
+        : 'Ubicación aproximada (baja confianza). Ajustá el pin a la ubicación exacta.'
+      toast[j.confidence === 'high' ? 'success' : 'warning'](msg)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error')
     } finally {
@@ -178,11 +194,24 @@ export function StepFields({ property, attrs, draft, onChange, onValidityChange 
             {geocoding ? 'Buscando…' : 'Geocodificar dirección'}
           </button>
         </div>
-        {geoOk ? (
-          <GeoPinMap lat={draft.latitude!} lng={draft.longitude!} onChange={(lat, lng) => onChange({ latitude: lat, longitude: lng })} />
-        ) : (
-          <p className="text-sm text-red-600">Falta la ubicación. Tocá “Geocodificar dirección” y confirmá el pin.</p>
+        <input
+          value={draft.address ?? property.address}
+          onChange={e => onChange({ address: e.target.value })}
+          placeholder="Calle y altura, barrio, ciudad"
+          className="w-full rounded-md border border-input px-3 py-2 text-sm"
+        />
+        {!geoOk && (
+          <p className="text-sm text-amber-600">Sin ubicación confirmada. Geocodificá o colocá el pin en el mapa (click) y confirmá.</p>
         )}
+        {geoOk && draft.geoConfidence && draft.geoConfidence !== 'high' && draft.geoConfidence !== 'manual' && (
+          <p className="text-sm text-amber-600">Ubicación aproximada (confianza {draft.geoConfidence}). Verificá y ajustá el pin.</p>
+        )}
+        <GeoPinMap
+          lat={draft.latitude ?? null}
+          lng={draft.longitude ?? null}
+          defaultCenter={geoDefaultCenter(property.neighborhood)}
+          onChange={(lat, lng) => onChange({ latitude: lat, longitude: lng, geoConfidence: 'manual' })}
+        />
       </section>
     </div>
   )
