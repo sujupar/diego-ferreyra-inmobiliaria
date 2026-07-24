@@ -71,11 +71,15 @@ export function LeadCaptureProvider({
   const closeBtnRef = useRef<HTMLButtonElement>(null)
   // Guarda el CTA que abrió el popup para DEVOLVERLE el foco al cerrar (WCAG 2.4.3).
   const triggerRef = useRef<HTMLElement | null>(null)
+  // Anti-spam: momento en que se abrió el popup (timing gate) + honeypot.
+  const openedAtRef = useRef(0)
+  const [honeypot, setHoneypot] = useState('')
 
   const open = useCallback((src?: string) => {
     if (typeof document !== 'undefined') {
       triggerRef.current = document.activeElement as HTMLElement | null
     }
+    openedAtRef.current = Date.now()
     setSource(src ?? 'cta')
     setStatus('idle')
     setErrorMsg('')
@@ -112,6 +116,13 @@ export function LeadCaptureProvider({
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (submittingRef.current) return
+    // Anti-spam: honeypot lleno o envío sospechosamente rápido (<1.5s) = bot →
+    // fingimos éxito y NO enviamos (el humano nunca llena el honeypot ni tipea
+    // nombre + contacto en 1.5s).
+    if (honeypot.trim() || Date.now() - openedAtRef.current < 1500) {
+      setStatus('ok')
+      return
+    }
     if (!form.name.trim() || (!form.email.trim() && !form.phone.trim())) {
       setStatus('err')
       setErrorMsg('Necesitamos tu nombre y al menos un contacto (email o teléfono).')
@@ -206,8 +217,19 @@ export function LeadCaptureProvider({
               </div>
             ) : (
               <form onSubmit={submit} className="space-y-4">
+                {/* Honeypot: campo invisible para humanos; si un bot lo llena, no enviamos. */}
+                <input
+                  type="text"
+                  name="_company"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  aria-hidden="true"
+                  value={honeypot}
+                  onChange={e => setHoneypot(e.target.value)}
+                  style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }}
+                />
                 <div>
-                  <h2 id="lead-modal-title" className="text-xl font-semibold">
+                  <h2 id="lead-modal-title" className="text-2xl" style={{ fontFamily: 'var(--font-landing-serif), Georgia, serif' }}>
                     Dejanos tus datos
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">
@@ -281,7 +303,8 @@ export function LeadCaptureProvider({
                 <button
                   type="submit"
                   disabled={status === 'sending'}
-                  className="flex w-full items-center justify-center gap-2 rounded-full bg-slate-900 px-6 py-3.5 text-base font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
+                  className="flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-base font-medium text-white transition hover:opacity-95 disabled:opacity-60"
+                  style={{ background: 'var(--brand)' }}
                 >
                   {status === 'sending' && <Loader2 className="h-4 w-4 animate-spin" />}
                   Me interesa, quiero que me contacten
