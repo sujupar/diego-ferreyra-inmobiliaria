@@ -73,8 +73,8 @@ function toEmbedUrl(url: string): string | null {
 function Wordmark() {
   return (
     <span
-      className="lx-eyebrow absolute left-6 top-6 z-10 text-white/90 md:left-10 md:top-8"
-      style={{ textShadow: '0 1px 10px rgba(0,0,0,0.5)' }}
+      className="lx-eyebrow absolute left-6 top-6 z-10 text-white md:left-10 md:top-8"
+      style={{ textShadow: '0 1px 2px rgba(0,0,0,0.9), 0 0 10px rgba(0,0,0,0.55)' }}
     >
       Diego Ferreyra
     </span>
@@ -167,8 +167,15 @@ export function HeroLuxury(props: HeroLuxuryProps) {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={heroImage} alt={title} className="h-full w-full object-cover" fetchPriority="high" />
           </div>
-          <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-black/25 to-black/70" />
+          {/* Velo global reforzado en el centro (donde cae el copy) para contraste
+              WCAG del texto blanco incluso sobre fotos claras. */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/45 to-black/75" />
           <div className="absolute inset-x-0 bottom-0 h-[55%] bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+          {/* Scrim de esquina detrás del wordmark (top-left brillante). */}
+          <div
+            className="pointer-events-none absolute left-0 top-0 z-[1] h-40 w-2/3 max-w-md bg-gradient-to-br from-black/55 via-black/20 to-transparent"
+            aria-hidden="true"
+          />
         </>
       ) : (
         <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />

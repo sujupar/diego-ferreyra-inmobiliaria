@@ -27,7 +27,7 @@ export function FloatingCta({ label = 'Coordiná una visita' }: { label?: string
       onClick={() => open('floating')}
       aria-hidden={!show}
       tabIndex={show ? 0 : -1}
-      className={`fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full px-6 py-3.5 text-[11px] font-medium uppercase tracking-[0.18em] text-white shadow-xl shadow-black/20 transition-all duration-300 hover:gap-3 ${
+      className={`fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full px-6 py-3.5 text-[11px] font-medium uppercase tracking-[0.18em] text-white shadow-xl shadow-black/20 transition-all duration-300 hover:gap-3 motion-reduce:transition-none ${
         show ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-3 opacity-0'
       }`}
       style={{ background: 'var(--brand)' }}

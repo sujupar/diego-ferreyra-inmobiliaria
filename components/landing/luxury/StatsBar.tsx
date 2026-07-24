@@ -33,11 +33,13 @@ export function StatsBar(p: StatsBarProps) {
       className="lx-reveal border-y"
       style={{ borderColor: 'var(--lx-line)', background: 'var(--lx-bg-2)' }}
     >
-      <ul className="mx-auto flex max-w-6xl flex-wrap items-stretch justify-center">
+      {/* overflow-hidden + -ml-px: colapsa los divisores y recorta el borde
+          izquierdo del primer item de CADA fila al envolver (sin líneas colgando). */}
+      <ul className="mx-auto flex max-w-6xl flex-wrap items-stretch justify-center overflow-hidden">
         {shown.map((s, i) => (
           <li
             key={i}
-            className="min-w-[128px] flex-1 border-l px-4 py-8 text-center first:border-l-0"
+            className="-ml-px min-w-[128px] flex-1 border-l px-4 py-8 text-center"
             style={{ borderColor: 'var(--lx-line)' }}
           >
             <p className="text-2xl font-medium tabular-nums md:text-3xl" style={{ fontFamily: 'var(--lx-serif)' }}>

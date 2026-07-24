@@ -14,6 +14,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -71,20 +72,21 @@ export function LeadCaptureProvider({
   const closeBtnRef = useRef<HTMLButtonElement>(null)
   // Guarda el CTA que abrió el popup para DEVOLVERLE el foco al cerrar (WCAG 2.4.3).
   const triggerRef = useRef<HTMLElement | null>(null)
-  // Anti-spam: momento en que se abrió el popup (timing gate) + honeypot.
-  const openedAtRef = useRef(0)
+  // Anti-spam: honeypot (campo oculto que solo un bot llena).
   const [honeypot, setHoneypot] = useState('')
 
   const open = useCallback((src?: string) => {
     if (typeof document !== 'undefined') {
       triggerRef.current = document.activeElement as HTMLElement | null
     }
-    openedAtRef.current = Date.now()
     setSource(src ?? 'cta')
     setStatus('idle')
     setErrorMsg('')
     setIsOpen(true)
   }, [])
+
+  // Valor del contexto memoizado (open es estable) — evita re-render de consumidores.
+  const ctxValue = useMemo(() => ({ open }), [open])
 
   const close = useCallback(() => setIsOpen(false), [])
 
@@ -116,10 +118,10 @@ export function LeadCaptureProvider({
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (submittingRef.current) return
-    // Anti-spam: honeypot lleno o envío sospechosamente rápido (<1.5s) = bot →
-    // fingimos éxito y NO enviamos (el humano nunca llena el honeypot ni tipea
-    // nombre + contacto en 1.5s).
-    if (honeypot.trim() || Date.now() - openedAtRef.current < 1500) {
+    // Anti-spam: SOLO honeypot (un humano nunca llena el campo _company oculto).
+    // No usamos gate temporal: marcaba como bot a humanos con el form
+    // pre-cargado/autofill y descartaba el lead con un falso éxito.
+    if (honeypot.trim()) {
       setStatus('ok')
       return
     }
@@ -168,7 +170,7 @@ export function LeadCaptureProvider({
   }
 
   return (
-    <Ctx.Provider value={{ open }}>
+    <Ctx.Provider value={ctxValue}>
       {/* Con el popup abierto, el fondo queda `inert`: no se puede tabular ni
           leer con lector de pantalla → el foco se mantiene dentro del modal. */}
       <div inert={isOpen}>{children}</div>
