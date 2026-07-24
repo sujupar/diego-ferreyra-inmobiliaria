@@ -16,6 +16,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/component
 import { LegalReviewHistory } from '@/components/properties/LegalReviewHistory'
 import { MarketingTabs } from '@/components/properties/MarketingTabs'
 import { PostCaptureActions } from '@/components/properties/PostCaptureActions'
+import { LandingSection } from '@/components/properties/LandingSection'
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog'
 import { GenerateDescriptionCard } from '@/components/properties/GenerateDescriptionCard'
 import type { LegalDocsState, LegalFlags } from '@/types/legal-docs.types'
@@ -620,6 +621,8 @@ export default function PropertyDetailPage() {
           </div>
           {/* Call-to-action principal: el asesor decide qué hacer */}
           <PostCaptureActions propertyId={property.id} />
+          {/* E1.4 — Landing de conversión (requisito para montar campaña Meta) */}
+          <LandingSection propertyId={property.id} />
           <GenerateDescriptionCard propertyId={property.id} />
           <MarketingTabs
             propertyId={property.id}
