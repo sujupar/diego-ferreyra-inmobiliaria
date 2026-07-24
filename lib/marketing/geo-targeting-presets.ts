@@ -48,6 +48,32 @@ export interface GeoPreset {
 /** Radio default por pin: 2km. Hipersegmentación efectiva para inmobiliaria. */
 const PIN_RADIUS_KM = 2
 
+type CustomLocation = { latitude: number; longitude: number; radius: number; distance_unit: 'kilometer' }
+
+/** Custom locations por preset. Fuente de verdad única (la usan buildGeoPresets y geoSpecForPreset). */
+function customLocationsForPreset(property: Property, presetId: GeoPresetId): CustomLocation[] {
+  if (property.latitude == null || property.longitude == null) {
+    throw new Error('Property sin lat/lng — no se pueden armar custom_locations')
+  }
+  const here: CustomLocation = { latitude: property.latitude, longitude: property.longitude, radius: PIN_RADIUS_KM, distance_unit: 'kilometer' }
+  if (presetId === 'cercanos') return [here]
+  if (presetId === 'amplio') return [{ latitude: -34.6037, longitude: -58.3816, radius: 25, distance_unit: 'kilometer' }]
+  // similares: propiedad + barrios hermanos del mismo cluster.
+  const siblings = siblingNeighborhoods(property.neighborhood, 6)
+  return [here, ...siblings.map(n => ({ latitude: n.lat, longitude: n.lng, radius: PIN_RADIUS_KM, distance_unit: 'kilometer' as const }))]
+}
+
+/** Spec de targeting para un preset, SIN depender de un BuyerPersona (para el confirm de v2).
+ *  El builder capea age_min≤25/age_max≥65 igual, así que 25/65 acá es seguro. */
+export function geoSpecForPreset(property: Property, presetId: GeoPresetId): MetaTargetingSpec {
+  return {
+    geo_locations: { custom_locations: customLocationsForPreset(property, presetId) },
+    age_min: 25,
+    age_max: 65,
+    publisher_platforms: ['facebook', 'instagram'],
+  }
+}
+
 export function buildGeoPresets(
   property: Property,
   persona: BuyerPersona,
@@ -67,14 +93,7 @@ export function buildGeoPresets(
     estimatedReach: persona.incomeLevel === 'premium' ? '~30k personas' : '~80k personas',
     spec: {
       geo_locations: {
-        custom_locations: [
-          {
-            latitude: property.latitude,
-            longitude: property.longitude,
-            radius: PIN_RADIUS_KM,
-            distance_unit: 'kilometer',
-          },
-        ],
+        custom_locations: customLocationsForPreset(property, 'cercanos'),
       },
       age_min: persona.ageRange[0],
       age_max: persona.ageRange[1],
@@ -121,7 +140,7 @@ export function buildGeoPresets(
           : '~700k personas',
     spec: {
       geo_locations: {
-        custom_locations: similarPins,
+        custom_locations: customLocationsForPreset(property, 'similares'),
       },
       age_min: persona.ageRange[0],
       age_max: persona.ageRange[1],
@@ -139,14 +158,7 @@ export function buildGeoPresets(
     estimatedReach: '~3M personas',
     spec: {
       geo_locations: {
-        custom_locations: [
-          {
-            latitude: -34.6037,
-            longitude: -58.3816,
-            radius: 25,
-            distance_unit: 'kilometer',
-          },
-        ],
+        custom_locations: customLocationsForPreset(property, 'amplio'),
       },
       age_min: Math.max(25, persona.ageRange[0]),
       age_max: persona.ageRange[1],

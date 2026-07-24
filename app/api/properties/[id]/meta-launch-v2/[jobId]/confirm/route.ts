@@ -19,6 +19,7 @@ import { requireAuth } from '@/lib/auth/require-role'
 import { createCampaignForProperty } from '@/lib/marketing/meta-campaign-builder'
 import { createAudiencesForCampaign } from '@/lib/marketing/meta-custom-audiences'
 import { isCampaignComplete } from '@/lib/marketing/campaign-completeness'
+import { geoSpecForPreset, type GeoPresetId } from '@/lib/marketing/geo-targeting-presets'
 import type { Database } from '@/types/database.types'
 
 export const maxDuration = 60
@@ -267,6 +268,14 @@ export async function POST(
       .filter((h): h is string => typeof h === 'string' && h.length > 0)
 
     // Crear campaña (el builder maneja idempotencia con UNIQUE PARTIAL)
+    // Traducimos el preset geográfico que el asesor eligió en el wizard
+    // (job.geo_preset_id) a un targetingOverride concreto — sin esto el
+    // builder ignoraba el preset y siempre decidía por precio (decideTargeting).
+    const presetId = (typeof job.geo_preset_id === 'string' ? job.geo_preset_id : 'cercanos') as GeoPresetId
+    let targetingOverride: Record<string, unknown> | undefined
+    try {
+      targetingOverride = geoSpecForPreset(property as never, presetId) as unknown as Record<string, unknown>
+    } catch { targetingOverride = undefined } // sin lat/lng el builder ya tira; dejamos que decida
     let campaign
     try {
       campaign = await createCampaignForProperty(property as never, {
@@ -274,6 +283,7 @@ export async function POST(
         overrides: {
           preGeneratedImageHashes,
           variantCount: Math.min(preGeneratedImageHashes.length, 10),
+          ...(targetingOverride ? { targetingOverride } : {}),
         },
       })
     } catch (err) {
