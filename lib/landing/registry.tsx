@@ -34,6 +34,9 @@ import { HeroLuxury } from '@/components/landing/luxury/HeroLuxury'
 import { StatsBar } from '@/components/landing/luxury/StatsBar'
 import { ClosingInvite } from '@/components/landing/luxury/ClosingInvite'
 import { FooterBrand } from '@/components/landing/luxury/FooterBrand'
+import { StoryBlocks } from '@/components/landing/luxury/StoryBlocks'
+import { CuratedGallery } from '@/components/landing/luxury/CuratedGallery'
+import { LocationShowcase } from '@/components/landing/luxury/LocationShowcase'
 
 export type LandingProperty = Database['public']['Tables']['properties']['Row']
 
@@ -323,9 +326,50 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
       return <FooterBrand />
     },
   },
-  // Stubs (null) hasta F2/F3.
-  story_blocks: { label: 'Historia', render: () => null },
-  curated_gallery: { label: 'Galería', render: () => null },
-  location_showcase: { label: 'Ubicación', render: () => null },
+  story_blocks: {
+    label: 'Historia',
+    render: (block, { property }) => {
+      if (block.type !== 'story_blocks') return null
+      const photos = property.photos ?? []
+      const items = block.items.map(it => ({
+        numeral: it.numeral,
+        eyebrow: it.eyebrow,
+        headline: it.headline,
+        body: it.body,
+        photo: it.photoIndex != null ? photos[it.photoIndex] : undefined,
+      }))
+      return <StoryBlocks items={items} />
+    },
+  },
+  curated_gallery: {
+    label: 'Galería',
+    render: (block, { property }) => {
+      if (block.type !== 'curated_gallery') return null
+      const all = property.photos ?? []
+      const photos = block.photoIndices?.length
+        ? block.photoIndices.map(i => all[i]).filter((p): p is string => typeof p === 'string')
+        : all
+      return <CuratedGallery photos={photos} eyebrow={block.eyebrow} title={block.title} />
+    },
+  },
+  location_showcase: {
+    label: 'Ubicación',
+    render: (block, { property }) => {
+      if (block.type !== 'location_showcase') return null
+      const photos = property.photos ?? []
+      const image = block.photoIndex != null ? photos[block.photoIndex] : undefined
+      return (
+        <LocationShowcase
+          neighborhood={property.neighborhood}
+          city={property.city}
+          eyebrow={block.eyebrow}
+          title={block.title}
+          body={block.body}
+          image={image}
+        />
+      )
+    },
+  },
+  // Stub (null) hasta F3.
   floor_plans: { label: 'Planos', render: () => null },
 }

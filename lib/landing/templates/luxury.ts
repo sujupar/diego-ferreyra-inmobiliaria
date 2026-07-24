@@ -10,19 +10,41 @@ import type { LandingDocument } from '@/lib/landing/schema'
 import type { LandingProperty } from '@/lib/landing/registry'
 import type { TemplateManifest } from './types'
 import { type ConversionCopy, deterministicConversionCopy } from '@/lib/landing/conversion-copy'
-import { deriveTier, type LandingTier } from '@/lib/landing/tier'
+import { deriveTier, tierConfig, type LandingTier } from '@/lib/landing/tier'
+import { planPhotos } from '@/lib/landing/photo-plan'
 
 /** Etiqueta de la oferta del hero según la operación. */
 function offerLabelFor(property: LandingProperty): string {
   return (property.operation_type ?? 'venta') !== 'venta' ? 'Precio de alquiler' : 'Precio de venta'
 }
 
+const TIE_LABEL: Record<string, string> = {
+  propiedad: 'La propiedad',
+  ubicacion: 'La ubicación',
+  amenities: 'Los amenities',
+  otro: 'La propiedad',
+}
+const NUMERALS = ['I', 'II', 'III']
+
 /** Arma el documento de lujo desde el copy (IA o determinístico) + el tier. */
 export function buildLuxuryDocument(
   property: LandingProperty,
   copy: ConversionCopy,
-  _tier: LandingTier,
+  tier: LandingTier,
 ): LandingDocument {
+  const cfg = tierConfig(tier)
+  const photos = planPhotos(property.photos ?? [])
+
+  // Beneficios (E1.8) → bloques de historia numerados, con foto por índice.
+  const storyItems = copy.benefits.slice(0, cfg.storyCount).map((b, i) => ({
+    numeral: NUMERALS[i] ?? String(i + 1),
+    eyebrow: TIE_LABEL[b.tie] ?? 'La propiedad',
+    headline: b.title,
+    body: b.body,
+    tie: b.tie,
+    ...(photos.story[i] != null ? { photoIndex: photos.story[i] } : {}),
+  }))
+
   const blocks: LandingDocument['blocks'] = [
     {
       id: 'hero',
@@ -36,7 +58,31 @@ export function buildLuxuryDocument(
       offerLabel: offerLabelFor(property),
     },
     { id: 'stats', type: 'stats_bar' },
-    { id: 'cta-mid', type: 'cta', label: copy.ctaLabel, headline: copy.midCtaHeadline },
+    { id: 'story', type: 'story_blocks', items: storyItems },
+  ]
+
+  // Galería solo si sobran fotos (después de hero + historia).
+  if (photos.gallery.length > 0) {
+    blocks.push({
+      id: 'gallery',
+      type: 'curated_gallery',
+      eyebrow: 'La propiedad',
+      title: 'Recorré cada rincón',
+      photoIndices: photos.gallery,
+    })
+  }
+
+  blocks.push({ id: 'cta-mid', type: 'cta', label: copy.ctaLabel, headline: copy.midCtaHeadline })
+
+  blocks.push({
+    id: 'location',
+    type: 'location_showcase',
+    eyebrow: 'Ubicación',
+    body: copy.locationNote,
+    ...(photos.location != null ? { photoIndex: photos.location } : {}),
+  })
+
+  blocks.push(
     {
       id: 'closing',
       type: 'closing_invite',
@@ -46,7 +92,8 @@ export function buildLuxuryDocument(
       ctaLabel: copy.ctaLabel,
     },
     { id: 'footer', type: 'footer_brand' },
-  ]
+  )
+
   return { version: 1, blocks, theme: { motion: 'on' } }
 }
 
