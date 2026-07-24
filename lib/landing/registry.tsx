@@ -266,4 +266,14 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
       )
     },
   },
+
+  // ── E1.9 · Bloques de la plantilla de lujo ────────────────────────────────
+  // Stubs (null) hasta que se construyan sus componentes; se completan por tarea.
+  stats_bar: { label: 'Datos', render: () => null },
+  story_blocks: { label: 'Historia', render: () => null },
+  curated_gallery: { label: 'Galería', render: () => null },
+  location_showcase: { label: 'Ubicación', render: () => null },
+  floor_plans: { label: 'Planos', render: () => null },
+  closing_invite: { label: 'Cierre', render: () => null },
+  footer_brand: { label: 'Footer', render: () => null },
 }

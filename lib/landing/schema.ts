@@ -25,6 +25,8 @@ const HeroBlock = z.object({
   shortDesc: z.string().max(280).optional(),
   /** Texto del CTA del hero (abre el popup). Default "Quiero saber más". */
   ctaLabel: z.string().max(40).optional(),
+  /** E1.9 — etiqueta sobre el precio en el hero de lujo (ej. "Precio de venta"). */
+  offerLabel: z.string().max(40).optional(),
   /** Índice en property.photos para el fondo del hero. Default 0. */
   heroPhotoIndex: z.number().int().min(0).optional(),
   /**
@@ -159,6 +161,67 @@ const LeadFormBlock = z.object({
   ctaLabel: z.string().max(40).optional(),
 })
 
+// ---- E1.9 · Bloques de la PLANTILLA DE LUJO (nivel Villa Eva, replicable) ----
+
+/** Barra de datos rápidos (ambientes · dorm · m² · etc). Lee la propiedad. */
+const StatsBarBlock = z.object({ id: z.string(), type: z.literal('stats_bar') })
+
+/** Un bloque de historia (numerado, foto+texto alternados). */
+const StoryItem = z.object({
+  numeral: z.string().max(4), // I, II, III
+  eyebrow: z.string().max(60),
+  headline: z.string().max(160),
+  body: z.string().max(500),
+  tie: z.enum(['propiedad', 'ubicacion', 'amenities', 'otro']),
+  photoIndex: z.number().int().min(0).optional(),
+})
+const StoryBlocksBlock = z.object({
+  id: z.string(),
+  type: z.literal('story_blocks'),
+  items: z.array(StoryItem).min(1).max(3),
+})
+
+/** Galería curada (1 destacada + grilla) con lightbox. */
+const CuratedGalleryBlock = z.object({
+  id: z.string(),
+  type: z.literal('curated_gallery'),
+  eyebrow: z.string().max(60).optional(),
+  title: z.string().max(120).optional(),
+  /** Índices de property.photos; si falta, todas menos hero/story. */
+  photoIndices: z.array(z.number().int().min(0)).optional(),
+})
+
+/** Ubicación como imagen + copy de zona (SIN mapa ni botón). */
+const LocationShowcaseBlock = z.object({
+  id: z.string(),
+  type: z.literal('location_showcase'),
+  eyebrow: z.string().max(60).optional(),
+  title: z.string().max(120).optional(),
+  body: z.string().max(400).optional(),
+  /** Foto exterior para el fondo; si falta → banda navy con el texto. */
+  photoIndex: z.number().int().min(0).optional(),
+})
+
+/** Planos (grilla con zoom). Condicional: solo si property.plans tiene items. */
+const FloorPlansBlock = z.object({
+  id: z.string(),
+  type: z.literal('floor_plans'),
+  title: z.string().max(120).optional(),
+})
+
+/** Invitación de cierre (marca, sin asesor) + CTA→popup. */
+const ClosingInviteBlock = z.object({
+  id: z.string(),
+  type: z.literal('closing_invite'),
+  eyebrow: z.string().max(60).optional(),
+  headline: z.string().max(200),
+  body: z.string().max(400).optional(),
+  ctaLabel: z.string().max(40).optional(),
+})
+
+/** Footer de marca (Diego Ferreyra + contacto + CUCICBA). */
+const FooterBrandBlock = z.object({ id: z.string(), type: z.literal('footer_brand') })
+
 export const LandingBlock = z.discriminatedUnion('type', [
   HeroBlock,
   FeaturesBlock,
@@ -178,6 +241,14 @@ export const LandingBlock = z.discriminatedUnion('type', [
   EssentialSpecsBlock,
   LocationNoteBlock,
   CtaBlock,
+  // E1.9 — plantilla de lujo
+  StatsBarBlock,
+  StoryBlocksBlock,
+  CuratedGalleryBlock,
+  LocationShowcaseBlock,
+  FloorPlansBlock,
+  ClosingInviteBlock,
+  FooterBrandBlock,
 ])
 export type LandingBlock = z.infer<typeof LandingBlock>
 export type LandingBlockType = LandingBlock['type']
