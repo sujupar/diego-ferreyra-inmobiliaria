@@ -32,6 +32,14 @@ function validateForArgenprop(property: PropertyRow, meta: Record<string, unknow
       validation.ok = false
     }
   }
+  // Aviso temprano: Argenprop hoy solo publica CABA. Heurística sin red (el gate real
+  // con catálogo corre en adapter.resolveLocalizacion al publicar).
+  const prov = (property.province ?? '').trim()
+  const city = (property.city ?? '').trim()
+  const looksCaba = /caba|capital federal|ciudad aut[oó]noma/i.test(`${prov} ${city}`)
+  if (prov && prov !== 'CABA' && !looksCaba) {
+    validation.warnings.push('Argenprop hoy solo publica propiedades de CABA — esta parece de otra provincia. Verificá barrio/provincia antes de publicar.')
+  }
   return validation
 }
 

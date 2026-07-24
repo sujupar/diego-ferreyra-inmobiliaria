@@ -37,18 +37,22 @@ export class ArgenpropAdapter implements PortalAdapter {
     return this.creds
   }
 
-  /** Resuelve localidad + barrio. Hoy soporta CABA (LOCALIDAD_2102 + barrio). */
+  /** Resuelve localidad + barrio. CABA se detecta por province, por city, o porque el
+   *  barrio resuelve en el catálogo de CABA (aunque `city` traiga el barrio). */
   private async resolveLocalizacion(property: Property): Promise<{ localidadId: string; barrioId: string | null }> {
     const creds = this.requireCreds()
+    const prov = (property.province ?? '').trim()
     const cityRaw = (property.city ?? '').trim()
-    const isCaba = !cityRaw || /caba|capital federal|ciudad aut[oó]noma/i.test(cityRaw)
+    const looksCaba = /caba|capital federal|ciudad aut[oó]noma/i.test(`${prov} ${cityRaw}`)
+    // Intento de resolver el barrio en el catálogo CABA (cubre el caso city=barrio).
+    const barrioId = await resolveCabaBarrioId(creds, property.neighborhood)
+    const isCaba = prov === 'CABA' || looksCaba || !!barrioId
     if (!isCaba) {
       throw new PortalAdapterError(
-        `Por ahora la publicación en Argenprop soporta solo CABA (ciudad recibida: "${cityRaw}").`,
+        `Por ahora la publicación en Argenprop soporta solo CABA (recibido: provincia "${prov || '—'}", ciudad "${cityRaw || '—'}").`,
         'argenprop', 'validation', false,
       )
     }
-    const barrioId = await resolveCabaBarrioId(creds, property.neighborhood)
     if (!barrioId) {
       throw new PortalAdapterError(
         `No se pudo resolver el barrio "${property.neighborhood}" en el catálogo de Argenprop (CABA). Revisá el barrio de la propiedad.`,

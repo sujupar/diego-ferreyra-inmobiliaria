@@ -1,5 +1,6 @@
 import type { Property } from '../types'
 import { apCategoria, derivedPrefill, getApSchema, type ApField, type AttributeOverride } from './field-schema'
+import { parseAddress } from '@/lib/properties/address'
 
 /** AvisoPublicacionDto — body de POST/PUT /v1/avisos (sección 6 doc). */
 export interface AvisoPublicacionDto {
@@ -43,11 +44,11 @@ function buildTitulo(property: Property): string {
   return [tipo.charAt(0).toUpperCase() + tipo.slice(1), amb, 'en', property.neighborhood].filter(Boolean).join(' ').slice(0, 80)
 }
 
-/** Separa "Av. Cabildo 1234" → { Nombre: "Av. Cabildo", Numero: "1234" }. */
-function parseCalle(address: string): { Nombre: string; Numero: string } {
-  const m = address.trim().match(/^(.*?)[\s,]+(\d+)\s*$/)
-  if (m) return { Nombre: m[1].trim().replace(/,$/, ''), Numero: m[2] }
-  return { Nombre: address.trim(), Numero: 'S/N' }
+/** Separa "José Luis Cantilo 4300, Villa Devoto, ..." → { Nombre, Numero }. */
+export function parseCalleFromAddress(address: string): { Nombre: string; Numero: string } {
+  const parts = parseAddress(address)
+  if (parts.street && parts.number) return { Nombre: parts.street, Numero: parts.number }
+  return { Nombre: (parts.street ?? address.trim()), Numero: 'S/N' }
 }
 
 export function propertyToAvisoDto(property: Property, opts: ApMappingOptions): AvisoPublicacionDto {
@@ -95,7 +96,7 @@ export function propertyToAvisoDto(property: Property, opts: ApMappingOptions): 
     Caracteristicas: caracteristicas,
     Multimedia: multimedia,
     Localizacion: {
-      Calle: parseCalle(property.address),
+      Calle: parseCalleFromAddress(property.address),
       Latitud: property.latitude ?? undefined,
       Longitud: property.longitude ?? undefined,
       Localidad: { Id: opts.localidadId },
