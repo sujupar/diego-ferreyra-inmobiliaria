@@ -157,6 +157,9 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
   const [assets, setAssets] = useState<AssetPreview[]>([])
   const [loading, setLoading] = useState(false)
   const [starting, setStarting] = useState(false)
+  // E2.1 — si la campaña se bloquea por falta de landing, mostramos un CTA en
+  // vez de un error crudo (el bug de la captura: el error no decía cómo resolverlo).
+  const [landingRequired, setLandingRequired] = useState<{ redirectTo: string } | null>(null)
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Inputs del asesor
@@ -283,7 +286,14 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
         method: 'POST',
       })
       const data = await r.json()
-      if (!r.ok) throw new Error(data.error ?? 'No se pudo iniciar')
+      if (!r.ok) {
+        // E2.1 — gate de landing: no es un error, falta un paso previo.
+        if (data.code === 'LANDING_REQUIRED') {
+          setLandingRequired({ redirectTo: data.redirectTo ?? `/properties/${propertyId}` })
+          return
+        }
+        throw new Error(data.error ?? 'No se pudo iniciar')
+      }
       setJobId(data.jobId)
       setStep('analyzing')
     } catch (err) {
@@ -479,6 +489,32 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
   }
 
   // === Renders por step ===
+
+  // E2.1 — Gate de landing: la propiedad no tiene landing pública. En vez de un
+  // error, mostramos el camino: crear la landing (que vive en el detalle de la
+  // propiedad) y volver.
+  if (landingRequired) {
+    return (
+      <Card className="border-amber-300">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Sparkles className="h-4 w-4 text-amber-600" />
+            Primero creá la Landing Page
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            La campaña Meta necesita una landing pública donde llegan los interesados.
+            Creala en la ficha de la propiedad (sección &quot;Landing Page&quot;) y volvé a montar la campaña.
+          </p>
+          <Button onClick={() => router.push(landingRequired.redirectTo)}>
+            Ir a crear la landing
+            <ArrowRight className="h-4 w-4 ml-1" />
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
 
   // Step cleanup_required: bloqueo previo. Hay una campaña no archivada en
   // property_meta_campaigns que NO está completa — típicamente del incidente

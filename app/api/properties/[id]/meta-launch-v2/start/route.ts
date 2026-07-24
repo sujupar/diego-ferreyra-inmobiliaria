@@ -63,10 +63,20 @@ export async function POST(
     if (pErr || !property) {
       return NextResponse.json({ error: 'property not found' }, { status: 404 })
     }
+    // E2.1 — Gate de landing. La campaña necesita una landing pública. Hay dos
+    // formas válidas de tenerla: (a) una landing publicada desde la plataforma
+    // (property_landings.status='published', que asigna slug), o (b) un
+    // public_slug legacy (propiedad publicada en portal → renderiza el fallback).
+    // Si no hay NINGUNA, mandamos a crearla (409 + code) en vez del 412 ciego que
+    // no le decía al asesor cómo resolverlo.
     if (!property.public_slug) {
       return NextResponse.json(
-        { error: 'La propiedad no tiene landing pública asignada todavía.' },
-        { status: 412 },
+        {
+          error: 'Primero creá la Landing Page de esta propiedad. Es requisito para la campaña.',
+          code: 'LANDING_REQUIRED',
+          redirectTo: `/properties/${id}`,
+        },
+        { status: 409 },
       )
     }
     if (property.latitude == null || property.longitude == null) {
