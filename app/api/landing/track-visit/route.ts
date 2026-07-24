@@ -22,7 +22,9 @@ interface TrackBody {
   fb_placement?: string
 }
 
-const ALLOWED_FUNNELS = new Set(['clase_gratuita', 'tasacion', 'otro'])
+// E1.0 — sumadas las landings de propiedad ('venta_propiedad','alto_valor').
+// El CHECK de landing_page_visits.funnel_type ya las admite (migración 20260723000003).
+const ALLOWED_FUNNELS = new Set(['clase_gratuita', 'tasacion', 'venta_propiedad', 'alto_valor', 'otro'])
 
 /**
  * POST /api/landing/track-visit

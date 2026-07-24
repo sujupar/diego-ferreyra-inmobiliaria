@@ -3,7 +3,9 @@
 import { useEffect, useRef } from 'react'
 import { readAttributionFromParams, persistAttribution } from '@/lib/funnel/attribution'
 
-type FunnelType = 'clase_gratuita' | 'tasacion' | 'otro'
+// E1.0 — sumadas las landings de propiedad. Mantener sincronizado con
+// ALLOWED_FUNNELS en app/api/landing/track-visit/route.ts y el CHECK de la DB.
+type FunnelType = 'clase_gratuita' | 'tasacion' | 'venta_propiedad' | 'alto_valor' | 'otro'
 
 interface Props {
   slug: string

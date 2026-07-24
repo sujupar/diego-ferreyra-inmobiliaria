@@ -2,16 +2,12 @@ import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
-import { LandingHero } from '@/components/landing/Hero'
-import { LandingGallery } from '@/components/landing/Gallery'
-import { LandingVideoEmbed } from '@/components/landing/VideoEmbed'
-import { LandingTour3DEmbed } from '@/components/landing/Tour3DEmbed'
-import { LandingFeatures } from '@/components/landing/Features'
-import { LandingDescription } from '@/components/landing/Description'
-import { LandingLocationMap } from '@/components/landing/LocationMap'
-import { LandingLeadForm } from '@/components/landing/LeadForm'
 import { MetaPixel } from '@/components/landing/MetaPixel'
 import { LandingVisitTracker } from '@/components/landing/LandingVisitTracker'
+import { LandingRenderer } from '@/components/landing/LandingRenderer'
+import { getPublishedLanding } from '@/lib/landing/get-landing'
+import { legacyFallbackDocument } from '@/lib/landing/legacy-fallback'
+import { deriveFunnelType } from '@/lib/landing/funnel-type'
 
 function getAdmin() {
   return createClient<Database>(
@@ -81,9 +77,19 @@ export default async function PropertyLandingPage({
 
   const pixelId = process.env.META_PIXEL_ID ?? ''
 
+  // E1.2 — Render schema-driven. Si la propiedad tiene una landing PUBLICADA,
+  // se usa su documento (bloques editables). Si no, el fallback legacy produce
+  // exactamente el layout de siempre (cero landings rotas el día del deploy).
+  const published = await getPublishedLanding(property.id)
+  const document = published?.document ?? legacyFallbackDocument()
+
+  // E1.0 — funnel_type real. Prioriza el congelado en la landing publicada;
+  // si no hay, se deriva de la propiedad (server-side, nunca desde la URL).
+  const funnelType = published?.funnelType ?? deriveFunnelType(property)
+
   return (
     <main className="min-h-screen bg-background">
-      <LandingVisitTracker slug={slug} funnelType="otro" />
+      <LandingVisitTracker slug={slug} funnelType={funnelType} />
       {pixelId && (
         <MetaPixel
           pixelId={pixelId}
@@ -91,56 +97,7 @@ export default async function PropertyLandingPage({
           propertyTitle={heroTitle}
         />
       )}
-      <LandingHero
-        title={heroTitle}
-        address={property.address}
-        neighborhood={property.neighborhood}
-        city={property.city}
-        price={property.asking_price}
-        currency={property.currency}
-        operationType={property.operation_type}
-        heroImage={property.photos?.[0]}
-      />
-
-      <LandingFeatures
-        rooms={property.rooms}
-        bedrooms={property.bedrooms}
-        bathrooms={property.bathrooms}
-        garages={property.garages}
-        coveredArea={property.covered_area}
-        totalArea={property.total_area}
-        floor={property.floor}
-        age={property.age}
-        expensas={property.expensas}
-        amenities={
-          Array.isArray(property.amenities) ? (property.amenities as string[]) : []
-        }
-      />
-
-      {property.photos && property.photos.length > 0 && (
-        <LandingGallery photos={property.photos} />
-      )}
-
-      {property.video_url && <LandingVideoEmbed url={property.video_url} />}
-
-      {property.tour_3d_url && <LandingTour3DEmbed url={property.tour_3d_url} />}
-
-      {property.description && (
-        <LandingDescription text={property.description} />
-      )}
-
-      {property.latitude != null && property.longitude != null && (
-        <LandingLocationMap
-          lat={property.latitude}
-          lng={property.longitude}
-          address={property.address}
-        />
-      )}
-
-      <LandingLeadForm
-        propertyId={property.id}
-        propertyTitle={heroTitle}
-      />
+      <LandingRenderer document={document} property={property} />
     </main>
   )
 }
