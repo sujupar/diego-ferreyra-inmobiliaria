@@ -18,8 +18,9 @@ import { getOrGenerateBridgedDescription } from '@/lib/marketing/portal-descript
 import { analyzePropertyPhotos } from '@/lib/marketing/property-vision-analyzer'
 import { deriveFunnelType, type PropertyFunnelType } from './funnel-type'
 import { buildFromTemplate, suggestTemplateId, getTemplate } from './templates'
-import { buildConversionDocument } from './templates/conversion'
+import { buildLuxuryDocument } from './templates/luxury'
 import { generateConversionCopy } from './conversion-copy'
+import { deriveTier } from './tier'
 import { buildUtmBase } from './utm'
 import { LandingDocument, safeParseLandingDocument } from './schema'
 import { generateEmpathyAvatars } from '@/lib/marketing/empathy-avatar-generator'
@@ -119,12 +120,12 @@ export async function startCoCreation(propertyId: string, userId: string | null)
     generateCoCreationQuestions({ property, visionSummary, description }),
   ])
 
-  // E1.8 — landing de CONVERSIÓN con copy IA (beneficios intangibles + dolor),
-  // personalizado con el avatar. Queda editable; si la IA falla, cae al copy
-  // determinístico internamente (generateConversionCopy nunca tira).
-  const templateId = suggestTemplateId(funnelType) // 'conversion'
+  // E1.9 — landing de LUJO con copy IA (beneficios intangibles + dolor),
+  // personalizado con el avatar, e intensidad por tier. Queda editable; si la IA
+  // falla, cae al copy determinístico internamente (generateConversionCopy nunca tira).
+  const templateId = suggestTemplateId(funnelType) // 'luxury'
   const { copy } = await generateConversionCopy({ property, avatar: avatars[0] })
-  const document = buildConversionDocument(property, copy)
+  const document = buildLuxuryDocument(property, copy, deriveTier(property))
 
   const wizard_state: WizardState = {
     step: 'questions',

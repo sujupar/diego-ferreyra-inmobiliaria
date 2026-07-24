@@ -72,6 +72,12 @@ export function buildLuxuryDocument(
     })
   }
 
+  // Planos: condicional (solo si la propiedad tiene planos cargados).
+  const plans = (property as { plans?: string[] | null }).plans ?? []
+  if (plans.length > 0) {
+    blocks.push({ id: 'plans', type: 'floor_plans', title: 'Distribución' })
+  }
+
   blocks.push({ id: 'cta-mid', type: 'cta', label: copy.ctaLabel, headline: copy.midCtaHeadline })
 
   blocks.push({

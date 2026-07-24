@@ -37,6 +37,8 @@ import { FooterBrand } from '@/components/landing/luxury/FooterBrand'
 import { StoryBlocks } from '@/components/landing/luxury/StoryBlocks'
 import { CuratedGallery } from '@/components/landing/luxury/CuratedGallery'
 import { LocationShowcase } from '@/components/landing/luxury/LocationShowcase'
+import { FloorPlans } from '@/components/landing/luxury/FloorPlans'
+import { planLabelFromUrl } from '@/lib/properties/media'
 
 export type LandingProperty = Database['public']['Tables']['properties']['Row']
 
@@ -370,6 +372,17 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
       )
     },
   },
-  // Stub (null) hasta F3.
-  floor_plans: { label: 'Planos', render: () => null },
+  floor_plans: {
+    label: 'Planos',
+    render: (block, { property }) => {
+      if (block.type !== 'floor_plans') return null
+      // `plans` es columna de migración, no está en los tipos generados.
+      const raw = (property as { plans?: string[] | null }).plans ?? []
+      const plans = raw
+        .filter((s): s is string => typeof s === 'string')
+        .map(src => ({ src, label: planLabelFromUrl(src) }))
+      if (plans.length === 0) return null
+      return <FloorPlans plans={plans} title={block.title} />
+    },
+  },
 }
