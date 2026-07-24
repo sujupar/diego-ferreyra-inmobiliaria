@@ -152,13 +152,13 @@ function buildAttributes(property: Property, opts: MlPayloadOptions): MlAttribut
  */
 function buildLocation(property: Property) {
   const cityRaw = (property.city ?? '').trim()
+  const prov = (property.province ?? '').trim()
   const isCaba =
-    !cityRaw ||
-    /^caba$/i.test(cityRaw) ||
-    /capital federal/i.test(cityRaw) ||
-    /ciudad aut[oó]noma/i.test(cityRaw)
+    /^caba$/i.test(prov) || /capital federal|ciudad aut[oó]noma/i.test(prov) ||
+    (!prov && (!cityRaw || /^caba$/i.test(cityRaw) || /capital federal/i.test(cityRaw) || /ciudad aut[oó]noma/i.test(cityRaw)))
 
-  const stateName = isCaba ? 'Capital Federal' : 'Buenos Aires'
+  // state: CABA → "Capital Federal"; si hay province explícita usarla; si no, heurística "Buenos Aires".
+  const stateName = isCaba ? 'Capital Federal' : (prov && !/buenos aires/i.test(prov) ? prov : 'Buenos Aires')
   const cityName = isCaba ? property.neighborhood : cityRaw
 
   return {
