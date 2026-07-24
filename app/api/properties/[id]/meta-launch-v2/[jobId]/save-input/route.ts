@@ -20,6 +20,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
+import { validateDailyBudgetArs } from '@/lib/marketing/budget-limits'
 import type { Database } from '@/types/database.types'
 
 function getAdmin() {
@@ -74,8 +75,18 @@ export async function PATCH(
         .slice(0, 3)
     }
     if (typeof body.geoPresetId === 'string') update.geo_preset_id = body.geoPresetId
-    if (typeof body.dailyBudgetArs === 'number' && body.dailyBudgetArs >= 0) {
-      update.daily_budget_ars = Math.floor(body.dailyBudgetArs)
+    if (body.dailyBudgetArs !== undefined) {
+      // E2.0 — Blindaje de presupuesto (capa B). Validamos rango ya al guardar,
+      // no solo al confirmar. Entero en ARS. Rechazamos fuera de [MIN, MAX].
+      const floored = Math.floor(Number(body.dailyBudgetArs))
+      const check = validateDailyBudgetArs(floored)
+      if (!check.ok) {
+        return NextResponse.json(
+          { error: check.reason, code: 'BUDGET_OUT_OF_RANGE' },
+          { status: 400 },
+        )
+      }
+      update.daily_budget_ars = floored
     }
     if (Array.isArray(body.videosToInclude)) {
       update.videos_to_include = body.videosToInclude.slice(0, 5).map(String)

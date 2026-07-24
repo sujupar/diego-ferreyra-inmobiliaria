@@ -20,6 +20,7 @@ import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import type { Property } from '@/lib/portals/types'
 import { decideBudget } from './budget-rules'
+import { META_ABSOLUTE_CEILING_ARS } from './budget-limits'
 import { decideTargeting } from './targeting-rules'
 import { generateAdCopyVariations, variationsToPrimary } from './copy-ai-generator'
 import { getUsdToArs } from './usd-rate'
@@ -417,6 +418,21 @@ export async function createCampaignForProperty(
   const budget = overrides.dailyBudgetArs != null && overrides.dailyBudgetArs > 0
     ? { ...autoBudget, dailyArs: overrides.dailyBudgetArs }
     : autoBudget
+
+  // E2.0 — Backstop catastrófico de presupuesto (capa E). Última línea de
+  // defensa ANTES de cualquier escritura a Meta (la Campaign se crea abajo).
+  // Aunque un caller se saltee la validación de negocio, acá tiramos si el
+  // budget diario supera el techo absoluto. `dailyArs` es ENTERO en ARS; el
+  // ×100 a unidad mínima de Meta ocurre UNA sola vez más abajo (daily_budget).
+  if (!Number.isFinite(budget.dailyArs) || budget.dailyArs <= 0) {
+    throw new Error(`Presupuesto diario inválido: ${budget.dailyArs}`)
+  }
+  if (budget.dailyArs > META_ABSOLUTE_CEILING_ARS) {
+    throw new Error(
+      `Presupuesto diario ARS ${budget.dailyArs.toLocaleString('es-AR')} supera el techo absoluto ` +
+      `ARS ${META_ABSOLUTE_CEILING_ARS.toLocaleString('es-AR')}. Abortado por seguridad.`,
+    )
+  }
 
   // Targeting: override del asesor (preset geográfico que eligió) o automático
   const autoTargeting = decideTargeting(property, usdToArs)

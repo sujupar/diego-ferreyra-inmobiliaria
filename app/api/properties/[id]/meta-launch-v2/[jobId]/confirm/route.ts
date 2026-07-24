@@ -19,6 +19,7 @@ import { requireAuth } from '@/lib/auth/require-role'
 import { createCampaignForProperty } from '@/lib/marketing/meta-campaign-builder'
 import { createAudiencesForCampaign } from '@/lib/marketing/meta-custom-audiences'
 import { isCampaignComplete } from '@/lib/marketing/campaign-completeness'
+import { validateDailyBudgetArs } from '@/lib/marketing/budget-limits'
 import type { Database } from '@/types/database.types'
 
 export const maxDuration = 60
@@ -266,18 +267,12 @@ export async function POST(
       .map(a => a.meta_image_hash)
       .filter((h): h is string => typeof h === 'string' && h.length > 0)
 
-    // Crear campaña (el builder maneja idempotencia con UNIQUE PARTIAL)
-    let campaign
-    try {
-      campaign = await createCampaignForProperty(property as never, {
-        dryRun: true,
-        overrides: {
-          preGeneratedImageHashes,
-          variantCount: Math.min(preGeneratedImageHashes.length, 10),
-        },
-      })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+    // E2.0 — Blindaje de presupuesto (capa A). El budget que eligió el asesor
+    // vive en job.daily_budget_ars (ENTERO en ARS). Hasta ahora se IGNORABA y
+    // la campaña se creaba con el auto-tier. Ahora lo cableamos, pero SOLO tras
+    // validar el rango — porque createCampaignForProperty crea la campaña EN VIVO
+    // (aunque en PAUSED) con este daily_budget. Un cero de más = plata real.
+    const markFailed = async (message: string) => {
       await (supabase as unknown as {
         from: (t: string) => {
           update: (f: Record<string, unknown>) => {
@@ -286,9 +281,56 @@ export async function POST(
         }
       })
         .from('meta_launch_jobs')
-        .update({ status: 'failed', error_message: 'Campaign: ' + msg })
+        .update({ status: 'failed', error_message: message })
         .eq('id', jobId)
+    }
+
+    const rawBudget = (job as { daily_budget_ars?: number | null }).daily_budget_ars
+    // Si el asesor nunca eligió budget (null), dejamos que el builder use su
+    // auto-tier (comportamiento previo, seguro). Si eligió, validamos duro.
+    let budgetOverride: number | undefined
+    if (rawBudget != null) {
+      const check = validateDailyBudgetArs(rawBudget)
+      if (!check.ok) {
+        await markFailed(`Presupuesto fuera de rango (${check.code}): ${check.reason}`)
+        return NextResponse.json(
+          { error: check.reason, code: 'BUDGET_OUT_OF_RANGE' },
+          { status: 400 },
+        )
+      }
+      budgetOverride = rawBudget
+    }
+
+    // Crear campaña (el builder maneja idempotencia con UNIQUE PARTIAL)
+    let campaign
+    try {
+      campaign = await createCampaignForProperty(property as never, {
+        dryRun: true,
+        overrides: {
+          preGeneratedImageHashes,
+          variantCount: Math.min(preGeneratedImageHashes.length, 10),
+          // ENTERO en ARS, sin ×100. La conversión a unidad mínima de Meta
+          // ocurre UNA sola vez dentro del builder (daily_budget).
+          ...(budgetOverride != null ? { dailyBudgetArs: budgetOverride } : {}),
+        },
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      await markFailed('Campaign: ' + msg)
       return NextResponse.json({ error: msg }, { status: 502 })
+    }
+
+    // Tripwire (capa E-bis): la campaña ya se creó EN PAUSED. Si el budget que
+    // Meta recibió no coincide EXACTO con lo que eligió el asesor, algo está
+    // mal en el builder (doble ×100, redondeo raro, etc.). Fallamos el job para
+    // que NADIE active esa campaña, y lo dejamos visible en error_message.
+    if (budgetOverride != null && campaign.budgetDailyArs !== budgetOverride) {
+      const detail = `Mismatch de presupuesto: elegido ARS ${budgetOverride}, ` +
+        `builder devolvió ARS ${campaign.budgetDailyArs}. Campaña ${campaign.campaignId} ` +
+        `quedó en PAUSED — NO activar. Revisar meta-campaign-builder.`
+      console.error('[meta-launch-v2 confirm] BUDGET TRIPWIRE:', detail)
+      await markFailed(detail)
+      return NextResponse.json({ error: detail, code: 'BUDGET_MISMATCH' }, { status: 500 })
     }
 
     // Crear Custom Audiences (best-effort)

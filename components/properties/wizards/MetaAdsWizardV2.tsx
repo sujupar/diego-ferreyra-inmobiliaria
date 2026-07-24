@@ -20,6 +20,12 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import {
+  META_MIN_DAILY_ARS,
+  META_MAX_DAILY_ARS,
+  BUDGET_PRESETS_ARS,
+  formatBudgetSummary,
+} from '@/lib/marketing/budget-limits'
+import {
   Loader2,
   CheckCircle2,
   AlertTriangle,
@@ -131,7 +137,10 @@ const GEO_PRESETS = [
   { id: 'amplio', label: 'Toda CABA', detail: 'Radio grande para premium / inversores' },
 ] as const
 
-const BUDGET_OPTIONS = [5_000, 10_000, 15_000, 25_000, 50_000] as const
+// Presets desde la fuente única de verdad (lib/marketing/budget-limits).
+const BUDGET_OPTIONS = BUDGET_PRESETS_ARS
+// Umbral a partir del cual pedimos confirmación explícita (checkbox).
+const BUDGET_CONFIRM_THRESHOLD_ARS = 30_000
 
 export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombieCampaign }: Props) {
   const router = useRouter()
@@ -158,6 +167,11 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
   const [starredPhotos, setStarredPhotos] = useState<number[]>([])
   const [geoPresetId, setGeoPresetId] = useState<string>('similares')
   const [dailyBudget, setDailyBudget] = useState<number>(10_000)
+  // E2.0 — el asesor debe tildar esto para presupuestos altos antes de generar.
+  const [budgetConfirmed, setBudgetConfirmed] = useState(false)
+  // Clamp duro a [MIN, MAX]: imposible setear fuera de rango desde la UI.
+  const setBudgetClamped = (v: number) =>
+    setDailyBudget(Math.min(META_MAX_DAILY_ARS, Math.max(META_MIN_DAILY_ARS, Math.floor(v) || META_MIN_DAILY_ARS)))
   const [generationProgress, setGenerationProgress] = useState<{ generated: number; total: number; failures: number }>({ generated: 0, total: 27, failures: 0 })
   // CRÍTICO: usar useRef en vez de useState. El recursive runNextBatch lee
   // este flag sincrónicamente — si fuera useState, la closure capturada lee
@@ -892,7 +906,7 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
             {BUDGET_OPTIONS.map(b => (
               <button
                 key={b}
-                onClick={() => setDailyBudget(b)}
+                onClick={() => { setBudgetClamped(b); setBudgetConfirmed(false) }}
                 className={`p-3 rounded-lg border-2 text-sm font-medium transition ${
                   dailyBudget === b ? 'border-[color:var(--brand)] bg-[color:var(--brand)]/5' : 'border-border hover:bg-muted/30'
                 }`}
@@ -901,23 +915,53 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
               </button>
             ))}
           </div>
+          {/* E2.0 (capa D): SLIDER con techo duro, NO un <input> pegable. Imposible
+              meter un "cero de más" — el máximo es META_MAX_DAILY_ARS. */}
           <div>
-            <label className="text-sm font-medium">O ingresá un monto personalizado</label>
+            <label className="text-sm font-medium">O ajustá el monto exacto</label>
             <input
-              type="number"
-              value={dailyBudget}
-              onChange={e => setDailyBudget(Math.max(1000, Number(e.target.value) || 0))}
+              type="range"
+              min={META_MIN_DAILY_ARS}
+              max={META_MAX_DAILY_ARS}
               step={1000}
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1"
+              value={dailyBudget}
+              onChange={e => { setBudgetClamped(Number(e.target.value)); setBudgetConfirmed(false) }}
+              className="w-full mt-2 accent-[color:var(--brand)]"
             />
+            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+              <span>ARS {META_MIN_DAILY_ARS.toLocaleString('es-AR')}</span>
+              <span>ARS {META_MAX_DAILY_ARS.toLocaleString('es-AR')}</span>
+            </div>
           </div>
+          {/* E2.0 (capa C): confirmación explícita "$X/día ≈ $Y/mes". Es lo que
+              el asesor firma antes de mandar el budget a Meta. */}
+          <div className="rounded-lg border-2 border-[color:var(--brand)]/30 bg-[color:var(--brand)]/5 p-4 text-center">
+            <p className="text-2xl font-bold">{formatBudgetSummary(dailyBudget).perDay}<span className="text-sm font-normal text-muted-foreground"> / día</span></p>
+            <p className="text-sm text-muted-foreground mt-1">≈ {formatBudgetSummary(dailyBudget).perMonth} por mes (30 días)</p>
+          </div>
+          {dailyBudget >= BUDGET_CONFIRM_THRESHOLD_ARS && (
+            <label className="flex items-start gap-2 text-sm rounded-lg border border-amber-300 bg-amber-50 p-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={budgetConfirmed}
+                onChange={e => setBudgetConfirmed(e.target.checked)}
+                className="mt-0.5 accent-amber-600"
+              />
+              <span>Confirmo que quiero invertir <strong>{formatBudgetSummary(dailyBudget).perDay}/día</strong> (≈ {formatBudgetSummary(dailyBudget).perMonth}/mes). Revisé que el monto es correcto.</span>
+            </label>
+          )}
           <p className="text-xs text-muted-foreground">
             La campaña queda en PAUSADO en Meta Ads. Solo gasta cuando vos la activás.
           </p>
           <div className="flex gap-2">
             <Button onClick={() => setStep('geo')} variant="ghost"><ArrowLeft className="h-4 w-4 mr-1" />Atrás</Button>
-            <Button onClick={startGeneration} className="flex-1" size="lg">
-              <ImageIcon className="h-4 w-4 mr-1" />Generar las 27 piezas
+            <Button
+              onClick={startGeneration}
+              disabled={dailyBudget >= BUDGET_CONFIRM_THRESHOLD_ARS && !budgetConfirmed}
+              className="flex-1"
+              size="lg"
+            >
+              <ImageIcon className="h-4 w-4 mr-1" />Generar las piezas
             </Button>
           </div>
         </CardContent>
@@ -990,7 +1034,7 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
               ?? '— sin avatar (job reanudado) —'
             }</p>
             <p><strong>Geo:</strong> {GEO_PRESETS.find(p => p.id === (geoPresetId || job?.geo_preset_id))?.label}</p>
-            <p><strong>Presupuesto:</strong> ARS {(dailyBudget || job?.daily_budget_ars || 0).toLocaleString('es-AR')} / día</p>
+            <p><strong>Presupuesto:</strong> {formatBudgetSummary(dailyBudget || job?.daily_budget_ars || 0).perDay} / día <span className="text-muted-foreground">(≈ {formatBudgetSummary(dailyBudget || job?.daily_budget_ars || 0).perMonth}/mes)</span></p>
             <p><strong>Piezas generadas:</strong> {assets.length}</p>
           </div>
           <p className="text-xs text-muted-foreground">
