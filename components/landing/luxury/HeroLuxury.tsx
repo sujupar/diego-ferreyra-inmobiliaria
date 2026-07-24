@@ -100,8 +100,8 @@ export function HeroLuxury(props: HeroLuxuryProps) {
         {offerLabel}
       </span>
       <span
-        className="mt-2 font-[var(--lx-serif)] text-4xl font-medium tabular-nums md:text-5xl"
-        style={{ textShadow: '0 2px 26px rgba(0,0,0,0.55)' }}
+        className="mt-2 text-4xl font-medium tabular-nums md:text-5xl"
+        style={{ fontFamily: 'var(--lx-serif)', textShadow: '0 2px 26px rgba(0,0,0,0.55)' }}
       >
         {priceStr}
       </span>

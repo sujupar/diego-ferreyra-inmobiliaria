@@ -90,7 +90,9 @@ export default async function PropertyLandingPage({
   const funnelType = published?.funnelType ?? deriveFunnelType(property)
 
   return (
-    <main className="min-h-screen bg-background">
+    // Sin bg-background (token del dashboard): deja ver el marfil de `.landing-root`
+    // detrás de las secciones sin fondo propio (StoryBlocks, etc.).
+    <main className="min-h-screen">
       <LandingVisitTracker slug={slug} funnelType={funnelType} />
       {pixelId && (
         <MetaPixel

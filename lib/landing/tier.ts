@@ -23,7 +23,8 @@ export interface TierConfig {
 }
 
 export function tierConfig(tier: LandingTier): TierConfig {
+  // alto_valor despliega los 3 bloques de historia; estándar va más al grano (2).
   return tier === 'alto_valor'
     ? { storyCount: 3, gallery: 'feature' }
-    : { storyCount: 3, gallery: 'grid' }
+    : { storyCount: 2, gallery: 'grid' }
 }

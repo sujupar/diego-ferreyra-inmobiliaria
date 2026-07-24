@@ -457,7 +457,11 @@ Genera carruseles de campaña (largo variable, narrativa de curiosidad) a partir
 
 ---
 
-## Landing pública premium — diseño (E1.7, 2026-07-24)
+## Landing pública premium — diseño (E1.7 → E1.9, 2026-07-24)
+
+**Estado actual (E1.9, APROBADO por el usuario):** la landing es un SISTEMA de LUJO replicable nivel "Villa Eva" (referencia que dio el usuario). Template default `luxury` (`lib/landing/templates/luxury.ts`, `buildLuxuryDocument`) que arma el documento en orden curado de alta conversión: **HeroLuxury** (foto/video + oferta + CTA) → **StatsBar** → **StoryBlocks** (3 numerados I·II·III, foto/texto alternados, de los `benefits` del copy) → **CuratedGallery** + lightbox (recorrido completo) → **FloorPlans** (condicional: solo si `property.plans`) → **CtaBand** (mid) → **LocationShowcase** (banda navy, SIN mapa) → **ClosingInvite** (marca, sin asesor) → **FooterBrand** (CUCICBA) + **FloatingCta**. Todo en `components/landing/luxury/`. Copy IA (`conversion-copy.ts`, reusado) con fallback determinístico. Popup único de captura (`LeadCaptureProvider`) para todos los CTAs. Intensidad por tier (`lib/landing/tier.ts`), curación de fotos (`lib/landing/photo-plan.ts`). Decisiones del usuario: **estética navy con la marca (no marfil/oro)**, **sin asesor/persona en la página**, galería = recorrido completo. Specs: `docs/superpowers/specs/2026-07-24-landing-lujo-replicable-design.md` + plan homónimo. Historial de rechazos: E1.7 y E1.8 fueron rechazados por "parecer portal"/no conectar; la referencia Villa Eva desbloqueó la dirección correcta.
+
+Las claves de arquitectura/motion de abajo (E1.7) SIGUEN VIGENTES:
 
 La landing (`app/p/[slug]`) se rediseñó a nivel premium (estilo editorial/lujo, una oferta + un CTA). Claves:
 

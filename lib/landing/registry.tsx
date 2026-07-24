@@ -53,6 +53,12 @@ export interface BlockDef {
   label: string
   /** No borrable en el editor (el objetivo de conversión). */
   locked?: boolean
+  /**
+   * E1.9 — el bloque ya se auto-anima (clase `lx-reveal` propia). El renderer NO
+   * debe envolverlo en <Reveal> (evita doble animación: translateY sumado +
+   * opacidad al cuadrado).
+   */
+  selfAnimates?: boolean
   /** Render. Devuelve null si el bloque no aplica (ej. video sin url). */
   render: (block: LandingBlock, ctx: BlockCtx) => ReactNode
 }
@@ -289,6 +295,7 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
   // ── E1.9 · Bloques de la plantilla de lujo ────────────────────────────────
   stats_bar: {
     label: 'Datos',
+    selfAnimates: true,
     render: (block, { property }) => {
       if (block.type !== 'stats_bar') return null
       return (
@@ -308,6 +315,7 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
   },
   closing_invite: {
     label: 'Cierre',
+    selfAnimates: true,
     render: (block) => {
       if (block.type !== 'closing_invite') return null
       return (
@@ -330,6 +338,7 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
   },
   story_blocks: {
     label: 'Historia',
+    selfAnimates: true,
     render: (block, { property }) => {
       if (block.type !== 'story_blocks') return null
       const photos = property.photos ?? []
@@ -345,6 +354,7 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
   },
   curated_gallery: {
     label: 'Galería',
+    selfAnimates: true,
     render: (block, { property }) => {
       if (block.type !== 'curated_gallery') return null
       const all = property.photos ?? []
@@ -356,6 +366,7 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
   },
   location_showcase: {
     label: 'Ubicación',
+    selfAnimates: true,
     render: (block, { property }) => {
       if (block.type !== 'location_showcase') return null
       const photos = property.photos ?? []
@@ -374,6 +385,7 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
   },
   floor_plans: {
     label: 'Planos',
+    selfAnimates: true,
     render: (block, { property }) => {
       if (block.type !== 'floor_plans') return null
       // `plans` es columna de migración, no está en los tipos generados.

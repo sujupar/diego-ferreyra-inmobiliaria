@@ -270,10 +270,12 @@ export const LandingDocument = z
     theme: LandingTheme.default({}),
   })
   .superRefine((doc, ctx) => {
-    // Invariante de conversión: al menos UN disparador de conversión. En el
-    // modelo E1.8 son los `cta` (abren el popup); el `lead_form` inline queda
-    // soportado para landings legacy. Sin ninguno no hay conversión.
-    const triggers = doc.blocks.filter(b => b.type === 'lead_form' || b.type === 'cta')
+    // Invariante de conversión: al menos UN disparador de conversión. `cta` y
+    // `closing_invite` abren el popup; `lead_form` inline queda para landings
+    // legacy. Sin ninguno no hay conversión.
+    const triggers = doc.blocks.filter(
+      b => b.type === 'lead_form' || b.type === 'cta' || b.type === 'closing_invite',
+    )
     if (triggers.length < 1) {
       ctx.addIssue({
         code: 'custom',

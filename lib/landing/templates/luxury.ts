@@ -78,7 +78,14 @@ export function buildLuxuryDocument(
     blocks.push({ id: 'plans', type: 'floor_plans', title: 'Distribución' })
   }
 
-  blocks.push({ id: 'cta-mid', type: 'cta', label: copy.ctaLabel, headline: copy.midCtaHeadline })
+  // CTA intermedio con estilo de lujo (reusa closing_invite; abre el popup).
+  blocks.push({
+    id: 'cta-mid',
+    type: 'closing_invite',
+    eyebrow: 'Agendá tu visita',
+    headline: copy.midCtaHeadline,
+    ctaLabel: copy.ctaLabel,
+  })
 
   blocks.push({
     id: 'location',

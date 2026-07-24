@@ -29,9 +29,10 @@ export function LandingRenderer({ document, property, mode = 'public' }: Landing
         if (!def) return null
         const node = def.render(block, ctx)
         if (node == null) return null
-        // El hero anima su propia entrada; las demás secciones aparecen al
-        // hacer scroll vía Reveal (salvo que el motion esté apagado o en editor).
-        if (block.type === 'hero' || !motionOn) {
+        // El hero anima su propia entrada; los bloques de lujo se auto-animan
+        // (selfAnimates → clase lx-reveal propia, no doble-envolver). El resto
+        // aparece al hacer scroll vía Reveal (salvo motion off o editor).
+        if (block.type === 'hero' || def.selfAnimates || !motionOn) {
           return <Fragment key={block.id}>{node}</Fragment>
         }
         return <Reveal key={block.id}>{node}</Reveal>
