@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import type { CategoryAttribute, AttributeOverride } from '@/lib/portals/mercadolibre/category-attributes'
 import type { MlAttributesResponse, MlDraft, MlPreviewProperty } from '../types'
 import { parseAddress, buildGeocodeQuery } from '@/lib/properties/address'
+import { findNeighborhood } from '@/lib/marketing/neighborhood-data'
 
 const GeoPinMap = dynamic(() => import('../GeoPinMap').then(m => m.GeoPinMap), { ssr: false })
 
@@ -14,6 +15,11 @@ interface Props {
   draft: MlDraft
   onChange: (p: Partial<MlDraft>) => void
   onValidityChange: (ok: boolean) => void
+}
+
+function geoDefaultCenter(neighborhood: string): [number, number] {
+  const n = findNeighborhood(neighborhood)
+  return n ? [n.lat, n.lng] : [-34.6037, -58.3816] // fallback: Obelisco / CABA
 }
 
 function hasValue(v: AttributeOverride | undefined): boolean {
@@ -188,11 +194,24 @@ export function StepFields({ property, attrs, draft, onChange, onValidityChange 
             {geocoding ? 'Buscando…' : 'Geocodificar dirección'}
           </button>
         </div>
-        {geoOk ? (
-          <GeoPinMap lat={draft.latitude!} lng={draft.longitude!} onChange={(lat, lng) => onChange({ latitude: lat, longitude: lng })} />
-        ) : (
-          <p className="text-sm text-red-600">Falta la ubicación. Tocá “Geocodificar dirección” y confirmá el pin.</p>
+        <input
+          value={draft.address ?? property.address}
+          onChange={e => onChange({ address: e.target.value })}
+          placeholder="Calle y altura, barrio, ciudad"
+          className="w-full rounded-md border border-input px-3 py-2 text-sm"
+        />
+        {!geoOk && (
+          <p className="text-sm text-amber-600">Sin ubicación confirmada. Geocodificá o colocá el pin en el mapa (click) y confirmá.</p>
         )}
+        {geoOk && draft.geoConfidence && draft.geoConfidence !== 'high' && draft.geoConfidence !== 'manual' && (
+          <p className="text-sm text-amber-600">Ubicación aproximada (confianza {draft.geoConfidence}). Verificá y ajustá el pin.</p>
+        )}
+        <GeoPinMap
+          lat={draft.latitude ?? null}
+          lng={draft.longitude ?? null}
+          defaultCenter={geoDefaultCenter(property.neighborhood)}
+          onChange={(lat, lng) => onChange({ latitude: lat, longitude: lng, geoConfidence: 'manual' })}
+        />
       </section>
     </div>
   )
