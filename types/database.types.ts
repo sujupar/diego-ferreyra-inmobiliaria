@@ -563,6 +563,7 @@ export interface Database {
                     province: string | null
                     geo_confidence: string | null
                     geocoded_at: string | null
+                    import_external_id: string | null
                 }
                 Insert: {
                     id?: string
@@ -613,6 +614,7 @@ export interface Database {
                     province?: string | null
                     geo_confidence?: string | null
                     geocoded_at?: string | null
+                    import_external_id?: string | null
                 }
                 Update: {
                     id?: string
@@ -663,6 +665,7 @@ export interface Database {
                     province?: string | null
                     geo_confidence?: string | null
                     geocoded_at?: string | null
+                    import_external_id?: string | null
                 }
                 Relationships: []
             }
