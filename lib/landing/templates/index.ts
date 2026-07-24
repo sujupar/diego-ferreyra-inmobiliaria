@@ -6,23 +6,24 @@
  * El schema soporta N templates desde el día 1 — se agregan más en E1.7.
  */
 import type { TemplateManifest } from './types'
+import { luxuryTemplate } from './luxury'
 import { conversionTemplate } from './conversion'
 import { editorialDirecto } from './editorial-directo'
 import { cinematicEstate } from './cinematic-estate'
 import type { LandingProperty } from '@/lib/landing/registry'
 import type { LandingDocument } from '@/lib/landing/schema'
 
-// E1.8 — el default es "conversión" (beneficios intangibles + CTAs a popup).
-// Los legacy editorial/cinematic quedan disponibles como alternativas.
-export const DEFAULT_TEMPLATE_ID = 'conversion'
+// E1.9 — el default es "lujo" (editorial replicable). conversion/editorial/
+// cinematic quedan como alternativas / backwards-compat.
+export const DEFAULT_TEMPLATE_ID = 'luxury'
 
 /** Orden de presentación en la UI. */
-export const TEMPLATES: TemplateManifest[] = [conversionTemplate, editorialDirecto, cinematicEstate]
+export const TEMPLATES: TemplateManifest[] = [luxuryTemplate, conversionTemplate, editorialDirecto, cinematicEstate]
 
 const BY_ID = new Map(TEMPLATES.map(t => [t.id, t]))
 
 export function getTemplate(id: string | null | undefined): TemplateManifest {
-  return (id && BY_ID.get(id)) || conversionTemplate
+  return (id && BY_ID.get(id)) || luxuryTemplate
 }
 
 /** Construye el LandingDocument de una propiedad con el template pedido. */

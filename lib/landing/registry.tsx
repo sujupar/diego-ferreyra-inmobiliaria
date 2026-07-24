@@ -12,7 +12,6 @@ import type { ReactNode } from 'react'
 import type { Database } from '@/types/database.types'
 import type { LandingBlock, LandingBlockType, LandingTheme } from './schema'
 
-import { LandingHero } from '@/components/landing/Hero'
 import { LandingFeatures } from '@/components/landing/Features'
 import { LandingGallery } from '@/components/landing/Gallery'
 import { LandingVideoEmbed } from '@/components/landing/VideoEmbed'
@@ -30,6 +29,11 @@ import { LandingMainBenefit } from '@/components/landing/MainBenefit'
 import { LandingEssentialSpecs } from '@/components/landing/EssentialSpecs'
 import { LandingLocationNote } from '@/components/landing/LocationNote'
 import { LandingCtaBand } from '@/components/landing/CtaBand'
+// E1.9 — lujo
+import { HeroLuxury } from '@/components/landing/luxury/HeroLuxury'
+import { StatsBar } from '@/components/landing/luxury/StatsBar'
+import { ClosingInvite } from '@/components/landing/luxury/ClosingInvite'
+import { FooterBrand } from '@/components/landing/luxury/FooterBrand'
 
 export type LandingProperty = Database['public']['Tables']['properties']['Row']
 
@@ -52,6 +56,16 @@ function heroTitle(property: LandingProperty, override?: string): string {
   return override ?? property.title ?? `${property.property_type} en ${property.neighborhood}`
 }
 
+/** Datos clave (3-4) para la oferta del hero. Solo los presentes. */
+function buildSpecs(property: LandingProperty): string[] {
+  const s: string[] = []
+  if (property.rooms) s.push(`${property.rooms} amb`)
+  if (property.bedrooms) s.push(`${property.bedrooms} dorm`)
+  if (property.covered_area) s.push(`${property.covered_area} m²`)
+  if (property.garages) s.push(`${property.garages} coch`)
+  return s.slice(0, 4)
+}
+
 export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
   hero: {
     label: 'Portada',
@@ -60,17 +74,17 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
       const photos = property.photos ?? []
       const idx = block.heroPhotoIndex ?? 0
       return (
-        <LandingHero
+        <HeroLuxury
           title={heroTitle(property, block.titleOverride)}
           subtitle={block.subtitle}
-          shortDesc={block.shortDesc}
+          offerLabel={block.offerLabel}
           ctaLabel={block.ctaLabel}
-          address={property.address}
           neighborhood={property.neighborhood}
           city={property.city}
           price={property.asking_price}
           currency={property.currency}
           operationType={property.operation_type}
+          specs={buildSpecs(property)}
           heroImage={photos[idx] ?? photos[0]}
           videoUrl={property.video_url}
           videoFileUrl={property.video_file_url}
@@ -268,12 +282,50 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
   },
 
   // ── E1.9 · Bloques de la plantilla de lujo ────────────────────────────────
-  // Stubs (null) hasta que se construyan sus componentes; se completan por tarea.
-  stats_bar: { label: 'Datos', render: () => null },
+  stats_bar: {
+    label: 'Datos',
+    render: (block, { property }) => {
+      if (block.type !== 'stats_bar') return null
+      return (
+        <StatsBar
+          rooms={property.rooms}
+          bedrooms={property.bedrooms}
+          bathrooms={property.bathrooms}
+          garages={property.garages}
+          coveredArea={property.covered_area}
+          totalArea={property.total_area}
+          floor={property.floor}
+          age={property.age}
+          expensas={property.expensas}
+        />
+      )
+    },
+  },
+  closing_invite: {
+    label: 'Cierre',
+    render: (block) => {
+      if (block.type !== 'closing_invite') return null
+      return (
+        <ClosingInvite
+          eyebrow={block.eyebrow}
+          headline={block.headline}
+          body={block.body}
+          ctaLabel={block.ctaLabel}
+          source={block.id}
+        />
+      )
+    },
+  },
+  footer_brand: {
+    label: 'Footer',
+    render: (block) => {
+      if (block.type !== 'footer_brand') return null
+      return <FooterBrand />
+    },
+  },
+  // Stubs (null) hasta F2/F3.
   story_blocks: { label: 'Historia', render: () => null },
   curated_gallery: { label: 'Galería', render: () => null },
   location_showcase: { label: 'Ubicación', render: () => null },
   floor_plans: { label: 'Planos', render: () => null },
-  closing_invite: { label: 'Cierre', render: () => null },
-  footer_brand: { label: 'Footer', render: () => null },
 }

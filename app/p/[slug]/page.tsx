@@ -6,8 +6,9 @@ import { MetaPixel } from '@/components/landing/MetaPixel'
 import { LandingVisitTracker } from '@/components/landing/LandingVisitTracker'
 import { LandingRenderer } from '@/components/landing/LandingRenderer'
 import { LeadCaptureProvider } from '@/components/landing/LeadCaptureProvider'
+import { FloatingCta } from '@/components/landing/luxury/FloatingCta'
 import { getPublishedLanding } from '@/lib/landing/get-landing'
-import { conversionTemplate } from '@/lib/landing/templates/conversion'
+import { luxuryTemplate } from '@/lib/landing/templates/luxury'
 import { deriveFunnelType } from '@/lib/landing/funnel-type'
 
 function getAdmin() {
@@ -82,7 +83,7 @@ export default async function PropertyLandingPage({
   // se usa su documento (bloques editables). Si no, se sirve la estructura de
   // CONVERSIÓN (beneficios intangibles + CTAs a popup) con copy determinístico.
   const published = await getPublishedLanding(property.id)
-  const document = published?.document ?? conversionTemplate.build(property)
+  const document = published?.document ?? luxuryTemplate.build(property)
 
   // E1.0 — funnel_type real. Prioriza el congelado en la landing publicada;
   // si no hay, se deriva de la propiedad (server-side, nunca desde la URL).
@@ -98,9 +99,10 @@ export default async function PropertyLandingPage({
           propertyTitle={heroTitle}
         />
       )}
-      {/* Los CTAs de la landing abren este popup (LeadCaptureProvider). */}
+      {/* Los CTAs de la landing (incluido el flotante) abren este popup. */}
       <LeadCaptureProvider propertyId={property.id} propertyTitle={heroTitle}>
         <LandingRenderer document={document} property={property} />
+        <FloatingCta />
       </LeadCaptureProvider>
     </main>
   )
