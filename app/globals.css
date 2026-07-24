@@ -283,3 +283,70 @@ html:has(.landing-root) {
     }
   }
 }
+
+/* ── E1.9 · Sistema de diseño NAVY-LUXURY de la landing (scope .landing-root) ──
+   Traduce el sistema marfil/oro de la referencia (Villa Eva) a la marca DF:
+   navy + neutros cálidos + serif editorial. Motion 100% CSS, contenido siempre
+   visible. Se aplica solo dentro de `.landing-root` (no toca el dashboard). */
+.landing-root {
+  --lx-bg: #f7f4ee;            /* marfil cálido */
+  --lx-bg-2: #efe9e0;          /* crema */
+  --lx-ink: #201c17;           /* tinta */
+  --lx-ink-soft: #524a3d;
+  --lx-navy: var(--brand);     /* acento de marca (navy) */
+  --lx-line: rgba(32, 28, 23, 0.16);
+  --lx-serif: var(--font-landing-serif), Georgia, "Times New Roman", serif;
+  --lx-sans: var(--font-landing-sans), system-ui, sans-serif;
+  background-color: var(--lx-bg);
+  color: var(--lx-ink);
+  font-family: var(--lx-sans);
+  font-weight: 300;
+}
+.landing-root :is(h1, h2, h3) {
+  font-family: var(--lx-serif);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  overflow-wrap: anywhere;
+}
+/* Eyebrow / kicker editorial */
+.lx-eyebrow {
+  font-family: var(--lx-sans);
+  font-weight: 400;
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--lx-navy);
+}
+/* Filete fino de marca */
+.lx-rule {
+  width: 56px;
+  height: 1px;
+  background: var(--lx-navy);
+  opacity: 0.6;
+}
+/* Marco desplazado sobre las fotos (detalle editorial de la referencia) */
+.lx-frame {
+  position: relative;
+}
+.lx-frame::after {
+  content: "";
+  position: absolute;
+  inset: 16px -16px -16px 16px;
+  border: 1px solid var(--lx-line);
+  pointer-events: none;
+}
+/* Aparición al scroll (CSS puro, contenido visible por default) */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .landing-root .lx-reveal {
+      animation: lx-rise both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 20%;
+    }
+  }
+}
+@keyframes lx-rise {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: none; }
+}

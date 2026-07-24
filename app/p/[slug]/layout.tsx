@@ -8,7 +8,7 @@
  * ritmo, selección de marca). No renderiza <html>/<body> — eso lo hace el
  * layout raíz; este solo agrega la fuente + el scope, sin tocar el dashboard.
  */
-import { Cormorant_Garamond } from 'next/font/google'
+import { Cormorant_Garamond, Jost } from 'next/font/google'
 import type { ReactNode } from 'react'
 
 const serifDisplay = Cormorant_Garamond({
@@ -18,6 +18,19 @@ const serifDisplay = Cormorant_Garamond({
   display: 'swap',
 })
 
+// E1.9 — sans editorial (la MISMA que usa la referencia de lujo). Da el aire
+// "revista de arquitectura" en eyebrows, specs y cuerpo.
+const sansEditorial = Jost({
+  subsets: ['latin'],
+  weight: ['300', '400', '500'],
+  variable: '--font-landing-sans',
+  display: 'swap',
+})
+
 export default function LandingLayout({ children }: { children: ReactNode }) {
-  return <div className={`${serifDisplay.variable} landing-root`}>{children}</div>
+  return (
+    <div className={`${serifDisplay.variable} ${sansEditorial.variable} landing-root`}>
+      {children}
+    </div>
+  )
 }
