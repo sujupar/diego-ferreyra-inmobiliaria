@@ -44,6 +44,8 @@ export function useApPublishDraft(propertyId: string) {
         askingPrice: prev.property.asking_price,
         latitude: prev.property.latitude,
         longitude: prev.property.longitude,
+        address: prev.property.address,
+        geoConfidence: undefined,
       })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error')
@@ -65,6 +67,7 @@ export function useApPublishDraft(propertyId: string) {
         title: draft.title, description: draft.description, photos: draft.photos,
         asking_price: draft.askingPrice, videoUrl: draft.videoUrl, tour3dUrl: draft.tour3dUrl,
         latitude: draft.latitude, longitude: draft.longitude,
+        address: draft.address, geoConfidence: draft.geoConfidence,
         apAttributes: draft.apAttributes, mediaChoice: draft.mediaChoice, listingType: draft.listingType,
       }),
     })

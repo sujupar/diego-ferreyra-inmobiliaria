@@ -12,6 +12,7 @@ export interface MlPreviewProperty {
   address: string
   neighborhood: string
   city: string
+  province?: string | null
   rooms: number | null
   bedrooms: number | null
   bathrooms: number | null
@@ -45,6 +46,8 @@ export interface MlDraft {
   askingPrice: number
   latitude: number | null
   longitude: number | null
+  address?: string
+  geoConfidence?: 'high' | 'medium' | 'low' | 'manual'
 }
 
 export interface MlListing {

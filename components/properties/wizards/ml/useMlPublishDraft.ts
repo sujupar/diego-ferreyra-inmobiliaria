@@ -44,6 +44,8 @@ export function useMlPublishDraft(propertyId: string) {
         askingPrice: prev.property.asking_price,
         latitude: prev.property.latitude,
         longitude: prev.property.longitude,
+        address: prev.property.address,
+        geoConfidence: undefined,
       })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error')
@@ -73,6 +75,8 @@ export function useMlPublishDraft(propertyId: string) {
         tour3dUrl: draft.tour3dUrl,
         latitude: draft.latitude,
         longitude: draft.longitude,
+        address: draft.address,
+        geoConfidence: draft.geoConfidence,
         mlAttributes: draft.mlAttributes,
         mediaChoice: draft.mediaChoice,
         listingType: draft.listingType,

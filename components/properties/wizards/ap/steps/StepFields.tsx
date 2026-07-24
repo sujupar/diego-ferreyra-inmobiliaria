@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic'
 import { toast } from 'sonner'
 import type { ApField, AttributeOverride } from '../types'
 import type { ApAttributesResponse, ApDraft, ApPreviewProperty } from '../types'
+import { parseAddress, buildGeocodeQuery } from '@/lib/properties/address'
 
 const GeoPinMap = dynamic(() => import('../GeoPinMap').then(m => m.GeoPinMap), { ssr: false })
 
@@ -95,18 +96,27 @@ export function StepFields({ property, attrs, draft, onChange, onValidityChange 
   async function geocode() {
     setGeocoding(true)
     try {
-      const addressQuery = [property.address, property.neighborhood, property.city || 'CABA']
-        .filter(Boolean)
-        .join(', ')
+      const parts = parseAddress(draft.address ?? property.address, {
+        neighborhood: property.neighborhood,
+        city: property.city,
+        province: property.province ?? null,
+      })
+      const addressQuery = buildGeocodeQuery(parts)
       const r = await fetch('/api/geocode', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ address: addressQuery }),
+        body: JSON.stringify({
+          address: addressQuery,
+          expected: { province: parts.province, locality: parts.isCaba ? parts.neighborhood : parts.locality, number: parts.number, isCaba: parts.isCaba },
+        }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error)
-      onChange({ latitude: j.lat, longitude: j.lng })
-      toast.success('Ubicación encontrada — ajustá el pin si hace falta')
+      onChange({ latitude: j.lat, longitude: j.lng, geoConfidence: j.confidence })
+      const msg = j.confidence === 'high'
+        ? 'Ubicación encontrada — verificá el pin.'
+        : 'Ubicación aproximada (baja confianza). Ajustá el pin a la ubicación exacta.'
+      toast[j.confidence === 'high' ? 'success' : 'warning'](msg)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error')
     } finally {

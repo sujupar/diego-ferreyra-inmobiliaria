@@ -160,6 +160,8 @@ export async function PATCH(
       tour3dUrl?: string | null
       latitude?: number
       longitude?: number
+      address?: string
+      geoConfidence?: 'high' | 'medium' | 'low' | 'manual'
       mlAttributes?: Record<string, { value_name?: string; value_id?: string }>
       mediaChoice?: 'video' | 'tour' | 'none'
       listingType?: string
@@ -185,6 +187,8 @@ export async function PATCH(
     if (body.tour3dUrl !== undefined) update.tour_3d_url = sanitizeHttpsUrl(body.tour3dUrl)
     if (typeof body.latitude === 'number') update.latitude = body.latitude
     if (typeof body.longitude === 'number') update.longitude = body.longitude
+    if (typeof body.address === 'string' && body.address.trim().length >= 4) update.address = body.address.trim().slice(0, 300)
+    if (typeof body.geoConfidence === 'string') { update.geo_confidence = body.geoConfidence; update.geocoded_at = new Date().toISOString() }
 
     let property: PropertyRow | null = null
     if (Object.keys(update).length > 0) {
