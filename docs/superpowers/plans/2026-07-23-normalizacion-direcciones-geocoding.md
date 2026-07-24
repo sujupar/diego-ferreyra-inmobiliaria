@@ -365,7 +365,10 @@ export function buildGeocodeQuery(parts: AddressParts): string {
 
 export function formatDisplayAddress(parts: AddressParts): string {
   const streetLine = [parts.street, parts.number].filter(Boolean).join(' ')
-  return [streetLine, parts.neighborhood, parts.locality]
+  // Para CABA la "localidad" del blob es la provincia (Capital Federal) → mostramos
+  // solo el barrio (mismo criterio isCaba que buildGeocodeQuery).
+  const tail = parts.isCaba ? [parts.neighborhood] : [parts.neighborhood, parts.locality]
+  return [streetLine, ...tail]
     .filter(Boolean)
     .filter((v, i, a) => a.indexOf(v) === i)
     .join(', ')
