@@ -454,3 +454,14 @@ Genera carruseles de campaña (largo variable, narrativa de curiosidad) a partir
 - **Root cause:** bug de Turbopack manejando el combining accent U+0301 ("ó" de "Gestión") en el path ABSOLUTO del proyecto. Es puramente por el nombre de la carpeta local.
 - **Netlify NO lo tiene:** buildea en `/opt/build/repo` (ASCII), así que el deploy funciona normal. Es un problema SOLO local.
 - **Workarounds locales:** (1) dev con **`next dev --webpack`** (evita Turbopack; arranca lento ~4min la primera vez pero sirve OK). (2) Verificar el código con `npx tsc --noEmit -p <tsconfig acotado>` (typecheck no toca Turbopack). NO confiar en `next build` local para validar.
+
+---
+
+## Landing pública premium — diseño (E1.7, 2026-07-24)
+
+La landing (`app/p/[slug]`) se rediseñó a nivel premium (estilo editorial/lujo, una oferta + un CTA). Claves:
+
+- **Layout propio** `app/p/[slug]/layout.tsx`: carga la serif editorial **Cormorant Garamond** (la MISMA de los anuncios Meta → embudo cohesivo) y envuelve todo en `<div class="landing-root">` — scope aislado del dashboard.
+- **Sistema por scope CSS** (`app/globals.css`, bloque `.landing-root`): serif en todos los `h1/h2/h3`, `overflow-wrap:anywhere`, selección de marca, y **scroll suave en el scroller real** (`html:has(.landing-root)`, NO en el div `.landing-root` que no scrollea). Eleva TODOS los bloques sin reescribirlos (usan los tokens Tailwind v4 ya premium: off-white cálido + charcoal + navy `--brand`).
+- **Motion 100% CSS, cero framer-motion en la landing** (`Hero.tsx` y `Reveal.tsx` son **server components**). Regla dura aprendida en el review adversarial: **NUNCA ramificar la ESTRUCTURA del DOM según `useReducedMotion()`** (devuelve `null` en SSR y el valor real en la 1ª hidratación → hydration mismatch en React 19), y **NUNCA dejar el contenido con `opacity:0` esperando al JS** (con `whileInView`/`animate` de framer-motion el hero/secciones quedan invisibles sin JS o en conexiones lentas — es tráfico pago). Solución: animación por CSS keyframes (`hero-rise/hero-zoom/hero-cue`) y scroll-driven (`animation-timeline: view()` con fallback `@supports`), todo dentro de `@media (prefers-reduced-motion: no-preference)` → el estado por defecto es SIEMPRE visible.
+- **Verificación:** como la carpeta con tilde rompe Turbopack, la landing NO se puede ver con `next dev` local. Se verifica con `renderToStaticMarkup` en un script tsx (estructura + que el texto NO tenga `opacity:0`) + WebFetch de una landing en producción. El look final (tipografía, contraste, motion) SOLO se confirma en un navegador real — pedírselo al usuario.

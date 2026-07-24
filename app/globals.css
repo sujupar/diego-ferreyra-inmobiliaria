@@ -193,3 +193,93 @@
   height: 1px;
   background-color: var(--border);
 }
+
+/* ── E1.7 · Sistema de diseño PREMIUM de la landing pública (scope) ──────────
+   Se aplica solo dentro de `.landing-root` (el layout de /p/[slug]), así que no
+   toca el dashboard. Eleva TODA la landing sin reescribir cada bloque:
+   - Serif editorial (Cormorant) en todos los títulos → voz de revista/lujo.
+   - Números tabulares y tracking apretado en display.
+   - Scroll suave + selección de marca. */
+.landing-root {
+  /* Fondo premium neutro cálido, independiente del tema del dashboard. */
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+/* El scroll suave va en el SCROLLER REAL (el viewport = html), no en el div
+   .landing-root (que no scrollea). `:has()` lo acota a páginas de landing sin
+   filtrarlo al dashboard. Así el CTA #contacto hace scroll suave de verdad. */
+html:has(.landing-root) {
+  scroll-behavior: smooth;
+}
+
+.landing-root :is(h1, h2, h3) {
+  font-family: var(--font-landing-serif), Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  /* Un token largo sin espacios (URL, hashtag) parte en vez de recortarse. */
+  overflow-wrap: anywhere;
+}
+
+/* Los títulos de sección (h2/h3) ganan aire y contraste editorial. */
+.landing-root :is(h2, h3) {
+  line-height: 1.1;
+}
+
+.landing-root ::selection {
+  background: var(--brand);
+  color: var(--brand-foreground);
+}
+
+/* Respeta prefers-reduced-motion también para el scroll suave. */
+@media (prefers-reduced-motion: reduce) {
+  html:has(.landing-root) {
+    scroll-behavior: auto;
+  }
+}
+
+/* ── E1.7 · Motion del Hero por CSS (robusto, SSR-visible, sin JS) ────────────
+   CRÍTICO: el contenido del hero está SIEMPRE visible (opacity por defecto = 1).
+   La animación de entrada es un EXTRA que corre por CSS (incluso sin JavaScript)
+   y NO se aplica si el usuario pidió reducir movimiento → el título/precio/CTA
+   nunca quedan invisibles esperando al JS. Esto importa: es tráfico pago. */
+@media (prefers-reduced-motion: no-preference) {
+  .landing-root .hero-rise {
+    animation: landing-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .landing-root .hero-zoom {
+    animation: landing-zoom 1.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .landing-root .hero-cue {
+    animation: landing-cue 1.9s ease-in-out infinite;
+  }
+}
+
+@keyframes landing-rise {
+  from { opacity: 0; transform: translateY(22px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes landing-zoom {
+  from { transform: scale(1.06); }
+  to   { transform: scale(1); }
+}
+@keyframes landing-cue {
+  0%, 100% { transform: translate(-50%, 0); }
+  50%      { transform: translate(-50%, 9px); }
+}
+
+/* ── E1.7 · Aparición de secciones al hacer scroll (CSS puro, SSR-visible) ────
+   Robusto por diseño: el contenido está SIEMPRE visible por defecto. Solo donde
+   el navegador soporta scroll-driven animations (animation-timeline: view()) Y
+   el usuario no pidió reducir movimiento, cada sección entra con un fade-up
+   ligado al scroll. Sin JS, sin IntersectionObserver, sin quedar invisible en
+   navegadores viejos ni con reduced-motion. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .landing-root .reveal-section {
+      animation: landing-rise both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 20%;
+    }
+  }
+}

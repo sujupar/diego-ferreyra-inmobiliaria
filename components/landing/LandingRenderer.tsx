@@ -11,6 +11,7 @@
 import { Fragment } from 'react'
 import type { LandingDocument } from '@/lib/landing/schema'
 import { BLOCK_REGISTRY, type LandingProperty } from '@/lib/landing/registry'
+import { Reveal } from '@/components/landing/Reveal'
 
 interface LandingRendererProps {
   document: LandingDocument
@@ -20,12 +21,20 @@ interface LandingRendererProps {
 
 export function LandingRenderer({ document, property, mode = 'public' }: LandingRendererProps) {
   const ctx = { property, theme: document.theme ?? {}, mode }
+  const motionOn = mode === 'public' && (document.theme?.motion ?? 'on') !== 'off'
   return (
     <>
       {document.blocks.map(block => {
         const def = BLOCK_REGISTRY[block.type]
         if (!def) return null
-        return <Fragment key={block.id}>{def.render(block, ctx)}</Fragment>
+        const node = def.render(block, ctx)
+        if (node == null) return null
+        // El hero anima su propia entrada; las demás secciones aparecen al
+        // hacer scroll vía Reveal (salvo que el motion esté apagado o en editor).
+        if (block.type === 'hero' || !motionOn) {
+          return <Fragment key={block.id}>{node}</Fragment>
+        }
+        return <Reveal key={block.id}>{node}</Reveal>
       })}
     </>
   )
