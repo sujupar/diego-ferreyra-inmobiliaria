@@ -20,15 +20,15 @@ export function planPhotos(photos: string[]): PhotoPlan {
   if (n === 0) return { hero: 0, story: [], gallery: [], location: null }
 
   const hero = 0
+  // La historia toma 3 highlights curados (con narrativa).
   const story = [1, 2, 3].filter(i => i < n)
-  // Reservamos la última foto para ubicación solo si sobran fotos (>4), para no
-  // "robarle" imágenes a la galería en propiedades con pocas fotos.
-  const location = n > 4 ? n - 1 : null
-
-  const gallery: number[] = []
-  for (let i = 1; i < n; i++) {
-    if (!story.includes(i) && i !== location) gallery.push(i)
-  }
+  // La galería es el RECORRIDO COMPLETO (todas las fotos, destacada = la portada),
+  // como en la referencia. Se muestra desde 3 fotos (con menos, la historia alcanza).
+  const gallery = n >= 3 ? Array.from({ length: n }, (_, i) => i) : []
+  // Ubicación: SIEMPRE banda navy elegante con el copy de zona. No usamos una foto
+  // de la propiedad como "la zona" (una foto interior etiquetada 'Ubicación' es
+  // incongruente); si en el futuro hay imágenes de barrio, se enchufan acá.
+  const location = null
 
   return { hero, story, gallery, location }
 }

@@ -3,7 +3,7 @@
 /**
  * E1.9 — Galería curada con lightbox. Grilla (1 foto destacada 2×2 + resto),
  * "Ver galería completa" revela las ocultas, y un lightbox accesible (teclado
- * ←/→/Esc, swipe táctil, foco al abrir, restaura el foco al cerrar, fondo inert).
+ * ←/→/Esc, swipe táctil, foco al abrir, focus-trap con Tab, restaura el foco al cerrar).
  *
  * El contenido (la grilla) está SIEMPRE visible; el lightbox se monta al abrir.
  */
@@ -30,9 +30,14 @@ export function GalleryLightbox({
   const [showAll, setShowAll] = useState(false)
   const triggerRef = useRef<HTMLElement | null>(null)
   const closeBtnRef = useRef<HTMLButtonElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
+  const wasOpenRef = useRef(false)
+  const justExpandedRef = useRef(false)
 
   const visible = showAll ? images : images.slice(0, INITIAL)
   const hiddenCount = images.length - visible.length
+  const isOpen = openIdx !== null
 
   const go = useCallback(
     (dir: number) => setOpenIdx(i => (i === null ? i : (i + dir + images.length) % images.length)),
@@ -44,14 +49,35 @@ export function GalleryLightbox({
   }, [])
   const close = useCallback(() => setOpenIdx(null), [])
 
+  // Scroll-lock + teclado (←/→/Esc/Tab-trap) + foco al botón cerrar. Depende de
+  // `isOpen` (no de openIdx) → NO se re-ejecuta al navegar con flechas.
   useEffect(() => {
-    if (openIdx === null) return
+    if (!isOpen) return
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close()
       else if (e.key === 'ArrowLeft') go(-1)
       else if (e.key === 'ArrowRight') go(1)
+      else if (e.key === 'Tab') {
+        // Focus-trap: el Tab cicla dentro del diálogo (no se escapa al fondo).
+        const root = dialogRef.current
+        if (!root) return
+        const f = root.querySelectorAll<HTMLElement>('button, [href], [tabindex]:not([tabindex="-1"])')
+        if (f.length === 0) return
+        const first = f[0]
+        const last = f[f.length - 1]
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault()
+          last.focus()
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        } else if (!root.contains(document.activeElement)) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
     }
     document.addEventListener('keydown', onKey)
     const t = setTimeout(() => closeBtnRef.current?.focus(), 30)
@@ -59,9 +85,27 @@ export function GalleryLightbox({
       document.body.style.overflow = prev
       document.removeEventListener('keydown', onKey)
       clearTimeout(t)
+    }
+  }, [isOpen, close, go])
+
+  // Restaura el foco al disparador SOLO en la transición abierto→cerrado (no en
+  // cada flecha, que antes robaba el foco al fondo en cada paso).
+  useEffect(() => {
+    if (isOpen) wasOpenRef.current = true
+    else if (wasOpenRef.current) {
+      wasOpenRef.current = false
       triggerRef.current?.focus?.()
     }
-  }, [openIdx, close, go])
+  }, [isOpen])
+
+  // Al expandir "Ver galería completa", mover el foco a la primera foto revelada
+  // (sino cae a <body> al desmontarse el botón).
+  useEffect(() => {
+    if (showAll && justExpandedRef.current) {
+      justExpandedRef.current = false
+      gridRef.current?.querySelectorAll('button')[INITIAL]?.focus()
+    }
+  }, [showAll])
 
   // Swipe táctil en el lightbox.
   const touchX = useRef<number | null>(null)
@@ -87,7 +131,7 @@ export function GalleryLightbox({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+      <div ref={gridRef} className="grid grid-cols-2 gap-3 md:grid-cols-3">
         {visible.map((img, i) => (
           <button
             key={i}
@@ -111,7 +155,10 @@ export function GalleryLightbox({
         <div className="mt-10 text-center">
           <button
             type="button"
-            onClick={() => setShowAll(true)}
+            onClick={() => {
+              justExpandedRef.current = true
+              setShowAll(true)
+            }}
             className="lx-eyebrow border px-8 py-4 transition-colors hover:text-white"
             style={{ borderColor: 'var(--lx-navy)' }}
           >
@@ -122,6 +169,7 @@ export function GalleryLightbox({
 
       {current && (
         <div
+          ref={dialogRef}
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/92 p-4 md:p-8"
           role="dialog"
           aria-modal="true"
