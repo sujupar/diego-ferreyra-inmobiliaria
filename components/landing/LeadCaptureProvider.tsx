@@ -69,8 +69,13 @@ export function LeadCaptureProvider({
   const submittingRef = useRef(false)
   const firstFieldRef = useRef<HTMLInputElement>(null)
   const closeBtnRef = useRef<HTMLButtonElement>(null)
+  // Guarda el CTA que abrió el popup para DEVOLVERLE el foco al cerrar (WCAG 2.4.3).
+  const triggerRef = useRef<HTMLElement | null>(null)
 
   const open = useCallback((src?: string) => {
+    if (typeof document !== 'undefined') {
+      triggerRef.current = document.activeElement as HTMLElement | null
+    }
     setSource(src ?? 'cta')
     setStatus('idle')
     setErrorMsg('')
@@ -79,7 +84,8 @@ export function LeadCaptureProvider({
 
   const close = useCallback(() => setIsOpen(false), [])
 
-  // Bloquea el scroll del fondo + cierra con ESC + foco al primer campo.
+  // Bloquea el scroll del fondo + cierra con ESC + foco al primer campo + al
+  // cerrar devuelve el foco al CTA disparador.
   useEffect(() => {
     if (!isOpen) return
     const prevOverflow = document.body.style.overflow
@@ -88,14 +94,20 @@ export function LeadCaptureProvider({
       if (e.key === 'Escape') close()
     }
     document.addEventListener('keydown', onKey)
-    // Foco al primer input (o al cerrar si ya está enviado).
     const t = setTimeout(() => firstFieldRef.current?.focus(), 40)
     return () => {
       document.body.style.overflow = prevOverflow
       document.removeEventListener('keydown', onKey)
       clearTimeout(t)
+      // Devolver el foco al disparador (si sigue en el DOM).
+      triggerRef.current?.focus?.()
     }
   }, [isOpen, close])
+
+  // Al pasar a "enviado", mover el foco al botón Cerrar (el submit se desmontó).
+  useEffect(() => {
+    if (isOpen && status === 'ok') closeBtnRef.current?.focus()
+  }, [isOpen, status])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -146,7 +158,9 @@ export function LeadCaptureProvider({
 
   return (
     <Ctx.Provider value={{ open }}>
-      {children}
+      {/* Con el popup abierto, el fondo queda `inert`: no se puede tabular ni
+          leer con lector de pantalla → el foco se mantiene dentro del modal. */}
+      <div inert={isOpen}>{children}</div>
 
       {isOpen && (
         <div
@@ -177,7 +191,10 @@ export function LeadCaptureProvider({
             {status === 'ok' ? (
               <div className="flex flex-col items-center gap-3 py-6 text-center">
                 <CheckCircle2 className="h-12 w-12 text-emerald-600" />
-                <p className="text-lg font-medium">¡Gracias! Recibimos tus datos.</p>
+                {/* id estable → aria-labelledby del diálogo resuelve también acá. */}
+                <h2 id="lead-modal-title" className="text-lg font-medium">
+                  ¡Gracias! Recibimos tus datos.
+                </h2>
                 <p className="text-sm text-slate-500">Un asesor te va a contactar muy pronto.</p>
                 <button
                   type="button"

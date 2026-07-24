@@ -50,10 +50,26 @@ const OPERATION_LABEL: Record<string, string> = {
 }
 
 function toEmbedUrl(url: string): string | null {
-  const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]{11})/)
-  if (yt) return `https://www.youtube.com/embed/${yt[1]}`
-  const vimeo = url.match(/vimeo\.com\/(\d+)/)
-  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`
+  try {
+    const u = new URL(url)
+    const host = u.hostname.replace(/^www\./, '')
+    if (host === 'youtu.be') {
+      const id = u.pathname.slice(1).split('/')[0]
+      if (id) return `https://www.youtube.com/embed/${id}`
+    }
+    if (host.endsWith('youtube.com')) {
+      const v = u.searchParams.get('v') // ?v= en cualquier posición
+      if (v) return `https://www.youtube.com/embed/${v}`
+      const m = u.pathname.match(/\/(?:embed|shorts)\/([\w-]+)/)
+      if (m) return `https://www.youtube.com/embed/${m[1]}`
+    }
+    if (host.endsWith('vimeo.com')) {
+      const id = u.pathname.split('/').filter(Boolean)[0]
+      if (id && /^\d+$/.test(id)) return `https://player.vimeo.com/video/${id}`
+    }
+  } catch {
+    /* url inválida → sin embed */
+  }
   return null
 }
 
@@ -120,8 +136,10 @@ export function LandingHero(props: HeroProps) {
   }
 
   // ── Layout SIN video: foto cinematográfica a sangre completa ────────────────
+  // min-h (no h fija): un titular muy largo hace crecer la sección en vez de
+  // recortarse por arriba (overflow-hidden + justify-end). Finding review E1.8.
   return (
-    <section className="relative h-[92vh] min-h-[600px] w-full overflow-hidden">
+    <section className="relative min-h-[92vh] w-full overflow-hidden">
       {heroImage ? (
         <>
           <div className="hero-zoom absolute inset-0">

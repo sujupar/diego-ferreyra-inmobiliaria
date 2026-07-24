@@ -43,6 +43,12 @@ interface ChatCompletionInput {
   jsonMode?: boolean
   /** Override del modelo. Si no, usa el default del proveedor o AI_MODEL env. */
   model?: string
+  /**
+   * Override del PROVEEDOR por llamada. Necesario para escalar a un modelo de
+   * otro proveedor (ej. reintentar con OpenAI gpt-4.1 aunque el default sea
+   * DeepSeek). Sin esto, pasar `model:'gpt-4.1'` al endpoint de DeepSeek falla.
+   */
+  provider?: AiProvider
 }
 
 export interface ChatCompletionResult {
@@ -86,7 +92,8 @@ function getModel(provider: AiProvider, override?: string): string {
 export async function chatCompletion(
   input: ChatCompletionInput,
 ): Promise<ChatCompletionResult> {
-  const provider = getActiveProvider()
+  const provider =
+    input.provider && input.provider in PROVIDERS ? input.provider : getActiveProvider()
   const config = PROVIDERS[provider]
   const apiKey = getApiKey(provider)
   const model = getModel(provider, input.model)
