@@ -31,6 +31,8 @@ export function PropertyGallery({ photos, alt }: { photos: string[]; alt: string
             fill
             className="object-cover"
             sizes="(max-width: 1200px) 100vw, 800px"
+            unoptimized
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
           />
         </div>
         {photos.length > 1 && (
@@ -44,7 +46,7 @@ export function PropertyGallery({ photos, alt }: { photos: string[]; alt: string
                   i === active ? 'border-primary' : 'border-transparent'
                 )}
               >
-                <Image src={p} alt={`${alt} thumb ${i + 1}`} fill className="object-cover" sizes="64px" />
+                <Image src={p} alt={`${alt} thumb ${i + 1}`} fill className="object-cover" sizes="64px" unoptimized />
               </button>
             ))}
           </div>
@@ -54,7 +56,7 @@ export function PropertyGallery({ photos, alt }: { photos: string[]; alt: string
       <Dialog open={lightbox} onOpenChange={setLightbox}>
         <DialogContent className="max-w-6xl p-0 bg-black/95 border-0">
           <div className="relative aspect-video">
-            <Image src={photos[active]} alt={`${alt} ${active + 1}`} fill className="object-contain" sizes="100vw" />
+            <Image src={photos[active]} alt={`${alt} ${active + 1}`} fill className="object-contain" sizes="100vw" unoptimized />
             <button
               onClick={() => setLightbox(false)}
               className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 rounded-full p-2"
