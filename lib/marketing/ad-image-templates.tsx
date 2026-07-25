@@ -36,6 +36,7 @@ export interface TemplateProps {
   /** Tokens inmutables — vienen de la DB / config, NO de un modelo */
   tokens: {
     propertyType: string // "Departamento", "Casa", "PH"
+    operationLabel: string // "En venta" / "En alquiler" / "Alquiler temporario"
     headline: string // sanitizado, ≤60 chars
     price: string // "USD 285.000" formatted
     specs: string // "4 amb · 95 m² · piso 5 · Palermo"
@@ -61,6 +62,35 @@ const DIM: Record<AdFormat, { width: number; height: number }> = {
 // en y=250..1540.
 const STORY_SAFE_TOP = 250
 const STORY_SAFE_BOTTOM = 380
+
+/**
+ * Badge de operación ("En venta" / "En alquiler") — pedido del usuario 2026-07-25:
+ * debe verse bastante en TODOS los diseños. Pill sólido de color, texto bold.
+ */
+function operationBadge(label: string, bg: string, fg: string): ReactNode {
+  if (!label) return null
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignSelf: 'flex-start',
+        backgroundColor: bg,
+        color: fg,
+        fontSize: 30,
+        fontWeight: 700,
+        letterSpacing: 1,
+        paddingTop: 10,
+        paddingBottom: 10,
+        paddingLeft: 22,
+        paddingRight: 22,
+        borderRadius: 8,
+        marginBottom: 16,
+      }}
+    >
+      {label}
+    </div>
+  )
+}
 
 // ============================================================
 // 1) SPLIT_PHOTO_INFO — el conservador, Sotheby's-style
@@ -167,8 +197,9 @@ function splitPhotoInfoTemplate(p: TemplateProps): ReactNode {
 function heroFullBleedTemplate(p: TemplateProps): ReactNode {
   const { width, height } = DIM[p.format]
   const isStory = p.format === 'story_vertical'
-  const textBlockTop = isStory ? height - STORY_SAFE_BOTTOM - 380 : height - 360
-  const textBlockHeight = isStory ? 380 : 360
+  // El bloque de texto se ancla abajo y CRECE con el contenido (sin height fija):
+  // un titular de 2 líneas ya NO se superpone con el precio (bug del height fijo).
+  const bottomOffset = isStory ? STORY_SAFE_BOTTOM : 0
 
   return (
     <div
@@ -194,22 +225,22 @@ function heroFullBleedTemplate(p: TemplateProps): ReactNode {
       <div
         style={{
           position: 'absolute',
-          top: textBlockTop,
+          bottom: bottomOffset,
           left: 0,
           width,
-          height: textBlockHeight,
           // satori soporta backgroundImage con linear-gradient (no el shorthand
           // background). El shorthand puede no parsearse y dejar texto blanco
-          // sin contraste sobre foto clara.
-          backgroundImage: 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.65) 60%, rgba(0,0,0,0.85) 100%)',
+          // sin contraste sobre foto clara. paddingTop = zona de fade del degradado.
+          backgroundImage: 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.6) 45%, rgba(0,0,0,0.88) 100%)',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'flex-end',
+          paddingTop: 160,
           paddingLeft: 80,
           paddingRight: 80,
           paddingBottom: 80,
         }}
       >
+        {operationBadge(p.tokens.operationLabel, '#FFFFFF', '#141414')}
         <div
           style={{
             fontSize: 28,
@@ -334,6 +365,7 @@ function editorialMagazineTemplate(p: TemplateProps): ReactNode {
           flexDirection: 'column',
         }}
       >
+        {operationBadge(p.tokens.operationLabel, p.palette.accent, '#FFFFFF')}
         <div
           style={{
             fontFamily: 'Cormorant Garamond',

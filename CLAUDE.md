@@ -71,6 +71,16 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Texto de la pieza (Stage B):** overlay VECTORIAL (satori + resvg) → el texto
   NUNCA pasa por IA, cero errores ortográficos. Estilos usados: `editorial_magazine`
   + `hero_full_bleed` (los 2 verificados que llenan 4:5 y 9:16 sin espacio muerto).
+  - **Requisitos del texto (usuario, 2026-07-25):** cada pieza muestra un **badge "En venta"**
+    (o "En alquiler"/"Alquiler temporario" según `operation_type`) bien visible (`operationBadge()`
+    en `ad-image-templates.tsx`, en editorial + hero), y el **tipo capitalizado** ("Departamento",
+    nunca "departamento": `normalizePropertyTypeLabel` en el token + en el fallback de headline del
+    runner). El token `operationLabel` sale de `operationLabelFor(property.operation_type)`.
+  - **Gotcha layout:** el `hero_full_bleed` tenía un bloque de texto de **altura FIJA** → con titular
+    de 2 líneas el precio se **superponía**. Fix: el bloque se ancla abajo (`bottom`) y **crece con el
+    contenido** (sin `height`, con `paddingTop` para el fade del degradado). Verificar SIEMPRE los
+    cambios de overlay renderizando un PNG real y MIRÁNDOLO: `scripts/render-ad-overlay-test.ts`
+    (editorial+hero × feed+story) — satori no avisa de superposiciones, hay que verlas.
 - **Cache:** la foto mejorada se cachea en Storage (`social-carousels/ad-enhanced/{jobId}/r{idx}.jpg`)
   por foto de origen → OpenAI corre **~3 veces por campaña** (1 por foto), no 12. Un
   reintento NO regenera lo hecho. Rollback: `AD_IMAGE_ENGINE=gemini` (V2 con Gemini)

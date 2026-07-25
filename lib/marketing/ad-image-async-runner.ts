@@ -22,7 +22,7 @@ import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import type { Property } from '@/lib/portals/types'
 import { generateAdImage } from './ad-image-generator'
-import { generateAdImageV2, type GeneratedAdImage as GeneratedAdImageV2 } from './ad-image-generator-v2'
+import { generateAdImageV2, normalizePropertyTypeLabel, type GeneratedAdImage as GeneratedAdImageV2 } from './ad-image-generator-v2'
 import type { CompositionStyle, AdFormat } from './ad-image-prompts'
 import type { PropertyHighlight } from './property-vision-analyzer'
 import { downloadAdEnhanced, uploadAdEnhanced } from '@/lib/social/storage'
@@ -299,7 +299,9 @@ export async function runBatch(input: {
   const avatar = (job.optimized_avatar ?? null) as
     | { hooks?: string[]; shortLabel?: string }
     | null
-  const fallbackHeadline = avatar?.shortLabel ?? `${property.property_type} en ${property.neighborhood}`
+  // Tipo capitalizado ("departamento" → "Departamento") — nunca crudo en minúscula.
+  const fallbackHeadline =
+    avatar?.shortLabel ?? `${normalizePropertyTypeLabel(property.property_type)} en ${property.neighborhood}`
 
   for (let i = startIdx; i < endIdx; i++) {
     const coords = pieceCoordsAt(i)

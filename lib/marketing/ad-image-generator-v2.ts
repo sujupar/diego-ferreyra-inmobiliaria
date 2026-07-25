@@ -328,7 +328,7 @@ The output must be a clean photograph — only photographic content, no text, no
  * de ad-image-prompts.ts — los tokens del overlay son source of truth, no
  * dependen del prompt v1.
  */
-function normalizePropertyTypeLabel(t: string | null | undefined): string {
+export function normalizePropertyTypeLabel(t: string | null | undefined): string {
   const map: Record<string, string> = {
     apartment: 'Departamento',
     departamento: 'Departamento',
@@ -346,7 +346,17 @@ function normalizePropertyTypeLabel(t: string | null | undefined): string {
     mono: 'Monoambiente',
   }
   const key = (t ?? '').toString().toLowerCase().trim()
-  return map[key] ?? (t ?? 'Propiedad')
+  // Fallback: capitalizar la primera letra (nunca dejar el tipo en minúscula cruda).
+  const raw = (t ?? 'Propiedad').toString()
+  return map[key] ?? (raw.charAt(0).toUpperCase() + raw.slice(1))
+}
+
+/** Etiqueta de operación para el overlay: "En venta" / "En alquiler" / "Alquiler temporario". */
+export function operationLabelFor(op: string | null | undefined): string {
+  const key = (op ?? 'venta').toString().toLowerCase().trim()
+  if (key === 'alquiler') return 'En alquiler'
+  if (key === 'temporario' || key === 'alquiler_temporario' || key === 'temporal') return 'Alquiler temporario'
+  return 'En venta'
 }
 
 function formatPrice(price: number, currency: string): string {
@@ -428,6 +438,7 @@ export async function generateAdImageV2(
   // Stage B: overlay tipográfico
   const tokens = {
     propertyType: normalizePropertyTypeLabel(input.property.property_type),
+    operationLabel: operationLabelFor(input.property.operation_type),
     headline: sanitizeHeadline(input.copyHeadline),
     price: formatPrice(input.property.asking_price, input.property.currency),
     specs: buildSpecs(input.property),
