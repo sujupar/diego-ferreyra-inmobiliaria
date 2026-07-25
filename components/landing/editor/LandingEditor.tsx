@@ -42,25 +42,33 @@ export function LandingEditor({ propertyId, property, initialDocument, isPublish
     setDoc((d) => ({ ...d, blocks: replaceBlockById(d.blocks, next.id, next) }))
   }
 
+  // Los efectos (mutar hiddenRef, mover la selección) van FUERA del updater de setDoc:
+  // React 19 doble-invoca los updaters en StrictMode y un updater impuro perdería lo
+  // editado al re-mostrar una sección. El updater queda puro (solo transforma blocks).
   function handleToggle(id: string, on: boolean) {
-    setDoc((d) => {
-      if (on) {
-        const block = hiddenRef.current[id] ?? defaultOptionalBlock(id, property)
-        if (!block) return d
-        delete hiddenRef.current[id]
-        return { ...d, blocks: insertBlockInCuratedOrder(d.blocks, block) }
-      }
-      const found = d.blocks.find((b) => b.id === id)
+    if (on) {
+      const block = hiddenRef.current[id] ?? defaultOptionalBlock(id, property)
+      if (!block) return
+      delete hiddenRef.current[id]
+      setDoc((d) => ({ ...d, blocks: insertBlockInCuratedOrder(d.blocks, block) }))
+    } else {
+      const found = doc.blocks.find((b) => b.id === id)
       if (found) hiddenRef.current[id] = found // recordamos lo editado por si lo vuelve a mostrar
       if (selectedId === id) setSelectedId('hero')
-      return { ...d, blocks: removeBlockById(d.blocks, id) }
-    })
+      setDoc((d) => ({ ...d, blocks: removeBlockById(d.blocks, id) }))
+    }
   }
 
   async function publish() {
     setPublishing(true)
     try {
-      await flush() // asegura que el último cambio quedó en el borrador
+      // Si el guardado del borrador falló (500/red), NO publicamos: promoveríamos un
+      // borrador viejo/nulo y mostraríamos "publicado" habiendo perdido la última edición.
+      const savedOk = await flush()
+      if (!savedOk) {
+        toast.error('No se pudo guardar el último cambio. Revisá tu conexión y reintentá.')
+        return
+      }
       const res = await fetch(`/api/properties/${propertyId}/landing/publish`, { method: 'POST' })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'No se pudo publicar')

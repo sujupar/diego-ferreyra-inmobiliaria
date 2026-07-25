@@ -184,14 +184,9 @@ export function LandingSection({ propertyId }: { propertyId: string }) {
             </a>
           </div>
           <p className="text-xs text-muted-foreground">Ya podés montar la campaña Meta para esta propiedad.</p>
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => router.push(`/properties/${propertyId}/landing/edit`)}>
-              Editar landing
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => patch({ wizardState: { step: 'template' } })}>
-              Cambiar plantilla
-            </Button>
-          </div>
+          <Button size="sm" onClick={() => router.push(`/properties/${propertyId}/landing/edit`)}>
+            Editar landing
+          </Button>
         </CardContent>
       </Card>
     )

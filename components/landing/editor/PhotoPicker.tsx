@@ -59,7 +59,10 @@ export function PhotoPicker(props: SingleProps | MultiProps) {
 
   // Desestructuramos a consts: el narrowing de props a MultiProps no persiste dentro
   // del closure onDragEnd (limitación de TS con parámetros capturados).
-  const { photos, value: selected, onReorder } = props
+  const { photos, value, onReorder } = props
+  // Descartamos índices fuera de rango (fotos borradas en Multimedia): no muestran
+  // miniatura rota y, al reordenar/quitar, quedan saneados en el borrador.
+  const selected = value.filter((i) => i >= 0 && i < photos.length)
   const available = photos.map((_, i) => i).filter((i) => !selected.includes(i))
   function onDragEnd(e: DragEndEvent) {
     const { active, over } = e

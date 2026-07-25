@@ -358,7 +358,10 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
     render: (block, { property }) => {
       if (block.type !== 'curated_gallery') return null
       const all = property.photos ?? []
-      const photos = block.photoIndices?.length
+      // `photoIndices` definido (aunque sea []) = selección EXPLÍCITA del editor →
+      // se respeta tal cual (vacío → CuratedGallery no renderiza). `undefined` (default
+      // del template) = todas. Antes `[]` caía a "todas" (intención invertida).
+      const photos = block.photoIndices
         ? block.photoIndices.map(i => all[i]).filter((p): p is string => typeof p === 'string')
         : all
       return <CuratedGallery photos={photos} eyebrow={block.eyebrow} title={block.title} />
