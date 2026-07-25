@@ -297,6 +297,111 @@ async function getOrGenerateAdImageHash(input: {
   return metaHash
 }
 
+/**
+ * CTA de los anuncios. "Ver más" (WATCH_MORE) — decisión del usuario 2026-07-25:
+ * muestra más del título del aviso. Verificado empíricamente que Meta lo ACEPTA para
+ * link ads con imagen vía asset_feed_spec (el viejo temor "solo video" quedó obsoleto).
+ */
+const AD_CTA_TYPE = 'WATCH_MORE'
+
+/** url_tags a nivel creative (macros de Meta → atribución en el CRM). */
+const AD_URL_TAGS =
+  'utm_source={{site_source_name}}&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&utm_term={{adset.name}}&fb_campaign_id={{campaign.id}}&fb_adset_id={{adset.id}}&fb_ad_id={{ad.id}}&fb_placement={{placement}}'
+
+/**
+ * ID de la cuenta de Instagram Business conectada a la Página, para ASOCIAR el perfil
+ * de IG a los anuncios. Sin esto el ad queda "Selecciona una cuenta de Instagram".
+ * Resuelto una vez (cache de módulo): env META_INSTAGRAM_ACTOR_ID si está, si no se
+ * consulta a la Página (fields=instagram_business_account). null → no se asocia.
+ */
+let _igActorCache: string | null = null
+async function getInstagramActorId(): Promise<string | null> {
+  if (_igActorCache) return _igActorCache // solo cacheamos éxito (no null)
+  const envIg = process.env.META_INSTAGRAM_ACTOR_ID
+  if (envIg) { _igActorCache = envIg; return envIg }
+  try {
+    const { pageId } = getMeta()
+    const data = await metaFetch<{ instagram_business_account?: { id: string } }>(
+      `/${pageId}?fields=instagram_business_account`,
+    )
+    const id = data.instagram_business_account?.id ?? null
+    if (id) _igActorCache = id
+    return id
+  } catch {
+    return null // fallo transitorio → reintentar la próxima, no fijar null
+  }
+}
+
+/**
+ * Arma el body del AdCreative. Con `pair` (feed 4:5 + story 9:16) usa
+ * asset_feed_spec con PERSONALIZACIÓN POR UBICACIÓN (feed → 4:5, historias/reels →
+ * 9:16; regla default con spec vacío = obligatoria por Meta). Sin pair, cae al link
+ * ad clásico de una sola imagen. Ambos asocian Instagram y usan el CTA configurado.
+ */
+function buildCreativePayload(input: {
+  name: string
+  pageId: string
+  igActorId: string | null
+  landingUrl: string
+  headline: string
+  primaryText: string
+  description: string
+  pair?: { feedHash: string; storyHash: string }
+  imageHash?: string
+}): Record<string, unknown> {
+  const objectStorySpec: Record<string, unknown> = { page_id: input.pageId }
+  if (input.igActorId) objectStorySpec.instagram_user_id = input.igActorId
+
+  if (input.pair) {
+    return {
+      name: input.name,
+      url_tags: AD_URL_TAGS,
+      object_story_spec: objectStorySpec,
+      asset_feed_spec: {
+        images: [
+          { hash: input.pair.feedHash, adlabels: [{ name: 'feed' }] },
+          { hash: input.pair.storyHash, adlabels: [{ name: 'story' }] },
+        ],
+        bodies: [{ text: input.primaryText }],
+        titles: [{ text: input.headline }],
+        descriptions: [{ text: input.description }],
+        link_urls: [{ website_url: input.landingUrl }],
+        call_to_action_types: [AD_CTA_TYPE],
+        ad_formats: ['SINGLE_IMAGE'],
+        asset_customization_rules: [
+          {
+            customization_spec: {
+              publisher_platforms: ['facebook', 'instagram'],
+              facebook_positions: ['story', 'facebook_reels'],
+              instagram_positions: ['story', 'reels'],
+            },
+            image_label: { name: 'story' },
+          },
+          // Regla default OBLIGATORIA (menor prioridad, spec VACÍO): captura el resto
+          // (feed, etc.) con la 4:5. Sin esto Meta rechaza (subcode 1885923).
+          { customization_spec: {}, image_label: { name: 'feed' } },
+        ],
+      },
+    }
+  }
+
+  return {
+    name: input.name,
+    url_tags: AD_URL_TAGS,
+    object_story_spec: {
+      ...objectStorySpec,
+      link_data: {
+        image_hash: input.imageHash,
+        link: input.landingUrl,
+        message: input.primaryText,
+        name: input.headline,
+        description: input.description,
+        call_to_action: { type: AD_CTA_TYPE, value: { link: input.landingUrl } },
+      },
+    },
+  }
+}
+
 export interface CampaignOverrides {
   /** Budget diario en ARS — override del decideBudget automático */
   dailyBudgetArs?: number
@@ -307,6 +412,10 @@ export interface CampaignOverrides {
    *  que las 27 piezas generadas por el async runner se conviertan en los
    *  10 Ads de la campaña sin regenerar. */
   preGeneratedImageHashes?: string[]
+  /** Pares de imágenes pre-generadas (E2.5): feed 4:5 + story 9:16 por pieza. Si se
+   *  pasan, el builder crea creatives con PERSONALIZACIÓN POR UBICACIÓN (asset_feed_spec:
+   *  feed → 4:5, historias/reels → 9:16). Es el camino preferido desde E2.5. */
+  preGeneratedPairs?: Array<{ feedHash: string; storyHash: string }>
   /** Spec de targeting completa — override del decideTargeting automático.
    *  Si se pasa, ignora geo automático y usa el preset que eligió el asesor. */
   targetingOverride?: Record<string, unknown>
@@ -553,20 +662,26 @@ export async function createCampaignForProperty(
       : (await analyzePropertyPhotos(property)).highlights
 
   // 3. Determinar cuántas variantes de ad vamos a crear.
-  //    Si el wizard v2 nos pasa imágenes pre-generadas, las usamos directo
-  //    (typically 10 hashes elegidos de las 27 piezas que el async runner
-  //    generó). Esto es lo que hace que las piezas premium efectivamente
-  //    aparezcan en la campaña, en lugar de la foto cruda.
+  //    Camino preferido (E2.5): el wizard v2 nos pasa PARES de imágenes pre-generadas
+  //    (feed 4:5 + story 9:16). Cada par → 1 ad con personalización por ubicación.
+  //    Legacy: preGeneratedImageHashes (1 imagen por ad). Sino, generar/foto cruda.
+  const preGeneratedPairs = overrides.preGeneratedPairs ?? []
+  const hasPairs = preGeneratedPairs.length > 0
   const preGeneratedHashes = overrides.preGeneratedImageHashes ?? []
   const hasPreGenerated = preGeneratedHashes.length > 0
-  const requestedVariants = overrides.variantCount ?? (hasPreGenerated ? preGeneratedHashes.length : 10)
+
+  // Instagram: cuenta conectada a la Página, para asociar el perfil de IG a los ads.
+  const igActorId = await getInstagramActorId()
+
+  const availablePregen = hasPairs ? preGeneratedPairs.length : hasPreGenerated ? preGeneratedHashes.length : 10
+  const requestedVariants = overrides.variantCount ?? availablePregen
   const variantCount = Math.max(
     1,
     Math.min(
       requestedVariants,
       copyVariations.primaryTexts.length,
       copyVariations.headlines.length,
-      hasPreGenerated ? preGeneratedHashes.length : 10, // si tenemos pre-generadas, no exceder esa cantidad
+      availablePregen, // no exceder la cantidad de piezas pre-generadas disponibles
     ),
   )
 
@@ -742,8 +857,13 @@ export async function createCampaignForProperty(
     const photoIndex = (baseIdx + cycleNum) % photosAvailable
     const photoUrl = property.photos[photoIndex] ?? property.photos[0]
 
-    let imageHash: string
-    if (hasPreGenerated && preGeneratedHashes[i]) {
+    // Resolver la imagen de la pieza. Preferido (E2.5): par feed 4:5 + story 9:16.
+    // Legacy: 1 hash pre-generado. Fallback: generar/foto cruda (1 imagen).
+    let pair: { feedHash: string; storyHash: string } | undefined
+    let imageHash: string | undefined
+    if (hasPairs && preGeneratedPairs[i]) {
+      pair = preGeneratedPairs[i]
+    } else if (hasPreGenerated && preGeneratedHashes[i]) {
       imageHash = preGeneratedHashes[i]
     } else {
       imageHash = await getOrGenerateAdImageHash({
@@ -759,24 +879,19 @@ export async function createCampaignForProperty(
 
     const creative = await metaFetch<{ id: string }>(`/${accountId}/adcreatives`, {
       method: 'POST',
-      body: JSON.stringify({
-        name: `${property.public_slug} — ${highlight.id}`.slice(0, 80),
-        // Macros de Meta → atribución por campaña/conjunto/anuncio en el CRM.
-        // Meta sustituye {{...}}: nombres (legibles) + IDs (inmutables).
-        url_tags:
-          'utm_source={{site_source_name}}&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&utm_term={{adset.name}}&fb_campaign_id={{campaign.id}}&fb_adset_id={{adset.id}}&fb_ad_id={{ad.id}}&fb_placement={{placement}}',
-        object_story_spec: {
-          page_id: pageId,
-          link_data: {
-            image_hash: imageHash,
-            link: landingUrl,
-            message: variantPrimaryText,
-            name: variantHeadline,
-            description: copyVariations.description,
-            call_to_action: { type: 'LEARN_MORE', value: { link: landingUrl } },
-          },
-        },
-      }),
+      body: JSON.stringify(
+        buildCreativePayload({
+          name: `${property.public_slug} — ${highlight.id}`.slice(0, 80),
+          pageId,
+          igActorId,
+          landingUrl,
+          headline: variantHeadline,
+          primaryText: variantPrimaryText,
+          description: copyVariations.description,
+          pair,
+          imageHash,
+        }),
+      ),
     })
 
     const ad = await metaFetch<{ id: string }>(`/${accountId}/ads`, {

@@ -47,7 +47,7 @@ El router está en `app/(dashboard)/properties/[id]/marketing/meta-ads/page.tsx`
 8. Videos opcionales
 9. Presupuesto en ARS
 10. Revisión final
-11. Publicar = Campaign + 10 Ads + 2 Custom Audiences
+11. Publicar = Campaign + N Ads (1 por par feed/story generado; con E2.5 son 6) + 2 Custom Audiences. Cada Ad usa personalización por ubicación (feed 4:5 + historias/reels 9:16), Instagram asociado y CTA "Ver más" (`WATCH_MORE`).
 
 ### Endpoints clave
 
@@ -220,22 +220,19 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
   Si responde 404 NOT_FOUND, el nombre del modelo está mal. Si responde 400 INVALID_ARGUMENT, hay otro error pero el modelo SÍ existe.
 - **Atención:** los modelos de imagen de Gemini requieren billing habilitado en el proyecto Google AI Studio. Las llamadas de TEXTO funcionan en free tier, las de IMAGEN no.
 
-### Meta CTA: NO existe "Ver más" estándar para link ads — usar LEARN_MORE
+### Meta CTA de los anuncios = `WATCH_MORE` ("Ver más") — decisión del usuario 2026-07-25
 
-- **Symptom:** El botón del ad aparece en inglés ("See More" / "Watch More") en lugar de "Más información" en español.
-- **Root cause:** El `call_to_action.type` que se envía a Meta solo se traduce a es-AR si es un valor canónico de la enumeración oficial. Valores como `SEE_MORE`, `VIEW_MORE` NO son canónicos para link_data — Meta los acepta como string libre pero los muestra crudos en inglés sin localización.
-- **Valores canónicos con traducción es-AR garantizada (link_data):**
-  - `LEARN_MORE` → "Más información" ✅ (el más usado para inmobiliaria)
-  - `CONTACT_US` → "Contactarnos"
-  - `BOOK_NOW` → "Reservar"
-  - `SIGN_UP` → "Registrarse"
-  - `SHOP_NOW` → "Comprar ahora"
-  - `GET_QUOTE` → "Obtener presupuesto"
-  - `DOWNLOAD` → "Descargar"
-  - `MESSAGE_PAGE` → "Mensaje"
-  - `WHATSAPP_MESSAGE` → "Enviar WhatsApp"
-- **Notar:** `WATCH_MORE` se renderiza "Ver más" en es-AR PERO solo aplica a video creatives (no a link ads con imagen estática). Para inmobiliaria que envía a landing externa, el más sobrio y profesional es `LEARN_MORE`.
-- **Fix:** Usar `LEARN_MORE` en link_data.
+- **Decisión vigente:** el CTA de los ads es **`WATCH_MORE` → "Ver más"** (`AD_CTA_TYPE` en `lib/marketing/meta-campaign-builder.ts`). El usuario lo eligió porque muestra más del título del aviso.
+- **Verificado empíricamente (2026-07-25):** contra la creencia previa ("WATCH_MORE solo aplica a video"), Meta **SÍ acepta `WATCH_MORE` para link ads con imagen** vía `asset_feed_spec` (creative creado status 200, `call_to_action_types:["WATCH_MORE"]` conservado). La UI de Meta también lo ofrece como opción para estos avisos.
+- **Otros valores canónicos con traducción es-AR** (por si se cambia): `LEARN_MORE`→"Más información", `CONTACT_US`→"Contactarnos", `BOOK_NOW`→"Reservar", `SIGN_UP`→"Registrarse", `SHOP_NOW`→"Comprar ahora", `GET_QUOTE`→"Obtener presupuesto", `DOWNLOAD`→"Descargar", `WHATSAPP_MESSAGE`→"Enviar WhatsApp". Evitar `SEE_MORE`/`VIEW_MORE` (no canónicos → salen crudos en inglés).
+
+### Bug productor/consumidor: el confirm buscaba `feed_square` (que E2.5 ya no genera) — 2026-07-25
+
+- **Symptom:** una campaña publicada quedó con **1 solo anuncio, con la foto CRUDA, 1 copy, sin Instagram, CTA "Más información"** — en vez de 6 ads con las imágenes generadas (caso Villa Pueyrredón, job `c317c14d`).
+- **Root cause (evidencia dura en DB):** el generador E2.5 (`ad-image-async-runner.ts`) produce 12 piezas en formatos **`feed_vertical` (4:5) + `story_vertical` (9:16)** — NUNCA `feed_square`. Pero el consumidor (`confirm/route.ts`) seguía filtrando `property_ad_assets.format = 'feed_square'` → **0 piezas** → `preGeneratedImageHashes=[]` → `variantCount` colapsa a **1** → el builder cae al generador legacy/foto cruda. Clásico "se refactorizó el productor y se olvidó el consumidor".
+- **Fix (código, 2026-07-25):** el confirm ahora lee `feed_vertical`+`story_vertical` y los **EMPAREJA** por `(photo_source_index, composition_variant)` → `preGeneratedPairs` (feed 4:5 + story 9:16). Cada par → 1 ad con **personalización por ubicación** (`asset_feed_spec`: `asset_customization_rules` [story→9:16] + **regla default OBLIGATORIA con `customization_spec:{}` vacío**, sino Meta rechaza subcode 1885923). 6 pares → 6 ads. `buildCreativePayload()` en el builder arma el creative; con `pair` usa asset_feed_spec, sin pair cae al link ad de 1 imagen. Ambos caminos ahora **asocian Instagram** (`object_story_spec.instagram_user_id`, resuelto por `getInstagramActorId()` desde la Página o env `META_INSTAGRAM_ACTOR_ID`) y usan `WATCH_MORE`.
+- **Regla general:** ante un cambio de nombres/enum en un productor (formatos, tipos), grepear TODOS los consumidores (`grep -rn "feed_square"`). Y antes de declarar completa una campaña, verificar en Meta que el nº de ads y las imágenes coinciden con lo generado (no confiar en "status published").
+- **Reparación de campañas ya publicadas mal:** `scripts/repair-villa-pueyrredon-ads.ts` (modos test/build/inspect) — recrea los ads correctos sobre el adset existente y archiva el roto. Patrón reutilizable si aparece otra campaña vieja con el bug.
 
 ### Meta geo_locations: NO mezclar `custom_locations` con `countries`
 

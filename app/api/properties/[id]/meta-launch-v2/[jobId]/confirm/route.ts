@@ -240,33 +240,54 @@ export async function POST(
 
     // (El lock atómico de más arriba ya transicionó el job a 'publishing'.)
 
-    // CRÍTICO: cargar las piezas pre-generadas (formato feed_square — Meta usa
-    // ese para feed). Pasamos sus meta_image_hash al builder así crea Ads con
-    // las piezas premium del wizard v2 (no con la foto cruda).
-    // Tomamos hasta 10 (sweet spot Andrómeda) ordenadas por created_at.
+    // CRÍTICO (E2.5): cargar las piezas pre-generadas y EMPAREJARLAS feed 4:5 +
+    // story 9:16 por (photo_source_index, composition_variant). Cada par → 1 ad con
+    // personalización por ubicación (feed → 4:5, historias/reels → 9:16).
+    //
+    // BUG que esto arregla (2026-07-25): el confirm filtraba `format='feed_square'`,
+    // pero el generador E2.5 produce `feed_vertical`/`story_vertical` (nunca feed_square)
+    // → 0 piezas → variantCount=1 → 1 solo ad con la FOTO CRUDA. El generador se
+    // refactorizó y este consumidor quedó desactualizado.
     const { data: preGenAssets } = await (supabase as unknown as {
       from: (t: string) => {
         select: (s: string) => {
           eq: (a: string, b: string) => {
-            eq: (a: string, b: string) => {
+            in: (a: string, b: string[]) => {
               order: (
                 a: string,
                 opts: { ascending: boolean },
-              ) => { limit: (n: number) => Promise<{ data: Array<{ meta_image_hash: string | null }> | null }> }
+              ) => Promise<{
+                data: Array<{
+                  meta_image_hash: string | null
+                  format: string
+                  photo_source_index: number | null
+                  composition_variant: number | null
+                }> | null
+              }>
             }
           }
         }
       }
     })
       .from('property_ad_assets')
-      .select('meta_image_hash')
+      .select('meta_image_hash, format, photo_source_index, composition_variant')
       .eq('launch_job_id', jobId)
-      .eq('format', 'feed_square')
+      .in('format', ['feed_vertical', 'story_vertical'])
       .order('created_at', { ascending: true })
-      .limit(10)
-    const preGeneratedImageHashes: string[] = (preGenAssets ?? [])
-      .map(a => a.meta_image_hash)
-      .filter((h): h is string => typeof h === 'string' && h.length > 0)
+
+    const pairMap = new Map<string, { feedHash?: string; storyHash?: string }>()
+    for (const a of preGenAssets ?? []) {
+      const hash = a.meta_image_hash
+      if (typeof hash !== 'string' || hash.length === 0) continue
+      const key = `${a.photo_source_index}_${a.composition_variant}`
+      const entry = pairMap.get(key) ?? {}
+      if (a.format === 'feed_vertical') entry.feedHash = hash
+      else if (a.format === 'story_vertical') entry.storyHash = hash
+      pairMap.set(key, entry)
+    }
+    const preGeneratedPairs = [...pairMap.values()]
+      .filter((e): e is { feedHash: string; storyHash: string } => !!e.feedHash && !!e.storyHash)
+      .slice(0, 10)
 
     // E2.0 — Blindaje de presupuesto (capa A). El budget que eligió el asesor
     // vive en job.daily_budget_ars (ENTERO en ARS). Hasta ahora se IGNORABA y
@@ -317,8 +338,10 @@ export async function POST(
       campaign = await createCampaignForProperty(property as never, {
         dryRun: true,
         overrides: {
-          preGeneratedImageHashes,
-          variantCount: Math.min(preGeneratedImageHashes.length, 10),
+          preGeneratedPairs,
+          // Si hay pares, 1 ad por par; si no (generación falló), undefined → el
+          // builder cae a su fallback (generar/foto). Nunca 0 (rompería el Math.min).
+          variantCount: preGeneratedPairs.length > 0 ? preGeneratedPairs.length : undefined,
           // ENTERO en ARS, sin ×100. La conversión a unidad mínima de Meta
           // ocurre UNA sola vez dentro del builder (daily_budget).
           ...(budgetOverride != null ? { dailyBudgetArs: budgetOverride } : {}),
