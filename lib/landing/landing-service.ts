@@ -14,6 +14,8 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import { ensurePublicSlug } from './assign-slug'
+import { pickPublishSource } from './editor/promote'
+export { pickPublishSource }
 import { getOrGenerateBridgedDescription } from '@/lib/marketing/portal-description-bridge'
 import { analyzePropertyPhotos } from '@/lib/marketing/property-vision-analyzer'
 import { deriveFunnelType, type PropertyFunnelType } from './funnel-type'
@@ -53,6 +55,7 @@ export interface LandingRow {
   status: 'draft' | 'published' | 'archived'
   template_id: string
   content: unknown
+  draft_content: unknown | null
   avatar_id: string | null
   wizard_state: WizardState
   ai_analysis: unknown
@@ -82,8 +85,8 @@ export async function getLanding(propertyId: string): Promise<LandingRow | null>
   return (data as unknown as LandingRow) ?? null
 }
 
-async function getProperty(propertyId: string): Promise<LandingProperty | null> {
-  const { data } = await adminTyped().from('properties').select('*').eq('id', propertyId).single()
+export async function getProperty(propertyId: string): Promise<LandingProperty | null> {
+  const { data } = await adminTyped().from('properties').select('*').eq('id', propertyId).maybeSingle()
   return (data as LandingProperty) ?? null
 }
 
@@ -160,6 +163,7 @@ export async function updateLanding(propertyId: string, patch: {
   wizardState?: Partial<WizardState>
   templateId?: string
   content?: unknown
+  draftContent?: unknown
 }): Promise<LandingRow> {
   const current = await getLanding(propertyId)
   if (!current) throw new Error('landing not found')
@@ -185,6 +189,14 @@ export async function updateLanding(propertyId: string, patch: {
     const parsed = LandingDocument.safeParse(patch.content)
     if (!parsed.success) throw new Error('content inválido: ' + parsed.error.issues[0]?.message)
     update.content = parsed.data
+  }
+
+  // Borrador del editor (E1.6) — se autosalva acá; la landing pública sigue leyendo
+  // `content` (status='published') hasta que "Publicar cambios" promueva el borrador.
+  if (patch.draftContent !== undefined) {
+    const parsed = LandingDocument.safeParse(patch.draftContent)
+    if (!parsed.success) throw new Error('draft inválido: ' + parsed.error.issues[0]?.message)
+    update.draft_content = parsed.data
   }
 
   const { data, error } = await admin()
@@ -241,8 +253,11 @@ export async function publishLanding(propertyId: string, appUrl: string, userId:
   const landing = await getLanding(propertyId)
   if (!landing) throw new Error('landing not found')
 
-  // 1. content válido (invariante: al menos 1 CTA/lead_form de conversión).
-  const doc = safeParseLandingDocument(landing.content)
+  // 1. Fuente a publicar: si hay borrador del editor (E1.6), se publica el borrador
+  //    (y se promueve a `content`); si no, el `content` actual. Validado con el
+  //    invariante de conversión (≥1 CTA/lead_form).
+  const { source, promoteDraft } = pickPublishSource(landing)
+  const doc = safeParseLandingDocument(source)
   if (!doc) throw new Error('La landing no tiene un diseño válido. Revisá que tenga al menos un CTA.')
 
   // 2. avatar elegido → primary (si el asesor seleccionó uno de los candidatos).
@@ -260,17 +275,23 @@ export async function publishLanding(propertyId: string, appUrl: string, userId:
   const funnelType: PropertyFunnelType = landing.funnel_type ?? 'venta_propiedad'
   const utmBase = buildUtmBase(appUrl, slug, funnelType)
 
-  // 5. publicar.
+  // 5. publicar. Si venía de un borrador del editor, se promueve a `content` y se
+  //    limpia `draft_content` (el flujo del wizard, sin borrador, queda igual).
+  const update: Record<string, unknown> = {
+    status: 'published',
+    avatar_id: avatarId,
+    utm_base: utmBase,
+    public_slug: slug,
+    published_slug: slug,
+    published_at: new Date().toISOString(),
+  }
+  if (promoteDraft) {
+    update.content = doc
+    update.draft_content = null
+  }
   const { error } = await admin()
     .from('property_landings')
-    .update({
-      status: 'published',
-      avatar_id: avatarId,
-      utm_base: utmBase,
-      public_slug: slug,
-      published_slug: slug,
-      published_at: new Date().toISOString(),
-    })
+    .update(update)
     .eq('property_id', propertyId)
   if (error) throw new Error(error.message)
 

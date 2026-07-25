@@ -57,11 +57,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       wizardState?: Record<string, unknown>
       templateId?: string
       content?: unknown
+      draftContent?: unknown
     }
     const landing = await updateLanding(id, {
       wizardState: body.wizardState as never,
       templateId: body.templateId,
       content: body.content,
+      draftContent: body.draftContent,
     })
     return NextResponse.json({ landing })
   } catch (err) {
