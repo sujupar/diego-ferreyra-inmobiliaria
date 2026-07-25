@@ -10,6 +10,7 @@
  * Versión funcional; el editor drag-and-drop premium es E1.6.
  */
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -38,6 +39,7 @@ interface Landing {
 interface TemplateMeta { id: string; label: string; description: string; bestFor: string }
 
 export function LandingSection({ propertyId }: { propertyId: string }) {
+  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [landing, setLanding] = useState<Landing | null>(null)
@@ -182,7 +184,14 @@ export function LandingSection({ propertyId }: { propertyId: string }) {
             </a>
           </div>
           <p className="text-xs text-muted-foreground">Ya podés montar la campaña Meta para esta propiedad.</p>
-          <Button variant="ghost" size="sm" onClick={() => patch({ wizardState: { step: 'template' } })}>Editar diseño</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => router.push(`/properties/${propertyId}/landing/edit`)}>
+              Editar landing
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => patch({ wizardState: { step: 'template' } })}>
+              Cambiar plantilla
+            </Button>
+          </div>
         </CardContent>
       </Card>
     )

@@ -350,3 +350,15 @@ html:has(.landing-root) {
   from { opacity: 0; transform: translateY(24px); }
   to   { opacity: 1; transform: none; }
 }
+
+/* E1.6 Editor — dentro de la vista previa del editor NO animamos: el contenido debe
+   quedar estático y visible mientras se edita (evita parpadeos por re-render en cada
+   tecla). Anula los bloques self-animated (lx-reveal) y el hero (rise/zoom/cue). */
+.lx-editor-preview .lx-reveal,
+.lx-editor-preview .hero-rise,
+.lx-editor-preview .hero-zoom,
+.lx-editor-preview .hero-cue {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
