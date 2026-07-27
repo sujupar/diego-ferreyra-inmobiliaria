@@ -4,6 +4,8 @@ import { gmailConfigured, getMessage, listMessages } from '@/lib/integrations/gm
 import { buildGmailQuery, detectPortal, isLeadEmail, parseByPortal } from '@/lib/integrations/portal-inquiries'
 import { matchProperty } from '@/lib/integrations/portal-inquiries/match'
 import { notifyInquiry } from '@/lib/integrations/portal-inquiries/notify'
+import { evaluateDrought } from '@/lib/integrations/portal-inquiries/drought'
+import { sendWhatsappTemplate, normalizePhone } from '@/lib/integrations/whatsapp/meta-cloud'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // segundos
@@ -51,18 +53,28 @@ export async function GET(req: NextRequest) {
     errorDetails: [] as Array<{ id: string; message: string }>,
   }
 
+  // Campos de la alerta de sequía (migración 20260727000001). Se setean tras
+  // evaluar; si la migración aún no corrió, el fallback de persistState evita
+  // perder el estado base.
+  let droughtFields: Record<string, string> = {}
+
   const persistState = async (extra: Record<string, unknown>) => {
     const finishedAt = new Date()
-    // upsert (no update) para no perder el estado en silencio si la fila
-    // singleton no existe — lección "cron que falla en silencio".
-    await supabase.from('portal_inquiry_poll_state').upsert({
+    const base = {
       id: 1,
       last_polled_at: startedAt.toISOString(),
       last_run_started_at: startedAt.toISOString(),
       last_run_finished_at: finishedAt.toISOString(),
       last_run_stats: { ...stats, errorDetails: stats.errorDetails.slice(0, 10), ...extra },
       updated_at: finishedAt.toISOString(),
-    })
+    }
+    // upsert (no update) para no perder el estado en silencio si la fila
+    // singleton no existe — lección "cron que falla en silencio".
+    const { error } = await supabase.from('portal_inquiry_poll_state').upsert({ ...base, ...droughtFields })
+    if (error && Object.keys(droughtFields).length > 0) {
+      // Columnas de sequía ausentes (migración pendiente) → no perder el estado base.
+      await supabase.from('portal_inquiry_poll_state').upsert(base)
+    }
   }
 
   try {
@@ -191,6 +203,50 @@ export async function GET(req: NextRequest) {
         stats.errors++
         stats.errorDetails.push({ id: m.id, message: err instanceof Error ? err.message : String(err) })
       }
+    }
+
+    // --- Alerta de sequía: 48h sin NINGÚN email de portales (ni duplicados) ---
+    // Señal de casilla rota (MX/DNS/suspensión) o portales mudos. Lección 2026-07:
+    // 8 días sin emails pasaron invisibles porque el cron reportaba "ok" con fetched=0.
+    try {
+      const { data: prev } = await supabase
+        .from('portal_inquiry_poll_state')
+        .select('last_nonzero_fetch_at, last_drought_alert_at')
+        .eq('id', 1)
+        .maybeSingle()
+      const verdict = evaluateDrought({
+        fetched: stats.fetched,
+        lastNonZeroFetchAt: prev?.last_nonzero_fetch_at ? new Date(prev.last_nonzero_fetch_at) : null,
+        lastAlertAt: prev?.last_drought_alert_at ? new Date(prev.last_drought_alert_at) : null,
+        now: new Date(),
+      })
+      droughtFields = { last_nonzero_fetch_at: verdict.nextLastNonZeroFetchAt.toISOString() }
+      if (verdict.shouldAlert) {
+        // Reusa la plantilla UTILITY aprobada (formato de 10 params) — sin
+        // depender de una plantilla nueva pendiente de aprobación de Meta.
+        const template = process.env.WHATSAPP_TEMPLATE_NAME ?? 'consulta_portal_util'
+        const lang = process.env.WHATSAPP_TEMPLATE_LANG ?? 'es_AR'
+        const bodyParams = [
+          'ALERTA', 'SISTEMA', 'Sistema', 'Alerta',
+          `Hace ${verdict.hoursDry}h que NO llega ningún email de portales`,
+          'Revisar: casilla contacto@, DNS/MX del dominio, o portales',
+          'Alerta de sequía de consultas', '-', 'contacto@diegoferreyrainmobiliaria.com',
+          'https://inmodf.com.ar/inbox',
+        ]
+        const phones = (process.env.WHATSAPP_ALERT_PHONES ?? process.env.WHATSAPP_CC_PHONES ?? '')
+          .split(',')
+          .map(p => normalizePhone(p.trim()))
+          .filter((p): p is string => !!p)
+        let sent = 0
+        for (const to of phones) {
+          const r = await sendWhatsappTemplate({ to, templateName: template, languageCode: lang, bodyParams })
+          if (r.ok && !r.skipped) sent++
+        }
+        if (sent > 0) droughtFields.last_drought_alert_at = new Date().toISOString()
+        console.warn(`[portal-inquiries] ALERTA DE SEQUÍA: ${verdict.hoursDry}h sin emails de portales — avisados ${sent} números`)
+      }
+    } catch (e) {
+      console.warn('[portal-inquiries] evaluación de sequía falló (no bloquea el cron):', e)
     }
 
     await persistState({ status: 'ok' })
