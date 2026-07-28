@@ -118,6 +118,10 @@ export interface CampaignResult {
   adIds: string[]
   budgetDailyArs: number
   landingUrl: string
+  /** Anuncios que se esperaba crear (= piezas disponibles). */
+  expectedAds: number
+  /** Variantes que no se pudieron crear ni en el reintento (índice 0-based + motivo). */
+  failedVariants: Array<{ index: number; error: string }>
 }
 
 /**
@@ -338,32 +342,106 @@ async function getInstagramActorId(): Promise<string | null> {
  * 9:16; regla default con spec vacío = obligatoria por Meta). Sin pair, cae al link
  * ad clásico de una sola imagen. Ambos asocian Instagram y usan el CTA configurado.
  */
+/**
+ * Máximo de textos principales (`bodies`) y títulos (`titles`) por creative.
+ *
+ * VERIFICADO CONTRA META (validate_only, 2026-07-27 — `scripts/validate-meta-creative-payload.ts`):
+ * el multi-texto y la personalización por ubicación son EXCLUYENTES.
+ *   - CON `asset_customization_rules` (feed 4:5 + story 9:16) → SOLO 1 body y 1
+ *     title. Con más, Meta responde 400 subcode 1885878 ("No se pueden aplicar
+ *     varios activos bodies a la regla N").
+ *   - SIN reglas (una sola imagen para todos los placements) → acepta 5 y 5.
+ * Como la personalización por ubicación es la decisión de producto vigente
+ * (E2.5: cada pieza tiene su 4:5 y su 9:16), el camino con par usa 1+1 y la
+ * variedad de copy se logra con textos DISTINTOS por anuncio (6 ads = 6 textos).
+ */
+const MAX_ASSET_TEXTS = 5
+/** Límite real del camino con personalización por ubicación (subcode 1885878). */
+const MAX_TEXTS_WITH_CUSTOMIZATION = 1
+
+/**
+ * Toma `count` elementos de `arr` arrancando en `start`, con wrap-around.
+ * Cada anuncio recibe así una ventana DISTINTA del pool de copy (con 10 textos
+ * y 6 anuncios, ninguno queda con el mismo conjunto) sin recortar anuncios.
+ */
+export function pickWindow(arr: string[], start: number, count: number): string[] {
+  if (arr.length === 0) return []
+  const n = Math.min(count, arr.length)
+  return Array.from({ length: n }, (_, k) => arr[(start + k) % arr.length])
+}
+
+/** Resultado de intentar crear UNA variante de anuncio (creative + ad). */
+export type VariantOutcome<T> =
+  | { ok: true; index: number; value: T }
+  | { ok: false; index: number; error: string }
+
+/**
+ * Combina la pasada inicial con la de reintentos y separa éxitos de fallos,
+ * PRESERVANDO el orden de `indices` (el orden de los ads importa: es el que se
+ * persiste en `ad_ids` y el que ve el asesor). El reintento pisa al 1er intento.
+ */
+export function mergeVariantOutcomes<T>(
+  indices: number[],
+  firstPass: VariantOutcome<T>[],
+  retryPass: VariantOutcome<T>[],
+): {
+  succeeded: Array<{ index: number; value: T }>
+  failed: Array<{ index: number; error: string }>
+} {
+  const byIndex = new Map<number, VariantOutcome<T>>()
+  for (const r of firstPass) byIndex.set(r.index, r)
+  for (const r of retryPass) byIndex.set(r.index, r) // el reintento manda
+  const succeeded: Array<{ index: number; value: T }> = []
+  const failed: Array<{ index: number; error: string }> = []
+  for (const i of indices) {
+    const r = byIndex.get(i)
+    if (r?.ok) succeeded.push({ index: i, value: r.value })
+    else if (r) failed.push({ index: i, error: r.error })
+  }
+  return { succeeded, failed }
+}
+
 function buildCreativePayload(input: {
   name: string
   pageId: string
   igActorId: string | null
   landingUrl: string
-  headline: string
-  primaryText: string
+  /** Hasta 5 títulos (asset_feed_spec). El link ad de 1 imagen usa solo el 1º. */
+  headlines: string[]
+  /** Hasta 5 textos principales (asset_feed_spec). El link ad usa solo el 1º. */
+  primaryTexts: string[]
   description: string
+  /** url_tags con el `ad_ref` único de esta variante (anti-duplicado). */
+  urlTags: string
   pair?: { feedHash: string; storyHash: string }
   imageHash?: string
 }): Record<string, unknown> {
   const objectStorySpec: Record<string, unknown> = { page_id: input.pageId }
   if (input.igActorId) objectStorySpec.instagram_user_id = input.igActorId
 
+  // Con par (personalización por ubicación) Meta SOLO admite 1 body y 1 title
+  // (subcode 1885878, verificado); sin par, hasta 5 que Meta rota.
+  const maxTexts = input.pair ? MAX_TEXTS_WITH_CUSTOMIZATION : MAX_ASSET_TEXTS
+  const bodies = input.primaryTexts.slice(0, maxTexts).map(text => ({ text }))
+  const titles = input.headlines.slice(0, maxTexts).map(text => ({ text }))
+  // Meta rechaza un creative sin texto o sin título. Fallar acá (con mensaje
+  // claro) es mucho mejor que mandarle a Meta `bodies: []` y comerse un 400.
+  if (bodies.length === 0 || titles.length === 0) {
+    throw new Error('buildCreativePayload: se requiere al menos 1 texto principal y 1 título')
+  }
+
   if (input.pair) {
     return {
       name: input.name,
-      url_tags: AD_URL_TAGS,
+      url_tags: input.urlTags,
       object_story_spec: objectStorySpec,
       asset_feed_spec: {
         images: [
           { hash: input.pair.feedHash, adlabels: [{ name: 'feed' }] },
           { hash: input.pair.storyHash, adlabels: [{ name: 'story' }] },
         ],
-        bodies: [{ text: input.primaryText }],
-        titles: [{ text: input.headline }],
+        bodies,
+        titles,
         descriptions: [{ text: input.description }],
         link_urls: [{ website_url: input.landingUrl }],
         call_to_action_types: [AD_CTA_TYPE],
@@ -385,16 +463,18 @@ function buildCreativePayload(input: {
     }
   }
 
+  // Link ad de 1 imagen (fallback sin par feed/story): Meta solo admite UN
+  // texto y UN título acá — la rotación de 5 es exclusiva de asset_feed_spec.
   return {
     name: input.name,
-    url_tags: AD_URL_TAGS,
+    url_tags: input.urlTags,
     object_story_spec: {
       ...objectStorySpec,
       link_data: {
         image_hash: input.imageHash,
         link: input.landingUrl,
-        message: input.primaryText,
-        name: input.headline,
+        message: input.primaryTexts[0] ?? '',
+        name: input.headlines[0] ?? '',
         description: input.description,
         call_to_action: { type: AD_CTA_TYPE, value: { link: input.landingUrl } },
       },
@@ -483,12 +563,15 @@ export async function createCampaignForProperty(
       // Caemos al flow normal de creación abajo
     } else {
       // Campaña completa existente — devolvemos la existente, no duplicamos.
+      const existingAdIds = (existing.ad_ids as string[] | null) ?? []
       return {
         campaignId: existing.campaign_id,
         adsetId: existing.adset_id ?? '',
-        adIds: (existing.ad_ids as string[] | null) ?? [],
+        adIds: existingAdIds,
         budgetDailyArs: existing.budget_daily ?? 0,
         landingUrl: existing.landing_url ?? `${getAppUrl()}/p/${property.public_slug}`,
+        expectedAds: existingAdIds.length,
+        failedVariants: [],
       }
     }
   }
@@ -641,12 +724,15 @@ export async function createCampaignForProperty(
         .neq('status', 'archived')
         .maybeSingle()
       if (winner?.campaign_id) {
+        const winnerAdIds = (winner.ad_ids as string[] | null) ?? []
         return {
           campaignId: winner.campaign_id,
           adsetId: winner.adset_id ?? '',
-          adIds: (winner.ad_ids as string[] | null) ?? [],
+          adIds: winnerAdIds,
           budgetDailyArs: winner.budget_daily ?? 0,
           landingUrl: winner.landing_url ?? landingUrl,
+          expectedAds: winnerAdIds.length,
+          failedVariants: [],
         }
       }
     }
@@ -675,12 +761,17 @@ export async function createCampaignForProperty(
 
   const availablePregen = hasPairs ? preGeneratedPairs.length : hasPreGenerated ? preGeneratedHashes.length : 10
   const requestedVariants = overrides.variantCount ?? availablePregen
+  // La cantidad de anuncios la define la cantidad de PIEZAS disponibles, NO la de
+  // textos: con el reparto en ventanas (pickWindow) el pool de copy alcanza para
+  // todos los anuncios. El cap por textos que había acá era inofensivo en la
+  // práctica (generateAdCopyVariations SIEMPRE devuelve 10 — padCopyToTen rellena
+  // si la IA devuelve menos), pero era una bomba silenciosa: cualquier cambio en
+  // el generador habría recortado anuncios sin avisar. La campaña de 3-de-6 que
+  // reportó el usuario NO vino de acá, sino del Promise.all abortado (ver abajo).
   const variantCount = Math.max(
     1,
     Math.min(
       requestedVariants,
-      copyVariations.primaryTexts.length,
-      copyVariations.headlines.length,
       availablePregen, // no exceder la cantidad de piezas pre-generadas disponibles
     ),
   )
@@ -839,12 +930,31 @@ export async function createCampaignForProperty(
   //    al final del Promise.all (mucho mejor que el comportamiento anterior
   //    que persistía ad_ids junto con status final, recién mucho después).
   const variantIndices = Array.from({ length: variantCount }, (_, i) => i)
-  const variantResults = await runWithConcurrency(variantIndices, 4, async (i) => {
+
+  /**
+   * Crea creative + ad de la variante `i`.
+   *
+   * `attempt` alimenta el `ad_ref` único: Meta rechaza con 400 subcode 3858798
+   * ("El contenido de anuncio ya existe") cualquier creative idéntico a otro de
+   * la MISMA cuenta — y los creatives de un intento fallido NO se borran. Con el
+   * ref en el link + url_tags + nombre, un reintento nunca choca con su gemelo.
+   */
+  const createVariant = async (i: number, attempt: number) => {
     const highlight = highlights[i % highlights.length]
-    const variantHeadline =
-      copyVariations.headlines[i] ?? copyVariations.headlines[0]
-    const variantPrimaryText =
-      copyVariations.primaryTexts[i] ?? copyVariations.primaryTexts[0]
+    // Ventana de 5 textos/títulos por anuncio (Meta los rota). Distinta por
+    // variante para que dos anuncios nunca queden con el mismo contenido.
+    //
+    // `buildCreativePayload` recorta al máximo que Meta admite según el camino
+    // (1 con personalización por ubicación, 5 sin ella). Pedimos 5 y que decida.
+    const variantHeadlines = pickWindow(copyVariations.headlines, i, MAX_ASSET_TEXTS)
+    const variantPrimaryTexts = pickWindow(copyVariations.primaryTexts, i, MAX_ASSET_TEXTS)
+    const variantHeadline = variantHeadlines[0] ?? copyVariations.headlines[0] ?? ''
+    const variantPrimaryText = variantPrimaryTexts[0] ?? copyVariations.primaryTexts[0] ?? ''
+    const adRef = `${campaign.id}-v${i}${attempt > 0 ? `-r${attempt}` : ''}`
+    // El ref viaja en el LINK (parte inequívoca del contenido del creative) y en
+    // url_tags. `landingUrl` ya trae query (?utm_...), por eso va con `&`.
+    const variantLandingUrl = `${landingUrl}&ad_ref=${encodeURIComponent(adRef)}`
+    const variantUrlTags = `${AD_URL_TAGS}&ad_ref=${encodeURIComponent(adRef)}`
     const compositionStyle = styleRotation[i % styleRotation.length]
     const photosAvailable = property.photos.length
     const baseIdx =
@@ -881,13 +991,16 @@ export async function createCampaignForProperty(
       method: 'POST',
       body: JSON.stringify(
         buildCreativePayload({
-          name: `${property.public_slug} — ${highlight.id}`.slice(0, 80),
+          // El adRef va PRIMERO: el slice(0,80) con un slug largo lo truncaba y
+          // todos los creatives terminaban con el mismo nombre.
+          name: `${adRef} — ${highlight.id} — ${property.public_slug}`.slice(0, 80),
           pageId,
           igActorId,
-          landingUrl,
-          headline: variantHeadline,
-          primaryText: variantPrimaryText,
+          landingUrl: variantLandingUrl,
+          headlines: variantHeadlines,
+          primaryTexts: variantPrimaryTexts,
           description: copyVariations.description,
+          urlTags: variantUrlTags,
           pair,
           imageHash,
         }),
@@ -912,12 +1025,68 @@ export async function createCampaignForProperty(
       primaryText: variantPrimaryText,
       photoUrl,
     }
-  })
+  }
 
-  // Llenar arrays preservando el orden original
-  for (const r of variantResults) {
-    adIds.push(r.adId)
-    variantPayloads.push(r)
+  type VariantValue = Awaited<ReturnType<typeof createVariant>>
+
+  const attemptVariant = async (i: number, attempt: number): Promise<VariantOutcome<VariantValue>> => {
+    try {
+      return { ok: true, index: i, value: await createVariant(i, attempt) }
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err)
+      console.warn(`[meta-builder] variante ${i} falló (intento ${attempt}):`, error)
+      return { ok: false, index: i, error }
+    }
+  }
+
+  // Pasada 1: cada variante AISLADA — que una falle ya no mata a las demás.
+  // (Antes, un creative rechazado cortaba el Promise.all y dejaba en Meta los
+  // ads ya creados: la campaña de 3 anuncios en vez de 6 que reportó el usuario.)
+  const firstPass = await runWithConcurrency(variantIndices, 4, i => attemptVariant(i, 0))
+
+  // Pasada 2: reintento ÚNICO de las que fallaron, con `ad_ref` nuevo (resuelve
+  // el duplicado 3858798 y los errores transitorios de la API).
+  const failedIdx = firstPass.filter(r => !r.ok).map(r => r.index)
+  if (failedIdx.length > 0) {
+    // CHECKPOINT antes del reintento: el reintento es justo el camino más lento
+    // (y maxDuration=60). Si la función muere ahí, sin esto se perderían también
+    // los ads que SÍ entraron en la pasada 1 y el próximo intento los archivaría.
+    const okSoFar = firstPass.filter(r => r.ok).map(r => (r as { value: { adId: string } }).value.adId)
+    if (okSoFar.length > 0) {
+      await supabase
+        .from('property_meta_campaigns')
+        .update({ ad_ids: okSoFar })
+        .eq('campaign_id', campaign.id)
+    }
+  }
+  const retryPass = failedIdx.length
+    ? await runWithConcurrency(failedIdx, 2, i => attemptVariant(i, 1))
+    : []
+
+  // Merge + separación de éxitos/fallos preservando el orden (función pura testeada).
+  const { succeeded, failed: failedVariants } = mergeVariantOutcomes(
+    variantIndices,
+    firstPass,
+    retryPass,
+  )
+  for (const s of succeeded) {
+    adIds.push(s.value.adId)
+    variantPayloads.push(s.value)
+  }
+
+  // Si NINGUNA variante entró, la campaña no sirve: tiramos para que la
+  // recuperación del confirm archive el zombi y se pueda reintentar limpio.
+  if (adIds.length === 0) {
+    throw new Error(
+      `No se pudo crear ningún anuncio (${variantCount} intentos). Primer error: ${failedVariants[0]?.error ?? 'desconocido'}`,
+    )
+  }
+  if (failedVariants.length > 0) {
+    console.warn(
+      `[meta-builder] campaña ${campaign.id}: ${adIds.length}/${variantCount} anuncios creados. Fallaron: ${failedVariants
+        .map(f => `#${f.index + 1} (${f.error})`)
+        .join(' · ')}`,
+    )
   }
 
   // Persistir ad_ids ya — sin esperar el smoke test ni el UPDATE final. Si la
@@ -932,11 +1101,19 @@ export async function createCampaignForProperty(
 
   // 7. Actualizar la fila ya creada en 1.5 con adset_id + ad_ids + status final.
   // En dryRun queda 'paused' para auditoría manual.
-  const finalStatus = options.dryRun
+  // Una campaña incompleta NUNCA queda 'active' (no se activa, ver paso 8).
+  const isPartial = failedVariants.length > 0
+  const finalStatus = options.dryRun || isPartial
     ? 'paused'
     : landingOk
       ? 'active'
       : 'failed'
+  // El detalle del parcial se PERSISTE (antes solo iba a console.warn y se perdía
+  // al cerrar la pestaña): así queda auditable qué campañas salieron incompletas.
+  const partialNote = isPartial
+    ? `Publicación parcial: ${adIds.length}/${variantCount} anuncios. Fallaron: ` +
+      failedVariants.map(f => `#${f.index + 1} (${f.error})`).join(' · ')
+    : null
   // Persistir todos los IDs + el detalle de cada variante (para que el inbox
   // pueda mostrar "este lead vino del ad del balcón" en el futuro).
   const copyWithVariants = {
@@ -951,14 +1128,25 @@ export async function createCampaignForProperty(
       copy: copyWithVariants as never,
       status: finalStatus,
       last_error:
-        !options.dryRun && !landingOk ? 'Smoke test de landing falló' : null,
+        [partialNote, !options.dryRun && !landingOk ? 'Smoke test de landing falló' : null]
+          .filter(Boolean)
+          .join(' | ') || null,
     })
     .eq('campaign_id', campaign.id)
 
   // 8. Si la landing responde OK y no es dryRun, activar todo en Meta.
   // En dryRun queda PAUSED para que el usuario audite antes de activar.
-  if (landingOk && !options.dryRun) {
+  //
+  // NUNCA activamos una campaña INCOMPLETA: con el aislamiento de fallos, una
+  // campaña con 1 de 10 anuncios ya no tira error — y sin esta guarda el camino
+  // automático (provision-meta-campaigns) la activaría y gastaría el presupuesto
+  // diario completo con una sola pieza. Si faltan anuncios queda en PAUSED.
+  if (landingOk && !options.dryRun && failedVariants.length === 0) {
     await activateCampaign(campaign.id, adset.id, adIds)
+  } else if (failedVariants.length > 0) {
+    console.warn(
+      `[meta-builder] campaña ${campaign.id} NO se activa (incompleta: ${adIds.length}/${variantCount}) — queda en PAUSED`,
+    )
   }
 
   return {
@@ -967,6 +1155,8 @@ export async function createCampaignForProperty(
     adIds,
     budgetDailyArs: budget.dailyArs,
     landingUrl,
+    expectedAds: variantCount,
+    failedVariants,
   }
 }
 

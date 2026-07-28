@@ -429,11 +429,52 @@ export async function POST(
 
     const adsManagerUrl = `https://business.facebook.com/adsmanager/manage/campaigns?act=${(process.env.META_AD_ACCOUNT_ID ?? '').replace('act_', '')}&selected_campaign_ids=${campaign.campaignId}`
 
+    // Publicación PARCIAL: si alguna variante no entró ni con el reintento, la
+    // campaña queda igual (en pausa) pero se avisa EXACTAMENTE cuál falló y por
+    // qué — antes esto se perdía en silencio y aparecían campañas de 3 anuncios.
+    const adsCreated = campaign.adIds?.length ?? 0
+    const expectedAds = campaign.expectedAds ?? adsCreated
+    const partial = (campaign.failedVariants?.length ?? 0) > 0
+    const detalle = partial
+      ? campaign.failedVariants.map(f => `#${f.index + 1} (${f.error})`).join(' · ')
+      : ''
+    if (partial) {
+      console.warn('[meta-launch-v2 confirm] publicación parcial:', detalle)
+      // Persistir en el job: sin esto el detalle se pierde al cerrar la pestaña
+      // (el status queda 'published' porque la campaña SÍ existe en Meta).
+      await (supabase as unknown as {
+        from: (t: string) => {
+          update: (f: Record<string, unknown>) => {
+            eq: (a: string, b: string) => Promise<unknown>
+          }
+        }
+      })
+        .from('meta_launch_jobs')
+        .update({
+          error_message: `Publicación parcial: ${adsCreated}/${expectedAds} anuncios. No entraron: ${detalle}`,
+        })
+        .eq('id', jobId)
+    }
+
     return NextResponse.json({
       ok: true,
       campaignId: campaign.campaignId,
       adsManagerUrl,
       audienceIds,
+      adsCreated,
+      expectedAds,
+      ...(partial
+        ? {
+            // La campaña queda en PAUSA y NO se activa sola. El camino real para
+            // completarla es archivarla y volver a lanzar (no hay "reintentar
+            // los que faltan"): decirlo tal cual evita que se crea que ya están.
+            warning:
+              `Se publicaron ${adsCreated} de ${expectedAds} anuncios. No entraron: ${detalle}. ` +
+              'La campaña quedó EN PAUSA y no se va a activar así. Para completarla: archivala desde el ' +
+              'panel de la propiedad y volvé a lanzar, o creá los anuncios que faltan a mano en Ads Manager.',
+            failedVariants: campaign.failedVariants,
+          }
+        : {}),
     })
   } catch (err) {
     return NextResponse.json(

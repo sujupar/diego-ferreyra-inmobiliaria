@@ -92,7 +92,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
     const { id } = await params
-    const body = (await req.json().catch(() => ({}))) as { action?: string }
+    const body = (await req.json().catch(() => ({}))) as { action?: string; force?: boolean }
     const action = body.action
     if (!['pause', 'activate', 'archive'].includes(action ?? '')) {
       return NextResponse.json(
@@ -125,7 +125,7 @@ export async function PATCH(
     const supabase = getAdmin()
     const { data: campaign } = await supabase
       .from('property_meta_campaigns')
-      .select('campaign_id, adset_id, ad_ids, status')
+      .select('campaign_id, adset_id, ad_ids, status, last_error')
       .eq('property_id', id)
       .neq('status', 'archived')
       .order('created_at', { ascending: false })
@@ -153,6 +153,21 @@ export async function PATCH(
           return NextResponse.json(
             { error: 'Campaña incompleta — no se puede activar' },
             { status: 422 },
+          )
+        }
+        // Publicación PARCIAL: no se activa por accidente desde el panel. Gastaría
+        // el presupuesto diario completo con menos anuncios de los previstos.
+        // Se puede forzar explícitamente con { force: true } desde la UI.
+        const lastError = (campaign as { last_error?: string | null }).last_error ?? ''
+        if (lastError.startsWith('Publicación parcial') && !body.force) {
+          return NextResponse.json(
+            {
+              error:
+                `Esta campaña quedó incompleta (${lastError}). Activarla gastaría el presupuesto ` +
+                'completo con menos anuncios. Archivala y volvé a lanzar, o completá los anuncios en Ads Manager.',
+              code: 'PARTIAL_CAMPAIGN',
+            },
+            { status: 409 },
           )
         }
         await activateCampaign(

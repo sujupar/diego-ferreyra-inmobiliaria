@@ -183,7 +183,13 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
   const generatingBatchRef = useRef(false)
   const mountedRef = useRef(true)
   useEffect(() => () => { mountedRef.current = false }, [])
-  const [finalResult, setFinalResult] = useState<{ campaignId: string; adsManagerUrl: string } | null>(null)
+  const [finalResult, setFinalResult] = useState<{
+    campaignId: string
+    adsManagerUrl: string
+    adsCreated?: number
+    expectedAds?: number
+    warning?: string
+  } | null>(null)
 
   // Polling helper
   async function pollStatus() {
@@ -479,7 +485,13 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
       setFinalResult({
         campaignId: data.campaignId,
         adsManagerUrl: data.adsManagerUrl,
+        adsCreated: data.adsCreated,
+        expectedAds: data.expectedAds,
+        warning: data.warning,
       })
+      // Publicación parcial: la campaña existe pero faltan anuncios. Se avisa
+      // fuerte (antes esto pasaba en silencio y aparecían campañas de 3 ads).
+      if (data.warning) toast.warning(data.warning, { duration: 12000 })
       setStep('done')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error')
@@ -1103,11 +1115,28 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
   }
 
   if (step === 'done' && finalResult) {
+    const parcial = !!finalResult.warning
     return (
-      <Card className="border-emerald-300 bg-emerald-50/30">
+      <Card className={parcial ? 'border-amber-300 bg-amber-50/30' : 'border-emerald-300 bg-emerald-50/30'}>
         <CardContent className="py-8 text-center space-y-3">
-          <CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto" />
-          <h3 className="font-semibold text-lg">¡Campaña creada!</h3>
+          {parcial ? (
+            <AlertTriangle className="h-12 w-12 text-amber-600 mx-auto" />
+          ) : (
+            <CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto" />
+          )}
+          <h3 className="font-semibold text-lg">
+            {parcial ? 'Campaña creada — pero faltan anuncios' : '¡Campaña creada!'}
+          </h3>
+          {finalResult.expectedAds != null && (
+            <p className="text-sm font-medium">
+              {finalResult.adsCreated} de {finalResult.expectedAds} anuncios publicados
+            </p>
+          )}
+          {parcial && (
+            <p className="text-xs text-amber-800 max-w-md mx-auto whitespace-pre-line rounded-md bg-amber-100/70 p-3 text-left">
+              {finalResult.warning}
+            </p>
+          )}
           <p className="text-xs text-muted-foreground max-w-md mx-auto">
             La campaña está en <strong>PAUSADO</strong> en Meta Ads. Andá a Ads Manager para
             revisarla y activarla cuando estés conforme.

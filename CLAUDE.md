@@ -230,6 +230,27 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
   Si responde 404 NOT_FOUND, el nombre del modelo está mal. Si responde 400 INVALID_ARGUMENT, hay otro error pero el modelo SÍ existe.
 - **Atención:** los modelos de imagen de Gemini requieren billing habilitado en el proyecto Google AI Studio. Las llamadas de TEXTO funcionan en free tier, las de IMAGEN no.
 
+### Meta: multi-texto y personalización por ubicación son EXCLUYENTES (subcode 1885878)
+
+- **Symptom:** `POST /act_XXX/adcreatives` devuelve `400 code 100 subcode 1885878 — "No se pueden aplicar varios activos bodies a la regla N (número de prioridad...) en la lista de activos del anuncio"`.
+- **Root cause:** en `asset_feed_spec`, si hay `asset_customization_rules` (nuestro caso: feed 4:5 + story 9:16), Meta admite **UN SOLO** `bodies` y **UN SOLO** `titles`. Los 5 textos principales que permite Meta son del creative SIN reglas de personalización.
+- **Verificado empíricamente 2026-07-27** con `scripts/validate-meta-creative-payload.ts` (usa `execution_options:['validate_only']` → no crea nada):
+  - `5 bodies / 5 titles` + reglas → ❌ 1885878
+  - `1 body / 5 titles` + reglas → ❌ 1885878 (también aplica a titles)
+  - `5 bodies / 1 title` + reglas → ❌ 1885878
+  - `1 body / 1 title` + reglas → ✅
+  - `5 bodies / 5 titles` SIN reglas → ✅
+- **Decisión vigente:** se mantiene la personalización por ubicación (E2.5) → 1 texto por anuncio, y la variedad de copy se logra con **un texto DISTINTO por anuncio** (6 anuncios = 6 textos). Constante `MAX_TEXTS_WITH_CUSTOMIZATION = 1` en `meta-campaign-builder.ts`; `pickWindow()` reparte el pool de 10 textos sin que dos anuncios compartan el mismo.
+- **Si alguna vez se quiere rotación de 5 textos dentro de un anuncio:** hay que RENUNCIAR a `asset_customization_rules` (una sola imagen para todos los placements).
+
+### Meta: un anuncio que falla NO debe matar al lote (campaña de 3 de 6) — fix 2026-07-27
+
+- **Symptom:** campaña publicada con **3 anuncios en vez de 6** (aparecían "Ad 6", "Ad 5", "Ad 1"), y al reintentar `400 subcode 3858798 "El contenido de anuncio ya existe"`.
+- **Root cause (doble):** (1) `runWithConcurrency` propaga el throw → un creative rechazado abortaba el `Promise.all`, pero los ads ya creados en paralelo quedaban vivos en Meta y `ad_ids` nunca se persistía. (2) Los creatives de un intento fallido NO se borran; el reintento armaba payloads idénticos → Meta los rechaza como duplicados.
+- **Fix:** cada variante se crea AISLADA (try/catch por variante, `attemptVariant`), con **reintento único** y un `ad_ref` único (`{campaignId}-v{i}[-r{attempt}]`) que viaja en el link, en `url_tags` y en el nombre del creative → nunca choca con su gemelo. `mergeVariantOutcomes()` (función pura, testeada) combina ambas pasadas preservando el orden.
+- **Reglas nuevas:** una campaña INCOMPLETA nunca se activa sola (`failedVariants.length === 0` es condición para `activateCampaign`) y queda `paused`; el detalle se persiste en `property_meta_campaigns.last_error` y `meta_launch_jobs.error_message`; el panel V1 bloquea "Reactivar" sobre una parcial (409 `PARTIAL_CAMPAIGN`, salvo `force:true`).
+- **Detection:** si en Ads Manager hay menos anuncios que piezas generadas, mirar `last_error` de `property_meta_campaigns` (ahí queda "Publicación parcial: N/M...").
+
 ### Meta CTA de los anuncios = `WATCH_MORE` ("Ver más") — decisión del usuario 2026-07-25
 
 - **Decisión vigente:** el CTA de los ads es **`WATCH_MORE` → "Ver más"** (`AD_CTA_TYPE` en `lib/marketing/meta-campaign-builder.ts`). El usuario lo eligió porque muestra más del título del aviso.
