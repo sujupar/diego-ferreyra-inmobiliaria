@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { readAttributionFromParams, persistAttribution } from '@/lib/funnel/attribution'
+import { readAttributionFromParams, persistAttribution, isUnsubstitutedMacro } from '@/lib/funnel/attribution'
 
 // E1.0 — sumadas las landings de propiedad. Mantener sincronizado con
 // ALLOWED_FUNNELS en app/api/landing/track-visit/route.ts y el CHECK de la DB.
@@ -29,12 +29,18 @@ export function LandingVisitTracker({ slug, funnelType = 'otro' }: Props) {
     if (/[?&]hm_preview=1/.test(window.location.search)) return
 
     const params = new URLSearchParams(window.location.search)
+    // Meta no sustituye los macros en publicaciones impulsadas → llegan literales
+    // ("{{campaign.name}}"). Se descartan para no ensuciar los reportes.
+    const clean = (k: string): string | undefined => {
+      const v = params.get(k)
+      return v && !isUnsubstitutedMacro(v) ? v : undefined
+    }
     const utm = {
-      utm_source:   params.get('utm_source')   ?? undefined,
-      utm_medium:   params.get('utm_medium')   ?? undefined,
-      utm_campaign: params.get('utm_campaign') ?? undefined,
-      utm_content:  params.get('utm_content')  ?? undefined,
-      utm_term:     params.get('utm_term')     ?? undefined,
+      utm_source:   clean('utm_source'),
+      utm_medium:   clean('utm_medium'),
+      utm_campaign: clean('utm_campaign'),
+      utm_content:  clean('utm_content'),
+      utm_term:     clean('utm_term'),
     }
 
     // Atribución Meta (UTM + IDs): persistir first-touch para que sobreviva la
@@ -48,12 +54,12 @@ export function LandingVisitTracker({ slug, funnelType = 'otro' }: Props) {
         slug,
         funnel_type: funnelType,
         utm,
-        fbclid:   params.get('fbclid')   ?? undefined,
-        gclid:    params.get('gclid')    ?? undefined,
-        fb_campaign_id: params.get('fb_campaign_id') ?? undefined,
-        fb_adset_id:    params.get('fb_adset_id')    ?? undefined,
-        fb_ad_id:       params.get('fb_ad_id')       ?? undefined,
-        fb_placement:   params.get('fb_placement')   ?? undefined,
+        fbclid:   clean('fbclid'),
+        gclid:    clean('gclid'),
+        fb_campaign_id: clean('fb_campaign_id') ?? clean('campaign_id'),
+        fb_adset_id:    clean('fb_adset_id'),
+        fb_ad_id:       clean('fb_ad_id'),
+        fb_placement:   clean('fb_placement'),
         referrer: document.referrer || undefined,
       }),
       keepalive: true,

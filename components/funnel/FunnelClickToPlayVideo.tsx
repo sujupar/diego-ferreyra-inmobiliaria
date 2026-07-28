@@ -21,12 +21,19 @@ interface FunnelClickToPlayVideoProps {
 }
 
 /**
- * Video CLICK-TO-PLAY reutilizable (sin autoplay). Al montar muestra SOLO el
- * poster (sin precargar video) + botón play; al click monta y reproduce el
- * <video> con sonido (autoPlay válido tras gesto del usuario).
+ * Video CLICK-TO-PLAY reutilizable (sin autoplay).
  *
- * Si recibe `trackKey`, mide el % visto (atención real + profundidad + cuartiles)
- * y lo envía idempotentemente a /api/track/video (sendBeacon al ocultar/cerrar).
+ * REPRODUCCIÓN CONFIABLE EN MOBILE (fix 2026-07-28): el <video> vive SIEMPRE en el
+ * DOM con `preload="none"` (cero bytes hasta el play, el LCP sigue siendo el poster),
+ * y el click llama `video.play()` DENTRO del gesto del usuario. Antes se montaba el
+ * <video> con `autoPlay` tras un re-render de React: iOS/Android lo trataban como
+ * autoplay-con-sonido NO gestual y lo BLOQUEABAN → el video no arrancaba y la vista
+ * nunca se registraba (87% del tráfico es mobile). Si aun así el navegador rechaza
+ * el play con sonido, cae a `muted` y ofrece "Activar sonido".
+ *
+ * Si recibe `trackKey`, mide el % visto (atención + profundidad + cuartiles), el
+ * INTENTO de reproducción y si el playback realmente arrancó, y lo envía
+ * idempotentemente a /api/track/video (sendBeacon al ocultar/cerrar).
  */
 export function FunnelClickToPlayVideo({
   src,
@@ -38,30 +45,40 @@ export function FunnelClickToPlayVideo({
   context,
 }: FunnelClickToPlayVideoProps) {
   const [playing, setPlaying] = useState(false)
+  const [needsUnmute, setNeedsUnmute] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
   const trackerRef = useRef<VideoProgressTracker | null>(null)
   const anonIdRef = useRef<string>('')
   const lastSampledSec = useRef<number>(-1)
   const lastFlushMs = useRef<number>(0)
+  // Métricas de reproducción: intentos (clicks en play) y si el playback arrancó.
+  const playIntentsRef = useRef<number>(0)
+  const startedRef = useRef<boolean>(false)
 
   const flush = useCallback(
     (useBeacon: boolean) => {
-      const tr = trackerRef.current
-      if (!trackKey || !tr || tr.watchSeconds <= 0) return
+      if (!trackKey) return
       if (isHeatmapPreview()) return // visor del panel: no trackear
+      const tr = trackerRef.current
+      // Mandamos también cuando solo hubo INTENTO (sin reproducción): así el panel
+      // puede mostrar la tasa real de play y detectar bloqueos del navegador.
+      if (!tr && playIntentsRef.current <= 0) return
       if (!anonIdRef.current) anonIdRef.current = getOrCreateAnonId()
-      const snap = tr.snapshot()
+      const snap = tr?.snapshot()
       const payload = {
         anonId: anonIdRef.current,
         videoKey: trackKey,
         context: context ?? null,
         funnel: funnel ?? null,
         pagePath: typeof location !== 'undefined' ? location.pathname : null,
-        durationS: snap.durationS || null,
-        watchSeconds: snap.watchSeconds,
-        maxPercent: snap.maxPercent,
-        quartiles: snap.quartiles,
-        completed: snap.completed,
-        watchedBuckets: snap.watchedBuckets,
+        durationS: snap?.durationS || null,
+        watchSeconds: snap?.watchSeconds ?? 0,
+        maxPercent: snap?.maxPercent ?? 0,
+        quartiles: snap?.quartiles ?? 0,
+        completed: snap?.completed ?? false,
+        watchedBuckets: snap?.watchedBuckets ?? null,
+        playIntents: playIntentsRef.current,
+        playbackStarted: startedRef.current,
       }
       const url = '/api/track/video'
       try {
@@ -103,8 +120,40 @@ export function FunnelClickToPlayVideo({
     return trackerRef.current
   }
 
+  /** Click en "reproducir": registra el intento y arranca DENTRO del gesto. */
+  async function handlePlayClick() {
+    playIntentsRef.current += 1
+    setPlaying(true)
+    const v = videoRef.current
+    if (!v) return
+    try {
+      await v.play() // gesto directo → los navegadores móviles lo permiten con sonido
+    } catch {
+      // Algunos navegadores igual bloquean el sonido: caemos a muted y ofrecemos activarlo.
+      try {
+        v.muted = true
+        await v.play()
+        setNeedsUnmute(true)
+      } catch {
+        /* si tampoco arranca, el usuario tiene los controles nativos */
+      }
+    }
+  }
+
+  function unmute() {
+    const v = videoRef.current
+    if (!v) return
+    v.muted = false
+    setNeedsUnmute(false)
+    void v.play().catch(() => {})
+  }
+
   function handleLoadedMetadata(e: SyntheticEvent<HTMLVideoElement>) {
     ensureTracker().setDuration(e.currentTarget.duration)
+  }
+  function handlePlaying() {
+    startedRef.current = true
+    if (trackKey) flush(false) // confirma la reproducción efectiva cuanto antes
   }
   function handleTimeUpdate(e: SyntheticEvent<HTMLVideoElement>) {
     const t = e.currentTarget.currentTime
@@ -133,25 +182,29 @@ export function FunnelClickToPlayVideo({
       className={`relative w-full overflow-hidden rounded-xl bg-black ${className ?? ''}`}
       style={{ aspectRatio: '16 / 9' }}
     >
-      {playing ? (
-        <video
-          src={src}
-          controls
-          autoPlay
-          playsInline
-          preload="none"
-          onLoadedMetadata={tracked ? handleLoadedMetadata : undefined}
-          onTimeUpdate={tracked ? handleTimeUpdate : undefined}
-          onPause={tracked ? handlePause : undefined}
-          onEnded={tracked ? handleEnded : undefined}
-          className="absolute inset-0 h-full w-full object-contain"
-        />
-      ) : (
+      {/* El <video> vive siempre en el DOM (preload="none" → 0 bytes hasta el play)
+          para poder llamar play() dentro del gesto del usuario. */}
+      <video
+        ref={videoRef}
+        src={src}
+        preload="none"
+        playsInline
+        controls={playing}
+        onLoadedMetadata={tracked ? handleLoadedMetadata : undefined}
+        onPlaying={tracked ? handlePlaying : undefined}
+        onTimeUpdate={tracked ? handleTimeUpdate : undefined}
+        onPause={tracked ? handlePause : undefined}
+        onEnded={tracked ? handleEnded : undefined}
+        className="absolute inset-0 h-full w-full object-contain"
+      />
+
+      {!playing && (
         <button
           type="button"
-          onClick={() => setPlaying(true)}
+          onClick={handlePlayClick}
           aria-label="Reproducir video"
-          className="group absolute inset-0 h-full w-full"
+          data-hm-tag="video"
+          className="group absolute inset-0 z-10 h-full w-full"
         >
           {poster && (
             <Image
@@ -176,6 +229,17 @@ export function FunnelClickToPlayVideo({
               </svg>
             </span>
           </span>
+        </button>
+      )}
+
+      {needsUnmute && (
+        <button
+          type="button"
+          onClick={unmute}
+          data-hm-tag="video"
+          className="absolute bottom-16 left-1/2 z-20 -translate-x-1/2 rounded-full bg-[#00BF63] px-4 py-2 text-sm font-bold text-white shadow-lg"
+        >
+          🔊 Activá el sonido
         </button>
       )}
     </div>

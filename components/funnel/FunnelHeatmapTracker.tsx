@@ -80,13 +80,19 @@ export function FunnelHeatmapTracker({ page, funnel }: { page: string; funnel: s
           yPct = ((e.clientY - r.top) / r.height) * 100
         }
       }
-      const tag = target.closest('button')
-        ? 'button'
-        : target.closest('a')
-          ? 'a'
-          : target.closest('video')
-            ? 'video'
-            : 'other'
+      // `data-hm-tag` tiene prioridad: el botón de reproducir es un <button>, pero
+      // conceptualmente es un clic al VIDEO (si no, se mezclaba con los CTA y el
+      // cross-check "clicks de play vs reproducciones" era imposible).
+      const tagged = target.closest<HTMLElement>('[data-hm-tag]')?.dataset.hmTag
+      const tag =
+        tagged ||
+        (target.closest('button')
+          ? 'button'
+          : target.closest('a')
+            ? 'a'
+            : target.closest('video')
+              ? 'video'
+              : 'other')
       session.addClick({ section: key, xPct, yPct, tag, nowMs: Date.now(), rawX: e.clientX, rawY: e.clientY })
     }
     document.addEventListener('click', onClick, true)

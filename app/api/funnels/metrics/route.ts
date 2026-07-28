@@ -99,6 +99,8 @@ interface VideoStatRow {
   avg_attention: number | null
   completed: number
   q25: number; q50: number; q75: number; q95: number; q100: number
+  play_intents?: number   // tocaron reproducir
+  plays_started?: number  // de esos, el video realmente arrancó
 }
 interface VisitCampRow { funnel_type: string; campaign: string; visits: number }
 interface ConvCampRow { funnel: string; campaign: string; conversions: number }

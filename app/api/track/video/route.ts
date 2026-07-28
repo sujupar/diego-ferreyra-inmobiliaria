@@ -20,6 +20,10 @@ const Schema = z.object({
   completed: z.boolean(),
   fbp: z.string().max(200).nullable().optional(),
   watchedBuckets: z.string().regex(/^[01]{100}$/).nullable().optional(), // bitmap de 100 tramos
+  // Tasa de reproducción: intentos (clicks en play) vs playback efectivo. Detecta
+  // bloqueos de autoplay del navegador (ver FunnelClickToPlayVideo).
+  playIntents: z.number().int().min(0).max(500).optional(),
+  playbackStarted: z.boolean().optional(),
 })
 
 // Cliente admin sin tipar (convención del repo: el tipo Database no incluye estas tablas).
@@ -41,14 +45,16 @@ export async function POST(req: NextRequest) {
   }
   const d = parsed.data
 
-  // Anti-bot mínimo: descartar pings sin visionado real (prefetch / link-preview).
-  if (d.watchSeconds <= 0) {
+  // Anti-bot mínimo: descartar pings sin visionado NI intento de reproducción
+  // (prefetch / link-preview). Un intento sin playback SÍ se guarda: es la señal
+  // que revela bloqueos de autoplay del navegador.
+  if (d.watchSeconds <= 0 && !(d.playIntents && d.playIntents > 0)) {
     return NextResponse.json({ ok: true, skipped: true })
   }
 
   try {
     const supabase = admin()
-    const { error } = await supabase.rpc('upsert_video_view', {
+    const baseArgs = {
       p_anon_id: d.anonId,
       p_video_key: d.videoKey,
       p_context: d.context ?? null,
@@ -61,7 +67,18 @@ export async function POST(req: NextRequest) {
       p_funnel: d.funnel ?? null,
       p_fbp: d.fbp ?? null,
       p_watched_buckets: d.watchedBuckets ?? null,
+    }
+    let { error } = await supabase.rpc('upsert_video_view', {
+      ...baseArgs,
+      p_play_intents: d.playIntents ?? 0,
+      p_playback_started: d.playbackStarted ?? false,
     })
+    // Si la migración de play-rate todavía no corrió, la función no acepta los
+    // params nuevos → reintentamos con la firma anterior para NO perder el evento.
+    if (error) {
+      const retry = await supabase.rpc('upsert_video_view', baseArgs)
+      if (!retry.error) error = null
+    }
     if (error) {
       console.warn('[track/video] rpc error', error.message)
       return NextResponse.json({ ok: false }, { status: 200 })

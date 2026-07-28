@@ -35,13 +35,22 @@ export function hasMetaAttribution(a: FunnelAttribution | null | undefined): boo
   return Boolean(a.fb_campaign_id || a.fb_ad_id || a.utm_campaign || a.utm_source)
 }
 
+/**
+ * Meta NO sustituye los macros dinámicos en algunos formatos (publicaciones
+ * impulsadas / posts existentes): el valor llega literal como "{{campaign.name}}".
+ * Guardarlo ensuciaría los reportes con una "campaña" fantasma → lo descartamos.
+ */
+export function isUnsubstitutedMacro(v: string | null | undefined): boolean {
+  return typeof v === 'string' && /^\s*\{\{.*\}\}\s*$/.test(v)
+}
+
 /** Lee la atribución desde un query string (?utm_...&fb_...). */
 export function readAttributionFromParams(search: string): FunnelAttribution {
   const p = new URLSearchParams(search)
   const out: FunnelAttribution = {}
   for (const f of ATTR_FIELDS) {
     const v = p.get(f)
-    if (v) out[f] = v.slice(0, 200)
+    if (v && !isUnsubstitutedMacro(v)) out[f] = v.slice(0, 200)
   }
   // Compat con el formato de los ADS ACTIVOS (era GHL, verificado en la API de
   // Meta 2026-07-17): utm_source=fb_ad + utm_medium={{adset.name}} +

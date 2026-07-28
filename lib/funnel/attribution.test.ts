@@ -3,7 +3,29 @@ import {
   readAttributionFromParams,
   attributionToDealColumns,
   hasMetaAttribution,
+  isUnsubstitutedMacro,
 } from './attribution'
+
+describe('isUnsubstitutedMacro (macros de Meta sin sustituir)', () => {
+  it('detecta los macros literales que manda Meta en publicaciones impulsadas', () => {
+    expect(isUnsubstitutedMacro('{{campaign.name}}')).toBe(true)
+    expect(isUnsubstitutedMacro('{{ad.name}}')).toBe(true)
+    expect(isUnsubstitutedMacro(' {{adset.name}} ')).toBe(true)
+  })
+  it('NO marca campañas reales (aunque tengan símbolos)', () => {
+    expect(isUnsubstitutedMacro('🟡 CONV: [Tasación Gratuita] | Primer Nivel')).toBe(false)
+    expect(isUnsubstitutedMacro('')).toBe(false)
+    expect(isUnsubstitutedMacro(null)).toBe(false)
+  })
+  it('la captura DESCARTA el macro en vez de guardarlo como campaña fantasma', () => {
+    const a = readAttributionFromParams(
+      '?utm_source=fb_ad&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&campaign_id=120999',
+    )
+    expect(a.utm_campaign).toBeUndefined()
+    expect(a.utm_content).toBeUndefined()
+    expect(a.fb_campaign_id).toBe('120999') // el id sí llega bien → se conserva
+  })
+})
 
 describe('readAttributionFromParams', () => {
   it('extrae utm_* y fb_*_id de la query', () => {

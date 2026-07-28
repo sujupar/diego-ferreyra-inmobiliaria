@@ -37,6 +37,8 @@ interface VideoStatRow {
   q75: number
   q95: number
   q100: number
+  play_intents?: number
+  plays_started?: number
 }
 
 interface CampaignRow {
@@ -199,14 +201,19 @@ interface VideoAgg {
   depth: number | null
   completed: number
   q: [number, number, number, number, number]
+  intents: number
+  started: number
 }
 
 function aggregateVideo(rows: VideoStatRow[]): VideoAgg {
   let viewers = 0, attW = 0, attN = 0, depW = 0, depN = 0, completed = 0
+  let intents = 0, started = 0
   const q: [number, number, number, number, number] = [0, 0, 0, 0, 0]
   for (const r of rows) {
     viewers += r.viewers
     completed += r.completed
+    intents += r.play_intents ?? 0
+    started += r.plays_started ?? 0
     if (r.avg_attention != null) { attW += r.avg_attention * r.viewers; attN += r.viewers }
     if (r.avg_max_percent != null) { depW += r.avg_max_percent * r.viewers; depN += r.viewers }
     q[0] += r.q25; q[1] += r.q50; q[2] += r.q75; q[3] += r.q95; q[4] += r.q100
@@ -217,6 +224,8 @@ function aggregateVideo(rows: VideoStatRow[]): VideoAgg {
     depth: depN > 0 ? Math.round((depW / depN) * 10) / 10 : null,
     completed,
     q,
+    intents,
+    started,
   }
 }
 
@@ -304,7 +313,20 @@ function VideoAnalytics({
         </div>
       </div>
       {videoKeys.length === 0 && (
-        <p className="text-xs text-muted-foreground">Sin datos para este filtro.</p>
+        <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+          {filter === 'anon' || filter === 'all' ? (
+            <>Sin datos para este filtro.</>
+          ) : (
+            <>
+              <b className="text-foreground">Ninguna persona registrada de este período reprodujo el video.</b>{' '}
+              No es un error de medición: se cuentan solo quienes tocaron reproducir <i>y</i> el video
+              arrancó. Muchos se registran directo desde el botón sin mirar el video.
+              {stats.some((r) => r.segment === 'registrado') ? null : (
+                <> Todavía no hay ningún registrado con video en el rango elegido.</>
+              )}
+            </>
+          )}
+        </div>
       )}
       {videoKeys.map((vk) => {
         const agg = aggregateVideo(sFiltered.filter((r) => r.video_key === vk))
@@ -338,12 +360,22 @@ function VideoAnalytics({
         return (
           <div key={vk} className="rounded-lg border p-3">
             <p className="text-sm font-medium">{VIDEO_LABELS[vk] || vk}</p>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            <div className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
               <Stat label="Vistas" value={NUM.format(agg.viewers)} />
+              <Stat
+                label="Tocaron play"
+                value={agg.intents > 0 ? NUM.format(agg.intents) : '—'}
+              />
               <Stat label="Atención media" value={agg.attention != null ? `${agg.attention}%` : '—'} />
               <Stat label="Profundidad media" value={agg.depth != null ? `${agg.depth}%` : '—'} />
               <Stat label="Completaron" value={`${pctOf(agg.completed)}%`} />
             </div>
+            {agg.intents > 0 && agg.started < agg.intents && (
+              <p className="mt-1 text-[11px] text-amber-700">
+                ⚠ {NUM.format(agg.intents - agg.started)} de {NUM.format(agg.intents)} personas
+                tocaron reproducir pero el video no llegó a arrancar en su dispositivo.
+              </p>
+            )}
             <div className="mt-3">
               <ResponsiveContainer width="100%" height={170}>
                 <LineChart data={curve} margin={{ top: 6, right: 12, left: -8, bottom: 4 }}>
