@@ -7,6 +7,7 @@
  */
 import { chatCompletion } from '@/lib/ai/chat-client'
 import type { LandingProperty } from '@/lib/landing/registry'
+import { RIOPLATENSE_STYLE } from '@/lib/copy/rioplatense'
 
 export interface CoCreationQuestion {
   id: string
@@ -16,7 +17,9 @@ export interface CoCreationQuestion {
   hint?: string
 }
 
-const SYSTEM = `Sos un estratega de marketing inmobiliario en Argentina. Vas a hacerle 3 a 5 preguntas AL ASESOR sobre una propiedad, para afinar el perfil del comprador ideal y el mensaje de la landing. Preguntas concretas, fáciles de responder, que el asesor sepa contestar (conoce la propiedad y el barrio). Español rioplatense. Devolvés JSON.`
+const SYSTEM = `Sos un estratega de marketing inmobiliario en Argentina. Vas a hacerle 3 a 5 preguntas AL ASESOR sobre una propiedad, para afinar el perfil del comprador ideal y el mensaje de la landing. Preguntas concretas, fáciles de responder, que el asesor sepa contestar (conoce la propiedad y el barrio). Devolvés JSON.
+
+${RIOPLATENSE_STYLE}`
 
 export async function generateCoCreationQuestions(input: {
   property: LandingProperty

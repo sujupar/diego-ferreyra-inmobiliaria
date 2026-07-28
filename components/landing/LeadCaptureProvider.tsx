@@ -24,6 +24,8 @@ import { trackLead, getMetaCookie } from './MetaPixel'
 
 interface LeadCaptureCtx {
   open: (source?: string) => void
+  /** true si esta persona YA dejó sus datos (desbloquea la galería completa). */
+  unlocked: boolean
 }
 const Ctx = createContext<LeadCaptureCtx | null>(null)
 
@@ -31,8 +33,14 @@ export function useLeadCapture(): LeadCaptureCtx {
   const ctx = useContext(Ctx)
   // Fallback no-op: si por algún motivo un CTA queda fuera del provider, no
   // rompe (mejor un botón inerte que un crash en una landing en vivo).
-  return ctx ?? { open: () => {} }
+  return ctx ?? { open: () => {}, unlocked: false }
 }
+
+/** Clave por propiedad: registrarse en una no desbloquea las demás. */
+const unlockKey = (propertyId: string) => `df_lead_${propertyId}`
+
+/** Source que usa la galería bloqueada (define el copy del popup). */
+export const GALLERY_LOCK_SOURCE = 'galeria_bloqueada'
 
 interface FormState {
   name: string
@@ -64,6 +72,10 @@ export function LeadCaptureProvider({
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [source, setSource] = useState<string>('cta')
+  // Arranca SIEMPRE en false (igual que el server) y se levanta después de
+  // montar: si se leyera localStorage durante el render habría hydration
+  // mismatch. El costo es un parpadeo mínimo en la galería ya desbloqueada.
+  const [unlocked, setUnlocked] = useState(false)
   const [form, setForm] = useState<FormState>(INITIAL)
   const [status, setStatus] = useState<'idle' | 'sending' | 'ok' | 'err'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
@@ -85,8 +97,16 @@ export function LeadCaptureProvider({
     setIsOpen(true)
   }, [])
 
-  // Valor del contexto memoizado (open es estable) — evita re-render de consumidores.
-  const ctxValue = useMemo(() => ({ open }), [open])
+  // ¿Ya se registró en una visita anterior? Se lee después de montar (ver arriba).
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(unlockKey(propertyId)) === '1') setUnlocked(true)
+    } catch {
+      /* localStorage bloqueado (modo privado / cookies off) → sigue bloqueada */
+    }
+  }, [propertyId])
+
+  const ctxValue = useMemo(() => ({ open, unlocked }), [open, unlocked])
 
   const close = useCallback(() => setIsOpen(false), [])
 
@@ -161,6 +181,14 @@ export function LeadCaptureProvider({
       trackLead({ propertyId, eventId })
       setStatus('ok')
       setForm(INITIAL)
+      // Cumplimos lo prometido: se abre la galería completa al instante y queda
+      // desbloqueada en este navegador (no le volvemos a pedir los datos).
+      setUnlocked(true)
+      try {
+        window.localStorage.setItem(unlockKey(propertyId), '1')
+      } catch {
+        /* sin localStorage el desbloqueo dura lo que la pestaña */
+      }
     } catch (err) {
       setStatus('err')
       setErrorMsg(err instanceof Error ? err.message : 'Error desconocido')
@@ -206,15 +234,19 @@ export function LeadCaptureProvider({
                 <CheckCircle2 className="h-12 w-12 text-emerald-600" />
                 {/* id estable → aria-labelledby del diálogo resuelve también acá. */}
                 <h2 id="lead-modal-title" className="text-lg font-medium">
-                  ¡Gracias! Recibimos tus datos.
+                  {source === GALLERY_LOCK_SOURCE ? '¡Listo! Ya podés verla completa' : '¡Gracias! Recibimos tus datos.'}
                 </h2>
-                <p className="text-sm text-slate-500">Un asesor te va a contactar muy pronto.</p>
+                <p className="text-sm text-slate-500">
+                  {source === GALLERY_LOCK_SOURCE
+                    ? 'Cerrá esta ventana y recorré todas las fotos. Un asesor te contacta para coordinar la visita.'
+                    : 'Un asesor te va a contactar muy pronto.'}
+                </p>
                 <button
                   type="button"
                   onClick={close}
                   className="mt-2 rounded-full bg-slate-900 px-6 py-2.5 text-sm font-medium text-white"
                 >
-                  Cerrar
+                  {source === GALLERY_LOCK_SOURCE ? 'Ver las fotos' : 'Cerrar'}
                 </button>
               </div>
             ) : (
@@ -232,10 +264,12 @@ export function LeadCaptureProvider({
                 />
                 <div>
                   <h2 id="lead-modal-title" className="text-2xl" style={{ fontFamily: 'var(--font-landing-serif), Georgia, serif' }}>
-                    Dejanos tus datos
+                    {source === GALLERY_LOCK_SOURCE ? 'Conocela por dentro' : 'Dejanos tus datos'}
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    Un asesor te contacta para lo que necesites — sin compromiso.
+                    {source === GALLERY_LOCK_SOURCE
+                      ? 'Dejanos tus datos y en un segundo ves todas las fotos de la propiedad.'
+                      : 'Un asesor te contacta para lo que necesites — sin compromiso.'}
                   </p>
                 </div>
                 <input type="hidden" value={propertyTitle} readOnly />

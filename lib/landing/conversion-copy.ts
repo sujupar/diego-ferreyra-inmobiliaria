@@ -16,6 +16,7 @@
  *    Nunca deja la landing sin copy.
  */
 import { chatCompletion } from '@/lib/ai/chat-client'
+import { RIOPLATENSE_STYLE } from '@/lib/copy/rioplatense'
 import type { LandingProperty } from '@/lib/landing/registry'
 import type { EmpathyAvatar } from '@/lib/marketing/empathy-avatar'
 
@@ -119,8 +120,10 @@ export function deterministicConversionCopy(property: LandingProperty): Conversi
 
 const SYSTEM = `Sos un copywriter de conversión inmobiliario boutique en Argentina (Diego Ferreyra Inmobiliaria, CABA + GBA Norte, segmento medio-alto y premium). Escribís landings que VENDEN, no fichas de portal.
 
+${RIOPLATENSE_STYLE}
+
 Reglas NO negociables:
-- Español rioplatense (vos/tenés), cálido y aspiracional, sin clichés vacíos.
+- Cálido y aspiracional, sin clichés vacíos.
 - Vendé BENEFICIOS INTANGIBLES y EMOCIÓN. Apuntá al DOLOR y al DESEO del comprador. NADA de listar metros/ambientes en el copy (eso va aparte).
 - Los 3 beneficios: uno atado a la PROPIEDAD (cómo se vive), uno a la UBICACIÓN (el estilo de vida de la zona), uno a los AMENITIES (la experiencia que habilitan).
 - Concreto y creíble, sin exagerar ni prometer lo que no se sabe.

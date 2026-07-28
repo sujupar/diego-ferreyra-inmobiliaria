@@ -1,20 +1,34 @@
 'use client'
 
 /**
- * E1.9 — Galería curada con lightbox. Grilla (1 foto destacada 2×2 + resto),
- * "Ver galería completa" revela las ocultas, y un lightbox accesible (teclado
- * ←/→/Esc, swipe táctil, foco al abrir, focus-trap con Tab, restaura el foco al cerrar).
+ * E1.9 — Galería curada con lightbox + PUERTA DE REGISTRO (E2.0).
  *
- * El contenido (la grilla) está SIEMPRE visible; el lightbox se monta al abrir.
+ * Se muestran GRATIS las primeras `FREE_PHOTOS` fotos. El resto se ve —borroso,
+ * con candado— para generar intriga: se percibe que hay más para ver. Al tocar
+ * cualquiera bloqueada (o el botón), se abre el popup de registro; cuando la
+ * persona deja sus datos, la galería se desbloquea al instante y queda
+ * desbloqueada en ese navegador (`LeadCaptureProvider`).
+ *
+ * Es una puerta COMERCIAL, no de seguridad: las URLs siguen en el HTML. El
+ * objetivo es la conversión, no proteger las fotos.
+ *
+ * Accesibilidad conservada: lightbox con teclado (←/→/Esc), focus-trap, swipe
+ * táctil, foco al abrir y restauración al cerrar.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Lock } from 'lucide-react'
+import { useLeadCapture, GALLERY_LOCK_SOURCE } from '../LeadCaptureProvider'
 
 interface GalleryImage {
   src: string
   alt?: string
 }
 
+/** Fotos visibles sin registrarse. */
+const FREE_PHOTOS = 3
+/** Cuántas bloqueadas se muestran como "adelanto" borroso. */
+const TEASER_PHOTOS = 6
+/** Ya desbloqueada: cuántas se muestran antes de "Ver galería completa". */
 const INITIAL = 9
 
 export function GalleryLightbox({
@@ -26,6 +40,7 @@ export function GalleryLightbox({
   eyebrow?: string
   title?: string
 }) {
+  const { open: openLeadCapture, unlocked } = useLeadCapture()
   const [openIdx, setOpenIdx] = useState<number | null>(null)
   const [showAll, setShowAll] = useState(false)
   const triggerRef = useRef<HTMLElement | null>(null)
@@ -35,19 +50,34 @@ export function GalleryLightbox({
   const wasOpenRef = useRef(false)
   const justExpandedRef = useRef(false)
 
-  const visible = showAll ? images : images.slice(0, INITIAL)
-  const hiddenCount = images.length - visible.length
+  const locked = !unlocked && images.length > FREE_PHOTOS
+  // Con la galería bloqueada el lightbox SOLO navega las fotos libres: si no,
+  // las flechas revelarían justamente lo que estamos pidiendo registrarse para ver.
+  const navigable = locked ? images.slice(0, FREE_PHOTOS) : images
+  const freeImages = locked ? images.slice(0, FREE_PHOTOS) : (showAll ? images : images.slice(0, INITIAL))
+  const lockedImages = locked ? images.slice(FREE_PHOTOS, FREE_PHOTOS + TEASER_PHOTOS) : []
+  const hiddenCount = locked ? images.length - FREE_PHOTOS : images.length - freeImages.length
   const isOpen = openIdx !== null
 
   const go = useCallback(
-    (dir: number) => setOpenIdx(i => (i === null ? i : (i + dir + images.length) % images.length)),
-    [images.length],
+    (dir: number) => setOpenIdx(i => (i === null ? i : (i + dir + navigable.length) % navigable.length)),
+    [navigable.length],
   )
   const open = useCallback((i: number) => {
     triggerRef.current = (typeof document !== 'undefined' ? (document.activeElement as HTMLElement) : null)
     setOpenIdx(i)
   }, [])
   const close = useCallback(() => setOpenIdx(null), [])
+
+  const requestUnlock = useCallback(() => {
+    openLeadCapture(GALLERY_LOCK_SOURCE)
+  }, [openLeadCapture])
+
+  // Si se desbloquea con el lightbox abierto, cerrarlo para que la persona vea
+  // la galería completa (y para no dejar un índice fuera de rango).
+  useEffect(() => {
+    if (unlocked) setOpenIdx(null)
+  }, [unlocked])
 
   // Scroll-lock + teclado (←/→/Esc/Tab-trap) + foco al botón cerrar. Depende de
   // `isOpen` (no de openIdx) → NO se re-ejecuta al navegar con flechas.
@@ -120,7 +150,7 @@ export function GalleryLightbox({
   }
 
   if (images.length === 0) return null
-  const current = openIdx !== null ? images[openIdx] : null
+  const current = openIdx !== null ? navigable[openIdx] : null
 
   return (
     <>
@@ -132,9 +162,9 @@ export function GalleryLightbox({
       )}
 
       <div ref={gridRef} className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        {visible.map((img, i) => (
+        {freeImages.map((img, i) => (
           <button
-            key={i}
+            key={`free-${i}`}
             type="button"
             onClick={() => open(i)}
             aria-label={`Ampliar foto ${i + 1}`}
@@ -149,9 +179,59 @@ export function GalleryLightbox({
             />
           </button>
         ))}
+
+        {/* Adelanto bloqueado: se VE que hay más, pero borroso y con candado. */}
+        {lockedImages.map((img, i) => (
+          <button
+            key={`locked-${i}`}
+            type="button"
+            onClick={requestUnlock}
+            aria-label={`Foto bloqueada ${FREE_PHOTOS + i + 1} — registrate para verla`}
+            className="group relative overflow-hidden"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={img.src}
+              alt=""
+              aria-hidden="true"
+              loading="lazy"
+              className="aspect-square h-full w-full scale-105 object-cover blur-lg brightness-90 transition duration-500 group-hover:blur-md"
+            />
+            <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/35 text-white transition group-hover:bg-black/25">
+              <Lock className="h-6 w-6 md:h-7 md:w-7" strokeWidth={1.5} />
+              {i === 0 && (
+                <span className="px-3 text-center text-xs font-medium uppercase tracking-wider">
+                  Ver más
+                </span>
+              )}
+            </span>
+          </button>
+        ))}
       </div>
 
-      {hiddenCount > 0 && !showAll && (
+      {/* Bloqueada: invitación clara a registrarse. */}
+      {locked && (
+        <div className="mt-10 text-center">
+          <p className="mb-4 text-base md:text-lg">
+            Quedan <strong>{hiddenCount} fotos</strong> para conocerla por dentro.
+          </p>
+          <button
+            type="button"
+            onClick={requestUnlock}
+            className="lx-eyebrow inline-flex items-center gap-2 border px-8 py-4 transition-colors hover:bg-[color:var(--lx-navy)] hover:text-white"
+            style={{ borderColor: 'var(--lx-navy)' }}
+          >
+            <Lock className="h-4 w-4" strokeWidth={1.5} />
+            Ver todas las fotos
+          </button>
+          <p className="mt-3 text-xs text-black/50">
+            Dejanos tus datos y las ves al instante.
+          </p>
+        </div>
+      )}
+
+      {/* Ya desbloqueada y con muchas fotos: revelado progresivo de siempre. */}
+      {!locked && hiddenCount > 0 && !showAll && (
         <div className="mt-10 text-center">
           <button
             type="button"
@@ -194,7 +274,7 @@ export function GalleryLightbox({
           >
             <X className="h-5 w-5" />
           </button>
-          {images.length > 1 && (
+          {navigable.length > 1 && (
             <>
               <button
                 type="button"
@@ -213,6 +293,19 @@ export function GalleryLightbox({
                 <ChevronRight className="h-6 w-6" />
               </button>
             </>
+          )}
+          {/* Desde el lightbox de las fotos libres también se puede desbloquear. */}
+          {locked && (
+            <div className="absolute inset-x-0 bottom-6 z-20 flex justify-center px-4">
+              <button
+                type="button"
+                onClick={requestUnlock}
+                className="inline-flex items-center gap-2 rounded-full bg-white/95 px-6 py-3 text-sm font-medium text-slate-900 shadow-lg transition hover:bg-white"
+              >
+                <Lock className="h-4 w-4" strokeWidth={1.5} />
+                Ver las {hiddenCount} fotos restantes
+              </button>
+            </div>
           )}
         </div>
       )}

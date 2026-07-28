@@ -12,10 +12,13 @@
 import { chatCompletion } from '@/lib/ai/chat-client'
 import type { LandingProperty } from '@/lib/landing/registry'
 import { type EmpathyAvatar, coerceEmpathyAvatar } from './empathy-avatar'
+import { RIOPLATENSE_STYLE } from '@/lib/copy/rioplatense'
 
 const SYSTEM = `Sos un estratega de marketing inmobiliario boutique en Argentina (Diego Ferreyra Inmobiliaria, CABA + GBA Norte, segmento medio-alto y premium). Tu tarea es construir avatares de comprador con MAPA DE EMPATÍA para la landing de una propiedad.
 
-Devolvés SIEMPRE JSON válido. Español rioplatense, concreto, sin relleno. Cada avatar debe ser una persona real y distinta, coherente con la propiedad y las respuestas del asesor.
+${RIOPLATENSE_STYLE}
+
+Devolvés SIEMPRE JSON válido. Concreto, sin relleno. Cada avatar debe ser una persona real y distinta, coherente con la propiedad y las respuestas del asesor.
 
 Estructura de CADA avatar:
 {
