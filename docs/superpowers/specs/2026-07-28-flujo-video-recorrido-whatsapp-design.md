@@ -73,7 +73,7 @@ CREATE TABLE lead_access_tokens (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   token        TEXT NOT NULL UNIQUE,          -- 10 chars base62, va en la URL corta
   property_id  UUID NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
-  lead_id      UUID REFERENCES leads(id) ON DELETE SET NULL,
+  lead_id      UUID REFERENCES property_leads(id) ON DELETE SET NULL,
   contact_id   UUID REFERENCES contacts(id) ON DELETE SET NULL,
   -- Snapshot de los datos ya registrados: permite prellenar la agenda SIN pedirlos
   name         TEXT NOT NULL,
