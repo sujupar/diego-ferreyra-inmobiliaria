@@ -189,6 +189,12 @@ const CuratedGalleryBlock = z.object({
   title: z.string().max(120).optional(),
   /** Índices de property.photos; si falta, todas menos hero/story. */
   photoIndices: z.array(z.number().int().min(0)).optional(),
+  /**
+   * Cuántas fotos se ven SIN registrarse (el resto va borroso con candado).
+   * Lo fija el template = las que ya se vieron arriba (hero + historia), para
+   * que ninguna foto quede visible arriba y bloqueada acá. Default 3.
+   */
+  freePhotoCount: z.number().int().min(1).max(12).optional(),
 })
 
 /** Ubicación como imagen + copy de zona (SIN mapa ni botón). */

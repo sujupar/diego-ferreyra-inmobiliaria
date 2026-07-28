@@ -266,7 +266,7 @@ NO PONGAS:
 - Email, teléfono o WhatsApp en la pieza (el CTA del ad ya lleva al landing).
 - Direcciones específicas o número de calle visible (privacidad del propietario).
 - Marcas de agua o copyrights visibles que no sean los nuestros.
-- Texto en otro idioma. Todo en español rioplatense.
+- Texto en otro idioma. Todo en español rioplatense argentino (voseo: tenés/podés/vení/mirá; departamento NO apartamento; pileta NO piscina; cochera NO garaje; ambientes).
 
 ## TIPOGRAFÍA
 

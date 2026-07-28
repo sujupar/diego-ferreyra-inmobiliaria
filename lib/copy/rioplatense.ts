@@ -25,12 +25,12 @@ export const RIOPLATENSE_STYLE = `ESPAÑOL RIOPLATENSE (Argentina, Buenos Aires)
 - Plural: ustedes (nunca vosotros/tenéis/podéis).
 - Pretérito simple, no compuesto: "ayer la visitamos" (no "hemos visitado").
 - LÉXICO ARGENTINO INMOBILIARIO (usar estos, nunca los de España/México):
-  departamento (NO apartamento/piso), ambientes (NO habitaciones para contar: "3 ambientes"),
+  departamento (NO apartamento; y "piso" NUNCA como sinónimo de vivienda), ambientes (NO habitaciones para contar: "3 ambientes"),
   monoambiente, PH, dúplex, pileta (NO piscina), cochera (NO garaje/estacionamiento),
   baulera, parrilla/quincho, expensas, living, placard (NO armario/clóset),
   lavadero, contrafrente/al frente, a estrenar, apto crédito, escritura, seña,
   barrio (NO colonia), cuadra, vereda (NO acera), subte, colectivo, auto (NO carro/coche),
-  heladera (NO nevera), departamento luminoso, semipiso, piso (solo como "piso 7").
+  heladera (NO nevera), departamento luminoso, semipiso, piso SOLO para el nivel del edificio ("piso 7").
 - Registro: cálido, cercano y aspiracional, pero PROFESIONAL. Es una inmobiliaria
   de segmento medio-alto: nada de lunfardo pesado ni "che/boludo/quilombo/laburo".
   El voseo natural alcanza para que suene argentino.

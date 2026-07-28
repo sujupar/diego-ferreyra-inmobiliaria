@@ -59,5 +59,22 @@ const tuteo = [/\btú\b/i, /\btienes\b/i, /\bpuedes\b/i, /\bquieres\b/i, /\breg�
 const hallazgo = tuteo.find(re => re.test(textoVisible))
 check('el copy visible está en voseo (sin tuteo)', !hallazgo, `aparece "${hallazgo}"`)
 
+// ── Caso 5: exactamente 4 fotos → singular correcto ("Queda 1 foto") ────────
+const html4 = renderToStaticMarkup(<GalleryLightbox images={images.slice(0, 4)} />)
+check('con 4 fotos dice "Queda 1 foto" (no "Quedan 1 fotos")', html4.includes('1 foto</strong>') && html4.includes('Queda <'), 'plural mal armado')
+check('con 4 fotos NO dice "fotos"', !html4.includes('1 fotos'))
+
+// ── Caso 6: freeCount del template (alto valor: portada + 3 de historia) ────
+const html5 = renderToStaticMarkup(<GalleryLightbox images={images} freeCount={4} />)
+const libres5 = (html5.match(/aria-label="Ampliar foto/g) ?? []).length
+check('respeta freeCount=4 (no bloquea una foto ya visible arriba)', libres5 === 4, `libres=${libres5}`)
+check('con freeCount=4 quedan 8 bloqueadas', html5.includes('8 fotos'))
+
+// ── Caso 7: editor → galería completa, sin puerta ───────────────────────────
+const htmlEd = renderToStaticMarkup(<GalleryLightbox images={images} forceUnlocked />)
+check('en el editor no hay candados', !htmlEd.includes('registrate para verla'))
+check('en el editor no pide registro', !htmlEd.includes('Ver todas las fotos'))
+check('en el editor se ven las fotos (revelado progresivo)', (htmlEd.match(/aria-label="Ampliar foto/g) ?? []).length === 9)
+
 console.log(fallos === 0 ? '\n🎉 Todo OK' : `\n${fallos} verificación(es) fallaron`)
 process.exit(fallos === 0 ? 0 : 1)

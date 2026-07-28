@@ -13,6 +13,7 @@
  */
 import type { Property } from '@/lib/portals/types'
 import type { PropertyVisionAnalysis } from './property-vision-analyzer'
+import { RIOPLATENSE_STYLE } from '@/lib/copy/rioplatense'
 
 export interface BuyerAvatar {
   id: string // "avatar_0", "avatar_1", "avatar_2"
@@ -73,7 +74,7 @@ REGLAS DE ORO:
 - "concerns" debe ser CONCRETO: cosas que realmente preocupan a esa persona (ej. "Si va a estar cerca del trabajo", "Cuánto suben las expensas", "Si el barrio es seguro").
 - "hooks" son ángulos de copy reales, no clichés.
 - NO uses: "oportunidad única", "una joya", "imperdible", "premium", "exclusivo".
-- Tono español rioplatense.
+${RIOPLATENSE_STYLE}
 - Output: SOLO el JSON. Sin markdown ni texto antes/después.`
 
 interface GeminiTextResponse {

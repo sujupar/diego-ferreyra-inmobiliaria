@@ -16,6 +16,7 @@
 import type { Property } from '@/lib/portals/types'
 import { chatCompletion, hasAiConfigured } from '@/lib/ai/chat-client'
 import { buildAdCopy, type AdCopy } from './copy-templates'
+import { RIOPLATENSE_STYLE } from '@/lib/copy/rioplatense'
 
 export interface AdCopyVariations {
   primaryTexts: string[] // 3 variaciones
@@ -88,7 +89,7 @@ Vas a generar 10 primary texts y 10 headlines. CADA UNO con un ángulo distinto:
 # Reglas duras
 
 **Lo que SIEMPRE hacés:**
-- Español rioplatense profesional. Voseo natural ("encontrás", "descubrís", "vas a", "tenés").
+${RIOPLATENSE_STYLE}
 - Cada primary text 60-180 chars. Cada headline ≤40 chars.
 - Cada variant arranca con UN ESCENARIO o UNA AFIRMACIÓN EMOCIONAL, no con una característica.
 - Cerrá con call to action implícito si suma (no obligatorio).

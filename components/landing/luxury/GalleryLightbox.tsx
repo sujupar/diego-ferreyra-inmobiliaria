@@ -35,12 +35,20 @@ export function GalleryLightbox({
   images,
   eyebrow,
   title,
+  freeCount,
+  forceUnlocked = false,
 }: {
   images: GalleryImage[]
   eyebrow?: string
   title?: string
+  /** Fotos visibles sin registrarse. Lo fija el template = las ya vistas arriba. */
+  freeCount?: number
+  /** Editor: sin puerta de registro (el asesor tiene que ver lo que cura). */
+  forceUnlocked?: boolean
 }) {
-  const { open: openLeadCapture, unlocked } = useLeadCapture()
+  const { open: openLeadCapture, unlocked: leadUnlocked } = useLeadCapture()
+  const unlocked = leadUnlocked || forceUnlocked
+  const free = Math.max(1, freeCount ?? FREE_PHOTOS)
   const [openIdx, setOpenIdx] = useState<number | null>(null)
   const [showAll, setShowAll] = useState(false)
   const triggerRef = useRef<HTMLElement | null>(null)
@@ -50,13 +58,14 @@ export function GalleryLightbox({
   const wasOpenRef = useRef(false)
   const justExpandedRef = useRef(false)
 
-  const locked = !unlocked && images.length > FREE_PHOTOS
+  const locked = !unlocked && images.length > free
   // Con la galería bloqueada el lightbox SOLO navega las fotos libres: si no,
   // las flechas revelarían justamente lo que estamos pidiendo registrarse para ver.
-  const navigable = locked ? images.slice(0, FREE_PHOTOS) : images
-  const freeImages = locked ? images.slice(0, FREE_PHOTOS) : (showAll ? images : images.slice(0, INITIAL))
-  const lockedImages = locked ? images.slice(FREE_PHOTOS, FREE_PHOTOS + TEASER_PHOTOS) : []
-  const hiddenCount = locked ? images.length - FREE_PHOTOS : images.length - freeImages.length
+  const navigable = locked ? images.slice(0, free) : images
+  const freeImages = locked ? images.slice(0, free) : (showAll ? images : images.slice(0, INITIAL))
+  const lockedImages = locked ? images.slice(free, free + TEASER_PHOTOS) : []
+  const hiddenCount = locked ? images.length - free : images.length - freeImages.length
+  const fotosRestantes = hiddenCount === 1 ? '1 foto' : `${hiddenCount} fotos`
   const isOpen = openIdx !== null
 
   const go = useCallback(
@@ -186,7 +195,7 @@ export function GalleryLightbox({
             key={`locked-${i}`}
             type="button"
             onClick={requestUnlock}
-            aria-label={`Foto bloqueada ${FREE_PHOTOS + i + 1} — registrate para verla`}
+            aria-label={`Foto bloqueada ${free + i + 1} — registrate para verla`}
             className="group relative overflow-hidden"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -213,7 +222,7 @@ export function GalleryLightbox({
       {locked && (
         <div className="mt-10 text-center">
           <p className="mb-4 text-base md:text-lg">
-            Quedan <strong>{hiddenCount} fotos</strong> para conocerla por dentro.
+            {hiddenCount === 1 ? 'Queda' : 'Quedan'} <strong>{fotosRestantes}</strong> para conocerla por dentro.
           </p>
           <button
             type="button"
@@ -303,7 +312,7 @@ export function GalleryLightbox({
                 className="inline-flex items-center gap-2 rounded-full bg-white/95 px-6 py-3 text-sm font-medium text-slate-900 shadow-lg transition hover:bg-white"
               >
                 <Lock className="h-4 w-4" strokeWidth={1.5} />
-                Ver las {hiddenCount} fotos restantes
+                Ver {hiddenCount === 1 ? 'la' : 'las'} {fotosRestantes} restantes
               </button>
             </div>
           )}

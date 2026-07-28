@@ -69,6 +69,10 @@ export function buildLuxuryDocument(
       eyebrow: 'La propiedad',
       title: 'Recorré cada rincón',
       photoIndices: photos.gallery,
+      // Se ven gratis las que YA se vieron arriba (portada + historia): así
+      // ninguna foto aparece a pantalla completa arriba y con candado acá.
+      // Con el tier estándar son 3 (1 portada + 2 de historia).
+      freePhotoCount: 1 + storyItems.length,
     })
   }
 

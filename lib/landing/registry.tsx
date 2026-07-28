@@ -355,8 +355,9 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
   curated_gallery: {
     label: 'Galería',
     selfAnimates: true,
-    render: (block, { property }) => {
+    render: (block, ctx) => {
       if (block.type !== 'curated_gallery') return null
+      const { property } = ctx
       const all = property.photos ?? []
       // `photoIndices` definido (aunque sea []) = selección EXPLÍCITA del editor →
       // se respeta tal cual (vacío → CuratedGallery no renderiza). `undefined` (default
@@ -364,7 +365,17 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
       const photos = block.photoIndices
         ? block.photoIndices.map(i => all[i]).filter((p): p is string => typeof p === 'string')
         : all
-      return <CuratedGallery photos={photos} eyebrow={block.eyebrow} title={block.title} />
+      return (
+        <CuratedGallery
+          photos={photos}
+          eyebrow={block.eyebrow}
+          title={block.title}
+          freeCount={block.freePhotoCount}
+          // En el editor la galería se muestra COMPLETA: si no, el asesor cura
+          // 20 fotos y la vista previa le muestra 3 y 6 borrones.
+          forceUnlocked={ctx.mode === 'edit'}
+        />
+      )
     },
   },
   location_showcase: {

@@ -8,10 +8,16 @@ export function CuratedGallery({
   photos,
   eyebrow,
   title,
+  freeCount,
+  forceUnlocked,
 }: {
   photos: string[]
   eyebrow?: string
   title?: string
+  /** Fotos visibles sin registrarse (default 3). */
+  freeCount?: number
+  /** Editor: muestra la galería completa sin puerta de registro. */
+  forceUnlocked?: boolean
 }) {
   if (!photos?.length) return null
   return (
@@ -20,7 +26,13 @@ export function CuratedGallery({
       style={{ borderColor: 'var(--lx-line)', background: 'var(--lx-bg-2)' }}
     >
       <div className="mx-auto max-w-6xl">
-        <GalleryLightbox images={photos.map(src => ({ src }))} eyebrow={eyebrow} title={title} />
+        <GalleryLightbox
+          images={photos.map(src => ({ src }))}
+          eyebrow={eyebrow}
+          title={title}
+          freeCount={freeCount}
+          forceUnlocked={forceUnlocked}
+        />
       </div>
     </section>
   )
