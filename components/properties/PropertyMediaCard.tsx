@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { Image as ImageIcon, Film, Globe, Layers, Loader2, Upload, Trash2, Check, ExternalLink } from 'lucide-react'
+import { Image as ImageIcon, Film, Globe, Layers, Loader2, Upload, Trash2, Check, ExternalLink, Video } from 'lucide-react'
 import { PhotoGallery } from './PhotoGallery'
 import { PlansPanel } from './PlansPanel'
 
@@ -15,17 +15,21 @@ interface Props {
   plans: string[]
   videoFileUrl: string | null
   tourUrl: string | null
+  videoRecorridoUrl?: string | null
   onChanged: () => void
 }
 
-export function PropertyMediaCard({ propertyId, photos, plans, videoFileUrl, tourUrl, onChanged }: Props) {
+export function PropertyMediaCard({ propertyId, photos, plans, videoFileUrl, tourUrl, videoRecorridoUrl, onChanged }: Props) {
   const videoInput = useRef<HTMLInputElement>(null)
   const [videoUploading, setVideoUploading] = useState(false)
   const [videoProgress, setVideoProgress] = useState(0)
   const [tourValue, setTourValue] = useState(tourUrl || '')
   const [savingTour, setSavingTour] = useState(false)
+  const [recorridoValue, setRecorridoValue] = useState(videoRecorridoUrl || '')
+  const [savingRecorrido, setSavingRecorrido] = useState(false)
 
   useEffect(() => { setTourValue(tourUrl || '') }, [tourUrl])
+  useEffect(() => { setRecorridoValue(videoRecorridoUrl || '') }, [videoRecorridoUrl])
 
   async function uploadVideo(file: File) {
     setVideoUploading(true); setVideoProgress(0)
@@ -90,6 +94,17 @@ export function PropertyMediaCard({ propertyId, photos, plans, videoFileUrl, tou
     } catch { toast.error('No se pudo guardar el recorrido') } finally { setSavingTour(false) }
   }
 
+  async function saveRecorrido() {
+    setSavingRecorrido(true)
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/media`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ video_recorrido_url: recorridoValue.trim() || null }),
+      })
+      if (!res.ok) throw new Error()
+      toast.success(recorridoValue.trim() ? 'Video recorrido guardado' : 'Video recorrido quitado'); onChanged()
+    } catch { toast.error('No se pudo guardar el video recorrido') } finally { setSavingRecorrido(false) }
+  }
+
   const videoBtn = (label: string) => (
     <Button size="sm" variant="outline" onClick={() => videoInput.current?.click()} disabled={videoUploading}>
       {videoUploading ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />{videoProgress > 0 ? `${videoProgress}%` : '…'}</> : <><Upload className="h-4 w-4 mr-1" />{label}</>}
@@ -111,6 +126,7 @@ export function PropertyMediaCard({ propertyId, photos, plans, videoFileUrl, tou
             <TabsTrigger value="planos"><Layers className="h-4 w-4" />Planos{plans.length > 0 && <span className="tabular-n text-xs">· {plans.length}</span>}</TabsTrigger>
             <TabsTrigger value="video"><Film className="h-4 w-4" />Video{videoFileUrl && <Check className="h-3.5 w-3.5 text-emerald-600" />}</TabsTrigger>
             <TabsTrigger value="recorrido"><Globe className="h-4 w-4" />Recorrido{tourUrl && <Check className="h-3.5 w-3.5 text-emerald-600" />}</TabsTrigger>
+            <TabsTrigger value="video-recorrido"><Video className="h-4 w-4" />Video recorrido{videoRecorridoUrl && <Check className="h-3.5 w-3.5 text-emerald-600" />}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="fotos" className="pt-4">
@@ -160,6 +176,26 @@ export function PropertyMediaCard({ propertyId, photos, plans, videoFileUrl, tou
                   <ExternalLink className="h-3 w-3" />Abrir en pestaña nueva
                 </a>
               </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="video-recorrido" className="pt-4 space-y-3">
+            <p className="text-xs text-muted-foreground">Video que recorre la propiedad por dentro. NO se muestra en la landing: se le envía a quien se registra.</p>
+            <div className="flex gap-2">
+              <input
+                value={recorridoValue}
+                onChange={e => setRecorridoValue(e.target.value)}
+                placeholder="https://youtu.be/..."
+                className="flex-1 rounded-md border px-3 py-2 text-sm"
+              />
+              <Button size="sm" onClick={saveRecorrido} disabled={savingRecorrido}>
+                {savingRecorrido ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Guardar'}
+              </Button>
+            </div>
+            {videoRecorridoUrl && (
+              <a href={videoRecorridoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1">
+                <ExternalLink className="h-3 w-3" />Abrir en pestaña nueva
+              </a>
             )}
           </TabsContent>
         </Tabs>
