@@ -9,6 +9,7 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { getAccessToken, markTokenOpened } from '@/lib/leads/access-token'
 import { resolveDeliverMedia } from '@/lib/properties/deliver-media'
+import { toEmbedUrl } from '@/lib/landing/video-embed'
 import { ScheduleVisitForm } from './ScheduleVisitForm'
 
 export const dynamic = 'force-dynamic'
@@ -26,12 +27,6 @@ function formatPrice(v: number | null, c: string | null): string {
   }).format(v)
 }
 
-/** YouTube/Vimeo → embed; cualquier otra cosa se sirve como <video>. */
-function youtubeEmbed(url: string): string | null {
-  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{11})/)
-  return m ? `https://www.youtube.com/embed/${m[1]}` : null
-}
-
 export default async function RecorridoPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
   const access = await getAccessToken(token)
@@ -47,7 +42,7 @@ export default async function RecorridoPage({ params }: { params: Promise<{ toke
   await markTokenOpened(token)
 
   const media = resolveDeliverMedia(property)
-  const yt = media.kind === 'video_recorrido' && media.url ? youtubeEmbed(media.url) : null
+  const embed = media.kind === 'video_recorrido' && media.url ? toEmbedUrl(media.url) : null
   const fotos = (property.photos ?? []) as string[]
 
   return (
@@ -69,9 +64,9 @@ export default async function RecorridoPage({ params }: { params: Promise<{ toke
             />
           )}
           {media.kind === 'video_recorrido' && media.url && (
-            yt ? (
+            embed ? (
               <iframe
-                src={yt}
+                src={embed}
                 title="Video recorrido"
                 className="aspect-video w-full rounded-lg border"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -81,13 +76,18 @@ export default async function RecorridoPage({ params }: { params: Promise<{ toke
               <video src={media.url} controls playsInline className="aspect-video w-full rounded-lg border" />
             )
           )}
-          {media.kind === 'fotos' && (
+          {media.kind === 'fotos' && fotos.length > 0 && (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
               {fotos.map((src, i) => (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img key={i} src={src} alt="" loading="lazy" className="aspect-square w-full rounded object-cover" />
               ))}
             </div>
+          )}
+          {media.kind === 'fotos' && fotos.length === 0 && (
+            <p className="text-black/60">
+              Estamos preparando el material de esta propiedad. Un asesor se va a contactar con vos para mostrártela.
+            </p>
           )}
         </section>
 
