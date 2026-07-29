@@ -321,7 +321,10 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       id: lead.id,
-      ...(token ? { accessUrl: accessUrl(token) } : {}),
+      // `whatsappSent` lo pondrá en true la tarea que cablea el envío por
+      // WhatsApp. Hasta entonces la pantalla de gracias NO promete un mensaje
+      // que no se manda: solo ofrece el link.
+      ...(token ? { accessUrl: accessUrl(token), whatsappSent: false } : {}),
     })
   } catch (err) {
     console.error('[POST /api/leads]', err)

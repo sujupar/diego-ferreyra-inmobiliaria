@@ -80,6 +80,7 @@ export function LeadCaptureProvider({
   const [status, setStatus] = useState<'idle' | 'sending' | 'ok' | 'err'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const [accessUrl, setAccessUrl] = useState<string | null>(null)
+  const [whatsappSent, setWhatsappSent] = useState(false)
   const submittingRef = useRef(false)
   const firstFieldRef = useRef<HTMLInputElement>(null)
   const closeBtnRef = useRef<HTMLButtonElement>(null)
@@ -175,9 +176,10 @@ export function LeadCaptureProvider({
           eventSourceUrl: typeof window !== 'undefined' ? window.location.href : null,
         }),
       })
-      const payload = (await res.json().catch(() => ({}))) as { error?: string; accessUrl?: string }
+      const payload = (await res.json().catch(() => ({}))) as { error?: string; accessUrl?: string; whatsappSent?: boolean }
       if (!res.ok) throw new Error(payload.error || 'No pudimos enviar tus datos')
       setAccessUrl(payload.accessUrl ?? null)
+      setWhatsappSent(payload.whatsappSent === true)
       trackLead({ propertyId, eventId })
       setStatus('ok')
       setForm(INITIAL)
@@ -238,7 +240,9 @@ export function LeadCaptureProvider({
                 </h2>
                 <p className="text-sm text-slate-500">
                   {accessUrl
-                    ? 'Te mandamos por WhatsApp el recorrido de la propiedad para que la conozcas por dentro. También podés verlo acá:'
+                    ? whatsappSent
+                      ? 'Te mandamos por WhatsApp el recorrido de la propiedad para que la conozcas por dentro. También podés verlo acá:'
+                      : 'Ya podés conocer la propiedad por dentro:'
                     : source === GALLERY_LOCK_SOURCE
                       ? 'Cerrá esta ventana y recorré todas las fotos. Un asesor te contacta para coordinar la visita.'
                       : 'Un asesor te va a contactar muy pronto.'}
