@@ -14,11 +14,18 @@ const FRANJAS = [
   { id: 'tarde', label: 'Por la tarde (15 a 19)' },
 ] as const
 
-/** Hoy no: la visita se coordina con al menos un día de anticipación. */
+/**
+ * Hoy no: la visita se coordina con al menos un día de anticipación.
+ * Se calcula en horario ARGENTINO, no en UTC: con `toISOString()` cualquiera
+ * que entre después de las 21:00 ART ya estaría en el día siguiente en UTC y el
+ * primer día elegible saltaría a pasado mañana.
+ */
 function minDate(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  return d.toISOString().slice(0, 10)
+  const manana = new Date(Date.now() + 24 * 60 * 60 * 1000)
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(manana)
 }
 
 export function ScheduleVisitForm({ token, clientName }: { token: string; clientName: string }) {

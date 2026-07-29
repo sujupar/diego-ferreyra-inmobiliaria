@@ -14,6 +14,9 @@ import { ScheduleVisitForm } from './ScheduleVisitForm'
 
 export const dynamic = 'force-dynamic'
 
+// Página privada por token con el nombre de una persona: fuera de los buscadores.
+export const metadata = { robots: { index: false, follow: false } }
+
 function admin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
@@ -34,7 +37,7 @@ export default async function RecorridoPage({ params }: { params: Promise<{ toke
 
   const { data: property } = await admin()
     .from('properties')
-    .select('id, address, neighborhood, city, asking_price, currency, photos, rooms, covered_area, video_recorrido_url, tour_3d_url, deliver_media')
+    .select('id, address, neighborhood, city, asking_price, currency, photos, rooms, covered_area, video_recorrido_url, tour_3d_url, deliver_media, status')
     .eq('id', access.propertyId)
     .maybeSingle()
   if (!property) notFound()
@@ -91,13 +94,25 @@ export default async function RecorridoPage({ params }: { params: Promise<{ toke
           )}
         </section>
 
-        <section className="mt-12">
-          <h2 className="text-2xl md:text-3xl">¿Querés visitarla?</h2>
-          <p className="mt-2 text-black/60">
-            Elegí el día y el momento que te queda cómodo. Nuestro equipo te contacta para confirmarla.
-          </p>
-          <ScheduleVisitForm token={token} clientName={access.name} />
-        </section>
+        {/* La propiedad puede haberse vendido/descartado después de mandar el link:
+            en ese caso no ofrecemos agendar una visita que no va a existir. */}
+        {property.status === 'approved' ? (
+          <section className="mt-12">
+            <h2 className="text-2xl md:text-3xl">¿Querés visitarla?</h2>
+            <p className="mt-2 text-black/60">
+              Elegí el día y el momento que te queda cómodo. Nuestro equipo te contacta para confirmarla.
+            </p>
+            <ScheduleVisitForm token={token} clientName={access.name} />
+          </section>
+        ) : (
+          <section className="mt-12">
+            <h2 className="text-2xl md:text-3xl">Esta propiedad ya no está disponible</h2>
+            <p className="mt-2 text-black/60">
+              Podés seguir viendo el recorrido, pero por ahora no estamos coordinando visitas.
+              Un asesor se va a contactar con vos para mostrarte otras opciones parecidas.
+            </p>
+          </section>
+        )}
       </main>
     </div>
   )
