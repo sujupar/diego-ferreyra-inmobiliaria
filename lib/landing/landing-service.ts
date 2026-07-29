@@ -255,12 +255,44 @@ export async function persistSelectedAvatar(propertyId: string, avatar: EmpathyA
  * slug, congela utm_base + funnel_type, persiste el avatar elegido y escribe
  * revisión. Devuelve el slug y la url pública.
  */
+/**
+ * Mensaje que ve el asesor cuando intenta publicar sin recorrido. Se exporta
+ * para que la UI muestre EXACTAMENTE el mismo texto antes de que apriete el botón.
+ */
+export const RECORRIDO_REQUERIDO_MSG =
+  'Para publicar la landing la propiedad necesita un video recorrido o un recorrido virtual. ' +
+  'Cargalo en la pestaña Multimedia y volvé a publicar.'
+
+/** Frena la publicación si la propiedad no tiene ninguno de los dos entregables. */
+async function assertRecorridoDisponible(propertyId: string): Promise<void> {
+  const { data, error } = await admin()
+    .from('properties')
+    .select('video_recorrido_url, tour_3d_url')
+    .eq('id', propertyId)
+    .maybeSingle()
+  // Si la consulta falla no bloqueamos la publicación por un problema de
+  // infraestructura: el gate es de negocio, no un candado de disponibilidad.
+  if (error || !data) return
+  const row = data as { video_recorrido_url: string | null; tour_3d_url: string | null }
+  const tiene = (v: string | null) => (v ?? '').trim().length > 0
+  if (!tiene(row.video_recorrido_url) && !tiene(row.tour_3d_url)) {
+    throw new Error(RECORRIDO_REQUERIDO_MSG)
+  }
+}
+
 export async function publishLanding(propertyId: string, appUrl: string, userId: string | null): Promise<{
   slug: string
   url: string
 }> {
   const landing = await getLanding(propertyId)
   if (!landing) throw new Error('landing not found')
+
+  // 0. Gate del recorrido (decisión del usuario, 2026-07-29): la landing es tráfico
+  //    PAGO y todo lo que se le promete a quien se registra ("te enviamos el
+  //    recorrido") tiene que existir. Sin recorrido no se publica. El gate va acá
+  //    —no al crear— para que el asesor pueda dejar la landing lista mientras el
+  //    video se filma o se edita.
+  await assertRecorridoDisponible(propertyId)
 
   // 1. Fuente a publicar: si hay borrador del editor (E1.6), se publica el borrador
   //    (y se promueve a `content`); si no, el `content` actual. Validado con el

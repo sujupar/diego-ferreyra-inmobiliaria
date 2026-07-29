@@ -18,16 +18,22 @@ export async function sendRecorridoLinkToClient(input: {
   clientName: string
   propertyLabel: string
   accessUrl: string
+  /** `false` si la propiedad se quedó sin recorrido: el texto se adapta solo. */
+  hasRecorrido?: boolean
 }): Promise<void> {
   try {
     if (!input.to) return
-    const subject = `Tu recorrido por ${input.propertyLabel}`
+    const subject =
+      input.hasRecorrido === false
+        ? `${input.propertyLabel}, en detalle`
+        : `Tu recorrido por ${input.propertyLabel}`
     const testCtx = await applyTestMode(input.to, subject)
     const html = await renderEmail(
       RecorridoLinkClientEmail({
         clientName: input.clientName,
         propertyLabel: input.propertyLabel,
         accessUrl: input.accessUrl,
+        hasRecorrido: input.hasRecorrido,
         testMode: testCtx.testModeOn,
         originalRecipients: testCtx.originalTo,
       }) as never

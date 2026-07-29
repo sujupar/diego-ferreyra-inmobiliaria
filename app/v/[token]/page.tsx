@@ -52,7 +52,12 @@ export default async function RecorridoPage({ params }: { params: Promise<{ toke
     <div className="landing-root min-h-screen">
       <main className="mx-auto max-w-4xl px-5 py-10 md:py-16">
         <p className="lx-eyebrow">Hola {access.name.split(' ')[0]}</p>
-        <h1 className="mt-2 text-3xl md:text-5xl">Conocé {property.address} por dentro</h1>
+        {/* Sin recorrido el título no promete uno: se entregan las fotos completas. */}
+        <h1 className="mt-2 text-3xl md:text-5xl">
+          {media.kind === 'fotos'
+            ? `${property.address}, en detalle`
+            : `Conocé ${property.address} por dentro`}
+        </h1>
         <p className="mt-2 text-black/60">
           {property.neighborhood}{property.city ? `, ${property.city}` : ''} · {formatPrice(property.asking_price, property.currency)}
         </p>

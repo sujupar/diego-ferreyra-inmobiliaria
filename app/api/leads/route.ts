@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { createAccessToken, accessUrl } from '@/lib/leads/access-token'
 import { sendRecorridoWhatsapp } from '@/lib/leads/send-recorrido-whatsapp'
+import { resolveDeliverMedia } from '@/lib/properties/deliver-media'
 import type { Database } from '@/types/database.types'
 
 // El POST espera, dentro del request: el email del recorrido, el envío por
@@ -219,7 +220,7 @@ export async function POST(req: Request) {
     const supabase = getAdmin()
     const { data: prop, error: propErr } = await supabase
       .from('properties')
-      .select('id, address, title, neighborhood, assigned_to, status, photos, asking_price, currency')
+      .select('id, address, title, neighborhood, assigned_to, status, photos, asking_price, currency, video_recorrido_url, tour_3d_url')
       .eq('id', parsed.data.propertyId)
       .single()
     if (propErr || !prop) {
@@ -273,9 +274,17 @@ export async function POST(req: Request) {
       phone: lead.phone,
     })
 
-    // Copia durable del link por EMAIL. Mientras la plantilla de WhatsApp no
-    // esté aprobada, la pantalla de gracias es la única otra entrega — y se
-    // pierde si la persona cierra el popup. Best-effort: nunca lanza.
+    // ¿La propiedad tiene de verdad un recorrido para entregar? Publicar exige
+    // uno (`assertRecorridoDisponible`), pero el asesor puede borrarlo DESPUÉS y
+    // la landing sigue viva. Sin recorrido no le prometemos uno a nadie: el link
+    // se entrega igual (lleva a las fotos y a la agenda) pero con el texto que
+    // corresponde, y no se manda el WhatsApp — su plantilla es fija en Meta y
+    // dice "acceso al recorrido".
+    const hayRecorrido = resolveDeliverMedia(prop).kind !== 'fotos'
+
+    // Copia durable del link por EMAIL. La pantalla de gracias se pierde si la
+    // persona cierra el popup, así que el mail es la entrega que queda.
+    // Best-effort: nunca lanza.
     if (token && lead.email) {
       const { sendRecorridoLinkToClient } = await import('@/lib/email/notifications/recorrido-link-client')
       await sendRecorridoLinkToClient({
@@ -283,6 +292,7 @@ export async function POST(req: Request) {
         clientName: lead.name,
         propertyLabel: prop.title ?? prop.address,
         accessUrl: accessUrl(token),
+        hasRecorrido: hayRecorrido,
       })
     }
 
@@ -290,7 +300,7 @@ export async function POST(req: Request) {
     // devuelve true SOLO si Meta confirmó el envío real (no test mode, no
     // skipped) — ese booleano es el que va en la respuesta como `whatsappSent`.
     let whatsappSent = false
-    if (token) {
+    if (token && hayRecorrido) {
       whatsappSent = await sendRecorridoWhatsapp({
         phone: lead.phone,
         clientName: lead.name,
@@ -357,7 +367,9 @@ export async function POST(req: Request) {
       // `whatsappSent` refleja el envío real (ver sendRecorridoWhatsapp arriba).
       // La pantalla de gracias solo promete un WhatsApp cuando esto es true;
       // si no, muestra el link igual con un texto honesto.
-      ...(token ? { accessUrl: accessUrl(token), whatsappSent } : {}),
+      // `hasRecorrido` evita que la pantalla de gracias prometa un recorrido
+      // que la propiedad no tiene (el link igual sirve: fotos + agenda).
+      ...(token ? { accessUrl: accessUrl(token), whatsappSent, hasRecorrido: hayRecorrido } : {}),
     })
   } catch (err) {
     console.error('[POST /api/leads]', err)

@@ -14,7 +14,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Loader2, Sparkles, Rocket, ExternalLink, Wand2, ArrowRight } from 'lucide-react'
+import { Loader2, Sparkles, Rocket, ExternalLink, Wand2, ArrowRight, AlertTriangle } from 'lucide-react'
 import { needsDeliveryChoice } from '@/lib/properties/deliver-media'
 
 interface Question { id: string; question: string; hint?: string }
@@ -62,6 +62,12 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
     video_recorrido_url: videoRecorridoUrl,
     tour_3d_url: tour3dUrl,
   })
+
+  // Sin ninguno de los dos entregables no se puede publicar: el servidor lo
+  // rechaza igual (`assertRecorridoDisponible`), acá lo avisamos antes de que el
+  // asesor apriete el botón.
+  const faltaRecorrido =
+    (videoRecorridoUrl ?? '').trim().length === 0 && (tour3dUrl ?? '').trim().length === 0
 
   const chooseDeliverMedia = async (choice: 'video_recorrido' | 'tour_3d') => {
     setDeliverMedia(choice)
@@ -350,7 +356,25 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
             Al publicar, la propiedad tendrá su enlace público y quedará lista para la campaña Meta.
             El enlace no cambia aunque después edites el diseño.
           </p>
-          <Button onClick={publish} disabled={busy === 'publish'} className="w-full" size="lg">
+          {faltaRecorrido && (
+            <div className="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-amber-900">Falta el recorrido</p>
+                <p className="text-xs text-amber-800">
+                  A quien se registre le prometemos un recorrido de la propiedad. Cargá un{' '}
+                  <strong>video recorrido</strong> o un <strong>recorrido virtual</strong> en la
+                  pestaña Multimedia para poder publicar.
+                </p>
+              </div>
+            </div>
+          )}
+          <Button
+            onClick={publish}
+            disabled={busy === 'publish' || faltaRecorrido}
+            className="w-full"
+            size="lg"
+          >
             {busy === 'publish' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Rocket className="h-4 w-4 mr-2" />}
             Publicar landing
             <ArrowRight className="h-4 w-4 ml-1" />
