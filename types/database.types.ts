@@ -564,6 +564,8 @@ export interface Database {
                     geo_confidence: string | null
                     geocoded_at: string | null
                     import_external_id: string | null
+                    video_recorrido_url: string | null
+                    deliver_media: string | null
                 }
                 Insert: {
                     id?: string
@@ -615,6 +617,8 @@ export interface Database {
                     geo_confidence?: string | null
                     geocoded_at?: string | null
                     import_external_id?: string | null
+                    video_recorrido_url?: string | null
+                    deliver_media?: string | null
                 }
                 Update: {
                     id?: string
@@ -666,6 +670,8 @@ export interface Database {
                     geo_confidence?: string | null
                     geocoded_at?: string | null
                     import_external_id?: string | null
+                    video_recorrido_url?: string | null
+                    deliver_media?: string | null
                 }
                 Relationships: []
             }
