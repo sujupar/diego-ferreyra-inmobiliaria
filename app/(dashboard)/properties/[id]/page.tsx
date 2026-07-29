@@ -624,7 +624,11 @@ export default function PropertyDetailPage() {
           {/* Call-to-action principal: el asesor decide qué hacer */}
           <PostCaptureActions propertyId={property.id} />
           {/* E1.4 — Landing de conversión (requisito para montar campaña Meta) */}
-          <LandingSection propertyId={property.id} />
+          <LandingSection
+            propertyId={property.id}
+            videoRecorridoUrl={property.video_recorrido_url}
+            tour3dUrl={property.tour_3d_url}
+          />
           <GenerateDescriptionCard propertyId={property.id} />
           <MarketingTabs
             propertyId={property.id}

@@ -209,6 +209,15 @@ export async function updateLanding(propertyId: string, patch: {
   return data as unknown as LandingRow
 }
 
+/** Guarda qué medio (video recorrido o tour 3D) se le entrega a quien se registre. */
+export async function setDeliverMedia(propertyId: string, deliverMedia: 'video_recorrido' | 'tour_3d'): Promise<void> {
+  const { error } = await adminTyped()
+    .from('properties')
+    .update({ deliver_media: deliverMedia })
+    .eq('id', propertyId)
+  if (error) throw new Error(error.message)
+}
+
 async function writeRevision(
   landingId: string, templateId: string, content: unknown, avatarId: string | null,
   reason: string, userId: string | null,

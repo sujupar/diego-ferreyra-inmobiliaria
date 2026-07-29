@@ -8,7 +8,7 @@
 import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/require-role'
 import {
-  authorizeLanding, getLanding, startCoCreation, updateLanding, unpublishLanding,
+  authorizeLanding, getLanding, startCoCreation, updateLanding, unpublishLanding, setDeliverMedia,
 } from '@/lib/landing/landing-service'
 import { TEMPLATES } from '@/lib/landing/templates'
 
@@ -58,6 +58,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       templateId?: string
       content?: unknown
       draftContent?: unknown
+      deliverMedia?: 'video_recorrido' | 'tour_3d'
+    }
+    if (body.deliverMedia === 'video_recorrido' || body.deliverMedia === 'tour_3d') {
+      await setDeliverMedia(id, body.deliverMedia)
     }
     const landing = await updateLanding(id, {
       wizardState: body.wizardState as never,
