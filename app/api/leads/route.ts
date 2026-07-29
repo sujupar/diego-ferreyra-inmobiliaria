@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { createAccessToken, accessUrl } from '@/lib/leads/access-token'
+import { sendRecorridoWhatsapp } from '@/lib/leads/send-recorrido-whatsapp'
 import type { Database } from '@/types/database.types'
 
 function getAdmin() {
@@ -266,6 +267,19 @@ export async function POST(req: Request) {
       phone: lead.phone,
     })
 
+    // Envío del recorrido por WhatsApp (plantilla de utilidad). Best-effort:
+    // devuelve true SOLO si Meta confirmó el envío real (no test mode, no
+    // skipped) — ese booleano es el que va en la respuesta como `whatsappSent`.
+    let whatsappSent = false
+    if (token) {
+      whatsappSent = await sendRecorridoWhatsapp({
+        phone: lead.phone,
+        clientName: lead.name,
+        propertyLabel: prop.title ?? prop.address,
+        token,
+      })
+    }
+
     // Disparar email + WhatsApp al asesor fire-and-forget (no bloqueamos)
     if (prop.assigned_to) {
       notifyAdvisorAsync({
@@ -321,10 +335,10 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       id: lead.id,
-      // `whatsappSent` lo pondrá en true la tarea que cablea el envío por
-      // WhatsApp. Hasta entonces la pantalla de gracias NO promete un mensaje
-      // que no se manda: solo ofrece el link.
-      ...(token ? { accessUrl: accessUrl(token), whatsappSent: false } : {}),
+      // `whatsappSent` refleja el envío real (ver sendRecorridoWhatsapp arriba).
+      // La pantalla de gracias solo promete un WhatsApp cuando esto es true;
+      // si no, muestra el link igual con un texto honesto.
+      ...(token ? { accessUrl: accessUrl(token), whatsappSent } : {}),
     })
   } catch (err) {
     console.error('[POST /api/leads]', err)
