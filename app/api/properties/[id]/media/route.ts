@@ -94,6 +94,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ success: true })
     }
 
+    // Video recorrido: se ENTREGA al cliente registrado (no va en la landing
+    // pública). Mismo criterio https:// que el tour — puede ir en un <iframe>.
+    if ('video_recorrido_url' in body) {
+      const raw = typeof body.video_recorrido_url === 'string' ? body.video_recorrido_url.trim() : ''
+      let val: string | null = null
+      if (raw) {
+        let isHttps = false
+        try { isHttps = new URL(raw).protocol === 'https:' } catch { isHttps = false }
+        if (!isHttps) {
+          return NextResponse.json({ error: 'El video recorrido debe ser un enlace https válido' }, { status: 400 })
+        }
+        val = raw
+      }
+      await updateProperty(id, { video_recorrido_url: val })
+      return NextResponse.json({ success: true })
+    }
+
     return NextResponse.json({ error: 'Operación no reconocida' }, { status: 400 })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error' }, { status: 500 })

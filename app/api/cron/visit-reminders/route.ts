@@ -14,6 +14,8 @@ export async function GET(req: NextRequest) {
   const { data: due } = await supabase
     .from('property_visits')
     .select('id')
+    // Solo 'scheduled': una visita 'pending_confirmation' la propuso el cliente y
+    // el equipo todavía no la confirmó — recordarla sería prometer una cita que no existe.
     .eq('status', 'scheduled')
     .lt('scheduled_at', new Date().toISOString())
     .gte('scheduled_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())

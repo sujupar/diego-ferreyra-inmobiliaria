@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import type { PropertyVisitWithRelations } from '@/types/visits.types'
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
+  pending_confirmation: { label: 'A confirmar', color: 'bg-amber-500' },
   scheduled: { label: 'Agendada', color: 'bg-blue-500' },
   completed: { label: 'Realizada', color: 'bg-green-500' },
   no_show: { label: 'No se realizó', color: 'bg-orange-500' },

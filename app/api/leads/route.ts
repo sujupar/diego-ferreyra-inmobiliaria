@@ -2,7 +2,15 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
+import { createAccessToken, accessUrl } from '@/lib/leads/access-token'
+import { sendRecorridoWhatsapp } from '@/lib/leads/send-recorrido-whatsapp'
 import type { Database } from '@/types/database.types'
+
+// El POST espera, dentro del request: el email del recorrido, el envío por
+// WhatsApp (timeout 3s) y Meta CAPI (timeout 3s). Sin `maxDuration` explícito
+// la función se corta al default de la plataforma y el lead podría quedar sin
+// respuesta al visitante.
+export const maxDuration = 26
 
 function getAdmin() {
   return createClient<Database>(
@@ -254,6 +262,43 @@ export async function POST(req: Request) {
       )
     }
 
+    // Token de acceso al recorrido: congela los datos de esta persona para que
+    // después pueda ver la propiedad por dentro y agendar SIN volver a cargarlos.
+    // Best-effort: si falla, el lead ya está guardado y el flujo sigue.
+    const token = await createAccessToken({
+      propertyId: prop.id,
+      leadId: lead.id,
+      name: lead.name,
+      email: lead.email,
+      phone: lead.phone,
+    })
+
+    // Copia durable del link por EMAIL. Mientras la plantilla de WhatsApp no
+    // esté aprobada, la pantalla de gracias es la única otra entrega — y se
+    // pierde si la persona cierra el popup. Best-effort: nunca lanza.
+    if (token && lead.email) {
+      const { sendRecorridoLinkToClient } = await import('@/lib/email/notifications/recorrido-link-client')
+      await sendRecorridoLinkToClient({
+        to: lead.email,
+        clientName: lead.name,
+        propertyLabel: prop.title ?? prop.address,
+        accessUrl: accessUrl(token),
+      })
+    }
+
+    // Envío del recorrido por WhatsApp (plantilla de utilidad). Best-effort:
+    // devuelve true SOLO si Meta confirmó el envío real (no test mode, no
+    // skipped) — ese booleano es el que va en la respuesta como `whatsappSent`.
+    let whatsappSent = false
+    if (token) {
+      whatsappSent = await sendRecorridoWhatsapp({
+        phone: lead.phone,
+        clientName: lead.name,
+        propertyLabel: prop.title ?? prop.address,
+        token,
+      })
+    }
+
     // Disparar email + WhatsApp al asesor fire-and-forget (no bloqueamos)
     if (prop.assigned_to) {
       notifyAdvisorAsync({
@@ -306,7 +351,14 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ ok: true, id: lead.id })
+    return NextResponse.json({
+      ok: true,
+      id: lead.id,
+      // `whatsappSent` refleja el envío real (ver sendRecorridoWhatsapp arriba).
+      // La pantalla de gracias solo promete un WhatsApp cuando esto es true;
+      // si no, muestra el link igual con un texto honesto.
+      ...(token ? { accessUrl: accessUrl(token), whatsappSent } : {}),
+    })
   } catch (err) {
     console.error('[POST /api/leads]', err)
     return NextResponse.json(

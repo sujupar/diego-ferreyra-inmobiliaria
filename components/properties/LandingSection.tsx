@@ -15,6 +15,7 @@ import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Loader2, Sparkles, Rocket, ExternalLink, Wand2, ArrowRight } from 'lucide-react'
+import { needsDeliveryChoice } from '@/lib/properties/deliver-media'
 
 interface Question { id: string; question: string; hint?: string }
 interface Avatar {
@@ -38,7 +39,14 @@ interface Landing {
 }
 interface TemplateMeta { id: string; label: string; description: string; bestFor: string }
 
-export function LandingSection({ propertyId }: { propertyId: string }) {
+interface LandingSectionProps {
+  propertyId: string
+  videoRecorridoUrl?: string | null
+  tour3dUrl?: string | null
+  deliverMediaSaved?: string | null
+}
+
+export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliverMediaSaved }: LandingSectionProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
@@ -46,6 +54,30 @@ export function LandingSection({ propertyId }: { propertyId: string }) {
   const [templates, setTemplates] = useState<TemplateMeta[]>([])
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [refineComment, setRefineComment] = useState('')
+  const [deliverMedia, setDeliverMedia] = useState<string | null>(deliverMediaSaved ?? null)
+
+  useEffect(() => { setDeliverMedia(deliverMediaSaved ?? null) }, [deliverMediaSaved])
+
+  const showDeliveryChoice = needsDeliveryChoice({
+    video_recorrido_url: videoRecorridoUrl,
+    tour_3d_url: tour3dUrl,
+  })
+
+  const chooseDeliverMedia = async (choice: 'video_recorrido' | 'tour_3d') => {
+    setDeliverMedia(choice)
+    setBusy('deliverMedia')
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/landing`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ deliverMedia: choice }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast.success('Guardado.')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al guardar')
+    } finally { setBusy(null) }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -147,6 +179,35 @@ export function LandingSection({ propertyId }: { propertyId: string }) {
     return <Card><CardContent className="py-8 flex justify-center"><Loader2 className="h-5 w-5 animate-spin" /></CardContent></Card>
   }
 
+  /**
+   * Elección de qué recorrido se entrega (solo si la propiedad tiene los dos).
+   * Se renderiza tanto en el wizard como en la tarjeta de landing publicada: el
+   * caso más común es subir el video recorrido DESPUÉS de publicar, y si el
+   * bloque viviera solo en el draft el asesor nunca podría elegir.
+   */
+  const deliveryChoiceBlock = showDeliveryChoice ? (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">¿Qué le enviamos a quien se registre?</p>
+      <p className="text-xs text-muted-foreground">Se le manda por WhatsApp para que conozca la propiedad por dentro.</p>
+      <div className="grid gap-3 md:grid-cols-2">
+        <button
+          onClick={() => chooseDeliverMedia('video_recorrido')}
+          disabled={busy === 'deliverMedia'}
+          className={`text-left p-3 rounded-lg border-2 transition ${deliverMedia === 'video_recorrido' ? 'border-[color:var(--brand)] bg-[color:var(--brand)]/5' : 'border-border hover:bg-muted/30'}`}
+        >
+          <p className="text-sm font-semibold">Video recorrido</p>
+        </button>
+        <button
+          onClick={() => chooseDeliverMedia('tour_3d')}
+          disabled={busy === 'deliverMedia'}
+          className={`text-left p-3 rounded-lg border-2 transition ${deliverMedia === 'tour_3d' ? 'border-[color:var(--brand)] bg-[color:var(--brand)]/5' : 'border-border hover:bg-muted/30'}`}
+        >
+          <p className="text-sm font-semibold">Recorrido virtual 3D</p>
+        </button>
+      </div>
+    </div>
+  ) : null
+
   // --- Sin landing: CTA de creación ---
   if (!landing) {
     return (
@@ -187,6 +248,7 @@ export function LandingSection({ propertyId }: { propertyId: string }) {
           <Button size="sm" onClick={() => router.push(`/properties/${propertyId}/landing/edit`)}>
             Editar landing
           </Button>
+          {deliveryChoiceBlock && <div className="border-t pt-3">{deliveryChoiceBlock}</div>}
         </CardContent>
       </Card>
     )
@@ -277,6 +339,9 @@ export function LandingSection({ propertyId }: { propertyId: string }) {
             ))}
           </div>
         </div>
+
+        {/* Elegir qué recorrido se entrega (solo si la propiedad tiene los dos) */}
+        {deliveryChoiceBlock}
 
         {/* 4. Publicar */}
         <div className="border-t pt-4 space-y-2">

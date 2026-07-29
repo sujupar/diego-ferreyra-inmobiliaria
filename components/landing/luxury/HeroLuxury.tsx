@@ -10,6 +10,7 @@
  */
 import { ChevronDown } from 'lucide-react'
 import { CtaButton } from '../CtaButton'
+import { toEmbedUrl } from '@/lib/landing/video-embed'
 
 interface HeroLuxuryProps {
   title: string
@@ -44,30 +45,6 @@ const OPERATION_LABEL: Record<string, string> = {
   venta: 'En venta',
   alquiler: 'En alquiler',
   temporario: 'Alquiler temporario',
-}
-
-function toEmbedUrl(url: string): string | null {
-  try {
-    const u = new URL(url)
-    const host = u.hostname.replace(/^www\./, '')
-    if (host === 'youtu.be') {
-      const id = u.pathname.slice(1).split('/')[0]
-      if (id) return `https://www.youtube.com/embed/${id}`
-    }
-    if (host.endsWith('youtube.com')) {
-      const v = u.searchParams.get('v')
-      if (v) return `https://www.youtube.com/embed/${v}`
-      const m = u.pathname.match(/\/(?:embed|shorts)\/([\w-]+)/)
-      if (m) return `https://www.youtube.com/embed/${m[1]}`
-    }
-    if (host.endsWith('vimeo.com')) {
-      const id = u.pathname.split('/').filter(Boolean)[0]
-      if (id && /^\d+$/.test(id)) return `https://player.vimeo.com/video/${id}`
-    }
-  } catch {
-    /* url inválida */
-  }
-  return null
 }
 
 function Wordmark() {

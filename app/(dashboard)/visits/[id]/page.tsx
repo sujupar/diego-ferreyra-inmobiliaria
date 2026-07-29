@@ -10,6 +10,15 @@ import { CompleteVisitDialog } from '../_components/CompleteVisitDialog'
 import { toast } from 'sonner'
 import type { PropertyVisitWithRelations } from '@/types/visits.types'
 
+/** Mismas etiquetas que el listado (`VisitsTable`) — mantener sincronizadas. */
+const STATUS_LABEL: Record<string, string> = {
+  pending_confirmation: 'A confirmar',
+  scheduled: 'Agendada',
+  completed: 'Realizada',
+  no_show: 'No se realizó',
+  cancelled: 'Cancelada',
+}
+
 interface QuestionnaireRow {
   id: string
   response_source: 'advisor' | 'client'
@@ -25,6 +34,7 @@ export default function VisitDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [visit, setVisit] = useState<PropertyVisitWithRelations | null>(null)
   const [completeOpen, setCompleteOpen] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   const [questionnaires, setQuestionnaires] = useState<QuestionnaireRow[]>([])
 
   const load = useCallback(async () => {
@@ -44,6 +54,28 @@ export default function VisitDetailPage() {
     load()
   }, [load])
 
+  /**
+   * La visita llega como 'pending_confirmation' cuando la propuso el cliente desde
+   * el recorrido. Recién al confirmarla pasa a 'scheduled' y habilita "¿Se realizó?".
+   */
+  async function confirmVisit() {
+    setConfirming(true)
+    try {
+      const res = await fetch(`/api/visits/${id}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'scheduled' }),
+      })
+      if (!res.ok) throw new Error('No se pudo confirmar')
+      toast.success('Visita confirmada')
+      await load()
+    } catch {
+      toast.error('No pudimos confirmar la visita. Probá de nuevo.')
+    } finally {
+      setConfirming(false)
+    }
+  }
+
   async function sendQuestionnaire() {
     const res = await fetch(`/api/visits/${id}/send-questionnaire`, { method: 'POST' })
     if (res.ok) toast.success('Cuestionario enviado al cliente')
@@ -62,7 +94,7 @@ export default function VisitDetailPage() {
           <h1 className="text-2xl font-semibold">{visit.property?.address}</h1>
           <p className="text-muted-foreground">{new Date(visit.scheduled_at).toLocaleString('es-AR')}</p>
         </div>
-        <Badge>{visit.status}</Badge>
+        <Badge>{STATUS_LABEL[visit.status] ?? visit.status}</Badge>
       </header>
 
       <Card>
@@ -77,6 +109,20 @@ export default function VisitDetailPage() {
           <p>{visit.client_phone}</p>
         </CardContent>
       </Card>
+
+      {visit.status === 'pending_confirmation' && (
+        <Card className="border-amber-300">
+          <CardContent className="pt-6 space-y-3">
+            <p className="text-sm text-muted-foreground">
+              El cliente propuso este día y esta franja desde el recorrido. Llamalo para
+              cerrar el horario y, cuando esté acordado, confirmá la visita.
+            </p>
+            <Button onClick={confirmVisit} disabled={confirming}>
+              {confirming ? 'Confirmando…' : 'Confirmar visita'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {visit.status === 'scheduled' && (
         <Card>

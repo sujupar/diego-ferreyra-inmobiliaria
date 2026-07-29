@@ -9,7 +9,7 @@ const patchSchema = z.object({
   client_email: z.string().email().optional(),
   client_phone: z.string().optional(),
   notes: z.string().optional(),
-  status: z.enum(['scheduled', 'completed', 'no_show', 'cancelled']).optional(),
+  status: z.enum(['pending_confirmation', 'scheduled', 'completed', 'no_show', 'cancelled']).optional(),
   completion_notes: z.string().optional(),
 })
 

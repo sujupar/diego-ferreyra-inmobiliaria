@@ -13,12 +13,57 @@
  *   WHATSAPP_TEST_MODE         — 'true' para no enviar (default true por seguridad)
  */
 
+/**
+ * Timeout del POST a Meta. Sin esto una demora de Meta cuelga al llamador.
+ * Default 8s para los envíos de fondo (cron de consultas de portales): ahí nadie
+ * espera y cortar temprano es perder un aviso al asesor. El camino del recorrido
+ * pasa 3s explícitamente, porque el visitante está esperando la respuesta.
+ */
+const WHATSAPP_TIMEOUT_DEFAULT_MS = 8000
+
 export interface SendTemplateInput {
   to: string // E.164 sin '+', ej. 5491122334455
   templateName: string
   languageCode: string // ej. es_AR
   /** Parámetros de texto del body de la plantilla, en orden ({{1}}, {{2}}, ...). */
   bodyParams: string[]
+  /** Sufijo dinámico del botón URL de la plantilla (ej. el token del recorrido). */
+  urlButtonParam?: string
+  /** Timeout del POST a Meta en ms. Default 8s (envíos de fondo). */
+  timeoutMs?: number
+}
+
+export interface TemplatePayload {
+  messaging_product: 'whatsapp'
+  to: string
+  type: 'template'
+  template: {
+    name: string
+    language: { code: string }
+    components: Array<Record<string, unknown>>
+  }
+}
+
+export function buildTemplatePayload(input: SendTemplateInput): TemplatePayload {
+  const components: Array<Record<string, unknown>> = [
+    { type: 'body', parameters: input.bodyParams.map(text => ({ type: 'text', text })) },
+  ]
+  // Botón URL con sufijo dinámico: Meta lo concatena a la URL fija de la
+  // plantilla (ej. https://inmodf.com.ar/v/ + <token>). index va como string.
+  if (input.urlButtonParam) {
+    components.push({
+      type: 'button',
+      sub_type: 'url',
+      index: '0',
+      parameters: [{ type: 'text', text: input.urlButtonParam }],
+    })
+  }
+  return {
+    messaging_product: 'whatsapp',
+    to: input.to,
+    type: 'template',
+    template: { name: input.templateName, language: { code: input.languageCode }, components },
+  }
 }
 
 export interface SendTemplateResult {
@@ -61,21 +106,7 @@ export async function sendWhatsappTemplate(input: SendTemplateInput): Promise<Se
 
   const version = process.env.WHATSAPP_API_VERSION ?? 'v21.0'
   const url = `https://graph.facebook.com/${version}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`
-  const body = {
-    messaging_product: 'whatsapp',
-    to: input.to,
-    type: 'template',
-    template: {
-      name: input.templateName,
-      language: { code: input.languageCode },
-      components: [
-        {
-          type: 'body',
-          parameters: input.bodyParams.map(text => ({ type: 'text', text })),
-        },
-      ],
-    },
-  }
+  const body = buildTemplatePayload(input)
 
   try {
     const res = await fetch(url, {
@@ -85,6 +116,7 @@ export async function sendWhatsappTemplate(input: SendTemplateInput): Promise<Se
         'content-type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(input.timeoutMs ?? WHATSAPP_TIMEOUT_DEFAULT_MS),
     })
     const json = (await res.json().catch(() => ({}))) as {
       messages?: { id: string }[]
