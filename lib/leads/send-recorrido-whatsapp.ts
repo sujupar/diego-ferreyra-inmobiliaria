@@ -4,7 +4,8 @@
  *
  * Best-effort en todo: si no hay plantilla configurada, si no hay teléfono o si
  * Meta falla, el flujo sigue — el link igual se muestra en la pantalla de
- * gracias y viaja por email.
+ * gracias y, si el lead dejó email, se envía por mail
+ * (`lib/email/notifications/recorrido-link-client.ts`).
  *
  * Devuelve `true` SOLO si el mensaje se envió de verdad (Meta lo aceptó, sin
  * `skipped`). `skipped:true` significa modo prueba o sin credenciales — NO se

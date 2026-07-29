@@ -6,6 +6,12 @@ import { createAccessToken, accessUrl } from '@/lib/leads/access-token'
 import { sendRecorridoWhatsapp } from '@/lib/leads/send-recorrido-whatsapp'
 import type { Database } from '@/types/database.types'
 
+// El POST espera, dentro del request: el email del recorrido, el envío por
+// WhatsApp (timeout 3s) y Meta CAPI (timeout 3s). Sin `maxDuration` explícito
+// la función se corta al default de la plataforma y el lead podría quedar sin
+// respuesta al visitante.
+export const maxDuration = 26
+
 function getAdmin() {
   return createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -266,6 +272,19 @@ export async function POST(req: Request) {
       email: lead.email,
       phone: lead.phone,
     })
+
+    // Copia durable del link por EMAIL. Mientras la plantilla de WhatsApp no
+    // esté aprobada, la pantalla de gracias es la única otra entrega — y se
+    // pierde si la persona cierra el popup. Best-effort: nunca lanza.
+    if (token && lead.email) {
+      const { sendRecorridoLinkToClient } = await import('@/lib/email/notifications/recorrido-link-client')
+      await sendRecorridoLinkToClient({
+        to: lead.email,
+        clientName: lead.name,
+        propertyLabel: prop.title ?? prop.address,
+        accessUrl: accessUrl(token),
+      })
+    }
 
     // Envío del recorrido por WhatsApp (plantilla de utilidad). Best-effort:
     // devuelve true SOLO si Meta confirmó el envío real (no test mode, no
