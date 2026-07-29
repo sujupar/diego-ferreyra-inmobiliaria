@@ -101,5 +101,10 @@ export async function notifyVisitProposed(visitId: string): Promise<void> {
     to,
     subject,
     html,
+    // Repetible a propósito: si el cliente vuelve y propone OTRO día, la ruta de
+    // agenda actualiza la MISMA visita ("la última propuesta gana"). Con la
+    // idempotencia por (tipo, entidad) activa, ese segundo aviso quedaría
+    // suprimido y el equipo nunca se enteraría del cambio de día.
+    idempotent: false,
   })
 }

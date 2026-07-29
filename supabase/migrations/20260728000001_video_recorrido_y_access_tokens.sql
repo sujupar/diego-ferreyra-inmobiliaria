@@ -18,15 +18,26 @@ CREATE TABLE IF NOT EXISTS lead_access_tokens (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   opened_at    TIMESTAMPTZ,
   open_count   INTEGER NOT NULL DEFAULT 0,
-  scheduled_at TIMESTAMPTZ
+  scheduled_at TIMESTAMPTZ,
+  -- Visita propuesta desde ESTE token. "La última propuesta gana": si la persona
+  -- vuelve y elige otro día, se ACTUALIZA esta visita en vez de crear otra.
+  visit_id     UUID REFERENCES property_visits(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS lead_access_tokens_property_idx ON lead_access_tokens (property_id);
 
+-- Idempotente para bases donde la tabla ya exista sin la columna.
+ALTER TABLE lead_access_tokens
+  ADD COLUMN IF NOT EXISTS visit_id UUID REFERENCES property_visits(id) ON DELETE SET NULL;
+
 -- RLS: la tabla se lee/escribe SOLO con service-role desde rutas públicas.
+-- La lectura de staff se restringe a operaciones (admin/dueno/coordinador): la
+-- fila tiene nombre, email y teléfono de un lead, y el abogado está gateado de
+-- leads en toda la app (mismo criterio que la policy `leads_select` de
+-- `property_leads`).
 ALTER TABLE lead_access_tokens ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS lead_access_tokens_staff_read ON lead_access_tokens;
 CREATE POLICY lead_access_tokens_staff_read ON lead_access_tokens
-  FOR SELECT TO authenticated USING (true);
+  FOR SELECT TO authenticated USING (public.is_operations_user());
 
 -- 3. Estado nuevo de visita: propuesta por el cliente, a confirmar por el equipo.
 --    OJO: hay que RECREAR el CHECK — agregar un valor sin esto rompe con 23514.
