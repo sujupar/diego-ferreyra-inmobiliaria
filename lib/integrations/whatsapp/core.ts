@@ -13,6 +13,14 @@
  *   WHATSAPP_TEST_MODE         — 'true' para no enviar (default true por seguridad)
  */
 
+/**
+ * Timeout del POST a Meta. Sin esto, una demora de Meta cuelga al llamador —
+ * y hoy el envío del recorrido se espera ANTES de responderle al visitante que
+ * acaba de registrarse. 8s deja margen dentro del límite de las funciones y
+ * corta mucho antes de que el usuario perciba que algo se colgó.
+ */
+const WHATSAPP_TIMEOUT_MS = 8000
+
 export interface SendTemplateInput {
   to: string // E.164 sin '+', ej. 5491122334455
   templateName: string
@@ -106,6 +114,7 @@ export async function sendWhatsappTemplate(input: SendTemplateInput): Promise<Se
         'content-type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(WHATSAPP_TIMEOUT_MS),
     })
     const json = (await res.json().catch(() => ({}))) as {
       messages?: { id: string }[]
