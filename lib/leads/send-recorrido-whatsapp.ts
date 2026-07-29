@@ -29,7 +29,12 @@ export async function sendRecorridoWhatsapp(input: {
       to,
       templateName: template,
       languageCode: process.env.WHATSAPP_TEMPLATE_LANG ?? 'es_AR',
-      bodyParams: [input.clientName.split(' ')[0], input.propertyLabel],
+      // La plantilla `recorrido_acceso_util` espera 3 variables:
+      //   {{1}} nombre de pila · {{2}} propiedad · {{3}} nº de solicitud.
+      // El nº de solicitud es el propio token: además de identificar la operación,
+      // es el rasgo que hace que Meta clasifique la plantilla como UTILIDAD y no
+      // como marketing (mismo patrón que `consulta_portal_util`, ya aprobada).
+      bodyParams: [input.clientName.split(' ')[0], input.propertyLabel, input.token],
       urlButtonParam: input.token,
       // 3s (el default global es 8s): acá el visitante está esperando la respuesta
       // de `POST /api/leads`, que además hace el email del recorrido y Meta CAPI.
