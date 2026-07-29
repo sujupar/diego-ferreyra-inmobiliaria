@@ -58,6 +58,7 @@ interface PropertyData {
   plans: string[] | null
   video_file_url: string | null
   tour_3d_url: string | null
+  video_recorrido_url: string | null
   legal_status: string
   legal_notes: string | null
   legal_reviewed_at: string | null
@@ -516,6 +517,7 @@ export default function PropertyDetailPage() {
           plans={property.plans || []}
           videoFileUrl={property.video_file_url ?? null}
           tourUrl={property.tour_3d_url ?? null}
+          videoRecorridoUrl={property.video_recorrido_url ?? null}
           onChanged={fetchProperty}
         />
       )}
