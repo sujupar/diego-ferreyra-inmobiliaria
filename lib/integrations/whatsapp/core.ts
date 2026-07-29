@@ -16,10 +16,12 @@
 /**
  * Timeout del POST a Meta. Sin esto, una demora de Meta cuelga al llamador —
  * y hoy el envío del recorrido se espera ANTES de responderle al visitante que
- * acaba de registrarse. 8s deja margen dentro del límite de las funciones y
- * corta mucho antes de que el usuario perciba que algo se colgó.
+ * acaba de registrarse. 3s: en `POST /api/leads` este envío se suma al email
+ * del recorrido y a los ~3s de Meta CAPI dentro del mismo request, así que el
+ * presupuesto de tiempo es acotado. El envío es best-effort: si Meta tarda más,
+ * se corta y el link igual llega por email y por la pantalla de gracias.
  */
-const WHATSAPP_TIMEOUT_MS = 8000
+const WHATSAPP_TIMEOUT_MS = 3000
 
 export interface SendTemplateInput {
   to: string // E.164 sin '+', ej. 5491122334455
