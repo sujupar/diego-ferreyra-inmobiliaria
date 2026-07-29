@@ -63,6 +63,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (body.deliverMedia === 'video_recorrido' || body.deliverMedia === 'tour_3d') {
       await setDeliverMedia(id, body.deliverMedia)
     }
+
+    // `deliverMedia` vive en `properties`, no en la landing. Si el PATCH trae SOLO
+    // eso, llamar a updateLanding armaría un `.update({})` → 0 filas → PGRST116 →
+    // 400, y la UI mostraría "error al guardar" con el dato YA persistido.
+    const touchesLanding =
+      body.wizardState !== undefined ||
+      body.templateId !== undefined ||
+      body.content !== undefined ||
+      body.draftContent !== undefined
+    if (!touchesLanding) {
+      return NextResponse.json({ landing: await getLanding(id) })
+    }
+
     const landing = await updateLanding(id, {
       wizardState: body.wizardState as never,
       templateId: body.templateId,

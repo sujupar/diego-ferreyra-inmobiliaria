@@ -179,6 +179,35 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
     return <Card><CardContent className="py-8 flex justify-center"><Loader2 className="h-5 w-5 animate-spin" /></CardContent></Card>
   }
 
+  /**
+   * Elección de qué recorrido se entrega (solo si la propiedad tiene los dos).
+   * Se renderiza tanto en el wizard como en la tarjeta de landing publicada: el
+   * caso más común es subir el video recorrido DESPUÉS de publicar, y si el
+   * bloque viviera solo en el draft el asesor nunca podría elegir.
+   */
+  const deliveryChoiceBlock = showDeliveryChoice ? (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">¿Qué le enviamos a quien se registre?</p>
+      <p className="text-xs text-muted-foreground">Se le manda por WhatsApp para que conozca la propiedad por dentro.</p>
+      <div className="grid gap-3 md:grid-cols-2">
+        <button
+          onClick={() => chooseDeliverMedia('video_recorrido')}
+          disabled={busy === 'deliverMedia'}
+          className={`text-left p-3 rounded-lg border-2 transition ${deliverMedia === 'video_recorrido' ? 'border-[color:var(--brand)] bg-[color:var(--brand)]/5' : 'border-border hover:bg-muted/30'}`}
+        >
+          <p className="text-sm font-semibold">Video recorrido</p>
+        </button>
+        <button
+          onClick={() => chooseDeliverMedia('tour_3d')}
+          disabled={busy === 'deliverMedia'}
+          className={`text-left p-3 rounded-lg border-2 transition ${deliverMedia === 'tour_3d' ? 'border-[color:var(--brand)] bg-[color:var(--brand)]/5' : 'border-border hover:bg-muted/30'}`}
+        >
+          <p className="text-sm font-semibold">Recorrido virtual 3D</p>
+        </button>
+      </div>
+    </div>
+  ) : null
+
   // --- Sin landing: CTA de creación ---
   if (!landing) {
     return (
@@ -219,6 +248,7 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
           <Button size="sm" onClick={() => router.push(`/properties/${propertyId}/landing/edit`)}>
             Editar landing
           </Button>
+          {deliveryChoiceBlock && <div className="border-t pt-3">{deliveryChoiceBlock}</div>}
         </CardContent>
       </Card>
     )
@@ -311,28 +341,7 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
         </div>
 
         {/* Elegir qué recorrido se entrega (solo si la propiedad tiene los dos) */}
-        {showDeliveryChoice && (
-          <div className="space-y-2">
-            <p className="text-sm font-medium">¿Qué le enviamos a quien se registre?</p>
-            <p className="text-xs text-muted-foreground">Se le manda por WhatsApp para que conozca la propiedad por dentro.</p>
-            <div className="grid gap-3 md:grid-cols-2">
-              <button
-                onClick={() => chooseDeliverMedia('video_recorrido')}
-                disabled={busy === 'deliverMedia'}
-                className={`text-left p-3 rounded-lg border-2 transition ${deliverMedia === 'video_recorrido' ? 'border-[color:var(--brand)] bg-[color:var(--brand)]/5' : 'border-border hover:bg-muted/30'}`}
-              >
-                <p className="text-sm font-semibold">Video recorrido</p>
-              </button>
-              <button
-                onClick={() => chooseDeliverMedia('tour_3d')}
-                disabled={busy === 'deliverMedia'}
-                className={`text-left p-3 rounded-lg border-2 transition ${deliverMedia === 'tour_3d' ? 'border-[color:var(--brand)] bg-[color:var(--brand)]/5' : 'border-border hover:bg-muted/30'}`}
-              >
-                <p className="text-sm font-semibold">Recorrido virtual 3D</p>
-              </button>
-            </div>
-          </div>
-        )}
+        {deliveryChoiceBlock}
 
         {/* 4. Publicar */}
         <div className="border-t pt-4 space-y-2">
