@@ -19,6 +19,41 @@ export interface SendTemplateInput {
   languageCode: string // ej. es_AR
   /** Parámetros de texto del body de la plantilla, en orden ({{1}}, {{2}}, ...). */
   bodyParams: string[]
+  /** Sufijo dinámico del botón URL de la plantilla (ej. el token del recorrido). */
+  urlButtonParam?: string
+}
+
+export interface TemplatePayload {
+  messaging_product: 'whatsapp'
+  to: string
+  type: 'template'
+  template: {
+    name: string
+    language: { code: string }
+    components: Array<Record<string, unknown>>
+  }
+}
+
+export function buildTemplatePayload(input: SendTemplateInput): TemplatePayload {
+  const components: Array<Record<string, unknown>> = [
+    { type: 'body', parameters: input.bodyParams.map(text => ({ type: 'text', text })) },
+  ]
+  // Botón URL con sufijo dinámico: Meta lo concatena a la URL fija de la
+  // plantilla (ej. https://inmodf.com.ar/v/ + <token>). index va como string.
+  if (input.urlButtonParam) {
+    components.push({
+      type: 'button',
+      sub_type: 'url',
+      index: '0',
+      parameters: [{ type: 'text', text: input.urlButtonParam }],
+    })
+  }
+  return {
+    messaging_product: 'whatsapp',
+    to: input.to,
+    type: 'template',
+    template: { name: input.templateName, language: { code: input.languageCode }, components },
+  }
 }
 
 export interface SendTemplateResult {
@@ -61,21 +96,7 @@ export async function sendWhatsappTemplate(input: SendTemplateInput): Promise<Se
 
   const version = process.env.WHATSAPP_API_VERSION ?? 'v21.0'
   const url = `https://graph.facebook.com/${version}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`
-  const body = {
-    messaging_product: 'whatsapp',
-    to: input.to,
-    type: 'template',
-    template: {
-      name: input.templateName,
-      language: { code: input.languageCode },
-      components: [
-        {
-          type: 'body',
-          parameters: input.bodyParams.map(text => ({ type: 'text', text })),
-        },
-      ],
-    },
-  }
+  const body = buildTemplatePayload(input)
 
   try {
     const res = await fetch(url, {
