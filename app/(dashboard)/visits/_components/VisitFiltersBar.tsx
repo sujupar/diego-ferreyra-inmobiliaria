@@ -22,6 +22,7 @@ interface Props {
 
 const STATUS_OPTIONS = [
   { value: '', label: 'Todos' },
+  { value: 'pending_confirmation', label: 'A confirmar' },
   { value: 'scheduled', label: 'Agendadas' },
   { value: 'completed', label: 'Realizadas' },
   { value: 'no_show', label: 'No se realizó' },

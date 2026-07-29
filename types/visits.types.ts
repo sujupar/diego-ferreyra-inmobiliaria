@@ -1,6 +1,11 @@
 import type { Database } from './database.types'
 
-export type VisitStatus = 'scheduled' | 'completed' | 'no_show' | 'cancelled'
+export type VisitStatus =
+  | 'pending_confirmation' // propuesta por el cliente desde el recorrido; la confirma el equipo
+  | 'scheduled'
+  | 'completed'
+  | 'no_show'
+  | 'cancelled'
 
 export type PropertyVisit = Database['public']['Tables']['property_visits']['Row']
 export type PropertyVisitInsert = Database['public']['Tables']['property_visits']['Insert']
