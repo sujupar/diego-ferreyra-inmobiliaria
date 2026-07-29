@@ -43,9 +43,10 @@ interface LandingSectionProps {
   propertyId: string
   videoRecorridoUrl?: string | null
   tour3dUrl?: string | null
+  deliverMediaSaved?: string | null
 }
 
-export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl }: LandingSectionProps) {
+export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliverMediaSaved }: LandingSectionProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
@@ -53,7 +54,9 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl }: Lan
   const [templates, setTemplates] = useState<TemplateMeta[]>([])
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [refineComment, setRefineComment] = useState('')
-  const [deliverMedia, setDeliverMedia] = useState<'video_recorrido' | 'tour_3d' | null>(null)
+  const [deliverMedia, setDeliverMedia] = useState<string | null>(deliverMediaSaved ?? null)
+
+  useEffect(() => { setDeliverMedia(deliverMediaSaved ?? null) }, [deliverMediaSaved])
 
   const showDeliveryChoice = needsDeliveryChoice({
     video_recorrido_url: videoRecorridoUrl,

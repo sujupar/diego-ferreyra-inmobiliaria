@@ -59,6 +59,7 @@ interface PropertyData {
   video_file_url: string | null
   tour_3d_url: string | null
   video_recorrido_url: string | null
+  deliver_media: string | null
   legal_status: string
   legal_notes: string | null
   legal_reviewed_at: string | null
@@ -628,6 +629,7 @@ export default function PropertyDetailPage() {
             propertyId={property.id}
             videoRecorridoUrl={property.video_recorrido_url}
             tour3dUrl={property.tour_3d_url}
+            deliverMediaSaved={property.deliver_media}
           />
           <GenerateDescriptionCard propertyId={property.id} />
           <MarketingTabs
