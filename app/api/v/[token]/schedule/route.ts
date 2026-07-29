@@ -27,10 +27,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return NextResponse.json({ error: 'Elegí un día válido' }, { status: 400 })
     }
+    if (!(franja in FRANJA_HORA)) {
+      return NextResponse.json({ error: 'Elegí un momento del día válido' }, { status: 400 })
+    }
     const hora = FRANJA_HORA[franja] ?? 9
     // -03:00 = hora de Argentina; guardamos el instante correcto en UTC.
     const scheduledAt = new Date(`${date}T${String(hora).padStart(2, '0')}:00:00-03:00`)
     if (Number.isNaN(scheduledAt.getTime())) {
+      return NextResponse.json({ error: 'Elegí un día válido' }, { status: 400 })
+    }
+    // `new Date('2026-02-31T...')` NO da NaN: JS lo corre en silencio al 3 de
+    // marzo. Comprobamos que el día calendario sobreviva el ida y vuelta en
+    // horario argentino — si no, la fecha no existe y la rechazamos.
+    const enArgentina = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(scheduledAt)
+    if (enArgentina !== date) {
       return NextResponse.json({ error: 'Elegí un día válido' }, { status: 400 })
     }
 
