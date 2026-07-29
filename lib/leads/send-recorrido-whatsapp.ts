@@ -31,6 +31,9 @@ export async function sendRecorridoWhatsapp(input: {
       languageCode: process.env.WHATSAPP_TEMPLATE_LANG ?? 'es_AR',
       bodyParams: [input.clientName.split(' ')[0], input.propertyLabel],
       urlButtonParam: input.token,
+      // 3s (el default global es 8s): acá el visitante está esperando la respuesta
+      // de `POST /api/leads`, que además hace el email del recorrido y Meta CAPI.
+      timeoutMs: 3000,
     })
     return result.ok && !result.skipped
   } catch (err) {

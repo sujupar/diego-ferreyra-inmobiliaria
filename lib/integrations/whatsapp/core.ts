@@ -14,14 +14,12 @@
  */
 
 /**
- * Timeout del POST a Meta. Sin esto, una demora de Meta cuelga al llamador —
- * y hoy el envío del recorrido se espera ANTES de responderle al visitante que
- * acaba de registrarse. 3s: en `POST /api/leads` este envío se suma al email
- * del recorrido y a los ~3s de Meta CAPI dentro del mismo request, así que el
- * presupuesto de tiempo es acotado. El envío es best-effort: si Meta tarda más,
- * se corta y el link igual llega por email y por la pantalla de gracias.
+ * Timeout del POST a Meta. Sin esto una demora de Meta cuelga al llamador.
+ * Default 8s para los envíos de fondo (cron de consultas de portales): ahí nadie
+ * espera y cortar temprano es perder un aviso al asesor. El camino del recorrido
+ * pasa 3s explícitamente, porque el visitante está esperando la respuesta.
  */
-const WHATSAPP_TIMEOUT_MS = 3000
+const WHATSAPP_TIMEOUT_DEFAULT_MS = 8000
 
 export interface SendTemplateInput {
   to: string // E.164 sin '+', ej. 5491122334455
@@ -31,6 +29,8 @@ export interface SendTemplateInput {
   bodyParams: string[]
   /** Sufijo dinámico del botón URL de la plantilla (ej. el token del recorrido). */
   urlButtonParam?: string
+  /** Timeout del POST a Meta en ms. Default 8s (envíos de fondo). */
+  timeoutMs?: number
 }
 
 export interface TemplatePayload {
@@ -116,7 +116,7 @@ export async function sendWhatsappTemplate(input: SendTemplateInput): Promise<Se
         'content-type': 'application/json',
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(WHATSAPP_TIMEOUT_MS),
+      signal: AbortSignal.timeout(input.timeoutMs ?? WHATSAPP_TIMEOUT_DEFAULT_MS),
     })
     const json = (await res.json().catch(() => ({}))) as {
       messages?: { id: string }[]
