@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
+import { createAccessToken, accessUrl } from '@/lib/leads/access-token'
 import type { Database } from '@/types/database.types'
 
 function getAdmin() {
@@ -254,6 +255,17 @@ export async function POST(req: Request) {
       )
     }
 
+    // Token de acceso al recorrido: congela los datos de esta persona para que
+    // después pueda ver la propiedad por dentro y agendar SIN volver a cargarlos.
+    // Best-effort: si falla, el lead ya está guardado y el flujo sigue.
+    const token = await createAccessToken({
+      propertyId: prop.id,
+      leadId: lead.id,
+      name: lead.name,
+      email: lead.email,
+      phone: lead.phone,
+    })
+
     // Disparar email + WhatsApp al asesor fire-and-forget (no bloqueamos)
     if (prop.assigned_to) {
       notifyAdvisorAsync({
@@ -306,7 +318,11 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ ok: true, id: lead.id })
+    return NextResponse.json({
+      ok: true,
+      id: lead.id,
+      ...(token ? { accessUrl: accessUrl(token) } : {}),
+    })
   } catch (err) {
     console.error('[POST /api/leads]', err)
     return NextResponse.json(

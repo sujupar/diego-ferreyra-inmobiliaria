@@ -79,6 +79,7 @@ export function LeadCaptureProvider({
   const [form, setForm] = useState<FormState>(INITIAL)
   const [status, setStatus] = useState<'idle' | 'sending' | 'ok' | 'err'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
+  const [accessUrl, setAccessUrl] = useState<string | null>(null)
   const submittingRef = useRef(false)
   const firstFieldRef = useRef<HTMLInputElement>(null)
   const closeBtnRef = useRef<HTMLButtonElement>(null)
@@ -174,10 +175,9 @@ export function LeadCaptureProvider({
           eventSourceUrl: typeof window !== 'undefined' ? window.location.href : null,
         }),
       })
-      if (!res.ok) {
-        const { error } = await res.json().catch(() => ({ error: 'Error' }))
-        throw new Error(error || 'No pudimos enviar tus datos')
-      }
+      const payload = (await res.json().catch(() => ({}))) as { error?: string; accessUrl?: string }
+      if (!res.ok) throw new Error(payload.error || 'No pudimos enviar tus datos')
+      setAccessUrl(payload.accessUrl ?? null)
       trackLead({ propertyId, eventId })
       setStatus('ok')
       setForm(INITIAL)
@@ -237,10 +237,20 @@ export function LeadCaptureProvider({
                   {source === GALLERY_LOCK_SOURCE ? '¡Listo! Ya podés verla completa' : '¡Gracias! Recibimos tus datos.'}
                 </h2>
                 <p className="text-sm text-slate-500">
-                  {source === GALLERY_LOCK_SOURCE
-                    ? 'Cerrá esta ventana y recorré todas las fotos. Un asesor te contacta para coordinar la visita.'
-                    : 'Un asesor te va a contactar muy pronto.'}
+                  {accessUrl
+                    ? 'Te mandamos por WhatsApp el recorrido de la propiedad para que la conozcas por dentro. También podés verlo acá:'
+                    : source === GALLERY_LOCK_SOURCE
+                      ? 'Cerrá esta ventana y recorré todas las fotos. Un asesor te contacta para coordinar la visita.'
+                      : 'Un asesor te va a contactar muy pronto.'}
                 </p>
+                {accessUrl && (
+                  <a
+                    href={accessUrl}
+                    className="rounded-full bg-slate-900 px-6 py-2.5 text-sm font-medium text-white"
+                  >
+                    Ver el recorrido
+                  </a>
+                )}
                 <button
                   type="button"
                   onClick={close}
