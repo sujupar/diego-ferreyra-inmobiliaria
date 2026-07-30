@@ -35,6 +35,10 @@ interface LeadRow {
   notes: string | null
   created_at: string
   deleted_at?: string | null
+  /** Número visible de comprador (#1042). Se asigna solo y no se reusa. */
+  lead_number?: number | null
+  suspected_bot?: boolean | null
+  bot_reason?: string | null
   properties: {
     address: string
     title: string | null
@@ -167,13 +171,17 @@ export function InboxClient({ userRole, userId }: { userRole: string; userId: st
     if (!leads) return []
     if (!search.trim()) return leads
     const q = search.toLowerCase()
+    // Se puede buscar por el número de comprador con o sin '#': "#1042" y "1042"
+    // encuentran lo mismo, que es como lo va a tipear cualquiera.
+    const qNumero = q.replace(/^#/, '')
     return leads.filter(
       l =>
         l.name.toLowerCase().includes(q) ||
         (l.email ?? '').toLowerCase().includes(q) ||
         (l.phone ?? '').toLowerCase().includes(q) ||
         (l.properties?.address ?? '').toLowerCase().includes(q) ||
-        (l.message ?? '').toLowerCase().includes(q),
+        (l.message ?? '').toLowerCase().includes(q) ||
+        (l.lead_number != null && String(l.lead_number) === qNumero),
     )
   }, [leads, search])
 
@@ -455,11 +463,26 @@ export function InboxClient({ userRole, userId }: { userRole: string; userId: st
                   <div className="flex items-start gap-4">
                     <div className="flex-1 min-w-0 space-y-1.5">
                       <div className="flex items-center gap-2 flex-wrap">
+                        {/* Número de comprador: sirve para referirse a una persona
+                            sin depender del nombre (hay homónimos y nombres falsos). */}
+                        {lead.lead_number != null && (
+                          <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                            #{lead.lead_number}
+                          </span>
+                        )}
                         <span className="font-medium text-base">{lead.name}</span>
                         <Badge className={`text-xs ${badge.color}`}>
                           <Icon className="h-3 w-3 mr-1" />
                           {badge.label}
                         </Badge>
+                        {lead.suspected_bot && (
+                          <Badge
+                            className="text-xs bg-slate-600 text-white"
+                            title={lead.bot_reason ?? undefined}
+                          >
+                            Posible bot
+                          </Badge>
+                        )}
                         <Badge variant="outline" className="text-xs">
                           {SOURCE_LABELS[lead.source] ?? lead.source}
                         </Badge>

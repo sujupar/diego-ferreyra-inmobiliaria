@@ -83,7 +83,10 @@ export async function GET(req: Request) {
 
     let query = supabase
       .from('property_leads')
-      .select('id, property_id, name, email, phone, message, source, status, assigned_to, notes, created_at, deleted_at')
+      // `lead_number` = el # visible de comprador; `suspected_bot`/`bot_reason` lo
+      // marcan sin descartarlo. Ninguna de las tres está en el Database type
+      // generado (el CLI de Supabase no conecta en este proyecto) → cast abajo.
+      .select('id, property_id, name, email, phone, message, source, status, assigned_to, notes, created_at, deleted_at, lead_number, suspected_bot, bot_reason')
       .gte('created_at', since)
       .order('created_at', { ascending: false })
       .limit(limit)
