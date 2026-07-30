@@ -562,17 +562,46 @@ export async function createCampaignForProperty(
         .eq('campaign_id', existing.campaign_id)
       // Caemos al flow normal de creación abajo
     } else {
-      // Campaña completa existente — devolvemos la existente, no duplicamos.
-      const existingAdIds = (existing.ad_ids as string[] | null) ?? []
-      return {
-        campaignId: existing.campaign_id,
-        adsetId: existing.adset_id ?? '',
-        adIds: existingAdIds,
-        budgetDailyArs: existing.budget_daily ?? 0,
-        landingUrl: existing.landing_url ?? `${getAppUrl()}/p/${property.public_slug}`,
-        expectedAds: existingAdIds.length,
-        failedVariants: [],
+      // La fila dice "completa", pero eso NO alcanza: la campaña puede haber sido
+      // eliminada desde Ads Manager y nuestra fila quedar rancia. Pasó de verdad
+      // el 2026-07-30 — el usuario borró la campaña en Meta, volvió a publicar, y
+      // el sistema le devolvió "publicada" con un link a algo que ya no existía.
+      // Antes de devolver la existente, le PREGUNTAMOS A META.
+      const { syncCampaignState } = await import('./meta-sync')
+      let vive = false
+      try {
+        const estado = await syncCampaignState(existing.campaign_id)
+        vive = estado.status === 'active' || estado.status === 'paused'
+      } catch (err) {
+        // No pudimos verificar (red, rate limit). NO inventamos ninguna de las dos
+        // cosas: fallar acá es mucho mejor que devolver una campaña fantasma o
+        // crear una duplicada que gaste en paralelo.
+        throw new Error(
+          `No pudimos verificar en Meta el estado de la campaña ${existing.campaign_id}. ` +
+            `No creamos ni reutilizamos nada para no duplicar gasto. Reintentá en un momento. ` +
+            `(detalle: ${err instanceof Error ? err.message : String(err)})`,
+        )
       }
+
+      if (vive) {
+        // Campaña completa y viva — devolvemos la existente, no duplicamos.
+        const existingAdIds = (existing.ad_ids as string[] | null) ?? []
+        return {
+          campaignId: existing.campaign_id,
+          adsetId: existing.adset_id ?? '',
+          adIds: existingAdIds,
+          budgetDailyArs: existing.budget_daily ?? 0,
+          landingUrl: existing.landing_url ?? `${getAppUrl()}/p/${property.public_slug}`,
+          expectedAds: existingAdIds.length,
+          failedVariants: [],
+        }
+      }
+
+      // Meta dice que ya no está. `syncCampaignState` ya dejó la fila en
+      // 'archived' con su nota, así que caemos al flujo normal y creamos una limpia.
+      console.log(
+        `[meta-builder] la campaña ${existing.campaign_id} ya no existe en Meta — se crea una nueva`,
+      )
     }
   }
 
