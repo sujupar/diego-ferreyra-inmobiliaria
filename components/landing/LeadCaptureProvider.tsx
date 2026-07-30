@@ -79,8 +79,15 @@ interface FormState {
   phone: string
   intent: string
 }
-const INITIAL: FormState = { name: '', email: '', phone: '', intent: 'Coordinar una visita' }
-const INTENTS = ['Coordinar una visita', 'Que me contacten', 'Recibir más información']
+// Orden = orden del <select>. La primera es la preseleccionada por defecto
+// (pedido del dueño 2026-07-30): la mayoría entra desde un anuncio y lo
+// primero que quiere es CONOCER la propiedad por dentro, no dejar el dato
+// para que la llamen — "Ver el recorrido..." reusa el mismo término
+// ("recorrido") que ya se usa en el resto del popup/WhatsApp post-envío, así
+// que se lee consistente en toda la landing. También queda claro en el Inbox
+// como `"Ver el recorrido de la propiedad · <source>"`.
+const INTENTS = ['Ver el recorrido de la propiedad', 'Coordinar una visita', 'Que me contacten']
+const INITIAL: FormState = { name: '', email: '', phone: '', intent: INTENTS[0] }
 
 function getUtmFromUrl(): Record<string, string> {
   if (typeof window === 'undefined') return {}
@@ -451,32 +458,34 @@ export function LeadCaptureProvider({
                     placeholder="Juan Pérez"
                   />
                 </div>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium" htmlFor="lc-email">
-                      Email
-                    </label>
-                    <input
-                      id="lc-email"
-                      type="email"
-                      value={form.email}
-                      onChange={e => setForm({ ...form, email: e.target.value })}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base outline-none focus:border-slate-900"
-                      placeholder="juan@ejemplo.com"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium" htmlFor="lc-phone">
-                      Teléfono / WhatsApp
-                    </label>
-                    <PhoneField
-                      id="lc-phone"
-                      value={form.phone}
-                      onChange={v => setForm({ ...form, phone: v })}
-                      country={country}
-                      onCountryChange={setCountry}
-                    />
-                  </div>
+                {/* Email y teléfono van cada uno en su propia fila (NO grid-cols-2):
+                    a 2 columnas el selector de indicativo + el número quedaban
+                    apretados en la mitad del ancho del modal y el número se
+                    cortaba con scroll horizontal dentro del input. */}
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium" htmlFor="lc-email">
+                    Email
+                  </label>
+                  <input
+                    id="lc-email"
+                    type="email"
+                    value={form.email}
+                    onChange={e => setForm({ ...form, email: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base outline-none focus:border-slate-900"
+                    placeholder="juan@ejemplo.com"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium" htmlFor="lc-phone">
+                    Teléfono / WhatsApp
+                  </label>
+                  <PhoneField
+                    id="lc-phone"
+                    value={form.phone}
+                    onChange={v => setForm({ ...form, phone: v })}
+                    country={country}
+                    onCountryChange={setCountry}
+                  />
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium" htmlFor="lc-intent">

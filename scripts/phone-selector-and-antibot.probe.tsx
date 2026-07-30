@@ -71,6 +71,18 @@ check(
   !/^import (?!type ).*libphonenumber-js\/max/m.test(providerSrc),
 )
 
+// Ajuste 2026-07-30: "Recibir más información" se reemplazó por la opción de
+// recorrido, y esa queda PRIMERA + preseleccionada por defecto (INITIAL.intent).
+check('"Recibir más información" ya no está entre las opciones', !providerSrc.includes('Recibir más información'))
+check(
+  '"Ver el recorrido de la propiedad" es la PRIMERA opción de INTENTS',
+  /const INTENTS = \[\s*'Ver el recorrido de la propiedad',/.test(providerSrc),
+)
+check(
+  'INITIAL.intent está preseleccionado en la primera opción (INTENTS[0], no hardcodeado aparte)',
+  /INITIAL: FormState = \{ name: '', email: '', phone: '', intent: INTENTS\[0\] \}/.test(providerSrc),
+)
+
 // Regresión: el lock anti-doble-submit se sigue tomando ANTES del primer await.
 const lockIdx = providerSrc.indexOf('submittingRef.current = true')
 const guardPhoneIdx = providerSrc.indexOf('if (form.phone.trim()) {')
@@ -112,6 +124,26 @@ check(
 check('carga getCountries/getCountryCallingCode con import() diferido', phoneFieldSrc.includes("await import('libphonenumber-js/max')"))
 check('usa Intl.DisplayNames para el nombre del país (sin paquete de banderas/nombres)', phoneFieldSrc.includes('Intl.DisplayNames'))
 check('Escape en el buscador cierra SOLO el dropdown (stopPropagation, no cierra todo el popup)', /e\.key === 'Escape'[\s\S]{0,40}e\.stopPropagation\(\)/.test(phoneFieldSrc))
+
+// Fix "se corta el teléfono" (2026-07-30): el selector (bandera+indicativo+flecha)
+// tiene ancho acotado (bandera en caja fija con overflow-hidden, por si el SO
+// renderiza la bandera como 2 glifos y duplica el ancho) y el input usa flex-1
+// (no w-full) para quedarse con TODO el espacio restante sin que su min-width
+// intrínseco fuerce scroll horizontal dentro del campo.
+check(
+  'la bandera va en una caja de ancho fijo + overflow-hidden (no puede empujar el input)',
+  /w-\[16px\][\s\S]{0,20}overflow-hidden/.test(phoneFieldSrc),
+)
+check('el botón selector no crece (shrink-0) y usa padding/gap reducidos', /shrink-0 items-center gap-0\.5/.test(phoneFieldSrc))
+check('el input usa flex-1 (se queda con el espacio restante) en vez de w-full', /className="min-w-0 flex-1 px-3 py-2\.5/.test(phoneFieldSrc))
+check('el input ya NO usa w-full (causaba min-width por contenido y scroll interno)', !/id=\{id\}[\s\S]{0,150}w-full min-w-0/.test(phoneFieldSrc))
+
+// El popup ya no parte Email/Teléfono en 2 columnas (a la mitad del ancho el
+// selector + número no entraban sin scroll). Ahora van cada uno en su fila.
+check(
+  'Email y Teléfono ya NO comparten una fila a 2 columnas (sm:grid-cols-2 removido)',
+  !providerSrc.includes('grid grid-cols-1 gap-4 sm:grid-cols-2'),
+)
 
 const routeSrc = readSrc('../app/api/leads/route.ts')
 check('importa evaluateLeadSubmission de lib/leads/anti-bot', routeSrc.includes("import { evaluateLeadSubmission } from '@/lib/leads/anti-bot'"))

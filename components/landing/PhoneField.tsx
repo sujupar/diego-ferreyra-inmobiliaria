@@ -132,13 +132,19 @@ export function PhoneField({
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-label="Elegir país / indicativo"
-          className="flex shrink-0 items-center gap-1 border-r border-slate-300 px-2.5 text-base text-slate-700 transition hover:bg-slate-50"
+          className="flex shrink-0 items-center gap-0.5 border-r border-slate-300 pl-2 pr-1.5 text-sm text-slate-700 transition hover:bg-slate-50"
         >
-          <span aria-hidden="true">{flagEmoji(current.iso2)}</span>
-          <span className="text-sm text-slate-600">
+          {/* Ancho fijo + overflow-hidden: en algunos sistemas (ej. Windows sin
+              fuente de emoji de bandera) el par de "regional indicators" se
+              renderiza como 2 glifos separados en vez de 1 bandera combinada,
+              casi duplicando el ancho. El cap evita que eso empuje el input. */}
+          <span aria-hidden="true" className="inline-block w-[16px] shrink-0 overflow-hidden text-center leading-none">
+            {flagEmoji(current.iso2)}
+          </span>
+          <span className="shrink-0 text-slate-600">
             {current.code ? `+${current.code}` : '···'}
           </span>
-          <ChevronDown className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+          <ChevronDown className="h-3 w-3 shrink-0 text-slate-400" aria-hidden="true" />
         </button>
         <input
           id={id}
@@ -147,7 +153,7 @@ export function PhoneField({
           autoComplete="tel-national"
           value={value}
           onChange={e => onChange(e.target.value)}
-          className="w-full min-w-0 px-3 py-2.5 text-base outline-none"
+          className="min-w-0 flex-1 px-3 py-2.5 text-base outline-none"
           placeholder={placeholder}
         />
       </div>
