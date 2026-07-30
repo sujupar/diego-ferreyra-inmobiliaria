@@ -44,8 +44,16 @@ async function findLeadIdByPhone(
   supabase: ReturnType<typeof admin>,
   normalizedFrom: string,
 ): Promise<string | null> {
-  const suffix = normalizedFrom.slice(-8)
-  if (suffix.length < 6) return null // demasiado corto para acotar de forma útil
+  // OJO: el prefiltro usa los ÚLTIMOS 4 dígitos, no 8. Los teléfonos se guardan
+  // TAL CUAL los escribió la persona ("+54 11 1234 5678", "11 2233-4455"), así
+  // que un `ilike` con los últimos 8 dígitos NO matchea: el espacio o el guion
+  // caen justo dentro de esos 8 y el patrón falla. Con 4 dígitos el prefiltro es
+  // más laxo (trae más candidatos) y la coincidencia REAL la decide
+  // `normalizeWhatsappPhone` abajo, que es exacta. Límite alto por eso.
+  // Si algún día hay decenas de miles de leads, conviene una columna generada
+  // con el teléfono normalizado + índice, y volver a un prefiltro exacto.
+  const suffix = normalizedFrom.slice(-4)
+  if (suffix.length < 4) return null // demasiado corto para acotar de forma útil
 
   try {
     const { data, error } = await supabase
@@ -58,7 +66,7 @@ async function findLeadIdByPhone(
       .is('deleted_at', null)
       .ilike('phone', `%${suffix}%`)
       .order('created_at', { ascending: false })
-      .limit(25)
+      .limit(200)
 
     if (error || !data) return null
 

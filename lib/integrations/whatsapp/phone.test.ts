@@ -57,3 +57,30 @@ describe('normalizeWhatsappPhone', () => {
     expect(isWhatsappUsable('   ')).toBe(false)
   })
 })
+
+describe('E.164 sin "+" (formato de phone_e164 y del `from` de Meta)', () => {
+  it('resuelve números del EXTERIOR guardados sin "+"', () => {
+    // Sin esto era imposible contestarle por el chat a un cliente del exterior:
+    // el hilo se identifica por `phone_e164`, que se guarda sin '+'.
+    expect(normalizeWhatsappPhone('573107822955')).toBe('573107822955')   // Colombia
+    expect(normalizeWhatsappPhone('5511912345678')).toBe('5511912345678') // Brasil
+    expect(normalizeWhatsappPhone('34612345678')).toBe('34612345678')     // España
+  })
+
+  it('sigue resolviendo los argentinos guardados sin "+"', () => {
+    expect(normalizeWhatsappPhone('5491161234567')).toBe('5491161234567')
+  })
+
+  it('el reintento NO rompe los móviles argentinos pelados', () => {
+    // `1161234567` con '+' adelante caería en el plan de EE.UU.; por eso el
+    // intento "como lo escribió una persona" va PRIMERO.
+    expect(normalizeWhatsappPhone('1161234567')).toBe('5491161234567')
+    expect(normalizeWhatsappPhone('11 6123 4567')).toBe('5491161234567')
+  })
+
+  it('el reintento no resucita basura', () => {
+    expect(normalizeWhatsappPhone('3107822955')).toBeNull() // ambiguo, se rechaza
+    expect(normalizeWhatsappPhone('000000000000')).toBeNull()
+    expect(normalizeWhatsappPhone('999999999999999')).toBeNull()
+  })
+})

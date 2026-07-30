@@ -20,9 +20,9 @@ import { parsePhoneNumberFromString } from 'libphonenumber-js/max'
 // se rechazan clientes reales del exterior.
 const CON_WHATSAPP = new Set(['MOBILE', 'FIXED_LINE_OR_MOBILE'])
 
-export function normalizeWhatsappPhone(raw: string | null | undefined): string | null {
-  if (!raw?.trim()) return null
-  const x = parsePhoneNumberFromString(raw, 'AR')
+/** Un intento de parseo. `region` solo aplica cuando el número no trae `+`. */
+function intentar(value: string, region?: 'AR'): string | null {
+  const x = parsePhoneNumberFromString(value, region)
   if (!x || !x.isValid()) return null
   if (CON_WHATSAPP.has(String(x.getType()))) return x.number.replace('+', '')
   // Argentina: un móvil escrito sin el 9 se parsea como FIXED_LINE. Probamos
@@ -30,6 +30,28 @@ export function normalizeWhatsappPhone(raw: string | null | undefined): string |
   if (x.country === 'AR') {
     const y = parsePhoneNumberFromString(`+549${x.nationalNumber}`)
     if (y?.isValid() && CON_WHATSAPP.has(String(y.getType()))) return y.number.replace('+', '')
+  }
+  return null
+}
+
+export function normalizeWhatsappPhone(raw: string | null | undefined): string | null {
+  const value = raw?.trim()
+  if (!value) return null
+
+  // 1) Como lo escribió una persona: región por defecto Argentina.
+  const comoEscrito = intentar(value, 'AR')
+  if (comoEscrito) return comoEscrito
+
+  // 2) Como E.164 SIN el '+'. Es el formato en que guardamos `phone_e164` y en el
+  //    que Meta manda el `from` de un mensaje entrante. Un número del EXTERIOR en
+  //    ese formato no parsea como nacional argentino: "573107822955" leído como
+  //    argentino es basura, pero con '+' adelante es el celular colombiano
+  //    correcto. Sin este reintento era imposible contestarle desde el chat a un
+  //    cliente del exterior — justo el caso que originó todo este trabajo.
+  //    Va SEGUNDO a propósito: probar '+' primero rompería los móviles argentinos
+  //    pelados (`1161234567` con '+' cae en el plan de EE.UU.).
+  if (/^\+?\d{8,15}$/.test(value)) {
+    return intentar(`+${value.replace(/^\+/, '')}`)
   }
   return null
 }

@@ -58,6 +58,12 @@ export async function POST() {
       .from('property_meta_campaigns')
       .select('campaign_id, property_id, status')
       .neq('status', 'archived')
+      // `provisioning` = campaña a mitad de creación EN ESTE MOMENTO. Sincronizarla
+      // es una carrera: el builder todavía está creando el adset y los anuncios, y
+      // Meta puede reportar un estado intermedio que nos haría pisar la fila
+      // mientras se escribe. La página de la campaña ya excluye ese caso; acá
+      // hacemos lo mismo. Se reconcilia sola en la próxima corrida, cuando terminó.
+      .neq('status', 'provisioning')
       .limit(MAX_ROWS_PER_RUN)
 
     if (selectError) {

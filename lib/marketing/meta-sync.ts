@@ -69,12 +69,26 @@ async function metaGet<T>(path: string): Promise<MetaGetResult<T>> {
  * Cualquier OTRO error (rate limit, token vencido, 5xx) NO debe interpretarse
  * como "no existe" — eso corrompería el status con un falso archived.
  */
-function isNonexistentObjectError(body: unknown): boolean {
+export function isNonexistentObjectError(body: unknown): boolean {
   const err = (body as { error?: { code?: number; error_subcode?: number; message?: string } } | null)
     ?.error
   if (!err) return false
+  const msg = typeof err.message === 'string' ? err.message : ''
+
+  // TRAMPA CRÍTICA: el mensaje real de Meta para el subcode 33 es
+  //   "Unsupported get request. Object with ID 'X' does not exist, CANNOT BE
+  //    LOADED DUE TO MISSING PERMISSIONS, or does not support this operation."
+  // O sea: el MISMO error tapa "se borró" y "tu token perdió permisos". Si lo
+  // interpretamos como "se borró", un token degradado marca `archived` una
+  // campaña ACTIVE que está GASTANDO PLATA — y como la página y el reconcile
+  // excluyen las archivadas, el cambio es de hecho irreversible y la UI empuja
+  // a crear otra campaña: dos campañas gastando en paralelo.
+  // Ante la ambigüedad NO decidimos: si el mensaje menciona permisos, tratamos
+  // el error como "no se pudo verificar" y NO tocamos el estado guardado.
+  if (/missing permission|permisos/i.test(msg)) return false
+
   if (err.error_subcode === 33) return true
-  if (typeof err.message === 'string' && /does not exist/i.test(err.message)) return true
+  if (/does not exist/i.test(msg)) return true
   return false
 }
 
@@ -147,7 +161,7 @@ export async function syncCampaignState(
 
   const { data: row } = await supabase
     .from('property_meta_campaigns')
-    .select('campaign_id, status')
+    .select('campaign_id, status, last_error')
     .eq('campaign_id', campaignId)
     .maybeSingle()
 
@@ -191,12 +205,18 @@ export async function syncCampaignState(
   const changed = row != null && previousStatus !== newStatus
 
   if (changed && !opts.dryRun) {
+    // `last_error` NO se pisa: es el único registro de una publicación parcial
+    // ("Publicación parcial: 3/6...") y lo que hace que el panel devuelva 409
+    // PARTIAL_CAMPAIGN al intentar reactivar una campaña incompleta. Borrarlo
+    // desarmaría ese freno en silencio. La nota del sync se APENDA.
+    const nota = buildSyncNote(exists, previousStatus, newStatus)
+    const previo = (row?.last_error as string | null) ?? null
+    const lastError =
+      previo && previo.trim() && !previo.includes(nota) ? `${previo} | ${nota}` : nota
+
     const { error } = await supabase
       .from('property_meta_campaigns')
-      .update({
-        status: newStatus,
-        last_error: buildSyncNote(exists, previousStatus, newStatus),
-      })
+      .update({ status: newStatus, last_error: lastError })
       .eq('campaign_id', campaignId)
     if (error) {
       console.warn(`[meta-sync] no se pudo persistir el sync de ${campaignId}:`, error.message)

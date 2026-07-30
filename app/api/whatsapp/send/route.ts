@@ -134,13 +134,15 @@ export async function POST(req: Request) {
 
     const supabase = admin()
 
-    let leadId = input.leadId ?? null
-    let propertyId = input.propertyId ?? null
-    if (!leadId && !propertyId) {
-      const ctx = await findContextFromHistory(supabase, normalizedTo)
-      leadId = ctx.leadId
-      propertyId = ctx.propertyId
-    }
+    // AGUJERO CERRADO: antes `input.leadId` tenía PRECEDENCIA sobre el historial,
+    // y solo se validaba que ese lead fuera del asesor que llama. Un asesor podía
+    // escribirle al cliente de otro asesor mandando su propio `leadId`. El
+    // historial de la conversación manda: los params del caller solo se usan
+    // cuando la conversación todavía NO existe.
+    const ctx = await findContextFromHistory(supabase, normalizedTo)
+    const conversacionExiste = Boolean(ctx.leadId || ctx.propertyId)
+    const leadId = conversacionExiste ? ctx.leadId : (input.leadId ?? null)
+    const propertyId = conversacionExiste ? ctx.propertyId : (input.propertyId ?? null)
 
     if (role === 'asesor') {
       const owns = await isAsesorOwner(supabase, propertyId, leadId, user.id)

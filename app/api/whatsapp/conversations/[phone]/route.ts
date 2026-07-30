@@ -123,16 +123,25 @@ export async function GET(req: Request, { params }: { params: Promise<{ phone: s
 
     const desc = (rows ?? []) as MessageRow[]
 
-    // Contexto (lead/propiedad/nombre): preferimos lo que traen los mensajes;
-    // si la conversación está vacía, usamos los query params (verificados abajo).
+    // Contexto que traen LOS MENSAJES de esta conversación. Es la única fuente
+    // válida para autorizar: los query params los elige quien llama.
     let contactName: string | null = null
-    let leadId: string | null = queryLeadId
-    let propertyId: string | null = queryPropertyId
+    let msgLeadId: string | null = null
+    let msgPropertyId: string | null = null
     for (const row of desc) {
       if (!contactName && row.contact_name) contactName = row.contact_name
-      if (!leadId && row.lead_id) leadId = row.lead_id
-      if (!propertyId && row.property_id) propertyId = row.property_id
+      if (!msgLeadId && row.lead_id) msgLeadId = row.lead_id
+      if (!msgPropertyId && row.property_id) msgPropertyId = row.property_id
     }
+
+    // AGUJERO CERRADO: antes los query params tenían PRECEDENCIA sobre el
+    // contexto de los mensajes, y solo se validaba que fueran del asesor que
+    // llama. Un asesor podía leer el hilo completo del cliente de otro asesor
+    // mandando su propio `leadId`. Ahora, si la conversación tiene mensajes, se
+    // autoriza SOLO contra el dueño real de esa conversación; los params se
+    // usan únicamente cuando el hilo está vacío (todavía no existe).
+    const leadId = msgLeadId ?? (desc.length === 0 ? queryLeadId : null)
+    const propertyId = msgPropertyId ?? (desc.length === 0 ? queryPropertyId : null)
 
     if (desc.length === 0 && !leadId && !propertyId) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 })
@@ -174,6 +183,24 @@ export async function GET(req: Request, { params }: { params: Promise<{ phone: s
         sent_by: r.sent_by,
         created_at: r.created_at,
       }))
+
+    // Abrir el hilo = leerlo. Sin esto el globito de no leídos NUNCA se limpiaba
+    // (contaba los entrantes con status 'received', y nada los cambiaba jamás),
+    // así que terminaba mostrando el total histórico y dejaba de servir para
+    // distinguir lo nuevo de lo viejo. Best-effort: si falla, el hilo se muestra
+    // igual — perder el marcado de leído es molesto, no mostrar la conversación
+    // sería grave.
+    try {
+      const pendientes = desc.filter(r => r.direction === 'in' && r.status === 'received').map(r => r.id)
+      if (pendientes.length > 0) {
+        await supabase
+          .from('whatsapp_messages')
+          .update({ status: 'read_by_team', updated_at: new Date().toISOString() })
+          .in('id', pendientes)
+      }
+    } catch (err) {
+      console.warn('[whatsapp-chat] no se pudo marcar como leído (continuando):', err)
+    }
 
     return NextResponse.json({
       data: {
