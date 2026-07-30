@@ -25,7 +25,17 @@ describe('normalizeWhatsappPhone', () => {
 
   it('devuelve null en vez de inventar cuando no es un número válido', () => {
     expect(normalizeWhatsappPhone('3107822955')).toBeNull() // 10 dígitos que no son AR válido
-    expect(normalizeWhatsappPhone('+54 11 1234 5678')).toBeNull() // relleno, no existe
+  })
+
+  it('NO detecta números de relleno que encajan en el plan de numeración', () => {
+    // `+54 11 1234 5678` es el teléfono que dejó un lead de prueba llamado "John
+    // Doe". Encaja en el patrón de un móvil porteño válido, así que la librería lo
+    // acepta y le agrega el 9. Es un LÍMITE conocido y aceptado: libphonenumber
+    // valida contra el plan de numeración del país, no contra las líneas realmente
+    // asignadas — eso último no lo sabe nadie más que la operadora.
+    // Por eso la visibilidad importa: el registro de mensajes y el estado que
+    // devuelve Meta son los que van a mostrar que ese número no recibe nada.
+    expect(normalizeWhatsappPhone('+54 11 1234 5678')).toBe('5491112345678')
     expect(normalizeWhatsappPhone('123')).toBeNull()
     expect(normalizeWhatsappPhone('no es un teléfono')).toBeNull()
     expect(normalizeWhatsappPhone('')).toBeNull()
