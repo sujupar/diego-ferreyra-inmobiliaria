@@ -115,13 +115,50 @@ async function persistInbound(supabase: ReturnType<typeof admin>, msg: InboundMe
   }
 }
 
+/**
+ * Progreso de un mensaje saliente. Meta REINTENTA los webhooks y NO garantiza el
+ * orden, así que un `sent` que llega tarde no debe pisar un `delivered` o un
+ * `read` que ya mostramos. `failed` gana siempre: es la información que más
+ * importa y la que motivó todo este trabajo.
+ */
+const ORDEN_ESTADO: Record<string, number> = {
+  skipped: 0, accepted: 1, sent: 2, delivered: 3, read: 4, failed: 99,
+}
+
 /** Actualiza el estado de un mensaje saliente ya logueado por `logOutbound`. Nunca lanza. */
 async function persistStatus(supabase: ReturnType<typeof admin>, s: StatusUpdate): Promise<void> {
   try {
+    const nuevo = mapMetaStatus(s.status)
+
+    const { data: actual } = await supabase
+      .from('whatsapp_messages')
+      .select('id, status')
+      .eq('wa_message_id', s.waMessageId)
+      .maybeSingle()
+
+    if (!actual) {
+      // Carrera estrecha pero real: el estado llegó antes de que `logOutbound`
+      // escribiera la fila. Sin este aviso el evento se perdía sin dejar rastro,
+      // justo lo contrario de lo que este sistema existe para garantizar.
+      console.warn(
+        `[whatsapp-webhook] llegó el estado "${s.status}" para un mensaje que todavía no está registrado (wa_message_id=${s.waMessageId}) — se descarta`,
+      )
+      return
+    }
+
+    const rankActual = ORDEN_ESTADO[(actual as { status: string }).status] ?? -1
+    const rankNuevo = ORDEN_ESTADO[nuevo] ?? -1
+    if (rankNuevo < rankActual) {
+      console.log(
+        `[whatsapp-webhook] estado "${nuevo}" descartado por llegar fuera de orden (ya estaba en "${(actual as { status: string }).status}")`,
+      )
+      return
+    }
+
     const { error } = await supabase
       .from('whatsapp_messages')
       .update({
-        status: mapMetaStatus(s.status),
+        status: nuevo,
         error_code: s.errorCode,
         error_message: s.errorMessage,
         updated_at: new Date().toISOString(),

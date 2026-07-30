@@ -162,6 +162,15 @@ export function LeadCaptureProvider({
       setErrorMsg('Necesitamos tu nombre y al menos un contacto (email o teléfono).')
       return
     }
+    // El lock se toma ACÁ, ANTES del primer `await`. El validador de teléfono se
+    // carga en diferido, y ese await (~50-300 ms) dejaba una ventana en la que el
+    // botón seguía habilitado: dos clicks rápidos = dos POST /api/leads = dos
+    // leads y DOS WhatsApp al mismo cliente (el dedup de 5 minutos es una lectura
+    // previa, no atómica, así que se pueden cruzar). Si algo falla más abajo se
+    // libera en el `catch`/`finally`.
+    submittingRef.current = true
+    setStatus('sending')
+
     // Si dejó algo en el campo teléfono, tiene que servir para WhatsApp — sin
     // esto se repite el bug real que perdió un cliente (un celular sin
     // indicativo de país se guardaba tal cual y el mensaje nunca llegaba).
@@ -177,6 +186,7 @@ export function LeadCaptureProvider({
         usable = true
       }
       if (!usable) {
+        submittingRef.current = false
         setStatus('err')
         setErrorMsg(
           'Revisá el número: puede que falte la característica o el indicativo del país (ej. +57 para Colombia).',
@@ -184,8 +194,6 @@ export function LeadCaptureProvider({
         return
       }
     }
-    submittingRef.current = true
-    setStatus('sending')
     setErrorMsg('')
     const eventId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto

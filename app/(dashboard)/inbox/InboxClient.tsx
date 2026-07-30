@@ -124,10 +124,17 @@ export function InboxClient({ userRole, userId }: { userRole: string; userId: st
     setLoading(true)
     setError(null)
     try {
-      const params = new URLSearchParams({ days: String(days), limit: '200' })
+      // La papelera NO hereda el filtro de días. Un lead creado hace 6 meses y
+      // borrado ayer no aparecía con el rango por defecto de 30 días: el dato
+      // estaba intacto en la base, pero desde la pantalla era imposible
+      // encontrarlo para restaurarlo. Una papelera que esconde lo que guarda no
+      // sirve de nada.
+      const params = new URLSearchParams({ limit: '200' })
       if (view === 'trash') {
         params.set('trashed', 'true')
+        params.set('days', '3650')
       } else {
+        params.set('days', String(days))
         if (activeStatus) params.set('status', activeStatus)
         if (activeSource) params.set('source', activeSource)
       }
@@ -308,6 +315,14 @@ export function InboxClient({ userRole, userId }: { userRole: string; userId: st
             </div>
           )}
 
+          {/* En la papelera estos dos filtros no se mandan al servidor, así que
+              dejarlos en pantalla sería mentirle al usuario: los tocaría y no
+              pasaría nada. La papelera muestra TODO lo borrado, sin recortes. */}
+          {view === 'trash' ? (
+            <p className="text-sm text-muted-foreground">
+              Acá está todo lo que eliminaste, sin límite de fecha. Podés restaurar lo que quieras.
+            </p>
+          ) : (
           <div className="flex items-center gap-3 flex-wrap text-sm">
             <span className="font-medium">Fuente:</span>
             <select
@@ -334,7 +349,13 @@ export function InboxClient({ userRole, userId }: { userRole: string; userId: st
               <option value={90}>90 días</option>
               <option value={365}>1 año</option>
             </select>
+          </div>
+          )}
 
+          {/* La búsqueda sí sirve en las dos vistas: filtra en el cliente sobre
+              lo que ya se cargó, así que también sirve para encontrar algo en la
+              papelera. */}
+          <div className="flex items-center gap-3 text-sm">
             <input
               type="search"
               value={search}

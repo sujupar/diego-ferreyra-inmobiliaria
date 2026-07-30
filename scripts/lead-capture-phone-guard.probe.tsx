@@ -62,14 +62,23 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const src = readFileSync(join(__dirname, '../components/landing/LeadCaptureProvider.tsx'), 'utf8')
 
 const nombreContactoIdx = src.indexOf('Necesitamos tu nombre y al menos un contacto')
-const guardPhoneIdx = src.indexOf('form.phone.trim() && !isWhatsappUsable(form.phone)')
+// El validador se carga en DIFERIDO (`loadPhoneCheck`): `libphonenumber-js/max`
+// son ~50 KB gzip y esta landing es tráfico pago, así que no entra en el bundle
+// inicial. Por eso el guard no llama a `isWhatsappUsable` de forma directa.
+const guardPhoneIdx = src.indexOf('if (form.phone.trim()) {')
 const errorCopy = 'Revisá el número: puede que falte la característica o el indicativo del país (ej. +57 para Colombia).'
+const lockIdx = src.indexOf('submittingRef.current = true')
 
 check('la validación nombre+contacto sigue intacta (no se tocó la regla existente)', nombreContactoIdx !== -1)
 check('el guard nuevo de teléfono existe', guardPhoneIdx !== -1)
 check('el guard de teléfono va DESPUÉS de la regla nombre+contacto (no la reemplaza)', guardPhoneIdx > nombreContactoIdx)
-check('el guard solo corre si el campo tiene contenido (no bloquea vacío)', src.includes('form.phone.trim() && !isWhatsappUsable'))
-check('usa isWhatsappUsable de Task 2 (no reimplementa la validación)', src.includes("from '@/lib/integrations/whatsapp/phone'"))
+check('el guard solo corre si el campo tiene contenido (no bloquea vacío)', src.includes('if (form.phone.trim()) {'))
+check('usa isWhatsappUsable de Task 2 (no reimplementa la validación)', src.includes("await import('@/lib/integrations/whatsapp/phone')"))
+check('el validador se carga en diferido (no engorda el bundle de la landing paga)', !/^import .*whatsapp\/phone'/m.test(src))
+// Regresión encontrada en la revisión adversarial: el `await` del import diferido
+// reabría la ventana de doble submit (dos leads y dos WhatsApp al mismo cliente).
+check('el lock anti-doble-submit se toma ANTES del await del validador', lockIdx !== -1 && lockIdx < guardPhoneIdx)
+check('si el teléfono es inválido, el lock se LIBERA (si no, el form queda muerto)', src.includes('submittingRef.current = false'))
 check('el texto de error es EXACTO al del brief', src.includes(errorCopy), 'no se encontró el string exacto')
 
 // El error se muestra en el mismo párrafo que ya usaba el form (status==='err'),
