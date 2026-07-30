@@ -5,6 +5,7 @@ import { requireAuth } from '@/lib/auth/require-role'
 import { createAccessToken, accessUrl } from '@/lib/leads/access-token'
 import { sendRecorridoWhatsapp } from '@/lib/leads/send-recorrido-whatsapp'
 import { resolveDeliverMedia } from '@/lib/properties/deliver-media'
+import { evaluateLeadSubmission } from '@/lib/leads/anti-bot'
 import type { Database } from '@/types/database.types'
 
 // El POST espera, dentro del request: el email del recorrido, el envío por
@@ -155,6 +156,10 @@ const LeadSchema = z.object({
   fbp: z.string().max(200).nullable().optional(),
   fbc: z.string().max(300).nullable().optional(),
   eventSourceUrl: z.string().url().nullable().optional(),
+  // Task 6 — ficha de un solo uso (`GET /api/leads/ticket`). Puede venir
+  // ausente/null: el popup NUNCA bloquea el envío por esto, solo se pierde la
+  // señal y el lead queda marcado `sospechoso` (ver `evaluateLeadSubmission`).
+  ticket: z.string().max(200).nullable().optional(),
 })
 
 // Rate limit best-effort por IP (no sobrevive entre instancias serverless).
@@ -277,7 +282,23 @@ export async function POST(req: Request) {
     // normalizado y no corresponde agregar una migración solo para esto; el
     // Inbox (`InboxClient.tsx`) llama `isWhatsappUsable(lead.phone)` al leer
     // para mostrar la insignia "Teléfono no válido para WhatsApp".
-    const { data: lead, error: insErr } = await supabase
+
+    // Task 6 — anti-bot: NUNCA rechaza, solo marca. Ver `lib/leads/anti-bot.ts`.
+    const antiBot = evaluateLeadSubmission({
+      name: parsed.data.name,
+      email: parsed.data.email ?? null,
+      phone: parsed.data.phone ?? null,
+      ticket: parsed.data.ticket ?? null,
+    })
+    if (antiBot.suspectedBot) {
+      console.warn(`[leads] posible bot (se guarda igual): ${antiBot.reason}`)
+    }
+
+    // `suspected_bot`/`bot_reason` no están en el Database type generado
+    // (migración muy reciente, mismo motivo que `deleted_at` — ver
+    // `getAdminRaw` arriba): este INSERT puntual usa el cliente sin el
+    // genérico para poder escribirlas.
+    const { data: lead, error: insErr } = await getAdminRaw()
       .from('property_leads')
       .insert({
         property_id: parsed.data.propertyId,
@@ -288,6 +309,8 @@ export async function POST(req: Request) {
         source: parsed.data.source,
         utm: parsed.data.utm,
         assigned_to: prop.assigned_to,
+        suspected_bot: antiBot.suspectedBot,
+        bot_reason: antiBot.reason,
       })
       .select()
       .single()
