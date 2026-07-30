@@ -19,6 +19,9 @@ export async function sendRecorridoWhatsapp(input: {
   clientName: string
   propertyLabel: string
   token: string
+  /** Lead y propiedad de esta operación — para que el chat del Inbox sepa a qué pertenece cada mensaje. */
+  leadId?: string | null
+  propertyId?: string | null
 }): Promise<boolean> {
   const template = process.env.WHATSAPP_TEMPLATE_RECORRIDO
   if (!template) return false
@@ -39,6 +42,8 @@ export async function sendRecorridoWhatsapp(input: {
       // 3s (el default global es 8s): acá el visitante está esperando la respuesta
       // de `POST /api/leads`, que además hace el email del recorrido y Meta CAPI.
       timeoutMs: 3000,
+      leadId: input.leadId,
+      propertyId: input.propertyId,
     })
     return result.ok && !result.skipped
   } catch (err) {

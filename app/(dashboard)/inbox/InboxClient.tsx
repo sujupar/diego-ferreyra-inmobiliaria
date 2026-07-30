@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { BulkActionsBar } from '@/components/ui/BulkActionsBar'
 import {
   Loader2,
   Mail,
@@ -15,8 +16,11 @@ import {
   Calendar,
   XCircle,
   Filter,
+  Trash2,
+  RotateCcw,
 } from 'lucide-react'
 import { LeadDetailSheet } from './LeadDetailSheet'
+import { isWhatsappUsable } from '@/lib/integrations/whatsapp/phone'
 
 interface LeadRow {
   id: string
@@ -30,12 +34,33 @@ interface LeadRow {
   assigned_to: string | null
   notes: string | null
   created_at: string
+  deleted_at?: string | null
   properties: {
     address: string
     title: string | null
     neighborhood: string | null
     assigned_to: string | null
   } | null
+}
+
+// Solo estos roles pueden ver/usar la Papelera (borrar y restaurar leads). El
+// asesor puede ver el Inbox pero no borra ni restaura nada.
+const OPS_ROLES = ['admin', 'dueno', 'coordinador']
+
+/** Lee la respuesta como JSON tolerando que NO lo sea (mismo patrón que
+ * `components/properties/LandingSection.tsx`): si una función se pasa del
+ * tiempo máximo, el gateway devuelve HTML de error y `res.json()` explota con
+ * "Unexpected token '<'" en vez de mostrar el problema real. */
+async function readJson<T>(res: Response): Promise<T & { error?: string }> {
+  const text = await res.text()
+  try {
+    return JSON.parse(text) as T & { error?: string }
+  } catch {
+    if (res.status === 504 || res.status === 502 || res.status === 408) {
+      return { error: 'El servidor tardó demasiado y cortó la operación. Volvé a intentar.' } as never
+    }
+    return { error: `El servidor respondió algo inesperado (${res.status}). Volvé a intentar.` } as never
+  }
 }
 
 const STATUS_OPTIONS = [
@@ -82,6 +107,7 @@ function relativeTime(iso: string): string {
 }
 
 export function InboxClient({ userRole, userId }: { userRole: string; userId: string }) {
+  const canManageTrash = OPS_ROLES.includes(userRole)
   const [leads, setLeads] = useState<LeadRow[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -90,28 +116,39 @@ export function InboxClient({ userRole, userId }: { userRole: string; userId: st
   const [days, setDays] = useState(30)
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [view, setView] = useState<'active' | 'trash'>('active')
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
+  const [bulkActioning, setBulkActioning] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const params = new URLSearchParams({ days: String(days), limit: '200' })
-      if (activeStatus) params.set('status', activeStatus)
-      if (activeSource) params.set('source', activeSource)
-      const res = await fetch(`/api/leads?${params.toString()}`)
-      if (!res.ok) {
-        const { error: msg } = await res.json().catch(() => ({ error: 'Error' }))
-        throw new Error(msg || 'Error al cargar leads')
+      // La papelera NO hereda el filtro de días. Un lead creado hace 6 meses y
+      // borrado ayer no aparecía con el rango por defecto de 30 días: el dato
+      // estaba intacto en la base, pero desde la pantalla era imposible
+      // encontrarlo para restaurarlo. Una papelera que esconde lo que guarda no
+      // sirve de nada.
+      const params = new URLSearchParams({ limit: '200' })
+      if (view === 'trash') {
+        params.set('trashed', 'true')
+        params.set('days', '3650')
+      } else {
+        params.set('days', String(days))
+        if (activeStatus) params.set('status', activeStatus)
+        if (activeSource) params.set('source', activeSource)
       }
-      const { data } = await res.json()
-      setLeads(data ?? [])
+      const res = await fetch(`/api/leads?${params.toString()}`)
+      const data = await readJson<{ data?: LeadRow[] }>(res)
+      if (!res.ok) throw new Error(data.error || 'Error al cargar leads')
+      setLeads(data.data ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error')
       setLeads([])
     } finally {
       setLoading(false)
     }
-  }, [activeStatus, activeSource, days])
+  }, [activeStatus, activeSource, days, view])
 
   useEffect(() => {
     load()
@@ -119,6 +156,12 @@ export function InboxClient({ userRole, userId }: { userRole: string; userId: st
     const handle = setInterval(load, 60000)
     return () => clearInterval(handle)
   }, [load])
+
+  // La selección no debe sobrevivir a un cambio de filtro/vista: evita
+  // "eliminar seleccionados" sobre leads que ya no están en pantalla.
+  useEffect(() => {
+    setCheckedIds(new Set())
+  }, [view, activeStatus, activeSource, days])
 
   const filtered = useMemo(() => {
     if (!leads) return []
@@ -143,41 +186,143 @@ export function InboxClient({ userRole, userId }: { userRole: string; userId: st
     return c
   }, [leads])
 
+  function toggleChecked(id: string) {
+    setCheckedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleCheckAll() {
+    setCheckedIds(prev => {
+      if (filtered.length > 0 && prev.size === filtered.length) return new Set()
+      return new Set(filtered.map(l => l.id))
+    })
+  }
+
+  async function handleBulkDelete() {
+    const ids = Array.from(checkedIds)
+    if (ids.length === 0) return
+    const noun = ids.length === 1 ? 'lead' : 'leads'
+    if (
+      !confirm(
+        `¿Eliminar ${ids.length} ${noun}?\n\nSe pueden recuperar después desde la Papelera.`,
+      )
+    ) {
+      return
+    }
+    setBulkActioning(true)
+    try {
+      const res = await fetch('/api/leads', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      const data = await readJson<{ deleted?: number }>(res)
+      if (!res.ok) throw new Error(data.error || 'No se pudieron eliminar los leads')
+      setCheckedIds(new Set())
+      await load()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al eliminar los leads')
+    } finally {
+      setBulkActioning(false)
+    }
+  }
+
+  async function restoreLeads(ids: string[]) {
+    if (ids.length === 0) return
+    setBulkActioning(true)
+    try {
+      const res = await fetch('/api/leads/restore', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      const data = await readJson<{ restored?: number }>(res)
+      if (!res.ok) throw new Error(data.error || 'No se pudieron restaurar los leads')
+      setCheckedIds(new Set())
+      await load()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al restaurar los leads')
+    } finally {
+      setBulkActioning(false)
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div>
-        <p className="eyebrow">Pipeline comercial</p>
-        <h1 className="display text-3xl">Inbox de leads</h1>
-        <p className="text-sm text-muted-foreground mt-2">
-          {userRole === 'asesor'
-            ? 'Leads de tus propiedades.'
-            : 'Todos los leads del equipo.'}
-        </p>
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <p className="eyebrow">Pipeline comercial</p>
+          <h1 className="display text-3xl">Inbox de leads</h1>
+          <p className="text-sm text-muted-foreground mt-2">
+            {view === 'trash'
+              ? 'Leads eliminados. Se pueden restaurar cuando quieras.'
+              : userRole === 'asesor'
+                ? 'Leads de tus propiedades.'
+                : 'Todos los leads del equipo.'}
+          </p>
+        </div>
+        {canManageTrash && (
+          <div className="inline-flex rounded-lg border bg-muted/40 p-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setView('active')}
+              className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                view === 'active' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Leads
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('trash')}
+              className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                view === 'trash' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Papelera
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Filtros */}
       <Card>
         <CardContent className="py-4 space-y-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Estado:</span>
-            {STATUS_OPTIONS.map(opt => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setActiveStatus(opt.value)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
-                  activeStatus === opt.value
-                    ? 'bg-[color:var(--brand)] text-white'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+          {view === 'active' && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Estado:</span>
+              {STATUS_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setActiveStatus(opt.value)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
+                    activeStatus === opt.value
+                      ? 'bg-[color:var(--brand)] text-white'
+                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
 
+          {/* En la papelera estos dos filtros no se mandan al servidor, así que
+              dejarlos en pantalla sería mentirle al usuario: los tocaría y no
+              pasaría nada. La papelera muestra TODO lo borrado, sin recortes. */}
+          {view === 'trash' ? (
+            <p className="text-sm text-muted-foreground">
+              Acá está todo lo que eliminaste, sin límite de fecha. Podés restaurar lo que quieras.
+            </p>
+          ) : (
           <div className="flex items-center gap-3 flex-wrap text-sm">
             <span className="font-medium">Fuente:</span>
             <select
@@ -204,7 +349,13 @@ export function InboxClient({ userRole, userId }: { userRole: string; userId: st
               <option value={90}>90 días</option>
               <option value={365}>1 año</option>
             </select>
+          </div>
+          )}
 
+          {/* La búsqueda sí sirve en las dos vistas: filtra en el cliente sobre
+              lo que ya se cargó, así que también sirve para encontrar algo en la
+              papelera. */}
+          <div className="flex items-center gap-3 text-sm">
             <input
               type="search"
               value={search}
@@ -214,14 +365,61 @@ export function InboxClient({ userRole, userId }: { userRole: string; userId: st
             />
           </div>
 
-          <div className="flex gap-3 text-xs text-muted-foreground pt-1">
-            <span>Total: <strong className="text-foreground">{counts.all}</strong></span>
-            <span>Nuevos: <strong className="text-blue-600">{counts.new}</strong></span>
-            <span>Contactados: <strong className="text-amber-600">{counts.contacted}</strong></span>
-            <span>Agendados: <strong className="text-emerald-600">{counts.scheduled}</strong></span>
-          </div>
+          {view === 'active' ? (
+            <div className="flex gap-3 text-xs text-muted-foreground pt-1">
+              <span>Total: <strong className="text-foreground">{counts.all}</strong></span>
+              <span>Nuevos: <strong className="text-blue-600">{counts.new}</strong></span>
+              <span>Contactados: <strong className="text-amber-600">{counts.contacted}</strong></span>
+              <span>Agendados: <strong className="text-emerald-600">{counts.scheduled}</strong></span>
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground pt-1">
+              {counts.all} lead{counts.all !== 1 ? 's' : ''} en la papelera
+            </div>
+          )}
+
+          {canManageTrash && filtered.length > 0 && (
+            <label className="flex items-center gap-2 text-xs text-muted-foreground pt-1 cursor-pointer w-fit">
+              <input
+                type="checkbox"
+                checked={checkedIds.size === filtered.length}
+                onChange={toggleCheckAll}
+                className="h-3.5 w-3.5 accent-[color:var(--brand)]"
+              />
+              Seleccionar todos ({filtered.length})
+            </label>
+          )}
         </CardContent>
       </Card>
+
+      {canManageTrash && checkedIds.size > 0 && (
+        <BulkActionsBar
+          count={checkedIds.size}
+          noun="leads"
+          onClear={() => setCheckedIds(new Set())}
+          actions={
+            view === 'active'
+              ? [
+                  {
+                    label: 'Eliminar seleccionados',
+                    icon: <Trash2 className="h-4 w-4 mr-1" />,
+                    variant: 'destructive',
+                    onClick: handleBulkDelete,
+                    disabled: bulkActioning,
+                  },
+                ]
+              : [
+                  {
+                    label: 'Restaurar seleccionados',
+                    icon: <RotateCcw className="h-4 w-4 mr-1" />,
+                    variant: 'default',
+                    onClick: () => restoreLeads(Array.from(checkedIds)),
+                    disabled: bulkActioning,
+                  },
+                ]
+          }
+        />
+      )}
 
       {/* Lista de leads */}
       {loading && !leads ? (
@@ -245,60 +443,103 @@ export function InboxClient({ userRole, userId }: { userRole: string; userId: st
           {filtered.map(lead => {
             const badge = statusBadge(lead.status)
             const Icon = badge.icon
-            return (
-              <button
-                key={lead.id}
-                type="button"
-                onClick={() => setSelectedId(lead.id)}
-                className="w-full text-left"
+            const cardBody = (
+              <Card
+                className={
+                  view === 'active'
+                    ? 'hover:border-[color:var(--brand)]/40 transition cursor-pointer'
+                    : ''
+                }
               >
-                <Card className="hover:border-[color:var(--brand)]/40 transition cursor-pointer">
-                  <CardContent className="py-4">
-                    <div className="flex items-start gap-4">
-                      <div className="flex-1 min-w-0 space-y-1.5">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium text-base">{lead.name}</span>
-                          <Badge className={`text-xs ${badge.color}`}>
-                            <Icon className="h-3 w-3 mr-1" />
-                            {badge.label}
+                <CardContent className="py-4">
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-base">{lead.name}</span>
+                        <Badge className={`text-xs ${badge.color}`}>
+                          <Icon className="h-3 w-3 mr-1" />
+                          {badge.label}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          {SOURCE_LABELS[lead.source] ?? lead.source}
+                        </Badge>
+                        {lead.phone && !isWhatsappUsable(lead.phone) && (
+                          <Badge className="text-xs bg-amber-500 text-white">
+                            Teléfono no válido para WhatsApp
                           </Badge>
-                          <Badge variant="outline" className="text-xs">
-                            {SOURCE_LABELS[lead.source] ?? lead.source}
-                          </Badge>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                          {lead.email && (
-                            <span className="flex items-center gap-1">
-                              <Mail className="h-3 w-3" />
-                              {lead.email}
-                            </span>
-                          )}
-                          {lead.phone && (
-                            <span className="flex items-center gap-1">
-                              <Phone className="h-3 w-3" />
-                              {lead.phone}
-                            </span>
-                          )}
-                          {lead.properties && (
-                            <span className="flex items-center gap-1">
-                              <Building2 className="h-3 w-3" />
-                              {lead.properties.address}
-                            </span>
-                          )}
-                        </div>
-                        {lead.message && (
-                          <p className="text-sm text-foreground/80 line-clamp-2 mt-1">
-                            "{lead.message}"
-                          </p>
                         )}
                       </div>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {relativeTime(lead.created_at)}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        {lead.email && (
+                          <span className="flex items-center gap-1">
+                            <Mail className="h-3 w-3" />
+                            {lead.email}
+                          </span>
+                        )}
+                        {lead.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" />
+                            {lead.phone}
+                          </span>
+                        )}
+                        {lead.properties && (
+                          <span className="flex items-center gap-1">
+                            <Building2 className="h-3 w-3" />
+                            {lead.properties.address}
+                          </span>
+                        )}
+                      </div>
+                      {lead.message && (
+                        <p className="text-sm text-foreground/80 line-clamp-2 mt-1">
+                          "{lead.message}"
+                        </p>
+                      )}
                     </div>
-                  </CardContent>
-                </Card>
-              </button>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {view === 'trash' && lead.deleted_at
+                        ? `Eliminado ${relativeTime(lead.deleted_at)}`
+                        : relativeTime(lead.created_at)}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+            return (
+              <div key={lead.id} className="flex items-center gap-2">
+                {canManageTrash && (
+                  <input
+                    type="checkbox"
+                    checked={checkedIds.has(lead.id)}
+                    onChange={() => toggleChecked(lead.id)}
+                    aria-label={`Seleccionar lead ${lead.name}`}
+                    className="h-4 w-4 shrink-0 accent-[color:var(--brand)]"
+                  />
+                )}
+                {view === 'active' ? (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(lead.id)}
+                    className="flex-1 min-w-0 text-left"
+                  >
+                    {cardBody}
+                  </button>
+                ) : (
+                  <div className="flex-1 min-w-0">{cardBody}</div>
+                )}
+                {view === 'trash' && canManageTrash && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={bulkActioning}
+                    onClick={() => restoreLeads([lead.id])}
+                    className="shrink-0"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                    Restaurar
+                  </Button>
+                )}
+              </div>
             )
           })}
         </div>

@@ -7,6 +7,7 @@ import { ArrowLeft, Megaphone } from 'lucide-react'
 import { MetaAdsWizard } from '@/components/properties/wizards/MetaAdsWizard'
 import { MetaAdsWizardV2 } from '@/components/properties/wizards/MetaAdsWizardV2'
 import { isCampaignComplete } from '@/lib/marketing/campaign-completeness'
+import { syncCampaignState, adsManagerUrl } from '@/lib/marketing/meta-sync'
 import type { Database } from '@/types/database.types'
 
 export const metadata = { title: 'Lanzar campaña Meta Ads' }
@@ -89,6 +90,35 @@ export default async function MetaAdsWizardPage({
     !!publishingJob &&
     publishingJobAgeMs < 60_000
 
+  // Sincronizar con Meta ANTES de decidir/renderizar (Task 9): el panel no
+  // volvía a consultar a Meta nunca, así que una campaña archivada/borrada
+  // DESDE Ads Manager quedaba mostrada para siempre como "paused"/"provisioning".
+  // Una sola llamada de red por request (syncCampaignState hace sus propios
+  // GETs internos, pero es UNA operación de sincronización, no varias
+  // encadenadas). Best-effort: si Meta o la red fallan, seguimos con el dato
+  // de la DB tal cual estaba — no bloqueamos el render de la página por esto.
+  //
+  // Guard `isInFlightPublish`: si el confirm/route está a mitad de crear
+  // adsets/ads para esta misma campaña (fila joven + job 'publishing'
+  // reciente), NO sincronizamos — el campaign_id ya existe en Meta pero
+  // recién creado (PAUSED por diseño del builder) y todavía le faltan
+  // adsets/ads; sincronizar ahora pisaría el status='provisioning' con
+  // 'paused' a mitad de una escritura concurrente del propio confirm.
+  let metaAdsManagerLink: string | null = null
+  if (existingCampaign?.campaign_id) {
+    metaAdsManagerLink = adsManagerUrl(existingCampaign.campaign_id)
+    if (!isInFlightPublish) {
+      try {
+        await syncCampaignState(existingCampaign.campaign_id)
+      } catch (err) {
+        console.warn(
+          '[meta-ads/page] syncCampaignState falló (se sigue con el estado en DB):',
+          err instanceof Error ? err.message : err,
+        )
+      }
+    }
+  }
+
   const isComplete = isCampaignComplete(existingCampaign)
   const useV2 = !isComplete
   // Sólo es zombi si NO está completa Y NO es in-flight. In-flight es legítimo.
@@ -167,7 +197,7 @@ export default async function MetaAdsWizardPage({
           hasZombieCampaign={hasZombieCampaign}
         />
       ) : (
-        <MetaAdsWizard propertyId={id} />
+        <MetaAdsWizard propertyId={id} adsManagerUrl={metaAdsManagerLink} />
       )}
     </div>
   )

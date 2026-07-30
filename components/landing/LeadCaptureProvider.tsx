@@ -21,6 +21,15 @@ import {
 } from 'react'
 import { Loader2, CheckCircle2, X } from 'lucide-react'
 import { trackLead, getMetaCookie } from './MetaPixel'
+// OJO: `libphonenumber-js/max` pesa ~50 KB gzip (metadata de todos los países).
+// Esta landing es TRÁFICO PAGO, así que no entra en el bundle inicial: se carga
+// recién cuando alguien aprieta "enviar" con un teléfono escrito. Import estático
+// = 50 KB que paga TODO el que ve la página; diferido = los paga solo quien envía
+// el formulario, y para entonces ya está en pantalla. No volver a estático.
+async function loadPhoneCheck(): Promise<(v: string) => boolean> {
+  const { isWhatsappUsable } = await import('@/lib/integrations/whatsapp/phone')
+  return isWhatsappUsable
+}
 
 interface LeadCaptureCtx {
   open: (source?: string) => void
@@ -153,8 +162,38 @@ export function LeadCaptureProvider({
       setErrorMsg('Necesitamos tu nombre y al menos un contacto (email o teléfono).')
       return
     }
+    // El lock se toma ACÁ, ANTES del primer `await`. El validador de teléfono se
+    // carga en diferido, y ese await (~50-300 ms) dejaba una ventana en la que el
+    // botón seguía habilitado: dos clicks rápidos = dos POST /api/leads = dos
+    // leads y DOS WhatsApp al mismo cliente (el dedup de 5 minutos es una lectura
+    // previa, no atómica, así que se pueden cruzar). Si algo falla más abajo se
+    // libera en el `catch`/`finally`.
     submittingRef.current = true
     setStatus('sending')
+
+    // Si dejó algo en el campo teléfono, tiene que servir para WhatsApp — sin
+    // esto se repite el bug real que perdió un cliente (un celular sin
+    // indicativo de país se guardaba tal cual y el mensaje nunca llegaba).
+    // No bloquea si el campo está vacío (la regla de arriba ya cubre ese caso).
+    if (form.phone.trim()) {
+      // Si la carga del validador falla (red mala, chunk caído), NO bloqueamos el
+      // envío: un lead con teléfono dudoso vale mucho más que un lead perdido.
+      // El registro de mensajes va a mostrar después si el número no recibe nada.
+      let usable = true
+      try {
+        usable = (await loadPhoneCheck())(form.phone)
+      } catch {
+        usable = true
+      }
+      if (!usable) {
+        submittingRef.current = false
+        setStatus('err')
+        setErrorMsg(
+          'Revisá el número: puede que falte la característica o el indicativo del país (ej. +57 para Colombia).',
+        )
+        return
+      }
+    }
     setErrorMsg('')
     const eventId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto

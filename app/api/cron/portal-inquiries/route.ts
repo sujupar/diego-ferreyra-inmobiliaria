@@ -195,6 +195,7 @@ export async function GET(req: NextRequest) {
           leadEmail: parsed.leadEmail,
           message: parsed.message,
           assignedTo: match.assignedTo,
+          propertyId: match.propertyId,
         })
         stats.notifySent += n.sent
         stats.notifySkipped += n.skipped

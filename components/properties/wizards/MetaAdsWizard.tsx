@@ -99,6 +99,14 @@ interface WizardData {
 
 interface Props {
   propertyId: string
+  /**
+   * URL a Meta Ads Manager, calculada SERVER-SIDE (Task 9) con `adsManagerUrl`
+   * de lib/marketing/meta-sync.ts — incluye el filtro que hace visibles las
+   * campañas archivadas/borradas. `NEXT_PUBLIC_META_AD_ACCOUNT_ID` nunca
+   * estuvo definido, así que el cálculo client-side viejo daba `act=`
+   * (vacío) — este prop lo reemplaza.
+   */
+  adsManagerUrl?: string | null
 }
 
 type Step = 'overview' | 'highlights' | 'persona' | 'geo' | 'creative' | 'launch' | 'done'
@@ -122,7 +130,7 @@ interface ExistingCampaign {
   created_at: string
 }
 
-export function MetaAdsWizard({ propertyId }: Props) {
+export function MetaAdsWizard({ propertyId, adsManagerUrl: adsManagerUrlProp }: Props) {
   const router = useRouter()
   const [step, setStep] = useState<Step>('overview')
   const [data, setData] = useState<WizardData | null>(null)
@@ -157,11 +165,15 @@ export function MetaAdsWizard({ propertyId }: Props) {
         const camp = await fetch(`/api/properties/${propertyId}/meta-campaign`)
         if (camp.ok) {
           const cd = await camp.json()
-          if (
-            cd.campaign?.campaign_id &&
-            cd.campaign.status !== 'archived' &&
-            cd.campaign.status !== 'failed'
-          ) {
+          // OJO: 'archived' YA NO se excluye acá (Task 9). Esta pantalla solo
+          // se monta cuando page.tsx decidió mostrar el panel v1 (campaña
+          // estructuralmente completa según la DB al momento del render del
+          // servidor). Si el sync que corre en esa misma page ANTES de
+          // renderizar descubrió que Meta la archivó/borró desde afuera, la
+          // fila que este fetch trae ya viene con status='archived' — hay
+          // que seguir mostrando el panel (con el aviso de "ya no existe"),
+          // no caer silenciosamente al wizard de creación de 0.
+          if (cd.campaign?.campaign_id && cd.campaign.status !== 'failed') {
             setExisting(cd.campaign as ExistingCampaign)
             setLoading(false)
             return
@@ -310,23 +322,37 @@ export function MetaAdsWizard({ propertyId }: Props) {
   // lugar del wizard de creación. Esto previene crear campañas duplicadas
   // por accidente cuando el asesor entra para "ver" la campaña.
   if (existing) {
-    const adAccountId = (process.env.NEXT_PUBLIC_META_AD_ACCOUNT_ID ?? '').replace(
+    // Preferimos el link calculado server-side (Task 9, `adsManagerUrl` de
+    // lib/marketing/meta-sync.ts, con filtro para ver archivadas). Fallback al
+    // cálculo viejo por las dudas (nunca funcionó del todo: la env var
+    // NEXT_PUBLIC_META_AD_ACCOUNT_ID no está definida, así que en la práctica
+    // este fallback da null y no se muestra el link).
+    const legacyAdAccountId = (process.env.NEXT_PUBLIC_META_AD_ACCOUNT_ID ?? '').replace(
       'act_',
       '',
     )
-    const adsManagerUrl = adAccountId
-      ? `https://business.facebook.com/adsmanager/manage/campaigns?act=${adAccountId}&selected_campaign_ids=${existing.campaign_id}`
-      : null
+    const adsManagerLink =
+      adsManagerUrlProp ??
+      (legacyAdAccountId
+        ? `https://business.facebook.com/adsmanager/manage/campaigns?act=${legacyAdAccountId}&selected_campaign_ids=${existing.campaign_id}`
+        : null)
+    // Estados reales que puede reflejar la fila (Task 9): 'active'/'paused'
+    // son sincronizados con Meta antes de este render (ver page.tsx), y
+    // 'archived' ahora significa explícitamente "ya no existe en Meta" — no
+    // "el asesor la archivó a propósito hace rato" (ese caso hace
+    // window.location.reload() y esta pantalla ni se llega a mostrar).
     const statusMap: Record<string, { label: string; color: string }> = {
-      active: { label: 'Activa', color: 'bg-emerald-600' },
-      paused: { label: 'Pausada', color: 'bg-amber-500' },
+      active: { label: 'Activa — está gastando', color: 'bg-emerald-600' },
+      paused: { label: 'Borrador — pausada, todavía no gasta', color: 'bg-amber-500' },
       provisioning: { label: 'Creándose…', color: 'bg-blue-500' },
+      archived: { label: 'Ya no existe en Meta', color: 'bg-gray-500' },
       failed: { label: 'Error', color: 'bg-red-500' },
     }
     const sInfo = statusMap[existing.status] ?? { label: existing.status, color: 'bg-gray-400' }
     const isActive = existing.status === 'active'
     const isPaused = existing.status === 'paused'
     const isProvisioning = existing.status === 'provisioning'
+    const isGone = existing.status === 'archived'
 
     return (
       <Card>
@@ -358,9 +384,9 @@ export function MetaAdsWizard({ propertyId }: Props) {
             {existing.last_error && (
               <p className="text-xs text-amber-700 mt-1">⚠ {existing.last_error}</p>
             )}
-            {adsManagerUrl && (
+            {adsManagerLink && (
               <a
-                href={adsManagerUrl}
+                href={adsManagerLink}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-sm text-[color:var(--brand)] underline mt-2"
@@ -371,7 +397,40 @@ export function MetaAdsWizard({ propertyId }: Props) {
             )}
           </div>
 
-          {!isProvisioning && (
+          {isGone && (
+            <div className="space-y-2">
+              <div className="rounded-md bg-gray-100 border border-gray-300 p-3 text-xs text-gray-800">
+                <strong>Esta campaña ya no existe en Meta.</strong> Alguien la
+                eliminó o archivó directamente desde Ads Manager (no fue una
+                acción hecha desde acá). No hay nada para pausar/reactivar —
+                si querés volver a anunciar esta propiedad, hay que crear una
+                campaña nueva.
+              </div>
+              <Button
+                onClick={async () => {
+                  try {
+                    const r = await fetch(
+                      `/api/properties/${propertyId}/meta-campaign/cleanup`,
+                      { method: 'POST' },
+                    )
+                    const d = await r.json()
+                    if (!r.ok) throw new Error(d.error ?? 'No se pudo limpiar la campaña vieja')
+                    window.location.reload()
+                  } catch (err) {
+                    toast.error(
+                      err instanceof Error ? err.message : 'Error al preparar la campaña nueva',
+                    )
+                  }
+                }}
+                className="w-full justify-start"
+              >
+                <Rocket className="h-4 w-4 mr-2" />
+                Crear campaña nueva
+              </Button>
+            </div>
+          )}
+
+          {!isProvisioning && !isGone && (
             <div className="border-t pt-4 space-y-2">
               <p className="text-sm font-medium">¿Qué querés hacer?</p>
               {isActive && (

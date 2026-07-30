@@ -49,6 +49,8 @@ export interface NotifyInquiry {
   leadEmail: string | null
   message: string | null
   assignedTo: string | null
+  /** Propiedad matcheada (si la hay) — para que `whatsapp_messages` la asocie. */
+  propertyId?: string | null
 }
 
 export interface NotifyResult {
@@ -244,7 +246,13 @@ export async function notifyInquiry(supabase: SupabaseClient, inq: NotifyInquiry
       continue
     }
 
-    const send = await sendWhatsappTemplate({ to: phone, templateName: TEMPLATE, languageCode: LANG, bodyParams })
+    const send = await sendWhatsappTemplate({
+      to: phone,
+      templateName: TEMPLATE,
+      languageCode: LANG,
+      bodyParams,
+      propertyId: inq.propertyId,
+    })
     const status: 'sent' | 'failed' | 'skipped' = send.ok ? (send.skipped ? 'skipped' : 'sent') : 'failed'
     await logNotif(supabase, inq.id, {
       recipient_phone: phone,
@@ -269,7 +277,13 @@ export async function notifyInquiry(supabase: SupabaseClient, inq: NotifyInquiry
       result.skipped++
       continue
     }
-    const send = await sendWhatsappTemplate({ to: cc, templateName: TEMPLATE, languageCode: LANG, bodyParams })
+    const send = await sendWhatsappTemplate({
+      to: cc,
+      templateName: TEMPLATE,
+      languageCode: LANG,
+      bodyParams,
+      propertyId: inq.propertyId,
+    })
     const status: 'sent' | 'failed' | 'skipped' = send.ok ? (send.skipped ? 'skipped' : 'sent') : 'failed'
     await logNotif(supabase, inq.id, {
       recipient_phone: cc,
