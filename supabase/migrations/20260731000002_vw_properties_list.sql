@@ -24,3 +24,14 @@ SELECT
 FROM properties p;
 
 COMMENT ON VIEW vw_properties_list IS 'Listado de propiedades SIN el array de fotos (99% del peso). Solo la portada y el conteo. El detalle sigue leyendo de `properties`.';
+
+-- SEGURIDAD — no borrar estas tres líneas.
+-- Una vista de Postgres corre por default con los permisos de SU DUEÑO, así que
+-- SALTEA la RLS de la tabla de abajo. Sin `security_invoker`, esta vista dejaba
+-- que la clave anónima —la que viaja en el bundle del navegador en la landing
+-- pública— leyera las 41 propiedades con dirección, precio, estado interno y
+-- asesor asignado, mientras `properties` devolvía [] correctamente. Verificado
+-- con curl el 2026-07-31.
+ALTER VIEW vw_properties_list SET (security_invoker = on);
+REVOKE ALL ON vw_properties_list FROM anon;
+GRANT SELECT ON vw_properties_list TO authenticated;

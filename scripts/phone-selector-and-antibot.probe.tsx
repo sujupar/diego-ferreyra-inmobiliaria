@@ -91,7 +91,13 @@ check('pide la ficha a /api/leads/ticket', providerSrc.includes("fetch('/api/lea
 check('el fetch de la ficha está gateado en `isOpen`', /if \(!isOpen\) return\s+setTicket\(null\)/.test(providerSrc))
 
 // El POST manda el teléfono COMPUESTO (con indicativo) y la ficha.
-check('el POST compone el teléfono con composePhoneForSubmit antes de mandarlo', /phone: form\.phone\.trim\(\) \? composePhoneForSubmit\(form\.phone, callingCode\) : null/.test(providerSrc))
+// El POST manda el número YA CANÓNICO (E.164). `composePhoneForSubmit` queda
+// como respaldo para cuando el normalizador no pudo cargar o no resolvió.
+// Sin esto, "15 6123 4567" pasaba la validación y se guardaba como
+// "+54 15 6123 4567", imposible de renormalizar → lead incontactable.
+check('el POST manda el teléfono ya normalizado, no el pegoteo', /phone: phoneParaGuardar,/.test(providerSrc))
+check('composePhoneForSubmit queda como respaldo', /composePhoneForSubmit\(form\.phone, callingCode\)/.test(providerSrc))
+check('el canónico se calcula con el normalizador diferido', /loadPhoneNormalizer\(\)/.test(providerSrc) && /phoneParaGuardar = `\+\$\{e164\}`/.test(providerSrc))
 check('el POST manda `ticket`', /\bticket,\n\s*\}\),/.test(providerSrc))
 
 // El campo de teléfono en el JSX usa PhoneField, no un <input> crudo.

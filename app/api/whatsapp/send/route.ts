@@ -176,15 +176,24 @@ async function findContextFromHistory(
   supabase: ReturnType<typeof admin>,
   phoneE164: string,
 ): Promise<{ leadId: string | null; propertyId: string | null }> {
+  // Se resuelven POR SEPARADO a propósito. Antes se tomaba la fila más reciente
+  // con `lead_id` y se leía su `property_id` de ahí — pero los mensajes ENTRANTES
+  // traen lead y NO traen propiedad, así que el entrante más nuevo ganaba y la
+  // propiedad quedaba en null. Consecuencia real: sin propertyId, la lista blanca
+  // de multimedia rechazaba las fotos alojadas en el CDN de los portales, que son
+  // la mayoría de las propiedades importadas.
   const { data } = await supabase
     .from('whatsapp_messages')
-    .select('lead_id, property_id')
+    .select('lead_id, property_id, created_at')
     .eq('phone_e164', phoneE164)
-    .not('lead_id', 'is', null)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  return { leadId: data?.lead_id ?? null, propertyId: data?.property_id ?? null }
+    .limit(50)
+
+  const filas = (data ?? []) as Array<{ lead_id: string | null; property_id: string | null }>
+  return {
+    leadId: filas.find(f => f.lead_id)?.lead_id ?? null,
+    propertyId: filas.find(f => f.property_id)?.property_id ?? null,
+  }
 }
 
 export async function POST(req: Request) {

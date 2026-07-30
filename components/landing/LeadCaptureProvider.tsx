@@ -36,6 +36,12 @@ async function loadPhoneCheck(): Promise<(v: string, region?: CountryCode) => bo
   return isWhatsappUsable
 }
 
+/** Igual que arriba: diferido, nunca en el bundle inicial. */
+async function loadPhoneNormalizer(): Promise<(v: string, region?: CountryCode) => string | null> {
+  const { normalizeWhatsappPhone } = await import('@/lib/integrations/whatsapp/phone')
+  return normalizeWhatsappPhone
+}
+
 // Igual criterio que `loadPhoneCheck`: se carga recién al abrir el popup (ver
 // el efecto que resuelve `callingCode` más abajo), nunca en el bundle inicial.
 async function loadCallingCode(iso2: string): Promise<string | null> {
@@ -245,6 +251,11 @@ export function LeadCaptureProvider({
     // esto se repite el bug real que perdió un cliente (un celular sin
     // indicativo de país se guardaba tal cual y el mensaje nunca llegaba).
     // No bloquea si el campo está vacío (la regla de arriba ya cubre ese caso).
+    // Lo que finalmente se guarda en `phone`. Arranca con la composición simple
+    // y se reemplaza por el E.164 canónico apenas el normalizador lo resuelve.
+    let phoneParaGuardar = form.phone.trim()
+      ? composePhoneForSubmit(form.phone, callingCode)
+      : null
     if (form.phone.trim()) {
       // Si la carga del validador falla (red mala, chunk caído), NO bloqueamos el
       // envío: un lead con teléfono dudoso vale mucho más que un lead perdido.
@@ -252,6 +263,16 @@ export function LeadCaptureProvider({
       let usable = true
       try {
         usable = (await loadPhoneCheck())(form.phone, country as CountryCode)
+        // Guardamos el número YA CANÓNICO, no el pegoteo "+<indicativo> <local>".
+        // Sin esto, alguien que escribe la forma porteña vieja "15 6123 4567"
+        // pasaba la validación (que sí entiende el 15 con la región AR) pero se
+        // guardaba como "+54 15 6123 4567", que ya NO se puede renormalizar: el
+        // '+' hace que se lea como internacional y el 15 queda en el medio.
+        // Resultado: un lead válido que nadie podía contactar por WhatsApp.
+        if (usable) {
+          const e164 = (await loadPhoneNormalizer())(form.phone, country as CountryCode)
+          if (e164) phoneParaGuardar = `+${e164}`
+        }
       } catch {
         usable = true
       }
@@ -282,7 +303,7 @@ export function LeadCaptureProvider({
           // renormalizar más abajo en el sistema (webhook, Inbox, WhatsApp,
           // CAPI) sin pasarle una región explícita — todos siguen llamando a
           // `normalizeWhatsappPhone`/`isWhatsappUsable` con un solo argumento.
-          phone: form.phone.trim() ? composePhoneForSubmit(form.phone, callingCode) : null,
+          phone: phoneParaGuardar,
           message: `${form.intent}${source ? ` · ${source}` : ''}`,
           utm: getUtmFromUrl(),
           eventId,

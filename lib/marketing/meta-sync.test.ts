@@ -157,6 +157,9 @@ describe('syncCampaignState (Meta + Supabase mockeados)', () => {
         status: 400,
         json: { error: { code: 100, error_subcode: 33, message: 'Unsupported get request.' } },
       },
+      // Desempate: la CUENTA sí responde → los permisos están bien → el 33 sobre
+      // ese ID puntual significa que la campaña realmente no está.
+      { ok: true, status: 200, json: { id: 'act_1' } },
     ])
 
     const result = await syncCampaignState('2')
@@ -167,6 +170,31 @@ describe('syncCampaignState (Meta + Supabase mockeados)', () => {
     expect(result.changed).toBe(true)
     const updatePayload = updateMock.mock.calls[0]?.[0]
     expect(updatePayload?.last_error).toContain('eliminada desde Ads Manager')
+  })
+
+  it('subcode 33 pero la CUENTA tampoco responde → NO archiva, tira error', async () => {
+    // El mensaje de Meta para el subcode 33 dice, textual, "does not exist,
+    // cannot be loaded due to missing permissions": es ambiguo. Si la cuenta
+    // tampoco responde, puede ser un token degradado — y dar por muerta una
+    // campaña que está GASTANDO sería el peor resultado posible.
+    maybeSingleMock.mockResolvedValueOnce({ data: { campaign_id: '3', status: 'active' } })
+    mockFetchSequence([
+      {
+        ok: false,
+        status: 400,
+        json: {
+          error: {
+            code: 100, error_subcode: 33,
+            message: "Object with ID '3' does not exist, cannot be loaded due to missing permissions",
+          },
+        },
+      },
+      { ok: false, status: 401, json: { error: { code: 190, message: 'Invalid OAuth access token' } } },
+    ])
+
+    await expect(syncCampaignState('3')).rejects.toThrow(/No pudimos verificar/)
+    // Lo que de verdad importa: no se tocó el estado guardado.
+    expect(updateMock).not.toHaveBeenCalled()
   })
 
   it('sin cambio de status → no escribe (changed=false)', async () => {
