@@ -283,10 +283,25 @@ function leadPhrase(operationLabel: string, price: string | null): string {
  */
 const LEAD_SENTENCE_WINDOW = 125
 
+/**
+ * Normaliza para COMPARAR (no para mostrar): minúsculas y todos los espacios
+ * —incluidos los duros— colapsados a uno solo.
+ *
+ * Bug real que originó esto (visto en los anuncios publicados el 2026-07-31):
+ * `Intl.NumberFormat` genera "US$\u00A0109.000" con un espacio DURO (código 160)
+ * entre el símbolo y el número, pero la IA escribe su texto con un espacio normal
+ * (código 32). Comparando cruda, "us$ 109.000" NO matcheaba "us$\u00A0109.000",
+ * el backstop creía que faltaba la frase y la anteponía → todos los anuncios
+ * salieron con "En venta a US$ 109.000. En venta a US$ 109.000, ...".
+ */
+function normalizarParaComparar(s: string): string {
+  return s.toLowerCase().replace(/\s+/gu, ' ').trim()
+}
+
 function textHasLeadSentence(text: string, price: string | null, operationLabel: string): boolean {
-  const window = text.slice(0, LEAD_SENTENCE_WINDOW).toLowerCase()
-  const hasOperation = window.includes(operationLabel.toLowerCase())
-  const hasPrice = price ? window.includes(price.toLowerCase()) : true
+  const window = normalizarParaComparar(text.slice(0, LEAD_SENTENCE_WINDOW))
+  const hasOperation = window.includes(normalizarParaComparar(operationLabel))
+  const hasPrice = price ? window.includes(normalizarParaComparar(price)) : true
   return hasOperation && hasPrice
 }
 

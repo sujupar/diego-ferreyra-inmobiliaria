@@ -48,7 +48,13 @@ export function GalleryLightbox({
 }) {
   const { open: openLeadCapture, unlocked: leadUnlocked } = useLeadCapture()
   const unlocked = leadUnlocked || forceUnlocked
-  const free = Math.max(1, freeCount ?? FREE_PHOTOS)
+  // INVARIANTE ESTRUCTURAL: la puerta de registro NO puede depender de que el
+  // documento guardado traiga el valor correcto. `freePhotoCount` vive en el
+  // contenido de cada landing, así que una landing vieja, una migración o un
+  // error del editor podrían abrirla entera sin que nadie lo note.
+  // Un documento puede hacer la puerta MÁS restrictiva (menos fotos gratis),
+  // nunca más permisiva. La regla vive en el código, no en los datos.
+  const free = Math.min(Math.max(1, freeCount ?? FREE_PHOTOS), FREE_PHOTOS)
   const [openIdx, setOpenIdx] = useState<number | null>(null)
   const [showAll, setShowAll] = useState(false)
   const triggerRef = useRef<HTMLElement | null>(null)

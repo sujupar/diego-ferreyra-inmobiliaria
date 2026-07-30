@@ -448,7 +448,26 @@ export async function POST(
         audienceIds.push(a.audienceId)
       }
     } catch (err) {
-      console.warn('[meta-launch-v2 confirm] audiences failed (continuing):', err)
+      // VISIBILIDAD: esto era solo un console.warn, y por eso un rechazo de Meta
+      // (el `subtype` deprecado) dejó SEMANAS sin crear un solo público sin que
+      // nadie se enterara. La campaña sigue igual —los públicos son un extra— pero
+      // el motivo queda escrito donde alguien lo va a ver.
+      const detalle = `Públicos personalizados no creados: ${err instanceof Error ? err.message : String(err)}`
+      console.warn('[meta-launch-v2 confirm]', detalle)
+      try {
+        const { data: fila } = await supabase
+          .from('property_meta_campaigns')
+          .select('last_error')
+          .eq('campaign_id', campaign.campaignId)
+          .maybeSingle()
+        const previo = (fila as { last_error?: string | null } | null)?.last_error
+        await supabase
+          .from('property_meta_campaigns')
+          .update({ last_error: previo ? `${previo} | ${detalle}` : detalle })
+          .eq('campaign_id', campaign.campaignId)
+      } catch {
+        /* si ni el registro del error se puede guardar, ya quedó en los logs */
+      }
     }
 
     // Verificación final (best-effort, Task 3): antes de decir "publicada",

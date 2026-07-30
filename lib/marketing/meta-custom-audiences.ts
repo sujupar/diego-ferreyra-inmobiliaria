@@ -59,7 +59,13 @@ async function createWebsiteAudience(input: {
     body: JSON.stringify({
       name: input.name.slice(0, 50), // Meta limita el nombre a 50 chars
       description: input.description.slice(0, 200),
-      subtype: 'WEBSITE',
+      // NO mandar `subtype: 'WEBSITE'`. Meta lo dejó de aceptar y responde
+      //   code 2654 / subcode 1870053 — "El parámetro «subtipo» no se admite en
+      //   la versión actual de la API"
+      // …y como toda esta función era best-effort con `console.warn`, el rechazo
+      // era INVISIBLE: durante semanas no se creó ni un público y nadie se
+      // enteró. El tipo de público se infiere solo de `rule.event_sources`.
+      // Verificado el 2026-07-31: sin `subtype` la creación devuelve 200.
       retention_days: input.retentionDays,
       rule: JSON.stringify(input.rule),
       prefill: true, // empieza con visitantes históricos del pixel

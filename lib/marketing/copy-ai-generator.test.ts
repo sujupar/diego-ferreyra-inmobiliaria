@@ -283,3 +283,31 @@ describe('generateAdCopyVariations — camino determinístico end-to-end (IA des
     })
   }
 })
+
+describe('el backstop no duplica la frase de apertura', () => {
+  const prop = {
+    id: 'x', address: 'Álvarez Jonte 4300', neighborhood: 'Monte Castro', city: 'Capital Federal',
+    property_type: 'departamento', operation_type: 'venta', asking_price: 109000, currency: 'USD',
+    rooms: 4, covered_area: 76,
+  } as never
+
+  it('reconoce el precio escrito con espacio NORMAL (así lo escribe la IA)', () => {
+    // Bug real de los anuncios publicados: Intl genera el precio con espacio DURO
+    // (U+00A0) y la IA lo escribe con espacio normal. La comparación cruda fallaba
+    // y todos los textos salieron con "En venta a US$ 109.000." dos veces seguidas.
+    const deLaIA = 'En venta a US$ 109.000, este 4 ambientes en Monte Castro es una inversión inteligente.'
+    expect(ensureLeadSentence(deLaIA, prop)).toBe(deLaIA)
+  })
+
+  it('reconoce el precio escrito con espacio DURO', () => {
+    const conDuro = 'En venta a US$ 109.000, este 4 ambientes en Monte Castro te espera.'
+    expect(ensureLeadSentence(conDuro, prop)).toBe(conDuro)
+  })
+
+  it('aplicarlo dos veces da el mismo resultado (idempotente)', () => {
+    const sinLead = 'Este 4 ambientes en Monte Castro te da el aire que hoy te falta.'
+    const unaVez = ensureLeadSentence(sinLead, prop)
+    expect(ensureLeadSentence(unaVez, prop)).toBe(unaVez)
+    expect((unaVez.match(/En venta/gi) ?? []).length).toBe(1)
+  })
+})
