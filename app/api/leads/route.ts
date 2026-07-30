@@ -242,6 +242,12 @@ export async function POST(req: Request) {
       })
     }
 
+    // Ojo: NO rechazamos leads con teléfono inservible para WhatsApp (un lead
+    // con email sigue sirviendo). `phone` guarda el string tal cual lo tipeó
+    // el visitante (nunca lo pisamos con el E.164) — no hay columna para el
+    // normalizado y no corresponde agregar una migración solo para esto; el
+    // Inbox (`InboxClient.tsx`) llama `isWhatsappUsable(lead.phone)` al leer
+    // para mostrar la insignia "Teléfono no válido para WhatsApp".
     const { data: lead, error: insErr } = await supabase
       .from('property_leads')
       .insert({

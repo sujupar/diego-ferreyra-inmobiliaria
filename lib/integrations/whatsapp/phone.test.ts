@@ -46,4 +46,14 @@ describe('normalizeWhatsappPhone', () => {
     expect(isWhatsappUsable('+57 310 782 2955')).toBe(true)
     expect(isWhatsappUsable('3107822955')).toBe(false)
   })
+
+  it('isWhatsappUsable trata vacío/null/undefined como "no aplica", nunca error', () => {
+    // Contrato que usan el popup de la landing (no valida si el campo está
+    // vacío — la regla de nombre + email O teléfono ya cubre ese caso) y el
+    // Inbox (la insignia solo se muestra si `lead.phone` existe).
+    expect(isWhatsappUsable(null)).toBe(false)
+    expect(isWhatsappUsable(undefined)).toBe(false)
+    expect(isWhatsappUsable('')).toBe(false)
+    expect(isWhatsappUsable('   ')).toBe(false)
+  })
 })

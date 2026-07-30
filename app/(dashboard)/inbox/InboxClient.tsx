@@ -17,6 +17,7 @@ import {
   Filter,
 } from 'lucide-react'
 import { LeadDetailSheet } from './LeadDetailSheet'
+import { isWhatsappUsable } from '@/lib/integrations/whatsapp/phone'
 
 interface LeadRow {
   id: string
@@ -265,6 +266,11 @@ export function InboxClient({ userRole, userId }: { userRole: string; userId: st
                           <Badge variant="outline" className="text-xs">
                             {SOURCE_LABELS[lead.source] ?? lead.source}
                           </Badge>
+                          {lead.phone && !isWhatsappUsable(lead.phone) && (
+                            <Badge className="text-xs bg-amber-500 text-white">
+                              Teléfono no válido para WhatsApp
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                           {lead.email && (

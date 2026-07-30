@@ -21,6 +21,7 @@ import {
 } from 'react'
 import { Loader2, CheckCircle2, X } from 'lucide-react'
 import { trackLead, getMetaCookie } from './MetaPixel'
+import { isWhatsappUsable } from '@/lib/integrations/whatsapp/phone'
 
 interface LeadCaptureCtx {
   open: (source?: string) => void
@@ -151,6 +152,17 @@ export function LeadCaptureProvider({
     if (!form.name.trim() || (!form.email.trim() && !form.phone.trim())) {
       setStatus('err')
       setErrorMsg('Necesitamos tu nombre y al menos un contacto (email o teléfono).')
+      return
+    }
+    // Si dejó algo en el campo teléfono, tiene que servir para WhatsApp — sin
+    // esto se repite el bug real que perdió un cliente (un celular sin
+    // indicativo de país se guardaba tal cual y el mensaje nunca llegaba).
+    // No bloquea si el campo está vacío (la regla de arriba ya cubre ese caso).
+    if (form.phone.trim() && !isWhatsappUsable(form.phone)) {
+      setStatus('err')
+      setErrorMsg(
+        'Revisá el número: puede que falte la característica o el indicativo del país (ej. +57 para Colombia).',
+      )
       return
     }
     submittingRef.current = true
