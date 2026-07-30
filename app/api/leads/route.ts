@@ -306,6 +306,8 @@ export async function POST(req: Request) {
         clientName: lead.name,
         propertyLabel: prop.title ?? prop.address,
         token,
+        leadId: lead.id,
+        propertyId: prop.id,
       })
     }
 

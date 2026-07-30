@@ -13,6 +13,7 @@
  *   WHATSAPP_TEST_MODE         — 'true' para no enviar (default true por seguridad)
  */
 import { normalizeWhatsappPhone } from './phone'
+import { logOutbound } from './log'
 
 /**
  * Timeout del POST a Meta. Sin esto una demora de Meta cuelga al llamador.
@@ -32,6 +33,12 @@ export interface SendTemplateInput {
   urlButtonParam?: string
   /** Timeout del POST a Meta en ms. Default 8s (envíos de fondo). */
   timeoutMs?: number
+  /** Lead al que pertenece este mensaje (para el chat del Inbox). Opcional. */
+  leadId?: string | null
+  /** Propiedad a la que pertenece este mensaje. Opcional. */
+  propertyId?: string | null
+  /** Perfil que disparó el envío (si fue una acción de un asesor). Opcional. */
+  sentBy?: string | null
 }
 
 export interface TemplatePayload {
@@ -97,18 +104,36 @@ export function normalizePhone(raw: string | null | undefined): string | null {
   return normalizeWhatsappPhone(raw)
 }
 
+/** Preview corto y legible de los parámetros de la plantilla, para `whatsapp_messages.body_preview`. */
+function bodyPreview(input: SendTemplateInput): string {
+  return input.bodyParams.join(' · ').slice(0, 300)
+}
+
 /** Nunca lanza — devuelve el resultado para que el caller siga fire-and-forget. */
 export async function sendWhatsappTemplate(input: SendTemplateInput): Promise<SendTemplateResult> {
+  const body = buildTemplatePayload(input)
+
   if (whatsappTestMode()) {
     console.log(
       `[whatsapp:test] (no enviado) to=${input.to} template=${input.templateName} params=${JSON.stringify(input.bodyParams)}`,
     )
+    // Registrado igual: 'skipped' significa "modo prueba / sin credenciales",
+    // no "no pasó nada" — sigue siendo visibilidad útil de qué se HUBIERA mandado.
+    await logOutbound({
+      phone: input.to,
+      templateName: input.templateName,
+      bodyPreview: bodyPreview(input),
+      payload: body,
+      status: 'skipped',
+      leadId: input.leadId,
+      propertyId: input.propertyId,
+      sentBy: input.sentBy,
+    })
     return { ok: true, skipped: true }
   }
 
   const version = process.env.WHATSAPP_API_VERSION ?? 'v21.0'
   const url = `https://graph.facebook.com/${version}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`
-  const body = buildTemplatePayload(input)
 
   try {
     const res = await fetch(url, {
@@ -121,18 +146,60 @@ export async function sendWhatsappTemplate(input: SendTemplateInput): Promise<Se
       signal: AbortSignal.timeout(input.timeoutMs ?? WHATSAPP_TIMEOUT_DEFAULT_MS),
     })
     const json = (await res.json().catch(() => ({}))) as {
+      contacts?: { wa_id?: string }[]
       messages?: { id: string }[]
       error?: { message?: string; code?: number }
     }
     if (!res.ok || json.error) {
       const msg = json.error?.message ?? `HTTP ${res.status}`
       console.error(`[whatsapp] envío falló a ${input.to}: ${msg}`)
+      await logOutbound({
+        phone: input.to,
+        templateName: input.templateName,
+        bodyPreview: bodyPreview(input),
+        payload: json,
+        status: 'failed',
+        errorCode: json.error?.code != null ? String(json.error.code) : null,
+        errorMessage: msg,
+        leadId: input.leadId,
+        propertyId: input.propertyId,
+        sentBy: input.sentBy,
+      })
       return { ok: false, skipped: false, error: msg }
     }
-    return { ok: true, skipped: false, messageId: json.messages?.[0]?.id }
+    // El estado inicial de un envío ACEPTADO por Meta es 'accepted' (no 'sent'):
+    // 'sent' lo pone el webhook de estados (otra tarea) cuando Meta confirma la
+    // entrega real. contacts[0].wa_id es el número CANÓNICO (puede diferir del
+    // `to` que mandamos — Meta agrega el 9 a los móviles argentinos).
+    const waId = json.contacts?.[0]?.wa_id ?? null
+    const waMessageId = json.messages?.[0]?.id
+    await logOutbound({
+      phone: input.to,
+      waId,
+      waMessageId,
+      templateName: input.templateName,
+      bodyPreview: bodyPreview(input),
+      payload: json,
+      status: 'accepted',
+      leadId: input.leadId,
+      propertyId: input.propertyId,
+      sentBy: input.sentBy,
+    })
+    return { ok: true, skipped: false, messageId: waMessageId }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[whatsapp] excepción enviando a ${input.to}: ${msg}`)
+    await logOutbound({
+      phone: input.to,
+      templateName: input.templateName,
+      bodyPreview: bodyPreview(input),
+      payload: body,
+      status: 'failed',
+      errorMessage: msg,
+      leadId: input.leadId,
+      propertyId: input.propertyId,
+      sentBy: input.sentBy,
+    })
     return { ok: false, skipped: false, error: msg }
   }
 }
