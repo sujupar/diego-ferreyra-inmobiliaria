@@ -52,6 +52,10 @@ async function findLeadIdByPhone(
       .from('property_leads')
       .select('id, phone, created_at')
       .not('phone', 'is', null)
+      // Los leads en la papelera no se consideran: atar un mensaje entrante a un
+      // lead que alguien archivó lo haría reaparecer de rebote en el CRM. El
+      // mensaje se guarda igual, solo queda sin `lead_id` — nunca se descarta.
+      .is('deleted_at', null)
       .ilike('phone', `%${suffix}%`)
       .order('created_at', { ascending: false })
       .limit(25)
