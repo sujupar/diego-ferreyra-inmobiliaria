@@ -21,6 +21,22 @@ function getAdmin() {
 }
 
 /**
+ * `property_leads.deleted_at` (papelera, migración 20260730000001) todavía no
+ * está en `types/database.types.ts` — el CLI de Supabase no conecta en este
+ * proyecto (ver CLAUDE.md § Supabase), así que los types no se pueden
+ * regenerar. Mismo patrón que `lib/integrations/whatsapp/log.ts`: cliente SIN
+ * el genérico `<Database>` para cualquier query que toque esa columna.
+ */
+function getAdminRaw() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+}
+
+const OPS_ROLES = ['admin', 'dueno', 'coordinador'] as const
+
+/**
  * GET /api/leads?status=X&propertyId=Y&source=Z&days=N&assignedTo=me
  * Lista leads filtrados según RLS por rol.
  */
@@ -39,10 +55,18 @@ export async function GET(req: Request) {
     const days = parseInt(url.searchParams.get('days') ?? '30', 10)
     const assignedToMe = url.searchParams.get('assignedTo') === 'me'
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '100', 10), 500)
+    // Papelera: solo roles de operaciones pueden pedir los leads borrados.
+    const trashed = url.searchParams.get('trashed') === 'true'
+    if (trashed && !OPS_ROLES.includes(role as (typeof OPS_ROLES)[number])) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
 
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
 
-    const supabase = getAdmin()
+    // `deleted_at` no está en el Database type generado (ver getAdminRaw arriba)
+    // — esta ruta necesita filtrar por esa columna en ambos casos (papelera y
+    // listado normal), así que usa el cliente sin el genérico para toda la query.
+    const supabase = getAdminRaw()
 
     // Asesor: ver leads de sus propiedades O asignados directamente a él.
     // El RLS de property_leads ya tiene este criterio, pero como usamos
@@ -58,10 +82,12 @@ export async function GET(req: Request) {
 
     let query = supabase
       .from('property_leads')
-      .select('id, property_id, name, email, phone, message, source, status, assigned_to, notes, created_at')
+      .select('id, property_id, name, email, phone, message, source, status, assigned_to, notes, created_at, deleted_at')
       .gte('created_at', since)
       .order('created_at', { ascending: false })
       .limit(limit)
+
+    query = trashed ? query.not('deleted_at', 'is', null) : query.is('deleted_at', null)
 
     if (status) query = query.eq('status', status)
     if (propertyId) query = query.eq('property_id', propertyId)
@@ -165,22 +191,25 @@ async function isDuplicate(
   const since = new Date(Date.now() - 5 * 60_000).toISOString()
 
   if (email) {
-    const { count } = await supabase
-      .from('property_leads')
+    // `.from(...) as any`: `deleted_at` no está en el Database type generado
+    // (ver comentario de `getAdminRaw` más arriba). Un lead borrado no debe
+    // bloquear un reenvío legítimo por "duplicado".
+    const { count } = await (supabase.from('property_leads') as any)
       .select('id', { count: 'exact', head: true })
       .eq('property_id', propertyId)
       .eq('email', email)
       .gte('created_at', since)
+      .is('deleted_at', null)
     if ((count ?? 0) > 0) return true
   }
 
   if (phone) {
-    const { count } = await supabase
-      .from('property_leads')
+    const { count } = await (supabase.from('property_leads') as any)
       .select('id', { count: 'exact', head: true })
       .eq('property_id', propertyId)
       .eq('phone', phone)
       .gte('created_at', since)
+      .is('deleted_at', null)
     if ((count ?? 0) > 0) return true
   }
 
@@ -381,6 +410,53 @@ export async function POST(req: Request) {
     })
   } catch (err) {
     console.error('[POST /api/leads]', err)
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Error' },
+      { status: 500 },
+    )
+  }
+}
+
+const DeleteLeadsSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(200),
+})
+
+/**
+ * DELETE /api/leads
+ * Papelera de leads: borrado SIEMPRE lógico (`deleted_at = now()`), nunca un
+ * DELETE de SQL — es una regla dura del usuario (ver CLAUDE.md). Restaurar es
+ * `POST /api/leads/restore`, que vuelve a poner `deleted_at` en NULL.
+ * Solo roles de operaciones (admin/dueño/coordinador); el asesor no puede
+ * borrar leads.
+ */
+export async function DELETE(req: Request) {
+  try {
+    const user = await requireAuth()
+    if (!OPS_ROLES.includes(user.profile.role as (typeof OPS_ROLES)[number])) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
+
+    const body = await req.json().catch(() => null)
+    const parsed = DeleteLeadsSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Datos inválidos', detail: parsed.error.flatten() },
+        { status: 400 },
+      )
+    }
+
+    // `deleted_at` no está en el Database type generado — ver getAdminRaw().
+    const supabase = getAdminRaw()
+    const { data, error } = await supabase
+      .from('property_leads')
+      .update({ deleted_at: new Date().toISOString() })
+      .in('id', parsed.data.ids)
+      .is('deleted_at', null) // idempotente: no re-marca lo ya borrado
+      .select('id')
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    return NextResponse.json({ ok: true, deleted: (data ?? []).length })
+  } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Error' },
       { status: 500 },

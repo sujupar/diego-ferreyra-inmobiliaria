@@ -1,10 +1,16 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
-import type { Database } from '@/types/database.types'
 
+/**
+ * `property_leads.deleted_at` (papelera) todavía no está en
+ * `types/database.types.ts` — el CLI de Supabase no conecta en este proyecto
+ * (ver CLAUDE.md § Supabase). Este badge cuenta leads NUEVOS visibles; un lead
+ * borrado no debe sumar acá, así que esta ruta necesita el cliente sin el
+ * genérico `<Database>` (mismo patrón que `lib/integrations/whatsapp/log.ts`).
+ */
 function getAdmin() {
-  return createClient<Database>(
+  return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   )
@@ -36,6 +42,7 @@ export async function GET() {
         .from('property_leads')
         .select('id', { count: 'exact', head: true })
         .eq('status', 'new')
+        .is('deleted_at', null)
 
       if (propIds.length > 0) {
         const propsList = propIds.map(id => `property_id.eq.${id}`).join(',')
@@ -51,6 +58,7 @@ export async function GET() {
       .from('property_leads')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'new')
+      .is('deleted_at', null)
     return NextResponse.json({ new: count ?? 0 })
   } catch (err) {
     console.error('[leads/count]', err)
