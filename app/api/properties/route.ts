@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createProperty, getProperties } from '@/lib/supabase/properties'
+import { createProperty, getPropertiesListPage } from '@/lib/supabase/properties'
 import { requireAuth } from '@/lib/auth/require-role'
 import { notifyPropertyCreated } from '@/lib/email/notifications/property-created'
 import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
 import { geocodePropertyBestEffort } from '@/lib/properties/geocode-on-write'
 
+const DEFAULT_PAGE_SIZE = 24
+const MAX_PAGE_SIZE = 100
+
+// Listado (A3 de la auditoría, .superpowers/sdd/2026-07-31-campana-y-chat-pro/task-7-brief.md):
+// lee de vw_properties_list (portada + conteo, sin el array photos completo) y
+// pagina de a 24 por default. El detalle de una propiedad puntual sigue
+// trayendo TODO vía GET /api/properties/[id] (getProperty, sin cambios).
 export async function GET(request: NextRequest) {
   try {
     await requireAuth()
@@ -14,8 +21,17 @@ export async function GET(request: NextRequest) {
     const from = searchParams.get('from') || undefined
     const to = searchParams.get('to') || undefined
     const assigned_to = searchParams.get('assigned_to') || undefined
-    const data = await getProperties({ status, origin, from, to, assigned_to })
-    return NextResponse.json({ data })
+
+    const limitParam = Number(searchParams.get('limit'))
+    const offsetParam = Number(searchParams.get('offset'))
+    const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE
+    const offset = Number.isFinite(offsetParam) && offsetParam >= 0 ? offsetParam : 0
+
+    const { data, total, hasMore } = await getPropertiesListPage(
+      { status, origin, from, to, assigned_to },
+      { limit, offset }
+    )
+    return NextResponse.json({ data, total, hasMore })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error' }, { status: 500 })
   }

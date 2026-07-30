@@ -16,7 +16,10 @@ export interface PropertyCardData {
   asking_price: number
   currency: string
   status: string
-  photos: string[]
+  // Portada + conteo (de vw_properties_list) — NUNCA el array completo acá,
+  // ver .superpowers/sdd/2026-07-31-campana-y-chat-pro/task-7-brief.md (A3).
+  thumbnail?: string | null
+  photo_count?: number
   rooms?: number | null
   bathrooms?: number | null
   covered_area?: number | null
@@ -42,7 +45,7 @@ function formatCurrency(v: number, c: string) {
 
 export function PropertyCard({ property, currentUserId, statusInfo, onClick }: Props) {
   const isMine = !!currentUserId && property.assigned_to === currentUserId
-  const hero = property.photos?.[0]
+  const hero = property.thumbnail
 
   return (
     <Card
