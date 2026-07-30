@@ -21,7 +21,8 @@ import { analyzePropertyPhotos } from '@/lib/marketing/property-vision-analyzer'
 import { deriveFunnelType, type PropertyFunnelType } from './funnel-type'
 import { buildFromTemplate, suggestTemplateId, getTemplate } from './templates'
 import { buildLuxuryDocument } from './templates/luxury'
-import { generateConversionCopy } from './conversion-copy'
+import { generateConversionCopy, deterministicConversionCopy } from './conversion-copy'
+import { ENRICH_STAGES, nextEnrichStage, type EnrichStage } from './enrich'
 import { deriveTier } from './tier'
 import { buildUtmBase } from './utm'
 import { LandingDocument, safeParseLandingDocument } from './schema'
@@ -47,6 +48,11 @@ export interface WizardState {
   selectedAvatarIndex?: number
   visionSummary?: string
   descriptionUsed?: string
+  /**
+   * Etapa pendiente del enriquecimiento con IA. Ausente = landing creada antes
+   * de que el enriquecimiento se partiera en etapas → ya está completa.
+   */
+  enrich?: EnrichStage
 }
 
 export interface LandingRow {
@@ -104,40 +110,28 @@ export async function startCoCreation(propertyId: string, userId: string | null)
   if (!property) throw new Error('property not found')
 
   const funnelType = deriveFunnelType(property)
-
-  // Insumos IA (best-effort, con fallback interno cada uno).
-  let visionSummary = ''
-  try {
-    const vision = await analyzePropertyPhotos(property as never)
-    visionSummary = vision?.summary ?? ''
-  } catch { /* sin vision */ }
-
-  let description = ''
-  try {
-    const bridged = await getOrGenerateBridgedDescription(property as never)
-    description = [bridged.title, bridged.subtitle, bridged.body].filter(Boolean).join('\n')
-  } catch { /* sin descripción */ }
-
-  const [{ avatars }, { questions }] = await Promise.all([
-    generateEmpathyAvatars({ property, count: 3, visionSummary, description }),
-    generateCoCreationQuestions({ property, visionSummary, description }),
-  ])
-
-  // E1.9 — landing de LUJO con copy IA (beneficios intangibles + dolor),
-  // personalizado con el avatar, e intensidad por tier. Queda editable; si la IA
-  // falla, cae al copy determinístico internamente (generateConversionCopy nunca tira).
   const templateId = suggestTemplateId(funnelType) // 'luxury'
-  const { copy } = await generateConversionCopy({ property, avatar: avatars[0] })
-  const document = buildLuxuryDocument(property, copy, deriveTier(property))
+
+  // SIN IA — este request tiene que ser rápido. Las 4 etapas de IA que antes
+  // vivían acá sumaban ~30s y hacían que Netlify matara la función con un 504
+  // (ver el comentario largo de `lib/landing/enrich.ts`). Ahora la landing nace
+  // con el copy DETERMINÍSTICO —que ya es un documento válido y publicable— y
+  // el enriquecimiento con IA corre en llamadas aparte, una etapa por llamada.
+  const document = buildLuxuryDocument(
+    property,
+    deterministicConversionCopy(property),
+    deriveTier(property),
+  )
 
   const wizard_state: WizardState = {
     step: 'questions',
-    questions,
+    questions: [],
     answers: {},
-    avatarCandidates: avatars,
+    avatarCandidates: [],
     selectedAvatarIndex: 0,
-    visionSummary,
-    descriptionUsed: description.slice(0, 2000),
+    visionSummary: '',
+    descriptionUsed: '',
+    enrich: ENRICH_STAGES[0],
   }
 
   const { data, error } = await admin()
@@ -148,13 +142,91 @@ export async function startCoCreation(propertyId: string, userId: string | null)
       template_id: templateId,
       content: document,
       wizard_state,
-      ai_analysis: { visionSummary },
+      ai_analysis: {},
       funnel_type: funnelType,
       created_by: userId,
     })
     .select('*')
     .single()
   if (error) throw new Error(`No se pudo crear la landing: ${error.message}`)
+  return data as unknown as LandingRow
+}
+
+/**
+ * Corre UNA etapa del enriquecimiento con IA y devuelve la landing actualizada.
+ * El cliente la llama en loop hasta que `wizard_state.enrich === 'done'`.
+ *
+ * Cada etapa es idempotente respecto de sí misma y solo avanza el puntero cuando
+ * terminó, así que un reintento repite esa etapa y nunca las anteriores. Las
+ * etapas son best-effort igual que antes: si la IA falla, se guarda lo que haya
+ * (o el fallback determinístico) y se sigue — la landing nunca queda trabada.
+ */
+export async function runEnrichStage(propertyId: string): Promise<LandingRow> {
+  const landing = await getLanding(propertyId)
+  if (!landing) throw new Error('landing not found')
+
+  const stage = nextEnrichStage(landing.wizard_state ?? {})
+  if (stage === 'done') return landing
+
+  const property = await getProperty(propertyId)
+  if (!property) throw new Error('property not found')
+
+  const ws: WizardState = { ...landing.wizard_state }
+  const update: Record<string, unknown> = {}
+
+  if (stage === 'vision') {
+    // Gemini Vision sobre hasta 8 fotos (tiene su propio corte interno a 15s).
+    let visionSummary = ''
+    try {
+      const vision = await analyzePropertyPhotos(property as never)
+      visionSummary = vision?.summary ?? ''
+    } catch { /* sin vision */ }
+    ws.visionSummary = visionSummary
+    ws.enrich = 'description'
+    update.ai_analysis = { visionSummary }
+  } else if (stage === 'description') {
+    // Descripción de portal. Normalmente está cacheada y cuesta ~0, pero cuando
+    // no lo está se genera con IA — por eso va en su propia llamada.
+    let description = ''
+    try {
+      const bridged = await getOrGenerateBridgedDescription(property as never)
+      description = [bridged.title, bridged.subtitle, bridged.body].filter(Boolean).join('\n')
+    } catch { /* sin descripción */ }
+    ws.descriptionUsed = description.slice(0, 2000)
+    ws.enrich = 'avatars'
+  } else if (stage === 'avatars') {
+    const [{ avatars }, { questions }] = await Promise.all([
+      generateEmpathyAvatars({
+        property, count: 3,
+        visionSummary: ws.visionSummary ?? '',
+        description: ws.descriptionUsed ?? '',
+      }),
+      generateCoCreationQuestions({
+        property,
+        visionSummary: ws.visionSummary ?? '',
+        description: ws.descriptionUsed ?? '',
+      }),
+    ])
+    ws.avatarCandidates = avatars
+    ws.questions = questions
+    ws.enrich = 'copy'
+  } else {
+    // Copy de conversión personalizado con el avatar elegido. Reemplaza el
+    // documento determinístico con el que la landing nació.
+    const avatar = (ws.avatarCandidates ?? [])[ws.selectedAvatarIndex ?? 0]
+    const { copy } = await generateConversionCopy({ property, avatar })
+    update.content = buildLuxuryDocument(property, copy, deriveTier(property))
+    ws.enrich = 'done'
+  }
+
+  update.wizard_state = ws
+  const { data, error } = await admin()
+    .from('property_landings')
+    .update(update)
+    .eq('property_id', propertyId)
+    .select('*')
+    .single()
+  if (error) throw new Error(`No se pudo guardar el avance: ${error.message}`)
   return data as unknown as LandingRow
 }
 

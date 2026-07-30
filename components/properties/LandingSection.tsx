@@ -9,13 +9,14 @@
  *
  * Versión funcional; el editor drag-and-drop premium es E1.6.
  */
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Loader2, Sparkles, Rocket, ExternalLink, Wand2, ArrowRight, AlertTriangle } from 'lucide-react'
 import { needsDeliveryChoice } from '@/lib/properties/deliver-media'
+import { ENRICH_STAGES, nextEnrichStage } from '@/lib/landing/enrich'
 
 interface Question { id: string; question: string; hint?: string }
 interface Avatar {
@@ -30,6 +31,8 @@ interface WizardState {
   answers?: Record<string, string>
   avatarCandidates?: Avatar[]
   selectedAvatarIndex?: number
+  /** Etapa pendiente del enriquecimiento con IA; ausente = ya está completa. */
+  enrich?: 'vision' | 'avatars' | 'copy' | 'done'
 }
 interface Landing {
   status: 'draft' | 'published' | 'archived'
@@ -38,6 +41,25 @@ interface Landing {
   wizard_state: WizardState
 }
 interface TemplateMeta { id: string; label: string; description: string; bestFor: string }
+
+/**
+ * Lee la respuesta como JSON tolerando que NO lo sea.
+ *
+ * Cuando una función se pasa del tiempo máximo, el gateway devuelve una página
+ * HTML de error: `res.json()` explotaba con "Unexpected token '<', "<HTML>..."
+ * —un mensaje que no le dice nada a nadie— en vez del problema real.
+ */
+async function readJson<T>(res: Response): Promise<T & { error?: string }> {
+  const text = await res.text()
+  try {
+    return JSON.parse(text) as T & { error?: string }
+  } catch {
+    if (res.status === 504 || res.status === 502 || res.status === 408) {
+      return { error: 'El servidor tardó demasiado y cortó la operación. Volvé a intentar.' } as never
+    }
+    return { error: `El servidor respondió algo inesperado (${res.status}). Volvé a intentar.` } as never
+  }
+}
 
 interface LandingSectionProps {
   propertyId: string
@@ -55,6 +77,7 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [refineComment, setRefineComment] = useState('')
   const [deliverMedia, setDeliverMedia] = useState<string | null>(deliverMediaSaved ?? null)
+  const [enriching, setEnriching] = useState<{ label: string; percent: number } | null>(null)
 
   useEffect(() => { setDeliverMedia(deliverMediaSaved ?? null) }, [deliverMediaSaved])
 
@@ -77,7 +100,7 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
         method: 'PATCH', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ deliverMedia: choice }),
       })
-      const data = await res.json()
+      const data = await readJson<{ error?: string }>(res)
       if (!res.ok) throw new Error(data.error)
       toast.success('Guardado.')
     } catch (e) {
@@ -89,7 +112,7 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
     setLoading(true)
     try {
       const res = await fetch(`/api/properties/${propertyId}/landing`)
-      const data = await res.json()
+      const data = await readJson<{ landing?: Landing; templates?: TemplateMeta[] }>(res)
       if (res.ok) {
         setLanding(data.landing ?? null)
         setTemplates(data.templates ?? [])
@@ -102,18 +125,59 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
 
   useEffect(() => { load() }, [load])
 
+  /**
+   * Corre las etapas de IA de a una hasta terminar, mostrando el progreso.
+   * Cada etapa es su propio request: si una falla, se reintenta sola sin volver
+   * a pagar las anteriores. El tope de vueltas es un seguro anti-loop.
+   */
+  const runEnrichment = useCallback(async (): Promise<void> => {
+    for (let i = 0; i < ENRICH_STAGES.length + 2; i++) {
+      const res = await fetch(`/api/properties/${propertyId}/landing/enrich`, { method: 'POST' })
+      const data = await readJson<{
+        landing?: Landing; stage?: string; label?: string; percent?: number; done?: boolean; error?: string
+      }>(res)
+      if (!res.ok) throw new Error(data.error ?? 'Error al generar con IA')
+      if (data.landing) setLanding(data.landing ?? null)
+      if (data.done) { setEnriching(null); return }
+      setEnriching({ label: data.label ?? 'Generando…', percent: data.percent ?? 0 })
+    }
+    setEnriching(null)
+  }, [propertyId])
+
   const start = async () => {
     setBusy('start')
+    // El POST de creación ya no hace IA: vuelve en ~1s con la landing lista para
+    // trabajar. El enriquecimiento (Vision → avatares → textos) va después, de a
+    // una etapa, para no pasarse del tiempo máximo de la función.
+    setEnriching({ label: 'Creando la landing…', percent: 5 })
     try {
       const res = await fetch(`/api/properties/${propertyId}/landing`, { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      setLanding(data.landing); setTemplates(data.templates ?? [])
-      toast.success('Landing creada. Respondé las preguntas para afinar el avatar.')
+      const data = await readJson<{ landing?: Landing; templates?: TemplateMeta[]; error?: string }>(res)
+      if (!res.ok) throw new Error(data.error ?? 'Error al crear la landing')
+      setLanding(data.landing ?? null); setTemplates(data.templates ?? [])
+      await runEnrichment()
+      toast.success('Landing lista. Respondé las preguntas para afinar el avatar.')
     } catch (e) {
+      setEnriching(null)
       toast.error(e instanceof Error ? e.message : 'Error al crear la landing')
     } finally { setBusy(null) }
   }
+
+  /**
+   * Si el asesor recargó la página a mitad del enriquecimiento, lo retomamos
+   * solo. El ref evita que un re-render dispare un segundo loop.
+   */
+  const resumedRef = useRef(false)
+  useEffect(() => {
+    if (loading || !landing || resumedRef.current) return
+    if (nextEnrichStage(landing.wizard_state ?? {}) === 'done') return
+    resumedRef.current = true
+    setEnriching({ label: 'Retomando la generación…', percent: 5 })
+    runEnrichment().catch(e => {
+      setEnriching(null)
+      toast.error(e instanceof Error ? e.message : 'Error al generar con IA')
+    })
+  }, [loading, landing, runEnrichment])
 
   const saveAnswers = async () => {
     setBusy('answers')
@@ -122,9 +186,9 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ answers }),
       })
-      const data = await res.json()
+      const data = await readJson<{ landing?: Landing; error?: string }>(res)
       if (!res.ok) throw new Error(data.error)
-      setLanding(data.landing)
+      setLanding(data.landing ?? null)
       toast.success('Avatares regenerados con tus respuestas.')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error')
@@ -143,9 +207,9 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ avatarIndex: idx, comment: refineComment }),
       })
-      const data = await res.json()
+      const data = await readJson<{ landing?: Landing; error?: string }>(res)
       if (!res.ok) throw new Error(data.error)
-      setLanding(data.landing); setRefineComment('')
+      setLanding(data.landing ?? null); setRefineComment('')
       toast.success('Avatar ajustado.')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error')
@@ -158,9 +222,9 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
       const res = await fetch(`/api/properties/${propertyId}/landing`, {
         method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
       })
-      const data = await res.json()
+      const data = await readJson<{ landing?: Landing; error?: string }>(res)
       if (!res.ok) throw new Error(data.error)
-      setLanding(data.landing)
+      setLanding(data.landing ?? null)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error')
     } finally { setBusy(null) }
@@ -172,7 +236,7 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
     setBusy('publish')
     try {
       const res = await fetch(`/api/properties/${propertyId}/landing/publish`, { method: 'POST' })
-      const data = await res.json()
+      const data = await readJson<{ error?: string }>(res)
       if (!res.ok) throw new Error(data.error)
       toast.success('Landing publicada. Ya podés montar la campaña Meta.')
       await load()
@@ -184,6 +248,28 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
   if (loading) {
     return <Card><CardContent className="py-8 flex justify-center"><Loader2 className="h-5 w-5 animate-spin" /></CardContent></Card>
   }
+
+  /**
+   * Progreso del enriquecimiento. Es visible en la tarjeta de creación y en el
+   * wizard: la landing ya existe y se puede mirar mientras la IA la completa.
+   */
+  const enrichBlock = enriching ? (
+    <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+      <div className="flex items-center gap-2">
+        <Loader2 className="h-4 w-4 animate-spin text-[color:var(--brand)]" />
+        <p className="text-sm font-medium">{enriching.label}</p>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-[color:var(--brand)] transition-all duration-500"
+          style={{ width: `${enriching.percent}%` }}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Tarda un minuto. Podés quedarte acá; si te vas y volvés, sigue donde quedó.
+      </p>
+    </div>
+  ) : null
 
   /**
    * Elección de qué recorrido se entrega (solo si la propiedad tiene los dos).
@@ -226,6 +312,7 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
             Creá una landing de conversión para esta propiedad. La IA analiza las fotos y la descripción,
             te hace unas preguntas y arma el avatar del comprador. Es requisito para montar la campaña Meta.
           </p>
+          {enrichBlock}
           <Button onClick={start} disabled={busy === 'start'}>
             {busy === 'start' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wand2 className="h-4 w-4 mr-2" />}
             Crear landing con IA
@@ -272,6 +359,8 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
         <CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4" />Landing Page — en construcción</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
+        {enrichBlock}
+
         {/* 1. Preguntas */}
         {questions.length > 0 && (
           <div className="space-y-3">

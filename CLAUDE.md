@@ -464,6 +464,45 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 
 ---
 
+## REGLA DURA: nunca encadenar varias llamadas de IA dentro de UN request
+
+Ya nos mordió **dos veces** (carruseles 2026-07-22, creación de landing 2026-07-29).
+Las funciones de Netlify se cortan bastante antes de los 60s y **`export const
+maxDuration = 60` NO sirve acá**: es una directiva de Vercel, Netlify la ignora.
+Cuando la función se pasa, el gateway devuelve una **página HTML de error 504** →
+el `res.json()` del cliente explota con `Unexpected token '<', "<HTML>..."`, un
+mensaje que no dice nada del problema real.
+
+- **Síntoma típico:** el botón queda "cargando" 30s y después un toast ilegible.
+  En la consola: `Failed to load resource: the server responded with a status of 504`.
+- **Trampa:** el bug es INTERMITENTE, así que parece "andar". La creación de landing
+  funcionó 3 veces (25 y 27 de julio) y falló a la cuarta. Las 4 propiedades tenían
+  las MISMAS 12 fotos y descripciones parecidas — no había diferencia estructural.
+  Era una moneda al aire de latencia contra el techo de tiempo.
+- **Diagnóstico:** medir CADA etapa por separado con un script tsx contra la base real.
+  **OJO:** `.env.local` NO tiene `GEMINI_API_KEY`, así que las etapas de Gemini
+  devuelven en 0.0s con su fallback y **la medición local subestima producción**.
+  Sumar a mano el techo de cada llamada Gemini (Vision corta a los 15s).
+- **Patrón correcto (el que ya usan carruseles y meta-launch-v2):** el POST de
+  creación es RÁPIDO y sin IA, deja la entidad usable, y guarda un puntero de
+  etapa. Un endpoint aparte hace **UNA etapa por llamada** y el cliente loopea
+  mostrando progreso. Un fallo se reintenta solo en su etapa, sin volver a pagar
+  las anteriores.
+- **Implementación de referencia:** `lib/landing/enrich.ts` (máquina de etapas pura
+  y testeada) + `runEnrichStage` en `landing-service.ts` + `POST
+  /api/properties/[id]/landing/enrich` + el loop de `LandingSection.tsx`.
+  Una etapa por llamada, no dos: `vision` y `description` van separadas justamente
+  porque juntas se pasaban cuando la descripción no estaba cacheada.
+- **Compatibilidad:** `nextEnrichStage` devuelve `'done'` cuando falta el campo
+  `enrich` → una landing vieja NUNCA se re-genera (re-generar pisaría el contenido
+  que el asesor pudo haber editado). Un valor desconocido también cae en `'done'`,
+  así el loop del cliente siempre termina.
+- **Siempre** leer respuestas con un helper tolerante (`readJson` en
+  `LandingSection.tsx`): si el body no es JSON, mostrar el error real
+  ("el servidor tardó demasiado"), no el `Unexpected token '<'`.
+
+---
+
 ## Generador de Carruseles — Sección "Redes Sociales" (2026-07-21)
 
 Genera carruseles de campaña (largo variable, narrativa de curiosidad) a partir de un tema, con la identidad de marca y la metodología entrenadas. Specs: `docs/superpowers/specs/2026-07-20-carruseles-redes-sociales-design.md` (Fase 0) y `2026-07-21-generador-carruseles-plataforma-design.md` (Fase 1). Plan: `docs/superpowers/plans/2026-07-21-generador-carruseles.md`.
