@@ -58,6 +58,42 @@ describe('normalizeWhatsappPhone', () => {
   })
 })
 
+describe('normalizeWhatsappPhone con región explícita (Task 5 — selector de país)', () => {
+  it('Argentina: 11 / 9 11 / 15 / 011 15 dan SIEMPRE el mismo canónico (los 4 casos del brief)', () => {
+    expect(normalizeWhatsappPhone('11 6123 4567', 'AR')).toBe('5491161234567')
+    expect(normalizeWhatsappPhone('9 11 6123 4567', 'AR')).toBe('5491161234567')
+    expect(normalizeWhatsappPhone('15 6123 4567', 'AR')).toBe('5491161234567')
+    expect(normalizeWhatsappPhone('011 15 6123 4567', 'AR')).toBe('5491161234567')
+  })
+
+  it('sin segundo argumento sigue asumiendo Argentina (no rompe a los llamadores existentes)', () => {
+    expect(normalizeWhatsappPhone('11 6123 4567')).toBe('5491161234567')
+    expect(isWhatsappUsable('11 6123 4567')).toBe(true)
+  })
+
+  it('usa la región elegida para un número local del exterior (sin "+")', () => {
+    // Colombia: celular local tal cual lo tipearía alguien que YA eligió
+    // Colombia en la bandera (sin indicativo, porque el indicativo lo
+    // muestra el selector aparte).
+    expect(normalizeWhatsappPhone('310 782 2955', 'CO')).toBe('573107822955')
+    // El mismo número leído con la región por defecto (AR) no da un
+    // argentino válido — se rechaza en vez de inventar.
+    expect(normalizeWhatsappPhone('310 782 2955', 'AR')).toBeNull()
+  })
+
+  it('un "+" explícito manda por sobre la región elegida (pegar un número completo nunca se rompe)', () => {
+    expect(normalizeWhatsappPhone('+57 310 782 2955', 'AR')).toBe('573107822955')
+    expect(normalizeWhatsappPhone('+54 11 6123 4567', 'CO')).toBe('5491161234567')
+  })
+
+  it('el "15 sin área" NO se expande para otros países (la heurística es solo AR)', () => {
+    // Con región no-AR, "15 6123 4567" no matchea ningún plan válido: se
+    // rechaza en vez de aplicar la suposición de área 11 (que es específica
+    // de Argentina).
+    expect(normalizeWhatsappPhone('15 6123 4567', 'MX')).toBeNull()
+  })
+})
+
 describe('E.164 sin "+" (formato de phone_e164 y del `from` de Meta)', () => {
   it('resuelve números del EXTERIOR guardados sin "+"', () => {
     // Sin esto era imposible contestarle por el chat a un cliente del exterior:

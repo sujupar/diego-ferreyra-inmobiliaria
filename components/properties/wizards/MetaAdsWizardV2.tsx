@@ -11,6 +11,19 @@
  *  - Generación de 12 piezas (3 fotos × 2 estilos × 2 formatos) en batches;
  *    el motor (E2.5) es OpenAI gpt-image-2 + overlay vectorial.
  *  - Confirm crea campaña + custom audiences.
+ *
+ * Publicar (confirm) — resiliencia al corte del navegador (Task 3, 2026-07-31):
+ * crear Campaign+AdSet+Ads en Meta puede tardar más que lo que el gateway deja
+ * viva la conexión. Cuando eso pasa, el SERVIDOR sigue trabajando y termina
+ * bien (evidencia real: campaña creada en Meta segundos después de que el
+ * navegador ya había mostrado error) — el bug estaba en el CLIENTE, que
+ * trataba cualquier corte de conexión como un fallo definitivo y abandonaba
+ * el polling. Ahora `confirmAndPublish` distingue error AMBIGUO (la conexión
+ * se cortó, no sabemos qué pasó del otro lado) de error DEFINITIVO (el
+ * servidor respondió con una razón concreta antes de tocar Meta, ej.
+ * presupuesto fuera de rango): ante lo ambiguo, seguimos el estado real vía
+ * el polling de `[jobId]/status` (mismo patrón que `lib/landing/enrich.ts`)
+ * en vez de mostrar "error" sobre un trabajo que puede haber salido bien.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -42,6 +55,34 @@ import {
   ArrowRight,
   RefreshCw,
 } from 'lucide-react'
+
+/**
+ * Lee la respuesta como JSON tolerando que NO lo sea — mismo patrón que
+ * `readJson` en `components/properties/LandingSection.tsx`.
+ *
+ * Cuando el gateway corta la conexión a mitad de una operación larga (el
+ * caso de `confirm`), la respuesta puede ser una página HTML de error o
+ * llegar con status 502/504/408. En esos casos `ambiguous: true` — NO
+ * sabemos si el servidor terminó bien o mal, así que el caller no debe
+ * mostrarlo como un fallo definitivo.
+ */
+async function readJson<T>(res: Response): Promise<T & { error?: string; ambiguous?: boolean }> {
+  const text = await res.text()
+  try {
+    return JSON.parse(text) as T & { error?: string }
+  } catch {
+    if (res.status === 504 || res.status === 502 || res.status === 408) {
+      return {
+        error: 'El servidor tardó demasiado y el gateway cortó la conexión.',
+        ambiguous: true,
+      } as never
+    }
+    return {
+      error: `El servidor respondió algo inesperado (${res.status}).`,
+      ambiguous: true,
+    } as never
+  }
+}
 
 interface BuyerAvatar {
   id: string
@@ -251,13 +292,33 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
         }
       }
       if (data.job?.status === 'published') {
+        // Descubrimos el éxito POR POLLING — el caso que arregla Task 3:
+        // confirmAndPublish puede haber quedado en el limbo (fetch cortado)
+        // sin haber seteado finalResult nunca. `error_message` es donde
+        // confirm/route.ts persiste el detalle de una publicación PARCIAL
+        // ("Publicación parcial: X/Y anuncios…") — lo reusamos acá para que
+        // este camino no pierda ese aviso solo por no venir de la respuesta
+        // directa del POST.
+        const partialNote =
+          typeof data.job.error_message === 'string' && data.job.error_message.startsWith('Publicación parcial')
+            ? data.job.error_message
+            : undefined
         setStep('done')
-        setFinalResult({
+        setFinalResult(prev => ({
           campaignId: data.job.result_campaign_id,
           adsManagerUrl: `https://business.facebook.com/adsmanager/manage/campaigns?act=${(process.env.NEXT_PUBLIC_META_AD_ACCOUNT_ID ?? '').replace('act_', '')}&selected_campaign_ids=${data.job.result_campaign_id}`,
-        })
+          adsCreated: prev?.adsCreated,
+          expectedAds: prev?.expectedAds,
+          warning: partialNote ?? prev?.warning,
+        }))
       }
       if (data.job?.status === 'failed') {
+        // Nos enteramos de la falla POR POLLING (no por la respuesta directa
+        // de /confirm, que puede haberse cortado) — el panel de detalle ya se
+        // muestra solo (chequeo `job?.status === 'failed'` antes del switch
+        // de step, más abajo). Sacamos el step de la lista "pollable" para
+        // frenar el polling — sin esto, el toast se repetiría cada 3s.
+        setStep('review_and_publish')
         toast.error(`Fallo: ${data.job.error_message ?? 'desconocido'}`)
       }
     } catch (err) {
@@ -474,17 +535,40 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
   async function confirmAndPublish() {
     if (!jobId) return
     setLoading(true)
+    // El polling de 'publishing' (efecto de más arriba) arranca apenas este
+    // setStep se aplica — corre EN PARALELO al fetch de abajo, así que si el
+    // fetch se corta pero el servidor termina bien, el polling lo va a
+    // descubrir solo. Por eso el catch/error de abajo NUNCA debe revertir
+    // este step ante una ambigüedad — revertirlo apaga el polling.
     setStep('publishing')
     try {
       const r = await fetch(
         `/api/properties/${propertyId}/meta-launch-v2/${jobId}/confirm`,
         { method: 'POST' },
       )
-      const data = await r.json()
-      if (!r.ok) throw new Error(data.error ?? 'Error al publicar')
+      const data = await readJson<{
+        ok?: boolean
+        campaignId?: string
+        adsManagerUrl?: string
+        adsCreated?: number
+        expectedAds?: number
+        warning?: string
+      }>(r)
+      if (!r.ok) {
+        if (data.ambiguous) {
+          // El gateway cortó la conexión antes de que llegara la respuesta —
+          // NO sabemos si el servidor terminó bien o mal (bug A1: esto pasó
+          // con una campaña que en realidad se había creado OK). No lo
+          // mostramos como error: dejamos que el polling ya activo en
+          // step='publishing' descubra el resultado real.
+          toast.info('Seguimos verificando con Meta — no cierres esta pantalla.')
+          return
+        }
+        throw new Error(data.error ?? 'Error al publicar')
+      }
       setFinalResult({
-        campaignId: data.campaignId,
-        adsManagerUrl: data.adsManagerUrl,
+        campaignId: data.campaignId!,
+        adsManagerUrl: data.adsManagerUrl!,
         adsCreated: data.adsCreated,
         expectedAds: data.expectedAds,
         warning: data.warning,
@@ -494,6 +578,16 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
       if (data.warning) toast.warning(data.warning, { duration: 12000 })
       setStep('done')
     } catch (err) {
+      // Un fetch que ni siquiera devolvió respuesta (conexión cortada,
+      // TypeError: Failed to fetch / AbortError) es la MISMA ambigüedad que
+      // arriba: el servidor puede haber seguido y terminado bien. Mismo
+      // criterio — no revertimos el step, dejamos que el polling resuelva.
+      const esCorteDeRed =
+        err instanceof TypeError || (err instanceof Error && err.name === 'AbortError')
+      if (esCorteDeRed) {
+        toast.info('Se cortó la conexión, pero el servidor puede seguir trabajando. Verificando…')
+        return
+      }
       toast.error(err instanceof Error ? err.message : 'Error')
       setStep('review_and_publish')
     } finally {
@@ -1103,12 +1197,20 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
   }
 
   if (step === 'publishing') {
+    // Progreso real por etapa (Task 3): `job?.current_step` viene del polling
+    // a /status, que sigue corriendo aunque el fetch de /confirm se haya
+    // cortado — por eso este texto puede seguir avanzando incluso después de
+    // que confirmAndPublish haya mostrado "seguimos verificando".
     return (
       <Card>
         <CardContent className="py-12 text-center space-y-3">
           <Loader2 className="h-10 w-10 animate-spin mx-auto text-[color:var(--brand)]" />
-          <p className="font-medium">Publicando campaña + creando públicos…</p>
-          <p className="text-xs text-muted-foreground">Esto tarda ~10-20 segundos</p>
+          <p className="font-medium">{stepLabel(job?.current_step)}</p>
+          <Progress value={job?.progress_percent ?? 10} className="max-w-xs mx-auto" />
+          <p className="text-xs text-muted-foreground">
+            Puede tardar más de un minuto. No cierres esta pantalla — si se corta la
+            conexión, al volver a entrar retomamos donde quedó, no se pierde nada.
+          </p>
         </CardContent>
       </Card>
     )
@@ -1173,6 +1275,15 @@ function stepLabel(step: string | null | undefined): string {
     analyzing_photos: 'Analizando las fotos con Gemini Vision…',
     generating_avatars: 'Generando 3 perfiles de comprador ideal…',
     awaiting_avatar_selection: 'Listo — elegí el avatar',
+    // Etapas de publicación (Task 3) — reflejan current_step de meta_launch_jobs
+    // durante el confirm. 'creating_audiences' y 'verifying' son best-effort del
+    // lado del servidor, pero igual sirven como texto de progreso acá.
+    creating_campaign: 'Creando la campaña y los anuncios en Meta…',
+    creating_audiences: 'Creando los públicos personalizados…',
+    verifying: 'Verificando con Meta…',
+    retry_after_timeout: 'Retomando la publicación…',
+    done_recovered: 'Campaña recuperada — listo',
+    done: 'Listo',
   }
   return map[step] ?? step
 }

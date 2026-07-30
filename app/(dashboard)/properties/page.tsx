@@ -25,15 +25,21 @@ const STATUS_INFO: Record<string, { label: string; color: string }> = {
   descartada: { label: 'Descartada', color: 'bg-slate-500' },
 }
 
+// Shape del LISTADO — viene de vw_properties_list (GET /api/properties), sin
+// el array `photos` completo (A3 de la auditoría: 21.951 KB por request, 99%
+// eran fotos base64 legacy). Solo `thumbnail` (portada) + `photo_count`.
+// El detalle completo (galería, descripción, video, tour) se pide aparte al
+// abrir el modal — ver fetchFullProperty más abajo.
 interface Property {
   id: string; address: string; neighborhood: string; city: string; property_type: string
   asking_price: number; currency: string; status: string; origin: string | null
-  photos: string[]; created_at: string; legal_status?: string
+  thumbnail: string | null; photo_count: number; thumbnail_is_legacy_base64: boolean
+  created_at: string; legal_status?: string
   assigned_to?: string | null; rooms?: number | null; bathrooms?: number | null; covered_area?: number | null
-  // optional fields returned by API, used by PropertyDetailModal
-  description?: string | null; video_url?: string | null; tour_3d_url?: string | null; total_area?: number | null
   legal_docs_pending?: boolean | null; origin_pending?: boolean | null
 }
+
+const PAGE_SIZE = 24
 
 function getPropertyStatusInfo(p: Property) {
   if (p.status === 'pending_review' && p.legal_status === 'approved') {
@@ -53,6 +59,9 @@ export default function PropertiesPage() {
   const router = useRouter()
   const [properties, setProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [total, setTotal] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
   const [filterStatus, setFilterStatus] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'table'>('grid')
   const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: '', to: '' })
@@ -62,6 +71,7 @@ export default function PropertiesPage() {
   const [onlyMine, setOnlyMine] = useState(false)
   const [modalProperty, setModalProperty] = useState<DetailProperty | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [modalLoading, setModalLoading] = useState(false)
   const [scheduleVisitOpen, setScheduleVisitOpen] = useState(false)
   const [scheduleForPropertyId, setScheduleForPropertyId] = useState<string | null>(null)
   const canHardDelete = userInfo?.role === 'admin' || userInfo?.role === 'dueno'
@@ -78,32 +88,89 @@ export default function PropertiesPage() {
     fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
   }, [])
 
-  useEffect(() => {
+  function buildParams(offset: number) {
     const params = new URLSearchParams()
     if (filterStatus) params.set('status', filterStatus)
     if (dateRange.from) params.set('from', dateRange.from)
     if (dateRange.to) params.set('to', dateRange.to)
     if (onlyMine && userInfo?.id) params.set('assigned_to', userInfo.id)
+    params.set('limit', String(PAGE_SIZE))
+    params.set('offset', String(offset))
+    return params
+  }
 
+  // Paginado de a PAGE_SIZE (24) — ver task-7-brief.md. Reset a la página 0
+  // cada vez que cambia un filtro.
+  useEffect(() => {
     setLoading(true)
-    fetch(`/api/properties?${params}`)
+    fetch(`/api/properties?${buildParams(0)}`)
       .then(r => r.json())
-      .then(({ data }) => setProperties(data || []))
+      .then(({ data, total, hasMore }) => {
+        setProperties(data || [])
+        setTotal(total ?? (data || []).length)
+        setHasMore(!!hasMore)
+      })
       .catch(err => console.error(err))
       .finally(() => setLoading(false))
     // Limpiar selección al cambiar filtros
     setSelectedIds(new Set())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterStatus, dateRange, userInfo, onlyMine])
 
+  async function loadMore() {
+    if (loadingMore || !hasMore) return
+    setLoadingMore(true)
+    try {
+      const res = await fetch(`/api/properties?${buildParams(properties.length)}`)
+      const { data, total: newTotal, hasMore: newHasMore } = await res.json()
+      setProperties(prev => [...prev, ...(data || [])])
+      setTotal(newTotal ?? 0)
+      setHasMore(!!newHasMore)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
   async function refreshProperties() {
-    const params = new URLSearchParams()
-    if (filterStatus) params.set('status', filterStatus)
-    if (dateRange.from) params.set('from', dateRange.from)
-    if (dateRange.to) params.set('to', dateRange.to)
-    if (onlyMine && userInfo?.id) params.set('assigned_to', userInfo.id)
-    const res = await fetch(`/api/properties?${params}`)
-    const { data } = await res.json()
+    const res = await fetch(`/api/properties?${buildParams(0)}`)
+    const { data, total: newTotal, hasMore: newHasMore } = await res.json()
     setProperties(data || [])
+    setTotal(newTotal ?? (data || []).length)
+    setHasMore(!!newHasMore)
+  }
+
+  // El listado no trae galería/descripción/video/tour (esos campos NUNCA
+  // viajan en vw_properties_list) — al abrir el modal se pide el detalle
+  // completo por GET /api/properties/[id] (mismo endpoint que usa la ficha).
+  async function openPropertyModal(p: Property) {
+    setModalProperty({
+      id: p.id,
+      address: p.address,
+      neighborhood: p.neighborhood,
+      city: p.city,
+      property_type: p.property_type,
+      asking_price: p.asking_price,
+      currency: p.currency,
+      status: p.status,
+      photos: p.thumbnail && !p.thumbnail_is_legacy_base64 ? [p.thumbnail] : [],
+      rooms: p.rooms,
+      bathrooms: p.bathrooms,
+      covered_area: p.covered_area,
+      assigned_to: p.assigned_to,
+    })
+    setModalOpen(true)
+    setModalLoading(true)
+    try {
+      const res = await fetch(`/api/properties/${p.id}`)
+      const { data } = await res.json()
+      if (data) setModalProperty(data)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setModalLoading(false)
+    }
   }
 
   async function handleBulkDiscard() {
@@ -160,7 +227,9 @@ export default function PropertiesPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Propiedades</h1>
-          <p className="text-muted-foreground">{properties.length} propiedad{properties.length !== 1 ? 'es' : ''}</p>
+          <p className="text-muted-foreground">
+            {properties.length < total ? `${properties.length} de ${total}` : total} propiedad{total !== 1 ? 'es' : ''}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">
@@ -224,7 +293,7 @@ export default function PropertiesPage() {
               property={p}
               currentUserId={userInfo?.id}
               statusInfo={getPropertyStatusInfo(p)}
-              onClick={() => { setModalProperty(p); setModalOpen(true) }}
+              onClick={() => openPropertyModal(p)}
             />
           ))}
         </div>
@@ -246,8 +315,8 @@ export default function PropertiesPage() {
               <Link key={prop.id} href={`/properties/${prop.id}`}>
                 <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
                   <CardContent className="flex items-center gap-4 py-4">
-                    {prop.photos?.[0] ? (
-                      <img src={prop.photos[0]} alt="" className="h-14 w-14 rounded-lg object-cover" />
+                    {prop.thumbnail ? (
+                      <img src={prop.thumbnail} alt="" className="h-14 w-14 rounded-lg object-cover" />
                     ) : (
                       <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center"><Building2 className="h-6 w-6 text-muted-foreground" /></div>
                     )}
@@ -271,9 +340,19 @@ export default function PropertiesPage() {
         </div>
       )}
 
+      {!loading && hasMore && (
+        <div className="flex justify-center py-4">
+          <Button variant="outline" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+            Cargar más ({properties.length} de {total})
+          </Button>
+        </div>
+      )}
+
       <PropertyDetailModal
         property={modalProperty}
         open={modalOpen}
+        loading={modalLoading}
         onOpenChange={setModalOpen}
         currentUserId={userInfo?.id}
         onScheduleVisit={(id) => {

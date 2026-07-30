@@ -82,6 +82,82 @@ export async function getProperties(filters?: { status?: string; origin?: string
   return data || []
 }
 
+export interface PropertiesListFilters {
+  status?: string
+  origin?: string
+  from?: string
+  to?: string
+  assigned_to?: string
+}
+
+/**
+ * Listado paginado para app/(dashboard)/properties/page.tsx — lee de
+ * `vw_properties_list` (SIN el array `photos`, solo `thumbnail`/`photo_count`)
+ * en vez de `properties.select('*')`. Ver supabase/migrations/20260731000002_vw_properties_list.sql
+ * (A3 de la auditoría: 21.951 KB por request, 99% en `photos` con base64 legacy).
+ *
+ * `legal_docs_pending`/`origin_pending` NO están en la vista (son 2 columnas
+ * booleanas chicas, no vale la pena tocar la vista/migración por esto) — se
+ * traen aparte con un SELECT liviano a `properties` (no toca `photos`, cero
+ * costo de detoast) EN PARALELO con la vista: mismos filtros + mismo orden
+ * determinístico (`created_at desc, id asc` — el tie-break por id garantiza
+ * que ambas consultas devuelven exactamente el mismo conjunto de filas para
+ * el mismo offset/limit aunque haya empates de created_at) + mismo range, y
+ * se mezclan acá por id.
+ */
+export async function getPropertiesListPage(
+  filters: PropertiesListFilters = {},
+  page: { limit: number; offset: number }
+) {
+  const supabase = getAdmin()
+  const { limit, offset } = page
+
+  let listQuery = supabase
+    .from('vw_properties_list')
+    .select('*', { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: true })
+
+  if (filters.status) listQuery = listQuery.eq('status', filters.status)
+  if (filters.origin) listQuery = listQuery.eq('origin', filters.origin)
+  if (filters.from) listQuery = listQuery.gte('created_at', filters.from + 'T00:00:00Z')
+  if (filters.to) listQuery = listQuery.lte('created_at', filters.to + 'T23:59:59Z')
+  if (filters.assigned_to) listQuery = listQuery.eq('assigned_to', filters.assigned_to)
+
+  let flagsQuery = supabase
+    .from('properties')
+    .select('id, legal_docs_pending, origin_pending')
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: true })
+
+  if (filters.status) flagsQuery = flagsQuery.eq('status', filters.status)
+  if (filters.origin) flagsQuery = flagsQuery.eq('origin', filters.origin)
+  if (filters.from) flagsQuery = flagsQuery.gte('created_at', filters.from + 'T00:00:00Z')
+  if (filters.to) flagsQuery = flagsQuery.lte('created_at', filters.to + 'T23:59:59Z')
+  if (filters.assigned_to) flagsQuery = flagsQuery.eq('assigned_to', filters.assigned_to)
+
+  const [{ data, error, count }, { data: flags, error: flagsError }] = await Promise.all([
+    listQuery.range(offset, offset + limit - 1),
+    flagsQuery.range(offset, offset + limit - 1),
+  ])
+  if (error) throw error
+  if (flagsError) throw flagsError
+
+  const flagsById = new Map<string, { legal_docs_pending: boolean; origin_pending: boolean }>(
+    (flags || []).map((f) => [f.id, { legal_docs_pending: !!f.legal_docs_pending, origin_pending: !!f.origin_pending }])
+  )
+
+  const rows = data || []
+  const merged = rows.map((r) => ({
+    ...r,
+    legal_docs_pending: flagsById.get(r.id)?.legal_docs_pending ?? false,
+    origin_pending: flagsById.get(r.id)?.origin_pending ?? false,
+  }))
+
+  const total = count ?? merged.length
+  return { data: merged, total, hasMore: offset + merged.length < total }
+}
+
 export async function getProperty(id: string) {
   const supabase = getAdmin()
   const { data, error } = await supabase

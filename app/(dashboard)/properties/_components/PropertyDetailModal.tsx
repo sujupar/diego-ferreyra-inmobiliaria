@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { MapPin, Bed, Bath, Square, Calendar, ExternalLink, Video, Box } from 'lucide-react'
+import { MapPin, Bed, Bath, Square, Calendar, ExternalLink, Video, Box, Loader2 } from 'lucide-react'
 import { PropertyGallery } from './PropertyGallery'
 import { OwnershipBadge } from './OwnershipBadge'
 
@@ -39,12 +39,16 @@ function formatCurrency(v: number, c: string) {
 interface Props {
   property: DetailProperty | null
   open: boolean
+  // El listado (page.tsx) no trae galería/descripción/video/tour — mientras
+  // se pide el detalle completo a GET /api/properties/[id] mostramos esto
+  // en vez de "Sin fotos" para no sugerir que la propiedad no tiene fotos.
+  loading?: boolean
   onOpenChange: (open: boolean) => void
   currentUserId?: string
   onScheduleVisit: (propertyId: string) => void
 }
 
-export function PropertyDetailModal({ property, open, onOpenChange, currentUserId, onScheduleVisit }: Props) {
+export function PropertyDetailModal({ property, open, loading, onOpenChange, currentUserId, onScheduleVisit }: Props) {
   if (!property) return null
   const isMine = !!currentUserId && property.assigned_to === currentUserId
 
@@ -66,7 +70,13 @@ export function PropertyDetailModal({ property, open, onOpenChange, currentUserI
             </div>
           </header>
 
-          <PropertyGallery photos={property.photos} alt={property.address} />
+          {loading && property.photos.length === 0 ? (
+            <div className="aspect-video bg-muted flex items-center justify-center text-muted-foreground rounded-lg gap-2">
+              <Loader2 className="size-4 animate-spin" /> Cargando fotos…
+            </div>
+          ) : (
+            <PropertyGallery photos={property.photos} alt={property.address} />
+          )}
 
           <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {property.rooms != null && (

@@ -39,6 +39,17 @@ export interface InboundMessage {
   /** Texto legible corto para mostrar en el Inbox sin abrir el payload crudo. */
   bodyPreview: string
   timestamp: string
+  /**
+   * `id` del recurso multimedia (`image.id`/`audio.id`/`video.id`/`document.id`/
+   * `sticker.id`), null si el mensaje no trae adjunto. La ruta del webhook lo usa
+   * para pedirle a Meta la URL temporal de descarga (`GET /{media-id}`) y guardar
+   * el archivo en Storage — ver `lib/integrations/whatsapp/media.ts`.
+   */
+  mediaId: string | null
+  /** `mime_type` que reporta Meta en el nodo del adjunto (ej. `image/jpeg`). */
+  mediaMimeType: string | null
+  /** Solo `document.filename` — el resto de los tipos no lo trae. */
+  mediaFilename: string | null
   /** El objeto `messages[i]` completo, para debug / futuras necesidades. */
   payload: unknown
 }
@@ -104,6 +115,24 @@ function describeNonTextMessage(type: string, msg: Record<string, unknown>): str
   }
 }
 
+/** Tipos de mensaje que traen un adjunto descargable de Meta. */
+const MEDIA_TYPES = new Set(['image', 'audio', 'video', 'document', 'sticker'])
+
+/** Extrae `{id, mime_type, filename}` del nodo del adjunto (`raw.image`/`raw.audio`/...). Nunca lanza. */
+function extractMedia(
+  type: string,
+  raw: Record<string, unknown>,
+): { mediaId: string | null; mediaMimeType: string | null; mediaFilename: string | null } {
+  if (!MEDIA_TYPES.has(type)) return { mediaId: null, mediaMimeType: null, mediaFilename: null }
+  const node = isRecord(raw[type]) ? (raw[type] as Record<string, unknown>) : null
+  if (!node) return { mediaId: null, mediaMimeType: null, mediaFilename: null }
+  return {
+    mediaId: typeof node.id === 'string' ? node.id : null,
+    mediaMimeType: typeof node.mime_type === 'string' ? node.mime_type : null,
+    mediaFilename: typeof node.filename === 'string' ? node.filename : null,
+  }
+}
+
 function parseMessage(raw: unknown): InboundMessage | null {
   if (!isRecord(raw)) return null
   const id = typeof raw.id === 'string' ? raw.id : null
@@ -124,6 +153,7 @@ function parseMessage(raw: unknown): InboundMessage | null {
     type: type as InboundMessageType,
     bodyPreview,
     timestamp,
+    ...extractMedia(type, raw),
     payload: raw,
   }
 }

@@ -42,7 +42,10 @@ export interface NotifyInquiry {
   seq: number
   portal: Portal
   inquiryType: InquiryType | null
-  propertyLabel: string // "Propiedad" (dirección)
+  propertyLabel: string // "Propiedad" (dirección; o "⚠️ CÓD X · título" si el aviso no está registrado)
+  /** Cómo nombrar la propiedad EN EL SALUDO al interesado: dirección o título
+   *  limpios, nunca el código ni la marca de alerta. null = omitir la mención. */
+  leadPropertyLabel?: string | null
   avisoLabel: string // "Aviso" (título/código/url)
   leadName: string | null
   leadPhone: string | null
@@ -92,15 +95,20 @@ async function shortenUrl(url: string): Promise<string> {
 }
 
 async function buildReplyLink(
-  leadPhone: string | null, leadName: string | null, advisorName: string, propertyLabel: string,
+  leadPhone: string | null, leadName: string | null, advisorName: string, propertyLabel: string | null,
 ): Promise<string> {
   const phone = normalizePhone(leadPhone)
   if (!phone) return '⚠️ No pude armar el link porque falta un teléfono válido'
   // Saludo COMPLETO y bien estructurado para contactar al prospecto; el link se
   // acorta con TinyURL (queda tipo tinyurl.com/xxxx en el WhatsApp).
+  // Sin propiedad identificada, el saludo NO la menciona (mejor genérico que
+  // mandarle al interesado un código interno o "(propiedad sin identificar)").
+  const propertyPart = propertyLabel
+    ? ` Te escribo por tu consulta de la propiedad en ${propertyLabel}.`
+    : ' Te escribo por la consulta que nos hiciste.'
   const greeting =
-    `Hola ${(leadName ?? '').trim()}, buen día! Mi nombre es ${advisorName}, un gusto saludarte. ` +
-    `Te escribo por tu consulta de la propiedad en ${propertyLabel}.`
+    `Hola ${(leadName ?? '').trim()}, buen día! Mi nombre es ${advisorName}, un gusto saludarte.` +
+    propertyPart
   const longUrl = `https://wa.me/${phone}?text=${encodeURIComponent(greeting.replace(/\s+/g, ' ').trim())}`
   return await shortenUrl(longUrl)
 }
@@ -221,7 +229,12 @@ export async function notifyInquiry(supabase: SupabaseClient, inq: NotifyInquiry
   const respondingProfile = assignedProfile ?? owner
   const advisorLabel = firstNameUpper(assignedProfile?.full_name ?? null)
   const replyLink = await buildReplyLink(
-    inq.leadPhone, inq.leadName, respondingProfile?.full_name ?? 'el equipo', inq.propertyLabel,
+    inq.leadPhone,
+    inq.leadName,
+    respondingProfile?.full_name ?? 'el equipo',
+    // El saludo al interesado usa el label limpio; si el cron no lo mandó
+    // (llamadas viejas), cae al propertyLabel de siempre.
+    inq.leadPropertyLabel !== undefined ? inq.leadPropertyLabel : inq.propertyLabel,
   )
   const bodyParams = buildBodyParams(inq, advisorLabel, replyLink)
   const attemptedPhones = new Set<string>()

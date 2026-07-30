@@ -21,14 +21,36 @@ import {
 } from 'react'
 import { Loader2, CheckCircle2, X } from 'lucide-react'
 import { trackLead, getMetaCookie } from './MetaPixel'
+import { PhoneField } from './PhoneField'
+import { composePhoneForSubmit } from '@/lib/landing/phone-country'
+// `import type` se borra en compilación — no agrega los ~50 KB de la
+// librería real al bundle. Solo sirve para tipar `region` sin ensanchar nada.
+import type { CountryCode } from 'libphonenumber-js/max'
 // OJO: `libphonenumber-js/max` pesa ~50 KB gzip (metadata de todos los países).
 // Esta landing es TRÁFICO PAGO, así que no entra en el bundle inicial: se carga
 // recién cuando alguien aprieta "enviar" con un teléfono escrito. Import estático
 // = 50 KB que paga TODO el que ve la página; diferido = los paga solo quien envía
 // el formulario, y para entonces ya está en pantalla. No volver a estático.
-async function loadPhoneCheck(): Promise<(v: string) => boolean> {
+async function loadPhoneCheck(): Promise<(v: string, region?: CountryCode) => boolean> {
   const { isWhatsappUsable } = await import('@/lib/integrations/whatsapp/phone')
   return isWhatsappUsable
+}
+
+/** Igual que arriba: diferido, nunca en el bundle inicial. */
+async function loadPhoneNormalizer(): Promise<(v: string, region?: CountryCode) => string | null> {
+  const { normalizeWhatsappPhone } = await import('@/lib/integrations/whatsapp/phone')
+  return normalizeWhatsappPhone
+}
+
+// Igual criterio que `loadPhoneCheck`: se carga recién al abrir el popup (ver
+// el efecto que resuelve `callingCode` más abajo), nunca en el bundle inicial.
+async function loadCallingCode(iso2: string): Promise<string | null> {
+  try {
+    const { getCountryCallingCode } = await import('libphonenumber-js/max')
+    return getCountryCallingCode(iso2 as CountryCode)
+  } catch {
+    return null
+  }
 }
 
 interface LeadCaptureCtx {
@@ -98,6 +120,16 @@ export function LeadCaptureProvider({
   const triggerRef = useRef<HTMLElement | null>(null)
   // Anti-spam: honeypot (campo oculto que solo un bot llena).
   const [honeypot, setHoneypot] = useState('')
+  // Task 5: país del selector de teléfono. Arranca en 'AR' (mismo default que
+  // ya asumía `normalizeWhatsappPhone`) y se corrige por geolocalización SOLO
+  // al abrir el popup — nunca bloquea el render (ver efecto de geo abajo).
+  const [country, setCountry] = useState('AR')
+  const [callingCode, setCallingCode] = useState('54')
+  const geoFetchedRef = useRef(false)
+  // Task 6: ficha de un solo uso. Se pide de nuevo CADA VEZ que se abre el
+  // popup (no se cachea entre aperturas). Si falla o tarda, el envío sigue
+  // andando igual — el lead se guarda marcado `sospechoso`, nunca se rechaza.
+  const [ticket, setTicket] = useState<string | null>(null)
 
   const open = useCallback((src?: string) => {
     if (typeof document !== 'undefined') {
@@ -108,6 +140,50 @@ export function LeadCaptureProvider({
     setErrorMsg('')
     setIsOpen(true)
   }, [])
+
+  // País por defecto automático (Netlify manda el header de geo — ver
+  // `/api/geo`). Se pide UNA sola vez por visita (ref), y solo cuando se abre
+  // el popup: así nadie paga esta llamada si nunca interactúa con el CTA.
+  useEffect(() => {
+    if (!isOpen || geoFetchedRef.current) return
+    geoFetchedRef.current = true
+    fetch('/api/geo')
+      .then(res => (res.ok ? res.json() : null))
+      .then((data: { country?: string } | null) => {
+        if (data?.country && typeof data.country === 'string') setCountry(data.country)
+      })
+      .catch(() => {
+        /* nunca bloquea: se sigue en 'AR' */
+      })
+  }, [isOpen])
+
+  // El indicativo (usado para componer el teléfono final) sigue al país
+  // elegido, sea por geo o porque la persona lo cambió a mano en `PhoneField`.
+  // Gateado en `isOpen`: recién ahí se paga el chunk de libphonenumber-js/max.
+  useEffect(() => {
+    if (!isOpen) return
+    let cancelado = false
+    loadCallingCode(country).then(code => {
+      if (!cancelado && code) setCallingCode(code)
+    })
+    return () => {
+      cancelado = true
+    }
+  }, [isOpen, country])
+
+  // Ficha de un solo uso (Task 6): se pide de nuevo cada vez que se abre el
+  // popup. Best-effort: si falla, `ticket` queda `null` y el servidor marca el
+  // lead como sospechoso (nunca lo rechaza).
+  useEffect(() => {
+    if (!isOpen) return
+    setTicket(null)
+    fetch('/api/leads/ticket')
+      .then(res => (res.ok ? res.json() : null))
+      .then((data: { ticket?: string } | null) => {
+        setTicket(typeof data?.ticket === 'string' ? data.ticket : null)
+      })
+      .catch(() => setTicket(null))
+  }, [isOpen])
 
   // ¿Ya se registró en una visita anterior? Se lee después de montar (ver arriba).
   useEffect(() => {
@@ -175,13 +251,28 @@ export function LeadCaptureProvider({
     // esto se repite el bug real que perdió un cliente (un celular sin
     // indicativo de país se guardaba tal cual y el mensaje nunca llegaba).
     // No bloquea si el campo está vacío (la regla de arriba ya cubre ese caso).
+    // Lo que finalmente se guarda en `phone`. Arranca con la composición simple
+    // y se reemplaza por el E.164 canónico apenas el normalizador lo resuelve.
+    let phoneParaGuardar = form.phone.trim()
+      ? composePhoneForSubmit(form.phone, callingCode)
+      : null
     if (form.phone.trim()) {
       // Si la carga del validador falla (red mala, chunk caído), NO bloqueamos el
       // envío: un lead con teléfono dudoso vale mucho más que un lead perdido.
       // El registro de mensajes va a mostrar después si el número no recibe nada.
       let usable = true
       try {
-        usable = (await loadPhoneCheck())(form.phone)
+        usable = (await loadPhoneCheck())(form.phone, country as CountryCode)
+        // Guardamos el número YA CANÓNICO, no el pegoteo "+<indicativo> <local>".
+        // Sin esto, alguien que escribe la forma porteña vieja "15 6123 4567"
+        // pasaba la validación (que sí entiende el 15 con la región AR) pero se
+        // guardaba como "+54 15 6123 4567", que ya NO se puede renormalizar: el
+        // '+' hace que se lea como internacional y el 15 queda en el medio.
+        // Resultado: un lead válido que nadie podía contactar por WhatsApp.
+        if (usable) {
+          const e164 = (await loadPhoneNormalizer())(form.phone, country as CountryCode)
+          if (e164) phoneParaGuardar = `+${e164}`
+        }
       } catch {
         usable = true
       }
@@ -207,13 +298,21 @@ export function LeadCaptureProvider({
           propertyId,
           name: form.name.trim(),
           email: form.email.trim() || null,
-          phone: form.phone.trim() || null,
+          // Se compone CON el indicativo del país elegido (ej. "+54 11...")
+          // ANTES de mandarlo: así lo que queda guardado en `phone` se puede
+          // renormalizar más abajo en el sistema (webhook, Inbox, WhatsApp,
+          // CAPI) sin pasarle una región explícita — todos siguen llamando a
+          // `normalizeWhatsappPhone`/`isWhatsappUsable` con un solo argumento.
+          phone: phoneParaGuardar,
           message: `${form.intent}${source ? ` · ${source}` : ''}`,
           utm: getUtmFromUrl(),
           eventId,
           fbp: getMetaCookie('_fbp'),
           fbc: getMetaCookie('_fbc'),
           eventSourceUrl: typeof window !== 'undefined' ? window.location.href : null,
+          // Task 6 — ficha de un solo uso: puede venir `null` (falló/tardó la
+          // carga), y el servidor NUNCA rechaza el lead por eso; solo lo marca.
+          ticket,
         }),
       })
       const payload = (await res.json().catch(() => ({}))) as {
@@ -370,13 +469,12 @@ export function LeadCaptureProvider({
                     <label className="mb-1.5 block text-sm font-medium" htmlFor="lc-phone">
                       Teléfono / WhatsApp
                     </label>
-                    <input
+                    <PhoneField
                       id="lc-phone"
-                      type="tel"
                       value={form.phone}
-                      onChange={e => setForm({ ...form, phone: e.target.value })}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base outline-none focus:border-slate-900"
-                      placeholder="+54 11 XXXX XXXX"
+                      onChange={v => setForm({ ...form, phone: v })}
+                      country={country}
+                      onCountryChange={setCountry}
                     />
                   </div>
                 </div>

@@ -132,6 +132,39 @@ export async function GET(req: NextRequest) {
           }
         }
 
+        // Auto-REGISTRO de avisos huérfanos: la consulta trae código pero NINGUNA
+        // fila del mapa lo conoce → el aviso existe en el portal y no está en el
+        // sistema (propiedad publicada a mano / no cargada). Registramos lo que el
+        // email SÍ trae (código + título) para que el aviso deje de ser invisible:
+        // el equipo le completa dirección y asesor UNA vez (o lo hace el scrape del
+        // directorio) y a partir de ahí TODAS sus consultas rutean solas al asesor.
+        // Sin esto, cada consulta de una propiedad no cargada llega sin identificar
+        // y su asesor nunca se entera. Best-effort: nunca tumba la ingesta.
+        if (match.method === 'none' && parsed.propertyCode) {
+          try {
+            const { data: known } = await supabase
+              .from('portal_property_map')
+              .select('id')
+              .eq('portal', parsed.portal)
+              .eq('external_code', parsed.propertyCode)
+              .maybeSingle()
+            if (!known) {
+              await supabase.from('portal_property_map').insert({
+                portal: parsed.portal,
+                external_code: parsed.propertyCode,
+                title: parsed.propertyTitle,
+                address: parsed.propertyAddress,
+                external_url: parsed.propertyUrl,
+                active: true,
+                notes: 'AUTO-REGISTRADO desde una consulta sin mapear — completar dirección y asesor',
+              })
+              console.warn(`[portal-inquiries] aviso huérfano registrado: ${parsed.portal} CÓD ${parsed.propertyCode} — falta dirección/asesor`)
+            }
+          } catch (e) {
+            console.warn('[portal-inquiries] no se pudo auto-registrar el aviso huérfano', e)
+          }
+        }
+
         const { data: inserted, error: insErr } = await supabase
           .from('portal_inquiries')
           .insert({
@@ -171,12 +204,27 @@ export async function GET(req: NextRequest) {
 
         // Propiedad identificable para el WhatsApp: si la consulta MATCHEÓ una
         // propiedad, usar su dirección/título REALES del mapa (no el código pelado
-        // que a veces trae el email, típico de Argenprop). Sin match: lo que trajo
-        // el email; el código solo como último recurso, formateado como "Aviso #".
+        // que a veces trae el email, típico de Argenprop).
+        //
+        // SIN dirección conocida (caso típico de ZonaProp: sus emails traen SOLO
+        // código + título genérico, nunca la calle), el título suelto NO alcanza
+        // para saber qué propiedad es — "Departamento 2 Ambientes en Excelente
+        // Estado" no le dice nada a nadie. Anteponemos el CÓD (buscable en el
+        // panel del portal) y marcamos el aviso como no registrado, para que se
+        // note al instante que falta cargarlo. Lección 2026-07-30.
+        const knownAddress = match.address || parsed.propertyAddress
         const propertyLabel =
-          match.address || parsed.propertyAddress || match.title || parsed.propertyTitle ||
-          (parsed.propertyCode ? `Aviso #${parsed.propertyCode}` : null) ||
-          parsed.propertyUrl || '(propiedad sin identificar)'
+          knownAddress ||
+          [
+            parsed.propertyCode ? `⚠️ CÓD ${parsed.propertyCode}` : null,
+            match.title || parsed.propertyTitle || parsed.propertyUrl,
+          ]
+            .filter(Boolean)
+            .join(' · ') ||
+          '(propiedad sin identificar)'
+        // Label para el SALUDO al interesado: nunca el código ni la marca de
+        // alerta (el lead no tiene por qué leer nuestra contabilidad interna).
+        const leadPropertyLabel = knownAddress || match.title || parsed.propertyTitle || null
         // El "Aviso" SIEMPRE muestra el LINK al aviso del portal cuando lo tenemos:
         // del mail (ML/Argenprop) o del mapa scrapeado (ZonaProp). Clickeable → Diego
         // abre la propiedad en el portal directo.
@@ -189,6 +237,7 @@ export async function GET(req: NextRequest) {
           portal: parsed.portal,
           inquiryType: parsed.inquiryType,
           propertyLabel,
+          leadPropertyLabel,
           avisoLabel,
           leadName: parsed.leadName,
           leadPhone: parsed.leadPhone,

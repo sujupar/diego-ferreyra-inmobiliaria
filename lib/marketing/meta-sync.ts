@@ -14,6 +14,7 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
+import { isCampaignComplete, type CampaignCompletenessRow } from './campaign-completeness'
 
 const META_API_BASE = 'https://graph.facebook.com/v21.0'
 
@@ -75,21 +76,38 @@ export function isNonexistentObjectError(body: unknown): boolean {
   if (!err) return false
   const msg = typeof err.message === 'string' ? err.message : ''
 
-  // TRAMPA CRÍTICA: el mensaje real de Meta para el subcode 33 es
-  //   "Unsupported get request. Object with ID 'X' does not exist, CANNOT BE
-  //    LOADED DUE TO MISSING PERMISSIONS, or does not support this operation."
-  // O sea: el MISMO error tapa "se borró" y "tu token perdió permisos". Si lo
-  // interpretamos como "se borró", un token degradado marca `archived` una
-  // campaña ACTIVE que está GASTANDO PLATA — y como la página y el reconcile
-  // excluyen las archivadas, el cambio es de hecho irreversible y la UI empuja
-  // a crear otra campaña: dos campañas gastando en paralelo.
-  // Ante la ambigüedad NO decidimos: si el mensaje menciona permisos, tratamos
-  // el error como "no se pudo verificar" y NO tocamos el estado guardado.
-  if (/missing permission|permisos/i.test(msg)) return false
-
+  // TRAMPA: el mensaje REAL de Meta para el subcode 33 es, textual (verificado
+  // con un GET a un ID inventado el 2026-07-31):
+  //   "Unsupported get request. Object with ID 'X' does not exist, cannot be
+  //    loaded due to missing permissions, or does not support this operation."
+  // O sea, el MISMO error tapa "se borró" y "tu token perdió permisos". Por eso
+  // el texto NO alcanza para decidir, en ninguna de las dos direcciones:
+  //  - tomarlo como "se borró" haría que un token degradado marque `archived`
+  //    una campaña ACTIVE que está gastando plata;
+  //  - filtrarlo por la palabra "permissions" (primer intento, 2026-07-30) lo
+  //    rompe al revés: NINGÚN objeto borrado se detecta nunca y el publish queda
+  //    trabado para siempre.
+  // La forma de distinguirlos es preguntando por OTRA cosa con el mismo token
+  // (`permisosDeCuentaSanos` abajo): si la cuenta responde bien, los permisos
+  // están bien y el 33 sobre ese ID puntual significa que el objeto no está.
   if (err.error_subcode === 33) return true
   if (/does not exist/i.test(msg)) return true
   return false
+}
+
+/**
+ * ¿El token puede leer la cuenta publicitaria ahora mismo?
+ *
+ * Es el desempate del comentario de arriba. Solo se llama en el camino de error,
+ * así que no agrega latencia al camino feliz. Ante la duda devuelve `false`:
+ * "no pude confirmar que los permisos estén bien" es la respuesta segura, porque
+ * hace que el llamador NO concluya "la campaña se borró".
+ */
+export async function permisosDeCuentaSanos(): Promise<boolean> {
+  const accountId = process.env.META_AD_ACCOUNT_ID
+  if (!accountId) return false
+  const res = await metaGet<{ id: string }>(`/${accountId}?fields=id`)
+  return res.ok
 }
 
 /**
@@ -113,6 +131,40 @@ export function mapMetaCampaignStatus(
   if (s === 'PAUSED') return 'paused'
   if (s === 'ARCHIVED' || s === 'DELETED') return 'archived'
   return 'paused'
+}
+
+export type RecoveryDecision = 'recuperar' | 'crear_nueva'
+
+/**
+ * Decide si el confirm debe RECUPERAR una campaña ya creada o CREAR UNA NUEVA.
+ * Función PURA (sin IO) — existe para poder testear la decisión del bug A2
+ * (auditoría 2026-07-31) sin pegarle a la red real: `confirm/route.ts` tenía
+ * una rama que, con solo mirar la fila de `property_meta_campaigns`, devolvía
+ * "ya estaba creada" — sin preguntarle a Meta si esa campaña seguía existiendo.
+ * Un segundo publish después de que alguien la archivó/borró en Ads Manager
+ * decía "publicada" sobre una campaña que ya no estaba.
+ *
+ * Reglas:
+ *  - Fila de DB INCOMPLETA (`!isCampaignComplete`) → siempre 'crear_nueva'.
+ *    No importa qué diga Meta: el intento anterior nunca terminó de armarse.
+ *  - Fila COMPLETA + Meta dice 'archived' (esto incluye "ya no existe", ver
+ *    `mapMetaCampaignStatus`) → 'crear_nueva'. Alguien la tocó desde Ads
+ *    Manager entre una publicación y la siguiente.
+ *  - Fila COMPLETA + Meta dice 'active' o 'paused' (existe, viva) → 'recuperar'.
+ *
+ * El caso "no se pudo consultar a Meta" (red, rate limit, permisos —
+ * `isNonexistentObjectError` devuelve false y `syncCampaignState` tira) es
+ * responsabilidad del CALLER: sin `estadoMeta` no hay nada que decidir acá.
+ * El caller debe devolver un error pidiendo reintentar, nunca recuperar ni
+ * crear a ciegas.
+ */
+export function decidirRecuperacion(
+  filaDB: CampaignCompletenessRow | null | undefined,
+  estadoMeta: { status: 'active' | 'paused' | 'archived' },
+): RecoveryDecision {
+  if (!isCampaignComplete(filaDB)) return 'crear_nueva'
+  if (estadoMeta.status === 'archived') return 'crear_nueva'
+  return 'recuperar'
 }
 
 export interface SyncCampaignResult {
@@ -173,6 +225,17 @@ export async function syncCampaignState(
   let exists = true
   if (!statusRes.ok) {
     if (isNonexistentObjectError(statusRes.body)) {
+      // El error de Meta es ambiguo entre "no existe" y "sin permisos" (ver el
+      // comentario largo de `isNonexistentObjectError`). Desempatamos preguntando
+      // por la cuenta con el MISMO token: si la cuenta responde, los permisos
+      // están bien y el objeto realmente no está.
+      if (!(await permisosDeCuentaSanos())) {
+        throw new Error(
+          `No pudimos verificar la campaña ${campaignId} en Meta: la cuenta publicitaria tampoco responde, ` +
+            `así que puede ser un problema de permisos o de conexión y no que la campaña se haya borrado. ` +
+            `No tocamos su estado. Reintentá en un momento.`,
+        )
+      }
       exists = false
     } else {
       throw new Error(

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mapMetaCampaignStatus, adsManagerUrl, syncCampaignState } from './meta-sync'
+import { mapMetaCampaignStatus, adsManagerUrl, syncCampaignState, decidirRecuperacion } from './meta-sync'
 
 describe('mapMetaCampaignStatus', () => {
   it('ACTIVE → active', () => {
@@ -35,6 +35,39 @@ describe('mapMetaCampaignStatus', () => {
   it('es case-insensitive', () => {
     expect(mapMetaCampaignStatus('active', true)).toBe('active')
     expect(mapMetaCampaignStatus('archived', true)).toBe('archived')
+  })
+})
+
+describe('decidirRecuperacion', () => {
+  const filaCompleta = { campaign_id: 'c1', adset_id: 'as1', ad_ids: ['ad1', 'ad2'], status: 'paused' }
+  const filaIncompleta = { campaign_id: 'c1', adset_id: null, ad_ids: [], status: 'provisioning' }
+
+  it('DB completa + Meta ACTIVE → recuperar', () => {
+    expect(decidirRecuperacion(filaCompleta, { status: 'active' })).toBe('recuperar')
+  })
+
+  it('DB completa + Meta PAUSED (existe, no archivada) → recuperar', () => {
+    expect(decidirRecuperacion(filaCompleta, { status: 'paused' })).toBe('recuperar')
+  })
+
+  it('DB completa + Meta ARCHIVED → crear_nueva', () => {
+    expect(decidirRecuperacion(filaCompleta, { status: 'archived' })).toBe('crear_nueva')
+  })
+
+  it('DB completa + Meta no existe (mapeado a archived) → crear_nueva', () => {
+    // mapMetaCampaignStatus(_, exists:false) siempre da 'archived' — la
+    // ausencia de la campaña llega acá ya normalizada a ese status.
+    expect(decidirRecuperacion(filaCompleta, { status: 'archived' })).toBe('crear_nueva')
+  })
+
+  it('DB incompleta → crear_nueva sin importar qué diga Meta', () => {
+    expect(decidirRecuperacion(filaIncompleta, { status: 'active' })).toBe('crear_nueva')
+    expect(decidirRecuperacion(filaIncompleta, { status: 'archived' })).toBe('crear_nueva')
+  })
+
+  it('DB null/undefined → crear_nueva', () => {
+    expect(decidirRecuperacion(null, { status: 'active' })).toBe('crear_nueva')
+    expect(decidirRecuperacion(undefined, { status: 'active' })).toBe('crear_nueva')
   })
 })
 
@@ -124,6 +157,9 @@ describe('syncCampaignState (Meta + Supabase mockeados)', () => {
         status: 400,
         json: { error: { code: 100, error_subcode: 33, message: 'Unsupported get request.' } },
       },
+      // Desempate: la CUENTA sí responde → los permisos están bien → el 33 sobre
+      // ese ID puntual significa que la campaña realmente no está.
+      { ok: true, status: 200, json: { id: 'act_1' } },
     ])
 
     const result = await syncCampaignState('2')
@@ -134,6 +170,31 @@ describe('syncCampaignState (Meta + Supabase mockeados)', () => {
     expect(result.changed).toBe(true)
     const updatePayload = updateMock.mock.calls[0]?.[0]
     expect(updatePayload?.last_error).toContain('eliminada desde Ads Manager')
+  })
+
+  it('subcode 33 pero la CUENTA tampoco responde → NO archiva, tira error', async () => {
+    // El mensaje de Meta para el subcode 33 dice, textual, "does not exist,
+    // cannot be loaded due to missing permissions": es ambiguo. Si la cuenta
+    // tampoco responde, puede ser un token degradado — y dar por muerta una
+    // campaña que está GASTANDO sería el peor resultado posible.
+    maybeSingleMock.mockResolvedValueOnce({ data: { campaign_id: '3', status: 'active' } })
+    mockFetchSequence([
+      {
+        ok: false,
+        status: 400,
+        json: {
+          error: {
+            code: 100, error_subcode: 33,
+            message: "Object with ID '3' does not exist, cannot be loaded due to missing permissions",
+          },
+        },
+      },
+      { ok: false, status: 401, json: { error: { code: 190, message: 'Invalid OAuth access token' } } },
+    ])
+
+    await expect(syncCampaignState('3')).rejects.toThrow(/No pudimos verificar/)
+    // Lo que de verdad importa: no se tocó el estado guardado.
+    expect(updateMock).not.toHaveBeenCalled()
   })
 
   it('sin cambio de status → no escribe (changed=false)', async () => {

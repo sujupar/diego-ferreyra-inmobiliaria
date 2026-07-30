@@ -13,16 +13,36 @@
  * Si no se puede confirmar que el número es válido y de un tipo que puede
  * tener WhatsApp, devolver `null` — nunca inventar un número.
  */
-import { parsePhoneNumberFromString } from 'libphonenumber-js/max'
+import { parsePhoneNumberFromString, type CountryCode } from 'libphonenumber-js/max'
 
 // Tipos que pueden tener WhatsApp. Verificado empíricamente: AR/ES/BR/UY dan
 // 'MOBILE', pero US/MX/CL dan 'FIXED_LINE_OR_MOBILE' — hay que aceptar los dos o
 // se rechazan clientes reales del exterior.
 const CON_WHATSAPP = new Set(['MOBILE', 'FIXED_LINE_OR_MOBILE'])
 
+const REGION_DEFAULT: CountryCode = 'AR'
+
+/**
+ * Argentina: alguien que escribe el "15" viejo SIN código de área (ej. "15
+ * 6123 4567", la forma clásica porteña de marcar "esto es un celular") no trae
+ * información suficiente para saber el área — `libphonenumber-js` lo rechaza
+ * como inválido (le falta el área). Como esta inmobiliaria opera en CABA/GBA,
+ * asumimos el área 11 en ESE caso puntual (10 dígitos: "15" + 8 dígitos, sin
+ * "+" y sin ningún otro prefijo). Es una heurística de negocio, no una regla
+ * general del plan de numeración — documentada acá porque es la única forma
+ * de no perder ese lead real.
+ */
+function expandirQuinceLocal(value: string): string {
+  if (value.trim().startsWith('+')) return value // ya trae indicativo explícito, no tocar
+  const digits = value.replace(/\D/g, '')
+  if (/^15\d{8}$/.test(digits)) return `11${digits.slice(2)}`
+  return value
+}
+
 /** Un intento de parseo. `region` solo aplica cuando el número no trae `+`. */
-function intentar(value: string, region?: 'AR'): string | null {
-  const x = parsePhoneNumberFromString(value, region)
+function intentar(value: string, region?: CountryCode): string | null {
+  const candidato = region === 'AR' ? expandirQuinceLocal(value) : value
+  const x = parsePhoneNumberFromString(candidato, region)
   if (!x || !x.isValid()) return null
   if (CON_WHATSAPP.has(String(x.getType()))) return x.number.replace('+', '')
   // Argentina: un móvil escrito sin el 9 se parsea como FIXED_LINE. Probamos
@@ -34,12 +54,22 @@ function intentar(value: string, region?: 'AR'): string | null {
   return null
 }
 
-export function normalizeWhatsappPhone(raw: string | null | undefined): string | null {
+/**
+ * `region` es el país que la PERSONA eligió en el selector de bandera de la
+ * landing (ISO 3166-1 alpha-2, ej. 'CO', 'MX') — solo importa cuando `raw` NO
+ * trae un `+` explícito. Default 'AR' para no romper a los llamadores
+ * existentes (`core.ts`, el webhook, `POST /api/whatsapp/send`, el Inbox), que
+ * siguen llamando con un solo argumento.
+ */
+export function normalizeWhatsappPhone(
+  raw: string | null | undefined,
+  region: CountryCode = REGION_DEFAULT,
+): string | null {
   const value = raw?.trim()
   if (!value) return null
 
-  // 1) Como lo escribió una persona: región por defecto Argentina.
-  const comoEscrito = intentar(value, 'AR')
+  // 1) Como lo escribió una persona: región = la elegida (o Argentina si no se pasó).
+  const comoEscrito = intentar(value, region)
   if (comoEscrito) return comoEscrito
 
   // 2) Como E.164 SIN el '+'. Es el formato en que guardamos `phone_e164` y en el
@@ -56,5 +86,7 @@ export function normalizeWhatsappPhone(raw: string | null | undefined): string |
   return null
 }
 
-export const isWhatsappUsable = (raw: string | null | undefined): boolean =>
-  normalizeWhatsappPhone(raw) !== null
+export const isWhatsappUsable = (
+  raw: string | null | undefined,
+  region?: CountryCode,
+): boolean => normalizeWhatsappPhone(raw, region) !== null

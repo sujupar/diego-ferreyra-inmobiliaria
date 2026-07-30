@@ -238,6 +238,147 @@ export function buildTextPayload(input: SendTextInput): TextPayload {
 /** Mismo shape que `SendTemplateResult` — el caller no necesita distinguir. */
 export type SendTextResult = SendTemplateResult
 
+/**
+ * Mensaje de MULTIMEDIA por LINK (imagen/video/documento), dentro de la
+ * ventana de 24hs — mismo caller-checks-window-first que `sendWhatsappText`.
+ * Usa el modo `link` de la Cloud API (Meta descarga el archivo desde esa URL),
+ * NO el modo de subida de bytes — por eso `POST /api/whatsapp/send` restringe
+ * `link` a hosts propios (Storage/landing), ver `isAllowedMediaLink` ahí.
+ *
+ * Nace de "Enviar información de la propiedad" (task 9, chat pro): mandar
+ * fotos/video/planos reales al cliente, no solo texto con links.
+ */
+export interface SendMediaInput {
+  to: string // E.164 sin '+'
+  mediaType: 'image' | 'video' | 'document'
+  link: string
+  caption?: string
+  /** Solo aplica a `document`. */
+  filename?: string
+  timeoutMs?: number
+  leadId?: string | null
+  propertyId?: string | null
+  sentBy?: string | null
+}
+
+export interface MediaPayload {
+  messaging_product: 'whatsapp'
+  to: string
+  type: 'image' | 'video' | 'document'
+  image?: { link: string; caption?: string }
+  video?: { link: string; caption?: string }
+  document?: { link: string; caption?: string; filename?: string }
+}
+
+export function buildMediaPayload(input: SendMediaInput): MediaPayload {
+  const caption = input.caption ? { caption: input.caption } : {}
+  if (input.mediaType === 'image') {
+    return { messaging_product: 'whatsapp', to: input.to, type: 'image', image: { link: input.link, ...caption } }
+  }
+  if (input.mediaType === 'video') {
+    return { messaging_product: 'whatsapp', to: input.to, type: 'video', video: { link: input.link, ...caption } }
+  }
+  return {
+    messaging_product: 'whatsapp',
+    to: input.to,
+    type: 'document',
+    document: { link: input.link, ...caption, ...(input.filename ? { filename: input.filename } : {}) },
+  }
+}
+
+/** Mismo shape que `SendTemplateResult` — el caller no necesita distinguir. */
+export type SendMediaResult = SendTemplateResult
+
+function mediaBodyPreview(input: SendMediaInput): string {
+  const etiqueta = input.mediaType === 'image' ? 'Foto' : input.mediaType === 'video' ? 'Video' : 'Documento'
+  const detalle = input.caption ?? input.filename ?? input.link
+  return `[${etiqueta}] ${detalle}`.slice(0, 300)
+}
+
+/** Nunca lanza — mismo contrato que `sendWhatsappText`/`sendWhatsappTemplate`. */
+export async function sendWhatsappMedia(input: SendMediaInput): Promise<SendMediaResult> {
+  const body = buildMediaPayload(input)
+  const preview = mediaBodyPreview(input)
+
+  if (whatsappTestMode()) {
+    console.log(`[whatsapp:test] (no enviado) to=${input.to} ${input.mediaType} link=${input.link}`)
+    await logOutbound({
+      phone: input.to,
+      bodyPreview: preview,
+      payload: body,
+      status: 'skipped',
+      leadId: input.leadId,
+      propertyId: input.propertyId,
+      sentBy: input.sentBy,
+    })
+    return { ok: true, skipped: true }
+  }
+
+  const version = process.env.WHATSAPP_API_VERSION ?? 'v21.0'
+  const url = `https://graph.facebook.com/${version}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(input.timeoutMs ?? WHATSAPP_TIMEOUT_DEFAULT_MS),
+    })
+    const json = (await res.json().catch(() => ({}))) as {
+      contacts?: { wa_id?: string }[]
+      messages?: { id: string }[]
+      error?: { message?: string; code?: number }
+    }
+    if (!res.ok || json.error) {
+      const msg = json.error?.message ?? `HTTP ${res.status}`
+      console.error(`[whatsapp] envío de ${input.mediaType} falló a ${input.to}: ${msg}`)
+      await logOutbound({
+        phone: input.to,
+        bodyPreview: preview,
+        payload: json,
+        status: 'failed',
+        errorCode: json.error?.code != null ? String(json.error.code) : null,
+        errorMessage: msg,
+        leadId: input.leadId,
+        propertyId: input.propertyId,
+        sentBy: input.sentBy,
+      })
+      return { ok: false, skipped: false, error: msg }
+    }
+    const waId = json.contacts?.[0]?.wa_id ?? null
+    const waMessageId = json.messages?.[0]?.id
+    await logOutbound({
+      phone: input.to,
+      waId,
+      waMessageId,
+      bodyPreview: preview,
+      payload: json,
+      status: 'accepted',
+      leadId: input.leadId,
+      propertyId: input.propertyId,
+      sentBy: input.sentBy,
+    })
+    return { ok: true, skipped: false, messageId: waMessageId }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[whatsapp] excepción enviando ${input.mediaType} a ${input.to}: ${msg}`)
+    await logOutbound({
+      phone: input.to,
+      bodyPreview: preview,
+      payload: body,
+      status: 'failed',
+      errorMessage: msg,
+      leadId: input.leadId,
+      propertyId: input.propertyId,
+      sentBy: input.sentBy,
+    })
+    return { ok: false, skipped: false, error: msg }
+  }
+}
+
 /** Nunca lanza — devuelve el resultado para que el caller siga fire-and-forget. */
 export async function sendWhatsappText(input: SendTextInput): Promise<SendTextResult> {
   const body = buildTextPayload(input)

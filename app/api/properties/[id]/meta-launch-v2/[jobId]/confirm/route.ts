@@ -21,6 +21,12 @@ import { createAudiencesForCampaign } from '@/lib/marketing/meta-custom-audience
 import { isCampaignComplete } from '@/lib/marketing/campaign-completeness'
 import { validateDailyBudgetArs } from '@/lib/marketing/budget-limits'
 import { geoSpecForPreset, type GeoPresetId } from '@/lib/marketing/geo-targeting-presets'
+import {
+  syncCampaignState,
+  decidirRecuperacion,
+  adsManagerUrl as buildAdsManagerUrl,
+  type SyncCampaignResult,
+} from '@/lib/marketing/meta-sync'
 import type { Database } from '@/types/database.types'
 
 export const maxDuration = 60
@@ -72,11 +78,10 @@ export async function POST(
     // cuando en realidad la campaña ya existe.
     if (job.status === 'published' && typeof job.result_campaign_id === 'string') {
       const campaignId = job.result_campaign_id as string
-      const adsManagerUrl = `https://business.facebook.com/adsmanager/manage/campaigns?act=${(process.env.META_AD_ACCOUNT_ID ?? '').replace('act_', '')}&selected_campaign_ids=${campaignId}`
       return NextResponse.json({
         ok: true,
         campaignId,
-        adsManagerUrl,
+        adsManagerUrl: buildAdsManagerUrl(campaignId),
         audienceIds: (job.result_audience_ids ?? []) as string[],
         resumed: true,
       })
@@ -92,6 +97,16 @@ export async function POST(
     // ANTES del fix (incidente 2026-06-09): el código SOLO chequeaba que
     // existiera campaign_id, sin verificar adset_id ni ad_ids. Y solo
     // manejaba 'publishing' — 'failed' tiraba 409 sin recovery.
+    //
+    // FIX (bug A2, auditoría 2026-07-31): la rama de "campaña completa según
+    // la DB" marcaba el job como published SIN preguntarle a Meta si esa
+    // campaña seguía existiendo — un segundo publish después de que alguien
+    // la archivó/borró desde Ads Manager decía "publicada" sobre una campaña
+    // que ya no estaba. Ahora se verifica con `syncCampaignState` ANTES de
+    // decidir, y la decisión ('recuperar' vs 'crear_nueva') es una función
+    // pura testeada (`decidirRecuperacion`). Si Meta no se puede consultar
+    // (red, rate limit, permisos degradados), NO se recupera NI se crea —
+    // se devuelve un error claro pidiendo reintentar.
     if (job.status === 'publishing' || job.status === 'failed') {
       type CampaignRow = {
         campaign_id: string | null
@@ -122,40 +137,67 @@ export async function POST(
         .maybeSingle()
 
       if (isCampaignComplete(existingCampaign)) {
-        // ✓ Campaña REALMENTE completa (Campaign+AdSet+≥1 Ads, status no
-        // provisioning/failed). Marcamos published.
-        await (supabase as unknown as {
-          from: (t: string) => {
-            update: (f: Record<string, unknown>) => {
-              eq: (a: string, b: string) => Promise<unknown>
-            }
-          }
-        })
-          .from('meta_launch_jobs')
-          .update({
-            status: 'published',
-            current_step: 'done_recovered',
-            progress_percent: 100,
-            result_campaign_id: existingCampaign!.campaign_id,
-          })
-          .eq('id', jobId)
-        const adsManagerUrl = `https://business.facebook.com/adsmanager/manage/campaigns?act=${(process.env.META_AD_ACCOUNT_ID ?? '').replace('act_', '')}&selected_campaign_ids=${existingCampaign!.campaign_id}`
-        return NextResponse.json({
-          ok: true,
-          campaignId: existingCampaign!.campaign_id,
-          adsManagerUrl,
-          audienceIds: [],
-          resumed: true,
-          message: 'La campaña ya estaba creada — recuperada de Meta.',
-        })
-      }
+        // Antes de confiar en la fila de la DB: preguntarle a Meta si la
+        // campaña sigue existiendo y en qué estado. Si Meta no responde de
+        // forma interpretable (red, rate limit, token degradado —
+        // `isNonexistentObjectError` lo distingue de "no existe" y
+        // `syncCampaignState` tira), no adivinamos: el asesor reintenta.
+        let syncResult: SyncCampaignResult
+        try {
+          syncResult = await syncCampaignState(existingCampaign!.campaign_id!)
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          console.warn('[confirm] no se pudo verificar la campaña contra Meta:', msg)
+          return NextResponse.json(
+            {
+              error: 'No pudimos verificar el estado de la campaña en Meta ahora mismo. Reintentá en unos segundos.',
+              code: 'META_VERIFY_FAILED',
+              detail: msg,
+            },
+            { status: 503 },
+          )
+        }
 
-      // Caso zombi: hay una fila con campaign_id pero NO está completa
-      // (timeout en el medio del builder). Archivamos en Meta + DB para que
-      // el siguiente paso del confirm pueda crear una limpia. Sin esto, el
-      // builder.isIncomplete check archivaría también, pero antes el confirm
-      // ya habría devuelto "ok" sobre una campaña incompleta.
-      if (existingCampaign?.campaign_id) {
+        const decision = decidirRecuperacion(existingCampaign, { status: syncResult.status })
+
+        if (decision === 'recuperar') {
+          // ✓ Meta confirma que la campaña existe y NO está archivada.
+          await (supabase as unknown as {
+            from: (t: string) => {
+              update: (f: Record<string, unknown>) => {
+                eq: (a: string, b: string) => Promise<unknown>
+              }
+            }
+          })
+            .from('meta_launch_jobs')
+            .update({
+              status: 'published',
+              current_step: 'done_recovered',
+              progress_percent: 100,
+              result_campaign_id: existingCampaign!.campaign_id,
+            })
+            .eq('id', jobId)
+          return NextResponse.json({
+            ok: true,
+            campaignId: existingCampaign!.campaign_id,
+            adsManagerUrl: buildAdsManagerUrl(existingCampaign!.campaign_id!),
+            audienceIds: [],
+            resumed: true,
+            message: 'La campaña ya estaba creada — recuperada de Meta.',
+          })
+        }
+
+        // decision === 'crear_nueva': Meta confirmó que ya no existe o está
+        // archivada. `syncCampaignState` YA persistió status='archived' + una
+        // nota explicativa en la fila (ver buildSyncNote en meta-sync.ts) —
+        // no la tocamos de nuevo acá. Cae al flujo normal de abajo, que crea
+        // una campaña limpia.
+      } else if (existingCampaign?.campaign_id) {
+        // Caso zombi real: hay una fila con campaign_id pero NUNCA se
+        // completó (timeout en medio del builder — no hace falta preguntarle
+        // a Meta, la decisión ya es 'crear_nueva' sin importar su estado).
+        // Archivamos en Meta + DB para que el siguiente paso del confirm
+        // pueda crear una limpia.
         try {
           const token = process.env.META_ACCESS_TOKEN
           if (token) {
@@ -409,6 +451,30 @@ export async function POST(
       console.warn('[meta-launch-v2 confirm] audiences failed (continuing):', err)
     }
 
+    // Verificación final (best-effort, Task 3): antes de decir "publicada",
+    // releemos el estado real en Meta con la misma función que usa la rama de
+    // recuperación (Task 2). No bloquea el publish si falla — la campaña YA
+    // se creó en este mismo request y `campaign` es la fuente de verdad para
+    // ESTA respuesta —, pero sirve para dejar `current_step: 'verifying'`
+    // visible en el polling del cliente mientras termina, y para detectar
+    // temprano una desincronización rarísima (campaña archivada por otra
+    // sesión en el segundo exacto entre crearla y confirmar).
+    try {
+      await (supabase as unknown as {
+        from: (t: string) => {
+          update: (f: Record<string, unknown>) => {
+            eq: (a: string, b: string) => Promise<unknown>
+          }
+        }
+      })
+        .from('meta_launch_jobs')
+        .update({ current_step: 'verifying', progress_percent: 90 })
+        .eq('id', jobId)
+      await syncCampaignState(campaign.campaignId)
+    } catch (err) {
+      console.warn('[meta-launch-v2 confirm] verificación final falló (continuing):', err)
+    }
+
     // Job → published
     await (supabase as unknown as {
       from: (t: string) => {
@@ -427,7 +493,7 @@ export async function POST(
       })
       .eq('id', jobId)
 
-    const adsManagerUrl = `https://business.facebook.com/adsmanager/manage/campaigns?act=${(process.env.META_AD_ACCOUNT_ID ?? '').replace('act_', '')}&selected_campaign_ids=${campaign.campaignId}`
+    const adsManagerUrl = buildAdsManagerUrl(campaign.campaignId)
 
     // Publicación PARCIAL: si alguna variante no entró ni con el reintento, la
     // campaña queda igual (en pausa) pero se avisa EXACTAMENTE cuál falló y por

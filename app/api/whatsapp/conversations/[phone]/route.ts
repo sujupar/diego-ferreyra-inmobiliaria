@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { serviceWindow } from '@/lib/integrations/whatsapp/window'
+import { signedMediaUrl } from '@/lib/integrations/whatsapp/media'
 
 /**
  * GET /api/whatsapp/conversations/[phone]
@@ -27,8 +28,8 @@ import { serviceWindow } from '@/lib/integrations/whatsapp/window'
  * Thread = {
  *   phone_e164: string
  *   contact_name: string | null
- *   lead: { id: string, name: string } | null
- *   property: { id: string, address: string, title: string | null } | null
+ *   lead: { id: string, name: string, lead_number: number | null } | null
+ *   property: { id: string, address: string, title: string | null, cover_photo: string | null } | null
  *   window: { open: boolean, msRemaining: number }
  *   messages: Array<{
  *     id: string
@@ -39,6 +40,10 @@ import { serviceWindow } from '@/lib/integrations/whatsapp/window'
  *     error_message: string | null
  *     sent_by: string | null
  *     created_at: string
+ *     media_url: string | null       // URL FIRMADA de lectura (1h) — nunca el path crudo del bucket privado
+ *     media_mime_type: string | null
+ *     media_filename: string | null
+ *     media_type: string | null      // image|audio|video|document|sticker
  *   }>
  * }
  * ```
@@ -66,6 +71,10 @@ interface MessageRow {
   error_message: string | null
   sent_by: string | null
   created_at: string
+  media_url: string | null
+  media_mime_type: string | null
+  media_filename: string | null
+  media_type: string | null
 }
 
 /** Confirma que `userId` es dueño (asesor asignado) de la propiedad/lead candidatos. Nunca asume — siempre reconsulta la base. */
@@ -114,7 +123,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ phone: s
     const { data: rows, error } = await supabase
       .from('whatsapp_messages')
       .select(
-        'id, direction, contact_name, lead_id, property_id, template_name, body_preview, status, error_message, sent_by, created_at',
+        'id, direction, contact_name, lead_id, property_id, template_name, body_preview, status, error_message, sent_by, created_at, media_url, media_mime_type, media_filename, media_type',
       )
       .eq('phone_e164', phone)
       .order('created_at', { ascending: false })
@@ -156,33 +165,53 @@ export async function GET(req: Request, { params }: { params: Promise<{ phone: s
     const lastInbound = desc.find(r => r.direction === 'in') ?? null
     const window = serviceWindow(lastInbound?.created_at ?? null, new Date())
 
-    // Hidratar lead/property para el header del chat.
-    let lead: { id: string; name: string } | null = null
+    // Hidratar lead/property para el header del chat. `lead_number` = "#número
+    // de comprador" (migración 20260731000001) — el asesor pidió poder
+    // referirse a una persona sin depender del nombre.
+    let lead: { id: string; name: string; lead_number: number | null } | null = null
     if (leadId) {
-      const { data } = await supabase.from('property_leads').select('id, name').eq('id', leadId).maybeSingle()
+      const { data } = await supabase.from('property_leads').select('id, name, lead_number').eq('id', leadId).maybeSingle()
       if (data) {
         lead = data
         if (!contactName) contactName = data.name
       }
     }
-    let property: { id: string; address: string; title: string | null } | null = null
+    let property: { id: string; address: string; title: string | null; cover_photo: string | null } | null = null
     if (propertyId) {
-      const { data } = await supabase.from('properties').select('id, address, title').eq('id', propertyId).maybeSingle()
-      if (data) property = data
+      const { data } = await supabase.from('properties').select('id, address, title, photos').eq('id', propertyId).maybeSingle()
+      if (data) {
+        const photos = Array.isArray(data.photos) ? data.photos : []
+        // Portada = primera foto — MISMA convención que el resto del sistema
+        // (galería, portales, Meta Ads). Se descarta si es un data-URI base64
+        // legacy (A3 de la auditoría): son gigantes y romperían el payload del
+        // chat en vez de mostrar una miniatura.
+        const cover = photos.find((p: unknown) => typeof p === 'string' && p.startsWith('http')) ?? null
+        property = { id: data.id, address: data.address, title: data.title, cover_photo: cover }
+      }
     }
 
-    const messages = [...desc]
-      .reverse() // ascendente: orden de chat, del más viejo al más nuevo
-      .map(r => ({
-        id: r.id,
-        direction: r.direction,
-        body_preview: r.body_preview,
-        template_name: r.template_name,
-        status: r.status,
-        error_message: r.error_message,
-        sent_by: r.sent_by,
-        created_at: r.created_at,
-      }))
+    const messages = await Promise.all(
+      [...desc]
+        .reverse() // ascendente: orden de chat, del más viejo al más nuevo
+        .map(async r => ({
+          id: r.id,
+          direction: r.direction,
+          body_preview: r.body_preview,
+          template_name: r.template_name,
+          status: r.status,
+          error_message: r.error_message,
+          sent_by: r.sent_by,
+          created_at: r.created_at,
+          // El path guardado por el webhook es del bucket PRIVADO whatsapp-media
+          // — nunca se expone tal cual, se firma acá (1h alcanza para una
+          // sesión de chat abierta). Si falla la firma (o no hay media), null:
+          // el front cae al body_preview de texto ("[imagen]", etc).
+          media_url: r.media_url ? await signedMediaUrl(r.media_url) : null,
+          media_mime_type: r.media_mime_type,
+          media_filename: r.media_filename,
+          media_type: r.media_type,
+        })),
+    )
 
     // Abrir el hilo = leerlo. Sin esto el globito de no leídos NUNCA se limpiaba
     // (contaba los entrantes con status 'received', y nada los cambiaba jamás),

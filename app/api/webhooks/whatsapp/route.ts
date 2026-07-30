@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { parseWebhookPayload, verifySignature, type InboundMessage, type StatusUpdate } from '@/lib/integrations/whatsapp/webhook'
 import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
 import { mapMetaStatus } from '@/lib/integrations/whatsapp/log'
+import { downloadAndStoreInboundMedia } from '@/lib/integrations/whatsapp/media'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,7 +44,7 @@ function admin() {
 async function findLeadIdByPhone(
   supabase: ReturnType<typeof admin>,
   normalizedFrom: string,
-): Promise<string | null> {
+): Promise<{ leadId: string; propertyId: string | null } | null> {
   // OJO: el prefiltro usa los ÚLTIMOS 4 dígitos, no 8. Los teléfonos se guardan
   // TAL CUAL los escribió la persona ("+54 11 1234 5678", "11 2233-4455"), así
   // que un `ilike` con los últimos 8 dígitos NO matchea: el espacio o el guion
@@ -58,7 +59,7 @@ async function findLeadIdByPhone(
   try {
     const { data, error } = await supabase
       .from('property_leads')
-      .select('id, phone, created_at')
+      .select('id, phone, created_at, property_id')
       .not('phone', 'is', null)
       // Los leads en la papelera no se consideran: atar un mensaje entrante a un
       // lead que alguien archivó lo haría reaparecer de rebote en el CRM. El
@@ -70,8 +71,10 @@ async function findLeadIdByPhone(
 
     if (error || !data) return null
 
-    for (const row of data as Array<{ id: string; phone: string | null }>) {
-      if (normalizeWhatsappPhone(row.phone) === normalizedFrom) return row.id
+    for (const row of data as Array<{ id: string; phone: string | null; property_id: string | null }>) {
+      if (normalizeWhatsappPhone(row.phone) === normalizedFrom) {
+        return { leadId: row.id, propertyId: row.property_id ?? null }
+      }
     }
     return null
   } catch (err) {
@@ -89,8 +92,19 @@ async function persistInbound(supabase: ReturnType<typeof admin>, msg: InboundMe
     // libphonenumber, igual lo persistimos tal cual llegó: perder el mensaje
     // de un cliente es peor que guardar un teléfono que no pudimos normalizar.
     const phoneE164 = normalized ?? msg.from
-    const leadId = await findLeadIdByPhone(supabase, normalized ?? msg.from)
+    // Guardamos TAMBIÉN la propiedad del lead: sin esto, un mensaje entrante
+    // quedaba sin propiedad y el chat no podía ofrecer "enviar información de la
+    // propiedad" ni validar sus fotos.
+    const ctxLead = await findLeadIdByPhone(supabase, normalized ?? msg.from)
+    const leadId = ctxLead?.leadId ?? null
+    const leadPropertyId = ctxLead?.propertyId ?? null
 
+    // ORDEN DELIBERADO: PRIMERO se guarda el mensaje, DESPUÉS se baja el adjunto.
+    // Al revés (que era como estaba), la descarga —hasta 8s de Meta + 8s del
+    // binario + la subida a Storage— corría antes del insert: si la función se
+    // pasaba del límite de tiempo, el mensaje del cliente NO quedaba guardado y
+    // Meta reintentaba contra el mismo camino lento. Perder el mensaje de un
+    // cliente es justo lo que este sistema existe para evitar.
     const { error } = await supabase
       .from('whatsapp_messages')
       .upsert(
@@ -101,14 +115,43 @@ async function persistInbound(supabase: ReturnType<typeof admin>, msg: InboundMe
           wa_message_id: msg.waMessageId,
           contact_name: msg.contactName,
           lead_id: leadId,
+          property_id: leadPropertyId,
           body_preview: msg.bodyPreview,
           payload: msg.payload as never,
           status: 'received',
+          media_mime_type: msg.mediaMimeType,
+          media_filename: msg.mediaFilename,
+          media_type: msg.mediaId ? msg.type : null,
         },
         { onConflict: 'wa_message_id', ignoreDuplicates: true },
       )
     if (error) {
       console.warn('[whatsapp-webhook] no se pudo guardar el mensaje entrante (continuando):', error.message)
+    }
+
+    // Ya está a salvo: ahora sí bajamos el adjunto y completamos la fila. Si esto
+    // falla o se corta, el mensaje YA quedó registrado y visible en el chat (sin
+    // la imagen). El reintento de Meta vuelve a intentar la descarga sin duplicar
+    // la fila, porque el upsert de arriba es idempotente por `wa_message_id`.
+    if (msg.mediaId) {
+      const media = await downloadAndStoreInboundMedia({
+        mediaId: msg.mediaId,
+        waMessageId: msg.waMessageId,
+        filenameHint: msg.mediaFilename,
+      })
+      if (media) {
+        const { error: mediaError } = await supabase
+          .from('whatsapp_messages')
+          .update({
+            media_url: media.storagePath,
+            media_mime_type: media.mimeType,
+            media_filename: media.filename,
+          })
+          .eq('wa_message_id', msg.waMessageId)
+        if (mediaError) {
+          console.warn('[whatsapp-webhook] no se pudo adjuntar el archivo al mensaje:', mediaError.message)
+        }
+      }
     }
   } catch (err) {
     console.warn('[whatsapp-webhook] excepción guardando mensaje entrante (continuando):', err)
