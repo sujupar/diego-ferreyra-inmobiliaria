@@ -21,7 +21,15 @@ import {
 } from 'react'
 import { Loader2, CheckCircle2, X } from 'lucide-react'
 import { trackLead, getMetaCookie } from './MetaPixel'
-import { isWhatsappUsable } from '@/lib/integrations/whatsapp/phone'
+// OJO: `libphonenumber-js/max` pesa ~50 KB gzip (metadata de todos los países).
+// Esta landing es TRÁFICO PAGO, así que no entra en el bundle inicial: se carga
+// recién cuando alguien aprieta "enviar" con un teléfono escrito. Import estático
+// = 50 KB que paga TODO el que ve la página; diferido = los paga solo quien envía
+// el formulario, y para entonces ya está en pantalla. No volver a estático.
+async function loadPhoneCheck(): Promise<(v: string) => boolean> {
+  const { isWhatsappUsable } = await import('@/lib/integrations/whatsapp/phone')
+  return isWhatsappUsable
+}
 
 interface LeadCaptureCtx {
   open: (source?: string) => void
@@ -158,12 +166,23 @@ export function LeadCaptureProvider({
     // esto se repite el bug real que perdió un cliente (un celular sin
     // indicativo de país se guardaba tal cual y el mensaje nunca llegaba).
     // No bloquea si el campo está vacío (la regla de arriba ya cubre ese caso).
-    if (form.phone.trim() && !isWhatsappUsable(form.phone)) {
-      setStatus('err')
-      setErrorMsg(
-        'Revisá el número: puede que falte la característica o el indicativo del país (ej. +57 para Colombia).',
-      )
-      return
+    if (form.phone.trim()) {
+      // Si la carga del validador falla (red mala, chunk caído), NO bloqueamos el
+      // envío: un lead con teléfono dudoso vale mucho más que un lead perdido.
+      // El registro de mensajes va a mostrar después si el número no recibe nada.
+      let usable = true
+      try {
+        usable = (await loadPhoneCheck())(form.phone)
+      } catch {
+        usable = true
+      }
+      if (!usable) {
+        setStatus('err')
+        setErrorMsg(
+          'Revisá el número: puede que falte la característica o el indicativo del país (ej. +57 para Colombia).',
+        )
+        return
+      }
     }
     submittingRef.current = true
     setStatus('sending')
