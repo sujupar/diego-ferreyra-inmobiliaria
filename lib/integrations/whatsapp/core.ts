@@ -12,6 +12,7 @@
  *   WHATSAPP_API_VERSION       — ej. v21.0 (default v21.0)
  *   WHATSAPP_TEST_MODE         — 'true' para no enviar (default true por seguridad)
  */
+import { normalizeWhatsappPhone } from './phone'
 
 /**
  * Timeout del POST a Meta. Sin esto una demora de Meta cuelga al llamador.
@@ -83,16 +84,17 @@ export function whatsappTestMode(): boolean {
   return process.env.WHATSAPP_TEST_MODE !== 'false'
 }
 
-/** Normaliza un teléfono a E.164 sin '+' (formato que espera Cloud API). */
+/**
+ * Normaliza un teléfono a E.164 sin '+' (formato que espera Cloud API).
+ *
+ * Delega en `normalizeWhatsappPhone` (./phone.ts), que valida contra
+ * `libphonenumber-js/max` en vez de adivinar por longitud de dígitos. La
+ * heurística vieja (anteponer '54' a cualquier cosa de 10-11 dígitos sin
+ * código de país) convertía números del exterior en argentinos inexistentes
+ * — ver el comentario al tope de `./phone.ts` para el bug real que esto causó.
+ */
 export function normalizePhone(raw: string | null | undefined): string | null {
-  if (!raw) return null
-  let digits = raw.replace(/[^\d+]/g, '')
-  digits = digits.replace(/^\+/, '')
-  // Heurística AR: si no tiene código de país, anteponer 54.
-  if (!digits.startsWith('54') && digits.length >= 10 && digits.length <= 11) {
-    digits = `54${digits}`
-  }
-  return digits.length >= 10 ? digits : null
+  return normalizeWhatsappPhone(raw)
 }
 
 /** Nunca lanza — devuelve el resultado para que el caller siga fire-and-forget. */
