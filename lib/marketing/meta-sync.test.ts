@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mapMetaCampaignStatus, adsManagerUrl, syncCampaignState } from './meta-sync'
+import { mapMetaCampaignStatus, adsManagerUrl, syncCampaignState, decidirRecuperacion } from './meta-sync'
 
 describe('mapMetaCampaignStatus', () => {
   it('ACTIVE → active', () => {
@@ -35,6 +35,39 @@ describe('mapMetaCampaignStatus', () => {
   it('es case-insensitive', () => {
     expect(mapMetaCampaignStatus('active', true)).toBe('active')
     expect(mapMetaCampaignStatus('archived', true)).toBe('archived')
+  })
+})
+
+describe('decidirRecuperacion', () => {
+  const filaCompleta = { campaign_id: 'c1', adset_id: 'as1', ad_ids: ['ad1', 'ad2'], status: 'paused' }
+  const filaIncompleta = { campaign_id: 'c1', adset_id: null, ad_ids: [], status: 'provisioning' }
+
+  it('DB completa + Meta ACTIVE → recuperar', () => {
+    expect(decidirRecuperacion(filaCompleta, { status: 'active' })).toBe('recuperar')
+  })
+
+  it('DB completa + Meta PAUSED (existe, no archivada) → recuperar', () => {
+    expect(decidirRecuperacion(filaCompleta, { status: 'paused' })).toBe('recuperar')
+  })
+
+  it('DB completa + Meta ARCHIVED → crear_nueva', () => {
+    expect(decidirRecuperacion(filaCompleta, { status: 'archived' })).toBe('crear_nueva')
+  })
+
+  it('DB completa + Meta no existe (mapeado a archived) → crear_nueva', () => {
+    // mapMetaCampaignStatus(_, exists:false) siempre da 'archived' — la
+    // ausencia de la campaña llega acá ya normalizada a ese status.
+    expect(decidirRecuperacion(filaCompleta, { status: 'archived' })).toBe('crear_nueva')
+  })
+
+  it('DB incompleta → crear_nueva sin importar qué diga Meta', () => {
+    expect(decidirRecuperacion(filaIncompleta, { status: 'active' })).toBe('crear_nueva')
+    expect(decidirRecuperacion(filaIncompleta, { status: 'archived' })).toBe('crear_nueva')
+  })
+
+  it('DB null/undefined → crear_nueva', () => {
+    expect(decidirRecuperacion(null, { status: 'active' })).toBe('crear_nueva')
+    expect(decidirRecuperacion(undefined, { status: 'active' })).toBe('crear_nueva')
   })
 })
 

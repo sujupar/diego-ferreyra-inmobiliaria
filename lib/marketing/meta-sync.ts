@@ -14,6 +14,7 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
+import { isCampaignComplete, type CampaignCompletenessRow } from './campaign-completeness'
 
 const META_API_BASE = 'https://graph.facebook.com/v21.0'
 
@@ -113,6 +114,40 @@ export function mapMetaCampaignStatus(
   if (s === 'PAUSED') return 'paused'
   if (s === 'ARCHIVED' || s === 'DELETED') return 'archived'
   return 'paused'
+}
+
+export type RecoveryDecision = 'recuperar' | 'crear_nueva'
+
+/**
+ * Decide si el confirm debe RECUPERAR una campaña ya creada o CREAR UNA NUEVA.
+ * Función PURA (sin IO) — existe para poder testear la decisión del bug A2
+ * (auditoría 2026-07-31) sin pegarle a la red real: `confirm/route.ts` tenía
+ * una rama que, con solo mirar la fila de `property_meta_campaigns`, devolvía
+ * "ya estaba creada" — sin preguntarle a Meta si esa campaña seguía existiendo.
+ * Un segundo publish después de que alguien la archivó/borró en Ads Manager
+ * decía "publicada" sobre una campaña que ya no estaba.
+ *
+ * Reglas:
+ *  - Fila de DB INCOMPLETA (`!isCampaignComplete`) → siempre 'crear_nueva'.
+ *    No importa qué diga Meta: el intento anterior nunca terminó de armarse.
+ *  - Fila COMPLETA + Meta dice 'archived' (esto incluye "ya no existe", ver
+ *    `mapMetaCampaignStatus`) → 'crear_nueva'. Alguien la tocó desde Ads
+ *    Manager entre una publicación y la siguiente.
+ *  - Fila COMPLETA + Meta dice 'active' o 'paused' (existe, viva) → 'recuperar'.
+ *
+ * El caso "no se pudo consultar a Meta" (red, rate limit, permisos —
+ * `isNonexistentObjectError` devuelve false y `syncCampaignState` tira) es
+ * responsabilidad del CALLER: sin `estadoMeta` no hay nada que decidir acá.
+ * El caller debe devolver un error pidiendo reintentar, nunca recuperar ni
+ * crear a ciegas.
+ */
+export function decidirRecuperacion(
+  filaDB: CampaignCompletenessRow | null | undefined,
+  estadoMeta: { status: 'active' | 'paused' | 'archived' },
+): RecoveryDecision {
+  if (!isCampaignComplete(filaDB)) return 'crear_nueva'
+  if (estadoMeta.status === 'archived') return 'crear_nueva'
+  return 'recuperar'
 }
 
 export interface SyncCampaignResult {
