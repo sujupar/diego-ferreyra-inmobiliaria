@@ -150,6 +150,44 @@ describe('parseWebhookPayload', () => {
     expect(inbound).toHaveLength(1)
     expect(inbound[0].type).toBe('image')
     expect(inbound[0].bodyPreview).toBe('[imagen] Mirá esto')
+    expect(inbound[0].mediaId).toBe('media123')
+    expect(inbound[0].mediaMimeType).toBe('image/jpeg')
+    expect(inbound[0].mediaFilename).toBeNull()
+  })
+
+  it('extrae el id/mime_type/filename de un documento entrante', () => {
+    const payload = {
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                messages: [
+                  {
+                    from: '5491122334455',
+                    id: 'wamid.DOC1==',
+                    timestamp: '1732900035',
+                    type: 'document',
+                    document: { id: 'docmedia1', mime_type: 'application/pdf', filename: 'plano-1.pdf' },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+    const { inbound } = parseWebhookPayload(payload)
+    expect(inbound[0].mediaId).toBe('docmedia1')
+    expect(inbound[0].mediaMimeType).toBe('application/pdf')
+    expect(inbound[0].mediaFilename).toBe('plano-1.pdf')
+  })
+
+  it('un mensaje de texto no trae mediaId/mediaMimeType/mediaFilename', () => {
+    const { inbound } = parseWebhookPayload(TEXT_MESSAGE_PAYLOAD)
+    expect(inbound[0].mediaId).toBeNull()
+    expect(inbound[0].mediaMimeType).toBeNull()
+    expect(inbound[0].mediaFilename).toBeNull()
   })
 
   it('no descarta mensajes no-texto: audio, sin caption', () => {

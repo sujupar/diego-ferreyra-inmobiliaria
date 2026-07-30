@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { parseWebhookPayload, verifySignature, type InboundMessage, type StatusUpdate } from '@/lib/integrations/whatsapp/webhook'
 import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
 import { mapMetaStatus } from '@/lib/integrations/whatsapp/log'
+import { downloadAndStoreInboundMedia } from '@/lib/integrations/whatsapp/media'
 
 export const dynamic = 'force-dynamic'
 
@@ -91,6 +92,20 @@ async function persistInbound(supabase: ReturnType<typeof admin>, msg: InboundMe
     const phoneE164 = normalized ?? msg.from
     const leadId = await findLeadIdByPhone(supabase, normalized ?? msg.from)
 
+    // Multimedia: descarga best-effort ANTES del insert (si falla, el mensaje
+    // se guarda igual, solo sin media_url — ver comentario de
+    // `downloadAndStoreInboundMedia`). No bloquea el resto del POST: cada
+    // mensaje del batch se procesa en su propio try/catch (ver el for-loop del
+    // handler).
+    let media: { storagePath: string; mimeType: string; filename: string | null } | null = null
+    if (msg.mediaId) {
+      media = await downloadAndStoreInboundMedia({
+        mediaId: msg.mediaId,
+        waMessageId: msg.waMessageId,
+        filenameHint: msg.mediaFilename,
+      })
+    }
+
     const { error } = await supabase
       .from('whatsapp_messages')
       .upsert(
@@ -104,6 +119,10 @@ async function persistInbound(supabase: ReturnType<typeof admin>, msg: InboundMe
           body_preview: msg.bodyPreview,
           payload: msg.payload as never,
           status: 'received',
+          media_url: media?.storagePath ?? null,
+          media_mime_type: media?.mimeType ?? msg.mediaMimeType,
+          media_filename: media?.filename ?? msg.mediaFilename,
+          media_type: msg.mediaId ? msg.type : null,
         },
         { onConflict: 'wa_message_id', ignoreDuplicates: true },
       )

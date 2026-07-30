@@ -25,6 +25,7 @@ import {
   MessageBubble,
   ConversationRow,
   WindowNotice,
+  WebhookWarningBanner,
   type ThreadMessage,
   type ConversationListItem,
 } from '../app/(dashboard)/inbox/WhatsappClient'
@@ -45,6 +46,10 @@ function msg(overrides: Partial<ThreadMessage>): ThreadMessage {
     error_message: null,
     sent_by: 'user-1',
     created_at: new Date(Date.now() - 5 * 60000).toISOString(),
+    media_url: null,
+    media_mime_type: null,
+    media_filename: null,
+    media_type: null,
     ...overrides,
   }
 }
@@ -71,6 +76,45 @@ for (const status of ['accepted', 'sent', 'delivered', 'read', 'skipped']) {
   check(`status='${status}' no dispara el bloque de error`, !html.includes('No se pudo enviar'), `status=${status}`)
 }
 
+// ── Caso 3b (task 9 — estado honesto): 'accepted' dice "Enviado", NUNCA "Enviando…" ──
+const htmlAccepted = renderToStaticMarkup(<MessageBubble message={msg({ status: 'accepted' })} />)
+check('status=\'accepted\' muestra "Enviado" (Meta ya lo aceptó)', htmlAccepted.includes('Enviado'))
+check('status=\'accepted\' NUNCA dice "Enviando…" (era deshonesto — el mensaje ya salió)', !htmlAccepted.includes('Enviando'))
+
+// ── Caso 3c: multimedia entrante se muestra inline, no como "[imagen]" crudo ──
+const htmlImagen = renderToStaticMarkup(
+  <MessageBubble
+    message={msg({
+      direction: 'in', status: 'received', sent_by: null,
+      body_preview: '[imagen] Mirá el living', media_url: 'https://x.test/signed/foto.jpg', media_mime_type: 'image/jpeg',
+    })}
+  />,
+)
+check('una imagen entrante renderiza un <img> con el src firmado', htmlImagen.includes('<img') && htmlImagen.includes('https://x.test/signed/foto.jpg'))
+check('el caption de la imagen NO repite el prefijo "[imagen]"', !htmlImagen.includes('[imagen]') && htmlImagen.includes('Mirá el living'))
+
+const htmlDocumento = renderToStaticMarkup(
+  <MessageBubble
+    message={msg({
+      direction: 'in', status: 'received', sent_by: null,
+      body_preview: '[documento] plano.pdf', media_url: 'https://x.test/signed/plano.pdf',
+      media_mime_type: 'application/pdf', media_filename: 'plano.pdf',
+    })}
+  />,
+)
+check('un documento entrante muestra un link de descarga con el nombre real', htmlDocumento.includes('plano.pdf') && htmlDocumento.includes('<a '))
+
+const htmlAudio = renderToStaticMarkup(
+  <MessageBubble message={msg({ direction: 'in', status: 'received', sent_by: null, media_url: 'https://x.test/signed/audio.ogg', media_mime_type: 'audio/ogg' })} />,
+)
+check('un audio entrante renderiza un <audio controls>', htmlAudio.includes('<audio') && htmlAudio.includes('controls'))
+
+// ── Caso 3d: sin media_url (falló la descarga o no hay adjunto), cae al texto plano ──
+const htmlSinMedia = renderToStaticMarkup(
+  <MessageBubble message={msg({ direction: 'in', status: 'received', sent_by: null, body_preview: '[imagen]', media_url: null })} />,
+)
+check('sin media_url, cae al texto "[imagen]" (nunca revienta ni queda en blanco)', htmlSinMedia.includes('[imagen]'))
+
 // ── Caso 4: mensaje ENTRANTE no lleva tilde de estado (esas son solo del saliente) ──
 const htmlIn = renderToStaticMarkup(<MessageBubble message={msg({ direction: 'in', status: 'received', sent_by: null })} />)
 check('un mensaje entrante no muestra "Enviado/Entregado/Leído"', !/Enviado|Entregado|Leído/.test(htmlIn))
@@ -87,8 +131,11 @@ function convo(overrides: Partial<ConversationListItem>): ConversationListItem {
     phone_e164: '5491122334455',
     contact_name: 'Juana Pérez',
     lead_id: 'lead-1',
+    lead_number: 1002,
     property_id: 'prop-1',
     property: { id: 'prop-1', address: 'Av. Corrientes 1234', title: null },
+    advisor_id: 'advisor-1',
+    advisor_name: 'Martín Asesor',
     last_message: 'Hola, quería consultar por la propiedad',
     last_direction: 'in',
     last_status: 'received',
@@ -112,6 +159,16 @@ check('muestra la dirección de la propiedad asociada', htmlRowOk.includes('Av. 
 const htmlRowSinNombre = renderToStaticMarkup(<ConversationRow item={convo({ contact_name: null })} active={false} onSelect={() => {}} />)
 check('sin contact_name, cae al teléfono con "+"', htmlRowSinNombre.includes('+5491122334455'))
 
+// ── Caso task 9: "#número de comprador" en la lista ─────────────────────────
+check('la fila de la lista muestra el #número de comprador', htmlRowOk.includes('#1002'))
+const htmlRowSinNumero = renderToStaticMarkup(<ConversationRow item={convo({ lead_number: null })} active={false} onSelect={() => {}} />)
+check('sin lead_number, no muestra un "#null" ni revienta', !/#null/.test(htmlRowSinNumero))
+
+// ── WebhookWarningBanner: el aviso accionable (task 9, prioridad 1) ─────────
+const htmlBanner = renderToStaticMarkup(<WebhookWarningBanner />)
+check('el aviso menciona el webhook', htmlBanner.toLowerCase().includes('webhook'))
+check('el aviso menciona el panel de Meta (accionable, no solo "algo falló")', htmlBanner.includes('Meta'))
+
 // ── WindowNotice: ventana abierta vs cerrada ────────────────────────────────
 const htmlAbierta = renderToStaticMarkup(<WindowNotice window={{ open: true, msRemaining: 2 * 60 * 60000 + 15 * 60000 }} />)
 check('ventana abierta: dice cuánto tiempo queda', htmlAbierta.includes('Te quedan'))
@@ -122,7 +179,7 @@ check('ventana cerrada: explica que hace falta una plantilla', htmlCerrada.inclu
 check('ventana cerrada: menciona las 24hs', htmlCerrada.includes('24hs'))
 
 // ── El copy visible está en rioplatense (voseo), no en tuteo ────────────────
-const todoElTexto = [htmlFailed, htmlCerrada, htmlAbierta, htmlRowOk].join(' ').replace(/<[^>]+>/g, ' ')
+const todoElTexto = [htmlFailed, htmlCerrada, htmlAbierta, htmlRowOk, htmlBanner].join(' ').replace(/<[^>]+>/g, ' ')
 const tuteo = [/\btú\b/i, /\btienes\b/i, /\bpuedes\b/i, /\bquieres\b/i, /\bregístrate\b/i, /\bdéjanos\b/i]
 const hallazgo = tuteo.find(re => re.test(todoElTexto))
 check('el copy visible está en voseo (sin tuteo)', !hallazgo, `aparece "${hallazgo}"`)

@@ -1,9 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
+import { PropertyInfoDialog } from '@/components/inbox/PropertyInfoDialog'
+import { TemplatePicker } from '@/components/inbox/TemplatePicker'
+import { EmojiPicker } from '@/components/inbox/EmojiPicker'
 import {
   Loader2,
   MessageCircle,
@@ -15,6 +21,10 @@ import {
   Clock,
   Building2,
   Lock,
+  Info,
+  Search,
+  FileText,
+  Home,
 } from 'lucide-react'
 
 const POLL_MS = 15000
@@ -26,8 +36,12 @@ export interface ConversationListItem {
   phone_e164: string
   contact_name: string | null
   lead_id: string | null
+  /** "#número de comprador" (migración 20260731000001) — null en conversaciones creadas antes de esa migración. */
+  lead_number: number | null
   property_id: string | null
   property: { id: string; address: string; title: string | null } | null
+  advisor_id: string | null
+  advisor_name: string | null
   last_message: string | null
   last_direction: 'in' | 'out'
   last_status: string
@@ -44,13 +58,18 @@ export interface ThreadMessage {
   error_message: string | null
   sent_by: string | null
   created_at: string
+  /** URL FIRMADA (1h) del bucket privado whatsapp-media — null si no hay adjunto o si la descarga desde Meta falló. */
+  media_url: string | null
+  media_mime_type: string | null
+  media_filename: string | null
+  media_type: string | null
 }
 
 interface Thread {
   phone_e164: string
   contact_name: string | null
-  lead: { id: string; name: string } | null
-  property: { id: string; address: string; title: string | null } | null
+  lead: { id: string; name: string; lead_number: number | null } | null
+  property: { id: string; address: string; title: string | null; cover_photo: string | null } | null
   window: { open: boolean; msRemaining: number }
   messages: ThreadMessage[]
 }
@@ -116,13 +135,22 @@ function messageText(m: { body_preview: string | null; template_name: string | n
   return '(sin contenido)'
 }
 
-/** Metadata visual de estado — solo aplica a mensajes SALIENTES (los entrantes no tienen tilde). */
+/**
+ * Metadata visual de estado — solo aplica a mensajes SALIENTES (los entrantes
+ * no tienen tilde).
+ *
+ * `'accepted'` (Meta ya lo aceptó, es el estado inicial de TODO envío real)
+ * muestra el mismo tilde simple que `'sent'` — "Enviando…" era deshonesto:
+ * ese mensaje YA SALIÓ. La única razón por la que hoy se queda pegado en
+ * `accepted` para siempre es que el webhook de estados de Meta no está
+ * suscripto (ver `WebhookWarningBanner` más abajo), no que el envío siga en
+ * curso.
+ */
 function outboundStatusMeta(status: string): { icon: typeof Check; label: string; className: string; isError: boolean } {
   switch (status) {
     case 'skipped':
       return { icon: Clock, label: 'Modo prueba — no se mandó de verdad', className: 'text-muted-foreground', isError: false }
     case 'accepted':
-      return { icon: Clock, label: 'Enviando…', className: 'text-muted-foreground', isError: false }
     case 'sent':
       return { icon: Check, label: 'Enviado', className: 'text-muted-foreground', isError: false }
     case 'delivered':
@@ -134,6 +162,57 @@ function outboundStatusMeta(status: string): { icon: typeof Check; label: string
     default:
       return { icon: Clock, label: status, className: 'text-muted-foreground', isError: false }
   }
+}
+
+/** Saca el prefijo "[imagen] "/"[documento] "/etc. del body_preview, para mostrarlo como caption debajo del adjunto en vez de duplicar la etiqueta. */
+function mediaCaption(bodyPreview: string | null): string | null {
+  if (!bodyPreview) return null
+  const sinPrefijo = bodyPreview.replace(/^\[[^\]]+\]\s?/, '').trim()
+  return sinPrefijo.length > 0 ? sinPrefijo : null
+}
+
+/**
+ * Contenido multimedia de un mensaje entrante (task 9, prioridad 4). Si
+ * `media_url` es null (sin adjunto, o la descarga desde Meta falló) devuelve
+ * `null` — el caller cae al texto plano de `messageText()`.
+ */
+function MediaContent({ message }: { message: ThreadMessage }) {
+  if (!message.media_url) return null
+  const mime = message.media_mime_type ?? ''
+  const caption = mediaCaption(message.body_preview)
+
+  if (mime.startsWith('image/')) {
+    return (
+      <div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={message.media_url} alt={caption ?? 'Imagen recibida'} className="max-h-64 rounded-lg object-cover" />
+        {caption && <p className="mt-1 text-sm">{caption}</p>}
+      </div>
+    )
+  }
+  if (mime.startsWith('audio/')) {
+    return <audio controls src={message.media_url} className="max-w-full" />
+  }
+  if (mime.startsWith('video/')) {
+    return (
+      <div>
+        <video controls src={message.media_url} className="max-h-64 max-w-full rounded-lg" />
+        {caption && <p className="mt-1 text-sm">{caption}</p>}
+      </div>
+    )
+  }
+  // Documento (o cualquier mime no contemplado): link de descarga con el nombre real.
+  return (
+    <a
+      href={message.media_url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center gap-2 rounded-md border border-current/20 px-2 py-1.5 text-sm underline"
+    >
+      <FileText className="h-4 w-4 shrink-0" />
+      {message.media_filename ?? 'Descargar archivo'}
+    </a>
+  )
 }
 
 /**
@@ -151,6 +230,8 @@ export function MessageBubble({ message }: { message: ThreadMessage }) {
   const isOut = message.direction === 'out'
   const meta = isOut ? outboundStatusMeta(message.status) : null
   const StatusIcon = meta?.icon
+  const media = <MediaContent message={message} />
+  const hasMedia = message.media_url != null
   return (
     <div className={`flex flex-col ${isOut ? 'items-end' : 'items-start'}`}>
       <div
@@ -162,7 +243,7 @@ export function MessageBubble({ message }: { message: ThreadMessage }) {
               : 'bg-background border'
         }`}
       >
-        {messageText(message)}
+        {hasMedia ? media : messageText(message)}
       </div>
       <div className="flex items-center gap-1 mt-1 px-1">
         <span className="text-[10px] text-muted-foreground">{relativeTime(message.created_at)}</span>
@@ -205,7 +286,12 @@ export function ConversationRow({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-medium text-sm truncate">{item.contact_name ?? displayPhone(item.phone_e164)}</span>
+            <span className="flex items-center gap-1 min-w-0">
+              <span className="font-medium text-sm truncate">{item.contact_name ?? displayPhone(item.phone_e164)}</span>
+              {item.lead_number != null && (
+                <span className="shrink-0 text-[10px] text-muted-foreground">#{item.lead_number}</span>
+              )}
+            </span>
             <span className="text-[10px] text-muted-foreground whitespace-nowrap">{relativeTime(item.last_at)}</span>
           </div>
           {item.property && (
@@ -256,10 +342,32 @@ export function WindowNotice({ window }: { window: { open: boolean; msRemaining:
   )
 }
 
+/**
+ * Aviso de que falta suscribir el webhook de WhatsApp en el panel de Meta —
+ * task 9, prioridad 1. Se muestra cuando, en TODA la base, no hay ni un solo
+ * mensaje entrante ni una sola actualización de estado (`webhookNotSubscribedWarning`
+ * de `GET /api/whatsapp/conversations`). Sin este aviso, el chat solo muestra
+ * mensajes salientes pegados en "Enviado" para siempre y ninguna respuesta de
+ * cliente — confuso sin explicación. Presentacional, exportado para el probe.
+ */
+export function WebhookWarningBanner() {
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+      <Info className="h-4 w-4 shrink-0 mt-0.5" />
+      <p>
+        Todavía no llegó ninguna respuesta de cliente ni confirmación de entrega — probablemente falta suscribir la
+        URL del webhook en el panel de Meta (Configuración de WhatsApp → Webhooks). El envío de mensajes funciona
+        igual; lo que falta es que las respuestas y los estados de entrega lleguen de vuelta acá.
+      </p>
+    </div>
+  )
+}
+
 export function WhatsappClient({ userRole, userId }: { userRole: string; userId: string }) {
   const [conversations, setConversations] = useState<ConversationListItem[] | null>(null)
   const [listLoading, setListLoading] = useState(true)
   const [listError, setListError] = useState<string | null>(null)
+  const [webhookWarning, setWebhookWarning] = useState(false)
 
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null)
   const [thread, setThread] = useState<Thread | null>(null)
@@ -269,6 +377,17 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
   const [replyText, setReplyText] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
+
+  const [showPropertyInfo, setShowPropertyInfo] = useState(false)
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false)
+
+  // Filtros de la lista de conversaciones (prioridad 6). Todo client-side
+  // sobre lo ya cargado — la lista completa ya viaja en cada poll, filtrar en
+  // memoria evita ida y vuelta al servidor por cada cambio de filtro.
+  const [search, setSearch] = useState('')
+  const [onlyUnread, setOnlyUnread] = useState(false)
+  const [filterPropertyId, setFilterPropertyId] = useState('all')
+  const [filterAdvisorId, setFilterAdvisorId] = useState('all')
 
   const conversationsRef = useRef<ConversationListItem[]>([])
   useEffect(() => {
@@ -281,9 +400,10 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
     if (!opts?.silent) setListLoading(true)
     try {
       const res = await fetch('/api/whatsapp/conversations')
-      const data = await readJson<{ data?: ConversationListItem[] }>(res)
+      const data = await readJson<{ data?: ConversationListItem[]; webhookNotSubscribedWarning?: boolean }>(res)
       if (!res.ok) throw new Error(data.error ?? 'No se pudieron cargar las conversaciones.')
       setConversations(data.data ?? [])
+      setWebhookWarning(Boolean(data.webhookNotSubscribedWarning))
       setListError(null)
     } catch (err) {
       setListError(err instanceof Error ? err.message : 'Error al cargar las conversaciones')
@@ -391,6 +511,46 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
     }
   }
 
+  function insertEmoji(emoji: string) {
+    setReplyText(t => t + emoji)
+  }
+
+  // Opciones de los filtros (prioridad 6) — derivadas de las conversaciones YA
+  // cargadas, sin pegarle de nuevo al servidor. El de asesor solo tiene
+  // sentido para roles de operaciones (un asesor ya ve solo lo suyo).
+  const propertyOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const c of conversations ?? []) {
+      if (c.property) map.set(c.property.id, c.property.address)
+    }
+    return [{ value: 'all', label: 'Todas las propiedades' }, ...Array.from(map, ([value, label]) => ({ value, label }))]
+  }, [conversations])
+
+  const advisorOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const c of conversations ?? []) {
+      if (c.advisor_id && c.advisor_name) map.set(c.advisor_id, c.advisor_name)
+    }
+    return [{ value: 'all', label: 'Todos los asesores' }, ...Array.from(map, ([value, label]) => ({ value, label }))]
+  }, [conversations])
+
+  const visibleConversations = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    return (conversations ?? []).filter(c => {
+      if (onlyUnread && c.unread_count === 0) return false
+      if (filterPropertyId !== 'all' && c.property_id !== filterPropertyId) return false
+      if (filterAdvisorId !== 'all' && c.advisor_id !== filterAdvisorId) return false
+      if (term) {
+        const haystack = [c.contact_name, c.phone_e164, c.last_message, c.property?.address, c.lead_number ? `#${c.lead_number}` : null]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+        if (!haystack.includes(term)) return false
+      }
+      return true
+    })
+  }, [conversations, search, onlyUnread, filterPropertyId, filterAdvisorId])
+
   return (
     <div className="space-y-4">
       <div>
@@ -403,9 +563,49 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
         </p>
       </div>
 
+      {webhookWarning && <WebhookWarningBanner />}
+
       <div className="grid md:grid-cols-[340px_1fr] gap-4 h-[calc(100vh-320px)] min-h-[480px]">
-        {/* Columna izquierda: lista de conversaciones. En mobile se oculta si ya hay una elegida. */}
+        {/* Columna izquierda: filtros + lista de conversaciones. En mobile se oculta si ya hay una elegida. */}
         <Card className={`overflow-hidden p-0 ${selectedPhone ? 'hidden md:flex md:flex-col' : 'flex flex-col'}`}>
+          <div className="space-y-2 border-b p-2">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Buscar por nombre, teléfono o mensaje…"
+                  className="h-8 pl-7 text-xs"
+                />
+              </div>
+              <Button
+                type="button"
+                variant={onlyUnread ? 'default' : 'outline'}
+                size="sm"
+                className="h-8 shrink-0 text-xs"
+                onClick={() => setOnlyUnread(v => !v)}
+              >
+                No leídas
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <Select
+                options={propertyOptions}
+                value={filterPropertyId}
+                onChange={e => setFilterPropertyId(e.target.value)}
+                className="h-8 flex-1 text-xs"
+              />
+              {userRole !== 'asesor' && (
+                <Select
+                  options={advisorOptions}
+                  value={filterAdvisorId}
+                  onChange={e => setFilterAdvisorId(e.target.value)}
+                  className="h-8 flex-1 text-xs"
+                />
+              )}
+            </div>
+          </div>
           <div className="flex-1 overflow-y-auto">
             {listLoading && !conversations ? (
               <div className="flex justify-center py-16">
@@ -422,8 +622,12 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
                   respuestas de los clientes apenas entren.
                 </p>
               </div>
+            ) : visibleConversations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center text-center gap-2 px-4 py-14">
+                <p className="text-sm text-muted-foreground">Ningún resultado con estos filtros.</p>
+              </div>
             ) : (
-              conversations.map(c => (
+              visibleConversations.map(c => (
                 <ConversationRow
                   key={c.phone_e164}
                   item={c}
@@ -455,7 +659,7 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
             </CardContent>
           ) : thread ? (
             <>
-              {/* Header */}
+              {/* Header: nombre + #número de comprador + teléfono + propiedad (tarjeta clickeable) */}
               <div className="flex items-center gap-2 border-b px-4 py-3">
                 <Button variant="ghost" size="icon-sm" onClick={() => setSelectedPhone(null)} className="md:hidden -ml-1">
                   <ArrowLeft className="h-4 w-4" />
@@ -463,15 +667,51 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color:var(--brand)]/15 text-[color:var(--brand)] text-sm font-semibold">
                   {initials(thread.contact_name, thread.phone_e164)}
                 </div>
-                <div className="min-w-0">
-                  <p className="font-medium text-sm truncate">
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-1.5 font-medium text-sm truncate">
                     {thread.contact_name ?? displayPhone(thread.phone_e164)}
+                    {thread.lead?.lead_number != null && (
+                      <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+                        #{thread.lead.lead_number}
+                      </span>
+                    )}
                   </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {displayPhone(thread.phone_e164)}
-                    {thread.property && ` · ${thread.property.address}`}
-                  </p>
+                  <p className="text-xs text-muted-foreground truncate">{displayPhone(thread.phone_e164)}</p>
                 </div>
+                {thread.property && (
+                  <Link
+                    href={`/properties/${thread.property.id}`}
+                    className="hidden sm:flex shrink-0 items-center gap-2 rounded-lg border px-2 py-1.5 hover:bg-muted/60 transition"
+                  >
+                    {thread.property.cover_photo ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={thread.property.cover_photo} alt="" className="h-9 w-9 rounded object-cover" />
+                    ) : (
+                      <div className="flex h-9 w-9 items-center justify-center rounded bg-muted">
+                        <Home className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    )}
+                    <span className="max-w-[140px] truncate text-xs font-medium">{thread.property.address}</span>
+                  </Link>
+                )}
+              </div>
+
+              {/* Acciones: enviar info de la propiedad + plantilla */}
+              <div className="flex items-center gap-2 border-b px-4 py-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                  disabled={!thread.property}
+                  onClick={() => setShowPropertyInfo(true)}
+                  title={!thread.property ? 'Esta conversación no tiene una propiedad asociada' : undefined}
+                >
+                  <Building2 className="h-3.5 w-3.5" /> Enviar información de la propiedad
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="text-xs" onClick={() => setShowTemplatePicker(true)}>
+                  Plantilla
+                </Button>
               </div>
 
               {/* Mensajes */}
@@ -501,6 +741,7 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
                     className="min-h-[44px] max-h-32"
                     rows={1}
                   />
+                  <EmojiPicker onSelect={insertEmoji} />
                   <Button
                     type="button"
                     size="icon"
@@ -511,6 +752,32 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
                   </Button>
                 </div>
               </div>
+
+              {thread.property && (
+                <PropertyInfoDialog
+                  open={showPropertyInfo}
+                  onOpenChange={setShowPropertyInfo}
+                  propertyId={thread.property.id}
+                  phone={thread.phone_e164}
+                  leadId={thread.lead?.id ?? null}
+                  windowOpen={thread.window.open}
+                  onSent={() => {
+                    loadThread(thread.phone_e164, { silent: true })
+                    loadConversations({ silent: true })
+                  }}
+                />
+              )}
+              <TemplatePicker
+                open={showTemplatePicker}
+                onOpenChange={setShowTemplatePicker}
+                phone={thread.phone_e164}
+                leadId={thread.lead?.id ?? null}
+                propertyId={thread.property?.id ?? null}
+                onSent={() => {
+                  loadThread(thread.phone_e164, { silent: true })
+                  loadConversations({ silent: true })
+                }}
+              />
             </>
           ) : null}
         </Card>
