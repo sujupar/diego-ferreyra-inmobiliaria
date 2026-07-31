@@ -90,6 +90,38 @@ export interface PropertiesListFilters {
   assigned_to?: string
 }
 
+/** Columnas de `vw_properties_list` que la tabla del listado deja ordenar por header. */
+export const SORTABLE_PROPERTY_LIST_COLUMNS = [
+  'address',
+  'neighborhood',
+  'property_type',
+  'asking_price',
+  'status',
+  'origin',
+  'created_at',
+] as const
+export type SortablePropertyListColumn = (typeof SORTABLE_PROPERTY_LIST_COLUMNS)[number]
+
+export interface PropertiesListSort {
+  key: string
+  dir: 'asc' | 'desc'
+}
+
+/**
+ * Resuelve un pedido de orden (`?sort=&dir=` de la ruta, o `undefined`) a una
+ * columna/dirección válida. Cualquier `key` fuera del whitelist (typo, campo
+ * que no existe en la vista) cae al default `created_at desc` — nunca deja
+ * pasar un nombre de columna arbitrario a `.order()`. Pura y testeada
+ * (hallazgo #7, revisión adversarial 2026-07-31: antes el orden de la vista
+ * tabla se aplicaba en memoria sobre SOLO la página cargada, así que "Precio"
+ * mostraba la más cara de los primeros 24 resultados, no de todo el sistema).
+ */
+export function resolvePropertiesListSort(sort?: PropertiesListSort | null): { column: SortablePropertyListColumn; ascending: boolean } {
+  const isValidColumn = !!sort && (SORTABLE_PROPERTY_LIST_COLUMNS as readonly string[]).includes(sort.key)
+  if (!isValidColumn) return { column: 'created_at', ascending: false }
+  return { column: sort!.key as SortablePropertyListColumn, ascending: sort!.dir === 'asc' }
+}
+
 /**
  * Listado paginado para app/(dashboard)/properties/page.tsx — lee de
  * `vw_properties_list` (SIN el array `photos`, solo `thumbnail`/`photo_count`)
@@ -100,22 +132,27 @@ export interface PropertiesListFilters {
  * booleanas chicas, no vale la pena tocar la vista/migración por esto) — se
  * traen aparte con un SELECT liviano a `properties` (no toca `photos`, cero
  * costo de detoast) EN PARALELO con la vista: mismos filtros + mismo orden
- * determinístico (`created_at desc, id asc` — el tie-break por id garantiza
+ * determinístico (columna de sort + tie-break por id — el tie-break garantiza
  * que ambas consultas devuelven exactamente el mismo conjunto de filas para
- * el mismo offset/limit aunque haya empates de created_at) + mismo range, y
- * se mezclan acá por id.
+ * el mismo offset/limit aunque haya empates en la columna de orden) + mismo
+ * range, y se mezclan acá por id.
+ *
+ * `sort`: orden real en el SERVIDOR, no en memoria sobre la página cargada
+ * (hallazgo #7 — ver `resolvePropertiesListSort`).
  */
 export async function getPropertiesListPage(
   filters: PropertiesListFilters = {},
-  page: { limit: number; offset: number }
+  page: { limit: number; offset: number },
+  sort?: PropertiesListSort | null,
 ) {
   const supabase = getAdmin()
   const { limit, offset } = page
+  const { column: sortColumn, ascending: sortAscending } = resolvePropertiesListSort(sort)
 
   let listQuery = supabase
     .from('vw_properties_list')
     .select('*', { count: 'exact' })
-    .order('created_at', { ascending: false })
+    .order(sortColumn, { ascending: sortAscending })
     .order('id', { ascending: true })
 
   if (filters.status) listQuery = listQuery.eq('status', filters.status)
@@ -127,7 +164,7 @@ export async function getPropertiesListPage(
   let flagsQuery = supabase
     .from('properties')
     .select('id, legal_docs_pending, origin_pending')
-    .order('created_at', { ascending: false })
+    .order(sortColumn, { ascending: sortAscending })
     .order('id', { ascending: true })
 
   if (filters.status) flagsQuery = flagsQuery.eq('status', filters.status)

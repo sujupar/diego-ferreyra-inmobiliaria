@@ -29,16 +29,27 @@ export async function authorizeLeadAccess(leadId: string, user: UserWithProfile)
   if (!ALLOWED_ROLES.includes(user.profile.role)) {
     return { ok: false, reason: 'forbidden', status: 403 }
   }
-  if (user.profile.role !== 'asesor') return { ok: true }
 
+  // Hallazgo H6 (revisión adversarial 2026-08-01): antes, para admin/dueño/
+  // coordinador esto devolvía `{ok:true}` sin tocar la base — un `leadId`
+  // inexistente pasaba el gate y recién explotaba más abajo con un 500 crudo
+  // de Postgres (violación de FK al insertar en `lead_tag_assignments`), y un
+  // lead en la papelera (`deleted_at` no nulo) se podía etiquetar igual,
+  // aunque `advancePipelineState`/`setPipelineStateManually` sí lo bloquean.
+  // Ahora TODOS los roles permitidos pasan por el mismo SELECT — 404 real
+  // para "no existe" y para "está en la papelera" — y solo el asesor hace,
+  // encima, el chequeo de ownership.
   const supabase = admin()
   const { data: lead } = await supabase
     .from('property_leads')
-    .select('property_id, assigned_to')
+    .select('property_id, assigned_to, deleted_at')
     .eq('id', leadId)
     .maybeSingle()
-  const row = lead as { property_id: string; assigned_to: string | null } | null
-  if (!row) return { ok: false, reason: 'not_found', status: 404 }
+  const row = lead as { property_id: string; assigned_to: string | null; deleted_at: string | null } | null
+  if (!row || row.deleted_at) return { ok: false, reason: 'not_found', status: 404 }
+
+  if (user.profile.role !== 'asesor') return { ok: true }
+
   if (row.assigned_to === user.id) return { ok: true }
 
   const { data: prop } = await supabase

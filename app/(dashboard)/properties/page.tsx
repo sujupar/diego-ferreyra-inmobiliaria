@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
@@ -74,7 +74,14 @@ export default function PropertiesPage() {
   const [modalLoading, setModalLoading] = useState(false)
   const [scheduleVisitOpen, setScheduleVisitOpen] = useState(false)
   const [scheduleForPropertyId, setScheduleForPropertyId] = useState<string | null>(null)
+  // Orden de la vista tabla (hallazgo #7): se resuelve en el SERVIDOR, no en
+  // memoria sobre la página cargada — ver `buildParams`/`getPropertiesListPage`.
+  const [tableSort, setTableSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null)
   const canHardDelete = userInfo?.role === 'admin' || userInfo?.role === 'dueno'
+  // Hallazgo #11 (carrera al abrir dos fichas seguidas): guarda el id
+  // efectivamente pedido; si la respuesta llega y ya no coincide con el
+  // último pedido, se descarta — no pisa el modal de una ficha más nueva.
+  const modalRequestIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     const saved = localStorage.getItem('propertiesViewMode') as 'grid' | 'list' | 'table' | null
@@ -88,19 +95,24 @@ export default function PropertiesPage() {
     fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
   }, [])
 
-  function buildParams(offset: number) {
+  function buildParams(offset: number, limit: number = PAGE_SIZE) {
     const params = new URLSearchParams()
     if (filterStatus) params.set('status', filterStatus)
     if (dateRange.from) params.set('from', dateRange.from)
     if (dateRange.to) params.set('to', dateRange.to)
     if (onlyMine && userInfo?.id) params.set('assigned_to', userInfo.id)
-    params.set('limit', String(PAGE_SIZE))
+    if (tableSort) {
+      params.set('sort', tableSort.key)
+      params.set('dir', tableSort.dir)
+    }
+    params.set('limit', String(limit))
     params.set('offset', String(offset))
     return params
   }
 
   // Paginado de a PAGE_SIZE (24) — ver task-7-brief.md. Reset a la página 0
-  // cada vez que cambia un filtro.
+  // cada vez que cambia un filtro (u orden — mismo criterio: ambos cambian
+  // QUÉ 24 filas corresponden a la página 0).
   useEffect(() => {
     setLoading(true)
     fetch(`/api/properties?${buildParams(0)}`)
@@ -115,7 +127,7 @@ export default function PropertiesPage() {
     // Limpiar selección al cambiar filtros
     setSelectedIds(new Set())
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterStatus, dateRange, userInfo, onlyMine])
+  }, [filterStatus, dateRange, userInfo, onlyMine, tableSort])
 
   async function loadMore() {
     if (loadingMore || !hasMore) return
@@ -133,8 +145,14 @@ export default function PropertiesPage() {
     }
   }
 
+  // Hallazgo #9: una acción en lote (descartar/eliminar) recargaba con
+  // offset=0 y el limit de UNA página, así que un asesor que había cargado 3
+  // páginas volvía a ver solo 24 filas — perdía su lugar en el scroll. Ahora
+  // re-pide TANTAS filas como había cargadas (mínimo una página), para que el
+  // listado visible no encoja por debajo de lo que el asesor ya había traído.
   async function refreshProperties() {
-    const res = await fetch(`/api/properties?${buildParams(0)}`)
+    const keep = Math.max(properties.length, PAGE_SIZE)
+    const res = await fetch(`/api/properties?${buildParams(0, keep)}`)
     const { data, total: newTotal, hasMore: newHasMore } = await res.json()
     setProperties(data || [])
     setTotal(newTotal ?? (data || []).length)
@@ -145,6 +163,11 @@ export default function PropertiesPage() {
   // viajan en vw_properties_list) — al abrir el modal se pide el detalle
   // completo por GET /api/properties/[id] (mismo endpoint que usa la ficha).
   async function openPropertyModal(p: Property) {
+    // Hallazgo #11: si se abre la ficha A y, antes de que responda el detalle
+    // completo, se abre la ficha B, la respuesta tardía de A no debe pisar el
+    // modal de B. `modalRequestIdRef` guarda el ÚLTIMO id pedido; cualquier
+    // respuesta que llegue para un id distinto se descarta.
+    modalRequestIdRef.current = p.id
     setModalProperty({
       id: p.id,
       address: p.address,
@@ -165,11 +188,11 @@ export default function PropertiesPage() {
     try {
       const res = await fetch(`/api/properties/${p.id}`)
       const { data } = await res.json()
-      if (data) setModalProperty(data)
+      if (data && modalRequestIdRef.current === p.id) setModalProperty(data)
     } catch (err) {
       console.error(err)
     } finally {
-      setModalLoading(false)
+      if (modalRequestIdRef.current === p.id) setModalLoading(false)
     }
   }
 
@@ -306,6 +329,11 @@ export default function PropertiesPage() {
           selectable
           selectedIds={selectedIds}
           onSelectionChange={setSelectedIds}
+          // Orden CONTROLADO (server-side, hallazgo #7): `properties` es una
+          // página parcial (24 de N), así que ordenarla en memoria acá
+          // ordenaría solo lo cargado. `tableSort` dispara un refetch page-0.
+          sort={tableSort}
+          onSortChange={(key, dir) => setTableSort({ key, dir })}
         />
       ) : (
         <div className="space-y-3">

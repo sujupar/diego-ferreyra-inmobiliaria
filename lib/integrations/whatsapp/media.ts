@@ -142,3 +142,105 @@ export async function signedMediaUrl(storagePath: string, expiresInSeconds = 360
     return null
   }
 }
+
+/**
+ * Cache en memoria de URLs firmadas, keyeada por storage path. Pura y
+ * testeable (recibe el reloj como parámetro) — separada de `signedMediaUrls`
+ * para poder probar la lógica de vencimiento sin tocar Storage.
+ *
+ * Por qué existe (hallazgo #6, revisión adversarial 2026-07-31): el hilo del
+ * chat hace polling cada 15s (`WhatsappClient.tsx`, POLL_MS). Antes, cada
+ * poll firmaba una URL NUEVA para cada adjunto → el `src` del <img>/<audio>
+ * cambiaba en cada poll → el navegador volvía a descargar el archivo entero
+ * → parpadeo. Ahora la URL se reusa mientras esté "fresca" (con margen antes
+ * del vencimiento real), así que entre polls consecutivos el `src` es
+ * idéntico y el navegador sirve desde cache HTTP/memoria.
+ */
+export class SignedUrlCache {
+  private entries = new Map<string, { url: string; expiresAtMs: number }>()
+
+  /** URL cacheada si todavía está fresca en `nowMs`, si no `null`. */
+  getFresh(path: string, nowMs: number): string | null {
+    const entry = this.entries.get(path)
+    if (!entry) return null
+    if (entry.expiresAtMs <= nowMs) {
+      this.entries.delete(path)
+      return null
+    }
+    return entry.url
+  }
+
+  /** Guarda una URL firmada con vencimiento efectivo = `nowMs + ttlMs` (con margen respecto al vencimiento real de Storage). */
+  set(path: string, url: string, nowMs: number, ttlMs: number): void {
+    this.entries.set(path, { url, expiresAtMs: nowMs + ttlMs })
+  }
+
+  clear(): void {
+    this.entries.clear()
+  }
+}
+
+/**
+ * Vencimiento REAL que se le pide a Storage (1h — igual que antes).
+ * Vencimiento EFECTIVO del cache: bastante más corto (55min) para nunca
+ * servir una URL que Storage ya rechazó, pero mucho más largo que el
+ * intervalo de polling (15s) — así la URL es estable entre polls.
+ */
+const SIGN_TTL_SECONDS = 3600
+const CACHE_TTL_MS = 55 * 60 * 1000
+
+const moduleCache = new SignedUrlCache()
+
+/**
+ * Firma en lote (`createSignedUrls`, UNA llamada HTTP a Storage en vez de N
+ * en paralelo) las URLs de lectura para varios paths, reusando el cache de
+ * módulo para los que siguen frescos. `null` para los paths que fallan al
+ * firmar (nunca lanza) — el front cae al `body_preview` de texto.
+ */
+export async function signedMediaUrls(
+  storagePaths: readonly string[],
+  expiresInSeconds = SIGN_TTL_SECONDS,
+): Promise<Record<string, string | null>> {
+  const now = Date.now()
+  const result: Record<string, string | null> = {}
+  const toFetch: string[] = []
+
+  const unique = Array.from(new Set(storagePaths))
+  for (const path of unique) {
+    const cached = moduleCache.getFresh(path, now)
+    if (cached) {
+      result[path] = cached
+    } else {
+      toFetch.push(path)
+    }
+  }
+
+  if (toFetch.length === 0) return result
+
+  try {
+    const { data, error } = await admin().storage.from(BUCKET).createSignedUrls(toFetch, expiresInSeconds)
+    if (error || !data) {
+      for (const path of toFetch) result[path] = null
+      return result
+    }
+    for (const entry of data) {
+      const path = entry.path ?? ''
+      if (!path) continue
+      if (entry.error || !entry.signedUrl) {
+        result[path] = null
+        continue
+      }
+      moduleCache.set(path, entry.signedUrl, now, CACHE_TTL_MS)
+      result[path] = entry.signedUrl
+    }
+    // Cualquier path pedido que Storage no haya devuelto (no debería pasar, pero por las dudas).
+    for (const path of toFetch) {
+      if (!(path in result)) result[path] = null
+    }
+    return result
+  } catch (err) {
+    console.warn('[whatsapp-media] no se pudieron firmar las URLs en lote (continuando):', err)
+    for (const path of toFetch) result[path] = null
+    return result
+  }
+}

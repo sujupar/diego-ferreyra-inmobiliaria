@@ -89,6 +89,29 @@ export async function GET(req: Request) {
       asesorPropertyIds = (props ?? []).map(p => p.id)
     }
 
+    // Hallazgo H5 (revisión adversarial 2026-08-01): `?tag=` filtraba DESPUÉS
+    // del `.limit()` (sobre `enriched`, en memoria) — con más leads que el
+    // límite, los que tenían la etiqueta pero quedaban fuera de la página más
+    // reciente eran invisibles, sin que el resultado indicara que faltaban
+    // filas. Ahora se resuelven PRIMERO los `lead_id` de esa etiqueta
+    // (vigente: `removed_at IS NULL`) y se aplican como `.in()` en la query
+    // base, igual que `?state=`.
+    let tagLeadIds: string[] | null = null
+    if (tagFilter) {
+      const { data: tagAssignments, error: tagErr } = await supabase
+        .from('lead_tag_assignments')
+        .select('lead_id, lead_tags!inner(slug)')
+        .is('removed_at', null)
+        .eq('lead_tags.slug', tagFilter)
+      if (tagErr) return NextResponse.json({ error: tagErr.message }, { status: 500 })
+      tagLeadIds = Array.from(new Set((tagAssignments ?? []).map(r => r.lead_id)))
+      if (tagLeadIds.length === 0) {
+        // Nadie tiene esa etiqueta — cortar acá evita un `.in('id', [])` raro
+        // contra PostgREST y es, de por sí, la respuesta correcta.
+        return NextResponse.json({ data: [] })
+      }
+    }
+
     let query = supabase
       .from('property_leads')
       // `lead_number` = el # visible de comprador; `suspected_bot`/`bot_reason` lo
@@ -106,6 +129,7 @@ export async function GET(req: Request) {
     if (propertyId) query = query.eq('property_id', propertyId)
     if (source) query = query.eq('source', source)
     if (stateFilter) query = query.eq('pipeline_state', stateFilter)
+    if (tagLeadIds) query = query.in('id', tagLeadIds)
 
     if (role === 'asesor') {
       // OR de: lead.assigned_to = user.id  OR  property_id IN [sus propiedades]
@@ -156,13 +180,13 @@ export async function GET(req: Request) {
       }
     }
 
-    let enriched = (leads ?? []).map(l => ({
+    // `tagFilter` ya se aplicó en SQL (arriba, `tagLeadIds`) — acá solo se
+    // hidratan las etiquetas de cada lead para la respuesta.
+    const enriched = (leads ?? []).map(l => ({
       ...l,
       properties: propsMap.get(l.property_id) ?? null,
       tags: tagsMap.get(l.id) ?? [],
     }))
-
-    if (tagFilter) enriched = enriched.filter(l => l.tags.some(t => t.slug === tagFilter))
 
     return NextResponse.json({ data: enriched })
   } catch (err) {

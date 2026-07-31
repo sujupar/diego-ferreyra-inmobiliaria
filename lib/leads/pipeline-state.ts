@@ -229,11 +229,26 @@ export async function setPipelineStateManually(
   const current = isPipelineState(row.pipeline_state) ? row.pipeline_state : 'nuevo'
   if (current === toState) return NO_CHANGE
 
-  const { error: updateError } = await sb
+  // Hallazgo H10 (revisión adversarial 2026-08-01): a diferencia de
+  // `advancePipelineState` (que sí hace `.eq('pipeline_state', current)`),
+  // este UPDATE era incondicional. Dos personas bajando el estado del mismo
+  // lead a la vez (o un cambio manual concurrente con un avance automático)
+  // podían registrar en `lead_state_history` un `from_state` que YA no era el
+  // estado real al momento del cambio — el historial mentiría. El UPDATE
+  // ahora es condicional sobre el `current` recién leído; si no vuelve fila
+  // es porque alguien más lo cambió en el medio, y se corta con un error
+  // explícito en vez de escribir un historial falso.
+  const { data: updated, error: updateError } = await sb
     .from('property_leads')
     .update({ pipeline_state: toState, updated_at: new Date().toISOString() })
     .eq('id', leadId)
+    .eq('pipeline_state', current)
+    .select('id')
+    .maybeSingle()
   if (updateError) throw new Error(updateError.message)
+  if (!updated) {
+    throw new Error('CONFLICT: el estado del lead cambió mientras lo editabas — volvé a intentar.')
+  }
 
   const { error: historyError } = await sb.from('lead_state_history').insert({
     lead_id: leadId,
