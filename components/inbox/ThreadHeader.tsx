@@ -15,6 +15,18 @@ import type { LeadTagRef } from './types'
  * panel del cliente (task 6, "aparece al hacer clic", pedido explícito del
  * usuario). La tarjeta de la propiedad es un link aparte, directo a la ficha
  * (comportamiento que ya existía, se conserva).
+ *
+ * `actionsSlot` (ajuste de altura, 2026-08-01): el dueño se quejó de "un
+ * espacio muerto" entre esta cabecera y la barra de Propiedad/Plantilla/
+ * Etiquetas/Estado, que antes era su propia fila con su propio borde+padding
+ * (`ThreadActionsBar`). Se eligió la opción (a) del brief — fusionar esa barra
+ * DENTRO de esta misma fila — en vez de la (b) (fila propia pero pegada)
+ * porque ahorra una fila completa (borde + padding) en vez de solo el
+ * espaciado entre filas, y el ancho de la columna del hilo (`md:grid-cols-
+ * [340px_1fr]` dentro de un `max-w-7xl`) alcanza de sobra en escritorio; en
+ * pantallas angostas `flex-wrap` la baja a una segunda línea, ni mejor ni peor
+ * que antes. Opcional para que `scripts/whatsapp-chat.probe.tsx` pueda seguir
+ * renderizando la cabecera sola.
  */
 export function ThreadHeader({
   onBack,
@@ -26,6 +38,7 @@ export function ThreadHeader({
   tags,
   property,
   onOpenContact,
+  actionsSlot,
 }: {
   onBack?: () => void
   contactName: string | null
@@ -36,9 +49,10 @@ export function ThreadHeader({
   tags: LeadTagRef[]
   property: { id: string; address: string; title: string | null; cover_photo: string | null } | null
   onOpenContact: () => void
+  actionsSlot?: React.ReactNode
 }) {
   return (
-    <div className="flex items-center gap-2 border-b px-4 py-3">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-4 py-2">
       {onBack && (
         <Button variant="ghost" size="icon-sm" onClick={onBack} className="md:hidden -ml-1">
           <ArrowLeft className="h-4 w-4" />
@@ -86,6 +100,8 @@ export function ThreadHeader({
           <span className="max-w-[140px] truncate text-xs font-medium">{property.address}</span>
         </Link>
       )}
+
+      {actionsSlot && <div className="flex shrink-0 flex-col items-end gap-1">{actionsSlot}</div>}
     </div>
   )
 }

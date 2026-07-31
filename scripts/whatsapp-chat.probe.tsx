@@ -367,6 +367,26 @@ const htmlHeaderSinPropiedad = renderToStaticMarkup(
 )
 check('sin propiedad ni datos opcionales, no revienta ni muestra basura', !htmlHeaderSinPropiedad.includes('undefined') && !htmlHeaderSinPropiedad.includes('null'))
 
+// Ajuste de altura (2026-08-01, opción (a) del brief): `actionsSlot` fusiona la
+// barra de Propiedad/Plantilla/Etiquetas/Estado DENTRO de esta misma fila —
+// una sola fila con un solo borde, en vez de dos filas con dos bordes (el
+// "espacio muerto" del que se quejó el dueño).
+const htmlHeaderConAcciones = renderToStaticMarkup(
+  <ThreadHeader
+    contactName="Juana Pérez"
+    phone="5491122334455"
+    leadNumber={1002}
+    advisorName="Martín Asesor"
+    pipelineState="negociando"
+    tags={[]}
+    property={null}
+    onOpenContact={() => {}}
+    actionsSlot={<span data-testid="acciones-fusionadas">Botón fusionado</span>}
+  />,
+)
+check('con actionsSlot, la cabecera renderiza esas acciones EN LA MISMA fila', htmlHeaderConAcciones.includes('Botón fusionado'))
+check('sin actionsSlot, no aparece nada de más (sigue siendo opcional)', !htmlHeader.includes('acciones-fusionadas'))
+
 // ═══════════════════════════════════════════════════════════════════════
 // ThreadActionsBar (Ajuste 1, 2026-08-01) — atajo para etiquetar/cambiar
 // estado sin abrir el panel del contacto, al lado de "Plantilla".
@@ -424,6 +444,30 @@ check(
 )
 check('sin etiquetas asignadas, el botón de Etiquetas no muestra un contador "(0)"', !htmlAccionesSinLead.includes('Etiquetas (0)'))
 check('sin estado, no se muestra ningún chip de estado', !/bg-slate-100|bg-blue-100|bg-violet-100|bg-cyan-100|bg-amber-100|bg-emerald-100|bg-red-100/.test(htmlAccionesSinLead))
+
+// `bare`/`showStateChip` (ajuste de altura, 2026-08-01): la variante que
+// `ThreadHeader` incrusta en su propia fila (`actionsSlot`) — sin el
+// borde+padding propio, y sin repetir el chip de estado que `ThreadHeader` YA
+// muestra al lado del nombre. Default (sin estas props) sigue igual — es lo
+// que verifican todos los `check` de arriba.
+const htmlAccionesBare = renderToStaticMarkup(
+  <ThreadActionsBar
+    bare
+    showStateChip={false}
+    property={{ id: 'prop-1', address: 'Av. Corrientes 1234', title: null, cover_photo: null }}
+    onOpenPropertyInfo={() => {}}
+    onOpenTemplatePicker={() => {}}
+    lead={{ id: 'lead-1', name: 'Juana Pérez', lead_number: 1002 }}
+    tags={tagsSample.slice(0, 2)}
+    tagCatalog={tagsSample}
+    pipelineState="negociando"
+    onTagsChanged={() => {}}
+    onStateChanged={() => {}}
+  />,
+)
+check('bare=true no dibuja su propio borde+padding (eso ahora lo pone ThreadHeader)', !htmlAccionesBare.includes('border-b px-3 py-1.5'))
+check('showStateChip=false no repite el chip de estado (ya está en ThreadHeader)', !htmlAccionesBare.includes('Negociando'))
+check('bare/showStateChip=false SIGUEN mostrando los botones de acción', htmlAccionesBare.includes('Etiquetas') && htmlAccionesBare.includes('Estado') && htmlAccionesBare.includes('Plantilla'))
 
 // ═══════════════════════════════════════════════════════════════════════
 // ChatThread (task 5) — separadores de fecha + franja de alerta.
