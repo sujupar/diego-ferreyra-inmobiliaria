@@ -2,7 +2,6 @@
 
 import { useState, useRef } from 'react'
 import { toast } from 'sonner'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -13,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Upload, FileText, CheckCircle, XCircle, AlertTriangle, Clock, Loader2, Scale, FileCheck2, CalendarClock, FilePlus2, ChevronDown } from 'lucide-react'
+import { Upload, FileText, CheckCircle, XCircle, Loader2, Scale, ChevronDown } from 'lucide-react'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import type { LegalDocsState, LegalFlags, DocItemState, LegalDocDefinition } from '@/types/legal-docs.types'
 import { LEGAL_DOCS_CATALOG, getApplicableDocs, summarizeLegalDocs } from '@/types/legal-docs.types'
@@ -27,19 +26,35 @@ interface Props {
   onUpdated: () => void
 }
 
-// Colored status icon wrapper — muted editorial palette
-function StatusIcon({ status }: { status: DocItemState['status'] }) {
-  const configs: Record<DocItemState['status'], { icon: any; bg: string; fg: string }> = {
-    approved: { icon: CheckCircle, bg: 'bg-emerald-50 dark:bg-emerald-950/30', fg: 'text-emerald-700 dark:text-emerald-400' },
-    rejected: { icon: XCircle, bg: 'bg-red-50 dark:bg-red-950/30', fg: 'text-[color:var(--destructive)]' },
-    pending: { icon: Clock, bg: 'bg-amber-50 dark:bg-amber-950/30', fg: 'text-amber-700 dark:text-amber-400' },
-    missing: { icon: AlertTriangle, bg: 'bg-muted/60', fg: 'text-muted-foreground' },
-  }
-  const { icon: Icon, bg, fg } = configs[status]
+/**
+ * Punto de estado chico. Reemplaza al ícono de 36 px de la versión anterior:
+ * con 7-12 documentos, esos círculos hacían que la sección ocupara pantallas.
+ */
+const STATUS_DOT: Record<DocItemState['status'], { className: string; label: string }> = {
+  approved: { className: 'bg-emerald-500', label: 'Aprobado' },
+  rejected: { className: 'bg-[color:var(--destructive)]', label: 'Rechazado' },
+  pending: { className: 'bg-amber-500', label: 'En revisión' },
+  missing: { className: 'bg-muted-foreground/30', label: 'Falta' },
+}
+
+function StatusDot({ status }: { status: DocItemState['status'] }) {
+  const { className, label } = STATUS_DOT[status]
+  return <span aria-label={label} title={label} className={`h-2.5 w-2.5 rounded-full shrink-0 ${className}`} />
+}
+
+/** Anillo de "N de M aprobados" — el dato ya lo calcula summarizeLegalDocs. */
+function ProgressRing({ approved, total }: { approved: number; total: number }) {
+  const pct = total === 0 ? 0 : Math.round((approved / total) * 100)
   return (
-    <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 ${bg}`}>
-      <Icon className={`h-5 w-5 ${fg}`} />
-    </div>
+    <span
+      aria-hidden
+      className="h-10 w-10 rounded-full shrink-0 flex items-center justify-center"
+      style={{ background: `conic-gradient(var(--brand) 0 ${pct}%, var(--muted) ${pct}% 100%)` }}
+    >
+      <span className="h-8 w-8 rounded-full bg-card flex items-center justify-center text-[11px] font-semibold tabular-nums">
+        {approved}/{total}
+      </span>
+    </span>
   )
 }
 
@@ -170,42 +185,29 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
     const hasFile = !!state.file_url
     const canReview = isAbogado && hasFile && (state.status === 'pending' || state.status === 'rejected')
 
-    // Subtle background tint based on status — muted editorial palette
-    const statusTint =
-      state.status === 'approved' ? 'border-emerald-200/70 bg-emerald-50/30 dark:bg-emerald-950/15' :
-      state.status === 'rejected' ? 'border-red-200/70 bg-red-50/30 dark:bg-red-950/15' :
-      state.status === 'pending' ? 'border-amber-200/70 bg-amber-50/25 dark:bg-amber-950/15' :
-      'border-border bg-card'
-
     return (
-      <div
-        key={def.key}
-        className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-200 hover:shadow-sm ${statusTint}`}
-      >
-        <StatusIcon status={state.status} />
+      <div key={def.key} className="flex items-center gap-3 py-2 px-3 rounded-lg border bg-card">
+        <StatusDot status={state.status} />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-sm">{def.label}</span>
-            {def.category === 'mandatory' && <Badge variant="destructive" className="text-xs">Obligatorio</Badge>}
-            {def.category === 'temporal' && <Badge className="text-xs bg-amber-500 hover:bg-amber-500/90">Temporal</Badge>}
-            {def.category === 'optional' && <Badge variant="secondary" className="text-xs">Opcional</Badge>}
-            {state.status === 'rejected' && <Badge variant="destructive" className="text-xs">Rechazado</Badge>}
-            {state.status === 'approved' && <Badge className="text-xs bg-green-600 hover:bg-green-600/90">Aprobado</Badge>}
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-sm font-medium">{def.label}</span>
+            {def.category === 'mandatory' && <span className="eyebrow">Obligatorio</span>}
+            {state.status === 'rejected' && <Badge variant="destructive" className="text-[10px] h-4">Rechazado</Badge>}
           </div>
-          {def.description && <p className="text-xs text-muted-foreground mt-0.5">{def.description}</p>}
           {hasFile && (
-            <a href={state.file_url} target="_blank" rel="noopener" className="text-xs text-blue-600 hover:underline flex items-center gap-1 mt-1">
-              <FileText className="h-3 w-3" /> {state.file_name}
+            <a href={state.file_url} target="_blank" rel="noopener" className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1 mt-0.5">
+              <FileText className="h-3 w-3" />{state.file_name}
             </a>
           )}
           {state.reviewer_notes && (
-            <p className={`text-xs mt-1 ${state.status === 'rejected' ? 'text-red-700' : 'text-muted-foreground'}`}>
+            <p className={`text-xs mt-0.5 ${state.status === 'rejected' ? 'text-red-700' : 'text-muted-foreground'}`}>
               <span className="font-semibold">Abogado: </span>{state.reviewer_notes}
             </p>
           )}
         </div>
+
         {!isAbogado && (
-          <div className="shrink-0">
+          <>
             <input
               ref={el => { fileInputs.current[def.key] = el }}
               type="file"
@@ -215,27 +217,27 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
             />
             <Button
               size="sm"
-              variant={hasFile ? 'outline' : 'default'}
+              variant={hasFile ? 'ghost' : 'outline'}
               onClick={() => fileInputs.current[def.key]?.click()}
               disabled={uploadingKey === def.key}
-              className="gap-1 min-w-[110px] tabular-nums"
+              className="shrink-0 gap-1 tabular-nums"
             >
               {uploadingKey === def.key
-                ? <><Loader2 className="h-4 w-4 animate-spin" />{uploadProgress > 0 ? `${uploadProgress}%` : '…'}</>
-                : <><Upload className="h-3.5 w-3.5" />{hasFile ? 'Reemplazar' : 'Subir'}</>
-              }
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />{uploadProgress > 0 ? `${uploadProgress}%` : '…'}</>
+                : <><Upload className="h-3.5 w-3.5" />{hasFile ? 'Reemplazar' : 'Subir'}</>}
             </Button>
-          </div>
+          </>
         )}
+
         {canReview && (
           <div className="shrink-0 flex items-center gap-1">
             <Button
               size="sm"
               variant="outline"
-              className="border-[color:var(--brand)]/30 text-[color:var(--brand)] hover:bg-[color:var(--brand-soft)]/40 hover:text-[color:var(--brand)] transition-all duration-200"
+              className="border-[color:var(--brand)]/30 text-[color:var(--brand)] hover:bg-[color:var(--brand-soft)]/40 hover:text-[color:var(--brand)]"
               onClick={() => handleReviewItem(def.key, true)}
               disabled={reviewingKey === def.key}
-              aria-label="Aprobar documento"
+              aria-label={`Aprobar ${def.label}`}
             >
               {reviewingKey === def.key
                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -244,10 +246,10 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
             <Button
               size="sm"
               variant="outline"
-              className="border-red-200 text-[color:var(--destructive)]/80 hover:bg-red-50 hover:text-[color:var(--destructive)] transition-all duration-200"
+              className="border-red-200 text-[color:var(--destructive)]/80 hover:bg-red-50 hover:text-[color:var(--destructive)]"
               onClick={() => openRejectDialog(def.key, def.label)}
               disabled={reviewingKey === def.key}
-              aria-label="Rechazar documento"
+              aria-label={`Rechazar ${def.label}`}
             >
               <XCircle className="h-3.5 w-3.5" />
             </Button>
@@ -257,89 +259,75 @@ export function LegalDocsChecklist({ propertyId, propertyType, docs, flags, isAb
     )
   }
 
-  // Consistent card + header styling — editorial
-  const sectionCard = (icon: any, title: string, eyebrowLabel: string, items: LegalDocDefinition[], emptyCopy?: string) => {
-    const Icon = icon
+  /** Separador de una línea. Antes cada grupo era una Card con CardHeader. */
+  const group = (title: string, items: LegalDocDefinition[], emptyCopy?: string) => {
+    if (items.length === 0 && !emptyCopy) return null
     return (
-      <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
-        <CardHeader>
-          <div className="space-y-1">
-            <p className="eyebrow">{eyebrowLabel}</p>
-            <CardTitle className="display text-base flex items-center gap-2">
-              <Icon className="h-4 w-4 text-muted-foreground" />
-              {title}
-            </CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {items.length === 0
-            ? <p className="text-xs text-muted-foreground italic">{emptyCopy || 'No hay documentos en esta sección.'}</p>
-            : items.map(renderItem)}
-        </CardContent>
-      </Card>
+      <div className="space-y-1.5">
+        <p className="eyebrow pt-1">{title}</p>
+        {items.length === 0
+          ? <p className="text-xs text-muted-foreground italic">{emptyCopy}</p>
+          : items.map(renderItem)}
+      </div>
     )
   }
 
   return (
     <>
-      <Collapsible defaultOpen={summary.tone !== 'ok'}>
-        <Card className="rounded-xl">
-          <CollapsibleTrigger asChild>
-            <button className="group w-full flex items-center gap-3 px-6 py-4 text-left">
-              <span className="h-9 w-9 rounded-full bg-[color:var(--brand-soft)]/40 flex items-center justify-center shrink-0">
-                <Scale className="h-5 w-5 text-[color:var(--brand)]" />
-              </span>
-              <span className="flex-1 min-w-0">
-                <span className="eyebrow block">Documentación</span>
-                <span className="display text-base">Documentación Legal</span>
-              </span>
-              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${summaryPill}`}>{summary.label}</span>
-              <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180 shrink-0" />
-            </button>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="px-6 pb-6 space-y-6">
-        {/* Flags condicionales (solo asesor puede cambiar) */}
-        {!isAbogado && (
-          <Card className="rounded-xl transition-all duration-200 hover:shadow-md">
-            <CardHeader>
-              <div className="space-y-1">
-                <p className="eyebrow">Contexto</p>
-                <CardTitle className="display text-base flex items-center gap-2">
-                  <Scale className="h-4 w-4 text-muted-foreground" />
-                  Situación Jurídica
-                </CardTitle>
+      <Collapsible defaultOpen={summary.tone !== 'ok'} className="rounded-2xl border bg-card">
+        <CollapsibleTrigger asChild>
+          <button className="group w-full flex items-center gap-3 px-5 py-4 text-left">
+            <span className="h-9 w-9 rounded-full bg-[color:var(--brand-soft)]/40 flex items-center justify-center shrink-0">
+              <Scale className="h-5 w-5 text-[color:var(--brand)]" />
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="eyebrow block">Documentación</span>
+              <span className="display text-base">Checklist legal</span>
+            </span>
+            <ProgressRing approved={summary.approved} total={summary.total} />
+            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${summaryPill}`}>{summary.label}</span>
+            <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180 shrink-0" />
+          </button>
+        </CollapsibleTrigger>
+
+        <CollapsibleContent>
+          <div className="px-5 pb-5 space-y-4">
+            {/* Flags condicionales (solo asesor puede cambiar) */}
+            {!isAbogado && (
+              <div>
+                <p className="eyebrow mb-2">Situación jurídica</p>
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    ['has_succession', 'Sucesión'],
+                    ['has_divorce', 'Divorcio'],
+                    ['has_powers', 'Poderes'],
+                    ['is_credit_purchase', 'Compra a crédito'],
+                  ] as Array<[keyof LegalFlags, string]>).map(([key, label]) => (
+                    <label
+                      key={key}
+                      className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs cursor-pointer transition ${
+                        flags[key] ? 'border-[color:var(--brand)]/40 bg-[color:var(--brand-soft)]/30 font-medium' : 'hover:bg-muted/50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={flags[key]}
+                        onChange={e => handleFlagChange(key, e.target.checked)}
+                        disabled={savingFlags}
+                        className="h-3.5 w-3.5 rounded"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
               </div>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-3 text-sm">
-              <label className="flex items-center gap-2 cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50">
-                <input type="checkbox" checked={flags.has_succession} onChange={e => handleFlagChange('has_succession', e.target.checked)} disabled={savingFlags} className="h-4 w-4 rounded" />
-                ¿Hay sucesión?
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50">
-                <input type="checkbox" checked={flags.has_divorce} onChange={e => handleFlagChange('has_divorce', e.target.checked)} disabled={savingFlags} className="h-4 w-4 rounded" />
-                ¿Hay divorcio?
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50">
-                <input type="checkbox" checked={flags.has_powers} onChange={e => handleFlagChange('has_powers', e.target.checked)} disabled={savingFlags} className="h-4 w-4 rounded" />
-                ¿Hay poderes?
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50">
-                <input type="checkbox" checked={flags.is_credit_purchase} onChange={e => handleFlagChange('is_credit_purchase', e.target.checked)} disabled={savingFlags} className="h-4 w-4 rounded" />
-                ¿Compra a crédito?
-              </label>
-            </CardContent>
-          </Card>
-        )}
+            )}
 
-        {sectionCard(FileCheck2, 'Documentos Obligatorios', 'Obligatorios', mandatory, 'No hay documentos obligatorios para este tipo de propiedad.')}
-
-        {temporal.length > 0 && sectionCard(CalendarClock, 'Documentos Temporales (con alerta)', 'Temporales', temporal)}
-
-        {optional.length > 0 && sectionCard(FilePlus2, 'Documentos Opcionales', 'Opcionales', optional)}
-            </div>
-          </CollapsibleContent>
-        </Card>
+            {group('Obligatorios', mandatory, 'No hay documentos obligatorios para este tipo de propiedad.')}
+            {group('Temporales (con vencimiento)', temporal)}
+            {group('Opcionales', optional)}
+          </div>
+        </CollapsibleContent>
       </Collapsible>
 
       {/* Reject dialog */}

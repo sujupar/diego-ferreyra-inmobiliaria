@@ -14,6 +14,7 @@ import {
   Loader2,
   Sparkles,
   ArrowRight,
+  Globe,
 } from 'lucide-react'
 
 interface Props {
@@ -50,6 +51,10 @@ export function PostCaptureActions({ propertyId }: Props) {
   const [metaState, setMetaState] = useState<{
     status: 'sin_campana' | 'activa' | 'pausada' | 'error' | 'loading'
     campaignId?: string
+  }>({ status: 'loading' })
+  const [landingState, setLandingState] = useState<{
+    status: 'sin_landing' | 'borrador' | 'publicada' | 'loading'
+    slug?: string
   }>({ status: 'loading' })
 
   useEffect(() => {
@@ -121,6 +126,20 @@ export function PostCaptureActions({ propertyId }: Props) {
       } catch {
         setMetaState({ status: 'sin_campana' })
       }
+
+      try {
+        const r = await fetch(`/api/properties/${propertyId}/landing`)
+        if (r.ok) {
+          const { landing } = await r.json() as { landing?: { status?: string; public_slug?: string | null } | null }
+          if (!landing) setLandingState({ status: 'sin_landing' })
+          else if (landing.status === 'published') setLandingState({ status: 'publicada', slug: landing.public_slug ?? undefined })
+          else setLandingState({ status: 'borrador' })
+        } else {
+          setLandingState({ status: 'sin_landing' })
+        }
+      } catch {
+        setLandingState({ status: 'sin_landing' })
+      }
     }
     load()
   }, [propertyId])
@@ -137,14 +156,13 @@ export function PostCaptureActions({ propertyId }: Props) {
               Propiedad captada ✓ — ¿qué hacemos con ella?
             </h3>
             <p className="text-sm text-muted-foreground mt-1">
-              La propiedad está lista para difundirse. Podés publicarla en
-              MercadoLibre, lanzar una campaña en Meta Ads, ambas, o ninguna.
-              Cada una tiene su asistente que te guía paso a paso.
+              La propiedad está lista para difundirse: portales, campaña en Meta
+              y su propia landing. Cada canal tiene su asistente que te guía paso a paso.
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {/* MercadoLibre */}
           <div className="rounded-lg border bg-card p-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -259,6 +277,51 @@ export function PostCaptureActions({ propertyId }: Props) {
                 <ArrowRight className="h-4 w-4 ml-1" />
               </Link>
             </Button>
+          </div>
+
+          {/* Landing */}
+          <div className="rounded-lg border bg-card p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Globe className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium text-sm">Landing</span>
+              </div>
+              {landingState.status === 'loading' ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              ) : landingState.status === 'publicada' ? (
+                <Badge className="bg-emerald-600 text-white text-[10px] h-5">
+                  <CheckCircle2 className="h-3 w-3 mr-0.5" />Online
+                </Badge>
+              ) : landingState.status === 'borrador' ? (
+                <Badge className="bg-amber-500 text-white text-[10px] h-5">Borrador</Badge>
+              ) : (
+                <Badge variant="outline" className="text-[10px] h-5">Sin landing</Badge>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground min-h-[2.5em]">
+              {landingState.status === 'publicada' && 'La landing de conversión está publicada.'}
+              {landingState.status === 'borrador' && 'Hay una landing empezada sin publicar.'}
+              {landingState.status === 'sin_landing' && 'Página propia de la propiedad; es requisito para la campaña Meta.'}
+              {landingState.status === 'loading' && 'Cargando estado…'}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                asChild
+                size="sm"
+                className="flex-1"
+                variant={landingState.status === 'sin_landing' ? 'default' : 'outline'}
+              >
+                <Link href={`/properties/${propertyId}/landing/edit`}>
+                  {landingState.status === 'sin_landing' ? 'Crear landing' : 'Ver / Editar'}
+                  <ArrowRight className="h-4 w-4 ml-1" />
+                </Link>
+              </Button>
+              {landingState.slug && (
+                <Button asChild size="sm" variant="ghost">
+                  <a href={`/p/${landingState.slug}`} target="_blank" rel="noopener noreferrer">Abrir</a>
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </CardContent>
