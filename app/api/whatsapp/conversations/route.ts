@@ -34,6 +34,10 @@ import { requireAuth } from '@/lib/auth/require-role'
  *   property: { id, address, title } | null
  *   advisor_id: string | null     // asesor asignado (propiedad, o el lead si la propiedad no tiene) — para el filtro "por asesor"
  *   advisor_name: string | null
+ *   assigned_to_name: string | null  // = advisor_name, con el nombre de campo del contrato de Task 3
+ *   pipeline_state: PipelineState    // Task 3 — 'nuevo' si la conversación no tiene lead resuelto todavía
+ *   tags: Array<{ slug: string; label: string; color: string }>  // Task 3 — etiquetas del lead, [] si no hay lead
+ *   awaiting_reply_since: string | null  // ISO del último entrante SIN respuesta posterior; null si el último mensaje es saliente
  *   last_message: string | null
  *   last_direction: 'in' | 'out'
  *   last_status: string
@@ -41,7 +45,18 @@ import { requireAuth } from '@/lib/auth/require-role'
  *   unread_count: number          // entrantes con status='received'
  * }
  * ```
- * Ordenado por `last_at` desc.
+ * Ordenado por `last_at` desc — EXCEPTO con `?unanswered=1`, que ordena por
+ * `awaiting_reply_since` ascendente (la que más hace que espera, primero: es
+ * el filtro más importante, "la plata que se está enfriando").
+ *
+ * Filtros por query string (Task 3, se combinan con AND):
+ *   - `?tag=<slug>`      — solo conversaciones cuyo lead tiene esa etiqueta.
+ *   - `?state=<estado>`  — solo conversaciones cuyo lead está en ese `pipeline_state`.
+ *   - `?advisor=<uuid>`  — solo conversaciones de ese asesor (`advisor_id`).
+ *   - `?unanswered=1`    — solo conversaciones cuyo último mensaje es ENTRANTE
+ *     (ver `awaiting_reply_since` arriba); fuerza el orden por espera.
+ *   - `?q=<texto>`       — búsqueda libre (case-insensitive) contra nombre de
+ *     contacto, teléfono y dirección/título de la propiedad.
  *
  * `webhookNotSubscribedWarning`: true si en TODA la tabla no hay ni un solo
  * mensaje entrante NI una sola actualización de estado post-envío
@@ -57,6 +72,10 @@ import { requireAuth } from '@/lib/auth/require-role'
  * reciente podría no aparecer en la lista. Igual que `/metrics`, si esto se
  * vuelve un problema real conviene una RPC de agregación — no agregada acá
  * para no anticipar una migración que el usuario no pidió.
+ *
+ * Etiquetas SIN N+1 (punto explícito del brief de Task 3): se traen TODAS las
+ * `lead_tag_assignments` de los leads presentes en UNA sola query
+ * (`.in('lead_id', leadIds)`), nunca una query por conversación.
  */
 function admin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -87,6 +106,16 @@ interface ConversationAcc {
   last_status: string
   last_at: string
   unread_count: number
+  /** Entrante más reciente sin respuesta efectiva; null si ya se le contestó. */
+  awaiting_since: string | null
+  /** Corta el barrido: ya sabemos si espera o no. */
+  answered: boolean
+}
+
+interface TagRow {
+  slug: string
+  label: string
+  color: string
 }
 
 /** true si NUNCA llegó un entrante ni un estado post-envío — el webhook probablemente no está suscripto. Ver doc del endpoint. */
@@ -98,13 +127,20 @@ async function checkWebhookNotSubscribed(supabase: ReturnType<typeof admin>): Pr
   return (inboundCount ?? 0) === 0 && (statusCount ?? 0) === 0
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const user = await requireAuth()
     const role = user.profile.role
     if (!ALLOWED_ROLES.includes(role)) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
+
+    const url = new URL(req.url)
+    const tagFilter = url.searchParams.get('tag')
+    const stateFilter = url.searchParams.get('state')
+    const advisorFilter = url.searchParams.get('advisor')
+    const unansweredOnly = url.searchParams.get('unanswered') === '1'
+    const qFilter = url.searchParams.get('q')?.trim().toLowerCase() || null
 
     const supabase = admin()
 
@@ -133,6 +169,8 @@ export async function GET() {
           last_status: row.status,
           last_at: row.created_at,
           unread_count: 0,
+          awaiting_since: null,
+          answered: false,
         }
         groups.set(row.phone_e164, g)
       } else {
@@ -143,17 +181,55 @@ export async function GET() {
         if (!g.property_id && row.property_id) g.property_id = row.property_id
       }
       if (row.direction === 'in' && row.status === 'received') g.unread_count += 1
+
+      // "Sin responder": el entrante más reciente que NO tenga después un
+      // saliente que haya salido de verdad.
+      //
+      // `allRows` viene ordenado DESC, así que el primer hecho relevante que
+      // encontramos define la respuesta y el resto se ignora (`answered`).
+      // Un saliente 'failed' o 'skipped' NO cuenta como respuesta: antes sí
+      // contaba, y una conversación donde el mensaje del equipo REBOTÓ
+      // desaparecía del filtro "Sin responder" y de la franja de alerta —
+      // justo el caso donde más urge que alguien la vea.
+      if (!g.answered) {
+        if (row.direction === 'in') {
+          g.awaiting_since = row.created_at
+          g.answered = true
+        } else if (row.status !== 'failed' && row.status !== 'skipped') {
+          g.answered = true
+        }
+      }
     }
 
-    // Hidratar leads referenciados (para property_id indirecto + nombre de fallback + ownership de asesor).
+    // Hidratar leads referenciados (para property_id indirecto + nombre de fallback + ownership de asesor + estado del embudo).
     const leadIds = Array.from(new Set(Array.from(groups.values()).map(g => g.lead_id).filter((x): x is string => !!x)))
-    let leadsMap = new Map<string, { id: string; property_id: string; name: string; assigned_to: string | null; lead_number: number | null }>()
+    let leadsMap = new Map<string, { id: string; property_id: string; name: string; assigned_to: string | null; lead_number: number | null; pipeline_state: string | null }>()
     if (leadIds.length > 0) {
       const { data: leads } = await supabase
         .from('property_leads')
-        .select('id, property_id, name, assigned_to, lead_number')
+        .select('id, property_id, name, assigned_to, lead_number, pipeline_state')
         .in('id', leadIds)
       leadsMap = new Map((leads ?? []).map(l => [l.id, l]))
+    }
+
+    // Etiquetas de TODOS los leads referenciados en UNA sola query (Task 3 —
+    // "sin N+1" es el punto explícito del brief). `lead_tag_assignments` no
+    // está en el Database type generado (migración 20260801000001) — mismo
+    // cliente sin genérico que el resto del archivo.
+    let tagsMap = new Map<string, TagRow[]>()
+    if (leadIds.length > 0) {
+      const { data: tagRows } = await supabase
+        .from('lead_tag_assignments')
+        .select('lead_id, lead_tags(slug, label, color)')
+        // Solo las etiquetas VIGENTES: quitar una la MARCA (`removed_at`), no la borra.
+        .is('removed_at', null)
+        .in('lead_id', leadIds)
+      for (const row of (tagRows ?? []) as unknown as Array<{ lead_id: string; lead_tags: TagRow | null }>) {
+        if (!row.lead_tags) continue
+        const arr = tagsMap.get(row.lead_id) ?? []
+        arr.push(row.lead_tags)
+        tagsMap.set(row.lead_id, arr)
+      }
     }
 
     for (const g of groups.values()) {
@@ -204,29 +280,68 @@ export async function GET() {
 
     const webhookNotSubscribedWarning = await checkWebhookNotSubscribed(supabase)
 
-    const data = list
-      .sort((a, b) => new Date(b.last_at).getTime() - new Date(a.last_at).getTime())
-      .map(g => {
-        const lead = g.lead_id ? leadsMap.get(g.lead_id) : null
-        const advisorId = advisorIdFor(g)
-        return {
-          phone_e164: g.phone_e164,
-          contact_name: g.contact_name,
-          lead_id: g.lead_id,
-          lead_number: lead?.lead_number ?? null,
-          property_id: g.property_id,
-          property: g.property_id && propsMap.has(g.property_id)
-            ? (({ id, address, title }) => ({ id, address, title }))(propsMap.get(g.property_id)!)
-            : null,
-          advisor_id: advisorId,
-          advisor_name: advisorId ? (advisorsMap.get(advisorId) ?? null) : null,
-          last_message: g.last_message,
-          last_direction: g.last_direction,
-          last_status: g.last_status,
-          last_at: g.last_at,
-          unread_count: g.unread_count,
-        }
+    let data = list.map(g => {
+      const lead = g.lead_id ? leadsMap.get(g.lead_id) : null
+      const advisorId = advisorIdFor(g)
+      const advisorName = advisorId ? (advisorsMap.get(advisorId) ?? null) : null
+      // Sin lead resuelto todavía no hay `pipeline_state` real que reportar —
+      // se completa con 'nuevo' (el default de la columna) para que el campo
+      // nunca sea null, tal como pide el contrato de Task 3.
+      const pipelineState = (lead?.pipeline_state as string | undefined) ?? 'nuevo'
+      // Calculado al agrupar: el entrante más reciente sin un saliente EXITOSO
+      // después. Ver el comentario largo del acumulador arriba.
+      const awaitingReplySince = g.awaiting_since
+      return {
+        phone_e164: g.phone_e164,
+        contact_name: g.contact_name,
+        lead_id: g.lead_id,
+        lead_number: lead?.lead_number ?? null,
+        property_id: g.property_id,
+        property: g.property_id && propsMap.has(g.property_id)
+          ? (({ id, address, title }) => ({ id, address, title }))(propsMap.get(g.property_id)!)
+          : null,
+        advisor_id: advisorId,
+        advisor_name: advisorName,
+        assigned_to_name: advisorName,
+        pipeline_state: pipelineState,
+        tags: g.lead_id ? (tagsMap.get(g.lead_id) ?? []) : [],
+        awaiting_reply_since: awaitingReplySince,
+        last_message: g.last_message,
+        last_direction: g.last_direction,
+        last_status: g.last_status,
+        last_at: g.last_at,
+        unread_count: g.unread_count,
+      }
+    })
+
+    // Filtros (Task 3) — se combinan con AND, todos best-effort en memoria
+    // (mismo criterio que el resto del archivo: no hay una vista/RPC de
+    // agregación para whatsapp_messages todavía).
+    if (tagFilter) data = data.filter(c => c.tags.some(t => t.slug === tagFilter))
+    if (stateFilter) data = data.filter(c => c.pipeline_state === stateFilter)
+    if (advisorFilter) data = data.filter(c => c.advisor_id === advisorFilter)
+    if (unansweredOnly) data = data.filter(c => c.awaiting_reply_since !== null)
+    if (qFilter) {
+      data = data.filter(c => {
+        const haystack = [
+          c.contact_name,
+          c.phone_e164,
+          c.property?.address,
+          c.property?.title,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+        return haystack.includes(qFilter)
       })
+    }
+
+    // Orden: "sin responder" es EL filtro importante — ordena por cuánto hace
+    // que esperan, la que más espera primero (timestamp más viejo primero).
+    // Sin ese filtro, el orden de siempre: último mensaje más reciente primero.
+    data = unansweredOnly
+      ? data.sort((a, b) => new Date(a.awaiting_reply_since!).getTime() - new Date(b.awaiting_reply_since!).getTime())
+      : data.sort((a, b) => new Date(b.last_at).getTime() - new Date(a.last_at).getTime())
 
     return NextResponse.json({ data, webhookNotSubscribedWarning })
   } catch (err) {

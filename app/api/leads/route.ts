@@ -38,8 +38,14 @@ function getAdminRaw() {
 const OPS_ROLES = ['admin', 'dueno', 'coordinador'] as const
 
 /**
- * GET /api/leads?status=X&propertyId=Y&source=Z&days=N&assignedTo=me
+ * GET /api/leads?status=X&propertyId=Y&source=Z&days=N&assignedTo=me&tag=<slug>&state=<estado>
  * Lista leads filtrados según RLS por rol.
+ *
+ * Task 3: cada lead trae `pipeline_state` y `tags: Array<{slug,label,color}>`
+ * (etiquetas de `lead_tags`/`lead_tag_assignments`, traídas en UNA sola query
+ * para todos los leads del resultado — mismo criterio "sin N+1" que
+ * `GET /api/whatsapp/conversations`). `?tag=<slug>` filtra por esa etiqueta,
+ * `?state=<estado>` filtra por `pipeline_state` exacto.
  */
 export async function GET(req: Request) {
   try {
@@ -56,6 +62,8 @@ export async function GET(req: Request) {
     const days = parseInt(url.searchParams.get('days') ?? '30', 10)
     const assignedToMe = url.searchParams.get('assignedTo') === 'me'
     const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '100', 10), 500)
+    const tagFilter = url.searchParams.get('tag')
+    const stateFilter = url.searchParams.get('state')
     // Papelera: solo roles de operaciones pueden pedir los leads borrados.
     const trashed = url.searchParams.get('trashed') === 'true'
     if (trashed && !OPS_ROLES.includes(role as (typeof OPS_ROLES)[number])) {
@@ -84,9 +92,10 @@ export async function GET(req: Request) {
     let query = supabase
       .from('property_leads')
       // `lead_number` = el # visible de comprador; `suspected_bot`/`bot_reason` lo
-      // marcan sin descartarlo. Ninguna de las tres está en el Database type
-      // generado (el CLI de Supabase no conecta en este proyecto) → cast abajo.
-      .select('id, property_id, name, email, phone, message, source, status, assigned_to, notes, created_at, deleted_at, lead_number, suspected_bot, bot_reason')
+      // marcan sin descartarlo; `pipeline_state` = Task 3 (migración 20260801000001).
+      // Ninguna está en el Database type generado (el CLI de Supabase no conecta
+      // en este proyecto) → cast abajo.
+      .select('id, property_id, name, email, phone, message, source, status, assigned_to, notes, created_at, deleted_at, lead_number, suspected_bot, bot_reason, pipeline_state')
       .gte('created_at', since)
       .order('created_at', { ascending: false })
       .limit(limit)
@@ -96,6 +105,7 @@ export async function GET(req: Request) {
     if (status) query = query.eq('status', status)
     if (propertyId) query = query.eq('property_id', propertyId)
     if (source) query = query.eq('source', source)
+    if (stateFilter) query = query.eq('pipeline_state', stateFilter)
 
     if (role === 'asesor') {
       // OR de: lead.assigned_to = user.id  OR  property_id IN [sus propiedades]
@@ -124,10 +134,35 @@ export async function GET(req: Request) {
       propsMap = new Map((props ?? []).map(p => [p.id, p]))
     }
 
-    const enriched = (leads ?? []).map(l => ({
+    // Etiquetas de TODOS los leads del resultado en UNA sola query (sin N+1,
+    // mismo criterio que `GET /api/whatsapp/conversations`).
+    const leadIds = (leads ?? []).map(l => l.id)
+    const tagsMap = new Map<string, Array<{ slug: string; label: string; color: string }>>()
+    if (leadIds.length > 0) {
+      const { data: tagRows } = await supabase
+        .from('lead_tag_assignments')
+        .select('lead_id, lead_tags(slug, label, color)')
+        // Solo las etiquetas VIGENTES: quitar una la MARCA (`removed_at`), no la borra.
+        .is('removed_at', null)
+        .in('lead_id', leadIds)
+      for (const row of (tagRows ?? []) as unknown as Array<{
+        lead_id: string
+        lead_tags: { slug: string; label: string; color: string } | null
+      }>) {
+        if (!row.lead_tags) continue
+        const arr = tagsMap.get(row.lead_id) ?? []
+        arr.push(row.lead_tags)
+        tagsMap.set(row.lead_id, arr)
+      }
+    }
+
+    let enriched = (leads ?? []).map(l => ({
       ...l,
       properties: propsMap.get(l.property_id) ?? null,
+      tags: tagsMap.get(l.id) ?? [],
     }))
+
+    if (tagFilter) enriched = enriched.filter(l => l.tags.some(t => t.slug === tagFilter))
 
     return NextResponse.json({ data: enriched })
   } catch (err) {

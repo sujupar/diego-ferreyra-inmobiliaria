@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { requireAuth } from '@/lib/auth/require-role'
 import { redirect } from 'next/navigation'
 import { InboxTabs } from './InboxTabs'
@@ -10,5 +11,11 @@ export default async function InboxPage() {
   if (!['admin', 'dueno', 'coordinador', 'asesor'].includes(role)) {
     redirect('/')
   }
-  return <InboxTabs userRole={role} userId={user.id} />
+  // `<Suspense>` obligatorio: `InboxTabs` usa `useSearchParams()` para el deep
+  // link a un lead. Sin este límite, Next falla el prerender de la página.
+  return (
+    <Suspense fallback={null}>
+      <InboxTabs userRole={role} userId={user.id} />
+    </Suspense>
+  )
 }

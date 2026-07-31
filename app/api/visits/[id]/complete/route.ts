@@ -4,6 +4,8 @@ import { cookies } from 'next/headers'
 import { getUser } from '@/lib/auth/get-user'
 import { createClient } from '@/lib/supabase/server'
 import { updateVisit } from '@/lib/supabase/visits'
+import { advancePipelineState } from '@/lib/leads/pipeline-state'
+import { resolveLeadIdForVisitWithFallback } from '@/lib/leads/resolve-crm-visit-lead'
 
 const schema = z.object({
   outcome: z.enum(['completed', 'no_show']),
@@ -35,6 +37,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       completion_notes: parsed.data.completion_notes,
       completed_at: new Date().toISOString(),
     })
+
+    // `→ visito` cuando la visita se marca 'completed' (no 'no_show'). El
+    // vínculo lead↔visita sale primero de `lead_access_tokens.visit_id`
+    // (recorrido público) y, si no hay token (visita cargada a mano desde el
+    // CRM), de un match best-effort por contacto dentro de la propiedad —
+    // ver `resolveLeadIdForVisitWithFallback`. Best-effort, nunca lanza.
+    if (parsed.data.outcome === 'completed') {
+      const leadId = await resolveLeadIdForVisitWithFallback(id)
+      if (leadId) await advancePipelineState(leadId, 'visit_completed')
+    }
 
     if (parsed.data.outcome === 'completed' && parsed.data.internal_answers) {
       const cookieStore = await cookies()

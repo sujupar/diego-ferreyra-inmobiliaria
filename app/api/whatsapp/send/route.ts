@@ -6,6 +6,7 @@ import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
 import { sendWhatsappText, sendWhatsappTemplate, sendWhatsappMedia } from '@/lib/integrations/whatsapp/core'
 import { serviceWindow } from '@/lib/integrations/whatsapp/window'
 import { getProperty } from '@/lib/supabase/properties'
+import { advancePipelineState } from '@/lib/leads/pipeline-state'
 
 /**
  * POST /api/whatsapp/send
@@ -299,6 +300,21 @@ export async function POST(req: Request) {
               propertyId,
               sentBy: user.id,
             })
+
+    // Este es el ÚNICO caller que manda `sentBy` a `sendWhatsapp*` (scripts y
+    // crons no lo pasan), así que un `leadId` acá es el hecho que mueve
+    // `nuevo → contactado`: "salió el primer mensaje del equipo".
+    //
+    // OJO — solo cuando el mensaje SALIÓ DE VERDAD. Antes esto se disparaba
+    // sobre el intento, así que un envío rechazado por Meta (`ok:false`) o
+    // saltado por modo prueba (`skipped:true`) marcaba a la persona como
+    // "contactado" sin que nadie la haya contactado. Y como el estado NUNCA
+    // retrocede solo, quedaba mal para siempre: alguien a quien nunca le
+    // llegó nada desaparecía de la lista de pendientes.
+    // `advancePipelineState` es best-effort y nunca lanza.
+    if (leadId && result.ok && !result.skipped) {
+      await advancePipelineState(leadId, 'first_outbound_message')
+    }
 
     return NextResponse.json({
       ok: result.ok,
