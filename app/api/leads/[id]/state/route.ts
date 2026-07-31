@@ -52,8 +52,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ data: result })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error'
-      const status = message === 'Lead no encontrado' ? 404 : 400
-      return NextResponse.json({ error: message }, { status })
+      // Hallazgo H10: `setPipelineStateManually` corta con este prefijo
+      // cuando el UPDATE condicional no encuentra fila (otra persona cambió
+      // el estado en el medio) — 409 es el status correcto para un choque de
+      // escritura concurrente, no 400 (dato inválido) ni 404 (no existe).
+      const status = message === 'Lead no encontrado' ? 404 : message.startsWith('CONFLICT:') ? 409 : 400
+      return NextResponse.json({ error: message.replace(/^CONFLICT:\s*/, '') }, { status })
     }
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Error' }, { status: 500 })

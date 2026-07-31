@@ -27,9 +27,17 @@ export async function GET(request: NextRequest) {
     const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE
     const offset = Number.isFinite(offsetParam) && offsetParam >= 0 ? offsetParam : 0
 
+    // Orden real en el servidor (hallazgo #7): `?sort=<columna>&dir=asc|desc`.
+    // `getPropertiesListPage`/`resolvePropertiesListSort` valida `sort` contra
+    // un whitelist — acá solo se arma el objeto, sin confiar en el string crudo.
+    const sortParam = searchParams.get('sort')
+    const dirParam = searchParams.get('dir')
+    const sort = sortParam ? { key: sortParam, dir: dirParam === 'asc' ? ('asc' as const) : ('desc' as const) } : undefined
+
     const { data, total, hasMore } = await getPropertiesListPage(
       { status, origin, from, to, assigned_to },
-      { limit, offset }
+      { limit, offset },
+      sort
     )
     return NextResponse.json({ data, total, hasMore })
   } catch (error) {

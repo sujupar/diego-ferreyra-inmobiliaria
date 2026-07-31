@@ -23,6 +23,7 @@ import { Loader2, CheckCircle2, X } from 'lucide-react'
 import { trackLead, getMetaCookie } from './MetaPixel'
 import { PhoneField } from './PhoneField'
 import { composePhoneForSubmit } from '@/lib/landing/phone-country'
+import { ensureFreshLeadTicket } from '@/lib/leads/lead-ticket-client'
 // `import type` se borra en compilación — no agrega los ~50 KB de la
 // librería real al bundle. Solo sirve para tipar `region` sin ensanchar nada.
 import type { CountryCode } from 'libphonenumber-js/max'
@@ -293,6 +294,15 @@ export function LeadCaptureProvider({
       }
     }
     setErrorMsg('')
+    // Hallazgo #8 (revisión adversarial 2026-07-31): si la persona dejó el
+    // popup abierto más de 30 min (TTL de la ficha) antes de enviar, el
+    // ticket pedido al ABRIR ya venció y el envío se marcaba "Posible bot" a
+    // alguien real. Acá se re-pide SOLO si venció (nunca en cada tecla) —
+    // `ensureFreshLeadTicket` devuelve el mismo string sin pegarle a la red
+    // si todavía está fresco. Best-effort: si la re-pedida también falla,
+    // sigue en `null` y el lead se guarda igual (marcado, nunca rechazado).
+    const ticketToSend = await ensureFreshLeadTicket(ticket)
+    if (ticketToSend !== ticket) setTicket(ticketToSend)
     const eventId =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID()
@@ -319,7 +329,7 @@ export function LeadCaptureProvider({
           eventSourceUrl: typeof window !== 'undefined' ? window.location.href : null,
           // Task 6 — ficha de un solo uso: puede venir `null` (falló/tardó la
           // carga), y el servidor NUNCA rechaza el lead por eso; solo lo marca.
-          ticket,
+          ticket: ticketToSend,
         }),
       })
       const payload = (await res.json().catch(() => ({}))) as {

@@ -23,6 +23,21 @@ interface DataTableProps<T> {
   selectedIds?: Set<string>
   /** Callback con el nuevo set. */
   onSelectionChange?: (selected: Set<string>) => void
+  /**
+   * Orden CONTROLADO por el padre. Pasar `onSortChange` activa este modo: el
+   * componente deja de ordenar `data` en memoria (asume que el padre ya la
+   * pidió ordenada — típicamente al servidor) y solo reporta clicks de header.
+   * Sin `onSortChange`, el comportamiento es el de siempre: ordena `data`
+   * localmente (correcto solo si `data` son TODAS las filas, no una página).
+   *
+   * Por qué existe (hallazgo #7, revisión adversarial 2026-07-31): con datos
+   * paginados, ordenar en memoria solo reordena la página cargada — "Precio"
+   * mostraba la más cara de los primeros 24 resultados, no de todo el
+   * sistema, sin ninguna señal en pantalla. `app/(dashboard)/properties/page.tsx`
+   * es el único caller paginado hoy y usa este modo.
+   */
+  sort?: { key: string; dir: 'asc' | 'desc' } | null
+  onSortChange?: (key: string, dir: 'asc' | 'desc') => void
 }
 
 function HeaderCheckbox({ checked, indeterminate, onChange }: { checked: boolean; indeterminate: boolean; onChange: (v: boolean) => void }) {
@@ -43,20 +58,30 @@ function HeaderCheckbox({ checked, indeterminate, onChange }: { checked: boolean
   )
 }
 
-export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessage, selectable, selectedIds, onSelectionChange }: DataTableProps<T>) {
-  const [sortKey, setSortKey] = useState<string | null>(null)
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessage, selectable, selectedIds, onSelectionChange, sort, onSortChange }: DataTableProps<T>) {
+  const controlled = !!onSortChange
+  const [localSortKey, setLocalSortKey] = useState<string | null>(null)
+  const [localSortDir, setLocalSortDir] = useState<'asc' | 'desc'>('desc')
+
+  const sortKey = controlled ? (sort?.key ?? null) : localSortKey
+  const sortDir = controlled ? (sort?.dir ?? 'desc') : localSortDir
 
   function handleSort(key: string) {
-    if (sortKey === key) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortKey(key)
-      setSortDir('desc')
+    const nextDir: 'asc' | 'desc' = sortKey === key ? (sortDir === 'asc' ? 'desc' : 'asc') : 'desc'
+    if (controlled) {
+      onSortChange!(key, nextDir)
+      return
     }
+    setLocalSortKey(key)
+    setLocalSortDir(nextDir)
   }
 
-  const sorted = sortKey
+  // Modo controlado: `data` ya viene ordenada por el padre (server-side) —
+  // ordenarla de nuevo acá reintroduciría el bug de "solo ordena la página
+  // cargada" para el caso que motivó este modo.
+  const sorted = controlled
+    ? data
+    : sortKey
     ? [...data].sort((a, b) => {
         const col = columns.find(c => c.key === sortKey)
         if (!col) return 0

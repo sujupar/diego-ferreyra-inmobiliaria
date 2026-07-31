@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { serviceWindow } from '@/lib/integrations/whatsapp/window'
-import { signedMediaUrl } from '@/lib/integrations/whatsapp/media'
+import { signedMediaUrls } from '@/lib/integrations/whatsapp/media'
 
 /**
  * GET /api/whatsapp/conversations/[phone]
@@ -190,28 +190,34 @@ export async function GET(req: Request, { params }: { params: Promise<{ phone: s
       }
     }
 
-    const messages = await Promise.all(
-      [...desc]
-        .reverse() // ascendente: orden de chat, del más viejo al más nuevo
-        .map(async r => ({
-          id: r.id,
-          direction: r.direction,
-          body_preview: r.body_preview,
-          template_name: r.template_name,
-          status: r.status,
-          error_message: r.error_message,
-          sent_by: r.sent_by,
-          created_at: r.created_at,
-          // El path guardado por el webhook es del bucket PRIVADO whatsapp-media
-          // — nunca se expone tal cual, se firma acá (1h alcanza para una
-          // sesión de chat abierta). Si falla la firma (o no hay media), null:
-          // el front cae al body_preview de texto ("[imagen]", etc).
-          media_url: r.media_url ? await signedMediaUrl(r.media_url) : null,
-          media_mime_type: r.media_mime_type,
-          media_filename: r.media_filename,
-          media_type: r.media_type,
-        })),
-    )
+    // El path guardado por el webhook es del bucket PRIVADO whatsapp-media —
+    // nunca se expone tal cual, se firma acá. Firmado en LOTE (una sola
+    // llamada a Storage, no una por mensaje) y con cache de módulo por path
+    // (hallazgo #6, revisión adversarial 2026-07-31): el hilo hace polling
+    // cada 15s, y firmar de nuevo en cada poll devolvía una URL DISTINTA para
+    // el mismo archivo → el <img>/<audio> volvía a descargarlo entero →
+    // parpadeo. Con la URL estable entre polls, el navegador la sirve de
+    // cache. Si falla la firma (o no hay media), null: el front cae al
+    // body_preview de texto ("[imagen]", etc).
+    const mediaPaths = desc.map(r => r.media_url).filter((p): p is string => !!p)
+    const signedByPath = await signedMediaUrls(mediaPaths)
+
+    const messages = [...desc]
+      .reverse() // ascendente: orden de chat, del más viejo al más nuevo
+      .map(r => ({
+        id: r.id,
+        direction: r.direction,
+        body_preview: r.body_preview,
+        template_name: r.template_name,
+        status: r.status,
+        error_message: r.error_message,
+        sent_by: r.sent_by,
+        created_at: r.created_at,
+        media_url: r.media_url ? (signedByPath[r.media_url] ?? null) : null,
+        media_mime_type: r.media_mime_type,
+        media_filename: r.media_filename,
+        media_type: r.media_type,
+      }))
 
     // Abrir el hilo = leerlo. Sin esto el globito de no leídos NUNCA se limpiaba
     // (contaba los entrantes con status 'received', y nada los cambiaba jamás),

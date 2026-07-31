@@ -1,8 +1,9 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Loader2, CheckCircle2 } from 'lucide-react'
 import { trackLead, getMetaCookie } from './MetaPixel'
+import { ensureFreshLeadTicket, fetchLeadTicket } from '@/lib/leads/lead-ticket-client'
 
 interface LeadFormProps {
   propertyId: string
@@ -36,6 +37,22 @@ export function LandingLeadForm({ propertyId, propertyTitle }: LeadFormProps) {
   // El state `status` actualiza async — un ref sync bloquea inmediatamente.
   // Defense-in-depth además del dedup por (email/phone, 5 min) del backend.
   const submittingRef = useRef(false)
+  // Hallazgo #8 (revisión adversarial 2026-07-31): este formulario NO mandaba
+  // ninguna ficha de un solo uso (`lib/leads/anti-bot.ts`), así que TODO lead
+  // que entrara por acá se marcaba "Posible bot" (nunca se rechaza — solo
+  // pierde valor la insignia). Se pide al montar el formulario (equivalente a
+  // "al abrir el popup" en `LeadCaptureProvider`) y se re-pide justo antes de
+  // enviar si venció (por si la visita quedó mucho rato en la página).
+  const [ticket, setTicket] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelado = false
+    fetchLeadTicket().then(t => {
+      if (!cancelado) setTicket(t)
+    })
+    return () => {
+      cancelado = true
+    }
+  }, [])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -48,6 +65,10 @@ export function LandingLeadForm({ propertyId, propertyTitle }: LeadFormProps) {
     submittingRef.current = true
     setStatus('sending')
     setErrorMsg('')
+    // Best-effort: si venció o nunca llegó a pedirse, se re-intenta acá; si
+    // también falla, sigue en `null` y el lead se guarda igual (marcado).
+    const ticketToSend = await ensureFreshLeadTicket(ticket)
+    if (ticketToSend !== ticket) setTicket(ticketToSend)
     // Generamos un eventId único compartido entre Pixel (browser) y CAPI
     // (server). Meta dedupea los dos eventos con este ID.
     const eventId =
@@ -70,6 +91,7 @@ export function LandingLeadForm({ propertyId, propertyTitle }: LeadFormProps) {
           fbp: getMetaCookie('_fbp'),
           fbc: getMetaCookie('_fbc'),
           eventSourceUrl: typeof window !== 'undefined' ? window.location.href : null,
+          ticket: ticketToSend,
         }),
       })
       if (!res.ok) {
