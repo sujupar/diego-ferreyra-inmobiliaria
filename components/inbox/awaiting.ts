@@ -15,10 +15,15 @@ import type { ConversationListItem } from './types'
 export const AWAITING_ALERT_THRESHOLD_MS = 2 * 60 * 60 * 1000 // 2 horas
 
 export function resolveAwaitingSince(
-  item: Pick<ConversationListItem, 'awaiting_reply_since' | 'last_direction' | 'last_at'>,
+  item: Pick<ConversationListItem, 'awaiting_reply_since' | 'last_direction' | 'last_at' | 'last_status'>,
 ): string | null {
   if (item.awaiting_reply_since) return item.awaiting_reply_since
-  return item.last_direction === 'in' ? item.last_at : null
+  // Respaldo, solo si el servidor no mandó el campo. Un saliente que FALLÓ no
+  // cuenta como respuesta: el cliente sigue esperando aunque el último mensaje
+  // de la conversación sea nuestro.
+  if (item.last_direction === 'in') return item.last_at
+  if (item.last_status === 'failed' || item.last_status === 'skipped') return item.last_at
+  return null
 }
 
 /** Mismo cálculo pero a partir del último mensaje del HILO (no de la fila de la lista) — lo usa `ChatThread`. */

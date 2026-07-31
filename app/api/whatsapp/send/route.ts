@@ -301,14 +301,18 @@ export async function POST(req: Request) {
               sentBy: user.id,
             })
 
-    // Este es el ÚNICO caller que manda `sentBy` a `sendWhatsapp*` (scripts/
-    // crons no lo pasan) — así que un `leadId` acá es exactamente el hecho que
-    // mueve `nuevo → contactado`: "salió el primer mensaje del equipo"
-    // (`whatsapp_messages` con `direction='out'` y `sent_by` no nulo). Se
-    // dispara sobre el HECHO de que el envío se intentó y quedó registrado,
-    // no sobre si Meta lo aceptó — `advancePipelineState` es best-effort y
-    // nunca lanza, así que no puede tumbar la respuesta del chat.
-    if (leadId) {
+    // Este es el ÚNICO caller que manda `sentBy` a `sendWhatsapp*` (scripts y
+    // crons no lo pasan), así que un `leadId` acá es el hecho que mueve
+    // `nuevo → contactado`: "salió el primer mensaje del equipo".
+    //
+    // OJO — solo cuando el mensaje SALIÓ DE VERDAD. Antes esto se disparaba
+    // sobre el intento, así que un envío rechazado por Meta (`ok:false`) o
+    // saltado por modo prueba (`skipped:true`) marcaba a la persona como
+    // "contactado" sin que nadie la haya contactado. Y como el estado NUNCA
+    // retrocede solo, quedaba mal para siempre: alguien a quien nunca le
+    // llegó nada desaparecía de la lista de pendientes.
+    // `advancePipelineState` es best-effort y nunca lanza.
+    if (leadId && result.ok && !result.skipped) {
       await advancePipelineState(leadId, 'first_outbound_message')
     }
 

@@ -13,7 +13,7 @@ import { authorizeLeadAccess } from '@/lib/leads/authorize-lead-access'
  * y `/api/whatsapp/*`). El abogado nunca llega (no está en `ALLOWED_ROLES`).
  *
  * "Nada se borra": quitar una etiqueta borra la FILA de asignación
- * (`lead_tag_assignments`, es una relación, no un dato de negocio) — el
+ * (`lead_tag_assignments`) — se marca `removed_at`, NO se borra la fila: el
  * catálogo (`lead_tags`) y el historial de estado NO se tocan acá.
  *
  * `lead_tags`/`lead_tag_assignments` no están en `types/database.types.ts`
@@ -45,6 +45,8 @@ async function tagsForLead(supabase: ReturnType<typeof admin>, leadId: string): 
   const { data, error } = await supabase
     .from('lead_tag_assignments')
     .select('lead_tags(slug, label, color, sort_order)')
+    // Solo las etiquetas VIGENTES: quitar una la MARCA (`removed_at`), no la borra.
+    .is('removed_at', null)
     .eq('lead_id', leadId)
   if (error) throw new Error(error.message)
 
@@ -79,13 +81,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const tagRow = tag as { id: string } | null
     if (!tagRow) return NextResponse.json({ error: 'Etiqueta desconocida' }, { status: 400 })
 
-    // PK compuesta (lead_id, tag_id) en la migración → onConflict detecta el
-    // duplicado y no rompe si el lead ya tenía esta etiqueta (idempotente).
+    // PK compuesta (lead_id, tag_id) → onConflict detecta el duplicado.
+    // `ignoreDuplicates: false` a propósito: si la etiqueta se había QUITADO
+    // (tiene `removed_at`), volver a ponerla tiene que limpiar esa marca. Con
+    // `ignoreDuplicates: true` la fila vieja quedaba con `removed_at` y la
+    // etiqueta no reaparecía nunca más.
     const { error: insertError } = await supabase
       .from('lead_tag_assignments')
       .upsert(
-        { lead_id: id, tag_id: tagRow.id, assigned_by: user.id },
-        { onConflict: 'lead_id,tag_id', ignoreDuplicates: true },
+        { lead_id: id, tag_id: tagRow.id, assigned_by: user.id, removed_at: null, removed_by: null },
+        { onConflict: 'lead_id,tag_id', ignoreDuplicates: false },
       )
     if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 })
 
@@ -119,9 +124,12 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const tagRow = tag as { id: string } | null
     if (!tagRow) return NextResponse.json({ error: 'Etiqueta desconocida' }, { status: 400 })
 
+    // Se MARCA como quitada, no se borra. Regla del proyecto: ningún dato se
+    // destruye. Y saber que a alguien lo marcaron "Caliente" en julio y se lo
+    // sacaron en agosto es información del negocio, no basura.
     const { error: deleteError } = await supabase
       .from('lead_tag_assignments')
-      .delete()
+      .update({ removed_at: new Date().toISOString(), removed_by: user.id })
       .eq('lead_id', id)
       .eq('tag_id', tagRow.id)
     if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 })

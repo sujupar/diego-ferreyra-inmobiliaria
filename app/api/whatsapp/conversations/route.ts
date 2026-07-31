@@ -106,6 +106,10 @@ interface ConversationAcc {
   last_status: string
   last_at: string
   unread_count: number
+  /** Entrante más reciente sin respuesta efectiva; null si ya se le contestó. */
+  awaiting_since: string | null
+  /** Corta el barrido: ya sabemos si espera o no. */
+  answered: boolean
 }
 
 interface TagRow {
@@ -165,6 +169,8 @@ export async function GET(req: Request) {
           last_status: row.status,
           last_at: row.created_at,
           unread_count: 0,
+          awaiting_since: null,
+          answered: false,
         }
         groups.set(row.phone_e164, g)
       } else {
@@ -175,6 +181,24 @@ export async function GET(req: Request) {
         if (!g.property_id && row.property_id) g.property_id = row.property_id
       }
       if (row.direction === 'in' && row.status === 'received') g.unread_count += 1
+
+      // "Sin responder": el entrante más reciente que NO tenga después un
+      // saliente que haya salido de verdad.
+      //
+      // `allRows` viene ordenado DESC, así que el primer hecho relevante que
+      // encontramos define la respuesta y el resto se ignora (`answered`).
+      // Un saliente 'failed' o 'skipped' NO cuenta como respuesta: antes sí
+      // contaba, y una conversación donde el mensaje del equipo REBOTÓ
+      // desaparecía del filtro "Sin responder" y de la franja de alerta —
+      // justo el caso donde más urge que alguien la vea.
+      if (!g.answered) {
+        if (row.direction === 'in') {
+          g.awaiting_since = row.created_at
+          g.answered = true
+        } else if (row.status !== 'failed' && row.status !== 'skipped') {
+          g.answered = true
+        }
+      }
     }
 
     // Hidratar leads referenciados (para property_id indirecto + nombre de fallback + ownership de asesor + estado del embudo).
@@ -197,6 +221,8 @@ export async function GET(req: Request) {
       const { data: tagRows } = await supabase
         .from('lead_tag_assignments')
         .select('lead_id, lead_tags(slug, label, color)')
+        // Solo las etiquetas VIGENTES: quitar una la MARCA (`removed_at`), no la borra.
+        .is('removed_at', null)
         .in('lead_id', leadIds)
       for (const row of (tagRows ?? []) as unknown as Array<{ lead_id: string; lead_tags: TagRow | null }>) {
         if (!row.lead_tags) continue
@@ -262,10 +288,9 @@ export async function GET(req: Request) {
       // se completa con 'nuevo' (el default de la columna) para que el campo
       // nunca sea null, tal como pide el contrato de Task 3.
       const pipelineState = (lead?.pipeline_state as string | undefined) ?? 'nuevo'
-      // El último mensaje es el más reciente de TODA la conversación (`groups`
-      // se arma recorriendo `allRows` desc) — si es entrante, por definición
-      // nada le respondió después: esperar desde ese `last_at`.
-      const awaitingReplySince = g.last_direction === 'in' ? g.last_at : null
+      // Calculado al agrupar: el entrante más reciente sin un saliente EXITOSO
+      // después. Ver el comentario largo del acumulador arriba.
+      const awaitingReplySince = g.awaiting_since
       return {
         phone_e164: g.phone_e164,
         contact_name: g.contact_name,

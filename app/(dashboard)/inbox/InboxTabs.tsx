@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Megaphone, Globe, MessageCircle } from 'lucide-react'
 import { InboxClient } from './InboxClient'
 import { PortalInquiriesClient } from './PortalInquiriesClient'
@@ -22,22 +23,26 @@ export function InboxTabs({ userRole, userId }: { userRole: string; userId: stri
   const [tab, setTab] = useState<Tab>('campanas')
   const [openLeadId, setOpenLeadId] = useState<string | null>(null)
 
-  // Deep link desde "Ver lead en el CRM" (panel del cliente de WhatsApp, task
-  // 6): `/inbox?tab=campanas&lead=<id>`. Se lee con `window.location.search`
-  // en un efecto (no `useSearchParams`) para no forzar a esta página bajo un
-  // `<Suspense>` — este componente ya es 100% client, así que evita cualquier
-  // implicación en el build estático de Next por un deep link opcional.
-  // El `setState` acá adentro es intencional: es lectura de la URL en el
-  // montaje (una sola vez, deps `[]`), no una cascada de renders — mismo
-  // criterio de supresión que `loadAvailability` en `PropertyInfoDialog.tsx`.
+  // Deep link a un lead puntual: `/inbox?tab=campanas&lead=<id>`.
+  //
+  // Se lee con `useSearchParams`, que es REACTIVO. Antes se leía
+  // `window.location.search` en un efecto con deps `[]`, y eso funcionaba solo
+  // al entrar de cero: el botón "Ver lead en el CRM" del panel de WhatsApp
+  // navega DENTRO de la misma ruta, así que React no remontaba este componente,
+  // el efecto no volvía a correr y el botón no hacía absolutamente nada.
+  const searchParams = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const leadParam = searchParams.get('lead')
+
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const tabParam = params.get('tab')
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- lectura de la URL al montar, ver comentario arriba
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sincronizar con la URL, ver comentario arriba
     if (isTab(tabParam)) setTab(tabParam)
-    const leadParam = params.get('lead')
-    if (leadParam) setOpenLeadId(leadParam)
-  }, [])
+  }, [tabParam])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sincronizar con la URL, ver comentario arriba
+    setOpenLeadId(leadParam)
+  }, [leadParam])
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">

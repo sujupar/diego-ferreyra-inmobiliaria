@@ -142,6 +142,8 @@ export async function GET(req: Request) {
       const { data: tagRows } = await supabase
         .from('lead_tag_assignments')
         .select('lead_id, lead_tags(slug, label, color)')
+        // Solo las etiquetas VIGENTES: quitar una la MARCA (`removed_at`), no la borra.
+        .is('removed_at', null)
         .in('lead_id', leadIds)
       for (const row of (tagRows ?? []) as unknown as Array<{
         lead_id: string
