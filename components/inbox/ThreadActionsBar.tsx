@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Building2, Tag as TagIcon, Loader2, ChevronDown, Check } from 'lucide-react'
+import { Building2, Tag as TagIcon, Loader2, ChevronDown, Check, MessageSquareText, Workflow } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -52,6 +52,15 @@ async function readJson<T>(res: Response): Promise<T & { error?: string }> {
  * Si la conversación no está vinculada a un lead ("no resuelta"), ambos
  * controles quedan deshabilitados con una explicación visible debajo (no
  * ocultos) — decisión ya tomada en el brief.
+ *
+ * Densidad (Ajuste 2, `fix/chat-filtros-compactos`, 2026-08-01): el dueño
+ * pidió que esta barra ocupe "una sola línea que respire" — botones más
+ * chicos (h-7) e íconos delante de cada acción (antes solo "Enviar
+ * información de la propiedad" y "Etiquetas" tenían ícono). El botón de
+ * propiedad muestra el texto corto "Propiedad" pero conserva el título
+ * completo "Enviar información de la propiedad" como `title=` (tooltip +
+ * accesible para lectores de pantalla) — no se perdió texto, solo se movió
+ * de visible a tooltip para no ser el elemento más ancho de la fila.
  */
 export interface ThreadActionsBarProps {
   property: { id: string; address: string; title: string | null; cover_photo: string | null } | null
@@ -155,21 +164,28 @@ export function ThreadActionsBar({
   }
 
   return (
-    <div className="border-b px-4 py-2">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="border-b px-3 py-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         <Button
           type="button"
           variant="outline"
           size="sm"
-          className="text-xs"
+          className="h-7 gap-1 px-2 text-xs"
           disabled={!property}
           onClick={onOpenPropertyInfo}
-          title={!property ? 'Esta conversación no tiene una propiedad asociada' : undefined}
+          title={!property ? 'Esta conversación no tiene una propiedad asociada' : 'Enviar información de la propiedad'}
+          aria-label="Enviar información de la propiedad"
         >
-          <Building2 className="h-3.5 w-3.5" /> Enviar información de la propiedad
+          <Building2 className="h-3.5 w-3.5" /> Propiedad
         </Button>
-        <Button type="button" variant="outline" size="sm" className="text-xs" onClick={onOpenTemplatePicker}>
-          Plantilla
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 gap-1 px-2 text-xs"
+          onClick={onOpenTemplatePicker}
+        >
+          <MessageSquareText className="h-3.5 w-3.5" /> Plantilla
         </Button>
 
         <DropdownMenu>
@@ -178,7 +194,7 @@ export function ThreadActionsBar({
               type="button"
               variant="outline"
               size="sm"
-              className="text-xs"
+              className="h-7 gap-1 px-2 text-xs"
               disabled={!resolved}
               title={!resolved ? NO_LEAD_EXPLANATION : undefined}
               data-testid="thread-actions-tags-button"
@@ -225,11 +241,12 @@ export function ThreadActionsBar({
               type="button"
               variant="outline"
               size="sm"
-              className="text-xs"
+              className="h-7 gap-1 px-2 text-xs"
               disabled={!resolved}
               title={!resolved ? NO_LEAD_EXPLANATION : undefined}
               data-testid="thread-actions-state-button"
             >
+              <Workflow className="h-3.5 w-3.5" />
               Estado
               <ChevronDown className="h-3 w-3 opacity-60" />
             </Button>
