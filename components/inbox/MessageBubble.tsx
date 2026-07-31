@@ -13,8 +13,14 @@ import type { ThreadMessage } from './types'
  *
  * Requisito NO NEGOCIABLE del brief: un mensaje `failed` tiene que mostrar el
  * motivo EN PANTALLA, en rojo, legible — nunca en tooltip ni solo en consola.
- * Estética propia (task 5): fondo liso, burbujas con el azul de marca
- * (`--brand`) en vez de verde WhatsApp.
+ * Eso NO cambia con el ajuste de abajo.
+ *
+ * Estética (Ajuste 3, 2026-08-01 — REEMPLAZA la decisión de task 5): acá
+ * decía "estética propia, fondo liso, azul de marca en vez de verde
+ * WhatsApp". El dueño vio el resultado y pidió lo contrario con una
+ * referencia tipo WhatsApp: burbujas entrantes BLANCAS con sombra suave,
+ * salientes VERDE CLARITO. Se manda lo que pide el usuario ahora — el fallo
+ * (`meta.isError`) sigue pisando cualquier otro color, siempre en rojo.
  */
 
 /**
@@ -102,8 +108,8 @@ export function MessageBubble({ message }: { message: ThreadMessage }) {
           meta?.isError
             ? 'bg-[color:var(--destructive)]/10 border border-[color:var(--destructive)]/40 text-foreground'
             : isOut
-              ? 'bg-[color:var(--brand)] text-white'
-              : 'bg-background border'
+              ? 'bg-emerald-100 text-emerald-950 shadow-sm dark:bg-emerald-900/50 dark:text-emerald-50'
+              : 'bg-white text-foreground shadow-sm dark:bg-zinc-800 dark:text-zinc-100'
         }`}
       >
         {hasMedia ? media : messageText(message)}
