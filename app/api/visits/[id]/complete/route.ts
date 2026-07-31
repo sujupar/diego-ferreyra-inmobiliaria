@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { getUser } from '@/lib/auth/get-user'
 import { createClient } from '@/lib/supabase/server'
 import { updateVisit } from '@/lib/supabase/visits'
+import { advancePipelineState, resolveLeadIdForVisit } from '@/lib/leads/pipeline-state'
 
 const schema = z.object({
   outcome: z.enum(['completed', 'no_show']),
@@ -35,6 +36,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       completion_notes: parsed.data.completion_notes,
       completed_at: new Date().toISOString(),
     })
+
+    // `→ visito` cuando la visita se marca 'completed' (no 'no_show'). El
+    // vínculo lead↔visita sale de `lead_access_tokens.visit_id` — ver el
+    // comentario de `resolveLeadIdForVisit`. Best-effort, nunca lanza.
+    if (parsed.data.outcome === 'completed') {
+      const leadId = await resolveLeadIdForVisit(id)
+      if (leadId) await advancePipelineState(leadId, 'visit_completed')
+    }
 
     if (parsed.data.outcome === 'completed' && parsed.data.internal_answers) {
       const cookieStore = await cookies()

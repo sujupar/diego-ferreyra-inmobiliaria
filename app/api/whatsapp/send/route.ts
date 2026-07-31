@@ -6,6 +6,7 @@ import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
 import { sendWhatsappText, sendWhatsappTemplate, sendWhatsappMedia } from '@/lib/integrations/whatsapp/core'
 import { serviceWindow } from '@/lib/integrations/whatsapp/window'
 import { getProperty } from '@/lib/supabase/properties'
+import { advancePipelineState } from '@/lib/leads/pipeline-state'
 
 /**
  * POST /api/whatsapp/send
@@ -299,6 +300,17 @@ export async function POST(req: Request) {
               propertyId,
               sentBy: user.id,
             })
+
+    // Este es el ÚNICO caller que manda `sentBy` a `sendWhatsapp*` (scripts/
+    // crons no lo pasan) — así que un `leadId` acá es exactamente el hecho que
+    // mueve `nuevo → contactado`: "salió el primer mensaje del equipo"
+    // (`whatsapp_messages` con `direction='out'` y `sent_by` no nulo). Se
+    // dispara sobre el HECHO de que el envío se intentó y quedó registrado,
+    // no sobre si Meta lo aceptó — `advancePipelineState` es best-effort y
+    // nunca lanza, así que no puede tumbar la respuesta del chat.
+    if (leadId) {
+      await advancePipelineState(leadId, 'first_outbound_message')
+    }
 
     return NextResponse.json({
       ok: result.ok,

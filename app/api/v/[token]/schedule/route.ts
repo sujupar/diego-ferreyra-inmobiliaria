@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getAccessToken } from '@/lib/leads/access-token'
 import { notifyVisitProposed } from '@/lib/email/notifications/visit-proposed'
+import { advancePipelineState } from '@/lib/leads/pipeline-state'
 
 /** Hora de inicio por franja (hora local de Buenos Aires, UTC-3). */
 const FRANJA_HORA: Record<string, number> = { manana: 9, mediodia: 12, tarde: 15 }
@@ -97,10 +98,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     // no la tocamos: se registra una propuesta nueva.
     const { data: tokenRow } = await sb
       .from('lead_access_tokens')
-      .select('visit_id')
+      .select('visit_id, lead_id')
       .eq('token', token)
       .maybeSingle()
     const previousVisitId = (tokenRow as { visit_id?: string | null } | null)?.visit_id ?? null
+    const leadId = (tokenRow as { lead_id?: string | null } | null)?.lead_id ?? null
 
     let visitId: string | null = null
 
@@ -147,6 +149,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       await notifyVisitProposed(visitId)
     } catch (err) {
       console.error('[schedule] notificación falló (visita igual registrada):', err)
+    }
+
+    // `nuevo|contactado → visita_agendada`. Solo si el token nació de un lead
+    // real (`lead_access_tokens.lead_id` — ver `createAccessToken`); tokens
+    // sin lead asociado no mueven ningún estado. Best-effort, nunca lanza.
+    if (leadId) {
+      await advancePipelineState(leadId, 'visit_scheduled')
     }
 
     return NextResponse.json({ ok: true })

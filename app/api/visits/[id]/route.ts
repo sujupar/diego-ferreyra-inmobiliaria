@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getUser } from '@/lib/auth/get-user'
 import { getVisit, updateVisit } from '@/lib/supabase/visits'
+import { advancePipelineState, resolveLeadIdForVisit } from '@/lib/leads/pipeline-state'
 
 const patchSchema = z.object({
   scheduled_at: z.string().datetime().optional(),
@@ -37,6 +38,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       ...parsed.data,
       ...(parsed.data.status === 'completed' ? { completed_at: new Date().toISOString() } : {}),
     })
+
+    // Mismo hecho que en `POST /api/visits/[id]/complete`: `→ visito` cuando
+    // esta ruta también deja la visita en 'completed' (edición directa desde
+    // la ficha de la visita, no solo el flujo "completar"). Best-effort.
+    if (parsed.data.status === 'completed') {
+      const leadId = await resolveLeadIdForVisit(id)
+      if (leadId) await advancePipelineState(leadId, 'visit_completed')
+    }
+
     return NextResponse.json({ data: updated })
   } catch (err) {
     console.error('[PUT /api/visits/[id]]', err)
