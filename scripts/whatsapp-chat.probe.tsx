@@ -1,20 +1,27 @@
 /**
  * Verificación SIN navegador del chat de WhatsApp del Inbox, rediseñado en
  * `.superpowers/sdd/2026-08-01-etiquetas-y-chat-crm/` (tasks 4/5/6: lista,
- * hilo, panel del cliente).
+ * hilo, panel del cliente) y ajustado visualmente en la rama
+ * `fix/chat-visual-ajustes` (Ajustes 1/2/3, mismo día): etiquetas+estado
+ * inline en el hilo (`ThreadActionsBar`), filtros subidos a una franja de
+ * ancho completo (`ConversationFilterBar`), y estética tipo WhatsApp en el
+ * hilo (`ChatThread`/`MessageBubble`) — REEMPLAZA la decisión anterior de
+ * "estética propia, no WhatsApp".
  *
  * Por qué así: los componentes de más arriba (`WhatsappClient.tsx`) hacen su
  * trabajo real (listar conversaciones, traer un hilo, mandar un mensaje)
  * dentro de `useEffect` + `fetch` — eso no corre bajo `renderToStaticMarkup`
  * (no hay navegador acá). Por eso TODO lo nuevo se armó como componentes
  * presentacionales puros en `components/inbox/` (reciben datos por props, sin
- * fetch propio salvo `ContactPanel`, cuyos `useEffect` simplemente no corren
- * en un render estático — su salida SINCRÓNICA sigue siendo 100% verificable).
+ * fetch propio salvo `ContactPanel`/`ThreadActionsBar`, cuyos `useEffect`/
+ * handlers async simplemente no corren en un render estático — su salida
+ * SINCRÓNICA por defecto sigue siendo 100% verificable).
  *
  * El foco #1 sigue siendo el requisito NO NEGOCIABLE del brief: un mensaje con
  * status='failed' tiene que mostrar el motivo EN PANTALLA, en rojo, legible —
  * nunca en tooltip ni solo en consola. Todo este trabajo nació de un WhatsApp
- * que no llegó y nadie se enteró.
+ * que no llegó y nadie se enteró. Ese requisito NO cambia con los ajustes
+ * visuales de estética más amable (burbujas blanco/verde en vez de azul).
  *
  * Uso: node --import tsx scripts/whatsapp-chat.probe.tsx
  */
@@ -23,10 +30,12 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MessageBubble } from '../components/inbox/MessageBubble'
 import { ConversationRow } from '../components/inbox/ConversationRow'
 import { ConversationList } from '../components/inbox/ConversationList'
+import { ConversationFilterBar } from '../components/inbox/ConversationFilterBar'
 import { Avatar } from '../components/inbox/Avatar'
 import { TagChip, TagChipList } from '../components/inbox/TagChip'
 import { PipelineStateChip } from '../components/inbox/PipelineStateChip'
 import { ThreadHeader } from '../components/inbox/ThreadHeader'
+import { ThreadActionsBar } from '../components/inbox/ThreadActionsBar'
 import { ChatThread } from '../components/inbox/ChatThread'
 import { ContactPanel } from '../components/inbox/ContactPanel'
 import type { ThreadMessage, ConversationListItem, LeadTagRef } from '../components/inbox/types'
@@ -36,6 +45,12 @@ let fallos = 0
 function check(nombre: string, ok: boolean, detalle = '') {
   console.log(`${ok ? '✅' : '❌'} ${nombre}${ok ? '' : ` — ${detalle}`}`)
   if (!ok) fallos++
+}
+
+/** Extrae el tag `<button ...>` de apertura que tiene el `data-testid` dado, sin asumir orden de atributos. */
+function buttonTagFor(html: string, testId: string): string {
+  const m = html.match(new RegExp(`<button[^>]*data-testid="${testId}"[^>]*>`))
+  return m ? m[0] : ''
 }
 
 function msg(overrides: Partial<ThreadMessage>): ThreadMessage {
@@ -142,7 +157,16 @@ check('sin body_preview usa el nombre de la plantilla', htmlTemplate.includes('P
 const htmlVacio = renderToStaticMarkup(<MessageBubble message={msg({ body_preview: null, template_name: null })} />)
 check('sin body_preview ni plantilla, no queda en blanco', htmlVacio.includes('(sin contenido)'))
 
-check('las burbujas salientes usan el azul de marca (--brand), no verde WhatsApp', renderToStaticMarkup(<MessageBubble message={msg({})} />).includes('var(--brand)'))
+// Ajuste 3 (2026-08-01): REEMPLAZA la decisión anterior ("azul de marca, no
+// verde WhatsApp") — el dueño pidió explícitamente la estética de WhatsApp.
+const htmlBurbujaSaliente = renderToStaticMarkup(<MessageBubble message={msg({})} />)
+check('las burbujas salientes usan verde clarito estilo WhatsApp (bg-emerald-100)', htmlBurbujaSaliente.includes('bg-emerald-100'))
+check('las burbujas salientes YA NO usan el azul de marca (--brand)', !htmlBurbujaSaliente.includes('var(--brand)'))
+const htmlBurbujaEntrante = renderToStaticMarkup(<MessageBubble message={msg({ direction: 'in', status: 'received', sent_by: null })} />)
+check('las burbujas entrantes son blancas con sombra suave', htmlBurbujaEntrante.includes('bg-white') && htmlBurbujaEntrante.includes('shadow'))
+// El fallo sigue pisando cualquier color de estética — no negociable.
+const htmlBurbujaFallidaEstetica = renderToStaticMarkup(<MessageBubble message={msg({ status: 'failed', error_message: 'x' })} />)
+check('un mensaje fallido NUNCA se pinta de verde (el rojo de error pisa la estética nueva)', !htmlBurbujaFallidaEstetica.includes('bg-emerald-100'))
 
 // ═══════════════════════════════════════════════════════════════════════
 // Avatar (task 4) — iniciales + color estable por persona.
@@ -236,45 +260,85 @@ const htmlRowContestada = renderToStaticMarkup(
 check('una fila YA contestada (último saliente) usa el gris apagado, no el destacado de "sin responder"', htmlRowContestada.includes('text-muted-foreground'))
 
 // ═══════════════════════════════════════════════════════════════════════
-// ConversationList (task 4) — filtros + estados vacíos. Sin fetch propio,
-// 100% verificable con renderToStaticMarkup (solo useState/useMemo).
+// ConversationList (task 4, RECORTADA en el Ajuste 2 de 2026-08-01) — ya NO
+// tiene filtros propios, solo recibe `visible` (ya filtrada por
+// `WhatsappClient`) + `conversations` (cruda, para distinguir los dos estados
+// vacíos). Sin fetch propio, 100% verificable con renderToStaticMarkup.
 // ═══════════════════════════════════════════════════════════════════════
 
 const htmlListaVacia = renderToStaticMarkup(
-  <ConversationList conversations={[]} loading={false} error={null} selectedPhone={null} onSelectPhone={() => {}} tagCatalog={[]} userRole="admin" />,
+  <ConversationList conversations={[]} visible={[]} filtersActive={false} loading={false} error={null} selectedPhone={null} onSelectPhone={() => {}} />,
 )
-check('lista vacía: estado vacío que explica, nunca un blanco', htmlListaVacia.includes('Todavía no hay conversaciones'))
+check('lista vacía (sin conversaciones en absoluto): estado vacío que explica, nunca un blanco', htmlListaVacia.includes('Todavía no hay conversaciones'))
 
 const htmlListaError = renderToStaticMarkup(
-  <ConversationList conversations={null} loading={false} error="No se pudieron cargar las conversaciones." selectedPhone={null} onSelectPhone={() => {}} tagCatalog={[]} userRole="admin" />,
+  <ConversationList conversations={null} visible={[]} filtersActive={false} loading={false} error="No se pudieron cargar las conversaciones." selectedPhone={null} onSelectPhone={() => {}} />,
 )
 check('lista con error, lo muestra', htmlListaError.includes('No se pudieron cargar'))
 
+const conDatos = [convo({ phone_e164: 'a' }), convo({ phone_e164: 'b', contact_name: 'Otro Cliente' })]
 const htmlListaConDatos = renderToStaticMarkup(
-  <ConversationList
-    conversations={[convo({ phone_e164: 'a' }), convo({ phone_e164: 'b', contact_name: 'Otro Cliente' })]}
-    loading={false}
-    error={null}
-    selectedPhone={null}
-    onSelectPhone={() => {}}
-    tagCatalog={[{ slug: 'caliente', label: 'Caliente', color: 'red' }]}
-    userRole="admin"
-  />,
+  <ConversationList conversations={conDatos} visible={conDatos} filtersActive={false} loading={false} error={null} selectedPhone={null} onSelectPhone={() => {}} />,
 )
-check('el filtro "Sin responder" está presente y es el más destacado (es el más útil)', htmlListaConDatos.includes('Sin responder'))
-check('el buscador está presente', htmlListaConDatos.includes('Buscar por nombre'))
-check('con catálogo de etiquetas no vacío, aparece el selector de etiquetas', htmlListaConDatos.includes('Todas las etiquetas'))
-check('el selector de estado del embudo siempre está (no depende del contrato nuevo)', htmlListaConDatos.includes('Todos los estados'))
+check('con datos, la lista NO tiene ya un buscador propio (subió a la franja de filtros)', !htmlListaConDatos.includes('Buscar por nombre'))
+check('con datos, renderiza las filas (nombre del segundo contacto)', htmlListaConDatos.includes('Otro Cliente'))
 
-const htmlListaSinCatalogo = renderToStaticMarkup(
-  <ConversationList conversations={[convo({})]} loading={false} error={null} selectedPhone={null} onSelectPhone={() => {}} tagCatalog={[]} userRole="admin" />,
+const htmlListaSinResultadosPorFiltro = renderToStaticMarkup(
+  <ConversationList conversations={conDatos} visible={[]} filtersActive={true} loading={false} error={null} selectedPhone={null} onSelectPhone={() => {}} />,
 )
-check('sin catálogo de etiquetas (endpoint task 3 caído/inexistente), NO muestra un selector vacío inútil', !htmlListaSinCatalogo.includes('Todas las etiquetas'))
+check('hay conversaciones pero ninguna pasa el filtro: mensaje distinto ("con estos filtros")', htmlListaSinResultadosPorFiltro.includes('Ningún resultado con estos filtros'))
 
-const htmlListaAsesor = renderToStaticMarkup(
-  <ConversationList conversations={[convo({})]} loading={false} error={null} selectedPhone={null} onSelectPhone={() => {}} tagCatalog={[]} userRole="asesor" />,
+const htmlListaSinResultadosSinFiltro = renderToStaticMarkup(
+  <ConversationList conversations={conDatos} visible={[]} filtersActive={false} loading={false} error={null} selectedPhone={null} onSelectPhone={() => {}} />,
 )
-check('un asesor no ve el selector de "por asesor" (ya ve solo lo suyo)', !htmlListaAsesor.includes('Todos los asesores'))
+check(
+  'visible vacío pero SIN filtros activos: mensaje genérico, no menciona filtros',
+  htmlListaSinResultadosSinFiltro.includes('Ningún resultado.') && !htmlListaSinResultadosSinFiltro.includes('con estos filtros'),
+)
+
+// ═══════════════════════════════════════════════════════════════════════
+// ConversationFilterBar (Ajuste 2, 2026-08-01) — franja de ancho completo con
+// TODOS los controles que antes vivían apilados dentro de ConversationList.
+// ═══════════════════════════════════════════════════════════════════════
+
+const filterBarBaseProps = {
+  search: '',
+  onSearchChange: () => {},
+  onlyUnanswered: false,
+  onToggleUnanswered: () => {},
+  onlyUnread: false,
+  onToggleUnread: () => {},
+  propertyOptions: [{ value: 'all', label: 'Todas las propiedades' }],
+  filterPropertyId: 'all',
+  onPropertyChange: () => {},
+  showAdvisorFilter: true,
+  advisorOptions: [{ value: 'all', label: 'Todos los asesores' }],
+  filterAdvisorId: 'all',
+  onAdvisorChange: () => {},
+  showTagFilter: true,
+  tagOptions: [{ value: 'all', label: 'Todas las etiquetas' }],
+  filterTagSlug: 'all',
+  onTagChange: () => {},
+  stateOptions: [{ value: 'all', label: 'Todos los estados' }],
+  filterPipelineState: 'all',
+  onPipelineStateChange: () => {},
+}
+
+const htmlFilterBar = renderToStaticMarkup(<ConversationFilterBar {...filterBarBaseProps} />)
+check('la franja de filtros tiene el buscador', htmlFilterBar.includes('Buscar por nombre'))
+check('la franja de filtros tiene "Sin responder" (el más útil, sigue destacado)', htmlFilterBar.includes('Sin responder'))
+check('la franja de filtros tiene "No leídas"', htmlFilterBar.includes('No leídas'))
+check('con catálogo de etiquetas (showTagFilter=true), aparece el selector de etiquetas', htmlFilterBar.includes('Todas las etiquetas'))
+check('el selector de estado del embudo siempre está', htmlFilterBar.includes('Todos los estados'))
+
+const htmlFilterBarSinAsesor = renderToStaticMarkup(<ConversationFilterBar {...filterBarBaseProps} showAdvisorFilter={false} />)
+check('un asesor no ve el selector "por asesor" (showAdvisorFilter=false, ya ve solo lo suyo)', !htmlFilterBarSinAsesor.includes('Todos los asesores'))
+
+const htmlFilterBarSinCatalogo = renderToStaticMarkup(<ConversationFilterBar {...filterBarBaseProps} showTagFilter={false} />)
+check(
+  'sin catálogo de etiquetas (endpoint task 3 caído/inexistente), NO muestra un selector vacío inútil',
+  !htmlFilterBarSinCatalogo.includes('Todas las etiquetas'),
+)
 
 // ═══════════════════════════════════════════════════════════════════════
 // ThreadHeader (task 5) — cabecera clickeable que abre el panel del cliente.
@@ -304,6 +368,64 @@ const htmlHeaderSinPropiedad = renderToStaticMarkup(
 check('sin propiedad ni datos opcionales, no revienta ni muestra basura', !htmlHeaderSinPropiedad.includes('undefined') && !htmlHeaderSinPropiedad.includes('null'))
 
 // ═══════════════════════════════════════════════════════════════════════
+// ThreadActionsBar (Ajuste 1, 2026-08-01) — atajo para etiquetar/cambiar
+// estado sin abrir el panel del contacto, al lado de "Plantilla".
+// ═══════════════════════════════════════════════════════════════════════
+
+const htmlAccionesResuelto = renderToStaticMarkup(
+  <ThreadActionsBar
+    property={{ id: 'prop-1', address: 'Av. Corrientes 1234', title: null, cover_photo: null }}
+    onOpenPropertyInfo={() => {}}
+    onOpenTemplatePicker={() => {}}
+    lead={{ id: 'lead-1', name: 'Juana Pérez', lead_number: 1002 }}
+    tags={tagsSample.slice(0, 2)}
+    tagCatalog={tagsSample}
+    pipelineState="negociando"
+    onTagsChanged={() => {}}
+    onStateChanged={() => {}}
+  />,
+)
+check('tiene el botón de enviar info de la propiedad (ya existía)', htmlAccionesResuelto.includes('Enviar información de la propiedad'))
+check('tiene el botón de Plantilla (ya existía)', htmlAccionesResuelto.includes('Plantilla'))
+check('el botón de Etiquetas muestra cuántas ya tiene el lead', htmlAccionesResuelto.includes('Etiquetas') && htmlAccionesResuelto.includes('(2)'))
+check('tiene el botón de Estado', htmlAccionesResuelto.includes('Estado'))
+check('muestra el chip del estado actual al lado', htmlAccionesResuelto.includes('Negociando'))
+check(
+  'con lead resuelto, los botones de Etiquetas/Estado NO están deshabilitados',
+  !buttonTagFor(htmlAccionesResuelto, 'thread-actions-tags-button').includes('disabled=""') &&
+    !buttonTagFor(htmlAccionesResuelto, 'thread-actions-state-button').includes('disabled=""'),
+)
+check('con lead resuelto, NO aparece la explicación de "no vinculada a un lead"', !htmlAccionesResuelto.includes('no está vinculada a un lead'))
+
+const htmlAccionesSinLead = renderToStaticMarkup(
+  <ThreadActionsBar
+    property={null}
+    onOpenPropertyInfo={() => {}}
+    onOpenTemplatePicker={() => {}}
+    lead={null}
+    tags={[]}
+    tagCatalog={tagsSample}
+    pipelineState={null}
+    onTagsChanged={() => {}}
+    onStateChanged={() => {}}
+  />,
+)
+check(
+  'sin lead vinculado, el botón de Etiquetas queda deshabilitado (no oculto)',
+  buttonTagFor(htmlAccionesSinLead, 'thread-actions-tags-button').includes('disabled=""'),
+)
+check(
+  'sin lead vinculado, el botón de Estado queda deshabilitado (no oculto)',
+  buttonTagFor(htmlAccionesSinLead, 'thread-actions-state-button').includes('disabled=""'),
+)
+check(
+  'sin lead vinculado, la explicación de por qué no se puede es TEXTO VISIBLE (no solo un title= escondido)',
+  htmlAccionesSinLead.includes('no está vinculada a un lead'),
+)
+check('sin etiquetas asignadas, el botón de Etiquetas no muestra un contador "(0)"', !htmlAccionesSinLead.includes('Etiquetas (0)'))
+check('sin estado, no se muestra ningún chip de estado', !/bg-slate-100|bg-blue-100|bg-violet-100|bg-cyan-100|bg-amber-100|bg-emerald-100|bg-red-100/.test(htmlAccionesSinLead))
+
+// ═══════════════════════════════════════════════════════════════════════
 // ChatThread (task 5) — separadores de fecha + franja de alerta.
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -319,8 +441,11 @@ check('el separador de fecha tiene el formato "D de mes de AAAA"', /29 de julio 
 const htmlVacioHilo = renderToStaticMarkup(<ChatThread messages={[]} endRef={{ current: null }} />)
 check('hilo vacío: estado que explica, nunca un blanco', htmlVacioHilo.includes('Todavía no hay mensajes'))
 
-check('el fondo del hilo es LISO (bg-muted/20), sin patrón de imagen', renderToStaticMarkup(<ChatThread messages={dosDias} endRef={{ current: null }} />).includes('bg-muted/20'))
-check('nunca usa un patrón de imagen de fondo (no imita WhatsApp)', !renderToStaticMarkup(<ChatThread messages={dosDias} endRef={{ current: null }} />).includes('bg-[url('))
+// Ajuste 3 (2026-08-01): REEMPLAZA la decisión anterior ("fondo liso, no
+// imitar WhatsApp") — el dueño pidió la estética "tipo WhatsApp, verdecito".
+const htmlFondoHilo = renderToStaticMarkup(<ChatThread messages={dosDias} endRef={{ current: null }} />)
+check('el fondo del hilo tiene la textura tipo WhatsApp (clase wa-thread-bg)', htmlFondoHilo.includes('wa-thread-bg'))
+check('la textura es 100% CSS (radial-gradient), nunca una imagen descargada (decisión ya tomada)', !htmlFondoHilo.includes('bg-[url('))
 
 const hilo3hSinResponder = [msg({ id: 's1', direction: 'in', created_at: new Date(Date.now() - 3 * 3600000).toISOString() })]
 const htmlFranja = renderToStaticMarkup(<ChatThread messages={hilo3hSinResponder} endRef={{ current: null }} />)

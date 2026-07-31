@@ -7,13 +7,17 @@ import { Textarea } from '@/components/ui/textarea'
 import { PropertyInfoDialog } from '@/components/inbox/PropertyInfoDialog'
 import { TemplatePicker } from '@/components/inbox/TemplatePicker'
 import { EmojiPicker } from '@/components/inbox/EmojiPicker'
+import { ConversationFilterBar } from '@/components/inbox/ConversationFilterBar'
 import { ConversationList } from '@/components/inbox/ConversationList'
 import { ThreadHeader } from '@/components/inbox/ThreadHeader'
+import { ThreadActionsBar } from '@/components/inbox/ThreadActionsBar'
 import { ChatThread } from '@/components/inbox/ChatThread'
 import { ContactPanel } from '@/components/inbox/ContactPanel'
 import { formatRemaining } from '@/components/inbox/format'
+import { filterConversations, DEFAULT_CONVERSATION_FILTERS } from '@/components/inbox/filters'
+import { PIPELINE_STATES, PIPELINE_STATE_LABELS } from '@/lib/leads/tags'
 import type { ConversationListItem, Thread, LeadTagRef, LeadTagCatalogEntry } from '@/components/inbox/types'
-import { Loader2, Send, ArrowLeft, Lock, Info, Building2 } from 'lucide-react'
+import { Loader2, Send, ArrowLeft, Lock, Info } from 'lucide-react'
 
 // Re-exportados para que `scripts/whatsapp-chat.probe.tsx` (y cualquier otro
 // caller viejo) sigan pudiendo importar los tipos desde acá — la forma real
@@ -251,10 +255,92 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
     setReplyText(t => t + emoji)
   }
 
-  /** Optimista: cuando el panel del cliente cambia etiquetas, refleja el cambio en la fila de la lista sin esperar al próximo poll (15s). */
+  /**
+   * Optimista: cuando el panel del cliente O la barra de acciones del hilo
+   * (Ajuste 1, 2026-08-01 — `ThreadActionsBar`) cambian etiquetas, refleja el
+   * cambio en la fila de la lista sin esperar al próximo poll (15s). Es el
+   * MISMO callback para los dos lugares — fuente de verdad única, evita que
+   * ContactPanel y ThreadActionsBar terminen con copias de `tags` que se
+   * desincronizan entre sí.
+   */
   function handleTagsChanged(leadId: string, tags: LeadTagRef[]) {
     setConversations(prev => (prev ? prev.map(c => (c.lead_id === leadId ? { ...c, tags } : c)) : prev))
   }
+
+  /** Mismo criterio que `handleTagsChanged`, para el estado del embudo cambiado desde `ThreadActionsBar`. */
+  function handleStateChanged(leadId: string, state: string) {
+    setConversations(prev => (prev ? prev.map(c => (c.lead_id === leadId ? { ...c, pipeline_state: state } : c)) : prev))
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Filtros de la lista (Ajuste 2, 2026-08-01): el ESTADO vivía dentro de
+  // `ConversationList` (apilado arriba de la lista). El dueño pidió subir los
+  // controles a una franja horizontal de ancho completo por encima de las dos
+  // columnas — para eso el estado tiene que vivir acá, el único ancestro común
+  // de `ConversationFilterBar` (la franja) y `ConversationList` (que ahora
+  // solo recibe la lista ya filtrada).
+  // ─────────────────────────────────────────────────────────────────────────
+  const [search, setSearch] = useState('')
+  const [onlyUnread, setOnlyUnread] = useState(false)
+  const [onlyUnanswered, setOnlyUnanswered] = useState(false)
+  const [filterPropertyId, setFilterPropertyId] = useState('all')
+  const [filterAdvisorId, setFilterAdvisorId] = useState('all')
+  const [filterTagSlug, setFilterTagSlug] = useState('all')
+  const [filterPipelineState, setFilterPipelineState] = useState('all')
+
+  const propertyOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const c of conversations ?? []) {
+      if (c.property) map.set(c.property.id, c.property.address)
+    }
+    return [{ value: 'all', label: 'Todas las propiedades' }, ...Array.from(map, ([value, label]) => ({ value, label }))]
+  }, [conversations])
+
+  const advisorOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const c of conversations ?? []) {
+      const name = c.assigned_to_name ?? c.advisor_name
+      if (c.advisor_id && name) map.set(c.advisor_id, name)
+    }
+    return [{ value: 'all', label: 'Todos los asesores' }, ...Array.from(map, ([value, label]) => ({ value, label }))]
+  }, [conversations])
+
+  const tagOptions = useMemo(
+    () => [{ value: 'all', label: 'Todas las etiquetas' }, ...tagCatalog.map(t => ({ value: t.slug, label: t.label }))],
+    [tagCatalog],
+  )
+
+  const stateOptions = useMemo(
+    () => [
+      { value: 'all', label: 'Todos los estados' },
+      ...PIPELINE_STATES.map(s => ({ value: s, label: PIPELINE_STATE_LABELS[s] })),
+    ],
+    [],
+  )
+
+  const visibleConversations = useMemo(
+    () =>
+      filterConversations(conversations ?? [], {
+        ...DEFAULT_CONVERSATION_FILTERS,
+        search,
+        onlyUnread,
+        onlyUnanswered,
+        propertyId: filterPropertyId,
+        advisorId: filterAdvisorId,
+        tagSlug: filterTagSlug,
+        pipelineState: filterPipelineState,
+      }),
+    [conversations, search, onlyUnread, onlyUnanswered, filterPropertyId, filterAdvisorId, filterTagSlug, filterPipelineState],
+  )
+
+  const filtersActive =
+    onlyUnread ||
+    onlyUnanswered ||
+    filterPropertyId !== 'all' ||
+    filterAdvisorId !== 'all' ||
+    filterTagSlug !== 'all' ||
+    filterPipelineState !== 'all' ||
+    search.trim() !== ''
 
   // El item de la lista correspondiente al hilo abierto — de ahí salen las
   // etiquetas/estado/asesor enriquecidos (contrato de task 3), que el
@@ -281,17 +367,42 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
 
       {webhookWarning && <WebhookWarningBanner />}
 
-      <div className="grid md:grid-cols-[340px_1fr] gap-4 h-[calc(100vh-320px)] min-h-[480px]">
-        {/* Columna izquierda: filtros + lista de conversaciones. En mobile se oculta si ya hay una elegida. */}
+      {/* Ajuste 2 (2026-08-01): franja de filtros de ancho completo, arriba de las
+          dos columnas — antes ocupaba espacio apilada arriba de la lista de chats. */}
+      <ConversationFilterBar
+        search={search}
+        onSearchChange={setSearch}
+        onlyUnanswered={onlyUnanswered}
+        onToggleUnanswered={() => setOnlyUnanswered(v => !v)}
+        onlyUnread={onlyUnread}
+        onToggleUnread={() => setOnlyUnread(v => !v)}
+        propertyOptions={propertyOptions}
+        filterPropertyId={filterPropertyId}
+        onPropertyChange={setFilterPropertyId}
+        showAdvisorFilter={userRole !== 'asesor'}
+        advisorOptions={advisorOptions}
+        filterAdvisorId={filterAdvisorId}
+        onAdvisorChange={setFilterAdvisorId}
+        showTagFilter={tagCatalog.length > 0}
+        tagOptions={tagOptions}
+        filterTagSlug={filterTagSlug}
+        onTagChange={setFilterTagSlug}
+        stateOptions={stateOptions}
+        filterPipelineState={filterPipelineState}
+        onPipelineStateChange={setFilterPipelineState}
+      />
+
+      <div className="grid md:grid-cols-[340px_1fr] gap-4 h-[calc(100vh-360px)] min-h-[440px]">
+        {/* Columna izquierda: solo la lista de conversaciones (filtros ya subieron arriba). En mobile se oculta si ya hay una elegida. */}
         <Card className={`overflow-hidden p-0 ${selectedPhone ? 'hidden md:flex md:flex-col' : 'flex flex-col'}`}>
           <ConversationList
             conversations={conversations}
+            visible={visibleConversations}
+            filtersActive={filtersActive}
             loading={listLoading}
             error={listError}
             selectedPhone={selectedPhone}
             onSelectPhone={setSelectedPhone}
-            tagCatalog={tagCatalog}
-            userRole={userRole}
           />
         </Card>
 
@@ -327,23 +438,19 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
                 onOpenContact={() => setContactPanelOpen(true)}
               />
 
-              {/* Acciones: enviar info de la propiedad + plantilla */}
-              <div className="flex items-center gap-2 border-b px-4 py-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="text-xs"
-                  disabled={!thread.property}
-                  onClick={() => setShowPropertyInfo(true)}
-                  title={!thread.property ? 'Esta conversación no tiene una propiedad asociada' : undefined}
-                >
-                  <Building2 className="h-3.5 w-3.5" /> Enviar información de la propiedad
-                </Button>
-                <Button type="button" variant="outline" size="sm" className="text-xs" onClick={() => setShowTemplatePicker(true)}>
-                  Plantilla
-                </Button>
-              </div>
+              {/* Acciones del hilo: enviar info de la propiedad + plantilla (ya existían) +
+                  etiquetas + estado (Ajuste 1, 2026-08-01 — atajo sin abrir el panel del contacto). */}
+              <ThreadActionsBar
+                property={thread.property}
+                onOpenPropertyInfo={() => setShowPropertyInfo(true)}
+                onOpenTemplatePicker={() => setShowTemplatePicker(true)}
+                lead={thread.lead}
+                tags={activeTags}
+                tagCatalog={tagCatalog}
+                pipelineState={activePipelineState}
+                onTagsChanged={handleTagsChanged}
+                onStateChanged={handleStateChanged}
+              />
 
               <ChatThread messages={thread.messages} endRef={messagesEndRef} />
 

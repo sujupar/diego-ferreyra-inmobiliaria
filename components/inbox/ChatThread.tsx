@@ -37,14 +37,22 @@ function DateSeparator({ iso }: { iso: string }) {
 
 /**
  * El hilo (task 5): mensajes agrupados por día + la franja de alerta arriba.
- * Estética propia: fondo LISO (`bg-muted/20`, sin patrón), nada de verde
- * WhatsApp — las burbujas ya usan el azul de marca vía `MessageBubble`.
+ *
+ * Estética (Ajuste 3, 2026-08-01 — REEMPLAZA la decisión original): el brief
+ * de esta tarea decía "estética propia, NO WhatsApp, fondo liso". El dueño
+ * vio esa pantalla y pidió explícitamente lo contrario, mostrando una
+ * referencia tipo WhatsApp ("el de verdecito"): fondo crema/beige con textura
+ * de puntitos sutil. Se manda lo que pide el usuario ahora — fondo con
+ * textura vía `wa-thread-bg` (`app/globals.css`), un `radial-gradient` CSS
+ * puro, SIN imagen ni dependencia nueva (decisión ya tomada en el brief). Las
+ * burbujas (blanco entrante / verde clarito saliente) están en
+ * `MessageBubble.tsx`.
  */
 export function ChatThread({ messages, endRef }: { messages: ThreadMessage[]; endRef: RefObject<HTMLDivElement | null> }) {
   const grouped = groupByDay(messages)
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-muted/20">
+    <div className="wa-thread-bg flex-1 overflow-y-auto px-4 py-4 space-y-3">
       {messages.length === 0 ? (
         <div className="flex h-full flex-col items-center justify-center text-center gap-2 text-muted-foreground">
           <MessageCircle className="h-8 w-8" />
