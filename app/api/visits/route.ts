@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { getUser } from '@/lib/auth/get-user'
 import { createVisit, listVisits } from '@/lib/supabase/visits'
 import { sendVisitScheduledToClient } from '@/lib/email/notifications/visit-scheduled-client'
+import { advancePipelineState } from '@/lib/leads/pipeline-state'
+import { resolveLeadIdForVisitWithFallback } from '@/lib/leads/resolve-crm-visit-lead'
 
 const createSchema = z.object({
   property_id: z.string().uuid(),
@@ -54,6 +56,14 @@ export async function POST(req: NextRequest) {
 
     // Fire-and-forget — email failure shouldn't block visit creation.
     sendVisitScheduledToClient(visit.id).catch(err => console.error('[visits] email dispatch failed', err))
+
+    // Task 3 — hueco de Task 1+2: esta ruta es el alta MANUAL desde el CRM (a
+    // diferencia de `app/api/v/[token]/schedule/`, que ya dispara esto). Sin
+    // esto, agendar una visita a mano nunca movía `nuevo/contactado →
+    // visita_agendada`. Best-effort: `resolveLeadIdForVisitWithFallback` nunca
+    // lanza, y si no encuentra un lead para matchear, simplemente no pasa nada.
+    const leadId = await resolveLeadIdForVisitWithFallback(visit.id)
+    if (leadId) await advancePipelineState(leadId, 'visit_scheduled')
 
     return NextResponse.json({ data: visit }, { status: 201 })
   } catch (err) {
