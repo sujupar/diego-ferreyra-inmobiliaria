@@ -110,7 +110,16 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString('es-AR')
 }
 
-export function InboxClient({ userRole, userId }: { userRole: string; userId: string }) {
+export function InboxClient({
+  userRole,
+  userId,
+  openLeadId,
+}: {
+  userRole: string
+  userId: string
+  /** Deep link desde otra pantalla (ej. "Ver lead en el CRM" del panel del cliente en WhatsApp) — abre el detalle de un lead puntual sin depender de los filtros activos. */
+  openLeadId?: string | null
+}) {
   const canManageTrash = OPS_ROLES.includes(userRole)
   const [leads, setLeads] = useState<LeadRow[] | null>(null)
   const [loading, setLoading] = useState(true)
@@ -119,10 +128,17 @@ export function InboxClient({ userRole, userId }: { userRole: string; userId: st
   const [activeSource, setActiveSource] = useState<string>('')
   const [days, setDays] = useState(30)
   const [search, setSearch] = useState('')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(openLeadId ?? null)
   const [view, setView] = useState<'active' | 'trash'>('active')
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
   const [bulkActioning, setBulkActioning] = useState(false)
+
+  // Si el deep link llega DESPUÉS del primer render (mismo componente, cambió
+  // solo el query param), igual hay que abrir el sheet — el useState inicial
+  // de arriba solo cubre el primer montaje.
+  useEffect(() => {
+    if (openLeadId) setSelectedId(openLeadId)
+  }, [openLeadId])
 
   const load = useCallback(async () => {
     setLoading(true)

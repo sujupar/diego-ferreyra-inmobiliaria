@@ -1,12 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Megaphone, Globe, MessageCircle } from 'lucide-react'
 import { InboxClient } from './InboxClient'
 import { PortalInquiriesClient } from './PortalInquiriesClient'
 import { WhatsappClient } from './WhatsappClient'
 
 type Tab = 'campanas' | 'consultas' | 'whatsapp'
+
+function isTab(v: string | null): v is Tab {
+  return v === 'campanas' || v === 'consultas' || v === 'whatsapp'
+}
 
 /**
  * Inbox con tres secciones:
@@ -16,6 +20,24 @@ type Tab = 'campanas' | 'consultas' | 'whatsapp'
  */
 export function InboxTabs({ userRole, userId }: { userRole: string; userId: string }) {
   const [tab, setTab] = useState<Tab>('campanas')
+  const [openLeadId, setOpenLeadId] = useState<string | null>(null)
+
+  // Deep link desde "Ver lead en el CRM" (panel del cliente de WhatsApp, task
+  // 6): `/inbox?tab=campanas&lead=<id>`. Se lee con `window.location.search`
+  // en un efecto (no `useSearchParams`) para no forzar a esta página bajo un
+  // `<Suspense>` — este componente ya es 100% client, así que evita cualquier
+  // implicación en el build estático de Next por un deep link opcional.
+  // El `setState` acá adentro es intencional: es lectura de la URL en el
+  // montaje (una sola vez, deps `[]`), no una cascada de renders — mismo
+  // criterio de supresión que `loadAvailability` en `PropertyInfoDialog.tsx`.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const tabParam = params.get('tab')
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- lectura de la URL al montar, ver comentario arriba
+    if (isTab(tabParam)) setTab(tabParam)
+    const leadParam = params.get('lead')
+    if (leadParam) setOpenLeadId(leadParam)
+  }, [])
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -53,7 +75,7 @@ export function InboxTabs({ userRole, userId }: { userRole: string; userId: stri
       </div>
 
       {tab === 'campanas' ? (
-        <InboxClient userRole={userRole} userId={userId} />
+        <InboxClient userRole={userRole} userId={userId} openLeadId={openLeadId} />
       ) : tab === 'consultas' ? (
         <PortalInquiriesClient userRole={userRole} />
       ) : (
