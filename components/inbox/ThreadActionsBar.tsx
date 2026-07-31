@@ -61,6 +61,20 @@ async function readJson<T>(res: Response): Promise<T & { error?: string }> {
  * completo "Enviar información de la propiedad" como `title=` (tooltip +
  * accesible para lectores de pantalla) — no se perdió texto, solo se movió
  * de visible a tooltip para no ser el elemento más ancho de la fila.
+ *
+ * `bare` (ajuste de altura, 2026-08-01): cuando es `true`, esta barra deja de
+ * dibujar su propio borde+padding (`border-b px-3 py-1.5`) porque
+ * `ThreadHeader` la incrusta en su MISMA fila vía `actionsSlot` (opción (a)
+ * del brief, ver comentario en `ThreadHeader.tsx`) — dos filas con dos bordes
+ * y dos paddings eran justamente el "espacio muerto" que se quejó el dueño.
+ * Default `false` para no tocar el comportamiento (ni el HTML que verifica)
+ * de `scripts/whatsapp-chat.probe.tsx`, que sigue renderizando esta barra
+ * SOLA con las props por defecto.
+ *
+ * `showStateChip` (mismo ajuste): oculta el chip de estado al final de la
+ * barra cuando ya se muestra al lado del nombre en `ThreadHeader` — evitar
+ * mostrarlo dos veces en la misma fila fusionada. Default `true` (comportamiento
+ * de siempre, lo que el probe verifica).
  */
 export interface ThreadActionsBarProps {
   property: { id: string; address: string; title: string | null; cover_photo: string | null } | null
@@ -72,6 +86,8 @@ export interface ThreadActionsBarProps {
   pipelineState: string | null | undefined
   onTagsChanged: (leadId: string, tags: LeadTagRef[]) => void
   onStateChanged: (leadId: string, state: PipelineState) => void
+  bare?: boolean
+  showStateChip?: boolean
 }
 
 const NO_LEAD_EXPLANATION =
@@ -87,6 +103,8 @@ export function ThreadActionsBar({
   pipelineState,
   onTagsChanged,
   onStateChanged,
+  bare = false,
+  showStateChip = true,
 }: ThreadActionsBarProps) {
   const [tagBusySlug, setTagBusySlug] = useState<string | null>(null)
   const [tagError, setTagError] = useState<string | null>(null)
@@ -164,7 +182,7 @@ export function ThreadActionsBar({
   }
 
   return (
-    <div className="border-b px-3 py-1.5">
+    <div className={bare ? '' : 'border-b px-3 py-1.5'}>
       <div className="flex flex-wrap items-center gap-1.5">
         <Button
           type="button"
@@ -261,7 +279,7 @@ export function ThreadActionsBar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {pipelineState && <PipelineStateChip state={pipelineState} />}
+        {showStateChip && pipelineState && <PipelineStateChip state={pipelineState} />}
       </div>
 
       {tagError && <p className="mt-1.5 text-xs font-medium text-[color:var(--destructive)]">{tagError}</p>}

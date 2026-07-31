@@ -354,17 +354,20 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
   const activePipelineState = activeListItem?.pipeline_state ?? null
 
   return (
-    <div className="space-y-4">
-      <div>
-        <p className="eyebrow">Mensajería</p>
-        <h2 className="display text-2xl">WhatsApp</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          {userRole === 'asesor'
-            ? 'Los WhatsApp de tus propiedades: los que salen del sistema y las respuestas de los clientes.'
-            : 'Todos los WhatsApp del equipo: los que salen del sistema y las respuestas de los clientes.'}
-        </p>
-      </div>
-
+    // Ajuste de altura (2026-08-01): este div YA NO trae su propio título — el
+    // dueño pidió que "Mensajería / WhatsApp / ..." suba a la MISMA fila que
+    // las pestañas Campañas/Consultas/WhatsApp, así que ahora vive en
+    // `InboxTabs.tsx` (único lugar que conoce las 3 pestañas a la vez). Este
+    // componente asume que su padre (`InboxTabs`, SOLO cuando la pestaña
+    // activa es "whatsapp") es un `flex flex-col` de alto fijo con la fila de
+    // pestañas arriba — por eso `flex-1 min-h-0` (se lleva TODO lo que sobra
+    // del alto fijo del padre, no `h-full`, que ignoraría el lugar que ya
+    // ocupa esa fila) combinado con `flex flex-col` para repartir ESE alto
+    // entre la franja de filtros (tamaño fijo) y la grilla de columnas
+    // (`flex-1` propio, más abajo), que es la que le pasa el resto al hilo.
+    // Antes el scroll era de la PÁGINA entera; ahora el único que scrollea es
+    // el hilo (`ChatThread`).
+    <div className="flex flex-1 min-h-0 flex-col gap-2">
       {webhookWarning && <WebhookWarningBanner />}
 
       {/* Ajuste 2 (2026-08-01): franja de filtros de ancho completo, arriba de las
@@ -392,9 +395,15 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
         onPipelineStateChange={setFilterPipelineState}
       />
 
-      <div className="grid md:grid-cols-[340px_1fr] gap-4 h-[calc(100vh-360px)] min-h-[440px]">
-        {/* Columna izquierda: solo la lista de conversaciones (filtros ya subieron arriba). En mobile se oculta si ya hay una elegida. */}
-        <Card className={`overflow-hidden p-0 ${selectedPhone ? 'hidden md:flex md:flex-col' : 'flex flex-col'}`}>
+      {/* `flex-1 min-h-0` (antes `h-[calc(100vh-360px)]`, un número inventado que no
+          correspondía a ningún alto real disponible): ahora este div SIEMPRE se
+          lleva exactamente el alto que sobra dentro del contenedor de alto fijo
+          que arma `InboxTabs`, sea cual sea. */}
+      <div className="grid flex-1 min-h-0 md:grid-cols-[340px_1fr] gap-4">
+        {/* Columna izquierda: solo la lista de conversaciones (filtros ya subieron arriba). En mobile se oculta si ya hay una elegida.
+            `gap-0` pisa el `gap-6` por defecto de `Card` — acá solo hay un hijo, no hace nada, pero
+            se deja explícito por simetría con la columna derecha (ver comentario ahí). */}
+        <Card className={`min-h-0 gap-0 overflow-hidden p-0 ${selectedPhone ? 'hidden md:flex md:flex-col' : 'flex flex-col'}`}>
           <ConversationList
             conversations={conversations}
             visible={visibleConversations}
@@ -406,8 +415,12 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
           />
         </Card>
 
-        {/* Columna derecha: hilo de la conversación elegida. En mobile solo se ve si hay una elegida. */}
-        <Card className={`overflow-hidden p-0 ${selectedPhone ? 'flex flex-col' : 'hidden md:flex md:flex-col'}`}>
+        {/* Columna derecha: hilo de la conversación elegida. En mobile solo se ve si hay una elegida.
+            `gap-0` es la mitad del arreglo del "espacio muerto": `Card` trae por defecto
+            `gap-6` (24px) entre CADA hijo directo (cabecera, hilo, caja de respuesta) — sin
+            pisarlo acá, esos 24px se sumaban TRES veces incluso después de fusionar la barra
+            de acciones en la cabecera. */}
+        <Card className={`min-h-0 gap-0 overflow-hidden p-0 ${selectedPhone ? 'flex flex-col' : 'hidden md:flex md:flex-col'}`}>
           {!selectedPhone ? (
             <CardContent className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
               Elegí una conversación de la izquierda para ver el chat.
@@ -426,6 +439,13 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
             </CardContent>
           ) : thread ? (
             <>
+              {/* Cabecera del contacto + acciones del hilo (enviar info de la propiedad,
+                  plantilla, etiquetas, estado) FUSIONADAS en una sola fila (ajuste de altura,
+                  2026-08-01, opción (a) del brief — ver comentario largo en `ThreadHeader.tsx`).
+                  Antes eran dos filas separadas, cada una con su propio borde y padding: el
+                  dueño lo describió como "un espacio muerto" entre el dato del cliente y los
+                  chips de Propiedad/Plantilla/Etiquetas/Estado. `showStateChip={false}` porque
+                  el chip de estado YA se muestra al lado del nombre, dentro de `ThreadHeader`. */}
               <ThreadHeader
                 onBack={() => setSelectedPhone(null)}
                 contactName={thread.contact_name}
@@ -436,20 +456,21 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
                 tags={activeTags}
                 property={thread.property}
                 onOpenContact={() => setContactPanelOpen(true)}
-              />
-
-              {/* Acciones del hilo: enviar info de la propiedad + plantilla (ya existían) +
-                  etiquetas + estado (Ajuste 1, 2026-08-01 — atajo sin abrir el panel del contacto). */}
-              <ThreadActionsBar
-                property={thread.property}
-                onOpenPropertyInfo={() => setShowPropertyInfo(true)}
-                onOpenTemplatePicker={() => setShowTemplatePicker(true)}
-                lead={thread.lead}
-                tags={activeTags}
-                tagCatalog={tagCatalog}
-                pipelineState={activePipelineState}
-                onTagsChanged={handleTagsChanged}
-                onStateChanged={handleStateChanged}
+                actionsSlot={
+                  <ThreadActionsBar
+                    bare
+                    showStateChip={false}
+                    property={thread.property}
+                    onOpenPropertyInfo={() => setShowPropertyInfo(true)}
+                    onOpenTemplatePicker={() => setShowTemplatePicker(true)}
+                    lead={thread.lead}
+                    tags={activeTags}
+                    tagCatalog={tagCatalog}
+                    pipelineState={activePipelineState}
+                    onTagsChanged={handleTagsChanged}
+                    onStateChanged={handleStateChanged}
+                  />
+                }
               />
 
               <ChatThread messages={thread.messages} endRef={messagesEndRef} />
