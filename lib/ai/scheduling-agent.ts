@@ -26,6 +26,18 @@
  *     innecesario en su WhatsApp); en cambio deja una nota INTERNA en
  *     `whatsapp_messages` (`status:'agent_handoff'`) para que el chat del
  *     Inbox se note que a partir de ahí sigue una persona.
+ *   - El cupo de ese tope se RESERVA ANTES de mandar, con la RPC atómica
+ *     `claim_agent_message_slot` (migración `20260803000004`). Leer el
+ *     contador, mandar y después escribirlo NO alcanza: dos mensajes seguidos
+ *     del cliente son dos webhooks concurrentes que leían `0` los dos,
+ *     mandaban el MISMO texto dos veces y dejaban el contador en 1.
+ *   - Con una visita `pending_confirmation` ya propuesta para esa propiedad y
+ *     ese teléfono, el agente DEJA de proponer y de confirmar. No adivina si
+ *     el cliente quiere moverla: correrle la fecha a una visita que el asesor
+ *     ya tiene en agenda es decisión de una persona.
+ *   - Al cliente NUNCA se le afirma que la visita quedó anotada antes de que
+ *     esté guardada: el envío es la ÚLTIMA acción (guardar → avisar al equipo
+ *     → recién ahí escribirle).
  *   - Ventana de 24hs abierta, siempre (Meta rechaza texto libre fuera de
  *     ventana).
  *   - Nunca promete un horario firme: SIEMPRE cierra con que el equipo
@@ -57,6 +69,7 @@ import {
 import { serviceWindow } from '@/lib/integrations/whatsapp/window'
 import { sendWhatsappText } from '@/lib/integrations/whatsapp/core'
 import { logOutbound } from '@/lib/integrations/whatsapp/log'
+import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
 import { updateAgentState } from '@/lib/ai/conversation-memory'
 
 // ---------------------------------------------------------------------------
@@ -315,6 +328,24 @@ export function buildHandoffNote(max: number): string {
   return `[Agente IA] Se alcanzó el tope de ${max} mensajes automáticos en esta conversación sin cerrar el agendamiento. A partir de acá sigue una persona del equipo — el agente no vuelve a escribir en este chat.`
 }
 
+/**
+ * Nota INTERNA. El cliente sigue hablando de una visita que YA está propuesta:
+ * el agente se calla y avisa acá adentro. `fecha` en formato "4/8" (o `null` si
+ * la visita no tiene fecha legible).
+ */
+export function buildPendingVisitNote(fecha: string | null): string {
+  const cuando = fecha ? ` para el ${fecha}` : ''
+  return `[Agente IA] El cliente sigue escribiendo sobre una visita que ya está propuesta${cuando} y todavía sin confirmar. El agente no vuelve a proponer ni a confirmar horarios de esta propiedad: mover una visita que el equipo ya tiene en agenda lo decide una persona.`
+}
+
+/**
+ * Nota INTERNA. No se pudo guardar la visita, así que al cliente NO se le dijo
+ * nada — ese es el punto de la nota: alguien tiene que coordinarla a mano.
+ */
+export function buildVisitFailedNote(error: string): string {
+  return `[Agente IA] El cliente pidió coordinar una visita y NO se pudo registrar (${error}). No se le confirmó nada por WhatsApp — hay que contestarle y coordinarla a mano.`
+}
+
 // ---------------------------------------------------------------------------
 // Orquestador — I/O. NUNCA lanza (mismo contrato que el resto de
 // `lib/ai/` y `lib/integrations/whatsapp/`): cualquier fallo se traga con
@@ -340,24 +371,114 @@ export interface RunSchedulingAgentResult {
   reason?: string
 }
 
+/** Status de las notas INTERNAS del agente en `whatsapp_messages` (nunca se le mandan al cliente). */
+const NOTE_STATUS_PENDING_VISIT = 'agent_visit_pending'
+const NOTE_STATUS_VISIT_FAILED = 'agent_visit_failed'
+
+export interface ExistingPendingVisit {
+  id: string
+  /** "4/8" — para la nota interna. `null` si la fila no tiene `scheduled_at` legible. */
+  fecha: string | null
+}
+
+/**
+ * Visita `pending_confirmation` de ESTA propiedad para ESTE teléfono.
+ *
+ * OJO — por qué no se filtra por `client_phone` en la query: la visita que el
+ * cliente crea solo desde `/v/<token>` guarda el teléfono TAL CUAL lo tipeó
+ * ("11 2233-4455"), no el E.164 del WhatsApp. Comparar exacto no matcheaba
+ * NUNCA → se creaba una SEGUNDA visita contradictoria y salía un segundo mail
+ * al equipo. Mismo patrón que `findLeadIdByPhone` en el webhook: se trae un
+ * puñado de candidatas (las pending_confirmation de una propiedad son pocas
+ * por definición) y la coincidencia REAL la decide `normalizeWhatsappPhone`,
+ * que es exacta y no da falsos positivos por sufijo parecido.
+ */
 async function findExistingPendingVisit(
   sb: ReturnType<typeof admin>,
   propertyId: string,
-  clientPhone: string,
-): Promise<string | null> {
+  phoneE164: string,
+): Promise<ExistingPendingVisit | null> {
   try {
     const { data } = await sb
       .from('property_visits')
-      .select('id')
+      .select('id, client_phone, scheduled_at')
       .eq('property_id', propertyId)
-      .eq('client_phone', clientPhone)
       .eq('status', 'pending_confirmation')
       .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    return (data as { id: string } | null)?.id ?? null
+      .limit(50)
+    const rows = (data as Array<{ id: string; client_phone: string | null; scheduled_at: string | null }> | null) ?? []
+    for (const row of rows) {
+      if (normalizeWhatsappPhone(row.client_phone) === phoneE164) {
+        return { id: row.id, fecha: fechaCortaArgentina(row.scheduled_at) }
+      }
+    }
+    return null
   } catch {
     return null
+  }
+}
+
+/** "2026-08-04T18:00:00Z" → "4/8" (día de Argentina, no del servidor). `null` si no es una fecha usable. */
+function fechaCortaArgentina(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  const [, mm, dd] = hoyEnArgentina(d).split('-')
+  return `${Number(dd)}/${Number(mm)}`
+}
+
+/** ¿Ya dejamos esta nota interna en este chat? Evita repetirla en cada mensaje del cliente. */
+async function yaHayNotaInterna(
+  sb: ReturnType<typeof admin>,
+  phoneE164: string,
+  propertyId: string,
+  status: string,
+): Promise<boolean> {
+  try {
+    const { data, error } = await sb
+      .from('whatsapp_messages')
+      .select('id')
+      .eq('phone_e164', phoneE164)
+      .eq('property_id', propertyId)
+      .eq('status', status)
+      .limit(1)
+      .maybeSingle()
+    // Si no se pudo leer, asumimos que YA está: una nota de menos es un dato
+    // que falta, una nota repetida en cada mensaje es ruido que tapa el chat.
+    if (error) return true
+    return data !== null
+  } catch {
+    return true
+  }
+}
+
+/**
+ * Reserva un cupo del tope de mensajes automáticos ANTES de mandar
+ * (claim-before-send). La RPC hace `UPDATE ... WHERE agent_messages_sent <
+ * p_max RETURNING agent_messages_sent` en UNA sentencia: dos webhooks
+ * concurrentes se serializan sobre la fila y el segundo ve el contador ya
+ * incrementado. Sin fila devuelta = sin cupo = no se manda nada.
+ *
+ * Fail-closed: si la RPC falla (o la migración todavía no corrió), devuelve
+ * `false` y el agente no escribe. Y si el envío falla DESPUÉS de reservar, el
+ * cupo queda consumido: es el lado seguro del error — este agente puede mandar
+ * de menos, nunca de más.
+ */
+async function claimMessageSlot(
+  sb: ReturnType<typeof admin>,
+  phoneE164: string,
+  max: number,
+): Promise<boolean> {
+  try {
+    const { data, error } = await sb.rpc('claim_agent_message_slot', { p_phone: phoneE164, p_max: max })
+    if (error) {
+      console.warn('[scheduling-agent] no se pudo reservar el cupo de mensajes — no se manda nada:', error.message)
+      return false
+    }
+    return typeof data === 'number'
+  } catch (err) {
+    console.warn('[scheduling-agent] excepción reservando el cupo de mensajes — no se manda nada:', err)
+    return false
   }
 }
 
@@ -462,9 +583,36 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       return { action: 'handoff', reason: decision.reason }
     }
 
+    // FRENO de visita ya acordada. Va acá (I/O) y no en `decideSchedulingAction`
+    // a propósito: recién cuando el agente está por ESCRIBIR vale la pena pagar
+    // la consulta. Una vez que hay una visita propuesta para esta propiedad y
+    // este teléfono, el agente no propone ni confirma más nada: el análisis
+    // vuelve a marcar intención de agendar con cualquier "gracias" o "¿llevo el
+    // DNI?", y el parser reinterpretaría un "mañana a la tarde" viejo contra la
+    // fecha de HOY — o sea, le CORRERÍA la visita un día al cliente mientras el
+    // asesor ya tiene la original en la agenda.
+    const pendiente = await findExistingPendingVisit(sb, input.propertyId, input.phoneE164)
+    if (pendiente) {
+      if (!(await yaHayNotaInterna(sb, input.phoneE164, input.propertyId, NOTE_STATUS_PENDING_VISIT))) {
+        await logOutbound({
+          phone: input.phoneE164,
+          bodyPreview: buildPendingVisitNote(pendiente.fecha),
+          status: NOTE_STATUS_PENDING_VISIT,
+          leadId: input.leadId,
+          propertyId: input.propertyId,
+          sentBy: null,
+          aiGenerated: true,
+        })
+      }
+      return { action: 'noop', reason: 'ya hay una visita propuesta para esta propiedad; moverla la decide una persona' }
+    }
+
     if (decision.type === 'propose_slots') {
       const clientName = await resolveClientName(sb, input)
       const text = buildProposeMessage(clientName, propertyLabel, decision.slots)
+      if (!(await claimMessageSlot(sb, input.phoneE164, settings.max_messages_per_conversation))) {
+        return { action: 'noop', reason: 'no quedaba cupo de mensajes automáticos al momento de mandar' }
+      }
       await sendWhatsappText({
         to: input.phoneE164,
         text,
@@ -473,18 +621,18 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
         sentBy: null,
         aiGenerated: true,
       })
-      await updateAgentState(input.phoneE164, { agentMessagesSent: input.agentMessagesSent + 1 })
       return { action: 'propose_slots' }
     }
 
-    // confirm_visit: registra la visita PRIMERO (best-effort desde ahí en
-    // más) — si el envío del WhatsApp de confirmación falla, la visita y el
-    // aviso al equipo ya están a salvo.
+    // confirm_visit. ORDEN NO NEGOCIABLE: guardar → avisar al equipo → recién
+    // ahí escribirle al cliente. Antes el WhatsApp salía ANTES de mirar si el
+    // guardado había funcionado: si fallaba, el cliente igual leía "Anoté tu
+    // visita", nadie recibía el mail, no quedaba nada en el CRM, y el cliente
+    // se presentaba en la propiedad sin que lo esperara nadie.
     const clientName = await resolveClientName(sb, input)
     const clientPhone = `+${input.phoneE164}`
     const scheduledAt = scheduledAtFor(decision.dateISO, decision.franja)
     const notes = `Propuesta por el cliente vía WhatsApp (agente de IA, franja: ${decision.franja}).`
-    const existingVisitId = await findExistingPendingVisit(sb, input.propertyId, clientPhone)
 
     const result = await upsertPendingVisit(sb, {
       propertyId: input.propertyId,
@@ -494,12 +642,41 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       clientPhone,
       scheduledAt,
       notes,
-      existingVisitId,
+      // Siempre INSERT: si hubiera una pending_confirmation de este cliente
+      // para esta propiedad, el freno de arriba ya nos sacó del camino.
+      existingVisitId: null,
       // Marca la fila como "la agendó la IA" — así el panel de costo cuenta
       // estas visitas como un hecho y no deduciéndolas por teléfono.
       createdByAi: true,
     })
 
+    if (!result.ok) {
+      console.warn('[scheduling-agent] no se pudo crear la visita pending_confirmation:', result.error)
+      // Nota INTERNA con el error. Nada que le afirme al cliente que quedó
+      // anotada — no quedó.
+      await logOutbound({
+        phone: input.phoneE164,
+        bodyPreview: buildVisitFailedNote(result.error),
+        status: NOTE_STATUS_VISIT_FAILED,
+        leadId: input.leadId,
+        propertyId: input.propertyId,
+        sentBy: null,
+        aiGenerated: true,
+      })
+      return { action: 'noop', reason: `visita no registrada: ${result.error}` }
+    }
+
+    await notifyAndAdvancePipeline(result.visitId, input.leadId)
+
+    // Última acción. Si acá no queda cupo (la carrera la ganó otro webhook), la
+    // visita YA está registrada y el equipo YA recibió el aviso: la cierra una
+    // persona. Callarse es preferible a mandarle dos veces lo mismo al cliente.
+    if (!(await claimMessageSlot(sb, input.phoneE164, settings.max_messages_per_conversation))) {
+      return {
+        action: 'confirm_visit',
+        reason: 'la visita quedó registrada pero no se le confirmó al cliente: sin cupo de mensajes automáticos',
+      }
+    }
     const text = buildConfirmMessage(clientName, propertyLabel, decision.dateISO, decision.franja, now)
     await sendWhatsappText({
       to: input.phoneE164,
@@ -509,13 +686,6 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       sentBy: null,
       aiGenerated: true,
     })
-    await updateAgentState(input.phoneE164, { agentMessagesSent: input.agentMessagesSent + 1 })
-
-    if (!result.ok) {
-      console.warn('[scheduling-agent] no se pudo crear/actualizar la visita pending_confirmation:', result.error)
-      return { action: 'confirm_visit', reason: `visita no registrada: ${result.error}` }
-    }
-    await notifyAndAdvancePipeline(result.visitId, input.leadId)
     return { action: 'confirm_visit' }
   } catch (err) {
     console.warn('[scheduling-agent] excepción (nunca lanza, continuando):', err)

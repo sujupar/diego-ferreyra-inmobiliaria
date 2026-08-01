@@ -57,7 +57,12 @@ const VALID_ANALYSIS = {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  // `resetAllMocks`, no `clearAllMocks`: `clear` borra las llamadas pero NO la
+  // cola de `mockResolvedValueOnce`. Desde que el análisis hace UNA sola
+  // llamada al modelo, los `Once` de más que encolan varios tests quedaban sin
+  // consumir y se los comía el test siguiente — falsos rojos y, peor, falsos
+  // verdes.
+  vi.resetAllMocks()
   saveConversationAiStateMock.mockResolvedValue(undefined)
 })
 
@@ -128,37 +133,33 @@ describe('analyzeConversation', () => {
     expect(chatCompletionMock).toHaveBeenCalledTimes(1)
   })
 
-  it('JSON inválido en el primer intento → reintenta UNA vez con gpt-4.1/openai', async () => {
+  it('JSON inválido → null SIN una segunda llamada al modelo (una sola IA por request)', async () => {
+    // Encadenar un reintento a otro modelo acá adentro es lo que hace que el
+    // POST del webhook se pase de los ~26s de Netlify. Ver CLAUDE.md § "nunca
+    // encadenar varias llamadas de IA dentro de UN request".
     chatCompletionMock
       .mockResolvedValueOnce(chatResult('esto no es JSON'))
       .mockResolvedValueOnce(chatResult(VALID_ANALYSIS, { model: 'gpt-4.1', provider: 'openai' }))
 
     const result = await analyzeConversation({ previousSummary: 'resumen', mensajesNuevos: nuevos })
 
-    expect(result).toMatchObject({ ...VALID_ANALYSIS, model: 'gpt-4.1' })
-    expect(chatCompletionMock).toHaveBeenCalledTimes(2)
-    const secondCallArgs = chatCompletionMock.mock.calls[1][0]
-    expect(secondCallArgs.model).toBe('gpt-4.1')
-    expect(secondCallArgs.provider).toBe('openai')
+    expect(result).toBeNull()
+    expect(chatCompletionMock).toHaveBeenCalledTimes(1)
   })
 
-  it('esquema incompleto en el primer intento (JSON válido pero sin priorityReason) → reintenta', async () => {
+  it('esquema incompleto (JSON válido pero sin priorityReason) → null, tampoco reintenta', async () => {
     chatCompletionMock
       .mockResolvedValueOnce(chatResult({ ...VALID_ANALYSIS, priorityReason: '' }))
       .mockResolvedValueOnce(chatResult(VALID_ANALYSIS))
     const result = await analyzeConversation({ previousSummary: '', mensajesNuevos: nuevos })
-    expect(result).not.toBeNull()
-    expect(chatCompletionMock).toHaveBeenCalledTimes(2)
+    expect(result).toBeNull()
+    expect(chatCompletionMock).toHaveBeenCalledTimes(1)
   })
 
-  it('NUNCA lanza: ambos intentos fallan (excepción de red) → null', async () => {
+  it('NUNCA lanza: excepción de red (o timeout abortado) → null, sin segunda llamada', async () => {
     chatCompletionMock.mockRejectedValueOnce(new Error('timeout')).mockRejectedValueOnce(new Error('timeout'))
     await expect(analyzeConversation({ previousSummary: '', mensajesNuevos: nuevos })).resolves.toBeNull()
-  })
-
-  it('NUNCA lanza: ambos intentos devuelven JSON inválido → null', async () => {
-    chatCompletionMock.mockResolvedValueOnce(chatResult('no-json')).mockResolvedValueOnce(chatResult('tampoco'))
-    await expect(analyzeConversation({ previousSummary: '', mensajesNuevos: nuevos })).resolves.toBeNull()
+    expect(chatCompletionMock).toHaveBeenCalledTimes(1)
   })
 
   it('pasa un techo duro de tokens de output en la llamada', async () => {
@@ -167,6 +168,15 @@ describe('analyzeConversation', () => {
     const callArgs = chatCompletionMock.mock.calls[0][0]
     expect(typeof callArgs.maxTokens).toBe('number')
     expect(callArgs.maxTokens).toBeGreaterThan(0)
+  })
+
+  it('pasa un techo de TIEMPO a la llamada, por debajo del corte de Netlify (~26s)', async () => {
+    chatCompletionMock.mockResolvedValueOnce(chatResult(VALID_ANALYSIS))
+    await analyzeConversation({ previousSummary: '', mensajesNuevos: nuevos })
+    const callArgs = chatCompletionMock.mock.calls[0][0]
+    expect(typeof callArgs.timeoutMs).toBe('number')
+    expect(callArgs.timeoutMs).toBeGreaterThan(0)
+    expect(callArgs.timeoutMs).toBeLessThanOrEqual(15_000)
   })
 
   it('sin usage en la respuesta del proveedor, tokensUsed cae a 0 (no explota)', async () => {
@@ -202,8 +212,13 @@ describe('runConversationAnalysis (orquestador end-to-end)', () => {
     }
   }
 
+  /** Lectura OK de `getConversationAiState`: `state` puede ser null (nunca analizada). */
+  function readOk(s: ConversationAiStateRow | null) {
+    return { state: s, readFailed: false }
+  }
+
   it('no analiza (no llama al modelo) cuando debeAnalizar da false — ej. último mensaje es nuestro', async () => {
-    getConversationAiStateMock.mockResolvedValueOnce(null)
+    getConversationAiStateMock.mockResolvedValueOnce(readOk(null))
     getRecentWhatsappMessagesMock.mockResolvedValueOnce([msg('m1', 'out', '2026-08-01T00:01:00Z')])
 
     const result = await runConversationAnalysis('5491122334455', new Date('2026-08-01T00:05:00Z'))
@@ -215,7 +230,7 @@ describe('runConversationAnalysis (orquestador end-to-end)', () => {
 
   it('no analiza dentro del cooldown de 2 minutos', async () => {
     const s = baseState({ last_analyzed_at: '2026-08-01T00:04:00Z', last_analyzed_message_id: 'm1' })
-    getConversationAiStateMock.mockResolvedValueOnce(s)
+    getConversationAiStateMock.mockResolvedValueOnce(readOk(s))
     getRecentWhatsappMessagesMock.mockResolvedValueOnce([
       msg('m1', 'in', '2026-08-01T00:00:00Z'),
       msg('m2', 'in', '2026-08-01T00:04:30Z'),
@@ -229,7 +244,7 @@ describe('runConversationAnalysis (orquestador end-to-end)', () => {
 
   it('analiza, persiste y acumula tokens_used_total y analyses_count', async () => {
     const s = baseState()
-    getConversationAiStateMock.mockResolvedValueOnce(s)
+    getConversationAiStateMock.mockResolvedValueOnce(readOk(s))
     getRecentWhatsappMessagesMock.mockResolvedValueOnce([
       msg('m1', 'in', '2026-08-01T00:00:00Z'),
       msg('m2', 'in', '2026-08-01T00:03:00Z', 'quiero agendar una visita'),
@@ -256,7 +271,7 @@ describe('runConversationAnalysis (orquestador end-to-end)', () => {
 
   it('NUNCA lanza: si analyzeConversation falla, deja el estado anterior intacto (no persiste)', async () => {
     const s = baseState()
-    getConversationAiStateMock.mockResolvedValueOnce(s)
+    getConversationAiStateMock.mockResolvedValueOnce(readOk(s))
     getRecentWhatsappMessagesMock.mockResolvedValueOnce([
       msg('m1', 'in', '2026-08-01T00:00:00Z'),
       msg('m2', 'in', '2026-08-01T00:03:00Z'),
@@ -271,14 +286,53 @@ describe('runConversationAnalysis (orquestador end-to-end)', () => {
   })
 
   it('primera vez (sin estado previo) con mensaje entrante único: analiza igual', async () => {
-    getConversationAiStateMock.mockResolvedValueOnce(null)
+    getConversationAiStateMock.mockResolvedValueOnce(readOk(null))
     getRecentWhatsappMessagesMock.mockResolvedValueOnce([msg('m1', 'in', '2026-08-01T00:00:00Z', 'hola, me interesa')])
     chatCompletionMock.mockResolvedValueOnce(chatResult(VALID_ANALYSIS))
 
     const result = await runConversationAnalysis('5491122334455', new Date('2026-08-01T00:01:00Z'))
 
     expect(result.analyzed).toBe(true)
+    expect(result.readFailed).toBe(false)
     expect(result.state?.analyses_count).toBe(1)
     expect(result.state?.tokens_used_total).toBe(150)
+  })
+
+  // --- El freno de mano: ante un error de LECTURA no se sigue de largo -------
+  // Si no se pudo leer `conversation_ai_state`, no sabemos cuántos mensajes ya
+  // mandó el agente ni si la conversación fue derivada a un humano. Seguir con
+  // los defaults (0 mensajes, sin derivar) es exactamente cómo un cliente que
+  // ya está en manos de una persona recibe un WhatsApp de más.
+
+  it('lectura FALLIDA del estado → analyzed:false + readFailed:true, sin llamar al modelo ni escribir', async () => {
+    getConversationAiStateMock.mockResolvedValueOnce({ state: null, readFailed: true })
+    getRecentWhatsappMessagesMock.mockResolvedValueOnce([
+      msg('m1', 'in', '2026-08-01T00:00:00Z', 'hola, ¿podemos coordinar?'),
+    ])
+
+    const result = await runConversationAnalysis('5491122334455', new Date('2026-08-01T00:10:00Z'))
+
+    expect(result.analyzed).toBe(false)
+    expect(result.readFailed).toBe(true)
+    expect(result.state).toBeNull() // NO inventamos un estado vacío: no sabemos nada
+    expect(chatCompletionMock).not.toHaveBeenCalled() // ni gastamos tokens
+    expect(saveConversationAiStateMock).not.toHaveBeenCalled()
+  })
+
+  it('lectura fallida corta ANTES de decidir: aunque el hilo pareciera analizable, no analiza', async () => {
+    // Mismo hilo que el caso feliz de más arriba (mensaje entrante fresco, sin
+    // cooldown). La única diferencia es que la lectura falló.
+    getConversationAiStateMock.mockResolvedValueOnce({ state: null, readFailed: true })
+    getRecentWhatsappMessagesMock.mockResolvedValueOnce([
+      msg('m1', 'in', '2026-08-01T00:00:00Z'),
+      msg('m2', 'in', '2026-08-01T00:03:00Z', 'quiero agendar una visita'),
+    ])
+    chatCompletionMock.mockResolvedValueOnce(chatResult(VALID_ANALYSIS))
+
+    const result = await runConversationAnalysis('5491122334455', new Date('2026-08-01T00:10:00Z'))
+
+    expect(result.analyzed).toBe(false)
+    expect(result.wantsToSchedule).toBe(false)
+    expect(chatCompletionMock).not.toHaveBeenCalled()
   })
 })

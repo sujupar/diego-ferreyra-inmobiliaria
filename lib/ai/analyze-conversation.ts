@@ -1,15 +1,23 @@
 /**
  * El analista (task 2, 2026-08-03): UNA llamada al modelo por análisis, con
  * el resumen previo + los mensajes nuevos — nunca el hilo completo. Usa el
- * cliente agnóstico `lib/ai/chat-client` (DeepSeek barato por defecto, con
- * reintento a `gpt-4.1` de OpenAI si el JSON no valida el esquema), mismo
+ * cliente agnóstico `lib/ai/chat-client` (DeepSeek barato por defecto), mismo
  * patrón que `lib/marketing/empathy-avatar-generator.ts`.
  *
+ * UNA sola llamada al modelo, y con techo de tiempo. Esto corre DENTRO del POST
+ * del webhook de WhatsApp, que además baja adjuntos, manda un WhatsApp y un
+ * mail; Netlify corta a los ~26s (`maxDuration` es de Vercel, acá no hace
+ * nada). Si el 200 no le llega a Meta, Meta reintenta en loop y puede terminar
+ * DESHABILITANDO el webhook — se dejarían de recibir todos los mensajes. Por
+ * eso no hay reintento a un segundo modelo acá adentro: ver CLAUDE.md § "nunca
+ * encadenar varias llamadas de IA dentro de UN request".
+ *
  * Contrato duro: `analyzeConversation` NUNCA lanza. Ante cualquier fallo
- * (modelo caído, JSON inválido en los dos intentos, timeout) devuelve `null`
- * — el orquestador (`runConversationAnalysis`, más abajo) deja el estado
- * anterior intacto. Una conversación sin análisis se sigue ordenando por la
- * ventana de 24hs (`lib/integrations/whatsapp/window.ts`), que no necesita IA.
+ * (modelo caído, JSON inválido, timeout) devuelve `null` — el orquestador
+ * (`runConversationAnalysis`, más abajo) deja el estado anterior intacto y el
+ * PRÓXIMO mensaje del cliente vuelve a intentar. Una conversación sin análisis
+ * se sigue ordenando por la ventana de 24hs
+ * (`lib/integrations/whatsapp/window.ts`), que no necesita IA.
  */
 import { chatCompletion } from '@/lib/ai/chat-client'
 import {
@@ -32,6 +40,14 @@ export type { ConversationAiStateRow, ConversationIntent, WhatsappMessageLite }
 
 /** Techo duro de tokens de OUTPUT por llamada — la salida es un JSON chico, no necesita más. */
 const ANALYSIS_MAX_OUTPUT_TOKENS = 500
+
+/**
+ * Techo duro de TIEMPO de la llamada al modelo. 12s deja aire para lo que el
+ * webhook hace después (mandar el WhatsApp, el mail, persistir) dentro de los
+ * ~26s que aguanta una función de Netlify. Sin esto, un proveedor colgado se
+ * lleva puesta la función entera y Meta nunca ve el 200.
+ */
+const ANALYSIS_TIMEOUT_MS = 12_000
 
 const VALID_INTENTS: ConversationIntent[] = ['agendar', 'consulta', 'frio', 'desconocido']
 
@@ -125,7 +141,6 @@ export interface AnalysisPatch extends AnalysisResult {
 async function askModel(
   previousSummary: string,
   mensajesNuevos: WhatsappMessageLite[],
-  override?: { model: string; provider: 'openai' },
 ): Promise<AnalysisPatch | null> {
   const res = await chatCompletion({
     messages: [
@@ -135,7 +150,7 @@ async function askModel(
     temperature: 0.3,
     jsonMode: true,
     maxTokens: ANALYSIS_MAX_OUTPUT_TOKENS,
-    ...(override ? { model: override.model, provider: override.provider } : {}),
+    timeoutMs: ANALYSIS_TIMEOUT_MS,
   })
   const parsed = JSON.parse(res.content) as unknown
   const coerced = coerceAnalysisResult(parsed)
@@ -144,10 +159,16 @@ async function askModel(
 }
 
 /**
- * UNA llamada al modelo (DeepSeek) por análisis; si el JSON no valida el
- * esquema, UN reintento a OpenAI `gpt-4.1`. NUNCA lanza: cualquier excepción
- * (red, parseo, API caída) en cualquiera de los dos intentos se traga y
- * devuelve `null` — "sin análisis nuevo", nunca un throw que tumbe al caller.
+ * EXACTAMENTE UNA llamada al modelo por análisis, con techo de tiempo. NUNCA
+ * lanza: cualquier excepción (red, parseo, API caída, timeout abortado) se
+ * traga y devuelve `null` — "sin análisis nuevo", nunca un throw que tumbe al
+ * caller.
+ *
+ * Antes había un reintento a OpenAI `gpt-4.1` cuando el JSON no validaba. Se
+ * sacó: dos llamadas de IA seguidas dentro del POST del webhook es la receta
+ * del 504 de Netlify (ver el encabezado del archivo). No perdemos nada — el
+ * sistema está diseñado para vivir sin análisis, y el próximo mensaje del
+ * cliente vuelve a intentar con el hilo un poco más largo.
  *
  * No decide POR SÍ SOLA si hay que analizar — eso es `debeAnalizar` (import
  * de `conversation-memory`). Este módulo asume que ya se decidió que sí, y
@@ -161,30 +182,24 @@ export async function analyzeConversation(input: {
   if (input.mensajesNuevos.length === 0) return null
 
   try {
-    const result = await askModel(input.previousSummary, input.mensajesNuevos)
-    if (result) return result
-  } catch {
-    /* cae al reintento con gpt-4.1 */
+    return await askModel(input.previousSummary, input.mensajesNuevos)
+  } catch (err) {
+    console.warn('[analyze-conversation] el modelo falló (se sigue sin análisis):', err)
+    return null
   }
-
-  try {
-    const result = await askModel(input.previousSummary, input.mensajesNuevos, {
-      model: 'gpt-4.1',
-      provider: 'openai',
-    })
-    if (result) return result
-  } catch {
-    /* nunca lanza: cae al null de abajo */
-  }
-
-  return null
 }
 
 export interface RunConversationAnalysisResult {
-  /** Estado ACTUAL (post-corrida). Si no se analizó o falló, es el estado previo intacto. */
+  /** Estado ACTUAL (post-corrida). Si no se analizó o falló, es el estado previo intacto. `null` si no se pudo leer. */
   state: ConversationAiStateRow | null
   /** `true` solo si se pagó y persistió un análisis nuevo en esta corrida. */
   analyzed: boolean
+  /**
+   * `true` = no se pudo leer `conversation_ai_state`, así que esta corrida se
+   * abortó a propósito. Distinto de `analyzed:false` por cooldown: acá NO se
+   * sabe nada de la conversación y `state` no es confiable ni como "vacío".
+   */
+  readFailed: boolean
   /** Del análisis nuevo, si hubo. `false`/`null` si no se analizó — no implica que el cliente no quiera agendar, solo que no hay info nueva. */
   wantsToSchedule: boolean
   proposedSlot: string | null
@@ -201,13 +216,29 @@ export async function runConversationAnalysis(
   phoneE164: string,
   ahora: Date = new Date(),
 ): Promise<RunConversationAnalysisResult> {
-  const [state, mensajes] = await Promise.all([
+  const [read, mensajes] = await Promise.all([
     getConversationAiState(phoneE164),
     getRecentWhatsappMessages(phoneE164),
   ])
 
+  // FRENO DE MANO. Si la lectura falló no sabemos cuántos mensajes ya mandó el
+  // agente ni si la conversación fue derivada a un humano: esos contadores
+  // viven en la fila que no se pudo leer. Seguir con los defaults (0 mensajes,
+  // sin derivar) es exactamente cómo un cliente que ya está en manos de una
+  // persona se come otro WhatsApp del agente. Cortamos ANTES del modelo: el
+  // webhook hace `if (!analysis.analyzed) return` y el agente ni se entera.
+  // (Bonus: tampoco se pagan tokens de una corrida que no se va a poder
+  // guardar bien.) Los otros dos interruptores del agente —`ai_agent_settings`
+  // y `properties.ai_scheduling_enabled`— ya fallaban cerrados; a este se le
+  // había pasado.
+  if (read.readFailed) {
+    return { state: null, analyzed: false, readFailed: true, wantsToSchedule: false, proposedSlot: null }
+  }
+
+  const state = read.state
+
   if (!debeAnalizar(state, mensajes, ahora)) {
-    return { state, analyzed: false, wantsToSchedule: false, proposedSlot: null }
+    return { state, analyzed: false, readFailed: false, wantsToSchedule: false, proposedSlot: null }
   }
 
   const nuevos = mensajesNuevosDesde(state, mensajes)
@@ -215,7 +246,7 @@ export async function runConversationAnalysis(
   if (!patch) {
     // Nunca lanza: se deja el estado anterior sin tocar. La conversación
     // igual se ordena por la ventana de 24hs, que no necesita IA.
-    return { state, analyzed: false, wantsToSchedule: false, proposedSlot: null }
+    return { state, analyzed: false, readFailed: false, wantsToSchedule: false, proposedSlot: null }
   }
 
   const ultimoNuevo = nuevos[nuevos.length - 1]
@@ -255,6 +286,7 @@ export async function runConversationAnalysis(
   return {
     state: updatedState,
     analyzed: true,
+    readFailed: false,
     wantsToSchedule: patch.wantsToSchedule,
     proposedSlot: patch.proposedSlot,
   }

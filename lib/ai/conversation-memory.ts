@@ -150,8 +150,32 @@ function admin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
-/** Lee el estado acumulado de una conversación. `null` si nunca se analizó o si falló la lectura. */
-export async function getConversationAiState(phoneE164: string): Promise<ConversationAiStateRow | null> {
+/**
+ * Resultado de leer `conversation_ai_state`. Existe porque `null` a secas
+ * mezclaba DOS cosas que no son lo mismo: "esta conversación nunca se analizó"
+ * (normal, el primer mensaje del cliente) y "no pude leer la tabla" (hipo de
+ * red, RLS, PostgREST caído).
+ *
+ * Ese empate se pagaba caro: los contadores del agente (`agent_messages_sent`,
+ * `agent_handed_off`) viven en esta fila, y un `null` por error se leía río
+ * abajo como "0 mensajes mandados, no derivada" → una conversación YA en manos
+ * de un humano podía recibir otro WhatsApp del agente. La regla del dueño es
+ * la contraria: ante duda o error de lectura, no se manda nada.
+ */
+export interface ConversationAiStateRead {
+  /** La fila, o `null` si la conversación nunca se analizó. Solo significa eso si `readFailed` es `false`. */
+  state: ConversationAiStateRow | null
+  /** `true` = NO se pudo leer. No confundir con "no hay fila": acá no sabemos nada de la conversación. */
+  readFailed: boolean
+}
+
+/**
+ * Lee el estado acumulado de una conversación. NUNCA lanza (mismo criterio que
+ * el resto del módulo), pero SÍ distingue el fallo del vacío — ver
+ * `ConversationAiStateRead`. Quien la llame tiene que frenar ante
+ * `readFailed: true`, no seguir con defaults.
+ */
+export async function getConversationAiState(phoneE164: string): Promise<ConversationAiStateRead> {
   try {
     const { data, error } = await admin()
       .from('conversation_ai_state')
@@ -159,13 +183,13 @@ export async function getConversationAiState(phoneE164: string): Promise<Convers
       .eq('phone_e164', phoneE164)
       .maybeSingle()
     if (error) {
-      console.warn('[conversation-memory] no se pudo leer el estado (continuando sin memoria):', error.message)
-      return null
+      console.warn('[conversation-memory] no se pudo leer el estado (freno de mano: no se analiza):', error.message)
+      return { state: null, readFailed: true }
     }
-    return (data as ConversationAiStateRow | null) ?? null
+    return { state: (data as ConversationAiStateRow | null) ?? null, readFailed: false }
   } catch (err) {
-    console.warn('[conversation-memory] excepción leyendo el estado (continuando sin memoria):', err)
-    return null
+    console.warn('[conversation-memory] excepción leyendo el estado (freno de mano: no se analiza):', err)
+    return { state: null, readFailed: true }
   }
 }
 

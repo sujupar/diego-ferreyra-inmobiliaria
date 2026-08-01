@@ -3,6 +3,12 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { serviceWindow } from '@/lib/integrations/whatsapp/window'
 import { computePriority, type AiPriorityInput, type ConversationIntent } from '@/lib/integrations/whatsapp/priority'
+// Sí, una ruta importando de `components/`: `awaiting.ts` es un módulo puro,
+// sin React ni 'use client'. Es a propósito — el cliente hace el mismo cálculo
+// como respaldo, y si cada lado tuviera su copia de la regla, la lista y el
+// filtro "Sin responder" terminarían contradiciéndose (ya pasó con la nota
+// interna del agente de IA). Una sola definición, imposible de desincronizar.
+import { countsAsReply } from '@/components/inbox/awaiting'
 
 /**
  * GET /api/whatsapp/conversations
@@ -39,7 +45,7 @@ import { computePriority, type AiPriorityInput, type ConversationIntent } from '
  *   assigned_to_name: string | null  // = advisor_name, con el nombre de campo del contrato de Task 3
  *   pipeline_state: PipelineState    // Task 3 — 'nuevo' si la conversación no tiene lead resuelto todavía
  *   tags: Array<{ slug: string; label: string; color: string }>  // Task 3 — etiquetas del lead, [] si no hay lead
- *   awaiting_reply_since: string | null  // ISO del último entrante SIN respuesta posterior; null si el último mensaje es saliente
+ *   awaiting_reply_since: string | null  // ISO del último entrante SIN respuesta posterior; null solo si después salió un mensaje DE VERDAD (ver `countsAsReply`)
  *   window: { open: boolean; msRemaining: number }  // Task 4 — ventana de 24hs RECALCULADA acá (serviceWindow sobre el último entrante, esté o no contestado)
  *   ai: { intent, priorityScore, priorityReason, suggestedNextStep, analyzedAt } | null  // Task 4 — lectura de `conversation_ai_state`; null = todavía no analizada
  *   priority: { score, reason, windowUrgency, analyzed }  // Task 4 — computePriority(window, ai), SIEMPRE presente con un motivo en castellano
@@ -211,15 +217,18 @@ export async function GET(req: Request) {
       //
       // `allRows` viene ordenado DESC, así que el primer hecho relevante que
       // encontramos define la respuesta y el resto se ignora (`answered`).
-      // Un saliente 'failed' o 'skipped' NO cuenta como respuesta: antes sí
-      // contaba, y una conversación donde el mensaje del equipo REBOTÓ
-      // desaparecía del filtro "Sin responder" y de la franja de alerta —
-      // justo el caso donde más urge que alguien la vea.
+      // `countsAsReply` es LISTA BLANCA (accepted/sent/delivered/read): un
+      // mensaje que REBOTÓ ('failed'/'skipped') o una fila que nunca se le
+      // mandó al cliente —la nota interna 'agent_handoff' que deja el agente
+      // de IA cuando se rinde— no son una respuesta. Con la lista negra que
+      // había antes, esa nota marcaba la conversación como contestada y la
+      // sacaba del filtro "Sin responder" y de la franja de demora, justo
+      // cuando lo que hacía falta era que la agarre una persona.
       if (!g.answered) {
         if (row.direction === 'in') {
           g.awaiting_since = row.created_at
           g.answered = true
-        } else if (row.status !== 'failed' && row.status !== 'skipped') {
+        } else if (countsAsReply(row.status)) {
           g.answered = true
         }
       }

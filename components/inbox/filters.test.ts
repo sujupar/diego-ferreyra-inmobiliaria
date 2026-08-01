@@ -41,7 +41,11 @@ describe('filterConversations', () => {
   it('onlyUnanswered solo deja las que esperan respuesta (último mensaje entrante)', () => {
     const list = [
       conv({ phone_e164: 'esperando', last_direction: 'in' }),
-      conv({ phone_e164: 'contestada', last_direction: 'out' }),
+      // `last_status` importa: desde que "contestada" es lista blanca, un
+      // saliente solo cuenta como respuesta si SALIÓ de verdad. El default del
+      // fixture es 'received', que es el estado de un ENTRANTE — dejarlo acá
+      // describía una fila imposible (saliente recibido) y tapaba la regla real.
+      conv({ phone_e164: 'contestada', last_direction: 'out', last_status: 'accepted' }),
     ]
     const r = filterConversations(list, f({ onlyUnanswered: true }))
     expect(r.map(c => c.phone_e164)).toEqual(['esperando'])

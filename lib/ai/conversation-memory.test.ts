@@ -171,25 +171,33 @@ beforeEach(() => {
 })
 
 describe('getConversationAiState (I/O)', () => {
-  it('devuelve la fila cuando existe', async () => {
+  it('devuelve la fila cuando existe, con readFailed=false', async () => {
     const { getConversationAiState } = await import('./conversation-memory')
     const row = state()
     stateMaybeSingle.mockResolvedValueOnce({ data: row, error: null })
     const result = await getConversationAiState('5491122334455')
-    expect(result).toEqual(row)
+    expect(result).toEqual({ state: row, readFailed: false })
     expect(stateEq).toHaveBeenCalledWith('phone_e164', '5491122334455')
   })
 
-  it('devuelve null (no lanza) si Supabase responde error', async () => {
+  it('conversación nunca analizada (sin fila, sin error) NO es un fallo de lectura', async () => {
+    // Distinción que sostiene el freno de mano: "no hay fila" es un estado
+    // normal (primer mensaje del cliente) y el análisis tiene que seguir.
     const { getConversationAiState } = await import('./conversation-memory')
-    stateMaybeSingle.mockResolvedValueOnce({ data: null, error: { message: 'boom' } })
-    await expect(getConversationAiState('5491122334455')).resolves.toBeNull()
+    stateMaybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    await expect(getConversationAiState('5491122334455')).resolves.toEqual({ state: null, readFailed: false })
   })
 
-  it('devuelve null (no lanza) si la query tira una excepción', async () => {
+  it('error de Supabase → readFailed=true (no lanza, pero AVISA que no pudo leer)', async () => {
+    const { getConversationAiState } = await import('./conversation-memory')
+    stateMaybeSingle.mockResolvedValueOnce({ data: null, error: { message: 'boom' } })
+    await expect(getConversationAiState('5491122334455')).resolves.toEqual({ state: null, readFailed: true })
+  })
+
+  it('excepción de red → readFailed=true (no lanza, pero AVISA que no pudo leer)', async () => {
     const { getConversationAiState } = await import('./conversation-memory')
     stateMaybeSingle.mockRejectedValueOnce(new Error('network down'))
-    await expect(getConversationAiState('5491122334455')).resolves.toBeNull()
+    await expect(getConversationAiState('5491122334455')).resolves.toEqual({ state: null, readFailed: true })
   })
 })
 

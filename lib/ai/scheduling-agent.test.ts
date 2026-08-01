@@ -223,14 +223,29 @@ const propMaybeSingle = vi.fn()
 const propEq = vi.fn(() => ({ maybeSingle: propMaybeSingle }))
 const propSelect = vi.fn(() => ({ eq: propEq }))
 
-// property_visits: select (findExistingPendingVisit) / update / insert
-const visitsSelectMaybeSingle = vi.fn()
-const visitsLimit = vi.fn(() => ({ maybeSingle: visitsSelectMaybeSingle }))
+// property_visits: select (findExistingPendingVisit) / update / insert.
+// OJO: el select ya NO filtra por `client_phone` en la query — trae las
+// pending_confirmation de la propiedad y compara por teléfono NORMALIZADO en
+// memoria (ver HALLAZGO 8). Por eso la cadena tiene un `eq` menos y termina en
+// `limit` (lista), no en `maybeSingle`.
+const visitsLimitResult = vi.fn()
+const visitsLimit = vi.fn(() => visitsLimitResult())
 const visitsOrder = vi.fn(() => ({ limit: visitsLimit }))
 const visitsEqStatusForSelect = vi.fn(() => ({ order: visitsOrder }))
-const visitsEqPhone = vi.fn(() => ({ eq: visitsEqStatusForSelect }))
-const visitsEqProperty = vi.fn(() => ({ eq: visitsEqPhone }))
+const visitsEqProperty = vi.fn(() => ({ eq: visitsEqStatusForSelect }))
 const visitsSelect = vi.fn(() => ({ eq: visitsEqProperty }))
+
+/** Ninguna visita pending_confirmation para la propiedad. */
+function mockSinVisitaPendiente() {
+  visitsLimitResult.mockResolvedValueOnce({ data: [], error: null })
+}
+/** Una visita pending_confirmation ya propuesta, con el teléfono como lo tipeó quien la cargó. */
+function mockVisitaPendiente(clientPhone: string, scheduledAt = '2026-08-04T18:00:00.000Z') {
+  visitsLimitResult.mockResolvedValueOnce({
+    data: [{ id: 'visit-previa', client_phone: clientPhone, scheduled_at: scheduledAt }],
+    error: null,
+  })
+}
 
 const visitsUpdateMaybeSingle = vi.fn()
 const visitsUpdateSelect = vi.fn(() => ({ maybeSingle: visitsUpdateMaybeSingle }))
@@ -251,17 +266,30 @@ const leadsSelect = vi.fn(() => ({ eq: leadsEq }))
 const stateUpdateEq = vi.fn(() => Promise.resolve({ error: null }))
 const stateUpdate = vi.fn(() => ({ eq: stateUpdateEq }))
 
+// whatsapp_messages: select (¿ya dejamos la nota interna de "visita pendiente"?)
+const notesMaybeSingle = vi.fn()
+const notesLimit = vi.fn(() => ({ maybeSingle: notesMaybeSingle }))
+const notesEqStatus = vi.fn(() => ({ limit: notesLimit }))
+const notesEqProperty = vi.fn(() => ({ eq: notesEqStatus }))
+const notesEqPhone = vi.fn(() => ({ eq: notesEqProperty }))
+const notesSelect = vi.fn(() => ({ eq: notesEqPhone }))
+
 const fromMock = vi.fn((table: string) => {
   if (table === 'ai_agent_settings') return { select: settingsSelect }
   if (table === 'properties') return { select: propSelect }
   if (table === 'property_visits') return { select: visitsSelect, update: visitsUpdate, insert: visitsInsert }
   if (table === 'property_leads') return { select: leadsSelect }
   if (table === 'conversation_ai_state') return { update: stateUpdate }
+  if (table === 'whatsapp_messages') return { select: notesSelect }
   throw new Error(`tabla inesperada en el mock: ${table}`)
 })
 
+// claim_agent_message_slot — la reserva ATÓMICA del cupo (HALLAZGO 4). Devuelve
+// el número de mensaje reservado, o null si no había cupo.
+const rpcMock = vi.fn()
+
 vi.mock('@supabase/supabase-js', () => ({
-  createClient: () => ({ from: fromMock }),
+  createClient: () => ({ from: fromMock, rpc: rpcMock }),
 }))
 
 // `server-only` no existe fuera del build de Next.js (lo importa
@@ -339,6 +367,10 @@ beforeEach(() => {
   vi.clearAllMocks()
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-key'
+  // Defaults del camino feliz: hay cupo y todavía no hay ninguna nota interna.
+  // Los tests que prueban lo contrario los pisan con `mockResolvedValueOnce`.
+  rpcMock.mockResolvedValue({ data: 1, error: null })
+  notesMaybeSingle.mockResolvedValue({ data: null, error: null })
 })
 
 describe('runSchedulingAgent (I/O)', () => {
@@ -346,7 +378,7 @@ describe('runSchedulingAgent (I/O)', () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
     mockSettingsEnabled()
     mockPropertyEnabled()
-    visitsSelectMaybeSingle.mockResolvedValueOnce({ data: null, error: null }) // sin visita previa
+    mockSinVisitaPendiente()
     visitsInsertSingle.mockResolvedValueOnce({ data: { id: 'visit-1' }, error: null })
 
     const result = await runSchedulingAgent({
@@ -369,13 +401,63 @@ describe('runSchedulingAgent (I/O)', () => {
     expect(sentArgs.text).toContain('Anoté tu visita')
     expect(notifyVisitProposedMock).toHaveBeenCalledWith('visit-1')
     expect(advancePipelineStateMock).toHaveBeenCalledWith('lead-1', 'visit_scheduled')
-    expect(stateUpdate).toHaveBeenCalledWith(expect.objectContaining({ agent_messages_sent: 1 }))
+    // El cupo se reserva con la RPC atómica, NO con un UPDATE leído-y-escrito.
+    expect(rpcMock).toHaveBeenCalledWith('claim_agent_message_slot', { p_phone: '5491122334455', p_max: 3 })
+  })
+
+  it('ESCENARIO 1bis — el WhatsApp al cliente sale DESPUÉS de guardar y de avisarle al equipo', async () => {
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    mockPropertyEnabled()
+    mockSinVisitaPendiente()
+    const orden: string[] = []
+    visitsInsertSingle.mockImplementationOnce(async () => {
+      orden.push('insert')
+      return { data: { id: 'visit-1' }, error: null }
+    })
+    notifyVisitProposedMock.mockImplementationOnce(async () => {
+      orden.push('notify')
+    })
+    sendWhatsappTextMock.mockImplementationOnce(async () => {
+      orden.push('send')
+      return { ok: true, skipped: true }
+    })
+
+    await runSchedulingAgent({ ...BASE_INPUT, wantsToSchedule: true, proposedSlot: 'mañana a la tarde' })
+
+    expect(orden).toEqual(['insert', 'notify', 'send'])
+  })
+
+  it('HALLAZGO 3 — si el guardado de la visita FALLA, no se le confirma nada al cliente', async () => {
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    mockPropertyEnabled()
+    mockSinVisitaPendiente()
+    visitsInsertSingle.mockResolvedValueOnce({ data: null, error: { message: 'permiso denegado' } })
+
+    const result = await runSchedulingAgent({
+      ...BASE_INPUT,
+      wantsToSchedule: true,
+      proposedSlot: 'mañana a la tarde',
+    })
+
+    // Lo que NO puede pasar: el cliente se presenta el martes y no lo espera nadie.
+    expect(sendWhatsappTextMock).not.toHaveBeenCalled()
+    expect(notifyVisitProposedMock).not.toHaveBeenCalled()
+    expect(rpcMock).not.toHaveBeenCalled() // no se gasta cupo si no se manda nada
+    expect(result.action).toBe('noop')
+    // Queda rastro interno para que un asesor lo vea en el Inbox y lo coordine a mano.
+    expect(logOutboundMock).toHaveBeenCalledTimes(1)
+    const noteArgs = logOutboundMock.mock.calls[0][0]
+    expect(noteArgs.status).toBe('agent_visit_failed')
+    expect(noteArgs.bodyPreview).toContain('permiso denegado')
   })
 
   it('ESCENARIO 2 — quiere agendar sin decir cuándo: propone franjas, NO crea visita', async () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
     mockSettingsEnabled()
     mockPropertyEnabled()
+    mockSinVisitaPendiente()
 
     const result = await runSchedulingAgent({
       ...BASE_INPUT,
@@ -388,7 +470,7 @@ describe('runSchedulingAgent (I/O)', () => {
     expect(sendWhatsappTextMock).toHaveBeenCalledTimes(1)
     const sentArgs = sendWhatsappTextMock.mock.calls[0][0]
     expect(sentArgs.text).toContain('tengo estas opciones')
-    expect(stateUpdate).toHaveBeenCalledWith(expect.objectContaining({ agent_messages_sent: 1 }))
+    expect(rpcMock).toHaveBeenCalledWith('claim_agent_message_slot', { p_phone: '5491122334455', p_max: 3 })
   })
 
   it('ESCENARIO 3 — mensaje ambiguo (wantsToSchedule=false): no manda nada', async () => {
@@ -428,6 +510,149 @@ describe('runSchedulingAgent (I/O)', () => {
     expect(noteArgs.status).toBe('agent_handoff')
     expect(noteArgs.bodyPreview).toContain('tope de 3 mensajes')
     expect(stateUpdate).toHaveBeenCalledWith(expect.objectContaining({ agent_handed_off: true }))
+  })
+
+  // -------------------------------------------------------------------------
+  // HALLAZGO 2 — con una visita YA propuesta, el agente se calla. Sin esto, un
+  // "gracias" al día siguiente reinterpretaba "mañana a la tarde" contra la
+  // fecha de HOY y le CORRÍA la visita un día al cliente.
+  // -------------------------------------------------------------------------
+  it('HALLAZGO 2 — ya hay una visita pendiente para esa propiedad: no manda ni crea nada, deja UNA nota interna', async () => {
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    mockPropertyEnabled()
+    mockVisitaPendiente('+5491122334455')
+
+    const result = await runSchedulingAgent({
+      ...BASE_INPUT,
+      wantsToSchedule: true,
+      proposedSlot: 'mañana a la tarde', // al día siguiente esto sería OTRA fecha
+    })
+
+    expect(result.action).toBe('noop')
+    expect(sendWhatsappTextMock).not.toHaveBeenCalled()
+    expect(visitsInsert).not.toHaveBeenCalled()
+    expect(visitsUpdate).not.toHaveBeenCalled()
+    expect(rpcMock).not.toHaveBeenCalled()
+    expect(logOutboundMock).toHaveBeenCalledTimes(1)
+    const noteArgs = logOutboundMock.mock.calls[0][0]
+    expect(noteArgs.status).toBe('agent_visit_pending')
+    expect(noteArgs.aiGenerated).toBe(true)
+    expect(noteArgs.bodyPreview).toContain('ya está propuesta')
+  })
+
+  it('HALLAZGO 2 — la nota interna NO se repite en cada mensaje del cliente', async () => {
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    mockPropertyEnabled()
+    mockVisitaPendiente('+5491122334455')
+    notesMaybeSingle.mockResolvedValueOnce({ data: { id: 'nota-previa' }, error: null }) // ya la dejamos antes
+
+    const result = await runSchedulingAgent({
+      ...BASE_INPUT,
+      wantsToSchedule: true,
+      proposedSlot: 'el jueves a la tarde',
+    })
+
+    expect(result.action).toBe('noop')
+    expect(logOutboundMock).not.toHaveBeenCalled()
+    expect(sendWhatsappTextMock).not.toHaveBeenCalled()
+  })
+
+  it('HALLAZGO 8 — encuentra la visita que el cliente creó desde /v/<token> con el teléfono tipeado a mano', async () => {
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    mockPropertyEnabled()
+    // Así queda guardado cuando lo tipea el cliente en el formulario del recorrido.
+    mockVisitaPendiente('11 2233-4455')
+
+    const result = await runSchedulingAgent({
+      ...BASE_INPUT,
+      wantsToSchedule: true,
+      proposedSlot: 'mañana a la tarde',
+    })
+
+    // Antes del arreglo esto creaba una SEGUNDA visita contradictoria + un
+    // segundo mail al equipo, porque comparaba el texto crudo contra el E.164.
+    expect(visitsInsert).not.toHaveBeenCalled()
+    expect(notifyVisitProposedMock).not.toHaveBeenCalled()
+    expect(result.action).toBe('noop')
+  })
+
+  it('HALLAZGO 8 — un teléfono de OTRA persona con sufijo parecido NO cuenta como la misma visita', async () => {
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    mockPropertyEnabled()
+    mockVisitaPendiente('11 5555-4455') // mismos últimos 4 dígitos, otro número
+    visitsInsertSingle.mockResolvedValueOnce({ data: { id: 'visit-nueva' }, error: null })
+
+    const result = await runSchedulingAgent({
+      ...BASE_INPUT,
+      wantsToSchedule: true,
+      proposedSlot: 'mañana a la tarde',
+    })
+
+    expect(result).toEqual({ action: 'confirm_visit' })
+    expect(visitsInsert).toHaveBeenCalledTimes(1)
+  })
+
+  // -------------------------------------------------------------------------
+  // HALLAZGO 4 — el cupo se RESERVA antes de mandar. Dos webhooks concurrentes
+  // leían `agent_messages_sent = 0` los dos y mandaban el mismo texto dos veces.
+  // -------------------------------------------------------------------------
+  it('HALLAZGO 4 — sin cupo (la RPC no devuelve fila): no manda nada', async () => {
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    mockPropertyEnabled()
+    mockSinVisitaPendiente()
+    rpcMock.mockResolvedValueOnce({ data: null, error: null }) // la carrera la ganó el otro webhook
+
+    const result = await runSchedulingAgent({
+      ...BASE_INPUT,
+      wantsToSchedule: true,
+      proposedSlot: null,
+    })
+
+    expect(sendWhatsappTextMock).not.toHaveBeenCalled()
+    expect(result.action).toBe('noop')
+  })
+
+  it('HALLAZGO 4 — si la RPC falla (o no existe todavía), fail-closed: no manda nada', async () => {
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    mockPropertyEnabled()
+    mockSinVisitaPendiente()
+    rpcMock.mockResolvedValueOnce({ data: null, error: { message: 'function does not exist' } })
+
+    const result = await runSchedulingAgent({
+      ...BASE_INPUT,
+      wantsToSchedule: true,
+      proposedSlot: null,
+    })
+
+    expect(sendWhatsappTextMock).not.toHaveBeenCalled()
+    expect(result.action).toBe('noop')
+  })
+
+  it('HALLAZGO 4 — con cupo, manda (y el cupo se reserva ANTES del envío)', async () => {
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    mockPropertyEnabled()
+    mockSinVisitaPendiente()
+    const orden: string[] = []
+    rpcMock.mockImplementationOnce(async () => {
+      orden.push('claim')
+      return { data: 1, error: null }
+    })
+    sendWhatsappTextMock.mockImplementationOnce(async () => {
+      orden.push('send')
+      return { ok: true, skipped: true }
+    })
+
+    const result = await runSchedulingAgent({ ...BASE_INPUT, wantsToSchedule: true, proposedSlot: null })
+
+    expect(result).toEqual({ action: 'propose_slots' })
+    expect(orden).toEqual(['claim', 'send'])
   })
 
   it('agentHandedOff ya en true: nunca vuelve a evaluar nada, no manda nada', async () => {

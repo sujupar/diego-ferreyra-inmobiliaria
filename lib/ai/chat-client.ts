@@ -56,6 +56,19 @@ interface ChatCompletionInput {
    * request importa (ver `lib/ai/analyze-conversation.ts`).
    */
   maxTokens?: number
+  /**
+   * Techo de TIEMPO de la llamada, en ms. OPCIONAL a propósito: sin él el
+   * comportamiento es el de siempre (esperar lo que haga falta), que es lo que
+   * necesitan los llamadores de fondo (carruseles, avatares, descripciones de
+   * portal) — corren fuera de un webhook y tardar 40s no rompe nada.
+   *
+   * Pasalo cuando la llamada viva DENTRO de una función de Netlify con un
+   * tiempo de respuesta que importa: ahí un proveedor colgado se lleva puesta
+   * la función entera antes de que podamos responder. Caso concreto: el
+   * análisis de conversación dentro del POST del webhook de WhatsApp — si Meta
+   * no recibe el 200, reintenta en loop y puede deshabilitar el webhook.
+   */
+  timeoutMs?: number
 }
 
 export interface ChatCompletionResult {
@@ -120,6 +133,10 @@ export async function chatCompletion(
     body.max_tokens = input.maxTokens
   }
 
+  // Sin `timeoutMs` NO se manda `signal` — así los llamadores de siempre
+  // conservan exactamente el comportamiento anterior.
+  const signal = input.timeoutMs ? AbortSignal.timeout(input.timeoutMs) : undefined
+
   const res = await fetch(`${config.baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -127,6 +144,7 @@ export async function chatCompletion(
       authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
+    signal,
   })
   if (!res.ok) {
     const text = await res.text()
