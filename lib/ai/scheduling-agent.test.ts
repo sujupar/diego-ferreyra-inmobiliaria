@@ -7,6 +7,8 @@ import {
   buildProposeMessage,
   buildConfirmMessage,
   buildHandoffNote,
+  AGENT_NOTE_STATUSES,
+  AGENT_NOTE_STATUS_PREFIX,
   type SchedulingContext,
 } from './scheduling-agent'
 
@@ -62,6 +64,171 @@ describe('parseProposedSlot', () => {
 
   it('null/"" no explota', () => {
     expect(parseProposedSlot('', LUNES)).toBeNull()
+  })
+
+  // Las cuatro familias de frases donde el parser CONFIRMABA un día u horario
+  // que el cliente no había pedido. Salieron de correr el parser real contra
+  // 118 frases de castellano rioplatense; son las que le llegaban al cliente
+  // como "Anoté tu visita para …". Todas tienen que preguntar, no confirmar.
+  it.each([
+    'el jueves te confirmo más tarde',
+    'más tarde te digo, quizá el martes',
+    'se me hizo tarde, ¿el viernes?',
+    'el lunes, tarde o temprano',
+    'llego tarde el martes',
+    'mañana, más tarde te confirmo la hora',
+    'me viene bien el jueves, pero llego un poco tarde',
+    'el martes, aviso más tarde la hora',
+    'perdón por contestar tarde, el jueves',
+  ])('"tarde" como adverbio no es la franja de la tarde: %s', (frase) => {
+    expect(parseProposedSlot(frase, LUNES)).toBeNull()
+  })
+
+  it.each([
+    'mañana o pasado a la tarde',
+    'pasado o el viernes a la tarde',
+  ])('un "pasado" suelto es un día que no podemos resolver: %s', (frase) => {
+    expect(parseProposedSlot(frase, LUNES)).toBeNull()
+  })
+
+  it.each([
+    'la semana que viene, el martes a la tarde',
+    'el martes que viene a la tarde',
+    'el jueves de la semana que viene a la tarde',
+    'el martes de la otra semana a la tarde',
+    'dentro de 15 días, el jueves a la tarde',
+  ])('otra semana: confirmaba el día de ESTA semana, una semana antes: %s', (frase) => {
+    expect(parseProposedSlot(frase, LUNES)).toBeNull()
+  })
+
+  it.each(['el jueves a las 8', 'a las 8 el jueves'])(
+    '"a las 8" es tan ambiguo como "a las 7" (8am/8pm): %s',
+    (frase) => {
+      expect(parseProposedSlot(frase, LUNES)).toBeNull()
+    },
+  )
+
+  // Contrapartes: lo que SÍ tiene que seguir confirmando. Sin esto, los
+  // arreglos de arriba podrían haber dejado al agente mudo para todo.
+  it('un "tarde" adverbial NO tapa la franja dicha con preposición', () => {
+    expect(parseProposedSlot('llego un poco tarde, el martes a la tarde', LUNES)).toEqual({
+      dateISO: '2026-08-04',
+      franja: 'tarde',
+    })
+  })
+
+  it('"a las 8 de la mañana" sigue andando: la franja la fija "de la mañana", no el número', () => {
+    expect(parseProposedSlot('el jueves a las 8 de la mañana', LUNES)).toEqual({
+      dateISO: '2026-08-06',
+      franja: 'manana',
+    })
+  })
+
+  it('"pasado mañana" completo sigue resolviendo', () => {
+    expect(parseProposedSlot('pasado mañana a la tarde', LUNES)).toEqual({
+      dateISO: '2026-08-05',
+      franja: 'tarde',
+    })
+  })
+})
+
+/**
+ * El peor bug posible de esta pieza: el parser leía "manana" + "a la tarde"
+ * dentro de un "NO puedo mañana a la tarde" y el agente contestaba "Anoté tu
+ * visita para mañana por la tarde" — le agendaba justo el momento que el
+ * cliente acababa de descartar. El prompt del análisis pide el slot "textual tal
+ * cual lo dijo", así que la negación llega entera hasta acá.
+ *
+ * Ante negación NUNCA se confirma: `null` hace que el agente vuelva a ofrecer
+ * franjas concretas, que es lo que corresponde responderle a un "no puedo".
+ */
+describe('parseProposedSlot — negaciones (nunca confirma lo que el cliente descartó)', () => {
+  it.each([
+    'no puedo mañana a la tarde',
+    'mañana a la tarde no puedo',
+    'no me sirve el martes a la tarde',
+    'no me viene bien mañana a la mañana',
+    'no llego el jueves al mediodía',
+    'no voy a poder mañana a la tarde',
+    'imposible el jueves a la tarde',
+    'ni el martes ni el miércoles a la tarde',
+    'cualquier día menos el jueves a la tarde',
+    'salvo el viernes, cualquiera a la tarde',
+    'tampoco puedo el jueves a la tarde',
+    'nunca puedo el martes a la tarde',
+    'prefiero que no sea mañana a la tarde',
+  ])('"%s" → null', texto => {
+    expect(parseProposedSlot(texto, LUNES)).toBeNull()
+  })
+
+  it('mixta ("el martes no, el miércoles sí") → null: resolver eso es un juicio, y este parser no juzga', () => {
+    expect(parseProposedSlot('el martes no, el miércoles sí a la tarde', LUNES)).toBeNull()
+  })
+
+  it('"más o menos" NO es una negación: sigue siendo un horario válido', () => {
+    // La palabra "menos" descarta, pero la locución no. Si esto devolviera null,
+    // estaríamos volviendo a preguntar un día que el cliente ya eligió.
+    expect(parseProposedSlot('mañana a la tarde, más o menos', LUNES)).toEqual({ dateISO: '2026-08-04', franja: 'tarde' })
+  })
+})
+
+/**
+ * El otro modo de confirmar algo que el cliente no dijo: mapear a una franja un
+ * momento que ninguna franja cubre. `FRANJA_HORA` solo conoce mañana (9),
+ * mediodía (12) y tarde (15).
+ */
+describe('parseProposedSlot — momentos sin franja posible', () => {
+  it('"el jueves a las 9 de la noche" → null (antes leía el 9 y confirmaba jueves a la MAÑANA)', () => {
+    expect(parseProposedSlot('el jueves a las 9 de la noche', LUNES)).toBeNull()
+  })
+
+  it.each(['mañana a la noche', 'el jueves a las 21', 'mañana a las 23', 'mañana a las 3 de la madrugada'])(
+    '"%s" → null',
+    texto => {
+      expect(parseProposedSlot(texto, LUNES)).toBeNull()
+    },
+  )
+
+  it('"mañana a las 7" → null: sin aclarar, 7 tanto puede ser de la mañana como de la tarde', () => {
+    expect(parseProposedSlot('mañana a las 7', LUNES)).toBeNull()
+  })
+
+  it('cuando el cliente SÍ aclara, manda la franja nombrada y no la hora suelta', () => {
+    expect(parseProposedSlot('mañana a las 5 de la tarde', LUNES)).toEqual({ dateISO: '2026-08-04', franja: 'tarde' })
+  })
+
+  it('un saludo no elige la franja: "buenas tardes, el jueves" → null', () => {
+    expect(parseProposedSlot('buenas tardes, el jueves', LUNES)).toBeNull()
+  })
+
+  it('...y tampoco arruina un slot bueno: "buenas noches, mañana a la tarde" sigue siendo válido', () => {
+    expect(parseProposedSlot('buenas noches, mañana a la tarde', LUNES)).toEqual({
+      dateISO: '2026-08-04',
+      franja: 'tarde',
+    })
+  })
+})
+
+/**
+ * Tercer modo: el cliente puso VARIAS opciones sobre la mesa. Elegir una por él
+ * es confirmarle algo que no dijo — antes ganaba la primera de `WEEKDAYS`, que
+ * ni siquiera es la que el cliente nombró primero.
+ */
+describe('parseProposedSlot — varias opciones sobre la mesa', () => {
+  it('"el martes o el jueves a la tarde" → null', () => {
+    expect(parseProposedSlot('el martes o el jueves a la tarde', LUNES)).toBeNull()
+  })
+
+  it('"el miércoles o el martes a la tarde" → null (antes confirmaba el MARTES, por el orden de la lista)', () => {
+    expect(parseProposedSlot('el miércoles o el martes a la tarde', LUNES)).toBeNull()
+  })
+
+  it('"mañana a la mañana o a la tarde" → null (dos franjas, ninguna elegida)', () => {
+    expect(parseProposedSlot('mañana a la mañana o a la tarde', LUNES)).toBeNull()
+  })
+
+  it('decir lo mismo dos veces NO es ambiguo: "mañana martes a la tarde" resuelve normal', () => {
+    expect(parseProposedSlot('mañana martes a la tarde', LUNES)).toEqual({ dateISO: '2026-08-04', franja: 'tarde' })
   })
 })
 
@@ -166,6 +333,13 @@ describe('decideSchedulingAction', () => {
 
   it('quiere agendar pero el slot no se pudo parsear (texto raro) → propose_slots, no confirma a ciegas', () => {
     const result = decideSchedulingAction(ctx({ proposedSlot: 'cuando sea, no tengo drama' }))
+    expect(result.type).toBe('propose_slots')
+  })
+
+  it('un "no puedo mañana a la tarde" NO termina en confirm_visit: se vuelve a ofrecer días', () => {
+    // Antes devolvía `confirm_visit` para el martes a la tarde — el momento
+    // exacto que el cliente acababa de descartar.
+    const result = decideSchedulingAction(ctx({ proposedSlot: 'no puedo mañana a la tarde' }))
     expect(result.type).toBe('propose_slots')
   })
 })
@@ -1140,6 +1314,29 @@ describe('runSchedulingAgent (I/O)', () => {
     expect(fromMock).not.toHaveBeenCalled()
   })
 
+  it('un "no puedo mañana a la tarde" NO crea visita ni le confirma nada: le vuelve a ofrecer días', async () => {
+    // El bug completo, de punta a punta: el cliente descarta un momento y el
+    // agente se lo agendaba igual ("Anoté tu visita para mañana por la tarde"),
+    // con fila en `property_visits` y mail al equipo incluidos.
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    mockPropertyEnabled()
+    mockSinVisitaPendiente()
+
+    const result = await runSchedulingAgent({
+      ...BASE_INPUT,
+      wantsToSchedule: true,
+      proposedSlot: 'no puedo mañana a la tarde',
+    })
+
+    expect(result).toEqual({ action: 'propose_slots' })
+    expect(visitsInsert).not.toHaveBeenCalled()
+    expect(notifyVisitProposedMock).not.toHaveBeenCalled()
+    const sentArgs = sendWhatsappTextMock.mock.calls[0][0]
+    expect(sentArgs.text).not.toContain('Anoté tu visita')
+    expect(sentArgs.text).toContain('tengo estas opciones')
+  })
+
   it('nunca lanza: una excepción interna cae a noop', async () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
     settingsMaybeSingle.mockRejectedValueOnce(new Error('network down'))
@@ -1147,5 +1344,38 @@ describe('runSchedulingAgent (I/O)', () => {
     await expect(
       runSchedulingAgent({ ...BASE_INPUT, wantsToSchedule: true, proposedSlot: 'mañana a la tarde' }),
     ).resolves.toEqual({ action: 'noop', reason: 'excepción interna' })
+  })
+})
+
+/**
+ * Contrato con el Inbox. `components/inbox/MessageBubble.tsx` decide qué fila
+ * SALIENTE es una nota interna —y no un mensaje que salió hacia el cliente—
+ * mirando el prefijo `agent_`, porque no puede importar este módulo (es
+ * `'use client'` y acá cuelga Supabase + la cadena de mails con
+ * `import 'server-only'`).
+ *
+ * Este test es la mitad del contrato que vive de este lado: si mañana alguien
+ * agrega un status de nota sin el prefijo, el Inbox lo pintaría con el verde de
+ * un mensaje enviado —que es exactamente el bug que teníamos con
+ * `agent_visit_lookup_failed` y `agent_propose_unsent`— y esto se pone en rojo
+ * antes.
+ */
+describe('AGENT_NOTE_STATUSES (contrato con el Inbox)', () => {
+  it('todos los status de nota interna arrancan con el prefijo que mira el Inbox', () => {
+    for (const status of AGENT_NOTE_STATUSES) {
+      expect(status.startsWith(AGENT_NOTE_STATUS_PREFIX)).toBe(true)
+    }
+  })
+
+  it('están los SEIS que el agente escribe, sin repetidos', () => {
+    expect(new Set(AGENT_NOTE_STATUSES).size).toBe(AGENT_NOTE_STATUSES.length)
+    expect([...AGENT_NOTE_STATUSES].sort()).toEqual([
+      'agent_handoff',
+      'agent_propose_unsent',
+      'agent_visit_failed',
+      'agent_visit_lookup_failed',
+      'agent_visit_pending',
+      'agent_visit_unconfirmed',
+    ])
   })
 })

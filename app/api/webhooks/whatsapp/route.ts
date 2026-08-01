@@ -196,6 +196,16 @@ async function persistInbound(supabase: ReturnType<typeof admin>, msg: InboundMe
  * se persisten en ninguna tabla — así que esto NO puede separarse en un
  * proceso aparte que lea el estado más tarde. Nunca lanza: un fallo acá no
  * puede tumbar el 200 a Meta.
+ *
+ * NO hay acá ningún chequeo del interruptor `ai_agent_settings.analysis_enabled`,
+ * y es a propósito: vive adentro de `analyzeConversation`
+ * (`lib/ai/analyze-conversation.ts`), que es el chokepoint por donde pasa la
+ * única llamada al modelo. Ponerlo TAMBIÉN acá sería cubrir un solo caller —
+ * este— y dejar la falsa sensación de que el freno está puesto en el borde: el
+ * día que alguien agregue un cron o un botón de "re-analizar", ese camino
+ * llamaría al modelo igual. Un solo lugar, el más profundo, sin copias que se
+ * desincronicen. Con el análisis apagado, `runConversationAnalysis` devuelve
+ * `analyzed: false` y el `return` de abajo corta antes del agente que escribe.
  */
 async function runAiPipeline(ctx: InboundContext): Promise<void> {
   try {

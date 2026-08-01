@@ -105,12 +105,76 @@ function normalizeText(s: string): string {
     .toLowerCase()
 }
 
-function matchWeekday(text: string): number | null {
-  for (const w of WEEKDAYS) {
-    if (new RegExp(`\\b${w.name}\\b`).test(text)) return w.dow
-  }
-  return null
-}
+/**
+ * Marcas de NEGACIÓN del castellano rioplatense. El prompt del análisis
+ * (`analyze-conversation.ts`) le pide al modelo el slot "textual tal cual lo
+ * dijo" el cliente, así que un "no puedo mañana a la tarde" llega ENTERO hasta
+ * acá: el parser veía "manana" + "a la tarde", no miraba el "no" y el agente
+ * contestaba "Anoté tu visita para mañana por la tarde" — le agendaba justo el
+ * momento en el que el cliente dijo que NO podía. Es el peor error que puede
+ * cometer esta pieza.
+ *
+ * Resolver una negación es un JUICIO ("el martes no, el miércoles sí": ¿qué
+ * franja?, ¿el miércoles de esta semana?) y este parser no hace juicios. Ante
+ * cualquier negación devuelve `null`, que hace que el agente vuelva a ofrecer
+ * franjas concretas — exactamente lo que corresponde responderle a un "no
+ * puedo".
+ */
+const NEGACION_RE = /\b(no|ni|nunca|tampoco|imposible|salvo|excepto|menos|evitar|evito)\b/
+
+/**
+ * Locuciones que CONTIENEN una palabra de las listas de abajo sin negar ni
+ * nombrar una franja: "mañana a la tarde, más o menos" no es una negación, y
+ * "buenas tardes, el jueves" no es una visita a la tarde. Se sacan del texto
+ * antes de mirar nada — si no, el saludo terminaba eligiendo la franja.
+ */
+const NO_NIEGAN_RE = /\b(mas o menos|buenas? noches?|buenas? tardes?|buenos? dias?)\b/g
+
+/**
+ * Horas del día que NO tienen franja en este sistema: `FRANJA_HORA` solo
+ * conoce mañana (9), mediodía (12) y tarde (15). "el jueves a las 9 de la
+ * noche" leía el "9" y confirmaba "por la mañana" — doce horas de diferencia
+ * con lo que el cliente pidió. Sin franja honesta, se vuelve a preguntar.
+ */
+const NOCTURNO_RE = /\b(noche|nochecita|medianoche|madrugada)\b/
+
+/**
+ * "tarde" como ADVERBIO ("más tarde", "llego tarde", "perdón por contestar
+ * tarde", "tarde o temprano"), que en castellano rioplatense no tiene nada que
+ * ver con la franja horaria. Era el error más frecuente del parser: cualquier
+ * día de semana + un "tarde" suelto disparaba la confirmación, así que "el
+ * jueves te confirmo más tarde" se contestaba con "Anoté tu visita para el
+ * jueves 6/8 por la tarde" — el cliente estaba pidiendo TIEMPO, no un horario.
+ *
+ * Se aplica DESPUÉS de la forma con preposición ("a la tarde", "por la tarde"),
+ * que es la única en la que "tarde" sí nombra la franja: así "llego un poco
+ * tarde el martes a la tarde" sigue confirmando bien, y solo se descarta el
+ * "tarde" que quedó suelto.
+ */
+const TARDE_ADVERBIAL_RE =
+  /\b(?:(?:mas|muy|un poco|medio|re|bastante|algo)\s+tarde|tarde o temprano|se (?:me|nos) hizo tarde|(?:lleg|contest|respond|avis|escrib|confirm|dig)\w*(?:\s+\w+){0,2}\s+tarde)\b/g
+
+/**
+ * Referencias a una semana que no es esta. El parser resuelve "el martes" como
+ * el PRÓXIMO martes, así que "el martes de la semana que viene" se confirmaba
+ * una semana antes de lo pedido — el cliente se planta en la propiedad el día
+ * equivocado. Calcular "la semana que viene" tiene reglas culturales que este
+ * parser no va a acertar (¿el viernes que viene es dentro de 7 días o el de
+ * esta semana?), así que se pregunta.
+ */
+const OTRA_SEMANA_RE = /\b(que viene|proxim\w+|la otra semana|la semana entrante|dentro de|en \d+\s*(?:dias?|semanas?))\b/
+
+/**
+ * Horario en el que se visita una propiedad. Una hora suelta fuera de este
+ * rango es ambigua ("a las 7" tanto puede ser 7 de la mañana como 7 de la
+ * tarde) o directamente no se puede agendar: ante la duda, se pregunta.
+ */
+// El piso es 9 y no 8 a propósito: "a las 8" es tan ambiguo como "a las 7"
+// (8 de la mañana / 8 de la noche) y se confirmaba en silencio como la mañana.
+// Con "a las 8 de la mañana" el cliente lo dice explícito y esa forma sigue
+// funcionando — la franja la fija "de la mañana", no el número.
+const HORA_MIN_VISITA = 9
+const HORA_MAX_VISITA = 19
 
 /** Próxima fecha (>= mañana) que cae en `targetDow`. Si hoy ES ese día, salta a la semana que viene. */
 function nextWeekday(todayISO: string, targetDow: number): string {
@@ -121,7 +185,12 @@ function nextWeekday(todayISO: string, targetDow: number): string {
   return sumarDias(todayISO, 7) // inalcanzable — todo dow aparece dentro de 7 días
 }
 
-/** Hora → franja, mismo bucket que `franjaLabelFromDate` de `visit-proposed.ts`. */
+/**
+ * Hora → franja, mismo bucket que `franjaLabelFromDate` de `visit-proposed.ts`.
+ * Solo tiene sentido DENTRO de `HORA_MIN_VISITA`..`HORA_MAX_VISITA`: quien
+ * llama valida el rango antes, porque acá cualquier número devuelve una franja
+ * (las 23 caían en "tarde" y las 3 de la madrugada en "mañana").
+ */
 function franjaFromHour(hour: number): Franja {
   if (hour <= 10) return 'manana'
   if (hour <= 13) return 'mediodia'
@@ -138,60 +207,84 @@ export interface ParsedSlot {
  * "el sábado a las 10", "pasado mañana por la mañana"). `null` si no puede
  * determinar AMBOS con confianza — eso es una señal para volver a preguntar
  * con opciones concretas, no para adivinar.
+ *
+ * TRES formas de "no puedo determinarlo con confianza", y las tres devuelven
+ * `null` porque confirmar de más es infinitamente más caro que preguntar de
+ * más (el cliente se planta en la propiedad un día que no eligió):
+ *   1. NEGACIÓN en el texto (`NEGACION_RE`) — el cliente está descartando, no
+ *      eligiendo.
+ *   2. Un momento sin franja posible (`NOCTURNO_RE`, horas fuera del horario de
+ *      visitas) — no hay a qué mapearlo sin inventar.
+ *   3. VARIAS opciones sobre la mesa ("el martes o el jueves", "a la mañana o a
+ *      la tarde") — elegir por el cliente es confirmarle algo que no dijo.
+ *      Antes ganaba la primera de la lista: "el miércoles o el martes" se
+ *      confirmaba como martes solo porque martes viene antes en `WEEKDAYS`.
  */
 export function parseProposedSlot(rawText: string, now: Date): ParsedSlot | null {
-  let working = normalizeText(rawText)
-  let franja: Franja | null = null
+  let working = normalizeText(rawText).replace(NO_NIEGAN_RE, ' ')
+
+  if (NEGACION_RE.test(working)) return null
+  if (NOCTURNO_RE.test(working)) return null
+  if (OTRA_SEMANA_RE.test(working)) return null
+
+  // Se junta TODA franja nombrada, no la primera: si el texto nombra más de
+  // una, el cliente no eligió (ver punto 3 del comentario de arriba).
+  const franjas = new Set<Franja>()
 
   // Franja explícita ligada a "a la"/"por la"/"de la"/"en la" — se consume del
   // texto ANTES de buscar el día, porque "mañana" es AMBIGUO en castellano
   // (día siguiente vs. franja de la mañana) y este patrón desambigua.
-  const franjaConPreposicion: [RegExp, Franja][] = [
-    [/(a la|por la|de la|en la)\s+tarde/, 'tarde'],
-    [/(a la|por la|de la|en la)\s+manana/, 'manana'],
-  ]
-  for (const [re, f] of franjaConPreposicion) {
-    const m = working.match(re)
-    if (m) {
-      franja = f
-      working = working.replace(re, ' ')
-      break
+  working = working.replace(/\b(?:a|por|de|en)\s+la\s+(tarde|manana)\b/g, (_m, f: string) => {
+    franjas.add(f === 'tarde' ? 'tarde' : 'manana')
+    return ' '
+  })
+  working = working.replace(/\bmedio\s?dia\b/g, () => {
+    franjas.add('mediodia')
+    return ' '
+  })
+  // Los "tarde" adverbiales se sacan ANTES de que el `tarde` suelto de abajo
+  // los tome por una franja. Ver `TARDE_ADVERBIAL_RE`.
+  working = working.replace(TARDE_ADVERBIAL_RE, ' ')
+  working = working.replace(/\btarde\b/g, () => {
+    franjas.add('tarde')
+    return ' '
+  })
+
+  // La hora solo define la franja cuando el cliente NO la nombró: en "a las 5
+  // de la tarde" manda la tarde, no las 5 de la mañana.
+  if (franjas.size === 0) {
+    for (const m of working.matchAll(/\ba\s*las?\s*(\d{1,2})/g)) {
+      const hora = parseInt(m[1], 10)
+      if (hora < HORA_MIN_VISITA || hora > HORA_MAX_VISITA) return null
+      franjas.add(franjaFromHour(hora))
     }
   }
-  if (!franja && /mediodia|medio dia/.test(working)) {
-    franja = 'mediodia'
-    working = working.replace(/mediodia|medio dia/, ' ')
-  }
-  if (!franja && /\btarde\b/.test(working)) {
-    franja = 'tarde'
-    working = working.replace(/\btarde\b/, ' ')
-  }
-  if (!franja) {
-    const horaMatch = working.match(/\ba\s*las?\s*(\d{1,2})/)
-    if (horaMatch) {
-      franja = franjaFromHour(parseInt(horaMatch[1], 10))
-      working = working.replace(horaMatch[0], ' ')
-    }
-  }
-  if (!franja && /temprano/.test(working)) franja = 'manana'
+  if (franjas.size === 0 && /\btemprano\b/.test(working)) franjas.add('manana')
 
   const today = hoyEnArgentina(now)
-  let dateISO: string | null = null
-  if (/pasado\s+manana/.test(working)) {
-    dateISO = sumarDias(today, 2)
-  } else {
-    const weekdayDow = matchWeekday(working)
-    if (weekdayDow !== null) {
-      dateISO = nextWeekday(today, weekdayDow)
-    } else if (/\bmanana\b/.test(working)) {
-      dateISO = sumarDias(today, 1)
-    }
-    // "hoy" deliberadamente NO resuelve una fecha: el sistema nunca agenda
-    // para el mismo día (mismo piso que `/v/[token]/schedule`, MIN = mañana).
+  const dias = new Set<string>()
+  working = working.replace(/\bpasado\s+manana\b/g, () => {
+    dias.add(sumarDias(today, 2))
+    return ' '
+  })
+  // Un "pasado" que sobrevivió al reemplazo de arriba es una referencia a un
+  // día que no podemos resolver: puede ser "pasado" a secas (= pasado mañana,
+  // como en "mañana o pasado") o mirar al PASADO ("el martes pasado"). En el
+  // primer caso el cliente encima está ofreciendo DOS días, así que elegir uno
+  // es confirmarle algo que no dijo. Se pregunta.
+  if (/\bpasado\b/.test(working)) return null
+  for (const w of WEEKDAYS) {
+    if (new RegExp(`\\b${w.name}\\b`).test(working)) dias.add(nextWeekday(today, w.dow))
   }
+  if (/\bmanana\b/.test(working)) dias.add(sumarDias(today, 1))
+  // "hoy" deliberadamente NO resuelve una fecha: el sistema nunca agenda
+  // para el mismo día (mismo piso que `/v/[token]/schedule`, MIN = mañana).
 
-  if (!dateISO || !franja) return null
-  return { dateISO, franja }
+  // Un solo día y una sola franja, o no hay nada que confirmar. El Set también
+  // resuelve gratis los casos redundantes ("mañana martes a la tarde": las dos
+  // referencias caen en la MISMA fecha, así que sigue siendo una sola).
+  if (dias.size !== 1 || franjas.size !== 1) return null
+  return { dateISO: [...dias][0], franja: [...franjas][0] }
 }
 
 // ---------------------------------------------------------------------------
@@ -437,12 +530,51 @@ export interface RunSchedulingAgentResult {
   reason?: string
 }
 
+/**
+ * Prefijo de TODOS los status de nota interna del agente en `whatsapp_messages`
+ * — filas SALIENTES que NUNCA se le mandan al cliente.
+ *
+ * Es el contrato con el Inbox (`components/inbox/MessageBubble.tsx`), y es un
+ * PREFIJO y no una lista a propósito. La lista estaba copiada a mano allá y
+ * quedó vieja: de los seis status, el componente conocía cuatro, así que
+ * `agent_visit_lookup_failed` y `agent_propose_unsent` caían en el `default` y
+ * se dibujaban con el mismo verde de un mensaje enviado, con el string crudo en
+ * pantalla. Un asesor leía como "se le mandó esto al cliente" algo que nunca
+ * salió. Con el prefijo, un séptimo status queda bien tratado el día que se
+ * agregue, sin tocar el componente.
+ *
+ * (El componente NO importa estas constantes aunque sea lo más obvio: es
+ * `'use client'` y este módulo arrastra `@supabase/supabase-js` y la cadena de
+ * mails —que incluye `import 'server-only'`— hasta el bundle del navegador. El
+ * contrato se sostiene con un test de cada lado: acá, que todo status del
+ * agente arranca con este prefijo; en `MessageBubble.test.tsx`, que cualquier
+ * `agent_*` se dibuja como nota interna.)
+ */
+export const AGENT_NOTE_STATUS_PREFIX = 'agent_'
+
 /** Status de las notas INTERNAS del agente en `whatsapp_messages` (nunca se le mandan al cliente). */
+const NOTE_STATUS_HANDOFF = 'agent_handoff'
 const NOTE_STATUS_PENDING_VISIT = 'agent_visit_pending'
 const NOTE_STATUS_VISIT_FAILED = 'agent_visit_failed'
 const NOTE_STATUS_VISIT_UNCONFIRMED = 'agent_visit_unconfirmed'
 const NOTE_STATUS_VISIT_LOOKUP_FAILED = 'agent_visit_lookup_failed'
 const NOTE_STATUS_PROPOSE_UNSENT = 'agent_propose_unsent'
+
+/**
+ * Los seis, en un solo lugar. Fuente de verdad para los tests del Inbox: si
+ * mañana se suma un séptimo status y el componente no lo dibuja como nota
+ * interna, el test de `MessageBubble` se pone en rojo solo.
+ */
+export const AGENT_NOTE_STATUSES = [
+  NOTE_STATUS_HANDOFF,
+  NOTE_STATUS_PENDING_VISIT,
+  NOTE_STATUS_VISIT_FAILED,
+  NOTE_STATUS_VISIT_UNCONFIRMED,
+  NOTE_STATUS_VISIT_LOOKUP_FAILED,
+  NOTE_STATUS_PROPOSE_UNSENT,
+] as const
+
+export type AgentNoteStatus = (typeof AGENT_NOTE_STATUSES)[number]
 
 /**
  * Estados de `property_visits` que significan "hay una visita VIVA con este
@@ -823,7 +955,7 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       await logOutbound({
         phone: input.phoneE164,
         bodyPreview: buildHandoffNote(settings.max_messages_per_conversation),
-        status: 'agent_handoff',
+        status: NOTE_STATUS_HANDOFF,
         leadId: input.leadId,
         propertyId: input.propertyId,
         sentBy: null,

@@ -12,6 +12,13 @@
  * eso no hay reintento a un segundo modelo acá adentro: ver CLAUDE.md § "nunca
  * encadenar varias llamadas de IA dentro de UN request".
  *
+ * ARRANCA APAGADO, igual que el agente que escribe. El interruptor propio es
+ * `ai_agent_settings.analysis_enabled` (migración `20260803000006`, default
+ * `false`) y se chequea DENTRO de `analyzeConversation` — el chokepoint por
+ * donde pasa la única llamada al modelo. Analizar no le habla a nadie, pero
+ * cuesta plata y le cuelga hasta 12s al webhook que Meta está esperando: quién y
+ * cuándo se prende lo decide el dueño, no un merge a main.
+ *
  * Contrato duro: `analyzeConversation` NUNCA lanza. Ante cualquier fallo
  * (modelo caído, JSON inválido, timeout) devuelve `null` — el orquestador
  * (`runConversationAnalysis`, más abajo) deja el estado anterior intacto y el
@@ -19,6 +26,7 @@
  * se sigue ordenando por la ventana de 24hs
  * (`lib/integrations/whatsapp/window.ts`), que no necesita IA.
  */
+import { createClient } from '@supabase/supabase-js'
 import { chatCompletion } from '@/lib/ai/chat-client'
 import {
   ANALYSIS_COOLDOWN_MS,
@@ -51,6 +59,55 @@ const ANALYSIS_MAX_OUTPUT_TOKENS = 500
 const ANALYSIS_TIMEOUT_MS = 12_000
 
 const VALID_INTENTS: ConversationIntent[] = ['agendar', 'consulta', 'frio', 'desconocido']
+
+// ---------------------------------------------------------------------------
+// Interruptor del ANÁLISIS (`ai_agent_settings.analysis_enabled`, migración
+// `20260803000006_ai_analysis_switch.sql`). Arranca APAGADO.
+// ---------------------------------------------------------------------------
+
+/**
+ * Cliente admin propio (sin el genérico `<Database>`): `ai_agent_settings` no
+ * está en `types/database.types.ts` — el CLI de Supabase no conecta en este
+ * proyecto, ver CLAUDE.md § Supabase. Mismo patrón exacto que el `admin()` de
+ * `lib/ai/conversation-memory.ts` y `lib/integrations/whatsapp/log.ts`.
+ */
+function admin() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+}
+
+/**
+ * ¿Está prendido el análisis? FAIL-CLOSED, misma forma que los dos interruptores
+ * de `lib/ai/scheduling-agent.ts` (`runSchedulingAgent`: `if (error || !data) →
+ * noop`): "arranca apagado" también significa "si no estamos 100% seguros de que
+ * está prendido, no se corre". Devuelve `false` ante error de PostgREST, fila
+ * ausente, excepción de red, o columna que no llega (la migración todavía no
+ * corrió) — nunca lanza.
+ *
+ * El `=== true` no es paranoia de estilo: si la migración no está aplicada en
+ * ese entorno, el `select` falla y ya cortamos arriba; pero si algún día la
+ * columna se vuelve nullable, un NULL tiene que leerse como APAGADO y no como
+ * "truthy indefinido".
+ */
+async function analysisEnabled(): Promise<boolean> {
+  try {
+    const { data, error } = await admin()
+      .from('ai_agent_settings')
+      .select('analysis_enabled')
+      .eq('id', true)
+      .maybeSingle()
+    if (error || !data) {
+      console.warn(
+        '[analyze-conversation] no se pudo leer ai_agent_settings.analysis_enabled — NO se analiza (fail-closed):',
+        error?.message ?? 'sin fila de settings',
+      )
+      return false
+    }
+    return (data as { analysis_enabled?: boolean | null }).analysis_enabled === true
+  } catch (err) {
+    console.warn('[analyze-conversation] excepción leyendo el interruptor del análisis — NO se analiza (fail-closed):', err)
+    return false
+  }
+}
 
 const SYSTEM_PROMPT = `Sos el analista de un CRM inmobiliario en Argentina (Diego Ferreyra Inmobiliaria, CABA + GBA). Tu trabajo es leer el RESUMEN ACUMULADO de una conversación de WhatsApp con un cliente/lead MÁS los mensajes NUEVOS desde el último análisis, y devolver un veredicto corto para que un asesor humano priorice su bandeja de entrada.
 
@@ -191,12 +248,27 @@ async function askModel(
  * al modelo y devuelve `null` sin gastar una llamada). Ídem si lo único nuevo
  * son filas que el cliente nunca vio (notas internas del agente, envíos
  * fallidos): el transcripto quedaría vacío y la llamada sería plata tirada.
+ *
+ * ACÁ VIVE EL INTERRUPTOR DEL ANÁLISIS, y la elección del lugar es deliberada.
+ * Los otros dos candidatos eran `runConversationAnalysis` (más abajo) y
+ * `runAiPipeline` del webhook; los dos son CALLERS, y un caller solo se cubre a
+ * sí mismo. `analyzeConversation` es el CHOKEPOINT: `askModel` es privada del
+ * módulo y esta función es la única que la llama, así que no existe forma de
+ * pegarle al modelo sin pasar por acá. Es la única variante que sigue siendo
+ * verdadera cuando alguien agregue el año que viene un cron, un botón de
+ * "re-analizar" en el Inbox o un backfill — ninguno se va a acordar de copiar el
+ * chequeo, y con esto no hace falta que se acuerde.
+ *
+ * El costo del chequeo es una query, y va DESPUÉS del filtro de transcripto
+ * vacío (que es gratis) para no pagarla cuando igual no había nada que analizar.
  */
 export async function analyzeConversation(input: {
   previousSummary: string
   mensajesNuevos: WhatsappMessageLite[]
 }): Promise<AnalysisPatch | null> {
   if (input.mensajesNuevos.filter(elClienteLoVio).length === 0) return null
+
+  if (!(await analysisEnabled())) return null
 
   try {
     return await askModel(input.previousSummary, input.mensajesNuevos)
@@ -228,6 +300,14 @@ export interface RunConversationAnalysisResult {
  * persiste. Pensado para que lo dispare el trigger natural (mensaje entrante
  * de WhatsApp) — ver CLAUDE.md § "La plantilla recorrido_acceso_v3 trae un
  * botón de respuesta rápida". NUNCA lanza en ningún paso.
+ *
+ * El interruptor `analysis_enabled` NO se chequea acá sino adentro de
+ * `analyzeConversation` (ver el porqué en su comentario: es el chokepoint del
+ * modelo, esto es apenas un caller). Con el interruptor apagado, el patch vuelve
+ * `null` y esta función cae en el mismo camino que un modelo caído: `analyzed:
+ * false`, estado anterior intacto, CERO escrituras — ni `saveConversationAiState`
+ * ni nada. Río abajo el webhook hace `if (!analysis.analyzed) return`, así que el
+ * agente que ESCRIBE tampoco se entera.
  */
 export async function runConversationAnalysis(
   phoneE164: string,
@@ -261,8 +341,10 @@ export async function runConversationAnalysis(
   const nuevos = mensajesNuevosDesde(state, mensajes)
   const patch = await analyzeConversation({ previousSummary: state?.summary ?? '', mensajesNuevos: nuevos })
   if (!patch) {
-    // Nunca lanza: se deja el estado anterior sin tocar. La conversación
-    // igual se ordena por la ventana de 24hs, que no necesita IA.
+    // Tres causas posibles, mismo desenlace a propósito: el interruptor está
+    // apagado (o no se pudo leer), el modelo falló, o devolvió algo con forma
+    // inválida. Nunca lanza y NO escribe: se deja el estado anterior sin tocar.
+    // La conversación igual se ordena por la ventana de 24hs, que no necesita IA.
     return { state, analyzed: false, readFailed: false, wantsToSchedule: false, proposedSlot: null }
   }
 

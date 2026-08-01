@@ -28,10 +28,28 @@ function bubble(m: ThreadMessage) {
 }
 
 /**
- * Las cuatro filas SALIENTES que el agente de IA escribe en `whatsapp_messages`
- * y que NUNCA salen hacia el cliente (constantes en `lib/ai/scheduling-agent.ts`).
+ * El contrato con el agente es el PREFIJO `agent_`, no esta lista: acá había
+ * cuatro status copiados a mano mientras `lib/ai/scheduling-agent.ts` ya escribía
+ * seis, y los dos que faltaban (`agent_visit_lookup_failed`,
+ * `agent_propose_unsent`) se dibujaban como un mensaje enviado al cliente.
+ *
+ * Los ejemplos de abajo son eso, EJEMPLOS — lo que garantiza que un séptimo
+ * status quede bien tratado es el par de tests "prefijo": el de acá (cualquier
+ * `agent_*` se dibuja como nota interna) y el de
+ * `lib/ai/scheduling-agent.test.ts` (todo status que el agente escribe arranca
+ * con ese prefijo). Ese archivo no se puede importar desde este test: corre en
+ * `happy-dom` y el módulo del agente arrastra la cadena de mails, que empieza
+ * con `import 'server-only'` — el mismo motivo por el que el componente tampoco
+ * lo importa.
  */
-const NOTAS_INTERNAS = ['agent_handoff', 'agent_visit_pending', 'agent_visit_failed', 'agent_visit_unconfirmed']
+const NOTAS_INTERNAS = [
+  'agent_handoff',
+  'agent_visit_pending',
+  'agent_visit_failed',
+  'agent_visit_unconfirmed',
+  'agent_visit_lookup_failed',
+  'agent_propose_unsent',
+]
 
 describe('MessageBubble — notas internas del agente de IA', () => {
   it.each(NOTAS_INTERNAS)('%s se rotula como nota interna, no como string crudo', status => {
@@ -48,6 +66,22 @@ describe('MessageBubble — notas internas del agente de IA', () => {
 
   it.each(NOTAS_INTERNAS)('%s aclara en pantalla que el cliente no lo vio', status => {
     expect(bubble(msg({ status })).text).toContain('el cliente no la vio')
+  })
+
+  it('cada nota interna dice EN CASTELLANO por qué está ahí', () => {
+    const motivos = NOTAS_INTERNAS.map(status => bubble(msg({ status })).text)
+    expect(motivos.some(t => t.includes('sigue una persona'))).toBe(true)
+    expect(motivos.some(t => t.includes('no se pudo verificar si ya había una visita anotada'))).toBe(true)
+    expect(motivos.some(t => t.includes('no se le pudieron mandar las opciones de día'))).toBe(true)
+  })
+
+  it('un status del agente que todavía no existe igual se dibuja como nota interna (el criterio es el prefijo)', () => {
+    // Este es EL test del arreglo: sin él, el séptimo status vuelve a caer en el
+    // `default` y se pinta como un mensaje que salió hacia el cliente.
+    const { text, html } = bubble(msg({ status: 'agent_lo_que_venga', body_preview: '[Agente IA] Algo pasó.' }))
+    expect(text).toContain('Nota interna')
+    expect(text).not.toContain('agent_lo_que_venga')
+    expect(html).not.toContain('bg-emerald-100')
   })
 
   it('el cuerpo de la nota se sigue leyendo', () => {
@@ -67,6 +101,13 @@ describe('MessageBubble — mensajes reales (no se tocan)', () => {
   it('un entrante no es una nota interna', () => {
     const { text } = bubble(msg({ direction: 'in', status: 'received', body_preview: 'Me interesa' }))
     expect(text).toContain('Me interesa')
+    expect(text).not.toContain('Nota interna')
+  })
+
+  it('un ENTRANTE con un status raro tampoco se convierte en nota interna', () => {
+    // El prefijo solo se mira en los SALIENTES: las notas del agente son filas
+    // que escribe el sistema, nunca algo que llegó del cliente.
+    const { text } = bubble(msg({ direction: 'in', status: 'agent_handoff', body_preview: 'Me interesa' }))
     expect(text).not.toContain('Nota interna')
   })
 

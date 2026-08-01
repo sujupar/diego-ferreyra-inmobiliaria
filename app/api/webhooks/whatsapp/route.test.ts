@@ -219,6 +219,7 @@ beforeEach(() => {
   ai.agente = []
   ai.duracionAnalisisMs = 0
   ai.resultado.analyzed = true
+  ai.resultado.wantsToSchedule = true
   ai.resultado.state = {
     phone_e164: '',
     summary: '',
@@ -344,6 +345,23 @@ describe('POST /api/webhooks/whatsapp — presupuesto de tiempo del request', ()
 })
 
 describe('POST /api/webhooks/whatsapp — fail-closed del pipeline de IA', () => {
+  it('con el ANÁLISIS APAGADO, el mensaje entrante igual se guarda, el agente no corre y responde 200', async () => {
+    // El interruptor `ai_agent_settings.analysis_enabled` (migración
+    // 20260803000006) vive adentro de `analyzeConversation`, o sea del otro lado
+    // de este mock: apagado, `runConversationAnalysis` devuelve `analyzed:false`.
+    // Lo que este test fija es el contrato del WEBHOOK ante ese caso — el único
+    // que le importa a Meta: guardar el mensaje del cliente es sagrado y pasa
+    // igual, y el bot no le escribe a nadie.
+    ai.resultado.analyzed = false
+    ai.resultado.wantsToSchedule = false
+
+    const res = await POST(request(payload([mensaje({ id: 'wamid.A', from: TEL_A, nombre: 'Ana' })])))
+
+    expect(res.status).toBe(200)
+    expect(db.upserts.map((u) => u.wa_message_id)).toEqual(['wamid.A'])
+    expect(ai.agente).toHaveLength(0)
+  })
+
   it('análisis con `analyzed:true` pero SIN estado → el agente NO se invoca', async () => {
     ai.resultado.analyzed = true
     ai.resultado.state = null

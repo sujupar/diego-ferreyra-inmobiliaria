@@ -196,7 +196,15 @@ describe('SUMMARY_MAX_LENGTH', () => {
 const stateMaybeSingle = vi.fn()
 const stateEq = vi.fn(() => ({ maybeSingle: stateMaybeSingle }))
 const stateSelect = vi.fn(() => ({ eq: stateEq }))
-const stateUpsert = vi.fn(() => Promise.resolve({ error: null }))
+// Tipado explícito: sin esto TypeScript infiere `calls: []` y `error: null` a
+// secas, y los tests que leen el payload del upsert o simulan un error de
+// Supabase no compilan (aunque corran bien). El tipo describe la forma REAL de
+// lo que hace el código: un upsert con (fila, opciones) que puede devolver error.
+type UpsertRow = Record<string, unknown>
+type UpsertOpts = { onConflict: string }
+const stateUpsert = vi.fn<(row: UpsertRow, opts: UpsertOpts) => Promise<{ error: { message: string } | null }>>(
+  () => Promise.resolve({ error: null }),
+)
 
 const messagesLimit = vi.fn()
 const messagesOrder = vi.fn(() => ({ limit: messagesLimit }))

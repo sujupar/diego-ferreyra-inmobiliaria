@@ -24,23 +24,45 @@ import type { ThreadMessage } from './types'
  */
 
 /**
- * Las cuatro filas SALIENTES que escribe el agente de IA en `whatsapp_messages`
- * y que NUNCA se le mandan al cliente por WhatsApp — son notas internas para el
- * equipo (constantes `NOTE_STATUS_*` y `status:'agent_handoff'` en
- * `lib/ai/scheduling-agent.ts`; acá se repiten como literales porque allá son
- * `const` de módulo, no exportadas, y ese archivo es de otro agente).
+ * Toda fila SALIENTE cuyo status arranca con `agent_` es una NOTA INTERNA que
+ * escribió el agente de IA (`AGENT_NOTE_STATUS_PREFIX` en
+ * `lib/ai/scheduling-agent.ts`) y que NUNCA se le mandó al cliente por WhatsApp.
  *
- * Sin este mapa caían en el `default` de `outboundStatusMeta`: en pantalla se
- * leía "agent_handoff" crudo debajo de un ícono de reloj, y peor, la fila se
- * pintaba con el MISMO verde de un mensaje enviado — o sea, parecía que al
- * cliente se le mandó algo que nunca salió. El motivo va en castellano porque
- * lo lee un asesor, no un programador.
+ * El criterio es el PREFIJO, no una lista, y eso es lo que arregla el bug: acá
+ * había cuatro status copiados a mano mientras el agente ya definía seis, así
+ * que `agent_visit_lookup_failed` y `agent_propose_unsent` caían en el `default`
+ * de `outboundStatusMeta` — se leía el string crudo en pantalla y la fila se
+ * pintaba con el MISMO verde de un mensaje enviado, o sea que un asesor daba
+ * por hecho que al cliente se le había mandado algo que nunca salió. Con el
+ * prefijo, un séptimo status del agente ya queda bien tratado el día que se
+ * agregue.
+ *
+ * El motivo en prosa es copia de UI (lo lee un asesor, no un programador) y por
+ * eso vive acá; el fallback cubre a los status que todavía no tengan uno propio.
+ * No se importan las constantes de `scheduling-agent.ts` porque este componente
+ * es `'use client'` y ese módulo arrastra Supabase y la cadena de mails
+ * (`import 'server-only'`) al bundle del navegador. El contrato se sostiene
+ * desde los tests, uno de cada lado: `MessageBubble.test.tsx` prueba que
+ * CUALQUIER `agent_*` se dibuje como nota interna, y `scheduling-agent.test.ts`
+ * que todo status que el agente escriba arranque con ese prefijo.
  */
+const AGENT_NOTE_STATUS_PREFIX = 'agent_'
+
 const AGENT_NOTE_REASONS: Record<string, string> = {
   agent_handoff: 'el agente de IA dejó de escribir, sigue una persona',
   agent_visit_pending: 'ya hay una visita propuesta sin confirmar',
   agent_visit_failed: 'no se pudo registrar la visita',
   agent_visit_unconfirmed: 'la visita quedó registrada pero falta confirmársela al cliente',
+  agent_visit_lookup_failed: 'no se pudo verificar si ya había una visita anotada',
+  agent_propose_unsent: 'no se le pudieron mandar las opciones de día',
+}
+
+const AGENT_NOTE_REASON_FALLBACK = 'aviso del agente de IA para el equipo'
+
+/** El motivo a mostrar, o `undefined` si esta fila NO es una nota interna. */
+function agentNoteReason(status: string): string | undefined {
+  if (!status.startsWith(AGENT_NOTE_STATUS_PREFIX)) return undefined
+  return AGENT_NOTE_REASONS[status] ?? AGENT_NOTE_REASON_FALLBACK
 }
 
 /**
@@ -140,7 +162,7 @@ function InternalNote({ message, reason }: { message: ThreadMessage; reason: str
 export function MessageBubble({ message }: { message: ThreadMessage }) {
   const isOut = message.direction === 'out'
   // Antes que cualquier otra cosa: una nota interna no es un mensaje del chat.
-  const noteReason = isOut ? AGENT_NOTE_REASONS[message.status] : undefined
+  const noteReason = isOut ? agentNoteReason(message.status) : undefined
   if (noteReason) return <InternalNote message={message} reason={noteReason} />
   const meta = isOut ? outboundStatusMeta(message.status) : null
   const StatusIcon = meta?.icon

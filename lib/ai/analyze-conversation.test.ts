@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import type { WhatsappMessageLite, ConversationAiStateRow } from './conversation-memory'
 
 // --- Mock del cliente de IA agnóstico. Mismo patrón que
@@ -8,6 +10,30 @@ const chatCompletionMock = vi.fn()
 vi.mock('@/lib/ai/chat-client', () => ({
   chatCompletion: (...args: unknown[]) => chatCompletionMock(...args),
 }))
+
+// --- Mock de Supabase: acá vive UNA sola lectura, la del interruptor del
+// análisis (`ai_agent_settings.analysis_enabled`). El resto del I/O de este
+// módulo pasa por `conversation-memory`, que se mockea aparte más abajo.
+// `settingsRead` devuelve el `{data, error}` crudo de PostgREST para poder
+// simular los tres fracasos que importan: apagado, error de lectura y excepción.
+const settingsRead = vi.fn()
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: () => ({
+    from: (table: string) => {
+      const q: Record<string, unknown> = {}
+      const self = () => q
+      q.select = self
+      q.eq = self
+      q.maybeSingle = () => settingsRead(table)
+      return q
+    },
+  }),
+}))
+
+/** Interruptor prendido: es el estado que asumen los tests de comportamiento normal. */
+function analisisPrendido() {
+  settingsRead.mockResolvedValue({ data: { analysis_enabled: true }, error: null })
+}
 
 // --- Mock parcial de conversation-memory: las funciones PURAS se dejan
 // reales (importActual) porque son las que ya están testeadas a fondo en
@@ -78,6 +104,11 @@ beforeEach(() => {
   // verdes.
   vi.resetAllMocks()
   saveConversationAiStateMock.mockResolvedValue(undefined)
+  // Por default el interruptor está PRENDIDO en los tests: así los casos de
+  // comportamiento (los que ya existían) siguen ejercitando el camino real, y
+  // cada test del freno lo apaga explícitamente. En producción es al revés — el
+  // default de la columna es `false` (migración 20260803000006).
+  analisisPrendido()
 })
 
 describe('coerceAnalysisResult (pura)', () => {
@@ -202,6 +233,85 @@ describe('analyzeConversation', () => {
     })
     const result = await analyzeConversation({ previousSummary: '', mensajesNuevos: nuevos })
     expect(result?.tokensUsed).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// EL INTERRUPTOR DEL ANÁLISIS (`ai_agent_settings.analysis_enabled`, migración
+// 20260803000006). Arranca APAGADO y es fail-closed, igual que los dos
+// interruptores de `scheduling-agent.ts`.
+//
+// Por qué se testea tan a fondo: el análisis corre pegado al webhook de WhatsApp
+// y le pega al modelo por CADA mensaje entrante, con la API key ya configurada
+// en producción. Sin este freno, un merge a main prendía el gasto de IA sobre
+// clientes reales sin que nadie lo decidiera. La regla es una sola: si no
+// estamos 100% seguros de que está prendido, no se llama al modelo ni se
+// escribe nada.
+// ---------------------------------------------------------------------------
+describe('interruptor del análisis (fail-closed)', () => {
+  const nuevos = [msg('m1', 'in', '2026-08-01T00:01:00Z', 'hola, ¿podemos coordinar?')]
+
+  it('APAGADO → null, sin llamar al modelo', async () => {
+    settingsRead.mockResolvedValue({ data: { analysis_enabled: false }, error: null })
+
+    const result = await analyzeConversation({ previousSummary: '', mensajesNuevos: nuevos })
+
+    expect(result).toBeNull()
+    expect(chatCompletionMock).not.toHaveBeenCalled()
+  })
+
+  it('la lectura del interruptor FALLA → igual que apagado (nunca asume "prendido")', async () => {
+    settingsRead.mockResolvedValue({ data: null, error: { message: 'PostgREST caído' } })
+
+    const result = await analyzeConversation({ previousSummary: '', mensajesNuevos: nuevos })
+
+    expect(result).toBeNull()
+    expect(chatCompletionMock).not.toHaveBeenCalled()
+  })
+
+  it('sin fila de settings (tabla vacía) → apagado', async () => {
+    settingsRead.mockResolvedValue({ data: null, error: null })
+
+    expect(await analyzeConversation({ previousSummary: '', mensajesNuevos: nuevos })).toBeNull()
+    expect(chatCompletionMock).not.toHaveBeenCalled()
+  })
+
+  it('la lectura LANZA (red caída) → apagado, y no propaga la excepción', async () => {
+    settingsRead.mockRejectedValue(new Error('ECONNRESET'))
+
+    await expect(analyzeConversation({ previousSummary: '', mensajesNuevos: nuevos })).resolves.toBeNull()
+    expect(chatCompletionMock).not.toHaveBeenCalled()
+  })
+
+  it('columna ausente en la respuesta (migración sin correr) → apagado, no "truthy indefinido"', async () => {
+    settingsRead.mockResolvedValue({ data: { max_messages_per_conversation: 3 }, error: null })
+
+    expect(await analyzeConversation({ previousSummary: '', mensajesNuevos: nuevos })).toBeNull()
+    expect(chatCompletionMock).not.toHaveBeenCalled()
+  })
+
+  it('PRENDIDO → se comporta como siempre (una llamada al modelo, patch completo)', async () => {
+    chatCompletionMock.mockResolvedValueOnce(chatResult(VALID_ANALYSIS))
+
+    const result = await analyzeConversation({ previousSummary: '', mensajesNuevos: nuevos })
+
+    expect(result).toMatchObject({ ...VALID_ANALYSIS, tokensUsed: 150 })
+    expect(chatCompletionMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('transcripto vacío: ni siquiera se paga la query del interruptor', async () => {
+    // El filtro gratis va PRIMERO. Si no había nada que analizar, tampoco hay
+    // por qué ir a la base a preguntar si se puede analizar.
+    const result = await analyzeConversation({ previousSummary: '', mensajesNuevos: [] })
+
+    expect(result).toBeNull()
+    expect(settingsRead).not.toHaveBeenCalled()
+  })
+
+  it('el interruptor se lee de ai_agent_settings, no de otra tabla', async () => {
+    chatCompletionMock.mockResolvedValueOnce(chatResult(VALID_ANALYSIS))
+    await analyzeConversation({ previousSummary: '', mensajesNuevos: nuevos })
+    expect(settingsRead).toHaveBeenCalledWith('ai_agent_settings')
   })
 })
 
@@ -435,6 +545,55 @@ describe('runConversationAnalysis (orquestador end-to-end)', () => {
     expect(saveConversationAiStateMock).not.toHaveBeenCalled()
   })
 
+  // --- El interruptor, visto desde el orquestador --------------------------
+  // Lo que importa río abajo: `analyzed:false` es lo que hace que el webhook
+  // corte antes del agente que ESCRIBE (`if (!analysis.analyzed) return`).
+
+  it('interruptor APAGADO: hilo perfectamente analizable → analyzed:false, sin modelo y SIN escribir', async () => {
+    settingsRead.mockResolvedValue({ data: { analysis_enabled: false }, error: null })
+    getConversationAiStateMock.mockResolvedValueOnce(readOk(baseState()))
+    getRecentWhatsappMessagesMock.mockResolvedValueOnce([
+      msg('m1', 'in', '2026-08-01T00:00:00Z'),
+      msg('m2', 'in', '2026-08-01T00:03:00Z', 'quiero agendar una visita'),
+    ])
+
+    const result = await runConversationAnalysis('5491122334455', new Date('2026-08-01T00:10:00Z'))
+
+    expect(result.analyzed).toBe(false)
+    expect(result.wantsToSchedule).toBe(false) // el agente que escribe no recibe nada
+    expect(chatCompletionMock).not.toHaveBeenCalled()
+    expect(saveConversationAiStateMock).not.toHaveBeenCalled()
+  })
+
+  it('interruptor APAGADO: el estado previo queda INTACTO (no se pisa con un vacío)', async () => {
+    settingsRead.mockResolvedValue({ data: { analysis_enabled: false }, error: null })
+    const s = baseState()
+    getConversationAiStateMock.mockResolvedValueOnce(readOk(s))
+    getRecentWhatsappMessagesMock.mockResolvedValueOnce([
+      msg('m1', 'in', '2026-08-01T00:00:00Z'),
+      msg('m2', 'in', '2026-08-01T00:03:00Z'),
+    ])
+
+    const result = await runConversationAnalysis('5491122334455', new Date('2026-08-01T00:10:00Z'))
+
+    expect(result.state).toEqual(s)
+    expect(result.readFailed).toBe(false) // no es un fallo de lectura del estado: es "está apagado"
+  })
+
+  it('interruptor ILEGIBLE: mismo desenlace que apagado (fail-closed end-to-end)', async () => {
+    settingsRead.mockResolvedValue({ data: null, error: { message: 'permission denied' } })
+    getConversationAiStateMock.mockResolvedValueOnce(readOk(null))
+    getRecentWhatsappMessagesMock.mockResolvedValueOnce([
+      msg('m1', 'in', '2026-08-01T00:00:00Z', 'quiero ver el depto mañana a la tarde'),
+    ])
+
+    const result = await runConversationAnalysis('5491122334455', new Date('2026-08-01T00:10:00Z'))
+
+    expect(result.analyzed).toBe(false)
+    expect(chatCompletionMock).not.toHaveBeenCalled()
+    expect(saveConversationAiStateMock).not.toHaveBeenCalled()
+  })
+
   it('lectura fallida corta ANTES de decidir: aunque el hilo pareciera analizable, no analiza', async () => {
     // Mismo hilo que el caso feliz de más arriba (mensaje entrante fresco, sin
     // cooldown). La única diferencia es que la lectura falló.
@@ -450,5 +609,73 @@ describe('runConversationAnalysis (orquestador end-to-end)', () => {
     expect(result.analyzed).toBe(false)
     expect(result.wantsToSchedule).toBe(false)
     expect(chatCompletionMock).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// La migración `20260803000006_ai_analysis_switch.sql`.
+//
+// LO QUE ESTE BLOQUE PUEDE Y NO PUEDE PROBAR: no corre SQL (la aplica el
+// orquestador contra la base real), así que no prueba que la migración FUNCIONE.
+// Lo que sí fija —y es lo que se puede romper de un editor a otro sin que nadie
+// lo note— son sus dos invariantes de seguridad:
+//
+//   1. Es ADITIVA sobre `ai_agent_settings`: agrega la columna del interruptor
+//      con default `false` y NO toca `scheduling_enabled` ni ninguna otra fila.
+//   2. La ÚNICA escritura sobre datos —apagar las 41 propiedades— corre UNA VEZ
+//      y queda encerrada en el guard. Un `UPDATE properties` suelto acá afuera
+//      apagaría, en cada re-ejecución del archivo, la propiedad que el dueño
+//      acaba de prender para probar. Los scripts `apply-*-pg.ts` de este repo
+//      re-ejecutan migraciones enteras: no es una hipótesis.
+// ---------------------------------------------------------------------------
+describe('migración 20260803000006 (interruptor del análisis + apagar las propiedades)', () => {
+  const crudo = readFileSync(
+    fileURLToPath(new URL('../../supabase/migrations/20260803000006_ai_analysis_switch.sql', import.meta.url)),
+    'utf8',
+  )
+  /**
+   * Sin los comentarios `--`. Hace falta de verdad: el archivo documenta EN
+   * PROSA el `UPDATE properties SET ai_scheduling_enabled = true` que hay que
+   * correr a mano para estrenar, y un grep ingenuo lo contaría como una
+   * escritura del archivo. Lo que se audita acá es lo que Postgres EJECUTA.
+   */
+  const sql = crudo.replace(/--.*$/gm, '')
+
+  it('agrega analysis_enabled con default false, de forma aditiva', () => {
+    expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS analysis_enabled BOOLEAN NOT NULL DEFAULT false/)
+  })
+
+  it('NO toca el otro interruptor ni ninguna fila de ai_agent_settings', () => {
+    expect(sql).not.toMatch(/UPDATE\s+ai_agent_settings/i)
+    // El lookbehind es necesario: `ai_scheduling_enabled` (la columna POR
+    // PROPIEDAD, que esta migración sí toca) termina en `scheduling_enabled`.
+    // Lo que no se puede tocar es el interruptor GLOBAL del que escribe.
+    expect(sql).not.toMatch(/(?<!ai_)scheduling_enabled\s*=/i)
+    // Lo único que se le hace a esa tabla es agregar la columna nueva.
+    const alters = sql.match(/ALTER\s+TABLE\s+ai_agent_settings[\s\S]*?;/gi) ?? []
+    expect(alters).toHaveLength(1)
+    expect(alters[0]).toMatch(/ADD COLUMN IF NOT EXISTS analysis_enabled/)
+  })
+
+  it('baja el default de properties.ai_scheduling_enabled a false', () => {
+    expect(sql).toMatch(/ALTER COLUMN ai_scheduling_enabled SET DEFAULT false/)
+  })
+
+  it('apaga las filas existentes, y ese UPDATE vive DENTRO del guard de una sola corrida', () => {
+    const updates = sql.match(/UPDATE\s+properties[^;]*;/gi) ?? []
+    expect(updates).toHaveLength(1)
+    expect(updates[0]).toMatch(/SET ai_scheduling_enabled = false/)
+
+    // El guard: el UPDATE tiene que caer entre el `DO $$` y su `END $$`, y el
+    // bloque tiene que condicionarse al default viejo (la marca de "todavía no
+    // corrió"). Sin esto, re-ejecutar el archivo apaga lo que el dueño prendió.
+    const guard = sql.slice(sql.indexOf('DO $$'), sql.indexOf('END $$'))
+    expect(guard).toContain(updates[0])
+    expect(guard).toMatch(/information_schema\.columns/)
+    expect(guard).toMatch(/column_default = 'true'/)
+  })
+
+  it('no borra nada (ni tablas, ni columnas, ni políticas)', () => {
+    expect(sql).not.toMatch(/\bDROP\b/i)
   })
 })
