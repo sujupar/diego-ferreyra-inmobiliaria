@@ -546,13 +546,39 @@ La landing (`app/p/[slug]`) se rediseñó a nivel premium (estilo editorial/lujo
 Plan: `docs/superpowers/plans/2026-08-03-agente-ia-agenda-y-prioridad.md`.
 Reportes de implementación: `.superpowers/sdd/2026-08-03-agente-ia/`.
 
-### Los dos interruptores (arranca APAGADO, fail-closed)
+### Los TRES interruptores (arranca APAGADO, fail-closed)
 
-- **Global:** `ai_agent_settings.scheduling_enabled` (default `false`).
-- **Por propiedad:** `properties.ai_scheduling_enabled` (default `false`).
-- Tienen que estar **los dos en `true`** para que el agente escriba. Si CUALQUIERA
-  está apagado —o si no se puede LEER alguno (error de red, tabla ausente)— el
-  agente no manda nada: nunca asume "prendido" ante la duda.
+El agente tiene dos mitades y cada una tiene su propio freno, a propósito:
+**analizar** es leer y ordenar la bandeja (cuesta tokens, no le habla a nadie);
+**agendar** es un bot escribiéndole a un cliente real. Se puede querer lo primero
+sin lo segundo — de hecho ese es el orden natural para estrenarlo.
+
+- **Análisis (el que LEE):** `ai_agent_settings.analysis_enabled` (default `false`).
+  Sin esto, cada mensaje entrante dispara una llamada paga al modelo DENTRO del
+  webhook. El chequeo vive en `analyzeConversation`, que es el chokepoint: `askModel`
+  es privada del módulo, así que **no existe camino hacia el modelo que lo esquive**
+  (ni hoy ni cuando alguien agregue un cron o un botón "re-analizar").
+- **Agente (el que ESCRIBE), global:** `ai_agent_settings.scheduling_enabled` (default `false`).
+- **Agente, por propiedad:** `properties.ai_scheduling_enabled` (default `false`
+  desde `20260803000006`; nació en `true` y eso habría prendido las 41 propiedades
+  de golpe al activar el global).
+- Los tres son **fail-closed**: si están apagados, o si no se puede LEER alguno
+  (error de red, tabla ausente, RLS), no pasa nada. Nunca se asume "prendido".
+
+**Para estrenarlo, en este orden** (no hay UI todavía; es SQL en el Dashboard):
+
+```sql
+UPDATE ai_agent_settings SET analysis_enabled = true WHERE id;              -- 1. mirar cómo prioriza
+UPDATE properties SET ai_scheduling_enabled = true WHERE id = '<la de prueba>'; -- 2. elegir UNA propiedad
+UPDATE ai_agent_settings SET scheduling_enabled = true WHERE id;           -- 3. recién ahí, dejarlo hablar
+```
+
+**Antes del paso 3, dos cosas siguen abiertas** (documentadas, no resueltas):
+el presupuesto de tiempo del webhook no cierra con el agente encendido en el peor
+caso (el mail al equipo y las queries a Supabase no tienen techo — ver el comentario
+de `AI_BUDGET_MS` en el webhook), y el agente asume que la conversación es sobre la
+propiedad del lead MÁS RECIENTE de ese teléfono: un comprador con consultas sobre
+dos propiedades puede recibir la dirección equivocada.
 - **Tope:** `ai_agent_settings.max_messages_per_conversation` (hoy 3). Al llegar,
   `conversation_ai_state.agent_handed_off = true` **para siempre** en esa
   conversación y queda una nota INTERNA en el chat (`status:'agent_handoff'`, no
@@ -583,18 +609,28 @@ Ante texto que no matchea con confianza NO adivina: vuelve a proponer franjas.
    hay análisis fresco → el agente no responde hasta el mensaje siguiente.
 4. Panel de costo en `/admin/ai-usage` (gate `settings.manage`).
 
-### Migraciones (las 3 ya aplicadas el 2026-08-03, verificadas contra la base)
+### Migraciones (las 6 aplicadas el 2026-08-03, verificadas contra la base)
 
 ```
 20260803000001_conversation_ai_state.sql          — memoria + interruptores
 20260803000002_whatsapp_messages_ai_generated.sql — marca "lo escribió la IA"
 20260803000003_property_visits_created_by_ai.sql  — marca "la agendó la IA"
+20260803000004_claim_agent_message_slot.sql       — reserva ATÓMICA del cupo
+20260803000005_conversation_ai_state_rls.sql      — RLS solo operaciones
+20260803000006_ai_analysis_switch.sql             — interruptor del análisis
 ```
 
-Las dos últimas son puramente aditivas (`ADD COLUMN ... DEFAULT false`).
-`scripts/apply-ai-markers-migration-pg.ts` las aplica y **aborta** si cambia la
-cantidad de filas, si alguna fila vieja queda marcada como IA, o si el agente
-quedara habilitado.
+Scripts que las aplican Y **abortan** si algo no cuadra (cantidad de filas,
+filas viejas marcadas como IA, un interruptor que quedó prendido):
+`apply-ai-agent-migration-pg.ts`, `apply-ai-markers-migration-pg.ts`,
+`apply-ai-claim-and-rls-pg.ts`, `apply-ai-analysis-switch-pg.ts`.
+
+**Trampa que ya nos mordió:** esos scripts re-ejecutan el archivo de migración
+ENTERO para verificar. Si un arreglo posterior cambia algo que el archivo viejo
+define (una policy, un default), hay que actualizar TAMBIÉN el archivo viejo o
+"verificar que está todo bien" revierte el arreglo en silencio. Pasó con la RLS
+de `conversation_ai_state`. La migración `000006` se defiende sola con un
+`DO $$` que detecta si ya corrió.
 
 **Regla del deploy:** el código manda `created_by_ai` **solo** cuando la visita la
 crea el agente. El camino del cliente (`/v/<token>/schedule`, en producción) no
