@@ -49,16 +49,26 @@ interface ChatCompletionInput {
    * DeepSeek). Sin esto, pasar `model:'gpt-4.1'` al endpoint de DeepSeek falla.
    */
   provider?: AiProvider
+  /**
+   * Techo duro de tokens de OUTPUT por llamada (compatible OpenAI y DeepSeek:
+   * ambos aceptan `max_tokens`). Opcional — si no se pasa, el proveedor usa su
+   * default. Pensado para llamadas de análisis frecuente donde el costo por
+   * request importa (ver `lib/ai/analyze-conversation.ts`).
+   */
+  maxTokens?: number
 }
 
 export interface ChatCompletionResult {
   content: string
   provider: AiProvider
   model: string
+  /** Tokens reportados por el proveedor para ESTA llamada. `undefined` si el proveedor no los reportó. */
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number }
 }
 
 interface OpenAIChatResponse {
   choices: Array<{ message: { content: string } }>
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
 }
 
 function getActiveProvider(): AiProvider {
@@ -106,6 +116,9 @@ export async function chatCompletion(
   if (input.jsonMode) {
     body.response_format = { type: 'json_object' }
   }
+  if (input.maxTokens) {
+    body.max_tokens = input.maxTokens
+  }
 
   const res = await fetch(`${config.baseUrl}/chat/completions`, {
     method: 'POST',
@@ -122,7 +135,14 @@ export async function chatCompletion(
   const data = (await res.json()) as OpenAIChatResponse
   const content = data.choices?.[0]?.message?.content
   if (!content) throw new Error(`${provider}: respuesta sin content`)
-  return { content, provider, model }
+  const usage = data.usage
+    ? {
+        promptTokens: data.usage.prompt_tokens ?? 0,
+        completionTokens: data.usage.completion_tokens ?? 0,
+        totalTokens: data.usage.total_tokens ?? 0,
+      }
+    : undefined
+  return { content, provider, model, usage }
 }
 
 /**
