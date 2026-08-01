@@ -12,6 +12,16 @@ function msg(id: string, direction: 'in' | 'out', createdAt: string): WhatsappMe
   return { id, direction, body_preview: `msg ${id}`, status: direction === 'in' ? 'received' : 'sent', created_at: createdAt }
 }
 
+/**
+ * Saliente que NUNCA salió hacia el cliente: la nota interna del agente de IA
+ * (`agent_handoff` y compañía, constantes en `lib/ai/scheduling-agent.ts`), un
+ * envío rebotado (`failed`) o uno que el modo prueba no llegó a mandar
+ * (`skipped`).
+ */
+function nota(id: string, createdAt: string, status: string): WhatsappMessageLite {
+  return { id, direction: 'out', body_preview: `nota ${id}`, status, created_at: createdAt }
+}
+
 function state(overrides: Partial<ConversationAiStateRow> = {}): ConversationAiStateRow {
   return {
     phone_e164: '5491122334455',
@@ -116,6 +126,45 @@ describe('debeAnalizar', () => {
     // ahora - last_analyzed_at = 00:10 - 00:08 = 2min exactos → NO es "menos de 2min" → permite
     expect(ahora.getTime() - new Date(s.last_analyzed_at!).getTime()).toBe(ANALYSIS_COOLDOWN_MS)
     expect(debeAnalizar(s, [m1, m2], ahora)).toBe(true)
+  })
+
+  // --- Notas internas: un saliente que nunca salió NO es "nosotros hablamos" ---
+  // El gate miraba solo `direction`, así que una nota interna del agente
+  // (`agent_handoff`) contaba como respuesta nuestra y frenaba el análisis
+  // justo cuando el cliente seguía esperando y nadie le había contestado.
+
+  it.each(['agent_handoff', 'agent_visit_pending', 'agent_visit_failed', 'agent_visit_unconfirmed', 'failed', 'skipped'])(
+    'true si el último mensaje es un saliente que nunca salió (%s): el cliente sigue esperando',
+    (status) => {
+      const m1 = msg('m1', 'in', '2026-08-01T00:01:00Z')
+      const n1 = nota('n1', '2026-08-01T00:02:00Z', status)
+      expect(debeAnalizar(null, [m1, n1], ahora)).toBe(true)
+    },
+  )
+
+  it.each(['accepted', 'sent', 'delivered', 'read'])(
+    'false si el último saliente SÍ salió de verdad (%s): ese caso legítimo no cambia',
+    (status) => {
+      const m1 = msg('m1', 'in', '2026-08-01T00:01:00Z')
+      const real: WhatsappMessageLite = {
+        id: 'o1',
+        direction: 'out',
+        body_preview: 'ya te paso los datos',
+        status,
+        created_at: '2026-08-01T00:02:00Z',
+      }
+      expect(debeAnalizar(null, [m1, real], ahora)).toBe(false)
+    },
+  )
+
+  it('false si lo único nuevo son notas internas: no hay nada del cliente que leer, no se paga el análisis', () => {
+    // El entrante m1 ya está analizado; lo único posterior es una nota interna
+    // que el cliente nunca vio. Pagar una llamada al modelo para leer eso es
+    // tirar plata: el transcripto que le llegaría estaría vacío.
+    const m1 = msg('m1', 'in', '2026-08-01T00:01:00Z')
+    const n1 = nota('n1', '2026-08-01T00:02:00Z', 'agent_handoff')
+    const s = state({ last_analyzed_message_id: 'm1', last_analyzed_at: '2026-08-01T00:01:00Z' })
+    expect(debeAnalizar(s, [m1, n1], ahora)).toBe(false)
   })
 
   it('false un instante antes de los 2 minutos, true un instante después (borde exacto)', () => {

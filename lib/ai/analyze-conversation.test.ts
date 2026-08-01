@@ -37,6 +37,20 @@ function msg(id: string, direction: 'in' | 'out', createdAt: string, body = `tex
   return { id, direction, body_preview: body, status: direction === 'in' ? 'received' : 'sent', created_at: createdAt }
 }
 
+/**
+ * Saliente que NUNCA salió hacia el cliente: la nota interna del agente de IA
+ * (`agent_handoff` y compañía), un envío rebotado (`failed`) o uno que el modo
+ * prueba no llegó a mandar (`skipped`).
+ */
+function nota(id: string, createdAt: string, status: string, body = `nota interna ${id}`): WhatsappMessageLite {
+  return { id, direction: 'out', body_preview: body, status, created_at: createdAt }
+}
+
+/** El texto exacto que se le manda al modelo (el `user` de la única llamada). */
+function promptEnviado(): string {
+  return chatCompletionMock.mock.calls[0][0].messages[1].content as string
+}
+
 function chatResult(content: unknown, opts: Partial<{ model: string; provider: string; usage: { totalTokens: number } }> = {}) {
   return {
     content: typeof content === 'string' ? content : JSON.stringify(content),
@@ -191,6 +205,69 @@ describe('analyzeConversation', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// El transcripto que ve el modelo = SOLO lo que el cliente realmente vio.
+// Las notas internas del agente ("Le paso la conversación a una persona del
+// equipo", "No pude registrar la visita") son filas salientes que nunca
+// salieron por la API de Meta; si entran al prompt etiquetadas "[Nosotros]",
+// el modelo resume y prioriza sobre mensajes que el cliente nunca recibió.
+// ---------------------------------------------------------------------------
+describe('buildUserPrompt (vía analyzeConversation): qué ve el modelo', () => {
+  it('la nota interna del agente NO entra al transcripto, el mensaje del cliente sí', async () => {
+    chatCompletionMock.mockResolvedValueOnce(chatResult(VALID_ANALYSIS))
+    await analyzeConversation({
+      previousSummary: '',
+      mensajesNuevos: [
+        msg('m1', 'in', '2026-08-01T00:01:00Z', '¿podemos coordinar una visita?'),
+        nota('n1', '2026-08-01T00:02:00Z', 'agent_handoff', 'Le paso la conversación a una persona del equipo'),
+      ],
+    })
+
+    const prompt = promptEnviado()
+    expect(prompt).toContain('¿podemos coordinar una visita?')
+    expect(prompt).not.toContain('Le paso la conversación a una persona del equipo')
+    // Y el conteo que se le declara al modelo tiene que ser el de lo que ve,
+    // no el del array crudo — si no, "dice 2 y muestra 1".
+    expect(prompt).toContain('(1)')
+  })
+
+  it.each(['agent_visit_pending', 'agent_visit_failed', 'agent_visit_unconfirmed', 'failed', 'skipped'])(
+    'un saliente en estado %s tampoco entra al transcripto',
+    async (status) => {
+      chatCompletionMock.mockResolvedValueOnce(chatResult(VALID_ANALYSIS))
+      await analyzeConversation({
+        previousSummary: '',
+        mensajesNuevos: [
+          msg('m1', 'in', '2026-08-01T00:01:00Z', 'hola'),
+          nota('n1', '2026-08-01T00:02:00Z', status, 'ESTO-NO-SALIO-NUNCA'),
+        ],
+      })
+      expect(promptEnviado()).not.toContain('ESTO-NO-SALIO-NUNCA')
+    },
+  )
+
+  it('un saliente REAL (sent) sí entra, etiquetado como nuestro', async () => {
+    chatCompletionMock.mockResolvedValueOnce(chatResult(VALID_ANALYSIS))
+    await analyzeConversation({
+      previousSummary: '',
+      mensajesNuevos: [
+        msg('m1', 'in', '2026-08-01T00:01:00Z', 'hola'),
+        msg('o1', 'out', '2026-08-01T00:02:00Z', 'te mando el precio'),
+      ],
+    })
+    expect(promptEnviado()).toContain('[Nosotros] te mando el precio')
+  })
+
+  it('si TODO lo nuevo son notas internas, no se llama al modelo (transcripto vacío = llamada tirada)', async () => {
+    const result = await analyzeConversation({
+      previousSummary: 'resumen',
+      mensajesNuevos: [nota('n1', '2026-08-01T00:02:00Z', 'agent_handoff')],
+    })
+    expect(result).toBeNull()
+    expect(chatCompletionMock).not.toHaveBeenCalled()
+  })
+})
+
 describe('runConversationAnalysis (orquestador end-to-end)', () => {
   function baseState(overrides: Partial<ConversationAiStateRow> = {}): ConversationAiStateRow {
     return {
@@ -296,6 +373,45 @@ describe('runConversationAnalysis (orquestador end-to-end)', () => {
     expect(result.readFailed).toBe(false)
     expect(result.state?.analyses_count).toBe(1)
     expect(result.state?.tokens_used_total).toBe(150)
+  })
+
+  it('hilo cuyo último saliente es una nota interna: SÍ analiza, y la nota no llega al modelo', async () => {
+    // El agente se rindió y dejó su nota interna. Para el cliente eso no
+    // existió: sigue esperando respuesta desde su mensaje. El análisis tiene
+    // que correr (antes el gate lo daba por "nosotros ya contestamos") y el
+    // modelo tiene que ver solo lo que el cliente vio.
+    getConversationAiStateMock.mockResolvedValueOnce(readOk(null))
+    getRecentWhatsappMessagesMock.mockResolvedValueOnce([
+      msg('m1', 'in', '2026-08-01T00:00:00Z', 'quiero ver el depto el sábado'),
+      {
+        id: 'n1',
+        direction: 'out' as const,
+        body_preview: 'Le paso la conversación a una persona del equipo',
+        status: 'agent_handoff',
+        created_at: '2026-08-01T00:01:00Z',
+      },
+    ])
+    chatCompletionMock.mockResolvedValueOnce(chatResult({ ...VALID_ANALYSIS, wantsToSchedule: true }))
+
+    const result = await runConversationAnalysis('5491122334455', new Date('2026-08-01T00:10:00Z'))
+
+    expect(result.analyzed).toBe(true)
+    const prompt = promptEnviado()
+    expect(prompt).toContain('quiero ver el depto el sábado')
+    expect(prompt).not.toContain('Le paso la conversación a una persona del equipo')
+  })
+
+  it('hilo cuyo último saliente es REAL: sigue sin analizar (el caso legítimo no cambia)', async () => {
+    getConversationAiStateMock.mockResolvedValueOnce(readOk(null))
+    getRecentWhatsappMessagesMock.mockResolvedValueOnce([
+      msg('m1', 'in', '2026-08-01T00:00:00Z', 'quiero ver el depto'),
+      msg('o1', 'out', '2026-08-01T00:01:00Z', 'dale, te confirmo el horario'),
+    ])
+
+    const result = await runConversationAnalysis('5491122334455', new Date('2026-08-01T00:10:00Z'))
+
+    expect(result.analyzed).toBe(false)
+    expect(chatCompletionMock).not.toHaveBeenCalled()
   })
 
   // --- El freno de mano: ante un error de LECTURA no se sigue de largo -------

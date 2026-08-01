@@ -4,17 +4,25 @@ import type { RefObject } from 'react'
 import { Clock, MessageCircle } from 'lucide-react'
 import { MessageBubble } from './MessageBubble'
 import { formatDateSeparator, groupByDay } from './format'
-import { resolveAwaitingSinceFromLastMessage, isAwaitingTooLong, waitingFor } from './awaiting'
+import { isAwaitingTooLong, waitingFor } from './awaiting'
+import { resolveThreadAwaitingSince } from './thread-metrics'
 import type { ThreadMessage } from './types'
 
 /**
- * Franja de alerta (task 5): cuando el ÚLTIMO mensaje del hilo es del cliente
- * y pasó más de `AWAITING_ALERT_THRESHOLD_MS` sin que el equipo conteste. Se
- * calcula directo de `messages` — no depende de ningún campo nuevo de la API.
+ * Franja de alerta (task 5): cuando el cliente escribió y pasó más de
+ * `AWAITING_ALERT_THRESHOLD_MS` sin que el equipo conteste. Se calcula directo
+ * de `messages` — no depende de ningún campo nuevo de la API.
+ *
+ * Mira el HILO ENTERO (`resolveThreadAwaitingSince`), no solo el último
+ * mensaje. Con "solo el último" alcanzaba con que el agente de IA dejara su
+ * nota interna (`agent_handoff` y compañía) o con que un envío rebotara para
+ * que el reloj arrancara desde ESA fila nuestra: la franja anunciaba "el
+ * cliente escribió hace instantes" —o no aparecía— cuando en realidad el
+ * cliente estaba esperando hace horas. La franja existe justamente para gritar
+ * ese número; no puede subestimarlo.
  */
 function StaleReplyBanner({ messages }: { messages: ThreadMessage[] }) {
-  const last = messages[messages.length - 1]
-  const since = resolveAwaitingSinceFromLastMessage(last)
+  const since = resolveThreadAwaitingSince(messages)
   if (!since || !isAwaitingTooLong(since)) return null
   return (
     <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">

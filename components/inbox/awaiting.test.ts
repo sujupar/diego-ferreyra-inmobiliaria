@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveAwaitingSince, resolveAwaitingSinceFromLastMessage, isAwaitingTooLong, waitingFor, countsAsReply, AWAITING_ALERT_THRESHOLD_MS } from './awaiting'
+import { resolveAwaitingSince, isAwaitingTooLong, waitingFor, countsAsReply, AWAITING_ALERT_THRESHOLD_MS } from './awaiting'
 
 describe('resolveAwaitingSince', () => {
   it('usa awaiting_reply_since del contrato nuevo cuando está', () => {
@@ -27,6 +27,18 @@ describe('resolveAwaitingSince', () => {
   it('awaiting_reply_since null explícito (el back ya resolvió que no espera) respeta el null', () => {
     expect(
       resolveAwaitingSince({ awaiting_reply_since: null, last_direction: 'out', last_at: '2026-07-30T10:00:00Z', last_status: 'delivered' }),
+    ).toBeNull()
+  })
+
+  // El caso que separa `null` de `undefined` de verdad: el servidor barre el
+  // hilo entero hacia atrás, el respaldo solo mira el ÚLTIMO mensaje. Acá el
+  // último mensaje es entrante (el cliente escribió de nuevo DESPUÉS de que le
+  // contestaron) y el servidor ya resolvió que la conversación está atendida.
+  // Si el `null` cae al respaldo, la conversación vuelve a aparecer como
+  // pendiente en la pantalla que el dueño mira todos los días.
+  it('awaiting_reply_since null con último mensaje ENTRANTE: manda el servidor, no el respaldo', () => {
+    expect(
+      resolveAwaitingSince({ awaiting_reply_since: null, last_direction: 'in', last_at: '2026-07-30T10:00:00Z', last_status: 'received' }),
     ).toBeNull()
   })
 
@@ -88,30 +100,9 @@ describe('countsAsReply', () => {
   })
 })
 
-describe('resolveAwaitingSinceFromLastMessage', () => {
-  it('sin mensajes, no espera nada', () => {
-    expect(resolveAwaitingSinceFromLastMessage(undefined)).toBeNull()
-  })
-  it('último mensaje entrante → esperando desde su fecha', () => {
-    expect(resolveAwaitingSinceFromLastMessage({ direction: 'in', created_at: '2026-07-30T10:00:00Z' })).toBe('2026-07-30T10:00:00Z')
-  })
-  it('último mensaje saliente → no espera', () => {
-    expect(resolveAwaitingSinceFromLastMessage({ direction: 'out', created_at: '2026-07-30T10:00:00Z' })).toBeNull()
-  })
-  it('último mensaje saliente entregado → no espera', () => {
-    expect(resolveAwaitingSinceFromLastMessage({ direction: 'out', created_at: '2026-07-30T10:00:00Z', status: 'delivered' })).toBeNull()
-  })
-  it('la nota interna de derivación a humano cierra el hilo sin contestarle al cliente → sigue esperando', () => {
-    expect(resolveAwaitingSinceFromLastMessage({ direction: 'out', created_at: '2026-07-30T10:00:00Z', status: 'agent_handoff' })).toBe(
-      '2026-07-30T10:00:00Z',
-    )
-  })
-  it('un saliente que rebotó tampoco cierra el hilo', () => {
-    expect(resolveAwaitingSinceFromLastMessage({ direction: 'out', created_at: '2026-07-30T10:00:00Z', status: 'failed' })).toBe(
-      '2026-07-30T10:00:00Z',
-    )
-  })
-})
+// Los tests de `resolveAwaitingSinceFromLastMessage` se borraron junto con la
+// función: la cobertura equivalente (y correcta, barriendo el hilo entero) vive
+// en `thread-metrics.test.ts` sobre `resolveThreadAwaitingSince`.
 
 describe('isAwaitingTooLong', () => {
   const now = new Date('2026-07-30T12:00:00Z').getTime()

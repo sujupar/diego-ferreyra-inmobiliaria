@@ -24,6 +24,13 @@ export const dynamic = 'force-dynamic'
  *        hace que Meta reintente en loop y puede terminar deshabilitando el
  *        webhook.
  *
+ * El POST corre en TRES fases y ese orden es parte del contrato: (1) se guardan
+ * TODOS los mensajes entrantes, sin gates de tiempo en el medio; (2) se aplican
+ * las actualizaciones de estado, que son baratas; (3) recién ahí, y solo si
+ * queda presupuesto de tiempo (`AI_BUDGET_MS`), corre UN único pipeline de IA
+ * —el del último mensaje entrante del lote—. Guardar el mensaje del cliente
+ * nunca se saltea; el análisis sí, y se recupera solo en el próximo entrante.
+ *
  * `whatsapp_messages` NO está en `types/database.types.ts` (mismo motivo que
  * `lib/integrations/whatsapp/log.ts`): cliente admin SIN el genérico
  * `<Database>` + cast manual.
@@ -195,6 +202,25 @@ async function runAiPipeline(ctx: InboundContext): Promise<void> {
     const analysis = await runConversationAnalysis(ctx.phoneE164)
     if (!analysis.analyzed) return // cooldown/sin mensajes nuevos: nada fresco que pasarle al agente
 
+    const state = analysis.state
+    if (!state) {
+      // FAIL-CLOSED, y a propósito verboso. Acá vivían
+      // `analysis.state?.agent_messages_sent ?? 0` y `?? false`: dos defaults
+      // que son la expresión EXACTA del fail-open crítico que se acaba de
+      // arreglar en `runConversationAnalysis`. Hoy `analyzed:true` implica
+      // `state` no nulo, así que este `return` es inalcanzable — pero el día
+      // que alguien devuelva `analyzed:true` con `state` en null, esos defaults
+      // le dicen al agente "0 mensajes mandados, sin derivar" y le escribe, en
+      // silencio, a un cliente que ya está en manos de una persona. El tope de
+      // mensajes y la marca de derivación viven en esa fila: si no se pudo
+      // leer, NO se adivinan. Sin estado no se invoca al agente. No
+      // "simplificar" de vuelta a `?? 0` / `?? false`.
+      console.warn(
+        `[whatsapp-webhook] el análisis dijo analyzed:true pero sin estado de conversación (${ctx.phoneE164}) — el agente NO se invoca`,
+      )
+      return
+    }
+
     await runSchedulingAgent({
       phoneE164: ctx.phoneE164,
       leadId: ctx.leadId,
@@ -202,13 +228,68 @@ async function runAiPipeline(ctx: InboundContext): Promise<void> {
       contactName: ctx.contactName,
       wantsToSchedule: analysis.wantsToSchedule,
       proposedSlot: analysis.proposedSlot,
-      agentMessagesSent: analysis.state?.agent_messages_sent ?? 0,
-      agentHandedOff: analysis.state?.agent_handed_off ?? false,
+      agentMessagesSent: state.agent_messages_sent,
+      agentHandedOff: state.agent_handed_off,
     })
   } catch (err) {
     console.warn('[whatsapp-webhook] excepción en el pipeline de IA (continuando):', err)
   }
 }
+
+/**
+ * Presupuesto de tiempo POR REQUEST para el pipeline de IA — o sea: cuánto se
+ * puede haber consumido ya del request para que todavía tenga sentido ARRANCAR
+ * el pipeline. El techo de 12s del modelo es POR LLAMADA, no por request.
+ *
+ * La cuenta, con los techos que REALMENTE existen hoy en el código (leídos, no
+ * estimados), contra el techo de Netlify (~26s; `export const maxDuration` es
+ * una directiva de Vercel y acá NO hace nada — ver CLAUDE.md § "nunca encadenar
+ * varias llamadas de IA dentro de UN request"):
+ *
+ *   análisis (llamada al modelo)   12s   ANALYSIS_TIMEOUT_MS
+ *                                        — lib/ai/analyze-conversation.ts:50
+ *   WhatsApp que manda el agente    8s   WHATSAPP_TIMEOUT_DEFAULT_MS
+ *                                        — lib/integrations/whatsapp/core.ts:24,
+ *                                          aplicado en :146 (`sendWhatsappText`)
+ *   mail al equipo + escrituras    SIN TECHO. `sendEmail` no le pone
+ *   en Supabase                    `AbortSignal` a nada y recorre los
+ *                                  destinatarios EN SERIE
+ *                                  (lib/email/resend-client.ts:68); ninguna
+ *                                  query de la cadena tiene timeout tampoco.
+ *   margen para responderle 200     1s
+ *   ------------------------------------------------------------------
+ *
+ * Y acá está la parte incómoda: 12 + 8 + 1 = 21s ya comprometidos, y el término
+ * que falta (mail + base) NO TIENE COTA. Si le asignamos 4s —una ESTIMACIÓN,
+ * no una garantía— el peor caso de UN pipeline queda en ~25s y el gate honesto
+ * es 26 − 25 = 1s. Ese es el número de abajo. La cuenta anterior (9s) partía de
+ * "el agente tarda ~4s" sin haber mirado los techos reales: un solo pipeline
+ * arrancando a los 9s podía terminar cerca de los 34s.
+ *
+ * Consecuencia directa: como MUCHO UN pipeline por POST (ver FASE 3). Meta
+ * agrupa eventos, pero dos teléfonos en un mismo request son dos llamadas al
+ * modelo encadenadas — exactamente lo que la regla dura de CLAUDE.md prohíbe.
+ * El segundo teléfono se analiza cuando llegue su propio webhook.
+ *
+ * Lo que queda abierto y hay que decirlo: aun con el gate en 1s, un pipeline
+ * que toque TODOS sus techos a la vez (12 + 8 + un mail lento) puede pasarse de
+ * los 26s. Cerrarlo de verdad pide una de dos cosas, ninguna de las cuales es
+ * este archivo: ponerle `AbortSignal` al mail y a las queries del agente, o
+ * sacar el pipeline del request (cola/segundo endpoint, como ya hacen los
+ * carruseles y meta-launch-v2). Mientras el agente esté apagado esto no le
+ * pega a nadie; antes de encenderlo, hay que resolverlo.
+ *
+ * Qué se saltea y qué no: se saltea el ANÁLISIS, nunca el guardado. Guardar el
+ * mensaje del cliente es lo primero que hace el POST y es sagrado. El análisis
+ * salteado se recupera solo en el próximo mensaje entrante de esa conversación,
+ * porque el pipeline se dispara por mensaje entrante.
+ *
+ * Por qué importa tanto: si el POST no devuelve 200 a tiempo, Meta reintenta en
+ * loop y puede terminar DESHABILITANDO el webhook — se dejan de recibir TODOS
+ * los mensajes entrantes, no solo los del agente. Es la falla más cara posible
+ * de este sistema.
+ */
+const AI_BUDGET_MS = 1_000
 
 /**
  * Progreso de un mensaje saliente. Meta REINTENTA los webhooks y NO garantiza el
@@ -292,10 +373,26 @@ export async function GET(request: NextRequest) {
  * auténtico).
  */
 export async function POST(request: NextRequest) {
+  // Momento de arranque del REQUEST. Todo el presupuesto de IA se mide contra
+  // este instante, no contra el arranque de cada llamada — ver `AI_BUDGET_MS`.
+  const inicioRequest = Date.now()
+
   // El body CRUDO es imprescindible: la firma HMAC es sobre los bytes tal
   // cual los mandó Meta, re-serializar con JSON.stringify() no da el mismo
   // resultado (orden de keys, espacios, etc.).
-  const raw = await request.text()
+  //
+  // Si la lectura del stream se corta, NO hay bytes contra los cuales validar
+  // la firma: es indistinguible de un payload sin firmar, así que fail closed
+  // (403), igual que cuando la firma no matchea. No escribimos nada, y el
+  // reintento de Meta puede traer el body completo. Lo que NO puede pasar es
+  // que esto salga como 500 sin loguear.
+  let raw: string
+  try {
+    raw = await request.text()
+  } catch (err) {
+    console.warn('[whatsapp-webhook] no se pudo leer el body del request — no hay firma que verificar:', err)
+    return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
+  }
   const signatureHeader = request.headers.get('x-hub-signature-256')
 
   const validSignature = verifySignature(raw, signatureHeader, process.env.WHATSAPP_APP_SECRET)
@@ -315,23 +412,69 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  const { inbound, statuses } = parseWebhookPayload(body)
-  const supabase = admin()
+  // TODO lo que sigue va envuelto: con la firma ya validada, el payload es
+  // auténtico y la respuesta DEBE ser 200 pase lo que pase. Cualquier excepción
+  // acá adentro —`admin()` sin env vars, un shape inesperado, la base caída—
+  // antes se iba como 500, y un 500 hace que Meta reintente en loop el mismo
+  // payload y pueda terminar deshabilitando el webhook (se dejan de recibir
+  // TODOS los mensajes entrantes). El único no-200 que queda es el 403 por
+  // firma inválida, arriba.
+  try {
+    const { inbound, statuses } = parseWebhookPayload(body)
+    const supabase = admin()
 
-  // Secuencial: son pocos eventos por POST (Meta agrupa, pero rara vez manda
-  // más de un puñado por request) y evita saturar la conexión a Supabase.
-  for (const msg of inbound) {
-    const ctx = await persistInbound(supabase, msg)
-    // El pipeline de IA (análisis + agente que agenda) corre EN EL MISMO
-    // ciclo que acaba de persistir el mensaje — ver comentario de
-    // `runAiPipeline`. Si `persistInbound` no pudo resolver el contexto
-    // (fallo raro), no hay nada seguro que analizar: se omite sin romper
-    // el 200 a Meta.
-    if (ctx) await runAiPipeline(ctx)
-  }
-  for (const s of statuses) {
-    await persistStatus(supabase, s)
-  }
+    // FASE 1 — GUARDAR. Primero se persiste TODO lo entrante, sin ningún gate de
+    // tiempo en el medio. Esto es lo sagrado del endpoint: el sistema existe para
+    // que no se pierda el mensaje de un cliente. Secuencial: son pocos eventos por
+    // POST y así no se satura la conexión a Supabase.
+    const contextos: InboundContext[] = []
+    for (const msg of inbound) {
+      const ctx = await persistInbound(supabase, msg)
+      // Si `persistInbound` no pudo resolver el contexto (fallo raro), no hay nada
+      // seguro que analizar: se omite sin romper el 200 a Meta.
+      if (ctx) contextos.push(ctx)
+    }
 
-  return NextResponse.json({ ok: true, inbound: inbound.length, statuses: statuses.length })
+    // FASE 2 — ESTADOS DE ENTREGA. Van ANTES del pipeline de IA a propósito: son
+    // 2 roundtrips baratos por estado y mantienen al día el enviado/entregado/
+    // leído/falló que motivó todo este trabajo. Detrás de una llamada al modelo
+    // quedaban a merced de que el request llegara vivo hasta acá, y encima fuera
+    // de todo presupuesto. Ahora, si consumen tiempo, lo que se saltea es el
+    // análisis (que se recupera solo), no ellos.
+    for (const s of statuses) {
+      await persistStatus(supabase, s)
+    }
+
+    // FASE 3 — ANALIZAR. COMO MUCHO UN pipeline por POST, y es el del ÚLTIMO
+    // mensaje entrante del lote. Dos motivos:
+    //  1) Encadenar dos llamadas al modelo en un mismo request es justo lo que
+    //     prohíbe la regla dura de CLAUDE.md; con los techos reales (ver
+    //     `AI_BUDGET_MS`) el peor caso de UNO solo ya raspa los 26s de Netlify.
+    //  2) No se pierde casi nada: el cooldown de 2 minutos del análisis hace que
+    //     el segundo teléfono del lote casi siempre no aportara nada, y cuando sí
+    //     aporta, se analiza en su propio webhook (Meta manda un POST por evento
+    //     salvo cuando agrupa).
+    // El ÚLTIMO es el más informativo, y el análisis relee la conversación
+    // completa de la base, que en este punto ya tiene todo lo de la fase 1.
+    const aAnalizar = contextos.length ? contextos[contextos.length - 1] : null
+    if (aAnalizar) {
+      const transcurrido = Date.now() - inicioRequest
+      if (transcurrido >= AI_BUDGET_MS) {
+        // Se acabó el presupuesto: en este request NO se analiza. No se pierde
+        // nada permanente — el próximo mensaje entrante de esa conversación
+        // vuelve a disparar el pipeline con el request limpio. Lo que sí se
+        // protege es el 200 a Meta.
+        console.warn(
+          `[whatsapp-webhook] presupuesto de IA agotado (${transcurrido}ms de ${AI_BUDGET_MS}ms) — la conversación ${aAnalizar.phoneE164} no se analiza en este request; los mensajes YA quedaron guardados`,
+        )
+      } else {
+        await runAiPipeline(aAnalizar)
+      }
+    }
+
+    return NextResponse.json({ ok: true, inbound: inbound.length, statuses: statuses.length })
+  } catch (err) {
+    console.error('[whatsapp-webhook] excepción inesperada procesando el payload (se responde 200 igual):', err)
+    return NextResponse.json({ ok: true, processed: false })
+  }
 }

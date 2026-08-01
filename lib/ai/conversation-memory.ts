@@ -20,6 +20,13 @@
  * `<Database>` + cast manual de las filas que entran/salen.
  */
 import { createClient } from '@supabase/supabase-js'
+// Importar de `components/` desde `lib/` es a propósito: `countsAsReply` es una
+// función pura, sin React ni nada de cliente, y ya es la ÚNICA definición de
+// "este saliente salió de verdad" que usan el endpoint `GET
+// /api/whatsapp/conversations`, la lista del Inbox y las métricas del hilo.
+// Duplicar la lista acá sería crear un cuarto criterio que se desalinea el día
+// que aparezca un estado interno nuevo.
+import { countsAsReply } from '@/components/inbox/awaiting'
 
 export type ConversationIntent = 'agendar' | 'consulta' | 'frio' | 'desconocido'
 
@@ -68,6 +75,24 @@ function byCreatedAtAsc(a: WhatsappMessageLite, b: WhatsappMessageLite): number 
 }
 
 /**
+ * `true` si este mensaje existió PARA EL CLIENTE: lo mandó él (`in`) o es un
+ * saliente que salió de verdad hacia su WhatsApp (`countsAsReply`).
+ *
+ * POR QUÉ: en `whatsapp_messages` hay filas salientes que nunca salieron —las
+ * notas internas del agente de IA (`agent_handoff`, `agent_visit_pending`,
+ * `agent_visit_failed`, `agent_visit_unconfirmed`, constantes en
+ * `lib/ai/scheduling-agent.ts`), los envíos rebotados (`failed`) y los que el
+ * modo prueba nunca mandó (`skipped`)—. Para la IA esas filas son veneno en
+ * dos lugares distintos: si entran al transcripto, el modelo cree que le
+ * dijimos al cliente "le paso la conversación a una persona del equipo"; y si
+ * cuentan como "nosotros ya hablamos", el gate de análisis se apaga justo
+ * cuando el cliente sigue esperando y nadie le contestó.
+ */
+export function elClienteLoVio(m: Pick<WhatsappMessageLite, 'direction' | 'status'>): boolean {
+  return m.direction === 'in' || countsAsReply(m.status)
+}
+
+/**
  * Devuelve SOLO los mensajes no analizados todavía, ordenados de más viejo a
  * más nuevo. Es la pieza que contiene el costo: sin esto, cada análisis
  * releería mensajes ya pagados.
@@ -108,11 +133,20 @@ export function mensajesNuevosDesde(
  * conversación AHORA. `false` en cualquiera de estos 3 casos:
  *
  *   1. No hay mensajes nuevos desde el último análisis.
- *   2. El último mensaje de la conversación es NUESTRO (no hay nada nuevo
- *      del cliente que leer — un mensaje saliente solo no dispara análisis).
+ *   2. El último mensaje de la conversación es NUESTRO Y SALIÓ DE VERDAD (no
+ *      hay nada nuevo del cliente que leer — un mensaje saliente solo no
+ *      dispara análisis).
  *   3. Ya se analizó hace menos de `ANALYSIS_COOLDOWN_MS` (anti-rebote: varios
  *      mensajes del cliente llegando seguidos no deben pagar un análisis cada
  *      uno).
+ *
+ * OJO con el 2: el gate mira `elClienteLoVio`, no `direction` a secas. Una nota
+ * interna del agente al final del hilo NO es "nosotros ya contestamos" — el
+ * cliente nunca la recibió y sigue esperando; ese es exactamente el momento en
+ * que hay que analizar, no el momento de callarse. Por lo mismo, "nuevo" acá
+ * son los mensajes nuevos que el cliente vio: un hilo cuyo único movimiento
+ * desde el último análisis son notas internas no tiene nada que leerle al
+ * modelo, y pagar esa llamada sería mandarle un transcripto vacío.
  *
  * Un bug acá se paga en la factura todos los días — está testeada a fondo.
  */
@@ -121,10 +155,10 @@ export function debeAnalizar(
   mensajes: WhatsappMessageLite[],
   ahora: Date,
 ): boolean {
-  const nuevos = mensajesNuevosDesde(state, mensajes)
+  const nuevos = mensajesNuevosDesde(state, mensajes).filter(elClienteLoVio)
   if (nuevos.length === 0) return false
 
-  const ordenados = [...mensajes].sort(byCreatedAtAsc)
+  const ordenados = [...mensajes].sort(byCreatedAtAsc).filter(elClienteLoVio)
   const ultimo = ordenados[ordenados.length - 1]
   if (!ultimo || ultimo.direction === 'out') return false
 

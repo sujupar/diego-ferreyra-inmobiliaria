@@ -24,6 +24,7 @@ import {
   ANALYSIS_COOLDOWN_MS,
   SUMMARY_MAX_LENGTH,
   debeAnalizar,
+  elClienteLoVio,
   mensajesNuevosDesde,
   getConversationAiState,
   getRecentWhatsappMessages,
@@ -66,13 +67,27 @@ Reglas de cada campo:
 
 Devolvé SIEMPRE un JSON válido con EXACTAMENTE esas 7 claves, nada más.`
 
+/**
+ * El transcripto que ve el modelo tiene que ser SOLO lo que el cliente
+ * realmente vio — por eso el filtro `elClienteLoVio` (la lista blanca de
+ * `countsAsReply`, la misma que rige en el endpoint de conversaciones, la
+ * lista del Inbox y las métricas del hilo).
+ *
+ * Sin el filtro entraban acá, etiquetadas "[Nosotros]", las filas salientes que
+ * NUNCA salieron: las notas internas del agente de IA ("Le paso la
+ * conversación a una persona del equipo", "No pude registrar la visita"), los
+ * envíos rebotados y los `skipped` del modo prueba. El modelo las leía como
+ * mensajes que le habíamos mandado al cliente y resumía y priorizaba sobre
+ * eso: el cliente "ya tenía respuesta" cuando en realidad seguía esperando.
+ */
 function buildUserPrompt(previousSummary: string, mensajesNuevos: WhatsappMessageLite[]): string {
-  const lines = mensajesNuevos.map(
+  const visibles = mensajesNuevos.filter(elClienteLoVio)
+  const lines = visibles.map(
     (m) => `[${m.direction === 'in' ? 'Cliente' : 'Nosotros'}] ${m.body_preview?.trim() || '(sin texto — multimedia o vacío)'}`,
   )
   return [
     `Resumen previo:\n${previousSummary.trim() || '(sin resumen previo — es el primer análisis de esta conversación)'}`,
-    `Mensajes nuevos desde el último análisis (${mensajesNuevos.length}):\n${lines.join('\n')}`,
+    `Mensajes nuevos desde el último análisis (${visibles.length}):\n${lines.join('\n')}`,
   ].join('\n\n')
 }
 
@@ -173,13 +188,15 @@ async function askModel(
  * No decide POR SÍ SOLA si hay que analizar — eso es `debeAnalizar` (import
  * de `conversation-memory`). Este módulo asume que ya se decidió que sí, y
  * que `mensajesNuevos` no está vacío (si está vacío, no hay nada que mandarle
- * al modelo y devuelve `null` sin gastar una llamada).
+ * al modelo y devuelve `null` sin gastar una llamada). Ídem si lo único nuevo
+ * son filas que el cliente nunca vio (notas internas del agente, envíos
+ * fallidos): el transcripto quedaría vacío y la llamada sería plata tirada.
  */
 export async function analyzeConversation(input: {
   previousSummary: string
   mensajesNuevos: WhatsappMessageLite[]
 }): Promise<AnalysisPatch | null> {
-  if (input.mensajesNuevos.length === 0) return null
+  if (input.mensajesNuevos.filter(elClienteLoVio).length === 0) return null
 
   try {
     return await askModel(input.previousSummary, input.mensajesNuevos)

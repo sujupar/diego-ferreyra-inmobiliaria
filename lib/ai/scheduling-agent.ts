@@ -30,11 +30,19 @@
  *     `claim_agent_message_slot` (migración `20260803000004`). Leer el
  *     contador, mandar y después escribirlo NO alcanza: dos mensajes seguidos
  *     del cliente son dos webhooks concurrentes que leían `0` los dos,
- *     mandaban el MISMO texto dos veces y dejaban el contador en 1.
- *   - Con una visita `pending_confirmation` ya propuesta para esa propiedad y
- *     ese teléfono, el agente DEJA de proponer y de confirmar. No adivina si
- *     el cliente quiere moverla: correrle la fecha a una visita que el asesor
- *     ya tiene en agenda es decisión de una persona.
+ *     mandaban el MISMO texto dos veces y dejaban el contador en 1. El cupo se
+ *     DEVUELVE en un solo caso: cuando el envío responde `skipped` (modo
+ *     prueba / sin credenciales), o sea cuando no salió nada — ver
+ *     `releaseMessageSlot`. Ante un error real de Meta queda consumido.
+ *   - Con una visita VIVA y VIGENTE ya anotada para esa propiedad y ese
+ *     teléfono, el agente DEJA de proponer y de confirmar. No adivina si el
+ *     cliente quiere moverla: correrle la fecha a una visita que el asesor ya
+ *     tiene en agenda es decisión de una persona. "Viva" es cualquiera de
+ *     `VISITA_ACTIVA_STATUSES` (propuesta o ya confirmada); "vigente" tiene
+ *     definición explícita (`visitaVigente`): una fila cuya fecha ya pasó no es
+ *     una visita en agenda y no puede dejar al agente mudo para siempre. Si esa
+ *     lectura NO SE PUEDE HACER, el agente tampoco escribe: no saber si hay
+ *     visita no es lo mismo que saber que no la hay.
  *   - Al cliente NUNCA se le afirma que la visita quedó anotada antes de que
  *     esté guardada: el envío es la ÚLTIMA acción (guardar → avisar al equipo
  *     → recién ahí escribirle).
@@ -329,13 +337,35 @@ export function buildHandoffNote(max: number): string {
 }
 
 /**
- * Nota INTERNA. El cliente sigue hablando de una visita que YA está propuesta:
+ * Nota INTERNA. El cliente sigue hablando de una visita que YA está en agenda:
  * el agente se calla y avisa acá adentro. `fecha` en formato "4/8" (o `null` si
  * la visita no tiene fecha legible).
+ *
+ * El texto distingue PROPUESTA de CONFIRMADA porque no son la misma noticia
+ * para el asesor que lee el Inbox: sobre una propuesta todavía hay algo que
+ * cerrar; sobre una confirmada, el cliente está hablando de algo que el equipo
+ * ya cerró con él. Decir "todavía sin confirmar" de una visita confirmada sería
+ * mentirle al asesor.
  */
-export function buildPendingVisitNote(fecha: string | null): string {
+export function buildActiveVisitNote(fecha: string | null, status: string): string {
   const cuando = fecha ? ` para el ${fecha}` : ''
-  return `[Agente IA] El cliente sigue escribiendo sobre una visita que ya está propuesta${cuando} y todavía sin confirmar. El agente no vuelve a proponer ni a confirmar horarios de esta propiedad: mover una visita que el equipo ya tiene en agenda lo decide una persona.`
+  const estado =
+    status === 'scheduled'
+      ? `ya está confirmada${cuando}`
+      : `ya está propuesta${cuando} y todavía sin confirmar`
+  return `[Agente IA] El cliente sigue escribiendo sobre una visita que ${estado}. El agente no vuelve a proponer ni a confirmar horarios de esta propiedad: mover una visita que el equipo ya tiene en agenda lo decide una persona.`
+}
+
+/**
+ * Nota INTERNA. No se pudo LEER si este cliente ya tenía una visita en agenda
+ * para esta propiedad (PostgREST/RLS/red). Ante esa duda el agente no crea nada
+ * ni le escribe: el riesgo del otro lado es crear una visita DUPLICADA, mandar
+ * un segundo mail al equipo y escribirle al cliente como si fuera la primera
+ * vez. La nota existe porque callarse sin dejar rastro es la otra forma de
+ * fallar — nadie se enteraría de que el cliente pidió coordinar.
+ */
+export function buildVisitLookupFailedNote(error: string): string {
+  return `[Agente IA] El cliente pidió coordinar una visita y NO se pudo verificar si ya tenía una anotada para esta propiedad (${error}). Por las dudas el agente no le contestó ni registró nada — hay que responderle y coordinarla a mano.`
 }
 
 /**
@@ -344,6 +374,42 @@ export function buildPendingVisitNote(fecha: string | null): string {
  */
 export function buildVisitFailedNote(error: string): string {
   return `[Agente IA] El cliente pidió coordinar una visita y NO se pudo registrar (${error}). No se le confirmó nada por WhatsApp — hay que contestarle y coordinarla a mano.`
+}
+
+/**
+ * Por qué el agente no llegó a mandar el mensaje que tenía listo. Son DOS cosas
+ * distintas y antes se contaban como una sola: `claimMessageSlot` devolvía
+ * `null` tanto cuando no quedaba cupo como cuando la RPC de reserva fallaba, y
+ * las notas internas afirmaban siempre "se agotó el cupo". Eso mandaba al asesor
+ * a mirar el tope de mensajes cuando el problema real era la base.
+ */
+export type ClaimFailure = 'sin_cupo' | 'fallo_reserva'
+
+/** Causa en prosa, para las notas internas. Es la ÚNICA fuente del texto — no repetirlo suelto. */
+const CLAIM_FAILURE_CAUSA: Record<ClaimFailure, string> = {
+  sin_cupo: 'se agotó el cupo de mensajes automáticos',
+  fallo_reserva: 'falló la reserva del cupo de mensajes automáticos',
+}
+
+/**
+ * Nota INTERNA. El caso al revés de `buildVisitFailedNote`: la visita SÍ quedó
+ * guardada y el equipo YA recibió el mail, pero al cliente no se le pudo
+ * responder. Sin esta nota ese camino no dejaba NINGÚN rastro en el chat — a
+ * diferencia de todos los otros caminos anómalos — y el cliente se quedaba
+ * esperando una respuesta que nadie sabía que faltaba.
+ */
+export function buildVisitUnconfirmedNote(dia: string, franjaLabel: string, causa: ClaimFailure): string {
+  return `[Agente IA] La visita quedó registrada para ${dia} ${franjaLabel} y el equipo ya recibió el aviso, pero NO se le pudo confirmar al cliente por WhatsApp (${CLAIM_FAILURE_CAUSA[causa]}). Hay que escribirle para cerrarla.`
+}
+
+/**
+ * Nota INTERNA del camino de PROPONER franjas. Existe por simetría con el de
+ * confirmar: ahí, quedarse sin cupo ya dejaba rastro, y acá el agente se
+ * callaba en silencio. Es el mismo hecho de negocio —el cliente pidió coordinar
+ * y nadie le contestó— así que tiene que verse igual en el Inbox.
+ */
+export function buildProposeUnsentNote(causa: ClaimFailure): string {
+  return `[Agente IA] El cliente pidió coordinar una visita y NO se le pudieron mandar las opciones de día (${CLAIM_FAILURE_CAUSA[causa]}). No se registró ninguna visita — hay que escribirle para coordinarla.`
 }
 
 // ---------------------------------------------------------------------------
@@ -374,47 +440,157 @@ export interface RunSchedulingAgentResult {
 /** Status de las notas INTERNAS del agente en `whatsapp_messages` (nunca se le mandan al cliente). */
 const NOTE_STATUS_PENDING_VISIT = 'agent_visit_pending'
 const NOTE_STATUS_VISIT_FAILED = 'agent_visit_failed'
+const NOTE_STATUS_VISIT_UNCONFIRMED = 'agent_visit_unconfirmed'
+const NOTE_STATUS_VISIT_LOOKUP_FAILED = 'agent_visit_lookup_failed'
+const NOTE_STATUS_PROPOSE_UNSENT = 'agent_propose_unsent'
 
-export interface ExistingPendingVisit {
+/**
+ * Estados de `property_visits` que significan "hay una visita VIVA con este
+ * cliente en esta propiedad" (CHECK completo en la migración
+ * `20260728000001`: pending_confirmation, scheduled, completed, no_show,
+ * cancelled).
+ *
+ * Va `scheduled` además de `pending_confirmation` porque apenas el asesor
+ * CONFIRMA la visita (`PATCH /api/visits/[id]`) la fila pasa a `scheduled`, y
+ * con el freno viejo el agente se destrababa justo ahí: un "gracias, nos vemos"
+ * después de confirmada volvía a marcar intención de agendar y el agente podía
+ * proponer —o crear— otra visita arriba de una que el asesor ya tenía cerrada
+ * con el cliente. Ese es el peor caso posible de todos.
+ *
+ * `cancelled`, `completed` y `no_show` NO frenan: ahí no queda nada en agenda,
+ * y si el cliente vuelve a escribir para coordinar, coordinar es exactamente lo
+ * que corresponde.
+ */
+const VISITA_ACTIVA_STATUSES: string[] = ['pending_confirmation', 'scheduled']
+
+export interface ExistingActiveVisit {
   id: string
+  /** `pending_confirmation` o `scheduled` — cambia el texto de la nota interna. */
+  status: string
   /** "4/8" — para la nota interna. `null` si la fila no tiene `scheduled_at` legible. */
   fecha: string | null
+  /**
+   * `created_at` de la visita: el corte del EPISODIO. Las notas internas de
+   * "ya hay visita en agenda" se deduplican SOLO contra las posteriores a este
+   * instante — ver `yaHayNotaInterna`.
+   */
+  desdeISO: string
 }
 
 /**
- * Visita `pending_confirmation` de ESTA propiedad para ESTE teléfono.
+ * Resultado de buscar una visita ya en agenda. Existe por la MISMA razón que
+ * `ConversationAiStateRead` en `lib/ai/conversation-memory.ts`: `null` a secas
+ * mezclaba "no hay ninguna visita" (normal) con "no pude leer la tabla" (hipo
+ * de red, RLS, PostgREST caído), y este agente es la única pieza del sistema
+ * que le escribe sola a un cliente real. Con el empate, un error de lectura se
+ * leía como vía libre: visita DUPLICADA, segundo mail al equipo y un WhatsApp
+ * al cliente como si fuera la primera vez. Quien la llame tiene que frenar ante
+ * `readFailed: true`, no seguir de largo.
+ */
+export interface ExistingActiveVisitRead {
+  /** La visita, o `null` si no hay ninguna. Solo significa eso si `readFailed` es `false`. */
+  visit: ExistingActiveVisit | null
+  /** `true` = NO se pudo leer. Acá no sabemos nada: no se manda ni se crea nada. */
+  readFailed: boolean
+  /** Motivo de la falla, para la nota interna. */
+  error: string | null
+}
+
+/**
+ * Cuánto hacia atrás sigue contando como "visita en agenda". El freno existe
+ * para no correrle la fecha a una visita que el asesor YA tiene anotada; una
+ * cuya fecha ya pasó no es eso: es una fila que nadie confirmó ni canceló.
+ *
+ * 24hs de tolerancia y no 0 porque el caso real es el cliente que escribe
+ * DESPUÉS de la hora ("se me hizo tarde", "¿seguimos en pie?"): esa visita
+ * sigue siendo la conversación del momento y el agente no tiene que proponer
+ * otra ni crear una segunda fila. Más allá de eso, si nadie la tocó en un día,
+ * es basura que quedó y no puede dejar al agente mudo para siempre.
+ */
+const VISITA_VIGENTE_TOLERANCIA_MS = 24 * 60 * 60 * 1000
+
+/** ¿Esta visita sigue siendo una visita en agenda, o es basura vieja? */
+function visitaVigente(scheduledAt: string | null, now: Date): boolean {
+  // `property_visits.scheduled_at` es NOT NULL (migración `20260513000001`), así
+  // que esto es defensivo: sin fecha no se puede PROBAR que esté vencida, y ante
+  // la duda el freno se mantiene (callarse es más barato que agendar dos veces).
+  if (!scheduledAt) return true
+  const t = new Date(scheduledAt).getTime()
+  if (Number.isNaN(t)) return true
+  return t >= now.getTime() - VISITA_VIGENTE_TOLERANCIA_MS
+}
+
+/**
+ * Visita VIVA (`VISITA_ACTIVA_STATUSES`) de ESTA propiedad para ESTE teléfono.
  *
  * OJO — por qué no se filtra por `client_phone` en la query: la visita que el
  * cliente crea solo desde `/v/<token>` guarda el teléfono TAL CUAL lo tipeó
  * ("11 2233-4455"), no el E.164 del WhatsApp. Comparar exacto no matcheaba
  * NUNCA → se creaba una SEGUNDA visita contradictoria y salía un segundo mail
  * al equipo. Mismo patrón que `findLeadIdByPhone` en el webhook: se trae un
- * puñado de candidatas (las pending_confirmation de una propiedad son pocas
- * por definición) y la coincidencia REAL la decide `normalizeWhatsappPhone`,
- * que es exacta y no da falsos positivos por sufijo parecido.
+ * puñado de candidatas (las visitas vivas de una propiedad son pocas por
+ * definición) y la coincidencia REAL la decide `normalizeWhatsappPhone`, que es
+ * exacta y no da falsos positivos por sufijo parecido.
+ *
+ * Solo cuentan las visitas VIGENTES (`visitaVigente`): una de hace tres meses
+ * que nadie confirmó ni canceló dejaba al agente mudo PARA SIEMPRE con ese
+ * cliente. Ese filtro va en memoria y no en la query a propósito — así el
+ * criterio de "vigente" queda en UN solo lugar, testeado, en vez de repartido
+ * entre el SQL y el código. El de `status`, en cambio, SÍ va en la query: es una
+ * lista fija de la migración y descarta filas que no queremos ni traer.
+ *
+ * FAIL-CLOSED: ante un error de lectura devuelve `readFailed: true`, NUNCA
+ * `visit: null`. Ver `ExistingActiveVisitRead` para por qué eso importa tanto.
  */
-async function findExistingPendingVisit(
+async function findExistingActiveVisit(
   sb: ReturnType<typeof admin>,
   propertyId: string,
   phoneE164: string,
-): Promise<ExistingPendingVisit | null> {
+  now: Date,
+): Promise<ExistingActiveVisitRead> {
   try {
-    const { data } = await sb
+    const { data, error } = await sb
       .from('property_visits')
-      .select('id, client_phone, scheduled_at')
+      .select('id, client_phone, scheduled_at, created_at, status')
       .eq('property_id', propertyId)
-      .eq('status', 'pending_confirmation')
+      .in('status', VISITA_ACTIVA_STATUSES)
       .order('created_at', { ascending: false })
       .limit(50)
-    const rows = (data as Array<{ id: string; client_phone: string | null; scheduled_at: string | null }> | null) ?? []
+    if (error) {
+      console.warn(
+        '[scheduling-agent] no se pudo leer si ya hay una visita en agenda — no se manda nada (fail-closed):',
+        error.message,
+      )
+      return { visit: null, readFailed: true, error: error.message }
+    }
+    const rows =
+      (data as Array<{
+        id: string
+        client_phone: string | null
+        scheduled_at: string | null
+        created_at: string | null
+        status: string | null
+      }> | null) ?? []
     for (const row of rows) {
-      if (normalizeWhatsappPhone(row.client_phone) === phoneE164) {
-        return { id: row.id, fecha: fechaCortaArgentina(row.scheduled_at) }
+      if (normalizeWhatsappPhone(row.client_phone) !== phoneE164) continue
+      if (!visitaVigente(row.scheduled_at, now)) continue
+      return {
+        visit: {
+          id: row.id,
+          status: row.status ?? 'pending_confirmation',
+          fecha: fechaCortaArgentina(row.scheduled_at),
+          // Sin `created_at` legible el corte cae al instante actual: peor caso,
+          // la nota interna se repite una vez. Ver `yaHayNotaInterna`.
+          desdeISO: row.created_at ?? now.toISOString(),
+        },
+        readFailed: false,
+        error: null,
       }
     }
-    return null
-  } catch {
-    return null
+    return { visit: null, readFailed: false, error: null }
+  } catch (err) {
+    console.warn('[scheduling-agent] excepción leyendo las visitas en agenda — no se manda nada (fail-closed):', err)
+    return { visit: null, readFailed: true, error: err instanceof Error ? err.message : 'error desconocido' }
   }
 }
 
@@ -427,12 +603,29 @@ function fechaCortaArgentina(iso: string | null): string | null {
   return `${Number(dd)}/${Number(mm)}`
 }
 
-/** ¿Ya dejamos esta nota interna en este chat? Evita repetirla en cada mensaje del cliente. */
+/**
+ * ¿Ya dejamos esta nota interna EN ESTE EPISODIO? Evita repetirla en cada
+ * mensaje del cliente, sin silenciarla para siempre.
+ *
+ * `desdeISO` es el corte y es lo que arregla el agujero: antes se deduplicaba
+ * por (teléfono, propiedad, status) SIN ninguna ventana, así que la nota se
+ * escribía UNA vez en la historia de esa conversación. Un segundo episodio de
+ * agendamiento semanas después —otra visita, otro pedido del cliente— no
+ * generaba ningún aviso y nadie se enteraba de que estaba pidiendo coordinar.
+ * Ahora el corte es el `created_at` de la visita que motiva la nota: una visita
+ * distinta = una nota nueva.
+ *
+ * Ante ERROR de lectura devuelve `false`, o sea SE ESCRIBE. Es una nota
+ * INTERNA: una repetida es ruido tolerable en el Inbox, una faltante es un
+ * cliente que nadie atiende. (El criterio anterior era el opuesto y estaba mal
+ * justificado — trataba el ruido como más caro que el silencio.)
+ */
 async function yaHayNotaInterna(
   sb: ReturnType<typeof admin>,
   phoneE164: string,
   propertyId: string,
   status: string,
+  desdeISO: string,
 ): Promise<boolean> {
   try {
     const { data, error } = await sb
@@ -441,14 +634,13 @@ async function yaHayNotaInterna(
       .eq('phone_e164', phoneE164)
       .eq('property_id', propertyId)
       .eq('status', status)
+      .gte('created_at', desdeISO)
       .limit(1)
       .maybeSingle()
-    // Si no se pudo leer, asumimos que YA está: una nota de menos es un dato
-    // que falta, una nota repetida en cada mensaje es ruido que tapa el chat.
-    if (error) return true
+    if (error) return false
     return data !== null
   } catch {
-    return true
+    return false
   }
 }
 
@@ -460,44 +652,102 @@ async function yaHayNotaInterna(
  * incrementado. Sin fila devuelta = sin cupo = no se manda nada.
  *
  * Fail-closed: si la RPC falla (o la migración todavía no corrió), devuelve
- * `false` y el agente no escribe. Y si el envío falla DESPUÉS de reservar, el
+ * `null` y el agente no escribe. Y si el envío falla DESPUÉS de reservar, el
  * cupo queda consumido: es el lado seguro del error — este agente puede mandar
- * de menos, nunca de más.
+ * de menos, nunca de más. La ÚNICA excepción es el envío `skipped`, que se
+ * devuelve: ver `releaseMessageSlot`.
+ *
+ * Devuelve el número de mensaje reservado (1, 2, 3...) — hace falta para poder
+ * devolverlo — o el MOTIVO por el que no se reservó. Los dos motivos se
+ * distinguen (`sin_cupo` vs `fallo_reserva`) porque terminan en una nota que lee
+ * un asesor: antes ambos eran `null` y la nota afirmaba siempre "se agotó el
+ * cupo", así que ante una RPC rota lo mandaba a mirar el tope de mensajes en
+ * lugar del problema real. La CONDUCTA es la misma en los dos casos —
+ * fail-closed, no se manda nada—; lo que cambia es lo que se cuenta.
  */
+type ClaimResult = { ok: true; slot: number } | { ok: false; reason: ClaimFailure }
+
 async function claimMessageSlot(
   sb: ReturnType<typeof admin>,
   phoneE164: string,
   max: number,
-): Promise<boolean> {
+): Promise<ClaimResult> {
   try {
     const { data, error } = await sb.rpc('claim_agent_message_slot', { p_phone: phoneE164, p_max: max })
     if (error) {
       console.warn('[scheduling-agent] no se pudo reservar el cupo de mensajes — no se manda nada:', error.message)
-      return false
+      return { ok: false, reason: 'fallo_reserva' }
     }
-    return typeof data === 'number'
+    if (typeof data !== 'number') return { ok: false, reason: 'sin_cupo' }
+    return { ok: true, slot: data }
   } catch (err) {
     console.warn('[scheduling-agent] excepción reservando el cupo de mensajes — no se manda nada:', err)
-    return false
+    return { ok: false, reason: 'fallo_reserva' }
   }
+}
+
+/**
+ * Devuelve un cupo reservado. Se llama SOLO cuando `sendWhatsappText` respondió
+ * `skipped`, o sea cuando NO salió absolutamente nada: modo prueba
+ * (`WHATSAPP_TEST_MODE`) o credenciales de Meta ausentes.
+ *
+ * POR QUÉ EXISTE: la reserva va ANTES del envío (eso es lo que evita el mensaje
+ * duplicado entre dos webhooks concurrentes, no se toca). Pero `skipped` no es
+ * un envío fallido, es un envío que nunca ocurrió. Sin esta devolución, prender
+ * `scheduling_enabled` con el modo prueba todavía activo —perfectamente posible
+ * el día del estreno— quemaba los 3 cupos de cada conversación sin que el
+ * cliente leyera una sola palabra, y después el agente quedaba mudo para
+ * siempre creyendo que ya había hablado.
+ *
+ * Y POR QUÉ SOLO EN ESE CASO: ante un error REAL de Meta no sabemos si el
+ * mensaje salió (puede haberse cortado la respuesta con el mensaje ya
+ * aceptado), así que el cupo queda consumido — mandar de menos es el lado
+ * barato del error, mandar dos veces lo mismo no.
+ *
+ * El "devolver" es un valor ABSOLUTO (`claimed - 1`) y no un decremento
+ * atómico, y eso alcanza: `skipped` es una condición del PROCESO, no de este
+ * mensaje — si un envío se saltea se saltean TODOS, así que no hay ningún cupo
+ * legítimo de otro webhook que pisar. En el peor entrelazado quedaría un cupo
+ * de más consumido, nunca de menos.
+ */
+async function releaseMessageSlot(phoneE164: string, claimed: number): Promise<void> {
+  await updateAgentState(phoneE164, { agentMessagesSent: Math.max(0, claimed - 1) })
+}
+
+/**
+ * Los DOS nombres, que no son el mismo (y confundirlos era el bug): el que se
+ * usa para HABLARLE a una persona y el que va en la columna `client_name` de
+ * `property_visits`.
+ */
+interface ClientNames {
+  /**
+   * Nombre REAL, o `null` si no lo sabemos. `null` es la señal de "saludá sin
+   * nombre": el fallback `Cliente WhatsApp +54911...` pasaba por el helper que
+   * toma el primer nombre y el cliente terminaba leyendo "¡Buenísimo, Cliente!
+   * Anoté tu visita…". Ese fallback nunca fue un nombre de persona.
+   */
+  display: string | null
+  /** Lo que se guarda en la visita. La columna es NOT NULL, así que acá sí hay fallback. */
+  forVisit: string
 }
 
 async function resolveClientName(
   sb: ReturnType<typeof admin>,
   input: Pick<RunSchedulingAgentInput, 'contactName' | 'leadId' | 'phoneE164'>,
-): Promise<string> {
+): Promise<ClientNames> {
+  const fallback = `Cliente WhatsApp +${input.phoneE164}`
   const fromWa = input.contactName?.trim()
-  if (fromWa) return fromWa
+  if (fromWa) return { display: fromWa, forVisit: fromWa }
   if (input.leadId) {
     try {
       const { data } = await sb.from('property_leads').select('name').eq('id', input.leadId).maybeSingle()
       const name = (data as { name?: string | null } | null)?.name?.trim()
-      if (name) return name
+      if (name) return { display: name, forVisit: name }
     } catch {
       /* cae al fallback */
     }
   }
-  return `Cliente WhatsApp +${input.phoneE164}`
+  return { display: null, forVisit: fallback }
 }
 
 /**
@@ -585,18 +835,39 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
 
     // FRENO de visita ya acordada. Va acá (I/O) y no en `decideSchedulingAction`
     // a propósito: recién cuando el agente está por ESCRIBIR vale la pena pagar
-    // la consulta. Una vez que hay una visita propuesta para esta propiedad y
-    // este teléfono, el agente no propone ni confirma más nada: el análisis
-    // vuelve a marcar intención de agendar con cualquier "gracias" o "¿llevo el
-    // DNI?", y el parser reinterpretaría un "mañana a la tarde" viejo contra la
-    // fecha de HOY — o sea, le CORRERÍA la visita un día al cliente mientras el
-    // asesor ya tiene la original en la agenda.
-    const pendiente = await findExistingPendingVisit(sb, input.propertyId, input.phoneE164)
+    // la consulta. Una vez que hay una visita viva para esta propiedad y este
+    // teléfono, el agente no propone ni confirma más nada: el análisis vuelve a
+    // marcar intención de agendar con cualquier "gracias" o "¿llevo el DNI?", y
+    // el parser reinterpretaría un "mañana a la tarde" viejo contra la fecha de
+    // HOY — o sea, le CORRERÍA la visita un día al cliente mientras el asesor ya
+    // tiene la original en la agenda.
+    const enAgenda = await findExistingActiveVisit(sb, input.propertyId, input.phoneE164, now)
+
+    // No poder leer NO habilita a escribir: sin esta rama, un hipo de PostgREST
+    // se leía como "no hay ninguna visita" y el agente creaba una duplicada,
+    // mandaba un segundo mail al equipo y le escribía al cliente como si fuera
+    // la primera vez. La nota NO se deduplica: sin visita no hay `created_at`
+    // que sirva de corte de episodio, y una nota repetida es ruido tolerable
+    // frente a un cliente que nadie atiende (mismo criterio que `yaHayNotaInterna`).
+    if (enAgenda.readFailed) {
+      await logOutbound({
+        phone: input.phoneE164,
+        bodyPreview: buildVisitLookupFailedNote(enAgenda.error ?? 'error de lectura'),
+        status: NOTE_STATUS_VISIT_LOOKUP_FAILED,
+        leadId: input.leadId,
+        propertyId: input.propertyId,
+        sentBy: null,
+        aiGenerated: true,
+      })
+      return { action: 'noop', reason: 'no se pudo verificar si ya había una visita en agenda' }
+    }
+
+    const pendiente = enAgenda.visit
     if (pendiente) {
-      if (!(await yaHayNotaInterna(sb, input.phoneE164, input.propertyId, NOTE_STATUS_PENDING_VISIT))) {
+      if (!(await yaHayNotaInterna(sb, input.phoneE164, input.propertyId, NOTE_STATUS_PENDING_VISIT, pendiente.desdeISO))) {
         await logOutbound({
           phone: input.phoneE164,
-          bodyPreview: buildPendingVisitNote(pendiente.fecha),
+          bodyPreview: buildActiveVisitNote(pendiente.fecha, pendiente.status),
           status: NOTE_STATUS_PENDING_VISIT,
           leadId: input.leadId,
           propertyId: input.propertyId,
@@ -604,16 +875,29 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
           aiGenerated: true,
         })
       }
-      return { action: 'noop', reason: 'ya hay una visita propuesta para esta propiedad; moverla la decide una persona' }
+      return { action: 'noop', reason: 'ya hay una visita en agenda para esta propiedad; moverla la decide una persona' }
     }
 
     if (decision.type === 'propose_slots') {
       const clientName = await resolveClientName(sb, input)
-      const text = buildProposeMessage(clientName, propertyLabel, decision.slots)
-      if (!(await claimMessageSlot(sb, input.phoneE164, settings.max_messages_per_conversation))) {
-        return { action: 'noop', reason: 'no quedaba cupo de mensajes automáticos al momento de mandar' }
+      const text = buildProposeMessage(clientName.display, propertyLabel, decision.slots)
+      const claimed = await claimMessageSlot(sb, input.phoneE164, settings.max_messages_per_conversation)
+      if (!claimed.ok) {
+        // Nota INTERNA, por simetría con el camino de confirmar: si el agente se
+        // calla, el cliente pidió coordinar y NADIE se entera. Acá no hay visita
+        // creada, así que lo único que queda del pedido es esta nota.
+        await logOutbound({
+          phone: input.phoneE164,
+          bodyPreview: buildProposeUnsentNote(claimed.reason),
+          status: NOTE_STATUS_PROPOSE_UNSENT,
+          leadId: input.leadId,
+          propertyId: input.propertyId,
+          sentBy: null,
+          aiGenerated: true,
+        })
+        return { action: 'noop', reason: `no se le mandaron las opciones de día: ${claimed.reason}` }
       }
-      await sendWhatsappText({
+      const sent = await sendWhatsappText({
         to: input.phoneE164,
         text,
         leadId: input.leadId,
@@ -621,6 +905,8 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
         sentBy: null,
         aiGenerated: true,
       })
+      // No salió nada (modo prueba / sin credenciales) ⇒ el cupo vuelve.
+      if (sent.skipped) await releaseMessageSlot(input.phoneE164, claimed.slot)
       return { action: 'propose_slots' }
     }
 
@@ -637,7 +923,9 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
     const result = await upsertPendingVisit(sb, {
       propertyId: input.propertyId,
       advisorId: prop.assigned_to,
-      clientName,
+      // Acá SÍ va el fallback: la columna es NOT NULL y "Cliente WhatsApp
+      // +54911..." es exactamente lo que un asesor necesita ver en la agenda.
+      clientName: clientName.forVisit,
       clientEmail: null,
       clientPhone,
       scheduledAt,
@@ -671,14 +959,34 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
     // Última acción. Si acá no queda cupo (la carrera la ganó otro webhook), la
     // visita YA está registrada y el equipo YA recibió el aviso: la cierra una
     // persona. Callarse es preferible a mandarle dos veces lo mismo al cliente.
-    if (!(await claimMessageSlot(sb, input.phoneE164, settings.max_messages_per_conversation))) {
+    const claimed = await claimMessageSlot(sb, input.phoneE164, settings.max_messages_per_conversation)
+    if (!claimed.ok) {
+      // ...pero callarse SIN DEJAR RASTRO no: este era el único camino anómalo
+      // que no escribía nada en el chat, así que el cliente quedaba sin
+      // respuesta y el único aviso llegaba si volvía a escribir. La nota
+      // interna lo pone a la vista en el Inbox, igual que los otros caminos, y
+      // dice la causa REAL (sin cupo vs. reserva fallida) para no mandar al
+      // asesor a mirar el tope cuando el problema está en la base.
+      await logOutbound({
+        phone: input.phoneE164,
+        bodyPreview: buildVisitUnconfirmedNote(
+          dayWord(decision.dateISO, hoyEnArgentina(now)),
+          FRANJA_LABEL_PROSA[decision.franja],
+          claimed.reason,
+        ),
+        status: NOTE_STATUS_VISIT_UNCONFIRMED,
+        leadId: input.leadId,
+        propertyId: input.propertyId,
+        sentBy: null,
+        aiGenerated: true,
+      })
       return {
         action: 'confirm_visit',
-        reason: 'la visita quedó registrada pero no se le confirmó al cliente: sin cupo de mensajes automáticos',
+        reason: `la visita quedó registrada pero no se le confirmó al cliente: ${claimed.reason}`,
       }
     }
-    const text = buildConfirmMessage(clientName, propertyLabel, decision.dateISO, decision.franja, now)
-    await sendWhatsappText({
+    const text = buildConfirmMessage(clientName.display, propertyLabel, decision.dateISO, decision.franja, now)
+    const sent = await sendWhatsappText({
       to: input.phoneE164,
       text,
       leadId: input.leadId,
@@ -686,6 +994,8 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       sentBy: null,
       aiGenerated: true,
     })
+    // No salió nada (modo prueba / sin credenciales) ⇒ el cupo vuelve.
+    if (sent.skipped) await releaseMessageSlot(input.phoneE164, claimed.slot)
     return { action: 'confirm_visit' }
   } catch (err) {
     console.warn('[scheduling-agent] excepción (nunca lanza, continuando):', err)

@@ -40,7 +40,16 @@ export function countsAsReply(status: string | null | undefined): boolean {
 export function resolveAwaitingSince(
   item: Pick<ConversationListItem, 'awaiting_reply_since' | 'last_direction' | 'last_at' | 'last_status'>,
 ): string | null {
-  if (item.awaiting_reply_since) return item.awaiting_reply_since
+  // `undefined` y `null` NO son lo mismo, y confundirlos (un chequeo por
+  // truthiness) hacía que toda conversación YA CONTESTADA —el caso normal, que
+  // el servidor devuelve como `null`— cayera al respaldo. Y el respaldo puede
+  // decir lo contrario que el servidor: el servidor barre el hilo hacia atrás,
+  // el respaldo solo mira el ÚLTIMO mensaje. Con el cliente escribiendo de
+  // nuevo después de que le contestaron, la conversación reaparecía como
+  // pendiente en la pantalla que el dueño mira todos los días.
+  //   - `undefined` → el endpoint todavía no manda el campo → respaldo;
+  //   - `null`      → el servidor YA resolvió que no espera → se respeta.
+  if (item.awaiting_reply_since !== undefined) return item.awaiting_reply_since
   // Respaldo, solo si el servidor no mandó el campo. Tiene que dar EXACTAMENTE
   // lo mismo que el agrupador de `GET /api/whatsapp/conversations` (que usa
   // esta misma `countsAsReply`): si se desalinean, la lista dice una cosa y el
@@ -50,27 +59,13 @@ export function resolveAwaitingSince(
   return null
 }
 
-/**
- * Mismo cálculo pero a partir del último mensaje del HILO (no de la fila de la
- * lista) — lo usa `ChatThread` para la franja de demora.
- *
- * `status` es opcional solo por compatibilidad de firma: `ThreadMessage`
- * SIEMPRE lo trae, así que en la app real la regla que corre es la misma lista
- * blanca que en la lista y en el servidor. Si no viniera, un saliente se
- * asume enviado (comportamiento histórico) — la franja de más abajo es una
- * ayuda visual, no la fuente de verdad del filtro.
- */
-export function resolveAwaitingSinceFromLastMessage(
-  last: { direction: 'in' | 'out'; created_at: string; status?: string } | undefined,
-): string | null {
-  if (!last) return null
-  if (last.direction === 'in') return last.created_at
-  // Un saliente que nunca salió (la nota interna 'agent_handoff' del agente de
-  // IA, un envío 'failed') deja al cliente esperando igual: el hilo tiene que
-  // mostrar la franja, no darse por contestado.
-  if (last.status !== undefined && !countsAsReply(last.status)) return last.created_at
-  return null
-}
+// Acá vivía `resolveAwaitingSinceFromLastMessage` (mismo cálculo pero a partir
+// del último mensaje del hilo). Se borró: miraba SOLO el último mensaje, y por
+// eso la franja de demora de `ChatThread` —su único llamador— pasó a
+// `resolveThreadAwaitingSince` (`thread-metrics.ts`), que barre el hilo entero
+// hacia atrás. Quedó sin uso en producción y con un docstring que seguía
+// afirmando que la usaba `ChatThread`; un comentario que miente es peor que
+// ninguno, y una función viva invita a volver a llamarla.
 
 export function isAwaitingTooLong(awaitingSinceIso: string | null, now: number = Date.now()): boolean {
   if (!awaitingSinceIso) return false
