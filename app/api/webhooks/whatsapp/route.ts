@@ -4,6 +4,8 @@ import { parseWebhookPayload, verifySignature, type InboundMessage, type StatusU
 import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
 import { mapMetaStatus } from '@/lib/integrations/whatsapp/log'
 import { downloadAndStoreInboundMedia } from '@/lib/integrations/whatsapp/media'
+import { runConversationAnalysis } from '@/lib/ai/analyze-conversation'
+import { runSchedulingAgent } from '@/lib/ai/scheduling-agent'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,8 +85,26 @@ async function findLeadIdByPhone(
   }
 }
 
-/** Persiste un mensaje entrante. Nunca lanza — un fallo de guardado no puede tumbar el 200 a Meta. */
-async function persistInbound(supabase: ReturnType<typeof admin>, msg: InboundMessage): Promise<void> {
+/**
+ * Contexto resuelto de un mensaje entrante — lo que necesita el agente de IA
+ * (task 3) para correr SIN volver a resolver lead/propiedad por su cuenta.
+ */
+interface InboundContext {
+  phoneE164: string
+  leadId: string | null
+  propertyId: string | null
+  contactName: string | null
+}
+
+/**
+ * Persiste un mensaje entrante. Nunca lanza — un fallo de guardado no puede
+ * tumbar el 200 a Meta. Devuelve el contexto resuelto (phone/lead/propiedad)
+ * para que el caller pueda encadenar el análisis de IA + el agente que
+ * agenda SIN repetir el lookup de lead — `null` si algo impidió resolverlo
+ * (nunca se usa para decidir si el mensaje se guardó: eso ya se logueó arriba
+ * con `console.warn`).
+ */
+async function persistInbound(supabase: ReturnType<typeof admin>, msg: InboundMessage): Promise<InboundContext | null> {
   try {
     const normalized = normalizeWhatsappPhone(msg.from)
     // Meta ya manda `from` en formato E.164 sin '+' (es la fuente canónica, no
@@ -153,8 +173,40 @@ async function persistInbound(supabase: ReturnType<typeof admin>, msg: InboundMe
         }
       }
     }
+
+    return { phoneE164, leadId, propertyId: leadPropertyId, contactName: msg.contactName }
   } catch (err) {
     console.warn('[whatsapp-webhook] excepción guardando mensaje entrante (continuando):', err)
+    return null
+  }
+}
+
+/**
+ * Task 3, 2026-08-03 — el "engancharse acá" que pide el brief: analiza la
+ * conversación (task 2) y, en el MISMO ciclo, deja correr al agente que
+ * agenda (task 3) con el resultado FRESCO de ese análisis. `wantsToSchedule`/
+ * `proposedSlot` viajan SOLO en el retorno de `runConversationAnalysis` — no
+ * se persisten en ninguna tabla — así que esto NO puede separarse en un
+ * proceso aparte que lea el estado más tarde. Nunca lanza: un fallo acá no
+ * puede tumbar el 200 a Meta.
+ */
+async function runAiPipeline(ctx: InboundContext): Promise<void> {
+  try {
+    const analysis = await runConversationAnalysis(ctx.phoneE164)
+    if (!analysis.analyzed) return // cooldown/sin mensajes nuevos: nada fresco que pasarle al agente
+
+    await runSchedulingAgent({
+      phoneE164: ctx.phoneE164,
+      leadId: ctx.leadId,
+      propertyId: ctx.propertyId,
+      contactName: ctx.contactName,
+      wantsToSchedule: analysis.wantsToSchedule,
+      proposedSlot: analysis.proposedSlot,
+      agentMessagesSent: analysis.state?.agent_messages_sent ?? 0,
+      agentHandedOff: analysis.state?.agent_handed_off ?? false,
+    })
+  } catch (err) {
+    console.warn('[whatsapp-webhook] excepción en el pipeline de IA (continuando):', err)
   }
 }
 
@@ -269,7 +321,13 @@ export async function POST(request: NextRequest) {
   // Secuencial: son pocos eventos por POST (Meta agrupa, pero rara vez manda
   // más de un puñado por request) y evita saturar la conexión a Supabase.
   for (const msg of inbound) {
-    await persistInbound(supabase, msg)
+    const ctx = await persistInbound(supabase, msg)
+    // El pipeline de IA (análisis + agente que agenda) corre EN EL MISMO
+    // ciclo que acaba de persistir el mensaje — ver comentario de
+    // `runAiPipeline`. Si `persistInbound` no pudo resolver el contexto
+    // (fallo raro), no hay nada seguro que analizar: se omite sin romper
+    // el 200 a Meta.
+    if (ctx) await runAiPipeline(ctx)
   }
   for (const s of statuses) {
     await persistStatus(supabase, s)

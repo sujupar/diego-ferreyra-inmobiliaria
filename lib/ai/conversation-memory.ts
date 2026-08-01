@@ -247,3 +247,38 @@ export async function saveConversationAiState(
     console.warn('[conversation-memory] excepción guardando el análisis (continuando):', err)
   }
 }
+
+/**
+ * Patch PARCIAL de las columnas del agente que ESCRIBE (task 3,
+ * `lib/ai/scheduling-agent.ts`) — distinto de `saveConversationAiState`
+ * (que reescribe el análisis completo). Un `UPDATE`, no un upsert: asume que
+ * la fila ya existe (la crea `saveConversationAiState` en el mismo ciclo de
+ * request — ver el contrato documentado en `analyze-conversation.ts`).
+ */
+export interface AgentStatePatch {
+  agentMessagesSent?: number
+  agentHandedOff?: boolean
+}
+
+/**
+ * Persiste cuántos mensajes mandó el agente y/o si le pasó la conversación a
+ * un humano. NUNCA lanza (mismo criterio que `saveConversationAiState`): si
+ * falla, solo `console.warn` — el mensaje ya se mandó (o se decidió no
+ * mandar) y no puede depender de que esto funcione.
+ */
+export async function updateAgentState(phoneE164: string, patch: AgentStatePatch): Promise<void> {
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (patch.agentMessagesSent !== undefined) update.agent_messages_sent = patch.agentMessagesSent
+  if (patch.agentHandedOff !== undefined) update.agent_handed_off = patch.agentHandedOff
+  try {
+    const { error } = await admin()
+      .from('conversation_ai_state')
+      .update(update as never)
+      .eq('phone_e164', phoneE164)
+    if (error) {
+      console.warn('[conversation-memory] no se pudo actualizar el estado del agente (continuando):', error.message)
+    }
+  } catch (err) {
+    console.warn('[conversation-memory] excepción actualizando el estado del agente (continuando):', err)
+  }
+}
