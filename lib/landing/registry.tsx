@@ -36,6 +36,14 @@ import { ClosingInvite } from '@/components/landing/luxury/ClosingInvite'
 import { FooterBrand } from '@/components/landing/luxury/FooterBrand'
 import { StoryBlocks } from '@/components/landing/luxury/StoryBlocks'
 import { CuratedGallery } from '@/components/landing/luxury/CuratedGallery'
+
+/**
+ * Etiqueta única de TODOS los CTA de la landing. El embudo entero promete una
+ * sola cosa —ver el recorrido— así que ningún botón puede prometer otra: un
+ * "Quiero saber más" a mitad de página rompe la promesa y baja la conversión.
+ * Definido con el dueño el 2026-08-02.
+ */
+const CTA_RECORRIDO = 'Ver el recorrido de la propiedad'
 import { LocationShowcase } from '@/components/landing/luxury/LocationShowcase'
 import { FloorPlans } from '@/components/landing/luxury/FloorPlans'
 import { planLabelFromUrl } from '@/lib/properties/media'
@@ -283,7 +291,7 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
       if (block.type !== 'cta') return null
       return (
         <LandingCtaBand
-          label={block.label ?? 'Quiero saber más'}
+          label={block.label ?? CTA_RECORRIDO}
           headline={block.headline}
           subtext={block.subtext}
           source={block.id}

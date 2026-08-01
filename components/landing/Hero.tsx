@@ -75,7 +75,9 @@ function toEmbedUrl(url: string): string | null {
 
 export function LandingHero(props: HeroProps) {
   const {
-    title, subtitle, shortDesc, ctaLabel = 'Quiero saber más',
+    title, subtitle, shortDesc, // Mismo criterio que `CTA_RECORRIDO` en el registry: todos los CTA de la
+    // landing prometen lo mismo. Este default solo aplica a documentos viejos.
+    ctaLabel = 'Ver el recorrido de la propiedad',
     address, neighborhood, city, price, currency, operationType,
     heroImage, videoUrl, videoFileUrl, mediaMode = 'auto',
   } = props
