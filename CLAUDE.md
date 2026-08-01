@@ -538,3 +538,82 @@ La landing (`app/p/[slug]`) se rediseñó a nivel premium (estilo editorial/lujo
 - **Sistema por scope CSS** (`app/globals.css`, bloque `.landing-root`): serif en todos los `h1/h2/h3`, `overflow-wrap:anywhere`, selección de marca, y **scroll suave en el scroller real** (`html:has(.landing-root)`, NO en el div `.landing-root` que no scrollea). Eleva TODOS los bloques sin reescribirlos (usan los tokens Tailwind v4 ya premium: off-white cálido + charcoal + navy `--brand`).
 - **Motion 100% CSS, cero framer-motion en la landing** (`Hero.tsx` y `Reveal.tsx` son **server components**). Regla dura aprendida en el review adversarial: **NUNCA ramificar la ESTRUCTURA del DOM según `useReducedMotion()`** (devuelve `null` en SSR y el valor real en la 1ª hidratación → hydration mismatch en React 19), y **NUNCA dejar el contenido con `opacity:0` esperando al JS** (con `whileInView`/`animate` de framer-motion el hero/secciones quedan invisibles sin JS o en conexiones lentas — es tráfico pago). Solución: animación por CSS keyframes (`hero-rise/hero-zoom/hero-cue`) y scroll-driven (`animation-timeline: view()` con fallback `@supports`), todo dentro de `@media (prefers-reduced-motion: no-preference)` → el estado por defecto es SIEMPRE visible.
 - **Verificación:** como la carpeta con tilde rompe Turbopack, la landing NO se puede ver con `next dev` local. Se verifica con `renderToStaticMarkup` en un script tsx (estructura + que el texto NO tenga `opacity:0`) + WebFetch de una landing en producción. El look final (tipografía, contraste, motion) SOLO se confirma en un navegador real — pedírselo al usuario.
+
+---
+
+## Agente de IA que agenda visitas por WhatsApp — 2026-08-03
+
+Plan: `docs/superpowers/plans/2026-08-03-agente-ia-agenda-y-prioridad.md`.
+Reportes de implementación: `.superpowers/sdd/2026-08-03-agente-ia/`.
+
+### Los dos interruptores (arranca APAGADO, fail-closed)
+
+- **Global:** `ai_agent_settings.scheduling_enabled` (default `false`).
+- **Por propiedad:** `properties.ai_scheduling_enabled` (default `false`).
+- Tienen que estar **los dos en `true`** para que el agente escriba. Si CUALQUIERA
+  está apagado —o si no se puede LEER alguno (error de red, tabla ausente)— el
+  agente no manda nada: nunca asume "prendido" ante la duda.
+- **Tope:** `ai_agent_settings.max_messages_per_conversation` (hoy 3). Al llegar,
+  `conversation_ai_state.agent_handed_off = true` **para siempre** en esa
+  conversación y queda una nota INTERNA en el chat (`status:'agent_handoff'`, no
+  sale por Meta). Al cliente NO se le escribe "ahora te atiende un humano".
+
+### Dónde corre (y por qué no puede correr en otro lado)
+
+`runSchedulingAgent` corre **pegado** a `runConversationAnalysis`, en el MISMO
+ciclo del webhook (`app/api/webhooks/whatsapp/route.ts` → `runAiPipeline`).
+`wantsToSchedule`/`proposedSlot` **no se persisten en ninguna columna**: viajan
+solo en el resultado del análisis. Si alguna vez se mueve el agente a un proceso
+aparte que lee la tabla, esos dos datos NO van a estar ahí.
+
+El agente **nunca** hace una llamada de IA propia: interpreta el "cuándo" con un
+parser determinístico (`parseProposedSlot`, regex sobre castellano rioplatense).
+Es a propósito — el análisis ya gastó la única llamada de IA permitida en el
+request (ver § "nunca encadenar varias llamadas de IA dentro de UN request").
+Ante texto que no matchea con confianza NO adivina: vuelve a proponer franjas.
+
+### Contención del costo (la regla que define el diseño)
+
+1. La IA corre **solo ante un mensaje entrante**; un refresco de pantalla NUNCA
+   dispara análisis.
+2. Nunca lee la conversación completa: lee un **resumen acumulado (≤400 chars)**
+   más los mensajes nuevos, y reescribe el resumen en la misma llamada.
+3. Cooldown anti-rebote de 2 min (`debeAnalizar`). **Efecto lateral conocido:** si
+   el cliente contesta la propuesta de franjas antes de esos 2 min, esa vuelta no
+   hay análisis fresco → el agente no responde hasta el mensaje siguiente.
+4. Panel de costo en `/admin/ai-usage` (gate `settings.manage`).
+
+### Migraciones (las 3 ya aplicadas el 2026-08-03, verificadas contra la base)
+
+```
+20260803000001_conversation_ai_state.sql          — memoria + interruptores
+20260803000002_whatsapp_messages_ai_generated.sql — marca "lo escribió la IA"
+20260803000003_property_visits_created_by_ai.sql  — marca "la agendó la IA"
+```
+
+Las dos últimas son puramente aditivas (`ADD COLUMN ... DEFAULT false`).
+`scripts/apply-ai-markers-migration-pg.ts` las aplica y **aborta** si cambia la
+cantidad de filas, si alguna fila vieja queda marcada como IA, o si el agente
+quedara habilitado.
+
+**Regla del deploy:** el código manda `created_by_ai` **solo** cuando la visita la
+crea el agente. El camino del cliente (`/v/<token>/schedule`, en producción) no
+menciona la columna → no hay ventana de deploy que lo rompa. Igual, correr las
+migraciones ANTES de prender `scheduling_enabled`: sin `ai_generated`, el log de
+lo que manda el agente falla en silencio (`console.warn`) y el síntoma sería "el
+agente no manda nada", sin error visible.
+
+### Una sola forma de crear una visita propuesta
+
+`lib/leads/visit-scheduling.ts` (`upsertPendingVisit` + `notifyAndAdvancePipeline`)
+salió de `app/api/v/[token]/schedule/route.ts` para que el agente reuse
+EXACTAMENTE el mismo camino. **No crear una segunda forma**: si hace falta cambiar
+cómo se registra una visita propuesta, se cambia ahí y vale para los dos.
+
+### Plantilla que lo dispara
+
+`recorrido_acceso_v3` (UTILITY, aprobada 2026-08-03): botón URL "Ver recorrido" +
+**respuesta rápida "Quiero agendar una visita"**. La respuesta rápida es la clave:
+al tocarla ENTRA un mensaje del cliente → abre la ventana de 24hs, deja la
+intención registrada y le da el pie al agente. Un segundo botón URL no generaría
+nada. Se selecciona con la env var `WHATSAPP_TEMPLATE_RECORRIDO` en Netlify.
