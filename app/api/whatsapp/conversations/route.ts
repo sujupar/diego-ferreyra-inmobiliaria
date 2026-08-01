@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
+import { serviceWindow } from '@/lib/integrations/whatsapp/window'
+import { computePriority, type AiPriorityInput, type ConversationIntent } from '@/lib/integrations/whatsapp/priority'
 
 /**
  * GET /api/whatsapp/conversations
@@ -38,6 +40,9 @@ import { requireAuth } from '@/lib/auth/require-role'
  *   pipeline_state: PipelineState    // Task 3 — 'nuevo' si la conversación no tiene lead resuelto todavía
  *   tags: Array<{ slug: string; label: string; color: string }>  // Task 3 — etiquetas del lead, [] si no hay lead
  *   awaiting_reply_since: string | null  // ISO del último entrante SIN respuesta posterior; null si el último mensaje es saliente
+ *   window: { open: boolean; msRemaining: number }  // Task 4 — ventana de 24hs RECALCULADA acá (serviceWindow sobre el último entrante, esté o no contestado)
+ *   ai: { intent, priorityScore, priorityReason, suggestedNextStep, analyzedAt } | null  // Task 4 — lectura de `conversation_ai_state`; null = todavía no analizada
+ *   priority: { score, reason, windowUrgency, analyzed }  // Task 4 — computePriority(window, ai), SIEMPRE presente con un motivo en castellano
  *   last_message: string | null
  *   last_direction: 'in' | 'out'
  *   last_status: string
@@ -57,6 +62,12 @@ import { requireAuth } from '@/lib/auth/require-role'
  *     (ver `awaiting_reply_since` arriba); fuerza el orden por espera.
  *   - `?q=<texto>`       — búsqueda libre (case-insensitive) contra nombre de
  *     contacto, teléfono y dirección/título de la propiedad.
+ *
+ * `window`/`ai`/`priority` (Task 4) NO tienen query param propio — igual que
+ * el resto de los filtros de esta pantalla, "Ventana por cerrar" y "Orden IA"
+ * se aplican client-side sobre la lista completa (`components/inbox/filters.ts`),
+ * consistente con el resto de `ConversationFilterBar`. Acá solo se CALCULAN y
+ * viajan en cada fila.
  *
  * `webhookNotSubscribedWarning`: true si en TODA la tabla no hay ni un solo
  * mensaje entrante NI una sola actualización de estado post-envío
@@ -110,6 +121,13 @@ interface ConversationAcc {
   awaiting_since: string | null
   /** Corta el barrido: ya sabemos si espera o no. */
   answered: boolean
+  /**
+   * Task 4 — último entrante de la conversación SIN IMPORTAR si ya se
+   * contestó (`awaiting_since` se queda en null apenas se contesta; esto no).
+   * Es lo que necesita `serviceWindow`: la ventana de 24hs depende del último
+   * mensaje del CLIENTE, no de si el equipo ya respondió.
+   */
+  last_inbound_at: string | null
 }
 
 interface TagRow {
@@ -171,6 +189,7 @@ export async function GET(req: Request) {
           unread_count: 0,
           awaiting_since: null,
           answered: false,
+          last_inbound_at: null,
         }
         groups.set(row.phone_e164, g)
       } else {
@@ -181,6 +200,11 @@ export async function GET(req: Request) {
         if (!g.property_id && row.property_id) g.property_id = row.property_id
       }
       if (row.direction === 'in' && row.status === 'received') g.unread_count += 1
+
+      // Task 4: el entrante MÁS RECIENTE, esté o no contestado (independiente
+      // del bloque `answered` de abajo). `allRows` viene desc, así que el
+      // primero que encontramos ya es el más nuevo — se fija una sola vez.
+      if (row.direction === 'in' && g.last_inbound_at === null) g.last_inbound_at = row.created_at
 
       // "Sin responder": el entrante más reciente que NO tenga después un
       // saliente que haya salido de verdad.
@@ -238,6 +262,41 @@ export async function GET(req: Request) {
       if (!g.contact_name && lead?.name) g.contact_name = lead.name
     }
 
+    // Task 4 — lectura de la IA (`conversation_ai_state`, migración
+    // `20260803000001_conversation_ai_state.sql`, YA APLICADA). UNA sola query
+    // para TODOS los teléfonos presentes (mismo criterio "sin N+1" que las
+    // etiquetas arriba). La tabla NO está en `types/database.types.ts` (el CLI
+    // de Supabase no conecta acá) — mismo patrón de cliente sin genérico +
+    // cast que el resto del archivo. Esta ruta solo LEE: la escribe
+    // `lib/ai/conversation-memory.ts` (otra tarea, en paralelo).
+    const allPhones = Array.from(groups.keys())
+    let aiStateMap = new Map<string, AiPriorityInput & { suggestedNextStep: string | null; analyzedAt: string | null }>()
+    if (allPhones.length > 0) {
+      const { data: aiRows } = await supabase
+        .from('conversation_ai_state')
+        .select('phone_e164, intent, priority_score, priority_reason, suggested_next_step, last_analyzed_at')
+        .in('phone_e164', allPhones)
+      for (const row of (aiRows ?? []) as Array<{
+        phone_e164: string
+        intent: string
+        priority_score: number
+        priority_reason: string | null
+        suggested_next_step: string | null
+        last_analyzed_at: string | null
+      }>) {
+        aiStateMap.set(row.phone_e164, {
+          intent: (row.intent ?? 'desconocido') as ConversationIntent,
+          priorityScore: row.priority_score ?? 0,
+          priorityReason: row.priority_reason,
+          suggestedNextStep: row.suggested_next_step,
+          analyzedAt: row.last_analyzed_at,
+        })
+      }
+    }
+    // Reloj único para TODA la respuesta — dos conversaciones con el mismo
+    // último entrante deben dar exactamente la misma ventana en este request.
+    const now = new Date()
+
     // Filtro de asesor: solo conversaciones de sus propiedades.
     let list = Array.from(groups.values())
     if (role === 'asesor') {
@@ -291,6 +350,14 @@ export async function GET(req: Request) {
       // Calculado al agrupar: el entrante más reciente sin un saliente EXITOSO
       // después. Ver el comentario largo del acumulador arriba.
       const awaitingReplySince = g.awaiting_since
+
+      // Task 4 — ventana de 24hs (calculada, SIEMPRE presente) + lectura de
+      // la IA (puede ser null) + el score combinado con su motivo. Reusa
+      // `serviceWindow` tal cual — cero recálculo propio de la ventana.
+      const window = serviceWindow(g.last_inbound_at, now)
+      const aiState = aiStateMap.get(g.phone_e164) ?? null
+      const priority = computePriority(window, aiState)
+
       return {
         phone_e164: g.phone_e164,
         contact_name: g.contact_name,
@@ -311,6 +378,17 @@ export async function GET(req: Request) {
         last_status: g.last_status,
         last_at: g.last_at,
         unread_count: g.unread_count,
+        window,
+        ai: aiState
+          ? {
+              intent: aiState.intent,
+              priorityScore: aiState.priorityScore,
+              priorityReason: aiState.priorityReason,
+              suggestedNextStep: aiState.suggestedNextStep,
+              analyzedAt: aiState.analyzedAt,
+            }
+          : null,
+        priority,
       }
     })
 

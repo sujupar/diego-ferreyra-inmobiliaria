@@ -1,6 +1,6 @@
 'use client'
 
-import { AlertTriangle, Building2, Clock } from 'lucide-react'
+import { AlertTriangle, Building2, Clock, Sparkles } from 'lucide-react'
 import { Avatar } from './Avatar'
 import { TagChipList } from './TagChip'
 import { relativeTime, displayPhone } from './format'
@@ -13,21 +13,34 @@ import type { ConversationListItem } from './types'
  * cargo, contador de no leídos en verde, y la señal visual más importante de
  * toda la pantalla: si el último mensaje es del cliente y nadie contestó, se
  * nota SIN tener que abrir el hilo.
+ *
+ * `showPriority` (Task 4, 2026-08-03, `.superpowers/sdd/2026-08-03-agente-ia/`):
+ * default `false` a propósito — la fila en el orden normal (por última
+ * actividad) queda BYTE A BYTE igual que antes, ver los checks del probe. Solo
+ * cuando `WhatsappClient` tiene activo "Ventana por cerrar" u "Orden IA" pasa
+ * `true`, y ahí aparece la línea de motivo que el brief pide como
+ * NO NEGOCIABLE ("sin el porqué, nadie confía en el orden"). El ícono de
+ * chispa distingue si la IA YA analizó esta conversación (violeta, sólido) o
+ * todavía no la miró (gris, apagado) — una fila sin análisis nunca debe leerse
+ * como "prioridad cero", sino como "todavía no la miró la IA".
  */
 export function ConversationRow({
   item,
   active,
   onSelect,
+  showPriority = false,
 }: {
   item: ConversationListItem
   active: boolean
   onSelect: () => void
+  showPriority?: boolean
 }) {
   const failedLast = item.last_status === 'failed' && item.last_direction === 'out'
   const awaitingSince = resolveAwaitingSince(item)
   const awaitingTooLong = isAwaitingTooLong(awaitingSince)
   const advisorName = item.assigned_to_name ?? item.advisor_name ?? null
   const tags = item.tags ?? []
+  const priority = showPriority ? item.priority : null
 
   return (
     <button
@@ -58,6 +71,25 @@ export function ConversationRow({
           )}
 
           {tags.length > 0 && <TagChipList tags={tags} />}
+
+          {priority && (
+            <p
+              className={`flex items-center gap-1 text-[10px] ${
+                priority.analyzed ? 'text-violet-700 dark:text-violet-400' : 'text-muted-foreground'
+              }`}
+            >
+              <Sparkles className={`h-3 w-3 shrink-0 ${priority.analyzed ? '' : 'opacity-40'}`} />
+              <span className="truncate">
+                {priority.reason}
+                {!priority.analyzed && ' · todavía no la miró la IA'}
+              </span>
+              {priority.analyzed && (
+                <span className="ml-auto shrink-0 rounded-full bg-violet-100 px-1.5 py-px text-[9px] font-semibold text-violet-700 dark:bg-violet-950 dark:text-violet-300">
+                  {priority.score}
+                </span>
+              )}
+            </p>
+          )}
 
           <div className="flex items-center justify-between gap-2">
             {failedLast ? (

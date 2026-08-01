@@ -26,6 +26,7 @@ export function ConversationList({
   error,
   selectedPhone,
   onSelectPhone,
+  showPriority = false,
 }: {
   /** Lista completa, sin filtrar — solo para distinguir los estados vacíos. */
   conversations: ConversationListItem[] | null
@@ -36,6 +37,8 @@ export function ConversationList({
   error: string | null
   selectedPhone: string | null
   onSelectPhone: (phone: string) => void
+  /** Task 4 — true mientras "Ventana por cerrar" u "Orden IA" está activo: muestra el motivo del orden en cada fila. */
+  showPriority?: boolean
 }) {
   return (
     <div className="flex-1 overflow-y-auto">
@@ -65,7 +68,13 @@ export function ConversationList({
         </div>
       ) : (
         visible.map(c => (
-          <ConversationRow key={c.phone_e164} item={c} active={selectedPhone === c.phone_e164} onSelect={() => onSelectPhone(c.phone_e164)} />
+          <ConversationRow
+            key={c.phone_e164}
+            item={c}
+            active={selectedPhone === c.phone_e164}
+            onSelect={() => onSelectPhone(c.phone_e164)}
+            showPriority={showPriority}
+          />
         ))
       )}
     </div>

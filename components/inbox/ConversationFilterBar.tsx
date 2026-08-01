@@ -1,6 +1,6 @@
 'use client'
 
-import { Search, ChevronDown, Check } from 'lucide-react'
+import { Search, ChevronDown, Check, Timer, Sparkles } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
@@ -74,6 +74,13 @@ function FilterDropdown({
  * 100% presentacional — el estado de los filtros y el filtrado en sí viven en
  * `WhatsappClient.tsx` (único padre común de esta barra y de
  * `ConversationList`, que solo recibe la lista ya filtrada).
+ *
+ * `onlyWindowClosing`/`onlyAiOrder` (Task 4, 2026-08-03): dos botones MÁS,
+ * no uno — "Ventana por cerrar" es puramente calculado (anda con la IA
+ * apagada o caída) y "Orden IA" combina ese cálculo con la lectura de la IA.
+ * Opcionales con default `false`/no-op para no romper callers viejos (ej. el
+ * probe `scripts/whatsapp-chat.probe.tsx`, que arma `filterBarBaseProps` sin
+ * estas dos props).
  */
 export function ConversationFilterBar({
   search,
@@ -82,6 +89,10 @@ export function ConversationFilterBar({
   onToggleUnanswered,
   onlyUnread,
   onToggleUnread,
+  onlyWindowClosing = false,
+  onToggleWindowClosing = () => {},
+  onlyAiOrder = false,
+  onToggleAiOrder = () => {},
   propertyOptions,
   filterPropertyId,
   onPropertyChange,
@@ -103,6 +114,10 @@ export function ConversationFilterBar({
   onToggleUnanswered: () => void
   onlyUnread: boolean
   onToggleUnread: () => void
+  onlyWindowClosing?: boolean
+  onToggleWindowClosing?: () => void
+  onlyAiOrder?: boolean
+  onToggleAiOrder?: () => void
   propertyOptions: FilterOption[]
   filterPropertyId: string
   onPropertyChange: (value: string) => void
@@ -158,6 +173,28 @@ export function ConversationFilterBar({
           onClick={onToggleUnread}
         >
           No leídas
+        </Button>
+        <Button
+          type="button"
+          variant={onlyWindowClosing ? 'default' : 'outline'}
+          size="sm"
+          className={`h-8 shrink-0 gap-1 text-xs ${onlyWindowClosing ? 'bg-amber-600 hover:bg-amber-600/90' : ''}`}
+          onClick={onToggleWindowClosing}
+          title="Ordena las que tienen ventana de 24hs abierta por cuánto les queda — cálculo puro, funciona con la IA apagada"
+        >
+          <Timer className="h-3.5 w-3.5" />
+          Ventana por cerrar
+        </Button>
+        <Button
+          type="button"
+          variant={onlyAiOrder ? 'default' : 'outline'}
+          size="sm"
+          className={`h-8 shrink-0 gap-1 text-xs ${onlyAiOrder ? 'bg-violet-600 hover:bg-violet-600/90' : ''}`}
+          onClick={onToggleAiOrder}
+          title="Ordena por prioridad combinando la ventana de 24hs con la lectura de la IA"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          Orden IA
         </Button>
       </div>
     </div>
