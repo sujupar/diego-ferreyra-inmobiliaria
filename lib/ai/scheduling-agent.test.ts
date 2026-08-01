@@ -359,6 +359,9 @@ describe('runSchedulingAgent (I/O)', () => {
     expect(visitsInsert).toHaveBeenCalledWith(
       expect.objectContaining({ property_id: 'prop-1', status: 'pending_confirmation', client_name: 'María Sánchez' }),
     )
+    // La fila queda MARCADA como creada por la IA: sin esto, el panel de costo
+    // tiene que deducir cuáles son del agente cruzando teléfonos.
+    expect(visitsInsert).toHaveBeenCalledWith(expect.objectContaining({ created_by_ai: true }))
     expect(sendWhatsappTextMock).toHaveBeenCalledTimes(1)
     const sentArgs = sendWhatsappTextMock.mock.calls[0][0]
     expect(sentArgs.aiGenerated).toBe(true)

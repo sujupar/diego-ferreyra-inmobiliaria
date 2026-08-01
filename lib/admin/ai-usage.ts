@@ -136,21 +136,24 @@ export function groupAnalysesByDay(rows: AiUsageStateRow[]): AiUsageDayBucket[] 
 // ---------------------------------------------------------------------------
 
 /**
- * `property_visits` no tiene (todavía) una columna que marque "esto lo creó
- * el agente de IA" — la migración de `conversation_ai_state` no la incluye, y
- * esta tarea tiene prohibido escribir migraciones nuevas. Task 3 (el agente
- * que agenda, en paralelo) reusa la MISMA ruta `/api/v/[token]/schedule` que
- * ya usa la agenda de autoservicio del cliente (`/v/[token]`) — ver su brief:
- * "Reusa esa ruta, no la dupliques" — así que no hay un marcador exclusivo de
- * "creado por IA" en la fila de la visita.
+ * Cuenta las visitas que agendó el agente de IA. Dos modos, y el panel dice
+ * cuál está usando:
  *
- * Proxy usado acá, documentado y fácil de corregir el día que exista un
- * marcador real: una visita cuenta como "del agente" si su `client_phone`
- * coincide con el de una conversación donde `agent_messages_sent > 0` (el
- * agente efectivamente escribió en esa conversación — no solo "detectó
- * intención"). Comparación por los últimos 10 dígitos del teléfono (evita
- * falsos negativos por el 9 que Meta agrega a los móviles argentinos o por
- * formato +54/054/sin signos).
+ * - `'exacto'` — `property_visits.created_by_ai` existe (migración
+ *   `20260803000003_property_visits_created_by_ai.sql` corrida). El agente
+ *   marca la fila al crearla, así que el conteo es un HECHO. Este es el modo
+ *   normal.
+ * - `'estimado'` — la migración todavía no corrió en este entorno. Se cae al
+ *   proxy viejo: una visita cuenta como "del agente" si su `client_phone`
+ *   coincide con el de una conversación donde `agent_messages_sent > 0` (el
+ *   agente efectivamente escribió ahí — no solo "detectó intención"). Puede
+ *   contar de más: si el agente escribió en esa conversación pero la visita la
+ *   terminó agendando un asesor a mano, igual suma. Comparación por los
+ *   últimos 10 dígitos (tolera el 9 que Meta agrega a los móviles argentinos y
+ *   los formatos +54/054/sin signos).
+ *
+ * El modo lo decide quien lee la base (`app/api/admin/ai-usage/route.ts`),
+ * según si el `select` de la columna funcionó — acá no hay red.
  */
 export interface AgentTouchedConversation {
   phoneE164: string
@@ -160,13 +163,19 @@ export interface AgentTouchedConversation {
 export interface VisitLite {
   clientPhone: string | null
   status: string
+  /** `undefined` cuando la columna no existe todavía (modo estimado). */
+  createdByAi?: boolean | null
 }
 
+export type AgentVisitsMode = 'exacto' | 'estimado'
+
 export interface AgentVisitsSummary {
-  /** Visitas (cualquier estado) asociadas a una conversación donde el agente escribió. */
+  /** Visitas (cualquier estado) agendadas por el agente. */
   proposed: number
   /** De esas, cuántas terminaron confirmadas por el equipo o ya sucedieron. */
   confirmed: number
+  /** Si el número es un hecho (`exacto`) o una inferencia por teléfono (`estimado`). */
+  mode: AgentVisitsMode
 }
 
 const CONFIRMED_STATUSES = new Set(['scheduled', 'completed'])
@@ -178,18 +187,31 @@ function phoneMatchKey(phone: string | null | undefined): string | null {
   return digits.slice(-10)
 }
 
-export function summarizeAgentVisits(conversations: AgentTouchedConversation[], visits: VisitLite[]): AgentVisitsSummary {
+export function summarizeAgentVisits(
+  conversations: AgentTouchedConversation[],
+  visits: VisitLite[],
+  mode: AgentVisitsMode = 'exacto',
+): AgentVisitsSummary {
+  let proposed = 0
+  let confirmed = 0
+
+  if (mode === 'exacto') {
+    for (const v of visits) {
+      if (v.createdByAi !== true) continue
+      proposed++
+      if (CONFIRMED_STATUSES.has(v.status)) confirmed++
+    }
+    return { proposed, confirmed, mode }
+  }
+
   const touchedKeys = new Set(
     conversations.filter(c => c.agentMessagesSent > 0).map(c => phoneMatchKey(c.phoneE164)).filter((k): k is string => k !== null),
   )
-
-  let proposed = 0
-  let confirmed = 0
   for (const v of visits) {
     const key = phoneMatchKey(v.clientPhone)
     if (!key || !touchedKeys.has(key)) continue
     proposed++
     if (CONFIRMED_STATUSES.has(v.status)) confirmed++
   }
-  return { proposed, confirmed }
+  return { proposed, confirmed, mode }
 }

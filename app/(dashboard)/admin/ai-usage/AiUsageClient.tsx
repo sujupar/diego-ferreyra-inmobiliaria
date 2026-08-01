@@ -26,7 +26,7 @@ interface AiUsageDayBucket {
 interface AiUsageResponse {
   totals: AiUsageTotals
   byDay: AiUsageDayBucket[]
-  visits: { proposed: number; confirmed: number }
+  visits: { proposed: number; confirmed: number; mode?: 'exacto' | 'estimado' }
   pricePerMillionUsd: number
   usdToArs: { rate: number; source: string }
 }
@@ -162,6 +162,12 @@ export function AiUsageClient() {
                   {data.visits.confirmed.toLocaleString('es-AR')} confirmada{data.visits.confirmed === 1 ? '' : 's'} por
                   el equipo
                 </p>
+                {data.visits.mode === 'estimado' && (
+                  <p className="text-xs text-amber-600 dark:text-amber-500 mt-2">
+                    Número estimado: falta correr la migración que marca cada visita del agente, así que se deduce
+                    cruzando teléfonos y puede contar de más.
+                  </p>
+                )}
               </CardContent>
             </Card>
           </section>

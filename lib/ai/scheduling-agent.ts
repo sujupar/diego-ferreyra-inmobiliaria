@@ -495,6 +495,9 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       scheduledAt,
       notes,
       existingVisitId,
+      // Marca la fila como "la agendó la IA" — así el panel de costo cuenta
+      // estas visitas como un hecho y no deduciéndolas por teléfono.
+      createdByAi: true,
     })
 
     const text = buildConfirmMessage(clientName, propertyLabel, decision.dateISO, decision.franja, now)

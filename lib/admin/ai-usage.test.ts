@@ -107,9 +107,43 @@ describe('groupAnalysesByDay', () => {
   })
 })
 
-describe('summarizeAgentVisits', () => {
+describe('summarizeAgentVisits — modo exacto (property_visits.created_by_ai)', () => {
   it('sin visitas ni conversaciones, todo en cero', () => {
-    expect(summarizeAgentVisits([], [])).toEqual({ proposed: 0, confirmed: 0 })
+    expect(summarizeAgentVisits([], [])).toEqual({ proposed: 0, confirmed: 0, mode: 'exacto' })
+  })
+
+  it('cuenta SOLO las filas marcadas created_by_ai, sin mirar teléfonos', () => {
+    // Ninguna conversación pasada: en modo exacto no hace falta cruzar nada.
+    const visits = [
+      { clientPhone: '5491122334455', status: 'pending_confirmation', createdByAi: true },
+      { clientPhone: '5491122334455', status: 'scheduled', createdByAi: true },
+      { clientPhone: '5491122334455', status: 'scheduled', createdByAi: false }, // la agendó un asesor
+    ]
+    const r = summarizeAgentVisits([], visits)
+    expect(r.proposed).toBe(2)
+    expect(r.confirmed).toBe(1)
+    expect(r.mode).toBe('exacto')
+  })
+
+  it('una visita del MISMO teléfono que tocó el agente pero agendada a mano NO cuenta', () => {
+    // Este es justo el caso que el modo estimado contaba de más.
+    const conversations = [{ phoneE164: '5491122334455', agentMessagesSent: 3 }]
+    const visits = [{ clientPhone: '5491122334455', status: 'scheduled', createdByAi: false }]
+    expect(summarizeAgentVisits(conversations, visits).proposed).toBe(0)
+  })
+
+  it('createdByAi null/undefined (fila vieja, anterior a la columna) no cuenta', () => {
+    const visits = [
+      { clientPhone: '5491122334455', status: 'scheduled', createdByAi: null },
+      { clientPhone: '5491122334455', status: 'scheduled' },
+    ]
+    expect(summarizeAgentVisits([], visits).proposed).toBe(0)
+  })
+})
+
+describe('summarizeAgentVisits — modo estimado (migración sin correr)', () => {
+  it('sin visitas ni conversaciones, todo en cero', () => {
+    expect(summarizeAgentVisits([], [], 'estimado')).toEqual({ proposed: 0, confirmed: 0, mode: 'estimado' })
   })
 
   it('solo cuenta visitas de conversaciones donde el agente ESCRIBIÓ (agentMessagesSent > 0)', () => {
@@ -121,14 +155,14 @@ describe('summarizeAgentVisits', () => {
       { clientPhone: '5491122334455', status: 'pending_confirmation' },
       { clientPhone: '5491100000000', status: 'pending_confirmation' },
     ]
-    const r = summarizeAgentVisits(conversations, visits)
+    const r = summarizeAgentVisits(conversations, visits, 'estimado')
     expect(r.proposed).toBe(1)
   })
 
   it('tolera formatos de teléfono distintos (con/sin 9, con/sin +54)', () => {
     const conversations = [{ phoneE164: '5491122334455', agentMessagesSent: 1 }]
     const visits = [{ clientPhone: '+54 11 2233-4455', status: 'scheduled' }]
-    const r = summarizeAgentVisits(conversations, visits)
+    const r = summarizeAgentVisits(conversations, visits, 'estimado')
     expect(r.proposed).toBe(1)
     expect(r.confirmed).toBe(1)
   })
@@ -139,7 +173,7 @@ describe('summarizeAgentVisits', () => {
       { clientPhone: '5491122334455', status: 'pending_confirmation' },
       { clientPhone: '5491122334455', status: 'cancelled' },
     ]
-    const r = summarizeAgentVisits(conversations, visits)
+    const r = summarizeAgentVisits(conversations, visits, 'estimado')
     expect(r.proposed).toBe(2)
     expect(r.confirmed).toBe(0)
   })
@@ -147,7 +181,7 @@ describe('summarizeAgentVisits', () => {
   it('un client_phone null no revienta', () => {
     const conversations = [{ phoneE164: '5491122334455', agentMessagesSent: 1 }]
     const visits = [{ clientPhone: null, status: 'scheduled' }]
-    expect(() => summarizeAgentVisits(conversations, visits)).not.toThrow()
-    expect(summarizeAgentVisits(conversations, visits).proposed).toBe(0)
+    expect(() => summarizeAgentVisits(conversations, visits, 'estimado')).not.toThrow()
+    expect(summarizeAgentVisits(conversations, visits, 'estimado').proposed).toBe(0)
   })
 })

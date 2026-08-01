@@ -80,6 +80,19 @@ export interface UpsertPendingVisitInput {
    * recorrido). `null`/`undefined` = siempre crear una nueva.
    */
   existingVisitId?: string | null
+  /**
+   * `true` SOLO cuando la visita la agenda el agente de IA
+   * (`lib/ai/scheduling-agent.ts`). Marca la fila con `created_by_ai` para que
+   * el panel de costo cuente las visitas del agente como un HECHO y no
+   * deduciéndolas por teléfono (ver `summarizeAgentVisits`).
+   *
+   * OJO — deliberado: la columna solo se manda cuando es `true`. El camino del
+   * cliente (`/v/<token>/schedule`, en producción hoy) no la menciona, así que
+   * sigue funcionando aunque la migración
+   * `20260803000003_property_visits_created_by_ai.sql` todavía no haya corrido.
+   * El agente arranca apagado, así que no hay ventana de deploy rota.
+   */
+  createdByAi?: boolean
 }
 
 export type UpsertPendingVisitResult =
@@ -120,6 +133,8 @@ export async function upsertPendingVisit(
       scheduled_at: input.scheduledAt.toISOString(),
       status: 'pending_confirmation',
       notes: input.notes,
+      // Solo presente cuando la crea el agente — ver `createdByAi` arriba.
+      ...(input.createdByAi === true ? { created_by_ai: true } : {}),
     })
     .select('id')
     .single()

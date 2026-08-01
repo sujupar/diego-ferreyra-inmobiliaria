@@ -108,6 +108,37 @@ describe('upsertPendingVisit (I/O)', () => {
     expect(updateFn).not.toHaveBeenCalled()
   })
 
+  it('sin createdByAi NO manda la columna created_by_ai (el camino del cliente funciona aunque la migración no haya corrido)', async () => {
+    const { upsertPendingVisit, admin } = await import('./visit-scheduling')
+    insertSingle.mockResolvedValueOnce({ data: { id: 'visit-1' }, error: null })
+    await upsertPendingVisit(admin(), {
+      propertyId: 'prop-1',
+      advisorId: 'advisor-1',
+      clientName: 'Juan Pérez',
+      clientEmail: null,
+      clientPhone: '+5491122334455',
+      scheduledAt: new Date('2026-08-04T12:00:00Z'),
+      notes: 'nota',
+    })
+    expect(insertFn).toHaveBeenCalledWith(expect.not.objectContaining({ created_by_ai: expect.anything() }))
+  })
+
+  it('con createdByAi:true marca la fila (así el panel de costo cuenta un hecho, no una inferencia)', async () => {
+    const { upsertPendingVisit, admin } = await import('./visit-scheduling')
+    insertSingle.mockResolvedValueOnce({ data: { id: 'visit-1' }, error: null })
+    await upsertPendingVisit(admin(), {
+      propertyId: 'prop-1',
+      advisorId: 'advisor-1',
+      clientName: 'Juan Pérez',
+      clientEmail: null,
+      clientPhone: '+5491122334455',
+      scheduledAt: new Date('2026-08-04T12:00:00Z'),
+      notes: 'nota',
+      createdByAi: true,
+    })
+    expect(insertFn).toHaveBeenCalledWith(expect.objectContaining({ created_by_ai: true }))
+  })
+
   it('con existingVisitId vigente (sigue pending_confirmation), ACTUALIZA en vez de insertar ("última propuesta gana")', async () => {
     const { upsertPendingVisit, admin } = await import('./visit-scheduling')
     updateMaybeSingle.mockResolvedValueOnce({ data: { id: 'visit-old' }, error: null })
