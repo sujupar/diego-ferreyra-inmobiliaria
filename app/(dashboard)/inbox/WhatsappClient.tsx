@@ -283,6 +283,45 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
   const [search, setSearch] = useState('')
   const [onlyUnread, setOnlyUnread] = useState(false)
   const [onlyUnanswered, setOnlyUnanswered] = useState(false)
+  // Task 4 (2026-08-03): dos modos de orden MÁS, tratados como excluyentes
+  // entre sí y con "Sin responder" (prender uno apaga los otros dos) — los
+  // tres fuerzan un orden distinto al de "última actividad" y combinarlos no
+  // tiene un significado claro para el asesor. Sí pueden convivir con
+  // search/propiedad/asesor/etiqueta/estado (esos son filtros, no órdenes).
+  const [onlyWindowClosing, setOnlyWindowClosing] = useState(false)
+  const [onlyAiOrder, setOnlyAiOrder] = useState(false)
+
+  function toggleUnanswered() {
+    setOnlyUnanswered(v => {
+      const next = !v
+      if (next) {
+        setOnlyWindowClosing(false)
+        setOnlyAiOrder(false)
+      }
+      return next
+    })
+  }
+  function toggleWindowClosing() {
+    setOnlyWindowClosing(v => {
+      const next = !v
+      if (next) {
+        setOnlyUnanswered(false)
+        setOnlyAiOrder(false)
+      }
+      return next
+    })
+  }
+  function toggleAiOrder() {
+    setOnlyAiOrder(v => {
+      const next = !v
+      if (next) {
+        setOnlyUnanswered(false)
+        setOnlyWindowClosing(false)
+      }
+      return next
+    })
+  }
+
   const [filterPropertyId, setFilterPropertyId] = useState('all')
   const [filterAdvisorId, setFilterAdvisorId] = useState('all')
   const [filterTagSlug, setFilterTagSlug] = useState('all')
@@ -325,17 +364,31 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
         search,
         onlyUnread,
         onlyUnanswered,
+        onlyWindowClosing,
+        onlyAiOrder,
         propertyId: filterPropertyId,
         advisorId: filterAdvisorId,
         tagSlug: filterTagSlug,
         pipelineState: filterPipelineState,
       }),
-    [conversations, search, onlyUnread, onlyUnanswered, filterPropertyId, filterAdvisorId, filterTagSlug, filterPipelineState],
+    [
+      conversations,
+      search,
+      onlyUnread,
+      onlyUnanswered,
+      onlyWindowClosing,
+      onlyAiOrder,
+      filterPropertyId,
+      filterAdvisorId,
+      filterTagSlug,
+      filterPipelineState,
+    ],
   )
 
   const filtersActive =
     onlyUnread ||
     onlyUnanswered ||
+    onlyWindowClosing ||
     filterPropertyId !== 'all' ||
     filterAdvisorId !== 'all' ||
     filterTagSlug !== 'all' ||
@@ -376,9 +429,13 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
         search={search}
         onSearchChange={setSearch}
         onlyUnanswered={onlyUnanswered}
-        onToggleUnanswered={() => setOnlyUnanswered(v => !v)}
+        onToggleUnanswered={toggleUnanswered}
         onlyUnread={onlyUnread}
         onToggleUnread={() => setOnlyUnread(v => !v)}
+        onlyWindowClosing={onlyWindowClosing}
+        onToggleWindowClosing={toggleWindowClosing}
+        onlyAiOrder={onlyAiOrder}
+        onToggleAiOrder={toggleAiOrder}
         propertyOptions={propertyOptions}
         filterPropertyId={filterPropertyId}
         onPropertyChange={setFilterPropertyId}
@@ -412,6 +469,7 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
             error={listError}
             selectedPhone={selectedPhone}
             onSelectPhone={setSelectedPhone}
+            showPriority={onlyWindowClosing || onlyAiOrder}
           />
         </Card>
 

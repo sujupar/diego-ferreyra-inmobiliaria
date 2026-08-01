@@ -9,7 +9,8 @@
  * `now` se inyecta en vez de usar `Date.now()` adentro para que los tests
  * puedan fijar el instante exacto (23:59 / 24:01).
  */
-const WINDOW_MS = 24 * 60 * 60 * 1000
+/** Exportado (task 4, 2026-08-03): `lib/integrations/whatsapp/priority.ts` la reusa para calcular cuánto falta como % de la ventana total — nunca hardcodear 24h en otro lado. */
+export const WINDOW_MS = 24 * 60 * 60 * 1000
 
 export interface ServiceWindowResult {
   open: boolean

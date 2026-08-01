@@ -54,6 +54,14 @@ export interface LogOutboundInput {
   leadId?: string | null
   propertyId?: string | null
   sentBy?: string | null
+  /**
+   * true = lo escribió el agente de IA que agenda (task 3, 2026-08-03), no una
+   * persona. Va SIEMPRE con `sentBy: null` — es la marca que le permite al
+   * chat del Inbox distinguirlo de un mensaje de un asesor. Requiere la
+   * columna `whatsapp_messages.ai_generated` (migración
+   * `20260803000002_whatsapp_messages_ai_generated.sql`).
+   */
+  aiGenerated?: boolean
 }
 
 /**
@@ -80,6 +88,7 @@ export async function logOutbound(input: LogOutboundInput): Promise<void> {
         lead_id: input.leadId ?? null,
         property_id: input.propertyId ?? null,
         sent_by: input.sentBy ?? null,
+        ai_generated: input.aiGenerated ?? false,
       })
     if (error) {
       console.warn('[whatsapp-log] no se pudo registrar el envío (continuando):', error.message)

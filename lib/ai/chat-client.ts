@@ -49,16 +49,39 @@ interface ChatCompletionInput {
    * DeepSeek). Sin esto, pasar `model:'gpt-4.1'` al endpoint de DeepSeek falla.
    */
   provider?: AiProvider
+  /**
+   * Techo duro de tokens de OUTPUT por llamada (compatible OpenAI y DeepSeek:
+   * ambos aceptan `max_tokens`). Opcional — si no se pasa, el proveedor usa su
+   * default. Pensado para llamadas de análisis frecuente donde el costo por
+   * request importa (ver `lib/ai/analyze-conversation.ts`).
+   */
+  maxTokens?: number
+  /**
+   * Techo de TIEMPO de la llamada, en ms. OPCIONAL a propósito: sin él el
+   * comportamiento es el de siempre (esperar lo que haga falta), que es lo que
+   * necesitan los llamadores de fondo (carruseles, avatares, descripciones de
+   * portal) — corren fuera de un webhook y tardar 40s no rompe nada.
+   *
+   * Pasalo cuando la llamada viva DENTRO de una función de Netlify con un
+   * tiempo de respuesta que importa: ahí un proveedor colgado se lleva puesta
+   * la función entera antes de que podamos responder. Caso concreto: el
+   * análisis de conversación dentro del POST del webhook de WhatsApp — si Meta
+   * no recibe el 200, reintenta en loop y puede deshabilitar el webhook.
+   */
+  timeoutMs?: number
 }
 
 export interface ChatCompletionResult {
   content: string
   provider: AiProvider
   model: string
+  /** Tokens reportados por el proveedor para ESTA llamada. `undefined` si el proveedor no los reportó. */
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number }
 }
 
 interface OpenAIChatResponse {
   choices: Array<{ message: { content: string } }>
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
 }
 
 function getActiveProvider(): AiProvider {
@@ -106,6 +129,13 @@ export async function chatCompletion(
   if (input.jsonMode) {
     body.response_format = { type: 'json_object' }
   }
+  if (input.maxTokens) {
+    body.max_tokens = input.maxTokens
+  }
+
+  // Sin `timeoutMs` NO se manda `signal` — así los llamadores de siempre
+  // conservan exactamente el comportamiento anterior.
+  const signal = input.timeoutMs ? AbortSignal.timeout(input.timeoutMs) : undefined
 
   const res = await fetch(`${config.baseUrl}/chat/completions`, {
     method: 'POST',
@@ -114,6 +144,7 @@ export async function chatCompletion(
       authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
+    signal,
   })
   if (!res.ok) {
     const text = await res.text()
@@ -122,7 +153,14 @@ export async function chatCompletion(
   const data = (await res.json()) as OpenAIChatResponse
   const content = data.choices?.[0]?.message?.content
   if (!content) throw new Error(`${provider}: respuesta sin content`)
-  return { content, provider, model }
+  const usage = data.usage
+    ? {
+        promptTokens: data.usage.prompt_tokens ?? 0,
+        completionTokens: data.usage.completion_tokens ?? 0,
+        totalTokens: data.usage.total_tokens ?? 0,
+      }
+    : undefined
+  return { content, provider, model, usage }
 }
 
 /**

@@ -23,6 +23,19 @@ export interface ConversationFilters {
   onlyUnread: boolean
   /** El filtro más útil de todos (brief task 3): conversaciones cuyo último mensaje es del cliente y nadie contestó. */
   onlyUnanswered: boolean
+  /**
+   * Task 4 (`.superpowers/sdd/2026-08-03-agente-ia/`) — solo conversaciones
+   * con la ventana de 24hs ABIERTA, ordenadas por la que menos le queda
+   * primero. 100% calculado (`item.window`, sin IA) — anda igual con la IA
+   * apagada o caída.
+   */
+  onlyWindowClosing: boolean
+  /**
+   * Task 4 — sin filtrar nada (una conversación sin analizar SIGUE
+   * apareciendo, degradada al cálculo de ventana), ordena por
+   * `item.priority.score` (ventana + lectura de IA combinadas) descendente.
+   */
+  onlyAiOrder: boolean
 }
 
 export const DEFAULT_CONVERSATION_FILTERS: ConversationFilters = {
@@ -33,6 +46,8 @@ export const DEFAULT_CONVERSATION_FILTERS: ConversationFilters = {
   pipelineState: 'all',
   onlyUnread: false,
   onlyUnanswered: false,
+  onlyWindowClosing: false,
+  onlyAiOrder: false,
 }
 
 export function filterConversations(
@@ -44,6 +59,9 @@ export function filterConversations(
   let result = list.filter(c => {
     if (f.onlyUnread && c.unread_count === 0) return false
     if (f.onlyUnanswered && !resolveAwaitingSince(c)) return false
+    // "Ventana por cerrar": solo las que TODAVÍA pueden cerrarse — una sin
+    // `window` (API vieja) o ya cerrada queda afuera, no rompe.
+    if (f.onlyWindowClosing && !c.window?.open) return false
     if (f.propertyId !== 'all' && c.property_id !== f.propertyId) return false
     if (f.advisorId !== 'all' && c.advisor_id !== f.advisorId) return false
     if (f.tagSlug !== 'all' && !(c.tags ?? []).some(t => t.slug === f.tagSlug)) return false
@@ -65,10 +83,21 @@ export function filterConversations(
     return true
   })
 
-  // "Ordenadas por cuánto hace que esperan" (brief task 3) — la más vieja
-  // (la que más tiempo lleva enfriándose) primero. Solo se reordena en este
-  // modo: fuera de él, el orden natural (última actividad) es el esperado.
-  if (f.onlyUnanswered) {
+  // Precedencia de orden (task 4): a lo sumo UNO de estos tres modos gobierna
+  // el orden a la vez — `WhatsappClient.tsx` ya los trata como excluyentes al
+  // togglear (prender uno apaga los otros dos), esto es la defensa por si
+  // algún día dejan de serlo.
+  //   1. "Orden IA" — el score combinado (ventana + IA), de mayor a menor.
+  //      Nunca filtra nada (una conversación sin analizar sigue en la lista,
+  //      degradada al cálculo de ventana — nunca desaparece "por no tener IA").
+  //   2. "Ventana por cerrar" — ya filtrado arriba a las abiertas; entre esas,
+  //      la que MENOS tiempo le queda primero.
+  //   3. "Sin responder" (brief task 3) — la que más hace que espera primero.
+  if (f.onlyAiOrder) {
+    result = [...result].sort((a, b) => (b.priority?.score ?? 0) - (a.priority?.score ?? 0))
+  } else if (f.onlyWindowClosing) {
+    result = [...result].sort((a, b) => (a.window?.msRemaining ?? Infinity) - (b.window?.msRemaining ?? Infinity))
+  } else if (f.onlyUnanswered) {
     result = [...result].sort((a, b) => {
       const aSince = resolveAwaitingSince(a)
       const bSince = resolveAwaitingSince(b)

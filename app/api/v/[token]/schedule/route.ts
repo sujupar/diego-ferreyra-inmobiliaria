@@ -4,35 +4,19 @@
  * confirma el equipo (decisión de producto: no hay disponibilidad real por asesor).
  */
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { getAccessToken } from '@/lib/leads/access-token'
-import { notifyVisitProposed } from '@/lib/email/notifications/visit-proposed'
-import { advancePipelineState } from '@/lib/leads/pipeline-state'
-
-/** Hora de inicio por franja (hora local de Buenos Aires, UTC-3). */
-const FRANJA_HORA: Record<string, number> = { manana: 9, mediodia: 12, tarde: 15 }
+import {
+  admin,
+  FRANJA_HORA,
+  hoyEnArgentina,
+  sumarDias,
+  isFranja,
+  upsertPendingVisit,
+  notifyAndAdvancePipeline,
+} from '@/lib/leads/visit-scheduling'
 
 /** Ventana de agenda: desde mañana hasta 90 días. Endpoint público sin sesión. */
 const MAX_DIAS_ADELANTE = 90
-
-function admin() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-}
-
-/** Fecha de hoy (YYYY-MM-DD) en horario argentino, no en UTC del servidor. */
-function hoyEnArgentina(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Argentina/Buenos_Aires',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date())
-}
-
-/** Suma días a un YYYY-MM-DD sin que la zona horaria mueva el resultado. */
-function sumarDias(fecha: string, dias: number): string {
-  const d = new Date(`${fecha}T12:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + dias)
-  return d.toISOString().slice(0, 10)
-}
 
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
@@ -42,13 +26,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 
     const body = (await req.json().catch(() => ({}))) as { date?: string; franja?: string }
     const date = typeof body.date === 'string' ? body.date : ''
-    const franja = typeof body.franja === 'string' ? body.franja : 'manana'
+    const franjaRaw = typeof body.franja === 'string' ? body.franja : 'manana'
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return NextResponse.json({ error: 'Elegí un día válido' }, { status: 400 })
     }
-    if (!(franja in FRANJA_HORA)) {
+    if (!isFranja(franjaRaw)) {
       return NextResponse.json({ error: 'Elegí un momento del día válido' }, { status: 400 })
     }
+    const franja = franjaRaw
     // Rango razonable: desde mañana hasta 90 días. Sin esto un `2019-01-01`
     // entra igual y queda una visita en el pasado en el CRM.
     const hoy = hoyEnArgentina()
@@ -104,39 +89,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     const previousVisitId = (tokenRow as { visit_id?: string | null } | null)?.visit_id ?? null
     const leadId = (tokenRow as { lead_id?: string | null } | null)?.lead_id ?? null
 
-    let visitId: string | null = null
-
-    if (previousVisitId) {
-      const { data: updated } = await sb
-        .from('property_visits')
-        .update({ scheduled_at: scheduledAt.toISOString(), notes })
-        .eq('id', previousVisitId)
-        .eq('status', 'pending_confirmation')
-        .select('id')
-        .maybeSingle()
-      visitId = (updated as { id: string } | null)?.id ?? null
+    const result = await upsertPendingVisit(sb, {
+      propertyId: access.propertyId,
+      advisorId: (prop as { assigned_to?: string | null } | null)?.assigned_to ?? null,
+      clientName: access.name,
+      clientEmail: access.email,
+      clientPhone: access.phone,
+      scheduledAt,
+      notes,
+      existingVisitId: previousVisitId,
+    })
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 500 })
     }
-
-    if (!visitId) {
-      const { data: visit, error } = await sb
-        .from('property_visits')
-        .insert({
-          property_id: access.propertyId,
-          advisor_id: (prop as { assigned_to?: string | null } | null)?.assigned_to ?? null,
-          client_name: access.name,
-          client_email: access.email,
-          client_phone: access.phone,
-          scheduled_at: scheduledAt.toISOString(),
-          status: 'pending_confirmation',
-          notes,
-        })
-        .select('id')
-        .single()
-      if (error || !visit) {
-        return NextResponse.json({ error: error?.message ?? 'No pudimos registrar la visita' }, { status: 500 })
-      }
-      visitId = (visit as { id: string }).id
-    }
+    const visitId = result.visitId
 
     // Medición + vínculo token→visita (lo que permite el "última propuesta gana").
     await sb
@@ -144,19 +110,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       .update({ scheduled_at: new Date().toISOString(), visit_id: visitId })
       .eq('token', token)
 
-    // Notificar al equipo. Best-effort: la visita YA está registrada.
-    try {
-      await notifyVisitProposed(visitId)
-    } catch (err) {
-      console.error('[schedule] notificación falló (visita igual registrada):', err)
-    }
-
-    // `nuevo|contactado → visita_agendada`. Solo si el token nació de un lead
-    // real (`lead_access_tokens.lead_id` — ver `createAccessToken`); tokens
-    // sin lead asociado no mueven ningún estado. Best-effort, nunca lanza.
-    if (leadId) {
-      await advancePipelineState(leadId, 'visit_scheduled')
-    }
+    // Notificar al equipo + avanzar el embudo (`nuevo|contactado → visita_agendada`,
+    // solo si el token nació de un lead real). Best-effort, nunca lanza.
+    await notifyAndAdvancePipeline(visitId, leadId)
 
     return NextResponse.json({ ok: true })
   } catch (err) {

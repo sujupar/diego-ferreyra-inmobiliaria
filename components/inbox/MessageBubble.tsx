@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, CheckCheck, AlertTriangle, Clock, FileText } from 'lucide-react'
+import { Check, CheckCheck, AlertTriangle, Clock, FileText, EyeOff } from 'lucide-react'
 import { relativeTime, messageText, mediaCaption } from './format'
 import type { ThreadMessage } from './types'
 
@@ -22,6 +22,48 @@ import type { ThreadMessage } from './types'
  * salientes VERDE CLARITO. Se manda lo que pide el usuario ahora — el fallo
  * (`meta.isError`) sigue pisando cualquier otro color, siempre en rojo.
  */
+
+/**
+ * Toda fila SALIENTE cuyo status arranca con `agent_` es una NOTA INTERNA que
+ * escribió el agente de IA (`AGENT_NOTE_STATUS_PREFIX` en
+ * `lib/ai/scheduling-agent.ts`) y que NUNCA se le mandó al cliente por WhatsApp.
+ *
+ * El criterio es el PREFIJO, no una lista, y eso es lo que arregla el bug: acá
+ * había cuatro status copiados a mano mientras el agente ya definía seis, así
+ * que `agent_visit_lookup_failed` y `agent_propose_unsent` caían en el `default`
+ * de `outboundStatusMeta` — se leía el string crudo en pantalla y la fila se
+ * pintaba con el MISMO verde de un mensaje enviado, o sea que un asesor daba
+ * por hecho que al cliente se le había mandado algo que nunca salió. Con el
+ * prefijo, un séptimo status del agente ya queda bien tratado el día que se
+ * agregue.
+ *
+ * El motivo en prosa es copia de UI (lo lee un asesor, no un programador) y por
+ * eso vive acá; el fallback cubre a los status que todavía no tengan uno propio.
+ * No se importan las constantes de `scheduling-agent.ts` porque este componente
+ * es `'use client'` y ese módulo arrastra Supabase y la cadena de mails
+ * (`import 'server-only'`) al bundle del navegador. El contrato se sostiene
+ * desde los tests, uno de cada lado: `MessageBubble.test.tsx` prueba que
+ * CUALQUIER `agent_*` se dibuje como nota interna, y `scheduling-agent.test.ts`
+ * que todo status que el agente escriba arranque con ese prefijo.
+ */
+const AGENT_NOTE_STATUS_PREFIX = 'agent_'
+
+const AGENT_NOTE_REASONS: Record<string, string> = {
+  agent_handoff: 'el agente de IA dejó de escribir, sigue una persona',
+  agent_visit_pending: 'ya hay una visita propuesta sin confirmar',
+  agent_visit_failed: 'no se pudo registrar la visita',
+  agent_visit_unconfirmed: 'la visita quedó registrada pero falta confirmársela al cliente',
+  agent_visit_lookup_failed: 'no se pudo verificar si ya había una visita anotada',
+  agent_propose_unsent: 'no se le pudieron mandar las opciones de día',
+}
+
+const AGENT_NOTE_REASON_FALLBACK = 'aviso del agente de IA para el equipo'
+
+/** El motivo a mostrar, o `undefined` si esta fila NO es una nota interna. */
+function agentNoteReason(status: string): string | undefined {
+  if (!status.startsWith(AGENT_NOTE_STATUS_PREFIX)) return undefined
+  return AGENT_NOTE_REASONS[status] ?? AGENT_NOTE_REASON_FALLBACK
+}
 
 /**
  * Metadata visual de estado — solo aplica a mensajes SALIENTES (los entrantes
@@ -95,8 +137,33 @@ function MediaContent({ message }: { message: ThreadMessage }) {
   )
 }
 
+/**
+ * Nota interna del equipo. Se dibuja CENTRADA y en gris, con el lenguaje visual
+ * de los avisos del hilo (el separador de fecha y la franja de demora de
+ * `ChatThread`), nunca con la burbuja verde de un saliente: de un vistazo tiene
+ * que quedar claro que esto no es una conversación con el cliente, sino un
+ * cartel para el asesor. Sobrio a propósito — el hilo ya tiene bastante color.
+ */
+function InternalNote({ message, reason }: { message: ThreadMessage; reason: string }) {
+  return (
+    <div className="flex justify-center">
+      <div className="max-w-[85%] rounded-lg border border-dashed border-border bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+        <p className="flex items-start gap-1.5 font-medium text-foreground/80">
+          <EyeOff className="h-3.5 w-3.5 shrink-0 mt-px" />
+          <span>Nota interna del equipo — el cliente no la vio ({reason}).</span>
+        </p>
+        <p className="mt-1 whitespace-pre-wrap break-words">{messageText(message)}</p>
+        <p className="mt-1 text-[10px]">{relativeTime(message.created_at)}</p>
+      </div>
+    </div>
+  )
+}
+
 export function MessageBubble({ message }: { message: ThreadMessage }) {
   const isOut = message.direction === 'out'
+  // Antes que cualquier otra cosa: una nota interna no es un mensaje del chat.
+  const noteReason = isOut ? agentNoteReason(message.status) : undefined
+  if (noteReason) return <InternalNote message={message} reason={noteReason} />
   const meta = isOut ? outboundStatusMeta(message.status) : null
   const StatusIcon = meta?.icon
   const media = <MediaContent message={message} />

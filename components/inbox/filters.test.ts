@@ -41,7 +41,11 @@ describe('filterConversations', () => {
   it('onlyUnanswered solo deja las que esperan respuesta (último mensaje entrante)', () => {
     const list = [
       conv({ phone_e164: 'esperando', last_direction: 'in' }),
-      conv({ phone_e164: 'contestada', last_direction: 'out' }),
+      // `last_status` importa: desde que "contestada" es lista blanca, un
+      // saliente solo cuenta como respuesta si SALIÓ de verdad. El default del
+      // fixture es 'received', que es el estado de un ENTRANTE — dejarlo acá
+      // describía una fila imposible (saliente recibido) y tapaba la regla real.
+      conv({ phone_e164: 'contestada', last_direction: 'out', last_status: 'accepted' }),
     ]
     const r = filterConversations(list, f({ onlyUnanswered: true }))
     expect(r.map(c => c.phone_e164)).toEqual(['esperando'])
@@ -100,6 +104,51 @@ describe('filterConversations', () => {
   it('busca también por etiqueta', () => {
     const list = [conv({ phone_e164: 'a', tags: [{ slug: 'exterior', label: 'Comprador del exterior', color: 'violet' }] })]
     expect(filterConversations(list, f({ search: 'exterior' }))).toHaveLength(1)
+  })
+
+  it('onlyWindowClosing deja solo las que tienen la ventana ABIERTA', () => {
+    const list = [
+      conv({ phone_e164: 'abierta', window: { open: true, msRemaining: 10 * 60000 } }),
+      conv({ phone_e164: 'cerrada', window: { open: false, msRemaining: 0 } }),
+      conv({ phone_e164: 'sin-dato' }), // API vieja sin `window` — queda afuera, no rompe
+    ]
+    const r = filterConversations(list, f({ onlyWindowClosing: true }))
+    expect(r.map(c => c.phone_e164)).toEqual(['abierta'])
+  })
+
+  it('onlyWindowClosing ordena por menos tiempo restante primero', () => {
+    const list = [
+      conv({ phone_e164: 'mucho', window: { open: true, msRemaining: 20 * 60 * 60000 } }),
+      conv({ phone_e164: 'poco', window: { open: true, msRemaining: 5 * 60000 } }),
+    ]
+    const r = filterConversations(list, f({ onlyWindowClosing: true }))
+    expect(r.map(c => c.phone_e164)).toEqual(['poco', 'mucho'])
+  })
+
+  it('onlyAiOrder NO filtra nada — una conversación sin analizar sigue en la lista', () => {
+    const list = [
+      conv({ phone_e164: 'analizada', priority: { score: 90, reason: 'x', windowUrgency: 10, analyzed: true } }),
+      conv({ phone_e164: 'sin-analizar', priority: { score: 20, reason: 'y', windowUrgency: 20, analyzed: false } }),
+    ]
+    const r = filterConversations(list, f({ onlyAiOrder: true }))
+    expect(r).toHaveLength(2)
+  })
+
+  it('onlyAiOrder ordena por priority.score descendente', () => {
+    const list = [
+      conv({ phone_e164: 'baja', priority: { score: 30, reason: 'x', windowUrgency: 30, analyzed: true } }),
+      conv({ phone_e164: 'alta', priority: { score: 95, reason: 'y', windowUrgency: 10, analyzed: true } }),
+    ]
+    const r = filterConversations(list, f({ onlyAiOrder: true }))
+    expect(r.map(c => c.phone_e164)).toEqual(['alta', 'baja'])
+  })
+
+  it('onlyAiOrder sin campo priority (API vieja) no revienta, se ordena al final', () => {
+    const list = [
+      conv({ phone_e164: 'con-priority', priority: { score: 50, reason: 'x', windowUrgency: 50, analyzed: true } }),
+      conv({ phone_e164: 'sin-priority' }),
+    ]
+    expect(() => filterConversations(list, f({ onlyAiOrder: true }))).not.toThrow()
   })
 
   it('combina varios filtros a la vez (AND)', () => {

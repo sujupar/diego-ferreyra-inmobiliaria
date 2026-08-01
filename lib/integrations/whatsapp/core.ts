@@ -222,6 +222,8 @@ export interface SendTextInput {
   propertyId?: string | null
   /** Perfil que disparó el envío (asesor/ops respondiendo desde el chat). Opcional. */
   sentBy?: string | null
+  /** true = lo generó el agente de IA que agenda (task 3, 2026-08-03), no una persona. Ver `logOutbound`. */
+  aiGenerated?: boolean
 }
 
 export interface TextPayload {
@@ -394,6 +396,7 @@ export async function sendWhatsappText(input: SendTextInput): Promise<SendTextRe
       leadId: input.leadId,
       propertyId: input.propertyId,
       sentBy: input.sentBy,
+      aiGenerated: input.aiGenerated,
     })
     return { ok: true, skipped: true }
   }
@@ -429,6 +432,7 @@ export async function sendWhatsappText(input: SendTextInput): Promise<SendTextRe
         leadId: input.leadId,
         propertyId: input.propertyId,
         sentBy: input.sentBy,
+        aiGenerated: input.aiGenerated,
       })
       return { ok: false, skipped: false, error: msg }
     }
@@ -446,6 +450,7 @@ export async function sendWhatsappText(input: SendTextInput): Promise<SendTextRe
       leadId: input.leadId,
       propertyId: input.propertyId,
       sentBy: input.sentBy,
+      aiGenerated: input.aiGenerated,
     })
     return { ok: true, skipped: false, messageId: waMessageId }
   } catch (err) {
@@ -460,6 +465,7 @@ export async function sendWhatsappText(input: SendTextInput): Promise<SendTextRe
       leadId: input.leadId,
       propertyId: input.propertyId,
       sentBy: input.sentBy,
+      aiGenerated: input.aiGenerated,
     })
     return { ok: false, skipped: false, error: msg }
   }

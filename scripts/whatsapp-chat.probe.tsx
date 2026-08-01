@@ -260,6 +260,50 @@ const htmlRowContestada = renderToStaticMarkup(
 check('una fila YA contestada (último saliente) usa el gris apagado, no el destacado de "sin responder"', htmlRowContestada.includes('text-muted-foreground'))
 
 // ═══════════════════════════════════════════════════════════════════════
+// ConversationRow — orden por prioridad (task 4, 2026-08-03).
+// ═══════════════════════════════════════════════════════════════════════
+
+const htmlRowSinShowPriority = renderToStaticMarkup(
+  <ConversationRow
+    item={convo({ priority: { score: 90, reason: 'pidió agendar y le quedan 3h de ventana', windowUrgency: 40, analyzed: true } })}
+    active={false}
+    onSelect={() => {}}
+  />,
+)
+check('sin showPriority (orden normal), NO aparece la línea de motivo aunque el dato venga', !htmlRowSinShowPriority.includes('pidió agendar y le quedan 3h de ventana'))
+
+const htmlRowConPrioridadAnalizada = renderToStaticMarkup(
+  <ConversationRow
+    item={convo({ priority: { score: 92, reason: 'pidió agendar y le quedan 3h de ventana', windowUrgency: 40, analyzed: true } })}
+    active={false}
+    onSelect={() => {}}
+    showPriority
+  />,
+)
+check('con showPriority, la fila muestra el motivo EN UNA LÍNEA', htmlRowConPrioridadAnalizada.includes('pidió agendar y le quedan 3h de ventana'))
+check('conversación analizada por la IA muestra el score como número', htmlRowConPrioridadAnalizada.includes('>92<'))
+check('conversación analizada usa el color violeta (distinguible de "sin analizar")', htmlRowConPrioridadAnalizada.includes('text-violet-700'))
+
+const htmlRowConPrioridadSinAnalizar = renderToStaticMarkup(
+  <ConversationRow
+    item={convo({ priority: { score: 40, reason: 'le quedan 3h de ventana', windowUrgency: 40, analyzed: false } })}
+    active={false}
+    onSelect={() => {}}
+    showPriority
+  />,
+)
+check(
+  'una conversación SIN analizar no parece "prioridad cero" — dice explícitamente que la IA no la miró',
+  htmlRowConPrioridadSinAnalizar.includes('todavía no la miró la IA'),
+)
+check('sin analizar, NO muestra el score numérico (evita que parezca un puntaje real de la IA)', !htmlRowConPrioridadSinAnalizar.includes('>40<'))
+
+const htmlRowSinPriorityDato = renderToStaticMarkup(
+  <ConversationRow item={convo({ priority: undefined })} active={false} onSelect={() => {}} showPriority />,
+)
+check('showPriority activo pero sin dato priority (API vieja) no revienta ni imprime basura', !/\bundefined\b|\bnull\b/.test(htmlRowSinPriorityDato))
+
+// ═══════════════════════════════════════════════════════════════════════
 // ConversationList (task 4, RECORTADA en el Ajuste 2 de 2026-08-01) — ya NO
 // tiene filtros propios, solo recibe `visible` (ya filtrada por
 // `WhatsappClient`) + `conversations` (cruda, para distinguir los dos estados
@@ -339,6 +383,21 @@ check(
   'sin catálogo de etiquetas (endpoint task 3 caído/inexistente), NO muestra un selector vacío inútil',
   !htmlFilterBarSinCatalogo.includes('Todas las etiquetas'),
 )
+
+// Task 4 (2026-08-03) — "Ventana por cerrar" y "Orden IA", dos botones MÁS en
+// la MISMA franja de una línea (el dueño pidió explícitamente que todo entre
+// en una línea — ver comentario del componente).
+check('sin pasar las props nuevas (callers viejos), la franja NO revienta', htmlFilterBar.length > 0)
+check('la franja de filtros tiene "Ventana por cerrar" (puramente calculado)', htmlFilterBar.includes('Ventana por cerrar'))
+check('la franja de filtros tiene "Orden IA" (combina ventana + lectura de IA)', htmlFilterBar.includes('Orden IA'))
+
+const htmlFilterBarVentanaActiva = renderToStaticMarkup(
+  <ConversationFilterBar {...filterBarBaseProps} onlyWindowClosing onToggleWindowClosing={() => {}} />,
+)
+check('"Ventana por cerrar" activo se ve resaltado (variant default, no outline)', /Ventana por cerrar/.test(htmlFilterBarVentanaActiva))
+
+const htmlFilterBarIaActiva = renderToStaticMarkup(<ConversationFilterBar {...filterBarBaseProps} onlyAiOrder onToggleAiOrder={() => {}} />)
+check('"Orden IA" activo se sigue viendo (variant default)', /Orden IA/.test(htmlFilterBarIaActiva))
 
 // ═══════════════════════════════════════════════════════════════════════
 // ThreadHeader (task 5) — cabecera clickeable que abre el panel del cliente.

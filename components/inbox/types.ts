@@ -45,6 +45,31 @@ export interface ConversationListItem {
   tags?: LeadTagRef[]
   assigned_to_name?: string | null
   awaiting_reply_since?: string | null
+  /**
+   * Contrato nuevo (task 4, `.superpowers/sdd/2026-08-03-agente-ia/`) — ventana
+   * de 24hs RECALCULADA en cada fetch (`lib/integrations/whatsapp/window.ts`,
+   * a partir del último entrante, esté o no contestado). `undefined` si el
+   * endpoint todavía no lo manda; `components/inbox/filters.ts` lo trata igual
+   * que ausente.
+   */
+  window?: { open: boolean; msRemaining: number } | null
+  /**
+   * Lectura acumulada de la IA (`conversation_ai_state`, la escribe
+   * `lib/ai/analyze-conversation.ts` en paralelo) — `null` si esta conversación
+   * TODAVÍA no fue analizada (no es "prioridad cero", es "no la miró la IA").
+   */
+  ai?: {
+    intent: string
+    priorityScore: number
+    priorityReason: string | null
+    suggestedNextStep: string | null
+    analyzedAt: string | null
+  } | null
+  /**
+   * Orden combinado (task 4) — `lib/integrations/whatsapp/priority.ts`
+   * `computePriority(window, ai)`, calculado server-side en cada fetch.
+   */
+  priority?: { score: number; reason: string; windowUrgency: number; analyzed: boolean } | null
 }
 
 export interface ThreadMessage {

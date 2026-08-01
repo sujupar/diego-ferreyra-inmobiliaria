@@ -68,7 +68,12 @@ function propertyContext(property: LandingProperty, opts: {
   return parts.filter(Boolean).join('\n')
 }
 
-async function askForAvatars(userPrompt: string, count: number, model?: string): Promise<unknown[]> {
+async function askForAvatars(
+  userPrompt: string,
+  count: number,
+  model?: string,
+  provider?: 'openai',
+): Promise<unknown[]> {
   const res = await chatCompletion({
     messages: [
       { role: 'system', content: SYSTEM },
@@ -77,6 +82,11 @@ async function askForAvatars(userPrompt: string, count: number, model?: string):
     temperature: 0.8,
     jsonMode: true,
     model,
+    // Sin `provider`, un modelo de OpenAI viajaba al endpoint de DeepSeek y el
+    // reintento fallaba SIEMPRE en silencio (caía al fallback determinístico sin
+    // que nadie lo notara). Es el mismo bug que ya se había arreglado en
+    // `lib/landing/conversion-copy.ts` y acá quedó sin arreglar.
+    provider,
   })
   const parsed = JSON.parse(res.content) as { avatars?: unknown[] }
   return Array.isArray(parsed.avatars) ? parsed.avatars : []
@@ -102,7 +112,7 @@ export async function generateEmpathyAvatars(input: {
 
   // Intento 2: forzar gpt-4.1 (mejor adherencia al esquema).
   try {
-    const raw = await askForAvatars(userPrompt, count, 'gpt-4.1')
+    const raw = await askForAvatars(userPrompt, count, 'gpt-4.1', 'openai')
     const avatars = raw.map((r, i) => coerceEmpathyAvatar(r, `a${i + 1}`)).filter((a): a is EmpathyAvatar => a !== null)
     if (avatars.length >= 1) return { avatars: avatars.slice(0, count), source: 'ai-retry', model: 'gpt-4.1' }
   } catch { /* cae al fallback */ }
