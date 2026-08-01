@@ -60,11 +60,16 @@ export async function GET() {
       getUsdToArs(),
     ])
 
+    // Si no se puede leer la tabla, seguimos devolviendo el panel (no un 500)
+    // PERO decimos que no se pudo leer. Degradar a "todo en cero" y callarse
+    // es el patrón que ya nos mordió tres veces en este proyecto: un fallo
+    // disfrazado de operación normal. "0 mensajes del agente" y "no pude
+    // preguntar cuántos" se ven igual en pantalla y significan cosas opuestas
+    // — una es tranquilidad, la otra es que el sistema está roto.
+    let readError: string | null = null
     if (aiStateRes.error) {
-      // Tabla recién creada por migración manual — si todavía no corrió en
-      // este entorno, degradar a "todo en cero" en vez de 500: el panel debe
-      // seguir siendo útil ("acá no pasó nada todavía") en vez de romperse.
       console.warn('[ai-usage] no se pudo leer conversation_ai_state:', aiStateRes.error.message)
+      readError = aiStateRes.error.message
     }
     const aiStateRows = (aiStateRes.data ?? []) as AiUsageStateRow[]
 
@@ -103,6 +108,7 @@ export async function GET() {
       visits,
       pricePerMillionUsd: AI_TOKEN_PRICE_USD_PER_MILLION,
       usdToArs: { rate, source: usdRate.source },
+      readError,
     })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Error' }, { status: 500 })

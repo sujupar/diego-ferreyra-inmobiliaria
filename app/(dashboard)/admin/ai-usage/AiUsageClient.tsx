@@ -29,6 +29,8 @@ interface AiUsageResponse {
   visits: { proposed: number; confirmed: number; mode?: 'exacto' | 'estimado' }
   pricePerMillionUsd: number
   usdToArs: { rate: number; source: string }
+  /** Mensaje del error si NO se pudo leer la tabla. Los ceros de abajo, en ese caso, no significan "no pasó nada". */
+  readError?: string | null
 }
 
 function money(usd: number, ars: number): string {
@@ -97,12 +99,28 @@ export function AiUsageClient() {
         </div>
       ) : data ? (
         <>
-          {data.totals.analysesCount === 0 && (
-            <div className="flex items-start gap-2 rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
-              <Info className="h-4 w-4 shrink-0 mt-0.5" />
-              La IA todavía no analizó ninguna conversación — los números de abajo están en cero porque no gastó
-              nada, no porque el panel esté roto. En cuanto corra el primer análisis, va a aparecer acá.
+          {/* El orden importa: si NO se pudo leer, ese aviso reemplaza al de
+              "todavía no analizó nada". Los dos terminan en ceros, pero uno
+              significa tranquilidad y el otro que el sistema está roto —
+              mostrarlos juntos, o mostrar el equivocado, es peor que no
+              mostrar nada. */}
+          {data.readError ? (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                No se pudo leer el estado de la IA, así que los números de abajo están en cero porque{' '}
+                <strong>no se pudieron consultar</strong>, no porque la IA no haya gastado nada. Detalle técnico:{' '}
+                {data.readError}
+              </span>
             </div>
+          ) : (
+            data.totals.analysesCount === 0 && (
+              <div className="flex items-start gap-2 rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
+                <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                La IA todavía no analizó ninguna conversación — los números de abajo están en cero porque no gastó
+                nada, no porque el panel esté roto. En cuanto corra el primer análisis, va a aparecer acá.
+              </div>
+            )
           )}
 
           <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
