@@ -15,7 +15,7 @@ import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Loader2, Sparkles, Rocket, ExternalLink, Wand2, ArrowRight, AlertTriangle } from 'lucide-react'
-import { needsDeliveryChoice } from '@/lib/properties/deliver-media'
+import { needsDeliveryChoice, resolveDeliverMedia } from '@/lib/properties/deliver-media'
 import { ENRICH_STAGES, nextEnrichStage } from '@/lib/landing/enrich'
 
 interface Question { id: string; question: string; hint?: string }
@@ -65,10 +65,15 @@ interface LandingSectionProps {
   propertyId: string
   videoRecorridoUrl?: string | null
   tour3dUrl?: string | null
+  /** Video "de marketing" de la propiedad — cuenta como entregable de respaldo (2026-08-02). */
+  videoUrl?: string | null
+  videoFileUrl?: string | null
   deliverMediaSaved?: string | null
 }
 
-export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliverMediaSaved }: LandingSectionProps) {
+export function LandingSection({
+  propertyId, videoRecorridoUrl, tour3dUrl, videoUrl, videoFileUrl, deliverMediaSaved,
+}: LandingSectionProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
@@ -81,18 +86,21 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
 
   useEffect(() => { setDeliverMedia(deliverMediaSaved ?? null) }, [deliverMediaSaved])
 
-  const showDeliveryChoice = needsDeliveryChoice({
+  const mediaFields = {
     video_recorrido_url: videoRecorridoUrl,
     tour_3d_url: tour3dUrl,
-  })
+    video_url: videoUrl,
+    video_file_url: videoFileUrl,
+  }
+  const showDeliveryChoice = needsDeliveryChoice(mediaFields)
 
-  // Sin ninguno de los dos entregables no se puede publicar: el servidor lo
-  // rechaza igual (`assertRecorridoDisponible`), acá lo avisamos antes de que el
-  // asesor apriete el botón.
-  const faltaRecorrido =
-    (videoRecorridoUrl ?? '').trim().length === 0 && (tour3dUrl ?? '').trim().length === 0
+  // Sin NINGÚN entregable no se puede publicar: el servidor lo rechaza igual
+  // (`assertRecorridoDisponible`), acá lo avisamos antes de que el asesor
+  // apriete el botón. Desde 2026-08-02 el video propio de la propiedad
+  // también cuenta (`resolveDeliverMedia` ya contempla el fallback).
+  const faltaRecorrido = resolveDeliverMedia(mediaFields).kind === 'fotos'
 
-  const chooseDeliverMedia = async (choice: 'video_recorrido' | 'tour_3d') => {
+  const chooseDeliverMedia = async (choice: 'video_recorrido' | 'tour_3d' | 'video_propio') => {
     setDeliverMedia(choice)
     setBusy('deliverMedia')
     try {
@@ -272,30 +280,46 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
   ) : null
 
   /**
-   * Elección de qué recorrido se entrega (solo si la propiedad tiene los dos).
+   * Elección de qué se entrega (solo si la propiedad tiene DOS O MÁS
+   * candidatos — ver `needsDeliveryChoice`). Desde 2026-08-02 el video propio
+   * de la propiedad (`video_url`/`video_file_url`) también puede competir.
    * Se renderiza tanto en el wizard como en la tarjeta de landing publicada: el
    * caso más común es subir el video recorrido DESPUÉS de publicar, y si el
    * bloque viviera solo en el draft el asesor nunca podría elegir.
    */
+  const tieneVideoPropio = Boolean((videoFileUrl ?? videoUrl ?? '').trim())
   const deliveryChoiceBlock = showDeliveryChoice ? (
     <div className="space-y-2">
       <p className="text-sm font-medium">¿Qué le enviamos a quien se registre?</p>
       <p className="text-xs text-muted-foreground">Se le manda por WhatsApp para que conozca la propiedad por dentro.</p>
-      <div className="grid gap-3 md:grid-cols-2">
-        <button
-          onClick={() => chooseDeliverMedia('video_recorrido')}
-          disabled={busy === 'deliverMedia'}
-          className={`text-left p-3 rounded-lg border-2 transition ${deliverMedia === 'video_recorrido' ? 'border-[color:var(--brand)] bg-[color:var(--brand)]/5' : 'border-border hover:bg-muted/30'}`}
-        >
-          <p className="text-sm font-semibold">Video recorrido</p>
-        </button>
-        <button
-          onClick={() => chooseDeliverMedia('tour_3d')}
-          disabled={busy === 'deliverMedia'}
-          className={`text-left p-3 rounded-lg border-2 transition ${deliverMedia === 'tour_3d' ? 'border-[color:var(--brand)] bg-[color:var(--brand)]/5' : 'border-border hover:bg-muted/30'}`}
-        >
-          <p className="text-sm font-semibold">Recorrido virtual 3D</p>
-        </button>
+      <div className="grid gap-3 md:grid-cols-3">
+        {Boolean((videoRecorridoUrl ?? '').trim()) && (
+          <button
+            onClick={() => chooseDeliverMedia('video_recorrido')}
+            disabled={busy === 'deliverMedia'}
+            className={`text-left p-3 rounded-lg border-2 transition ${deliverMedia === 'video_recorrido' ? 'border-[color:var(--brand)] bg-[color:var(--brand)]/5' : 'border-border hover:bg-muted/30'}`}
+          >
+            <p className="text-sm font-semibold">Video recorrido</p>
+          </button>
+        )}
+        {Boolean((tour3dUrl ?? '').trim()) && (
+          <button
+            onClick={() => chooseDeliverMedia('tour_3d')}
+            disabled={busy === 'deliverMedia'}
+            className={`text-left p-3 rounded-lg border-2 transition ${deliverMedia === 'tour_3d' ? 'border-[color:var(--brand)] bg-[color:var(--brand)]/5' : 'border-border hover:bg-muted/30'}`}
+          >
+            <p className="text-sm font-semibold">Recorrido virtual 3D</p>
+          </button>
+        )}
+        {tieneVideoPropio && (
+          <button
+            onClick={() => chooseDeliverMedia('video_propio')}
+            disabled={busy === 'deliverMedia'}
+            className={`text-left p-3 rounded-lg border-2 transition ${deliverMedia === 'video_propio' ? 'border-[color:var(--brand)] bg-[color:var(--brand)]/5' : 'border-border hover:bg-muted/30'}`}
+          >
+            <p className="text-sm font-semibold">Video de la propiedad</p>
+          </button>
+        )}
       </div>
     </div>
   ) : null
@@ -452,8 +476,8 @@ export function LandingSection({ propertyId, videoRecorridoUrl, tour3dUrl, deliv
                 <p className="text-sm font-medium text-amber-900">Falta el recorrido</p>
                 <p className="text-xs text-amber-800">
                   A quien se registre le prometemos un recorrido de la propiedad. Cargá un{' '}
-                  <strong>video recorrido</strong> o un <strong>recorrido virtual</strong> en la
-                  pestaña Multimedia para poder publicar.
+                  <strong>video recorrido</strong>, un <strong>recorrido virtual</strong> o, al menos,{' '}
+                  un <strong>video</strong> en la pestaña Multimedia para poder publicar.
                 </p>
               </div>
             </div>

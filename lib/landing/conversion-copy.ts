@@ -94,7 +94,11 @@ export function deterministicConversionCopy(property: LandingProperty): Conversi
       : 'La decisión que vas a agradecer cada mañana al llegar a casa.',
     shortDesc:
       'Conocé por dentro una propiedad que no se explica con metros cuadrados, sino con cómo te hace sentir.',
-    ctaLabel: 'Quiero saber más',
+    // Fijo (no varía por IA ni por propiedad, decisión del dueño 2026-08-02):
+    // TODOS los CTA de la landing apuntan al mismo objetivo — el popup que
+    // entrega el recorrido — así que dicen siempre lo mismo. Ver `coerceCopy`
+    // más abajo, que ignora cualquier `ctaLabel` que devuelva la IA.
+    ctaLabel: 'Ver el recorrido de la propiedad',
     benefits: [
       { tie: 'propiedad', title: 'Un espacio que respira', body: propBenefit },
       { tie: 'ubicacion', title: `El pulso de ${barrio}`, body: locBenefit },
@@ -155,7 +159,6 @@ function buildUserPrompt(property: LandingProperty, avatar?: EmpathyAvatar): str
   "titular": "tipo + ${barrio} + beneficio principal, en una línea potente",
   "subtitulo": "una línea que refuerza el beneficio",
   "shortDesc": "1 frase que invita a seguir, sin dar toda la info",
-  "ctaLabel": "texto corto del botón (ej: Quiero saber más)",
   "benefits": [
     {"tie":"propiedad","title":"título corto","body":"1-2 frases al dolor/deseo"},
     {"tie":"ubicacion","title":"...","body":"..."},
@@ -194,7 +197,10 @@ function coerceCopy(raw: unknown, fallback: ConversionCopy): ConversionCopy {
     titular: str(o.titular, fallback.titular, 160),
     subtitulo: str(o.subtitulo, fallback.subtitulo, 200),
     shortDesc: str(o.shortDesc, fallback.shortDesc, 280),
-    ctaLabel: str(o.ctaLabel, fallback.ctaLabel, 40),
+    // Fijo: no se le pide a la IA (ver el prompt más arriba) y tampoco se
+    // toma de `o.ctaLabel` aunque la IA lo mande igual — todos los CTA de la
+    // landing dicen siempre "Ver el recorrido de la propiedad".
+    ctaLabel: fallback.ctaLabel,
     benefits,
     showcaseHeadline: str(o.showcaseHeadline, fallback.showcaseHeadline, 160),
     showcaseBody: str(o.showcaseBody, fallback.showcaseBody, 400),

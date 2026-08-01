@@ -9,6 +9,9 @@ interface Props {
   canManage: boolean
   videoRecorridoUrl: string | null
   tour3dUrl: string | null
+  /** Video "de marketing" de la propiedad — cuenta como entregable de respaldo (2026-08-02). */
+  videoUrl: string | null
+  videoFileUrl: string | null
   deliverMediaSaved: string | null
 }
 
@@ -18,7 +21,7 @@ interface Props {
  * a pedido del usuario (2026-07-31): cada asistente de portal ya genera la
  * descripción por su cuenta.
  */
-export function MarketingTab({ propertyId, canManage, videoRecorridoUrl, tour3dUrl, deliverMediaSaved }: Props) {
+export function MarketingTab({ propertyId, canManage, videoRecorridoUrl, tour3dUrl, videoUrl, videoFileUrl, deliverMediaSaved }: Props) {
   return (
     <div className="space-y-6">
       <div>
@@ -32,6 +35,8 @@ export function MarketingTab({ propertyId, canManage, videoRecorridoUrl, tour3dU
         propertyId={propertyId}
         videoRecorridoUrl={videoRecorridoUrl}
         tour3dUrl={tour3dUrl}
+        videoUrl={videoUrl}
+        videoFileUrl={videoFileUrl}
         deliverMediaSaved={deliverMediaSaved}
       />
 

@@ -6,8 +6,15 @@
  * Provee `useLeadCapture().open()` a los CTAs de la landing (que son client
  * components dentro del árbol, aunque los envuelvan server components — el
  * contexto de un provider client SÍ llega a los client components descendientes).
- * Renderiza un modal accesible con nombre / email / teléfono / intención, y
- * reusa el mismo submit que el form legacy (POST /api/leads + Pixel/CAPI dedup).
+ * Renderiza un modal accesible y reusa el mismo submit que el form legacy
+ * (POST /api/leads + Pixel/CAPI dedup).
+ *
+ * 2026-08-02 — Simplificación del popup (pedido del dueño): SOLO dos campos,
+ * nombre y teléfono. Se saca el email y "¿Qué te interesa?" — el WhatsApp queda
+ * como ÚNICO canal de entrega del recorrido, así que el teléfono pasa a ser
+ * OBLIGATORIO (antes bastaba con dejar el email). La pantalla de gracias
+ * muestra el link de acceso bien visible: es el respaldo real si el WhatsApp
+ * no sale (`whatsappSent: false` — la lógica de honestidad ya existe, no se toca).
  */
 import {
   createContext,
@@ -76,19 +83,31 @@ export const GALLERY_LOCK_SOURCE = 'galeria_bloqueada'
 
 interface FormState {
   name: string
-  email: string
   phone: string
-  intent: string
 }
-// Orden = orden del <select>. La primera es la preseleccionada por defecto
-// (pedido del dueño 2026-07-30): la mayoría entra desde un anuncio y lo
-// primero que quiere es CONOCER la propiedad por dentro, no dejar el dato
-// para que la llamen — "Ver el recorrido..." reusa el mismo término
-// ("recorrido") que ya se usa en el resto del popup/WhatsApp post-envío, así
-// que se lee consistente en toda la landing. También queda claro en el Inbox
-// como `"Ver el recorrido de la propiedad · <source>"`.
-const INTENTS = ['Ver el recorrido de la propiedad', 'Coordinar una visita', 'Que me contacten']
-const INITIAL: FormState = { name: '', email: '', phone: '', intent: INTENTS[0] }
+const INITIAL: FormState = { name: '', phone: '' }
+
+/**
+ * El popup ya no pregunta "¿Qué te interesa?" — con un solo objetivo (el
+ * recorrido), el mensaje del lead queda fijo. Mismo término ("recorrido") que
+ * usa el resto del popup/WhatsApp post-envío, así que se lee consistente en
+ * toda la landing y en el Inbox como `"Ver el recorrido de la propiedad · <source>"`.
+ */
+const LEAD_INTENT_MESSAGE = 'Ver el recorrido de la propiedad'
+
+/** Logo oficial de WhatsApp (verde), SVG inline — liviano, sin depender de un emoji. */
+function WhatsAppIcon({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-flex shrink-0 items-center justify-center rounded-full bg-white ${className}`}
+    >
+      <svg viewBox="0 0 448 512" className="h-[65%] w-[65%]" fill="#25D366">
+        <path d="M380.9 97.1C339 55.1 283.2 32 223.9 32c-122.4 0-222 99.6-222 222 0 39.1 10.2 77.3 29.6 111L0 480l117.7-30.9c32.4 17.7 68.9 27 106.1 27h.1c122.3 0 224.1-99.6 224.1-222 0-59.3-25.2-115-67.1-157zm-157 341.6c-33.2 0-65.7-8.9-94-25.7l-6.7-4-69.8 18.3L72 359.2l-4.4-7c-18.5-29.4-28.2-63.3-28.2-98.2 0-101.7 82.8-184.5 184.6-184.5 49.3 0 95.6 19.2 130.4 54.1 34.8 34.9 56.2 81.2 56.1 130.5 0 101.8-84.9 184.6-186.6 184.6zm101.2-138.2c-5.5-2.8-32.8-16.2-37.9-18-5.1-1.9-8.8-2.8-12.5 2.8-3.7 5.6-14.3 18-17.6 21.8-3.2 3.7-6.5 4.2-12 1.4-32.6-16.3-54-29.1-75.5-66-5.7-9.8 5.7-9.1 16.3-30.3 1.8-3.7.9-6.9-.5-9.7-1.4-2.8-12.5-30.1-17.1-41.2-4.5-10.8-9.1-9.3-12.5-9.5-3.2-.2-6.9-.2-10.6-.2-3.7 0-9.7 1.4-14.8 6.9-5.1 5.6-19.4 19-19.4 46.3 0 27.3 19.9 53.7 22.6 57.4 2.8 3.7 39.1 59.7 94.8 83.8 35.2 15.2 49 16.5 66.6 13.9 10.7-1.6 32.8-13.4 37.4-26.4 4.6-13 4.6-24.1 3.2-26.4-1.3-2.5-5-3.9-10.5-6.6z" />
+      </svg>
+    </span>
+  )
+}
 
 function getUtmFromUrl(): Record<string, string> {
   if (typeof window === 'undefined') return {}
@@ -241,9 +260,11 @@ export function LeadCaptureProvider({
       setStatus('ok')
       return
     }
-    if (!form.name.trim() || (!form.email.trim() && !form.phone.trim())) {
+    // Sin email, el teléfono es el ÚNICO canal de entrega del recorrido — pasa
+    // a ser obligatorio (antes bastaba con nombre + (email o teléfono)).
+    if (!form.name.trim() || !form.phone.trim()) {
       setStatus('err')
-      setErrorMsg('Necesitamos tu nombre y al menos un contacto (email o teléfono).')
+      setErrorMsg('Necesitamos tu nombre y tu teléfono para poder enviarte el recorrido.')
       return
     }
     // El lock se toma ACÁ, ANTES del primer `await`. El validador de teléfono se
@@ -314,14 +335,15 @@ export function LeadCaptureProvider({
         body: JSON.stringify({
           propertyId,
           name: form.name.trim(),
-          email: form.email.trim() || null,
+          // Sin email en el popup (2026-08-02): el WhatsApp es el único canal.
+          email: null,
           // Se compone CON el indicativo del país elegido (ej. "+54 11...")
           // ANTES de mandarlo: así lo que queda guardado en `phone` se puede
           // renormalizar más abajo en el sistema (webhook, Inbox, WhatsApp,
           // CAPI) sin pasarle una región explícita — todos siguen llamando a
           // `normalizeWhatsappPhone`/`isWhatsappUsable` con un solo argumento.
           phone: phoneParaGuardar,
-          message: `${form.intent}${source ? ` · ${source}` : ''}`,
+          message: `${LEAD_INTENT_MESSAGE}${source ? ` · ${source}` : ''}`,
           utm: getUtmFromUrl(),
           eventId,
           fbp: getMetaCookie('_fbp'),
@@ -407,16 +429,21 @@ export function LeadCaptureProvider({
                     ? !hasRecorrido
                       ? 'Ya podés ver la propiedad completa y proponer el día de la visita:'
                       : whatsappSent
-                        ? 'Te mandamos por WhatsApp el recorrido de la propiedad para que la conozcas por dentro. También podés verlo acá:'
-                        : 'Ya podés conocer la propiedad por dentro:'
+                        ? 'Recibís el recorrido de la propiedad por WhatsApp en los próximos segundos. También podés verlo acá:'
+                        // Honestidad: si el WhatsApp no salió, no le prometemos un
+                        // mensaje que no llegó — el link es el respaldo real.
+                        : 'No pudimos enviarte el WhatsApp, pero ya podés ver el recorrido acá:'
                     : source === GALLERY_LOCK_SOURCE
                       ? 'Cerrá esta ventana y recorré todas las fotos. Un asesor te contacta para coordinar la visita.'
                       : 'Un asesor te va a contactar muy pronto.'}
                 </p>
+                {/* El link de acceso es el respaldo real (único canal si el WhatsApp
+                    no salió): botón PRIMARIO, bien visible, ancho completo. */}
                 {accessUrl && (
                   <a
                     href={accessUrl}
-                    className="rounded-full bg-slate-900 px-6 py-2.5 text-sm font-medium text-white"
+                    className="w-full rounded-full px-6 py-3 text-center text-sm font-semibold text-white shadow-md transition hover:opacity-95"
+                    style={{ background: 'var(--brand)' }}
                   >
                     {hasRecorrido ? 'Ver el recorrido' : 'Ver la propiedad'}
                   </a>
@@ -424,7 +451,7 @@ export function LeadCaptureProvider({
                 <button
                   type="button"
                   onClick={close}
-                  className="mt-2 rounded-full bg-slate-900 px-6 py-2.5 text-sm font-medium text-white"
+                  className="mt-1 rounded-full border border-slate-200 px-6 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
                 >
                   {source === GALLERY_LOCK_SOURCE ? 'Ver las fotos' : 'Cerrar'}
                 </button>
@@ -444,18 +471,18 @@ export function LeadCaptureProvider({
                 />
                 <div>
                   <h2 id="lead-modal-title" className="text-2xl" style={{ fontFamily: 'var(--font-landing-serif), Georgia, serif' }}>
-                    {source === GALLERY_LOCK_SOURCE ? 'Conocela por dentro' : 'Dejanos tus datos'}
+                    {source === GALLERY_LOCK_SOURCE ? 'Conocela por dentro' : 'Completá estos datos para recibir el tour virtual'}
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">
                     {source === GALLERY_LOCK_SOURCE
                       ? 'Dejanos tus datos y en un segundo ves todas las fotos de la propiedad.'
-                      : 'Un asesor te contacta para lo que necesites — sin compromiso.'}
+                      : 'Te lo mandamos por WhatsApp en los próximos segundos.'}
                   </p>
                 </div>
                 <input type="hidden" value={propertyTitle} readOnly />
                 <div>
                   <label className="mb-1.5 block text-sm font-medium" htmlFor="lc-name">
-                    Nombre y apellido <span className="text-red-500">*</span>
+                    Nombre <span className="text-red-500">*</span>
                   </label>
                   <input
                     ref={firstFieldRef}
@@ -468,26 +495,9 @@ export function LeadCaptureProvider({
                     placeholder="Juan Pérez"
                   />
                 </div>
-                {/* Email y teléfono van cada uno en su propia fila (NO grid-cols-2):
-                    a 2 columnas el selector de indicativo + el número quedaban
-                    apretados en la mitad del ancho del modal y el número se
-                    cortaba con scroll horizontal dentro del input. */}
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium" htmlFor="lc-email">
-                    Email
-                  </label>
-                  <input
-                    id="lc-email"
-                    type="email"
-                    value={form.email}
-                    onChange={e => setForm({ ...form, email: e.target.value })}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base outline-none focus:border-slate-900"
-                    placeholder="juan@ejemplo.com"
-                  />
-                </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium" htmlFor="lc-phone">
-                    Teléfono / WhatsApp
+                    Teléfono / WhatsApp <span className="text-red-500">*</span>
                   </label>
                   <PhoneField
                     id="lc-phone"
@@ -497,34 +507,20 @@ export function LeadCaptureProvider({
                     onCountryChange={setCountry}
                   />
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium" htmlFor="lc-intent">
-                    ¿Qué te interesa?
-                  </label>
-                  <select
-                    id="lc-intent"
-                    value={form.intent}
-                    onChange={e => setForm({ ...form, intent: e.target.value })}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base outline-none focus:border-slate-900"
-                  >
-                    {INTENTS.map(i => (
-                      <option key={i} value={i}>
-                        {i}
-                      </option>
-                    ))}
-                  </select>
-                </div>
 
                 {status === 'err' && errorMsg && <p className="text-sm text-red-600">{errorMsg}</p>}
 
+                {/* Botón de conversión: deliberado y confiable — el logo oficial
+                    de WhatsApp al lado deja clara la promesa (recibir el
+                    recorrido por ahí), no un botón de contacto genérico. */}
                 <button
                   type="submit"
                   disabled={status === 'sending'}
-                  className="flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-base font-medium text-white transition hover:opacity-95 disabled:opacity-60"
+                  className="flex w-full items-center justify-center gap-2.5 rounded-full px-6 py-3.5 text-base font-medium text-white transition hover:opacity-95 disabled:opacity-60"
                   style={{ background: 'var(--brand)' }}
                 >
-                  {status === 'sending' && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Me interesa, quiero que me contacten
+                  {status === 'sending' ? <Loader2 className="h-5 w-5 animate-spin" /> : <WhatsAppIcon />}
+                  Enviar recorrido por WhatsApp
                 </button>
                 <p className="text-center text-xs text-slate-400">
                   Al enviar aceptás nuestra{' '}

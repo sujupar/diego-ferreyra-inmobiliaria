@@ -305,8 +305,18 @@ export async function POST(req: Request) {
       )
     }
 
-    // Al menos uno de email o teléfono
-    if (!parsed.data.email && !parsed.data.phone) {
+    // El popup de la landing (2026-08-02) ya no pide email: el teléfono es el
+    // ÚNICO canal de entrega del recorrido (por WhatsApp), así que para
+    // `source:'landing'` es obligatorio. Los demás llamadores (consultas de
+    // portales, etc.) siguen con la regla vieja: al menos uno de los dos.
+    if (parsed.data.source === 'landing') {
+      if (!parsed.data.phone) {
+        return NextResponse.json(
+          { error: 'Es necesario un teléfono para poder enviarte el recorrido' },
+          { status: 400 },
+        )
+      }
+    } else if (!parsed.data.email && !parsed.data.phone) {
       return NextResponse.json(
         { error: 'Es necesario al menos un email o teléfono' },
         { status: 400 },
@@ -316,7 +326,7 @@ export async function POST(req: Request) {
     const supabase = getAdmin()
     const { data: prop, error: propErr } = await supabase
       .from('properties')
-      .select('id, address, title, neighborhood, assigned_to, status, photos, asking_price, currency, video_recorrido_url, tour_3d_url')
+      .select('id, address, title, neighborhood, assigned_to, status, photos, asking_price, currency, video_recorrido_url, tour_3d_url, video_url, video_file_url, deliver_media')
       .eq('id', parsed.data.propertyId)
       .single()
     if (propErr || !prop) {

@@ -71,17 +71,22 @@ check(
   !/^import (?!type ).*libphonenumber-js\/max/m.test(providerSrc),
 )
 
-// Ajuste 2026-07-30: "Recibir más información" se reemplazó por la opción de
-// recorrido, y esa queda PRIMERA + preseleccionada por defecto (INITIAL.intent).
-check('"Recibir más información" ya no está entre las opciones', !providerSrc.includes('Recibir más información'))
+// Ajuste 2026-08-02: el popup se simplificó a SOLO 2 campos (nombre + teléfono).
+// Se sacó el selector "¿Qué te interesa?" (INTENTS) y el campo de email — el
+// mensaje del lead queda FIJO ("Ver el recorrido de la propiedad"), mismo
+// término que ya usaba la opción preseleccionada del select viejo.
+check('ya no existe el array INTENTS (selector removido)', !/const INTENTS = /.test(providerSrc))
+check('el mensaje del lead quedó fijo en "Ver el recorrido de la propiedad"', /const LEAD_INTENT_MESSAGE = 'Ver el recorrido de la propiedad'/.test(providerSrc))
 check(
-  '"Ver el recorrido de la propiedad" es la PRIMERA opción de INTENTS',
-  /const INTENTS = \[\s*'Ver el recorrido de la propiedad',/.test(providerSrc),
+  'FormState ahora es SOLO { name, phone } (sin email ni intent)',
+  /interface FormState \{\s*name: string\s*phone: string\s*\}/.test(providerSrc),
 )
 check(
-  'INITIAL.intent está preseleccionado en la primera opción (INTENTS[0], no hardcodeado aparte)',
-  /INITIAL: FormState = \{ name: '', email: '', phone: '', intent: INTENTS\[0\] \}/.test(providerSrc),
+  'INITIAL es { name: \'\', phone: \'\' } (sin email ni intent)',
+  /const INITIAL: FormState = \{ name: '', phone: '' \}/.test(providerSrc),
 )
+check('el botón de envío tiene el ícono de WhatsApp (WhatsAppIcon)', /<WhatsAppIcon\s*\/>/.test(providerSrc))
+check('el teléfono está marcado como obligatorio en el label (asterisco)', /Teléfono \/ WhatsApp <span className="text-red-500">\*<\/span>/.test(providerSrc))
 
 // Regresión: el lock anti-doble-submit se sigue tomando ANTES del primer await.
 const lockIdx = providerSrc.indexOf('submittingRef.current = true')
@@ -110,7 +115,9 @@ check('el fetch de la ficha está gateado en `isOpen`', /if \(!isOpen\) return\s
 check('el POST manda el teléfono ya normalizado, no el pegoteo', /phone: phoneParaGuardar,/.test(providerSrc))
 check('composePhoneForSubmit queda como respaldo', /composePhoneForSubmit\(form\.phone, callingCode\)/.test(providerSrc))
 check('el canónico se calcula con el normalizador diferido', /loadPhoneNormalizer\(\)/.test(providerSrc) && /phoneParaGuardar = `\+\$\{e164\}`/.test(providerSrc))
-check('el POST manda `ticket`', /\bticket,\n\s*\}\),/.test(providerSrc))
+// Fix del regex (pre-existente, no relacionado a esta tarea): el campo va
+// como `ticket: ticketToSend,`, no `ticket,` a secas.
+check('el POST manda `ticket`', /ticket: ticketToSend,\n\s*\}\),/.test(providerSrc))
 
 // El campo de teléfono en el JSX usa PhoneField, no un <input> crudo.
 check('el JSX usa <PhoneField ... /> para el campo de teléfono', providerSrc.includes('<PhoneField'))

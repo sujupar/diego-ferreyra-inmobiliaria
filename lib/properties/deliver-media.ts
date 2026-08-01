@@ -1,15 +1,24 @@
 /**
  * Qué se le ENTREGA al cliente que se registra en la landing.
  *
- * Tres cosas distintas conviven en la propiedad:
- *  - `video_url` / `video_file_url`: el video que se ve en la landing pública.
- *  - `tour_3d_url`: recorrido virtual navegable (iframe).
- *  - `video_recorrido_url`: video que recorre la propiedad por dentro.
- * Los dos últimos son los "entregables". Si están los dos, elige el asesor
- * (`deliver_media`); si hay uno solo, se usa ese; si no hay ninguno, se entregan
- * las fotos completas (el flujo NUNCA se rompe por falta de media).
+ * Tres candidatos a "entregable" conviven en la propiedad, en este orden de
+ * preferencia:
+ *  1. `video_recorrido_url` — video que recorre la propiedad por dentro.
+ *  2. `tour_3d_url` — recorrido virtual navegable (iframe).
+ *  3. `video_url` / `video_file_url` — el video "de marketing" de la propiedad
+ *     (el mismo que se ve en el hero de la landing). Cuenta como entregable
+ *     SOLO si no hay recorrido dedicado ni tour — decisión del dueño,
+ *     2026-08-02: "si la propiedad no tiene video recorrido, pero tiene
+ *     video, [...] entonces no es necesario el recorrido". Entre los dos,
+ *     preferimos el archivo subido (`video_file_url`) sobre el enlace externo
+ *     (`video_url`) — mismo criterio que ya usaba `HeroLuxury` para elegir qué
+ *     reproducir.
+ * Si hay dos o más candidatos disponibles, elige el asesor (`deliver_media`);
+ * si la elección guardada ya no está disponible (se borró ese medio), se cae
+ * al orden de preferencia. Si no hay NINGUNO, se entregan las fotos completas
+ * (el flujo NUNCA se rompe por falta de media).
  */
-export type DeliverKind = 'video_recorrido' | 'tour_3d' | 'fotos'
+export type DeliverKind = 'video_recorrido' | 'tour_3d' | 'video_propio' | 'fotos'
 
 export interface DeliverMedia {
   kind: DeliverKind
@@ -19,6 +28,8 @@ export interface DeliverMedia {
 interface MediaFields {
   video_recorrido_url?: string | null
   tour_3d_url?: string | null
+  video_url?: string | null
+  video_file_url?: string | null
   deliver_media?: string | null
 }
 
@@ -27,21 +38,34 @@ const clean = (v: string | null | undefined): string | null => {
   return t.length > 0 ? t : null
 }
 
-export function resolveDeliverMedia(p: MediaFields): DeliverMedia {
+/** Orden de preferencia por defecto (sin elección del asesor, o elección ya inválida). */
+const PREFERENCE_ORDER: readonly Exclude<DeliverKind, 'fotos'>[] = ['video_recorrido', 'tour_3d', 'video_propio']
+
+/** Candidatos a entregable REALMENTE disponibles en esta propiedad. */
+function available(p: MediaFields): Partial<Record<Exclude<DeliverKind, 'fotos'>, string>> {
+  const out: Partial<Record<Exclude<DeliverKind, 'fotos'>, string>> = {}
   const video = clean(p.video_recorrido_url)
   const tour = clean(p.tour_3d_url)
-  if (video && tour) {
-    // Con ambos manda la elección del asesor; sin elección, el video recorrido.
-    return p.deliver_media === 'tour_3d'
-      ? { kind: 'tour_3d', url: tour }
-      : { kind: 'video_recorrido', url: video }
+  const propio = clean(p.video_file_url) ?? clean(p.video_url)
+  if (video) out.video_recorrido = video
+  if (tour) out.tour_3d = tour
+  if (propio) out.video_propio = propio
+  return out
+}
+
+export function resolveDeliverMedia(p: MediaFields): DeliverMedia {
+  const opts = available(p)
+  // Elección explícita del asesor, solo si ese medio SIGUE disponible — si se
+  // borró después de elegido, no puede quedar vacío, cae al orden de preferencia.
+  const chosen = p.deliver_media as Exclude<DeliverKind, 'fotos'> | null | undefined
+  if (chosen && opts[chosen]) return { kind: chosen, url: opts[chosen]! }
+  for (const kind of PREFERENCE_ORDER) {
+    if (opts[kind]) return { kind, url: opts[kind]! }
   }
-  if (video) return { kind: 'video_recorrido', url: video }
-  if (tour) return { kind: 'tour_3d', url: tour }
   return { kind: 'fotos', url: null }
 }
 
-/** Solo hay que preguntarle al asesor cuando la propiedad tiene LAS DOS. */
+/** Solo hay que preguntarle al asesor cuando hay DOS O MÁS candidatos disponibles. */
 export function needsDeliveryChoice(p: MediaFields): boolean {
-  return Boolean(clean(p.video_recorrido_url) && clean(p.tour_3d_url))
+  return Object.keys(available(p)).length >= 2
 }

@@ -61,7 +61,11 @@ check('el popup arranca CERRADO (no hay dialog en el HTML inicial)', !html.inclu
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const src = readFileSync(join(__dirname, '../components/landing/LeadCaptureProvider.tsx'), 'utf8')
 
-const nombreContactoIdx = src.indexOf('Necesitamos tu nombre y al menos un contacto')
+// 2026-08-02: el popup se simplificó a nombre + teléfono (se sacó el email),
+// así que la regla vieja "nombre + (email o teléfono)" pasó a ser
+// "nombre + teléfono", ambos obligatorios — el mismo guard de más abajo
+// (`isWhatsappUsable`) sigue viviendo DESPUÉS de esa validación de campos.
+const nombreContactoIdx = src.indexOf('Necesitamos tu nombre y tu teléfono')
 // El validador se carga en DIFERIDO (`loadPhoneCheck`): `libphonenumber-js/max`
 // son ~50 KB gzip y esta landing es tráfico pago, así que no entra en el bundle
 // inicial. Por eso el guard no llama a `isWhatsappUsable` de forma directa.
@@ -69,9 +73,11 @@ const guardPhoneIdx = src.indexOf('if (form.phone.trim()) {')
 const errorCopy = 'Revisá el número: puede que falte la característica o el indicativo del país (ej. +57 para Colombia).'
 const lockIdx = src.indexOf('submittingRef.current = true')
 
-check('la validación nombre+contacto sigue intacta (no se tocó la regla existente)', nombreContactoIdx !== -1)
+check('la validación nombre+teléfono (ambos obligatorios) sigue intacta', nombreContactoIdx !== -1)
+check('ya no queda rastro de la regla vieja "nombre + al menos un contacto (email o teléfono)"', !src.includes('al menos un contacto (email o teléfono)'))
+check('el email ya NO es parte del formulario (popup simplificado a 2 campos)', !src.includes('form.email'))
 check('el guard nuevo de teléfono existe', guardPhoneIdx !== -1)
-check('el guard de teléfono va DESPUÉS de la regla nombre+contacto (no la reemplaza)', guardPhoneIdx > nombreContactoIdx)
+check('el guard de teléfono va DESPUÉS de la regla nombre+teléfono (no la reemplaza)', guardPhoneIdx > nombreContactoIdx)
 check('el guard solo corre si el campo tiene contenido (no bloquea vacío)', src.includes('if (form.phone.trim()) {'))
 check('usa isWhatsappUsable de Task 2 (no reimplementa la validación)', src.includes("await import('@/lib/integrations/whatsapp/phone')"))
 check('el validador se carga en diferido (no engorda el bundle de la landing paga)', !/^import .*whatsapp\/phone'/m.test(src))
@@ -87,6 +93,20 @@ check(
   'reutiliza el render de error existente (status === \'err\' && errorMsg)',
   /status === 'err' && errorMsg/.test(src),
 )
+
+// ── Popup simplificado a 2 campos (2026-08-02) ──────────────────────────────
+check('el título por defecto pide los datos para el tour virtual', src.includes('Completá estos datos para recibir el tour virtual'))
+check('ya no queda el título viejo "Dejanos tus datos"', !src.includes("'Dejanos tus datos'"))
+check('el campo de nombre ahora dice "Nombre" (no "Nombre y apellido")', /Nombre <span/.test(src) && !src.includes('Nombre y apellido'))
+check('ya no hay campo de email en el JSX (id="lc-email")', !src.includes('lc-email'))
+check('ya no hay selector "¿Qué te interesa?" (id="lc-intent")', !src.includes('lc-intent'))
+check('el <select> del intent ya no está en el JSX', !src.includes('<select'))
+check('el botón de envío dice "Enviar recorrido por WhatsApp"', src.includes('Enviar recorrido por WhatsApp'))
+check('el botón viejo "Me interesa, quiero que me contacten" ya no existe', !src.includes('Me interesa, quiero que me contacten'))
+check('hay un ícono de WhatsApp SVG inline (no un emoji)', src.includes('function WhatsAppIcon') && src.includes('<svg'))
+check('el mensaje de éxito promete el recorrido por WhatsApp "en los próximos segundos"', src.includes('Recibís el recorrido de la propiedad por WhatsApp en los próximos segundos'))
+check('si el WhatsApp no salió, el texto es honesto (no promete un mensaje que no llegó)', src.includes('No pudimos enviarte el WhatsApp, pero ya podés ver el recorrido acá'))
+check('el link de acceso (accessUrl) sigue siempre presente cuando existe — es el respaldo real', /\{accessUrl && \(/.test(src))
 
 // ── Caso 3: la insignia del Inbox (código fuente, mismo motivo que Caso 2 —
 // InboxClient.tsx hace fetch + useEffect, no vale la pena mockear todo eso

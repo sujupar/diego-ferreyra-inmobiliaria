@@ -16,7 +16,7 @@ export function ClosingInvite({
   eyebrow,
   headline,
   body,
-  ctaLabel = 'Coordiná una visita',
+  ctaLabel = 'Ver el recorrido de la propiedad',
   source = 'closing',
 }: ClosingInviteProps) {
   return (

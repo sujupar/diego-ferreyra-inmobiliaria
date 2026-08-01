@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { useLeadCapture } from '../LeadCaptureProvider'
 
-export function FloatingCta({ label = 'Coordiná una visita' }: { label?: string }) {
+export function FloatingCta({ label = 'Ver el recorrido de la propiedad' }: { label?: string }) {
   const { open } = useLeadCapture()
   const [show, setShow] = useState(false)
 
