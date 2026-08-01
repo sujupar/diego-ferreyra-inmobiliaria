@@ -64,11 +64,17 @@ const html4 = renderToStaticMarkup(<GalleryLightbox images={images.slice(0, 4)} 
 check('con 4 fotos dice "Queda 1 foto" (no "Quedan 1 fotos")', html4.includes('1 foto</strong>') && html4.includes('Queda <'), 'plural mal armado')
 check('con 4 fotos NO dice "fotos"', !html4.includes('1 fotos'))
 
-// ── Caso 6: freeCount del template (alto valor: portada + 3 de historia) ────
+// ── Caso 6: un documento NO puede abrir la puerta más allá de la regla ──────
+// El template calcula `freePhotoCount` como "las fotos que ya se ven arriba"
+// (`1 + storyItems.length`, que da 4). Pero la regla del negocio, dicha por el
+// dueño, es TRES fotos libres. Gana la regla: `GalleryLightbox` la impone en el
+// código para que ninguna landing —vieja, migrada, o mal editada— pueda mostrar
+// más. Efecto colateral aceptado: si un diseño muestra 4 fotos arriba, la cuarta
+// también aparece difuminada en la galería.
 const html5 = renderToStaticMarkup(<GalleryLightbox images={images} freeCount={4} />)
 const libres5 = (html5.match(/aria-label="Ampliar foto/g) ?? []).length
-check('respeta freeCount=4 (no bloquea una foto ya visible arriba)', libres5 === 4, `libres=${libres5}`)
-check('con freeCount=4 quedan 8 bloqueadas', html5.includes('8 fotos'))
+check('un freeCount alto NO abre la puerta: se impone el máximo de 3', libres5 === 3, `libres=${libres5}`)
+check('y quedan 9 fotos bloqueadas', html5.includes('9 fotos'))
 
 // ── Caso 7: editor → galería completa, sin puerta ───────────────────────────
 const htmlEd = renderToStaticMarkup(<GalleryLightbox images={images} forceUnlocked />)

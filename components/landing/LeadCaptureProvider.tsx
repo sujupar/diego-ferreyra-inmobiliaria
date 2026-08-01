@@ -473,9 +473,13 @@ export function LeadCaptureProvider({
                   <h2 id="lead-modal-title" className="text-2xl" style={{ fontFamily: 'var(--font-landing-serif), Georgia, serif' }}>
                     {source === GALLERY_LOCK_SOURCE ? 'Conocela por dentro' : 'Completá estos datos para recibir el tour virtual'}
                   </h2>
+                  {/* La variante de la galería conserva su promesa propia —quien
+                      toca ahí quiere VER LAS FOTOS— pero ya no dice "dejanos tus
+                      datos" y aclara que además le llega el recorrido: con el
+                      formulario nuevo, los dos caminos disparan el mismo envío. */}
                   <p className="mt-1 text-sm text-slate-500">
                     {source === GALLERY_LOCK_SOURCE
-                      ? 'Dejanos tus datos y en un segundo ves todas las fotos de la propiedad.'
+                      ? 'Ves todas las fotos al instante y te mandamos el recorrido por WhatsApp.'
                       : 'Te lo mandamos por WhatsApp en los próximos segundos.'}
                   </p>
                 </div>
@@ -510,14 +514,17 @@ export function LeadCaptureProvider({
 
                 {status === 'err' && errorMsg && <p className="text-sm text-red-600">{errorMsg}</p>}
 
-                {/* Botón de conversión: deliberado y confiable — el logo oficial
-                    de WhatsApp al lado deja clara la promesa (recibir el
-                    recorrido por ahí), no un botón de contacto genérico. */}
+                {/* Botón de conversión: VERDE de WhatsApp, no el navy de la marca.
+                    Es una excepción deliberada a la paleta: el verde es la señal
+                    que la gente reconoce sin leer, y este botón promete
+                    exactamente eso — que el recorrido llega por WhatsApp. Con el
+                    navy quedaba indistinguible de cualquier otro botón de la
+                    landing y se perdía la promesa. */}
                 <button
                   type="submit"
                   disabled={status === 'sending'}
-                  className="flex w-full items-center justify-center gap-2.5 rounded-full px-6 py-3.5 text-base font-medium text-white transition hover:opacity-95 disabled:opacity-60"
-                  style={{ background: 'var(--brand)' }}
+                  className="flex w-full items-center justify-center gap-2.5 rounded-full px-6 py-3.5 text-base font-medium text-white transition hover:brightness-110 disabled:opacity-60"
+                  style={{ background: '#25D366' }}
                 >
                   {status === 'sending' ? <Loader2 className="h-5 w-5 animate-spin" /> : <WhatsAppIcon />}
                   Enviar recorrido por WhatsApp
