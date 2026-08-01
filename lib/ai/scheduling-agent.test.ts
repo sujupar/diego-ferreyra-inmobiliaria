@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   parseProposedSlot,
-  nextBusinessDaySlots,
   dayWord,
   decideSchedulingAction,
-  buildProposeMessage,
+  buildAskWhenMessage,
   buildConfirmMessage,
   buildHandoffNote,
   AGENT_NOTE_STATUSES,
@@ -30,7 +29,9 @@ describe('parseProposedSlot', () => {
 
   it('"el sábado a las 10" → próximo sábado + mañana (10hs cae en el bucket manana)', () => {
     // Lunes 3/8 → el próximo sábado es el 8/8.
-    expect(parseProposedSlot('el sábado a las 10', LUNES)).toEqual({ dateISO: '2026-08-08', franja: 'manana' })
+    // La hora dicha por el cliente se conserva: se guarda 10, no las 9 por
+    // default de la franja mañana.
+    expect(parseProposedSlot('el sábado a las 10', LUNES)).toEqual({ dateISO: '2026-08-08', franja: 'manana', hora: 10 })
   })
 
   it('"pasado mañana por la mañana" → +2 días + mañana', () => {
@@ -233,21 +234,8 @@ describe('parseProposedSlot — varias opciones sobre la mesa', () => {
 })
 
 // ---------------------------------------------------------------------------
-// nextBusinessDaySlots / dayWord
+// dayWord
 // ---------------------------------------------------------------------------
-describe('nextBusinessDaySlots', () => {
-  it('desde un lunes, ofrece martes y miércoles (2 días hábiles, mañana+tarde c/u)', () => {
-    const slots = nextBusinessDaySlots(LUNES, 2)
-    expect(slots.map((s) => s.dateISO)).toEqual(['2026-08-04', '2026-08-04', '2026-08-05', '2026-08-05'])
-    expect(slots.map((s) => s.franja)).toEqual(['manana', 'tarde', 'manana', 'tarde'])
-  })
-
-  it('desde un viernes, salta el fin de semana (ofrece lunes y martes)', () => {
-    const VIERNES = new Date('2026-08-07T12:00:00Z')
-    const slots = nextBusinessDaySlots(VIERNES, 2)
-    expect(slots.map((s) => s.dateISO)).toEqual(['2026-08-10', '2026-08-10', '2026-08-11', '2026-08-11'])
-  })
-})
 
 describe('dayWord', () => {
   it('mañana/pasado mañana como palabra, el resto como día de semana + fecha', () => {
@@ -325,22 +313,21 @@ describe('decideSchedulingAction', () => {
     expect(result).toEqual({ type: 'confirm_visit', dateISO: '2026-08-04', franja: 'tarde' })
   })
 
-  it('quiere agendar sin decir cuándo (proposedSlot null) → propose_slots', () => {
+  it('quiere agendar sin decir cuándo (proposedSlot null) → ask_when', () => {
     const result = decideSchedulingAction(ctx({ proposedSlot: null }))
-    expect(result.type).toBe('propose_slots')
-    if (result.type === 'propose_slots') expect(result.slots.length).toBeGreaterThan(0)
+    expect(result).toEqual({ type: 'ask_when' })
   })
 
-  it('quiere agendar pero el slot no se pudo parsear (texto raro) → propose_slots, no confirma a ciegas', () => {
+  it('quiere agendar pero el slot no se pudo parsear (texto raro) → ask_when, no confirma a ciegas', () => {
     const result = decideSchedulingAction(ctx({ proposedSlot: 'cuando sea, no tengo drama' }))
-    expect(result.type).toBe('propose_slots')
+    expect(result.type).toBe('ask_when')
   })
 
-  it('un "no puedo mañana a la tarde" NO termina en confirm_visit: se vuelve a ofrecer días', () => {
+  it('un "no puedo mañana a la tarde" NO termina en confirm_visit: se vuelve a preguntar día y hora', () => {
     // Antes devolvía `confirm_visit` para el martes a la tarde — el momento
     // exacto que el cliente acababa de descartar.
     const result = decideSchedulingAction(ctx({ proposedSlot: 'no puedo mañana a la tarde' }))
-    expect(result.type).toBe('propose_slots')
+    expect(result.type).toBe('ask_when')
   })
 })
 
@@ -349,25 +336,29 @@ describe('decideSchedulingAction', () => {
 // van en el reporte para que el dueño los lea antes de prender el interruptor.
 // ---------------------------------------------------------------------------
 describe('prosa al cliente (textos exactos)', () => {
-  it('buildConfirmMessage — escenario "quiere agendar y propone día"', () => {
-    const text = buildConfirmMessage('María Sánchez', 'la propiedad de Av. Cabildo 2450', '2026-08-04', 'tarde', LUNES)
+  it('buildConfirmMessage — el cliente dijo día y HORA', () => {
+    const text = buildConfirmMessage('María Sánchez', 'Av. Cabildo 2450', '2026-08-04', 'tarde', LUNES, 16)
     expect(text).toBe(
-      '¡Buenísimo, María! Anoté tu visita a la propiedad de Av. Cabildo 2450 para mañana por la tarde. ' +
-        'Coordino el horario exacto con nuestro equipo y te lo confirmamos por acá a la brevedad.',
+      'Listo, María. Anoté la visita a Av. Cabildo 2450 para mañana a las 16. El equipo se comunica para confirmarla.',
     )
   })
 
-  it('buildProposeMessage — escenario "quiere agendar sin decir cuándo"', () => {
-    const slots = nextBusinessDaySlots(LUNES, 2)
-    const text = buildProposeMessage('Federico Ríos', 'la propiedad de Av. Cabildo 2450', slots)
+  it('buildConfirmMessage — el cliente habló de franja, no de hora', () => {
+    const text = buildConfirmMessage('María Sánchez', 'Av. Cabildo 2450', '2026-08-04', 'tarde', LUNES)
     expect(text).toBe(
-      '¡Hola, Federico! Para coordinar la visita a la propiedad de Av. Cabildo 2450 tengo estas opciones:\n' +
-        '1) mañana por la mañana\n' +
-        '2) mañana por la tarde\n' +
-        '3) pasado mañana por la mañana\n' +
-        '4) pasado mañana por la tarde\n' +
-        'Contame cuál te queda mejor (o si preferís otro día, decime cuál) y coordino el horario exacto con nuestro equipo, que te lo confirma por acá.',
+      'Listo, María. Anoté la visita a Av. Cabildo 2450 para mañana por la tarde. El equipo se comunica para confirmarla.',
     )
+  })
+
+  it('buildAskWhenMessage — pregunta día y hora, sin lista de opciones', () => {
+    expect(buildAskWhenMessage('Federico Ríos', 'Av. Cabildo 2450')).toBe(
+      'Hola, Federico. ¿Qué día y a qué hora te queda bien para visitar Av. Cabildo 2450?',
+    )
+  })
+
+  it('el aviso de que el equipo confirma va UNA sola vez, al final — no al preguntar', () => {
+    expect(buildAskWhenMessage('Federico', 'Av. Cabildo 2450')).not.toMatch(/equipo/i)
+    expect(buildConfirmMessage('María', 'Av. Cabildo 2450', '2026-08-04', 'tarde', LUNES, 16)).toMatch(/El equipo se comunica/)
   })
 
   it('buildHandoffNote — escenario "llegó al tope de mensajes" (nota INTERNA, no va al cliente)', () => {
@@ -378,8 +369,8 @@ describe('prosa al cliente (textos exactos)', () => {
   })
 
   it('sin nombre de cliente, el saludo degrada con elegancia', () => {
-    expect(buildConfirmMessage(null, 'la propiedad', '2026-08-04', 'manana', LUNES)).toMatch(/^¡Buenísimo! /)
-    expect(buildProposeMessage(null, 'la propiedad', [])).toMatch(/^¡Hola! /)
+    expect(buildConfirmMessage(null, 'la propiedad', '2026-08-04', 'manana', LUNES)).toMatch(/^Listo\. /)
+    expect(buildAskWhenMessage(null, 'la propiedad')).toMatch(/^Hola\. /)
   })
 })
 
@@ -627,7 +618,7 @@ describe('runSchedulingAgent (I/O)', () => {
     const sentArgs = sendWhatsappTextMock.mock.calls[0][0]
     expect(sentArgs.aiGenerated).toBe(true)
     expect(sentArgs.sentBy).toBeNull()
-    expect(sentArgs.text).toContain('Anoté tu visita')
+    expect(sentArgs.text).toContain('Anoté la visita')
     expect(notifyVisitProposedMock).toHaveBeenCalledWith('visit-1')
     expect(advancePipelineStateMock).toHaveBeenCalledWith('lead-1', 'visit_scheduled')
     // El cupo se reserva con la RPC atómica, NO con un UPDATE leído-y-escrito.
@@ -682,7 +673,7 @@ describe('runSchedulingAgent (I/O)', () => {
     expect(noteArgs.bodyPreview).toContain('permiso denegado')
   })
 
-  it('ESCENARIO 2 — quiere agendar sin decir cuándo: propone franjas, NO crea visita', async () => {
+  it('ESCENARIO 2 — quiere agendar sin decir cuándo: pregunta día y hora, NO crea visita', async () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
     mockSettingsEnabled()
     mockPropertyEnabled()
@@ -694,11 +685,11 @@ describe('runSchedulingAgent (I/O)', () => {
       proposedSlot: null,
     })
 
-    expect(result).toEqual({ action: 'propose_slots' })
+    expect(result).toEqual({ action: 'ask_when' })
     expect(visitsInsert).not.toHaveBeenCalled()
     expect(sendWhatsappTextMock).toHaveBeenCalledTimes(1)
     const sentArgs = sendWhatsappTextMock.mock.calls[0][0]
-    expect(sentArgs.text).toContain('tengo estas opciones')
+    expect(sentArgs.text).toContain('¿Qué día y a qué hora')
     expect(rpcMock).toHaveBeenCalledWith('claim_agent_message_slot', { p_phone: '5491122334455', p_max: 3 })
   })
 
@@ -880,7 +871,7 @@ describe('runSchedulingAgent (I/O)', () => {
 
     const result = await runSchedulingAgent({ ...BASE_INPUT, wantsToSchedule: true, proposedSlot: null })
 
-    expect(result).toEqual({ action: 'propose_slots' })
+    expect(result).toEqual({ action: 'ask_when' })
     expect(orden).toEqual(['claim', 'send'])
   })
 
@@ -902,7 +893,7 @@ describe('runSchedulingAgent (I/O)', () => {
 
     const result = await runSchedulingAgent({ ...BASE_INPUT, wantsToSchedule: true, proposedSlot: null })
 
-    expect(result.action).toBe('propose_slots')
+    expect(result.action).toBe('ask_when')
     // El contador vuelve a 0: el cliente no recibió nada, el cupo sigue entero.
     expect(stateUpdate).toHaveBeenCalledWith(expect.objectContaining({ agent_messages_sent: 0 }))
   })
@@ -1143,7 +1134,7 @@ describe('runSchedulingAgent (I/O)', () => {
   // cupo" aunque lo que había pasado era que la RPC de reserva FALLÓ, y eso
   // manda al asesor a mirar el tope en vez del problema real.
   // -------------------------------------------------------------------------
-  it('PUNTO 3a — proponer franjas sin cupo: deja nota interna (igual que el camino de confirmar)', async () => {
+  it('PUNTO 3a — preguntar día y hora sin cupo: deja nota interna (igual que el camino de confirmar)', async () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
     mockSettingsEnabled()
     mockPropertyEnabled()
@@ -1221,7 +1212,7 @@ describe('runSchedulingAgent (I/O)', () => {
     })
 
     const sentArgs = sendWhatsappTextMock.mock.calls[0][0]
-    expect(sentArgs.text.startsWith('¡Buenísimo! Anoté tu visita')).toBe(true)
+    expect(sentArgs.text.startsWith('Listo. Anoté la visita')).toBe(true)
     expect(sentArgs.text).not.toContain('Cliente')
     // El fallback SÍ sigue sirviendo para el campo de la visita (es NOT NULL).
     expect(visitsInsert).toHaveBeenCalledWith(
@@ -1229,7 +1220,7 @@ describe('runSchedulingAgent (I/O)', () => {
     )
   })
 
-  it('PUNTO 4 — al proponer franjas también: sin nombre real, "¡Hola!" pelado', async () => {
+  it('PUNTO 4 — al preguntar día y hora también: sin nombre real, "Hola." pelado', async () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
     mockSettingsEnabled()
     mockPropertyEnabled()
@@ -1244,7 +1235,7 @@ describe('runSchedulingAgent (I/O)', () => {
     })
 
     const sentArgs = sendWhatsappTextMock.mock.calls[0][0]
-    expect(sentArgs.text.startsWith('¡Hola! Para coordinar')).toBe(true)
+    expect(sentArgs.text.startsWith('Hola. ¿Qué día')).toBe(true)
     expect(sentArgs.text).not.toContain('Cliente')
   })
 
@@ -1314,7 +1305,7 @@ describe('runSchedulingAgent (I/O)', () => {
     expect(fromMock).not.toHaveBeenCalled()
   })
 
-  it('un "no puedo mañana a la tarde" NO crea visita ni le confirma nada: le vuelve a ofrecer días', async () => {
+  it('un "no puedo mañana a la tarde" NO crea visita ni le confirma nada: le vuelve a preguntar', async () => {
     // El bug completo, de punta a punta: el cliente descarta un momento y el
     // agente se lo agendaba igual ("Anoté tu visita para mañana por la tarde"),
     // con fila en `property_visits` y mail al equipo incluidos.
@@ -1329,12 +1320,12 @@ describe('runSchedulingAgent (I/O)', () => {
       proposedSlot: 'no puedo mañana a la tarde',
     })
 
-    expect(result).toEqual({ action: 'propose_slots' })
+    expect(result).toEqual({ action: 'ask_when' })
     expect(visitsInsert).not.toHaveBeenCalled()
     expect(notifyVisitProposedMock).not.toHaveBeenCalled()
     const sentArgs = sendWhatsappTextMock.mock.calls[0][0]
-    expect(sentArgs.text).not.toContain('Anoté tu visita')
-    expect(sentArgs.text).toContain('tengo estas opciones')
+    expect(sentArgs.text).not.toContain('Anoté la visita')
+    expect(sentArgs.text).toContain('¿Qué día y a qué hora')
   })
 
   it('nunca lanza: una excepción interna cae a noop', async () => {

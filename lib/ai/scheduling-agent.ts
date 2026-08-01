@@ -13,8 +13,8 @@
  * (`parseProposedSlot`), no con otra consulta al modelo — el análisis ya
  * gastó la única llamada de IA permitida en ESTE request (ver CLAUDE.md §
  * "nunca encadenar varias llamadas de IA dentro de UN request"). Y "lo que se
- * puede calcular sin IA, se calcula sin IA" — proponer franjas y armar la
- * fecha de una `property_visits` es aritmética de calendario, no un juicio.
+ * puede calcular sin IA, se calcula sin IA" — armar la fecha de una
+ * `property_visits` es aritmética de calendario, no un juicio.
  *
  * Reglas duras (ver brief):
  *   - Arranca apagado: `ai_agent_settings.scheduling_enabled` Y
@@ -69,8 +69,8 @@ import {
   hoyEnArgentina,
   sumarDias,
   diaDeSemana,
-  esDiaHabil,
   scheduledAtFor,
+  scheduledAtHora,
   upsertPendingVisit,
   notifyAndAdvancePipeline,
 } from '@/lib/leads/visit-scheduling'
@@ -84,7 +84,7 @@ import { updateAgentState } from '@/lib/ai/conversation-memory'
 // Parser determinístico de "cuándo" — nunca IA. Entiende los patrones de
 // castellano rioplatense más comunes para coordinar una visita. Ante
 // cualquier ambigüedad, devuelve `null` (no adivina): el agente prefiere
-// preguntar de nuevo con opciones concretas a agendar mal.
+// volver a preguntar el día y la hora a agendar mal.
 // ---------------------------------------------------------------------------
 
 const WEEKDAYS: { name: string; dow: number }[] = [
@@ -116,8 +116,8 @@ function normalizeText(s: string): string {
  *
  * Resolver una negación es un JUICIO ("el martes no, el miércoles sí": ¿qué
  * franja?, ¿el miércoles de esta semana?) y este parser no hace juicios. Ante
- * cualquier negación devuelve `null`, que hace que el agente vuelva a ofrecer
- * franjas concretas — exactamente lo que corresponde responderle a un "no
+ * cualquier negación devuelve `null`, que hace que el agente vuelva a preguntar
+ * qué día y a qué hora — exactamente lo que corresponde responderle a un "no
  * puedo".
  */
 const NEGACION_RE = /\b(no|ni|nunca|tampoco|imposible|salvo|excepto|menos|evitar|evito)\b/
@@ -200,6 +200,13 @@ function franjaFromHour(hour: number): Franja {
 export interface ParsedSlot {
   dateISO: string
   franja: Franja
+  /**
+   * Hora EXACTA, solo cuando el cliente la dijo ("el jueves a las 16"). Sin
+   * esto se guardaba la hora por default de la franja (tarde = 15) y el asesor
+   * veía un horario que el cliente nunca mencionó. Si el cliente habló de
+   * franja ("a la tarde"), queda `undefined` y manda el default de siempre.
+   */
+  hora?: number
 }
 
 /**
@@ -252,10 +259,12 @@ export function parseProposedSlot(rawText: string, now: Date): ParsedSlot | null
 
   // La hora solo define la franja cuando el cliente NO la nombró: en "a las 5
   // de la tarde" manda la tarde, no las 5 de la mañana.
+  const horas = new Set<number>()
   if (franjas.size === 0) {
     for (const m of working.matchAll(/\ba\s*las?\s*(\d{1,2})/g)) {
       const hora = parseInt(m[1], 10)
       if (hora < HORA_MIN_VISITA || hora > HORA_MAX_VISITA) return null
+      horas.add(hora)
       franjas.add(franjaFromHour(hora))
     }
   }
@@ -284,7 +293,10 @@ export function parseProposedSlot(rawText: string, now: Date): ParsedSlot | null
   // resuelve gratis los casos redundantes ("mañana martes a la tarde": las dos
   // referencias caen en la MISMA fecha, así que sigue siendo una sola).
   if (dias.size !== 1 || franjas.size !== 1) return null
-  return { dateISO: [...dias][0], franja: [...franjas][0] }
+  // Dos horas nombradas ("entre las 10 y las 12") es un rango, no una hora: se
+  // guarda la franja y el equipo cierra el horario. Una sola, se respeta tal cual.
+  const hora = horas.size === 1 ? [...horas][0] : undefined
+  return { dateISO: [...dias][0], franja: [...franjas][0], hora }
 }
 
 // ---------------------------------------------------------------------------
@@ -301,35 +313,6 @@ export function dayWord(dateISO: string, todayISO: string): string {
   return `el ${WEEKDAY_LABEL[diaDeSemana(dateISO)]} ${Number(dd)}/${Number(mm)}`
 }
 
-export interface ProposedSlotOption {
-  dateISO: string
-  franja: Franja
-  label: string
-}
-
-/**
- * Pura. Próximos `days` días HÁBILES desde mañana, cada uno con 2 franjas
- * (mañana/tarde — se omite mediodía para no saturar de opciones al cliente:
- * "menos vueltas" según el brief). Busca hasta 14 días adelante por si caen
- * varios fines de semana seguidos (no debería pasar nunca en la práctica).
- */
-export function nextBusinessDaySlots(now: Date, days = 2): ProposedSlotOption[] {
-  const today = hoyEnArgentina(now)
-  const slots: ProposedSlotOption[] = []
-  let offset = 1
-  let found = 0
-  while (found < days && offset <= 14) {
-    const candidate = sumarDias(today, offset)
-    if (esDiaHabil(candidate)) {
-      for (const franja of ['manana', 'tarde'] as const) {
-        slots.push({ dateISO: candidate, franja, label: `${dayWord(candidate, today)} ${FRANJA_LABEL_PROSA[franja]}` })
-      }
-      found++
-    }
-    offset++
-  }
-  return slots
-}
 
 // ---------------------------------------------------------------------------
 // Decisión — pura, testeable sin red. Ver `SchedulingAction` para el
@@ -339,8 +322,8 @@ export function nextBusinessDaySlots(now: Date, days = 2): ProposedSlotOption[] 
 export type SchedulingAction =
   | { type: 'noop'; reason: string }
   | { type: 'handoff'; reason: string }
-  | { type: 'propose_slots'; slots: ProposedSlotOption[] }
-  | { type: 'confirm_visit'; dateISO: string; franja: Franja }
+  | { type: 'ask_when' }
+  | { type: 'confirm_visit'; dateISO: string; franja: Franja; hora?: number }
 
 export interface SchedulingContext {
   now: Date
@@ -384,9 +367,9 @@ export function decideSchedulingAction(ctx: SchedulingContext): SchedulingAction
 
   const parsed = ctx.proposedSlot ? parseProposedSlot(ctx.proposedSlot, ctx.now) : null
   if (parsed) {
-    return { type: 'confirm_visit', dateISO: parsed.dateISO, franja: parsed.franja }
+    return { type: 'confirm_visit', dateISO: parsed.dateISO, franja: parsed.franja, hora: parsed.hora }
   }
-  return { type: 'propose_slots', slots: nextBusinessDaySlots(ctx.now) }
+  return { type: 'ask_when' }
 }
 
 // ---------------------------------------------------------------------------
@@ -399,15 +382,25 @@ function firstName(name: string | null): string {
   return trimmed ? trimmed.split(/\s+/)[0] : ''
 }
 
-export function buildProposeMessage(clientName: string | null, propertyLabel: string, slots: ProposedSlotOption[]): string {
+/**
+ * El agente PREGUNTA día y hora — no ofrece una lista de franjas.
+ *
+ * Antes mandaba cuatro opciones numeradas y decía "coordino el horario exacto
+ * con nuestro equipo". Decisión del dueño (2026-08-04): sacar esa vuelta. El
+ * agente hace UNA cosa, la pregunta es abierta (el cliente elige, no encaja en
+ * nuestra grilla) y el aviso de que el equipo confirma va UNA sola vez, al
+ * final, cuando la visita ya quedó anotada. Repetirlo en cada mensaje suena a
+ * formulario, no a alguien atendiendo.
+ */
+export function buildAskWhenMessage(clientName: string | null, propertyLabel: string): string {
   const nombre = firstName(clientName)
-  const saludo = nombre ? `¡Hola, ${nombre}!` : '¡Hola!'
-  const opciones = slots.map((s, i) => `${i + 1}) ${s.label}`).join('\n')
-  return [
-    `${saludo} Para coordinar la visita a ${propertyLabel} tengo estas opciones:`,
-    opciones,
-    'Contame cuál te queda mejor (o si preferís otro día, decime cuál) y coordino el horario exacto con nuestro equipo, que te lo confirma por acá.',
-  ].join('\n')
+  const saludo = nombre ? `Hola, ${nombre}.` : 'Hola.'
+  return `${saludo} ¿Qué día y a qué hora te queda bien para visitar ${propertyLabel}?`
+}
+
+/** "a las 16" si el cliente dijo la hora; si habló de franja, la franja. */
+function momentoLabel(franja: Franja, hora?: number): string {
+  return hora !== undefined ? `a las ${hora}` : FRANJA_LABEL_PROSA[franja]
 }
 
 export function buildConfirmMessage(
@@ -416,12 +409,12 @@ export function buildConfirmMessage(
   dateISO: string,
   franja: Franja,
   now: Date,
+  hora?: number,
 ): string {
   const nombre = firstName(clientName)
-  const saludo = nombre ? `¡Buenísimo, ${nombre}!` : '¡Buenísimo!'
+  const saludo = nombre ? `Listo, ${nombre}.` : 'Listo.'
   const dia = dayWord(dateISO, hoyEnArgentina(now))
-  const franjaLabel = FRANJA_LABEL_PROSA[franja]
-  return `${saludo} Anoté tu visita a ${propertyLabel} para ${dia} ${franjaLabel}. Coordino el horario exacto con nuestro equipo y te lo confirmamos por acá a la brevedad.`
+  return `${saludo} Anoté la visita a ${propertyLabel} para ${dia} ${momentoLabel(franja, hora)}. El equipo se comunica para confirmarla.`
 }
 
 /** Nota INTERNA (no se manda al cliente) — visible en el chat del Inbox para que un asesor sepa que a partir de acá sigue una persona. */
@@ -1010,9 +1003,9 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       return { action: 'noop', reason: 'ya hay una visita en agenda para esta propiedad; moverla la decide una persona' }
     }
 
-    if (decision.type === 'propose_slots') {
+    if (decision.type === 'ask_when') {
       const clientName = await resolveClientName(sb, input)
-      const text = buildProposeMessage(clientName.display, propertyLabel, decision.slots)
+      const text = buildAskWhenMessage(clientName.display, propertyLabel)
       const claimed = await claimMessageSlot(sb, input.phoneE164, settings.max_messages_per_conversation)
       if (!claimed.ok) {
         // Nota INTERNA, por simetría con el camino de confirmar: si el agente se
@@ -1039,7 +1032,7 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       })
       // No salió nada (modo prueba / sin credenciales) ⇒ el cupo vuelve.
       if (sent.skipped) await releaseMessageSlot(input.phoneE164, claimed.slot)
-      return { action: 'propose_slots' }
+      return { action: 'ask_when' }
     }
 
     // confirm_visit. ORDEN NO NEGOCIABLE: guardar → avisar al equipo → recién
@@ -1049,8 +1042,13 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
     // se presentaba en la propiedad sin que lo esperara nadie.
     const clientName = await resolveClientName(sb, input)
     const clientPhone = `+${input.phoneE164}`
-    const scheduledAt = scheduledAtFor(decision.dateISO, decision.franja)
-    const notes = `Propuesta por el cliente vía WhatsApp (agente de IA, franja: ${decision.franja}).`
+    // La hora exacta manda cuando el cliente la dijo; si habló de franja, el
+    // horario por default de esa franja (el equipo lo cierra igual al confirmar).
+    const scheduledAt =
+      decision.hora !== undefined
+        ? scheduledAtHora(decision.dateISO, decision.hora)
+        : scheduledAtFor(decision.dateISO, decision.franja)
+    const notes = `Propuesta por el cliente vía WhatsApp (agente de IA, ${momentoLabel(decision.franja, decision.hora)}).`
 
     const result = await upsertPendingVisit(sb, {
       propertyId: input.propertyId,
@@ -1103,7 +1101,7 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
         phone: input.phoneE164,
         bodyPreview: buildVisitUnconfirmedNote(
           dayWord(decision.dateISO, hoyEnArgentina(now)),
-          FRANJA_LABEL_PROSA[decision.franja],
+          momentoLabel(decision.franja, decision.hora),
           claimed.reason,
         ),
         status: NOTE_STATUS_VISIT_UNCONFIRMED,
@@ -1117,7 +1115,7 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
         reason: `la visita quedó registrada pero no se le confirmó al cliente: ${claimed.reason}`,
       }
     }
-    const text = buildConfirmMessage(clientName.display, propertyLabel, decision.dateISO, decision.franja, now)
+    const text = buildConfirmMessage(clientName.display, propertyLabel, decision.dateISO, decision.franja, now, decision.hora)
     const sent = await sendWhatsappText({
       to: input.phoneE164,
       text,

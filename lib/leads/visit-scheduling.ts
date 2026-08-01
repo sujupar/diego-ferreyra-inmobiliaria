@@ -63,6 +63,15 @@ export function esDiaHabil(fechaISO: string): boolean {
 /** Combina fecha (YYYY-MM-DD) + franja en el instante UTC correcto (hora de Argentina, UTC-3 fijo). */
 export function scheduledAtFor(fechaISO: string, franja: Franja): Date {
   const hora = FRANJA_HORA[franja]
+  return scheduledAtHora(fechaISO, hora)
+}
+
+/**
+ * Igual que `scheduledAtFor` pero con una hora EXACTA. Se usa cuando el cliente
+ * dijo la hora ("el jueves a las 16"): guardar 15:00 porque "16 cae en la
+ * franja tarde" sería anotarle al asesor un horario que el cliente no dijo.
+ */
+export function scheduledAtHora(fechaISO: string, hora: number): Date {
   return new Date(`${fechaISO}T${String(hora).padStart(2, '0')}:00:00-03:00`)
 }
 
