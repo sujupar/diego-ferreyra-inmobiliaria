@@ -61,7 +61,7 @@ function Wordmark() {
 export function HeroLuxury(props: HeroLuxuryProps) {
   const {
     title, subtitle, offerLabel = 'Precio', price, currency, operationType,
-    neighborhood, city, specs, ctaLabel = 'Coordiná una visita',
+    neighborhood, city, specs, ctaLabel = 'Ver el recorrido de la propiedad',
     heroImage, videoUrl, videoFileUrl, mediaMode = 'auto',
   } = props
 

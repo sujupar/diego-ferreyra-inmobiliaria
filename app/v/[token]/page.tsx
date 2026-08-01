@@ -37,7 +37,7 @@ export default async function RecorridoPage({ params }: { params: Promise<{ toke
 
   const { data: property } = await admin()
     .from('properties')
-    .select('id, address, neighborhood, city, asking_price, currency, photos, rooms, covered_area, video_recorrido_url, tour_3d_url, deliver_media, status')
+    .select('id, address, neighborhood, city, asking_price, currency, photos, rooms, covered_area, video_recorrido_url, tour_3d_url, video_url, video_file_url, deliver_media, status')
     .eq('id', access.propertyId)
     .maybeSingle()
   if (!property) notFound()
@@ -45,7 +45,12 @@ export default async function RecorridoPage({ params }: { params: Promise<{ toke
   await markTokenOpened(token)
 
   const media = resolveDeliverMedia(property)
-  const embed = media.kind === 'video_recorrido' && media.url ? toEmbedUrl(media.url) : null
+  // 'video_propio' (2026-08-02): el video "de marketing" de la propiedad
+  // (video_url/video_file_url) cuando no hay recorrido dedicado ni tour 3D.
+  // Se renderiza IGUAL que video_recorrido: si es un link externo (YouTube/
+  // Vimeo) se embebe, si es un archivo subido va directo en un <video>.
+  const isVideo = media.kind === 'video_recorrido' || media.kind === 'video_propio'
+  const embed = isVideo && media.url ? toEmbedUrl(media.url) : null
   const fotos = (property.photos ?? []) as string[]
 
   return (
@@ -71,11 +76,11 @@ export default async function RecorridoPage({ params }: { params: Promise<{ toke
               allow="fullscreen; xr-spatial-tracking"
             />
           )}
-          {media.kind === 'video_recorrido' && media.url && (
+          {isVideo && media.url && (
             embed ? (
               <iframe
                 src={embed}
-                title="Video recorrido"
+                title={media.kind === 'video_recorrido' ? 'Video recorrido' : 'Video de la propiedad'}
                 className="aspect-video w-full rounded-lg border"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen

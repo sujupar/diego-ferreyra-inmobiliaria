@@ -12,6 +12,7 @@ import type { TemplateManifest } from './types'
 import { type ConversionCopy, deterministicConversionCopy } from '@/lib/landing/conversion-copy'
 import { deriveTier, tierConfig, type LandingTier } from '@/lib/landing/tier'
 import { planPhotos } from '@/lib/landing/photo-plan'
+import { resolveDeliverMedia } from '@/lib/properties/deliver-media'
 
 /** Etiqueta de la oferta del hero según la operación. */
 function offerLabelFor(property: LandingProperty): string {
@@ -35,6 +36,14 @@ export function buildLuxuryDocument(
   const cfg = tierConfig(tier)
   const photos = planPhotos(property.photos ?? [])
 
+  // Cuando el entregable ES el video propio de la propiedad (sin recorrido
+  // dedicado ni tour 3D), la landing NO muestra video en ningún lado — solo
+  // fotos (decisión del dueño, 2026-08-02): si el video ya se ve acá,
+  // registrarse para "verlo" no tiene premio. El único bloque de lujo que
+  // puede mostrar video es el hero (`HeroLuxury`); se fuerza `mediaMode:'photo'`.
+  const deliverKind = resolveDeliverMedia(property).kind
+  const heroMediaMode = deliverKind === 'video_propio' ? 'photo' : 'auto'
+
   // Beneficios (E1.8) → bloques de historia numerados, con foto por índice.
   const storyItems = copy.benefits.slice(0, cfg.storyCount).map((b, i) => ({
     numeral: NUMERALS[i] ?? String(i + 1),
@@ -50,7 +59,7 @@ export function buildLuxuryDocument(
       id: 'hero',
       type: 'hero',
       variant: 'cinematic',
-      mediaMode: 'auto',
+      mediaMode: heroMediaMode,
       heroPhotoIndex: 0,
       titleOverride: copy.titular,
       subtitle: copy.subtitulo,

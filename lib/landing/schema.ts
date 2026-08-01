@@ -23,7 +23,7 @@ const HeroBlock = z.object({
   subtitle: z.string().max(200).optional(),
   /** Descripción corta bajo el titular/video. */
   shortDesc: z.string().max(280).optional(),
-  /** Texto del CTA del hero (abre el popup). Default "Quiero saber más". */
+  /** Texto del CTA del hero (abre el popup). Default "Ver el recorrido de la propiedad". */
   ctaLabel: z.string().max(40).optional(),
   /** E1.9 — etiqueta sobre el precio en el hero de lujo (ej. "Precio de venta"). */
   offerLabel: z.string().max(40).optional(),
@@ -101,7 +101,7 @@ const LocationNoteBlock = z.object({
 const CtaBlock = z.object({
   id: z.string(),
   type: z.literal('cta'),
-  /** Texto del botón. Default "Quiero saber más". */
+  /** Texto del botón. Default "Ver el recorrido de la propiedad". */
   label: z.string().max(40).optional(),
   /** Título opcional sobre el botón. */
   headline: z.string().max(160).optional(),

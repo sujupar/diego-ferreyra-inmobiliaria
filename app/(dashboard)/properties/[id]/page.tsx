@@ -66,6 +66,7 @@ interface PropertyData {
   photos: string[]
   plans: string[] | null
   video_file_url: string | null
+  video_url: string | null
   tour_3d_url: string | null
   video_recorrido_url: string | null
   deliver_media: string | null
@@ -346,6 +347,8 @@ export default function PropertyDetailPage() {
             canManage={['admin', 'dueno', 'coordinador'].includes(userInfo?.role ?? '')}
             videoRecorridoUrl={property.video_recorrido_url}
             tour3dUrl={property.tour_3d_url}
+            videoUrl={property.video_url}
+            videoFileUrl={property.video_file_url}
             deliverMediaSaved={property.deliver_media}
           />
         )}

@@ -58,9 +58,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       templateId?: string
       content?: unknown
       draftContent?: unknown
-      deliverMedia?: 'video_recorrido' | 'tour_3d'
+      deliverMedia?: 'video_recorrido' | 'tour_3d' | 'video_propio'
     }
-    if (body.deliverMedia === 'video_recorrido' || body.deliverMedia === 'tour_3d') {
+    if (
+      body.deliverMedia === 'video_recorrido' ||
+      body.deliverMedia === 'tour_3d' ||
+      body.deliverMedia === 'video_propio'
+    ) {
       await setDeliverMedia(id, body.deliverMedia)
     }
 

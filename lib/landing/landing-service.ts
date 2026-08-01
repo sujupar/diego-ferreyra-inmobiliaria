@@ -21,6 +21,7 @@ import { analyzePropertyPhotos } from '@/lib/marketing/property-vision-analyzer'
 import { deriveFunnelType, type PropertyFunnelType } from './funnel-type'
 import { buildFromTemplate, suggestTemplateId, getTemplate } from './templates'
 import { buildLuxuryDocument } from './templates/luxury'
+import { resolveDeliverMedia } from '@/lib/properties/deliver-media'
 import { generateConversionCopy, deterministicConversionCopy } from './conversion-copy'
 import { ENRICH_STAGES, nextEnrichStage, type EnrichStage } from './enrich'
 import { deriveTier } from './tier'
@@ -281,8 +282,8 @@ export async function updateLanding(propertyId: string, patch: {
   return data as unknown as LandingRow
 }
 
-/** Guarda qué medio (video recorrido o tour 3D) se le entrega a quien se registre. */
-export async function setDeliverMedia(propertyId: string, deliverMedia: 'video_recorrido' | 'tour_3d'): Promise<void> {
+/** Guarda qué medio (video recorrido, tour 3D o video propio) se le entrega a quien se registre. */
+export async function setDeliverMedia(propertyId: string, deliverMedia: 'video_recorrido' | 'tour_3d' | 'video_propio'): Promise<void> {
   const { error } = await adminTyped()
     .from('properties')
     .update({ deliver_media: deliverMedia })
@@ -332,22 +333,27 @@ export async function persistSelectedAvatar(propertyId: string, avatar: EmpathyA
  * para que la UI muestre EXACTAMENTE el mismo texto antes de que apriete el botón.
  */
 export const RECORRIDO_REQUERIDO_MSG =
-  'Para publicar la landing la propiedad necesita un video recorrido o un recorrido virtual. ' +
-  'Cargalo en la pestaña Multimedia y volvé a publicar.'
+  'Para publicar la landing la propiedad necesita un video recorrido, un recorrido virtual o, ' +
+  'al menos, un video cargado. Cargalo en la pestaña Multimedia y volvé a publicar.'
 
-/** Frena la publicación si la propiedad no tiene ninguno de los dos entregables. */
+/**
+ * Frena la publicación si la propiedad no tiene NINGÚN entregable (ver
+ * `resolveDeliverMedia`: recorrido dedicado → tour 3D → video propio de la
+ * propiedad). Desde 2026-08-02 el video "de marketing" (`video_url`/
+ * `video_file_url`) también cuenta — decisión del dueño: sin recorrido pero
+ * con video, la landing se hace solo con fotos y el video se entrega en la
+ * página de gracias.
+ */
 async function assertRecorridoDisponible(propertyId: string): Promise<void> {
   const { data, error } = await admin()
     .from('properties')
-    .select('video_recorrido_url, tour_3d_url')
+    .select('video_recorrido_url, tour_3d_url, video_url, video_file_url, deliver_media')
     .eq('id', propertyId)
     .maybeSingle()
   // Si la consulta falla no bloqueamos la publicación por un problema de
   // infraestructura: el gate es de negocio, no un candado de disponibilidad.
   if (error || !data) return
-  const row = data as { video_recorrido_url: string | null; tour_3d_url: string | null }
-  const tiene = (v: string | null) => (v ?? '').trim().length > 0
-  if (!tiene(row.video_recorrido_url) && !tiene(row.tour_3d_url)) {
+  if (resolveDeliverMedia(data).kind === 'fotos') {
     throw new Error(RECORRIDO_REQUERIDO_MSG)
   }
 }
