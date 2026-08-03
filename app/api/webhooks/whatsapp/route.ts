@@ -264,13 +264,27 @@ async function runAiPipeline(ctx: InboundContext): Promise<void> {
  * modelo encadenadas — exactamente lo que la regla dura de CLAUDE.md prohíbe.
  * El segundo teléfono se analiza cuando llegue su propio webhook.
  *
- * Lo que queda abierto y hay que decirlo: aun con el gate en 1s, un pipeline
- * que toque TODOS sus techos a la vez (12 + 8 + un mail lento) puede pasarse de
- * los 26s. Cerrarlo de verdad pide una de dos cosas, ninguna de las cuales es
- * este archivo: ponerle `AbortSignal` al mail y a las queries del agente, o
- * sacar el pipeline del request (cola/segundo endpoint, como ya hacen los
- * carruseles y meta-launch-v2). Mientras el agente esté apagado esto no le
- * pega a nadie; antes de encenderlo, hay que resolverlo.
+ * PERO 1s ERA UN INTERRUPTOR DE APAGADO, NO UNA PRECAUCIÓN. Verificado en
+ * producción el 2026-08-03: guardar el mensaje entrante ya se lleva más de un
+ * segundo (dos roundtrips a Supabase: buscar el lead y hacer el upsert), así
+ * que el gate NUNCA se cumplía y el análisis no corría jamás. El dueño escribía
+ * y el agente no contestaba nada — ni siquiera lo leía.
+ *
+ * El error de razonamiento: sumé el PEOR caso de cada término como si todos
+ * ocurrieran a la vez, y usé ese total para fijar el gate. El peor caso importa
+ * para decidir si hay que sacar el pipeline del request; no para decidir si
+ * arrancarlo hoy. El gate solo tiene que evitar ARRANCAR cuando ya se consumió
+ * tanto tiempo que ni el caso NORMAL entra: análisis ~2-4s + envío ~1-2s.
+ *
+ * Con 5s de gate: el caso normal (guardado ~1s → pipeline ~5s) termina cómodo, y
+ * un lote pesado que ya se comió 5s se saltea el análisis en vez de arriesgar el
+ * 200 — que sigue siendo el criterio correcto.
+ *
+ * Lo que queda abierto, y hay que decirlo igual: un pipeline que toque TODOS sus
+ * techos a la vez (12 + 8 + un mail lento) puede pasarse de los 26s. Cerrarlo de
+ * verdad pide ponerle `AbortSignal` al mail y a las queries del agente, o sacar
+ * el pipeline del request (cola/segundo endpoint, como ya hacen los carruseles y
+ * meta-launch-v2). Es la deuda pendiente de esta pieza.
  *
  * Qué se saltea y qué no: se saltea el ANÁLISIS, nunca el guardado. Guardar el
  * mensaje del cliente es lo primero que hace el POST y es sagrado. El análisis
@@ -282,7 +296,7 @@ async function runAiPipeline(ctx: InboundContext): Promise<void> {
  * los mensajes entrantes, no solo los del agente. Es la falla más cara posible
  * de este sistema.
  */
-const AI_BUDGET_MS = 1_000
+const AI_BUDGET_MS = 5_000
 
 /**
  * Progreso de un mensaje saliente. Meta REINTENTA los webhooks y NO garantiza el
