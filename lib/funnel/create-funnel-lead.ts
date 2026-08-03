@@ -115,5 +115,13 @@ export async function createFunnelLead(input: FunnelLeadInput): Promise<FunnelLe
     { failedNotificationType: map.notify === 'class' ? 'class_registration' : 'deal_created', entityType: 'deal', entityId: dealId },
   )
 
+  // 5) Sync Mailchimp (best-effort: nunca rompe el alta del lead)
+  try {
+    const { syncDealToMailchimp } = await import('@/lib/integrations/mailchimp/sync-deal')
+    await syncDealToMailchimp(dealId)
+  } catch (err) {
+    console.warn('[mailchimp] funnel sync failed (ignored):', err instanceof Error ? err.message : err)
+  }
+
   return { contactId, dealId }
 }
