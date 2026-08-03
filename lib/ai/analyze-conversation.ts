@@ -58,7 +58,28 @@ const ANALYSIS_MAX_OUTPUT_TOKENS = 500
  */
 const ANALYSIS_TIMEOUT_MS = 12_000
 
+import {
+  DEFAULT_AGENT_PROMPT,
+  buildBrainUserPrompt,
+  coerceBrainDecision,
+  type BrainContext,
+} from '@/lib/ai/agent-brain'
+
 const VALID_INTENTS: ConversationIntent[] = ['agendar', 'consulta', 'frio', 'desconocido']
+
+/**
+ * Contexto que el AGENTE necesita para pensar la respuesta y que este módulo no
+ * puede averiguar solo (vive en `properties`, `ai_agent_settings` y
+ * `property_visits`): lo arma `lib/ai/scheduling-agent.ts` y se lo pasa acá.
+ *
+ * Cuando viene, la llamada al modelo usa el prompt del AGENTE
+ * (`DEFAULT_AGENT_PROMPT`): entiende la conversación Y redacta la respuesta.
+ * Cuando no viene, se usa el prompt de ANALISTA de siempre — que solo clasifica
+ * para ordenar la bandeja y NO contesta nada. Esa segunda variante es la que
+ * corre mientras no haya propiedad asociada a la conversación: sin propiedad no
+ * hay datos que contestar, y un agente que improvisa es peor que uno callado.
+ */
+export type BrainInput = Omit<BrainContext, 'previousSummary' | 'newMessages'>
 
 // ---------------------------------------------------------------------------
 // Interruptor del ANÁLISIS (`ai_agent_settings.analysis_enabled`, migración
@@ -157,6 +178,12 @@ export interface AnalysisResult {
   suggestedNextStep: string
   wantsToSchedule: boolean
   proposedSlot: string | null
+  /** Texto EXACTO que el agente le manda al cliente. `null` = no contestar. Solo con el prompt de agente. */
+  reply: string | null
+  /** Día que el modelo propone para la visita (YYYY-MM-DD), SIN validar. Lo valida el código antes de agendar. */
+  visitDate: string | null
+  /** Hora en punto propuesta, SIN validar. */
+  visitHour: number | null
 }
 
 interface RawAnalysis {
@@ -201,6 +228,10 @@ export function coerceAnalysisResult(raw: unknown): AnalysisResult | null {
     suggestedNextStep: typeof r.suggestedNextStep === 'string' ? r.suggestedNextStep.trim() : '',
     wantsToSchedule: r.wantsToSchedule === true,
     proposedSlot,
+    // El prompt de analista no redacta ni propone fecha: eso es del agente.
+    reply: null,
+    visitDate: null,
+    visitHour: null,
   }
 }
 
@@ -213,11 +244,28 @@ export interface AnalysisPatch extends AnalysisResult {
 async function askModel(
   previousSummary: string,
   mensajesNuevos: WhatsappMessageLite[],
+  brain?: BrainInput,
 ): Promise<AnalysisPatch | null> {
+  // UNA sola llamada, con uno de dos prompts. Con contexto de propiedad corre
+  // el del AGENTE (entiende y CONTESTA); sin contexto, el de ANALISTA (solo
+  // clasifica para ordenar la bandeja).
+  const visibles = mensajesNuevos.filter(elClienteLoVio)
+  const system = brain ? DEFAULT_AGENT_PROMPT : SYSTEM_PROMPT
+  const user = brain
+    ? buildBrainUserPrompt({
+        ...brain,
+        previousSummary,
+        newMessages: visibles.map(m => ({
+          from: m.direction === 'in' ? ('cliente' as const) : ('nosotros' as const),
+          text: m.body_preview?.trim() || '(sin texto — multimedia o vacío)',
+        })),
+      })
+    : buildUserPrompt(previousSummary, mensajesNuevos)
+
   const res = await chatCompletion({
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: buildUserPrompt(previousSummary, mensajesNuevos) },
+      { role: 'system', content: system },
+      { role: 'user', content: user },
     ],
     temperature: 0.3,
     jsonMode: true,
@@ -225,6 +273,27 @@ async function askModel(
     timeoutMs: ANALYSIS_TIMEOUT_MS,
   })
   const parsed = JSON.parse(res.content) as unknown
+
+  if (brain) {
+    const d = coerceBrainDecision(parsed)
+    if (!d) return null
+    return {
+      summary: d.summary,
+      intent: d.intent,
+      priorityScore: d.priorityScore,
+      priorityReason: d.priorityReason,
+      suggestedNextStep: d.suggestedNextStep,
+      // `wantsToSchedule` queda por compatibilidad con el orden del Inbox.
+      wantsToSchedule: d.intent === 'agendar',
+      proposedSlot: null,
+      reply: d.reply,
+      visitDate: d.visitDate,
+      visitHour: d.visitHour,
+      tokensUsed: res.usage?.totalTokens ?? 0,
+      model: res.model,
+    }
+  }
+
   const coerced = coerceAnalysisResult(parsed)
   if (!coerced) return null
   return { ...coerced, tokensUsed: res.usage?.totalTokens ?? 0, model: res.model }
@@ -265,13 +334,14 @@ async function askModel(
 export async function analyzeConversation(input: {
   previousSummary: string
   mensajesNuevos: WhatsappMessageLite[]
+  brain?: BrainInput
 }): Promise<AnalysisPatch | null> {
   if (input.mensajesNuevos.filter(elClienteLoVio).length === 0) return null
 
   if (!(await analysisEnabled())) return null
 
   try {
-    return await askModel(input.previousSummary, input.mensajesNuevos)
+    return await askModel(input.previousSummary, input.mensajesNuevos, input.brain)
   } catch (err) {
     console.warn('[analyze-conversation] el modelo falló (se sigue sin análisis):', err)
     return null
@@ -292,6 +362,12 @@ export interface RunConversationAnalysisResult {
   /** Del análisis nuevo, si hubo. `false`/`null` si no se analizó — no implica que el cliente no quiera agendar, solo que no hay info nueva. */
   wantsToSchedule: boolean
   proposedSlot: string | null
+  /** Lo que el agente contestaría. `null` = no contestar (o no corrió el prompt de agente). */
+  reply: string | null
+  /** Día propuesto por el modelo, SIN validar — lo valida `validateProposedVisit` antes de agendar. */
+  visitDate: string | null
+  /** Hora propuesta, SIN validar. */
+  visitHour: number | null
 }
 
 /**
@@ -312,6 +388,7 @@ export interface RunConversationAnalysisResult {
 export async function runConversationAnalysis(
   phoneE164: string,
   ahora: Date = new Date(),
+  brain?: BrainInput,
 ): Promise<RunConversationAnalysisResult> {
   const [read, mensajes] = await Promise.all([
     getConversationAiState(phoneE164),
@@ -329,23 +406,23 @@ export async function runConversationAnalysis(
   // y `properties.ai_scheduling_enabled`— ya fallaban cerrados; a este se le
   // había pasado.
   if (read.readFailed) {
-    return { state: null, analyzed: false, readFailed: true, wantsToSchedule: false, proposedSlot: null }
+    return { state: null, analyzed: false, readFailed: true, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null }
   }
 
   const state = read.state
 
   if (!debeAnalizar(state, mensajes, ahora)) {
-    return { state, analyzed: false, readFailed: false, wantsToSchedule: false, proposedSlot: null }
+    return { state, analyzed: false, readFailed: false, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null }
   }
 
   const nuevos = mensajesNuevosDesde(state, mensajes)
-  const patch = await analyzeConversation({ previousSummary: state?.summary ?? '', mensajesNuevos: nuevos })
+  const patch = await analyzeConversation({ previousSummary: state?.summary ?? '', mensajesNuevos: nuevos, brain })
   if (!patch) {
     // Tres causas posibles, mismo desenlace a propósito: el interruptor está
     // apagado (o no se pudo leer), el modelo falló, o devolvió algo con forma
     // inválida. Nunca lanza y NO escribe: se deja el estado anterior sin tocar.
     // La conversación igual se ordena por la ventana de 24hs, que no necesita IA.
-    return { state, analyzed: false, readFailed: false, wantsToSchedule: false, proposedSlot: null }
+    return { state, analyzed: false, readFailed: false, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null }
   }
 
   const ultimoNuevo = nuevos[nuevos.length - 1]
@@ -388,5 +465,8 @@ export async function runConversationAnalysis(
     readFailed: false,
     wantsToSchedule: patch.wantsToSchedule,
     proposedSlot: patch.proposedSlot,
+    reply: patch.reply,
+    visitDate: patch.visitDate,
+    visitHour: patch.visitHour,
   }
 }
