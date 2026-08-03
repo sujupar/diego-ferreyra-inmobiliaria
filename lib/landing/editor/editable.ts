@@ -10,6 +10,11 @@ export const FIELD_MAX: Record<string, number> = {
   'gallery.eyebrow': 60, 'gallery.title': 120,
   'location.eyebrow': 60, 'location.title': 120, 'location.body': 400,
   'closing.eyebrow': 60, 'closing.headline': 200, 'closing.body': 400,
+  // Página de gracias (`/v/<token>`). Los topes replican los del schema
+  // (`ThanksContent`): si acá fueran más grandes, el guardado fallaría en Zod
+  // recién al autosalvar, sin que el asesor entienda por qué.
+  'thanks.greeting': 120, 'thanks.headline': 200, 'thanks.intro': 600,
+  'thanks.scheduleTitle': 120, 'thanks.scheduleText': 600,
 }
 
 /** Secciones OPCIONALES que el asesor puede mostrar/ocultar (por id canónico). */

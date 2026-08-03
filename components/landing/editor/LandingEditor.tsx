@@ -13,12 +13,23 @@ import { Button } from '@/components/ui/button'
 import { EditorPreview } from './EditorPreview'
 import { EditorPanel } from './EditorPanel'
 import { SectionToggles } from './SectionToggles'
+import { ThanksPreview } from './ThanksPreview'
+import { ThanksPanel } from './panels/ThanksPanel'
+import { resolveDeliverMedia } from '@/lib/properties/deliver-media'
 import { useAutosave } from './useAutosave'
 import { replaceBlockById } from '@/lib/landing/editor/block-patch'
 import { insertBlockInCuratedOrder, removeBlockById } from '@/lib/landing/editor/block-order'
 import { defaultOptionalBlock } from '@/lib/landing/editor/editable'
 import type { LandingProperty } from '@/lib/landing/registry'
-import type { LandingBlock, LandingDocument } from '@/lib/landing/schema'
+import type { LandingBlock, LandingDocument, ThanksContent } from '@/lib/landing/schema'
+
+/**
+ * Qué página se está editando. La landing y la página de gracias viven en el
+ * MISMO documento (`doc.blocks` y `doc.thanks`), así que el autosave y el
+ * "Publicar cambios" ya cubren las dos sin ningún flujo nuevo — solo cambia
+ * qué se muestra.
+ */
+type EditingPage = 'landing' | 'thanks'
 
 interface LandingEditorProps {
   propertyId: string
@@ -32,11 +43,16 @@ export function LandingEditor({ propertyId, property, initialDocument, isPublish
   const router = useRouter()
   const [doc, setDoc] = useState<LandingDocument>(initialDocument)
   const [selectedId, setSelectedId] = useState<string | null>('hero')
+  const [page, setPage] = useState<EditingPage>('landing')
   const [publishing, setPublishing] = useState(false)
   const hiddenRef = useRef<Record<string, LandingBlock>>({})
   const { status, flush } = useAutosave(propertyId, doc)
 
   const selectedBlock = doc.blocks.find((b) => b.id === selectedId) ?? null
+
+  function handleThanksChange(next: ThanksContent) {
+    setDoc((d) => ({ ...d, thanks: next }))
+  }
 
   function handleBlockChange(next: LandingBlock) {
     setDoc((d) => ({ ...d, blocks: replaceBlockById(d.blocks, next.id, next) }))
@@ -92,7 +108,28 @@ export function LandingEditor({ propertyId, property, initialDocument, isPublish
           <Button variant="ghost" size="sm" onClick={() => router.push(`/properties/${propertyId}`)}>
             <ArrowLeft className="mr-1 h-4 w-4" /> Volver
           </Button>
-          <span className="text-sm font-medium">Editar landing</span>
+          <span className="text-sm font-medium">Editar</span>
+          {/* Selector de página. Las dos se guardan y se publican juntas. */}
+          <div className="flex rounded-md border p-0.5">
+            {([
+              ['landing', 'Página principal'],
+              ['thanks', 'Página de gracias'],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setPage(id)}
+                aria-pressed={page === id}
+                className={
+                  page === id
+                    ? 'rounded px-3 py-1 text-xs font-medium bg-primary text-primary-foreground'
+                    : 'rounded px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted'
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -110,15 +147,29 @@ export function LandingEditor({ propertyId, property, initialDocument, isPublish
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* Vista previa (scrollea) */}
         <div className="min-h-0 flex-1 overflow-y-auto bg-muted/30">
-          <EditorPreview document={doc} property={property} selectedId={selectedId} onSelect={setSelectedId} />
+          {page === 'landing' ? (
+            <EditorPreview document={doc} property={property} selectedId={selectedId} onSelect={setSelectedId} />
+          ) : (
+            <ThanksPreview property={property} thanks={doc.thanks ?? {}} />
+          )}
         </div>
         {/* Panel de edición */}
         <aside className="w-full shrink-0 space-y-4 overflow-y-auto border-t bg-background p-4 md:w-[380px] md:border-l md:border-t-0">
-          <SectionToggles doc={doc} property={property} onToggle={handleToggle} />
-          {selectedBlock ? (
-            <EditorPanel block={selectedBlock} property={property} onChange={handleBlockChange} />
+          {page === 'landing' ? (
+            <>
+              <SectionToggles doc={doc} property={property} onToggle={handleToggle} />
+              {selectedBlock ? (
+                <EditorPanel block={selectedBlock} property={property} onChange={handleBlockChange} />
+              ) : (
+                <p className="text-sm text-muted-foreground">Tocá una sección en la vista previa para editarla.</p>
+              )}
+            </>
           ) : (
-            <p className="text-sm text-muted-foreground">Tocá una sección en la vista previa para editarla.</p>
+            <ThanksPanel
+              value={doc.thanks ?? {}}
+              subject={{ address: property.address, mediaKind: resolveDeliverMedia(property).kind }}
+              onChange={handleThanksChange}
+            />
           )}
           {publicSlug && (
             <a href={`/p/${publicSlug}`} target="_blank" rel="noopener noreferrer"

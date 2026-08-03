@@ -10,6 +10,10 @@ import { createClient } from '@supabase/supabase-js'
 import { getAccessToken, markTokenOpened } from '@/lib/leads/access-token'
 import { resolveDeliverMedia } from '@/lib/properties/deliver-media'
 import { toEmbedUrl } from '@/lib/landing/video-embed'
+import { safeParseLandingDocument } from '@/lib/landing/schema'
+import { renderThanks } from '@/lib/landing/thanks'
+import { ThanksPageView } from '@/components/landing/thanks/ThanksPageView'
+import { ThanksMedia } from '@/components/landing/thanks/ThanksMedia'
 import { ScheduleVisitForm } from './ScheduleVisitForm'
 
 export const dynamic = 'force-dynamic'
@@ -49,81 +53,33 @@ export default async function RecorridoPage({ params }: { params: Promise<{ toke
   // (video_url/video_file_url) cuando no hay recorrido dedicado ni tour 3D.
   // Se renderiza IGUAL que video_recorrido: si es un link externo (YouTube/
   // Vimeo) se embebe, si es un archivo subido va directo en un <video>.
-  const isVideo = media.kind === 'video_recorrido' || media.kind === 'video_propio'
-  const embed = isVideo && media.url ? toEmbedUrl(media.url) : null
+  const embed = media.url ? toEmbedUrl(media.url) : null
   const fotos = (property.photos ?? []) as string[]
 
+  // Textos editables de esta página (editor → "Página de gracias"). Se lee el
+  // contenido PUBLICADO, nunca el borrador: lo que el asesor está retocando no
+  // puede aparecerle al cliente. Sin landing, o sin la clave `thanks`, salen
+  // los textos por defecto de siempre.
+  const { data: landing } = await admin()
+    .from('property_landings')
+    .select('content')
+    .eq('property_id', property.id)
+    .maybeSingle()
+  const thanksTexts = renderThanks(
+    { address: property.address, mediaKind: media.kind },
+    safeParseLandingDocument(landing?.content)?.thanks,
+    { nombre: access.name.split(' ')[0], direccion: property.address },
+  )
+
   return (
-    <div className="landing-root min-h-screen">
-      <main className="mx-auto max-w-4xl px-5 py-10 md:py-16">
-        <p className="lx-eyebrow">Hola {access.name.split(' ')[0]}</p>
-        {/* Sin recorrido el título no promete uno: se entregan las fotos completas. */}
-        <h1 className="mt-2 text-3xl md:text-5xl">
-          {media.kind === 'fotos'
-            ? `${property.address}, en detalle`
-            : `Conocé ${property.address} por dentro`}
-        </h1>
-        <p className="mt-2 text-black/60">
-          {property.neighborhood}{property.city ? `, ${property.city}` : ''} · {formatPrice(property.asking_price, property.currency)}
-        </p>
-
-        <section className="mt-8">
-          {media.kind === 'tour_3d' && media.url && (
-            <iframe
-              src={media.url}
-              title="Recorrido virtual"
-              className="aspect-video w-full rounded-lg border"
-              allow="fullscreen; xr-spatial-tracking"
-            />
-          )}
-          {isVideo && media.url && (
-            embed ? (
-              <iframe
-                src={embed}
-                title={media.kind === 'video_recorrido' ? 'Video recorrido' : 'Video de la propiedad'}
-                className="aspect-video w-full rounded-lg border"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            ) : (
-              <video src={media.url} controls playsInline className="aspect-video w-full rounded-lg border" />
-            )
-          )}
-          {media.kind === 'fotos' && fotos.length > 0 && (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-              {fotos.map((src, i) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={i} src={src} alt="" loading="lazy" className="aspect-square w-full rounded object-cover" />
-              ))}
-            </div>
-          )}
-          {media.kind === 'fotos' && fotos.length === 0 && (
-            <p className="text-black/60">
-              Estamos preparando el material de esta propiedad. Un asesor se va a contactar con vos para mostrártela.
-            </p>
-          )}
-        </section>
-
-        {/* La propiedad puede haberse vendido/descartado después de mandar el link:
-            en ese caso no ofrecemos agendar una visita que no va a existir. */}
-        {property.status === 'approved' ? (
-          <section className="mt-12">
-            <h2 className="text-2xl md:text-3xl">¿Querés visitarla?</h2>
-            <p className="mt-2 text-black/60">
-              Elegí el día y el momento que te queda cómodo. Nuestro equipo te contacta para confirmarla.
-            </p>
-            <ScheduleVisitForm token={token} clientName={access.name} />
-          </section>
-        ) : (
-          <section className="mt-12">
-            <h2 className="text-2xl md:text-3xl">Esta propiedad ya no está disponible</h2>
-            <p className="mt-2 text-black/60">
-              Podés seguir viendo el recorrido, pero por ahora no estamos coordinando visitas.
-              Un asesor se va a contactar con vos para mostrarte otras opciones parecidas.
-            </p>
-          </section>
-        )}
-      </main>
-    </div>
+    <ThanksPageView
+      texts={thanksTexts}
+      subtitle={`${property.neighborhood}${property.city ? `, ${property.city}` : ''} · ${formatPrice(property.asking_price, property.currency)}`}
+      media={<ThanksMedia kind={media.kind} url={media.url} embed={embed} photos={fotos} />}
+      // La propiedad puede haberse vendido/descartado después de mandar el link:
+      // en ese caso no ofrecemos agendar una visita que no va a existir.
+      available={property.status === 'approved'}
+      scheduleSlot={<ScheduleVisitForm token={token} clientName={access.name} />}
+    />
   )
 }

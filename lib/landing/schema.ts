@@ -268,12 +268,41 @@ export const LandingTheme = z.object({
 })
 export type LandingTheme = z.infer<typeof LandingTheme>
 
+/**
+ * Textos de la PÁGINA DE GRACIAS (`/v/<token>`): lo que ve la persona después
+ * de registrarse — el recorrido y el formulario para proponer la visita.
+ *
+ * Vive acá, dentro del documento de la landing, a propósito: así el autosave a
+ * borrador y el "Publicar cambios" del editor le sirven a las DOS páginas sin
+ * una segunda tabla, un segundo flujo de publicación y un segundo lugar donde
+ * las cosas se puedan desincronizar.
+ *
+ * TODOS los campos son opcionales y ausente = el texto por defecto de siempre
+ * (`lib/landing/thanks.ts`). Una landing vieja, sin esta clave, se comporta
+ * exactamente igual que antes.
+ */
+export const ThanksContent = z.object({
+  /** Saludo. Admite `{nombre}`. */
+  greeting: z.string().max(120).optional(),
+  /** Titular. Admite `{direccion}`. */
+  headline: z.string().max(200).optional(),
+  /** Párrafo opcional bajo el precio. Vacío por defecto: no existe hoy. */
+  intro: z.string().max(600).optional(),
+  /** Titular de la sección de agendar. */
+  scheduleTitle: z.string().max(120).optional(),
+  /** Bajada de la sección de agendar. */
+  scheduleText: z.string().max(600).optional(),
+})
+export type ThanksContent = z.infer<typeof ThanksContent>
+
 // ---- Documento ----
 export const LandingDocument = z
   .object({
     version: z.literal(1),
     blocks: z.array(LandingBlock).min(1),
     theme: LandingTheme.default({}),
+    /** Página de gracias. Opcional — ver `ThanksContent`. */
+    thanks: ThanksContent.optional(),
   })
   .superRefine((doc, ctx) => {
     // Invariante de conversión: al menos UN disparador de conversión. `cta` y
