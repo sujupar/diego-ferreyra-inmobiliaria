@@ -426,20 +426,25 @@ export function LeadCaptureProvider({
                 </h2>
                 <p className="text-sm text-slate-500">
                   {accessUrl
-                    ? !hasRecorrido
-                      ? 'Ya podés ver la propiedad completa y proponer el día de la visita:'
-                      : whatsappSent
-                        ? 'Recibís el recorrido de la propiedad por WhatsApp en los próximos segundos. También podés verlo acá:'
-                        // Honestidad: si el WhatsApp no salió, no le prometemos un
-                        // mensaje que no llegó — el link es el respaldo real.
-                        : 'No pudimos enviarte el WhatsApp, pero ya podés ver el recorrido acá:'
+                    ? whatsappSent
+                      // Decisión del dueño (2026-08-03): cuando el WhatsApp SÍ
+                      // salió, la pantalla no ofrece ningún atajo. Todo el
+                      // proceso pasa por WhatsApp — ahí es donde después el
+                      // agente coordina la visita, y donde queda la
+                      // conversación con el cliente. Un botón acá desviaba
+                      // justo a la gente que más queríamos del otro lado.
+                      ? `Te lo mandamos por WhatsApp${hasRecorrido ? '' : ' junto con las fotos'}. Revisá tus mensajes en unos segundos.`
+                      // Honestidad: si el WhatsApp no salió, no le prometemos un
+                      // mensaje que no llegó — el link es el ÚNICO respaldo real
+                      // y por eso este es el único caso donde el botón aparece.
+                      : `No pudimos enviarte el WhatsApp, pero ya podés ver ${hasRecorrido ? 'el recorrido' : 'la propiedad'} acá:`
                     : source === GALLERY_LOCK_SOURCE
                       ? 'Cerrá esta ventana y recorré todas las fotos. Un asesor te contacta para coordinar la visita.'
                       : 'Un asesor te va a contactar muy pronto.'}
                 </p>
-                {/* El link de acceso es el respaldo real (único canal si el WhatsApp
-                    no salió): botón PRIMARIO, bien visible, ancho completo. */}
-                {accessUrl && (
+                {/* SOLO cuando el WhatsApp falló: ahí el link deja de ser un
+                    atajo y pasa a ser el único canal que le queda a la persona. */}
+                {accessUrl && !whatsappSent && (
                   <a
                     href={accessUrl}
                     className="w-full rounded-full px-6 py-3 text-center text-sm font-semibold text-white shadow-md transition hover:opacity-95"
