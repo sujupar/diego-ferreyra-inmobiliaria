@@ -297,48 +297,45 @@ describe('decideSchedulingAction', () => {
     })
   })
 
-  it('wantsToSchedule=false → noop (esto cubre el caso "mensaje ambiguo")', () => {
-    expect(decideSchedulingAction(ctx({ wantsToSchedule: false }))).toEqual({
+  it('el modelo decidió no contestar (reply null) → noop', () => {
+    // Un "ok", un "gracias", o un tema que le toca a una persona: no hay que
+    // contestar todo. Ese juicio es del modelo; acá solo se respeta.
+    expect(decideSchedulingAction(ctx({ reply: null }))).toEqual({
       type: 'noop',
-      reason: 'el cliente no pidió agendar una visita en este turno',
+      reason: 'no hay nada que contestar en este turno',
     })
   })
 
-  it('tope de mensajes alcanzado → handoff, ANTES de mirar el slot propuesto', () => {
-    const result = decideSchedulingAction(ctx({ agentMessagesSent: 3, proposedSlot: 'mañana a la tarde' }))
+  it('tope de mensajes alcanzado → handoff, ANTES de mirar lo que el modelo quiera decir', () => {
+    const result = decideSchedulingAction(ctx({ agentMessagesSent: 3, reply: 'lo que sea' }))
     expect(result).toEqual({
       type: 'handoff',
       reason: 'se alcanzó el tope de 3 mensajes automáticos sin cerrar el agendamiento',
     })
   })
 
-  it('quiere agendar + propone día parseable → confirm_visit', () => {
-    const result = decideSchedulingAction(ctx({ proposedSlot: 'mañana a la tarde' }))
-    expect(result).toEqual({ type: 'confirm_visit', dateISO: '2026-08-04', franja: 'tarde' })
+  it('hay algo que contestar → se manda el texto del modelo, tal cual', () => {
+    expect(decideSchedulingAction(ctx({ reply: '¿Qué día te viene bien?' }))).toEqual({
+      type: 'reply',
+      text: '¿Qué día te viene bien?',
+    })
   })
 
-  it('quiere agendar sin decir cuándo (proposedSlot null) → ask_when', () => {
-    const result = decideSchedulingAction(ctx({ proposedSlot: null }))
-    expect(result).toEqual({ type: 'ask_when' })
+  it('con visita YA VALIDADA, se manda el texto y además se agenda', () => {
+    const visit = { dateISO: '2026-08-04', hour: 16 }
+    expect(decideSchedulingAction(ctx({ reply: 'Listo, quedó anotada.', visit }))).toEqual({
+      type: 'reply',
+      text: 'Listo, quedó anotada.',
+      visit,
+    })
   })
 
-  it('quiere agendar pero el slot no se pudo parsear (texto raro) → ask_when, no confirma a ciegas', () => {
-    const result = decideSchedulingAction(ctx({ proposedSlot: 'cuando sea, no tengo drama' }))
-    expect(result.type).toBe('ask_when')
-  })
-
-  it('un "no puedo mañana a la tarde" NO termina en confirm_visit: se vuelve a preguntar día y hora', () => {
-    // Antes devolvía `confirm_visit` para el martes a la tarde — el momento
-    // exacto que el cliente acababa de descartar.
-    const result = decideSchedulingAction(ctx({ proposedSlot: 'no puedo mañana a la tarde' }))
-    expect(result.type).toBe('ask_when')
+  it('los frenos MANDAN sobre el modelo: con el interruptor apagado no se manda nada aunque haya texto', () => {
+    const r = decideSchedulingAction(ctx({ schedulingEnabledGlobal: false, reply: 'Hola!', visit: { dateISO: '2026-08-04', hour: 16 } }))
+    expect(r.type).toBe('noop')
   })
 })
 
-// ---------------------------------------------------------------------------
-// Prosa — textos EXACTOS que se le mandarían al cliente. Estos son los que
-// van en el reporte para que el dueño los lea antes de prender el interruptor.
-// ---------------------------------------------------------------------------
 describe('prosa al cliente (textos exactos)', () => {
   it('buildConfirmMessage — el cliente dijo día y HORA', () => {
     const text = buildConfirmMessage('María Sánchez', 'Av. Cabildo 2450', '2026-08-04', 'tarde', LUNES, 16)
@@ -617,6 +614,14 @@ function mockAnalisis(over: Partial<{ reply: string | null; visitDate: string | 
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // `clearAllMocks` NO vacía las colas de `mockResolvedValueOnce`: una que un
+  // test dejó sin consumir se le aparecía al siguiente y lo hacía fallar por
+  // un motivo que no tenía nada que ver. Los mocks de VALOR se resetean a mano.
+  for (const m of [
+    visitsLimitResult, rpcMock, notesMaybeSingle, runConversationAnalysisMock,
+    settingsMaybeSingle, propMaybeSingle, leadsMaybeSingle, visitsInsertSingle,
+    visitsUpdateMaybeSingle, stateMaybeSingle,
+  ]) m.mockReset()
   estadoConversacion = { agent_messages_sent: 0, agent_handed_off: false }
   stateMaybeSingle.mockImplementation(() => Promise.resolve({ data: estadoConversacion, error: null }))
   visitStatusFilter = []
@@ -626,6 +631,20 @@ beforeEach(() => {
   // Los tests que prueban lo contrario los pisan con `mockResolvedValueOnce`.
   rpcMock.mockResolvedValue({ data: 1, error: null })
   notesMaybeSingle.mockResolvedValue({ data: null, error: null })
+  // Defaults del camino feliz para las dos lecturas que ahora SIEMPRE ocurren
+  // (el agente necesita saber si hay visita antes de pensar, y el modelo se
+  // llama en cada turno). Los tests que prueban lo contrario los pisan.
+  visitsLimitResult.mockResolvedValue({ data: [], error: null })
+  runConversationAnalysisMock.mockResolvedValue({
+    state: null,
+    analyzed: true,
+    readFailed: false,
+    wantsToSchedule: true,
+    proposedSlot: null,
+    reply: '¿Qué día y a qué hora te queda bien?',
+    visitDate: null,
+    visitHour: null,
+  })
 })
 
 describe('runSchedulingAgent (I/O)', () => {
@@ -636,13 +655,10 @@ describe('runSchedulingAgent (I/O)', () => {
     mockSinVisitaPendiente()
     visitsInsertSingle.mockResolvedValueOnce({ data: { id: 'visit-1' }, error: null })
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-    })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
-    expect(result).toEqual({ action: 'confirm_visit' })
+    expect(result).toEqual({ action: 'reply' })
     expect(visitsInsert).toHaveBeenCalledWith(
       expect.objectContaining({ property_id: 'prop-1', status: 'pending_confirmation', client_name: 'María Sánchez' }),
     )
@@ -678,7 +694,8 @@ describe('runSchedulingAgent (I/O)', () => {
       return { ok: true, skipped: false }
     })
 
-    await runSchedulingAgent({ ...BASE_INPUT, wantsToSchedule: true, proposedSlot: 'mañana a la tarde' })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    await runSchedulingAgent({ ...BASE_INPUT })
 
     expect(orden).toEqual(['insert', 'notify', 'send'])
   })
@@ -690,11 +707,8 @@ describe('runSchedulingAgent (I/O)', () => {
     mockSinVisitaPendiente()
     visitsInsertSingle.mockResolvedValueOnce({ data: null, error: { message: 'permiso denegado' } })
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-    })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
     // Lo que NO puede pasar: el cliente se presenta el martes y no lo espera nadie.
     expect(sendWhatsappTextMock).not.toHaveBeenCalled()
@@ -714,13 +728,10 @@ describe('runSchedulingAgent (I/O)', () => {
     mockPropertyEnabled()
     mockSinVisitaPendiente()
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: null,
-    })
+    mockAnalisis({ reply: '¿Qué día y a qué hora te queda bien?' })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
-    expect(result).toEqual({ action: 'ask_when' })
+    expect(result).toEqual({ action: 'reply' })
     expect(visitsInsert).not.toHaveBeenCalled()
     expect(sendWhatsappTextMock).toHaveBeenCalledTimes(1)
     const sentArgs = sendWhatsappTextMock.mock.calls[0][0]
@@ -733,11 +744,8 @@ describe('runSchedulingAgent (I/O)', () => {
     mockSettingsEnabled()
     mockPropertyEnabled()
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: false,
-      proposedSlot: null,
-    })
+    mockAnalisis({ reply: null })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
     expect(result.action).toBe('noop')
     expect(sendWhatsappTextMock).not.toHaveBeenCalled()
@@ -747,14 +755,12 @@ describe('runSchedulingAgent (I/O)', () => {
 
   it('ESCENARIO 4 — llegó al tope de mensajes: NO manda WhatsApp al cliente, deja nota interna y marca agent_handed_off', async () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
+    estadoConversacion = { agent_messages_sent: 3, agent_handed_off: false }
     mockSettingsEnabled({ max_messages_per_conversation: 3 })
     mockPropertyEnabled()
 
     const result = await runSchedulingAgent({
       ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-      agentMessagesSent: 3, // ya en el tope
     })
 
     expect(result.action).toBe('handoff')
@@ -780,8 +786,7 @@ describe('runSchedulingAgent (I/O)', () => {
 
     const result = await runSchedulingAgent({
       ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde', // al día siguiente esto sería OTRA fecha
+
     })
 
     expect(result.action).toBe('noop')
@@ -803,11 +808,8 @@ describe('runSchedulingAgent (I/O)', () => {
     mockVisitaPendiente('+5491122334455')
     notesMaybeSingle.mockResolvedValueOnce({ data: { id: 'nota-previa' }, error: null }) // ya la dejamos antes
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'el jueves a la tarde',
-    })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
     expect(result.action).toBe('noop')
     expect(logOutboundMock).not.toHaveBeenCalled()
@@ -821,11 +823,8 @@ describe('runSchedulingAgent (I/O)', () => {
     // Así queda guardado cuando lo tipea el cliente en el formulario del recorrido.
     mockVisitaPendiente('11 2233-4455')
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-    })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
     // Antes del arreglo esto creaba una SEGUNDA visita contradictoria + un
     // segundo mail al equipo, porque comparaba el texto crudo contra el E.164.
@@ -841,13 +840,10 @@ describe('runSchedulingAgent (I/O)', () => {
     mockVisitaPendiente('11 5555-4455') // mismos últimos 4 dígitos, otro número
     visitsInsertSingle.mockResolvedValueOnce({ data: { id: 'visit-nueva' }, error: null })
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-    })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
-    expect(result).toEqual({ action: 'confirm_visit' })
+    expect(result).toEqual({ action: 'reply' })
     expect(visitsInsert).toHaveBeenCalledTimes(1)
   })
 
@@ -862,11 +858,8 @@ describe('runSchedulingAgent (I/O)', () => {
     mockSinVisitaPendiente()
     rpcMock.mockResolvedValueOnce({ data: null, error: null }) // la carrera la ganó el otro webhook
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: null,
-    })
+    mockAnalisis({ reply: '¿Qué día y a qué hora te queda bien?' })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
     expect(sendWhatsappTextMock).not.toHaveBeenCalled()
     expect(result.action).toBe('noop')
@@ -879,11 +872,8 @@ describe('runSchedulingAgent (I/O)', () => {
     mockSinVisitaPendiente()
     rpcMock.mockResolvedValueOnce({ data: null, error: { message: 'function does not exist' } })
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: null,
-    })
+    mockAnalisis({ reply: '¿Qué día y a qué hora te queda bien?' })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
     expect(sendWhatsappTextMock).not.toHaveBeenCalled()
     expect(result.action).toBe('noop')
@@ -904,9 +894,10 @@ describe('runSchedulingAgent (I/O)', () => {
       return { ok: true, skipped: false }
     })
 
-    const result = await runSchedulingAgent({ ...BASE_INPUT, wantsToSchedule: true, proposedSlot: null })
+    mockAnalisis({ reply: '¿Qué día y a qué hora te queda bien?' })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
-    expect(result).toEqual({ action: 'ask_when' })
+    expect(result).toEqual({ action: 'reply' })
     expect(orden).toEqual(['claim', 'send'])
   })
 
@@ -926,9 +917,10 @@ describe('runSchedulingAgent (I/O)', () => {
     rpcMock.mockResolvedValueOnce({ data: 1, error: null }) // reservó el mensaje nº 1
     sendWhatsappTextMock.mockResolvedValueOnce({ ok: true, skipped: true }) // modo prueba: no salió nada
 
-    const result = await runSchedulingAgent({ ...BASE_INPUT, wantsToSchedule: true, proposedSlot: null })
+    mockAnalisis({ reply: '¿Qué día y a qué hora te queda bien?' })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
-    expect(result.action).toBe('ask_when')
+    expect(result.action).toBe('reply')
     // El contador vuelve a 0: el cliente no recibió nada, el cupo sigue entero.
     expect(stateUpdate).toHaveBeenCalledWith(expect.objectContaining({ agent_messages_sent: 0 }))
   })
@@ -943,7 +935,8 @@ describe('runSchedulingAgent (I/O)', () => {
     // ante la duda preferimos mandar de menos, no de más.
     sendWhatsappTextMock.mockResolvedValueOnce({ ok: false, skipped: false, error: 'HTTP 500' })
 
-    await runSchedulingAgent({ ...BASE_INPUT, wantsToSchedule: true, proposedSlot: null })
+    mockAnalisis({ reply: '¿Qué día y a qué hora te queda bien?' })
+    await runSchedulingAgent({ ...BASE_INPUT })
 
     expect(stateUpdate).not.toHaveBeenCalled()
   })
@@ -955,19 +948,17 @@ describe('runSchedulingAgent (I/O)', () => {
   // -------------------------------------------------------------------------
   it('PROBLEMA B — visita guardada pero sin cupo para confirmarle al cliente: deja nota interna', async () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockAnalisis({ reply: 'Listo, quedó anotada.', visitDate: '2026-08-04', visitHour: 15 })
     mockSettingsEnabled()
     mockPropertyEnabled()
     mockSinVisitaPendiente()
     visitsInsertSingle.mockResolvedValueOnce({ data: { id: 'visit-1' }, error: null })
     rpcMock.mockResolvedValueOnce({ data: null, error: null }) // la carrera la ganó otro webhook
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-    })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
-    expect(result.action).toBe('confirm_visit')
+    expect(result.action).toBe('noop')
     expect(sendWhatsappTextMock).not.toHaveBeenCalled()
     expect(notifyVisitProposedMock).toHaveBeenCalledWith('visit-1') // el equipo sí se enteró
     expect(logOutboundMock).toHaveBeenCalledTimes(1)
@@ -975,7 +966,7 @@ describe('runSchedulingAgent (I/O)', () => {
     expect(noteArgs.status).toBe('agent_visit_unconfirmed')
     expect(noteArgs.aiGenerated).toBe(true)
     expect(noteArgs.bodyPreview).toContain('NO se le pudo confirmar al cliente')
-    expect(noteArgs.bodyPreview).toContain('mañana por la tarde') // la fecha que quedó anotada
+    expect(noteArgs.bodyPreview).toContain('a las 15') // la fecha que quedó anotada
   })
 
   // -------------------------------------------------------------------------
@@ -989,7 +980,8 @@ describe('runSchedulingAgent (I/O)', () => {
     mockPropertyEnabled()
     mockVisitaPendiente('+5491122334455', '2026-08-04T18:00:00.000Z', '2026-08-03T09:00:00.000Z')
 
-    await runSchedulingAgent({ ...BASE_INPUT, wantsToSchedule: true, proposedSlot: 'mañana a la tarde' })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    await runSchedulingAgent({ ...BASE_INPUT })
 
     // Solo se pregunta por notas POSTERIORES a la creación de esta visita: una
     // nota de un agendamiento de hace un mes ya no la silencia.
@@ -1003,7 +995,8 @@ describe('runSchedulingAgent (I/O)', () => {
     mockVisitaPendiente('+5491122334455')
     notesMaybeSingle.mockResolvedValueOnce({ data: null, error: { message: 'PostgREST caído' } })
 
-    const result = await runSchedulingAgent({ ...BASE_INPUT, wantsToSchedule: true, proposedSlot: 'mañana a la tarde' })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
     expect(result.action).toBe('noop')
     expect(logOutboundMock).toHaveBeenCalledTimes(1)
@@ -1022,13 +1015,10 @@ describe('runSchedulingAgent (I/O)', () => {
     mockVisitaPendiente('+5491122334455', '2026-05-04T18:00:00.000Z', '2026-05-03T09:00:00.000Z')
     visitsInsertSingle.mockResolvedValueOnce({ data: { id: 'visit-nueva' }, error: null })
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-    })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
-    expect(result).toEqual({ action: 'confirm_visit' })
+    expect(result).toEqual({ action: 'reply' })
     expect(visitsInsert).toHaveBeenCalledTimes(1)
     expect(sendWhatsappTextMock).toHaveBeenCalledTimes(1)
   })
@@ -1040,11 +1030,8 @@ describe('runSchedulingAgent (I/O)', () => {
     // LUNES es 2026-08-03T12:00Z; esta visita fue a las 09:00Z del mismo día.
     mockVisitaPendiente('+5491122334455', '2026-08-03T09:00:00.000Z', '2026-08-02T09:00:00.000Z')
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-    })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
     expect(result.action).toBe('noop')
     expect(visitsInsert).not.toHaveBeenCalled()
@@ -1063,11 +1050,8 @@ describe('runSchedulingAgent (I/O)', () => {
     mockPropertyEnabled()
     mockLecturaVisitasRota('PostgREST caído')
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-    })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
     expect(result.action).toBe('noop')
     expect(visitsInsert).not.toHaveBeenCalled()
@@ -1088,11 +1072,8 @@ describe('runSchedulingAgent (I/O)', () => {
     mockPropertyEnabled()
     visitsLimitResult.mockRejectedValueOnce(new Error('socket hang up'))
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-    })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
     expect(result.action).toBe('noop')
     expect(visitsInsert).not.toHaveBeenCalled()
@@ -1113,11 +1094,8 @@ describe('runSchedulingAgent (I/O)', () => {
     mockPropertyEnabled()
     mockVisitaPendiente('+5491122334455', '2026-08-04T18:00:00.000Z', '2026-08-03T09:00:00.000Z', 'scheduled')
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-    })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
     expect(result.action).toBe('noop')
     expect(visitsInsert).not.toHaveBeenCalled()
@@ -1135,7 +1113,8 @@ describe('runSchedulingAgent (I/O)', () => {
     mockPropertyEnabled()
     mockSinVisitaPendiente()
 
-    await runSchedulingAgent({ ...BASE_INPUT, wantsToSchedule: true, proposedSlot: null })
+    mockAnalisis({ reply: '¿Qué día y a qué hora te queda bien?' })
+    await runSchedulingAgent({ ...BASE_INPUT })
 
     expect(visitsInStatus).toHaveBeenCalledWith('status', ['pending_confirmation', 'scheduled'])
   })
@@ -1153,13 +1132,10 @@ describe('runSchedulingAgent (I/O)', () => {
     })
     visitsInsertSingle.mockResolvedValueOnce({ data: { id: 'visit-nueva' }, error: null })
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-    })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
-    expect(result).toEqual({ action: 'confirm_visit' })
+    expect(result).toEqual({ action: 'reply' })
     expect(visitsInsert).toHaveBeenCalledTimes(1)
   })
 
@@ -1176,7 +1152,8 @@ describe('runSchedulingAgent (I/O)', () => {
     mockSinVisitaPendiente()
     rpcMock.mockResolvedValueOnce({ data: null, error: null }) // sin cupo
 
-    const result = await runSchedulingAgent({ ...BASE_INPUT, wantsToSchedule: true, proposedSlot: null })
+    mockAnalisis({ reply: '¿Qué día y a qué hora te queda bien?' })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
     expect(result.action).toBe('noop')
     expect(sendWhatsappTextMock).not.toHaveBeenCalled()
@@ -1194,7 +1171,8 @@ describe('runSchedulingAgent (I/O)', () => {
     mockSinVisitaPendiente()
     rpcMock.mockResolvedValueOnce({ data: null, error: { message: 'function does not exist' } })
 
-    await runSchedulingAgent({ ...BASE_INPUT, wantsToSchedule: true, proposedSlot: null })
+    mockAnalisis({ reply: '¿Qué día y a qué hora te queda bien?' })
+    await runSchedulingAgent({ ...BASE_INPUT })
 
     expect(logOutboundMock).toHaveBeenCalledTimes(1)
     const noteArgs = logOutboundMock.mock.calls[0][0]
@@ -1205,19 +1183,17 @@ describe('runSchedulingAgent (I/O)', () => {
 
   it('PUNTO 3b — mismo criterio en el camino de confirmar: visita guardada + RPC rota → la nota no culpa al tope', async () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockAnalisis({ reply: 'Listo, quedó anotada.', visitDate: '2026-08-04', visitHour: 15 })
     mockSettingsEnabled()
     mockPropertyEnabled()
     mockSinVisitaPendiente()
     visitsInsertSingle.mockResolvedValueOnce({ data: { id: 'visit-1' }, error: null })
     rpcMock.mockResolvedValueOnce({ data: null, error: { message: 'deadlock detected' } })
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-    })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
-    expect(result.action).toBe('confirm_visit')
+    expect(result.action).toBe('noop')
     expect(sendWhatsappTextMock).not.toHaveBeenCalled()
     const noteArgs = logOutboundMock.mock.calls[0][0]
     expect(noteArgs.status).toBe('agent_visit_unconfirmed')
@@ -1231,58 +1207,39 @@ describe('runSchedulingAgent (I/O)', () => {
   // helper que toma el primer nombre lo recortaba a "Cliente" y el cliente
   // leía "¡Buenísimo, Cliente! Anoté tu visita…".
   // -------------------------------------------------------------------------
-  it('PUNTO 4 — sin nombre real, el saludo va SIN nombre (nunca "¡Buenísimo, Cliente!")', async () => {
+  it('PUNTO 4 — sin nombre real, al modelo se le dice que NO lo sabemos (nunca "Cliente")', async () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
     mockSettingsEnabled()
     mockPropertyEnabled()
-    mockSinVisitaPendiente()
-    visitsInsertSingle.mockResolvedValueOnce({ data: { id: 'visit-1' }, error: null })
+    leadsMaybeSingle.mockResolvedValueOnce({ data: null, error: null })
 
-    await runSchedulingAgent({
-      ...BASE_INPUT,
-      contactName: null,
-      leadId: null,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-    })
+    await runSchedulingAgent({ ...BASE_INPUT, contactName: null })
 
-    const sentArgs = sendWhatsappTextMock.mock.calls[0][0]
-    expect(sentArgs.text.startsWith('Listo. Anoté la visita')).toBe(true)
-    expect(sentArgs.text).not.toContain('Cliente')
-    // El fallback SÍ sigue sirviendo para el campo de la visita (es NOT NULL).
-    expect(visitsInsert).toHaveBeenCalledWith(
-      expect.objectContaining({ client_name: 'Cliente WhatsApp +5491122334455' }),
-    )
+    // El prompt recibe `clientName: null` — el modelo saluda sin nombre. El
+    // fallback "Cliente WhatsApp +549..." sigue existiendo, pero SOLO para la
+    // columna de la visita, que es NOT NULL y la lee un asesor en la agenda.
+    const brain = runConversationAnalysisMock.mock.calls[0][2]
+    expect(brain.clientName).toBeNull()
   })
 
-  it('PUNTO 4 — al preguntar día y hora también: sin nombre real, "Hola." pelado', async () => {
+  it('PUNTO 4 — con nombre real, el modelo lo recibe para poder tutear con nombre', async () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
     mockSettingsEnabled()
     mockPropertyEnabled()
-    mockSinVisitaPendiente()
 
-    await runSchedulingAgent({
-      ...BASE_INPUT,
-      contactName: null,
-      leadId: null,
-      wantsToSchedule: true,
-      proposedSlot: null,
-    })
+    await runSchedulingAgent({ ...BASE_INPUT })
 
-    const sentArgs = sendWhatsappTextMock.mock.calls[0][0]
-    expect(sentArgs.text.startsWith('Hola. ¿Qué día')).toBe(true)
-    expect(sentArgs.text).not.toContain('Cliente')
+    const brain = runConversationAnalysisMock.mock.calls[0][2]
+    expect(brain.clientName).toBe('María Sánchez')
   })
 
   it('agentHandedOff ya en true: nunca vuelve a evaluar nada, no manda nada', async () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
+    estadoConversacion = { agent_messages_sent: 1, agent_handed_off: true }
     mockSettingsEnabled()
     mockPropertyEnabled()
     const result = await runSchedulingAgent({
       ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-      agentHandedOff: true,
     })
     expect(result.action).toBe('noop')
     expect(sendWhatsappTextMock).not.toHaveBeenCalled()
@@ -1293,11 +1250,8 @@ describe('runSchedulingAgent (I/O)', () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
     settingsMaybeSingle.mockResolvedValueOnce({ data: { scheduling_enabled: false, max_messages_per_conversation: 3 }, error: null })
     mockPropertyEnabled()
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-    })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
     expect(result).toEqual({ action: 'noop', reason: 'el agente que agenda está apagado globalmente' })
     expect(sendWhatsappTextMock).not.toHaveBeenCalled()
   })
@@ -1306,11 +1260,8 @@ describe('runSchedulingAgent (I/O)', () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
     mockSettingsEnabled()
     mockPropertyEnabled({ ai_scheduling_enabled: false })
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-    })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
     expect(result).toEqual({ action: 'noop', reason: 'el agente que agenda está apagado para esta propiedad' })
     expect(sendWhatsappTextMock).not.toHaveBeenCalled()
   })
@@ -1319,11 +1270,8 @@ describe('runSchedulingAgent (I/O)', () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
     settingsMaybeSingle.mockResolvedValueOnce({ data: null, error: { message: 'tabla no existe' } })
     mockPropertyEnabled()
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
-    })
+    mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
     expect(result.action).toBe('noop')
     expect(sendWhatsappTextMock).not.toHaveBeenCalled()
   })
@@ -1333,14 +1281,12 @@ describe('runSchedulingAgent (I/O)', () => {
     const result = await runSchedulingAgent({
       ...BASE_INPUT,
       propertyId: null,
-      wantsToSchedule: true,
-      proposedSlot: 'mañana a la tarde',
     })
     expect(result.action).toBe('noop')
     expect(fromMock).not.toHaveBeenCalled()
   })
 
-  it('un "no puedo mañana a la tarde" NO crea visita ni le confirma nada: le vuelve a preguntar', async () => {
+  it('si el modelo contesta SIN proponer fecha, no se crea ninguna visita', async () => {
     // El bug completo, de punta a punta: el cliente descarta un momento y el
     // agente se lo agendaba igual ("Anoté tu visita para mañana por la tarde"),
     // con fila en `property_visits` y mail al equipo incluidos.
@@ -1349,13 +1295,10 @@ describe('runSchedulingAgent (I/O)', () => {
     mockPropertyEnabled()
     mockSinVisitaPendiente()
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
-      wantsToSchedule: true,
-      proposedSlot: 'no puedo mañana a la tarde',
-    })
+    mockAnalisis({ reply: '¿Qué día y a qué hora te queda bien?' })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
-    expect(result).toEqual({ action: 'ask_when' })
+    expect(result).toEqual({ action: 'reply' })
     expect(visitsInsert).not.toHaveBeenCalled()
     expect(notifyVisitProposedMock).not.toHaveBeenCalled()
     const sentArgs = sendWhatsappTextMock.mock.calls[0][0]
@@ -1368,7 +1311,7 @@ describe('runSchedulingAgent (I/O)', () => {
     settingsMaybeSingle.mockRejectedValueOnce(new Error('network down'))
     mockPropertyEnabled()
     await expect(
-      runSchedulingAgent({ ...BASE_INPUT, wantsToSchedule: true, proposedSlot: 'mañana a la tarde' }),
+      runSchedulingAgent({ ...BASE_INPUT }),
     ).resolves.toEqual({ action: 'noop', reason: 'excepción interna' })
   })
 })
@@ -1408,20 +1351,3 @@ describe('AGENT_NOTE_STATUSES (contrato con el Inbox)', () => {
 
 // Segunda mitad del mismo caso real: el cliente contesta "Mañana" y el agente
 // tiene que preguntar SOLO la hora, no repetir la pregunta entera.
-describe('el cliente dice el día pero no la hora', () => {
-  it('decideSchedulingAction pide la hora, no vuelve a preguntar el día', () => {
-    const r = decideSchedulingAction(ctx({ proposedSlot: 'mañana' }))
-    expect(r).toEqual({ type: 'ask_time', dateISO: '2026-08-04' })
-  })
-
-  it('el texto nombra el día — se nota que lo escuchó', () => {
-    expect(buildAskTimeMessage('Julián Parra', '2026-08-04', LUNES)).toBe(
-      'Perfecto, Julián. ¿A qué hora te queda bien mañana?',
-    )
-  })
-
-  it('con día Y hora sigue confirmando de una', () => {
-    const r = decideSchedulingAction(ctx({ proposedSlot: 'mañana a las 16' }))
-    expect(r).toEqual({ type: 'confirm_visit', dateISO: '2026-08-04', franja: 'tarde', hora: 16 })
-  })
-})

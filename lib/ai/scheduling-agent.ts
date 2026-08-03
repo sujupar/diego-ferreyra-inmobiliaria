@@ -1160,7 +1160,7 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
         aiGenerated: true,
       })
       return {
-        action: 'reply',
+        action: 'noop',
         reason: visitId
           ? `la visita quedó registrada pero no se le confirmó al cliente: ${claimed.reason}`
           : `no se le pudo contestar: ${claimed.reason}`,

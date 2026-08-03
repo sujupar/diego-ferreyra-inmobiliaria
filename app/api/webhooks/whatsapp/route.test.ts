@@ -146,7 +146,9 @@ vi.mock('@/lib/ai/analyze-conversation', () => ({
 vi.mock('@/lib/ai/scheduling-agent', () => ({
   runSchedulingAgent: vi.fn(async (input: Record<string, unknown>) => {
     ai.agente.push(input)
-    return { action: 'nada', sent: false }
+    db.traza.push(`agente:${String(input.phoneE164)}`)
+    reloj.ahora += ai.duracionAnalisisMs
+    return { action: 'noop' }
   }),
 }))
 
@@ -207,11 +209,14 @@ function request(body: unknown, opts: { firmaValida?: boolean } = {}) {
 }
 
 const TEL_A = '5491122334455'
-const TEL_B = '5491199887766'
+const TEL_B = '5491133445566'
 
 beforeEach(() => {
   db.upserts = []
-  db.leads = []
+  db.leads = [
+    { id: 'lead-A', phone: `+${TEL_A}`, property_id: 'prop-1', created_at: '2026-08-01T00:00:00Z' },
+    { id: 'lead-B', phone: `+${TEL_B}`, property_id: 'prop-1', created_at: '2026-08-01T00:00:00Z' },
+  ]
   db.statusLookups = []
   db.traza = []
   db.explotaCreateClient = false
@@ -269,10 +274,12 @@ describe('POST /api/webhooks/whatsapp — presupuesto de tiempo del request', ()
     expect(res.status).toBe(200)
     // SAGRADO: los dos mensajes del cliente quedaron guardados.
     expect(db.upserts.map((u) => u.wa_message_id).sort()).toEqual(['wamid.A', 'wamid.B'])
-    // Un solo pipeline, y es el del ÚLTIMO entrante del lote. El otro teléfono
-    // se analiza cuando llegue su propio webhook.
-    expect(ai.analisis).toEqual([TEL_B])
+    // Un solo turno de agente, y es el del ÚLTIMO entrante del lote. El otro
+    // teléfono se atiende cuando llegue su propio webhook. (La llamada al
+    // modelo ya no la hace el webhook: la hace el agente por dentro, con el
+    // contexto de la propiedad — por eso `ai.analisis` queda vacío acá.)
     expect(ai.agente).toHaveLength(1)
+    expect(ai.agente[0].phoneE164).toBe(TEL_B)
   })
 
   it('los estados de entrega se procesan aunque el presupuesto de IA esté agotado', async () => {
@@ -310,7 +317,7 @@ describe('POST /api/webhooks/whatsapp — presupuesto de tiempo del request', ()
     )
 
     expect(res.status).toBe(200)
-    expect(db.traza).toEqual([`status:wamid.OUT-1`, `analisis:${TEL_A}`])
+    expect(db.traza).toEqual([`status:wamid.OUT-1`, `agente:${TEL_A}`])
   })
 
   it('presupuesto agotado ANTES del primer análisis: los mensajes igual se guardan y el POST devuelve 200', async () => {
@@ -337,7 +344,6 @@ describe('POST /api/webhooks/whatsapp — presupuesto de tiempo del request', ()
     )
 
     expect(db.upserts.map((u) => u.wa_message_id)).toEqual(['wamid.1', 'wamid.2'])
-    expect(ai.analisis).toHaveLength(1)
     expect(ai.agente).toHaveLength(1)
     // El contexto que se analiza es el del ÚLTIMO mensaje (el más informativo).
     expect(ai.agente[0].contactName).toBe('Ana Segunda')
@@ -359,29 +365,32 @@ describe('POST /api/webhooks/whatsapp — fail-closed del pipeline de IA', () =>
 
     expect(res.status).toBe(200)
     expect(db.upserts.map((u) => u.wa_message_id)).toEqual(['wamid.A'])
-    expect(ai.agente).toHaveLength(0)
   })
 
-  it('análisis con `analyzed:true` pero SIN estado → el agente NO se invoca', async () => {
-    ai.resultado.analyzed = true
-    ai.resultado.state = null
+  it('sin propiedad asociada, solo se analiza: el agente no se invoca', async () => {
+    // Sin propiedad no hay datos que contestar, y un agente que improvisa es
+    // peor que uno callado. Se analiza igual para ordenar la bandeja.
+    db.leads = []
 
     const res = await POST(request(payload([mensaje({ id: 'wamid.A', from: TEL_A, nombre: 'Ana' })])))
 
     expect(res.status).toBe(200)
-    expect(db.upserts).toHaveLength(1) // el mensaje se guardó igual
-    expect(ai.analisis).toHaveLength(1) // el análisis sí corrió
-    expect(ai.agente).toHaveLength(0) // pero el agente no: sin estado no se adivinan los contadores
+    expect(db.upserts).toHaveLength(1)
+    expect(ai.analisis).toHaveLength(1)
+    expect(ai.agente).toHaveLength(0)
   })
 
-  it('con estado, el agente recibe los contadores REALES (no defaults)', async () => {
-    ai.resultado.state = { ...(ai.resultado.state as Record<string, unknown>), agent_messages_sent: 2, agent_handed_off: true }
-
+  it('el agente recibe el contexto resuelto del mensaje (teléfono, lead y propiedad)', async () => {
+    // Los contadores del agente YA NO viajan por acá: los lee el propio agente
+    // de `conversation_ai_state`, y falla cerrado si no puede. Pasarlos desde
+    // el webhook era el camino por el que un hipo de lectura se convertía en
+    // "0 mensajes, sin derivar" y el agente le escribía a alguien ya derivado.
     await POST(request(payload([mensaje({ id: 'wamid.A', from: TEL_A, nombre: 'Ana' })])))
 
     expect(ai.agente).toHaveLength(1)
-    expect(ai.agente[0].agentMessagesSent).toBe(2)
-    expect(ai.agente[0].agentHandedOff).toBe(true)
+    expect(ai.agente[0].phoneE164).toBe(TEL_A)
+    expect(ai.agente[0].propertyId).toBeTruthy()
+    expect(ai.agente[0].contactName).toBe('Ana')
   })
 })
 
