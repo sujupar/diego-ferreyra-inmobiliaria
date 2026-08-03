@@ -1,6 +1,6 @@
 /**
  * Crea (idempotente) los merge fields que usan las plantillas.
- * Correr: node --env-file=.env.local --import tsx scripts/mailchimp-setup.ts
+ * Correr: node --conditions=react-server --env-file=.env.local --import tsx scripts/mailchimp-setup.ts
  */
 import { getMailchimpConfig, ensureMergeField, ping } from '@/lib/integrations/mailchimp/client'
 

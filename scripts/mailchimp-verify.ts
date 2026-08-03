@@ -2,7 +2,7 @@
  * Smoke test: upsert de un contacto de prueba + tag, y lo lee de vuelta.
  * NO manda emails (ningún Journey activo). Requiere MAILCHIMP_SYNC_ENABLED=true
  * SOLO para esta prueba (el script no lo chequea; llama al client directo).
- * Correr: node --env-file=.env.local --import tsx scripts/mailchimp-verify.ts
+ * Correr: node --conditions=react-server --env-file=.env.local --import tsx scripts/mailchimp-verify.ts
  */
 import { getMailchimpConfig, upsertMember, setMemberTags } from '@/lib/integrations/mailchimp/client'
 import { mergeFieldsFor } from '@/lib/integrations/mailchimp/subscriber'
