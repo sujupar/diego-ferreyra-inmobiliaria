@@ -919,8 +919,31 @@ interface PropertyForAgent {
   total_area: number | null
   asking_price: number | null
   currency: string | null
-  expenses: number | null
+  /** OJO: en esta base la columna se llama `expensas`, no `expenses`. */
+  expensas: number | null
+  garages: number | null
+  floor: number | null
+  amenities: string[] | null
 }
+
+/**
+ * Las columnas que el agente le pide a `properties`.
+ *
+ * ESTA LISTA SE VERIFICA CONTRA LA BASE, no se escribe de memoria. PostgREST
+ * rechaza la consulta ENTERA si una sola columna no existe, y como la lectura
+ * de la propiedad es fail-closed, el agente deja de contestar del todo. Pasó el
+ * 2026-08-03 con `expenses` (acá se llama `expensas`): el dueño escribía y no
+ * pasaba absolutamente nada, sin ningún error visible en la app.
+ *
+ * Por eso, además, el `select` tiene un plan B (ver `COLUMNAS_MINIMAS`): los
+ * datos de la propiedad son un LUJO —sirven para contestar preguntas— y el
+ * agente tiene que poder trabajar sin ellos. Nunca al revés.
+ */
+const COLUMNAS_PROPIEDAD =
+  'address, title, assigned_to, ai_scheduling_enabled, neighborhood, city, property_type, operation_type, rooms, bedrooms, bathrooms, covered_area, total_area, asking_price, currency, expensas, garages, floor, amenities'
+
+/** Lo mínimo para decidir si el agente puede escribir. Sin esto no hay agente. */
+const COLUMNAS_MINIMAS = 'address, title, assigned_to, ai_scheduling_enabled'
 
 /**
  * La propiedad en líneas sueltas, como se las pasamos al modelo. Solo entra lo
@@ -936,7 +959,7 @@ export function propertyFacts(p: PropertyForAgent): string[] {
   if (zona) out.push(`Zona: ${zona}`)
   const precio = num(p.asking_price)
   if (precio !== null) out.push(`Precio: ${p.currency === 'ARS' ? '$' : 'USD'} ${precio.toLocaleString('es-AR')}`)
-  const exp = num(p.expenses)
+  const exp = num(p.expensas)
   if (exp !== null) out.push(`Expensas: $ ${exp.toLocaleString('es-AR')}`)
   const amb = num(p.rooms)
   if (amb !== null) out.push(`${amb} ambientes`)
@@ -948,6 +971,11 @@ export function propertyFacts(p: PropertyForAgent): string[] {
   if (cub !== null) out.push(`Superficie cubierta: ${cub} m²`)
   const tot = num(p.total_area)
   if (tot !== null && tot !== cub) out.push(`Superficie total: ${tot} m²`)
+  const coch = num(p.garages)
+  if (coch !== null) out.push(coch > 0 ? `Cocheras: ${coch}` : 'Sin cochera')
+  const piso = num(p.floor)
+  if (piso !== null) out.push(`Piso: ${piso}`)
+  if (p.amenities && p.amenities.length > 0) out.push(`Amenities: ${p.amenities.join(', ')}`)
   return out
 }
 
@@ -964,7 +992,7 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       sb.from('ai_agent_settings').select('scheduling_enabled, max_messages_per_conversation').eq('id', true).maybeSingle(),
       sb
         .from('properties')
-        .select('address, title, assigned_to, ai_scheduling_enabled, neighborhood, city, property_type, operation_type, rooms, bedrooms, bathrooms, covered_area, total_area, asking_price, currency, expenses')
+        .select(COLUMNAS_PROPIEDAD)
         .eq('id', input.propertyId)
         .maybeSingle(),
     ])
@@ -981,8 +1009,17 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       )
       return { action: 'noop', reason: 'no se pudo confirmar el interruptor global' }
     }
-    const prop = propRes.data as PropertyForAgent | null
-    if (propRes.error || !prop) {
+    let prop = propRes.data as PropertyForAgent | null
+    // PLAN B: si el `select` rico falló (una columna que no existe, un cambio
+    // de esquema), se reintenta con lo MÍNIMO. Los datos de la propiedad sirven
+    // para contestar preguntas, pero un agente sin ellos igual coordina la
+    // visita — quedarse mudo del todo es peor. Ver `COLUMNAS_PROPIEDAD`.
+    if (propRes.error) {
+      console.warn('[agente] el select rico de la propiedad falló, reintento con lo mínimo:', propRes.error.message)
+      const minimo = await sb.from('properties').select(COLUMNAS_MINIMAS).eq('id', input.propertyId).maybeSingle()
+      if (!minimo.error && minimo.data) prop = minimo.data as PropertyForAgent
+    }
+    if (!prop) {
       console.warn(
         '[scheduling-agent] no se pudo leer la propiedad — no se manda nada (fail-closed):',
         propRes.error?.message,

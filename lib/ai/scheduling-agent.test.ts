@@ -1351,3 +1351,37 @@ describe('AGENT_NOTE_STATUSES (contrato con el Inbox)', () => {
 
 // Segunda mitad del mismo caso real: el cliente contesta "Mañana" y el agente
 // tiene que preguntar SOLO la hora, no repetir la pregunta entera.
+
+// El bug que dejó al agente mudo el 2026-08-03: se pidió una columna que no
+// existe (`expenses`; acá se llama `expensas`), PostgREST rechazó la consulta
+// entera, la lectura falló cerrada y el agente no llegó ni a leer el mensaje.
+describe('la propiedad tiene plan B: los datos son un lujo, el agente no', () => {
+  it('si el select rico FALLA, reintenta con lo mínimo y el agente igual contesta', async () => {
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    // Primer select (rico) falla; el segundo (mínimo) devuelve lo necesario.
+    propMaybeSingle.mockResolvedValueOnce({ data: null, error: { message: 'column properties.expenses does not exist' } })
+    propMaybeSingle.mockResolvedValueOnce({
+      data: { address: 'Av. Cabildo 2450', title: null, assigned_to: 'advisor-1', ai_scheduling_enabled: true },
+      error: null,
+    })
+    mockAnalisis({ reply: '¿Qué día te viene bien?' })
+
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
+
+    expect(result).toEqual({ action: 'reply' })
+    expect(sendWhatsappTextMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('si TAMPOCO se puede leer lo mínimo, ahí sí se calla (no se sabe si está habilitada)', async () => {
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    propMaybeSingle.mockResolvedValueOnce({ data: null, error: { message: 'PostgREST caído' } })
+    propMaybeSingle.mockResolvedValueOnce({ data: null, error: { message: 'PostgREST caído' } })
+
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
+
+    expect(result.action).toBe('noop')
+    expect(sendWhatsappTextMock).not.toHaveBeenCalled()
+  })
+})
