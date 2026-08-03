@@ -18,10 +18,18 @@ export async function reconcileMailchimp(limit = 1000): Promise<{ scanned: numbe
   if (!mailchimpSyncEnabled()) return { scanned: 0, resynced: 0 }
   const sb = admin()
   // deals relevantes: los que pueden estar (o haber estado) en una secuencia.
-  const { data: deals } = await sb.from('deals')
+  const { data: deals, error } = await sb.from('deals')
     .select('id, stage, origin, scheduled_date, mailchimp_sync_state ( last_tag )')
     .order('updated_at', { ascending: false })
     .limit(limit)
+  if (error) {
+    // La red de seguridad no debe morir en silencio: dejamos rastro del fallo.
+    console.warn('[mailchimp] reconcile: query de deals falló:', error.message)
+    try {
+      await sb.from('mailchimp_sync_log').insert({ deal_id: null, email: null, tag_applied: null, status: 'failed', error: `reconcile query: ${error.message}` })
+    } catch { /* best-effort */ }
+    return { scanned: 0, resynced: 0 }
+  }
   const rows = (deals as any[]) || []
   let resynced = 0
   for (const d of rows) {

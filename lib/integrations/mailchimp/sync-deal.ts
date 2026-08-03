@@ -42,6 +42,15 @@ export async function syncDealToMailchimp(dealId: string): Promise<void> {
     if (!email) { await logSync({ deal_id: dealId, email: null, tag_applied: targetTag, status: 'skipped_no_email' }); return }
     if (await isSuppressed(email)) { await logSync({ deal_id: dealId, email, tag_applied: targetTag, status: 'suppressed' }); return }
 
+    // Evitar inflar la audiencia paga: si no corresponde ninguna secuencia
+    // (targetTag null) y el deal NUNCA se sincronizó (sin fila en el ledger),
+    // no lo agregamos a Mailchimp. Un deal que SÍ estuvo en una secuencia (con
+    // fila en el ledger) igual se procesa, para desactivar sus tags y que salga.
+    if (targetTag === null) {
+      const { data: existing } = await sb.from('mailchimp_sync_state').select('deal_id').eq('deal_id', dealId).maybeSingle()
+      if (!existing) { await logSync({ deal_id: dealId, email, tag_applied: null, status: 'skipped_no_sequence' }); return }
+    }
+
     const up = await upsertMember(cfg, email, mergeFieldsFor(fullName, d.stage))
     if (!up.ok) { await logSync({ deal_id: dealId, email, tag_applied: targetTag, status: 'failed', error: up.error }); return }
 
