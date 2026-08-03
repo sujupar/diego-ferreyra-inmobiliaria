@@ -68,6 +68,8 @@ export interface WhatsappMessageLite {
   body_preview: string | null
   status: string
   created_at: string
+  /** `true` = lo escribió el agente de IA. Se usa para saber si está ESPERANDO una respuesta. */
+  ai_generated?: boolean | null
 }
 
 function byCreatedAtAsc(a: WhatsappMessageLite, b: WhatsappMessageLite): number {
@@ -162,7 +164,21 @@ export function debeAnalizar(
   const ultimo = ordenados[ordenados.length - 1]
   if (!ultimo || ultimo.direction === 'out') return false
 
-  if (state?.last_analyzed_at) {
+  // EXCEPCIÓN al anti-rebote, y la más importante: si lo último que vio el
+  // cliente fue una pregunta DEL AGENTE, su respuesta se lee YA.
+  //
+  // Sin esto el agente parecía roto. Caso real (2026-08-03, prueba del dueño):
+  // 12:16:19 el agente pregunta "¿qué día y a qué hora?", 12:16:27 el cliente
+  // contesta "Mañana" — 13 segundos después — y el cooldown de 2 minutos se
+  // comió la respuesta. El agente no es que no entendió: nunca la leyó. Nadie
+  // tarda dos minutos en contestar "mañana".
+  //
+  // El anti-rebote sigue existiendo para lo que fue pensado: ráfagas de
+  // mensajes del cliente SIN que el agente haya preguntado nada.
+  const ultimoSaliente = [...ordenados].reverse().find(m => m.direction === 'out')
+  const agenteEsperaRespuesta = ultimoSaliente?.ai_generated === true
+
+  if (!agenteEsperaRespuesta && state?.last_analyzed_at) {
     const lastAnalyzed = new Date(state.last_analyzed_at).getTime()
     if (!Number.isNaN(lastAnalyzed) && ahora.getTime() - lastAnalyzed < ANALYSIS_COOLDOWN_MS) {
       return false
@@ -239,7 +255,7 @@ export async function getRecentWhatsappMessages(
   try {
     const { data, error } = await admin()
       .from('whatsapp_messages')
-      .select('id, direction, body_preview, status, created_at')
+      .select('id, direction, body_preview, status, created_at, ai_generated')
       .eq('phone_e164', phoneE164)
       .order('created_at', { ascending: false })
       .limit(limit)

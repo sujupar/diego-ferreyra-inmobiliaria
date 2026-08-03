@@ -4,6 +4,7 @@ import {
   dayWord,
   decideSchedulingAction,
   buildAskWhenMessage,
+  buildAskTimeMessage,
   buildConfirmMessage,
   buildHandoffNote,
   AGENT_NOTE_STATUSES,
@@ -55,8 +56,10 @@ describe('parseProposedSlot', () => {
     expect(parseProposedSlot('hoy a la tarde', LUNES)).toBeNull()
   })
 
-  it('día reconocible pero SIN franja → null (exige ambos para confirmar)', () => {
-    expect(parseProposedSlot('mañana', LUNES)).toBeNull()
+  it('día SIN momento devuelve el día solo — el agente pregunta únicamente la hora', () => {
+    // "Mañana" es literalmente lo que contesta la gente (caso real de la prueba
+    // del dueño). Lo que NO puede pasar es confirmar una hora que no dijo.
+    expect(parseProposedSlot('mañana', LUNES)).toEqual({ dateISO: '2026-08-04' })
   })
 
   it('franja reconocible pero SIN día → null', () => {
@@ -82,7 +85,9 @@ describe('parseProposedSlot', () => {
     'el martes, aviso más tarde la hora',
     'perdón por contestar tarde, el jueves',
   ])('"tarde" como adverbio no es la franja de la tarde: %s', (frase) => {
-    expect(parseProposedSlot(frase, LUNES)).toBeNull()
+    // La garantía es que no se CONFIRME la tarde. Que reconozca el día es
+    // deseable: el agente pregunta la hora en vez de repetir todo.
+    expect(parseProposedSlot(frase, LUNES)?.franja).toBeUndefined()
   })
 
   it.each([
@@ -199,7 +204,7 @@ describe('parseProposedSlot — momentos sin franja posible', () => {
   })
 
   it('un saludo no elige la franja: "buenas tardes, el jueves" → null', () => {
-    expect(parseProposedSlot('buenas tardes, el jueves', LUNES)).toBeNull()
+    expect(parseProposedSlot('buenas tardes, el jueves', LUNES)?.franja).toBeUndefined()
   })
 
   it('...y tampoco arruina un slot bueno: "buenas noches, mañana a la tarde" sigue siendo válido', () => {
@@ -225,7 +230,7 @@ describe('parseProposedSlot — varias opciones sobre la mesa', () => {
   })
 
   it('"mañana a la mañana o a la tarde" → null (dos franjas, ninguna elegida)', () => {
-    expect(parseProposedSlot('mañana a la mañana o a la tarde', LUNES)).toBeNull()
+    expect(parseProposedSlot('mañana a la mañana o a la tarde', LUNES)?.franja).toBeUndefined()
   })
 
   it('decir lo mismo dos veces NO es ambiguo: "mañana martes a la tarde" resuelve normal', () => {
@@ -1368,5 +1373,25 @@ describe('AGENT_NOTE_STATUSES (contrato con el Inbox)', () => {
       'agent_visit_pending',
       'agent_visit_unconfirmed',
     ])
+  })
+})
+
+// Segunda mitad del mismo caso real: el cliente contesta "Mañana" y el agente
+// tiene que preguntar SOLO la hora, no repetir la pregunta entera.
+describe('el cliente dice el día pero no la hora', () => {
+  it('decideSchedulingAction pide la hora, no vuelve a preguntar el día', () => {
+    const r = decideSchedulingAction(ctx({ proposedSlot: 'mañana' }))
+    expect(r).toEqual({ type: 'ask_time', dateISO: '2026-08-04' })
+  })
+
+  it('el texto nombra el día — se nota que lo escuchó', () => {
+    expect(buildAskTimeMessage('Julián Parra', '2026-08-04', LUNES)).toBe(
+      'Perfecto, Julián. ¿A qué hora te queda bien mañana?',
+    )
+  })
+
+  it('con día Y hora sigue confirmando de una', () => {
+    const r = decideSchedulingAction(ctx({ proposedSlot: 'mañana a las 16' }))
+    expect(r).toEqual({ type: 'confirm_visit', dateISO: '2026-08-04', franja: 'tarde', hora: 16 })
   })
 })

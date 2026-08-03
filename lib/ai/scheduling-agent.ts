@@ -199,7 +199,8 @@ function franjaFromHour(hour: number): Franja {
 
 export interface ParsedSlot {
   dateISO: string
-  franja: Franja
+  /** Ausente = el cliente dijo el día pero no el momento. Ver `parseProposedSlot`. */
+  franja?: Franja
   /**
    * Hora EXACTA, solo cuando el cliente la dijo ("el jueves a las 16"). Sin
    * esto se guardaba la hora por default de la franja (tarde = 15) y el asesor
@@ -292,11 +293,17 @@ export function parseProposedSlot(rawText: string, now: Date): ParsedSlot | null
   // Un solo día y una sola franja, o no hay nada que confirmar. El Set también
   // resuelve gratis los casos redundantes ("mañana martes a la tarde": las dos
   // referencias caen en la MISMA fecha, así que sigue siendo una sola).
-  if (dias.size !== 1 || franjas.size !== 1) return null
+  if (dias.size !== 1) return null
+  const dateISO = [...dias][0]
+  // Un DÍA sin momento del día es media respuesta, no un fracaso: "mañana" es
+  // exactamente lo que contesta la gente. Se devuelve el día solo, y el agente
+  // pregunta únicamente la hora en vez de repetir la pregunta entera (caso real
+  // de la prueba del dueño, 2026-08-03).
+  if (franjas.size !== 1) return { dateISO }
   // Dos horas nombradas ("entre las 10 y las 12") es un rango, no una hora: se
   // guarda la franja y el equipo cierra el horario. Una sola, se respeta tal cual.
   const hora = horas.size === 1 ? [...horas][0] : undefined
-  return { dateISO: [...dias][0], franja: [...franjas][0], hora }
+  return { dateISO, franja: [...franjas][0], hora }
 }
 
 // ---------------------------------------------------------------------------
@@ -323,6 +330,7 @@ export type SchedulingAction =
   | { type: 'noop'; reason: string }
   | { type: 'handoff'; reason: string }
   | { type: 'ask_when' }
+  | { type: 'ask_time'; dateISO: string }
   | { type: 'confirm_visit'; dateISO: string; franja: Franja; hora?: number }
 
 export interface SchedulingContext {
@@ -366,9 +374,12 @@ export function decideSchedulingAction(ctx: SchedulingContext): SchedulingAction
   }
 
   const parsed = ctx.proposedSlot ? parseProposedSlot(ctx.proposedSlot, ctx.now) : null
-  if (parsed) {
+  // Día Y momento → se anota. Solo el día → se pregunta la hora, nombrando el
+  // día para que se note que lo escuchamos. Nada → se pregunta todo.
+  if (parsed?.franja) {
     return { type: 'confirm_visit', dateISO: parsed.dateISO, franja: parsed.franja, hora: parsed.hora }
   }
+  if (parsed) return { type: 'ask_time', dateISO: parsed.dateISO }
   return { type: 'ask_when' }
 }
 
@@ -396,6 +407,17 @@ export function buildAskWhenMessage(clientName: string | null, propertyLabel: st
   const nombre = firstName(clientName)
   const saludo = nombre ? `Hola, ${nombre}.` : 'Hola.'
   return `${saludo} ¿Qué día y a qué hora te queda bien para visitar ${propertyLabel}?`
+}
+
+/**
+ * El cliente dijo el día pero no la hora. Se pregunta SOLO lo que falta,
+ * nombrando el día: repetir "¿qué día y a qué hora?" después de que contestó
+ * "mañana" da la sensación de que no lo escucharon.
+ */
+export function buildAskTimeMessage(clientName: string | null, dateISO: string, now: Date): string {
+  const nombre = firstName(clientName)
+  const saludo = nombre ? `Perfecto, ${nombre}.` : 'Perfecto.'
+  return `${saludo} ¿A qué hora te queda bien ${dayWord(dateISO, hoyEnArgentina(now))}?`
 }
 
 /** "a las 16" si el cliente dijo la hora; si habló de franja, la franja. */
@@ -1003,9 +1025,14 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       return { action: 'noop', reason: 'ya hay una visita en agenda para esta propiedad; moverla la decide una persona' }
     }
 
-    if (decision.type === 'ask_when') {
+    if (decision.type === 'ask_when' || decision.type === 'ask_time') {
       const clientName = await resolveClientName(sb, input)
-      const text = buildAskWhenMessage(clientName.display, propertyLabel)
+      // Mismo camino para las dos preguntas (reserva de cupo, nota interna si
+      // no se puede mandar): lo único que cambia es CUÁNTO falta preguntar.
+      const text =
+        decision.type === 'ask_time'
+          ? buildAskTimeMessage(clientName.display, decision.dateISO, now)
+          : buildAskWhenMessage(clientName.display, propertyLabel)
       const claimed = await claimMessageSlot(sb, input.phoneE164, settings.max_messages_per_conversation)
       if (!claimed.ok) {
         // Nota INTERNA, por simetría con el camino de confirmar: si el agente se
@@ -1032,7 +1059,7 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       })
       // No salió nada (modo prueba / sin credenciales) ⇒ el cupo vuelve.
       if (sent.skipped) await releaseMessageSlot(input.phoneE164, claimed.slot)
-      return { action: 'ask_when' }
+      return { action: decision.type }
     }
 
     // confirm_visit. ORDEN NO NEGOCIABLE: guardar → avisar al equipo → recién

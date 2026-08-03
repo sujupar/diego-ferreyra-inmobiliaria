@@ -315,3 +315,36 @@ describe('saveConversationAiState (I/O)', () => {
     ).resolves.toBeUndefined()
   })
 })
+
+// El bug que hacía parecer roto al agente: 12:16:19 pregunta, 12:16:27 el
+// cliente contesta, y el anti-rebote de 2 minutos se comía la respuesta.
+describe('debeAnalizar — la respuesta a una pregunta del agente NO espera el anti-rebote', () => {
+  const T = (s: string) => `2026-08-03T12:${s}Z`
+  const estado = { last_analyzed_at: T('16:14'), last_analyzed_message_id: 'm1' } as never
+
+  const preguntaDelAgente = {
+    id: 'm2', direction: 'out' as const, body_preview: '¿Qué día y a qué hora?',
+    status: 'delivered', created_at: T('16:19'), ai_generated: true,
+  }
+  const respuesta = {
+    id: 'm3', direction: 'in' as const, body_preview: 'Mañana',
+    status: 'received', created_at: T('16:27'), ai_generated: false,
+  }
+
+  it('contesta a los 13 segundos y SE ANALIZA igual', () => {
+    const hay = debeAnalizar(estado, [preguntaDelAgente, respuesta], new Date(T('16:28')))
+    expect(hay).toBe(true)
+  })
+
+  it('sin pregunta del agente delante, el anti-rebote sigue frenando la ráfaga', () => {
+    const salienteHumano = { ...preguntaDelAgente, ai_generated: false }
+    const hay = debeAnalizar(estado, [salienteHumano, respuesta], new Date(T('16:28')))
+    expect(hay).toBe(false)
+  })
+
+  it('pasados los 2 minutos se analiza igual, con o sin pregunta del agente', () => {
+    const salienteHumano = { ...preguntaDelAgente, ai_generated: false }
+    const hay = debeAnalizar(estado, [salienteHumano, respuesta], new Date('2026-08-03T12:19:00Z'))
+    expect(hay).toBe(true)
+  })
+})
