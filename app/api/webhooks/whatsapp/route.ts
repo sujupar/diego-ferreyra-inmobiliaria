@@ -209,37 +209,20 @@ async function persistInbound(supabase: ReturnType<typeof admin>, msg: InboundMe
  */
 async function runAiPipeline(ctx: InboundContext): Promise<void> {
   try {
-    const analysis = await runConversationAnalysis(ctx.phoneE164)
-    if (!analysis.analyzed) return // cooldown/sin mensajes nuevos: nada fresco que pasarle al agente
-
-    const state = analysis.state
-    if (!state) {
-      // FAIL-CLOSED, y a propósito verboso. Acá vivían
-      // `analysis.state?.agent_messages_sent ?? 0` y `?? false`: dos defaults
-      // que son la expresión EXACTA del fail-open crítico que se acaba de
-      // arreglar en `runConversationAnalysis`. Hoy `analyzed:true` implica
-      // `state` no nulo, así que este `return` es inalcanzable — pero el día
-      // que alguien devuelva `analyzed:true` con `state` en null, esos defaults
-      // le dicen al agente "0 mensajes mandados, sin derivar" y le escribe, en
-      // silencio, a un cliente que ya está en manos de una persona. El tope de
-      // mensajes y la marca de derivación viven en esa fila: si no se pudo
-      // leer, NO se adivinan. Sin estado no se invoca al agente. No
-      // "simplificar" de vuelta a `?? 0` / `?? false`.
-      console.warn(
-        `[whatsapp-webhook] el análisis dijo analyzed:true pero sin estado de conversación (${ctx.phoneE164}) — el agente NO se invoca`,
-      )
+    // Sin propiedad asociada no hay datos que contestar, y un agente que
+    // improvisa es peor que uno callado: se analiza para ordenar la bandeja y
+    // nada más.
+    if (!ctx.propertyId) {
+      await runConversationAnalysis(ctx.phoneE164)
       return
     }
-
+    // Con propiedad, el agente hace TODO el turno: carga la propiedad y sus
+    // datos, hace la ÚNICA llamada al modelo (que entiende y redacta), y actúa.
     await runSchedulingAgent({
       phoneE164: ctx.phoneE164,
       leadId: ctx.leadId,
       propertyId: ctx.propertyId,
       contactName: ctx.contactName,
-      wantsToSchedule: analysis.wantsToSchedule,
-      proposedSlot: analysis.proposedSlot,
-      agentMessagesSent: state.agent_messages_sent,
-      agentHandedOff: state.agent_handed_off,
     })
   } catch (err) {
     console.warn('[whatsapp-webhook] excepción en el pipeline de IA (continuando):', err)

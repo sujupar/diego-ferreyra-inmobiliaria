@@ -257,8 +257,7 @@ describe('dayWord', () => {
 function ctx(overrides: Partial<SchedulingContext> = {}): SchedulingContext {
   return {
     now: LUNES,
-    wantsToSchedule: true,
-    proposedSlot: null,
+    reply: '¿Qué día te viene bien?',
     agentMessagesSent: 0,
     agentHandedOff: false,
     maxMessagesPerConversation: 3,
@@ -469,7 +468,14 @@ const leadsMaybeSingle = vi.fn()
 const leadsEq = vi.fn(() => ({ maybeSingle: leadsMaybeSingle }))
 const leadsSelect = vi.fn(() => ({ eq: leadsEq }))
 
-// conversation_ai_state: update (updateAgentState)
+// conversation_ai_state: select (contadores del agente) + update (updateAgentState)
+let estadoConversacion: { agent_messages_sent: number; agent_handed_off: boolean } | null = {
+  agent_messages_sent: 0,
+  agent_handed_off: false,
+}
+const stateMaybeSingle = vi.fn(() => Promise.resolve({ data: estadoConversacion, error: null }))
+const stateSelectEq = vi.fn(() => ({ maybeSingle: stateMaybeSingle }))
+const stateSelect = vi.fn(() => ({ eq: stateSelectEq }))
 const stateUpdateEq = vi.fn(() => Promise.resolve({ error: null }))
 const stateUpdate = vi.fn(() => ({ eq: stateUpdateEq }))
 
@@ -491,7 +497,7 @@ const fromMock = vi.fn((table: string) => {
   if (table === 'properties') return { select: propSelect }
   if (table === 'property_visits') return { select: visitsSelect, update: visitsUpdate, insert: visitsInsert }
   if (table === 'property_leads') return { select: leadsSelect }
-  if (table === 'conversation_ai_state') return { update: stateUpdate }
+  if (table === 'conversation_ai_state') return { update: stateUpdate, select: stateSelect }
   if (table === 'whatsapp_messages') return { select: notesSelect }
   throw new Error(`tabla inesperada en el mock: ${table}`)
 })
@@ -551,6 +557,9 @@ const { sendWhatsappTextMock, logOutboundMock, notifyVisitProposedMock, advanceP
   advancePipelineStateMock: vi.fn(async (_leadId: string, _event: string) => ({ changed: false, from: null, to: null })),
 }))
 
+const runConversationAnalysisMock = vi.hoisted(() => vi.fn())
+const getConversationAiStateMock = vi.hoisted(() => vi.fn())
+
 vi.mock('@/lib/integrations/whatsapp/core', () => ({
   sendWhatsappText: sendWhatsappTextMock,
 }))
@@ -560,6 +569,10 @@ vi.mock('@/lib/integrations/whatsapp/log', () => ({
 vi.mock('@/lib/email/notifications/visit-proposed', () => ({
   notifyVisitProposed: notifyVisitProposedMock,
 }))
+vi.mock('@/lib/ai/analyze-conversation', () => ({
+  runConversationAnalysis: runConversationAnalysisMock,
+}))
+
 vi.mock('@/lib/leads/pipeline-state', () => ({
   advancePipelineState: advancePipelineStateMock,
 }))
@@ -582,13 +595,30 @@ const BASE_INPUT = {
   leadId: 'lead-1',
   propertyId: 'prop-1',
   contactName: 'María Sánchez',
-  agentMessagesSent: 0,
-  agentHandedOff: false,
   now: LUNES,
+}
+
+/**
+ * El agente hace la llamada al modelo por dentro (`runConversationAnalysis`).
+ * Acá se controla QUÉ devuelve ese modelo, que es lo que decide la respuesta.
+ */
+function mockAnalisis(over: Partial<{ reply: string | null; visitDate: string | null; visitHour: number | null; analyzed: boolean }> = {}) {
+  runConversationAnalysisMock.mockResolvedValueOnce({
+    state: null,
+    analyzed: over.analyzed ?? true,
+    readFailed: false,
+    wantsToSchedule: true,
+    proposedSlot: null,
+    reply: over.reply !== undefined ? over.reply : '¿Qué día y a qué hora te queda bien?',
+    visitDate: over.visitDate ?? null,
+    visitHour: over.visitHour ?? null,
+  })
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  estadoConversacion = { agent_messages_sent: 0, agent_handed_off: false }
+  stateMaybeSingle.mockImplementation(() => Promise.resolve({ data: estadoConversacion, error: null }))
   visitStatusFilter = []
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-key'
