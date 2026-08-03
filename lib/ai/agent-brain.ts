@@ -35,6 +35,13 @@ export interface BrainContext {
   clientName: string | null
   /** Cómo nombrar la propiedad en la conversación ("la casa de Lares de Canning"). */
   propertyLabel: string
+  /**
+   * Datos REALES de la propiedad, ya formateados en líneas legibles. Es lo que
+   * le permite al agente contestar preguntas ("¿cuánto sale?", "¿tiene
+   * cochera?") en vez de derivar todo a un humano. Lo que no está acá, el
+   * agente NO lo inventa: dice que lo consulta.
+   */
+  propertyFacts: string[]
   /** Fecha de HOY en Argentina (YYYY-MM-DD). El modelo no la sabe: se la damos. */
   todayISO: string
   /** Resumen acumulado de la conversación (≤400 chars). */
@@ -81,12 +88,19 @@ CÓMO HABLÁS
 - No inventes datos de la propiedad (precio, medidas, expensas, disponibilidad). Si te preguntan algo que no está en la conversación, decí que lo consulta un asesor y seguí.
 
 TU OBJETIVO
-Que la persona diga QUÉ DÍA y A QUÉ HORA puede visitar la propiedad. Nada más.
+Que la persona termine visitando la propiedad. Para eso: contestá lo que pregunte y llevá la conversación, sin apuro, a que diga QUÉ DÍA y A QUÉ HORA puede ir.
 
-CUÁNDO NO CONTESTAR
-- Si la persona no está pidiendo coordinar una visita (saluda, agradece, dice que después ve), "reply" va en null. No hay que contestar todo.
-- Si ya hay una visita en agenda para esta persona y esta propiedad, "reply" va en null: mover o cambiar una visita ya coordinada lo decide una persona del equipo, no vos.
-- Si te dicen que no pueden, que no les interesa, o piden hablar con alguien, "reply" va en null.
+CONTESTÁ SIEMPRE QUE HAYA ALGO QUE CONTESTAR
+Sos un chat atendido, no un formulario. Si la persona pregunta algo, se lo contestás. Si comenta algo, respondés como respondería una persona del equipo. No la dejes hablando sola.
+- Los datos de la propiedad que tenés abajo son reales: usalos para contestar precio, ambientes, superficie, barrio, lo que figure.
+- Lo que NO figure, no lo inventes NUNCA. Decí que lo consultás con un asesor y, si viene al caso, seguí con lo tuyo. Inventar un dato de una propiedad es el peor error que podés cometer después de agendar mal.
+- Si pregunta algo que no es de esta propiedad (otra propiedad, tasaciones, alquileres, temas de dinero o legales), no improvises: decile que lo ve un asesor y que le escribe.
+- Después de contestar, si todavía no hay visita coordinada, invitá a coordinarla. Una sola vez por mensaje, sin insistir.
+
+CUÁNDO NO CONTESTAR ("reply" en null)
+- Si el último mensaje no pide nada ni dice nada que merezca respuesta (un "ok", un "gracias" suelto, un emoji).
+- Si ya hay una visita en agenda para esta persona y esta propiedad: mover o cambiar una visita ya coordinada lo decide una persona del equipo, no vos.
+- Si pide hablar con una persona, si se queja, o si el tema se pone delicado. Ahí se retira el agente y sigue un humano.
 
 CUÁNDO ANOTAR LA VISITA
 Cuando tengas DÍA y HORA. Ahí devolvés "visitDate" y "visitHour", y en "reply" le confirmás que quedó anotada y que el equipo se comunica para confirmarla.
@@ -107,8 +121,16 @@ Devolvé SIEMPRE un JSON válido con EXACTAMENTE estas 8 claves: summary, intent
 export function buildBrainUserPrompt(ctx: BrainContext): string {
   const partes: string[] = [
     `HOY es ${ctx.todayISO} (zona horaria de Argentina). La visita más temprana posible es el día siguiente.`,
-    `Propiedad: ${ctx.propertyLabel}`,
     `Cliente: ${ctx.clientName ?? '(no sabemos su nombre — no lo inventes, saludá sin nombre)'}`,
+    // Los datos reales de la propiedad son lo que le permite contestar
+    // preguntas. Lo que no esté en esta lista, el agente no lo sabe.
+    [
+      `Propiedad: ${ctx.propertyLabel}`,
+      ...(ctx.propertyFacts.length > 0
+        ? ctx.propertyFacts.map(f => `- ${f}`)
+        : ['- (no tenemos más datos cargados: cualquier consulta la ve un asesor)']),
+      'Cualquier dato que no esté en esta lista NO lo sabés. No lo inventes.',
+    ].join('\n'),
   ]
 
   if (ctx.hasActiveVisit) {

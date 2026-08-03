@@ -14,6 +14,7 @@ function ctx(over: Partial<BrainContext> = {}): BrainContext {
   return {
     clientName: 'Julián',
     propertyLabel: 'la casa de Lares de Canning',
+    propertyFacts: ['Precio: USD 199.700', '3 ambientes', 'Tristán Suárez, Ezeiza'],
     todayISO: HOY,
     previousSummary: '',
     newMessages: [{ from: 'cliente', text: 'Quiero agendar una visita' }],
@@ -45,6 +46,17 @@ describe('buildBrainUserPrompt', () => {
 
   it('sin nombre, le pide explícitamente que NO lo invente', () => {
     expect(buildBrainUserPrompt(ctx({ clientName: null }))).toMatch(/no lo inventes/)
+  })
+
+  it('le pasa los datos REALES de la propiedad — es lo que le permite contestar preguntas', () => {
+    const p = buildBrainUserPrompt(ctx())
+    expect(p).toContain('Precio: USD 199.700')
+    expect(p).toContain('3 ambientes')
+    expect(p).toMatch(/NO lo sabés\. No lo inventes/)
+  })
+
+  it('sin datos cargados, le dice que derive a un asesor en vez de improvisar', () => {
+    expect(buildBrainUserPrompt(ctx({ propertyFacts: [] }))).toMatch(/lo ve un asesor|consulta la ve un asesor/)
   })
 })
 
