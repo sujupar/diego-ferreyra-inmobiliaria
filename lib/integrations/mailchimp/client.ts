@@ -35,6 +35,9 @@ async function mcFetch(
     })
     const text = await res.text()
     return { ok: res.ok, status: res.status, body: text ? JSON.parse(text) : null }
+  } catch (err) {
+    console.warn('[mailchimp] fetch falló (ignorado):', err instanceof Error ? err.message : err)
+    return { ok: false, status: 0, body: null }
   } finally {
     clearTimeout(timer)
   }
