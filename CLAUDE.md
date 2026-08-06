@@ -338,6 +338,15 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Fix:** migración `20260713000001_properties_status_descartada.sql` recrea el CHECK con la lista completa de STATUS_LABELS (incluye `descartada`). Si aparece un status nuevo en la app, actualizar TAMBIÉN el CHECK.
 - **Fusión de duplicados (2026-07-13):** las fichas duplicadas del import CSV se fusionaron (deal/contacto/tasación → la copia publicada; la vieja queda `status='descartada'` con address `[FUSIONADA-><id8>] ...`). Script reutilizable de linkeo mapa→propiedad: `scripts/backfill-map-property-links.ts`. Evidencia usada para NO fusionar: posting IDs de ZonaProp distintos = avisos/propiedades distintas (Agüero 950 Palermo vs Balvanera; G. Mistral 2750 vs 2751).
 
+### Estado comercial: `commercial_status` es OTRA columna, no un valor de `status` (2026-08-06)
+
+- **Qué es:** `properties.commercial_status` con 5 valores — `disponible` (default), `reservada`, `vendida`, `dada_de_baja`, `descartada` — más `sold_price`/`sold_currency`/`sold_at` para la operación cerrada, y la tabla de historial `property_status_events` (solo crece; RLS de lectura con `is_operations_user()`). Migración `20260806000001_property_commercial_status.sql`, aplicada y verificada el 2026-08-06.
+- **POR QUÉ NO va en `status`:** `checkAndAdvanceProperty` (`lib/supabase/properties.ts`) escribe `status='approved'` en CADA commit de multimedia cuando hay fotos + legal aprobado. Un estado comercial guardado ahí **se borraría solo** y re-dispararía los emails N8A/N8B de captación; además el trigger de `20260514000002` aprovisiona campaña Meta al pasar a `approved`. Son dos ejes distintos: `status` = captación, `commercial_status` = qué pasó con la propiedad.
+- **Reglas:** todas en `lib/properties/commercial-status.ts` (módulo puro, 17 tests). `vendida` exige precio > 0 y fecha no futura; salir de `vendida` exige motivo; al salir se limpian los `sold_*` (el dato queda en el evento).
+- **Al agregar un estado nuevo hay que tocar DOS lugares juntos:** el catálogo `COMMERCIAL_STATUSES` y el CHECK `properties_commercial_status_check`. Si no, la app escribe un valor que Postgres rechaza con 23514.
+- **Escritura:** ruta propia `POST /api/properties/[id]/commercial-status` (NO el `PUT` genérico, que crea tareas y manda emails al pasar a `pending_review`). Son dos escrituras sin transacción: primero la propiedad, después el evento con un reintento; si el evento falla igual, responde 200 con `warning`.
+- **Deuda documentada:** `descartada` se escribe TAMBIÉN en `status` (espejo heredado) porque cinco lugares todavía leen `status === 'descartada'` — badge del listado, descarte masivo, `isDiscarded`, `nextStep` y la vista `vw_properties_list`. `commercial_status` es la fuente de verdad; migrar esos cinco lectores y sacar el espejo queda pendiente.
+
 ### Foreign keys a `profiles(id)` deben ser `ON DELETE SET NULL`
 
 - **Symptom:** Borrar un usuario desde Supabase Auth devuelve "Database error deleting user".
