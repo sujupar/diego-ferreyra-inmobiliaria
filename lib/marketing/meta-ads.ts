@@ -127,6 +127,56 @@ export async function fetchInsightsRange(startDate: string, endDate: string): Pr
 }
 
 /**
+ * Arma la URL de insights con desglose DIARIO.
+ *
+ * Separada del fetch para poder testearla sin pegarle a Meta: lo que se rompe
+ * acá es la URL (olvidar `time_increment`, no pedir `date_start`), no la red.
+ *
+ * OJO — la diferencia con `fetchInsightsRange`: sin `time_increment=1` Meta
+ * devuelve UNA fila agregada por campaña para todo el rango, y como parseInsight
+ * toma `date_start`, meses de gasto quedarían apilados en un solo día.
+ */
+export function buildDailyInsightsUrl(
+  accountId: string, accessToken: string, since: string, until: string,
+): string {
+  const fields = 'date_start,campaign_id,campaign_name,impressions,clicks,ctr,spend,actions,cost_per_action_type'
+  const params = new URLSearchParams({
+    fields,
+    time_increment: '1',
+    time_range: JSON.stringify({ since, until }),
+    level: 'campaign',
+    limit: '500',
+    access_token: accessToken,
+  })
+  return `${META_API_BASE}/${accountId}/insights?${params.toString()}`
+}
+
+/**
+ * Trae una fila por campaña Y POR DÍA para el rango pedido, siguiendo la
+ * paginación de Meta (un trimestre con varias campañas pasa las 500 filas).
+ */
+export async function fetchDailyInsightsRange(
+  since: string, until: string,
+): Promise<MetaDailySnapshot[]> {
+  const { accountId, accessToken } = getMetaConfig()
+  let url: string | null = buildDailyInsightsUrl(accountId, accessToken, since, until)
+  const out: MetaDailySnapshot[] = []
+
+  while (url) {
+    const response: Response = await fetch(url)
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(`Meta API error: ${JSON.stringify(error)}`)
+    }
+    const data: MetaInsightsResponse & { paging?: { next?: string } } = await response.json()
+    out.push(...data.data.map(parseInsight))
+    url = data.paging?.next ?? null
+  }
+
+  return out
+}
+
+/**
  * Save daily snapshots to Supabase (upsert by date + campaign_id)
  */
 export async function saveDailySnapshot(snapshots: MetaDailySnapshot[]): Promise<void> {
