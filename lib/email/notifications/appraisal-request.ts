@@ -5,6 +5,7 @@ import { getDealStakeholders, dedupEmails, emailsOf } from '../recipients'
 import { applyTestMode } from '../test-mode'
 import { AppraisalRequestAdminsEmail } from '@/emails/AppraisalRequestAdminsEmail'
 import { formatDateTime } from '../format'
+import { isPlaceholderAddress } from '@/lib/funnel/placeholder'
 
 export interface NotifyAppraisalRequestOptions {
   dealId: string
@@ -41,11 +42,13 @@ export async function notifyAppraisalRequest({ dealId }: NotifyAppraisalRequestO
   const contactName = contact?.full_name || 'Lead sin nombre'
 
   // `property_address` es NOT NULL: cuando el interesado no deja la ubicación,
-  // createFunnelLead guarda el placeholder "Solicitud de tasación — {nombre}".
-  // Mostrarlo como si fuera una dirección real confundiría, así que lo tratamos
-  // como "no la dejó" (la plantilla imprime el texto correspondiente).
+  // createFunnelLead guarda un placeholder ("Solicitud de tasación — {nombre}" o
+  // "Clase Gratuita — {nombre}"). Mostrarlo como si fuera una dirección real
+  // confundiría, así que lo tratamos como "no la dejó" (la plantilla imprime el
+  // texto correspondiente). `isPlaceholderAddress` vive en un módulo compartido
+  // con `createFunnelLead` para que ninguno de los dos lados se desincronice.
   const rawAddress = dealRow.property_address ?? ''
-  const propertyLocation = rawAddress.startsWith('Solicitud de tasación —') ? null : rawAddress || null
+  const propertyLocation = isPlaceholderAddress(rawAddress) ? null : rawAddress || null
 
   const subject = `Nueva solicitud de tasación: ${contactName}`
   const testCtx = await applyTestMode(recipients, subject)
