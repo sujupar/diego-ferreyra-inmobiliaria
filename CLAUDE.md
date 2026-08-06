@@ -347,6 +347,23 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Regla general:** cada evento del embudo tiene su propia notificación. Ya son tres y no se mezclan: registro de clase → `notifyClassRegistration`; solicitud de tasación → `notifyAppraisalRequest`; tasación coordinada (`/api/deals`) → `notifyDealCreated`. Reusar una pieza "parecida" hace que el email afirme cosas falsas.
 - **Métricas:** no cambian — el deal sigue siendo `origin='embudo'`, `stage='request'` y cuenta igual en el embudo. Este fix es SOLO del email.
 
+### La inversión de Meta NO se sincronizaba sola — y los datos viejos no eran una serie (2026-08-06)
+
+- **Symptom:** `meta_ads_daily` tenía **24 días con dato sobre 88** (marzo 12, abril 9, mayo 3) y nada después del 27/5/2026. Cualquier costo por tasación calculado con eso era la suma de días sueltos presentada como el mes entero.
+- **Root cause (doble):** (1) **ningún proceso ejecutaba la sincronización** — los jobs de `cron.job` no incluían ninguno de Meta, y lo único que escribía esa tabla era una scheduled function de Netlify de las que no se disparan. (2) `fetchInsightsRange` pedía el rango **sin `time_increment`**, así que Meta devolvía UNA fila agregada por campaña para todo el rango; como `parseInsight` toma `date_start`, meses de gasto habrían quedado apilados en un solo día.
+- **Fix:** `buildDailyInsightsUrl` + `fetchDailyInsightsRange` (con `time_increment=1` y paginación), ruta `app/api/cron/meta-sync` (patrón de `send-report`: `x-cron-secret` contra env o `cron_config`), y `scripts/backfill-meta-spend.ts` para recuperar el histórico. Recuperado el 2026-08-06: la cobertura pasó de 24 a **211 de 218 días**.
+- **PENDIENTE:** falta programar el job `meta-sync` en `pg_cron` (migración `20260806000002`, se aplica con `scripts/apply-cron-meta-sync-pg.ts <secreto> <dominio>`). Requiere que el código esté deployado: apunta a una URL que no existe hasta entonces. **Sin esto, la inversión vuelve a cortarse.**
+- **Detection:** `SELECT max(date), count(DISTINCT date) FROM meta_ads_daily;` — si `max(date)` no avanza a diario, el job no está corriendo.
+
+### Tablero: el estado de resultados del embudo vive en `/metrics`, no en `/embudos` (2026-08-06)
+
+- **Dónde:** `/metrics`, arriba de todo, con lo anterior debajo bajo "Detalle operativo". `/embudos` es la VISUALIZACIÓN del embudo (curvas, mapa de calor) y no se toca. Meter análisis de negocio ahí fue un error corregido a pedido del usuario.
+- **Por COHORTE, no por eventos:** `get_funnel_statement` sigue a los deals CREADOS en el período. Es la única forma de que "de 109 solicitudes se coordinaron 26" sea verdad; contando eventos sueltos, numerador y denominador son poblaciones distintas.
+- **Regla del tablero — no mentir sobre su propia base:** toda métrica viaja con su `n` (aviso con `n < 20`) y los costos con su cobertura (`dias_con_dato`/`dias_del_periodo`). Un período sin inversión dice "sin datos", nunca "$0".
+- **Inversión del embudo vs de propiedad:** se separa por `property_meta_campaigns`, no por nombre de campaña. **Limitación conocida:** solo reconoce las campañas creadas DESDE la plataforma; una hecha a mano en Ads Manager (ej. "Venta Roque Perez") se cuela en la inversión del embudo. Por eso la pantalla muestra el desglose por campaña y lo advierte.
+- **Gráficos:** barra horizontal por etapa con ancho proporcional al volumen, resaltando SOLO el cuello de botella y agrisando el resto (forma "emphasis"). El costo unitario NO va como barra: su escala va de $31 mil a $3,4 millones y exigiría un segundo eje. Colores validados con el script de la skill `dataviz` — el amarillo de advertencia se descartó por 1.79 de contraste.
+- **Hallazgo del negocio (2026-08-06):** de 109 solicitudes del embudo en 2026, solo 26 se coordinaron y 1 se captó. Y la última transición a `captured` en el sistema fue en **mayo**: las 25 propiedades de junio entraron por carga masiva desde CSV, no avanzando por el embudo. O no se captó por embudo, o el equipo dejó de mover los deals. Los datos no distinguen.
+
 ### Estado comercial: `commercial_status` es OTRA columna, no un valor de `status` (2026-08-06)
 
 - **Qué es:** `properties.commercial_status` con 5 valores — `disponible` (default), `reservada`, `vendida`, `dada_de_baja`, `descartada` — más `sold_price`/`sold_currency`/`sold_at` para la operación cerrada, y la tabla de historial `property_status_events` (solo crece; RLS de lectura con `is_operations_user()`). Migración `20260806000001_property_commercial_status.sql`, aplicada y verificada el 2026-08-06.
