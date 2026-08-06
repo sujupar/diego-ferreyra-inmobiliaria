@@ -659,6 +659,58 @@ no en el prompt, porque tienen que ocurrir SIEMPRE:
   corrigió con ejemplos de MAL y BIEN en el prompt: es lo único que corrige un tono.
 - Repetía el mismo material cada turno: se le pasa `yaMandado`.
 
+### La memoria es de una CONVERSACIÓN SOBRE UNA PROPIEDAD, no de un teléfono (2026-08-06)
+
+El bug más caro que tuvo el agente, y el que mejor enseña dónde mirar.
+
+**Síntoma:** en un chat real, el cliente pidió fotos y el agente le mandó el
+plano; después le afirmó "ya te envié el video y las fotos" —que nunca
+salieron—; y empujó a agendar en cada mensaje inventando "mañana". Parecía que
+el modelo interpretaba pésimo.
+
+**Causa, una sola para las tres:** `conversation_ai_state` tenía UNA fila por
+teléfono, sin propiedad, y cada análisis reescribe el resumen pisando el
+anterior. El 3 de agosto una prueba por Lares de Canning dejó escrito "ya
+recibió fotos y un video". El 6, con una consulta nueva por Entre Ríos, el
+modelo actualizó el nombre de la propiedad y **se llevó puesta esa frase**. Con
+fotos y video dados por entregados, ofrecer el plano era lo único que quedaba, y
+corregir al cliente ("ya te lo mandé") era coherente. El modelo razonó bien
+sobre un hecho falso que le pasamos nosotros.
+
+**Regla general — cuando el agente se porta mal, mirar PRIMERO el sobre de
+información, no el prompt.** Un prompt no inventa que ya mandó un video: eso
+estaba escrito en la memoria. Es la segunda vez que pasa (la primera:
+`ultimoMensajePropio`), y las dos veces la pregunta correcta fue *qué NO puede
+saber* o *qué está creyendo que es falso*.
+
+**Fix (migración `20260806000007`, aplicada y verificada):**
+- `conversation_ai_state.property_id` dice de qué propiedad habla el resumen.
+- `memoriaVigente` (pura, testeada) descarta el resumen y **reinicia el tope de
+  mensajes** al cambiar de propiedad. **NO revierte un apagado manual del
+  agente** (`agent_handed_off`): reiniciar el contador recupera una capacidad,
+  revertir un apagado mandaría mensajes que una persona decidió frenar. Ante la
+  duda, callado.
+- El reinicio del contador se **persiste**: el cupo se reserva con la RPC atómica
+  `claim_agent_message_slot`, que lee la BASE. Un reinicio que solo viva en una
+  variable no libera nada.
+- **Sigue habiendo UNA fila por teléfono** a propósito: el Inbox, el panel de
+  costo y la prioridad leen esta tabla por teléfono y volverla multi-fila los
+  rompería a los tres.
+
+**Dos bugs hermanos que salieron del mismo tirón:**
+- `materialYaMandado` deducía el material entregado del PREFIJO del texto
+  (`"[Foto] …"`). El plano que viaja en el **encabezado de una plantilla** no
+  lleva ese prefijo, así que no contaba como entregado y se re-enviaba. Ahora
+  sale de la columna real `whatsapp_messages.media_type`, que `logOutbound`
+  ahora sí escribe. **Un dato estructural no se deduce de un texto de
+  presentación.**
+- `sendWhatsappTemplate` **descartaba `origen` y `aiGenerated`**: se agregaron al
+  input pero no a sus cuatro `logOutbound`. Por eso el mensaje de una consulta
+  quedaba sin origen (rompía el filtro del Inbox) y sin marca de agente (el
+  agente arrancaba ciego, sin reconocer su propio primer mensaje). Los cuatro
+  caminos comparten ahora `camposDeRegistro` — un campo nuevo no puede llegar a
+  la mitad de las salidas.
+
 ### Banco de pruebas: `/admin/ai-agent`
 
 Escribís lo que diría un cliente y ves qué contestaría, SIN mandar WhatsApp ni
@@ -667,6 +719,16 @@ equipo, y el prompt completo. **Existe porque probar contra el chat real costó
 tres rondas de diagnóstico equivocado**: el dueño probaba contra código que
 todavía no había deployado y no había forma de verificar sin pedirle otra
 prueba. Usalo ANTES de tocar el prompt.
+
+Muestra además **"Con qué información decidió"** (material disponible, material
+que cree ya entregado, su mensaje anterior, la memoria previa). Esa mitad es la
+que permite distinguir "el modelo entendió mal" de "le pasamos un dato falso" —
+que fue lo que pasó las dos veces que el agente falló feo.
+
+**Todo insumo del agente tiene que ser simulable acá.** `yaMandado` estaba fijo
+en vacío y por eso el banco **no podía reproducir** el peor bug que tuvo. Un
+banco de pruebas que no reproduce la falla real no sirve para diagnosticarla: al
+agregar un insumo nuevo al cerebro, agregarle el control en la misma tarea.
 
 Esa ruta esquiva `analysis_enabled` a propósito (no es automática, la dispara
 una persona con permiso de configuración): apagar el agente no debe impedir
