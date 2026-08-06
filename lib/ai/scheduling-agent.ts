@@ -80,7 +80,7 @@ import { logOutbound } from '@/lib/integrations/whatsapp/log'
 import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
 import { updateAgentState, getConversationAiState } from '@/lib/ai/conversation-memory'
 import { runConversationAnalysis } from '@/lib/ai/analyze-conversation'
-import { validateProposedVisit, type MaterialTipo } from '@/lib/ai/agent-brain'
+import { validateProposedVisit, MAX_TIPOS_POR_TURNO, type MaterialTipo } from '@/lib/ai/agent-brain'
 
 // ---------------------------------------------------------------------------
 // Parser determinístico de "cuándo" — nunca IA. Entiende los patrones de
@@ -951,6 +951,26 @@ export function materialDisponible(p: PropertyForAgent): { fotos: boolean; plano
 
 type Archivo = { mediaType: 'image' | 'video' | 'document'; link: string; filename?: string }
 
+/**
+ * Quien pide fotos quiere CONOCER la propiedad, y el video se la muestra mejor
+ * que cualquier foto: si hay video y el modelo pidió solo fotos, va igual.
+ *
+ * Esto es una REGLA, no un juicio caso por caso, y por eso vive en el código y
+ * no en el prompt. El prompt también lo dice —para que el texto nombre las dos
+ * cosas— pero un prompt es probabilístico: pide algo y a veces no pasa. Cuando
+ * una conducta tiene que ocurrir SIEMPRE, se escribe donde siempre ocurre.
+ */
+export function completarConVideo(p: PropertyForAgent, tipos: MaterialTipo[]): MaterialTipo[] {
+  const unicos = tipos.filter((t, i) => tipos.indexOf(t) === i)
+  const pidioFotos = unicos.includes('fotos')
+  const yaLlevaVideo = unicos.includes('video')
+  if (!pidioFotos || yaLlevaVideo || !p.video_file_url) return unicos
+  // Solo si SOBRA lugar. Si el modelo ya pidió dos tipos, pidió lo que pidió:
+  // sacarle el plano que el cliente reclamó para meter el video sería peor.
+  if (unicos.length >= MAX_TIPOS_POR_TURNO) return unicos
+  return [...unicos, 'video']
+}
+
 function delTipo(p: PropertyForAgent, tipo: MaterialTipo): Archivo[] {
   if (tipo === 'video') return p.video_file_url ? [{ mediaType: 'video', link: p.video_file_url }] : []
   if (tipo === 'plano') {
@@ -970,7 +990,7 @@ function delTipo(p: PropertyForAgent, tipo: MaterialTipo): Archivo[] {
  * mandar las fotos Y el video vale más que mandar una foto más.
  */
 export function archivosParaEnviar(p: PropertyForAgent, tipos: MaterialTipo[]): Archivo[] {
-  const pedidos = tipos.filter((t, i) => tipos.indexOf(t) === i)
+  const pedidos = completarConVideo(p, tipos)
   if (pedidos.length === 0) return []
   if (pedidos.length === 1) return delTipo(p, pedidos[0]).slice(0, MAX_ARCHIVOS_POR_TURNO)
 

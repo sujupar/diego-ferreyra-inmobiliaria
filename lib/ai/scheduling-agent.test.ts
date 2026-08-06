@@ -1533,3 +1533,48 @@ describe('dos tipos de material en un mismo turno', () => {
     }
   })
 })
+
+// Prueba real del dueño: pidió fotos, llegaron las fotos y NO el video, aunque
+// la propiedad lo tenía. Que el video acompañe a las fotos es una regla, no un
+// juicio del modelo — y las reglas van donde siempre se cumplen.
+describe('completarConVideo — el video acompaña a las fotos, siempre', () => {
+  const conVideo = {
+    photos: ['https://s/1.jpg', 'https://s/2.jpg', 'https://s/3.jpg'],
+    plans: ['https://s/plano.pdf'],
+    video_file_url: 'https://s/video.mp4',
+    video_url: null,
+  } as unknown as Parameters<typeof import('./scheduling-agent').completarConVideo>[0]
+
+  it('el modelo pidió solo fotos y hay video → van los dos', async () => {
+    const { completarConVideo } = await import('./scheduling-agent')
+    expect(completarConVideo(conVideo, ['fotos'])).toEqual(['fotos', 'video'])
+  })
+
+  it('sin video de archivo, no se inventa nada', async () => {
+    const { completarConVideo } = await import('./scheduling-agent')
+    expect(completarConVideo({ ...conVideo, video_file_url: null }, ['fotos'])).toEqual(['fotos'])
+  })
+
+  it('si no pidió fotos, no se le agrega el video de prepo', async () => {
+    const { completarConVideo } = await import('./scheduling-agent')
+    expect(completarConVideo(conVideo, ['plano'])).toEqual(['plano'])
+    expect(completarConVideo(conVideo, [])).toEqual([])
+  })
+
+  it('si ya pidió los dos, queda igual', async () => {
+    const { completarConVideo } = await import('./scheduling-agent')
+    expect(completarConVideo(conVideo, ['fotos', 'video'])).toEqual(['fotos', 'video'])
+  })
+
+  it('si el modelo YA pidió dos tipos, se respeta: no se le saca el plano para meter el video', async () => {
+    const { completarConVideo } = await import('./scheduling-agent')
+    expect(completarConVideo(conVideo, ['fotos', 'plano'])).toEqual(['fotos', 'plano'])
+  })
+
+  it('de punta a punta: pedir fotos manda fotos Y video', async () => {
+    const { archivosParaEnviar } = await import('./scheduling-agent')
+    const r = archivosParaEnviar(conVideo, ['fotos'])
+    expect(r.filter(a => a.mediaType === 'video')).toHaveLength(1)
+    expect(r.filter(a => a.mediaType === 'image').length).toBeGreaterThan(0)
+  })
+})
