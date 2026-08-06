@@ -40,6 +40,8 @@ export const PLANTILLAS_UTIL: Record<PlantillaConsulta, string> = {
 }
 
 export interface MediaDeLaPropiedad {
+  /** Cómo se llama la propiedad — se usa para nombrar el archivo que recibe el cliente. */
+  etiqueta?: string | null
   plans?: string[] | null
   /** Archivo propio. Un link de YouTube NO sirve: Meta descarga el archivo desde la URL. */
   video_file_url?: string | null
@@ -48,6 +50,12 @@ export interface MediaDeLaPropiedad {
 
 export interface EleccionPlantilla {
   plantilla: PlantillaConsulta
+  /**
+   * Cómo se llama el archivo EN EL CHAT del cliente. Sin esto llega con el
+   * nombre con el que se subió al sistema ("WhatsApp Image 2026-08-06.pdf",
+   * "escaneo_final_v2.pdf"), que además de feo no dice de qué propiedad es.
+   */
+  headerFilename?: string
   /** El archivo que va en el encabezado. `null` en la plantilla sin encabezado. */
   header: { tipo: 'document' | 'video'; link: string } | null
   /** Cómo se nombra ese material en el cuerpo ({{2}}). */
@@ -57,6 +65,20 @@ export interface EleccionPlantilla {
    * después, ya en ventana. Con plano Y video, el video va acá.
    */
   pendiente: Array<'video' | 'fotos'>
+}
+
+/**
+ * "Entre Ríos 2333, Martínez - Planos.pdf". Se saca todo lo que un sistema de
+ * archivos o WhatsApp puedan tratar raro, y se acota el largo: un nombre de 200
+ * caracteres se ve cortado en el chat.
+ */
+export function nombreDeArchivo(etiqueta: string | null | undefined): string {
+  const limpio = (etiqueta ?? '')
+    .replace(/[\\/:*?"<>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60)
+  return limpio ? `${limpio} - Planos.pdf` : 'Planos.pdf'
 }
 
 const primero = (v: string[] | null | undefined): string | null => {
@@ -78,6 +100,7 @@ export function elegirPlantilla(p: MediaDeLaPropiedad): EleccionPlantilla {
     return {
       plantilla: 'consulta_plano',
       header: { tipo: 'document', link: plano },
+      headerFilename: nombreDeArchivo(p.etiqueta),
       queMando: 'el plano',
       pendiente: [...(video ? (['video'] as const) : []), ...(hayFotos ? (['fotos'] as const) : [])],
     }

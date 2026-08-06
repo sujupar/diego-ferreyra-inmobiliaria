@@ -17,7 +17,8 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { sendWhatsappTemplate } from '@/lib/integrations/whatsapp/meta-cloud'
-import { decidirEnvio, type AjustesEnvio } from '@/lib/leads/consulta-envio'
+import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
+import { decidirEnvio, type AjustesEnvio, type Normalizador } from '@/lib/leads/consulta-envio'
 import {
   elegirPlantilla,
   parametrosDelCuerpo,
@@ -60,24 +61,51 @@ function nombrarPropiedad(p: PropiedadParaConsulta): string {
 }
 
 /**
- * Qué plantilla se manda de verdad.
+ * Qué plantilla se manda, y qué pasa cuando Meta no la entrega.
  *
- * Hay DOS familias aprobadas: la de trámite (`_util`, mejor entregabilidad) y
- * la cálida (que Meta reclasificó como marketing). Se intenta la de trámite y,
- * SOLO si Meta dice que no existe o no está aprobada, se cae a la cálida. Es el
- * mismo patrón que el downgrade de tier al publicar en MercadoLibre: intentar
- * lo mejor, aceptar lo que haya, y no quedarse sin mandar nada.
+ * Hay DOS familias aprobadas y suenan MUY distinto:
+ *   - la CÁLIDA ("Hola, ¿cómo estás?… contame, ¿cómo te puedo ayudar?"), que
+ *     Meta clasificó como MARKETING;
+ *   - la de TRÁMITE (`_util`, "Recibimos tu consulta. Te adjuntamos…"), UTILITY.
  *
- * El match del error es ESTRECHO a propósito: ensancharlo se tragaría fallas
- * reales (un teléfono inválido, la cuenta sin saldo) y las haría ver como un
- * problema de plantilla.
+ * Decisión del dueño (2026-08-06): se manda la CÁLIDA, porque es la que suena a
+ * Diego y la que hace que la gente conteste. La de trámite queda de RED, para
+ * cuando Meta decide no entregar la de marketing.
+ *
+ * ## Qué pasa cuando Meta no entrega una de marketing
+ *
+ * Y esta es la parte que importa: NO es silencioso. Meta lo dice en el momento
+ * del envío, con un código, y en ese caso NO se cobra el mensaje:
+ *   - 131049 — "no la entregamos para cuidar la calidad del ecosistema": el
+ *     límite de marketing de ESA persona (cuántos mensajes promocionales recibe
+ *     por período, de todas las empresas juntas).
+ *   - 131050 — esa persona desactivó los mensajes de marketing.
+ *
+ * O sea: no hay forma de pagar por un mensaje que no llegó. Lo que sí puede
+ * pasar es perder el contacto — y por eso, ante cualquiera de los dos, se
+ * reintenta con la de TRÁMITE. Esa es legítima: es la respuesta a un trámite que
+ * la persona inició (dejó una consulta), no publicidad, y por eso se entrega
+ * igual a quien bloqueó las promociones.
+ *
+ * Si ni esa entra, la consulta queda marcada para que una persona la atienda.
  */
+const META_MARKETING_BLOQUEADO = new Set([131049, 131050])
+
 function esPlantillaNoDisponible(error: string | undefined): boolean {
   const e = (error ?? '').toLowerCase()
   return e.includes('template name does not exist') || e.includes('template not found') || e.includes('does not exist in the translation')
 }
 
-export async function responderConsulta(inquiryId: string): Promise<RespuestaConsulta> {
+/**
+ * `normalizar` existe como costura para poder disparar esto desde un script
+ * suelto (`scripts/probar-consulta.ts`): la librería de teléfonos carga su build
+ * CJS fuera de Next y explota al usarla. En la app real no se pasa nunca — se
+ * usa el normalizador de siempre.
+ */
+export async function responderConsulta(
+  inquiryId: string,
+  opciones?: { normalizar?: Normalizador },
+): Promise<RespuestaConsulta> {
   try {
     const sb = admin()
 
@@ -87,7 +115,11 @@ export async function responderConsulta(inquiryId: string): Promise<RespuestaCon
       .eq('id', inquiryId)
       .maybeSingle()
     if (errConsulta || !consulta) {
-      return { enviado: false, motivo: 'no se pudo leer la consulta' }
+      // El motivo REAL, no un genérico. Un "no se pudo leer" a secas escondió
+      // durante media hora que faltaba una columna: el mismo patrón que ya nos
+      // mordió con `properties.expenses`. Si el error se traga, el síntoma es
+      // "no pasa nada" y no hay por dónde empezar a buscar.
+      return { enviado: false, motivo: `no se pudo leer la consulta: ${errConsulta?.message ?? 'no existe'}` }
     }
     const c = consulta as {
       id: string; lead_name: string | null; lead_phone: string | null; lead_email: string | null
@@ -101,7 +133,7 @@ export async function responderConsulta(inquiryId: string): Promise<RespuestaCon
       .maybeSingle()
     const ajustes = (ajustesRow as AjustesEnvio | null) ?? null
 
-    const decision = decidirEnvio(c, ajustes)
+    const decision = decidirEnvio(c, ajustes, opciones?.normalizar ?? normalizeWhatsappPhone)
     if (!decision.enviar) {
       return { enviado: false, motivo: decision.motivo, requiereAtencion: decision.visibleParaElEquipo }
     }
@@ -113,9 +145,10 @@ export async function responderConsulta(inquiryId: string): Promise<RespuestaCon
     }
     const prop = propRow as PropiedadParaConsulta
 
-    const eleccion: EleccionPlantilla = elegirPlantilla(prop)
+    const etiqueta = nombrarPropiedad(prop)
+    const eleccion: EleccionPlantilla = elegirPlantilla({ ...prop, etiqueta: prop.address ?? prop.title })
     const nombre = c.lead_name?.trim() || ''
-    const params = parametrosDelCuerpo(eleccion, { nombre, propiedad: nombrarPropiedad(prop) })
+    const params = parametrosDelCuerpo(eleccion, { nombre, propiedad: etiqueta })
 
     // El lead se crea ANTES de mandar: si el WhatsApp sale y el lead no existe,
     // la respuesta del cliente llega a una conversación sin propiedad y el
@@ -129,7 +162,7 @@ export async function responderConsulta(inquiryId: string): Promise<RespuestaCon
         languageCode: process.env.WHATSAPP_TEMPLATE_LANG ?? 'es_AR',
         bodyParams: params,
         headerMedia: eleccion.header
-          ? { type: eleccion.header.tipo, link: eleccion.header.link }
+          ? { type: eleccion.header.tipo, link: eleccion.header.link, filename: eleccion.headerFilename }
           : undefined,
         leadId,
         propertyId: prop.id,
@@ -137,12 +170,19 @@ export async function responderConsulta(inquiryId: string): Promise<RespuestaCon
         timeoutMs: 8000,
       })
 
-    const preferida = PLANTILLAS_UTIL[eleccion.plantilla]
-    let res = await enviar(preferida)
-    let usada = preferida
-    if (!res.ok && esPlantillaNoDisponible(res.error)) {
-      console.warn(`[consulta] ${preferida} no está disponible todavía, se usa ${eleccion.plantilla}`)
-      usada = eleccion.plantilla
+    // Primero la cálida. Si Meta no la entrega —o todavía no está aprobada—,
+    // la de trámite como red.
+    let usada: string = eleccion.plantilla
+    let res = await enviar(usada)
+    const bloqueadaPorMarketing = !res.ok && res.errorCode != null && META_MARKETING_BLOQUEADO.has(res.errorCode)
+    if (!res.ok && (bloqueadaPorMarketing || esPlantillaNoDisponible(res.error))) {
+      const red = PLANTILLAS_UTIL[eleccion.plantilla]
+      console.warn(
+        bloqueadaPorMarketing
+          ? `[consulta] Meta no entregó la de marketing (${res.errorCode}), se reintenta con ${red}`
+          : `[consulta] ${usada} no está disponible, se reintenta con ${red}`,
+      )
+      usada = red
       res = await enviar(usada)
     }
 
