@@ -75,7 +75,7 @@ import {
   notifyAndAdvancePipeline,
 } from '@/lib/leads/visit-scheduling'
 import { serviceWindow } from '@/lib/integrations/whatsapp/window'
-import { sendWhatsappText } from '@/lib/integrations/whatsapp/core'
+import { sendWhatsappText, sendWhatsappMedia } from '@/lib/integrations/whatsapp/core'
 import { logOutbound } from '@/lib/integrations/whatsapp/log'
 import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
 import { updateAgentState, getConversationAiState } from '@/lib/ai/conversation-memory'
@@ -332,7 +332,7 @@ export type SchedulingAction =
   | { type: 'noop'; reason: string }
   | { type: 'handoff'; reason: string }
   /** Hay algo que contestar. El TEXTO lo escribió el modelo; la visita, si viene, ya la validó el código. */
-  | { type: 'reply'; text: string; visit?: { dateISO: string; hour: number } }
+  | { type: 'reply'; text: string; visit?: { dateISO: string; hour: number }; send?: 'fotos' | 'plano' | 'video' | null }
 
 export interface SchedulingContext {
   now: Date
@@ -340,6 +340,8 @@ export interface SchedulingContext {
   reply: string | null
   /** Visita ya VALIDADA por `validateProposedVisit`. Ausente = no hay nada que agendar en este turno. */
   visit?: { dateISO: string; hour: number }
+  /** Material que el modelo quiere mandar en este turno. */
+  send?: 'fotos' | 'plano' | 'video' | null
   agentMessagesSent: number
   agentHandedOff: boolean
   maxMessagesPerConversation: number
@@ -380,8 +382,8 @@ export function decideSchedulingAction(ctx: SchedulingContext): SchedulingAction
     return { type: 'noop', reason: 'no hay nada que contestar en este turno' }
   }
   return ctx.visit
-    ? { type: 'reply', text: ctx.reply, visit: ctx.visit }
-    : { type: 'reply', text: ctx.reply }
+    ? { type: 'reply', text: ctx.reply, visit: ctx.visit, send: ctx.send ?? null }
+    : { type: 'reply', text: ctx.reply, send: ctx.send ?? null }
 }
 
 // ---------------------------------------------------------------------------
@@ -924,6 +926,45 @@ interface PropertyForAgent {
   garages: number | null
   floor: number | null
   amenities: string[] | null
+  photos: string[] | null
+  plans: string[] | null
+  video_file_url: string | null
+  video_url: string | null
+}
+
+/** Tope de archivos por turno. Cada envío es un roundtrip a Meta y el webhook tiene ~26s. */
+const MAX_ARCHIVOS_POR_TURNO = 3
+/** Más corto que el default (8s): son varios seguidos y no pueden comerse el request. */
+const MEDIA_TIMEOUT_MS = 5_000
+
+/** Qué material REAL tiene esta propiedad para mandar por WhatsApp. */
+export function materialDisponible(p: PropertyForAgent): { fotos: boolean; plano: boolean; video: boolean } {
+  return {
+    fotos: (p.photos ?? []).length > 0,
+    plano: (p.plans ?? []).length > 0,
+    // Solo el ARCHIVO propio: un link de YouTube no se puede mandar como video
+    // de WhatsApp (Meta descarga el archivo desde la URL, y youtube.com no
+    // sirve un mp4). Ver la migración de videos a archivo del 2026-08-03.
+    video: !!p.video_file_url,
+  }
+}
+
+/** Los archivos concretos a mandar, ya acotados. El modelo pide el TIPO; esto resuelve las URLs. */
+export function archivosParaEnviar(
+  p: PropertyForAgent,
+  tipo: 'fotos' | 'plano' | 'video',
+): Array<{ mediaType: 'image' | 'video' | 'document'; link: string; filename?: string }> {
+  if (tipo === 'video') {
+    return p.video_file_url ? [{ mediaType: 'video' as const, link: p.video_file_url }] : []
+  }
+  if (tipo === 'plano') {
+    return (p.plans ?? []).slice(0, MAX_ARCHIVOS_POR_TURNO).map((link, i) => ({
+      mediaType: 'document' as const,
+      link,
+      filename: `plano-${i + 1}.pdf`,
+    }))
+  }
+  return (p.photos ?? []).slice(0, MAX_ARCHIVOS_POR_TURNO).map(link => ({ mediaType: 'image' as const, link }))
 }
 
 /**
@@ -940,7 +981,7 @@ interface PropertyForAgent {
  * agente tiene que poder trabajar sin ellos. Nunca al revés.
  */
 const COLUMNAS_PROPIEDAD =
-  'address, title, assigned_to, ai_scheduling_enabled, neighborhood, city, property_type, operation_type, rooms, bedrooms, bathrooms, covered_area, total_area, asking_price, currency, expensas, garages, floor, amenities'
+  'address, title, assigned_to, ai_scheduling_enabled, neighborhood, city, property_type, operation_type, rooms, bedrooms, bathrooms, covered_area, total_area, asking_price, currency, expensas, garages, floor, amenities, photos, plans, video_file_url, video_url'
 
 /** Lo mínimo para decidir si el agente puede escribir. Sin esto no hay agente. */
 const COLUMNAS_MINIMAS = 'address, title, assigned_to, ai_scheduling_enabled'
@@ -1085,6 +1126,7 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       maxMessages: settings.max_messages_per_conversation,
       hasActiveVisit: !!pendiente,
       canWrite,
+      puedeMandar: materialDisponible(prop),
     })
     if (!analysis.analyzed) {
       return { action: 'noop', reason: 'no hubo análisis nuevo en este turno' }
@@ -1117,6 +1159,7 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       now,
       reply: analysis.reply,
       visit: propuesta.ok ? { dateISO: propuesta.dateISO, hour: propuesta.hour } : undefined,
+      send: analysis.send,
       agentMessagesSent,
       agentHandedOff,
       maxMessagesPerConversation: settings.max_messages_per_conversation,
@@ -1214,6 +1257,33 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
     })
     // No salió nada (modo prueba / sin credenciales) ⇒ el cupo vuelve.
     if (sent.skipped) await releaseMessageSlot(input.phoneE164, claimed.slot)
+
+    // El material va DESPUÉS del texto y solo si el texto salió: primero se
+    // dice "te paso unas fotos", después llegan. Al revés, la persona ve
+    // archivos sueltos sin contexto. No consume cupo aparte —es parte de la
+    // misma respuesta— y si falla, el mensaje ya llegó igual.
+    if (decision.send && !sent.skipped && sent.ok) {
+      const archivos = archivosParaEnviar(prop, decision.send)
+      if (archivos.length === 0) {
+        console.warn(`[agente] el modelo pidió mandar "${decision.send}" y esta propiedad no tiene`)
+      }
+      for (const a of archivos) {
+        const r = await sendWhatsappMedia({
+          to: input.phoneE164,
+          mediaType: a.mediaType,
+          link: a.link,
+          filename: a.filename,
+          timeoutMs: MEDIA_TIMEOUT_MS,
+          leadId: input.leadId,
+          propertyId: input.propertyId,
+          sentBy: null,
+          aiGenerated: true,
+        })
+        // Un archivo que falla no frena a los demás ni rompe el turno: el
+        // mensaje de texto ya está entregado.
+        if (!r.ok) console.warn('[agente] no se pudo mandar un archivo:', r.error)
+      }
+    }
     return { action: 'reply' }
   } catch (err) {
     console.warn('[scheduling-agent] excepción (nunca lanza, continuando):', err)

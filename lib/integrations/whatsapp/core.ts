@@ -261,6 +261,8 @@ export interface SendMediaInput {
   leadId?: string | null
   propertyId?: string | null
   sentBy?: string | null
+  /** `true` = lo manda el agente de IA. Marca la fila en `whatsapp_messages`. */
+  aiGenerated?: boolean
 }
 
 export interface MediaPayload {
@@ -312,6 +314,7 @@ export async function sendWhatsappMedia(input: SendMediaInput): Promise<SendMedi
       leadId: input.leadId,
       propertyId: input.propertyId,
       sentBy: input.sentBy,
+      aiGenerated: input.aiGenerated,
     })
     return { ok: true, skipped: true }
   }
@@ -347,6 +350,7 @@ export async function sendWhatsappMedia(input: SendMediaInput): Promise<SendMedi
         leadId: input.leadId,
         propertyId: input.propertyId,
         sentBy: input.sentBy,
+      aiGenerated: input.aiGenerated,
       })
       return { ok: false, skipped: false, error: msg }
     }
@@ -362,6 +366,7 @@ export async function sendWhatsappMedia(input: SendMediaInput): Promise<SendMedi
       leadId: input.leadId,
       propertyId: input.propertyId,
       sentBy: input.sentBy,
+      aiGenerated: input.aiGenerated,
     })
     return { ok: true, skipped: false, messageId: waMessageId }
   } catch (err) {
@@ -376,6 +381,7 @@ export async function sendWhatsappMedia(input: SendMediaInput): Promise<SendMedi
       leadId: input.leadId,
       propertyId: input.propertyId,
       sentBy: input.sentBy,
+      aiGenerated: input.aiGenerated,
     })
     return { ok: false, skipped: false, error: msg }
   }

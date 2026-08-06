@@ -318,6 +318,7 @@ describe('decideSchedulingAction', () => {
     expect(decideSchedulingAction(ctx({ reply: '¿Qué día te viene bien?' }))).toEqual({
       type: 'reply',
       text: '¿Qué día te viene bien?',
+      send: null,
     })
   })
 
@@ -327,6 +328,7 @@ describe('decideSchedulingAction', () => {
       type: 'reply',
       text: 'Listo, quedó anotada.',
       visit,
+      send: null,
     })
   })
 
@@ -557,8 +559,11 @@ const { sendWhatsappTextMock, logOutboundMock, notifyVisitProposedMock, advanceP
 const runConversationAnalysisMock = vi.hoisted(() => vi.fn())
 const getConversationAiStateMock = vi.hoisted(() => vi.fn())
 
+const sendWhatsappMediaMock = vi.hoisted(() => vi.fn(async () => ({ ok: true, skipped: false })))
+
 vi.mock('@/lib/integrations/whatsapp/core', () => ({
   sendWhatsappText: sendWhatsappTextMock,
+  sendWhatsappMedia: sendWhatsappMediaMock,
 }))
 vi.mock('@/lib/integrations/whatsapp/log', () => ({
   logOutbound: logOutboundMock,
@@ -599,7 +604,7 @@ const BASE_INPUT = {
  * El agente hace la llamada al modelo por dentro (`runConversationAnalysis`).
  * Acá se controla QUÉ devuelve ese modelo, que es lo que decide la respuesta.
  */
-function mockAnalisis(over: Partial<{ reply: string | null; visitDate: string | null; visitHour: number | null; analyzed: boolean }> = {}) {
+function mockAnalisis(over: Partial<{ reply: string | null; visitDate: string | null; visitHour: number | null; analyzed: boolean; send: 'fotos' | 'plano' | 'video' | null }> = {}) {
   runConversationAnalysisMock.mockResolvedValueOnce({
     state: null,
     analyzed: over.analyzed ?? true,
@@ -609,6 +614,7 @@ function mockAnalisis(over: Partial<{ reply: string | null; visitDate: string | 
     reply: over.reply !== undefined ? over.reply : '¿Qué día y a qué hora te queda bien?',
     visitDate: over.visitDate ?? null,
     visitHour: over.visitHour ?? null,
+    send: over.send ?? null,
   })
 }
 
@@ -618,7 +624,7 @@ beforeEach(() => {
   // test dejó sin consumir se le aparecía al siguiente y lo hacía fallar por
   // un motivo que no tenía nada que ver. Los mocks de VALOR se resetean a mano.
   for (const m of [
-    visitsLimitResult, rpcMock, notesMaybeSingle, runConversationAnalysisMock,
+    visitsLimitResult, rpcMock, notesMaybeSingle, runConversationAnalysisMock, sendWhatsappMediaMock,
     settingsMaybeSingle, propMaybeSingle, leadsMaybeSingle, visitsInsertSingle,
     visitsUpdateMaybeSingle, stateMaybeSingle,
   ]) m.mockReset()
@@ -635,6 +641,7 @@ beforeEach(() => {
   // (el agente necesita saber si hay visita antes de pensar, y el modelo se
   // llama en cada turno). Los tests que prueban lo contrario los pisan.
   visitsLimitResult.mockResolvedValue({ data: [], error: null })
+  sendWhatsappMediaMock.mockResolvedValue({ ok: true, skipped: false })
   runConversationAnalysisMock.mockResolvedValue({
     state: null,
     analyzed: true,
@@ -1383,5 +1390,107 @@ describe('la propiedad tiene plan B: los datos son un lujo, el agente no', () =>
 
     expect(result.action).toBe('noop')
     expect(sendWhatsappTextMock).not.toHaveBeenCalled()
+  })
+})
+
+// Lo que el dueño pidió después de la segunda prueba real: si la persona quiere
+// ver fotos y la propiedad las tiene, se las mandamos. No "un asesor te las
+// acerca en la visita".
+describe('materialDisponible / archivosParaEnviar', () => {
+  // Solo los campos de media importan acá; el resto de la propiedad no se usa.
+  const base = {
+    photos: ['https://s/1.jpg', 'https://s/2.jpg', 'https://s/3.jpg', 'https://s/4.jpg'],
+    plans: ['https://s/plano.pdf'],
+    video_file_url: 'https://s/video.mp4',
+    video_url: 'https://youtube.com/watch?v=x',
+  } as unknown as Parameters<typeof import('./scheduling-agent').materialDisponible>[0]
+
+  it('dice qué hay de verdad', async () => {
+    const { materialDisponible } = await import('./scheduling-agent')
+    expect(materialDisponible(base)).toEqual({ fotos: true, plano: true, video: true })
+  })
+
+  it('un link de YouTube NO cuenta como video mandable: Meta descarga el archivo desde la URL', async () => {
+    const { materialDisponible } = await import('./scheduling-agent')
+    const soloYoutube = { ...base, video_file_url: null }
+    expect(materialDisponible(soloYoutube).video).toBe(false)
+  })
+
+  it('sin nada cargado, no hay nada que ofrecer', async () => {
+    const { materialDisponible } = await import('./scheduling-agent')
+    expect(materialDisponible({ ...base, photos: null, plans: null, video_file_url: null, video_url: null }))
+      .toEqual({ fotos: false, plano: false, video: false })
+  })
+
+  it('las fotos se acotan: cada envío es un roundtrip a Meta y el webhook tiene ~26s', async () => {
+    const { archivosParaEnviar } = await import('./scheduling-agent')
+    const fotos = archivosParaEnviar(base, 'fotos')
+    expect(fotos).toHaveLength(3)
+    expect(fotos[0]).toEqual({ mediaType: 'image', link: 'https://s/1.jpg' })
+  })
+
+  it('el plano va como documento con nombre legible', async () => {
+    const { archivosParaEnviar } = await import('./scheduling-agent')
+    expect(archivosParaEnviar(base, 'plano')).toEqual([
+      { mediaType: 'document', link: 'https://s/plano.pdf', filename: 'plano-1.pdf' },
+    ])
+  })
+
+  it('pedir algo que no hay devuelve vacío (no se manda nada, no explota)', async () => {
+    const { archivosParaEnviar } = await import('./scheduling-agent')
+    expect(archivosParaEnviar({ ...base, plans: [] }, 'plano')).toEqual([])
+  })
+})
+
+describe('el agente manda el material que pidió el modelo', () => {
+  it('manda las fotos DESPUÉS del texto, marcadas como IA', async () => {
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    propMaybeSingle.mockResolvedValueOnce({
+      data: {
+        address: 'Av. Cabildo 2450', title: null, assigned_to: 'advisor-1', ai_scheduling_enabled: true,
+        photos: ['https://s/1.jpg', 'https://s/2.jpg'], plans: [], video_file_url: null,
+      },
+      error: null,
+    })
+    mockAnalisis({ reply: 'Te paso unas fotos así la ves por dentro.', send: 'fotos' })
+
+    await runSchedulingAgent({ ...BASE_INPUT })
+
+    expect(sendWhatsappTextMock).toHaveBeenCalledTimes(1)
+    expect(sendWhatsappMediaMock).toHaveBeenCalledTimes(2)
+    expect(sendWhatsappMediaMock).toHaveBeenCalledWith(expect.objectContaining({
+      mediaType: 'image', link: 'https://s/1.jpg', aiGenerated: true, sentBy: null,
+    }))
+  })
+
+  it('si el texto no salió, tampoco sale el material: primero se avisa, después llega', async () => {
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    propMaybeSingle.mockResolvedValueOnce({
+      data: {
+        address: 'Av. Cabildo 2450', title: null, assigned_to: 'advisor-1', ai_scheduling_enabled: true,
+        photos: ['https://s/1.jpg'], plans: [], video_file_url: null,
+      },
+      error: null,
+    })
+    sendWhatsappTextMock.mockResolvedValueOnce({ ok: false, skipped: false, error: 'Meta caído' })
+    mockAnalisis({ reply: 'Te paso unas fotos.', send: 'fotos' })
+
+    await runSchedulingAgent({ ...BASE_INPUT })
+
+    expect(sendWhatsappMediaMock).not.toHaveBeenCalled()
+  })
+
+  it('si el modelo pide algo que la propiedad no tiene, no se manda nada (y el turno no se rompe)', async () => {
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    mockPropertyEnabled()
+    mockAnalisis({ reply: 'Te paso el plano.', send: 'plano' })
+
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
+
+    expect(result).toEqual({ action: 'reply' })
+    expect(sendWhatsappMediaMock).not.toHaveBeenCalled()
   })
 })

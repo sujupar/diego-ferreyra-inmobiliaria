@@ -54,6 +54,8 @@ export interface BrainContext {
   maxMessages: number
   /** `true` si esta conversación YA tiene una visita viva en agenda. */
   hasActiveVisit: boolean
+  /** Qué material se le puede MANDAR a esta persona por WhatsApp, ahora mismo. */
+  puedeMandar: { fotos: boolean; plano: boolean; video: boolean }
   /** Si el agente que ESCRIBE está apagado, el modelo solo analiza (no redacta respuesta). */
   canWrite: boolean
 }
@@ -71,6 +73,14 @@ export interface BrainDecision {
   visitDate: string | null
   /** Hora en punto (0-23) — SIN validar todavía. */
   visitHour: number | null
+  /**
+   * Material que el agente quiere mandarle a la persona en este turno. El
+   * modelo NO produce URLs: pide un tipo, y el código resuelve los archivos
+   * reales de ESA propiedad y los manda. Si pide algo que no hay, no se manda
+   * nada (y el texto ya debería no haberlo prometido, porque el prompt le dice
+   * exactamente qué tiene disponible).
+   */
+  send: 'fotos' | 'plano' | 'video' | null
 }
 
 export const SUMMARY_MAX = 400
@@ -102,7 +112,20 @@ Sos un chat atendido, no un formulario. Si pregunta algo, se lo contestás. Si c
 - Los datos de la propiedad que tenés abajo son reales: usalos para contestar precio, ambientes, superficie, barrio, lo que figure.
 - Lo que NO figure, no lo inventes NUNCA. Decí que lo consultás con un asesor. Inventar un dato de una propiedad es el peor error que podés cometer después de agendar mal.
 - Si pregunta algo que no es de esta propiedad (otra propiedad, tasaciones, alquileres, temas de dinero o legales), no improvises: decile que lo ve un asesor y que le escribe.
-- No ofrezcas mandar planos, fotos ni videos: no los podés mandar vos. Si los pide, decile que se los acerca el asesor.
+
+LE PODÉS MANDAR MATERIAL — USALO
+Abajo te digo qué hay disponible para ESTA propiedad. Si la persona lo pide, o si te das cuenta de que le sirve para decidir, mandáselo: ponés "send" en "fotos", "plano" o "video" y el sistema se lo manda de verdad, en este mismo momento.
+- Uno por mensaje. Si pide fotos y plano, mandá lo que más le sirve ahora y ofrecé lo otro después.
+- Escribí el texto como quien está mandando algo: "Te paso unas fotos" y el material sale junto con eso. No digas "te las mando más tarde".
+- Si pide algo que NO figura como disponible, decilo simple y ofrecé lo que sí tenés: "Plano no tengo a mano, pero te paso el video y ahí se ve bien la distribución".
+- Mandar material NO es un premio por agendar. Es ayudar. Se manda porque le sirve, punto.
+
+LO QUE NO HACÉS: EMPUJAR A AGENDAR EN CADA MENSAJE
+Este es el error más fácil de cometer y el que más molesta. Si a cada respuesta le pegás "¿qué día y a qué hora?", la persona siente que no la estás escuchando, que solo querés cerrar. Un buen asesor no hace eso.
+- Preguntá por el día y la hora cuando la conversación LLEGÓ ahí: cuando dijo que quiere verla, cuando ya le contestaste lo que necesitaba, o cuando ella misma abre el tema.
+- Si acabás de contestarle una duda o de mandarle material, cerrá ahí. No agregues la pregunta de coordinación. Dejala respirar.
+- Si ya preguntaste por el día en tu mensaje anterior y todavía no te contestó eso, NO lo vuelvas a preguntar. Contestá lo que te preguntó y ya.
+- Una conversación puede tener tres o cuatro idas y vueltas antes de hablar de fechas. Está perfecto: la persona está decidiendo.
 
 CUANDO YA QUEDÓ LA VISITA
 Cerrá cálido y concreto, no protocolar, y decí con claridad qué va a pasar después. Una frase que funciona bien:
@@ -127,7 +150,8 @@ LOS OTROS CAMPOS (son para el equipo, no para el cliente)
 - "priorityReason": una frase corta que un asesor entienda de un vistazo.
 - "suggestedNextStep": una frase con la acción concreta para el asesor.
 
-Devolvé SIEMPRE un JSON válido con EXACTAMENTE estas 8 claves: summary, intent, priorityScore, priorityReason, suggestedNextStep, reply, visitDate, visitHour.`
+Devolvé SIEMPRE un JSON válido con EXACTAMENTE estas 9 claves: summary, intent, priorityScore, priorityReason, suggestedNextStep, reply, visitDate, visitHour, send.
+"send" va en null si no mandás material en este turno.`
 
 /** El contexto de esta conversación, en el formato que lee el modelo. */
 export function buildBrainUserPrompt(ctx: BrainContext): string {
@@ -144,6 +168,16 @@ export function buildBrainUserPrompt(ctx: BrainContext): string {
       'Cualquier dato que no esté en esta lista NO lo sabés. No lo inventes.',
     ].join('\n'),
   ]
+
+  const disponible: string[] = []
+  if (ctx.puedeMandar.fotos) disponible.push('fotos')
+  if (ctx.puedeMandar.plano) disponible.push('plano')
+  if (ctx.puedeMandar.video) disponible.push('video')
+  partes.push(
+    disponible.length > 0
+      ? `Material que le podés MANDAR ahora mismo (poné "send" con una de estas palabras): ${disponible.join(', ')}.`
+      : 'Material para mandar: NO hay nada cargado para esta propiedad. No ofrezcas fotos, plano ni video: no los tenés. "send" va en null.',
+  )
 
   if (ctx.hasActiveVisit) {
     partes.push('ATENCIÓN: esta persona YA tiene una visita en agenda para esta propiedad. No propongas ni anotes otra: "reply" va en null.')
@@ -195,6 +229,11 @@ export function coerceBrainDecision(raw: unknown): BrainDecision | null {
   const hourRaw = typeof r.visitHour === 'number' ? r.visitHour : Number(r.visitHour)
   const visitHour = Number.isInteger(hourRaw) ? hourRaw : null
 
+  // Solo tres valores son válidos; cualquier otra cosa (o una URL inventada)
+  // se descarta. El código resuelve los archivos, el modelo solo pide el tipo.
+  const sendRaw = typeof r.send === 'string' ? r.send.trim().toLowerCase() : ''
+  const send = sendRaw === 'fotos' || sendRaw === 'plano' || sendRaw === 'video' ? sendRaw : null
+
   return {
     summary: r.summary.trim().slice(0, SUMMARY_MAX),
     intent,
@@ -204,6 +243,7 @@ export function coerceBrainDecision(raw: unknown): BrainDecision | null {
     reply,
     visitDate,
     visitHour,
+    send,
   }
 }
 

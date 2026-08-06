@@ -116,7 +116,7 @@ describe('coerceAnalysisResult (pura)', () => {
     const result = coerceAnalysisResult(VALID_ANALYSIS)
     // El prompt de ANALISTA no redacta ni propone fecha — eso es del prompt de
     // AGENTE (`coerceBrainDecision`), que es otro camino.
-    expect(result).toEqual({ ...VALID_ANALYSIS, reply: null, visitDate: null, visitHour: null })
+    expect(result).toEqual({ ...VALID_ANALYSIS, reply: null, visitDate: null, visitHour: null, send: null })
   })
 
   it('null si falta summary', () => {

@@ -23,6 +23,7 @@ function ctx(over: Partial<BrainContext> = {}): BrainContext {
     maxMessages: 3,
     hasActiveVisit: false,
     canWrite: true,
+    puedeMandar: { fotos: true, plano: true, video: true },
     ...over,
   }
 }
@@ -59,6 +60,21 @@ describe('buildBrainUserPrompt', () => {
   it('sin datos cargados, le dice que derive a un asesor en vez de improvisar', () => {
     expect(buildBrainUserPrompt(ctx({ propertyFacts: [] }))).toMatch(/lo ve un asesor|consulta la ve un asesor/)
   })
+
+  it('le dice QUÉ material puede mandar — si no, promete lo que no existe', () => {
+    expect(buildBrainUserPrompt(ctx())).toMatch(/podés MANDAR ahora mismo.*fotos, plano, video/)
+  })
+
+  it('sin material cargado, le prohíbe ofrecerlo', () => {
+    const p = buildBrainUserPrompt(ctx({ puedeMandar: { fotos: false, plano: false, video: false } }))
+    expect(p).toMatch(/NO hay nada cargado/)
+    expect(p).toMatch(/No ofrezcas fotos, plano ni video/)
+  })
+
+  it('solo ofrece lo que hay: con fotos pero sin plano ni video, nombra solo fotos', () => {
+    const p = buildBrainUserPrompt(ctx({ puedeMandar: { fotos: true, plano: false, video: false } }))
+    expect(p).toMatch(/podés MANDAR ahora mismo[^\n]*fotos\./)
+  })
 })
 
 // El agente atiende personas, no despacha turnos. Estas instrucciones son la
@@ -83,8 +99,14 @@ describe('DEFAULT_AGENT_PROMPT — cómo atiende', () => {
     expect(DEFAULT_AGENT_PROMPT).toMatch(/va directo al grano/)
   })
 
-  it('no ofrece mandar planos ni videos: no los puede mandar', () => {
-    expect(DEFAULT_AGENT_PROMPT).toMatch(/No ofrezcas mandar planos/)
+  it('SÍ manda material cuando ayuda — no es un premio por agendar', () => {
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/LE PODÉS MANDAR MATERIAL/)
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/NO es un premio por agendar/)
+  })
+
+  it('tiene prohibido rematar cada mensaje empujando a agendar', () => {
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/NO HACÉS: EMPUJAR A AGENDAR EN CADA MENSAJE/)
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/No agregues la pregunta de coordinación/)
   })
 
   it('sigue sin poder afirmar que la visita está confirmada', () => {
@@ -140,6 +162,13 @@ describe('coerceBrainDecision', () => {
     const d = coerceBrainDecision({ ...base, reply: 'x'.repeat(2000), summary: 'y'.repeat(2000) })
     expect(d?.reply?.length).toBe(REPLY_MAX)
     expect(d?.summary.length).toBe(SUMMARY_MAX)
+  })
+
+  it('un "send" inventado se descarta: el código resuelve los archivos, el modelo solo pide el tipo', () => {
+    expect(coerceBrainDecision({ ...base, send: 'https://mi-url-inventada/foto.jpg' })?.send).toBeNull()
+    expect(coerceBrainDecision({ ...base, send: 'FOTOS' })?.send).toBe('fotos')
+    expect(coerceBrainDecision({ ...base, send: 'plano' })?.send).toBe('plano')
+    expect(coerceBrainDecision({ ...base })?.send).toBeNull()
   })
 
   it('una fecha con formato raro se descarta (después la valida el código igual)', () => {

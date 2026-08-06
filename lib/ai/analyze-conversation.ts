@@ -184,6 +184,8 @@ export interface AnalysisResult {
   visitDate: string | null
   /** Hora en punto propuesta, SIN validar. */
   visitHour: number | null
+  /** Material a mandar en este turno, o null. */
+  send: 'fotos' | 'plano' | 'video' | null
 }
 
 interface RawAnalysis {
@@ -232,6 +234,7 @@ export function coerceAnalysisResult(raw: unknown): AnalysisResult | null {
     reply: null,
     visitDate: null,
     visitHour: null,
+    send: null,
   }
 }
 
@@ -289,6 +292,7 @@ async function askModel(
       reply: d.reply,
       visitDate: d.visitDate,
       visitHour: d.visitHour,
+      send: d.send,
       tokensUsed: res.usage?.totalTokens ?? 0,
       model: res.model,
     }
@@ -368,6 +372,8 @@ export interface RunConversationAnalysisResult {
   visitDate: string | null
   /** Hora propuesta, SIN validar. */
   visitHour: number | null
+  /** Material que el agente quiere mandar en este turno (fotos/plano/video), o null. */
+  send: 'fotos' | 'plano' | 'video' | null
 }
 
 /**
@@ -406,13 +412,13 @@ export async function runConversationAnalysis(
   // y `properties.ai_scheduling_enabled`— ya fallaban cerrados; a este se le
   // había pasado.
   if (read.readFailed) {
-    return { state: null, analyzed: false, readFailed: true, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null }
+    return { state: null, analyzed: false, readFailed: true, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null, send: null }
   }
 
   const state = read.state
 
   if (!debeAnalizar(state, mensajes, ahora)) {
-    return { state, analyzed: false, readFailed: false, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null }
+    return { state, analyzed: false, readFailed: false, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null, send: null }
   }
 
   const nuevos = mensajesNuevosDesde(state, mensajes)
@@ -422,7 +428,7 @@ export async function runConversationAnalysis(
     // apagado (o no se pudo leer), el modelo falló, o devolvió algo con forma
     // inválida. Nunca lanza y NO escribe: se deja el estado anterior sin tocar.
     // La conversación igual se ordena por la ventana de 24hs, que no necesita IA.
-    return { state, analyzed: false, readFailed: false, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null }
+    return { state, analyzed: false, readFailed: false, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null, send: null }
   }
 
   const ultimoNuevo = nuevos[nuevos.length - 1]
@@ -468,5 +474,6 @@ export async function runConversationAnalysis(
     reply: patch.reply,
     visitDate: patch.visitDate,
     visitHour: patch.visitHour,
+    send: patch.send,
   }
 }
