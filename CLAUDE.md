@@ -602,6 +602,65 @@ dos propiedades puede recibir la dirección equivocada.
   conversación y queda una nota INTERNA en el chat (`status:'agent_handoff'`, no
   sale por Meta). Al cliente NO se le escribe "ahora te atiende un humano".
 
+### Es un agente que ATIENDE, no un formulario de agendamiento (2026-08-06)
+
+El diseño original tenía un prompt de ANALISTA que clasificaba, y la respuesta la
+decidía un parser de expresiones regulares. En la primera prueba con una persona
+real el agente preguntó "¿qué día y a qué hora?", el cliente contestó "Mañana", y
+el sistema no supo qué hacer. **Un agente conversacional no puede depender de que
+la gente conteste con la forma exacta que espera un regex.**
+
+Hoy el modelo entiende la conversación Y redacta la respuesta, en UNA sola
+llamada — la misma que ya se hacía para ordenar la bandeja. El prompt vive en
+`lib/ai/agent-brain.ts` (`DEFAULT_AGENT_PROMPT`).
+
+**La división que hace que esto sea seguro: el modelo decide qué DECIR, el código
+decide qué PASA.** El modelo nunca agenda: propone. `validateProposedVisit`
+verifica que la fecha exista, sea futura y esté dentro de 90 días antes de que
+nada entre al CRM. Los frenos —interruptores, ventana, tope, visita ya
+coordinada— se evalúan en código y MANDAN sobre lo que devuelva el modelo.
+
+**Manda material de verdad** (fotos, planos, video): el modelo pide un TIPO
+(`send: ["fotos","video"]`) y `archivosParaEnviar` resuelve los archivos reales
+de esa propiedad. El modelo nunca produce URLs. Reglas que están en el CÓDIGO y
+no en el prompt, porque tienen que ocurrir SIEMPRE:
+- **Fotos y video van juntos**, en las dos direcciones (`completarConVideo`).
+  Pedir fotos y recibir solo el video dejó a un cliente sin lo que pidió.
+- Tope de 3 archivos por turno: es un límite de TIEMPO (cada envío es un
+  roundtrip a Meta dentro del webhook), no de gusto.
+- Un link de YouTube NO es video mandable: Meta descarga el archivo desde la URL.
+  Por eso se migraron los videos a archivo propio (`video_file_url`).
+
+**Lecciones de tono, todas aprendidas rompiéndolas:**
+- Empujaba a agendar en CADA mensaje. La causa no era la instrucción sino la
+  FALTA DE INFORMACIÓN: el modelo no podía saber que ya lo había preguntado —el
+  resumen acumulado no guarda sus palabras—. Se le pasa su mensaje anterior
+  (`ultimoMensajePropio`). **Cuando el modelo se porta mal, preguntarse primero
+  qué NO puede saber.**
+- Contestaba como una ficha ("La casa tiene 3 ambientes, 2 dormitorios..."). Se
+  corrigió con ejemplos de MAL y BIEN en el prompt: es lo único que corrige un tono.
+- Repetía el mismo material cada turno: se le pasa `yaMandado`.
+
+### Banco de pruebas: `/admin/ai-agent`
+
+Escribís lo que diría un cliente y ves qué contestaría, SIN mandar WhatsApp ni
+escribir nada. Muestra respuesta, archivos, si agendaría, lo que anota para el
+equipo, y el prompt completo. **Existe porque probar contra el chat real costó
+tres rondas de diagnóstico equivocado**: el dueño probaba contra código que
+todavía no había deployado y no había forma de verificar sin pedirle otra
+prueba. Usalo ANTES de tocar el prompt.
+
+Esa ruta esquiva `analysis_enabled` a propósito (no es automática, la dispara
+una persona con permiso de configuración): apagar el agente no debe impedir
+probarlo.
+
+### Apagar el agente en UNA conversación
+
+Botón en el chat del Inbox (`ThreadActionsBar`) → `POST
+/api/whatsapp/conversations/[phone]/agent`. Escribe la MISMA columna
+(`agent_handed_off`) que usa el tope, así no hay dos frenos que se contradigan,
+y deja nota interna con quién lo apagó.
+
 ### Dónde corre (y por qué no puede correr en otro lado)
 
 `runSchedulingAgent` corre **pegado** a `runConversationAnalysis`, en el MISMO
@@ -610,11 +669,15 @@ ciclo del webhook (`app/api/webhooks/whatsapp/route.ts` → `runAiPipeline`).
 solo en el resultado del análisis. Si alguna vez se mueve el agente a un proceso
 aparte que lee la tabla, esos dos datos NO van a estar ahí.
 
-El agente **nunca** hace una llamada de IA propia: interpreta el "cuándo" con un
-parser determinístico (`parseProposedSlot`, regex sobre castellano rioplatense).
-Es a propósito — el análisis ya gastó la única llamada de IA permitida en el
-request (ver § "nunca encadenar varias llamadas de IA dentro de UN request").
-Ante texto que no matchea con confianza NO adivina: vuelve a proponer franjas.
+Sigue siendo UNA sola llamada al modelo por mensaje entrante (ver § "nunca
+encadenar varias llamadas de IA dentro de UN request"): la misma que ordena la
+bandeja, haciendo el trabajo completo.
+
+**Presupuesto de tiempo (`AI_BUDGET_MS`, hoy 5s):** el POST no arranca el
+pipeline si ya se consumió ese tiempo. OJO — estuvo en 1s y eso lo mató: guardar
+el mensaje entrante ya se lleva más de un segundo, así que el análisis no corría
+NUNCA y el agente parecía apagado. El gate es para no arrancar cuando ni el caso
+NORMAL entra, no para cubrir el peor caso teórico.
 
 ### Contención del costo (la regla que define el diseño)
 
