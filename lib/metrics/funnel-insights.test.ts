@@ -109,6 +109,20 @@ describe('estado de resultados', () => {
     expect(cuello?.conversionPct).toBe(14)
   })
 
+  it('el ancho de la barra es proporcional al volumen, con la mayor al 100%', () => {
+    const l = construirEstado(etapas, 3_407_443)
+    expect(l[0].pctDelMaximo).toBe(100)                        // 109, la más alta
+    expect(Math.round(l[1].pctDelMaximo)).toBe(24)             // 26 de 109
+    expect(Math.round(l[4].pctDelMaximo)).toBe(1)              // 1 de 109
+  })
+
+  it('con todo en cero las barras quedan en cero y no dividen por cero', () => {
+    const l = construirEstado([
+      { etapa: 'request', orden: 1, cantidad: 0, mediana_dias: null },
+    ], 1000)
+    expect(l[0].pctDelMaximo).toBe(0)
+  })
+
   it('sin inversión cargada no inventa un costo', () => {
     const l = construirEstado(etapas, 0)
     expect(l[0].costoUnitario).toBeNull()

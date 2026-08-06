@@ -101,6 +101,8 @@ export interface StatementLine {
   medianaDias: number | null
   /** El peor salto de conversión de toda la cascada. */
   esCuelloDeBotella: boolean
+  /** Ancho de la barra, 0–100, relativo a la etapa más numerosa. */
+  pctDelMaximo: number
 }
 
 /**
@@ -113,6 +115,7 @@ export interface StatementLine {
  */
 export function construirEstado(stages: StatementStage[], inversion: number): StatementLine[] {
   const ordenadas = [...stages].sort((a, b) => a.orden - b.orden)
+  const maximo = Math.max(0, ...ordenadas.map(s => s.cantidad))
 
   const lineas: StatementLine[] = ordenadas.map((s, i) => {
     const previa = i > 0 ? ordenadas[i - 1] : null
@@ -128,6 +131,8 @@ export function construirEstado(stages: StatementStage[], inversion: number): St
       perdidos: previa ? previa.cantidad - s.cantidad : null,
       medianaDias: s.mediana_dias,
       esCuelloDeBotella: false,
+      // La barra es proporcional al volumen: así el desplome se VE, no se lee.
+      pctDelMaximo: maximo > 0 ? (s.cantidad / maximo) * 100 : 0,
     }
   })
 

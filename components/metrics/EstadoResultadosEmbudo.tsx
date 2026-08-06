@@ -104,14 +104,40 @@ export function EstadoResultadosEmbudo({ etapas, inversion, costs }: Props) {
               )}
 
               {/* La línea de la etapa */}
-              <div className={`flex items-baseline justify-between gap-3 py-1.5 border-b ${l.esCuelloDeBotella ? 'border-amber-300' : ''}`}>
-                <span className="font-medium uppercase text-xs tracking-wide">{l.label}</span>
-                <span className="flex items-baseline gap-4 shrink-0">
-                  <span className="display text-lg tabular-n">{NUM.format(l.cantidad)}</span>
-                  <span className="text-xs text-muted-foreground tabular-n w-32 text-right">
-                    {l.costoUnitario == null ? 'sin costo' : `${ARS.format(l.costoUnitario)} c/u`}
+              <div className="py-1.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="font-medium uppercase text-xs tracking-wide">{l.label}</span>
+                  <span className="flex items-baseline gap-4 shrink-0">
+                    <span className="display text-lg tabular-n">{NUM.format(l.cantidad)}</span>
+                    <span className="text-xs text-muted-foreground tabular-n w-32 text-right">
+                      {l.costoUnitario == null ? 'sin costo' : `${ARS.format(l.costoUnitario)} c/u`}
+                    </span>
                   </span>
-                </span>
+                </div>
+
+                {/*
+                  La barra: ancho proporcional al volumen, para que el desplome se
+                  VEA. Se resalta SOLO el cuello de botella y el resto queda gris
+                  (forma "emphasis"): pintar las cinco de colores distintos
+                  escondería justo el dato que importa.
+                  El costo NO va como barra: su escala va de $31 mil a $3,4
+                  millones y necesitaría un segundo eje, que deforma la lectura.
+                */}
+                <div
+                  className="mt-1.5 h-2.5 w-full rounded-full bg-muted/60 overflow-hidden"
+                  role="img"
+                  aria-label={`${l.label}: ${NUM.format(l.cantidad)}`}
+                  title={`${l.label}: ${NUM.format(l.cantidad)}${l.costoUnitario ? ` · ${ARS.format(l.costoUnitario)} c/u` : ''}`}
+                >
+                  <div
+                    className={`h-full rounded-full transition-[width] duration-500 ${
+                      l.esCuelloDeBotella
+                        ? 'bg-[#2a78d6] dark:bg-[#3987e5]'
+                        : 'bg-muted-foreground/30'
+                    }`}
+                    style={{ width: `${Math.max(l.pctDelMaximo, l.cantidad > 0 ? 1.5 : 0)}%` }}
+                  />
+                </div>
               </div>
             </div>
           ))}
