@@ -1,4 +1,5 @@
 export { notifyDealCreated } from './deal-created'
+export { notifyAppraisalRequest } from './appraisal-request'
 export { notifyVisitCompleted } from './visit-completed'
 export { notifyAppraisalSent } from './appraisal-sent'
 export { notifyPropertyCreated } from './property-created'

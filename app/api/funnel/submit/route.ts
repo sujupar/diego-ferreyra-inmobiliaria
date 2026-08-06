@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { createClient } from '@supabase/supabase-js'
 import { createFunnelLead } from '@/lib/funnel/create-funnel-lead'
-import { attributionToDealColumns } from '@/lib/funnel/attribution'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -130,6 +129,7 @@ export async function POST(req: NextRequest) {
       propertyLocation: d.propertyLocation ?? null,
       tipoCliente: d.tipoCliente ?? null,
       message: d.message ?? null,
+      attribution: d.attribution ?? null,
     })
   } catch (e) {
     console.error('[funnel/submit] createFunnelLead failed', e)
@@ -145,15 +145,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Atribución de campaña → columnas meta_* del deal (lo que el asesor ve en el CRM).
-  try {
-    const metaCols = attributionToDealColumns(d.attribution)
-    if (Object.keys(metaCols).length > 0) {
-      await supabase.from('deals').update(metaCols).eq('id', result.dealId)
-    }
-  } catch (e) {
-    console.warn('[funnel/submit] meta attribution update failed', e)
-  }
+  // Atribución de campaña → columnas meta_* del deal: la aplica `createFunnelLead`
+  // en el MISMO insert del deal (antes de notificar), no acá. Antes este UPDATE
+  // corría DESPUÉS de que `createFunnelLead` ya había notificado (esperaba su
+  // propio await), así que el email de "Nueva solicitud de tasación" siempre
+  // mostraba la fila "Campaña" vacía — el dato llegaba tarde.
 
   // Log del submission (rate-limit/dedup futuros + event_id para Fase 3)
   await supabase.from('funnel_lead_submissions').insert({

@@ -1,9 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 import { createDeal } from '@/lib/supabase/deals'
 import { createTaskForRole } from '@/lib/supabase/tasks'
-import { notifyDealCreated } from '@/lib/email/notifications/deal-created'
+import { notifyAppraisalRequest } from '@/lib/email/notifications/appraisal-request'
 import { notifyClassRegistration } from '@/lib/email/notifications/class-registration'
 import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
+import { attributionToDealColumns, type FunnelAttribution } from '@/lib/funnel/attribution'
+import { FUNNEL_PLACEHOLDER_LABEL, buildPlaceholderAddress } from '@/lib/funnel/placeholder'
 
 export type FunnelKind = 'tasacion' | 'clase'
 
@@ -11,15 +13,15 @@ interface FunnelMapping {
   stage: 'request' | 'clase_gratuita'
   origin: 'embudo' | 'clase_gratuita'
   placeholderLabel: string
-  notify: 'deal' | 'class'
+  notify: 'appraisal_request' | 'class'
 }
 
 /** Mapea el funnel al stage/origin/notificación del CRM. Puro (testeable). */
 export function resolveFunnelMapping(funnel: FunnelKind): FunnelMapping {
   if (funnel === 'clase') {
-    return { stage: 'clase_gratuita', origin: 'clase_gratuita', placeholderLabel: 'Clase Gratuita', notify: 'class' }
+    return { stage: 'clase_gratuita', origin: 'clase_gratuita', placeholderLabel: FUNNEL_PLACEHOLDER_LABEL.clase, notify: 'class' }
   }
-  return { stage: 'request', origin: 'embudo', placeholderLabel: 'Solicitud de tasación', notify: 'deal' }
+  return { stage: 'request', origin: 'embudo', placeholderLabel: FUNNEL_PLACEHOLDER_LABEL.tasacion, notify: 'appraisal_request' }
 }
 
 // Cliente admin sin tipar (igual que lib/supabase/deals.ts y tasks.ts): el tipo
@@ -40,6 +42,15 @@ export interface FunnelLeadInput {
   propertyLocation?: string | null
   tipoCliente?: string | null
   message?: string | null
+  /**
+   * Atribución de campaña (UTM/Meta) capturada en la landing. Se vuelca a las
+   * columnas `meta_*` del deal en el MISMO insert (ver `attributionToDealColumns`)
+   * — así la notificación que se dispara a continuación ya la ve. Antes esto se
+   * escribía con un UPDATE posterior en `POST /api/funnel/submit`, DESPUÉS de que
+   * `createFunnelLead` ya había notificado: el email siempre mostraba la campaña
+   * vacía.
+   */
+  attribution?: FunnelAttribution | null
 }
 
 export interface FunnelLeadResult {
@@ -82,7 +93,7 @@ export async function createFunnelLead(input: FunnelLeadInput): Promise<FunnelLe
   const contactId: string = resolvedContactId
 
   // 2) Crear deal (property_address NOT NULL → ubicación capturada o placeholder)
-  const placeholder = `${map.placeholderLabel} — ${name}`
+  const placeholder = buildPlaceholderAddress(input.funnel, name)
   const propertyAddress =
     input.funnel === 'tasacion' && input.propertyLocation?.trim()
       ? input.propertyLocation.trim()
@@ -92,12 +103,18 @@ export async function createFunnelLead(input: FunnelLeadInput): Promise<FunnelLe
       ? `Tipo de cliente: ${input.tipoCliente}`
       : input.message ?? undefined
 
+  // Columnas meta_* (+ origin_metadata) derivadas de la atribución de campaña.
+  // {} si no hay atribución → el spread no agrega nada y el insert queda
+  // idéntico al comportamiento previo.
+  const metaCols = attributionToDealColumns(input.attribution)
+
   const dealId = await createDeal({
     contact_id: contactId,
     property_address: propertyAddress,
     origin: map.origin,
     stage: map.stage,
     notes: dealNotes,
+    ...metaCols,
   })
 
   // 3) Tarea de coordinador (broadcast a coordinadores activos)
@@ -109,11 +126,22 @@ export async function createFunnelLead(input: FunnelLeadInput): Promise<FunnelLe
     contact_id: contactId,
   })
 
-  // 4) Notificación con escalación (rama correcta según funnel)
+  // 4) Notificación con escalación (rama correcta según funnel).
+  //    Tasación = SOLICITUD recién entrada (no hay fecha ni asesor todavía) →
+  //    notifyAppraisalRequest. El email de "Tasación agendada" (notifyDealCreated)
+  //    es exclusivo de la coordinación manual desde /api/deals.
   await notifyWithEscalation(
-    () => (map.notify === 'class' ? notifyClassRegistration({ dealId }) : notifyDealCreated({ dealId })),
-    { failedNotificationType: map.notify === 'class' ? 'class_registration' : 'deal_created', entityType: 'deal', entityId: dealId },
+    () => (map.notify === 'class' ? notifyClassRegistration({ dealId }) : notifyAppraisalRequest({ dealId })),
+    { failedNotificationType: map.notify === 'class' ? 'class_registration' : 'appraisal_request', entityType: 'deal', entityId: dealId },
   )
+
+  // 5) Sync Mailchimp (best-effort: nunca rompe el alta del lead)
+  try {
+    const { syncDealToMailchimp } = await import('@/lib/integrations/mailchimp/sync-deal')
+    await syncDealToMailchimp(dealId)
+  } catch (err) {
+    console.warn('[mailchimp] funnel sync failed (ignored):', err instanceof Error ? err.message : err)
+  }
 
   return { contactId, dealId }
 }

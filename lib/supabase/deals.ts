@@ -4,6 +4,16 @@ function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
+// lib/supabase/deals.ts — helper de enganche (dynamic import: nunca rompe el flujo)
+async function syncMailchimpBestEffort(dealId: string): Promise<void> {
+  try {
+    const { syncDealToMailchimp } = await import('@/lib/integrations/mailchimp/sync-deal')
+    await syncDealToMailchimp(dealId)
+  } catch (err) {
+    console.warn('[mailchimp] hook sync failed (ignored):', err instanceof Error ? err.message : err)
+  }
+}
+
 export type DealStage =
   | 'clase_gratuita'
   | 'request'
@@ -48,6 +58,22 @@ export interface DealInput {
    * forms internos. Webhooks GHL pasan 'request' o 'clase_gratuita'.
    */
   stage?: DealStage
+  // Columnas meta_* (+ origin_metadata) que `createFunnelLead` vuelca en el
+  // MISMO insert cuando la landing capturó atribución de campaña — mismo shape
+  // que devuelve `attributionToDealColumns` (lib/funnel/attribution.ts). Sin
+  // esto, TypeScript igual dejaría pasar el spread de esas columnas (no se
+  // valida "excess properties" contra un objeto esparcido), pero tiparlas acá
+  // documenta que la tabla `deals` las tiene y evita que un futuro refactor que
+  // arme el input en una variable intermedia las pierda en silencio.
+  meta_campaign_id?: string | null
+  meta_campaign_name?: string | null
+  meta_adset_id?: string | null
+  meta_adset_name?: string | null
+  meta_ad_id?: string | null
+  meta_ad_name?: string | null
+  meta_placement?: string | null
+  meta_site_source?: string | null
+  origin_metadata?: unknown
 }
 
 export async function createDeal(input: DealInput) {
@@ -188,6 +214,7 @@ export async function updateDealStage(id: string, stage: DealStage, notes?: stri
 
   const { error } = await getAdmin().from('deals').update(updates).eq('id', id)
   if (error) throw error
+  await syncMailchimpBestEffort(id)
 }
 
 export async function updateDealNotes(id: string, notes: string) {
@@ -224,6 +251,7 @@ export async function linkAppraisalToDeal(dealId: string, appraisalId: string) {
     })
     .eq('id', dealId)
   if (error) throw error
+  await syncMailchimpBestEffort(dealId)
 }
 
 export async function linkPropertyToDeal(dealId: string, propertyId: string) {
@@ -237,4 +265,5 @@ export async function linkPropertyToDeal(dealId: string, propertyId: string) {
     })
     .eq('id', dealId)
   if (error) throw error
+  await syncMailchimpBestEffort(dealId)
 }
