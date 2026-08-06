@@ -90,9 +90,15 @@ Eso define la familia de plantillas:
 
 > Hola {{1}}, ¿cómo estás? Soy del equipo de Diego Ferreyra Inmobiliaria.
 >
-> Te paso {{2}} de {{3}}, por la consulta que dejaste recién.
+> Te paso {{2}} de {{3}}, por la consulta que dejaste recién. Si querés te mando
+> las fotos también.
 >
 > Contame, ¿cómo te puedo ayudar?
+
+El ofrecimiento de las fotos es deliberado (decisión del dueño, 2026-08-06): da
+una razón concreta para contestar además de la pregunta abierta, y las fotos el
+agente ya las sabe mandar. Quien conteste "dale" abre la ventana de 24hs, que es
+lo que habilita todo lo demás.
 
 Sin botones, a propósito. La pregunta abierta es la que hace que la persona
 conteste, y esa respuesta **abre la ventana de 24hs** — que es lo que habilita
@@ -270,15 +276,27 @@ que ya tenemos medido. Es la misma pregunta que ya sabemos responder con datos.
 1. **Nadie tiene planos cargados.** Dos de las tres plantillas no se usarían.
    ¿Se van a cargar? ¿Quién? Si la respuesta es "no por ahora", la de plano se
    construye igual pero no se manda a aprobación todavía.
-2. **Cómo se cargan hoy las propiedades y por qué 41 consultas no matchean.**
-   ¿Se publican en los portales desde el sistema o a mano? Si es a mano, el
-   código del aviso nunca va a coincidir solo.
+2. **RESUELTO en parte (2026-08-06):** hoy se publica A MANO en los portales, por
+   eso 41 consultas no matchean. Publicar desde la plataforma linkea el aviso
+   solo (`syncPortalPropertyMap` ya lo hace al publicar). PERO: eso sirve para
+   MercadoLibre, y **158 de las 198 consultas vienen de ZonaProp**, donde no
+   podemos publicar desde el sistema. O sea: publicar desde la plataforma NO
+   resuelve la fuente principal. Para ZonaProp el camino es la pantalla de
+   vinculación de la Task 7, y es más importante de lo que parecía.
 3. **El tono del primer mensaje.** Está escrito arriba con las palabras de
    Diego; conviene que él lo lea antes de mandarlo a aprobación, porque después
    cambiarlo cuesta otra aprobación.
-4. **Velocidad real.** La ingesta hoy corre por cron. "Instantáneo" va a ser
-   "dentro del próximo ciclo". Hay que decidir cada cuánto corre — y eso tiene
-   un costo que conviene mirar antes de prometerlo.
+4. **Velocidad real.** Nadie nos avisa cuando llega un mail de consulta: el
+   sistema va a mirar la casilla cada tanto. Así que "instantáneo" es en
+   realidad "dentro de los próximos N minutos", y N es una decisión: mirar más
+   seguido cuesta más (cada revisión es trabajo, corra o no haya nada). Con ~3
+   consultas por día, revisar cada 2-3 minutos en horario comercial y más
+   espaciado de noche da una respuesta que la persona percibe como inmediata sin
+   pagar por revisar la casilla 700 veces al día.
+
+5. **Los planos se van a cargar** (el dueño tiene varios, ~10 min de trabajo),
+   pero el diseño NO depende de eso: la plantilla se elige según lo que la
+   propiedad tenga. Sin plano y con video, va el video.
 
 ## Verificación
 
