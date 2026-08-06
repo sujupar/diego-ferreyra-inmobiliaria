@@ -62,6 +62,10 @@ interface PropertyData {
   contract_end_date: string | null
   origin: string | null
   status: string
+  commercial_status: string | null
+  sold_price: number | null
+  sold_currency: string | null
+  sold_at: string | null
   documents: Array<{ name: string; url: string }>
   photos: string[]
   plans: string[] | null
@@ -169,40 +173,8 @@ export default function PropertyDetailPage() {
     }
   }
 
-  async function handleDiscard() {
-    if (!confirm(`¿Descartar la propiedad "${property?.address}"?\n\nQueda guardada en el sistema (status="Descartada") y se puede restaurar cambiándola de estado, pero no avanza más en el flujo de captación.`)) return
-    setSubmitting(true)
-    try {
-      const res = await fetch(`/api/properties/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'descartada' }),
-      })
-      if (!res.ok) throw new Error('Error')
-      await fetchProperty()
-    } catch {
-      alert('Error al descartar')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  async function handleRestore() {
-    setSubmitting(true)
-    try {
-      const res = await fetch(`/api/properties/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'draft' }),
-      })
-      if (!res.ok) throw new Error('Error')
-      await fetchProperty()
-    } catch {
-      alert('Error al restaurar')
-    } finally {
-      setSubmitting(false)
-    }
-  }
+  // Descartar y restaurar dejaron de vivir acá: ahora son estados de la tarjeta
+  // "Estado de la propiedad", en la pestaña Propiedad (2026-08-06).
 
   async function handleDelete() {
     if (!property) return
@@ -297,6 +269,7 @@ export default function PropertyDetailPage() {
         statusLabel={statusInfo.label}
         statusColor={statusInfo.color}
         showPrice={!isAbogado}
+        commercialStatus={property.commercial_status}
       />
 
       <PropertyKeyStats stats={buildKeyStats(property)} />
@@ -312,7 +285,7 @@ export default function PropertyDetailPage() {
       <PropertyTabsNav tabs={tabs} active={tab} onChange={goToTab} />
 
       <div className="pt-2">
-        {tab === 'propiedad' && <OverviewTab property={property} isAbogado={!!isAbogado} />}
+        {tab === 'propiedad' && <OverviewTab property={property} isAbogado={!!isAbogado} onChanged={fetchProperty} />}
 
         {tab === 'multimedia' && (
           <MediaTab
@@ -361,11 +334,8 @@ export default function PropertyDetailPage() {
       {!isAbogado && (
         <PropertyArchiveFooter
           createdAt={property.created_at}
-          isDiscarded={property.status === 'descartada'}
           canHardDelete={canHardDelete}
           submitting={submitting}
-          onDiscard={handleDiscard}
-          onRestore={handleRestore}
           onDelete={handleDelete}
         />
       )}

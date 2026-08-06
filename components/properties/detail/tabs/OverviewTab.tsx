@@ -3,6 +3,8 @@
 import dynamic from 'next/dynamic'
 import { Card, CardContent } from '@/components/ui/card'
 import { formatMoney, operationLabel, propertyTypeLabel } from '@/lib/properties/detail-view'
+import { commercialStatusDef } from '@/lib/properties/commercial-status'
+import { PropertyCommercialStatusCard } from '../PropertyCommercialStatusCard'
 
 // Leaflet toca `window`: fuera del render de servidor.
 const PropertyLocationMap = dynamic(
@@ -11,6 +13,11 @@ const PropertyLocationMap = dynamic(
 )
 
 export interface OverviewProperty {
+  id: string
+  commercial_status?: string | null
+  sold_price?: number | null
+  sold_currency?: string | null
+  sold_at?: string | null
   address: string
   neighborhood: string
   city: string
@@ -51,7 +58,7 @@ function Spec({ label, value }: { label: string; value: string }) {
   )
 }
 
-export function OverviewTab({ property, isAbogado }: { property: OverviewProperty; isAbogado: boolean }) {
+export function OverviewTab({ property, isAbogado, onChanged }: { property: OverviewProperty; isAbogado: boolean; onChanged: () => void }) {
   const amenities = amenityList(property.amenities)
   const hasCoords = property.latitude != null && property.longitude != null
 
@@ -65,6 +72,19 @@ export function OverviewTab({ property, isAbogado }: { property: OverviewPropert
 
   return (
     <div className="space-y-8">
+      {/* El abogado no ve ni toca datos comerciales. */}
+      {!isAbogado && (
+        <PropertyCommercialStatusCard
+          propertyId={property.id}
+          current={commercialStatusDef(property.commercial_status).key}
+          currency={property.currency}
+          soldPrice={property.sold_price ?? null}
+          soldCurrency={property.sold_currency ?? null}
+          soldAt={property.sold_at ?? null}
+          onChanged={onChanged}
+        />
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-6">
         <section>
           <p className="eyebrow">La propiedad</p>

@@ -3,6 +3,7 @@
 import { MapPin } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { formatMoney, operationLabel, propertyTypeLabel } from '@/lib/properties/detail-view'
+import { commercialStatusDef } from '@/lib/properties/commercial-status'
 
 interface Props {
   operationType: string | null
@@ -16,11 +17,13 @@ interface Props {
   statusColor: string
   /** El abogado no ve datos comerciales. */
   showPrice: boolean
+  /** Estado comercial. El badge solo se muestra cuando NO es 'disponible', para no sumar ruido al caso normal. */
+  commercialStatus?: string | null
 }
 
 export function PropertyIdentityBar({
   operationType, propertyType, address, neighborhood, city,
-  price, currency, statusLabel, statusColor, showPrice,
+  price, currency, statusLabel, statusColor, showPrice, commercialStatus,
 }: Props) {
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -40,7 +43,14 @@ export function PropertyIdentityBar({
             <p className="display text-3xl tabular-n mt-1">{formatMoney(price, currency)}</p>
           </>
         )}
-        <Badge className={`text-white text-xs mt-2 ${statusColor}`}>{statusLabel}</Badge>
+        <div className="flex flex-wrap gap-1.5 mt-2 sm:justify-end">
+          <Badge className={`text-white text-xs ${statusColor}`}>{statusLabel}</Badge>
+          {commercialStatus && commercialStatus !== 'disponible' && (
+            <Badge className={`text-xs ${commercialStatusDef(commercialStatus).badge}`}>
+              {commercialStatusDef(commercialStatus).label}
+            </Badge>
+          )}
+        </div>
       </div>
     </div>
   )
