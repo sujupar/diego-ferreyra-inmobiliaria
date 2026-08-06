@@ -80,7 +80,7 @@ import { logOutbound } from '@/lib/integrations/whatsapp/log'
 import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
 import { updateAgentState, getConversationAiState } from '@/lib/ai/conversation-memory'
 import { runConversationAnalysis } from '@/lib/ai/analyze-conversation'
-import { validateProposedVisit } from '@/lib/ai/agent-brain'
+import { validateProposedVisit, type MaterialTipo } from '@/lib/ai/agent-brain'
 
 // ---------------------------------------------------------------------------
 // Parser determinístico de "cuándo" — nunca IA. Entiende los patrones de
@@ -332,7 +332,7 @@ export type SchedulingAction =
   | { type: 'noop'; reason: string }
   | { type: 'handoff'; reason: string }
   /** Hay algo que contestar. El TEXTO lo escribió el modelo; la visita, si viene, ya la validó el código. */
-  | { type: 'reply'; text: string; visit?: { dateISO: string; hour: number }; send?: 'fotos' | 'plano' | 'video' | null }
+  | { type: 'reply'; text: string; visit?: { dateISO: string; hour: number }; send?: MaterialTipo[] }
 
 export interface SchedulingContext {
   now: Date
@@ -341,7 +341,7 @@ export interface SchedulingContext {
   /** Visita ya VALIDADA por `validateProposedVisit`. Ausente = no hay nada que agendar en este turno. */
   visit?: { dateISO: string; hour: number }
   /** Material que el modelo quiere mandar en este turno. */
-  send?: 'fotos' | 'plano' | 'video' | null
+  send?: MaterialTipo[]
   agentMessagesSent: number
   agentHandedOff: boolean
   maxMessagesPerConversation: number
@@ -382,8 +382,8 @@ export function decideSchedulingAction(ctx: SchedulingContext): SchedulingAction
     return { type: 'noop', reason: 'no hay nada que contestar en este turno' }
   }
   return ctx.visit
-    ? { type: 'reply', text: ctx.reply, visit: ctx.visit, send: ctx.send ?? null }
-    : { type: 'reply', text: ctx.reply, send: ctx.send ?? null }
+    ? { type: 'reply', text: ctx.reply, visit: ctx.visit, send: ctx.send ?? [] }
+    : { type: 'reply', text: ctx.reply, send: ctx.send ?? [] }
 }
 
 // ---------------------------------------------------------------------------
@@ -949,22 +949,41 @@ export function materialDisponible(p: PropertyForAgent): { fotos: boolean; plano
   }
 }
 
-/** Los archivos concretos a mandar, ya acotados. El modelo pide el TIPO; esto resuelve las URLs. */
-export function archivosParaEnviar(
-  p: PropertyForAgent,
-  tipo: 'fotos' | 'plano' | 'video',
-): Array<{ mediaType: 'image' | 'video' | 'document'; link: string; filename?: string }> {
-  if (tipo === 'video') {
-    return p.video_file_url ? [{ mediaType: 'video' as const, link: p.video_file_url }] : []
-  }
+type Archivo = { mediaType: 'image' | 'video' | 'document'; link: string; filename?: string }
+
+function delTipo(p: PropertyForAgent, tipo: MaterialTipo): Archivo[] {
+  if (tipo === 'video') return p.video_file_url ? [{ mediaType: 'video', link: p.video_file_url }] : []
   if (tipo === 'plano') {
-    return (p.plans ?? []).slice(0, MAX_ARCHIVOS_POR_TURNO).map((link, i) => ({
-      mediaType: 'document' as const,
-      link,
-      filename: `plano-${i + 1}.pdf`,
-    }))
+    return (p.plans ?? []).map((link, i) => ({ mediaType: 'document', link, filename: `plano-${i + 1}.pdf` }))
   }
-  return (p.photos ?? []).slice(0, MAX_ARCHIVOS_POR_TURNO).map(link => ({ mediaType: 'image' as const, link }))
+  return (p.photos ?? []).map(link => ({ mediaType: 'image', link }))
+}
+
+/**
+ * Los archivos concretos a mandar, ya acotados. El modelo pide TIPOS; esto
+ * resuelve las URLs reales.
+ *
+ * El tope total (`MAX_ARCHIVOS_POR_TURNO`) es de tiempo, no de gusto: cada
+ * envío es un roundtrip a Meta dentro del POST del webhook, que tiene ~26s
+ * antes de que Meta lo dé por caído. Con dos tipos pedidos, se reparte para que
+ * el segundo NUNCA quede sin lugar — que es justo el punto de adelantarse:
+ * mandar las fotos Y el video vale más que mandar una foto más.
+ */
+export function archivosParaEnviar(p: PropertyForAgent, tipos: MaterialTipo[]): Archivo[] {
+  const pedidos = tipos.filter((t, i) => tipos.indexOf(t) === i)
+  if (pedidos.length === 0) return []
+  if (pedidos.length === 1) return delTipo(p, pedidos[0]).slice(0, MAX_ARCHIVOS_POR_TURNO)
+
+  const out: Archivo[] = []
+  // Reserva: cada tipo pedido se lleva al menos un lugar; lo que sobra va al
+  // primero (normalmente las fotos, donde más suma la cantidad).
+  const reservado = pedidos.length - 1
+  for (let i = 0; i < pedidos.length; i++) {
+    const libres = MAX_ARCHIVOS_POR_TURNO - out.length - (i === 0 ? reservado : 0)
+    if (libres <= 0) break
+    out.push(...delTipo(p, pedidos[i]).slice(0, libres))
+  }
+  return out.slice(0, MAX_ARCHIVOS_POR_TURNO)
 }
 
 /**
@@ -1262,10 +1281,10 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
     // dice "te paso unas fotos", después llegan. Al revés, la persona ve
     // archivos sueltos sin contexto. No consume cupo aparte —es parte de la
     // misma respuesta— y si falla, el mensaje ya llegó igual.
-    if (decision.send && !sent.skipped && sent.ok) {
+    if (decision.send && decision.send.length > 0 && !sent.skipped && sent.ok) {
       const archivos = archivosParaEnviar(prop, decision.send)
       if (archivos.length === 0) {
-        console.warn(`[agente] el modelo pidió mandar "${decision.send}" y esta propiedad no tiene`)
+        console.warn(`[agente] el modelo pidió mandar "${decision.send.join(', ')}" y esta propiedad no tiene`)
       }
       for (const a of archivos) {
         const r = await sendWhatsappMedia({

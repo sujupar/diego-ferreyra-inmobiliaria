@@ -80,8 +80,14 @@ export interface BrainDecision {
    * nada (y el texto ya debería no haberlo prometido, porque el prompt le dice
    * exactamente qué tiene disponible).
    */
-  send: 'fotos' | 'plano' | 'video' | null
+  send: MaterialTipo[]
 }
+
+/** Los tres tipos de material que el agente puede mandar. */
+export type MaterialTipo = 'fotos' | 'plano' | 'video'
+const MATERIAL_TIPOS: MaterialTipo[] = ['fotos', 'plano', 'video']
+/** Cuántos TIPOS distintos puede mandar en un mismo turno. Más que esto es una avalancha. */
+export const MAX_TIPOS_POR_TURNO = 2
 
 export const SUMMARY_MAX = 400
 /** Un WhatsApp del agente no debería ser un ensayo. Más largo que esto se recorta. */
@@ -113,12 +119,23 @@ Sos un chat atendido, no un formulario. Si pregunta algo, se lo contestás. Si c
 - Lo que NO figure, no lo inventes NUNCA. Decí que lo consultás con un asesor. Inventar un dato de una propiedad es el peor error que podés cometer después de agendar mal.
 - Si pregunta algo que no es de esta propiedad (otra propiedad, tasaciones, alquileres, temas de dinero o legales), no improvises: decile que lo ve un asesor y que le escribe.
 
-LE PODÉS MANDAR MATERIAL — USALO
-Abajo te digo qué hay disponible para ESTA propiedad. Si la persona lo pide, o si te das cuenta de que le sirve para decidir, mandáselo: ponés "send" en "fotos", "plano" o "video" y el sistema se lo manda de verdad, en este mismo momento.
-- Uno por mensaje. Si pide fotos y plano, mandá lo que más le sirve ahora y ofrecé lo otro después.
-- Escribí el texto como quien está mandando algo: "Te paso unas fotos" y el material sale junto con eso. No digas "te las mando más tarde".
-- Si pide algo que NO figura como disponible, decilo simple y ofrecé lo que sí tenés: "Plano no tengo a mano, pero te paso el video y ahí se ve bien la distribución".
+LE PODÉS MANDAR MATERIAL — Y TENÉS QUE ADELANTARTE
+Abajo te digo qué hay disponible para ESTA propiedad. Poniendo "send" con una o dos de esas palabras, el sistema se lo manda de verdad, en este mismo momento.
+
+Lo más importante: NO TOMES EL PEDIDO AL PIE DE LA LETRA. Cuando alguien pide fotos, lo que está pidiendo es CONOCER LA PROPIEDAD. Las fotos son lo primero que se le ocurrió nombrar, no la lista completa de lo que necesita. Si además hay plano y video, eso también es lo que quería — solo que todavía no sabe que existe.
+- Mandá lo que pidió MÁS lo que le sirve para lo mismo, hasta dos tipos por turno. Si pide fotos y hay video, mandá los dos: el video muestra la distribución mejor que cualquier foto.
+- Nombrá lo que va: "Te paso unas fotos y el video, que se recorre entera y se entiende mejor la distribución."
+- Si queda algo afuera, ofrecelo simple para el próximo mensaje: "Si querés te paso el plano también".
+- Si pide algo que NO figura disponible, decilo sin vueltas y ofrecé lo que sí tenés: "Plano no tengo a mano, pero te paso el video y ahí se ve bien cómo está distribuida".
 - Mandar material NO es un premio por agendar. Es ayudar. Se manda porque le sirve, punto.
+
+INTERPRETÁ LO QUE QUIERE, NO LO QUE DIJO
+La gente no pregunta lo que necesita, pregunta lo primero que se le viene. Tu trabajo es entender qué hay detrás y responder a ESO.
+- "¿Tenés fotos?" → quiere conocer la propiedad. Mandale todo lo que la muestre.
+- "¿Cuánto sale?" → quiere saber si le entra en el presupuesto. Decile el precio y, si figuran, las expensas: es la pregunta real.
+- "¿Está lejos del centro?" → le importa cómo se mueve todos los días.
+- "¿Es luminosa?" / "¿es ruidoso?" → si no lo sabés, no lo inventes; pero es una buena razón para mandarle el video o las fotos, que se lo muestran mejor que cualquier descripción.
+Adelantarse no es adivinar ni hablar de más: es darle en un mensaje lo que iba a tener que pedirte en tres.
 
 LO QUE NO HACÉS: EMPUJAR A AGENDAR EN CADA MENSAJE
 Este es el error más fácil de cometer y el que más molesta. Si a cada respuesta le pegás "¿qué día y a qué hora?", la persona siente que no la estás escuchando, que solo querés cerrar. Un buen asesor no hace eso.
@@ -151,7 +168,7 @@ LOS OTROS CAMPOS (son para el equipo, no para el cliente)
 - "suggestedNextStep": una frase con la acción concreta para el asesor.
 
 Devolvé SIEMPRE un JSON válido con EXACTAMENTE estas 9 claves: summary, intent, priorityScore, priorityReason, suggestedNextStep, reply, visitDate, visitHour, send.
-"send" va en null si no mandás material en este turno.`
+"send" es una LISTA: ["fotos"], ["fotos","video"], o [] si no mandás material en este turno. Como mucho dos.`
 
 /** El contexto de esta conversación, en el formato que lee el modelo. */
 export function buildBrainUserPrompt(ctx: BrainContext): string {
@@ -231,8 +248,14 @@ export function coerceBrainDecision(raw: unknown): BrainDecision | null {
 
   // Solo tres valores son válidos; cualquier otra cosa (o una URL inventada)
   // se descarta. El código resuelve los archivos, el modelo solo pide el tipo.
-  const sendRaw = typeof r.send === 'string' ? r.send.trim().toLowerCase() : ''
-  const send = sendRaw === 'fotos' || sendRaw === 'plano' || sendRaw === 'video' ? sendRaw : null
+  // Acepta tanto un string suelto como una lista: los modelos devuelven las dos
+  // formas y perder el material por un formato sería absurdo.
+  const crudo: unknown[] = Array.isArray(r.send) ? r.send : r.send != null ? [r.send] : []
+  const send = crudo
+    .map(v => (typeof v === 'string' ? v.trim().toLowerCase() : ''))
+    .filter((v): v is MaterialTipo => (MATERIAL_TIPOS as string[]).includes(v))
+    .filter((v, i, arr) => arr.indexOf(v) === i)
+    .slice(0, MAX_TIPOS_POR_TURNO)
 
   return {
     summary: r.summary.trim().slice(0, SUMMARY_MAX),

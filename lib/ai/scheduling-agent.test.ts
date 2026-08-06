@@ -318,7 +318,7 @@ describe('decideSchedulingAction', () => {
     expect(decideSchedulingAction(ctx({ reply: '¿Qué día te viene bien?' }))).toEqual({
       type: 'reply',
       text: '¿Qué día te viene bien?',
-      send: null,
+      send: [],
     })
   })
 
@@ -328,7 +328,7 @@ describe('decideSchedulingAction', () => {
       type: 'reply',
       text: 'Listo, quedó anotada.',
       visit,
-      send: null,
+      send: [],
     })
   })
 
@@ -604,7 +604,7 @@ const BASE_INPUT = {
  * El agente hace la llamada al modelo por dentro (`runConversationAnalysis`).
  * Acá se controla QUÉ devuelve ese modelo, que es lo que decide la respuesta.
  */
-function mockAnalisis(over: Partial<{ reply: string | null; visitDate: string | null; visitHour: number | null; analyzed: boolean; send: 'fotos' | 'plano' | 'video' | null }> = {}) {
+function mockAnalisis(over: Partial<{ reply: string | null; visitDate: string | null; visitHour: number | null; analyzed: boolean; send: ('fotos' | 'plano' | 'video')[] }> = {}) {
   runConversationAnalysisMock.mockResolvedValueOnce({
     state: null,
     analyzed: over.analyzed ?? true,
@@ -614,7 +614,7 @@ function mockAnalisis(over: Partial<{ reply: string | null; visitDate: string | 
     reply: over.reply !== undefined ? over.reply : '¿Qué día y a qué hora te queda bien?',
     visitDate: over.visitDate ?? null,
     visitHour: over.visitHour ?? null,
-    send: over.send ?? null,
+    send: over.send ?? [],
   })
 }
 
@@ -1424,21 +1424,21 @@ describe('materialDisponible / archivosParaEnviar', () => {
 
   it('las fotos se acotan: cada envío es un roundtrip a Meta y el webhook tiene ~26s', async () => {
     const { archivosParaEnviar } = await import('./scheduling-agent')
-    const fotos = archivosParaEnviar(base, 'fotos')
+    const fotos = archivosParaEnviar(base, ['fotos'])
     expect(fotos).toHaveLength(3)
     expect(fotos[0]).toEqual({ mediaType: 'image', link: 'https://s/1.jpg' })
   })
 
   it('el plano va como documento con nombre legible', async () => {
     const { archivosParaEnviar } = await import('./scheduling-agent')
-    expect(archivosParaEnviar(base, 'plano')).toEqual([
+    expect(archivosParaEnviar(base, ['plano'])).toEqual([
       { mediaType: 'document', link: 'https://s/plano.pdf', filename: 'plano-1.pdf' },
     ])
   })
 
   it('pedir algo que no hay devuelve vacío (no se manda nada, no explota)', async () => {
     const { archivosParaEnviar } = await import('./scheduling-agent')
-    expect(archivosParaEnviar({ ...base, plans: [] }, 'plano')).toEqual([])
+    expect(archivosParaEnviar({ ...base, plans: [] }, ['plano'])).toEqual([])
   })
 })
 
@@ -1453,7 +1453,7 @@ describe('el agente manda el material que pidió el modelo', () => {
       },
       error: null,
     })
-    mockAnalisis({ reply: 'Te paso unas fotos así la ves por dentro.', send: 'fotos' })
+    mockAnalisis({ reply: 'Te paso unas fotos así la ves por dentro.', send: ['fotos'] })
 
     await runSchedulingAgent({ ...BASE_INPUT })
 
@@ -1475,7 +1475,7 @@ describe('el agente manda el material que pidió el modelo', () => {
       error: null,
     })
     sendWhatsappTextMock.mockResolvedValueOnce({ ok: false, skipped: false, error: 'Meta caído' })
-    mockAnalisis({ reply: 'Te paso unas fotos.', send: 'fotos' })
+    mockAnalisis({ reply: 'Te paso unas fotos.', send: ['fotos'] })
 
     await runSchedulingAgent({ ...BASE_INPUT })
 
@@ -1486,11 +1486,50 @@ describe('el agente manda el material que pidió el modelo', () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
     mockSettingsEnabled()
     mockPropertyEnabled()
-    mockAnalisis({ reply: 'Te paso el plano.', send: 'plano' })
+    mockAnalisis({ reply: 'Te paso el plano.', send: ['plano'] })
 
     const result = await runSchedulingAgent({ ...BASE_INPUT })
 
     expect(result).toEqual({ action: 'reply' })
     expect(sendWhatsappMediaMock).not.toHaveBeenCalled()
+  })
+})
+
+// Adelantarse: quien pide fotos quiere conocer la propiedad. Si además hay
+// video, mandar los dos vale más que mandar una foto más.
+describe('dos tipos de material en un mismo turno', () => {
+  const propiedad = {
+    photos: ['https://s/1.jpg', 'https://s/2.jpg', 'https://s/3.jpg', 'https://s/4.jpg'],
+    plans: ['https://s/plano.pdf'],
+    video_file_url: 'https://s/video.mp4',
+    video_url: null,
+  } as unknown as Parameters<typeof import('./scheduling-agent').archivosParaEnviar>[0]
+
+  it('fotos + video: el video NUNCA queda afuera por culpa de las fotos', async () => {
+    const { archivosParaEnviar } = await import('./scheduling-agent')
+    const r = archivosParaEnviar(propiedad, ['fotos', 'video'])
+    expect(r).toHaveLength(3)
+    expect(r.filter(a => a.mediaType === 'image')).toHaveLength(2)
+    expect(r.filter(a => a.mediaType === 'video')).toHaveLength(1)
+  })
+
+  it('fotos + plano: mismo reparto', async () => {
+    const { archivosParaEnviar } = await import('./scheduling-agent')
+    const r = archivosParaEnviar(propiedad, ['fotos', 'plano'])
+    expect(r.filter(a => a.mediaType === 'document')).toHaveLength(1)
+    expect(r).toHaveLength(3)
+  })
+
+  it('si el segundo tipo no existe, el primero usa todo el lugar', async () => {
+    const { archivosParaEnviar } = await import('./scheduling-agent')
+    const sinVideo = { ...propiedad, video_file_url: null }
+    expect(archivosParaEnviar(sinVideo, ['fotos', 'video'])).toHaveLength(2)
+  })
+
+  it('nunca se pasa del tope, sea cual sea la combinación', async () => {
+    const { archivosParaEnviar } = await import('./scheduling-agent')
+    for (const combo of [['fotos'], ['fotos', 'video'], ['fotos', 'plano'], ['plano', 'video']] as const) {
+      expect(archivosParaEnviar(propiedad, [...combo]).length).toBeLessThanOrEqual(3)
+    }
   })
 })

@@ -99,6 +99,12 @@ describe('DEFAULT_AGENT_PROMPT — cómo atiende', () => {
     expect(DEFAULT_AGENT_PROMPT).toMatch(/va directo al grano/)
   })
 
+  it('interpreta lo que la persona QUIERE, no lo que dijo literalmente', () => {
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/NO TOMES EL PEDIDO AL PIE DE LA LETRA/)
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/lo que está pidiendo es CONOCER LA PROPIEDAD/)
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/INTERPRETÁ LO QUE QUIERE, NO LO QUE DIJO/)
+  })
+
   it('SÍ manda material cuando ayuda — no es un premio por agendar', () => {
     expect(DEFAULT_AGENT_PROMPT).toMatch(/LE PODÉS MANDAR MATERIAL/)
     expect(DEFAULT_AGENT_PROMPT).toMatch(/NO es un premio por agendar/)
@@ -130,6 +136,7 @@ describe('coerceBrainDecision', () => {
     reply: '¿Qué día te viene bien?',
     visitDate: null,
     visitHour: null,
+    send: [],
   }
 
   it('acepta una respuesta bien formada', () => {
@@ -165,10 +172,18 @@ describe('coerceBrainDecision', () => {
   })
 
   it('un "send" inventado se descarta: el código resuelve los archivos, el modelo solo pide el tipo', () => {
-    expect(coerceBrainDecision({ ...base, send: 'https://mi-url-inventada/foto.jpg' })?.send).toBeNull()
-    expect(coerceBrainDecision({ ...base, send: 'FOTOS' })?.send).toBe('fotos')
-    expect(coerceBrainDecision({ ...base, send: 'plano' })?.send).toBe('plano')
-    expect(coerceBrainDecision({ ...base })?.send).toBeNull()
+    expect(coerceBrainDecision({ ...base, send: ['https://mi-url-inventada/foto.jpg'] })?.send).toEqual([])
+    expect(coerceBrainDecision({ ...base })?.send).toEqual([])
+  })
+
+  it('acepta lista o string suelto: los modelos devuelven las dos formas', () => {
+    expect(coerceBrainDecision({ ...base, send: 'FOTOS' })?.send).toEqual(['fotos'])
+    expect(coerceBrainDecision({ ...base, send: ['fotos', 'video'] })?.send).toEqual(['fotos', 'video'])
+  })
+
+  it('como mucho dos tipos por turno, y sin repetir', () => {
+    expect(coerceBrainDecision({ ...base, send: ['fotos', 'plano', 'video'] })?.send).toEqual(['fotos', 'plano'])
+    expect(coerceBrainDecision({ ...base, send: ['fotos', 'fotos'] })?.send).toEqual(['fotos'])
   })
 
   it('una fecha con formato raro se descarta (después la valida el código igual)', () => {
