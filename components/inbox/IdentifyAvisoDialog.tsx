@@ -71,17 +71,20 @@ export function IdentifyAvisoDialog({
       const data = await res.json() as {
         property: { id: string; address: string; assignedTo: string | null; assignedName: string | null } | null
       }
-      if (data.property && data.property.assignedTo) {
-        apply({
-          propertyId: data.property.id,
-          address: data.property.address ?? '',
-          assignedTo: data.property.assignedTo,
-          assignedName: data.property.assignedName,
-        })
-        setHint({ kind: 'ok', text: `Es ${data.property.address} — la muestra ${data.property.assignedName ?? 'el asesor asignado'}.` })
+      if (data.property) {
+        // La propiedad SÍ está en el sistema: prellenamos lo que sabemos.
+        // Ojo con el caso intermedio: puede existir y todavía no tener asesor
+        // (propiedad recién captada). Decirle "no está cargada" sería falso.
+        setPropertyId(data.property.id)
+        if (data.property.address) setAddress(data.property.address)
+        if (data.property.assignedTo) {
+          setAssignedTo(data.property.assignedTo)
+          setHint({ kind: 'ok', text: `Es ${data.property.address} — la muestra ${data.property.assignedName ?? 'el asesor asignado'}.` })
+        } else {
+          setHint({ kind: 'info', text: `Es ${data.property.address}, pero todavía no tiene asesor. Elegí quién la muestra.` })
+        }
       } else {
-        setPropertyId(data.property?.id ?? null)
-        if (data.property?.address) setAddress(data.property.address)
+        setPropertyId(null)
         setHint({ kind: 'info', text: 'Esta propiedad no está cargada en el sistema. Completá los datos de abajo.' })
       }
     } catch {
@@ -110,7 +113,9 @@ export function IdentifyAvisoDialog({
           address: address.trim(),
           assignedTo,
           propertyId,
-          externalUrl: link.trim() || null,
+          // Solo persistimos el link si de verdad resolvió a un aviso de portal:
+          // si fue rechazado por inválido, guardarlo dejaría basura en external_url.
+          externalUrl: hint?.kind === 'error' ? null : (link.trim() || null),
         }),
       })
       if (!res.ok) throw new Error(String(res.status))
