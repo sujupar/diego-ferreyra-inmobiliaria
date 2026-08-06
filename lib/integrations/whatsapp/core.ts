@@ -33,6 +33,12 @@ export interface SendTemplateInput {
   bodyParams: string[]
   /** Sufijo dinámico del botón URL de la plantilla (ej. el token del recorrido). */
   urlButtonParam?: string
+  /**
+   * Archivo del ENCABEZADO, para plantillas que lo tienen (el plano o el video
+   * de una consulta). Va en el primer mensaje, sin esperar a que la persona
+   * conteste — es lo que hace posible mandar material fuera de la ventana.
+   */
+  headerMedia?: { type: 'document' | 'video' | 'image'; link: string; filename?: string }
   /** Timeout del POST a Meta en ms. Default 8s (envíos de fondo). */
   timeoutMs?: number
   /** Lead al que pertenece este mensaje (para el chat del Inbox). Opcional. */
@@ -55,9 +61,18 @@ export interface TemplatePayload {
 }
 
 export function buildTemplatePayload(input: SendTemplateInput): TemplatePayload {
-  const components: Array<Record<string, unknown>> = [
-    { type: 'body', parameters: input.bodyParams.map(text => ({ type: 'text', text })) },
-  ]
+  const components: Array<Record<string, unknown>> = []
+  // El encabezado va PRIMERO: Meta valida el orden de los componentes.
+  if (input.headerMedia) {
+    const { type, link, filename } = input.headerMedia
+    components.push({
+      type: 'header',
+      parameters: [
+        { type, [type]: { link, ...(type === 'document' && filename ? { filename } : {}) } },
+      ],
+    })
+  }
+  components.push({ type: 'body', parameters: input.bodyParams.map(text => ({ type: 'text', text })) })
   // Botón URL con sufijo dinámico: Meta lo concatena a la URL fija de la
   // plantilla (ej. https://inmodf.com.ar/v/ + <token>). index va como string.
   if (input.urlButtonParam) {

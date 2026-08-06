@@ -51,3 +51,34 @@ describe('buildMediaPayload', () => {
     expect(p.image).not.toHaveProperty('filename')
   })
 })
+
+// El encabezado con archivo es lo que permite mandar el plano o el video en el
+// PRIMER mensaje, fuera de la ventana de 24hs (respuesta a consultas de portal).
+describe('buildTemplatePayload — encabezado con archivo', () => {
+  const base = { to: '54911', templateName: 'consulta_plano', languageCode: 'es_AR', bodyParams: ['Julián', 'el plano', 'la casa'] }
+
+  it('el encabezado va PRIMERO: Meta valida el orden de los componentes', () => {
+    const p = buildTemplatePayload({ ...base, headerMedia: { type: 'document', link: 'https://s/p.pdf', filename: 'plano.pdf' } })
+    expect(p.template.components[0].type).toBe('header')
+    expect(p.template.components[1].type).toBe('body')
+  })
+
+  it('el documento lleva filename; el video no', () => {
+    const doc = buildTemplatePayload({ ...base, headerMedia: { type: 'document', link: 'https://s/p.pdf', filename: 'plano.pdf' } })
+    expect(doc.template.components[0]).toEqual({
+      type: 'header',
+      parameters: [{ type: 'document', document: { link: 'https://s/p.pdf', filename: 'plano.pdf' } }],
+    })
+    const vid = buildTemplatePayload({ ...base, headerMedia: { type: 'video', link: 'https://s/v.mp4' } })
+    expect(vid.template.components[0]).toEqual({
+      type: 'header',
+      parameters: [{ type: 'video', video: { link: 'https://s/v.mp4' } }],
+    })
+  })
+
+  it('sin encabezado, el payload queda igual que siempre', () => {
+    const p = buildTemplatePayload(base)
+    expect(p.template.components).toHaveLength(1)
+    expect(p.template.components[0].type).toBe('body')
+  })
+})
