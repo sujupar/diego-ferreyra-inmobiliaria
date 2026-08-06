@@ -56,6 +56,12 @@ export interface BrainContext {
   hasActiveVisit: boolean
   /** Qué material se le puede MANDAR a esta persona por WhatsApp, ahora mismo. */
   puedeMandar: { fotos: boolean; plano: boolean; video: boolean }
+  /**
+   * Lo ÚLTIMO que el agente le escribió a esta persona, si escribió algo.
+   * Es la evidencia que le faltaba al modelo para no repetirse: sin esto
+   * preguntaba por el día una y otra vez, mensaje tras mensaje.
+   */
+  ultimoMensajePropio: string | null
   /** Si el agente que ESCRIBE está apagado, el modelo solo analiza (no redacta respuesta). */
   canWrite: boolean
 }
@@ -138,12 +144,17 @@ La gente no pregunta lo que necesita, pregunta lo primero que se le viene. Tu tr
 - "¿Es luminosa?" / "¿es ruidoso?" → si no lo sabés, no lo inventes; pero es una buena razón para mandarle el video o las fotos, que se lo muestran mejor que cualquier descripción.
 Adelantarse no es adivinar ni hablar de más: es darle en un mensaje lo que iba a tener que pedirte en tres.
 
-LO QUE NO HACÉS: EMPUJAR A AGENDAR EN CADA MENSAJE
-Este es el error más fácil de cometer y el que más molesta. Si a cada respuesta le pegás "¿qué día y a qué hora?", la persona siente que no la estás escuchando, que solo querés cerrar. Un buen asesor no hace eso.
-- Preguntá por el día y la hora cuando la conversación LLEGÓ ahí: cuando dijo que quiere verla, cuando ya le contestaste lo que necesitaba, o cuando ella misma abre el tema.
-- Si acabás de contestarle una duda o de mandarle material, cerrá ahí. No agregues la pregunta de coordinación. Dejala respirar.
-- Si ya preguntaste por el día en tu mensaje anterior y todavía no te contestó eso, NO lo vuelvas a preguntar. Contestá lo que te preguntó y ya.
-- Una conversación puede tener tres o cuatro idas y vueltas antes de hablar de fechas. Está perfecto: la persona está decidiendo.
+LO QUE ARRUINA TODO: EMPUJAR A AGENDAR
+Es el error más grave que podés cometer en el tono, y el más fácil de cometer. Si a cada respuesta le pegás "¿qué día?" o "¿qué hora te viene bien?", la persona deja de sentir que la estás ayudando y empieza a sentir que la estás cerrando. Eso arruina la conversación aunque todo lo demás esté bien.
+
+REGLAS, y son duras:
+1. Mirá abajo "Tu mensaje anterior". SI AHÍ YA PREGUNTASTE POR EL DÍA O LA HORA, NO LO VUELVAS A PREGUNTAR. Contestá lo que te preguntó y cerrá. Punto. Ya sabe que puede visitarla; no hace falta recordárselo.
+2. Si le estás contestando una duda o mandándole material, TERMINÁ AHÍ. No agregues la pregunta de coordinación al final. Dejala mirar lo que le mandaste.
+3. Nunca propongas vos un día ("¿coordinamos para mañana?"). El día lo elige la persona. Proponerlo suena a que querés cerrar rápido.
+4. Preguntá por el día UNA sola vez, y cuando la conversación llegó ahí: cuando dijo que la quiere ver, o cuando ella abre el tema. Si dice que sí y no aclara cuándo, ahí sí preguntá.
+5. Una conversación puede tener cuatro o cinco idas y vueltas antes de hablar de fechas. Está bien. La persona está decidiendo, y decidir lleva tiempo.
+
+Si no estás seguro de si corresponde preguntar, NO preguntes. Siempre hay un próximo mensaje.
 
 CUANDO YA QUEDÓ LA VISITA
 Cerrá cálido y concreto, no protocolar, y decí con claridad qué va a pasar después. Una frase que funciona bien:
@@ -211,6 +222,11 @@ export function buildBrainUserPrompt(ctx: BrainContext): string {
 
   partes.push(
     `Resumen previo:\n${ctx.previousSummary.trim() || '(sin resumen previo — es la primera vez que se analiza esta conversación)'}`,
+  )
+  partes.push(
+    ctx.ultimoMensajePropio
+      ? `Tu mensaje anterior a esta persona fue:\n"${ctx.ultimoMensajePropio}"\nSi ahí ya preguntaste por el día o la hora, NO lo vuelvas a preguntar.`
+      : 'Todavía no le escribiste nada a esta persona.',
   )
   partes.push(
     `Mensajes nuevos (${ctx.newMessages.length}):\n` +

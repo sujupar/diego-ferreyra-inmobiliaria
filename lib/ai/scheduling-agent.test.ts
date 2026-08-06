@@ -1578,3 +1578,34 @@ describe('completarConVideo — el video acompaña a las fotos, siempre', () => 
     expect(r.filter(a => a.mediaType === 'image').length).toBeGreaterThan(0)
   })
 })
+
+// El caso de la prueba real: pidió fotos y llegó SOLO el video. La regla tiene
+// que valer en las dos direcciones o alguien siempre se queda sin lo que pidió.
+describe('completarConVideo — fotos y video van juntos, en los dos sentidos', () => {
+  const completa = {
+    photos: ['https://s/1.jpg', 'https://s/2.jpg'],
+    plans: ['https://s/plano.pdf'],
+    video_file_url: 'https://s/video.mp4',
+    video_url: null,
+  } as unknown as Parameters<typeof import('./scheduling-agent').completarConVideo>[0]
+
+  it('pidió VIDEO y hay fotos → van las dos cosas (el caso que falló en la prueba)', async () => {
+    const { completarConVideo } = await import('./scheduling-agent')
+    expect(completarConVideo(completa, ['video'])).toEqual(['fotos', 'video'])
+  })
+
+  it('pidió FOTOS y hay video → van las dos cosas', async () => {
+    const { completarConVideo } = await import('./scheduling-agent')
+    expect(completarConVideo(completa, ['fotos'])).toEqual(['fotos', 'video'])
+  })
+
+  it('sin fotos cargadas, el video va solo', async () => {
+    const { completarConVideo } = await import('./scheduling-agent')
+    expect(completarConVideo({ ...completa, photos: [] }, ['video'])).toEqual(['video'])
+  })
+
+  it('el plano no arrastra nada: quien pide un plano pide un plano', async () => {
+    const { completarConVideo } = await import('./scheduling-agent')
+    expect(completarConVideo(completa, ['plano'])).toEqual(['plano'])
+  })
+})
