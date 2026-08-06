@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth/require-role'
 import {
     notifyDealCreated,
+    notifyAppraisalRequest,
     notifyVisitCompleted,
     notifyAppraisalSent,
     notifyPropertyCreated,
@@ -42,6 +43,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ typ
             case 'deal_created': {
                 const dealId = requireField('dealId', body.dealId)
                 await notifyDealCreated({ dealId })
+                break
+            }
+            case 'appraisal_request': {
+                const dealId = requireField('dealId', body.dealId)
+                await notifyAppraisalRequest({ dealId })
                 break
             }
             case 'visit_completed': {

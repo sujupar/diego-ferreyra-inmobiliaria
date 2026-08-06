@@ -58,6 +58,22 @@ export interface DealInput {
    * forms internos. Webhooks GHL pasan 'request' o 'clase_gratuita'.
    */
   stage?: DealStage
+  // Columnas meta_* (+ origin_metadata) que `createFunnelLead` vuelca en el
+  // MISMO insert cuando la landing capturó atribución de campaña — mismo shape
+  // que devuelve `attributionToDealColumns` (lib/funnel/attribution.ts). Sin
+  // esto, TypeScript igual dejaría pasar el spread de esas columnas (no se
+  // valida "excess properties" contra un objeto esparcido), pero tiparlas acá
+  // documenta que la tabla `deals` las tiene y evita que un futuro refactor que
+  // arme el input en una variable intermedia las pierda en silencio.
+  meta_campaign_id?: string | null
+  meta_campaign_name?: string | null
+  meta_adset_id?: string | null
+  meta_adset_name?: string | null
+  meta_ad_id?: string | null
+  meta_ad_name?: string | null
+  meta_placement?: string | null
+  meta_site_source?: string | null
+  origin_metadata?: unknown
 }
 
 export async function createDeal(input: DealInput) {

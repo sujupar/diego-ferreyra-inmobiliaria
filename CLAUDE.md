@@ -19,6 +19,7 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 
 - **GHL ya NO es parte de ningún proceso.** Las landings del embudo son 100% propias (`app/(funnels)/tasacion-directa` y `/vsl-clase-propietarios`, dominio público `inmobiliariadiegoferreyra.com` en env `NEXT_PUBLIC_FUNNEL_PUBLIC_URL`), y la conversión entra por `POST /api/funnel/submit` → `create-funnel-lead` (deal + notificación + tarea + Píxel/CAPI dedup). NO reintroducir integraciones GHL.
 - Vestigios en cuarentena (no activos): `app/api/webhooks/ghl/form-submission` (GHL dejó de POSTear el 2026-07-02), `app/api/cron/ghl-poll` + `lib/ghl/import.ts` (el job pg_cron `ghl-poll` debe estar **unscheduled** — `SELECT cron.unschedule('ghl-poll');`). Si un lead aparece como `[Importado GHL]` después del decomiso, algo lo re-encendió.
+- **Si ese webhook alguna vez se reactivara:** hoy (2026-08-06) sigue ruteando las tasaciones a `notifyDealCreated` (`app/api/webhooks/ghl/form-submission/route.ts`) — el email de "Tasación agendada" que, desde el fix de `fix/email-solicitud-tasacion`, ya NO se usa para el registro de `POST /api/funnel/submit` (ver `### "Solicitud de tasación" ≠ "Tasación agendada"` más abajo). Reactivar el webhook sin cambiar esa línea reintroduciría el bug del email con todos los campos vacíos — habría que rutearlo a `notifyAppraisalRequest` (`lib/email/notifications/appraisal-request.ts`), igual que hace `create-funnel-lead.ts`. No se toca ahora porque el código está en cuarentena.
 - **Evento de conversión Meta de AMBOS embudos: `CompleteRegistration`** (los adsets optimizan por COMPLETE_REGISTRATION). NO cambiar a `Lead` — desalinearía el conteo de resultados en Ads Manager. Definido en `TasacionClient.tsx`/`ClaseClient.tsx` (Pixel) y `app/api/funnel/submit/route.ts` (CAPI).
 
 ---
@@ -337,6 +338,14 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Root cause:** la tabla `properties` fue creada fuera de migraciones con un CHECK de status que no contempla `'descartada'`, aunque la app lo usa como valor oficial de descarte (`PUT /api/properties/[id]`).
 - **Fix:** migración `20260713000001_properties_status_descartada.sql` recrea el CHECK con la lista completa de STATUS_LABELS (incluye `descartada`). Si aparece un status nuevo en la app, actualizar TAMBIÉN el CHECK.
 - **Fusión de duplicados (2026-07-13):** las fichas duplicadas del import CSV se fusionaron (deal/contacto/tasación → la copia publicada; la vieja queda `status='descartada'` con address `[FUSIONADA-><id8>] ...`). Script reutilizable de linkeo mapa→propiedad: `scripts/backfill-map-property-links.ts`. Evidencia usada para NO fusionar: posting IDs de ZonaProp distintos = avisos/propiedades distintas (Agüero 950 Palermo vs Balvanera; G. Mistral 2750 vs 2751).
+
+### "Solicitud de tasación" ≠ "Tasación agendada" (emails del embudo)
+
+- **Symptom:** por cada registro en la landing de tasación llegaba un email "Tasación agendada: …" con Barrio/Fecha/Hora/Tipo en `—` y "Asesor: Sin asignar".
+- **Root cause:** `createFunnelLead` reusaba `notifyDealCreated`, que es la pieza de una tasación YA COORDINADA (muestra fecha, hora, tipo y asesor). Un registro del embudo no tiene nada de eso todavía.
+- **Fix (2026-07-30):** `lib/email/notifications/appraisal-request.ts` (`notifyAppraisalRequest`) + `emails/AppraisalRequestAdminsEmail.tsx`, con subject `Nueva solicitud de tasación: {nombre}` y un callout que aclara que NO está agendada. Guard: exige `origin='embudo'`. Va a coordinador + admins/dueños, NUNCA al asesor (todavía no hay).
+- **Regla general:** cada evento del embudo tiene su propia notificación. Ya son tres y no se mezclan: registro de clase → `notifyClassRegistration`; solicitud de tasación → `notifyAppraisalRequest`; tasación coordinada (`/api/deals`) → `notifyDealCreated`. Reusar una pieza "parecida" hace que el email afirme cosas falsas.
+- **Métricas:** no cambian — el deal sigue siendo `origin='embudo'`, `stage='request'` y cuenta igual en el embudo. Este fix es SOLO del email.
 
 ### Foreign keys a `profiles(id)` deben ser `ON DELETE SET NULL`
 
