@@ -3,6 +3,7 @@ import {
   buildBrainUserPrompt,
   coerceBrainDecision,
   validateProposedVisit,
+  DEFAULT_AGENT_PROMPT,
   REPLY_MAX,
   SUMMARY_MAX,
   type BrainContext,
@@ -57,6 +58,37 @@ describe('buildBrainUserPrompt', () => {
 
   it('sin datos cargados, le dice que derive a un asesor en vez de improvisar', () => {
     expect(buildBrainUserPrompt(ctx({ propertyFacts: [] }))).toMatch(/lo ve un asesor|consulta la ve un asesor/)
+  })
+})
+
+// El agente atiende personas, no despacha turnos. Estas instrucciones son la
+// diferencia entre un asesor y un formulario, y son fáciles de perder de vista
+// cuando alguien "limpia" el prompt más adelante.
+describe('DEFAULT_AGENT_PROMPT — cómo atiende', () => {
+  it('pide entender QUÉ busca la persona, no solo cuándo puede venir', () => {
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/TE INTERESA LA PERSONA, NO LA TRANSACCIÓN/)
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/QUÉ ESTÁ BUSCANDO/)
+  })
+
+  it('una pregunta por mensaje: dos juntas es un cuestionario', () => {
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/UNA cosa por mensaje/)
+  })
+
+  it('cercano NO es adulón — prohíbe explícitamente el lenguaje de vendedor', () => {
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/NO es adulón/)
+    expect(DEFAULT_AGENT_PROMPT).toContain('excelente pregunta')
+  })
+
+  it('a quien va al grano no se lo demora: interesarse no es hacer perder tiempo', () => {
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/va directo al grano/)
+  })
+
+  it('no ofrece mandar planos ni videos: no los puede mandar', () => {
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/No ofrezcas mandar planos/)
+  })
+
+  it('sigue sin poder afirmar que la visita está confirmada', () => {
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/Nunca digas que la visita está confirmada/)
   })
 })
 
