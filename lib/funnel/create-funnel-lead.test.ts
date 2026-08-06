@@ -10,12 +10,12 @@ vi.mock('server-only', () => ({}))
 import { resolveFunnelMapping } from './create-funnel-lead'
 
 describe('resolveFunnelMapping', () => {
-  it('tasacion → stage request, origin embudo, notify deal', () => {
+  it('tasacion → stage request, origin embudo, notify appraisal_request', () => {
     expect(resolveFunnelMapping('tasacion')).toEqual({
       stage: 'request',
       origin: 'embudo',
       placeholderLabel: 'Solicitud de tasación',
-      notify: 'deal',
+      notify: 'appraisal_request',
     })
   })
 

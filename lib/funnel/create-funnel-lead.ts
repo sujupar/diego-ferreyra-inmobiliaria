@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { createDeal } from '@/lib/supabase/deals'
 import { createTaskForRole } from '@/lib/supabase/tasks'
-import { notifyDealCreated } from '@/lib/email/notifications/deal-created'
+import { notifyAppraisalRequest } from '@/lib/email/notifications/appraisal-request'
 import { notifyClassRegistration } from '@/lib/email/notifications/class-registration'
 import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
 
@@ -11,7 +11,7 @@ interface FunnelMapping {
   stage: 'request' | 'clase_gratuita'
   origin: 'embudo' | 'clase_gratuita'
   placeholderLabel: string
-  notify: 'deal' | 'class'
+  notify: 'appraisal_request' | 'class'
 }
 
 /** Mapea el funnel al stage/origin/notificación del CRM. Puro (testeable). */
@@ -19,7 +19,7 @@ export function resolveFunnelMapping(funnel: FunnelKind): FunnelMapping {
   if (funnel === 'clase') {
     return { stage: 'clase_gratuita', origin: 'clase_gratuita', placeholderLabel: 'Clase Gratuita', notify: 'class' }
   }
-  return { stage: 'request', origin: 'embudo', placeholderLabel: 'Solicitud de tasación', notify: 'deal' }
+  return { stage: 'request', origin: 'embudo', placeholderLabel: 'Solicitud de tasación', notify: 'appraisal_request' }
 }
 
 // Cliente admin sin tipar (igual que lib/supabase/deals.ts y tasks.ts): el tipo
@@ -109,10 +109,13 @@ export async function createFunnelLead(input: FunnelLeadInput): Promise<FunnelLe
     contact_id: contactId,
   })
 
-  // 4) Notificación con escalación (rama correcta según funnel)
+  // 4) Notificación con escalación (rama correcta según funnel).
+  //    Tasación = SOLICITUD recién entrada (no hay fecha ni asesor todavía) →
+  //    notifyAppraisalRequest. El email de "Tasación agendada" (notifyDealCreated)
+  //    es exclusivo de la coordinación manual desde /api/deals.
   await notifyWithEscalation(
-    () => (map.notify === 'class' ? notifyClassRegistration({ dealId }) : notifyDealCreated({ dealId })),
-    { failedNotificationType: map.notify === 'class' ? 'class_registration' : 'deal_created', entityType: 'deal', entityId: dealId },
+    () => (map.notify === 'class' ? notifyClassRegistration({ dealId }) : notifyAppraisalRequest({ dealId })),
+    { failedNotificationType: map.notify === 'class' ? 'class_registration' : 'appraisal_request', entityType: 'deal', entityId: dealId },
   )
 
   return { contactId, dealId }
