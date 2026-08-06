@@ -5,8 +5,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import React from 'react'
 import { EstadoResultadosEmbudo } from '@/components/metrics/EstadoResultadosEmbudo'
-import { CostosPanel } from '@/components/embudos/CostosPanel'
-import { CoberturaAsesoresPanel } from '@/components/embudos/CoberturaAsesoresPanel'
+import { CostosPanel } from '@/components/metrics/CostosPanel'
+import { CoberturaAsesoresPanel } from '@/components/metrics/CoberturaAsesoresPanel'
 import type { StatementStage, FunnelCosts } from '@/lib/metrics/funnel-insights'
 
 function check(nombre: string, html: string, textos: string[]) {

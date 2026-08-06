@@ -13,8 +13,8 @@ import { CurrentStateBreakdown } from '@/components/metrics/CurrentStateBreakdow
 import { PropertyInquiriesPanel } from '@/components/metrics/PropertyInquiriesPanel'
 import { SendTestReport } from '@/components/metrics/SendTestReport'
 import { EstadoResultadosEmbudo, type InversionPorCampana } from '@/components/metrics/EstadoResultadosEmbudo'
-import { CostosPanel, type VolumenPorOrigen } from '@/components/embudos/CostosPanel'
-import { CoberturaAsesoresPanel } from '@/components/embudos/CoberturaAsesoresPanel'
+import { CostosPanel, type VolumenPorOrigen } from '@/components/metrics/CostosPanel'
+import { CoberturaAsesoresPanel } from '@/components/metrics/CoberturaAsesoresPanel'
 import type { StatementStage, FunnelCosts } from '@/lib/metrics/funnel-insights'
 import type {
   MetricsComparison,
