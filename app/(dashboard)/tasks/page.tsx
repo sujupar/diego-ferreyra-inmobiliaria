@@ -11,6 +11,7 @@ import {
   MapPin, FileText, Plus
 } from 'lucide-react'
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog'
+import { UnidentifiedBanner } from '@/components/inbox/UnidentifiedBanner'
 import type { PropertyVisitWithRelations } from '@/types/visits.types'
 
 const TYPE_CONFIG: Record<string, { icon: typeof Bell; color: string; label: string; urgent?: boolean }> = {
@@ -136,6 +137,8 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-8">
+      <UnidentifiedBanner />
+
       {overdueVisits.length > 0 && (
         <Card className="border-orange-500 border-2 mb-4">
           <CardContent className="pt-6">

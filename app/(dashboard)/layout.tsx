@@ -47,6 +47,7 @@ function getNavSections(role: Role): NavSection[] {
             return [
                 { label: 'Pendientes', href: '/tasks' },
                 { label: 'Inbox', href: '/inbox' },
+                { label: 'Avisos por identificar', href: '/avisos' },
                 { label: 'CRM', href: '/crm' },
                 { label: 'Tasaciones', items: [
                     { href: '/pipeline/new', label: 'Coordinar' },
@@ -65,6 +66,7 @@ function getNavSections(role: Role): NavSection[] {
             return [
                 { label: 'Pendientes', href: '/tasks' },
                 { label: 'Inbox', href: '/inbox' },
+                { label: 'Avisos por identificar', href: '/avisos' },
                 { label: 'CRM', href: '/crm' },
                 { label: 'Tasaciones', items: [
                     { href: '/pipeline/new', label: 'Coordinar' },
