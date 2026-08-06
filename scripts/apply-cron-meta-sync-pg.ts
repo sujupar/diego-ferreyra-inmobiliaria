@@ -20,7 +20,7 @@ async function main() {
     throw new Error('Faltan argumentos: <secreto> <dominio>. No se inventan.')
   }
 
-  const sql = readFileSync('supabase/migrations/20260806000002_cron_meta_sync.sql', 'utf8')
+  const sql = readFileSync('supabase/migrations/20260806000006_cron_meta_sync.sql', 'utf8')
     .replaceAll('__SECRETO__', secreto)
     .replaceAll('__SITIO__', sitio)
 
