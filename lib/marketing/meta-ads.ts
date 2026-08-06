@@ -184,7 +184,16 @@ export async function saveDailySnapshot(snapshots: MetaDailySnapshot[]): Promise
 
   const supabase = getSupabaseAdmin()
 
+  // `fetched_at` se escribe SIEMPRE, también al ACTUALIZAR una fila que ya
+  // existía. El DEFAULT de la columna solo corre en el INSERT, así que sin esto
+  // una fila refrescada conserva la marca de la primera vez — y entonces no hay
+  // manera de saber si la sincronización sigue viva. Ese es exactamente el modo
+  // de falla que dejó la inversión cortada dos meses y medio sin que nadie lo
+  // notara (ver CLAUDE.md).
+  const fetchedAt = new Date().toISOString()
+
   const rows = snapshots.map(s => ({
+    fetched_at: fetchedAt,
     date: s.date,
     campaign_id: s.campaign_id,
     campaign_name: s.campaign_name,
