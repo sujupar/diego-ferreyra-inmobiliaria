@@ -34,6 +34,7 @@ import {
   debeAnalizar,
   elClienteLoVio,
   mensajesNuevosDesde,
+  memoriaVigente,
   getConversationAiState,
   getRecentWhatsappMessages,
   saveConversationAiState,
@@ -396,6 +397,14 @@ export async function runConversationAnalysis(
   phoneE164: string,
   ahora: Date = new Date(),
   brain?: BrainInput,
+  opts?: {
+    /**
+     * De qué propiedad es esta conversación. Con esto, un resumen guardado sobre
+     * OTRA propiedad deja de aplicar y no se le pasa al modelo — ver
+     * `memoriaVigente`. Sin esto (undefined), se comporta como antes.
+     */
+    propertyId?: string | null
+  },
 ): Promise<RunConversationAnalysisResult> {
   const [read, mensajes] = await Promise.all([
     getConversationAiState(phoneE164),
@@ -416,7 +425,14 @@ export async function runConversationAnalysis(
     return { state: null, analyzed: false, readFailed: true, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null, send: [] }
   }
 
-  const state = read.state
+  // Si la conversación pasó a hablar de otra propiedad, el resumen anterior no
+  // aplica: se sigue con la memoria vacía en vez de arrastrar hechos de la
+  // propiedad anterior. Ver el bug documentado en `memoriaVigente`.
+  const vigente = memoriaVigente(read.state, opts?.propertyId)
+  const state = vigente.state
+  if (vigente.cambioDePropiedad) {
+    console.log(`[analyze-conversation] ${phoneE164} pasó a hablar de otra propiedad: se arranca con memoria limpia`)
+  }
 
   if (!debeAnalizar(state, mensajes, ahora)) {
     return { state, analyzed: false, readFailed: false, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null, send: [] }
@@ -447,6 +463,10 @@ export async function runConversationAnalysis(
     suggestedNextStep: patch.suggestedNextStep,
     tokensUsedTotal,
     analysesCount,
+    propertyId: opts?.propertyId,
+    // El tope de mensajes del agente se reinicia con la propiedad, y tiene que
+    // quedar escrito: la reserva del cupo lee el contador de la base.
+    ...(vigente.cambioDePropiedad ? { agentMessagesSent: 0 } : {}),
   })
 
   const updatedState: ConversationAiStateRow = {

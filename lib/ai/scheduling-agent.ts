@@ -78,7 +78,7 @@ import { serviceWindow } from '@/lib/integrations/whatsapp/window'
 import { sendWhatsappText, sendWhatsappMedia } from '@/lib/integrations/whatsapp/core'
 import { logOutbound } from '@/lib/integrations/whatsapp/log'
 import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
-import { updateAgentState, getConversationAiState } from '@/lib/ai/conversation-memory'
+import { updateAgentState, getConversationAiState, memoriaVigente } from '@/lib/ai/conversation-memory'
 import { runConversationAnalysis } from '@/lib/ai/analyze-conversation'
 import { validateProposedVisit, MAX_TIPOS_POR_TURNO, type MaterialTipo } from '@/lib/ai/agent-brain'
 
@@ -890,21 +890,26 @@ interface ClientNames {
 async function ultimoTextoDelAgente(
   sb: ReturnType<typeof admin>,
   phoneE164: string,
+  propertyId: string,
 ): Promise<string | null> {
   try {
     const { data } = await sb
       .from('whatsapp_messages')
-      .select('body_preview, status')
+      .select('body_preview, status, media_type')
       .eq('phone_e164', phoneE164)
       .eq('direction', 'out')
       .eq('ai_generated', true)
+      // De ESTA propiedad. Lo que el agente dijo sobre otra no es "lo que ya
+      // dije" acá, y repetirlo sería hablar de una casa que no es la que se está
+      // consultando.
+      .eq('property_id', propertyId)
       .in('status', ['accepted', 'sent', 'delivered', 'read'])
       .order('created_at', { ascending: false })
       .limit(1)
     const fila = (data as Array<{ body_preview: string | null }> | null)?.[0]
     const texto = fila?.body_preview?.trim() ?? ''
-    // Las fotos y videos se registran como "[Foto] <url>": no son un mensaje
-    // que valga como "esto ya se lo dije".
+    // Un envío de material se registra como "[Foto] <url>": es un archivo, no
+    // algo que se haya dicho.
     if (!texto || texto.startsWith('[')) return null
     return texto
   } catch {
@@ -917,29 +922,43 @@ async function ultimoTextoDelAgente(
  * las mismas fotos en cada turno, que es ruido y deja ver que no está siguiendo
  * la conversación.
  *
- * Se deduce del `body_preview` que arma `sendWhatsappMedia` ("[Foto] …",
- * "[Video] …", "[Documento] …"). Es un acoplamiento a ese formato y por eso está
- * dicho acá: si alguien cambia esas etiquetas, esto deja de detectar y el
- * agente empieza a repetir material.
+ * Sale de la columna `media_type`, que dice qué archivo llevaba cada mensaje.
+ *
+ * ANTES SE DEDUCÍA DEL TEXTO (el prefijo "[Foto] …" que arma `sendWhatsappMedia`)
+ * y ese fue un bug real el 6 de agosto de 2026: el plano que viaja en el
+ * ENCABEZADO de una plantilla de consulta no lleva ese prefijo —el texto del
+ * mensaje es el cuerpo de la plantilla—, así que el agente no lo veía como
+ * entregado y se lo volvía a mandar a alguien que acababa de recibirlo. Un dato
+ * estructural no se deduce de un texto de presentación.
+ *
+ * Cuenta TODO lo que la persona recibió de esta propiedad, lo haya mandado el
+ * agente o un asesor a mano: para el cliente, unas fotos que ya tiene son unas
+ * fotos que ya tiene. Y solo lo que SALIÓ de verdad — un envío fallido o
+ * saltado en modo prueba no le llegó a nadie.
  */
 async function materialYaMandado(
   sb: ReturnType<typeof admin>,
   phoneE164: string,
+  propertyId: string,
 ): Promise<MaterialTipo[]> {
   try {
     const { data } = await sb
       .from('whatsapp_messages')
-      .select('body_preview')
+      .select('media_type')
       .eq('phone_e164', phoneE164)
       .eq('direction', 'out')
-      .eq('ai_generated', true)
+      .eq('property_id', propertyId)
+      .not('media_type', 'is', null)
+      .in('status', ['accepted', 'sent', 'delivered', 'read'])
       .order('created_at', { ascending: false })
-      .limit(30)
-    const previews = ((data as Array<{ body_preview: string | null }> | null) ?? []).map(r => r.body_preview ?? '')
+      .limit(50)
+    const tipos = new Set(
+      ((data as Array<{ media_type: string | null }> | null) ?? []).map(r => r.media_type),
+    )
     const out: MaterialTipo[] = []
-    if (previews.some(t => t.startsWith('[Foto]'))) out.push('fotos')
-    if (previews.some(t => t.startsWith('[Documento]'))) out.push('plano')
-    if (previews.some(t => t.startsWith('[Video]'))) out.push('video')
+    if (tipos.has('image')) out.push('fotos')
+    if (tipos.has('document')) out.push('plano')
+    if (tipos.has('video')) out.push('video')
     return out
   } catch {
     return []
@@ -1198,8 +1217,12 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
     if (readState.readFailed) {
       return { action: 'noop', reason: 'no se pudo leer el estado de la conversación' }
     }
-    const agentMessagesSent = readState.state?.agent_messages_sent ?? 0
-    const agentHandedOff = readState.state?.agent_handed_off ?? false
+    // Si la conversación cambió de propiedad, el tope de mensajes arranca de
+    // nuevo (`agent_handed_off` NO — ver `memoriaVigente`). El análisis, más
+    // abajo, persiste ese reinicio antes de que se reserve ningún cupo.
+    const memoria = memoriaVigente(readState.state, input.propertyId)
+    const agentMessagesSent = memoria.state?.agent_messages_sent ?? 0
+    const agentHandedOff = memoria.state?.agent_handed_off ?? false
 
     // ¿Ya hay una visita viva? El modelo tiene que SABERLO antes de pensar: con
     // una visita coordinada no propone ni mueve nada, eso lo decide una persona.
@@ -1221,8 +1244,8 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
     const pendiente = enAgenda.visit
     const clientName = await resolveClientName(sb, input)
     const [ultimoMensajePropio, yaMandado] = await Promise.all([
-      ultimoTextoDelAgente(sb, input.phoneE164),
-      materialYaMandado(sb, input.phoneE164),
+      ultimoTextoDelAgente(sb, input.phoneE164, input.propertyId),
+      materialYaMandado(sb, input.phoneE164, input.propertyId),
     ])
 
     // Si CUALQUIER freno está puesto, el modelo igual analiza (el Inbox necesita
@@ -1249,7 +1272,7 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       puedeMandar: materialDisponible(prop),
       ultimoMensajePropio,
       yaMandado,
-    })
+    }, { propertyId: input.propertyId })
     if (!analysis.analyzed) {
       return { action: 'noop', reason: 'no hubo análisis nuevo en este turno' }
     }

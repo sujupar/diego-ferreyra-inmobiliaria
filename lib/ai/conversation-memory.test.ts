@@ -4,6 +4,7 @@ import {
   debeAnalizar,
   ANALYSIS_COOLDOWN_MS,
   SUMMARY_MAX_LENGTH,
+  memoriaVigente,
   type ConversationAiStateRow,
   type WhatsappMessageLite,
 } from './conversation-memory'
@@ -346,5 +347,88 @@ describe('debeAnalizar — la respuesta a una pregunta del agente NO espera el a
     const salienteHumano = { ...preguntaDelAgente, ai_generated: false }
     const hay = debeAnalizar(estado, [salienteHumano, respuesta], new Date('2026-08-03T12:19:00Z'))
     expect(hay).toBe(true)
+  })
+})
+
+/**
+ * La memoria es de UNA conversación sobre UNA propiedad — no de un teléfono.
+ *
+ * Estos tests reproducen el bug del 6 de agosto de 2026: el mismo número
+ * consultó primero por una propiedad (donde el agente sí le mandó fotos y video)
+ * y días después por otra. Sin este recorte, el resumen de la primera —"ya
+ * recibió fotos y un video"— viajaba a la segunda y el agente terminaba
+ * afirmándole a un cliente que le había mandado material que nunca salió.
+ */
+describe('memoriaVigente', () => {
+  const base: ConversationAiStateRow = {
+    phone_e164: '5491100000000',
+    property_id: 'prop-lares',
+    summary: 'Ya recibió fotos y un video de la propiedad.',
+    last_analyzed_message_id: 'm9',
+    last_analyzed_at: '2026-08-03T12:00:00.000Z',
+    intent: 'agendar',
+    priority_score: 80,
+    priority_reason: 'quiere visitar',
+    suggested_next_step: 'coordinar visita',
+    agent_messages_sent: 7,
+    agent_handed_off: false,
+    tokens_used_total: 5000,
+    analyses_count: 12,
+    created_at: '2026-08-03T11:00:00.000Z',
+    updated_at: '2026-08-03T12:00:00.000Z',
+  }
+
+  it('deja la memoria intacta cuando se sigue hablando de la misma propiedad', () => {
+    const r = memoriaVigente(base, 'prop-lares')
+    expect(r.cambioDePropiedad).toBe(false)
+    expect(r.state).toBe(base)
+  })
+
+  it('descarta el resumen cuando la conversación pasa a otra propiedad', () => {
+    const r = memoriaVigente(base, 'prop-entre-rios')
+    expect(r.cambioDePropiedad).toBe(true)
+    expect(r.state?.summary).toBe('')
+  })
+
+  it('reinicia el tope de mensajes del agente al cambiar de propiedad', () => {
+    // Sin esto, alguien que consulta tres propiedades en el año gasta los mismos
+    // diez mensajes y el agente se queda mudo en la tercera.
+    expect(memoriaVigente(base, 'prop-entre-rios').state?.agent_messages_sent).toBe(0)
+  })
+
+  it('NO vuelve a prender el agente que una persona apagó', () => {
+    // Es la única asimetría a propósito: reiniciar el contador es recuperar una
+    // capacidad; revertir un apagado manual sería mandar mensajes que alguien
+    // del equipo había decidido frenar.
+    const derivada = { ...base, agent_handed_off: true }
+    expect(memoriaVigente(derivada, 'prop-entre-rios').state?.agent_handed_off).toBe(true)
+  })
+
+  it('conserva el marcador de lectura y el gasto acumulado', () => {
+    // El marcador evita releer (y volver a pagar) el hilo entero; el gasto es
+    // del teléfono y alimenta el panel de costo.
+    const r = memoriaVigente(base, 'prop-entre-rios')
+    expect(r.state?.last_analyzed_message_id).toBe('m9')
+    expect(r.state?.last_analyzed_at).toBe('2026-08-03T12:00:00.000Z')
+    expect(r.state?.tokens_used_total).toBe(5000)
+    expect(r.state?.analyses_count).toBe(12)
+  })
+
+  it('no descarta nada cuando no se sabe de qué propiedad es alguno de los dos lados', () => {
+    // Conversaciones anteriores a la columna. En la duda vale más un resumen de
+    // más que uno perdido.
+    expect(memoriaVigente({ ...base, property_id: null }, 'prop-x').cambioDePropiedad).toBe(false)
+    expect(memoriaVigente(base, null).cambioDePropiedad).toBe(false)
+    expect(memoriaVigente(base, undefined).cambioDePropiedad).toBe(false)
+  })
+
+  it('sin fila previa no hay nada que recortar', () => {
+    expect(memoriaVigente(null, 'prop-x')).toEqual({ state: null, cambioDePropiedad: false })
+  })
+
+  it('no muta la fila que recibe', () => {
+    memoriaVigente(base, 'prop-entre-rios')
+    expect(base.summary).toBe('Ya recibió fotos y un video de la propiedad.')
+    expect(base.agent_messages_sent).toBe(7)
   })
 })

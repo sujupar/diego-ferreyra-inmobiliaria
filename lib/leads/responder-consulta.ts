@@ -20,8 +20,10 @@ import { sendWhatsappTemplate } from '@/lib/integrations/whatsapp/meta-cloud'
 import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
 import { decidirEnvio, type AjustesEnvio, type Normalizador } from '@/lib/leads/consulta-envio'
 import {
+  cuerpoDePlantilla,
   elegirPlantilla,
   parametrosDelCuerpo,
+  renderCuerpo,
   PLANTILLAS_UTIL,
   type EleccionPlantilla,
 } from '@/lib/leads/consulta-template'
@@ -52,11 +54,32 @@ interface PropiedadParaConsulta {
   assigned_to: string | null
 }
 
+/**
+ * Dónde queda, sin repetir el barrio.
+ *
+ * Muchas direcciones ya vienen cargadas completas ("Entre Ríos 2333, Martínez,
+ * San Isidro") y pegarles el barrio al final daba "…San Isidro, Martínez", que
+ * es exactamente lo que llegó al WhatsApp de un cliente el 6 de agosto de 2026.
+ * Comparación sin acentos ni mayúsculas: en la base conviven "Martinez" y
+ * "Martínez" para el mismo lugar.
+ */
+export function ubicacionDeLaPropiedad(p: { address?: string | null; neighborhood?: string | null }): string {
+  const address = (p.address ?? '').trim()
+  const barrio = (p.neighborhood ?? '').trim()
+  if (!address) return barrio
+  if (!barrio) return address
+  // Los acentos van escapados a propósito: escritos como caracteres sueltos son
+  // marcas combinantes invisibles, imposibles de revisar en un diff.
+  const SIN_ACENTOS = new RegExp('[\\u0300-\\u036f]', 'g')
+  const plano = (v: string) => v.normalize('NFD').replace(SIN_ACENTOS, '').toLowerCase()
+  return plano(address).includes(plano(barrio)) ? address : `${address}, ${barrio}`
+}
+
 /** "la casa de Entre Ríos 2333, Martínez" — como lo diría una persona. */
 function nombrarPropiedad(p: PropiedadParaConsulta): string {
   const tipo = (p.property_type ?? '').toLowerCase()
   const articulo = tipo.startsWith('casa') ? 'la casa' : tipo ? `el ${tipo}` : 'la propiedad'
-  const donde = [p.address, p.neighborhood].filter(Boolean).join(', ')
+  const donde = ubicacionDeLaPropiedad(p)
   return donde ? `${articulo} de ${donde}` : (p.title ?? 'la propiedad')
 }
 
@@ -155,25 +178,35 @@ export async function responderConsulta(
     // agente no sabe de qué le hablan. Al revés no molesta a nadie.
     const leadId = await asegurarLead(sb, c, prop)
 
-    const enviar = async (plantilla: string) =>
+    const enviar = async (plantilla: string, deTramite: boolean) =>
       sendWhatsappTemplate({
         to: decision.telefono,
         templateName: plantilla,
         languageCode: process.env.WHATSAPP_TEMPLATE_LANG ?? 'es_AR',
         bodyParams: params,
+        // El texto EXACTO que va a leer la persona, para que quede guardado como
+        // el mensaje que es. Sin esto se guardaban los parámetros pegados con
+        // puntos, y el agente —que lee esa columna para saber qué dijo la vez
+        // anterior— arrancaba sin entender su propio mensaje: volvía a preguntar
+        // lo que la plantilla ya había preguntado.
+        bodyText: renderCuerpo(cuerpoDePlantilla(eleccion, deTramite), params),
         headerMedia: eleccion.header
           ? { type: eleccion.header.tipo, link: eleccion.header.link, filename: eleccion.headerFilename }
           : undefined,
         leadId,
         propertyId: prop.id,
         origen: 'consulta_portal',
+        // Este primer mensaje lo manda el sistema, no una persona: es el agente
+        // abriendo la conversación. Marcarlo así es lo que le permite después
+        // reconocerlo como propio y no repetirse.
+        aiGenerated: true,
         timeoutMs: 8000,
       })
 
     // Primero la cálida. Si Meta no la entrega —o todavía no está aprobada—,
     // la de trámite como red.
     let usada: string = eleccion.plantilla
-    let res = await enviar(usada)
+    let res = await enviar(usada, false)
     const bloqueadaPorMarketing = !res.ok && res.errorCode != null && META_MARKETING_BLOQUEADO.has(res.errorCode)
     if (!res.ok && (bloqueadaPorMarketing || esPlantillaNoDisponible(res.error))) {
       const red = PLANTILLAS_UTIL[eleccion.plantilla]
@@ -183,7 +216,7 @@ export async function responderConsulta(
           : `[consulta] ${usada} no está disponible, se reintenta con ${red}`,
       )
       usada = red
-      res = await enviar(usada)
+      res = await enviar(usada, true)
     }
 
     if (!res.ok) {

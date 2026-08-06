@@ -24,6 +24,15 @@ interface Resultado {
   visita: { fecha?: string; hora?: number; rechazada?: string; propuestaPorElModelo?: string } | null
   analisis: { resumen: string; intencion: string; prioridad: number; motivo: string; proximoPaso: string }
   material: { fotos: boolean; plano: boolean; video: boolean }
+  loQueSabe: {
+    propiedad: string
+    datos: string[]
+    materialDisponible: { fotos: boolean; plano: boolean; video: boolean }
+    materialYaEntregado: string[]
+    suMensajeAnterior: string | null
+    resumenPrevio: string
+    hoy: string
+  }
   prompts: { sistema: string; contexto: string }
   tokens: number
   modelo: string
@@ -35,6 +44,9 @@ export function AgentLabClient({ propiedades }: { propiedades: Array<{ id: strin
   const [turnos, setTurnos] = useState<Turno[]>([{ from: 'cliente', text: '¿cómo es la casa?' }])
   const [resumen, setResumen] = useState('')
   const [yaHayVisita, setYaHayVisita] = useState(false)
+  // Qué material ya recibió esta persona. Es la variable que causó el peor bug
+  // del agente y hasta ahora no se podía simular.
+  const [yaMandado, setYaMandado] = useState<string[]>([])
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [res, setRes] = useState<Resultado | null>(null)
@@ -51,7 +63,7 @@ export function AgentLabClient({ propiedades }: { propiedades: Array<{ id: strin
       const r = await fetch('/api/admin/ai-agent/simulate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ propertyId, mensajes: turnos, resumenPrevio: resumen, clientName: nombre, yaHayVisita }),
+        body: JSON.stringify({ propertyId, mensajes: turnos, resumenPrevio: resumen, clientName: nombre, yaHayVisita, yaMandado }),
       })
       const data = await r.json()
       if (!r.ok) throw new Error(data?.error || 'No se pudo simular')
@@ -133,6 +145,28 @@ export function AgentLabClient({ propiedades }: { propiedades: Array<{ id: strin
             <Textarea rows={2} value={resumen} onChange={e => setResumen(e.target.value)} placeholder="Opcional" />
           </label>
 
+          <div className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">Material que esta persona ya recibió</span>
+            <div className="flex flex-wrap gap-3 text-sm">
+              {(['fotos', 'plano', 'video'] as const).map(tipo => (
+                <label key={tipo} className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={yaMandado.includes(tipo)}
+                    onChange={e =>
+                      setYaMandado(prev => (e.target.checked ? [...prev, tipo] : prev.filter(t => t !== tipo)))
+                    }
+                  />
+                  {tipo}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Marcá acá lo que ya salió antes de este mensaje — por ejemplo el plano que viaja en la
+              plantilla de una consulta de portal.
+            </p>
+          </div>
+
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={yaHayVisita} onChange={e => setYaHayVisita(e.target.checked)} />
             Esta persona ya tiene una visita coordinada
@@ -198,6 +232,53 @@ export function AgentLabClient({ propiedades }: { propiedades: Array<{ id: strin
                     )}
                   </div>
                 )}
+              </div>
+
+              {/*
+                La mitad que faltaba. Viendo solo la respuesta no se puede
+                distinguir "el modelo entendió mal" de "le pasamos un dato
+                falso", y las tres fallas del 6 de agosto de 2026 fueron lo
+                segundo: la memoria decía que ya había mandado fotos y video de
+                otra propiedad.
+              */}
+              <div className="rounded-lg border bg-card p-4 text-sm">
+                <p className="mb-2 text-xs font-medium text-muted-foreground">Con qué información decidió</p>
+                <dl className="space-y-1.5">
+                  <div className="flex gap-2">
+                    <dt className="w-40 shrink-0 text-muted-foreground">Propiedad</dt>
+                    <dd>{res.loQueSabe.propiedad}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="w-40 shrink-0 text-muted-foreground">Material disponible</dt>
+                    <dd>
+                      {[
+                        res.loQueSabe.materialDisponible.fotos && 'fotos',
+                        res.loQueSabe.materialDisponible.plano && 'plano',
+                        res.loQueSabe.materialDisponible.video && 'video',
+                      ].filter(Boolean).join(', ') || 'ninguno cargado'}
+                    </dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="w-40 shrink-0 text-muted-foreground">Cree que ya mandó</dt>
+                    <dd>{res.loQueSabe.materialYaEntregado.join(', ') || 'nada todavía'}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="w-40 shrink-0 text-muted-foreground">Su mensaje anterior</dt>
+                    <dd className={res.loQueSabe.suMensajeAnterior ? '' : 'text-muted-foreground'}>
+                      {res.loQueSabe.suMensajeAnterior ?? 'ninguno — arranca sin saber qué dijo antes'}
+                    </dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="w-40 shrink-0 text-muted-foreground">Memoria previa</dt>
+                    <dd className={res.loQueSabe.resumenPrevio ? '' : 'text-muted-foreground'}>
+                      {res.loQueSabe.resumenPrevio || 'vacía'}
+                    </dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="w-40 shrink-0 text-muted-foreground">Datos de la ficha</dt>
+                    <dd className="text-xs text-muted-foreground">{res.loQueSabe.datos.join(' · ')}</dd>
+                  </div>
+                </dl>
               </div>
 
               <div className="rounded-lg border bg-card p-4 text-sm">

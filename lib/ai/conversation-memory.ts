@@ -43,6 +43,8 @@ export const SUMMARY_MAX_LENGTH = 400
  */
 export interface ConversationAiStateRow {
   phone_e164: string
+  /** De qué propiedad habla `summary`. Ver `memoriaVigente` y la migración `20260806000007`. */
+  property_id?: string | null
   summary: string
   last_analyzed_message_id: string | null
   last_analyzed_at: string | null
@@ -128,6 +130,66 @@ export function mensajesNuevosDesde(
   }
 
   return ordenados
+}
+
+/**
+ * Pura. La memoria que SIGUE VALIENDO para la propiedad de la que se está
+ * hablando ahora.
+ *
+ * EL BUG QUE ORIGINA ESTO (6 de agosto de 2026): el resumen acumulado se guarda
+ * por teléfono, no por propiedad. La misma persona consultó primero por Lares de
+ * Canning —donde el agente sí le mandó fotos y un video— y tres días después por
+ * Entre Ríos. En la segunda conversación el modelo leyó el resumen de la
+ * primera, que afirmaba "ya recibió fotos y un video", lo dio por cierto, le
+ * ofreció el plano a alguien que había pedido fotos y después le dijo que ya le
+ * había mandado un video que nunca existió. El modelo no se equivocó: razonó
+ * bien sobre un hecho falso que le pasamos nosotros.
+ *
+ * Qué se descarta al cambiar de propiedad, y por qué exactamente eso:
+ *
+ *   - `summary`: es la fuente de la mentira. Lo que se afirmó sobre una
+ *     propiedad no dice NADA de otra.
+ *   - `agent_messages_sent`: el tope de mensajes automáticos existe para no
+ *     acosar a nadie en UNA conversación. Sin reiniciarlo, alguien que consulta
+ *     tres propiedades a lo largo del año gasta los mismos diez y el agente se
+ *     queda mudo en la tercera sin que nadie entienda por qué.
+ *
+ * Qué se conserva, y por qué:
+ *
+ *   - `agent_handed_off`: si una persona del equipo apagó el agente para este
+ *     contacto, esa decisión no se revierte sola por una consulta nueva. Volver
+ *     a prenderlo es un clic en el chat; hacerlo automáticamente sería mandar
+ *     mensajes que alguien había decidido frenar. Ante la duda, callado.
+ *   - `last_analyzed_*`: son el marcador de hasta dónde se leyó el hilo. Si se
+ *     reiniciaran, el próximo análisis releería la conversación entera —incluida
+ *     la de la otra propiedad— y encima se pagaría de nuevo.
+ *   - `tokens_used_total` / `analyses_count`: es el gasto acumulado del panel de
+ *     costo. Es del teléfono, no de la propiedad, y no se reinicia nunca.
+ *
+ * `null` en cualquiera de los dos lados = no se sabe → no se descarta nada. Es
+ * el caso de las conversaciones anteriores a esta columna, y en la duda vale más
+ * un resumen de más que uno perdido.
+ */
+export function memoriaVigente(
+  state: ConversationAiStateRow | null,
+  propertyId: string | null | undefined,
+): { state: ConversationAiStateRow | null; cambioDePropiedad: boolean } {
+  if (!state) return { state: null, cambioDePropiedad: false }
+  const guardada = state.property_id ?? null
+  if (!guardada || !propertyId || guardada === propertyId) {
+    return { state, cambioDePropiedad: false }
+  }
+  return {
+    state: {
+      ...state,
+      summary: '',
+      agent_messages_sent: 0,
+      intent: 'desconocido',
+      priority_reason: null,
+      suggested_next_step: null,
+    },
+    cambioDePropiedad: true,
+  }
 }
 
 /**
@@ -282,6 +344,16 @@ export interface ConversationAiStatePatch {
   suggestedNextStep: string | null
   tokensUsedTotal: number
   analysesCount: number
+  /** De qué propiedad habla este resumen. Ver `memoriaVigente`. */
+  propertyId?: string | null
+  /**
+   * Solo se manda cuando la conversación CAMBIÓ de propiedad, para reiniciar el
+   * tope de mensajes del agente. Tiene que persistirse acá y no alcanzaría con
+   * reiniciarlo en memoria: el cupo se reserva con la RPC atómica
+   * `claim_agent_message_slot`, que lee el contador de la BASE. Un reinicio que
+   * solo viva en una variable no libera nada.
+   */
+  agentMessagesSent?: number
 }
 
 /**
@@ -311,6 +383,11 @@ export async function saveConversationAiState(
           tokens_used_total: patch.tokensUsedTotal,
           analyses_count: patch.analysesCount,
           updated_at: new Date().toISOString(),
+          // `undefined` = la columna no entra en el upsert y queda como estaba.
+          // Es lo que hace que el reinicio del contador ocurra SOLO al cambiar
+          // de propiedad y no en cada análisis.
+          ...(patch.propertyId !== undefined ? { property_id: patch.propertyId } : {}),
+          ...(patch.agentMessagesSent !== undefined ? { agent_messages_sent: patch.agentMessagesSent } : {}),
         } as never,
         { onConflict: 'phone_e164' },
       )

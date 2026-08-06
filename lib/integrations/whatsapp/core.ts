@@ -47,6 +47,20 @@ export interface SendTemplateInput {
   propertyId?: string | null
   /** Perfil que disparó el envío (si fue una acción de un asesor). Opcional. */
   sentBy?: string | null
+  /**
+   * `true` = esta plantilla la disparó el sistema como parte de la atención
+   * automática, no una persona. La marca importa río abajo: el agente de IA
+   * solo reconoce como "algo que dije yo" los mensajes marcados así, y sin esto
+   * arrancaba ciego —volvía a preguntar lo que la plantilla ya había
+   * preguntado— en toda conversación nacida de una consulta de portal.
+   */
+  aiGenerated?: boolean
+  /**
+   * El cuerpo YA ARMADO, con los `{{n}}` reemplazados. Opcional: solo lo puede
+   * dar quien es dueño del texto de la plantilla. Es lo que se guarda como
+   * texto del mensaje — ver `bodyPreview`.
+   */
+  bodyText?: string
 }
 
 export interface TemplatePayload {
@@ -127,9 +141,49 @@ export function normalizePhone(raw: string | null | undefined): string | null {
   return normalizeWhatsappPhone(raw)
 }
 
-/** Preview corto y legible de los parámetros de la plantilla, para `whatsapp_messages.body_preview`. */
+/**
+ * Qué se guarda como texto del mensaje.
+ *
+ * Con `bodyText` (el cuerpo ya armado, que solo conoce quien es dueño de la
+ * plantilla) se guarda ESO. Sin él, los parámetros pegados con puntos — que es
+ * lo que se guardaba siempre y se lee horrible: en el chat del Inbox aparecía
+ * "Julián · el plano · la casa de Entre Ríos 2333" en vez del mensaje que la
+ * persona recibió de verdad. Peor: el agente de IA lee esta columna para saber
+ * qué dijo la última vez, así que con los parámetros sueltos no entendía nada.
+ */
 function bodyPreview(input: SendTemplateInput): string {
+  const texto = input.bodyText?.trim()
+  if (texto) return texto.slice(0, 300)
   return input.bodyParams.join(' · ').slice(0, 300)
+}
+
+/**
+ * Los campos de registro que van en TODAS las salidas de `sendWhatsappTemplate`
+ * — las cuatro: modo prueba, error de Meta, aceptado y excepción.
+ *
+ * Existe porque el bug fue exactamente ese: `origen` y `aiGenerated` se
+ * agregaron al input pero no a los cuatro `logOutbound`, así que se descartaban
+ * en silencio y el mensaje de la consulta quedaba sin origen y sin marca de
+ * agente. Con un solo lugar que los arma, agregar un campo nuevo no puede
+ * llegar a la mitad de los caminos.
+ */
+function camposDeRegistro(input: SendTemplateInput) {
+  return {
+    phone: input.to,
+    templateName: input.templateName,
+    bodyPreview: bodyPreview(input),
+    leadId: input.leadId,
+    propertyId: input.propertyId,
+    sentBy: input.sentBy,
+    aiGenerated: input.aiGenerated,
+    origen: input.origen,
+    // El archivo del encabezado ES material entregado: el plano de una
+    // plantilla de consulta llega en el primer mensaje, igual que si lo
+    // hubiéramos mandado suelto. Ver `LogOutboundInput.mediaType`.
+    mediaType: input.headerMedia?.type ?? null,
+    mediaUrl: input.headerMedia?.link ?? null,
+    mediaFilename: input.headerMedia?.filename ?? null,
+  }
 }
 
 /** Nunca lanza — devuelve el resultado para que el caller siga fire-and-forget. */
@@ -142,16 +196,7 @@ export async function sendWhatsappTemplate(input: SendTemplateInput): Promise<Se
     )
     // Registrado igual: 'skipped' significa "modo prueba / sin credenciales",
     // no "no pasó nada" — sigue siendo visibilidad útil de qué se HUBIERA mandado.
-    await logOutbound({
-      phone: input.to,
-      templateName: input.templateName,
-      bodyPreview: bodyPreview(input),
-      payload: body,
-      status: 'skipped',
-      leadId: input.leadId,
-      propertyId: input.propertyId,
-      sentBy: input.sentBy,
-    })
+    await logOutbound({ ...camposDeRegistro(input), payload: body, status: 'skipped' })
     return { ok: true, skipped: true }
   }
 
@@ -177,16 +222,11 @@ export async function sendWhatsappTemplate(input: SendTemplateInput): Promise<Se
       const msg = json.error?.message ?? `HTTP ${res.status}`
       console.error(`[whatsapp] envío falló a ${input.to}: ${msg}`)
       await logOutbound({
-        phone: input.to,
-        templateName: input.templateName,
-        bodyPreview: bodyPreview(input),
+        ...camposDeRegistro(input),
         payload: json,
         status: 'failed',
         errorCode: json.error?.code != null ? String(json.error.code) : null,
         errorMessage: msg,
-        leadId: input.leadId,
-        propertyId: input.propertyId,
-        sentBy: input.sentBy,
       })
       return { ok: false, skipped: false, error: msg, errorCode: json.error?.code }
     }
@@ -196,33 +236,12 @@ export async function sendWhatsappTemplate(input: SendTemplateInput): Promise<Se
     // `to` que mandamos — Meta agrega el 9 a los móviles argentinos).
     const waId = json.contacts?.[0]?.wa_id ?? null
     const waMessageId = json.messages?.[0]?.id
-    await logOutbound({
-      phone: input.to,
-      waId,
-      waMessageId,
-      templateName: input.templateName,
-      bodyPreview: bodyPreview(input),
-      payload: json,
-      status: 'accepted',
-      leadId: input.leadId,
-      propertyId: input.propertyId,
-      sentBy: input.sentBy,
-    })
+    await logOutbound({ ...camposDeRegistro(input), waId, waMessageId, payload: json, status: 'accepted' })
     return { ok: true, skipped: false, messageId: waMessageId }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[whatsapp] excepción enviando a ${input.to}: ${msg}`)
-    await logOutbound({
-      phone: input.to,
-      templateName: input.templateName,
-      bodyPreview: bodyPreview(input),
-      payload: body,
-      status: 'failed',
-      errorMessage: msg,
-      leadId: input.leadId,
-      propertyId: input.propertyId,
-      sentBy: input.sentBy,
-    })
+    await logOutbound({ ...camposDeRegistro(input), payload: body, status: 'failed', errorMessage: msg })
     return { ok: false, skipped: false, error: msg }
   }
 }
@@ -326,24 +345,33 @@ function mediaBodyPreview(input: SendMediaInput): string {
   return `[${etiqueta}] ${detalle}`.slice(0, 300)
 }
 
+/**
+ * Los campos de registro comunes a las cuatro salidas de `sendWhatsappMedia`.
+ * Mismo motivo que `camposDeRegistro`: un campo nuevo no puede llegar a unos
+ * caminos sí y a otros no.
+ */
+function camposDeRegistroMedia(input: SendMediaInput) {
+  return {
+    phone: input.to,
+    bodyPreview: mediaBodyPreview(input),
+    leadId: input.leadId,
+    propertyId: input.propertyId,
+    sentBy: input.sentBy,
+    aiGenerated: input.aiGenerated,
+    origen: input.origen,
+    mediaType: input.mediaType,
+    mediaUrl: input.link,
+    mediaFilename: input.filename ?? null,
+  }
+}
+
 /** Nunca lanza — mismo contrato que `sendWhatsappText`/`sendWhatsappTemplate`. */
 export async function sendWhatsappMedia(input: SendMediaInput): Promise<SendMediaResult> {
   const body = buildMediaPayload(input)
-  const preview = mediaBodyPreview(input)
 
   if (whatsappTestMode()) {
     console.log(`[whatsapp:test] (no enviado) to=${input.to} ${input.mediaType} link=${input.link}`)
-    await logOutbound({
-      phone: input.to,
-      bodyPreview: preview,
-      payload: body,
-      status: 'skipped',
-      leadId: input.leadId,
-      propertyId: input.propertyId,
-      sentBy: input.sentBy,
-      aiGenerated: input.aiGenerated,
-      origen: input.origen,
-    })
+    await logOutbound({ ...camposDeRegistroMedia(input), payload: body, status: 'skipped' })
     return { ok: true, skipped: true }
   }
 
@@ -369,51 +397,22 @@ export async function sendWhatsappMedia(input: SendMediaInput): Promise<SendMedi
       const msg = json.error?.message ?? `HTTP ${res.status}`
       console.error(`[whatsapp] envío de ${input.mediaType} falló a ${input.to}: ${msg}`)
       await logOutbound({
-        phone: input.to,
-        bodyPreview: preview,
+        ...camposDeRegistroMedia(input),
         payload: json,
         status: 'failed',
         errorCode: json.error?.code != null ? String(json.error.code) : null,
         errorMessage: msg,
-        leadId: input.leadId,
-        propertyId: input.propertyId,
-        sentBy: input.sentBy,
-      aiGenerated: input.aiGenerated,
-      origen: input.origen,
       })
       return { ok: false, skipped: false, error: msg }
     }
     const waId = json.contacts?.[0]?.wa_id ?? null
     const waMessageId = json.messages?.[0]?.id
-    await logOutbound({
-      phone: input.to,
-      waId,
-      waMessageId,
-      bodyPreview: preview,
-      payload: json,
-      status: 'accepted',
-      leadId: input.leadId,
-      propertyId: input.propertyId,
-      sentBy: input.sentBy,
-      aiGenerated: input.aiGenerated,
-      origen: input.origen,
-    })
+    await logOutbound({ ...camposDeRegistroMedia(input), waId, waMessageId, payload: json, status: 'accepted' })
     return { ok: true, skipped: false, messageId: waMessageId }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[whatsapp] excepción enviando ${input.mediaType} a ${input.to}: ${msg}`)
-    await logOutbound({
-      phone: input.to,
-      bodyPreview: preview,
-      payload: body,
-      status: 'failed',
-      errorMessage: msg,
-      leadId: input.leadId,
-      propertyId: input.propertyId,
-      sentBy: input.sentBy,
-      aiGenerated: input.aiGenerated,
-      origen: input.origen,
-    })
+    await logOutbound({ ...camposDeRegistroMedia(input), payload: body, status: 'failed', errorMessage: msg })
     return { ok: false, skipped: false, error: msg }
   }
 }
