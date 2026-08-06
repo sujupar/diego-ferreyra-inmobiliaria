@@ -20,7 +20,22 @@
  *   node --env-file=.env.local --import tsx scripts/create-whatsapp-templates-consulta.ts          # estado
  *   node --env-file=.env.local --import tsx scripts/create-whatsapp-templates-consulta.ts --create # crear
  */
-import { CUERPO_CON_MATERIAL, CUERPO_SIN_MATERIAL } from '@/lib/leads/consulta-template'
+import {
+  CUERPO_CON_MATERIAL,
+  CUERPO_SIN_MATERIAL,
+  CUERPO_CON_MATERIAL_UTIL,
+  CUERPO_SIN_MATERIAL_UTIL,
+} from '@/lib/leads/consulta-template'
+
+/**
+ * `--util` crea la familia "de trámite", con nombres `*_util`. Existe porque
+ * Meta reclasificó la primera familia como MARKETING: ver `PLANTILLAS_UTIL`.
+ * Las dos familias conviven; la vieja queda de respaldo.
+ */
+const UTIL = process.argv.includes('--util')
+const SUF = UTIL ? '_util' : ''
+const CUERPO_CON = UTIL ? CUERPO_CON_MATERIAL_UTIL : CUERPO_CON_MATERIAL
+const CUERPO_SIN = UTIL ? CUERPO_SIN_MATERIAL_UTIL : CUERPO_SIN_MATERIAL
 
 const API = process.env.WHATSAPP_API_VERSION ?? 'v21.0'
 const LANG = 'es_AR'
@@ -103,7 +118,7 @@ async function main() {
   const existentes = new Map((j0.data ?? []).map(t => [t.name, t]))
 
   console.log('Plantillas de consulta:')
-  for (const n of ['consulta_plano', 'consulta_video', 'consulta_simple']) {
+  for (const n of ['consulta_plano' + SUF, 'consulta_video' + SUF, 'consulta_simple' + SUF]) {
     const t = existentes.get(n)
     console.log(`  ${n.padEnd(18)} ${t ? `${t.category} / ${t.status}` : 'no existe'}`)
   }
@@ -119,41 +134,46 @@ async function main() {
   const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
   const { data: conVideo } = await sb
     .from('properties').select('video_file_url').not('video_file_url', 'is', null).limit(1)
+  // OJO: `.not('plans','is',null)` NO alcanza — una propiedad con la lista
+  // VACÍA (`{}`) tampoco es null, y devolvía esa primero. Se traen varias y se
+  // filtra por contenido real.
   const { data: conPlano } = await sb
-    .from('properties').select('plans').not('plans', 'is', null).limit(1)
+    .from('properties').select('plans').not('plans', 'is', null).limit(50)
 
   const muestraVideo = (conVideo as Array<{ video_file_url: string }> | null)?.[0]?.video_file_url
-  const muestraPlano = (conPlano as Array<{ plans: string[] }> | null)?.[0]?.plans?.[0]
+  const muestraPlano = ((conPlano as Array<{ plans: string[] | null }> | null) ?? [])
+    .map(r => (r.plans ?? [])[0])
+    .find(u => typeof u === 'string' && u.trim())
 
   console.log('\nCreando…')
 
-  if (!existentes.has('consulta_simple')) {
-    await crear(waba, token, 'consulta_simple', [
-      { type: 'BODY', text: CUERPO_SIN_MATERIAL, example: { body_text: EJEMPLO_SIN_MATERIAL } },
+  if (!existentes.has('consulta_simple' + SUF)) {
+    await crear(waba, token, 'consulta_simple' + SUF, [
+      { type: 'BODY', text: CUERPO_SIN, example: { body_text: EJEMPLO_SIN_MATERIAL } },
     ])
   }
 
-  if (!existentes.has('consulta_video')) {
+  if (!existentes.has('consulta_video' + SUF)) {
     if (!muestraVideo) {
       console.log('  ⏭  consulta_video: ninguna propiedad tiene video de archivo para usar de muestra.')
     } else {
       const handle = await subirMuestra(muestraVideo, 'video/mp4')
-      await crear(waba, token, 'consulta_video', [
+      await crear(waba, token, 'consulta_video' + SUF, [
         { type: 'HEADER', format: 'VIDEO', example: { header_handle: [handle] } },
-        { type: 'BODY', text: CUERPO_CON_MATERIAL, example: { body_text: EJEMPLO_CON_MATERIAL } },
+        { type: 'BODY', text: CUERPO_CON, example: { body_text: EJEMPLO_CON_MATERIAL } },
       ])
     }
   }
 
-  if (!existentes.has('consulta_plano')) {
+  if (!existentes.has('consulta_plano' + SUF)) {
     if (!muestraPlano) {
       console.log('  ⏭  consulta_plano: ninguna propiedad tiene plano cargado todavía.')
       console.log('     Cargá un plano desde la ficha de cualquier propiedad y volvé a correr esto.')
     } else {
       const handle = await subirMuestra(muestraPlano, 'application/pdf')
-      await crear(waba, token, 'consulta_plano', [
+      await crear(waba, token, 'consulta_plano' + SUF, [
         { type: 'HEADER', format: 'DOCUMENT', example: { header_handle: [handle] } },
-        { type: 'BODY', text: CUERPO_CON_MATERIAL, example: { body_text: EJEMPLO_CON_MATERIAL } },
+        { type: 'BODY', text: CUERPO_CON, example: { body_text: EJEMPLO_CON_MATERIAL } },
       ])
     }
   }
