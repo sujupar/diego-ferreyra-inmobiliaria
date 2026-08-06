@@ -96,6 +96,12 @@ export interface SendTemplateResult {
   skipped: boolean // true si modo prueba / sin credenciales
   messageId?: string
   error?: string
+  /**
+   * Código de error de Meta. Sirve para distinguir "no se entregó porque el
+   * cliente bloqueó las promociones" de "el número es inválido" — dos cosas que
+   * requieren acciones opuestas y que un mensaje de texto no distingue.
+   */
+  errorCode?: number
 }
 
 export function whatsappConfigured(): boolean {
@@ -182,7 +188,7 @@ export async function sendWhatsappTemplate(input: SendTemplateInput): Promise<Se
         propertyId: input.propertyId,
         sentBy: input.sentBy,
       })
-      return { ok: false, skipped: false, error: msg }
+      return { ok: false, skipped: false, error: msg, errorCode: json.error?.code }
     }
     // El estado inicial de un envío ACEPTADO por Meta es 'accepted' (no 'sent'):
     // 'sent' lo pone el webhook de estados (otra tarea) cuando Meta confirma la

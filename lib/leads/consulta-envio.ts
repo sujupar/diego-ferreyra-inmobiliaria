@@ -9,7 +9,6 @@
  * después se le muestra al equipo en la pantalla de consultas sin atender: sin
  * él, "no se mandó" es indistinguible de "no pasó nada".
  */
-import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
 
 export interface ConsultaParaEnviar {
   lead_phone: string | null
@@ -17,6 +16,16 @@ export interface ConsultaParaEnviar {
   /** Ya se le mandó antes: la ingesta reprocesa mails y nadie puede recibir dos. */
   whatsapp_enviado_at?: string | null
 }
+
+/**
+ * El normalizador entra POR PARÁMETRO en vez de importarse.
+ *
+ * Es lo que mantiene esta función pura y testeable sin la librería de teléfonos
+ * —que carga distinto dentro de Next que en un script suelto y nos costó una
+ * hora de diagnóstico—. Quien llama pasa el normalizador real; los tests pasan
+ * uno de mentira.
+ */
+export type Normalizador = (v: string | null | undefined) => string | null
 
 export interface AjustesEnvio {
   consulta_respuesta_enabled: boolean
@@ -32,7 +41,11 @@ export type DecisionEnvio =
  * atienda a mano" (sin propiedad, sin teléfono) de "el sistema está apagado o
  * es una repetición", que no son un problema de nadie.
  */
-export function decidirEnvio(c: ConsultaParaEnviar, ajustes: AjustesEnvio | null): DecisionEnvio {
+export function decidirEnvio(
+  c: ConsultaParaEnviar,
+  ajustes: AjustesEnvio | null,
+  normalizar: Normalizador,
+): DecisionEnvio {
   if (!ajustes || !ajustes.consulta_respuesta_enabled) {
     // Fail-closed: si no se pudieron leer los ajustes, no se manda.
     return { enviar: false, motivo: 'la respuesta automática está apagada', visibleParaElEquipo: false }
@@ -41,7 +54,7 @@ export function decidirEnvio(c: ConsultaParaEnviar, ajustes: AjustesEnvio | null
     return { enviar: false, motivo: 'ya se le había mandado', visibleParaElEquipo: false }
   }
 
-  const tel = normalizeWhatsappPhone(c.lead_phone)
+  const tel = normalizar(c.lead_phone)
   if (!tel) {
     return {
       enviar: false,
@@ -61,7 +74,7 @@ export function decidirEnvio(c: ConsultaParaEnviar, ajustes: AjustesEnvio | null
   }
 
   const lista = (ajustes.consulta_test_phones ?? [])
-    .map(p => normalizeWhatsappPhone(p))
+    .map(p => normalizar(p))
     .filter((p): p is string => !!p)
   if (lista.length > 0 && !lista.includes(tel)) {
     return {

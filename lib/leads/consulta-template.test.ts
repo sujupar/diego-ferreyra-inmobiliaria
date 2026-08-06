@@ -96,3 +96,33 @@ describe('los cuerpos', () => {
     }
   })
 })
+
+// El PDF llegaba con el nombre con el que se subió al sistema. En el chat del
+// cliente eso se ve como "escaneo_final_v2.pdf" y no dice de qué propiedad es.
+describe('nombreDeArchivo', () => {
+  it('nombra el plano con la propiedad', async () => {
+    const { nombreDeArchivo } = await import('./consulta-template')
+    expect(nombreDeArchivo('Entre Ríos 2333, Martínez')).toBe('Entre Ríos 2333, Martínez - Planos.pdf')
+  })
+
+  it('saca los caracteres que WhatsApp o un sistema de archivos tratan raro', async () => {
+    const { nombreDeArchivo } = await import('./consulta-template')
+    expect(nombreDeArchivo('Casa "El Ombú" / 2 <lote>')).toBe('Casa El Ombú 2 lote - Planos.pdf')
+  })
+
+  it('sin etiqueta no deja un nombre colgado', async () => {
+    const { nombreDeArchivo } = await import('./consulta-template')
+    expect(nombreDeArchivo(null)).toBe('Planos.pdf')
+    expect(nombreDeArchivo('   ')).toBe('Planos.pdf')
+  })
+
+  it('acota el largo: un nombre enorme se ve cortado en el chat', async () => {
+    const { nombreDeArchivo } = await import('./consulta-template')
+    expect(nombreDeArchivo('x'.repeat(200)).length).toBeLessThanOrEqual(80)
+  })
+
+  it('la elección de plantilla lo incluye cuando hay plano', () => {
+    const e = elegirPlantilla({ etiqueta: 'Entre Ríos 2333', plans: ['https://s/p.pdf'], video_file_url: null })
+    expect(e.headerFilename).toBe('Entre Ríos 2333 - Planos.pdf')
+  })
+})

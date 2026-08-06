@@ -26,6 +26,8 @@ function arg(nombre: string): string | undefined {
 }
 
 async function main() {
+  // Import DINÁMICO: la librería de teléfonos carga su build ESM así, y su
+  // build CJS —el que toma un import estático bajo tsx— explota fuera de Next.
   const { responderConsulta } = await import('@/lib/leads/responder-consulta')
   const tel = arg('tel')
   const busqueda = arg('propiedad') ?? 'Entre Ríos'
@@ -64,6 +66,10 @@ async function main() {
     .insert({
       portal: 'zonaprop',
       inquiry_type: 'whatsapp',
+      // La tabla lo exige (viene de leer Gmail). Con prefijo `prueba-` para que
+      // una consulta simulada nunca se confunda con una real, ni acá ni en un
+      // reporte futuro.
+      gmail_message_id: `prueba-${Date.now()}`,
       received_at: new Date().toISOString(),
       lead_name: nombre,
       lead_phone: `+${tel}`,
@@ -79,7 +85,14 @@ async function main() {
 
   const id = (creada as { id: string }).id
   console.log(`\nConsulta creada: ${id}`)
-  const r = await responderConsulta(id)
+  // El normalizador se carga por import dinámico: así toma el build ESM, que es
+  // el único que funciona fuera de Next.
+  const { parsePhoneNumberFromString } = await import('libphonenumber-js/max')
+  const normalizar = (v: string | null | undefined): string | null => {
+    const n = parsePhoneNumberFromString((v ?? '').trim())
+    return n?.isValid() ? n.number.replace('+', '') : null
+  }
+  const r = await responderConsulta(id, { normalizar })
   console.log('Resultado:', JSON.stringify(r, null, 1))
 }
 main().catch(e => { console.error('Error:', e instanceof Error ? e.message : e); process.exit(1) })
