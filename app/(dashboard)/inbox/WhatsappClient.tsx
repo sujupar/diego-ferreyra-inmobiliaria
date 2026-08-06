@@ -527,6 +527,15 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
                     pipelineState={activePipelineState}
                     onTagsChanged={handleTagsChanged}
                     onStateChanged={handleStateChanged}
+                    phoneE164={selectedPhone}
+                    agentOff={(conversations ?? []).find(c => c.phone_e164 === selectedPhone)?.ai?.agentOff === true}
+                    onAgentToggled={(phone, activo) =>
+                      setConversations(cs =>
+                        (cs ?? []).map(c =>
+                          c.phone_e164 === phone && c.ai ? { ...c, ai: { ...c.ai, agentOff: !activo } } : c,
+                        ),
+                      )
+                    }
                   />
                 }
               />

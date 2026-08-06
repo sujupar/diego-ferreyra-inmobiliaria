@@ -62,6 +62,8 @@ export interface BrainContext {
    * preguntaba por el día una y otra vez, mensaje tras mensaje.
    */
   ultimoMensajePropio: string | null
+  /** Material que YA se le mandó antes en esta conversación. No se repite. */
+  yaMandado: MaterialTipo[]
   /** Si el agente que ESCRIBE está apagado, el modelo solo analiza (no redacta respuesta). */
   canWrite: boolean
 }
@@ -108,6 +110,23 @@ CÓMO HABLÁS
 - Sin emojis. Sin signos de admiración de más: uno cada tanto, no en cada frase.
 - Nunca digas que la visita está confirmada. Queda ANOTADA, y después alguien del equipo LLAMA para confirmar el horario. Decilo así de concreto: "te llamamos para confirmarte el horario". "El equipo confirma" no le dice nada a nadie — no se entiende quién hace qué ni cuándo.
 
+HABLÁS COMO UNA PERSONA, NO COMO UNA FICHA
+Este es el error de tono más común: contestar con los datos apilados uno atrás del otro. Así suena un catálogo, no alguien que conoce la casa.
+
+MAL: "La casa tiene 3 ambientes, 2 dormitorios y 2 baños, con una superficie cubierta de 150 m² y total de 600 m²."
+BIEN: "Es una casa de 3 ambientes en un lote grande, 600 m² en total. Tiene pileta, parrilla y gimnasio, así que el fondo se aprovecha todo el año."
+
+MAL: "La casa sale USD 199.700."
+BIEN: "Está en USD 199.700. Para lo que es la zona y el metraje, está bien puesta."
+
+MAL: "Cuenta con 4 cocheras."
+BIEN: "Tiene lugar para 4 autos, que en esa zona no es fácil de conseguir."
+
+La diferencia: no enumerás, CONTÁS. Elegí los dos o tres datos que más le importan a esa persona y decilos como se los dirías a un amigo que te pregunta por una casa. El resto está en las fotos y el video, que se los mandás igual.
+- No hace falta que uses todos los datos que tenés. Un mensaje con tres cosas bien dichas vale más que uno con nueve.
+- Si algo del dato tiene una consecuencia para la persona, decila: "600 m² de terreno" no dice nada, "el fondo te da para pileta y parrilla" sí.
+- Sin exagerar ni vender humo. Nada de "una joya", "única en su tipo", "no vas a encontrar otra igual". Se nota y da desconfianza.
+
 LO QUE MÁS IMPORTA: TE INTERESA LA PERSONA, NO LA TRANSACCIÓN
 Nadie busca una propiedad porque sí. Atrás hay algo concreto: se agranda la familia, se muda por trabajo, se quiere ir del alquiler, está invirtiendo, quiere estar cerca de los padres. Entender ESO es lo que hace que la visita sirva, y es lo que un buen asesor hace naturalmente.
 
@@ -135,6 +154,7 @@ Lo más importante: NO TOMES EL PEDIDO AL PIE DE LA LETRA. Cuando alguien pide f
 - Si queda algo afuera, ofrecelo simple para el próximo mensaje: "Si querés te paso el plano también".
 - Si pide algo que NO figura disponible, decilo sin vueltas y ofrecé lo que sí tenés: "Plano no tengo a mano, pero te paso el video y ahí se ve bien cómo está distribuida".
 - Mandar material NO es un premio por agendar. Es ayudar. Se manda porque le sirve, punto.
+- NO le mandes de nuevo algo que ya le mandaste. Abajo te digo qué ya recibió. Repetirlo es ruido y hace ver que no estás siguiendo la conversación.
 
 INTERPRETÁ LO QUE QUIERE, NO LO QUE DIJO
 La gente no pregunta lo que necesita, pregunta lo primero que se le viene. Tu trabajo es entender qué hay detrás y responder a ESO.
@@ -223,6 +243,9 @@ export function buildBrainUserPrompt(ctx: BrainContext): string {
   partes.push(
     `Resumen previo:\n${ctx.previousSummary.trim() || '(sin resumen previo — es la primera vez que se analiza esta conversación)'}`,
   )
+  if (ctx.yaMandado.length > 0) {
+    partes.push(`Material que YA le mandaste (no se lo repitas): ${ctx.yaMandado.join(', ')}.`)
+  }
   partes.push(
     ctx.ultimoMensajePropio
       ? `Tu mensaje anterior a esta persona fue:\n"${ctx.ultimoMensajePropio}"\nSi ahí ya preguntaste por el día o la hora, NO lo vuelvas a preguntar.`
@@ -260,8 +283,10 @@ export function coerceBrainDecision(raw: unknown): BrainDecision | null {
   const visitDate = typeof r.visitDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.visitDate.trim())
     ? r.visitDate.trim()
     : null
+  // El 0 se trata como "no dijo hora": los modelos lo devuelven como relleno
+  // cuando no hay dato, y medianoche no es un horario de visita de todos modos.
   const hourRaw = typeof r.visitHour === 'number' ? r.visitHour : Number(r.visitHour)
-  const visitHour = Number.isInteger(hourRaw) ? hourRaw : null
+  const visitHour = Number.isInteger(hourRaw) && hourRaw !== 0 ? hourRaw : null
 
   // Solo tres valores son válidos; cualquier otra cosa (o una URL inventada)
   // se descarta. El código resuelve los archivos, el modelo solo pide el tipo.

@@ -91,6 +91,7 @@ function getNavSections(role: Role): NavSection[] {
                         ...(can('settings.manage') ? [{ href: '/settings/portals', label: 'Portales' }] : []),
                         ...(can('settings.manage') ? [{ href: '/admin/pipeline-test', label: 'Probar sistema (auditoría)' }] : []),
                         ...(can('settings.manage') ? [{ href: '/admin/email-test', label: 'Test de Emails' }] : []),
+                        ...(can('settings.manage') ? [{ href: '/admin/ai-agent', label: 'Probar el agente IA' }] : []),
                         ...(can('settings.manage') ? [{ href: '/admin/ai-usage', label: 'Costo del agente IA' }] : []),
                         ...(can('users.manage') ? [{ href: '/users', label: 'Usuarios' }] : []),
                     ]

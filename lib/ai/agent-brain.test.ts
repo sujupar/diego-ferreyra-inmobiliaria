@@ -25,6 +25,7 @@ function ctx(over: Partial<BrainContext> = {}): BrainContext {
     canWrite: true,
     puedeMandar: { fotos: true, plano: true, video: true },
     ultimoMensajePropio: null,
+    yaMandado: [],
     ...over,
   }
 }
@@ -67,6 +68,27 @@ describe('buildBrainUserPrompt', () => {
     expect(p).toContain('Tu mensaje anterior a esta persona fue')
     expect(p).toContain('¿Qué día te viene bien?')
     expect(p).toMatch(/NO lo vuelvas a preguntar/)
+  })
+
+  it('le dice qué material YA le mandó — si no, repite las mismas fotos en cada turno', () => {
+    const p = buildBrainUserPrompt(ctx({ yaMandado: ['fotos', 'video'] }))
+    expect(p).toMatch(/YA le mandaste \(no se lo repitas\): fotos, video/)
+  })
+
+  it('sin material mandado todavía, no ensucia el prompt con esa línea', () => {
+    expect(buildBrainUserPrompt(ctx())).not.toMatch(/YA le mandaste/)
+  })
+
+  it('la voz: tiene ejemplos de MAL y BIEN, que es lo único que corrige el tono', () => {
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/HABLÁS COMO UNA PERSONA, NO COMO UNA FICHA/)
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/no enumerás, CONTÁS/)
+  })
+
+  it('la hora 0 se lee como "no dijo hora", no como medianoche', () => {
+    expect(coerceBrainDecision({
+      summary: 's', intent: 'agendar', priorityScore: 50, priorityReason: 'r',
+      suggestedNextStep: '', reply: 'x', visitDate: '2026-08-07', visitHour: 0,
+    })?.visitHour).toBeNull()
   })
 
   it('en el primer contacto se lo dice explícito', () => {

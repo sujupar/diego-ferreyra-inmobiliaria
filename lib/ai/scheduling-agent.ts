@@ -912,6 +912,40 @@ async function ultimoTextoDelAgente(
   }
 }
 
+/**
+ * Qué material ya recibió esta persona. Sin esto el agente le vuelve a mandar
+ * las mismas fotos en cada turno, que es ruido y deja ver que no está siguiendo
+ * la conversación.
+ *
+ * Se deduce del `body_preview` que arma `sendWhatsappMedia` ("[Foto] …",
+ * "[Video] …", "[Documento] …"). Es un acoplamiento a ese formato y por eso está
+ * dicho acá: si alguien cambia esas etiquetas, esto deja de detectar y el
+ * agente empieza a repetir material.
+ */
+async function materialYaMandado(
+  sb: ReturnType<typeof admin>,
+  phoneE164: string,
+): Promise<MaterialTipo[]> {
+  try {
+    const { data } = await sb
+      .from('whatsapp_messages')
+      .select('body_preview')
+      .eq('phone_e164', phoneE164)
+      .eq('direction', 'out')
+      .eq('ai_generated', true)
+      .order('created_at', { ascending: false })
+      .limit(30)
+    const previews = ((data as Array<{ body_preview: string | null }> | null) ?? []).map(r => r.body_preview ?? '')
+    const out: MaterialTipo[] = []
+    if (previews.some(t => t.startsWith('[Foto]'))) out.push('fotos')
+    if (previews.some(t => t.startsWith('[Documento]'))) out.push('plano')
+    if (previews.some(t => t.startsWith('[Video]'))) out.push('video')
+    return out
+  } catch {
+    return []
+  }
+}
+
 async function resolveClientName(
   sb: ReturnType<typeof admin>,
   input: Pick<RunSchedulingAgentInput, 'contactName' | 'leadId' | 'phoneE164'>,
@@ -1186,7 +1220,10 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
     }
     const pendiente = enAgenda.visit
     const clientName = await resolveClientName(sb, input)
-    const ultimoMensajePropio = await ultimoTextoDelAgente(sb, input.phoneE164)
+    const [ultimoMensajePropio, yaMandado] = await Promise.all([
+      ultimoTextoDelAgente(sb, input.phoneE164),
+      materialYaMandado(sb, input.phoneE164),
+    ])
 
     // Si CUALQUIER freno está puesto, el modelo igual analiza (el Inbox necesita
     // el resumen y la prioridad), pero se le dice que no redacte respuesta.
@@ -1211,6 +1248,7 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       canWrite,
       puedeMandar: materialDisponible(prop),
       ultimoMensajePropio,
+      yaMandado,
     })
     if (!analysis.analyzed) {
       return { action: 'noop', reason: 'no hubo análisis nuevo en este turno' }

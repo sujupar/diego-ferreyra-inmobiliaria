@@ -279,11 +279,11 @@ export async function GET(req: Request) {
     // cast que el resto del archivo. Esta ruta solo LEE: la escribe
     // `lib/ai/conversation-memory.ts` (otra tarea, en paralelo).
     const allPhones = Array.from(groups.keys())
-    let aiStateMap = new Map<string, AiPriorityInput & { suggestedNextStep: string | null; analyzedAt: string | null }>()
+    let aiStateMap = new Map<string, AiPriorityInput & { suggestedNextStep: string | null; analyzedAt: string | null; agentOff: boolean }>()
     if (allPhones.length > 0) {
       const { data: aiRows } = await supabase
         .from('conversation_ai_state')
-        .select('phone_e164, intent, priority_score, priority_reason, suggested_next_step, last_analyzed_at')
+        .select('phone_e164, intent, priority_score, priority_reason, suggested_next_step, last_analyzed_at, agent_handed_off')
         .in('phone_e164', allPhones)
       for (const row of (aiRows ?? []) as Array<{
         phone_e164: string
@@ -292,6 +292,7 @@ export async function GET(req: Request) {
         priority_reason: string | null
         suggested_next_step: string | null
         last_analyzed_at: string | null
+        agent_handed_off: boolean | null
       }>) {
         aiStateMap.set(row.phone_e164, {
           intent: (row.intent ?? 'desconocido') as ConversationIntent,
@@ -299,6 +300,9 @@ export async function GET(req: Request) {
           priorityReason: row.priority_reason,
           suggestedNextStep: row.suggested_next_step,
           analyzedAt: row.last_analyzed_at,
+          // Si está derivada, el agente NO contesta en esta conversación. El
+          // Inbox lo muestra en un botón para poder prenderlo/apagarlo a mano.
+          agentOff: row.agent_handed_off === true,
         })
       }
     }
