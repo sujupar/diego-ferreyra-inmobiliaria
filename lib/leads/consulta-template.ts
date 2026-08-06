@@ -17,6 +17,28 @@
 
 export type PlantillaConsulta = 'consulta_plano' | 'consulta_video' | 'consulta_simple'
 
+/**
+ * La familia "de trámite" (`_util`).
+ *
+ * Meta aprobó la primera familia pero la RECLASIFICÓ como MARKETING, no como
+ * UTILITY. No es un detalle: las de marketing tienen tope diario por persona y
+ * NO se entregan a quien desactivó promociones — o sea, parte de la gente que
+ * nos consultó no las recibiría.
+ *
+ * La sospecha es el tono: "si querés te mando las fotos también" es un
+ * ofrecimiento, y "contame, ¿cómo te puedo ayudar?" es conversación. Para Meta
+ * una notificación de utilidad es puro trámite: qué pasó y qué se adjunta.
+ *
+ * La calidez no se pierde — se mueve al SEGUNDO mensaje, que ya va dentro de la
+ * ventana de 24hs y no necesita plantilla. El primero abre la puerta; el
+ * agente atiende.
+ */
+export const PLANTILLAS_UTIL: Record<PlantillaConsulta, string> = {
+  consulta_plano: 'consulta_plano_util',
+  consulta_video: 'consulta_video_util',
+  consulta_simple: 'consulta_simple_util',
+}
+
 export interface MediaDeLaPropiedad {
   plans?: string[] | null
   /** Archivo propio. Un link de YouTube NO sirve: Meta descarga el archivo desde la URL. */
@@ -118,3 +140,17 @@ export function parametrosDelCuerpo(
     ? [nombre, eleccion.queMando, datos.propiedad]
     : [nombre, datos.propiedad]
 }
+
+/** Versión de trámite, con el mismo orden de variables que `CUERPO_CON_MATERIAL`. */
+export const CUERPO_CON_MATERIAL_UTIL = `Hola {{1}}.
+
+Recibimos tu consulta por {{3}}. Te adjuntamos {{2}} de la propiedad.
+
+Si necesitás más información, respondé este mensaje.`
+
+/** Versión de trámite sin material. DOS variables, como su par. */
+export const CUERPO_SIN_MATERIAL_UTIL = `Hola {{1}}.
+
+Recibimos tu consulta por {{2}}. Un asesor la está viendo y te responde por acá.
+
+Si necesitás más información, respondé este mensaje.`
