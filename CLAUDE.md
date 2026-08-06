@@ -338,6 +338,14 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Fix:** migración `20260713000001_properties_status_descartada.sql` recrea el CHECK con la lista completa de STATUS_LABELS (incluye `descartada`). Si aparece un status nuevo en la app, actualizar TAMBIÉN el CHECK.
 - **Fusión de duplicados (2026-07-13):** las fichas duplicadas del import CSV se fusionaron (deal/contacto/tasación → la copia publicada; la vieja queda `status='descartada'` con address `[FUSIONADA-><id8>] ...`). Script reutilizable de linkeo mapa→propiedad: `scripts/backfill-map-property-links.ts`. Evidencia usada para NO fusionar: posting IDs de ZonaProp distintos = avisos/propiedades distintas (Agüero 950 Palermo vs Balvanera; G. Mistral 2750 vs 2751).
 
+### "Solicitud de tasación" ≠ "Tasación agendada" (emails del embudo)
+
+- **Symptom:** por cada registro en la landing de tasación llegaba un email "Tasación agendada: …" con Barrio/Fecha/Hora/Tipo en `—` y "Asesor: Sin asignar".
+- **Root cause:** `createFunnelLead` reusaba `notifyDealCreated`, que es la pieza de una tasación YA COORDINADA (muestra fecha, hora, tipo y asesor). Un registro del embudo no tiene nada de eso todavía.
+- **Fix (2026-07-30):** `lib/email/notifications/appraisal-request.ts` (`notifyAppraisalRequest`) + `emails/AppraisalRequestAdminsEmail.tsx`, con subject `Nueva solicitud de tasación: {nombre}` y un callout que aclara que NO está agendada. Guard: exige `origin='embudo'`. Va a coordinador + admins/dueños, NUNCA al asesor (todavía no hay).
+- **Regla general:** cada evento del embudo tiene su propia notificación. Ya son tres y no se mezclan: registro de clase → `notifyClassRegistration`; solicitud de tasación → `notifyAppraisalRequest`; tasación coordinada (`/api/deals`) → `notifyDealCreated`. Reusar una pieza "parecida" hace que el email afirme cosas falsas.
+- **Métricas:** no cambian — el deal sigue siendo `origin='embudo'`, `stage='request'` y cuenta igual en el embudo. Este fix es SOLO del email.
+
 ### Foreign keys a `profiles(id)` deben ser `ON DELETE SET NULL`
 
 - **Symptom:** Borrar un usuario desde Supabase Auth devuelve "Database error deleting user".
