@@ -354,6 +354,7 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Fix:** `buildDailyInsightsUrl` + `fetchDailyInsightsRange` (con `time_increment=1` y paginación), ruta `app/api/cron/meta-sync` (patrón de `send-report`: `x-cron-secret` contra env o `cron_config`), y `scripts/backfill-meta-spend.ts` para recuperar el histórico. Recuperado el 2026-08-06: la cobertura pasó de 24 a **211 de 218 días**.
 - **PENDIENTE:** falta programar el job `meta-sync` en `pg_cron` (migración `20260806000002`, se aplica con `scripts/apply-cron-meta-sync-pg.ts <secreto> <dominio>`). Requiere que el código esté deployado: apunta a una URL que no existe hasta entonces. **Sin esto, la inversión vuelve a cortarse.**
 - **Detection:** `SELECT max(date), count(DISTINCT date) FROM meta_ads_daily;` — si `max(date)` no avanza a diario, el job no está corriendo.
+- **OJO con la numeración de migraciones:** el prefijo `20260806000001` quedó **DUPLICADO** — `property_commercial_status.sql` y `whatsapp_origen.sql`, escritas el mismo día por dos sesiones en paralelo. Las dos ya están aplicadas, así que no rompe nada hoy, pero si alguna vez se reproducen las migraciones en orden el de esas dos es ambiguo. Antes de crear una migración, mirar el directorio.
 
 ### Tablero: el estado de resultados del embudo vive en `/metrics`, no en `/embudos` (2026-08-06)
 
