@@ -4,6 +4,16 @@ function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
+// lib/supabase/deals.ts — helper de enganche (dynamic import: nunca rompe el flujo)
+async function syncMailchimpBestEffort(dealId: string): Promise<void> {
+  try {
+    const { syncDealToMailchimp } = await import('@/lib/integrations/mailchimp/sync-deal')
+    await syncDealToMailchimp(dealId)
+  } catch (err) {
+    console.warn('[mailchimp] hook sync failed (ignored):', err instanceof Error ? err.message : err)
+  }
+}
+
 export type DealStage =
   | 'clase_gratuita'
   | 'request'
@@ -188,6 +198,7 @@ export async function updateDealStage(id: string, stage: DealStage, notes?: stri
 
   const { error } = await getAdmin().from('deals').update(updates).eq('id', id)
   if (error) throw error
+  await syncMailchimpBestEffort(id)
 }
 
 export async function updateDealNotes(id: string, notes: string) {
@@ -224,6 +235,7 @@ export async function linkAppraisalToDeal(dealId: string, appraisalId: string) {
     })
     .eq('id', dealId)
   if (error) throw error
+  await syncMailchimpBestEffort(dealId)
 }
 
 export async function linkPropertyToDeal(dealId: string, propertyId: string) {
@@ -237,4 +249,5 @@ export async function linkPropertyToDeal(dealId: string, propertyId: string) {
     })
     .eq('id', dealId)
   if (error) throw error
+  await syncMailchimpBestEffort(dealId)
 }
