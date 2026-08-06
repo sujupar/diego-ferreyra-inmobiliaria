@@ -16,17 +16,6 @@ import { Button } from '@/components/ui/button'
 import { Check, Copy, Loader2, RefreshCw } from 'lucide-react'
 import { DateRangePicker, type DateRange } from '@/components/metrics/DateRangePicker'
 import { HeatmapPanel, type HeatSectionRow, type HeatTotalRow, type HeatGridRow } from '@/components/embudos/HeatmapPanel'
-import { CuelloDeBotellaPanel } from '@/components/embudos/CuelloDeBotellaPanel'
-import { CostosPanel, type VolumenPorOrigen } from '@/components/embudos/CostosPanel'
-import { CoberturaAsesoresPanel } from '@/components/embudos/CoberturaAsesoresPanel'
-import type { StageTiming, FunnelCosts } from '@/lib/metrics/funnel-insights'
-
-interface FunnelInsights {
-  timings: StageTiming[]
-  costs: FunnelCosts | null
-  porOrigen: VolumenPorOrigen[]
-  asesores: { total: number; con_asesor: number; por_mes: { mes: string; total: number; con_asesor: number }[] }
-}
 
 interface FunnelByDayRow {
   day: string
@@ -510,7 +499,6 @@ export function EmbudosClient() {
   const [funnels, setFunnels] = useState<FunnelMetrics[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [insights, setInsights] = useState<FunnelInsights | null>(null)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -528,15 +516,6 @@ export function EmbudosClient() {
       setFunnels([])
     } finally {
       setLoading(false)
-    }
-
-    // Las secciones nuevas son independientes: si esta llamada falla, el resto
-    // de la pantalla tiene que seguir funcionando.
-    try {
-      const r = await fetch(`/api/funnels/insights?from=${range.from}&to=${range.to}`)
-      setInsights(r.ok ? await r.json() : null)
-    } catch {
-      setInsights(null)
     }
   }, [range.from, range.to])
 
@@ -592,10 +571,6 @@ export function EmbudosClient() {
       {!loading && !error && funnels.length === 0 && (
         <p className="text-sm text-muted-foreground">No hay embudos para mostrar.</p>
       )}
-
-      <CuelloDeBotellaPanel timings={insights?.timings ?? []} />
-      <CostosPanel costs={insights?.costs ?? null} porOrigen={insights?.porOrigen ?? []} />
-      {insights?.asesores && <CoberturaAsesoresPanel data={insights.asesores} />}
     </div>
   )
 }

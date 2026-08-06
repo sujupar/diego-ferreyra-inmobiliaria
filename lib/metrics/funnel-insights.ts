@@ -77,6 +77,71 @@ export function formatearDuracion(dias: number): string {
   return `${redondeado} día${redondeado === 1 ? '' : 's'}`
 }
 
+/* ─────────────────── Estado de resultados del embudo ─────────────────────── */
+
+/** Una etapa tal como la devuelve `get_funnel_statement`. */
+export interface StatementStage {
+  etapa: string
+  orden: number
+  cantidad: number
+  mediana_dias: number | null
+}
+
+/** Una línea del estado de resultados, ya lista para mostrar. */
+export interface StatementLine {
+  etapa: string
+  label: string
+  cantidad: number
+  /** Inversión total dividida por los que llegaron hasta acá. */
+  costoUnitario: number | null
+  /** % que pasó desde la etapa anterior. null en la primera. */
+  conversionPct: number | null
+  /** Cuántos se quedaron en el camino desde la etapa anterior. */
+  perdidos: number | null
+  medianaDias: number | null
+  /** El peor salto de conversión de toda la cascada. */
+  esCuelloDeBotella: boolean
+}
+
+/**
+ * Arma el estado de resultados: cada línea con su volumen, su costo unitario,
+ * cuánto convirtió desde la anterior y cuánto tardó.
+ *
+ * El costo unitario es la inversión TOTAL dividida por los que llegaron a esa
+ * etapa — no un prorrateo. Es lo que cuesta, a la fecha, conseguir uno: si
+ * invertí 3 millones y capté una sola propiedad, esa captación costó 3 millones.
+ */
+export function construirEstado(stages: StatementStage[], inversion: number): StatementLine[] {
+  const ordenadas = [...stages].sort((a, b) => a.orden - b.orden)
+
+  const lineas: StatementLine[] = ordenadas.map((s, i) => {
+    const previa = i > 0 ? ordenadas[i - 1] : null
+    const conversionPct = previa && previa.cantidad > 0
+      ? Math.round((s.cantidad / previa.cantidad) * 100)
+      : null
+    return {
+      etapa: s.etapa,
+      label: etiquetaEtapa(s.etapa),
+      cantidad: s.cantidad,
+      costoUnitario: s.cantidad > 0 && inversion > 0 ? Math.round(inversion / s.cantidad) : null,
+      conversionPct,
+      perdidos: previa ? previa.cantidad - s.cantidad : null,
+      medianaDias: s.mediana_dias,
+      esCuelloDeBotella: false,
+    }
+  })
+
+  // El cuello de botella es el peor salto de conversión, no la etapa con menos
+  // gente: al final del embudo siempre queda poca, y eso no es un problema.
+  const conConversion = lineas.filter(l => l.conversionPct !== null)
+  if (conConversion.length > 0) {
+    const peor = conConversion.reduce((a, b) => (b.conversionPct! < a.conversionPct! ? b : a))
+    peor.esCuelloDeBotella = true
+  }
+
+  return lineas
+}
+
 /**
  * El paso más lento del embudo, nombrado en castellano.
  *

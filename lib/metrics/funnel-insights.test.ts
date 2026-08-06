@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  construirEstado,
   MUESTRA_MINIMA, esMuestraChica, cobertura, cuelloDeBotella,
   formatearDuracion, etiquetaEtapa, type StageTiming,
 } from './funnel-insights'
@@ -72,6 +73,60 @@ describe('cuello de botella', () => {
       t('scheduled', 'visited', 14, 2),
     ])
     expect(r.masLento?.hasta).toBe('visited')
+  })
+})
+
+describe('estado de resultados', () => {
+  // Los números reales del embudo 2026, para que el test hable del negocio.
+  const etapas = [
+    { etapa: 'request', orden: 1, cantidad: 109, mediana_dias: null },
+    { etapa: 'scheduled', orden: 2, cantidad: 26, mediana_dias: 0 },
+    { etapa: 'visited', orden: 3, cantidad: 14, mediana_dias: 4.1 },
+    { etapa: 'appraisal_sent', orden: 4, cantidad: 7, mediana_dias: 13.4 },
+    { etapa: 'captured', orden: 5, cantidad: 1, mediana_dias: 0 },
+  ]
+
+  it('calcula el costo unitario de cada etapa sobre la inversión total', () => {
+    const l = construirEstado(etapas, 3_407_443)
+    expect(l[0].costoUnitario).toBe(31261)   // 109 solicitudes
+    expect(l[4].costoUnitario).toBe(3407443) // 1 captación
+  })
+
+  it('calcula cuánto convierte cada paso y cuántos se pierden', () => {
+    const l = construirEstado(etapas, 3_407_443)
+    expect(l[0].conversionPct).toBeNull()  // la primera no viene de ninguna
+    expect(l[1].conversionPct).toBe(24)    // 26 de 109
+    expect(l[1].perdidos).toBe(83)
+    expect(l[2].conversionPct).toBe(54)    // 14 de 26
+  })
+
+  it('marca como cuello de botella el PEOR salto, no la etapa con menos gente', () => {
+    const l = construirEstado(etapas, 3_407_443)
+    const cuello = l.find(x => x.esCuelloDeBotella)
+    // 24% (solicitud→coordinada) es peor que 14% (tasación→captada)... salvo que no:
+    // el peor salto real de estos datos es 14%. El test fija la regla, no la intuición.
+    expect(cuello?.etapa).toBe('captured')
+    expect(cuello?.conversionPct).toBe(14)
+  })
+
+  it('sin inversión cargada no inventa un costo', () => {
+    const l = construirEstado(etapas, 0)
+    expect(l[0].costoUnitario).toBeNull()
+  })
+
+  it('una etapa sin nadie no divide por cero', () => {
+    const l = construirEstado([
+      { etapa: 'request', orden: 1, cantidad: 0, mediana_dias: null },
+      { etapa: 'scheduled', orden: 2, cantidad: 0, mediana_dias: null },
+    ], 1000)
+    expect(l[0].costoUnitario).toBeNull()
+    expect(l[1].conversionPct).toBeNull()
+  })
+
+  it('respeta el orden aunque las etapas lleguen desordenadas', () => {
+    const l = construirEstado([...etapas].reverse(), 3_407_443)
+    expect(l.map(x => x.etapa)).toEqual(
+      ['request', 'scheduled', 'visited', 'appraisal_sent', 'captured'])
   })
 })
 

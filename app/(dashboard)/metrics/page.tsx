@@ -12,6 +12,10 @@ import { FunnelByDayChart } from '@/components/metrics/FunnelByDayChart'
 import { CurrentStateBreakdown } from '@/components/metrics/CurrentStateBreakdown'
 import { PropertyInquiriesPanel } from '@/components/metrics/PropertyInquiriesPanel'
 import { SendTestReport } from '@/components/metrics/SendTestReport'
+import { EstadoResultadosEmbudo, type InversionPorCampana } from '@/components/metrics/EstadoResultadosEmbudo'
+import { CostosPanel, type VolumenPorOrigen } from '@/components/embudos/CostosPanel'
+import { CoberturaAsesoresPanel } from '@/components/embudos/CoberturaAsesoresPanel'
+import type { StatementStage, FunnelCosts } from '@/lib/metrics/funnel-insights'
 import type {
   MetricsComparison,
   FunnelMetrics,
@@ -38,6 +42,13 @@ export default function MetricsPage() {
   const [currentState, setCurrentState] = useState<CurrentStateRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [insights, setInsights] = useState<{
+    etapas: StatementStage[]
+    inversion: InversionPorCampana[]
+    costs: FunnelCosts | null
+    porOrigen: VolumenPorOrigen[]
+    asesores: { total: number; con_asesor: number; por_mes: { mes: string; total: number; con_asesor: number }[] }
+  } | null>(null)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -63,6 +74,15 @@ export default function MetricsPage() {
       setError(e instanceof Error ? e.message : 'Error cargando métricas')
     } finally {
       setLoading(false)
+    }
+
+    // El estado de resultados es independiente: si esta llamada falla, el resto
+    // de la pantalla tiene que seguir funcionando.
+    try {
+      const r = await fetch(`/api/funnels/insights?from=${range.from}&to=${range.to}`)
+      setInsights(r.ok ? await r.json() : null)
+    } catch {
+      setInsights(null)
     }
   }, [range.from, range.to])
 
@@ -92,6 +112,23 @@ export default function MetricsPage() {
           {error}
         </div>
       )}
+
+      {/* ── El estado de resultados va PRIMERO: es la lectura del negocio.
+             Lo de abajo es el detalle operativo de siempre. ────────────────── */}
+      <EstadoResultadosEmbudo
+        etapas={insights?.etapas ?? []}
+        inversion={insights?.inversion ?? []}
+        costs={insights?.costs ?? null}
+      />
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <CostosPanel costs={insights?.costs ?? null} porOrigen={insights?.porOrigen ?? []} />
+        {insights?.asesores && <CoberturaAsesoresPanel data={insights.asesores} />}
+      </section>
+
+      <div className="border-t pt-2">
+        <p className="eyebrow">Detalle operativo</p>
+      </div>
 
       <Card>
         <CardHeader>

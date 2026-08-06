@@ -38,14 +38,18 @@ export async function GET(req: NextRequest) {
 
     const db = admin()
 
-    const [timings, costs, porOrigen, asesores] = await Promise.all([
-      db.rpc('get_funnel_stage_timings', { p_from: from, p_to: to, p_origins: origenes }),
+    const [etapas, inversion, costs, porOrigen, asesores] = await Promise.all([
+      // La cascada sigue SOLO al embudo pago: mezclar orígenes haría que el
+      // porcentaje de conversión compare poblaciones distintas.
+      db.rpc('get_funnel_statement', { p_from: from, p_to: to, p_origins: ['embudo'] }),
+      db.rpc('get_funnel_investment', { p_from: from, p_to: to }),
       db.rpc('get_funnel_costs', { p_from: from, p_to: to }),
       db.rpc('get_funnel_volume_by_origin', { p_from: from, p_to: to }),
       db.rpc('get_advisor_coverage', { p_from: from, p_to: to }),
     ])
 
-    if (timings.error) throw timings.error
+    if (etapas.error) throw etapas.error
+    if (inversion.error) throw inversion.error
     if (costs.error) throw costs.error
     if (porOrigen.error) throw porOrigen.error
     if (asesores.error) throw asesores.error
@@ -53,7 +57,8 @@ export async function GET(req: NextRequest) {
     const cobertura = (asesores.data ?? []) as Array<{ mes: string; total: number; con_asesor: number }>
 
     return NextResponse.json({
-      timings: timings.data ?? [],
+      etapas: etapas.data ?? [],
+      inversion: inversion.data ?? [],
       costs: (costs.data ?? [])[0] ?? null,
       porOrigen: porOrigen.data ?? [],
       asesores: {
