@@ -90,6 +90,12 @@ describe('DEFAULT_AGENT_PROMPT — cómo atiende', () => {
   it('sigue sin poder afirmar que la visita está confirmada', () => {
     expect(DEFAULT_AGENT_PROMPT).toMatch(/Nunca digas que la visita está confirmada/)
   })
+
+  it('dice QUIÉN hace qué: "te llamamos para confirmarte el horario", no "el equipo confirma"', () => {
+    // "El equipo confirma" no le dice nada a nadie: ni quién, ni cómo, ni cuándo.
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/te llamamos para confirmarte el horario/)
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/Nunca "el equipo confirma" a secas/)
+  })
 })
 
 describe('coerceBrainDecision', () => {
