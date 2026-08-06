@@ -744,20 +744,34 @@ describe('PropertyCommercialStatusCard', () => {
     expect(screen.getByLabelText(/fecha de la operación/i)).toBeInTheDocument()
   })
 
-  it('no deja confirmar una venta sin precio y muestra el motivo', async () => {
+  // OJO: el texto que se busca es el del ERROR, no el de la etiqueta del campo.
+  // "precio real" y "motivo" ya están en pantalla como labels: buscarlos no
+  // probaría nada.
+  it('no deja confirmar una venta sin precio y explica por qué', async () => {
     const user = userEvent.setup()
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ events: [] }) })
+    vi.stubGlobal('fetch', fetchMock)
+
     render(<PropertyCommercialStatusCard {...base} current="disponible" />)
     await user.click(screen.getByRole('button', { name: /^vendida$/i }))
     await user.click(screen.getByRole('button', { name: /confirmar/i }))
-    expect(await screen.findByText(/precio real/i)).toBeInTheDocument()
+
+    expect(await screen.findByText(/necesitás cargar el precio real/i)).toBeInTheDocument()
+    // Y no llegó a llamar a la ruta: solo se pidió el historial al montar.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('salir de vendida exige motivo', async () => {
+  it('salir de vendida sin motivo no guarda y explica por qué', async () => {
     const user = userEvent.setup()
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ events: [] }) })
+    vi.stubGlobal('fetch', fetchMock)
+
     render(<PropertyCommercialStatusCard {...base} current="vendida" soldPrice={180000} soldCurrency="USD" soldAt="2026-08-01" />)
     await user.click(screen.getByRole('button', { name: /^disponible$/i }))
     await user.click(screen.getByRole('button', { name: /confirmar/i }))
-    expect(await screen.findByText(/motivo/i)).toBeInTheDocument()
+
+    expect(await screen.findByText(/necesitás escribir el motivo/i)).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('un cambio válido llama a la ruta y avisa al padre', async () => {
