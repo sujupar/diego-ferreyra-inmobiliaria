@@ -876,6 +876,76 @@ interface ClientNames {
   forVisit: string
 }
 
+/**
+ * El último texto que el agente le mandó a esta persona.
+ *
+ * Es lo que le permite al modelo no repetirse. Sin esto preguntaba por el día
+ * en cada mensaje: no tenía forma de saber que ya lo había preguntado, porque
+ * el resumen acumulado no guarda literalmente lo que dijo.
+ *
+ * Solo mensajes de TEXTO que salieron de verdad (los `agent_*` son notas
+ * internas que el cliente nunca vio). Si falla, se sigue sin el dato: es una
+ * ayuda para el tono, no un freno de seguridad.
+ */
+async function ultimoTextoDelAgente(
+  sb: ReturnType<typeof admin>,
+  phoneE164: string,
+): Promise<string | null> {
+  try {
+    const { data } = await sb
+      .from('whatsapp_messages')
+      .select('body_preview, status')
+      .eq('phone_e164', phoneE164)
+      .eq('direction', 'out')
+      .eq('ai_generated', true)
+      .in('status', ['accepted', 'sent', 'delivered', 'read'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+    const fila = (data as Array<{ body_preview: string | null }> | null)?.[0]
+    const texto = fila?.body_preview?.trim() ?? ''
+    // Las fotos y videos se registran como "[Foto] <url>": no son un mensaje
+    // que valga como "esto ya se lo dije".
+    if (!texto || texto.startsWith('[')) return null
+    return texto
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Qué material ya recibió esta persona. Sin esto el agente le vuelve a mandar
+ * las mismas fotos en cada turno, que es ruido y deja ver que no está siguiendo
+ * la conversación.
+ *
+ * Se deduce del `body_preview` que arma `sendWhatsappMedia` ("[Foto] …",
+ * "[Video] …", "[Documento] …"). Es un acoplamiento a ese formato y por eso está
+ * dicho acá: si alguien cambia esas etiquetas, esto deja de detectar y el
+ * agente empieza a repetir material.
+ */
+async function materialYaMandado(
+  sb: ReturnType<typeof admin>,
+  phoneE164: string,
+): Promise<MaterialTipo[]> {
+  try {
+    const { data } = await sb
+      .from('whatsapp_messages')
+      .select('body_preview')
+      .eq('phone_e164', phoneE164)
+      .eq('direction', 'out')
+      .eq('ai_generated', true)
+      .order('created_at', { ascending: false })
+      .limit(30)
+    const previews = ((data as Array<{ body_preview: string | null }> | null) ?? []).map(r => r.body_preview ?? '')
+    const out: MaterialTipo[] = []
+    if (previews.some(t => t.startsWith('[Foto]'))) out.push('fotos')
+    if (previews.some(t => t.startsWith('[Documento]'))) out.push('plano')
+    if (previews.some(t => t.startsWith('[Video]'))) out.push('video')
+    return out
+  } catch {
+    return []
+  }
+}
+
 async function resolveClientName(
   sb: ReturnType<typeof admin>,
   input: Pick<RunSchedulingAgentInput, 'contactName' | 'leadId' | 'phoneE164'>,
@@ -952,23 +1022,30 @@ export function materialDisponible(p: PropertyForAgent): { fotos: boolean; plano
 type Archivo = { mediaType: 'image' | 'video' | 'document'; link: string; filename?: string }
 
 /**
- * Quien pide fotos quiere CONOCER la propiedad, y el video se la muestra mejor
- * que cualquier foto: si hay video y el modelo pidió solo fotos, va igual.
+ * Fotos y video van JUNTOS, en las dos direcciones.
  *
- * Esto es una REGLA, no un juicio caso por caso, y por eso vive en el código y
- * no en el prompt. El prompt también lo dice —para que el texto nombre las dos
- * cosas— pero un prompt es probabilístico: pide algo y a veces no pasa. Cuando
- * una conducta tiene que ocurrir SIEMPRE, se escribe donde siempre ocurre.
+ * Quien pide fotos quiere CONOCER la propiedad: el video se la muestra mejor.
+ * Y quien pide fotos y recibe SOLO el video se queda sin lo que pidió — que fue
+ * exactamente lo que pasó en la prueba del 2026-08-03 y no tiene ninguna
+ * defensa. La regla simétrica es la única que no deja a nadie a mitad de camino.
+ *
+ * Vive en el código y no en el prompt porque tiene que ocurrir SIEMPRE. El
+ * prompt también lo pide —para que el texto nombre las dos cosas— pero un
+ * prompt es probabilístico: pedís algo y a veces no pasa.
  */
 export function completarConVideo(p: PropertyForAgent, tipos: MaterialTipo[]): MaterialTipo[] {
   const unicos = tipos.filter((t, i) => tipos.indexOf(t) === i)
-  const pidioFotos = unicos.includes('fotos')
-  const yaLlevaVideo = unicos.includes('video')
-  if (!pidioFotos || yaLlevaVideo || !p.video_file_url) return unicos
-  // Solo si SOBRA lugar. Si el modelo ya pidió dos tipos, pidió lo que pidió:
-  // sacarle el plano que el cliente reclamó para meter el video sería peor.
+  const quiereFotos = unicos.includes('fotos')
+  const quiereVideo = unicos.includes('video')
+  // Ninguno de los dos, o ya están los dos: nada que completar.
+  if (quiereFotos === quiereVideo) return unicos
   if (unicos.length >= MAX_TIPOS_POR_TURNO) return unicos
-  return [...unicos, 'video']
+
+  const falta: MaterialTipo = quiereFotos ? 'video' : 'fotos'
+  const hayLoQueFalta = falta === 'video' ? !!p.video_file_url : (p.photos ?? []).length > 0
+  if (!hayLoQueFalta) return unicos
+  // Las fotos primero: es lo que la persona nombró más veces y lo que abre el chat.
+  return falta === 'fotos' ? ['fotos', ...unicos] : [...unicos, 'video']
 }
 
 function delTipo(p: PropertyForAgent, tipo: MaterialTipo): Archivo[] {
@@ -1143,6 +1220,10 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
     }
     const pendiente = enAgenda.visit
     const clientName = await resolveClientName(sb, input)
+    const [ultimoMensajePropio, yaMandado] = await Promise.all([
+      ultimoTextoDelAgente(sb, input.phoneE164),
+      materialYaMandado(sb, input.phoneE164),
+    ])
 
     // Si CUALQUIER freno está puesto, el modelo igual analiza (el Inbox necesita
     // el resumen y la prioridad), pero se le dice que no redacte respuesta.
@@ -1166,6 +1247,8 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       hasActiveVisit: !!pendiente,
       canWrite,
       puedeMandar: materialDisponible(prop),
+      ultimoMensajePropio,
+      yaMandado,
     })
     if (!analysis.analyzed) {
       return { action: 'noop', reason: 'no hubo análisis nuevo en este turno' }

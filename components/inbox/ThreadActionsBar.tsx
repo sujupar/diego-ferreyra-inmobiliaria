@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Building2, Tag as TagIcon, Loader2, ChevronDown, Check, MessageSquareText, Workflow } from 'lucide-react'
+import { Building2, Tag as TagIcon, Loader2, ChevronDown, Check, MessageSquareText, Workflow, Bot, BotOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -88,6 +88,11 @@ export interface ThreadActionsBarProps {
   onStateChanged: (leadId: string, state: PipelineState) => void
   bare?: boolean
   showStateChip?: boolean
+  /** Teléfono de la conversación, para poder apagar el agente acá mismo. */
+  phoneE164?: string | null
+  /** `true` = el agente está apagado en ESTA conversación (`agent_handed_off`). */
+  agentOff?: boolean
+  onAgentToggled?: (phoneE164: string, activo: boolean) => void
 }
 
 const NO_LEAD_EXPLANATION =
@@ -103,9 +108,13 @@ export function ThreadActionsBar({
   pipelineState,
   onTagsChanged,
   onStateChanged,
+  phoneE164,
+  agentOff,
+  onAgentToggled,
   bare = false,
   showStateChip = true,
 }: ThreadActionsBarProps) {
+  const [agenteCargando, setAgenteCargando] = useState(false)
   const [tagBusySlug, setTagBusySlug] = useState<string | null>(null)
   const [tagError, setTagError] = useState<string | null>(null)
 
@@ -181,9 +190,50 @@ export function ThreadActionsBar({
     }
   }
 
+  async function toggleAgente() {
+    if (!phoneE164 || agenteCargando) return
+    setAgenteCargando(true)
+    try {
+      const res = await fetch(`/api/whatsapp/conversations/${encodeURIComponent(phoneE164)}/agent`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ activo: agentOff === true }),
+      })
+      const data = await readJson<{ activo: boolean }>(res)
+      if (!res.ok) throw new Error(data.error || 'No se pudo cambiar el agente')
+      onAgentToggled?.(phoneE164, data.activo)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'No se pudo cambiar el agente')
+    } finally {
+      setAgenteCargando(false)
+    }
+  }
+
   return (
     <div className={bare ? '' : 'border-b px-3 py-1.5'}>
       <div className="flex flex-wrap items-center gap-1.5">
+        {/* Apagar el agente ANTES de escribirle vos: si no, contesta por encima
+            tuyo. Es el mismo freno que usa el agente al llegar a su tope, así
+            que no hay dos mecanismos que puedan contradecirse. */}
+        {phoneE164 && (
+          <Button
+            type="button"
+            variant={agentOff ? 'outline' : 'secondary'}
+            size="sm"
+            onClick={toggleAgente}
+            disabled={agenteCargando}
+            title={agentOff ? 'El agente no contesta en esta conversación' : 'El agente contesta solo en esta conversación'}
+          >
+            {agenteCargando ? (
+              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+            ) : agentOff ? (
+              <BotOff className="mr-1 h-3.5 w-3.5" />
+            ) : (
+              <Bot className="mr-1 h-3.5 w-3.5 text-emerald-600" />
+            )}
+            {agentOff ? 'Agente apagado' : 'Agente activo'}
+          </Button>
+        )}
         <Button
           type="button"
           variant="outline"

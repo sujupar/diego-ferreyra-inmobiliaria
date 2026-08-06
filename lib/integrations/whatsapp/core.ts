@@ -24,6 +24,8 @@ import { logOutbound } from './log'
 const WHATSAPP_TIMEOUT_DEFAULT_MS = 8000
 
 export interface SendTemplateInput {
+  /** De dónde nació la conversación (ver migración 20260806000001). */
+  origen?: 'consulta_portal' | 'landing' | 'manual' | null
   to: string // E.164 sin '+', ej. 5491122334455
   templateName: string
   languageCode: string // ej. es_AR
@@ -212,6 +214,8 @@ export async function sendWhatsappTemplate(input: SendTemplateInput): Promise<Se
  * `sendWhatsappTemplate`).
  */
 export interface SendTextInput {
+  /** De dónde nació la conversación (ver migración 20260806000001). */
+  origen?: 'consulta_portal' | 'landing' | 'manual' | null
   to: string // E.164 sin '+', ej. 5491122334455
   text: string
   /** Timeout del POST a Meta en ms. Default 8s. */
@@ -251,6 +255,8 @@ export type SendTextResult = SendTemplateResult
  * fotos/video/planos reales al cliente, no solo texto con links.
  */
 export interface SendMediaInput {
+  /** De dónde nació la conversación (ver migración 20260806000001). */
+  origen?: 'consulta_portal' | 'landing' | 'manual' | null
   to: string // E.164 sin '+'
   mediaType: 'image' | 'video' | 'document'
   link: string
@@ -315,6 +321,7 @@ export async function sendWhatsappMedia(input: SendMediaInput): Promise<SendMedi
       propertyId: input.propertyId,
       sentBy: input.sentBy,
       aiGenerated: input.aiGenerated,
+      origen: input.origen,
     })
     return { ok: true, skipped: true }
   }
@@ -351,6 +358,7 @@ export async function sendWhatsappMedia(input: SendMediaInput): Promise<SendMedi
         propertyId: input.propertyId,
         sentBy: input.sentBy,
       aiGenerated: input.aiGenerated,
+      origen: input.origen,
       })
       return { ok: false, skipped: false, error: msg }
     }
@@ -367,6 +375,7 @@ export async function sendWhatsappMedia(input: SendMediaInput): Promise<SendMedi
       propertyId: input.propertyId,
       sentBy: input.sentBy,
       aiGenerated: input.aiGenerated,
+      origen: input.origen,
     })
     return { ok: true, skipped: false, messageId: waMessageId }
   } catch (err) {
@@ -382,6 +391,7 @@ export async function sendWhatsappMedia(input: SendMediaInput): Promise<SendMedi
       propertyId: input.propertyId,
       sentBy: input.sentBy,
       aiGenerated: input.aiGenerated,
+      origen: input.origen,
     })
     return { ok: false, skipped: false, error: msg }
   }
@@ -403,6 +413,7 @@ export async function sendWhatsappText(input: SendTextInput): Promise<SendTextRe
       propertyId: input.propertyId,
       sentBy: input.sentBy,
       aiGenerated: input.aiGenerated,
+      origen: input.origen,
     })
     return { ok: true, skipped: true }
   }
@@ -439,6 +450,7 @@ export async function sendWhatsappText(input: SendTextInput): Promise<SendTextRe
         propertyId: input.propertyId,
         sentBy: input.sentBy,
         aiGenerated: input.aiGenerated,
+      origen: input.origen,
       })
       return { ok: false, skipped: false, error: msg }
     }
@@ -457,6 +469,7 @@ export async function sendWhatsappText(input: SendTextInput): Promise<SendTextRe
       propertyId: input.propertyId,
       sentBy: input.sentBy,
       aiGenerated: input.aiGenerated,
+      origen: input.origen,
     })
     return { ok: true, skipped: false, messageId: waMessageId }
   } catch (err) {
@@ -472,6 +485,7 @@ export async function sendWhatsappText(input: SendTextInput): Promise<SendTextRe
       propertyId: input.propertyId,
       sentBy: input.sentBy,
       aiGenerated: input.aiGenerated,
+      origen: input.origen,
     })
     return { ok: false, skipped: false, error: msg }
   }

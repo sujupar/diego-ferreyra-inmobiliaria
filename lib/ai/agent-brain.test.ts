@@ -24,6 +24,8 @@ function ctx(over: Partial<BrainContext> = {}): BrainContext {
     hasActiveVisit: false,
     canWrite: true,
     puedeMandar: { fotos: true, plano: true, video: true },
+    ultimoMensajePropio: null,
+    yaMandado: [],
     ...over,
   }
 }
@@ -59,6 +61,38 @@ describe('buildBrainUserPrompt', () => {
 
   it('sin datos cargados, le dice que derive a un asesor en vez de improvisar', () => {
     expect(buildBrainUserPrompt(ctx({ propertyFacts: [] }))).toMatch(/lo ve un asesor|consulta la ve un asesor/)
+  })
+
+  it('le muestra su PROPIO mensaje anterior — sin eso preguntaba por el día una y otra vez', () => {
+    const p = buildBrainUserPrompt(ctx({ ultimoMensajePropio: '¿Qué día te viene bien?' }))
+    expect(p).toContain('Tu mensaje anterior a esta persona fue')
+    expect(p).toContain('¿Qué día te viene bien?')
+    expect(p).toMatch(/NO lo vuelvas a preguntar/)
+  })
+
+  it('le dice qué material YA le mandó — si no, repite las mismas fotos en cada turno', () => {
+    const p = buildBrainUserPrompt(ctx({ yaMandado: ['fotos', 'video'] }))
+    expect(p).toMatch(/YA le mandaste \(no se lo repitas\): fotos, video/)
+  })
+
+  it('sin material mandado todavía, no ensucia el prompt con esa línea', () => {
+    expect(buildBrainUserPrompt(ctx())).not.toMatch(/YA le mandaste/)
+  })
+
+  it('la voz: tiene ejemplos de MAL y BIEN, que es lo único que corrige el tono', () => {
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/HABLÁS COMO UNA PERSONA, NO COMO UNA FICHA/)
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/no enumerás, CONTÁS/)
+  })
+
+  it('la hora 0 se lee como "no dijo hora", no como medianoche', () => {
+    expect(coerceBrainDecision({
+      summary: 's', intent: 'agendar', priorityScore: 50, priorityReason: 'r',
+      suggestedNextStep: '', reply: 'x', visitDate: '2026-08-07', visitHour: 0,
+    })?.visitHour).toBeNull()
+  })
+
+  it('en el primer contacto se lo dice explícito', () => {
+    expect(buildBrainUserPrompt(ctx())).toMatch(/Todavía no le escribiste nada/)
   })
 
   it('le dice QUÉ material puede mandar — si no, promete lo que no existe', () => {
@@ -111,8 +145,16 @@ describe('DEFAULT_AGENT_PROMPT — cómo atiende', () => {
   })
 
   it('tiene prohibido rematar cada mensaje empujando a agendar', () => {
-    expect(DEFAULT_AGENT_PROMPT).toMatch(/NO HACÉS: EMPUJAR A AGENDAR EN CADA MENSAJE/)
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/ARRUINA TODO: EMPUJAR A AGENDAR/)
     expect(DEFAULT_AGENT_PROMPT).toMatch(/No agregues la pregunta de coordinación/)
+  })
+
+  it('no propone el día por su cuenta: eso lo elige la persona', () => {
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/Nunca propongas vos un día/)
+  })
+
+  it('ante la duda, NO pregunta: siempre hay un próximo mensaje', () => {
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/Si no estás seguro de si corresponde preguntar, NO preguntes/)
   })
 
   it('sigue sin poder afirmar que la visita está confirmada', () => {

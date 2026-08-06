@@ -62,6 +62,8 @@ export interface LogOutboundInput {
    * `20260803000002_whatsapp_messages_ai_generated.sql`).
    */
   aiGenerated?: boolean
+  /** De dónde nació la conversación. Ver la migración 20260806000001. */
+  origen?: 'consulta_portal' | 'landing' | 'manual' | null
 }
 
 /**
@@ -89,6 +91,9 @@ export async function logOutbound(input: LogOutboundInput): Promise<void> {
         property_id: input.propertyId ?? null,
         sent_by: input.sentBy ?? null,
         ai_generated: input.aiGenerated ?? false,
+        // `undefined` deja la columna en NULL — que es lo correcto para un
+        // envío cuyo origen no sabemos, en vez de inventarle uno.
+        origen: input.origen ?? null,
       })
     if (error) {
       console.warn('[whatsapp-log] no se pudo registrar el envío (continuando):', error.message)

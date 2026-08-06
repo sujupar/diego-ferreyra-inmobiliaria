@@ -64,6 +64,8 @@ export interface ConversationListItem {
     priorityReason: string | null
     suggestedNextStep: string | null
     analyzedAt: string | null
+    /** `true` = el agente está apagado en ESTA conversación (a mano o por tope). */
+    agentOff?: boolean
   } | null
   /**
    * Orden combinado (task 4) — `lib/integrations/whatsapp/priority.ts`
