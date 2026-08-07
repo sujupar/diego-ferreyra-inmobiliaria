@@ -23,8 +23,12 @@ async function buildPublishOpts(portal: PortalName, property: Property, metadata
   const meta = (metadata ?? {}) as Record<string, unknown>
   let allowedAttributeIds: Set<string> | undefined
   try {
-    const { required, recommended } = await fetchCategoryAttributes(resolveCategory(property))
-    allowedAttributeIds = new Set([...required, ...recommended].map(a => a.id))
+    const cat = resolveCategory(property)
+    // Sin categoría no filtramos: el error claro lo tira propertyToMlPayload.
+    if (cat) {
+      const { required, recommended } = await fetchCategoryAttributes(cat)
+      allowedAttributeIds = new Set([...required, ...recommended].map(a => a.id))
+    }
   } catch {
     allowedAttributeIds = undefined
   }

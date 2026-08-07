@@ -175,13 +175,19 @@ async function teardown(propertyId: string) {
 async function listingTypes() {
   const me = await mlFetch<{ id: number; nickname?: string }>('/users/me')
   console.log('user_id:', me.id, 'nick:', me.nickname)
-  for (const cat of ['MLA1473', 'MLA1472', 'MLA1471']) {
+  // Recorre las categorías REALES del mapa (antes iteraba IDs hardcodeados del
+  // mapa viejo, que resultaron ser de alquiler o categorías padre).
+  const { todasLasCategorias } = await import('../lib/portals/mercadolibre/mapping')
+  const vistos = new Set<string>()
+  for (const { operacion, tipo, categoria } of todasLasCategorias()) {
+    if (vistos.has(categoria)) continue
+    vistos.add(categoria)
     try {
-      const types = await mlFetch(`/users/${me.id}/available_listing_types?category_id=${cat}`)
-      console.log(`\n=== available_listing_types para ${cat} ===`)
+      const types = await mlFetch(`/users/${me.id}/available_listing_types?category_id=${categoria}`)
+      console.log(`\n=== ${categoria} (${tipo} en ${operacion}) ===`)
       console.log(JSON.stringify(types, null, 2))
     } catch (e) {
-      console.log(`\n${cat}: error`, e instanceof Error ? e.message : e)
+      console.log(`\n${categoria} (${tipo} en ${operacion}): error`, e instanceof Error ? e.message : e)
     }
   }
 }

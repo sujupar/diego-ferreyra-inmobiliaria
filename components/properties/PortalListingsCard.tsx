@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { soloElMensaje } from '@/lib/portals/types'
 import { Button } from '@/components/ui/button'
 import {
   CheckCircle,
@@ -113,9 +114,9 @@ export function PortalListingsCard({ propertyId }: { propertyId: string }) {
             >
               <div className="flex flex-col gap-1">
                 <span className="font-medium text-sm">{PORTAL_LABEL[l.portal] ?? l.portal}</span>
-                {l.last_error && (
+                {soloElMensaje(l.last_error) && (
                   <span className="text-xs text-[color:var(--destructive)]">
-                    {l.last_error.slice(0, 200)}
+                    {soloElMensaje(l.last_error)!.slice(0, 200)}
                   </span>
                 )}
                 {l.last_published_at && (

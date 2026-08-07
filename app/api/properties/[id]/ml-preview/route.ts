@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
-import { propertyToMlPayload, resolveCategory } from '@/lib/portals/mercadolibre/mapping'
+import { propertyToMlPayload, resolveCategory, mensajeSinCategoria } from '@/lib/portals/mercadolibre/mapping'
 import { fetchCategoryAttributes } from '@/lib/portals/mercadolibre/category-attributes'
 import { validateCommon } from '@/lib/portals/validation'
 import type { Database } from '@/types/database.types'
@@ -69,6 +69,7 @@ async function buildPayloadAndValidation(
   let allowedAttributeIds: Set<string> | undefined
   try {
     const cat = resolveCategory(property)
+    if (!cat) throw new Error(mensajeSinCategoria(property))
     const { required, recommended } = await fetchCategoryAttributes(cat)
     allowedAttributeIds = new Set([...required, ...recommended].map(a => a.id))
   } catch {

@@ -54,34 +54,103 @@ export const ML_LISTING_TYPES: { id: string; label: string }[] = [
 
 /**
  * Categorías MLA (MercadoLibre Argentina) para inmuebles.
- * Mapeo simplificado por operación y tipo. Ver:
- * https://developers.mercadolibre.com.ar/es_ar/list-properties
+ *
+ * TODAS estas categorías fueron verificadas el 2026-08-06 recorriendo el árbol
+ * real desde `GET /categories/MLA1459`: cada una es HOJA (sin hijos) y tiene
+ * `settings.listing_allowed = true`. El comentario al lado de cada una es su
+ * ruta completa en el árbol de ML.
+ *
+ * POR QUÉ ESTO IMPORTA: el mapa anterior tenía las 11 entradas mal. Tres IDs ni
+ * siquiera existían (404), cuatro apuntaban a categorías PADRE —que ML rechaza
+ * con "Make sure you're posting in a leaf category"— y, lo peor, tres apuntaban
+ * a hojas válidas pero del rubro equivocado: "departamento en venta" iba a
+ * "Departamentos > ALQUILER", que ML acepta sin chistar. Ese es el modo de falla
+ * peligroso: publica mal y nadie se entera.
+ *
+ * OJO — en VENTA el nodo "Venta" NO es hoja: hay un tercer nivel
+ * (Emprendimientos vs Propiedades Individuales). Usamos "Propiedades
+ * Individuales", que es el caso de una inmobiliaria que vende unidades usadas.
+ *
+ * NO AGREGAR UNA ENTRADA A MANO sin correr `scripts/verify-ml-categories.ts`,
+ * que consulta ML y falla si alguna no es hoja publicable.
  */
 const CATEGORY_MAP: Record<string, Record<string, string>> = {
   venta: {
-    departamento: 'MLA1473',
-    casa: 'MLA1472',
-    ph: 'MLA1471',
-    terreno: 'MLA1493',
-    local: 'MLA1494',
-    oficina: 'MLA1495',
+    departamento: 'MLA401686', // Inmuebles > Departamentos > Venta > Propiedades Individuales
+    casa:         'MLA401685', // Inmuebles > Casas > Venta > Propiedades Individuales
+    ph:           'MLA105182', // Inmuebles > PH > Venta
+    terreno:      'MLA401687', // Inmuebles > Terrenos y Lotes > Venta > Propiedades Individuales
+    local:        'MLA79244',  // Inmuebles > Locales > Venta
+    oficina:      'MLA401684', // Inmuebles > Oficinas > Venta > Propiedades Individuales
   },
   alquiler: {
-    departamento: 'MLA1463',
-    casa: 'MLA1462',
+    departamento: 'MLA1473',   // Inmuebles > Departamentos > Alquiler
+    casa:         'MLA1467',   // Inmuebles > Casas > Alquiler
+    ph:           'MLA105181', // Inmuebles > PH > Alquiler
+    terreno:      'MLA1494',   // Inmuebles > Terrenos y Lotes > Alquiler
+    local:        'MLA79243',  // Inmuebles > Locales > Alquiler
+    oficina:      'MLA50539',  // Inmuebles > Oficinas > Alquiler
   },
   temporario: {
-    departamento: 'MLA50547',
-    casa: 'MLA50548',
+    departamento: 'MLA50279',  // Inmuebles > Departamentos > Alquiler Temporario
+    casa:         'MLA50278',  // Inmuebles > Casas > Alquiler Temporario
+    ph:           'MLA105180', // Inmuebles > PH > Alquiler Temporario
+    // ML no tiene alquiler temporario para terreno/local/oficina: caen en
+    // "Otros Inmuebles > Alquiler Temporario", que sí es hoja publicable.
+    terreno:      'MLA50283',  // Inmuebles > Otros Inmuebles > Alquiler Temporario
+    local:        'MLA50283',
+    oficina:      'MLA50283',
   },
 }
 
-const FALLBACK_CATEGORY = 'MLA1459' // Inmuebles top
+/** Los 6 tipos que ofrece el formulario de alta de propiedades. */
+export const ML_TIPOS_SOPORTADOS = ['departamento', 'casa', 'ph', 'terreno', 'local', 'oficina'] as const
+export const ML_OPERACIONES_SOPORTADAS = ['venta', 'alquiler', 'temporario'] as const
 
-export function resolveCategory(property: Property): string {
-  const operation = property.operation_type || 'venta'
-  const type = (property.property_type || 'departamento').toLowerCase()
-  return CATEGORY_MAP[operation]?.[type] ?? FALLBACK_CATEGORY
+/**
+ * Categoría de ML para la propiedad, o `null` si la combinación no está mapeada.
+ *
+ * Devuelve `null` a propósito y NO cae en una categoría genérica: el mapa
+ * anterior tenía un fallback a "Inmuebles" (la raíz del árbol), que ML rechaza
+ * siempre. Un fallback silencioso en un dato de un sistema ajeno es peor que un
+ * error: o falla igual más adelante con un mensaje incomprensible, o —peor—
+ * publica en un rubro que no corresponde. Quien llame a esta función tiene que
+ * manejar el `null` con un mensaje claro.
+ */
+export function resolveCategory(property: Property): string | null {
+  const operation = normalizarOperacion(property.operation_type)
+  const type = (property.property_type || 'departamento').trim().toLowerCase()
+  return CATEGORY_MAP[operation]?.[type] ?? null
+}
+
+/**
+ * La operación se escribe de más de una forma en el sistema. La columna de la
+ * base documenta `venta | alquiler | temporario`, pero el resto del código ya
+ * contempla "alquiler temporario" y "alquiler_temporario" (ver
+ * `operationLabelFor` en lib/properties/detail-view.ts). Sin esta normalización,
+ * un temporario escrito de la forma larga no encuentra categoría y la
+ * publicación se bloquea sin motivo real.
+ */
+function normalizarOperacion(raw: string | null | undefined): string {
+  const s = (raw || 'venta').trim().toLowerCase().replace(/[\s_-]+/g, ' ')
+  if (s === 'alquiler temporario' || s === 'temporal' || s === 'temporaria') return 'temporario'
+  return s
+}
+
+/** Mensaje único para cuando la propiedad no tiene categoría posible en ML. */
+export function mensajeSinCategoria(property: Property): string {
+  return (
+    `No hay categoría de MercadoLibre para una propiedad de tipo ` +
+    `"${property.property_type ?? 'sin tipo'}" en operación ` +
+    `"${property.operation_type ?? 'venta'}". Revisá esos dos datos en la ficha.`
+  )
+}
+
+/** Todas las combinaciones mapeadas. Lo usa el verificador contra la API de ML. */
+export function todasLasCategorias(): { operacion: string; tipo: string; categoria: string }[] {
+  return Object.entries(CATEGORY_MAP).flatMap(([operacion, porTipo]) =>
+    Object.entries(porTipo).map(([tipo, categoria]) => ({ operacion, tipo, categoria })),
+  )
 }
 
 function buildTitle(property: Property): string {
@@ -176,9 +245,11 @@ export function propertyToMlPayload(property: Property, opts: MlPayloadOptions =
   if (property.latitude == null || property.longitude == null) {
     throw new Error('propertyToMlPayload: lat/lng requeridos (corré validate antes)')
   }
+  const categoria = resolveCategory(property)
+  if (!categoria) throw new Error(mensajeSinCategoria(property))
   const payload: MlPayload = {
     title: buildTitle(property),
-    category_id: resolveCategory(property),
+    category_id: categoria,
     price: property.asking_price,
     currency_id: property.currency || 'USD',
     available_quantity: 1,

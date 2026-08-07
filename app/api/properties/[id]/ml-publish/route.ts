@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { initPortals, getAdapter } from '@/lib/portals'
 import { MercadoLibreAdapter } from '@/lib/portals/mercadolibre/adapter'
+import { mensajeYDetalle } from '@/lib/portals/types'
 import type { Database } from '@/types/database.types'
 
 function getAdmin() {
@@ -122,8 +123,13 @@ export async function POST(
     try {
       const { resolveCategory } = await import('@/lib/portals/mercadolibre/mapping')
       const { fetchCategoryAttributes } = await import('@/lib/portals/mercadolibre/category-attributes')
-      const { required, recommended } = await fetchCategoryAttributes(resolveCategory(property))
-      allowedAttributeIds = new Set([...required, ...recommended].map(a => a.id))
+      const cat = resolveCategory(property)
+      // Sin categoría no se filtra nada acá; propertyToMlPayload corta más
+      // adelante con un mensaje claro en vez de publicar en un rubro cualquiera.
+      const { required, recommended } = cat
+        ? await fetchCategoryAttributes(cat)
+        : { required: [], recommended: [] }
+      allowedAttributeIds = cat ? new Set([...required, ...recommended].map(a => a.id)) : undefined
     } catch {
       allowedAttributeIds = undefined
     }
@@ -137,7 +143,9 @@ export async function POST(
         allowedAttributeIds,
       })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      // El asesor recibe `mensaje` (castellano); el detalle crudo de ML queda
+      // guardado para diagnosticar, no en su pantalla.
+      const { mensaje, paraElLog } = mensajeYDetalle(err)
       await supabase
         .from('property_listings')
         .upsert(
@@ -145,7 +153,7 @@ export async function POST(
             property_id: id,
             portal: 'mercadolibre',
             status: 'failed',
-            last_error: msg,
+            last_error: paraElLog,
             attempts: 1,
           },
           { onConflict: 'property_id,portal' },
@@ -154,10 +162,10 @@ export async function POST(
         property_id: id,
         portal: 'mercadolibre',
         event_type: 'failed',
-        error_message: msg,
+        error_message: paraElLog,
         actor: user.profile.full_name ?? user.id,
       })
-      return NextResponse.json({ error: msg }, { status: 502 })
+      return NextResponse.json({ error: mensaje }, { status: 502 })
     }
 
     // Persistir el tier REALMENTE usado (el adapter degrada gold_premium → silver/free
@@ -282,11 +290,13 @@ export async function PATCH(
         })
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      // `paraElLog` incluye el texto crudo de ML: el estado 'not_yet_active'
+      // aparece ahí, no en el mensaje traducido al castellano.
+      const { mensaje, paraElLog } = mensajeYDetalle(err)
       // ML solo permite pausar/cerrar desde 'active'. Si el item está en
       // 'not_yet_active' (validación interna, ~1-2 min), marcamos un flag y el
       // worker pg_cron lo pausa/cierra automáticamente cuando ML lo active.
-      if ((action === 'pause' || action === 'close') && /not_yet_active/i.test(msg)) {
+      if ((action === 'pause' || action === 'close') && /not_yet_active/i.test(paraElLog)) {
         const flag = action === 'pause' ? 'needs_pause_after_active' : 'needs_close_after_active'
         const verbo = action === 'pause' ? 'pausará' : 'cerrará'
         await supabase
@@ -307,7 +317,7 @@ export async function PATCH(
           message: `ML está validando el aviso. Se ${verbo} automáticamente en 1-2 minutos.`,
         })
       }
-      return NextResponse.json({ error: `${action} falló: ${msg}` }, { status: 502 })
+      return NextResponse.json({ error: `${action} falló: ${mensaje}` }, { status: 502 })
     }
 
     await supabase
@@ -373,13 +383,15 @@ export async function DELETE(
       const adapter = ml as MercadoLibreAdapter
       await adapter.pause(listing.external_id)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (/not_yet_active/i.test(msg)) {
+      // El estado crudo de ML ('not_yet_active') está en `paraElLog`, no en la
+      // traducción al castellano que ve el asesor.
+      const { mensaje, paraElLog } = mensajeYDetalle(err)
+      if (/not_yet_active/i.test(paraElLog)) {
         // No es un error fatal — el worker termina el job cuando ML active el item.
         finalDbStatus = 'published' // sigue público hasta que el worker lo pause
         needsRetry = true
       } else {
-        return NextResponse.json({ error: 'pause falló: ' + msg }, { status: 502 })
+        return NextResponse.json({ error: 'pause falló: ' + mensaje }, { status: 502 })
       }
     }
 

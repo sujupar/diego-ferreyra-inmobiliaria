@@ -1,5 +1,5 @@
 import { nextBackoff, isoFromNow } from './backoff'
-import { PortalAdapterError } from './types'
+import { PortalAdapterError, mensajeYDetalle } from './types'
 
 /**
  * Lógica pura del worker (sin Supabase ni I/O).
@@ -23,7 +23,10 @@ export function nextStateAfterError(
   currentAttempts: number,
   err: unknown,
 ): ListingErrorState {
-  const message = err instanceof Error ? err.message : String(err)
+  // `last_error` es un campo de diagnóstico, no de pantalla: guardamos el
+  // mensaje en castellano MÁS el detalle crudo del portal. Sin el detalle,
+  // reconstruir qué rechazó exactamente ML se vuelve imposible.
+  const { paraElLog: message } = mensajeYDetalle(err)
   const attempts = currentAttempts + 1
 
   const isRetryable =

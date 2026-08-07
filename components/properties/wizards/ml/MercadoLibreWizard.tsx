@@ -26,7 +26,7 @@ const STEPS = [
 
 export function MercadoLibreWizard({ propertyId }: { propertyId: string }) {
   const router = useRouter()
-  const { loading, property, attrs, listing, validation, draft, patch, save, reload } = useMlPublishDraft(propertyId)
+  const { loading, property, attrs, attrsError, listing, validation, draft, patch, save, reload } = useMlPublishDraft(propertyId)
   const [idx, setIdx] = useState(0)
   const [stepValid, setStepValid] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -135,7 +135,7 @@ export function MercadoLibreWizard({ propertyId }: { propertyId: string }) {
             >
               {current === 'images' && <StepImages draft={draft} onChange={patch} onValidityChange={setStepValid} />}
               {current === 'media' && <StepMedia draft={draft} onChange={patch} onValidityChange={setStepValid} />}
-              {current === 'fields' && <StepFields property={property} attrs={attrs} draft={draft} onChange={patch} onValidityChange={setStepValid} />}
+              {current === 'fields' && <StepFields property={property} attrs={attrs} attrsError={attrsError} draft={draft} onChange={patch} onValidityChange={setStepValid} onRetry={reload} />}
               {current === 'description' && <StepDescription propertyId={propertyId} draft={draft} onChange={patch} onValidityChange={setStepValid} />}
               {current === 'review' && (
                 <StepReview

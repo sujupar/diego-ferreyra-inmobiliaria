@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { propertyToMlPayload, resolveCategory, ML_LISTING_TYPES } from './mapping'
+import {
+  propertyToMlPayload,
+  resolveCategory,
+  mensajeSinCategoria,
+  todasLasCategorias,
+  ML_LISTING_TYPES,
+  ML_TIPOS_SOPORTADOS,
+  ML_OPERACIONES_SOPORTADAS,
+} from './mapping'
 import type { Property } from '../types'
 
 function makeProperty(overrides: Partial<Property> = {}): Property {
@@ -21,7 +29,7 @@ function makeProperty(overrides: Partial<Property> = {}): Property {
     created_at: '2026-05-12T00:00:00Z', updated_at: '2026-05-12T00:00:00Z',
     description: 'Departamento luminoso de 3 ambientes con balcón aterrazado, muy cerca del subte D y de Palermo Hollywood. Vista despejada al frente y luz natural durante todo el día.',
     latitude: -34.58, longitude: -58.43,
-    video_url: null, tour_3d_url: null, video_file_url: null,
+    video_url: null, tour_3d_url: null, video_file_url: null, video_recorrido_url: null, deliver_media: null,
     expensas: 50000, amenities: ['pileta', 'parrilla'],
     operation_type: 'venta', title: null, postal_code: '1414',
     public_slug: null,
@@ -41,12 +49,17 @@ describe('propertyToMlPayload', () => {
     expect(payload.price).toBe(180000)
     expect(payload.pictures.length).toBe(2)
     expect(payload.location.latitude).toBe(-34.58)
-    expect(payload.category_id).toBe('MLA1473') // departamento venta
+    // Departamentos > Venta > Propiedades Individuales (hoja publicable).
+    expect(payload.category_id).toBe('MLA401686')
   })
 
-  it('uses fallback category for unknown type', () => {
-    const payload = propertyToMlPayload(makeProperty({ property_type: 'cochera' }))
-    expect(payload.category_id).toBe('MLA1459')
+  it('un tipo desconocido REVIENTA en vez de publicar en una categoría cualquiera', () => {
+    // Antes caía en MLA1459 ("Inmuebles", la raíz del árbol), que ML rechaza
+    // siempre. Un respaldo silencioso sobre un dato de un sistema ajeno es peor
+    // que un error: o falla después con un mensaje ilegible, o publica en el
+    // rubro equivocado sin que nadie se entere.
+    expect(() => propertyToMlPayload(makeProperty({ property_type: 'cochera' })))
+      .toThrow(/No hay categoría de MercadoLibre/)
   })
 
   it('uses custom title when provided', () => {
@@ -74,7 +87,8 @@ describe('propertyToMlPayload', () => {
 
   it('maps rental departamento', () => {
     const payload = propertyToMlPayload(makeProperty({ operation_type: 'alquiler' }))
-    expect(payload.category_id).toBe('MLA1463')
+    // Departamentos > Alquiler. MLA1463 (el valor viejo) ni siquiera existe.
+    expect(payload.category_id).toBe('MLA1473')
   })
 
   it('falls back to address in description when description is empty', () => {
@@ -146,10 +160,80 @@ describe('propertyToMlPayload con opts', () => {
   })
 })
 
-describe('resolveCategory / ML_LISTING_TYPES', () => {
-  it('depto venta -> MLA1473', () => {
-    expect(resolveCategory(makeProperty())).toBe('MLA1473')
+describe('resolveCategory', () => {
+  // Los IDs están verificados uno por uno contra la API de MercadoLibre por
+  // scripts/verify-ml-categories.ts (existe + es hoja + admite publicar + la
+  // ruta coincide con la operación). Este bloque congela ese resultado: si
+  // alguien toca el mapa, el test canta antes de que se entere un cliente.
+  const ESPERADO: Record<string, Record<string, string>> = {
+    venta: {
+      departamento: 'MLA401686', casa: 'MLA401685', ph: 'MLA105182',
+      terreno: 'MLA401687', local: 'MLA79244', oficina: 'MLA401684',
+    },
+    alquiler: {
+      departamento: 'MLA1473', casa: 'MLA1467', ph: 'MLA105181',
+      terreno: 'MLA1494', local: 'MLA79243', oficina: 'MLA50539',
+    },
+    temporario: {
+      departamento: 'MLA50279', casa: 'MLA50278', ph: 'MLA105180',
+      terreno: 'MLA50283', local: 'MLA50283', oficina: 'MLA50283',
+    },
+  }
+
+  for (const operacion of ML_OPERACIONES_SOPORTADAS) {
+    for (const tipo of ML_TIPOS_SOPORTADOS) {
+      it(`${tipo} en ${operacion} -> ${ESPERADO[operacion][tipo]}`, () => {
+        const p = makeProperty({ operation_type: operacion, property_type: tipo })
+        expect(resolveCategory(p)).toBe(ESPERADO[operacion][tipo])
+      })
+    }
+  }
+
+  it('el mapa cubre las 18 combinaciones del formulario, sin sobrantes', () => {
+    const combos = todasLasCategorias()
+    expect(combos).toHaveLength(ML_OPERACIONES_SOPORTADAS.length * ML_TIPOS_SOPORTADOS.length)
+    for (const { operacion, tipo } of combos) {
+      expect(ML_OPERACIONES_SOPORTADAS).toContain(operacion as never)
+      expect(ML_TIPOS_SOPORTADOS).toContain(tipo as never)
+    }
   })
+
+  it('ninguna categoría se repite entre operaciones distintas del mismo tipo', () => {
+    // Esta es la prueba que habría cazado el bug original: el mapa viejo mandaba
+    // "departamento en venta" a la categoría de ALQUILER.
+    for (const tipo of ML_TIPOS_SOPORTADOS) {
+      const porOperacion = ML_OPERACIONES_SOPORTADAS.map(op =>
+        resolveCategory(makeProperty({ operation_type: op, property_type: tipo })),
+      )
+      // (terreno/local/oficina comparten la hoja de "Otros Inmuebles" en
+      // temporario porque ML no tiene una propia — eso es entre TIPOS, no entre
+      // operaciones, así que acá sí exigimos tres valores distintos.)
+      expect(new Set(porOperacion).size).toBe(3)
+    }
+  })
+
+  it('acepta "alquiler temporario" y "alquiler_temporario" como temporario', () => {
+    const esperado = resolveCategory(makeProperty({ operation_type: 'temporario' }))
+    expect(resolveCategory(makeProperty({ operation_type: 'alquiler temporario' }))).toBe(esperado)
+    expect(resolveCategory(makeProperty({ operation_type: 'alquiler_temporario' }))).toBe(esperado)
+    expect(resolveCategory(makeProperty({ operation_type: 'Alquiler Temporario' }))).toBe(esperado)
+  })
+
+  it('una combinación no mapeada devuelve null, nunca una categoría cualquiera', () => {
+    expect(resolveCategory(makeProperty({ property_type: 'cochera' }))).toBeNull()
+    expect(resolveCategory(makeProperty({ property_type: 'galpon' }))).toBeNull()
+    expect(resolveCategory(makeProperty({ operation_type: 'permuta' }))).toBeNull()
+  })
+
+  it('el mensaje de "sin categoría" nombra los dos datos a corregir', () => {
+    const msg = mensajeSinCategoria(makeProperty({ property_type: 'cochera', operation_type: 'venta' }))
+    expect(msg).toContain('cochera')
+    expect(msg).toContain('venta')
+    expect(msg).not.toMatch(/MLA/) // el asesor no tiene por qué ver un ID de ML
+  })
+})
+
+describe('ML_LISTING_TYPES', () => {
   it('gold_premium es el primer listing type', () => {
     expect(ML_LISTING_TYPES[0].id).toBe('gold_premium')
   })
