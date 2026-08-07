@@ -14,12 +14,13 @@
  * datos de un tercero y se pudren solos (MLA1471 estaba en el mapa y hoy da 404).
  */
 import { todasLasCategorias, ML_TIPOS_SOPORTADOS, ML_OPERACIONES_SOPORTADAS } from '../lib/portals/mercadolibre/mapping'
+import { ML_MAX_FOTOS_AVISO } from '../lib/portals/photo-limits'
 
 interface CategoriaML {
   id?: string
   name?: string
   children_categories?: { id: string; name: string }[]
-  settings?: { listing_allowed?: boolean }
+  settings?: { listing_allowed?: boolean; max_pictures_per_item?: number }
   path_from_root?: { id: string; name: string }[]
 }
 
@@ -77,7 +78,20 @@ async function main() {
       continue
     }
 
-    console.log(`✔ ${etiqueta} · ${ruta}`)
+    // Nuestro payload manda hasta ML_MAX_FOTOS_AVISO fotos. Si ML baja el
+    // máximo de la categoría por debajo de eso, los avisos empezarían a
+    // rechazarse: mejor que falle este script primero.
+    const maxFotos = cat.settings?.max_pictures_per_item
+    if (typeof maxFotos === 'number' && maxFotos < ML_MAX_FOTOS_AVISO) {
+      problemas.push(
+        `${etiqueta}: max_pictures_per_item = ${maxFotos} < ML_MAX_FOTOS_AVISO (${ML_MAX_FOTOS_AVISO}). ` +
+        `Bajar la constante en lib/portals/photo-limits.ts.`,
+      )
+      console.log(`✘ ${etiqueta} — admite solo ${maxFotos} fotos · ${ruta}`)
+      continue
+    }
+
+    console.log(`✔ ${etiqueta} · ${ruta} · fotos ≤ ${maxFotos ?? '?'}`)
   }
 
   // El mapa tiene que cubrir todo lo que el formulario deja elegir.

@@ -41,6 +41,15 @@ describe('propertyToAvisoDto', () => {
     expect(byId.MONEDA).toBeUndefined()
   })
 
+
+  it('el aviso lleva hasta 30 fotos (AP_MAX_FOTOS_AVISO)', () => {
+    const fotos = Array.from({ length: 35 }, (_, i) => `https://cdn/x/f${i}.jpg`)
+    const d = propertyToAvisoDto({ ...(prop as object), photos: fotos } as never, opts)
+    const soloFotos = d.Multimedia.filter((m: { Tipo: string }) => m.Tipo === 'FOTO')
+    expect(soloFotos).toHaveLength(30)
+    expect(soloFotos[0].Url).toBe('https://cdn/x/f0.jpg')
+  })
+
   it('Multimedia: fotos + video + tour con sus Tipos', () => {
     expect(dto.Multimedia).toContainEqual({ Tipo: 'FOTO', Url: 'https://cdn/x/1.jpg' })
     expect(dto.Multimedia).toContainEqual({ Tipo: 'VIDEO', Url: 'https://youtu.be/abc' })

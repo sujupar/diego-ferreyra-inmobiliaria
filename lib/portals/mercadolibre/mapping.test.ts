@@ -73,10 +73,14 @@ describe('propertyToMlPayload', () => {
     expect(payload.title.length).toBe(60)
   })
 
-  it('limits pictures to 12', () => {
-    const photos = Array.from({ length: 20 }, (_, i) => `https://x/${i}.jpg`)
+  it('el aviso lleva hasta 30 fotos (límite real de ML, verificado en settings)', () => {
+    // ML publica max_pictures_per_item = 30 en nuestras categorías (verificado
+    // 2026-08-06; scripts/verify-ml-categories.ts lo re-chequea). El 12 anterior
+    // era un invento nuestro que encima se persistía sobre properties.photos.
+    const photos = Array.from({ length: 35 }, (_, i) => `https://x/f${i}.jpg`)
     const payload = propertyToMlPayload(makeProperty({ photos }))
-    expect(payload.pictures.length).toBe(12)
+    expect(payload.pictures).toHaveLength(30)
+    expect(payload.pictures[0].source).toBe('https://x/f0.jpg')
   })
 
   it('includes expensas attribute when present', () => {

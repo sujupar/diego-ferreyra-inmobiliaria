@@ -1,6 +1,7 @@
 import type { Property } from '../types'
 import type { AttributeOverride } from './category-attributes'
 import { extractYouTubeId } from './media'
+import { ML_MAX_FOTOS_AVISO } from '../photo-limits'
 
 export interface MlAttribute {
   id: string
@@ -256,7 +257,7 @@ export function propertyToMlPayload(property: Property, opts: MlPayloadOptions =
     buying_mode: 'classified',
     listing_type_id: opts.listingType || 'free',
     condition: 'new',
-    pictures: (property.photos ?? []).slice(0, 12).map(source => ({ source })),
+    pictures: (property.photos ?? []).slice(0, ML_MAX_FOTOS_AVISO).map(source => ({ source })),
     description: { plain_text: property.description || buildTitle(property) },
     attributes: buildAttributes(property, opts),
     location: buildLocation(property),
