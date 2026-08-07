@@ -11,7 +11,13 @@ export default defineConfig({
     // y Vitest los levantaba: 6 archivos en rojo por dependencias que no son
     // nuestras. Una suite que siempre se ve rota es una suite que nadie mira, y
     // así es como un fallo de verdad pasa desapercibido.
-    exclude: ['**/node_modules/**', '.next', '.netlify'],
+    //
+    // Mismo problema, fuente nueva (2026-08-07): `.claude/worktrees/` son copias
+    // COMPLETAS del repo que crean otras sesiones para trabajar aisladas. Vitest
+    // las levantaba y corría cada test dos veces — una con la config de acá, que
+    // no es la suya: 14 archivos y 70 tests en rojo por código que ni siquiera
+    // está en esta rama. Los tests de un worktree se corren DENTRO del worktree.
+    exclude: ['**/node_modules/**', '.next', '.netlify', '**/.claude/worktrees/**'],
   },
   resolve: {
     alias: {
