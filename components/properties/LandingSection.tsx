@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Loader2, Sparkles, Rocket, ExternalLink, Wand2, ArrowRight, AlertTriangle } from 'lucide-react'
 import { needsDeliveryChoice, resolveDeliverMedia } from '@/lib/properties/deliver-media'
 import { ENRICH_STAGES, nextEnrichStage } from '@/lib/landing/enrich'
+import { faltanRespuestas, GATE_RESPUESTAS_MSG } from '@/lib/landing/answers-gate'
 
 interface Question { id: string; question: string; hint?: string }
 interface Avatar {
@@ -32,7 +33,9 @@ interface WizardState {
   avatarCandidates?: Avatar[]
   selectedAvatarIndex?: number
   /** Etapa pendiente del enriquecimiento con IA; ausente = ya está completa. */
-  enrich?: 'vision' | 'avatars' | 'copy' | 'done'
+  enrich?: 'vision' | 'location' | 'description' | 'avatars' | 'copy' | 'done'
+  /** true = los textos se generaron con las respuestas del asesor (gate de publicar). */
+  copyFromAnswers?: boolean
 }
 interface Landing {
   status: 'draft' | 'published' | 'archived'
@@ -164,7 +167,7 @@ export function LandingSection({
       if (!res.ok) throw new Error(data.error ?? 'Error al crear la landing')
       setLanding(data.landing ?? null); setTemplates(data.templates ?? [])
       await runEnrichment()
-      toast.success('Landing lista. Respondé las preguntas para afinar el avatar.')
+      toast.success('Landing creada. Respondé las preguntas para generar los textos.')
     } catch (e) {
       setEnriching(null)
       toast.error(e instanceof Error ? e.message : 'Error al crear la landing')
@@ -187,6 +190,11 @@ export function LandingSection({
     })
   }, [loading, landing, runEnrichment])
 
+  /**
+   * Guarda las respuestas (el server exige TODAS), regenera avatares y corre la
+   * etapa de textos re-armada: al terminar, la landing tiene el copy hecho CON
+   * las respuestas — recién ahí se habilita publicar.
+   */
   const saveAnswers = async () => {
     setBusy('answers')
     try {
@@ -197,14 +205,36 @@ export function LandingSection({
       const data = await readJson<{ landing?: Landing; error?: string }>(res)
       if (!res.ok) throw new Error(data.error)
       setLanding(data.landing ?? null)
-      toast.success('Avatares regenerados con tus respuestas.')
+      setEnriching({ label: 'Escribiendo los textos de la landing…', percent: 90 })
+      await runEnrichment()
+      toast.success('Listo: los textos se generaron con tus respuestas.')
     } catch (e) {
+      setEnriching(null)
       toast.error(e instanceof Error ? e.message : 'Error')
     } finally { setBusy(null) }
   }
 
+  /**
+   * Si los textos ya se generaron y el asesor cambia (o ajusta) el avatar, se
+   * re-generan para que sigan al avatar elegido — sin esto el copy publicado
+   * quedaba atado al avatar [0] aunque eligiera otro.
+   */
+  const regenerarTextosSiCorresponde = async (tenianTextos: boolean) => {
+    if (!tenianTextos) return
+    await patch({ wizardState: { enrich: 'copy', copyFromAnswers: false } })
+    setEnriching({ label: 'Actualizando los textos con el avatar elegido…', percent: 90 })
+    try {
+      await runEnrichment()
+    } catch (e) {
+      setEnriching(null)
+      toast.error(e instanceof Error ? e.message : 'Error al actualizar los textos')
+    }
+  }
+
   const selectAvatar = async (idx: number) => {
+    const tenianTextos = landing?.wizard_state?.copyFromAnswers === true
     await patch({ wizardState: { selectedAvatarIndex: idx } })
+    await regenerarTextosSiCorresponde(tenianTextos)
   }
 
   const refine = async (idx: number) => {
@@ -217,8 +247,10 @@ export function LandingSection({
       })
       const data = await readJson<{ landing?: Landing; error?: string }>(res)
       if (!res.ok) throw new Error(data.error)
+      const tenianTextos = landing?.wizard_state?.copyFromAnswers === true
       setLanding(data.landing ?? null); setRefineComment('')
       toast.success('Avatar ajustado.')
+      await regenerarTextosSiCorresponde(tenianTextos)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error')
     } finally { setBusy(null) }
@@ -377,6 +409,13 @@ export function LandingSection({
   const candidates = ws.avatarCandidates ?? []
   const selectedIdx = ws.selectedAvatarIndex ?? 0
 
+  // Gate de publicación (2026-08-06): con preguntas presentes, publicar exige
+  // TODAS respondidas Y los textos generados con esas respuestas. El server
+  // valida lo mismo en publishLanding — acá solo lo avisamos antes.
+  const faltanLocal = questions.filter(q => !(answers[q.id] ?? '').trim())
+  const textosListos = questions.length === 0 ||
+    (faltanRespuestas({ questions, answers: ws.answers }).length === 0 && ws.copyFromAnswers === true)
+
   return (
     <Card>
       <CardHeader>
@@ -385,10 +424,13 @@ export function LandingSection({
       <CardContent className="space-y-6">
         {enrichBlock}
 
-        {/* 1. Preguntas */}
+        {/* 1. Preguntas (obligatorias, 2026-08-06: son el insumo de los textos) */}
         {questions.length > 0 && (
           <div className="space-y-3">
-            <p className="text-sm font-medium">1. Afiná el perfil (opcional)</p>
+            <p className="text-sm font-medium">1. Contanos de esta propiedad (obligatorio)</p>
+            <p className="text-xs text-muted-foreground">
+              Con tus respuestas la IA escribe los textos de la landing. Sin responderlas no se puede publicar.
+            </p>
             {questions.map(q => (
               <div key={q.id}>
                 <label className="text-sm">{q.question}</label>
@@ -401,10 +443,15 @@ export function LandingSection({
                 />
               </div>
             ))}
-            <Button size="sm" variant="outline" onClick={saveAnswers} disabled={busy === 'answers'}>
-              {busy === 'answers' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-              Regenerar avatares con mis respuestas
+            <Button size="sm" onClick={saveAnswers} disabled={busy === 'answers' || faltanLocal.length > 0}>
+              {busy === 'answers' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wand2 className="h-4 w-4 mr-2" />}
+              Generar los textos con mis respuestas
             </Button>
+            {faltanLocal.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Respondé todas las preguntas para generar los textos de la landing.
+              </p>
+            )}
           </div>
         )}
 
@@ -482,9 +529,18 @@ export function LandingSection({
               </div>
             </div>
           )}
+          {!textosListos && (
+            <div className="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-amber-900">Faltan tus respuestas</p>
+                <p className="text-xs text-amber-800">{GATE_RESPUESTAS_MSG}</p>
+              </div>
+            </div>
+          )}
           <Button
             onClick={publish}
-            disabled={busy === 'publish' || faltaRecorrido}
+            disabled={busy === 'publish' || faltaRecorrido || !textosListos}
             className="w-full"
             size="lg"
           >
