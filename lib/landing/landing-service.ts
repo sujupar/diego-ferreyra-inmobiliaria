@@ -29,6 +29,8 @@ import { buildUtmBase } from './utm'
 import { LandingDocument, safeParseLandingDocument } from './schema'
 import { generateEmpathyAvatars } from '@/lib/marketing/empathy-avatar-generator'
 import { generateCoCreationQuestions } from './questions-generator'
+import { faltanRespuestas, GATE_RESPUESTAS_MSG } from './answers-gate'
+import { getOrCreateLocationInsights, type LocationInsights } from '@/lib/marketing/location-insights'
 import type { EmpathyAvatar } from '@/lib/marketing/empathy-avatar'
 import type { LandingProperty } from './registry'
 
@@ -54,6 +56,12 @@ export interface WizardState {
    * de que el enriquecimiento se partiera en etapas → ya está completa.
    */
   enrich?: EnrichStage
+  /**
+   * true = los textos publicables se generaron CON las respuestas del asesor
+   * (etapa 'copy' re-armada por el envío de respuestas). El gate de publicación
+   * lo exige junto con `faltanRespuestas` — ver lib/landing/answers-gate.ts.
+   */
+  copyFromAnswers?: boolean
 }
 
 export interface LandingRow {
@@ -133,6 +141,7 @@ export async function startCoCreation(propertyId: string, userId: string | null)
     visionSummary: '',
     descriptionUsed: '',
     enrich: ENRICH_STAGES[0],
+    copyFromAnswers: false,
   }
 
   const { data, error } = await admin()
@@ -183,8 +192,14 @@ export async function runEnrichStage(propertyId: string): Promise<LandingRow> {
       visionSummary = vision?.summary ?? ''
     } catch { /* sin vision */ }
     ws.visionSummary = visionSummary
-    ws.enrich = 'description'
+    ws.enrich = 'location'
     update.ai_analysis = { visionSummary }
+  } else if (stage === 'location') {
+    // Investigación de zona SIN IA (Google vía ScraperAPI + mercado propio),
+    // cacheada en properties.location_insights. Best-effort: si falla, los
+    // prompts de descripción y copy caen al modo "sin datos de zona".
+    try { await getOrCreateLocationInsights(propertyId) } catch { /* sin insights */ }
+    ws.enrich = 'description'
   } else if (stage === 'description') {
     // Descripción de portal. Normalmente está cacheada y cuesta ~0, pero cuando
     // no lo está se genera con IA — por eso va en su propia llamada.
@@ -210,13 +225,27 @@ export async function runEnrichStage(propertyId: string): Promise<LandingRow> {
     ])
     ws.avatarCandidates = avatars
     ws.questions = questions
-    ws.enrich = 'copy'
+    // El arranque automático termina acá (decisión del usuario, 2026-08-06):
+    // los textos NO se generan hasta que el asesor responda las preguntas —
+    // el envío de respuestas re-arma enrich='copy' y el mismo loop los genera.
+    ws.enrich = 'done'
   } else {
-    // Copy de conversión personalizado con el avatar elegido. Reemplaza el
-    // documento determinístico con el que la landing nació.
+    // Etapa 'copy' (re-armada por el envío de respuestas, o draft viejo de v1
+    // que quedó a mitad): genera el copy v2 con TODO el contexto — respuestas
+    // del asesor, avatar elegido, visión de fotos, descripción e insights de
+    // zona — y reemplaza el documento con el que la landing nació.
     const avatar = (ws.avatarCandidates ?? [])[ws.selectedAvatarIndex ?? 0]
-    const { copy } = await generateConversionCopy({ property, avatar })
+    const insights = ((property as Record<string, unknown>).location_insights ?? null) as LocationInsights | null
+    const { copy } = await generateConversionCopy({
+      property,
+      avatar,
+      answers: ws.answers ?? {},
+      questions: ws.questions ?? [],
+      visionSummary: ws.visionSummary ?? '',
+      insights,
+    })
     update.content = buildLuxuryDocument(property, copy, deriveTier(property))
+    ws.copyFromAnswers = faltanRespuestas(ws).length === 0 && (ws.questions ?? []).length > 0
     ws.enrich = 'done'
   }
 
@@ -371,6 +400,17 @@ export async function publishLanding(propertyId: string, appUrl: string, userId:
   //    —no al crear— para que el asesor pueda dejar la landing lista mientras el
   //    video se filma o se edita.
   await assertRecorridoDisponible(propertyId)
+
+  // 0bis. Gate de respuestas (decisión del usuario, 2026-08-06): con preguntas
+  //    presentes no se publica sin responderlas TODAS y sin haber generado los
+  //    textos con esas respuestas. Sin preguntas (legacy / enrich caído) no
+  //    bloquea — ver lib/landing/answers-gate.ts.
+  const wsGate = landing.wizard_state ?? ({} as WizardState)
+  if ((wsGate.questions ?? []).length > 0) {
+    if (faltanRespuestas(wsGate).length > 0 || wsGate.copyFromAnswers !== true) {
+      throw new Error(GATE_RESPUESTAS_MSG)
+    }
+  }
 
   // 1. Fuente a publicar: si hay borrador del editor (E1.6), se publica el borrador
   //    (y se promueve a `content`); si no, el `content` actual. Validado con el
