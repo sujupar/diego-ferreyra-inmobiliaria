@@ -781,31 +781,36 @@ describe('runSchedulingAgent (I/O)', () => {
   })
 
   // -------------------------------------------------------------------------
-  // HALLAZGO 2 — con una visita YA propuesta, el agente se calla. Sin esto, un
-  // "gracias" al día siguiente reinterpretaba "mañana a la tarde" contra la
-  // fecha de HOY y le CORRÍA la visita un día al cliente.
+  // HALLAZGO 2 — con una visita YA propuesta, el agente NO le toca la fecha.
+  // Sin esto, un "gracias" al día siguiente reinterpretaba "mañana a la tarde"
+  // contra la fecha de HOY y le CORRÍA la visita un día al cliente.
+  //
+  // OJO con el alcance: frena AGENDAR, no frena HABLAR. Que se frenara también
+  // la respuesta fue un bug (6 de agosto de 2026, visto dos veces el mismo
+  // día): el cliente pedía fotos y el agente no contestaba nada.
   // -------------------------------------------------------------------------
-  it('HALLAZGO 2 — ya hay una visita pendiente para esa propiedad: no manda ni crea nada, deja UNA nota interna', async () => {
+  it('HALLAZGO 2 — ya hay una visita pendiente: no crea ni mueve nada, pero SÍ atiende y deja UNA nota interna', async () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
     mockSettingsEnabled()
     mockPropertyEnabled()
     mockVisitaPendiente('+5491122334455')
 
-    const result = await runSchedulingAgent({
-      ...BASE_INPUT,
+    mockAnalisis({ reply: 'Te paso las fotos ahora.' })
+    const result = await runSchedulingAgent({ ...BASE_INPUT })
 
-    })
-
-    expect(result.action).toBe('noop')
-    expect(sendWhatsappTextMock).not.toHaveBeenCalled()
+    // Lo intocable: la visita del equipo.
     expect(visitsInsert).not.toHaveBeenCalled()
     expect(visitsUpdate).not.toHaveBeenCalled()
-    expect(rpcMock).not.toHaveBeenCalled()
-    expect(logOutboundMock).toHaveBeenCalledTimes(1)
-    const noteArgs = logOutboundMock.mock.calls[0][0]
-    expect(noteArgs.status).toBe('agent_visit_pending')
-    expect(noteArgs.aiGenerated).toBe(true)
-    expect(noteArgs.bodyPreview).toContain('ya está propuesta')
+    // Lo que sí tiene que pasar: el cliente recibe respuesta.
+    expect(result.action).toBe('reply')
+    expect(sendWhatsappTextMock).toHaveBeenCalled()
+
+    const nota = logOutboundMock.mock.calls
+      .map(c => c[0])
+      .find(a => a.status === 'agent_visit_pending')
+    expect(nota).toBeDefined()
+    expect(nota?.aiGenerated).toBe(true)
+    expect(nota?.bodyPreview).toContain('ya está propuesta')
   })
 
   it('HALLAZGO 2 — la nota interna NO se repite en cada mensaje del cliente', async () => {
@@ -818,9 +823,11 @@ describe('runSchedulingAgent (I/O)', () => {
     mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
     const result = await runSchedulingAgent({ ...BASE_INPUT })
 
-    expect(result.action).toBe('noop')
-    expect(logOutboundMock).not.toHaveBeenCalled()
-    expect(sendWhatsappTextMock).not.toHaveBeenCalled()
+    // La nota no se repite…
+    expect(logOutboundMock.mock.calls.filter(c => c[0].status === 'agent_visit_pending')).toHaveLength(0)
+    // …pero la visita sigue intocable y la conversación sigue viva.
+    expect(visitsInsert).not.toHaveBeenCalled()
+    expect(result.action).toBe('reply')
   })
 
   it('HALLAZGO 8 — encuentra la visita que el cliente creó desde /v/<token> con el teléfono tipeado a mano', async () => {
@@ -837,7 +844,7 @@ describe('runSchedulingAgent (I/O)', () => {
     // segundo mail al equipo, porque comparaba el texto crudo contra el E.164.
     expect(visitsInsert).not.toHaveBeenCalled()
     expect(notifyVisitProposedMock).not.toHaveBeenCalled()
-    expect(result.action).toBe('noop')
+    expect(result.action).toBe('reply')
   })
 
   it('HALLAZGO 8 — un teléfono de OTRA persona con sufijo parecido NO cuenta como la misma visita', async () => {
@@ -1005,9 +1012,10 @@ describe('runSchedulingAgent (I/O)', () => {
     mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
     const result = await runSchedulingAgent({ ...BASE_INPUT })
 
-    expect(result.action).toBe('noop')
-    expect(logOutboundMock).toHaveBeenCalledTimes(1)
-    expect(logOutboundMock.mock.calls[0][0].status).toBe('agent_visit_pending')
+    expect(result.action).toBe('reply')
+    expect(logOutboundMock.mock.calls.some(c => c[0].status === 'agent_visit_pending')).toBe(true)
+    // La visita sigue intocable: el freno que importa no depende de la nota.
+    expect(visitsInsert).not.toHaveBeenCalled()
   })
 
   // -------------------------------------------------------------------------
@@ -1030,7 +1038,7 @@ describe('runSchedulingAgent (I/O)', () => {
     expect(sendWhatsappTextMock).toHaveBeenCalledTimes(1)
   })
 
-  it('PROBLEMA D — una visita de HOY más temprano SÍ sigue frenando (el cliente puede estar escribiendo por esa misma visita)', async () => {
+  it('PROBLEMA D — una visita de HOY más temprano sigue frenando el AGENDAR (el cliente puede estar escribiendo por esa misma visita)', async () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
     mockSettingsEnabled()
     mockPropertyEnabled()
@@ -1040,8 +1048,8 @@ describe('runSchedulingAgent (I/O)', () => {
     mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
     const result = await runSchedulingAgent({ ...BASE_INPUT })
 
-    expect(result.action).toBe('noop')
     expect(visitsInsert).not.toHaveBeenCalled()
+    expect(result.action).toBe('reply')
   })
 
   // -------------------------------------------------------------------------
@@ -1095,7 +1103,7 @@ describe('runSchedulingAgent (I/O)', () => {
   // nos vemos" podía hacer que el agente propusiera (o creara) otra visita
   // arriba de una que el asesor ya tenía cerrada con el cliente.
   // -------------------------------------------------------------------------
-  it('PUNTO 2 — una visita YA CONFIRMADA (scheduled) también frena al agente', async () => {
+  it('PUNTO 2 — una visita YA CONFIRMADA (scheduled) también le impide agendar', async () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
     mockSettingsEnabled()
     mockPropertyEnabled()
@@ -1104,14 +1112,17 @@ describe('runSchedulingAgent (I/O)', () => {
     mockAnalisis({ reply: 'Listo, María. Anoté la visita para mañana a las 15. El equipo se comunica para confirmarla.', visitDate: '2026-08-04', visitHour: 15 })
     const result = await runSchedulingAgent({ ...BASE_INPUT })
 
-    expect(result.action).toBe('noop')
+    // Lo intocable: una visita que el asesor ya cerró con el cliente.
     expect(visitsInsert).not.toHaveBeenCalled()
-    expect(sendWhatsappTextMock).not.toHaveBeenCalled()
-    expect(logOutboundMock).toHaveBeenCalledTimes(1)
-    const noteArgs = logOutboundMock.mock.calls[0][0]
-    expect(noteArgs.status).toBe('agent_visit_pending')
+    expect(visitsUpdate).not.toHaveBeenCalled()
+    expect(result.action).toBe('reply')
+
+    const nota = logOutboundMock.mock.calls
+      .map(c => c[0])
+      .find(a => a.status === 'agent_visit_pending')
     // La nota no puede decir "sin confirmar" de una visita que el asesor confirmó.
-    expect(noteArgs.bodyPreview).toContain('ya está confirmada')
+    expect(nota).toBeDefined()
+    expect(nota?.bodyPreview).toContain('ya está confirmada')
   })
 
   it('PUNTO 2 — la query pide los estados VIVOS, no solo pending_confirmation', async () => {
@@ -1607,5 +1618,51 @@ describe('completarConVideo — fotos y video van juntos, en los dos sentidos', 
   it('el plano no arrastra nada: quien pide un plano pide un plano', async () => {
     const { completarConVideo } = await import('./scheduling-agent')
     expect(completarConVideo(completa, ['plano'])).toEqual(['plano'])
+  })
+})
+
+/**
+ * Una visita en agenda frena AGENDAR, no frena HABLAR.
+ *
+ * Bug real (6 de agosto de 2026, dos veces el mismo día): con una visita
+ * propuesta, el cliente pidió fotos y el agente no contestó absolutamente
+ * nada — solo dejó una nota interna que el cliente nunca ve. Diego vio lo mismo
+ * en una reunión. Nadie eligió ese comportamiento: el freno se había puesto
+ * sobre "contestar" cuando lo único peligroso es correrle la fecha a una visita
+ * que el equipo ya tiene anotada.
+ */
+describe('decideSchedulingAction con una visita ya en agenda', () => {
+  it('contesta igual: tener fecha no lo deja sin dudas', () => {
+    const r = decideSchedulingAction(ctx({ hasActiveVisit: true, reply: 'Te paso las fotos ahora.' }))
+    expect(r).toEqual({ type: 'reply', text: 'Te paso las fotos ahora.', send: [] })
+  })
+
+  it('manda el material que le pidieron', () => {
+    const r = decideSchedulingAction(ctx({ hasActiveVisit: true, reply: 'Van las fotos.', send: ['fotos'] }))
+    expect(r).toMatchObject({ type: 'reply', send: ['fotos'] })
+  })
+
+  it('DESCARTA la visita aunque el modelo proponga una', () => {
+    // El freno vive acá, en el código: que el modelo devuelva una fecha no
+    // alcanza para que se cree nada.
+    const r = decideSchedulingAction(ctx({
+      hasActiveVisit: true,
+      reply: 'Dale, el jueves.',
+      visit: { dateISO: '2026-08-20', hour: 15 },
+    }))
+    expect(r).toEqual({ type: 'reply', text: 'Dale, el jueves.', send: [] })
+    expect(r).not.toHaveProperty('visit')
+  })
+
+  it('los frenos de verdad siguen mandando por encima', () => {
+    // Una visita en agenda no destraba nada: si el agente está apagado o
+    // derivado, sigue callado.
+    expect(decideSchedulingAction(ctx({ hasActiveVisit: true, agentHandedOff: true })).type).toBe('noop')
+    expect(decideSchedulingAction(ctx({ hasActiveVisit: true, schedulingEnabledGlobal: false })).type).toBe('noop')
+    expect(decideSchedulingAction(ctx({ hasActiveVisit: true, windowOpen: false })).type).toBe('noop')
+  })
+
+  it('si el modelo decide que no hay nada que decir, sigue sin contestar', () => {
+    expect(decideSchedulingAction(ctx({ hasActiveVisit: true, reply: null })).type).toBe('noop')
   })
 })

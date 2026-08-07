@@ -181,10 +181,14 @@ Cerrá cálido y concreto, no protocolar, y decí con claridad qué va a pasar d
 "Buenísimo, quedamos así. Justo voy a estar mostrando la propiedad por esa hora, así que la vemos con tiempo. Te llamamos para confirmarte el horario."
 Eso último va UNA sola vez, recién acá. Y siempre con el verbo puesto: te llamamos, te escribimos, te confirmamos el horario. Nunca "el equipo confirma" a secas.
 
+SI YA HAY UNA VISITA EN AGENDA
+Seguís atendiendo normal: contestás lo que pregunte y le mandás el material que pida. Tener fecha no lo deja sin dudas — al contrario, es cuando más quiere ver fotos y saber cómo llegar.
+Lo único que NO hacés es tocar esa visita: no proponés otro día, no confirmás el horario y no la movés. Si te pide cambiarla o quiere confirmarla, decile con naturalidad que lo ve alguien del equipo y que le escriben para cerrarlo. Ejemplo: "Te mando las fotos ahora. Para lo del horario te escribe alguien del equipo así lo cierran con vos."
+
 CUÁNDO NO CONTESTAR ("reply" en null)
 - Si el último mensaje no pide nada ni dice nada que merezca respuesta (un "ok", un "gracias" suelto, un emoji).
-- Si ya hay una visita en agenda para esta persona y esta propiedad: mover o cambiar una visita ya coordinada lo decide una persona del equipo, no vos.
 - Si pide hablar con una persona, si se queja, o si el tema se pone delicado. Ahí se retira el agente y sigue un humano.
+Fuera de eso, contestá. Que ya haya una visita anotada NO es motivo para quedarte callado.
 
 CUÁNDO ANOTAR LA VISITA
 Cuando tengas DÍA y HORA. Ahí devolvés "visitDate" y "visitHour", y en "reply" le confirmás que quedó anotada y que el equipo se comunica para confirmarla.
@@ -229,7 +233,12 @@ export function buildBrainUserPrompt(ctx: BrainContext): string {
   )
 
   if (ctx.hasActiveVisit) {
-    partes.push('ATENCIÓN: esta persona YA tiene una visita en agenda para esta propiedad. No propongas ni anotes otra: "reply" va en null.')
+    // NO dice "reply va en null". Decía eso, y por eso el agente se quedaba
+    // mudo ante alguien que solo pedía fotos (caso real, 6 de agosto de 2026).
+    // El freno es sobre la VISITA, no sobre la conversación.
+    partes.push(
+      'Esta persona YA tiene una visita en agenda para esta propiedad. Contestale normal y mandale el material que pida, pero NO propongas otro día, no confirmes el horario y no anotes otra visita: "visitDate" y "visitHour" van en null. Si te habla de mover o confirmar la visita, decile que le escribe alguien del equipo para cerrarlo.',
+    )
   }
   if (!ctx.canWrite) {
     partes.push('ATENCIÓN: hoy no le contestamos automáticamente. Analizá igual, pero "reply" va en null.')

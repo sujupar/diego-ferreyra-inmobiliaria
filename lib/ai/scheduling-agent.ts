@@ -348,6 +348,17 @@ export interface SchedulingContext {
   schedulingEnabledGlobal: boolean
   schedulingEnabledProperty: boolean
   windowOpen: boolean
+  /**
+   * Ya hay una visita viva y vigente para esta persona y esta propiedad.
+   *
+   * FRENA AGENDAR, NO FRENA HABLAR. Es una distinción que costó una prueba en
+   * vivo (6 de agosto de 2026): con una visita propuesta, el cliente pidió
+   * fotos y el agente NO le contestó nada — solo dejó una nota interna. Diego
+   * vio lo mismo en una reunión el mismo día. Nadie decidió eso: el freno se
+   * había puesto sobre "contestar" cuando lo único peligroso es tocarle la
+   * fecha a una visita que el equipo ya tiene anotada.
+   */
+  hasActiveVisit?: boolean
 }
 
 /**
@@ -381,6 +392,15 @@ export function decideSchedulingAction(ctx: SchedulingContext): SchedulingAction
   if (!ctx.reply) {
     return { type: 'noop', reason: 'no hay nada que contestar en este turno' }
   }
+
+  // Con una visita ya en agenda el agente SIGUE ATENDIENDO —contesta y manda
+  // material— pero la visita se descarta acá, en el código. Que el modelo
+  // proponga una fecha igual no importa: no llega a crearse nada. El freno vive
+  // en el código y no en el prompt justamente porque tiene que pasar SIEMPRE.
+  if (ctx.hasActiveVisit) {
+    return { type: 'reply', text: ctx.reply, send: ctx.send ?? [] }
+  }
+
   return ctx.visit
     ? { type: 'reply', text: ctx.reply, visit: ctx.visit, send: ctx.send ?? [] }
     : { type: 'reply', text: ctx.reply, send: ctx.send ?? [] }
@@ -464,7 +484,7 @@ export function buildActiveVisitNote(fecha: string | null, status: string): stri
     status === 'scheduled'
       ? `ya está confirmada${cuando}`
       : `ya está propuesta${cuando} y todavía sin confirmar`
-  return `[Agente IA] El cliente sigue escribiendo sobre una visita que ${estado}. El agente no vuelve a proponer ni a confirmar horarios de esta propiedad: mover una visita que el equipo ya tiene en agenda lo decide una persona.`
+  return `[Agente IA] La visita de este cliente ${estado}. El agente sigue atendiendo la conversación y mandando material, pero no propone, confirma ni mueve horarios de esta propiedad: eso lo decide una persona del equipo.`
 }
 
 /**
@@ -1250,13 +1270,14 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
 
     // Si CUALQUIER freno está puesto, el modelo igual analiza (el Inbox necesita
     // el resumen y la prioridad), pero se le dice que no redacte respuesta.
+    // OJO: `pendiente` NO entra acá. Una visita en agenda no es un freno para
+    // contestar — ver `SchedulingContext.hasActiveVisit`.
     const canWrite =
       settings.scheduling_enabled &&
       prop.ai_scheduling_enabled &&
       windowOpen &&
       !agentHandedOff &&
-      agentMessagesSent < settings.max_messages_per_conversation &&
-      !pendiente
+      agentMessagesSent < settings.max_messages_per_conversation
 
     // ── LA ÚNICA LLAMADA AL MODELO DEL REQUEST ──────────────────────────────
     // Entiende la conversación Y redacta la respuesta. Ver `lib/ai/agent-brain.ts`.
@@ -1277,19 +1298,20 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       return { action: 'noop', reason: 'no hubo análisis nuevo en este turno' }
     }
 
-    if (pendiente) {
-      if (!(await yaHayNotaInterna(sb, input.phoneE164, input.propertyId, NOTE_STATUS_PENDING_VISIT, pendiente.desdeISO))) {
-        await logOutbound({
-          phone: input.phoneE164,
-          bodyPreview: buildActiveVisitNote(pendiente.fecha, pendiente.status),
-          status: NOTE_STATUS_PENDING_VISIT,
-          leadId: input.leadId,
-          propertyId: input.propertyId,
-          sentBy: null,
-          aiGenerated: true,
-        })
-      }
-      return { action: 'noop', reason: 'ya hay una visita en agenda para esta propiedad; moverla la decide una persona' }
+    // Con visita en agenda queda la nota interna (una sola por episodio) para
+    // que el equipo sepa que hay algo que confirmar — pero la conversación
+    // SIGUE: el agente contesta y manda material igual. Lo único que no hace es
+    // tocar la fecha, y de eso se encarga `decideSchedulingAction`.
+    if (pendiente && !(await yaHayNotaInterna(sb, input.phoneE164, input.propertyId, NOTE_STATUS_PENDING_VISIT, pendiente.desdeISO))) {
+      await logOutbound({
+        phone: input.phoneE164,
+        bodyPreview: buildActiveVisitNote(pendiente.fecha, pendiente.status),
+        status: NOTE_STATUS_PENDING_VISIT,
+        leadId: input.leadId,
+        propertyId: input.propertyId,
+        sentBy: null,
+        aiGenerated: true,
+      })
     }
 
     // El modelo PROPONE la fecha; el código la valida antes de que entre al CRM.
@@ -1311,6 +1333,7 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       schedulingEnabledGlobal: settings.scheduling_enabled,
       schedulingEnabledProperty: prop.ai_scheduling_enabled,
       windowOpen,
+      hasActiveVisit: !!pendiente,
     })
 
     if (decision.type === 'noop') {
