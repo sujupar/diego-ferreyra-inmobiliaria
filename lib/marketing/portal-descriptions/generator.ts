@@ -7,6 +7,7 @@
 import type { Property } from '@/lib/portals/types'
 import { chatCompletion } from '@/lib/ai/chat-client'
 import { PORTAL_DESCRIPTION_SYSTEM_PROMPT } from './system-prompt'
+import { formatInsightsForPrompt, type LocationInsights } from '@/lib/marketing/location-insights'
 
 export interface GeneratedDescription {
   title: string
@@ -35,10 +36,16 @@ function propertyTypeToTipologia(type: string): string {
   return TIPOLOGIA_MAP[lower] ?? 'DEPARTAMENTO'
 }
 
-function buildUserPayload(input: GenerateInput): string {
+export function buildUserPayload(input: GenerateInput): string {
   const p = input.property
   const tipologia = propertyTypeToTipologia(p.property_type)
   const amenities = Array.isArray(p.amenities) ? (p.amenities as string[]) : []
+
+  // Investigación real de la zona (lib/marketing/location-insights, cacheada en
+  // properties.location_insights). La sección Ubicación del prompt se apoya en
+  // esto; sin datos, el prompt exige modo conservador (nada de inventar lugares).
+  const insights = (p as { location_insights?: LocationInsights | null }).location_insights ?? null
+  const insightsBlock = formatInsightsForPrompt(insights)
 
   return [
     `# Datos de la propiedad`,
@@ -66,6 +73,10 @@ function buildUserPayload(input: GenerateInput): string {
     amenities.length > 0 ? `Amenities: ${amenities.join(', ')}` : null,
     p.video_url ? `Video: ${p.video_url}` : null,
     p.tour_3d_url ? `Tour 3D: ${p.tour_3d_url}` : null,
+    ``,
+    `# Ubicación — investigación real`,
+    insightsBlock ||
+      'Sin datos investigados de la zona: usá SOLO hechos ampliamente conocidos del barrio; ante la duda, omití. PROHIBIDO inventar nombres de lugares, líneas de transporte o distancias.',
     ``,
     input.buyerProfile ? `# Comprador ideal\n${input.buyerProfile}` : null,
     input.extraNotes ? `# Notas adicionales del asesor\n${input.extraNotes}` : null,
