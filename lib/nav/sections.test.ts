@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getNavSections, navHrefs, titleForPath, isCollapsible } from './sections'
+import { getNavSections, navHrefs, titleForPath, isCollapsible, activeHrefAmong } from './sections'
 
 describe('getNavSections — permisos del menú', () => {
   it('el abogado ve exactamente sus 3 pantallas y ninguna más', () => {
@@ -126,5 +126,33 @@ describe('titleForPath', () => {
 
   it('/properties/review gana sobre /properties por ser el prefijo más largo', () => {
     expect(titleForPath(admin, '/properties/review')).toEqual({ section: 'Propiedades', title: 'Revisión legal' })
+  })
+})
+
+describe('activeHrefAmong', () => {
+  const hermanos = ['/properties', '/properties/new', '/properties/review']
+
+  it('la ruta exacta gana aunque también sea prefijo de otro hermano', () => {
+    // Antes del fix, /properties (prefijo) y /properties/new (exacto)
+    // "matcheaban" los dos por separado — acá tiene que ganar uno solo.
+    expect(activeHrefAmong(hermanos, '/properties/new')).toBe('/properties/new')
+  })
+
+  it('entre dos prefijos, gana el más largo', () => {
+    // No hay coincidencia exacta acá (ninguno de los hermanos es
+    // '/properties/new/foto-1'), así que compiten como prefijos.
+    expect(activeHrefAmong(hermanos, '/properties/new/foto-1')).toBe('/properties/new')
+  })
+
+  it('una subruta de la raíz cae en la raíz cuando es el único que matchea', () => {
+    expect(activeHrefAmong(hermanos, '/properties/abc-123')).toBe('/properties')
+  })
+
+  it('devuelve null si ningún hermano matchea', () => {
+    expect(activeHrefAmong(hermanos, '/crm')).toBeNull()
+  })
+
+  it('devuelve null con la lista vacía', () => {
+    expect(activeHrefAmong([], '/properties')).toBeNull()
   })
 })

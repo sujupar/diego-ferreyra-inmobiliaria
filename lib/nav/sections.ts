@@ -162,6 +162,32 @@ export function navHrefs(groups: NavGroup[]): string[] {
 }
 
 /**
+ * De un conjunto de HERMANOS (los ítems sueltos de un grupo, o los ítems de un
+ * desplegable — nunca mezclando ambos niveles a la vez), cuál href es "el
+ * activo" para `pathname`. Gana la coincidencia más larga: exacta >
+ * prefijo más largo > prefijo más corto. `null` si ninguno matchea.
+ *
+ * Mismo criterio que usa `titleForPath` más abajo (exacto vs. prefijo,
+ * `Number.MAX_SAFE_INTEGER` para el exacto), acotado a un solo nivel de
+ * hermanos. Existe para que el consumidor (`AppSidebar`) NO evalúe cada
+ * hermano por separado sin comparar entre ellos — eso fue un bug real: en
+ * `/properties/new`, tanto `/properties` (prefijo) como `/properties/new`
+ * (exacto) "matcheaban" de forma independiente y los dos quedaban con
+ * `aria-current`. Acá gana uno solo.
+ */
+export function activeHrefAmong(hrefs: string[], pathname: string): string | null {
+  let mejor: { href: string; largo: number } | null = null
+  for (const href of hrefs) {
+    const exacto = pathname === href
+    const prefijo = pathname.startsWith(href + '/')
+    if (!exacto && !prefijo) continue
+    const largo = exacto ? Number.MAX_SAFE_INTEGER : href.length
+    if (!mejor || largo > mejor.largo) mejor = { href, largo }
+  }
+  return mejor ? mejor.href : null
+}
+
+/**
  * Qué mostrar en la barra superior para una ruta. Prefiere la coincidencia exacta;
  * si no hay, gana el prefijo MÁS LARGO — así `/properties/review` no se lo come
  * `/properties`, y `/properties/abc-123` (ficha de propiedad, que no está en el

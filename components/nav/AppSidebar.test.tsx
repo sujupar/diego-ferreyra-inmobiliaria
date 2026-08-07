@@ -48,6 +48,20 @@ describe('AppSidebar', () => {
     expect(screen.getByRole('link', { name: /Listado/ })).toHaveAttribute('aria-current', 'page')
   })
 
+  it('en /properties/new, "Nueva" queda activo y su hermano "Listado" (que también matchea como prefijo) no', () => {
+    rutaActual = '/properties/new'
+    montar('admin')
+    expect(screen.getByRole('link', { name: 'Nueva' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'Listado' })).not.toHaveAttribute('aria-current')
+  })
+
+  it('en /properties/review, "Revisión legal" queda activo y "Listado" no', () => {
+    rutaActual = '/properties/review'
+    montar('admin')
+    expect(screen.getByRole('link', { name: 'Revisión legal' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'Listado' })).not.toHaveAttribute('aria-current')
+  })
+
   it('el desplegable que contiene la pantalla actual arranca abierto', () => {
     rutaActual = '/properties/new'
     montar('admin')
@@ -58,6 +72,21 @@ describe('AppSidebar', () => {
     rutaActual = '/crm'
     montar('admin')
     expect(screen.getByRole('button', { name: /Propiedades/ })).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('una navegación client-side hacia adentro del submenú lo fuerza a abrirse (no es solo defaultOpen)', () => {
+    rutaActual = '/crm'
+    const { rerender } = montar('admin')
+    expect(screen.getByRole('button', { name: /Propiedades/ })).toHaveAttribute('aria-expanded', 'false')
+
+    rutaActual = '/properties/new'
+    rerender(
+      <SidebarProvider>
+        <AppSidebar groups={getNavSections('admin')} logoUrl="/logo.png" />
+      </SidebarProvider>,
+    )
+
+    expect(screen.getByRole('button', { name: /Propiedades/ })).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('pide el contador del Inbox y lo anuncia con contexto', async () => {

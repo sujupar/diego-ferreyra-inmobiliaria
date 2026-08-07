@@ -10,19 +10,16 @@ import {
   SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuBadge, SidebarMenuButton,
   SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem,
 } from '@/components/ui/sidebar'
-import { isCollapsible, navHrefs, type NavGroup, type NavItem } from '@/lib/nav/sections'
+import {
+  activeHrefAmong, isCollapsible, navHrefs,
+  type NavCollapsible, type NavGroup, type NavItem,
+} from '@/lib/nav/sections'
 
-/** La ruta activa es la exacta o cualquier subruta suya (`/properties/abc-1`). */
-function estaActiva(href: string, pathname: string) {
-  return pathname === href || pathname.startsWith(href + '/')
-}
-
-function ItemLink({ item, pathname, badge }: { item: NavItem; pathname: string; badge: number }) {
-  const activa = estaActiva(item.href, pathname)
+function ItemLink({ item, activo, badge }: { item: NavItem; activo: boolean; badge: number }) {
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={activa} tooltip={item.label}>
-        <Link href={item.href} aria-current={activa ? 'page' : undefined}>
+      <SidebarMenuButton asChild isActive={activo} tooltip={item.label}>
+        <Link href={item.href} aria-current={activo ? 'page' : undefined}>
           <item.icon />
           <span>{item.label}</span>
         </Link>
@@ -31,6 +28,55 @@ function ItemLink({ item, pathname, badge }: { item: NavItem; pathname: string; 
         <SidebarMenuBadge aria-label={`${badge} sin leer`}>{badge}</SidebarMenuBadge>
       )}
     </SidebarMenuItem>
+  )
+}
+
+/**
+ * Un desplegable necesita estado propio (para forzarse a abierto cuando la
+ * navegación entra en él) — por eso vive en su propio componente: un Hook no
+ * se puede llamar dentro del `.map` del padre.
+ */
+function CollapsibleNavEntry({ entry, pathname }: { entry: NavCollapsible; pathname: string }) {
+  const hrefActivo = activeHrefAmong(entry.items.map(i => i.href), pathname)
+  const contieneActual = hrefActivo !== null
+  const [abierto, setAbierto] = useState(contieneActual)
+
+  // Arranca según la ruta con la que se monta. Si DESPUÉS una navegación
+  // client-side entra en este submenú, se fuerza a abierto — pero nunca se
+  // fuerza a cerrado, así el usuario lo sigue pudiendo plegar/desplegar a
+  // mano sin que la ruta se lo pise en la siguiente navegación.
+  useEffect(() => {
+    if (contieneActual) setAbierto(true)
+  }, [contieneActual])
+
+  return (
+    <Collapsible asChild open={abierto} onOpenChange={setAbierto} className="group/collapsible">
+      <SidebarMenuItem>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuButton tooltip={entry.label}>
+            <entry.icon />
+            <span>{entry.label}</span>
+            <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+          </SidebarMenuButton>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <SidebarMenuSub>
+            {entry.items.map(sub => {
+              const activa = sub.href === hrefActivo
+              return (
+                <SidebarMenuSubItem key={sub.href}>
+                  <SidebarMenuSubButton asChild isActive={activa}>
+                    <Link href={sub.href} aria-current={activa ? 'page' : undefined}>
+                      <span>{sub.label}</span>
+                    </Link>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              )
+            })}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </SidebarMenuItem>
+    </Collapsible>
   )
 }
 
@@ -71,52 +117,38 @@ export function AppSidebar({ groups, logoUrl }: { groups: NavGroup[]; logoUrl: s
       </SidebarHeader>
 
       <SidebarContent>
-        {groups.map((g, i) => (
-          <SidebarGroup key={g.label ?? `sin-titulo-${i}`}>
-            {g.label && <SidebarGroupLabel>{g.label}</SidebarGroupLabel>}
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {g.entries.map(entry => {
-                  if (!isCollapsible(entry)) {
+        {groups.map((g, i) => {
+          // Los ítems sueltos de ESTE grupo compiten entre sí por "quién es
+          // el activo" — nunca se evalúan de forma independiente (ese era el
+          // bug: /properties y /properties/new "matcheaban" los dos a la vez).
+          const itemsSueltos = g.entries.filter((e): e is NavItem => !isCollapsible(e))
+          const hrefActivo = activeHrefAmong(itemsSueltos.map(e => e.href), pathname)
+
+          return (
+            <SidebarGroup key={g.label ?? `sin-titulo-${i}`}>
+              {g.label && <SidebarGroupLabel>{g.label}</SidebarGroupLabel>}
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {g.entries.map(entry => {
+                    if (!isCollapsible(entry)) {
+                      return (
+                        <ItemLink
+                          key={entry.href}
+                          item={entry}
+                          activo={entry.href === hrefActivo}
+                          badge={inboxCount}
+                        />
+                      )
+                    }
                     return (
-                      <ItemLink key={entry.href} item={entry} pathname={pathname} badge={inboxCount} />
+                      <CollapsibleNavEntry key={entry.label} entry={entry} pathname={pathname} />
                     )
-                  }
-                  const abierto = entry.items.some(i => estaActiva(i.href, pathname))
-                  return (
-                    <Collapsible key={entry.label} asChild defaultOpen={abierto} className="group/collapsible">
-                      <SidebarMenuItem>
-                        <CollapsibleTrigger asChild>
-                          <SidebarMenuButton tooltip={entry.label}>
-                            <entry.icon />
-                            <span>{entry.label}</span>
-                            <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                          </SidebarMenuButton>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                          <SidebarMenuSub>
-                            {entry.items.map(sub => {
-                              const activa = estaActiva(sub.href, pathname)
-                              return (
-                                <SidebarMenuSubItem key={sub.href}>
-                                  <SidebarMenuSubButton asChild isActive={activa}>
-                                    <Link href={sub.href} aria-current={activa ? 'page' : undefined}>
-                                      <span>{sub.label}</span>
-                                    </Link>
-                                  </SidebarMenuSubButton>
-                                </SidebarMenuSubItem>
-                              )
-                            })}
-                          </SidebarMenuSub>
-                        </CollapsibleContent>
-                      </SidebarMenuItem>
-                    </Collapsible>
-                  )
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )
+        })}
       </SidebarContent>
     </Sidebar>
   )
