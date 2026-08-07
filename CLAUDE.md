@@ -719,6 +719,35 @@ saber* o *qué está creyendo que es falso*.
   caminos comparten ahora `camposDeRegistro` — un campo nuevo no puede llegar a
   la mitad de las salidas.
 
+### Una visita en agenda frena AGENDAR, no frena HABLAR (2026-08-06)
+
+**Síntoma:** con una visita ya propuesta, el cliente pidió fotos y el agente no
+contestó **nada** — solo dejó una nota interna, que el cliente nunca ve. Pasó
+dos veces el mismo día, una de ellas con Diego mirando en una reunión.
+
+**Causa:** nadie eligió ese comportamiento. El freno de "ya hay visita" se había
+puesto sobre *contestar*, cuando lo único peligroso es correrle la fecha a una
+visita que el equipo ya tiene anotada. Y estaba en **tres lugares que se
+reforzaban**, así que arreglar uno solo no alcanzaba:
+1. `canWrite` incluía `!pendiente` → el modelo recibía "no redactes respuesta";
+2. `runSchedulingAgent` cortaba con un `return` antes de mandar nada;
+3. el prompt decía literalmente `"reply" va en null`.
+
+**Comportamiento vigente con una visita viva:** contesta y manda material, pero
+**nunca** crea, confirma ni mueve la visita — y eso se descarta en el CÓDIGO
+(`decideSchedulingAction`, `hasActiveVisit`), no en el prompt: aunque el modelo
+proponga una fecha, no llega a crearse nada. Si le hablan de mover o confirmar,
+deriva al equipo. La nota interna queda una sola vez por episodio.
+
+**Regla general — un freno tiene que ser del tamaño del riesgo.** El riesgo era
+"tocar una visita ajena"; el freno se comió "atender al cliente". Al escribir un
+freno, nombrar exactamente qué acción prohíbe, y verificar que no arrastre
+otras. Un agente mudo frente a alguien que pidió fotos cuesta el lead entero.
+
+**Regla que se repite:** lo que tiene que pasar SIEMPRE va en el código, no en
+el prompt. Acá aplicó en las dos direcciones — el freno de la visita subió al
+código, y la orden de callarse bajó del prompt.
+
 ### Banco de pruebas: `/admin/ai-agent`
 
 Escribís lo que diría un cliente y ves qué contestaría, SIN mandar WhatsApp ni
