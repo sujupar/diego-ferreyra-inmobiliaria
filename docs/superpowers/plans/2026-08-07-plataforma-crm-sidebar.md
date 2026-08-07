@@ -23,7 +23,24 @@
 - **Modo oscuro:** la plataforma es light-only (nada activa `.dark`). Los tokens `.dark` quedan como están; no se les agrega mantenimiento.
 - **Idioma:** todo el texto de interfaz y los nombres de los tests, en español, con acentos correctos.
 - **Commits:** `git add` solo de los archivos de la tarea. **Nunca `git add -A`** — hay trabajo sin commitear de otra sesión en esta misma carpeta.
-- **Verificación local:** Turbopack revienta en esta carpeta por el acento de "Gestión". `next build` y `next dev` a secas NO sirven. Usar `npx next dev --webpack` (primer arranque ~4 min) y `npx tsc --noEmit`.
+- **Verificación local:** Turbopack revienta en esta carpeta por el acento de "Gestión". `next build` y `next dev` a secas NO sirven. Usar `npx next dev --webpack` (primer arranque ~4 min).
+- **Línea de base medida el 2026-08-07, antes de empezar** (contra ella se comparan todas las tareas):
+  - `npm test` → **109 archivos, 1278 tests, todo verde**. Cualquier rojo es de la tarea en curso.
+    (Para llegar a esto hizo falta excluir `.claude/worktrees/**` en `vitest.config.ts`: vitest levantaba
+    la copia del repo de otra sesión y daba 70 tests en rojo por código que ni está en esta rama.)
+  - `npx tsc --noEmit` → **4 errores PREEXISTENTES**, todos en archivos de test que esta rama no toca y
+    que no importan nada de lo que construimos: `lib/landing/enrich.test.ts`,
+    `lib/marketing/copy-templates.test.ts`, `lib/portals/mercadolibre/mapping.test.ts`,
+    `lib/portals/validation.test.ts`. **Arreglarlos está fuera de alcance** (son de portales y landing).
+    La condición NO es "cero errores" — que sería inalcanzable y enseñaría a ignorar la barrera — sino
+    **no sumar errores nuevos**. Se verifica así:
+    ```bash
+    npx tsc --noEmit 2>&1 | grep -c "error TS"   # tiene que seguir dando 4
+    npx tsc --noEmit 2>&1 | grep "error TS" | grep -v -E "enrich.test|copy-templates.test|mapping.test|validation.test"
+    # ↑ tiene que salir vacío: cualquier línea acá es un error nuevo, tuyo
+    ```
+    Ojo al medirlo: `npx tsc --noEmit | tail` devuelve el código de salida de `tail`, no el de `tsc`.
+    Redirigí a un archivo y contá, como arriba.
 
 ---
 
