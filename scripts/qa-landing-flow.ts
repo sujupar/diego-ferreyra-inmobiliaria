@@ -12,7 +12,7 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import {
-  startCoCreation, runEnrichStage, publishLanding, updateLanding, getLanding,
+  startCoCreation, runEnrichStage, publishLanding, updateLanding, getLanding, deleteLanding,
 } from '../lib/landing/landing-service'
 import { nextEnrichStage } from '../lib/landing/enrich'
 import { GATE_RESPUESTAS_MSG } from '../lib/landing/answers-gate'
@@ -141,7 +141,21 @@ async function flow() {
 
   const final = await getLanding(id)
   assert(final?.status === 'published', 'la landing no quedó published')
-  console.log('\n✅ E2E OK — gate rechaza sin respuestas, copy v2 con respuestas, mapa, insights y publicación')
+
+  // 8) Eliminar y regenerar de cero (botón "Eliminar landing", 2026-08-07):
+  //    la fila desaparece, el slug de la propiedad se conserva (mismo enlace al
+  //    re-publicar) y startCoCreation crea una landing NUEVA desde 'vision'.
+  await deleteLanding(id)
+  assert((await getLanding(id)) === null, 'la landing no se borró')
+  const { data: pSlug } = await admin().from('properties').select('public_slug').eq('id', id).single()
+  assert((pSlug as { public_slug: string | null })?.public_slug === pub.slug, 'el slug de la propiedad cambió al borrar')
+  const fresh = await startCoCreation(id, null)
+  assert(fresh.status === 'draft', 'la landing regenerada no es draft')
+  assert(fresh.wizard_state?.enrich === 'vision', 'la landing regenerada no arrancó de cero')
+  assert(fresh.id !== final?.id, 'startCoCreation devolvió la landing vieja')
+  console.log('flow: eliminar + regenerar de cero ✓ (slug intacto:', pub.slug + ')')
+
+  console.log('\n✅ E2E OK — gate rechaza sin respuestas, copy v2 con respuestas, mapa, insights, publicación y eliminar/regenerar')
 }
 
 async function teardown() {

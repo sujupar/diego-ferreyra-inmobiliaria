@@ -500,4 +500,26 @@ export async function unpublishLanding(propertyId: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+/**
+ * Elimina la landing DE VERDAD (pedido del usuario, 2026-08-07): la única forma
+ * de volver a generarla de cero es borrar la fila — `startCoCreation` es
+ * idempotente y devuelve la existente mientras haya una.
+ *
+ * Qué pasa con cada pieza:
+ *  - `property_landing_revisions` se borra solo (FK ON DELETE CASCADE).
+ *  - `property_avatars` NO se toca: el avatar primario lo comparte la campaña Meta.
+ *  - `properties.public_slug` NO se toca (regla de oro: única fuente del enlace).
+ *    El enlace público sigue VIVO mientras tanto: /p/[slug] cae a la landing
+ *    determinística armada desde la propiedad, así que una campaña Meta activa
+ *    nunca apunta a un 404. Al re-publicar, `ensurePublicSlug` reusa el slug →
+ *    el enlace queda idéntico.
+ */
+export async function deleteLanding(propertyId: string): Promise<void> {
+  const { error } = await admin()
+    .from('property_landings')
+    .delete()
+    .eq('property_id', propertyId)
+  if (error) throw new Error(error.message)
+}
+
 export { getTemplate }

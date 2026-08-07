@@ -14,7 +14,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Loader2, Sparkles, Rocket, ExternalLink, Wand2, ArrowRight, AlertTriangle } from 'lucide-react'
+import { Loader2, Sparkles, Rocket, ExternalLink, Wand2, ArrowRight, AlertTriangle, Trash2 } from 'lucide-react'
 import { needsDeliveryChoice, resolveDeliverMedia } from '@/lib/properties/deliver-media'
 import { ENRICH_STAGES, nextEnrichStage } from '@/lib/landing/enrich'
 import { faltanRespuestas, GATE_RESPUESTAS_MSG } from '@/lib/landing/answers-gate'
@@ -315,6 +315,36 @@ export function LandingSection({
     } finally { setBusy(null) }
   }
 
+  /**
+   * Elimina la landing DE VERDAD para poder generarla de cero (pedido del
+   * usuario, 2026-08-07). El enlace público no se rompe: mientras no haya
+   * landing muestra la versión automática, y al re-publicar conserva el MISMO
+   * enlace (el slug vive en la propiedad) — una campaña Meta activa sigue
+   * funcionando durante el medio.
+   */
+  const eliminar = async () => {
+    const publicada = landing?.status === 'published'
+    const aviso = publicada
+      ? 'Vas a eliminar esta landing publicada para generarla de nuevo.\n\n' +
+        '• El enlace público NO se rompe: mientras tanto muestra una versión automática, y la landing nueva va a tener el MISMO enlace (las campañas Meta siguen funcionando).\n' +
+        '• Los textos actuales y las respuestas se pierden: la nueva arranca de cero con las preguntas.\n\n¿Eliminar?'
+      : 'Vas a eliminar esta landing en construcción (textos, respuestas y avatares del asistente). Después podés crearla de nuevo desde cero. ¿Eliminar?'
+    if (!confirm(aviso)) return
+    setBusy('eliminar')
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/landing?definitivo=1`, { method: 'DELETE' })
+      const data = await readJson<{ error?: string }>(res)
+      if (!res.ok) throw new Error(data.error)
+      setLanding(null)
+      setAnswers({})
+      setEnriching(null)
+      resumedRef.current = false
+      toast.success('Landing eliminada. Podés crearla de nuevo cuando quieras.')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al eliminar')
+    } finally { setBusy(null) }
+  }
+
   if (loading) {
     return <Card><CardContent className="py-8 flex justify-center"><Loader2 className="h-5 w-5 animate-spin" /></CardContent></Card>
   }
@@ -424,9 +454,24 @@ export function LandingSection({
             </a>
           </div>
           <p className="text-xs text-muted-foreground">Ya podés montar la campaña Meta para esta propiedad.</p>
-          <Button size="sm" onClick={() => router.push(`/properties/${propertyId}/landing/edit`)}>
-            Editar landing
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => router.push(`/properties/${propertyId}/landing/edit`)}>
+              Editar landing
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+              onClick={eliminar}
+              disabled={busy === 'eliminar'}
+            >
+              {busy === 'eliminar' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
+              Eliminar landing
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Eliminar sirve para generarla de nuevo desde cero. El enlace público no se rompe y la landing nueva conserva el mismo enlace.
+          </p>
           {deliveryChoiceBlock && <div className="border-t pt-3">{deliveryChoiceBlock}</div>}
         </CardContent>
       </Card>
@@ -577,6 +622,20 @@ export function LandingSection({
             {busy === 'publish' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Rocket className="h-4 w-4 mr-2" />}
             Publicar landing
             <ArrowRight className="h-4 w-4 ml-1" />
+          </Button>
+        </div>
+
+        {/* Eliminar y arrancar de cero (2026-08-07) */}
+        <div className="border-t pt-3">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-red-600 hover:bg-red-50 hover:text-red-700"
+            onClick={eliminar}
+            disabled={busy === 'eliminar'}
+          >
+            {busy === 'eliminar' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
+            Eliminar y empezar de nuevo
           </Button>
         </div>
       </CardContent>
