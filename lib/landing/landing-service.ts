@@ -21,6 +21,7 @@ import { analyzePropertyPhotos } from '@/lib/marketing/property-vision-analyzer'
 import { deriveFunnelType, type PropertyFunnelType } from './funnel-type'
 import { buildFromTemplate, suggestTemplateId, getTemplate } from './templates'
 import { buildLuxuryDocument } from './templates/luxury'
+import { buildConversionDocument } from './templates/conversion'
 import { resolveDeliverMedia } from '@/lib/properties/deliver-media'
 import { generateConversionCopy, deterministicConversionCopy } from './conversion-copy'
 import { ENRICH_STAGES, nextEnrichStage, type EnrichStage } from './enrich'
@@ -244,7 +245,22 @@ export async function runEnrichStage(propertyId: string): Promise<LandingRow> {
       visionSummary: ws.visionSummary ?? '',
       insights,
     })
-    update.content = buildLuxuryDocument(property, copy, deriveTier(property))
+    // El content se reconstruye con el TEMPLATE ELEGIDO (hallazgo del review
+    // 2026-08-06: siempre armaba Lujo y pisaba el diseño). Lujo y Conversión
+    // aceptan el copy generado; los dos legacy (editorial/cinematic) no tienen
+    // slots de copy IA y se rearman con su builder propio.
+    const templateId = landing.template_id
+    if (templateId === 'conversion') {
+      update.content = buildConversionDocument(property, copy)
+    } else if (templateId === 'luxury' || !templateId) {
+      update.content = buildLuxuryDocument(property, copy, deriveTier(property))
+    } else {
+      update.content = buildFromTemplate(templateId, property).document
+    }
+    // Regenerar los textos deja obsoleto cualquier borrador del editor (estaba
+    // basado en el content anterior): si quedara, pickPublishSource lo
+    // promovería al publicar y el copy nuevo se descartaría en silencio.
+    update.draft_content = null
     ws.copyFromAnswers = faltanRespuestas(ws).length === 0 && (ws.questions ?? []).length > 0
     ws.enrich = 'done'
   }
@@ -283,6 +299,17 @@ export async function updateLanding(propertyId: string, patch: {
     const { templateId, document } = buildFromTemplate(patch.templateId, property)
     update.template_id = templateId
     update.content = document
+    // Si los textos ya se habían generado con las respuestas, el rebuild
+    // determinístico los pisó → el gate NO puede seguir en verde (hallazgo del
+    // review 2026-08-06). Se re-arma la etapa copy; la UI la corre a continuación.
+    if (current.wizard_state?.copyFromAnswers === true) {
+      update.wizard_state = {
+        ...current.wizard_state,
+        ...(patch.wizardState ?? {}),
+        enrich: 'copy',
+        copyFromAnswers: false,
+      }
+    }
     await writeRevision(current.id, templateId, document, current.avatar_id, 'template_switch', null)
   }
 
@@ -403,10 +430,14 @@ export async function publishLanding(propertyId: string, appUrl: string, userId:
 
   // 0bis. Gate de respuestas (decisión del usuario, 2026-08-06): con preguntas
   //    presentes no se publica sin responderlas TODAS y sin haber generado los
-  //    textos con esas respuestas. Sin preguntas (legacy / enrich caído) no
-  //    bloquea — ver lib/landing/answers-gate.ts.
+  //    textos con esas respuestas. SOLO aplica a la PRIMERA publicación
+  //    (published_at null): las landings ya publicadas —las tres pre-v2
+  //    incluidas— re-publican cambios del editor sin este gate, porque para
+  //    ellas la UI no ofrece ningún camino para responder preguntas (hallazgo
+  //    del review 2026-08-06: sin esta condición quedaban bloqueadas para
+  //    siempre). Sin preguntas (enrich caído) tampoco bloquea.
   const wsGate = landing.wizard_state ?? ({} as WizardState)
-  if ((wsGate.questions ?? []).length > 0) {
+  if (!landing.published_at && (wsGate.questions ?? []).length > 0) {
     if (faltanRespuestas(wsGate).length > 0 || wsGate.copyFromAnswers !== true) {
       throw new Error(GATE_RESPUESTAS_MSG)
     }

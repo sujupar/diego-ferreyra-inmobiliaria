@@ -80,8 +80,25 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ landing: await getLanding(id) })
     }
 
+    // Las claves del GATE de publicación no se aceptan del cliente (review
+    // 2026-08-06): `copyFromAnswers:true` lo setea SOLO la etapa copy del
+    // server, y `questions`/`answers` solo el enrich y POST /landing/answers.
+    // El cliente legítimo únicamente baja el gate (copyFromAnswers:false) y
+    // re-arma la etapa de textos (enrich:'copy') al cambiar avatar/diseño.
+    let wizardState = body.wizardState
+    if (wizardState) {
+      wizardState = { ...wizardState }
+      delete wizardState.questions
+      delete wizardState.answers
+      delete wizardState.avatarCandidates
+      delete wizardState.visionSummary
+      delete wizardState.descriptionUsed
+      if (wizardState.copyFromAnswers !== false) delete wizardState.copyFromAnswers
+      if (wizardState.enrich !== 'copy') delete wizardState.enrich
+    }
+
     const landing = await updateLanding(id, {
-      wizardState: body.wizardState as never,
+      wizardState: wizardState as never,
       templateId: body.templateId,
       content: body.content,
       draftContent: body.draftContent,

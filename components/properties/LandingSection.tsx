@@ -176,13 +176,17 @@ export function LandingSection({
 
   /**
    * Si el asesor recargó la página a mitad del enriquecimiento, lo retomamos
-   * solo. El ref evita que un re-render dispare un segundo loop.
+   * solo. El ref evita que un re-render dispare un segundo loop — y se marca
+   * TAMBIÉN cuando la landing ya está completa al cargar: sin eso, el re-armado
+   * de la etapa copy (respuestas / avatar / diseño) re-disparaba este efecto en
+   * paralelo con el loop del handler → DOS llamadas de IA por el mismo copy
+   * (hallazgo del review 2026-08-06). Los handlers marcan el ref antes de correr.
    */
   const resumedRef = useRef(false)
   useEffect(() => {
     if (loading || !landing || resumedRef.current) return
-    if (nextEnrichStage(landing.wizard_state ?? {}) === 'done') return
     resumedRef.current = true
+    if (nextEnrichStage(landing.wizard_state ?? {}) === 'done') return
     setEnriching({ label: 'Retomando la generación…', percent: 5 })
     runEnrichment().catch(e => {
       setEnriching(null)
@@ -197,6 +201,7 @@ export function LandingSection({
    */
   const saveAnswers = async () => {
     setBusy('answers')
+    resumedRef.current = true // este handler corre su propio loop; el efecto de resume no debe duplicarlo
     try {
       const res = await fetch(`/api/properties/${propertyId}/landing/answers`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
@@ -215,14 +220,17 @@ export function LandingSection({
   }
 
   /**
-   * Si los textos ya se generaron y el asesor cambia (o ajusta) el avatar, se
-   * re-generan para que sigan al avatar elegido — sin esto el copy publicado
-   * quedaba atado al avatar [0] aunque eligiera otro.
+   * Si los textos ya se generaron y el asesor cambia (o ajusta) el avatar o el
+   * diseño, se re-generan para que sigan a la elección — sin esto el copy
+   * publicado quedaba atado al avatar [0] o el cambio de diseño lo pisaba con
+   * el determinístico dejando el gate en verde.
    */
-  const regenerarTextosSiCorresponde = async (tenianTextos: boolean) => {
+  const regenerarTextosSiCorresponde = async (tenianTextos: boolean, label: string) => {
     if (!tenianTextos) return
-    await patch({ wizardState: { enrich: 'copy', copyFromAnswers: false } })
-    setEnriching({ label: 'Actualizando los textos con el avatar elegido…', percent: 90 })
+    resumedRef.current = true // el loop lo corre este handler, no el efecto de resume
+    const ok = await patch({ wizardState: { enrich: 'copy', copyFromAnswers: false } })
+    if (!ok) return // el PATCH falló (ya se mostró el toast): no simular que se regeneró
+    setEnriching({ label, percent: 90 })
     try {
       await runEnrichment()
     } catch (e) {
@@ -232,9 +240,12 @@ export function LandingSection({
   }
 
   const selectAvatar = async (idx: number) => {
+    // Re-clickear el avatar ya elegido no regenera nada (cada regeneración es IA paga).
+    if (idx === (landing?.wizard_state?.selectedAvatarIndex ?? 0)) return
     const tenianTextos = landing?.wizard_state?.copyFromAnswers === true
-    await patch({ wizardState: { selectedAvatarIndex: idx } })
-    await regenerarTextosSiCorresponde(tenianTextos)
+    const ok = await patch({ wizardState: { selectedAvatarIndex: idx } })
+    if (!ok) return
+    await regenerarTextosSiCorresponde(tenianTextos, 'Actualizando los textos con el avatar elegido…')
   }
 
   const refine = async (idx: number) => {
@@ -250,13 +261,13 @@ export function LandingSection({
       const tenianTextos = landing?.wizard_state?.copyFromAnswers === true
       setLanding(data.landing ?? null); setRefineComment('')
       toast.success('Avatar ajustado.')
-      await regenerarTextosSiCorresponde(tenianTextos)
+      await regenerarTextosSiCorresponde(tenianTextos, 'Actualizando los textos con el avatar ajustado…')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error')
     } finally { setBusy(null) }
   }
 
-  const patch = async (body: Record<string, unknown>) => {
+  const patch = async (body: Record<string, unknown>): Promise<boolean> => {
     setBusy('patch')
     try {
       const res = await fetch(`/api/properties/${propertyId}/landing`, {
@@ -265,12 +276,31 @@ export function LandingSection({
       const data = await readJson<{ landing?: Landing; error?: string }>(res)
       if (!res.ok) throw new Error(data.error)
       setLanding(data.landing ?? null)
+      return true
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error')
+      return false
     } finally { setBusy(null) }
   }
 
-  const setTemplate = (templateId: string) => patch({ templateId })
+  /**
+   * Cambiar el diseño reconstruye el content; si los textos ya salían de las
+   * respuestas, el server re-arma la etapa copy y acá se corre el loop para que
+   * el nuevo diseño también los tenga (el gate queda cerrado hasta entonces).
+   */
+  const setTemplate = async (templateId: string) => {
+    const tenianTextos = landing?.wizard_state?.copyFromAnswers === true
+    resumedRef.current = true
+    const ok = await patch({ templateId })
+    if (!ok || !tenianTextos) return
+    setEnriching({ label: 'Escribiendo los textos para el nuevo diseño…', percent: 90 })
+    try {
+      await runEnrichment()
+    } catch (e) {
+      setEnriching(null)
+      toast.error(e instanceof Error ? e.message : 'Error al actualizar los textos')
+    }
+  }
 
   const publish = async () => {
     setBusy('publish')

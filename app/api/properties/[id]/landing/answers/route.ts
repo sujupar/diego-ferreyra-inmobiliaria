@@ -25,11 +25,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (!(await authorizeLanding(id, user.id, user.profile.role))) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
-    const body = (await req.json()) as { answers?: Record<string, string> }
-    const answers = body.answers ?? {}
+    const body = (await req.json()) as { answers?: Record<string, unknown> }
 
     const landing = await getLanding(id)
     if (!landing) return NextResponse.json({ error: 'landing not found' }, { status: 404 })
+
+    // Solo se aceptan respuestas string para los ids de las preguntas GUARDADAS
+    // (review 2026-08-06): claves ajenas irían crudas al prompt del copy y un
+    // valor no-string trabaría la etapa de textos.
+    const questionIds = new Set((landing.wizard_state?.questions ?? []).map(q => q.id))
+    const answers: Record<string, string> = {}
+    for (const [k, v] of Object.entries(body.answers ?? {})) {
+      if (questionIds.has(k) && typeof v === 'string') answers[k] = v.trim().slice(0, 1500)
+    }
 
     // Gate (2026-08-06): sin TODAS las respuestas no se generan los textos.
     const faltantes = faltanRespuestas({ questions: landing.wizard_state?.questions, answers })

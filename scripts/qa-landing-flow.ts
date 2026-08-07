@@ -26,9 +26,16 @@ function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(`ASSERT: ${msg}`)
 }
 
+/** Todas las filas de prueba (con 2+ residuos, maybeSingle() devolvía null y
+ *  el teardown "no encontraba nada" — hallazgo del review 2026-08-06). */
+async function findTestProperties(): Promise<{ id: string }[]> {
+  const { data, error } = await admin().from('properties').select('id, address').like('address', `${MARK}%`)
+  if (error) throw new Error(`findTestProperties: ${error.message}`)
+  return (data ?? []) as { id: string }[]
+}
+
 async function findTestProperty(): Promise<{ id: string } | null> {
-  const { data } = await admin().from('properties').select('id, address').like('address', `${MARK}%`).maybeSingle()
-  return (data as { id: string } | null) ?? null
+  return (await findTestProperties())[0] ?? null
 }
 
 async function setup(): Promise<string> {
@@ -138,19 +145,21 @@ async function flow() {
 }
 
 async function teardown() {
-  const prop = await findTestProperty()
-  if (!prop) { console.log('teardown: nada que borrar'); return }
+  const props = await findTestProperties()
+  if (!props.length) { console.log('teardown: nada que borrar'); return }
   const sb = admin()
-  // Orden: hijos sin CASCADE primero; property_landings cascadea por FK.
-  await sb.from('property_avatars').delete().eq('property_id', prop.id)
-  await sb.from('property_landing_revisions').delete().in(
-    'landing_id',
-    ((await sb.from('property_landings').select('id').eq('property_id', prop.id)).data ?? []).map(r => (r as { id: string }).id),
-  )
-  await sb.from('property_landings').delete().eq('property_id', prop.id)
-  const { error } = await sb.from('properties').delete().eq('id', prop.id)
-  if (error) throw new Error(`teardown: ${error.message}`)
-  console.log('teardown: borrada', prop.id)
+  for (const prop of props) {
+    // Orden: hijos sin CASCADE primero; property_landings cascadea por FK.
+    await sb.from('property_avatars').delete().eq('property_id', prop.id)
+    await sb.from('property_landing_revisions').delete().in(
+      'landing_id',
+      ((await sb.from('property_landings').select('id').eq('property_id', prop.id)).data ?? []).map(r => (r as { id: string }).id),
+    )
+    await sb.from('property_landings').delete().eq('property_id', prop.id)
+    const { error } = await sb.from('properties').delete().eq('id', prop.id)
+    if (error) throw new Error(`teardown: ${error.message}`)
+    console.log('teardown: borrada', prop.id)
+  }
 }
 
 async function main() {
