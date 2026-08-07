@@ -52,9 +52,36 @@ export function getEstadosPropiedad(creds: ApCredentials) {
   return cached('estados', () => apGet<CatalogItem[]>(creds, '/v1/catalogo/propiedad/estados'))
 }
 
+/** Argentina en el catálogo de países. Solo operamos acá. Verificado en vivo 2026-08-06. */
+export const PAIS_ARGENTINA_ID = 'PAIS_1'
+
+/**
+ * Jerarquía de localización COMPLETA, verificada contra la API en vivo el
+ * 2026-08-06 (probe con las credenciales reales):
+ *   /v1/localizacion/paises                      → 19 (PAIS_1 = Argentina)
+ *   /v1/localizacion/paises/PAIS_1/provincias    → 24 (PROVINCIA_1 = Buenos Aires,
+ *                                                      PROVINCIA_2 = Capital Federal)
+ *   /v1/localizacion/provincias/{id}/partidos    → 135 en BsAs (ej. PARTIDO_107
+ *                                                  "Partido de Roque Pérez")
+ *   /v1/localizacion/partidos/{id}/localidades   → 12 en Roque Pérez
+ *   /v1/localizacion/localidades/{id}/barrios    → ya en uso (CABA)
+ */
+export function getProvincias(creds: ApCredentials) {
+  return cached('provincias', () => apGet<CatalogItem[]>(creds, `/v1/localizacion/paises/${PAIS_ARGENTINA_ID}/provincias`))
+}
+export function getPartidos(creds: ApCredentials, provinciaId: string) {
+  return cached(`partidos:${provinciaId}`, () => apGet<CatalogItem[]>(creds, `/v1/localizacion/provincias/${provinciaId}/partidos`))
+}
+export function getLocalidadesDePartido(creds: ApCredentials, partidoId: string) {
+  return cached(`localidades:${partidoId}`, () => apGet<CatalogItem[]>(creds, `/v1/localizacion/partidos/${partidoId}/localidades`))
+}
+export function getBarrios(creds: ApCredentials, localidadId: string) {
+  return cached(`barrios:${localidadId}`, () => apGet<CatalogItem[]>(creds, `/v1/localizacion/localidades/${localidadId}/barrios`))
+}
+
 /** Barrios de CABA (LOCALIDAD_2102). */
 export function getBarriosCaba(creds: ApCredentials) {
-  return cached(`barrios:${CABA_LOCALIDAD_ID}`, () => apGet<CatalogItem[]>(creds, `/v1/localizacion/localidades/${CABA_LOCALIDAD_ID}/barrios`))
+  return getBarrios(creds, CABA_LOCALIDAD_ID)
 }
 
 function norm(s: string): string {
@@ -62,25 +89,48 @@ function norm(s: string): string {
 }
 
 /**
- * Resuelve el nombre de barrio (ej. "Palermo") al Id de Argenprop (ej. "BARRIO_20")
- * dentro de CABA. Match exacto normalizado y, si no, por inclusión. Devuelve null si
- * no se encuentra (el caller decide: error o publicar sin barrio en no-CABA).
+ * Matchea un nombre humano ("Roque Pérez", "buenos aires", "Palermo Soho")
+ * contra un catálogo de localización. PURA — testeable sin red.
+ *
+ * Orden de preferencia:
+ *   1. Exacto normalizado (sin tildes/mayúsculas, y sin el prefijo "Partido de "
+ *      que la API pone en todos los partidos).
+ *   2. Nombre del catálogo CONTENIDO en el input, prefiriendo el más largo
+ *      (el input es más específico: "Palermo Soho" → "Palermo"). NO se usa la
+ *      dirección inversa para que un sub-item ("Palermo Chico") no le robe el
+ *      match al exacto.
+ *   3. null — nunca un parecido dudoso: publicar en la localidad equivocada es
+ *      el mismo modo de falla silencioso que la categoría equivocada de ML.
  */
-export async function resolveCabaBarrioId(creds: ApCredentials, neighborhood: string | null | undefined): Promise<string | null> {
-  if (!neighborhood) return null
-  const target = norm(neighborhood)
+export function matchLocalizacion(items: CatalogItem[], query: string): CatalogItem | null {
+  const target = norm(query)
   if (!target) return null
-  const barrios = await getBarriosCaba(creds)
   // Los items de localización usan `Nombre` (el catálogo de categorías usa `Descripcion`).
-  const nameOf = (b: CatalogItem) => norm(b.Nombre ?? b.Descripcion ?? '')
-  const exact = barrios.find(b => nameOf(b) === target)
-  if (exact) return exact.Id
-  // Fallback seguro: barrio cuyo nombre está CONTENIDO en el del input (el input es
-  // más específico, ej. "Palermo Soho" → "Palermo"), prefiriendo el match más largo.
-  // No usamos la dirección inversa (catálogo contiene input) para que un sub-barrio
-  // ("Palermo Chico") no le robe el match a "Palermo".
-  const contained = barrios
-    .filter(b => { const n = nameOf(b); return n.length > 2 && target.includes(n) })
+  const nameOf = (i: CatalogItem) => norm(i.Nombre ?? i.Descripcion ?? '').replace(/^partido de /, '')
+  const exact = items.find(i => nameOf(i) === target)
+  if (exact) return exact
+  const contained = items
+    .filter(i => { const n = nameOf(i); return n.length > 2 && target.includes(n) })
     .sort((a, b) => nameOf(b).length - nameOf(a).length)
-  return contained[0]?.Id ?? null
+  return contained[0] ?? null
+}
+
+/**
+ * Resuelve el nombre de barrio (ej. "Palermo") al Id de Argenprop (ej.
+ * "BARRIO_20") dentro de una localidad. Devuelve null si no se encuentra
+ * (el caller decide: en CABA es error, fuera de CABA se publica sin barrio).
+ */
+export async function resolveBarrioId(
+  creds: ApCredentials,
+  localidadId: string,
+  neighborhood: string | null | undefined,
+): Promise<string | null> {
+  if (!neighborhood) return null
+  const barrios = await getBarrios(creds, localidadId)
+  return matchLocalizacion(barrios, neighborhood)?.Id ?? null
+}
+
+/** Compatibilidad: el resolver histórico de barrios de CABA. */
+export async function resolveCabaBarrioId(creds: ApCredentials, neighborhood: string | null | undefined): Promise<string | null> {
+  return resolveBarrioId(creds, CABA_LOCALIDAD_ID, neighborhood)
 }
