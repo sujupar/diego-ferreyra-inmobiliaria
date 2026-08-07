@@ -37,8 +37,11 @@ function admin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
+// Tiene que traer LO MISMO que `COLUMNAS_PROPIEDAD` en `lib/ai/scheduling-agent.ts`.
+// Si el banco de pruebas lee menos columnas que la conversación real, muestra un
+// agente que no existe — y el banco deja de servir justo para lo que se hizo.
 const COLUMNAS =
-  'id, address, title, assigned_to, ai_scheduling_enabled, neighborhood, city, property_type, operation_type, rooms, bedrooms, bathrooms, covered_area, total_area, asking_price, currency, expensas, garages, floor, amenities, photos, plans, video_file_url, video_url'
+  'id, address, title, assigned_to, ai_scheduling_enabled, neighborhood, city, property_type, operation_type, rooms, bedrooms, bathrooms, covered_area, total_area, asking_price, currency, expensas, garages, floor, amenities, photos, plans, video_file_url, video_url, description'
 
 interface Turno {
   from: 'cliente' | 'nosotros'

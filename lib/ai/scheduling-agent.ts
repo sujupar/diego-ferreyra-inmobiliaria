@@ -79,6 +79,7 @@ import { sendWhatsappText, sendWhatsappMedia } from '@/lib/integrations/whatsapp
 import { logOutbound } from '@/lib/integrations/whatsapp/log'
 import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
 import { updateAgentState, getConversationAiState, memoriaVigente } from '@/lib/ai/conversation-memory'
+import { materialPedidoExplicito } from '@/lib/ai/material-request'
 import { runConversationAnalysis } from '@/lib/ai/analyze-conversation'
 import { validateProposedVisit, MAX_TIPOS_POR_TURNO, type MaterialTipo } from '@/lib/ai/agent-brain'
 
@@ -1039,6 +1040,16 @@ interface PropertyForAgent {
   plans: string[] | null
   video_file_url: string | null
   video_url: string | null
+  /**
+   * La descripción del aviso — el recorrido de la casa escrito por una persona.
+   *
+   * Estaba en la base desde siempre y el agente NO la recibía: solo veía la
+   * lista de specs sueltos, y por eso contestaba como una ficha ("4 ambientes,
+   * 3 dormitorios, 80 m²…"), que es justo lo que el dueño rechazó dos veces.
+   * Acá está lo que hace comprar: "las dos habitaciones dan al contrafrente,
+   * desde donde se accede al encantador jardín… un quincho".
+   */
+  description: string | null
 }
 
 /** Tope de archivos por turno. Cada envío es un roundtrip a Meta y el webhook tiene ~26s. */
@@ -1047,15 +1058,21 @@ const MAX_ARCHIVOS_POR_TURNO = 3
 const MEDIA_TIMEOUT_MS = 5_000
 
 /** Qué material REAL tiene esta propiedad para mandar por WhatsApp. */
-export function materialDisponible(p: PropertyForAgent): { fotos: boolean; plano: boolean; video: boolean } {
+export function materialCantidades(p: PropertyForAgent): { fotos: number; plano: number; video: number } {
   return {
-    fotos: (p.photos ?? []).length > 0,
-    plano: (p.plans ?? []).length > 0,
+    fotos: (p.photos ?? []).length,
+    plano: (p.plans ?? []).length,
     // Solo el ARCHIVO propio: un link de YouTube no se puede mandar como video
     // de WhatsApp (Meta descarga el archivo desde la URL, y youtube.com no
     // sirve un mp4). Ver la migración de videos a archivo del 2026-08-03.
-    video: !!p.video_file_url,
+    video: p.video_file_url ? 1 : 0,
   }
+}
+
+/** Derivado de las cantidades — una sola fuente de verdad sobre qué existe. */
+export function materialDisponible(p: PropertyForAgent): { fotos: boolean; plano: boolean; video: boolean } {
+  const c = materialCantidades(p)
+  return { fotos: c.fotos > 0, plano: c.plano > 0, video: c.video > 0 }
 }
 
 type Archivo = { mediaType: 'image' | 'video' | 'document'; link: string; filename?: string }
@@ -1136,10 +1153,21 @@ export function archivosParaEnviar(p: PropertyForAgent, tipos: MaterialTipo[]): 
  * agente tiene que poder trabajar sin ellos. Nunca al revés.
  */
 const COLUMNAS_PROPIEDAD =
-  'address, title, assigned_to, ai_scheduling_enabled, neighborhood, city, property_type, operation_type, rooms, bedrooms, bathrooms, covered_area, total_area, asking_price, currency, expensas, garages, floor, amenities, photos, plans, video_file_url, video_url'
+  'address, title, assigned_to, ai_scheduling_enabled, neighborhood, city, property_type, operation_type, rooms, bedrooms, bathrooms, covered_area, total_area, asking_price, currency, expensas, garages, floor, amenities, photos, plans, video_file_url, video_url, description'
 
-/** Lo mínimo para decidir si el agente puede escribir. Sin esto no hay agente. */
-const COLUMNAS_MINIMAS = 'address, title, assigned_to, ai_scheduling_enabled'
+/**
+ * Lo mínimo para decidir si el agente puede escribir. Sin esto no hay agente.
+ *
+ * LAS TRES DE MATERIAL NO SON UN LUJO, aunque el comentario de arriba diga que
+ * los datos de la propiedad sí lo son. Sin `photos`/`plans`/`video_file_url`,
+ * `materialDisponible` devuelve todo en `false` y el prompt le dice al modelo
+ * "NO hay nada cargado, no los tenés" — o sea, ante cualquier problema de
+ * esquema el agente pasaría a NEGARLE ACTIVAMENTE a los clientes el material de
+ * todas las propiedades, sin un solo error visible. No saber si algo existe no
+ * es lo mismo que saber que no existe, y este plan B lo estaba convirtiendo en
+ * eso.
+ */
+const COLUMNAS_MINIMAS = 'address, title, assigned_to, ai_scheduling_enabled, photos, plans, video_file_url'
 
 /**
  * La propiedad en líneas sueltas, como se las pasamos al modelo. Solo entra lo
@@ -1167,11 +1195,30 @@ export function propertyFacts(p: PropertyForAgent): string[] {
   if (cub !== null) out.push(`Superficie cubierta: ${cub} m²`)
   const tot = num(p.total_area)
   if (tot !== null && tot !== cub) out.push(`Superficie total: ${tot} m²`)
+  // El espacio verde estaba en los datos y NADIE lo nombraba: 80 m² cubiertos
+  // sobre un lote de 180 son 100 m² de jardín, que en una casa es el argumento
+  // de venta más fuerte. Restar dos números no lo hacía nadie, así que el agente
+  // hablaba de "superficie total" — un dato de escribano, no algo que ilusione.
+  if (cub !== null && tot !== null && tot > cub) {
+    out.push(`Espacio descubierto (jardín / patio): ${tot - cub} m²`)
+  }
   const coch = num(p.garages)
   if (coch !== null) out.push(coch > 0 ? `Cocheras: ${coch}` : 'Sin cochera')
   const piso = num(p.floor)
   if (piso !== null) out.push(`Piso: ${piso}`)
   if (p.amenities && p.amenities.length > 0) out.push(`Amenities: ${p.amenities.join(', ')}`)
+
+  // LA DESCRIPCIÓN VA ÚLTIMA Y ENTERA. Es lo único de acá que está escrito por
+  // una persona que caminó la casa, y es de donde sale todo lo que no cabe en un
+  // número: el recorrido, el jardín, el quincho, el barrio. Sin esto el agente
+  // solo puede recitar medidas.
+  //
+  // Se recorta a 1200 caracteres porque viaja en CADA llamada al modelo y hay
+  // descripciones de portal larguísimas con teléfonos y mayúsculas. 1200 alcanza
+  // para el recorrido completo de una casa; lo que sigue suele ser relleno.
+  const desc = (p.description ?? '').replace(/\s+/g, ' ').trim()
+  if (desc) out.push(`Descripción del aviso (lo escribió el equipo, es lo más fiel): ${desc.slice(0, 1200)}`)
+
   return out
 }
 
@@ -1291,6 +1338,7 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       hasActiveVisit: !!pendiente,
       canWrite,
       puedeMandar: materialDisponible(prop),
+      cantidades: materialCantidades(prop),
       ultimoMensajePropio,
       yaMandado,
     }, { propertyId: input.propertyId })
@@ -1322,11 +1370,34 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       console.warn('[agente] el modelo propuso una fecha que no pasa la validación:', analysis.visitDate, propuesta.reason)
     }
 
+    // LA GARANTÍA: lo que el cliente pidió con todas las letras y la propiedad
+    // tiene cargado, SALE — aunque el modelo lo haya omitido o negado. Un
+    // archivo llegando desmiente cualquier "no lo tengo" mejor que corregirle
+    // el texto (que además nunca se logra con expresiones regulares).
+    //
+    // Solo AGREGA, nunca quita: el texto del modelo ya está escrito a esta
+    // altura, y sacarle material produciría una promesa incumplida — el mismo
+    // daño que la mentira, en espejo.
+    const puedeMandarAhora = materialDisponible(prop)
+    const pedido = materialPedidoExplicito(analysis.textoEntranteNuevo).filter(t => puedeMandarAhora[t])
+    // `?? []` no es decorativo: sin eso, un análisis sin `send` tiraba
+    // "not iterable", el try/catch de arriba lo convertía en un `noop` y el
+    // agente se quedaba MUDO sin un solo error visible. Es el mismo patrón que
+    // ya nos mordió con la columna `expensas`.
+    const sendDelModelo = analysis.send ?? []
+    const faltaba = pedido.filter(t => !sendDelModelo.includes(t))
+    if (faltaba.length > 0) {
+      console.warn(`[agente] el cliente pidió ${faltaba.join(', ')} y el modelo no lo puso en send — se agrega por código`)
+    }
+    const sendFinal = [...pedido, ...sendDelModelo]
+      .filter((t, i, a) => a.indexOf(t) === i)
+      .slice(0, MAX_TIPOS_POR_TURNO)
+
     const decision = decideSchedulingAction({
       now,
       reply: analysis.reply,
       visit: propuesta.ok ? { dateISO: propuesta.dateISO, hour: propuesta.hour } : undefined,
-      send: analysis.send,
+      send: sendFinal,
       agentMessagesSent,
       agentHandedOff,
       maxMessagesPerConversation: settings.max_messages_per_conversation,

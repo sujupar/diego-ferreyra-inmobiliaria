@@ -54,6 +54,12 @@ export interface BrainContext {
   maxMessages: number
   /** `true` si esta conversación YA tiene una visita viva en agenda. */
   hasActiveVisit: boolean
+  /**
+   * Cuánto hay de cada cosa. Un "SÍ, hay 1 plano cargado" es mucho más difícil
+   * de desoír que la palabra "plano" suelta en una lista — ver el inventario en
+   * `buildBrainUserPrompt`. Opcional: sin esto se dice que hay, sin el número.
+   */
+  cantidades?: { fotos: number; plano: number; video: number }
   /** Qué material se le puede MANDAR a esta persona por WhatsApp, ahora mismo. */
   puedeMandar: { fotos: boolean; plano: boolean; video: boolean }
   /**
@@ -152,9 +158,15 @@ Lo más importante: NO TOMES EL PEDIDO AL PIE DE LA LETRA. Cuando alguien pide f
 - REGLA FIJA: si pide fotos y hay video disponible, mandá SIEMPRE los dos ["fotos","video"]. El video muestra la distribución mejor que cualquier foto, y quien pide fotos quiere ver la casa, no coleccionar imágenes. Nombrá los dos en el texto.
 - Nombrá lo que va: "Te paso unas fotos y el video, que se recorre entera y se entiende mejor la distribución."
 - Si queda algo afuera, ofrecelo simple para el próximo mensaje: "Si querés te paso el plano también".
-- Si pide algo que NO figura disponible, decilo sin vueltas y ofrecé lo que sí tenés: "Plano no tengo a mano, pero te paso el video y ahí se ve bien cómo está distribuida".
 - Mandar material NO es un premio por agendar. Es ayudar. Se manda porque le sirve, punto.
-- NO le mandes de nuevo algo que ya le mandaste. Abajo te digo qué ya recibió. Repetirlo es ruido y hace ver que no estás siguiendo la conversación.
+- Abajo te digo qué material ya recibió esta persona. No se lo repitas POR TU CUENTA. Pero si te lo vuelve a pedir, se lo mandás igual y sin drama ("te lo paso de nuevo"): que lo pida otra vez quiere decir que no lo encontró en el chat.
+
+NUNCA DIGAS QUE NO TENÉS ALGO QUE SÍ TENÉS
+Abajo hay un inventario real de lo que esta propiedad tiene cargado. Tres casos, y ninguno más:
+- Te lo piden y figura SÍ → se lo mandás. Punto. No lo ofrecés para después, no preguntás si lo quiere (ya te lo pidió), no lo condicionás a que agende.
+- Te lo piden, figura SÍ, y ya se lo habías mandado → se lo mandás igual. "Te lo paso de nuevo" y listo.
+- Te lo piden y figura "NO hay cargado" → recién ahí decís que eso no lo tenés, que lo pedís al equipo, y ofrecés lo que sí hay.
+Decirle a alguien que no tenés algo que sí está cargado es mentirle a un cliente. Es el peor error después de agendar un día que nadie eligió. Nunca "no lo tengo a mano", nunca "no me figura", nunca "no lo tengo".
 
 INTERPRETÁ LO QUE QUIERE, NO LO QUE DIJO
 La gente no pregunta lo que necesita, pregunta lo primero que se le viene. Tu trabajo es entender qué hay detrás y responder a ESO.
@@ -222,14 +234,25 @@ export function buildBrainUserPrompt(ctx: BrainContext): string {
     ].join('\n'),
   ]
 
-  const disponible: string[] = []
-  if (ctx.puedeMandar.fotos) disponible.push('fotos')
-  if (ctx.puedeMandar.plano) disponible.push('plano')
-  if (ctx.puedeMandar.video) disponible.push('video')
+  // INVENTARIO EN POSITIVO, CON CANTIDADES.
+  //
+  // Antes era una lista de palabras sueltas ("fotos, plano, video"). Es fácil
+  // desoír una lista; es mucho más difícil desoír "SÍ, hay 1 plano cargado en la
+  // plataforma, listo para mandar". El 6 de agosto de 2026 el agente le dijo a un
+  // cliente que no tenía el plano de una propiedad que tiene el plano cargado.
+  const cant = ctx.cantidades
+  const linea = (etiqueta: string, hay: boolean, n: number, unidad: string) =>
+    hay
+      ? `- ${etiqueta}: SÍ. Hay ${n > 0 ? `${n} ${unidad}` : unidad} cargado en la plataforma, listo para mandar ahora.`
+      : `- ${etiqueta}: NO hay cargado. Es de lo único que podés decir que no tenés.`
   partes.push(
-    disponible.length > 0
-      ? `Material que le podés MANDAR ahora mismo (poné "send" con una de estas palabras): ${disponible.join(', ')}.`
-      : 'Material para mandar: NO hay nada cargado para esta propiedad. No ofrezcas fotos, plano ni video: no los tenés. "send" va en null.',
+    [
+      'MATERIAL DE ESTA PROPIEDAD — inventario real de la plataforma, no una sugerencia:',
+      linea('fotos', ctx.puedeMandar.fotos, cant?.fotos ?? 0, 'fotos'),
+      linea('plano', ctx.puedeMandar.plano, cant?.plano ?? 0, 'plano/s'),
+      linea('video', ctx.puedeMandar.video, cant?.video ?? 0, 'video'),
+      'Todo lo que dice SÍ, LO TENÉS: poné esa palabra en "send" y el sistema se lo manda de verdad en este mismo momento.',
+    ].join('\n'),
   )
 
   if (ctx.hasActiveVisit) {
@@ -253,7 +276,16 @@ export function buildBrainUserPrompt(ctx: BrainContext): string {
     `Resumen previo:\n${ctx.previousSummary.trim() || '(sin resumen previo — es la primera vez que se analiza esta conversación)'}`,
   )
   if (ctx.yaMandado.length > 0) {
-    partes.push(`Material que YA le mandaste (no se lo repitas): ${ctx.yaMandado.join(', ')}.`)
+    // NO es "material que dejaste de tener". Es material que la persona YA TIENE
+    // en su teléfono. Presentado como prohibición, el modelo resolvió el empate
+    // entre "no repitas" y "me lo están pidiendo" negando que existiera.
+    partes.push(
+      [
+        `Lo que esta persona YA recibió en este chat: ${ctx.yaMandado.join(', ')}.`,
+        'Eso NO cambia el inventario de arriba: lo seguís teniendo. Significa una sola cosa: no se lo mandes de nuevo por tu cuenta.',
+        'Si te lo vuelve a pedir, mandáselo igual y con naturalidad ("te lo paso de nuevo"). Nunca uses "ya te lo mandé" como excusa para no mandarlo, y muchísimo menos "no lo tengo".',
+      ].join('\n'),
+    )
   }
   partes.push(
     ctx.ultimoMensajePropio
