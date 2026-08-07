@@ -441,6 +441,20 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Errores de ML en castellano:** `explicarErrorMl()` en `client.ts` traduce el `cause[]` de ML; el JSON crudo va en `PortalAdapterError.original` y se persiste en `last_error` como `mensaje | detalle` (`mensajeYDetalle()`/`soloElMensaje()` en `lib/portals/types.ts` — la UI muestra solo el mensaje). **OJO:** los matchers de texto (descenso de tier "available quota", pausa diferida "not_yet_active") matchean sobre `paraElLog`, NO sobre `err.message` (el mensaje traducido ya no contiene los códigos).
 - **Detection / regla:** NO agregar ni cambiar una entrada del mapa sin correr `npx tsx scripts/verify-ml-categories.ts` (consulta la API pública, sin credenciales: exige hoja + publicable + que la RUTA coincida con la operación — esto último es lo que caza un "venta→Alquiler"). La lección Meta ("test end-to-end real antes de declarar completa una integración") aplica a TODOS los portales.
 
+### Fotos de portales: el límite es del AVISO, nunca de `properties.photos` (2026-08-06)
+
+- **Symptom:** los avisos salían con 12 fotos aunque ML permite 30, y peor: una propiedad que pasaba por el wizard de ML quedaba con 12 fotos PARA SIEMPRE en todos los portales, la landing y Meta.
+- **Root cause:** la ruta de guardado del wizard (`ml-preview` PATCH) persistía su selección con `.slice(0, 12)` sobre `properties.photos` — la columna COMPARTIDA. `ap-preview` hacía lo mismo con 20. El 12 además era inventado: `settings.max_pictures_per_item` = **30** en nuestras categorías (verificado 2026-08-06; `verify-ml-categories.ts` lo re-chequea en cada corrida).
+- **Fix/regla:** los wizards eligen ORDEN, nunca el conjunto: las rutas usan `reordenarSinPerder` (`lib/portals/photo-reorder.ts`, puro y testeado — no pierde ni inyecta). El límite por portal vive en `lib/portals/photo-limits.ts` (`ML_MAX_FOTOS_AVISO`/`AP_MAX_FOTOS_AVISO` = 30) y se aplica SOLO al armar el payload. `StepImages` avisa "el aviso lleva las primeras N" si hay más.
+- **Detection:** `scripts/audit-fotos-truncadas.ts` (solo lectura) lista propiedades con más archivos en Storage que fotos en la ficha.
+
+### Argenprop publica en TODO el país (fuera de CABA habilitado 2026-08-06)
+
+- **Antes:** `resolveLocalizacion` lanzaba "Por ahora la publicación en Argenprop soporta solo CABA" — era un atajo nuestro, no una restricción del portal.
+- **Jerarquía real del catálogo (verificada EN VIVO con las credenciales, 2026-08-06):** `/v1/localizacion/paises` (PAIS_1=Argentina) → `/paises/PAIS_1/provincias` (24; PROVINCIA_1=Buenos Aires, PROVINCIA_2=Capital Federal) → `/provincias/{id}/partidos` (135 en BsAs; los nombres llevan prefijo "Partido de ") → `/partidos/{id}/localidades` → `/localidades/{id}/barrios`. Getters cacheados 24h en `catalog.ts`.
+- **Resolver:** ficha con provincia/ciudad que DICE CABA → localidad 2102 + barrio OBLIGATORIO (regla de AP). Resto: provincia → partido → localidad con `matchLocalizacion` (puro: exacto normalizado sin "Partido de ", después contenido-más-largo, después `null` — nunca un parecido dudoso). Fuera de CABA el barrio es opcional. El fallback "barrio resuelve en catálogo CABA" solo aplica con provincia VACÍA (una ficha de provincia con barrio homónimo porteño no debe publicarse en Capital). Errores en castellano nombrando el campo de la ficha.
+- **Verificación:** `scripts/verify-ap-localizacion.ts` (solo lectura, en vivo: CABA/Palermo, BsAs/Roque Pérez, BsAs/La Plata). El 401 "CRM no autorizado" que bloqueaba el QA quedó resuelto — las credenciales funcionan.
+
 ### ML `number_unit`: superficies y antigüedad EXIGEN unidad explícita
 
 - **Symptom:** `POST /items` devuelve `400 validation_error — "Attribute COVERED_AREA with value 95 ... The provided unit is not valid. You can use a number followed by one of these valid units: [in², m², ...]."` (idem TOTAL_AREA, PROPERTY_AGE).
