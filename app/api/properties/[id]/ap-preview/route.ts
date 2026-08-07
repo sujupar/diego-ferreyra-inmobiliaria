@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { validateCommon } from '@/lib/portals/validation'
 import { getApSchema, derivedPrefill, type AttributeOverride } from '@/lib/portals/argenprop/field-schema'
+import { reordenarSinPerder } from '@/lib/portals/photo-reorder'
 import type { Database } from '@/types/database.types'
 
 type PropertyRow = Database['public']['Tables']['properties']['Row']
@@ -94,10 +95,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (typeof body.title === 'string') update.title = body.title.slice(0, 60)
     if (typeof body.description === 'string') update.description = body.description.slice(0, 5000)
     if (Array.isArray(body.photos)) {
-      update.photos = body.photos
+      // Reorden sin pérdida: el wizard elige el orden, el conjunto lo gobierna
+      // el módulo de media. El límite del aviso (AP_MAX_FOTOS_AVISO) se aplica
+      // al armar el payload, nunca sobre properties.photos.
+      const { data: actual } = await supabase
+        .from('properties').select('photos').eq('id', id).maybeSingle()
+      const enviadas = body.photos
         .filter((p): p is string => typeof p === 'string' && p.length > 0 && p.length < 2000)
         .filter(p => /^https?:\/\//i.test(p))
-        .slice(0, 20)
+      update.photos = reordenarSinPerder((actual?.photos as string[] | null) ?? [], enviadas)
     }
     if (typeof body.asking_price === 'number' && body.asking_price > 0) {
       update.asking_price = Math.min(body.asking_price, 100_000_000)
