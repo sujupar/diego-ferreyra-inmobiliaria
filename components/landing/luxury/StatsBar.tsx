@@ -20,7 +20,10 @@ export function StatsBar(p: StatsBarProps) {
   if (p.rooms) stats.push({ value: String(p.rooms), label: 'Ambientes' })
   if (p.bedrooms) stats.push({ value: String(p.bedrooms), label: 'Dormitorios' })
   if (p.bathrooms) stats.push({ value: String(p.bathrooms), label: 'Baños' })
-  if (p.coveredArea) stats.push({ value: String(p.coveredArea), label: 'm² cubiertos' })
+  // Área TOTAL (decisión del usuario 2026-08-06); si falta, la cubierta con su
+  // etiqueta honesta — nunca mostrar la cubierta como si fuera la total.
+  if (p.totalArea) stats.push({ value: String(p.totalArea), label: 'm² totales' })
+  else if (p.coveredArea) stats.push({ value: String(p.coveredArea), label: 'm² cubiertos' })
   if (p.garages) stats.push({ value: String(p.garages), label: 'Cocheras' })
   if (p.floor != null) stats.push({ value: String(p.floor), label: 'Piso' })
   if (p.age != null) stats.push({ value: p.age === 0 ? 'A estrenar' : String(p.age), label: p.age === 0 ? 'Estado' : 'Años' })

@@ -80,7 +80,10 @@ function buildSpecs(property: LandingProperty): string[] {
   const s: string[] = []
   if (property.rooms) s.push(`${property.rooms} amb`)
   if (property.bedrooms) s.push(`${property.bedrooms} dorm`)
-  if (property.covered_area) s.push(`${property.covered_area} m²`)
+  // Área TOTAL, no cubierta (decisión del usuario 2026-08-06); la cubierta
+  // queda solo como fallback cuando la total falta.
+  const area = property.total_area ?? property.covered_area
+  if (area) s.push(`${area} m²`)
   if (property.garages) s.push(`${property.garages} coch`)
   return s.slice(0, 4)
 }
