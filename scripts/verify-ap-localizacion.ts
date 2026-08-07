@@ -1,6 +1,8 @@
 /**
  * Verificador EN VIVO de la resolución de localización de Argenprop.
- * SOLO LECTURA: consulta el catálogo real; no crea ni toca avisos.
+ * No crea ni toca avisos. (No es 100% lectura: como toda llamada al cliente de
+ * AP, puede hacer el POST de login y refrescar el token cacheado en
+ * portal_credentials — efecto normal e inocuo de la autenticación.)
  *
  * Ejercita `resolveLocalizacion` (el método real del adapter) con casos fijos
  * que cubren los dos caminos: CABA (barrio obligatorio) y provincia →

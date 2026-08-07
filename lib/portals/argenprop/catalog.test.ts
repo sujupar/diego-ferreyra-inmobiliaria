@@ -39,6 +39,20 @@ describe('matchLocalizacion', () => {
     expect(matchLocalizacion(items, '')).toBeNull()
   })
 
+  it('ambigüedad en el contenido = null (San Miguel del Monte NO es San Miguel)', () => {
+    // Caso real reproducido en vivo (review 2026-08-06): "San Miguel del
+    // Monte" es la cabecera del Partido de Monte, pero contiene el nombre del
+    // Partido de San Miguel (GBA, ~90 km). Con la regla vieja ("el contenido
+    // más largo gana") el aviso se publicaba en el partido equivocado sin
+    // error. Ante 2+ candidatos contenidos, null → el caller bloquea con un
+    // mensaje claro.
+    const partidos = [
+      { Id: 'PARTIDO_117', Nombre: 'Partido de San Miguel' },
+      { Id: 'PARTIDO_85', Nombre: 'Partido de Monte' },
+    ]
+    expect(matchLocalizacion(partidos, 'San Miguel del Monte')).toBeNull()
+  })
+
   it('acepta items con Descripcion en vez de Nombre (catálogo de categorías)', () => {
     expect(matchLocalizacion([{ Id: 'X_1', Descripcion: 'Roque Pérez' }], 'roque perez')?.Id).toBe('X_1')
   })

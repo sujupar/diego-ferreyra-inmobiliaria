@@ -95,12 +95,19 @@ function norm(s: string): string {
  * Orden de preferencia:
  *   1. Exacto normalizado (sin tildes/mayúsculas, y sin el prefijo "Partido de "
  *      que la API pone en todos los partidos).
- *   2. Nombre del catálogo CONTENIDO en el input, prefiriendo el más largo
- *      (el input es más específico: "Palermo Soho" → "Palermo"). NO se usa la
- *      dirección inversa para que un sub-item ("Palermo Chico") no le robe el
- *      match al exacto.
+ *   2. Nombre del catálogo CONTENIDO en el input — pero SOLO si el candidato es
+ *      ÚNICO (el input es más específico: "Palermo Soho" → "Palermo"). NO se
+ *      usa la dirección inversa para que un sub-item ("Palermo Chico") no le
+ *      robe el match al exacto.
  *   3. null — nunca un parecido dudoso: publicar en la localidad equivocada es
  *      el mismo modo de falla silencioso que la categoría equivocada de ML.
+ *
+ * Por qué la regla 2 exige candidato ÚNICO y no "el más largo": con el catálogo
+ * real, "San Miguel del Monte" (cabecera del Partido de Monte) contiene tanto
+ * "san miguel" como "monte"; elegir el más largo publicaba en el Partido de San
+ * Miguel (GBA), a ~90 km, sin error. Reproducido en vivo por el review
+ * adversarial del 2026-08-06. Ante ambigüedad se devuelve null y el caller da
+ * un error claro pidiendo revisar la ficha.
  */
 export function matchLocalizacion(items: CatalogItem[], query: string): CatalogItem | null {
   const target = norm(query)
@@ -109,10 +116,12 @@ export function matchLocalizacion(items: CatalogItem[], query: string): CatalogI
   const nameOf = (i: CatalogItem) => norm(i.Nombre ?? i.Descripcion ?? '').replace(/^partido de /, '')
   const exact = items.find(i => nameOf(i) === target)
   if (exact) return exact
-  const contained = items
-    .filter(i => { const n = nameOf(i); return n.length > 2 && target.includes(n) })
-    .sort((a, b) => nameOf(b).length - nameOf(a).length)
-  return contained[0] ?? null
+  const nombresContenidos = new Set(
+    items.map(nameOf).filter(n => n.length > 2 && target.includes(n)),
+  )
+  if (nombresContenidos.size !== 1) return null
+  const [unico] = nombresContenidos
+  return items.find(i => nameOf(i) === unico) ?? null
 }
 
 /**

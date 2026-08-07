@@ -117,4 +117,21 @@ describe('resolveLocalizacion — fuera de CABA (lo nuevo)', () => {
     const p = makeProperty({ province: null, city: 'Roque Pérez', neighborhood: 'Centro' } as never)
     await expect(resolver(makeAdapter(), p)).rejects.toThrow(/provincia/i)
   })
+
+  it('"Cabana" (Córdoba) NO cae al camino CABA por el substring "caba"', async () => {
+    // Cabana y Cabalango son localidades reales de Córdoba. Con el regex viejo
+    // sin \b, el substring "caba" las mandaba al camino CABA (bloqueadas con
+    // "barrio obligatorio" o, peor, publicadas en Capital con un barrio
+    // homónimo). Acá alcanza con verificar que toma el camino provincial: el
+    // error debe hablar de la provincia/ciudad, jamás de CABA.
+    const p = makeProperty({ province: 'Córdoba', city: 'Cabana', neighborhood: 'Belgrano' } as never)
+    await expect(resolver(makeAdapter(), p)).rejects.toThrow(/(?!.*CABA)provincia|[Cc]iudad/)
+    await expect(resolver(makeAdapter(), p)).rejects.not.toThrow(/CABA/)
+  })
+
+  it('"Ciudad de Buenos Aires" como provincia ES CABA, no la provincia de Buenos Aires', async () => {
+    const p = makeProperty({ province: 'Ciudad de Buenos Aires', city: '', neighborhood: 'Palermo' } as never)
+    const r = await resolver(makeAdapter(), p)
+    expect(r).toEqual({ localidadId: CABA_LOCALIDAD_ID, barrioId: 'BARRIO_20' })
+  })
 })

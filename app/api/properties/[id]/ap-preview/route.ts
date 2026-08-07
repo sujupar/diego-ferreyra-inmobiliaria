@@ -98,12 +98,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       // Reorden sin pérdida: el wizard elige el orden, el conjunto lo gobierna
       // el módulo de media. El límite del aviso (AP_MAX_FOTOS_AVISO) se aplica
       // al armar el payload, nunca sobre properties.photos.
-      const { data: actual } = await supabase
+      const { data: actual, error: errFotos } = await supabase
         .from('properties').select('photos').eq('id', id).maybeSingle()
+      // Si la lectura falla, ABORTAR — jamás seguir con base vacía: con
+      // actual=null, reordenarSinPerder([], enviadas) da [] (anti-inyección) y
+      // el UPDATE persistiría CERO fotos en silencio. Hallazgo del review
+      // adversarial 2026-08-06.
+      if (errFotos || !actual) {
+        return NextResponse.json(
+          { error: 'No se pudieron leer las fotos actuales de la propiedad. Probá guardar de nuevo.' },
+          { status: 500 },
+        )
+      }
       const enviadas = body.photos
         .filter((p): p is string => typeof p === 'string' && p.length > 0 && p.length < 2000)
         .filter(p => /^https?:\/\//i.test(p))
-      update.photos = reordenarSinPerder((actual?.photos as string[] | null) ?? [], enviadas)
+      update.photos = reordenarSinPerder((actual.photos as string[] | null) ?? [], enviadas)
     }
     if (typeof body.asking_price === 'number' && body.asking_price > 0) {
       update.asking_price = Math.min(body.asking_price, 100_000_000)

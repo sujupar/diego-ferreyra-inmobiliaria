@@ -66,7 +66,14 @@ export class ArgenpropAdapter implements PortalAdapter {
     // barrio resuelve en el catálogo de CABA" solo aplica si la provincia está
     // vacía: una ficha de provincia con un barrio homónimo a uno porteño no
     // debe terminar publicada en Capital.
-    const dicenCaba = /^caba$/i.test(prov) || /caba|capital federal|ciudad aut[oó]noma/i.test(`${prov} ${cityRaw}`)
+    // OJO: "caba" con límites de palabra (\b) — como substring pelado matchea
+    // "Cabana" y "Cabalango" (localidades reales de Córdoba) y las mandaba al
+    // camino CABA. "Ciudad de Buenos Aires" también es CABA: sin esta entrada
+    // caía al camino provincial y el matcher la resolvía como PROVINCIA de
+    // Buenos Aires. Ambos hallazgos del review adversarial 2026-08-06.
+    const dicenCaba =
+      /^caba$/i.test(prov) ||
+      /\bcaba\b|capital federal|ciudad aut[oó]noma|ciudad de buenos aires/i.test(`${prov} ${cityRaw}`)
     const barrioCaba = dicenCaba || !prov ? await resolveCabaBarrioId(creds, property.neighborhood) : null
     if (dicenCaba || (!prov && barrioCaba)) {
       if (!barrioCaba) {
