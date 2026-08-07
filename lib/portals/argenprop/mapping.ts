@@ -1,4 +1,5 @@
 import type { Property } from '../types'
+import { AP_MAX_FOTOS_AVISO } from '../photo-limits'
 import { apCategoria, derivedPrefill, getApSchema, type ApField, type AttributeOverride } from './field-schema'
 import { parseAddress } from '@/lib/properties/address'
 
@@ -81,7 +82,7 @@ export function propertyToAvisoDto(property: Property, opts: ApMappingOptions): 
   }
 
   const multimedia: { Tipo: string; Url: string }[] = []
-  for (const url of (property.photos ?? []).slice(0, 30)) multimedia.push({ Tipo: 'FOTO', Url: url })
+  for (const url of (property.photos ?? []).slice(0, AP_MAX_FOTOS_AVISO)) multimedia.push({ Tipo: 'FOTO', Url: url })
   if (property.video_url) multimedia.push({ Tipo: 'VIDEO', Url: property.video_url })
   if (property.tour_3d_url) multimedia.push({ Tipo: 'TOUR', Url: property.tour_3d_url })
 

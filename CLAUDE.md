@@ -441,6 +441,20 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Errores de ML en castellano:** `explicarErrorMl()` en `client.ts` traduce el `cause[]` de ML; el JSON crudo va en `PortalAdapterError.original` y se persiste en `last_error` como `mensaje | detalle` (`mensajeYDetalle()`/`soloElMensaje()` en `lib/portals/types.ts` — la UI muestra solo el mensaje). **OJO:** los matchers de texto (descenso de tier "available quota", pausa diferida "not_yet_active") matchean sobre `paraElLog`, NO sobre `err.message` (el mensaje traducido ya no contiene los códigos).
 - **Detection / regla:** NO agregar ni cambiar una entrada del mapa sin correr `npx tsx scripts/verify-ml-categories.ts` (consulta la API pública, sin credenciales: exige hoja + publicable + que la RUTA coincida con la operación — esto último es lo que caza un "venta→Alquiler"). La lección Meta ("test end-to-end real antes de declarar completa una integración") aplica a TODOS los portales.
 
+### Fotos de portales: el límite es del AVISO, nunca de `properties.photos` (2026-08-06)
+
+- **Symptom:** los avisos salían con 12 fotos aunque ML permite 30, y peor: una propiedad que pasaba por el wizard de ML quedaba con 12 fotos PARA SIEMPRE en todos los portales, la landing y Meta.
+- **Root cause:** la ruta de guardado del wizard (`ml-preview` PATCH) persistía su selección con `.slice(0, 12)` sobre `properties.photos` — la columna COMPARTIDA. `ap-preview` hacía lo mismo con 20. El 12 además era inventado: `settings.max_pictures_per_item` = **30** en nuestras categorías (verificado 2026-08-06; `verify-ml-categories.ts` lo re-chequea en cada corrida).
+- **Fix/regla:** los wizards eligen ORDEN, nunca el conjunto: las rutas usan `reordenarSinPerder` (`lib/portals/photo-reorder.ts`, puro y testeado — no pierde ni inyecta). El límite por portal vive en `lib/portals/photo-limits.ts` (`ML_MAX_FOTOS_AVISO`/`AP_MAX_FOTOS_AVISO` = 30) y se aplica SOLO al armar el payload. `StepImages` avisa "el aviso lleva las primeras N" si hay más.
+- **Detection:** `scripts/audit-fotos-truncadas.ts` (solo lectura) lista propiedades con más archivos en Storage que fotos en la ficha.
+
+### Argenprop publica en TODO el país (fuera de CABA habilitado 2026-08-06)
+
+- **Antes:** `resolveLocalizacion` lanzaba "Por ahora la publicación en Argenprop soporta solo CABA" — era un atajo nuestro, no una restricción del portal.
+- **Jerarquía real del catálogo (verificada EN VIVO con las credenciales, 2026-08-06):** `/v1/localizacion/paises` (PAIS_1=Argentina) → `/paises/PAIS_1/provincias` (24; PROVINCIA_1=Buenos Aires, PROVINCIA_2=Capital Federal) → `/provincias/{id}/partidos` (135 en BsAs; los nombres llevan prefijo "Partido de ") → `/partidos/{id}/localidades` → `/localidades/{id}/barrios`. Getters cacheados 24h en `catalog.ts`.
+- **Resolver:** ficha con provincia/ciudad que DICE CABA → localidad 2102 + barrio OBLIGATORIO (regla de AP). Resto: provincia → partido → localidad con `matchLocalizacion` (puro: exacto normalizado sin "Partido de ", después contenido-más-largo, después `null` — nunca un parecido dudoso). Fuera de CABA el barrio es opcional. El fallback "barrio resuelve en catálogo CABA" solo aplica con provincia VACÍA (una ficha de provincia con barrio homónimo porteño no debe publicarse en Capital). Errores en castellano nombrando el campo de la ficha.
+- **Verificación:** `scripts/verify-ap-localizacion.ts` (solo lectura, en vivo: CABA/Palermo, BsAs/Roque Pérez, BsAs/La Plata). El 401 "CRM no autorizado" que bloqueaba el QA quedó resuelto — las credenciales funcionan.
+
 ### ML `number_unit`: superficies y antigüedad EXIGEN unidad explícita
 
 - **Symptom:** `POST /items` devuelve `400 validation_error — "Attribute COVERED_AREA with value 95 ... The provided unit is not valid. You can use a number followed by one of these valid units: [in², m², ...]."` (idem TOTAL_AREA, PROPERTY_AGE).
@@ -757,6 +771,85 @@ otras. Un agente mudo frente a alguien que pidió fotos cuesta el lead entero.
 **Regla que se repite:** lo que tiene que pasar SIEMPRE va en el código, no en
 el prompt. Acá aplicó en las dos direcciones — el freno de la visita subió al
 código, y la orden de callarse bajó del prompt.
+
+### El agente no inventó la mentira: la copió del prompt (2026-08-06)
+
+**Síntoma:** un cliente preguntó "Tienes los planos?" y el agente contestó
+*"Plano no tengo a mano, pero te paso el video y ahí se ve bien cómo está
+distribuida"*. La propiedad TIENE el plano cargado, y se lo habíamos mandado a
+esa misma persona diez minutos antes, en la plantilla de la consulta.
+
+**Causa:** esa frase estaba **escrita en el prompt, textual**, como ejemplo de
+cómo declinar algo que no se tiene. El modelo la reprodujo palabra por palabra.
+
+**Antes de acusar al modelo de alucinar, buscá la frase en el prompt.** Un
+ejemplo dentro de un prompt no es una ilustración: es una plantilla de respuesta,
+y el modelo la va a usar. Todo ejemplo de "qué decir cuando pasa X" se va a
+disparar también en algún caso donde X no pasa. Si la frase es peligrosa fuera de
+su caso (negar material, prometer un horario, afirmar un dato), **no puede estar
+escrita** — hay que describir la situación, no redactarle la respuesta.
+
+**Por qué se disparó fuera de su caso:** el prompt le daba órdenes en conflicto
+—"no repitas material ya mandado" contra un cliente pidiéndoselo— y el modelo
+resolvió el empate negando que existiera. Y no era un caso borde: `elegirPlantilla`
+prioriza el plano, así que **toda consulta de una propiedad con planos arranca con
+el plano ya entregado**. El conflicto era el estado normal.
+
+**Qué se hizo:**
+- Fuera la frase; entra la sección "NUNCA DIGAS QUE NO TENÉS ALGO QUE SÍ TENÉS".
+- `yaMandado` dejó de ser un permiso revocado: es material que la persona YA
+  TIENE. El inventario no cambia, y si lo vuelve a pedir se le manda de nuevo.
+- Inventario **positivo y con cantidades** ("plano: SÍ. Hay 1 plano cargado").
+  Una lista de palabras sueltas es fácil de desoír; un inventario con números no.
+- **Garantía de código** (`lib/ai/material-request.ts`): lo que el cliente pide
+  con todas las letras y la propiedad tiene, SALE, aunque el modelo lo omita.
+  Lee **el mensaje del cliente**, no la prosa del modelo — se evaluó y descartó
+  detectar la negación en la salida: la frase real ni siquiera empezaba con la
+  negación ("Plano no tengo"), y perseguir paráfrasis del castellano con
+  expresiones regulares siempre pierde. Solo agrega material, nunca quita.
+
+**Dos bugs latentes que aparecieron tirando del hilo:**
+- `COLUMNAS_MINIMAS` (el plan B del `select`) no traía `photos`/`plans`/
+  `video_file_url`. Ante cualquier problema de esquema, `materialDisponible`
+  devolvía todo `false` y el agente pasaba a **negarle a todos los clientes el
+  material de todas las propiedades**, sin un error visible. No saber si algo
+  existe no es lo mismo que saber que no existe.
+- `analysis.send` sin valor tiraba "not iterable", el `try/catch` lo convertía en
+  `noop` y el agente quedaba mudo en silencio.
+
+### La ficha: el agente no recibía la descripción (2026-08-06)
+
+El dueño rechazó dos veces respuestas tipo "4 ambientes, 3 dormitorios, 80 m²".
+La causa no era el tono: `propertyFacts()` armaba una lista de specs sueltos y
+**la columna `properties.description` no se le pasaba al modelo**, aunque existía
+desde siempre y contiene el recorrido escrito por una persona ("las dos
+habitaciones dan al contrafrente, desde donde se accede al encantador jardín…
+un quincho"). Contestaba como una ficha porque le dábamos una ficha.
+
+Ahora recibe la descripción entera (recortada a 1200 caracteres: viaja en cada
+llamada) y una línea derivada, **`Espacio descubierto (jardín / patio)`** =
+`total_area - covered_area`. Ese número estaba en los datos y nadie lo calculaba:
+80 m² cubiertos sobre un lote de 180 son 100 m² de jardín, que en una casa es el
+argumento de venta más fuerte.
+
+### Palabra de reinicio: `reiniciar prueba`
+
+Se manda por WhatsApp desde un teléfono de `ai_agent_settings.consulta_test_phones`
+y la conversación vuelve a foja cero, sin depender de que alguien corra un script.
+`lib/ai/reset-prueba.ts`, enganchada en el webhook después de guardar y antes del
+pipeline de IA.
+
+- **Limpia** (estado derivado, regenerable): resumen, contador de mensajes,
+  `agent_handed_off`, marcadores de análisis.
+- **NO BORRA NADA**: los mensajes, el lead y la consulta quedan intactos. Las
+  visitas que anotó el AGENTE se **cancelan con una nota que dice por qué**, no
+  se eliminan; una visita cargada por una persona no se toca jamás.
+- `tokens_used_total` / `analyses_count` **no** se reinician: ese gasto ocurrió y
+  el panel de costo tiene que seguir diciendo la verdad.
+- Desde cualquier otro teléfono la frase es un mensaje común y el agente contesta
+  normal. Fail-closed: sin lista legible, nadie reinicia.
+- Tiene que ser la frase EXACTA (se ignoran acentos, mayúsculas y un punto
+  final). "habría que reiniciar prueba mañana" no dispara nada.
 
 ### Banco de pruebas: `/admin/ai-agent`
 
