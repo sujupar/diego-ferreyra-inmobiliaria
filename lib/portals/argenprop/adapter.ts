@@ -1,7 +1,15 @@
 import { apFetch } from './client'
 import { propertyToAvisoDto } from './mapping'
 import { apCodigo, apPublicUrl, type AttributeOverride } from './field-schema'
-import { resolveCabaBarrioId, CABA_LOCALIDAD_ID } from './catalog'
+import {
+  resolveCabaBarrioId,
+  resolveBarrioId,
+  matchLocalizacion,
+  getProvincias,
+  getPartidos,
+  getLocalidadesDePartido,
+  CABA_LOCALIDAD_ID,
+} from './catalog'
 import { validateCommon } from '../validation'
 import { PortalAdapterError } from '../types'
 import type { ApCredentials } from '../credentials'
@@ -37,29 +45,88 @@ export class ArgenpropAdapter implements PortalAdapter {
     return this.creds
   }
 
-  /** Resuelve localidad + barrio. CABA se detecta por province, por city, o porque el
-   *  barrio resuelve en el catálogo de CABA (aunque `city` traiga el barrio). */
+  /**
+   * Resuelve localidad + barrio contra el catálogo de localización de AP.
+   *
+   * CABA: localidad fija 2102 y el barrio es OBLIGATORIO (regla de la API).
+   * Resto del país: provincia → partido → localidad, matcheando los campos de
+   * la ficha contra el catálogo real (jerarquía verificada en vivo 2026-08-06);
+   * el barrio ahí es opcional. Antes esto lanzaba "solo CABA".
+   *
+   * Cada paso que no resuelve tira un error en castellano que nombra el CAMPO
+   * de la ficha y el valor recibido — nunca IDs internos del catálogo.
+   */
   private async resolveLocalizacion(property: Property): Promise<{ localidadId: string; barrioId: string | null }> {
     const creds = this.requireCreds()
     const prov = (property.province ?? '').trim()
     const cityRaw = (property.city ?? '').trim()
-    const looksCaba = /caba|capital federal|ciudad aut[oó]noma/i.test(`${prov} ${cityRaw}`)
-    // Intento de resolver el barrio en el catálogo CABA (cubre el caso city=barrio).
-    const barrioId = await resolveCabaBarrioId(creds, property.neighborhood)
-    const isCaba = prov === 'CABA' || looksCaba || !!barrioId
-    if (!isCaba) {
+
+    // ── Camino CABA ──
+    // Se decide por lo que DICE la ficha (provincia/ciudad). El fallback "el
+    // barrio resuelve en el catálogo de CABA" solo aplica si la provincia está
+    // vacía: una ficha de provincia con un barrio homónimo a uno porteño no
+    // debe terminar publicada en Capital.
+    const dicenCaba = /^caba$/i.test(prov) || /caba|capital federal|ciudad aut[oó]noma/i.test(`${prov} ${cityRaw}`)
+    const barrioCaba = dicenCaba || !prov ? await resolveCabaBarrioId(creds, property.neighborhood) : null
+    if (dicenCaba || (!prov && barrioCaba)) {
+      if (!barrioCaba) {
+        throw new PortalAdapterError(
+          `No se pudo resolver el barrio "${property.neighborhood ?? '—'}" en el catálogo de Argenprop (en CABA el barrio es obligatorio). Revisá el barrio de la propiedad.`,
+          'argenprop', 'validation', false,
+        )
+      }
+      return { localidadId: CABA_LOCALIDAD_ID, barrioId: barrioCaba }
+    }
+
+    if (!prov) {
       throw new PortalAdapterError(
-        `Por ahora la publicación en Argenprop soporta solo CABA (recibido: provincia "${prov || '—'}", ciudad "${cityRaw || '—'}").`,
+        `Cargá la provincia en la ficha para publicar en Argenprop fuera de CABA (ciudad recibida: "${cityRaw || '—'}").`,
         'argenprop', 'validation', false,
       )
     }
-    if (!barrioId) {
+
+    // ── Camino provincial: provincia → partido → localidad ──
+    const provincias = await getProvincias(creds)
+    const provincia = matchLocalizacion(provincias, prov)
+    if (!provincia) {
       throw new PortalAdapterError(
-        `No se pudo resolver el barrio "${property.neighborhood}" en el catálogo de Argenprop (CABA). Revisá el barrio de la propiedad.`,
+        `No se encontró la provincia "${prov}" en el catálogo de Argenprop. Revisá el campo Provincia de la ficha.`,
         'argenprop', 'validation', false,
       )
     }
-    return { localidadId: CABA_LOCALIDAD_ID, barrioId }
+
+    if (!cityRaw) {
+      throw new PortalAdapterError(
+        `Cargá la ciudad en la ficha para publicar en Argenprop (provincia: "${provincia.Nombre ?? prov}").`,
+        'argenprop', 'validation', false,
+      )
+    }
+
+    const partidos = await getPartidos(creds, provincia.Id)
+    const partido = matchLocalizacion(partidos, cityRaw)
+    if (!partido) {
+      throw new PortalAdapterError(
+        `No se encontró el partido/ciudad "${cityRaw}" en ${provincia.Nombre ?? prov} según el catálogo de Argenprop. Revisá el campo Ciudad de la ficha.`,
+        'argenprop', 'validation', false,
+      )
+    }
+
+    const localidades = await getLocalidadesDePartido(creds, partido.Id)
+    // La localidad suele llamarse igual que la ciudad ("Roque Pérez" dentro de
+    // "Partido de Roque Pérez"). Si no matchea pero el partido tiene UNA sola
+    // localidad, esa es; con varias y sin match, error con el dato recibido.
+    const localidad = matchLocalizacion(localidades, cityRaw)
+      ?? (localidades.length === 1 ? localidades[0] : null)
+    if (!localidad) {
+      throw new PortalAdapterError(
+        `La ciudad "${cityRaw}" no aparece como localidad de ${partido.Nombre ?? cityRaw} en el catálogo de Argenprop. Revisá el campo Ciudad de la ficha.`,
+        'argenprop', 'validation', false,
+      )
+    }
+
+    // Fuera de CABA el barrio es opcional: si no resuelve, se publica sin barrio.
+    const barrioId = await resolveBarrioId(creds, localidad.Id, property.neighborhood)
+    return { localidadId: localidad.Id, barrioId }
   }
 
   async publish(property: Property, opts: ApPublishOptions = {}): Promise<PublishResult> {
