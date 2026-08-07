@@ -690,10 +690,27 @@ import {
 } from '@/components/ui/sidebar'
 import { isCollapsible, navHrefs, type NavGroup, type NavItem } from '@/lib/nav/sections'
 
-/** La ruta activa es la exacta o cualquier subruta suya (`/properties/abc-1`). */
-function estaActiva(href: string, pathname: string) {
-  return pathname === href || pathname.startsWith(href + '/')
-}
+/* ⚠️ CORREGIDO DURANTE LA EJECUCIÓN (2026-08-07). Acá había esto:
+ *
+ *   function estaActiva(href, pathname) {
+ *     return pathname === href || pathname.startsWith(href + '/')
+ *   }
+ *
+ * y estaba MAL: evaluado hermano por hermano, marca DOS ítems a la vez. Parado en
+ * `/properties/new` se resaltaban "Listado" Y "Nueva" (y con `aria-current="page"`
+ * en los dos <a>); lo mismo en `/properties/review` y en las dos subpantallas de
+ * Configuración. Los 8 tests de esta tarea pasaban porque ninguno miraba a los
+ * hermanos juntos.
+ *
+ * Volver a coincidencia exacta NO sirve: rompe el requisito de que
+ * `/properties/abc-123` marque "Listado". El criterio correcto es EXACTO GANA, y
+ * si no hay exacto, EL PREFIJO MÁS LARGO — el mismo que ya usaba `titleForPath`.
+ *
+ * Implementación final: `activeHrefAmong(hrefs, pathname)` exportada desde
+ * `lib/nav/sections.ts`, aplicada UNA VEZ POR CONJUNTO DE HERMANOS (los ítems
+ * sueltos de un grupo compiten entre sí; los `items` de un desplegable, entre sí).
+ * Devuelve el href ganador o `null`. Ver el código real en `lib/nav/sections.ts`.
+ */
 
 function ItemLink({ item, pathname, badge }: { item: NavItem; pathname: string; badge: number }) {
   const activa = estaActiva(item.href, pathname)
@@ -760,6 +777,17 @@ export function AppSidebar({ groups, logoUrl }: { groups: NavGroup[]; logoUrl: s
                       <ItemLink key={entry.href} item={entry} pathname={pathname} badge={inboxCount} />
                     )
                   }
+                  {/* ⚠️ CORREGIDO DURANTE LA EJECUCIÓN: acá iba `defaultOpen={abierto}`,
+                      que es NO CONTROLADO — Radix solo lo lee al montar. Como en la
+                      tarea 5 este componente vive en el layout y sobrevive a las
+                      navegaciones del lado del cliente, ir de `/crm` a `/properties/new`
+                      dejaba el submenú CERRADO y el ítem activo escondido.
+                      Implementación final: el desplegable se extrajo a su propio
+                      componente `CollapsibleNavEntry` con `open`/`onOpenChange`
+                      controlados. Se fuerza a abrirse cuando la ruta entra en él y
+                      NUNCA se fuerza a cerrarse, así el usuario conserva el control
+                      manual. Hizo falta un componente aparte porque no se pueden usar
+                      hooks adentro de un `.map`. */}
                   const abierto = entry.items.some(i => estaActiva(i.href, pathname))
                   return (
                     <Collapsible key={entry.label} asChild defaultOpen={abierto} className="group/collapsible">
