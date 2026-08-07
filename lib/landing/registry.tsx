@@ -401,6 +401,9 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
           title={block.title}
           body={block.body}
           image={image}
+          showMap={block.showMap ?? true}
+          lat={property.latitude}
+          lng={property.longitude}
         />
       )
     },
