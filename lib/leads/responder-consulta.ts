@@ -168,56 +168,17 @@ export async function responderConsulta(
     }
     const prop = propRow as PropiedadParaConsulta
 
-    const etiqueta = nombrarPropiedad(prop)
-    const eleccion: EleccionPlantilla = elegirPlantilla({ ...prop, etiqueta: prop.address ?? prop.title })
-    const nombre = c.lead_name?.trim() || ''
-    const params = parametrosDelCuerpo(eleccion, { nombre, propiedad: etiqueta })
-
     // El lead se crea ANTES de mandar: si el WhatsApp sale y el lead no existe,
     // la respuesta del cliente llega a una conversación sin propiedad y el
     // agente no sabe de qué le hablan. Al revés no molesta a nadie.
     const leadId = await asegurarLead(sb, c, prop)
 
-    const enviar = async (plantilla: string, deTramite: boolean) =>
-      sendWhatsappTemplate({
-        to: decision.telefono,
-        templateName: plantilla,
-        languageCode: process.env.WHATSAPP_TEMPLATE_LANG ?? 'es_AR',
-        bodyParams: params,
-        // El texto EXACTO que va a leer la persona, para que quede guardado como
-        // el mensaje que es. Sin esto se guardaban los parámetros pegados con
-        // puntos, y el agente —que lee esa columna para saber qué dijo la vez
-        // anterior— arrancaba sin entender su propio mensaje: volvía a preguntar
-        // lo que la plantilla ya había preguntado.
-        bodyText: renderCuerpo(cuerpoDePlantilla(eleccion, deTramite), params),
-        headerMedia: eleccion.header
-          ? { type: eleccion.header.tipo, link: eleccion.header.link, filename: eleccion.headerFilename }
-          : undefined,
-        leadId,
-        propertyId: prop.id,
-        origen: 'consulta_portal',
-        // Este primer mensaje lo manda el sistema, no una persona: es el agente
-        // abriendo la conversación. Marcarlo así es lo que le permite después
-        // reconocerlo como propio y no repetirse.
-        aiGenerated: true,
-        timeoutMs: 8000,
-      })
-
-    // Primero la cálida. Si Meta no la entrega —o todavía no está aprobada—,
-    // la de trámite como red.
-    let usada: string = eleccion.plantilla
-    let res = await enviar(usada, false)
-    const bloqueadaPorMarketing = !res.ok && res.errorCode != null && META_MARKETING_BLOQUEADO.has(res.errorCode)
-    if (!res.ok && (bloqueadaPorMarketing || esPlantillaNoDisponible(res.error))) {
-      const red = PLANTILLAS_UTIL[eleccion.plantilla]
-      console.warn(
-        bloqueadaPorMarketing
-          ? `[consulta] Meta no entregó la de marketing (${res.errorCode}), se reintenta con ${red}`
-          : `[consulta] ${usada} no está disponible, se reintenta con ${red}`,
-      )
-      usada = red
-      res = await enviar(usada, true)
-    }
+    const res = await enviarAperturaDeConsulta({
+      telefono: decision.telefono,
+      prop,
+      nombre: c.lead_name?.trim() || '',
+      leadId,
+    })
 
     if (!res.ok) {
       return { enviado: false, motivo: `no se pudo enviar: ${res.error ?? 'error de Meta'}`, requiereAtencion: true }
@@ -225,6 +186,7 @@ export async function responderConsulta(
     if (res.skipped) {
       return { enviado: false, motivo: 'modo prueba de WhatsApp: no se mandó nada', requiereAtencion: false }
     }
+    const usada = res.plantillaUsada
 
     await sb.from('portal_inquiries').update({ whatsapp_enviado_at: new Date().toISOString() }).eq('id', c.id)
     return { enviado: true, motivo: 'enviado', plantillaUsada: usada }
@@ -233,6 +195,83 @@ export async function responderConsulta(
     return { enviado: false, motivo: 'excepción interna', requiereAtencion: true }
   }
 }
+
+/**
+ * MANDA LA APERTURA: el primer mensaje de una conversación, con el plano o el
+ * video en el encabezado.
+ *
+ * Es UNA SOLA función a propósito. La usan el disparador de una consulta real
+ * (`responderConsulta`, acá arriba) y la palabra de reinicio de las pruebas
+ * (`lib/ai/reset-prueba.ts`). Si fueran dos, la prueba dejaría de probar lo que
+ * pasa de verdad en cuanto una de las dos cambiara — que es exactamente el
+ * problema que este proyecto ya tuvo con el productor y el consumidor de las
+ * piezas de campaña.
+ *
+ * Elige la plantilla según el material cargado, y si Meta no entrega la cálida
+ * —tope de marketing de esa persona, o promociones desactivadas— reintenta con
+ * la de trámite. NUNCA lanza.
+ */
+export async function enviarAperturaDeConsulta(input: {
+  telefono: string
+  prop: PropiedadParaConsulta
+  nombre: string
+  leadId: string | null
+}): Promise<{ ok: boolean; skipped: boolean; error?: string; plantillaUsada: string }> {
+  const { telefono, prop, nombre, leadId } = input
+  const etiqueta = nombrarPropiedad(prop)
+  const eleccion: EleccionPlantilla = elegirPlantilla({ ...prop, etiqueta: prop.address ?? prop.title })
+  const params = parametrosDelCuerpo(eleccion, { nombre, propiedad: etiqueta })
+
+  const enviar = async (plantilla: string, deTramite: boolean) =>
+    sendWhatsappTemplate({
+      to: telefono,
+      templateName: plantilla,
+      languageCode: process.env.WHATSAPP_TEMPLATE_LANG ?? 'es_AR',
+      bodyParams: params,
+      // El texto EXACTO que va a leer la persona, para que quede guardado como
+      // el mensaje que es. Sin esto se guardaban los parámetros pegados con
+      // puntos, y el agente —que lee esa columna para saber qué dijo la vez
+      // anterior— arrancaba sin entender su propio mensaje: volvía a preguntar
+      // lo que la plantilla ya había preguntado.
+      bodyText: renderCuerpo(cuerpoDePlantilla(eleccion, deTramite), params),
+      headerMedia: eleccion.header
+        ? { type: eleccion.header.tipo, link: eleccion.header.link, filename: eleccion.headerFilename }
+        : undefined,
+      leadId,
+      propertyId: prop.id,
+      origen: 'consulta_portal',
+      // Este primer mensaje lo manda el sistema, no una persona: es el agente
+      // abriendo la conversación. Marcarlo así es lo que le permite después
+      // reconocerlo como propio y no repetirse.
+      aiGenerated: true,
+      timeoutMs: 8000,
+    })
+
+  // Primero la cálida. Si Meta no la entrega —o todavía no está aprobada—,
+  // la de trámite como red.
+  let usada: string = eleccion.plantilla
+  let res = await enviar(usada, false)
+  const bloqueadaPorMarketing = !res.ok && res.errorCode != null && META_MARKETING_BLOQUEADO.has(res.errorCode)
+  if (!res.ok && (bloqueadaPorMarketing || esPlantillaNoDisponible(res.error))) {
+    const red = PLANTILLAS_UTIL[eleccion.plantilla]
+    console.warn(
+      bloqueadaPorMarketing
+        ? `[consulta] Meta no entregó la de marketing (${res.errorCode}), se reintenta con ${red}`
+        : `[consulta] ${usada} no está disponible, se reintenta con ${red}`,
+    )
+    usada = red
+    res = await enviar(usada, true)
+  }
+
+  // `skipped` se devuelve APARTE de `ok`: "modo prueba, no se mandó nada" no es
+  // un fallo, y colapsarlos haría que el equipo lea "no se pudo enviar" cuando
+  // en realidad el envío está deshabilitado a propósito.
+  return { ok: res.ok, skipped: !!res.skipped, error: res.error, plantillaUsada: usada }
+}
+
+/** Las columnas que necesita `enviarAperturaDeConsulta`. */
+export const COLUMNAS_APERTURA = COLUMNAS_PROPIEDAD
+export type { PropiedadParaConsulta }
 
 /**
  * El lead de esta persona para esta propiedad. Si ya existe (consultó dos veces,

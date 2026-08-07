@@ -33,17 +33,26 @@
  * el estado de una conversación real.
  */
 import { createClient } from '@supabase/supabase-js'
+import {
+  enviarAperturaDeConsulta,
+  COLUMNAS_APERTURA,
+  type PropiedadParaConsulta,
+} from '@/lib/leads/responder-consulta'
 
 function admin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
-/**
- * La palabra. Dos palabras, en realidad: una sola ("reset") aparece en
- * conversaciones normales y en nombres de propiedades; ésta no la escribe nadie
- * sin querer.
- */
+/** La frase canónica, la que se documenta y se muestra. */
 export const PALABRA_DE_REINICIO = 'reiniciar prueba'
+
+/**
+ * También se acepta "reiniciar" a secas: es lo que sale escribir, y el dueño lo
+ * probó así. No es riesgoso porque el freno real NO es la longitud de la frase
+ * sino la lista blanca de teléfonos: para cualquier otra persona, "reiniciar"
+ * es un mensaje común y el agente le contesta normal.
+ */
+const PALABRAS_ACEPTADAS = new Set([PALABRA_DE_REINICIO, 'reiniciar'])
 
 /** Estado de la nota interna que queda en el chat. */
 export const NOTE_STATUS_RESET = 'agent_reset'
@@ -52,11 +61,10 @@ export const NOTE_STATUS_RESET = 'agent_reset'
  * Pura. ¿Este mensaje es la palabra de reinicio?
  *
  * Compara sin acentos, sin mayúsculas y sin espacios de más, porque se escribe
- * desde un teléfono: "Reiniciar Prueba", "REINICIAR  PRUEBA" y "reiniciar
- * prueba." son todos la misma intención. Se admite puntuación final y nada más:
- * una frase que CONTIENE la palabra ("che, habría que reiniciar prueba mañana")
- * NO cuenta — un reinicio accidental le arruina la prueba a quien la esté
- * corriendo.
+ * desde un teléfono: "Reiniciar", "REINICIAR  PRUEBA" y "reiniciar prueba." son
+ * todos la misma intención. Se admite puntuación final y nada más: una frase que
+ * CONTIENE la palabra ("che, habría que reiniciar prueba mañana") NO cuenta — un
+ * reinicio accidental le arruina la prueba a quien la esté corriendo.
  */
 export function esPalabraDeReinicio(texto: string | null | undefined): boolean {
   const limpio = (texto ?? '')
@@ -66,7 +74,7 @@ export function esPalabraDeReinicio(texto: string | null | undefined): boolean {
     .replace(/[.!¡?¿,;:]+$/g, '')
     .replace(/\s+/g, ' ')
     .trim()
-  return limpio === PALABRA_DE_REINICIO
+  return PALABRAS_ACEPTADAS.has(limpio)
 }
 
 /**
@@ -106,6 +114,7 @@ export interface ResultadoReinicio {
 export async function reiniciarPrueba(
   phoneE164: string,
   propertyId: string | null,
+  leadId: string | null = null,
 ): Promise<ResultadoReinicio> {
   try {
     const sb = admin()
@@ -193,8 +202,55 @@ export async function reiniciarPrueba(
   }
 }
 
+/**
+ * Vuelve a mandar el PRIMER mensaje, el mismo que recibe alguien que deja una
+ * consulta en un portal: la plantilla aprobada con el plano (o el video) en el
+ * encabezado.
+ *
+ * Va SEPARADO de `reiniciarPrueba` por el ORDEN en que se lee el chat: primero
+ * la confirmación de que se reinició, después la apertura. Al revés quedaba la
+ * apertura y encima un "listo, reinicié", que se lee al revés de como pasó.
+ *
+ * Usa `enviarAperturaDeConsulta`, la MISMA función que dispara una consulta
+ * real. Si fueran dos caminos, la prueba dejaría de probar lo que pasa de
+ * verdad en cuanto uno de los dos cambiara.
+ */
+export async function reenviarApertura(
+  phoneE164: string,
+  propertyId: string,
+  leadId: string | null,
+): Promise<{ ok: boolean; detalle: string }> {
+  try {
+    const sb = admin()
+    const { data: propRow } = await sb
+      .from('properties').select(COLUMNAS_APERTURA).eq('id', propertyId).maybeSingle()
+    if (!propRow) return { ok: false, detalle: 'la propiedad no existe' }
+
+    // El nombre sale del lead de ESTA persona, que el webhook ya resolvió.
+    // Buscarlo por propiedad traería el lead de otro cliente y la apertura
+    // arrancaría saludando a un desconocido.
+    let nombre = ''
+    if (leadId) {
+      const { data: leadRow } = await sb.from('property_leads').select('name').eq('id', leadId).maybeSingle()
+      nombre = (leadRow as { name?: string | null } | null)?.name?.trim() ?? ''
+    }
+
+    const envio = await enviarAperturaDeConsulta({
+      telefono: phoneE164,
+      prop: propRow as PropiedadParaConsulta,
+      nombre,
+      leadId,
+    })
+    if (envio.skipped) return { ok: false, detalle: 'modo prueba de WhatsApp: no se mandó nada' }
+    if (!envio.ok) return { ok: false, detalle: envio.error ?? 'error de Meta' }
+    return { ok: true, detalle: `plantilla ${envio.plantillaUsada}` }
+  } catch (err) {
+    return { ok: false, detalle: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 /** El texto que se le manda a quien pidió el reinicio. Corto y concreto. */
 export function mensajeDeConfirmacion(limpiado: string[]): string {
   const detalle = limpiado.length > 0 ? ` Se reinició ${limpiado.join(' y ')}.` : ''
-  return `Listo, la prueba arranca de cero.${detalle} Los mensajes anteriores quedan en el historial: no se borró nada.`
+  return `Listo, la prueba arranca de cero.${detalle} Los mensajes anteriores quedan en el historial: no se borró nada. Te reenvío el primer mensaje.`
 }

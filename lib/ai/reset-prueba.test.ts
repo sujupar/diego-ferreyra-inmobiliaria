@@ -8,10 +8,17 @@ describe('esPalabraDeReinicio', () => {
     }
   })
 
+  it('acepta "reiniciar" a secas, que es lo que sale escribir', () => {
+    // El freno real es la lista blanca de teléfonos, no la longitud de la frase.
+    for (const v of ['reiniciar', 'Reiniciar', 'REINICIAR', 'reiniciar.']) {
+      expect(esPalabraDeReinicio(v), v).toBe(true)
+    }
+  })
+
   it('NO se dispara con una frase que apenas la contiene', () => {
     // Un reinicio accidental le arruina la prueba a quien la esté corriendo.
     expect(esPalabraDeReinicio('che, habría que reiniciar prueba mañana')).toBe(false)
-    expect(esPalabraDeReinicio('reiniciar')).toBe(false)
+    expect(esPalabraDeReinicio('quiero reiniciar')).toBe(false)
     expect(esPalabraDeReinicio('prueba')).toBe(false)
   })
 

@@ -6,7 +6,7 @@ import { mapMetaStatus } from '@/lib/integrations/whatsapp/log'
 import { downloadAndStoreInboundMedia } from '@/lib/integrations/whatsapp/media'
 import { runConversationAnalysis } from '@/lib/ai/analyze-conversation'
 import { runSchedulingAgent } from '@/lib/ai/scheduling-agent'
-import { esPalabraDeReinicio, reiniciarPrueba, mensajeDeConfirmacion } from '@/lib/ai/reset-prueba'
+import { esPalabraDeReinicio, reiniciarPrueba, reenviarApertura, mensajeDeConfirmacion } from '@/lib/ai/reset-prueba'
 import { sendWhatsappText } from '@/lib/integrations/whatsapp/core'
 
 export const dynamic = 'force-dynamic'
@@ -477,9 +477,11 @@ export async function POST(request: NextRequest) {
     // Solo funciona desde un teléfono de la lista de prueba. Para cualquier otra
     // persona la frase es un mensaje común y el agente le contesta normal.
     if (aAnalizar && esPalabraDeReinicio(aAnalizar.textoEntrante)) {
-      const r = await reiniciarPrueba(aAnalizar.phoneE164, aAnalizar.propertyId)
+      const r = await reiniciarPrueba(aAnalizar.phoneE164, aAnalizar.propertyId, aAnalizar.leadId)
       if (r.reiniciado) {
         console.log(`[whatsapp-webhook] prueba reiniciada para ${aAnalizar.phoneE164}: ${r.limpiado.join(', ')}`)
+        // 1) La confirmación primero, para que el chat se lea en el orden en que
+        //    pasaron las cosas.
         await sendWhatsappText({
           to: aAnalizar.phoneE164,
           text: mensajeDeConfirmacion(r.limpiado),
@@ -489,7 +491,22 @@ export async function POST(request: NextRequest) {
           aiGenerated: true,
           timeoutMs: 8000,
         })
-        return NextResponse.json({ ok: true, inbound: inbound.length, statuses: statuses.length, reiniciado: true })
+        // 2) Y después la apertura de verdad: la misma plantilla, con el mismo
+        //    plano en el encabezado, que recibe alguien que consulta un portal.
+        //    Sin esto el reinicio dejaba la conversación limpia pero muda.
+        let apertura = 'sin propiedad asociada'
+        if (aAnalizar.propertyId) {
+          const a = await reenviarApertura(aAnalizar.phoneE164, aAnalizar.propertyId, aAnalizar.leadId)
+          apertura = a.detalle
+          if (!a.ok) console.warn(`[whatsapp-webhook] no se pudo reenviar la apertura: ${a.detalle}`)
+        }
+        return NextResponse.json({
+          ok: true,
+          inbound: inbound.length,
+          statuses: statuses.length,
+          reiniciado: true,
+          apertura,
+        })
       }
       // No autorizado o falló: se sigue como un mensaje normal. No se le avisa
       // nada al que lo mandó — si no está en la lista, para el sistema es un
