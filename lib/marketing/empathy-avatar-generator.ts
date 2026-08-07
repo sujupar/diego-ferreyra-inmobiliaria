@@ -20,6 +20,8 @@ ${RIOPLATENSE_STYLE}
 
 Devolvés SIEMPRE JSON válido. Concreto, sin relleno. Cada avatar debe ser una persona real y distinta, coherente con la propiedad y las respuestas del asesor.
 
+Nunca asumas financiación bancaria: hoy prácticamente no existe crédito hipotecario relevante en Argentina, así que ni las preocupaciones ni los comportamientos del avatar giran alrededor de "conseguir crédito".
+
 Estructura de CADA avatar:
 {
   "id": "a1",
@@ -192,7 +194,7 @@ export function buildFallbackEmpathyAvatars(property: LandingProperty, count = 3
     {
       id: 'a3', shortLabel: `Primera vivienda en ${zona}`,
       ageRange: '28-38 años', occupation: 'Joven profesional', lifeMoment: 'Deja el alquiler',
-      motivation: 'Dejar de alquilar y ser propietario', concerns: ['Financiación', 'Gastos', 'Ubicación'],
+      motivation: 'Dejar de alquilar y ser propietario', concerns: ['Gastos de escritura', 'Gastos', 'Ubicación'],
       communicationTone: 'aspiracional', visualCue: 'pareja_joven',
       hooks: ['Dejá de alquilar, empezá a construir tu patrimonio', 'Tu primer hogar propio', 'El primer paso es el más importante'],
       reasoning: 'Tipología accesible para primera compra',
@@ -200,12 +202,12 @@ export function buildFallbackEmpathyAvatars(property: LandingProperty, count = 3
         says: ['Estoy cansado de alquilar', '¿Puedo pagarlo?'],
         thinks: ['¿Es el momento?', '¿Y si sube el dólar?'],
         feels: ['Entusiasmo', 'Miedo al compromiso grande'],
-        does: ['Averigua financiación', 'Visita en fin de semana'],
+        does: ['Compara precios por m²', 'Visita en fin de semana'],
       },
       pains: ['Alquiler que sube', 'No tener algo propio'],
       gains: ['Estabilidad', 'Orgullo de ser propietario'],
       jobsToBeDone: ['Dar el paso a la primera vivienda propia'],
-      objections: ['¿Me conviene ahora?', '¿Cómo financio?'],
+      objections: ['¿Me conviene ahora?', '¿Me alcanza?'],
       preferredChannel: 'Instagram',
       decisionTriggers: ['Sentir que es alcanzable', 'Acompañamiento en el proceso'],
     },
