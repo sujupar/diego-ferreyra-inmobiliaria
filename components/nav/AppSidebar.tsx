@@ -196,7 +196,15 @@ export function AppSidebar({ groups, logoUrl }: { groups: NavGroup[]; logoUrl: s
 
             return (
               <SidebarGroup key={g.label ?? `sin-titulo-${i}`}>
-                {g.label && <SidebarGroupLabel>{g.label}</SidebarGroupLabel>}
+                {g.label && (
+                  // `eyebrow` (globals.css) da las mayúsculas espaciadas del spec, pero
+                  // también fija color:var(--muted-foreground) (4.84:1) — más flojo que
+                  // el text-sidebar-foreground/70 que ya tenía el default de la
+                  // primitiva (7.87:1). Se vuelve a pisar el color después.
+                  <SidebarGroupLabel className="eyebrow text-sidebar-foreground/70">
+                    {g.label}
+                  </SidebarGroupLabel>
+                )}
                 <SidebarGroupContent>
                   <SidebarMenu>
                     {g.entries.map(entry => {

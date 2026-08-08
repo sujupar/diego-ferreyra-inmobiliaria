@@ -5,6 +5,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import {
   SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupLabel,
   SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarTrigger,
+  SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton, SidebarMenuBadge,
 } from './sidebar'
 
 /** `useIsMobile` (hooks/use-mobile.ts) decide por `window.innerWidth`, no por
@@ -127,5 +128,109 @@ describe('primitivas del sidebar', () => {
     } finally {
       setInnerWidth(1280)
     }
+  })
+
+  // Ronda de arreglos 3 — objetivo táctil de 44px SOLO en el panel móvil
+  // (spec §1.3/§1.6). El riel desktop (32px, h-8/h-7) es correcto donde se
+  // apunta con mouse — no se toca. El menú viejo daba ~40px; 32px en el
+  // panel móvil era una regresión.
+  it('en móvil, un ítem del menú alcanza el objetivo táctil de 44px (h-11)', () => {
+    setInnerWidth(375)
+    try {
+      render(
+        <SidebarProvider>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton>
+                <span>Propiedades</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarProvider>,
+      )
+      const boton = screen.getByRole('button', { name: 'Propiedades' })
+      expect(boton.className).toContain('h-11')
+      expect(boton.className).not.toContain('h-8')
+    } finally {
+      setInnerWidth(1280)
+    }
+  })
+
+  it('en desktop, el ítem del menú sigue en h-8 (32px) — no es una regresión de esta ronda', () => {
+    setInnerWidth(1280)
+    render(
+      <SidebarProvider>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton>
+              <span>Propiedades</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarProvider>,
+    )
+    const boton = screen.getByRole('button', { name: 'Propiedades' })
+    expect(boton.className).toContain('h-8')
+    expect(boton.className).not.toContain('h-11')
+  })
+
+  it('en móvil, un sub-ítem del riel TAMBIÉN alcanza 44px', () => {
+    setInnerWidth(375)
+    try {
+      render(
+        <SidebarProvider>
+          <SidebarMenuSub>
+            <SidebarMenuSubItem>
+              <SidebarMenuSubButton href="/properties">
+                <span>Listado</span>
+              </SidebarMenuSubButton>
+            </SidebarMenuSubItem>
+          </SidebarMenuSub>
+        </SidebarProvider>,
+      )
+      const link = screen.getByRole('link', { name: 'Listado' })
+      expect(link.className).toContain('h-11')
+      expect(link.className).not.toContain('h-7')
+    } finally {
+      setInnerWidth(1280)
+    }
+  })
+
+  it('en desktop, el sub-ítem sigue en h-7 (28px) — no es una regresión de esta ronda', () => {
+    setInnerWidth(1280)
+    render(
+      <SidebarProvider>
+        <SidebarMenuSub>
+          <SidebarMenuSubItem>
+            <SidebarMenuSubButton href="/properties">
+              <span>Listado</span>
+            </SidebarMenuSubButton>
+          </SidebarMenuSubItem>
+        </SidebarMenuSub>
+      </SidebarProvider>,
+    )
+    const link = screen.getByRole('link', { name: 'Listado' })
+    expect(link.className).toContain('h-7')
+    expect(link.className).not.toContain('h-11')
+  })
+
+  // El activo pinta la etiqueta navy (--brand): el badge del Inbox tiene que
+  // acompañarla, no quedarse en el carbón de sidebar-accent-foreground.
+  it('el badge acompaña al ítem activo con el color de marca, no con el carbón del hover', () => {
+    render(
+      <SidebarProvider>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton isActive>
+              <span>Inbox</span>
+            </SidebarMenuButton>
+            <SidebarMenuBadge>3</SidebarMenuBadge>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarProvider>,
+    )
+    const badge = screen.getByText('3')
+    expect(badge.className).toContain('peer-data-[active=true]/menu-button:text-brand')
+    expect(badge.className).not.toContain('peer-data-[active=true]/menu-button:text-sidebar-accent-foreground')
   })
 })

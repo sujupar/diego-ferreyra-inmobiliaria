@@ -19,6 +19,16 @@
 - **`dueno` sigue viendo "Nueva Tasación"** aunque no tenga `appraisal.create` — así está hoy (`layout.tsx:73`) y no se corrige acá.
 - **El contador del Inbox conserva su comportamiento:** `fetch('/api/leads/count')` al montar y cada 60 s, con `try/catch` silencioso. Es el ÚNICO contador; no se agregan otros en Fase 1.
 - **Los carteles de MODO PRUEBA y de suplantación** van arriba de todo, a ancho completo, fuera del sidebar.
+  **⚠️ CORREGIDO DURANTE LA EJECUCIÓN (2026-08-07):** el riel del menú es `fixed` contra la ventana
+  (arranca en `y=0` pase lo que pase), así que un cartel a ancho completo de VENTANA queda con su
+  franja izquierda tapada por el riel — a 900px de ancho llega a esconder el "⚠️ MODO PRUEBA ACTIV"
+  y deja "0 — Todos los emails se redirigen a...". Los carteles terminaron DENTRO del
+  `SidebarInset`, arriba de la barra superior: ocupan el ancho útil del contenido (no el de la
+  ventana), se acomodan solos al colapsar el riel y nunca pueden quedar tapados. El detalle completo
+  —con las capturas que reproducen el daño de la versión "a ancho completo" y las de la versión
+  final en los cuatro anchos— está en `app/(dashboard)/layout.tsx:56-65` y en el reporte de la
+  tarea 5 (`.superpowers/sdd/2026-08-07-plataforma-crm-sidebar/task-5-report.md`, sección
+  "HALLAZGO 2").
 - **No se toca** `components/appraisal/ValuationReport.tsx`, `components/pdf/`, el bloque `.landing-root` de `globals.css`, `app/api/`, migraciones ni Netlify Functions.
 - **Modo oscuro:** la plataforma es light-only (nada activa `.dark`). Los tokens `.dark` quedan como están; no se les agrega mantenimiento.
 - **Idioma:** todo el texto de interfaz y los nombres de los tests, en español, con acentos correctos.

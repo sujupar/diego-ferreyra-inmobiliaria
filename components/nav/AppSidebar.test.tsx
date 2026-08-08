@@ -44,6 +44,11 @@ describe('AppSidebar', () => {
     expect(screen.queryByRole('button', { name: 'Captación' })).not.toBeInTheDocument()
   })
 
+  it('el título de grupo lleva la clase eyebrow (mayúsculas espaciadas del spec)', () => {
+    montar('admin')
+    expect(screen.getByText('Captación').className).toContain('eyebrow')
+  })
+
   it('marca la pantalla actual con aria-current', () => {
     rutaActual = '/crm'
     montar('admin')
@@ -126,6 +131,29 @@ describe('AppSidebar', () => {
     montar('admin')
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/leads/count'))
     expect(await screen.findByLabelText('7 sin leer')).toBeInTheDocument()
+  })
+
+  it('refresca el contador del Inbox cada 60s, y deja de pedirlo al desmontar', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ new: 7 }) })
+      vi.stubGlobal('fetch', fetchMock)
+
+      const { unmount } = montar('admin')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+
+      // Invariante 3 del cleanup: el intervalo se limpia al desmontar, no
+      // sigue pidiendo el contador de un menú que ya no está en pantalla.
+      unmount()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('si el contador falla, el menú se dibuja igual', async () => {

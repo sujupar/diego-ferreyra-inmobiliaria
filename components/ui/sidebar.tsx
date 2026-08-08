@@ -27,7 +27,7 @@ import {
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "16rem"
+const SIDEBAR_WIDTH = "15rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
@@ -545,7 +545,15 @@ function SidebarMenuButton({
       data-sidebar="menu-button"
       data-size={size}
       data-active={isActive}
-      className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
+      className={cn(
+        sidebarMenuButtonVariants({ variant, size }),
+        // Objetivo táctil de 44px SOLO en el panel móvil (spec §1.3/§1.6):
+        // los 32px del riel (h-8) son correctos en desktop, donde se apunta
+        // con mouse — no tocar ese caso. El menú viejo daba ~40px; 32px acá
+        // era una regresión.
+        isMobile && "h-11",
+        className
+      )}
       {...props}
     />
   )
@@ -622,7 +630,9 @@ function SidebarMenuBadge({
       data-sidebar="menu-badge"
       className={cn(
         "pointer-events-none absolute right-1 flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-xs font-medium text-sidebar-foreground tabular-nums select-none",
-        "peer-hover/menu-button:text-sidebar-accent-foreground peer-data-[active=true]/menu-button:text-sidebar-accent-foreground",
+        // El activo pinta la etiqueta navy (--brand) — el badge tiene que
+        // acompañarla, no quedarse en el carbón de sidebar-accent-foreground.
+        "peer-hover/menu-button:text-sidebar-accent-foreground peer-data-[active=true]/menu-button:text-brand",
         "peer-data-[size=sm]/menu-button:top-1",
         "peer-data-[size=default]/menu-button:top-1.5",
         "peer-data-[size=lg]/menu-button:top-2.5",
@@ -713,6 +723,7 @@ function SidebarMenuSubButton({
   isActive?: boolean
 }) {
   const Comp = asChild ? Slot.Root : "a"
+  const { isMobile } = useSidebar()
 
   return (
     <Comp
@@ -729,6 +740,8 @@ function SidebarMenuSubButton({
         "data-[active=true]:before:absolute data-[active=true]:before:inset-y-1 data-[active=true]:before:left-0 data-[active=true]:before:w-[3px] data-[active=true]:before:rounded-full data-[active=true]:before:bg-brand data-[active=true]:before:content-['']",
         size === "sm" && "text-xs",
         size === "md" && "text-sm",
+        // Mismo objetivo táctil de 44px que SidebarMenuButton, solo en móvil.
+        isMobile && "h-11",
         "group-data-[collapsible=icon]:hidden",
         className
       )}
