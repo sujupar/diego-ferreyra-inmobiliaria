@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { FilterBar } from '@/components/filters/FilterBar'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
+import { leerFiltros, escribirFiltros } from '@/lib/filters/url-state'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { BulkActionsBar } from '@/components/ui/BulkActionsBar'
 import { Building2, Plus, MapPin, Calendar, Loader2, ChevronRight, LayoutList, LayoutGrid, Table2, Archive, Trash2 } from 'lucide-react'
@@ -24,6 +26,18 @@ const STATUS_INFO: Record<string, { label: string; color: string }> = {
   active: { label: 'Activa', color: 'bg-emerald-600' },
   descartada: { label: 'Descartada', color: 'bg-slate-500' },
 }
+
+// Mismo arreglo que antes alimentaba los botones de estado — ahora las
+// opciones del desplegable de FilterBar. "Todas" = sin filtro (value '').
+const OPCIONES_ESTADO = [
+  { value: '', label: 'Todas' },
+  ...Object.entries(STATUS_INFO).map(([key, info]) => ({ value: key, label: info.label })),
+]
+
+// Filtros de esta pantalla en la URL (lib/filters/url-state). El objeto de
+// defaults NO se tipa con `interface`: le falta el index signature que pide
+// `Record<string, string>` y no compila (TS2345) — objeto literal, se infiere solo.
+const FILTROS_DEFECTO = { status: '', from: '', to: '', mios: '' }
 
 // Shape del LISTADO — viene de vw_properties_list (GET /api/properties), sin
 // el array `photos` completo (A3 de la auditoría: 21.951 KB por request, 99%
@@ -56,19 +70,56 @@ function formatDate(d: string) {
 }
 
 export default function PropertiesPage() {
+  // useSearchParams obliga a un límite de Suspense en App Router.
+  return (
+    <Suspense fallback={null}>
+      <PropertiesClient />
+    </Suspense>
+  )
+}
+
+function PropertiesClient() {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  // Clave primitiva (string) para el useMemo de abajo — NO usar `searchParams`
+  // directo como dependencia de un efecto/memo: cada render de este componente
+  // (ej. el setSelectedIds de más abajo) puede volver a llamar a leerFiltros y,
+  // sin esta memoización por valor, `filtros` sería un objeto nuevo en CADA
+  // render → el useEffect que trae los datos lo vería "cambiado" siempre →
+  // loop infinito de fetch. Con la clave primitiva, `filtros` solo cambia de
+  // identidad cuando el querystring realmente cambió.
+  const searchParamsKey = searchParams.toString()
+  // Fuente de verdad = la URL. `permitidos.status` hace que un valor viejo o
+  // inventado (`?status=noexiste`) caiga al default en vez de romper la
+  // pantalla — el default ('') está incluido en esa misma lista (OPCIONES_ESTADO).
+  const filtros = useMemo(
+    () => leerFiltros(new URLSearchParams(searchParamsKey), FILTROS_DEFECTO, {
+      status: OPCIONES_ESTADO.map(o => o.value),
+    }),
+    [searchParamsKey]
+  )
+
+  function setFiltros(nuevos: typeof FILTROS_DEFECTO) {
+    const qs = escribirFiltros(nuevos, FILTROS_DEFECTO)
+    // replace y no push: con push, cada ajuste del rango de fechas deja una
+    // entrada en el historial y el botón Atrás se vuelve inusable.
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }
+
+  function setFiltro(key: string, value: string) {
+    setFiltros({ ...filtros, [key]: value })
+  }
+
   const [properties, setProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [total, setTotal] = useState(0)
   const [hasMore, setHasMore] = useState(false)
-  const [filterStatus, setFilterStatus] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'table'>('grid')
-  const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: '', to: '' })
   const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkActioning, setBulkActioning] = useState(false)
-  const [onlyMine, setOnlyMine] = useState(false)
   const [modalProperty, setModalProperty] = useState<DetailProperty | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [modalLoading, setModalLoading] = useState(false)
@@ -97,10 +148,10 @@ export default function PropertiesPage() {
 
   function buildParams(offset: number, limit: number = PAGE_SIZE) {
     const params = new URLSearchParams()
-    if (filterStatus) params.set('status', filterStatus)
-    if (dateRange.from) params.set('from', dateRange.from)
-    if (dateRange.to) params.set('to', dateRange.to)
-    if (onlyMine && userInfo?.id) params.set('assigned_to', userInfo.id)
+    if (filtros.status) params.set('status', filtros.status)
+    if (filtros.from) params.set('from', filtros.from)
+    if (filtros.to) params.set('to', filtros.to)
+    if (filtros.mios === '1' && userInfo?.id) params.set('assigned_to', userInfo.id)
     if (tableSort) {
       params.set('sort', tableSort.key)
       params.set('dir', tableSort.dir)
@@ -127,7 +178,7 @@ export default function PropertiesPage() {
     // Limpiar selección al cambiar filtros
     setSelectedIds(new Set())
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterStatus, dateRange, userInfo, onlyMine, tableSort])
+  }, [filtros, userInfo, tableSort])
 
   async function loadMore() {
     if (loadingMore || !hasMore) return
@@ -270,22 +321,26 @@ export default function PropertiesPage() {
         </div>
       </div>
 
-      <DateRangeFilter onChange={setDateRange} />
-
-      {/* Status filter */}
-      <div className="flex gap-2 flex-wrap">
-        <Button variant={filterStatus === '' ? 'default' : 'outline'} size="sm" onClick={() => setFilterStatus('')}>Todas</Button>
-        {Object.entries(STATUS_INFO).map(([key, info]) => (
-          <Button key={key} variant={filterStatus === key ? 'default' : 'outline'} size="sm" onClick={() => setFilterStatus(key)}>{info.label}</Button>
-        ))}
-        <Button
-          size="sm"
-          variant={onlyMine ? 'default' : 'outline'}
-          onClick={() => setOnlyMine(!onlyMine)}
-        >
-          {onlyMine ? '✓ Solo mías' : 'Solo mías'}
-        </Button>
-      </div>
+      <FilterBar
+        selects={[{ key: 'status', label: 'Estado', options: OPCIONES_ESTADO }]}
+        values={filtros}
+        onChange={setFiltro}
+        onClear={() => router.replace(pathname, { scroll: false })}
+        extraActivo={!!filtros.from || !!filtros.to || filtros.mios === '1'}
+      >
+        <DateRangeFilter
+          value={{ from: filtros.from, to: filtros.to }}
+          onChange={r => setFiltros({ ...filtros, from: r.from, to: r.to })}
+        />
+        <label className="flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm">
+          <input
+            type="checkbox"
+            checked={filtros.mios === '1'}
+            onChange={e => setFiltro('mios', e.target.checked ? '1' : '')}
+          />
+          Solo mías
+        </label>
+      </FilterBar>
 
       <BulkActionsBar
         count={selectedIds.size}
