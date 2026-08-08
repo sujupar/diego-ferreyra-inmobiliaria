@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen } from '@testing-library/react'
 import { StatTile } from './StatTile'
@@ -33,5 +33,41 @@ describe('StatTile', () => {
   it('sin href no es un link', () => {
     render(<StatTile label="Pendientes" value={3} context="2 vencen hoy" />)
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
+  })
+
+  // I1: tone='alerta' debe tener un segundo canal (ícono) además del color
+  it('tone=alerta muestra un ícono de alerta', () => {
+    const { container } = render(<StatTile label="Crítico" value={12} context="sobre 100" tone="alerta" />)
+    const icon = container.querySelector('svg')
+    expect(icon).toBeInTheDocument()
+    expect(icon).toHaveClass('lucide-circle-alert')
+  })
+
+  it('tone=neutral no muestra ícono de alerta', () => {
+    const { container } = render(<StatTile label="Normal" value={12} context="sobre 100" tone="neutral" />)
+    const svgs = container.querySelectorAll('svg')
+    expect(svgs.length).toBe(0)
+  })
+
+  // M1: context vacío o solo espacios debe dispara console.warn
+  it('context vacío dispara console.warn', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    render(<StatTile label="Test" value={5} context="" />)
+    expect(warnSpy).toHaveBeenCalledWith('StatTile: context no puede estar vacío. Pasó una cadena en blanco.')
+    warnSpy.mockRestore()
+  })
+
+  it('context solo espacios dispara console.warn', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    render(<StatTile label="Test" value={5} context="   " />)
+    expect(warnSpy).toHaveBeenCalledWith('StatTile: context no puede estar vacío. Pasó una cadena en blanco.')
+    warnSpy.mockRestore()
+  })
+
+  // M2: NaN debe tratarse como null (sin dato)
+  it('NaN se muestra como "Sin datos"', () => {
+    render(<StatTile label="Promedio" value={NaN} context="0 de 5 disponibles" />)
+    expect(screen.getByText('Sin datos')).toBeInTheDocument()
+    expect(screen.queryByText('NaN')).not.toBeInTheDocument()
   })
 })
