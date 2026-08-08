@@ -230,6 +230,46 @@ describe('PropertiesPage — la selección no sobrevive al cambio de listado', (
   })
 })
 
+describe('PropertiesPage — tarjetas de números (task 16)', () => {
+  it('muestran el total y lo cargado en pantalla, con el contexto de "sin filtros"', async () => {
+    render(<PropertiesPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(propsCalls.length).toBe(1))
+    propsCalls[0].d.resolve(pagina([propiedad('a', 'Calle Uno 100'), propiedad('b', 'Calle Dos 200')], 5))
+    await screen.findByText('Calle Uno 100')
+
+    expect(screen.getByText('5')).toBeInTheDocument()
+    expect(screen.getByText('en el sistema')).toBeInTheDocument()
+
+    expect(screen.getByText('En pantalla')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.getByText('de 5')).toBeInTheDocument()
+  })
+
+  it('con un filtro puesto, el contexto dice "con los filtros puestos" — no "en el sistema"', async () => {
+    busqueda = 'status=approved'
+    render(<PropertiesPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(propsCalls.length).toBe(1))
+    propsCalls[0].d.resolve(pagina([propiedad('a', 'Calle Filtrada 100', { status: 'approved' })], 1))
+    await screen.findByText('Calle Filtrada 100')
+
+    expect(screen.getByText('con los filtros puestos')).toBeInTheDocument()
+    expect(screen.queryByText('en el sistema')).not.toBeInTheDocument()
+  })
+
+  it('agregar las tarjetas no dispara ninguna llamada de más', async () => {
+    render(<PropertiesPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(propsCalls.length).toBe(1))
+    propsCalls[0].d.resolve(pagina([propiedad('a', 'Calle Uno 100')]))
+    await screen.findByText('Calle Uno 100')
+
+    // Solo /api/auth/me (identidad) y /api/properties (listado) — ni un fetch más.
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2)
+  })
+})
+
 describe('PropertiesPage — identidad fail-closed sin "Solo mías" (A4, ya vigente acá)', () => {
   it('un 401 de /api/auth/me (que igual devuelve JSON) no frena el listado sin filtrar', async () => {
     // Sin `mios`, no saber quién sos no cambia QUÉ se pide: el listado sale

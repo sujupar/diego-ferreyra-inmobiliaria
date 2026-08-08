@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react'
 import CRMPage from './page'
 import type { Deal } from './_components/types'
 
@@ -285,6 +285,81 @@ describe('CRMPage — regla 3 del versionado ("Cargar más")', () => {
     // "Cargando…"/deshabilitado para siempre — este find falla (rojo).
     const boton = await screen.findByRole('button', { name: /Cargar más/ })
     expect(boton).not.toBeDisabled()
+  })
+})
+
+describe('CRMPage — tarjetas de números (task 16)', () => {
+  it('Deals y las tarjetas por etapa muestran lo que la pantalla ya guardó, con el contexto de "sin filtros"', async () => {
+    render(<CRMPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(dealsCalls.length).toBe(1))
+    dealsCalls[0].d.resolve({
+      data: [fakeDeal(0)],
+      total: 7,
+      stageCounts: {},
+      crmStageCounts: { captada: 3, solicitud: 2 },
+    })
+    await screen.findByText('Contacto 0')
+
+    const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
+    const deals = within(tarjetas.getByText('Deals').parentElement as HTMLElement)
+    expect(deals.getByText('7')).toBeInTheDocument()
+    expect(deals.getByText('en el sistema')).toBeInTheDocument()
+
+    const captada = within(tarjetas.getByText('Captada').parentElement as HTMLElement)
+    expect(captada.getByText('3')).toBeInTheDocument()
+    expect(captada.getByText('en el sistema')).toBeInTheDocument()
+
+    const solicitud = within(tarjetas.getByText('Solicitud').parentElement as HTMLElement)
+    expect(solicitud.getByText('2')).toBeInTheDocument()
+  })
+
+  it('con un filtro puesto (aunque no sea la etapa), las tarjetas por etapa dicen "con los filtros puestos"', async () => {
+    // `stageCounts` ignora la etapa a propósito (el picker necesita ver el
+    // total completo de cada una) pero SÍ respeta origin/asesor/fecha — la
+    // tarjeta tiene que reflejar esa base real, no la de "Deals".
+    busqueda = 'origin=embudo'
+    render(<CRMPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(dealsCalls.length).toBe(1))
+    dealsCalls[0].d.resolve({ data: [], total: 0, stageCounts: {}, crmStageCounts: { captada: 1 } })
+    await screen.findByText('Sin procesos')
+
+    const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
+    const captada = within(tarjetas.getByText('Captada').parentElement as HTMLElement)
+    expect(captada.getByText('con los filtros puestos')).toBeInTheDocument()
+  })
+
+  it('un /api/deals caído apaga los números a "Sin datos" — no al 0 que deja el catch', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      vi.stubGlobal('fetch', vi.fn((url: string) => {
+        if (url.startsWith('/api/auth/me')) return authDeferred.promise.then(data => ({ ok: authOk, json: async () => data }))
+        if (url.startsWith('/api/users/advisors')) return Promise.resolve({ ok: true, json: async () => ({ data: [] }) })
+        if (url.startsWith('/api/deals')) return Promise.reject(new Error('caído'))
+        return Promise.reject(new Error(`fetch inesperado: ${url}`))
+      }))
+      render(<CRMPage />)
+      authDeferred.resolve({ id: 'u1', role: 'admin' })
+
+      const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
+      const deals = within(tarjetas.getByText('Deals').parentElement as HTMLElement)
+      await waitFor(() => expect(deals.getByText('Sin datos')).toBeInTheDocument())
+      expect(deals.getByText('No se pudo consultar')).toBeInTheDocument()
+    } finally {
+      errores.mockRestore()
+    }
+  })
+
+  it('agregar las tarjetas no dispara ninguna llamada de más', async () => {
+    render(<CRMPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(dealsCalls.length).toBe(1))
+    dealsCalls[0].d.resolve(dealsPage(0, 0))
+    await screen.findByText('Sin procesos')
+
+    // auth + advisors + deals = 3 fetch — ni uno más por las tarjetas nuevas.
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(3)
   })
 })
 

@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { StatTile } from '@/components/ui/StatTile'
 import { FilterBar } from '@/components/filters/FilterBar'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
 import { useFiltrosUrl } from '@/lib/filters/use-filtros-url'
@@ -148,6 +149,12 @@ function CRMClient() {
   const [total, setTotal] = useState(0)
   const [serverStageCounts, setServerStageCounts] = useState<Record<string, number>>({})
   const [serverCrmStageCounts, setServerCrmStageCounts] = useState<Record<string, number>>({})
+  // Task 16: sin esto, un /api/deals caído dejaría `total`/`stageCounts` en su
+  // valor previo (o en 0 inicial) y las tarjetas nuevas mostrarían un número
+  // como si fuera actual — exactamente la mentira que la regla del tablero
+  // prohíbe. Solo lo toca el pedido PRINCIPAL (no "Cargar más": ese tiene su
+  // propio fallback silencioso y no debe invalidar los totales ya mostrados).
+  const [fetchError, setFetchError] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -229,7 +236,7 @@ function CRMClient() {
 
   async function runFetch(pedido: { gen: number; signal: AbortSignal }, opts: { append: boolean; page: number }) {
     if (opts.append) setLoadingMore(true)
-    else setLoading(true)
+    else { setLoading(true); setFetchError(false) }
     try {
       const res = await fetch(`/api/deals?${buildParams(opts.page)}`, { signal: pedido.signal })
       if (!res.ok) throw new Error(`GET /api/deals respondió ${res.status}`)
@@ -245,6 +252,7 @@ function CRMClient() {
     } catch (err) {
       if (!pedidos.vigente(pedido.gen)) return
       console.error('CRM fetch error:', err)
+      if (!opts.append) setFetchError(true)
     } finally {
       // "Cargar más" es la bandera de un BOTÓN: no va versionada, dejarla
       // puesta bloquearía el botón para el listado nuevo.
@@ -359,6 +367,18 @@ function CRMClient() {
   const totalDealsDisplay = esAsesor ? roleFilteredDeals.length : total
   const isGlobal = userInfo && ['dueno', 'admin', 'coordinador'].includes(userInfo.role)
 
+  // Task 16 — el contexto de las tarjetas tiene que decir la verdad sobre SU
+  // PROPIA base, no una genérica. `total` (y por lo tanto `totalDealsDisplay`)
+  // respeta TODOS los filtros, incluida la etapa — `stageCounts` NO (la
+  // etapa se ignora a propósito en el servidor para que el picker de etapas
+  // siempre muestre los totales completos de cada una; ver `getDeals`). Por
+  // eso son dos banderas distintas.
+  const hayFiltros = !!filtros.etapa || !!filtros.origin || !!filtros.asesor || !!filtros.from || !!filtros.to
+  const hayFiltrosPorEtapa = !!filtros.origin || !!filtros.asesor || !!filtros.from || !!filtros.to
+  // Mismo criterio que `StagePipeline` (`hideSolicitud`): un asesor no
+  // gestiona "Solicitud" (la asigna el coordinador).
+  const stagesConTarjeta = CRM_STAGES.filter(s => !(esAsesor && s.key === 'solicitud'))
+
   const OPCIONES_ASESOR = [
     { value: '', label: 'Todos' },
     ...advisors.map(a => ({ value: a.id, label: a.full_name })),
@@ -458,6 +478,27 @@ function CRMClient() {
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
+      </div>
+
+      {/* Task 16: números de arriba — SOLO datos que la pantalla ya tiene en
+          memoria (`total`/`totalDealsDisplay` y `stageCounts`, que la
+          respuesta de /api/deals ya devuelve y el componente ya guarda).
+          Cero fetch/consulta nueva. En error (`fetchError`) el número se
+          apaga a `null` en vez de mostrar el 0 que deja el catch. */}
+      <div data-testid="tarjetas-numeros" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <StatTile
+          label="Deals"
+          value={fetchError ? null : totalDealsDisplay}
+          context={fetchError ? 'No se pudo consultar' : hayFiltros ? 'con los filtros puestos' : 'en el sistema'}
+        />
+        {stagesConTarjeta.map(s => (
+          <StatTile
+            key={s.key}
+            label={s.label}
+            value={fetchError ? null : (stageCounts[s.key] || 0)}
+            context={fetchError ? 'No se pudo consultar' : hayFiltrosPorEtapa ? 'con los filtros puestos' : 'en el sistema'}
+          />
+        ))}
       </div>
 
       {/* Bulk actions bar — visible cuando hay selección */}

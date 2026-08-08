@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react'
 import VisitsPage from './page'
 
 /**
@@ -179,6 +179,65 @@ describe('VisitsPage — "Limpiar todo"', () => {
 
     fireEvent.click(screen.getByText('Limpiar todo'))
     expect(escrituras[escrituras.length - 1]).toBe('/visits')
+  })
+})
+
+describe('VisitsPage — tarjeta de número (task 16)', () => {
+  it('muestra el largo del arreglo ya cargado, con el contexto de "sin filtros"', async () => {
+    render(<VisitsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(visitsCalls.length).toBe(2))
+    visitsCalls[1].d.resolve({ data: [visita('a', 'Cliente Uno'), visita('b', 'Cliente Dos')] })
+    await screen.findByText('Cliente Uno')
+
+    const tarjeta = within(screen.getByTestId('tarjetas-numeros'))
+    expect(tarjeta.getByText('2')).toBeInTheDocument()
+    expect(tarjeta.getByText('en el sistema')).toBeInTheDocument()
+  })
+
+  it('con un filtro puesto, el contexto dice "con los filtros puestos"', async () => {
+    busqueda = 'status=scheduled'
+    render(<VisitsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(visitsCalls.length).toBe(2))
+    visitsCalls[1].d.resolve({ data: [visita('a', 'Cliente Agendado')] })
+    await screen.findByText('Cliente Agendado')
+
+    const tarjeta = within(screen.getByTestId('tarjetas-numeros'))
+    expect(tarjeta.getByText('con los filtros puestos')).toBeInTheDocument()
+    expect(tarjeta.queryByText('en el sistema')).not.toBeInTheDocument()
+  })
+
+  it('un /api/visits caído apaga el número a "Sin datos" — no al 0 inicial', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      vi.stubGlobal('fetch', vi.fn((url: string) => {
+        if (url.startsWith('/api/auth/me')) return authDeferred.promise.then(data => ({ ok: true, json: async () => data }))
+        if (url.startsWith('/api/profiles')) return Promise.resolve({ ok: true, json: async () => ({ data: [] }) })
+        if (url.startsWith('/api/visits')) return Promise.reject(new Error('caído'))
+        return Promise.reject(new Error(`fetch inesperado: ${url}`))
+      }))
+      render(<VisitsPage />)
+      authDeferred.resolve({ id: 'u1', role: 'admin' })
+
+      const tarjeta = within(screen.getByTestId('tarjetas-numeros'))
+      await waitFor(() => expect(tarjeta.getByText('Sin datos')).toBeInTheDocument())
+      expect(tarjeta.getByText('No se pudo consultar')).toBeInTheDocument()
+    } finally {
+      errores.mockRestore()
+    }
+  })
+
+  it('agregar la tarjeta no dispara ninguna llamada de más', async () => {
+    render(<VisitsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(visitsCalls.length).toBe(2))
+    visitsCalls[1].d.resolve({ data: [] })
+    await screen.findByText('No hay visitas')
+
+    // auth + profiles + 2 de /api/visits (montaje sin identidad + con
+    // identidad resuelta, ya documentado arriba) = 4 — ni una llamada más.
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(4)
   })
 })
 

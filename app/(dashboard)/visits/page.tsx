@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { StatTile } from '@/components/ui/StatTile'
 import { FilterBar } from '@/components/filters/FilterBar'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
 import { useFiltrosUrl } from '@/lib/filters/use-filtros-url'
@@ -129,6 +130,10 @@ function VisitsClient() {
   const [advisors, setAdvisors] = useState<{ id: string; full_name: string }[]>([])
   const [visits, setVisits] = useState<PropertyVisitWithRelations[]>([])
   const [loading, setLoading] = useState(true)
+  // Task 16: sin esto, un /api/visits caído dejaría `visits` en su valor
+  // previo (o `[]` inicial) y la tarjeta nueva mostraría un número como si
+  // fuera actual — la mentira que la regla del tablero prohíbe.
+  const [fetchError, setFetchError] = useState(false)
 
   // Gana el último PEDIDO, no la última respuesta — ver
   // `lib/filters/use-pedidos-versionados`. Sin esto, con la API lenta, filtrar
@@ -174,6 +179,7 @@ function VisitsClient() {
     if (filtros.onlyMine === 'true' && user?.id) params.set('advisor_id', user.id)
 
     setLoading(true)
+    setFetchError(false)
     fetch(`/api/visits?${params}`, { signal })
       .then(r => {
         if (!r.ok) throw new Error(`GET /api/visits respondió ${r.status}`)
@@ -186,6 +192,7 @@ function VisitsClient() {
       .catch(err => {
         if (!pedidos.vigente(gen)) return
         console.error(err)
+        setFetchError(true)
       })
       // El spinner del listado va versionado: si lo apagara una respuesta
       // vieja, la pantalla mostraría el listado anterior como si fuera el
@@ -195,6 +202,11 @@ function VisitsClient() {
   }, [filtros, user])
 
   const cargando = loading || escribiendo
+  // Mismos campos que alimentan `extraActivo`/los desplegables de FilterBar
+  // — es la forma que esta pantalla ya usa para saber si hay algo que
+  // "Limpiar todo". El contexto de la tarjeta tiene que decir la verdad
+  // sobre esa misma base.
+  const hayFiltros = !!filtros.status || !!filtros.advisorId || !!filtros.from || !!filtros.to || filtros.onlyMine === 'true'
 
   const opcionesAsesor = [
     { value: '', label: 'Todos los asesores' },
@@ -208,6 +220,18 @@ function VisitsClient() {
         <p className="text-muted-foreground">
           {cargando ? 'Cargando…' : `${visits.length} visita${visits.length !== 1 ? 's' : ''}`}
         </p>
+      </div>
+
+      {/* Task 16: número de arriba — SOLO el largo del arreglo que esta
+          pantalla ya pidió (`visits`). Cero fetch/consulta nueva. En error
+          (`fetchError`) se apaga a `null` en vez de mostrar el 0 que deja el
+          catch. */}
+      <div data-testid="tarjetas-numeros" className="mb-1 max-w-xs">
+        <StatTile
+          label="Visitas"
+          value={fetchError ? null : visits.length}
+          context={fetchError ? 'No se pudo consultar' : hayFiltros ? 'con los filtros puestos' : 'en el sistema'}
+        />
       </div>
 
       <FilterBar

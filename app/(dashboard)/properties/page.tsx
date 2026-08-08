@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { StatTile } from '@/components/ui/StatTile'
 import { FilterBar } from '@/components/filters/FilterBar'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
 import { useFiltrosUrl } from '@/lib/filters/use-filtros-url'
@@ -574,6 +575,26 @@ function PropertiesClient() {
           </div>
           <Link href="/properties/new"><Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nueva</Button></Link>
         </div>
+      </div>
+
+      {/* Task 16: números de arriba — SOLO datos que la pantalla ya tiene en
+          memoria (`total` y `properties.length`, dos useState existentes).
+          Cero fetch/consulta nueva. El contexto respeta el filtro puesto: si
+          hay filtros, "con los filtros puestos" — nunca "en el sistema"
+          cuando eso sería mentira sobre la base del número. Y en estado de
+          error (`loadError`), el número se apaga a `null` ("Sin datos") en
+          vez de mostrar el 0 que el efecto de datos deja al fallar. */}
+      <div data-testid="tarjetas-numeros" className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatTile
+          label="Propiedades"
+          value={loadError ? null : total}
+          context={loadError ? 'No se pudo consultar' : hayFiltros ? 'con los filtros puestos' : 'en el sistema'}
+        />
+        <StatTile
+          label="En pantalla"
+          value={loadError ? null : properties.length}
+          context={loadError ? 'No se pudo consultar' : `de ${total}`}
+        />
       </div>
 
       <FilterBar
