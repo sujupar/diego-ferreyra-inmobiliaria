@@ -48,7 +48,10 @@ export default async function DashboardLayout({
                 Saltar al contenido
             </a>
             <SidebarForRole role={user.profile.role} logoUrl={LOGO_URL} />
-            <SidebarInset className="bg-secondary">
+            {/* `min-w-0`: sin eso, un hijo que fuerce ancho (una tabla ancha, un
+                bloque sin wrap) estira el área de contenido y el riel del menú
+                —que es `fixed`— le termina tapando la izquierda. */}
+            <SidebarInset className="bg-secondary min-w-0">
                 {/*
                   Los dos carteles de estado peligroso van ACÁ ADENTRO, arriba de la
                   barra superior, y no arriba de todo como antes. Motivo: el riel del

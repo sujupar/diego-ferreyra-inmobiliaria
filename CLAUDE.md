@@ -396,6 +396,23 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Gotchas pg_net/pg_cron:** (1) `net.http_post` es async/fire-and-forget → `cron.job_run_details.status='succeeded'` NO prueba que el HTTP haya dado 2xx; verificar SIEMPRE `net._http_response.status_code` (retiene ~6h) + `email_report_log`. (2) timeout default de pg_net es 2000ms → subir a 30000 (el reporte pega a Meta+Supabase+Resend). (3) pg_net es solo POST. (4) NO leer el secreto de Vault en runtime dentro del job (en el worker de pg_cron Vault puede no estar disponible → header NULL → 403 silencioso); inlinear el secreto o resolverlo una vez al crear el job. (5) Si algún día Netlify vuelve a disparar las .mts, hay riesgo de doble envío (el dedup de las .mts mitiga el diario, pero `sendFunnelReport` no deduplica) — documentar y, si se confirma, sacarles el `export const config.schedule`.
 - **Verificación de 3 capas:** `cron.job_run_details` (corrió el SQL) → `net._http_response.status_code` (el endpoint dio 200) → `email_report_log` + inbox (se envió). Para test en el día sin que el dedup interfiera: pasar `?from=YYYY-MM-DD&to=YYYY-MM-DD` (la ruta no deduplica).
 
+### Un ícono de lucide NO cruza la frontera servidor→cliente (menú lateral, 2026-08-07)
+
+- **Symptom:** la plataforma ENTERA en blanco (las 39 pantallas, porque el que se cae es el layout). En el overlay de Next: `Only plain objects can be passed to Client Components from Server Components. Classes or other objects with methods are not supported. {href: "/tasks", label: …, icon: {$$typeof: …, render: …}}`.
+- **Root cause:** `getNavSections()` (`lib/nav/sections.ts`) devuelve ítems con `icon: LucideIcon`, que es un **componente de React**. Un componente de servidor no puede pasar eso como prop a uno de cliente: React lo intenta serializar y falla. No es un warning, es pantalla caída.
+- **Fix:** el menú se arma **del lado del cliente**. El layout manda el ROL (un string) y `components/nav/NavForRole.tsx` (`'use client'`) llama a `getNavSections` y le pasa la lista a `AppSidebar`/`Topbar`. **No borrar ese archivo por “envoltorio innecesario”: es lo único que evita el crash.** El SSR no se pierde (un componente de cliente igual se renderiza en el servidor).
+- **Por qué es seguro:** el menú nunca fue la barrera de permisos — quién entra a cada ruta lo decide el servidor. `lib/auth/roles` y el rol ya viajaban al navegador (los usa `UserMenu`).
+- **Detection:** NINGÚN test lo atrapa. Los tests de `lib/nav/sections` (24) y los de humo de `AppSidebar`/`Topbar` corren de un solo lado de la frontera; el error solo aparece **abriendo la app**. Regla general: si un módulo exporta datos que incluyen componentes (íconos, render props) y lo consume un componente de cliente, **el que arma esos datos tiene que correr en el cliente**.
+
+### El sidebar de shadcn esconde submenús y contadores al colapsar
+
+- **Symptom:** con el menú en modo ícono, clickear un desplegable ("Tasaciones", "Propiedades", "Configuración") no hace **nada visible** → 13 rutas inalcanzables para un admin. Y el contador del Inbox desaparece.
+- **Root cause:** `SidebarMenuSub`, `SidebarMenuSubButton` y `SidebarMenuBadge` llevan `group-data-[collapsible=icon]:hidden` en `components/ui/sidebar.tsx`. Agravante: el estado colapsado vive en la cookie `sidebar_state` (7 días), así que el usuario se queda ahí.
+- **Fix:** en `CollapsibleNavEntry` (`components/nav/AppSidebar.tsx`), si `state === 'collapsed' && !isMobile` el desplegable se renderiza como `DropdownMenu` flotante hacia la derecha (patrón canónico de shadcn); y el badge del Inbox suma un **punto** (`bg-brand`) que solo se ve en modo ícono. En celular NO aplica: ahí el menú se abre como panel expandido.
+- **Trampa al armar el disparador del flotante:** NO pasarle `tooltip` al `SidebarMenuButton`. Ese prop lo envuelve en un `<Tooltip>`, y entonces `DropdownMenuTrigger asChild` le pasa las props al Tooltip en vez de al botón. El nombre del grupo va como `DropdownMenuLabel` adentro del flotante.
+- **Otra trampa:** el punto del badge va como HERMANO del botón, no adentro. `sidebarMenuButtonVariants` tiene `[&>span:last-child]:truncate`, así que un `<span>` extra al final se roba el truncado de la etiqueta.
+- **Regla general:** cualquier cosa nueva que se cuelgue del menú hay que mirarla **colapsada** además de expandida. La mitad de las clases de esa primitiva cambian de comportamiento en modo ícono.
+
 ---
 
 ## Publicación en portales — Wizard de MercadoLibre (rework 2026-06-06)

@@ -6,9 +6,13 @@ import { usePathname } from 'next/navigation'
 import { ChevronRight } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
   SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuBadge, SidebarMenuButton,
-  SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem,
+  SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, useSidebar,
 } from '@/components/ui/sidebar'
 import {
   activeHrefAmong, isCollapsible, navHrefs,
@@ -16,6 +20,7 @@ import {
 } from '@/lib/nav/sections'
 
 function ItemLink({ item, activo, badge }: { item: NavItem; activo: boolean; badge: number }) {
+  const conAviso = item.badge === 'inbox' && badge > 0
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={activo} tooltip={item.label}>
@@ -24,8 +29,24 @@ function ItemLink({ item, activo, badge }: { item: NavItem; activo: boolean; bad
           <span>{item.label}</span>
         </Link>
       </SidebarMenuButton>
-      {item.badge === 'inbox' && badge > 0 && (
-        <SidebarMenuBadge aria-label={`${badge} sin leer`}>{badge}</SidebarMenuBadge>
+      {conAviso && (
+        <>
+          <SidebarMenuBadge aria-label={`${badge} sin leer`}>{badge}</SidebarMenuBadge>
+          {/*
+            Colapsado, la primitiva esconde el número (no entra en 48px). Un punto
+            sí entra, y la señal de "hay algo nuevo" es lo que no se puede perder:
+            es la única urgencia que muestra la navegación. Va como HERMANO del
+            botón, no adentro, porque `[&>span:last-child]:truncate` de la
+            primitiva le pegaría al último <span> del botón — o sea al punto en vez
+            de a la etiqueta. `aria-hidden` porque el conteo completo ya lo anuncia
+            el badge de arriba.
+          */}
+          <span
+            aria-hidden="true"
+            data-testid="aviso-colapsado"
+            className="pointer-events-none absolute top-1.5 right-1.5 hidden size-2 rounded-full bg-brand group-data-[collapsible=icon]:block"
+          />
+        </>
       )}
     </SidebarMenuItem>
   )
@@ -37,6 +58,7 @@ function ItemLink({ item, activo, badge }: { item: NavItem; activo: boolean; bad
  * se puede llamar dentro del `.map` del padre.
  */
 function CollapsibleNavEntry({ entry, pathname }: { entry: NavCollapsible; pathname: string }) {
+  const { state, isMobile } = useSidebar()
   const hrefActivo = activeHrefAmong(entry.items.map(i => i.href), pathname)
   const contieneActual = hrefActivo !== null
   const [abierto, setAbierto] = useState(contieneActual)
@@ -48,6 +70,50 @@ function CollapsibleNavEntry({ entry, pathname }: { entry: NavCollapsible; pathn
   useEffect(() => {
     if (contieneActual) setAbierto(true)
   }, [contieneActual])
+
+  /*
+    MENÚ COLAPSADO (solo escritorio): el submenú desplegable NO sirve. La
+    primitiva le pone `display:none` a `SidebarMenuSub` y a sus links cuando el
+    menú está en modo ícono (components/ui/sidebar.tsx), así que el disparador
+    seguía visible pero clickearlo no mostraba nada: para un admin colapsado
+    quedaban 13 rutas inalcanzables, y la cookie deja ese estado puesto 7 días.
+    Colapsado, entonces, el desplegable se convierte en un menú FLOTANTE hacia la
+    derecha. En celular no aplica: ahí el menú se abre como panel expandido.
+  */
+  if (state === 'collapsed' && !isMobile) {
+    return (
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            {/* Sin `tooltip`: ese prop envuelve al botón en un Tooltip y el
+                disparador del flotante dejaría de recibir sus props. El nombre
+                del grupo lo dice el encabezado del propio flotante. */}
+            <SidebarMenuButton isActive={contieneActual}>
+              <entry.icon />
+              <span>{entry.label}</span>
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="start" className="min-w-44">
+            <DropdownMenuLabel className="text-muted-foreground">{entry.label}</DropdownMenuLabel>
+            {entry.items.map(sub => {
+              const activa = sub.href === hrefActivo
+              return (
+                <DropdownMenuItem key={sub.href} asChild>
+                  <Link
+                    href={sub.href}
+                    aria-current={activa ? 'page' : undefined}
+                    className={activa ? 'bg-brand-soft font-medium text-brand' : undefined}
+                  >
+                    {sub.label}
+                  </Link>
+                </DropdownMenuItem>
+              )
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    )
+  }
 
   return (
     <Collapsible asChild open={abierto} onOpenChange={setAbierto} className="group/collapsible">
@@ -117,38 +183,43 @@ export function AppSidebar({ groups, logoUrl }: { groups: NavGroup[]; logoUrl: s
       </SidebarHeader>
 
       <SidebarContent>
-        {groups.map((g, i) => {
-          // Los ítems sueltos de ESTE grupo compiten entre sí por "quién es
-          // el activo" — nunca se evalúan de forma independiente (ese era el
-          // bug: /properties y /properties/new "matcheaban" los dos a la vez).
-          const itemsSueltos = g.entries.filter((e): e is NavItem => !isCollapsible(e))
-          const hrefActivo = activeHrefAmong(itemsSueltos.map(e => e.href), pathname)
+        {/* El landmark de navegación que tenía el menú viejo. `gap-2` porque el
+            <nav> pasa a ser UN solo hijo del contenedor y se comía la separación
+            que ese contenedor daba entre grupos. */}
+        <nav aria-label="Navegación principal" className="flex flex-col gap-2">
+          {groups.map((g, i) => {
+            // Los ítems sueltos de ESTE grupo compiten entre sí por "quién es
+            // el activo" — nunca se evalúan de forma independiente (ese era el
+            // bug: /properties y /properties/new "matcheaban" los dos a la vez).
+            const itemsSueltos = g.entries.filter((e): e is NavItem => !isCollapsible(e))
+            const hrefActivo = activeHrefAmong(itemsSueltos.map(e => e.href), pathname)
 
-          return (
-            <SidebarGroup key={g.label ?? `sin-titulo-${i}`}>
-              {g.label && <SidebarGroupLabel>{g.label}</SidebarGroupLabel>}
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {g.entries.map(entry => {
-                    if (!isCollapsible(entry)) {
+            return (
+              <SidebarGroup key={g.label ?? `sin-titulo-${i}`}>
+                {g.label && <SidebarGroupLabel>{g.label}</SidebarGroupLabel>}
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {g.entries.map(entry => {
+                      if (!isCollapsible(entry)) {
+                        return (
+                          <ItemLink
+                            key={entry.href}
+                            item={entry}
+                            activo={entry.href === hrefActivo}
+                            badge={inboxCount}
+                          />
+                        )
+                      }
                       return (
-                        <ItemLink
-                          key={entry.href}
-                          item={entry}
-                          activo={entry.href === hrefActivo}
-                          badge={inboxCount}
-                        />
+                        <CollapsibleNavEntry key={entry.label} entry={entry} pathname={pathname} />
                       )
-                    }
-                    return (
-                      <CollapsibleNavEntry key={entry.label} entry={entry} pathname={pathname} />
-                    )
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          )
-        })}
+                    })}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            )
+          })}
+        </nav>
       </SidebarContent>
     </Sidebar>
   )

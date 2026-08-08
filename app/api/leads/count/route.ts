@@ -19,7 +19,7 @@ function getAdmin() {
 /**
  * GET /api/leads/count
  * Devuelve { new: N } — cantidad de leads en status='new' visibles para el rol.
- * Usado por el badge del DashboardNav.
+ * Usado por el badge del Inbox en AppSidebar (antes: DashboardNav, ya borrado).
  */
 export async function GET() {
   try {

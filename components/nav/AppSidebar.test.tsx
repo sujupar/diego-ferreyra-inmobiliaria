@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from './AppSidebar'
 import { getNavSections } from '@/lib/nav/sections'
@@ -20,6 +20,14 @@ beforeAll(() => {
 const montar = (role: Parameters<typeof getNavSections>[0]) =>
   render(
     <SidebarProvider>
+      <AppSidebar groups={getNavSections(role)} logoUrl="/logo.png" />
+    </SidebarProvider>,
+  )
+
+/** El mismo menú pero arrancando COLAPSADO, como cuando la cookie dice "false". */
+const montarColapsado = (role: Parameters<typeof getNavSections>[0]) =>
+  render(
+    <SidebarProvider defaultOpen={false}>
       <AppSidebar groups={getNavSections(role)} logoUrl="/logo.png" />
     </SidebarProvider>,
   )
@@ -104,5 +112,65 @@ describe('AppSidebar', () => {
   it('el abogado no pide el contador: no tiene Inbox', () => {
     montar('abogado')
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('el menú es un landmark de navegación con nombre', () => {
+    montar('admin')
+    expect(screen.getByRole('navigation', { name: 'Navegación principal' })).toBeInTheDocument()
+  })
+})
+
+describe('AppSidebar colapsado (modo ícono)', () => {
+  it('los sub-ítems de un desplegable siguen siendo alcanzables: se abren en un menú flotante', async () => {
+    montarColapsado('admin')
+
+    // Colapsado NO hay submenú desplegado (la primitiva lo esconde): el
+    // disparador tiene que abrir un menú aparte, o esas rutas no existen.
+    const disparador = screen.getByRole('button', { name: /Propiedades/ })
+    expect(disparador).toHaveAttribute('aria-haspopup', 'menu')
+    expect(screen.queryByRole('link', { name: 'Listado' })).not.toBeInTheDocument()
+
+    fireEvent.keyDown(disparador, { key: 'Enter' })
+
+    const listado = await screen.findByRole('menuitem', { name: 'Listado' })
+    expect(listado).toHaveAttribute('href', '/properties')
+    expect(await screen.findByRole('menuitem', { name: 'Nueva' })).toHaveAttribute('href', '/properties/new')
+    expect(await screen.findByRole('menuitem', { name: 'Revisión legal' })).toHaveAttribute('href', '/properties/review')
+  })
+
+  it('dentro del flotante, el ítem de la pantalla actual queda marcado', async () => {
+    rutaActual = '/properties/new'
+    montarColapsado('admin')
+
+    fireEvent.keyDown(screen.getByRole('button', { name: /Propiedades/ }), { key: 'Enter' })
+
+    expect(await screen.findByRole('menuitem', { name: 'Nueva' })).toHaveAttribute('aria-current', 'page')
+    expect(await screen.findByRole('menuitem', { name: 'Listado' })).not.toHaveAttribute('aria-current')
+  })
+
+  it('el disparador avisa que la pantalla actual vive adentro de ese desplegable', () => {
+    rutaActual = '/properties/new'
+    montarColapsado('admin')
+    expect(screen.getByRole('button', { name: /Propiedades/ })).toHaveAttribute('data-active', 'true')
+  })
+
+  it('los ítems sueltos siguen funcionando igual', () => {
+    rutaActual = '/crm'
+    montarColapsado('admin')
+    expect(screen.getByRole('link', { name: /CRM/ })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('el aviso del Inbox sobrevive al colapso (el número no entra, el punto sí)', async () => {
+    montarColapsado('admin')
+    expect(await screen.findByTestId('aviso-colapsado')).toBeInTheDocument()
+    // El conteo completo sigue anunciado para lectores de pantalla.
+    expect(await screen.findByLabelText('7 sin leer')).toBeInTheDocument()
+  })
+
+  it('sin leads nuevos no hay punto', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ new: 0 }) }))
+    montarColapsado('admin')
+    await waitFor(() => expect(fetch).toHaveBeenCalled())
+    expect(screen.queryByTestId('aviso-colapsado')).not.toBeInTheDocument()
   })
 })
