@@ -100,6 +100,18 @@ function dealsPage(n: number, total: number) {
   }
 }
 
+/** Una página con UN deal cuyo `property_address` es reconocible en pantalla —
+ * para el test de carrera, que necesita distinguir "pintó el pedido viejo" de
+ * "pintó el vigente" por el TEXTO visible, no solo por la URL pedida. */
+function dealsPageLabeled(label: string) {
+  return {
+    data: [{ ...fakeDeal(0), id: label, property_address: label }],
+    total: 1,
+    stageCounts: {},
+    crmStageCounts: {},
+  }
+}
+
 describe('CRMPage — seguridad por rol', () => {
   it('un asesor con ?asesor=<otro> en la URL igual solo pide sus propios deals', async () => {
     // UUID sintácticamente válido (sobrevive a `normalizarFiltros`) pero de
@@ -195,6 +207,49 @@ describe('CRMPage — "Limpiar todo"', () => {
 
     fireEvent.click(screen.getByText('Limpiar todo'))
     expect(escrituras[escrituras.length - 1]).toBe('/crm')
+  })
+})
+
+describe('CRMPage — regla 1 del versionado (abrir() en el efecto principal)', () => {
+  it('un filtro nuevo mientras un pedido viaja: el listado viejo NO pinta, gana el vigente', async () => {
+    // Ronda de arreglos 2: análogo del test 1 de contacts/page.test.tsx
+    // ("la carrera real"), pero para el efecto PRINCIPAL de CRM. Ninguno de
+    // los 8 tests anteriores dejaba un segundo pedido a /api/deals en vuelo
+    // y miraba el LISTADO — así que cambiar `abrir()` por `actual()` en ese
+    // efecto (la generación queda clavada para siempre, `vigente(gen)` da
+    // `true` para cualquier respuesta) pasaba los 8 en verde. Este test lo
+    // ejercita: tres pedidos en ráfaga, el de en medio se resuelve DESPUÉS
+    // del último, y su contenido no puede llegar a pintarse nunca.
+    const { rerender } = render(<CRMPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+
+    // Primer pedido (origin='').
+    await waitFor(() => expect(dealsCalls.length).toBe(1))
+    dealsCalls[0].d.resolve(dealsPageLabeled('Deal Original'))
+    await screen.findByText('Deal Original')
+
+    // La URL commitea a origin=embudo (gen 2) — sin resolver todavía.
+    commitear(rerender, '/crm?origin=embudo')
+    await waitFor(() => expect(dealsCalls.length).toBe(2))
+
+    // Y antes de que responda, otro commit a origin=historico (gen 3).
+    commitear(rerender, '/crm?origin=historico')
+    await waitFor(() => expect(dealsCalls.length).toBe(3))
+
+    // Responde PRIMERO el pedido viejo (gen 2, embudo): no tiene que pintar.
+    dealsCalls[1].d.resolve(dealsPageLabeled('Deal Embudo Viejo'))
+    await act(async () => { await Promise.resolve() })
+    expect(screen.queryByText('Deal Embudo Viejo')).not.toBeInTheDocument()
+    // El spinner del listado sigue prendido: la respuesta VIGENTE (gen 3) no llegó.
+    expect(screen.getByText('Cargando procesos...')).toBeInTheDocument()
+
+    // Responde el pedido vigente (gen 3, historico).
+    dealsCalls[2].d.resolve(dealsPageLabeled('Deal Historico Vigente'))
+    await screen.findByText('Deal Historico Vigente')
+
+    // El listado del pedido viejo nunca llegó a pintarse, ni después.
+    expect(screen.queryByText('Deal Embudo Viejo')).not.toBeInTheDocument()
+    expect(screen.queryByText('Cargando procesos...')).not.toBeInTheDocument()
   })
 })
 
