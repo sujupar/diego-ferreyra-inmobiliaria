@@ -938,9 +938,17 @@ export function Topbar({ groups, children }: { groups: NavGroup[]; children?: Re
   return (
     <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b bg-background px-4">
       <SidebarTrigger className="-ml-1" />
+      {/* ⚠️ CORREGIDO DURANTE LA EJECUCIÓN (2026-08-07). Acá había un <h1>, y estaba MAL:
+          38 de las 39 pantallas YA tienen su propio <h1> adentro (tasks:168, properties:252,
+          crm:388, metrics:97, …). Con la barra enchufada, cada pantalla quedaba con DOS
+          encabezados de nivel 1, y en /properties encima decían cosas distintas ("Listado"
+          arriba, "Propiedades" abajo). Como una restricción global prohíbe cambiar las
+          pantallas por dentro, cede la barra: el título es CROMO de la aplicación, no el
+          encabezado del documento. Va en un <div>, con el mismo aspecto.
+          Hay un test que lo fija: el Topbar no debe aportar ningún rol `heading`. */}
       <div className="min-w-0">
-        {section && <div className="eyebrow truncate">{section}</div>}
-        <h1 className="truncate text-sm font-semibold leading-tight">{title}</h1>
+        {section && <div className="eyebrow truncate" title={section}>{section}</div>}
+        <div className="truncate text-sm font-semibold leading-tight" title={title}>{title}</div>
       </div>
       <div className="ml-auto flex items-center gap-2">{children}</div>
     </header>
