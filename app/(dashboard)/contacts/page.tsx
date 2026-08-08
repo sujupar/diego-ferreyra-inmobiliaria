@@ -160,8 +160,26 @@ function ContactsClient() {
   // contactos de "Embudo" bajo el rótulo "Referido", para siempre.
   const pedidos = usePedidosVersionados()
 
+  // A4 (revisión final Fase 2) — mismo blindaje que Propiedades. `/api/auth/me`
+  // devuelve JSON TAMBIÉN en 401/404/500 (`{error:'...'}`), así que un
+  // `.then(r => r.json()).then(setUserInfo)` pelado dejaba `userInfo` TRUTHY con
+  // `role`/`id` undefined: el gate `if (!userInfo) return` pasaba igual y el
+  // pedido salía SIN `assigned_to` → un asesor veía el listado completo. Sin
+  // identidad no se pide nada (fail-closed).
   useEffect(() => {
-    fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
+    fetch('/api/auth/me')
+      .then(r => {
+        if (!r.ok) throw new Error(`GET /api/auth/me respondió ${r.status}`)
+        return r.json()
+      })
+      .then((perfil: { id?: unknown; role?: unknown } | null) => {
+        // Un 200 sin `id` tampoco es una identidad.
+        if (!perfil || typeof perfil.id !== 'string' || !perfil.id) {
+          throw new Error('GET /api/auth/me no devolvió un id')
+        }
+        setUserInfo({ id: perfil.id, role: typeof perfil.role === 'string' ? perfil.role : '' })
+      })
+      .catch(err => { console.error(err) })
   }, [])
 
   async function handleBulkDelete() {

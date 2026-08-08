@@ -41,6 +41,8 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve }
 }
 
+/** A4: permite simular un 401/404 de /api/auth/me (que igual devuelve JSON). */
+let authOk = true
 let authDeferred: Deferred<{ id: string; role: string }>
 let appraisalsCalls: { url: string; d: Deferred<{ data: unknown[]; count: number }> }[]
 
@@ -48,11 +50,12 @@ beforeEach(() => {
   busqueda = ''
   escrituras.length = 0
   push.mockClear()
+  authOk = true
   authDeferred = deferred()
   appraisalsCalls = []
   vi.stubGlobal('fetch', vi.fn((url: string) => {
     if (url.startsWith('/api/auth/me')) {
-      return authDeferred.promise.then(data => ({ ok: true, json: async () => data }))
+      return authDeferred.promise.then(data => ({ ok: authOk, json: async () => data }))
     }
     if (url.startsWith('/api/appraisals')) {
       const d = deferred<{ data: unknown[]; count: number }>()
@@ -191,6 +194,56 @@ describe('AppraisalsPage — efecto de datos con filtros en la URL', () => {
   })
 })
 
+describe('AppraisalsPage — la selección no sobrevive al cambio de listado', () => {
+  // A1 de la revisión final de la Fase 2. La barra de acciones masivas de esta
+  // pantalla ofrece "Eliminar DEFINITIVAMENTE": una fila tildada que sobrevive
+  // a un cambio de filtro (o de página) es un `DELETE` sobre algo que el
+  // usuario ya no ve en pantalla.
+  it('tildar una fila y cambiar el filtro deja la selección vacía', async () => {
+    const { rerender } = render(<AppraisalsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+
+    await waitFor(() => expect(appraisalsCalls.length).toBe(1))
+    appraisalsCalls[0].d.resolve({ data: [tasacion('a', 'Tasación Tildada')], count: 1 })
+    await screen.findByText('Tasación Tildada')
+
+    fireEvent.click(screen.getByLabelText('Seleccionar fila'))
+    expect(screen.getByText('1 tasaciones seleccionado')).toBeInTheDocument()
+
+    // Cambia el rango de fechas: llega OTRO listado, que puede no contener la
+    // fila tildada.
+    commitear(rerender, '/appraisals?from=2026-08-05')
+    await waitFor(() => expect(appraisalsCalls.length).toBe(2))
+
+    // La barra tiene que haber desaparecido ya — sin esperar a que responda el
+    // pedido nuevo: mientras tanto la fila ni siquiera está en pantalla.
+    expect(screen.queryByText(/seleccionado/)).not.toBeInTheDocument()
+
+    appraisalsCalls[1].d.resolve({ data: [tasacion('b', 'Otra Tasación')], count: 1 })
+    await screen.findByText('Otra Tasación')
+    expect(screen.queryByText(/seleccionado/)).not.toBeInTheDocument()
+  })
+
+  it('tildar una fila y pasar a la página 2 deja la selección vacía', async () => {
+    render(<AppraisalsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+
+    await waitFor(() => expect(appraisalsCalls.length).toBe(1))
+    appraisalsCalls[0].d.resolve({ data: [tasacion('a', 'Página 1')], count: 25 })
+    await screen.findByText('Página 1')
+
+    fireEvent.click(screen.getByLabelText('Seleccionar fila'))
+    expect(screen.getByText('1 tasaciones seleccionado')).toBeInTheDocument()
+
+    const paginacion = screen.getByText(/Pagina \d+ de \d+/).closest('div') as HTMLElement
+    const siguiente = within(paginacion).getAllByRole('button')[1]
+    fireEvent.click(siguiente)
+
+    await waitFor(() => expect(appraisalsCalls.length).toBe(2))
+    expect(screen.queryByText(/seleccionado/)).not.toBeInTheDocument()
+  })
+})
+
 describe('AppraisalsPage — acciones de fila no navegan la fila', () => {
   it('clickear "Editar" en una fila NO dispara también la navegación de la fila', async () => {
     const { container } = render(<AppraisalsPage />)
@@ -205,5 +258,34 @@ describe('AppraisalsPage — acciones de fila no navegan la fila', () => {
     // Si la celda de acciones no frenara la propagación, este click también
     // dispararía el `onRowClick` de la fila (`router.push('/appraisals/a')`).
     expect(push).not.toHaveBeenCalled()
+  })
+})
+
+describe('AppraisalsPage — identidad fail-closed (A4)', () => {
+  it('un 401 de /api/auth/me (que igual devuelve JSON) NO deja salir el pedido sin assigned_to', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      authOk = false
+      render(<AppraisalsPage />)
+      authDeferred.resolve({ error: 'No autenticado' } as never)
+      await act(async () => { await Promise.resolve() })
+      await act(async () => { await Promise.resolve() })
+      expect(appraisalsCalls.length).toBe(0)
+    } finally {
+      errores.mockRestore()
+    }
+  })
+
+  it('un 200 sin id tampoco es una identidad', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      render(<AppraisalsPage />)
+      authDeferred.resolve({ role: 'asesor' } as never)
+      await act(async () => { await Promise.resolve() })
+      await act(async () => { await Promise.resolve() })
+      expect(appraisalsCalls.length).toBe(0)
+    } finally {
+      errores.mockRestore()
+    }
   })
 })

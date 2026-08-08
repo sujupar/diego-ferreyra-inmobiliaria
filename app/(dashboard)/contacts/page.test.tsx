@@ -60,17 +60,20 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve }
 }
 
+/** A4: permite simular un 401/404 de /api/auth/me (que igual devuelve JSON). */
+let authOk = true
 let authDeferred: Deferred<{ id: string; role: string }>
 let contactsCalls: { url: string; d: Deferred<{ data: unknown[] }> }[]
 
 beforeEach(() => {
   busqueda = ''
   escrituras.length = 0
+  authOk = true
   authDeferred = deferred()
   contactsCalls = []
   vi.stubGlobal('fetch', vi.fn((url: string) => {
     if (url.startsWith('/api/auth/me')) {
-      return authDeferred.promise.then(data => ({ ok: true, json: async () => data }))
+      return authDeferred.promise.then(data => ({ ok: authOk, json: async () => data }))
     }
     if (url.startsWith('/api/contacts')) {
       const d = deferred<{ data: unknown[] }>()
@@ -163,5 +166,38 @@ describe('ContactsPage — efecto de datos con filtros en la URL', () => {
 
     fireEvent.change(screen.getByLabelText('Origen'), { target: { value: 'embudo' } })
     expect(escrituras[escrituras.length - 1]).toContain('origin=embudo')
+  })
+})
+
+describe('ContactsPage — identidad fail-closed (A4)', () => {
+  it('un 401 de /api/auth/me (que igual devuelve JSON) NO deja salir el pedido sin assigned_to', async () => {
+    // `/api/auth/me` responde JSON también en 401/404/500. Sin chequear `r.ok`,
+    // `userInfo` quedaba truthy con `role` undefined → el gate `if (!userInfo)`
+    // pasaba y el listado salía SIN `assigned_to`: un asesor veía los contactos
+    // de todos.
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      authOk = false
+      render(<ContactsPage />)
+      authDeferred.resolve({ error: 'No autenticado' } as never)
+      await act(async () => { await Promise.resolve() })
+      await act(async () => { await Promise.resolve() })
+      expect(contactsCalls.length).toBe(0)
+    } finally {
+      errores.mockRestore()
+    }
+  })
+
+  it('un 200 sin id tampoco es una identidad', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      render(<ContactsPage />)
+      authDeferred.resolve({ role: 'asesor' } as never)
+      await act(async () => { await Promise.resolve() })
+      await act(async () => { await Promise.resolve() })
+      expect(contactsCalls.length).toBe(0)
+    } finally {
+      errores.mockRestore()
+    }
   })
 })

@@ -37,17 +37,20 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve }
 }
 
+/** A4: permite simular un 401/404 de /api/auth/me (que igual devuelve JSON). */
+let authOk = true
 let authDeferred: Deferred<{ id: string; role: string }>
 let dealsCalls: { url: string; d: Deferred<Record<string, unknown>> }[]
 
 beforeEach(() => {
   busqueda = ''
   escrituras.length = 0
+  authOk = true
   authDeferred = deferred()
   dealsCalls = []
   vi.stubGlobal('fetch', vi.fn((url: string) => {
     if (url.startsWith('/api/auth/me')) {
-      return authDeferred.promise.then(data => ({ ok: true, json: async () => data }))
+      return authDeferred.promise.then(data => ({ ok: authOk, json: async () => data }))
     }
     if (url.startsWith('/api/users/advisors')) {
       return Promise.resolve({
@@ -282,5 +285,37 @@ describe('CRMPage — regla 3 del versionado ("Cargar más")', () => {
     // "Cargando…"/deshabilitado para siempre — este find falla (rojo).
     const boton = await screen.findByRole('button', { name: /Cargar más/ })
     expect(boton).not.toBeDisabled()
+  })
+})
+
+describe('CRMPage — identidad fail-closed (A4)', () => {
+  it('un 401 de /api/auth/me (que igual devuelve JSON) NO deja salir el pedido sin assigned_to', async () => {
+    // Acá el `userInfo` truthy con `role` undefined caía justo en el `else` de
+    // `buildParams` — el if/else que es lo único que impide que un asesor vea
+    // deals ajenos.
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      authOk = false
+      render(<CRMPage />)
+      authDeferred.resolve({ error: 'No autenticado' } as never)
+      await act(async () => { await Promise.resolve() })
+      await act(async () => { await Promise.resolve() })
+      expect(dealsCalls.length).toBe(0)
+    } finally {
+      errores.mockRestore()
+    }
+  })
+
+  it('un 200 sin id tampoco es una identidad', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      render(<CRMPage />)
+      authDeferred.resolve({ role: 'asesor' } as never)
+      await act(async () => { await Promise.resolve() })
+      await act(async () => { await Promise.resolve() })
+      expect(dealsCalls.length).toBe(0)
+    } finally {
+      errores.mockRestore()
+    }
   })
 })

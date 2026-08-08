@@ -165,8 +165,25 @@ function CRMClient() {
   // es `false` hasta que se resuelve — ver M4/M3 más abajo.
   const esAsesor = userInfo?.role === 'asesor'
 
+  // A4 (revisión final Fase 2) — mismo blindaje que Propiedades. `/api/auth/me`
+  // devuelve JSON TAMBIÉN en 401/404/500 (`{error:'...'}`): sin chequear `r.ok`,
+  // `userInfo` quedaba TRUTHY con `role` undefined, y acá eso cae justo en el
+  // `else` de `buildParams` — el if/else que es lo único que impide que un
+  // asesor vea deals ajenos. Sin identidad no se pide nada (fail-closed).
   useEffect(() => {
-    fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
+    fetch('/api/auth/me')
+      .then(r => {
+        if (!r.ok) throw new Error(`GET /api/auth/me respondió ${r.status}`)
+        return r.json()
+      })
+      .then((perfil: { id?: unknown; role?: unknown } | null) => {
+        // Un 200 sin `id` tampoco es una identidad.
+        if (!perfil || typeof perfil.id !== 'string' || !perfil.id) {
+          throw new Error('GET /api/auth/me no devolvió un id')
+        }
+        setUserInfo({ id: perfil.id, role: typeof perfil.role === 'string' ? perfil.role : '' })
+      })
+      .catch(err => { console.error(err) })
     fetch('/api/users/advisors').then(r => r.ok ? r.json() : { data: [] }).then(j => setAdvisors(j.data || [])).catch(() => {})
   }, [])
 

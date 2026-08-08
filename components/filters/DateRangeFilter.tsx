@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -80,22 +80,45 @@ export function DateRangeFilter({ onChange, value }: DateRangeFilterProps) {
     }
   }, [value?.from, value?.to, derivedState.activePreset])
 
+  // A2, segunda mitad: "Limpiar todo" (y cualquier otro cambio de rango que NO
+  // pase por los botones de acá — un deep link, el historial del navegador)
+  // llega solo como un `value` nuevo desde afuera. Sin esto, el panel custom
+  // quedaba abierto con un borrador que ya no aplica a nada.
+  //
+  // El guard por REF es lo que hace que esto no sea una jaula: el efecto actúa
+  // únicamente cuando `value` CAMBIÓ. Cerrar el panel en cada render con
+  // `activePreset !== 'custom'` haría imposible abrirlo (al abrirlo el rango
+  // vigente todavía es el preset anterior, y se cerraría en el acto).
+  const valorPrevioRef = useRef(value)
+  useEffect(() => {
+    const previo = valorPrevioRef.current
+    valorPrevioRef.current = value
+    if (!value || !previo) return
+    if (previo.from === value.from && previo.to === value.to) return
+    // El rango cambió desde afuera: si el nuevo no es un rango custom, el panel
+    // no tiene nada que editar.
+    if (derivedState.activePreset !== 'custom') setShowCustom(false)
+  }, [value?.from, value?.to, derivedState.activePreset])
+
+  // Ronda final de la Fase 2 — A2: cerrar el panel custom NO es "estado local
+  // del modo no controlado". Es la respuesta visual a "ya no estás en custom", y
+  // vale en los dos modos. Cuando esto se escribió ninguna pantalla pasaba
+  // `value`; hoy las CINCO lo pasan, así que el `setShowCustom(false)` que vivía
+  // adentro del `if (!value)` no corría nunca en la app real: elegir un preset
+  // dejaba DOS botones con aria-pressed=true (el preset y "Custom") y los inputs
+  // de fecha en pantalla con el borrador viejo adentro.
   function handlePreset(label: string, days: number) {
     const range = getPresetRange(days)
-    // Si es no controlado, actualizar el estado local
-    if (!value) {
-      setActive(label)
-      setShowCustom(false)
-    }
+    // El preset activo sí es estado local solo del modo no controlado: con
+    // `value`, lo deriva `derivedState`.
+    if (!value) setActive(label)
+    setShowCustom(false)
     onChange(range)
   }
 
   function handleAll() {
-    // Si es no controlado, actualizar el estado local
-    if (!value) {
-      setActive('')
-      setShowCustom(false)
-    }
+    if (!value) setActive('')
+    setShowCustom(false)
     onChange({ from: '', to: '' })
   }
 

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import VisitsPage from './page'
@@ -179,5 +179,38 @@ describe('VisitsPage — "Limpiar todo"', () => {
 
     fireEvent.click(screen.getByText('Limpiar todo'))
     expect(escrituras[escrituras.length - 1]).toBe('/visits')
+  })
+})
+
+describe('VisitsPage — el rango de fechas se interpreta en hora LOCAL (A5)', () => {
+  // Se fija la zona horaria del proceso para que el test valga igual en
+  // cualquier máquina (y en CI): con TZ=UTC el bug es invisible, porque la
+  // medianoche local y la UTC coinciden.
+  const tzOriginal = process.env.TZ
+
+  beforeEach(() => { process.env.TZ = 'America/Argentina/Buenos_Aires' })
+  afterEach(() => { process.env.TZ = tzOriginal })
+
+  it('un rango de UN solo día no incluye nada del día anterior', async () => {
+    busqueda = 'from=2026-08-05&to=2026-08-05'
+    render(<VisitsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(visitsCalls.length).toBe(2))
+
+    const params = new URLSearchParams(visitsCalls[1].url.split('?')[1])
+    const desde = new Date(params.get('from') as string)
+    const hasta = new Date(params.get('to') as string)
+
+    // El "desde" es la medianoche LOCAL del 5, no las 21:00 del 4.
+    expect(desde.getFullYear()).toBe(2026)
+    expect(desde.getMonth()).toBe(7) // agosto
+    expect(desde.getDate()).toBe(5)
+    expect(desde.getHours()).toBe(0)
+    expect(desde.getMinutes()).toBe(0)
+
+    // Y el "hasta" sigue cerrando al final del MISMO día local (no cambió).
+    expect(hasta.getDate()).toBe(5)
+    expect(hasta.getHours()).toBe(23)
+    expect(hasta.getMinutes()).toBe(59)
   })
 })

@@ -139,9 +139,26 @@ function AppraisalsClient() {
     // siempre.
     const pedidos = usePedidosVersionados()
 
-    // Get current user info for role-based filtering
+    // Identidad para el filtrado por rol. A4 (revisión final Fase 2): mismo
+    // blindaje que Propiedades. `/api/auth/me` devuelve JSON TAMBIÉN en
+    // 401/404/500 (`{error:'...'}`), así que sin chequear `r.ok` quedaba un
+    // `userInfo` TRUTHY con `role` undefined: el gate `if (!userInfo) return`
+    // pasaba y el pedido salía SIN `assigned_to` → un asesor veía las tasaciones
+    // de todos. Sin identidad no se pide nada (fail-closed).
     useEffect(() => {
-        fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
+        fetch('/api/auth/me')
+            .then(r => {
+                if (!r.ok) throw new Error(`GET /api/auth/me respondió ${r.status}`)
+                return r.json()
+            })
+            .then((perfil: { id?: unknown; role?: unknown } | null) => {
+                // Un 200 sin `id` tampoco es una identidad.
+                if (!perfil || typeof perfil.id !== 'string' || !perfil.id) {
+                    throw new Error('GET /api/auth/me no devolvió un id')
+                }
+                setUserInfo({ id: perfil.id, role: typeof perfil.role === 'string' ? perfil.role : '' })
+            })
+            .catch(err => { console.error(err) })
     }, [])
 
     // `filtros` (de/a) vistos en la última corrida del efecto de datos — para
@@ -208,6 +225,15 @@ function AppraisalsClient() {
             // respuesta vieja, la pantalla mostraría el listado anterior como
             // si fuera el resultado del filtro nuevo.
             .finally(() => pedidos.siVigente(gen, () => setLoading(false)))
+        // La selección se limpia con CADA listado nuevo (filtro o página), igual
+        // que en Propiedades/Contactos/CRM. Acá no es cosmético: la única acción
+        // masiva de esta pantalla es "Eliminar DEFINITIVAMENTE". Sin esta línea,
+        // una fila tildada sobrevive al cambio de filtro (y al paso de página) y
+        // el `DELETE` viaja sobre ids que ya no están en pantalla — se borra lo
+        // que no se ve. Va DESPUÉS del pedido, no antes de los `return`
+        // tempranos: el reset de página vuelve a correr este mismo efecto ya en
+        // la página 1, y sin identidad todavía no hay nada seleccionable.
+        setSelectedIds(new Set())
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filtros, userInfo, page])
 

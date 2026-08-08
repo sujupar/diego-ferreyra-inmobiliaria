@@ -162,7 +162,14 @@ function VisitsClient() {
     const params = new URLSearchParams()
     if (filtros.status) params.set('status', filtros.status)
     if (filtros.advisorId) params.set('advisor_id', filtros.advisorId)
-    if (filtros.from) params.set('from', new Date(filtros.from).toISOString())
+    // A5 (revisión final Fase 2): las DOS puntas se interpretan en hora LOCAL.
+    // `new Date('2026-08-05')` (fecha sola) es medianoche UTC por spec, mientras
+    // que `new Date('2026-08-05T23:59:59')` (con hora) es local: el "hasta"
+    // cerraba bien y el "desde" se corría al día anterior — en UTC-3, un rango
+    // de un solo día arrancaba a las 21:00 del día previo y traía visitas de una
+    // fecha que nadie pidió. Es el mismo bug que la tarea 8 arregló adentro de
+    // `DateRangeFilter.toISO`; de este lado había quedado.
+    if (filtros.from) params.set('from', new Date(filtros.from + 'T00:00:00').toISOString())
     if (filtros.to) params.set('to', new Date(filtros.to + 'T23:59:59').toISOString())
     if (filtros.onlyMine === 'true' && user?.id) params.set('advisor_id', user.id)
 
