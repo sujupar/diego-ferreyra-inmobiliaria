@@ -56,10 +56,27 @@ function montarTexto(inicial = '') {
   return renderHook(() => useFiltrosUrl({ defectos: DEFECTOS_TEXTO, normalizar: normalizarTexto }))
 }
 
-type Vista = ReturnType<typeof montar>
+// Tercera pantalla de mentira: una `normalizar` que ROMPE el contrato de
+// idempotencia (recorta un carácter en cada pasada). Nadie verifica ese
+// contrato y las cuatro pantallas van a traer la suya, así que importa saber
+// cómo degrada.
+const normalizarNoIdempotente = (f: typeof DEFECTOS_TEXTO) => ({ ...f, q: f.q.slice(0, -1) })
 
-/** Simula que Next terminó de commitear una URL. */
-function commitear(vista: Vista, href: string) {
+function montarRoto(inicial = '') {
+  busqueda = inicial
+  escrituras.length = 0
+  return renderHook(() => useFiltrosUrl({ defectos: DEFECTOS_TEXTO, normalizar: normalizarNoIdempotente }))
+}
+
+/**
+ * Simula que Next terminó de commitear una URL.
+ *
+ * Toma cualquier vista con `rerender` a propósito: acá conviven tres pantallas
+ * de mentira con formas de filtro distintas (`montar`, `montarTexto`,
+ * `montarRoto`), y esta función solo necesita re-renderizar — atarla a la forma
+ * de una sola dejaba a las otras dos afuera.
+ */
+function commitear(vista: { rerender: () => void }, href: string) {
   const i = href.indexOf('?')
   busqueda = i === -1 ? '' : href.slice(i + 1)
   act(() => { vista.rerender() })
@@ -250,6 +267,19 @@ describe('useFiltrosUrl — navegación ajena a mitad de ráfaga (H-A)', () => {
     expect(vista.result.current.filtros).toMatchObject({ mios: '1', status: 'approved' })
   })
 
+  it('tras Atrás, un commit que pertenecía a la ráfaga VIEJA no retiene (H-D)', () => {
+    // El otro camino que vacía la ráfaga: `popstate` suelta el espejo y el
+    // efecto del ciclo de vida limpia. Sin esa limpieza, el commit de abajo
+    // —que pertenece a la ráfaga de ANTES del Atrás— retendría un espejo de la
+    // ráfaga nueva, y la lista quedaría girando.
+    const vista = montar('status=active')
+    act(() => { vista.result.current.aplicar({ mios: '1' }) })
+    act(() => { window.dispatchEvent(new Event('popstate')) })
+    act(() => { vista.result.current.aplicar({ status: 'approved' }) })
+    commitear(vista, '/properties?mios=1&status=active')
+    expect(vista.result.current.escribiendo).toBe(false)
+  })
+
   it('la ráfaga no sobrevive a su propia ronda (H-D)', () => {
     const vista = montar('')
     act(() => { vista.result.current.aplicar({ mios: '1' }) })
@@ -265,6 +295,27 @@ describe('useFiltrosUrl — navegación ajena a mitad de ráfaga (H-A)', () => {
     commitear(vista, '/properties')
     expect(vista.result.current.escribiendo).toBe(false)
     expect(vista.result.current.filtros).toEqual(DEFECTOS)
+  })
+})
+
+describe('useFiltrosUrl — la ráfaga compara valores Y querystring', () => {
+  it('con una `normalizar` que rompe el contrato, el espejo se suelta igual', () => {
+    // Por qué las DOS mitades: bajo el contrato (`normalizar` idempotente) el
+    // querystring ya determina los valores y comparar valores es redundante.
+    // Pero el contrato no lo verifica nadie. Acá la URL que llega es
+    // EXACTAMENTE la que escribimos y aun así releerla da otra cosa ('cas' en
+    // vez de 'casa'). Comparando solo el querystring, ese commit pertenece a la
+    // ráfaga y el espejo queda pegado para siempre: la lista girando con la URL
+    // ya en su lugar, o sea H-A otra vez.
+    const vista = montarRoto('')
+    act(() => { vista.result.current.aplicar({ q: 'casaa' }) })
+    expect(ultimaEscritura()).toBe('/properties?q=casa')
+
+    commitear(vista, ultimaEscritura())
+
+    // Degrada en "se suelta antes" (un parpadeo), no en "no carga nunca más".
+    expect(vista.result.current.escribiendo).toBe(false)
+    expect(vista.result.current.filtros.q).toBe('cas')
   })
 })
 

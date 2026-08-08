@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 /**
  * Gana el último PEDIDO, no la última respuesta.
@@ -73,6 +73,15 @@ export interface ControlDePedidos {
   vigente(gen: number): boolean
   /** Corre `fn` solo si `gen` sigue vigente. Para los `finally` del listado. */
   siVigente(gen: number, fn: () => void): void
+  /**
+   * Cancela lo que esté en vuelo y deja SIN VIGENCIA todo lo pedido hasta acá.
+   * El hook lo llama al desmontar: irse de la pantalla con un listado en vuelo
+   * dejaba el pedido viajando igual. No es corrupción —en React 19 el `setState`
+   * sobre un componente desmontado es un no-op silencioso— pero es ancho de
+   * banda tirado, y contradice de frente lo que esta pieza promete.
+   * No se usa desde la pantalla: es el cierre del ciclo de vida.
+   */
+  cancelar(): void
 }
 
 /**
@@ -106,6 +115,15 @@ export function crearControlDePedidos(): ControlDePedidos {
     siVigente(gen, fn) {
       if (gen === generacion) fn()
     },
+    cancelar() {
+      abortador?.abort()
+      // Se suelta el abortador ya disparado: si quedara, el próximo `actual()`
+      // devolvería una señal ABORTADA y ese fetch moriría antes de salir.
+      abortador = null
+      // Y se invalida lo pedido: una respuesta que llegue después de cancelar
+      // no puede considerarse vigente ni pintar nada.
+      generacion += 1
+    },
   }
 }
 
@@ -120,5 +138,14 @@ export function usePedidosVersionados(): ControlDePedidos {
   // prohíbe `react-hooks/refs`). El estado nunca se actualiza — es solo el
   // lugar donde vive la instancia.
   const [control] = useState(crearControlDePedidos)
+
+  // Irse de la pantalla cancela lo que quedó viajando. `control` es estable, así
+  // que esto corre una sola vez por montaje.
+  // OJO con el doble montaje de desarrollo (StrictMode): la limpieza corre entre
+  // las dos pasadas y cancela el primer pedido. No cambia nada respecto de antes
+  // — la segunda corrida del efecto de datos ya abría listado nuevo y abortaba
+  // el primero igual.
+  useEffect(() => () => control.cancelar(), [control])
+
   return control
 }

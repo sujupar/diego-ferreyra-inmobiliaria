@@ -120,14 +120,25 @@ export function busquedaCanonica(search: string): string {
 }
 
 /**
- * Un paso de la ráfaga. Van los DOS datos a propósito:
- * - `valores`: los filtros propios, para no depender del orden ni de la
- *   codificación de la cadena;
- * - `busqueda`: el querystring COMPLETO y canónico, que es lo único que
- *   distingue "la URL que escribimos" de "esa misma URL más un `?id=abc` que
- *   puso otro componente". Sin él, una navegación ajena que no toca ningún
- *   filtro parece un commit nuestro: el espejo se retiene esperando algo que
- *   nunca va a llegar y la lista gira para siempre con los datos en la mano.
+ * Un paso de la ráfaga. Van los DOS datos a propósito, y cada mitad tapa un
+ * agujero distinto:
+ *
+ * - `busqueda`: el querystring COMPLETO y canónico. Es lo único que distingue
+ *   "la URL que escribimos" de "esa misma URL más un `?id=abc` que puso otro
+ *   componente". Sin él, una navegación ajena que no toca ningún filtro parece
+ *   un commit nuestro: el espejo se retiene esperando algo que nunca va a
+ *   llegar y la lista gira para siempre con los datos en la mano.
+ *
+ * - `valores`: los filtros ya validados. Bajo el contrato del hook —`normalizar`
+ *   pura e IDEMPOTENTE— esta mitad es redundante: el querystring determina los
+ *   valores. Pero **ese contrato no lo verifica nadie**, y las cuatro pantallas
+ *   van a traer su propia `normalizar`. Si una no es idempotente, releer la URL
+ *   que acabamos de escribir devuelve algo distinto de lo que muestra el espejo;
+ *   comparando solo el querystring, ese commit "pertenece" a la ráfaga y el
+ *   espejo queda pegado para siempre con la URL ya en su lugar — H-A otra vez,
+ *   por otra puerta. Con esta mitad, una `normalizar` mal escrita degrada en "el
+ *   espejo se suelta un poco antes" (un parpadeo) en lugar de "la lista no carga
+ *   nunca más". Está fijado por test: no es redundancia decorativa.
  */
 interface PasoRafaga<T> {
   valores: T
@@ -218,6 +229,14 @@ export function useFiltrosUrl<T extends Record<string, string>>({
   // Es también el ÚNICO lugar que vacía la ráfaga: dejarla llena de una ronda
   // ya cerrada hace que un commit externo posterior "pertenezca" a una ráfaga
   // que terminó hace rato, con el mismo espejo pegado de arriba.
+  //
+  // INVARIANTE que sostiene todo esto — `rafaga.length > 0 ⟹ espejo !== null`:
+  // todo push a la ráfaga (en `aplicar`) va acompañado de un `setEspejo(validados)`
+  // no nulo, y el único punto que la vacía (este efecto) anula el espejo en la
+  // misma pasada. De ahí se sigue que `popstate`, que solo anula el espejo,
+  // alcanza para que este efecto corra y limpie. Si alguna vez se empuja a la
+  // ráfaga sin poner espejo, ese camino deja de limpiarse y NINGÚN test avisa:
+  // los tests entran por `aplicar`, que respeta el invariante por construcción.
   //
   // La URL que acaba de llegar RETIENE el espejo cuando es un commit intermedio
   // de la ráfaga (o la URL vieja que todavía no se movió): si se soltara ahí,

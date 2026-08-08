@@ -100,7 +100,43 @@ describe('crearControlDePedidos — siVigente (regla 2)', () => {
   })
 })
 
+describe('crearControlDePedidos — cancelar', () => {
+  it('aborta lo que está en vuelo y le quita vigencia', () => {
+    const p = crearControlDePedidos()
+    const enVuelo = p.abrir()
+    p.cancelar()
+    expect(enVuelo.signal.aborted).toBe(true)
+    expect(p.vigente(enVuelo.gen)).toBe(false)
+  })
+
+  it('después de cancelar, el pedido siguiente sale con una señal viva', () => {
+    // Si el abortador ya disparado quedara puesto, el próximo fetch moriría
+    // antes de salir.
+    const p = crearControlDePedidos()
+    p.abrir()
+    p.cancelar()
+    expect(p.abrir().signal.aborted).toBe(false)
+    expect(p.actual().signal.aborted).toBe(false)
+  })
+})
+
 describe('usePedidosVersionados', () => {
+  it('cancela el listado en vuelo al desmontar la pantalla', () => {
+    // Irse de la pantalla dejaba el pedido viajando: el `setState` sobre un
+    // componente desmontado es un no-op silencioso en React 19, así que no se
+    // rompía nada visible — solo se tiraba el ancho de banda, en contra de lo
+    // que esta pieza promete.
+    const { result, unmount } = renderHook(() => usePedidosVersionados())
+    const control = result.current
+    const enVuelo = control.abrir()
+    expect(enVuelo.signal.aborted).toBe(false)
+
+    unmount()
+
+    expect(enVuelo.signal.aborted).toBe(true)
+    expect(control.vigente(enVuelo.gen)).toBe(false)
+  })
+
   it('devuelve la MISMA instancia entre renders', () => {
     // Si cambiara de identidad, la generación volvería a cero en cada render y
     // el versionado dejaría de descartar nada.
