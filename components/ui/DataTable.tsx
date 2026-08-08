@@ -125,10 +125,10 @@ export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessag
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border">
+    <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
       <table className="w-full text-sm">
         <thead>
-          <tr className="bg-muted/50">
+          <tr className="bg-card border-b sticky top-0 z-10">
             {selectable && (
               <th className="w-10 px-3 py-3">
                 <HeaderCheckbox
@@ -142,7 +142,7 @@ export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessag
               <th
                 key={col.key}
                 onClick={col.sortable ? () => handleSort(col.key) : undefined}
-                className={`px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap ${col.sortable ? 'cursor-pointer hover:text-foreground select-none' : ''} ${col.className || ''}`}
+                className={`px-4 py-3 text-left eyebrow whitespace-nowrap ${col.sortable ? 'cursor-pointer hover:text-foreground select-none' : ''} ${col.className || ''}`}
               >
                 <div className="flex items-center gap-1">
                   {col.label}
@@ -162,7 +162,7 @@ export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessag
               <tr
                 key={key}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
-                className={`border-t ${onRowClick ? 'cursor-pointer hover:bg-muted/50 transition-colors' : ''} ${isSelected ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''}`}
+                className={`border-t ${onRowClick ? 'cursor-pointer hover:bg-secondary/60 transition-colors' : ''} ${isSelected ? 'bg-[color:var(--brand-soft)]' : ''}`}
               >
                 {selectable && (
                   <td className="w-10 px-3 py-3" onClick={e => e.stopPropagation()}>
@@ -176,7 +176,7 @@ export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessag
                   </td>
                 )}
                 {columns.map(col => (
-                  <td key={col.key} className={`px-4 py-3 whitespace-nowrap ${col.className || ''}`}>
+                  <td key={col.key} className={`px-4 py-3 whitespace-nowrap ${col.className || ''} ${col.className?.includes('text-right') ? 'tabular-n' : ''}`}>
                     {col.render(row)}
                   </td>
                 ))}
