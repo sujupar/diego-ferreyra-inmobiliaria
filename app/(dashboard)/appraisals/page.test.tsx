@@ -153,6 +153,42 @@ describe('AppraisalsPage — efecto de datos con filtros en la URL', () => {
     await act(async () => { await Promise.resolve() })
     expect(appraisalsCalls.length).toBe(4)
   })
+
+  it('un parámetro ajeno en la URL (?tab=), con la página en 3 y el MISMO rango de fechas, no resetea la página', async () => {
+    // Ronda de arreglos 1: el reset de página comparaba `filtros` por
+    // IDENTIDAD (`!==`). `aplicados` cambia de identidad ante CUALQUIER
+    // parámetro de la URL —propio o ajeno— porque sale de un `useMemo` que
+    // depende del querystring COMPLETO, no solo de `from`/`to`. Este test
+    // reproduce el caso: llega `?tab=info`, un parámetro que esta pantalla ni
+    // siquiera declara como propio, y como `from`/`to` no cambiaron, la
+    // página 3 tiene que seguir siendo la 3.
+    const { rerender } = render(<AppraisalsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+
+    await waitFor(() => expect(appraisalsCalls.length).toBe(1))
+    appraisalsCalls[0].d.resolve({ data: [tasacion('a', 'Página 1')], count: 25 })
+    await screen.findByText('Página 1')
+
+    const paginacion = screen.getByText(/Pagina \d+ de \d+/).closest('div') as HTMLElement
+    const siguiente = within(paginacion).getAllByRole('button')[1]
+
+    fireEvent.click(siguiente)
+    await waitFor(() => expect(appraisalsCalls.length).toBe(2))
+    fireEvent.click(siguiente)
+    await waitFor(() => expect(appraisalsCalls.length).toBe(3))
+    expect(appraisalsCalls[2].url).toContain('page=3')
+
+    // Un parámetro ajeno se commitea (un deep link, otro componente) — NO es
+    // un filtro de esta pantalla, `from`/`to` siguen en ''.
+    commitear(rerender, '/appraisals?tab=info')
+
+    // Con la URL cambiando, el efecto vuelve a correr, pero como NINGÚN
+    // filtro cambió de valor, no hay reset: el pedido nuevo pide la MISMA
+    // página (3), no la 1.
+    await waitFor(() => expect(appraisalsCalls.length).toBe(4))
+    expect(appraisalsCalls[3].url).toContain('page=3')
+    expect(appraisalsCalls[3].url).not.toContain('page=1')
+  })
 })
 
 describe('AppraisalsPage — acciones de fila no navegan la fila', () => {

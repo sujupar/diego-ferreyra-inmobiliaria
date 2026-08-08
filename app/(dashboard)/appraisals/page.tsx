@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { FilterBar } from '@/components/filters/FilterBar'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
-import { useFiltrosUrl } from '@/lib/filters/use-filtros-url'
+import { useFiltrosUrl, mismosFiltros } from '@/lib/filters/use-filtros-url'
 import { usePedidosVersionados } from '@/lib/filters/use-pedidos-versionados'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { BulkActionsBar } from '@/components/ui/BulkActionsBar'
@@ -37,6 +37,11 @@ function formatDate(d: string) {
 // Propiedades/Contactos/CRM/Visitas). No hay claves de lista cerrada, así que
 // no hace falta `permitidos`.
 const FILTROS_DEFECTO = { from: '', to: '' }
+
+// Claves propias, constante de módulo — la usa el reset de página de abajo
+// para comparar `filtros` por VALOR (no por identidad: ver el comentario
+// junto a `filtrosVistosRef`).
+const CLAVES_FILTRO = Object.keys(FILTROS_DEFECTO) as (keyof typeof FILTROS_DEFECTO & string)[]
 
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -139,14 +144,25 @@ function AppraisalsClient() {
         fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
     }, [])
 
-    // Identidad de `filtros` vista en la última corrida del efecto de datos —
-    // estable entre renders salvo que la URL cambió de verdad (ver
-    // `useFiltrosUrl`). Un cambio de filtro con la página en >1 tiene que
-    // volver a la 1 (la página 3 de un rango de fechas nuevo capaz no existe),
-    // pero sin pagar DOS fetches: uno con la página vieja + filtro nuevo
-    // (que se tiraría), y otro ya en la página 1. Por eso el reset corta ACÁ,
-    // ANTES de armar ningún pedido — el re-render que dispara `setPage(1)`
-    // vuelve a correr este mismo efecto, ya con `cambioFiltro` en falso.
+    // `filtros` (de/a) vistos en la última corrida del efecto de datos — para
+    // el reset de página de abajo. Un cambio de filtro con la página en >1
+    // tiene que volver a la 1 (la página 3 de un rango de fechas nuevo capaz
+    // no existe), pero sin pagar DOS fetches: uno con la página vieja +
+    // filtro nuevo (que se tiraría), y otro ya en la página 1. Por eso el
+    // reset corta ACÁ, ANTES de armar ningún pedido — el re-render que
+    // dispara `setPage(1)` vuelve a correr este mismo efecto, ya sin cambio
+    // detectado.
+    //
+    // Ronda de arreglos 1: la primera versión comparaba `filtrosVistosRef.current
+    // !== filtros` (identidad). `aplicados` sale de un `useMemo` que depende
+    // del QUERYSTRING COMPLETO (`use-filtros-url.ts`), no solo de `from`/`to`
+    // — cambia de identidad ante CUALQUIER parámetro de la URL, propio o
+    // ajeno (`?utm_source=`, `?id=`, `?tab=`, el patrón que ya usan
+    // CRM/Contactos/Visitas). Con `!==`, un usuario en la página 3 con el
+    // MISMO rango de fechas de siempre volvía a la página 1 apenas apareciera
+    // un parámetro ajeno en la URL — ningún filtro cambió, pero el reset se
+    // disparaba igual. Se compara por VALOR y solo las claves propias con
+    // `mismosFiltros` (la misma pieza que ya usa el hook internamente).
     const filtrosVistosRef = useRef(filtros)
 
     useEffect(() => {
@@ -154,7 +170,7 @@ function AppraisalsClient() {
         // abajo (reset de página) como el de identidad sin resolver.
         const { gen, signal } = pedidos.abrir()
 
-        const cambioFiltro = filtrosVistosRef.current !== filtros
+        const cambioFiltro = !mismosFiltros(filtros, filtrosVistosRef.current, CLAVES_FILTRO)
         filtrosVistosRef.current = filtros
         if (cambioFiltro && page !== 1) {
             setPage(1)
