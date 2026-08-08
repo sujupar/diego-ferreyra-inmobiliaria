@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import InicioPage from './page'
 
 /**
@@ -151,6 +151,78 @@ describe('InicioPage — las tarjetas dependen del rol', () => {
     expect(screen.getByText('Consultas sin responder')).toBeInTheDocument()
     expect(screen.getByText('Visitas de hoy')).toBeInTheDocument()
     expect(calls.find(c => c.startsWith('/api/visits'))).toContain('advisor_id=u1')
+  })
+})
+
+describe('InicioPage — cada tarjeta declara su propia base (revisión final Fase 3)', () => {
+  // I1: el pedido es `/api/visits?from&to` SIN `status`, y `listVisits` no
+  // filtra por estado — o sea que el número incluye canceladas y no-shows.
+  // Decir "agendadas para hoy" ahí es afirmar algo falso sobre el día del
+  // asesor (3 visitas de las que 2 se cayeron seguía diciendo "3 · agendadas").
+  it('"Visitas de hoy" declara que cuenta todos los estados, no solo las agendadas', async () => {
+    render(<InicioPage />)
+    authDeferred.resolve({ ok: true, body: { id: 'u1', role: 'admin' } })
+
+    await waitFor(() => expect(calls.some(c => c.startsWith('/api/visits'))).toBe(true))
+    tasksDeferred.resolve({ ok: true, body: { data: [] } })
+    leadsDeferred.resolve({ ok: true, body: { new: 0 } })
+    propertiesDeferred.resolve({ ok: true, body: { total: 0 } })
+    // Tres visitas de hoy, de las cuales dos están canceladas: el número que
+    // devuelve la ruta es 3 igual, porque nadie filtra por estado.
+    visitsDeferred.resolve({
+      ok: true,
+      body: { data: [{ id: 'v1', status: 'scheduled' }, { id: 'v2', status: 'cancelled' }, { id: 'v3', status: 'cancelled' }] },
+    })
+    await waitFor(() => expect(screen.queryByText('Cargando…')).not.toBeInTheDocument())
+
+    const visitas = within(screen.getByText('Visitas de hoy').parentElement as HTMLElement)
+    expect(visitas.getByText('3')).toBeInTheDocument()
+    expect(visitas.getByText('en la agenda de hoy, canceladas incluidas')).toBeInTheDocument()
+    // El contexto viejo afirmaba que las 3 estaban agendadas.
+    expect(visitas.queryByText('agendadas para hoy')).not.toBeInTheDocument()
+
+    // Y el pedido sigue siendo UNO solo, sin parámetro de estado: la ruta
+    // aplica `status` con un `.eq()` de un valor y los estados vivos son dos.
+    const visitsUrls = calls.filter(c => c.startsWith('/api/visits'))
+    expect(visitsUrls).toHaveLength(1)
+    expect(visitsUrls[0]).not.toContain('status=')
+  })
+
+  // M1: `getMyTasks` corta con `.limit(50)`. Con 63 pendientes la tarjeta
+  // decía "50 · cosas esperándote", como si fueran todas. El techo NO se
+  // levanta (es una ruta de producción): lo declara el contexto.
+  it('"Pendientes" declara el techo de 50 cuando el número llega al tope', async () => {
+    render(<InicioPage />)
+    authDeferred.resolve({ ok: true, body: { id: 'u1', role: 'admin' } })
+
+    await waitFor(() => expect(calls.some(c => c.startsWith('/api/tasks'))).toBe(true))
+    // La ruta devuelve 50 porque ese es su techo — no porque haya 50.
+    tasksDeferred.resolve({ ok: true, body: { data: Array.from({ length: 50 }, (_, i) => ({ id: String(i) })) } })
+    leadsDeferred.resolve({ ok: true, body: { new: 0 } })
+    propertiesDeferred.resolve({ ok: true, body: { total: 0 } })
+    visitsDeferred.resolve({ ok: true, body: { data: [] } })
+    await waitFor(() => expect(screen.queryByText('Cargando…')).not.toBeInTheDocument())
+
+    const pendientes = within(screen.getByText('Pendientes').parentElement as HTMLElement)
+    expect(pendientes.getByText('50')).toBeInTheDocument()
+    expect(pendientes.getByText('las primeras 50 — puede haber más')).toBeInTheDocument()
+    expect(pendientes.queryByText('cosas esperándote')).not.toBeInTheDocument()
+  })
+
+  it('por debajo del techo, "Pendientes" no declara nada raro', async () => {
+    render(<InicioPage />)
+    authDeferred.resolve({ ok: true, body: { id: 'u1', role: 'admin' } })
+
+    await waitFor(() => expect(calls.some(c => c.startsWith('/api/tasks'))).toBe(true))
+    tasksDeferred.resolve({ ok: true, body: { data: Array.from({ length: 49 }, (_, i) => ({ id: String(i) })) } })
+    leadsDeferred.resolve({ ok: true, body: { new: 0 } })
+    propertiesDeferred.resolve({ ok: true, body: { total: 0 } })
+    visitsDeferred.resolve({ ok: true, body: { data: [] } })
+    await waitFor(() => expect(screen.queryByText('Cargando…')).not.toBeInTheDocument())
+
+    const pendientes = within(screen.getByText('Pendientes').parentElement as HTMLElement)
+    expect(pendientes.getByText('49')).toBeInTheDocument()
+    expect(pendientes.getByText('cosas esperándote')).toBeInTheDocument()
   })
 })
 

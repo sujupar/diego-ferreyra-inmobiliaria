@@ -371,8 +371,10 @@ describe('CRMPage — tarjetas de números (task 16)', () => {
 
       const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
       const deals = within(tarjetas.getByText('Deals').parentElement as HTMLElement)
-      await waitFor(() => expect(deals.getByText('Sin datos')).toBeInTheDocument())
-      expect(deals.getByText('No se pudo consultar')).toBeInTheDocument()
+      // Se espera el CONTEXTO de error, no el "Sin datos": desde el arreglo C1
+      // el "Sin datos" ya está puesto mientras carga.
+      await waitFor(() => expect(deals.getByText('No se pudo consultar')).toBeInTheDocument())
+      expect(deals.getByText('Sin datos')).toBeInTheDocument()
     } finally {
       errores.mockRestore()
     }
@@ -387,6 +389,51 @@ describe('CRMPage — tarjetas de números (task 16)', () => {
 
     // auth + advisors + deals = 3 fetch — ni uno más por las tarjetas nuevas.
     expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(3)
+  })
+
+  // Revisión final Fase 3 — C1. Los tests de arriba resuelven el fetch ANTES
+  // de mirar la tarjeta; el defecto estaba justo en la ventana anterior.
+  it('mientras la respuesta viaja, "Deals" dice "Sin datos" — nunca 0', async () => {
+    render(<CRMPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(dealsCalls.length).toBe(1))
+
+    const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
+    const deals = within(tarjetas.getByText('Deals').parentElement as HTMLElement)
+    expect(deals.getByText('Sin datos')).toBeInTheDocument()
+    expect(deals.getByText('todavía cargando')).toBeInTheDocument()
+    expect(deals.queryByText('0')).not.toBeInTheDocument()
+    expect(deals.queryByText('en el sistema')).not.toBeInTheDocument()
+
+    dealsCalls[0].d.resolve({ data: [fakeDeal(0)], total: 9, stageCounts: {}, crmStageCounts: {} })
+    await screen.findByText('Contacto 0')
+    expect(deals.getByText('9')).toBeInTheDocument()
+    expect(deals.getByText('en el sistema')).toBeInTheDocument()
+  })
+
+  // Revisión final Fase 3 — C1, segunda cara. El gate fail-closed hace lo
+  // correcto (no pide nada sin identidad), pero como el efecto de datos hace
+  // `return` antes de tocar `loading`, el 0 inicial se quedaba en pantalla
+  // PARA SIEMPRE: un cero sin vencimiento, que es el peor de todos.
+  it('sin identidad (/api/auth/me caído), "Deals" dice "Sin datos" y no pide deals', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      authOk = false
+      render(<CRMPage />)
+      authDeferred.resolve({ error: 'No autenticado' } as never)
+      await act(async () => { await Promise.resolve() })
+
+      const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
+      const deals = within(tarjetas.getByText('Deals').parentElement as HTMLElement)
+      await waitFor(() => expect(deals.getByText('Sin datos')).toBeInTheDocument())
+      expect(deals.getByText('sin identidad confirmada')).toBeInTheDocument()
+      expect(deals.queryByText('0')).not.toBeInTheDocument()
+      expect(deals.queryByText('en el sistema')).not.toBeInTheDocument()
+      // El gate sigue intacto: sin identidad no se pide ningún deal.
+      expect(dealsCalls.length).toBe(0)
+    } finally {
+      errores.mockRestore()
+    }
   })
 })
 

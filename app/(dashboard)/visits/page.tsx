@@ -225,12 +225,23 @@ function VisitsClient() {
       {/* Task 16: número de arriba — SOLO el largo del arreglo que esta
           pantalla ya pidió (`visits`). Cero fetch/consulta nueva. En error
           (`fetchError`) se apaga a `null` en vez de mostrar el 0 que deja el
-          catch. */}
+          catch.
+
+          Revisión final Fase 3 — C1: MIENTRAS CARGA también se apaga. `visits`
+          arranca vacío y, al cambiar de filtro, conserva el listado de la base
+          ANTERIOR: el renglón de arriba ya dice "Cargando…" por ese mismo
+          motivo, y la tarjeta afirmaba igual un número que todavía no vale. */}
       <div data-testid="tarjetas-numeros" className="mb-1 max-w-xs">
         <StatTile
           label="Visitas"
-          value={fetchError ? null : visits.length}
-          context={fetchError ? 'No se pudo consultar' : hayFiltros ? 'con los filtros puestos' : 'en el sistema'}
+          value={fetchError || cargando ? null : visits.length}
+          context={
+            fetchError
+              ? 'No se pudo consultar'
+              : cargando
+                ? 'todavía cargando'
+                : hayFiltros ? 'con los filtros puestos' : 'en el sistema'
+          }
         />
       </div>
 

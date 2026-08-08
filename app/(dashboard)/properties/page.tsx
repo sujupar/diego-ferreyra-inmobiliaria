@@ -583,17 +583,32 @@ function PropertiesClient() {
           hay filtros, "con los filtros puestos" — nunca "en el sistema"
           cuando eso sería mentira sobre la base del número. Y en estado de
           error (`loadError`), el número se apaga a `null` ("Sin datos") en
-          vez de mostrar el 0 que el efecto de datos deja al fallar. */}
+          vez de mostrar el 0 que el efecto de datos deja al fallar.
+
+          Revisión final Fase 3 — C1: MIENTRAS CARGA también se apaga. El
+          renglón de arriba ya dice "Cargando…" justamente porque `total` y
+          `properties.length` todavía valen 0 (o el valor del filtro ANTERIOR):
+          la carga de esta pantalla está medida en 2308ms y 2849ms, así que
+          afirmar "0 · en el sistema" durante casi tres segundos es decirle al
+          dueño que la inmobiliaria no tiene propiedades. Y al cambiar de
+          filtro, el `total` viejo aparecía bajo el rótulo "con los filtros
+          puestos" — el número de una base y la etiqueta de otra. */}
       <div data-testid="tarjetas-numeros" className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
           label="Propiedades"
-          value={loadError ? null : total}
-          context={loadError ? 'No se pudo consultar' : hayFiltros ? 'con los filtros puestos' : 'en el sistema'}
+          value={loadError || cargando ? null : total}
+          context={
+            loadError
+              ? 'No se pudo consultar'
+              : cargando
+                ? 'todavía cargando'
+                : hayFiltros ? 'con los filtros puestos' : 'en el sistema'
+          }
         />
         <StatTile
           label="En pantalla"
-          value={loadError ? null : properties.length}
-          context={loadError ? 'No se pudo consultar' : `de ${total}`}
+          value={loadError || cargando ? null : properties.length}
+          context={loadError ? 'No se pudo consultar' : cargando ? 'todavía cargando' : `de ${total}`}
         />
       </div>
 

@@ -283,14 +283,65 @@ describe('PropertiesPage — tarjetas de números (task 16)', () => {
       authDeferred.resolve({ id: 'u1', role: 'admin' })
 
       const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
-      await waitFor(() => expect(tarjetas.getAllByText('Sin datos').length).toBe(2))
-      expect(tarjetas.getAllByText('No se pudo consultar').length).toBe(2)
+      // Se espera el CONTEXTO de error, no el "Sin datos": desde el arreglo C1
+      // el "Sin datos" ya está puesto mientras carga, así que anclar el
+      // `waitFor` ahí lo daría por cumplido antes de que el fallo llegue.
+      await waitFor(() => expect(tarjetas.getAllByText('No se pudo consultar').length).toBe(2))
+      expect(tarjetas.getAllByText('Sin datos').length).toBe(2)
       // Ninguna tarjeta puede quedar mostrando el 0 que `loadError` deja en
       // `total`/`properties` — ni como número suelto en su lugar.
       expect(tarjetas.queryByText('0')).not.toBeInTheDocument()
     } finally {
       errores.mockRestore()
     }
+  })
+
+  // Revisión final Fase 3 — C1. Ninguno de los tests de arriba mira la tarjeta
+  // ANTES de resolver el fetch, y ahí es donde estaba el defecto: la carga de
+  // esta pantalla está medida en 2308ms y 2849ms, o sea casi tres segundos
+  // afirmando que la inmobiliaria no tiene propiedades.
+  it('mientras la respuesta viaja, las tarjetas dicen "Sin datos" — nunca 0', async () => {
+    render(<PropertiesPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(propsCalls.length).toBe(1))
+
+    // Pedido en vuelo, a propósito sin resolver.
+    const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
+    expect(tarjetas.getAllByText('Sin datos').length).toBe(2)
+    expect(tarjetas.getAllByText('todavía cargando').length).toBe(2)
+    expect(tarjetas.queryByText('0')).not.toBeInTheDocument()
+    expect(tarjetas.queryByText('en el sistema')).not.toBeInTheDocument()
+    // El renglón de prosa de arriba ya decía la verdad: la tarjeta ahora coincide.
+    expect(screen.getByText('Cargando…')).toBeInTheDocument()
+
+    // Y al llegar el dato, sí afirma.
+    propsCalls[0].d.resolve(pagina([propiedad('a', 'Calle Uno 100')], 7))
+    await screen.findByText('Calle Uno 100')
+    expect(tarjetas.getByText('7')).toBeInTheDocument()
+    expect(tarjetas.getByText('en el sistema')).toBeInTheDocument()
+  })
+
+  it('al cambiar de filtro, el total VIEJO no queda bajo el rótulo "con los filtros puestos"', async () => {
+    const { rerender } = render(<PropertiesPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(propsCalls.length).toBe(1))
+    propsCalls[0].d.resolve(pagina([propiedad('a', 'Calle Uno 100')], 31))
+    await screen.findByText('Calle Uno 100')
+
+    const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
+    expect(tarjetas.getByText('31')).toBeInTheDocument()
+
+    // Filtro nuevo, respuesta todavía en vuelo: el 31 es de la base ANTERIOR.
+    commitear(rerender, '/properties?status=approved')
+    await waitFor(() => expect(propsCalls.length).toBe(2))
+    expect(tarjetas.queryByText('31')).not.toBeInTheDocument()
+    expect(tarjetas.queryByText('con los filtros puestos')).not.toBeInTheDocument()
+    expect(tarjetas.getAllByText('Sin datos').length).toBe(2)
+
+    propsCalls[1].d.resolve(pagina([propiedad('b', 'Calle Filtrada 200', { status: 'approved' })], 4))
+    await screen.findByText('Calle Filtrada 200')
+    expect(tarjetas.getByText('4')).toBeInTheDocument()
+    expect(tarjetas.getByText('con los filtros puestos')).toBeInTheDocument()
   })
 })
 

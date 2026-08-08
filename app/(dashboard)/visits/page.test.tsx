@@ -221,8 +221,10 @@ describe('VisitsPage — tarjeta de número (task 16)', () => {
       authDeferred.resolve({ id: 'u1', role: 'admin' })
 
       const tarjeta = within(screen.getByTestId('tarjetas-numeros'))
-      await waitFor(() => expect(tarjeta.getByText('Sin datos')).toBeInTheDocument())
-      expect(tarjeta.getByText('No se pudo consultar')).toBeInTheDocument()
+      // Se espera el CONTEXTO de error, no el "Sin datos": desde el arreglo C1
+      // el "Sin datos" ya está puesto mientras carga.
+      await waitFor(() => expect(tarjeta.getByText('No se pudo consultar')).toBeInTheDocument())
+      expect(tarjeta.getByText('Sin datos')).toBeInTheDocument()
     } finally {
       errores.mockRestore()
     }
@@ -238,6 +240,48 @@ describe('VisitsPage — tarjeta de número (task 16)', () => {
     // auth + profiles + 2 de /api/visits (montaje sin identidad + con
     // identidad resuelta, ya documentado arriba) = 4 — ni una llamada más.
     expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(4)
+  })
+
+  // Revisión final Fase 3 — C1. Los tests de arriba resuelven el fetch ANTES
+  // de mirar la tarjeta; el defecto vivía en la ventana anterior.
+  it('mientras la respuesta viaja, la tarjeta dice "Sin datos" — nunca 0', async () => {
+    render(<VisitsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(visitsCalls.length).toBe(2))
+
+    const tarjeta = within(screen.getByTestId('tarjetas-numeros'))
+    expect(tarjeta.getByText('Sin datos')).toBeInTheDocument()
+    expect(tarjeta.getByText('todavía cargando')).toBeInTheDocument()
+    expect(tarjeta.queryByText('0')).not.toBeInTheDocument()
+    expect(tarjeta.queryByText('en el sistema')).not.toBeInTheDocument()
+
+    visitsCalls[1].d.resolve({ data: [visita('a', 'Cliente Uno'), visita('b', 'Cliente Dos')] })
+    await screen.findByText('Cliente Uno')
+    expect(tarjeta.getByText('2')).toBeInTheDocument()
+    expect(tarjeta.getByText('en el sistema')).toBeInTheDocument()
+  })
+
+  it('al cambiar de filtro, el conteo VIEJO no queda bajo "con los filtros puestos"', async () => {
+    const { rerender } = render(<VisitsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(visitsCalls.length).toBe(2))
+    visitsCalls[1].d.resolve({ data: [visita('a', 'Cliente Uno'), visita('b', 'Cliente Dos')] })
+    await screen.findByText('Cliente Uno')
+
+    const tarjeta = within(screen.getByTestId('tarjetas-numeros'))
+    expect(tarjeta.getByText('2')).toBeInTheDocument()
+
+    // Filtro nuevo, respuesta todavía en vuelo: el 2 es de la base ANTERIOR.
+    commitear(rerender, '/visits?status=completed')
+    await waitFor(() => expect(visitsCalls.length).toBe(3))
+    expect(tarjeta.queryByText('2')).not.toBeInTheDocument()
+    expect(tarjeta.queryByText('con los filtros puestos')).not.toBeInTheDocument()
+    expect(tarjeta.getByText('Sin datos')).toBeInTheDocument()
+
+    visitsCalls[2].d.resolve({ data: [visita('c', 'Cliente Realizado', 'completed')] })
+    await screen.findByText('Cliente Realizado')
+    expect(tarjeta.getByText('1')).toBeInTheDocument()
+    expect(tarjeta.getByText('con los filtros puestos')).toBeInTheDocument()
   })
 })
 

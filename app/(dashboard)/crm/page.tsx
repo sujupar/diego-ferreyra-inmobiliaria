@@ -378,13 +378,28 @@ function CRMClient() {
   // en vez de "45 · de los cargados en pantalla". Los demás roles usan
   // `total`, el conteo real, así que sí les corresponde "en el sistema" /
   // "con los filtros puestos".
-  const dealsTileContext = fetchError
-    ? 'No se pudo consultar'
-    : esAsesor
-      ? 'de los cargados en pantalla'
-      : hayFiltros
-        ? 'con los filtros puestos'
-        : 'en el sistema'
+  // Subido desde el render (antes vivía junto a `activeStageInfo`): la tarjeta
+  // de arriba lo necesita para no afirmar un número que todavía no vale.
+  const cargando = loading || escribiendo
+  // Revisión final Fase 3 — C1. Dos agujeros que la tarjeta tapaba con un cero:
+  //   · SIN IDENTIDAD (`/api/auth/me` caído): el efecto de datos hace `return`
+  //     antes de pedir (fail-closed, correcto) y `loading` se queda en `true`
+  //     PARA SIEMPRE — no hay respuesta que lo apague. Un "0 · en el sistema"
+  //     sin vencimiento. Va primero porque no es una carga que vaya a terminar.
+  //   · MIENTRAS CARGA: `total` arranca en 0 y, al cambiar de filtro, conserva
+  //     el valor de la base ANTERIOR. En los dos casos el número no vale todavía.
+  const dealsTileValue = !userInfo || fetchError || cargando ? null : totalDealsDisplay
+  const dealsTileContext = !userInfo
+    ? 'sin identidad confirmada'
+    : fetchError
+      ? 'No se pudo consultar'
+      : cargando
+        ? 'todavía cargando'
+        : esAsesor
+          ? 'de los cargados en pantalla'
+          : hayFiltros
+            ? 'con los filtros puestos'
+            : 'en el sistema'
 
   const OPCIONES_ASESOR = [
     { value: '', label: 'Todos' },
@@ -434,7 +449,6 @@ function CRMClient() {
   ]
 
   const activeStageInfo = mostrado.etapa ? getCRMStageInfo(mostrado.etapa) : null
-  const cargando = loading || escribiendo
 
   return (
     <div className="space-y-8">
@@ -496,7 +510,7 @@ function CRMClient() {
       <div data-testid="tarjetas-numeros" className="max-w-xs">
         <StatTile
           label="Deals"
-          value={fetchError ? null : totalDealsDisplay}
+          value={dealsTileValue}
           context={dealsTileContext}
         />
       </div>

@@ -32,6 +32,16 @@ const SIN_NUMEROS: Numeros = { pendientes: null, sinResponder: null, porRevisar:
 
 interface Identidad { id: string; role: Role }
 
+/**
+ * Revisión final Fase 3 — M1. `getMyTasks` (`lib/supabase/tasks.ts`) cierra la
+ * consulta con `.limit(50)`: con 63 pendientes, `/api/tasks` devuelve 50 y la
+ * tarjeta decía "50 · cosas esperándote" como si fueran todas. El techo NO se
+ * levanta (es una ruta de producción y subirlo tiene otras consecuencias): lo
+ * que cambia es que el contexto lo declara cuando el número llega al tope.
+ * Si algún día ese `.limit()` cambia, este número tiene que cambiar con él.
+ */
+const TOPE_PENDIENTES = 50
+
 interface TarjetaDef {
   key: keyof Numeros
   label: string
@@ -45,7 +55,12 @@ const TARJETAS: TarjetaDef[] = [
     key: 'pendientes',
     label: 'Pendientes',
     href: '/tasks',
-    context: v => (v === null ? 'No se pudo consultar' : 'cosas esperándote'),
+    context: v =>
+      v === null
+        ? 'No se pudo consultar'
+        : v >= TOPE_PENDIENTES
+          ? `las primeras ${TOPE_PENDIENTES} — puede haber más`
+          : 'cosas esperándote',
     tone: v => (v !== null && v > 0 ? 'alerta' : 'neutral'),
   },
   {
@@ -64,7 +79,17 @@ const TARJETAS: TarjetaDef[] = [
     key: 'visitasHoy',
     label: 'Visitas de hoy',
     href: '/visits',
-    context: v => (v === null ? 'No se pudo consultar' : 'agendadas para hoy'),
+    // Revisión final Fase 3 — I1: decía "agendadas para hoy" contando TAMBIÉN
+    // las canceladas y las que no se presentaron. El pedido es
+    // `/api/visits?from&to` sin `status`, y `listVisits` no filtra por estado.
+    //
+    // Elegido: que el contexto diga la verdad, no recortar el pedido. La ruta
+    // sí acepta `status`, pero `listVisits` lo aplica con un `.eq()` de UN
+    // solo valor y los estados vivos son DOS (`scheduled` y
+    // `pending_confirmation`): pedir uno dejaría afuera las visitas que el
+    // cliente propuso y el equipo todavía no confirmó — otro número falso, por
+    // la puerta de al lado. Ensanchar ese filtro es tocar `lib/supabase/`.
+    context: v => (v === null ? 'No se pudo consultar' : 'en la agenda de hoy, canceladas incluidas'),
   },
 ]
 
