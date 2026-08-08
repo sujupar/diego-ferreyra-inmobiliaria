@@ -41,7 +41,10 @@ const FILTROS_DEFECTO = { status: '', from: '', to: '', mios: '' }
 
 // Hoisteado: se usa tanto al leer (useMemo de abajo) como en `aplicar` — misma
 // lista siempre, y no se recomputa el .map() en cada lectura.
-const PERMITIDOS = { status: OPCIONES_ESTADO.map(o => o.value) }
+// `mios` es booleano disfrazado de string: solo '1' (tildado) o '' (sin filtro).
+// Cerrarle la lista evita que un `?mios=banana` viaje de vuelta a la URL en la
+// siguiente escritura.
+const PERMITIDOS = { status: OPCIONES_ESTADO.map(o => o.value), mios: ['', '1'] }
 
 // Ronda de arreglos 1 — I3: from/to viajan crudos desde la URL (deep link o
 // edición a mano) directo a la API, que devuelve 500 ante algo tipo
@@ -62,6 +65,17 @@ function leerFiltrosDeUrl(search: string): typeof FILTROS_DEFECTO {
     to: FECHA_RE.test(f.to) ? f.to : '',
   }
 }
+
+function mismosFiltros(a: typeof FILTROS_DEFECTO, b: typeof FILTROS_DEFECTO) {
+  return a.status === b.status && a.from === b.from && a.to === b.to && a.mios === b.mios
+}
+
+// Red de seguridad del espejo optimista (ver más abajo). Las mediciones dan
+// 200-700ms entre la escritura y el commit de la URL; si pasado este tiempo la
+// URL nunca llegó a lo escrito (p. ej. el usuario tocó Atrás en el medio), se
+// suelta el espejo y mandan los valores de la URL. Sin esto, el listado en
+// carga que pide H4 podría quedarse girando para siempre.
+const ESPEJO_MAX_MS = 3000
 
 // Shape del LISTADO — viene de vw_properties_list (GET /api/properties), sin
 // el array `photos` completo (A3 de la auditoría: 21.951 KB por request, 99%
@@ -152,14 +166,22 @@ function PropertiesClient() {
   // searchParams. Si soltara ante cualquier cambio, un tercer click rápido
   // podría parpadear hacia un estado viejo mientras la URL no alcanzó al
   // último click todavía.
+  // Depende de `espejo` ADEMÁS de `filtros` (ronda 2): si dependiera solo de
+  // `filtros`, un `aplicar` que no mueve la URL nunca volvería a evaluarse y el
+  // espejo quedaría puesto para siempre — con H4 eso sería un spinner eterno.
   useEffect(() => {
-    setEspejo(prev => {
-      if (!prev) return prev
-      const alDia = prev.status === filtros.status && prev.from === filtros.from
-        && prev.to === filtros.to && prev.mios === filtros.mios
-      return alDia ? null : prev
-    })
-  }, [filtros])
+    if (!espejo) return
+    if (mismosFiltros(espejo, filtros)) setEspejo(null)
+  }, [espejo, filtros])
+
+  // Red de seguridad: si la URL nunca alcanza al espejo (ver ESPEJO_MAX_MS), se
+  // suelta igual. El timer se reinicia con cada escritura nueva y se cancela al
+  // soltarlo, así que en el camino normal (200-700ms) no llega a disparar.
+  useEffect(() => {
+    if (!espejo) return
+    const t = setTimeout(() => setEspejo(null), ESPEJO_MAX_MS)
+    return () => clearTimeout(t)
+  }, [espejo])
 
   // Ronda de arreglos 1 — I1: NUNCA partir de `filtros` (la foto de ESTE
   // render) para armar el patch. Primer intento: leer `window.location.search`
@@ -173,29 +195,70 @@ function PropertiesClient() {
   // (aunque sea 10ms después) ya lo ve actualizado. Se resincroniza desde
   // `filtros` cuando la URL cambia por afuera de `aplicar` (F5, Atrás, link
   // pegado).
+  // `ultimaBusquedaRef` es el hermano del anterior para el querystring COMPLETO
+  // (H5): guarda también los parámetros que no son filtros de esta pantalla.
   const ultimoFiltroRef = useRef(filtros)
+  const ultimaBusquedaRef = useRef(searchParamsKey)
+  // GUARDARRAÍL (ronda 2): no resincronizar mientras hay una escritura
+  // pendiente. Next puede commitear una URL INTERMEDIA cuando dos escrituras
+  // van bien separadas; este efecto no sabe distinguir "es una escritura mía
+  // vieja llegando tarde" de "esta URL vino de afuera", y pisar el ref con la
+  // intermedia perdería lo ya escrito. Hoy no falla porque Next ordena los
+  // commits a favor — o sea, la seguridad la pone Next, no el código. El espejo
+  // ES la bandera de escritura pendiente: mientras esté puesto, no se pisa nada.
   useEffect(() => {
+    if (espejo) return
     ultimoFiltroRef.current = filtros
-  }, [filtros])
+    ultimaBusquedaRef.current = searchParamsKey
+  }, [filtros, searchParamsKey, espejo])
+
+  // H5: la URL puede traer parámetros que NO son filtros de esta pantalla
+  // (`utm_source` de una campaña hoy; `id`, `tab`, `highlight` en los deep links
+  // de CRM/Contactos/Visitas mañana). Reconstruir el querystring solo desde las
+  // 4 claves conocidas los borraba en cuanto se tocaba un filtro. Se parte de lo
+  // que ya hay y se sobrescriben SOLO las claves propias.
+  function construirBusqueda(nuevos: typeof FILTROS_DEFECTO) {
+    const params = new URLSearchParams(ultimaBusquedaRef.current)
+    for (const clave of Object.keys(FILTROS_DEFECTO)) params.delete(clave)
+    // `escribirFiltros` ordena las claves y omite las que están en su valor por
+    // defecto — el resultado sigue siendo estable e idempotente.
+    new URLSearchParams(escribirFiltros(nuevos, FILTROS_DEFECTO))
+      .forEach((valor, clave) => params.set(clave, valor))
+    return params.toString()
+  }
 
   function aplicar(patch: Partial<typeof FILTROS_DEFECTO>) {
     const nuevos = { ...ultimoFiltroRef.current, ...patch }
-    ultimoFiltroRef.current = nuevos
-    setEspejo(nuevos)
-    const qs = escribirFiltros(nuevos, FILTROS_DEFECTO)
+    // H3: el espejo tiene que guardar lo que devolvería una LECTURA de lo que
+    // se acaba de escribir, no el parche crudo. Todo valor que sobreviva a la
+    // escritura pero no a la lectura dejaba el espejo clavado PARA SIEMPRE (el
+    // efecto de arriba solo lo suelta si `filtros` coincide exacto, y `filtros`
+    // sale de la lectura, que valida). Reproducido con un año de 5 dígitos: el
+    // `<input type=date>` de Chrome lo acepta, `FECHA_RE` lo rechaza, y los
+    // controles quedaban diciendo "filtrado" sobre un listado sin filtrar.
+    const validados = leerFiltrosDeUrl(escribirFiltros(nuevos, FILTROS_DEFECTO))
+    // Escritura que no cambia nada (tocar dos veces el mismo preset, o aplicar
+    // un valor que la lectura descarta): ni URL nueva ni espejo — si no, H4
+    // dejaría el listado en carga por una escritura que nunca va a commitear.
+    if (mismosFiltros(validados, ultimoFiltroRef.current)) return
+    const busqueda = construirBusqueda(validados)
+    ultimoFiltroRef.current = validados
+    ultimaBusquedaRef.current = busqueda
+    setEspejo(validados)
     // replace y no push: con push, cada ajuste del rango de fechas deja una
     // entrada en el historial y el botón Atrás se vuelve inusable.
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    router.replace(busqueda ? `${pathname}?${busqueda}` : pathname, { scroll: false })
   }
 
   function setFiltro(key: string, value: string) {
     aplicar({ [key]: value } as Partial<typeof FILTROS_DEFECTO>)
   }
 
+  // Limpiar = un `aplicar` con las 4 claves en su valor por defecto. Pasa por el
+  // mismo camino (mismo ref, mismo espejo, mismos parámetros ajenos
+  // preservados) en vez de tener su propia versión que se desincronice.
   function limpiarTodo() {
-    ultimoFiltroRef.current = FILTROS_DEFECTO
-    setEspejo(FILTROS_DEFECTO)
-    router.replace(pathname, { scroll: false })
+    aplicar(FILTROS_DEFECTO)
   }
 
   const [properties, setProperties] = useState<Property[]>([])
@@ -204,7 +267,17 @@ function PropertiesClient() {
   // verdad" de "la API falló" — sin esto un 500 (ej. from=basura antes del
   // fix de validación, o cualquier otro error real) terminaba mostrando "Sin
   // propiedades — Creá tu primera propiedad captada", que es mentira.
-  const [loadError, setLoadError] = useState(false)
+  // Ronda 2: pasó de booleano a motivo, porque "no cargó el listado" y "no sé
+  // quién sos y por eso no te muestro nada" necesitan textos y salidas distintas.
+  const [loadError, setLoadError] = useState<null | 'listado' | 'identidad'>(null)
+  // H1: "Limpiar filtros" con la URL ya limpia es un botón muerto —
+  // `router.replace(pathname)` no cambia el querystring, `filtros` conserva la
+  // misma referencia y el efecto de datos no corre: cero requests. Y es
+  // justamente el caso más probable, porque la primera carga falla con la URL
+  // limpia. Este contador es el "Reintentar" de verdad: entra en las
+  // dependencias del efecto de datos y del de identidad, así que fuerza el
+  // refetch aunque no haya cambiado ni un filtro.
+  const [reintentos, setReintentos] = useState(0)
   const [loadingMore, setLoadingMore] = useState(false)
   const [total, setTotal] = useState(0)
   const [hasMore, setHasMore] = useState(false)
@@ -244,16 +317,31 @@ function PropertiesClient() {
 
   useEffect(() => {
     fetch('/api/auth/me')
-      .then(r => r.json())
-      .then(setUserInfo)
-      .catch(() => {})
+      .then(r => {
+        // H2: `/api/auth/me` devuelve JSON TAMBIÉN en 401/404/500
+        // (`{error:'...'}`, ver app/api/auth/me/route.ts). Sin chequear `r.ok`,
+        // `r.json()` resuelve, `setUserInfo({error})` deja `userInfo` truthy
+        // con `.id` undefined y el `.catch` ni se entera. Medido con esa ruta
+        // bloqueada: `?mios=1` mostraba "24 de 31 propiedades" AJENAS, sin
+        // spinner ni error, de forma permanente.
+        if (!r.ok) throw new Error(`GET /api/auth/me respondió ${r.status}`)
+        return r.json()
+      })
+      .then((perfil: { id?: unknown; role?: unknown } | null) => {
+        // Un 200 sin `id` tampoco es una identidad: sin id no hay "solo mías".
+        if (!perfil || typeof perfil.id !== 'string' || !perfil.id) {
+          throw new Error('GET /api/auth/me no devolvió un id')
+        }
+        setUserInfo({ id: perfil.id, role: typeof perfil.role === 'string' ? perfil.role : '' })
+      })
+      .catch(err => { console.error(err) })
       // Se marca "resuelto" pase lo que pase. Antes el .catch dejaba
       // `userInfo` en null PARA SIEMPRE si esta llamada fallaba — con el gate
       // de abajo eso hubiera colgado el listado en el spinner para siempre;
-      // con este .finally, en cambio, arranca sin assigned_to (mismo
-      // fallback de antes) en vez de trabarse.
+      // con este .finally, en cambio, el efecto de datos decide qué hacer
+      // (sin `mios` sigue de largo; con `mios` avisa, ver H2 abajo).
       .finally(() => setUserInfoLoaded(true))
-  }, [])
+  }, [reintentos])
 
   function buildParams(offset: number, limit: number = PAGE_SIZE) {
     const params = new URLSearchParams()
@@ -279,8 +367,21 @@ function PropertiesClient() {
     // request duplicado de página 0 que antes hacía TODA carga de la
     // pantalla (uno sin userInfo al montar, otro al llegar userInfo).
     if (!userInfoLoaded) return
+    // H2, segunda mitad: con "solo mías" pedido y SIN identidad resuelta, la
+    // versión anterior omitía `assigned_to` y pedía el listado igual — o sea
+    // que el filtro "solo mías" fallaba mostrando MÁS de lo que corresponde.
+    // No se pide nada: se avisa. Fail-closed.
+    if (filtros.mios === '1' && !userInfo?.id) {
+      setProperties([])
+      setTotal(0)
+      setHasMore(false)
+      setSelectedIds(new Set())
+      setLoadError('identidad')
+      setLoading(false)
+      return
+    }
     setLoading(true)
-    setLoadError(false)
+    setLoadError(null)
     fetch(`/api/properties?${buildParams(0)}`)
       .then(async r => {
         // Ronda de arreglos 1 — I3: un 500 devuelve un body JSON válido
@@ -297,7 +398,7 @@ function PropertiesClient() {
       })
       .catch(err => {
         console.error(err)
-        setLoadError(true)
+        setLoadError('listado')
         setProperties([])
         setTotal(0)
         setHasMore(false)
@@ -306,7 +407,17 @@ function PropertiesClient() {
     // Limpiar selección al cambiar filtros
     setSelectedIds(new Set())
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtros, userInfo, userInfoLoaded, tableSort])
+  }, [filtros, userInfo, userInfoLoaded, tableSort, reintentos])
+
+  // H1: el "Reintentar" de verdad. Vuelve a preguntar quién sos (por si lo que
+  // se cayó fue `/api/auth/me`) y fuerza el refetch del listado aunque la URL
+  // no haya cambiado ni un carácter.
+  function reintentar() {
+    setLoading(true)
+    setLoadError(null)
+    setUserInfoLoaded(false)
+    setReintentos(n => n + 1)
+  }
 
   async function loadMore() {
     if (loadingMore || !hasMore) return
@@ -332,12 +443,25 @@ function PropertiesClient() {
   // listado visible no encoja por debajo de lo que el asesor ya había traído.
   async function refreshProperties() {
     const keep = Math.max(properties.length, PAGE_SIZE)
-    const res = await fetch(`/api/properties?${buildParams(0, keep)}`)
-    if (!res.ok) { console.error(`GET /api/properties respondió ${res.status}`); return }
-    const { data, total: newTotal, hasMore: newHasMore } = await res.json()
-    setProperties(data || [])
-    setTotal(newTotal ?? (data || []).length)
-    setHasMore(!!newHasMore)
+    try {
+      const res = await fetch(`/api/properties?${buildParams(0, keep)}`)
+      if (!res.ok) throw new Error(`GET /api/properties respondió ${res.status}`)
+      const { data, total: newTotal, hasMore: newHasMore } = await res.json()
+      setProperties(data || [])
+      setTotal(newTotal ?? (data || []).length)
+      setHasMore(!!newHasMore)
+    } catch (err) {
+      // H6: antes esto era un `console.error` + `return` mudo. Tras un descarte
+      // o un borrado masivo, si el refresco fallaba quedaban EN PANTALLA las
+      // filas recién eliminadas, sin ningún aviso — el asesor las veía y creía
+      // que la acción no había funcionado. Ahora se avisa y se vacía el
+      // listado, que ya no representa lo que hay en el sistema.
+      console.error(err)
+      setProperties([])
+      setTotal(0)
+      setHasMore(false)
+      setLoadError('listado')
+    }
   }
 
   // El listado no trae galería/descripción/video/tour (esos campos NUNCA
@@ -416,6 +540,17 @@ function PropertiesClient() {
     if (failed > 0) alert(`${failed} no se pudieron eliminar. Probablemente requieren permisos de admin/dueño.`)
   }
 
+  // H4: entre que se escribe el filtro y que la lista se actualiza había una
+  // ventana medida de ~486ms (checkbox marcado a los 53ms, spinner recién a los
+  // 539ms) en la que los controles decían "filtrado" sobre el listado y el
+  // conteo VIEJOS, sin ninguna señal de carga. El espejo ya ES la bandera de
+  // "hay una escritura pendiente": mientras esté puesto, el listado va en carga.
+  const cargando = loading || espejo !== null
+  // H1: "Limpiar filtros" solo tiene sentido si hay filtros que limpiar. Sale
+  // de `filtros` (la URL aplicada), no del espejo: en estado de error no hay
+  // escritura pendiente y lo que importa es qué se pidió realmente.
+  const hayFiltros = !!filtros.status || !!filtros.from || !!filtros.to || filtros.mios === '1'
+
   const columns: Column<Property>[] = [
     { key: 'address', label: 'Direccion', sortable: true, render: r => <span className="font-medium">{r.address}</span> },
     { key: 'neighborhood', label: 'Barrio', sortable: true, render: r => <span className="text-muted-foreground">{r.neighborhood}</span> },
@@ -432,7 +567,15 @@ function PropertiesClient() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Propiedades</h1>
           <p className="text-muted-foreground">
-            {properties.length < total ? `${properties.length} de ${total}` : total} propiedad{total !== 1 ? 'es' : ''}
+            {/* H4: el conteo es del listado VIEJO hasta que llega el nuevo —
+                mientras se está cargando no afirma un número que ya no vale.
+                Y si el listado no cargó, "0 propiedades" sería otra mentira
+                (no es que no haya: es que no sabemos). */}
+            {cargando
+              ? 'Cargando…'
+              : loadError
+                ? 'No se pudo cargar'
+                : <>{properties.length < total ? `${properties.length} de ${total}` : total} propiedad{total !== 1 ? 'es' : ''}</>}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -482,15 +625,32 @@ function PropertiesClient() {
         ]}
       />
 
-      {loading ? (
+      {cargando ? (
         <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
       ) : loadError ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Building2 className="h-12 w-12 text-destructive mb-4" />
-            <h3 className="text-lg font-medium mb-1">No se pudo cargar el listado</h3>
-            <p className="text-sm text-muted-foreground mb-4">Puede ser un filtro inválido en el link o un problema de conexión. Probá limpiar los filtros.</p>
-            <Button size="sm" variant="outline" onClick={limpiarTodo}>Limpiar filtros</Button>
+            <h3 className="text-lg font-medium mb-1">
+              {loadError === 'identidad' ? 'No pudimos confirmar quién sos' : 'No se pudo cargar el listado'}
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4 max-w-md">
+              {loadError === 'identidad'
+                ? 'El filtro «Solo mías» necesita saber quién sos y no se pudo averiguar. No mostramos el listado sin filtrar para no enseñarte propiedades de otros asesores.'
+                : hayFiltros
+                  ? 'Puede ser un filtro inválido en el link o un problema de conexión. Probá de nuevo o limpiá los filtros.'
+                  : 'Puede ser un problema de conexión. Probá de nuevo.'}
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button size="sm" onClick={reintentar}>Reintentar</Button>
+              {loadError === 'identidad' ? (
+                <Button size="sm" variant="outline" onClick={() => aplicar({ mios: '' })}>
+                  Ver todas las propiedades
+                </Button>
+              ) : hayFiltros ? (
+                <Button size="sm" variant="outline" onClick={limpiarTodo}>Limpiar filtros</Button>
+              ) : null}
+            </div>
           </CardContent>
         </Card>
       ) : properties.length === 0 ? (
@@ -562,7 +722,7 @@ function PropertiesClient() {
         </div>
       )}
 
-      {!loading && hasMore && (
+      {!cargando && hasMore && (
         <div className="flex justify-center py-4">
           <Button variant="outline" onClick={loadMore} disabled={loadingMore}>
             {loadingMore ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
