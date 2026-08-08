@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react'
 import { DataTable, type Column } from '@/components/ui/DataTable'
@@ -114,76 +113,79 @@ export function PropertyInquiriesPanel({ range }: { range: DateRange }) {
   }, [range.from, range.to])
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Consultas por propiedad</CardTitle>
-        <p className="text-xs text-muted-foreground">
+    // Ronda 1 (I2): antes envolvía todo en <Card><CardContent> — con el
+    // restyle de la Tarea 9, DataTable ya trae su propia tarjeta (misma
+    // receta que Card: rounded-xl border bg-card shadow-sm), así que el
+    // Card de acá quedaba duplicado alrededor de la tabla. Se saca el marco
+    // y el título queda en texto plano; DataTable aporta su propia tarjeta.
+    <div className="space-y-4">
+      <div>
+        <h2 className="font-semibold leading-none">Consultas por propiedad</h2>
+        <p className="mt-2 text-xs text-muted-foreground">
           Consultas de portales (MercadoLibre / ZonaProp / Argenprop) recibidas en el rango, agrupadas por propiedad captada.
         </p>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {error && (
-          <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>
-        )}
-        {loading && !data && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
-        {data && (
-          <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              <SummaryChip label="Total" value={data.summary.total} />
-              <SummaryChip label="Identificadas" value={data.summary.matched} />
-              <SummaryChip label="Sin identificar" value={data.summary.unidentified} highlight />
-              <SummaryChip label="MercadoLibre" value={data.summary.mercadolibre} />
-              <SummaryChip label="ZonaProp" value={data.summary.zonaprop} />
-              <SummaryChip label="Argenprop" value={data.summary.argenprop} />
+      </div>
+      {error && (
+        <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>
+      )}
+      {loading && !data && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+      {data && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <SummaryChip label="Total" value={data.summary.total} />
+            <SummaryChip label="Identificadas" value={data.summary.matched} />
+            <SummaryChip label="Sin identificar" value={data.summary.unidentified} highlight />
+            <SummaryChip label="MercadoLibre" value={data.summary.mercadolibre} />
+            <SummaryChip label="ZonaProp" value={data.summary.zonaprop} />
+            <SummaryChip label="Argenprop" value={data.summary.argenprop} />
+          </div>
+
+          <DataTable
+            data={data.properties}
+            columns={COLUMNS}
+            getRowKey={r => r.property_id}
+            emptyMessage="Sin consultas de portales en este período."
+          />
+
+          {data.summary.unidentified > 0 && (
+            <div className="rounded-lg border border-amber-400/50">
+              <button
+                type="button"
+                onClick={() => setShowUnidentified(v => !v)}
+                className="flex w-full items-center gap-2 p-3 text-sm font-medium text-left"
+              >
+                {showUnidentified ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                Sin propiedad identificada ({data.summary.unidentified})
+                <span className="ml-auto text-xs font-normal text-muted-foreground">
+                  consultas que no matchearon con ninguna propiedad — revisar el mapeo
+                </span>
+              </button>
+              {showUnidentified && (
+                <ul className="divide-y border-t">
+                  {data.unidentified.map(u => (
+                    <li key={u.id} className="flex flex-wrap items-center gap-2 p-3 text-sm">
+                      <span className="font-mono text-xs text-muted-foreground">#{u.seq}</span>
+                      <Badge variant="outline" className="text-xs">{PORTAL_LABELS[u.portal] ?? u.portal}</Badge>
+                      <span>{u.lead_name ?? '(sin nombre)'}</span>
+                      <span className="text-xs text-muted-foreground truncate max-w-md">
+                        {u.property_address ?? u.property_url ?? (u.property_external_code ? `CÓD ${u.property_external_code}` : u.raw_subject) ?? ''}
+                      </span>
+                      <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">{fmtDate(u.received_at ?? u.created_at)}</span>
+                      <Link href="/inbox" className="text-xs underline text-[color:var(--brand)]">Ver en inbox</Link>
+                    </li>
+                  ))}
+                  {data.unidentified.length < data.summary.unidentified && (
+                    <li className="p-3 text-xs text-muted-foreground">
+                      Mostrando las {data.unidentified.length} más recientes de {data.summary.unidentified}.
+                    </li>
+                  )}
+                </ul>
+              )}
             </div>
-
-            <DataTable
-              data={data.properties}
-              columns={COLUMNS}
-              getRowKey={r => r.property_id}
-              emptyMessage="Sin consultas de portales en este período."
-            />
-
-            {data.summary.unidentified > 0 && (
-              <div className="rounded-lg border border-amber-400/50">
-                <button
-                  type="button"
-                  onClick={() => setShowUnidentified(v => !v)}
-                  className="flex w-full items-center gap-2 p-3 text-sm font-medium text-left"
-                >
-                  {showUnidentified ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
-                  Sin propiedad identificada ({data.summary.unidentified})
-                  <span className="ml-auto text-xs font-normal text-muted-foreground">
-                    consultas que no matchearon con ninguna propiedad — revisar el mapeo
-                  </span>
-                </button>
-                {showUnidentified && (
-                  <ul className="divide-y border-t">
-                    {data.unidentified.map(u => (
-                      <li key={u.id} className="flex flex-wrap items-center gap-2 p-3 text-sm">
-                        <span className="font-mono text-xs text-muted-foreground">#{u.seq}</span>
-                        <Badge variant="outline" className="text-xs">{PORTAL_LABELS[u.portal] ?? u.portal}</Badge>
-                        <span>{u.lead_name ?? '(sin nombre)'}</span>
-                        <span className="text-xs text-muted-foreground truncate max-w-md">
-                          {u.property_address ?? u.property_url ?? (u.property_external_code ? `CÓD ${u.property_external_code}` : u.raw_subject) ?? ''}
-                        </span>
-                        <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">{fmtDate(u.received_at ?? u.created_at)}</span>
-                        <Link href="/inbox" className="text-xs underline text-[color:var(--brand)]">Ver en inbox</Link>
-                      </li>
-                    ))}
-                    {data.unidentified.length < data.summary.unidentified && (
-                      <li className="p-3 text-xs text-muted-foreground">
-                        Mostrando las {data.unidentified.length} más recientes de {data.summary.unidentified}.
-                      </li>
-                    )}
-                  </ul>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
+          )}
+        </>
+      )}
+    </div>
   )
 }

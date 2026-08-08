@@ -128,7 +128,16 @@ export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessag
     <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
       <table className="w-full text-sm">
         <thead>
-          <tr className="bg-card border-b sticky top-0 z-10">
+          {/* Ronda de arreglos 1 — I4: la Tarea 9 había sumado `sticky top-0
+              z-10` acá, pero no pega nada — el contenedor de este wrapper
+              tiene `overflow-x-auto`, y por spec CSS eso lo convierte en el
+              contenedor de scroll de referencia para `sticky`; como ese div
+              nunca tiene una altura acotada en ninguno de los 5 consumidores,
+              nunca scrollea y el sticky nunca se activa. No es una regresión
+              (antes tampoco pegaba), pero era una promesa que el código no
+              cumplía. Para que pegue de verdad hace falta un ancestro con
+              altura acotada + su propio overflow-y — no es parte de esta tarea. */}
+          <tr className="bg-card border-b">
             {selectable && (
               <th className="w-10 px-3 py-3">
                 <HeaderCheckbox
@@ -161,8 +170,16 @@ export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessag
             return (
               <tr
                 key={key}
+                data-selected={isSelected}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
-                className={`border-t ${onRowClick ? 'cursor-pointer hover:bg-secondary/60 transition-colors' : ''} ${isSelected ? 'bg-[color:var(--brand-soft)]' : ''}`}
+                // Ronda de arreglos 1 — I1: un `bg-[...]` suelto y un
+                // `hover:bg-secondary/60` empatan en especificidad solo en
+                // apariencia — Tailwind decide el orden de generación, no el
+                // string de className, así que el hover le ganaba SIEMPRE al
+                // fondo de selección (igual que el bug ya resuelto en
+                // sidebar.tsx). Fix: mismo patrón, `data-[selected=true]:hover:*`
+                // (0,3,0) le gana a `hover:*` (0,2,0) sin importar el orden.
+                className={`border-t data-[selected=true]:bg-[color:var(--brand-soft)] ${onRowClick ? 'cursor-pointer transition-colors hover:bg-secondary/60 data-[selected=true]:hover:bg-[color:var(--brand-soft)]' : ''}`}
               >
                 {selectable && (
                   <td className="w-10 px-3 py-3" onClick={e => e.stopPropagation()}>

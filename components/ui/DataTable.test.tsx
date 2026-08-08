@@ -63,4 +63,49 @@ describe('DataTable', () => {
     await userEvent.click(screen.getByText('Agüero 950'))
     expect(onRowClick).toHaveBeenCalledWith(FILAS[0])
   })
+
+  // Ronda de arreglos 1 — I1: `hover:bg-secondary/60` (especificidad 0,2,0) y
+  // un `bg-[color:var(--brand-soft)]` suelto (0,1,0) NO son un empate parejo:
+  // el hover gana siempre, orden de generación de Tailwind mediante, no por
+  // intención. Con el mouse encima, una fila seleccionada se veía igual que
+  // una sin seleccionar. El fix usa el mismo patrón que sidebar.tsx
+  // (`data-[active=true]:hover:*`): un atributo `data-selected` + un
+  // selector compuesto `data-[selected=true]:hover:*` que gana por
+  // especificidad (0,3,0), no por orden.
+  it('una fila seleccionada conserva el fondo de marca aunque el mouse esté encima', () => {
+    render(
+      <DataTable data={FILAS} columns={COLS} getRowKey={r => r.id} onRowClick={() => {}}
+        selectable selectedIds={new Set(['a'])} onSelectionChange={() => {}} />,
+    )
+    const fila = screen.getByText('Agüero 950').closest('tr')!
+    expect(fila).toHaveAttribute('data-selected', 'true')
+    // El selector compuesto tiene que existir en la clase: es lo que le da
+    // más especificidad que `hover:bg-secondary/60` y gana SIEMPRE, no según
+    // el orden en que Tailwind generó el CSS.
+    expect(fila.className).toContain('data-[selected=true]:hover:bg-[color:var(--brand-soft)]')
+  })
+
+  // Ronda de arreglos 1 — I3: mutation testing encontró dos comportamientos
+  // sin ningún test que los proteja. Los dos siguen igual de correctos que
+  // antes (no hubo fix de lógica) — lo nuevo es la red.
+  it('el checkbox maestro queda indeterminado con selección parcial', () => {
+    render(
+      <DataTable data={FILAS} columns={COLS} getRowKey={r => r.id}
+        selectable selectedIds={new Set(['a'])} onSelectionChange={() => {}} />,
+    )
+    const master = screen.getByLabelText('Seleccionar todo') as HTMLInputElement
+    expect(master.indeterminate).toBe(true)
+  })
+
+  it('tildar el checkbox de una fila no dispara onRowClick (conviven selectable y onRowClick)', async () => {
+    const onRowClick = vi.fn()
+    const onSelectionChange = vi.fn()
+    render(
+      <DataTable data={FILAS} columns={COLS} getRowKey={r => r.id} onRowClick={onRowClick}
+        selectable selectedIds={new Set()} onSelectionChange={onSelectionChange} />,
+    )
+    await userEvent.click(screen.getAllByLabelText('Seleccionar fila')[0])
+    expect(onSelectionChange).toHaveBeenCalled()
+    expect(onRowClick).not.toHaveBeenCalled()
+  })
 })
