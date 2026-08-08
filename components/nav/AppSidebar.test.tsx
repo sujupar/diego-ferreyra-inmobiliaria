@@ -50,6 +50,30 @@ describe('AppSidebar', () => {
     expect(screen.getByRole('link', { name: /CRM/ })).toHaveAttribute('aria-current', 'page')
   })
 
+  it('el ítem activo lleva las clases de marca (fondo/texto/barra), no el token de hover — guarda contra revertir a bg-sidebar-accent', () => {
+    rutaActual = '/crm'
+    montar('admin')
+    const activo = screen.getByRole('link', { name: /CRM/ })
+    expect(activo).toHaveAttribute('data-active', 'true')
+    expect(activo.className).toContain('data-[active=true]:bg-brand-soft')
+    expect(activo.className).toContain('data-[active=true]:text-brand')
+    expect(activo.className).toContain('data-[active=true]:before:bg-brand')
+    // El bug de la tarea 5: el activo usaba el MISMO token que el hover
+    // (bg-sidebar-accent), así que pasar el mouse por cualquier ítem se veía
+    // igual que el activo. Que no vuelva.
+    expect(activo.className).not.toContain('data-[active=true]:bg-sidebar-accent')
+  })
+
+  it('el sub-ítem activo del riel expandido también lleva las clases de marca', () => {
+    rutaActual = '/properties/new'
+    montar('admin')
+    const activo = screen.getByRole('link', { name: 'Nueva' })
+    expect(activo).toHaveAttribute('data-active', 'true')
+    expect(activo.className).toContain('data-[active=true]:bg-brand-soft')
+    expect(activo.className).toContain('data-[active=true]:text-brand')
+    expect(activo.className).not.toContain('data-[active=true]:bg-sidebar-accent')
+  })
+
   it('una subruta también marca a su ítem del menú', () => {
     rutaActual = '/properties/abc-123'
     montar('admin')
