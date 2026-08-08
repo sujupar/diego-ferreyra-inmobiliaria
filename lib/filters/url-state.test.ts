@@ -16,6 +16,30 @@ describe('leerFiltros', () => {
   it('una clave presente pero vacía cae al valor por defecto', () => {
     expect(leerFiltros(new URLSearchParams('status='), DEFAULTS).status).toBe('todos')
   })
+
+  it('valida un valor contra lista de permitidos', () => {
+    const p = new URLSearchParams('status=publicada')
+    const result = leerFiltros(p, DEFAULTS, { status: ['publicada', 'borrador', 'todos'] })
+    expect(result.status).toBe('publicada')
+  })
+
+  it('un valor fuera de la lista de permitidos cae al default', () => {
+    const p = new URLSearchParams('status=invalido')
+    const result = leerFiltros(p, DEFAULTS, { status: ['publicada', 'borrador', 'todos'] })
+    expect(result.status).toBe('todos')
+  })
+
+  it('una clave sin lista de permitidos acepta cualquier valor', () => {
+    const p = new URLSearchParams('advisor=juan')
+    const result = leerFiltros(p, DEFAULTS, { status: ['publicada', 'borrador', 'todos'] })
+    expect(result.advisor).toBe('juan')
+  })
+
+  it('lista vacía de permitidos rechaza todo', () => {
+    const p = new URLSearchParams('status=publicada')
+    const result = leerFiltros(p, DEFAULTS, { status: [] })
+    expect(result.status).toBe('todos')
+  })
 })
 
 describe('escribirFiltros', () => {
@@ -28,10 +52,13 @@ describe('escribirFiltros', () => {
   })
 
   it('ordena las claves para que la misma selección dé siempre la misma URL', () => {
-    const a = escribirFiltros({ q: 'x', status: 'publicada', advisor: '' }, DEFAULTS)
-    const b = escribirFiltros({ status: 'publicada', q: 'x', advisor: '' } as typeof DEFAULTS, DEFAULTS)
+    // IMPORTANTE: usar defaults NO alfabético para que el test falle sin .sort()
+    const DEFAULTS_NO_ALFA = { zona: '', tipo: 'todos', ambientes: '' }
+    const a = escribirFiltros({ zona: 'palermo', tipo: 'depto', ambientes: '2' }, DEFAULTS_NO_ALFA)
+    const b = escribirFiltros({ tipo: 'depto', ambientes: '2', zona: 'palermo' } as typeof DEFAULTS_NO_ALFA, DEFAULTS_NO_ALFA)
     expect(a).toBe(b)
-    expect(a).toBe('q=x&status=publicada')
+    // Alfabético: ambientes, tipo, zona
+    expect(a).toBe('ambientes=2&tipo=depto&zona=palermo')
   })
 
   it('ida y vuelta: lo que se escribe se vuelve a leer igual', () => {

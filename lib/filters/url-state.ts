@@ -5,13 +5,27 @@
  * - lo que está en su valor por defecto NO se escribe, así la URL sin filtros
  *   queda limpia;
  * - las claves salen ordenadas para que la misma selección dé siempre la misma
- *   URL (si no, el historial se llena de entradas que son la misma vista).
+ *   URL (si no, el historial se llena de entradas que son la misma vista);
+ * - un valor inválido (fuera de la lista de permitidos) se ignora y cae al
+ *   valor por defecto; nunca rompe la pantalla.
  */
-export function leerFiltros<T extends Record<string, string>>(params: URLSearchParams, defaults: T): T {
+export function leerFiltros<T extends Record<string, string>>(
+  params: URLSearchParams,
+  defaults: T,
+  permitidos?: { [K in keyof T]?: readonly string[] },
+): T {
   const out = { ...defaults }
   for (const clave of Object.keys(defaults) as (keyof T & string)[]) {
     const valor = params.get(clave)
-    if (valor) out[clave] = valor as T[keyof T & string]
+    if (valor) {
+      // Si hay lista de permitidos para esta clave, validar
+      const permitidosParaEsta = permitidos?.[clave]
+      if (permitidosParaEsta && !permitidosParaEsta.includes(valor)) {
+        // Valor no permitido, mantener default
+        continue
+      }
+      out[clave] = valor as T[keyof T & string]
+    }
   }
   return out
 }
