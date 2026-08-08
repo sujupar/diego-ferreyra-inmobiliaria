@@ -194,6 +194,19 @@ function Sidebar({
             } as React.CSSProperties
           }
           side={side}
+          // El botón ☰ (`SidebarTrigger`) NO es un Dialog.Trigger de Radix —
+          // abre este Sheet por estado controlado (`open`/`onOpenChange`), así
+          // que el FocusScope del Dialog no tiene a quién devolverle el foco
+          // solo. Sin esto, al cerrar con Escape el foco caía en <body> y
+          // quien navega con teclado tenía que tabular desde cero. Si algún
+          // día hay más de un `[data-sidebar="trigger"]` en el DOM, este
+          // selector agarra el primero — hoy es siempre el del Topbar.
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            document
+              .querySelector<HTMLElement>('[data-sidebar="trigger"]')
+              ?.focus()
+          }}
         >
           <SheetHeader className="sr-only">
             <SheetTitle>Menú lateral</SheetTitle>
@@ -537,7 +550,14 @@ function SidebarMenuButton({
     />
   )
 
-  if (!tooltip) {
+  // En móvil el tooltip nunca se ve (el menú es un panel, no un riel
+  // colapsado) — pero si se arma igual, Radix lo ABRE al enfocar el botón
+  // (aria-describedby puesto, nodos montados aunque el `hidden` de abajo lo
+  // tape) y su Escape se come la primera pulsación: hacían falta DOS Escape
+  // para cerrar el panel del Sheet. Que el tooltip no EXISTA en vez de
+  // esconderse. El remontaje del botón al cruzar el breakpoint es
+  // inofensivo (no tiene estado interno propio).
+  if (!tooltip || isMobile) {
     return button
   }
 
