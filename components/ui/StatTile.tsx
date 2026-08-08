@@ -13,15 +13,15 @@ interface Props {
 }
 
 export function StatTile({ label, value, context, href, tone = 'neutral' }: Props) {
-  // M1: validar context no vacío
+  // M1: validar context no vacío — solo en desarrollo
   if (typeof context === 'string' && context.trim() === '') {
-    if (typeof window !== 'undefined') {
+    if (process.env.NODE_ENV !== 'production') {
       console.warn('StatTile: context no puede estar vacío. Pasó una cadena en blanco.')
     }
   }
 
-  // M2: tratar NaN como null (es un "sin dato" legítimo de cálculo)
-  const normalizedValue = typeof value === 'number' && Number.isNaN(value) ? null : value
+  // M2+3: tratar NaN, Infinity, -Infinity como null (son "sin datos" legítimos de cálculo)
+  const normalizedValue = typeof value === 'number' && !Number.isFinite(value) ? null : value
 
   const cuerpo = (
     <>
@@ -33,9 +33,12 @@ export function StatTile({ label, value, context, href, tone = 'neutral' }: Prop
           tone === 'alerta' && normalizedValue !== null && 'text-[color:var(--destructive)]',
         )}
       >
-        {/* I1: segundo canal de alerta (ícono) + color */}
+        {/* I1: segundo canal de alerta (ícono + texto accesible) para dos grupos */}
         {tone === 'alerta' && normalizedValue !== null && (
-          <AlertCircle className="w-5 h-5 shrink-0 text-[color:var(--destructive)]" />
+          <>
+            <AlertCircle className="w-5 h-5 shrink-0 text-[color:var(--destructive)]" />
+            <span className="sr-only">Alerta: </span>
+          </>
         )}
         {normalizedValue === null ? 'Sin datos' : normalizedValue}
       </div>

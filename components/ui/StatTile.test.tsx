@@ -70,4 +70,28 @@ describe('StatTile', () => {
     expect(screen.getByText('Sin datos')).toBeInTheDocument()
     expect(screen.queryByText('NaN')).not.toBeInTheDocument()
   })
+
+  // I1-accesibilidad: texto accesible para lectores de pantalla
+  it('tone=alerta tiene texto accesible "Alerta:"', () => {
+    render(<StatTile label="Crítico" value={12} context="sobre 100" tone="alerta" />)
+    expect(screen.getByText('Alerta:')).toBeInTheDocument()
+  })
+
+  it('tone=neutral no tiene texto accesible de alerta', () => {
+    render(<StatTile label="Normal" value={12} context="sobre 100" tone="neutral" />)
+    expect(screen.queryByText('Alerta:')).not.toBeInTheDocument()
+  })
+
+  // M3: Infinity debe tratarse como null (sin dato)
+  it('Infinity se muestra como "Sin datos"', () => {
+    render(<StatTile label="Ratio" value={Infinity} context="0 de 5 disponibles" />)
+    expect(screen.getByText('Sin datos')).toBeInTheDocument()
+    expect(screen.queryByText('Infinity')).not.toBeInTheDocument()
+  })
+
+  it('-Infinity se muestra como "Sin datos"', () => {
+    render(<StatTile label="Ratio" value={-Infinity} context="0 de 5 disponibles" />)
+    expect(screen.getByText('Sin datos')).toBeInTheDocument()
+    expect(screen.queryByText('Infinity')).not.toBeInTheDocument()
+  })
 })
