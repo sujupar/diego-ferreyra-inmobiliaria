@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -9,7 +9,14 @@ interface DateRangeFilterProps {
   value?: { from: string; to: string }
 }
 
-function toISO(d: Date) { return d.toISOString().split('T')[0] }
+// Devuelve la fecha LOCAL en formato ISO (YYYY-MM-DD)
+// Usa getFullYear/getMonth/getDate que dan local time, no UTC
+function toISO(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${dd}`
+}
 
 const PRESETS = [
   { label: 'Hoy', days: 0 },
@@ -60,11 +67,22 @@ export function DateRangeFilter({ onChange, value }: DateRangeFilterProps) {
   }, [value, active, customFrom, customTo])
 
   const currentActive = value !== undefined ? derivedState.activePreset : active
-  const currentCustomFrom = value !== undefined ? derivedState.inputFrom : customFrom
-  const currentCustomTo = value !== undefined ? derivedState.inputTo : customTo
+  // Los inputs custom siempre usan el borrador local, nunca el value prop
+  // El value solo se usa para determinar qué preset está activo
+  const currentCustomFrom = customFrom
+  const currentCustomTo = customTo
+
+  // Precarga el borrador cuando value es un rango custom (no matchea preset)
+  useEffect(() => {
+    if (value && derivedState.activePreset === 'custom') {
+      setCustomFrom(value.from)
+      setCustomTo(value.to)
+    }
+  }, [value?.from, value?.to, derivedState.activePreset])
 
   function handlePreset(label: string, days: number) {
     const range = getPresetRange(days)
+    // Si es no controlado, actualizar el estado local
     if (!value) {
       setActive(label)
       setShowCustom(false)
@@ -73,6 +91,7 @@ export function DateRangeFilter({ onChange, value }: DateRangeFilterProps) {
   }
 
   function handleAll() {
+    // Si es no controlado, actualizar el estado local
     if (!value) {
       setActive('')
       setShowCustom(false)
@@ -82,10 +101,20 @@ export function DateRangeFilter({ onChange, value }: DateRangeFilterProps) {
 
   function handleCustomApply() {
     if (currentCustomFrom && currentCustomTo) {
+      // Si es no controlado, actualizar el estado local
       if (!value) {
         setActive('custom')
       }
       onChange({ from: currentCustomFrom, to: currentCustomTo })
+    }
+  }
+
+  function handleCustomChange(type: 'from' | 'to', newValue: string) {
+    // El estado de los inputs custom es un BORRADOR local y debe funcionar siempre
+    if (type === 'from') {
+      setCustomFrom(newValue)
+    } else {
+      setCustomTo(newValue)
     }
   }
 
@@ -114,14 +143,7 @@ export function DateRangeFilter({ onChange, value }: DateRangeFilterProps) {
         <Button
           variant={currentActive === 'custom' || showCustom ? 'default' : 'outline'}
           size="sm"
-          onClick={() => {
-            if (!value) {
-              setShowCustom(!showCustom)
-            } else {
-              // Con value controlado, solo cambiar la visibilidad
-              setShowCustom(!showCustom)
-            }
-          }}
+          onClick={() => setShowCustom(!showCustom)}
           aria-pressed={currentActive === 'custom' || showCustom}
         >
           Custom
@@ -132,27 +154,17 @@ export function DateRangeFilter({ onChange, value }: DateRangeFilterProps) {
           <Input
             type="date"
             value={currentCustomFrom}
-            onChange={e => {
-              if (!value) {
-                setCustomFrom(e.target.value)
-              }
-            }}
+            onChange={e => handleCustomChange('from', e.target.value)}
             className="w-36 h-8 text-sm"
           />
           <span className="text-muted-foreground text-sm">—</span>
           <Input
             type="date"
             value={currentCustomTo}
-            onChange={e => {
-              if (!value) {
-                setCustomTo(e.target.value)
-              }
-            }}
+            onChange={e => handleCustomChange('to', e.target.value)}
             className="w-36 h-8 text-sm"
           />
-          {!value && (
-            <Button size="sm" onClick={handleCustomApply} className="h-8">Aplicar</Button>
-          )}
+          <Button size="sm" onClick={handleCustomApply} className="h-8">Aplicar</Button>
         </div>
       )}
     </div>

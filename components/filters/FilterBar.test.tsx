@@ -63,4 +63,19 @@ describe('FilterBar', () => {
     )
     expect(screen.getByRole('button', { name: 'Limpiar todo' })).toBeInTheDocument()
   })
+
+  it('un valor huérfano (no en opciones) se muestra como ficha y habilita "Limpiar todo"', () => {
+    render(<FilterBar selects={SELECTS} values={{ status: 'archived_legacy' }} onChange={() => {}} onClear={() => {}} />)
+    // La ficha debe mostrar el valor crudo
+    expect(screen.getByText('archived_legacy')).toBeInTheDocument()
+    // Debe aparecer "Limpiar todo"
+    expect(screen.getByRole('button', { name: 'Limpiar todo' })).toBeInTheDocument()
+  })
+
+  it('quitar una ficha huérfana avisa con el valor vacío', async () => {
+    const onChange = vi.fn()
+    render(<FilterBar selects={SELECTS} values={{ status: 'archived_legacy' }} onChange={onChange} onClear={() => {}} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Quitar filtro Estado (valor no reconocido)' }))
+    expect(onChange).toHaveBeenCalledWith('status', '')
+  })
 })
