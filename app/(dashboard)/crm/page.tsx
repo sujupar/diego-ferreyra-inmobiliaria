@@ -367,17 +367,24 @@ function CRMClient() {
   const totalDealsDisplay = esAsesor ? roleFilteredDeals.length : total
   const isGlobal = userInfo && ['dueno', 'admin', 'coordinador'].includes(userInfo.role)
 
-  // Task 16 — el contexto de las tarjetas tiene que decir la verdad sobre SU
-  // PROPIA base, no una genérica. `total` (y por lo tanto `totalDealsDisplay`)
-  // respeta TODOS los filtros, incluida la etapa — `stageCounts` NO (la
-  // etapa se ignora a propósito en el servidor para que el picker de etapas
-  // siempre muestre los totales completos de cada una; ver `getDeals`). Por
-  // eso son dos banderas distintas.
+  // Task 16 — el contexto de la tarjeta tiene que decir la verdad sobre SU
+  // PROPIA base, no una genérica. `total` respeta TODOS los filtros server-side.
   const hayFiltros = !!filtros.etapa || !!filtros.origin || !!filtros.asesor || !!filtros.from || !!filtros.to
-  const hayFiltrosPorEtapa = !!filtros.origin || !!filtros.asesor || !!filtros.from || !!filtros.to
-  // Mismo criterio que `StagePipeline` (`hideSolicitud`): un asesor no
-  // gestiona "Solicitud" (la asigna el coordinador).
-  const stagesConTarjeta = CRM_STAGES.filter(s => !(esAsesor && s.key === 'solicitud'))
+  // Ronda 1 de la revisión — I1: para un asesor `totalDealsDisplay` NO es el
+  // total del servidor, es `roleFilteredDeals.length` (línea de arriba): lo
+  // que hay CARGADO en memoria, una página (50) hacia abajo. Decir "en el
+  // sistema" ahí es la mentira exacta que la regla del tablero prohíbe — un
+  // asesor con 70 deals y una sola página cargada vería "45 · en el sistema"
+  // en vez de "45 · de los cargados en pantalla". Los demás roles usan
+  // `total`, el conteo real, así que sí les corresponde "en el sistema" /
+  // "con los filtros puestos".
+  const dealsTileContext = fetchError
+    ? 'No se pudo consultar'
+    : esAsesor
+      ? 'de los cargados en pantalla'
+      : hayFiltros
+        ? 'con los filtros puestos'
+        : 'en el sistema'
 
   const OPCIONES_ASESOR = [
     { value: '', label: 'Todos' },
@@ -480,25 +487,18 @@ function CRMClient() {
         </div>
       </div>
 
-      {/* Task 16: números de arriba — SOLO datos que la pantalla ya tiene en
-          memoria (`total`/`totalDealsDisplay` y `stageCounts`, que la
-          respuesta de /api/deals ya devuelve y el componente ya guarda).
-          Cero fetch/consulta nueva. En error (`fetchError`) el número se
-          apaga a `null` en vez de mostrar el 0 que deja el catch. */}
-      <div data-testid="tarjetas-numeros" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      {/* Task 16 — ronda 1: el desglose por etapa YA existe más abajo
+          (`StagePipeline`, con el mismo `stageCounts` y encima clickeable
+          para filtrar) — repetirlo acá arriba era mostrar la misma grilla
+          dos veces. Solo queda el total, que es lo único que la pantalla NO
+          tenía. Cero fetch/consulta nueva. En error (`fetchError`) el número
+          se apaga a `null` en vez de mostrar el 0 que deja el catch. */}
+      <div data-testid="tarjetas-numeros" className="max-w-xs">
         <StatTile
           label="Deals"
           value={fetchError ? null : totalDealsDisplay}
-          context={fetchError ? 'No se pudo consultar' : hayFiltros ? 'con los filtros puestos' : 'en el sistema'}
+          context={dealsTileContext}
         />
-        {stagesConTarjeta.map(s => (
-          <StatTile
-            key={s.key}
-            label={s.label}
-            value={fetchError ? null : (stageCounts[s.key] || 0)}
-            context={fetchError ? 'No se pudo consultar' : hayFiltrosPorEtapa ? 'con los filtros puestos' : 'en el sistema'}
-          />
-        ))}
       </div>
 
       {/* Bulk actions bar — visible cuando hay selección */}

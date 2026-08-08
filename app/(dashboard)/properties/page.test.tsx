@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react'
 import PropertiesPage from './page'
 
 /**
@@ -267,6 +267,30 @@ describe('PropertiesPage — tarjetas de números (task 16)', () => {
 
     // Solo /api/auth/me (identidad) y /api/properties (listado) — ni un fetch más.
     expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2)
+  })
+
+  // Ronda 1 de la revisión — el revisor mutó `value={loadError ? null : total}`
+  // a `value={total}` y ningún test se puso en rojo: faltaba este caso.
+  it('un /api/properties caído apaga las tarjetas a "Sin datos" — no al 0 que deja el catch', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      vi.stubGlobal('fetch', vi.fn((url: string) => {
+        if (url.startsWith('/api/auth/me')) return authDeferred.promise.then(data => ({ ok: authOk, json: async () => data }))
+        if (url.startsWith('/api/properties')) return Promise.reject(new Error('caído'))
+        return Promise.reject(new Error(`fetch inesperado: ${url}`))
+      }))
+      render(<PropertiesPage />)
+      authDeferred.resolve({ id: 'u1', role: 'admin' })
+
+      const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
+      await waitFor(() => expect(tarjetas.getAllByText('Sin datos').length).toBe(2))
+      expect(tarjetas.getAllByText('No se pudo consultar').length).toBe(2)
+      // Ninguna tarjeta puede quedar mostrando el 0 que `loadError` deja en
+      // `total`/`properties` — ni como número suelto en su lugar.
+      expect(tarjetas.queryByText('0')).not.toBeInTheDocument()
+    } finally {
+      errores.mockRestore()
+    }
   })
 })
 

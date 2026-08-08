@@ -289,45 +289,72 @@ describe('CRMPage — regla 3 del versionado ("Cargar más")', () => {
 })
 
 describe('CRMPage — tarjetas de números (task 16)', () => {
-  it('Deals y las tarjetas por etapa muestran lo que la pantalla ya guardó, con el contexto de "sin filtros"', async () => {
+  it('la tarjeta "Deals" muestra lo que la pantalla ya guardó, con el contexto de "sin filtros"', async () => {
+    // Ronda 1 de la revisión: el desglose por etapa YA lo muestra
+    // `StagePipeline` (con el mismo `stageCounts`, clickeable) — no se
+    // duplica acá arriba. Solo queda el total.
     render(<CRMPage />)
     authDeferred.resolve({ id: 'u1', role: 'admin' })
     await waitFor(() => expect(dealsCalls.length).toBe(1))
-    dealsCalls[0].d.resolve({
-      data: [fakeDeal(0)],
-      total: 7,
-      stageCounts: {},
-      crmStageCounts: { captada: 3, solicitud: 2 },
-    })
+    dealsCalls[0].d.resolve({ data: [fakeDeal(0)], total: 7, stageCounts: {}, crmStageCounts: {} })
     await screen.findByText('Contacto 0')
 
     const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
     const deals = within(tarjetas.getByText('Deals').parentElement as HTMLElement)
     expect(deals.getByText('7')).toBeInTheDocument()
     expect(deals.getByText('en el sistema')).toBeInTheDocument()
-
-    const captada = within(tarjetas.getByText('Captada').parentElement as HTMLElement)
-    expect(captada.getByText('3')).toBeInTheDocument()
-    expect(captada.getByText('en el sistema')).toBeInTheDocument()
-
-    const solicitud = within(tarjetas.getByText('Solicitud').parentElement as HTMLElement)
-    expect(solicitud.getByText('2')).toBeInTheDocument()
+    // La grilla por etapa no se repite: dentro de la fila de tarjetas nueva
+    // no hay una segunda tarjeta "Captada" (esa vive solo en StagePipeline).
+    expect(tarjetas.queryByText('Captada')).not.toBeInTheDocument()
   })
 
-  it('con un filtro puesto (aunque no sea la etapa), las tarjetas por etapa dicen "con los filtros puestos"', async () => {
-    // `stageCounts` ignora la etapa a propósito (el picker necesita ver el
-    // total completo de cada una) pero SÍ respeta origin/asesor/fecha — la
-    // tarjeta tiene que reflejar esa base real, no la de "Deals".
-    busqueda = 'origin=embudo'
+  it('con un filtro puesto, "Deals" dice "con los filtros puestos" — no "en el sistema"', async () => {
+    busqueda = 'etapa=captada'
     render(<CRMPage />)
     authDeferred.resolve({ id: 'u1', role: 'admin' })
     await waitFor(() => expect(dealsCalls.length).toBe(1))
-    dealsCalls[0].d.resolve({ data: [], total: 0, stageCounts: {}, crmStageCounts: { captada: 1 } })
+    dealsCalls[0].d.resolve({ data: [], total: 0, stageCounts: {}, crmStageCounts: {} })
     await screen.findByText('Sin procesos')
 
     const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
-    const captada = within(tarjetas.getByText('Captada').parentElement as HTMLElement)
-    expect(captada.getByText('con los filtros puestos')).toBeInTheDocument()
+    const deals = within(tarjetas.getByText('Deals').parentElement as HTMLElement)
+    expect(deals.getByText('con los filtros puestos')).toBeInTheDocument()
+    expect(deals.queryByText('en el sistema')).not.toBeInTheDocument()
+  })
+
+  // Ronda 1 de la revisión — I1: para un asesor, `totalDealsDisplay` NO es el
+  // total del servidor — es lo cargado en memoria (una página, filtrada por
+  // rol). Con más deals que los que trajo la página, "en el sistema" sería
+  // la mentira exacta que la regla del tablero prohíbe.
+  it('para un asesor con más deals que la página cargada, el contexto dice "de los cargados en pantalla" — no "en el sistema"', async () => {
+    render(<CRMPage />)
+    authDeferred.resolve({ id: 'u1', role: 'asesor' })
+    await waitFor(() => expect(dealsCalls.length).toBe(1))
+    // El servidor dice 70 en total; la página cargada trae solo 3 (el mismo
+    // desfasaje que "50 de 70" — se achica el dataset acá para que el test
+    // no dependa de renderizar 50 tarjetas dentro del timeout de `findBy`).
+    // `stage: 'captured'` (el valor CRUDO — `fakeDeal` por defecto usa
+    // 'captada', que `deriveCRMStage` no reconoce y cae al default
+    // 'solicitud'; para el rol asesor eso lo filtra de `roleFilteredDeals`
+    // vía `PRE_ASSIGNMENT_STAGES` y el conteo daría 0 en vez de 3).
+    dealsCalls[0].d.resolve({
+      data: [
+        { ...fakeDeal(0), stage: 'captured' },
+        { ...fakeDeal(1), stage: 'captured' },
+        { ...fakeDeal(2), stage: 'captured' },
+      ],
+      total: 70,
+      stageCounts: {},
+      crmStageCounts: {},
+    })
+    await screen.findByText('Contacto 0')
+
+    const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
+    const deals = within(tarjetas.getByText('Deals').parentElement as HTMLElement)
+    expect(deals.getByText('3')).toBeInTheDocument()
+    expect(deals.getByText('de los cargados en pantalla')).toBeInTheDocument()
+    expect(deals.queryByText('en el sistema')).not.toBeInTheDocument()
+    expect(deals.queryByText('70')).not.toBeInTheDocument()
   })
 
   it('un /api/deals caído apaga los números a "Sin datos" — no al 0 que deja el catch', async () => {
