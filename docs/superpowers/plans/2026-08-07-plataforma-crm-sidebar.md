@@ -1053,13 +1053,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
                     Saltar al contenido
                 </a>
                 <AppSidebar groups={navGroups} logoUrl={LOGO_URL} />
-                <SidebarInset className="bg-secondary">
+                {/* ⚠️ CORREGIDO DURANTE LA EJECUCIÓN (2026-08-07): acá había
+                    `<main id="contenido">` ADENTRO del SidebarInset, y estaba MAL —
+                    `SidebarInset` YA ES un `<main>` (components/ui/sidebar.tsx:309), así
+                    que quedaban DOS landmarks main anidados. El id va en un <div> interno
+                    con tabIndex={-1} para que el foco del "Saltar al contenido" aterrice
+                    después de la barra superior. Ver el código real en layout.tsx. */}
+                <SidebarInset className="bg-secondary min-w-0">
                     <Topbar groups={navGroups}>
                         <UserMenu profile={user.profile} />
                     </Topbar>
-                    <main id="contenido" className="flex-1 p-4 md:p-6">
+                    <div id="contenido" tabIndex={-1} className="flex-1 p-4 md:p-6">
                         {children}
-                    </main>
+                    </div>
                 </SidebarInset>
             </SidebarProvider>
         </div>
