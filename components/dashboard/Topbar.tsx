@@ -12,8 +12,8 @@ export function Topbar({ groups, children }: { groups: NavGroup[]; children?: Re
     <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b bg-background px-4">
       <SidebarTrigger className="-ml-1" />
       <div className="min-w-0">
-        {section && <div className="eyebrow truncate">{section}</div>}
-        <h1 className="truncate text-sm font-semibold leading-tight">{title}</h1>
+        {section && <div className="eyebrow truncate" title={section}>{section}</div>}
+        <div className="truncate text-sm font-semibold leading-tight" title={title}>{title}</div>
       </div>
       <div className="ml-auto flex items-center gap-2">{children}</div>
     </header>

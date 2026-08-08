@@ -25,17 +25,22 @@ const montar = () =>
   )
 
 describe('Topbar', () => {
-  it('muestra el nombre de la pantalla actual como encabezado', () => {
+  it('muestra el nombre de la pantalla actual', () => {
     rutaActual = '/crm'
     montar()
-    expect(screen.getByRole('heading', { name: 'CRM' })).toBeInTheDocument()
+    expect(screen.getByText('CRM')).toBeInTheDocument()
   })
 
   it('muestra la sección arriba del título cuando el ítem cuelga de un desplegable', () => {
     rutaActual = '/properties/new'
     montar()
     expect(screen.getByText('Propiedades')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Nueva' })).toBeInTheDocument()
+    expect(screen.getByText('Nueva')).toBeInTheDocument()
+  })
+
+  it('no añade elementos de encabezado semántico (h1/h2/h3...)', () => {
+    montar()
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument()
   })
 
   it('tiene el botón para abrir y cerrar el menú', () => {
