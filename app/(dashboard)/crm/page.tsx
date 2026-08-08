@@ -144,6 +144,13 @@ function CRMClient() {
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards')
   const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
+  // N1 (pulido pre-entrega): `userInfo === null` es AMBIGUO — puede ser "la
+  // respuesta de /api/auth/me todavía no llegó" (el estado normal de cada
+  // carga, unos cientos de ms) o "llegó y falló". Sin esta bandera, la
+  // tarjeta le decía "sin identidad confirmada" al dueño en CADA visita
+  // normal a /crm, como si la sesión se hubiera roto. Mismo patrón que
+  // Inicio (`errorIdentidad`) y Propiedades (`loadError==='identidad'`).
+  const [identidadError, setIdentidadError] = useState(false)
   const [advisors, setAdvisors] = useState<Array<{ id: string; full_name: string }>>([])
   const [page, setPage] = useState(0)
   const [total, setTotal] = useState(0)
@@ -190,7 +197,7 @@ function CRMClient() {
         }
         setUserInfo({ id: perfil.id, role: typeof perfil.role === 'string' ? perfil.role : '' })
       })
-      .catch(err => { console.error(err) })
+      .catch(err => { console.error(err); setIdentidadError(true) })
     fetch('/api/users/advisors').then(r => r.ok ? r.json() : { data: [] }).then(j => setAdvisors(j.data || [])).catch(() => {})
   }, [])
 
@@ -389,8 +396,11 @@ function CRMClient() {
   //   · MIENTRAS CARGA: `total` arranca en 0 y, al cambiar de filtro, conserva
   //     el valor de la base ANTERIOR. En los dos casos el número no vale todavía.
   const dealsTileValue = !userInfo || fetchError || cargando ? null : totalDealsDisplay
+  // N1: mientras `/api/auth/me` está EN VUELO (el caso normal de cada carga)
+  // esto tiene que leerse como una carga más, no como una falla. Recién si
+  // el catch de arriba corrió de verdad decimos que no se pudo confirmar.
   const dealsTileContext = !userInfo
-    ? 'sin identidad confirmada'
+    ? (identidadError ? 'sin identidad confirmada' : 'todavía cargando')
     : fetchError
       ? 'No se pudo consultar'
       : cargando

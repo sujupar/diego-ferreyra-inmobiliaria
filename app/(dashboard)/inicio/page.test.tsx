@@ -177,7 +177,7 @@ describe('InicioPage — cada tarjeta declara su propia base (revisión final Fa
 
     const visitas = within(screen.getByText('Visitas de hoy').parentElement as HTMLElement)
     expect(visitas.getByText('3')).toBeInTheDocument()
-    expect(visitas.getByText('en la agenda de hoy, canceladas incluidas')).toBeInTheDocument()
+    expect(visitas.getByText('en la agenda de hoy, todos los estados')).toBeInTheDocument()
     // El contexto viejo afirmaba que las 3 estaban agendadas.
     expect(visitas.queryByText('agendadas para hoy')).not.toBeInTheDocument()
 

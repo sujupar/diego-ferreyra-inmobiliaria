@@ -89,7 +89,11 @@ const TARJETAS: TarjetaDef[] = [
     // `pending_confirmation`): pedir uno dejaría afuera las visitas que el
     // cliente propuso y el equipo todavía no confirmó — otro número falso, por
     // la puerta de al lado. Ensanchar ese filtro es tocar `lib/supabase/`.
-    context: v => (v === null ? 'No se pudo consultar' : 'en la agenda de hoy, canceladas incluidas'),
+    //
+    // Pulido pre-entrega (N2): "canceladas incluidas" SUB-declaraba — el
+    // conteo también incluye `no_show` y `completed`, no solo canceladas.
+    // "todos los estados" es exacto y no cuesta nada más.
+    context: v => (v === null ? 'No se pudo consultar' : 'en la agenda de hoy, todos los estados'),
   },
 ]
 

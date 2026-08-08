@@ -435,6 +435,23 @@ describe('CRMPage — tarjetas de números (task 16)', () => {
       errores.mockRestore()
     }
   })
+
+  // N1 (pulido pre-entrega): antes de este fix, "sin identidad confirmada" era
+  // el texto que se veía en CADA carga normal de /crm, durante los cientos de
+  // ms en que /api/auth/me todavía no contestó — indistinguible de una sesión
+  // rota. Este test cubre justo esa ventana: `authDeferred` sin resolver.
+  it('mientras /api/auth/me está en vuelo (el caso normal), dice "todavía cargando" — no "sin identidad confirmada"', async () => {
+    render(<CRMPage />)
+    // No se resuelve `authDeferred`: la respuesta sigue en camino.
+
+    const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
+    const deals = within(tarjetas.getByText('Deals').parentElement as HTMLElement)
+    expect(deals.getByText('Sin datos')).toBeInTheDocument()
+    expect(deals.getByText('todavía cargando')).toBeInTheDocument()
+    expect(deals.queryByText('sin identidad confirmada')).not.toBeInTheDocument()
+    // Fail-closed: tampoco se pidió nada todavía.
+    expect(dealsCalls.length).toBe(0)
+  })
 })
 
 describe('CRMPage — identidad fail-closed (A4)', () => {
