@@ -191,6 +191,19 @@ function ContactsClient() {
     // PRIMERA LÍNEA, antes de cualquier `return` — si no, una respuesta vieja
     // (o la del `return` temprano de abajo) puede pintar sobre una pantalla
     // que ya decidió mostrar otra cosa.
+    //
+    // TRAMPA PARA EL PRÓXIMO EDIT (ronda 1 de arreglos, caso D): hoy mover
+    // `abrir()` DESPUÉS del `if (!userInfo) return` no rompe nada observable
+    // — `userInfo` pasa de `null` a un valor UNA sola vez en toda la vida del
+    // componente (no hay logout ni "reintentar" que lo vuelva a `null`), así
+    // que jamás hay una generación con un fetch en vuelo en el instante en que
+    // este return temprano se ejecuta una segunda vez. El día que se agregue
+    // una segunda condición de early-return (ej. un botón "Reintentar" como
+    // el de Propiedades, que resetea `userInfoLoaded`), la mutación sí pasa a
+    // ser observable — no lo pierdas de vista si tocás este efecto. Ver el
+    // comentario de cabecera de `page.test.tsx` (caso D): se investigó y no
+    // hay forma de fijar esto con un test de comportamiento sin inventar un
+    // camino que el componente no puede producir hoy.
     const { gen, signal } = pedidos.abrir()
     // No pedir nada hasta saber quién es el usuario: `assigned_to` depende de
     // `userInfo.id` para un asesor, y pedir antes mostraría (por un instante)

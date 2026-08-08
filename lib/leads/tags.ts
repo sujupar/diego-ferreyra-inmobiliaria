@@ -49,7 +49,8 @@ export interface TagColorClasses {
 /**
  * Paleta de colores sembrada en `lead_tags.color` (migración
  * `20260801000001`, sección 6 — 12 etiquetas). Mismo criterio visual que
- * `app/(dashboard)/crm/page.tsx` (`badgeBg`/`badgeText` con variante dark).
+ * `app/(dashboard)/crm/_components/crm-stages.ts` (`badgeBg`/`badgeText` con
+ * variante dark — se partió de `crm/page.tsx` en la Task 11).
  *
  * Clases escritas LITERALES (no `bg-${color}-100` interpolado) porque
  * Tailwind v4 arma su CSS escaneando el código en busca de nombres de clase

@@ -22,8 +22,24 @@ import ContactsPage from './page'
  *      cualquier return temprano" (acá el return temprano es el gate de
  *      identidad, no un `loadMore`/`actual()`: Contactos no pagina y no
  *      tiene botón que use `pedidos.actual()`, así que no hay un análogo
- *      directo de "la bandera de un botón no versionada" — ver el reporte
- *      de la tarea).
+ *      directo de "la bandera de un botón no versionada" — CRM sí lo tiene
+ *      ("Cargar más") y esa regla queda fijada en `crm/page.test.tsx`).
+ *
+ * Ronda de arreglos 1 — caso D (mover `abrir()` DESPUÉS del `if (!userInfo)
+ * return`): investigado y NO se agrega un test para esto. La mutación deja
+ * los 3 tests de acá en verde porque es genuinamente inobservable HOY: la
+ * única condición de early-return del efecto es `!userInfo`, y `userInfo`
+ * pasa de `null` a un valor UNA sola vez en toda la vida del componente (no
+ * hay logout ni "reintentar" que lo vuelva a `null`) — nunca hay una
+ * generación con un fetch en vuelo en el instante en que ese return se
+ * ejecuta una segunda vez, así que mover `abrir()` no cambia ningún estado
+ * observable en ninguna secuencia de eventos que el componente pueda producir
+ * hoy. Escribir un test para esto exigiría forzar `userInfo` de vuelta a
+ * `null` a mano — un camino que el componente nunca toma — o sea, un test que
+ * no prueba nada real, que es justo lo que se pidió evitar. La trampa para el
+ * día que esto deje de ser cierto (ej. si se agrega un "Reintentar" que
+ * resetea la identidad, como en Propiedades) queda documentada en el
+ * comentario del efecto en `page.tsx`, junto a `pedidos.abrir()`.
  */
 
 let busqueda = ''

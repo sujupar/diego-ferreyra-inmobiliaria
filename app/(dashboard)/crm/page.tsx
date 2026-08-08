@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { CRM_STAGES, deriveCRMStage, getCRMStageInfo, mapStageToCRM } from './_components/crm-stages'
 import { ORIGIN_LABELS } from './_components/constants'
-import { formatDate, timeAgo } from './_components/format'
+import { timeAgo } from './_components/format'
 import { StagePipeline } from './_components/StagePipeline'
 import { DealsList } from './_components/DealsList'
 import type { Deal } from './_components/types'
@@ -160,6 +160,11 @@ function CRMClient() {
   // bajo el rótulo del filtro nuevo, para siempre.
   const pedidos = usePedidosVersionados()
 
+  // Declarado temprano: lo usan efectos de más abajo (limpieza de `?asesor=`
+  // huérfano) además del render. `userInfo` empieza en `null`, así que esto
+  // es `false` hasta que se resuelve — ver M4/M3 más abajo.
+  const esAsesor = userInfo?.role === 'asesor'
+
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
     fetch('/api/users/advisors').then(r => r.ok ? r.json() : { data: [] }).then(j => setAdvisors(j.data || [])).catch(() => {})
@@ -171,6 +176,20 @@ function CRMClient() {
       router.replace('/properties/review')
     }
   }, [userInfo, router])
+
+  // M3: un asesor no puede fijar `?asesor=` (el if/else de `buildParams` ya
+  // lo ignora), pero si un deep link o el historial lo dejan puesto en la URL
+  // queda huérfano: el desplegable "Asesor" no se renderiza para este rol, así
+  // que `FilterBar` nunca arma su ficha, y si no hay otro filtro tampoco
+  // aparece "Limpiar todo" para sacarlo a mano. Se limpia solo apenas se
+  // conoce el rol — `aplicar` es idempotente (no-op si ya está en default),
+  // así que esto no reentra en loop.
+  useEffect(() => {
+    if (esAsesor && filtros.asesor) {
+      aplicarFiltros({ asesor: '' })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [esAsesor, filtros.asesor])
 
   function buildParams(targetPage: number) {
     const params = new URLSearchParams()
@@ -242,7 +261,6 @@ function CRMClient() {
   }
 
   const canHardDelete = userInfo?.role === 'admin' || userInfo?.role === 'dueno'
-  const esAsesor = userInfo?.role === 'asesor'
 
   function toggleSelectMode() {
     setSelectMode(prev => {
@@ -328,6 +346,14 @@ function CRMClient() {
     { value: '', label: 'Todos' },
     ...advisors.map(a => ({ value: a.id, label: a.full_name })),
   ]
+
+  // M4: `esAsesor` es `false` mientras `userInfo` no resolvió (arranca en
+  // `null`), así que para un asesor de verdad el desplegable "Asesor"
+  // aparecía y desaparecía en el primer instante (se renderizaba con el
+  // `false` transitorio y se sacaba al llegar el rol real). Gateado con
+  // `userInfo &&`: sin identidad resuelta, no se muestra — igual que ya pasa
+  // con el resto de la pantalla mientras `userInfo` es `null`.
+  const mostrarAsesor = !!userInfo && !esAsesor
 
   const columns: Column<(typeof dealsWithCRM)[0]>[] = [
     { key: 'contact_name', label: 'Contacto', sortable: true, render: r => (
@@ -442,7 +468,7 @@ function CRMClient() {
           selects={[
             { key: 'etapa', label: 'Etapa', options: OPCIONES_ETAPA },
             { key: 'origin', label: 'Origen', options: OPCIONES_ORIGEN },
-            ...(esAsesor ? [] : [{ key: 'asesor', label: 'Asesor', options: OPCIONES_ASESOR }]),
+            ...(mostrarAsesor ? [{ key: 'asesor', label: 'Asesor', options: OPCIONES_ASESOR }] : []),
           ]}
           values={mostrado}
           onChange={setFiltro}
