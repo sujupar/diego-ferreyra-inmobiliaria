@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { FilterBar } from '@/components/filters/FilterBar'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
 import { useFiltrosUrl } from '@/lib/filters/use-filtros-url'
+import { usePedidosVersionados } from '@/lib/filters/use-pedidos-versionados'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { BulkActionsBar } from '@/components/ui/BulkActionsBar'
 import { Building2, Plus, MapPin, Calendar, Loader2, ChevronRight, LayoutList, LayoutGrid, Table2, Archive, Trash2 } from 'lucide-react'
@@ -246,20 +247,12 @@ function PropertiesClient() {
   // siempre. Y un "Cargar más" en vuelo appendeaba filas del filtro viejo
   // dentro del nuevo, reescribiendo el total a un número inventado.
   //
-  // La generación identifica al LISTADO vigente: todo lo que se calculó para
-  // uno viejo se descarta antes de tocar el estado. El AbortController además
-  // cancela de verdad el pedido que ya no interesa.
-  const generacionRef = useRef(0)
-  const abortRef = useRef<AbortController | null>(null)
-  // Solo el efecto de datos abre una generación nueva. `loadMore` y
-  // `refreshProperties` son operaciones SOBRE el listado vigente, no listados
-  // nuevos: capturan la generación del momento y se descartan solas si cambió.
-  function nuevaGeneracion() {
-    abortRef.current?.abort()
-    abortRef.current = new AbortController()
-    return { gen: ++generacionRef.current, signal: abortRef.current.signal }
-  }
-  const vigente = (gen: number) => gen === generacionRef.current
+  // Ronda 4: la máquina salió a `lib/filters/use-pedidos-versionados` (con
+  // tests) porque son ~20 líneas con tres reglas sutiles que un copiar/pegar
+  // rompe, y las tres pantallas que siguen tienen los mismos dos casos
+  // abiertos. `abrir` = listado nuevo (solo el efecto de datos);
+  // `actual` = engancharse al vigente (cargar más / refrescos).
+  const pedidos = usePedidosVersionados()
 
   useEffect(() => {
     const saved = localStorage.getItem('propertiesViewMode') as 'grid' | 'list' | 'table' | null
@@ -319,7 +312,7 @@ function PropertiesClient() {
     // N2: CUALQUIER corrida de este efecto invalida (y cancela) el listado
     // anterior, incluso las que deciden no pedir nada — si no, una respuesta
     // vieja pintaría sobre una pantalla que ya decidió mostrar otra cosa.
-    const { gen, signal } = nuevaGeneracion()
+    const { gen, signal } = pedidos.abrir()
     // Ronda de arreglos 1 — I2: no pedir nada hasta saber quién es el
     // usuario (resuelto con éxito o no). Esto también elimina el segundo
     // request duplicado de página 0 que antes hacía TODA carga de la
@@ -352,7 +345,7 @@ function PropertiesClient() {
         return r.json()
       })
       .then(({ data, total, hasMore }) => {
-        if (!vigente(gen)) return
+        if (!pedidos.vigente(gen)) return
         setProperties(data || [])
         setTotal(total ?? (data || []).length)
         setHasMore(!!hasMore)
@@ -360,7 +353,7 @@ function PropertiesClient() {
       .catch(err => {
         // Una respuesta (o un AbortError) de un listado que ya no es el vigente
         // no puede pintar NADA: ni datos ni error.
-        if (!vigente(gen)) return
+        if (!pedidos.vigente(gen)) return
         console.error(err)
         setLoadError('listado')
         setProperties([])
@@ -370,7 +363,7 @@ function PropertiesClient() {
       // Idem para el spinner: si lo apagara la respuesta vieja, la pantalla
       // mostraría el listado anterior como si fuera el resultado del filtro
       // nuevo — la misma mentira de H4, por otra puerta.
-      .finally(() => { if (vigente(gen)) setLoading(false) })
+      .finally(() => pedidos.siVigente(gen, () => setLoading(false)))
     // Limpiar selección al cambiar filtros
     setSelectedIds(new Set())
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -393,24 +386,23 @@ function PropertiesClient() {
     // descarta en vez de appendear filas del filtro viejo (y de reescribir el
     // total con el del listado anterior: medido, "28 de 31" sobre un filtro que
     // tenía 21).
-    const gen = generacionRef.current
-    const signal = abortRef.current?.signal
+    const { gen, signal } = pedidos.actual()
     setLoadingMore(true)
     setErrorMas(null)
     try {
       const res = await fetch(`/api/properties?${buildParams(properties.length)}`, { signal })
       if (!res.ok) throw new Error(`GET /api/properties respondió ${res.status}`)
       const { data, total: newTotal, hasMore: newHasMore } = await res.json()
-      if (!vigente(gen)) return
+      if (!pedidos.vigente(gen)) return
       setProperties(prev => [...prev, ...(data || [])])
       setTotal(newTotal ?? 0)
       setHasMore(!!newHasMore)
     } catch (err) {
       console.error(err)
-      if (vigente(gen)) setErrorMas('No se pudieron cargar más propiedades. Probá de nuevo.')
+      if (pedidos.vigente(gen)) setErrorMas('No se pudieron cargar más propiedades. Probá de nuevo.')
     } finally {
-      // Siempre, aunque la generación haya cambiado: es la bandera del BOTÓN, y
-      // dejarla puesta lo bloquearía para el listado nuevo.
+      // Siempre, aunque la generación haya cambiado (regla 3 del helper): es la
+      // bandera del BOTÓN, y dejarla puesta lo bloquearía para el listado nuevo.
       setLoadingMore(false)
     }
   }
@@ -425,13 +417,12 @@ function PropertiesClient() {
     // N2: mismo criterio que `loadMore`. Si el filtro cambió mientras el
     // refresco viajaba, el listado nuevo manda y este se descarta — refrescar
     // el listado VIEJO encima del nuevo sería exactamente el bug.
-    const gen = generacionRef.current
-    const signal = abortRef.current?.signal
+    const { gen, signal } = pedidos.actual()
     try {
       const res = await fetch(`/api/properties?${buildParams(0, keep)}`, { signal })
       if (!res.ok) throw new Error(`GET /api/properties respondió ${res.status}`)
       const { data, total: newTotal, hasMore: newHasMore } = await res.json()
-      if (!vigente(gen)) return
+      if (!pedidos.vigente(gen)) return
       setProperties(data || [])
       setTotal(newTotal ?? (data || []).length)
       setHasMore(!!newHasMore)
@@ -442,7 +433,7 @@ function PropertiesClient() {
       // que la acción no había funcionado. Ahora se avisa y se vacía el
       // listado, que ya no representa lo que hay en el sistema.
       console.error(err)
-      if (!vigente(gen)) return
+      if (!pedidos.vigente(gen)) return
       setProperties([])
       setTotal(0)
       setHasMore(false)
@@ -607,10 +598,20 @@ function PropertiesClient() {
       </FilterBar>
 
       {/* N3: la señal de que una escritura se descartó. Sin esto, apretar
-          "Aplicar" con una fecha imposible es indistinguible de un botón roto. */}
-      {avisoFiltro && (
-        <p role="status" className="text-sm text-destructive">{avisoFiltro}</p>
-      )}
+          "Aplicar" con una fecha imposible es indistinguible de un botón roto.
+          H-E (ronda 4): el contenedor con `role="status"` está SIEMPRE montado y
+          lo que cambia es su texto. Un contenedor que aparece junto con su
+          contenido muchos lectores de pantalla no lo anuncian: la región recién
+          entra al árbol de accesibilidad con el texto ya adentro, así que no hay
+          "cambio" que leer. Cuando está vacío va en `sr-only`, que lo saca del
+          flujo y no deja un hueco en el layout. */}
+      <p
+        role="status"
+        aria-live="polite"
+        className={avisoFiltro ? 'text-sm text-destructive' : 'sr-only'}
+      >
+        {avisoFiltro}
+      </p>
 
       <BulkActionsBar
         count={selectedIds.size}
@@ -725,7 +726,15 @@ function PropertiesClient() {
             {loadingMore ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
             Cargar más ({properties.length} de {total})
           </Button>
-          {errorMas && <p role="status" className="text-sm text-destructive">{errorMas}</p>}
+          {/* H-E: mismo criterio que el aviso de filtros — el contenedor vive
+              mientras viva el botón, y lo que cambia es el texto. */}
+          <p
+            role="status"
+            aria-live="polite"
+            className={errorMas ? 'text-sm text-destructive' : 'sr-only'}
+          >
+            {errorMas}
+          </p>
         </div>
       )}
 

@@ -102,6 +102,38 @@ export function mismosFiltros<T extends Record<string, string>>(
   return claves.every(c => a[c] === b[c])
 }
 
+/**
+ * Querystring en forma canónica: el mismo juego de claves y valores da siempre
+ * la misma cadena, sin importar el orden ni la codificación con que llegó.
+ *
+ * Hace falta porque la ráfaga compara lo que ESCRIBIMOS contra lo que el router
+ * CONFIRMA, y esas dos cadenas pasan por manos distintas (nosotros armamos una,
+ * Next devuelve la otra). Sin canonizar, una diferencia de orden se leería como
+ * "navegación externa" y soltaría el espejo en medio de una ráfaga.
+ */
+export function busquedaCanonica(search: string): string {
+  const entradas = [...new URLSearchParams(search).entries()]
+  entradas.sort((a, b) =>
+    a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0,
+  )
+  return new URLSearchParams(entradas).toString()
+}
+
+/**
+ * Un paso de la ráfaga. Van los DOS datos a propósito:
+ * - `valores`: los filtros propios, para no depender del orden ni de la
+ *   codificación de la cadena;
+ * - `busqueda`: el querystring COMPLETO y canónico, que es lo único que
+ *   distingue "la URL que escribimos" de "esa misma URL más un `?id=abc` que
+ *   puso otro componente". Sin él, una navegación ajena que no toca ningún
+ *   filtro parece un commit nuestro: el espejo se retiene esperando algo que
+ *   nunca va a llegar y la lista gira para siempre con los datos en la mano.
+ */
+interface PasoRafaga<T> {
+  valores: T
+  busqueda: string
+}
+
 export function useFiltrosUrl<T extends Record<string, string>>({
   defectos,
   permitidos,
@@ -165,28 +197,38 @@ export function useFiltrosUrl<T extends Record<string, string>>({
   // ventana y, peor, re-disparaba el resync que pisaba el ref con la URL vieja:
   // el control se destildaba solo y la escritura siguiente perdía el filtro.
   //
-  // Acá va la ráfaga completa: el valor del que se partió más cada valor
+  // Acá va la ráfaga completa: el punto del que se partió más cada punto
   // escrito. Un commit que pertenece a la ráfaga es nuestro (o es la URL que
   // todavía no se movió) y NO suelta nada; uno que no pertenece es una
   // navegación genuinamente externa (un link, un replace de otra pantalla) y
   // ahí sí corresponde soltar y resincronizar. Cero temporizadores.
-  const rafagaRef = useRef<T[]>([])
-
-  const soltarEspejo = useCallback(() => {
-    rafagaRef.current = []
-    setEspejo(null)
-  }, [])
+  //
+  // "Pertenecer" exige las DOS cosas: los mismos filtros Y el mismo
+  // querystring completo (ver `PasoRafaga`). Con los valores solos, un
+  // `pushState('?id=abc')` disparado a mitad de ráfaga por otro componente
+  // —el patrón que esta app ya usa para su `?tab=`— coincidía con el punto de
+  // partida y retenía el espejo PARA SIEMPRE: lista girando con los datos ya
+  // recibidos, el control afirmando un filtro que la URL no tiene, y el `?id=`
+  // borrado en la escritura siguiente porque el ref del querystring tampoco se
+  // resincronizaba.
+  const rafagaRef = useRef<PasoRafaga<T>[]>([])
 
   // Ciclo de vida del espejo + resincronización de los refs, en UN solo efecto
   // para que no haya un render intermedio donde uno ya se soltó y el otro no.
+  // Es también el ÚNICO lugar que vacía la ráfaga: dejarla llena de una ronda
+  // ya cerrada hace que un commit externo posterior "pertenezca" a una ráfaga
+  // que terminó hace rato, con el mismo espejo pegado de arriba.
   //
   // La URL que acaba de llegar RETIENE el espejo cuando es un commit intermedio
   // de la ráfaga (o la URL vieja que todavía no se movió): si se soltara ahí,
   // los controles parpadearían a un estado viejo y el ref retrocedería, que es
   // exactamente lo que hacía la red de seguridad por tiempo.
   useEffect(() => {
+    const busquedaActual = busquedaCanonica(searchParamsKey)
     const retiene =
-      espejo !== null && !igual(espejo, aplicados) && rafagaRef.current.some(v => igual(v, aplicados))
+      espejo !== null &&
+      !igual(espejo, aplicados) &&
+      rafagaRef.current.some(p => p.busqueda === busquedaActual && igual(p.valores, aplicados))
     if (retiene) return
     // La URL es un sistema EXTERNO (el router de Next) cuyos commits solo se
     // pueden observar acá — el caso que la propia regla describe como
@@ -209,11 +251,13 @@ export function useFiltrosUrl<T extends Record<string, string>>({
   // usuario. Hace falta además de la ráfaga porque el Atrás puede caer JUSTO en
   // la URL de la que partimos, que sí está en la ráfaga: sin esto el espejo
   // quedaría puesto esperando un commit que ya no va a llegar.
+  // Soltar el espejo alcanza: el efecto de arriba corre a continuación y es el
+  // que vacía la ráfaga y resincroniza los refs.
   useEffect(() => {
-    const alNavegar = () => soltarEspejo()
+    const alNavegar = () => setEspejo(null)
     window.addEventListener('popstate', alNavegar)
     return () => window.removeEventListener('popstate', alNavegar)
-  }, [soltarEspejo])
+  }, [])
 
   // La URL puede traer parámetros que no son filtros de esta pantalla
   // (`utm_source` de una campaña; `id`, `tab`, `highlight` en los deep links de
@@ -231,6 +275,21 @@ export function useFiltrosUrl<T extends Record<string, string>>({
 
   const aplicar = useCallback((patch: Partial<T>): ResultadoAplicar<T> => {
     const propias = Object.keys(defectos) as (keyof T & string)[]
+
+    // Una clave que no está en `defectos` no se escribe, no se lee y no cuenta
+    // como rechazada: es un no-op perfectamente mudo, o sea el botón muerto que
+    // este hook vino a matar. Con cuatro pantallas por seis claves, el typo va
+    // a pasar; que al menos lo diga la consola en desarrollo.
+    if (process.env.NODE_ENV !== 'production') {
+      const desconocidas = Object.keys(patch).filter(c => !propias.includes(c as keyof T & string))
+      if (desconocidas.length > 0) {
+        console.warn(
+          `[useFiltrosUrl] aplicar() recibió claves que no son de esta pantalla: ${desconocidas.join(', ')}. ` +
+          `Las claves propias son: ${propias.join(', ')}. Se ignoran (¿un typo?).`,
+        )
+      }
+    }
+
     // NUNCA partir de `aplicados` (la foto de ESTE render): el ref es lo único
     // que ya tiene la escritura anterior aunque haya pasado un instante.
     const previos = ultimoFiltroRef.current
@@ -238,8 +297,15 @@ export function useFiltrosUrl<T extends Record<string, string>>({
     // Lo que devolvería una LECTURA de lo que se está por escribir.
     const validados = leerDe(escribirFiltros(crudos, defectos))
 
+    // Rechazo = la clave CAYÓ AL VALOR POR DEFECTO pidiendo otra cosa; o sea,
+    // el filtro no se aplicó. Comparar crudo contra validado marcaba como
+    // rechazo cualquier AJUSTE — un `trim`, un recorte de largo— aunque el
+    // filtro SÍ se hubiera aplicado: en Contactos y CRM, con campos de texto,
+    // "casa " habría pintado en rojo "No se aplicó Búsqueda" mientras la
+    // pantalla mostraba los resultados de `q=casa`. Un aviso que salta cuando
+    // no pasó nada malo enseña a ignorar todos los avisos.
     const rechazadas = (Object.keys(patch) as (keyof T & string)[])
-      .filter(c => propias.includes(c) && validados[c] !== crudos[c])
+      .filter(c => propias.includes(c) && validados[c] === defectos[c] && crudos[c] !== defectos[c])
 
     if (igual(validados, previos)) {
       // Nada para escribir. Distinguir POR QUÉ es lo que evita el botón muerto:
@@ -249,8 +315,13 @@ export function useFiltrosUrl<T extends Record<string, string>>({
     }
 
     const busqueda = construirBusqueda(validados)
-    if (rafagaRef.current.length === 0) rafagaRef.current.push(previos)
-    rafagaRef.current.push(validados)
+    if (rafagaRef.current.length === 0) {
+      rafagaRef.current.push({
+        valores: previos,
+        busqueda: busquedaCanonica(ultimaBusquedaRef.current),
+      })
+    }
+    rafagaRef.current.push({ valores: validados, busqueda: busquedaCanonica(busqueda) })
     ultimoFiltroRef.current = validados
     ultimaBusquedaRef.current = busqueda
     setEspejo(validados)

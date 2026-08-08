@@ -40,6 +40,22 @@ function montar(inicial = '') {
   return renderHook(() => useFiltrosUrl({ defectos: DEFECTOS, permitidos: PERMITIDOS, normalizar }))
 }
 
+// Segunda pantalla de mentira, la que se parece a Contactos y CRM: campos de
+// TEXTO LIBRE cuya normalización no rechaza, AJUSTA (recorta espacios y largo).
+// Es donde se veía el falso positivo de `rechazadas`.
+const DEFECTOS_TEXTO = { q: '', origin: '' }
+const normalizarTexto = (f: typeof DEFECTOS_TEXTO) => ({
+  ...f,
+  q: f.q.trim().slice(0, 20),
+  origin: f.origin.trim(),
+})
+
+function montarTexto(inicial = '') {
+  busqueda = inicial
+  escrituras.length = 0
+  return renderHook(() => useFiltrosUrl({ defectos: DEFECTOS_TEXTO, normalizar: normalizarTexto }))
+}
+
 type Vista = ReturnType<typeof montar>
 
 /** Simula que Next terminó de commitear una URL. */
@@ -190,6 +206,140 @@ describe('useFiltrosUrl — navegación externa', () => {
     act(() => { window.dispatchEvent(new Event('popstate')) })
     expect(vista.result.current.escribiendo).toBe(false)
     expect(vista.result.current.filtros).toMatchObject({ status: 'active', mios: '' })
+  })
+})
+
+describe('useFiltrosUrl — navegación ajena a mitad de ráfaga (H-A)', () => {
+  it('un parámetro ajeno que aparece a mitad de ráfaga suelta el espejo', () => {
+    // El caso real: otro componente de la pantalla hace
+    // `history.pushState(null,'','/properties?id=abc')` (el mismo mecanismo que
+    // esta app ya usa para su `?tab=`) 150 ms después del click en un filtro.
+    // Los VALORES de los filtros de esa URL coinciden con el punto de partida
+    // de la ráfaga; solo el querystring completo los distingue. Sin esa segunda
+    // condición, el espejo se retenía para siempre: lista girando con los datos
+    // ya recibidos y el control afirmando un filtro que la URL no tiene.
+    const vista = montar('')
+    act(() => { vista.result.current.aplicar({ mios: '1' }) })
+    expect(vista.result.current.escribiendo).toBe(true)
+
+    commitear(vista, '/properties?id=abc')
+
+    expect(vista.result.current.escribiendo).toBe(false)
+    expect(vista.result.current.filtros).toEqual(DEFECTOS)
+  })
+
+  it('el parámetro ajeno nuevo sobrevive a la escritura siguiente', () => {
+    // El segundo daño: durante la retención el ref del querystring tampoco se
+    // resincronizaba, así que el `?id=abc` desaparecía en cuanto el usuario
+    // tocaba otro filtro. Contradice de frente "los deep links sobreviven".
+    const vista = montar('')
+    act(() => { vista.result.current.aplicar({ mios: '1' }) })
+    commitear(vista, '/properties?id=abc')
+    act(() => { vista.result.current.aplicar({ status: 'approved' }) })
+    expect(ultimaEscritura()).toBe('/properties?id=abc&status=approved')
+  })
+
+  it('un commit de la ráfaga con las claves en otro orden la sigue reteniendo', () => {
+    // La comparación es por querystring CANÓNICO: la inmunidad al orden y a la
+    // codificación que motivó comparar por valores no se pierde.
+    const vista = montar('utm_source=mail')
+    act(() => { vista.result.current.aplicar({ mios: '1' }) })
+    act(() => { vista.result.current.aplicar({ status: 'approved' }) })
+    commitear(vista, '/properties?mios=1&utm_source=mail')
+    expect(vista.result.current.escribiendo).toBe(true)
+    expect(vista.result.current.filtros).toMatchObject({ mios: '1', status: 'approved' })
+  })
+
+  it('la ráfaga no sobrevive a su propia ronda (H-D)', () => {
+    const vista = montar('')
+    act(() => { vista.result.current.aplicar({ mios: '1' }) })
+    commitear(vista, ultimaEscritura())
+    expect(vista.result.current.escribiendo).toBe(false)
+
+    act(() => { vista.result.current.aplicar({ status: 'approved' }) })
+    expect(vista.result.current.escribiendo).toBe(true)
+
+    // Navegación externa a la URL de la que partió la ráfaga ANTERIOR. Si al
+    // cerrarse esa ráfaga no se hubiera vaciado, este commit "pertenecería" a
+    // ella y el espejo quedaría puesto para siempre.
+    commitear(vista, '/properties')
+    expect(vista.result.current.escribiendo).toBe(false)
+    expect(vista.result.current.filtros).toEqual(DEFECTOS)
+  })
+})
+
+describe('useFiltrosUrl — clave desconocida (H-C)', () => {
+  it('avisa por consola en desarrollo en vez de no hacer nada en silencio', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const vista = montar('')
+    let resultado!: ReturnType<typeof vista.result.current.aplicar>
+    // El typo clásico: `orign` por `origin`. Antes: cero escrituras, cero
+    // rechazadas, cero señal — un botón muerto indistinguible de uno roto.
+    act(() => { resultado = vista.result.current.aplicar({ orign: 'embudo' } as never) })
+    expect(resultado.estado).toBe('sin-cambios')
+    expect(escrituras).toHaveLength(0)
+    expect(warn).toHaveBeenCalled()
+    expect(warn.mock.calls.map(c => String(c[0])).join('\n')).toContain('orign')
+    warn.mockRestore()
+  })
+
+  it('una escritura normal no avisa nada', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const vista = montar('')
+    act(() => { vista.result.current.aplicar({ status: 'approved' }) })
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+})
+
+describe('useFiltrosUrl — normalización que AJUSTA no es rechazo (H-B)', () => {
+  it('un espacio al final se recorta y el filtro se aplica, sin aviso', () => {
+    // Este es el falso positivo que bloqueaba Contactos y CRM: la URL queda en
+    // `?q=casa` —el filtro SÍ se aplicó— y sin embargo la pantalla pintaba en
+    // rojo "No se aplicó Búsqueda".
+    const vista = montarTexto('')
+    let resultado!: ReturnType<typeof vista.result.current.aplicar>
+    act(() => { resultado = vista.result.current.aplicar({ q: 'casa ' }) })
+    expect(resultado.estado).toBe('escrito')
+    expect(resultado.rechazadas).toEqual([])
+    expect(ultimaEscritura()).toBe('/properties?q=casa')
+  })
+
+  it('un texto más largo que el máximo se recorta, tampoco es rechazo', () => {
+    const vista = montarTexto('')
+    let resultado!: ReturnType<typeof vista.result.current.aplicar>
+    act(() => { resultado = vista.result.current.aplicar({ q: 'a'.repeat(40) }) })
+    expect(resultado.estado).toBe('escrito')
+    expect(resultado.rechazadas).toEqual([])
+    expect(ultimaEscritura()).toBe(`/properties?q=${'a'.repeat(20)}`)
+  })
+
+  it('un valor que CAE AL DEFECTO pidiendo otra cosa sí es rechazo', () => {
+    // Solo espacios: el usuario pidió filtrar y no quedó filtro ninguno.
+    const vista = montarTexto('')
+    let resultado!: ReturnType<typeof vista.result.current.aplicar>
+    act(() => { resultado = vista.result.current.aplicar({ q: '   ' }) })
+    expect(resultado.estado).toBe('rechazado')
+    expect(resultado.rechazadas).toEqual(['q'])
+    expect(escrituras).toHaveLength(0)
+  })
+
+  it('borrar un filtro a propósito no es rechazo', () => {
+    const vista = montarTexto('q=casa')
+    let resultado!: ReturnType<typeof vista.result.current.aplicar>
+    act(() => { resultado = vista.result.current.aplicar({ q: '' }) })
+    expect(resultado.estado).toBe('escrito')
+    expect(resultado.rechazadas).toEqual([])
+    expect(ultimaEscritura()).toBe('/properties')
+  })
+
+  it('en un parche mixto solo se reporta la clave que no entró', () => {
+    const vista = montarTexto('')
+    let resultado!: ReturnType<typeof vista.result.current.aplicar>
+    act(() => { resultado = vista.result.current.aplicar({ q: 'casa ', origin: '   ' }) })
+    expect(resultado.estado).toBe('escrito')
+    expect(resultado.rechazadas).toEqual(['origin'])
+    expect(ultimaEscritura()).toBe('/properties?q=casa')
   })
 })
 
