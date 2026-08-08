@@ -194,15 +194,20 @@ export default function NotificationsSettingsPage() {
           ) : logs.length === 0 ? (
             <div className="text-sm text-muted-foreground py-6 text-center">No hay registros aún.</div>
           ) : (
+            // Sin contenedor rounded-xl/border/bg-card propio: esta tabla ya
+            // está adentro de un `<Card>` — agregarle el marco de
+            // `DataTable` lo anidaría dos veces (lección de la Tarea 9). Sí
+            // toma la cabecera `eyebrow` (no hay columnas de números que
+            // necesiten `tabular-n` acá).
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="text-xs text-muted-foreground uppercase border-b">
+                <thead className="border-b">
                   <tr>
-                    <th className="text-left py-2 px-2">Fecha</th>
-                    <th className="text-left py-2 px-2">Tipo</th>
-                    <th className="text-left py-2 px-2">Destinatario</th>
-                    <th className="text-left py-2 px-2">Asunto</th>
-                    <th className="text-left py-2 px-2">Estado</th>
+                    <th className="text-left py-2 px-2 eyebrow whitespace-nowrap">Fecha</th>
+                    <th className="text-left py-2 px-2 eyebrow whitespace-nowrap">Tipo</th>
+                    <th className="text-left py-2 px-2 eyebrow whitespace-nowrap">Destinatario</th>
+                    <th className="text-left py-2 px-2 eyebrow whitespace-nowrap">Asunto</th>
+                    <th className="text-left py-2 px-2 eyebrow whitespace-nowrap">Estado</th>
                   </tr>
                 </thead>
                 <tbody>

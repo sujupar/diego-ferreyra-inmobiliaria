@@ -405,6 +405,10 @@ function VideoAnalytics({
   )
 }
 
+// Sin contenedor rounded-xl/border/bg-card propio: `CampaignTable` se usa
+// adentro de `CardContent` de `FunnelCard` (ya es un `<Card>`) — agregarle el
+// marco de `DataTable` lo anidaría dos veces (lección de la Tarea 9). Sí toma
+// la cabecera `eyebrow` y `tabular-n` en las columnas de números.
 function CampaignTable({ rows }: { rows: CampaignRow[] }) {
   if (rows.length === 0) {
     return <p className="text-sm text-muted-foreground">Sin datos de campaña para el rango.</p>
@@ -413,20 +417,20 @@ function CampaignTable({ rows }: { rows: CampaignRow[] }) {
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b text-left text-muted-foreground">
-            <th className="py-1 pr-2">Campaña</th>
-            <th className="px-2 py-1 text-right">Visitas</th>
-            <th className="px-2 py-1 text-right">Conv.</th>
-            <th className="py-1 pl-2 text-right">%</th>
+          <tr className="border-b text-left">
+            <th className="py-1 pr-2 eyebrow whitespace-nowrap">Campaña</th>
+            <th className="px-2 py-1 text-right eyebrow whitespace-nowrap">Visitas</th>
+            <th className="px-2 py-1 text-right eyebrow whitespace-nowrap">Conv.</th>
+            <th className="py-1 pl-2 text-right eyebrow whitespace-nowrap">%</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((c) => (
             <tr key={c.campaign} className="border-b last:border-0">
               <td className="max-w-[220px] truncate py-1 pr-2" title={c.campaign}>{c.campaign}</td>
-              <td className="px-2 py-1 text-right tabular-nums">{NUM.format(c.visits)}</td>
-              <td className="px-2 py-1 text-right tabular-nums">{NUM.format(c.conversions)}</td>
-              <td className="py-1 pl-2 text-right tabular-nums">{c.pct}%</td>
+              <td className="px-2 py-1 text-right tabular-n">{NUM.format(c.visits)}</td>
+              <td className="px-2 py-1 text-right tabular-n">{NUM.format(c.conversions)}</td>
+              <td className="py-1 pl-2 text-right tabular-n">{c.pct}%</td>
             </tr>
           ))}
         </tbody>

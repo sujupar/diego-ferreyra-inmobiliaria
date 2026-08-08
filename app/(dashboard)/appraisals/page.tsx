@@ -1,13 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { AppraisalSummary } from '@/lib/supabase/appraisals'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { FilterBar } from '@/components/filters/FilterBar'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
+import { useFiltrosUrl } from '@/lib/filters/use-filtros-url'
+import { usePedidosVersionados } from '@/lib/filters/use-pedidos-versionados'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { BulkActionsBar } from '@/components/ui/BulkActionsBar'
 import {
@@ -26,43 +29,171 @@ function formatDate(d: string) {
     return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
+// Filtros de esta pantalla en la URL (lib/filters/use-filtros-url). Constante
+// de MÓDULO, no literal dentro del componente — si va adentro cambia de
+// identidad en cada render y el listado se re-pide sin parar (ver el hook).
+// Único filtro real hoy: el rango de fechas (antes vivía en un `useState`
+// suelto, `dateRange`; ahora en la URL, igual que en
+// Propiedades/Contactos/CRM/Visitas). No hay claves de lista cerrada, así que
+// no hace falta `permitidos`.
+const FILTROS_DEFECTO = { from: '', to: '' }
+
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/
+
+function normalizarFiltros(f: typeof FILTROS_DEFECTO): typeof FILTROS_DEFECTO {
+    return {
+        from: FECHA_RE.test(f.from) ? f.from : '',
+        to: FECHA_RE.test(f.to) ? f.to : '',
+    }
+}
+
+const ETIQUETAS_FILTRO: Record<string, string> = { from: 'Desde', to: 'Hasta' }
+
+function mensajeRechazo(claves: string[]): string {
+    const nombres = claves.map(c => ETIQUETAS_FILTRO[c] ?? c)
+    const lista = nombres.length > 1
+        ? `${nombres.slice(0, -1).join(', ')} y ${nombres[nombres.length - 1]}`
+        : nombres[0]
+    // Las dos claves posibles acá son fechas — el mensaje siempre es el de
+    // fecha (mismo patrón que Visitas/CRM/Contactos, que sí mezclan selects).
+    return `No se aplicó ${lista}: revisá la fecha (el año va con 4 dígitos, por ejemplo 2026-08-01).`
+}
+
 export default function AppraisalsHistoryPage() {
+    // useSearchParams obliga a un límite de Suspense en App Router.
+    return (
+        <Suspense fallback={<AppraisalsSkeleton />}>
+            <AppraisalsClient />
+        </Suspense>
+    )
+}
+
+function AppraisalsSkeleton() {
+    return (
+        <div className="space-y-6">
+            <div>
+                <h1 className="text-2xl font-bold tracking-tight">Historial de Tasaciones</h1>
+                <p className="text-sm text-muted-foreground">Cargando…</p>
+            </div>
+            <div className="flex items-center justify-center py-20">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+        </div>
+    )
+}
+
+function AppraisalsClient() {
     const router = useRouter()
+
+    // Toda la máquina de filtros en la URL vive en `lib/filters/use-filtros-url`
+    // (probada aparte). `mostrado` alimenta los controles (espejo optimista);
+    // `filtros` es lo que hay REALMENTE en la URL y lo único que se le pide al
+    // servidor.
+    const {
+        filtros: mostrado,
+        aplicados: filtros,
+        aplicar,
+        limpiar,
+        escribiendo,
+    } = useFiltrosUrl({
+        defectos: FILTROS_DEFECTO,
+        normalizar: normalizarFiltros,
+    })
+
+    const [avisoFiltro, setAvisoFiltro] = useState<string | null>(null)
+
+    function aplicarFiltros(patch: Partial<typeof FILTROS_DEFECTO>) {
+        const r = aplicar(patch)
+        setAvisoFiltro(r.rechazadas.length > 0 ? mensajeRechazo(r.rechazadas) : null)
+    }
+
+    function setFiltro(key: string, value: string) {
+        aplicarFiltros({ [key]: value } as Partial<typeof FILTROS_DEFECTO>)
+    }
+
+    function limpiarTodo() {
+        limpiar()
+        setAvisoFiltro(null)
+    }
+
     const [appraisals, setAppraisals] = useState<AppraisalSummary[]>([])
     const [totalCount, setTotalCount] = useState(0)
     const [page, setPage] = useState(1)
     const [loading, setLoading] = useState(true)
     const [deleting, setDeleting] = useState<string | null>(null)
     const [viewMode, setViewMode] = useState<'cards' | 'table'>('table')
-    const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: '', to: '' })
     const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [bulkActioning, setBulkActioning] = useState(false)
     const pageSize = 12
+
+    // Gana el último PEDIDO, no la última respuesta — ver
+    // `lib/filters/use-pedidos-versionados`. Sin esto, con la API lenta,
+    // cambiar el rango de fechas y enseguida cambiarlo de nuevo podía terminar
+    // mostrando el resultado del rango viejo bajo el rótulo del nuevo, para
+    // siempre.
+    const pedidos = usePedidosVersionados()
 
     // Get current user info for role-based filtering
     useEffect(() => {
         fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
     }, [])
 
+    // Identidad de `filtros` vista en la última corrida del efecto de datos —
+    // estable entre renders salvo que la URL cambió de verdad (ver
+    // `useFiltrosUrl`). Un cambio de filtro con la página en >1 tiene que
+    // volver a la 1 (la página 3 de un rango de fechas nuevo capaz no existe),
+    // pero sin pagar DOS fetches: uno con la página vieja + filtro nuevo
+    // (que se tiraría), y otro ya en la página 1. Por eso el reset corta ACÁ,
+    // ANTES de armar ningún pedido — el re-render que dispara `setPage(1)`
+    // vuelve a correr este mismo efecto, ya con `cambioFiltro` en falso.
+    const filtrosVistosRef = useRef(filtros)
+
     useEffect(() => {
-        setLoading(true)
+        // PRIMERA LÍNEA, antes de cualquier `return` temprano — tanto el de
+        // abajo (reset de página) como el de identidad sin resolver.
+        const { gen, signal } = pedidos.abrir()
+
+        const cambioFiltro = filtrosVistosRef.current !== filtros
+        filtrosVistosRef.current = filtros
+        if (cambioFiltro && page !== 1) {
+            setPage(1)
+            return
+        }
+
+        // No pedir nada hasta saber quién es el usuario: el asesor solo ve
+        // las suyas (assigned_to) — pedir antes mostraría, por un instante,
+        // tasaciones ajenas (mismo criterio que Contactos).
+        if (!userInfo) return
+
         const params = new URLSearchParams()
         params.set('page', String(page))
         params.set('limit', String(pageSize))
-        if (dateRange.from) params.set('from', dateRange.from)
-        if (dateRange.to) params.set('to', dateRange.to)
-        if (userInfo?.role === 'asesor') params.set('assigned_to', userInfo.id)
+        if (filtros.from) params.set('from', filtros.from)
+        if (filtros.to) params.set('to', filtros.to)
+        if (userInfo.role === 'asesor') params.set('assigned_to', userInfo.id)
 
-        fetch(`/api/appraisals?${params}`)
-            .then(r => r.json())
+        setLoading(true)
+        fetch(`/api/appraisals?${params}`, { signal })
+            .then(r => {
+                if (!r.ok) throw new Error(`GET /api/appraisals respondió ${r.status}`)
+                return r.json()
+            })
             .then(({ data, count }) => {
+                if (!pedidos.vigente(gen)) return
                 setAppraisals(data || [])
                 setTotalCount(count || 0)
             })
-            .catch(err => console.error('Error loading appraisals:', err))
-            .finally(() => setLoading(false))
-    }, [page, dateRange, userInfo])
+            .catch(err => {
+                if (!pedidos.vigente(gen)) return
+                console.error('Error loading appraisals:', err)
+            })
+            // El spinner del listado va versionado: si lo apagara una
+            // respuesta vieja, la pantalla mostraría el listado anterior como
+            // si fuera el resultado del filtro nuevo.
+            .finally(() => pedidos.siVigente(gen, () => setLoading(false)))
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filtros, userInfo, page])
 
     async function handleDelete(e: React.MouseEvent, id: string) {
         e.preventDefault()
@@ -103,6 +234,7 @@ export default function AppraisalsHistoryPage() {
         if (failed > 0) alert(`${failed} no se pudieron eliminar.`)
     }
 
+    const cargando = loading || escribiendo
     const totalPages = Math.ceil(totalCount / pageSize)
 
     const columns: Column<AppraisalSummary>[] = [
@@ -128,7 +260,9 @@ export default function AppraisalsHistoryPage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-2xl font-bold">Historial de Tasaciones</h1>
-                    <p className="text-sm text-muted-foreground">{totalCount} tasacion{totalCount !== 1 ? 'es' : ''}</p>
+                    <p className="text-sm text-muted-foreground">
+                        {cargando ? 'Cargando…' : `${totalCount} tasacion${totalCount !== 1 ? 'es' : ''}`}
+                    </p>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="flex rounded-md border">
@@ -141,7 +275,28 @@ export default function AppraisalsHistoryPage() {
                 </div>
             </div>
 
-            <DateRangeFilter onChange={setDateRange} />
+            <FilterBar
+                selects={[]}
+                values={mostrado}
+                onChange={setFiltro}
+                onClear={limpiarTodo}
+                extraActivo={!!mostrado.from || !!mostrado.to}
+            >
+                <DateRangeFilter
+                    value={{ from: mostrado.from, to: mostrado.to }}
+                    onChange={r => aplicarFiltros({ from: r.from, to: r.to })}
+                />
+            </FilterBar>
+
+            {/* Región SIEMPRE montada — un contenedor que aparece junto con su
+                contenido no lo anuncian muchos lectores de pantalla. */}
+            <p
+                role="status"
+                aria-live="polite"
+                className={avisoFiltro ? 'text-sm text-destructive' : 'sr-only'}
+            >
+                {avisoFiltro}
+            </p>
 
             <BulkActionsBar
                 count={selectedIds.size}
@@ -152,7 +307,7 @@ export default function AppraisalsHistoryPage() {
                 ]}
             />
 
-            {loading ? (
+            {cargando ? (
                 <div className="flex items-center justify-center py-20">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>

@@ -11,16 +11,21 @@ function fmtDelta(d: number | undefined): { text: string; cls: string } {
   return { text: '0%',  cls: 'text-muted-foreground' }
 }
 
+// Sin contenedor rounded-xl/border/bg-card propio: el padre (`/metrics`) ya
+// pone esta tabla adentro de un `<Card>` — agregarle el mismo marco de
+// `DataTable` la anidaría dos veces (lección de la Tarea 9). Sí toma el resto
+// de la receta visual: cabecera `eyebrow`, filas separadas por `border-t` en
+// vez de grilla completa, y `tabular-n` en las columnas de números.
 export function MetricsTable({ data }: { data: MetricsComparison<FunnelMetrics> }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm border-collapse">
+      <table className="w-full text-sm">
         <thead>
-          <tr className="bg-muted text-muted-foreground">
-            <th className="text-left py-2 px-3 border font-medium">Métrica</th>
-            <th className="text-right py-2 px-3 border font-medium">Actual</th>
-            <th className="text-right py-2 px-3 border font-medium">Anterior</th>
-            <th className="text-right py-2 px-3 border font-medium">Δ %</th>
+          <tr className="border-b">
+            <th className="text-left py-2 px-3 eyebrow whitespace-nowrap">Métrica</th>
+            <th className="text-right py-2 px-3 eyebrow whitespace-nowrap">Actual</th>
+            <th className="text-right py-2 px-3 eyebrow whitespace-nowrap">Anterior</th>
+            <th className="text-right py-2 px-3 eyebrow whitespace-nowrap">Δ %</th>
           </tr>
         </thead>
         <tbody>
@@ -29,11 +34,11 @@ export function MetricsTable({ data }: { data: MetricsComparison<FunnelMetrics> 
             const prev = data.previous[k]
             const delta = fmtDelta(data.delta_pct[k])
             return (
-              <tr key={k} className="hover:bg-muted/40">
-                <td className="py-2 px-3 border">{FUNNEL_METRIC_LABELS[k]}</td>
-                <td className="py-2 px-3 border text-right font-semibold">{cur}</td>
-                <td className="py-2 px-3 border text-right text-muted-foreground">{prev}</td>
-                <td className={`py-2 px-3 border text-right font-medium ${delta.cls}`}>{delta.text}</td>
+              <tr key={k} className="border-t hover:bg-muted/40">
+                <td className="py-2 px-3">{FUNNEL_METRIC_LABELS[k]}</td>
+                <td className="py-2 px-3 text-right font-semibold tabular-n">{cur}</td>
+                <td className="py-2 px-3 text-right text-muted-foreground tabular-n">{prev}</td>
+                <td className={`py-2 px-3 text-right font-medium tabular-n ${delta.cls}`}>{delta.text}</td>
               </tr>
             )
           })}

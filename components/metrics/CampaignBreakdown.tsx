@@ -42,41 +42,46 @@ export function CampaignBreakdown({ rows }: { rows: CampaignFunnelRow[] }) {
         return (
           <section key={g.type}>
             <h3 className="text-base font-semibold mb-2">{g.label}</h3>
+            {/* Sin contenedor rounded-xl/border/bg-card propio: el padre
+                (`/metrics`) ya pone esta tabla adentro de un `<Card>` —
+                agregarle el marco de `DataTable` la anidaría dos veces
+                (lección de la Tarea 9). Cabecera `eyebrow`, filas separadas
+                por `border-t`, `tabular-n` en las columnas de números. */}
             <div className="overflow-x-auto">
-              <table className="w-full text-sm border-collapse">
+              <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-muted text-muted-foreground">
-                    <th className="text-left py-2 px-3 border font-medium">Campaña</th>
-                    <th className="text-right py-2 px-3 border font-medium">Impresiones</th>
-                    <th className="text-right py-2 px-3 border font-medium">Visitas a la página</th>
-                    <th className="text-right py-2 px-3 border font-medium">CTR</th>
-                    <th className="text-right py-2 px-3 border font-medium">Gasto</th>
-                    <th className="text-right py-2 px-3 border font-medium">Registros</th>
-                    <th className="text-right py-2 px-3 border font-medium">$/Registro</th>
+                  <tr className="border-b">
+                    <th className="text-left py-2 px-3 eyebrow whitespace-nowrap">Campaña</th>
+                    <th className="text-right py-2 px-3 eyebrow whitespace-nowrap">Impresiones</th>
+                    <th className="text-right py-2 px-3 eyebrow whitespace-nowrap">Visitas a la página</th>
+                    <th className="text-right py-2 px-3 eyebrow whitespace-nowrap">CTR</th>
+                    <th className="text-right py-2 px-3 eyebrow whitespace-nowrap">Gasto</th>
+                    <th className="text-right py-2 px-3 eyebrow whitespace-nowrap">Registros</th>
+                    <th className="text-right py-2 px-3 eyebrow whitespace-nowrap">$/Registro</th>
                   </tr>
                 </thead>
                 <tbody>
                   {slice.map(r => (
-                    <tr key={r.campaign_id} className="hover:bg-muted/40">
-                      <td className="py-2 px-3 border">{r.campaign_name || r.campaign_id}</td>
-                      <td className="py-2 px-3 border text-right">{r.impressions}</td>
-                      <td className="py-2 px-3 border text-right">{r.landing_page_views}</td>
-                      <td className="py-2 px-3 border text-right">{fmtPct(r.ctr)}</td>
-                      <td className="py-2 px-3 border text-right">${fmtMoney(r.spend)}</td>
-                      <td className="py-2 px-3 border text-right">{r.registrations}</td>
-                      <td className="py-2 px-3 border text-right">
+                    <tr key={r.campaign_id} className="border-t hover:bg-muted/40">
+                      <td className="py-2 px-3">{r.campaign_name || r.campaign_id}</td>
+                      <td className="py-2 px-3 text-right tabular-n">{r.impressions}</td>
+                      <td className="py-2 px-3 text-right tabular-n">{r.landing_page_views}</td>
+                      <td className="py-2 px-3 text-right tabular-n">{fmtPct(r.ctr)}</td>
+                      <td className="py-2 px-3 text-right tabular-n">${fmtMoney(r.spend)}</td>
+                      <td className="py-2 px-3 text-right tabular-n">{r.registrations}</td>
+                      <td className="py-2 px-3 text-right tabular-n">
                         {r.cost_per_registration != null ? `$${fmtMoney(r.cost_per_registration)}` : '—'}
                       </td>
                     </tr>
                   ))}
-                  <tr className="font-semibold bg-muted/30">
-                    <td className="py-2 px-3 border">Total</td>
-                    <td className="py-2 px-3 border text-right">{totals.impressions}</td>
-                    <td className="py-2 px-3 border text-right">{totals.landing_page_views}</td>
-                    <td className="py-2 px-3 border text-right">{fmtPct(ctr)}</td>
-                    <td className="py-2 px-3 border text-right">${fmtMoney(totals.spend)}</td>
-                    <td className="py-2 px-3 border text-right">{totals.registrations}</td>
-                    <td className="py-2 px-3 border text-right">
+                  <tr className="border-t font-semibold bg-muted/30">
+                    <td className="py-2 px-3">Total</td>
+                    <td className="py-2 px-3 text-right tabular-n">{totals.impressions}</td>
+                    <td className="py-2 px-3 text-right tabular-n">{totals.landing_page_views}</td>
+                    <td className="py-2 px-3 text-right tabular-n">{fmtPct(ctr)}</td>
+                    <td className="py-2 px-3 text-right tabular-n">${fmtMoney(totals.spend)}</td>
+                    <td className="py-2 px-3 text-right tabular-n">{totals.registrations}</td>
+                    <td className="py-2 px-3 text-right tabular-n">
                       {cpr != null ? `$${fmtMoney(cpr)}` : '—'}
                     </td>
                   </tr>

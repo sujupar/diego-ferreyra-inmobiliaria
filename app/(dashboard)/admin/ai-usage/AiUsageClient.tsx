@@ -201,29 +201,33 @@ export function AiUsageClient() {
             </div>
 
             {data.byDay.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-6 text-center border rounded-lg bg-card">
+              <p className="text-sm text-muted-foreground py-6 text-center rounded-xl border bg-card shadow-sm">
                 Sin actividad todavía.
               </p>
             ) : (
-              <div className="overflow-x-auto rounded-lg border bg-card">
+              // Esta tabla NO está adentro de un `<Card>` (a diferencia de las
+              // de `/metrics`) — se lleva el mismo contenedor que quedó en
+              // `DataTable` (Tarea 9): `rounded-xl border bg-card shadow-sm`,
+              // cabecera `eyebrow`, `tabular-n` en las columnas de números.
+              <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-                      <th className="px-4 py-2 font-medium">Día</th>
-                      <th className="px-4 py-2 font-medium text-right">Conversaciones</th>
-                      <th className="px-4 py-2 font-medium text-right">Análisis</th>
-                      <th className="px-4 py-2 font-medium text-right">Tokens</th>
-                      <th className="px-4 py-2 font-medium text-right">Costo estimado</th>
+                    <tr className="bg-card border-b">
+                      <th className="px-4 py-3 text-left eyebrow whitespace-nowrap">Día</th>
+                      <th className="px-4 py-3 text-right eyebrow whitespace-nowrap">Conversaciones</th>
+                      <th className="px-4 py-3 text-right eyebrow whitespace-nowrap">Análisis</th>
+                      <th className="px-4 py-3 text-right eyebrow whitespace-nowrap">Tokens</th>
+                      <th className="px-4 py-3 text-right eyebrow whitespace-nowrap">Costo estimado</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.byDay.map(b => (
-                      <tr key={b.date} className="border-b last:border-0">
-                        <td className="px-4 py-2">{formatDate(b.date)}</td>
-                        <td className="px-4 py-2 text-right">{b.conversationsCount.toLocaleString('es-AR')}</td>
-                        <td className="px-4 py-2 text-right">{b.analysesCount.toLocaleString('es-AR')}</td>
-                        <td className="px-4 py-2 text-right">{b.tokensUsedTotal.toLocaleString('es-AR')}</td>
-                        <td className="px-4 py-2 text-right">{money(b.estimatedCostUsd, b.estimatedCostArs)}</td>
+                      <tr key={b.date} className="border-t">
+                        <td className="px-4 py-3">{formatDate(b.date)}</td>
+                        <td className="px-4 py-3 text-right tabular-n">{b.conversationsCount.toLocaleString('es-AR')}</td>
+                        <td className="px-4 py-3 text-right tabular-n">{b.analysesCount.toLocaleString('es-AR')}</td>
+                        <td className="px-4 py-3 text-right tabular-n">{b.tokensUsedTotal.toLocaleString('es-AR')}</td>
+                        <td className="px-4 py-3 text-right tabular-n">{money(b.estimatedCostUsd, b.estimatedCostArs)}</td>
                       </tr>
                     ))}
                   </tbody>
