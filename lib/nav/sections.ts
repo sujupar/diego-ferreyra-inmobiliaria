@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import {
-  ListChecks, Inbox, Flag, Columns3, Contact, CalendarCheck, ClipboardList,
+  LayoutDashboard, ListChecks, Inbox, Flag, Columns3, Contact, CalendarCheck, ClipboardList,
   Building2, Megaphone, BarChart3, Filter, Settings, Wrench, UserCog,
 } from 'lucide-react'
 import type { Role } from '@/types/auth.types'
@@ -34,6 +34,7 @@ export function isCollapsible(e: NavEntry): e is NavCollapsible {
   return 'items' in e
 }
 
+const INICIO: NavItem = { href: '/inicio', label: 'Inicio', icon: LayoutDashboard }
 const PENDIENTES: NavItem = { href: '/tasks', label: 'Pendientes', icon: ListChecks }
 const INBOX: NavItem = { href: '/inbox', label: 'Inbox', icon: Inbox, badge: 'inbox' }
 const AVISOS: NavItem = { href: '/avisos', label: 'Avisos por identificar', icon: Flag }
@@ -64,7 +65,7 @@ export function getNavSections(role: Role): NavGroup[] {
 
   if (role === 'asesor') {
     return [
-      { label: null, entries: [PENDIENTES] },
+      { label: null, entries: [INICIO, PENDIENTES] },
       { label: 'Mi día', entries: [INBOX, CRM, VISITAS, { ...CONTACTOS, label: 'Mis contactos' }] },
       {
         label: 'Captación',
@@ -79,7 +80,7 @@ export function getNavSections(role: Role): NavGroup[] {
 
   if (role === 'coordinador') {
     return [
-      { label: null, entries: [PENDIENTES] },
+      { label: null, entries: [INICIO, PENDIENTES] },
       {
         label: 'Captación',
         entries: [
@@ -103,7 +104,7 @@ export function getNavSections(role: Role): NavGroup[] {
   }
 
   const groups: NavGroup[] = [
-    { label: null, entries: [PENDIENTES] },
+    { label: null, entries: [INICIO, PENDIENTES] },
     {
       label: 'Captación',
       entries: [

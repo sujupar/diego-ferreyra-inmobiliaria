@@ -13,10 +13,10 @@ describe('getNavSections — permisos del menú', () => {
     expect(groups[0].label).toBeNull()
   })
 
-  it('el asesor ve las mismas 10 rutas que hoy', () => {
+  it('el asesor ve las mismas 10 rutas de siempre más Inicio (11)', () => {
     const hrefs = navHrefs(getNavSections('asesor'))
     expect(hrefs.sort()).toEqual([
-      '/appraisal/new', '/appraisals', '/contacts', '/crm', '/inbox',
+      '/appraisal/new', '/appraisals', '/contacts', '/crm', '/inbox', '/inicio',
       '/pipeline/new', '/properties', '/redes-sociales', '/tasks', '/visits',
     ])
   })
@@ -92,6 +92,14 @@ describe('getNavSections — permisos del menú', () => {
       }
       expect(conBadge).toEqual(['/inbox'])
     }
+  })
+
+  it('el abogado no tiene Inicio: su entrada sigue siendo la revisión legal', () => {
+    expect(navHrefs(getNavSections('abogado'))).not.toContain('/inicio')
+  })
+
+  it.each(['admin', 'dueno', 'coordinador', 'asesor'] as const)('%s entra por Inicio', role => {
+    expect(navHrefs(getNavSections(role))[0]).toBe('/inicio')
   })
 
   it('toda entrada desplegable tiene al menos un hijo visible', () => {
