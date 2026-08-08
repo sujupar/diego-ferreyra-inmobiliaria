@@ -153,3 +153,45 @@ describe('InicioPage — las tarjetas dependen del rol', () => {
     expect(calls.find(c => c.startsWith('/api/visits'))).toContain('advisor_id=u1')
   })
 })
+
+describe('InicioPage — rangoDeHoy() usa el día local, no UTC', () => {
+  // Ronda de arreglos 1: mismo molde que DateRangeFilter.test.tsx ("zona
+  // horaria: Hoy devuelve la fecha local, no UTC"). Este error ya se cometió
+  // dos veces en el proyecto (DateRangeFilter, Visitas) — nada lo hubiera
+  // detectado acá sin este test.
+  //
+  // 2026-08-08T02:30 UTC es la noche del 7 en cualquier huso más atrasado
+  // que UTC (Argentina UTC-3, y el huso de esta corrida). Si `rangoDeHoy()`
+  // usara el día UTC en vez del local (ej. sacando el `setHours` y armando
+  // el rango a partir de `toISOString().slice(0,10)`), el rango pedido a
+  // `/api/visits` sería el 8, no el 7 — un cliente que agenda "hoy a la
+  // tarde" quedaría afuera de "Visitas de hoy".
+  it('el from/to que se le manda a /api/visits cubre el día LOCAL completo, no se corta a la noche anterior en UTC', async () => {
+    vi.setSystemTime(new Date('2026-08-08T02:30:00Z'))
+    try {
+      render(<InicioPage />)
+      authDeferred.resolve({ ok: true, body: { id: 'u1', role: 'admin' } })
+
+      await waitFor(() => expect(calls.some(c => c.startsWith('/api/visits'))).toBe(true))
+      tasksDeferred.resolve({ ok: true, body: { data: [] } })
+      leadsDeferred.resolve({ ok: true, body: { new: 0 } })
+      propertiesDeferred.resolve({ ok: true, body: { total: 0 } })
+      visitsDeferred.resolve({ ok: true, body: { data: [] } })
+      await waitFor(() => expect(screen.queryByText('Cargando…')).not.toBeInTheDocument())
+
+      const visitsUrl = calls.find(c => c.startsWith('/api/visits'))!
+      const params = new URL(visitsUrl, 'http://localhost').searchParams
+      const from = new Date(params.get('from')!)
+      const to = new Date(params.get('to')!)
+
+      // Día local esperado: 7 de agosto (no el 8, que sería el día UTC).
+      expect([from.getFullYear(), from.getMonth(), from.getDate()]).toEqual([2026, 7, 7])
+      expect([from.getHours(), from.getMinutes(), from.getSeconds()]).toEqual([0, 0, 0])
+
+      expect([to.getFullYear(), to.getMonth(), to.getDate()]).toEqual([2026, 7, 7])
+      expect([to.getHours(), to.getMinutes(), to.getSeconds()]).toEqual([23, 59, 59])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
