@@ -480,7 +480,16 @@ const sidebarMenuButtonVariants = cva(
   // el mismo token que el hover: la fusión visual activo=hover era el bug
   // de la tarea 5) y se refuerza con `hover:` compuesto para que pasar el
   // mouse por el propio ítem activo no lo "apague" a la vista.
-  "peer/menu-button relative flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-brand-soft data-[active=true]:font-medium data-[active=true]:text-brand data-[active=true]:hover:bg-brand-soft data-[active=true]:hover:text-brand data-[active=true]:before:absolute data-[active=true]:before:inset-y-1 data-[active=true]:before:left-0 data-[active=true]:before:w-[3px] data-[active=true]:before:rounded-full data-[active=true]:before:bg-brand data-[active=true]:before:content-[''] data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
+  //
+  // Ronda de arreglos 1: el disparador del flotante colapsado es el ÚNICO
+  // lugar donde conviven data-active=true Y data-state=open (Radix se lo
+  // pone al abrirse). La regla vieja de shadcn `data-[state=open]:hover:
+  // bg-sidebar-accent` empata en especificidad (0,3,0) con `data-[active=
+  // true]:hover:bg-brand-soft` y en la hoja compilada aparece después → el
+  // gris le ganaba a la marca con el mouse encima mientras el flotante
+  // estaba abierto. `data-[active=true]:data-[state=open]:hover:*`
+  // (0,4,0) le gana a las dos sin tocarlas ni reordenar nada.
+  "peer/menu-button relative flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-brand-soft data-[active=true]:font-medium data-[active=true]:text-brand data-[active=true]:hover:bg-brand-soft data-[active=true]:hover:text-brand data-[active=true]:data-[state=open]:hover:bg-brand-soft data-[active=true]:data-[state=open]:hover:text-brand data-[active=true]:before:absolute data-[active=true]:before:inset-y-1 data-[active=true]:before:left-0 data-[active=true]:before:w-[3px] data-[active=true]:before:rounded-full data-[active=true]:before:bg-brand data-[active=true]:before:content-[''] data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
   {
     variants: {
       variant: {

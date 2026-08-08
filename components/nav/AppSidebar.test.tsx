@@ -71,6 +71,7 @@ describe('AppSidebar', () => {
     expect(activo).toHaveAttribute('data-active', 'true')
     expect(activo.className).toContain('data-[active=true]:bg-brand-soft')
     expect(activo.className).toContain('data-[active=true]:text-brand')
+    expect(activo.className).toContain('data-[active=true]:before:bg-brand')
     expect(activo.className).not.toContain('data-[active=true]:bg-sidebar-accent')
   })
 
@@ -176,6 +177,22 @@ describe('AppSidebar colapsado (modo ícono)', () => {
     rutaActual = '/properties/new'
     montarColapsado('admin')
     expect(screen.getByRole('button', { name: /Propiedades/ })).toHaveAttribute('data-active', 'true')
+  })
+
+  it('el disparador activo no pierde la marca al hover mientras el flotante está abierto (data-active + data-state=open a la vez)', () => {
+    // Ronda de arreglos 1: el disparador del flotante colapsado es el ÚNICO
+    // elemento de la app donde conviven data-active=true (la pantalla actual
+    // vive en este grupo) y data-state=open (Radix se lo pone al abrirse). La
+    // regla vieja de shadcn `data-[state=open]:hover:bg-sidebar-accent`
+    // empataba en especificidad con `data-[active=true]:hover:bg-brand-soft`
+    // y ganaba el gris con el mouse encima. Guarda: la clase compuesta con
+    // más especificidad tiene que estar.
+    rutaActual = '/properties/new'
+    montarColapsado('admin')
+    const disparador = screen.getByRole('button', { name: /Propiedades/ })
+    expect(disparador).toHaveAttribute('data-active', 'true')
+    expect(disparador.className).toContain('data-[active=true]:data-[state=open]:hover:bg-brand-soft')
+    expect(disparador.className).toContain('data-[active=true]:data-[state=open]:hover:text-brand')
   })
 
   it('los ítems sueltos siguen funcionando igual', () => {
