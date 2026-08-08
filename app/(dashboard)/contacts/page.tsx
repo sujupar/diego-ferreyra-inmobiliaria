@@ -1,13 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { FilterBar } from '@/components/filters/FilterBar'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
+import { useFiltrosUrl } from '@/lib/filters/use-filtros-url'
+import { usePedidosVersionados } from '@/lib/filters/use-pedidos-versionados'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { BulkActionsBar } from '@/components/ui/BulkActionsBar'
 import { Loader2, Plus, User, Phone, Mail, Calendar, ChevronRight, Search, LayoutList, Table2, Trash2 } from 'lucide-react'
@@ -19,22 +22,143 @@ interface Contact {
 
 const ORIGIN_LABELS: Record<string, string> = { embudo: 'Embudo', referido: 'Referido', historico: 'Historico' }
 
+// Mismo arreglo que antes alimentaba los botones de origen — ahora las
+// opciones del desplegable de FilterBar. "Todos" = sin filtro (value '').
+const OPCIONES_ORIGEN = [
+  { value: '', label: 'Todos' },
+  ...Object.entries(ORIGIN_LABELS).map(([key, label]) => ({ value: key, label })),
+]
+
+// Filtros de esta pantalla en la URL (lib/filters/use-filtros-url). Constantes
+// de MÓDULO, no literales dentro del componente — si van adentro cambian de
+// identidad en cada render y el listado se re-pide sin parar (ver el hook).
+//
+// El buscador de texto (`search`, más abajo) NO entra acá — decisión
+// deliberada, no un olvido. Filtra en memoria sobre los contactos YA
+// cargados, sin tocar la API, así que no tiene ninguno de los problemas que
+// esta pieza vino a resolver (carrera de respuestas, F5). Meterlo en el
+// mismo `useFiltrosUrl` que origin/from/to tiene un costo real: `escribiendo`
+// es UNA sola bandera para todas las claves de la instancia, y la pantalla la
+// usa para tapar el listado entero con el spinner (mismo criterio que
+// Propiedades). Si `search` viviera acá, cada tecla tapiaría la tabla con un
+// spinner hasta que la URL commitee (~200-700 ms medidos en Propiedades) — un
+// buscador que hoy filtra al instante pasaría a "parpadear" en cada letra.
+// Se lo deja fuera y sigue funcionando exactamente como antes.
+const FILTROS_DEFECTO = { origin: '', from: '', to: '' }
+
+const PERMITIDOS = { origin: OPCIONES_ORIGEN.map(o => o.value) }
+
+// Mismo criterio que Propiedades: from/to viajan crudos desde la URL (deep
+// link o edición a mano) y `getContacts` los usa tal cual en un
+// `.gte()/.lte()` — un valor no-fecha rompe la query. `permitidos` no puede
+// validar FORMATO (es una lista cerrada de valores), así que se normaliza acá.
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/
+
+function normalizarFiltros(f: typeof FILTROS_DEFECTO): typeof FILTROS_DEFECTO {
+  return {
+    ...f,
+    from: FECHA_RE.test(f.from) ? f.from : '',
+    to: FECHA_RE.test(f.to) ? f.to : '',
+  }
+}
+
+const ETIQUETAS_FILTRO: Record<string, string> = {
+  origin: 'Origen',
+  from: 'Desde',
+  to: 'Hasta',
+}
+
+function mensajeRechazo(claves: string[]): string {
+  const nombres = claves.map(c => ETIQUETAS_FILTRO[c] ?? c)
+  const lista = nombres.length > 1
+    ? `${nombres.slice(0, -1).join(', ')} y ${nombres[nombres.length - 1]}`
+    : nombres[0]
+  const soloFechas = claves.every(c => c === 'from' || c === 'to')
+  return soloFechas
+    ? `No se aplicó ${lista}: revisá la fecha (el año va con 4 dígitos, por ejemplo 2026-08-01).`
+    : `No se aplicó ${lista}: ese valor no es válido.`
+}
+
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
 export default function ContactsPage() {
+  // useSearchParams obliga a un límite de Suspense en App Router.
+  return (
+    <Suspense fallback={<ContactsSkeleton />}>
+      <ContactsClient />
+    </Suspense>
+  )
+}
+
+function ContactsSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Contactos</h1>
+          <p className="text-muted-foreground">Cargando…</p>
+        </div>
+      </div>
+      <div className="flex justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    </div>
+  )
+}
+
+function ContactsClient() {
   const router = useRouter()
+
+  // Toda la máquina de filtros en la URL vive en `lib/filters/use-filtros-url`
+  // (probada aparte, ver `use-filtros-url.test.ts`).
+  //  - `mostrado`: lo que ven los CONTROLES (espejo si hay escritura pendiente).
+  //  - `filtros`:  lo que hay en la URL — lo único que se le pide al servidor.
+  //    El buscador (`search`, más abajo) NO pasa por acá — ver el porqué junto
+  //    a `FILTROS_DEFECTO`.
+  const {
+    filtros: mostrado,
+    aplicados: filtros,
+    aplicar,
+    limpiar,
+    escribiendo,
+  } = useFiltrosUrl({
+    defectos: FILTROS_DEFECTO,
+    permitidos: PERMITIDOS,
+    normalizar: normalizarFiltros,
+  })
+
+  const [avisoFiltro, setAvisoFiltro] = useState<string | null>(null)
+
+  function aplicarFiltros(patch: Partial<typeof FILTROS_DEFECTO>) {
+    const r = aplicar(patch)
+    setAvisoFiltro(r.rechazadas.length > 0 ? mensajeRechazo(r.rechazadas) : null)
+  }
+
+  function setFiltro(key: string, value: string) {
+    aplicarFiltros({ [key]: value } as Partial<typeof FILTROS_DEFECTO>)
+  }
+
+  function limpiarTodo() {
+    limpiar()
+    setAvisoFiltro(null)
+  }
+
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [filterOrigin, setFilterOrigin] = useState('')
   const [viewMode, setViewMode] = useState<'list' | 'table'>('table')
-  const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: '', to: '' })
   const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkActioning, setBulkActioning] = useState(false)
   const canHardDelete = userInfo?.role === 'admin' || userInfo?.role === 'dueno'
+
+  // Gana el último PEDIDO, no la última respuesta — ver
+  // `lib/filters/use-pedidos-versionados`. Sin esto, con la API lenta, filtrar
+  // por "Embudo" y enseguida por "Referido" podía terminar mostrando los
+  // contactos de "Embudo" bajo el rótulo "Referido", para siempre.
+  const pedidos = usePedidosVersionados()
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
@@ -64,23 +188,53 @@ export default function ContactsPage() {
   }
 
   useEffect(() => {
+    // PRIMERA LÍNEA, antes de cualquier `return` — si no, una respuesta vieja
+    // (o la del `return` temprano de abajo) puede pintar sobre una pantalla
+    // que ya decidió mostrar otra cosa.
+    const { gen, signal } = pedidos.abrir()
+    // No pedir nada hasta saber quién es el usuario: `assigned_to` depende de
+    // `userInfo.id` para un asesor, y pedir antes mostraría (por un instante)
+    // contactos ajenos.
+    if (!userInfo) return
+
     const params = new URLSearchParams()
-    if (filterOrigin) params.set('origin', filterOrigin)
-    if (dateRange.from) params.set('from', dateRange.from)
-    if (dateRange.to) params.set('to', dateRange.to)
-    if (userInfo?.role === 'asesor') params.set('assigned_to', userInfo.id)
+    if (filtros.origin) params.set('origin', filtros.origin)
+    if (filtros.from) params.set('from', filtros.from)
+    if (filtros.to) params.set('to', filtros.to)
+    if (userInfo.role === 'asesor') params.set('assigned_to', userInfo.id)
 
     setLoading(true)
-    fetch(`/api/contacts?${params}`)
-      .then(r => r.json())
-      .then(({ data }) => setContacts(data || []))
-      .catch(err => console.error(err))
-      .finally(() => setLoading(false))
-  }, [filterOrigin, dateRange, userInfo])
+    fetch(`/api/contacts?${params}`, { signal })
+      .then(r => {
+        if (!r.ok) throw new Error(`GET /api/contacts respondió ${r.status}`)
+        return r.json()
+      })
+      .then(({ data }) => {
+        if (!pedidos.vigente(gen)) return
+        setContacts(data || [])
+      })
+      .catch(err => {
+        if (!pedidos.vigente(gen)) return
+        console.error(err)
+      })
+      // El spinner del listado va versionado: si lo apagara una respuesta
+      // vieja, la pantalla mostraría el listado anterior como si fuera el
+      // resultado del filtro nuevo.
+      .finally(() => pedidos.siVigente(gen, () => setLoading(false)))
+    setSelectedIds(new Set())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtros, userInfo])
 
   const filtered = search
-    ? contacts.filter(c => c.full_name.toLowerCase().includes(search.toLowerCase()) || c.email?.toLowerCase().includes(search.toLowerCase()) || c.phone?.includes(search))
+    ? contacts.filter(c =>
+        c.full_name.toLowerCase().includes(search.toLowerCase()) ||
+        c.email?.toLowerCase().includes(search.toLowerCase()) ||
+        c.phone?.includes(search)
+      )
     : contacts
+
+  const cargando = loading || escribiendo
+  const hayFiltros = !!filtros.origin || !!filtros.from || !!filtros.to || !!search
 
   const columns: Column<Contact>[] = [
     { key: 'full_name', label: 'Nombre', sortable: true, render: r => <span className="font-medium">{r.full_name}</span> },
@@ -95,7 +249,9 @@ export default function ContactsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Contactos</h1>
-          <p className="text-muted-foreground">{contacts.length} contacto{contacts.length !== 1 ? 's' : ''}</p>
+          <p className="text-muted-foreground">
+            {cargando ? 'Cargando…' : `${filtered.length} contacto${filtered.length !== 1 ? 's' : ''}`}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-md border">
@@ -106,19 +262,32 @@ export default function ContactsPage() {
         </div>
       </div>
 
-      <DateRangeFilter onChange={setDateRange} />
+      <FilterBar
+        selects={[{ key: 'origin', label: 'Origen', options: OPCIONES_ORIGEN }]}
+        values={mostrado}
+        onChange={setFiltro}
+        onClear={limpiarTodo}
+        extraActivo={!!mostrado.from || !!mostrado.to}
+      >
+        <DateRangeFilter
+          value={{ from: mostrado.from, to: mostrado.to }}
+          onChange={r => aplicarFiltros({ from: r.from, to: r.to })}
+        />
+      </FilterBar>
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-        </div>
-        <div className="flex gap-2">
-          <Button variant={filterOrigin === '' ? 'default' : 'outline'} size="sm" onClick={() => setFilterOrigin('')}>Todos</Button>
-          {Object.entries(ORIGIN_LABELS).map(([key, label]) => (
-            <Button key={key} variant={filterOrigin === key ? 'default' : 'outline'} size="sm" onClick={() => setFilterOrigin(key)}>{label}</Button>
-          ))}
-        </div>
+      {/* Región SIEMPRE montada — un contenedor que aparece junto con su
+          contenido no lo anuncian muchos lectores de pantalla. */}
+      <p
+        role="status"
+        aria-live="polite"
+        className={avisoFiltro ? 'text-sm text-destructive' : 'sr-only'}
+      >
+        {avisoFiltro}
+      </p>
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
       </div>
 
       {canHardDelete && (
@@ -132,14 +301,16 @@ export default function ContactsPage() {
         />
       )}
 
-      {loading ? (
+      {cargando ? (
         <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
       ) : filtered.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <User className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-1">Sin contactos</h3>
-            <p className="text-sm text-muted-foreground mb-4">Crea un contacto o agenda una tasacion.</p>
+            <p className="text-sm text-muted-foreground mb-4">
+              {hayFiltros ? 'Ningún contacto coincide con los filtros.' : 'Crea un contacto o agenda una tasacion.'}
+            </p>
             <Link href="/contacts/new"><Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nuevo Contacto</Button></Link>
           </CardContent>
         </Card>
