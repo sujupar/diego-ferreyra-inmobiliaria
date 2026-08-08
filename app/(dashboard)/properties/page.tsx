@@ -39,6 +39,30 @@ const OPCIONES_ESTADO = [
 // `Record<string, string>` y no compila (TS2345) — objeto literal, se infiere solo.
 const FILTROS_DEFECTO = { status: '', from: '', to: '', mios: '' }
 
+// Hoisteado: se usa tanto al leer (useMemo de abajo) como en `aplicar` — misma
+// lista siempre, y no se recomputa el .map() en cada lectura.
+const PERMITIDOS = { status: OPCIONES_ESTADO.map(o => o.value) }
+
+// Ronda de arreglos 1 — I3: from/to viajan crudos desde la URL (deep link o
+// edición a mano) directo a la API, que devuelve 500 ante algo tipo
+// `?from=basura` (ver el fetch más abajo). `leerFiltros` no puede validar
+// FORMATO — su `permitidos` es una lista cerrada de valores, no un patrón — así
+// que se valida acá, después de leer. Si no matchea, cae al default (silencioso,
+// igual que un status inventado).
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/
+
+// Única puerta de lectura URL → filtros validados. La usan tanto el useMemo
+// (URL confirmada por React) como `aplicar` (URL en vivo, ver más abajo) — así
+// nunca quedan desincronizados sobre qué es un valor válido.
+function leerFiltrosDeUrl(search: string): typeof FILTROS_DEFECTO {
+  const f = leerFiltros(new URLSearchParams(search), FILTROS_DEFECTO, PERMITIDOS)
+  return {
+    ...f,
+    from: FECHA_RE.test(f.from) ? f.from : '',
+    to: FECHA_RE.test(f.to) ? f.to : '',
+  }
+}
+
 // Shape del LISTADO — viene de vw_properties_list (GET /api/properties), sin
 // el array `photos` completo (A3 de la auditoría: 21.951 KB por request, 99%
 // eran fotos base64 legacy). Solo `thumbnail` (portada) + `photo_count`.
@@ -70,11 +94,30 @@ function formatDate(d: string) {
 }
 
 export default function PropertiesPage() {
-  // useSearchParams obliga a un límite de Suspense en App Router.
+  // useSearchParams obliga a un límite de Suspense en App Router. Ronda de
+  // arreglos 1 — MENOR: `fallback={null}` dejaba la pantalla ENTERA en blanco
+  // (título y botones viven adentro de PropertiesClient). Esqueleto liviano
+  // en vez de blanco puro — barato, no duplica el layout final.
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<PropertiesSkeleton />}>
       <PropertiesClient />
     </Suspense>
+  )
+}
+
+function PropertiesSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Propiedades</h1>
+          <p className="text-muted-foreground">Cargando…</p>
+        </div>
+      </div>
+      <div className="flex justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    </div>
   )
 }
 
@@ -90,17 +133,55 @@ function PropertiesClient() {
   // loop infinito de fetch. Con la clave primitiva, `filtros` solo cambia de
   // identidad cuando el querystring realmente cambió.
   const searchParamsKey = searchParams.toString()
-  // Fuente de verdad = la URL. `permitidos.status` hace que un valor viejo o
-  // inventado (`?status=noexiste`) caiga al default en vez de romper la
-  // pantalla — el default ('') está incluido en esa misma lista (OPCIONES_ESTADO).
-  const filtros = useMemo(
-    () => leerFiltros(new URLSearchParams(searchParamsKey), FILTROS_DEFECTO, {
-      status: OPCIONES_ESTADO.map(o => o.value),
-    }),
-    [searchParamsKey]
-  )
+  // Fuente de verdad = la URL confirmada por React. `permitidos.status` hace
+  // que un valor viejo o inventado (`?status=noexiste`) caiga al default en
+  // vez de romper la pantalla (el default está incluido en esa misma lista).
+  const filtros = useMemo(() => leerFiltrosDeUrl(searchParamsKey), [searchParamsKey])
 
-  function setFiltros(nuevos: typeof FILTROS_DEFECTO) {
+  // Ronda de arreglos 1 — I1: espejo optimista. `filtros` (arriba) solo se
+  // actualiza cuando `searchParams` refleja el `router.replace` ya
+  // commiteado — medido en vivo por el revisor: hasta ~665ms para la URL,
+  // ~425ms para lo que se ve en pantalla. Sin este espejo, tocar "7d" o el
+  // checkbox de "solo mías" no se refleja al instante — quedan "congelados"
+  // ese rato. `mostrado` es el espejo si hay uno pendiente, la URL si no.
+  const [espejo, setEspejo] = useState<typeof FILTROS_DEFECTO | null>(null)
+  const mostrado = espejo ?? filtros
+
+  // El espejo se suelta SOLO cuando la URL confirmada (`filtros`) ya coincide
+  // con lo que el espejo venía mostrando — no ante cualquier cambio de
+  // searchParams. Si soltara ante cualquier cambio, un tercer click rápido
+  // podría parpadear hacia un estado viejo mientras la URL no alcanzó al
+  // último click todavía.
+  useEffect(() => {
+    setEspejo(prev => {
+      if (!prev) return prev
+      const alDia = prev.status === filtros.status && prev.from === filtros.from
+        && prev.to === filtros.to && prev.mios === filtros.mios
+      return alDia ? null : prev
+    })
+  }, [filtros])
+
+  // Ronda de arreglos 1 — I1: NUNCA partir de `filtros` (la foto de ESTE
+  // render) para armar el patch. Primer intento: leer `window.location.search`
+  // "en vivo" en vez del render — DESCARTADO tras medirlo: `router.replace`
+  // tarda 200-700ms en commitear la URL real del navegador en este entorno
+  // (dev, Next 16), así que a los 150-197ms el segundo click TODAVÍA lee la
+  // URL vieja y pierde el primero igual que antes (reproducido en vivo: el
+  // rango de fechas desaparecía, quedaba solo `?mios=1`). Fix real: un ref de
+  // JS puro, escrito SINCRÓNICAMENTE en cada `aplicar` — no depende de que
+  // React, el navegador o Next terminen de procesar nada. El próximo click
+  // (aunque sea 10ms después) ya lo ve actualizado. Se resincroniza desde
+  // `filtros` cuando la URL cambia por afuera de `aplicar` (F5, Atrás, link
+  // pegado).
+  const ultimoFiltroRef = useRef(filtros)
+  useEffect(() => {
+    ultimoFiltroRef.current = filtros
+  }, [filtros])
+
+  function aplicar(patch: Partial<typeof FILTROS_DEFECTO>) {
+    const nuevos = { ...ultimoFiltroRef.current, ...patch }
+    ultimoFiltroRef.current = nuevos
+    setEspejo(nuevos)
     const qs = escribirFiltros(nuevos, FILTROS_DEFECTO)
     // replace y no push: con push, cada ajuste del rango de fechas deja una
     // entrada en el historial y el botón Atrás se vuelve inusable.
@@ -108,16 +189,35 @@ function PropertiesClient() {
   }
 
   function setFiltro(key: string, value: string) {
-    setFiltros({ ...filtros, [key]: value })
+    aplicar({ [key]: value } as Partial<typeof FILTROS_DEFECTO>)
+  }
+
+  function limpiarTodo() {
+    ultimoFiltroRef.current = FILTROS_DEFECTO
+    setEspejo(FILTROS_DEFECTO)
+    router.replace(pathname, { scroll: false })
   }
 
   const [properties, setProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(true)
+  // Ronda de arreglos 1 — I3: distingue "todavía cargando" / "vino vacío de
+  // verdad" de "la API falló" — sin esto un 500 (ej. from=basura antes del
+  // fix de validación, o cualquier otro error real) terminaba mostrando "Sin
+  // propiedades — Creá tu primera propiedad captada", que es mentira.
+  const [loadError, setLoadError] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [total, setTotal] = useState(0)
   const [hasMore, setHasMore] = useState(false)
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'table'>('grid')
   const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
+  // Ronda de arreglos 1 — I2: distingue "todavía no sé quién sos" de "sé que
+  // no hay usuario". Sin esto, el fetch de propiedades arrancaba ANTES de que
+  // conteste /api/auth/me — con `mios=1` en la URL, `assigned_to` depende de
+  // `userInfo.id`, así que pedía TODAS las propiedades primero (fichas
+  // ajenas en pantalla) y recién corregía con un segundo fetch al llegar
+  // userInfo. Medido: t=2308ms sin assigned_to, t=2849ms con assigned_to, en
+  // la MISMA carga de /properties?mios=1.
+  const [userInfoLoaded, setUserInfoLoaded] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkActioning, setBulkActioning] = useState(false)
   const [modalProperty, setModalProperty] = useState<DetailProperty | null>(null)
@@ -143,7 +243,16 @@ function PropertiesClient() {
   }, [viewMode])
 
   useEffect(() => {
-    fetch('/api/auth/me').then(r => r.json()).then(setUserInfo).catch(() => {})
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(setUserInfo)
+      .catch(() => {})
+      // Se marca "resuelto" pase lo que pase. Antes el .catch dejaba
+      // `userInfo` en null PARA SIEMPRE si esta llamada fallaba — con el gate
+      // de abajo eso hubiera colgado el listado en el spinner para siempre;
+      // con este .finally, en cambio, arranca sin assigned_to (mismo
+      // fallback de antes) en vez de trabarse.
+      .finally(() => setUserInfoLoaded(true))
   }, [])
 
   function buildParams(offset: number, limit: number = PAGE_SIZE) {
@@ -165,26 +274,46 @@ function PropertiesClient() {
   // cada vez que cambia un filtro (u orden — mismo criterio: ambos cambian
   // QUÉ 24 filas corresponden a la página 0).
   useEffect(() => {
+    // Ronda de arreglos 1 — I2: no pedir nada hasta saber quién es el
+    // usuario (resuelto con éxito o no). Esto también elimina el segundo
+    // request duplicado de página 0 que antes hacía TODA carga de la
+    // pantalla (uno sin userInfo al montar, otro al llegar userInfo).
+    if (!userInfoLoaded) return
     setLoading(true)
+    setLoadError(false)
     fetch(`/api/properties?${buildParams(0)}`)
-      .then(r => r.json())
+      .then(async r => {
+        // Ronda de arreglos 1 — I3: un 500 devuelve un body JSON válido
+        // ({error:...}); sin este chequeo el .then de abajo desestructuraba
+        // {data,total,hasMore} de un error → todo undefined → "Sin
+        // propiedades", mintiendo que el sistema está vacío.
+        if (!r.ok) throw new Error(`GET /api/properties respondió ${r.status}`)
+        return r.json()
+      })
       .then(({ data, total, hasMore }) => {
         setProperties(data || [])
         setTotal(total ?? (data || []).length)
         setHasMore(!!hasMore)
       })
-      .catch(err => console.error(err))
+      .catch(err => {
+        console.error(err)
+        setLoadError(true)
+        setProperties([])
+        setTotal(0)
+        setHasMore(false)
+      })
       .finally(() => setLoading(false))
     // Limpiar selección al cambiar filtros
     setSelectedIds(new Set())
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtros, userInfo, tableSort])
+  }, [filtros, userInfo, userInfoLoaded, tableSort])
 
   async function loadMore() {
     if (loadingMore || !hasMore) return
     setLoadingMore(true)
     try {
       const res = await fetch(`/api/properties?${buildParams(properties.length)}`)
+      if (!res.ok) throw new Error(`GET /api/properties respondió ${res.status}`)
       const { data, total: newTotal, hasMore: newHasMore } = await res.json()
       setProperties(prev => [...prev, ...(data || [])])
       setTotal(newTotal ?? 0)
@@ -204,6 +333,7 @@ function PropertiesClient() {
   async function refreshProperties() {
     const keep = Math.max(properties.length, PAGE_SIZE)
     const res = await fetch(`/api/properties?${buildParams(0, keep)}`)
+    if (!res.ok) { console.error(`GET /api/properties respondió ${res.status}`); return }
     const { data, total: newTotal, hasMore: newHasMore } = await res.json()
     setProperties(data || [])
     setTotal(newTotal ?? (data || []).length)
@@ -323,20 +453,20 @@ function PropertiesClient() {
 
       <FilterBar
         selects={[{ key: 'status', label: 'Estado', options: OPCIONES_ESTADO }]}
-        values={filtros}
+        values={mostrado}
         onChange={setFiltro}
-        onClear={() => router.replace(pathname, { scroll: false })}
-        extraActivo={!!filtros.from || !!filtros.to || filtros.mios === '1'}
+        onClear={limpiarTodo}
+        extraActivo={!!mostrado.from || !!mostrado.to || mostrado.mios === '1'}
       >
         <DateRangeFilter
-          value={{ from: filtros.from, to: filtros.to }}
-          onChange={r => setFiltros({ ...filtros, from: r.from, to: r.to })}
+          value={{ from: mostrado.from, to: mostrado.to }}
+          onChange={r => aplicar({ from: r.from, to: r.to })}
         />
         <label className="flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm">
           <input
             type="checkbox"
-            checked={filtros.mios === '1'}
-            onChange={e => setFiltro('mios', e.target.checked ? '1' : '')}
+            checked={mostrado.mios === '1'}
+            onChange={e => aplicar({ mios: e.target.checked ? '1' : '' })}
           />
           Solo mías
         </label>
@@ -354,6 +484,15 @@ function PropertiesClient() {
 
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+      ) : loadError ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <Building2 className="h-12 w-12 text-destructive mb-4" />
+            <h3 className="text-lg font-medium mb-1">No se pudo cargar el listado</h3>
+            <p className="text-sm text-muted-foreground mb-4">Puede ser un filtro inválido en el link o un problema de conexión. Probá limpiar los filtros.</p>
+            <Button size="sm" variant="outline" onClick={limpiarTodo}>Limpiar filtros</Button>
+          </CardContent>
+        </Card>
       ) : properties.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
