@@ -3,6 +3,7 @@ import { createDeal, getDeals } from '@/lib/supabase/deals'
 import { createTask, createTaskForRole } from '@/lib/supabase/tasks'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth, requirePermission } from '@/lib/auth/require-role'
+import { resolverAlcanceAsignado } from '@/lib/auth/scope'
 import { notifyDealCreated } from '@/lib/email/notifications/deal-created'
 import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
 
@@ -12,15 +13,22 @@ function getAdmin() {
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth()
+    const user = await requireAuth()
     const { searchParams } = new URL(request.url)
     const limitParam = searchParams.get('limit')
     const offsetParam = searchParams.get('offset')
+    // El alcance NO se decide en el navegador: quien no tiene `pipeline.view_all`
+    // queda forzado a sus propios deals, se ignore lo que venga en la dirección.
+    const assignedTo = resolverAlcanceAsignado(
+      user.profile.role,
+      user.profile.id || user.id,
+      searchParams.get('assigned_to'),
+    )
     const { data, total, stageCounts, crmStageCounts } = await getDeals({
       stage: searchParams.get('stage') || undefined,
       crm_stage: searchParams.get('crm_stage') || undefined,
       origin: searchParams.get('origin') || undefined,
-      assigned_to: searchParams.get('assigned_to') || undefined,
+      assigned_to: assignedTo,
       from: searchParams.get('from') || undefined,
       to: searchParams.get('to') || undefined,
       limit: limitParam ? parseInt(limitParam, 10) : undefined,
