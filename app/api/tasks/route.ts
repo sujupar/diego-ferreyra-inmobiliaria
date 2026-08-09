@@ -2,15 +2,36 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getMyTasks, createTask } from '@/lib/supabase/tasks'
 import { requireAuth } from '@/lib/auth/require-role'
+import { resolverAlcanceAsignado } from '@/lib/auth/scope'
 import { getUser } from '@/lib/auth/get-user'
 import { validateTaskInput } from '@/lib/tasks/validate-task-input'
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth()
+    const user = await requireAuth()
     const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('user_id')
+    // El alcance NO se decide en el navegador. `getMyTasks` lee con el cliente
+    // service-role, así que la RLS de `tasks` no aplica y `?user_id` crudo era
+    // la agenda de cualquiera: un asesor logueado pedía
+    // `/api/tasks?user_id=<id ajeno>` y se llevaba los títulos, las descripciones
+    // y las entidades vinculadas de las tareas de otro.
+    //
+    // Se fuerza por PERMISO, y el permiso elegido es `pipeline.view_all` porque
+    // reproduce EXACTAMENTE la policy que la propia base ya define para esta
+    // tabla — `tasks_select_assigned_or_ops`: `assigned_to = auth.uid() OR
+    // is_operations_user()`, e `is_operations_user()` es admin/dueño/coordinador,
+    // que es justo quién tiene `pipeline.view_all`. La ruta queda alineada con la
+    // RLS en vez de inventar una regla nueva. El abogado no es "operations" ni en
+    // la base ni acá: queda acotado a sus propias tareas, que es lo único que su
+    // pantalla de Pendientes le pide.
+    const userId = resolverAlcanceAsignado(
+      user.profile.role,
+      user.profile.id || user.id,
+      searchParams.get('user_id'),
+    )
     const status = searchParams.get('status') || undefined
+    // Se conserva el 400 de antes: solo puede caer acá quien SÍ ve todo y no
+    // dijo de quién (para el resto, el alcance ya quedó forzado a su propio id).
     if (!userId) return NextResponse.json({ error: 'Missing user_id' }, { status: 400 })
     const data = await getMyTasks(userId, status)
     return NextResponse.json({ data })
