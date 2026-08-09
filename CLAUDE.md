@@ -347,6 +347,24 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Regla general:** cada evento del embudo tiene su propia notificación. Ya son tres y no se mezclan: registro de clase → `notifyClassRegistration`; solicitud de tasación → `notifyAppraisalRequest`; tasación coordinada (`/api/deals`) → `notifyDealCreated`. Reusar una pieza "parecida" hace que el email afirme cosas falsas.
 - **Métricas:** no cambian — el deal sigue siendo `origin='embudo'`, `stage='request'` y cuenta igual en el embudo. Este fix es SOLO del email.
 
+### La conversión del embudo NO espera a nadie: cola durable de avisos (2026-08-08)
+
+- **Symptom:** `POST /api/funnel/submit` devolvía **504** y la persona veía "Hubo un problema. Probá de nuevo." — en tráfico PAGO. Intermitente: dos registros el mismo día, uno tardó 3,8 s y el otro **36,6 s**.
+- **Root cause:** el request encadenaba ~25 llamadas a terceros (tarea, email, Mailchimp, stitching, CAPI) y **Resend era el único cliente sin techo de tiempo** (Meta CAPI 3 s, Mailchimp 8 s). Es el § "nunca encadenar varias llamadas de IA dentro de UN request" aplicado a integraciones: el techo real de Netlify es ~26 s y `maxDuration` NO sirve acá.
+- **Fix en dos capas:** (1) techo de 8 s en `sendEmail` (20 s con adjunto) — ya en producción antes; (2) **cola durable**: el POST reserva atómicamente (`reservar_envio_embudo`, `pg_advisory_xact_lock`), crea contacto y deal, encola 5 trabajos en `funnel_lead_jobs` y responde. `lib/funnel/side-effects-worker.ts` los ejecuta desde `app/api/cron/funnel-side-effects` vía **pg_cron cada minuto** (job `funnel-side-effects`, secreto en `cron_config.funnel_side_effects`). Migraciones `20260808000001` (tabla+funciones) y `20260808000002` (el job, se aplica **DESPUÉS** del deploy con `scripts/apply-cron-funnel-side-effects-pg.ts <secreto> <dominio>`).
+- **La ventana peligrosa:** entre el deploy y la programación del job, cada lead entra al CRM y **nadie recibe el aviso, sin ningún error visible** — `escalarTrabajoAgotado` solo corre si el worker corre. Programarlo en la MISMA ventana que el deploy. Al revés (programar antes) es inocuo: pega a un 404 hasta que exista.
+- **Trampa que casi pasa: `sendEmail` NUNCA tira.** Devuelve `{ok,sent,failed,errors}`. Un handler que hiciera `await notifyX(...)` sin mirar el resultado marcaría el trabajo `'done'` ante un vencimiento de Resend — o sea, la cola mentiría **justo en el caso que existe para cubrir**. Por eso `notifyAppraisalRequest`/`notifyClassRegistration` DEVUELVEN el resultado y el handler tira si `!ok || failed > 0`. Ojo: `ok:false` con `failed:0` es "falta `RESEND_API_KEY`" — también tiene que fallar.
+- **Y el reintento necesita techo en la SELECCIÓN, no solo en el `catch`.** `'failed'` se escribe en el `catch`; si la función se muere a mitad, ese `catch` no corre nunca: la fila queda `running`, el reaper la devuelve a `pending` y el ciclo se repite para siempre sin escalar. La consulta de candidatos DEBE filtrar `attempts < max_attempts`.
+- **Presupuesto de tiempo:** `PRESUPUESTO_MS = 8_000` = 26 s (techo Netlify) − 17 s (peor trabajo) − 1 s. Los 17 s son `2 destinatarios × 8 s + 1 s`. **Los destinatarios son 2, no 3**: `createFunnelLead` no setea `deals.created_by`, así que `getDealStakeholders` resuelve `coordinador = null` y la coordinadora recibe la TAREA (que se busca por rol) pero NO el email. Si algún día se suma un tercero, el peor trabajo se va a 25 s — hay un test que se pone en rojo.
+- **Verificación en 3 capas (pg_net es fire-and-forget: `job_run_details = succeeded` NO prueba un 2xx):**
+  ```sql
+  SELECT jobname, schedule, active FROM cron.job WHERE jobname='funnel-side-effects';
+  SELECT status_code, left(content,120), created FROM net._http_response ORDER BY created DESC LIMIT 8;
+  SELECT status, count(*) FROM funnel_lead_jobs GROUP BY status;   -- pending no debe acumularse
+  ```
+  La capa 2 es la única decisiva, y hay que **mirar el `content`**: varios jobs corren cada minuto y todos devuelven 200. El del embudo se reconoce por su forma: `{"ok":true,"resucitados":…,"hechos":…,"salteados":…}`.
+- **Guardia:** si `pending` crece y `max(updated_at)` no avanza, el cron no está corriendo.
+
 ### La inversión de Meta NO se sincronizaba sola — y los datos viejos no eran una serie (2026-08-06)
 
 - **Symptom:** `meta_ads_daily` tenía **24 días con dato sobre 88** (marzo 12, abril 9, mayo 3) y nada después del 27/5/2026. Cualquier costo por tasación calculado con eso era la suma de días sueltos presentada como el mes entero.
