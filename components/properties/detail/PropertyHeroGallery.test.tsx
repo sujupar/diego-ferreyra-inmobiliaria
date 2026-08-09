@@ -41,13 +41,25 @@ describe('PropertyHeroGallery', () => {
   })
 
   it('sin fotos muestra el panel de marca con el botón para subirlas', async () => {
-    const onGoToMedia = vi.fn()
+    const onSubirFotos = vi.fn()
     const user = userEvent.setup()
-    render(<PropertyHeroGallery photos={[]} address="X" plansCount={0} hasVideo={false} hasTour={false} onGoToMedia={onGoToMedia} />)
+    render(<PropertyHeroGallery photos={[]} address="X" plansCount={0} hasVideo={false} hasTour={false} onSubirFotos={onSubirFotos} />)
 
     expect(screen.getByText(/todavía no hay fotos/i)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /subir fotos/i }))
-    expect(onGoToMedia).toHaveBeenCalledTimes(1)
+    expect(onSubirFotos).toHaveBeenCalledTimes(1)
+  })
+
+  it('mientras sube, el botón muestra el progreso y no se puede volver a tocar', () => {
+    render(
+      <PropertyHeroGallery
+        photos={[]} address="X" plansCount={0} hasVideo={false} hasTour={false}
+        onSubirFotos={() => {}} subiendoFotos progresoSubida={40}
+      />
+    )
+    const boton = screen.getByRole('button', { name: /subiendo/i })
+    expect(boton).toBeDisabled()
+    expect(boton).toHaveTextContent('40%')
   })
 
   it('sin fotos y sin permiso de multimedia (abogado) no ofrece subirlas', () => {

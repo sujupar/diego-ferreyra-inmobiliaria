@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Button } from '@/components/ui/button'
 import { Upload, Loader2, X, GripVertical } from 'lucide-react'
+import { useSubirFotos } from '@/lib/properties/use-subir-fotos'
 
 interface Props {
   propertyId: string
@@ -40,10 +41,11 @@ function SortablePhoto({ url, index, onDelete, onOpen }: { url: string; index: n
 
 export function PhotoGallery({ propertyId, photos, onChanged }: Props) {
   const [items, setItems] = useState<string[]>(photos)
-  const [uploading, setUploading] = useState(false)
-  const [progress, setProgress] = useState(0)
   const [lightbox, setLightbox] = useState<number | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  // La subida salió a `useSubirFotos` para que la cabecera de la ficha pueda
+  // ofrecerla sin depender de que esta pestaña esté montada. Acá se usa una
+  // instancia propia: mismo comportamiento que antes, cero cambios visibles.
+  const subida = useSubirFotos(propertyId, onChanged)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
   useEffect(() => { setItems(photos) }, [photos])
@@ -75,67 +77,6 @@ export function PhotoGallery({ propertyId, photos, onChanged }: Props) {
     persistOrder(next)
   }
 
-  async function uploadFiles(fileList: FileList) {
-    const list = Array.from(fileList)
-    if (list.length === 0) return
-    const total = list.length
-    setUploading(true); setProgress(0)
-    const t = toast.loading(`Subiendo ${total} foto(s)…`)
-    const CHUNK = 30
-    const chunks: File[][] = []
-    for (let i = 0; i < list.length; i += CHUNK) chunks.push(list.slice(i, i + CHUNK))
-    let totalDone = 0
-    let totalOk = 0
-    try {
-      for (const group of chunks) {
-        const initRes = await fetch(`/api/properties/${propertyId}/media/upload-init`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ kind: 'photo', files: group.map(f => ({ fileName: f.name, fileSize: f.size, contentType: f.type })) }),
-        })
-        const initData = await initRes.json().catch(() => ({}))
-        if (!initRes.ok) { toast.error(initData?.error || 'No se pudo iniciar la subida', { id: t }); return }
-        const uploads = initData.uploads as Array<{ signedUrl: string; token: string; publicUrl: string }>
-        // Slots por índice: preservan el orden de selección sin importar el orden de finalización.
-        const slots: (string | null)[] = new Array(uploads.length).fill(null)
-        await Promise.all(uploads.map((u, i) => new Promise<void>((resolve) => {
-          const xhr = new XMLHttpRequest()
-          xhr.open('PUT', u.signedUrl, true)
-          xhr.setRequestHeader('Content-Type', group[i].type || 'application/octet-stream')
-          xhr.setRequestHeader('x-upsert', 'true')
-          if (u.token) xhr.setRequestHeader('Authorization', `Bearer ${u.token}`)
-          xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) slots[i] = u.publicUrl
-            totalDone++; setProgress(Math.round((totalDone / total) * 100))
-            toast.loading(`Subiendo ${totalDone}/${total}…`, { id: t })
-            resolve()
-          }
-          xhr.onerror = () => { totalDone++; resolve() }
-          xhr.send(group[i])
-        })))
-        const okUrls = slots.filter((u): u is string => u !== null)
-        if (okUrls.length > 0) {
-          const commitRes = await fetch(`/api/properties/${propertyId}/media/commit`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ kind: 'photo', urls: okUrls }),
-          })
-          if (!commitRes.ok) { const d = await commitRes.json().catch(() => ({})); toast.error(d?.error || 'No se pudieron registrar las fotos', { id: t }); return }
-          totalOk += okUrls.length
-        }
-      }
-      if (totalOk === 0) { toast.error('No se pudo subir ninguna foto', { id: t }); return }
-      const failed = total - totalOk
-      toast.success(failed > 0 ? `${totalOk} subidas · ${failed} fallaron` : `${totalOk} foto(s) subida(s)`, { id: t })
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al subir', { id: t })
-    } finally {
-      setUploading(false); setProgress(0)
-      if (inputRef.current) inputRef.current.value = ''
-      if (totalOk > 0) onChanged()
-    }
-  }
-
   async function deletePhoto(url: string) {
     if (!confirm('¿Eliminar esta foto?')) return
     const next = items.filter(u => u !== url)
@@ -159,9 +100,9 @@ export function PhotoGallery({ propertyId, photos, onChanged }: Props) {
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">Las 3 primeras son la portada. Arrastrá para reordenar.</p>
-        <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={e => e.target.files && uploadFiles(e.target.files)} />
-        <Button size="sm" variant="outline" onClick={() => inputRef.current?.click()} disabled={uploading}>
-          {uploading ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />{progress > 0 ? `${progress}%` : '…'}</> : <><Upload className="h-4 w-4 mr-1" />Subir fotos</>}
+        <input {...subida.inputProps} />
+        <Button size="sm" variant="outline" onClick={subida.abrirSelector} disabled={subida.subiendo}>
+          {subida.subiendo ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />{subida.progreso > 0 ? `${subida.progreso}%` : '…'}</> : <><Upload className="h-4 w-4 mr-1" />Subir fotos</>}
         </Button>
       </div>
 

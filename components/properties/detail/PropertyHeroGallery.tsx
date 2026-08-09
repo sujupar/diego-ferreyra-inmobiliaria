@@ -14,11 +14,21 @@ interface Props {
   plansCount: number
   hasVideo: boolean
   hasTour: boolean
-  /** Ausente = el rol no tiene pestaña Multimedia (abogado). */
-  onGoToMedia?: () => void
+  /**
+   * Abre el selector de archivos de la página. Ausente = el rol no puede subir
+   * fotos (abogado) y entonces el bloque vacío no ofrece el botón.
+   *
+   * Antes esto era `onGoToMedia` y llevaba a la pestaña Multimedia: si el
+   * usuario YA estaba ahí, el botón no hacía nada visible salvo mandarlo al
+   * tope de la página, o sea alejarlo del control de subida.
+   */
+  onSubirFotos?: () => void
+  subiendoFotos?: boolean
+  /** 0-100 mientras dura la subida. */
+  progresoSubida?: number
 }
 
-export function PropertyHeroGallery({ photos, address, plansCount, hasVideo, hasTour, onGoToMedia }: Props) {
+export function PropertyHeroGallery({ photos, address, plansCount, hasVideo, hasTour, onSubirFotos, subiendoFotos, progresoSubida }: Props) {
   const [openAt, setOpenAt] = useState<number | null>(null)
 
   useEffect(() => {
@@ -40,13 +50,16 @@ export function PropertyHeroGallery({ photos, address, plansCount, hasVideo, has
         <p className="text-sm text-white/75 max-w-md">
           Sin fotos no se puede publicar en portales ni lanzar campañas.
         </p>
-        {onGoToMedia && (
+        {onSubirFotos && (
           <button
             type="button"
-            onClick={onGoToMedia}
-            className="mt-2 rounded-lg bg-white text-[color:var(--brand)] px-5 py-2 text-sm font-semibold hover:bg-white/90 transition"
+            onClick={onSubirFotos}
+            disabled={subiendoFotos}
+            className="mt-2 rounded-lg bg-white text-[color:var(--brand)] px-5 py-2 text-sm font-semibold hover:bg-white/90 transition disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            Subir fotos
+            {subiendoFotos
+              ? `Subiendo…${progresoSubida ? ` ${progresoSubida}%` : ''}`
+              : 'Subir fotos'}
           </button>
         )}
       </div>

@@ -127,8 +127,12 @@ export function ghlMissingFields(p: GhlCheckInput): string[] {
 export type NextStepTone = 'info' | 'warn' | 'danger' | 'neutral'
 
 export type NextStepAction =
+  // Cambiar de pestaña. Solo sirve cuando el destino es OTRO lugar de la ficha.
   | { kind: 'tab'; tab: TabKey; label: string }
   | { kind: 'submit-review'; label: string }
+  // Abre el selector de archivos ahí mismo. "Ir a Multimedia" no alcanzaba: el
+  // aviso se ve estando ya en Multimedia, y entonces el botón no hacía nada.
+  | { kind: 'subir-fotos'; label: string }
 
 export interface NextStep {
   id: string
@@ -216,7 +220,7 @@ export function nextStep(i: NextStepInput): NextStep | null {
     return {
       id: 'photos', tone: 'warn', title: 'Fotos pendientes',
       text: 'La revisión legal fue aprobada. Subí las fotos para completar la captación.',
-      action: isAbogado ? null : { kind: 'tab', tab: 'multimedia', label: 'Subir fotos' },
+      action: isAbogado ? null : { kind: 'subir-fotos', label: 'Subir fotos' },
     }
   }
 

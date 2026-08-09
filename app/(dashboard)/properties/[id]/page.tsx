@@ -12,6 +12,7 @@ import type { FlowHistoryData } from '@/app/(dashboard)/_components/FlowHistoryC
 import {
   buildKeyStats, ghlMissingFields, nextStep, resolveTab, visibleTabs, type TabKey,
 } from '@/lib/properties/detail-view'
+import { useSubirFotos } from '@/lib/properties/use-subir-fotos'
 import { PropertyHeroGallery } from '@/components/properties/detail/PropertyHeroGallery'
 import { PropertyIdentityBar } from '@/components/properties/detail/PropertyIdentityBar'
 import { PropertyKeyStats } from '@/components/properties/detail/PropertyKeyStats'
@@ -138,6 +139,11 @@ export default function PropertyDetailPage() {
       .catch(() => setFeedback([]))
   }, [id])
 
+  // ARRIBA de los early returns de abajo (`loading` / `!property`): un hook que
+  // quede después se saltea en esos renders y React tumba la ficha entera con
+  // "Rendered fewer hooks than expected".
+  const subidaDeFotos = useSubirFotos(id, fetchProperty)
+
   const tabs = visibleTabs({ role: userInfo?.role, status: property?.status ?? '' })
 
   // La pestaña vive en la URL (?tab=…) para que recargar no vuelva al principio
@@ -149,11 +155,24 @@ export default function PropertyDetailPage() {
     setTab(resolveTab(fromUrl, visibleTabs({ role: userInfo.role, status: property.status })))
   }, [property, userInfo])
 
-  function goToTab(next: TabKey) {
+  /**
+   * `destino` decide adónde queda mirando la pantalla:
+   * - 'tope' (default): la barra de pestañas está arriba, así que volver al tope
+   *   es lo natural cuando el propio usuario eligió la pestaña ahí.
+   * - 'contenido': lo mandó un aviso de la cabecera. Ahí el tope es justamente
+   *   de donde viene — hay que dejarlo mirando lo que le pidieron hacer.
+   */
+  function goToTab(next: TabKey, destino: 'tope' | 'contenido' = 'tope') {
     setTab(next)
     const url = new URL(window.location.href)
     url.searchParams.set('tab', next)
     window.history.replaceState(null, '', url.toString())
+    if (destino === 'contenido') {
+      // El ancla es un contenedor fijo (solo cambia lo que tiene adentro), así
+      // que ya existe en el DOM y no hace falta esperar al próximo render.
+      document.getElementById('contenido-pestana')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+      return
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -249,13 +268,33 @@ export default function PropertyDetailPage() {
         <AddTaskDialog entity={{ kind: 'property', id: property.id, label: property.address }} />
       </div>
 
+      {/*
+        El selector de archivos vive ACÁ, fuera de las pestañas, y nunca se
+        desmonta: cualquier botón de "Subir fotos" de la ficha lo abre con un
+        `.click()` sincrónico dentro de su propio `onClick`. Metido adentro de
+        una pestaña quedaría `null` para quien esté parado en otra, y diferir el
+        click a un efecto pierde la activación del usuario — las dos formas
+        reproducen el bug original: tocás el botón y no pasa nada.
+      */}
+      {/*
+        El selector de archivos vive ACÁ, fuera de las pestañas, y nunca se
+        desmonta: cualquier botón de "Subir fotos" de la ficha lo abre con un
+        `.click()` sincrónico dentro de su propio `onClick`. Metido adentro de
+        una pestaña quedaría `null` para quien esté parado en otra, y diferir el
+        click a un efecto pierde la activación del usuario — las dos formas
+        reproducen el bug original: tocás el botón y no pasa nada.
+      */}
+      <input {...subidaDeFotos.inputProps} />
+
       <PropertyHeroGallery
         photos={photos}
         address={property.address}
         plansCount={plans.length}
         hasVideo={!!property.video_file_url}
         hasTour={!!property.tour_3d_url}
-        onGoToMedia={isAbogado ? undefined : () => goToTab('multimedia')}
+        onSubirFotos={isAbogado ? undefined : subidaDeFotos.abrirSelector}
+        subiendoFotos={subidaDeFotos.subiendo}
+        progresoSubida={subidaDeFotos.progreso}
       />
 
       <PropertyIdentityBar
@@ -277,14 +316,18 @@ export default function PropertyDetailPage() {
       <PropertyNextStepBanner
         step={step}
         submitting={submitting}
-        onGoToTab={goToTab}
+        onGoToTab={t => goToTab(t, 'contenido')}
         onSubmitReview={() => handleUpdateStatus('pending_review')}
+        onSubirFotos={subidaDeFotos.abrirSelector}
+        subiendoFotos={subidaDeFotos.subiendo}
         details={ghlDetails}
       />
 
       <PropertyTabsNav tabs={tabs} active={tab} onChange={goToTab} />
 
-      <div className="pt-2">
+      {/* `scroll-mt-32` deja el contenido debajo de la barra de pestañas, que es
+          sticky: sin ese margen el ancla queda tapada por la propia barra. */}
+      <div id="contenido-pestana" className="pt-2 scroll-mt-32">
         {tab === 'propiedad' && <OverviewTab property={property} isAbogado={!!isAbogado} onChanged={fetchProperty} />}
 
         {tab === 'multimedia' && (

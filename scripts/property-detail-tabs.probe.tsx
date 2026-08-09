@@ -77,7 +77,7 @@ const stepPendiente = nextStep({
   importSource: null, legalDocsPending: false, originPending: false,
 })
 check('próximo paso pendiente', renderToStaticMarkup(
-  <PropertyNextStepBanner step={stepPendiente} submitting={false} onGoToTab={() => {}} onSubmitReview={() => {}} />,
+  <PropertyNextStepBanner step={stepPendiente} submitting={false} onGoToTab={() => {}} onSubmitReview={() => {}} onSubirFotos={() => {}} />,
 ), ['Falta la documentación', 'Ir a Documentación'])
 
 // 4) Pestañas por rol

@@ -109,10 +109,13 @@ describe('nextStep', () => {
     expect(s?.action).toEqual({ kind: 'tab', tab: 'documentacion', label: 'Ir a Documentación' })
   })
 
-  it('legal aprobado y sin fotos: manda a Multimedia', () => {
+  // El aviso de fotos aparece justamente cuando el asesor ya está mirando la
+  // ficha, muchas veces parado en Multimedia: cambiarlo de pestaña no le
+  // resuelve nada. La acción abre el selector de archivos ahí mismo.
+  it('legal aprobado y sin fotos: ofrece subirlas, no cambiar de pestaña', () => {
     const s = nextStep({ ...base, status: 'pending_photos', photosCount: 0 })
     expect(s?.id).toBe('photos')
-    expect(s?.action).toEqual({ kind: 'tab', tab: 'multimedia', label: 'Subir fotos' })
+    expect(s?.action).toEqual({ kind: 'subir-fotos', label: 'Subir fotos' })
   })
 
   it('al abogado nunca le ofrece subir fotos ni enviar a revisión', () => {

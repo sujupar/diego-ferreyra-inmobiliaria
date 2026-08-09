@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { AlertTriangle, Info, XCircle, Archive, Loader2, ArrowRight } from 'lucide-react'
+import { AlertTriangle, Info, XCircle, Archive, Loader2, ArrowRight, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { NextStep, NextStepTone, TabKey } from '@/lib/properties/detail-view'
 
@@ -17,14 +17,20 @@ interface Props {
   submitting: boolean
   onGoToTab: (tab: TabKey) => void
   onSubmitReview: () => void
+  /** Abre el selector de archivos de la página, sin cambiar de pestaña. */
+  onSubirFotos: () => void
+  subiendoFotos?: boolean
   /** Detalle opcional plegable (ej. los campos importados de GHL). */
   details?: ReactNode
 }
 
-export function PropertyNextStepBanner({ step, submitting, onGoToTab, onSubmitReview, details }: Props) {
+export function PropertyNextStepBanner({ step, submitting, onGoToTab, onSubmitReview, onSubirFotos, subiendoFotos, details }: Props) {
   if (!step) return null
   const tone = TONES[step.tone]
   const Icon = tone.icon
+  // A una const local: dentro de los callbacks, TypeScript conserva el estrechado
+  // de la unión y así el botón de pestaña llega a `.tab` sin ningún cast.
+  const accion = step.action
 
   return (
     <div className={`rounded-2xl border px-5 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between ${tone.box}`}>
@@ -37,16 +43,21 @@ export function PropertyNextStepBanner({ step, submitting, onGoToTab, onSubmitRe
         </div>
       </div>
 
-      {step.action && (
+      {accion && (
         <div className="shrink-0">
-          {step.action.kind === 'submit-review' ? (
+          {accion.kind === 'submit-review' ? (
             <Button onClick={onSubmitReview} disabled={submitting}>
               {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-              {step.action.label}
+              {accion.label}
+            </Button>
+          ) : accion.kind === 'subir-fotos' ? (
+            <Button onClick={onSubirFotos} disabled={subiendoFotos}>
+              {subiendoFotos ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
+              {accion.label}
             </Button>
           ) : (
-            <Button variant="outline" onClick={() => onGoToTab((step.action as { tab: TabKey }).tab)}>
-              {step.action.label}
+            <Button variant="outline" onClick={() => onGoToTab(accion.tab)}>
+              {accion.label}
               <ArrowRight className="h-4 w-4 ml-1" />
             </Button>
           )}
