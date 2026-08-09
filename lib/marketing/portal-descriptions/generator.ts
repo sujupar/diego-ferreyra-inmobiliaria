@@ -4,7 +4,7 @@
  *
  * System prompt: "GPT Portales" de Diego (ver system-prompt.ts).
  */
-import type { Property } from '@/lib/portals/types'
+import type { DatosParaDescripcion } from './types'
 import { chatCompletion } from '@/lib/ai/chat-client'
 import { PORTAL_DESCRIPTION_SYSTEM_PROMPT } from './system-prompt'
 import { formatInsightsForPrompt, type LocationInsights } from '@/lib/marketing/location-insights'
@@ -16,9 +16,17 @@ export interface GeneratedDescription {
 }
 
 export interface GenerateInput {
-  property: Property
+  property: DatosParaDescripcion
   buyerProfile?: string
   extraNotes?: string
+  /**
+   * Techo de tiempo de la ÚNICA llamada al modelo, en ms. Opcional: sin él el
+   * comportamiento es el de siempre. Lo pasa quien corre dentro de una función
+   * de Netlify, que se corta bastante antes de los 60s y responde una página
+   * HTML de error 504 — un `res.json()` del cliente contra eso explota con
+   * "Unexpected token '<'". Mejor cortar nosotros y devolver un error legible.
+   */
+  timeoutMs?: number
 }
 
 const TIPOLOGIA_MAP: Record<string, string> = {
@@ -103,6 +111,7 @@ export async function generatePortalDescription(
     ],
     temperature: 0.7,
     jsonMode: true,
+    timeoutMs: input.timeoutMs,
   })
 
   let parsed: unknown

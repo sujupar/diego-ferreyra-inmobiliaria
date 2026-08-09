@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth/require-role'
 import { notifyPropertyCreated } from '@/lib/email/notifications/property-created'
 import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
 import { geocodePropertyBestEffort } from '@/lib/properties/geocode-on-write'
+import { esOperacion, OPERACIONES_VALORES } from '@/lib/properties/operacion'
 
 const DEFAULT_PAGE_SIZE = 24
 const MAX_PAGE_SIZE = 100
@@ -54,6 +55,16 @@ export async function POST(request: NextRequest) {
     // asignaba a quien cargaba el alta (no necesariamente quién la muestra).
     if (!body.assigned_to || typeof body.assigned_to !== 'string') {
       return NextResponse.json({ error: 'Debe asignarse un asesor (quién muestra la propiedad).' }, { status: 400 })
+    }
+    // `operation_type` es texto libre en Postgres: NO hay CHECK que avise. Un
+    // valor fuera de los tres canónicos entra callado y después el daño es
+    // silencioso — MercadoLibre no encuentra categoría y Argenprop cae en VENTA,
+    // así que un alquiler temporario se publica como venta.
+    if (body.operation_type !== undefined && !esOperacion(body.operation_type)) {
+      return NextResponse.json(
+        { error: `Operación inválida: "${body.operation_type}". Valores permitidos: ${OPERACIONES_VALORES.join(', ')}.` },
+        { status: 400 },
+      )
     }
     const payload = {
       ...body,

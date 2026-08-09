@@ -10,6 +10,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, Home, DollarSign, FileText, MapPin, ArrowLeft, User, ImageIcon, Layers, Upload, Trash2 } from 'lucide-react'
 import { uploadPlans, validatePlanFile } from '@/lib/properties/upload-plans'
+import { OPERACIONES } from '@/lib/properties/operacion'
+import { GenerarDescripcion } from '@/components/properties/alta/GenerarDescripcion'
 
 export default function NewPropertyPage() {
     return (
@@ -38,6 +40,7 @@ function NewPropertyContent() {
     const [prefillIds, setPrefillIds] = useState<PrefillState>({ appraisalId: null, contactId: null })
     const [form, setForm] = useState({
         address: '', neighborhood: '', city: 'CABA', property_type: 'departamento',
+        operation_type: 'venta',
         rooms: '', bedrooms: '', bathrooms: '', garages: '',
         covered_area: '', total_area: '', floor: '', age: '',
         asking_price: '', currency: 'USD', commission_percentage: '3',
@@ -48,6 +51,10 @@ function NewPropertyContent() {
     const [photos, setPhotos] = useState<string[]>([])
     const [planFiles, setPlanFiles] = useState<File[]>([])
     const [uploadingPlans, setUploadingPlans] = useState(false)
+    // Mientras el modelo escribe, captar la propiedad la crearía SIN la
+    // descripción que el asesor está esperando. Se bloquea el envío, no la
+    // edición del resto del formulario.
+    const [generandoDescripcion, setGenerandoDescripcion] = useState(false)
     const planInput = useRef<HTMLInputElement>(null)
 
     // Cargar lista de asesores
@@ -221,6 +228,7 @@ function NewPropertyContent() {
                 neighborhood: form.neighborhood,
                 city: form.city,
                 property_type: form.property_type,
+                operation_type: form.operation_type,
                 rooms: form.rooms ? parseInt(form.rooms) : undefined,
                 bedrooms: form.bedrooms ? parseInt(form.bedrooms) : undefined,
                 bathrooms: form.bathrooms ? parseInt(form.bathrooms) : undefined,
@@ -356,6 +364,13 @@ function NewPropertyContent() {
                                     <option value="terreno">Terreno</option>
                                 </select>
                             </div>
+                            <div className="space-y-2">
+                                <Label>Operación</Label>
+                                <select value={form.operation_type} onChange={e => updateField('operation_type', e.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                                    {OPERACIONES.map(o => <option key={o.valor} value={o.valor}>{o.etiqueta}</option>)}
+                                </select>
+                                <p className="text-xs text-muted-foreground">Define la categoría con la que se publica en los portales.</p>
+                            </div>
                         </div>
                     </CardContent>
                 </Card>
@@ -373,19 +388,6 @@ function NewPropertyContent() {
                             <div className="space-y-2"><Label>Piso</Label><Input type="number" value={form.floor} onChange={e => updateField('floor', e.target.value)} /></div>
                             <div className="space-y-2"><Label>Antigüedad (años)</Label><Input type="number" value={form.age} onChange={e => updateField('age', e.target.value)} /></div>
                         </div>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader><CardTitle className="text-lg flex items-center gap-2"><FileText className="h-5 w-5" />Descripción</CardTitle></CardHeader>
-                    <CardContent>
-                        <textarea
-                            value={form.description}
-                            onChange={e => updateField('description', e.target.value)}
-                            placeholder="Descripción comercial de la propiedad…"
-                            rows={5}
-                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-y"
-                        />
                     </CardContent>
                 </Card>
 
@@ -518,11 +520,32 @@ function NewPropertyContent() {
                     </CardContent>
                 </Card>
 
+                {/* La descripción va ÚLTIMA a propósito: el dueño pidió "llenar
+                    todo y, al final, generar". El modelo escribe con lo que haya
+                    cargado, así que generar a mitad de camino da un aviso genérico. */}
+                <Card>
+                    <CardHeader><CardTitle className="text-lg flex items-center gap-2"><FileText className="h-5 w-5" />Descripción</CardTitle></CardHeader>
+                    <CardContent className="space-y-4">
+                        <textarea
+                            value={form.description}
+                            onChange={e => updateField('description', e.target.value)}
+                            placeholder="Descripción comercial de la propiedad…"
+                            rows={5}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-y"
+                        />
+                        <GenerarDescripcion
+                            form={form}
+                            onAplicar={texto => updateField('description', texto)}
+                            onGenerandoChange={setGenerandoDescripcion}
+                        />
+                    </CardContent>
+                </Card>
+
                 <div className="flex gap-3">
                     <Button type="button" variant="outline" onClick={() => router.back()}>Cancelar</Button>
-                    <Button type="submit" disabled={loading || !form.assigned_to} className="flex-1 bg-green-600 hover:bg-green-700">
+                    <Button type="submit" disabled={loading || !form.assigned_to || generandoDescripcion} className="flex-1 bg-green-600 hover:bg-green-700">
                         {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {uploadingPlans ? 'Subiendo planos…' : 'Captar Propiedad'}
+                        {uploadingPlans ? 'Subiendo planos…' : generandoDescripcion ? 'Generando descripción…' : 'Captar Propiedad'}
                     </Button>
                 </div>
             </form>

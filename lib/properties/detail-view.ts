@@ -242,6 +242,11 @@ export function nextStep(i: NextStepInput): NextStep | null {
 export function operationLabel(op: string | null | undefined): string {
   switch ((op ?? 'venta').toLowerCase().trim()) {
     case 'alquiler': return 'en alquiler'
+    // `temporario` es el valor CANÓNICO de la columna (el que usan los mappers
+    // de MercadoLibre y Argenprop) y sin embargo caía en el default: la ficha
+    // decía "en venta" para un alquiler temporario. Las otras dos formas son
+    // heredadas y se conservan por los datos viejos.
+    case 'temporario':
     case 'alquiler_temporario':
     case 'alquiler temporario': return 'en alquiler temporario'
     default: return 'en venta'

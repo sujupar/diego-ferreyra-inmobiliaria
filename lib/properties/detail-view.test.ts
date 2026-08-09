@@ -148,6 +148,9 @@ describe('etiquetas', () => {
     expect(operationLabel('venta')).toBe('en venta')
     expect(operationLabel('alquiler')).toBe('en alquiler')
     expect(operationLabel('alquiler_temporario')).toBe('en alquiler temporario')
+    // El valor CANÓNICO de la columna. Caía en el default y la ficha decía
+    // "en venta" para un alquiler temporario.
+    expect(operationLabel('temporario')).toBe('en alquiler temporario')
     expect(operationLabel(null)).toBe('en venta')
   })
   it('capitaliza el tipo y respeta PH', () => {
