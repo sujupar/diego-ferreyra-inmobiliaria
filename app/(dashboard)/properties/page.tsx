@@ -18,11 +18,16 @@ import { PropertyCard } from './_components/PropertyCard'
 import { PropertyDetailModal, type DetailProperty } from './_components/PropertyDetailModal'
 import { ScheduleVisitDialog } from './_components/ScheduleVisitDialog'
 
+// Catálogo de valores REALES de `properties.status`: alimenta el desplegable de
+// filtros (que consulta por el valor guardado). `pending_docs` y
+// `pending_review` ya no los escribe nadie desde 2026-08-09 — quedan para las
+// filas viejas, y por eso van marcados. El badge de cada fila NO sale de acá
+// cuando la propiedad está en captación: ver `getPropertyStatusInfo`.
 const STATUS_INFO: Record<string, { label: string; color: string }> = {
   draft: { label: 'Borrador', color: 'bg-gray-400' },
-  pending_docs: { label: 'Pend. Docs', color: 'bg-amber-500' },
+  pending_docs: { label: 'Pend. Fotos (previo)', color: 'bg-amber-500' },
   pending_photos: { label: 'Pend. Fotos', color: 'bg-orange-500' },
-  pending_review: { label: 'En Revision', color: 'bg-purple-500' },
+  pending_review: { label: 'En Revisión (previo)', color: 'bg-purple-500' },
   approved: { label: 'Aprobada', color: 'bg-green-500' },
   rejected: { label: 'Rechazada', color: 'bg-red-500' },
   active: { label: 'Activa', color: 'bg-emerald-600' },
@@ -103,9 +108,17 @@ interface Property {
 
 const PAGE_SIZE = 24
 
+/**
+ * Badge del listado. Con la documentación fuera del camino crítico
+ * (2026-08-09), "Pend. Docs" describía algo que ya no bloquea nada: lo único
+ * que falta en esos estados son las fotos.
+ */
 function getPropertyStatusInfo(p: Property) {
-  if (p.status === 'pending_review' && p.legal_status === 'approved') {
-    return { label: 'Pend. Fotos', color: 'bg-amber-500' }
+  const enCaptacion = !['approved', 'active', 'rejected', 'descartada'].includes(p.status)
+  if (enCaptacion) {
+    if (p.legal_status === 'rejected') return { label: 'Doc. Rechazada', color: 'bg-red-500' }
+    if (!p.photo_count) return { label: 'Pend. Fotos', color: 'bg-orange-500' }
+    return { label: 'En captación', color: 'bg-amber-500' }
   }
   return STATUS_INFO[p.status] || { label: p.status, color: 'bg-gray-400' }
 }

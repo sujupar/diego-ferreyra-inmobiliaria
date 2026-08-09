@@ -70,15 +70,16 @@ check('galería vacía', renderToStaticMarkup(
   <PropertyHeroGallery photos={[]} address="X" plansCount={0} hasVideo={false} hasTour={false} />,
 ), ['Todavía no hay fotos de esta propiedad'])
 
-// 3) Pendiente de documentos
+// 3) Captada, con la documentación pendiente (recordatorio, no bloqueo)
 const stepPendiente = nextStep({
-  role: 'asesor', status: 'pending_docs', legalStatus: 'pending', legalNotes: null,
+  role: 'asesor', status: 'approved', legalStatus: 'pending', legalNotes: null,
+  legalSubmittedAt: null,
   photosCount: 3, documentsCount: 0, ghlImported: false, ghlMissing: [],
   importSource: null, legalDocsPending: false, originPending: false,
 })
 check('próximo paso pendiente', renderToStaticMarkup(
   <PropertyNextStepBanner step={stepPendiente} submitting={false} onGoToTab={() => {}} onSubmitReview={() => {}} onSubirFotos={() => {}} />,
-), ['Falta la documentación', 'Ir a Documentación'])
+), ['Documentación legal pendiente', 'Ir a Documentación'])
 
 // 4) Pestañas por rol
 check('pestañas del asesor', renderToStaticMarkup(

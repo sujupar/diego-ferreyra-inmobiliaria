@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { estado } = vi.hoisted(() => ({
-  estado: { creadas: [] as unknown[] },
+  estado: { creadas: [] as unknown[], avanzadas: [] as string[], fallaElAvance: false },
 }))
 
 vi.mock('@/lib/auth/require-role', () => ({
@@ -20,6 +20,11 @@ vi.mock('@/lib/supabase/properties', () => ({
     return 'prop-1'
   }),
   getPropertiesListPage: vi.fn(async () => ({ data: [], total: 0, hasMore: false })),
+  checkAndAdvanceProperty: vi.fn(async (id: string) => {
+    if (estado.fallaElAvance) throw new Error('la base dijo que no')
+    estado.avanzadas.push(id)
+    return true
+  }),
 }))
 
 vi.mock('@/lib/properties/geocode-on-write', () => ({
@@ -50,7 +55,7 @@ const base = {
   assigned_to: '00000000-0000-0000-0000-000000000009',
 }
 
-beforeEach(() => { estado.creadas = [] })
+beforeEach(() => { estado.creadas = []; estado.avanzadas = []; estado.fallaElAvance = false })
 
 describe('POST /api/properties — operación', () => {
   it.each(['venta', 'alquiler', 'temporario'])('acepta "%s" y la guarda', async op => {
@@ -70,5 +75,26 @@ describe('POST /api/properties — operación', () => {
     const res = await POST(pedido(base))
     expect(res.status).toBe(200)
     expect((estado.creadas[0] as { operation_type?: string }).operation_type).toBeUndefined()
+  })
+})
+
+/**
+ * Una propiedad creada desde una tasación hereda las fotos: con la regla nueva
+ * nace captada. El auto-avance solo corría al CONFIRMAR una subida de fotos, y
+ * en ese camino nunca se sube ninguna — la propiedad quedaba trabada para
+ * siempre en su estado inicial.
+ */
+describe('POST /api/properties — auto-avance de captación', () => {
+  it('evalúa la captación al crear', async () => {
+    const res = await POST(pedido({ ...base, photos: ['https://x/1.jpg'] }))
+    expect(res.status).toBe(200)
+    expect(estado.avanzadas).toEqual(['prop-1'])
+  })
+
+  it('si el avance falla, el alta igual responde 200: la propiedad ya existe', async () => {
+    estado.fallaElAvance = true
+    const res = await POST(pedido({ ...base, photos: ['https://x/1.jpg'] }))
+    expect(res.status).toBe(200)
+    expect((await res.json()).id).toBe('prop-1')
   })
 })

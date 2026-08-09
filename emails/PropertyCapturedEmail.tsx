@@ -1,10 +1,17 @@
 import 'server-only'
 import * as React from 'react'
 import { EmailLayout, Heading, Paragraph, DataBlock, Button, BASE_URL } from './_components/EmailLayout'
+import { copyCaptacion } from '@/lib/email/captacion-copy'
 
 export interface PropertyCapturedEmailProps {
   advisorName: string
   lawyerName: string | null
+  /**
+   * `legal_status === 'approved'` al momento de captar. Sin esto el mail decía
+   * "Toda la documentación quedó aprobada" para propiedades captadas solo con
+   * fotos — afirmaba algo falso. Ver lib/email/captacion-copy.ts.
+   */
+  documentacionAprobada: boolean
   propertyId: string
   propertyAddress: string
   neighborhood: string | null
@@ -20,14 +27,18 @@ export interface PropertyCapturedEmailProps {
 }
 
 export function PropertyCapturedEmail(props: PropertyCapturedEmailProps) {
-  const preheader = `Precio: ${props.askingPrice || '—'}. Asesor: ${props.advisorName}. Aprobada ${props.lawyerName ? 'por ' + props.lawyerName : ''} el ${props.capturedAt}.`
+  const copy = copyCaptacion({
+    documentacionAprobada: props.documentacionAprobada,
+    nombreAbogado: props.lawyerName,
+    direccion: props.propertyAddress,
+  })
+  const preheader = `Precio: ${props.askingPrice || '—'}. Asesor: ${props.advisorName}. Captada el ${props.capturedAt}.`
   return (
     <EmailLayout preheader={preheader} testMode={props.testMode} originalRecipients={props.originalRecipients} recipientRole={props.recipientRole}>
-      <Heading>Nueva captación al 100%</Heading>
+      <Heading>{copy.titulo}</Heading>
       <Paragraph>Hola equipo,</Paragraph>
       <Paragraph>
-        {props.lawyerName ? <>{props.lawyerName} aprobó toda la documentación.</> : <>Toda la documentación quedó aprobada.</>}
-        {' '}<strong>{props.propertyAddress}</strong> quedó captada al 100%.
+        <strong>{props.propertyAddress}</strong> quedó captada. {copy.fraseEstado}
       </Paragraph>
       <DataBlock title="KPI de la captación" variant="success" rows={[
         { label: 'Precio pedido', value: [props.askingPrice, props.currency].filter(Boolean).join(' ') || '—' },
@@ -39,6 +50,7 @@ export function PropertyCapturedEmail(props: PropertyCapturedEmailProps) {
         { label: 'Dirección', value: props.propertyAddress },
         { label: 'Barrio', value: props.neighborhood || '—' },
         { label: 'Tipo', value: props.propertyType || '—' },
+        { label: 'Documentación legal', value: props.documentacionAprobada ? 'Aprobada' : 'Pendiente (no bloquea la captación)' },
         { label: 'Captada el', value: props.capturedAt },
       ]} />
       <Button href={`${BASE_URL()}/properties/${props.propertyId}`} variant="success">Ver propiedad</Button>

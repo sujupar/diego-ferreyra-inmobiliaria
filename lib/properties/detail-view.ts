@@ -7,6 +7,8 @@
  * funciones sin React.
  */
 
+import { evaluarCaptacion, estadoLegal } from './captacion'
+
 export type TabKey = 'propiedad' | 'multimedia' | 'documentacion' | 'difusion' | 'historial'
 
 export const TAB_LABELS: Record<TabKey, string> = {
@@ -147,6 +149,8 @@ export interface NextStepInput {
   status: string
   legalStatus: string
   legalNotes: string | null
+  /** `properties.legal_submitted_at`. Null = la documentación nunca se envió. */
+  legalSubmittedAt: string | null
   photosCount: number
   documentsCount: number
   ghlImported: boolean
@@ -159,9 +163,15 @@ export interface NextStepInput {
 /**
  * UN solo bloque de aviso, por prioridad, en lugar de los cinco banners
  * sueltos de la versión anterior. Devuelve null cuando no hay nada pendiente.
+ *
+ * Desde 2026-08-09 la documentación legal NO bloquea la captación: su aviso
+ * bajó al último lugar y es un recordatorio informativo, no una traba. Lo único
+ * que frena de verdad son las fotos.
  */
 export function nextStep(i: NextStepInput): NextStep | null {
   const isAbogado = i.role === 'abogado'
+  const { captada } = evaluarCaptacion(i)
+  const legal = estadoLegal({ legalStatus: i.legalStatus, legalSubmittedAt: i.legalSubmittedAt })
 
   if (i.status === 'descartada') {
     return {
@@ -202,7 +212,17 @@ export function nextStep(i: NextStepInput): NextStep | null {
     }
   }
 
-  if (i.status === 'pending_review' && i.legalStatus !== 'approved') {
+  // Lo ÚNICO que bloquea la captación. Sube por encima del aviso legal: sin
+  // fotos no hay nada que difundir, con o sin papeles.
+  if (!captada && i.photosCount === 0 && i.status !== 'rejected') {
+    return {
+      id: 'photos', tone: 'warn', title: 'Fotos pendientes',
+      text: 'Subí las fotos para completar la captación. Es lo único que falta: la documentación legal no es obligatoria.',
+      action: isAbogado ? null : { kind: 'subir-fotos', label: 'Subir fotos' },
+    }
+  }
+
+  if (legal === 'en-revision') {
     return isAbogado
       ? {
           id: 'legal-todo', tone: 'info', title: 'Revisión legal pendiente',
@@ -211,29 +231,27 @@ export function nextStep(i: NextStepInput): NextStep | null {
         }
       : {
           id: 'legal-waiting', tone: 'info', title: 'En revisión legal',
-          text: 'La documentación fue enviada al abogado. Te avisamos cuando la revise.',
+          text: 'La documentación fue enviada al abogado. Te avisamos cuando la revise. Mientras tanto la propiedad se puede difundir.',
           action: null,
         }
   }
 
-  if (i.legalStatus === 'approved' && i.photosCount === 0) {
-    return {
-      id: 'photos', tone: 'warn', title: 'Fotos pendientes',
-      text: 'La revisión legal fue aprobada. Subí las fotos para completar la captación.',
-      action: isAbogado ? null : { kind: 'subir-fotos', label: 'Subir fotos' },
-    }
-  }
-
-  if ((i.status === 'pending_docs' || i.status === 'pending_photos') && !isAbogado) {
+  // Recordatorio OPCIONAL. Antes decía "Falta la documentación" con tono de
+  // alarma y era una traba real: sin papeles la propiedad no se captaba. Hoy la
+  // propiedad ya está trabajando; esto es una tarea pendiente, no un bloqueo.
+  //
+  // Pide `captada` porque el texto lo AFIRMA. Sobre una propiedad rechazada
+  // (que llega hasta acá con fotos) estaría diciendo algo falso.
+  if (captada && legal === 'sin-enviar' && !isAbogado) {
     return i.documentsCount > 0
       ? {
-          id: 'submit', tone: 'info', title: 'Lista para revisión legal',
-          text: 'Ya hay documentación cargada. Enviala al abogado para que la revise.',
+          id: 'submit', tone: 'info', title: 'Documentación lista para enviar',
+          text: 'La propiedad ya está captada y se puede difundir. Cuando quieras, enviale la documentación al abogado para que la revise.',
           action: { kind: 'submit-review', label: 'Enviar a Revisión Legal' },
         }
       : {
-          id: 'docs', tone: 'warn', title: 'Falta la documentación',
-          text: 'Subí los documentos obligatorios para poder enviar la propiedad a revisión legal.',
+          id: 'docs', tone: 'info', title: 'Documentación legal pendiente',
+          text: 'La propiedad ya está captada y se puede difundir. La documentación no es obligatoria, pero conviene cargarla y enviarla al abogado.',
           action: { kind: 'tab', tab: 'documentacion', label: 'Ir a Documentación' },
         }
   }

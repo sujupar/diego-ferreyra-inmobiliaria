@@ -188,7 +188,9 @@ export default function InicioPage() {
 
     if (permitidas.has('/properties/review')) {
       trabajos.push(
-        pedirNumero('/api/properties?status=pending_review&limit=1&offset=0', j => (j as { total?: unknown })?.total as number)
+        // El carril legal salió de `status` (2026-08-09): la bandeja del
+        // abogado se cuenta por `legal_status='pending'` + enviada.
+        pedirNumero('/api/properties/revision-legal', j => (j as { total?: unknown })?.total as number)
           .then(n => { if (!cancelado) setNumeros(prev => ({ ...prev, porRevisar: n })) })
       )
     }

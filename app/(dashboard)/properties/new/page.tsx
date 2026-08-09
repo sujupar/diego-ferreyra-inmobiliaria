@@ -246,7 +246,11 @@ function NewPropertyContent() {
                 assigned_to: form.assigned_to || undefined,
                 description: form.description || undefined,
                 photos: photos.length > 0 ? photos : undefined,
-                status: 'pending_docs',
+                // Lo único que falta para captarla son las fotos: la
+                // documentación dejó de ser obligatoria (2026-08-09). Si el
+                // alta ya trae fotos (típico de una propiedad que viene de una
+                // tasación), el servidor la avanza a captada en el acto.
+                status: 'pending_photos',
             }
 
             const res = await fetch('/api/properties', {

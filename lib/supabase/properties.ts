@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { inicioDelDiaArgentina, finDelDiaArgentina } from '@/lib/filters/rango-fechas'
+import { debeAvanzarACaptada } from '@/lib/properties/captacion'
 
 /**
  * Fire N8A (congratulations asesor) + N8B (captación admins) when a property
@@ -222,70 +223,130 @@ export async function updateProperty(id: string, updates: Partial<PropertyInput>
   if (error) throw error
 }
 
-export async function reviewProperty(id: string, approved: boolean, reviewerId: string, notes?: string) {
+/**
+ * Manda la documentación al abogado.
+ *
+ * NO toca `properties.status`. Antes esto era `status='pending_review'`, y
+ * sobre una propiedad ya captada eso apagaba de golpe la pestaña Difusión, la
+ * landing pública, las consultas entrantes y el agendamiento del recorrido —
+ * con plata de Meta apuntándole. El envío vive ahora en su propio carril
+ * (`legal_submitted_at`), que convive con la captación sin pisarla.
+ *
+ * Si la documentación había sido rechazada, re-enviarla la devuelve a
+ * 'pending': sin eso el rechazo era permanente y el abogado no podía volver a
+ * revisarla, aunque el aviso de la ficha invitara a "volvé a enviarla".
+ */
+export async function submitPropertyForLegalReview(id: string) {
   const supabase = getAdmin()
-
-  if (!approved) {
-    // Rejected — set both legal and property status to rejected
-    const { error } = await supabase
-      .from('properties')
-      .update({
-        legal_status: 'rejected',
-        legal_reviewer_id: reviewerId,
-        legal_notes: notes || null,
-        legal_reviewed_at: new Date().toISOString(),
-        status: 'rejected',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-    if (error) throw error
-    return
-  }
-
-  // Approved — check if photos are uploaded before setting final status
   const prop = await getProperty(id)
-  const hasPhotos = Array.isArray(prop.photos) && prop.photos.length > 0
-  const finalStatus = hasPhotos ? 'approved' : 'pending_review'
+  const ahora = new Date().toISOString()
 
-  const { error } = await supabase
-    .from('properties')
-    .update({
-      legal_status: 'approved',
-      legal_reviewer_id: reviewerId,
-      legal_notes: notes || null,
-      legal_reviewed_at: new Date().toISOString(),
-      status: finalStatus,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-  if (error) throw error
-
-  // N8A+N8B: captación 100% solo cuando status efectivamente pasa a 'approved'
-  // (requiere fotos + legal). Si legal aprueba pero faltan fotos, el disparo
-  // real ocurre después en checkAndAdvanceProperty() al subir la primera foto.
-  // UNIQUE INDEX garantiza que aunque este hook y el de upload/route.ts
-  // disparen la misma notificación, solo se envía una vez por destinatario.
-  if (finalStatus === 'approved' && prop.status !== 'approved') {
-    await firePropertyCapturedNotifications(id)
+  const patch: Record<string, unknown> = { legal_submitted_at: ahora, updated_at: ahora }
+  if (prop.legal_status === 'rejected') {
+    patch.legal_status = 'pending'
+    patch.legal_notes = null
   }
+
+  const { error } = await supabase.from('properties').update(patch).eq('id', id)
+  if (error) throw error
+  return prop
 }
 
-/** Check if property should auto-advance to approved (both legal + photos done) */
+export async function reviewProperty(id: string, approved: boolean, reviewerId: string, notes?: string) {
+  const supabase = getAdmin()
+  const prop = await getProperty(id)
+  const ahora = new Date().toISOString()
+
+  const patch: Record<string, unknown> = {
+    legal_status: approved ? 'approved' : 'rejected',
+    legal_reviewer_id: reviewerId,
+    legal_notes: notes || null,
+    legal_reviewed_at: ahora,
+    updated_at: ahora,
+  }
+
+  // Un rechazo sobre una propiedad que NUNCA se captó la saca del flujo, igual
+  // que antes: no hay nada publicado que romper y el asesor tiene que corregir.
+  // Sobre una propiedad CAPTADA el rechazo se queda en el carril legal — pisar
+  // `status` ahí tumbaría la landing (404 con tráfico pago encima) mientras el
+  // aviso sigue vivo en MercadoLibre, porque el trigger de despublicación solo
+  // reacciona a 'sold'/'withdrawn'.
+  const yaCaptada = prop.status === 'approved' || !!prop.captured_at
+  if (!approved && !yaCaptada) patch.status = 'rejected'
+
+  const { error } = await supabase.from('properties').update(patch).eq('id', id)
+  if (error) throw error
+
+  // Aprobar la documentación puede completar la captación de una propiedad que
+  // ya tenía fotos. Es la MISMA regla que el camino de las fotos: una sola.
+  if (approved) await checkAndAdvanceProperty(id)
+}
+
+/**
+ * Avanza la propiedad a captada si corresponde. Corre al confirmar una subida
+ * de fotos, al crearla y al aprobar la documentación.
+ *
+ * La regla vive en `lib/properties/captacion.ts` (fotos + ningún "no" activo).
+ * Desde 2026-08-09 la documentación legal ya NO es condición.
+ */
 export async function checkAndAdvanceProperty(id: string) {
   const supabase = getAdmin()
   const prop = await getProperty(id)
-  const hasPhotos = Array.isArray(prop.photos) && prop.photos.length > 0
-  const legalApproved = prop.legal_status === 'approved'
 
-  if (hasPhotos && legalApproved && prop.status !== 'approved') {
-    const { error } = await supabase
-      .from('properties')
-      .update({ status: 'approved', updated_at: new Date().toISOString() })
-      .eq('id', id)
-    if (error) throw error
-    // N8A+N8B: captación 100% desde el camino "fotos después de aprobación legal".
+  if (!debeAvanzarACaptada({
+    status: prop.status,
+    legalStatus: prop.legal_status,
+    photosCount: Array.isArray(prop.photos) ? prop.photos.length : 0,
+  })) return false
+
+  const ahora = new Date().toISOString()
+
+  // Reclamo ATÓMICO de la PRIMERA captación: el `.is('captured_at', null)` va
+  // en el WHERE, así que dos subidas simultáneas no pueden ganar las dos y los
+  // mails N8A/N8B salen una sola vez. Antes la idempotencia dependía del UNIQUE
+  // de email_notifications_log, que nunca frenó nada: esa tabla no tiene ni una
+  // fila de 'property_captured'.
+  const { data: reclamada, error } = await supabase
+    .from('properties')
+    .update({ status: 'approved', captured_at: ahora, updated_at: ahora })
+    .eq('id', id)
+    .is('captured_at', null)
+    .select('id')
+  if (error) throw error
+
+  if (reclamada && reclamada.length > 0) {
     await firePropertyCapturedNotifications(id)
     return true
   }
-  return false
+
+  // Ya se había captado antes (típico: se restauró una descartada y le subieron
+  // una foto). Se restituye el estado, sin repetir el anuncio.
+  const { error: errorRecaptura } = await supabase
+    .from('properties')
+    .update({ status: 'approved', updated_at: ahora })
+    .eq('id', id)
+  if (errorRecaptura) throw errorRecaptura
+  return true
+}
+
+/**
+ * Bandeja del abogado: la documentación que le mandaron y todavía no resolvió.
+ *
+ * Antes era `GET /api/properties?status=pending_review`. Ese filtro obligaba a
+ * que el circuito legal viviera en la misma columna que la captación, con todo
+ * lo que eso apagaba. Ahora la bandeja es el carril legal y nada más.
+ */
+export async function getPropertiesPendientesDeRevisionLegal() {
+  const supabase = getAdmin()
+  const { data, error, count } = await supabase
+    .from('properties')
+    .select(
+      'id, address, neighborhood, city, property_type, asking_price, currency, documents, photos, rooms, covered_area, created_at, legal_submitted_at, status',
+      { count: 'exact' },
+    )
+    .eq('legal_status', 'pending')
+    .not('legal_submitted_at', 'is', null)
+    .order('legal_submitted_at', { ascending: true })
+  if (error) throw error
+  return { data: data || [], total: count ?? (data?.length ?? 0) }
 }

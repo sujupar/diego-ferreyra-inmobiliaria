@@ -14,8 +14,10 @@ function getAdmin() {
 
 /**
  * N5: notificar a TODOS los abogados activos que hay una propiedad lista para revisar.
- * Es repetible por ciclo: cada transición a pending_review cuenta como submission
- * nueva y debe disparar un email aunque ya se haya enviado uno antes. Usamos como
+ * Es repetible por ciclo: cada envío al abogado (POST .../legal-submit) cuenta como
+ * submission nueva y debe disparar un email aunque ya se haya enviado uno antes. El
+ * conteo NO cambió al sacar el circuito legal de `status`: la ruta nueva sigue
+ * registrando el mismo `legal_review_events` con action='submitted'. Usamos como
  * entity_id el sufijo `:<submission_count>` derivado del conteo de legal_review_events
  * de tipo 'submitted' (incluye el que acaba de registrarse).
  */

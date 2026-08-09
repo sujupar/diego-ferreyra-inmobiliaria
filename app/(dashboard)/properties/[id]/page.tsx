@@ -12,6 +12,7 @@ import type { FlowHistoryData } from '@/app/(dashboard)/_components/FlowHistoryC
 import {
   buildKeyStats, ghlMissingFields, nextStep, resolveTab, visibleTabs, type TabKey,
 } from '@/lib/properties/detail-view'
+import { etiquetaDeCaptacion } from '@/lib/properties/captacion'
 import { useSubirFotos } from '@/lib/properties/use-subir-fotos'
 import { PropertyHeroGallery } from '@/components/properties/detail/PropertyHeroGallery'
 import { PropertyIdentityBar } from '@/components/properties/detail/PropertyIdentityBar'
@@ -25,16 +26,9 @@ import { DocsTab } from '@/components/properties/detail/tabs/DocsTab'
 import { MarketingTab } from '@/components/properties/detail/tabs/MarketingTab'
 import { HistoryTab, type VisitFeedback } from '@/components/properties/detail/tabs/HistoryTab'
 
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  draft: { label: 'Borrador', color: 'bg-gray-400' },
-  pending_docs: { label: 'Pendiente Documentos', color: 'bg-amber-500' },
-  pending_photos: { label: 'Pendiente Fotos', color: 'bg-orange-500' },
-  pending_review: { label: 'En Revisión Legal', color: 'bg-purple-500' },
-  approved: { label: 'Captación Completa', color: 'bg-green-500' },
-  rejected: { label: 'Rechazada', color: 'bg-red-500' },
-  active: { label: 'Activa', color: 'bg-emerald-600' },
-  descartada: { label: 'Descartada', color: 'bg-slate-500' },
-}
+// El badge del encabezado lo arma `etiquetaDeCaptacion`, no un mapa por
+// literal: "Pendiente Documentos" era mentira desde que la documentación dejó
+// de ser obligatoria (2026-08-09). Ver lib/properties/captacion.ts.
 
 interface PropertyData {
   id: string
@@ -78,6 +72,7 @@ interface PropertyData {
   legal_status: string
   legal_notes: string | null
   legal_reviewed_at: string | null
+  legal_submitted_at: string | null
   created_at: string
   ghl_imported?: boolean
   ghl_custom_fields?: Record<string, string | null> | null
@@ -176,17 +171,20 @@ export default function PropertyDetailPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  async function handleUpdateStatus(newStatus: string) {
+  /**
+   * Mandarle la documentación al abogado. Ruta propia, NO el PUT genérico: el
+   * `status: 'pending_review'` de antes apagaba la propiedad entera (Difusión,
+   * landing pública, consultas, recorrido) para expresar algo que solo tiene
+   * que ver con el circuito legal.
+   */
+  async function handleEnviarARevisionLegal() {
     setSubmitting(true)
     try {
-      await fetch(`/api/properties/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      })
+      const res = await fetch(`/api/properties/${id}/legal-submit`, { method: 'POST' })
+      if (!res.ok) throw new Error('Error')
       await fetchProperty()
     } catch {
-      alert('Error al actualizar estado')
+      alert('Error al enviar a revisión legal')
     } finally {
       setSubmitting(false)
     }
@@ -222,21 +220,24 @@ export default function PropertyDetailPage() {
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin" /></div>
   if (!property) return <div className="text-center py-20"><p>Propiedad no encontrada</p></div>
 
-  const statusInfo = (property.status === 'pending_review' && property.legal_status === 'approved')
-    ? { label: 'Pendiente Fotos', color: 'bg-amber-500' }
-    : STATUS_LABELS[property.status] || { label: property.status, color: 'bg-gray-400' }
-
   const isAbogado = userInfo?.role === 'abogado'
   const canHardDelete = userInfo?.role === 'admin' || userInfo?.role === 'dueno'
   const photos = property.photos || []
   const plans = property.plans || []
   const documents = Array.isArray(property.documents) ? property.documents : []
 
+  const statusInfo = etiquetaDeCaptacion({
+    status: property.status,
+    legalStatus: property.legal_status,
+    photosCount: photos.length,
+  })
+
   const step = nextStep({
     role: userInfo?.role,
     status: property.status,
     legalStatus: property.legal_status,
     legalNotes: property.legal_notes,
+    legalSubmittedAt: property.legal_submitted_at ?? null,
     photosCount: photos.length,
     documentsCount: documents.length,
     ghlImported: !!property.ghl_imported,
@@ -317,7 +318,7 @@ export default function PropertyDetailPage() {
         step={step}
         submitting={submitting}
         onGoToTab={t => goToTab(t, 'contenido')}
-        onSubmitReview={() => handleUpdateStatus('pending_review')}
+        onSubmitReview={handleEnviarARevisionLegal}
         onSubirFotos={subidaDeFotos.abrirSelector}
         subiendoFotos={subidaDeFotos.subiendo}
         details={ghlDetails}
@@ -349,8 +350,8 @@ export default function PropertyDetailPage() {
             docs={legalDocsData?.docs || {}}
             flags={legalDocsData?.flags || { has_succession: false, has_divorce: false, has_powers: false, is_credit_purchase: false }}
             isAbogado={!!isAbogado}
-            status={property.status}
             legalStatus={property.legal_status}
+            legalSubmittedAt={property.legal_submitted_at ?? null}
             legalNotes={property.legal_notes}
             onUpdated={fetchLegalDocs}
             onReviewed={() => { fetchProperty(); fetchLegalDocs() }}

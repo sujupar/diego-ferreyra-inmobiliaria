@@ -65,6 +65,7 @@ function propiedadSinFotos(extra: Record<string, unknown> = {}) {
     video_file_url: null, video_url: null, tour_3d_url: null, video_recorrido_url: null,
     deliver_media: null,
     legal_status: 'approved', legal_notes: null, legal_reviewed_at: null,
+    legal_submitted_at: '2026-08-01T00:00:00Z',
     created_at: '2026-08-01T00:00:00Z',
     ...extra,
   }
@@ -175,19 +176,53 @@ describe('ficha de propiedad — subir fotos', () => {
   })
 
   it('un aviso que SÍ cambia de pestaña deja la vista en el contenido, no en el tope', async () => {
-    // Sin documentación cargada el próximo paso es "Ir a Documentación": ahí el
+    // Propiedad YA CAPTADA (tiene fotos) y sin documentación enviada: el
+    // próximo paso es el recordatorio opcional "Ir a Documentación". Ahí el
     // destino es otro lugar de la ficha y el salto sí tiene sentido.
-    propiedad = propiedadSinFotos({ status: 'pending_docs', legal_status: 'pending', documents: [] })
+    propiedad = propiedadSinFotos({
+      status: 'approved', photos: ['https://x/1.jpg'],
+      legal_status: 'pending', legal_submitted_at: null, documents: [],
+    })
     const user = userEvent.setup()
     render(<PropertyDetailPage />)
 
-    await esperarFicha('Propiedad')
-    expect(screen.getByText('Falta la documentación')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'Propiedad' })).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByText('Documentación legal pendiente')).toBeInTheDocument()
+    })
+    // El aviso ya no acusa una falta: la propiedad está captada y se difunde.
+    expect(screen.getByText(/no es obligatoria/i)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /ir a documentación/i }))
 
     expect(screen.getByTestId('tab-documentacion')).toBeInTheDocument()
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled()
     expect(window.scrollTo).not.toHaveBeenCalled()
+  })
+
+  /**
+   * El bug (A) de la revisión adversarial: "enviar a revisión legal" pisaba
+   * `properties.status`, y sobre una propiedad captada eso apagaba la pestaña
+   * Difusión, la landing pública (404 con tráfico pago encima), las consultas
+   * entrantes y el agendamiento del recorrido, todo de una.
+   */
+  it('enviar a revisión legal NO toca el estado de la propiedad', async () => {
+    propiedad = propiedadSinFotos({
+      status: 'approved', photos: ['https://x/1.jpg'],
+      legal_status: 'pending', legal_submitted_at: null,
+      documents: [{ name: 'Escritura', url: 'https://x/e.pdf' }],
+    })
+    const user = userEvent.setup()
+    render(<PropertyDetailPage />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /enviar a revisión legal/i })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /enviar a revisión legal/i }))
+
+    const llamadas = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+    expect(llamadas.some(([url]) => url === '/api/properties/prop-1/legal-submit')).toBe(true)
+    // Ni un PUT: la columna de captación no se toca.
+    expect(llamadas.some(([, init]) => (init as RequestInit | undefined)?.method === 'PUT')).toBe(false)
   })
 
   it('elegir una pestaña desde la barra sí vuelve al tope', async () => {

@@ -19,14 +19,20 @@ interface ReviewProperty {
   rooms: number | null
   covered_area: number | null
   created_at: string
+  legal_submitted_at: string | null
+  status: string
 }
 
 export default function PropertyReviewPage() {
   const [properties, setProperties] = useState<ReviewProperty[]>([])
   const [loading, setLoading] = useState(true)
 
+  // La bandeja es el CARRIL LEGAL (`legal_status='pending'` + enviada al
+  // abogado), no `status='pending_review'`. Con el modelo viejo, para que una
+  // propiedad apareciera acá tenía que dejar de estar captada, y eso le apagaba
+  // la landing, la difusión y las consultas mientras el abogado la miraba.
   useEffect(() => {
-    fetch('/api/properties?status=pending_review')
+    fetch('/api/properties/revision-legal')
       .then(r => r.json())
       .then(({ data }) => setProperties(data || []))
       .catch(err => console.error(err))
@@ -65,6 +71,11 @@ export default function PropertyReviewPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
+                    {/* Una propiedad en revisión puede estar captada y publicada
+                        al mismo tiempo: conviene que el abogado lo sepa. */}
+                    {prop.status === 'approved' && (
+                      <Badge className="bg-green-600 text-white">Ya captada</Badge>
+                    )}
                     <Badge className="bg-purple-500 text-white">Pendiente Revisión</Badge>
                     <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </div>

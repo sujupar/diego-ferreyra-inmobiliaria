@@ -83,6 +83,7 @@ describe('ghlMissingFields', () => {
 describe('nextStep', () => {
   const base = {
     role: 'asesor', status: 'approved', legalStatus: 'approved', legalNotes: null,
+    legalSubmittedAt: '2026-08-01T10:00:00Z',
     photosCount: 5, documentsCount: 3, ghlImported: false, ghlMissing: [],
     importSource: null, legalDocsPending: false, originPending: false,
   }
@@ -99,40 +100,73 @@ describe('nextStep', () => {
     expect(s?.action).toEqual({ kind: 'tab', tab: 'documentacion', label: 'Ver observaciones' })
   })
 
-  it('con documentación cargada y sin enviar, ofrece enviar a revisión legal', () => {
-    const s = nextStep({ ...base, status: 'pending_docs', legalStatus: 'pending', photosCount: 0, documentsCount: 2 })
+  /* ---- la documentación dejó de bloquear (2026-08-09) ---- */
+
+  it('captada con documentación cargada y sin enviar: recordatorio INFORMATIVO, no una traba', () => {
+    const s = nextStep({ ...base, legalStatus: 'pending', legalSubmittedAt: null, documentsCount: 2 })
+    expect(s?.id).toBe('submit')
+    expect(s?.tone).toBe('info')
+    expect(s?.text).toContain('ya está captada')
     expect(s?.action).toEqual({ kind: 'submit-review', label: 'Enviar a Revisión Legal' })
   })
 
-  it('sin ningún documento, manda a la pestaña Documentación', () => {
-    const s = nextStep({ ...base, status: 'pending_docs', legalStatus: 'pending', photosCount: 0, documentsCount: 0 })
+  it('captada sin ningún documento: el aviso NO dice que falta algo obligatorio', () => {
+    const s = nextStep({ ...base, legalStatus: 'pending', legalSubmittedAt: null, documentsCount: 0 })
+    expect(s?.id).toBe('docs')
+    expect(s?.tone).toBe('info')
+    expect(s?.title).not.toMatch(/falta/i)
+    expect(s?.text).toContain('no es obligatoria')
     expect(s?.action).toEqual({ kind: 'tab', tab: 'documentacion', label: 'Ir a Documentación' })
   })
 
   // El aviso de fotos aparece justamente cuando el asesor ya está mirando la
   // ficha, muchas veces parado en Multimedia: cambiarlo de pestaña no le
   // resuelve nada. La acción abre el selector de archivos ahí mismo.
-  it('legal aprobado y sin fotos: ofrece subirlas, no cambiar de pestaña', () => {
+  it('sin fotos: ofrece subirlas, no cambiar de pestaña — y son lo ÚNICO que bloquea', () => {
     const s = nextStep({ ...base, status: 'pending_photos', photosCount: 0 })
     expect(s?.id).toBe('photos')
     expect(s?.action).toEqual({ kind: 'subir-fotos', label: 'Subir fotos' })
   })
 
+  it('sin fotos y sin documentación, el aviso que gana es el de las fotos', () => {
+    const s = nextStep({ ...base, status: 'pending_docs', legalStatus: 'pending', legalSubmittedAt: null, photosCount: 0, documentsCount: 0 })
+    expect(s?.id).toBe('photos')
+    expect(s?.text).toContain('no es obligatoria')
+  })
+
   it('al abogado nunca le ofrece subir fotos ni enviar a revisión', () => {
     const s = nextStep({ ...base, role: 'abogado', status: 'pending_photos', photosCount: 0 })
     expect(s?.action).toBeNull()
+    // Y sin nada suyo pendiente, tampoco le muestra el recordatorio del asesor.
+    expect(nextStep({ ...base, role: 'abogado', legalStatus: 'pending', legalSubmittedAt: null })).toBeNull()
   })
 
-  it('al abogado con revisión pendiente le ofrece revisar', () => {
-    const s = nextStep({ ...base, role: 'abogado', status: 'pending_review', legalStatus: 'pending' })
+  /* ---- el carril legal ya no se lee de `status` ---- */
+
+  it('al abogado con la documentación enviada le ofrece revisar, aunque la propiedad ya esté captada', () => {
+    const s = nextStep({ ...base, role: 'abogado', status: 'approved', legalStatus: 'pending' })
     expect(s?.id).toBe('legal-todo')
     expect(s?.action).toEqual({ kind: 'tab', tab: 'documentacion', label: 'Revisar documentación' })
   })
 
-  it('al asesor con revisión en curso solo le informa', () => {
-    const s = nextStep({ ...base, status: 'pending_review', legalStatus: 'pending' })
+  it('al asesor con revisión en curso solo le informa — y le aclara que igual puede difundir', () => {
+    const s = nextStep({ ...base, status: 'approved', legalStatus: 'pending' })
     expect(s?.id).toBe('legal-waiting')
+    expect(s?.text).toContain('se puede difundir')
     expect(s?.action).toBeNull()
+  })
+
+  // El recordatorio AFIRMA que la propiedad está captada. Sobre una rechazada
+  // (que llega con fotos hasta el final de la cadena) estaría mintiendo.
+  it('no le dice "ya está captada" a una propiedad rechazada', () => {
+    const s = nextStep({ ...base, status: 'rejected', legalStatus: 'pending', legalSubmittedAt: null, documentsCount: 0 })
+    // Sin aviso, no un aviso que afirme algo falso.
+    expect(s).toBeNull()
+  })
+
+  it('sin `legalSubmittedAt` no hay revisión en curso: el status viejo ya no la inventa', () => {
+    const s = nextStep({ ...base, status: 'pending_review', legalStatus: 'pending', legalSubmittedAt: null })
+    expect(s?.id).not.toBe('legal-waiting')
   })
 
   it('la descartada avisa que está fuera del flujo', () => {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createProperty, getPropertiesListPage } from '@/lib/supabase/properties'
+import { checkAndAdvanceProperty, createProperty, getPropertiesListPage } from '@/lib/supabase/properties'
 import { requireAuth } from '@/lib/auth/require-role'
 import { notifyPropertyCreated } from '@/lib/email/notifications/property-created'
 import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
@@ -81,6 +81,12 @@ export async function POST(request: NextRequest) {
       () => notifyPropertyCreated(id),
       { failedNotificationType: 'property_created', entityType: 'property', entityId: id },
     )
+
+    // Una propiedad creada desde una tasación hereda las fotos: nace captada.
+    // Sin esta llamada quedaba trabada para siempre, porque el auto-avance solo
+    // corría al CONFIRMAR una subida de fotos — y ahí nunca se subió ninguna.
+    // Best-effort: la propiedad ya existe, un fallo acá no puede tirar el alta.
+    try { await checkAndAdvanceProperty(id) } catch (e) { console.error('[properties] auto-avance al crear:', e) }
 
     return NextResponse.json({ success: true, id })
   } catch (error) {

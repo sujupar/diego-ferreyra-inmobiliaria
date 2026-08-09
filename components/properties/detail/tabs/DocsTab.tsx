@@ -5,6 +5,7 @@ import { CheckCircle, XCircle, Loader2, Scale } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { LegalDocsChecklist } from '@/components/properties/LegalDocsChecklist'
+import { puedeRevisarDocumentacion } from '@/lib/properties/captacion'
 import type { LegalDocsState, LegalFlags } from '@/types/legal-docs.types'
 
 interface Props {
@@ -13,8 +14,9 @@ interface Props {
   docs: LegalDocsState
   flags: LegalFlags
   isAbogado: boolean
-  status: string
   legalStatus: string
+  /** `properties.legal_submitted_at`. Null = nunca se envió al abogado. */
+  legalSubmittedAt: string | null
   legalNotes: string | null
   onUpdated: () => void
   onReviewed: () => void
@@ -22,14 +24,23 @@ interface Props {
 
 export function DocsTab({
   propertyId, propertyType, docs, flags, isAbogado,
-  status, legalStatus, legalNotes, onUpdated, onReviewed,
+  legalStatus, legalSubmittedAt, legalNotes, onUpdated, onReviewed,
 }: Props) {
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   const legalApproved = legalStatus === 'approved'
   const legalRejected = legalStatus === 'rejected'
-  const canReview = isAbogado && status === 'pending_review' && !legalApproved && !legalRejected
+  // Ya NO mira `properties.status`. Con la documentación fuera del camino
+  // crítico de la captación, subir una foto pasa la propiedad a 'approved' — y
+  // con la condición vieja (`status === 'pending_review'`) eso le sacaba al
+  // abogado los botones de aprobar y rechazar en el medio de su revisión: la
+  // propiedad desaparecía de su bandeja y su tarea quedaba abierta para siempre.
+  const canReview = puedeRevisarDocumentacion({
+    role: isAbogado ? 'abogado' : null,
+    legalStatus,
+    legalSubmittedAt,
+  })
 
   async function review(approved: boolean) {
     setSubmitting(true)

@@ -2,11 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { reviewProperty, getProperty } from '@/lib/supabase/properties'
 import { createTask } from '@/lib/supabase/tasks'
 import { requireAuth } from '@/lib/auth/require-role'
+import { hasPermission } from '@/lib/auth/roles'
 import { logLegalEvent } from '@/lib/supabase/legal-events'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuth()
+    // Acá se decide si la documentación de una propiedad queda aprobada o
+    // rechazada. Con solo `requireAuth()`, CUALQUIER usuario autenticado —un
+    // asesor, por ejemplo— podía firmar la revisión legal de una propiedad. La
+    // ruta hermana de los documentos sueltos (legal-docs/[itemKey]/review) sí
+    // exigía el permiso; esta se había quedado atrás.
+    if (!hasPermission(user.profile.role, 'properties.review')) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     const { id } = await params
     const { approved, notes } = await request.json()
 
