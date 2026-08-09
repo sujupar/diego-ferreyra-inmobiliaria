@@ -2,9 +2,11 @@ import { Role } from '@/types/auth.types'
 import { Permission, ROLE_PERMISSIONS } from './roles'
 
 /**
- * Alcance del filtro `assigned_to` en los listados del CRM (deals y contactos).
+ * Alcance del filtro por asignación en los listados del CRM: `assigned_to` en
+ * deals y contactos, y `user_id` en tareas (que en la base también es la columna
+ * `tasks.assigned_to` — `getMyTasks` filtra por ahí).
  *
- * POR QUÉ EXISTE: las dos rutas leen con el cliente service-role, así que RLS
+ * POR QUÉ EXISTE: las tres rutas leen con el cliente service-role, así que RLS
  * NO aplica — la base no acota nada. El "ver solo lo mío" vivía únicamente en
  * la pantalla (`if (role === 'asesor') params.set('assigned_to', mi_id)`), y un
  * `if` del navegador protege el camino de la interfaz, no el deliberado: con
@@ -21,6 +23,19 @@ import { Permission, ROLE_PERMISSIONS } from './roles'
  * admin, dueño y coordinador; asesor y el legacy agent tienen `pipeline.view_own`;
  * abogado y viewer no tienen ninguno de los dos — y para esos dos, acotar a su
  * propio id es exactamente lo correcto.
+ *
+ * `pipeline.view_all` NO es una elección estética: reproduce exactamente el
+ * `is_operations_user()` (admin/dueño/coordinador) que la propia base usa en las
+ * policies de estas tablas — `tasks_select_assigned_or_ops` es literalmente
+ * `assigned_to = auth.uid() OR is_operations_user()`. La ruta queda alineada con
+ * la RLS que el service-role saltea, en vez de inventar una regla paralela.
+ *
+ * NO SIRVE PARA `properties`: ahí la base abrió el SELECT a propósito
+ * (`properties_select_all_authenticated ... USING (true)`, migración
+ * `20260513000003_properties_rls_marketplace.sql`) porque el listado es un
+ * catálogo tipo marketplace y el "solo mías" es un filtro de pantalla, no un
+ * límite de seguridad. Forzar alcance ahí rompería el catálogo del asesor sin
+ * cerrar nada.
  *
  * FAIL-CLOSED en los dos bordes: un rol que no figure en el catálogo de
  * permisos queda acotado (no ensanchado), y si no se puede determinar el id del
