@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
+import { requireAuth, requirePermission } from '@/lib/auth/require-role'
 
 const DEFAULT_SLOTS = [
     { id: 'stock-departamentos', label: 'Stock de Departamentos en venta en CABA', filename: 'stock-departamentos.png' },
@@ -10,6 +11,16 @@ const DEFAULT_SLOTS = [
 ]
 
 export async function GET(): Promise<Response> {
+    // Defensa en profundidad: la tabla ya tiene RLS admin-only y esta ruta usa
+    // el cliente con cookies, pero sin guard explícito un anónimo igual se
+    // llevaba la lista de slots y las URLs públicas del bucket.
+    // `requireAuth` y NO `settings.manage`: además de `/settings`, el GET lo
+    // consume `PDFPreviewModal` (pantallas de tasación), que usa un asesor —
+    // pedir `settings.manage` acá le cortaría la vista previa del PDF.
+    // Para el asesor no cambia NADA: su `select` a `market_image_settings` ya
+    // devolvía 0 filas por la RLS `is_privileged_user()` y la ruta caía a las
+    // etiquetas por defecto; sigue igual.
+    await requireAuth()
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
 
@@ -57,6 +68,13 @@ export async function GET(): Promise<Response> {
 }
 
 export async function PUT(request: Request): Promise<Response> {
+    // El PUT escribe configuración y su único llamador es `/settings`, que ya
+    // está detrás de `settings.manage` en el menú. La RLS de la tabla usa
+    // `is_privileged_user()` (= admin/dueño), el mismo conjunto exacto de roles
+    // que `settings.manage`: el guard queda alineado con la base.
+    // Va ANTES del try a propósito: lanza NEXT_REDIRECT y el catch de abajo lo
+    // convertiría en un 500 opaco en vez del 307.
+    await requirePermission('settings.manage')
     try {
         const cookieStore = await cookies()
         const supabase = createClient(cookieStore)
