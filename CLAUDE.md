@@ -353,7 +353,7 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Root cause (doble):** (1) **ningún proceso ejecutaba la sincronización** — los jobs de `cron.job` no incluían ninguno de Meta, y lo único que escribía esa tabla era una scheduled function de Netlify de las que no se disparan. (2) `fetchInsightsRange` pedía el rango **sin `time_increment`**, así que Meta devolvía UNA fila agregada por campaña para todo el rango; como `parseInsight` toma `date_start`, meses de gasto habrían quedado apilados en un solo día.
 - **Fix:** `buildDailyInsightsUrl` + `fetchDailyInsightsRange` (con `time_increment=1` y paginación), ruta `app/api/cron/meta-sync` (patrón de `send-report`: `x-cron-secret` contra env o `cron_config`), y `scripts/backfill-meta-spend.ts` para recuperar el histórico. Recuperado el 2026-08-06: la cobertura pasó de 24 a **211 de 218 días**.
 - **PENDIENTE:** falta programar el job `meta-sync` en `pg_cron` (migración `20260806000006`, se aplica con `scripts/apply-cron-meta-sync-pg.ts <secreto> <dominio>`). Requiere que el código esté deployado: apunta a una URL que no existe hasta entonces. **Sin esto, la inversión vuelve a cortarse.**
-- **Detection:** `SELECT max(date), count(DISTINCT date) FROM meta_ads_daily;` — si `max(date)` no avanza a diario, el job no está corriendo.
+- **Detection:** `SELECT max(fetched_at), max(date) FROM meta_ads_daily;` — `max(fetched_at)` tiene que ser de hoy. **OJO:** hasta el 2026-08-06 `fetched_at` NO se actualizaba al refrescar una fila existente (el DEFAULT solo corre en el INSERT), así que parecía viejo aunque la sincronización funcionara; `saveDailySnapshot` ahora lo escribe siempre. Un 200 en `net._http_response` NO alcanza como prueba: hay que mirar el cuerpo de la respuesta, que trae `filas`.
 - **OJO con la numeración de migraciones:** el prefijo `20260806000001` quedó **DUPLICADO** — `property_commercial_status.sql` y `whatsapp_origen.sql`, escritas el mismo día por dos sesiones en paralelo. Las dos ya están aplicadas, así que no rompe nada hoy, pero si alguna vez se reproducen las migraciones en orden el de esas dos es ambiguo. Antes de crear una migración, mirar el directorio.
 
 ### Tablero: el estado de resultados del embudo vive en `/metrics`, no en `/embudos` (2026-08-06)
@@ -444,11 +444,33 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 ### ML `listing_type`: `gold_premium` requiere cupo pago; `gold_special` no aplica a inmuebles — fallback de tier
 
 - **Symptom 1:** `POST /items` devuelve `400 "Not available quota"` (`bad_request`) al pedir `gold_premium`.
-- **Symptom 2:** `400 listing_type.invalid` / "Listing type was null" al pedir `gold_special` en inmuebles (MLA1473 etc.).
+- **Symptom 2:** `400 listing_type.invalid` / "Listing type was null" al pedir `gold_special` en inmuebles.
 - **Root cause:** `gold_premium` es un tier PAGO; consume cupo de publicaciones premium que la cuenta puede no tener. `gold_special` directamente no existe para inmuebles. Tiers válidos de inmuebles: `gold_premium`, `silver`, `free` (`ML_LISTING_TYPES` en `mapping.ts`).
 - **Fix:** `adapter.publish` intenta el tier pedido y, SOLO ante `"available quota"` / `listing_type.invalid` / "listing type was null", baja al siguiente tier (`gold_premium → silver → free`), devolviendo `metadata.listingTypeUsed`/`downgradedFrom`. La ruta y el worker persisten el tier REALMENTE usado en `metadata.listing_type`. NO ensanchar el match a `/listing.?type/i` (tragaría errores legítimos). `ML_LISTING_TYPES` DEBE quedar en orden descendente para que el fallback pruebe el tier inferior.
-- **La disponibilidad de tiers es POR CATEGORÍA y POR CUENTA — traerla de ML, no hardcodear.** Endpoint: `GET /users/{me}/available_listing_types?category_id={cat}` → lista de tiers disponibles + `remaining_listings`. Ejemplo real (cuenta DIEGOFERREYRAINMOBILIARIA, 2026-06-06): **Departamentos/Casas en venta (MLA1473/MLA1472) → SOLO `silver` (Plata), 37 cupos**; **PH (MLA1471) → `free` (10) + otras**. O sea: para depto/casa NO hay publicación gratuita en esta cuenta (son slots `silver` del plan, sin costo extra). Implementado en `lib/portals/mercadolibre/listing-types.ts` (`fetchAvailableListingTypes`). La ruta `ml-attributes` devuelve los tiers reales + default al más barato disponible; el `adapter.publish` arma `tiersToTry = [pedido, ...disponibles]` y degrada ante "Not available quota". Por eso pedir `free` en un depto publica como `silver` automáticamente.
+- **La disponibilidad de tiers es POR CATEGORÍA y POR CUENTA — traerla de ML, no hardcodear.** Endpoint: `GET /users/{me}/available_listing_types?category_id={cat}` → lista de tiers disponibles + `remaining_listings`. (OJO: el "ejemplo real 2026-06-06" que vivía acá citaba MLA1473/MLA1472/MLA1471 como "venta" — eran los IDs del mapa VIEJO, que resultaron ser categorías de alquiler o padres no publicables; ver la sección del mapeo de categorías. La disponibilidad de tiers hay que re-consultarla con los IDs corregidos.) Implementado en `lib/portals/mercadolibre/listing-types.ts` (`fetchAvailableListingTypes`). La ruta `ml-attributes` devuelve los tiers reales + default al más barato disponible; el `adapter.publish` arma `tiersToTry = [pedido, ...disponibles]` y degrada ante "Not available quota". Por eso pedir `free` en un depto puede publicar como `silver` automáticamente.
 - **Default del wizard = el tier más barato DISPONIBLE para la categoría** (free donde se ofrece, sino el siguiente: silver para depto/casa). El asesor puede subir de tier en el paso 3.
+
+### ML: el mapa de categorías estaba TODO mal — falló en vivo el 2026-08-06
+
+- **Symptom (en vivo, durante una demo):** el paso "Campos" del wizard no mostró ningún campo pero marcó "Completitud 100%" y dejó avanzar; al Publicar, ML rechazó con un JSON crudo en pantalla (`item.category_id.invalid — Make sure you're posting in a leaf category`).
+- **Root cause:** `CATEGORY_MAP` en `lib/portals/mercadolibre/mapping.ts` tenía las 11 entradas MAL, y nada lo detectaba: 3 IDs no existían (404), 4 eran categorías PADRE (ML responde `200 []` a `/attributes` → el wizard leía "no pide nada" → 100%), y 3 eran hojas válidas pero del rubro EQUIVOCADO — "departamento en venta" iba a "Departamentos > **Alquiler**", que ML acepta sin chistar (el modo de falla peligroso: publica mal y nadie se entera). Los tests unitarios afirmaban el mapeo incorrecto y esta misma CLAUDE.md lo citaba como "ejemplo real": el sistema estaba roto y se auto-certificaba como correcto.
+- **Fix (2026-08-06):** mapa reescrito con 18 combinaciones (6 tipos × 3 operaciones), TODAS verificadas contra la API real. En venta el nodo "Venta" NO es hoja: hay un 3er nivel y se usa "Propiedades Individuales" (p. ej. depto venta = `MLA401686`, casa venta = `MLA401685`). Guardas nuevas: `resolveCategory` devuelve `null` (sin fallback silencioso a la raíz `MLA1459`) y todos los llamadores lo manejan con `mensajeSinCategoria()`; `fetchCategoryAttributes` REVIENTA ante lista vacía ("vacío" nunca es "está todo bien"); `asegurarCategoriaPublicable()` re-chequea contra ML (existe + hoja + `listing_allowed`) antes de armar el aviso; el paso Campos del wizard BLOQUEA si no hay campos (antes: warning amarillo + `[].every() === true` + barra en 100%).
+- **Errores de ML en castellano:** `explicarErrorMl()` en `client.ts` traduce el `cause[]` de ML; el JSON crudo va en `PortalAdapterError.original` y se persiste en `last_error` como `mensaje | detalle` (`mensajeYDetalle()`/`soloElMensaje()` en `lib/portals/types.ts` — la UI muestra solo el mensaje). **OJO:** los matchers de texto (descenso de tier "available quota", pausa diferida "not_yet_active") matchean sobre `paraElLog`, NO sobre `err.message` (el mensaje traducido ya no contiene los códigos).
+- **Detection / regla:** NO agregar ni cambiar una entrada del mapa sin correr `npx tsx scripts/verify-ml-categories.ts` (consulta la API pública, sin credenciales: exige hoja + publicable + que la RUTA coincida con la operación — esto último es lo que caza un "venta→Alquiler"). La lección Meta ("test end-to-end real antes de declarar completa una integración") aplica a TODOS los portales.
+
+### Fotos de portales: el límite es del AVISO, nunca de `properties.photos` (2026-08-06)
+
+- **Symptom:** los avisos salían con 12 fotos aunque ML permite 30, y peor: una propiedad que pasaba por el wizard de ML quedaba con 12 fotos PARA SIEMPRE en todos los portales, la landing y Meta.
+- **Root cause:** la ruta de guardado del wizard (`ml-preview` PATCH) persistía su selección con `.slice(0, 12)` sobre `properties.photos` — la columna COMPARTIDA. `ap-preview` hacía lo mismo con 20. El 12 además era inventado: `settings.max_pictures_per_item` = **30** en nuestras categorías (verificado 2026-08-06; `verify-ml-categories.ts` lo re-chequea en cada corrida).
+- **Fix/regla:** los wizards eligen ORDEN, nunca el conjunto: las rutas usan `reordenarSinPerder` (`lib/portals/photo-reorder.ts`, puro y testeado — no pierde ni inyecta). El límite por portal vive en `lib/portals/photo-limits.ts` (`ML_MAX_FOTOS_AVISO`/`AP_MAX_FOTOS_AVISO` = 30) y se aplica SOLO al armar el payload. `StepImages` avisa "el aviso lleva las primeras N" si hay más.
+- **Detection:** `scripts/audit-fotos-truncadas.ts` (solo lectura) lista propiedades con más archivos en Storage que fotos en la ficha.
+
+### Argenprop publica en TODO el país (fuera de CABA habilitado 2026-08-06)
+
+- **Antes:** `resolveLocalizacion` lanzaba "Por ahora la publicación en Argenprop soporta solo CABA" — era un atajo nuestro, no una restricción del portal.
+- **Jerarquía real del catálogo (verificada EN VIVO con las credenciales, 2026-08-06):** `/v1/localizacion/paises` (PAIS_1=Argentina) → `/paises/PAIS_1/provincias` (24; PROVINCIA_1=Buenos Aires, PROVINCIA_2=Capital Federal) → `/provincias/{id}/partidos` (135 en BsAs; los nombres llevan prefijo "Partido de ") → `/partidos/{id}/localidades` → `/localidades/{id}/barrios`. Getters cacheados 24h en `catalog.ts`.
+- **Resolver:** ficha con provincia/ciudad que DICE CABA → localidad 2102 + barrio OBLIGATORIO (regla de AP). Resto: provincia → partido → localidad con `matchLocalizacion` (puro: exacto normalizado sin "Partido de ", después contenido-más-largo, después `null` — nunca un parecido dudoso). Fuera de CABA el barrio es opcional. El fallback "barrio resuelve en catálogo CABA" solo aplica con provincia VACÍA (una ficha de provincia con barrio homónimo porteño no debe publicarse en Capital). Errores en castellano nombrando el campo de la ficha.
+- **Verificación:** `scripts/verify-ap-localizacion.ts` (solo lectura, en vivo: CABA/Palermo, BsAs/Roque Pérez, BsAs/La Plata). El 401 "CRM no autorizado" que bloqueaba el QA quedó resuelto — las credenciales funcionan.
 
 ### ML `number_unit`: superficies y antigüedad EXIGEN unidad explícita
 
@@ -579,9 +601,20 @@ Genera carruseles de campaña (largo variable, narrativa de curiosidad) a partir
 
 ## Landing pública premium — diseño (E1.7 → E1.9, 2026-07-24)
 
-**Estado actual (E1.9, APROBADO por el usuario):** la landing es un SISTEMA de LUJO replicable nivel "Villa Eva" (referencia que dio el usuario). Template default `luxury` (`lib/landing/templates/luxury.ts`, `buildLuxuryDocument`) que arma el documento en orden curado de alta conversión: **HeroLuxury** (foto/video + oferta + CTA) → **StatsBar** → **StoryBlocks** (3 numerados I·II·III, foto/texto alternados, de los `benefits` del copy) → **CuratedGallery** + lightbox (recorrido completo) → **FloorPlans** (condicional: solo si `property.plans`) → **CtaBand** (mid) → **LocationShowcase** (banda navy, SIN mapa) → **ClosingInvite** (marca, sin asesor) → **FooterBrand** (CUCICBA) + **FloatingCta**. Todo en `components/landing/luxury/`. Copy IA (`conversion-copy.ts`, reusado) con fallback determinístico. Popup único de captura (`LeadCaptureProvider`) para todos los CTAs. Intensidad por tier (`lib/landing/tier.ts`), curación de fotos (`lib/landing/photo-plan.ts`). Decisiones del usuario: **estética navy con la marca (no marfil/oro)**, **sin asesor/persona en la página**, galería = recorrido completo. Specs: `docs/superpowers/specs/2026-07-24-landing-lujo-replicable-design.md` + plan homónimo. Historial de rechazos: E1.7 y E1.8 fueron rechazados por "parecer portal"/no conectar; la referencia Villa Eva desbloqueó la dirección correcta.
+**Estado actual (E1.9, APROBADO por el usuario):** la landing es un SISTEMA de LUJO replicable nivel "Villa Eva" (referencia que dio el usuario). Template default `luxury` (`lib/landing/templates/luxury.ts`, `buildLuxuryDocument`) que arma el documento en orden curado de alta conversión: **HeroLuxury** (foto/video + oferta + CTA) → **StatsBar** → **StoryBlocks** (3 numerados I·II·III, foto/texto alternados, de los `benefits` del copy) → **CuratedGallery** + lightbox (recorrido completo) → **FloorPlans** (condicional: solo si `property.plans`) → **CtaBand** (mid) → **LocationShowcase** (banda navy; desde 2026-08-06 CON mapa estático no interactivo, ver Landing v2) → **ClosingInvite** (marca, sin asesor) → **FooterBrand** (CUCICBA) + **FloatingCta**. Todo en `components/landing/luxury/`. Copy IA (`conversion-copy.ts`, reusado) con fallback determinístico. Popup único de captura (`LeadCaptureProvider`) para todos los CTAs. Intensidad por tier (`lib/landing/tier.ts`), curación de fotos (`lib/landing/photo-plan.ts`). Decisiones del usuario: **estética navy con la marca (no marfil/oro)**, **sin asesor/persona en la página**, galería = recorrido completo. Specs: `docs/superpowers/specs/2026-07-24-landing-lujo-replicable-design.md` + plan homónimo. Historial de rechazos: E1.7 y E1.8 fueron rechazados por "parecer portal"/no conectar; la referencia Villa Eva desbloqueó la dirección correcta.
 
 **Editor de landing (E1.6, 2026-07-24):** el asesor retoca el CONTENIDO de una landing desde `/(dashboard)/properties/[id]/landing/edit` (botón "Editar landing" en `LandingSection`, solo si la landing existe; abogado gateado). UI = **panel + vista previa en vivo** (`components/landing/editor/`): `LandingEditor` (shell 2 paneles, `fixed inset-0`), `EditorPreview` (reusa `BLOCK_REGISTRY` en `mode='edit'`, envuelve cada bloque en un overlay clickeable que selecciona y bloquea los CTAs internos; clase `.lx-editor-preview` en globals.css apaga las animaciones), `EditorPanel` → panels por tipo (hero/story/gallery/location/closing = texto; stats/floor_plans/footer = InfoPanel), `PhotoPicker` (elige/reordena fotos **por índice** de `property.photos`, @dnd-kit, patrón de `PhotoGallery.tsx`), `SectionToggles` (mostrar/ocultar solo galería/planos/ubicación). **Alcance = solo contenido**: la estructura de lujo (ids canónicos `hero/stats/story/gallery/plans/cta-mid/location/closing/footer`) queda fija; NO se reordenan secciones ni se agregan bloques arbitrarios ni se borran los CTAs (`closing_invite`) → el invariante Zod (≥1 CTA) siempre se cumple. **Borrador seguro:** migración aditiva `property_landings.draft_content jsonb`; el editor autosalva ahí (`useAutosave` debounce 800ms → `PATCH /landing` con `{draftContent}` → `updateLanding`), la pública sigue leyendo `content` → editar NO afecta lo live hasta "Publicar cambios" (`POST /landing/publish` → `publishLanding` promueve `draft_content→content` y lo limpia vía `pickPublishSource`; si no hay borrador, el flujo del wizard queda byte-por-byte igual). Helpers puros testeados: `lib/landing/editor/{block-order,block-patch,editable,promote}.ts`. **Verificación:** `tsc` + probes (`scripts/landing-editor-*.probe.*`: lógica pura + `renderToStaticMarkup` de preview/panels) — el drag/clic/autosave real SOLO en navegador (Turbopack roto local). Spec/plan: `docs/superpowers/specs|plans/2026-07-24-landing-editor*`.
+
+### Landing v2: las respuestas del asesor generan los textos (2026-08-06)
+
+- **El flujo cambió de fondo** (spec `2026-08-06-landing-alta-conversion-design.md`): el enrich automático es `['vision','location','description','avatars']` (`lib/landing/enrich.ts`) y **la etapa `copy` YA NO corre al crear** — la re-arma `POST /landing/answers` (`enrich:'copy'` + `copyFromAnswers:false`) y el mismo loop del cliente la ejecuta. El copy v2 (`conversion-copy.ts`) recibe respuestas textuales + avatar + visión + descripción + insights de zona; fórmula del titular: **tipo + ubicación + beneficio principal** (elegido de las respuestas). Cambiar/ajustar el avatar DESPUÉS de generar re-arma la etapa copy (los textos siguen al avatar elegido).
+- **Gate de publicación:** `lib/landing/answers-gate.ts` (`faltanRespuestas` + `GATE_RESPUESTAS_MSG`, compartido UI/server). Con preguntas presentes, `publishLanding` exige TODAS respondidas Y `copyFromAnswers===true` — pero **SOLO en la PRIMERA publicación** (`published_at` null): las landings ya publicadas (incluidas las 3 pre-v2, que tienen preguntas sin responder) re-publican cambios del editor sin gate, porque su UI no ofrece dónde responder (hallazgo del review). Sin preguntas (enrich caído) tampoco bloquea. El PATCH de `/landing` filtra las claves reservadas del gate (`questions`/`answers`/`copyFromAnswers:true`/`avatarCandidates`…) — solo el server las escribe. Cambiar de template o de avatar con textos ya generados re-arma `enrich='copy'` y baja el gate hasta regenerar (los textos siguen a la elección; la etapa copy respeta `template_id` — luxury y conversion aceptan el copy, los 2 legacy se rearman con su builder). La etapa copy también limpia `draft_content` (un borrador viejo del editor pisaría el copy nuevo al publicar). Las preguntas nunca hablan de financiación (prohibido en el prompt de `questions-generator.ts`; hoy no hay crédito relevante).
+- **`location_insights`** (migración `20260806000008`, columnas `properties.location_insights/_at`): investigación REAL de la zona SIN IA — Google vía el endpoint **estructurado** de ScraperAPI (`api.scraperapi.com/structured/google/search`, verificado: ~5s, `local_packs` con lugares reales) + datos de `market_snapshot_neighborhood`. Módulo `lib/marketing/location-insights.ts`, endpoint `POST /api/properties/[id]/location-insights` (idempotente, `{refresh:true}` regenera). La consumen: etapa `location` del enrich, el copy de la landing y `buildUserPayload` de portales. Sin `SCRAPER_API_KEY` o sin resultados → `fuente:'sin_busqueda'` y los prompts pasan a modo conservador (prohibido inventar lugares). **Cache anti-envenenamiento:** un resultado vacío NO condena a la propiedad — se reintenta en la próxima llamada pasados 10 min (`esInsightsVacio` + throttle `REINTENTO_MIN_MS`, que también limita `refresh:true`: los créditos de ScraperAPI se comparten con market-data y portales). Los snippets de Google van SANEADOS (sin « », sin saltos de línea) y el bloque entra a los prompts DELIMITADO como dato («…») — contenido web hostil por definición.
+- **Descripción de portales v2** (`system-prompt.ts`): la sección Ubicación usa los "Datos REALES de la zona" del payload (nunca más "usá tu conocimiento del barrio"), titular con ejemplos MAL/BIEN, subtitular sin repetir el titular, conexión emocional = mini-relato de la experiencia. El paso Descripción de los wizards ML/AP llama `location-insights` ANTES de `generate-description` (dos requests seriales — REGLA DURA intacta).
+- **Mapa en la landing: SÍ** (revierte el "SIN mapa" de E1.9, decisión del usuario 2026-08-06): `StaticMapTiles` (mosaico de tiles OSM server-side + pin SVG, **cero JS, no interactivo por construcción**, atribución obligatoria) dentro de `LocationShowcase` cuando hay lat/lng y `block.showMap` (default true). Verificado con `scripts/landing-map.probe.tsx` (roundtrip del tile central + tile real 200).
+- **Cierres:** eyebrows del template luxury = `'Conocela por dentro'` (cta-mid) y `'Vení a recorrerla'` (closing) — nunca "Con cita previa"/"Agendá tu visita". **Área:** hero + StatsBar muestran `total_area` ("m² totales"); `covered_area` solo como fallback con etiqueta honesta. **Poster:** el `<video>` de `/v/[token]` (ThanksMedia) lleva `poster={photos[0]}` — sin él, en el celular el recuadro quedaba vacío varios segundos.
+- **Eliminar landing (botón, 2026-08-07):** `deleteLanding` + `DELETE /landing?definitivo=1` (sin el param = despublicar, compat). Es la ÚNICA forma de regenerar de cero (`startCoCreation` es idempotente). Borra la fila (revisiones cascadean); NO toca `property_avatars` (la campaña Meta comparte el primario) ni `properties.public_slug` — el enlace público sigue vivo (cae a la landing determinística) y la landing nueva conserva el MISMO enlace al re-publicar. Botones en `LandingSection`: "Eliminar landing" (publicada) y "Eliminar y empezar de nuevo" (draft), con `confirm()`.
+- **QA:** `scripts/qa-landing-flow.ts` (setup/flow/teardown/all, guard `[TEST`) corre el flujo entero contra la base real: verificado 2026-08-06/07 — el gate rechaza sin respuestas, el titular salió con la fórmula usando la respuesta del asesor, insights `fuente:'google'`, publicación OK, y eliminar+regenerar conserva el slug.
 
 Las claves de arquitectura/motion de abajo (E1.7) SIGUEN VIGENTES:
 
@@ -676,6 +709,166 @@ no en el prompt, porque tienen que ocurrir SIEMPRE:
   corrigió con ejemplos de MAL y BIEN en el prompt: es lo único que corrige un tono.
 - Repetía el mismo material cada turno: se le pasa `yaMandado`.
 
+### La memoria es de una CONVERSACIÓN SOBRE UNA PROPIEDAD, no de un teléfono (2026-08-06)
+
+El bug más caro que tuvo el agente, y el que mejor enseña dónde mirar.
+
+**Síntoma:** en un chat real, el cliente pidió fotos y el agente le mandó el
+plano; después le afirmó "ya te envié el video y las fotos" —que nunca
+salieron—; y empujó a agendar en cada mensaje inventando "mañana". Parecía que
+el modelo interpretaba pésimo.
+
+**Causa, una sola para las tres:** `conversation_ai_state` tenía UNA fila por
+teléfono, sin propiedad, y cada análisis reescribe el resumen pisando el
+anterior. El 3 de agosto una prueba por Lares de Canning dejó escrito "ya
+recibió fotos y un video". El 6, con una consulta nueva por Entre Ríos, el
+modelo actualizó el nombre de la propiedad y **se llevó puesta esa frase**. Con
+fotos y video dados por entregados, ofrecer el plano era lo único que quedaba, y
+corregir al cliente ("ya te lo mandé") era coherente. El modelo razonó bien
+sobre un hecho falso que le pasamos nosotros.
+
+**Regla general — cuando el agente se porta mal, mirar PRIMERO el sobre de
+información, no el prompt.** Un prompt no inventa que ya mandó un video: eso
+estaba escrito en la memoria. Es la segunda vez que pasa (la primera:
+`ultimoMensajePropio`), y las dos veces la pregunta correcta fue *qué NO puede
+saber* o *qué está creyendo que es falso*.
+
+**Fix (migración `20260806000007`, aplicada y verificada):**
+- `conversation_ai_state.property_id` dice de qué propiedad habla el resumen.
+- `memoriaVigente` (pura, testeada) descarta el resumen y **reinicia el tope de
+  mensajes** al cambiar de propiedad. **NO revierte un apagado manual del
+  agente** (`agent_handed_off`): reiniciar el contador recupera una capacidad,
+  revertir un apagado mandaría mensajes que una persona decidió frenar. Ante la
+  duda, callado.
+- El reinicio del contador se **persiste**: el cupo se reserva con la RPC atómica
+  `claim_agent_message_slot`, que lee la BASE. Un reinicio que solo viva en una
+  variable no libera nada.
+- **Sigue habiendo UNA fila por teléfono** a propósito: el Inbox, el panel de
+  costo y la prioridad leen esta tabla por teléfono y volverla multi-fila los
+  rompería a los tres.
+
+**Dos bugs hermanos que salieron del mismo tirón:**
+- `materialYaMandado` deducía el material entregado del PREFIJO del texto
+  (`"[Foto] …"`). El plano que viaja en el **encabezado de una plantilla** no
+  lleva ese prefijo, así que no contaba como entregado y se re-enviaba. Ahora
+  sale de la columna real `whatsapp_messages.media_type`, que `logOutbound`
+  ahora sí escribe. **Un dato estructural no se deduce de un texto de
+  presentación.**
+- `sendWhatsappTemplate` **descartaba `origen` y `aiGenerated`**: se agregaron al
+  input pero no a sus cuatro `logOutbound`. Por eso el mensaje de una consulta
+  quedaba sin origen (rompía el filtro del Inbox) y sin marca de agente (el
+  agente arrancaba ciego, sin reconocer su propio primer mensaje). Los cuatro
+  caminos comparten ahora `camposDeRegistro` — un campo nuevo no puede llegar a
+  la mitad de las salidas.
+
+### Una visita en agenda frena AGENDAR, no frena HABLAR (2026-08-06)
+
+**Síntoma:** con una visita ya propuesta, el cliente pidió fotos y el agente no
+contestó **nada** — solo dejó una nota interna, que el cliente nunca ve. Pasó
+dos veces el mismo día, una de ellas con Diego mirando en una reunión.
+
+**Causa:** nadie eligió ese comportamiento. El freno de "ya hay visita" se había
+puesto sobre *contestar*, cuando lo único peligroso es correrle la fecha a una
+visita que el equipo ya tiene anotada. Y estaba en **tres lugares que se
+reforzaban**, así que arreglar uno solo no alcanzaba:
+1. `canWrite` incluía `!pendiente` → el modelo recibía "no redactes respuesta";
+2. `runSchedulingAgent` cortaba con un `return` antes de mandar nada;
+3. el prompt decía literalmente `"reply" va en null`.
+
+**Comportamiento vigente con una visita viva:** contesta y manda material, pero
+**nunca** crea, confirma ni mueve la visita — y eso se descarta en el CÓDIGO
+(`decideSchedulingAction`, `hasActiveVisit`), no en el prompt: aunque el modelo
+proponga una fecha, no llega a crearse nada. Si le hablan de mover o confirmar,
+deriva al equipo. La nota interna queda una sola vez por episodio.
+
+**Regla general — un freno tiene que ser del tamaño del riesgo.** El riesgo era
+"tocar una visita ajena"; el freno se comió "atender al cliente". Al escribir un
+freno, nombrar exactamente qué acción prohíbe, y verificar que no arrastre
+otras. Un agente mudo frente a alguien que pidió fotos cuesta el lead entero.
+
+**Regla que se repite:** lo que tiene que pasar SIEMPRE va en el código, no en
+el prompt. Acá aplicó en las dos direcciones — el freno de la visita subió al
+código, y la orden de callarse bajó del prompt.
+
+### El agente no inventó la mentira: la copió del prompt (2026-08-06)
+
+**Síntoma:** un cliente preguntó "Tienes los planos?" y el agente contestó
+*"Plano no tengo a mano, pero te paso el video y ahí se ve bien cómo está
+distribuida"*. La propiedad TIENE el plano cargado, y se lo habíamos mandado a
+esa misma persona diez minutos antes, en la plantilla de la consulta.
+
+**Causa:** esa frase estaba **escrita en el prompt, textual**, como ejemplo de
+cómo declinar algo que no se tiene. El modelo la reprodujo palabra por palabra.
+
+**Antes de acusar al modelo de alucinar, buscá la frase en el prompt.** Un
+ejemplo dentro de un prompt no es una ilustración: es una plantilla de respuesta,
+y el modelo la va a usar. Todo ejemplo de "qué decir cuando pasa X" se va a
+disparar también en algún caso donde X no pasa. Si la frase es peligrosa fuera de
+su caso (negar material, prometer un horario, afirmar un dato), **no puede estar
+escrita** — hay que describir la situación, no redactarle la respuesta.
+
+**Por qué se disparó fuera de su caso:** el prompt le daba órdenes en conflicto
+—"no repitas material ya mandado" contra un cliente pidiéndoselo— y el modelo
+resolvió el empate negando que existiera. Y no era un caso borde: `elegirPlantilla`
+prioriza el plano, así que **toda consulta de una propiedad con planos arranca con
+el plano ya entregado**. El conflicto era el estado normal.
+
+**Qué se hizo:**
+- Fuera la frase; entra la sección "NUNCA DIGAS QUE NO TENÉS ALGO QUE SÍ TENÉS".
+- `yaMandado` dejó de ser un permiso revocado: es material que la persona YA
+  TIENE. El inventario no cambia, y si lo vuelve a pedir se le manda de nuevo.
+- Inventario **positivo y con cantidades** ("plano: SÍ. Hay 1 plano cargado").
+  Una lista de palabras sueltas es fácil de desoír; un inventario con números no.
+- **Garantía de código** (`lib/ai/material-request.ts`): lo que el cliente pide
+  con todas las letras y la propiedad tiene, SALE, aunque el modelo lo omita.
+  Lee **el mensaje del cliente**, no la prosa del modelo — se evaluó y descartó
+  detectar la negación en la salida: la frase real ni siquiera empezaba con la
+  negación ("Plano no tengo"), y perseguir paráfrasis del castellano con
+  expresiones regulares siempre pierde. Solo agrega material, nunca quita.
+
+**Dos bugs latentes que aparecieron tirando del hilo:**
+- `COLUMNAS_MINIMAS` (el plan B del `select`) no traía `photos`/`plans`/
+  `video_file_url`. Ante cualquier problema de esquema, `materialDisponible`
+  devolvía todo `false` y el agente pasaba a **negarle a todos los clientes el
+  material de todas las propiedades**, sin un error visible. No saber si algo
+  existe no es lo mismo que saber que no existe.
+- `analysis.send` sin valor tiraba "not iterable", el `try/catch` lo convertía en
+  `noop` y el agente quedaba mudo en silencio.
+
+### La ficha: el agente no recibía la descripción (2026-08-06)
+
+El dueño rechazó dos veces respuestas tipo "4 ambientes, 3 dormitorios, 80 m²".
+La causa no era el tono: `propertyFacts()` armaba una lista de specs sueltos y
+**la columna `properties.description` no se le pasaba al modelo**, aunque existía
+desde siempre y contiene el recorrido escrito por una persona ("las dos
+habitaciones dan al contrafrente, desde donde se accede al encantador jardín…
+un quincho"). Contestaba como una ficha porque le dábamos una ficha.
+
+Ahora recibe la descripción entera (recortada a 1200 caracteres: viaja en cada
+llamada) y una línea derivada, **`Espacio descubierto (jardín / patio)`** =
+`total_area - covered_area`. Ese número estaba en los datos y nadie lo calculaba:
+80 m² cubiertos sobre un lote de 180 son 100 m² de jardín, que en una casa es el
+argumento de venta más fuerte.
+
+### Palabra de reinicio: `reiniciar prueba`
+
+Se manda por WhatsApp desde un teléfono de `ai_agent_settings.consulta_test_phones`
+y la conversación vuelve a foja cero, sin depender de que alguien corra un script.
+`lib/ai/reset-prueba.ts`, enganchada en el webhook después de guardar y antes del
+pipeline de IA.
+
+- **Limpia** (estado derivado, regenerable): resumen, contador de mensajes,
+  `agent_handed_off`, marcadores de análisis.
+- **NO BORRA NADA**: los mensajes, el lead y la consulta quedan intactos. Las
+  visitas que anotó el AGENTE se **cancelan con una nota que dice por qué**, no
+  se eliminan; una visita cargada por una persona no se toca jamás.
+- `tokens_used_total` / `analyses_count` **no** se reinician: ese gasto ocurrió y
+  el panel de costo tiene que seguir diciendo la verdad.
+- Desde cualquier otro teléfono la frase es un mensaje común y el agente contesta
+  normal. Fail-closed: sin lista legible, nadie reinicia.
+- Tiene que ser la frase EXACTA (se ignoran acentos, mayúsculas y un punto
+  final). "habría que reiniciar prueba mañana" no dispara nada.
+
 ### Banco de pruebas: `/admin/ai-agent`
 
 Escribís lo que diría un cliente y ves qué contestaría, SIN mandar WhatsApp ni
@@ -684,6 +877,16 @@ equipo, y el prompt completo. **Existe porque probar contra el chat real costó
 tres rondas de diagnóstico equivocado**: el dueño probaba contra código que
 todavía no había deployado y no había forma de verificar sin pedirle otra
 prueba. Usalo ANTES de tocar el prompt.
+
+Muestra además **"Con qué información decidió"** (material disponible, material
+que cree ya entregado, su mensaje anterior, la memoria previa). Esa mitad es la
+que permite distinguir "el modelo entendió mal" de "le pasamos un dato falso" —
+que fue lo que pasó las dos veces que el agente falló feo.
+
+**Todo insumo del agente tiene que ser simulable acá.** `yaMandado` estaba fijo
+en vacío y por eso el banco **no podía reproducir** el peor bug que tuvo. Un
+banco de pruebas que no reproduce la falla real no sirve para diagnosticarla: al
+agregar un insumo nuevo al cerebro, agregarle el control en la misma tarea.
 
 Esa ruta esquiva `analysis_enabled` a propósito (no es automática, la dispara
 una persona con permiso de configuración): apagar el agente no debe impedir

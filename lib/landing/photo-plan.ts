@@ -25,9 +25,11 @@ export function planPhotos(photos: string[]): PhotoPlan {
   // La galería es el RECORRIDO COMPLETO (todas las fotos, destacada = la portada),
   // como en la referencia. Se muestra desde 3 fotos (con menos, la historia alcanza).
   const gallery = n >= 3 ? Array.from({ length: n }, (_, i) => i) : []
-  // Ubicación: SIEMPRE banda navy elegante con el copy de zona. No usamos una foto
-  // de la propiedad como "la zona" (una foto interior etiquetada 'Ubicación' es
-  // incongruente); si en el futuro hay imágenes de barrio, se enchufan acá.
+  // Ubicación: banda navy con el copy de zona + mapa estático no interactivo
+  // (desde 2026-08-06, si hay lat/lng — ver LocationShowcase/StaticMapTiles).
+  // No usamos una foto de la propiedad como "la zona" (una foto interior
+  // etiquetada 'Ubicación' es incongruente); si algún día hay imágenes de
+  // barrio, se enchufan acá.
   const location = null
 
   return { hero, story, gallery, location }

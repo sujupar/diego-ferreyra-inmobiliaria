@@ -14,9 +14,10 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Loader2, Sparkles, Rocket, ExternalLink, Wand2, ArrowRight, AlertTriangle } from 'lucide-react'
+import { Loader2, Sparkles, Rocket, ExternalLink, Wand2, ArrowRight, AlertTriangle, Trash2 } from 'lucide-react'
 import { needsDeliveryChoice, resolveDeliverMedia } from '@/lib/properties/deliver-media'
 import { ENRICH_STAGES, nextEnrichStage } from '@/lib/landing/enrich'
+import { faltanRespuestas, GATE_RESPUESTAS_MSG } from '@/lib/landing/answers-gate'
 
 interface Question { id: string; question: string; hint?: string }
 interface Avatar {
@@ -32,7 +33,9 @@ interface WizardState {
   avatarCandidates?: Avatar[]
   selectedAvatarIndex?: number
   /** Etapa pendiente del enriquecimiento con IA; ausente = ya está completa. */
-  enrich?: 'vision' | 'avatars' | 'copy' | 'done'
+  enrich?: 'vision' | 'location' | 'description' | 'avatars' | 'copy' | 'done'
+  /** true = los textos se generaron con las respuestas del asesor (gate de publicar). */
+  copyFromAnswers?: boolean
 }
 interface Landing {
   status: 'draft' | 'published' | 'archived'
@@ -164,7 +167,7 @@ export function LandingSection({
       if (!res.ok) throw new Error(data.error ?? 'Error al crear la landing')
       setLanding(data.landing ?? null); setTemplates(data.templates ?? [])
       await runEnrichment()
-      toast.success('Landing lista. Respondé las preguntas para afinar el avatar.')
+      toast.success('Landing creada. Respondé las preguntas para generar los textos.')
     } catch (e) {
       setEnriching(null)
       toast.error(e instanceof Error ? e.message : 'Error al crear la landing')
@@ -173,13 +176,17 @@ export function LandingSection({
 
   /**
    * Si el asesor recargó la página a mitad del enriquecimiento, lo retomamos
-   * solo. El ref evita que un re-render dispare un segundo loop.
+   * solo. El ref evita que un re-render dispare un segundo loop — y se marca
+   * TAMBIÉN cuando la landing ya está completa al cargar: sin eso, el re-armado
+   * de la etapa copy (respuestas / avatar / diseño) re-disparaba este efecto en
+   * paralelo con el loop del handler → DOS llamadas de IA por el mismo copy
+   * (hallazgo del review 2026-08-06). Los handlers marcan el ref antes de correr.
    */
   const resumedRef = useRef(false)
   useEffect(() => {
     if (loading || !landing || resumedRef.current) return
-    if (nextEnrichStage(landing.wizard_state ?? {}) === 'done') return
     resumedRef.current = true
+    if (nextEnrichStage(landing.wizard_state ?? {}) === 'done') return
     setEnriching({ label: 'Retomando la generación…', percent: 5 })
     runEnrichment().catch(e => {
       setEnriching(null)
@@ -187,8 +194,14 @@ export function LandingSection({
     })
   }, [loading, landing, runEnrichment])
 
+  /**
+   * Guarda las respuestas (el server exige TODAS), regenera avatares y corre la
+   * etapa de textos re-armada: al terminar, la landing tiene el copy hecho CON
+   * las respuestas — recién ahí se habilita publicar.
+   */
   const saveAnswers = async () => {
     setBusy('answers')
+    resumedRef.current = true // este handler corre su propio loop; el efecto de resume no debe duplicarlo
     try {
       const res = await fetch(`/api/properties/${propertyId}/landing/answers`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
@@ -197,14 +210,42 @@ export function LandingSection({
       const data = await readJson<{ landing?: Landing; error?: string }>(res)
       if (!res.ok) throw new Error(data.error)
       setLanding(data.landing ?? null)
-      toast.success('Avatares regenerados con tus respuestas.')
+      setEnriching({ label: 'Escribiendo los textos de la landing…', percent: 90 })
+      await runEnrichment()
+      toast.success('Listo: los textos se generaron con tus respuestas.')
     } catch (e) {
+      setEnriching(null)
       toast.error(e instanceof Error ? e.message : 'Error')
     } finally { setBusy(null) }
   }
 
+  /**
+   * Si los textos ya se generaron y el asesor cambia (o ajusta) el avatar o el
+   * diseño, se re-generan para que sigan a la elección — sin esto el copy
+   * publicado quedaba atado al avatar [0] o el cambio de diseño lo pisaba con
+   * el determinístico dejando el gate en verde.
+   */
+  const regenerarTextosSiCorresponde = async (tenianTextos: boolean, label: string) => {
+    if (!tenianTextos) return
+    resumedRef.current = true // el loop lo corre este handler, no el efecto de resume
+    const ok = await patch({ wizardState: { enrich: 'copy', copyFromAnswers: false } })
+    if (!ok) return // el PATCH falló (ya se mostró el toast): no simular que se regeneró
+    setEnriching({ label, percent: 90 })
+    try {
+      await runEnrichment()
+    } catch (e) {
+      setEnriching(null)
+      toast.error(e instanceof Error ? e.message : 'Error al actualizar los textos')
+    }
+  }
+
   const selectAvatar = async (idx: number) => {
-    await patch({ wizardState: { selectedAvatarIndex: idx } })
+    // Re-clickear el avatar ya elegido no regenera nada (cada regeneración es IA paga).
+    if (idx === (landing?.wizard_state?.selectedAvatarIndex ?? 0)) return
+    const tenianTextos = landing?.wizard_state?.copyFromAnswers === true
+    const ok = await patch({ wizardState: { selectedAvatarIndex: idx } })
+    if (!ok) return
+    await regenerarTextosSiCorresponde(tenianTextos, 'Actualizando los textos con el avatar elegido…')
   }
 
   const refine = async (idx: number) => {
@@ -217,14 +258,16 @@ export function LandingSection({
       })
       const data = await readJson<{ landing?: Landing; error?: string }>(res)
       if (!res.ok) throw new Error(data.error)
+      const tenianTextos = landing?.wizard_state?.copyFromAnswers === true
       setLanding(data.landing ?? null); setRefineComment('')
       toast.success('Avatar ajustado.')
+      await regenerarTextosSiCorresponde(tenianTextos, 'Actualizando los textos con el avatar ajustado…')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error')
     } finally { setBusy(null) }
   }
 
-  const patch = async (body: Record<string, unknown>) => {
+  const patch = async (body: Record<string, unknown>): Promise<boolean> => {
     setBusy('patch')
     try {
       const res = await fetch(`/api/properties/${propertyId}/landing`, {
@@ -233,12 +276,31 @@ export function LandingSection({
       const data = await readJson<{ landing?: Landing; error?: string }>(res)
       if (!res.ok) throw new Error(data.error)
       setLanding(data.landing ?? null)
+      return true
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error')
+      return false
     } finally { setBusy(null) }
   }
 
-  const setTemplate = (templateId: string) => patch({ templateId })
+  /**
+   * Cambiar el diseño reconstruye el content; si los textos ya salían de las
+   * respuestas, el server re-arma la etapa copy y acá se corre el loop para que
+   * el nuevo diseño también los tenga (el gate queda cerrado hasta entonces).
+   */
+  const setTemplate = async (templateId: string) => {
+    const tenianTextos = landing?.wizard_state?.copyFromAnswers === true
+    resumedRef.current = true
+    const ok = await patch({ templateId })
+    if (!ok || !tenianTextos) return
+    setEnriching({ label: 'Escribiendo los textos para el nuevo diseño…', percent: 90 })
+    try {
+      await runEnrichment()
+    } catch (e) {
+      setEnriching(null)
+      toast.error(e instanceof Error ? e.message : 'Error al actualizar los textos')
+    }
+  }
 
   const publish = async () => {
     setBusy('publish')
@@ -250,6 +312,36 @@ export function LandingSection({
       await load()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al publicar')
+    } finally { setBusy(null) }
+  }
+
+  /**
+   * Elimina la landing DE VERDAD para poder generarla de cero (pedido del
+   * usuario, 2026-08-07). El enlace público no se rompe: mientras no haya
+   * landing muestra la versión automática, y al re-publicar conserva el MISMO
+   * enlace (el slug vive en la propiedad) — una campaña Meta activa sigue
+   * funcionando durante el medio.
+   */
+  const eliminar = async () => {
+    const publicada = landing?.status === 'published'
+    const aviso = publicada
+      ? 'Vas a eliminar esta landing publicada para generarla de nuevo.\n\n' +
+        '• El enlace público NO se rompe: mientras tanto muestra una versión automática, y la landing nueva va a tener el MISMO enlace (las campañas Meta siguen funcionando).\n' +
+        '• Los textos actuales y las respuestas se pierden: la nueva arranca de cero con las preguntas.\n\n¿Eliminar?'
+      : 'Vas a eliminar esta landing en construcción (textos, respuestas y avatares del asistente). Después podés crearla de nuevo desde cero. ¿Eliminar?'
+    if (!confirm(aviso)) return
+    setBusy('eliminar')
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/landing?definitivo=1`, { method: 'DELETE' })
+      const data = await readJson<{ error?: string }>(res)
+      if (!res.ok) throw new Error(data.error)
+      setLanding(null)
+      setAnswers({})
+      setEnriching(null)
+      resumedRef.current = false
+      toast.success('Landing eliminada. Podés crearla de nuevo cuando quieras.')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Error al eliminar')
     } finally { setBusy(null) }
   }
 
@@ -362,9 +454,24 @@ export function LandingSection({
             </a>
           </div>
           <p className="text-xs text-muted-foreground">Ya podés montar la campaña Meta para esta propiedad.</p>
-          <Button size="sm" onClick={() => router.push(`/properties/${propertyId}/landing/edit`)}>
-            Editar landing
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => router.push(`/properties/${propertyId}/landing/edit`)}>
+              Editar landing
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+              onClick={eliminar}
+              disabled={busy === 'eliminar'}
+            >
+              {busy === 'eliminar' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
+              Eliminar landing
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Eliminar sirve para generarla de nuevo desde cero. El enlace público no se rompe y la landing nueva conserva el mismo enlace.
+          </p>
           {deliveryChoiceBlock && <div className="border-t pt-3">{deliveryChoiceBlock}</div>}
         </CardContent>
       </Card>
@@ -377,6 +484,13 @@ export function LandingSection({
   const candidates = ws.avatarCandidates ?? []
   const selectedIdx = ws.selectedAvatarIndex ?? 0
 
+  // Gate de publicación (2026-08-06): con preguntas presentes, publicar exige
+  // TODAS respondidas Y los textos generados con esas respuestas. El server
+  // valida lo mismo en publishLanding — acá solo lo avisamos antes.
+  const faltanLocal = questions.filter(q => !(answers[q.id] ?? '').trim())
+  const textosListos = questions.length === 0 ||
+    (faltanRespuestas({ questions, answers: ws.answers }).length === 0 && ws.copyFromAnswers === true)
+
   return (
     <Card>
       <CardHeader>
@@ -385,10 +499,13 @@ export function LandingSection({
       <CardContent className="space-y-6">
         {enrichBlock}
 
-        {/* 1. Preguntas */}
+        {/* 1. Preguntas (obligatorias, 2026-08-06: son el insumo de los textos) */}
         {questions.length > 0 && (
           <div className="space-y-3">
-            <p className="text-sm font-medium">1. Afiná el perfil (opcional)</p>
+            <p className="text-sm font-medium">1. Contanos de esta propiedad (obligatorio)</p>
+            <p className="text-xs text-muted-foreground">
+              Con tus respuestas la IA escribe los textos de la landing. Sin responderlas no se puede publicar.
+            </p>
             {questions.map(q => (
               <div key={q.id}>
                 <label className="text-sm">{q.question}</label>
@@ -401,10 +518,15 @@ export function LandingSection({
                 />
               </div>
             ))}
-            <Button size="sm" variant="outline" onClick={saveAnswers} disabled={busy === 'answers'}>
-              {busy === 'answers' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-              Regenerar avatares con mis respuestas
+            <Button size="sm" onClick={saveAnswers} disabled={busy === 'answers' || faltanLocal.length > 0}>
+              {busy === 'answers' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wand2 className="h-4 w-4 mr-2" />}
+              Generar los textos con mis respuestas
             </Button>
+            {faltanLocal.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Respondé todas las preguntas para generar los textos de la landing.
+              </p>
+            )}
           </div>
         )}
 
@@ -482,15 +604,38 @@ export function LandingSection({
               </div>
             </div>
           )}
+          {!textosListos && (
+            <div className="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-amber-900">Faltan tus respuestas</p>
+                <p className="text-xs text-amber-800">{GATE_RESPUESTAS_MSG}</p>
+              </div>
+            </div>
+          )}
           <Button
             onClick={publish}
-            disabled={busy === 'publish' || faltaRecorrido}
+            disabled={busy === 'publish' || faltaRecorrido || !textosListos}
             className="w-full"
             size="lg"
           >
             {busy === 'publish' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Rocket className="h-4 w-4 mr-2" />}
             Publicar landing
             <ArrowRight className="h-4 w-4 ml-1" />
+          </Button>
+        </div>
+
+        {/* Eliminar y arrancar de cero (2026-08-07) */}
+        <div className="border-t pt-3">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-red-600 hover:bg-red-50 hover:text-red-700"
+            onClick={eliminar}
+            disabled={busy === 'eliminar'}
+          >
+            {busy === 'eliminar' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
+            Eliminar y empezar de nuevo
           </Button>
         </div>
       </CardContent>

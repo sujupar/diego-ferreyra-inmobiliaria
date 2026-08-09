@@ -6,6 +6,8 @@ import { mapMetaStatus } from '@/lib/integrations/whatsapp/log'
 import { downloadAndStoreInboundMedia } from '@/lib/integrations/whatsapp/media'
 import { runConversationAnalysis } from '@/lib/ai/analyze-conversation'
 import { runSchedulingAgent } from '@/lib/ai/scheduling-agent'
+import { esPalabraDeReinicio, reiniciarPrueba, reenviarApertura, mensajeDeConfirmacion } from '@/lib/ai/reset-prueba'
+import { sendWhatsappText } from '@/lib/integrations/whatsapp/core'
 
 export const dynamic = 'force-dynamic'
 
@@ -101,6 +103,8 @@ interface InboundContext {
   leadId: string | null
   propertyId: string | null
   contactName: string | null
+  /** El texto tal cual lo escribió la persona — lo lee la palabra de reinicio. */
+  textoEntrante: string | null
 }
 
 /**
@@ -181,7 +185,7 @@ async function persistInbound(supabase: ReturnType<typeof admin>, msg: InboundMe
       }
     }
 
-    return { phoneE164, leadId, propertyId: leadPropertyId, contactName: msg.contactName }
+    return { phoneE164, leadId, propertyId: leadPropertyId, contactName: msg.contactName, textoEntrante: msg.bodyPreview ?? null }
   } catch (err) {
     console.warn('[whatsapp-webhook] excepción guardando mensaje entrante (continuando):', err)
     return null
@@ -464,6 +468,52 @@ export async function POST(request: NextRequest) {
     // El ÚLTIMO es el más informativo, y el análisis relee la conversación
     // completa de la base, que en este punto ya tiene todo lo de la fase 1.
     const aAnalizar = contextos.length ? contextos[contextos.length - 1] : null
+
+    // FASE 2.5 — ¿ES LA PALABRA DE REINICIO? Va DESPUÉS de guardar (el mensaje
+    // queda en el historial como cualquier otro) y ANTES del pipeline: si se
+    // reinicia, no se analiza ese mismo turno — analizarlo volvería a llenar la
+    // memoria que se acaba de vaciar.
+    //
+    // Solo funciona desde un teléfono de la lista de prueba. Para cualquier otra
+    // persona la frase es un mensaje común y el agente le contesta normal.
+    if (aAnalizar && esPalabraDeReinicio(aAnalizar.textoEntrante)) {
+      const r = await reiniciarPrueba(aAnalizar.phoneE164, aAnalizar.propertyId, aAnalizar.leadId)
+      if (r.reiniciado) {
+        console.log(`[whatsapp-webhook] prueba reiniciada para ${aAnalizar.phoneE164}: ${r.limpiado.join(', ')}`)
+        // 1) La confirmación primero, para que el chat se lea en el orden en que
+        //    pasaron las cosas.
+        await sendWhatsappText({
+          to: aAnalizar.phoneE164,
+          text: mensajeDeConfirmacion(r.limpiado),
+          leadId: aAnalizar.leadId,
+          propertyId: aAnalizar.propertyId,
+          sentBy: null,
+          aiGenerated: true,
+          timeoutMs: 8000,
+        })
+        // 2) Y después la apertura de verdad: la misma plantilla, con el mismo
+        //    plano en el encabezado, que recibe alguien que consulta un portal.
+        //    Sin esto el reinicio dejaba la conversación limpia pero muda.
+        let apertura = 'sin propiedad asociada'
+        if (aAnalizar.propertyId) {
+          const a = await reenviarApertura(aAnalizar.phoneE164, aAnalizar.propertyId, aAnalizar.leadId)
+          apertura = a.detalle
+          if (!a.ok) console.warn(`[whatsapp-webhook] no se pudo reenviar la apertura: ${a.detalle}`)
+        }
+        return NextResponse.json({
+          ok: true,
+          inbound: inbound.length,
+          statuses: statuses.length,
+          reiniciado: true,
+          apertura,
+        })
+      }
+      // No autorizado o falló: se sigue como un mensaje normal. No se le avisa
+      // nada al que lo mandó — si no está en la lista, para el sistema es un
+      // cliente escribiendo, y merece la atención de siempre.
+      console.log(`[whatsapp-webhook] palabra de reinicio ignorada (${r.motivo})`)
+    }
+
     if (aAnalizar) {
       const transcurrido = Date.now() - inicioRequest
       if (transcurrido >= AI_BUDGET_MS) {

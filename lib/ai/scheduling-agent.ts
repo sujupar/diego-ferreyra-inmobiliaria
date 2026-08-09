@@ -78,7 +78,8 @@ import { serviceWindow } from '@/lib/integrations/whatsapp/window'
 import { sendWhatsappText, sendWhatsappMedia } from '@/lib/integrations/whatsapp/core'
 import { logOutbound } from '@/lib/integrations/whatsapp/log'
 import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
-import { updateAgentState, getConversationAiState } from '@/lib/ai/conversation-memory'
+import { updateAgentState, getConversationAiState, memoriaVigente } from '@/lib/ai/conversation-memory'
+import { materialPedidoExplicito } from '@/lib/ai/material-request'
 import { runConversationAnalysis } from '@/lib/ai/analyze-conversation'
 import { validateProposedVisit, MAX_TIPOS_POR_TURNO, type MaterialTipo } from '@/lib/ai/agent-brain'
 
@@ -348,6 +349,17 @@ export interface SchedulingContext {
   schedulingEnabledGlobal: boolean
   schedulingEnabledProperty: boolean
   windowOpen: boolean
+  /**
+   * Ya hay una visita viva y vigente para esta persona y esta propiedad.
+   *
+   * FRENA AGENDAR, NO FRENA HABLAR. Es una distinción que costó una prueba en
+   * vivo (6 de agosto de 2026): con una visita propuesta, el cliente pidió
+   * fotos y el agente NO le contestó nada — solo dejó una nota interna. Diego
+   * vio lo mismo en una reunión el mismo día. Nadie decidió eso: el freno se
+   * había puesto sobre "contestar" cuando lo único peligroso es tocarle la
+   * fecha a una visita que el equipo ya tiene anotada.
+   */
+  hasActiveVisit?: boolean
 }
 
 /**
@@ -381,6 +393,15 @@ export function decideSchedulingAction(ctx: SchedulingContext): SchedulingAction
   if (!ctx.reply) {
     return { type: 'noop', reason: 'no hay nada que contestar en este turno' }
   }
+
+  // Con una visita ya en agenda el agente SIGUE ATENDIENDO —contesta y manda
+  // material— pero la visita se descarta acá, en el código. Que el modelo
+  // proponga una fecha igual no importa: no llega a crearse nada. El freno vive
+  // en el código y no en el prompt justamente porque tiene que pasar SIEMPRE.
+  if (ctx.hasActiveVisit) {
+    return { type: 'reply', text: ctx.reply, send: ctx.send ?? [] }
+  }
+
   return ctx.visit
     ? { type: 'reply', text: ctx.reply, visit: ctx.visit, send: ctx.send ?? [] }
     : { type: 'reply', text: ctx.reply, send: ctx.send ?? [] }
@@ -464,7 +485,7 @@ export function buildActiveVisitNote(fecha: string | null, status: string): stri
     status === 'scheduled'
       ? `ya está confirmada${cuando}`
       : `ya está propuesta${cuando} y todavía sin confirmar`
-  return `[Agente IA] El cliente sigue escribiendo sobre una visita que ${estado}. El agente no vuelve a proponer ni a confirmar horarios de esta propiedad: mover una visita que el equipo ya tiene en agenda lo decide una persona.`
+  return `[Agente IA] La visita de este cliente ${estado}. El agente sigue atendiendo la conversación y mandando material, pero no propone, confirma ni mueve horarios de esta propiedad: eso lo decide una persona del equipo.`
 }
 
 /**
@@ -890,21 +911,26 @@ interface ClientNames {
 async function ultimoTextoDelAgente(
   sb: ReturnType<typeof admin>,
   phoneE164: string,
+  propertyId: string,
 ): Promise<string | null> {
   try {
     const { data } = await sb
       .from('whatsapp_messages')
-      .select('body_preview, status')
+      .select('body_preview, status, media_type')
       .eq('phone_e164', phoneE164)
       .eq('direction', 'out')
       .eq('ai_generated', true)
+      // De ESTA propiedad. Lo que el agente dijo sobre otra no es "lo que ya
+      // dije" acá, y repetirlo sería hablar de una casa que no es la que se está
+      // consultando.
+      .eq('property_id', propertyId)
       .in('status', ['accepted', 'sent', 'delivered', 'read'])
       .order('created_at', { ascending: false })
       .limit(1)
     const fila = (data as Array<{ body_preview: string | null }> | null)?.[0]
     const texto = fila?.body_preview?.trim() ?? ''
-    // Las fotos y videos se registran como "[Foto] <url>": no son un mensaje
-    // que valga como "esto ya se lo dije".
+    // Un envío de material se registra como "[Foto] <url>": es un archivo, no
+    // algo que se haya dicho.
     if (!texto || texto.startsWith('[')) return null
     return texto
   } catch {
@@ -917,29 +943,43 @@ async function ultimoTextoDelAgente(
  * las mismas fotos en cada turno, que es ruido y deja ver que no está siguiendo
  * la conversación.
  *
- * Se deduce del `body_preview` que arma `sendWhatsappMedia` ("[Foto] …",
- * "[Video] …", "[Documento] …"). Es un acoplamiento a ese formato y por eso está
- * dicho acá: si alguien cambia esas etiquetas, esto deja de detectar y el
- * agente empieza a repetir material.
+ * Sale de la columna `media_type`, que dice qué archivo llevaba cada mensaje.
+ *
+ * ANTES SE DEDUCÍA DEL TEXTO (el prefijo "[Foto] …" que arma `sendWhatsappMedia`)
+ * y ese fue un bug real el 6 de agosto de 2026: el plano que viaja en el
+ * ENCABEZADO de una plantilla de consulta no lleva ese prefijo —el texto del
+ * mensaje es el cuerpo de la plantilla—, así que el agente no lo veía como
+ * entregado y se lo volvía a mandar a alguien que acababa de recibirlo. Un dato
+ * estructural no se deduce de un texto de presentación.
+ *
+ * Cuenta TODO lo que la persona recibió de esta propiedad, lo haya mandado el
+ * agente o un asesor a mano: para el cliente, unas fotos que ya tiene son unas
+ * fotos que ya tiene. Y solo lo que SALIÓ de verdad — un envío fallido o
+ * saltado en modo prueba no le llegó a nadie.
  */
 async function materialYaMandado(
   sb: ReturnType<typeof admin>,
   phoneE164: string,
+  propertyId: string,
 ): Promise<MaterialTipo[]> {
   try {
     const { data } = await sb
       .from('whatsapp_messages')
-      .select('body_preview')
+      .select('media_type')
       .eq('phone_e164', phoneE164)
       .eq('direction', 'out')
-      .eq('ai_generated', true)
+      .eq('property_id', propertyId)
+      .not('media_type', 'is', null)
+      .in('status', ['accepted', 'sent', 'delivered', 'read'])
       .order('created_at', { ascending: false })
-      .limit(30)
-    const previews = ((data as Array<{ body_preview: string | null }> | null) ?? []).map(r => r.body_preview ?? '')
+      .limit(50)
+    const tipos = new Set(
+      ((data as Array<{ media_type: string | null }> | null) ?? []).map(r => r.media_type),
+    )
     const out: MaterialTipo[] = []
-    if (previews.some(t => t.startsWith('[Foto]'))) out.push('fotos')
-    if (previews.some(t => t.startsWith('[Documento]'))) out.push('plano')
-    if (previews.some(t => t.startsWith('[Video]'))) out.push('video')
+    if (tipos.has('image')) out.push('fotos')
+    if (tipos.has('document')) out.push('plano')
+    if (tipos.has('video')) out.push('video')
     return out
   } catch {
     return []
@@ -1000,6 +1040,16 @@ interface PropertyForAgent {
   plans: string[] | null
   video_file_url: string | null
   video_url: string | null
+  /**
+   * La descripción del aviso — el recorrido de la casa escrito por una persona.
+   *
+   * Estaba en la base desde siempre y el agente NO la recibía: solo veía la
+   * lista de specs sueltos, y por eso contestaba como una ficha ("4 ambientes,
+   * 3 dormitorios, 80 m²…"), que es justo lo que el dueño rechazó dos veces.
+   * Acá está lo que hace comprar: "las dos habitaciones dan al contrafrente,
+   * desde donde se accede al encantador jardín… un quincho".
+   */
+  description: string | null
 }
 
 /** Tope de archivos por turno. Cada envío es un roundtrip a Meta y el webhook tiene ~26s. */
@@ -1008,15 +1058,21 @@ const MAX_ARCHIVOS_POR_TURNO = 3
 const MEDIA_TIMEOUT_MS = 5_000
 
 /** Qué material REAL tiene esta propiedad para mandar por WhatsApp. */
-export function materialDisponible(p: PropertyForAgent): { fotos: boolean; plano: boolean; video: boolean } {
+export function materialCantidades(p: PropertyForAgent): { fotos: number; plano: number; video: number } {
   return {
-    fotos: (p.photos ?? []).length > 0,
-    plano: (p.plans ?? []).length > 0,
+    fotos: (p.photos ?? []).length,
+    plano: (p.plans ?? []).length,
     // Solo el ARCHIVO propio: un link de YouTube no se puede mandar como video
     // de WhatsApp (Meta descarga el archivo desde la URL, y youtube.com no
     // sirve un mp4). Ver la migración de videos a archivo del 2026-08-03.
-    video: !!p.video_file_url,
+    video: p.video_file_url ? 1 : 0,
   }
+}
+
+/** Derivado de las cantidades — una sola fuente de verdad sobre qué existe. */
+export function materialDisponible(p: PropertyForAgent): { fotos: boolean; plano: boolean; video: boolean } {
+  const c = materialCantidades(p)
+  return { fotos: c.fotos > 0, plano: c.plano > 0, video: c.video > 0 }
 }
 
 type Archivo = { mediaType: 'image' | 'video' | 'document'; link: string; filename?: string }
@@ -1097,10 +1153,21 @@ export function archivosParaEnviar(p: PropertyForAgent, tipos: MaterialTipo[]): 
  * agente tiene que poder trabajar sin ellos. Nunca al revés.
  */
 const COLUMNAS_PROPIEDAD =
-  'address, title, assigned_to, ai_scheduling_enabled, neighborhood, city, property_type, operation_type, rooms, bedrooms, bathrooms, covered_area, total_area, asking_price, currency, expensas, garages, floor, amenities, photos, plans, video_file_url, video_url'
+  'address, title, assigned_to, ai_scheduling_enabled, neighborhood, city, property_type, operation_type, rooms, bedrooms, bathrooms, covered_area, total_area, asking_price, currency, expensas, garages, floor, amenities, photos, plans, video_file_url, video_url, description'
 
-/** Lo mínimo para decidir si el agente puede escribir. Sin esto no hay agente. */
-const COLUMNAS_MINIMAS = 'address, title, assigned_to, ai_scheduling_enabled'
+/**
+ * Lo mínimo para decidir si el agente puede escribir. Sin esto no hay agente.
+ *
+ * LAS TRES DE MATERIAL NO SON UN LUJO, aunque el comentario de arriba diga que
+ * los datos de la propiedad sí lo son. Sin `photos`/`plans`/`video_file_url`,
+ * `materialDisponible` devuelve todo en `false` y el prompt le dice al modelo
+ * "NO hay nada cargado, no los tenés" — o sea, ante cualquier problema de
+ * esquema el agente pasaría a NEGARLE ACTIVAMENTE a los clientes el material de
+ * todas las propiedades, sin un solo error visible. No saber si algo existe no
+ * es lo mismo que saber que no existe, y este plan B lo estaba convirtiendo en
+ * eso.
+ */
+const COLUMNAS_MINIMAS = 'address, title, assigned_to, ai_scheduling_enabled, photos, plans, video_file_url'
 
 /**
  * La propiedad en líneas sueltas, como se las pasamos al modelo. Solo entra lo
@@ -1128,11 +1195,30 @@ export function propertyFacts(p: PropertyForAgent): string[] {
   if (cub !== null) out.push(`Superficie cubierta: ${cub} m²`)
   const tot = num(p.total_area)
   if (tot !== null && tot !== cub) out.push(`Superficie total: ${tot} m²`)
+  // El espacio verde estaba en los datos y NADIE lo nombraba: 80 m² cubiertos
+  // sobre un lote de 180 son 100 m² de jardín, que en una casa es el argumento
+  // de venta más fuerte. Restar dos números no lo hacía nadie, así que el agente
+  // hablaba de "superficie total" — un dato de escribano, no algo que ilusione.
+  if (cub !== null && tot !== null && tot > cub) {
+    out.push(`Espacio descubierto (jardín / patio): ${tot - cub} m²`)
+  }
   const coch = num(p.garages)
   if (coch !== null) out.push(coch > 0 ? `Cocheras: ${coch}` : 'Sin cochera')
   const piso = num(p.floor)
   if (piso !== null) out.push(`Piso: ${piso}`)
   if (p.amenities && p.amenities.length > 0) out.push(`Amenities: ${p.amenities.join(', ')}`)
+
+  // LA DESCRIPCIÓN VA ÚLTIMA Y ENTERA. Es lo único de acá que está escrito por
+  // una persona que caminó la casa, y es de donde sale todo lo que no cabe en un
+  // número: el recorrido, el jardín, el quincho, el barrio. Sin esto el agente
+  // solo puede recitar medidas.
+  //
+  // Se recorta a 1200 caracteres porque viaja en CADA llamada al modelo y hay
+  // descripciones de portal larguísimas con teléfonos y mayúsculas. 1200 alcanza
+  // para el recorrido completo de una casa; lo que sigue suele ser relleno.
+  const desc = (p.description ?? '').replace(/\s+/g, ' ').trim()
+  if (desc) out.push(`Descripción del aviso (lo escribió el equipo, es lo más fiel): ${desc.slice(0, 1200)}`)
+
   return out
 }
 
@@ -1198,8 +1284,12 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
     if (readState.readFailed) {
       return { action: 'noop', reason: 'no se pudo leer el estado de la conversación' }
     }
-    const agentMessagesSent = readState.state?.agent_messages_sent ?? 0
-    const agentHandedOff = readState.state?.agent_handed_off ?? false
+    // Si la conversación cambió de propiedad, el tope de mensajes arranca de
+    // nuevo (`agent_handed_off` NO — ver `memoriaVigente`). El análisis, más
+    // abajo, persiste ese reinicio antes de que se reserve ningún cupo.
+    const memoria = memoriaVigente(readState.state, input.propertyId)
+    const agentMessagesSent = memoria.state?.agent_messages_sent ?? 0
+    const agentHandedOff = memoria.state?.agent_handed_off ?? false
 
     // ¿Ya hay una visita viva? El modelo tiene que SABERLO antes de pensar: con
     // una visita coordinada no propone ni mueve nada, eso lo decide una persona.
@@ -1221,19 +1311,20 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
     const pendiente = enAgenda.visit
     const clientName = await resolveClientName(sb, input)
     const [ultimoMensajePropio, yaMandado] = await Promise.all([
-      ultimoTextoDelAgente(sb, input.phoneE164),
-      materialYaMandado(sb, input.phoneE164),
+      ultimoTextoDelAgente(sb, input.phoneE164, input.propertyId),
+      materialYaMandado(sb, input.phoneE164, input.propertyId),
     ])
 
     // Si CUALQUIER freno está puesto, el modelo igual analiza (el Inbox necesita
     // el resumen y la prioridad), pero se le dice que no redacte respuesta.
+    // OJO: `pendiente` NO entra acá. Una visita en agenda no es un freno para
+    // contestar — ver `SchedulingContext.hasActiveVisit`.
     const canWrite =
       settings.scheduling_enabled &&
       prop.ai_scheduling_enabled &&
       windowOpen &&
       !agentHandedOff &&
-      agentMessagesSent < settings.max_messages_per_conversation &&
-      !pendiente
+      agentMessagesSent < settings.max_messages_per_conversation
 
     // ── LA ÚNICA LLAMADA AL MODELO DEL REQUEST ──────────────────────────────
     // Entiende la conversación Y redacta la respuesta. Ver `lib/ai/agent-brain.ts`.
@@ -1247,26 +1338,28 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       hasActiveVisit: !!pendiente,
       canWrite,
       puedeMandar: materialDisponible(prop),
+      cantidades: materialCantidades(prop),
       ultimoMensajePropio,
       yaMandado,
-    })
+    }, { propertyId: input.propertyId })
     if (!analysis.analyzed) {
       return { action: 'noop', reason: 'no hubo análisis nuevo en este turno' }
     }
 
-    if (pendiente) {
-      if (!(await yaHayNotaInterna(sb, input.phoneE164, input.propertyId, NOTE_STATUS_PENDING_VISIT, pendiente.desdeISO))) {
-        await logOutbound({
-          phone: input.phoneE164,
-          bodyPreview: buildActiveVisitNote(pendiente.fecha, pendiente.status),
-          status: NOTE_STATUS_PENDING_VISIT,
-          leadId: input.leadId,
-          propertyId: input.propertyId,
-          sentBy: null,
-          aiGenerated: true,
-        })
-      }
-      return { action: 'noop', reason: 'ya hay una visita en agenda para esta propiedad; moverla la decide una persona' }
+    // Con visita en agenda queda la nota interna (una sola por episodio) para
+    // que el equipo sepa que hay algo que confirmar — pero la conversación
+    // SIGUE: el agente contesta y manda material igual. Lo único que no hace es
+    // tocar la fecha, y de eso se encarga `decideSchedulingAction`.
+    if (pendiente && !(await yaHayNotaInterna(sb, input.phoneE164, input.propertyId, NOTE_STATUS_PENDING_VISIT, pendiente.desdeISO))) {
+      await logOutbound({
+        phone: input.phoneE164,
+        bodyPreview: buildActiveVisitNote(pendiente.fecha, pendiente.status),
+        status: NOTE_STATUS_PENDING_VISIT,
+        leadId: input.leadId,
+        propertyId: input.propertyId,
+        sentBy: null,
+        aiGenerated: true,
+      })
     }
 
     // El modelo PROPONE la fecha; el código la valida antes de que entre al CRM.
@@ -1277,17 +1370,41 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       console.warn('[agente] el modelo propuso una fecha que no pasa la validación:', analysis.visitDate, propuesta.reason)
     }
 
+    // LA GARANTÍA: lo que el cliente pidió con todas las letras y la propiedad
+    // tiene cargado, SALE — aunque el modelo lo haya omitido o negado. Un
+    // archivo llegando desmiente cualquier "no lo tengo" mejor que corregirle
+    // el texto (que además nunca se logra con expresiones regulares).
+    //
+    // Solo AGREGA, nunca quita: el texto del modelo ya está escrito a esta
+    // altura, y sacarle material produciría una promesa incumplida — el mismo
+    // daño que la mentira, en espejo.
+    const puedeMandarAhora = materialDisponible(prop)
+    const pedido = materialPedidoExplicito(analysis.textoEntranteNuevo).filter(t => puedeMandarAhora[t])
+    // `?? []` no es decorativo: sin eso, un análisis sin `send` tiraba
+    // "not iterable", el try/catch de arriba lo convertía en un `noop` y el
+    // agente se quedaba MUDO sin un solo error visible. Es el mismo patrón que
+    // ya nos mordió con la columna `expensas`.
+    const sendDelModelo = analysis.send ?? []
+    const faltaba = pedido.filter(t => !sendDelModelo.includes(t))
+    if (faltaba.length > 0) {
+      console.warn(`[agente] el cliente pidió ${faltaba.join(', ')} y el modelo no lo puso en send — se agrega por código`)
+    }
+    const sendFinal = [...pedido, ...sendDelModelo]
+      .filter((t, i, a) => a.indexOf(t) === i)
+      .slice(0, MAX_TIPOS_POR_TURNO)
+
     const decision = decideSchedulingAction({
       now,
       reply: analysis.reply,
       visit: propuesta.ok ? { dateISO: propuesta.dateISO, hour: propuesta.hour } : undefined,
-      send: analysis.send,
+      send: sendFinal,
       agentMessagesSent,
       agentHandedOff,
       maxMessagesPerConversation: settings.max_messages_per_conversation,
       schedulingEnabledGlobal: settings.scheduling_enabled,
       schedulingEnabledProperty: prop.ai_scheduling_enabled,
       windowOpen,
+      hasActiveVisit: !!pendiente,
     })
 
     if (decision.type === 'noop') {

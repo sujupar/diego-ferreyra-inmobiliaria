@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
-import { resolveCategory, ML_LISTING_TYPES } from '@/lib/portals/mercadolibre/mapping'
+import { resolveCategory, mensajeSinCategoria, ML_LISTING_TYPES } from '@/lib/portals/mercadolibre/mapping'
 import { fetchCategoryAttributes, type AttributeOverride } from '@/lib/portals/mercadolibre/category-attributes'
 import { fetchAvailableListingTypes } from '@/lib/portals/mercadolibre/listing-types'
 import type { Database } from '@/types/database.types'
@@ -42,6 +42,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     }
 
     const categoryId = resolveCategory(property)
+    if (!categoryId) {
+      return NextResponse.json({ error: mensajeSinCategoria(property) }, { status: 400 })
+    }
     const { required, recommended } = await fetchCategoryAttributes(categoryId)
 
     const { data: listing } = await supabase

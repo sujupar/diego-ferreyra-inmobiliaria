@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { ML_MAX_FOTOS_AVISO } from '@/lib/portals/photo-limits'
 import type { Database } from '@/types/database.types'
 import { initPortals, getAdapter } from '@/lib/portals'
 import { writeAudit } from '@/lib/portals/audit'
@@ -23,8 +24,12 @@ async function buildPublishOpts(portal: PortalName, property: Property, metadata
   const meta = (metadata ?? {}) as Record<string, unknown>
   let allowedAttributeIds: Set<string> | undefined
   try {
-    const { required, recommended } = await fetchCategoryAttributes(resolveCategory(property))
-    allowedAttributeIds = new Set([...required, ...recommended].map(a => a.id))
+    const cat = resolveCategory(property)
+    // Sin categoría no filtramos: el error claro lo tira propertyToMlPayload.
+    if (cat) {
+      const { required, recommended } = await fetchCategoryAttributes(cat)
+      allowedAttributeIds = new Set([...required, ...recommended].map(a => a.id))
+    }
   } catch {
     allowedAttributeIds = undefined
   }
@@ -93,7 +98,7 @@ async function processPictureChecks(supabase: SB) {
       const pics = item.pictures ?? []
       const failed = pics.filter(p => !p.secure_url || String(p.secure_url).includes('processing-image')).length
       const { data: prop } = await supabase.from('properties').select('photos').eq('id', listing.property_id).maybeSingle()
-      const expected = Math.min(((prop?.photos as string[] | null) ?? []).length, 12)
+      const expected = Math.min(((prop?.photos as string[] | null) ?? []).length, ML_MAX_FOTOS_AVISO)
       const missing = Math.max(0, expected - pics.length)
 
       const meta = stripFlag(listing.metadata, 'needs_picture_check')

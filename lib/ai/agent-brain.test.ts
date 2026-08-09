@@ -72,11 +72,19 @@ describe('buildBrainUserPrompt', () => {
 
   it('le dice qué material YA le mandó — si no, repite las mismas fotos en cada turno', () => {
     const p = buildBrainUserPrompt(ctx({ yaMandado: ['fotos', 'video'] }))
-    expect(p).toMatch(/YA le mandaste \(no se lo repitas\): fotos, video/)
+    expect(p).toMatch(/YA recibió en este chat: fotos, video/)
+  })
+
+  it('lo ya mandado NO se presenta como material que dejó de tener', () => {
+    // El 6 de agosto de 2026 el agente resolvió el empate entre "no repitas" y
+    // "me lo están pidiendo" diciéndole a un cliente que no tenía el plano.
+    const p = buildBrainUserPrompt(ctx({ yaMandado: ['plano'] }))
+    expect(p).toMatch(/lo seguís teniendo/)
+    expect(p).toMatch(/te lo vuelve a pedir, mandáselo igual/i)
   })
 
   it('sin material mandado todavía, no ensucia el prompt con esa línea', () => {
-    expect(buildBrainUserPrompt(ctx())).not.toMatch(/YA le mandaste/)
+    expect(buildBrainUserPrompt(ctx())).not.toMatch(/YA recibió en este chat/)
   })
 
   it('la voz: tiene ejemplos de MAL y BIEN, que es lo único que corrige el tono', () => {
@@ -95,19 +103,35 @@ describe('buildBrainUserPrompt', () => {
     expect(buildBrainUserPrompt(ctx())).toMatch(/Todavía no le escribiste nada/)
   })
 
-  it('le dice QUÉ material puede mandar — si no, promete lo que no existe', () => {
-    expect(buildBrainUserPrompt(ctx())).toMatch(/podés MANDAR ahora mismo.*fotos, plano, video/)
+  it('le dice QUÉ material puede mandar, en positivo y con cantidades', () => {
+    // Una lista de palabras sueltas es fácil de desoír; "SÍ. Hay 12 fotos
+    // cargadas" no. El inventario es lo único que separa "no lo tengo" de la
+    // verdad.
+    const p = buildBrainUserPrompt(ctx({ cantidades: { fotos: 12, plano: 1, video: 1 } }))
+    expect(p).toMatch(/fotos: SÍ\. Hay 12 fotos/)
+    expect(p).toMatch(/plano: SÍ\. Hay 1 plano/)
+    expect(p).toMatch(/video: SÍ\./)
   })
 
-  it('sin material cargado, le prohíbe ofrecerlo', () => {
+  it('lo que NO está cargado es lo ÚNICO que puede decir que no tiene', () => {
     const p = buildBrainUserPrompt(ctx({ puedeMandar: { fotos: false, plano: false, video: false } }))
-    expect(p).toMatch(/NO hay nada cargado/)
-    expect(p).toMatch(/No ofrezcas fotos, plano ni video/)
+    expect(p).toMatch(/fotos: NO hay cargado/)
+    expect(p).toMatch(/plano: NO hay cargado/)
+    expect(p).toMatch(/único que podés decir que no tenés/)
   })
 
-  it('solo ofrece lo que hay: con fotos pero sin plano ni video, nombra solo fotos', () => {
+  it('con fotos pero sin plano ni video, dice SÍ a una y NO a las otras dos', () => {
     const p = buildBrainUserPrompt(ctx({ puedeMandar: { fotos: true, plano: false, video: false } }))
-    expect(p).toMatch(/podés MANDAR ahora mismo[^\n]*fotos\./)
+    expect(p).toMatch(/fotos: SÍ/)
+    expect(p).toMatch(/plano: NO hay cargado/)
+    expect(p).toMatch(/video: NO hay cargado/)
+  })
+
+  it('el prompt PROHÍBE explícitamente negar material que existe', () => {
+    // La frase "Plano no tengo a mano" estaba escrita en el prompt como ejemplo
+    // y el modelo la copió literal a un cliente real. No puede volver.
+    expect(DEFAULT_AGENT_PROMPT).not.toMatch(/no tengo a mano/)
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/NUNCA DIGAS QUE NO TENÉS ALGO QUE SÍ TENÉS/)
   })
 })
 

@@ -41,6 +41,7 @@ function makeProperty(overrides: Partial<Property> = {}): Property {
     latitude: -34.5,
     longitude: -58.4,
     video_url: null,
+    video_recorrido_url: null, deliver_media: null,
     tour_3d_url: null,
     video_file_url: null,
     expensas: null,

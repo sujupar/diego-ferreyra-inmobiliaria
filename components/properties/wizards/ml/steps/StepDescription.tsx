@@ -14,6 +14,7 @@ interface Props {
 
 export function StepDescription({ propertyId, draft, onChange, onValidityChange }: Props) {
   const [generating, setGenerating] = useState(false)
+  const [phase, setPhase] = useState('Generando…')
   const [buyerProfile, setBuyerProfile] = useState('')
 
   useEffect(() => {
@@ -23,6 +24,14 @@ export function StepDescription({ propertyId, draft, onChange, onValidityChange 
   async function generate() {
     setGenerating(true)
     try {
+      // 1) Investigación real de la zona (cacheada por propiedad; si ya está,
+      //    vuelve al toque). Best-effort: sin esto la descripción sale igual,
+      //    en modo conservador. Request separado del de IA (REGLA DURA).
+      setPhase('Investigando la ubicación…')
+      await fetch(`/api/properties/${propertyId}/location-insights`, { method: 'POST' }).catch(() => {})
+
+      // 2) Generación con IA, ya con los datos de zona cacheados.
+      setPhase('Generando la descripción…')
       const r = await fetch(`/api/properties/${propertyId}/generate-description`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -66,7 +75,7 @@ export function StepDescription({ propertyId, draft, onChange, onValidityChange 
         />
         <Button onClick={generate} disabled={generating} className="w-full">
           {generating ? (
-            <><Loader2 className="h-4 w-4 animate-spin mr-1" />Generando…</>
+            <><Loader2 className="h-4 w-4 animate-spin mr-1" />{phase}</>
           ) : (
             <><Sparkles className="h-4 w-4 mr-1" />Generar / Regenerar descripción</>
           )}

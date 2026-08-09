@@ -8,6 +8,7 @@ import {
   buildBrainUserPrompt,
   coerceBrainDecision,
   validateProposedVisit,
+  type MaterialTipo,
 } from '@/lib/ai/agent-brain'
 import { propertyFacts, materialDisponible, archivosParaEnviar } from '@/lib/ai/scheduling-agent'
 import { hoyEnArgentina } from '@/lib/leads/visit-scheduling'
@@ -36,8 +37,11 @@ function admin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
+// Tiene que traer LO MISMO que `COLUMNAS_PROPIEDAD` en `lib/ai/scheduling-agent.ts`.
+// Si el banco de pruebas lee menos columnas que la conversación real, muestra un
+// agente que no existe — y el banco deja de servir justo para lo que se hizo.
 const COLUMNAS =
-  'id, address, title, assigned_to, ai_scheduling_enabled, neighborhood, city, property_type, operation_type, rooms, bedrooms, bathrooms, covered_area, total_area, asking_price, currency, expensas, garages, floor, amenities, photos, plans, video_file_url, video_url'
+  'id, address, title, assigned_to, ai_scheduling_enabled, neighborhood, city, property_type, operation_type, rooms, bedrooms, bathrooms, covered_area, total_area, asking_price, currency, expensas, garages, floor, amenities, photos, plans, video_file_url, video_url, description'
 
 interface Turno {
   from: 'cliente' | 'nosotros'
@@ -57,7 +61,18 @@ export async function POST(request: NextRequest) {
       resumenPrevio?: string
       clientName?: string | null
       yaHayVisita?: boolean
+      /**
+       * Material que esta persona YA recibió antes de este turno.
+       *
+       * Estaba fijo en vacío y por eso el simulador NO PODÍA reproducir el peor
+       * bug que tuvo el agente (6 de agosto de 2026): con el plano ya entregado
+       * por la plantilla de la consulta, volvía a mandarlo. Un banco de pruebas
+       * que no puede reproducir la falla real no sirve para diagnosticarla.
+       */
+      yaMandado?: MaterialTipo[]
     }
+    const TIPOS: MaterialTipo[] = ['fotos', 'plano', 'video']
+    const yaMandado = (body.yaMandado ?? []).filter((t): t is MaterialTipo => TIPOS.includes(t))
     const mensajes = (body.mensajes ?? []).filter(m => m && typeof m.text === 'string' && m.text.trim())
     if (mensajes.length === 0) {
       return NextResponse.json({ error: 'Escribí al menos un mensaje del cliente.' }, { status: 400 })
@@ -99,8 +114,7 @@ export async function POST(request: NextRequest) {
       canWrite: true,
       puedeMandar: materialDisponible(p),
       ultimoMensajePropio: ultimoPropio,
-      // En el simulador no hay historial de envíos: cada corrida arranca limpia.
-      yaMandado: [],
+      yaMandado,
     })
 
     const res = await chatCompletion({
@@ -140,6 +154,21 @@ export async function POST(request: NextRequest) {
         proximoPaso: decision.suggestedNextStep,
       },
       material: materialDisponible(p),
+      /**
+       * Lo que el agente TENÍA EN LA MANO al decidir. Es la mitad que faltaba:
+       * viendo solo la respuesta no hay forma de distinguir "el modelo entendió
+       * mal" de "le pasamos un dato falso" — y las tres fallas del 6 de agosto
+       * de 2026 fueron lo segundo.
+       */
+      loQueSabe: {
+        propiedad: propertyLabel,
+        datos: propertyFacts(p),
+        materialDisponible: materialDisponible(p),
+        materialYaEntregado: yaMandado,
+        suMensajeAnterior: ultimoPropio,
+        resumenPrevio: body.resumenPrevio ?? '',
+        hoy: todayISO,
+      },
       prompts: { sistema: DEFAULT_AGENT_PROMPT, contexto: userPrompt },
       tokens: res.usage?.totalTokens ?? 0,
       modelo: res.model,

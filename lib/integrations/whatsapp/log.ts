@@ -64,6 +64,21 @@ export interface LogOutboundInput {
   aiGenerated?: boolean
   /** De dónde nació la conversación. Ver la migración 20260806000001. */
   origen?: 'consulta_portal' | 'landing' | 'manual' | null
+  /**
+   * Qué ARCHIVO se le mandó a la persona, si se le mandó alguno. Columnas
+   * `media_*`, que existían desde el principio y nadie escribía.
+   *
+   * POR QUÉ IMPORTA (bug real, 2026-08-06): el agente sabía qué material ya
+   * había entregado leyendo el PREFIJO del texto del mensaje ("[Foto] …",
+   * "[Documento] …"). El plano de una plantilla de consulta no lleva ese
+   * prefijo —el texto del mensaje es el cuerpo de la plantilla—, así que el
+   * agente no lo veía y se lo volvía a mandar al cliente, que acababa de
+   * recibirlo. Deducir un dato estructural de un texto de presentación es
+   * frágil por definición; acá queda en una columna.
+   */
+  mediaType?: 'image' | 'video' | 'document' | null
+  mediaUrl?: string | null
+  mediaFilename?: string | null
 }
 
 /**
@@ -94,6 +109,9 @@ export async function logOutbound(input: LogOutboundInput): Promise<void> {
         // `undefined` deja la columna en NULL — que es lo correcto para un
         // envío cuyo origen no sabemos, en vez de inventarle uno.
         origen: input.origen ?? null,
+        media_type: input.mediaType ?? null,
+        media_url: input.mediaUrl ?? null,
+        media_filename: input.mediaFilename ?? null,
       })
     if (error) {
       console.warn('[whatsapp-log] no se pudo registrar el envío (continuando):', error.message)

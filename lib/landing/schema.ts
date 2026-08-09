@@ -197,7 +197,11 @@ const CuratedGalleryBlock = z.object({
   freePhotoCount: z.number().int().min(1).max(12).optional(),
 })
 
-/** Ubicación como imagen + copy de zona (SIN mapa ni botón). */
+/**
+ * Ubicación: copy de zona + mapa estático NO interactivo (decisión del usuario
+ * 2026-08-06 — revierte el "SIN mapa" de E1.9). El mapa solo se muestra si la
+ * propiedad tiene lat/lng; sin coords cae a la banda navy con el texto.
+ */
 const LocationShowcaseBlock = z.object({
   id: z.string(),
   type: z.literal('location_showcase'),
@@ -206,6 +210,8 @@ const LocationShowcaseBlock = z.object({
   body: z.string().max(400).optional(),
   /** Foto exterior para el fondo; si falta → banda navy con el texto. */
   photoIndex: z.number().int().min(0).optional(),
+  /** Mapa estático no interactivo (default true; requiere lat/lng). */
+  showMap: z.boolean().optional(),
 })
 
 /** Planos (grilla con zoom). Condicional: solo si property.plans tiene items. */

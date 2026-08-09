@@ -85,6 +85,66 @@ export async function mlFetch<T = unknown>(
   init: RequestInit = {},
 ): Promise<T> {
   const token = await getAccessToken()
+  const res = await fetchConTraduccion(path, init, token)
+  return res as Promise<T>
+}
+
+/**
+ * Traduce el error de ML a una frase que un asesor pueda entender.
+ *
+ * ML devuelve algo como
+ *   {"cause":[{"code":"item.category_id.invalid","message":"Is not allowed to post
+ *     in category MLA1472. Make sure you're posting in a leaf category"}],...}
+ * y eso llegaba CRUDO hasta el toast de la pantalla. El 2026-08-06 el dueño vio
+ * ese JSON en vivo durante una demo. El texto original se conserva entre
+ * corchetes al final para poder diagnosticar.
+ */
+export function explicarErrorMl(status: number, cuerpo: string): string {
+  if (status === 401 || status === 403) {
+    return 'MercadoLibre rechazó las credenciales. Hay que volver a conectar la cuenta.'
+  }
+  if (status === 429) {
+    return 'MercadoLibre está limitando la cantidad de pedidos. Reintentá en unos minutos.'
+  }
+  if (status >= 500) {
+    return 'MercadoLibre tuvo un problema de su lado. Reintentá en unos minutos.'
+  }
+
+  let causas: { code?: string; message?: string }[] = []
+  try {
+    const j = JSON.parse(cuerpo) as { cause?: unknown; message?: string }
+    causas = Array.isArray(j.cause) ? (j.cause as typeof causas) : []
+    if (causas.length === 0 && j.message) causas = [{ message: j.message }]
+  } catch {
+    return `MercadoLibre rechazó el aviso (error ${status}).`
+  }
+
+  const traducidas = causas.map(c => {
+    const code = c.code ?? ''
+    if (code.includes('category_id')) {
+      return 'La categoría de MercadoLibre no es válida para este tipo de propiedad. ' +
+             'Avisale al equipo técnico: hay que revisar el mapeo de categorías.'
+    }
+    if (code.includes('listing_type')) {
+      return 'El tipo de publicación elegido no está disponible para esta categoría o no quedan cupos.'
+    }
+    if (code.includes('picture')) return 'Hay un problema con las fotos del aviso.'
+    if (code.includes('price')) return 'El precio del aviso no es válido para MercadoLibre.'
+    if (code.includes('title')) return 'El título del aviso no cumple con lo que pide MercadoLibre.'
+    if (code.includes('location') || code.includes('address')) {
+      return 'La ubicación de la propiedad está incompleta o MercadoLibre no la reconoce.'
+    }
+    if (code.includes('attribute')) {
+      return `Falta o está mal un campo que MercadoLibre exige${c.message ? ` (${c.message})` : ''}.`
+    }
+    return c.message ?? 'MercadoLibre rechazó el aviso.'
+  })
+
+  const unicas = [...new Set(traducidas)]
+  return unicas.join(' ')
+}
+
+async function fetchConTraduccion(path: string, init: RequestInit, token: string): Promise<unknown> {
   const res = await fetch(`${ML_BASE}${path}`, {
     ...init,
     headers: {
@@ -96,12 +156,16 @@ export async function mlFetch<T = unknown>(
   if (!res.ok) {
     const text = await res.text()
     const retryable = res.status >= 500 || res.status === 429
+    // El `message` es lo que ve el asesor: castellano, sin JSON. El detalle
+    // crudo va en `original` — se persiste en last_error para diagnosticar,
+    // pero no se le muestra a nadie en una pantalla.
     throw new PortalAdapterError(
-      `ML ${res.status} ${path}: ${text}`,
+      explicarErrorMl(res.status, text),
       'mercadolibre',
       res.status === 401 ? 'auth' : res.status === 429 ? 'rate_limit' : 'unknown',
       retryable,
+      `ML ${res.status} ${path}: ${text}`,
     )
   }
-  return res.json() as Promise<T>
+  return res.json()
 }

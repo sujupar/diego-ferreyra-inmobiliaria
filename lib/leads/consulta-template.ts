@@ -151,6 +151,29 @@ Te escribo por la consulta que dejaste recién sobre {{2}}. Tengo fotos y todos 
 
 Contame, ¿cómo te puedo ayudar?`
 
+/**
+ * El cuerpo con los `{{n}}` ya reemplazados — el texto EXACTO que va a leer la
+ * persona.
+ *
+ * Se guarda como texto del mensaje en `whatsapp_messages` (ver
+ * `SendTemplateInput.bodyText`). Antes se guardaban los parámetros pegados con
+ * puntos ("Julián · el plano · la casa de…"), que en el chat del Inbox se leía
+ * como un error y, peor, era lo que el agente de IA tomaba como "lo último que
+ * dije" — o sea, no entendía nada de su propio mensaje anterior.
+ *
+ * Recorre los MARCADORES, no los parámetros. Dos cosas salen gratis de ahí:
+ * `{{10}}` no se rompe contra `{{1}}` (se matchea el marcador entero), y un
+ * marcador sin parámetro queda vacío en vez de viajar crudo hasta el chat. Un
+ * `{{2}}` visible en el mensaje guardado es basura para quien lo lee y ruido
+ * para el agente, que usa este texto como "lo último que dije".
+ *
+ * El desajuste en sí no es silencioso igual: Meta rechaza el envío entero si la
+ * cantidad de parámetros no coincide con la de la plantilla aprobada.
+ */
+export function renderCuerpo(cuerpo: string, params: string[]): string {
+  return cuerpo.replace(/\{\{(\d+)\}\}/g, (_, n: string) => params[Number(n) - 1] ?? '')
+}
+
 /** Las variables del cuerpo, en orden, para `bodyParams`. */
 export function parametrosDelCuerpo(
   eleccion: EleccionPlantilla,
@@ -162,6 +185,16 @@ export function parametrosDelCuerpo(
   return eleccion.header
     ? [nombre, eleccion.queMando, datos.propiedad]
     : [nombre, datos.propiedad]
+}
+
+/**
+ * El cuerpo que corresponde a una elección de plantilla. Cuatro combinaciones —
+ * con o sin material, cálida o de trámite— y un solo lugar que las resuelve,
+ * para que el texto que se manda y el que se guarda no puedan divergir.
+ */
+export function cuerpoDePlantilla(eleccion: EleccionPlantilla, deTramite: boolean): string {
+  if (eleccion.header) return deTramite ? CUERPO_CON_MATERIAL_UTIL : CUERPO_CON_MATERIAL
+  return deTramite ? CUERPO_SIN_MATERIAL_UTIL : CUERPO_SIN_MATERIAL
 }
 
 /** Versión de trámite, con el mismo orden de variables que `CUERPO_CON_MATERIAL`. */

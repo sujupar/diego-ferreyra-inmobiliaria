@@ -1,8 +1,9 @@
 import { mlFetch } from './client'
-import { propertyToMlPayload, resolveCategory, ML_LISTING_TYPES, type MlPayloadOptions } from './mapping'
+import { propertyToMlPayload, resolveCategory, mensajeSinCategoria, ML_LISTING_TYPES, type MlPayloadOptions } from './mapping'
 import { fetchAvailableListingTypes } from './listing-types'
+import { asegurarCategoriaPublicable } from './category-attributes'
 import { validateCommon } from '../validation'
-import { PortalAdapterError } from '../types'
+import { PortalAdapterError, mensajeYDetalle } from '../types'
 import type {
   PortalAdapter,
   Property,
@@ -37,6 +38,9 @@ export class MercadoLibreAdapter implements PortalAdapter {
     if (!property.description || property.description.length < 100) {
       errors.push('ML requiere descripción ≥ 100 chars')
     }
+    if (!resolveCategory(property)) {
+      errors.push(mensajeSinCategoria(property))
+    }
     return { ok: errors.length === 0, errors, warnings }
   }
 
@@ -55,10 +59,18 @@ export class MercadoLibreAdapter implements PortalAdapter {
     // "Not available quota" / tier inválido para la categoría, seguimos con los tiers
     // REALMENTE disponibles para la cuenta+categoría (los trae ML, más barato primero).
     // La disponibilidad es por categoría: depto/casa suelen tener solo 'silver', PH 'free'.
+    // Defensa en profundidad: confirmamos contra ML que la categoría existe, es
+    // HOJA y admite publicar, ANTES de armar el aviso. El mapa está verificado
+    // por scripts/verify-ml-categories.ts, pero los IDs son datos de un tercero
+    // y se pudren solos: MLA1471 estaba en el mapa viejo y hoy da 404. Sin este
+    // control, el síntoma es un JSON incomprensible de ML en mitad de una demo.
+    const categoria = resolveCategory(property)!
+    await asegurarCategoriaPublicable(categoria)
+
     const requested = opts.listingType || 'free'
     const tiersToTry: string[] = [requested]
     try {
-      const avail = await fetchAvailableListingTypes(resolveCategory(property))
+      const avail = await fetchAvailableListingTypes(categoria)
       for (const t of avail) if (!tiersToTry.includes(t.id)) tiersToTry.push(t.id)
     } catch {
       // Si no se pudo consultar la disponibilidad, caemos al orden estático conocido.
@@ -99,15 +111,20 @@ export class MercadoLibreAdapter implements PortalAdapter {
         }
       } catch (err) {
         lastErr = err
-        const msg = err instanceof Error ? err.message : String(err)
+        // OJO: se matchea sobre `paraElLog`, no sobre `err.message`. Desde que
+        // los errores de ML se traducen al castellano, el código original
+        // ("Not available quota", "listing_type.invalid") ya NO está en el
+        // mensaje: vive en el detalle crudo. Matchear contra el mensaje
+        // traducido rompería el descenso de tier en silencio.
+        const { paraElLog } = mensajeYDetalle(err)
         // Solo reintentamos con el siguiente tier ante errores ESPECÍFICOS de
         // disponibilidad del tier: sin cupo, o el tier no se ofrece para la
         // categoría. Cualquier otro error (incluidos otros de listing_type) se
         // propaga tal cual para no enmascarar la causa real.
         const tierUnavailable =
-          /available quota/i.test(msg) ||
-          /listing_type\.invalid/i.test(msg) ||
-          /listing type was null/i.test(msg)
+          /available quota/i.test(paraElLog) ||
+          /listing_type\.invalid/i.test(paraElLog) ||
+          /listing type was null/i.test(paraElLog)
         if (tierUnavailable) continue
         throw err
       }

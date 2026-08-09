@@ -21,16 +21,22 @@
  */
 
 /**
- * Las etapas pesadas, en el orden en que deben correr.
+ * Las etapas del arranque automático, en el orden en que deben correr.
  *
  * Están separadas UNA POR LLAMADA a propósito. En particular `vision` y
  * `description` viven aparte porque cada una puede tardar sola más de 10s
  * (Vision tiene su propio corte a los 15s, y la descripción de portal se genera
- * con IA cuando no está cacheada): juntas se pasaban del límite.
+ * con IA cuando no está cacheada): juntas se pasaban del límite. `location` no
+ * usa IA (búsquedas + mercado, cacheado) pero igual va en su propia llamada.
+ *
+ * `copy` YA NO corre en el arranque (decisión del usuario, 2026-08-06): los
+ * textos se generan recién cuando el asesor manda sus respuestas — son las
+ * respuestas las que hacen que el copy no sea genérico. El envío de respuestas
+ * re-arma `enrich='copy'` y el mismo loop del cliente ejecuta esa etapa.
  */
-export const ENRICH_STAGES = ['vision', 'description', 'avatars', 'copy'] as const
+export const ENRICH_STAGES = ['vision', 'location', 'description', 'avatars'] as const
 
-export type EnrichStage = (typeof ENRICH_STAGES)[number] | 'done'
+export type EnrichStage = (typeof ENRICH_STAGES)[number] | 'copy' | 'done'
 
 interface WizardStateLike {
   enrich?: EnrichStage
@@ -44,9 +50,13 @@ interface WizardStateLike {
  * re-genera nada sobre ella (re-generar pisaría el contenido que el asesor pudo
  * haber editado). Un valor desconocido cae al mismo lugar: 'done' es el estado
  * seguro, porque garantiza que el loop del cliente termine siempre.
+ *
+ * 'copy' es válida aunque no esté en ENRICH_STAGES: es la etapa RE-ARMADA por
+ * el envío de respuestas (y cubre drafts viejos que quedaron a mitad en v1).
  */
 export function nextEnrichStage(ws: WizardStateLike): EnrichStage {
   const s = ws.enrich
+  if (s === 'copy') return 'copy'
   if (s && (ENRICH_STAGES as readonly string[]).includes(s)) return s
   return 'done'
 }
@@ -56,10 +66,12 @@ export function enrichLabel(stage: EnrichStage): string {
   switch (stage) {
     case 'vision':
       return 'Analizando las fotos de la propiedad…'
+    case 'location':
+      return 'Investigando la ubicación…'
     case 'description':
       return 'Preparando la descripción de la propiedad…'
     case 'avatars':
-      return 'Armando los avatares del comprador…'
+      return 'Armando los avatares y las preguntas…'
     case 'copy':
       return 'Escribiendo los textos de la landing…'
     default:
@@ -69,6 +81,7 @@ export function enrichLabel(stage: EnrichStage): string {
 
 /** Progreso 1-100 para la barra. Arranca por encima de 0 para que se vea movimiento. */
 export function enrichPercent(stage: EnrichStage): number {
+  if (stage === 'copy') return 90
   const i = (ENRICH_STAGES as readonly string[]).indexOf(stage)
   if (i < 0) return 100
   return Math.round(((i + 0.5) / ENRICH_STAGES.length) * 100)

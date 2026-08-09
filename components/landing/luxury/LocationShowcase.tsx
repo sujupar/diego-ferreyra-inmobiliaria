@@ -1,8 +1,11 @@
 /**
- * E1.9 — Ubicación como IMAGEN + copy de zona (SIN mapa ni botón, por decisión
- * del usuario). Si hay foto exterior → full-bleed + card marfil; si no → banda
- * navy elegante con el texto. Server component.
+ * E1.9 → v2 (2026-08-06) — Ubicación: copy de zona + MAPA estático no
+ * interactivo cuando la propiedad tiene lat/lng (decisión del usuario — revierte
+ * el "SIN mapa" original de E1.9). Sin coords: banda navy con el texto, como
+ * siempre. Si hay foto exterior → full-bleed + card marfil. Server component.
  */
+import { StaticMapTiles } from './StaticMapTiles'
+
 interface LocationShowcaseProps {
   neighborhood: string | null
   city: string | null
@@ -10,6 +13,10 @@ interface LocationShowcaseProps {
   title?: string
   body?: string
   image?: string
+  /** Mapa estático no interactivo (requiere lat/lng). */
+  showMap?: boolean
+  lat?: number | null
+  lng?: number | null
 }
 
 export function LocationShowcase({
@@ -19,9 +26,13 @@ export function LocationShowcase({
   title,
   body,
   image,
+  showMap,
+  lat,
+  lng,
 }: LocationShowcaseProps) {
   const zona = [neighborhood, city].filter(Boolean).join(', ')
   const heading = title || zona || 'La zona'
+  const mapa = showMap && lat != null && lng != null ? <StaticMapTiles lat={lat} lng={lng} /> : null
 
   if (image) {
     return (
@@ -63,6 +74,7 @@ export function LocationShowcase({
           </p>
         )}
       </div>
+      {mapa && <div className="mx-auto mt-10 max-w-3xl">{mapa}</div>}
     </section>
   )
 }

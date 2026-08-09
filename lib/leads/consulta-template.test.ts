@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
-  elegirPlantilla,
-  parametrosDelCuerpo,
+  renderCuerpo,
+  cuerpoDePlantilla,
   CUERPO_CON_MATERIAL,
   CUERPO_SIN_MATERIAL,
+  CUERPO_CON_MATERIAL_UTIL,
+  CUERPO_SIN_MATERIAL_UTIL,
+  elegirPlantilla,
+  parametrosDelCuerpo,
 } from './consulta-template'
 
 describe('elegirPlantilla', () => {
@@ -124,5 +128,53 @@ describe('nombreDeArchivo', () => {
   it('la elección de plantilla lo incluye cuando hay plano', () => {
     const e = elegirPlantilla({ etiqueta: 'Entre Ríos 2333', plans: ['https://s/p.pdf'], video_file_url: null })
     expect(e.headerFilename).toBe('Entre Ríos 2333 - Planos.pdf')
+  })
+})
+
+describe('renderCuerpo', () => {
+  it('arma el texto que la persona va a leer', () => {
+    expect(renderCuerpo(CUERPO_CON_MATERIAL, ['Julián', 'el plano', 'la casa de Entre Ríos 2333, Martínez']))
+      .toContain('Te paso el plano de la casa de Entre Ríos 2333, Martínez, por la consulta que dejaste recién.')
+  })
+
+  it('no deja ningún hueco sin reemplazar', () => {
+    const texto = renderCuerpo(CUERPO_SIN_MATERIAL, ['Ana', 'el departamento de Güemes 300'])
+    expect(texto).not.toMatch(/\{\{\d+\}\}/)
+  })
+
+  it('reemplaza de mayor a menor para que {{10}} no choque con {{1}}', () => {
+    const params = Array.from({ length: 10 }, (_, i) => `v${i + 1}`)
+    expect(renderCuerpo('{{1}} y {{10}}', params)).toBe('v1 y v10')
+  })
+
+  it('un parámetro que falta deja vacío, no el marcador crudo', () => {
+    expect(renderCuerpo('Hola {{1}}, {{2}}', ['Ana'])).toBe('Hola Ana, ')
+  })
+})
+
+describe('cuerpoDePlantilla', () => {
+  it('con material usa el cuerpo que dice "te paso"', () => {
+    const con = elegirPlantilla({ plans: ['https://s/p.pdf'] })
+    expect(cuerpoDePlantilla(con, false)).toBe(CUERPO_CON_MATERIAL)
+    expect(cuerpoDePlantilla(con, true)).toBe(CUERPO_CON_MATERIAL_UTIL)
+  })
+
+  it('sin material usa el cuerpo que no promete ningún adjunto', () => {
+    const sin = elegirPlantilla({})
+    expect(cuerpoDePlantilla(sin, false)).toBe(CUERPO_SIN_MATERIAL)
+    expect(cuerpoDePlantilla(sin, true)).toBe(CUERPO_SIN_MATERIAL_UTIL)
+  })
+
+  it('el cuerpo elegido tiene tantas variables como parámetros se mandan', () => {
+    // Meta rechaza el envío entero si el número no coincide — y la plantilla sin
+    // material tiene DOS variables, no tres.
+    for (const eleccion of [elegirPlantilla({ plans: ['https://s/p.pdf'] }), elegirPlantilla({})]) {
+      for (const deTramite of [false, true]) {
+        const cuerpo = cuerpoDePlantilla(eleccion, deTramite)
+        const variables = new Set(cuerpo.match(/\{\{\d+\}\}/g) ?? [])
+        const params = parametrosDelCuerpo(eleccion, { nombre: 'Ana', propiedad: 'la casa' })
+        expect(variables.size).toBe(params.length)
+      }
+    }
   })
 })

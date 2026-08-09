@@ -8,7 +8,7 @@
 import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/require-role'
 import {
-  authorizeLanding, getLanding, startCoCreation, updateLanding, unpublishLanding, setDeliverMedia,
+  authorizeLanding, getLanding, startCoCreation, updateLanding, unpublishLanding, deleteLanding, setDeliverMedia,
 } from '@/lib/landing/landing-service'
 import { TEMPLATES } from '@/lib/landing/templates'
 
@@ -80,8 +80,25 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ landing: await getLanding(id) })
     }
 
+    // Las claves del GATE de publicación no se aceptan del cliente (review
+    // 2026-08-06): `copyFromAnswers:true` lo setea SOLO la etapa copy del
+    // server, y `questions`/`answers` solo el enrich y POST /landing/answers.
+    // El cliente legítimo únicamente baja el gate (copyFromAnswers:false) y
+    // re-arma la etapa de textos (enrich:'copy') al cambiar avatar/diseño.
+    let wizardState = body.wizardState
+    if (wizardState) {
+      wizardState = { ...wizardState }
+      delete wizardState.questions
+      delete wizardState.answers
+      delete wizardState.avatarCandidates
+      delete wizardState.visionSummary
+      delete wizardState.descriptionUsed
+      if (wizardState.copyFromAnswers !== false) delete wizardState.copyFromAnswers
+      if (wizardState.enrich !== 'copy') delete wizardState.enrich
+    }
+
     const landing = await updateLanding(id, {
-      wizardState: body.wizardState as never,
+      wizardState: wizardState as never,
       templateId: body.templateId,
       content: body.content,
       draftContent: body.draftContent,
@@ -92,15 +109,27 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+/**
+ * DELETE /api/properties/[id]/landing
+ *  - default: despublica (vuelve a draft, conserva todo).
+ *  - `?definitivo=1`: ELIMINA la landing para regenerarla de cero (botón
+ *    "Eliminar landing" de la plataforma, 2026-08-07). El enlace público
+ *    sobrevive con la landing determinística y se reusa al re-publicar.
+ */
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuth()
     const { id } = await params
     if (!(await authorizeLanding(id, user.id, user.profile.role))) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
-    await unpublishLanding(id)
-    return NextResponse.json({ ok: true })
+    const definitivo = new URL(req.url).searchParams.get('definitivo') === '1'
+    if (definitivo) {
+      await deleteLanding(id)
+    } else {
+      await unpublishLanding(id)
+    }
+    return NextResponse.json({ ok: true, eliminada: definitivo })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Error' }, { status: 500 })
   }

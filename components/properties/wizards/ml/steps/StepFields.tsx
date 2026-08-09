@@ -12,9 +12,13 @@ const GeoPinMap = dynamic(() => import('../GeoPinMap').then(m => m.GeoPinMap), {
 interface Props {
   property: MlPreviewProperty
   attrs: MlAttributesResponse | null
+  /** Motivo real por el que no se pudieron traer los campos, si falló. */
+  attrsError?: string | null
   draft: MlDraft
   onChange: (p: Partial<MlDraft>) => void
   onValidityChange: (ok: boolean) => void
+  /** Reintenta la carga del paso sin salir del wizard. */
+  onRetry?: () => void
 }
 
 function geoDefaultCenter(neighborhood: string): [number, number] {
@@ -73,10 +77,22 @@ function AttrField({
   )
 }
 
-export function StepFields({ property, attrs, draft, onChange, onValidityChange }: Props) {
+export function StepFields({ property, attrs, attrsError, draft, onChange, onValidityChange, onRetry }: Props) {
   const [geocoding, setGeocoding] = useState(false)
   const required = useMemo(() => attrs?.required ?? [], [attrs])
   const recommended = useMemo(() => attrs?.recommended ?? [], [attrs])
+
+  /**
+   * "No sabemos qué pide ML" NO es "ML no pide nada".
+   *
+   * Este paso mostraba una advertencia amarilla y dejaba pasar igual: sin
+   * campos, `required.every(...)` da true (una lista vacía cumple cualquier
+   * condición) y la barra marcaba 100%. El asesor veía "Completitud 100%",
+   * apretaba Siguiente y la publicación fallaba al final. Pasó en vivo el
+   * 2026-08-06. Mientras no tengamos el listado real de campos, este paso
+   * bloquea.
+   */
+  const camposIndisponibles = !attrs || (required.length === 0 && recommended.length === 0)
 
   function setAttr(id: string, v: AttributeOverride | undefined) {
     const next = { ...draft.mlAttributes }
@@ -87,12 +103,12 @@ export function StepFields({ property, attrs, draft, onChange, onValidityChange 
 
   const completeness = useMemo(() => {
     const all = [...required, ...recommended]
-    if (all.length === 0) return 100
+    if (all.length === 0) return null // sin campos no hay porcentaje que mostrar
     const filled = all.filter(a => hasValue(draft.mlAttributes[a.id])).length
     return Math.round((filled / all.length) * 100)
   }, [required, recommended, draft.mlAttributes])
 
-  const requiredOk = required.every(a => hasValue(draft.mlAttributes[a.id]))
+  const requiredOk = !camposIndisponibles && required.every(a => hasValue(draft.mlAttributes[a.id]))
   const geoOk = draft.latitude != null && draft.longitude != null
 
   useEffect(() => {
@@ -137,14 +153,38 @@ export function StepFields({ property, attrs, draft, onChange, onValidityChange 
         {attrs && <p className="text-sm text-muted-foreground">Categoría: {attrs.categoryId}. Completá para una publicación de excelencia.</p>}
       </div>
 
-      <div className="flex items-center gap-3">
-        <div className="flex-1 h-2.5 rounded-full bg-muted overflow-hidden">
-          <div className="h-full bg-emerald-600 transition-all" style={{ width: `${completeness}%` }} />
+      {completeness !== null && (
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-2.5 rounded-full bg-muted overflow-hidden">
+            <div className="h-full bg-emerald-600 transition-all" style={{ width: `${completeness}%` }} />
+          </div>
+          <span className="text-xs font-semibold text-emerald-700">Completitud {completeness}%</span>
         </div>
-        <span className="text-xs font-semibold text-emerald-700">Completitud {completeness}%</span>
-      </div>
+      )}
 
-      {!attrs && <p className="text-sm text-amber-600">No se pudieron traer los campos de ML (se publicará con los datos básicos).</p>}
+      {camposIndisponibles && (
+        <div className="rounded-lg border border-red-300 bg-red-50 p-4 space-y-2">
+          <p className="text-sm font-semibold text-red-800">
+            No se pudieron traer los campos que pide MercadoLibre
+          </p>
+          <p className="text-sm text-red-700">
+            {attrsError ?? 'MercadoLibre no devolvió ningún campo para esta categoría.'}
+          </p>
+          <p className="text-xs text-red-700">
+            No se puede seguir sin estos datos: la publicación fallaría al final. Probá de
+            nuevo; si sigue igual, revisá el tipo y la operación en la ficha de la propiedad.
+          </p>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="rounded-md bg-red-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-800"
+            >
+              Reintentar
+            </button>
+          )}
+        </div>
+      )}
 
       {required.length > 0 && (
         <section className="space-y-2">

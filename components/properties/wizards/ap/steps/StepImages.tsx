@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import type { ApDraft } from '../types'
+import { AP_MAX_FOTOS_AVISO } from '@/lib/portals/photo-limits'
 
 interface Props {
   draft: ApDraft
@@ -61,6 +62,11 @@ export function StepImages({ draft, onChange, onValidityChange }: Props) {
       <p className={`text-xs ${photos.length >= 6 ? 'text-emerald-600' : 'text-amber-600'}`}>
         {photos.length} foto{photos.length === 1 ? '' : 's'} · Argenprop recomienda al menos 6 de buena calidad
       </p>
+      {photos.length > AP_MAX_FOTOS_AVISO && (
+        <p className="text-xs text-amber-600">
+          El aviso lleva las primeras {AP_MAX_FOTOS_AVISO} según este orden; las demás quedan en la ficha.
+        </p>
+      )}
       {photos.length === 0 && (
         <p className="text-xs text-red-600">Cargá al menos una foto en la ficha de la propiedad antes de publicar.</p>
       )}

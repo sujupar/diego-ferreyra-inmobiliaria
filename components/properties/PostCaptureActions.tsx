@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { soloElMensaje } from '@/lib/portals/types'
 import {
   Building2,
   Megaphone,
@@ -71,7 +72,7 @@ export function PostCaptureActions({ propertyId }: Props) {
           } else if (ml.status === 'paused') {
             setMlState({ status: 'pausado', url: ml.external_url ?? undefined })
           } else if (ml.status === 'failed') {
-            setMlState({ status: 'error', error: ml.last_error ?? 'Error desconocido' })
+            setMlState({ status: 'error', error: soloElMensaje(ml.last_error) ?? 'Error desconocido' })
           } else if (ml.status === 'pending' || ml.status === 'publishing') {
             // Estado intermedio — el worker está procesando o lo va a procesar.
             // Mostramos "en proceso" para que el asesor no presione "Publicar"
@@ -85,7 +86,7 @@ export function PostCaptureActions({ propertyId }: Props) {
           if (!apr) setApState({ status: 'no_publicado' })
           else if (apr.status === 'published') setApState({ status: 'publicado', url: apr.external_url ?? undefined })
           else if (apr.status === 'paused') setApState({ status: 'baja', url: apr.external_url ?? undefined })
-          else if (apr.status === 'failed') setApState({ status: 'error', error: apr.last_error ?? 'Error' })
+          else if (apr.status === 'failed') setApState({ status: 'error', error: soloElMensaje(apr.last_error) ?? 'Error' })
           else setApState({ status: 'no_publicado' })
         } else {
           setMlState({ status: 'no_publicado' })

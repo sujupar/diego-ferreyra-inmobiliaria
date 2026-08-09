@@ -38,7 +38,17 @@ export function ThanksMedia({ kind, url, embed, photos }: ThanksMediaProps) {
             allowFullScreen
           />
         ) : (
-          <video src={url} controls playsInline className="aspect-video w-full rounded-lg border" />
+          // poster = foto principal (decisión del usuario 2026-08-06): sin él,
+          // en el celular el recuadro quedaba vacío varios segundos mientras
+          // bajaba el primer frame del archivo de Storage.
+          <video
+            src={url}
+            poster={photos[0]}
+            preload="metadata"
+            controls
+            playsInline
+            className="aspect-video w-full rounded-lg border"
+          />
         )
       )}
       {kind === 'fotos' && photos.length > 0 && (

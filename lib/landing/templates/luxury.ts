@@ -92,10 +92,12 @@ export function buildLuxuryDocument(
   }
 
   // CTA intermedio con estilo de lujo (reusa closing_invite; abre el popup).
+  // Los eyebrows invitan a RECORRER la propiedad, nunca a "agendar una cita"
+  // (decisión del usuario, 2026-08-06).
   blocks.push({
     id: 'cta-mid',
     type: 'closing_invite',
-    eyebrow: 'Agendá tu visita',
+    eyebrow: 'Conocela por dentro',
     headline: copy.midCtaHeadline,
     ctaLabel: copy.ctaLabel,
   })
@@ -105,6 +107,9 @@ export function buildLuxuryDocument(
     type: 'location_showcase',
     eyebrow: 'Ubicación',
     body: copy.locationNote,
+    // Mapa estático no interactivo si la propiedad tiene lat/lng (decisión del
+    // usuario 2026-08-06 — revierte el "SIN mapa" de E1.9).
+    showMap: true,
     ...(photos.location != null ? { photoIndex: photos.location } : {}),
   })
 
@@ -112,7 +117,7 @@ export function buildLuxuryDocument(
     {
       id: 'closing',
       type: 'closing_invite',
-      eyebrow: 'Con cita previa',
+      eyebrow: 'Vení a recorrerla',
       headline: copy.mainBenefitHeadline,
       body: copy.mainBenefitBody,
       ctaLabel: copy.ctaLabel,

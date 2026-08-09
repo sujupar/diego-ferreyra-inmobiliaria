@@ -34,6 +34,7 @@ import {
   debeAnalizar,
   elClienteLoVio,
   mensajesNuevosDesde,
+  memoriaVigente,
   getConversationAiState,
   getRecentWhatsappMessages,
   saveConversationAiState,
@@ -375,6 +376,14 @@ export interface RunConversationAnalysisResult {
   visitHour: number | null
   /** Material que el agente quiere mandar en este turno (fotos/plano/video), o null. */
   send: MaterialTipo[]
+  /**
+   * El texto CRUDO que escribió el cliente en este turno, concatenado.
+   *
+   * Lo consume `materialPedidoExplicito` (`lib/ai/material-request.ts`) para
+   * garantizar que lo que la persona pidió con todas las letras salga aunque el
+   * modelo lo omita. Vacío en todos los caminos donde no hubo análisis nuevo.
+   */
+  textoEntranteNuevo: string
 }
 
 /**
@@ -396,6 +405,14 @@ export async function runConversationAnalysis(
   phoneE164: string,
   ahora: Date = new Date(),
   brain?: BrainInput,
+  opts?: {
+    /**
+     * De qué propiedad es esta conversación. Con esto, un resumen guardado sobre
+     * OTRA propiedad deja de aplicar y no se le pasa al modelo — ver
+     * `memoriaVigente`. Sin esto (undefined), se comporta como antes.
+     */
+    propertyId?: string | null
+  },
 ): Promise<RunConversationAnalysisResult> {
   const [read, mensajes] = await Promise.all([
     getConversationAiState(phoneE164),
@@ -413,13 +430,20 @@ export async function runConversationAnalysis(
   // y `properties.ai_scheduling_enabled`— ya fallaban cerrados; a este se le
   // había pasado.
   if (read.readFailed) {
-    return { state: null, analyzed: false, readFailed: true, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null, send: [] }
+    return { state: null, analyzed: false, readFailed: true, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null, send: [], textoEntranteNuevo: '' }
   }
 
-  const state = read.state
+  // Si la conversación pasó a hablar de otra propiedad, el resumen anterior no
+  // aplica: se sigue con la memoria vacía en vez de arrastrar hechos de la
+  // propiedad anterior. Ver el bug documentado en `memoriaVigente`.
+  const vigente = memoriaVigente(read.state, opts?.propertyId)
+  const state = vigente.state
+  if (vigente.cambioDePropiedad) {
+    console.log(`[analyze-conversation] ${phoneE164} pasó a hablar de otra propiedad: se arranca con memoria limpia`)
+  }
 
   if (!debeAnalizar(state, mensajes, ahora)) {
-    return { state, analyzed: false, readFailed: false, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null, send: [] }
+    return { state, analyzed: false, readFailed: false, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null, send: [], textoEntranteNuevo: '' }
   }
 
   const nuevos = mensajesNuevosDesde(state, mensajes)
@@ -429,7 +453,7 @@ export async function runConversationAnalysis(
     // apagado (o no se pudo leer), el modelo falló, o devolvió algo con forma
     // inválida. Nunca lanza y NO escribe: se deja el estado anterior sin tocar.
     // La conversación igual se ordena por la ventana de 24hs, que no necesita IA.
-    return { state, analyzed: false, readFailed: false, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null, send: [] }
+    return { state, analyzed: false, readFailed: false, wantsToSchedule: false, proposedSlot: null, reply: null, visitDate: null, visitHour: null, send: [], textoEntranteNuevo: '' }
   }
 
   const ultimoNuevo = nuevos[nuevos.length - 1]
@@ -447,6 +471,10 @@ export async function runConversationAnalysis(
     suggestedNextStep: patch.suggestedNextStep,
     tokensUsedTotal,
     analysesCount,
+    propertyId: opts?.propertyId,
+    // El tope de mensajes del agente se reinicia con la propiedad, y tiene que
+    // quedar escrito: la reserva del cupo lee el contador de la base.
+    ...(vigente.cambioDePropiedad ? { agentMessagesSent: 0 } : {}),
   })
 
   const updatedState: ConversationAiStateRow = {
@@ -476,5 +504,11 @@ export async function runConversationAnalysis(
     visitDate: patch.visitDate,
     visitHour: patch.visitHour,
     send: patch.send,
+    // Lo que escribió el cliente, crudo. Río abajo garantiza que el material
+    // que pidió con todas las letras salga aunque el modelo lo haya omitido.
+    textoEntranteNuevo: nuevos
+      .filter(m => m.direction === 'in')
+      .map(m => m.body_preview ?? '')
+      .join(' . '),
   }
 }

@@ -17,9 +17,14 @@ export interface CoCreationQuestion {
   hint?: string
 }
 
-const SYSTEM = `Sos un estratega de marketing inmobiliario en Argentina. Vas a hacerle 3 a 5 preguntas AL ASESOR sobre una propiedad, para afinar el perfil del comprador ideal y el mensaje de la landing. Preguntas concretas, fáciles de responder, que el asesor sepa contestar (conoce la propiedad y el barrio). Devolvés JSON.
+export const QUESTIONS_SYSTEM = `Sos un estratega de marketing inmobiliario en Argentina. Vas a hacerle 3 a 5 preguntas AL ASESOR sobre una propiedad, para afinar el perfil del comprador ideal y el mensaje de la landing. Preguntas concretas, fáciles de responder, que el asesor sepa contestar (conoce la propiedad y el barrio). Devolvés JSON.
+
+Preguntá SOLO sobre estos ejes: quién es el comprador ideal, el diferencial real de la propiedad, las objeciones que frenan a los interesados, y qué tiene el entorno que valga la pena contar.
+NUNCA preguntes por financiación, crédito, hipotecas ni formas de pago: hoy no hay financiación relevante en Argentina y la pregunta confunde al asesor.
 
 ${RIOPLATENSE_STYLE}`
+
+const SYSTEM = QUESTIONS_SYSTEM
 
 export async function generateCoCreationQuestions(input: {
   property: LandingProperty

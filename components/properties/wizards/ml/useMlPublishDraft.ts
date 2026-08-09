@@ -14,6 +14,14 @@ export function useMlPublishDraft(propertyId: string) {
   const [loading, setLoading] = useState(true)
   const [property, setProperty] = useState<MlPreviewProperty | null>(null)
   const [attrs, setAttrs] = useState<MlAttributesResponse | null>(null)
+  /**
+   * Por qué guardamos el motivo y no solo el `null`: cuando /ml-attributes
+   * fallaba, el wizard mostraba "no se pudieron traer los campos, se publicará
+   * con los datos básicos" — una frase que era mentira y que además dejaba
+   * avanzar. El asesor llegaba hasta Publicar y ahí sí fallaba, con un JSON de
+   * ML incomprensible. El motivo real viaja hasta la pantalla.
+   */
+  const [attrsError, setAttrsError] = useState<string | null>(null)
   const [listing, setListing] = useState<MlListing | null>(null)
   const [validation, setValidation] = useState<PreviewResponse['validation']>({ ok: false, errors: [], warnings: [] })
   const [draft, setDraft] = useState<MlDraft | null>(null)
@@ -27,11 +35,28 @@ export function useMlPublishDraft(propertyId: string) {
       ])
       if (!prevR.ok) throw new Error('No se pudo cargar el preview')
       const prev = (await prevR.json()) as PreviewResponse
-      const attrJson = attrR.ok ? ((await attrR.json()) as MlAttributesResponse) : null
+
+      let attrJson: MlAttributesResponse | null = null
+      let attrErr: string | null = null
+      if (attrR.ok) {
+        attrJson = (await attrR.json()) as MlAttributesResponse
+      } else {
+        // El body puede no ser JSON (p. ej. una página de error 504 del gateway):
+        // leerlo como texto y recién ahí intentar parsearlo.
+        const cuerpo = await attrR.text().catch(() => '')
+        try {
+          attrErr = (JSON.parse(cuerpo) as { error?: string }).error ?? null
+        } catch { /* no era JSON */ }
+        attrErr ??= attrR.status === 504
+          ? 'MercadoLibre tardó demasiado en responder. Probá de nuevo en un minuto.'
+          : `No se pudieron traer los campos de MercadoLibre (error ${attrR.status}).`
+      }
+
       setProperty(prev.property)
       setListing(prev.listing)
       setValidation(prev.validation)
       setAttrs(attrJson)
+      setAttrsError(attrErr)
       setDraft({
         photos: prev.property.photos ?? [],
         videoUrl: prev.property.video_url,
@@ -91,5 +116,5 @@ export function useMlPublishDraft(propertyId: string) {
     return true
   }, [draft, propertyId])
 
-  return { loading, property, attrs, listing, validation, draft, patch, save, reload: load }
+  return { loading, property, attrs, attrsError, listing, validation, draft, patch, save, reload: load }
 }

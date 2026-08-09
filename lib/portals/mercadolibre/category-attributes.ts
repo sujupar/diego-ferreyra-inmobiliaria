@@ -81,8 +81,11 @@ export async function getRawAttributes(categoryId: string): Promise<MlRawAttribu
     .eq('category_id', categoryId)
     .maybeSingle()
 
+  // El chequeo de length ignora filas viejas con `[]` (quedaron de cuando el
+  // mapa apuntaba a categorías padre) — mejor re-preguntar a ML que servirlas.
   if (
-    cached?.attributes &&
+    Array.isArray(cached?.attributes) &&
+    (cached.attributes as unknown[]).length > 0 &&
     cached.fetched_at &&
     Date.now() - new Date(cached.fetched_at).getTime() < TTL_MS
   ) {
@@ -90,18 +93,85 @@ export async function getRawAttributes(categoryId: string): Promise<MlRawAttribu
   }
 
   const fresh = await mlFetch<MlRawAttribute[]>(`/categories/${categoryId}/attributes`)
-  await supabase.from('ml_category_attributes').upsert(
-    {
-      category_id: categoryId,
-      attributes: fresh as unknown as Json,
-      fetched_at: new Date().toISOString(),
-    },
-    { onConflict: 'category_id' },
-  )
+  // Una lista vacía NO se cachea: o es una categoría padre (error nuestro) o un
+  // hipo de ML. Cachearla dejaría el error pegado 24h aunque ML ya responda bien.
+  if (fresh.length > 0) {
+    await supabase.from('ml_category_attributes').upsert(
+      {
+        category_id: categoryId,
+        attributes: fresh as unknown as Json,
+        fetched_at: new Date().toISOString(),
+      },
+      { onConflict: 'category_id' },
+    )
+  }
   return fresh
 }
 
-/** Trae y clasifica los atributos de la categoría (con caché). */
+interface CategoriaMl {
+  id?: string
+  children_categories?: unknown[]
+  settings?: { listing_allowed?: boolean }
+  path_from_root?: { name: string }[]
+}
+
+/**
+ * Falla si la categoría no existe, no es HOJA o no admite publicar.
+ *
+ * Es el control que faltaba. El 2026-08-06 el mapa mandaba "casa en venta" a
+ * MLA1472 ("Departamentos", una categoría padre) y el sistema recién se enteraba
+ * cuando ML rechazaba el aviso, con un JSON ilegible, en mitad de una demo.
+ *
+ * Consulta el árbol público de ML (no requiere credenciales).
+ */
+export async function asegurarCategoriaPublicable(categoryId: string): Promise<void> {
+  const r = await fetch(`https://api.mercadolibre.com/categories/${categoryId}`)
+  if (!r.ok) {
+    throw new Error(
+      `La categoría ${categoryId} no existe en MercadoLibre. ` +
+      `Corré: npx tsx scripts/verify-ml-categories.ts`,
+    )
+  }
+  const cat = (await r.json()) as CategoriaMl
+  const ruta = (cat.path_from_root ?? []).map(p => p.name).join(' > ')
+
+  if ((cat.children_categories ?? []).length > 0) {
+    throw new Error(
+      `La categoría ${categoryId} (${ruta}) agrupa otras y MercadoLibre no permite ` +
+      `publicar ahí; hay que usar una categoría final. ` +
+      `Corré: npx tsx scripts/verify-ml-categories.ts`,
+    )
+  }
+  if (cat.settings?.listing_allowed !== true) {
+    throw new Error(
+      `MercadoLibre no permite publicar en la categoría ${categoryId} (${ruta}). ` +
+      `Corré: npx tsx scripts/verify-ml-categories.ts`,
+    )
+  }
+}
+
+/**
+ * Trae y clasifica los atributos de la categoría (con caché).
+ *
+ * Si ML devuelve CERO atributos, esto REVIENTA en vez de devolver listas vacías.
+ *
+ * Por qué: una categoría de inmuebles con cero atributos no existe. Cuando eso
+ * pasa es porque se preguntó por una categoría PADRE — ML responde 200 con `[]`,
+ * que no es un error para él pero sí es una anomalía para nosotros. Devolver
+ * listas vacías hacía que el asistente concluyera "esta categoría no exige
+ * nada": mostraba 0 campos, marcaba 100% completo y dejaba publicar. Después ML
+ * rechazaba el aviso con un mensaje incomprensible. Falló en vivo el 2026-08-06.
+ *
+ * Regla general: "la respuesta vino vacía" nunca puede significar "está todo bien".
+ */
 export async function fetchCategoryAttributes(categoryId: string): Promise<CategoryAttributesResult> {
-  return classifyAttributes(await getRawAttributes(categoryId))
+  const raw = await getRawAttributes(categoryId)
+  if (raw.length === 0) {
+    throw new Error(
+      `MercadoLibre no devolvió ningún campo para la categoría ${categoryId}. ` +
+      `Suele significar que no es una categoría final (por ejemplo, es un rubro ` +
+      `que agrupa otros). Verificá el mapeo con: npx tsx scripts/verify-ml-categories.ts`,
+    )
+  }
+  return classifyAttributes(raw)
 }
