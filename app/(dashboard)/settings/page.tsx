@@ -77,11 +77,18 @@ export default function SettingsPage() {
         }
     }
 
+    // OJO: `r.ok` NO es opcional acá. Desde que el middleware corta las rutas de
+    // API sin sesión con 401 en JSON (antes redirigía 307 a `/login`, que devolvía
+    // HTML y hacía TIRAR a `r.json()`), este `.then()` SÍ corre cuando la sesión
+    // vence con la pestaña abierta. Y como `setLoading(false)` vive en el mismo
+    // `.then()`, el spinner deja de tapar el render: sin blindar el dato,
+    // `setSlots(undefined)` termina en `slots.map(...)` más abajo y la pantalla de
+    // Configuración entera se cae con "Cannot read properties of undefined".
     useEffect(() => {
         fetch('/api/settings/market-images')
-            .then(r => r.json())
-            .then(data => {
-                setSlots(data.slots)
+            .then(r => (r.ok ? r.json() : null))
+            .then((data: { slots?: unknown } | null) => {
+                setSlots(Array.isArray(data?.slots) ? (data.slots as ImageSlot[]) : [])
                 setLoading(false)
             })
             .catch(() => setLoading(false))

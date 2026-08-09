@@ -23,6 +23,14 @@ const espias = vi.hoisted(() => ({
   errorRpc: null as { message: string } | null,
   capi: [] as Array<Record<string, unknown>>,
   respuestaCapi: { ok: true } as { ok: boolean; error?: string },
+  /**
+   * Lo que devuelve el envío de email. `null` = no se llegó a intentar (deal
+   * ilegible o sin destinatarios). El resto es el `SendEmailResult` de
+   * `sendEmail`, que NUNCA tira: por eso el handler tiene que MIRARLO.
+   */
+  respuestaEmail: { ok: true, sent: 2, skipped: 0, failed: 0, errors: [] } as
+    | { ok: boolean; sent: number; skipped: number; failed: number; errors: string[] }
+    | null,
 }))
 
 vi.mock('@/lib/supabase/tasks', () => ({
@@ -31,10 +39,16 @@ vi.mock('@/lib/supabase/tasks', () => ({
   },
 }))
 vi.mock('@/lib/email/notifications/appraisal-request', () => ({
-  notifyAppraisalRequest: async ({ dealId }: { dealId: string }) => { espias.tasacion.push(dealId) },
+  notifyAppraisalRequest: async ({ dealId }: { dealId: string }) => {
+    espias.tasacion.push(dealId)
+    return espias.respuestaEmail
+  },
 }))
 vi.mock('@/lib/email/notifications/class-registration', () => ({
-  notifyClassRegistration: async ({ dealId }: { dealId: string }) => { espias.clase.push(dealId) },
+  notifyClassRegistration: async ({ dealId }: { dealId: string }) => {
+    espias.clase.push(dealId)
+    return espias.respuestaEmail
+  },
 }))
 vi.mock('@/lib/integrations/mailchimp/client', () => ({
   mailchimpSyncEnabled: () => espias.mailchimpPrendido,
@@ -69,6 +83,7 @@ beforeEach(() => {
   espias.errorRpc = null
   espias.capi = []
   espias.respuestaCapi = { ok: true }
+  espias.respuestaEmail = { ok: true, sent: 2, skipped: 0, failed: 0, errors: [] }
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://proyecto.supabase.co'
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'clave-de-prueba'
 })
@@ -100,6 +115,60 @@ describe('email al equipo', () => {
     await ejecutarTrabajo('notify', { funnel: 'clase', dealId: 'deal-2' })
     expect(espias.clase).toEqual(['deal-2'])
     expect(espias.tasacion).toEqual([])
+  })
+
+  it('un envío limpio queda en done', async () => {
+    expect(await ejecutarTrabajo('notify', { funnel: 'tasacion', dealId: 'deal-1' })).toBe('done')
+  })
+
+  /**
+   * A4 — el trabajo que NO PODÍA FALLAR.
+   *
+   * `sendEmail` nunca tira: devuelve `{ok,sent,failed,errors}`. Como las dos
+   * piezas de notificación ignoraban ese resultado, un vencimiento de Resend
+   * —el incidente del 2026-08-08 que originó la cola entera— salía de acá como
+   * 'done': el trabajo quedaba hecho, sin reintento ni escalación, y
+   * `SELECT status FROM funnel_lead_jobs` le mentía al operador.
+   */
+  it('si Resend vence, TIRA: el trabajo no puede quedar en done', async () => {
+    espias.respuestaEmail = {
+      ok: false, sent: 0, skipped: 0, failed: 2,
+      errors: ['Tiempo de espera agotado: Resend no respondió en 8000 ms'],
+    }
+    await expect(
+      ejecutarTrabajo('notify', { funnel: 'tasacion', dealId: 'deal-1' }),
+    ).rejects.toThrow('Resend no respondió')
+  })
+
+  it('un envío PARCIAL (uno sí, otro no) también tira: la idempotencia es por destinatario', async () => {
+    espias.respuestaEmail = { ok: false, sent: 1, skipped: 0, failed: 1, errors: ['550 mailbox unavailable'] }
+    await expect(
+      ejecutarTrabajo('notify', { funnel: 'clase', dealId: 'deal-2' }),
+    ).rejects.toThrow('fallados: 1')
+  })
+
+  it('sin RESEND_API_KEY tira aunque `failed` sea 0 (no se mandó NADA)', async () => {
+    // `sendEmail` sale temprano con ok:false y failed:0 cuando falta la clave.
+    // Mirar solo `failed > 0` dejaría pasar el peor caso como 'done'.
+    espias.respuestaEmail = {
+      ok: false, sent: 0, skipped: 0, failed: 0,
+      errors: ['RESEND_API_KEY not set; skipping email send'],
+    }
+    await expect(
+      ejecutarTrabajo('notify', { funnel: 'tasacion', dealId: 'deal-1' }),
+    ).rejects.toThrow('RESEND_API_KEY')
+  })
+
+  it('si ni se llegó a intentar (deal ilegible o sin destinatarios) tira: NO es un skipped', async () => {
+    espias.respuestaEmail = null
+    await expect(
+      ejecutarTrabajo('notify', { funnel: 'tasacion', dealId: 'deal-1' }),
+    ).rejects.toThrow('no se llegó a intentar')
+  })
+
+  it('un envío ya hecho antes (todo salteado por idempotencia) es done, no un fallo', async () => {
+    espias.respuestaEmail = { ok: true, sent: 0, skipped: 2, failed: 0, errors: [] }
+    expect(await ejecutarTrabajo('notify', { funnel: 'tasacion', dealId: 'deal-1' })).toBe('done')
   })
 })
 

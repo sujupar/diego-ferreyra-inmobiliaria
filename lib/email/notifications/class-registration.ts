@@ -1,5 +1,5 @@
 import 'server-only'
-import { sendEmail } from '../resend-client'
+import { sendEmail, type SendEmailResult } from '../resend-client'
 import { renderEmail } from '../render'
 import { getDealStakeholders, dedupEmails, emailsOf } from '../recipients'
 import { applyTestMode } from '../test-mode'
@@ -16,10 +16,17 @@ export interface NotifyClassRegistrationOptions {
  * clase gratuita. NO se notifica al asesor (no aplica: aún no hay tasación) y
  * el copy aclara explícitamente que esto NO es una solicitud de tasación —
  * evita contaminar la métrica de solicitudes en el inbox del equipo.
+ *
+ * DEVUELVE el resultado del envío por el mismo motivo que `notifyAppraisalRequest`
+ * (ver el comentario largo de ese módulo): `sendEmail` no tira, así que ignorar
+ * lo que contesta convierte un fallo de Resend en un "listo, avisado". `null` =
+ * no había nada que enviar.
  */
-export async function notifyClassRegistration({ dealId, formName }: NotifyClassRegistrationOptions) {
+export async function notifyClassRegistration(
+  { dealId, formName }: NotifyClassRegistrationOptions,
+): Promise<SendEmailResult | null> {
   const { coordinador, adminsOwners, contact, dealRow } = await getDealStakeholders(dealId)
-  if (!dealRow) return
+  if (!dealRow) return null
 
   if (dealRow.origin !== 'clase_gratuita') {
     throw new Error(`notifyClassRegistration called for deal ${dealId} with origin="${dealRow.origin}" (expected "clase_gratuita")`)
@@ -29,7 +36,7 @@ export async function notifyClassRegistration({ dealId, formName }: NotifyClassR
     coordinador?.email ? [coordinador.email] : [],
     emailsOf(adminsOwners),
   )
-  if (recipients.length === 0) return
+  if (recipients.length === 0) return null
 
   const subject = `Nuevo registro a clase gratuita: ${contact?.full_name || 'lead sin nombre'}`
   const testCtx = await applyTestMode(recipients, subject)
@@ -47,7 +54,7 @@ export async function notifyClassRegistration({ dealId, formName }: NotifyClassR
     }) as any
   )
 
-  await sendEmail({
+  return sendEmail({
     notificationType: 'class_registration_admins',
     entityType: 'deal',
     entityId: dealId,

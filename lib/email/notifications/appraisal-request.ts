@@ -1,5 +1,5 @@
 import 'server-only'
-import { sendEmail } from '../resend-client'
+import { sendEmail, type SendEmailResult } from '../resend-client'
 import { renderEmail } from '../render'
 import { getDealStakeholders, dedupEmails, emailsOf } from '../recipients'
 import { applyTestMode } from '../test-mode'
@@ -24,10 +24,23 @@ export interface NotifyAppraisalRequestOptions {
  * NO se notifica al asesor: en una solicitud recién entrada todavía no hay
  * asesor asignado. El asesor se entera cuando el coordinador agenda la visita
  * (ahí sí dispara `notifyDealCreated`, intacto).
+ *
+ * DEVUELVE el resultado del envío, no `void`. `sendEmail` NUNCA tira —devuelve
+ * `{ok,sent,failed,errors}`— así que ignorar lo que contesta hacía que un
+ * vencimiento de Resend (exactamente el incidente del 2026-08-08) terminara con
+ * el trabajo de la cola en 'done': sin reintento, sin escalación, y con
+ * `funnel_lead_jobs.status` afirmando que el equipo estaba avisado. Quien llama
+ * decide qué hacer con `failed > 0`; acá no se traga nada.
+ *
+ * `null` = no hubo nada que enviar (el deal no existe, o no hay destinatarios).
+ * Es distinto de "se intentó y falló", y por eso no se devuelve un resultado
+ * vacío con `ok: true`.
  */
-export async function notifyAppraisalRequest({ dealId }: NotifyAppraisalRequestOptions) {
+export async function notifyAppraisalRequest(
+  { dealId }: NotifyAppraisalRequestOptions,
+): Promise<SendEmailResult | null> {
   const { coordinador, adminsOwners, contact, dealRow } = await getDealStakeholders(dealId)
-  if (!dealRow) return
+  if (!dealRow) return null
 
   if (dealRow.origin !== 'embudo') {
     throw new Error(`notifyAppraisalRequest called for deal ${dealId} with origin="${dealRow.origin}" (expected "embudo")`)
@@ -37,7 +50,7 @@ export async function notifyAppraisalRequest({ dealId }: NotifyAppraisalRequestO
     coordinador?.email ? [coordinador.email] : [],
     emailsOf(adminsOwners),
   )
-  if (recipients.length === 0) return
+  if (recipients.length === 0) return null
 
   const contactName = contact?.full_name || 'Lead sin nombre'
 
@@ -68,7 +81,7 @@ export async function notifyAppraisalRequest({ dealId }: NotifyAppraisalRequestO
     }) as any
   )
 
-  await sendEmail({
+  return sendEmail({
     notificationType: 'appraisal_request_admins',
     entityType: 'deal',
     entityId: dealId,

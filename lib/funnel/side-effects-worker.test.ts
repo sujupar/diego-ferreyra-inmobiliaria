@@ -84,7 +84,12 @@ vi.mock('@/lib/email/notifications/admin-failure-alert', () => ({
   },
 }))
 
-import { runFunnelSideEffectsWorker } from './side-effects-worker'
+import {
+  runFunnelSideEffectsWorker,
+  PRESUPUESTO_MS,
+  PEOR_TRABAJO_MS,
+  TECHO_NETLIFY_MS,
+} from './side-effects-worker'
 
 function trabajo(over: Partial<Fila> = {}): Record<string, unknown> {
   return {
@@ -251,5 +256,150 @@ describe('dos corridas solapadas', () => {
     bd.trabajos = [trabajo()]
     await Promise.all([runFunnelSideEffectsWorker(), runFunnelSideEffectsWorker()])
     expect(bd.ejecutados).toEqual(['notify'])
+  })
+})
+
+/**
+ * A2 — el agujero que dejaba a un trabajo reintentándose para siempre.
+ *
+ * El `catch` del bucle era el ÚNICO lugar que escribía 'failed'. Cuando la
+ * función de Netlify se muere a mitad, ese `catch` no corre: la fila queda
+ * 'running', el reaper la devuelve a 'pending' y se vuelve a tomar. `attempts`
+ * crecía sin techo, nunca llegaba a 'failed' y `escalarTrabajoAgotado` no se
+ * disparaba jamás.
+ */
+describe('el trabajo que murió a mitad SIEMPRE termina agotándose y escalando', () => {
+  it('un pending con los intentos ya gastados no se ejecuta: queda failed y escala', async () => {
+    // Así queda una fila cuyo worker murió tras gastar el último intento y a la
+    // que el reaper ya devolvió a la cola.
+    bd.trabajos = [trabajo({ attempts: 5, max_attempts: 5, status: 'pending' })]
+
+    const r = await runFunnelSideEffectsWorker()
+
+    expect(bd.ejecutados).toEqual([]) // NO se vuelve a ejecutar
+    expect(bd.trabajos[0]).toMatchObject({ status: 'failed', attempts: 5, claimed_at: null })
+    expect(r).toMatchObject({ fallados: 1, hechos: 0 })
+    expect(bd.escalaciones).toHaveLength(1)
+    expect(bd.escalaciones[0].tipo).toBe('embudo:notify')
+    expect(bd.escalaciones[0].error).toContain('agotó los 5 intentos')
+  })
+
+  it('el ciclo completo: muere a mitad → reaper → se agota → escala (y no da vueltas eterno)', async () => {
+    // Así queda la fila cuando el worker la tomó —gastando el 5º y último
+    // intento— y se murió ANTES de escribir el resultado: 'running', con
+    // claimed_at viejo y el contador ya en el tope. El `catch` nunca corrió.
+    bd.trabajos = [
+      trabajo({ attempts: 5, max_attempts: 5, status: 'running', claimed_at: new Date(Date.now() - 30 * 60_000).toISOString() }),
+    ]
+
+    // Corrida 1: el reaper lo revive y, con los intentos ya agotados, lo cierra.
+    const r = await runFunnelSideEffectsWorker()
+    expect(r.resucitados).toBe(1)
+    expect(bd.ejecutados).toEqual([]) // no se re-ejecuta un trabajo sin intentos
+    expect(bd.trabajos[0].status).toBe('failed')
+    expect(bd.escalaciones).toHaveLength(1)
+
+    // Corrida 2: ya está cerrado, no vuelve a la rueda ni escala dos veces.
+    const r2 = await runFunnelSideEffectsWorker()
+    expect(r2).toMatchObject({ resucitados: 0, fallados: 0 })
+    expect(bd.ejecutados).toEqual([])
+    expect(bd.escalaciones).toHaveLength(1)
+    expect(bd.trabajos[0].attempts).toBe(5) // el contador dejó de crecer
+  })
+
+  it('con los intentos agotados el aviso a admins lleva el ÚLTIMO error conocido, no un texto genérico', async () => {
+    bd.trabajos = [trabajo({ attempts: 5, max_attempts: 5, last_error: 'Tiempo de espera agotado: Resend no respondió' })]
+    await runFunnelSideEffectsWorker()
+    expect(bd.escalaciones[0].error).toContain('Resend no respondió')
+  })
+
+  it('cerrar a los agotados no frena a los trabajos que SÍ tienen intentos', async () => {
+    bd.trabajos = [
+      trabajo({ id: 'agotado', kind: 'capi', attempts: 5, max_attempts: 5 }),
+      trabajo({ id: 'sano', kind: 'notify', attempts: 1, max_attempts: 5 }),
+    ]
+    const r = await runFunnelSideEffectsWorker()
+
+    expect(bd.ejecutados).toEqual(['notify'])
+    const porId = Object.fromEntries(bd.trabajos.map(t => [t.id, t.status]))
+    expect(porId).toEqual({ agotado: 'failed', sano: 'done' })
+    expect(r).toMatchObject({ hechos: 1, fallados: 1 })
+  })
+})
+
+/**
+ * A3 — el presupuesto de tiempo. El chequeo va ANTES de tomar el trabajo, así
+ * que una corrida dura, como máximo, el presupuesto MÁS lo que tarde el trabajo
+ * que arrancó justo en el límite.
+ */
+describe('presupuesto de tiempo', () => {
+  it('cierra con el peor trabajo dentro del techo de la función', () => {
+    // Si alguien vuelve a subir el presupuesto, o si el aviso pasa a tener un
+    // destinatario más (PEOR_TRABAJO_MS sube), esta cuenta deja de cerrar y hay
+    // que rehacerla — no descubrirlo con un 504 en producción.
+    expect(PRESUPUESTO_MS + PEOR_TRABAJO_MS).toBeLessThanOrEqual(TECHO_NETLIFY_MS)
+    expect(PRESUPUESTO_MS).toBeGreaterThan(0)
+  })
+
+  it('agotado el presupuesto no se toma NINGÚN trabajo más y la corrida se declara truncada', async () => {
+    bd.trabajos = CINCO.map((kind, i) => trabajo({ id: `j${i}`, kind }))
+    // Presupuesto 0: el chequeo corta antes del primer trabajo.
+    const r = await runFunnelSideEffectsWorker({ presupuestoMs: 0 })
+
+    expect(bd.ejecutados).toEqual([])
+    expect(r.truncada).toBe(true)
+    expect(bd.trabajos.every(t => t.status === 'pending')).toBe(true)
+  })
+
+  it('cerrar a un agotado también gasta presupuesto (escalar manda un email): sin presupuesto queda para el tick siguiente', async () => {
+    bd.trabajos = [trabajo({ attempts: 5, max_attempts: 5 })]
+
+    const r = await runFunnelSideEffectsWorker({ presupuestoMs: 0 })
+    expect(bd.trabajos[0].status).toBe('pending') // sigue en la cola, no se pierde
+    expect(bd.escalaciones).toEqual([])
+    expect(r).toMatchObject({ fallados: 0, truncada: true })
+
+    // Con presupuesto normal, el tick siguiente lo cierra y escala.
+    const r2 = await runFunnelSideEffectsWorker()
+    expect(bd.trabajos[0].status).toBe('failed')
+    expect(r2.fallados).toBe(1)
+    expect(bd.escalaciones).toHaveLength(1)
+  })
+})
+
+/**
+ * A5 — la IP en claro. El payload del trabajo `capi` lleva la IP sin hashear
+ * (Meta la pide así). Hasta esta cola, la IP en claro NO existía en la base:
+ * `funnel_lead_submissions` guarda solo `ip_hash`. Como las filas terminadas no
+ * se borran, cada lead dejaba una fila con la IP para siempre.
+ */
+describe('el payload no sobrevive al trabajo', () => {
+  const PAYLOAD_CAPI = { funnel: 'tasacion', eventId: 'evt-1', ip: '200.10.20.30', userAgent: 'Mozilla/5.0', email: 'ana@ejemplo.com' }
+
+  it('al terminar en done el payload queda vacío', async () => {
+    bd.trabajos = [trabajo({ kind: 'capi', payload: PAYLOAD_CAPI })]
+    await runFunnelSideEffectsWorker()
+
+    expect(bd.trabajos[0].status).toBe('done')
+    expect(bd.trabajos[0].payload).toEqual({})
+    expect(JSON.stringify(bd.trabajos[0])).not.toContain('200.10.20.30')
+  })
+
+  it('al terminar en skipped también (un skipped es final: no se reintenta)', async () => {
+    bd.trabajos = [trabajo({ kind: 'capi', payload: PAYLOAD_CAPI })]
+    bd.comportamiento.capi = 'skip'
+    await runFunnelSideEffectsWorker()
+
+    expect(bd.trabajos[0].status).toBe('skipped')
+    expect(bd.trabajos[0].payload).toEqual({})
+  })
+
+  it('un trabajo que va a reintentarse CONSERVA el payload (sin él, el reintento no puede correr)', async () => {
+    bd.trabajos = [trabajo({ kind: 'capi', payload: PAYLOAD_CAPI })]
+    bd.comportamiento.capi = 'explota'
+    await runFunnelSideEffectsWorker()
+
+    expect(bd.trabajos[0].status).toBe('pending')
+    expect(bd.trabajos[0].payload).toEqual(PAYLOAD_CAPI)
   })
 })

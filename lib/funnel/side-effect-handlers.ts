@@ -60,16 +60,54 @@ async function tareaDeCoordinacion(p: Record<string, unknown>): Promise<Resultad
  * worker recién cuando el trabajo agota sus reintentos. Escalar en el primer
  * intento —como hacía el código viejo, que no tenía segundo intento— mandaba un
  * "[URGENTE]" por cada hipo de Resend.
+ *
+ * ESTE ERA EL ÚNICO TRABAJO QUE NO PODÍA FALLAR, y eso desarmaba el motivo de
+ * toda la cola: `sendEmail` NUNCA tira (devuelve `{ok,sent,failed,errors}`), así
+ * que un vencimiento de Resend —el incidente del 2026-08-08 que originó este
+ * rediseño— salía por acá como 'done'. El trabajo quedaba marcado como hecho,
+ * no se reintentaba, no escalaba, y `SELECT status FROM funnel_lead_jobs` le
+ * mentía al operador. Ahora se mira el resultado y se TIRA si algún destinatario
+ * quedó sin su email; el worker decide si reintenta.
+ *
+ * Un envío parcial (2 destinatarios, 1 falla) también tira: la idempotencia de
+ * `sendEmail` es POR DESTINATARIO (`alreadySentToRecipient`), así que el
+ * reintento le manda solo al que faltaba, no dos veces al que ya recibió.
  */
 async function avisoPorEmail(p: Record<string, unknown>): Promise<ResultadoTrabajo> {
   const funnel = requerido(p, 'funnel') as FunnelKind
   const dealId = requerido(p, 'dealId')
-  if (resolveFunnelMapping(funnel).notify === 'class') {
-    const { notifyClassRegistration } = await import('@/lib/email/notifications/class-registration')
-    await notifyClassRegistration({ dealId })
-  } else {
-    const { notifyAppraisalRequest } = await import('@/lib/email/notifications/appraisal-request')
-    await notifyAppraisalRequest({ dealId })
+  const esClase = resolveFunnelMapping(funnel).notify === 'class'
+
+  const resultado = esClase
+    ? await (await import('@/lib/email/notifications/class-registration'))
+        .notifyClassRegistration({ dealId })
+    : await (await import('@/lib/email/notifications/appraisal-request'))
+        .notifyAppraisalRequest({ dealId })
+
+  // `null` = ni siquiera se llegó a intentar (el deal no se pudo leer, o no hay
+  // un solo destinatario activo). NO es 'skipped': 'skipped' significa "no
+  // correspondía hacer nada" y se decide por lo que trae el PAYLOAD (sin anonId
+  // no hay stitching, sin event_id no hay conversión). Acá el trabajo existe
+  // justamente porque entró un lead y hay que avisarle a una persona; que el
+  // email no haya salido es un fallo, y como fallo tiene que reintentarse y,
+  // si insiste, escalar.
+  if (resultado === null) {
+    throw new Error(
+      `el aviso por email no se llegó a intentar para el deal ${dealId}: ` +
+        'no se pudo leer el deal o no hay destinatarios activos',
+    )
+  }
+
+  // Se mira `ok`, no solo `failed`: `sendEmail` devuelve `ok:false` con
+  // `failed:0` cuando falta `RESEND_API_KEY` (no llega a intentar ningún envío).
+  // Chequear únicamente `failed > 0` dejaría pasar como 'done' el caso en que no
+  // se mandó absolutamente nada, que es justo el peor.
+  if (!resultado.ok) {
+    const detalle = resultado.errors.join(' | ') || 'sin detalle'
+    throw new Error(
+      `el aviso por email no salió completo (enviados: ${resultado.sent}, ` +
+        `fallados: ${resultado.failed}): ${detalle}`,
+    )
   }
   return 'done'
 }
