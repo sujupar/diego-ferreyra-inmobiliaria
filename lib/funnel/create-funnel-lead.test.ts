@@ -1,10 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// `create-funnel-lead.ts` importa (transitivamente, vía las notificaciones) el
-// paquete `server-only`, que existe solo en el bundle de Next.js y no resuelve
-// bajo el resolver de vitest (entorno node). `resolveFunnelMapping` es pura y no
-// depende de nada de eso, así que stubbeamos `server-only` como módulo vacío para
-// poder cargar el módulo y testear la función pura sin tocar el código de prod.
+// Este módulo ya no arrastra `server-only` (las notificaciones se fueron a
+// `side-effect-handlers.ts`), pero el stub queda por si alguna dependencia
+// transitiva vuelve a traerlo: es inofensivo y evita un rojo confuso.
 vi.mock('server-only', () => ({}))
 
 import { resolveFunnelMapping } from './create-funnel-lead'
@@ -30,33 +28,21 @@ describe('resolveFunnelMapping', () => {
 })
 
 // ---------------------------------------------------------------------------
-// I/O — createFunnelLead: la atribución de campaña debe llegar a las columnas
-// meta_* del deal en el MISMO insert, ANTES de que se dispare la notificación.
+// I/O — `crearContactoYDeal` es TODO lo que pasa mientras la persona espera en
+// la landing. Dos cosas que verificar y que no son lo mismo:
 //
-// Contexto (Hallazgo 1 de la review de fix/email-solicitud-tasacion): antes,
-// `app/api/funnel/submit/route.ts` escribía esas columnas con un UPDATE
-// posterior, DESPUÉS de que `createFunnelLead` ya había hecho `await` de la
-// notificación completa — el email de "Nueva solicitud de tasación" siempre
-// mostraba "Campaña: —" porque el dato todavía no existía cuando se armó.
-//
-// Mockeamos `@supabase/supabase-js` (mismo patrón que
-// `lib/leads/visit-scheduling.test.ts` / `lib/leads/pipeline-state.test.ts`) y
-// las 3 piezas de notificación/escalación como módulos completos (mismo patrón
-// que `app/api/webhooks/whatsapp/route.test.ts` mockea `lib/ai/analyze-conversation`)
-// para no arrastrar Resend/React-email/`server-only` a este test — no hace
-// falta ningún mock nuevo que el repo no tenga ya.
+//  1. La atribución de campaña tiene que viajar en el MISMO insert del deal.
+//     (Hallazgo 1 de la review de fix/email-solicitud-tasacion: antes se
+//     escribía con un UPDATE posterior, DESPUÉS de notificar, y el email de
+//     "Nueva solicitud de tasación" siempre mostraba "Campaña: —".)
+//  2. Acá NO puede haber ninguna llamada a un tercero. El 504 del 2026-08-08
+//     entró justamente por acá: Resend colgó 34,47 s dentro de este camino.
+//     Los mocks de notificación/Mailchimp de abajo existen para poder afirmar
+//     que NADIE los llama.
 // ---------------------------------------------------------------------------
 
-const order: string[] = []
 const dealInsertCalls: Record<string, unknown>[] = []
-
-function profilesSelectChain() {
-  const q: { eq: () => typeof q; then: (resolve: (v: unknown) => unknown) => Promise<unknown> } = {
-    eq: () => q,
-    then: (resolve) => Promise.resolve({ data: [], error: null }).then(resolve),
-  }
-  return q
-}
+const terceros = { notify: 0, mailchimp: 0, tareas: 0 }
 
 const fromMock = vi.fn((table: string) => {
   if (table === 'contacts') {
@@ -74,14 +60,10 @@ const fromMock = vi.fn((table: string) => {
     return {
       insert: (row: Record<string, unknown>) => {
         dealInsertCalls.push(row)
-        order.push('deal-insert')
         return { select: () => ({ single: () => Promise.resolve({ data: { id: 'deal-1' }, error: null }) }) }
       },
     }
   }
-  // Sin candidatos de coordinador (perfiles vacío): `createTaskForRole` nunca
-  // llega a tocar la tabla `tasks`, así que no hace falta mockearla acá.
-  if (table === 'profiles') return { select: () => profilesSelectChain() }
   throw new Error(`tabla inesperada en el mock: ${table}`)
 })
 
@@ -90,34 +72,32 @@ vi.mock('@supabase/supabase-js', () => ({
 }))
 
 vi.mock('@/lib/email/notifications/appraisal-request', () => ({
-  notifyAppraisalRequest: vi.fn(async () => {
-    order.push('notify')
-  }),
+  notifyAppraisalRequest: vi.fn(async () => { terceros.notify += 1 }),
 }))
 vi.mock('@/lib/email/notifications/class-registration', () => ({
-  notifyClassRegistration: vi.fn(async () => {
-    order.push('notify')
-  }),
+  notifyClassRegistration: vi.fn(async () => { terceros.notify += 1 }),
 }))
-vi.mock('@/lib/email/notify-with-escalation', () => ({
-  notifyWithEscalation: vi.fn(async (operation: () => Promise<unknown>) => {
-    await operation()
-    return { ok: true }
-  }),
+vi.mock('@/lib/integrations/mailchimp/sync-deal', () => ({
+  syncDealToMailchimp: vi.fn(async () => { terceros.mailchimp += 1 }),
+}))
+vi.mock('@/lib/supabase/tasks', () => ({
+  createTaskForRole: vi.fn(async () => { terceros.tareas += 1 }),
 }))
 
-describe('createFunnelLead (I/O) — atribución de campaña llega al deal', () => {
+describe('crearContactoYDeal (I/O)', () => {
   beforeEach(() => {
-    order.length = 0
     dealInsertCalls.length = 0
+    terceros.notify = 0
+    terceros.mailchimp = 0
+    terceros.tareas = 0
     fromMock.mockClear()
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-key'
   })
 
-  it('vuelca las columnas meta_* en el INSERT del deal, antes de notificar', async () => {
-    const { createFunnelLead } = await import('./create-funnel-lead')
-    await createFunnelLead({
+  it('vuelca las columnas meta_* en el INSERT del deal', async () => {
+    const { crearContactoYDeal } = await import('./create-funnel-lead')
+    await crearContactoYDeal({
       funnel: 'tasacion',
       name: 'Juan Pérez',
       email: 'juan@example.com',
@@ -135,15 +115,11 @@ describe('createFunnelLead (I/O) — atribución de campaña llega al deal', () 
       meta_campaign_name: 'Captacion CABA',
       meta_site_source: 'fb',
     })
-    // El insert (con la atribución adentro) ocurre ANTES que la notificación —
-    // no hay un UPDATE posterior escondido (si lo hubiera, pegaría contra
-    // `deals.update`, que el mock de arriba ni siquiera expone).
-    expect(order).toEqual(['deal-insert', 'notify'])
   })
 
   it('sin atribución, el insert no fuerza columnas meta_* (comportamiento idéntico a hoy)', async () => {
-    const { createFunnelLead } = await import('./create-funnel-lead')
-    await createFunnelLead({
+    const { crearContactoYDeal } = await import('./create-funnel-lead')
+    await crearContactoYDeal({
       funnel: 'tasacion',
       name: 'Juan Pérez',
       email: 'juan@example.com',
@@ -153,12 +129,11 @@ describe('createFunnelLead (I/O) — atribución de campaña llega al deal', () 
     expect(dealInsertCalls).toHaveLength(1)
     expect(dealInsertCalls[0]).not.toHaveProperty('meta_campaign_id')
     expect(dealInsertCalls[0]).not.toHaveProperty('origin_metadata')
-    expect(order).toEqual(['deal-insert', 'notify'])
   })
 
-  it('funnel clase también vuelca la atribución en el insert (mismo camino, cambia la notificación)', async () => {
-    const { createFunnelLead } = await import('./create-funnel-lead')
-    await createFunnelLead({
+  it('funnel clase también vuelca la atribución en el insert', async () => {
+    const { crearContactoYDeal } = await import('./create-funnel-lead')
+    await crearContactoYDeal({
       funnel: 'clase',
       name: 'María López',
       email: 'maria@example.com',
@@ -167,6 +142,19 @@ describe('createFunnelLead (I/O) — atribución de campaña llega al deal', () 
     })
 
     expect(dealInsertCalls[0]).toMatchObject({ meta_ad_id: '999' })
-    expect(order).toEqual(['deal-insert', 'notify'])
+  })
+
+  it('NO manda ningún email, ni sincroniza Mailchimp, ni crea tareas: eso se difiere', async () => {
+    const { crearContactoYDeal } = await import('./create-funnel-lead')
+    await crearContactoYDeal({
+      funnel: 'tasacion',
+      name: 'Juan Pérez',
+      email: 'juan@example.com',
+      phone: null,
+    })
+
+    expect(terceros).toEqual({ notify: 0, mailchimp: 0, tareas: 0 })
+    // Solo dos tablas tocadas: contacts y deals. Nada más.
+    expect([...new Set(fromMock.mock.calls.map((c) => c[0]))].sort()).toEqual(['contacts', 'deals'])
   })
 })

@@ -1,9 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
 import { createDeal } from '@/lib/supabase/deals'
-import { createTaskForRole } from '@/lib/supabase/tasks'
-import { notifyAppraisalRequest } from '@/lib/email/notifications/appraisal-request'
-import { notifyClassRegistration } from '@/lib/email/notifications/class-registration'
-import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
 import { attributionToDealColumns, type FunnelAttribution } from '@/lib/funnel/attribution'
 import { FUNNEL_PLACEHOLDER_LABEL, buildPlaceholderAddress } from '@/lib/funnel/placeholder'
 
@@ -45,10 +41,9 @@ export interface FunnelLeadInput {
   /**
    * Atribución de campaña (UTM/Meta) capturada en la landing. Se vuelca a las
    * columnas `meta_*` del deal en el MISMO insert (ver `attributionToDealColumns`)
-   * — así la notificación que se dispara a continuación ya la ve. Antes esto se
-   * escribía con un UPDATE posterior en `POST /api/funnel/submit`, DESPUÉS de que
-   * `createFunnelLead` ya había notificado: el email siempre mostraba la campaña
-   * vacía.
+   * — así la notificación diferida, que lee el deal de la base, ya la ve. Antes
+   * esto se escribía con un UPDATE posterior en `POST /api/funnel/submit`,
+   * DESPUÉS de notificar: el email siempre mostraba la campaña vacía.
    */
   attribution?: FunnelAttribution | null
 }
@@ -59,11 +54,20 @@ export interface FunnelLeadResult {
 }
 
 /**
- * Crea (o reutiliza) el contacto y crea el deal del funnel, replicando el
- * comportamiento del webhook GHL (origin/stage/placeholder/notificación).
- * El webhook GHL NO se modifica (se desmantela en Fase 5).
+ * Crea (o reutiliza) el contacto y crea el deal del funnel. Nada más.
+ *
+ * ESTO ES TODO LO QUE PASA MIENTRAS LA PERSONA ESPERA. Los cinco avisos que
+ * antes colgaban de acá —tarea de coordinación, email, Mailchimp, stitching de
+ * la sesión anónima y el evento de conversión a Meta— se encolan en
+ * `funnel_lead_jobs` y los ejecuta `lib/funnel/side-effects-worker.ts`. El
+ * motivo está escrito con sangre: el 2026-08-08 el POST a Resend colgó 34 s
+ * dentro de este camino y el visitante se llevó un 504 aunque su lead ya estaba
+ * en el CRM.
+ *
+ * NO agregar acá ninguna llamada a un tercero. Si hace falta un aviso nuevo,
+ * es un `kind` nuevo en la cola.
  */
-export async function createFunnelLead(input: FunnelLeadInput): Promise<FunnelLeadResult> {
+export async function crearContactoYDeal(input: FunnelLeadInput): Promise<FunnelLeadResult> {
   const supabase = admin()
   const map = resolveFunnelMapping(input.funnel)
   const name = input.name.trim()
@@ -116,32 +120,6 @@ export async function createFunnelLead(input: FunnelLeadInput): Promise<FunnelLe
     notes: dealNotes,
     ...metaCols,
   })
-
-  // 3) Tarea de coordinador (broadcast a coordinadores activos)
-  await createTaskForRole('coordinador', {
-    type: 'update_contact',
-    title: `${map.placeholderLabel}: ${name}`,
-    description: `Lead capturado desde la landing de ${input.funnel === 'clase' ? 'Clase Gratuita' : 'Tasación Directa'}. Completar datos.`,
-    deal_id: dealId,
-    contact_id: contactId,
-  })
-
-  // 4) Notificación con escalación (rama correcta según funnel).
-  //    Tasación = SOLICITUD recién entrada (no hay fecha ni asesor todavía) →
-  //    notifyAppraisalRequest. El email de "Tasación agendada" (notifyDealCreated)
-  //    es exclusivo de la coordinación manual desde /api/deals.
-  await notifyWithEscalation(
-    () => (map.notify === 'class' ? notifyClassRegistration({ dealId }) : notifyAppraisalRequest({ dealId })),
-    { failedNotificationType: map.notify === 'class' ? 'class_registration' : 'appraisal_request', entityType: 'deal', entityId: dealId },
-  )
-
-  // 5) Sync Mailchimp (best-effort: nunca rompe el alta del lead)
-  try {
-    const { syncDealToMailchimp } = await import('@/lib/integrations/mailchimp/sync-deal')
-    await syncDealToMailchimp(dealId)
-  } catch (err) {
-    console.warn('[mailchimp] funnel sync failed (ignored):', err instanceof Error ? err.message : err)
-  }
 
   return { contactId, dealId }
 }

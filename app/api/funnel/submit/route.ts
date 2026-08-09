@@ -2,14 +2,47 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { createClient } from '@supabase/supabase-js'
-import { createFunnelLead } from '@/lib/funnel/create-funnel-lead'
+import { crearContactoYDeal } from '@/lib/funnel/create-funnel-lead'
+import { construirTrabajos } from '@/lib/funnel/jobs-logic'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+/**
+ * POST /api/funnel/submit — la conversión de las dos landings pagas.
+ *
+ * ESTA RESPUESTA AFIRMA SOLO DOS COSAS: "te registramos" y "no sos duplicado".
+ * Para eso alcanzan 5 viajes, TODOS a Postgres y NINGUNO a un tercero:
+ *
+ *   1. reservar        → rate-limit + dedup + alta de la fila, atómico   1 viaje
+ *   2. buscar/crear contacto                                          1-2 viajes
+ *   3. crear deal                                                        1 viaje
+ *   4. cerrar la reserva y encolar los 5 avisos                          1 viaje
+ *   5. responder
+ *
+ * POR QUÉ. Antes esto encadenaba 25 idas y vueltas esperadas una tras otra,
+ * incluidas Resend, Mailchimp y Meta. El 2026-08-08 el POST a Resend colgó
+ * 34,47 s, el request llegó a ~38 s y el gateway devolvió una página HTML de
+ * error 504: la persona vio "algo salió mal" y se fue creyendo que no se había
+ * registrado, aunque su lead ya estaba en el CRM. Además nunca llegó a la
+ * página de gracias, así que la conversión no se le reportó a Meta — y los
+ * adsets optimizan por CompleteRegistration.
+ *
+ * REGLA DURA: acá no entra ninguna llamada a un tercero. Nunca. Si hace falta un
+ * aviso nuevo, es un `kind` nuevo en `funnel_lead_jobs`.
+ */
+
 const RATE_WINDOW_MS = 60_000
 const RATE_MAX = 5
 const DEDUP_WINDOW_MS = 5 * 60_000
+
+/**
+ * Cuánto puede frenar duplicados una reserva que todavía no terminó. Es un techo
+ * generoso para lo que tarda el alta (contacto + deal, ~0,5 s) y a la vez corto:
+ * si el proceso muere entre la reserva y el alta, la persona puede volver a
+ * intentar enseguida en vez de comerse un "ya estás registrado" falso por 5 min.
+ */
+const EN_VUELO_MS = 60_000
 
 const Schema = z
   .object({
@@ -44,10 +77,9 @@ const Schema = z
   })
   .refine((d) => !!(d.email || d.phone), { message: 'Se requiere email o teléfono.' })
 
-// Cliente admin sin tipar (igual que lib/supabase/deals.ts y tasks.ts y
-// lib/funnel/create-funnel-lead.ts): el tipo generado `Database` está incompleto
-// (no incluye `funnel_lead_submissions`), así que tiparlo rompería el `.from(...)`.
-// Seguimos la convención del repo.
+// Cliente admin sin tipar (igual que lib/supabase/deals.ts y tasks.ts): el tipo
+// generado `Database` está incompleto (no incluye `funnel_lead_submissions`),
+// así que tiparlo rompería el `.from(...)`. Seguimos la convención del repo.
 function admin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -89,39 +121,58 @@ export async function POST(req: NextRequest) {
   const ipHash = hashIp(ip)
   const supabase = admin()
 
-  // Rate-limit por IP (DB, sobrevive serverless)
-  const rateSince = new Date(Date.now() - RATE_WINDOW_MS).toISOString()
-  const { count: ipCount } = await supabase
-    .from('funnel_lead_submissions')
-    .select('id', { count: 'exact', head: true })
-    .eq('ip_hash', ipHash)
-    .gte('created_at', rateSince)
-  if ((ipCount ?? 0) >= RATE_MAX) {
+  // --- 1) Reserva ATÓMICA: rate-limit por IP + dedup por email/teléfono + alta
+  // de la fila del envío, todo en una sola operación serializada en Postgres.
+  //
+  // La comprobación NO puede hacerse acá con dos consultas: dos POST simultáneos
+  // del mismo teléfono no ven la fila todavía sin confirmar del otro, los dos
+  // creen que no hay duplicado y crean DOS deals. Por eso la decisión entera
+  // vive en `reservar_envio_embudo` (ver la migración 20260808000001).
+  const { data: reserva, error: errorReserva } = await supabase.rpc('reservar_envio_embudo', {
+    p_funnel: d.funnel,
+    p_ip_hash: ipHash,
+    p_email: d.email ?? null,
+    p_phone: d.phone ?? null,
+    p_event_id: d.eventId ?? null,
+    p_rate_max: RATE_MAX,
+    p_rate_window_seconds: RATE_WINDOW_MS / 1000,
+    p_dedup_window_seconds: DEDUP_WINDOW_MS / 1000,
+    p_inflight_seconds: EN_VUELO_MS / 1000,
+  })
+  if (errorReserva) {
+    console.error('[funnel/submit] reservar_envio_embudo falló', errorReserva)
+    return NextResponse.json({ error: 'No pudimos procesar tu envío. Probá de nuevo.' }, { status: 500 })
+  }
+
+  const fila = (Array.isArray(reserva) ? reserva[0] : reserva) as
+    | { resultado?: string; submission_id?: string | null; contact_id?: string | null }
+    | null
+    | undefined
+
+  if (fila?.resultado === 'rate_limited') {
     return NextResponse.json({ error: 'Demasiados envíos. Probá de nuevo en un minuto.' }, { status: 429 })
   }
-
-  // Dedup por email/phone (5 min) → fingir éxito (no crear deal duplicado)
-  const dedupSince = new Date(Date.now() - DEDUP_WINDOW_MS).toISOString()
-  for (const [col, val] of [['email', d.email], ['phone', d.phone]] as const) {
-    if (!val) continue
-    const { data: dup } = await supabase
-      .from('funnel_lead_submissions')
-      .select('contact_id')
-      .eq(col, val)
-      .gte('created_at', dedupSince)
-      .order('created_at', { ascending: false })
-      .limit(1)
-    if (dup && dup.length > 0) {
-      // Ya está registrado → devolvemos su contactId para marcar 'registrado' en el heatmap.
-      const cid = (dup[0] as { contact_id?: string | null }).contact_id ?? null
-      return NextResponse.json({ ok: true, deduplicated: true, contactId: cid, redirect: redirectFor(d.funnel) })
-    }
+  if (fila?.resultado === 'duplicado') {
+    // Ya está registrado → devolvemos su contactId para marcar 'registrado' en
+    // el mapa de calor. (Si el duplicado es un envío que todavía está en vuelo,
+    // el contactId viene null: la fila existe pero el contacto aún no.)
+    return NextResponse.json({
+      ok: true,
+      deduplicated: true,
+      contactId: fila.contact_id ?? null,
+      redirect: redirectFor(d.funnel),
+    })
   }
+  if (fila?.resultado !== 'reservado' || !fila.submission_id) {
+    console.error('[funnel/submit] respuesta inesperada de reservar_envio_embudo', reserva)
+    return NextResponse.json({ error: 'No pudimos procesar tu envío. Probá de nuevo.' }, { status: 500 })
+  }
+  const submissionId = fila.submission_id
 
-  // Crear el lead (contacto + deal + tarea + notificación)
+  // --- 2 y 3) Contacto + deal. Es TODO lo que se crea mientras la persona espera.
   let result: { contactId: string; dealId: string }
   try {
-    result = await createFunnelLead({
+    result = await crearContactoYDeal({
       funnel: d.funnel,
       name: d.name,
       email: d.email ?? null,
@@ -132,73 +183,67 @@ export async function POST(req: NextRequest) {
       attribution: d.attribution ?? null,
     })
   } catch (e) {
-    console.error('[funnel/submit] createFunnelLead failed', e)
+    console.error('[funnel/submit] crearContactoYDeal falló', e)
+    // Soltar la reserva: si queda, el reintento de la persona rebota como
+    // "duplicado" y se va a la página de gracias sin haberse registrado nunca.
+    try {
+      await supabase.from('funnel_lead_submissions').delete().eq('id', submissionId)
+    } catch (e2) {
+      console.warn('[funnel/submit] no se pudo soltar la reserva', e2)
+    }
     return NextResponse.json({ error: 'No pudimos procesar tu envío. Probá de nuevo.' }, { status: 500 })
   }
 
-  // Stitching: vincular la sesión anónima (analítica de video) al contacto + back-fill.
-  if (d.anonId) {
-    try {
-      await supabase.rpc('link_anon_to_contact', { p_anon_id: d.anonId, p_contact_id: result.contactId })
-    } catch (e) {
-      console.warn('[funnel/submit] link_anon_to_contact failed', e)
-    }
-  }
-
-  // Atribución de campaña → columnas meta_* del deal: la aplica `createFunnelLead`
-  // en el MISMO insert del deal (antes de notificar), no acá. Antes este UPDATE
-  // corría DESPUÉS de que `createFunnelLead` ya había notificado (esperaba su
-  // propio await), así que el email de "Nueva solicitud de tasación" siempre
-  // mostraba la fila "Campaña" vacía — el dato llegaba tarde.
-
-  // Log del submission (rate-limit/dedup futuros + event_id para Fase 3)
-  await supabase.from('funnel_lead_submissions').insert({
+  // --- 4) Cerrar la reserva y encolar los cinco avisos, en un solo viaje.
+  // AMBOS embudos disparan CompleteRegistration: las campañas Meta optimizan por
+  // COMPLETE_REGISTRATION (promoted_object de los adsets activos). Cambiarlo
+  // desalinearía el conteo de resultados en Ads Manager — decisión 2026-07-17.
+  const trabajos = construirTrabajos({
     funnel: d.funnel,
-    ip_hash: ipHash,
+    contactId: result.contactId,
+    dealId: result.dealId,
+    nombre: d.name,
     email: d.email ?? null,
     phone: d.phone ?? null,
-    contact_id: result.contactId,
-    deal_id: result.dealId,
-    event_id: d.eventId ?? null,
+    propertyLocation: d.propertyLocation ?? null,
+    anonId: d.anonId ?? null,
+    eventId: d.eventId ?? null,
+    eventSourceUrl:
+      d.eventSourceUrl ??
+      `${process.env.NEXT_PUBLIC_FUNNEL_PUBLIC_URL ?? 'https://inmobiliariadiegoferreyra.com'}/${d.funnel === 'clase' ? 'vsl-clase-propietarios' : 'tasacion-directa'}`,
+    // La hora REAL de la conversión viaja con el trabajo: el evento se manda
+    // después y sin esto Meta registraría la hora del worker.
+    eventTimeUnixSeconds: Math.floor(Date.now() / 1000),
+    fbp: d.fbp ?? null,
+    fbc: d.fbc ?? null,
+    ip: ip === 'unknown' ? null : ip,
+    userAgent: req.headers.get('user-agent'),
   })
 
-  // --- CAPI (Fase 3): conversión server-side con el MISMO event_id que el Pixel ---
-  // AMBOS embudos disparan CompleteRegistration: las campañas Meta optimizan por
-  // COMPLETE_REGISTRATION (promoted_object de los 4 adsets activos). Cambiar esto
-  // desalinearía el conteo de resultados en Ads Manager — decisión 2026-07-17.
-  const eventName = 'CompleteRegistration'
-  const contentName = d.funnel === 'clase' ? 'Clase Gratuita' : 'Tasación Directa'
-  if (d.eventId) {
-    const [firstName, ...rest] = d.name.trim().split(/\s+/)
-    const userAgent = req.headers.get('user-agent')
-    try {
-      const { sendCapiEvent } = await import('@/lib/marketing/meta-capi')
-      const capi = await sendCapiEvent({
-        eventName,
-        eventId: d.eventId,
-        eventSourceUrl:
-          d.eventSourceUrl ??
-          `${process.env.NEXT_PUBLIC_FUNNEL_PUBLIC_URL ?? 'https://inmobiliariadiegoferreyra.com'}/${d.funnel === 'clase' ? 'vsl-clase-propietarios' : 'tasacion-directa'}`,
-        userData: {
-          email: d.email ?? null,
-          phone: d.phone ?? null,
-          firstName: firstName ?? null,
-          lastName: rest.join(' ') || null,
-          city: d.funnel === 'tasacion' ? (d.propertyLocation ?? null) : null,
-          countryCode: 'ar',
-          externalId: result.contactId, // alto valor de match (hasheado en meta-capi)
-          fbp: d.fbp ?? null,
-          fbc: d.fbc ?? null,
-          clientIpAddress: ip === 'unknown' ? null : ip,
-          clientUserAgent: userAgent,
-        },
-        customData: { contentName },
-        testEventCode: process.env.META_TEST_EVENT_CODE || undefined,
-      })
-      console.log('[funnel/submit capi]', { ok: capi.ok, received: capi.eventsReceived, error: capi.error, fbtrace: capi.fbtraceId, hasTestCode: !!process.env.META_TEST_EVENT_CODE, event: eventName })
-    } catch (e) {
-      console.warn('[funnel/submit capi] threw', e)
-    }
+  const cerrar = () =>
+    supabase.rpc('completar_envio_embudo', {
+      p_submission_id: submissionId,
+      p_contact_id: result.contactId,
+      p_deal_id: result.dealId,
+      p_trabajos: trabajos,
+    })
+
+  let { error: errorCierre } = await cerrar()
+  if (errorCierre) {
+    // Un solo reintento: la llamada es idempotente (UPDATE + ON CONFLICT DO
+    // NOTHING), así que repetirla no duplica avisos. Es la misma base que acaba
+    // de aceptar tres escrituras, un fallo acá es casi siempre un hipo de red.
+    ;({ error: errorCierre } = await cerrar())
+  }
+  if (errorCierre) {
+    // El lead YA está en el CRM y la persona SÍ se registró: responder 500 la
+    // haría creer lo contrario y reenviar. Se responde ok y queda el grito en
+    // los logs — el envío queda en 'reserved' (no cuenta como conversión) y
+    // nadie recibe los avisos de ESTE lead.
+    console.error(
+      '[funnel/submit] NO SE PUDIERON ENCOLAR LOS AVISOS — lead sin notificar',
+      { submissionId, dealId: result.dealId, contactId: result.contactId, error: errorCierre.message },
+    )
   }
 
   return NextResponse.json({ ok: true, contactId: result.contactId, redirect: redirectFor(d.funnel) })

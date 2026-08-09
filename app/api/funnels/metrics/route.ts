@@ -45,6 +45,14 @@ async function countByDay(
   filterValue: string,
   from: string,
   to: string,
+  /**
+   * Filtro extra opcional. `funnel_lead_submissions` ahora arranca la fila en
+   * 'reserved' (la reserva atómica que resuelve rate-limit y dedup antes de
+   * crear nada) y recién pasa a 'complete' cuando el lead existe en el CRM. Una
+   * reserva abandonada NO es una conversión: si no se filtra, un envío que se
+   * cayó a mitad infla la tasa de conversión de una landing paga.
+   */
+  extraEq?: { column: string; value: string },
 ): Promise<{ total: number; byDay: Map<string, number> }> {
   const byDay = new Map<string, number>()
   let total = 0
@@ -58,10 +66,12 @@ async function countByDay(
   const PAGE = 1000
   let offset = 0
   for (;;) {
-    const { data, error } = await supabase
+    let q = supabase
       .from(table)
       .select(tsColumn)
       .eq(filterColumn, filterValue)
+    if (extraEq) q = q.eq(extraEq.column, extraEq.value)
+    const { data, error } = await q
       .gte(tsColumn, startIso)
       .lt(tsColumn, endIso)
       .order(tsColumn, { ascending: true })
@@ -185,7 +195,10 @@ export async function GET(req: NextRequest) {
       FUNNELS.map(async (f) => {
         const [visitsAgg, convAgg] = await Promise.all([
           countByDay(supabase, 'landing_page_visits', 'visited_at', 'funnel_type', f.visitFunnelType, from, to),
-          countByDay(supabase, 'funnel_lead_submissions', 'created_at', 'funnel', f.submissionFunnel, from, to),
+          countByDay(supabase, 'funnel_lead_submissions', 'created_at', 'funnel', f.submissionFunnel, from, to, {
+            column: 'status',
+            value: 'complete',
+          }),
         ])
 
         const byDay: ByDayRow[] = days.map((day) => ({
