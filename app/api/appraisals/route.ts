@@ -5,6 +5,7 @@ import { getUser } from '@/lib/auth/get-user'
 import { insertAppraisalWithComparables } from '@/lib/supabase/appraisals-write'
 import type { SaveAppraisalInput } from '@/lib/supabase/appraisals'
 import { currentPeriod } from '@/lib/market-data/period'
+import { inicioDelDiaArgentina, finDelDiaArgentina } from '@/lib/filters/rango-fechas'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -41,8 +42,9 @@ export async function GET(request: NextRequest) {
       )
       .order('created_at', { ascending: false })
 
-    if (from) query = query.gte('created_at', from + 'T00:00:00Z')
-    if (to) query = query.lte('created_at', to + 'T23:59:59Z')
+    // Día ARGENTINO, no UTC — ver lib/filters/rango-fechas.ts.
+    if (from) query = query.gte('created_at', inicioDelDiaArgentina(from))
+    if (to) query = query.lte('created_at', finDelDiaArgentina(to))
 
     // El asesor SOLO ve sus tasaciones: las que creó (user_id) O las que tiene asignadas
     // (assigned_to). Antes filtraba solo por assigned_to → si la tasación no se asignaba

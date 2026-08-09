@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { inicioDelDiaArgentina, finDelDiaArgentina } from '@/lib/filters/rango-fechas'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -24,8 +25,9 @@ export async function getContacts(filters?: { assigned_to?: string; origin?: str
   let query = getAdmin().from('contacts').select('*').order('created_at', { ascending: false })
   if (filters?.assigned_to) query = query.eq('assigned_to', filters.assigned_to)
   if (filters?.origin) query = query.eq('origin', filters.origin)
-  if (filters?.from) query = query.gte('created_at', filters.from + 'T00:00:00Z')
-  if (filters?.to) query = query.lte('created_at', filters.to + 'T23:59:59Z')
+  // Día ARGENTINO, no UTC — ver lib/filters/rango-fechas.ts.
+  if (filters?.from) query = query.gte('created_at', inicioDelDiaArgentina(filters.from))
+  if (filters?.to) query = query.lte('created_at', finDelDiaArgentina(filters.to))
   const { data, error } = await query.limit(200)
   if (error) throw error
   return data || []

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { inicioDelDiaArgentina, finDelDiaArgentina } from '@/lib/filters/rango-fechas'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -131,8 +132,9 @@ export async function getDeals(filters?: {
     else if (filters?.stage) query = query.eq('stage', filters.stage)
     if (filters?.origin) query = query.eq('origin', filters.origin)
     if (filters?.assigned_to) query = query.eq('assigned_to', filters.assigned_to)
-    if (filters?.from) query = query.gte('created_at', filters.from + 'T00:00:00Z')
-    if (filters?.to) query = query.lte('created_at', filters.to + 'T23:59:59Z')
+    // Día ARGENTINO, no UTC — ver lib/filters/rango-fechas.ts.
+    if (filters?.from) query = query.gte('created_at', inicioDelDiaArgentina(filters.from))
+    if (filters?.to) query = query.lte('created_at', finDelDiaArgentina(filters.to))
     return query as T
   }
 
@@ -160,8 +162,10 @@ export async function getDeals(filters?: {
   let cq = countQuery
   if (filters?.origin) cq = cq.eq('origin', filters.origin)
   if (filters?.assigned_to) cq = cq.eq('assigned_to', filters.assigned_to)
-  if (filters?.from) cq = cq.gte('created_at', filters.from + 'T00:00:00Z')
-  if (filters?.to) cq = cq.lte('created_at', filters.to + 'T23:59:59Z')
+  // Mismo corte que `applyFilters`: si los contadores de las tarjetas usaran
+  // otro criterio de "día", no cuadrarían con el listado que tienen al lado.
+  if (filters?.from) cq = cq.gte('created_at', inicioDelDiaArgentina(filters.from))
+  if (filters?.to) cq = cq.lte('created_at', finDelDiaArgentina(filters.to))
   const { data: stageRows, error: stageErr } = await cq
   if (stageErr) throw stageErr
 

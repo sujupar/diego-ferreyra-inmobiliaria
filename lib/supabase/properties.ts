@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { inicioDelDiaArgentina, finDelDiaArgentina } from '@/lib/filters/rango-fechas'
 
 /**
  * Fire N8A (congratulations asesor) + N8B (captación admins) when a property
@@ -73,8 +74,11 @@ export async function getProperties(filters?: { status?: string; origin?: string
 
   if (filters?.status) query = query.eq('status', filters.status)
   if (filters?.origin) query = query.eq('origin', filters.origin)
-  if (filters?.from) query = query.gte('created_at', filters.from + 'T00:00:00Z')
-  if (filters?.to) query = query.lte('created_at', filters.to + 'T23:59:59Z')
+  // El rango llega como fecha de calendario y se abre como día ARGENTINO
+  // (ver lib/filters/rango-fechas.ts). Con 'T00:00:00Z' pedir "5 de agosto"
+  // traía desde las 21:00 del 4 hasta las 20:59 del 5, hora de acá.
+  if (filters?.from) query = query.gte('created_at', inicioDelDiaArgentina(filters.from))
+  if (filters?.to) query = query.lte('created_at', finDelDiaArgentina(filters.to))
   if (filters?.assigned_to) query = query.eq('assigned_to', filters.assigned_to)
 
   const { data, error } = await query.limit(200)
@@ -157,8 +161,11 @@ export async function getPropertiesListPage(
 
   if (filters.status) listQuery = listQuery.eq('status', filters.status)
   if (filters.origin) listQuery = listQuery.eq('origin', filters.origin)
-  if (filters.from) listQuery = listQuery.gte('created_at', filters.from + 'T00:00:00Z')
-  if (filters.to) listQuery = listQuery.lte('created_at', filters.to + 'T23:59:59Z')
+  // Día ARGENTINO en las dos puntas — y tiene que ser EXACTAMENTE el mismo
+  // corte que el de `flagsQuery` de abajo, o las dos consultas devolverían
+  // conjuntos distintos para el mismo offset y el merge por id quedaría cojo.
+  if (filters.from) listQuery = listQuery.gte('created_at', inicioDelDiaArgentina(filters.from))
+  if (filters.to) listQuery = listQuery.lte('created_at', finDelDiaArgentina(filters.to))
   if (filters.assigned_to) listQuery = listQuery.eq('assigned_to', filters.assigned_to)
 
   let flagsQuery = supabase
@@ -169,8 +176,8 @@ export async function getPropertiesListPage(
 
   if (filters.status) flagsQuery = flagsQuery.eq('status', filters.status)
   if (filters.origin) flagsQuery = flagsQuery.eq('origin', filters.origin)
-  if (filters.from) flagsQuery = flagsQuery.gte('created_at', filters.from + 'T00:00:00Z')
-  if (filters.to) flagsQuery = flagsQuery.lte('created_at', filters.to + 'T23:59:59Z')
+  if (filters.from) flagsQuery = flagsQuery.gte('created_at', inicioDelDiaArgentina(filters.from))
+  if (filters.to) flagsQuery = flagsQuery.lte('created_at', finDelDiaArgentina(filters.to))
   if (filters.assigned_to) flagsQuery = flagsQuery.eq('assigned_to', filters.assigned_to)
 
   const [{ data, error, count }, { data: flags, error: flagsError }] = await Promise.all([
