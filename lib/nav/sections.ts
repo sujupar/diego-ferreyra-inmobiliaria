@@ -189,10 +189,54 @@ export function activeHrefAmong(hrefs: string[], pathname: string): string | nul
 }
 
 /**
- * Qué mostrar en la barra superior para una ruta. Prefiere la coincidencia exacta;
- * si no hay, gana el prefijo MÁS LARGO — así `/properties/review` no se lo come
- * `/properties`, y `/properties/abc-123` (ficha de propiedad, que no está en el
- * menú) cae razonablemente en "Propiedades · Listado".
+ * Rutas fuera del menú (no aparecen en `getNavSections` de ningún rol) que
+ * igual merecen un título propio en vez de caer en el nombre de la empresa.
+ * ÚNICO lugar donde se define esto — si mañana aparece otra ruta huérfana
+ * (p. ej. otro `/algo/[id]` sin entrada de menú), se agrega ACÁ, no con un
+ * `if (pathname.startsWith(...))` suelto en otro archivo.
+ *
+ * `prefix` matchea exacto o como prefijo de segmento (mismo criterio que los
+ * ítems del menú). Nunca compite con el menú: solo se consulta cuando NINGÚN
+ * ítem matcheó ni exacto ni por prefijo.
+ */
+const EXTRA_TITLES: { prefix: string; title: string }[] = [
+  // /mi-perfil: accesible para todos los roles desde el menú de usuario, pero
+  // no vive en `getNavSections` (no es parte de la navegación principal).
+  { prefix: '/mi-perfil', title: 'Mi perfil' },
+  // /pipeline/[id]: ficha de UN deal del CRM. Se llega desde /crm, /tasks y la
+  // ficha de contacto — nunca desde un ítem de menú con ese href (el único
+  // href que empieza con /pipeline en el menú es /pipeline/new, que matchea
+  // antes por ser exacto). "CRM" es honesto: es la misma área que el ítem CRM.
+  { prefix: '/pipeline', title: 'CRM' },
+  // /scheduled-appraisals/[id]: una tasación agendada pendiente de captar,
+  // enlazada desde Inicio. No hay listado propio en el menú; pertenece al
+  // área de Tasaciones (mismo nombre que usa el desplegable Tasaciones).
+  { prefix: '/scheduled-appraisals', title: 'Tasaciones' },
+]
+
+/**
+ * Qué mostrar en la barra superior para una ruta. Prefiere la coincidencia
+ * exacta con un ítem del menú.
+ *
+ * Si no hay exacta, gana el prefijo MÁS LARGO entre los ítems — pero el título
+ * que se muestra para un prefijo depende de dónde vive el ítem:
+ *
+ * - Ítem SUELTO (sin desplegable, ej. CRM, Contactos, Redes sociales): su
+ *   etiqueta ya nombra TODA el área, no una pantalla específica dentro de
+ *   ella — mostrarla para cualquier subruta (`/contacts/<id>`) es honesto.
+ * - Ítem de un DESPLEGABLE (ej. Propiedades → Listado/Nueva/Revisión legal):
+ *   los hermanos son pantallas DISTINTAS entre sí. Afirmar el hermano
+ *   específico para una subruta que no es esa pantalla sería mentir —es
+ *   exactamente el bug de `/properties/<id>` mostrando "Propiedades · Listado"
+ *   cuando en realidad es la ficha de una propiedad, no el listado—. Por eso
+ *   una coincidencia por PREFIJO (no exacta) de un ítem de desplegable se
+ *   degrada al nombre del desplegable a secas (sin ítem específico, sin
+ *   `section` separada — ya es lo más específico que se puede afirmar sin
+ *   mentir).
+ *
+ * Si ningún ítem del menú matchea ni exacto ni por prefijo, se prueba
+ * `EXTRA_TITLES` (rutas huérfanas con título propio) antes de caer en el
+ * nombre de la empresa como último recurso.
  */
 export function titleForPath(
   groups: NavGroup[],
@@ -203,25 +247,37 @@ export function titleForPath(
   // se asigna dentro de una closure y tira "'mejor' is possibly null".
   const candidatos: { section: string | null; title: string; largo: number }[] = []
 
-  const considerar = (item: NavItem, section: string | null) => {
+  const considerar = (item: NavItem, section: string | null, desplegable: string | null) => {
     const exacto = pathname === item.href
     const prefijo = pathname.startsWith(item.href + '/')
     if (!exacto && !prefijo) return
-    candidatos.push({
-      section,
-      title: item.label,
-      largo: exacto ? Number.MAX_SAFE_INTEGER : item.href.length,
-    })
+    if (exacto) {
+      candidatos.push({ section, title: item.label, largo: Number.MAX_SAFE_INTEGER })
+      return
+    }
+    if (desplegable) {
+      // Prefijo dentro de un desplegable: degradar al nombre del grupo (ver
+      // comentario de la función) — nunca al ítem hermano específico.
+      candidatos.push({ section: null, title: desplegable, largo: item.href.length })
+    } else {
+      candidatos.push({ section, title: item.label, largo: item.href.length })
+    }
   }
 
   for (const g of groups) {
     for (const e of g.entries) {
-      if (isCollapsible(e)) for (const i of e.items) considerar(i, e.label)
-      else considerar(e, null)
+      if (isCollapsible(e)) for (const i of e.items) considerar(i, e.label, e.label)
+      else considerar(e, null, null)
     }
   }
 
-  if (candidatos.length === 0) return { section: null, title: 'Diego Ferreyra Inmobiliaria' }
-  const mejor = candidatos.reduce((a, b) => (b.largo > a.largo ? b : a))
-  return { section: mejor.section, title: mejor.title }
+  if (candidatos.length > 0) {
+    const mejor = candidatos.reduce((a, b) => (b.largo > a.largo ? b : a))
+    return { section: mejor.section, title: mejor.title }
+  }
+
+  const extra = EXTRA_TITLES.find(e => pathname === e.prefix || pathname.startsWith(e.prefix + '/'))
+  if (extra) return { section: null, title: extra.title }
+
+  return { section: null, title: 'Diego Ferreyra Inmobiliaria' }
 }

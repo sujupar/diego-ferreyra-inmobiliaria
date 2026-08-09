@@ -120,20 +120,50 @@ describe('titleForPath', () => {
     expect(titleForPath(admin, '/properties/new')).toEqual({ section: 'Propiedades', title: 'Nueva' })
   })
 
-  it('una subruta cae en el prefijo más largo', () => {
-    expect(titleForPath(admin, '/properties/abc-123')).toEqual({ section: 'Propiedades', title: 'Listado' })
+  it('una subruta de un ítem de DESPLEGABLE no hereda el hermano específico — cae en el nombre del desplegable', () => {
+    // Antes: { section: 'Propiedades', title: 'Listado' } — la ficha de UNA
+    // propiedad (que no es el listado) se mostraba como si fuera el listado.
+    // Listado/Nueva/Revisión legal son pantallas DISTINTAS entre sí, así que
+    // afirmar "Listado" acá era mentir. Ahora se dice lo más específico que
+    // sigue siendo honesto: estás en Propiedades, pero no en ninguna de sus
+    // pantallas conocidas.
+    expect(titleForPath(admin, '/properties/abc-123')).toEqual({ section: null, title: 'Propiedades' })
+  })
+
+  it('un ítem suelto SÍ hereda su propia etiqueta en una subruta — su etiqueta ya nombra toda el área', () => {
+    // A diferencia de un desplegable, un ítem suelto (sin hermanos que sean
+    // pantallas distintas) es el único punto de entrada a esa área: su
+    // etiqueta describe el área completa, no una pantalla específica dentro
+    // de ella, así que sigue siendo honesta en la ficha de un contacto.
+    expect(titleForPath(admin, '/contacts/abc-123')).toEqual({ section: null, title: 'Contactos' })
   })
 
   it('un ítem suelto no tiene sección', () => {
     expect(titleForPath(admin, '/crm')).toEqual({ section: null, title: 'CRM' })
   })
 
-  it('una ruta desconocida cae en el nombre de la casa', () => {
-    expect(titleForPath(admin, '/mi-perfil')).toEqual({ section: null, title: 'Diego Ferreyra Inmobiliaria' })
+  it('una ruta huérfana con título propio en EXTRA_TITLES no cae en el nombre de la casa', () => {
+    // Antes: { section: null, title: 'Diego Ferreyra Inmobiliaria' } — /mi-perfil
+    // no está en ningún menú, así que cualquier subruta desconocida caía en el
+    // nombre de la empresa, un título sin relación con dónde está el usuario.
+    // Ahora tiene título propio (única fuente: EXTRA_TITLES en sections.ts).
+    expect(titleForPath(admin, '/mi-perfil')).toEqual({ section: null, title: 'Mi perfil' })
   })
 
-  it('/properties/review gana sobre /properties por ser el prefijo más largo', () => {
+  it('una ficha de deal (/pipeline/[id]) no está en el menú pero se declara honesta como CRM', () => {
+    expect(titleForPath(admin, '/pipeline/xyz-789')).toEqual({ section: null, title: 'CRM' })
+  })
+
+  it('una ruta realmente desconocida (sin match de menú ni de EXTRA_TITLES) sigue cayendo en el nombre de la casa', () => {
+    expect(titleForPath(admin, '/esto-no-existe')).toEqual({ section: null, title: 'Diego Ferreyra Inmobiliaria' })
+  })
+
+  it('/properties/review gana sobre /properties por ser el prefijo más largo (coincidencia exacta, no se degrada)', () => {
     expect(titleForPath(admin, '/properties/review')).toEqual({ section: 'Propiedades', title: 'Revisión legal' })
+  })
+
+  it('/appraisals/[id] (ficha de UNA tasación) cae en el nombre del desplegable, no en "Historial"', () => {
+    expect(titleForPath(admin, '/appraisals/abc-123')).toEqual({ section: null, title: 'Tasaciones' })
   })
 })
 
