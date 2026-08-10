@@ -38,6 +38,10 @@ function NewPropertyContent() {
     const [advisors, setAdvisors] = useState<Array<{ id: string; full_name: string }>>([])
     const [dealData, setDealData] = useState<{ contact_id?: string; appraisal_id?: string; assigned_to?: string; property_address?: string; contacts?: { full_name?: string }; profiles?: { full_name?: string } } | null>(null)
     const [prefillIds, setPrefillIds] = useState<PrefillState>({ appraisalId: null, contactId: null })
+    // Tres estados distinguibles para la precarga: cargando (`prefilling`),
+    // cargó (cartel azul) y NO se pudo (este aviso). Antes el fallo se veía
+    // igual que el éxito.
+    const [errorPrefill, setErrorPrefill] = useState<string | null>(null)
     const [form, setForm] = useState({
         address: '', neighborhood: '', city: 'CABA', property_type: 'departamento',
         operation_type: 'venta',
@@ -85,6 +89,11 @@ function NewPropertyContent() {
 
                 if (dealId) {
                     const r = await fetch(`/api/deals/${dealId}`)
+                    // Sin chequear `ok`, un 401/403/500 devuelve `{error:'…'}`
+                    // —JSON válido, sin `.data`— y el alta seguía de largo
+                    // creando la propiedad SIN contacto ni tasación, mientras el
+                    // deal igual se movía a 'captured'.
+                    if (!r.ok) throw new Error(`No se pudo leer el proceso (HTTP ${r.status})`)
                     const j = await r.json()
                     const deal = j.data
                     if (cancelled) return
@@ -100,10 +109,9 @@ function NewPropertyContent() {
                 if (!appraisalId && scheduledAppraisalId) {
                     // No deal ni appraisal directa — precargamos desde la tasación agendada.
                     const sr = await fetch(`/api/scheduled-appraisals/${scheduledAppraisalId}`)
-                    if (!sr.ok) {
-                        setPrefillIds({ appraisalId: null, contactId: null })
-                        return
-                    }
+                    // Chequeaba `ok` pero se iba en silencio: el formulario
+                    // quedaba vacío sin decir por qué.
+                    if (!sr.ok) throw new Error(`No se pudo leer la tasación agendada (HTTP ${sr.status})`)
                     const sj = await sr.json()
                     const scheduled = sj.data
                     if (cancelled || !scheduled) return
@@ -137,8 +145,15 @@ function NewPropertyContent() {
                 }
 
                 const ar = await fetch(`/api/appraisals/${appraisalId}`)
+                // `aj.data || aj` LAVABA el cuerpo de error: `{error:'…'}` es un
+                // objeto truthy, así que pasaba el guard de abajo, todos los
+                // campos quedaban `undefined` (formulario vacío) y sin embargo
+                // se encendía el cartel azul "Datos precargados desde la
+                // tasación". El sistema afirmaba haber precargado lo que no
+                // pudo leer. Espeja el `if (!sr.ok)` de la lectura de arriba.
+                if (!ar.ok) throw new Error(`No se pudo leer la tasación (HTTP ${ar.status})`)
                 const aj = await ar.json()
-                const appr = aj.data || aj
+                const appr = aj.data ?? null
                 if (cancelled || !appr) return
 
                 const f = (appr.property_features || {}) as Record<string, unknown>
@@ -168,6 +183,12 @@ function NewPropertyContent() {
                 })
             } catch (err) {
                 console.error('[properties/new] prefill error:', err)
+                if (cancelled) return
+                // Ni cartel azul ni vínculo a ciegas: el formulario queda vacío
+                // y lo DICE. Sin limpiar `prefillIds`, el `appraisal_id` de la
+                // URL viajaba igual en el POST.
+                setPrefillIds({ appraisalId: null, contactId: null })
+                setErrorPrefill(err instanceof Error ? err.message : 'No se pudieron traer los datos')
             } finally {
                 if (!cancelled) setPrefilling(false)
             }
@@ -334,11 +355,18 @@ function NewPropertyContent() {
                 </div>
             )}
 
-            {prefillIds.appraisalId && (
+            {errorPrefill ? (
+                <div role="alert" className="bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 rounded-xl px-4 py-3 text-sm">
+                    <p className="font-medium">No pudimos traer los datos de la tasación.</p>
+                    <p className="text-muted-foreground mt-0.5">
+                        {errorPrefill}. Cargá los datos a mano, o volvé a entrar desde la tasación para reintentar.
+                    </p>
+                </div>
+            ) : prefillIds.appraisalId ? (
                 <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-3 text-sm">
                     Datos precargados desde la tasación. Revisalos antes de captar.
                 </div>
-            )}
+            ) : null}
 
             <form onSubmit={handleSubmit} className="space-y-6">
                 <Card>

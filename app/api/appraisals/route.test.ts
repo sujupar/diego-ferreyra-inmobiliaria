@@ -9,7 +9,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { registro } = vi.hoisted(() => ({
-  registro: { llamadas: [] as Array<{ metodo: string; columna: string; valor: unknown }> },
+  registro: {
+    llamadas: [] as Array<{ metodo: string; columna: string; valor: unknown }>,
+    rol: 'admin' as string,
+  },
 }))
 
 vi.mock('@supabase/supabase-js', () => {
@@ -21,7 +24,7 @@ vi.mock('@supabase/supabase-js', () => {
         return (ok: any, mal: any) => Promise.resolve(resultado).then(ok, mal)
       }
       return (...args: any[]) => {
-        if (prop === 'gte' || prop === 'lte') {
+        if (prop === 'gte' || prop === 'lte' || prop === 'order') {
           registro.llamadas.push({ metodo: prop, columna: args[0], valor: args[1] })
         }
         return builder
@@ -32,7 +35,7 @@ vi.mock('@supabase/supabase-js', () => {
 })
 
 vi.mock('@/lib/auth/get-user', () => ({
-  getUser: vi.fn(async () => ({ id: 'yo-1', profile: { id: 'yo-1', role: 'admin' } })),
+  getUser: vi.fn(async () => ({ id: 'yo-1', profile: { id: 'yo-1', role: registro.rol } })),
 }))
 vi.mock('@/lib/auth/require-role', () => ({ requireAuth: vi.fn() }))
 vi.mock('@/lib/supabase/appraisals-write', () => ({ insertAppraisalWithComparables: vi.fn() }))
@@ -45,7 +48,13 @@ function pedir(qs: string) {
 
 beforeEach(() => {
   registro.llamadas = []
+  registro.rol = 'admin'
 })
+
+/** El primer `.order(...)` es el orden principal; el segundo es el desempate. */
+function ordenPrincipal() {
+  return registro.llamadas.filter(l => l.metodo === 'order')[0]
+}
 
 describe('GET /api/appraisals — rango de fechas', () => {
   it('un solo día cubre el día argentino entero, no el día UTC', async () => {
@@ -76,6 +85,71 @@ describe('GET /api/appraisals — rango de fechas', () => {
 
   it('sin rango no agrega ningún límite de fecha', async () => {
     await pedir('')
+    expect(registro.llamadas.filter(l => l.metodo === 'gte' || l.metodo === 'lte')).toHaveLength(0)
+  })
+})
+
+/**
+ * D1 (crítico): el abogado no tiene ni un permiso `appraisal.*` en roles.ts y
+ * sin embargo esta ruta le devolvía el listado COMPLETO de la inmobiliaria —
+ * el mismo listado desde el que después borraba.
+ */
+describe('GET /api/appraisals — quién puede pedir el listado', () => {
+  it('el abogado recibe 403, no el listado entero', async () => {
+    registro.rol = 'abogado'
+    const res = await pedir('')
+    expect(res.status).toBe(403)
+    // Y no se llegó a armar ninguna consulta.
     expect(registro.llamadas).toHaveLength(0)
+  })
+
+  it('un rol desconocido tampoco (falla cerrado)', async () => {
+    registro.rol = 'rol_que_no_existe'
+    expect((await pedir('')).status).toBe(403)
+  })
+
+  it('admin, coordinador y asesor sí', async () => {
+    for (const rol of ['admin', 'dueno', 'coordinador', 'asesor']) {
+      registro.rol = rol
+      expect((await pedir('')).status).toBe(200)
+    }
+  })
+})
+
+/**
+ * D29: la pantalla pagina de a 12. Ordenar en memoria ordenaba esas 12 filas y
+ * dejaba la flecha del encabezado puesta como si el orden fuera global — "la
+ * más cara" era la más cara de la página, no del sistema. El orden ahora se
+ * resuelve acá.
+ */
+describe('GET /api/appraisals — orden', () => {
+  it('sin parámetros ordena por fecha, las más nuevas primero', async () => {
+    await pedir('')
+    expect(ordenPrincipal()).toMatchObject({ columna: 'created_at', valor: { ascending: false } })
+  })
+
+  it('ordena por la columna pedida, en la dirección pedida', async () => {
+    await pedir('?sort=publication_price&dir=asc')
+    expect(ordenPrincipal()).toMatchObject({ columna: 'publication_price', valor: { ascending: true } })
+  })
+
+  it('desc es la dirección por defecto de una columna válida', async () => {
+    await pedir('?sort=comparable_count')
+    expect(ordenPrincipal()).toMatchObject({ columna: 'comparable_count', valor: { ascending: false } })
+  })
+
+  it('una columna que no está en la lista blanca se ignora y cae al orden por defecto', async () => {
+    // La clave llega del querystring y termina dentro de un `.order()`: sin
+    // lista blanca, cualquiera podría ordenar por una columna que la pantalla
+    // ni siquiera pide (o romper la query).
+    await pedir('?sort=user_id&dir=asc')
+    expect(ordenPrincipal()).toMatchObject({ columna: 'created_at', valor: { ascending: false } })
+  })
+
+  it('siempre hay un desempate estable, para que la paginación no repita ni saltee filas', async () => {
+    await pedir('?sort=publication_price&dir=desc')
+    const ordenes = registro.llamadas.filter(l => l.metodo === 'order')
+    expect(ordenes).toHaveLength(2)
+    expect(ordenes[1]).toMatchObject({ columna: 'id' })
   })
 })

@@ -30,28 +30,71 @@ interface QuestionnaireRow {
   responded_at: string
 }
 
+/**
+ * D30 — tres estados, no dos. Antes la pantalla solo distinguía "hay visita" de
+ * "no hay visita", y esta segunda se pintaba SIEMPRE como "Cargando…": una
+ * visita borrada, un id que no es UUID (500) o un corte de red dejaban la
+ * palabra "Cargando…" sobre fondo vacío, para siempre, sin mensaje ni salida
+ * (el botón "Volver a visitas" quedaba debajo del early-return).
+ */
+type EstadoCarga = 'cargando' | 'ok' | 'no-encontrada' | 'error'
+
 export default function VisitDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [visit, setVisit] = useState<PropertyVisitWithRelations | null>(null)
+  const [estado, setEstado] = useState<EstadoCarga>('cargando')
   const [completeOpen, setCompleteOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [questionnaires, setQuestionnaires] = useState<QuestionnaireRow[]>([])
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/visits/${id}`)
-    const json = await res.json()
-    setVisit(json.data)
-    const qr = await fetch(`/api/visits/${id}/questionnaire`)
-    if (qr.ok) {
-      const qj = await qr.json()
-      setQuestionnaires(Array.isArray(qj.data) ? qj.data : [])
-    } else {
+    // El render solo mira `estado` cuando NO hay visita, así que esto no
+    // parpadea en los recargados de `confirmVisit`/`onCompleted`; sirve para
+    // que el botón "Reintentar" del cartel de error muestre que está haciendo
+    // algo en vez de dejar el mismo error en pantalla.
+    setEstado('cargando')
+    try {
+      const res = await fetch(`/api/visits/${id}`)
+      // 404 es distinto de "se rompió": la visita no existe (link viejo, o la
+      // propiedad se borró y la cascada se la llevó). Reintentar no la trae.
+      if (res.status === 404) {
+        setEstado('no-encontrada')
+        return
+      }
+      // Sin este chequeo, un 401/500 devolvía JSON `{error}`, `json.data` era
+      // `undefined` y `setVisit(undefined)` volvía al mismo "Cargando…" eterno.
+      // OJO: hoy es REDUNDANTE con el `if (!json?.data)` de abajo — sacarlo no
+      // rompe ningún test, porque ninguna respuesta de error trae `data`. Se
+      // deja igual: nombra el status en el log (sin él, un 500 se investiga
+      // como "no devolvió la visita") y no hace depender el camino de error de
+      // la forma del cuerpo. Si algún día el guard de abajo se toca, este es
+      // el que sigue cubriendo el 500.
+      if (!res.ok) throw new Error(`GET /api/visits/${id} respondió ${res.status}`)
+      const json = await res.json()
+      if (!json?.data) throw new Error(`GET /api/visits/${id} no devolvió la visita`)
+      setVisit(json.data)
+      setEstado('ok')
+    } catch (err) {
+      // `res.json()` también lanza si el cuerpo no es JSON (el 504 con HTML del
+      // gateway). Antes eso dejaba la promesa rechazada sin catch: mismo
+      // "Cargando…" eterno, más un error mudo en consola.
+      console.error(err)
+      setEstado('error')
+      return
+    }
+    // El cuestionario es accesorio: que falle no puede tumbar la ficha.
+    try {
+      const qr = await fetch(`/api/visits/${id}/questionnaire`)
+      const qj = qr.ok ? await qr.json() : null
+      setQuestionnaires(Array.isArray(qj?.data) ? qj.data : [])
+    } catch (err) {
+      console.error(err)
       setQuestionnaires([])
     }
   }, [id])
 
   useEffect(() => {
-    load()
+    void load()
   }, [load])
 
   /**
@@ -82,7 +125,43 @@ export default function VisitDetailPage() {
     else toast.error('No se pudo enviar (¿endpoint todavía no creado?)')
   }
 
-  if (!visit) return <div className="p-6">Cargando…</div>
+  // Con la visita ya en pantalla, un recargado que falle NO la borra: se
+  // conserva lo que hay (el `console.error` queda, y las acciones avisan por
+  // su cuenta con un toast). El cartel de error es solo para cuando no hay nada
+  // que mostrar.
+  if (!visit) {
+    return (
+      <div className="container mx-auto py-6 space-y-4">
+        {/* El link de vuelta va ARRIBA del corte: antes vivía debajo y en el
+            camino de error no se dibujaba nunca. */}
+        <Button variant="ghost" asChild>
+          <Link href="/visits">← Volver a visitas</Link>
+        </Button>
+        {estado === 'cargando' ? (
+          <p className="p-6 text-muted-foreground">Cargando…</p>
+        ) : (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+              <h2 className="text-lg font-medium">
+                {estado === 'no-encontrada' ? 'No encontramos esta visita' : 'No pudimos cargar la visita'}
+              </h2>
+              <p className="max-w-md text-sm text-muted-foreground">
+                {estado === 'no-encontrada'
+                  ? 'Puede que se haya cancelado, o que la propiedad ya no esté en el sistema. Si llegaste desde un mail viejo, el link puede haber quedado sin destino.'
+                  : 'Puede ser un problema de conexión o un link mal formado. Probá de nuevo.'}
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button size="sm" onClick={() => void load()}>Reintentar</Button>
+                <Button size="sm" variant="outline" asChild>
+                  <Link href="/visits">Ver todas las visitas</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="container mx-auto py-6 space-y-4">

@@ -174,10 +174,13 @@ export function nextStep(i: NextStepInput): NextStep | null {
   const legal = estadoLegal({ legalStatus: i.legalStatus, legalSubmittedAt: i.legalSubmittedAt })
 
   if (i.status === 'descartada') {
+    // El pie perdió "Restaurar a borrador" cuando descartar/restaurar se
+    // mudaron a la tarjeta "Estado de la propiedad" (9e9bb65), y este texto
+    // quedó mandando a un botón que ya no existe.
     return {
       id: 'descartada', tone: 'neutral', title: 'Propiedad descartada',
-      text: 'Quedó fuera del flujo activo. Podés restaurarla a borrador desde el pie de la página.',
-      action: null,
+      text: 'Quedó fuera del flujo activo. Para volver a trabajarla, marcala como Disponible en «Estado de la propiedad».',
+      action: isAbogado ? null : { kind: 'tab', tab: 'propiedad', label: 'Ver estado de la propiedad' },
     }
   }
 
@@ -242,6 +245,11 @@ export function nextStep(i: NextStepInput): NextStep | null {
   //
   // Pide `captada` porque el texto lo AFIRMA. Sobre una propiedad rechazada
   // (que llega hasta acá con fotos) estaría diciendo algo falso.
+  //
+  // OJO: este aviso es un ATAJO, no el camino. Como el bloque muestra un solo
+  // paso por vez, sobre una propiedad sin fotos gana el aviso de fotos y este
+  // no aparece — por eso el botón de enviar al abogado vive TAMBIÉN en la
+  // pestaña Documentación, donde no depende de quién gane (ver DocsTab).
   if (captada && legal === 'sin-enviar' && !isAbogado) {
     return i.documentsCount > 0
       ? {

@@ -37,6 +37,16 @@ const OPCIONES_ORIGEN = [
   ...Object.entries(ORIGIN_LABELS).map(([key, label]) => ({ value: key, label })),
 ]
 
+// Etapas previas a la asignación de asesor: las maneja SOLO el coordinador.
+// `roleFilteredDeals` (más abajo) borra en memoria todo deal en estas etapas
+// cuando el rol es asesor, y `stageCounts` las fuerza a 0 — o sea que para un
+// asesor filtrar por ellas devuelve SIEMPRE lista vacía. Constante de módulo
+// porque ahora la usan tres lugares que tienen que estar de acuerdo: la
+// grilla, el desplegable "Etapa" y la limpieza del filtro huérfano en la URL.
+const ETAPAS_PRE_ASIGNACION = ['clase_gratuita', 'solicitud']
+/** Identidad estable para el caso "este rol ve todas las etapas". */
+const SIN_ETAPAS_OCULTAS: string[] = []
+
 const FILTROS_DEFECTO = { etapa: '', origin: '', asesor: '', from: '', to: '' }
 
 // `asesor` NO entra acá: los ids de asesores son UUIDs dinámicos (vienen de
@@ -208,6 +218,20 @@ function CRMClient() {
     }
   }, [userInfo, router])
 
+  // D33: mismo tratamiento que `?asesor=` para las etapas que este rol no ve.
+  // Un `?etapa=solicitud` que llegue por deep link o por el historial queda
+  // huérfano: el desplegable ya no ofrece esa opción, así que `FilterBar` solo
+  // puede dibujarlo como ficha "valor no reconocido" con la clave cruda, sobre
+  // una lista que va a estar vacía siempre. Se limpia solo apenas se conoce el
+  // rol — `aplicar` es idempotente (no-op si ya está en default), así que esto
+  // no reentra en loop.
+  useEffect(() => {
+    if (esAsesor && ETAPAS_PRE_ASIGNACION.includes(filtros.etapa)) {
+      aplicarFiltros({ etapa: '' })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [esAsesor, filtros.etapa])
+
   // M3: un asesor no puede fijar `?asesor=` (el if/else de `buildParams` ya
   // lo ignora), pero si un deep link o el historial lo dejan puesto en la URL
   // queda huérfano: el desplegable "Asesor" no se renderiza para este rol, así
@@ -335,9 +359,12 @@ function CRMClient() {
 
   // Asesor role: hide stages pre-asignación (clase_gratuita, solicitud).
   // Esos los maneja exclusivamente el coordinador antes de asignar asesor.
-  const PRE_ASSIGNMENT_STAGES = ['clase_gratuita', 'solicitud']
+  // D33: la lista es ahora `ETAPAS_PRE_ASIGNACION` (constante de módulo) —
+  // este filtrado en memoria es la RAZÓN por la que esas etapas no pueden
+  // ofrecerse ni en la grilla ni en el desplegable.
+  const etapasOcultas = esAsesor ? ETAPAS_PRE_ASIGNACION : SIN_ETAPAS_OCULTAS
   const roleFilteredDeals = esAsesor
-    ? dealsWithCRM.filter(d => !PRE_ASSIGNMENT_STAGES.includes(d.crmStage))
+    ? dealsWithCRM.filter(d => !ETAPAS_PRE_ASIGNACION.includes(d.crmStage))
     : dealsWithCRM
 
   // Por defecto ocultamos deals tag='colega' (vienen importados de GHL).
@@ -366,7 +393,7 @@ function CRMClient() {
   }
   // For asesor: zero out pre-asignación stages
   if (esAsesor) {
-    for (const k of PRE_ASSIGNMENT_STAGES) stageCounts[k] = 0
+    for (const k of ETAPAS_PRE_ASIGNACION) stageCounts[k] = 0
   }
 
   // For asesor we approximate by using the loaded-slice filtered count (since we
@@ -415,6 +442,16 @@ function CRMClient() {
     { value: '', label: 'Todos' },
     ...advisors.map(a => ({ value: a.id, label: a.full_name })),
   ]
+
+  // D33: el desplegable no puede ofrecer etapas que este rol tiene prohibido
+  // ver — elegirlas devolvía "Sin procesos" siempre, mientras la grilla de
+  // arriba ni siquiera dibujaba esa ficha. Se deriva del MISMO criterio que
+  // la grilla. `OPCIONES_ETAPA` (y con él `PERMITIDOS`) queda completa a
+  // propósito: `permitidos` va al hook y tiene que ser constante de módulo;
+  // el filtro huérfano en la URL lo saca el efecto de más arriba.
+  const opcionesEtapa = etapasOcultas.length === 0
+    ? OPCIONES_ETAPA
+    : OPCIONES_ETAPA.filter(o => !etapasOcultas.includes(o.value))
 
   // M4: `esAsesor` es `false` mientras `userInfo` no resolvió (arranca en
   // `null`), así que para un asesor de verdad el desplegable "Asesor"
@@ -538,7 +575,7 @@ function CRMClient() {
       )}
 
       <StagePipeline
-        hideSolicitud={!!esAsesor}
+        etapasOcultas={etapasOcultas}
         stageCounts={stageCounts}
         activeKey={mostrado.etapa}
         onToggle={key => aplicarFiltros({ etapa: mostrado.etapa === key ? '' : key })}
@@ -548,7 +585,7 @@ function CRMClient() {
       <div className="space-y-3">
         <FilterBar
           selects={[
-            { key: 'etapa', label: 'Etapa', options: OPCIONES_ETAPA },
+            { key: 'etapa', label: 'Etapa', options: opcionesEtapa },
             { key: 'origin', label: 'Origen', options: OPCIONES_ORIGEN },
             ...(mostrarAsesor ? [{ key: 'asesor', label: 'Asesor', options: OPCIONES_ASESOR }] : []),
           ]}

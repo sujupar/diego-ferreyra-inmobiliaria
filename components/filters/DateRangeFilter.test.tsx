@@ -174,3 +174,54 @@ describe('DateRangeFilter', () => {
     expect(screen.getByRole('button', { name: 'Aplicar' })).toBeInTheDocument()
   })
 })
+
+describe('rango con UNA sola punta', () => {
+  // "Todo lo captado a partir del 1 de agosto" es un pedido normal y el resto
+  // del sistema ya lo soporta (la consulta aplica `from` y `to` con ifs
+  // independientes). Antes, cargar solo "Desde" y apretar "Aplicar" no hacía
+  // NADA: ni filtro, ni mensaje, ni el botón deshabilitado.
+  it('con solo "Desde" cargado, Aplicar filtra de verdad', async () => {
+    const onChange = vi.fn()
+    render(<DateRangeFilter onChange={onChange} value={{ from: '', to: '' }} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Custom' }))
+
+    const [desde] = screen.getAllByDisplayValue('') as HTMLInputElement[]
+    await userEvent.type(desde, '2026-08-01')
+    await userEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+
+    expect(onChange).toHaveBeenCalledWith({ from: '2026-08-01', to: '' })
+  })
+
+  it('con solo "Hasta" cargado también', async () => {
+    const onChange = vi.fn()
+    render(<DateRangeFilter onChange={onChange} value={{ from: '', to: '' }} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Custom' }))
+
+    const [, hasta] = screen.getAllByDisplayValue('') as HTMLInputElement[]
+    await userEvent.type(hasta, '2026-08-31')
+    await userEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+
+    expect(onChange).toHaveBeenCalledWith({ from: '', to: '2026-08-31' })
+  })
+
+  it('sin ninguna punta el botón se ve deshabilitado, no se traga el clic en silencio', async () => {
+    const onChange = vi.fn()
+    render(<DateRangeFilter onChange={onChange} value={{ from: '', to: '' }} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Custom' }))
+
+    const aplicar = screen.getByRole('button', { name: 'Aplicar' })
+    expect(aplicar).toBeDisabled()
+    await userEvent.click(aplicar)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('en cuanto se carga una punta, el botón se habilita', async () => {
+    render(<DateRangeFilter onChange={vi.fn()} value={{ from: '', to: '' }} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Custom' }))
+    expect(screen.getByRole('button', { name: 'Aplicar' })).toBeDisabled()
+
+    const [desde] = screen.getAllByDisplayValue('') as HTMLInputElement[]
+    await userEvent.type(desde, '2026-08-01')
+    expect(screen.getByRole('button', { name: 'Aplicar' })).toBeEnabled()
+  })
+})

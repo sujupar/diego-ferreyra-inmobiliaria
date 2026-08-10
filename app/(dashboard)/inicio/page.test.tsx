@@ -32,6 +32,7 @@ let tasksDeferred: Deferred<Respuesta>
 let leadsDeferred: Deferred<Respuesta>
 let propertiesDeferred: Deferred<Respuesta>
 let visitsDeferred: Deferred<Respuesta>
+let avisosDeferred: Deferred<Respuesta>
 let calls: string[]
 
 beforeEach(() => {
@@ -40,9 +41,13 @@ beforeEach(() => {
   leadsDeferred = deferred()
   propertiesDeferred = deferred()
   visitsDeferred = deferred()
+  avisosDeferred = deferred()
   calls = []
   vi.stubGlobal('fetch', vi.fn((url: string) => {
     calls.push(url)
+    if (url.startsWith('/api/portal-inquiries/unidentified')) {
+      return avisosDeferred.promise.then(r => ({ ok: r.ok, json: async () => r.body }))
+    }
     if (url.startsWith('/api/auth/me')) {
       return authDeferred.promise.then(r => ({ ok: r.ok, json: async () => r.body }))
     }
@@ -223,6 +228,105 @@ describe('InicioPage — cada tarjeta declara su propia base (revisión final Fa
     const pendientes = within(screen.getByText('Pendientes').parentElement as HTMLElement)
     expect(pendientes.getByText('49')).toBeInTheDocument()
     expect(pendientes.getByText('cosas esperándote')).toBeInTheDocument()
+  })
+})
+
+describe('InicioPage — la tarjeta lleva al recorte que contó (D37)', () => {
+  // La tarjeta contaba `/api/visits?from=<hoy>&to=<hoy>` y el link iba a
+  // `/visits` PELADO: prometía 3 visitas y aterrizaba en todas las del sistema,
+  // de toda la historia y de todos los asesores (la RLS de `property_visits`
+  // es `USING (true)`), ordenadas por fecha DESC. Las 3 de hoy, enterradas.
+  it('"Visitas de hoy" enlaza a /visits con el día puesto', async () => {
+    render(<InicioPage />)
+    authDeferred.resolve({ ok: true, body: { id: 'u1', role: 'admin' } })
+
+    await waitFor(() => expect(calls.some(c => c.startsWith('/api/visits'))).toBe(true))
+    tasksDeferred.resolve({ ok: true, body: { data: [] } })
+    leadsDeferred.resolve({ ok: true, body: { new: 0 } })
+    propertiesDeferred.resolve({ ok: true, body: { total: 0 } })
+    avisosDeferred.resolve({ ok: true, body: { data: [] } })
+    visitsDeferred.resolve({ ok: true, body: { data: [{ id: 'v1' }] } })
+    await waitFor(() => expect(screen.queryByText('Cargando…')).not.toBeInTheDocument())
+
+    const enlace = screen.getByText('Visitas de hoy').closest('a')!
+    const destino = new URL(enlace.getAttribute('href')!, 'http://localhost')
+    expect(destino.pathname).toBe('/visits')
+    // El mismo día que se le pidió a la API para armar el número.
+    const pedido = new URL(calls.find(c => c.startsWith('/api/visits'))!, 'http://localhost')
+    const diaContado = new Date(pedido.searchParams.get('from')!)
+    const esperado = `${diaContado.getFullYear()}-${String(diaContado.getMonth() + 1).padStart(2, '0')}-${String(diaContado.getDate()).padStart(2, '0')}`
+    expect(destino.searchParams.get('from')).toBe(esperado)
+    expect(destino.searchParams.get('to')).toBe(esperado)
+  })
+
+  it('para un asesor además lleva "solo mías": el número se cuenta con su advisor_id', async () => {
+    render(<InicioPage />)
+    authDeferred.resolve({ ok: true, body: { id: 'u1', role: 'asesor' } })
+
+    await waitFor(() => expect(calls.some(c => c.startsWith('/api/visits'))).toBe(true))
+    tasksDeferred.resolve({ ok: true, body: { data: [] } })
+    leadsDeferred.resolve({ ok: true, body: { new: 0 } })
+    visitsDeferred.resolve({ ok: true, body: { data: [] } })
+    await waitFor(() => expect(screen.queryByText('Cargando…')).not.toBeInTheDocument())
+
+    const destino = new URL(screen.getByText('Visitas de hoy').closest('a')!.getAttribute('href')!, 'http://localhost')
+    expect(destino.searchParams.get('onlyMine')).toBe('true')
+    // Y el pedido que armó el número también estaba scopeado a él.
+    expect(calls.find(c => c.startsWith('/api/visits'))).toContain('advisor_id=u1')
+  })
+
+  it('el día del link es el LOCAL, no el UTC (a la noche argentina son días distintos)', async () => {
+    vi.setSystemTime(new Date('2026-08-08T02:30:00Z')) // noche del 7 en UTC-3
+    try {
+      render(<InicioPage />)
+      authDeferred.resolve({ ok: true, body: { id: 'u1', role: 'admin' } })
+
+      await waitFor(() => expect(calls.some(c => c.startsWith('/api/visits'))).toBe(true))
+      tasksDeferred.resolve({ ok: true, body: { data: [] } })
+      leadsDeferred.resolve({ ok: true, body: { new: 0 } })
+      propertiesDeferred.resolve({ ok: true, body: { total: 0 } })
+      avisosDeferred.resolve({ ok: true, body: { data: [] } })
+      visitsDeferred.resolve({ ok: true, body: { data: [] } })
+      await waitFor(() => expect(screen.queryByText('Cargando…')).not.toBeInTheDocument())
+
+      const destino = new URL(screen.getByText('Visitas de hoy').closest('a')!.getAttribute('href')!, 'http://localhost')
+      expect(destino.searchParams.get('from')).toBe('2026-08-07')
+      expect(destino.searchParams.get('to')).toBe('2026-08-07')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('InicioPage — el cartel de avisos sin identificar (D39)', () => {
+  // Vivía SOLO en `/tasks`, que era la pantalla de entrada hasta que el
+  // rediseño mudó el landing a `/inicio`. La coordinadora entraba y no se
+  // enteraba de que había consultas sin rutear.
+  it('la coordinadora ve el cartel en la pantalla de entrada', async () => {
+    render(<InicioPage />)
+    authDeferred.resolve({ ok: true, body: { id: 'u1', role: 'coordinador' } })
+
+    await waitFor(() => expect(calls.some(c => c.startsWith('/api/tasks'))).toBe(true))
+    tasksDeferred.resolve({ ok: true, body: { data: [] } })
+    leadsDeferred.resolve({ ok: true, body: { new: 0 } })
+    propertiesDeferred.resolve({ ok: true, body: { total: 0 } })
+    visitsDeferred.resolve({ ok: true, body: { data: [] } })
+    avisosDeferred.resolve({ ok: true, body: { data: [{ id: 'a1' }, { id: 'a2' }] } })
+
+    expect(await screen.findByText('2 avisos sin identificar')).toBeInTheDocument()
+  })
+
+  it('un asesor no tiene esa pantalla: ni cartel ni pedido', async () => {
+    render(<InicioPage />)
+    authDeferred.resolve({ ok: true, body: { id: 'u1', role: 'asesor' } })
+
+    await waitFor(() => expect(calls.some(c => c.startsWith('/api/tasks'))).toBe(true))
+    tasksDeferred.resolve({ ok: true, body: { data: [] } })
+    leadsDeferred.resolve({ ok: true, body: { new: 0 } })
+    visitsDeferred.resolve({ ok: true, body: { data: [] } })
+    await waitFor(() => expect(screen.queryByText('Cargando…')).not.toBeInTheDocument())
+
+    expect(calls.some(c => c.startsWith('/api/portal-inquiries/unidentified'))).toBe(false)
   })
 })
 

@@ -452,3 +452,68 @@ describe('cuando el alta falla', () => {
     expect(bd.deals).toHaveLength(1)
   })
 })
+
+/**
+ * D22 — la mitad que el test de arriba NO cubre.
+ *
+ * Ese `catch` solo atrapa errores LANZABLES. Cuando el proceso muere de verdad
+ * (la función se recicla, el gateway corta, un deploy a mitad de request) nadie
+ * suelta la reserva: la fila queda 'reserved' para siempre. Si esa fila sigue
+ * contando como duplicado, el reintento de la persona recibe "ya estás
+ * registrado" y aterriza en /gracias sin contacto, sin deal, sin avisos y sin
+ * Píxel. Es el peor final posible para tráfico pago: se pierde el lead Y se le
+ * confirma lo contrario.
+ */
+describe('reserva abandonada por una muerte dura del proceso', () => {
+  /**
+   * Se empuja la fila a mano PORQUE NO HAY OTRA FORMA: una muerte dura no pasa
+   * por ningún `throw` que el test pueda provocar. Es exactamente lo que deja
+   * `reservar_envio_embudo` cuando el request no llega a cerrar.
+   */
+  function reservaAbandonada() {
+    bd.envios.push({
+      id: 'envio-huerfano',
+      funnel: 'tasacion',
+      ip_hash: 'ip-de-otro-request',
+      email: ENVIO_TASACION.email,
+      phone: ENVIO_TASACION.phone,
+      event_id: null,
+      contact_id: null,
+      deal_id: null,
+      status: 'reserved',
+      created_at: new Date(bd.reloj).toISOString(),
+    })
+  }
+
+  it('pasada la ventana en vuelo, el reintento SÍ registra a la persona (no rebota como duplicado)', async () => {
+    reservaAbandonada()
+    // La función murió; recién ahí la persona ve el error y vuelve a enviar.
+    bd.reloj += 12_000
+
+    const json = await (await POST(pedido(ENVIO_TASACION))).json()
+
+    expect(json.deduplicated).toBeUndefined()
+    expect(json.contactId).toBeTruthy()
+    expect(bd.deals).toHaveLength(1)
+    expect(bd.trabajos).toHaveLength(5)
+  })
+
+  it('un doble clic de verdad (segundos) sigue dedupeado: no crea dos deals', async () => {
+    reservaAbandonada()
+    bd.reloj += 2_000
+
+    const res = await POST(pedido(ENVIO_TASACION))
+
+    expect(await res.json()).toMatchObject({ ok: true, deduplicated: true, contactId: null })
+    expect(bd.deals).toHaveLength(0)
+  })
+
+  it('la ventana en vuelo queda por debajo de lo que vive una función del sitio', async () => {
+    // Ninguna reserva legítima puede tener más de ~26 s (el techo del gateway):
+    // todo lo que pase de ahí es ventana de falso positivo pura. Este test es el
+    // que avisa si alguien vuelve a subir la constante.
+    await POST(pedido(ENVIO_TASACION))
+    const reserva = bd.rpcs.find((r) => r.nombre === 'reservar_envio_embudo')!
+    expect(reserva.args.p_inflight_seconds).toBeLessThan(26)
+  })
+})

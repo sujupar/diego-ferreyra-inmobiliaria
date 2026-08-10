@@ -68,10 +68,45 @@ export default function CarruselDetailPage() {
     runLoop()
   }
 
+  /**
+   * PATCH del slide, con el error a la vista.
+   *
+   * Antes las dos acciones (guardar copy y regenerar imagen) hacían el `fetch` y
+   * pasaban derecho a `load()` sin mirar `res.ok`. Como `fetch` NO rechaza ante
+   * un 500, el error se perdía entero: la ruta responde `{error}` pero
+   * `regenerateSlideImage`/`recomposeSlideText` tiran ANTES de escribir nada en
+   * la base, así que la fila vuelve intacta y no hay ni "failed" ni banner rojo.
+   * Resultado: el spinner se apagaba y el slide quedaba igual, mudo — y el caso
+   * frecuente no es raro (billing de OpenAI agotado, o el 504 del gateway
+   * cuando la imagen tarda más que el límite de la función, que igual consume
+   * una imagen paga). El asesor reintentaba viendo "nada" y quemaba plata.
+   */
+  async function patchSlide(position: number, body: Record<string, unknown>): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/social/carousels/${id}/slides/${position}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      })
+      // El cuerpo puede no ser JSON (página HTML de error del gateway ante un 504).
+      const texto = await res.text()
+      let d: { error?: string } = {}
+      try { d = JSON.parse(texto) as { error?: string } } catch { /* no era JSON */ }
+      if (!res.ok) {
+        throw new Error(d.error || (res.status === 504 || res.status === 502
+          ? 'El servidor tardó demasiado y cortó la operación. Volvé a intentar.'
+          : `El servidor respondió con un error (${res.status}).`))
+      }
+      return true
+    } catch (e) {
+      alert('No se pudo actualizar el slide ' + position + ': ' + (e as Error).message)
+      return false
+    }
+  }
+
   async function saveCopy(position: number, copy: SlideCopy) {
-    await fetch(`/api/social/carousels/${id}/slides/${position}`, {
-      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ copy }),
-    })
+    // El diálogo se cierra SOLO si el guardado salió bien: cerrarlo antes hacía
+    // creer que se había guardado y el texto tipeado se perdía sin aviso.
+    const ok = await patchSlide(position, { copy })
+    if (!ok) return
     setEditing(null)
     await load()
   }
@@ -79,9 +114,8 @@ export default function CarruselDetailPage() {
   async function regenerate(position: number) {
     setRegenerating(position)
     try {
-      await fetch(`/api/social/carousels/${id}/slides/${position}`, {
-        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ regenerate: true }),
-      })
+      const ok = await patchSlide(position, { regenerate: true })
+      if (!ok) return
       await load()
     } finally { setRegenerating(null) }
   }
@@ -181,7 +215,7 @@ export default function CarruselDetailPage() {
   )
 }
 
-function EditForm({ slide, onSave }: { slide: SlideView; onSave: (c: SlideCopy) => void }) {
+function EditForm({ slide, onSave }: { slide: SlideView; onSave: (c: SlideCopy) => Promise<void> }) {
   const [c, setC] = useState<SlideCopy>({ ...slide.copy })
   const [saving, setSaving] = useState(false)
   const field = (k: keyof SlideCopy, label: string, area = false) => (
@@ -201,7 +235,17 @@ function EditForm({ slide, onSave }: { slide: SlideView; onSave: (c: SlideCopy) 
         {slide.role === 'cta' && field('cta_label', 'Botón CTA')}
       </div>
       <DialogFooter>
-        <Button disabled={saving} onClick={() => { setSaving(true); onSave(c) }}>{saving ? 'Guardando…' : 'Guardar y re-renderizar'}</Button>
+        {/* Si el guardado falla el diálogo NO se cierra: hay que volver a habilitar
+            el botón, o el asesor se queda con su texto tipeado y nada que tocar. */}
+        <Button
+          disabled={saving}
+          onClick={async () => {
+            setSaving(true)
+            try { await onSave(c) } finally { setSaving(false) }
+          }}
+        >
+          {saving ? 'Guardando…' : 'Guardar y re-renderizar'}
+        </Button>
       </DialogFooter>
     </>
   )

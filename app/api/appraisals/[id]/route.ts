@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { canAccessAppraisal } from '@/lib/auth/entity-access'
+import { puedeBorrarTasacion } from '@/lib/auth/appraisal-access'
 import { replaceAppraisalComparables } from '@/lib/supabase/appraisals-write'
 import type { SaveAppraisalInput } from '@/lib/supabase/appraisals'
 
@@ -108,7 +109,15 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const user = await requireAuth()
   try {
     const { id } = await params
-    // Asesor solo borra sus propias tasaciones; admin/dueno/coordinador cualquiera.
+    // D1: DOS candados, no uno. El de abajo (`canAccessAppraisal`) responde
+    // "¿esta tasación es suya?"; este responde "¿este rol borra tasaciones?".
+    // Van separados a propósito: si alguna vez se ensancha el acceso de
+    // lectura, el borrado —que es duro e irreversible, sin papelera— no se
+    // ensancha solo de arrastre. Roles: admin/dueño/coordinador borran
+    // cualquiera, asesor solo las suyas, abogado ninguna.
+    if (!puedeBorrarTasacion(user.profile.role)) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     if (!(await canAccessAppraisal(user, id))) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }

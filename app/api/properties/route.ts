@@ -22,6 +22,10 @@ export async function GET(request: NextRequest) {
     const from = searchParams.get('from') || undefined
     const to = searchParams.get('to') || undefined
     const assigned_to = searchParams.get('assigned_to') || undefined
+    // Cohorte DERIVADA — la que el badge del listado calcula y `status` no sabe
+    // contestar. Lista cerrada: un valor desconocido se ignora en vez de viajar
+    // a la consulta.
+    const cohorte = searchParams.get('cohorte') === 'sin_fotos' ? ('sin_fotos' as const) : undefined
 
     const limitParam = Number(searchParams.get('limit'))
     const offsetParam = Number(searchParams.get('offset'))
@@ -36,7 +40,7 @@ export async function GET(request: NextRequest) {
     const sort = sortParam ? { key: sortParam, dir: dirParam === 'asc' ? ('asc' as const) : ('desc' as const) } : undefined
 
     const { data, total, hasMore } = await getPropertiesListPage(
-      { status, origin, from, to, assigned_to },
+      { status, origin, from, to, assigned_to, cohorte },
       { limit, offset },
       sort
     )

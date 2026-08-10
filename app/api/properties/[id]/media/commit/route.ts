@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/require-role'
-import { canAccessProperty } from '@/lib/auth/entity-access'
+import { puedeGestionarMedia } from '@/lib/properties/acceso-media'
 import { getProperty, updateProperty, checkAndAdvanceProperty } from '@/lib/supabase/properties'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -10,7 +10,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
     }
     const { id } = await params
-    if (!(await canAccessProperty(user, id))) {
+    if (!(await puedeGestionarMedia(user, id))) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
     const body = await req.json().catch(() => ({}))

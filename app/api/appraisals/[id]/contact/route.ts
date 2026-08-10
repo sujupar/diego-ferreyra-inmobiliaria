@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
+import { alcanceTasaciones } from '@/lib/auth/appraisal-access'
 
 function getAdmin() {
     return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
-
-const OPS_ROLES = new Set(['admin', 'dueno', 'coordinador'])
 
 /**
  * PATCH /api/appraisals/[id]/contact
@@ -31,7 +30,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
         const supabase = getAdmin()
 
-        if (!OPS_ROLES.has(user.profile.role)) {
+        // D1: el trío de operaciones que esta ruta ya tenía como `OPS_ROLES`
+        // ahora sale de la lista compartida (lib/auth/appraisal-access.ts), la
+        // misma que usan el listado, la ficha y el borrado. Cambio real de
+        // comportamiento: un rol sin alcance (abogado) antes caía en la rama de
+        // pertenencia de abajo — que en la práctica le daba 403, pero por
+        // accidente y después de leer la fila; ahora se corta acá.
+        const alcance = alcanceTasaciones(user.profile.role)
+        if (alcance === 'ninguna') {
+            return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+        }
+
+        if (alcance !== 'todas') {
             const { data: appraisal, error: lookupError } = await supabase
                 .from('appraisals')
                 .select('assigned_to, user_id')

@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic'
 import { Card, CardContent } from '@/components/ui/card'
 import { formatMoney, operationLabel, propertyTypeLabel } from '@/lib/properties/detail-view'
-import { commercialStatusDef } from '@/lib/properties/commercial-status'
+import { estadoComercialEfectivo } from '@/lib/properties/commercial-status'
 import { PropertyCommercialStatusCard } from '../PropertyCommercialStatusCard'
 
 // Leaflet toca `window`: fuera del render de servidor.
@@ -14,6 +14,8 @@ const PropertyLocationMap = dynamic(
 
 export interface OverviewProperty {
   id: string
+  /** Espejo heredado del descarte masivo: participa del estado comercial. */
+  status?: string | null
   commercial_status?: string | null
   sold_price?: number | null
   sold_currency?: string | null
@@ -76,7 +78,14 @@ export function OverviewTab({ property, isAbogado, onChanged }: { property: Over
       {!isAbogado && (
         <PropertyCommercialStatusCard
           propertyId={property.id}
-          current={commercialStatusDef(property.commercial_status).key}
+          // Contempla el espejo `status='descartada'` que deja el descarte
+          // masivo del listado: con `commercial_status` a secas la tarjeta
+          // decía "Disponible" sobre una ficha con badge "Descartada" y no
+          // ofrecía el botón para recuperarla.
+          current={estadoComercialEfectivo({
+            commercialStatus: property.commercial_status,
+            status: property.status,
+          })}
           currency={property.currency}
           soldPrice={property.sold_price ?? null}
           soldCurrency={property.sold_currency ?? null}

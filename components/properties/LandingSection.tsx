@@ -165,6 +165,14 @@ export function LandingSection({
       const res = await fetch(`/api/properties/${propertyId}/landing`, { method: 'POST' })
       const data = await readJson<{ landing?: Landing; templates?: TemplateMeta[]; error?: string }>(res)
       if (!res.ok) throw new Error(data.error ?? 'Error al crear la landing')
+      // Este handler corre su propio loop; el efecto de resume no debe duplicarlo.
+      // Se marca ANTES del setLanding: al cambiar `landing` el efecto se vuelve a
+      // evaluar, y una landing recién creada nace con `enrich='vision'` (no 'done'),
+      // así que sin esta línea arrancaba un SEGUNDO loop en paralelo y CADA etapa
+      // de IA se pagaba dos veces (2× Gemini Vision sobre las fotos, 2× créditos
+      // de ScraperAPI para la zona, 2× descripción, 2× avatares) sin que nada se
+      // viera raro en pantalla.
+      resumedRef.current = true
       setLanding(data.landing ?? null); setTemplates(data.templates ?? [])
       await runEnrichment()
       toast.success('Landing creada. Respondé las preguntas para generar los textos.')

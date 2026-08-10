@@ -79,13 +79,20 @@ export function ArgenpropWizard({ propertyId }: { propertyId: string }) {
   const canPublish = validation.ok
   const current = STEPS[idx].id
 
+  /** Ver el comentario gemelo en `ml/MercadoLibreWizard.tsx`: sin el `finally`,
+   *  una excepción de `save()` dejaba el botón muerto en "Guardando…". */
   async function next() {
     setSaving(true)
-    const ok = await save()
-    setSaving(false)
-    if (!ok) return
-    setStepValid(false)
-    setIdx(i => Math.min(i + 1, STEPS.length - 1))
+    try {
+      const ok = await save()
+      if (!ok) return
+      setStepValid(false)
+      setIdx(i => Math.min(i + 1, STEPS.length - 1))
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : 'No se pudo guardar. Volvé a intentar.')
+    } finally {
+      setSaving(false)
+    }
   }
   function back() {
     setStepValid(true)

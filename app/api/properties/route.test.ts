@@ -7,7 +7,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { estado } = vi.hoisted(() => ({
-  estado: { creadas: [] as unknown[], avanzadas: [] as string[], fallaElAvance: false },
+  estado: {
+    creadas: [] as unknown[],
+    avanzadas: [] as string[],
+    fallaElAvance: false,
+    listados: [] as unknown[],
+  },
 }))
 
 vi.mock('@/lib/auth/require-role', () => ({
@@ -19,7 +24,10 @@ vi.mock('@/lib/supabase/properties', () => ({
     estado.creadas.push(input)
     return 'prop-1'
   }),
-  getPropertiesListPage: vi.fn(async () => ({ data: [], total: 0, hasMore: false })),
+  getPropertiesListPage: vi.fn(async (filtros: unknown) => {
+    estado.listados.push(filtros)
+    return { data: [], total: 0, hasMore: false }
+  }),
   checkAndAdvanceProperty: vi.fn(async (id: string) => {
     if (estado.fallaElAvance) throw new Error('la base dijo que no')
     estado.avanzadas.push(id)
@@ -39,7 +47,7 @@ vi.mock('@/lib/email/notify-with-escalation', () => ({
   notifyWithEscalation: vi.fn(async () => {}),
 }))
 
-import { POST } from './route'
+import { GET, POST } from './route'
 import { NextRequest } from 'next/server'
 
 function pedido(body: unknown): NextRequest {
@@ -55,7 +63,7 @@ const base = {
   assigned_to: '00000000-0000-0000-0000-000000000009',
 }
 
-beforeEach(() => { estado.creadas = []; estado.avanzadas = []; estado.fallaElAvance = false })
+beforeEach(() => { estado.creadas = []; estado.avanzadas = []; estado.fallaElAvance = false; estado.listados = [] })
 
 describe('POST /api/properties — operación', () => {
   it.each(['venta', 'alquiler', 'temporario'])('acepta "%s" y la guarda', async op => {
@@ -96,5 +104,34 @@ describe('POST /api/properties — auto-avance de captación', () => {
     const res = await POST(pedido({ ...base, photos: ['https://x/1.jpg'] }))
     expect(res.status).toBe(200)
     expect((await res.json()).id).toBe('prop-1')
+  })
+})
+
+/**
+ * D5: la cohorte «Pend. Fotos» del desplegable NO es un valor de
+ * `properties.status` (el badge la CALCULA), así que viaja por su propio
+ * parámetro. Mientras viajaba como `status=pending_photos` —un valor que
+ * ningún camino de la app escribe— el filtro devolvía siempre vacío.
+ */
+describe('GET /api/properties — la cohorte derivada', () => {
+  function listar(qs: string) {
+    return GET(new NextRequest(`http://local/api/properties?${qs}`))
+  }
+  const ultimo = () => estado.listados[estado.listados.length - 1] as Record<string, unknown>
+
+  it('pasa la cohorte al listado', async () => {
+    await listar('cohorte=sin_fotos')
+    expect(ultimo().cohorte).toBe('sin_fotos')
+  })
+
+  it('una cohorte inventada se ignora en vez de viajar a la consulta', async () => {
+    await listar('cohorte=lo-que-sea')
+    expect(ultimo().cohorte).toBeUndefined()
+  })
+
+  it('sin cohorte, el filtro por status sigue igual', async () => {
+    await listar('status=approved')
+    expect(ultimo().status).toBe('approved')
+    expect(ultimo().cohorte).toBeUndefined()
   })
 })

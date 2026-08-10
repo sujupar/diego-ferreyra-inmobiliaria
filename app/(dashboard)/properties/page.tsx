@@ -2,13 +2,14 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { StatTile } from '@/components/ui/StatTile'
 import { FilterBar } from '@/components/filters/FilterBar'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
+import { enCaptacion } from '@/lib/properties/captacion'
 import { useFiltrosUrl } from '@/lib/filters/use-filtros-url'
 import { usePedidosVersionados } from '@/lib/filters/use-pedidos-versionados'
 import { DataTable, Column } from '@/components/ui/DataTable'
@@ -18,15 +19,13 @@ import { PropertyCard } from './_components/PropertyCard'
 import { PropertyDetailModal, type DetailProperty } from './_components/PropertyDetailModal'
 import { ScheduleVisitDialog } from './_components/ScheduleVisitDialog'
 
-// Catálogo de valores REALES de `properties.status`: alimenta el desplegable de
-// filtros (que consulta por el valor guardado). `pending_docs` y
-// `pending_review` ya no los escribe nadie desde 2026-08-09 — quedan para las
-// filas viejas, y por eso van marcados. El badge de cada fila NO sale de acá
-// cuando la propiedad está en captación: ver `getPropertyStatusInfo`.
+// Catálogo de valores REALES de `properties.status`. Solo se usa para el badge
+// de las filas que YA salieron de captación; las que siguen en captación se
+// etiquetan por regla derivada (ver `getPropertyStatusInfo`).
 const STATUS_INFO: Record<string, { label: string; color: string }> = {
   draft: { label: 'Borrador', color: 'bg-gray-400' },
   pending_docs: { label: 'Pend. Fotos (previo)', color: 'bg-amber-500' },
-  pending_photos: { label: 'Pend. Fotos', color: 'bg-orange-500' },
+  pending_photos: { label: 'Pend. Fotos (previo)', color: 'bg-orange-500' },
   pending_review: { label: 'En Revisión (previo)', color: 'bg-purple-500' },
   approved: { label: 'Aprobada', color: 'bg-green-500' },
   rejected: { label: 'Rechazada', color: 'bg-red-500' },
@@ -34,10 +33,25 @@ const STATUS_INFO: Record<string, { label: string; color: string }> = {
   descartada: { label: 'Descartada', color: 'bg-slate-500' },
 }
 
-// Mismo arreglo que antes alimentaba los botones de estado — ahora las
-// opciones del desplegable de FilterBar. "Todas" = sin filtro (value '').
+/**
+ * Valor sintético del desplegable: NO es un valor de `properties.status`, es la
+ * cohorte derivada que la pantalla etiqueta «Pend. Fotos» (captación abierta y
+ * ninguna foto). `buildParams` lo traduce a `?cohorte=sin_fotos`.
+ *
+ * Antes el desplegable listaba los valores CRUDOS de la columna, así que
+ * ofrecía «Pend. Fotos» y consultaba `status='pending_photos'` — un valor que
+ * ningún camino de la app escribe. Devolvía siempre vacío mientras la propia
+ * pantalla mostraba fichas con ese badge: un coordinador filtraba, veía cero y
+ * concluía que no había backlog de fotos.
+ */
+const COHORTE_SIN_FOTOS = 'cohorte:sin_fotos'
+
+// Las opciones del desplegable de FilterBar. "Todas" = sin filtro (value '').
+// Los estados marcados "(previo)" quedan solo para las filas viejas: desde
+// 2026-08-09 no los escribe nadie.
 const OPCIONES_ESTADO = [
   { value: '', label: 'Todas' },
+  { value: COHORTE_SIN_FOTOS, label: 'Pend. Fotos' },
   ...Object.entries(STATUS_INFO).map(([key, info]) => ({ value: key, label: info.label })),
 ]
 
@@ -114,8 +128,11 @@ const PAGE_SIZE = 24
  * que falta en esos estados son las fotos.
  */
 function getPropertyStatusInfo(p: Property) {
-  const enCaptacion = !['approved', 'active', 'rejected', 'descartada'].includes(p.status)
-  if (enCaptacion) {
+  // La MISMA lista cerrada que usa el filtro `cohorte=sin_fotos` del servidor
+  // (lib/properties/captacion.ts). Antes acá había una lista complementaria
+  // escrita a mano: el badge y el filtro podían no coincidir y nadie se
+  // enteraba.
+  if (enCaptacion(p.status)) {
     if (p.legal_status === 'rejected') return { label: 'Doc. Rechazada', color: 'bg-red-500' }
     if (!p.photo_count) return { label: 'Pend. Fotos', color: 'bg-orange-500' }
     return { label: 'En captación', color: 'bg-amber-500' }
@@ -202,6 +219,28 @@ function PropertiesClient() {
     limpiar()
     setAvisoFiltro(null)
   }
+
+  // El mismo aviso, pero para el link con el que se ENTRA. `setAvisoFiltro`
+  // solo se escribía desde manejadores de evento, así que un `?status=vendida`
+  // (link viejo, editado a mano o compartido) se descartaba en silencio: la
+  // pantalla mostraba TODAS las propiedades y el que abrió el link creía estar
+  // mirando un recorte. Corre UNA sola vez, sobre el querystring de entrada.
+  const parametrosDeEntrada = useSearchParams()
+  const avisoInicialHecho = useRef(false)
+  useEffect(() => {
+    if (avisoInicialHecho.current) return
+    avisoInicialHecho.current = true
+    const crudos = new URLSearchParams(parametrosDeEntrada.toString())
+    const descartadas = (Object.keys(FILTROS_DEFECTO) as Array<keyof typeof FILTROS_DEFECTO>)
+      .filter(k => {
+        const crudo = crudos.get(k)
+        // Ausente o vacío no es un filtro descartado: es no haber pedido nada.
+        return crudo != null && crudo !== '' && crudo !== filtros[k]
+      })
+    if (descartadas.length > 0) setAvisoFiltro(mensajeRechazo(descartadas))
+    // Solo al montar: después el aviso lo maneja `aplicarFiltros`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const [properties, setProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(true)
@@ -306,7 +345,10 @@ function PropertiesClient() {
 
   function buildParams(offset: number, limit: number = PAGE_SIZE) {
     const params = new URLSearchParams()
-    if (filtros.status) params.set('status', filtros.status)
+    // La cohorte derivada NO es un valor de la columna: viaja por su propio
+    // parámetro. Mandarla como `status` es lo que devolvía siempre vacío.
+    if (filtros.status === COHORTE_SIN_FOTOS) params.set('cohorte', 'sin_fotos')
+    else if (filtros.status) params.set('status', filtros.status)
     if (filtros.from) params.set('from', filtros.from)
     if (filtros.to) params.set('to', filtros.to)
     if (filtros.mios === '1' && userInfo?.id) params.set('assigned_to', userInfo.id)

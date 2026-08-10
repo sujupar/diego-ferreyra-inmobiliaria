@@ -72,10 +72,14 @@ function propiedadSinFotos(extra: Record<string, unknown> = {}) {
 }
 
 let propiedad: Record<string, unknown>
+let legalDocs: Record<string, unknown>
 let rol: string
 
 beforeEach(() => {
   propiedad = propiedadSinFotos()
+  // `properties.legal_docs` — la fuente REAL de la cuenta de documentos. La
+  // columna `documents` de la ficha de arriba está muerta desde abril.
+  legalDocs = {}
   rol = 'asesor'
   window.history.replaceState(null, '', '/properties/prop-1')
   // happy-dom no implementa ninguna de las dos: sin esto, `goToTab` explota.
@@ -83,7 +87,7 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn()
   vi.stubGlobal('fetch', vi.fn((url: string) => {
     if (url.startsWith('/api/auth/me')) return json({ id: 'u1', role: rol })
-    if (url.startsWith('/api/properties/prop-1/legal-docs')) return json({ data: { docs: {}, flags: {} } })
+    if (url.startsWith('/api/properties/prop-1/legal-docs')) return json({ data: { docs: legalDocs, flags: {} } })
     if (url.startsWith('/api/properties/prop-1/feedback')) return json({ data: [] })
     if (url.startsWith('/api/flow-history')) return json({ data: null })
     if (url.startsWith('/api/properties/prop-1')) return json({ data: propiedad })
@@ -209,8 +213,10 @@ describe('ficha de propiedad — subir fotos', () => {
     propiedad = propiedadSinFotos({
       status: 'approved', photos: ['https://x/1.jpg'],
       legal_status: 'pending', legal_submitted_at: null,
-      documents: [{ name: 'Escritura', url: 'https://x/e.pdf' }],
+      // Vacía a propósito: la cuenta que habilita el envío sale de `legal_docs`.
+      documents: [],
     })
+    legalDocs = { escritura: { file_url: 'https://x/e.pdf', status: 'pending' } }
     const user = userEvent.setup()
     render(<PropertyDetailPage />)
 

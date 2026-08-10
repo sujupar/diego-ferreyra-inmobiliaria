@@ -15,6 +15,9 @@ const base = {
   propertyId: 'p1', propertyType: 'departamento', docs, flags,
   legalNotes: null as string | null,
   legalSubmittedAt: ENVIADA as string | null,
+  documentosCargados: 0,
+  onSubmitReview: () => {},
+  enviando: false,
   onUpdated: () => {}, onReviewed: () => {},
 }
 
@@ -51,6 +54,71 @@ describe('DocsTab', () => {
     render(<DocsTab {...base} isAbogado={false} legalStatus="rejected" legalNotes="Escritura vencida" />)
     expect(screen.getByText(/rechazada en revisión legal/i)).toBeInTheDocument()
     expect(screen.getByText('Escritura vencida')).toBeInTheDocument()
+  })
+
+  /* ------------------- enviar la documentación al abogado ------------------ */
+
+  /**
+   * H1. El envío vivía SOLO colgado del aviso de la cabecera, que muestra un
+   * paso por vez: sobre una propiedad sin fotos ganaba "Fotos pendientes" y el
+   * botón no existía en ningún lado. Escenario real: el propietario entrega la
+   * escritura el día 1 y la sesión de fotos es la semana que viene → los
+   * papeles no le llegaban nunca al abogado.
+   */
+  it('con documentos cargados y sin enviar, ofrece mandarlos — sin mirar fotos ni captación', async () => {
+    const onSubmitReview = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <DocsTab {...base} isAbogado={false} legalStatus="pending" legalSubmittedAt={null}
+        documentosCargados={2} onSubmitReview={onSubmitReview} />,
+    )
+
+    const boton = screen.getByRole('button', { name: /enviar a revisión legal/i })
+    expect(boton).toBeEnabled()
+    await user.click(boton)
+    expect(onSubmitReview).toHaveBeenCalledTimes(1)
+  })
+
+  it('sin ningún archivo cargado el botón está apagado y dice por qué', () => {
+    render(<DocsTab {...base} isAbogado={false} legalStatus="pending" legalSubmittedAt={null} documentosCargados={0} />)
+    expect(screen.getByRole('button', { name: /enviar a revisión legal/i })).toBeDisabled()
+    expect(screen.getByText(/subí al menos un documento/i)).toBeInTheDocument()
+  })
+
+  /**
+   * H2. `submitPropertyForLegalReview` devuelve el legal de 'rejected' a
+   * 'pending' y tiene test propio, pero el aviso decía "volvé a enviarla" y el
+   * botón no existía: el arreglo estaba en el servicio y no en la pantalla.
+   */
+  it('una rechazada se puede volver a enviar', async () => {
+    const onSubmitReview = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <DocsTab {...base} isAbogado={false} legalStatus="rejected" legalNotes="Escritura vencida"
+        documentosCargados={3} onSubmitReview={onSubmitReview} />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /volver a enviar/i }))
+    expect(onSubmitReview).toHaveBeenCalledTimes(1)
+  })
+
+  it('mientras el abogado la tiene no se puede volver a mandar, y se dice', () => {
+    render(<DocsTab {...base} isAbogado={false} legalStatus="pending" documentosCargados={3} />)
+    expect(screen.queryByRole('button', { name: /enviar a revisión legal/i })).not.toBeInTheDocument()
+    expect(screen.getByText(/está en revisión legal/i)).toBeInTheDocument()
+  })
+
+  it('el abogado no ve el botón de enviar', () => {
+    render(<DocsTab {...base} isAbogado legalStatus="pending" legalSubmittedAt={null} documentosCargados={3} />)
+    expect(screen.queryByRole('button', { name: /enviar a revisión legal/i })).not.toBeInTheDocument()
+  })
+
+  it('con un envío en vuelo el botón queda bloqueado', () => {
+    render(
+      <DocsTab {...base} isAbogado={false} legalStatus="pending" legalSubmittedAt={null}
+        documentosCargados={2} enviando />,
+    )
+    expect(screen.getByRole('button', { name: /enviar a revisión legal/i })).toBeDisabled()
   })
 
   it('aprobar llama al endpoint de revisión y avisa al padre', async () => {

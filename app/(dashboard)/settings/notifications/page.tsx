@@ -52,18 +52,49 @@ export default function NotificationsSettingsPage() {
   const [testMode, setTestMode] = useState(false)
   const [alertAdmins, setAlertAdmins] = useState(true)
 
+  const [settingsError, setSettingsError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
   const [logs, setLogs] = useState<LogRow[]>([])
   const [loadingLogs, setLoadingLogs] = useState(true)
+  const [logsError, setLogsError] = useState<string | null>(null)
   const [filterType, setFilterType] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
 
   useEffect(() => { loadSettings() }, [])
   useEffect(() => { loadLogs() }, [filterType, filterStatus])
 
+  /**
+   * El `{error}` que devuelve la API sirve para mostrar (p. ej. "Email
+   * inválido"), salvo cuando es el `NEXT_REDIRECT;replace;/;307;` que sale
+   * cuando el `requirePermission` de la ruta lanza ADENTRO de su try/catch: eso
+   * no es un mensaje, es tubería interna.
+   */
+  function mensajeUtil(cuerpo: unknown): string | null {
+    const texto = (cuerpo as { error?: unknown } | null)?.error
+    if (typeof texto !== 'string' || !texto || texto.startsWith('NEXT_REDIRECT')) return null
+    return texto
+  }
+
+  /** Traduce un fallo de red/HTTP a algo que se entienda leyéndolo. */
+  function motivo(res: Response | null, fallback: string, error?: unknown): string {
+    if (res && (res.status === 401 || res.status === 403)) {
+      return 'Se venció la sesión. Volvé a entrar.'
+    }
+    if (!res) return error instanceof Error ? `${fallback} (${error.message})` : fallback
+    return fallback
+  }
+
   async function loadSettings() {
     setLoadingSettings(true)
+    setSettingsError(null)
     try {
       const res = await fetch('/api/settings/notifications')
+      if (!res.ok) {
+        setSettingsError(motivo(res, 'No se pudo leer la configuración.'))
+        return
+      }
       const json = await res.json()
       if (json.data) {
         setSettings(json.data)
@@ -71,6 +102,8 @@ export default function NotificationsSettingsPage() {
         setTestMode(json.data.test_mode_enabled)
         setAlertAdmins(json.data.alert_admins_on_lawyer_failure)
       }
+    } catch (err) {
+      setSettingsError(motivo(null, 'No se pudo leer la configuración.', err))
     } finally {
       setLoadingSettings(false)
     }
@@ -78,13 +111,23 @@ export default function NotificationsSettingsPage() {
 
   async function loadLogs() {
     setLoadingLogs(true)
+    setLogsError(null)
     try {
       const params = new URLSearchParams({ limit: '50' })
       if (filterType) params.set('type', filterType)
       if (filterStatus) params.set('status', filterStatus)
       const res = await fetch(`/api/settings/notifications/history?${params}`)
+      // Sin este `res.ok`, un 401/500 dejaba `json.data` en undefined y la tabla
+      // afirmaba "No hay registros aún." — o sea, el panel de diagnóstico decía
+      // "no se envió nada" cuando lo que pasó es que no pudo preguntar.
+      if (!res.ok) {
+        setLogsError(motivo(res, 'No se pudo leer el historial.'))
+        return
+      }
       const json = await res.json()
-      setLogs(json.data || [])
+      setLogs(Array.isArray(json.data) ? json.data : [])
+    } catch (err) {
+      setLogsError(motivo(null, 'No se pudo leer el historial.', err))
     } finally {
       setLoadingLogs(false)
     }
@@ -92,8 +135,10 @@ export default function NotificationsSettingsPage() {
 
   async function save() {
     setSaving(true)
+    setSaveError(null)
+    setSaved(false)
     try {
-      await fetch('/api/settings/notifications', {
+      const res = await fetch('/api/settings/notifications', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -102,7 +147,19 @@ export default function NotificationsSettingsPage() {
           alert_admins_on_lawyer_failure: alertAdmins,
         }),
       })
+      if (!res.ok) {
+        // NO recargar: `loadSettings()` pisa el email y los checkboxes con lo
+        // que hay en la base, así que ante un rechazo (p. ej. el 400 "Email
+        // inválido") el usuario veía desaparecer lo que acababa de escribir,
+        // sin ningún mensaje que le dijera qué estuvo mal.
+        const cuerpo = await res.json().catch(() => null)
+        setSaveError(mensajeUtil(cuerpo) ?? motivo(res, 'No se pudo guardar.'))
+        return
+      }
+      setSaved(true)
       await loadSettings()
+    } catch (err) {
+      setSaveError(motivo(null, 'No se pudo guardar.', err))
     } finally {
       setSaving(false)
     }
@@ -123,6 +180,15 @@ export default function NotificationsSettingsPage() {
         <CardContent className="space-y-4">
           {loadingSettings ? (
             <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Cargando...</div>
+          ) : settingsError ? (
+            <div className="space-y-3">
+              <p className="flex items-start gap-2 text-sm text-red-700">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" /> {settingsError}
+              </p>
+              <Button variant="outline" size="sm" onClick={loadSettings}>
+                <RefreshCw className="h-4 w-4 mr-1" /> Reintentar
+              </Button>
+            </div>
           ) : (
             <>
               <p className="text-sm text-muted-foreground">
@@ -154,6 +220,17 @@ export default function NotificationsSettingsPage() {
               <Button onClick={save} disabled={saving}>
                 {saving ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Guardando</> : 'Guardar'}
               </Button>
+
+              {saveError && (
+                <p className="flex items-start gap-2 text-sm text-red-700">
+                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" /> {saveError}
+                </p>
+              )}
+              {saved && !saveError && (
+                <p className="flex items-center gap-2 text-sm text-green-700">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" /> Configuración guardada.
+                </p>
+              )}
 
               {testMode && (
                 <div className="flex items-start gap-2 rounded bg-amber-50 border border-amber-200 p-3 text-sm">
@@ -191,6 +268,18 @@ export default function NotificationsSettingsPage() {
 
           {loadingLogs ? (
             <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Cargando...</div>
+          ) : logsError ? (
+            <div className="space-y-3 py-6 text-center">
+              <p className="flex items-center justify-center gap-2 text-sm text-red-700">
+                <AlertTriangle className="h-4 w-4 shrink-0" /> {logsError}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                No se sabe si hubo envíos o no: la consulta falló.
+              </p>
+              <Button variant="outline" size="sm" onClick={loadLogs}>
+                <RefreshCw className="h-4 w-4 mr-1" /> Reintentar
+              </Button>
+            </div>
           ) : logs.length === 0 ? (
             <div className="text-sm text-muted-foreground py-6 text-center">No hay registros aún.</div>
           ) : (

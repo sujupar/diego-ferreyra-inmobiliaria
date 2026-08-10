@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, CheckCircle, FileText, Image, MapPin, Scale, ChevronRight } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Loader2, CheckCircle, FileText, Image, MapPin, Scale, ChevronRight, AlertTriangle } from 'lucide-react'
 
 interface ReviewProperty {
   id: string
@@ -14,7 +15,8 @@ interface ReviewProperty {
   property_type: string
   asking_price: number
   currency: string
-  documents: Array<{ name: string; url: string }>
+  /** Ítems de `legal_docs` con archivo subido (lo calcula el servidor). */
+  documentos_cargados: number
   photos: string[]
   rooms: number | null
   covered_area: number | null
@@ -26,18 +28,36 @@ interface ReviewProperty {
 export default function PropertyReviewPage() {
   const [properties, setProperties] = useState<ReviewProperty[]>([])
   const [loading, setLoading] = useState(true)
+  // Tercer estado. Sin él, un 403/500/401 caía en el `.catch` mudo y la
+  // pantalla mostraba "Todo al día — No hay propiedades pendientes de revisión"
+  // sobre una cola que nunca se pudo leer: al abogado se le decía que no tenía
+  // trabajo justo cuando el sistema no sabía si lo tenía.
+  const [error, setError] = useState<string | null>(null)
+  const [reintentos, setReintentos] = useState(0)
 
   // La bandeja es el CARRIL LEGAL (`legal_status='pending'` + enviada al
   // abogado), no `status='pending_review'`. Con el modelo viejo, para que una
   // propiedad apareciera acá tenía que dejar de estar captada, y eso le apagaba
   // la landing, la difusión y las consultas mientras el abogado la miraba.
   useEffect(() => {
+    setLoading(true)
+    setError(null)
     fetch('/api/properties/revision-legal')
-      .then(r => r.json())
+      .then(r => {
+        // Todas las respuestas de error de esta ruta son JSON válido
+        // (`{error:'…'}`), así que sin este chequeo `{data}` quedaba undefined
+        // y la lista vacía se pintaba como "Todo al día".
+        if (!r.ok) throw new Error(r.status === 403 ? 'no-autorizado' : `HTTP ${r.status}`)
+        return r.json()
+      })
       .then(({ data }) => setProperties(data || []))
-      .catch(err => console.error(err))
+      .catch(err => {
+        console.error(err)
+        setProperties([])
+        setError(err instanceof Error && err.message === 'no-autorizado' ? 'no-autorizado' : 'lectura')
+      })
       .finally(() => setLoading(false))
-  }, [])
+  }, [reintentos])
 
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin" /></div>
 
@@ -47,10 +67,29 @@ export default function PropertyReviewPage() {
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <Scale className="h-6 w-6" /> Revisión Legal
         </h1>
-        <p className="text-muted-foreground">{properties.length} propiedad{properties.length !== 1 ? 'es' : ''} pendiente{properties.length !== 1 ? 's' : ''} de revisión</p>
+        <p className="text-muted-foreground">
+          {error
+            ? 'No se pudo consultar la bandeja'
+            : <>{properties.length} propiedad{properties.length !== 1 ? 'es' : ''} pendiente{properties.length !== 1 ? 's' : ''} de revisión</>}
+        </p>
       </div>
 
-      {properties.length === 0 ? (
+      {error ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <AlertTriangle className="h-12 w-12 text-[color:var(--destructive)] mb-4" />
+            <h3 className="text-lg font-medium mb-1">
+              {error === 'no-autorizado' ? 'No tenés permiso para ver esta bandeja' : 'No se pudo cargar la bandeja'}
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4 max-w-md">
+              {error === 'no-autorizado'
+                ? 'Puede que tu sesión haya vencido. Volvé a entrar y probá de nuevo.'
+                : 'No sabemos si hay documentación esperando: puede ser un problema de conexión. Probá de nuevo.'}
+            </p>
+            <Button size="sm" onClick={() => setReintentos(n => n + 1)}>Reintentar</Button>
+          </CardContent>
+        </Card>
+      ) : properties.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
@@ -86,7 +125,7 @@ export default function PropertyReviewPage() {
                   <span>{new Intl.NumberFormat('es-AR', { style: 'currency', currency: prop.currency, minimumFractionDigits: 0 }).format(prop.asking_price)}</span>
                   {prop.rooms && <span>{prop.rooms} amb.</span>}
                   {prop.covered_area && <span>{prop.covered_area} m²</span>}
-                  <span className="flex items-center gap-1"><FileText className="h-3.5 w-3.5" />{prop.documents?.length || 0} docs</span>
+                  <span className="flex items-center gap-1"><FileText className="h-3.5 w-3.5" />{prop.documentos_cargados || 0} docs</span>
                   <span className="flex items-center gap-1"><Image className="h-3.5 w-3.5" />{prop.photos?.length || 0} fotos</span>
                 </div>
               </CardContent>

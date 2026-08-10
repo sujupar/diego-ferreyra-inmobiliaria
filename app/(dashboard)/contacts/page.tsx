@@ -143,10 +143,32 @@ function ContactsClient() {
   function limpiarTodo() {
     limpiar()
     setAvisoFiltro(null)
+    // D34: `search` no vive en la URL (ver el comentario de `FILTROS_DEFECTO`),
+    // así que `limpiar()` no lo toca — pero la pantalla SÍ lo cuenta como
+    // filtro (`hayFiltros`, más abajo) y el contrato de `FilterBar` exige que
+    // "Limpiar todo" limpie todos los filtros de la pantalla. Sin esto el
+    // botón borraba las fichas y dejaba la lista recortada por el buscador.
+    setSearch('')
   }
 
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
+  // D9/D31 — mismo patrón que Propiedades (`loadError`). Sin esto la pantalla
+  // AFIRMABA cosas falsas ante un fallo:
+  //   · `/api/contacts` caído → `contacts` se quedaba en `[]` y salía la
+  //     tarjeta "Sin contactos" (o "Ningún contacto coincide con los filtros"),
+  //     o sea "no tenés contactos" cuando en realidad no se pudo preguntar.
+  //   · `/api/auth/me` caído → el gate fail-closed de abajo hacía `return`
+  //     antes de tocar `loading`, y el spinner giraba PARA SIEMPRE, mudo.
+  // Son dos motivos con textos y salidas distintas, no un booleano.
+  const [loadError, setLoadError] = useState<null | 'listado' | 'identidad'>(null)
+  // Distingue "todavía no sé quién sos" de "pregunté y no se pudo saber". Sin
+  // esta bandera el gate de identidad no tiene forma de terminar.
+  const [identidadResuelta, setIdentidadResuelta] = useState(false)
+  // El "Reintentar" de verdad: con la URL sin cambiar, `filtros` conserva la
+  // misma referencia y el efecto de datos no vuelve a correr. Este contador
+  // entra en las dependencias de los dos efectos y fuerza el reintento.
+  const [reintentos, setReintentos] = useState(0)
   const [search, setSearch] = useState('')
   const [viewMode, setViewMode] = useState<'list' | 'table'>('table')
   const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
@@ -180,7 +202,21 @@ function ContactsClient() {
         setUserInfo({ id: perfil.id, role: typeof perfil.role === 'string' ? perfil.role : '' })
       })
       .catch(err => { console.error(err) })
-  }, [])
+      // D31: se marca "resuelto" pase lo que pase. Antes el catch dejaba
+      // `userInfo` en null PARA SIEMPRE y el gate de abajo colgaba el listado
+      // en el spinner, sin mensaje ni salida. Con esta bandera el efecto de
+      // datos decide qué mostrar (acá: el cartel de identidad, fail-closed).
+      .finally(() => setIdentidadResuelta(true))
+  }, [reintentos])
+
+  // Vuelve a preguntar quién sos (por si lo que se cayó fue `/api/auth/me`) y
+  // fuerza el refetch del listado aunque la URL no haya cambiado ni un carácter.
+  function reintentar() {
+    setLoading(true)
+    setLoadError(null)
+    setIdentidadResuelta(false)
+    setReintentos(n => n + 1)
+  }
 
   async function handleBulkDelete() {
     const ids = Array.from(selectedIds)
@@ -210,23 +246,28 @@ function ContactsClient() {
     // (o la del `return` temprano de abajo) puede pintar sobre una pantalla
     // que ya decidió mostrar otra cosa.
     //
-    // TRAMPA PARA EL PRÓXIMO EDIT (ronda 1 de arreglos, caso D): hoy mover
-    // `abrir()` DESPUÉS del `if (!userInfo) return` no rompe nada observable
-    // — `userInfo` pasa de `null` a un valor UNA sola vez en toda la vida del
-    // componente (no hay logout ni "reintentar" que lo vuelva a `null`), así
-    // que jamás hay una generación con un fetch en vuelo en el instante en que
-    // este return temprano se ejecuta una segunda vez. El día que se agregue
-    // una segunda condición de early-return (ej. un botón "Reintentar" como
-    // el de Propiedades, que resetea `userInfoLoaded`), la mutación sí pasa a
-    // ser observable — no lo pierdas de vista si tocás este efecto. Ver el
-    // comentario de cabecera de `page.test.tsx` (caso D): se investigó y no
-    // hay forma de fijar esto con un test de comportamiento sin inventar un
-    // camino que el componente no puede producir hoy.
+    // OJO (actualizado con el arreglo D31): la nota vieja decía que mover
+    // `abrir()` debajo del early-return era inobservable porque `userInfo`
+    // pasaba de `null` a un valor UNA sola vez. Eso dejó de ser cierto: el
+    // botón "Reintentar" resetea `identidadResuelta` a `false`, así que este
+    // efecto vuelve a ejecutar su return temprano con un pedido posiblemente
+    // EN VUELO. Si `abrir()` no fuera la primera línea, esa respuesta vieja
+    // pintaría sobre una pantalla que ya decidió mostrar otra cosa.
     const { gen, signal } = pedidos.abrir()
     // No pedir nada hasta saber quién es el usuario: `assigned_to` depende de
     // `userInfo.id` para un asesor, y pedir antes mostraría (por un instante)
     // contactos ajenos.
-    if (!userInfo) return
+    if (!identidadResuelta) return
+    // D31: identidad preguntada y fallida. No se pide el listado (fail-closed:
+    // sin rol no se puede acotar a "los míos"), pero tampoco se deja el
+    // spinner girando — se dice qué pasó y se ofrece reintentar.
+    if (!userInfo) {
+      setContacts([])
+      setSelectedIds(new Set())
+      setLoadError('identidad')
+      setLoading(false)
+      return
+    }
 
     const params = new URLSearchParams()
     if (filtros.origin) params.set('origin', filtros.origin)
@@ -235,6 +276,7 @@ function ContactsClient() {
     if (userInfo.role === 'asesor') params.set('assigned_to', userInfo.id)
 
     setLoading(true)
+    setLoadError(null)
     fetch(`/api/contacts?${params}`, { signal })
       .then(r => {
         if (!r.ok) throw new Error(`GET /api/contacts respondió ${r.status}`)
@@ -245,8 +287,14 @@ function ContactsClient() {
         setContacts(data || [])
       })
       .catch(err => {
+        // Una respuesta (o un AbortError) de un listado que ya no es el
+        // vigente no puede pintar NADA: ni datos ni error.
         if (!pedidos.vigente(gen)) return
         console.error(err)
+        // D9: sin esto la pantalla mostraba "Sin contactos" — una afirmación
+        // falsa sobre datos que nunca llegaron.
+        setLoadError('listado')
+        setContacts([])
       })
       // El spinner del listado va versionado: si lo apagara una respuesta
       // vieja, la pantalla mostraría el listado anterior como si fuera el
@@ -254,7 +302,7 @@ function ContactsClient() {
       .finally(() => pedidos.siVigente(gen, () => setLoading(false)))
     setSelectedIds(new Set())
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtros, userInfo])
+  }, [filtros, userInfo, identidadResuelta, reintentos])
 
   const filtered = search
     ? contacts.filter(c =>
@@ -281,7 +329,13 @@ function ContactsClient() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Contactos</h1>
           <p className="text-muted-foreground">
-            {cargando ? 'Cargando…' : `${filtered.length} contacto${filtered.length !== 1 ? 's' : ''}`}
+            {/* D9: con el pedido caído el conteo no vale — imprimirlo era la
+                mitad de la mentira ("0 contactos" arriba del cartel vacío). */}
+            {cargando
+              ? 'Cargando…'
+              : loadError
+                ? 'No se pudo consultar'
+                : `${filtered.length} contacto${filtered.length !== 1 ? 's' : ''}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -293,12 +347,16 @@ function ContactsClient() {
         </div>
       </div>
 
+      {/* D34: `extraActivo` suma el buscador. La pantalla ya lo cuenta como
+          filtro puesto (`hayFiltros`), así que "Limpiar todo" tiene que
+          aparecer también cuando es lo único puesto — si no, el residuo queda
+          sin forma de sacarlo desde la barra. */}
       <FilterBar
         selects={[{ key: 'origin', label: 'Origen', options: OPCIONES_ORIGEN }]}
         values={mostrado}
         onChange={setFiltro}
         onClear={limpiarTodo}
-        extraActivo={!!mostrado.from || !!mostrado.to}
+        extraActivo={!!mostrado.from || !!mostrado.to || !!search}
       >
         <DateRangeFilter
           value={{ from: mostrado.from, to: mostrado.to }}
@@ -332,8 +390,35 @@ function ContactsClient() {
         />
       )}
 
+      {/* Tres estados distinguibles, no dos: cargando / no se pudo (con motivo
+          y salida) / vacío de verdad. D9 y D31 son las dos formas del segundo,
+          que antes se disfrazaban de las otras dos. */}
       {cargando ? (
         <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+      ) : loadError ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <User className="h-12 w-12 text-destructive mb-4" />
+            <h3 className="text-lg font-medium mb-1">
+              {loadError === 'identidad' ? 'No pudimos confirmar quién sos' : 'No se pudieron cargar los contactos'}
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4 max-w-md">
+              {loadError === 'identidad'
+                ? 'Sin saber quién sos no mostramos la lista, para no enseñarte contactos de otros asesores. Probá de nuevo; si sigue pasando, volvé a iniciar sesión.'
+                : hayFiltros
+                  ? 'Puede ser un filtro inválido en el link o un problema de conexión. Probá de nuevo o limpiá los filtros.'
+                  : 'Puede ser un problema de conexión. Probá de nuevo.'}
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button size="sm" onClick={reintentar}>Reintentar</Button>
+              {loadError === 'identidad' ? (
+                <Link href="/login"><Button size="sm" variant="outline">Iniciar sesión</Button></Link>
+              ) : hayFiltros ? (
+                <Button size="sm" variant="outline" onClick={limpiarTodo}>Limpiar filtros</Button>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
       ) : filtered.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">

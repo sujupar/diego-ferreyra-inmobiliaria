@@ -12,7 +12,7 @@ import type { FlowHistoryData } from '@/app/(dashboard)/_components/FlowHistoryC
 import {
   buildKeyStats, ghlMissingFields, nextStep, resolveTab, visibleTabs, type TabKey,
 } from '@/lib/properties/detail-view'
-import { etiquetaDeCaptacion } from '@/lib/properties/captacion'
+import { contarDocumentosCargados, etiquetaDeCaptacion } from '@/lib/properties/captacion'
 import { useSubirFotos } from '@/lib/properties/use-subir-fotos'
 import { PropertyHeroGallery } from '@/components/properties/detail/PropertyHeroGallery'
 import { PropertyIdentityBar } from '@/components/properties/detail/PropertyIdentityBar'
@@ -61,6 +61,13 @@ interface PropertyData {
   sold_price: number | null
   sold_currency: string | null
   sold_at: string | null
+  /**
+   * COLUMNA MUERTA. La escribía `POST /api/properties/[id]/upload`, una ruta
+   * sin un solo llamador desde el rediseño; el checklist legal escribe en
+   * `legal_docs` vía la RPC `merge_property_legal_doc`. Se conserva en el tipo
+   * porque la API la sigue devolviendo, pero NADIE de esta ficha la lee: la
+   * cuenta de documentos sale de `legal_docs`.
+   */
   documents: Array<{ name: string; url: string }>
   photos: string[]
   plans: string[] | null
@@ -224,7 +231,10 @@ export default function PropertyDetailPage() {
   const canHardDelete = userInfo?.role === 'admin' || userInfo?.role === 'dueno'
   const photos = property.photos || []
   const plans = property.plans || []
-  const documents = Array.isArray(property.documents) ? property.documents : []
+  // De `legal_docs` (lo que escribe el checklist), NO de `properties.documents`.
+  // Esa columna quedó huérfana en abril y devolvía 0 siempre, así que el envío
+  // al abogado era código muerto. Ver `contarDocumentosCargados`.
+  const documentosCargados = contarDocumentosCargados(legalDocsData?.docs)
 
   const statusInfo = etiquetaDeCaptacion({
     status: property.status,
@@ -239,7 +249,7 @@ export default function PropertyDetailPage() {
     legalNotes: property.legal_notes,
     legalSubmittedAt: property.legal_submitted_at ?? null,
     photosCount: photos.length,
-    documentsCount: documents.length,
+    documentsCount: documentosCargados,
     ghlImported: !!property.ghl_imported,
     ghlMissing: property.ghl_imported ? ghlMissingFields(property) : [],
     importSource: property.import_source ?? null,
@@ -353,6 +363,9 @@ export default function PropertyDetailPage() {
             legalStatus={property.legal_status}
             legalSubmittedAt={property.legal_submitted_at ?? null}
             legalNotes={property.legal_notes}
+            documentosCargados={documentosCargados}
+            onSubmitReview={handleEnviarARevisionLegal}
+            enviando={submitting}
             onUpdated={fetchLegalDocs}
             onReviewed={() => { fetchProperty(); fetchLegalDocs() }}
           />

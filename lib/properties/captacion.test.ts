@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   evaluarCaptacion, debeAvanzarACaptada, estadoLegal,
   puedeRevisarDocumentacion, etiquetaDeCaptacion,
+  contarDocumentosCargados, envioDocumentacion, enCaptacion, ESTADOS_EN_CAPTACION,
 } from './captacion'
 
 describe('evaluarCaptacion', () => {
@@ -79,6 +80,86 @@ describe('estadoLegal / puedeRevisarDocumentacion', () => {
     expect(puedeRevisarDocumentacion({
       legalStatus: 'pending', legalSubmittedAt: '2026-08-09T10:00:00Z', role: 'abogado',
     })).toBe(true)
+  })
+})
+
+describe('contarDocumentosCargados', () => {
+  it('cuenta los ítems del checklist que tienen archivo subido', () => {
+    expect(contarDocumentosCargados({
+      escritura: { file_url: 'https://x/e.pdf', status: 'pending' },
+      dni_titulares: { file_url: 'https://x/d.pdf', status: 'approved' },
+      plano: { status: 'missing' },
+    } as never)).toBe(2)
+  })
+
+  it('un ítem sin archivo (o con la url vacía) no cuenta', () => {
+    expect(contarDocumentosCargados({ escritura: { status: 'missing' } } as never)).toBe(0)
+    expect(contarDocumentosCargados({ escritura: { file_url: '   ' } } as never)).toBe(0)
+    expect(contarDocumentosCargados({ escritura: null } as never)).toBe(0)
+  })
+
+  it('sin datos todavía (la lectura de legal_docs viaja aparte) devuelve 0', () => {
+    expect(contarDocumentosCargados(null)).toBe(0)
+    expect(contarDocumentosCargados(undefined)).toBe(0)
+    expect(contarDocumentosCargados({})).toBe(0)
+  })
+})
+
+describe('envioDocumentacion', () => {
+  const sinEnviar = { legalStatus: 'pending', legalSubmittedAt: null, role: 'asesor' }
+
+  it('con documentos cargados y sin enviar, se puede mandar', () => {
+    expect(envioDocumentacion({ ...sinEnviar, documentosCargados: 2 })).toBe('listo')
+  })
+
+  it('sin ningún archivo todavía no hay nada que mandar', () => {
+    expect(envioDocumentacion({ ...sinEnviar, documentosCargados: 0 })).toBe('sin-documentos')
+  })
+
+  /**
+   * H1: el aviso de la cabecera muestra UN paso por vez y, sin fotos, gana el
+   * de las fotos. Esta regla NO mira la captación justamente para que el
+   * propietario que entrega la escritura antes de la sesión de fotos pueda
+   * mandarla igual.
+   */
+  it('no depende de que la propiedad esté captada: se manda sin una sola foto', () => {
+    expect(envioDocumentacion({ ...sinEnviar, documentosCargados: 1 })).toBe('listo')
+  })
+
+  /** H2: el servidor ya sabía reabrir la revisión; faltaba el botón. */
+  it('una rechazada se puede volver a enviar', () => {
+    expect(envioDocumentacion({
+      legalStatus: 'rejected', legalSubmittedAt: '2026-08-01T00:00:00Z', role: 'asesor', documentosCargados: 3,
+    })).toBe('reenviar')
+  })
+
+  it('mientras el abogado la tiene, o cuando ya la aprobó, no se ofrece', () => {
+    expect(envioDocumentacion({
+      legalStatus: 'pending', legalSubmittedAt: '2026-08-01T00:00:00Z', role: 'asesor', documentosCargados: 3,
+    })).toBe('oculto')
+    expect(envioDocumentacion({
+      legalStatus: 'approved', legalSubmittedAt: '2026-08-01T00:00:00Z', role: 'asesor', documentosCargados: 3,
+    })).toBe('oculto')
+  })
+
+  it('el abogado no manda documentación: la recibe', () => {
+    expect(envioDocumentacion({ ...sinEnviar, role: 'abogado', documentosCargados: 3 })).toBe('oculto')
+  })
+})
+
+describe('enCaptacion', () => {
+  it('los cuatro estados de captación abierta', () => {
+    for (const s of ESTADOS_EN_CAPTACION) expect(enCaptacion(s)).toBe(true)
+  })
+
+  it('lo cerrado no está en captación', () => {
+    for (const s of ['approved', 'active', 'rejected', 'descartada']) expect(enCaptacion(s)).toBe(false)
+  })
+
+  it('un status desconocido o vacío NO se hace pasar por captación', () => {
+    expect(enCaptacion('vendida')).toBe(false)
+    expect(enCaptacion(null)).toBe(false)
+    expect(enCaptacion('')).toBe(false)
   })
 })
 

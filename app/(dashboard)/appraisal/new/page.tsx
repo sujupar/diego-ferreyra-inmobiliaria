@@ -1694,6 +1694,21 @@ function NewAppraisalPageContent() {
                     advisorPhotoUrl={advisorPhotoUrl}
                     marketData={marketData}
                     neighborhoodName={marketData?.neighborhood.name}
+                    // D28: sin esta prop, la casilla «Guardar este orden en la
+                    // propiedad» de la pestaña Organizar quedaba SIEMPRE en
+                    // gris, con el cartel «(solo disponible en tasaciones
+                    // guardadas)» encima de una tasación que sí estaba
+                    // guardada — el id estaba a mano, era una prop olvidada.
+                    // Peor: sobre una tasación que ya tenía layout guardado
+                    // desde la ficha, `savePermanent` arrancaba en true con la
+                    // casilla trabada, así que cada reordenamiento pisaba en
+                    // silencio el layout guardado y no había forma de
+                    // destildar. La ficha (`appraisals/[id]`) ya pasa esta
+                    // misma prop y ahí la casilla funciona.
+                    // `editId` primero, igual que en el resto del asistente: es
+                    // la fuente sincrónica. `savedAppraisalId` cubre el primer
+                    // guardado de la sesión, cuando la URL todavía no commiteó.
+                    appraisalId={editId || savedAppraisalId || undefined}
                 />
             )}
         </div>

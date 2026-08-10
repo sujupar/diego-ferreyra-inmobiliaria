@@ -83,12 +83,20 @@ describe('getProperties', () => {
 })
 
 describe('getPropertiesListPage', () => {
-  it('filtra por el día argentino completo en SUS DOS consultas (listado + flags)', async () => {
+  /**
+   * Antes esto exigía el MISMO corte en DOS consultas (listado + flags), porque
+   * las dos repetían filtros, orden y `range` esperando caer en el mismo
+   * conjunto de filas. Ese acoplamiento se eliminó: la segunda consulta ahora
+   * pide las banderas POR LOS IDS de la página ya resuelta, así que no tiene
+   * fechas que desincronizar — el desalineo dejó de ser posible por
+   * construcción, en vez de depender de que alguien copiara bien los `if`.
+   * Ver `lib/supabase/properties.test.ts` para el merge por id.
+   */
+  it('filtra por el día argentino completo, con un solo corte de fechas', async () => {
     await getPropertiesListPage({ from: DIA, to: DIA }, { limit: 24, offset: 0 })
     const { desde, hasta } = limites()
-    // Dos consultas en paralelo: si no cortaran igual, el merge por id quedaría cojo.
-    expect(desde).toHaveLength(2)
-    expect(hasta).toHaveLength(2)
+    expect(desde).toHaveLength(1)
+    expect(hasta).toHaveLength(1)
     esperarDiaLocalCompleto()
   })
 })

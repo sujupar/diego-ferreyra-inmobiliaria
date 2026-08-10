@@ -22,6 +22,15 @@ const EMAIL_TYPES: EmailType[] = [
         fields: [{ name: 'dealId', label: 'Deal ID', placeholder: 'uuid del deal' }],
     },
     {
+        // La pieza de MAYOR volumen del sistema (sale en cada registro de la
+        // landing del embudo) y era la única que la API sabía enviar y esta
+        // lista no ofrecía. Ojo: NO es lo mismo que "Tasación agendada".
+        id: 'appraisal_request',
+        label: 'Solicitud de tasación (embudo)',
+        description: 'Coordinador + admins/dueños. NO va al asesor. El deal tiene que ser origin=embudo.',
+        fields: [{ name: 'dealId', label: 'Deal ID', placeholder: 'uuid de un deal del embudo' }],
+    },
+    {
         id: 'visit_completed',
         label: 'Visita realizada',
         description: 'Coordinador + admins + asesor (CC).',

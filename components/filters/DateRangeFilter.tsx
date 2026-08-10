@@ -122,8 +122,16 @@ export function DateRangeFilter({ onChange, value }: DateRangeFilterProps) {
     onChange({ from: '', to: '' })
   }
 
+  // Con UNA sola punta cargada, "Aplicar" no hacía absolutamente nada: ni
+  // filtraba, ni avisaba, ni se veía deshabilitado — indistinguible de un botón
+  // roto. Y el rango abierto ("todo lo captado a partir del 1 de agosto") es un
+  // pedido normal que el resto del sistema YA soporta: la consulta aplica
+  // `from` y `to` con ifs independientes, y las cinco pantallas validan cada
+  // punta por separado. El bloqueo era solo de este control.
+  const hayAlgoQueAplicar = !!(currentCustomFrom || currentCustomTo)
+
   function handleCustomApply() {
-    if (currentCustomFrom && currentCustomTo) {
+    if (hayAlgoQueAplicar) {
       // Si es no controlado, actualizar el estado local
       if (!value) {
         setActive('custom')
@@ -187,7 +195,17 @@ export function DateRangeFilter({ onChange, value }: DateRangeFilterProps) {
             onChange={e => handleCustomChange('to', e.target.value)}
             className="w-36 h-8 text-sm"
           />
-          <Button size="sm" onClick={handleCustomApply} className="h-8">Aplicar</Button>
+          {/* Sin NINGUNA punta cargada no hay nada que aplicar, y eso el botón
+              lo tiene que DECIR (deshabilitado) en vez de tragarse el clic. */}
+          <Button
+            size="sm"
+            onClick={handleCustomApply}
+            disabled={!hayAlgoQueAplicar}
+            title={hayAlgoQueAplicar ? undefined : 'Cargá al menos una de las dos fechas'}
+            className="h-8"
+          >
+            Aplicar
+          </Button>
         </div>
       )}
     </div>

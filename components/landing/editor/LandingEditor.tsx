@@ -20,6 +20,7 @@ import { useAutosave } from './useAutosave'
 import { replaceBlockById } from '@/lib/landing/editor/block-patch'
 import { insertBlockInCuratedOrder, removeBlockById } from '@/lib/landing/editor/block-order'
 import { defaultOptionalBlock } from '@/lib/landing/editor/editable'
+import { leerBloqueOculto, olvidarBloqueOculto, recordarBloqueOculto } from '@/lib/landing/editor/hidden-blocks'
 import type { LandingProperty } from '@/lib/landing/registry'
 import type { LandingBlock, LandingDocument, ThanksContent } from '@/lib/landing/schema'
 
@@ -45,6 +46,7 @@ export function LandingEditor({ propertyId, property, initialDocument, isPublish
   const [selectedId, setSelectedId] = useState<string | null>('hero')
   const [page, setPage] = useState<EditingPage>('landing')
   const [publishing, setPublishing] = useState(false)
+  const [saliendo, setSaliendo] = useState(false)
   const hiddenRef = useRef<Record<string, LandingBlock>>({})
   const { status, flush } = useAutosave(propertyId, doc)
 
@@ -61,17 +63,46 @@ export function LandingEditor({ propertyId, property, initialDocument, isPublish
   // Los efectos (mutar hiddenRef, mover la selección) van FUERA del updater de setDoc:
   // React 19 doble-invoca los updaters en StrictMode y un updater impuro perdería lo
   // editado al re-mostrar una sección. El updater queda puro (solo transforma blocks).
+  //
+  // El `hiddenRef` solo cubre la sesión actual. Lo ocultado se recuerda TAMBIÉN en
+  // el navegador (`hidden-blocks.ts`): sin eso, ocultar "Ubicación", salir del
+  // editor y volver a prenderla devolvía un bloque vacío y el texto de zona que
+  // había escrito la IA no se podía recuperar de ningún lado.
   function handleToggle(id: string, on: boolean) {
     if (on) {
-      const block = hiddenRef.current[id] ?? defaultOptionalBlock(id, property)
+      const block = hiddenRef.current[id] ?? leerBloqueOculto(propertyId, id) ?? defaultOptionalBlock(id, property)
       if (!block) return
       delete hiddenRef.current[id]
+      olvidarBloqueOculto(propertyId, id)
       setDoc((d) => ({ ...d, blocks: insertBlockInCuratedOrder(d.blocks, block) }))
     } else {
       const found = doc.blocks.find((b) => b.id === id)
-      if (found) hiddenRef.current[id] = found // recordamos lo editado por si lo vuelve a mostrar
+      if (found) {
+        hiddenRef.current[id] = found // recordamos lo editado por si lo vuelve a mostrar
+        recordarBloqueOculto(propertyId, found)
+      }
       if (selectedId === id) setSelectedId('hero')
       setDoc((d) => ({ ...d, blocks: removeBlockById(d.blocks, id) }))
+    }
+  }
+
+  /**
+   * "Volver" guarda lo pendiente ANTES de irse.
+   *
+   * El autosave espera 800ms desde la última tecla. Si el asesor terminaba de
+   * escribir y tocaba "Volver" enseguida, el desmontaje cancelaba ese timer y lo
+   * último tipeado se perdía sin ningún aviso — con el cartel diciendo "Guardado"
+   * (de la tanda anterior). Ahora se fuerza el guardado y, si no se pudo, se
+   * pregunta en vez de perderlo en silencio.
+   */
+  async function volver() {
+    setSaliendo(true)
+    try {
+      const savedOk = await flush()
+      if (!savedOk && !confirm('No se pudo guardar el último cambio. ¿Salir igual y perderlo?')) return
+      router.push(`/properties/${propertyId}`)
+    } finally {
+      setSaliendo(false)
     }
   }
 
@@ -105,8 +136,9 @@ export function LandingEditor({ propertyId, property, initialDocument, isPublish
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
       <header className="flex items-center justify-between gap-3 border-b bg-background px-4 py-2">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => router.push(`/properties/${propertyId}`)}>
-            <ArrowLeft className="mr-1 h-4 w-4" /> Volver
+          <Button variant="ghost" size="sm" onClick={volver} disabled={saliendo}>
+            {saliendo ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <ArrowLeft className="mr-1 h-4 w-4" />}
+            Volver
           </Button>
           <span className="text-sm font-medium">Editar</span>
           {/* Selector de página. Las dos se guardan y se publican juntas. */}

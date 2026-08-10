@@ -60,7 +60,17 @@ export function getNavSections(role: Role): NavGroup[] {
   const can = (p: Permission) => hasPermission(role, p)
 
   if (role === 'abogado') {
-    return [{ label: null, entries: [PENDIENTES, REVISION_LEGAL, HISTORIAL] }]
+    // SIN Tasaciones, a propósito. El abogado no tiene ni un permiso
+    // `appraisal.*`, y desde que se cerró `/api/appraisals` —podía LEER los
+    // datos del cliente y la valuación de todas, editarlas, crearlas y
+    // borrarlas— ese ítem lleva a una pantalla que solo dice "no tenés
+    // permiso". Un botón que existe únicamente para negarse es peor que no
+    // tenerlo.
+    //
+    // Si algún día necesita ver la tasación de la propiedad que está revisando,
+    // la respuesta NO es devolver este ítem —que lo manda al listado completo—
+    // sino darle lectura acotada a ESA tasación desde la ficha de la propiedad.
+    return [{ label: null, entries: [PENDIENTES, REVISION_LEGAL] }]
   }
 
   if (role === 'asesor') {
@@ -212,6 +222,14 @@ const EXTRA_TITLES: { prefix: string; title: string }[] = [
   // enlazada desde Inicio. No hay listado propio en el menú; pertenece al
   // área de Tasaciones (mismo nombre que usa el desplegable Tasaciones).
   { prefix: '/scheduled-appraisals', title: 'Tasaciones' },
+  // /properties/[id]: para casi todos los roles esto lo resuelve el menú
+  // (/properties está adentro del desplegable "Propiedades"). El ABOGADO es la
+  // excepción: su menú solo tiene /properties/review, que no matchea la ficha de
+  // una propiedad ni exacto ni por prefijo, así que la barra le mostraba el
+  // nombre de la empresa justo en la pantalla donde hace todo su trabajo (entra
+  // desde Revisión legal). Va último porque EXTRA_TITLES solo se consulta cuando
+  // NINGÚN ítem del menú matchea: a los demás roles no les cambia nada.
+  { prefix: '/properties', title: 'Propiedades' },
 ]
 
 /**

@@ -62,6 +62,35 @@ export function commercialStatusDef(key: string | null | undefined): CommercialS
   return BY_KEY.get((key ?? '') as CommercialStatus) ?? COMMERCIAL_STATUSES[0]
 }
 
+/**
+ * Estado comercial REAL de una propiedad, contemplando el espejo heredado.
+ *
+ * `commercial_status` es la fuente de verdad, pero NO es la única puerta:
+ * el descarte masivo del listado manda `PUT {status:'descartada'}` por la ruta
+ * genérica y no toca esta columna (que es NOT NULL DEFAULT 'disponible'). Sin
+ * esta derivación, una propiedad descartada en masa se lee como 'disponible' y
+ * pasan dos cosas a la vez:
+ *
+ *  - la tarjeta de la ficha ofrece solo los OTROS estados, o sea que "Disponible"
+ *    —el botón para recuperarla— no aparece, contradiciendo al badge que dice
+ *    "Descartada";
+ *  - y el servidor, que re-deriva el estado de origen, nunca entra en la rama
+ *    `from === 'descartada'` de `buildStatusPatch`, así que apretar cualquier
+ *    otro botón deja `status='descartada'` intacto en la base: la propiedad
+ *    queda con dos estados contradictorios.
+ *
+ * Se usa en las DOS puntas (tarjeta y ruta) a propósito: si solo se arregla la
+ * pantalla, el botón aparece y no hace nada.
+ */
+export function estadoComercialEfectivo(i: {
+  commercialStatus: string | null | undefined
+  status: string | null | undefined
+}): CommercialStatus {
+  if (isCommercialStatus(i.commercialStatus) && i.commercialStatus !== 'disponible') return i.commercialStatus
+  if (i.status === 'descartada') return 'descartada'
+  return isCommercialStatus(i.commercialStatus) ? i.commercialStatus : 'disponible'
+}
+
 export interface StatusChangeInput {
   from: CommercialStatus
   to: CommercialStatus

@@ -24,14 +24,23 @@ const { updateSession, esApiPublica, esPaginaPublica, esRutaApi, API_PUBLICAS } 
 type RespuestaMiddleware = { status: number; headers: Headers }
 
 /** Arma un NextRequest suficientemente real para el middleware. */
-function pedido(pathname: string, method = 'GET') {
+function pedido(pathname: string, method = 'GET', cabeceras: Record<string, string> = {}) {
     const url = new URL(`http://localhost:3000${pathname}`)
     return {
         method,
         nextUrl: Object.assign(url, { clone: () => new URL(url.toString()) }),
         cookies: { getAll: () => [], set: () => {} },
-        headers: new Headers(),
+        headers: new Headers(cabeceras),
     } as never
+}
+
+/** Lo que manda un navegador al seguir un `<a href>` o escribir la URL. */
+function navegacion(pathname: string) {
+    return pedido(pathname, 'GET', {
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-dest': 'document',
+        accept: 'text/html,application/xhtml+xml',
+    })
 }
 
 function conSesion() {
@@ -324,5 +333,64 @@ describe('rutas de página — sin cambios de comportamiento', () => {
     it('una página pública no consulta la sesión', async () => {
         await pasa('/login')
         expect(getUser).not.toHaveBeenCalled()
+    })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sesión vencida + NAVEGACIÓN a una ruta de API
+// ─────────────────────────────────────────────────────────────────────────────
+describe('una ruta de API a la que se llega NAVEGANDO', () => {
+    // Configuración → Portales tiene un `<a href="/api/oauth/mercadolibre/start">`
+    // (el único `<a href="/api/...">` de toda la app). Con la sesión vencida, el
+    // 401 en JSON se dibuja como una página en blanco con
+    // `{"error":"unauthorized"}` y sin camino de vuelta.
+    it('sin sesión manda al login, no un 401 en JSON', async () => {
+        const res = (await updateSession(
+            navegacion('/api/oauth/mercadolibre/start')
+        )) as RespuestaMiddleware
+        expect(res.status).toBe(307)
+        const destino = new URL(res.headers.get('location')!)
+        expect(destino.pathname).toBe('/login')
+        expect(destino.searchParams.get('redirectTo')).toBe('/api/oauth/mercadolibre/start')
+    })
+
+    it('un fetch() a la MISMA ruta sigue recibiendo 401 en JSON', async () => {
+        // Es la mitad que no se puede romper: un 307 a HTML hace explotar el
+        // `res.json()` del cliente con `Unexpected token '<'`.
+        const res = (await updateSession(
+            pedido('/api/oauth/mercadolibre/start', 'GET', {
+                'sec-fetch-mode': 'cors',
+                accept: '*/*',
+            })
+        )) as RespuestaMiddleware
+        expect(res.status).toBe(401)
+        expect(res.headers.get('content-type')).toContain('application/json')
+    })
+
+    it('un fetch() que igual pide text/html no se confunde con una navegación', async () => {
+        const res = (await updateSession(
+            pedido('/api/tasks', 'GET', {
+                'sec-fetch-mode': 'same-origin',
+                accept: 'text/html',
+            })
+        )) as RespuestaMiddleware
+        expect(res.status).toBe(401)
+    })
+
+    it('con sesión válida la navegación pasa y la maneja el handler', async () => {
+        conSesion()
+        const res = (await updateSession(
+            navegacion('/api/oauth/mercadolibre/start')
+        )) as RespuestaMiddleware
+        expect(res.status).not.toBe(401)
+        expect(res.status).not.toBe(307)
+    })
+
+    it('navegar a una ruta de API que NO existe tampoco filtra nada: va al login', async () => {
+        const res = (await updateSession(
+            navegacion('/api/ruta-que-alguien-va-a-escribir-manana')
+        )) as RespuestaMiddleware
+        expect(res.status).toBe(307)
+        expect(new URL(res.headers.get('location')!).pathname).toBe('/login')
     })
 })

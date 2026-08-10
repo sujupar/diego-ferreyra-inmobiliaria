@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { getUser } from '@/lib/auth/get-user'
+import { alcanceTasaciones } from '@/lib/auth/appraisal-access'
 import { insertAppraisalWithComparables } from '@/lib/supabase/appraisals-write'
 import type { SaveAppraisalInput } from '@/lib/supabase/appraisals'
 import { currentPeriod } from '@/lib/market-data/period'
@@ -11,6 +12,25 @@ function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
+/**
+ * D29: el orden se resuelve ACÁ, no en memoria sobre la página cargada.
+ * La pantalla pagina de a 12; ordenar del lado del navegador ordenaba esas 12
+ * filas y dejaba la flecha del encabezado puesta como si el orden fuera de
+ * todas las tasaciones — "la más cara" era la más cara de la página.
+ *
+ * Lista blanca: la clave llega del querystring y termina dentro de un
+ * `.order()`. Cualquier clave que no esté acá se ignora y se usa el orden por
+ * defecto (las más nuevas primero), que es el que la pantalla espera al abrir.
+ * Son exactamente las columnas marcadas `sortable` en la tabla.
+ */
+const COLUMNAS_ORDENABLES = new Set([
+  'property_title',
+  'property_location',
+  'publication_price',
+  'comparable_count',
+  'created_at',
+])
+
 export async function GET(request: NextRequest) {
   try {
     // Usuario EFECTIVO (impersonation-aware: si un admin está "viendo como" un asesor,
@@ -19,12 +39,25 @@ export async function GET(request: NextRequest) {
     const me = await getUser()
     if (!me) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
+    // D1: el abogado NO tiene permisos de tasación (roles.ts solo le da
+    // properties.view_all + properties.review) y sin embargo recibía el
+    // listado COMPLETO de la inmobiliaria, con el que después borraba.
+    // Ver lib/auth/appraisal-access.ts.
+    if (alcanceTasaciones(me.profile.role) === 'ninguna') {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
+
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '12')
     const from = searchParams.get('from')
     const to = searchParams.get('to')
     const assignedTo = searchParams.get('assigned_to')
+    const sort = searchParams.get('sort')
+    const dir = searchParams.get('dir')
+    const ordenPedido = sort && COLUMNAS_ORDENABLES.has(sort) ? sort : null
+    const columnaOrden = ordenPedido || 'created_at'
+    const ascendente = ordenPedido ? dir === 'asc' : false
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -40,7 +73,11 @@ export async function GET(request: NextRequest) {
         'id, property_title, property_location, publication_price, currency, comparable_count, created_at, origin, assigned_to',
         { count: 'exact' }
       )
-      .order('created_at', { ascending: false })
+      .order(columnaOrden, { ascending: ascendente })
+      // Desempate estable: sin él, dos filas con el mismo precio (o la misma
+      // fecha) pueden salir en orden distinto en cada pedido y una tasación
+      // aparece dos veces al pasar de página, o no aparece nunca.
+      .order('id', { ascending: true })
 
     // Día ARGENTINO, no UTC — ver lib/filters/rango-fechas.ts.
     if (from) query = query.gte('created_at', inicioDelDiaArgentina(from))
@@ -79,6 +116,12 @@ export async function POST(request: NextRequest) {
   // try para que el redirect propague a Next.js en vez de convertirse en 500.
   const user = await requireAuth()
   try {
+    // D1, misma puerta que el GET: un rol sin alcance sobre tasaciones tampoco
+    // las crea. Antes acá solo había `requireAuth()`, o sea que el abogado
+    // podía insertar tasaciones además de leerlas y borrarlas.
+    if (alcanceTasaciones(user.profile.role) === 'ninguna') {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     const input = (await request.json()) as SaveAppraisalInput & { dealId?: string }
 
     // Validaciones mínimas — el subject y un valuationResult válido son NOT NULL en DB.

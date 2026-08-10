@@ -3,8 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { canAccessProperty } from '@/lib/auth/entity-access'
 import {
-  buildStatusPatch, isCommercialStatus, validateStatusChange,
-  type CommercialStatus,
+  buildStatusPatch, estadoComercialEfectivo, isCommercialStatus, validateStatusChange,
 } from '@/lib/properties/commercial-status'
 
 function admin() {
@@ -62,15 +61,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const db = admin()
     const { data: prop, error: readErr } = await db
       .from('properties')
-      .select('commercial_status, currency')
+      .select('commercial_status, currency, status')
       .eq('id', id)
       .maybeSingle()
     if (readErr) throw readErr
     if (!prop) return NextResponse.json({ error: 'Propiedad no encontrada.' }, { status: 404 })
 
-    const from = (isCommercialStatus(prop.commercial_status)
-      ? prop.commercial_status
-      : 'disponible') as CommercialStatus
+    // El estado de origen NO se lee del cliente (se re-deriva acá) y contempla
+    // el espejo heredado: una propiedad descartada en masa desde el listado
+    // tiene `status='descartada'` con `commercial_status='disponible'`. Sin
+    // esto, `buildStatusPatch` nunca entraba en la rama `from==='descartada'` y
+    // marcarla "Disponible" dejaba `status='descartada'` intacto en la base:
+    // el botón de recuperarla existía y no recuperaba nada.
+    const from = estadoComercialEfectivo({
+      commercialStatus: prop.commercial_status,
+      status: prop.status,
+    })
 
     const input = {
       from,

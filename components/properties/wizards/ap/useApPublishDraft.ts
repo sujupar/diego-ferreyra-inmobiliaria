@@ -1,6 +1,7 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { leerJson } from '../leer-json'
 import type { ApAttributesResponse, ApDraft, ApListing, ApPreviewProperty } from './types'
 
 interface PreviewResponse {
@@ -58,23 +59,33 @@ export function useApPublishDraft(propertyId: string) {
 
   const patch = useCallback((p: Partial<ApDraft>) => setDraft(d => (d ? { ...d, ...p } : d)), [])
 
+  /**
+   * Persiste el draft y devuelve la validation recalculada. NUNCA tira: ver el
+   * comentario gemelo en `ml/useMlPublishDraft.ts` — una excepción acá dejaba el
+   * botón "Siguiente" trabado en "Guardando…" para siempre.
+   */
   const save = useCallback(async (): Promise<boolean> => {
     if (!draft) return false
-    const r = await fetch(`/api/properties/${propertyId}/ap-preview`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        title: draft.title, description: draft.description, photos: draft.photos,
-        asking_price: draft.askingPrice, videoUrl: draft.videoUrl, tour3dUrl: draft.tour3dUrl,
-        latitude: draft.latitude, longitude: draft.longitude,
-        address: draft.address, geoConfidence: draft.geoConfidence,
-        apAttributes: draft.apAttributes, mediaChoice: draft.mediaChoice, listingType: draft.listingType,
-      }),
-    })
-    const j = (await r.json()) as { validation?: PreviewResponse['validation']; error?: string }
-    if (!r.ok) { toast.error(j.error ?? 'Error al guardar'); return false }
-    if (j.validation) setValidation(j.validation)
-    return true
+    try {
+      const r = await fetch(`/api/properties/${propertyId}/ap-preview`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: draft.title, description: draft.description, photos: draft.photos,
+          asking_price: draft.askingPrice, videoUrl: draft.videoUrl, tour3dUrl: draft.tour3dUrl,
+          latitude: draft.latitude, longitude: draft.longitude,
+          address: draft.address, geoConfidence: draft.geoConfidence,
+          apAttributes: draft.apAttributes, mediaChoice: draft.mediaChoice, listingType: draft.listingType,
+        }),
+      })
+      const j = await leerJson<{ validation?: PreviewResponse['validation'] }>(r)
+      if (!r.ok || j.error) { toast.error(j.error ?? 'Error al guardar'); return false }
+      if (j.validation) setValidation(j.validation)
+      return true
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'No se pudo guardar. Revisá tu conexión.')
+      return false
+    }
   }, [draft, propertyId])
 
   return { loading, property, attrs, listing, validation, draft, patch, save, reload: load }

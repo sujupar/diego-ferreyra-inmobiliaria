@@ -28,4 +28,23 @@ describe('PropertyTabsNav', () => {
     render(<PropertyTabsNav tabs={['propiedad', 'multimedia']} active="propiedad" onChange={() => {}} />)
     expect(screen.getByRole('tablist')).toBeInTheDocument()
   })
+
+  /**
+   * happy-dom no calcula layout, así que la oclusión real no se puede observar
+   * acá: lo único verificable es el CONTRATO con la barra superior del
+   * dashboard, que es `sticky top-0 z-40 h-14`, opaca y en el MISMO scroller.
+   * Con `top-0` esta barra quedaba 100% detrás de esos 56px — invisible y sin
+   * recibir clics. El test fija el offset y que el z-index no compita.
+   */
+  it('se pega DEBAJO de la barra superior, no atrás de ella', () => {
+    render(<PropertyTabsNav tabs={['propiedad', 'multimedia']} active="propiedad" onChange={() => {}} />)
+    const barra = screen.getByTestId('barra-secciones')
+
+    expect(barra).toHaveClass('sticky')
+    // 56px = h-14 del Topbar.
+    expect(barra).toHaveClass('top-14')
+    expect(barra).not.toHaveClass('top-0')
+    // Por debajo del z-40 del Topbar: la que se tapa al llegar arriba es esta.
+    expect(barra).toHaveClass('z-30')
+  })
 })

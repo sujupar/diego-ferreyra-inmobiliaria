@@ -3,8 +3,15 @@
 import { CRM_STAGES } from './crm-stages'
 
 interface Props {
-  /** true = ocultar la ficha "Solicitud" (la maneja solo el coordinador). */
-  hideSolicitud: boolean
+  /**
+   * Claves de etapa que este rol NO puede ver — las maneja el coordinador
+   * antes de asignar asesor. Antes era un booleano `hideSolicitud` que solo
+   * tapaba 'solicitud': 'Clase Gratuita' se le seguía ofreciendo al asesor,
+   * clickeable, con el 0 forzado, y al tocarla devolvía lista vacía siempre
+   * (D33). La lista la decide la página, que es la que también filtra los
+   * deals en memoria y arma el desplegable "Etapa" con el MISMO criterio.
+   */
+  etapasOcultas: readonly string[]
   stageCounts: Record<string, number>
   /** Etapa activa — se pasa el valor MOSTRADO (espejo), no el aplicado, para
    * que el resalte responda al instante. */
@@ -17,11 +24,11 @@ interface Props {
  * `crm/page.tsx` (task-11-brief.md, Step 7) para bajar el archivo de las
  * ~700 líneas. La lógica de datos (fetch, filtros) se queda en la página.
  */
-export function StagePipeline({ hideSolicitud, stageCounts, activeKey, onToggle }: Props) {
+export function StagePipeline({ etapasOcultas, stageCounts, activeKey, onToggle }: Props) {
   return (
     <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 lg:grid-cols-9">
       {CRM_STAGES
-        .filter(s => !(hideSolicitud && s.key === 'solicitud'))
+        .filter(s => !etapasOcultas.includes(s.key))
         .map((s) => {
         const count = stageCounts[s.key] || 0
         const isActive = activeKey === s.key

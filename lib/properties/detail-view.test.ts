@@ -134,6 +134,37 @@ describe('nextStep', () => {
     expect(s?.text).toContain('no es obligatoria')
   })
 
+  /**
+   * H1 — el caso que este archivo dejó de cubrir cuando el test de "con
+   * documentación cargada y sin enviar" pasó de `photosCount: 0` a
+   * `photosCount: 5`.
+   *
+   * El propietario entrega la escritura el día 1 y la sesión de fotos es la
+   * semana siguiente. Este bloque muestra UN paso por vez y gana el de las
+   * fotos —correcto: es lo único que traba la captación—, así que el envío al
+   * abogado NO puede depender de él. La capacidad vive en la pestaña
+   * Documentación: `envioDocumentacion` (captacion.test.ts) + el botón de
+   * `DocsTab` (DocsTab.test.tsx). Este test fija que el aviso no es el camino,
+   * para que nadie vuelva a colgar el envío de acá.
+   */
+  it('sin fotos pero con la documentación cargada: gana el aviso de fotos y el envío NO cuelga de este bloque', () => {
+    const s = nextStep({ ...base, status: 'pending_docs', legalStatus: 'pending', legalSubmittedAt: null, photosCount: 0, documentsCount: 3 })
+    expect(s?.id).toBe('photos')
+    expect(s?.action).toEqual({ kind: 'subir-fotos', label: 'Subir fotos' })
+  })
+
+  /**
+   * H2 — el aviso invita a reenviar; el botón para hacerlo está en la pestaña
+   * a la que manda. Antes esa pestaña no tenía ningún botón de envío: el
+   * arreglo estaba en el servicio (`submitPropertyForLegalReview` devuelve el
+   * legal a 'pending') y no en la pantalla.
+   */
+  it('el rechazo manda a Documentación, que es donde vive el botón de volver a enviar', () => {
+    const s = nextStep({ ...base, legalStatus: 'rejected', legalNotes: null })
+    expect(s?.text).toMatch(/volvé a enviarla/i)
+    expect(s?.action).toEqual({ kind: 'tab', tab: 'documentacion', label: 'Ver observaciones' })
+  })
+
   it('al abogado nunca le ofrece subir fotos ni enviar a revisión', () => {
     const s = nextStep({ ...base, role: 'abogado', status: 'pending_photos', photosCount: 0 })
     expect(s?.action).toBeNull()
@@ -169,8 +200,22 @@ describe('nextStep', () => {
     expect(s?.id).not.toBe('legal-waiting')
   })
 
-  it('la descartada avisa que está fuera del flujo', () => {
-    expect(nextStep({ ...base, status: 'descartada' })?.id).toBe('descartada')
+  /**
+   * D3: el texto mandaba a "restaurarla desde el pie de la página" y el pie
+   * perdió ese botón cuando descartar/restaurar se mudaron a la tarjeta
+   * "Estado de la propiedad" (9e9bb65). El aviso apuntaba a un lugar que ya no
+   * existe: el usuario bajaba y solo encontraba "Eliminar definitivamente".
+   */
+  it('la descartada explica cómo recuperarla y manda al lugar donde SÍ se hace', () => {
+    const s = nextStep({ ...base, status: 'descartada' })
+    expect(s?.id).toBe('descartada')
+    expect(s?.text).not.toMatch(/pie de la página/i)
+    expect(s?.text).toMatch(/estado de la propiedad/i)
+    expect(s?.action).toEqual({ kind: 'tab', tab: 'propiedad', label: 'Ver estado de la propiedad' })
+  })
+
+  it('al abogado, que no toca datos comerciales, no le ofrece recuperarla', () => {
+    expect(nextStep({ ...base, role: 'abogado', status: 'descartada' })?.action).toBeNull()
   })
 
   it('la importada por CSV con archivos pendientes manda a Documentación', () => {

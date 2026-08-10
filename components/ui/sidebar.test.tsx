@@ -234,3 +234,44 @@ describe('primitivas del sidebar', () => {
     expect(badge.className).not.toContain('peer-data-[active=true]/menu-button:text-sidebar-accent-foreground')
   })
 })
+
+describe('atajo Cmd/Ctrl+B', () => {
+  /** El marco del menú lleva `data-state` = expanded | collapsed. */
+  function marco() {
+    return document.querySelector('[data-slot="sidebar"]')!
+  }
+
+  function montarConCampo() {
+    setInnerWidth(1280)
+    return render(
+      <SidebarProvider>
+        <Sidebar collapsible="icon" />
+        <textarea data-testid="mensaje" />
+      </SidebarProvider>,
+    )
+  }
+
+  it('con el foco en un campo de texto NO colapsa el menú (el teclado es de quien escribe)', () => {
+    montarConCampo()
+    expect(marco()).toHaveAttribute('data-state', 'expanded')
+
+    // Escribiendo una respuesta en el chat del Inbox, Cmd+B es "negrita" por
+    // costumbre. El atajo escucha en `window`, así que sin guarda se lo robaba
+    // a CUALQUIER campo de la plataforma — y el colapso queda en la cookie
+    // `sidebar_state` durante 7 días.
+    const campo = screen.getByTestId('mensaje')
+    campo.focus()
+    fireEvent.keyDown(campo, { key: 'b', metaKey: true })
+
+    expect(marco()).toHaveAttribute('data-state', 'expanded')
+  })
+
+  it('fuera de un campo, el atajo sigue funcionando', () => {
+    montarConCampo()
+    expect(marco()).toHaveAttribute('data-state', 'expanded')
+
+    fireEvent.keyDown(document.body, { key: 'b', ctrlKey: true })
+
+    expect(marco()).toHaveAttribute('data-state', 'collapsed')
+  })
+})

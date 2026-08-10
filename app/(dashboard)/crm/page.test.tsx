@@ -454,6 +454,74 @@ describe('CRMPage — tarjetas de números (task 16)', () => {
   })
 })
 
+/**
+ * D33 — el desplegable "Etapa" es control NUEVO del rediseño y no heredó el
+ * filtrado por rol que ya tenía la grilla. A un asesor le ofrecía dos etapas
+ * (Solicitud y Clase Gratuita) que `roleFilteredDeals` borra en memoria: elegir
+ * cualquiera de las dos daba SIEMPRE "Sin procesos". Y la grilla, que solo
+ * tapaba 'solicitud', le seguía ofreciendo 'Clase Gratuita' como ficha
+ * clickeable al mismo callejón sin salida.
+ */
+describe('CRMPage — etapas que el rol no puede ver (D33)', () => {
+  function valoresDeEtapa() {
+    return Array.from((screen.getByLabelText('Etapa') as HTMLSelectElement).options).map(o => o.value)
+  }
+
+  it('a un asesor no se las ofrece ni el desplegable ni la grilla', async () => {
+    render(<CRMPage />)
+    authDeferred.resolve({ id: 'u1', role: 'asesor' })
+    await waitFor(() => expect(dealsCalls.length).toBe(1))
+    dealsCalls[0].d.resolve(dealsPage(0, 0))
+    await screen.findByText('Sin procesos')
+
+    expect(valoresDeEtapa()).not.toContain('solicitud')
+    expect(valoresDeEtapa()).not.toContain('clase_gratuita')
+    // Las que sí puede ver siguen estando.
+    expect(valoresDeEtapa()).toContain('captada')
+    // La grilla usa el MISMO criterio. Se busca por ROL (las fichas son
+    // botones); por texto no sirve, las etiquetas también viven en las
+    // `<option>` del desplegable.
+    expect(screen.queryByRole('button', { name: /Solicitud/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Clase Gratuita/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Captada/ })).toBeInTheDocument()
+  })
+
+  it('a un coordinador sí, que es quien las maneja', async () => {
+    render(<CRMPage />)
+    authDeferred.resolve({ id: 'u1', role: 'coordinador' })
+    await waitFor(() => expect(dealsCalls.length).toBe(1))
+    dealsCalls[0].d.resolve(dealsPage(0, 0))
+    await screen.findByText('Sin procesos')
+
+    expect(valoresDeEtapa()).toContain('solicitud')
+    expect(valoresDeEtapa()).toContain('clase_gratuita')
+    expect(screen.getByRole('button', { name: /Clase Gratuita/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Solicitud/ })).toBeInTheDocument()
+  })
+
+  it('un ?etapa=solicitud heredado de un deep link se limpia solo', async () => {
+    // Sin la limpieza queda huérfano: el desplegable ya no tiene esa opción,
+    // así que `FilterBar` solo puede dibujarlo con la clave cruda, sobre una
+    // lista que va a estar vacía siempre.
+    busqueda = 'etapa=solicitud'
+    render(<CRMPage />)
+    authDeferred.resolve({ id: 'u1', role: 'asesor' })
+    await waitFor(() => expect(escrituras.length).toBeGreaterThan(0))
+    expect(escrituras[escrituras.length - 1]).toBe('/crm')
+  })
+
+  it('a un coordinador NO se lo limpia: ?etapa=solicitud es un filtro legítimo', async () => {
+    busqueda = 'etapa=solicitud'
+    render(<CRMPage />)
+    authDeferred.resolve({ id: 'u1', role: 'coordinador' })
+    await waitFor(() => expect(dealsCalls.length).toBe(1))
+    expect(dealsCalls[0].url).toContain('crm_stage=solicitud')
+    dealsCalls[0].d.resolve(dealsPage(0, 0))
+    await screen.findByText('Sin procesos')
+    expect(escrituras.length).toBe(0)
+  })
+})
+
 describe('CRMPage — identidad fail-closed (A4)', () => {
   it('un 401 de /api/auth/me (que igual devuelve JSON) NO deja salir el pedido sin assigned_to', async () => {
     // Acá el `userInfo` truthy con `role` undefined caía justo en el `else` de

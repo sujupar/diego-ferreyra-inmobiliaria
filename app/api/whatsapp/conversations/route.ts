@@ -48,6 +48,7 @@ import { countsAsReply } from '@/components/inbox/awaiting'
  *   awaiting_reply_since: string | null  // ISO del último entrante SIN respuesta posterior; null solo si después salió un mensaje DE VERDAD (ver `countsAsReply`)
  *   window: { open: boolean; msRemaining: number }  // Task 4 — ventana de 24hs RECALCULADA acá (serviceWindow sobre el último entrante, esté o no contestado)
  *   ai: { intent, priorityScore, priorityReason, suggestedNextStep, analyzedAt } | null  // Task 4 — lectura de `conversation_ai_state`; null = todavía no analizada
+ *   agent_off: boolean            // `conversation_ai_state.agent_handed_off`: true = el agente NO contesta en esta conversación
  *   priority: { score, reason, windowUrgency, analyzed }  // Task 4 — computePriority(window, ai), SIEMPRE presente con un motivo en castellano
  *   last_message: string | null
  *   last_direction: 'in' | 'out'
@@ -74,6 +75,19 @@ import { countsAsReply } from '@/components/inbox/awaiting'
  * se aplican client-side sobre la lista completa (`components/inbox/filters.ts`),
  * consistente con el resto de `ConversationFilterBar`. Acá solo se CALCULAN y
  * viajan en cada fila.
+ *
+ * `agent_off` va SUELTO y no adentro de `ai` A PROPÓSITO. Son dos preguntas
+ * distintas que se responden con la misma fila de `conversation_ai_state`:
+ * "¿la IA ya leyó esta conversación?" (`ai`, que es null hasta el primer
+ * análisis) y "¿el agente tiene permitido contestar acá?" (`agent_off`, que se
+ * puede apagar ANTES de que la IA hable — de hecho ese es el caso más útil:
+ * `POST /api/whatsapp/conversations/[phone]/agent` crea la fila con el upsert).
+ * Colgarlo de `ai` lo hacía invisible justo en ese caso, que es el que el botón
+ * del Inbox necesita. Por el mismo motivo, `ai` solo se emite cuando la fila
+ * tiene `last_analyzed_at`: una fila creada SOLO por el botón no debe hacerse
+ * pasar por un análisis (diría "la IA no pudo determinar la intención",
+ * pondría `priority.analyzed` en true y le partiría el score a la mitad a una
+ * conversación que la IA nunca miró).
  *
  * `webhookNotSubscribedWarning`: true si en TODA la tabla no hay ni un solo
  * mensaje entrante NI una sola actualización de estado post-envío
@@ -249,7 +263,7 @@ export async function GET(req: Request) {
     // "sin N+1" es el punto explícito del brief). `lead_tag_assignments` no
     // está en el Database type generado (migración 20260801000001) — mismo
     // cliente sin genérico que el resto del archivo.
-    let tagsMap = new Map<string, TagRow[]>()
+    const tagsMap = new Map<string, TagRow[]>()
     if (leadIds.length > 0) {
       const { data: tagRows } = await supabase
         .from('lead_tag_assignments')
@@ -279,7 +293,12 @@ export async function GET(req: Request) {
     // cast que el resto del archivo. Esta ruta solo LEE: la escribe
     // `lib/ai/conversation-memory.ts` (otra tarea, en paralelo).
     const allPhones = Array.from(groups.keys())
-    let aiStateMap = new Map<string, AiPriorityInput & { suggestedNextStep: string | null; analyzedAt: string | null; agentOff: boolean }>()
+    const aiStateMap = new Map<string, AiPriorityInput & { suggestedNextStep: string | null; analyzedAt: string | null }>()
+    // Freno del agente, SEPARADO del análisis: la fila existe (y `agent_off`
+    // vale) aunque la IA nunca haya leído la conversación. Ver el comentario
+    // largo del docstring — mezclarlos era el bug del botón que siempre decía
+    // "Agente activo".
+    const agentOffMap = new Map<string, boolean>()
     if (allPhones.length > 0) {
       const { data: aiRows } = await supabase
         .from('conversation_ai_state')
@@ -294,15 +313,20 @@ export async function GET(req: Request) {
         last_analyzed_at: string | null
         agent_handed_off: boolean | null
       }>) {
+        // Si está derivada, el agente NO contesta en esta conversación. El
+        // Inbox lo muestra en un botón para poder prenderlo/apagarlo a mano.
+        agentOffMap.set(row.phone_e164, row.agent_handed_off === true)
+        // Sin `last_analyzed_at` la IA todavía NO miró esta conversación: la
+        // fila puede existir solo porque alguien apagó el agente a mano. Los
+        // defaults NOT NULL de la tabla (intent 'desconocido', score 0) harían
+        // pasar eso por un análisis real.
+        if (!row.last_analyzed_at) continue
         aiStateMap.set(row.phone_e164, {
           intent: (row.intent ?? 'desconocido') as ConversationIntent,
           priorityScore: row.priority_score ?? 0,
           priorityReason: row.priority_reason,
           suggestedNextStep: row.suggested_next_step,
           analyzedAt: row.last_analyzed_at,
-          // Si está derivada, el agente NO contesta en esta conversación. El
-          // Inbox lo muestra en un botón para poder prenderlo/apagarlo a mano.
-          agentOff: row.agent_handed_off === true,
         })
       }
     }
@@ -401,6 +425,7 @@ export async function GET(req: Request) {
               analyzedAt: aiState.analyzedAt,
             }
           : null,
+        agent_off: agentOffMap.get(g.phone_e164) === true,
         priority,
       }
     })

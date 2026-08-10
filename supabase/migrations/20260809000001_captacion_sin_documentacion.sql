@@ -67,6 +67,26 @@ WHERE captured_at IS NULL
     OR (legal_status = 'approved' AND COALESCE(array_length(photos, 1), 0) > 0)
   );
 
+-- ---------------------------------------------------------------------------
+-- Backfill 3 — las que la regla NUEVA capta y la vieja no captaba.
+--
+-- Hoy hay una sola: Roque Pérez 3059 (creada el 29/5, 1 foto, trabada en
+-- pending_docs porque nunca pasó por el abogado). Con la regla nueva califica
+-- como captada, y sin esta marca el primer toque le dispararía a todo el equipo
+-- un mail de "¡nueva captación!" por una propiedad de hace dos meses y medio,
+-- que además ya se está publicitando.
+--
+-- No la deja trabada: `checkAndAdvanceProperty` falla el reclamo atómico
+-- (`WHERE captured_at IS NULL`) y cae a la rama de recaptura, que igual la pone
+-- en 'approved' — solo se saltea el anuncio. La captación se fecha cuando
+-- realmente ocurrió, no hoy.
+-- ---------------------------------------------------------------------------
+UPDATE public.properties
+SET captured_at = COALESCE(updated_at, created_at)
+WHERE captured_at IS NULL
+  AND status NOT IN ('approved', 'descartada')
+  AND COALESCE(array_length(photos, 1), 0) > 0;
+
 -- La bandeja del abogado consulta exactamente por este predicado.
 CREATE INDEX IF NOT EXISTS idx_properties_revision_legal_pendiente
   ON public.properties (legal_submitted_at)

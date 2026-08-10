@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { SidebarProvider } from '@/components/ui/sidebar'
+import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { AppSidebar } from './AppSidebar'
 import { getNavSections } from '@/lib/nav/sections'
 
@@ -32,8 +32,28 @@ const montarColapsado = (role: Parameters<typeof getNavSections>[0]) =>
     </SidebarProvider>,
   )
 
+/** `useIsMobile` decide por `window.innerWidth`, no por el mock de matchMedia. */
+function setInnerWidth(width: number) {
+  Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: width })
+}
+
+/** El menú en un teléfono: el panel se abre con el ☰, como en la app real. */
+const montarMovil = (role: Parameters<typeof getNavSections>[0]) => {
+  setInnerWidth(375)
+  return render(
+    <SidebarProvider>
+      <SidebarTrigger />
+      <AppSidebar groups={getNavSections(role)} logoUrl="/logo.png" />
+    </SidebarProvider>,
+  )
+}
+
+const abrirPanelMovil = () =>
+  fireEvent.click(screen.getByRole('button', { name: 'Alternar menú lateral' }))
+
 beforeEach(() => {
   rutaActual = '/properties'
+  setInnerWidth(1280)
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ new: 7 }) }))
 })
 
@@ -241,5 +261,90 @@ describe('AppSidebar colapsado (modo ícono)', () => {
     montarColapsado('admin')
     await waitFor(() => expect(fetch).toHaveBeenCalled())
     expect(screen.queryByTestId('aviso-colapsado')).not.toBeInTheDocument()
+  })
+})
+
+describe('AppSidebar en celular (el panel es un Dialog modal)', () => {
+  // Radix pone `pointer-events:none` en el <body> mientras el Sheet está
+  // abierto y la primitiva le esconde la X. Si el panel no se cierra al elegir
+  // una opción, la navegación ocurre POR DETRÁS y la pantalla queda intocable:
+  // el síntoma es "toqué CRM y no pasó nada", en CADA navegación desde el menú.
+  it('elegir un ítem suelto cierra el panel', async () => {
+    montarMovil('admin')
+    abrirPanelMovil()
+
+    const crm = await screen.findByRole('link', { name: /CRM/ })
+    fireEvent.click(crm)
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('elegir un sub-ítem de un desplegable también cierra el panel', async () => {
+    rutaActual = '/properties'
+    montarMovil('admin')
+    abrirPanelMovil()
+
+    // El desplegable "Propiedades" arranca abierto porque contiene la ruta actual.
+    const listado = await screen.findByRole('link', { name: 'Listado' })
+    fireEvent.click(listado)
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('tocar el logo también cierra el panel', async () => {
+    montarMovil('admin')
+    abrirPanelMovil()
+
+    fireEvent.click(await screen.findByRole('link', { name: /ir al inicio/ }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('una navegación que llega de afuera del menú también lo cierra', async () => {
+    // El `onClick` no cubre todo: el estado del panel vive en el layout, que no
+    // se remonta al navegar. Si la ruta cambia por cualquier otro camino (un
+    // link del contenido, el historial del navegador), el panel tiene que irse.
+    const { rerender } = montarMovil('admin')
+    abrirPanelMovil()
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+
+    rutaActual = '/inbox'
+    rerender(
+      <SidebarProvider>
+        <SidebarTrigger />
+        <AppSidebar groups={getNavSections('admin')} logoUrl="/logo.png" />
+      </SidebarProvider>,
+    )
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('en escritorio el clic NO toca el panel móvil (el riel no se cierra solo)', () => {
+    montar('admin')
+    fireEvent.click(screen.getByRole('link', { name: /CRM/ }))
+    // No hay Sheet en escritorio: si el cierre no estuviera guardado por
+    // `isMobile`, esto igual pasaría — el valor de este caso es fijar que el
+    // menú de escritorio sigue montado y utilizable después del clic.
+    expect(screen.getByRole('link', { name: /CRM/ })).toBeInTheDocument()
+  })
+})
+
+describe('AppSidebar — el logo en modo ícono', () => {
+  it('colapsado se esconde el logotipo y aparece un isotipo cuadrado', () => {
+    montarColapsado('admin')
+    const logo = screen.getByRole('link', { name: /ir al inicio/ })
+    const img = logo.querySelector('img')!
+    // El logotipo es 4,57:1: en la caja de ~16px que deja el riel de 48px se
+    // dibujaba como una franja de ~3,5px de alto. Colapsado no se muestra.
+    expect(img.className).toContain('group-data-[collapsible=icon]:hidden')
+    expect(screen.getByTestId('isotipo-colapsado').className).toContain('group-data-[collapsible=icon]:flex')
+  })
+
+  it('el link del logo conserva su nombre accesible en los dos estados', () => {
+    // El nombre NO puede salir del `alt` de la imagen: esa imagen desaparece al
+    // colapsar y el link se quedaría sin nombre (o tomaría el "DF" del isotipo).
+    montar('admin')
+    expect(screen.getByRole('link', { name: 'Diego Ferreyra Inmobiliaria — ir al inicio' })).toHaveAttribute('href', '/')
+    expect(screen.getByTestId('isotipo-colapsado')).toHaveAttribute('aria-hidden', 'true')
   })
 })

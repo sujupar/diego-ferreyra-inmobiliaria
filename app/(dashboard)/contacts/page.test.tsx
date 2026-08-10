@@ -62,6 +62,8 @@ function deferred<T>(): Deferred<T> {
 
 /** A4: permite simular un 401/404 de /api/auth/me (que igual devuelve JSON). */
 let authOk = true
+/** D9: idem para /api/contacts — un 500 también devuelve un body JSON válido. */
+let contactsOk = true
 let authDeferred: Deferred<{ id: string; role: string }>
 let contactsCalls: { url: string; d: Deferred<{ data: unknown[] }> }[]
 
@@ -69,6 +71,7 @@ beforeEach(() => {
   busqueda = ''
   escrituras.length = 0
   authOk = true
+  contactsOk = true
   authDeferred = deferred()
   contactsCalls = []
   vi.stubGlobal('fetch', vi.fn((url: string) => {
@@ -78,7 +81,9 @@ beforeEach(() => {
     if (url.startsWith('/api/contacts')) {
       const d = deferred<{ data: unknown[] }>()
       contactsCalls.push({ url, d })
-      return d.promise.then(data => ({ ok: true, json: async () => data }))
+      // `contactsOk` se lee al RESOLVER, no al llamar: así un test puede
+      // arreglar la API entre el pedido caído y el reintento.
+      return d.promise.then(data => ({ ok: contactsOk, json: async () => data }))
     }
     return Promise.reject(new Error(`fetch inesperado: ${url}`))
   }))
@@ -199,5 +204,173 @@ describe('ContactsPage — identidad fail-closed (A4)', () => {
     } finally {
       errores.mockRestore()
     }
+  })
+})
+
+/**
+ * D9 y D31 — los dos fallos que la pantalla disfrazaba. Son el mismo error de
+ * fondo (dos estados donde hacen falta tres) por dos puertas distintas: uno se
+ * disfrazaba de "no hay nada", el otro de "todavía está cargando".
+ */
+describe('ContactsPage — la pantalla no puede afirmar lo que no sabe', () => {
+  it('D9: con /api/contacts caído dice que no se pudo consultar — nunca "Sin contactos"', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      contactsOk = false
+      render(<ContactsPage />)
+      authDeferred.resolve({ id: 'u1', role: 'admin' })
+      await waitFor(() => expect(contactsCalls.length).toBe(1))
+      contactsCalls[0].d.resolve({ data: [] })
+
+      await screen.findByText('No se pudieron cargar los contactos')
+      // Lo que NO puede aparecer: la tarjeta vacía ni el conteo.
+      expect(screen.queryByText('Sin contactos')).not.toBeInTheDocument()
+      expect(screen.queryByText('0 contactos')).not.toBeInTheDocument()
+      expect(screen.getByText('No se pudo consultar')).toBeInTheDocument()
+    } finally {
+      errores.mockRestore()
+    }
+  })
+
+  it('D9: con un filtro puesto tampoco culpa al filtro ("ningún contacto coincide") — ofrece limpiarlo', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      contactsOk = false
+      busqueda = 'origin=embudo'
+      render(<ContactsPage />)
+      authDeferred.resolve({ id: 'u1', role: 'admin' })
+      await waitFor(() => expect(contactsCalls.length).toBe(1))
+      contactsCalls[0].d.resolve({ data: [] })
+
+      await screen.findByText('No se pudieron cargar los contactos')
+      expect(screen.queryByText('Ningún contacto coincide con los filtros.')).not.toBeInTheDocument()
+      expect(screen.getByText('Limpiar filtros')).toBeInTheDocument()
+    } finally {
+      errores.mockRestore()
+    }
+  })
+
+  it('D9: "Reintentar" vuelve a pedir el listado y la pantalla se recupera', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      contactsOk = false
+      render(<ContactsPage />)
+      authDeferred.resolve({ id: 'u1', role: 'admin' })
+      await waitFor(() => expect(contactsCalls.length).toBe(1))
+      contactsCalls[0].d.resolve({ data: [] })
+      await screen.findByText('No se pudieron cargar los contactos')
+
+      // La URL no cambió: sin el contador de reintentos, `filtros` conserva la
+      // misma referencia y el efecto de datos ni se entera del click.
+      contactsOk = true
+      fireEvent.click(screen.getByText('Reintentar'))
+      await waitFor(() => expect(contactsCalls.length).toBe(2))
+      contactsCalls[1].d.resolve({ data: [contacto('a', 'Juan Perez')] })
+
+      await screen.findByText('Juan Perez')
+      expect(screen.queryByText('No se pudieron cargar los contactos')).not.toBeInTheDocument()
+      expect(screen.getByText('1 contacto')).toBeInTheDocument()
+    } finally {
+      errores.mockRestore()
+    }
+  })
+
+  it('D9: el cartel de error no se queda pegado — un filtro nuevo que sí carga lo borra', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      contactsOk = false
+      const { rerender } = render(<ContactsPage />)
+      authDeferred.resolve({ id: 'u1', role: 'admin' })
+      await waitFor(() => expect(contactsCalls.length).toBe(1))
+      contactsCalls[0].d.resolve({ data: [] })
+      await screen.findByText('No se pudieron cargar los contactos')
+
+      contactsOk = true
+      commitear(rerender, '/contacts?origin=embudo')
+      await waitFor(() => expect(contactsCalls.length).toBe(2))
+      contactsCalls[1].d.resolve({ data: [contacto('a', 'Juan Perez', 'embudo')] })
+
+      await screen.findByText('Juan Perez')
+      expect(screen.queryByText('No se pudieron cargar los contactos')).not.toBeInTheDocument()
+    } finally {
+      errores.mockRestore()
+    }
+  })
+
+  it('D31: con /api/auth/me caído dice "No pudimos confirmar quién sos" en vez de girar para siempre', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      authOk = false
+      render(<ContactsPage />)
+      authDeferred.resolve({ error: 'No autenticado' } as never)
+
+      await screen.findByText('No pudimos confirmar quién sos')
+      // El spinner y el "Cargando…" del encabezado se apagaron: la pantalla
+      // terminó de cargar (mal, pero terminó) y lo dice.
+      expect(screen.queryByText('Cargando…')).not.toBeInTheDocument()
+      // Y el fail-closed sigue intacto: no se pidió ningún contacto.
+      expect(contactsCalls.length).toBe(0)
+    } finally {
+      errores.mockRestore()
+    }
+  })
+
+  it('D31: el "Reintentar" del cartel de identidad vuelve a preguntar quién sos', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      authOk = false
+      render(<ContactsPage />)
+      authDeferred.resolve({ error: 'No autenticado' } as never)
+      await screen.findByText('No pudimos confirmar quién sos')
+
+      const llamadasAuth = () => (global.fetch as ReturnType<typeof vi.fn>).mock.calls
+        .filter(c => String(c[0]).startsWith('/api/auth/me')).length
+      expect(llamadasAuth()).toBe(1)
+
+      // La identidad se vuelve a preguntar de verdad (no solo el listado).
+      authOk = true
+      authDeferred = deferred()
+      fireEvent.click(screen.getByText('Reintentar'))
+      await waitFor(() => expect(llamadasAuth()).toBe(2))
+
+      authDeferred.resolve({ id: 'u1', role: 'admin' })
+      await waitFor(() => expect(contactsCalls.length).toBe(1))
+      contactsCalls[0].d.resolve({ data: [contacto('a', 'Juan Perez')] })
+      await screen.findByText('Juan Perez')
+    } finally {
+      errores.mockRestore()
+    }
+  })
+})
+
+describe('ContactsPage — "Limpiar todo" y el buscador (D34)', () => {
+  it('"Limpiar todo" vacía también el buscador, que la pantalla cuenta como filtro', async () => {
+    busqueda = 'origin=embudo'
+    render(<ContactsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(contactsCalls.length).toBe(1))
+    contactsCalls[0].d.resolve({
+      data: [contacto('a', 'Juan Perez', 'embudo'), contacto('b', 'Maria Lopez', 'embudo')],
+    })
+    await screen.findByText('Juan Perez')
+
+    const buscador = screen.getByPlaceholderText('Buscar...')
+    fireEvent.change(buscador, { target: { value: 'perez' } })
+    expect(screen.queryByText('Maria Lopez')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Limpiar todo'))
+    expect(buscador).toHaveValue('')
+  })
+
+  it('con el buscador como único filtro, "Limpiar todo" igual aparece', async () => {
+    render(<ContactsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(contactsCalls.length).toBe(1))
+    contactsCalls[0].d.resolve({ data: [contacto('a', 'Juan Perez')] })
+    await screen.findByText('Juan Perez')
+
+    expect(screen.queryByText('Limpiar todo')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText('Buscar...'), { target: { value: 'perez' } })
+    expect(screen.getByText('Limpiar todo')).toBeInTheDocument()
   })
 })

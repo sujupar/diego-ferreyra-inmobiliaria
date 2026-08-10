@@ -47,8 +47,29 @@ function normalizarFiltros(f: typeof FILTROS_DEFECTO): typeof FILTROS_DEFECTO {
     ...f,
     from: FECHA_RE.test(f.from) ? f.from : '',
     to: FECHA_RE.test(f.to) ? f.to : '',
-    advisorId: UUID_RE.test(f.advisorId) ? f.advisorId : '',
+    // D32: "Solo mías" y el desplegable Asesor escriben el MISMO campo del
+    // pedido (`advisor_id`) y "Solo mías" GANA — lo pisa al armar la URL, más
+    // abajo. Con los dos puestos, la ficha seguía anunciando al otro asesor
+    // sobre un listado que era el propio: dos controles afirmando cosas
+    // incompatibles. Acá se resuelve la mitad que llega por la URL (deep link,
+    // historial); la otra mitad —cuál de los dos apaga al otro cuando el
+    // usuario toca un control— la decide `excluyentes`, que sí sabe qué se
+    // acaba de tocar. Sigue siendo pura e idempotente, como pide el hook.
+    advisorId: f.onlyMine === 'true' || !UUID_RE.test(f.advisorId) ? '' : f.advisorId,
   }
+}
+
+/**
+ * D32 — "Solo mías" y "Asesor" se apagan entre sí: manda el último que se tocó.
+ * Va acá (no en `normalizarFiltros`) porque depende de QUÉ clave trae el parche,
+ * y `normalizar` solo ve el resultado. Sin esto, elegir un asesor con "Solo
+ * mías" prendido caía en la normalización de arriba y el filtro se reportaba
+ * como RECHAZADO ("ese valor no es válido"), que no es lo que pasó.
+ */
+function excluyentes(patch: Partial<typeof FILTROS_DEFECTO>): Partial<typeof FILTROS_DEFECTO> {
+  if (patch.onlyMine === 'true') return { ...patch, advisorId: '' }
+  if (patch.advisorId) return { ...patch, onlyMine: '' }
+  return patch
 }
 
 const ETIQUETAS_FILTRO: Record<string, string> = {
@@ -113,7 +134,7 @@ function VisitsClient() {
   const [avisoFiltro, setAvisoFiltro] = useState<string | null>(null)
 
   function aplicarFiltros(patch: Partial<typeof FILTROS_DEFECTO>) {
-    const r = aplicar(patch)
+    const r = aplicar(excluyentes(patch))
     setAvisoFiltro(r.rechazadas.length > 0 ? mensajeRechazo(r.rechazadas) : null)
   }
 
@@ -176,6 +197,11 @@ function VisitsClient() {
     // `DateRangeFilter.toISO`; de este lado había quedado.
     if (filtros.from) params.set('from', new Date(filtros.from + 'T00:00:00').toISOString())
     if (filtros.to) params.set('to', new Date(filtros.to + 'T23:59:59').toISOString())
+    // D32: este `set` PISA al `advisor_id` de la línea de arriba. Ya no puede
+    // haber contradicción — `normalizarFiltros`/`excluyentes` garantizan que
+    // `advisorId` está vacío cuando `onlyMine` está prendido — pero la
+    // precedencia se deja explícita: si alguna vez vuelven a convivir, lo que
+    // se pide es el listado propio.
     if (filtros.onlyMine === 'true' && user?.id) params.set('advisor_id', user.id)
 
     setLoading(true)

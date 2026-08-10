@@ -19,12 +19,32 @@ import {
   type NavCollapsible, type NavGroup, type NavItem,
 } from '@/lib/nav/sections'
 
+/**
+ * En celular el menú es un Sheet (Dialog MODAL de Radix): mientras está abierto,
+ * Radix le pone `pointer-events:none` al <body> y la X viene oculta
+ * (`[&>button]:hidden` en la primitiva). Elegir una opción navegaba POR DETRÁS y
+ * el panel seguía tapando la pantalla: el síntoma era "toqué CRM y no pasó
+ * nada", en CADA navegación desde el menú. El menú anterior (`NavDropdown`,
+ * borrado en el rediseño) cerraba en el `onClick` de cada link Y en un efecto
+ * sobre `pathname`; acá se restituyen las dos mitades por el mismo motivo: el
+ * efecto no alcanza cuando se toca la opción de la pantalla en la que ya estás
+ * (la ruta no cambia, el efecto no corre) y el onClick no alcanza si alguna vez
+ * se navega desde otro lado.
+ */
+function useCerrarPanelMovil() {
+  const { isMobile, setOpenMobile } = useSidebar()
+  return () => {
+    if (isMobile) setOpenMobile(false)
+  }
+}
+
 function ItemLink({ item, activo, badge }: { item: NavItem; activo: boolean; badge: number }) {
   const conAviso = item.badge === 'inbox' && badge > 0
+  const cerrarPanel = useCerrarPanelMovil()
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={activo} tooltip={item.label}>
-        <Link href={item.href} aria-current={activo ? 'page' : undefined}>
+        <Link href={item.href} aria-current={activo ? 'page' : undefined} onClick={cerrarPanel}>
           <item.icon />
           <span>{item.label}</span>
         </Link>
@@ -59,6 +79,7 @@ function ItemLink({ item, activo, badge }: { item: NavItem; activo: boolean; bad
  */
 function CollapsibleNavEntry({ entry, pathname }: { entry: NavCollapsible; pathname: string }) {
   const { state, isMobile } = useSidebar()
+  const cerrarPanel = useCerrarPanelMovil()
   const hrefActivo = activeHrefAmong(entry.items.map(i => i.href), pathname)
   const contieneActual = hrefActivo !== null
   const [abierto, setAbierto] = useState(contieneActual)
@@ -102,6 +123,7 @@ function CollapsibleNavEntry({ entry, pathname }: { entry: NavCollapsible; pathn
                   <Link
                     href={sub.href}
                     aria-current={activa ? 'page' : undefined}
+                    onClick={cerrarPanel}
                     className={activa ? 'bg-brand-soft font-medium text-brand' : undefined}
                   >
                     {sub.label}
@@ -132,7 +154,7 @@ function CollapsibleNavEntry({ entry, pathname }: { entry: NavCollapsible; pathn
               return (
                 <SidebarMenuSubItem key={sub.href}>
                   <SidebarMenuSubButton asChild isActive={activa}>
-                    <Link href={sub.href} aria-current={activa ? 'page' : undefined}>
+                    <Link href={sub.href} aria-current={activa ? 'page' : undefined} onClick={cerrarPanel}>
                       <span>{sub.label}</span>
                     </Link>
                   </SidebarMenuSubButton>
@@ -148,8 +170,18 @@ function CollapsibleNavEntry({ entry, pathname }: { entry: NavCollapsible; pathn
 
 export function AppSidebar({ groups, logoUrl }: { groups: NavGroup[]; logoUrl: string }) {
   const pathname = usePathname()
+  const { setOpenMobile } = useSidebar()
   const tieneInbox = navHrefs(groups).includes('/inbox')
   const [inboxCount, setInboxCount] = useState(0)
+  const cerrarPanel = useCerrarPanelMovil()
+
+  // Segunda mitad del cierre en celular (ver `useCerrarPanelMovil`): el panel
+  // vive en `SidebarProvider`, que está en el layout y NO se remonta al navegar
+  // dentro del mismo segmento — sin esto, `openMobile` se queda en `true`
+  // aunque la pantalla de abajo ya haya cambiado.
+  useEffect(() => {
+    setOpenMobile(false)
+  }, [pathname, setOpenMobile])
 
   // Mismo comportamiento que el DashboardNav anterior: al montar y cada 60 s,
   // con try/catch silencioso. Si el contador falla, el menú tiene que funcionar igual.
@@ -177,8 +209,33 @@ export function AppSidebar({ groups, logoUrl }: { groups: NavGroup[]; logoUrl: s
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <Link href="/" className="flex items-center gap-2 px-2 py-1.5">
-          <img src={logoUrl} alt="Diego Ferreyra Inmobiliaria" className="h-7 w-auto object-contain" />
+        {/*
+          El nombre accesible vive en el <a> (no en el `alt`) porque la imagen
+          CAMBIA con el estado del menú: colapsado se esconde el logotipo y
+          aparece el isotipo. Sin esto, el link se quedaría sin nombre en modo
+          ícono, o lo tomaría del "DF".
+
+          MODO ÍCONO: el riel mide 48px y, descontados los `p-2` del header y los
+          `px-2` del link, la caja útil queda en ~16px. El logotipo es de 2500×547
+          (4,57:1): con `object-contain` en una caja de 16×28 se dibujaba como una
+          franja de ~16×3,5px, o sea el encabezado se veía VACÍO. Y como el estado
+          colapsado vive en la cookie `sidebar_state` (7 días), quedaba así. Se
+          cambia por un isotipo cuadrado, que es lo que entra en 48px.
+        */}
+        <Link
+          href="/"
+          aria-label="Diego Ferreyra Inmobiliaria — ir al inicio"
+          onClick={cerrarPanel}
+          className="flex items-center gap-2 px-2 py-1.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+        >
+          <img src={logoUrl} alt="" className="h-7 w-auto object-contain group-data-[collapsible=icon]:hidden" />
+          <span
+            aria-hidden="true"
+            data-testid="isotipo-colapsado"
+            className="hidden size-8 shrink-0 items-center justify-center rounded-md bg-brand text-xs font-semibold tracking-tight text-white group-data-[collapsible=icon]:flex"
+          >
+            DF
+          </span>
         </Link>
       </SidebarHeader>
 

@@ -64,9 +64,18 @@ export interface ConversationListItem {
     priorityReason: string | null
     suggestedNextStep: string | null
     analyzedAt: string | null
-    /** `true` = el agente está apagado en ESTA conversación (a mano o por tope). */
-    agentOff?: boolean
   } | null
+  /**
+   * `true` = el agente de IA está apagado en ESTA conversación
+   * (`conversation_ai_state.agent_handed_off`, a mano desde el botón del hilo o
+   * por haber llegado al tope de mensajes).
+   *
+   * Vive SUELTO y no adentro de `ai` a propósito: se puede apagar el agente en
+   * una conversación que la IA nunca analizó, y ahí `ai` es `null`. Colgarlo de
+   * `ai` era exactamente el bug del botón que siempre decía "Agente activo".
+   * `undefined` = el endpoint todavía no lo manda → se trata como "activo".
+   */
+  agent_off?: boolean
   /**
    * Orden combinado (task 4) — `lib/integrations/whatsapp/priority.ts`
    * `computePriority(window, ai)`, calculado server-side en cada fetch.

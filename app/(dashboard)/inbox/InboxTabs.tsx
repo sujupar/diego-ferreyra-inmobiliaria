@@ -89,11 +89,24 @@ export function InboxTabs({ userRole, userId }: { userRole: string; userId: stri
   // fluía en el documento — el hilo se quedaba con lo que sobraba después de
   // apilar barra de pestañas + título + subtítulo + filtros + cabecera. Para la
   // pestaña de WhatsApp, este contenedor pasa a tener un alto FIJO = alto de la
-  // ventana menos la barra de navegación del dashboard (`app/(dashboard)/layout.tsx`,
-  // header `h-16` + borde ≈ 65px, más su padding `p-4`/`md:p-8`) — de ahí bajan
-  // esos ~4px extra de colchón contra redondeos. `WhatsappClient` asume que este
-  // padre YA le da esa altura fija con `flex flex-col` y se reparte el resto
+  // ventana menos el marco del dashboard. `WhatsappClient` asume que este padre
+  // YA le da esa altura fija con `flex flex-col` y se reparte el resto
   // internamente (`flex-1 min-h-0`) hasta el hilo, que es el único que scrollea.
+  //
+  // ESTE NÚMERO ESTÁ ACOPLADO A DOS ARCHIVOS QUE NO SON ESTE. La cuenta sale de:
+  //   - `components/dashboard/Topbar.tsx` → `<header class="… h-14 … border-b">`.
+  //     El borde va DENTRO de la caja (`box-sizing: border-box` del preflight de
+  //     Tailwind v4), así que la barra mide 56px, no 57.
+  //   - `app/(dashboard)/layout.tsx` → el contenedor `#contenido` con `p-4 md:p-6`
+  //     (16px arriba y abajo en celular, 24px en escritorio).
+  //   - +4px de colchón contra redondeos, que venían del cálculo original.
+  //   Celular: 56+16+16+4 = 92px = 5.75rem. Escritorio: 56+24+24+4 = 108px = 6.75rem.
+  //
+  // El menú lateral (2026-08-07) cambió ese marco —antes era header `h-16` + borde
+  // = 65px con `p-4`/`md:p-8`, o sea 101px y 133px— y esta cuenta quedó vieja:
+  // reservaba ~25px de más y dejaba una franja muerta abajo del chat, revirtiendo
+  // en parte el arreglo que el dueño había pedido. `InboxTabs.test.ts` lee esos dos
+  // archivos y REHACE la cuenta: si el marco cambia otra vez, el test avisa acá.
   //
   // Campañas y Consultas NO se tocan: siguen con el scroll de página de siempre
   // (`space-y-6`, sin alto fijo) — cada una arma su propio título más abajo, ver
@@ -104,7 +117,7 @@ export function InboxTabs({ userRole, userId }: { userRole: string; userId: stri
     <div
       className={
         isWhatsapp
-          ? 'mx-auto flex h-[calc(100dvh-6.3125rem)] max-w-7xl min-h-[520px] flex-col gap-3 md:h-[calc(100dvh-8.3125rem)]'
+          ? 'mx-auto flex h-[calc(100dvh-5.75rem)] max-w-7xl min-h-[520px] flex-col gap-3 md:h-[calc(100dvh-6.75rem)]'
           : 'space-y-6 max-w-7xl mx-auto'
       }
     >

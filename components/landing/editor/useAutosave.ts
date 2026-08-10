@@ -30,6 +30,11 @@ export function useAutosave(propertyId: string, doc: LandingDocument) {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ draftContent: parsed.data }),
+        // `keepalive` para que un guardado EN VUELO no se aborte si mientras
+        // tanto se cierra la pestaña o el navegador se va a otra página. El
+        // documento pesa unos pocos KB, muy por debajo del tope de 64 KB que
+        // impone keepalive.
+        keepalive: true,
       })
       if (!res.ok) throw new Error()
       lastSaved.current = json
@@ -56,6 +61,21 @@ export function useAutosave(propertyId: string, doc: LandingDocument) {
     timer.current = setTimeout(() => { if (pending.current) void save(pending.current) }, 800)
     return () => { if (timer.current) clearTimeout(timer.current) }
   }, [doc, save])
+
+  /**
+   * Red de seguridad al DESMONTAR (salir con "Volver", el botón atrás del
+   * navegador, cerrar la pestaña).
+   *
+   * El cleanup del efecto de arriba corre en cada cambio del documento Y también
+   * al desmontar: cancelaba el `setTimeout` de 800ms y el último cambio se
+   * perdía sin ningún aviso. Este efecto tiene dependencias estables (`save` solo
+   * cambia con `propertyId`), así que su cleanup corre SOLO al desmontar: si
+   * quedó algo pendiente, se manda. No se espera la respuesta —el componente ya
+   * no está— pero el `keepalive` del fetch hace que el pedido llegue igual.
+   */
+  useEffect(() => {
+    return () => { if (pending.current) void save(pending.current) }
+  }, [save])
 
   const flush = useCallback(async (): Promise<boolean> => {
     if (timer.current) clearTimeout(timer.current)

@@ -96,6 +96,79 @@ export function puedeRevisarDocumentacion(i: EntradaLegal & { role: string | nul
   return i.role === 'abogado' && estadoLegal(i) === 'en-revision'
 }
 
+/* --------------------------- envío al abogado ----------------------------- */
+
+/**
+ * Cuántos documentos legales tienen ARCHIVO subido.
+ *
+ * Sale de `properties.legal_docs` —lo que escribe el checklist vía la RPC
+ * `merge_property_legal_doc`—, NO de `properties.documents`. Esa otra columna
+ * quedó huérfana en la migración `20260418000001_legal_docs_meta.sql` (su único
+ * escritor, `POST /api/properties/[id]/upload`, no tiene ni un llamador), así
+ * que contar sobre ella daba 0 SIEMPRE: el envío al abogado era inalcanzable
+ * aunque el asesor hubiera subido la escritura entera. Verificado contra
+ * producción: de 32 propiedades, `documents` está vacío en las 32.
+ */
+export function contarDocumentosCargados(
+  docs: Record<string, { file_url?: string | null } | null | undefined> | null | undefined,
+): number {
+  if (!docs || typeof docs !== 'object') return 0
+  return Object.values(docs).filter(
+    d => !!d && typeof d.file_url === 'string' && d.file_url.trim() !== '',
+  ).length
+}
+
+export type EnvioDocumentacion =
+  /** No corresponde ofrecerlo: es el abogado, o ya está en revisión / aprobada. */
+  | 'oculto'
+  /** Se puede enviar, pero todavía no hay ningún archivo cargado. */
+  | 'sin-documentos'
+  /** Primer envío. */
+  | 'listo'
+  /** La rechazaron: volver a enviarla reabre la revisión. */
+  | 'reenviar'
+
+/**
+ * ¿Se le puede mandar la documentación al abogado, y en qué situación?
+ *
+ * Vive acá —y la pestaña Documentación lo consume— porque el aviso de la
+ * cabecera muestra UN SOLO paso por vez y el envío no puede depender de cuál
+ * gane. Con el envío colgado únicamente del aviso pasaban dos cosas:
+ *
+ *  - una propiedad SIN fotos con los papeles cargados no tenía forma de
+ *    mandarlos (ganaba el aviso de fotos), o sea que el propietario entregaba
+ *    la escritura el día 1 y el abogado no la veía hasta después de la sesión
+ *    de fotos;
+ *  - y una propiedad RECHAZADA leía "volvé a enviarla" sin que existiera el
+ *    botón para hacerlo, aunque el servidor ya sabía reabrir la revisión.
+ */
+export function envioDocumentacion(
+  i: EntradaLegal & { role: string | null | undefined; documentosCargados: number },
+): EnvioDocumentacion {
+  if (i.role === 'abogado') return 'oculto'
+  const estado = estadoLegal(i)
+  if (estado === 'en-revision' || estado === 'aprobada') return 'oculto'
+  if (!(i.documentosCargados > 0)) return 'sin-documentos'
+  return estado === 'rechazada' ? 'reenviar' : 'listo'
+}
+
+/* ---------------------- cohorte "todavía en captación" -------------------- */
+
+/**
+ * Valores de `properties.status` que significan "la captación sigue abierta".
+ *
+ * Lista CERRADA a propósito: el badge del listado y el filtro por estado tienen
+ * que responder exactamente lo mismo. Cuando el badge derivaba de la lista
+ * complementaria (`!['approved','active',…]`) y el filtro consultaba la columna
+ * cruda, elegir «Pend. Fotos» en el desplegable devolvía SIEMPRE vacío mientras
+ * la pantalla mostraba fichas con ese mismo rótulo.
+ */
+export const ESTADOS_EN_CAPTACION = ['draft', 'pending_docs', 'pending_photos', 'pending_review'] as const
+
+export function enCaptacion(status: string | null | undefined): boolean {
+  return (ESTADOS_EN_CAPTACION as readonly string[]).includes(status ?? '')
+}
+
 /* ------------------------------- etiquetas -------------------------------- */
 
 export interface EtiquetaEstado { label: string; color: string }

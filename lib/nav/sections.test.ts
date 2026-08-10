@@ -2,12 +2,20 @@ import { describe, it, expect } from 'vitest'
 import { getNavSections, navHrefs, titleForPath, isCollapsible, activeHrefAmong } from './sections'
 
 describe('getNavSections — permisos del menú', () => {
-  it('el abogado ve exactamente sus 3 pantallas y ninguna más', () => {
+  it('el abogado ve exactamente sus 2 pantallas y ninguna más', () => {
     const hrefs = navHrefs(getNavSections('abogado'))
-    expect(hrefs).toEqual(['/tasks', '/properties/review', '/appraisals'])
+    expect(hrefs).toEqual(['/tasks', '/properties/review'])
   })
 
-  it('el abogado no lleva títulos de grupo (con 3 ítems, agrupar es ruido)', () => {
+  it('el abogado NO tiene entrada a las tasaciones: la API se las niega', () => {
+    // No tiene ni un permiso `appraisal.*`. Mientras el menú se lo ofrecía, la
+    // pantalla solo podía decirle "no tenés permiso": una puerta contra una
+    // pared. Si alguna vez necesita ver la tasación de la propiedad que revisa,
+    // va por lectura acotada desde la ficha, no por el listado completo.
+    expect(navHrefs(getNavSections('abogado'))).not.toContain('/appraisals')
+  })
+
+  it('el abogado no lleva títulos de grupo (con 2 ítems, agrupar es ruido)', () => {
     const groups = getNavSections('abogado')
     expect(groups).toHaveLength(1)
     expect(groups[0].label).toBeNull()
@@ -164,6 +172,38 @@ describe('titleForPath', () => {
 
   it('/appraisals/[id] (ficha de UNA tasación) cae en el nombre del desplegable, no en "Historial"', () => {
     expect(titleForPath(admin, '/appraisals/abc-123')).toEqual({ section: null, title: 'Tasaciones' })
+  })
+})
+
+describe('titleForPath — el abogado, que tiene otro menú', () => {
+  const abogado = getNavSections('abogado')
+
+  it('la ficha de una propiedad NO cae en el nombre de la empresa', () => {
+    // Es LA pantalla donde el abogado trabaja: entra desde Revisión legal. Su
+    // menú no tiene /properties (solo /properties/review, que no matchea la
+    // ficha), así que caía en el título de último recurso.
+    expect(titleForPath(abogado, '/properties/abc-123')).toEqual({ section: null, title: 'Propiedades' })
+  })
+
+  it('su pantalla de revisión legal sigue ganando por ser la coincidencia exacta', () => {
+    expect(titleForPath(abogado, '/properties/review')).toEqual({ section: null, title: 'Revisión legal' })
+  })
+
+  it('las tasaciones ya no están en su menú, así que no hay título que acertar', () => {
+    // Antes su ítem suelto decía "Historial" y ese nombre se derramaba sobre la
+    // ficha de UNA tasación. Ahora el ítem no existe: la API le niega el área
+    // entera, así que estas rutas son inalcanzables para él y caen al título de
+    // último recurso. Se fija acá para que quede claro que es consecuencia del
+    // cierre de permisos y no un título perdido.
+    expect(navHrefs(abogado)).not.toContain('/appraisals')
+  })
+
+  it('el arreglo de /properties no le cambia el título a los demás roles', () => {
+    // EXTRA_TITLES solo se consulta cuando NINGÚN ítem del menú matchea. Para
+    // admin/coordinador el desplegable "Propiedades" sigue resolviéndolo, y el
+    // asesor conserva su etiqueta propia.
+    expect(titleForPath(getNavSections('admin'), '/properties/abc-123')).toEqual({ section: null, title: 'Propiedades' })
+    expect(titleForPath(getNavSections('asesor'), '/properties/abc-123')).toEqual({ section: null, title: 'Mis propiedades' })
   })
 })
 

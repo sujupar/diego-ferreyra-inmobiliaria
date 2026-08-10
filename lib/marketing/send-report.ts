@@ -25,7 +25,36 @@ const REPLY_TO = process.env.EMAIL_REPLY_TO
   ?? 'contacto.julianparra@gmail.com'
 
 /**
- * Get report settings (recipients, enabled flags) from Supabase
+ * Configuración por defecto: la que corresponde cuando la fila TODAVÍA NO
+ * EXISTE. Nunca la que corresponde cuando no se pudo leer.
+ */
+function configuracionSinConfigurar(): ReportSettings {
+  return {
+    id: 'default',
+    recipients: [],
+    daily_enabled: true,
+    weekly_enabled: true,
+    monthly_enabled: true,
+    updated_at: new Date().toISOString(),
+  }
+}
+
+/**
+ * Lee la configuración de reportes (destinatarios + qué reportes están activos).
+ *
+ * OJO con el `.maybeSingle()`: antes era `.single()` + `if (error || !data)`, y
+ * eso MEZCLABA dos cosas distintas en un mismo resultado — "todavía no hay
+ * nada configurado" (0 filas, que `.single()` reporta como error PGRST116) y
+ * "no pude leer" (timeout, RLS, tabla caída). Las dos terminaban devolviendo
+ * `recipients: []` con status 200, así que la pantalla de Configuración pintaba
+ * una lista vacía idéntica en los dos casos. Como el PUT REEMPLAZA el arreglo
+ * entero (no hace merge), un admin que interpretara ese vacío como "se perdió
+ * la config" y tocara Guardar BORRABA la lista real de destinatarios, y los
+ * reportes dejaban de llegarle al equipo sin que nadie se enterara.
+ *
+ * Con `.maybeSingle()`, 0 filas es `data: null` SIN error. Entonces:
+ *   - error  → no se pudo leer  → TIRA (quien llame decide cómo mostrarlo).
+ *   - !data  → no hay fila      → default vacío, que es la verdad.
  */
 export async function getReportSettings(): Promise<ReportSettings> {
   const supabase = getSupabaseAdmin()
@@ -34,18 +63,13 @@ export async function getReportSettings(): Promise<ReportSettings> {
     .from('report_settings')
     .select('*')
     .eq('id', 'default')
-    .single()
+    .maybeSingle()
 
-  if (error || !data) {
-    return {
-      id: 'default',
-      recipients: [],
-      daily_enabled: true,
-      weekly_enabled: true,
-      monthly_enabled: true,
-      updated_at: new Date().toISOString(),
-    }
+  if (error) {
+    throw new Error(`No se pudo leer la configuración de reportes: ${error.message}`)
   }
+
+  if (!data) return configuracionSinConfigurar()
 
   return data as ReportSettings
 }
@@ -86,8 +110,19 @@ export async function sendReport(reportData: ReportData): Promise<{ success: boo
     return { success: false, error: msg }
   }
 
-  // Get recipients from settings
-  const settings = await getReportSettings()
+  // Get recipients from settings.
+  // `getReportSettings` ahora TIRA si no pudo leer (antes devolvía la lista
+  // vacía y este envío moría como "No recipients configured", que es una
+  // mentira: sí había destinatarios, no se pudieron leer). `sendReport` sigue
+  // sin tirar nunca — devuelve el motivo real, que es lo que se loguea.
+  let settings: ReportSettings
+  try {
+    settings = await getReportSettings()
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'No se pudo leer la configuración de reportes'
+    console.error(`[send-report] ${msg}`)
+    return { success: false, error: msg }
+  }
 
   // Check if this report type is enabled
   const enabledKey = `${reportData.type}_enabled` as keyof ReportSettings

@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { inicioDelDiaArgentina, finDelDiaArgentina } from '@/lib/filters/rango-fechas'
-import { debeAvanzarACaptada } from '@/lib/properties/captacion'
+import { contarDocumentosCargados, debeAvanzarACaptada, ESTADOS_EN_CAPTACION } from '@/lib/properties/captacion'
 
 /**
  * Fire N8A (congratulations asesor) + N8B (captación admins) when a property
@@ -93,6 +93,17 @@ export interface PropertiesListFilters {
   from?: string
   to?: string
   assigned_to?: string
+  /**
+   * Cohorte DERIVADA, la que el listado etiqueta con un badge calculado y la
+   * columna `status` no sabe contestar. Hoy solo hay una: `sin_fotos` =
+   * captación abierta y ninguna foto, o sea el cuello de botella real.
+   *
+   * Existe porque el desplegable de Estado ofrecía «Pend. Fotos» y consultaba
+   * `status='pending_photos'`, un valor que NADIE escribe: devolvía siempre
+   * vacío mientras la pantalla mostraba fichas con ese mismo badge, y un
+   * coordinador concluía razonablemente que no había backlog.
+   */
+  cohorte?: 'sin_fotos'
 }
 
 /** Columnas de `vw_properties_list` que la tabla del listado deja ordenar por header. */
@@ -136,11 +147,15 @@ export function resolvePropertiesListSort(sort?: PropertiesListSort | null): { c
  * `legal_docs_pending`/`origin_pending` NO están en la vista (son 2 columnas
  * booleanas chicas, no vale la pena tocar la vista/migración por esto) — se
  * traen aparte con un SELECT liviano a `properties` (no toca `photos`, cero
- * costo de detoast) EN PARALELO con la vista: mismos filtros + mismo orden
- * determinístico (columna de sort + tie-break por id — el tie-break garantiza
- * que ambas consultas devuelven exactamente el mismo conjunto de filas para
- * el mismo offset/limit aunque haya empates en la columna de orden) + mismo
- * range, y se mezclan acá por id.
+ * costo de detoast) **POR LOS IDS DE LA PÁGINA YA RESUELTA**.
+ *
+ * Antes esa segunda consulta repetía filtros + orden + `range` con la
+ * esperanza de caer en el mismo conjunto de filas. Funcionaba mientras todos
+ * los filtros existieran en las DOS fuentes; en cuanto apareció uno que solo
+ * la vista sabe contestar (`cohorte`, que usa la columna calculada
+ * `photo_count`), esa simetría dejó de ser posible. Pedir por id no puede
+ * desalinearse: es exactamente la página que se va a mostrar. Cuesta un
+ * viaje más (ya no van en paralelo) sobre un `IN` de 24 ids.
  *
  * `sort`: orden real en el SERVIDOR, no en memoria sobre la página cargada
  * (hallazgo #7 — ver `resolvePropertiesListSort`).
@@ -162,37 +177,38 @@ export async function getPropertiesListPage(
 
   if (filters.status) listQuery = listQuery.eq('status', filters.status)
   if (filters.origin) listQuery = listQuery.eq('origin', filters.origin)
-  // Día ARGENTINO en las dos puntas — y tiene que ser EXACTAMENTE el mismo
-  // corte que el de `flagsQuery` de abajo, o las dos consultas devolverían
-  // conjuntos distintos para el mismo offset y el merge por id quedaría cojo.
+  // Día ARGENTINO en las dos puntas (ver lib/filters/rango-fechas.ts).
   if (filters.from) listQuery = listQuery.gte('created_at', inicioDelDiaArgentina(filters.from))
   if (filters.to) listQuery = listQuery.lte('created_at', finDelDiaArgentina(filters.to))
   if (filters.assigned_to) listQuery = listQuery.eq('assigned_to', filters.assigned_to)
+  // La cohorte deriva de DOS columnas y una de ellas (`photo_count`) solo
+  // existe en la vista: exactamente el mismo criterio que pinta el badge
+  // «Pend. Fotos» en cada tarjeta (`enCaptacion` + sin fotos).
+  if (filters.cohorte === 'sin_fotos') {
+    listQuery = listQuery
+      .in('status', ESTADOS_EN_CAPTACION as readonly string[])
+      .eq('photo_count', 0)
+  }
 
-  let flagsQuery = supabase
-    .from('properties')
-    .select('id, legal_docs_pending, origin_pending')
-    .order(sortColumn, { ascending: sortAscending })
-    .order('id', { ascending: true })
-
-  if (filters.status) flagsQuery = flagsQuery.eq('status', filters.status)
-  if (filters.origin) flagsQuery = flagsQuery.eq('origin', filters.origin)
-  if (filters.from) flagsQuery = flagsQuery.gte('created_at', inicioDelDiaArgentina(filters.from))
-  if (filters.to) flagsQuery = flagsQuery.lte('created_at', finDelDiaArgentina(filters.to))
-  if (filters.assigned_to) flagsQuery = flagsQuery.eq('assigned_to', filters.assigned_to)
-
-  const [{ data, error, count }, { data: flags, error: flagsError }] = await Promise.all([
-    listQuery.range(offset, offset + limit - 1),
-    flagsQuery.range(offset, offset + limit - 1),
-  ])
+  const { data, error, count } = await listQuery.range(offset, offset + limit - 1)
   if (error) throw error
-  if (flagsError) throw flagsError
-
-  const flagsById = new Map<string, { legal_docs_pending: boolean; origin_pending: boolean }>(
-    (flags || []).map((f) => [f.id, { legal_docs_pending: !!f.legal_docs_pending, origin_pending: !!f.origin_pending }])
-  )
 
   const rows = data || []
+
+  // Las dos banderas, por los ids de ESTA página. Nunca puede traer un conjunto
+  // distinto del que se va a mostrar.
+  const flagsById = new Map<string, { legal_docs_pending: boolean; origin_pending: boolean }>()
+  if (rows.length > 0) {
+    const { data: flags, error: flagsError } = await supabase
+      .from('properties')
+      .select('id, legal_docs_pending, origin_pending')
+      .in('id', rows.map((r) => r.id))
+    if (flagsError) throw flagsError
+    for (const f of flags || []) {
+      flagsById.set(f.id, { legal_docs_pending: !!f.legal_docs_pending, origin_pending: !!f.origin_pending })
+    }
+  }
+
   const merged = rows.map((r) => ({
     ...r,
     legal_docs_pending: flagsById.get(r.id)?.legal_docs_pending ?? false,
@@ -279,7 +295,16 @@ export async function reviewProperty(id: string, approved: boolean, reviewerId: 
 
   // Aprobar la documentación puede completar la captación de una propiedad que
   // ya tenía fotos. Es la MISMA regla que el camino de las fotos: una sola.
-  if (approved) await checkAndAdvanceProperty(id)
+  //
+  // Best-effort, igual que los otros dos llamadores (`POST /api/properties` y
+  // `media/commit`): la revisión legal YA quedó guardada arriba. Sin este
+  // try/catch, un fallo del avance —o del mail N8A/N8B que dispara— le
+  // devolvía un 500 al abogado sobre una revisión que sí se había registrado, y
+  // el siguiente clic en "Aprobar" la volvía a firmar.
+  if (approved) {
+    try { await checkAndAdvanceProperty(id) }
+    catch (e) { console.error('[reviewProperty] auto-avance tras aprobar:', e) }
+  }
 }
 
 /**
@@ -341,12 +366,19 @@ export async function getPropertiesPendientesDeRevisionLegal() {
   const { data, error, count } = await supabase
     .from('properties')
     .select(
-      'id, address, neighborhood, city, property_type, asking_price, currency, documents, photos, rooms, covered_area, created_at, legal_submitted_at, status',
+      'id, address, neighborhood, city, property_type, asking_price, currency, legal_docs, photos, rooms, covered_area, created_at, legal_submitted_at, status',
       { count: 'exact' },
     )
     .eq('legal_status', 'pending')
     .not('legal_submitted_at', 'is', null)
     .order('legal_submitted_at', { ascending: true })
   if (error) throw error
-  return { data: data || [], total: count ?? (data?.length ?? 0) }
+
+  // La bandeja mostraba "0 docs" en TODAS las filas: contaba `documents`, la
+  // columna huérfana. Los archivos viven en `legal_docs`.
+  const filas = (data || []).map((p) => {
+    const { legal_docs, ...resto } = p as Record<string, unknown>
+    return { ...resto, documentos_cargados: contarDocumentosCargados(legal_docs as never) }
+  })
+  return { data: filas, total: count ?? filas.length }
 }

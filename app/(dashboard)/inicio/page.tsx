@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StatTile } from '@/components/ui/StatTile'
+import { UnidentifiedBanner } from '@/components/inbox/UnidentifiedBanner'
 import { getNavSections, navHrefs } from '@/lib/nav/sections'
 import type { Role } from '@/types/auth.types'
 
@@ -45,7 +46,13 @@ const TOPE_PENDIENTES = 50
 interface TarjetaDef {
   key: keyof Numeros
   label: string
+  /** Ruta del MENÚ. Es la que se compara contra `navHrefs` para decidir si la tarjeta se muestra. */
   href: string
+  /**
+   * Link real de la tarjeta. Por defecto es `href` pelado; solo lo define quien
+   * necesita llevar el recorte que acaba de contar (ver "Visitas de hoy", D37).
+   */
+  destino?: (identidad: Identidad, hoy: string) => string
   context: (v: number | null) => string
   tone?: (v: number | null) => 'neutral' | 'alerta'
 }
@@ -79,6 +86,19 @@ const TARJETAS: TarjetaDef[] = [
     key: 'visitasHoy',
     label: 'Visitas de hoy',
     href: '/visits',
+    // D37: el link iba a `/visits` pelado — la tarjeta prometía 3 visitas y el
+    // destino mostraba TODAS las del sistema, de toda la historia y de todos los
+    // asesores (la RLS de `property_visits` es `USING (true)`), ordenadas por
+    // fecha DESC: las de hoy quedaban enterradas abajo. Desde el rediseño
+    // `/visits` lee sus filtros de la URL (`from`/`to` en YYYY-MM-DD, `onlyMine`),
+    // así que el destino puede llevar exactamente el recorte que se contó.
+    //
+    // `onlyMine` no es decorativo: para el asesor el número se cuenta con
+    // `advisor_id=<él>` (línea del pedido, más abajo) y `/visits` traduce
+    // `onlyMine=true` a ese mismo `advisor_id`. Sin eso, el destino mostraría
+    // las visitas de todos y el número de la tarjeta no cerraría con la lista.
+    destino: (identidad, hoy) =>
+      `/visits?from=${hoy}&to=${hoy}${identidad.role === 'asesor' ? '&onlyMine=true' : ''}`,
     // Revisión final Fase 3 — I1: decía "agendadas para hoy" contando TAMBIÉN
     // las canceladas y las que no se presentaron. El pedido es
     // `/api/visits?from&to` sin `status`, y `listVisits` no filtra por estado.
@@ -119,6 +139,20 @@ function rangoDeHoy(): { from: string; to: string } {
   const fin = new Date()
   fin.setHours(23, 59, 59, 999)
   return { from: inicio.toISOString(), to: fin.toISOString() }
+}
+
+/**
+ * El día LOCAL en YYYY-MM-DD, que es el formato que `/visits` valida en la URL
+ * (`FECHA_RE` en esa pantalla). NO sirve `toISOString().slice(0,10)`: en
+ * Argentina (UTC-3) después de las 21:00 devuelve el día siguiente y el link
+ * llevaría a un día que la tarjeta nunca contó. Es el mismo error que ya se
+ * cometió dos veces en el proyecto (DateRangeFilter, Visitas).
+ */
+function fechaLocalHoy(): string {
+  const d = new Date()
+  const mes = String(d.getMonth() + 1).padStart(2, '0')
+  const dia = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${mes}-${dia}`
 }
 
 export default function InicioPage() {
@@ -239,9 +273,24 @@ export default function InicioPage() {
   // link que este rol no puede abrir.
   const permitidas = new Set(navHrefs(getNavSections(identidad.role)))
   const tarjetasVisibles = TARJETAS.filter(t => permitidas.has(t.href))
+  const hoy = fechaLocalHoy()
 
   return (
     <div className="space-y-6">
+      {/*
+        D39: el cartel de avisos sin identificar vivía SOLO en `/tasks`, que era
+        la pantalla de entrada hasta que el rediseño mudó el landing a `/inicio`
+        (`app/page.tsx` pasó de `redirect('/tasks')` a `/inicio`). El propio
+        docstring del componente dice que es "la única vía por la que la
+        coordinadora se entera": esa premisa dejó de ser cierta el día que
+        cambió el destino. Vuelve al lugar que su nombre promete.
+
+        Va gateado por el menú (misma fuente de verdad que las tarjetas): quien
+        no tiene `/avisos` no dispara un pedido que le va a dar 403. El cartel
+        además se dibuja solo si hay algo que resolver — con cero avisos, nada.
+      */}
+      {permitidas.has('/avisos') && <UnidentifiedBanner />}
+
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Inicio</h1>
         <p className="text-muted-foreground">{cargandoNumeros ? 'Cargando…' : 'Lo que te espera hoy'}</p>
@@ -258,7 +307,7 @@ export default function InicioPage() {
                 label={t.label}
                 value={numeros[t.key]}
                 context={t.context(numeros[t.key])}
-                href={t.href}
+                href={t.destino ? t.destino(identidad, hoy) : t.href}
                 tone={t.tone?.(numeros[t.key])}
               />
             ))}

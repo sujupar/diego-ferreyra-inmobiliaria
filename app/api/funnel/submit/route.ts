@@ -37,12 +37,29 @@ const RATE_MAX = 5
 const DEDUP_WINDOW_MS = 5 * 60_000
 
 /**
- * Cuánto puede frenar duplicados una reserva que todavía no terminó. Es un techo
- * generoso para lo que tarda el alta (contacto + deal, ~0,5 s) y a la vez corto:
- * si el proceso muere entre la reserva y el alta, la persona puede volver a
- * intentar enseguida en vez de comerse un "ya estás registrado" falso por 5 min.
+ * Cuánto puede frenar duplicados una reserva que todavía NO terminó.
+ *
+ * ESTE NÚMERO NO SE ELIGE POR GUSTO, SE DESPEJA. La reserva se crea en su propia
+ * transacción (`reservar_envio_embudo`), así que queda confirmada y visible ni
+ * bien la RPC vuelve. Si el proceso muere después —la función se recicla, el
+ * gateway corta, un deploy a mitad de request— el `catch` de más abajo NO corre,
+ * el `delete` de la reserva tampoco, y queda una fila 'reserved' huérfana: sin
+ * contacto, sin deal, sin avisos. Mientras esa fila siga contando como duplicado,
+ * el reintento de la persona recibe `deduplicated:true` y aterriza en la página
+ * de gracias SIN haberse registrado nunca. Lead pago perdido con confirmación
+ * falsa (y sin Píxel: el cliente saltea el evento cuando viene `deduplicated`).
+ *
+ * Las dos cotas:
+ *  - Piso: lo que tarda el alta normal (contacto + deal, ~0,5 s). 8 s deja 16x
+ *    de margen, así que un doble clic legítimo sigue viendo "ya te registramos"
+ *    en vez de crear dos deals.
+ *  - Techo: la vida máxima de una función de este sitio (~10 s habituales, 26 s
+ *    de gateway). NINGUNA reserva legítima puede tener más de eso. Todo lo que
+ *    pase de ahí es ventana de falso positivo pura — y son justo los segundos en
+ *    que la persona reintenta después de ver el error. Con los 60 s que había
+ *    antes, ~50 s eran exactamente eso.
  */
-const EN_VUELO_MS = 60_000
+const EN_VUELO_MS = 8_000
 
 const Schema = z
   .object({
@@ -154,8 +171,12 @@ export async function POST(req: NextRequest) {
   }
   if (fila?.resultado === 'duplicado') {
     // Ya está registrado → devolvemos su contactId para marcar 'registrado' en
-    // el mapa de calor. (Si el duplicado es un envío que todavía está en vuelo,
-    // el contactId viene null: la fila existe pero el contacto aún no.)
+    // el mapa de calor. (Si el duplicado es un envío que todavía está EN VUELO,
+    // el contactId viene null: la fila existe pero el contacto aún no. Eso solo
+    // puede pasar dentro de `EN_VUELO_MS`, o sea contra un envío que arrancó
+    // hace segundos y casi con certeza va a terminar bien — el doble clic. Una
+    // reserva abandonada deja de contar como duplicado apenas pasa esa ventana;
+    // ver el comentario de la constante, ahí está el porqué del número.)
     return NextResponse.json({
       ok: true,
       deduplicated: true,

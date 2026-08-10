@@ -13,7 +13,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { state } = vi.hoisted(() => ({
-  state: { rows: [] as Array<Record<string, unknown>> },
+  state: {
+    rows: [] as Array<Record<string, unknown>>,
+    /** Filas de `conversation_ai_state` — memoria de la IA + freno del agente. */
+    aiRows: [] as Array<Record<string, unknown>>,
+  },
 }))
 
 vi.mock('@/lib/auth/require-role', () => ({
@@ -22,9 +26,8 @@ vi.mock('@/lib/auth/require-role', () => ({
 
 vi.mock('@supabase/supabase-js', () => {
   // Query builder mínimo y encadenable. Las queries con `{ head: true }` son
-  // los conteos de `checkWebhookNotSubscribed`; el resto de las tablas
-  // (leads/etiquetas/propiedades/IA) devuelve vacío: acá solo interesa el
-  // agrupado de `whatsapp_messages`.
+  // los conteos de `checkWebhookNotSubscribed`; las tablas que no se declaran
+  // acá (leads/etiquetas/propiedades/perfiles) devuelven vacío.
   function builder(table: string) {
     const q: Record<string, unknown> & { then?: unknown } = {}
     let head = false
@@ -39,9 +42,11 @@ vi.mock('@supabase/supabase-js', () => {
     q.in = self
     q.is = self
     q.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => {
-      const result = head
-        ? { count: 0, error: null }
-        : { data: table === 'whatsapp_messages' ? state.rows : [], error: null }
+      const porTabla: Record<string, Array<Record<string, unknown>>> = {
+        whatsapp_messages: state.rows,
+        conversation_ai_state: state.aiRows,
+      }
+      const result = head ? { count: 0, error: null } : { data: porTabla[table] ?? [], error: null }
       return Promise.resolve(result).then(resolve, reject)
     }
     return q
@@ -83,17 +88,39 @@ function outbound(status: string) {
   }
 }
 
+/** Fila de `conversation_ai_state` — por default, SIN análisis (`last_analyzed_at` null). */
+function aiState(over: Record<string, unknown> = {}) {
+  return {
+    phone_e164: PHONE,
+    intent: 'desconocido',
+    priority_score: 0,
+    priority_reason: null,
+    suggested_next_step: null,
+    last_analyzed_at: null,
+    agent_handed_off: false,
+    ...over,
+  }
+}
+
+interface ConversacionDeRespuesta {
+  awaiting_reply_since: string | null
+  agent_off: boolean
+  ai: { intent: string; priorityScore: number } | null
+  priority: { analyzed: boolean; score: number }
+}
+
 /** `allRows` llega ordenado desc por `created_at` (lo garantiza el `.order()` de la query real). */
 async function conversations(rows: Array<Record<string, unknown>>, query = '') {
   state.rows = rows
   const res = await GET({ url: `http://localhost/api/whatsapp/conversations${query}` } as unknown as Request)
-  const json = (await res.json()) as { data: Array<{ awaiting_reply_since: string | null }> }
+  const json = (await res.json()) as { data: ConversacionDeRespuesta[] }
   return json.data
 }
 
 describe('GET /api/whatsapp/conversations — awaiting_reply_since', () => {
   beforeEach(() => {
     state.rows = []
+    state.aiRows = []
   })
 
   it('la nota interna de derivación a humano (agent_handoff) NO cuenta como respuesta', async () => {
@@ -121,5 +148,69 @@ describe('GET /api/whatsapp/conversations — awaiting_reply_since', () => {
   it('sin ningún saliente, espera desde el entrante', async () => {
     const data = await conversations([inbound()])
     expect(data[0].awaiting_reply_since).toBe(INBOUND_AT)
+  })
+})
+
+/**
+ * El botón "Agente activo / Agente apagado" del hilo lee ESTE campo. Estuvo
+ * roto desde que nació: la ruta calculaba el flag y no lo emitía, así que el
+ * botón decía "Agente activo" pase lo que pase y, como manda
+ * `{activo: agentOff === true}`, tampoco se podía volver a prender.
+ */
+describe('GET /api/whatsapp/conversations — agent_off', () => {
+  beforeEach(() => {
+    state.rows = []
+    state.aiRows = []
+  })
+
+  it('viaja en la respuesta cuando el agente está apagado', async () => {
+    state.aiRows = [aiState({ agent_handed_off: true })]
+    const data = await conversations([inbound()])
+    expect(data[0].agent_off).toBe(true)
+  })
+
+  it('el caso que importa: apagado ANTES de que la IA analice nada (ai === null)', async () => {
+    // Es el estado real de casi todas las conversaciones hoy: `analysis_enabled`
+    // arranca apagado, así que la fila existe SOLO porque alguien tocó el botón.
+    state.aiRows = [aiState({ agent_handed_off: true, last_analyzed_at: null })]
+    const data = await conversations([inbound()])
+    expect(data[0].ai).toBeNull()
+    expect(data[0].agent_off).toBe(true)
+  })
+
+  it('sin fila de IA el agente cuenta como activo (nunca undefined)', async () => {
+    const data = await conversations([inbound()])
+    expect(data[0].agent_off).toBe(false)
+  })
+
+  it('con fila pero sin apagar, sigue activo', async () => {
+    state.aiRows = [aiState({ agent_handed_off: false })]
+    const data = await conversations([inbound()])
+    expect(data[0].agent_off).toBe(false)
+  })
+
+  it('una fila creada SOLO por el botón no se hace pasar por un análisis', async () => {
+    // Los defaults NOT NULL de la tabla (intent 'desconocido', score 0) harían
+    // que la pantalla dijera "la IA no pudo determinar la intención" y partiera
+    // el score de urgencia a la mitad en una conversación que la IA nunca miró.
+    state.aiRows = [aiState({ agent_handed_off: true, last_analyzed_at: null })]
+    const data = await conversations([inbound()])
+    expect(data[0].priority.analyzed).toBe(false)
+  })
+
+  it('con análisis de verdad sí emite `ai`, junto con el freno del agente', async () => {
+    state.aiRows = [
+      aiState({
+        agent_handed_off: true,
+        last_analyzed_at: '2026-08-03T10:01:00.000Z',
+        intent: 'agendar',
+        priority_score: 80,
+      }),
+    ]
+    const data = await conversations([inbound()])
+    expect(data[0].ai).not.toBeNull()
+    expect(data[0].ai?.intent).toBe('agendar')
+    expect(data[0].priority.analyzed).toBe(true)
+    expect(data[0].agent_off).toBe(true)
   })
 })

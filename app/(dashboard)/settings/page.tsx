@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Upload, Loader2, ImageIcon, RefreshCw, Save, Mail, Plus, X } from 'lucide-react'
+import { Upload, Loader2, ImageIcon, RefreshCw, Save, Mail, Plus, X, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { ReportPhotoSettings } from '@/components/settings/ReportPhotoSettings'
 
 interface ImageSlot {
@@ -31,19 +31,40 @@ export default function SettingsPage() {
     const [monthlyEnabled, setMonthlyEnabled] = useState(true)
     const [reportLoading, setReportLoading] = useState(true)
     const [reportSaving, setReportSaving] = useState(false)
+    // Tres estados distintos y distinguibles: cargando / no se pudo leer / leído.
+    // El del medio es el que importa: mientras no se haya podido LEER la lista
+    // de destinatarios, la pantalla no muestra el formulario y por lo tanto no
+    // hay forma de tocar "Guardar" — que hace un REEMPLAZO del arreglo entero y
+    // borraría los destinatarios reales que nunca llegamos a ver.
+    const [reportError, setReportError] = useState<string | null>(null)
+    const [reportSaveError, setReportSaveError] = useState<string | null>(null)
+    const [reportSaved, setReportSaved] = useState(false)
 
-    useEffect(() => {
-        fetch('/api/settings/report-recipients')
-            .then(r => r.json())
-            .then(data => {
-                setRecipients(data.recipients || [])
-                setDailyEnabled(data.daily_enabled ?? true)
-                setWeeklyEnabled(data.weekly_enabled ?? true)
-                setMonthlyEnabled(data.monthly_enabled ?? true)
-                setReportLoading(false)
-            })
-            .catch(() => setReportLoading(false))
+    const loadReportSettings = useCallback(async () => {
+        setReportLoading(true)
+        setReportError(null)
+        try {
+            const r = await fetch('/api/settings/report-recipients')
+            if (!r.ok) {
+                throw new Error(
+                    r.status === 401 || r.status === 403
+                        ? 'Se venció la sesión. Volvé a entrar para ver los destinatarios.'
+                        : 'No se pudo leer la configuración de reportes.',
+                )
+            }
+            const data = await r.json()
+            setRecipients(Array.isArray(data?.recipients) ? data.recipients : [])
+            setDailyEnabled(data?.daily_enabled ?? true)
+            setWeeklyEnabled(data?.weekly_enabled ?? true)
+            setMonthlyEnabled(data?.monthly_enabled ?? true)
+        } catch (err) {
+            setReportError(err instanceof Error ? err.message : 'No se pudo leer la configuración de reportes.')
+        } finally {
+            setReportLoading(false)
+        }
     }, [])
+
+    useEffect(() => { loadReportSettings() }, [loadReportSettings])
 
     function addRecipient() {
         const email = newEmail.trim()
@@ -59,8 +80,10 @@ export default function SettingsPage() {
 
     async function saveReportSettings() {
         setReportSaving(true)
+        setReportSaveError(null)
+        setReportSaved(false)
         try {
-            await fetch('/api/settings/report-recipients', {
+            const res = await fetch('/api/settings/report-recipients', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -70,8 +93,24 @@ export default function SettingsPage() {
                     monthly_enabled: monthlyEnabled,
                 }),
             })
+            if (!res.ok) {
+                // El `{error}` de la API se muestra tal cual, salvo cuando es el
+                // `NEXT_REDIRECT;replace;/;307;` que sale cuando el guard de la
+                // ruta lanza adentro de su try/catch: eso no es un mensaje.
+                const cuerpo = await res.json().catch(() => null)
+                const delServidor = cuerpo && typeof cuerpo.error === 'string' && !cuerpo.error.startsWith('NEXT_REDIRECT')
+                    ? cuerpo.error
+                    : null
+                throw new Error(
+                    delServidor ||
+                    (res.status === 401 || res.status === 403
+                        ? 'Se venció la sesión. Volvé a entrar y guardá de nuevo.'
+                        : 'No se pudo guardar la configuración.'),
+                )
+            }
+            setReportSaved(true)
         } catch (err) {
-            console.error('Failed to save report settings:', err)
+            setReportSaveError(err instanceof Error ? err.message : 'No se pudo guardar la configuración.')
         } finally {
             setReportSaving(false)
         }
@@ -331,6 +370,26 @@ export default function SettingsPage() {
                     <div className="flex items-center justify-center py-12">
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     </div>
+                ) : reportError ? (
+                    // Sin formulario a propósito: si no se pudo leer la lista, no puede
+                    // haber un botón que la sobrescriba con lo que sea que haya en pantalla.
+                    <Card>
+                        <CardContent className="space-y-3 py-6">
+                            <div className="flex items-start gap-2 text-sm">
+                                <AlertTriangle className="h-4 w-4 shrink-0 text-red-600 mt-0.5" />
+                                <div>
+                                    <p className="font-medium text-red-700">{reportError}</p>
+                                    <p className="text-muted-foreground mt-1">
+                                        No se muestran los destinatarios porque no se pudieron consultar —
+                                        no es que no haya ninguno configurado.
+                                    </p>
+                                </div>
+                            </div>
+                            <Button variant="outline" size="sm" onClick={loadReportSettings}>
+                                <RefreshCw className="h-4 w-4 mr-1" /> Reintentar
+                            </Button>
+                        </CardContent>
+                    </Card>
                 ) : (
                     <Card>
                         <CardHeader className="pb-3">
@@ -340,8 +399,9 @@ export default function SettingsPage() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {/* Email list */}
-                            {recipients.length > 0 && (
+                            {/* Email list — con vacío EXPLÍCITO: "no hay ninguno" tiene que
+                                decirse con palabras, no dejarse adivinar por la ausencia de chips. */}
+                            {recipients.length > 0 ? (
                                 <div className="flex flex-wrap gap-2">
                                     {recipients.map(email => (
                                         <span key={email} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm">
@@ -352,6 +412,10 @@ export default function SettingsPage() {
                                         </span>
                                     ))}
                                 </div>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">
+                                    Todavía no hay destinatarios configurados. Nadie recibe los reportes.
+                                </p>
                             )}
 
                             {/* Add email */}
@@ -402,6 +466,17 @@ export default function SettingsPage() {
                                     <><Save className="h-4 w-4 mr-2" /> Guardar configuracion</>
                                 )}
                             </Button>
+
+                            {reportSaveError && (
+                                <p className="flex items-start gap-2 text-sm text-red-700">
+                                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" /> {reportSaveError}
+                                </p>
+                            )}
+                            {reportSaved && !reportSaveError && (
+                                <p className="flex items-center gap-2 text-sm text-green-700">
+                                    <CheckCircle2 className="h-4 w-4 shrink-0" /> Configuración guardada.
+                                </p>
+                            )}
                         </CardContent>
                     </Card>
                 )}

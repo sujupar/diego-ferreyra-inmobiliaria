@@ -204,6 +204,27 @@ export function esPaginaPublica(pathname: string): boolean {
     return PAGINAS_PUBLICAS.some((ruta) => pathname.startsWith(ruta))
 }
 
+/**
+ * ¿Esto es el navegador NAVEGANDO (barra de direcciones, un `<a href>`, un
+ * submit), y no un `fetch()`?
+ *
+ * Importa porque la respuesta sin sesión tiene que ser distinta: a un `fetch()`
+ * se le contesta 401 en JSON, pero a una navegación hay que mandarla al login —
+ * si no, la persona se queda mirando una página en blanco con
+ * `{"error":"unauthorized"}` escrito y sin ningún camino de vuelta.
+ *
+ * `Sec-Fetch-Mode` es la señal buena: todo navegador moderno la manda, y vale
+ * `navigate` SOLO en una navegación de nivel superior (un `fetch()` manda
+ * `cors`/`same-origin`/`no-cors`, nunca `navigate`). El `Accept: text/html` es
+ * el plan B para un cliente que no mande `Sec-Fetch-*`; se consulta únicamente
+ * cuando esa cabecera falta, así que un `fetch()` normal nunca cae acá.
+ */
+export function esNavegacionDeDocumento(request: NextRequest): boolean {
+    const modo = request.headers.get('sec-fetch-mode')
+    if (modo) return modo === 'navigate'
+    return request.headers.get('accept')?.includes('text/html') ?? false
+}
+
 export async function updateSession(request: NextRequest) {
     let supabaseResponse = NextResponse.next({
         request,
@@ -251,7 +272,15 @@ export async function updateSession(request: NextRequest) {
         // la llama es un fetch(), y un 307 a una página HTML hace que el
         // `res.json()` del cliente explote con `Unexpected token '<'` — un error
         // que no dice nada del problema real (ver CLAUDE.md).
-        if (esApi) {
+        //
+        // SALVO cuando no es un fetch. Hay UNA ruta de API a la que el navegador
+        // llega navegando: el enlace "conectar cuenta vía OAuth" de
+        // Configuración → Portales apunta directo a
+        // `/api/oauth/mercadolibre/start` (`<a href="/api/...">`, el único de
+        // toda la app). Con la sesión vencida, ese 401 en JSON se dibuja como
+        // una página en blanco que dice `{"error":"unauthorized"}`. A una
+        // navegación se le contesta lo mismo que a una página: al login.
+        if (esApi && !esNavegacionDeDocumento(request)) {
             const respuesta = NextResponse.json({ error: 'unauthorized' }, { status: 401 })
             // Se conservan las cookies que Supabase haya tocado (p. ej. limpiar
             // una sesión vencida), sino el navegador se queda con basura.

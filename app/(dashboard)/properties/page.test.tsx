@@ -361,3 +361,103 @@ describe('PropertiesPage — identidad fail-closed sin "Solo mías" (A4, ya vige
     }
   })
 })
+
+describe('PropertiesPage — el desplegable de Estado dice la verdad (D5)', () => {
+  /**
+   * El badge «Pend. Fotos» se CALCULA (captación abierta + sin fotos) y el
+   * desplegable listaba los valores CRUDOS de `properties.status`, así que la
+   * opción con ese mismo nombre consultaba `status='pending_photos'` — un valor
+   * que ningún camino de la app escribe. Devolvía SIEMPRE vacío mientras la
+   * pantalla mostraba fichas rotuladas «Pend. Fotos»: un coordinador filtraba,
+   * veía cero y concluía que no había backlog de fotos.
+   */
+  it('elegir «Pend. Fotos» pide la cohorte derivada, no un status que nadie escribe', async () => {
+    const { rerender } = render(<PropertiesPage />)
+    authDeferred.resolve({ id: 'u1', role: 'coordinador' })
+    await waitFor(() => expect(propsCalls.length).toBe(1))
+    propsCalls[0].d.resolve(pagina([]))
+    await waitFor(() => expect(screen.getByText('Sin propiedades')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByLabelText('Estado'), { target: { value: 'cohorte:sin_fotos' } })
+    await waitFor(() => expect(escrituras.length).toBeGreaterThan(0))
+    commitear(rerender, escrituras[escrituras.length - 1])
+
+    await waitFor(() => expect(propsCalls.length).toBe(2))
+    expect(propsCalls[1].url).toContain('cohorte=sin_fotos')
+    expect(propsCalls[1].url).not.toContain('status=')
+  })
+
+  it('una ficha en captación sin fotos se rotula igual que la opción que la trae', async () => {
+    render(<PropertiesPage />)
+    authDeferred.resolve({ id: 'u1', role: 'coordinador' })
+    await waitFor(() => expect(propsCalls.length).toBe(1))
+    propsCalls[0].d.resolve(pagina([
+      propiedad('a', 'Calle Sin Fotos 100', { status: 'pending_docs', photo_count: 0 }),
+    ]))
+
+    await screen.findByText('Calle Sin Fotos 100')
+    // La opción del desplegable y el badge de la ficha llevan la MISMA
+    // etiqueta: dos apariciones del texto, una de cada lado. Ese era todo el
+    // problema — el mismo nombre para dos criterios distintos.
+    expect(screen.getByRole('option', { name: 'Pend. Fotos' })).toBeInTheDocument()
+    expect(screen.getAllByText('Pend. Fotos')).toHaveLength(2)
+  })
+
+  it('los estados crudos siguen viajando como status', async () => {
+    const { rerender } = render(<PropertiesPage />)
+    authDeferred.resolve({ id: 'u1', role: 'coordinador' })
+    await waitFor(() => expect(propsCalls.length).toBe(1))
+    propsCalls[0].d.resolve(pagina([]))
+    await waitFor(() => expect(screen.getByText('Sin propiedades')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByLabelText('Estado'), { target: { value: 'approved' } })
+    await waitFor(() => expect(escrituras.length).toBeGreaterThan(0))
+    commitear(rerender, escrituras[escrituras.length - 1])
+
+    await waitFor(() => expect(propsCalls.length).toBe(2))
+    expect(propsCalls[1].url).toContain('status=approved')
+    expect(propsCalls[1].url).not.toContain('cohorte=')
+  })
+})
+
+describe('PropertiesPage — un filtro inválido en el link se avisa (D27)', () => {
+  /**
+   * `setAvisoFiltro` solo se escribía desde manejadores de evento, así que un
+   * link con un filtro que la whitelist descarta entraba en silencio: la
+   * pantalla mostraba TODAS las propiedades y el que abrió el link creía estar
+   * mirando un recorte.
+   */
+  it('entrar con ?status=vendida lo dice, en vez de mostrar todo calladamente', async () => {
+    busqueda = 'status=vendida'
+    render(<PropertiesPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(propsCalls.length).toBe(1))
+    propsCalls[0].d.resolve(pagina([propiedad('a', 'Calle Uno 100')], 31))
+    await screen.findByText('Calle Uno 100')
+
+    expect(screen.getByRole('status')).toHaveTextContent(/no se aplicó estado/i)
+    // El filtro efectivamente no viajó: la pantalla no miente en las dos puntas.
+    expect(propsCalls[0].url).not.toContain('status=')
+  })
+
+  it('un link con filtros válidos no inventa ningún aviso', async () => {
+    busqueda = 'status=approved'
+    render(<PropertiesPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(propsCalls.length).toBe(1))
+    propsCalls[0].d.resolve(pagina([propiedad('a', 'Calle Uno 100', { status: 'approved' })], 3))
+    await screen.findByText('Calle Uno 100')
+
+    expect(screen.getByRole('status')).toHaveTextContent('')
+  })
+
+  it('entrar sin ningún filtro tampoco avisa nada', async () => {
+    render(<PropertiesPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(propsCalls.length).toBe(1))
+    propsCalls[0].d.resolve(pagina([propiedad('a', 'Calle Uno 100')], 31))
+    await screen.findByText('Calle Uno 100')
+
+    expect(screen.getByRole('status')).toHaveTextContent('')
+  })
+})

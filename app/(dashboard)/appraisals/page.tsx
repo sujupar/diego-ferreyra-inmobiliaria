@@ -13,9 +13,10 @@ import { useFiltrosUrl, mismosFiltros } from '@/lib/filters/use-filtros-url'
 import { usePedidosVersionados } from '@/lib/filters/use-pedidos-versionados'
 import { DataTable, Column } from '@/components/ui/DataTable'
 import { BulkActionsBar } from '@/components/ui/BulkActionsBar'
+import { puedeBorrarTasacion } from '@/lib/auth/appraisal-access'
 import {
     Trash2, ChevronLeft, ChevronRight, Plus, Loader2, FileText,
-    MapPin, Calendar, Edit2, LayoutList, Table2
+    MapPin, Calendar, Edit2, LayoutList, Table2, AlertTriangle
 } from 'lucide-react'
 
 function formatCurrency(value: number, currency: string = 'USD'): string {
@@ -53,6 +54,50 @@ function normalizarFiltros(f: typeof FILTROS_DEFECTO): typeof FILTROS_DEFECTO {
 }
 
 const ETIQUETAS_FILTRO: Record<string, string> = { from: 'Desde', to: 'Hasta' }
+
+/**
+ * Los cuatro motivos por los que esta pantalla puede no tener nada que mostrar
+ * SIN estar vacía. Antes eran cero: un 500 del listado, un 401 de sesión
+ * vencida y un 403 de permiso terminaban todos en el mismo cartel «Sin
+ * tasaciones — Crea tu primera tasacion» (D8), y un fallo de identidad dejaba
+ * el spinner girando para siempre (D6). Cada uno necesita un texto y una
+ * salida distinta: reintentar no arregla un permiso, y volver a loguearse no
+ * arregla un 500.
+ */
+type MotivoError = 'sesion' | 'permiso' | 'identidad' | 'listado'
+
+/** Un Error que además se acuerda del status HTTP que lo produjo. */
+function errorConEstado(status: number, mensaje: string): Error {
+    const e = new Error(mensaje) as Error & { status?: number }
+    e.status = status
+    return e
+}
+
+function estadoDe(err: unknown): number | undefined {
+    return (err as { status?: number } | null | undefined)?.status
+}
+
+/** 401 y 403 tienen salida propia; el resto es "no se pudo". */
+function motivoDe(err: unknown, porDefecto: MotivoError): MotivoError {
+    const status = estadoDe(err)
+    if (status === 401) return 'sesion'
+    if (status === 403) return 'permiso'
+    return porDefecto
+}
+
+/**
+ * Qué decirle al usuario cuando un borrado NO se hizo. El 500 tiene mención
+ * propia porque es el caso más común y el menos evidente: `deals.appraisal_id`,
+ * `properties.appraisal_id` y `scheduled_appraisals.appraisal_id` son claves
+ * foráneas SIN cascada, así que cualquier tasación que entró al pipeline
+ * levanta violación de FK al borrarse.
+ */
+function motivoDeBorrado(status: number | undefined): string {
+    if (status === 401) return 'Tu sesión venció. Entrá de nuevo y volvé a intentar.'
+    if (status === 403) return 'No tenés permiso para eliminar esta tasación.'
+    if (status === 500) return 'Puede estar vinculada a un proceso o a una propiedad: primero hay que desvincularla.'
+    return 'Probá de nuevo en un momento.'
+}
 
 function mensajeRechazo(claves: string[]): string {
     const nombres = claves.map(c => ETIQUETAS_FILTRO[c] ?? c)
@@ -128,9 +173,34 @@ function AppraisalsClient() {
     const [deleting, setDeleting] = useState<string | null>(null)
     const [viewMode, setViewMode] = useState<'cards' | 'table'>('table')
     const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
+    // D6: «todavía no sé quién sos» ≠ «sé que no hay identidad». Sin esta
+    // bandera, el `.catch` del efecto de identidad dejaba `userInfo` en null
+    // PARA SIEMPRE, el gate de más abajo cortaba antes del único
+    // `setLoading(false)` de la pantalla, y el spinner giraba indefinidamente
+    // sin error ni forma de salir. Es la mitad del patrón de Propiedades que
+    // no se había copiado.
+    const [userInfoResuelto, setUserInfoResuelto] = useState(false)
+    // D6 + D8: el estado que faltaba. Distingue «cargando» de «falló» de
+    // «vacío de verdad».
+    const [loadError, setLoadError] = useState<MotivoError | null>(null)
+    // El «Reintentar» de verdad: con la URL sin cambiar, ningún efecto vuelve a
+    // correr solo. Este contador entra en las dependencias de los dos efectos.
+    const [reintentos, setReintentos] = useState(0)
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [bulkActioning, setBulkActioning] = useState(false)
+    // D29: el orden de la tabla se resuelve en el SERVIDOR. En memoria ordenaba
+    // solo las 12 filas de la página y la flecha del encabezado mentía que el
+    // orden era de todas.
+    const [tableSort, setTableSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null)
     const pageSize = 12
+
+    // D1: quién ve la papelera. El servidor ya rechaza el borrado de los roles
+    // sin alcance, pero mostrarles el botón igual es ofrecer una acción
+    // irreversible al rol equivocado — así fue como el abogado terminó
+    // borrando tasaciones. Mismo criterio que `canHardDelete` en Propiedades,
+    // con la lista de roles compartida con la API para que las dos capas no se
+    // desincronicen.
+    const puedeBorrar = puedeBorrarTasacion(userInfo?.role)
 
     // Gana el último PEDIDO, no la última respuesta — ver
     // `lib/filters/use-pedidos-versionados`. Sin esto, con la API lenta,
@@ -148,7 +218,7 @@ function AppraisalsClient() {
     useEffect(() => {
         fetch('/api/auth/me')
             .then(r => {
-                if (!r.ok) throw new Error(`GET /api/auth/me respondió ${r.status}`)
+                if (!r.ok) throw errorConEstado(r.status, `GET /api/auth/me respondió ${r.status}`)
                 return r.json()
             })
             .then((perfil: { id?: unknown; role?: unknown } | null) => {
@@ -158,8 +228,16 @@ function AppraisalsClient() {
                 }
                 setUserInfo({ id: perfil.id, role: typeof perfil.role === 'string' ? perfil.role : '' })
             })
-            .catch(err => { console.error(err) })
-    }, [])
+            .catch(err => {
+                console.error(err)
+                // D6: el fallo se CUENTA. Un 401 manda a re-loguearse; el resto
+                // (404 de perfil que no resuelve, 500, hipo de red) ofrece
+                // reintentar. Antes acá solo había un console.error.
+                setLoadError(motivoDe(err, 'identidad'))
+            })
+            // Resuelto pase lo que pase: es lo que destraba el efecto de datos.
+            .finally(() => setUserInfoResuelto(true))
+    }, [reintentos])
 
     // `filtros` (de/a) vistos en la última corrida del efecto de datos — para
     // el reset de página de abajo. Un cambio de filtro con la página en >1
@@ -197,7 +275,19 @@ function AppraisalsClient() {
         // No pedir nada hasta saber quién es el usuario: el asesor solo ve
         // las suyas (assigned_to) — pedir antes mostraría, por un instante,
         // tasaciones ajenas (mismo criterio que Contactos).
-        if (!userInfo) return
+        if (!userInfoResuelto) return
+
+        // D6: identidad RESUELTA pero sin usuario. Antes esto era el mismo
+        // `return` mudo de arriba y la pantalla quedaba en «Cargando…» para
+        // siempre. El motivo ya lo dejó puesto el efecto de identidad; acá se
+        // apaga el spinner y se limpia lo que hubiera en pantalla.
+        if (!userInfo) {
+            setAppraisals([])
+            setTotalCount(0)
+            setSelectedIds(new Set())
+            setLoading(false)
+            return
+        }
 
         const params = new URLSearchParams()
         params.set('page', String(page))
@@ -205,11 +295,18 @@ function AppraisalsClient() {
         if (filtros.from) params.set('from', filtros.from)
         if (filtros.to) params.set('to', filtros.to)
         if (userInfo.role === 'asesor') params.set('assigned_to', userInfo.id)
+        // D29: el orden viaja al servidor. Sin esto, la tabla ordenaba las 12
+        // filas de la página en memoria.
+        if (tableSort) {
+            params.set('sort', tableSort.key)
+            params.set('dir', tableSort.dir)
+        }
 
         setLoading(true)
+        setLoadError(null)
         fetch(`/api/appraisals?${params}`, { signal })
             .then(r => {
-                if (!r.ok) throw new Error(`GET /api/appraisals respondió ${r.status}`)
+                if (!r.ok) throw errorConEstado(r.status, `GET /api/appraisals respondió ${r.status}`)
                 return r.json()
             })
             .then(({ data, count }) => {
@@ -220,6 +317,14 @@ function AppraisalsClient() {
             .catch(err => {
                 if (!pedidos.vigente(gen)) return
                 console.error('Error loading appraisals:', err)
+                // D8: sin esto, `appraisals` quedaba en [] y `totalCount` en 0,
+                // y el render caía en «Sin tasaciones — Crea tu primera
+                // tasacion»: un asesor con 30 tasaciones veía que no tenía
+                // ninguna. Un 401 manda a re-loguearse, un 403 avisa que el rol
+                // no alcanza, el resto ofrece reintentar.
+                setLoadError(motivoDe(err, 'listado'))
+                setAppraisals([])
+                setTotalCount(0)
             })
             // El spinner del listado va versionado: si lo apagara una
             // respuesta vieja, la pantalla mostraría el listado anterior como
@@ -235,7 +340,17 @@ function AppraisalsClient() {
         // la página 1, y sin identidad todavía no hay nada seleccionable.
         setSelectedIds(new Set())
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filtros, userInfo, page])
+    }, [filtros, userInfo, userInfoResuelto, page, tableSort, reintentos])
+
+    // D6/D8: vuelve a preguntar quién sos (por si lo que se cayó fue
+    // `/api/auth/me`) y fuerza el pedido del listado aunque la URL no haya
+    // cambiado ni un carácter.
+    function reintentar() {
+        setLoading(true)
+        setLoadError(null)
+        setUserInfoResuelto(false)
+        setReintentos(n => n + 1)
+    }
 
     async function handleDelete(e: React.MouseEvent, id: string) {
         e.preventDefault()
@@ -243,11 +358,18 @@ function AppraisalsClient() {
         if (!confirm('Eliminar esta tasacion?')) return
         setDeleting(id)
         try {
-            await fetch(`/api/appraisals/${id}`, { method: 'DELETE' })
+            const res = await fetch(`/api/appraisals/${id}`, { method: 'DELETE' })
+            // D7: `fetch` solo rechaza por fallo de red — un 401, un 403 o un
+            // 500 caían por la rama de éxito y la fila desaparecía de la
+            // pantalla (y el contador bajaba) sobre una tasación que seguía
+            // viva. La acción masiva de acá abajo ya lo chequeaba: eran dos
+            // borrados de lo mismo comportándose distinto.
+            if (!res.ok) throw errorConEstado(res.status, `DELETE /api/appraisals/${id} respondió ${res.status}`)
             setAppraisals(prev => prev.filter(a => a.id !== id))
             setTotalCount(prev => prev - 1)
         } catch (err) {
             console.error('Delete error:', err)
+            alert(`No se pudo eliminar la tasación. ${motivoDeBorrado(estadoDe(err))}`)
         } finally {
             setDeleting(null)
         }
@@ -273,11 +395,21 @@ function AppraisalsClient() {
         setTotalCount(prev => prev - deletedIds.size)
         setSelectedIds(new Set())
         setBulkActioning(false)
-        if (failed > 0) alert(`${failed} no se pudieron eliminar.`)
+        if (failed > 0) {
+            // El aviso ya existía, pero no decía POR QUÉ. El motivo del primer
+            // rechazo alcanza: los fallos de un lote suelen ser todos el mismo
+            // (sesión vencida, permiso, o el FK del pipeline).
+            const primero = results.find(r => r.status === 'rejected' || !r.value.ok)
+            const status = primero && primero.status === 'fulfilled' ? primero.value.status : undefined
+            alert(`${failed} no se pudieron eliminar. ${motivoDeBorrado(status)}`)
+        }
     }
 
     const cargando = loading || escribiendo
     const totalPages = Math.ceil(totalCount / pageSize)
+    // Para el cartel de error: con filtros puestos, «limpiar filtros» suele ser
+    // la salida más rápida (un rango inválido en el link da 500).
+    const hayFiltros = !!filtros.from || !!filtros.to
 
     const columns: Column<AppraisalSummary>[] = [
         { key: 'property_title', label: 'Propiedad', sortable: true, render: r => <span className="font-medium">{r.property_title || 'Sin titulo'}</span> },
@@ -290,9 +422,11 @@ function AppraisalsClient() {
                 <Link href={`/appraisal/new?editId=${r.id}`} onClick={e => e.stopPropagation()}>
                     <Button variant="ghost" size="sm"><Edit2 className="h-3.5 w-3.5" /></Button>
                 </Link>
-                <Button variant="ghost" size="sm" onClick={e => handleDelete(e, r.id)} disabled={deleting === r.id}>
-                    {deleting === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 text-destructive" />}
-                </Button>
+                {puedeBorrar && (
+                    <Button variant="ghost" size="sm" onClick={e => handleDelete(e, r.id)} disabled={deleting === r.id} aria-label="Eliminar tasación">
+                        {deleting === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 text-destructive" />}
+                    </Button>
+                )}
             </div>
         )},
     ]
@@ -303,7 +437,14 @@ function AppraisalsClient() {
                 <div>
                     <h1 className="text-2xl font-bold">Historial de Tasaciones</h1>
                     <p className="text-sm text-muted-foreground">
-                        {cargando ? 'Cargando…' : `${totalCount} tasacion${totalCount !== 1 ? 'es' : ''}`}
+                        {/* D8: con el listado fallado, «0 tasaciones» es una
+                            afirmación falsa sobre la base — el subtítulo no
+                            puede contar lo que no pudo leer. */}
+                        {cargando
+                            ? 'Cargando…'
+                            : loadError
+                                ? 'No se pudo consultar'
+                                : `${totalCount} tasacion${totalCount !== 1 ? 'es' : ''}`}
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -311,9 +452,15 @@ function AppraisalsClient() {
                         <button onClick={() => setViewMode('cards')} className={`p-2 ${viewMode === 'cards' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}><LayoutList className="h-4 w-4" /></button>
                         <button onClick={() => setViewMode('table')} className={`p-2 ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}><Table2 className="h-4 w-4" /></button>
                     </div>
-                    <Link href="/appraisal/new">
-                        <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nueva</Button>
-                    </Link>
+                    {/* D1: si el servidor ya contestó que este rol no alcanza
+                        las tasaciones, «Nueva» lo lleva a un asistente que va a
+                        fallar al guardar (el POST también rechaza). No se le
+                        ofrece. */}
+                    {loadError !== 'permiso' && (
+                        <Link href="/appraisal/new">
+                            <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nueva</Button>
+                        </Link>
+                    )}
                 </div>
             </div>
 
@@ -344,15 +491,56 @@ function AppraisalsClient() {
                 count={selectedIds.size}
                 onClear={() => setSelectedIds(new Set())}
                 noun="tasaciones"
-                actions={[
-                    { label: 'Eliminar', icon: <Trash2 className="h-4 w-4 mr-1" />, variant: 'destructive', onClick: handleBulkDelete, disabled: bulkActioning },
-                ]}
+                actions={puedeBorrar
+                    ? [{ label: 'Eliminar', icon: <Trash2 className="h-4 w-4 mr-1" />, variant: 'destructive' as const, onClick: handleBulkDelete, disabled: bulkActioning }]
+                    : []}
             />
 
             {cargando ? (
                 <div className="flex items-center justify-center py-20">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
+            ) : loadError ? (
+                /* D6/D8: la rama que faltaba. Va ANTES de la de vacío — si no,
+                   un fallo se lee como «todavía no cargaste nada». Cada motivo
+                   con su salida: reintentar no arregla un permiso. */
+                <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                        <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+                        <h3 className="text-lg font-medium mb-1">
+                            {loadError === 'sesion'
+                                ? 'Tu sesión venció'
+                                : loadError === 'permiso'
+                                    ? 'No tenés acceso a las tasaciones'
+                                    : loadError === 'identidad'
+                                        ? 'No pudimos confirmar quién sos'
+                                        : 'No se pudo cargar el historial'}
+                        </h3>
+                        <p className="text-sm text-muted-foreground mb-4 max-w-md">
+                            {loadError === 'sesion'
+                                ? 'Entrá de nuevo para ver el historial de tasaciones.'
+                                : loadError === 'permiso'
+                                    ? 'Tu rol no tiene permisos sobre las tasaciones. Si necesitás verlas, pedíselo a un administrador.'
+                                    : loadError === 'identidad'
+                                        ? 'El historial de un asesor muestra solo sus tasaciones y no pudimos averiguar quién sos, así que no mostramos nada para no enseñarte tasaciones ajenas.'
+                                        : hayFiltros
+                                            ? 'Puede ser un filtro inválido en el link o un problema de conexión. Probá de nuevo o limpiá los filtros.'
+                                            : 'Puede ser un problema de conexión. Probá de nuevo.'}
+                        </p>
+                        <div className="flex flex-wrap items-center justify-center gap-2">
+                            {loadError === 'sesion' ? (
+                                <Link href="/login"><Button size="sm">Iniciar sesión</Button></Link>
+                            ) : loadError === 'permiso' ? null : (
+                                <>
+                                    <Button size="sm" onClick={reintentar}>Reintentar</Button>
+                                    {hayFiltros && loadError === 'listado' && (
+                                        <Button size="sm" variant="outline" onClick={limpiarTodo}>Limpiar filtros</Button>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
             ) : appraisals.length === 0 ? (
                 <Card>
                     <CardContent className="flex flex-col items-center justify-center py-16">
@@ -368,9 +556,22 @@ function AppraisalsClient() {
                     columns={columns}
                     getRowKey={r => r.id}
                     onRowClick={r => router.push(`/appraisals/${r.id}`)}
-                    selectable
+                    // La única acción masiva de esta pantalla es eliminar: sin
+                    // permiso de borrado, los tildes no llevan a ningún lado.
+                    selectable={puedeBorrar}
                     selectedIds={selectedIds}
                     onSelectionChange={setSelectedIds}
+                    // D29: modo CONTROLADO. Pasar `onSortChange` apaga el orden
+                    // en memoria del DataTable (que solo alcanzaba a la página
+                    // cargada) y hace que el orden lo resuelva la query.
+                    sort={tableSort}
+                    onSortChange={(key, dir) => {
+                        setTableSort({ key, dir })
+                        // Un orden nuevo cambia QUÉ 12 filas son la primera
+                        // página: quedarse en la 4 mostraría un tramo del medio
+                        // sin ninguna señal.
+                        setPage(1)
+                    }}
                 />
             ) : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

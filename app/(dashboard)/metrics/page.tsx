@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { Loader2, RefreshCw, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DateRangePicker, type DateRange } from '@/components/metrics/DateRangePicker'
 import { FunnelChart } from '@/components/metrics/FunnelChart'
@@ -23,6 +23,44 @@ import type {
   FunnelDayRow,
   CurrentStateRow,
 } from '@/lib/metrics/types'
+
+/** El status crudo (`funnel: 401`) no le dice nada a quien lo lee. */
+function mensajeDeError(status: number): string {
+  if (status === 401 || status === 403) return 'Se venció la sesión. Volvé a entrar.'
+  return `No se pudieron traer las métricas del embudo (error ${status}).`
+}
+
+/**
+ * Lo que va en una tarjeta que NO tiene datos. Distingue las tres situaciones:
+ * un spinner solo se muestra cuando hay una carga EN CURSO — antes giraba para
+ * siempre después de un fallo, afirmando una carga que no existía.
+ */
+function PanelSinDatos({
+  cargando,
+  error,
+  onReintentar,
+}: {
+  cargando: boolean
+  error: string | null
+  onReintentar: () => void
+}) {
+  if (cargando) {
+    return <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+  }
+  if (error) {
+    return (
+      <div className="space-y-3">
+        <p className="flex items-start gap-2 text-sm text-rose-700">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" /> {error}
+        </p>
+        <Button variant="outline" size="sm" onClick={onReintentar}>
+          <RefreshCw className="h-4 w-4 mr-1" /> Reintentar
+        </Button>
+      </div>
+    )
+  }
+  return <p className="text-sm text-muted-foreground">Sin datos para este período.</p>
+}
 
 function defaultRange(): DateRange {
   const today = new Date()
@@ -61,7 +99,7 @@ export default function MetricsPage() {
         fetch(`/api/metrics/funnel-by-day${qs}`),
         fetch(`/api/metrics/current-state${qs}`),
       ])
-      if (!fRes.ok) throw new Error(`funnel: ${fRes.status}`)
+      if (!fRes.ok) throw new Error(mensajeDeError(fRes.status))
       const f = await fRes.json()
       const c = cRes.ok ? await cRes.json() : []
       const d = dRes.ok ? await dRes.json() : []
@@ -133,8 +171,17 @@ export default function MetricsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Estado actual del pipeline</CardTitle>
+          {/* La copia decía "Mismos números si filtrás por la misma fecha" y desde
+              que el CRM pasó a cortar el día en hora argentina eso ya no es cierto:
+              este panel corta en UTC (las RPC hacen `created_at::date` con la sesión
+              de Postgres en UTC). Sobre la base real, 126 de 819 deals caen en un día
+              distinto según qué criterio se use. No se tocan las RPC — moverlas
+              cambiaría cifras históricas —, así que la pantalla dice con qué mide. */}
           <p className="text-xs text-muted-foreground">
-            Equivale a las cards del CRM. Mismos números si filtrás por la misma fecha.
+            Deals creados en el rango, agrupados por la etapa en la que están hoy.
+            Este panel corta el día en horario UTC y el CRM lo corta en hora argentina:
+            cerca del cambio de día un mismo proceso puede caer en una fecha u otra, así
+            que los totales no siempre dan idénticos.
           </p>
         </CardHeader>
         <CardContent>
@@ -151,7 +198,9 @@ export default function MetricsPage() {
             </p>
           </CardHeader>
           <CardContent>
-            {funnel ? <FunnelChart metrics={funnel.current} /> : <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+            {funnel
+              ? <FunnelChart metrics={funnel.current} />
+              : <PanelSinDatos cargando={loading} error={error} onReintentar={fetchAll} />}
           </CardContent>
         </Card>
         <Card>
@@ -160,7 +209,9 @@ export default function MetricsPage() {
             <p className="text-xs text-muted-foreground">Eventos en el rango actual vs el rango inmediatamente anterior del mismo tamaño.</p>
           </CardHeader>
           <CardContent>
-            {funnel ? <MetricsTable data={funnel} /> : <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+            {funnel
+              ? <MetricsTable data={funnel} />
+              : <PanelSinDatos cargando={loading} error={error} onReintentar={fetchAll} />}
           </CardContent>
         </Card>
       </section>

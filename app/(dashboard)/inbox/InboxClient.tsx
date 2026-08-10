@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { LeadDetailSheet } from './LeadDetailSheet'
 import { isWhatsappUsable } from '@/lib/integrations/whatsapp/phone'
+import { parametrosDeListado, usaVentanaDeFechas } from '@/components/inbox/lead-query'
 
 interface LeadRow {
   id: string
@@ -144,20 +145,11 @@ export function InboxClient({
     setLoading(true)
     setError(null)
     try {
-      // La papelera NO hereda el filtro de días. Un lead creado hace 6 meses y
-      // borrado ayer no aparecía con el rango por defecto de 30 días: el dato
-      // estaba intacto en la base, pero desde la pantalla era imposible
-      // encontrarlo para restaurarlo. Una papelera que esconde lo que guarda no
-      // sirve de nada.
-      const params = new URLSearchParams({ limit: '200' })
-      if (view === 'trash') {
-        params.set('trashed', 'true')
-        params.set('days', '3650')
-      } else {
-        params.set('days', String(days))
-        if (activeStatus) params.set('status', activeStatus)
-        if (activeSource) params.set('source', activeSource)
-      }
+      // Qué se pide (y en qué casos NO se aplica la ventana de fechas) vive en
+      // `components/inbox/lead-query.ts`, con sus tests. Dos casos no la usan:
+      // la papelera y el estado "sin responder" — ver el comentario largo de
+      // ese módulo.
+      const params = parametrosDeListado({ view, days, status: activeStatus, source: activeSource })
       const res = await fetch(`/api/leads?${params.toString()}`)
       const data = await readJson<{ data?: LeadRow[] }>(res)
       if (!res.ok) throw new Error(data.error || 'Error al cargar leads')
@@ -362,17 +354,31 @@ export function InboxClient({
               <option value="portal_zonaprop">ZonaProp</option>
             </select>
 
-            <span className="font-medium ml-3">Período:</span>
-            <select
-              value={days}
-              onChange={e => setDays(Number(e.target.value))}
-              className="border rounded px-2 py-1 bg-background"
-            >
-              <option value={7}>7 días</option>
-              <option value={30}>30 días</option>
-              <option value={90}>90 días</option>
-              <option value={365}>1 año</option>
-            </select>
+            {/* En "Sin responder" no hay período: se muestran TODAS, sin
+                importar cuándo entraron. Es el mismo número que cuenta el badge
+                del menú y la tarjeta de Inicio; con una ventana de 30 días, un
+                lead viejo sin contestar sumaba allá y acá no aparecía. Y un
+                selector que no cambia nada es un control que miente, así que no
+                se dibuja: se explica. */}
+            {usaVentanaDeFechas(view, activeStatus) ? (
+              <>
+                <span className="font-medium ml-3">Período:</span>
+                <select
+                  value={days}
+                  onChange={e => setDays(Number(e.target.value))}
+                  className="border rounded px-2 py-1 bg-background"
+                >
+                  <option value={7}>7 días</option>
+                  <option value={30}>30 días</option>
+                  <option value={90}>90 días</option>
+                  <option value={365}>1 año</option>
+                </select>
+              </>
+            ) : (
+              <span className="ml-3 text-muted-foreground">
+                Sin límite de fecha: están todas las que siguen sin responder, por viejas que sean.
+              </span>
+            )}
           </div>
           )}
 

@@ -1,11 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle, XCircle, Loader2, Scale } from 'lucide-react'
+import { CheckCircle, XCircle, Loader2, Scale, Send } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { LegalDocsChecklist } from '@/components/properties/LegalDocsChecklist'
-import { puedeRevisarDocumentacion } from '@/lib/properties/captacion'
+import { envioDocumentacion, puedeRevisarDocumentacion } from '@/lib/properties/captacion'
 import type { LegalDocsState, LegalFlags } from '@/types/legal-docs.types'
 
 interface Props {
@@ -18,19 +18,37 @@ interface Props {
   /** `properties.legal_submitted_at`. Null = nunca se envió al abogado. */
   legalSubmittedAt: string | null
   legalNotes: string | null
+  /** Ítems del checklist con archivo subido (`contarDocumentosCargados`). */
+  documentosCargados: number
+  /** Mandarle la documentación al abogado. Mismo camino que usa el aviso. */
+  onSubmitReview: () => void
+  /** Hay un envío en vuelo (lo maneja la página, que es la dueña del pedido). */
+  enviando: boolean
   onUpdated: () => void
   onReviewed: () => void
 }
 
 export function DocsTab({
   propertyId, propertyType, docs, flags, isAbogado,
-  legalStatus, legalSubmittedAt, legalNotes, onUpdated, onReviewed,
+  legalStatus, legalSubmittedAt, legalNotes,
+  documentosCargados, onSubmitReview, enviando, onUpdated, onReviewed,
 }: Props) {
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   const legalApproved = legalStatus === 'approved'
   const legalRejected = legalStatus === 'rejected'
+
+  // El envío al abogado vive ACÁ, no colgado del aviso de la cabecera: ese
+  // aviso muestra un solo paso por vez, así que el botón desaparecía en cuanto
+  // ganaba otro paso (sin fotos → "Fotos pendientes") y una propiedad rechazada
+  // leía "volvé a enviarla" sin que existiera el botón. Ver `envioDocumentacion`.
+  const envio = envioDocumentacion({
+    role: isAbogado ? 'abogado' : 'asesor',
+    legalStatus,
+    legalSubmittedAt,
+    documentosCargados,
+  })
   // Ya NO mira `properties.status`. Con la documentación fuera del camino
   // crítico de la captación, subir una foto pasa la propiedad a 'approved' — y
   // con la condición vieja (`status === 'pending_review'`) eso le sacaba al
@@ -83,6 +101,43 @@ export function DocsTab({
             {legalNotes && <p className="mt-2 text-sm text-muted-foreground">{legalNotes}</p>}
           </CardContent>
         </Card>
+      )}
+
+      {/* Enviar (o volver a enviar) al abogado. Los tres estados quedan
+          distinguibles: se puede mandar, todavía no hay nada que mandar, o ya
+          está en manos del abogado. */}
+      {envio !== 'oculto' && (
+        <Card className={envio === 'reenviar' ? 'border-amber-300' : undefined}>
+          <CardContent className="py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="font-medium">
+                {envio === 'reenviar' ? 'Volver a enviar al abogado' : 'Enviar al abogado'}
+              </p>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                {envio === 'sin-documentos'
+                  ? 'Subí al menos un documento de la lista de abajo para poder mandárselo al abogado.'
+                  : envio === 'reenviar'
+                    ? 'Corregí lo observado y volvé a enviarla: la revisión se reabre.'
+                    : `${documentosCargados} documento${documentosCargados === 1 ? '' : 's'} cargado${documentosCargados === 1 ? '' : 's'}. La propiedad se sigue difundiendo mientras el abogado revisa.`}
+              </p>
+            </div>
+            <div className="shrink-0">
+              <Button onClick={onSubmitReview} disabled={enviando || envio === 'sin-documentos'}>
+                {enviando ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+                {envio === 'reenviar' ? 'Volver a enviar' : 'Enviar a Revisión Legal'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Ya está en manos del abogado: sin este renglón, cuando el aviso de la
+          cabecera muestra otro paso (típico: faltan las fotos) el asesor no
+          tiene forma de saber que la documentación ya se envió. */}
+      {!isAbogado && envio === 'oculto' && !legalApproved && !legalRejected && legalSubmittedAt && (
+        <p className="text-sm text-muted-foreground">
+          La documentación está en revisión legal. Te avisamos cuando el abogado la resuelva.
+        </p>
       )}
 
       {canReview && (

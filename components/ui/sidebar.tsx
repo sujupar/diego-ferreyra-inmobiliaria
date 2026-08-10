@@ -32,6 +32,25 @@ const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
+/**
+ * ¿El foco está dentro de algo donde se escribe?
+ *
+ * El atajo Cmd/Ctrl+B viene de fábrica con shadcn y escucha en `window`, así que
+ * se lo robaba a CUALQUIER campo de la plataforma: escribiendo una respuesta en
+ * el chat del Inbox, apretar Cmd+B por costumbre de "negrita" colapsaba el menú
+ * — y ese estado queda en la cookie `sidebar_state` por 7 días. Mientras alguien
+ * escribe, el teclado es de quien escribe.
+ *
+ * Se mira el `target` del evento y, si no es un elemento (p. ej. un `dispatch`
+ * sobre `window`), el foco del documento.
+ */
+function esCampoDeEscritura(nodo: EventTarget | null): boolean {
+  const el = nodo as (HTMLElement & { tagName?: string }) | null
+  if (!el || typeof el !== "object" || typeof el.tagName !== "string") return false
+  if (el.isContentEditable) return true
+  return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT"
+}
+
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
   open: boolean
@@ -100,6 +119,13 @@ function SidebarProvider({
         event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
         (event.metaKey || event.ctrlKey)
       ) {
+        // Ver `esCampoDeEscritura`: el atajo no le gana a alguien tipeando.
+        if (
+          esCampoDeEscritura(event.target) ||
+          esCampoDeEscritura(document.activeElement)
+        ) {
+          return
+        }
         event.preventDefault()
         toggleSidebar()
       }

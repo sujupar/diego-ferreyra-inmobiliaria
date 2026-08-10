@@ -36,7 +36,10 @@ export function defaultOptionalBlock(id: string, property: LandingProperty): Lan
     case 'plans':
       return { id: 'plans', type: 'floor_plans', title: 'Distribución' }
     case 'location':
-      return { id: 'location', type: 'location_showcase', eyebrow: 'Ubicación' }
+      // `showMap` va explícito porque el componente lo trata como opcional y sin
+      // valor NO dibuja el mapa: sin esto, re-mostrar la sección la devolvía
+      // también sin mapa, aunque la plantilla de lujo siempre lo pone en true.
+      return { id: 'location', type: 'location_showcase', eyebrow: 'Ubicación', showMap: true }
     default:
       return null
   }

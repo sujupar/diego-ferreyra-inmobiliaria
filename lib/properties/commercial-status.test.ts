@@ -1,10 +1,40 @@
 import { describe, it, expect } from 'vitest'
 import {
   COMMERCIAL_STATUSES, commercialStatusDef, isCommercialStatus,
-  validateStatusChange, buildStatusPatch,
+  validateStatusChange, buildStatusPatch, estadoComercialEfectivo,
 } from './commercial-status'
 
 const HOY = '2026-08-06'
+
+describe('estadoComercialEfectivo', () => {
+  /**
+   * El descarte masivo del listado manda `PUT {status:'descartada'}` y NO toca
+   * `commercial_status`, que es NOT NULL DEFAULT 'disponible'. Leer solo esa
+   * columna dejaba la ficha con badge "Descartada" y tarjeta "Disponible" — y
+   * sin el botón para recuperarla, porque la tarjeta ofrece los OTROS estados.
+   */
+  it('una descartada por el listado se lee descartada, aunque la columna diga disponible', () => {
+    expect(estadoComercialEfectivo({ commercialStatus: 'disponible', status: 'descartada' })).toBe('descartada')
+    expect(estadoComercialEfectivo({ commercialStatus: null, status: 'descartada' })).toBe('descartada')
+  })
+
+  it('un estado comercial explícito manda sobre el espejo', () => {
+    expect(estadoComercialEfectivo({ commercialStatus: 'vendida', status: 'descartada' })).toBe('vendida')
+    expect(estadoComercialEfectivo({ commercialStatus: 'reservada', status: 'approved' })).toBe('reservada')
+  })
+
+  it('sin espejo ni estado comercial, disponible', () => {
+    expect(estadoComercialEfectivo({ commercialStatus: 'disponible', status: 'approved' })).toBe('disponible')
+    expect(estadoComercialEfectivo({ commercialStatus: null, status: 'approved' })).toBe('disponible')
+    expect(estadoComercialEfectivo({ commercialStatus: 'cualquier-cosa', status: 'draft' })).toBe('disponible')
+  })
+
+  /** Cierra el círculo: derivado así, salir de descartada SÍ limpia el espejo. */
+  it('derivado así, marcarla Disponible devuelve el status a borrador', () => {
+    const from = estadoComercialEfectivo({ commercialStatus: 'disponible', status: 'descartada' })
+    expect(buildStatusPatch({ from, to: 'disponible', today: HOY }).status).toBe('draft')
+  })
+})
 
 describe('catálogo', () => {
   it('tiene exactamente los cinco estados acordados, en orden', () => {

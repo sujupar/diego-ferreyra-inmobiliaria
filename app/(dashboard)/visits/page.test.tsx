@@ -168,6 +168,92 @@ describe('VisitsPage — "Solo mías"', () => {
   })
 })
 
+/**
+ * D32 — "Solo mías" y el desplegable "Asesor" escriben el MISMO campo del
+ * pedido (`advisor_id`) y "Solo mías" gana en silencio. Con los dos puestos, la
+ * pantalla mostraba la ficha del OTRO asesor sobre un listado que era el
+ * propio: dos controles afirmando cosas incompatibles sobre la misma lista.
+ */
+describe('VisitsPage — "Solo mías" y "Asesor" no pueden contradecirse (D32)', () => {
+  const OTRO = '00000000-0000-0000-0000-0000000000aa'
+
+  beforeEach(() => {
+    // Mismo stub que el de arriba, pero con un asesor de id UUID: el de
+    // `/api/profiles` por defecto ('adv1') no sobrevive a `normalizarFiltros`
+    // y nunca llegaría a dibujar la ficha con el nombre.
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.startsWith('/api/auth/me')) {
+        return authDeferred.promise.then(data => ({ ok: true, json: async () => data }))
+      }
+      if (url.startsWith('/api/profiles')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ data: [{ id: OTRO, full_name: 'Juan Pérez' }] }),
+        })
+      }
+      if (url.startsWith('/api/visits')) {
+        const d = deferred<{ data: unknown[] }>()
+        visitsCalls.push({ url, d })
+        return d.promise.then(data => ({ ok: true, json: async () => data }))
+      }
+      return Promise.reject(new Error(`fetch inesperado: ${url}`))
+    }))
+  })
+
+  it('activar "Solo mías" saca el asesor elegido de la URL y de la ficha', async () => {
+    busqueda = `advisorId=${OTRO}`
+    const { rerender } = render(<VisitsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'coordinador' })
+    await waitFor(() => expect(visitsCalls.length).toBe(2))
+    visitsCalls[1].d.resolve({ data: [] })
+    await screen.findByText('No hay visitas')
+    // La ficha (no el `<option>`, que siempre está en el desplegable): su
+    // botón de quitar solo existe cuando `FilterBar` la dibuja.
+    expect(screen.getByLabelText('Quitar filtro Asesor')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Solo mías'))
+    const ultima = escrituras[escrituras.length - 1]
+    expect(ultima).toContain('onlyMine=true')
+    expect(ultima).not.toContain('advisorId')
+
+    commitear(rerender, ultima)
+    // La ficha del otro asesor ya no se muestra: el listado que se pide es el
+    // propio y los controles lo dicen.
+    expect(screen.queryByLabelText('Quitar filtro Asesor')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Asesor')).toHaveValue('')
+  })
+
+  it('elegir un asesor apaga "Solo mías" (manda el último que se toca)', async () => {
+    busqueda = 'onlyMine=true'
+    render(<VisitsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'coordinador' })
+    await waitFor(() => expect(visitsCalls.length).toBe(2))
+    visitsCalls[1].d.resolve({ data: [] })
+    await screen.findByText('No hay visitas')
+
+    fireEvent.change(screen.getByLabelText('Asesor'), { target: { value: OTRO } })
+    const ultima = escrituras[escrituras.length - 1]
+    expect(ultima).toContain(`advisorId=${OTRO}`)
+    expect(ultima).not.toContain('onlyMine')
+    // Y no se reporta como filtro rechazado: el asesor SÍ se aplicó.
+    expect(screen.queryByText(/No se aplicó/)).not.toBeInTheDocument()
+  })
+
+  it('un deep link con los dos puestos no anuncia al otro asesor sobre el listado propio', async () => {
+    busqueda = `advisorId=${OTRO}&onlyMine=true`
+    render(<VisitsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'coordinador' })
+    await waitFor(() => expect(visitsCalls.length).toBe(2))
+
+    // Lo que se pide es el listado PROPIO (así era antes también).
+    expect(visitsCalls[1].url).toContain('advisor_id=u1')
+    expect(visitsCalls[1].url).not.toContain(OTRO)
+    // Lo nuevo: los controles ya no dicen otra cosa.
+    expect(screen.queryByLabelText('Quitar filtro Asesor')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Asesor')).toHaveValue('')
+  })
+})
+
 describe('VisitsPage — "Limpiar todo"', () => {
   it('limpia estado, fechas y "solo mías"', async () => {
     busqueda = 'status=scheduled&from=2026-08-01&to=2026-08-08&onlyMine=true'

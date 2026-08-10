@@ -15,6 +15,7 @@ import { ChatThread } from '@/components/inbox/ChatThread'
 import { ContactPanel } from '@/components/inbox/ContactPanel'
 import { formatRemaining } from '@/components/inbox/format'
 import { filterConversations, DEFAULT_CONVERSATION_FILTERS } from '@/components/inbox/filters'
+import { agenteApagadoEn, conAgenteMarcado } from '@/components/inbox/agente'
 import { PIPELINE_STATES, PIPELINE_STATE_LABELS } from '@/lib/leads/tags'
 import type { ConversationListItem, Thread, LeadTagRef, LeadTagCatalogEntry } from '@/components/inbox/types'
 import { Loader2, Send, ArrowLeft, Lock, Info } from 'lucide-react'
@@ -405,6 +406,7 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
   const activeTags = activeListItem?.tags ?? []
   const activeAdvisorName = activeListItem?.assigned_to_name ?? activeListItem?.advisor_name ?? null
   const activePipelineState = activeListItem?.pipeline_state ?? null
+  const agenteApagado = agenteApagadoEn(conversations, selectedPhone)
 
   return (
     // Ajuste de altura (2026-08-01): este div YA NO trae su propio título — el
@@ -528,14 +530,8 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
                     onTagsChanged={handleTagsChanged}
                     onStateChanged={handleStateChanged}
                     phoneE164={selectedPhone}
-                    agentOff={(conversations ?? []).find(c => c.phone_e164 === selectedPhone)?.ai?.agentOff === true}
-                    onAgentToggled={(phone, activo) =>
-                      setConversations(cs =>
-                        (cs ?? []).map(c =>
-                          c.phone_e164 === phone && c.ai ? { ...c, ai: { ...c.ai, agentOff: !activo } } : c,
-                        ),
-                      )
-                    }
+                    agentOff={agenteApagado}
+                    onAgentToggled={(phone, activo) => setConversations(cs => conAgenteMarcado(cs, phone, activo))}
                   />
                 }
               />

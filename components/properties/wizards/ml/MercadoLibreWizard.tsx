@@ -86,13 +86,25 @@ export function MercadoLibreWizard({ propertyId }: { propertyId: string }) {
   const canPublish = validation.ok
   const current = STEPS[idx].id
 
+  /**
+   * El `finally` no es decorativo: si `save()` llegara a tirar (hoy no lo hace,
+   * pero antes tiraba al intentar parsear como JSON la página de error del
+   * gateway), sin él `setSaving(false)` nunca corría y este botón —que es
+   * `disabled={!stepValid || saving}`— quedaba muerto en "Guardando…" para
+   * siempre, sin ningún aviso. La única salida era recargar la página.
+   */
   async function next() {
     setSaving(true)
-    const ok = await save()
-    setSaving(false)
-    if (!ok) return
-    setStepValid(false)
-    setIdx(i => Math.min(i + 1, STEPS.length - 1))
+    try {
+      const ok = await save()
+      if (!ok) return
+      setStepValid(false)
+      setIdx(i => Math.min(i + 1, STEPS.length - 1))
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : 'No se pudo guardar. Volvé a intentar.')
+    } finally {
+      setSaving(false)
+    }
   }
   function back() {
     setStepValid(true)

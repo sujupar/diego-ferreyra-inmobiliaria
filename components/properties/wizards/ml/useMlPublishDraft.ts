@@ -1,6 +1,7 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { leerJson } from '../leer-json'
 import type { MlAttributesResponse, MlDraft, MlListing, MlPreviewProperty } from './types'
 
 interface PreviewResponse {
@@ -85,35 +86,49 @@ export function useMlPublishDraft(propertyId: string) {
 
   const patch = useCallback((p: Partial<MlDraft>) => setDraft(d => (d ? { ...d, ...p } : d)), [])
 
-  /** Persiste el draft en el server y devuelve la validation recalculada. */
+  /**
+   * Persiste el draft en el server y devuelve la validation recalculada.
+   *
+   * NUNCA tira: el que la llama es el botón "Siguiente", que apaga su spinner
+   * mirando el booleano. Un error de red o una página HTML de error del gateway
+   * (este PATCH le pide los atributos de la categoría a MercadoLibre y con el
+   * caché frío puede pasarse del tiempo máximo) salen por acá como `false` con
+   * su toast — no como una excepción que deje el botón trabado en "Guardando…".
+   */
   const save = useCallback(async (): Promise<boolean> => {
     if (!draft) return false
-    const r = await fetch(`/api/properties/${propertyId}/ml-preview`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        title: draft.title,
-        description: draft.description,
-        photos: draft.photos,
-        asking_price: draft.askingPrice,
-        videoUrl: draft.videoUrl,
-        tour3dUrl: draft.tour3dUrl,
-        latitude: draft.latitude,
-        longitude: draft.longitude,
-        address: draft.address,
-        geoConfidence: draft.geoConfidence,
-        mlAttributes: draft.mlAttributes,
-        mediaChoice: draft.mediaChoice,
-        listingType: draft.listingType,
-      }),
-    })
-    const j = (await r.json()) as { validation?: PreviewResponse['validation']; error?: string }
-    if (!r.ok) {
-      toast.error(j.error ?? 'Error al guardar')
+    try {
+      const r = await fetch(`/api/properties/${propertyId}/ml-preview`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: draft.title,
+          description: draft.description,
+          photos: draft.photos,
+          asking_price: draft.askingPrice,
+          videoUrl: draft.videoUrl,
+          tour3dUrl: draft.tour3dUrl,
+          latitude: draft.latitude,
+          longitude: draft.longitude,
+          address: draft.address,
+          geoConfidence: draft.geoConfidence,
+          mlAttributes: draft.mlAttributes,
+          mediaChoice: draft.mediaChoice,
+          listingType: draft.listingType,
+        }),
+      })
+      const j = await leerJson<{ validation?: PreviewResponse['validation'] }>(r)
+      if (!r.ok || j.error) {
+        toast.error(j.error ?? 'Error al guardar')
+        return false
+      }
+      if (j.validation) setValidation(j.validation)
+      return true
+    } catch (err) {
+      // El fetch ni siquiera llegó (conexión caída, request abortado).
+      toast.error(err instanceof Error && err.message ? err.message : 'No se pudo guardar. Revisá tu conexión.')
       return false
     }
-    if (j.validation) setValidation(j.validation)
-    return true
   }, [draft, propertyId])
 
   return { loading, property, attrs, attrsError, listing, validation, draft, patch, save, reload: load }
