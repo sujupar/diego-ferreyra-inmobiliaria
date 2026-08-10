@@ -119,7 +119,7 @@ export default function AgendarTasacionPage() {
                   id="origin"
                   value={form.origin}
                   onChange={e => updateField('origin', e.target.value)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm max-md:min-h-11"
                   required
                 >
                   <option value="">Seleccionar origen...</option>
@@ -134,7 +134,7 @@ export default function AgendarTasacionPage() {
                   id="assignedTo"
                   value={form.assignedTo}
                   onChange={e => updateField('assignedTo', e.target.value)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm max-md:min-h-11"
                   required
                 >
                   <option value="">Seleccionar asesor...</option>
@@ -189,7 +189,7 @@ export default function AgendarTasacionPage() {
                   id="propertyType"
                   value={form.propertyType}
                   onChange={e => updateField('propertyType', e.target.value)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm max-md:min-h-11"
                   required
                 >
                   <option value="">Seleccionar...</option>
@@ -227,7 +227,7 @@ export default function AgendarTasacionPage() {
                   id="rooms"
                   value={form.rooms}
                   onChange={e => updateField('rooms', e.target.value)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm max-md:min-h-11"
                   required
                 >
                   <option value="">Seleccionar...</option>
@@ -246,6 +246,7 @@ export default function AgendarTasacionPage() {
                 <Input
                   id="coveredArea"
                   type="number"
+                  inputMode="numeric"
                   min="0"
                   step="1"
                   value={form.coveredArea}

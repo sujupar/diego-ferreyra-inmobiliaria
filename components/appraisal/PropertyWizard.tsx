@@ -704,19 +704,34 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
                 </StepContent>
             </div>
 
-            {/* Navigation buttons */}
-            <div className="flex justify-between items-center pt-4">
+            {/* Navigation buttons
+                PISO DE CELULAR — cada paso mide como mínimo 400px de contenido,
+                así que en un teléfono los botones caían siempre abajo de todo:
+                para avanzar había que scrollear hasta el fondo en cada uno de
+                los 6 pasos. Abajo de `md` la barra se PEGA al piso de la
+                pantalla (`sticky bottom-0`), sale a sangre de la tarjeta
+                (`-mx-6`, que es su `p-6` en celular) y respeta la barra de
+                gestos (`pb-safe`).
+
+                Y se reordena en dos renglones en vez de tres columnas: los tres
+                bloques juntos piden ~350px y no entran en un Android de 360px.
+                Con `flex-wrap`, el "Paso N de 6" lleva `w-full` y se lleva el
+                primer renglón; Anterior y Siguiente quedan abajo, mitad y mitad.
+                El escritorio no cambia: ahí no hay wrap porque sobra ancho. */}
+            <div className="flex justify-between items-center pt-4 max-md:sticky max-md:bottom-0 max-md:z-10 max-md:-mx-6 max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-2 max-md:border-t max-md:bg-card max-md:px-6 max-md:pt-3 max-md:pb-safe">
                 <Button
                     variant="ghost"
                     onClick={goPrev}
                     disabled={currentStep === 0}
-                    className="gap-2 h-12 px-6"
+                    className="gap-2 h-12 px-6 max-md:flex-1 max-md:px-3"
                 >
                     <ArrowLeft className="h-4 w-4" />
                     Anterior
                 </Button>
 
-                <div className="flex items-center gap-2">
+                {/* `order-first` y no moverlo en el DOM: en escritorio el orden
+                    visual sigue siendo Anterior · Paso N · Siguiente. */}
+                <div className="flex items-center gap-2 max-md:order-first max-md:w-full max-md:justify-center">
                     <span className="text-sm text-muted-foreground">
                         Paso {currentStep + 1} de {WIZARD_STEPS.length}
                     </span>
@@ -726,7 +741,7 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
                     <Button
                         onClick={handleComplete}
                         disabled={!canProceed}
-                        className="gap-2 h-12 px-8 bg-green-600 hover:bg-green-700"
+                        className="gap-2 h-12 px-8 bg-green-600 hover:bg-green-700 max-md:flex-1 max-md:px-3"
                     >
                         <Check className="h-4 w-4" />
                         Completar
@@ -735,7 +750,7 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
                     <Button
                         onClick={goNext}
                         disabled={!canProceed}
-                        className="gap-2 h-12 px-6"
+                        className="gap-2 h-12 px-6 max-md:flex-1 max-md:px-3"
                     >
                         Siguiente
                         <ArrowRight className="h-4 w-4" />

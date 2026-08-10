@@ -52,10 +52,24 @@ export function ThreadHeader({
   actionsSlot?: React.ReactNode
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-4 py-2">
+    // En celular la cabecera es UNA sola fila que no envuelve (`flex-nowrap`):
+    // volver · contacto · menú. Con `flex-wrap` y los 5 botones de acciones
+    // adentro, la cabecera se comía dos y tres renglones del alto que le hace
+    // falta al hilo. De `md:` para arriba queda exactamente como estaba.
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-4 py-2 max-md:flex-nowrap max-md:gap-x-1 max-md:px-2">
       {onBack && (
-        <Button variant="ghost" size="icon-sm" onClick={onBack} className="md:hidden -ml-1">
-          <ArrowLeft className="h-4 w-4" />
+        // `size="icon"` (44px en celular por el piso táctil de `button.tsx`) y NO
+        // `icon-sm` (40px): es el control que más se toca de toda la pantalla y
+        // el único camino de vuelta a la lista. El `aria-label` es obligatorio —
+        // el botón es solo una flecha, sin texto que leer.
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onBack}
+          aria-label="Volver a la lista de chats"
+          className="md:hidden -ml-1 shrink-0"
+        >
+          <ArrowLeft className="h-5 w-5" />
         </Button>
       )}
 
@@ -101,7 +115,14 @@ export function ThreadHeader({
         </Link>
       )}
 
-      {actionsSlot && <div className="flex shrink-0 flex-col items-end gap-1">{actionsSlot}</div>}
+      {/* `min-w-0` además de `shrink-0`: lo de adentro (`ThreadActionsBar`) ya
+          decide por sí solo qué mostrar en cada ancho —la fila completa en
+          escritorio, un único botón de tres puntos en celular—, así que este
+          contenedor no tiene que imponerle un ancho mínimo. Sin el `min-w-0`, un
+          hijo que no encoge dentro de una Card con `overflow-hidden` termina
+          RECORTADO y sin forma de alcanzarlo: así era imposible cambiar el
+          estado del embudo desde el teléfono. */}
+      {actionsSlot && <div className="flex min-w-0 shrink-0 flex-col items-end gap-1">{actionsSlot}</div>}
     </div>
   )
 }

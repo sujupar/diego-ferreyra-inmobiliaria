@@ -81,7 +81,7 @@ export function ComparableEditor({ property, onSave, onCancel }: ComparableEdito
                             Completa los campos faltantes para la tasación
                         </p>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={onCancel}>
+                    <Button variant="ghost" size="icon" onClick={onCancel} aria-label="Cerrar el editor del comparable">
                         <X className="h-5 w-5" />
                     </Button>
                 </div>

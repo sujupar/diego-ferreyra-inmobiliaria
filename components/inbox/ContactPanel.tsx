@@ -248,7 +248,17 @@ export function ContactPanel({
 
       <div
         className={cn(
-          'absolute inset-x-0 bottom-0 z-10 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t bg-background shadow-2xl',
+          // `85dvh` y NO `85vh`. En iOS `vh` es el viewport GRANDE (barras
+          // retraídas): 0,85 × 844 = 717px contra ~640-700px visibles. Como la hoja
+          // está anclada abajo y crece hacia arriba, su cabecera —donde vive el
+          // botón Cerrar— quedaba 20-80px POR ENCIMA del borde superior de la
+          // pantalla, y el `sticky top-0` no salva porque se pega al techo de la
+          // hoja, que está fuera de cuadro. Además la hoja tapaba todo lo visible,
+          // así que tampoco quedaba overlay para tocar afuera: el usuario quedaba
+          // encerrado en el panel (en un teléfono no hay Escape).
+          // `pb-[var(--safe-b)]`: con viewport-fit=cover, el pie no puede quedar
+          // debajo de la barra de gestos.
+          'absolute inset-x-0 bottom-0 z-10 max-h-[85dvh] overflow-y-auto overscroll-contain rounded-t-2xl border-t bg-background pb-[var(--safe-b)] shadow-2xl',
           'animate-in slide-in-from-bottom duration-300',
           'sm:inset-y-0 sm:right-0 sm:left-auto sm:bottom-auto sm:h-full sm:max-h-none sm:w-[400px]',
           'sm:rounded-none sm:rounded-l-2xl sm:border-t-0 sm:border-l sm:slide-in-from-bottom-0 sm:slide-in-from-right',

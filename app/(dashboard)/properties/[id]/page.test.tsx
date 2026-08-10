@@ -100,23 +100,34 @@ function json(data: unknown) {
 }
 
 /**
- * Espera a que la ficha esté ASENTADA y devuelve su `<input type=file>` con un
- * espía de `.click()`.
+ * Espera a que la ficha esté ASENTADA y devuelve sus dos `<input type=file>`
+ * —el de la galería y el de la cámara— con un espía de `.click()` en cada uno.
  *
  * Esperar solo el texto del bloque vacío no alcanza: se pinta apenas responde
  * `/api/properties/:id`, mientras `/api/auth/me` todavía viaja — y la pestaña
  * activa recién se resuelve cuando llegaron LAS DOS. Sin esta espera el test es
  * una carrera que gana quien responda primero.
+ *
+ * Son DOS inputs desde que la ficha ofrece sacar la foto en el momento
+ * (`lib/properties/use-subir-fotos.ts`): `capture` fuerza la cámara y anula
+ * `multiple`, así que un solo input no puede ofrecer las dos entradas.
  */
 async function esperarFicha(pestañaActiva: string) {
   await waitFor(() => {
     expect(screen.getByText(/todavía no hay fotos/i)).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: pestañaActiva })).toHaveAttribute('aria-selected', 'true')
   })
-  const inputs = document.querySelectorAll('input[type="file"]')
-  expect(inputs).toHaveLength(1)
-  const input = inputs[0] as HTMLInputElement
-  return { input, click: vi.spyOn(input, 'click') }
+  // Ni uno más: si aparecieran duplicados, sería que alguien montó un input
+  // adentro de una pestaña — el bug que este archivo cuida.
+  expect(document.querySelectorAll('input[type="file"]')).toHaveLength(2)
+  const input = document.querySelector('input[type="file"]:not([capture])') as HTMLInputElement
+  const camara = document.querySelector('input[type="file"][capture]') as HTMLInputElement
+  return {
+    input,
+    camara,
+    click: vi.spyOn(input, 'click'),
+    clickCamara: vi.spyOn(camara, 'click'),
+  }
 }
 
 describe('ficha de propiedad — subir fotos', () => {
@@ -165,6 +176,24 @@ describe('ficha de propiedad — subir fotos', () => {
     expect(input).toHaveAttribute('multiple')
   })
 
+  /**
+   * El caso de uso móvil por excelencia: el asesor parado adentro de la
+   * propiedad, sin una sola foto cargada. Antes tenía que salir de la app,
+   * abrir la cámara, sacar la foto, volver y buscarla en el carrete.
+   */
+  it('el bloque vacío deja sacar la foto en el momento, con la cámara trasera', async () => {
+    const user = userEvent.setup()
+    render(<PropertyDetailPage />)
+    const { camara, clickCamara, click } = await esperarFicha('Propiedad')
+
+    expect(camara).toHaveAttribute('capture', 'environment')
+
+    await user.click(screen.getByRole('button', { name: /sacar foto/i }))
+    expect(clickCamara).toHaveBeenCalledTimes(1)
+    // Y no abrió el de la galería: son dos puertas distintas.
+    expect(click).not.toHaveBeenCalled()
+  })
+
   it('al abogado no le ofrece subir fotos', async () => {
     rol = 'abogado'
     render(<PropertyDetailPage />)
@@ -176,7 +205,10 @@ describe('ficha de propiedad — subir fotos', () => {
       expect(screen.queryByRole('tab', { name: 'Multimedia' })).not.toBeInTheDocument()
     })
     expect(screen.queryByRole('button', { name: /subir fotos/i })).not.toBeInTheDocument()
-    expect(document.querySelectorAll('input[type="file"]')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: /sacar foto/i })).not.toBeInTheDocument()
+    // Los dos inputs siguen montados (galería + cámara) porque no dependen del
+    // rol; lo que el abogado no tiene es ningún botón que los abra.
+    expect(document.querySelectorAll('input[type="file"]')).toHaveLength(2)
   })
 
   it('un aviso que SÍ cambia de pestaña deja la vista en el contenido, no en el tope', async () => {

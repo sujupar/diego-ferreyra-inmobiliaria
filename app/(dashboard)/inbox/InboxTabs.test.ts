@@ -1,17 +1,19 @@
 /**
- * El alto del chat de WhatsApp es un número calculado A MANO contra el marco
- * del dashboard, que vive en OTROS DOS archivos. Cuando el rediseño del menú
- * lateral cambió ese marco (header `h-16`+borde → `h-14`+borde, contenido
- * `p-4 md:p-8` → `p-4 md:p-6`), la cuenta de `InboxTabs` quedó vieja y el chat
- * empezó a reservar ~25px de más: una franja muerta abajo, revirtiendo en parte
- * un arreglo que el dueño había pedido explícitamente.
+ * Contrato de LAYOUT del Inbox (Fase 1 del sistema responsive).
  *
- * Ningún test de comportamiento puede atrapar eso (es una clase de CSS y el
- * síntoma solo se ve en un navegador). Lo que SÍ se puede hacer es rehacer la
- * cuenta desde su fuente: este test LEE los dos archivos del marco, extrae los
- * valores reales y verifica que `InboxTabs` reserve exactamente eso. Si mañana
- * alguien vuelve a tocar el Topbar o el padding del layout, esto se pone en
- * rojo y dice dónde está el número que quedó colgado.
+ * Este archivo antes le hacía la cuenta a un `h-[calc(100dvh-5.75rem)]` escrito
+ * a mano: leía el alto del Topbar y el padding del layout y verificaba que el
+ * número de acá coincidiera. Ese test existía porque el número estaba acoplado a
+ * dos archivos ajenos y ya había quedado viejo una vez (franja muerta abajo del
+ * chat). La Fase 1 borra el problema de raíz — el alto sale de la cadena
+ * `SidebarInset h-app` → `#contenido flex-1 min-h-0` → este contenedor — así que
+ * lo que hay que fijar ahora es OTRA cosa: que nadie vuelva a poner un `calc`.
+ *
+ * Lo demás que se fija acá son clases, y las clases son la funcionalidad: si el
+ * bloque de pestañas y título no se oculta con un chat abierto, el hilo vuelve a
+ * quedarse con ~50px en un teléfono, y ningún test de comportamiento se entera.
+ * No hay navegador donde mirarlo (Turbopack no compila el proyecto en local por
+ * el acento de "Gestión" en la ruta), así que se lee el archivo.
  */
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -20,60 +22,122 @@ import { resolve } from 'node:path'
 const raiz = resolve(__dirname, '../../..')
 const leer = (rel: string) => readFileSync(resolve(raiz, rel), 'utf8')
 
-/** La escala de espaciado de Tailwind: 1 = 0.25rem = 4px. */
-const PASO_PX = 4
-/** Colchón contra redondeos, heredado del cálculo original. */
-const COLCHON_PX = 4
+const tabs = leer('app/(dashboard)/inbox/InboxTabs.tsx')
+const cliente = leer('app/(dashboard)/inbox/WhatsappClient.tsx')
 
-/** Alto real de la barra superior. `border-b` NO suma: el preflight de Tailwind v4 pone `box-sizing: border-box`. */
-function altoDelTopbarPx(): number {
-  const topbar = leer('components/dashboard/Topbar.tsx')
-  const header = topbar.match(/<header\s+className="([^"]+)"/)
-  expect(header, 'no se encontró el <header> de Topbar.tsx').toBeTruthy()
-  const clases = header![1]
-  expect(clases, 'el Topbar dejó de tener border-b: revisar la cuenta del alto del chat').toContain('border-b')
-  const h = clases.match(/(?:^|\s)h-(\d+)(?:\s|$)/)
-  expect(h, 'no se encontró la clase h-N del Topbar').toBeTruthy()
-  return Number(h![1]) * PASO_PX
-}
+/**
+ * Sin comentarios: la prosa NOMBRA a propósito lo que ya no se usa ("antes decía
+ * `h-[calc(...)]`") y no se la puede confundir con código vivo.
+ */
+const sinComentarios = (fuente: string) => fuente.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+const tabsCodigo = sinComentarios(tabs)
 
-/** Padding vertical del contenedor `#contenido` del layout, en celular y en escritorio. */
-function paddingDelContenidoPx(): { celular: number; escritorio: number } {
-  const layout = leer('app/(dashboard)/layout.tsx')
-  const div = layout.match(/id="contenido"[^>]*className="([^"]+)"/)
-  expect(div, 'no se encontró el contenedor #contenido del layout').toBeTruthy()
-  const clases = div![1]
-  const celular = clases.match(/(?:^|\s)p-(\d+)(?:\s|$)/)
-  const escritorio = clases.match(/(?:^|\s)md:p-(\d+)(?:\s|$)/)
-  expect(celular, 'no se encontró p-N en #contenido').toBeTruthy()
-  expect(escritorio, 'no se encontró md:p-N en #contenido').toBeTruthy()
-  // Padding arriba + padding abajo.
-  return { celular: Number(celular![1]) * PASO_PX * 2, escritorio: Number(escritorio![1]) * PASO_PX * 2 }
-}
-
-/** Los dos `calc(100dvh-Xrem)` que reserva InboxTabs, en px. */
-function reservadoPorInboxTabs(): { celular: number; escritorio: number } {
-  const tabs = leer('app/(dashboard)/inbox/InboxTabs.tsx')
-  const celular = tabs.match(/(?<!md:)h-\[calc\(100dvh-([\d.]+)rem\)\]/)
-  const escritorio = tabs.match(/md:h-\[calc\(100dvh-([\d.]+)rem\)\]/)
-  expect(celular, 'no se encontró el alto del chat para celular').toBeTruthy()
-  expect(escritorio, 'no se encontró el alto del chat para escritorio').toBeTruthy()
-  return { celular: Number(celular![1]) * 16, escritorio: Number(escritorio![1]) * 16 }
-}
-
-describe('alto del chat de WhatsApp vs el marco real del dashboard', () => {
-  it('reserva exactamente la barra superior + el padding del contenido (celular)', () => {
-    const esperado = altoDelTopbarPx() + paddingDelContenidoPx().celular + COLCHON_PX
-    expect(reservadoPorInboxTabs().celular).toBe(esperado)
+describe('InboxTabs — el alto ya no se calcula a mano', () => {
+  it('no queda ningún `calc()` de altura: el marco cambia y el chat se acomoda solo', () => {
+    // El `calc` viejo no descontaba los carteles de MODO PRUEBA / suplantación,
+    // así que con uno activo el compositor se iba abajo del pliegue.
+    const calculos = tabsCodigo.match(/h-\[calc\([^\]]*\)\]/g) ?? []
+    expect(calculos, `quedaron alturas calculadas a mano: ${calculos.join(', ')}`).toEqual([])
   })
 
-  it('reserva exactamente la barra superior + el padding del contenido (escritorio)', () => {
-    const esperado = altoDelTopbarPx() + paddingDelContenidoPx().escritorio + COLCHON_PX
-    expect(reservadoPorInboxTabs().escritorio).toBe(esperado)
+  it('el contenedor de WhatsApp se lleva lo que sobra de la cadena de alto', () => {
+    // `flex-1` sin `min-h-0` no se puede achicar y desborda; `min-h-0` sin
+    // `flex-1` no se lleva el alto. Los dos, o ninguno sirve.
+    expect(tabs).toMatch(/flex w-full min-h-0 max-w-7xl flex-1 flex-col/)
   })
 
-  it('el marco de hoy es h-14 + p-4/md:p-6 (si esto cambia, hay que rehacer la cuenta de arriba)', () => {
-    expect(altoDelTopbarPx()).toBe(56)
-    expect(paddingDelContenidoPx()).toEqual({ celular: 32, escritorio: 48 })
+  it('el centrado se acota a `md:` para que no se pelee con el margen negativo', () => {
+    // `mx-auto` y `-m-4` son la misma familia: cuál gana depende del orden con
+    // el que Tailwind las emita, no del orden en el string. Acotado a `md:`, las
+    // dos nunca aplican al mismo ancho.
+    expect(tabsCodigo).toContain('md:mx-auto')
+    expect(tabsCodigo).not.toMatch(/(?<!md:)mx-auto flex w-full/)
+  })
+
+  it('la cadena que hace funcionar el teclado llega entera hasta el chat', () => {
+    // El compositor queda pegado ARRIBA del teclado (en vez de irse fuera de
+    // cuadro) solo si el alto viaja sin cortes: `SidebarInset` mide `--app-vh`
+    // (el viewport VISUAL, que sí se achica con el teclado) → `#contenido` es
+    // `flex-1 min-h-0` → este contenedor es `flex-1 min-h-0`. Si cualquiera de
+    // los tres eslabones se rompe, el chat vuelve a medir la pantalla ENTERA y
+    // el teclado le tapa el compositor. Es un contrato entre tres archivos, así
+    // que se verifica desde acá, que es el que lo sufre.
+    const layout = leer('app/(dashboard)/layout.tsx')
+    expect(layout).toMatch(/<SidebarInset className="[^"]*h-app[^"]*"/)
+    expect(layout).toMatch(/id="contenido"[^>]*className="[^"]*min-h-0[^"]*flex-1[^"]*"/)
+    expect(tabsCodigo).toMatch(/min-h-0[^'`]*flex-1/)
+  })
+
+  it('el piso de 520px vive SOLO en escritorio', () => {
+    // En un teléfono con ~640px útiles —o ~300 con el teclado abierto— forzar
+    // 520px de alto mínimo produce scroll de página compitiendo con el del hilo.
+    expect(tabs).toContain('md:min-h-[520px]')
+    expect(tabs).not.toMatch(/(?<!md:)min-h-\[520px\]/)
+  })
+})
+
+describe('InboxTabs — con un chat abierto, el chat se queda con la pantalla', () => {
+  it('el bloque de pestañas + título desaparece en celular', () => {
+    // ~110px (pestañas + eyebrow + título + subtítulo). La cabecera del chat ya
+    // dice con quién hablás y ya trae el botón de volver.
+    expect(tabs).toMatch(/chatAbierto \? 'max-md:hidden' : ''/)
+  })
+
+  it('el contenedor cancela el padding del layout para que el chat vaya a sangre', () => {
+    expect(tabs).toContain('max-md:-m-4')
+  })
+
+  it('el margen negativo viaja con `max-md:w-auto`, o no ensancha nada', () => {
+    // El defecto: `w-full` es INCONDICIONAL. Con el ancho ya decidido en 358px
+    // (un teléfono de 390), `align-items: stretch` no interviene —la regla es
+    // que estirar solo aplica cuando el tamaño en el eje cruzado computa
+    // `auto`— y el `-m-4` deja de ensanchar: solo CORRE la caja. El borde
+    // izquierdo llega a 0 y sobran 32px de fondo a la derecha, a todo lo alto
+    // de la conversación. Con `auto`, estirar resuelve 358−(−16)−(−16) = 390.
+    // Los dos van juntos SIEMPRE: `-m-4` sin `w-auto` es el bug.
+    const abierto = tabsCodigo.match(/chatAbierto \? '([^']*-m-4[^']*)'/)
+    expect(abierto, 'no se encontró la rama del chat abierto').toBeTruthy()
+    expect(abierto![1]).toContain('max-md:w-auto')
+  })
+
+  it('los degradados de la franja de pestañas valen el color de ATRÁS, no el de tarjeta', () => {
+    // `scroll-x-fade` tapa sus dos sombras con dos degradados; si no son del
+    // color de la superficie, dejan de tapar y pasan a dibujar dos parches de
+    // 24px en los extremos, en TODOS los anchos. Detrás de esta franja está el
+    // área de contenido (`bg-secondary`), no una tarjeta.
+    expect(tabsCodigo).toContain('[--scroll-fade-color:var(--secondary)]')
+  })
+
+  it('sabe si hay un chat abierto leyendo la URL, no una prop', () => {
+    // Fuente de verdad única: `WhatsappClient` lee el MISMO parámetro. Con una
+    // prop, las dos mitades podrían discrepar sobre si hay un chat abierto.
+    expect(tabs).toMatch(/searchParams\.get\('chat'\)/)
+    expect(tabs).toMatch(/const chatAbierto = isWhatsapp && Boolean\(chatParam\)/)
+  })
+
+  it('la franja de filtros tampoco se renderiza dentro del chat', () => {
+    // ~164px en tres filas de "Todas las propiedades / Todos los asesores /
+    // Sin responder / Orden IA" arriba de una conversación.
+    expect(cliente).toMatch(/selectedPhone \? 'hidden shrink-0 md:block' : 'shrink-0'/)
+  })
+
+  it('la tarjeta del hilo va a sangre en celular y queda igual en escritorio', () => {
+    expect(cliente).toContain('max-md:rounded-none max-md:border-0 max-md:shadow-none')
+  })
+})
+
+describe('InboxTabs — la barra de pestañas no arrastra la página de costado', () => {
+  it('las pestañas scrollean adentro de su propia franja', () => {
+    // Los tres botones suman ~459px indivisibles contra ~358px útiles en 390px.
+    // Sin esto, el DOCUMENTO ENTERO ganaba scroll horizontal, en las TRES
+    // pestañas del Inbox.
+    expect(tabs).toContain('scroll-x-fade min-w-0')
+    expect(tabs).toContain('inline-flex min-w-max')
+  })
+
+  it('el scroller NO es `shrink-0` (lo obligaría a medir su contenido)', () => {
+    const franja = tabs.match(/className="scroll-x-fade[^"]*"/)
+    expect(franja, 'no se encontró la franja de pestañas').toBeTruthy()
+    expect(franja![0]).not.toContain('shrink-0')
   })
 })

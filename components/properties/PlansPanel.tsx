@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { FileText, Image as ImageIcon, Loader2, Upload, Trash2, ExternalLink } from 'lucide-react'
+import { Camera, FileText, Image as ImageIcon, Loader2, Upload, Trash2, ExternalLink } from 'lucide-react'
 import { planLabelFromUrl } from '@/lib/properties/media'
 import { uploadPlans, validatePlanFile } from '@/lib/properties/upload-plans'
 
@@ -15,6 +15,7 @@ interface Props {
 
 export function PlansPanel({ propertyId, plans, onChanged }: Props) {
   const input = useRef<HTMLInputElement>(null)
+  const camara = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
 
@@ -27,7 +28,7 @@ export function PlansPanel({ propertyId, plans, onChanged }: Props) {
       if (err) { toast.error(err); continue }
       files.push(f)
     }
-    if (files.length === 0) { if (input.current) input.current.value = ''; return }
+    if (files.length === 0) { limpiarInputs(); return }
     setUploading(true); setProgress(0)
     const t = toast.loading(files.length === 1 ? 'Subiendo plano…' : `Subiendo ${files.length} planos…`)
     try {
@@ -40,8 +41,15 @@ export function PlansPanel({ propertyId, plans, onChanged }: Props) {
       onChanged()
     } finally {
       setUploading(false); setProgress(0)
-      if (input.current) input.current.value = ''
+      limpiarInputs()
     }
+  }
+
+  /** Los DOS: si no se vacían, volver a elegir el mismo archivo (o repetir la
+   *  foto que acaba de fallar) no dispara `change` y el botón parece muerto. */
+  function limpiarInputs() {
+    if (input.current) input.current.value = ''
+    if (camara.current) camara.current.value = ''
   }
 
   async function removePlan(url: string) {
@@ -56,20 +64,45 @@ export function PlansPanel({ propertyId, plans, onChanged }: Props) {
   }
 
   const uploadBtn = (label: string) => (
-    <Button size="sm" variant="outline" onClick={() => input.current?.click()} disabled={uploading}>
-      {uploading
-        ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />{progress > 0 ? `${progress}%` : '…'}</>
-        : <><Upload className="h-4 w-4 mr-1" />{label}</>}
-    </Button>
+    <div className="flex items-center gap-2 max-md:w-full">
+      {/*
+        Un plano en papel sobre la mesa del dueño se fotografía; no está en el
+        carrete todavía. Solo en el teléfono: `capture` en una notebook no abre
+        ninguna cámara útil.
+      */}
+      <Button size="sm" variant="outline" className="md:hidden max-md:flex-1" onClick={() => camara.current?.click()} disabled={uploading}>
+        <Camera className="h-4 w-4 mr-1" />Sacar foto
+      </Button>
+      <Button size="sm" variant="outline" className="max-md:flex-1" onClick={() => input.current?.click()} disabled={uploading}>
+        {uploading
+          ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />{progress > 0 ? `${progress}%` : '…'}</>
+          : <><Upload className="h-4 w-4 mr-1" />{label}</>}
+      </Button>
+    </div>
   )
 
   return (
     <div className="space-y-3">
+      {/*
+        El `accept` lleva los tipos MIME ADEMÁS de las extensiones. iOS resuelve
+        mal una lista de solo extensiones: abre el explorador de Archivos y no
+        ofrece "Sacar foto" ni el carrete. Las extensiones se conservan porque
+        `validatePlanFile` valida por extensión y hay escritorios que solo
+        entienden esa forma.
+      */}
       <input
         ref={input}
         type="file"
         multiple
-        accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif"
+        accept="application/pdf,image/*,.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif"
+        className="hidden"
+        onChange={e => handleFiles(e.target.files)}
+      />
+      <input
+        ref={camara}
+        type="file"
+        accept="image/*"
+        capture="environment"
         className="hidden"
         onChange={e => handleFiles(e.target.files)}
       />
@@ -89,11 +122,14 @@ export function PlansPanel({ propertyId, plans, onChanged }: Props) {
                     href={url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1 shrink-0"
+                    aria-label={`Ver ${label} en una pestaña nueva`}
+                    className="text-xs text-blue-600 hover:underline inline-flex items-center justify-center gap-1 shrink-0 max-md:min-h-11 max-md:px-2"
                   >
                     <ExternalLink className="h-3 w-3" />Ver
                   </a>
-                  <Button size="sm" variant="ghost" onClick={() => removePlan(url)} className="shrink-0">
+                  {/* Solo ícono: sin `aria-label` es un botón sin nombre para un
+                      lector de pantalla, y además borra. */}
+                  <Button size="sm" variant="ghost" aria-label={`Quitar ${label}`} onClick={() => removePlan(url)} className="shrink-0">
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </li>

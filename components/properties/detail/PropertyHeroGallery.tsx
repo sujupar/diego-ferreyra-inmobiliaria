@@ -5,8 +5,9 @@
  * La edición (subir, reordenar, borrar) vive en la pestaña Multimedia.
  */
 import { useEffect, useState } from 'react'
-import { ImageOff, X } from 'lucide-react'
+import { Camera, ImageOff, X } from 'lucide-react'
 import { heroLayout } from '@/lib/properties/detail-view'
+import { useDeslizarFotos } from '@/lib/properties/deslizar-fotos'
 
 interface Props {
   photos: string[]
@@ -23,13 +24,24 @@ interface Props {
    * tope de la página, o sea alejarlo del control de subida.
    */
   onSubirFotos?: () => void
+  /**
+   * Abre la CÁMARA. Es el mismo camino de subida que `onSubirFotos`, pero es la
+   * puerta que corresponde cuando el asesor está parado adentro de la propiedad
+   * y todavía no hay ni una foto — que es exactamente cuando se ve este bloque.
+   * Solo se ofrece en pantallas chicas.
+   */
+  onSacarFoto?: () => void
   subiendoFotos?: boolean
   /** 0-100 mientras dura la subida. */
   progresoSubida?: number
 }
 
-export function PropertyHeroGallery({ photos, address, plansCount, hasVideo, hasTour, onSubirFotos, subiendoFotos, progresoSubida }: Props) {
+export function PropertyHeroGallery({ photos, address, plansCount, hasVideo, hasTour, onSubirFotos, onSacarFoto, subiendoFotos, progresoSubida }: Props) {
   const [openAt, setOpenAt] = useState<number | null>(null)
+  const gestos = useDeslizarFotos(
+    () => setOpenAt(i => (i === null ? i : (i - 1 + photos.length) % photos.length)),
+    () => setOpenAt(i => (i === null ? i : (i + 1) % photos.length)),
+  )
 
   useEffect(() => {
     if (openAt === null) return
@@ -50,18 +62,33 @@ export function PropertyHeroGallery({ photos, address, plansCount, hasVideo, has
         <p className="text-sm text-white/75 max-w-md">
           Sin fotos no se puede publicar en portales ni lanzar campañas.
         </p>
-        {onSubirFotos && (
-          <button
-            type="button"
-            onClick={onSubirFotos}
-            disabled={subiendoFotos}
-            className="mt-2 rounded-lg bg-white text-[color:var(--brand)] px-5 py-2 text-sm font-semibold hover:bg-white/90 transition disabled:opacity-70 disabled:cursor-not-allowed"
-          >
-            {subiendoFotos
-              ? `Subiendo…${progresoSubida ? ` ${progresoSubida}%` : ''}`
-              : 'Subir fotos'}
-          </button>
-        )}
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+          {/* Primero la cámara: si estás viendo este cartel, lo más probable es
+              que estés parado en la propiedad. Solo en el teléfono — `capture` en
+              una notebook no abre nada útil. */}
+          {onSacarFoto && (
+            <button
+              type="button"
+              onClick={onSacarFoto}
+              disabled={subiendoFotos}
+              className="md:hidden inline-flex items-center gap-2 min-h-11 rounded-lg bg-white text-[color:var(--brand)] px-5 py-2 text-sm font-semibold hover:bg-white/90 transition disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              <Camera className="h-4 w-4" />Sacar foto
+            </button>
+          )}
+          {onSubirFotos && (
+            <button
+              type="button"
+              onClick={onSubirFotos}
+              disabled={subiendoFotos}
+              className="min-h-11 rounded-lg bg-white text-[color:var(--brand)] px-5 py-2 text-sm font-semibold hover:bg-white/90 transition disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {subiendoFotos
+                ? `Subiendo…${progresoSubida ? ` ${progresoSubida}%` : ''}`
+                : 'Subir fotos'}
+            </button>
+          )}
+        </div>
       </div>
     )
   }
@@ -130,25 +157,33 @@ export function PropertyHeroGallery({ photos, address, plansCount, hasVideo, has
           role="dialog"
           aria-modal="true"
           aria-label={`Fotos de ${address}`}
+          data-testid="visor-portada"
           className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
-          onClick={() => setOpenAt(null)}
+          /* Un deslizamiento termina emitiendo un clic sintético al soltar: sin
+             esta pregunta, pasar de foto con el dedo cerraba el visor en el mismo
+             gesto. Con mouse la respuesta siempre es `false`. */
+          onClick={() => { if (gestos.absorbioElToque()) return; setOpenAt(null) }}
+          onTouchStart={gestos.onTouchStart}
+          onTouchEnd={gestos.onTouchEnd}
         >
-          <button className="absolute top-4 right-4 text-white" aria-label="Cerrar" onClick={() => setOpenAt(null)}>
+          <button className="absolute top-4 right-4 text-white tap flex items-center justify-center" aria-label="Cerrar" onClick={() => setOpenAt(null)}>
             <X className="h-7 w-7" />
           </button>
           <button
-            className="absolute left-4 text-white text-4xl px-3"
+            className="absolute left-4 text-white text-4xl tap flex items-center justify-center"
             aria-label="Foto anterior"
             onClick={e => { e.stopPropagation(); setOpenAt((openAt - 1 + photos.length) % photos.length) }}
           >‹</button>
           <img
             src={photos[openAt]}
             alt={`${address} — foto ${openAt + 1}`}
-            className="max-h-[90vh] max-w-[92vw] object-contain rounded-xl"
+            /* `dvh` y no `vh`: en iOS `vh` es el viewport grande, así que la foto se
+               dibujaba más alta que la pantalla y los bordes quedaban fuera de cuadro. */
+            className="max-h-[90dvh] max-w-[92vw] object-contain rounded-xl"
             onClick={e => e.stopPropagation()}
           />
           <button
-            className="absolute right-4 text-white text-4xl px-3"
+            className="absolute right-4 text-white text-4xl tap flex items-center justify-center"
             aria-label="Foto siguiente"
             onClick={e => { e.stopPropagation(); setOpenAt((openAt + 1) % photos.length) }}
           >›</button>

@@ -102,7 +102,10 @@ export default function VisitsPage() {
 
 function VisitsSkeleton() {
   return (
-    <div className="container mx-auto py-6 space-y-4">
+    // Sin `container mx-auto py-6`: ver el comentario del contenedor de
+    // `VisitsClient`. Los dos tienen que ser el MISMO marco o la pantalla pega
+    // un salto al pasar del esqueleto al listado.
+    <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-semibold">Visitas</h1>
         <p className="text-muted-foreground">Cargando…</p>
@@ -240,7 +243,13 @@ function VisitsClient() {
   ]
 
   return (
-    <div className="container mx-auto py-6 space-y-4">
+    // `container mx-auto py-6` afuera: el layout del dashboard YA envuelve el
+    // contenido en `p-4 md:p-6` (`app/(dashboard)/layout.tsx`). En Tailwind 4
+    // `container` no agrega padding propio, así que no había desborde — pero sí
+    // 24px extra de aire arriba que en un teléfono de ~640px útiles se notan, y
+    // dejaba a Visitas arrancando más abajo que Inicio, Contactos o CRM. El
+    // resto de las pantallas usa `space-y-*` pelado; esta ahora también.
+    <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-semibold">Visitas</h1>
         <p className="text-muted-foreground">
@@ -285,8 +294,13 @@ function VisitsClient() {
           value={{ from: mostrado.from, to: mostrado.to }}
           onChange={r => aplicarFiltros({ from: r.from, to: r.to })}
         />
+        {/* Es un interruptor, no un botón de acción: sin `aria-pressed` un
+            lector de pantalla no puede decir si el listado está recortado a las
+            propias (el color no le llega). Los presets de fechas de al lado ya
+            lo declaran así. */}
         <Button
           type="button"
+          aria-pressed={mostrado.onlyMine === 'true'}
           variant={mostrado.onlyMine === 'true' ? 'default' : 'outline'}
           onClick={() => aplicarFiltros({ onlyMine: mostrado.onlyMine === 'true' ? '' : 'true' })}
         >

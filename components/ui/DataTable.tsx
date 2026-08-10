@@ -1,7 +1,18 @@
 'use client'
 
 import { useRef, useEffect, useState } from 'react'
-import { ChevronUp, ChevronDown } from 'lucide-react'
+import { ChevronUp, ChevronDown, ChevronRight } from 'lucide-react'
+
+/**
+ * Rol de una columna cuando la tabla se dibuja como FICHA (pantalla angosta).
+ *
+ *  'title'  → renglón 1, a la izquierda: la IDENTIDAD de la fila. Se come el
+ *             ancho sobrante y corta con puntos suspensivos.
+ *  'badge'  → renglón 1, a la derecha: el ESTADO. No se encoge.
+ *  'meta'   → renglón 2: los metadatos, uno al lado del otro, separados por aire.
+ *  'none'   → no se dibuja en la ficha (lo que solo sirve con un mouse).
+ */
+export type RolFicha = 'title' | 'badge' | 'meta' | 'none'
 
 export interface Column<T> {
   key: string
@@ -9,6 +20,20 @@ export interface Column<T> {
   render: (row: T) => React.ReactNode
   sortable?: boolean
   className?: string
+  /**
+   * Deja que la celda ENVUELVA en vez de estirar la tabla. Por default toda
+   * celda es `whitespace-nowrap`, que es lo correcto para fechas y precios y
+   * lo peor posible para Dirección, Email o Propiedad: son justo las columnas
+   * que podrían ceder ancho y en cambio empujan la tabla a 900px.
+   */
+  wrap?: boolean
+  /**
+   * Rol en la FICHA. Si NINGUNA columna declara `'title'`, la primera pasa a
+   * serlo automáticamente: una ficha sin título es una lista de metadatos sin
+   * sujeto, y ese es el peor default posible para una pantalla que todavía no
+   * se migró. El resto, sin declarar, cae en `'meta'`.
+   */
+  card?: RolFicha
 }
 
 interface DataTableProps<T> {
@@ -38,6 +63,43 @@ interface DataTableProps<T> {
    */
   sort?: { key: string; dir: 'asc' | 'desc' } | null
   onSortChange?: (key: string, dir: 'asc' | 'desc') => void
+  /**
+   * En una caja angosta, ¿la tabla se convierte en fichas apiladas? Por
+   * default SÍ — es lo que hace usable la pantalla en un teléfono.
+   *
+   * Se apaga (`false`) en las tablas de NÚMEROS del tablero de métricas, que
+   * además viven adentro de tarjetas angostas: ahí comparar una columna
+   * contra la de al lado ES la función de la tabla, y apilar cada fila la
+   * destruye. Esas se quedan como tabla y se deslizan de costado, con el
+   * degradado de `.tabla-desliza` avisando que hay más a la derecha.
+   *
+   * El apagado no es un `if`: sin `cardMode` no se pone la clase
+   * `.tabla-ficha`, que es lo único que declara el contenedor CSS del que
+   * cuelgan TODAS las reglas de la ficha (ver `app/globals.css`).
+   */
+  cardMode?: boolean
+}
+
+/** Nombre del rol en el atributo que lee el CSS (prosa del proyecto en español). */
+const CELDA_POR_ROL: Record<RolFicha, string> = {
+  title: 'titulo',
+  badge: 'insignia',
+  meta: 'dato',
+  none: 'oculto',
+}
+
+/**
+ * Qué rol tiene cada columna en la ficha, en el mismo orden que `columns`.
+ *
+ * Exportada porque es la única regla de negocio del patrón y se puede probar
+ * sin renderizar nada: si esto se equivoca, la ficha queda sin título (o con
+ * dos) y ningún test de layout lo notaría.
+ */
+export function rolesDeFicha<T>(columns: Column<T>[]): RolFicha[] {
+  const hayTituloDeclarado = columns.some(c => c.card === 'title')
+  return columns.map((col, i) =>
+    col.card ?? (!hayTituloDeclarado && i === 0 ? 'title' : 'meta'),
+  )
 }
 
 function HeaderCheckbox({ checked, indeterminate, onChange }: { checked: boolean; indeterminate: boolean; onChange: (v: boolean) => void }) {
@@ -52,13 +114,13 @@ function HeaderCheckbox({ checked, indeterminate, onChange }: { checked: boolean
       checked={checked}
       onChange={e => onChange(e.target.checked)}
       onClick={e => e.stopPropagation()}
-      className="h-4 w-4 rounded border-input cursor-pointer"
+      className="h-4 w-4 max-md:h-5 max-md:w-5 rounded border-input cursor-pointer"
       aria-label="Seleccionar todo"
     />
   )
 }
 
-export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessage, selectable, selectedIds, onSelectionChange, sort, onSortChange }: DataTableProps<T>) {
+export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessage, selectable, selectedIds, onSelectionChange, sort, onSortChange, cardMode = true }: DataTableProps<T>) {
   const controlled = !!onSortChange
   const [localSortKey, setLocalSortKey] = useState<string | null>(null)
   const [localSortDir, setLocalSortDir] = useState<'asc' | 'desc'>('desc')
@@ -124,10 +186,72 @@ export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessag
     onSelectionChange(next)
   }
 
+  const roles = rolesDeFicha(columns)
+  const indicePrimerDato = roles.indexOf('meta')
+  // Ordenar por una columna que la ficha no muestra no le dice nada a nadie —
+  // salvo que el orden YA sea ese (se eligió en la cabecera, en una pantalla
+  // ancha): sacarla de la lista dejaría el desplegable en blanco mintiendo
+  // sobre por dónde está ordenada la lista.
+  const ordenables = columns.filter((c, i) => c.sortable && (roles[i] !== 'none' || c.key === sortKey))
+
   return (
-    <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
-      <table className="w-full text-sm">
-        <thead>
+    <div className={`${cardMode ? 'tabla-ficha ' : ''}tabla-desliza rounded-xl border bg-card shadow-sm`}>
+      {/* Barra de la FICHA. Solo se ve en la caja angosta (`.tabla-barra` es
+          `display:none` salvo dentro de la consulta de contenedor): ordenar y
+          seleccionar todo viven en la cabecera de la tabla, y la cabecera es
+          justo lo que la ficha no dibuja. Sin esto, las dos funciones quedan
+          inalcanzables desde un teléfono. */}
+      {cardMode && (selectable || ordenables.length > 0) && (
+        <div className="tabla-barra items-center gap-2 border-b p-2">
+          {selectable && (
+            <button
+              type="button"
+              onClick={() => toggleAll(!allSelected)}
+              className="tap shrink-0 rounded-md border px-3 text-sm font-medium"
+            >
+              {allSelected ? 'Ninguna' : 'Todas'}
+            </button>
+          )}
+          {ordenables.length > 0 && (
+            <>
+              {/* `<select>` NATIVO a propósito: abre la rueda de iOS, que es
+                  mejor que cualquier desplegable propio en una pantalla táctil
+                  (y la regla de los 16px de `globals.css` ya lo salva del zoom
+                  automático de Safari). */}
+              <select
+                aria-label="Ordenar la lista"
+                value={sortKey ?? ''}
+                onChange={e => handleSort(e.target.value)}
+                className="h-11 min-w-0 flex-1 rounded-md border bg-background px-3"
+              >
+                <option value="" disabled>Ordenar por…</option>
+                {ordenables.map(c => (
+                  <option key={c.key} value={c.key}>Ordenar por {c.label}</option>
+                ))}
+              </select>
+              {sortKey && (
+                // Elegir otra columna en el desplegable arranca en descendente;
+                // este botón es la ÚNICA forma de invertir sin la cabecera.
+                <button
+                  type="button"
+                  onClick={() => handleSort(sortKey)}
+                  aria-label={sortDir === 'asc' ? 'Orden ascendente. Tocar para invertirlo.' : 'Orden descendente. Tocar para invertirlo.'}
+                  className="tap flex shrink-0 items-center justify-center rounded-md border"
+                >
+                  {sortDir === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Los `role` van escritos aunque sean los implícitos de `<table>`: en la
+          ficha estos elementos pasan a `display: block/flex` y los navegadores
+          le sacan la semántica de tabla al perder el `display` tabular. Con el
+          rol explícito, el lector de pantalla sigue leyendo filas y celdas. */}
+      <table role="table" className="w-full text-sm">
+        <thead role="rowgroup">
           {/* Ronda de arreglos 1 — I4: la Tarea 9 había sumado `sticky top-0
               z-10` acá, pero no pega nada — el contenedor de este wrapper
               tiene `overflow-x-auto`, y por spec CSS eso lo convierte en el
@@ -137,9 +261,9 @@ export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessag
               (antes tampoco pegaba), pero era una promesa que el código no
               cumplía. Para que pegue de verdad hace falta un ancestro con
               altura acotada + su propio overflow-y — no es parte de esta tarea. */}
-          <tr className="bg-card border-b">
+          <tr role="row" className="bg-card border-b">
             {selectable && (
-              <th className="w-10 px-3 py-3">
+              <th role="columnheader" className="w-10 px-3 py-3">
                 <HeaderCheckbox
                   checked={!!allSelected}
                   indeterminate={!!someSelected}
@@ -149,6 +273,7 @@ export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessag
             )}
             {columns.map(col => (
               <th
+                role="columnheader"
                 key={col.key}
                 onClick={col.sortable ? () => handleSort(col.key) : undefined}
                 className={`px-4 py-3 text-left eyebrow whitespace-nowrap ${col.sortable ? 'cursor-pointer hover:text-foreground select-none' : ''} ${col.className || ''}`}
@@ -163,12 +288,13 @@ export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessag
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody role="rowgroup">
           {sorted.map(row => {
             const key = getRowKey(row)
             const isSelected = selectable && selSet.has(key)
             return (
               <tr
+                role="row"
                 key={key}
                 data-selected={isSelected}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
@@ -182,21 +308,46 @@ export function DataTable<T>({ data, columns, onRowClick, getRowKey, emptyMessag
                 className={`border-t data-[selected=true]:bg-[color:var(--brand-soft)] ${onRowClick ? 'cursor-pointer transition-colors hover:bg-secondary/60 data-[selected=true]:hover:bg-[color:var(--brand-soft)]' : ''}`}
               >
                 {selectable && (
-                  <td className="w-10 px-3 py-3" onClick={e => e.stopPropagation()}>
+                  <td role="cell" data-celda="seleccion" className="w-10 px-3 py-3" onClick={e => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={!!isSelected}
                       onChange={() => toggleRow(key)}
-                      className="h-4 w-4 rounded border-input cursor-pointer"
+                      className="h-4 w-4 max-md:h-5 max-md:w-5 rounded border-input cursor-pointer"
                       aria-label="Seleccionar fila"
                     />
                   </td>
                 )}
-                {columns.map(col => (
-                  <td key={col.key} className={`px-4 py-3 whitespace-nowrap ${col.className || ''} ${col.className?.includes('text-right') ? 'tabular-n' : ''}`}>
+                {columns.map((col, i) => (
+                  <td
+                    role="cell"
+                    key={col.key}
+                    data-celda={CELDA_POR_ROL[roles[i]]}
+                    // El primer metadato no lleva la separación que los demás
+                    // tienen a su izquierda (no hay nada antes que separar). Se
+                    // marca acá y no con un `+` de CSS porque el orden VISUAL de
+                    // la ficha lo pone `order`, y el selector de hermanos
+                    // contiguos solo ve el orden del DOM.
+                    data-primero={cardMode && i === indicePrimerDato ? '' : undefined}
+                    className={`px-4 py-3 ${col.wrap ? '' : 'whitespace-nowrap'} ${col.className || ''} ${col.className?.includes('text-right') ? 'tabular-n' : ''}`}
+                  >
                     {col.render(row)}
                   </td>
                 ))}
+                {cardMode && (
+                  <>
+                    {/* Estas dos celdas SOLO existen en la ficha (en la tabla
+                        son `display:none`) y van con `aria-hidden` porque no
+                        aportan ningún dato: una es el salto de renglón, la
+                        otra el signo de "esto se toca". */}
+                    {onRowClick && (
+                      <td aria-hidden="true" data-celda="chevron">
+                        <ChevronRight className="h-4 w-4" />
+                      </td>
+                    )}
+                    <td aria-hidden="true" data-celda="salto" />
+                  </>
+                )}
               </tr>
             )
           })}

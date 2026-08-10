@@ -1,7 +1,7 @@
 'use client'
 
 import { Check, CheckCheck, AlertTriangle, Clock, FileText, EyeOff } from 'lucide-react'
-import { relativeTime, messageText, mediaCaption } from './format'
+import { horaCorta, messageText, mediaCaption } from './format'
 import type { ThreadMessage } from './types'
 
 /**
@@ -74,22 +74,31 @@ function agentNoteReason(status: string): string | undefined {
  * ese mensaje YA SALIÓ. La única razón por la que hoy se queda pegado en
  * `accepted` para siempre es que el webhook de estados de Meta no está
  * suscripto (ver `WebhookWarningBanner`), no que el envío siga en curso.
+ *
+ * SOBRE LOS COLORES: esto se dibuja ADENTRO de la burbuja saliente (verde), no
+ * sobre el fondo del hilo. Los estados neutros van con `className` VACÍO a
+ * propósito — heredan el `--chat-meta` del renglón, que es el gris ya medido
+ * contra las dos burbujas. Un `text-muted-foreground` acá daba 4.27:1 contra
+ * los 4.5:1 que pide AA. Y `Leído` usa `--chat-read` y no `text-blue-500`
+ * (3.31:1 en claro, 3.72:1 en oscuro sobre el verde). Los mide
+ * `contraste-burbuja.test.ts`; si mañana se agrega un estado con color propio,
+ * el color va como token del chat y se suma a ese test.
  */
 function outboundStatusMeta(status: string): { icon: typeof Check; label: string; className: string; isError: boolean } {
   switch (status) {
     case 'skipped':
-      return { icon: Clock, label: 'Modo prueba — no se mandó de verdad', className: 'text-muted-foreground', isError: false }
+      return { icon: Clock, label: 'Modo prueba — no se mandó de verdad', className: '', isError: false }
     case 'accepted':
     case 'sent':
-      return { icon: Check, label: 'Enviado', className: 'text-muted-foreground', isError: false }
+      return { icon: Check, label: 'Enviado', className: '', isError: false }
     case 'delivered':
-      return { icon: CheckCheck, label: 'Entregado', className: 'text-muted-foreground', isError: false }
+      return { icon: CheckCheck, label: 'Entregado', className: '', isError: false }
     case 'read':
-      return { icon: CheckCheck, label: 'Leído', className: 'text-blue-500', isError: false }
+      return { icon: CheckCheck, label: 'Leído', className: 'text-[color:var(--chat-read)]', isError: false }
     case 'failed':
       return { icon: AlertTriangle, label: 'No se pudo enviar', className: 'text-[color:var(--destructive)]', isError: true }
     default:
-      return { icon: Clock, label: status, className: 'text-muted-foreground', isError: false }
+      return { icon: Clock, label: status, className: '', isError: false }
   }
 }
 
@@ -106,8 +115,18 @@ function MediaContent({ message }: { message: ThreadMessage }) {
   if (mime.startsWith('image/')) {
     return (
       <div>
+        {/* `max-w-full h-auto`: sin el tope de ancho, una foto apaisada se escala
+            al alto máximo (256px) y se va a ~455px de ancho dentro de una burbuja
+            que en un teléfono mide ~220px. Se derramaba sobre el hilo y, como el
+            hilo es `overflow-y-auto` (lo que fuerza al eje X a `auto`), el chat
+            entero ganaba scroll horizontal: al arrastrar para leer, se corría de
+            costado. Es el caso MÁS común de todos — los clientes mandan fotos. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={message.media_url} alt={caption ?? 'Imagen recibida'} className="max-h-64 rounded-lg object-cover" />
+        <img
+          src={message.media_url}
+          alt={caption ?? 'Imagen recibida'}
+          className="max-h-64 max-w-full rounded-lg object-cover h-auto"
+        />
         {caption && <p className="mt-1 text-sm">{caption}</p>}
       </div>
     )
@@ -153,7 +172,7 @@ function InternalNote({ message, reason }: { message: ThreadMessage; reason: str
           <span>Nota interna del equipo — el cliente no la vio ({reason}).</span>
         </p>
         <p className="mt-1 whitespace-pre-wrap break-words">{messageText(message)}</p>
-        <p className="mt-1 text-[10px]">{relativeTime(message.created_at)}</p>
+        <p className="mt-1 text-[11px] tabular-nums">{horaCorta(message.created_at)}</p>
       </div>
     </div>
   )
@@ -170,28 +189,57 @@ export function MessageBubble({ message }: { message: ThreadMessage }) {
   const hasMedia = message.media_url != null
   return (
     <div className={`flex flex-col ${isOut ? 'items-end' : 'items-start'}`}>
+      {/* `max-w-[85%]` en celular y 75% de `md:` para arriba: en un teléfono la
+          columna del hilo mide ~356px y el 75% dejaba burbujas de ~245px con
+          padding — una dirección o un precio con moneda se partían en tres
+          renglones. En escritorio el 75% sigue siendo lo correcto (una línea de
+          texto muy larga se vuelve incómoda de leer).
+
+          La esquina del lado propio va a `rounded-br-md` (entrante:
+          `rounded-bl-md`): es lo que le da al hilo la lectura de "quién habla"
+          sin depender del color.
+
+          Los colores salen de los tokens `--chat-*` de `app/globals.css`, que
+          HOY apuntan exactamente a los valores de antes (crema/blanco/verde). El
+          fondo crema y las burbujas verdes fueron un pedido explícito del dueño
+          y el pedido posterior ("colores de marca, sin copiar WhatsApp") lo
+          contradice: esa contradicción la resuelve él. Los tokens existen para
+          que ese cambio sea tocar cuatro variables y no reescribir esto. */}
       <div
-        className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words ${
+        className={`max-w-[85%] md:max-w-[75%] rounded-2xl px-3 py-2 text-[15px] leading-[1.35] whitespace-pre-wrap break-words ${
+          isOut ? 'rounded-br-md' : 'rounded-bl-md'
+        } ${
           meta?.isError
             ? 'bg-[color:var(--destructive)]/10 border border-[color:var(--destructive)]/40 text-foreground'
             : isOut
-              ? 'bg-emerald-100 text-emerald-950 shadow-sm dark:bg-emerald-900/50 dark:text-emerald-50'
-              : 'bg-white text-foreground shadow-sm dark:bg-zinc-800 dark:text-zinc-100'
+              ? 'bg-[color:var(--chat-out-bg)] text-[color:var(--chat-out-fg)] shadow-sm'
+              : 'bg-[color:var(--chat-in-bg)] text-[color:var(--chat-in-fg)] shadow-sm'
         }`}
       >
         {hasMedia ? media : messageText(message)}
-      </div>
-      <div className="flex items-center gap-1 mt-1 px-1">
-        <span className="text-[10px] text-muted-foreground">{relativeTime(message.created_at)}</span>
-        {isOut && StatusIcon && meta && (
-          <span className={`flex items-center gap-0.5 text-[10px] ${meta.className}`}>
-            <StatusIcon className="h-3 w-3" />
-            {!meta.isError && meta.label}
-          </span>
-        )}
+        {/* La hora va ADENTRO de la burbuja, no debajo: afuera costaba un renglón
+            entero por mensaje sobre un hilo que en un teléfono arrancaba con
+            ~50px de alto. Y dice "14:32", no "hace 3 días": el hilo ya está
+            agrupado por día con su separador, así que lo relativo era redundante
+            y encima escondía el único dato que falta. */}
+        {/* En la burbuja fallada el fondo es otro (`--destructive/10` sobre el
+            crema del hilo, un durazno claro) y ahí `--chat-meta` da 3.92:1. El
+            `text-foreground/70` da 6.84 en claro y 8.23 en oscuro, y se sigue
+            leyendo como un dato secundario. */}
+        <span className={`mt-1 flex items-center justify-end gap-1 text-[11px] tabular-nums ${
+          meta?.isError ? 'text-foreground/70' : 'text-[color:var(--chat-meta)]'
+        }`}>
+          <span>{horaCorta(message.created_at)}</span>
+          {isOut && StatusIcon && meta && (
+            <span className={`flex items-center gap-0.5 ${meta.className}`}>
+              <StatusIcon className="h-3 w-3" />
+              {!meta.isError && meta.label}
+            </span>
+          )}
+        </span>
       </div>
       {meta?.isError && (
-        <p className="max-w-[75%] mt-0.5 px-1 text-xs font-medium text-[color:var(--destructive)]">
+        <p className="max-w-[85%] md:max-w-[75%] mt-0.5 px-1 text-xs font-medium text-[color:var(--destructive)]">
           No se pudo enviar: {message.error_message ?? 'WhatsApp no informó el motivo.'}
         </p>
       )}

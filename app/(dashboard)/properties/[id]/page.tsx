@@ -182,6 +182,11 @@ export default function PropertyDetailPage() {
       document.getElementById('contenido-pestana')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
       return
     }
+    // Desde la cadena de alto del sistema móvil, el que scrollea es `#contenido`
+    // (app/(dashboard)/layout.tsx), no la ventana: `window.scrollTo` solo no
+    // movía nada. Se piden los dos a propósito — en la app manda el panel, y si
+    // algún día el documento vuelve a ser el scroller esto sigue andando.
+    document.getElementById('contenido')?.scrollTo?.({ top: 0, behavior: 'smooth' })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -294,15 +299,11 @@ export default function PropertyDetailPage() {
         click a un efecto pierde la activación del usuario — las dos formas
         reproducen el bug original: tocás el botón y no pasa nada.
       */}
-      {/*
-        El selector de archivos vive ACÁ, fuera de las pestañas, y nunca se
-        desmonta: cualquier botón de "Subir fotos" de la ficha lo abre con un
-        `.click()` sincrónico dentro de su propio `onClick`. Metido adentro de
-        una pestaña quedaría `null` para quien esté parado en otra, y diferir el
-        click a un efecto pierde la activación del usuario — las dos formas
-        reproducen el bug original: tocás el botón y no pasa nada.
-      */}
       <input {...subidaDeFotos.inputProps} />
+      {/* El de la cámara va al lado por lo mismo, y es un input SEPARADO porque
+          `capture` anula `multiple`: son dos entradas al mismo camino de subida
+          ("elegir varias de la galería" y "sacar una ahora"). */}
+      <input {...subidaDeFotos.inputPropsCamara} />
 
       <PropertyHeroGallery
         photos={photos}
@@ -311,6 +312,7 @@ export default function PropertyDetailPage() {
         hasVideo={!!property.video_file_url}
         hasTour={!!property.tour_3d_url}
         onSubirFotos={isAbogado ? undefined : subidaDeFotos.abrirSelector}
+        onSacarFoto={isAbogado ? undefined : subidaDeFotos.abrirCamara}
         subiendoFotos={subidaDeFotos.subiendo}
         progresoSubida={subidaDeFotos.progreso}
       />

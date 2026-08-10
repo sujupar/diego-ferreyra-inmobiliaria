@@ -145,6 +145,14 @@ export function PropertyInquiriesPanel({ range }: { range: DateRange }) {
             columns={COLUMNS}
             getRowKey={r => r.property_id}
             emptyMessage="Sin consultas de portales en este período."
+            // Es una tabla de NÚMEROS: Total / ML / ZP / AP puestos uno al lado
+            // del otro justamente para leer la columna de arriba abajo y
+            // comparar propiedades entre sí. Apilar cada fila como ficha
+            // destruye exactamente eso — cuatro cifras sueltas separadas por
+            // puntos no se comparan con nada. Se queda como tabla y se desliza
+            // de costado, con el degradado de `.tabla-desliza` avisando que hay
+            // más a la derecha.
+            cardMode={false}
           />
 
           {data.summary.unidentified > 0 && (

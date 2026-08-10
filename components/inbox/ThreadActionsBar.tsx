@@ -1,13 +1,29 @@
 'use client'
 
 import { useState } from 'react'
-import { Building2, Tag as TagIcon, Loader2, ChevronDown, Check, MessageSquareText, Workflow, Bot, BotOff } from 'lucide-react'
+import {
+  Building2,
+  Tag as TagIcon,
+  Loader2,
+  ChevronDown,
+  Check,
+  MessageSquareText,
+  Workflow,
+  Bot,
+  BotOff,
+  MoreVertical,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuPortal,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -209,9 +225,65 @@ export function ThreadActionsBar({
     }
   }
 
+  /**
+   * Los ítems de etiquetas y de estado se arman UNA vez y se usan en los dos
+   * lados: los desplegables de la fila de escritorio y los submenús del botón de
+   * tres puntos de celular. Copiarlos habría sido la puerta de entrada a que una
+   * de las dos vistas se quede con un catálogo viejo o sin el optimista.
+   */
+  function itemsEtiquetas() {
+    if (tagCatalog.length === 0) {
+      return (
+        <DropdownMenuLabel className="font-normal text-muted-foreground">
+          Todavía no hay etiquetas cargadas.
+        </DropdownMenuLabel>
+      )
+    }
+    return tagCatalog.map(tag => {
+      const active = tags.some(t => t.slug === tag.slug)
+      return (
+        <DropdownMenuItem
+          key={tag.slug}
+          disabled={Boolean(tagBusySlug)}
+          onSelect={e => {
+            e.preventDefault() // no cerrar el menú: se pueden tocar varias etiquetas seguidas
+            toggleTag(tag)
+          }}
+        >
+          <span
+            className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border ${
+              active ? 'border-[color:var(--brand)] bg-[color:var(--brand)]' : ''
+            }`}
+          >
+            {active && <Check className="h-3 w-3 text-white" />}
+          </span>
+          {tag.label}
+          {tagBusySlug === tag.slug && <Loader2 className="ml-auto h-3 w-3 animate-spin" />}
+        </DropdownMenuItem>
+      )
+    })
+  }
+
+  function itemsEstado() {
+    return PIPELINE_STATES.map(state => (
+      <DropdownMenuItem key={state} onSelect={() => requestStateChange(state)}>
+        {state === pipelineState && <Check className="h-3.5 w-3.5" />}
+        {PIPELINE_STATE_LABELS[state]}
+      </DropdownMenuItem>
+    ))
+  }
+
+  const etiquetaAgente = agentOff ? 'Prender el agente de IA' : 'Apagar el agente de IA'
+
   return (
     <div className={bare ? '' : 'border-b px-3 py-1.5'}>
-      <div className="flex flex-wrap items-center gap-1.5">
+      {/* ESCRITORIO: la fila de siempre, sin un solo cambio.
+          En celular estos 5 botones son `shrink-0` y suman ~527px de ancho
+          mínimo dentro de una Card de ~356px con `overflow-hidden`: "Estado" no
+          existía y "Etiquetas" se veía a medias, sin scroll ni forma de
+          alcanzarlos. Cambiar el estado del embudo desde el teléfono era
+          literalmente imposible. */}
+      <div className="flex flex-wrap items-center gap-1.5 max-md:hidden">
         {/* Apagar el agente ANTES de escribirle vos: si no, contesta por encima
             tuyo. Es el mismo freno que usa el agente al llegar a su tope, así
             que no hay dos mecanismos que puedan contradecirse. */}
@@ -273,33 +345,7 @@ export function ThreadActionsBar({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
-            {tagCatalog.length === 0 ? (
-              <DropdownMenuLabel className="font-normal text-muted-foreground">Todavía no hay etiquetas cargadas.</DropdownMenuLabel>
-            ) : (
-              tagCatalog.map(tag => {
-                const active = tags.some(t => t.slug === tag.slug)
-                return (
-                  <DropdownMenuItem
-                    key={tag.slug}
-                    disabled={Boolean(tagBusySlug)}
-                    onSelect={e => {
-                      e.preventDefault() // no cerrar el menú: se pueden tocar varias etiquetas seguidas
-                      toggleTag(tag)
-                    }}
-                  >
-                    <span
-                      className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border ${
-                        active ? 'border-[color:var(--brand)] bg-[color:var(--brand)]' : ''
-                      }`}
-                    >
-                      {active && <Check className="h-3 w-3 text-white" />}
-                    </span>
-                    {tag.label}
-                    {tagBusySlug === tag.slug && <Loader2 className="ml-auto h-3 w-3 animate-spin" />}
-                  </DropdownMenuItem>
-                )
-              })
-            )}
+            {itemsEtiquetas()}
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -319,21 +365,87 @@ export function ThreadActionsBar({
               <ChevronDown className="h-3 w-3 opacity-60" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            {PIPELINE_STATES.map(state => (
-              <DropdownMenuItem key={state} onSelect={() => requestStateChange(state)}>
-                {state === pipelineState && <Check className="h-3.5 w-3.5" />}
-                {PIPELINE_STATE_LABELS[state]}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
+          <DropdownMenuContent align="start">{itemsEstado()}</DropdownMenuContent>
         </DropdownMenu>
 
         {showStateChip && pipelineState && <PipelineStateChip state={pipelineState} />}
       </div>
 
+      {/* CELULAR: las mismas cinco acciones detrás de un botón de tres puntos —
+          la jerarquía de cualquier app de mensajería. Es el MISMO componente con
+          el MISMO estado, no una copia: los handlers, el optimista de etiquetas y
+          el diálogo de motivo del cambio de estado son los de arriba. */}
+      <div className="md:hidden">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Más acciones de la conversación"
+              data-testid="thread-actions-menu-button"
+            >
+              <MoreVertical className="h-5 w-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-60">
+            <DropdownMenuItem disabled={!property} onSelect={onOpenPropertyInfo}>
+              <Building2 className="h-4 w-4" /> Enviar info de la propiedad
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onOpenTemplatePicker}>
+              <MessageSquareText className="h-4 w-4" /> Mandar una plantilla
+            </DropdownMenuItem>
+
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger disabled={!resolved}>
+                <TagIcon className="h-4 w-4" />
+                Etiquetas{tags.length > 0 ? ` (${tags.length})` : ''}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuSubContent className="max-h-64 overflow-y-auto">{itemsEtiquetas()}</DropdownMenuSubContent>
+              </DropdownMenuPortal>
+            </DropdownMenuSub>
+
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger disabled={!resolved}>
+                <Workflow className="h-4 w-4" /> Estado
+              </DropdownMenuSubTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuSubContent>{itemsEstado()}</DropdownMenuSubContent>
+              </DropdownMenuPortal>
+            </DropdownMenuSub>
+
+            {phoneE164 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={agenteCargando}
+                  onSelect={e => {
+                    e.preventDefault() // el menú se queda abierto mientras viaja el pedido
+                    toggleAgente()
+                  }}
+                >
+                  {agenteCargando ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : agentOff ? (
+                    <BotOff className="h-4 w-4" />
+                  ) : (
+                    <Bot className="h-4 w-4 text-emerald-600" />
+                  )}
+                  {etiquetaAgente}
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
       {tagError && <p className="mt-1.5 text-xs font-medium text-[color:var(--destructive)]">{tagError}</p>}
-      {!resolved && <p className="mt-1.5 text-xs text-muted-foreground">{NO_LEAD_EXPLANATION}</p>}
+      {/* La explicación larga de "esta conversación no tiene lead" se guarda para
+          escritorio: en celular son dos renglones de prosa sobre un hilo que
+          apenas entra, y la información ya está donde importa (los ítems de
+          Etiquetas y Estado del menú aparecen deshabilitados). */}
+      {!resolved && <p className="mt-1.5 text-xs text-muted-foreground max-md:hidden">{NO_LEAD_EXPLANATION}</p>}
 
       <Dialog open={pendingState != null} onOpenChange={open => !open && closeStateDialog()}>
         <DialogContent>

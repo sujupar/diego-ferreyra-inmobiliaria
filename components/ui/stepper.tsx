@@ -12,8 +12,41 @@ interface StepperProps {
 
 export function Stepper({ steps, currentStep, className }: StepperProps) {
     return (
-        <div className={cn('w-full', className)}>
-            <div className="flex items-center justify-between">
+        // PISO DE CELULAR — el desborde de esta barra arrastraba de costado a
+        // TODA la página del asistente de tasación, en sus 6 pasos: los títulos
+        // ('Ubicación', 'Superficies', 'Características'…) no se achican por
+        // debajo de su palabra más larga, así que pedían ~532px contra los
+        // ~358px de un iPhone. Abajo de `md` los títulos pasan a `sr-only`
+        // (siguen para el lector de pantalla, dejan de ocupar lugar) y quedan
+        // solo los círculos numerados, que es lo que de verdad orienta; el
+        // "Paso N de 6" en letras lo pone `PropertyWizard`.
+        //
+        // `scroll-x-fade` es la red de seguridad: si aun sin los títulos los
+        // círculos no entran (teléfonos de 320px), la barra scrollea DENTRO de
+        // su caja en vez de empujar la página. No se acota a `max-md:`: entre
+        // 768 y ~1100px de ventana la caja útil mide ~464px contra los ~532px
+        // que piden los títulos, así que en esa franja de escritorio también
+        // hace falta.
+        //
+        // `py-6 -my-6` — NO es aire, es el precio de tener un scroller acá.
+        // `overflow-x: auto` obliga al eje Y a `auto` también (no existe
+        // "desbordar en uno y recortar en el otro"), así que todo lo que el paso
+        // ACTUAL dibuja fuera de su caja quedaba recortado con un corte recto:
+        // el `scale-110`, la `shadow-lg` (que llega ~18px por debajo del
+        // círculo) y sobre todo el `animate-ping`, que se expande al doble, o
+        // sea 24px por lado. En escritorio, donde no hay nada que deslizar, era
+        // puro daño.
+        // El relleno le da a la tinta esos 24px arriba y abajo; el margen
+        // negativo del mismo tamaño devuelve la caja a su lugar en el flujo, así
+        // que la barra sigue midiendo y ubicándose EXACTAMENTE igual que antes,
+        // en todos los anchos. Los dos números son el mismo a propósito: si
+        // algún día crece el realce del paso actual, suben JUNTOS o vuelve el
+        // recorte.
+        <div className={cn('w-full scroll-x-fade py-6 -my-6', className)}>
+            {/* `w-max min-w-full`: ocupa todo el ancho cuando entra (y los
+                conectores `flex-1` reparten el sobrante) y crece hasta su
+                contenido cuando no entra, que es lo que habilita el scroll. */}
+            <div className="flex w-max min-w-full items-center justify-between">
                 {steps.map((step, index) => {
                     const isCompleted = index < currentStep
                     const isCurrent = index === currentStep
@@ -22,10 +55,11 @@ export function Stepper({ steps, currentStep, className }: StepperProps) {
                     return (
                         <React.Fragment key={index}>
                             {/* Step indicator */}
-                            <div className="flex flex-col items-center">
+                            <div className="flex shrink-0 flex-col items-center">
                                 <div
+                                    aria-current={isCurrent ? 'step' : undefined}
                                     className={cn(
-                                        'relative flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-500 ease-out',
+                                        'relative flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-500 ease-out max-md:h-10 max-md:w-10',
                                         isCompleted && 'border-primary bg-primary text-primary-foreground scale-100',
                                         isCurrent && 'border-primary bg-primary/10 text-primary scale-110 shadow-lg shadow-primary/25',
                                         isUpcoming && 'border-muted-foreground/30 bg-muted/50 text-muted-foreground'
@@ -49,10 +83,10 @@ export function Stepper({ steps, currentStep, className }: StepperProps) {
                                 </div>
 
                                 {/* Step title */}
-                                <div className="mt-3 text-center">
+                                <div className="mt-3 text-center max-md:mt-0">
                                     <p
                                         className={cn(
-                                            'text-sm font-medium transition-all duration-300',
+                                            'text-sm font-medium transition-all duration-300 max-md:sr-only',
                                             isCompleted && 'text-primary',
                                             isCurrent && 'text-primary font-semibold',
                                             isUpcoming && 'text-muted-foreground'
@@ -70,7 +104,11 @@ export function Stepper({ steps, currentStep, className }: StepperProps) {
 
                             {/* Connector line */}
                             {index < steps.length - 1 && (
-                                <div className="flex-1 mx-2 sm:mx-4 mt-[-24px]">
+                                // El `mt-[-24px]` compensa la altura del título
+                                // para que la línea quede a la altura de los
+                                // círculos. Sin títulos (celular) esa
+                                // compensación sobra y desalinea.
+                                <div className="flex-1 mx-2 sm:mx-4 mt-[-24px] max-md:mx-1 max-md:mt-0">
                                     <div className="relative h-1 bg-muted rounded-full overflow-hidden">
                                         <div
                                             className={cn(

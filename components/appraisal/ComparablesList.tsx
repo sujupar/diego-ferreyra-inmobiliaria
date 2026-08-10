@@ -102,6 +102,7 @@ export function ComparablesList({ comparables, onAddComparable, onRemoveComparab
                                         size="icon"
                                         className="h-8 w-8 shadow-sm rounded-full"
                                         onClick={() => onRemoveComparable(idx)}
+                                        aria-label={`Quitar el comparable ${comp.title || idx + 1}`}
                                     >
                                         <Trash2 className="h-4 w-4" />
                                     </Button>

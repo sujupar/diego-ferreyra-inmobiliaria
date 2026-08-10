@@ -608,7 +608,10 @@ export default function DealDetailPage() {
       {/* Followup Modal */}
       {showFollowupModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto" onClick={() => setShowFollowupModal(false)}>
-          <div className="bg-background rounded-2xl shadow-xl w-full max-w-lg my-8 p-6 space-y-4 max-h-[95vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          {/* `dvh` y no `vh`: en iOS `vh` es el viewport GRANDE, o sea más alto que
+              lo visible con la barra del navegador puesta — el modal arrancaba arriba
+              del borde y el botón de guardar quedaba abajo del pliegue. */}
+          <div className="bg-background rounded-2xl shadow-xl w-full max-w-lg my-8 p-6 space-y-4 max-h-[95dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="space-y-1">
               <p className="eyebrow">Seguimiento</p>
               <h2 className="display text-2xl flex items-center gap-2">
@@ -740,7 +743,8 @@ export default function DealDetailPage() {
       {/* Visit Data Modal */}
       {showVisitModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto" onClick={() => setShowVisitModal(false)}>
-          <div className="bg-background rounded-2xl shadow-xl w-full max-w-4xl my-8 p-6 space-y-4 max-h-[95vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          {/* Mismo caso que el modal de seguimiento: `dvh`, no `vh`. */}
+          <div className="bg-background rounded-2xl shadow-xl w-full max-w-4xl my-8 p-6 space-y-4 max-h-[95dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between sticky top-0 bg-background pb-3 border-b z-10">
               <div className="space-y-1">
                 <p className="eyebrow">Visita Realizada</p>

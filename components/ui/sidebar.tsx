@@ -213,7 +213,14 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          // Antes había un `[&>button]:hidden` que apuntaba justo a la X que
+          // renderiza `SheetContent`: en el celular el panel se quedaba SIN botón
+          // de cerrar. Radix tampoco trae gesto de arrastrar y en un teléfono no
+          // hay tecla Escape, así que la única salida era acertarle a la franja de
+          // overlay que queda a la derecha del panel: 102px en 390px, 72px en 360px
+          // y 32px en 320px. Se saca. La X vuelve a verse y `sheet.tsx` le da 44px
+          // de área tocable en celular.
+          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground"
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
@@ -238,7 +245,10 @@ function Sidebar({
             <SheetTitle>Menú lateral</SheetTitle>
             <SheetDescription>Muestra el menú lateral en el celular.</SheetDescription>
           </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
+          {/* `pb-[var(--safe-b)]`: con `viewport-fit=cover` (app/layout.tsx) el
+              panel llega hasta el borde físico y el último ítem del menú quedaría
+              debajo de la barra de gestos del iPhone. */}
+          <div className="flex h-full w-full flex-col pb-[var(--safe-b)]">{children}</div>
         </SheetContent>
       </Sheet>
     )

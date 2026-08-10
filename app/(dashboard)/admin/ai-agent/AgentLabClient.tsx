@@ -127,7 +127,12 @@ export function AgentLabClient({ propiedades }: { propiedades: Array<{ id: strin
                   className="flex-1"
                 />
                 {turnos.length > 1 && (
-                  <Button variant="ghost" size="icon" onClick={() => setTurnos(ts => ts.filter((_, j) => j !== i))}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setTurnos(ts => ts.filter((_, j) => j !== i))}
+                    aria-label={`Quitar el mensaje ${i + 1} de la simulación`}
+                  >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 )}

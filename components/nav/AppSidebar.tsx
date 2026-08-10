@@ -18,13 +18,16 @@ import {
   activeHrefAmong, isCollapsible, navHrefs,
   type NavCollapsible, type NavGroup, type NavItem,
 } from '@/lib/nav/sections'
+import { useContadorDeLeads } from '@/components/nav/use-contador-leads'
 
 /**
  * En celular el menú es un Sheet (Dialog MODAL de Radix): mientras está abierto,
- * Radix le pone `pointer-events:none` al <body> y la X viene oculta
- * (`[&>button]:hidden` en la primitiva). Elegir una opción navegaba POR DETRÁS y
- * el panel seguía tapando la pantalla: el síntoma era "toqué CRM y no pasó
- * nada", en CADA navegación desde el menú. El menú anterior (`NavDropdown`,
+ * Radix le pone `pointer-events:none` al <body>. Elegir una opción navegaba POR
+ * DETRÁS y el panel seguía tapando la pantalla: el síntoma era "toqué CRM y no
+ * pasó nada", en CADA navegación desde el menú. (La X de cerrar además estaba
+ * oculta por un `[&>button]:hidden` en `components/ui/sidebar.tsx`, así que no
+ * había ni siquiera una salida manual; eso se sacó en la Fase 0 del sistema
+ * móvil.) El menú anterior (`NavDropdown`,
  * borrado en el rediseño) cerraba en el `onClick` de cada link Y en un efecto
  * sobre `pathname`; acá se restituyen las dos mitades por el mismo motivo: el
  * efecto no alcanza cuando se toca la opción de la pantalla en la que ya estás
@@ -172,7 +175,11 @@ export function AppSidebar({ groups, logoUrl }: { groups: NavGroup[]; logoUrl: s
   const pathname = usePathname()
   const { setOpenMobile } = useSidebar()
   const tieneInbox = navHrefs(groups).includes('/inbox')
-  const [inboxCount, setInboxCount] = useState(0)
+  // Al montar y cada 60 s, con try/catch silencioso: si el contador falla, el
+  // menú tiene que funcionar igual. La barra inferior del celular pinta el mismo
+  // número, así que la forma de pedirlo vive en `use-contador-leads.ts` y no
+  // duplicada en los dos.
+  const inboxCount = useContadorDeLeads(tieneInbox)
   const cerrarPanel = useCerrarPanelMovil()
 
   // Segunda mitad del cierre en celular (ver `useCerrarPanelMovil`): el panel
@@ -182,29 +189,6 @@ export function AppSidebar({ groups, logoUrl }: { groups: NavGroup[]; logoUrl: s
   useEffect(() => {
     setOpenMobile(false)
   }, [pathname, setOpenMobile])
-
-  // Mismo comportamiento que el DashboardNav anterior: al montar y cada 60 s,
-  // con try/catch silencioso. Si el contador falla, el menú tiene que funcionar igual.
-  useEffect(() => {
-    if (!tieneInbox) return
-    let activo = true
-    async function cargar() {
-      try {
-        const res = await fetch('/api/leads/count')
-        if (!res.ok) return
-        const { new: count } = await res.json()
-        if (activo) setInboxCount(count ?? 0)
-      } catch {
-        // best-effort
-      }
-    }
-    cargar()
-    const handle = setInterval(cargar, 60_000)
-    return () => {
-      activo = false
-      clearInterval(handle)
-    }
-  }, [tieneInbox])
 
   return (
     <Sidebar collapsible="icon">

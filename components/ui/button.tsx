@@ -20,13 +20,24 @@ const buttonVariants = cva(
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
         link: "text-primary underline-offset-4 hover:underline",
       },
+      // Piso táctil de celular, escritorio intacto. Ningún tamaño llegaba a los
+      // 44px que recomienda Apple (el máximo era 40px) y hay 128 usos de
+      // `size="sm"` — o sea 32px — en filas apretadas que el asesor toca con el
+      // pulgar en movimiento. Las clases `max-md:` solo existen por debajo de
+      // 768px y, como Tailwind emite las variantes DESPUÉS de las utilidades
+      // sueltas, le ganan a `h-9`/`size-9` sin tocar una sola clase de escritorio.
+      //
+      // `sm` sube a 40 y no a 44 a propósito: son los botones de las filas y las
+      // barras de filtro, donde 44px reventaría el renglón. Los 4px que faltan
+      // los pone el halo transparente de `@media (pointer: coarse)` en
+      // `app/globals.css` para los controles que sí lo necesitan.
       size: {
-        default: "h-9 px-4 py-2 has-[>svg]:px-3",
-        sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
-        lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
-        icon: "size-9",
-        "icon-sm": "size-8",
-        "icon-lg": "size-10",
+        default: "h-9 max-md:h-11 px-4 py-2 has-[>svg]:px-3",
+        sm: "h-8 max-md:h-10 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
+        lg: "h-10 max-md:h-11 rounded-md px-6 has-[>svg]:px-4",
+        icon: "size-9 max-md:size-11",
+        "icon-sm": "size-8 max-md:size-10",
+        "icon-lg": "size-10 max-md:size-11",
       },
     },
     defaultVariants: {

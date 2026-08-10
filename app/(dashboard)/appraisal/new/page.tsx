@@ -1162,11 +1162,12 @@ function NewAppraisalPageContent() {
                                                     <ComparableMissingIndicator property={comp} />
                                                 </div>
                                             </div>
-                                            <div className="flex gap-2">
+                                            <div className="flex gap-2 max-md:gap-3">
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
                                                     onClick={() => handleEditComparable(index)}
+                                                    aria-label={`Editar el comparable ${comp.title || index + 1}`}
                                                     className="h-8 w-8"
                                                 >
                                                     <Edit2 className="h-4 w-4" />
@@ -1175,6 +1176,7 @@ function NewAppraisalPageContent() {
                                                     variant="ghost"
                                                     size="icon"
                                                     onClick={() => handleRemoveComparable(index)}
+                                                    aria-label={`Quitar el comparable ${comp.title || index + 1}`}
                                                     className="h-8 w-8 text-destructive hover:text-destructive"
                                                 >
                                                     <Trash2 className="h-4 w-4" />
@@ -1261,6 +1263,7 @@ function NewAppraisalPageContent() {
                                                     variant="ghost"
                                                     size="icon"
                                                     onClick={() => setOverpriced(overpriced.filter((_, i) => i !== index))}
+                                                    aria-label={`Quitar la propiedad sobrevaluada ${prop.title || prop.location || index + 1}`}
                                                     className="h-8 w-8 text-destructive hover:text-destructive"
                                                 >
                                                     <Trash2 className="h-4 w-4" />
@@ -1373,6 +1376,7 @@ function NewAppraisalPageContent() {
                                                                     .map(i => (i > index ? i - 1 : i))
                                                             )
                                                         }}
+                                                        aria-label={`Quitar la propiedad para compra ${prop.title || prop.location || index + 1}`}
                                                         className="h-8 w-8 text-destructive hover:text-destructive"
                                                     >
                                                         <Trash2 className="h-4 w-4" />
@@ -1412,7 +1416,8 @@ function NewAppraisalPageContent() {
                                                 const v = Number(e.target.value)
                                                 if (Number.isFinite(v) && v >= 1 && v <= 100) setOwnerSharePercent(v)
                                             }}
-                                            className="w-24 rounded-md border px-3 py-2 text-sm text-right"
+                                            inputMode="numeric"
+                                            className="w-24 rounded-md border px-3 py-2 text-sm text-right max-md:min-h-11"
                                         />
                                         <span className="text-sm text-muted-foreground">%</span>
                                     </div>
@@ -1451,7 +1456,8 @@ function NewAppraisalPageContent() {
                             <div className="space-y-1">
                                 <label className="text-xs text-muted-foreground">Descuento venta %</label>
                                 <input type="number" step="0.1" min="0" max="50"
-                                    className="w-full rounded-md border px-3 py-2 text-sm"
+                                    inputMode="decimal"
+                                    className="w-full rounded-md border px-3 py-2 text-sm max-md:min-h-11"
                                     value={expenseRates.saleDiscountPercent}
                                     onChange={e => setExpenseRates(r => ({ ...r, saleDiscountPercent: Number(e.target.value) }))}
                                 />
@@ -1459,7 +1465,8 @@ function NewAppraisalPageContent() {
                             <div className="space-y-1">
                                 <label className="text-xs text-muted-foreground">Desc. escritura %</label>
                                 <input type="number" step="0.1" min="0" max="50"
-                                    className="w-full rounded-md border px-3 py-2 text-sm"
+                                    inputMode="decimal"
+                                    className="w-full rounded-md border px-3 py-2 text-sm max-md:min-h-11"
                                     value={expenseRates.deedDiscountPercent}
                                     onChange={e => setExpenseRates(r => ({ ...r, deedDiscountPercent: Number(e.target.value) }))}
                                 />
@@ -1467,7 +1474,8 @@ function NewAppraisalPageContent() {
                             <div className="space-y-1">
                                 <label className="text-xs text-muted-foreground">Sellos %</label>
                                 <input type="number" step="0.01" min="0" max="10"
-                                    className="w-full rounded-md border px-3 py-2 text-sm"
+                                    inputMode="decimal"
+                                    className="w-full rounded-md border px-3 py-2 text-sm max-md:min-h-11"
                                     value={expenseRates.stampsPercent}
                                     onChange={e => setExpenseRates(r => ({ ...r, stampsPercent: Number(e.target.value) }))}
                                 />
@@ -1475,7 +1483,8 @@ function NewAppraisalPageContent() {
                             <div className="space-y-1">
                                 <label className="text-xs text-muted-foreground">Gastos escritura %</label>
                                 <input type="number" step="0.01" min="0" max="10"
-                                    className="w-full rounded-md border px-3 py-2 text-sm"
+                                    inputMode="decimal"
+                                    className="w-full rounded-md border px-3 py-2 text-sm max-md:min-h-11"
                                     value={expenseRates.deedExpensesPercent}
                                     onChange={e => setExpenseRates(r => ({ ...r, deedExpensesPercent: Number(e.target.value) }))}
                                 />
@@ -1483,7 +1492,8 @@ function NewAppraisalPageContent() {
                             <div className="space-y-1">
                                 <label className="text-xs text-muted-foreground">Honorarios %</label>
                                 <input type="number" step="0.01" min="0" max="10"
-                                    className="w-full rounded-md border px-3 py-2 text-sm"
+                                    inputMode="decimal"
+                                    className="w-full rounded-md border px-3 py-2 text-sm max-md:min-h-11"
                                     value={expenseRates.agencyFeesPercent}
                                     onChange={e => setExpenseRates(r => ({ ...r, agencyFeesPercent: Number(e.target.value) }))}
                                 />

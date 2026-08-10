@@ -236,7 +236,7 @@ function NewPropertyContent() {
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
         if (!form.assigned_to) {
-            alert('Elegí quién muestra la propiedad (Diego o Lucas) antes de captarla. Eso define a quién le llegan las consultas.')
+            toast.error('Elegí quién muestra la propiedad antes de captarla. Eso define a quién le llegan las consultas.')
             return
         }
         setLoading(true)
@@ -316,7 +316,7 @@ function NewPropertyContent() {
 
             router.push(`/properties/${id}`)
         } catch (err) {
-            alert(err instanceof Error ? err.message : 'Error al crear la propiedad')
+            toast.error(err instanceof Error ? err.message : 'No se pudo crear la propiedad')
         } finally {
             setLoading(false)
         }
@@ -387,7 +387,7 @@ function NewPropertyContent() {
                             </div>
                             <div className="space-y-2">
                                 <Label>Tipo</Label>
-                                <select value={form.property_type} onChange={e => updateField('property_type', e.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                                <select value={form.property_type} onChange={e => updateField('property_type', e.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm max-md:min-h-11">
                                     <option value="departamento">Departamento</option>
                                     <option value="casa">Casa</option>
                                     <option value="ph">PH</option>
@@ -398,7 +398,7 @@ function NewPropertyContent() {
                             </div>
                             <div className="space-y-2">
                                 <Label>Operación</Label>
-                                <select value={form.operation_type} onChange={e => updateField('operation_type', e.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                                <select value={form.operation_type} onChange={e => updateField('operation_type', e.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm max-md:min-h-11">
                                     {OPERACIONES.map(o => <option key={o.valor} value={o.valor}>{o.etiqueta}</option>)}
                                 </select>
                                 <p className="text-xs text-muted-foreground">Define la categoría con la que se publica en los portales.</p>
@@ -411,14 +411,14 @@ function NewPropertyContent() {
                     <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Home className="h-5 w-5" />Características</CardTitle></CardHeader>
                     <CardContent>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                            <div className="space-y-2"><Label>Ambientes</Label><Input type="number" value={form.rooms} onChange={e => updateField('rooms', e.target.value)} /></div>
-                            <div className="space-y-2"><Label>Dormitorios</Label><Input type="number" value={form.bedrooms} onChange={e => updateField('bedrooms', e.target.value)} /></div>
-                            <div className="space-y-2"><Label>Baños</Label><Input type="number" value={form.bathrooms} onChange={e => updateField('bathrooms', e.target.value)} /></div>
-                            <div className="space-y-2"><Label>Cocheras</Label><Input type="number" value={form.garages} onChange={e => updateField('garages', e.target.value)} /></div>
-                            <div className="space-y-2"><Label>Sup. Cubierta (m²)</Label><Input type="number" value={form.covered_area} onChange={e => updateField('covered_area', e.target.value)} /></div>
-                            <div className="space-y-2"><Label>Sup. Total (m²)</Label><Input type="number" value={form.total_area} onChange={e => updateField('total_area', e.target.value)} /></div>
+                            <div className="space-y-2"><Label>Ambientes</Label><Input type="number" inputMode="numeric" value={form.rooms} onChange={e => updateField('rooms', e.target.value)} /></div>
+                            <div className="space-y-2"><Label>Dormitorios</Label><Input type="number" inputMode="numeric" value={form.bedrooms} onChange={e => updateField('bedrooms', e.target.value)} /></div>
+                            <div className="space-y-2"><Label>Baños</Label><Input type="number" inputMode="numeric" value={form.bathrooms} onChange={e => updateField('bathrooms', e.target.value)} /></div>
+                            <div className="space-y-2"><Label>Cocheras</Label><Input type="number" inputMode="numeric" value={form.garages} onChange={e => updateField('garages', e.target.value)} /></div>
+                            <div className="space-y-2"><Label>Sup. Cubierta (m²)</Label><Input type="number" inputMode="decimal" value={form.covered_area} onChange={e => updateField('covered_area', e.target.value)} /></div>
+                            <div className="space-y-2"><Label>Sup. Total (m²)</Label><Input type="number" inputMode="decimal" value={form.total_area} onChange={e => updateField('total_area', e.target.value)} /></div>
                             <div className="space-y-2"><Label>Piso</Label><Input type="number" value={form.floor} onChange={e => updateField('floor', e.target.value)} /></div>
-                            <div className="space-y-2"><Label>Antigüedad (años)</Label><Input type="number" value={form.age} onChange={e => updateField('age', e.target.value)} /></div>
+                            <div className="space-y-2"><Label>Antigüedad (años)</Label><Input type="number" inputMode="numeric" value={form.age} onChange={e => updateField('age', e.target.value)} /></div>
                         </div>
                     </CardContent>
                 </Card>
@@ -430,11 +430,18 @@ function NewPropertyContent() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
+                        {/* El `accept` declaraba SOLO extensiones y iOS lo
+                            resuelve mal: abre el explorador de Archivos y ni
+                            ofrece la cámara. Con los tipos MIME adelante vuelve
+                            a aparecer "Sacar foto" en la hoja del selector, que
+                            es lo que necesita el asesor parado en la propiedad
+                            con el plano en la mano. Las extensiones quedan
+                            porque son las que entiende Android. */}
                         <input
                             ref={planInput}
                             type="file"
                             multiple
-                            accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif"
+                            accept="image/*,application/pdf,.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif"
                             className="hidden"
                             onChange={e => addPlanFiles(e.target.files)}
                         />
@@ -445,7 +452,12 @@ function NewPropertyContent() {
                                         <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                                         <span className="flex-1 truncate text-sm" title={f.name}>{f.name}</span>
                                         <span className="text-xs text-muted-foreground tabular-nums shrink-0">{(f.size / 1024 / 1024).toFixed(1)} MB</span>
-                                        <button type="button" onClick={() => removePlanFile(i)} className="text-muted-foreground hover:text-destructive shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => removePlanFile(i)}
+                                            aria-label={`Quitar el plano ${f.name}`}
+                                            className="tap -mr-2 flex shrink-0 items-center justify-center text-muted-foreground hover:text-destructive md:min-h-0 md:min-w-0"
+                                        >
                                             <Trash2 className="h-4 w-4" />
                                         </button>
                                     </li>
@@ -483,10 +495,17 @@ function NewPropertyContent() {
                                             unoptimized
                                             sizes="(max-width: 640px) 50vw, 25vw"
                                         />
+                                        {/* `group-hover` no existe en un
+                                            teléfono: el botón quedaba invisible
+                                            pero tocable, así que la foto se
+                                            borraba sola al intentar mirarla.
+                                            Abajo de `md` se muestra siempre y
+                                            con área de dedo. */}
                                         <button
                                             type="button"
                                             onClick={() => removePhoto(i)}
-                                            className="absolute top-1 right-1 bg-black/70 text-white text-xs px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                            aria-label={`Quitar la foto ${i + 1}`}
+                                            className="absolute top-1 right-1 bg-black/70 text-white text-xs px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity max-md:flex max-md:min-h-11 max-md:min-w-11 max-md:items-center max-md:justify-center max-md:opacity-100"
                                         >
                                             Quitar
                                         </button>
@@ -503,18 +522,18 @@ function NewPropertyContent() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div className="space-y-2">
                                 <Label>Precio *</Label>
-                                <Input type="number" value={form.asking_price} onChange={e => updateField('asking_price', e.target.value)} required placeholder="150000" />
+                                <Input type="number" inputMode="decimal" value={form.asking_price} onChange={e => updateField('asking_price', e.target.value)} required placeholder="150000" />
                             </div>
                             <div className="space-y-2">
                                 <Label>Moneda</Label>
-                                <select value={form.currency} onChange={e => updateField('currency', e.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                                <select value={form.currency} onChange={e => updateField('currency', e.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm max-md:min-h-11">
                                     <option value="USD">USD</option>
                                     <option value="ARS">ARS</option>
                                 </select>
                             </div>
                             <div className="space-y-2">
                                 <Label>Comisión (%)</Label>
-                                <Input type="number" step="0.5" value={form.commission_percentage} onChange={e => updateField('commission_percentage', e.target.value)} />
+                                <Input type="number" inputMode="decimal" step="0.5" value={form.commission_percentage} onChange={e => updateField('commission_percentage', e.target.value)} />
                             </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -531,7 +550,7 @@ function NewPropertyContent() {
                             {!dealData && (
                                 <div className="space-y-2">
                                     <Label>Origen</Label>
-                                    <select value={form.origin} onChange={e => updateField('origin', e.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                                    <select value={form.origin} onChange={e => updateField('origin', e.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm max-md:min-h-11">
                                         <option value="">Seleccionar...</option>
                                         <option value="embudo">Embudo</option>
                                         <option value="referido">Referido</option>
@@ -542,7 +561,7 @@ function NewPropertyContent() {
                             )}
                             <div className="space-y-2">
                                 <Label>Asesor que la muestra <span className="text-red-500">*</span></Label>
-                                <select value={form.assigned_to} onChange={e => updateField('assigned_to', e.target.value)} required className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                                <select value={form.assigned_to} onChange={e => updateField('assigned_to', e.target.value)} required className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm max-md:min-h-11">
                                     <option value="" disabled>Elegí quién la muestra…</option>
                                     {advisors.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
                                 </select>

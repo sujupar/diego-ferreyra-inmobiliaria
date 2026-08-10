@@ -45,7 +45,7 @@ function AttrField({
       <select
         value={value?.value_id ?? ''}
         onChange={e => onSet(e.target.value ? { value_id: e.target.value } : undefined)}
-        className={`w-full rounded-md border px-3 py-2 text-sm ${border}`}
+        className={`w-full rounded-md border px-3 py-2 text-sm max-md:min-h-11 ${border}`}
       >
         <option value="">— elegí —</option>
         {attr.allowedValues.map(v => (
@@ -59,7 +59,7 @@ function AttrField({
       <select
         value={value?.value_name ?? ''}
         onChange={e => onSet(e.target.value ? { value_name: e.target.value } : undefined)}
-        className={`w-full rounded-md border px-3 py-2 text-sm ${border}`}
+        className={`w-full rounded-md border px-3 py-2 text-sm max-md:min-h-11 ${border}`}
       >
         <option value="">— elegí —</option>
         <option value="Sí">Sí</option>
@@ -72,7 +72,7 @@ function AttrField({
       value={value?.value_name ?? ''}
       onChange={e => onSet(e.target.value ? { value_name: e.target.value } : undefined)}
       placeholder={attr.allowedUnits?.[0] ? `valor (${attr.allowedUnits[0]})` : 'valor'}
-      className={`w-full rounded-md border px-3 py-2 text-sm ${border}`}
+      className={`w-full rounded-md border px-3 py-2 text-sm max-md:min-h-11 ${border}`}
     />
   )
 }
@@ -219,7 +219,7 @@ export function StepFields({ property, attrs, attrsError, draft, onChange, onVal
         <select
           value={draft.listingType}
           onChange={e => onChange({ listingType: e.target.value })}
-          className="w-full rounded-md border border-input px-3 py-2 text-sm"
+          className="w-full rounded-md border border-input px-3 py-2 text-sm max-md:min-h-11"
         >
           {(attrs?.listingTypes ?? [{ id: 'free', label: 'Gratuita' }]).map(t => (
             <option key={t.id} value={t.id}>{t.label}</option>
@@ -238,7 +238,7 @@ export function StepFields({ property, attrs, attrsError, draft, onChange, onVal
           value={draft.address ?? property.address}
           onChange={e => onChange({ address: e.target.value })}
           placeholder="Calle y altura, barrio, ciudad"
-          className="w-full rounded-md border border-input px-3 py-2 text-sm"
+          className="w-full rounded-md border border-input px-3 py-2 text-sm max-md:min-h-11"
         />
         {!geoOk && (
           <p className="text-sm text-amber-600">Sin ubicación confirmada. Geocodificá o colocá el pin en el mapa (click) y confirmá.</p>

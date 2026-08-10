@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -14,6 +15,8 @@ import { ThreadActionsBar } from '@/components/inbox/ThreadActionsBar'
 import { ChatThread } from '@/components/inbox/ChatThread'
 import { ContactPanel } from '@/components/inbox/ContactPanel'
 import { formatRemaining } from '@/components/inbox/format'
+import { urlDelChat, accionAlCerrar, PARAM_CHAT } from '@/components/inbox/chat-url'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { filterConversations, DEFAULT_CONVERSATION_FILTERS } from '@/components/inbox/filters'
 import { agenteApagadoEn, conAgenteMarcado } from '@/components/inbox/agente'
 import { PIPELINE_STATES, PIPELINE_STATE_LABELS } from '@/lib/leads/tags'
@@ -53,20 +56,48 @@ async function readJson<T>(res: Response): Promise<T & { error?: string }> {
   }
 }
 
-/** Banner de estado de la ventana de 24hs sobre la caja de respuesta — presentacional, exportado para el probe. */
-export function WindowNotice({ window }: { window: { open: boolean; msRemaining: number } }) {
-  if (window.open) {
+/**
+ * Banner de estado de la ventana de 24hs sobre la caja de respuesta —
+ * presentacional, exportado para el probe.
+ *
+ * Con la ventana CERRADA esto imprimía dos oraciones completas: a 11px en 356px
+ * de ancho son ~5 renglones ≈ 75px fijos, sobre un hilo que en un teléfono ya
+ * estaba en 50px. El asesor veía más párrafo explicativo que conversación.
+ * Ahora es UNA línea que además es accionable —"una plantilla aprobada" es el
+ * botón que abre el selector— y la explicación completa queda para los lectores
+ * de pantalla y como tooltip, que es donde el detalle no le cuesta alto a nadie.
+ */
+export function WindowNotice({
+  window: ventana,
+  onOpenTemplatePicker,
+}: {
+  window: { open: boolean; msRemaining: number }
+  onOpenTemplatePicker?: () => void
+}) {
+  if (ventana.open) {
     return (
       <p className="text-[11px] text-muted-foreground">
-        Te quedan {formatRemaining(window.msRemaining)} para escribirle sin usar una plantilla.
+        Te quedan {formatRemaining(ventana.msRemaining)} para escribirle sin usar una plantilla.
       </p>
     )
   }
+  const explicacion =
+    'Pasaron más de 24hs desde que este contacto te escribió y WhatsApp no deja mandarle texto libre; una plantilla aprobada reabre la conversación.'
   return (
-    <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
-      <Lock className="h-3 w-3 shrink-0" />
-      Pasaron más de 24hs desde que este contacto te escribió — WhatsApp no te deja mandarle texto libre. Para
-      reabrir la conversación hace falta mandar una plantilla aprobada.
+    <p className="flex items-center gap-1 text-[11px] text-muted-foreground" title={explicacion}>
+      <Lock className="h-3 w-3 shrink-0" aria-hidden="true" />
+      <span>
+        Pasaron 24hs — para escribirle, mandá{' '}
+        <button
+          type="button"
+          onClick={onOpenTemplatePicker}
+          className="font-medium text-foreground underline underline-offset-2"
+        >
+          una plantilla aprobada
+        </button>
+        .
+      </span>
+      <span className="sr-only">{explicacion}</span>
     </p>
   )
 }
@@ -104,7 +135,46 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
   // y la pantalla funciona igual, solo sin filtro/editor de etiquetas.
   const [tagCatalog, setTagCatalog] = useState<LeadTagRef[]>([])
 
-  const [selectedPhone, setSelectedPhone] = useState<string | null>(null)
+  // ─────────────────────────────────────────────────────────────────────────
+  // La conversación abierta vive en la URL (`?tab=whatsapp&chat=<teléfono>`),
+  // no en un `useState`. Motivo largo y armado de la URL: `chat-url.ts`. En una
+  // frase: con `useState`, el gesto de volver del teléfono sacaba al usuario del
+  // Inbox entero en vez de cerrar el chat, y un refresco (o el "tirar para
+  // recargar" de Android) perdía la conversación.
+  //
+  // Se escribe con `window.history.pushState` y no con `router.push`: Next
+  // parchea los métodos nativos de `history` y sincroniza `useSearchParams`
+  // solo, sin ida y vuelta al servidor ni re-render del árbol de la ruta. Es el
+  // mismo patrón que ya usa `InboxTabs` para leer `?lead=`.
+  // ─────────────────────────────────────────────────────────────────────────
+  const searchParams = useSearchParams()
+  const pathname = usePathname()
+  const selectedPhone = searchParams.get(PARAM_CHAT)
+
+  // Si el chat lo abrimos NOSOTROS (empujando una entrada de historial), el
+  // botón de volver tiene que deshacer ESA entrada, así hace exactamente lo
+  // mismo que el gesto del teléfono. Si se entró directo por URL (link
+  // compartido, refresco), no hay nada nuestro que deshacer y un `back()`
+  // sacaría al usuario de la aplicación.
+  const empujamosLaEntrada = useRef(false)
+
+  const abrirChat = useCallback(
+    (phone: string) => {
+      window.history.pushState(null, '', urlDelChat(pathname, window.location.search, phone))
+      empujamosLaEntrada.current = true
+    },
+    [pathname],
+  )
+
+  const cerrarChat = useCallback(() => {
+    if (accionAlCerrar(empujamosLaEntrada.current) === 'atras') {
+      empujamosLaEntrada.current = false
+      window.history.back()
+      return
+    }
+    window.history.replaceState(null, '', urlDelChat(pathname, window.location.search, null))
+  }, [pathname])
+
   const [thread, setThread] = useState<Thread | null>(null)
   const [threadLoading, setThreadLoading] = useState(false)
   const [threadError, setThreadError] = useState<string | null>(null)
@@ -123,6 +193,13 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
   }, [conversations])
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
+  const esMovil = useIsMobile()
+
+  /** Deja el hilo mostrando el final, que es donde está la conversación viva. */
+  const bajarAlFinal = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ block: 'end' })
+  }, [])
 
   const loadConversations = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setListLoading(true)
@@ -147,6 +224,13 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
     }, POLL_MS)
     return () => clearInterval(handle)
   }, [loadConversations])
+
+  /**
+   * Lo que corre al tirar de la lista hacia abajo. `silent` a propósito: el
+   * indicador del gesto ya dice que está actualizando; prender además el
+   * esqueleto de carga vaciaría la lista debajo del dedo.
+   */
+  const refrescarLista = useCallback(() => loadConversations({ silent: true }), [loadConversations])
 
   // Catálogo de etiquetas: una sola vez. Tolerante — ver comentario del estado arriba.
   useEffect(() => {
@@ -207,9 +291,28 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
     return () => clearInterval(handle)
   }, [selectedPhone, loadThread])
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ block: 'end' })
-  }, [thread?.messages.length])
+  // QUIÉN BAJA EL HILO, y por qué ya no es este efecto.
+  //
+  // Antes, acá se bajaba al final ante CUALQUIER cambio en la cantidad de
+  // mensajes. Eso arreglaba el chat que abría mostrando lo más viejo, pero traía
+  // el problema contrario: el hilo se re-consulta cada 15 segundos, así que si
+  // entraba un mensaje mientras el asesor leía para arriba —justo lo que uno
+  // hace antes de contestar algo importante— el chat se le arrancaba de las
+  // manos.
+  //
+  // La decisión de bajar o no bajar depende de DÓNDE está mirando el asesor, y
+  // eso solo lo sabe el que tiene el scroller: `ChatThread` (ver `scroll-hilo.ts`).
+  // Ahí adentro baja solo si ya estaba mirando el final, y si no, ofrece el
+  // botón con el conteo de lo que entró.
+  //
+  // El caso de "abrir la conversación" queda cubierto por el `key` de más abajo:
+  // cada teléfono monta su propio `ChatThread`, y un `ChatThread` recién montado
+  // SIEMPRE arranca en el final. Eso cubre además el defecto viejo de pasar de
+  // una conversación de 4 mensajes a otra de 4 (la longitud no cambiaba, el
+  // efecto no corría y el chat abría en el mensaje más viejo).
+  //
+  // Lo que SÍ sigue viviendo acá es la bajada explícita ante una acción del
+  // asesor: enfocar el campo (`onFocus`) y mandar un mensaje (`handleSend`).
 
   async function handleSend() {
     if (!thread || !replyText.trim() || sending) return
@@ -236,7 +339,16 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
         setSendError(data.error ?? 'WhatsApp rechazó el envío.')
       }
       setReplyText('')
+      // El campo vuelve a una línea: si no, queda alto y vacío ocupando el lugar
+      // del hilo hasta que el asesor escriba otra cosa.
+      if (composerRef.current) composerRef.current.style.height = ''
       await loadThread(thread.phone_e164, { silent: true })
+      // Mandar un mensaje SIEMPRE baja al final, aunque el asesor estuviera
+      // leyendo para arriba: acaba de escribir algo y lo que quiere ver es su
+      // propio mensaje saliendo, no el punto de la conversación donde estaba.
+      // Va en el cuadro siguiente porque el hilo recién se repinta con el
+      // mensaje nuevo después de este `await`.
+      requestAnimationFrame(bajarAlFinal)
       await loadConversations({ silent: true })
     } catch {
       setSendError('No se pudo conectar con el servidor. Volvé a intentar.')
@@ -245,7 +357,26 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
     }
   }
 
+  /** Alto máximo del compositor: ~5 renglones. Más que eso le come el hilo. */
+  const ALTO_MAXIMO_COMPOSITOR = 128
+
+  /**
+   * El campo crece de 1 a 5 líneas con lo que se escribe. Sin esto, un mensaje
+   * de tres renglones se escribe mirando una ventanita de uno: no se puede
+   * releer lo que uno mismo puso antes de mandarlo.
+   */
+  function ajustarAltoDelCompositor(el: HTMLTextAreaElement) {
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, ALTO_MAXIMO_COMPOSITOR)}px`
+  }
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // En el teléfono, Enter NO envía: la tecla de retorno hace salto de línea y
+    // se manda con el botón. Es lo que hace cualquier app de mensajería, y lo
+    // contrario significa que el asesor no puede escribir dos renglones sin
+    // mandar el primero por accidente. El atajo se queda en escritorio, donde
+    // existe Shift+Enter y hay un teclado de verdad.
+    if (esMovil) return
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -426,33 +557,43 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
       {webhookWarning && <WebhookWarningBanner />}
 
       {/* Ajuste 2 (2026-08-01): franja de filtros de ancho completo, arriba de las
-          dos columnas — antes ocupaba espacio apilada arriba de la lista de chats. */}
-      <ConversationFilterBar
-        search={search}
-        onSearchChange={setSearch}
-        onlyUnanswered={onlyUnanswered}
-        onToggleUnanswered={toggleUnanswered}
-        onlyUnread={onlyUnread}
-        onToggleUnread={() => setOnlyUnread(v => !v)}
-        onlyWindowClosing={onlyWindowClosing}
-        onToggleWindowClosing={toggleWindowClosing}
-        onlyAiOrder={onlyAiOrder}
-        onToggleAiOrder={toggleAiOrder}
-        propertyOptions={propertyOptions}
-        filterPropertyId={filterPropertyId}
-        onPropertyChange={setFilterPropertyId}
-        showAdvisorFilter={userRole !== 'asesor'}
-        advisorOptions={advisorOptions}
-        filterAdvisorId={filterAdvisorId}
-        onAdvisorChange={setFilterAdvisorId}
-        showTagFilter={tagCatalog.length > 0}
-        tagOptions={tagOptions}
-        filterTagSlug={filterTagSlug}
-        onTagChange={setFilterTagSlug}
-        stateOptions={stateOptions}
-        filterPipelineState={filterPipelineState}
-        onPipelineStateChange={setFilterPipelineState}
-      />
+          dos columnas — antes ocupaba espacio apilada arriba de la lista de chats.
+
+          Fase 1 del sistema móvil: con un chat ABIERTO en celular la franja no se
+          renderiza. Vivía fuera de la grilla, así que se veía igual dentro del
+          chat, y ahí no sirve para nada: el asesor está leyendo mensajes y arriba
+          tiene "Todas las propiedades / Todos los asesores / Sin responder /
+          Orden IA" comiéndose un cuarto de la pantalla. Junto con el bloque de
+          pestañas y título (`InboxTabs`) son los ~300px que le faltaban al hilo.
+          De `md:` para arriba no cambia nada. */}
+      <div className={selectedPhone ? 'hidden shrink-0 md:block' : 'shrink-0'}>
+        <ConversationFilterBar
+          search={search}
+          onSearchChange={setSearch}
+          onlyUnanswered={onlyUnanswered}
+          onToggleUnanswered={toggleUnanswered}
+          onlyUnread={onlyUnread}
+          onToggleUnread={() => setOnlyUnread(v => !v)}
+          onlyWindowClosing={onlyWindowClosing}
+          onToggleWindowClosing={toggleWindowClosing}
+          onlyAiOrder={onlyAiOrder}
+          onToggleAiOrder={toggleAiOrder}
+          propertyOptions={propertyOptions}
+          filterPropertyId={filterPropertyId}
+          onPropertyChange={setFilterPropertyId}
+          showAdvisorFilter={userRole !== 'asesor'}
+          advisorOptions={advisorOptions}
+          filterAdvisorId={filterAdvisorId}
+          onAdvisorChange={setFilterAdvisorId}
+          showTagFilter={tagCatalog.length > 0}
+          tagOptions={tagOptions}
+          filterTagSlug={filterTagSlug}
+          onTagChange={setFilterTagSlug}
+          stateOptions={stateOptions}
+          filterPipelineState={filterPipelineState}
+          onPipelineStateChange={setFilterPipelineState}
+        />
+      </div>
 
       {/* `flex-1 min-h-0` (antes `h-[calc(100vh-360px)]`, un número inventado que no
           correspondía a ningún alto real disponible): ahora este div SIEMPRE se
@@ -470,8 +611,13 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
             loading={listLoading}
             error={listError}
             selectedPhone={selectedPhone}
-            onSelectPhone={setSelectedPhone}
+            onSelectPhone={abrirChat}
             showPriority={onlyWindowClosing || onlyAiOrder}
+            // Tirar hacia abajo para actualizar. La lista ya se refresca sola
+            // cada 15 segundos, pero el gesto es el reflejo de cualquiera
+            // parado frente a una lista de mensajes, y sin él el asesor no
+            // tiene forma de decirle "fijate ahora".
+            onRefresh={refrescarLista}
           />
         </Card>
 
@@ -480,7 +626,25 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
             `gap-6` (24px) entre CADA hijo directo (cabecera, hilo, caja de respuesta) — sin
             pisarlo acá, esos 24px se sumaban TRES veces incluso después de fusionar la barra
             de acciones en la cabecera. */}
-        <Card className={`min-h-0 gap-0 overflow-hidden p-0 ${selectedPhone ? 'flex flex-col' : 'hidden md:flex md:flex-col'}`}>
+        {/* `max-md:rounded-none max-md:border-0 max-md:shadow-none`: en celular el
+            hilo va A SANGRE. Dentro de una tarjeta con borde, sombra y 16px de
+            aire a cada lado (el `p-4` del layout, que `InboxTabs` cancela con
+            `-m-4`), el chat se leía como "una tarjeta con un chat adentro" y no
+            como un chat — y esos 32px de ancho son justo lo que le falta a las
+            burbujas. En `md:` la tarjeta queda igual que siempre. */}
+        {/* `entrada-chat` (globals.css): al abrir un chat en celular, el hilo
+            entra desde la derecha en 180ms. NO es decoración — es lo único que
+            dice, sin texto, que se ENTRÓ en algo y que el camino de vuelta es
+            hacia la izquierda; sin eso, lista y chat se reemplazan de golpe y se
+            lee como una página que recargó. La clase se aplica solo con el chat
+            abierto, así que la animación corre al abrir y nunca al cerrar, y la
+            regla entera vive detrás de `prefers-reduced-motion: no-preference`
+            y de un `max-width` — en escritorio no existe. */}
+        <Card
+          className={`min-h-0 gap-0 overflow-hidden p-0 max-md:rounded-none max-md:border-0 max-md:shadow-none ${
+            selectedPhone ? 'entrada-chat flex flex-col' : 'hidden md:flex md:flex-col'
+          }`}
+        >
           {!selectedPhone ? (
             <CardContent className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
               Elegí una conversación de la izquierda para ver el chat.
@@ -491,7 +655,7 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
             </CardContent>
           ) : threadError ? (
             <CardContent className="flex flex-1 flex-col items-start gap-3 py-6">
-              <Button variant="ghost" size="sm" onClick={() => setSelectedPhone(null)} className="md:hidden -ml-2">
+              <Button variant="ghost" size="sm" onClick={cerrarChat} className="md:hidden -ml-2">
                 <ArrowLeft className="h-4 w-4" />
                 Volver
               </Button>
@@ -507,7 +671,7 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
                   chips de Propiedad/Plantilla/Etiquetas/Estado. `showStateChip={false}` porque
                   el chip de estado YA se muestra al lado del nombre, dentro de `ThreadHeader`. */}
               <ThreadHeader
-                onBack={() => setSelectedPhone(null)}
+                onBack={cerrarChat}
                 contactName={thread.contact_name}
                 phone={thread.phone_e164}
                 leadNumber={thread.lead?.lead_number ?? null}
@@ -536,26 +700,55 @@ export function WhatsappClient({ userRole, userId }: { userRole: string; userId:
                 }
               />
 
-              <ChatThread messages={thread.messages} endRef={messagesEndRef} />
+              {/* `key` por teléfono: cambiar de conversación MONTA un hilo
+                  nuevo, y un hilo recién montado arranca en el último mensaje.
+                  Sin esto habría que acordarse de resetear a mano la posición
+                  del scroll y el contador de mensajes nuevos cada vez que se
+                  cambia de chat — y ese olvido ya fue un defecto real (dos
+                  conversaciones con la misma cantidad de mensajes abrían en el
+                  mensaje más viejo). */}
+              <ChatThread key={selectedPhone} messages={thread.messages} endRef={messagesEndRef} />
 
-              {/* Caja de respuesta */}
-              <div className="border-t p-3 space-y-2">
+              {/* Caja de respuesta.
+                  `shrink-0`: es hermano del hilo dentro de un contenedor de alto
+                  fijo, y sin esto el flex la aplasta antes de dejar scrollear.
+                  `pb-safe` (globals.css) = `max(0.75rem, env(safe-area-inset-bottom))`:
+                  desde que el viewport es `viewport-fit=cover`, sin esto el
+                  botón de enviar queda debajo de la barra de gestos del iPhone.
+                  Va como `px-3 pt-3 pb-safe` y no como `p-3 pb-safe` porque
+                  Tailwind no garantiza el orden entre una utilidad propia y una
+                  suya: si `p-3` ganara, el área segura se perdería en silencio. */}
+              <div className="shrink-0 border-t px-3 pt-3 pb-safe space-y-2">
                 {sendError && <p className="text-xs font-medium text-[color:var(--destructive)]">{sendError}</p>}
-                <WindowNotice window={thread.window} />
+                <WindowNotice window={thread.window} onOpenTemplatePicker={() => setShowTemplatePicker(true)} />
                 <div className="flex items-end gap-2">
                   <Textarea
+                    ref={composerRef}
                     value={replyText}
-                    onChange={e => setReplyText(e.target.value)}
+                    onChange={e => {
+                      setReplyText(e.target.value)
+                      ajustarAltoDelCompositor(e.target)
+                    }}
                     onKeyDown={handleKeyDown}
+                    // Al enfocar sube el teclado: el contenedor mide `--app-vh`
+                    // (viewport visual), así que se achica y el compositor queda
+                    // pegado arriba del teclado. Falta lo último, que el hilo
+                    // muestre el final y no el medio — dos intentos porque el
+                    // alto nuevo llega después de la animación del teclado.
+                    onFocus={() => {
+                      bajarAlFinal()
+                      window.setTimeout(bajarAlFinal, 300)
+                    }}
                     disabled={!thread.window.open || sending}
                     placeholder={thread.window.open ? 'Escribí tu respuesta…' : 'Ventana cerrada — hace falta una plantilla'}
-                    className="min-h-[44px] max-h-32"
+                    className="min-h-11 max-h-32"
                     rows={1}
                   />
                   <EmojiPicker onSelect={insertEmoji} />
                   <Button
                     type="button"
                     size="icon"
+                    aria-label="Enviar el mensaje"
                     onClick={handleSend}
                     disabled={!thread.window.open || !replyText.trim() || sending}
                   >

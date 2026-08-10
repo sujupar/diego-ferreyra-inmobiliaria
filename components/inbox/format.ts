@@ -17,6 +17,22 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
   return new Date(iso).toLocaleDateString('es-AR')
 }
 
+/**
+ * "14:32" — la hora del mensaje, para mostrar DENTRO de la burbuja del hilo.
+ *
+ * El hilo ya viene agrupado por día con su separador de fecha, así que repetir
+ * "hace 3 días" debajo de cada burbuja era a la vez redundante y menos útil: el
+ * asesor nunca sabía a qué hora se había mandado nada. `relativeTime` se queda
+ * donde sí sirve — la fila de la lista de conversaciones, donde lo único que
+ * importa es hace cuánto fue la última actividad.
+ */
+export function horaCorta(iso: string): string {
+  // `hour12: false` explícito: sin eso, `es-AR` devuelve "02:32 p. m." según el
+  // ICU que le toque, y en una burbuja de chat eso es cuatro caracteres de ruido
+  // y una convención que en Argentina no se usa. Se quiere "14:32".
+  return new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
 /** Cuánto falta de la ventana de 24hs — "2 h 15 min" / "0 min". */
 export function formatRemaining(ms: number): string {
   if (ms <= 0) return '0 min'
@@ -47,15 +63,41 @@ export function displayPhone(phoneE164: string): string {
   return `+${phoneE164}`
 }
 
-/** Separador de fecha del hilo: "29 de julio de 2026" (task 5). */
-export function formatDateSeparator(iso: string): string {
+/**
+ * Separador de fecha del hilo: "Hoy", "Ayer" o "29 de julio de 2026".
+ *
+ * Los dos primeros no son adorno. El separador es, desde que la burbuja pasó a
+ * mostrar solo la hora, el ÚNICO lugar del hilo donde se lee la fecha; con la
+ * fecha completa siempre, el asesor tenía que hacer la cuenta mental de si "9 de
+ * agosto de 2026" era hoy o anteayer para saber si el cliente le está esperando
+ * una respuesta AHORA. "Hoy" y "Ayer" son las dos únicas fechas que se
+ * consultan cien veces por día, y son las dos que el cerebro no debería tener
+ * que calcular.
+ *
+ * `now` es un parámetro con valor por omisión (mismo criterio que
+ * `relativeTime`) para que esto se pueda probar sin viajar en el tiempo.
+ *
+ * "Ayer" se calcula restando un DÍA DE CALENDARIO, no 24 horas: con un cambio
+ * de horario de por medio, `now - 86400000` puede caer en el mismo día y el
+ * separador de ayer diría "Hoy" dos veces seguidas.
+ */
+export function formatDateSeparator(iso: string, now: number = Date.now()): string {
+  const clave = dayKey(iso)
+  const ahora = new Date(now)
+  if (clave === claveDeFecha(ahora)) return 'Hoy'
+  const ayer = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - 1)
+  if (clave === claveDeFecha(ayer)) return 'Ayer'
   return new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+/** La misma clave de día, a partir de un `Date` ya construido. */
+function claveDeFecha(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 }
 
 /** Clave para agrupar mensajes por día (independiente del formato de exhibición). */
 export function dayKey(iso: string): string {
-  const d = new Date(iso)
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+  return claveDeFecha(new Date(iso))
 }
 
 export interface DayGrouped<T> {

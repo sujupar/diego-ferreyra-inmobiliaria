@@ -461,8 +461,13 @@ function CRMClient() {
   // con el resto de la pantalla mientras `userInfo` es `null`.
   const mostrarAsesor = !!userInfo && !esAsesor
 
+  // `card` = qué se ve cuando la tabla se apila como ficha en el teléfono. Acá
+  // la vista por default ya son las fichas de `DealsList` (más ricas que esto),
+  // así que la tabla es una preferencia de escritorio; los roles están igual
+  // para que, si alguien la deja elegida y abre el teléfono, no se encuentre
+  // con una ficha sin sujeto.
   const columns: Column<(typeof dealsWithCRM)[0]>[] = [
-    { key: 'contact_name', label: 'Contacto', sortable: true, render: r => (
+    { key: 'contact_name', label: 'Contacto', sortable: true, card: 'title', render: r => (
       <div className="flex items-center gap-3">
         <div className="h-8 w-8 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center shrink-0">
           <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{r.contact_name.charAt(0).toUpperCase()}</span>
@@ -473,10 +478,10 @@ function CRMClient() {
         </div>
       </div>
     )},
-    { key: 'property_address', label: 'Propiedad', sortable: true, render: r => (
+    { key: 'property_address', label: 'Propiedad', sortable: true, wrap: true, card: 'meta', render: r => (
       <span className="text-muted-foreground text-sm truncate max-w-[220px] block">{r.property_address}</span>
     )},
-    { key: 'crmStage', label: 'Etapa', sortable: true, render: r => {
+    { key: 'crmStage', label: 'Etapa', sortable: true, card: 'badge', render: r => {
       const s = getCRMStageInfo(r.crmStage)
       return (
         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${s.badgeBg} ${s.badgeText}`}>
@@ -485,9 +490,9 @@ function CRMClient() {
         </span>
       )
     }},
-    { key: 'origin', label: 'Origen', sortable: true, render: r => r.origin ? <Badge variant="secondary" className="text-xs font-normal">{ORIGIN_LABELS[r.origin] || r.origin}</Badge> : <span className="text-muted-foreground text-xs">—</span> },
-    ...(isGlobal ? [{ key: 'assigned_to_name' as const, label: 'Asesor', sortable: true, render: (r: (typeof dealsWithCRM)[0]) => <span className="text-sm text-muted-foreground">{r.assigned_to_name || '—'}</span> }] : []),
-    { key: 'stage_changed_at', label: 'Actualizado', sortable: true, render: r => (
+    { key: 'origin', label: 'Origen', sortable: true, card: 'none', render: r => r.origin ? <Badge variant="secondary" className="text-xs font-normal">{ORIGIN_LABELS[r.origin] || r.origin}</Badge> : <span className="text-muted-foreground text-xs">—</span> },
+    ...(isGlobal ? [{ key: 'assigned_to_name' as const, label: 'Asesor', sortable: true, card: 'meta' as const, render: (r: (typeof dealsWithCRM)[0]) => <span className="text-sm text-muted-foreground">{r.assigned_to_name || '—'}</span> }] : []),
+    { key: 'stage_changed_at', label: 'Actualizado', sortable: true, card: 'meta', render: r => (
       <span className="text-xs text-muted-foreground flex items-center gap-1">
         <Clock className="h-3 w-3" />
         <span className="tabular-n">{timeAgo(r.stage_changed_at)}</span>
@@ -520,13 +525,17 @@ function CRMClient() {
           <div className="flex rounded-lg border bg-muted/40 p-0.5">
             <button
               onClick={() => setViewMode('cards')}
-              className={`p-1.5 rounded-md transition-all ${viewMode === 'cards' ? 'bg-background shadow-sm' : 'hover:bg-background/50'}`}
+              aria-label="Ver como fichas"
+              aria-pressed={viewMode === 'cards'}
+              className={`tap flex items-center justify-center rounded-md transition-all ${viewMode === 'cards' ? 'bg-background shadow-sm' : 'hover:bg-background/50'}`}
             >
               <LayoutList className="h-4 w-4" />
             </button>
             <button
               onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded-md transition-all ${viewMode === 'table' ? 'bg-background shadow-sm' : 'hover:bg-background/50'}`}
+              aria-label="Ver como tabla"
+              aria-pressed={viewMode === 'table'}
+              className={`tap flex items-center justify-center rounded-md transition-all ${viewMode === 'table' ? 'bg-background shadow-sm' : 'hover:bg-background/50'}`}
             >
               <Table2 className="h-4 w-4" />
             </button>
@@ -542,7 +551,10 @@ function CRMClient() {
               {selectMode ? 'Cancelar' : 'Seleccionar'}
             </Button>
           )}
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={refrescar}>
+          {/* Solo un ícono: sin `aria-label` un lector de pantalla lo anuncia
+              como "botón" y nada más. Es anterior a esta tanda, pero queda al
+              lado de los dos de vista que sí lo llevan. */}
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={refrescar} aria-label="Actualizar la lista">
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>

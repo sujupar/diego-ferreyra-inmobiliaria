@@ -647,7 +647,7 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
             Esto no borra las 12 piezas gráficas ya generadas si las tenés en cache —
             quedan disponibles para el próximo intento.
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button onClick={runCleanup} disabled={cleaningUp} className="flex-1">
               {cleaningUp ? (
                 <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Archivando…</>
@@ -703,7 +703,7 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
                   <li>Si Meta está caído (raro), esperá 5-10 min y reintentá.</li>
                 </ol>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button onClick={confirmAndPublish} disabled={loading} className="flex-1">
                   {loading ? (
                     <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Reintentando…</>
@@ -730,7 +730,7 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
                   <li>Volvé a intentar.</li>
                 </ol>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button onClick={cancelAndReset} className="flex-1">
                   <RefreshCw className="h-4 w-4 mr-1" /> Cancelar y volver a empezar
                 </Button>
@@ -990,7 +990,7 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
           <p className="text-xs text-muted-foreground text-center">
             {starredPhotos.length} / 3 fotos seleccionadas
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button onClick={() => setStep('avatar_select')} variant="ghost"><ArrowLeft className="h-4 w-4 mr-1" />Atrás</Button>
             <Button
               onClick={() => setStep('geo')}
@@ -1025,7 +1025,7 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
               <p className="text-xs text-muted-foreground ml-5">{p.detail}</p>
             </label>
           ))}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button onClick={() => setStep('photo_stars')} variant="ghost"><ArrowLeft className="h-4 w-4 mr-1" />Atrás</Button>
             <Button onClick={() => setStep('budget')} className="flex-1">Siguiente<ArrowRight className="h-4 w-4 ml-1" /></Button>
           </div>
@@ -1096,7 +1096,7 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
           <p className="text-xs text-muted-foreground">
             La campaña queda en PAUSADO en Meta Ads. Solo gasta cuando vos la activás.
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button onClick={() => setStep('geo')} variant="ghost"><ArrowLeft className="h-4 w-4 mr-1" />Atrás</Button>
             <Button
               onClick={startGeneration}

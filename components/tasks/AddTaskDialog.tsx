@@ -128,17 +128,29 @@ export function AddTaskDialog({ entity, trigger, defaultAssignee, onCreated }: A
             <Label>Nota (opcional)</Label>
             <Textarea value={note} onChange={e => setNote(e.target.value)} rows={2} placeholder="Detalle..." />
           </div>
+          {/*
+            Fecha y hora usan los controles NATIVOS del sistema (`type="date"` y
+            `type="time"`), y se quedan así: en un teléfono la rueda de iOS y el
+            selector de Android le ganan a cualquier calendario propio —los
+            conoce de memoria, funcionan con lector de pantalla y no hay que
+            mantenerlos—. Lo único que faltaba era el ALTO: el `Input` mide 36px
+            y el mínimo táctil son 44. Va con `htmlFor`/`id` porque además del
+            nombre accesible, tocar la palabra "Fecha" abre el selector.
+          */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Fecha</Label>
-              <Input type="date" value={date} min={todayIso()} onChange={e => setDate(e.target.value)} />
+              <Label htmlFor="tarea-fecha">Fecha</Label>
+              <Input id="tarea-fecha" type="date" className="max-md:h-11" value={date} min={todayIso()} onChange={e => setDate(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label>Hora</Label>
-              <Input type="time" value={time} disabled={allDay} onChange={e => setTime(e.target.value)} />
+              <Label htmlFor="tarea-hora">Hora</Label>
+              <Input id="tarea-hora" type="time" className="max-md:h-11" value={time} disabled={allDay} onChange={e => setTime(e.target.value)} />
             </div>
           </div>
-          <label className="flex items-center gap-2 text-sm">
+          {/* La casilla ya recibe el halo táctil de 44px de `globals.css`
+              (`@media (pointer: coarse)`), pero la FILA medía ~20px: en celular
+              el renglón entero —que es lo que uno toca— pasa a 44px. */}
+          <label className="flex items-center gap-3 text-sm max-md:min-h-11">
             <input type="checkbox" checked={allDay} onChange={e => setAllDay(e.target.checked)} />
             Todo el día
           </label>

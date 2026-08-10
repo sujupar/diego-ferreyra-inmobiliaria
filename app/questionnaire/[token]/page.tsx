@@ -62,8 +62,10 @@ export default function PublicQuestionnairePage() {
     }
   }
 
+  // `dvh` y no `screen` (=100vh): en iOS `vh` es el viewport GRANDE, así que el
+  // centrado queda corrido hacia abajo y aparece una barrita de scroll fantasma.
   if (error) return (
-    <div className="min-h-screen flex items-center justify-center p-6">
+    <div className="min-h-dvh flex items-center justify-center p-6">
       <Card className="max-w-md w-full">
         <CardHeader><CardTitle>Enlace no válido</CardTitle></CardHeader>
         <CardContent>
@@ -79,7 +81,7 @@ export default function PublicQuestionnairePage() {
   if (!info) return <div className="p-6">Cargando…</div>
 
   return (
-    <div className="min-h-screen bg-muted/30 py-10 px-4">
+    <div className="min-h-dvh bg-muted/30 py-10 px-4">
       <Card className="max-w-xl mx-auto">
         <CardHeader>
           <CardTitle>Hola {info.clientName}</CardTitle>

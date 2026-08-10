@@ -121,12 +121,26 @@ export function PropertyMediaCard({ propertyId, photos, plans, videoFileUrl, tou
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="fotos">
-          <TabsList className="w-full">
-            <TabsTrigger value="fotos"><ImageIcon className="h-4 w-4" />Fotos{photos.length > 0 && <span className="tabular-n text-xs">· {photos.length}</span>}</TabsTrigger>
-            <TabsTrigger value="planos"><Layers className="h-4 w-4" />Planos{plans.length > 0 && <span className="tabular-n text-xs">· {plans.length}</span>}</TabsTrigger>
-            <TabsTrigger value="video"><Film className="h-4 w-4" />Video{videoFileUrl && <Check className="h-3.5 w-3.5 text-emerald-600" />}</TabsTrigger>
-            <TabsTrigger value="recorrido"><Globe className="h-4 w-4" />Recorrido{tourUrl && <Check className="h-3.5 w-3.5 text-emerald-600" />}</TabsTrigger>
-            <TabsTrigger value="video-recorrido"><Video className="h-4 w-4" />Video recorrido{videoRecorridoUrl && <Check className="h-3.5 w-3.5 text-emerald-600" />}</TabsTrigger>
+          {/*
+            Las cinco pestañas suman ~487px de ancho mínimo (los rótulos llevan
+            `whitespace-nowrap` desde el primitivo) contra los ~334px que hay
+            adentro de la tarjeta en un teléfono: "Video recorrido" quedaba FUERA
+            del borde y, sin `overflow`, no había forma de llegar a ella.
+            Ahora la barra se desliza y la pestaña de más queda cortada a la
+            mitad, que es lo que avisa que hay más.
+
+            NO se usa `scroll-x-fade` acá, a diferencia de la barra de secciones
+            de la ficha: esa utilidad escribe `background` en forma corta y le
+            borraría el `bg-muted` al carril, que es lo único que distingue la
+            pestaña activa dentro de la tarjeta blanca. La señal se paga con el
+            corte visible en vez de con la sombra.
+          */}
+          <TabsList data-testid="pestanas-multimedia" className="w-full max-md:h-auto max-md:justify-start max-md:overflow-x-auto">
+            <TabsTrigger className="max-md:min-h-11 max-md:shrink-0" value="fotos"><ImageIcon className="h-4 w-4" />Fotos{photos.length > 0 && <span className="tabular-n text-xs">· {photos.length}</span>}</TabsTrigger>
+            <TabsTrigger className="max-md:min-h-11 max-md:shrink-0" value="planos"><Layers className="h-4 w-4" />Planos{plans.length > 0 && <span className="tabular-n text-xs">· {plans.length}</span>}</TabsTrigger>
+            <TabsTrigger className="max-md:min-h-11 max-md:shrink-0" value="video"><Film className="h-4 w-4" />Video{videoFileUrl && <Check className="h-3.5 w-3.5 text-emerald-600" />}</TabsTrigger>
+            <TabsTrigger className="max-md:min-h-11 max-md:shrink-0" value="recorrido"><Globe className="h-4 w-4" />Recorrido{tourUrl && <Check className="h-3.5 w-3.5 text-emerald-600" />}</TabsTrigger>
+            <TabsTrigger className="max-md:min-h-11 max-md:shrink-0" value="video-recorrido"><Video className="h-4 w-4" />Video recorrido{videoRecorridoUrl && <Check className="h-3.5 w-3.5 text-emerald-600" />}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="fotos" className="pt-4">
@@ -161,7 +175,8 @@ export function PropertyMediaCard({ propertyId, photos, plans, videoFileUrl, tou
                 value={tourValue}
                 onChange={e => setTourValue(e.target.value)}
                 placeholder="Pegá el enlace (Matterport, Kuula, 360°…)"
-                className="flex-1 rounded-md border px-3 py-2 text-sm"
+                inputMode="url"
+                className="flex-1 min-w-0 rounded-md border px-3 py-2 text-sm max-md:min-h-11"
               />
               <Button size="sm" onClick={saveTour} disabled={savingTour}>
                 {savingTour ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Guardar'}
@@ -186,7 +201,8 @@ export function PropertyMediaCard({ propertyId, photos, plans, videoFileUrl, tou
                 value={recorridoValue}
                 onChange={e => setRecorridoValue(e.target.value)}
                 placeholder="https://youtu.be/..."
-                className="flex-1 rounded-md border px-3 py-2 text-sm"
+                inputMode="url"
+                className="flex-1 min-w-0 rounded-md border px-3 py-2 text-sm max-md:min-h-11"
               />
               <Button size="sm" onClick={saveRecorrido} disabled={savingRecorrido}>
                 {savingRecorrido ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Guardar'}

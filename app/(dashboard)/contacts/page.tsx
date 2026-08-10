@@ -315,12 +315,18 @@ function ContactsClient() {
   const cargando = loading || escribiendo
   const hayFiltros = !!filtros.origin || !!filtros.from || !!filtros.to || !!search
 
+  // `card` = qué se ve cuando la tabla se apila como ficha en el teléfono.
+  // Un contacto se reconoce por el NOMBRE; lo que hace falta al lado es cómo
+  // llamarlo. La fecha de alta se esconde: no cambia ninguna decisión en la
+  // calle y es lo que menos aporta de las cinco columnas.
   const columns: Column<Contact>[] = [
-    { key: 'full_name', label: 'Nombre', sortable: true, render: r => <span className="font-medium">{r.full_name}</span> },
-    { key: 'phone', label: 'Telefono', sortable: true, render: r => <span className="text-muted-foreground">{r.phone || '—'}</span> },
-    { key: 'email', label: 'Email', sortable: true, render: r => <span className="text-muted-foreground">{r.email || '—'}</span> },
-    { key: 'origin', label: 'Origen', sortable: true, render: r => r.origin ? <Badge variant="secondary" className="text-xs">{ORIGIN_LABELS[r.origin] || r.origin}</Badge> : <span>—</span> },
-    { key: 'created_at', label: 'Fecha', sortable: true, render: r => <span className="text-sm text-muted-foreground">{formatDate(r.created_at)}</span> },
+    { key: 'full_name', label: 'Nombre', sortable: true, card: 'title', render: r => <span className="font-medium">{r.full_name}</span> },
+    { key: 'phone', label: 'Telefono', sortable: true, card: 'meta', render: r => <span className="text-muted-foreground">{r.phone || '—'}</span> },
+    // `wrap`: un email es UN token sin espacios y es la columna que estiraba la
+    // tabla a ~820px. En la ficha se corta con puntos suspensivos.
+    { key: 'email', label: 'Email', sortable: true, wrap: true, card: 'meta', render: r => <span className="text-muted-foreground">{r.email || '—'}</span> },
+    { key: 'origin', label: 'Origen', sortable: true, card: 'badge', render: r => r.origin ? <Badge variant="secondary" className="text-xs">{ORIGIN_LABELS[r.origin] || r.origin}</Badge> : <span>—</span> },
+    { key: 'created_at', label: 'Fecha', sortable: true, card: 'none', render: r => <span className="text-sm text-muted-foreground">{formatDate(r.created_at)}</span> },
   ]
 
   return (
@@ -339,9 +345,28 @@ function ContactsClient() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Dos botones de 32px sin nombre eran el control que rescata al
+              usuario de la vista que no le sirve — o sea, el peor lugar para
+              tener el blanco más chico de la pantalla. `tap` los lleva a 44px
+              en cualquier dispositivo y el `aria-label` + `aria-pressed` los
+              hace anunciables (antes un lector de pantalla leía «botón»). */}
           <div className="flex rounded-md border">
-            <button onClick={() => setViewMode('list')} className={`p-2 ${viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}><LayoutList className="h-4 w-4" /></button>
-            <button onClick={() => setViewMode('table')} className={`p-2 ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}><Table2 className="h-4 w-4" /></button>
+            <button
+              onClick={() => setViewMode('list')}
+              aria-label="Ver como fichas"
+              aria-pressed={viewMode === 'list'}
+              className={`tap flex items-center justify-center rounded-l-md ${viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            >
+              <LayoutList className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              aria-label="Ver como tabla"
+              aria-pressed={viewMode === 'table'}
+              className={`tap flex items-center justify-center rounded-r-md ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            >
+              <Table2 className="h-4 w-4" />
+            </button>
           </div>
           <Link href="/contacts/new"><Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nuevo</Button></Link>
         </div>
@@ -449,18 +474,31 @@ function ContactsClient() {
                   <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
                     <User className="h-5 w-5 text-primary" />
                   </div>
+                  {/* Acá estaba el ÚNICO lugar de la app que movía la página
+                      entera de costado. El renglón de abajo era un `flex` sin
+                      `min-w-0` ni `flex-wrap`, y un email tipo
+                      maria.fernanda.gonzalez@estudiojuridico.com.ar es UN token
+                      indivisible: su ancho mínimo (~250px) más el teléfono y la
+                      fecha pedían ~490px donde había ~238. Los hijos de un flex
+                      no se encogen por debajo de su contenido, así que el
+                      sobrante empujaba la fila, salía de la tarjeta (ningún
+                      ancestro recorta) y llegaba al viewport.
+                      `row-meta` (envuelve + `min-w-0`) más `truncate` en cada
+                      dato lo arreglan en el origen; la red de `overflow-wrap`
+                      de `globals.css` queda para lo que se escape, no como
+                      excusa. */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{c.full_name}</span>
-                      {c.origin && <Badge variant="secondary" className="text-xs">{ORIGIN_LABELS[c.origin] || c.origin}</Badge>}
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="min-w-0 truncate font-medium">{c.full_name}</span>
+                      {c.origin && <Badge variant="secondary" className="shrink-0 text-xs">{ORIGIN_LABELS[c.origin] || c.origin}</Badge>}
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      {c.phone && <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{c.phone}</span>}
-                      {c.email && <span className="flex items-center gap-1"><Mail className="h-3.5 w-3.5" />{c.email}</span>}
-                      <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{formatDate(c.created_at)}</span>
+                    <div className="row-meta text-sm text-muted-foreground">
+                      {c.phone && <span className="flex min-w-0 max-w-full items-center gap-1"><Phone className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{c.phone}</span></span>}
+                      {c.email && <span className="flex min-w-0 max-w-full items-center gap-1"><Mail className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{c.email}</span></span>}
+                      <span className="flex shrink-0 items-center gap-1"><Calendar className="h-3.5 w-3.5 shrink-0" />{formatDate(c.created_at)}</span>
                     </div>
                   </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </CardContent>
               </Card>
             </Link>

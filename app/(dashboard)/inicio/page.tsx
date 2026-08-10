@@ -296,10 +296,42 @@ export default function InicioPage() {
         <p className="text-muted-foreground">{cargandoNumeros ? 'Cargando…' : 'Lo que te espera hoy'}</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/*
+        DOS por fila desde el teléfono más chico, no una.
+
+        Medido con el contenido REAL de esta pantalla: a 390px, dos columnas
+        dejan 141px útiles por tarjeta y las cuatro entran en 276px; en una
+        sola columna las mismas cuatro ocupan 448px. Son 172px — un cuarto de
+        la pantalla visible de un iPhone con la barra de Safari — y esta
+        pantalla existe para mirarse de un vistazo: si hay que scrollear para
+        ver "Visitas de hoy", el vistazo ya no existe.
+
+        A 320px quedan 106px útiles y la palabra más larga de las cuatro
+        etiquetas ("PROPIEDADES", ~81px en `eyebrow`) sigue entrando; las que
+        no entran parten en dos renglones gracias al `break-words` de StatTile,
+        y `h-full` mantiene parejas a las dos de la misma fila.
+      */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {cargandoNumeros
-          ? tarjetasVisibles.map(t => (
-              <div key={t.key} className="h-[92px] animate-pulse rounded-xl border bg-card" />
+          ? // El esqueleto lleva la ETIQUETA de verdad (es estática, se sabe
+            // antes de pedir nada) y barras solo donde va lo que todavía no
+            // llegó. Dos motivos: el alto del esqueleto pasa a ser el mismo
+            // que el de la tarjeta terminada —con dos columnas las etiquetas
+            // parten en dos renglones y una caja fija de 92px daba un salto de
+            // layout al resolver—, y de paso el usuario ve QUÉ números están
+            // viniendo en vez de cuatro rectángulos grises.
+            tarjetasVisibles.map(t => (
+              <div
+                key={t.key}
+                aria-hidden="true"
+                data-testid="tarjeta-esqueleto"
+                className="h-full min-w-0 rounded-xl border bg-card p-4 shadow-sm"
+              >
+                <div className="eyebrow break-words">{t.label}</div>
+                <div className="mt-1 h-[30px] w-16 animate-pulse rounded bg-muted" />
+                <div className="mt-2 h-3 w-24 animate-pulse rounded bg-muted" />
+                <div className="mt-1 h-3 w-16 animate-pulse rounded bg-muted" />
+              </div>
             ))
           : tarjetasVisibles.map(t => (
               <StatTile
@@ -313,8 +345,14 @@ export default function InicioPage() {
             ))}
       </div>
 
+      {/* Un renglón subrayado de 20px de alto es un blanco imposible con el
+          pulgar. En celular se convierte en una fila de 44px sin cambiar de
+          aspecto (sigue siendo texto subrayado, no un botón). */}
       {permitidas.has('/metrics') && (
-        <Link href="/metrics" className="inline-block text-sm text-[color:var(--brand)] underline">
+        <Link
+          href="/metrics"
+          className="inline-flex items-center text-sm text-[color:var(--brand)] underline max-md:min-h-11"
+        >
           Ver el estado del embudo
         </Link>
       )}

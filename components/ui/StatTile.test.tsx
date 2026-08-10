@@ -94,4 +94,43 @@ describe('StatTile', () => {
     expect(screen.getByText('Sin datos')).toBeInTheDocument()
     expect(screen.queryByText('Infinity')).not.toBeInTheDocument()
   })
+
+  /**
+   * Piso móvil. La tarjeta vive en grillas de DOS columnas en el teléfono
+   * (`/inicio`, `/properties`), donde a 320px le quedan ~106px de contenido, y
+   * la etiqueta va en `eyebrow`: mayúsculas con `letter-spacing: .14em`, o sea
+   * una sola palabra ("PROPIEDADES") más ancha que su caja y sin ningún punto
+   * natural de corte. Sin estas tres clases el texto se sale por el borde en
+   * vez de partirse, y la tarjeta con la etiqueta más corta queda más baja que
+   * su vecina.
+   */
+  describe('en una grilla angosta', () => {
+    it('parte las palabras largas en las tres capas (etiqueta, número y contexto)', () => {
+      const { container } = render(
+        <StatTile label="Propiedades por revisar" value={41} context="esperando revisión legal" />,
+      )
+      expect(screen.getByText('Propiedades por revisar').className).toContain('break-words')
+      expect(screen.getByText('esperando revisión legal').className).toContain('break-words')
+      expect(container.querySelector('.tabular-n')!.className).toContain('break-words')
+    })
+
+    it('ocupa el alto de su celda para no desalinear la fila', () => {
+      const { container } = render(<StatTile label="Deals" value={3} context="en el sistema" />)
+      const caja = container.firstElementChild as HTMLElement
+      expect(caja.className).toContain('h-full')
+      // `min-w-0` es lo que habilita el `break-words` de adentro: una celda de
+      // grilla mide por su contenido mínimo si no se le dice lo contrario.
+      expect(caja.className).toContain('min-w-0')
+    })
+
+    it('la versión con link mantiene las mismas garantías', () => {
+      const { container } = render(
+        <StatTile label="Pendientes" value={3} context="cosas esperándote" href="/tasks" />,
+      )
+      const caja = container.firstElementChild as HTMLElement
+      expect(caja.tagName).toBe('A')
+      expect(caja.className).toContain('h-full')
+      expect(caja.className).toContain('min-w-0')
+    })
+  })
 })

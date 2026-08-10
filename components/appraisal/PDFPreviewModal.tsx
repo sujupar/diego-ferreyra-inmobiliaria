@@ -360,7 +360,10 @@ export function PDFPreviewModal({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="flex flex-col max-w-[95vw] max-h-[95vh] w-full h-[90vh] p-0 gap-0 [&>button]:hidden">
+            {/* `dvh` y no `vh`: en iOS `vh` es el viewport GRANDE, así que el `h-[90vh]`
+                —que además es alto FIJO, no máximo— dejaba la franja inferior del visor
+                (descargar / cerrar) debajo del pliegue. */}
+            <DialogContent className="flex flex-col max-w-[95vw] max-h-[95dvh] w-full h-[90dvh] p-0 gap-0 [&>button]:hidden">
                 {/* Toolbar — responsive: título solo a11y (sr-only); tabs y botón pasan a
                     íconos en pantallas chicas para que nunca se desborde / se parta. */}
                 <div className="flex shrink-0 items-center gap-1.5 sm:gap-2 px-3 sm:px-6 py-2.5 sm:py-3 border-b bg-muted/30">
@@ -396,7 +399,11 @@ export function PDFPreviewModal({
                             {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                             <span className="hidden sm:inline">Descargar PDF</span>
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)} className="shrink-0">
+                        {/* Reemplaza a la X propia del diálogo (arriba está
+                            apagada con `[&>button]:hidden`), así que es la ÚNICA
+                            forma de cerrar con el mouse — y sin `aria-label` se
+                            anuncia como "botón" pelado. Anterior a esta tanda. */}
+                        <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)} className="shrink-0" aria-label="Cerrar la vista previa">
                             <X className="h-4 w-4" />
                         </Button>
                     </div>

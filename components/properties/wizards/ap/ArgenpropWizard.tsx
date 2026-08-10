@@ -157,9 +157,13 @@ export function ArgenpropWizard({ propertyId }: { propertyId: string }) {
         </CardContent>
       </Card>
 
-      {/* Navegación (oculta en review/confirm que tienen sus propios botones) */}
+      {/* Navegación (oculta en review/confirm que tienen sus propios botones)
+          PISO DE CELULAR — los pasos de imágenes y campos son largos: sin
+          `sticky` hay que scrollear hasta el fondo para avanzar. Pegada al piso
+          de la pantalla, a sangre (`-mx-4` cancela el padding del contenido) y
+          respetando la barra de gestos. En escritorio no cambia nada. */}
       {current !== 'review' && current !== 'confirm' && (
-        <div className="flex gap-2">
+        <div className="flex gap-2 max-md:sticky max-md:bottom-0 max-md:z-10 max-md:-mx-4 max-md:border-t max-md:bg-background max-md:px-4 max-md:pt-3 max-md:pb-safe">
           {idx > 0 && (
             <Button variant="outline" onClick={back}>
               <ArrowLeft className="h-4 w-4 mr-1" />Atrás

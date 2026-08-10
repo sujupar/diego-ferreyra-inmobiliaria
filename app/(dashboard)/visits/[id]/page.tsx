@@ -19,6 +19,27 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: 'Cancelada',
 }
 
+/**
+ * "viernes, 1 de agosto de 2026, 12:00".
+ *
+ * `toLocaleString('es-AR')` a secas imprime "1/8/2026, 12:00:00": los segundos
+ * de una visita no le sirven a nadie, y en la FICHA —donde hay lugar y donde el
+ * asesor confirma un día con el cliente por teléfono— el día de la semana vale
+ * más que ahorrar caracteres. El listado usa la forma corta; son dos lecturas
+ * distintas a propósito.
+ *
+ * Va en dos llamadas porque `hour: '2-digit'` sin `hourCycle` devuelve
+ * "12:00 p. m.", reloj de 12 horas que en Argentina no se usa.
+ */
+function fechaHoraLarga(iso: string): string {
+  const cuando = new Date(iso)
+  const dia = cuando.toLocaleDateString('es-AR', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  })
+  const hora = cuando.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+  return `${dia}, ${hora}`
+}
+
 interface QuestionnaireRow {
   id: string
   response_source: 'advisor' | 'client'
@@ -131,7 +152,11 @@ export default function VisitDetailPage() {
   // que mostrar.
   if (!visit) {
     return (
-      <div className="container mx-auto py-6 space-y-4">
+      // Sin `container mx-auto py-6` — mismo motivo que el listado: el layout
+      // del dashboard ya pone el marco (`p-4 md:p-6`) y esos 24px extra de
+      // arriba corrían el encabezado hacia abajo en una pantalla donde hay
+      // ~640px de alto y nada de sobra.
+      <div className="space-y-4">
         {/* El link de vuelta va ARRIBA del corte: antes vivía debajo y en el
             camino de error no se dibujaba nunca. */}
         <Button variant="ghost" asChild>
@@ -164,31 +189,69 @@ export default function VisitDetailPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-4">
+    <div className="space-y-4">
       <Button variant="ghost" asChild>
         <Link href="/visits">← Volver a visitas</Link>
       </Button>
-      <header className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{visit.property?.address}</h1>
-          <p className="text-muted-foreground">{new Date(visit.scheduled_at).toLocaleString('es-AR')}</p>
+      {/*
+        Antes era `flex items-start justify-between` a secas: sin `gap`, sin
+        `min-w-0` y sin apilado. Una dirección larga —"Av. Rivadavia 5400, piso
+        8 A"— empujaba al Badge, que es encogible, y "A confirmar" se partía en
+        dos renglones pegados al borde derecho. En celular el título ocupa su
+        propio renglón y el estado va abajo; desde `sm` vuelve la fila de antes.
+      */}
+      <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold break-words">{visit.property?.address}</h1>
+          <p className="text-muted-foreground">{fechaHoraLarga(visit.scheduled_at)}</p>
         </div>
-        <Badge>{STATUS_LABEL[visit.status] ?? visit.status}</Badge>
+        <Badge className="shrink-0 self-start">{STATUS_LABEL[visit.status] ?? visit.status}</Badge>
       </header>
 
       <Card>
         <CardHeader>
           <CardTitle>Cliente</CardTitle>
         </CardHeader>
+        {/*
+          El asesor abre esta ficha para LLAMAR al cliente. Que el teléfono y el
+          mail fueran texto plano obligaba a seleccionar a mano un número en una
+          pantalla táctil; ahora son enlaces `tel:`/`mailto:` con 44px de alto,
+          que es exactamente para lo que existe el teléfono que tiene en la mano.
+        */}
         <CardContent className="text-sm space-y-1">
           <p>
-            <strong>{visit.client_name}</strong>
+            <strong className="break-words">{visit.client_name}</strong>
           </p>
-          <p>{visit.client_email}</p>
-          <p>{visit.client_phone}</p>
+          {visit.client_email
+            ? (
+              <p>
+                <a
+                  href={`mailto:${visit.client_email}`}
+                  className="inline-flex items-center break-all underline underline-offset-2 max-md:min-h-11"
+                >
+                  {visit.client_email}
+                </a>
+              </p>
+            )
+            : null}
+          {visit.client_phone
+            ? (
+              <p>
+                <a
+                  href={`tel:${visit.client_phone.replace(/[^\d+]/g, '')}`}
+                  className="inline-flex items-center underline underline-offset-2 max-md:min-h-11"
+                >
+                  {visit.client_phone}
+                </a>
+              </p>
+            )
+            : null}
         </CardContent>
       </Card>
 
+      {/* Las acciones de la ficha van a ancho completo en celular: son la única
+          razón por la que se abre esta pantalla parado en la puerta, y un botón
+          de 140px alineado a la izquierda es un blanco chico y ambiguo. */}
       {visit.status === 'pending_confirmation' && (
         <Card className="border-amber-300">
           <CardContent className="pt-6 space-y-3">
@@ -196,7 +259,7 @@ export default function VisitDetailPage() {
               El cliente propuso este día y esta franja desde el recorrido. Llamalo para
               cerrar el horario y, cuando esté acordado, confirmá la visita.
             </p>
-            <Button onClick={confirmVisit} disabled={confirming}>
+            <Button className="max-md:w-full" onClick={confirmVisit} disabled={confirming}>
               {confirming ? 'Confirmando…' : 'Confirmar visita'}
             </Button>
           </CardContent>
@@ -206,7 +269,7 @@ export default function VisitDetailPage() {
       {visit.status === 'scheduled' && (
         <Card>
           <CardContent className="pt-6 flex flex-wrap gap-2">
-            <Button onClick={() => setCompleteOpen(true)}>¿Se realizó?</Button>
+            <Button className="max-md:w-full" onClick={() => setCompleteOpen(true)}>¿Se realizó?</Button>
           </CardContent>
         </Card>
       )}
@@ -225,14 +288,14 @@ export default function VisitDetailPage() {
                     <p>
                       ¿Le gustó? <strong>{q.liked === null ? '-' : q.liked ? 'Sí' : 'No'}</strong>
                     </p>
-                    <p>Más le gustó: {q.most_liked ?? '-'}</p>
-                    <p>Menos le gustó: {q.least_liked ?? '-'}</p>
+                    <p className="break-words">Más le gustó: {q.most_liked ?? '-'}</p>
+                    <p className="break-words">Menos le gustó: {q.least_liked ?? '-'}</p>
                     <p>
                       ¿En precio? <strong>{q.in_price === null ? '-' : q.in_price ? 'Sí' : 'No'}</strong>
                     </p>
                     <p>Oferta hipotética: USD {q.hypothetical_offer ?? '-'}</p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(q.responded_at).toLocaleString('es-AR')}
+                      {fechaHoraLarga(q.responded_at)}
                     </p>
                   </div>
                 ))}
@@ -240,7 +303,7 @@ export default function VisitDetailPage() {
             ) : (
               <p className="text-sm text-muted-foreground">Sin respuestas todavía</p>
             )}
-            <Button onClick={sendQuestionnaire}>Enviar cuestionario al cliente</Button>
+            <Button className="max-md:w-full" onClick={sendQuestionnaire}>Enviar cuestionario al cliente</Button>
           </CardContent>
         </Card>
       )}

@@ -411,17 +411,41 @@ function AppraisalsClient() {
     // la salida más rápida (un rango inválido en el link da 500).
     const hayFiltros = !!filtros.from || !!filtros.to
 
+    // `card` = qué se ve cuando la tabla se apila como ficha en el teléfono.
+    // Una tasación se reconoce por la PROPIEDAD; el precio y la fecha son lo
+    // que se compara de un vistazo. Se esconden:
+    //  · «Comp.» (cantidad de comparables) — es un dato del método, no del
+    //    negocio: nadie elige una tasación por eso;
+    //  · los dos botones de acción — son dos blancos de 33px pegados uno al
+    //    otro, imposibles de acertar con el pulgar, y los dos destinos siguen
+    //    disponibles: tocar la ficha abre el detalle (que tiene «Editar
+    //    Tasación») y borrar sigue estando en la selección múltiple.
     const columns: Column<AppraisalSummary>[] = [
-        { key: 'property_title', label: 'Propiedad', sortable: true, render: r => <span className="font-medium">{r.property_title || 'Sin titulo'}</span> },
-        { key: 'property_location', label: 'Ubicacion', sortable: true, render: r => <span className="text-muted-foreground truncate max-w-[200px] block">{r.property_location}</span> },
-        { key: 'publication_price', label: 'Precio', sortable: true, className: 'text-right', render: r => <span className="font-medium">{formatCurrency(r.publication_price, r.currency || 'USD')}</span> },
-        { key: 'comparable_count', label: 'Comp.', sortable: true, className: 'text-center', render: r => <Badge variant="secondary">{r.comparable_count}</Badge> },
-        { key: 'created_at', label: 'Fecha', sortable: true, render: r => <span className="text-sm text-muted-foreground">{formatDate(r.created_at)}</span> },
-        { key: 'actions', label: '', render: r => (
+        { key: 'property_title', label: 'Propiedad', sortable: true, wrap: true, card: 'title', render: r => <span className="font-medium">{r.property_title || 'Sin titulo'}</span> },
+        { key: 'property_location', label: 'Ubicacion', sortable: true, wrap: true, card: 'meta', render: r => <span className="text-muted-foreground truncate max-w-[200px] block">{r.property_location}</span> },
+        { key: 'publication_price', label: 'Precio', sortable: true, className: 'text-right', card: 'meta', render: r => <span className="font-medium">{formatCurrency(r.publication_price, r.currency || 'USD')}</span> },
+        { key: 'comparable_count', label: 'Comp.', sortable: true, className: 'text-center', card: 'none', render: r => <Badge variant="secondary">{r.comparable_count}</Badge> },
+        { key: 'created_at', label: 'Fecha', sortable: true, card: 'meta', render: r => <span className="text-sm text-muted-foreground">{formatDate(r.created_at)}</span> },
+        { key: 'actions', label: '', card: 'none', render: r => (
             <div className="flex gap-1">
-                <Link href={`/appraisal/new?editId=${r.id}`} onClick={e => e.stopPropagation()}>
-                    <Button variant="ghost" size="sm"><Edit2 className="h-3.5 w-3.5" /></Button>
-                </Link>
+                {/* El `aria-label` no es opcional: el control es SOLO un ícono,
+                    así que sin él un lector de pantalla lo anuncia como "enlace"
+                    y nada más — y está pegado al de borrar, que sí lo tiene.
+                    Lleva el nombre de la propiedad porque en un listado hay uno
+                    por fila y veinte "Editar" idénticos no distinguen ninguna.
+                    `asChild` y no un <Button> ADENTRO del <Link>: anidados son
+                    dos paradas de tabulador para una sola acción, y el enlace
+                    de afuera se quedaba igual sin nombre (su contenido es el
+                    ícono). Así queda un solo <a>, con el estilo del botón. */}
+                <Button asChild variant="ghost" size="sm">
+                    <Link
+                        href={`/appraisal/new?editId=${r.id}`}
+                        onClick={e => e.stopPropagation()}
+                        aria-label={`Editar la tasación de ${r.property_title || 'la propiedad sin título'}`}
+                    >
+                        <Edit2 className="h-3.5 w-3.5" />
+                    </Link>
+                </Button>
                 {puedeBorrar && (
                     <Button variant="ghost" size="sm" onClick={e => handleDelete(e, r.id)} disabled={deleting === r.id} aria-label="Eliminar tasación">
                         {deleting === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 text-destructive" />}
@@ -448,9 +472,26 @@ function AppraisalsClient() {
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
+                    {/* Mismo arreglo que en Contactos: el control que saca al
+                        usuario de la vista que no le sirve no puede ser el
+                        blanco más chico y menos etiquetado de la pantalla. */}
                     <div className="flex rounded-md border">
-                        <button onClick={() => setViewMode('cards')} className={`p-2 ${viewMode === 'cards' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}><LayoutList className="h-4 w-4" /></button>
-                        <button onClick={() => setViewMode('table')} className={`p-2 ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}><Table2 className="h-4 w-4" /></button>
+                        <button
+                            onClick={() => setViewMode('cards')}
+                            aria-label="Ver como fichas"
+                            aria-pressed={viewMode === 'cards'}
+                            className={`tap flex items-center justify-center rounded-l-md ${viewMode === 'cards' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                        >
+                            <LayoutList className="h-4 w-4" />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('table')}
+                            aria-label="Ver como tabla"
+                            aria-pressed={viewMode === 'table'}
+                            className={`tap flex items-center justify-center rounded-r-md ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                        >
+                            <Table2 className="h-4 w-4" />
+                        </button>
                     </div>
                     {/* D1: si el servidor ya contestó que este rol no alcanza
                         las tasaciones, «Nueva» lo lleva a un asistente que va a
@@ -597,12 +638,16 @@ function AppraisalsClient() {
 
             {/* Pagination */}
             {totalPages > 1 && (
+                /* Dos flechas sin nombre, de 33px, separadas por el texto de la
+                   página: el pulgar caía justo en el medio. `icon-sm` las lleva
+                   a 40px en celular (`components/ui/button.tsx`) y el
+                   `aria-label` las hace anunciables. */
                 <div className="flex items-center justify-center gap-2">
-                    <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+                    <Button variant="outline" size="icon-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)} aria-label="Página anterior">
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
                     <span className="text-sm text-muted-foreground">Pagina {page} de {totalPages}</span>
-                    <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+                    <Button variant="outline" size="icon-sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} aria-label="Página siguiente">
                         <ChevronRight className="h-4 w-4" />
                     </Button>
                 </div>

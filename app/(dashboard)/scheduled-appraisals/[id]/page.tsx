@@ -27,7 +27,16 @@ export default async function ScheduledAppraisalDetailPage(
   const buyer = (item.buyer_interest as Record<string, unknown> | null) ?? null
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    // Sin `container mx-auto py-6` — el layout del dashboard ya envuelve todo en
+    // `#contenido` con `p-4 md:p-6`, así que el relleno estaba duplicado. Y el
+    // `container` acá pasó a ser dañino: el sistema móvil agrega el breakpoint
+    // `xs` (375px) en `@theme`, y Tailwind le suma a `.container` un escalón por
+    // CADA breakpoint declarado — o sea `max-width: 375px` de 375px en adelante.
+    // En un iPhone de 414 o 430px esta pantalla quedaba MÁS ANGOSTA que en uno
+    // de 375, con dos franjas muertas a los costados. Las otras dos pantallas
+    // que tenían `container` (el listado y el detalle de visitas) ya lo
+    // perdieron por el mismo motivo; esta era la última.
+    <div className="space-y-6">
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">{item.property_address}</h1>

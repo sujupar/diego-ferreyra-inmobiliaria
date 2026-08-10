@@ -159,14 +159,24 @@ check('sin body_preview ni plantilla, no queda en blanco', htmlVacio.includes('(
 
 // Ajuste 3 (2026-08-01): REEMPLAZA la decisión anterior ("azul de marca, no
 // verde WhatsApp") — el dueño pidió explícitamente la estética de WhatsApp.
+//
+// Fase 1 del sistema móvil (2026-08-10): los colores NO cambiaron, cambió de
+// dónde salen. Ahora vienen de los tokens `--chat-*` de `app/globals.css`, que
+// apuntan exactamente a los mismos valores (crema / blanco / verde). El dueño
+// tiene pendiente resolver la contradicción entre "tipo WhatsApp, el de
+// verdecito" y "colores de marca, sin copiar WhatsApp"; con los tokens ese
+// cambio pasa a ser tocar cuatro variables y no reescribir componentes.
 const htmlBurbujaSaliente = renderToStaticMarkup(<MessageBubble message={msg({})} />)
-check('las burbujas salientes usan verde clarito estilo WhatsApp (bg-emerald-100)', htmlBurbujaSaliente.includes('bg-emerald-100'))
+check('las burbujas salientes usan el token del lado propio (--chat-out-bg)', htmlBurbujaSaliente.includes('var(--chat-out-bg)'))
 check('las burbujas salientes YA NO usan el azul de marca (--brand)', !htmlBurbujaSaliente.includes('var(--brand)'))
 const htmlBurbujaEntrante = renderToStaticMarkup(<MessageBubble message={msg({ direction: 'in', status: 'received', sent_by: null })} />)
-check('las burbujas entrantes son blancas con sombra suave', htmlBurbujaEntrante.includes('bg-white') && htmlBurbujaEntrante.includes('shadow'))
+check('las burbujas entrantes usan el token del lado del cliente, con sombra suave', htmlBurbujaEntrante.includes('var(--chat-in-bg)') && htmlBurbujaEntrante.includes('shadow'))
 // El fallo sigue pisando cualquier color de estética — no negociable.
 const htmlBurbujaFallidaEstetica = renderToStaticMarkup(<MessageBubble message={msg({ status: 'failed', error_message: 'x' })} />)
-check('un mensaje fallido NUNCA se pinta de verde (el rojo de error pisa la estética nueva)', !htmlBurbujaFallidaEstetica.includes('bg-emerald-100'))
+check('un mensaje fallido NUNCA se pinta con el color del saliente (el rojo de error pisa la estética)', !htmlBurbujaFallidaEstetica.includes('var(--chat-out-bg)'))
+// Fase 1: la burbuja es más ancha en el teléfono y muestra la HORA, no "hace 3 días".
+check('la burbuja ocupa el 85% en celular y el 75% en escritorio', htmlBurbujaSaliente.includes('max-w-[85%] md:max-w-[75%]'))
+check('la burbuja muestra la hora (14:32), no tiempo relativo', /\d{2}:\d{2}/.test(htmlBurbujaSaliente) && !/hace \d|recién/.test(htmlBurbujaSaliente))
 
 // ═══════════════════════════════════════════════════════════════════════
 // Avatar (task 4) — iniciales + color estable por persona.

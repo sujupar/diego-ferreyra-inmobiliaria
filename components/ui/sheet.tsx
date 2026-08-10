@@ -60,22 +60,36 @@ function SheetContent({
       <SheetPrimitive.Content
         data-slot="sheet-content"
         className={cn(
-          "fixed z-50 flex flex-col gap-4 bg-background shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-500",
+          // `overscroll-contain`: el gesto que llega al final de la hoja no se le
+          // contagia a la página de atrás (rebote de iOS, "tirar para recargar" de
+          // Android).
+          "fixed z-50 flex flex-col gap-4 overscroll-contain bg-background shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-500",
           side === "right" &&
             "inset-y-0 right-0 h-full w-3/4 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm",
           side === "left" &&
             "inset-y-0 left-0 h-full w-3/4 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm",
+          // Las hojas de arriba y de abajo son `h-auto`: sin techo, una lista larga
+          // se sale de la pantalla por los dos lados y no hay nada que scrollear.
+          // `--app-vh` es el alto realmente visible (con el teclado abierto también).
           side === "top" &&
-            "inset-x-0 top-0 h-auto border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
+            "inset-x-0 top-0 h-auto max-h-[calc(var(--app-vh)-2rem)] overflow-y-auto border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
+          // La de abajo además respeta la barra de gestos del iPhone.
           side === "bottom" &&
-            "inset-x-0 bottom-0 h-auto border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+            "inset-x-0 bottom-0 h-auto max-h-[calc(var(--app-vh)-2rem)] overflow-y-auto border-t pb-[var(--safe-b)] data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
           className
         )}
         {...props}
       >
         {children}
         {showCloseButton && (
-          <SheetPrimitive.Close className="absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
+          <SheetPrimitive.Close
+            // El `data-slot` lo engancha al halo táctil de 44px de
+            // `@media (pointer: coarse)` en globals.css, y en celular la caja del
+            // botón sube a 44px sin agrandar la X.
+            data-slot="sheet-close"
+            aria-label="Cerrar"
+            className="absolute top-4 right-4 flex items-center justify-center rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary max-md:top-2 max-md:right-2 max-md:size-11"
+          >
             <XIcon className="size-4" />
             <span className="sr-only">Cerrar</span>
           </SheetPrimitive.Close>

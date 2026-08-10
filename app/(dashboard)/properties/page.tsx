@@ -584,14 +584,20 @@ function PropertiesClient() {
   // escritura pendiente y lo que importa es qué se pidió realmente.
   const hayFiltros = !!filtros.status || !!filtros.from || !!filtros.to || filtros.mios === '1'
 
+  // `card` = qué se ve cuando la tabla se apila como ficha en el teléfono. Una
+  // propiedad se reconoce por la DIRECCIÓN, y lo primero que pregunta el asesor
+  // es en qué estado está y cuánto pide. Tipo, origen y fecha de alta se
+  // esconden: sirven para filtrar y ordenar (siguen en la barra de filtros y en
+  // el desplegable de orden de la ficha), no para reconocer una fila de un
+  // vistazo.
   const columns: Column<Property>[] = [
-    { key: 'address', label: 'Direccion', sortable: true, render: r => <span className="font-medium">{r.address}</span> },
-    { key: 'neighborhood', label: 'Barrio', sortable: true, render: r => <span className="text-muted-foreground">{r.neighborhood}</span> },
-    { key: 'property_type', label: 'Tipo', sortable: true, render: r => <span className="capitalize">{r.property_type}</span> },
-    { key: 'asking_price', label: 'Precio', sortable: true, className: 'text-right', render: r => <span className="font-medium">{formatCurrency(r.asking_price, r.currency)}</span> },
-    { key: 'status', label: 'Estado', sortable: true, render: r => { const s = getPropertyStatusInfo(r); return <Badge className={`text-xs text-white ${s.color}`}>{s.label}</Badge> } },
-    { key: 'origin', label: 'Origen', sortable: true, render: r => r.origin ? <Badge variant="secondary" className="text-xs capitalize">{r.origin}</Badge> : <span>—</span> },
-    { key: 'created_at', label: 'Fecha', sortable: true, render: r => <span className="text-sm text-muted-foreground">{formatDate(r.created_at)}</span> },
+    { key: 'address', label: 'Direccion', sortable: true, wrap: true, card: 'title', render: r => <span className="font-medium">{r.address}</span> },
+    { key: 'neighborhood', label: 'Barrio', sortable: true, card: 'meta', render: r => <span className="text-muted-foreground">{r.neighborhood}</span> },
+    { key: 'property_type', label: 'Tipo', sortable: true, card: 'none', render: r => <span className="capitalize">{r.property_type}</span> },
+    { key: 'asking_price', label: 'Precio', sortable: true, className: 'text-right', card: 'meta', render: r => <span className="font-medium">{formatCurrency(r.asking_price, r.currency)}</span> },
+    { key: 'status', label: 'Estado', sortable: true, card: 'badge', render: r => { const s = getPropertyStatusInfo(r); return <Badge className={`text-xs text-white ${s.color}`}>{s.label}</Badge> } },
+    { key: 'origin', label: 'Origen', sortable: true, card: 'none', render: r => r.origin ? <Badge variant="secondary" className="text-xs capitalize">{r.origin}</Badge> : <span>—</span> },
+    { key: 'created_at', label: 'Fecha', sortable: true, card: 'none', render: r => <span className="text-sm text-muted-foreground">{formatDate(r.created_at)}</span> },
   ]
 
   return (
@@ -618,13 +624,16 @@ function PropertiesClient() {
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">
-            <Button size="sm" variant={viewMode === 'grid' ? 'default' : 'outline'} onClick={() => setViewMode('grid')} title="Vista grid">
+            {/* Un `title` alcanza para el mouse; con lector de pantalla es el
+                último recurso del cálculo del nombre y con el dedo no existe.
+                `aria-label` + `aria-pressed` dicen qué hace y cuál está puesta. */}
+            <Button size="sm" variant={viewMode === 'grid' ? 'default' : 'outline'} onClick={() => setViewMode('grid')} title="Vista grid" aria-label="Ver como galería" aria-pressed={viewMode === 'grid'}>
               <LayoutGrid className="size-4" />
             </Button>
-            <Button size="sm" variant={viewMode === 'list' ? 'default' : 'outline'} onClick={() => setViewMode('list')} title="Vista lista">
+            <Button size="sm" variant={viewMode === 'list' ? 'default' : 'outline'} onClick={() => setViewMode('list')} title="Vista lista" aria-label="Ver como fichas" aria-pressed={viewMode === 'list'}>
               <LayoutList className="size-4" />
             </Button>
-            <Button size="sm" variant={viewMode === 'table' ? 'default' : 'outline'} onClick={() => setViewMode('table')} title="Vista tabla">
+            <Button size="sm" variant={viewMode === 'table' ? 'default' : 'outline'} onClick={() => setViewMode('table')} title="Vista tabla" aria-label="Ver como tabla" aria-pressed={viewMode === 'table'}>
               <Table2 className="size-4" />
             </Button>
           </div>

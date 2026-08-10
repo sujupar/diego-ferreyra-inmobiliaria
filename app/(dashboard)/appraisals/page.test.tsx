@@ -297,6 +297,36 @@ describe('AppraisalsPage — acciones de fila no navegan la fila', () => {
     // dispararía el `onRowClick` de la fila (`router.push('/appraisals/a')`).
     expect(push).not.toHaveBeenCalled()
   })
+
+  it('"Editar" tiene nombre, y dice DE QUÉ tasación', async () => {
+    // El control es solo un ícono: sin nombre un lector de pantalla anuncia
+    // "enlace" y nada más — justo al lado del de borrar, que sí lo tiene. Y el
+    // nombre lleva la propiedad porque en un listado hay uno por fila: veinte
+    // "Editar" idénticos no distinguen ninguna.
+    render(<AppraisalsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(appraisalsCalls.length).toBe(1))
+    appraisalsCalls[0].d.resolve({ data: [tasacion('a', 'Tasación Con Acciones')], count: 1 })
+    await screen.findByText('Tasación Con Acciones')
+
+    const editar = screen.getByRole('link', { name: /editar la tasación de Tasación Con Acciones/i })
+    expect(editar.getAttribute('href')).toContain('editId=a')
+  })
+
+  it('el editar es UN control, no un botón anidado adentro de un enlace', async () => {
+    // Anidados son dos paradas de tabulador para una sola acción, y el <a> de
+    // afuera se queda igual sin nombre (su único contenido es el ícono). El
+    // "Nueva tasación" de la cabecera también anida, pero ese SÍ tiene texto:
+    // el problema de nombre es de este, así que el test mira este.
+    const { container } = render(<AppraisalsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(appraisalsCalls.length).toBe(1))
+    appraisalsCalls[0].d.resolve({ data: [tasacion('a', 'Tasación Con Acciones')], count: 1 })
+    await screen.findByText('Tasación Con Acciones')
+
+    const editar = container.querySelector('a[href*="editId=a"]') as HTMLAnchorElement
+    expect(editar.querySelector('button')).toBeNull()
+  })
 })
 
 describe('AppraisalsPage — identidad fail-closed (A4)', () => {

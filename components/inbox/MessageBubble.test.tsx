@@ -59,9 +59,11 @@ describe('MessageBubble — notas internas del agente de IA', () => {
     expect(text).not.toContain(status)
   })
 
-  it.each(NOTAS_INTERNAS)('%s no se pinta con el verde de un mensaje que SÍ salió', status => {
+  it.each(NOTAS_INTERNAS)('%s no se pinta con el color de un mensaje que SÍ salió', status => {
     const { html } = bubble(msg({ status }))
-    expect(html).not.toContain('bg-emerald-100')
+    // El color del saliente sale del token `--chat-out-bg` desde la Fase 1 del
+    // sistema móvil (antes era `bg-emerald-100` escrito a mano).
+    expect(html).not.toContain('var(--chat-out-bg)')
   })
 
   it.each(NOTAS_INTERNAS)('%s aclara en pantalla que el cliente no lo vio', status => {
@@ -81,7 +83,7 @@ describe('MessageBubble — notas internas del agente de IA', () => {
     const { text, html } = bubble(msg({ status: 'agent_lo_que_venga', body_preview: '[Agente IA] Algo pasó.' }))
     expect(text).toContain('Nota interna')
     expect(text).not.toContain('agent_lo_que_venga')
-    expect(html).not.toContain('bg-emerald-100')
+    expect(html).not.toContain('var(--chat-out-bg)')
   })
 
   it('el cuerpo de la nota se sigue leyendo', () => {
@@ -91,9 +93,9 @@ describe('MessageBubble — notas internas del agente de IA', () => {
 })
 
 describe('MessageBubble — mensajes reales (no se tocan)', () => {
-  it('un saliente entregado sigue siendo la burbuja verde con su tilde', () => {
+  it('un saliente entregado sigue siendo la burbuja del lado propio con su tilde', () => {
     const { text, html } = bubble(msg({ status: 'delivered' }))
-    expect(html).toContain('bg-emerald-100')
+    expect(html).toContain('var(--chat-out-bg)')
     expect(text).toContain('Entregado')
     expect(text).not.toContain('Nota interna')
   })
@@ -115,5 +117,54 @@ describe('MessageBubble — mensajes reales (no se tocan)', () => {
     const { text } = bubble(msg({ status: 'failed', error_message: 'Número inválido' }))
     expect(text).toContain('No se pudo enviar: Número inválido')
     expect(text).not.toContain('Nota interna')
+  })
+})
+
+/**
+ * Fase 1 del sistema móvil. Son clases y un formato de hora: nada de esto se
+ * puede mirar en un navegador desde acá, pero cada uno tiene un síntoma concreto
+ * en un teléfono y ningún test de comportamiento los cubre.
+ */
+describe('MessageBubble — la burbuja en un teléfono', () => {
+  const anchoDeLaBurbuja = (html: string) => html.match(/max-w-\[\d+%\][^"]*/)?.[0] ?? ''
+
+  it('ocupa el 85% en celular y el 75% de md: para arriba', () => {
+    // Con 75% fijo, en una columna de ~356px las burbujas quedaban en ~245px y
+    // una dirección con altura y barrio se partía en tres renglones.
+    const ancho = anchoDeLaBurbuja(bubble(msg()).html)
+    expect(ancho).toContain('max-w-[85%]')
+    expect(ancho).toContain('md:max-w-[75%]')
+  })
+
+  it('muestra la HORA (14:32), no "hace 3 días"', () => {
+    // El hilo ya viene agrupado por día con su separador: lo relativo era
+    // redundante y escondía el único dato que faltaba.
+    const created = new Date()
+    created.setHours(14, 32, 0, 0)
+    const { text } = bubble(msg({ created_at: created.toISOString(), direction: 'in', status: 'received' }))
+    expect(text).toContain('14:32')
+    expect(text).not.toMatch(/hace \d|recién/)
+  })
+
+  it('la hora va ADENTRO de la burbuja, no en un renglón aparte', () => {
+    // Afuera costaba un renglón por mensaje sobre un hilo que arrancaba con ~50px.
+    const created = new Date()
+    created.setHours(9, 5, 0, 0)
+    const { html } = bubble(msg({ created_at: created.toISOString(), direction: 'in', status: 'received' }))
+    const burbuja = html.slice(html.indexOf('max-w-[85%]'))
+    const cierre = burbuja.indexOf('</div>')
+    expect(burbuja.slice(0, cierre)).toContain('09:05')
+  })
+
+  it('una foto no se derrama fuera de la burbuja', () => {
+    // Sin `max-w-full`, una foto apaisada se iba a ~455px dentro de una burbuja
+    // de ~220px y el hilo entero ganaba scroll horizontal. Es el caso más común:
+    // los clientes mandan fotos.
+    const { html } = bubble(
+      msg({ direction: 'in', status: 'received', media_url: 'https://ejemplo/f.jpg', media_mime_type: 'image/jpeg' }),
+    )
+    const img = html.match(/<img[^>]*>/)?.[0] ?? ''
+    expect(img).toContain('max-w-full')
+    expect(img).toContain('h-auto')
   })
 })

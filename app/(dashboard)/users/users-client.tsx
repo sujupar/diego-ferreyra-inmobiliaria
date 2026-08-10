@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, Mail, UserPlus, Clock, RotateCw, X, UserMinus, UserCheck, AlertTriangle } from 'lucide-react'
+import { useConfirmarEliminacion } from '@/components/ui/confirmar-eliminacion'
 
 const ROLE_COLORS: Record<Role, string> = {
     admin: 'bg-red-100 text-red-800',
@@ -36,6 +37,7 @@ export function UsersClient({
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
     const [actioning, setActioning] = useState<string | null>(null)
     const router = useRouter()
+    const { confirmarEliminacion, dialogoEliminacion } = useConfirmarEliminacion()
 
     async function handleInvite(e: React.FormEvent) {
         e.preventDefault()
@@ -140,8 +142,15 @@ export function UsersClient({
     }
 
     async function handleDeleteUser(profile: Profile) {
-        const confirmation = prompt(`Vas a BORRAR a ${profile.full_name} (${profile.email}) definitivamente. Sus deals, tasaciones y propiedades quedarán huérfanos. Para confirmar, escribí ELIMINAR:`)
-        if (confirmation !== 'ELIMINAR') return
+        // Era un `prompt()` del navegador: en un teléfono sale con la
+        // tipografía del sistema, apretado, y hay que pelearle al
+        // autocapitalizado para escribir la palabra exacta.
+        const confirmado = await confirmarEliminacion({
+            titulo: `Vas a borrar a ${profile.full_name}`,
+            detalle: `${profile.email} — sus procesos, tasaciones y propiedades quedan sin responsable asignado.`,
+            etiquetaAceptar: 'Borrar usuario',
+        })
+        if (!confirmado) return
         setActioning(profile.id)
         try {
             const res = await fetch(`/api/users/${profile.id}`, { method: 'DELETE' })
@@ -456,6 +465,7 @@ export function UsersClient({
                     </CardContent>
                 </Card>
             )}
+            {dialogoEliminacion}
         </div>
     )
 }

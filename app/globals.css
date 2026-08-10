@@ -163,6 +163,480 @@
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   SISTEMA RESPONSIVE — reglas base (Fase 0).
+
+   Se aplican una vez y arreglan muchos casos a la vez. El código de la app es
+   de escritorio primero (227 `md:`) y NO se invierte: acá se agrega el PISO de
+   celular, siempre detrás de `max-md:` o de una consulta de celular, así de
+   768px para arriba no cambia absolutamente nada.
+
+   Lo que está FUERA de `@layer` es a propósito. Todo lo que emite Tailwind 4
+   vive dentro de `@layer theme/base/components/utilities`, y el CSS sin capa le
+   gana a cualquier CSS con capa sin importar la especificidad. Es lo ÚNICO que
+   puede corregir los ~131 controles que traen `text-sm` escrito a mano en el
+   className sin editarlos uno por uno.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Un solo breakpoint nuevo, justificado con contenido real: abajo de 375px el
+   panel de emojis (288px fijos) y las grillas de 3 columnas dejan de entrar. */
+@theme {
+  --breakpoint-xs: 23.4375rem; /* 375px */
+}
+
+:root {
+  /* Alto REAL de la ventana visible. `dvh` sigue a la barra del navegador pero
+     NO al teclado: iOS achica el viewport VISUAL y deja el de LAYOUT igual, así
+     que con `100dvh` el compositor del chat queda tapado por el teclado.
+     Lo pisa `hooks/use-viewport-height.ts` con el alto del visual viewport; el
+     valor de acá es el que vale en el servidor y sin JavaScript. */
+  --app-vh: 100dvh;
+
+  /* Áreas seguras del teléfono (muesca arriba, barra de gestos abajo). Con
+     `viewport-fit=cover` en app/layout.tsx dejan de valer 0 y hay que
+     respetarlas en TODO lo que esté pegado a un borde. */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+
+  --topbar-h: 3.5rem; /* components/dashboard/Topbar.tsx = h-14 */
+  --tap: 2.75rem;     /* 44px — mínimo táctil recomendado */
+}
+
+/* ── 1. Ningún campo de texto por debajo de 16px en celular ─────────────────
+   iOS Safari hace zoom automático al enfocar un control con fuente < 16px y NO
+   lo deshace al salir: la página queda ampliada y corrida hasta que el usuario
+   pellizca. Sin capa, así le gana a los `text-sm`/`text-xs` del className. De
+   `md:` para arriba el diseño de 14px queda intacto. */
+@media (max-width: 767.98px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  textarea,
+  select {
+    font-size: 16px;
+    line-height: 1.25;
+  }
+}
+
+/* ── 2. Nada scrollea de costado ────────────────────────────────────────────
+   `clip` y NO `hidden`: `hidden` convierte al elemento en contenedor de scroll
+   y rompería el `sticky` de la barra superior. Es red de seguridad, no excusa
+   para no arreglar el desborde real. */
+body {
+  overflow-x: clip;
+}
+
+/* Un email o una URL sin espacios es UN token indivisible: dentro de un flex
+   sin `min-w-0` empuja la fila entera y arrastra la página (caso real: la lista
+   de Contactos). `anywhere` —y no `break-word`— además reduce el min-content,
+   que es lo que evita el empuje. Acotado al área de contenido del dashboard. */
+#contenido {
+  overflow-wrap: anywhere;
+}
+
+/* Mientras hay un diálogo abierto, Radix bloquea el scroll del <body>; como el
+   scroller real de la app pasó a ser `#contenido`, hay que bloquearlo ACÁ o el
+   fondo sigue scrolleando por detrás del modal. */
+body[data-scroll-locked] #contenido {
+  overflow: hidden;
+}
+
+/* ── 3. Áreas táctiles: agrandar el BLANCO sin agrandar el dibujo ───────────
+   Halo transparente centrado de 44px. Solo con punteros gruesos, así el mouse
+   no cambia de comportamiento. Dos controles pegados no quedan con zona muerta:
+   el límite se corre, pero todo punto sigue perteneciendo a uno de los dos. */
+@media (pointer: coarse) {
+  input[type='checkbox'],
+  input[type='radio'],
+  [data-slot='dialog-close'],
+  [data-slot='sheet-close'] {
+    position: relative;
+  }
+  input[type='checkbox']::after,
+  input[type='radio']::after,
+  [data-slot='dialog-close']::after,
+  [data-slot='sheet-close']::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--tap);
+    height: var(--tap);
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* ── 4. Utilidades del sistema ─────────────────────────────────────────────*/
+
+/* Alto de app: el shell y el chat usan ESTO, nunca `vh`. */
+@utility h-app {
+  height: var(--app-vh);
+}
+@utility min-h-app {
+  min-height: var(--app-vh);
+}
+@utility max-h-app {
+  max-height: var(--app-vh);
+}
+
+/* Áreas seguras. Obligatorias en TODO lo pegado a un borde desde que se adopta
+   `viewport-fit=cover`: compositor, panel del cliente, panel del menú. */
+@utility pb-safe {
+  padding-bottom: max(0.75rem, var(--safe-b));
+}
+@utility pt-safe {
+  padding-top: var(--safe-t);
+}
+@utility px-safe {
+  padding-left: var(--safe-l);
+  padding-right: var(--safe-r);
+}
+
+/* Todo scroller interno de la app. `contain` evita que el gesto se propague a
+   la página: el rebote de iOS y el "tirar para recargar" de Android (que hoy
+   pierde la conversación abierta) dejan de dispararse desde adentro. */
+@utility scroll-pane {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Scroller horizontal que SE VE que scrollea: sombras que se apagan solas en
+   los extremos, CSS puro. Para pestañas, steppers y tablas numéricas.
+
+   EL COLOR DEL DEGRADADO NO ES DECORATIVO: los dos degradados lineales son los
+   que TAPAN las dos sombras mientras no hay nada que deslizar. Si no valen el
+   color de la superficie que hay detrás, dejan de tapar y pasan a DIBUJAR: dos
+   parches de 24px en los extremos, a todo ancho y en todos los tamaños de
+   pantalla. En claro casi no se nota (`--card` y `--background` están a 1.5% de
+   distancia); en oscuro `--card` es 0.18 contra 0.13 de `--background` y se ven.
+   Por eso el color sale de `--scroll-fade-color`, que cada consumidor fija
+   según DÓNDE está apoyado — y `--card` queda solo como valor por omisión,
+   porque es el caso más común (una tabla o un stepper adentro de una tarjeta).
+   Como es una variable, también se puede fijar en un ancestro: hereda. */
+@utility scroll-x-fade {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  background:
+    linear-gradient(to right, var(--scroll-fade-color, var(--card)) 30%, transparent) left / 24px 100% no-repeat local,
+    linear-gradient(to left, var(--scroll-fade-color, var(--card)) 30%, transparent) right / 24px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.1), transparent) left / 12px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.1), transparent) right / 12px 100% no-repeat scroll;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Fila de metadatos que NUNCA empuja (el molde es `crm/_components/DealsList`,
+   la única lista del sistema que hoy no desborda con datos reales). */
+@utility row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+  gap: 0.125rem 0.5rem;
+}
+
+/* Objetivo táctil explícito para un control puntual. */
+@utility tap {
+  min-height: var(--tap);
+  min-width: var(--tap);
+}
+
+/* ── 5. Tokens del chat ────────────────────────────────────────────────────
+   DELIBERADAMENTE apuntan a los colores que el chat tiene HOY (fondo crema de
+   `.wa-thread-bg`, entrante blanco, saliente verde). El fondo crema y las
+   burbujas verdes fueron un pedido explícito del dueño; el pedido posterior
+   ("sin copiar WhatsApp, colores de marca") lo contradice y esa contradicción
+   la resuelve él, no el código. Los tokens existen para que ese cambio sea
+   tocar cuatro variables acá y no reescribir componentes. */
+:root {
+  --chat-surface: oklch(0.94 0.02 90);              /* .wa-thread-bg */
+  --chat-in-bg: oklch(1 0 0);                        /* bg-white */
+  --chat-in-fg: var(--foreground);
+  --chat-out-bg: oklch(95% 0.052 163.051);           /* emerald-100 */
+  --chat-out-fg: oklch(26.2% 0.051 172.552);         /* emerald-950 */
+  /* La hora y el estado ("Enviado", "Leído") viven ADENTRO de la burbuja desde
+     el rediseño de la Fase 1 — antes iban debajo, sobre el crema del hilo. El
+     verde es más oscuro que el crema, así que el gris de `--muted-foreground`
+     (0.55) pasó a dar 4.27:1 contra los 4.5:1 que pide AA para texto chico.
+     Estos dos valores son ESE gris bajado hasta pasar, medidos contra las DOS
+     burbujas: 4.65 sobre la saliente y 5.28 sobre la entrante en claro, 4.67 y
+     4.98 en oscuro. Mismo croma y mismo tono: se sigue leyendo como el gris del
+     sistema, solo que legible. NO es un cambio de paleta — el verde y el crema
+     no se tocan. Los mide `components/inbox/contraste-burbuja.test.ts`. */
+  --chat-meta: oklch(0.53 0.01 260);
+  /* Azul de "Leído". `text-blue-500` daba 3.31:1 en claro y 3.72:1 en oscuro
+     sobre la burbuja verde (en oscuro es una REGRESIÓN: sobre el crema daba
+     4.81). Mismo azul, con la luminosidad corrida hasta pasar AA: 4.75 y 4.61. */
+  --chat-read: oklch(0.53 0.16 259.815);
+  --chat-sep: var(--border);
+}
+.dark {
+  --chat-surface: oklch(0.2 0.015 90);
+  --chat-in-bg: oklch(27.4% 0.006 286.033);          /* zinc-800 */
+  --chat-in-fg: oklch(96.7% 0.001 286.375);          /* zinc-100 */
+  --chat-out-bg: oklch(37.8% 0.077 168.94 / 0.5);    /* emerald-900/50 */
+  --chat-out-fg: oklch(97.9% 0.021 166.113);         /* emerald-50 */
+  --chat-meta: oklch(0.67 0.01 260);
+  --chat-read: oklch(0.67 0.16 259.815);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   FASE 2 — La tabla se vuelve FICHA en pantalla angosta.
+
+   Una tabla de 6 a 8 columnas mide entre 800 y 950px; el teléfono da 358px de
+   ancho útil. La salida no es deslizar de costado fila por fila: es que cada
+   fila se apile como una ficha (identidad + estado arriba, metadatos abajo).
+
+   Tres decisiones que explican por qué esto se ve así y no de otra forma:
+
+   1. UN SOLO DOM, no dos vistas. La tentación es dibujar una lista de fichas Y
+      una tabla, y esconder una con `display`. Eso duplica el texto de cada
+      fila en el documento (peor para el lector de pantalla, el doble de nodos
+      en listados largos) y ejecuta cada `render()` de columna dos veces. Acá
+      la MISMA tabla se re-acomoda con CSS: `<table>` pasa a bloque, la
+      cabecera desaparece y cada `<tr>` pasa a ser un flex que envuelve. El
+      HTML es idéntico en las dos anchuras — lo único que cambia es el dibujo.
+
+   2. CONSULTA DE CONTENEDOR, no del viewport. `DataTable` se usa a ancho de
+      pantalla (Propiedades, Contactos, Visitas, Tasaciones) y también adentro
+      de tarjetas angostas del tablero de métricas. Un `max-md:` mediría la
+      VENTANA y se equivocaría en el segundo caso. `@container` mide la caja
+      real de la tabla, y además no tiene el problema de hidratación de
+      `useIsMobile()` (que en el render del servidor siempre dice "no").
+
+   3. EL INTERRUPTOR ES LA CLASE `.tabla-ficha`. Es lo único que declara el
+      contenedor llamado `tabla`; sin ella, NINGUNA regla de abajo puede
+      activarse. O sea: `cardMode={false}` no apaga un `if` de JavaScript,
+      directamente no crea el contenedor. Una tabla de números —donde comparar
+      columna contra columna ES la función— se queda como tabla.
+
+   Va FUERA de `@layer` a propósito: las utilidades de Tailwind viven en capa y
+   el CSS sin capa les gana siempre. Es lo que permite que estas reglas pisen
+   el `whitespace-nowrap`, el `px-4 py-3` y el `text-right` que las celdas
+   traen escritos en el className, sin editar una sola pantalla.
+
+   ── EL NÚMERO: 40rem (640px), y NO 48rem ──────────────────────────────────
+   La tentación es poner 48rem para que coincida con `md`. Está mal, y el
+   motivo es que acá se mide la CAJA DE LA TABLA, no la ventana: entre las dos
+   hay 240px de menú lateral (15rem) más el relleno de `#contenido`.
+
+     ventana 390px  (iPhone 14)          → caja  358px → ficha
+     ventana 667px  (iPhone SE apaisado) → caja  635px → ficha
+     ventana 844px  (iPhone 14 apaisado) → caja  556px → ficha
+     ventana 1024px (laptop chica)       → caja  736px → TABLA
+     ventana 1280px                      → caja  992px → TABLA
+
+   Con 48rem, la caja de una laptop de 1024px (736px) también daría "angosta" y
+   el escritorio pasaría a fichas sin que nadie lo pidiera. Con 40rem: TODOS los
+   teléfonos en vertical y casi todos apaisados quedan en ficha, y nada por
+   encima de una ventana de ~930px cambia una coma. Si algún día cambia el
+   ancho del menú lateral o el relleno del contenido, este número hay que
+   volver a calcularlo — no es "el breakpoint md".
+   ══════════════════════════════════════════════════════════════════════ */
+
+.tabla-ficha {
+  container-type: inline-size;
+  container-name: tabla;
+}
+
+/* Deslizamiento horizontal CON aviso de que hay más a la derecha: dos
+   degradados del color de la tarjeta tapan dos sombras; al deslizar, el
+   degradado se corre (va `local`) y la sombra aparece. En iOS la barra de
+   deslizamiento es invisible, así que sin esto una tabla cortada al medio de
+   una palabra se lee como una pantalla rota, no como algo que se desliza.
+   Se escribe con propiedades LARGAS (`background-image`, `background-size`…)
+   y no con el atajo `background`: el atajo reinicia `background-color` y le
+   borraría el fondo a la tarjeta. */
+.tabla-desliza {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  background-image:
+    linear-gradient(to right, var(--card) 30%, transparent),
+    linear-gradient(to left, var(--card) 30%, transparent),
+    radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.1), transparent),
+    radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.1), transparent);
+  background-position: left, right, left, right;
+  background-size: 24px 100%, 24px 100%, 12px 100%, 12px 100%;
+  background-repeat: no-repeat;
+  background-attachment: local, local, scroll, scroll;
+}
+.tabla-desliza::-webkit-scrollbar {
+  display: none;
+}
+
+/* En la vista de TABLA (ancha) estas tres piezas de la ficha no existen. Van
+   ANTES de la consulta de contenedor para que la consulta pueda encenderlas:
+   entre dos reglas de la misma especificidad gana la última que se escribe. */
+.tabla-ficha [data-celda='salto'],
+.tabla-ficha [data-celda='chevron'],
+.tabla-ficha .tabla-barra {
+  display: none;
+}
+
+@container tabla (max-width: 40rem) {
+  /* La tabla deja de ser tabla: sin esto los `<tr>` siguen siendo renglones y
+     el `order`/`flex-wrap` de abajo no tiene ningún efecto. */
+  .tabla-ficha table { display: block; }
+  .tabla-ficha thead { display: none; }
+  .tabla-ficha tbody { display: block; }
+
+  .tabla-ficha tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    column-gap: 0.5rem;
+    row-gap: 0.125rem;
+    /* 56px: el renglón ENTERO es el objetivo táctil, no el texto de adentro. */
+    min-height: 3.5rem;
+    padding: 0.75rem;
+  }
+
+  /* Las celdas pierden el relleno y la alineación de la tabla. El `text-align`
+     importa: "Precio" viene con `text-right` y en una ficha quedaría colgado
+     en medio de la nada. */
+  .tabla-ficha [data-celda] {
+    padding: 0;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .tabla-ficha [data-celda='seleccion'] {
+    order: 1;
+    flex: none;
+    width: auto;
+    padding-right: 0.25rem;
+  }
+
+  /* La identidad de la fila: se come el ancho sobrante y corta con puntos
+     suspensivos. `min-width: 0` es lo que permite que se encoja — sin eso, una
+     dirección larga empuja la ficha entera y arrastra la página. */
+  .tabla-ficha [data-celda='titulo'] {
+    order: 2;
+    flex: 1 1 0;
+    min-width: 0;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tabla-ficha [data-celda='insignia'] {
+    order: 3;
+    flex: none;
+  }
+
+  .tabla-ficha [data-celda='chevron'] {
+    order: 4;
+    display: block;
+    flex: none;
+    color: var(--muted-foreground);
+  }
+
+  /* El salto de renglón. En flexbox no hay forma de decir "de acá para abajo,
+     otra línea": la única es un elemento que ocupe el 100% del ancho. Mide 0
+     de alto, así que no se ve. */
+  .tabla-ficha [data-celda='salto'] {
+    order: 5;
+    display: block;
+    flex: 0 0 100%;
+    height: 0;
+    padding: 0;
+  }
+
+  .tabla-ficha [data-celda='dato'] {
+    order: 6;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+    color: var(--muted-foreground);
+  }
+  /* Un renglón de metadatos tiene que leerse como UNO solo: si cada dato trae
+     su propio tamaño (`text-sm` acá, `text-xs` allá) queda escalonado. */
+  .tabla-ficha [data-celda='dato'] :where(*) {
+    font-size: inherit;
+  }
+  /* Lo que separa un dato del siguiente es AIRE, no un punto.
+     Acá había un «·» pintado de `var(--border)`: 1.27:1 contra la tarjeta, o
+     sea invisible. No es una falla de AA (un separador es decorativo y AA no lo
+     alcanza), pero un separador que no se ve no separa nada — pagaba el ancho
+     de un carácter a cambio de cero. Subirlo a un gris legible tampoco servía:
+     competiría por atención con los datos, que es justo lo que un renglón de
+     metadatos no puede permitirse en 358px.
+     Queda entonces el doble de espacio: 0.5rem del `column-gap` del renglón más
+     0.5rem de acá. Va como `margin-left` en la celda y no como `::before`: el
+     dato corta con puntos suspensivos (`text-overflow`), y con el pseudo-
+     elemento adentro el separador se comía ancho del texto.
+     Va por atributo y no con el combinador `+` porque en el DOM las columnas
+     conservan el orden en que las declaró la pantalla (con el título y la
+     insignia en el medio), así que dos datos casi nunca son hermanos contiguos
+     — el orden VISUAL lo pone `order`, que el selector `+` no ve. */
+  .tabla-ficha [data-celda='dato']:not([data-primero]) {
+    margin-left: 0.5rem;
+  }
+
+  /* Lo que la pantalla decidió que no entra en una ficha. */
+  .tabla-ficha [data-celda='oculto'] { display: none; }
+
+  /* Ordenar y seleccionar todo viven en la cabecera de la tabla, que en la
+     ficha no se dibuja: sin esta barra las dos cosas quedan inalcanzables. */
+  .tabla-ficha .tabla-barra { display: flex; }
+
+  /* En ficha no hay desborde horizontal — el aviso de "se desliza" sobraría. */
+  .tabla-ficha.tabla-desliza { background-image: none; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   IMPRESIÓN — deshacer la cadena de alto.
+
+   La Fase 0 convirtió el área de contenido en el scroller de la app: el
+   `SidebarInset` mide `--app-vh` y no desborda, y el que scrollea pasó a ser
+   `#contenido` (`scroll-pane` = `overflow-y: auto`). Para la pantalla es lo
+   correcto — es lo que hace que el compositor del chat quede pegado arriba del
+   teclado y que los carteles de modo prueba se descuenten solos.
+
+   Para la IMPRESORA es una regresión, y grande: al imprimir, el navegador
+   recorta cada caja a su región visible, así que un contenedor de alto fijo con
+   `overflow` recortado sale como UNA pantalla y el resto del documento no se
+   imprime. El único botón "Imprimir" del sistema es el del informe de tasación
+   (`app/(dashboard)/appraisal/new/page.tsx`, `window.print()`) y pasó de sacar
+   el informe entero a sacar la primera pantalla.
+
+   Estas tres líneas devuelven el flujo normal SOLO en el medio `print`: alto
+   automático y desborde visible, que es exactamente lo que había antes de la
+   cadena de alto. En pantalla no cambia nada.
+
+   Va FUERA de `@layer` a propósito (mismo motivo que la regla de los 16px y que
+   el bloque de la ficha): `h-app` y `scroll-pane` son utilidades y viven en
+   capa, y el CSS sin capa le gana a cualquier capa sin importar la
+   especificidad ni el orden.
+
+   Lo que NO se toca y conviene saber: el riel del menú lateral es `fixed` y ya
+   salía impreso ANTES de la cadena de alto (`fixed inset-y-0 … md:flex` en
+   `components/ui/sidebar.tsx`, y el ancho de papel entra en `md:`), así que
+   sacarlo acá cambiaría lo impreso respecto de producción. Es deuda vieja, no
+   de esta tanda; si algún día molesta, se resuelve junto con el resto del
+   cromo de la aplicación.
+   ══════════════════════════════════════════════════════════════════════ */
+@media print {
+  [data-slot='sidebar-inset'] {
+    height: auto;
+    overflow: visible;
+  }
+  #contenido {
+    overflow: visible;
+  }
+}
+
 /* ── Editorial typography utilities ───────────────────────────── */
 @utility eyebrow {
   text-transform: uppercase;
@@ -369,13 +843,54 @@ html:has(.landing-root) {
    que reemplaza la decisión anterior de fondo liso sin imitar WhatsApp.
    CSS puro (radial-gradient repetido) — SIN descargar ninguna imagen ni sumar
    dependencias (decisión ya tomada). */
+/* El color del fondo sale del token `--chat-surface` (arriba), que HOY vale
+   exactamente el mismo oklch que estaba escrito acá: cero cambio visual. Se
+   cablea al token para que el día que el dueño resuelva la contradicción de
+   paleta, cambiar el fondo del hilo sea cambiar UNA variable. La textura de
+   puntitos se queda como está — sacarla ya sería cambiarle el aspecto al chat,
+   y eso no se decide en una tanda de responsive. */
 .wa-thread-bg {
-  background-color: oklch(0.94 0.02 90);
+  background-color: var(--chat-surface);
   background-image: radial-gradient(circle at center, oklch(0.13 0.01 260 / 0.05) 1px, transparent 1px);
   background-size: 20px 20px;
 }
 .dark .wa-thread-bg {
-  background-color: oklch(0.2 0.015 90);
+  background-color: var(--chat-surface);
   background-image: radial-gradient(circle at center, oklch(0.98 0.002 247.839 / 0.06) 1px, transparent 1px);
   background-size: 20px 20px;
+}
+
+/* ── Entrar al chat: 180ms, y solo en celular ───────────────────────────────
+   En un teléfono la lista y el hilo ocupan la MISMA pantalla, así que abrir una
+   conversación reemplaza todo de golpe. Sin ninguna pista de movimiento eso se
+   lee como una página que recargó, y no queda dicho que se ENTRÓ en algo (ni,
+   por lo tanto, que se sale hacia la izquierda). El desplazamiento corto desde
+   la derecha es esa pista: es la misma dirección que deshace el gesto de volver.
+
+   Tres decisiones que la mantienen honesta:
+   · `prefers-reduced-motion: no-preference` — para quien pidió menos
+     movimiento, esta regla directamente no existe y el chat aparece de una.
+   · `max-width: 767.98px` — en escritorio la lista y el hilo conviven, no hay
+     ningún "entrar" que anunciar, y la promesa del sistema es que de 768px para
+     arriba no cambia nada.
+   · 6% y no 100% — es un acento, no un pase de diapositivas. Un desplazamiento
+     completo obliga a esperar a que termine para poder leer.
+
+   Va como clase suelta (sin `@layer`) porque la aplica el chat solo cuando está
+   abierto (`WhatsappClient.tsx`): la animación corre al abrir y nunca al cerrar. */
+@media (prefers-reduced-motion: no-preference) and (max-width: 767.98px) {
+  .entrada-chat {
+    animation: entrada-chat 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+@keyframes entrada-chat {
+  from {
+    transform: translateX(6%);
+    opacity: 0.4;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
 }

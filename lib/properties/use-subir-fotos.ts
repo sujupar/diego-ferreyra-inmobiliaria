@@ -38,11 +38,33 @@ export interface SubidaDeFotos {
     onChange: (e: ChangeEvent<HTMLInputElement>) => void
   }
   /**
+   * El MISMO input, pero abriendo la cámara trasera.
+   *
+   * POR QUÉ es un input aparte y no un atributo más del de arriba: `capture`
+   * fuerza la cámara y ANULA `multiple` — un solo input no puede ofrecer las dos
+   * cosas. Son dos entradas distintas al mismo camino de subida: "elegir de la
+   * galería" (varias) y "sacar una foto ahora" (una).
+   *
+   * Este es el caso de uso móvil por excelencia: el asesor parado adentro de la
+   * propiedad. Sin esto tenía que salir de la app, abrir la cámara, sacar la
+   * foto, volver y buscarla en el carrete.
+   */
+  inputPropsCamara: {
+    ref: RefObject<HTMLInputElement | null>
+    type: 'file'
+    accept: string
+    capture: 'environment'
+    className: string
+    onChange: (e: ChangeEvent<HTMLInputElement>) => void
+  }
+  /**
    * Abre el selector de archivos. DEBE llamarse SINCRÓNICO desde un `onClick`:
    * diferirlo (a un `useEffect`, un `setTimeout`, un `await`) pierde la
    * activación del usuario y el navegador ignora el `.click()` en silencio.
    */
   abrirSelector: () => void
+  /** Abre la cámara. Mismas dos reglas que `abrirSelector`. */
+  abrirCamara: () => void
   subiendo: boolean
   /** 0-100. Solo tiene sentido mientras `subiendo` es true. */
   progreso: number
@@ -52,6 +74,7 @@ export function useSubirFotos(propertyId: string, onChanged: () => void): Subida
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const camaraRef = useRef<HTMLInputElement>(null)
 
   async function uploadFiles(fileList: FileList) {
     const list = Array.from(fileList)
@@ -109,7 +132,11 @@ export function useSubirFotos(propertyId: string, onChanged: () => void): Subida
       toast.error(e instanceof Error ? e.message : 'Error al subir', { id: t })
     } finally {
       setUploading(false); setProgress(0)
+      // Los DOS inputs se vacían: si no, volver a elegir el mismo archivo (o
+      // reintentar con la foto que acaba de fallar) no dispara `change` y el
+      // botón parece muerto.
       if (inputRef.current) inputRef.current.value = ''
+      if (camaraRef.current) camaraRef.current.value = ''
       if (totalOk > 0) onChanged()
     }
   }
@@ -123,7 +150,16 @@ export function useSubirFotos(propertyId: string, onChanged: () => void): Subida
       className: 'hidden',
       onChange: e => { if (e.target.files) uploadFiles(e.target.files) },
     },
+    inputPropsCamara: {
+      ref: camaraRef,
+      type: 'file',
+      accept: 'image/*',
+      capture: 'environment',
+      className: 'hidden',
+      onChange: e => { if (e.target.files) uploadFiles(e.target.files) },
+    },
     abrirSelector: () => inputRef.current?.click(),
+    abrirCamara: () => camaraRef.current?.click(),
     subiendo: uploading,
     progreso: progress,
   }

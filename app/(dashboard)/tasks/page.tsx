@@ -82,8 +82,20 @@ interface Task {
   channel: 'call' | 'email' | 'message' | 'visit' | 'document' | 'other' | null
 }
 
-function formatDate(d: string) {
-  return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+/**
+ * "01/08/26, 12:00" — la misma forma corta que usa la agenda (`VisitsTable`).
+ *
+ * `toLocaleString('es-AR')` a secas imprime "1/8/2026, 12:00:00": los SEGUNDOS
+ * no le sirven a nadie y en un teléfono cada carácter que sobra le come ancho
+ * al dato que sigue. Va en DOS llamadas a propósito: pidiendo fecha y hora
+ * juntas, es-AR ignora el `2-digit` del día y del mes; y `hour:'2-digit'` sin
+ * `hourCycle` devuelve "12:00 p. m.", reloj de 12 horas que acá no se usa.
+ */
+function fechaHoraCorta(d: string): string {
+  const cuando = new Date(d)
+  const dia = cuando.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+  const hora = cuando.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+  return `${dia}, ${hora}`
 }
 
 function getTaskLink(task: Task): string {
@@ -301,18 +313,31 @@ export default function TasksPage() {
       {overdueVisits.length > 0 && (
         <Card className="border-orange-500 border-2 mb-4">
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-lg font-semibold text-orange-700">
                 Visitas pendientes de marcar ({overdueVisits.length})
               </h3>
-              <Link href="/visits" className="text-sm text-primary underline">Ver todas</Link>
+              {/* 44px de alto en celular sin dejar de ser un enlace de texto. */}
+              <Link href="/visits" className="inline-flex items-center text-sm text-primary underline max-md:min-h-11">
+                Ver todas
+              </Link>
             </div>
-            <ul className="space-y-2">
+            <ul className="space-y-2 max-md:space-y-0 max-md:divide-y">
               {overdueVisits.map(v => (
                 <li key={v.id} className="text-sm">
-                  <Link href={`/visits/${v.id}`} className="hover:underline">
-                    <span className="font-medium">{v.property?.address ?? '-'}</span>
-                    <span className="text-muted-foreground"> · {v.client_name} · {new Date(v.scheduled_at).toLocaleString('es-AR')}</span>
+                  {/* En celular cada visita atrasada es una fila tocable de 44px
+                      —el asesor las marca de a una, en la calle— y la dirección
+                      va en su propio renglón: pegada al cliente y a la fecha con
+                      puntos medios, a 358px quedaba una sopa de tres datos. */}
+                  <Link
+                    href={`/visits/${v.id}`}
+                    className="block hover:underline max-md:flex max-md:min-h-11 max-md:flex-col max-md:justify-center max-md:py-2"
+                  >
+                    <span className="font-medium break-words">{v.property?.address ?? '-'}</span>
+                    <span className="text-muted-foreground max-md:block max-md:text-xs">
+                      <span className="max-md:hidden"> · </span>
+                      {v.client_name} · {fechaHoraCorta(v.scheduled_at)}
+                    </span>
                   </Link>
                 </li>
               ))}
@@ -324,8 +349,11 @@ export default function TasksPage() {
       <div className="space-y-2">
         <p className="eyebrow">Hoy · Bandeja</p>
         <div className="flex items-end justify-between gap-4 flex-wrap">
-          <h1 className="display text-4xl">Pendientes</h1>
-          <div className="flex items-center gap-3">
+          <h1 className="display text-4xl max-md:text-3xl">Pendientes</h1>
+          {/* `flex-wrap` + `min-w-0`: el resumen puede decir "50 tareas
+              pendientes · las primeras 50 por estado — puede haber más" y sin
+              esto empujaba al botón "Nueva tarea" fuera de la tarjeta. */}
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
             <p className="text-sm text-muted-foreground tabular-n">{resumen}</p>
             <AddTaskDialog
               onCreated={loadTasks}
@@ -335,7 +363,9 @@ export default function TasksPage() {
         </div>
       </div>
 
-      <div className="flex gap-2">
+      {/* A 320px los tres filtros piden ~305px y el contenido útil son 288: sin
+          `flex-wrap` el tercero se cortaba contra el borde. */}
+      <div className="flex flex-wrap gap-2">
         <Button variant={filter === 'pending' ? 'default' : 'outline'} size="sm" onClick={() => setFilter('pending')}>Pendientes</Button>
         <Button variant={filter === 'completed' ? 'default' : 'outline'} size="sm" onClick={() => setFilter('completed')}>Completadas</Button>
         <Button variant={filter === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setFilter('all')}>Todas</Button>
@@ -397,8 +427,26 @@ export default function TasksPage() {
                   ? 'border-[color:var(--brand)]/40 shadow-[inset_0_1px_0_0_color-mix(in_oklch,var(--brand)_30%,transparent)] bg-[color:var(--brand-soft)]/30 hover:shadow-md'
                   : 'hover:bg-muted/30'}`}
               >
-                <CardContent className="flex items-center gap-4 py-3">
-                  <div className={`h-10 w-10 rounded-full flex items-center justify-center ${config.color} ${config.urgent ? 'ring-1 ring-inset ring-white/30' : ''}`}>
+                {/*
+                  En celular la fila se APILA: el bloque de texto arriba a ancho
+                  completo, las acciones abajo en su propio renglón.
+
+                  Antes era una sola fila `flex items-center` que nunca se
+                  partía: a 390px quedaban ~310px adentro de la tarjeta y se los
+                  repartían el ícono (40px), dos gaps (32px) y los tres botones
+                  (~130px) — al título de la tarea le sobraban ~110px, o sea
+                  cuatro o cinco renglones de dos palabras, y la descripción
+                  truncada se leía "Se ne…". La bandeja del día era una columna
+                  de palabras sueltas.
+
+                  El ícono y el texto van en un envoltorio propio para que en
+                  escritorio el resultado sea EXACTAMENTE el de antes (mismo
+                  gap-4 entre ícono, texto y acciones) y en celular solo se
+                  parta por la juntura de arriba.
+                */}
+                <CardContent className="flex items-center gap-4 py-3 max-md:flex-col max-md:items-stretch max-md:gap-3">
+                  <div className="flex min-w-0 flex-1 items-center gap-4">
+                  <div className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center ${config.color} ${config.urgent ? 'ring-1 ring-inset ring-white/30' : ''}`}>
                     <Icon className="h-5 w-5" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -427,8 +475,16 @@ export default function TasksPage() {
                         </span>
                       )}
                     </div>
-                    {task.description && <p className="text-sm text-muted-foreground truncate">{task.description}</p>}
-                    <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground tabular-n">
+                    {/* Con la fila apilada el texto tiene el ancho entero, así
+                        que en celular en vez de recortar a una línea se muestran
+                        dos: `truncate` fija `white-space:nowrap`, por eso hace
+                        falta también soltarlo. */}
+                    {task.description && (
+                      <p className="text-sm text-muted-foreground max-md:whitespace-normal max-md:line-clamp-2 md:truncate">
+                        {task.description}
+                      </p>
+                    )}
+                    <div className="row-meta mt-0.5 text-[11px] text-muted-foreground tabular-n">
                       {task.due_date && (() => {
                         const today = new Date().toISOString().slice(0, 10)
                         const isOverdue = task.due_date < today
@@ -447,26 +503,42 @@ export default function TasksPage() {
                           </span>
                         )
                       })()}
-                      {!task.due_date && <span>{formatDate(task.created_at)}</span>}
+                      {!task.due_date && <span>{fechaHoraCorta(task.created_at)}</span>}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  </div>
+                  {/*
+                    Completar y descartar son acciones OPUESTAS y hasta acá eran
+                    dos cuadraditos de 32px, solo ícono, separados por 8px: por
+                    debajo del mínimo táctil y sin nada que los distinga salvo el
+                    dibujo. Tocar mal descartaba una tarea en vez de completarla.
+
+                    En celular pasan a tener ETIQUETA visible y 44px de alto, y
+                    se reparten el ancho de la tarjeta (la flecha de "Abrir"
+                    queda fija a un costado, que es la acción que no destruye
+                    nada). El `aria-label` se queda en los tres casos: en
+                    escritorio siguen siendo solo íconos.
+                  */}
+                  <div className="flex items-center gap-2 max-md:w-full">
                     {task.status === 'pending' && (
                       <>
-                        <Button size="sm" variant="outline" aria-label="Completar tarea" onClick={() => handleAction(task.id, 'complete')} disabled={completing === task.id}>
+                        <Button size="sm" variant="outline" aria-label="Completar tarea" className="max-md:h-11 max-md:flex-1" onClick={() => handleAction(task.id, 'complete')} disabled={completing === task.id}>
                           {completing === task.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />}
+                          <span className="md:hidden">Listo</span>
                         </Button>
-                        <Button size="sm" variant="ghost" aria-label="Descartar tarea" onClick={() => handleAction(task.id, 'dismiss')} disabled={completing === task.id}>
+                        <Button size="sm" variant="ghost" aria-label="Descartar tarea" className="max-md:h-11 max-md:flex-1" onClick={() => handleAction(task.id, 'dismiss')} disabled={completing === task.id}>
                           <X className="h-3.5 w-3.5" />
+                          <span className="md:hidden">Descartar</span>
                         </Button>
                       </>
                     )}
                     {link !== '#' && (
-                      <Link href={link}>
+                      <Link href={link} aria-label={`Abrir ${task.title}`} className="shrink-0">
                         <Button
                           size="sm"
+                          tabIndex={-1}
+                          className={`max-md:h-11 max-md:w-11 ${config.urgent ? 'bg-[color:var(--brand)] text-white hover:bg-[color:var(--brand)]/90' : ''}`}
                           variant={config.urgent ? 'default' : 'ghost'}
-                          className={config.urgent ? 'bg-[color:var(--brand)] text-white hover:bg-[color:var(--brand)]/90' : ''}
                         >
                           <ChevronRight className="h-4 w-4" />
                         </Button>
