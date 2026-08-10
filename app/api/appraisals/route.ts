@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { getUser } from '@/lib/auth/get-user'
-import { alcanceTasaciones } from '@/lib/auth/appraisal-access'
+import { puedeEditarTasacion, puedeVerTasaciones } from '@/lib/auth/appraisal-access'
 import { insertAppraisalWithComparables } from '@/lib/supabase/appraisals-write'
 import type { SaveAppraisalInput } from '@/lib/supabase/appraisals'
 import { currentPeriod } from '@/lib/market-data/period'
@@ -43,7 +43,12 @@ export async function GET(request: NextRequest) {
     // properties.view_all + properties.review) y sin embargo recibía el
     // listado COMPLETO de la inmobiliaria, con el que después borraba.
     // Ver lib/auth/appraisal-access.ts.
-    if (alcanceTasaciones(me.profile.role) === 'ninguna') {
+    //
+    // El candado pregunta por el LISTADO, no por "¿alcanza algo?": desde que el
+    // abogado puede leer la tasación de la propiedad que revisa (alcance
+    // `vinculadas`), un `!== 'ninguna'` acá le devolvería las 34 de la
+    // inmobiliaria — justo lo que este 403 vino a cerrar.
+    if (!puedeVerTasaciones(me.profile.role)) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 
@@ -116,10 +121,11 @@ export async function POST(request: NextRequest) {
   // try para que el redirect propague a Next.js en vez de convertirse en 500.
   const user = await requireAuth()
   try {
-    // D1, misma puerta que el GET: un rol sin alcance sobre tasaciones tampoco
-    // las crea. Antes acá solo había `requireAuth()`, o sea que el abogado
-    // podía insertar tasaciones además de leerlas y borrarlas.
-    if (alcanceTasaciones(user.profile.role) === 'ninguna') {
+    // D1, misma puerta que el GET: un rol que no ESCRIBE tasaciones tampoco las
+    // crea. Antes acá solo había `requireAuth()`, o sea que el abogado podía
+    // insertar tasaciones además de leerlas y borrarlas; y con `!== 'ninguna'`
+    // volvería a poder, porque su alcance ya no es `ninguna` sino `vinculadas`.
+    if (!puedeEditarTasacion(user.profile.role)) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
     const input = (await request.json()) as SaveAppraisalInput & { dealId?: string }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
-import { alcanceTasaciones } from '@/lib/auth/appraisal-access'
+import { alcanceTasaciones, puedeEditarTasacion } from '@/lib/auth/appraisal-access'
 
 function getAdmin() {
     return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -36,8 +36,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         // comportamiento: un rol sin alcance (abogado) antes caía en la rama de
         // pertenencia de abajo — que en la práctica le daba 403, pero por
         // accidente y después de leer la fila; ahora se corta acá.
+        //
+        // El candado pregunta por la ESCRITURA, no por "¿alcanza algo?": esto
+        // reasigna a qué CLIENTE pertenece la tasación, y el alcance
+        // `vinculadas` del abogado es de lectura. Con `!== 'ninguna'` el
+        // abogado pasaría a la rama de pertenencia y volvería a depender de un
+        // accidente (que no sea el asignado) para recibir su 403.
         const alcance = alcanceTasaciones(user.profile.role)
-        if (alcance === 'ninguna') {
+        if (!puedeEditarTasacion(user.profile.role)) {
             return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
         }
 

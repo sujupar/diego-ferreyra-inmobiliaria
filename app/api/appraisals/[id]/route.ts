@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { canAccessAppraisal } from '@/lib/auth/entity-access'
-import { puedeBorrarTasacion } from '@/lib/auth/appraisal-access'
+import {
+  alcanceTasaciones, proyeccionDeTasacion, puedeBorrarTasacion, puedeEditarTasacion,
+} from '@/lib/auth/appraisal-access'
 import { replaceAppraisalComparables } from '@/lib/supabase/appraisals-write'
 import type { SaveAppraisalInput } from '@/lib/supabase/appraisals'
 
@@ -21,9 +23,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     }
     const supabase = getAdmin()
 
+    // Cuánto de la tasación viaja, según el alcance del rol. El abogado
+    // (alcance `vinculadas`) recibe la ficha RESUMIDA: el servidor selecciona
+    // menos columnas y no toca los comparables — no es la pantalla la que
+    // esconde. Ver `proyeccionDeTasacion`.
+    const proyeccion = proyeccionDeTasacion(alcanceTasaciones(user.profile.role))
+
     const [appraisalRes, comparablesRes] = await Promise.all([
-      supabase.from('appraisals').select('*').eq('id', id).single(),
-      supabase.from('appraisal_comparables').select('*').eq('appraisal_id', id).order('sort_order'),
+      supabase.from('appraisals').select(proyeccion.columnas).eq('id', id).single(),
+      proyeccion.comparables
+        ? supabase.from('appraisal_comparables').select('*').eq('appraisal_id', id).order('sort_order')
+        : Promise.resolve({ data: [] as unknown[], error: null }),
     ])
 
     if (appraisalRes.error) {
@@ -31,8 +41,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       throw appraisalRes.error
     }
 
+    // El `select` ahora recibe una variable, no un literal: supabase-js deduce
+    // la forma de la fila del texto del `select`, así que sin literal el tipo
+    // de `data` deja de ser un objeto y el spread no compila. La fila es la que
+    // pidió la proyección; el cast lo dice de una vez.
+    const fila = appraisalRes.data as unknown as Record<string, unknown>
+
     return NextResponse.json({
-      data: { ...appraisalRes.data, comparables: comparablesRes.data || [] },
+      data: { ...fila, comparables: comparablesRes.data || [] },
+      // Le avisa a la pantalla de la tasación que esto NO alcanza para armar el
+      // informe. Ver `ProyeccionTasacion.resumida`.
+      resumida: proyeccion.resumida,
     })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error' }, { status: 500 })
@@ -49,6 +68,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const user = await requireAuth()
   try {
     const { id } = await params
+    // DOS candados, como en el DELETE. `canAccessAppraisal` dice si la tasación
+    // cae en su alcance; este dice si ese alcance ESCRIBE. Sin él, la lectura
+    // acotada del abogado (alcance `vinculadas`) sería permiso para reescribir
+    // la valuación de la propiedad que está revisando.
+    if (!puedeEditarTasacion(user.profile.role)) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     if (!(await canAccessAppraisal(user, id))) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
@@ -84,6 +110,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const user = await requireAuth()
   try {
     const { id } = await params
+    // Mismo par de candados que el PUT: guardar los ajustes del informe también
+    // es escribir la tasación.
+    if (!puedeEditarTasacion(user.profile.role)) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
     if (!(await canAccessAppraisal(user, id))) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }

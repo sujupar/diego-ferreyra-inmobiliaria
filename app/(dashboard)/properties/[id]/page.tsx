@@ -32,6 +32,13 @@ import { HistoryTab, type VisitFeedback } from '@/components/properties/detail/t
 
 interface PropertyData {
   id: string
+  /**
+   * La tasación de la que nació esta ficha. `GET /api/properties/[id]` hace
+   * `select('*')`, así que ya venía en la respuesta; hacía falta declararla
+   * para que llegue a la pestaña Propiedad — sin esto el panel de tasación del
+   * abogado nunca se monta, porque el campo llega `undefined`.
+   */
+  appraisal_id: string | null
   address: string
   neighborhood: string
   city: string

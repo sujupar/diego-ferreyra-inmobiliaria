@@ -67,9 +67,12 @@ export function getNavSections(role: Role): NavGroup[] {
     // permiso". Un botón que existe únicamente para negarse es peor que no
     // tenerlo.
     //
-    // Si algún día necesita ver la tasación de la propiedad que está revisando,
-    // la respuesta NO es devolver este ítem —que lo manda al listado completo—
-    // sino darle lectura acotada a ESA tasación desde la ficha de la propiedad.
+    // Desde 2026-08-10 SÍ ve la tasación de la propiedad que revisa, y este
+    // ítem sigue sin estar, a propósito: esa lectura es CONTEXTUAL —un panel de
+    // solo lectura dentro de la ficha de la propiedad, con la ficha resumida
+    // que arma el servidor (alcance `vinculadas`, lib/auth/appraisal-access)— y
+    // no un listado. Devolver el ítem lo mandaría al Historial completo, que le
+    // sigue respondiendo 403.
     return [{ label: null, entries: [PENDIENTES, REVISION_LEGAL] }]
   }
 

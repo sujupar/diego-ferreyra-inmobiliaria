@@ -37,6 +37,15 @@ export default function AppraisalDetailPage() {
     const [valuationOverride, setValuationOverride] = useState<ValuationResult | null>(null)
     const [savingFeatures, setSavingFeatures] = useState(false)
     const [advisorPhotoUrl, setAdvisorPhotoUrl] = useState<string | undefined>(undefined)
+    /**
+     * El servidor mandó la ficha RESUMIDA (alcance `vinculadas`: el abogado
+     * sobre la tasación de una propiedad que revisa). Esta pantalla arma el
+     * informe COMPLETO —recalcula la valuación, ofrece PDF, edición y editor de
+     * contacto—, así que con la mitad de los datos dibujaría un informe vacío
+     * con botones que responden 403. Se corta acá y se lo manda a donde su
+     * lectura sí vive: la ficha de la propiedad que está revisando.
+     */
+    const [soloDesdeLaPropiedad, setSoloDesdeLaPropiedad] = useState(false)
 
     // Market image settings are loaded lazily by PDFPreviewModal on open
 
@@ -48,8 +57,9 @@ export default function AppraisalDetailPage() {
                 if (!r.ok) throw new Error('Not found')
                 return r.json()
             })
-            .then(({ data }) => {
+            .then(({ data, resumida }) => {
                 if (!data) { setError('Tasación no encontrada'); return }
+                if (resumida) { setSoloDesdeLaPropiedad(true); return }
                 setAppraisal(data as AppraisalDetail)
                 // Cargar los ajustes guardados (textos, semáforos, overrides de precio) para
                 // que el informe web y el modal muestren lo persistido (ej. Zona de No Venta).
@@ -197,6 +207,26 @@ export default function AppraisalDetailPage() {
                     </div>
                     <div className="h-48 bg-muted animate-pulse rounded" />
                 </div>
+            </div>
+        )
+    }
+
+    // Va ANTES del bloque de error: `appraisal` quedó en null a propósito, y
+    // sin esta rama el abogado leería "Tasación no encontrada" —que es falso,
+    // la tasación existe y él tiene acceso al resumen— con un botón al
+    // Historial, que a él le responde 403.
+    if (soloDesdeLaPropiedad) {
+        return (
+            <div className="max-w-5xl mx-auto text-center py-20">
+                <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <h2 className="text-xl font-semibold mb-2">
+                    Esta tasación se ve desde la ficha de la propiedad
+                </h2>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                    Tenés el resumen de la tasación en la pestaña «Propiedad» de la propiedad
+                    que estás revisando. El informe completo —valuación, comparables y datos
+                    del cliente— no es parte de la revisión legal.
+                </p>
             </div>
         )
     }

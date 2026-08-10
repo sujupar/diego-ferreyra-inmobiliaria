@@ -37,18 +37,30 @@ vi.mock('@supabase/supabase-js', () => {
 vi.mock('@/lib/auth/get-user', () => ({
   getUser: vi.fn(async () => ({ id: 'yo-1', profile: { id: 'yo-1', role: registro.rol } })),
 }))
-vi.mock('@/lib/auth/require-role', () => ({ requireAuth: vi.fn() }))
-vi.mock('@/lib/supabase/appraisals-write', () => ({ insertAppraisalWithComparables: vi.fn() }))
+vi.mock('@/lib/auth/require-role', () => ({
+  requireAuth: vi.fn(async () => ({ id: 'yo-1', profile: { id: 'yo-1', role: registro.rol } })),
+}))
+const { insertar } = vi.hoisted(() => ({ insertar: vi.fn(async () => 'tasacion-nueva') }))
+vi.mock('@/lib/supabase/appraisals-write', () => ({ insertAppraisalWithComparables: insertar }))
 
-import { GET } from './route'
+import { GET, POST } from './route'
 
 function pedir(qs: string) {
   return GET(new Request(`http://local/api/appraisals${qs}`) as never)
 }
 
+function crear(cuerpo: unknown = { subject: { title: 'x' }, valuationResult: {}, comparables: [] }) {
+  return POST(new Request('http://local/api/appraisals', {
+    method: 'POST',
+    body: JSON.stringify(cuerpo),
+    headers: { 'content-type': 'application/json' },
+  }) as never)
+}
+
 beforeEach(() => {
   registro.llamadas = []
   registro.rol = 'admin'
+  insertar.mockClear()
 })
 
 /** El primer `.order(...)` es el orden principal; el segundo es el desempate. */
@@ -96,6 +108,11 @@ describe('GET /api/appraisals — rango de fechas', () => {
  */
 describe('GET /api/appraisals — quién puede pedir el listado', () => {
   it('el abogado recibe 403, no el listado entero', async () => {
+    // Sigue valiendo DESPUÉS de darle la lectura acotada de la tasación de la
+    // propiedad que revisa (alcance `vinculadas`): esa lectura es de a UNA,
+    // desde la ficha. Listado no tiene, y este es el caso que lo clava — si el
+    // candado volviera a preguntar "¿alcanza algo?" en vez de "¿tiene
+    // listado?", acá se pondría rojo.
     registro.rol = 'abogado'
     const res = await pedir('')
     expect(res.status).toBe(403)
@@ -112,6 +129,30 @@ describe('GET /api/appraisals — quién puede pedir el listado', () => {
     for (const rol of ['admin', 'dueno', 'coordinador', 'asesor']) {
       registro.rol = rol
       expect((await pedir('')).status).toBe(200)
+    }
+  })
+})
+
+describe('POST /api/appraisals — quién puede crear', () => {
+  it('el abogado no crea tasaciones, y el INSERT ni se intenta', async () => {
+    registro.rol = 'abogado'
+    const res = await crear()
+    expect(res.status).toBe(403)
+    expect(insertar).not.toHaveBeenCalled()
+  })
+
+  it('un rol desconocido tampoco (falla cerrado)', async () => {
+    registro.rol = 'rol_que_no_existe'
+    expect((await crear()).status).toBe(403)
+    expect(insertar).not.toHaveBeenCalled()
+  })
+
+  it('los roles de siempre sí crean', async () => {
+    for (const rol of ['admin', 'dueno', 'coordinador', 'asesor']) {
+      insertar.mockClear()
+      registro.rol = rol
+      expect((await crear()).status).toBe(200)
+      expect(insertar).toHaveBeenCalledTimes(1)
     }
   })
 })

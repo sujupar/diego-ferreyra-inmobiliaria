@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { formatMoney, operationLabel, propertyTypeLabel } from '@/lib/properties/detail-view'
 import { estadoComercialEfectivo } from '@/lib/properties/commercial-status'
 import { PropertyCommercialStatusCard } from '../PropertyCommercialStatusCard'
+import { PropertyAppraisalCard } from '../PropertyAppraisalCard'
 
 // Leaflet toca `window`: fuera del render de servidor.
 const PropertyLocationMap = dynamic(
@@ -14,6 +15,12 @@ const PropertyLocationMap = dynamic(
 
 export interface OverviewProperty {
   id: string
+  /**
+   * `properties.appraisal_id`: la tasación de la que nació esta ficha. Es el
+   * vínculo que le habilita al abogado la lectura acotada (ver
+   * `PropertyAppraisalCard` y `lib/auth/appraisal-access.ts`).
+   */
+  appraisal_id?: string | null
   /** Espejo heredado del descarte masivo: participa del estado comercial. */
   status?: string | null
   commercial_status?: string | null
@@ -92,6 +99,18 @@ export function OverviewTab({ property, isAbogado, onChanged }: { property: Over
           soldAt={property.sold_at ?? null}
           onChanged={onChanged}
         />
+      )}
+
+      {/*
+        La tasación vinculada, SOLO para el abogado y solo si esta propiedad
+        tiene una. Es la entrada contextual que pidió el dueño: el abogado ya no
+        tiene el Historial ni el ítem del menú, así que sin esto no hay forma de
+        que vea con cuánto se tasó la propiedad cuyos papeles está revisando.
+        Los demás roles ya llegan por el Historial y por el proceso: no se les
+        cambia la pantalla.
+      */}
+      {isAbogado && property.appraisal_id && (
+        <PropertyAppraisalCard appraisalId={property.appraisal_id} />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-6">
