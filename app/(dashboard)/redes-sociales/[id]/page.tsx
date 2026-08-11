@@ -133,14 +133,14 @@ export default function CarruselDetailPage() {
     } catch (e) { alert('Export: ' + (e as Error).message) } finally { setExporting(false) }
   }
 
-  if (error) return <div className="max-w-4xl mx-auto p-8"><p className="text-red-600">{error}</p></div>
-  if (!data) return <div className="max-w-4xl mx-auto p-8 text-muted-foreground">Cargando…</div>
+  if (error) return <div className="w-full max-w-4xl mx-auto p-8"><p className="text-red-600">{error}</p></div>
+  if (!data) return <div className="w-full max-w-4xl mx-auto p-8 text-muted-foreground">Cargando…</div>
 
   const generating = data.status === 'generating_images'
   const ready = data.status === 'ready'
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
+    <div className="w-full max-w-5xl mx-auto px-4 py-8">
       <div className="mb-4">
         <Link href="/redes-sociales" className="text-sm text-muted-foreground hover:underline">← Redes Sociales</Link>
       </div>

@@ -204,7 +204,7 @@ export default function SettingsPage() {
     }
 
     return (
-        <div className="max-w-4xl mx-auto space-y-8">
+        <div className="w-full max-w-4xl mx-auto space-y-8">
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">Configuracion</h1>
                 <p className="text-muted-foreground mt-1">Administra los datos del sistema</p>

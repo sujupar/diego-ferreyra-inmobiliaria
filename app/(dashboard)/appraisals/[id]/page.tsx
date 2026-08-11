@@ -179,7 +179,7 @@ export default function AppraisalDetailPage() {
 
     if (loading) {
         return (
-            <div className="max-w-5xl mx-auto space-y-8 pb-20">
+            <div className="w-full max-w-5xl mx-auto space-y-8 pb-20">
                 {/* Header skeleton */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -217,7 +217,7 @@ export default function AppraisalDetailPage() {
     // Historial, que a él le responde 403.
     if (soloDesdeLaPropiedad) {
         return (
-            <div className="max-w-5xl mx-auto text-center py-20">
+            <div className="w-full max-w-5xl mx-auto text-center py-20">
                 <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                 <h2 className="text-xl font-semibold mb-2">
                     Esta tasación se ve desde la ficha de la propiedad
@@ -233,7 +233,7 @@ export default function AppraisalDetailPage() {
 
     if (error || !appraisal || !subject) {
         return (
-            <div className="max-w-5xl mx-auto text-center py-20">
+            <div className="w-full max-w-5xl mx-auto text-center py-20">
                 <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                 <h2 className="text-xl font-semibold mb-2">{error || 'Tasación no encontrada'}</h2>
                 <Link href="/appraisals">
@@ -552,7 +552,7 @@ export default function AppraisalDetailPage() {
     }
 
     return (
-        <div className="max-w-5xl mx-auto space-y-8 pb-20">
+        <div className="w-full max-w-5xl mx-auto space-y-8 pb-20">
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">

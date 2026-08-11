@@ -129,7 +129,17 @@ export default async function DashboardLayout({
                     `overscroll-behavior:contain`: el gesto que llega al final NO se
                     contagia a la página (rebote de iOS, "tirar para recargar" de
                     Android). `min-h-0` es lo que permite que un hijo `flex-1` se
-                    achique de verdad en vez de desbordar. */}
+                    achique de verdad en vez de desbordar.
+
+                    EL EJE X NO SE DECLARA ACÁ: lo clava globals.css con
+                    `#contenido { overflow-x: hidden }`. No es opcional —
+                    `scroll-pane` solo declara el eje Y, y por la especificación
+                    de CSS Overflow 3 el otro eje no puede quedarse en `visible`
+                    cuando su par es `auto`: computa a `auto`. O sea que este
+                    panel scrolleaba de costado solo. Ese era el scroll lateral
+                    que el dueño encontró en pantalla tras pantalla, y el
+                    `overflow-x: clip` del `body` ya no lo tapaba porque el body
+                    dejó de ser el que scrollea. */}
                 <div id="contenido" tabIndex={-1} className="flex min-h-0 flex-1 flex-col scroll-pane p-4 md:p-6 outline-none">
                     {children}
                 </div>

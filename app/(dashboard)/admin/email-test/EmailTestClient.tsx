@@ -189,7 +189,7 @@ export default function EmailTestClient() {
     }
 
     return (
-        <div className="space-y-6 max-w-4xl mx-auto pb-20">
+        <div className="w-full space-y-6 max-w-4xl mx-auto pb-20">
             <div>
                 <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                     <Mail className="h-6 w-6" /> Test de Notificaciones por Email

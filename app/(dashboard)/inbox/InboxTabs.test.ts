@@ -16,7 +16,7 @@
  * el acento de "Gestión" en la ruta), así que se lee el archivo.
  */
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const raiz = resolve(__dirname, '../../..')
@@ -127,17 +127,145 @@ describe('InboxTabs — con un chat abierto, el chat se queda con la pantalla', 
 })
 
 describe('InboxTabs — la barra de pestañas no arrastra la página de costado', () => {
-  it('las pestañas scrollean adentro de su propia franja', () => {
-    // Los tres botones suman ~459px indivisibles contra ~358px útiles en 390px.
-    // Sin esto, el DOCUMENTO ENTERO ganaba scroll horizontal, en las TRES
-    // pestañas del Inbox.
-    expect(tabs).toContain('scroll-x-fade min-w-0')
-    expect(tabs).toContain('inline-flex min-w-max')
+  // OJO: todo esto se mira sobre `tabsCodigo` (sin comentarios). La prosa del
+  // archivo NOMBRA a propósito las clases que ya no se usan ("antes era
+  // `inline-flex min-w-max`"), y contra el archivo crudo estas pruebas pasarían
+  // por leer un comentario. Ya pasó una vez.
+  const franja = tabsCodigo.match(/className="(scroll-x-fade[^"]*)"/)
+  const fila = tabsCodigo.match(/className="(flex w-full rounded-lg[^"]*)"/)
+  const boton = tabsCodigo.match(/className=\{`(inline-flex items-center gap-2[^`]*)`/)
+
+  it('la franja sigue siendo un scroller propio, como red', () => {
+    expect(franja, 'no se encontró la franja de pestañas').toBeTruthy()
+    expect(franja![1]).toContain('min-w-0')
   })
 
   it('el scroller NO es `shrink-0` (lo obligaría a medir su contenido)', () => {
-    const franja = tabs.match(/className="scroll-x-fade[^"]*"/)
-    expect(franja, 'no se encontró la franja de pestañas').toBeTruthy()
-    expect(franja![0]).not.toContain('shrink-0')
+    expect(franja![1]).not.toContain('shrink-0')
+  })
+
+  it('en celular la fila de pestañas tiene ancho DEFINIDO, no `min-w-max`', () => {
+    // `min-w-max` es un PISO del min-content y `min-width` nunca lo baja: con la
+    // raíz de la pantalla en `mx-auto` (o sea, `fit-content`), ese piso subía
+    // hasta arriba y la que se corría era la PÁGINA, no la barrita. Arrastrar
+    // sobre las pestañas era arrastrar la pantalla entera.
+    expect(fila, 'no se encontró la fila de pestañas').toBeTruthy()
+    expect(fila![1]).toContain('w-full')
+    expect(fila![1]).toContain('md:min-w-max')
+    expect(fila![1]).not.toMatch(/(?<!md:)min-w-max/)
+  })
+
+  it('en celular las tres pestañas se reparten el ancho y truncan: no pueden desbordar', () => {
+    // `flex-1 basis-0 min-w-0` + `truncate` vuelve el desborde IMPOSIBLE por
+    // construcción, a CUALQUIER ancho (390, 360, 320 y lo que venga). Acortar
+    // textos a ojo "hasta que entre en 390" es una cuenta que se vence sola el
+    // día que alguien renombra una pestaña.
+    expect(boton, 'no se encontró el botón de pestaña').toBeTruthy()
+    for (const clase of ['max-md:flex-1', 'max-md:basis-0', 'max-md:min-w-0']) {
+      expect(boton![1], `falta ${clase}`).toContain(clase)
+    }
+    expect(tabsCodigo).toContain('<span className="truncate">')
+  })
+
+  it('en celular la pestaña llega al mínimo táctil de 44px', () => {
+    expect(boton![1]).toContain('max-md:min-h-11')
+  })
+
+  it('el ícono y el "(portales)" se van en celular, que es de donde sale el ancho', () => {
+    // 24px por ícono × 3, y ~85px del paréntesis, sobre 288 útiles a 320px.
+    expect(tabsCodigo).toContain('className="h-4 w-4 max-md:hidden"')
+    expect(tabsCodigo).toContain('<span className="max-md:hidden">{resto}</span>')
+    expect(tabsCodigo).toContain("resto: ' (portales)'")
+  })
+})
+
+describe('InboxTabs — el Inbox abre en WhatsApp', () => {
+  it('la pestaña inicial es WhatsApp, no Campañas', () => {
+    // Pedido textual del dueño: "cuando yo voy a inbox, no me debe abrir ni
+    // campaña ni consultas… lo primero que debe abrir es el whatsapp".
+    expect(tabsCodigo).toMatch(/const TAB_INICIAL: Tab = 'whatsapp'/)
+    expect(tabsCodigo).toMatch(/useState<Tab>\(TAB_INICIAL\)/)
+  })
+
+  it('y WhatsApp es TAMBIÉN la primera de la fila', () => {
+    // Si es lo principal y queda tercera, con la barra deslizable la pantalla
+    // abriría con la pestaña activa fuera de cuadro — peor que antes.
+    const orden = [...tabsCodigo.matchAll(/\{ id: '(\w+)'/g)].map(m => m[1])
+    expect(orden).toEqual(['whatsapp', 'campanas', 'consultas'])
+  })
+
+  it('un `?tab=` explícito sigue mandando (los enlaces profundos no se rompen)', () => {
+    // `components/inbox/ContactPanel.tsx` linkea a `/inbox?tab=campanas&lead=…`.
+    expect(tabsCodigo).toMatch(/if \(isTab\(tabParam\)\) setTab\(tabParam\)/)
+  })
+})
+
+/**
+ * CAMBIAR LA PESTAÑA POR OMISIÓN LE MUEVE EL PISO A TODO EL QUE LINKEABA A
+ * `/inbox` PELADO.
+ *
+ * Cinco enlaces del sistema decían "Ver inbox" desde una tarjeta de leads o de
+ * consultas de portales y confiaban en que el Inbox abría en Campañas. Con
+ * WhatsApp por omisión, esos cinco pasaron a llevar a una pantalla donde lo que
+ * la tarjeta acababa de prometer no está: la tarjeta dice "3 consultas" y el
+ * destino muestra conversaciones de WhatsApp. Es el mismo defecto que ya se
+ * había arreglado en `/inicio` con las visitas de hoy (D37) — un número que
+ * promete un recorte y un destino que muestra otra cosa.
+ *
+ * El escáner mira la CLASE, no los cinco casos: cualquier `href` a `/inbox` sin
+ * `?tab=` que aparezca mañana cae acá.
+ */
+describe('los enlaces al Inbox llevan su pestaña (no heredan la por omisión)', () => {
+  const tsxDe = (dir: string): string[] => {
+    const out: string[] = []
+    const recorrer = (d: string) => {
+      for (const nombre of readdirSync(d)) {
+        const abs = resolve(d, nombre)
+        if (statSync(abs).isDirectory()) recorrer(abs)
+        else if (/\.tsx$/.test(nombre) && !/\.test\.tsx$/.test(nombre)) out.push(abs)
+      }
+    }
+    recorrer(resolve(raiz, dir))
+    return out
+  }
+
+  it('ningún `href` apunta a `/inbox` sin decir a qué pestaña', () => {
+    // Solo el atributo JSX. `lib/nav/sections.ts` y la tarjeta de `/inicio`
+    // guardan `'/inbox'` como PROPIEDAD de un objeto y no como href: en el menú
+    // es el destino genérico (que el dueño quiere que abra en WhatsApp) y en
+    // `/inicio` es la clave contra `navHrefs` para decidir si la tarjeta se
+    // muestra — esa tarjeta lleva su `destino: () => '/inbox?tab=campanas'`.
+    const pelados: string[] = []
+    for (const abs of [...tsxDe('app'), ...tsxDe('components')]) {
+      const src = readFileSync(abs, 'utf8')
+      for (const m of src.matchAll(/href=(?:"|\{`|\{')\/inbox(?![?\w])/g)) {
+        pelados.push(`${abs.slice(raiz.length + 1)}:${src.slice(0, m.index).split('\n').length}`)
+      }
+    }
+    expect(
+      pelados,
+      'enlaces a `/inbox` sin `?tab=`: caen en WhatsApp, que casi nunca es lo que la tarjeta prometió\n' +
+        pelados.join('\n'),
+    ).toEqual([])
+  })
+
+  it('cada tarjeta lleva a la pestaña donde está lo que contó', () => {
+    // Los seis, clavados por nombre y por destino: si alguien "simplifica" uno
+    // a `/inbox`, el escáner de arriba lo agarra igual, pero acá además se ve
+    // cuál era el destino correcto y por qué.
+    const casos: [string, string][] = [
+      // Leads de campaña → Campañas. El de cada lead abre el lead, no la bandeja.
+      ['components/properties/PropertyLeadsCard.tsx', 'href="/inbox?tab=campanas"'],
+      ['components/properties/PropertyLeadsCard.tsx', 'href={`/inbox?tab=campanas&lead=${l.id}`}'],
+      ['components/inbox/ContactPanel.tsx', 'href={`/inbox?tab=campanas&lead=${lead.id}`}'],
+      // Consultas de portales → Consultas.
+      ['components/properties/PropertyInquiriesCard.tsx', 'href="/inbox?tab=consultas"'],
+      ['components/metrics/PropertyInquiriesPanel.tsx', 'href="/inbox?tab=consultas"'],
+      // El número de `/inicio` sale de `/api/leads/count` → Campañas.
+      ['app/(dashboard)/inicio/page.tsx', "destino: () => '/inbox?tab=campanas'"],
+    ]
+    for (const [archivo, esperado] of casos) {
+      expect(leer(archivo), `${archivo} dejó de llevar su pestaña`).toContain(esperado)
+    }
   })
 })

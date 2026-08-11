@@ -925,7 +925,7 @@ function NewAppraisalPageContent() {
 
     if (editMode && editLoadError) {
         return (
-            <div className="max-w-5xl mx-auto text-center py-20">
+            <div className="w-full max-w-5xl mx-auto text-center py-20">
                 <AlertCircle className="h-12 w-12 mx-auto mb-4 text-destructive" />
                 <h2 className="text-xl font-semibold mb-2">{editLoadError}</h2>
                 <p className="text-muted-foreground">La tasación que intentás editar no existe o no se pudo cargar.</p>
@@ -934,7 +934,7 @@ function NewAppraisalPageContent() {
     }
 
     return (
-        <div className="max-w-5xl mx-auto space-y-12 pb-20">
+        <div className="w-full max-w-5xl mx-auto space-y-12 pb-20">
             {/* Header / Hero */}
             <div className="text-center space-y-4 py-8 animate-in fade-in slide-in-from-top-4 duration-700">
                 <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-primary">

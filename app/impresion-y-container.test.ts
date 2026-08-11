@@ -41,11 +41,30 @@ describe('impresión — la cadena de alto se deshace en el papel', () => {
         expect(inicio, 'sin esto el informe de tasación sale de una sola pantalla').toBeGreaterThan(-1)
     })
 
-    it('el contenedor de alto fijo pasa a alto automático y desborde visible', () => {
+    it('LOS DOS contenedores de alto fijo pasan a alto automático y desborde visible', () => {
         // `SidebarInset` es `h-app min-h-0 overflow-hidden` en pantalla: con eso
         // puesto, el navegador imprime únicamente lo que entra en esa caja.
-        expect(bloque).toMatch(/\[data-slot='sidebar-inset'\] \{[\s\S]*?height: auto;/)
-        expect(bloque).toMatch(/\[data-slot='sidebar-inset'\] \{[\s\S]*?overflow: visible;/)
+        //
+        // Y su ENVOLTORIO (`sidebar-wrapper`) también, desde el arreglo del menú
+        // de abajo del 2026-08-08: antes era `min-h-svh` —un MÍNIMO, que en el
+        // papel crece solo— y ahora es `h-app` con `overflow-hidden`. Olvidarlo
+        // reintroduce el mismo daño un nivel más arriba, y el papel es el único
+        // lugar donde se vería.
+        // Se exige la REGLA COMPLETA y no las piezas sueltas. La versión
+        // anterior pedía `height: auto;` por un lado y cada selector por otro,
+        // y cuando el selector pasó a ser una lista (`wrapper, inset {`) dejó de
+        // verificarse `overflow: visible` para esos dos contenedores: sacarlo no
+        // ponía rojo nada. Lo detectó una mutación que sobrevivió.
+        //
+        // `[^}]*` acota la búsqueda al cuerpo de ESA regla: si alguien mueve el
+        // `overflow: visible` a otra regla del mismo bloque, esto falla, que es
+        // justo lo que queremos.
+        expect(
+            bloque,
+            'sin `overflow: visible` en ESA regla, el informe vuelve a imprimirse de una sola pantalla',
+        ).toMatch(
+            /\[data-slot='sidebar-wrapper'\],\s*\[data-slot='sidebar-inset'\]\s*\{[^}]*height:\s*auto;[^}]*overflow:\s*visible;/,
+        )
     })
 
     it('el scroller del contenido deja de recortar', () => {

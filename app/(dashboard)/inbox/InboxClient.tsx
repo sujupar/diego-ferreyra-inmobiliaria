@@ -268,7 +268,7 @@ export function InboxClient({
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="w-full space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>

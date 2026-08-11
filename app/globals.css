@@ -221,7 +221,13 @@
 /* ── 2. Nada scrollea de costado ────────────────────────────────────────────
    `clip` y NO `hidden`: `hidden` convierte al elemento en contenedor de scroll
    y rompería el `sticky` de la barra superior. Es red de seguridad, no excusa
-   para no arreglar el desborde real. */
+   para no arreglar el desborde real.
+
+   OJO: desde la Fase 0 el `body` YA NO ES EL QUE SCROLLEA (el scroller es
+   `#contenido`), así que este `clip` dejó de proteger nada de lo que pasa
+   adentro del dashboard. Sigue acá porque cubre lo que está FUERA del área de
+   contenido: login, cuestionario público, landings. La red del dashboard es la
+   regla de `#contenido` que viene abajo. */
 body {
   overflow-x: clip;
 }
@@ -229,9 +235,33 @@ body {
 /* Un email o una URL sin espacios es UN token indivisible: dentro de un flex
    sin `min-w-0` empuja la fila entera y arrastra la página (caso real: la lista
    de Contactos). `anywhere` —y no `break-word`— además reduce el min-content,
-   que es lo que evita el empuje. Acotado al área de contenido del dashboard. */
+   que es lo que evita el empuje. Acotado al área de contenido del dashboard.
+
+   `overflow-x: hidden` — LA RED DE SEGURIDAD DEL DASHBOARD. `scroll-pane` le da
+   `overflow-y: auto` y NO declara el eje X; por la especificación de CSS
+   Overflow 3, cuando un eje es `auto`/`scroll` el otro NO puede quedar en
+   `visible` (computa a `auto`). O sea que `#contenido` scrolleaba de costado
+   solo, sin que nadie lo pidiera: es el scroll lateral que el dueño encontró en
+   el teléfono, en pantalla tras pantalla.
+
+   POR QUÉ `hidden` Y NO `clip`, con la especificación en la mano: la misma
+   regla dice que `clip` junto a un eje `auto` computa a `hidden`. Escribir
+   `clip` acá sería escribir una cosa y obtener otra. Y el motivo por el que el
+   `body` usa `clip` —no convertirlo en contenedor de scroll y romper el
+   `sticky`— acá no aplica: `#contenido` YA es contenedor de scroll por el eje
+   Y, que es justamente lo que hace que el `sticky` de `PropertyTabsNav` se
+   pegue a su techo. `hidden` no agrega nada que no estuviera.
+
+   ESTO NO REEMPLAZA ARREGLAR EL DESBORDE. Lo que mide de más y no tiene su
+   propio deslizador queda INALCANZABLE detrás de este recorte. Va junto con las
+   dos reglas de la Fase 0 que lo hacen innecesario: (1) toda raíz de pantalla
+   tiene ancho DEFINIDO (`w-full`) para que el ancho intrínseco de lo que lleva
+   adentro no la ensanche, y (2) lo que legítimamente mide más que la pantalla
+   —una tabla, una fila de pestañas— viaja adentro de su propio `scroll-x-fade`
+   o `overflow-x-auto`. */
 #contenido {
   overflow-wrap: anywhere;
+  overflow-x: hidden;
 }
 
 /* Mientras hay un diálogo abierto, Radix bloquea el scroll del <body>; como el
@@ -628,6 +658,12 @@ body[data-scroll-locked] #contenido {
    cromo de la aplicación.
    ══════════════════════════════════════════════════════════════════════ */
 @media print {
+  /* Los DOS contenedores de alto fijo, no uno. `sidebar-wrapper` se sumó el
+     2026-08-08 al arreglar el menú de abajo (antes era `min-h-svh`, o sea un
+     MÍNIMO, y en el papel crecía solo): hoy mide `h-app` con `overflow-hidden`,
+     así que si no se lo deshace acá vuelve a salir impresa UNA sola pantalla
+     —el mismo daño que este bloque vino a arreglar, un nivel más arriba. */
+  [data-slot='sidebar-wrapper'],
   [data-slot='sidebar-inset'] {
     height: auto;
     overflow: visible;

@@ -7,7 +7,7 @@ import { ReportPhotoSettings } from '@/components/settings/ReportPhotoSettings'
  */
 export default function MiPerfilPage() {
     return (
-        <div className="mx-auto max-w-3xl px-6 py-8 space-y-6">
+        <div className="w-full mx-auto max-w-3xl px-6 py-8 space-y-6">
             <div>
                 <p className="text-xs font-medium tracking-wide text-muted-foreground">MI CUENTA</p>
                 <h1 className="text-3xl font-bold">Mi Perfil</h1>

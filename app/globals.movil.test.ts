@@ -78,7 +78,26 @@ describe('globals.css — el ancho no se va de la pantalla', () => {
     })
 
     it('un email o una URL sin espacios puede partirse dentro del dashboard', () => {
-        expect(cssSinComentarios).toMatch(/#contenido \{\s*overflow-wrap: anywhere;\s*\}/)
+        expect(cssSinComentarios).toMatch(/#contenido \{[^}]*overflow-wrap: anywhere;/)
+    })
+
+    it('`#contenido` NO scrollea de costado — es la red del dashboard entero', () => {
+        // El `overflow-x: clip` del body dejó de proteger nada acá adentro
+        // cuando el scroller pasó a ser `#contenido` (Fase 0): `scroll-pane` le
+        // da `overflow-y: auto` y, por la especificación de CSS Overflow 3, el
+        // otro eje NO puede quedarse en `visible` — computa a `auto`. O sea que
+        // el panel scrolleaba de costado sin que nadie lo pidiera. Eso es el
+        // scroll lateral que apareció en pantalla tras pantalla en el iPhone.
+        expect(cssSinComentarios).toMatch(/#contenido \{[^}]*overflow-x: hidden;/)
+    })
+
+    it('acá SÍ va `hidden` y no `clip` (la misma especificación no deja otra)', () => {
+        // Junto a un eje `auto`, `clip` computa a `hidden`: escribir `clip`
+        // sería escribir una cosa y obtener otra. Y el motivo por el que el body
+        // usa `clip` —no volverse contenedor de scroll y romper el `sticky`— no
+        // aplica: `#contenido` YA es contenedor de scroll por el eje Y, que es
+        // justamente lo que hace que el `sticky` de la ficha se pegue a su techo.
+        expect(cssSinComentarios).not.toMatch(/#contenido \{[^}]*overflow-x: clip/)
     })
 
     it('con un diálogo abierto, el área de contenido deja de scrollear por detrás', () => {

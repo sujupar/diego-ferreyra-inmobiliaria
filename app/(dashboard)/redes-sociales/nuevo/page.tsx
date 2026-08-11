@@ -52,7 +52,7 @@ export default function NuevoCarruselPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8">
+    <div className="w-full max-w-2xl mx-auto px-4 py-8">
       <div className="mb-6">
         <Link href="/redes-sociales" className="text-sm text-muted-foreground hover:underline">← Redes Sociales</Link>
         <h1 className="text-2xl font-bold mt-2">Nuevo carrusel</h1>

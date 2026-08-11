@@ -74,6 +74,15 @@ const TARJETAS: TarjetaDef[] = [
     key: 'sinResponder',
     label: 'Consultas sin responder',
     href: '/inbox',
+    // El número sale de `/api/leads/count` (`new`), o sea leads de CAMPAÑA — la
+    // primera pestaña del Inbox hasta el 2026-08-08. Desde que el Inbox abre en
+    // WhatsApp (pedido del dueño), `/inbox` pelado lleva a una pantalla donde
+    // este número no está por ningún lado: la tarjeta prometía tres y el destino
+    // mostraba conversaciones. Es el mismo defecto de D37 con las visitas, y se
+    // arregla igual — el destino lleva el recorte que se contó. `href` sigue
+    // siendo `/inbox` porque es la clave contra `navHrefs` para decidir si la
+    // tarjeta se muestra, no el link.
+    destino: () => '/inbox?tab=campanas',
     context: v => (v === null ? 'No se pudo consultar' : 'leads nuevos en el Inbox'),
   },
   {

@@ -76,7 +76,9 @@ export function PropertyLeadsCard({
           </CardTitle>
           {compact && leads.length > 0 && (
             <Link
-              href={`/inbox`}
+              // Sale de la tarjeta de LEADS: tiene que caer en Campañas. Ver el
+              // comentario del "Abrir" de cada lead, más abajo.
+              href="/inbox?tab=campanas"
               className="text-xs text-[color:var(--brand)] underline"
             >
               Ver inbox →
@@ -145,8 +147,17 @@ export function PropertyLeadsCard({
                       <span className="text-xs text-muted-foreground">
                         {relativeTime(l.created_at)}
                       </span>
+                      {/* El botón decía "Abrir" y abría el Inbox entero, con
+                          este lead en algún lugar de la lista. Ya existía el
+                          deep link exacto (`?tab=campanas&lead=<id>`, el mismo
+                          que usa `components/inbox/ContactPanel.tsx`) y acá
+                          tenemos el id: abre el lead, no la bandeja.
+
+                          Además es obligatorio desde que el Inbox abre en
+                          WhatsApp (2026-08-08): `/inbox` pelado ya ni siquiera
+                          mostraba la lista de leads. */}
                       <Link
-                        href="/inbox"
+                        href={`/inbox?tab=campanas&lead=${l.id}`}
                         className="text-xs underline text-[color:var(--brand)] inline-flex items-center gap-0.5"
                       >
                         Abrir <ExternalLink className="h-3 w-3" />

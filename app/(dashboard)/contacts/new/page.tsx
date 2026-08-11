@@ -54,7 +54,7 @@ export default function NewContactPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-xl mx-auto">
+    <div className="w-full space-y-6 max-w-xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Nuevo Contacto</h1>
         <p className="text-muted-foreground">Registrar un nuevo prospecto</p>

@@ -64,7 +64,7 @@ export default function ContactDetailPage() {
   const { contact, appraisals, properties, scheduled, deals } = data
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="w-full space-y-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between">
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
           <ArrowLeft className="h-4 w-4 mr-1" /> Volver

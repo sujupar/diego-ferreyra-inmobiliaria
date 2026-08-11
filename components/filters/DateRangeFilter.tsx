@@ -181,7 +181,15 @@ export function DateRangeFilter({ onChange, value }: DateRangeFilterProps) {
         </Button>
       </div>
       {(showCustom || currentActive === 'custom') && (
-        <div className="flex items-center gap-2">
+        // `flex-wrap`: los dos campos de fecha son `w-36` (144px cada uno) y
+        // como son ítems de un flex tienen `min-width: auto`, o sea que NO se
+        // achican por debajo de su contenido — y en celular la regla de los 16px
+        // de globals.css los hace todavía más anchos. Sumados al separador y al
+        // botón dan ~420px contra los 358 útiles de un teléfono: sin envolver,
+        // esta fila empujaba sola la pantalla de costado en Contactos,
+        // Propiedades, Visitas, Tasaciones y CRM. Envolver no cambia nada en
+        // escritorio, donde entra en una línea.
+        <div className="flex flex-wrap items-center gap-2">
           <Input
             type="date"
             value={currentCustomFrom}

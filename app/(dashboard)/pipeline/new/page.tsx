@@ -96,7 +96,7 @@ export default function AgendarTasacionPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
+    <div className="w-full space-y-6 max-w-2xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Coordinar Tasación</h1>
         <p className="text-muted-foreground">Coordiná una nueva tasación para un prospecto</p>

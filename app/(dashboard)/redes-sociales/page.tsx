@@ -35,7 +35,7 @@ export default function RedesSocialesPage() {
   }, [])
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
+    <div className="w-full max-w-5xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Redes Sociales</h1>

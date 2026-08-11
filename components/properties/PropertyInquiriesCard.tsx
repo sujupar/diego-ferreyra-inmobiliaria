@@ -80,7 +80,12 @@ export function PropertyInquiriesCard({ propertyId }: { propertyId: string }) {
             )}
           </CardTitle>
           {rows.length > 0 && (
-            <Link href="/inbox" className="text-xs text-[color:var(--brand)] underline">
+            // `?tab=consultas` y no `/inbox` pelado: desde el 2026-08-08 el
+            // Inbox abre en WhatsApp, así que este enlace —que sale de una
+            // tarjeta de CONSULTAS DE PORTALES— caía en una pantalla donde no
+            // hay ninguna consulta de portal. El deep link por `?tab=` ya
+            // existía y sigue mandando sobre la pestaña inicial.
+            <Link href="/inbox?tab=consultas" className="text-xs text-[color:var(--brand)] underline">
               Ver inbox →
             </Link>
           )}

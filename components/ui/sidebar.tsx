@@ -165,7 +165,35 @@ function SidebarProvider({
             } as React.CSSProperties
           }
           className={cn(
-            "group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar",
+            // `h-app` (= `--app-vh`) y NO el `min-h-svh` que traía shadcn.
+            // `SidebarInset` mide `h-app`, así que con `min-h-svh` acá había DOS
+            // medidas distintas de "el alto de la app" peleando: el envoltorio
+            // pedía como mínimo el viewport de LAYOUT chico (`svh`) y su único
+            // hijo medía el viewport VISUAL de este instante
+            // (`visualViewport.height`, lo único que además sigue al teclado).
+            // Cuando el visual queda por debajo del `svh` —teclado recién
+            // cerrado, `viewport-fit=cover` con la barra flotante de Safari,
+            // zoom con dos dedos— el envoltorio queda MÁS ALTO que el hijo y
+            // abajo asoma una franja muerta: exactamente el "hay un espacio
+            // abajo y el menú queda completamente subido" que el dueño vio en
+            // Contactos. Con las dos puntas leyendo la MISMA variable, esa
+            // franja no puede existir: cambian juntas o no cambia ninguna.
+            //
+            // `overflow-hidden` cierra el círculo: nada de lo que hay adentro
+            // puede estirar el documento, así que el documento NO scrollea (el
+            // scroller de la app es `#contenido`). Importa además porque en iOS
+            // la barra del navegador solo se colapsa cuando scrollea el
+            // documento — si pudiera, colapsaría, `--app-vh` crecería, el
+            // documento scrollearía más, y así. Es lo que deja el número quieto
+            // tanto con la barra desplegada como colapsada.
+            // (Que el alto en sí nunca se pase de la ventana lo garantiza la
+            // otra mitad: `--app-vh` ES el alto visible, nunca más que eso.)
+            //
+            // Si `--app-vh` llega tarde (o no hay JavaScript), la variable ya
+            // trae su valor por omisión desde `:root` en globals.css (`100dvh`):
+            // la primera pintura mide la ventana entera sin esperar al hook, y
+            // el menú de abajo ya arranca pegado al piso.
+            "group/sidebar-wrapper flex h-app w-full overflow-hidden has-data-[variant=inset]:bg-sidebar",
             className
           )}
           {...props}

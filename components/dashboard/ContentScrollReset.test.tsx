@@ -46,6 +46,22 @@ describe('ContentScrollReset', () => {
         expect(panel.scrollTop).toBe(0)
     })
 
+    it('también lo devuelve a la IZQUIERDA (el corrimiento lateral sobrevivía a la navegación)', () => {
+        // `#contenido` recorta de costado, pero un contenedor recortado sigue
+        // siendo desplazable por programa: un `focus()` o un `scrollIntoView()`
+        // sobre algo que asoma lo corre. Sin resetear el eje X, la pantalla
+        // siguiente abría ya desplazada — parte de por qué el dueño lo describió
+        // como "muchas pantallas" y no como una.
+        const panel = montarPanel(0)
+        const { rerender } = render(<ContentScrollReset />)
+
+        panel.scrollLeft = 117
+        rutaActual = '/contacts'
+        rerender(<ContentScrollReset />)
+
+        expect(panel.scrollLeft).toBe(0)
+    })
+
     it('no toca el scroll si la ruta no cambió (un re-render no te tira arriba mientras leés)', () => {
         const panel = montarPanel(0)
         const { rerender } = render(<ContentScrollReset />)

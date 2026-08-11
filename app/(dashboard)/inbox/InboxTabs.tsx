@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Megaphone, Globe, MessageCircle } from 'lucide-react'
+import { Megaphone, Globe, MessageCircle, type LucideIcon } from 'lucide-react'
 import { InboxClient } from './InboxClient'
 import { PortalInquiriesClient } from './PortalInquiriesClient'
 import { WhatsappClient } from './WhatsappClient'
@@ -14,13 +14,42 @@ function isTab(v: string | null): v is Tab {
 }
 
 /**
+ * La pestaña que abre el Inbox cuando la URL no pide ninguna.
+ *
+ * Pedido textual del dueño (2026-08-08, probando en su iPhone): «cuando yo voy a
+ * inbox, no me debe abrir ni campaña ni consultas. Campañas y consultas es una
+ * sección totalmente secundaria. Lo primero que debe abrir es el whatsapp».
+ *
+ * Un `?tab=` explícito sigue mandando: los enlaces profundos que ya existen
+ * —«Ver lead en el CRM» del panel del chat, que apunta a
+ * `/inbox?tab=campanas&lead=<id>`— no cambian.
+ */
+const TAB_INICIAL: Tab = 'whatsapp'
+
+/**
+ * Las tres secciones, EN EL ORDEN EN QUE SE VEN. WhatsApp va primera por el
+ * mismo motivo por el que es la inicial: si es lo principal y queda tercera, en
+ * un teléfono la pantalla abriría con la pestaña activa fuera de cuadro.
+ *
+ * `corto` / `resto`: en celular la etiqueta es solo «Consultas». El paréntesis
+ * «(portales)» son ~85px de los ~288 útiles de un teléfono de 320px — una
+ * aclaración que en escritorio suma y en el teléfono se come el lugar de las
+ * otras dos pestañas.
+ */
+const PESTANAS: { id: Tab; corto: string; resto?: string; icon: LucideIcon }[] = [
+  { id: 'whatsapp', corto: 'WhatsApp', icon: MessageCircle },
+  { id: 'campanas', corto: 'Campañas', icon: Megaphone },
+  { id: 'consultas', corto: 'Consultas', resto: ' (portales)', icon: Globe },
+]
+
+/**
  * Inbox con tres secciones:
+ *  - WhatsApp: chat del CRM — lo que sale automáticamente + lo que responden los clientes.
  *  - Campañas: leads de landing / Meta Ads (InboxClient existente).
  *  - Consultas: consultas entrantes de los portales (MercadoLibre/ZonaProp/Argenprop).
- *  - WhatsApp: chat del CRM — lo que sale automáticamente + lo que responden los clientes.
  */
 export function InboxTabs({ userRole, userId }: { userRole: string; userId: string }) {
-  const [tab, setTab] = useState<Tab>('campanas')
+  const [tab, setTab] = useState<Tab>(TAB_INICIAL)
   const [openLeadId, setOpenLeadId] = useState<string | null>(null)
 
   // Deep link a un lead puntual: `/inbox?tab=campanas&lead=<id>`.
@@ -54,16 +83,41 @@ export function InboxTabs({ userRole, userId }: { userRole: string; userId: stri
       ? 'Los WhatsApp de tus propiedades: los que salen del sistema y las respuestas de los clientes.'
       : 'Todos los WhatsApp del equipo: los que salen del sistema y las respuestas de los clientes.'
 
-  // `scroll-x-fade` (globals.css) + `min-w-0` + `min-w-max` adentro: los tres
-  // botones suman ~459px indivisibles y en un teléfono hay ~358px útiles. Como
-  // nada arriba en la cadena tenía `overflow-x`, el DOCUMENTO ENTERO ganaba
-  // scroll horizontal: el usuario arrastraba de costado y veía la página moverse,
-  // con la barra superior desalineada. Pasa en las TRES pestañas, no solo en
-  // WhatsApp. Con `scroll-x-fade` el desborde queda contenido acá adentro y las
-  // sombras de los extremos avisan que hay más.
+  // LA FRANJA DE PESTAÑAS, QUE EN CELULAR NO SE DESLIZA: ENTRAN LAS TRES.
   //
-  // OJO: nada de `shrink-0` en ESTE div. `shrink-0` sobre un scroller lo obliga a
-  // medir lo que mide su contenido y el desborde vuelve a la página.
+  // Lo que había antes: `inline-flex min-w-max` adentro de un `scroll-x-fade`.
+  // Los tres botones sumaban ~459px indivisibles contra los ~358 útiles de un
+  // teléfono de 390px, así que la franja "se deslizaba"… salvo que no: como la
+  // raíz de la pantalla era `mx-auto` (o sea, `fit-content`), ese `min-w-max`
+  // SUBÍA el min-content de toda la caja y la que terminaba corriéndose era la
+  // PÁGINA. Arrastrar sobre la barrita era arrastrar la pantalla entera — que es
+  // justo lo que el dueño describió: «la barrita que dice campaña, consultas,
+  // portales también tiene scrolling a los lados».
+  //
+  // Cómo entran ahora, y por qué esta forma y no otra:
+  //   · TRES COLUMNAS IGUALES (`flex-1 basis-0 min-w-0`) con la etiqueta
+  //     truncada. Es la única variante en la que el desborde es IMPOSIBLE por
+  //     construcción, a cualquier ancho: cada pestaña vale un tercio y lo que no
+  //     entra se corta con puntos suspensivos. Acortar textos a ojo hasta que
+  //     "entre en 390" es una cuenta que se vence sola el día que alguien
+  //     renombra una pestaña.
+  //   · SIN ÍCONO en celular (`max-md:hidden`). Ícono + hueco son 24px por
+  //     pestaña, 72px de 288 en una pantalla de 320px: un cuarto del ancho para
+  //     un dibujo que no dice nada que la palabra al lado no diga.
+  //   · «Consultas», no «Consultas (portales)» — ver `PESTANAS` arriba.
+  //   · `px-2` en vez de `px-4`, y `min-h-11` para llegar al mínimo táctil de
+  //     44px (con `py-2` la pestaña mide 36).
+  // La cuenta a 320px, que es el peor caso: 288 útiles − 10 de borde y relleno
+  // = 278 / 3 = 92 por pestaña, − 16 de `px-2` = 76 para el texto, contra ~66
+  // que mide «Campañas» a 14px. Entra; y si algún día no entrara, trunca.
+  //
+  // De `md:` para arriba NADA cambia: vuelve a ser `inline-flex min-w-max` con
+  // íconos, `px-4` y la etiqueta larga.
+  //
+  // El `scroll-x-fade` se queda como red por si mañana aparece una cuarta
+  // pestaña o un idioma más largo. OJO: nada de `shrink-0` en ESE div —
+  // `shrink-0` sobre un scroller lo obliga a medir su contenido y el desborde
+  // vuelve a la página.
   //
   // `--scroll-fade-color`: los degradados de la utilidad TAPAN las dos sombras
   // mientras no hay nada que deslizar, así que tienen que valer el color de lo
@@ -73,38 +127,28 @@ export function InboxTabs({ userRole, userId }: { userRole: string; userId: stri
   // parches de 24px en los extremos, en TODOS los anchos y también en
   // escritorio: en claro casi no se ven, en oscuro sí (0.18 contra 0.22).
   const tabsRow = (
-    <div className="scroll-x-fade min-w-0 [--scroll-fade-color:var(--secondary)]">
-      <div className="inline-flex min-w-max rounded-lg border bg-muted/40 p-1">
-        <button
-          type="button"
-          onClick={() => setTab('campanas')}
-          className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition ${
-            tab === 'campanas' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <Megaphone className="h-4 w-4" />
-          Campañas
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('consultas')}
-          className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition ${
-            tab === 'consultas' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <Globe className="h-4 w-4" />
-          Consultas (portales)
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('whatsapp')}
-          className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition ${
-            tab === 'whatsapp' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <MessageCircle className="h-4 w-4" />
-          WhatsApp
-        </button>
+    <div className="scroll-x-fade min-w-0 max-md:w-full [--scroll-fade-color:var(--secondary)]">
+      <div className="flex w-full rounded-lg border bg-muted/40 p-1 md:inline-flex md:w-auto md:min-w-max">
+        {PESTANAS.map(({ id, corto, resto, icon: Icono }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition max-md:min-h-11 max-md:min-w-0 max-md:flex-1 max-md:basis-0 max-md:justify-center max-md:px-2 ${
+              tab === id ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Icono className="h-4 w-4 max-md:hidden" />
+            {/* `truncate` sobre el texto: es lo que le da al botón permiso de
+                achicarse por debajo de su contenido (un ítem flex con
+                `overflow` distinto de `visible` tiene mínimo automático cero).
+                Sin esto, `flex-1` no alcanzaría para evitar el desborde. */}
+            <span className="truncate">
+              {corto}
+              {resto && <span className="max-md:hidden">{resto}</span>}
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   )
@@ -175,7 +219,7 @@ export function InboxTabs({ userRole, userId }: { userRole: string; userId: stri
             `flex w-full min-h-0 max-w-7xl flex-1 flex-col gap-3 md:mx-auto md:min-h-[520px] ${
               chatAbierto ? 'max-md:-m-4 max-md:w-auto max-md:gap-0' : ''
             }`
-          : 'space-y-6 max-w-7xl mx-auto'
+          : 'w-full space-y-6 max-w-7xl mx-auto'
       }
     >
       {/* Pestañas + título de WhatsApp EN LA MISMA FILA (pedido textual del dueño:
