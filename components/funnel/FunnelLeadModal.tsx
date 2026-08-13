@@ -12,6 +12,10 @@ interface FunnelLeadModalProps {
   submitLabel: string
   tipoClienteLabel?: string
   tipoClienteOptions?: readonly string[]
+  /** Botón verde de WhatsApp con logo (tasación). */
+  whatsappCta?: boolean
+  /** Aclaración bajo el botón. */
+  footnote?: string
   onSubmit: (values: FunnelLeadValues) => Promise<void>
 }
 
@@ -65,6 +69,8 @@ export function FunnelLeadModal(props: FunnelLeadModalProps) {
           submitLabel={props.submitLabel}
           tipoClienteLabel={props.tipoClienteLabel}
           tipoClienteOptions={props.tipoClienteOptions}
+          whatsappCta={props.whatsappCta}
+          footnote={props.footnote}
           onSubmit={props.onSubmit}
         />
       </div>

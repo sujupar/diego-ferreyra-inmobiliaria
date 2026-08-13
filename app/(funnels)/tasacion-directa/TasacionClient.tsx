@@ -197,7 +197,9 @@ export function TasacionClient({
           title={C.form.title}
           subtitle={C.form.subtitle}
           variant="tasacion"
-          submitLabel={C.cta.label}
+          submitLabel={C.form.submitLabel}
+          whatsappCta
+          footnote={C.form.footnote}
           onSubmit={handleSubmit}
         />
       )}

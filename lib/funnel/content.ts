@@ -33,9 +33,10 @@ export const TASACION_CONTENT = {
   finalHeading:
     '¿Listo para conocer el mejor precio de tu propiedad y el dinero que te quedará en mano?',
   form: {
-    title: 'Coordiná tu Tasación Gratuita',
-    subtitle:
-      'Dejanos tus datos y te llamamos para coordinar tu tasación presencial y sin cargo. Vas a conocer el precio real de tu propiedad y cuánto te queda en mano — 100% sin compromiso.',
+    title: 'Completá estos datos para coordinar tu tasación gratuita',
+    subtitle: 'Te escribimos por WhatsApp en los próximos minutos.',
+    submitLabel: 'Solicitar mi tasación gratuita',
+    footnote: 'Coordinás el día y la hora por WhatsApp. Sin costo y sin compromiso.',
   },
 } as const
 
