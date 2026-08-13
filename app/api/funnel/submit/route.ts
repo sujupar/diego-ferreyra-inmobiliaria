@@ -33,7 +33,11 @@ export const dynamic = 'force-dynamic'
  */
 
 const RATE_WINDOW_MS = 60_000
-const RATE_MAX = 5
+// OJO: el límite es por IP y el 87% del tráfico es MÓVIL. Las operadoras usan
+// CGNAT: cientos de personas comparten la misma IP pública, así que un tope bajo
+// rechaza gente legítima con "Demasiados envíos" (pasó en producción). El freno
+// real contra duplicados es el dedup por email/teléfono de abajo, no esto.
+const RATE_MAX = 20
 const DEDUP_WINDOW_MS = 5 * 60_000
 
 /**
