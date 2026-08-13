@@ -62,3 +62,43 @@ describe('mensajeDeConfirmacion', () => {
     expect(mensajeDeConfirmacion([])).toContain('arranca de cero')
   })
 })
+
+describe('parcheDeReinicio — reiniciar es "ya leí todo", no "nunca leí nada"', () => {
+  const AHORA = '2026-08-13T13:48:27.000Z'
+
+  it('ADELANTA la marca de lectura hasta ahora, no la borra', async () => {
+    // EL BUG. Ponerla en null parece "empezar de cero" y es lo contrario:
+    // `mensajesNuevosDesde` la usa como ancla y sin ancla devuelve la
+    // conversación ENTERA. El 2026-08-13 eso le entregó al modelo 166 mensajes
+    // de pruebas viejas; escribió "Sí, mandame el video" y recibió fotos, video
+    // y un cierre de visita, porque en ese historial figuraba que había pedido
+    // planos y aceptado ir mañana. Tres rondas corrigiendo el prompt de alguien
+    // que leía el libreto equivocado.
+    const { parcheDeReinicio } = await import('./reset-prueba')
+    expect(parcheDeReinicio(AHORA).last_analyzed_at).toBe(AHORA)
+    expect(parcheDeReinicio(AHORA).last_analyzed_at).not.toBeNull()
+  })
+
+  it('la memoria acumulada sí se borra: eso es lo que hay que olvidar', async () => {
+    const { parcheDeReinicio } = await import('./reset-prueba')
+    const p = parcheDeReinicio(AHORA)
+    expect(p.summary).toBe('')
+    expect(p.intent).toBe('desconocido')
+    expect(p.suggested_next_step).toBeNull()
+    expect(p.priority_score).toBe(0)
+  })
+
+  it('el cupo de mensajes del agente vuelve a cero y se le devuelve la palabra', async () => {
+    const { parcheDeReinicio } = await import('./reset-prueba')
+    const p = parcheDeReinicio(AHORA)
+    expect(p.agent_messages_sent).toBe(0)
+    expect(p.agent_handed_off).toBe(false)
+  })
+
+  it('NO toca los contadores de costo: esos tokens se gastaron de verdad', async () => {
+    const { parcheDeReinicio } = await import('./reset-prueba')
+    const p = parcheDeReinicio(AHORA) as Record<string, unknown>
+    expect(p).not.toHaveProperty('tokens_used_total')
+    expect(p).not.toHaveProperty('analyses_count')
+  })
+})

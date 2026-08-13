@@ -43,6 +43,45 @@ function state(overrides: Partial<ConversationAiStateRow> = {}): ConversationAiS
   }
 }
 
+describe('mensajesNuevosDesde — sin ancla NO se lee la conversación entera', () => {
+  // EL BUG QUE COSTÓ TRES RONDAS. El "reiniciar" de las pruebas ponía las dos
+  // anclas en null creyendo que eso era empezar de cero. Sin ancla esta función
+  // devolvía TODO: el modelo recibió 166 mensajes de pruebas anteriores como si
+  // fueran la conversación en curso — "Me gustaría ver los planos", "Si, mañana
+  // está bien" — y contestó a eso, con toda lógica. Parecía que desobedecía el
+  // prompt; estaba leyendo otro libreto.
+  const msg = (id: string, min: number) => ({
+    id, direction: 'in' as const, body_preview: `m${id}`,
+    status: 'received', created_at: new Date(2026, 7, 13, 12, min).toISOString(), ai_generated: false,
+  })
+  const muchos = Array.from({ length: 40 }, (_, i) => msg(String(i), i))
+
+  it('con la fila creada pero sin ninguna ancla, se leen los últimos y no los 40', async () => {
+    const { mensajesNuevosDesde, MENSAJES_SIN_ANCLA } = await import('./conversation-memory')
+    const state = {
+      phone_e164: '549', summary: '', last_analyzed_message_id: null, last_analyzed_at: null,
+    } as unknown as Parameters<typeof mensajesNuevosDesde>[0]
+    const r = mensajesNuevosDesde(state, muchos)
+    expect(r).toHaveLength(MENSAJES_SIN_ANCLA)
+    expect(r[r.length - 1].id).toBe('39')
+  })
+
+  it('SIN fila de estado sigue devolviendo todo: ahí sí es una conversación nueva', async () => {
+    const { mensajesNuevosDesde } = await import('./conversation-memory')
+    expect(mensajesNuevosDesde(null, muchos)).toHaveLength(40)
+  })
+
+  it('con la marca de tiempo adelantada —lo que hace el reinicio— solo se lee lo posterior', async () => {
+    const { mensajesNuevosDesde } = await import('./conversation-memory')
+    const state = {
+      phone_e164: '549', summary: '', last_analyzed_message_id: null,
+      last_analyzed_at: new Date(2026, 7, 13, 12, 37).toISOString(),
+    } as unknown as Parameters<typeof mensajesNuevosDesde>[0]
+    const r = mensajesNuevosDesde(state, muchos)
+    expect(r.map(m => m.id)).toEqual(['38', '39'])
+  })
+})
+
 describe('mensajesNuevosDesde', () => {
   it('sin estado previo (nunca analizado) devuelve TODOS los mensajes, ordenados ascendente', () => {
     const m3 = msg('m3', 'in', '2026-08-01T00:03:00Z')

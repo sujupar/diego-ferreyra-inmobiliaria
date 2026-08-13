@@ -111,6 +111,34 @@ export interface ResultadoReinicio {
  * Devuelve `reiniciado: false` sin tocar nada si el teléfono no está autorizado
  * o si no se pudieron leer los ajustes.
  */
+/**
+ * Qué se le escribe al estado de la conversación cuando se reinicia. Pura, para
+ * poder fijarla con un test: acá vivía un error que costó tres rondas.
+ *
+ * La sutileza está en `lastAnalyzedAt`. Reiniciar NO es "nunca leí nada" —eso
+ * es lo que significa dejar las anclas en null, y hace que
+ * `mensajesNuevosDesde` devuelva la conversación ENTERA—. Reiniciar es "ya leí
+ * todo lo anterior y no me importa": la marca se ADELANTA hasta ahora, y el
+ * modelo solo ve lo que llegue después.
+ *
+ * `lastAnalyzedMessageId` sí va en null, y es correcto: no hay un mensaje
+ * concreto hasta el cual se leyó, hay un instante. La marca de tiempo alcanza.
+ */
+export function parcheDeReinicio(ahoraISO: string) {
+  return {
+    summary: '',
+    last_analyzed_message_id: null,
+    last_analyzed_at: ahoraISO,
+    intent: 'desconocido',
+    priority_score: 0,
+    priority_reason: null,
+    suggested_next_step: null,
+    agent_messages_sent: 0,
+    agent_handed_off: false,
+    updated_at: ahoraISO,
+  }
+}
+
 export async function reiniciarPrueba(
   phoneE164: string,
   propertyId: string | null,
@@ -138,20 +166,30 @@ export async function reiniciarPrueba(
     //    contadores de costo (`tokens_used_total`, `analyses_count`) siguen
     //    acumulando, porque esos tokens SE GASTARON y el panel de costo tiene
     //    que seguir diciendo la verdad.
+    //
+    //    ## Por qué la marca de lectura se ADELANTA en vez de borrarse
+    //
+    //    Antes se ponían `last_analyzed_message_id` y `last_analyzed_at` en
+    //    `null`, que parece lo correcto para "empezar de cero" y es justo lo
+    //    contrario. `mensajesNuevosDesde` (lib/ai/conversation-memory.ts) usa
+    //    esas dos como ancla, y **sin ninguna de las dos devuelve TODA la
+    //    conversación** — su comentario lo dice: sin estado previo asume que es
+    //    el primer análisis.
+    //
+    //    En una conversación de prueba con 166 mensajes acumulados, eso le
+    //    entregaba al modelo el historial entero de las pruebas anteriores. El
+    //    2026-08-13 el dueño escribió "Sí, mandame el video" y recibió fotos +
+    //    video y un cierre de visita: el modelo había leído "Me gustaría ver
+    //    los planos" y "Si, mañana está bien" de la prueba de media hora antes
+    //    y actuó en consecuencia, con toda lógica. Se perdieron tres rondas
+    //    corrigiendo el prompt de alguien que leía el libreto equivocado.
+    //
+    //    Reiniciar NO es "nunca leí nada": es "ya leí todo lo anterior y no me
+    //    importa". Por eso la marca se adelanta hasta AHORA. Los mensajes que
+    //    lleguen después son los únicos que el modelo va a ver.
     const { error: errEstado } = await sb
       .from('conversation_ai_state')
-      .update({
-        summary: '',
-        last_analyzed_message_id: null,
-        last_analyzed_at: null,
-        intent: 'desconocido',
-        priority_score: 0,
-        priority_reason: null,
-        suggested_next_step: null,
-        agent_messages_sent: 0,
-        agent_handed_off: false,
-        updated_at: new Date().toISOString(),
-      } as never)
+      .update(parcheDeReinicio(new Date().toISOString()) as never)
       .eq('phone_e164', phoneE164)
     if (errEstado) {
       return { reiniciado: false, motivo: `no se pudo reiniciar la memoria: ${errEstado.message}`, limpiado: [] }

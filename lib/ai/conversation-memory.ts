@@ -129,8 +129,25 @@ export function mensajesNuevosDesde(
     }
   }
 
-  return ordenados
+  // Hay estado pero NINGUNA de las dos anclas sirve. No es el primer análisis
+  // —la fila existe— así que devolver todo es siempre un error: o el ancla se
+  // perdió por un bug, o alguien la borró creyendo que "limpiar" era ponerla en
+  // null. Eso último pasó de verdad (ver `lib/ai/reset-prueba.ts`): el modelo
+  // recibió 166 mensajes de pruebas viejas como si fueran la conversación
+  // actual, contestó con toda lógica a un libreto que no era, y costó tres
+  // rondas de diagnóstico en el lugar equivocado.
+  //
+  // Con la cola alcanza: si de verdad hay que reconstruir contexto, son los
+  // últimos mensajes los que importan. Y acota el costo, que con 200 mensajes
+  // no es menor.
+  return ordenados.slice(-MENSAJES_SIN_ANCLA)
 }
+
+/**
+ * Cuántos mensajes se leen cuando no hay ancla de lectura. Suficiente para
+ * entender de qué se está hablando, lejos del historial completo.
+ */
+export const MENSAJES_SIN_ANCLA = 12
 
 /**
  * Pura. La memoria que SIGUE VALIENDO para la propiedad de la que se está
