@@ -1486,22 +1486,18 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
       }
     }
 
-    const sent = await sendWhatsappText({
-      to: input.phoneE164,
-      text: decision.text,
-      leadId: input.leadId,
-      propertyId: input.propertyId,
-      sentBy: null,
-      aiGenerated: true,
-    })
-    // No salió nada (modo prueba / sin credenciales) ⇒ el cupo vuelve.
-    if (sent.skipped) await releaseMessageSlot(input.phoneE164, claimed.slot)
-
-    // El material va DESPUÉS del texto y solo si el texto salió: primero se
-    // dice "te paso unas fotos", después llegan. Al revés, la persona ve
-    // archivos sueltos sin contexto. No consume cupo aparte —es parte de la
-    // misma respuesta— y si falla, el mensaje ya llegó igual.
-    if (decision.send && decision.send.length > 0 && !sent.skipped && sent.ok) {
+    // EL MATERIAL VA PRIMERO, Y EL TEXTO DESPUÉS.
+    //
+    // Antes era al revés, con un argumento razonable: "primero se dice te paso
+    // unas fotos, después llegan". Pero en un teléfono real se rompe — el dueño
+    // lo vio el 2026-08-12: con un video de 43 segundos y varias fotos, el texto
+    // queda a media pantalla de scroll hacia arriba, y el texto es el que lleva
+    // LA PREGUNTA. Una pregunta que no se ve no se contesta.
+    //
+    // Al revés funciona: llega lo que pidió, y el mensaje que lo acompaña queda
+    // último, que es lo que la persona está mirando cuando levanta la vista.
+    // El riesgo de "archivos sin contexto" es chico: acaba de pedirlos.
+    if (decision.send && decision.send.length > 0) {
       const archivos = archivosParaEnviar(prop, decision.send)
       if (archivos.length === 0) {
         console.warn(`[agente] el modelo pidió mandar "${decision.send.join(', ')}" y esta propiedad no tiene`)
@@ -1518,11 +1514,23 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
           sentBy: null,
           aiGenerated: true,
         })
-        // Un archivo que falla no frena a los demás ni rompe el turno: el
-        // mensaje de texto ya está entregado.
+        // Un archivo que falla no frena a los demás ni rompe el turno: el texto
+        // sale igual y la persona recibe una respuesta.
         if (!r.ok) console.warn('[agente] no se pudo mandar un archivo:', r.error)
       }
     }
+
+    const sent = await sendWhatsappText({
+      to: input.phoneE164,
+      text: decision.text,
+      leadId: input.leadId,
+      propertyId: input.propertyId,
+      sentBy: null,
+      aiGenerated: true,
+    })
+    // No salió nada (modo prueba / sin credenciales) ⇒ el cupo vuelve.
+    if (sent.skipped) await releaseMessageSlot(input.phoneE164, claimed.slot)
+
     return { action: 'reply' }
   } catch (err) {
     console.warn('[scheduling-agent] excepción (nunca lanza, continuando):', err)

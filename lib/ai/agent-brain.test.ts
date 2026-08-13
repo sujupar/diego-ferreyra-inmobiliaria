@@ -158,9 +158,42 @@ describe('DEFAULT_AGENT_PROMPT — cómo atiende', () => {
   })
 
   it('interpreta lo que la persona QUIERE, no lo que dijo literalmente', () => {
-    expect(DEFAULT_AGENT_PROMPT).toMatch(/NO TOMES EL PEDIDO AL PIE DE LA LETRA/)
-    expect(DEFAULT_AGENT_PROMPT).toMatch(/lo que está pidiendo es CONOCER LA PROPIEDAD/)
     expect(DEFAULT_AGENT_PROMPT).toMatch(/INTERPRETÁ LO QUE QUIERE, NO LO QUE DIJO/)
+  })
+
+  it('manda LO QUE PIDIÓ, no todo lo que hay', () => {
+    // El 2026-08-12 el dueño tocó "Sí, mandame el video" y recibió el video Y
+    // las fotos de una sola vez: tres archivos taparon la conversación y el
+    // texto —que llevaba la pregunta— quedó fuera de pantalla. Antes había una
+    // "REGLA FIJA" que obligaba a mandar los dos. Se fue.
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/MANDÁ LO QUE TE PIDIÓ/)
+    expect(DEFAULT_AGENT_PROMPT).not.toMatch(/REGLA FIJA/)
+    expect(DEFAULT_AGENT_PROMPT).not.toMatch(/mandá SIEMPRE los dos/)
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/Un tipo de material por turno/)
+  })
+
+  it('no dice "te lo paso de nuevo" cuando es la primera vez', () => {
+    // Le pasó las fotos y el video, después le pidieron el plano —que nunca
+    // había mandado— y contestó "Te lo paso de nuevo". La persona revisa el
+    // chat y ve que es mentira.
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/NO digas "de nuevo"/)
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/es la primera vez/)
+  })
+
+  it('el objetivo es AYUDAR, y la pregunta de cierre no empuja a agendar', () => {
+    // Mientras el objetivo decía "llevá la conversación a que diga cuándo
+    // puede", el modelo empujaba en cada mensaje aunque más abajo hubiera
+    // reglas que lo prohibían. La contradicción la ganaba el objetivo.
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/AYUDAR a la persona con esta propiedad/)
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/¿En qué más te puedo ayudar con la propiedad\?/)
+    expect(DEFAULT_AGENT_PROMPT).not.toMatch(/llevá la conversación a que diga CUÁNDO PUEDE/)
+  })
+
+  it('la frase de cierre exige DÍA Y HORA: un día suelto no alcanza', () => {
+    // "Sí, mañana está bien" disparó el cierre como si estuviera coordinado.
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/SOLO cuando tenés DÍA \*\*Y\*\* HORA/)
+    expect(DEFAULT_AGENT_PROMPT).toContain('"Sí, mañana está bien"')
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/es un día SIN hora\. NO cierres/)
   })
 
   it('SÍ manda material cuando ayuda — no es un premio por agendar', () => {

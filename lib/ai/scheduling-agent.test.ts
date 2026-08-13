@@ -707,6 +707,40 @@ describe('runSchedulingAgent (I/O)', () => {
     expect(orden).toEqual(['insert', 'notify', 'send'])
   })
 
+  it('EL MATERIAL SALE ANTES QUE EL TEXTO: la pregunta tiene que quedar a la vista', async () => {
+    // El 2026-08-12, en un teléfono real: el texto salió primero, después un
+    // video de 43 segundos y varias fotos, y el texto —que llevaba la pregunta—
+    // quedó a media pantalla de scroll hacia arriba. Una pregunta que no se ve
+    // no se contesta. Invertir el orden deja el mensaje último, que es donde la
+    // persona mira cuando termina de recibir los archivos.
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    propMaybeSingle.mockResolvedValueOnce({
+      data: {
+        address: 'Av. Cabildo 2450', title: null, assigned_to: 'advisor-1', ai_scheduling_enabled: true,
+        photos: [], plans: [], video_file_url: 'https://s/v.mp4',
+      },
+      error: null,
+    })
+    mockSinVisitaPendiente()
+
+    const orden: string[] = []
+    sendWhatsappMediaMock.mockImplementation(async () => {
+      orden.push('media')
+      return { ok: true, skipped: false }
+    })
+    sendWhatsappTextMock.mockImplementationOnce(async () => {
+      orden.push('texto')
+      return { ok: true, skipped: false }
+    })
+
+    mockAnalisis({ reply: 'Ahí va el video. ¿En qué más te puedo ayudar con la propiedad?', send: ['video'] })
+    await runSchedulingAgent({ ...BASE_INPUT })
+
+    expect(orden[orden.length - 1]).toBe('texto')
+    expect(orden.filter(x => x === 'media').length).toBeGreaterThan(0)
+  })
+
   it('HALLAZGO 3 — si el guardado de la visita FALLA, no se le confirma nada al cliente', async () => {
     const { runSchedulingAgent } = await import('./scheduling-agent')
     mockSettingsEnabled()
@@ -1475,7 +1509,19 @@ describe('el agente manda el material que pidió el modelo', () => {
     }))
   })
 
-  it('si el texto no salió, tampoco sale el material: primero se avisa, después llega', async () => {
+  it('si el texto falla, el material YA salió: la persona recibe lo que pidió igual', async () => {
+    // Cambio de contrato del 2026-08-12: el material va PRIMERO y el texto
+    // después, para que la pregunta quede a la vista y no sepultada arriba de
+    // los archivos. El costo es este caso: si el texto falla, la persona se
+    // queda con el archivo y sin mensaje.
+    //
+    // Se acepta a propósito. Recibir el video que acabás de pedir, sin texto,
+    // es mucho mejor que no recibir nada — y el orden inverso hacía que la
+    // pregunta no se leyera NUNCA, que es un daño en cada conversación y no en
+    // el caso raro.
+    //
+    // El modo prueba NO depende de esto: `sendWhatsappMedia` lo chequea por su
+    // cuenta (`whatsappTestMode()`) y devuelve `skipped` sin mandar nada.
     const { runSchedulingAgent } = await import('./scheduling-agent')
     mockSettingsEnabled()
     propMaybeSingle.mockResolvedValueOnce({
@@ -1486,11 +1532,11 @@ describe('el agente manda el material que pidió el modelo', () => {
       error: null,
     })
     sendWhatsappTextMock.mockResolvedValueOnce({ ok: false, skipped: false, error: 'Meta caído' })
-    mockAnalisis({ reply: 'Te paso unas fotos.', send: ['fotos'] })
+    mockAnalisis({ reply: 'Ahí van las fotos.', send: ['fotos'] })
 
     await runSchedulingAgent({ ...BASE_INPUT })
 
-    expect(sendWhatsappMediaMock).not.toHaveBeenCalled()
+    expect(sendWhatsappMediaMock).toHaveBeenCalledTimes(1)
   })
 
   it('si el modelo pide algo que la propiedad no tiene, no se manda nada (y el turno no se rompe)', async () => {
