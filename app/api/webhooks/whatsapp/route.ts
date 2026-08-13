@@ -218,6 +218,20 @@ async function runAiPipeline(ctx: InboundContext): Promise<void> {
     // nada más.
     if (!ctx.propertyId) {
       await runConversationAnalysis(ctx.phoneE164)
+      // ...salvo que sea alguien que pidió una TASACIÓN por la landing. Esas
+      // conversaciones nacen sin propiedad (la del cliente todavía no existe en
+      // el sistema), así que caían acá y nadie les contestaba. El agente de
+      // tasación sigue un guion cerrado —canal, cuándo, dónde— y se apaga solo
+      // ante cualquier cosa fuera de guion. Tiene su propio interruptor y no
+      // comparte nada con el agente de propiedades. Nunca lanza.
+      if (ctx.textoEntrante) {
+        const { runTasacionAgent } = await import('@/lib/ai/tasacion-agent')
+        await runTasacionAgent({
+          phoneE164: ctx.phoneE164,
+          mensaje: ctx.textoEntrante,
+          contactName: ctx.contactName,
+        })
+      }
       return
     }
     // Con propiedad, el agente hace TODO el turno: carga la propiedad y sus
