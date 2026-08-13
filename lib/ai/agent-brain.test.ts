@@ -172,12 +172,39 @@ describe('DEFAULT_AGENT_PROMPT — cómo atiende', () => {
     expect(DEFAULT_AGENT_PROMPT).toMatch(/Un tipo de material por turno/)
   })
 
-  it('no dice "te lo paso de nuevo" cuando es la primera vez', () => {
-    // Le pasó las fotos y el video, después le pidieron el plano —que nunca
-    // había mandado— y contestó "Te lo paso de nuevo". La persona revisa el
-    // chat y ve que es mentira.
-    expect(DEFAULT_AGENT_PROMPT).toMatch(/NO digas "de nuevo"/)
-    expect(DEFAULT_AGENT_PROMPT).toMatch(/es la primera vez/)
+  it('NUNCA dice "de nuevo" al mandar material, ni cuando ya lo mandó', () => {
+    // Primero se intentó condicionarlo ("decilo solo si ya se lo mandaste") y
+    // siguió apareciendo: la lista de material ya enviado mira TODO el
+    // historial, incluso de días atrás y de sesiones de prueba viejas. La
+    // persona no se acuerda ni tiene por qué, y recordárselo suena a reproche.
+    // La regla simple gana: no se dice nunca.
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/NUNCA digas "de nuevo"/)
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/suena a reproche/)
+  })
+
+  it('la pregunta de cierre tiene VARIANTES: repetir la misma suena a robot', () => {
+    // "¿En qué más te puedo ayudar con la propiedad?" en cada turno es lo
+    // primero que delata que del otro lado no hay nadie.
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/VARIALO/)
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/suena a robot/)
+    // Y varias formas distintas de decir lo mismo, no una sola.
+    const variantes = [
+      'Cualquier otra cosa que quieras saber',
+      '¿Hay algo más que te gustaría ver?',
+      'Si te surge cualquier duda, escribime',
+    ]
+    for (const v of variantes) expect(DEFAULT_AGENT_PROMPT).toContain(v)
+    // Y la opción de no preguntar nada, que también es una variante.
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/a veces la mejor versión es NINGUNA/i)
+  })
+
+  it('cuando la visita ya quedó cerrada, el mensaje NO lleva pregunta', () => {
+    // Preguntar "¿en qué más te ayudo?" justo después de cerrar reabre una
+    // conversación que terminó bien, y suena a formulario.
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/SIN pregunta al final/)
+    // La frase de cierre termina en punto, no en signo de pregunta.
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/teniendo en cuenta tu disponibilidad\."/)
+    expect(DEFAULT_AGENT_PROMPT).not.toMatch(/disponibilidad\. ¿Te puedo ayudar con algo más/)
   })
 
   it('el objetivo es AYUDAR, y la pregunta de cierre no empuja a agendar', () => {
