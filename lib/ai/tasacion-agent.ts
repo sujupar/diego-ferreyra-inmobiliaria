@@ -1,28 +1,48 @@
 /**
  * El agente que atiende a quien pidió una TASACIÓN por la landing.
  *
- * Corre en el webhook de WhatsApp, en la rama de conversaciones SIN propiedad
- * asociada — que es justo donde caen estos leads y donde hasta ahora solo se
- * analizaba la bandeja sin contestarle a nadie. El agente de propiedades
- * (`scheduling-agent.ts`) no se toca: son dos guiones distintos que no comparten
- * ni estado ni interruptor.
+ * Junta dos datos —cuándo puede y dónde queda la propiedad— y se los deja al
+ * equipo. NO agenda ni promete horarios (decisión del dueño, 2026-08-13):
+ * cierra diciendo que un asesor se contacta para confirmar la visita.
  *
- * Qué hace: sigue el guion de `tasacion-flow.ts` (canal → cuándo → dónde), guarda
- * lo que la persona va diciendo en el trato y avisa al equipo. Qué NO hace: NO
- * agenda ni promete horarios (decisión del dueño, 2026-08-13) — cierra diciendo
- * que un asesor se contacta para confirmar la visita según su disponibilidad.
+ * El prompt y la validación viven en `tasacion-brain.ts`. Acá está el
+ * cableado: a quién le corresponde, de dónde sale el contexto, y qué pasa
+ * después de que el modelo contesta.
  *
- * Frenos, todos fail-closed (ante la duda NO escribe):
- *   - `ai_agent_settings.tasacion_enabled` tiene que estar en true.
- *   - Tiene que haber un trato de tasación ABIERTO para ese teléfono. Sin eso,
- *     esta conversación no es de tasación y el agente no opina.
- *   - Ventana de 24 h abierta (Meta rechaza texto libre fuera de ventana).
- *   - Conversación ya cerrada o derivada → no vuelve a escribir nunca.
+ * ## Por qué NO comparte nada con el agente de propiedades
+ *
+ * Son dos trabajos distintos: uno responde sobre una propiedad publicada, el
+ * otro coordina una visita de tasación a la casa de la persona. Módulo propio,
+ * estado propio (`deals.tasacion_wa_state`) e interruptor propio
+ * (`ai_agent_settings.tasacion_enabled`). Prender uno no puede prender el otro.
+ *
+ * ## Una sola llamada al modelo
+ *
+ * Esta llamada REEMPLAZA a la del análisis de bandeja para estas
+ * conversaciones, no se suma a ella (regla dura del proyecto: nunca encadenar
+ * dos llamadas de IA dentro de un request — ver CLAUDE.md). Por eso el prompt
+ * devuelve también el resumen y la prioridad que ordenan el Inbox.
+ *
+ * Todos los frenos son fail-closed: si algo no se puede leer, no escribe.
  */
 import 'server-only'
 import { createClient } from '@supabase/supabase-js'
+import { chatCompletion } from '@/lib/ai/chat-client'
 import { sendWhatsappText } from '@/lib/integrations/whatsapp/core'
-import { siguienteTurno, resumenParaEquipo, type EstadoTasacion } from '@/lib/ai/tasacion-flow'
+import {
+  TASACION_AGENT_PROMPT,
+  buildTasacionUserPrompt,
+  coerceTasacionDecision,
+  aplicarDecision,
+  resumenParaEquipo,
+  type EstadoTasacion,
+} from '@/lib/ai/tasacion-brain'
+
+/** Mismo techo que el análisis: el webhook le debe un 200 rápido a Meta. */
+const TIMEOUT_MS = 12_000
+const MAX_OUTPUT_TOKENS = 500
+/** Tope de mensajes automáticos por conversación. Al llegar, sigue una persona. */
+const MAX_MENSAJES = 6
 
 function admin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -46,50 +66,68 @@ async function agenteHabilitado(): Promise<boolean> {
   }
 }
 
-interface TratoDeTasacion {
+export interface TratoDeTasacion {
   id: string
-  contact_id: string | null
+  contactId: string | null
+  contactName: string | null
   estado: EstadoTasacion
 }
 
 /**
- * El trato de tasación abierto de ese teléfono, si lo hay. Busca por el contacto
- * dueño del número: el mismo camino por el que se creó el lead.
+ * El trato de tasación con guion ABIERTO de ese teléfono, si lo hay.
+ *
+ * Es también la función que decide, para el webhook, si una conversación
+ * "es de tasación": exportada a propósito para que esa decisión se tome UNA
+ * vez y en un solo lugar. Devuelve `null` si el guion ya terminó (datos
+ * completos, pidió llamada o pasó a un humano) — a partir de ahí el agente no
+ * vuelve a escribir nunca en esa conversación.
  */
-async function buscarTrato(phoneE164: string): Promise<TratoDeTasacion | null> {
-  const sb = admin()
-  // El teléfono puede estar guardado con o sin '+' según por dónde entró.
-  const variantes = [phoneE164, `+${phoneE164}`, phoneE164.replace(/^\+/, '')]
-  const { data: contactos } = await sb
-    .from('contacts')
-    .select('id')
-    .in('phone', variantes)
-    .limit(5)
-  const ids = (contactos ?? []).map((c) => (c as { id: string }).id)
-  if (ids.length === 0) return null
+export async function buscarTratoDeTasacion(phoneE164: string): Promise<TratoDeTasacion | null> {
+  try {
+    const sb = admin()
+    // El teléfono puede estar guardado con o sin '+' según por dónde entró.
+    const variantes = [phoneE164, `+${phoneE164}`, phoneE164.replace(/^\+/, '')]
+    const { data: contactos } = await sb.from('contacts').select('id, full_name').in('phone', variantes).limit(5)
+    const filas = (contactos ?? []) as Array<{ id: string; full_name: string | null }>
+    if (filas.length === 0) return null
 
-  const { data: deals } = await sb
-    .from('deals')
-    .select('id, contact_id, stage, origin, tasacion_wa_state, created_at')
-    .in('contact_id', ids)
-    .eq('origin', 'embudo')
-    .in('stage', ETAPAS_ABIERTAS)
-    .order('created_at', { ascending: false })
-    .limit(1)
-  const d = (deals ?? [])[0] as
-    | { id: string; contact_id: string | null; tasacion_wa_state: EstadoTasacion | null }
-    | undefined
-  if (!d) return null
+    const { data: deals } = await sb
+      .from('deals')
+      .select('id, contact_id, tasacion_wa_state, created_at')
+      .in('contact_id', filas.map((c) => c.id))
+      .eq('origin', 'embudo')
+      .in('stage', ETAPAS_ABIERTAS)
+      .not('tasacion_wa_state', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
 
-  return {
-    id: d.id,
-    contact_id: d.contact_id,
-    // Sin estado guardado, la conversación arranca donde la dejó la plantilla.
-    estado: d.tasacion_wa_state ?? { paso: 'esperando_canal' },
+    const d = (deals ?? [])[0] as
+      | { id: string; contact_id: string | null; tasacion_wa_state: EstadoTasacion | null }
+      | undefined
+    if (!d) return null
+
+    const estado = d.tasacion_wa_state ?? {}
+    // Guion terminado: esta conversación ya no es del agente.
+    if (estado.cerrado === true || estado.derivado === true) return null
+
+    return {
+      id: d.id,
+      contactId: d.contact_id,
+      contactName: filas.find((c) => c.id === d.contact_id)?.full_name ?? null,
+      estado,
+    }
+  } catch (err) {
+    console.warn('[tasacion-agent] no se pudo buscar el trato (continuando):', err)
+    return null
   }
 }
 
-/** Deja los datos en el trato: el estado del guion y una nota legible. */
+/** Hoy en Argentina (YYYY-MM-DD). El modelo no sabe la fecha: se la damos. */
+function hoyArgentinaISO(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+}
+
+/** Deja el estado del guion y, si hay algo que contar, una nota en el trato. */
 async function guardarEnTrato(dealId: string, estado: EstadoTasacion, nota: string | null): Promise<void> {
   const sb = admin()
   const patch: Record<string, unknown> = { tasacion_wa_state: estado }
@@ -106,74 +144,116 @@ export interface RunTasacionAgentInput {
   /** Último mensaje entrante del cliente (texto plano). */
   mensaje: string
   contactName?: string | null
+  /** El trato, si el caller ya lo buscó (el webhook lo hace para rutear). */
+  trato?: TratoDeTasacion | null
 }
 
 export type ResultadoAgenteTasacion =
   | { actuo: false; motivo: string }
-  | { actuo: true; respondio: boolean; paso: EstadoTasacion['paso'] }
+  | { actuo: true; respondio: boolean; cerrado: boolean }
 
 /**
  * Un turno del agente. Nunca lanza: un fallo acá no puede tumbar el 200 que el
  * webhook le debe a Meta.
  */
-export async function runTasacionAgent(
-  input: RunTasacionAgentInput,
-): Promise<ResultadoAgenteTasacion> {
+export async function runTasacionAgent(input: RunTasacionAgentInput): Promise<ResultadoAgenteTasacion> {
   try {
     if (!(await agenteHabilitado())) return { actuo: false, motivo: 'apagado' }
 
-    const trato = await buscarTrato(input.phoneE164)
-    if (!trato) return { actuo: false, motivo: 'sin trato de tasación abierto' }
+    const trato = input.trato ?? (await buscarTratoDeTasacion(input.phoneE164))
+    if (!trato) return { actuo: false, motivo: 'sin trato de tasación con guion abierto' }
 
-    const turno = siguienteTurno(trato.estado, input.mensaje)
-    if (!turno.respuesta) {
-      return { actuo: false, motivo: `guion terminado (${trato.estado.paso})` }
+    const previo = trato.estado
+    const enviados = previo.enviados ?? 0
+    if (enviados >= MAX_MENSAJES) {
+      // Se marca cerrado para que no vuelva a entrar nunca más por este camino.
+      await guardarEnTrato(trato.id, { ...previo, cerrado: true }, null)
+      return { actuo: false, motivo: 'tope de mensajes alcanzado' }
     }
 
-    // La ventana de 24 h NO se chequea acá y es correcto: este agente solo corre
-    // como respuesta a un mensaje ENTRANTE del cliente, así que por construcción
-    // la ventana se acaba de abrir con ese mismo mensaje. (Mismo criterio que el
-    // agente de propiedades.)
+    const texto = input.mensaje.trim()
+    if (!texto) return { actuo: false, motivo: 'mensaje vacío' }
 
-    // Se GUARDA antes de escribir: si el envío falla, el estado ya avanzó y no
-    // se le repite la misma pregunta a la persona en el próximo mensaje.
-    const nota = turno.avisarEquipo ? resumenParaEquipo(turno.estado) : null
-    await guardarEnTrato(trato.id, turno.estado, nota)
-
-    const r = await sendWhatsappText({
-      to: input.phoneE164,
-      text: turno.respuesta,
-      aiGenerated: true,
-      origen: 'landing',
+    // --- UNA llamada al modelo. Entiende y redacta en el mismo viaje.
+    const res = await chatCompletion({
+      messages: [
+        { role: 'system', content: TASACION_AGENT_PROMPT },
+        {
+          role: 'user',
+          content: buildTasacionUserPrompt({
+            clientName: trato.contactName ?? input.contactName ?? null,
+            todayISO: hoyArgentinaISO(),
+            yaSabemos: {
+              disponibilidad: previo.disponibilidad ?? null,
+              direccion: previo.direccion ?? null,
+              prefiereLlamada: previo.prefiereLlamada === true,
+            },
+            previousSummary: previo.resumen ?? '',
+            newMessages: [{ from: 'cliente', text: texto }],
+            ultimoMensajePropio: previo.ultimoMensaje ?? null,
+            agentMessagesSent: enviados,
+            maxMessages: MAX_MENSAJES,
+          }),
+        },
+      ],
+      temperature: 0.3,
+      jsonMode: true,
+      maxTokens: MAX_OUTPUT_TOKENS,
+      timeoutMs: TIMEOUT_MS,
     })
-    if (!r.ok && !r.skipped) {
-      console.warn('[tasacion-agent] no se pudo enviar:', r.error)
+
+    const decision = coerceTasacionDecision(JSON.parse(res.content) as unknown)
+    if (!decision) return { actuo: false, motivo: 'el modelo devolvió algo inservible' }
+
+    // El CÓDIGO decide qué pasa con lo que el modelo entendió.
+    const { estado, avisarEquipo, motivo } = aplicarDecision(previo, decision)
+
+    // Se guarda ANTES de escribir: si el envío falla, el estado ya avanzó y no
+    // se le repite la misma pregunta a la persona en el próximo mensaje.
+    await guardarEnTrato(trato.id, estado, avisarEquipo ? resumenParaEquipo(estado) : null)
+
+    let respondio = false
+    if (decision.reply) {
+      const r = await sendWhatsappText({
+        to: input.phoneE164,
+        text: decision.reply,
+        aiGenerated: true,
+        origen: 'landing',
+      })
+      respondio = r.ok === true
+      if (!r.ok && !r.skipped) console.warn('[tasacion-agent] no se pudo enviar:', r.error)
     }
 
-    // El aviso al equipo va DESPUÉS de escribirle al cliente: primero se atiende
-    // a quien está esperando, después se ordena la casa.
-    if (turno.avisarEquipo) {
+    // El aviso al equipo va DESPUÉS de contestarle a quien está esperando.
+    if (avisarEquipo) {
       try {
         const { createTaskForRole } = await import('@/lib/supabase/tasks')
+        const quien = trato.contactName ?? input.contactName ?? input.phoneE164
         const titulo =
-          turno.motivo === 'pidio_llamada'
-            ? `Llamar para coordinar tasación: ${input.contactName ?? input.phoneE164}`
-            : turno.motivo === 'derivado'
-              ? `Consulta por WhatsApp (tasación): ${input.contactName ?? input.phoneE164}`
-              : `Confirmar tasación: ${input.contactName ?? input.phoneE164}`
+          motivo === 'pidio_llamada'
+            ? `Llamar para coordinar tasación: ${quien}`
+            : motivo === 'derivado'
+              ? `Consulta por WhatsApp (tasación): ${quien}`
+              : `Coordinar tasación: ${quien}`
         await createTaskForRole('coordinador', {
           type: 'update_contact',
           title: titulo,
-          description: `${resumenParaEquipo(turno.estado)}\n\nTeléfono: ${input.phoneE164}`,
+          description: [
+            resumenParaEquipo(estado),
+            decision.suggestedNextStep ? `\nSugerido: ${decision.suggestedNextStep}` : '',
+            `\nTeléfono: ${input.phoneE164}`,
+          ]
+            .filter(Boolean)
+            .join('\n'),
           deal_id: trato.id,
-          contact_id: trato.contact_id ?? undefined,
+          contact_id: trato.contactId ?? undefined,
         })
       } catch (e) {
         console.warn('[tasacion-agent] no se pudo crear la tarea del equipo', e)
       }
     }
 
-    return { actuo: true, respondio: r.ok === true, paso: turno.estado.paso }
+    return { actuo: true, respondio, cerrado: estado.cerrado === true }
   } catch (err) {
     console.warn('[tasacion-agent] excepción (continuando):', err)
     return { actuo: false, motivo: 'excepción' }

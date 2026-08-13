@@ -213,25 +213,43 @@ async function persistInbound(supabase: ReturnType<typeof admin>, msg: InboundMe
  */
 async function runAiPipeline(ctx: InboundContext): Promise<void> {
   try {
+    // ---- PRIMERO: ¿esta conversación es de una TASACIÓN?
+    //
+    // Va ANTES de mirar la propiedad, y ese orden ES el arreglo. `propertyId`
+    // sale de los leads de propiedad del teléfono, o sea del PASADO: alguien que
+    // consultó por un depto hace tres semanas y hoy pide una tasación tiene
+    // propertyId igual. Con el chequeo abajo, a esa persona le contestaba el
+    // agente de propiedades hablándole del depto en vez de coordinar su tasación
+    // (caso real, primera prueba del 2026-08-13).
+    //
+    // La pregunta correcta no es "¿tiene una propiedad asociada?" sino "¿hay una
+    // tasación EN CURSO ahora mismo?", que es un estado vivo y no un rastro
+    // viejo. `buscarTratoDeTasacion` devuelve null apenas el guion termina, así
+    // que la conversación vuelve sola al camino normal.
+    //
+    // Es UNA sola llamada al modelo igual que las otras ramas: el agente de
+    // tasación devuelve también el resumen y la prioridad del Inbox, así que
+    // NO se corre además `runConversationAnalysis` (ver la regla dura del
+    // proyecto sobre encadenar llamadas de IA en un mismo request).
+    if (ctx.textoEntrante) {
+      const { buscarTratoDeTasacion, runTasacionAgent } = await import('@/lib/ai/tasacion-agent')
+      const trato = await buscarTratoDeTasacion(ctx.phoneE164)
+      if (trato) {
+        await runTasacionAgent({
+          phoneE164: ctx.phoneE164,
+          mensaje: ctx.textoEntrante,
+          contactName: ctx.contactName,
+          trato,
+        })
+        return
+      }
+    }
+
     // Sin propiedad asociada no hay datos que contestar, y un agente que
     // improvisa es peor que uno callado: se analiza para ordenar la bandeja y
     // nada más.
     if (!ctx.propertyId) {
       await runConversationAnalysis(ctx.phoneE164)
-      // ...salvo que sea alguien que pidió una TASACIÓN por la landing. Esas
-      // conversaciones nacen sin propiedad (la del cliente todavía no existe en
-      // el sistema), así que caían acá y nadie les contestaba. El agente de
-      // tasación sigue un guion cerrado —canal, cuándo, dónde— y se apaga solo
-      // ante cualquier cosa fuera de guion. Tiene su propio interruptor y no
-      // comparte nada con el agente de propiedades. Nunca lanza.
-      if (ctx.textoEntrante) {
-        const { runTasacionAgent } = await import('@/lib/ai/tasacion-agent')
-        await runTasacionAgent({
-          phoneE164: ctx.phoneE164,
-          mensaje: ctx.textoEntrante,
-          contactName: ctx.contactName,
-        })
-      }
       return
     }
     // Con propiedad, el agente hace TODO el turno: carga la propiedad y sus

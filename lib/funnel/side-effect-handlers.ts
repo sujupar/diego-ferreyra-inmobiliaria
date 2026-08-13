@@ -232,6 +232,29 @@ async function primerWhatsappDeTasacion(p: Record<string, unknown>): Promise<Res
   // Modo prueba / sin credenciales: no salió nada, y decirlo es información.
   if (r.skipped) return 'skipped'
   if (!r.ok) throw new Error(`WhatsApp: ${r.error ?? 'error desconocido'}`)
+
+  // ESTA MARCA ES LO QUE HACE QUE LA CONVERSACIÓN SEA "DE TASACIÓN".
+  //
+  // Sin ella, el webhook resuelve el teléfono contra los leads de PROPIEDAD y,
+  // si la persona alguna vez consultó por una propiedad, le contesta el agente
+  // equivocado — habla de esa propiedad en vez de coordinar la tasación. Pasó de
+  // verdad en la primera prueba (2026-08-13).
+  //
+  // Va DESPUÉS del envío a propósito: si el WhatsApp no salió, no hay
+  // conversación que atender y marcar el trato sería mentir sobre su estado.
+  // Es best-effort: si falla, el lead ya recibió su mensaje y un humano sigue
+  // viéndolo en el CRM. No se hace fallar el trabajo (reintentarlo mandaría la
+  // plantilla dos veces).
+  const dealId = texto(p, 'dealId')
+  if (dealId) {
+    try {
+      const { createClient } = await import('@supabase/supabase-js')
+      const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+      await sb.from('deals').update({ tasacion_wa_state: {} }).eq('id', dealId)
+    } catch (e) {
+      console.warn('[funnel-jobs] no se pudo marcar el trato como conversación de tasación', e)
+    }
+  }
   return 'done'
 }
 
