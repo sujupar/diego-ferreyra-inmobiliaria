@@ -178,7 +178,65 @@ async function eventoDeConversion(p: Record<string, unknown>): Promise<Resultado
   return 'done'
 }
 
+/**
+ * El primer WhatsApp a quien pidió una tasación. Es lo único de esta cola que
+ * le llega a una PERSONA DE AFUERA, y cumple lo que el formulario le prometió
+ * ("te escribimos por WhatsApp en los próximos segundos").
+ *
+ * Además de avisar, hace algo que ninguna otra pieza puede hacer: al tocar
+ * cualquiera de los dos botones, ENTRA un mensaje del cliente y eso abre la
+ * ventana de 24 h de Meta. Sin esa ventana no se puede mandar texto libre, así
+ * que sin este mensaje no hay coordinación posible por chat.
+ *
+ * Apagado por defecto: sin `WHATSAPP_TEMPLATE_TASACION` no manda nada y devuelve
+ * 'skipped'. Así el código puede estar en producción antes de que Meta apruebe
+ * la plantilla, sin que nadie reciba un mensaje a medias.
+ */
+async function primerWhatsappDeTasacion(p: Record<string, unknown>): Promise<ResultadoTrabajo> {
+  // Solo el embudo de tasación: en la clase, la entrega es la clase misma en la
+  // página de gracias y un WhatsApp encima sería ruido que nadie pidió.
+  if (requerido(p, 'funnel') !== 'tasacion') return 'skipped'
+
+  const plantilla = process.env.WHATSAPP_TEMPLATE_TASACION
+  if (!plantilla) return 'skipped' // todavía sin plantilla aprobada
+
+  const phoneCrudo = texto(p, 'phone')
+  if (!phoneCrudo) return 'skipped'
+
+  const { normalizeWhatsappPhone } = await import('@/lib/integrations/whatsapp/phone')
+  const destino = normalizeWhatsappPhone(phoneCrudo)
+  // Un número que WhatsApp no puede usar no es un error a reintentar cinco
+  // veces: es un dato que no sirve. Se registra como 'skipped' y sigue.
+  if (!destino) return 'skipped'
+
+  const primerNombre = requerido(p, 'nombre').trim().split(/\s+/)[0] ?? ''
+
+  // El envío ya deja el mensaje en `whatsapp_messages` (ver `logOutbound` dentro
+  // de `sendWhatsappTemplate`), así que acá no se registra nada a mano.
+  // `aiGenerated: true` es importante río abajo: el agente solo reconoce como
+  // "algo que ya dije yo" los mensajes marcados así, y sin eso volvería a
+  // preguntar lo que esta plantilla ya preguntó.
+  const { sendWhatsappTemplate } = await import('@/lib/integrations/whatsapp/core')
+  const r = await sendWhatsappTemplate({
+    to: destino,
+    templateName: plantilla,
+    languageCode: process.env.WHATSAPP_TEMPLATE_TASACION_LANG ?? 'es_AR',
+    bodyParams: [primerNombre],
+    origen: 'landing',
+    aiGenerated: true,
+    bodyText:
+      `Hola ${primerNombre}, ¿cómo estás?\n\n` +
+      'Te escribo de Diego Ferreyra Inmobiliaria por la tasación gratuita que pediste recién en nuestra web.\n\n' +
+      'Es presencial, sin costo y sin compromiso. ¿Cómo preferís que la coordinemos?',
+  })
+  // Modo prueba / sin credenciales: no salió nada, y decirlo es información.
+  if (r.skipped) return 'skipped'
+  if (!r.ok) throw new Error(`WhatsApp: ${r.error ?? 'error desconocido'}`)
+  return 'done'
+}
+
 const MANEJADORES: Record<TipoDeTrabajo, (p: Record<string, unknown>) => Promise<ResultadoTrabajo>> = {
+  whatsapp: primerWhatsappDeTasacion,
   coordinator_task: tareaDeCoordinacion,
   notify: avisoPorEmail,
   mailchimp: sincronizarMailchimp,

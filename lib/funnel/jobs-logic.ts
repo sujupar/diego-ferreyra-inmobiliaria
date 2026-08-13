@@ -6,8 +6,9 @@
  * nada. El worker (`side-effects-worker.ts`) solo pone el I/O alrededor.
  */
 
-/** Los cinco avisos que salen del camino crítico de `POST /api/funnel/submit`. */
+/** Los avisos que salen del camino crítico de `POST /api/funnel/submit`. */
 export const TIPOS_DE_TRABAJO = [
+  'whatsapp',
   'coordinator_task',
   'notify',
   'mailchimp',
@@ -20,17 +21,21 @@ export type TipoDeTrabajo = (typeof TIPOS_DE_TRABAJO)[number]
 /**
  * Orden en que se atienden dentro de una misma corrida.
  *
- * Primero lo que hace que una PERSONA se entere del lead (el email, después la
- * tarea en el CRM), después la conversión a Meta —que tolera demora: Meta acepta
- * eventos de hasta 7 días—, y al final lo accesorio. Si un tick no alcanza para
- * todos, lo que queda sin hacer es lo que menos duele.
+ * Primero el WhatsApp al CLIENTE: es el único aviso que una persona de afuera
+ * está esperando en su teléfono —el formulario le prometió un mensaje "en los
+ * próximos segundos"— y además es lo que ABRE la ventana de 24 h con la que
+ * después se coordina la visita. Recién después lo que hace que el EQUIPO se
+ * entere (el email, la tarea en el CRM), después la conversión a Meta —que
+ * tolera demora: acepta eventos de hasta 7 días— y al final lo accesorio. Si un
+ * tick no alcanza para todos, lo que queda sin hacer es lo que menos duele.
  */
 const PRIORIDAD: Record<TipoDeTrabajo, number> = {
-  notify: 0,
-  coordinator_task: 1,
-  capi: 2,
-  anon_stitch: 3,
-  mailchimp: 4,
+  whatsapp: 0,
+  notify: 1,
+  coordinator_task: 2,
+  capi: 3,
+  anon_stitch: 4,
+  mailchimp: 5,
 }
 
 /**
@@ -71,15 +76,29 @@ export interface DatosDelEnvio {
 }
 
 /**
- * Arma los CINCO trabajos de un envío. Siempre los cinco, incluso cuando ya se
- * sabe que alguno no va a hacer nada (sin `anonId` no hay stitching, sin
- * `eventId` no hay evento de conversión): así el registro de un lead siempre
- * tiene cinco filas y se puede leer de un vistazo qué pasó con cada aviso. Los
- * que no aplican terminan en 'skipped', que es información, no ruido.
+ * Arma TODOS los trabajos de un envío. Siempre todos, incluso cuando ya se sabe
+ * que alguno no va a hacer nada (sin `anonId` no hay stitching, sin `eventId` no
+ * hay evento de conversión, sin teléfono no hay WhatsApp): así el registro de un
+ * lead siempre tiene la misma cantidad de filas y se puede leer de un vistazo
+ * qué pasó con cada aviso. Los que no aplican terminan en 'skipped', que es
+ * información, no ruido.
  */
 export function construirTrabajos(d: DatosDelEnvio): TrabajoEncolable[] {
   const contentName = d.funnel === 'clase' ? 'Clase Gratuita' : 'Tasación Directa'
   return [
+    {
+      // El primer mensaje al cliente. Solo tasación: en clase la entrega es la
+      // clase misma en la página de gracias, y meterle un WhatsApp encima sería
+      // ruido que nadie pidió. El handler igual revisa el teléfono y el interruptor.
+      kind: 'whatsapp',
+      payload: {
+        funnel: d.funnel,
+        dealId: d.dealId,
+        contactId: d.contactId,
+        nombre: d.nombre,
+        phone: d.phone,
+      },
+    },
     {
       kind: 'coordinator_task',
       payload: {

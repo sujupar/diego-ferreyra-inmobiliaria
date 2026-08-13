@@ -27,9 +27,9 @@ const ENVIO: DatosDelEnvio = {
 }
 
 describe('construirTrabajos', () => {
-  it('arma SIEMPRE los cinco avisos, uno por etapa', () => {
+  it('arma SIEMPRE un aviso por etapa, uno de cada tipo', () => {
     const t = construirTrabajos(ENVIO)
-    expect(t).toHaveLength(5)
+    expect(t).toHaveLength(TIPOS_DE_TRABAJO.length)
     expect(t.map((x) => x.kind).sort()).toEqual([...TIPOS_DE_TRABAJO].sort())
   })
 
@@ -38,9 +38,23 @@ describe('construirTrabajos', () => {
     // van a terminar en 'skipped'. Es información, no ruido — mirando la cola se
     // ve qué pasó con cada aviso de cada lead.
     const t = construirTrabajos({ ...ENVIO, anonId: null, eventId: null })
-    expect(t).toHaveLength(5)
+    expect(t).toHaveLength(TIPOS_DE_TRABAJO.length)
     expect(t.find((x) => x.kind === 'anon_stitch')!.payload.anonId).toBeNull()
     expect(t.find((x) => x.kind === 'capi')!.payload.eventId).toBeNull()
+  })
+
+  it('el primer WhatsApp al cliente lleva el teléfono y va con la máxima prioridad', () => {
+    // Es el único aviso que espera una persona de afuera, y el que ABRE la
+    // ventana de 24 h con la que después se coordina la visita.
+    const wa = construirTrabajos(ENVIO).find((x) => x.kind === 'whatsapp')!
+    expect(wa.payload.phone).toBe(ENVIO.phone)
+    expect(wa.payload.nombre).toBe(ENVIO.nombre)
+    expect(wa.payload.funnel).toBe(ENVIO.funnel)
+
+    const orden = ordenarTrabajos(
+      construirTrabajos(ENVIO).map((t, i) => ({ id: `id-${i}`, kind: t.kind, created_at: '2026-08-13T10:00:00Z' })),
+    )
+    expect(orden[0].kind).toBe('whatsapp')
   })
 
   it('el trabajo de Meta lleva la hora REAL de la conversión y el mismo event_id del Píxel', () => {
