@@ -990,3 +990,68 @@ cómo se registra una visita propuesta, se cambia ahí y vale para los dos.
 al tocarla ENTRA un mensaje del cliente → abre la ventana de 24hs, deja la
 intención registrada y le da el pie al agente. Un segundo botón URL no generaría
 nada. Se selecciona con la env var `WHATSAPP_TEMPLATE_RECORRIDO` en Netlify.
+
+---
+
+## Agente que coordina la TASACIÓN por WhatsApp — 2026-08-13
+
+Es OTRO agente, no una variante del que agenda visitas de propiedades. Atiende a
+quien pidió una tasación en la landing del embudo.
+
+### Por qué existe: esas conversaciones no tenían quién las contestara
+
+Un lead de tasación entra SIN propiedad asociada (la propiedad del cliente
+todavía no existe en el sistema). En `runAiPipeline` esa es justo la rama
+`if (!ctx.propertyId)`, que solo analizaba la bandeja y volvía. O sea: recibían
+la plantilla y después silencio. El agente se engancha ahí.
+
+### NO agenda — junta datos y se los pasa a una persona (decisión del dueño)
+
+El guion es canal → día y hora → dirección/barrio → cierre. No promete horarios
+ni crea visitas: anota todo en el trato + tarea al coordinador y cierra con el
+texto textual del dueño ("Te va a estar contactando el asesor para confirmar la
+visita..."). Si alguna vez se quiere que agende de verdad, reusar
+`lib/leads/visit-scheduling.ts` — NO escribir un segundo camino.
+
+### Guion cerrado, no un modelo suelto
+
+`lib/ai/tasacion-flow.ts` es una máquina de estados PURA (13 tests), sin llamada
+a ningún modelo — cuesta $0 y no puede alucinar. Ante cualquier cosa fuera de
+libreto (una pregunta, un pedido de baja) pasa a `derivado` y **no vuelve a
+escribir nunca en esa conversación**. Un "no me interesa, cancelar" NO se
+interpreta como una fecha: eso está testeado explícitamente.
+
+### Separado a propósito del agente de propiedades
+
+Módulo propio (`lib/ai/tasacion-agent.ts`), estado propio (`deals.tasacion_wa_state`,
+NO `conversation_ai_state`) e interruptor propio (`ai_agent_settings.tasacion_enabled`,
+default `false`). Prender uno no puede prender el otro. Fail-closed: si el
+interruptor no se puede leer, no escribe.
+
+El estado se guarda **ANTES** de enviar: si el envío falla, el guion ya avanzó y
+no se le repite la misma pregunta a la persona.
+
+### TRAMPA: Meta reclasifica la plantilla a MARKETING por el vocabulario
+
+`tasacion_coordinar_util` se mandó como UTILITY y Meta la **aprobó como
+MARKETING** — el clasificador lee "gratuita / sin costo / sin compromiso" como
+promoción. No es cosmético: los mensajes de marketing tienen tope de frecuencia
+POR PERSONA y Meta puede **no entregarlos**, así que un lead nuevo podría
+quedarse sin el primer mensaje.
+
+`tasacion_coordinar_v2` es el mismo mensaje sin esas palabras ("recibimos tu
+solicitud de tasación en nuestra web. Para coordinar la visita, ¿cómo preferís
+que sigamos?") y Meta SÍ la aceptó como UTILITY. **Regla: en una plantilla de
+seguimiento, referirse solo a lo que la persona pidió; ningún adjetivo de venta.**
+Se elige con `WHATSAPP_TEMPLATE_TASACION` en Netlify.
+
+Los dos botones son de respuesta rápida por el mismo motivo que en el agente de
+propiedades: tocarlos hace ENTRAR un mensaje del cliente, que es lo que abre la
+ventana de 24 h y le da el pie al agente.
+
+### Para estrenarlo
+
+```sql
+-- migración 20260813000001_agente_tasacion.sql (aditiva)
+update ai_agent_settings set tasacion_enabled = true;  -- recién DESPUÉS de probar
+```
