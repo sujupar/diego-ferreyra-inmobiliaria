@@ -27,6 +27,11 @@ import {
   PLANTILLAS_UTIL,
   type EleccionPlantilla,
 } from '@/lib/leads/consulta-template'
+import {
+  elegirAperturaV2,
+  escaleraDeApertura,
+  type IntentoDeApertura,
+} from '@/lib/leads/consulta-apertura-v2'
 
 function admin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -134,7 +139,7 @@ export async function responderConsulta(
 
     const { data: consulta, error: errConsulta } = await sb
       .from('portal_inquiries')
-      .select('id, lead_name, lead_phone, lead_email, lead_message, property_id, whatsapp_enviado_at, portal')
+      .select('id, lead_name, lead_phone, lead_email, lead_message, property_id, whatsapp_enviado_at, portal, property_url')
       .eq('id', inquiryId)
       .maybeSingle()
     if (errConsulta || !consulta) {
@@ -146,6 +151,7 @@ export async function responderConsulta(
     }
     const c = consulta as {
       id: string; lead_name: string | null; lead_phone: string | null; lead_email: string | null
+      property_url?: string | null
       lead_message: string | null; property_id: string | null; whatsapp_enviado_at: string | null; portal: string
     }
 
@@ -178,6 +184,9 @@ export async function responderConsulta(
       prop,
       nombre: c.lead_name?.trim() || '',
       leadId,
+      // El enlace del aviso viene del mail del portal. Argenprop lo manda
+      // (38 de 40); ZonaProp nunca (0 de 193), y ahí la apertura va sin enlace.
+      enlaceAviso: c.property_url ?? null,
     })
 
     if (!res.ok) {
@@ -216,26 +225,41 @@ export async function enviarAperturaDeConsulta(input: {
   prop: PropiedadParaConsulta
   nombre: string
   leadId: string | null
+  /**
+   * El enlace del aviso, tal como viene en el mail del portal. Argenprop lo
+   * manda casi siempre; ZonaProp nunca. Sin enlace se usa la variante que no lo
+   * pide: un parámetro vacío hace que Meta rechace el envío entero.
+   */
+  enlaceAviso?: string | null
 }): Promise<{ ok: boolean; skipped: boolean; error?: string; plantillaUsada: string }> {
-  const { telefono, prop, nombre, leadId } = input
+  const { telefono, prop, nombre, leadId, enlaceAviso } = input
   const etiqueta = nombrarPropiedad(prop)
   const eleccion: EleccionPlantilla = elegirPlantilla({ ...prop, etiqueta: prop.address ?? prop.title })
   const params = parametrosDelCuerpo(eleccion, { nombre, propiedad: etiqueta })
+  const aperturaV2 = elegirAperturaV2({
+    nombre,
+    propiedad: etiqueta,
+    enlace: enlaceAviso,
+    video: prop.video_file_url,
+    fotos: prop.photos,
+  })
 
-  const enviar = async (plantilla: string, deTramite: boolean) =>
+  const enviar = async (intento: IntentoDeApertura) =>
     sendWhatsappTemplate({
       to: telefono,
-      templateName: plantilla,
+      templateName: intento.plantilla,
       languageCode: process.env.WHATSAPP_TEMPLATE_LANG ?? 'es_AR',
-      bodyParams: params,
+      bodyParams: intento.params,
       // El texto EXACTO que va a leer la persona, para que quede guardado como
       // el mensaje que es. Sin esto se guardaban los parámetros pegados con
       // puntos, y el agente —que lee esa columna para saber qué dijo la vez
       // anterior— arrancaba sin entender su propio mensaje: volvía a preguntar
       // lo que la plantilla ya había preguntado.
-      bodyText: renderCuerpo(cuerpoDePlantilla(eleccion, deTramite), params),
-      headerMedia: eleccion.header
-        ? { type: eleccion.header.tipo, link: eleccion.header.link, filename: eleccion.headerFilename }
+      bodyText: renderCuerpo(intento.cuerpo, intento.params),
+      // Solo los peldaños v1 adjuntan algo. La v2 no manda plano ni video: el
+      // video se ofrece en el texto y se manda después, si la persona quiere.
+      headerMedia: intento.header
+        ? { type: intento.header.tipo, link: intento.header.link, filename: intento.header.filename }
         : undefined,
       leadId,
       propertyId: prop.id,
@@ -247,20 +271,37 @@ export async function enviarAperturaDeConsulta(input: {
       timeoutMs: 8000,
     })
 
-  // Primero la cálida. Si Meta no la entrega —o todavía no está aprobada—,
-  // la de trámite como red.
-  let usada: string = eleccion.plantilla
-  let res = await enviar(usada, false)
-  const bloqueadaPorMarketing = !res.ok && res.errorCode != null && META_MARKETING_BLOQUEADO.has(res.errorCode)
-  if (!res.ok && (bloqueadaPorMarketing || esPlantillaNoDisponible(res.error))) {
-    const red = PLANTILLAS_UTIL[eleccion.plantilla]
+  // Se baja la escalera hasta que una plantilla entre: primero las v2 cortas,
+  // y las viejas como red mientras Meta termina de aprobarlas. El porqué de cada
+  // peldaño está en `escaleraDeApertura`.
+  const escalera = escaleraDeApertura(aperturaV2, {
+    plantilla: eleccion.plantilla,
+    plantillaUtil: PLANTILLAS_UTIL[eleccion.plantilla],
+    params,
+    cuerpo: cuerpoDePlantilla(eleccion, false),
+    cuerpoUtil: cuerpoDePlantilla(eleccion, true),
+    header: eleccion.header
+      ? { tipo: eleccion.header.tipo, link: eleccion.header.link, filename: eleccion.headerFilename }
+      : undefined,
+  })
+
+  let usada = escalera[0].plantilla
+  let res = await enviar(escalera[0])
+  for (let i = 1; i < escalera.length && !res.ok; i++) {
+    const bloqueadaPorMarketing = res.errorCode != null && META_MARKETING_BLOQUEADO.has(res.errorCode)
+    // Solo se sigue bajando ante "no existe" o "Meta no la entrega". Cualquier
+    // otro error (teléfono inválido, token vencido) NO se reintenta: bajar la
+    // escalera ahí sería mandar cuatro veces el mismo error y, peor, esconder la
+    // causa real detrás del último peldaño.
+    if (!bloqueadaPorMarketing && !esPlantillaNoDisponible(res.error)) break
+    const siguiente = escalera[i]
     console.warn(
       bloqueadaPorMarketing
-        ? `[consulta] Meta no entregó la de marketing (${res.errorCode}), se reintenta con ${red}`
-        : `[consulta] ${usada} no está disponible, se reintenta con ${red}`,
+        ? `[consulta] Meta no entregó ${usada} (${res.errorCode}), se reintenta con ${siguiente.plantilla}`
+        : `[consulta] ${usada} no está disponible, se reintenta con ${siguiente.plantilla}`,
     )
-    usada = red
-    res = await enviar(usada, true)
+    usada = siguiente.plantilla
+    res = await enviar(siguiente)
   }
 
   // `skipped` se devuelve APARTE de `ok`: "modo prueba, no se mandó nada" no es
