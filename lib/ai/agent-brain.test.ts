@@ -218,10 +218,29 @@ describe('DEFAULT_AGENT_PROMPT — cómo atiende', () => {
     expect(DEFAULT_AGENT_PROMPT).toMatch(/Nunca digas que la visita está confirmada/)
   })
 
-  it('dice QUIÉN hace qué: "te llamamos para confirmarte el horario", no "el equipo confirma"', () => {
-    // "El equipo confirma" no le dice nada a nadie: ni quién, ni cómo, ni cuándo.
-    expect(DEFAULT_AGENT_PROMPT).toMatch(/te llamamos para confirmarte el horario/)
-    expect(DEFAULT_AGENT_PROMPT).toMatch(/Nunca "el equipo confirma" a secas/)
+  it('dice QUIÉN hace qué, con el verbo puesto, y nunca "el equipo confirma" a secas', () => {
+    // El principio se mantiene; cambió la redacción: ya no cerramos nosotros.
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/te va a estar contactando el asesor/)
+    expect(DEFAULT_AGENT_PROMPT).toMatch(/nunca "el equipo confirma" a secas/i)
+  })
+
+  it('UNA sola redacción del cierre en todo el prompt', () => {
+    // El 2026-08-12 el agente cerró con "Queda anotada la visita... Te llamamos
+    // para confirmarte el horario": la redacción VIEJA. Había TRES lugares del
+    // prompt diciendo cómo cerrar, con dos redacciones distintas, y el modelo
+    // eligió una de las viejas. Cuando un prompt se contradice, no hay forma de
+    // saber cuál gana — así que no puede contradecirse.
+    expect(DEFAULT_AGENT_PROMPT).not.toMatch(/[Tt]e llamamos para confirmarte el horario/)
+    expect(DEFAULT_AGENT_PROMPT).not.toMatch(/CUANDO YA QUEDÓ LA VISITA/)
+    expect(DEFAULT_AGENT_PROMPT).not.toMatch(/Queda ANOTADA/)
+    // Y la que queda aparece una vez sola.
+    const veces = (DEFAULT_AGENT_PROMPT.match(/te va a estar contactando el asesor/g) ?? []).length
+    expect(veces).toBe(1)
+  })
+
+  it('el título de la sección de material no contradice su contenido', () => {
+    // Decía "Y TENÉS QUE ADELANTARTE" arriba de "mandá lo que te pidió".
+    expect(DEFAULT_AGENT_PROMPT).not.toMatch(/TENÉS QUE ADELANTARTE/)
   })
 })
 

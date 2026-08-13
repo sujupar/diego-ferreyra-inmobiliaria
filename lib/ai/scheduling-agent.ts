@@ -1078,30 +1078,37 @@ export function materialDisponible(p: PropertyForAgent): { fotos: boolean; plano
 type Archivo = { mediaType: 'image' | 'video' | 'document'; link: string; filename?: string }
 
 /**
- * Fotos y video van JUNTOS, en las dos direcciones.
+ * Los tipos a mandar: SOLO los que se pidieron, sin duplicados.
  *
- * Quien pide fotos quiere CONOCER la propiedad: el video se la muestra mejor.
- * Y quien pide fotos y recibe SOLO el video se queda sin lo que pidió — que fue
- * exactamente lo que pasó en la prueba del 2026-08-03 y no tiene ninguna
- * defensa. La regla simétrica es la única que no deja a nadie a mitad de camino.
+ * ## Por qué esta función ya no agrega nada
  *
- * Vive en el código y no en el prompt porque tiene que ocurrir SIEMPRE. El
- * prompt también lo pide —para que el texto nombre las dos cosas— pero un
- * prompt es probabilístico: pedís algo y a veces no pasa.
+ * Antes se llamaba `completarConVideo` y forzaba fotos y video JUNTOS en las dos
+ * direcciones. Nació de un incidente real (2026-08-03: alguien pidió fotos y
+ * recibió solo el video) y estaba escrita, textual, "en el código y no en el
+ * prompt porque tiene que ocurrir SIEMPRE".
+ *
+ * Ese "siempre" es justo lo que la volvió un problema. El 2026-08-12 el dueño
+ * tocó el botón "Sí, mandame el video" y recibió el video Y las fotos: tres
+ * archivos taparon la conversación. Se sacó la regla del prompt y NO PASÓ NADA,
+ * porque esta función la seguía aplicando por debajo. Una regla de código
+ * construida para que el prompt no la pueda anular también es una regla que
+ * nadie puede corregir tocando el prompt — y ahí se pierden dos pruebas
+ * enteras buscando el error en el lugar equivocado.
+ *
+ * La decisión del dueño es explícita: "esto tiene que ser algo interpretativo".
+ * Quién entiende qué necesita la persona es el modelo, con el contexto de la
+ * conversación; el código no puede saberlo mirando una lista de tipos.
+ *
+ * Lo que SÍ sigue viviendo acá es lo que el modelo no puede garantizar y no es
+ * interpretación: el tope de tipos y el tope de archivos por turno, que son
+ * límites de TIEMPO del webhook.
+ *
+ * El riesgo que se acepta: si el modelo lee mal el pedido, manda lo que no era.
+ * Contra eso está el prompt (sección "MANDÁ LO QUE TE PIDIÓ") y el hecho de que
+ * la persona lo puede volver a pedir. Peor era mandar de más siempre.
  */
-export function completarConVideo(p: PropertyForAgent, tipos: MaterialTipo[]): MaterialTipo[] {
-  const unicos = tipos.filter((t, i) => tipos.indexOf(t) === i)
-  const quiereFotos = unicos.includes('fotos')
-  const quiereVideo = unicos.includes('video')
-  // Ninguno de los dos, o ya están los dos: nada que completar.
-  if (quiereFotos === quiereVideo) return unicos
-  if (unicos.length >= MAX_TIPOS_POR_TURNO) return unicos
-
-  const falta: MaterialTipo = quiereFotos ? 'video' : 'fotos'
-  const hayLoQueFalta = falta === 'video' ? !!p.video_file_url : (p.photos ?? []).length > 0
-  if (!hayLoQueFalta) return unicos
-  // Las fotos primero: es lo que la persona nombró más veces y lo que abre el chat.
-  return falta === 'fotos' ? ['fotos', ...unicos] : [...unicos, 'video']
+export function tiposParaMandar(tipos: MaterialTipo[]): MaterialTipo[] {
+  return tipos.filter((t, i) => tipos.indexOf(t) === i).slice(0, MAX_TIPOS_POR_TURNO)
 }
 
 function delTipo(p: PropertyForAgent, tipo: MaterialTipo): Archivo[] {
@@ -1123,7 +1130,7 @@ function delTipo(p: PropertyForAgent, tipo: MaterialTipo): Archivo[] {
  * mandar las fotos Y el video vale más que mandar una foto más.
  */
 export function archivosParaEnviar(p: PropertyForAgent, tipos: MaterialTipo[]): Archivo[] {
-  const pedidos = completarConVideo(p, tipos)
+  const pedidos = tiposParaMandar(tipos)
   if (pedidos.length === 0) return []
   if (pedidos.length === 1) return delTipo(p, pedidos[0]).slice(0, MAX_ARCHIVOS_POR_TURNO)
 

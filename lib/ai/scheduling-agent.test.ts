@@ -707,6 +707,59 @@ describe('runSchedulingAgent (I/O)', () => {
     expect(orden).toEqual(['insert', 'notify', 'send'])
   })
 
+  it('LAS DOS CAPAS JUNTAS: el modelo pide el video y llega UN archivo, no cuatro', async () => {
+    // ESTE es el test que faltaba, y es la razón de que se perdieran dos
+    // pruebas reales seguidas.
+    //
+    // El comportamiento del agente se decide en DOS capas: el prompt (lo que el
+    // modelo elige pedir) y el código (lo que se ejecuta con ese pedido). Los
+    // tests que había verificaban cada capa por separado — el prompt con
+    // expresiones regulares sobre el texto, el código con llamadas directas a
+    // sus funciones — y NINGUNO cruzaba la frontera.
+    //
+    // Ahí vivían los dos errores: se sacó la regla del prompt y el código la
+    // siguió aplicando, y todo siguió en verde. Este test entra por arriba
+    // (`runSchedulingAgent`) y mira lo ÚNICO que le importa a la persona: qué
+    // le llegó al teléfono.
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    propMaybeSingle.mockResolvedValueOnce({
+      data: {
+        address: 'Av. Cabildo 2450', title: null, assigned_to: 'advisor-1', ai_scheduling_enabled: true,
+        photos: ['https://s/1.jpg', 'https://s/2.jpg', 'https://s/3.jpg'],
+        plans: ['https://s/plano.pdf'],
+        video_file_url: 'https://s/video.mp4',
+      },
+      error: null,
+    })
+    mockSinVisitaPendiente()
+    mockAnalisis({ reply: 'Ahí va el video. ¿En qué más te puedo ayudar con la propiedad?', send: ['video'] })
+
+    await runSchedulingAgent({ ...BASE_INPUT })
+
+    expect(sendWhatsappMediaMock).toHaveBeenCalledTimes(1)
+    expect(sendWhatsappMediaMock).toHaveBeenCalledWith(expect.objectContaining({ mediaType: 'video' }))
+  })
+
+  it('LAS DOS CAPAS JUNTAS: pide el plano y llega el plano, sin fotos de arrastre', async () => {
+    const { runSchedulingAgent } = await import('./scheduling-agent')
+    mockSettingsEnabled()
+    propMaybeSingle.mockResolvedValueOnce({
+      data: {
+        address: 'Av. Cabildo 2450', title: null, assigned_to: 'advisor-1', ai_scheduling_enabled: true,
+        photos: ['https://s/1.jpg'], plans: ['https://s/plano.pdf'], video_file_url: 'https://s/video.mp4',
+      },
+      error: null,
+    })
+    mockSinVisitaPendiente()
+    mockAnalisis({ reply: 'Ahí va el plano.', send: ['plano'] })
+
+    await runSchedulingAgent({ ...BASE_INPUT })
+
+    expect(sendWhatsappMediaMock).toHaveBeenCalledTimes(1)
+    expect(sendWhatsappMediaMock).toHaveBeenCalledWith(expect.objectContaining({ mediaType: 'document' }))
+  })
+
   it('EL MATERIAL SALE ANTES QUE EL TEXTO: la pregunta tiene que quedar a la vista', async () => {
     // El 2026-08-12, en un teléfono real: el texto salió primero, después un
     // video de 43 segundos y varias fotos, y el texto —que llevaba la pregunta—
@@ -1594,76 +1647,50 @@ describe('dos tipos de material en un mismo turno', () => {
 // Prueba real del dueño: pidió fotos, llegaron las fotos y NO el video, aunque
 // la propiedad lo tenía. Que el video acompañe a las fotos es una regla, no un
 // juicio del modelo — y las reglas van donde siempre se cumplen.
-describe('completarConVideo — el video acompaña a las fotos, siempre', () => {
-  const conVideo = {
-    photos: ['https://s/1.jpg', 'https://s/2.jpg', 'https://s/3.jpg'],
-    plans: ['https://s/plano.pdf'],
-    video_file_url: 'https://s/video.mp4',
-    video_url: null,
-  } as unknown as Parameters<typeof import('./scheduling-agent').completarConVideo>[0]
-
-  it('el modelo pidió solo fotos y hay video → van los dos', async () => {
-    const { completarConVideo } = await import('./scheduling-agent')
-    expect(completarConVideo(conVideo, ['fotos'])).toEqual(['fotos', 'video'])
+describe('tiposParaMandar — va SOLO lo que se pidió', () => {
+  // Antes esta función se llamaba `completarConVideo` y forzaba fotos+video
+  // juntos, en las dos direcciones, "porque tiene que ocurrir SIEMPRE". El
+  // 2026-08-12 el dueño tocó "Sí, mandame el video" y recibió tres archivos.
+  // Se había sacado la regla del PROMPT y no pasó nada: esta función la seguía
+  // aplicando por debajo. Los tests de abajo existen para que no vuelva.
+  it('pidió el video → va SOLO el video, aunque haya fotos', async () => {
+    const { tiposParaMandar } = await import('./scheduling-agent')
+    expect(tiposParaMandar(['video'])).toEqual(['video'])
   })
 
-  it('sin video de archivo, no se inventa nada', async () => {
-    const { completarConVideo } = await import('./scheduling-agent')
-    expect(completarConVideo({ ...conVideo, video_file_url: null }, ['fotos'])).toEqual(['fotos'])
+  it('pidió fotos → van SOLO las fotos, aunque haya video', async () => {
+    const { tiposParaMandar } = await import('./scheduling-agent')
+    expect(tiposParaMandar(['fotos'])).toEqual(['fotos'])
   })
 
-  it('si no pidió fotos, no se le agrega el video de prepo', async () => {
-    const { completarConVideo } = await import('./scheduling-agent')
-    expect(completarConVideo(conVideo, ['plano'])).toEqual(['plano'])
-    expect(completarConVideo(conVideo, [])).toEqual([])
+  it('si pidió los dos, van los dos: la decisión es del modelo, no del código', async () => {
+    const { tiposParaMandar } = await import('./scheduling-agent')
+    expect(tiposParaMandar(['fotos', 'video'])).toEqual(['fotos', 'video'])
   })
 
-  it('si ya pidió los dos, queda igual', async () => {
-    const { completarConVideo } = await import('./scheduling-agent')
-    expect(completarConVideo(conVideo, ['fotos', 'video'])).toEqual(['fotos', 'video'])
+  it('saca duplicados y respeta el tope de tipos por turno', async () => {
+    const { tiposParaMandar } = await import('./scheduling-agent')
+    const { MAX_TIPOS_POR_TURNO } = await import('./agent-brain')
+    expect(tiposParaMandar(['fotos', 'fotos'])).toEqual(['fotos'])
+    expect(tiposParaMandar(['fotos', 'video', 'plano']).length).toBe(MAX_TIPOS_POR_TURNO)
   })
 
-  it('si el modelo YA pidió dos tipos, se respeta: no se le saca el plano para meter el video', async () => {
-    const { completarConVideo } = await import('./scheduling-agent')
-    expect(completarConVideo(conVideo, ['fotos', 'plano'])).toEqual(['fotos', 'plano'])
+  it('nada pedido, nada mandado', async () => {
+    const { tiposParaMandar } = await import('./scheduling-agent')
+    expect(tiposParaMandar([])).toEqual([])
   })
 
-  it('de punta a punta: pedir fotos manda fotos Y video', async () => {
+  it('de punta a punta: pedir el video manda UN archivo, no cuatro', async () => {
     const { archivosParaEnviar } = await import('./scheduling-agent')
-    const r = archivosParaEnviar(conVideo, ['fotos'])
-    expect(r.filter(a => a.mediaType === 'video')).toHaveLength(1)
-    expect(r.filter(a => a.mediaType === 'image').length).toBeGreaterThan(0)
-  })
-})
-
-// El caso de la prueba real: pidió fotos y llegó SOLO el video. La regla tiene
-// que valer en las dos direcciones o alguien siempre se queda sin lo que pidió.
-describe('completarConVideo — fotos y video van juntos, en los dos sentidos', () => {
-  const completa = {
-    photos: ['https://s/1.jpg', 'https://s/2.jpg'],
-    plans: ['https://s/plano.pdf'],
-    video_file_url: 'https://s/video.mp4',
-    video_url: null,
-  } as unknown as Parameters<typeof import('./scheduling-agent').completarConVideo>[0]
-
-  it('pidió VIDEO y hay fotos → van las dos cosas (el caso que falló en la prueba)', async () => {
-    const { completarConVideo } = await import('./scheduling-agent')
-    expect(completarConVideo(completa, ['video'])).toEqual(['fotos', 'video'])
-  })
-
-  it('pidió FOTOS y hay video → van las dos cosas', async () => {
-    const { completarConVideo } = await import('./scheduling-agent')
-    expect(completarConVideo(completa, ['fotos'])).toEqual(['fotos', 'video'])
-  })
-
-  it('sin fotos cargadas, el video va solo', async () => {
-    const { completarConVideo } = await import('./scheduling-agent')
-    expect(completarConVideo({ ...completa, photos: [] }, ['video'])).toEqual(['video'])
-  })
-
-  it('el plano no arrastra nada: quien pide un plano pide un plano', async () => {
-    const { completarConVideo } = await import('./scheduling-agent')
-    expect(completarConVideo(completa, ['plano'])).toEqual(['plano'])
+    const prop = {
+      photos: ['https://s/1.jpg', 'https://s/2.jpg', 'https://s/3.jpg'],
+      plans: ['https://s/plano.pdf'],
+      video_file_url: 'https://s/video.mp4',
+      video_url: null,
+    } as unknown as Parameters<typeof import('./scheduling-agent').archivosParaEnviar>[0]
+    const r = archivosParaEnviar(prop, ['video'])
+    expect(r).toHaveLength(1)
+    expect(r[0].mediaType).toBe('video')
   })
 })
 
