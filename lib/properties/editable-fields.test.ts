@@ -61,3 +61,55 @@ describe('sanearEdicion', () => {
     expect(r).toEqual({ ok: true, patch: { asking_price: 90000000, currency: 'ARS' } })
   })
 })
+
+describe('sanearEdicion — características', () => {
+  it('acepta los conteos de la ficha', () => {
+    const r = sanearEdicion({ rooms: 6, bedrooms: 6, bathrooms: 4, garages: 4 })
+    expect(r).toEqual({ ok: true, patch: { rooms: 6, bedrooms: 6, bathrooms: 4, garages: 4 } })
+  })
+
+  it('acepta superficies con decimales pero NO dormitorios fraccionados', () => {
+    expect(sanearEdicion({ covered_area: 84.5 }).ok).toBe(true)
+    const r = sanearEdicion({ bedrooms: 2.5 })
+    expect(r.ok).toBe(false)
+    expect(!r.ok && r.error).toMatch(/entero/i)
+  })
+
+  it('acepta PB (0) y subsuelo (negativo) como piso', () => {
+    expect(sanearEdicion({ floor: 0 })).toEqual({ ok: true, patch: { floor: 0 } })
+    expect(sanearEdicion({ floor: -2 })).toEqual({ ok: true, patch: { floor: -2 } })
+    expect(sanearEdicion({ floor: -50 }).ok).toBe(false)
+  })
+
+  it('vaciar un campo lo pone en null: "no sé la antigüedad" no es "0 años"', () => {
+    expect(sanearEdicion({ age: null })).toEqual({ ok: true, patch: { age: null } })
+    expect(sanearEdicion({ age: '' })).toEqual({ ok: true, patch: { age: null } })
+    expect(sanearEdicion({ description: '' })).toEqual({ ok: true, patch: { description: null } })
+  })
+
+  it('rechaza valores fuera de rango con un mensaje que nombra el campo', () => {
+    const r = sanearEdicion({ rooms: 500 })
+    expect(r.ok).toBe(false)
+    expect(!r.ok && r.error).toMatch(/ambientes/i)
+    expect(sanearEdicion({ age: 400 }).ok).toBe(false)
+    expect(sanearEdicion({ total_area: 100_001 }).ok).toBe(false)
+    expect(sanearEdicion({ expensas: -1 }).ok).toBe(false)
+  })
+
+  it('recorta una descripción larguísima en vez de rechazarla', () => {
+    const r = sanearEdicion({ description: 'x'.repeat(6000) })
+    expect(r.ok && (r.patch.description as string).length).toBe(5000)
+  })
+
+  it('acepta varios campos a la vez y sigue filtrando los prohibidos', () => {
+    const r = sanearEdicion({
+      rooms: 4, total_area: 180, description: 'Casa con jardín',
+      legal_status: 'approved', public_slug: 'hackeado',
+    })
+    expect(r).toEqual({ ok: true, patch: { rooms: 4, total_area: 180, description: 'Casa con jardín' } })
+  })
+
+  it('un número que llega como texto se rechaza (no se adivina)', () => {
+    expect(sanearEdicion({ rooms: '4' }).ok).toBe(false)
+  })
+})

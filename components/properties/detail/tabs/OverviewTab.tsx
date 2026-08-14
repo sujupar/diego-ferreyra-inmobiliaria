@@ -7,6 +7,7 @@ import { estadoComercialEfectivo } from '@/lib/properties/commercial-status'
 import { PropertyCommercialStatusCard } from '../PropertyCommercialStatusCard'
 import { PropertyAppraisalCard } from '../PropertyAppraisalCard'
 import { PropertyPriceCard } from '../PropertyPriceCard'
+import { PropertyDetailsEditor } from '../PropertyDetailsEditor'
 
 // Leaflet toca `window`: fuera del render de servidor.
 const PropertyLocationMap = dynamic(
@@ -38,6 +39,12 @@ export interface OverviewProperty {
   expensas?: number | null
   floor?: number | null
   age?: number | null
+  rooms?: number | null
+  bedrooms?: number | null
+  bathrooms?: number | null
+  garages?: number | null
+  covered_area?: number | null
+  total_area?: number | null
   asking_price: number
   currency: string
   commission_percentage: number
@@ -145,6 +152,25 @@ export function OverviewTab({ property, isAbogado, onChanged }: { property: Over
                 ))}
               </div>
             </div>
+          )}
+
+          {!isAbogado && (
+            <PropertyDetailsEditor
+              propertyId={property.id}
+              valores={{
+                rooms: property.rooms,
+                bedrooms: property.bedrooms,
+                bathrooms: property.bathrooms,
+                garages: property.garages,
+                covered_area: property.covered_area,
+                total_area: property.total_area,
+                age: property.age,
+                floor: property.floor,
+                expensas: property.expensas,
+                description: property.description,
+              }}
+              onChanged={onChanged}
+            />
           )}
 
           {!isAbogado && (

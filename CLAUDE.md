@@ -510,6 +510,16 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Fix:** El draft del wizard usa `status:'draft'`. El worker solo toca `'pending'`. El publish real (`POST /ml-publish`) pasa la fila a `'published'`. **Regla:** cualquier fila `property_listings` en `'pending'` será publicada por el worker — no usar `'pending'` para borradores/configuración intermedia.
 - **Relacionado:** el worker DEBE reconstruir las `MlPayloadOptions` desde `property_listings.metadata` antes de publicar (`buildPublishOpts` en `lib/portals/worker.ts`); si llama `adapter.publish(property)` sin opts, ignora todo el draft (atributos/medios/tier) y republica con defaults.
 
+### Editar precio y características desde la ficha (2026-08-14)
+
+- **La landing pública YA lee estos datos EN VIVO — no hay nada que regenerar ni invalidar.** Los bloques toman precio, m², ambientes y fotos desde `property` (`lib/landing/registry.tsx`); `asking_price` **no existe** en `lib/landing/schema.ts`, así que nunca se congela en el documento guardado, y `/p/[slug]` se sirve con `cache-control: no-store`. Verificado contra producción: `scripts/verify-precio-landing.ts` compara el precio de la base con el HTML público de cada landing.
+  - **Lo que SÍ queda viejo:** los textos que escribió la IA. Si alguno menciona un número (hoy hay uno con "80 m²"), editar ese dato no lo reescribe. La UI lo avisa.
+- **Ruta propia `PATCH /api/properties/[id]/details` con lista blanca** (`lib/properties/editable-fields.ts`, módulo puro + 18 tests). **NO usar el `PUT /api/properties/[id]` genérico desde el navegador:** acepta cualquier columna del body, así que quien edita un precio podría mandar de paso `legal_status`, `assigned_to`, `status` o `commercial_status`. Al sumar un campo editable se toca SOLO la lista blanca.
+- **Regla del guardado: al salir del campo (blur) o con Enter, NUNCA por tecla ni por temporizador.** Motivo concreto: para corregir 6 → 5 hay que vaciar el campo, y para escribir 1290000 se pasa por 1, 12, 129… Con la landing leyendo en vivo y tráfico pago encima, un autosave publicaría "US$ 12" o un dato en blanco. El primer diseño del panel tenía temporizador y los tests lo cazaron. La moneda sí guarda al instante: es un `select`, no tiene estados intermedios.
+- Un guardado fallido **no** marca el campo como guardado: volver a salir del campo reintenta.
+- **Los avisos ya publicados en los portales NO se actualizan solos** al cambiar el precio. La UI lo advierte; republicarlos es una acción aparte (sin decidir).
+- El abogado no edita nada (403 en la ruta + gate `isAbogado` en la ficha).
+
 ### Multimedia de propiedad captada: fotos (orden=portada), video (archivo) y recorrido (enlace)
 
 - **Modelo de datos:** las fotos viven en `properties.photos` (TEXT[]) — **el ORDEN del array es la verdad**: las 3 primeras son la portada y `photos[0]` es la miniatura en todo el sistema (listado, leads, portales). `video_url` queda RESERVADO para enlaces externos que consumen los portales (esperan algo tipo YouTube); el **video SUBIDO** (archivo) va en la columna nueva **`video_file_url`** (Storage, reproducido con `<video>`). El **recorrido virtual** es un enlace en `tour_3d_url`, embebido en `<iframe>`. Migración: `supabase/migrations/20260606000003_property_video_file_url.sql` (correr a mano en el Dashboard — Supabase CLI no conecta).
