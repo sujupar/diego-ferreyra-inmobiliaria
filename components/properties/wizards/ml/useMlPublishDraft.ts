@@ -105,7 +105,6 @@ export function useMlPublishDraft(propertyId: string) {
           title: draft.title,
           description: draft.description,
           photos: draft.photos,
-          asking_price: draft.askingPrice,
           videoUrl: draft.videoUrl,
           tour3dUrl: draft.tour3dUrl,
           latitude: draft.latitude,

@@ -54,8 +54,24 @@ describe('PUT /api/properties/[id]', () => {
   })
 
   it('una edición común de campos pasa igual que siempre', async () => {
-    const res = await PUT(pedido({ asking_price: 195000 }), { params })
+    const res = await PUT(pedido({ title: 'Casa en Villa Devoto' }), { params })
     expect(res.status).toBe(200)
-    expect(estado.updates).toEqual([{ asking_price: 195000 }])
+    expect(estado.updates).toEqual([{ title: 'Casa en Villa Devoto' }])
+  })
+
+  it('el PRECIO no entra por acá: tiene una sola puerta con freno', async () => {
+    // Este PUT manda el body entero al UPDATE sin mirar nada. Dejarlo tocar el
+    // precio sería un desvío alrededor del freno de /details, y este número se
+    // publica solo en una landing con pauta encima.
+    const res = await PUT(pedido({ asking_price: 195000 }), { params })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/details/)
+    expect(estado.updates).toHaveLength(0)
+  })
+
+  it('la moneda tampoco', async () => {
+    const res = await PUT(pedido({ currency: 'ARS' }), { params })
+    expect(res.status).toBe(400)
+    expect(estado.updates).toHaveLength(0)
   })
 })

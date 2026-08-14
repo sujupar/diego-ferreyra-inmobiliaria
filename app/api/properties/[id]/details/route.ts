@@ -40,16 +40,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
     const confirmado = body?.confirmar === true
 
+    // Se lee la propiedad ANTES de sanear: la moneda que tiene hoy define el
+    // techo del precio (en pesos los montos son mil veces más grandes) y el
+    // precio actual es contra qué se mide un cambio brusco.
+    const actual = await getProperty(id).catch(() => null)
+
     // `confirmar` es una instrucción, no un dato de la propiedad: la lista
-    // blanca lo descarta sola, pero se saca explícito para que quede dicho.
-    const saneado = sanearEdicion(body)
+    // blanca lo descarta sola, pero queda dicho.
+    const saneado = sanearEdicion(body, actual?.currency ? String(actual.currency) : undefined)
     if (!saneado.ok) {
       return NextResponse.json({ error: saneado.error }, { status: 400 })
     }
 
     const tocaElPrecio = 'asking_price' in saneado.patch || 'currency' in saneado.patch
     if (tocaElPrecio && !confirmado) {
-      const actual = await getProperty(id).catch(() => null)
       const veredicto = evaluarCambioDePrecio({
         // Sin propiedad leída no se adivina: `anterior` inválido hace que el
         // evaluador pida confirmación, que es exactamente lo que queremos.

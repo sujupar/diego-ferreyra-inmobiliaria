@@ -54,6 +54,18 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       )
     }
 
+    // El precio tiene UNA sola puerta: PATCH /api/properties/[id]/details, que
+    // compara contra el precio real de la base y frena un cambio brusco sin
+    // confirmar. Este PUT acepta el body entero sin mirar nada, así que
+    // dejarlo tocar el precio sería un desvío alrededor de ese freno — y este
+    // número se publica solo en una landing con pauta encima.
+    if (body && typeof body === 'object' && ('asking_price' in body || 'currency' in body)) {
+      return NextResponse.json(
+        { error: 'El precio y la moneda se cambian en PATCH /api/properties/[id]/details, que valida el cambio antes de publicarlo.' },
+        { status: 400 },
+      )
+    }
+
     await updateProperty(id, body)
 
     return NextResponse.json({ success: true })

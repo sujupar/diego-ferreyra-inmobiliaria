@@ -198,9 +198,11 @@ export async function PATCH(
         .filter(p => /^https?:\/\//i.test(p))
       update.photos = reordenarSinPerder((actual.photos as string[] | null) ?? [], enviadas)
     }
-    if (typeof body.asking_price === 'number' && body.asking_price > 0) {
-      update.asking_price = Math.min(body.asking_price, 100_000_000)
-    }
+    // El precio NO se toca desde el wizard de portales, a propósito: el wizard
+    // lo lee al abrirse y lo reenviaba en cada guardado, así que si alguien
+    // bajaba el precio en la ficha mientras el wizard estaba abierto, avanzar
+    // un paso lo revertía en silencio — y sin pasar por el freno de
+    // /details. El precio se edita en la ficha y nada más.
     // XSS almacenado: estas URLs van a <iframe src> en la landing pública → exigir https://
     if (body.videoUrl !== undefined) update.video_url = sanitizeHttpsUrl(body.videoUrl)
     if (body.tour3dUrl !== undefined) update.tour_3d_url = sanitizeHttpsUrl(body.tour3dUrl)

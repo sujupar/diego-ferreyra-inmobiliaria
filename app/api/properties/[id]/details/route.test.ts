@@ -122,3 +122,29 @@ describe('PATCH /details — permisos y validación', () => {
     expect(estado.actualizaciones).toEqual([{ rooms: 4 }])
   })
 })
+
+describe('PATCH /details — techo por moneda', () => {
+  it('una propiedad en PESOS acepta un precio por encima de 100 millones', async () => {
+    // Con un techo único, una propiedad en pesos quedaba imposible de editar:
+    // ni siquiera para bajarle el precio.
+    estado.propiedad = { id: 'p1', asking_price: 150_000_000, currency: 'ARS' }
+    const res = await PATCH(pedido({ asking_price: 140_000_000 }), { params })
+    expect(res.status).toBe(200)
+    expect(estado.actualizaciones).toEqual([{ asking_price: 140_000_000 }])
+  })
+
+  it('en DÓLARES ese mismo número se rechaza como error de tipeo', async () => {
+    const res = await PATCH(pedido({ asking_price: 140_000_000 }), { params })
+    expect(res.status).toBe(400)
+    expect(estado.actualizaciones).toEqual([])
+  })
+
+  it('cambiar a pesos y poner el monto en pesos, en una sola operación, funciona', async () => {
+    const res = await PATCH(
+      pedido({ asking_price: 1_900_000_000, currency: 'ARS', confirmar: true }),
+      { params },
+    )
+    expect(res.status).toBe(200)
+    expect(estado.actualizaciones).toEqual([{ asking_price: 1_900_000_000, currency: 'ARS' }])
+  })
+})

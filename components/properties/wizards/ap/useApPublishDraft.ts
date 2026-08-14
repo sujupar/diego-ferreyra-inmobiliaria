@@ -72,7 +72,7 @@ export function useApPublishDraft(propertyId: string) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           title: draft.title, description: draft.description, photos: draft.photos,
-          asking_price: draft.askingPrice, videoUrl: draft.videoUrl, tour3dUrl: draft.tour3dUrl,
+          videoUrl: draft.videoUrl, tour3dUrl: draft.tour3dUrl,
           latitude: draft.latitude, longitude: draft.longitude,
           address: draft.address, geoConfidence: draft.geoConfidence,
           apAttributes: draft.apAttributes, mediaChoice: draft.mediaChoice, listingType: draft.listingType,

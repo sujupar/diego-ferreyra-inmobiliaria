@@ -47,9 +47,11 @@ export function evaluarCambioDePrecio(c: CambioDePrecio): VeredictoPrecio {
   if (!cambioMoneda && c.nuevo === c.anterior) return { tipo: 'sin-cambio' }
 
   // El mismo número en otra moneda es un cambio enorme de valor real: siempre
-  // se confirma, aunque la cifra no se mueva.
+  // se confirma, aunque la cifra no se mueva. El motivo muestra los DOS precios
+  // (no un aviso genérico): la consecuencia de pasar US$ 1.350.000 a
+  // $ 1.350.000 solo se entiende viendo cómo queda el aviso.
   if (cambioMoneda) {
-    return { tipo: 'confirmar', motivo: 'Estás cambiando la moneda de la publicación.' }
+    return { tipo: 'confirmar', motivo: describirCambio(c) }
   }
 
   // Sin un precio anterior válido no hay proporción que calcular: se pregunta.

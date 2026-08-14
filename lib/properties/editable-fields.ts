@@ -15,11 +15,20 @@ const MONEDAS = ['USD', 'ARS'] as const
 type Moneda = (typeof MONEDAS)[number]
 
 /**
- * Techo defensivo del precio. No es una regla de negocio: es la red contra el
- * cero de más al tipear (US$ 13.500.000 en vez de 1.350.000 en una landing con
- * tráfico pago encima).
+ * Techo defensivo del precio, POR MONEDA. No es una regla de negocio: es la red
+ * contra el cero de más al tipear.
+ *
+ * Tiene que depender de la moneda: en pesos, una propiedad real de 2026 pasa
+ * los 100 millones sin despeinarse (US$ 110.000 ≈ ARS 150.000.000). Con un
+ * techo único de 100M, una propiedad publicada en pesos quedaba imposible de
+ * editar — ni siquiera para BAJARLE el precio — y encima con un mensaje que
+ * mentía ("parece tener un cero de más") sobre un precio correcto.
  */
-const TECHO_PRECIO = 100_000_000
+const TECHO_PRECIO: Record<string, number> = {
+  USD: 100_000_000,
+  ARS: 200_000_000_000,
+}
+const TECHO_POR_DEFECTO = 100_000_000
 
 /**
  * Características numéricas: rango y etiqueta para el mensaje de error.
@@ -52,7 +61,11 @@ export type ResultadoEdicion =
   | { ok: true; patch: Record<string, unknown> }
   | { ok: false; error: string }
 
-export function sanearEdicion(body: unknown): ResultadoEdicion {
+/**
+ * @param monedaActual la moneda que tiene HOY la propiedad. Define el techo del
+ *   precio cuando el body no trae una moneda nueva.
+ */
+export function sanearEdicion(body: unknown, monedaActual?: string): ResultadoEdicion {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return { ok: false, error: 'Los datos enviados no tienen el formato esperado.' }
   }
@@ -64,7 +77,11 @@ export function sanearEdicion(body: unknown): ResultadoEdicion {
     if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
       return { ok: false, error: 'El precio tiene que ser un número mayor a cero.' }
     }
-    if (v > TECHO_PRECIO) {
+    // El techo sale de la moneda que va a quedar: si el mismo body cambia la
+    // moneda, manda esa; si no, la que ya tiene la propiedad.
+    const moneda = typeof entrada.currency === 'string' ? entrada.currency : monedaActual
+    const techo = TECHO_PRECIO[moneda ?? ''] ?? TECHO_POR_DEFECTO
+    if (v > techo) {
       return { ok: false, error: 'Ese precio parece tener un cero de más. Revisalo.' }
     }
     patch.asking_price = v

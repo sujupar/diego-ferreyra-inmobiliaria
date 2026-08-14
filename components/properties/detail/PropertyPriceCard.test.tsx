@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PropertyPriceCard } from './PropertyPriceCard'
 
@@ -12,136 +12,170 @@ const base = {
   onChanged: () => {},
 }
 
-function mockFetch(respuesta: { ok: boolean; body?: unknown } = { ok: true }) {
+function mockFetch(respuesta: { ok: boolean; status?: number; body?: unknown } = { ok: true }) {
   const fn = vi.fn().mockResolvedValue({
     ok: respuesta.ok,
+    status: respuesta.status ?? (respuesta.ok ? 200 : 400),
     json: async () => respuesta.body ?? { success: true },
   })
   vi.stubGlobal('fetch', fn)
   return fn
 }
 
-const confirmarBtn = () => screen.getByRole('button', { name: /^confirmar/i })
-const cancelarBtn = () => screen.getByRole('button', { name: /cancelar/i })
+const precio = () => screen.getByLabelText(/precio/i)
+const monedaSel = () => screen.getByLabelText(/moneda/i)
+const btnConfirmar = () => screen.getByRole('button', { name: /^confirmar/i })
+const btnCancelar = () => screen.getByRole('button', { name: /cancelar/i })
+const hayPanel = () => screen.queryByRole('alert') !== null
+const cuerpos = (fn: ReturnType<typeof mockFetch>) =>
+  fn.mock.calls.map(c => JSON.parse((c[1] as { body: string }).body))
 
 beforeEach(() => vi.unstubAllGlobals())
 
-describe('PropertyPriceCard — el precio a medio tipear NO llega a la landing', () => {
-  it('escribir "12" y hacer clic afuera NO guarda: pide confirmación', async () => {
-    // El escenario exacto que hay que impedir: el asesor escribe 1290000,
-    // alcanza a poner "12" y se va del campo. La landing lee el precio en vivo,
-    // así que sin este freno se publica US$ 12 con pauta encima.
-    const fetchMock = mockFetch()
-    const user = userEvent.setup()
-    render(<PropertyPriceCard {...base} />)
-    const input = screen.getByLabelText(/precio/i)
-    await user.clear(input)
-    await user.type(input, '12')
-    await user.tab()
-
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(screen.getByText(/US\$\s?12/)).toBeInTheDocument()
-    expect(confirmarBtn()).toBeInTheDocument()
-  })
-
-  it('cancelar deja el precio como estaba y no toca la base', async () => {
-    const fetchMock = mockFetch()
-    const user = userEvent.setup()
-    render(<PropertyPriceCard {...base} />)
-    const input = screen.getByLabelText(/precio/i)
-    await user.clear(input)
-    await user.type(input, '12')
-    await user.tab()
-    await user.click(cancelarBtn())
-
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(screen.getByLabelText(/precio/i)).toHaveValue(1350000)
-    expect(screen.queryByRole('button', { name: /^confirmar/i })).not.toBeInTheDocument()
-  })
-
-  it('recién al confirmar se guarda, con el valor confirmado', async () => {
-    const fetchMock = mockFetch()
-    const user = userEvent.setup()
-    render(<PropertyPriceCard {...base} />)
-    const input = screen.getByLabelText(/precio/i)
-    await user.clear(input)
-    await user.type(input, '900000')
-    await user.tab()
-    expect(fetchMock).not.toHaveBeenCalled()
-
-    await user.click(confirmarBtn())
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    // `confirmar: true` es obligatorio: el servidor repite el freno y sin ese
-    // flag devuelve 409. Confirmar en pantalla no alcanza por sí solo.
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
-      asking_price: 900000, confirmar: true,
-    })
-  })
-
-  it('un cambio normal viaja SIN el flag de confirmación', async () => {
-    const fetchMock = mockFetch()
-    const user = userEvent.setup()
-    render(<PropertyPriceCard {...base} />)
-    const input = screen.getByLabelText(/precio/i)
-    await user.clear(input)
-    await user.type(input, '1290000')
-    await user.tab()
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('confirmar')
-  })
-
-  it('la confirmación muestra los dos precios y la magnitud del salto', async () => {
+describe('el precio a medio tipear no llega a la landing', () => {
+  it('el campo agrupa de a miles: "12" y "1.290.000" no se parecen', async () => {
     mockFetch()
     const user = userEvent.setup()
     render(<PropertyPriceCard {...base} />)
-    const input = screen.getByLabelText(/precio/i)
-    await user.clear(input)
-    await user.type(input, '135000')
-    await user.tab()
-
-    const aviso = screen.getByRole('alert')
-    expect(aviso).toHaveTextContent('1.350.000')
-    expect(aviso).toHaveTextContent('135.000')
-    expect(aviso).toHaveTextContent(/baja del 90%/i)
+    expect(precio()).toHaveValue('1.350.000')
+    await user.clear(precio())
+    await user.type(precio(), '1290000')
+    expect(precio()).toHaveValue('1.290.000')
   })
 
-  it('un cero de más también se frena', async () => {
+  it('muestra en limpio lo que va a publicar antes de guardar', async () => {
+    mockFetch()
+    const user = userEvent.setup()
+    render(<PropertyPriceCard {...base} />)
+    await user.clear(precio())
+    await user.type(precio(), '1290000')
+    expect(screen.getByText(/Vas a publicar US\$\s?1\.290\.000/)).toBeInTheDocument()
+  })
+
+  it('escribir "12" y hacer clic afuera NO guarda: pide confirmación', async () => {
     const fetchMock = mockFetch()
     const user = userEvent.setup()
     render(<PropertyPriceCard {...base} />)
-    const input = screen.getByLabelText(/precio/i)
-    await user.clear(input)
-    await user.type(input, '13500000')
+    await user.clear(precio())
+    await user.type(precio(), '12')
     await user.tab()
 
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(screen.getByRole('alert')).toHaveTextContent(/suba/i)
+    expect(btnConfirmar()).toBeInTheDocument()
   })
-})
 
-describe('PropertyPriceCard — la baja de precio real no molesta', () => {
-  it('1.350.000 → 1.290.000 se guarda solo, sin confirmación', async () => {
-    // Es el caso de uso que pidió el dueño: bajar el precio. No puede pedir
-    // confirmación cada vez o el freno se vuelve ruido y se ignora.
+  it('CRÍTICO: con el cartel abierto el campo queda BLOQUEADO, así lo confirmado es lo que se ve', async () => {
+    // El peor bug de la primera versión: el cartel congelaba el valor del blur,
+    // pero el campo seguía editable. Corregir el número y apretar Confirmar
+    // publicaba el valor VIEJO (US$ 12) — y el gesto es el más natural de todos.
     const fetchMock = mockFetch()
     const user = userEvent.setup()
     render(<PropertyPriceCard {...base} />)
-    const input = screen.getByLabelText(/precio/i)
-    await user.clear(input)
-    await user.type(input, '1290000')
+    await user.clear(precio())
+    await user.type(precio(), '12')
     await user.tab()
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ asking_price: 1290000 })
-    expect(screen.queryByRole('button', { name: /^confirmar/i })).not.toBeInTheDocument()
+    expect(precio()).toBeDisabled()
+    expect(monedaSel()).toBeDisabled()
+    // El botón dice exactamente qué se va a publicar.
+    expect(btnConfirmar()).toHaveTextContent(/US\$\s?12/)
+
+    await user.type(precio(), '90000') // no entra: está bloqueado
+    expect(precio()).toHaveValue('12')
+
+    await user.click(btnConfirmar())
+    expect(cuerpos(fetchMock)[0]).toEqual({ asking_price: 12, confirmar: true })
+  })
+
+  it('cancelar deja el precio como estaba y desbloquea el campo', async () => {
+    const fetchMock = mockFetch()
+    const user = userEvent.setup()
+    render(<PropertyPriceCard {...base} />)
+    await user.clear(precio())
+    await user.type(precio(), '12')
+    await user.tab()
+    await user.click(btnCancelar())
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(precio()).toHaveValue('1.350.000')
+    expect(precio()).not.toBeDisabled()
+    expect(hayPanel()).toBe(false)
+  })
+
+  it('cancelar y volver a escribir el precio correcto funciona', async () => {
+    const fetchMock = mockFetch()
+    const user = userEvent.setup()
+    render(<PropertyPriceCard {...base} />)
+    await user.clear(precio())
+    await user.type(precio(), '12')
+    await user.tab()
+    await user.click(btnCancelar())
+
+    await user.clear(precio())
+    await user.type(precio(), '1290000')
+    await user.tab()
+    expect(cuerpos(fetchMock)).toEqual([{ asking_price: 1290000 }])
+  })
+
+  it('cada paso intermedio de tipear 1.290.000 pide confirmación', async () => {
+    for (const parcial of ['1', '12', '129', '1290', '12900', '129000']) {
+      const fetchMock = mockFetch()
+      const user = userEvent.setup()
+      const { unmount } = render(<PropertyPriceCard {...base} />)
+      await user.clear(precio())
+      await user.type(precio(), parcial)
+      await user.tab()
+      expect(fetchMock, `parcial ${parcial}`).not.toHaveBeenCalled()
+      unmount()
+    }
+  })
+})
+
+describe('el estado de la tarjeta no se queda viejo', () => {
+  it('CRÍTICO: si el precio cambia en la base, el campo se resincroniza', async () => {
+    // Sin esto, el campo conservaba el valor con el que se montó: si otra
+    // persona bajaba el precio, un clic adentro/afuera sin escribir nada
+    // reescribía el viejo y revertía su cambio en silencio.
+    mockFetch()
+    const { rerender } = render(<PropertyPriceCard {...base} />)
+    expect(precio()).toHaveValue('1.350.000')
+
+    rerender(<PropertyPriceCard {...base} askingPrice={1200000} />)
+    await waitFor(() => expect(precio()).toHaveValue('1.200.000'))
+  })
+
+  it('CRÍTICO: clic adentro y afuera sin escribir nada NO reescribe nada', async () => {
+    const fetchMock = mockFetch()
+    const user = userEvent.setup()
+    const { rerender } = render(<PropertyPriceCard {...base} />)
+    rerender(<PropertyPriceCard {...base} askingPrice={1200000} />)
+    await waitFor(() => expect(precio()).toHaveValue('1.200.000'))
+
+    await user.click(precio())
+    await user.tab()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('la baja de precio real no molesta', () => {
+  it('1.350.000 → 1.290.000 se guarda solo, sin confirmación', async () => {
+    const fetchMock = mockFetch()
+    const user = userEvent.setup()
+    render(<PropertyPriceCard {...base} />)
+    await user.clear(precio())
+    await user.type(precio(), '1290000')
+    await user.tab()
+
+    expect(cuerpos(fetchMock)).toEqual([{ asking_price: 1290000 }])
+    expect(hayPanel()).toBe(false)
   })
 
   it('guarda con Enter', async () => {
     const fetchMock = mockFetch()
     const user = userEvent.setup()
     render(<PropertyPriceCard {...base} />)
-    const input = screen.getByLabelText(/precio/i)
-    await user.clear(input)
-    await user.type(input, '1300000{Enter}')
+    await user.clear(precio())
+    await user.type(precio(), '1300000{Enter}')
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
@@ -149,96 +183,142 @@ describe('PropertyPriceCard — la baja de precio real no molesta', () => {
     const fetchMock = mockFetch()
     const user = userEvent.setup()
     render(<PropertyPriceCard {...base} />)
-    await user.click(screen.getByLabelText(/precio/i))
+    await user.click(precio())
     await user.tab()
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  it('una propiedad en pesos se puede editar (el techo depende de la moneda)', async () => {
+    // Con un techo único de 100M, una propiedad en pesos quedaba imposible de
+    // editar: ni siquiera para BAJARLE el precio.
+    const fetchMock = mockFetch()
+    const user = userEvent.setup()
+    render(<PropertyPriceCard {...base} askingPrice={150_000_000} currency="ARS" />)
+    await user.clear(precio())
+    await user.type(precio(), '140000000')
+    await user.tab()
+
+    expect(cuerpos(fetchMock)).toEqual([{ asking_price: 140000000 }])
+  })
 })
 
-describe('PropertyPriceCard — moneda', () => {
-  it('cambiar de dólares a pesos pide confirmación (el mismo número vale otra cosa)', async () => {
+describe('moneda', () => {
+  it('cambiar de dólares a pesos pide confirmación mostrando los DOS precios', async () => {
     const fetchMock = mockFetch()
     const user = userEvent.setup()
     render(<PropertyPriceCard {...base} />)
-    await user.selectOptions(screen.getByLabelText(/moneda/i), 'ARS')
+    await user.selectOptions(monedaSel(), 'ARS')
 
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(confirmarBtn()).toBeInTheDocument()
+    const aviso = screen.getByRole('alert')
+    expect(aviso).toHaveTextContent('US$')
+    expect(aviso).toHaveTextContent('1.350.000')
   })
 
   it('cancelar el cambio de moneda vuelve a la anterior', async () => {
     const fetchMock = mockFetch()
     const user = userEvent.setup()
     render(<PropertyPriceCard {...base} />)
-    await user.selectOptions(screen.getByLabelText(/moneda/i), 'ARS')
-    await user.click(cancelarBtn())
+    await user.selectOptions(monedaSel(), 'ARS')
+    await user.click(btnCancelar())
 
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(screen.getByLabelText(/moneda/i)).toHaveValue('USD')
+    expect(monedaSel()).toHaveValue('USD')
   })
 
   it('confirmar el cambio de moneda lo guarda', async () => {
     const fetchMock = mockFetch()
     const user = userEvent.setup()
     render(<PropertyPriceCard {...base} />)
-    await user.selectOptions(screen.getByLabelText(/moneda/i), 'ARS')
-    await user.click(confirmarBtn())
+    await user.selectOptions(monedaSel(), 'ARS')
+    await user.click(btnConfirmar())
+    expect(cuerpos(fetchMock)).toEqual([{ currency: 'ARS', confirmar: true }])
+  })
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ currency: 'ARS', confirmar: true })
+  it('cambiar precio Y moneda juntos viaja en UNA sola operación', async () => {
+    const fetchMock = mockFetch()
+    const user = userEvent.setup()
+    render(<PropertyPriceCard {...base} />)
+    await user.clear(precio())
+    await user.type(precio(), '1900000000')
+    await user.selectOptions(monedaSel(), 'ARS')
+    await user.click(btnConfirmar())
+
+    expect(cuerpos(fetchMock)).toEqual([
+      { asking_price: 1900000000, currency: 'ARS', confirmar: true },
+    ])
   })
 })
 
-describe('PropertyPriceCard — validación y errores', () => {
-  it('muestra el precio actual formateado', () => {
-    mockFetch()
+describe('el servidor puede pedir confirmación y la tarjeta la ofrece', () => {
+  it('un 409 abre el cartel en vez de dejar un error sin salida', async () => {
+    // La base puede haber cambiado bajo los pies: el cliente calcula 'directo'
+    // y el servidor, contra el precio real, responde 409. Antes eso quedaba
+    // como un texto rojo sin ningún botón y solo se salía recargando.
+    const fetchMock = mockFetch({
+      ok: false, status: 409,
+      body: { error: 'El aviso pasa de US$ 900.000 a US$ 1.150.000: una suba del 27,8%.', requiereConfirmacion: true },
+    })
+    const user = userEvent.setup()
     render(<PropertyPriceCard {...base} />)
-    expect(screen.getByDisplayValue('1350000')).toBeInTheDocument()
-    expect(screen.getByText(/US\$\s?1\.350\.000/)).toBeInTheDocument()
+    await user.clear(precio())
+    await user.type(precio(), '1150000')
+    await user.tab()
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/27,8%/))
+    expect(btnConfirmar()).toBeInTheDocument()
   })
 
-  it('NO guarda mientras se tipea', async () => {
+  it('confirmar después del 409 reintenta con el flag y sale adelante', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false, status: 409,
+        json: async () => ({ error: 'Necesita confirmación.', requiereConfirmacion: true }),
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ success: true }) })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    render(<PropertyPriceCard {...base} />)
+    await user.clear(precio())
+    await user.type(precio(), '1150000')
+    await user.tab()
+    await waitFor(() => expect(btnConfirmar()).toBeInTheDocument())
+
+    await user.click(btnConfirmar())
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(cuerpos(fetchMock)[1]).toEqual({ asking_price: 1150000, confirmar: true })
+  })
+})
+
+describe('validación y avisos', () => {
+  it('vaciar el campo no borra el precio: se restaura el publicado', async () => {
     const fetchMock = mockFetch()
     const user = userEvent.setup()
     render(<PropertyPriceCard {...base} />)
-    await user.clear(screen.getByLabelText(/precio/i))
-    await user.type(screen.getByLabelText(/precio/i), '1290000')
+    await user.clear(precio())
+    await user.tab()
     expect(fetchMock).not.toHaveBeenCalled()
+    expect(precio()).toHaveValue('1.350.000')
   })
 
-  it('un precio en cero no viaja al servidor ni pide confirmación: es inválido', async () => {
+  it('escribir cero no viaja al servidor', async () => {
     const fetchMock = mockFetch()
     const user = userEvent.setup()
     render(<PropertyPriceCard {...base} />)
-    const input = screen.getByLabelText(/precio/i)
-    await user.clear(input)
-    await user.type(input, '0')
-    await user.tab()
-
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(screen.getByText(/mayor a cero/i)).toBeInTheDocument()
-  })
-
-  it('vaciar el campo no borra el precio', async () => {
-    const fetchMock = mockFetch()
-    const user = userEvent.setup()
-    render(<PropertyPriceCard {...base} />)
-    await user.clear(screen.getByLabelText(/precio/i))
+    await user.clear(precio())
+    await user.type(precio(), '0')
     await user.tab()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('muestra el error del servidor', async () => {
-    const fetchMock = mockFetch({ ok: false, body: { error: 'Ese precio parece tener un cero de más. Revisalo.' } })
+  it('muestra el error del servidor cuando no es un pedido de confirmación', async () => {
+    mockFetch({ ok: false, status: 500, body: { error: 'No se pudo guardar el cambio.' } })
     const user = userEvent.setup()
     render(<PropertyPriceCard {...base} />)
-    const input = screen.getByLabelText(/precio/i)
-    await user.clear(input)
-    await user.type(input, '1300000')
+    await user.clear(precio())
+    await user.type(precio(), '1300000')
     await user.tab()
-
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(await screen.findByText(/cero de más/i)).toBeInTheDocument()
+    expect(await screen.findByText(/no se pudo guardar/i)).toBeInTheDocument()
   })
 
   it('avisa que los avisos de los portales no se actualizan solos', () => {
