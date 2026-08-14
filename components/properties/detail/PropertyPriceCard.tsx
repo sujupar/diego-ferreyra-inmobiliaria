@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Loader2, Check } from 'lucide-react'
+import { Loader2, Check, AlertTriangle } from 'lucide-react'
 import { formatMoney } from '@/lib/properties/detail-view'
 import { sanearEdicion } from '@/lib/properties/editable-fields'
+import { evaluarCambioDePrecio } from '@/lib/properties/price-guard'
 
 interface Props {
   propertyId: string
@@ -14,23 +15,42 @@ interface Props {
 
 type Estado = 'quieto' | 'guardando' | 'guardado'
 
+interface Pendiente {
+  patch: Record<string, unknown>
+  motivo: string
+}
+
 /**
  * Precio de publicación, editable desde la ficha.
  *
- * DECISIÓN IMPORTANTE — este campo NO tiene autosave por tecla. La landing
- * pública lee el precio en vivo desde `properties` y se sirve sin caché
- * (`cache-control: no-store`), así que un guardado a mitad de tipeo se ve: al
- * escribir "1290000" pasaríamos por 1, 12, 129… y un visitante —con tráfico
- * pago encima— podría ver "US$ 12". Se guarda al SALIR del campo o con Enter.
- * La moneda sí guarda al instante: es un select, no tiene estados intermedios.
+ * DOS FRENOS, porque este número se publica solo en una landing con pauta:
+ *
+ * 1. No se guarda tecleando, sino al SALIR del campo o con Enter. Con autosave
+ *    por tecla, escribir 1290000 pasaría por 1, 12, 129… y cada estado
+ *    intermedio se vería en la landing (que lee el precio en vivo y se sirve
+ *    sin caché).
+ * 2. Salir del campo TAMPOCO alcanza: si alguien tipea "12" y hace clic en
+ *    otro lado, el blur llegaría con 12. Por eso un cambio brusco —o cualquier
+ *    cambio de moneda— exige un clic de confirmación con los dos precios a la
+ *    vista. Un cambio normal (bajar el precio un 5%) se guarda sin molestar:
+ *    un freno que salta siempre se vuelve ruido y se ignora.
+ *
+ * La regla de qué es "brusco" vive en `lib/properties/price-guard.ts` (puro y
+ * testeado), no acá.
  */
 export function PropertyPriceCard({ propertyId, askingPrice, currency, onChanged }: Props) {
   const [valor, setValor] = useState(String(askingPrice))
   const [moneda, setMoneda] = useState(currency)
   const [estado, setEstado] = useState<Estado>('quieto')
   const [error, setError] = useState<string | null>(null)
+  const [pendiente, setPendiente] = useState<Pendiente | null>(null)
 
-  async function guardar(patch: Record<string, unknown>) {
+  /**
+   * `confirmado` viaja al servidor: la ruta repite el mismo freno y rechaza con
+   * 409 un cambio brusco que no venga marcado. Sin este flag, confirmar en
+   * pantalla no alcanzaría para guardar.
+   */
+  async function guardar(patch: Record<string, unknown>, confirmado = false) {
     // Se valida con el MISMO módulo que usa el servidor: el aviso llega antes
     // de gastar un viaje de red y los dos lados no pueden discrepar.
     const saneado = sanearEdicion(patch)
@@ -45,7 +65,7 @@ export function PropertyPriceCard({ propertyId, askingPrice, currency, onChanged
       const res = await fetch(`/api/properties/${propertyId}/details`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(saneado.patch),
+        body: JSON.stringify(confirmado ? { ...saneado.patch, confirmar: true } : saneado.patch),
       })
       const cuerpo = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -62,10 +82,55 @@ export function PropertyPriceCard({ propertyId, askingPrice, currency, onChanged
     }
   }
 
+  /**
+   * Decide entre guardar directo o pedir confirmación. Nunca escribe sin pasar
+   * por acá: es el único punto por el que un precio llega a la base.
+   */
+  function proponer(patch: Record<string, unknown>, nuevoPrecio: number, nuevaMoneda: string) {
+    // La validación dura primero: un cero o un campo vacío es un error, no algo
+    // para confirmar.
+    const saneado = sanearEdicion(patch)
+    if (!saneado.ok) { setError(saneado.error); return }
+
+    const veredicto = evaluarCambioDePrecio({
+      anterior: askingPrice,
+      nuevo: nuevoPrecio,
+      monedaAnterior: currency,
+      monedaNueva: nuevaMoneda,
+    })
+    if (veredicto.tipo === 'sin-cambio') return
+    if (veredicto.tipo === 'confirmar') {
+      setError(null)
+      setPendiente({ patch, motivo: veredicto.motivo })
+      return
+    }
+    guardar(patch)
+  }
+
   function confirmarPrecio() {
-    const n = Number(valor)
-    if (n === askingPrice) return // sin cambio: no se molesta al servidor
-    guardar({ asking_price: n })
+    if (pendiente) return // ya hay algo esperando decisión
+    const crudo = valor.trim()
+    if (crudo === '') { setValor(String(askingPrice)); return } // vaciar no borra el precio
+    const n = Number(crudo)
+    proponer({ asking_price: n }, n, moneda)
+  }
+
+  function elegirMoneda(nueva: string) {
+    setMoneda(nueva)
+    proponer({ currency: nueva }, Number(valor), nueva)
+  }
+
+  function cancelar() {
+    setPendiente(null)
+    setValor(String(askingPrice))
+    setMoneda(currency)
+    setError(null)
+  }
+
+  async function aceptar() {
+    const p = pendiente
+    setPendiente(null)
+    if (p) await guardar(p.patch, true)
   }
 
   return (
@@ -101,7 +166,7 @@ export function PropertyPriceCard({ propertyId, askingPrice, currency, onChanged
         <select
           id="moneda-publicacion"
           value={moneda}
-          onChange={e => { setMoneda(e.target.value); guardar({ currency: e.target.value }) }}
+          onChange={e => elegirMoneda(e.target.value)}
           className="rounded-md border px-2 py-2 text-sm"
         >
           <option value="USD">USD</option>
@@ -112,6 +177,37 @@ export function PropertyPriceCard({ propertyId, askingPrice, currency, onChanged
       <p className="mt-2 text-sm text-muted-foreground tabular-n">
         {formatMoney(askingPrice, currency)}
       </p>
+
+      {pendiente && (
+        <div
+          role="alert"
+          className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2"
+        >
+          <p className="flex items-start gap-2 text-sm font-medium text-amber-900">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+            {pendiente.motivo}
+          </p>
+          <p className="text-xs text-amber-800">
+            Este precio se publica en la landing apenas lo guardes. Confirmá que es el correcto.
+          </p>
+          <div className="flex gap-2 pt-0.5">
+            <button
+              type="button"
+              onClick={aceptar}
+              className="rounded-md bg-amber-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-800"
+            >
+              Confirmar el cambio
+            </button>
+            <button
+              type="button"
+              onClick={cancelar}
+              className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {error && <p className="mt-2 text-sm text-[color:var(--destructive)]">{error}</p>}
 
