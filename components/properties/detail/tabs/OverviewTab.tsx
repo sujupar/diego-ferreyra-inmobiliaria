@@ -6,6 +6,7 @@ import { formatMoney, operationLabel, propertyTypeLabel } from '@/lib/properties
 import { estadoComercialEfectivo } from '@/lib/properties/commercial-status'
 import { PropertyCommercialStatusCard } from '../PropertyCommercialStatusCard'
 import { PropertyAppraisalCard } from '../PropertyAppraisalCard'
+import { PropertyPriceCard } from '../PropertyPriceCard'
 
 // Leaflet toca `window`: fuera del render de servidor.
 const PropertyLocationMap = dynamic(
@@ -147,12 +148,21 @@ export function OverviewTab({ property, isAbogado, onChanged }: { property: Over
           )}
 
           {!isAbogado && (
+            <div className="mt-4">
+              <PropertyPriceCard
+                propertyId={property.id}
+                askingPrice={property.asking_price}
+                currency={property.currency}
+                onChanged={onChanged}
+              />
+            </div>
+          )}
+
+          {!isAbogado && (
             <Card className="mt-4">
               <CardContent className="py-4">
                 <p className="eyebrow mb-3">Datos comerciales</p>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
-                  <span className="text-muted-foreground">Precio</span>
-                  <span className="tabular-n font-medium">{formatMoney(property.asking_price, property.currency)}</span>
                   <span className="text-muted-foreground">Comisión</span>
                   <span className="tabular-n">{property.commission_percentage}%</span>
                   {property.contract_start_date && (<><span className="text-muted-foreground">Inicio contrato</span><span className="tabular-n">{property.contract_start_date}</span></>)}
