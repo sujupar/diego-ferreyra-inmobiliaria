@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { labelDia, labelSemana, mondayOf } from './fechas'
+import { addMonths, labelDia, labelSemana, mondayOf, monthGrid } from './fechas'
 
 describe('mondayOf', () => {
   it('un lunes es su propio lunes', () => {
@@ -30,5 +30,29 @@ describe('labelDia', () => {
   it('día y fecha cortos', () => {
     expect(labelDia('2026-08-18')).toBe('mar 18/8')
     expect(labelDia('2026-08-17')).toBe('lun 17/8')
+  })
+})
+
+describe('monthGrid', () => {
+  it('agosto 2026: arranca el lunes 27/7, termina el domingo 6/9, 6 semanas', () => {
+    const g = monthGrid('2026-08')
+    expect(g.length).toBe(6)
+    expect(g[0][0]).toBe('2026-07-27')
+    expect(g[5][6]).toBe('2026-09-06')
+    expect(g.every((w) => w.length === 7)).toBe(true)
+  })
+  it('febrero 2027 (28 días que arrancan lunes): exactamente 4 semanas', () => {
+    const g = monthGrid('2027-02')
+    expect(g.length).toBe(4)
+    expect(g[0][0]).toBe('2027-02-01')
+    expect(g[3][6]).toBe('2027-02-28')
+  })
+})
+
+describe('addMonths', () => {
+  it('avanza y cruza el año', () => {
+    expect(addMonths('2026-08', 1)).toBe('2026-09')
+    expect(addMonths('2026-12', 1)).toBe('2027-01')
+    expect(addMonths('2026-01', -1)).toBe('2025-12')
   })
 })

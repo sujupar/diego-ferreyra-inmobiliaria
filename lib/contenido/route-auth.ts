@@ -24,7 +24,7 @@ export const ENTIDADES = {
     tabla: 'content_pieces',
     campos: [
       'publish_date', 'slot', 'categoria', 'subcategoria', 'titular', 'enfoque',
-      'formato', 'recurso', 'guion', 'copy', 'plataformas', 'estado', 'origen',
+      'formato', 'formato_id', 'recurso', 'guion', 'copy', 'plataformas', 'estado', 'origen',
       'refrescar', 'notas', 'resultados',
     ],
     obligatorios: ['publish_date', 'categoria', 'titular'],

@@ -32,3 +32,41 @@ export function labelDia(d: string): string {
   const dt = parseDate(d)
   return `${DIAS[dt.getDay()]} ${dt.getDate()}/${dt.getMonth() + 1}`
 }
+
+const p2 = (n: number) => String(n).padStart(2, '0')
+export function fmtDate(dt: Date): string {
+  return `${dt.getFullYear()}-${p2(dt.getMonth() + 1)}-${p2(dt.getDate())}`
+}
+
+/** «agosto 2026» para el título de la vista mensual. */
+export function labelMes(anchor: string): string {
+  const [y, m] = anchor.split('-').map(Number)
+  return `${MESES[m - 1]} ${y}`
+}
+
+/** Suma meses a un ancla YYYY-MM. */
+export function addMonths(anchor: string, delta: number): string {
+  const [y, m] = anchor.split('-').map(Number)
+  const dt = new Date(y, m - 1 + delta, 1)
+  return `${dt.getFullYear()}-${p2(dt.getMonth() + 1)}`
+}
+
+/**
+ * Grilla mensual estilo Google Calendar: semanas completas (lunes a domingo)
+ * que cubren el mes YYYY-MM, incluyendo las colas de los meses vecinos.
+ */
+export function monthGrid(anchor: string): string[][] {
+  const [y, m] = anchor.split('-').map(Number)
+  const last = new Date(y, m, 0)
+  const cursor = parseDate(mondayOf(fmtDate(new Date(y, m - 1, 1))))
+  const weeks: string[][] = []
+  while (weeks.length < 7 && (cursor <= last || cursor.getDay() !== 1 || weeks.length === 0)) {
+    if (cursor.getDay() === 1) {
+      if (cursor > last) break
+      weeks.push([])
+    }
+    weeks[weeks.length - 1].push(fmtDate(cursor))
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return weeks
+}
