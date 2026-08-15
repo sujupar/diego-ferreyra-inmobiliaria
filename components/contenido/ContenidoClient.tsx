@@ -124,6 +124,7 @@ export function ContenidoClient() {
   const [aviso, setAviso] = useState<string | null>(null)
 
   const [vistaCal, setVistaCal] = useState<'lista' | 'mes'>('lista')
+  const [mesLista, setMesLista] = useState<string | null>(null)
   const [mesAncla, setMesAncla] = useState('2026-08')
   const [selPiece, setSelPiece] = useState<Piece | null>(null)
   const [nueva, setNueva] = useState<null | { fecha?: string }>(null)
@@ -140,6 +141,7 @@ export function ContenidoClient() {
         setCorrections(d.corrections)
         const hoy = fmtDate(new Date())
         setMesAncla(hoy.slice(0, 7))
+        setMesLista(hoy.slice(0, 7))
       })
       .catch((e) => setError(e.message))
   }, [])
@@ -206,6 +208,17 @@ export function ContenidoClient() {
     )
   }, [ideas, catFiltro, busqueda])
 
+  const semanasVisibles = useMemo(
+    () =>
+      mesLista === null
+        ? semanas
+        : semanas.filter(
+            ({ monday, piezas }) =>
+              monday.slice(0, 7) === mesLista || piezas.some((p) => p.publish_date.slice(0, 7) === mesLista),
+          ),
+    [semanas, mesLista],
+  )
+
   if (error) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-16 text-center">
@@ -269,8 +282,39 @@ export function ContenidoClient() {
 
           {vistaCal === 'lista' && (
             <>
-              {semanas.length === 0 && <p className="text-sm text-muted-foreground">No hay piezas programadas todavía.</p>}
-              {semanas.map(({ monday, piezas }) => {
+              <div className="flex items-center gap-2">
+                <div className="inline-flex items-center rounded-md border overflow-hidden">
+                  <button
+                    className="px-2.5 py-1 text-sm font-bold hover:bg-muted"
+                    aria-label="Mes anterior"
+                    onClick={() => setMesLista(addMonths(mesLista ?? mesAncla, -1))}
+                  >
+                    ←
+                  </button>
+                  <span className="px-3 py-1 text-xs font-semibold capitalize border-x min-w-32 text-center">
+                    {mesLista === null ? 'Todos los meses' : labelMes(mesLista)}
+                  </span>
+                  <button
+                    className="px-2.5 py-1 text-sm font-bold hover:bg-muted"
+                    aria-label="Mes siguiente"
+                    onClick={() => setMesLista(addMonths(mesLista ?? mesAncla, 1))}
+                  >
+                    →
+                  </button>
+                </div>
+                <button
+                  className={`rounded-md border px-3 py-1 text-xs font-semibold ${mesLista === null ? 'bg-gray-900 text-white border-gray-900' : 'hover:bg-muted'}`}
+                  onClick={() => setMesLista(mesLista === null ? mesAncla : null)}
+                >
+                  Ver todo
+                </button>
+              </div>
+              {semanasVisibles.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {mesLista === null ? 'No hay piezas programadas todavía.' : 'No hay piezas en este mes — navegá con las flechas o tocá «Ver todo».'}
+                </p>
+              )}
+              {semanasVisibles.map(({ monday, piezas }) => {
                 const publicadas = piezas.filter((p) => p.estado === 'publicado').length
                 return (
                   <div key={monday} className="rounded-lg border overflow-hidden">
