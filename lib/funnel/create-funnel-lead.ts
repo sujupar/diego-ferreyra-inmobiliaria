@@ -77,7 +77,14 @@ export async function crearContactoYDeal(input: FunnelLeadInput): Promise<Funnel
   // 1) Dedup contacto: email (ilike) → phone (eq) → crear
   let resolvedContactId: string | null = null
   if (email) {
-    const { data } = await supabase.from('contacts').select('id').ilike('email', email).maybeSingle()
+    // ESCAPAR LOS COMODINES DEL PATRÓN, siempre. En `ilike`, `%` y `_` son
+    // comodines de LIKE: sin esto, un POST con email "a%@gmail.com" (que la
+    // validación permisiva del 2026-08-15 deja pasar, y "_" era legal desde
+    // siempre: john_doe@gmail.com) matchea el contacto de OTRA persona y el
+    // deal nuevo queda colgado del contacto equivocado. Encontrado por la
+    // revisión adversarial ANTES de deployar, verificado contra la base real.
+    const patron = email.replace(/[\\%_]/g, '\\$&')
+    const { data } = await supabase.from('contacts').select('id').ilike('email', patron).maybeSingle()
     if (data) resolvedContactId = data.id as string
   }
   if (!resolvedContactId && phone) {
@@ -102,10 +109,17 @@ export async function crearContactoYDeal(input: FunnelLeadInput): Promise<Funnel
     input.funnel === 'tasacion' && input.propertyLocation?.trim()
       ? input.propertyLocation.trim()
       : placeholder
+  // tipoCliente Y message se CONCATENAN, no se elige uno: el ternario anterior
+  // descartaba `message` en la clase con tipoCliente elegido (el caso normal),
+  // y ahí viaja también el aviso de canal degradado del 2026-08-15 — perderlo
+  // era perder el único registro del email/teléfono que la persona tipeó mal.
   const dealNotes =
-    input.funnel === 'clase' && input.tipoCliente
-      ? `Tipo de cliente: ${input.tipoCliente}`
-      : input.message ?? undefined
+    [
+      input.funnel === 'clase' && input.tipoCliente ? `Tipo de cliente: ${input.tipoCliente}` : null,
+      input.message?.trim() || null,
+    ]
+      .filter(Boolean)
+      .join('\n\n') || undefined
 
   // Columnas meta_* (+ origin_metadata) derivadas de la atribución de campaña.
   // {} si no hay atribución → el spread no agrega nada y el insert queda

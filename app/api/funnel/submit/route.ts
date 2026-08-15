@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'node:crypto'
-import { z } from 'zod'
 import { createClient } from '@supabase/supabase-js'
 import { crearContactoYDeal } from '@/lib/funnel/create-funnel-lead'
 import { construirTrabajos } from '@/lib/funnel/jobs-logic'
+import { SubmitSchema, resolverCanales } from '@/lib/funnel/submit-schema'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -65,38 +65,11 @@ const DEDUP_WINDOW_MS = 5 * 60_000
  */
 const EN_VUELO_MS = 8_000
 
-const Schema = z
-  .object({
-    funnel: z.enum(['tasacion', 'clase']),
-    name: z.string().trim().min(2).max(100),
-    email: z.string().trim().email().max(200).nullable().optional(),
-    phone: z.string().trim().min(6).max(30).nullable().optional(),
-    propertyLocation: z.string().trim().max(200).nullable().optional(),
-    tipoCliente: z.string().trim().max(100).nullable().optional(),
-    message: z.string().trim().max(2000).nullable().optional(),
-    company: z.string().max(200).optional(), // honeypot
-    eventId: z.string().min(8).max(128).optional(),
-    eventSourceUrl: z.string().url().max(500).nullable().optional(),
-    fbp: z.string().max(200).nullable().optional(),
-    fbc: z.string().max(300).nullable().optional(),
-    anonId: z.string().min(8).max(64).nullable().optional(), // sesión anónima de video → stitching
-    attribution: z
-      .object({
-        utm_source: z.string().max(200).nullable().optional(),
-        utm_medium: z.string().max(200).nullable().optional(),
-        utm_campaign: z.string().max(200).nullable().optional(),
-        utm_content: z.string().max(200).nullable().optional(),
-        utm_term: z.string().max(200).nullable().optional(),
-        fb_campaign_id: z.string().max(200).nullable().optional(),
-        fb_adset_id: z.string().max(200).nullable().optional(),
-        fb_ad_id: z.string().max(200).nullable().optional(),
-        fb_placement: z.string().max(200).nullable().optional(),
-      })
-      .partial()
-      .nullable()
-      .optional(),
-  })
-  .refine((d) => !!(d.email || d.phone), { message: 'Se requiere email o teléfono.' })
+// El schema vive en `lib/funnel/submit-schema.ts` (puro, testeado con los casos
+// EXACTOS que rechazaron leads reales el 2026-08-14). La regla completa está
+// documentada ahí; el resumen: un metadato de tracking jamás voltea una
+// conversión, y email/teléfono se degradan en vez de rechazar mientras quede
+// un canal usable.
 
 // Cliente admin sin tipar (igual que lib/supabase/deals.ts y tasks.ts): el tipo
 // generado `Database` está incompleto (no incluye `funnel_lead_submissions`),
@@ -116,16 +89,101 @@ function redirectFor(funnel: 'tasacion' | 'clase'): string {
   return funnel === 'tasacion' ? '/gracias-tasacion' : '/gracias-clase'
 }
 
+/**
+ * Cada rechazo queda REGISTRADO con los datos de contacto que la persona tipeó.
+ *
+ * Existe porque el 2026-08-14 una clienta real no pudo registrarse y no quedó
+ * NINGÚN rastro: la validación corría antes de cualquier escritura, así que
+ * "revisar quiénes intentaron y fallaron" era imposible. Con esta tabla, un
+ * lead rebotado se recupera a mano — se pagó por ese clic.
+ *
+ * Best-effort: si el INSERT falla, el rechazo sale igual (jamás convertir un
+ * problema de log en un 500).
+ */
+async function registrarRechazo(
+  supabase: ReturnType<typeof admin>,
+  datos: {
+    funnel: string | null
+    name: string | null
+    email: string | null
+    phone: string | null
+    motivo: string
+    detalle: unknown
+    ipHash: string
+    userAgent: string | null
+  },
+): Promise<void> {
+  try {
+    // Techo por IP: este INSERT corre ANTES del rate-limit de la reserva (el
+    // rechazo corta antes de llegar ahí), así que sin esto un bot escribiría
+    // sin cota. Una persona real rebota 1-2 veces; 5 por hora sobra.
+    const { count } = await supabase
+      .from('funnel_submit_rejections')
+      .select('id', { count: 'exact', head: true })
+      .eq('ip_hash', datos.ipHash)
+      .gte('created_at', new Date(Date.now() - 3_600_000).toISOString())
+    if ((count ?? 0) >= 5) {
+      console.warn('[funnel/submit] rechazo NO registrado (techo por IP)', { ipHash: datos.ipHash })
+      return
+    }
+
+    // OJO: supabase-js NO lanza ante un error de Postgres — resuelve con
+    // { error }. Sin leerlo, esta red de seguridad fallaría en silencio total
+    // (justo el agujero que vino a tapar).
+    const { error } = await supabase.from('funnel_submit_rejections').insert({
+      funnel: datos.funnel,
+      name: datos.name,
+      email: datos.email,
+      phone: datos.phone,
+      motivo: datos.motivo,
+      detalle: (datos.detalle ?? null) as never,
+      ip_hash: datos.ipHash,
+      user_agent: datos.userAgent,
+    })
+    if (error) console.error('[funnel/submit] no se pudo registrar el rechazo', error.message)
+  } catch (e) {
+    console.error('[funnel/submit] no se pudo registrar el rechazo', e)
+  }
+}
+
 export async function POST(req: NextRequest) {
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
+    req.headers.get('x-real-ip') ??
+    'unknown'
+  const ipHash = hashIp(ip)
+  const userAgent = req.headers.get('user-agent')
+  const supabase = admin()
+
   let body: unknown
   try {
     body = await req.json()
   } catch {
+    // Sin body no hay contacto que recuperar: solo un log (un bot con JSON roto
+    // no merece una fila en la tabla de rechazos).
+    console.warn('[funnel/submit] JSON inválido', { ipHash })
     return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
   }
 
-  const parsed = Schema.safeParse(body)
+  const parsed = SubmitSchema.safeParse(body)
   if (!parsed.success) {
+    // Con el schema nuevo esto es casi imposible para un humano (solo nombre
+    // vacío o funnel desconocido) — si pasa, que quede TODO lo tipeado.
+    // Solo se registra si hay ALGO de contacto que recuperar: una fila sin
+    // nombre ni email ni teléfono es un bot, y para eso está el log.
+    const crudo = (body ?? {}) as Record<string, unknown>
+    const s = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.slice(0, max) : null)
+    const datos = {
+      funnel: s(crudo.funnel, 40),
+      name: s(crudo.name, 200),
+      email: s(crudo.email, 200),
+      phone: s(crudo.phone, 60),
+    }
+    if (datos.name || datos.email || datos.phone) {
+      await registrarRechazo(supabase, {
+        ...datos, motivo: 'schema', detalle: parsed.error.flatten(), ipHash, userAgent,
+      })
+    }
     return NextResponse.json({ error: 'Datos inválidos', detail: parsed.error.flatten() }, { status: 400 })
   }
   const d = parsed.data
@@ -135,12 +193,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, redirect: redirectFor(d.funnel) })
   }
 
-  const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
-    req.headers.get('x-real-ip') ??
-    'unknown'
-  const ipHash = hashIp(ip)
-  const supabase = admin()
+  // Canales de contacto: degradar antes que rechazar (la tabla de verdad está
+  // en `resolverCanales`). Solo rebota quien no dejó NINGÚN canal usable.
+  const canales = resolverCanales(d.email, d.phone)
+  if (!canales.ok) {
+    await registrarRechazo(supabase, {
+      funnel: d.funnel, name: d.name, email: d.email, phone: d.phone,
+      motivo: 'sin_canal_usable', detalle: canales.descartado, ipHash, userAgent,
+    })
+    return NextResponse.json(
+      { error: 'Revisá el email o el teléfono: necesitamos al menos uno para contactarte.' },
+      { status: 400 },
+    )
+  }
+  if (canales.descartado.email || canales.descartado.phone) {
+    // El lead entra igual, y lo descartado va a la nota del deal: un humano
+    // puede darse cuenta de que "juan..perez@gmail.com" era juan.perez.
+    const aviso = [
+      canales.descartado.email ? `Email tipeado (no válido): ${canales.descartado.email}` : null,
+      canales.descartado.phone ? `Teléfono tipeado (no válido): ${canales.descartado.phone}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n')
+    d.message = d.message ? `${d.message}\n\n${aviso}` : aviso
+    console.warn('[funnel/submit] canal degradado', canales.descartado)
+  }
+  d.email = canales.email
+  d.phone = canales.phone
 
   // --- 1) Reserva ATÓMICA: rate-limit por IP + dedup por email/teléfono + alta
   // de la fila del envío, todo en una sola operación serializada en Postgres.

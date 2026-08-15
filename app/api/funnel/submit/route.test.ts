@@ -316,7 +316,7 @@ describe('reserva atómica', () => {
     await POST(pedido(ENVIO_TASACION))
     expect(bd.rpcs.map((r) => r.nombre)).toEqual(['reservar_envio_embudo', 'completar_envio_embudo'])
     expect(bd.rpcs[0].args).toMatchObject({
-      p_rate_max: 5,
+      p_rate_max: 20,
       p_rate_window_seconds: 60,
       p_dedup_window_seconds: 300,
     })
@@ -324,20 +324,20 @@ describe('reserva atómica', () => {
 })
 
 describe('rate-limit por IP (sin cambios de comportamiento)', () => {
-  it('corta en el sexto envío del mismo minuto', async () => {
-    for (let i = 0; i < 5; i++) {
-      const res = await POST(pedido({ ...ENVIO_TASACION, email: `a${i}@ejemplo.com`, phone: `+54911000000${i}` }))
+  it('corta en el envío 21 del mismo minuto (tope 20: CGNAT móvil, ver RATE_MAX)', async () => {
+    for (let i = 0; i < 20; i++) {
+      const res = await POST(pedido({ ...ENVIO_TASACION, email: `a${i}@ejemplo.com`, phone: `+549110000${String(i).padStart(4, '0')}` }))
       expect(res.status).toBe(200)
     }
-    const sexto = await POST(pedido({ ...ENVIO_TASACION, email: 'otro@ejemplo.com', phone: '+5491199999999' }))
-    expect(sexto.status).toBe(429)
-    expect(await sexto.json()).toEqual({ error: 'Demasiados envíos. Probá de nuevo en un minuto.' })
-    expect(bd.deals).toHaveLength(5)
+    const excedente = await POST(pedido({ ...ENVIO_TASACION, email: 'otro@ejemplo.com', phone: '+5491199999999' }))
+    expect(excedente.status).toBe(429)
+    expect(await excedente.json()).toEqual({ error: 'Demasiados envíos. Probá de nuevo en un minuto.' })
+    expect(bd.deals).toHaveLength(20)
   })
 
   it('otra IP no arrastra el corte', async () => {
-    for (let i = 0; i < 5; i++) {
-      await POST(pedido({ ...ENVIO_TASACION, email: `a${i}@ejemplo.com`, phone: `+54911000000${i}` }))
+    for (let i = 0; i < 20; i++) {
+      await POST(pedido({ ...ENVIO_TASACION, email: `a${i}@ejemplo.com`, phone: `+549110000${String(i).padStart(4, '0')}` }))
     }
     const otra = await POST(
       pedido({ ...ENVIO_TASACION, email: 'z@ejemplo.com', phone: '+5491188887777' }, { ip: '190.1.1.1' }),
@@ -380,10 +380,10 @@ describe('dedup de 5 minutos (sin cambios de comportamiento)', () => {
 })
 
 describe('encolado de los avisos', () => {
-  it('encola los cinco trabajos del envío', async () => {
+  it('encola los seis trabajos del envío (whatsapp incluido, 2026-08-13)', async () => {
     await POST(pedido(ENVIO_TASACION))
     expect(bd.trabajos.map((t) => t.kind).sort()).toEqual(
-      ['anon_stitch', 'capi', 'coordinator_task', 'mailchimp', 'notify'],
+      ['anon_stitch', 'capi', 'coordinator_task', 'mailchimp', 'notify', 'whatsapp'],
     )
     expect(bd.trabajos.every((t) => t.status === 'pending')).toBe(true)
   })
@@ -398,19 +398,19 @@ describe('encolado de los avisos', () => {
 
   it('encolar dos veces el MISMO envío no duplica trabajos', async () => {
     await POST(pedido(ENVIO_TASACION))
-    expect(bd.trabajos).toHaveLength(5)
+    expect(bd.trabajos).toHaveLength(6)
 
     // Segundo envío idéntico: el dedup lo frena antes de encolar nada.
     bd.reloj += 10_000
     await POST(pedido(ENVIO_TASACION))
-    expect(bd.trabajos).toHaveLength(5)
+    expect(bd.trabajos).toHaveLength(6)
   })
 
   it('si el primer intento de cierre falla, reintenta y no duplica', async () => {
     bd.fallosDeCierre = 1
     const res = await POST(pedido(ENVIO_TASACION))
     expect(res.status).toBe(200)
-    expect(bd.trabajos).toHaveLength(5)
+    expect(bd.trabajos).toHaveLength(6)
     expect(bd.envios[0].status).toBe('complete')
   })
 })
@@ -495,7 +495,7 @@ describe('reserva abandonada por una muerte dura del proceso', () => {
     expect(json.deduplicated).toBeUndefined()
     expect(json.contactId).toBeTruthy()
     expect(bd.deals).toHaveLength(1)
-    expect(bd.trabajos).toHaveLength(5)
+    expect(bd.trabajos).toHaveLength(6)
   })
 
   it('un doble clic de verdad (segundos) sigue dedupeado: no crea dos deals', async () => {
