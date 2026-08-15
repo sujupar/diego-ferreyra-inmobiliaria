@@ -1082,3 +1082,12 @@ ventana de 24 h y le da el pie al agente.
 -- migración 20260813000001_agente_tasacion.sql (aditiva)
 update ai_agent_settings set tasacion_enabled = true;  -- recién DESPUÉS de probar
 ```
+
+### Un metadato de tracking JAMÁS voltea una conversión (2026-08-15)
+
+- **Symptom:** clientes reales de Instagram reportando "error: datos inválidos" al registrarse en la landing de tasación. Las pruebas internas funcionaban perfecto. Sin rastro en la base (la validación corría antes de cualquier escritura).
+- **Root cause:** el schema de `POST /api/funnel/submit` rechazaba el envío ENTERO por metadatos: la cookie `_fbc` del clic real de un anuncio (`fb.1.<ts>.<fbclid>`) supera los 300 chars del tope viejo — y las pruebas internas entran SIN esa cookie, por eso "a mí me funciona" mientras el bug golpeaba exactamente al tráfico pago. También rechazaban: email con typo de celular (punto doble, `juan.@`, acentos), nombre de 1 letra, UTM largo.
+- **Fix:** `lib/funnel/submit-schema.ts` (18 tests con los casos EXACTOS de la batería): tracking se recorta o descarta, nunca rechaza; email/teléfono se DEGRADAN (si uno es inservible pero el otro sirve, el lead entra y lo tipeado queda en la nota del deal); solo rebota quien no deja ningún canal usable. `fbc` es "entero o nada" (truncado no matchea en Meta). Todo rechazo queda en `funnel_submit_rejections` (nombre/email/teléfono tipeados, techo 5/hora por IP) para recuperar el lead a mano.
+- **Cómo se probó SIN crear leads:** batería de curls con el honeypot relleno (`company`) — la validación corre primero y el honeypot devuelve éxito falso sin escribir. `scratchpad/battery.sh`. Reproducido el 400 exacto antes del fix; todo 200 después.
+- **Regla general:** en un endpoint de conversión paga, la validación estricta es un costo, no una virtud. El servidor debe aceptar TODO lo que el formulario acepta; los datos de campaña/analytics se sanean, jamás rechazan.
+- **Bonus de la revisión adversarial pre-deploy:** el email permisivo dejaba pasar `%` → comodín LIKE en el `.ilike()` del dedup de contactos → un POST podía colgar un deal del contacto de OTRA persona (verificado contra la base real). SIEMPRE escapar `%_\` antes de un `.ilike()` con input del usuario (`create-funnel-lead.ts`). Y OJO: supabase-js NO lanza ante error de Postgres — devuelve `{error}`; un `await` sin destructurar es una red de seguridad que falla en silencio.
