@@ -29,6 +29,7 @@ import 'server-only'
 import { createClient } from '@supabase/supabase-js'
 import { chatCompletion } from '@/lib/ai/chat-client'
 import { sendWhatsappText } from '@/lib/integrations/whatsapp/core'
+import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
 import {
   TASACION_AGENT_PROMPT,
   buildTasacionUserPrompt,
@@ -85,9 +86,15 @@ export interface TratoDeTasacion {
 export async function buscarTratoDeTasacion(phoneE164: string): Promise<TratoDeTasacion | null> {
   try {
     const sb = admin()
-    // El teléfono puede estar guardado con o sin '+' según por dónde entró.
-    const variantes = [phoneE164, `+${phoneE164}`, phoneE164.replace(/^\+/, '')]
-    const { data: contactos } = await sb.from('contacts').select('id, full_name').in('phone', variantes).limit(5)
+    // POR ÚLTIMOS 10 DÍGITOS, nunca por igualdad exacta. El mismo número vive
+    // en la base como '+5491149372737', '+541149372737' y '1149372737' (el "9"
+    // argentino), y la igualdad exacta dejó mudo al agente con un cliente real
+    // (Daniel Lapadula, 2026-08-15): respondió a la plantilla y nadie lo
+    // atendió. `phone_norm` es columna generada + índice (migración
+    // 20260816000001): O(log n) a cualquier escala.
+    const clave = ultimos10Digitos(phoneE164)
+    if (!clave) return null
+    const { data: contactos } = await sb.from('contacts').select('id, full_name').eq('phone_norm', clave).limit(10)
     const filas = (contactos ?? []) as Array<{ id: string; full_name: string | null }>
     if (filas.length === 0) return null
 

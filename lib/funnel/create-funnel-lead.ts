@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createDeal } from '@/lib/supabase/deals'
 import { attributionToDealColumns, type FunnelAttribution } from '@/lib/funnel/attribution'
 import { FUNNEL_PLACEHOLDER_LABEL, buildPlaceholderAddress } from '@/lib/funnel/placeholder'
+import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
 
 export type FunnelKind = 'tasacion' | 'clase'
 
@@ -74,8 +75,9 @@ export async function crearContactoYDeal(input: FunnelLeadInput): Promise<Funnel
   const email = input.email?.trim() || null
   const phone = input.phone?.trim() || null
 
-  // 1) Dedup contacto: email (ilike) → phone (eq) → crear
+  // 1) Dedup contacto: email (ilike) → phone (por últimos 10 dígitos) → crear
   let resolvedContactId: string | null = null
+  let telefonoDelContacto: string | null = null
   if (email) {
     // ESCAPAR LOS COMODINES DEL PATRÓN, siempre. En `ilike`, `%` y `_` son
     // comodines de LIKE: sin esto, un POST con email "a%@gmail.com" (que la
@@ -84,12 +86,44 @@ export async function crearContactoYDeal(input: FunnelLeadInput): Promise<Funnel
     // deal nuevo queda colgado del contacto equivocado. Encontrado por la
     // revisión adversarial ANTES de deployar, verificado contra la base real.
     const patron = email.replace(/[\\%_]/g, '\\$&')
-    const { data } = await supabase.from('contacts').select('id').ilike('email', patron).maybeSingle()
-    if (data) resolvedContactId = data.id as string
+    const { data } = await supabase.from('contacts').select('id, phone').ilike('email', patron).maybeSingle()
+    if (data) {
+      resolvedContactId = data.id as string
+      telefonoDelContacto = (data.phone as string | null) ?? null
+    }
   }
   if (!resolvedContactId && phone) {
-    const { data } = await supabase.from('contacts').select('id').eq('phone', phone).maybeSingle()
-    if (data) resolvedContactId = data.id as string
+    // Por últimos 10 dígitos (`phone_norm`, columna generada + índice), NUNCA
+    // por igualdad exacta: '+5491149372737' y '+541149372737' son el mismo
+    // teléfono (el "9" argentino) y el `.eq('phone', ...)` de antes no los
+    // matcheaba — así se acumularon contactos duplicados (Ada, Susana,
+    // Eduardo... verificado en la base) y a 1000 registros/día sería una plaga.
+    const clave = ultimos10Digitos(phone)
+    if (clave) {
+      const { data } = await supabase
+        .from('contacts')
+        .select('id, phone')
+        .eq('phone_norm', clave)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (data) {
+        resolvedContactId = data.id as string
+        telefonoDelContacto = (data.phone as string | null) ?? null
+      }
+    }
+  }
+  if (resolvedContactId && phone && telefonoDelContacto !== phone) {
+    // AUTO-CURACIÓN: el contacto reusado queda con el teléfono RECIÉN tipeado
+    // (E.164 del formulario). Sin esto, un contacto viejo guardado sin el 9
+    // deja al agente de WhatsApp sin poder encontrarlo cuando el cliente
+    // responde — fue exactamente el caso Daniel Lapadula (2026-08-15): tocó
+    // "Coordinar por acá" dos veces y nadie le contestó.
+    const { error: errTel } = await supabase
+      .from('contacts')
+      .update({ phone })
+      .eq('id', resolvedContactId)
+    if (errTel) console.warn('[funnel] no se pudo actualizar el teléfono del contacto', errTel.message)
   }
   if (!resolvedContactId) {
     const { data, error } = await supabase
