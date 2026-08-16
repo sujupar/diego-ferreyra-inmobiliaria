@@ -6,6 +6,7 @@ import { requireAuth, requirePermission } from '@/lib/auth/require-role'
 import { resolverAlcanceAsignado } from '@/lib/auth/scope'
 import { notifyDealCreated } from '@/lib/email/notifications/deal-created'
 import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
+import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -86,7 +87,16 @@ export async function POST(request: NextRequest) {
       if (existing) contactId = existing.id
     }
     if (!contactId && contact_phone) {
-      const { data: existing } = await supabase.from('contacts').select('id').eq('phone', contact_phone).maybeSingle()
+      // Por últimos 10 dígitos (`phone_norm`), no por igualdad exacta: el
+      // coordinador tipea el teléfono a mano libre ("11 4937-2737") y el
+      // contacto puede estar guardado como '+549...' o '+54...'. La igualdad
+      // exacta creaba un contacto NUEVO por cada formato distinto — es el
+      // mismo bug del '9' argentino que dejó mudo al agente el 2026-08-15.
+      const clave = ultimos10Digitos(contact_phone)
+      const { data: existing } = clave
+        ? await supabase.from('contacts').select('id').eq('phone_norm', clave)
+            .order('created_at', { ascending: false }).limit(1).maybeSingle()
+        : await supabase.from('contacts').select('id').eq('phone', contact_phone).maybeSingle()
       if (existing) contactId = existing.id
     }
 

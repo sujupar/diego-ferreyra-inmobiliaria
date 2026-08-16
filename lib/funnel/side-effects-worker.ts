@@ -234,16 +234,44 @@ export async function runFunnelSideEffectsWorker(
 
   resumen.resucitados = await resucitarColgados(sb, arranque)
 
-  const { data: candidatos, error } = await sb
+  // DOS ventanas, y el orden importa: PRIMERO los 'whatsapp' pendientes, DESPUÉS
+  // el resto. El WhatsApp es el único trabajo que el cliente VE ("te escribimos
+  // en los próximos segundos") y el que abre la ventana de 24 h para coordinar.
+  // Con una sola ventana por antigüedad, un backlog (un pico de registros, un
+  // tercero caído acumulando reintentos de emails) ponía trabajos viejos por
+  // delante y el cliente nuevo esperaba su primer mensaje decenas de minutos —
+  // hallazgo de la auditoría de escala (2026-08-16). Así, aunque la cola se
+  // atrase, lo que se atrasa son los avisos internos, nunca el saludo al
+  // cliente.
+  const ahora = new Date(arranque).toISOString()
+  const { data: prioritarios, error: errPrio } = await sb
     .from('funnel_lead_jobs')
     .select(COLUMNAS)
     .eq('status', 'pending')
-    .lte('next_attempt_at', new Date(arranque).toISOString())
+    .eq('kind', 'whatsapp')
+    .lte('next_attempt_at', ahora)
     .order('next_attempt_at', { ascending: true })
     .limit(LOTE)
+  if (errPrio) throw new Error(`funnel_lead_jobs: ${errPrio.message}`)
+
+  const restantes = LOTE - (prioritarios?.length ?? 0)
+  const { data: candidatos, error } =
+    restantes > 0
+      ? await sb
+          .from('funnel_lead_jobs')
+          .select(COLUMNAS)
+          .eq('status', 'pending')
+          .neq('kind', 'whatsapp')
+          .lte('next_attempt_at', ahora)
+          .order('next_attempt_at', { ascending: true })
+          .limit(restantes)
+      : { data: [], error: null }
   if (error) throw new Error(`funnel_lead_jobs: ${error.message}`)
 
-  const enCola = ordenarTrabajos((candidatos ?? []) as FilaTrabajo[])
+  const enCola = [
+    ...ordenarTrabajos((prioritarios ?? []) as FilaTrabajo[]),
+    ...ordenarTrabajos((candidatos ?? []) as FilaTrabajo[]),
+  ]
 
   // Los que ya no tienen intentos NO se vuelven a ejecutar: se cierran y se
   // escalan acá, antes del bucle de ejecución. PostgREST no sabe comparar dos

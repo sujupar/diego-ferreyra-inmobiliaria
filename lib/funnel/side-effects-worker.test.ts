@@ -58,6 +58,7 @@ vi.mock('@supabase/supabase-js', () => {
       select: () => q,
       update: (row: Record<string, unknown>) => { modo = 'update'; cambios = row; return q },
       eq: (c: string, v: unknown) => { filtros.push((f) => f[c] === v); return q },
+      neq: (c: string, v: unknown) => { filtros.push((f) => f[c] !== v); return q },
       lt: (c: string, v: string) => { filtros.push((f) => f[c] !== null && String(f[c]) < v); return q },
       lte: (c: string, v: string) => { filtros.push((f) => String(f[c] ?? '') <= v); return q },
       order: () => q,
@@ -117,6 +118,23 @@ beforeEach(() => {
   bd.escalaciones = []
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://proyecto.supabase.co'
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'clave-de-prueba'
+})
+
+describe('el WhatsApp del cliente va SIEMPRE primero', () => {
+  it('con backlog de avisos internos viejos, el whatsapp nuevo se ejecuta antes', async () => {
+    // Tres avisos internos ATRASADOS (más viejos en la cola) y un whatsapp
+    // recién encolado. Sin la ventana prioritaria, el orden por antigüedad
+    // ponía los tres primero y el cliente esperaba su primer mensaje — el
+    // que el formulario promete "en los próximos segundos".
+    bd.trabajos = [
+      trabajo({ id: 'v1', kind: 'notify', next_attempt_at: '2026-01-01T00:00:01.000Z' }),
+      trabajo({ id: 'v2', kind: 'capi', next_attempt_at: '2026-01-01T00:00:02.000Z' }),
+      trabajo({ id: 'v3', kind: 'mailchimp', next_attempt_at: '2026-01-01T00:00:03.000Z' }),
+      trabajo({ id: 'w1', kind: 'whatsapp', submission_id: 'envio-nuevo', next_attempt_at: '2026-01-01T00:00:09.000Z' }),
+    ] as never
+    await runFunnelSideEffectsWorker()
+    expect(bd.ejecutados[0]).toBe('whatsapp')
+  })
 })
 
 describe('toma y termina', () => {

@@ -105,6 +105,12 @@ interface InboundContext {
   contactName: string | null
   /** El texto tal cual lo escribió la persona — lo lee la palabra de reinicio. */
   textoEntrante: string | null
+  /**
+   * `false` = este wa_message_id YA se había procesado (reintento de Meta).
+   * El pipeline de IA NO corre sobre reintentos — un agente que contesta dos
+   * veces lo mismo delata que es un bot y quema la conversación.
+   */
+  esNuevo: boolean
 }
 
 /**
@@ -136,7 +142,13 @@ async function persistInbound(supabase: ReturnType<typeof admin>, msg: InboundMe
     // pasaba del límite de tiempo, el mensaje del cliente NO quedaba guardado y
     // Meta reintentaba contra el mismo camino lento. Perder el mensaje de un
     // cliente es justo lo que este sistema existe para evitar.
-    const { error } = await supabase
+    // El `.select()` de abajo NO es decorativo: con `ignoreDuplicates`, devuelve
+    // la fila SOLO si el insert fue nuevo — vacío significa que este
+    // wa_message_id YA se procesó (reintento de Meta). Esa señal es la
+    // idempotencia del pipeline de IA: sin ella, cada reintento volvía a correr
+    // el agente y el cliente recibía la MISMA respuesta dos veces (hallazgo de
+    // la auditoría de escala, 2026-08-16).
+    const { data: insertado, error } = await supabase
       .from('whatsapp_messages')
       .upsert(
         {
@@ -156,9 +168,13 @@ async function persistInbound(supabase: ReturnType<typeof admin>, msg: InboundMe
         },
         { onConflict: 'wa_message_id', ignoreDuplicates: true },
       )
+      .select('id')
     if (error) {
       console.warn('[whatsapp-webhook] no se pudo guardar el mensaje entrante (continuando):', error.message)
     }
+    // Ante la duda (error del insert), se asume NUEVO: mejor arriesgar una
+    // respuesta doble que dejar a un cliente sin atender.
+    const esNuevo = error ? true : (insertado?.length ?? 0) > 0
 
     // Ya está a salvo: ahora sí bajamos el adjunto y completamos la fila. Si esto
     // falla o se corta, el mensaje YA quedó registrado y visible en el chat (sin
@@ -185,7 +201,7 @@ async function persistInbound(supabase: ReturnType<typeof admin>, msg: InboundMe
       }
     }
 
-    return { phoneE164, leadId, propertyId: leadPropertyId, contactName: msg.contactName, textoEntrante: msg.bodyPreview ?? null }
+    return { phoneE164, leadId, propertyId: leadPropertyId, contactName: msg.contactName, textoEntrante: msg.bodyPreview ?? null, esNuevo }
   } catch (err) {
     console.warn('[whatsapp-webhook] excepción guardando mensaje entrante (continuando):', err)
     return null
@@ -499,7 +515,12 @@ export async function POST(request: NextRequest) {
     //     salvo cuando agrupa).
     // El ÚLTIMO es el más informativo, y el análisis relee la conversación
     // completa de la base, que en este punto ya tiene todo lo de la fase 1.
-    const aAnalizar = contextos.length ? contextos[contextos.length - 1] : null
+    //
+    // SOLO mensajes NUEVOS: un reintento de Meta (mismo wa_message_id) no
+    // dispara el pipeline — el agente ya le contestó a ese mensaje la primera
+    // vez, y contestarle de nuevo lo mismo es lo que delata a un bot.
+    const nuevos = contextos.filter((c) => c.esNuevo)
+    const aAnalizar = nuevos.length ? nuevos[nuevos.length - 1] : null
 
     // FASE 2.5 — ¿ES LA PALABRA DE REINICIO? Va DESPUÉS de guardar (el mensaje
     // queda en el historial como cualquier otro) y ANTES del pipeline: si se
