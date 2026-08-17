@@ -32,7 +32,7 @@ interface Fila {
 const bd = vi.hoisted(() => ({
   trabajos: [] as Array<Record<string, unknown>>,
   /** Qué hace cada tipo de trabajo cuando el worker lo ejecuta. */
-  comportamiento: {} as Record<string, 'ok' | 'skip' | 'explota'>,
+  comportamiento: {} as Record<string, 'ok' | 'skip' | 'explota' | 'limite'>,
   /** Tipos ejecutados, en orden. */
   ejecutados: [] as string[],
   /** Escalaciones a admins (trabajo agotado). */
