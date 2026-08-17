@@ -1,7 +1,7 @@
 import 'server-only'
 import { createClient } from '@supabase/supabase-js'
 import { resolveFunnelMapping, type FunnelKind } from '@/lib/funnel/create-funnel-lead'
-import type { TipoDeTrabajo } from '@/lib/funnel/jobs-logic'
+import { MARCA_LIMITE_DE_VOLUMEN, type TipoDeTrabajo } from '@/lib/funnel/jobs-logic'
 
 /**
  * Los cinco avisos de un envío del embudo, ya fuera del camino crítico.
@@ -211,6 +211,19 @@ async function primerWhatsappDeTasacion(p: Record<string, unknown>): Promise<Res
 
   const primerNombre = requerido(p, 'nombre').trim().split(/\s+/)[0] ?? ''
 
+  // El cuerpo que se LOGUEA en el Inbox tiene que ser el de la plantilla que
+  // REALMENTE salió — el chat muestra este texto como "lo que le dijimos".
+  // Mantener en espejo con las plantillas aprobadas en Meta.
+  const CUERPOS: Record<string, string> = {
+    tasacion_coordinar_v2:
+      `Hola ${primerNombre}, recibimos tu solicitud de tasación en nuestra web.\n\n` +
+      'Para coordinar la visita, ¿cómo preferís que sigamos?',
+    tasacion_coordinar_util:
+      `Hola ${primerNombre}, ¿cómo estás?\n\n` +
+      'Te escribo de Diego Ferreyra Inmobiliaria por la tasación gratuita que pediste recién en nuestra web.\n\n' +
+      'Es presencial, sin costo y sin compromiso. ¿Cómo preferís que la coordinemos?',
+  }
+
   // El envío ya deja el mensaje en `whatsapp_messages` (ver `logOutbound` dentro
   // de `sendWhatsappTemplate`), así que acá no se registra nada a mano.
   // `aiGenerated: true` es importante río abajo: el agente solo reconoce como
@@ -224,14 +237,24 @@ async function primerWhatsappDeTasacion(p: Record<string, unknown>): Promise<Res
     bodyParams: [primerNombre],
     origen: 'landing',
     aiGenerated: true,
-    bodyText:
-      `Hola ${primerNombre}, ¿cómo estás?\n\n` +
-      'Te escribo de Diego Ferreyra Inmobiliaria por la tasación gratuita que pediste recién en nuestra web.\n\n' +
-      'Es presencial, sin costo y sin compromiso. ¿Cómo preferís que la coordinemos?',
+    bodyText: CUERPOS[plantilla] ?? CUERPOS.tasacion_coordinar_util,
   })
   // Modo prueba / sin credenciales: no salió nada, y decirlo es información.
   if (r.skipped) return 'skipped'
-  if (!r.ok) throw new Error(`WhatsApp: ${r.error ?? 'error desconocido'}`)
+  if (!r.ok) {
+    // Los códigos de LÍMITE DE VOLUMEN de Meta (tier de mensajería agotado /
+    // rate limit) no son un error común: reintentar en 30 s es quemar intentos
+    // contra una pared que recién cede dentro de la ventana de 24 h. La marca
+    // le dice al worker que use la espera larga (4 h) en vez de la escalera.
+    //   131048 = límite de mensajería (spam/tier) · 131056 = límite por par
+    //   130429 = throughput · 80007 = rate limit de la app
+    const LIMITES_DE_VOLUMEN = new Set([131048, 131056, 130429, 80007])
+    const codigo = Number(r.errorCode)
+    const marca = LIMITES_DE_VOLUMEN.has(codigo) ? `${MARCA_LIMITE_DE_VOLUMEN} ` : ''
+    throw new Error(
+      `${marca}WhatsApp: ${r.error ?? 'error desconocido'}${Number.isFinite(codigo) ? ` (código ${codigo})` : ''}`,
+    )
+  }
 
   // ESTA MARCA ES LO QUE HACE QUE LA CONVERSACIÓN SEA "DE TASACIÓN".
   //

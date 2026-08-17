@@ -5,6 +5,7 @@ import {
   ordenarTrabajos,
   siguienteIntento,
   ESPERAS_SEGUNDOS,
+  ESPERA_LIMITE_SEGUNDOS,
   type DatosDelEnvio,
 } from './jobs-logic'
 
@@ -139,6 +140,21 @@ describe('siguienteIntento', () => {
   it('al agotar los intentos queda en failed y sin próxima fecha', () => {
     expect(siguienteIntento(5, 5, AHORA)).toEqual({ status: 'failed', next_attempt_at: null })
     expect(siguienteIntento(9, 5, AHORA)).toEqual({ status: 'failed', next_attempt_at: null })
+  })
+
+  it('un límite de volumen de Meta usa la espera LARGA, no la escalera', () => {
+    // El tier de WhatsApp (250/1K/10K conversaciones por día) recién cede
+    // dentro de la ventana de 24 h: reintentar en 30 s quemaba los 5 intentos
+    // en ~7,6 h y el lead quedaba failed para siempre. Con 4 h entre intentos,
+    // los 5 cubren ~20 h — el cupo se renueva antes de agotarlos.
+    const r = siguienteIntento(1, 5, AHORA, ESPERA_LIMITE_SEGUNDOS)
+    expect(r.status).toBe('pending')
+    expect(Date.parse(r.next_attempt_at!) - AHORA).toBe(ESPERA_LIMITE_SEGUNDOS * 1000)
+    // Y el agotamiento sigue mandando: la espera fija no revive un trabajo muerto.
+    expect(siguienteIntento(5, 5, AHORA, ESPERA_LIMITE_SEGUNDOS)).toEqual({
+      status: 'failed',
+      next_attempt_at: null,
+    })
   })
 
   it('si el tope fuera mayor que la escalera, repite la última espera en vez de romperse', () => {

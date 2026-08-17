@@ -75,6 +75,7 @@ vi.mock('@/lib/funnel/side-effect-handlers', () => ({
     bd.ejecutados.push(kind)
     const c = bd.comportamiento[kind] ?? 'ok'
     if (c === 'explota') throw new Error(`${kind} explotó`)
+    if (c === 'limite') throw new Error(`[LIMITE_META] WhatsApp: límite de mensajería (código 131048)`)
     return c === 'skip' ? 'skipped' : 'done'
   },
 }))
@@ -184,6 +185,21 @@ describe('reintentos y agotamiento', () => {
     expect(Date.parse(String(t.next_attempt_at))).toBeGreaterThan(Date.now())
     expect(r).toMatchObject({ reintentar: 1, fallados: 0 })
     expect(bd.escalaciones).toEqual([])
+  })
+
+  it('un límite de volumen de Meta espera HORAS, no segundos', async () => {
+    // El tier de WhatsApp recién cede dentro de la ventana de 24 h. La escalera
+    // normal (30 s) quemaba los 5 intentos en ~7,6 h contra una pared; con la
+    // marca [LIMITE_META], el worker reintenta cada 4 h.
+    bd.trabajos = [trabajo({ kind: 'whatsapp' })]
+    bd.comportamiento.whatsapp = 'limite'
+    await runFunnelSideEffectsWorker()
+
+    const t = bd.trabajos[0]
+    expect(t.status).toBe('pending')
+    const esperaMs = Date.parse(String(t.next_attempt_at)) - Date.now()
+    expect(esperaMs).toBeGreaterThan(3.9 * 3600_000)
+    expect(esperaMs).toBeLessThan(4.1 * 3600_000)
   })
 
   it('la espera crece entre corridas', async () => {

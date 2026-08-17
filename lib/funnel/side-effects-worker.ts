@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 import {
   ordenarTrabajos,
   siguienteIntento,
+  MARCA_LIMITE_DE_VOLUMEN,
+  ESPERA_LIMITE_SEGUNDOS,
   type TipoDeTrabajo,
 } from '@/lib/funnel/jobs-logic'
 
@@ -351,7 +353,11 @@ export async function runFunnelSideEffectsWorker(
       // Un aviso que falla NO puede arrastrar a los otros cuatro: cada trabajo
       // vive y muere solo. Por eso el try/catch está adentro del bucle.
       const mensaje = err instanceof Error ? err.message : String(err)
-      const estado = siguienteIntento(intentos, fila.max_attempts)
+      // Un LÍMITE DE VOLUMEN de Meta no cede en 30 s: la espera larga (4 h)
+      // reparte los intentos dentro de la ventana de 24 h en la que el cupo
+      // del tier se renueva, en vez de quemarlos todos en ~7 h.
+      const esperaFija = mensaje.includes(MARCA_LIMITE_DE_VOLUMEN) ? ESPERA_LIMITE_SEGUNDOS : undefined
+      const estado = siguienteIntento(intentos, fila.max_attempts, Date.now(), esperaFija)
       const fin = new Date().toISOString()
       await sb
         .from('funnel_lead_jobs')

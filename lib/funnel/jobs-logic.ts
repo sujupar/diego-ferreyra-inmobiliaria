@@ -45,6 +45,23 @@ const PRIORIDAD: Record<TipoDeTrabajo, number> = {
  */
 export const ESPERAS_SEGUNDOS = [30, 120, 600, 3600, 21600] as const
 
+/**
+ * Marca que un handler pone en el mensaje del error cuando el fallo es un
+ * LÍMITE DE VOLUMEN de Meta (tier de mensajería / rate limit), no un error
+ * común. WhatsApp Business arranca pudiendo INICIAR 250 conversaciones por día
+ * (sube solo a 1K/10K/100K con volumen y calidad): superado el tier, Meta
+ * rechaza el envío con los códigos 131048/131056/130429 y el cupo recién se
+ * libera dentro de la ventana de 24 h.
+ *
+ * Sin esta marca, la escalera normal quemaba los 5 intentos en ~7,6 h contra
+ * un límite que no iba a ceder, y el lead quedaba 'failed' para siempre
+ * (hallazgo CRÍTICO de la auditoría de escala, 2026-08-16). Con ella, el
+ * worker espera ESPERA_LIMITE_SEGUNDOS entre intentos: 5 intentos cubren ~20 h,
+ * dentro de la ventana en la que el cupo se renueva.
+ */
+export const MARCA_LIMITE_DE_VOLUMEN = '[LIMITE_META]'
+export const ESPERA_LIMITE_SEGUNDOS = 4 * 3600
+
 export interface TrabajoEncolable {
   kind: TipoDeTrabajo
   payload: Record<string, unknown>
@@ -168,12 +185,18 @@ export function siguienteIntento(
   intentos: number,
   maxIntentos: number,
   ahoraMs: number = Date.now(),
+  /**
+   * Espera FIJA en segundos que reemplaza a la escalera. La usa el worker
+   * cuando el error lleva `MARCA_LIMITE_DE_VOLUMEN`: reintentar en 30 s contra
+   * un tier de Meta agotado es quemar intentos contra una pared.
+   */
+  esperaFijaSegundos?: number,
 ): EstadoTrasFallo {
   if (intentos >= maxIntentos) {
     return { status: 'failed', next_attempt_at: null }
   }
   const idx = Math.min(Math.max(intentos - 1, 0), ESPERAS_SEGUNDOS.length - 1)
-  const espera = ESPERAS_SEGUNDOS[idx]
+  const espera = esperaFijaSegundos ?? ESPERAS_SEGUNDOS[idx]
   return {
     status: 'pending',
     next_attempt_at: new Date(ahoraMs + espera * 1000).toISOString(),
