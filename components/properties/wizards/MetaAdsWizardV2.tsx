@@ -201,7 +201,7 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
   const [starting, setStarting] = useState(false)
   // E2.1 — si la campaña se bloquea por falta de landing, mostramos un CTA en
   // vez de un error crudo (el bug de la captura: el error no decía cómo resolverlo).
-  const [landingRequired, setLandingRequired] = useState<{ redirectTo: string } | null>(null)
+  const [landingRequired, setLandingRequired] = useState<{ redirectTo: string; landingExiste?: boolean } | null>(null)
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Inputs del asesor
@@ -357,7 +357,10 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
       if (!r.ok) {
         // E2.1 — gate de landing: no es un error, falta un paso previo.
         if (data.code === 'LANDING_REQUIRED') {
-          setLandingRequired({ redirectTo: data.redirectTo ?? `/properties/${propertyId}` })
+          setLandingRequired({
+            redirectTo: data.redirectTo ?? `/properties/${propertyId}`,
+            landingExiste: data.landingExiste === true,
+          })
           return
         }
         throw new Error(data.error ?? 'No se pudo iniciar')
@@ -606,16 +609,17 @@ export function MetaAdsWizardV2({ propertyId, property, existingJobId, hasZombie
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Sparkles className="h-4 w-4 text-amber-600" />
-            Primero creá la Landing Page
+            {landingRequired.landingExiste ? 'Falta publicar la Landing Page' : 'Primero creá la Landing Page'}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            La campaña Meta necesita una landing pública donde llegan los interesados.
-            Creala en la ficha de la propiedad (sección &quot;Landing Page&quot;) y volvé a montar la campaña.
+            {landingRequired.landingExiste
+              ? 'La landing de esta propiedad ya existe pero todavía no está publicada. Publicala (botón "Publicar landing") y volvé a montar la campaña: la campaña apunta a la página pública.'
+              : 'La campaña Meta necesita una landing pública donde llegan los interesados. Creala en la ficha de la propiedad (sección "Landing Page") y volvé a montar la campaña.'}
           </p>
           <Button onClick={() => router.push(landingRequired.redirectTo)}>
-            Ir a crear la landing
+            {landingRequired.landingExiste ? 'Ir a publicar la landing' : 'Ir a crear la landing'}
             <ArrowRight className="h-4 w-4 ml-1" />
           </Button>
         </CardContent>

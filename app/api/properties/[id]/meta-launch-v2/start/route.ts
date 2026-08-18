@@ -12,6 +12,7 @@
  * etapas que necesitan input (avatar, fotos, presupuesto, etc.)
  */
 import { NextResponse } from 'next/server'
+import { getLanding } from '@/lib/landing/landing-service'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { analyzePropertyPhotos } from '@/lib/marketing/property-vision-analyzer'
@@ -70,10 +71,20 @@ export async function POST(
     // Si no hay NINGUNA, mandamos a crearla (409 + code) en vez del 412 ciego que
     // no le decía al asesor cómo resolverlo.
     if (!property.public_slug) {
+      // Distinguir "no existe" de "existe pero nunca se publicó": son mensajes
+      // distintos. Decirle "creá la landing" a quien ya la creó (y la afinó a
+      // mano) lo manda a un camino cuyo final es borrarla y perder el trabajo.
+      // `getLanding` ya resuelve el cliente sin genérico: property_landings no
+      // está en los tipos generados (el CLI de Supabase no conecta).
+      const landingExistente = await getLanding(id).catch(() => null)
+      const yaExiste = Boolean(landingExistente)
       return NextResponse.json(
         {
-          error: 'Primero creá la Landing Page de esta propiedad. Es requisito para la campaña.',
+          error: yaExiste
+            ? 'La landing de esta propiedad existe pero todavía no está publicada. Publicala (botón "Publicar landing") y volvé a montar la campaña.'
+            : 'Primero creá la Landing Page de esta propiedad. Es requisito para la campaña.',
           code: 'LANDING_REQUIRED',
+          landingExiste: yaExiste,
           redirectTo: `/properties/${id}`,
         },
         { status: 409 },

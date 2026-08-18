@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Loader2, Sparkles, Rocket, ExternalLink, Wand2, ArrowRight, AlertTriangle, Trash2 } from 'lucide-react'
 import { needsDeliveryChoice, resolveDeliverMedia } from '@/lib/properties/deliver-media'
 import { ENRICH_STAGES, nextEnrichStage } from '@/lib/landing/enrich'
-import { faltanRespuestas, GATE_RESPUESTAS_MSG } from '@/lib/landing/answers-gate'
+import { bloqueoDePublicacion } from '@/lib/landing/answers-gate'
 
 interface Question { id: string; question: string; hint?: string }
 interface Avatar {
@@ -42,6 +42,10 @@ interface Landing {
   template_id: string
   public_slug: string | null
   wizard_state: WizardState
+  /** Los tres últimos los necesita el gate de publicación (answers-gate). */
+  published_at?: string | null
+  content?: unknown
+  draft_content?: unknown
 }
 interface TemplateMeta { id: string; label: string; description: string; bestFor: string }
 
@@ -492,12 +496,12 @@ export function LandingSection({
   const candidates = ws.avatarCandidates ?? []
   const selectedIdx = ws.selectedAvatarIndex ?? 0
 
-  // Gate de publicación (2026-08-06): con preguntas presentes, publicar exige
-  // TODAS respondidas Y los textos generados con esas respuestas. El server
-  // valida lo mismo en publishLanding — acá solo lo avisamos antes.
+  // Gate de publicación: la MISMA función que usa el servidor en publishLanding,
+  // así los dos lados no pueden decir cosas distintas. Habilita publicar tanto
+  // por el camino de las respuestas como por haber escrito los textos a mano.
   const faltanLocal = questions.filter(q => !(answers[q.id] ?? '').trim())
-  const textosListos = questions.length === 0 ||
-    (faltanRespuestas({ questions, answers: ws.answers }).length === 0 && ws.copyFromAnswers === true)
+  const motivoBloqueo = bloqueoDePublicacion(landing)
+  const textosListos = motivoBloqueo === null
 
   return (
     <Card>
@@ -510,9 +514,10 @@ export function LandingSection({
         {/* 1. Preguntas (obligatorias, 2026-08-06: son el insumo de los textos) */}
         {questions.length > 0 && (
           <div className="space-y-3">
-            <p className="text-sm font-medium">1. Contanos de esta propiedad (obligatorio)</p>
+            <p className="text-sm font-medium">1. Contanos de esta propiedad</p>
             <p className="text-xs text-muted-foreground">
-              Con tus respuestas la IA escribe los textos de la landing. Sin responderlas no se puede publicar.
+              Con tus respuestas la IA escribe los textos de la landing. La alternativa es
+              escribir los textos a mano en el editor — cualquiera de los dos caminos habilita publicar.
             </p>
             {questions.map(q => (
               <div key={q.id}>
@@ -616,8 +621,8 @@ export function LandingSection({
             <div className="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
               <div className="space-y-1">
-                <p className="text-sm font-medium text-amber-900">Faltan tus respuestas</p>
-                <p className="text-xs text-amber-800">{GATE_RESPUESTAS_MSG}</p>
+                <p className="text-sm font-medium text-amber-900">Los textos todavía son los genéricos</p>
+                <p className="text-xs text-amber-800">{motivoBloqueo}</p>
               </div>
             </div>
           )}

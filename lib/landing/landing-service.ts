@@ -30,7 +30,7 @@ import { buildUtmBase } from './utm'
 import { LandingDocument, safeParseLandingDocument } from './schema'
 import { generateEmpathyAvatars } from '@/lib/marketing/empathy-avatar-generator'
 import { generateCoCreationQuestions } from './questions-generator'
-import { faltanRespuestas, GATE_RESPUESTAS_MSG } from './answers-gate'
+import { faltanRespuestas, bloqueoDePublicacion } from './answers-gate'
 import { getOrCreateLocationInsights, type LocationInsights } from '@/lib/marketing/location-insights'
 import type { EmpathyAvatar } from '@/lib/marketing/empathy-avatar'
 import type { LandingProperty } from './registry'
@@ -428,20 +428,13 @@ export async function publishLanding(propertyId: string, appUrl: string, userId:
   //    video se filma o se edita.
   await assertRecorridoDisponible(propertyId)
 
-  // 0bis. Gate de respuestas (decisión del usuario, 2026-08-06): con preguntas
-  //    presentes no se publica sin responderlas TODAS y sin haber generado los
-  //    textos con esas respuestas. SOLO aplica a la PRIMERA publicación
-  //    (published_at null): las landings ya publicadas —las tres pre-v2
-  //    incluidas— re-publican cambios del editor sin este gate, porque para
-  //    ellas la UI no ofrece ningún camino para responder preguntas (hallazgo
-  //    del review 2026-08-06: sin esta condición quedaban bloqueadas para
-  //    siempre). Sin preguntas (enrich caído) tampoco bloquea.
-  const wsGate = landing.wizard_state ?? ({} as WizardState)
-  if (!landing.published_at && (wsGate.questions ?? []).length > 0) {
-    if (faltanRespuestas(wsGate).length > 0 || wsGate.copyFromAnswers !== true) {
-      throw new Error(GATE_RESPUESTAS_MSG)
-    }
-  }
+  // 0bis. Gate de copy genérico. Lo que se protege es que no salga publicada la
+  //    landing tal como la escupió el generador; hay DOS formas válidas de
+  //    dejar de estar en ese estado —responder las preguntas y generar los
+  //    textos, o escribirlos a mano en el editor— y las dos habilitan publicar.
+  //    La regla completa vive en `answers-gate.ts` y la comparte la UI.
+  const motivoBloqueo = bloqueoDePublicacion(landing)
+  if (motivoBloqueo) throw new Error(motivoBloqueo)
 
   // 1. Fuente a publicar: si hay borrador del editor (E1.6), se publica el borrador
   //    (y se promueve a `content`); si no, el `content` actual. Validado con el
