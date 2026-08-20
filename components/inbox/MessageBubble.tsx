@@ -1,7 +1,8 @@
 'use client'
 
 import { Check, CheckCheck, AlertTriangle, Clock, FileText, EyeOff } from 'lucide-react'
-import { horaCorta, messageText, mediaCaption } from './format'
+import { relativeTime, messageText } from './format'
+import { resolverMedia, etiquetaDeTipo } from './media'
 import type { ThreadMessage } from './types'
 
 /**
@@ -74,85 +75,108 @@ function agentNoteReason(status: string): string | undefined {
  * ese mensaje YA SALIÓ. La única razón por la que hoy se queda pegado en
  * `accepted` para siempre es que el webhook de estados de Meta no está
  * suscripto (ver `WebhookWarningBanner`), no que el envío siga en curso.
- *
- * SOBRE LOS COLORES: esto se dibuja ADENTRO de la burbuja saliente (verde), no
- * sobre el fondo del hilo. Los estados neutros van con `className` VACÍO a
- * propósito — heredan el `--chat-meta` del renglón, que es el gris ya medido
- * contra las dos burbujas. Un `text-muted-foreground` acá daba 4.27:1 contra
- * los 4.5:1 que pide AA. Y `Leído` usa `--chat-read` y no `text-blue-500`
- * (3.31:1 en claro, 3.72:1 en oscuro sobre el verde). Los mide
- * `contraste-burbuja.test.ts`; si mañana se agrega un estado con color propio,
- * el color va como token del chat y se suma a ese test.
  */
 function outboundStatusMeta(status: string): { icon: typeof Check; label: string; className: string; isError: boolean } {
   switch (status) {
     case 'skipped':
-      return { icon: Clock, label: 'Modo prueba — no se mandó de verdad', className: '', isError: false }
+      return { icon: Clock, label: 'Modo prueba — no se mandó de verdad', className: 'text-muted-foreground', isError: false }
     case 'accepted':
     case 'sent':
-      return { icon: Check, label: 'Enviado', className: '', isError: false }
+      return { icon: Check, label: 'Enviado', className: 'text-muted-foreground', isError: false }
     case 'delivered':
-      return { icon: CheckCheck, label: 'Entregado', className: '', isError: false }
+      return { icon: CheckCheck, label: 'Entregado', className: 'text-muted-foreground', isError: false }
     case 'read':
-      return { icon: CheckCheck, label: 'Leído', className: 'text-[color:var(--chat-read)]', isError: false }
+      return { icon: CheckCheck, label: 'Leído', className: 'text-blue-500', isError: false }
     case 'failed':
       return { icon: AlertTriangle, label: 'No se pudo enviar', className: 'text-[color:var(--destructive)]', isError: true }
     default:
-      return { icon: Clock, label: status, className: '', isError: false }
+      return { icon: Clock, label: status, className: 'text-muted-foreground', isError: false }
   }
 }
 
 /**
- * Contenido multimedia de un mensaje entrante. Si `media_url` es null (sin
- * adjunto, o la descarga desde Meta falló) devuelve `null` — el caller cae al
- * texto plano de `messageText()`.
+ * El archivo de un mensaje, dibujado COMO LO VE EL CLIENTE.
+ *
+ * Antes decidía por `media_mime_type`, que solo traen los ENTRANTES: los
+ * salientes se guardan con la URL y el tipo, sin mime. Con el mime en blanco
+ * toda foto que mandaba el sistema caía en la rama de "documento" y el equipo
+ * veía un link crudo en pantalla mientras el cliente veía la foto. Ahora el
+ * tipo lo resuelve `resolverMedia`, que mira la columna semántica, después el
+ * mime, después la extensión y por último el prefijo del texto (que es lo único
+ * que tiene el historial).
+ *
+ * Devuelve `null` si el mensaje no lleva archivo — ahí el caller muestra el
+ * texto de siempre.
  */
 function MediaContent({ message }: { message: ThreadMessage }) {
-  if (!message.media_url) return null
-  const mime = message.media_mime_type ?? ''
-  const caption = mediaCaption(message.body_preview)
+  const media = resolverMedia(message)
+  if (!media) return null
+  const { tipo, url, filename, caption } = media
 
-  if (mime.startsWith('image/')) {
+  // Sabemos que se mandó un archivo pero no tenemos con qué mostrarlo (mensajes
+  // viejos que solo guardaron el nombre). Se dibuja igual: "se mandó un
+  // documento" es información útil, una URL suelta no lo era.
+  if (!url) {
     return (
-      <div>
-        {/* `max-w-full h-auto`: sin el tope de ancho, una foto apaisada se escala
-            al alto máximo (256px) y se va a ~455px de ancho dentro de una burbuja
-            que en un teléfono mide ~220px. Se derramaba sobre el hilo y, como el
-            hilo es `overflow-y-auto` (lo que fuerza al eje X a `auto`), el chat
-            entero ganaba scroll horizontal: al arrastrar para leer, se corría de
-            costado. Es el caso MÁS común de todos — los clientes mandan fotos. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={message.media_url}
-          alt={caption ?? 'Imagen recibida'}
-          className="max-h-64 max-w-full rounded-lg object-cover h-auto"
-        />
-        {caption && <p className="mt-1 text-sm">{caption}</p>}
+      <div className="flex flex-col gap-1">
+        <span className="flex items-center gap-2 rounded-md border border-dashed border-current/25 px-2 py-1.5 text-sm text-muted-foreground">
+          <FileText className="h-4 w-4 shrink-0" />
+          {filename ?? etiquetaDeTipo(tipo)}
+        </span>
+        {caption && <p className="text-sm">{caption}</p>}
       </div>
     )
   }
-  if (mime.startsWith('audio/')) {
-    return <audio controls src={message.media_url} className="max-w-full" />
-  }
-  if (mime.startsWith('video/')) {
+
+  if (tipo === 'image') {
     return (
-      <div>
-        <video controls src={message.media_url} className="max-h-64 max-w-full rounded-lg" />
-        {caption && <p className="mt-1 text-sm">{caption}</p>}
+      <div className="flex flex-col gap-1">
+        <a href={url} target="_blank" rel="noopener noreferrer" title="Abrir la foto en grande">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={url}
+            alt={caption ?? 'Foto enviada en la conversación'}
+            loading="lazy"
+            className="max-h-72 w-auto max-w-full rounded-lg object-cover"
+          />
+        </a>
+        {caption && <p className="text-sm">{caption}</p>}
       </div>
     )
   }
-  // Documento (o cualquier mime no contemplado): link de descarga con el nombre real.
+
+  if (tipo === 'audio') {
+    return (
+      <div className="flex flex-col gap-1">
+        <audio controls src={url} className="max-w-full" />
+        {caption && <p className="text-sm">{caption}</p>}
+      </div>
+    )
+  }
+
+  if (tipo === 'video') {
+    return (
+      <div className="flex flex-col gap-1">
+        <video controls preload="metadata" src={url} className="max-h-72 max-w-full rounded-lg" />
+        {caption && <p className="text-sm">{caption}</p>}
+      </div>
+    )
+  }
+
+  // Documento: ficha con el nombre real, como la que ve el cliente en su chat.
   return (
-    <a
-      href={message.media_url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center gap-2 rounded-md border border-current/20 px-2 py-1.5 text-sm underline"
-    >
-      <FileText className="h-4 w-4 shrink-0" />
-      {message.media_filename ?? 'Descargar archivo'}
-    </a>
+    <div className="flex flex-col gap-1">
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 rounded-md border border-current/20 px-2 py-1.5 text-sm hover:underline"
+      >
+        <FileText className="h-4 w-4 shrink-0" />
+        <span className="break-all">{filename ?? 'Abrir el documento'}</span>
+      </a>
+      {caption && <p className="text-sm">{caption}</p>}
+    </div>
   )
 }
 
@@ -172,7 +196,7 @@ function InternalNote({ message, reason }: { message: ThreadMessage; reason: str
           <span>Nota interna del equipo — el cliente no la vio ({reason}).</span>
         </p>
         <p className="mt-1 whitespace-pre-wrap break-words">{messageText(message)}</p>
-        <p className="mt-1 text-[11px] tabular-nums">{horaCorta(message.created_at)}</p>
+        <p className="mt-1 text-[10px]">{relativeTime(message.created_at)}</p>
       </div>
     </div>
   )
@@ -186,60 +210,34 @@ export function MessageBubble({ message }: { message: ThreadMessage }) {
   const meta = isOut ? outboundStatusMeta(message.status) : null
   const StatusIcon = meta?.icon
   const media = <MediaContent message={message} />
-  const hasMedia = message.media_url != null
+  // OJO: no alcanza con mirar `media_url`. Los mensajes anteriores al 6 de
+  // agosto de 2026 no tienen esa columna y su archivo se resuelve desde el
+  // texto; preguntando por la columna, todo el historial volvía a verse crudo.
+  const hasMedia = resolverMedia(message) != null
   return (
     <div className={`flex flex-col ${isOut ? 'items-end' : 'items-start'}`}>
-      {/* `max-w-[85%]` en celular y 75% de `md:` para arriba: en un teléfono la
-          columna del hilo mide ~356px y el 75% dejaba burbujas de ~245px con
-          padding — una dirección o un precio con moneda se partían en tres
-          renglones. En escritorio el 75% sigue siendo lo correcto (una línea de
-          texto muy larga se vuelve incómoda de leer).
-
-          La esquina del lado propio va a `rounded-br-md` (entrante:
-          `rounded-bl-md`): es lo que le da al hilo la lectura de "quién habla"
-          sin depender del color.
-
-          Los colores salen de los tokens `--chat-*` de `app/globals.css`, que
-          HOY apuntan exactamente a los valores de antes (crema/blanco/verde). El
-          fondo crema y las burbujas verdes fueron un pedido explícito del dueño
-          y el pedido posterior ("colores de marca, sin copiar WhatsApp") lo
-          contradice: esa contradicción la resuelve él. Los tokens existen para
-          que ese cambio sea tocar cuatro variables y no reescribir esto. */}
       <div
-        className={`max-w-[85%] md:max-w-[75%] rounded-2xl px-3 py-2 text-[15px] leading-[1.35] whitespace-pre-wrap break-words ${
-          isOut ? 'rounded-br-md' : 'rounded-bl-md'
-        } ${
+        className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words ${
           meta?.isError
             ? 'bg-[color:var(--destructive)]/10 border border-[color:var(--destructive)]/40 text-foreground'
             : isOut
-              ? 'bg-[color:var(--chat-out-bg)] text-[color:var(--chat-out-fg)] shadow-sm'
-              : 'bg-[color:var(--chat-in-bg)] text-[color:var(--chat-in-fg)] shadow-sm'
+              ? 'bg-emerald-100 text-emerald-950 shadow-sm dark:bg-emerald-900/50 dark:text-emerald-50'
+              : 'bg-white text-foreground shadow-sm dark:bg-zinc-800 dark:text-zinc-100'
         }`}
       >
         {hasMedia ? media : messageText(message)}
-        {/* La hora va ADENTRO de la burbuja, no debajo: afuera costaba un renglón
-            entero por mensaje sobre un hilo que en un teléfono arrancaba con
-            ~50px de alto. Y dice "14:32", no "hace 3 días": el hilo ya está
-            agrupado por día con su separador, así que lo relativo era redundante
-            y encima escondía el único dato que falta. */}
-        {/* En la burbuja fallada el fondo es otro (`--destructive/10` sobre el
-            crema del hilo, un durazno claro) y ahí `--chat-meta` da 3.92:1. El
-            `text-foreground/70` da 6.84 en claro y 8.23 en oscuro, y se sigue
-            leyendo como un dato secundario. */}
-        <span className={`mt-1 flex items-center justify-end gap-1 text-[11px] tabular-nums ${
-          meta?.isError ? 'text-foreground/70' : 'text-[color:var(--chat-meta)]'
-        }`}>
-          <span>{horaCorta(message.created_at)}</span>
-          {isOut && StatusIcon && meta && (
-            <span className={`flex items-center gap-0.5 ${meta.className}`}>
-              <StatusIcon className="h-3 w-3" />
-              {!meta.isError && meta.label}
-            </span>
-          )}
-        </span>
+      </div>
+      <div className="flex items-center gap-1 mt-1 px-1">
+        <span className="text-[10px] text-muted-foreground">{relativeTime(message.created_at)}</span>
+        {isOut && StatusIcon && meta && (
+          <span className={`flex items-center gap-0.5 text-[10px] ${meta.className}`}>
+            <StatusIcon className="h-3 w-3" />
+            {!meta.isError && meta.label}
+          </span>
+        )}
       </div>
       {meta?.isError && (
-        <p className="max-w-[85%] md:max-w-[75%] mt-0.5 px-1 text-xs font-medium text-[color:var(--destructive)]">
+        <p className="max-w-[75%] mt-0.5 px-1 text-xs font-medium text-[color:var(--destructive)]">
           No se pudo enviar: {message.error_message ?? 'WhatsApp no informó el motivo.'}
         </p>
       )}

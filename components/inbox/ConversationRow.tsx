@@ -4,6 +4,7 @@ import { AlertTriangle, Building2, Clock, Sparkles } from 'lucide-react'
 import { Avatar } from './Avatar'
 import { TagChipList } from './TagChip'
 import { relativeTime, displayPhone } from './format'
+import { resumenDeUltimoMensaje } from './media'
 import { resolveAwaitingSince, isAwaitingTooLong, waitingFor } from './awaiting'
 import type { ConversationListItem } from './types'
 
@@ -41,17 +42,12 @@ export function ConversationRow({
   const advisorName = item.assigned_to_name ?? item.advisor_name ?? null
   const tags = item.tags ?? []
   const priority = showPriority ? item.priority : null
-  const sinLeer = item.unread_count > 0
 
   return (
-    // La fila ENTERA es el disparador (un `<button>` de ancho completo), no el
-    // nombre ni el avatar: con el pulgar, cualquier punto de la fila abre el
-    // chat. `max-md:min-h-16` es el piso táctil — una fila sin propiedad, sin
-    // etiquetas y sin nombre largo se quedaba en ~52px.
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full max-md:min-h-16 text-left px-3 py-3 border-b transition hover:bg-muted/60 ${active ? 'bg-muted' : ''} ${
+      className={`w-full text-left px-3 py-3 border-b transition hover:bg-muted/60 ${active ? 'bg-muted' : ''} ${
         awaitingTooLong ? 'border-l-2 border-l-amber-500' : ''
       }`}
     >
@@ -65,22 +61,7 @@ export function ConversationRow({
                 <span className="shrink-0 text-[10px] text-muted-foreground">#{item.lead_number}</span>
               )}
             </span>
-            {/* Con mensajes sin leer, la hora se pinta del mismo verde que el
-                contador: en celular, donde la fila entra apenas y el contador
-                queda abajo a la derecha, es la señal que se ve de reojo
-                bajando la lista. En `md:` para arriba no cambia nada.
-
-                `emerald-700` y no `-600`: a 10px semibold la norma pide 4.5 de
-                contraste, y el 600 da 3.67 sobre la tarjeta y 3.26 sobre la
-                fila activa. El 700 da 5.37 y 4.78, y se sigue leyendo como el
-                mismo verde de "sin leer". En oscuro el 400 ya daba 9.73. */}
-            <span
-              className={`text-[10px] whitespace-nowrap ${
-                sinLeer ? 'text-muted-foreground max-md:font-semibold max-md:text-emerald-700 max-md:dark:text-emerald-400' : 'text-muted-foreground'
-              }`}
-            >
-              {relativeTime(item.last_at)}
-            </span>
+            <span className="text-[10px] text-muted-foreground whitespace-nowrap">{relativeTime(item.last_at)}</span>
           </div>
 
           {item.property && (
@@ -130,30 +111,18 @@ export function ConversationRow({
                 }`}
               >
                 {awaitingTooLong && <Clock className="h-3 w-3 shrink-0" />}
-                {item.last_message ?? '(sin contenido)'}
+                {resumenDeUltimoMensaje(item.last_message) ?? '(sin contenido)'}
               </span>
             ) : (
-              // Con mensajes sin leer, el adelanto deja de ser gris apagado: es
-              // la diferencia entre "ya lo leí" y "esto está esperando". Solo en
-              // celular, donde no hay lugar para más señales que el peso del texto.
-              <span
-                className={`text-xs truncate ${
-                  sinLeer ? 'text-muted-foreground max-md:font-medium max-md:text-foreground' : 'text-muted-foreground'
-                }`}
-              >
+              <span className="text-xs text-muted-foreground truncate">
                 {item.last_direction === 'out' ? 'Vos: ' : ''}
-                {item.last_message ?? '(sin contenido)'}
+                {resumenDeUltimoMensaje(item.last_message) ?? '(sin contenido)'}
               </span>
             )}
             <div className="flex shrink-0 items-center gap-1.5">
               {advisorName && <span className="max-w-[72px] truncate text-[10px] text-muted-foreground">{advisorName}</span>}
-              {sinLeer && (
-                // `aria-label`: sin él, un lector de pantalla lee "3" suelto al
-                // final de la fila y no hay forma de saber 3 de qué.
-                <span
-                  aria-label={`${item.unread_count} sin leer`}
-                  className="inline-flex h-5 min-w-5 max-md:h-6 max-md:min-w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500 px-1 text-[10px] max-md:text-xs font-semibold text-white"
-                >
+              {item.unread_count > 0 && (
+                <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 px-1 text-[10px] font-semibold text-white">
                   {item.unread_count}
                 </span>
               )}
