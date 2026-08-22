@@ -231,10 +231,13 @@ function heroFullBleedTemplate(p: TemplateProps): ReactNode {
           // satori soporta backgroundImage con linear-gradient (no el shorthand
           // background). El shorthand puede no parsearse y dejar texto blanco
           // sin contraste sobre foto clara. paddingTop = zona de fade del degradado.
-          backgroundImage: 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.6) 45%, rgba(0,0,0,0.88) 100%)',
+          backgroundImage: 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.55) 58%, rgba(0,0,0,0.9) 100%)',
           display: 'flex',
           flexDirection: 'column',
-          paddingTop: 160,
+          // En 9:16 (historias) el fade es CHICO → el degradado oscuro queda compacto y
+          // bajo (no sube más allá del medio). En feed 4:5 se deja más aire para que un
+          // titular de 2 líneas no se pegue al borde del degradado.
+          paddingTop: isStory ? 72 : 150,
           paddingLeft: 80,
           paddingRight: 80,
           paddingBottom: 80,

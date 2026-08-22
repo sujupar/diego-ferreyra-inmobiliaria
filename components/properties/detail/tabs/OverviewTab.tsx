@@ -3,11 +3,9 @@
 import dynamic from 'next/dynamic'
 import { Card, CardContent } from '@/components/ui/card'
 import { formatMoney, operationLabel, propertyTypeLabel } from '@/lib/properties/detail-view'
-import { estadoComercialEfectivo } from '@/lib/properties/commercial-status'
+import { commercialStatusDef } from '@/lib/properties/commercial-status'
 import { PropertyCommercialStatusCard } from '../PropertyCommercialStatusCard'
-import { PropertyAppraisalCard } from '../PropertyAppraisalCard'
-import { PropertyPriceCard } from '../PropertyPriceCard'
-import { PropertyDetailsEditor } from '../PropertyDetailsEditor'
+import { PropertyTypeEditor } from '../PropertyTypeEditor'
 
 // Leaflet toca `window`: fuera del render de servidor.
 const PropertyLocationMap = dynamic(
@@ -17,14 +15,6 @@ const PropertyLocationMap = dynamic(
 
 export interface OverviewProperty {
   id: string
-  /**
-   * `properties.appraisal_id`: la tasación de la que nació esta ficha. Es el
-   * vínculo que le habilita al abogado la lectura acotada (ver
-   * `PropertyAppraisalCard` y `lib/auth/appraisal-access.ts`).
-   */
-  appraisal_id?: string | null
-  /** Espejo heredado del descarte masivo: participa del estado comercial. */
-  status?: string | null
   commercial_status?: string | null
   sold_price?: number | null
   sold_currency?: string | null
@@ -39,12 +29,6 @@ export interface OverviewProperty {
   expensas?: number | null
   floor?: number | null
   age?: number | null
-  rooms?: number | null
-  bedrooms?: number | null
-  bathrooms?: number | null
-  garages?: number | null
-  covered_area?: number | null
-  total_area?: number | null
   asking_price: number
   currency: string
   commission_percentage: number
@@ -79,8 +63,9 @@ export function OverviewTab({ property, isAbogado, onChanged }: { property: Over
   const amenities = amenityList(property.amenities)
   const hasCoords = property.latitude != null && property.longitude != null
 
+  // "Tipo" es editable (puede quedar mal cargado) — se muestra como editor abajo,
+  // salvo para el abogado que lo ve de solo lectura.
   const specs: Array<{ label: string; value: string }> = [
-    { label: 'Tipo', value: propertyTypeLabel(property.property_type) },
     { label: 'Operación', value: operationLabel(property.operation_type).replace(/^en /, '') },
   ]
   if (property.floor != null) specs.push({ label: 'Piso', value: property.floor === 0 ? 'PB' : `${property.floor}º` })
@@ -93,32 +78,13 @@ export function OverviewTab({ property, isAbogado, onChanged }: { property: Over
       {!isAbogado && (
         <PropertyCommercialStatusCard
           propertyId={property.id}
-          // Contempla el espejo `status='descartada'` que deja el descarte
-          // masivo del listado: con `commercial_status` a secas la tarjeta
-          // decía "Disponible" sobre una ficha con badge "Descartada" y no
-          // ofrecía el botón para recuperarla.
-          current={estadoComercialEfectivo({
-            commercialStatus: property.commercial_status,
-            status: property.status,
-          })}
+          current={commercialStatusDef(property.commercial_status).key}
           currency={property.currency}
           soldPrice={property.sold_price ?? null}
           soldCurrency={property.sold_currency ?? null}
           soldAt={property.sold_at ?? null}
           onChanged={onChanged}
         />
-      )}
-
-      {/*
-        La tasación vinculada, SOLO para el abogado y solo si esta propiedad
-        tiene una. Es la entrada contextual que pidió el dueño: el abogado ya no
-        tiene el Historial ni el ítem del menú, así que sin esto no hay forma de
-        que vea con cuánto se tasó la propiedad cuyos papeles está revisando.
-        Los demás roles ya llegan por el Historial y por el proceso: no se les
-        cambia la pantalla.
-      */}
-      {isAbogado && property.appraisal_id && (
-        <PropertyAppraisalCard appraisalId={property.appraisal_id} />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-6">
@@ -140,6 +106,9 @@ export function OverviewTab({ property, isAbogado, onChanged }: { property: Over
           <p className="eyebrow">Ficha</p>
           <h2 className="display text-xl mt-1 mb-3">Características</h2>
           <div className="grid grid-cols-2 gap-2">
+            {isAbogado
+              ? <Spec label="Tipo" value={propertyTypeLabel(property.property_type)} />
+              : <PropertyTypeEditor propertyId={property.id} current={property.property_type} onChanged={onChanged} />}
             {specs.map(s => <Spec key={s.label} label={s.label} value={s.value} />)}
           </div>
 
@@ -155,40 +124,12 @@ export function OverviewTab({ property, isAbogado, onChanged }: { property: Over
           )}
 
           {!isAbogado && (
-            <PropertyDetailsEditor
-              propertyId={property.id}
-              valores={{
-                rooms: property.rooms,
-                bedrooms: property.bedrooms,
-                bathrooms: property.bathrooms,
-                garages: property.garages,
-                covered_area: property.covered_area,
-                total_area: property.total_area,
-                age: property.age,
-                floor: property.floor,
-                expensas: property.expensas,
-                description: property.description,
-              }}
-              onChanged={onChanged}
-            />
-          )}
-
-          {!isAbogado && (
-            <div className="mt-4">
-              <PropertyPriceCard
-                propertyId={property.id}
-                askingPrice={property.asking_price}
-                currency={property.currency}
-                onChanged={onChanged}
-              />
-            </div>
-          )}
-
-          {!isAbogado && (
             <Card className="mt-4">
               <CardContent className="py-4">
                 <p className="eyebrow mb-3">Datos comerciales</p>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
+                  <span className="text-muted-foreground">Precio</span>
+                  <span className="tabular-n font-medium">{formatMoney(property.asking_price, property.currency)}</span>
                   <span className="text-muted-foreground">Comisión</span>
                   <span className="tabular-n">{property.commission_percentage}%</span>
                   {property.contract_start_date && (<><span className="text-muted-foreground">Inicio contrato</span><span className="tabular-n">{property.contract_start_date}</span></>)}
