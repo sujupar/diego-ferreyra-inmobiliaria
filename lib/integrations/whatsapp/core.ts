@@ -14,6 +14,7 @@
  */
 import { normalizeWhatsappPhone } from './phone'
 import { logOutbound } from './log'
+import { textoDePlantilla, SEPARADOR_DE_PARAMETROS } from './cuerpos'
 
 /**
  * Timeout del POST a Meta. Sin esto una demora de Meta cuelga al llamador.
@@ -150,11 +151,26 @@ export function normalizePhone(raw: string | null | undefined): string | null {
  * "Julián · el plano · la casa de Entre Ríos 2333" en vez del mensaje que la
  * persona recibió de verdad. Peor: el agente de IA lee esta columna para saber
  * qué dijo la última vez, así que con los parámetros sueltos no entendía nada.
+ *
+ * El tope es de 1000 y no de 300 como antes: el aviso al asesor de una consulta
+ * de portal ronda los 400 caracteres, y con 300 se guardaba cortado a la mitad
+ * — tan cortado que después no se podía ni reconstruir. La columna es `text`,
+ * no cuesta nada.
  */
+const MAX_TEXTO_GUARDADO = 1000
+
 function bodyPreview(input: SendTemplateInput): string {
   const texto = input.bodyText?.trim()
-  if (texto) return texto.slice(0, 300)
-  return input.bodyParams.join(' · ').slice(0, 300)
+  if (texto) return texto.slice(0, MAX_TEXTO_GUARDADO)
+  // El caller no lo pasó: se arma solo con el cuerpo aprobado. Esto es lo que
+  // impide que el bug vuelva por olvido — así llegó hasta acá, con la familia
+  // `recorrido_acceso_*`, que nunca pasó `bodyText` y guardaba
+  // "Juan · Roque Pérez 3059 · https://…" en vez del mensaje.
+  const delRegistro = textoDePlantilla(input.templateName, input.bodyParams)
+  if (delRegistro) return delRegistro.slice(0, MAX_TEXTO_GUARDADO)
+  // Plantilla que no está en el registro: quedan los parámetros. Feo, pero
+  // inventar un texto que el cliente no recibió sería peor.
+  return input.bodyParams.join(SEPARADOR_DE_PARAMETROS).slice(0, MAX_TEXTO_GUARDADO)
 }
 
 /**

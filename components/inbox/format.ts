@@ -1,3 +1,5 @@
+import { reconstruirDesdeParametros } from '@/lib/integrations/whatsapp/cuerpos'
+
 /**
  * Formateo puro compartido por la lista, el hilo y el panel del cliente.
  * Nada de esto toca la red — son funciones de texto, fáciles de probar con
@@ -128,6 +130,12 @@ export function groupByDay<T extends { created_at: string }>(items: T[]): DayGro
 }
 
 export function messageText(m: { body_preview: string | null; template_name: string | null }): string {
+  // Envíos VIEJOS de plantilla: quedaron guardados como los parámetros pegados
+  // con puntos ("Juan · Roque Pérez 3059 · https://…") y así se leían en el
+  // chat, aunque el cliente hubiera recibido un mensaje entero. Se rearman con
+  // el cuerpo aprobado. Los envíos nuevos ya guardan el texto y no se tocan.
+  const rearmado = reconstruirDesdeParametros(m.template_name, m.body_preview)
+  if (rearmado) return rearmado
   if (m.body_preview) return m.body_preview
   if (m.template_name) return `Plantilla: ${m.template_name}`
   return '(sin contenido)'
