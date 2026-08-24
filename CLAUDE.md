@@ -645,6 +645,15 @@ Genera carruseles de campaña (largo variable, narrativa de curiosidad) a partir
 - **Regla general:** cuando un gate protege un RESULTADO ("que el copy no sea genérico"), hay que aceptar todos los caminos que lo logran. Atar el gate a un solo procedimiento encierra a quien llegó por otro lado igual de válido.
 - **OJO (trampa vecina):** regenerar los textos (`enrich='copy'`) hace `update.draft_content = null` — borra la edición manual. Por eso "respondé las preguntas para desbloquear" NO era una salida aceptable para una landing afinada a mano: le costaba al asesor todo el trabajo.
 
+### El enlace público se puede renombrar sin matar el anterior (2026-08-24)
+
+- **Problema:** el slug se arma con el TIPO de propiedad (`casa-coghlan-roque-perez-3059-37ger2`) y queda congelado al publicar. Si el tipo estaba mal cargado, el enlace público miente — pero ese link ya vive dentro de anuncios pagos, mensajes y mails, y `/p/[slug]` resuelve por coincidencia EXACTA: corregirlo a secas lo mata con un 404 con pauta encima.
+- **Mecanismo:** `properties.previous_slugs` (text[] + índice GIN, migración `20260824000001`). `/p/[slug]`: si no hay coincidencia exacta, busca ahí y hace `permanentRedirect` (308) al vigente **conservando la query** — en los `utm_*` y el `fbclid` viaja la atribución que la campaña paga por medir; perderlos deja la conversión huérfana.
+- **Herramienta:** `scripts/rename-property-slug.ts <idOPatron> [slugNuevo] [--commit]`. Simula por defecto. Sin `slugNuevo` lo deriva reemplazando la primera palabra del slug por el `property_type` vigente y **conservando el sufijo aleatorio**, así el enlace nuevo es idéntico salvo la palabra corregida. Actualiza también `property_landings.public_slug`/`published_slug` y la `utm_base` congelada.
+- **Lógica pura y testeada:** `lib/landing/slug-alias.ts`. `planRenombreDeSlug` saca el slug nuevo de la lista de alias — un alias que apunta a sí mismo es un bucle de redirección infinito (pasa al volver a un slug anterior).
+- **ORDEN OBLIGATORIO:** desplegar el código de redirección PRIMERO y recién después cambiar el slug. Al revés queda una ventana con el enlace viejo muerto. Para comprobar que el deploy ya está sin arriesgar nada: poner el slug nuevo como alias SIN tocar `public_slug` y ver que da 308 — el enlace vivo queda intacto.
+- **Qué NO se rompe (verificado):** la conversión va por `propertyId`, no por slug. Las métricas agrupan `landing_page_visits` por `funnel_type`, no por slug, así que las visitas históricas del slug viejo siguen contando. Una campaña Meta NUEVA arma el link desde `public_slug` al crearse, así que toma el correcto sola; los anuncios YA creados conservan la URL vieja congelada en Meta — por eso hace falta el alias.
+
 ### Gotcha CRÍTICO: Turbopack panica por el acento de la carpeta "Gestión" en el path
 
 - **Symptom:** `next build` y `next dev` (Turbopack, default en Next 16) revientan con `TurbopackInternalError: byte index N is not a char boundary; it is inside '\u{301}'` apuntando a `...Gestión - Diego Ferreyra Inmobiliaria_...`. Explota en archivos preexistentes (no es tu código) durante la emisión de chunks.
