@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
@@ -10,6 +10,7 @@ import { FloatingCta } from '@/components/landing/luxury/FloatingCta'
 import { getPublishedLanding } from '@/lib/landing/get-landing'
 import { luxuryTemplate } from '@/lib/landing/templates/luxury'
 import { deriveFunnelType } from '@/lib/landing/funnel-type'
+import { destinoDeAlias } from '@/lib/landing/slug-alias'
 
 function getAdmin() {
   return createClient<Database>(
@@ -24,6 +25,25 @@ async function getPropertyBySlug(slug: string) {
     .from('properties')
     .select('*')
     .eq('public_slug', slug)
+    .eq('status', 'approved')
+    .maybeSingle()
+  return data
+}
+
+/**
+ * Slug ANTERIOR de una propiedad que fue renombrada.
+ *
+ * El enlace se arma con el tipo de propiedad, así que corregir un tipo mal
+ * cargado cambia la URL — y la vieja ya vive dentro de anuncios pagos, mensajes
+ * y mails. En vez de dejarla morir en un 404, se guarda en `previous_slugs` y
+ * desde acá se redirige al enlace vigente.
+ */
+async function getPropertyByAlias(slug: string) {
+  const supabase = getAdmin()
+  const { data } = await supabase
+    .from('properties')
+    .select('public_slug')
+    .contains('previous_slugs', [slug])
     .eq('status', 'approved')
     .maybeSingle()
   return data
@@ -67,12 +87,25 @@ export async function generateMetadata({
 
 export default async function PropertyLandingPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const { slug } = await params
   const property = await getPropertyBySlug(slug)
-  if (!property) notFound()
+  if (!property) {
+    // Puede ser un enlace viejo de una propiedad renombrada. Se redirige
+    // CONSERVANDO la query: ahí viajan los utm_* y el fbclid, y perderlos
+    // dejaría sin atribuir la conversión que la campaña pagó por traer.
+    // `permanentRedirect` va FUERA de cualquier try/catch: Next lo implementa
+    // lanzando una excepción especial que no hay que atrapar.
+    const alias = await getPropertyByAlias(slug)
+    if (alias?.public_slug) {
+      permanentRedirect(destinoDeAlias(alias.public_slug, await searchParams))
+    }
+    notFound()
+  }
 
   const heroTitle =
     property.title ?? `${property.property_type} en ${property.neighborhood}`

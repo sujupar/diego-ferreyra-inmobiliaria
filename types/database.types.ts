@@ -560,6 +560,7 @@ export interface Database {
                     title: string | null
                     postal_code: string | null
                     public_slug: string | null
+                    previous_slugs: string[]
                     province: string | null
                     geo_confidence: string | null
                     geocoded_at: string | null
@@ -613,6 +614,7 @@ export interface Database {
                     title?: string | null
                     postal_code?: string | null
                     public_slug?: string | null
+                    previous_slugs?: string[]
                     province?: string | null
                     geo_confidence?: string | null
                     geocoded_at?: string | null
@@ -666,6 +668,7 @@ export interface Database {
                     title?: string | null
                     postal_code?: string | null
                     public_slug?: string | null
+                    previous_slugs?: string[]
                     province?: string | null
                     geo_confidence?: string | null
                     geocoded_at?: string | null
