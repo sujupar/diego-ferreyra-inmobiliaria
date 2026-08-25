@@ -6,6 +6,7 @@ function makeProperty(overrides: Partial<Property> = {}): Property {
   return {
     id: 'p1',
     appraisal_id: null,
+    location_refs: {},
     address: 'Av Libertador 1234',
     neighborhood: 'Palermo',
     city: 'CABA',

@@ -135,3 +135,46 @@ describe('resolveLocalizacion — fuera de CABA (lo nuevo)', () => {
     expect(r).toEqual({ localidadId: CABA_LOCALIDAD_ID, barrioId: 'BARRIO_20' })
   })
 })
+
+describe('resolveLocalizacion — ubicación elegida del catálogo (location_refs)', () => {
+  it('usa el identificador guardado y NO empareja nombres', async () => {
+    // Caso real: "Rogelio Vidal 6136". La ficha dice "General San Martín" y
+    // "Villa Libertad", que en el catálogo son un partido y un BARRIO. Con la
+    // ubicación ya elegida, nada de eso se vuelve a interpretar.
+    const p = makeProperty({
+      province: 'Buenos Aires', city: 'General San Martín', neighborhood: 'Villa Libertad',
+      location_refs: { argenprop: { localidadId: 'LOCALIDAD_928', barrioId: 'BARRIO_323' } },
+    } as never)
+    const r = await resolver(makeAdapter(), p)
+    expect(r).toEqual({ localidadId: 'LOCALIDAD_928', barrioId: 'BARRIO_323' })
+
+    const catalogo = await import('./catalog')
+    expect(catalogo.getProvincias).not.toHaveBeenCalled()
+    expect(catalogo.getPartidos).not.toHaveBeenCalled()
+  })
+
+  it('sin provincia en la ficha, el identificador guardado alcanza para publicar', async () => {
+    const p = makeProperty({
+      province: null, city: 'General San Martín', neighborhood: 'Villa Libertad',
+      location_refs: { argenprop: { localidadId: 'LOCALIDAD_928', barrioId: 'BARRIO_323' } },
+    } as never)
+    await expect(resolver(makeAdapter(), p)).resolves.toEqual({
+      localidadId: 'LOCALIDAD_928', barrioId: 'BARRIO_323',
+    })
+  })
+
+  it('un location_refs corrupto NO viaja a la API: cae al camino por nombres', async () => {
+    const p = makeProperty({
+      province: 'Buenos Aires', city: 'Roque Pérez', neighborhood: null,
+      location_refs: { argenprop: { localidadId: 'basura' } },
+    } as never)
+    const r = await resolver(makeAdapter(), p)
+    expect(r).toEqual({ localidadId: 'LOCALIDAD_1730', barrioId: null })
+  })
+
+  it('una propiedad vieja (location_refs vacío) sigue resolviendo por nombres', async () => {
+    const p = makeProperty({ location_refs: {} } as never)
+    const r = await resolver(makeAdapter(), p)
+    expect(r).toEqual({ localidadId: CABA_LOCALIDAD_ID, barrioId: 'BARRIO_20' })
+  })
+})

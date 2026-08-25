@@ -55,6 +55,12 @@ beforeEach(() => {
     if (url.startsWith('/api/appraisals/')) {
       return Promise.resolve({ ok: tasacion.ok, json: async () => tasacion.body })
     }
+    // El selector de ubicación pide el catálogo al montar. Devolverle una lista
+    // vacía lo deja quieto; sin esta rama caería en la rama de abajo y el test
+    // estaría ejercitando, sin querer, el camino de "catálogo caído".
+    if (url.startsWith('/api/locations/argenprop')) {
+      return Promise.resolve({ ok: true, text: async () => JSON.stringify({ items: [] }) })
+    }
     return Promise.reject(new Error(`fetch inesperado: ${url}`))
   }))
 })

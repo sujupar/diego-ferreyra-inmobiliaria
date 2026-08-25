@@ -5,6 +5,7 @@ import { notifyPropertyCreated } from '@/lib/email/notifications/property-create
 import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
 import { geocodePropertyBestEffort } from '@/lib/properties/geocode-on-write'
 import { esOperacion, OPERACIONES_VALORES } from '@/lib/properties/operacion'
+import { resolverUbicacion, type SeleccionUbicacion } from '@/lib/properties/location-selection'
 
 const DEFAULT_PAGE_SIZE = 24
 const MAX_PAGE_SIZE = 100
@@ -70,8 +71,31 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       )
     }
+    // La ubicación elegida del catálogo del portal MANDA sobre los textos del
+    // formulario. Sin selector (portal caído) siguen valiendo
+    // neighborhood/city/province como texto.
+    //
+    // `ubicacion` NO es una columna: si viajara en el payload, el INSERT
+    // fallaría. Se borra sobre el objeto ya parseado (local a este request) en
+    // vez de desestructurarlo, para no perder el tipado laxo del body: con
+    // `const { ubicacion, ...resto } = body`, `address` pasa a ser `unknown` y
+    // `createProperty` deja de compilar.
+    const ubicacion = body.ubicacion as SeleccionUbicacion | undefined
+    delete body.ubicacion
+    let ubicacionPatch: Record<string, unknown> = {}
+    if (ubicacion) {
+      const resuelta = resolverUbicacion(ubicacion, {
+        province: typeof body.province === 'string' ? body.province : null,
+        city: typeof body.city === 'string' ? body.city : null,
+        neighborhood: typeof body.neighborhood === 'string' ? body.neighborhood : null,
+      })
+      if (!resuelta.ok) return NextResponse.json({ error: resuelta.error }, { status: 400 })
+      ubicacionPatch = { ...resuelta.patch }
+    }
+
     const payload = {
       ...body,
+      ...ubicacionPatch,
       created_by: body.created_by ?? user.id,
       assigned_to: body.assigned_to,
     }

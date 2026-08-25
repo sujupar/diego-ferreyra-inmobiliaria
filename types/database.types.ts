@@ -567,6 +567,7 @@ export interface Database {
                     import_external_id: string | null
                     video_recorrido_url: string | null
                     deliver_media: string | null
+                    location_refs: Json
                 }
                 Insert: {
                     id?: string
@@ -621,6 +622,7 @@ export interface Database {
                     import_external_id?: string | null
                     video_recorrido_url?: string | null
                     deliver_media?: string | null
+                    location_refs?: Json
                 }
                 Update: {
                     id?: string
@@ -675,6 +677,7 @@ export interface Database {
                     import_external_id?: string | null
                     video_recorrido_url?: string | null
                     deliver_media?: string | null
+                    location_refs?: Json
                 }
                 Relationships: []
             }

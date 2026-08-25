@@ -12,6 +12,8 @@ import { Loader2, Home, DollarSign, FileText, MapPin, ArrowLeft, User, ImageIcon
 import { uploadPlans, validatePlanFile } from '@/lib/properties/upload-plans'
 import { OPERACIONES } from '@/lib/properties/operacion'
 import { GenerarDescripcion } from '@/components/properties/alta/GenerarDescripcion'
+import { LocationPicker } from '@/components/properties/LocationPicker'
+import type { SeleccionUbicacion } from '@/lib/properties/location-selection'
 
 export default function NewPropertyPage() {
     return (
@@ -43,7 +45,7 @@ function NewPropertyContent() {
     // igual que el éxito.
     const [errorPrefill, setErrorPrefill] = useState<string | null>(null)
     const [form, setForm] = useState({
-        address: '', neighborhood: '', city: 'CABA', property_type: 'departamento',
+        address: '', neighborhood: '', city: 'CABA', province: 'CABA', property_type: 'departamento',
         operation_type: 'venta',
         rooms: '', bedrooms: '', bathrooms: '', garages: '',
         covered_area: '', total_area: '', floor: '', age: '',
@@ -52,6 +54,11 @@ function NewPropertyContent() {
         origin: appraisalIdParam ? 'tasacion' : '', assigned_to: '',
         description: '',
     })
+    // La ubicación se ELIGE del catálogo de Argenprop: así lo que se carga es
+    // publicable por definición. `sinCatalogo` es el camino de respaldo — si el
+    // portal no responde, vuelven los campos de texto y el alta no se traba.
+    const [ubicacion, setUbicacion] = useState<SeleccionUbicacion | null>(null)
+    const [sinCatalogo, setSinCatalogo] = useState(false)
     const [photos, setPhotos] = useState<string[]>([])
     const [planFiles, setPlanFiles] = useState<File[]>([])
     const [uploadingPlans, setUploadingPlans] = useState(false)
@@ -239,6 +246,14 @@ function NewPropertyContent() {
             toast.error('Elegí quién muestra la propiedad antes de captarla. Eso define a quién le llegan las consultas.')
             return
         }
+        if (!sinCatalogo && !ubicacion) {
+            toast.error('Elegí la ubicación de la lista (provincia, partido y localidad) antes de captarla.')
+            return
+        }
+        if (sinCatalogo && !form.neighborhood.trim()) {
+            toast.error('Cargá el barrio o la localidad de la propiedad.')
+            return
+        }
         setLoading(true)
 
         try {
@@ -246,8 +261,13 @@ function NewPropertyContent() {
                 appraisal_id: prefillIds.appraisalId || dealData?.appraisal_id || appraisalIdParam || undefined,
                 contact_id: prefillIds.contactId || dealData?.contact_id || undefined,
                 address: form.address,
+                // Con selector: el servidor traduce la selección a barrio/localidad/
+                // provincia + los identificadores del catálogo. Sin selector
+                // (portal caído), viajan los textos como siempre.
+                ubicacion: ubicacion ?? undefined,
                 neighborhood: form.neighborhood,
                 city: form.city,
+                province: form.province || undefined,
                 property_type: form.property_type,
                 operation_type: form.operation_type,
                 rooms: form.rooms ? parseInt(form.rooms) : undefined,
@@ -372,19 +392,47 @@ function NewPropertyContent() {
                 <Card>
                     <CardHeader><CardTitle className="text-lg flex items-center gap-2"><MapPin className="h-5 w-5" />Ubicación</CardTitle></CardHeader>
                     <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                            <Label>Dirección *</Label>
+                            <Input value={form.address} onChange={e => updateField('address', e.target.value)} required placeholder="Av. Corrientes 1234" />
+                        </div>
+
+                        {sinCatalogo ? (
+                            <>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>Barrio *</Label>
+                                        <Input value={form.neighborhood} onChange={e => updateField('neighborhood', e.target.value)} required placeholder="Palermo" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Localidad</Label>
+                                        <Input value={form.city} onChange={e => updateField('city', e.target.value)} placeholder="CABA" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Provincia</Label>
+                                        <Input value={form.province} onChange={e => updateField('province', e.target.value)} placeholder="CABA" />
+                                    </div>
+                                </div>
+                                <p className="text-xs text-amber-700 dark:text-amber-500">
+                                    No pudimos traer la lista de ubicaciones. Cargala a mano; después conviene
+                                    revisarla desde la ficha antes de publicar en los portales.
+                                </p>
+                            </>
+                        ) : (
+                            <div>
+                                <LocationPicker
+                                    pista={{ province: form.province, city: form.city, neighborhood: form.neighborhood }}
+                                    onChange={setUbicacion}
+                                    onCatalogoNoDisponible={() => setSinCatalogo(true)}
+                                />
+                                <p className="text-xs text-muted-foreground mt-2">
+                                    Se elige de la lista de los portales: así la propiedad se puede publicar sin
+                                    que nadie tenga que adivinar cómo se escribe el partido o el barrio.
+                                </p>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Dirección *</Label>
-                                <Input value={form.address} onChange={e => updateField('address', e.target.value)} required placeholder="Av. Corrientes 1234" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Barrio *</Label>
-                                <Input value={form.neighborhood} onChange={e => updateField('neighborhood', e.target.value)} required placeholder="Palermo" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Ciudad</Label>
-                                <Input value={form.city} onChange={e => updateField('city', e.target.value)} placeholder="CABA" />
-                            </div>
                             <div className="space-y-2">
                                 <Label>Tipo</Label>
                                 <select value={form.property_type} onChange={e => updateField('property_type', e.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm max-md:min-h-11">

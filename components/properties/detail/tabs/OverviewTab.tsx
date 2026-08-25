@@ -6,6 +6,8 @@ import { formatMoney, operationLabel, propertyTypeLabel } from '@/lib/properties
 import { commercialStatusDef } from '@/lib/properties/commercial-status'
 import { PropertyCommercialStatusCard } from '../PropertyCommercialStatusCard'
 import { PropertyTypeEditor } from '../PropertyTypeEditor'
+import { PropertyLocationEditor } from '../PropertyLocationEditor'
+import { leerRefArgenprop } from '@/lib/properties/location-selection'
 
 // Leaflet toca `window`: fuera del render de servidor.
 const PropertyLocationMap = dynamic(
@@ -22,6 +24,8 @@ export interface OverviewProperty {
   address: string
   neighborhood: string
   city: string
+  province?: string | null
+  location_refs?: unknown
   property_type: string
   operation_type?: string | null
   description?: string | null
@@ -145,9 +149,21 @@ export function OverviewTab({ property, isAbogado, onChanged }: { property: Over
       <section>
         <p className="eyebrow">Dónde está</p>
         <h2 className="display text-xl mt-1 mb-3">Ubicación</h2>
-        <p className="text-sm text-muted-foreground mb-3">
-          {[property.address, property.neighborhood, property.city].filter(Boolean).join(' · ')}
-        </p>
+        {isAbogado ? (
+          <p className="text-sm text-muted-foreground mb-3">
+            {[property.address, property.neighborhood, property.city, property.province].filter(Boolean).join(' · ')}
+          </p>
+        ) : (
+          <PropertyLocationEditor
+            propertyId={property.id}
+            address={property.address}
+            neighborhood={property.neighborhood}
+            city={property.city}
+            province={property.province ?? null}
+            elegidaDelCatalogo={leerRefArgenprop(property.location_refs ?? null) !== null}
+            onChanged={onChanged}
+          />
+        )}
         {hasCoords ? (
           <PropertyLocationMap lat={property.latitude!} lng={property.longitude!} label={property.address} />
         ) : (

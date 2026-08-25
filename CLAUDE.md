@@ -548,6 +548,80 @@ El blur solo NO alcanzaba: quien tipea "12" de 1290000 y hace clic afuera public
 - **Limitaciones conocidas (aceptadas):** el append de `photos` en commit y el reorder son read-modify-write (no atómicos) — race posible bajo subidas concurrentes, baja probabilidad en uso real (un asesor por propiedad); un fix atómico requeriría RPC + migración. Ante fallo de commit tras un PUT exitoso queda un objeto huérfano en Storage (solo `console.warn`); costo tolerable.
 - **Planos (2026-07-18):** columna `properties.plans` (TEXT[], migración `20260718000001_property_plans.sql`), espejo de `photos`: `kind:'plan'` en `upload-init`/`commit` (carpeta `properties/{id}/plans/`, hasta 100 MB c/u — PDFs grandes OK porque van directo a Storage, sin comprimir) y `{deletePlan}` en el PATCH. El path incluye el nombre original saneado (`{uuid}-{nombre}.{ext}`) y la UI deriva la etiqueta con `planLabelFromUrl()` (`lib/properties/media.ts`) — si se cambia el formato del path, actualizar ese parser. El commit de planos NO llama a `checkAndAdvanceProperty` (no cuentan para completar la captación). UIs: pestaña Planos en `PropertyMediaCard` (`PlansPanel.tsx`) y card opcional en `properties/new` que sube vía `lib/properties/upload-plans.ts` DESPUÉS de crear la propiedad (y después de avanzar el deal). No se publican en portales ni en la landing.
 
+### En un worktree, `node_modules` NO puede ser un enlace (2026-08-24)
+
+- **Symptom:** `tsc --noEmit` se queda colgado para siempre dentro de
+  `.claude/worktrees/<rama>/` — y no es lentitud: el proceso consume ~2 segundos
+  de CPU en 10 minutos y se queda en 0%. Pasa igual con un tsconfig acotado.
+- **Root cause:** el atajo de arrancar un worktree con
+  `ln -s ../../node_modules node_modules`. TypeScript resuelve los enlaces a su
+  ruta REAL, y esa ruta queda fuera de la carpeta del proyecto, así que el
+  `exclude: ["node_modules"]` del tsconfig (que es relativo) deja de matchear.
+  Resultado: tsc se pone a analizar las decenas de miles de archivos de las
+  dependencias. No está pensando, está recorriendo.
+- **Fix:** que `node_modules` sea un directorio REAL en el worktree. En APFS,
+  `cp -Rc <repo>/node_modules <worktree>/node_modules` clona sin ocupar disco
+  extra (tarda unos minutos por la cantidad de archivos, no por el tamaño).
+- **Detection:** `ps aux | grep tsc` — si el tiempo de CPU no crece, no es carga
+  de la máquina, es esto.
+- **NO confundir con:** los tests de componente (`.tsx` con
+  `@vitest-environment happy-dom`) fallando con
+  *"Failed to start forks worker … Timeout waiting for worker to respond"*.
+  Eso pasa TAMBIÉN en el checkout principal, con `node_modules` de verdad —
+  verificado el 2026-08-24 corriendo un test existente sin tocar. Los tests de
+  entorno `node` corren perfecto (441 en verde). Antes de culpar a un cambio
+  propio, correr un test viejo del mismo tipo: si también falla, es el entorno.
+
+### La ubicación se ELIGE de una lista; el texto libre no publica (2026-08-24)
+
+- **Symptom:** "Rogelio Vidal 6136" no se podía publicar en Argenprop:
+  *"Cargá la provincia en la ficha para publicar en Argenprop fuera de CABA
+  (ciudad recibida: General San Martín)"*.
+- **Root cause (encadenado):** (1) el alta **nunca pregunta la provincia** —
+  pedía Barrio y Ciudad como texto libre, con Ciudad por default `'CABA'`;
+  (2) la provincia solo se deducía al geocodificar y `deriveProvince()` solo
+  sabe reconocer Capital (fuera de CABA devuelve `null`), así que TODA propiedad
+  de provincia cargada a mano quedaba sin provincia; (3) Argenprop publica en
+  todo el país desde el 2026-08-06 pero exige provincia → partido → localidad;
+  (4) aun cargándola a mano, el texto libre es una lotería contra el catálogo:
+  el partido es `"Partido de General San Martín"`, la localidad
+  `"General San Martin"` **sin tilde**, y `"Villa Libertad"` no es localidad
+  sino `BARRIO_323`. `matchLocalizacion` devuelve `null` ante ambigüedad A
+  PROPÓSITO (publicar en el partido equivocado manda el aviso a 90 km).
+- **Fix:** selector en cascada alimentado por el catálogo REAL
+  (`components/properties/LocationPicker.tsx` + `GET /api/locations/argenprop`),
+  usado en el alta y en la ficha (`PropertyLocationEditor` →
+  `PATCH /api/properties/[id]/location`, ruta dedicada: el `PUT` genérico crea
+  tarea y manda mail al pasar a `pending_review`). Lo que se guarda lo decide el
+  módulo PURO `lib/properties/location-selection.ts`.
+- **Columna nueva `properties.location_refs jsonb`** (migración
+  `20260824000001`, aplicada y verificada con
+  `scripts/apply-location-refs-pg.ts`): guarda los identificadores del catálogo
+  por portal. `adapter.resolveLocalizacion` los usa PRIMERO y no vuelve a
+  emparejar nombres; sin ellos cae al camino heredado, así que las fichas viejas
+  siguen publicando igual.
+- **Capital NO es un caso especial:** en el catálogo tiene la misma jerarquía de
+  4 niveles (`PROVINCIA_2 → PARTIDO_135 → LOCALIDAD_2102 → 54 barrios`). Lo
+  único distinto es que ahí el barrio es OBLIGATORIO.
+- **Decisiones que viven en el módulo puro, no en la pantalla:** Capital se
+  guarda como `province='CABA'` (es lo que ya entienden el adapter, el mapeo de
+  ML y el geocoder); `city` es la **localidad**, no el partido; sin barrio,
+  `neighborhood` toma el nombre de la localidad (la columna es NOT NULL); y si
+  el nombre que YA estaba escrito es el mismo salvo tildes, **no se pisa** (el
+  catálogo escribe "Villa Pueyrredon" y ese texto sale también en la landing y
+  en el copy de los anuncios pagos).
+- **Nunca trabar el alta por un portal caído:** si el catálogo no responde, el
+  endpoint devuelve **503 con `catalogoNoDisponible`** y la pantalla vuelve a
+  los campos de texto con un aviso.
+- **Trampa que se repite en esta ficha:** `PropertyData` en
+  `app/(dashboard)/properties/[id]/page.tsx` es una lista EXPLÍCITA de campos.
+  La API hace `select('*')`, pero lo que no está declarado ahí llega
+  `undefined` a las pestañas — ya había pasado con `appraisal_id`. Al sumar una
+  columna que la ficha lee, declararla también acá.
+- **Backfill:** `scripts/backfill-property-location.ts` (simulacro por defecto,
+  `--commit` para escribir). Solo escribe cuando el resultado es INEQUÍVOCO; sin
+  provincia recorre las 24 y exige un único candidato.
+
 ### Consultas por propiedad: FK real, no la convención notes
 
 - Desde la migración `20260711000001`, `portal_inquiries.property_id` y

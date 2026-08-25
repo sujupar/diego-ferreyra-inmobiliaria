@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth/require-role'
 import { validateCommon } from '@/lib/portals/validation'
 import { getApSchema, derivedPrefill, type AttributeOverride } from '@/lib/portals/argenprop/field-schema'
 import { reordenarSinPerder } from '@/lib/portals/photo-reorder'
+import { leerRefArgenprop } from '@/lib/properties/location-selection'
 import type { Database } from '@/types/database.types'
 
 type PropertyRow = Database['public']['Tables']['properties']['Row']
@@ -33,13 +34,24 @@ function validateForArgenprop(property: PropertyRow, meta: Record<string, unknow
       validation.ok = false
     }
   }
-  // Aviso temprano: Argenprop hoy solo publica CABA. Heurística sin red (el gate real
-  // con catálogo corre en adapter.resolveLocalizacion al publicar).
+  // Aviso temprano sobre la UBICACIÓN, sin pegarle a la red (el chequeo real
+  // corre en adapter.resolveLocalizacion al publicar).
+  //
+  // Argenprop publica en todo el país desde el 2026-08-06; el aviso viejo
+  // ("solo CABA") quedó desactualizado y confundía. Lo que importa ahora es si
+  // la ubicación se ELIGIÓ del catálogo: si no, publicar depende de emparejar
+  // textos y puede fallar (o, peor, resolver a otro partido).
   const prov = (property.province ?? '').trim()
   const city = (property.city ?? '').trim()
-  const looksCaba = /caba|capital federal|ciudad aut[oó]noma/i.test(`${prov} ${city}`)
-  if (prov && prov !== 'CABA' && !looksCaba) {
-    validation.warnings.push('Argenprop hoy solo publica propiedades de CABA — esta parece de otra provincia. Verificá barrio/provincia antes de publicar.')
+  const elegida = leerRefArgenprop(property.location_refs) !== null
+  if (!elegida) {
+    const pareceCaba = /\bcaba\b|capital federal|ciudad aut[oó]noma/i.test(`${prov} ${city}`)
+    if (!prov && !pareceCaba) {
+      validation.errors.push('Falta la ubicación: elegila de la lista en la ficha de la propiedad ("Elegir ubicación") para poder publicar.')
+      validation.ok = false
+    } else {
+      validation.warnings.push('La ubicación de esta ficha se cargó a mano. Conviene elegirla de la lista en la ficha para que Argenprop la reconozca sin ambigüedad.')
+    }
   }
   return validation
 }

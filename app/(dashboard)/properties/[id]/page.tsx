@@ -42,6 +42,14 @@ interface PropertyData {
   address: string
   neighborhood: string
   city: string
+  /**
+   * `province` y `location_refs` los devuelve el `select('*')` de la API, pero
+   * hay que DECLARARLOS o llegan `undefined` a la pestaña Propiedad — la misma
+   * trampa que se comió `appraisal_id` acá arriba. Sin `location_refs`, el
+   * editor de ubicación creería que ninguna ficha eligió su ubicación.
+   */
+  province: string | null
+  location_refs: Record<string, unknown> | null
   property_type: string
   operation_type: string | null
   rooms: number | null

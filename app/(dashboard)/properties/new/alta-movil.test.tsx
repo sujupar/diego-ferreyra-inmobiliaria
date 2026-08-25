@@ -15,7 +15,13 @@ vi.mock('next/navigation', () => ({
 }))
 
 beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) })))
+    // `text` además de `json`: el selector de ubicación lee el cuerpo como texto
+    // para no explotar si el servidor contesta HTML (una función pasada de tiempo).
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ data: [] }),
+        text: async () => JSON.stringify({ items: [] }),
+    })))
 })
 
 async function montar() {
@@ -65,7 +71,11 @@ describe('Captar propiedad — piso de celular', () => {
         const { container } = await montar()
         const selects = container.querySelectorAll('select')
 
-        expect(selects.length).toBe(5)
+        // El número es un CANARIO: si agregás un desplegable al alta, este test
+        // te obliga a pasar por acá y confirmar que también se puede tocar con
+        // el dedo. Son 5 del formulario + los 4 del selector de ubicación
+        // (provincia, partido, localidad, barrio).
+        expect(selects.length).toBe(9)
         for (const s of selects) expect(s.className).toContain('max-md:min-h-11')
     })
 })

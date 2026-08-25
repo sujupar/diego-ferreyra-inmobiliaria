@@ -11,6 +11,7 @@ import {
   CABA_LOCALIDAD_ID,
 } from './catalog'
 import { validateCommon } from '../validation'
+import { leerRefArgenprop } from '@/lib/properties/location-selection'
 import { PortalAdapterError } from '../types'
 import type { ApCredentials } from '../credentials'
 import type {
@@ -48,6 +49,11 @@ export class ArgenpropAdapter implements PortalAdapter {
   /**
    * Resuelve localidad + barrio contra el catálogo de localización de AP.
    *
+   * PRIMERO mira si la ubicación ya se eligió del catálogo desde la ficha
+   * (`properties.location_refs`): ahí están los identificadores reales y no hay
+   * nada que interpretar. Todo lo de abajo es el camino heredado, para las
+   * fichas cargadas antes del selector.
+   *
    * CABA: localidad fija 2102 y el barrio es OBLIGATORIO (regla de la API).
    * Resto del país: provincia → partido → localidad, matcheando los campos de
    * la ficha contra el catálogo real (jerarquía verificada en vivo 2026-08-06);
@@ -58,6 +64,15 @@ export class ArgenpropAdapter implements PortalAdapter {
    */
   private async resolveLocalizacion(property: Property): Promise<{ localidadId: string; barrioId: string | null }> {
     const creds = this.requireCreds()
+
+    // Camino corto: la ubicación ya se ELIGIÓ del catálogo desde la ficha, así
+    // que los identificadores están guardados y no hay nada que emparejar.
+    // Emparejar por texto es lo que hacía fallar la publicación ("General San
+    // Martín" no es como el catálogo escribe el partido, ni la localidad, ni
+    // "Villa Libertad", que ahí es un barrio).
+    const elegida = leerRefArgenprop(property.location_refs)
+    if (elegida) return { localidadId: elegida.localidadId, barrioId: elegida.barrioId }
+
     const prov = (property.province ?? '').trim()
     const cityRaw = (property.city ?? '').trim()
 
@@ -87,7 +102,7 @@ export class ArgenpropAdapter implements PortalAdapter {
 
     if (!prov) {
       throw new PortalAdapterError(
-        `Cargá la provincia en la ficha para publicar en Argenprop fuera de CABA (ciudad recibida: "${cityRaw || '—'}").`,
+        `Elegí la ubicación desde la ficha de la propiedad (botón "Elegir ubicación") para publicar en Argenprop: falta la provincia (ciudad recibida: "${cityRaw || '—'}").`,
         'argenprop', 'validation', false,
       )
     }
