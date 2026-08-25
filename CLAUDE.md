@@ -548,29 +548,51 @@ El blur solo NO alcanzaba: quien tipea "12" de 1290000 y hace clic afuera public
 - **Limitaciones conocidas (aceptadas):** el append de `photos` en commit y el reorder son read-modify-write (no atómicos) — race posible bajo subidas concurrentes, baja probabilidad en uso real (un asesor por propiedad); un fix atómico requeriría RPC + migración. Ante fallo de commit tras un PUT exitoso queda un objeto huérfano en Storage (solo `console.warn`); costo tolerable.
 - **Planos (2026-07-18):** columna `properties.plans` (TEXT[], migración `20260718000001_property_plans.sql`), espejo de `photos`: `kind:'plan'` en `upload-init`/`commit` (carpeta `properties/{id}/plans/`, hasta 100 MB c/u — PDFs grandes OK porque van directo a Storage, sin comprimir) y `{deletePlan}` en el PATCH. El path incluye el nombre original saneado (`{uuid}-{nombre}.{ext}`) y la UI deriva la etiqueta con `planLabelFromUrl()` (`lib/properties/media.ts`) — si se cambia el formato del path, actualizar ese parser. El commit de planos NO llama a `checkAndAdvanceProperty` (no cuentan para completar la captación). UIs: pestaña Planos en `PropertyMediaCard` (`PlansPanel.tsx`) y card opcional en `properties/new` que sube vía `lib/properties/upload-plans.ts` DESPUÉS de crear la propiedad (y después de avanzar el deal). No se publican en portales ni en la landing.
 
-### En un worktree, `node_modules` NO puede ser un enlace (2026-08-24)
+### iCloud vacía los archivos del proyecto y cuelga tsc, vitest y git (2026-08-24)
 
-- **Symptom:** `tsc --noEmit` se queda colgado para siempre dentro de
-  `.claude/worktrees/<rama>/` — y no es lentitud: el proceso consume ~2 segundos
-  de CPU en 10 minutos y se queda en 0%. Pasa igual con un tsconfig acotado.
-- **Root cause:** el atajo de arrancar un worktree con
-  `ln -s ../../node_modules node_modules`. TypeScript resuelve los enlaces a su
-  ruta REAL, y esa ruta queda fuera de la carpeta del proyecto, así que el
-  `exclude: ["node_modules"]` del tsconfig (que es relativo) deja de matchear.
-  Resultado: tsc se pone a analizar las decenas de miles de archivos de las
-  dependencias. No está pensando, está recorriendo.
-- **Fix:** que `node_modules` sea un directorio REAL en el worktree. En APFS,
-  `cp -Rc <repo>/node_modules <worktree>/node_modules` clona sin ocupar disco
-  extra (tarda unos minutos por la cantidad de archivos, no por el tamaño).
-- **Detection:** `ps aux | grep tsc` — si el tiempo de CPU no crece, no es carga
-  de la máquina, es esto.
-- **NO confundir con:** los tests de componente (`.tsx` con
-  `@vitest-environment happy-dom`) fallando con
-  *"Failed to start forks worker … Timeout waiting for worker to respond"*.
-  Eso pasa TAMBIÉN en el checkout principal, con `node_modules` de verdad —
-  verificado el 2026-08-24 corriendo un test existente sin tocar. Los tests de
-  entorno `node` corren perfecto (441 en verde). Antes de culpar a un cambio
-  propio, correr un test viejo del mismo tipo: si también falla, es el entorno.
+El proyecto vive en `~/Documents`, que iCloud sincroniza. Con "Optimizar
+almacenamiento del Mac" activado, iCloud sube los archivos y **borra su
+contenido del disco**: quedan marcados `dataless`. Leer uno BLOQUEA hasta que
+iCloud lo baje, y a veces no baja.
+
+- **Síntomas, todos con la misma causa:**
+  - `tsc --noEmit` se queda para siempre. No es lentitud: consume ~2 segundos de
+    CPU en 10 minutos y se queda en **0%**. Pasa igual con un tsconfig de 15
+    archivos.
+  - Los tests con `@vitest-environment happy-dom` fallan con *"Failed to start
+    forks worker … Timeout waiting for worker to respond"*. Los de entorno
+    `node` sí corren (sus archivos ya estaban materializados).
+  - `git status` tarda minutos; `git commit` muere con
+    `index.lock write error: Operation timed out` (iCloud bloquea también las
+    ESCRITURAS, y `.git/objects` está evacuado igual que el código).
+- **Detección:** `ls -lO <archivo>` y buscar la bandera `dataless`. O
+  `ps aux | grep tsc`: si el tiempo de CPU no crece, no es carga de la máquina.
+- **Arreglo de fondo (del usuario):** desactivar "Optimizar almacenamiento del
+  Mac" en Ajustes → Apple ID → iCloud → iCloud Drive, o sacar el proyecto de
+  `~/Documents` (p. ej. a `~/dev/`).
+- **Arreglo de emergencia:** forzar la materialización LEYENDO los archivos —
+  `brctl download` solo la PIDE y no espera:
+  ```bash
+  find lib app components types hooks -type f \( -name "*.ts" -o -name "*.tsx" \) \
+    -print0 | xargs -0 -P 12 -n 20 cat > /dev/null
+  find .git -type f -print0 | xargs -0 -P 16 -n 50 cat > /dev/null   # para git
+  ```
+- **La vía rápida para verificar (la que terminó funcionando):** copiar el
+  código a disco local (`/private/tmp/...`), correr ahí `npm install
+  --ignore-scripts` y desde ahí `tsc` y `vitest`. La suite completa pasó de
+  colgarse a **20 segundos**, y los tests de componente —que en iCloud nunca
+  arrancaban— corrieron sin tocar una línea.
+  - OJO: `npm ci` **falla** en este repo, `package-lock.json` está desfasado de
+    `package.json` (faltan las dependencias de `@testing-library/dom`). Usar
+    `npm install`. Si Netlify alguna vez cambia a `npm ci`, el deploy se cae.
+  - Al comparar resultados, copiar TODO lo que los tests leen (`emails/`,
+    `supabase/migrations/`): si falta algo, aparecen fallas que no son reales.
+- **Hipótesis descartada (para no volver a perseguirla):** que el
+  `node_modules` enlazado del worktree rompiera el `exclude` del tsconfig.
+  Falso — `tsc --showConfig` mostró los 15 archivos correctos, y el mismo
+  cuelgue ocurre en el checkout principal con `node_modules` de verdad.
+- **Antes de culpar a un cambio propio:** correr un test viejo del mismo tipo
+  sin tocar nada. Si también falla, es el entorno.
 
 ### La ubicación se ELIGE de una lista; el texto libre no publica (2026-08-24)
 
