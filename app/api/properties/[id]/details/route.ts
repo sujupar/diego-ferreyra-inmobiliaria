@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/require-role'
 import { canAccessProperty } from '@/lib/auth/entity-access'
 import { updateProperty, getProperty } from '@/lib/supabase/properties'
-import { sanearEdicion } from '@/lib/properties/editable-fields'
+import { sanearEdicion, validarRangoDeContrato } from '@/lib/properties/editable-fields'
 import { evaluarCambioDePrecio } from '@/lib/properties/price-guard'
 
 /**
@@ -50,6 +50,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const saneado = sanearEdicion(body, actual?.currency ? String(actual.currency) : undefined)
     if (!saneado.ok) {
       return NextResponse.json({ error: saneado.error }, { status: 400 })
+    }
+
+    // El rango del contrato necesita las DOS fechas: si el formulario mandó solo
+    // una, la otra sale de la propiedad. Por eso se valida acá y no en el saneo.
+    if ('contract_start_date' in saneado.patch || 'contract_end_date' in saneado.patch) {
+      const inicio = ('contract_start_date' in saneado.patch
+        ? saneado.patch.contract_start_date
+        : actual?.contract_start_date) as string | null | undefined
+      const fin = ('contract_end_date' in saneado.patch
+        ? saneado.patch.contract_end_date
+        : actual?.contract_end_date) as string | null | undefined
+      const problema = validarRangoDeContrato(inicio, fin)
+      if (problema) return NextResponse.json({ error: problema }, { status: 400 })
     }
 
     const tocaElPrecio = 'asking_price' in saneado.patch || 'currency' in saneado.patch

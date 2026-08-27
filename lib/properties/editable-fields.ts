@@ -11,8 +11,13 @@
  * mocks. Mismo criterio que `lib/properties/commercial-status.ts`.
  */
 
+import { isPropertyType } from './property-type'
+
 const MONEDAS = ['USD', 'ARS'] as const
 type Moneda = (typeof MONEDAS)[number]
+
+/** Operaciones que ofrece el formulario de alta. */
+const OPERACIONES = ['venta', 'alquiler', 'temporario'] as const
 
 /**
  * Techo defensivo del precio, POR MONEDA. No es una regla de negocio: es la red
@@ -52,7 +57,9 @@ const NUMERICOS: Record<string, { etiqueta: string; min: number; max: number; en
 const LARGO_DESCRIPCION = 5000
 
 export const CAMPOS_EDITABLES = [
-  'asking_price', 'currency',
+  'property_type', 'operation_type',
+  'asking_price', 'currency', 'commission_percentage',
+  'contract_start_date', 'contract_end_date',
   ...Object.keys(NUMERICOS),
   'description',
 ] as const
@@ -112,6 +119,44 @@ export function sanearEdicion(body: unknown, monedaActual?: string): ResultadoEd
     patch[campo] = v
   }
 
+  if ('property_type' in entrada) {
+    const v = entrada.property_type
+    if (typeof v !== 'string' || !isPropertyType(v)) {
+      return { ok: false, error: 'El tipo de propiedad no es válido.' }
+    }
+    patch.property_type = v
+  }
+
+  if ('operation_type' in entrada) {
+    const v = entrada.operation_type
+    if (typeof v !== 'string' || !(OPERACIONES as readonly string[]).includes(v)) {
+      return { ok: false, error: 'La operación tiene que ser venta, alquiler o temporario.' }
+    }
+    patch.operation_type = v
+  }
+
+  if ('commission_percentage' in entrada) {
+    const v = entrada.commission_percentage
+    if (v === null || v === '') {
+      patch.commission_percentage = null
+    } else if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 100) {
+      return { ok: false, error: 'La comisión tiene que ser un número entre 0 y 100.' }
+    } else {
+      patch.commission_percentage = v
+    }
+  }
+
+  for (const campo of ['contract_start_date', 'contract_end_date'] as const) {
+    if (!(campo in entrada)) continue
+    const v = entrada[campo]
+    // Vaciar una fecha es válido: un contrato puede no tener fin cargado.
+    if (v === null || v === '') { patch[campo] = null; continue }
+    if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(Date.parse(v))) {
+      return { ok: false, error: 'Las fechas de contrato tienen que tener el formato AAAA-MM-DD.' }
+    }
+    patch[campo] = v
+  }
+
   if ('description' in entrada) {
     const v = entrada.description
     if (v === null || v === '') {
@@ -127,4 +172,20 @@ export function sanearEdicion(body: unknown, monedaActual?: string): ResultadoEd
     return { ok: false, error: 'No hay ningún cambio para guardar.' }
   }
   return { ok: true, patch }
+}
+
+/**
+ * El fin de contrato no puede ser anterior al inicio.
+ *
+ * Va aparte de `sanearEdicion` porque necesita las DOS fechas: si el formulario
+ * manda solo una, la otra hay que traerla de la propiedad. El caller (la ruta)
+ * es el único que conoce las dos, así que la comparación se hace allá con esta
+ * función, que sigue siendo pura y testeable.
+ */
+export function validarRangoDeContrato(
+  inicio: string | null | undefined,
+  fin: string | null | undefined,
+): string | null {
+  if (!inicio || !fin) return null
+  return fin < inicio ? 'El fin de contrato no puede ser anterior al inicio.' : null
 }

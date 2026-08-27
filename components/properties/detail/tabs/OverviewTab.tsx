@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { formatMoney, operationLabel, propertyTypeLabel } from '@/lib/properties/detail-view'
 import { commercialStatusDef } from '@/lib/properties/commercial-status'
 import { PropertyCommercialStatusCard } from '../PropertyCommercialStatusCard'
-import { PropertyTypeEditor } from '../PropertyTypeEditor'
+import { PropertyDetailsEditor } from '../PropertyDetailsEditor'
 import { PropertyLocationEditor } from '../PropertyLocationEditor'
 import { leerRefArgenprop } from '@/lib/properties/location-selection'
 
@@ -33,6 +33,14 @@ export interface OverviewProperty {
   expensas?: number | null
   floor?: number | null
   age?: number | null
+  // Los mide el panel "Modificar ficha". La grilla de specs las recibe ya
+  // formateadas por `specs`, por eso antes no hacían falta acá.
+  rooms?: number | null
+  bedrooms?: number | null
+  bathrooms?: number | null
+  garages?: number | null
+  covered_area?: number | null
+  total_area?: number | null
   asking_price: number
   currency: string
   commission_percentage: number
@@ -110,9 +118,7 @@ export function OverviewTab({ property, isAbogado, onChanged }: { property: Over
           <p className="eyebrow">Ficha</p>
           <h2 className="display text-xl mt-1 mb-3">Características</h2>
           <div className="grid grid-cols-2 gap-2">
-            {isAbogado
-              ? <Spec label="Tipo" value={propertyTypeLabel(property.property_type)} />
-              : <PropertyTypeEditor propertyId={property.id} current={property.property_type} onChanged={onChanged} />}
+            <Spec label="Tipo" value={propertyTypeLabel(property.property_type)} />
             {specs.map(s => <Spec key={s.label} label={s.label} value={s.value} />)}
           </div>
 
@@ -142,6 +148,36 @@ export function OverviewTab({ property, isAbogado, onChanged }: { property: Over
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {/* Una sola puerta para corregir la ficha: tipo, operación, precio,
+              características, contrato y descripción. Antes esto vivía repartido
+              en editores sueltos y un cambio dejó de renderizar dos de ellos sin
+              que se notara. */}
+          {!isAbogado && (
+            <PropertyDetailsEditor
+              propertyId={property.id}
+              valores={{
+                property_type: property.property_type,
+                operation_type: property.operation_type,
+                asking_price: property.asking_price,
+                currency: property.currency,
+                commission_percentage: property.commission_percentage,
+                contract_start_date: property.contract_start_date,
+                contract_end_date: property.contract_end_date,
+                rooms: property.rooms,
+                bedrooms: property.bedrooms,
+                bathrooms: property.bathrooms,
+                garages: property.garages,
+                covered_area: property.covered_area,
+                total_area: property.total_area,
+                age: property.age,
+                floor: property.floor,
+                expensas: property.expensas,
+                description: property.description,
+              }}
+              onChanged={onChanged}
+            />
           )}
         </section>
       </div>

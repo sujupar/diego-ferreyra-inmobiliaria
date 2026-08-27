@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sanearEdicion } from './editable-fields'
+import { sanearEdicion, validarRangoDeContrato } from './editable-fields'
 
 describe('sanearEdicion', () => {
   it('acepta un precio válido', () => {
@@ -111,5 +111,66 @@ describe('sanearEdicion — características', () => {
 
   it('un número que llega como texto se rechaza (no se adivina)', () => {
     expect(sanearEdicion({ rooms: '4' }).ok).toBe(false)
+  })
+})
+
+describe('sanearEdicion — la ficha completa (tipo, operación y datos comerciales)', () => {
+  it('acepta el tipo de propiedad y la operación', () => {
+    const r = sanearEdicion({ property_type: 'casa', operation_type: 'alquiler' })
+    expect(r).toEqual({ ok: true, patch: { property_type: 'casa', operation_type: 'alquiler' } })
+  })
+
+  it('rechaza un tipo inventado', () => {
+    const r = sanearEdicion({ property_type: 'castillo' })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/tipo/i)
+  })
+
+  it('rechaza una operación inventada', () => {
+    const r = sanearEdicion({ operation_type: 'permuta' })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/venta|alquiler/i)
+  })
+
+  it('acepta la comisión y la deja vaciar', () => {
+    expect(sanearEdicion({ commission_percentage: 3.5 })).toEqual({ ok: true, patch: { commission_percentage: 3.5 } })
+    expect(sanearEdicion({ commission_percentage: null })).toEqual({ ok: true, patch: { commission_percentage: null } })
+  })
+
+  it('rechaza una comisión fuera de rango', () => {
+    expect(sanearEdicion({ commission_percentage: 150 }).ok).toBe(false)
+    expect(sanearEdicion({ commission_percentage: -1 }).ok).toBe(false)
+  })
+
+  it('acepta fechas de contrato bien formadas y las deja vaciar', () => {
+    expect(sanearEdicion({ contract_start_date: '2026-08-21' }))
+      .toEqual({ ok: true, patch: { contract_start_date: '2026-08-21' } })
+    expect(sanearEdicion({ contract_end_date: null }))
+      .toEqual({ ok: true, patch: { contract_end_date: null } })
+  })
+
+  it('rechaza una fecha con formato raro', () => {
+    expect(sanearEdicion({ contract_start_date: '21/08/2026' }).ok).toBe(false)
+    expect(sanearEdicion({ contract_start_date: '2026-13-45' }).ok).toBe(false)
+  })
+
+  it('los campos fuera de la lista siguen sin viajar', () => {
+    const r = sanearEdicion({ property_type: 'casa', legal_status: 'approved', assigned_to: 'otro' })
+    expect(r).toEqual({ ok: true, patch: { property_type: 'casa' } })
+  })
+})
+
+describe('validarRangoDeContrato', () => {
+  it('un fin anterior al inicio es un error', () => {
+    expect(validarRangoDeContrato('2026-08-21', '2026-08-01')).toMatch(/anterior/i)
+  })
+  it('un rango correcto pasa', () => {
+    expect(validarRangoDeContrato('2026-08-21', '2026-11-21')).toBeNull()
+    expect(validarRangoDeContrato('2026-08-21', '2026-08-21')).toBeNull()
+  })
+  it('si falta alguna fecha no hay nada que comparar', () => {
+    expect(validarRangoDeContrato(null, '2026-08-01')).toBeNull()
+    expect(validarRangoDeContrato('2026-08-21', null)).toBeNull()
+    expect(validarRangoDeContrato(undefined, undefined)).toBeNull()
   })
 })

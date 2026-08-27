@@ -1,5 +1,11 @@
 'use client'
 /**
+ * NO SE USA EN LA FICHA desde el 2026-08-25: el tipo se corrige dentro del panel
+ * "Modificar ficha" (`PropertyDetailsEditor`), junto con el resto de los datos,
+ * en UNA sola operación. Se conserva el componente y su endpoint
+ * `POST /api/properties/[id]/property-type` porque siguen funcionando y sirven
+ * para cambiar solo el tipo desde otro lado si alguna vez hace falta.
+ *
  * Editor del TIPO de propiedad (ficha). Se puede corregir si quedó mal cargado
  * (afecta el texto de los anuncios de campaña). Usa el endpoint dedicado
  * POST /api/properties/[id]/property-type (sin efectos secundarios del PUT).
