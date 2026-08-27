@@ -20,6 +20,10 @@ export async function middleware(request: NextRequest) {
     // La seguridad de esa página NO es la sesión: es el token en sí (10
     // caracteres al azar, alfabeto sin ambigüedades, uno por persona).
     request.nextUrl.pathname.startsWith('/v/') ||
+    // `/r/<código>` es el acortador propio: lo abre el asesor desde su WhatsApp,
+    // sin sesión del CRM. Mismo criterio que `/v/`: la protección es el código
+    // al azar, no el login, y del otro lado solo hay un chat de WhatsApp.
+    request.nextUrl.pathname.startsWith('/r/') ||
     publicFunnelPaths.some((p) => request.nextUrl.pathname === p || request.nextUrl.pathname.startsWith(p + '/'))
   ) {
     return NextResponse.next()

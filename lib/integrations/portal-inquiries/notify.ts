@@ -10,6 +10,7 @@ import {
   sanitizarParametro,
   ajustarAlTope,
 } from './reply-link'
+import { acortar } from '@/lib/links/short-link-store'
 
 /**
  * Orquesta el envío de WhatsApp para una consulta nueva:
@@ -115,7 +116,11 @@ const INDICE_AVISO = 5
  * precio es que ocupa lugar, así que se arma último, con lo que sobra del tope
  * de 1024 de Meta. Ver `./reply-link.ts`.
  */
-function buildBodyParams(inq: NotifyInquiry, advisorLabel: string, saludos: string[]): string[] {
+async function buildBodyParams(
+  inq: NotifyInquiry,
+  advisorLabel: string,
+  saludos: string[],
+): Promise<string[]> {
   const otros = [
     sanitizarParametro(advisorLabel, 40),
     // Sin '#': la plantilla aprobada ya dice "Consulta #{{2}}". Con el '#' acá
@@ -129,11 +134,14 @@ function buildBodyParams(inq: NotifyInquiry, advisorLabel: string, saludos: stri
     sanitizarParametro(inq.leadPhone, 40),
     sanitizarParametro(inq.leadEmail, 80),
   ]
-  const link = armarLinkRespuesta(
-    normalizePhone(inq.leadPhone),
-    saludos,
-    espacioParaElLink(CUERPO_DE_REFERENCIA, otros),
-  )
+  const phone = normalizePhone(inq.leadPhone)
+  // El saludo va COMPLETO (`Infinity`): el largo deja de importar porque el link
+  // viaja acortado con nuestro dominio, ~31 caracteres en el mensaje.
+  const largo = armarLinkRespuesta(phone, saludos, Infinity)
+  const corto = phone ? await acortar(largo) : null
+  // Sin acortador (caído, tabla ausente, lo que sea) el aviso igual sale: se
+  // manda el `wa.me` crudo, y AHÍ sí hay que medirlo contra el tope de Meta.
+  const link = corto ?? armarLinkRespuesta(phone, saludos, espacioParaElLink(CUERPO_DE_REFERENCIA, otros))
   return ajustarAlTope(CUERPO_DE_REFERENCIA, [...otros, link], INDICE_AVISO)
 }
 
@@ -221,7 +229,7 @@ export async function notifyInquiry(supabase: SupabaseClient, inq: NotifyInquiry
     // (llamadas viejas), cae al propertyLabel de siempre.
     propertyLabel: inq.leadPropertyLabel !== undefined ? inq.leadPropertyLabel : inq.propertyLabel,
   })
-  const bodyParams = buildBodyParams(inq, advisorLabel, saludos)
+  const bodyParams = await buildBodyParams(inq, advisorLabel, saludos)
   const attemptedPhones = new Set<string>()
 
   for (const r of recipients) {
