@@ -36,7 +36,18 @@ export const TASACION_CONTENT = {
     title: 'Completá estos datos para coordinar tu tasación gratuita',
     subtitle: 'Te escribimos por WhatsApp en los próximos segundos.',
     submitLabel: 'Solicitar mi tasación gratuita',
-    footnote: 'Coordinás el día y la hora por WhatsApp. Sin costo y sin compromiso.',
+    // El día y la hora se coordinan POR TELÉFONO desde el corte del 2026-08-27:
+    // el primer WhatsApp (plantilla `tasacion_llamada_v1`) avisa que llama el
+    // equipo y ya no pregunta nada. Prometer acá que se coordina por chat sería
+    // mentirle a la persona antes de que llegue el mensaje.
+    //
+    // Este texto se activa con el DEPLOY, y la plantilla nueva con la env var
+    // `WHATSAPP_TEMPLATE_TASACION` en Netlify. Entre una cosa y la otra hay una
+    // ventana en la que la landing ya dice "te llamamos" y el WhatsApp todavía
+    // pregunta por chat: hay que cambiar la env var apenas termine el deploy.
+    // (No es contradictorio —la plantilla vieja ofrece "Prefiero que me llamen"—
+    // pero sí menos preciso.)
+    footnote: 'Te llamamos para coordinar el día y la hora. Sin costo y sin compromiso.',
   },
 } as const
 

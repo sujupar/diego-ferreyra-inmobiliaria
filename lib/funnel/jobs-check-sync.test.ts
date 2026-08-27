@@ -1,7 +1,7 @@
 /**
  * El catálogo de tipos de trabajo vive en DOS lugares: esta lista de TypeScript
  * y un CHECK de Postgres. Si se separan, no falla el trabajo nuevo: falla el
- * INSERT ENTERO —los cinco avisos se encolan en una sola sentencia— y el lead
+ * INSERT ENTERO —los seis avisos se encolan en una sola sentencia— y el lead
  * se queda sin email al equipo, sin tarea y sin evento de conversión a Meta.
  *
  * Pasó de verdad el 2026-08-13: se agregó 'whatsapp' al código y no al CHECK.
@@ -54,7 +54,7 @@ describe('el catálogo de trabajos del embudo no puede separarse de la base', ()
     expect(
       faltantes,
       `Estos tipos existen en el código pero el CHECK de Postgres los rechaza: ${faltantes.join(', ')}. ` +
-        'Un solo tipo rechazado tumba el INSERT de los cinco avisos. ' +
+        'Un solo tipo rechazado tumba el INSERT de los seis avisos. ' +
         'Agregalos al CHECK con una migración ANTES de deployar.',
     ).toEqual([])
   })

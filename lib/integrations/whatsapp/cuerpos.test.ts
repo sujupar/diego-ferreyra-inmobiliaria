@@ -10,9 +10,14 @@ import {
 describe('el registro de cuerpos', () => {
   it('todas las plantillas que se mandaron de verdad están', () => {
     // Salió de la base: `SELECT DISTINCT template_name FROM whatsapp_messages`.
+    // `tasacion_llamada_v1` todavía no se mandó, pero va igual: es la plantilla
+    // a la que apunta el corte a coordinación telefónica, y este test es lo que
+    // avisa si alguien la borra de Meta y re-sincroniza el catálogo — sin el
+    // cuerpo, el Inbox deja de poder mostrar lo que recibió el cliente.
     for (const n of [
       'recorrido_acceso_v4', 'recorrido_acceso_v3', 'recorrido_acceso_v2', 'recorrido_acceso_util',
-      'consulta_plano', 'consulta_plano_util', 'consulta_sin_enlace_v2', 'tasacion_coordinar_util',
+      'consulta_plano', 'consulta_plano_util', 'consulta_sin_enlace_v2',
+      'tasacion_coordinar_util', 'tasacion_coordinar_v2', 'tasacion_llamada_v1',
     ]) {
       expect(CUERPOS_DE_PLANTILLA[n], n).toBeTruthy()
     }

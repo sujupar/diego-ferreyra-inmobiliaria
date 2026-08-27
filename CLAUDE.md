@@ -1164,6 +1164,21 @@ nada. Se selecciona con la env var `WHATSAPP_TEMPLATE_RECORRIDO` en Netlify.
 
 ## Agente que coordina la TASACIÓN por WhatsApp — 2026-08-13
 
+> **SE APAGA EN EL CORTE A COORDINACIÓN TELEFÓNICA** (2026-08-27). La tasación
+> pasa a coordinarse **por teléfono**: el primer WhatsApp es
+> `tasacion_llamada_v1` (aprobada UTILITY), que avisa que llama el equipo y NO
+> tiene botones ni pregunta nada. Con el agente prendido, a quien acaba de leer
+> "te llama Paula" le pediría día, horario y dirección por chat.
+>
+> El corte son DOS pasos que van juntos y NO están hechos al momento de este
+> commit: `WHATSAPP_TEMPLATE_TASACION=tasacion_llamada_v1` en Netlify y después
+> `scripts/interruptor-agente-tasacion-pg.ts --apagar`. Hasta entonces sigue
+> vigente `tasacion_coordinar_v2` con `tasacion_enabled = true`.
+>
+> Todo lo de abajo sigue siendo cierto sobre CÓMO funciona el agente, y vale
+> para el día que se vuelva a prender — ver `docs/whatsapp-plantilla-tasacion.md`,
+> § "Para volver a la coordinación por chat" (son tres cambios que van juntos).
+
 Es OTRO agente, no una variante del que agenda visitas de propiedades. Atiende a
 quien pidió una tasación en la landing del embudo.
 
@@ -1182,13 +1197,22 @@ texto textual del dueño ("Te va a estar contactando el asesor para confirmar la
 visita..."). Si alguna vez se quiere que agende de verdad, reusar
 `lib/leads/visit-scheduling.ts` — NO escribir un segundo camino.
 
-### Guion cerrado, no un modelo suelto
+### El modelo entiende Y redacta, en una sola llamada
 
-`lib/ai/tasacion-flow.ts` es una máquina de estados PURA (13 tests), sin llamada
-a ningún modelo — cuesta $0 y no puede alucinar. Ante cualquier cosa fuera de
-libreto (una pregunta, un pedido de baja) pasa a `derivado` y **no vuelve a
-escribir nunca en esa conversación**. Un "no me interesa, cancelar" NO se
-interpreta como una fecha: eso está testeado explícitamente.
+El guion vive en `lib/ai/tasacion-brain.ts` (prompt) + `lib/ai/tasacion-agent.ts`
+(orquestación). Es UNA llamada al modelo por mensaje entrante, y **reemplaza** a
+la del análisis de bandeja para esas conversaciones — no las encadena (ver la
+regla dura del proyecto sobre encadenar llamadas de IA en un request).
+
+**OJO si leíste una versión vieja de este archivo:** decía que el guion era
+`lib/ai/tasacion-flow.ts`, "una máquina de estados PURA sin llamada a ningún
+modelo". Ese archivo lo borró el commit `05fe400` el 2026-08-13, cuando el
+libreto rígido no entendía a una persona real. La descripción quedó mintiendo
+dos semanas.
+
+Lo que sí se mantiene de aquel diseño: el modelo **propone**, el código
+**decide**. Ante una pregunta que no puede contestar, una queja o un pedido de
+baja, pasa a `derivado` y no vuelve a escribir en esa conversación.
 
 ### Separado a propósito del agente de propiedades
 
@@ -1214,16 +1238,44 @@ que sigamos?") y Meta SÍ la aceptó como UTILITY. **Regla: en una plantilla de
 seguimiento, referirse solo a lo que la persona pidió; ningún adjetivo de venta.**
 Se elige con `WHATSAPP_TEMPLATE_TASACION` en Netlify.
 
-Los dos botones son de respuesta rápida por el mismo motivo que en el agente de
-propiedades: tocarlos hace ENTRAR un mensaje del cliente, que es lo que abre la
-ventana de 24 h y le da el pie al agente.
+**Qué NO dispara la reclasificación (verificado con `tasacion_llamada_v1`, pedida
+y aprobada UTILITY el 2026-08-27):** ni el signo de exclamación del encabezado
+("¡recibimos tu solicitud de tasación!"), ni un cierre social ("Seguimos en
+contacto"), ni un **número de teléfono literal en el cuerpo** —primer caso en
+esta cuenta—. El disparador es el vocabulario de venta, no la puntuación. El
+encabezado factual sigue siendo buena práctica, pero no es lo que decide.
 
-### Para estrenarlo
+### Los botones son lo que abre la ventana — y la plantilla del corte no los tiene
 
-```sql
--- migración 20260813000001_agente_tasacion.sql (aditiva)
-update ai_agent_settings set tasacion_enabled = true;  -- recién DESPUÉS de probar
+En `tasacion_coordinar_*` los dos botones eran de respuesta rápida por el mismo
+motivo que en el agente de propiedades: tocarlos hace ENTRAR un mensaje del
+cliente, que es lo único que abre la ventana de 24 h y le da el pie al agente.
+
+`tasacion_llamada_v1` **no tiene botones**: avisa que el equipo llama por
+teléfono. En cuanto se active, nada abre la ventana y ese WhatsApp pasa a ser una
+vía de salida. En el ENVÍO no se rompe nada (el payload nunca incluyó los
+botones), pero cambia todo río abajo — por eso el corte apaga el agente en el
+mismo movimiento. Detalle completo y camino de vuelta:
+`docs/whatsapp-plantilla-tasacion.md`.
+
+### El interruptor y la plantilla se mueven JUNTOS
+
+```bash
+# apagar (corte a coordinación telefónica) / prender (vuelta al chat)
+node --experimental-strip-types --env-file=.env.local \
+  scripts/interruptor-agente-tasacion-pg.ts --apagar
 ```
+
+El script existe para que no se muevan por separado: imprime cuántas
+conversaciones vivas quedan sin respuesta automática antes de tocar nada.
+
+- `tasacion_enabled = true` va con `WHATSAPP_TEMPLATE_TASACION=tasacion_coordinar_v2`
+  (la plantilla que pregunta, con botones).
+- `tasacion_enabled = false` va con `WHATSAPP_TEMPLATE_TASACION=tasacion_llamada_v1`
+  (la que avisa que llaman, sin botones).
+
+Cualquier combinación cruzada rompe el flujo, y el síntoma —"el agente no
+contesta" / "el agente contesta cualquier cosa"— no señala la causa.
 
 ### Un metadato de tracking JAMÁS voltea una conversión (2026-08-15)
 

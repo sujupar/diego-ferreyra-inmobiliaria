@@ -6,7 +6,7 @@
  * mano lo desincroniza de lo aprobado y la pantalla pasaría a mostrar mensajes
  * que nadie recibió.
  *
- * Última sincronización: 2026-08-24 — 19 plantillas.
+ * Última sincronización: 2026-08-27 — 20 plantillas.
  */
 export const CUERPOS_APROBADOS: Record<string, string> = {
   "consulta_plano": "Hola {{1}}, ¿cómo estás? Soy del equipo de Diego Ferreyra Inmobiliaria.\n\nTe paso {{2}} de {{3}}, por la consulta que dejaste recién. Si querés te mando las fotos también.\n\nContame, ¿cómo te puedo ayudar?",
@@ -28,4 +28,5 @@ export const CUERPOS_APROBADOS: Record<string, string> = {
   "recorrido_propiedad_util": "Hola {{1}}, gracias por tu interés en {{2}}.\n\nTe compartimos el recorrido completo para que conozcas la propiedad por dentro, sin moverte de donde estés.\n\nSi te gusta, desde ahí mismo podés proponer el día y el horario que te queden cómodos para visitarla.",
   "tasacion_coordinar_util": "Hola {{1}}, ¿cómo estás?\n\nTe escribo de Diego Ferreyra Inmobiliaria por la tasación gratuita que pediste recién en nuestra web.\n\nEs presencial, sin costo y sin compromiso. ¿Cómo preferís que la coordinemos?",
   "tasacion_coordinar_v2": "Hola {{1}}, recibimos tu solicitud de tasación en nuestra web.\n\nPara coordinar la visita, ¿cómo preferís que sigamos?",
+  "tasacion_llamada_v1": "Hola {{1}}, ¡recibimos tu solicitud de tasación!\n\nTe llamará Paula desde el número +54 9 11 2292-6434 para coordinarla\n\nSeguimos en contacto",
 }

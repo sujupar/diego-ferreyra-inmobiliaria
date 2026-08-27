@@ -4,7 +4,7 @@ import { resolveFunnelMapping, type FunnelKind } from '@/lib/funnel/create-funne
 import { MARCA_LIMITE_DE_VOLUMEN, type TipoDeTrabajo } from '@/lib/funnel/jobs-logic'
 
 /**
- * Los cinco avisos de un envío del embudo, ya fuera del camino crítico.
+ * Los seis avisos de un envío del embudo, ya fuera del camino crítico.
  *
  * Cada uno TIRA cuando falla: quien decide si se reintenta y con qué espera es
  * el worker (`side-effects-worker.ts`), no el aviso. Eso es lo que cambió
@@ -183,10 +183,17 @@ async function eventoDeConversion(p: Record<string, unknown>): Promise<Resultado
  * le llega a una PERSONA DE AFUERA, y cumple lo que el formulario le prometió
  * ("te escribimos por WhatsApp en los próximos segundos").
  *
- * Además de avisar, hace algo que ninguna otra pieza puede hacer: al tocar
- * cualquiera de los dos botones, ENTRA un mensaje del cliente y eso abre la
- * ventana de 24 h de Meta. Sin esa ventana no se puede mandar texto libre, así
- * que sin este mensaje no hay coordinación posible por chat.
+ * QUÉ PLANTILLA SALE lo decide `WHATSAPP_TEMPLATE_TASACION` en Netlify, y eso
+ * cambia la naturaleza del canal. Las plantillas viejas (`tasacion_coordinar_*`)
+ * preguntaban con dos botones de respuesta rápida: tocar cualquiera de los dos
+ * hacía ENTRAR un mensaje del cliente, que es lo único que abre la ventana de
+ * 24 h de Meta y lo único que le da pie al agente de tasación. La del corte a
+ * coordinación telefónica (`tasacion_llamada_v1`, aprobada el 2026-08-27) avisa
+ * que el equipo llama y NO tiene botones: nada abre la ventana, y este WhatsApp
+ * pasa a ser una vía de salida.
+ * Acá no hay nada que ajustar por eso —el payload de envío nunca incluyó los
+ * botones—, pero quien lea este código buscando "por qué el agente no contesta"
+ * termina en esta línea.
  *
  * Apagado por defecto: sin `WHATSAPP_TEMPLATE_TASACION` no manda nada y devuelve
  * 'skipped'. Así el código puede estar en producción antes de que Meta apruebe
@@ -211,24 +218,22 @@ async function primerWhatsappDeTasacion(p: Record<string, unknown>): Promise<Res
 
   const primerNombre = requerido(p, 'nombre').trim().split(/\s+/)[0] ?? ''
 
-  // El cuerpo que se LOGUEA en el Inbox tiene que ser el de la plantilla que
-  // REALMENTE salió — el chat muestra este texto como "lo que le dijimos".
-  // Mantener en espejo con las plantillas aprobadas en Meta.
-  const CUERPOS: Record<string, string> = {
-    tasacion_coordinar_v2:
-      `Hola ${primerNombre}, recibimos tu solicitud de tasación en nuestra web.\n\n` +
-      'Para coordinar la visita, ¿cómo preferís que sigamos?',
-    tasacion_coordinar_util:
-      `Hola ${primerNombre}, ¿cómo estás?\n\n` +
-      'Te escribo de Diego Ferreyra Inmobiliaria por la tasación gratuita que pediste recién en nuestra web.\n\n' +
-      'Es presencial, sin costo y sin compromiso. ¿Cómo preferís que la coordinemos?',
-  }
-
   // El envío ya deja el mensaje en `whatsapp_messages` (ver `logOutbound` dentro
   // de `sendWhatsappTemplate`), así que acá no se registra nada a mano.
   // `aiGenerated: true` es importante río abajo: el agente solo reconoce como
   // "algo que ya dije yo" los mensajes marcados así, y sin eso volvería a
   // preguntar lo que esta plantilla ya preguntó.
+  //
+  // NO se pasa `bodyText` A PROPÓSITO. Acá vivía un diccionario a mano con los
+  // dos cuerpos de tasación y un `?? CUERPOS.tasacion_coordinar_util` al final:
+  // al cambiar de plantilla sin acordarse de actualizarlo, el Inbox le mostraba
+  // al equipo el texto VIEJO como "lo que le dijimos al cliente" — un mensaje
+  // que nadie recibió, que es peor que no mostrar nada porque nadie sospecha.
+  // Sin `bodyText`, `sendWhatsappTemplate` arma el texto desde el catálogo
+  // generado en Meta (`lib/integrations/whatsapp/cuerpos.ts`), que es la única
+  // fuente de verdad. Mientras el catálogo no tenga la plantilla nueva se guarda
+  // el parámetro pelado ("Martín"): feo, pero honesto — y el Inbox lo rearma
+  // retroactivamente en cuanto se corre `scripts/sincronizar-cuerpos-plantillas.ts`.
   const { sendWhatsappTemplate } = await import('@/lib/integrations/whatsapp/core')
   const r = await sendWhatsappTemplate({
     to: destino,
@@ -237,7 +242,6 @@ async function primerWhatsappDeTasacion(p: Record<string, unknown>): Promise<Res
     bodyParams: [primerNombre],
     origen: 'landing',
     aiGenerated: true,
-    bodyText: CUERPOS[plantilla] ?? CUERPOS.tasacion_coordinar_util,
   })
   // Modo prueba / sin credenciales: no salió nada, y decirlo es información.
   if (r.skipped) return 'skipped'
@@ -262,6 +266,12 @@ async function primerWhatsappDeTasacion(p: Record<string, unknown>): Promise<Res
   // si la persona alguna vez consultó por una propiedad, le contesta el agente
   // equivocado — habla de esa propiedad en vez de coordinar la tasación. Pasó de
   // verdad en la primera prueba (2026-08-13).
+  //
+  // SIGUE HACIENDO FALTA CON EL AGENTE DE TASACIÓN APAGADO, y es contraintuitivo:
+  // apagado, el agente entra, ve el interruptor en false y devuelve 'apagado',
+  // pero el webhook igual corta ahí. Sin la marca no cortaría, y el mensaje
+  // caería en el agente de PROPIEDADES — o sea, sacarla para "no molestar"
+  // reintroduce exactamente el bug de arriba.
   //
   // Va DESPUÉS del envío a propósito: si el WhatsApp no salió, no hay
   // conversación que atender y marcar el trato sería mentir sobre su estado.

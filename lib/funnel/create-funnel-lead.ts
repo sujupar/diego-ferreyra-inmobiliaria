@@ -57,7 +57,7 @@ export interface FunnelLeadResult {
 /**
  * Crea (o reutiliza) el contacto y crea el deal del funnel. Nada más.
  *
- * ESTO ES TODO LO QUE PASA MIENTRAS LA PERSONA ESPERA. Los cinco avisos que
+ * ESTO ES TODO LO QUE PASA MIENTRAS LA PERSONA ESPERA. Los seis avisos que
  * antes colgaban de acá —tarea de coordinación, email, Mailchimp, stitching de
  * la sesión anónima y el evento de conversión a Meta— se encolan en
  * `funnel_lead_jobs` y los ejecuta `lib/funnel/side-effects-worker.ts`. El
