@@ -15,7 +15,13 @@ import { writeSync } from 'node:fs'
 const API = process.env.WHATSAPP_API_VERSION ?? 'v21.0'
 const NOMBRE = 'consulta_portal_v2'
 const CADA_MS = 5 * 60 * 1000
-const LATIDO_CADA = 12 // 12 vueltas × 5 min = 1 hora
+// Cada 4 horas. Con el latido cada hora, una espera larga llena la pantalla de
+// mensajes idénticos que no dicen nada nuevo; el chequeo REAL sigue siendo cada
+// 5 minutos, esto es solo la señal de vida.
+const LATIDO_CADA = 48 // 48 vueltas × 5 min = 4 horas
+
+/** Desde cuándo se espera de verdad, para que reiniciar el vigía no reinicie el conteo. */
+const DESDE = process.argv[2] ? new Date(process.argv[2]) : new Date()
 
 /** stdout sin buffer: en un pipe, console.log puede quedarse esperando. */
 const decir = (s: string) => writeSync(1, `${s}\n`)
@@ -57,7 +63,8 @@ async function main() {
       }
       vueltas++
       if (vueltas % LATIDO_CADA === 0) {
-        decir(`⏳ [${reloj()}] sigue PENDING (${Math.round((vueltas * CADA_MS) / 3_600_000)}h esperando)`)
+        const horas = Math.round((Date.now() - DESDE.getTime()) / 3_600_000)
+        decir(`⏳ [${reloj()}] sigue PENDING (${horas}h esperando)`)
       }
     } catch (err) {
       fallos++
