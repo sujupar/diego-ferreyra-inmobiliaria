@@ -185,3 +185,61 @@ describe('ajustarAlTope', () => {
     expect(typeof ajustados[AVISO]).toBe('string')
   })
 })
+
+describe('el aviso del portal dentro del saludo', () => {
+  const AVISO = 'https://www.zonaprop.com.ar/propiedades/clasificado/veclcain-duplex-59885245.html'
+  const CON_AVISO = variantesDeSaludo({
+    leadName: 'Viviana López',
+    advisorName: 'Diego Ferreyra',
+    propertyLabel: 'Entre Ríos 2300',
+    avisoUrl: AVISO,
+  })
+
+  it('el saludo más completo termina con el aviso, en su propio renglón', () => {
+    expect(CON_AVISO[0]).toBe(
+      'Hola Viviana López, buen día! Mi nombre es Diego Ferreyra, un gusto saludarte.' +
+        ' Te escribo por tu consulta de la propiedad en Entre Ríos 2300.' +
+        `\n\n${AVISO}`,
+    )
+  })
+
+  it('el salto de línea SOBREVIVE el armado del link', () => {
+    const link = armarLinkRespuesta('541154974791', CON_AVISO, Infinity)
+    expect(link).toContain('%0A%0A')
+    expect(new URL(link).searchParams.get('text')).toBe(CON_AVISO[0])
+  })
+
+  it('el interesado recibe el enlace entero, no cortado', () => {
+    const texto = new URL(armarLinkRespuesta('541154974791', CON_AVISO, Infinity)).searchParams.get('text')!
+    expect(texto.split('\n').pop()).toBe(AVISO)
+  })
+
+  it('el link sigue sin espacios: Meta rechaza parámetros con saltos crudos', () => {
+    expect(armarLinkRespuesta('541154974791', CON_AVISO, Infinity)).not.toMatch(/\s/)
+  })
+
+  it('si el aviso NO es un enlace (un código, un título), no se mete en el saludo', () => {
+    for (const basura of ['⚠️ CÓD 12345 · Departamento 2 ambientes', 'Depto en Palermo', '', null]) {
+      const v = variantesDeSaludo({
+        leadName: 'Ana', advisorName: 'Diego', propertyLabel: 'X', avisoUrl: basura,
+      })
+      expect(v[0]).not.toContain('\n')
+      expect(v[0].endsWith('.')).toBe(true)
+    }
+  })
+
+  it('cuando el espacio aprieta, lo primero que cede es el aviso, no el saludo', () => {
+    const sinAviso = variantesDeSaludo({
+      leadName: 'Viviana López', advisorName: 'Diego Ferreyra', propertyLabel: 'Entre Ríos 2300',
+    })
+    expect(CON_AVISO[1]).toBe(sinAviso[0])
+    const justo = 'https://wa.me/541154974791?text='.length + encodeURIComponent(CON_AVISO[1]).length
+    expect(new URL(armarLinkRespuesta('541154974791', CON_AVISO, justo)).searchParams.get('text')).toBe(CON_AVISO[1])
+  })
+
+  it('las variantes siguen yendo de más larga a más corta', () => {
+    for (let i = 1; i < CON_AVISO.length; i++) {
+      expect(CON_AVISO[i].length).toBeLessThan(CON_AVISO[i - 1].length)
+    }
+  })
+})

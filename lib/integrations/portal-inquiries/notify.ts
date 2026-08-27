@@ -11,6 +11,7 @@ import {
   ajustarAlTope,
 } from './reply-link'
 import { acortar } from '@/lib/links/short-link-store'
+import { codigoDeUrlCorta } from '@/lib/links/short-link'
 
 /**
  * Orquesta el envío de WhatsApp para una consulta nueva:
@@ -92,6 +93,17 @@ const CUERPO_DE_REFERENCIA =
 const INDICE_AVISO = 5
 
 /**
+ * Las plantillas que TIENEN el botón "Responder al interesado".
+ *
+ * Mandarle a Meta un componente de botón que la plantilla aprobada no declara
+ * hace que RECHACE el envío entero. Mientras `WHATSAPP_TEMPLATE_NAME` siga
+ * apuntando a `consulta_portal_util` (sin botón), acá no se manda nada y los
+ * avisos salen como hoy. Cuando Meta apruebe `consulta_portal_v2` y se cambie
+ * esa variable en Netlify, el botón se enciende solo — sin tocar código.
+ */
+const PLANTILLAS_CON_BOTON = new Set(['consulta_portal_v2'])
+
+/**
  * Orden de parámetros del body de la plantilla. La plantilla aprobada en Meta
  * (WHATSAPP_TEMPLATE_NAME, idioma es_AR) DEBE tener exactamente 10 placeholders
  * en este orden — calca el formato de la captura del usuario:
@@ -120,7 +132,7 @@ async function buildBodyParams(
   inq: NotifyInquiry,
   advisorLabel: string,
   saludos: string[],
-): Promise<string[]> {
+): Promise<{ params: string[]; codigoBoton?: string }> {
   const otros = [
     sanitizarParametro(advisorLabel, 40),
     // Sin '#': la plantilla aprobada ya dice "Consulta #{{2}}". Con el '#' acá
@@ -142,7 +154,13 @@ async function buildBodyParams(
   // Sin acortador (caído, tabla ausente, lo que sea) el aviso igual sale: se
   // manda el `wa.me` crudo, y AHÍ sí hay que medirlo contra el tope de Meta.
   const link = corto ?? armarLinkRespuesta(phone, saludos, espacioParaElLink(CUERPO_DE_REFERENCIA, otros))
-  return ajustarAlTope(CUERPO_DE_REFERENCIA, [...otros, link], INDICE_AVISO)
+  return {
+    params: ajustarAlTope(CUERPO_DE_REFERENCIA, [...otros, link], INDICE_AVISO),
+    // El botón recibe SOLO el código: la parte fija de la URL vive en la
+    // plantilla aprobada. Sin acortador no hay botón posible (el `wa.me` crudo
+    // no se puede partir en base + sufijo), pero el link del cuerpo sigue ahí.
+    codigoBoton: corto ? (codigoDeUrlCorta(corto) ?? undefined) : undefined,
+  }
 }
 
 async function getOwner(supabase: SupabaseClient): Promise<ProfileLite | null> {
@@ -225,11 +243,17 @@ export async function notifyInquiry(supabase: SupabaseClient, inq: NotifyInquiry
   const saludos = variantesDeSaludo({
     leadName: inq.leadName,
     advisorName: respondingProfile?.full_name ?? 'el equipo',
+    // El aviso del portal se le pasa TAMBIÉN al interesado, al final del saludo.
+    // `avisoLabel` ya es `match.external_url || parsed.propertyUrl || …`: cuando
+    // el cron tiene el enlace, es esto. Cuando no, trae un título o un código y
+    // `variantesDeSaludo` lo descarta solo — no hace falta distinguirlo acá.
+    avisoUrl: inq.avisoLabel,
     // El saludo al interesado usa el label limpio; si el cron no lo mandó
     // (llamadas viejas), cae al propertyLabel de siempre.
     propertyLabel: inq.leadPropertyLabel !== undefined ? inq.leadPropertyLabel : inq.propertyLabel,
   })
-  const bodyParams = await buildBodyParams(inq, advisorLabel, saludos)
+  const { params: bodyParams, codigoBoton } = await buildBodyParams(inq, advisorLabel, saludos)
+  const urlButtonParam = PLANTILLAS_CON_BOTON.has(TEMPLATE) ? codigoBoton : undefined
   const attemptedPhones = new Set<string>()
 
   for (const r of recipients) {
@@ -257,6 +281,7 @@ export async function notifyInquiry(supabase: SupabaseClient, inq: NotifyInquiry
       templateName: TEMPLATE,
       languageCode: LANG,
       bodyParams,
+      urlButtonParam,
       propertyId: inq.propertyId,
     })
     const status: 'sent' | 'failed' | 'skipped' = send.ok ? (send.skipped ? 'skipped' : 'sent') : 'failed'
@@ -288,6 +313,7 @@ export async function notifyInquiry(supabase: SupabaseClient, inq: NotifyInquiry
       templateName: TEMPLATE,
       languageCode: LANG,
       bodyParams,
+      urlButtonParam,
       propertyId: inq.propertyId,
     })
     const status: 'sent' | 'failed' | 'skipped' = send.ok ? (send.skipped ? 'skipped' : 'sent') : 'failed'
