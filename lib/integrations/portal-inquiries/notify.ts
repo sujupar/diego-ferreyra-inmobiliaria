@@ -2,6 +2,14 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { InquiryType, Portal } from './types'
 import { sendWhatsappTemplate, normalizePhone } from '../whatsapp/meta-cloud'
+import { CUERPOS_DE_PLANTILLA } from '../whatsapp/cuerpos'
+import {
+  variantesDeSaludo,
+  espacioParaElLink,
+  armarLinkRespuesta,
+  sanitizarParametro,
+  ajustarAlTope,
+} from './reply-link'
 
 /**
  * Orquesta el envío de WhatsApp para una consulta nueva:
@@ -62,56 +70,25 @@ export interface NotifyResult {
   failed: number
 }
 
-/** Meta rechaza params de plantilla con saltos de línea, tabs o >4 espacios. */
-function sanitizeParam(s: string | null | undefined, max = 300): string {
-  const clean = (s ?? '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim()
-  if (!clean) return '-'
-  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean
-}
-
 function firstNameUpper(fullName: string | null): string {
   const first = (fullName ?? '').trim().split(/\s+/)[0]
   return first ? first.toUpperCase() : 'SIN ASIGNAR'
 }
 
 /**
- * Link wa.me para que el asesor responda al interesado con un saludo pre-armado.
- * Si no hay teléfono válido, devuelve el aviso (como en la captura del usuario).
+ * El cuerpo aprobado contra el que se mide el presupuesto de caracteres.
+ *
+ * Sale del registro sincronizado con Meta, así que si la plantilla se edita el
+ * cálculo se ajusta solo. Si `WHATSAPP_TEMPLATE_NAME` apunta a una plantilla que
+ * todavía no se sincronizó, se mide contra la de siempre: mismo formato de 10
+ * parámetros, y errar por un par de caracteres es infinitamente mejor que no
+ * medir nada.
  */
-/** Acorta una URL con TinyURL (sin auth). Si falla, devuelve la URL original. */
-async function shortenUrl(url: string): Promise<string> {
-  try {
-    const res = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(url)}`, {
-      signal: AbortSignal.timeout(5000),
-    })
-    if (res.ok) {
-      const short = (await res.text()).trim()
-      if (/^https?:\/\//.test(short)) return short
-    }
-  } catch {
-    // TinyURL caído / rate-limit → usamos la URL completa (larga pero funcional).
-  }
-  return url
-}
+const CUERPO_DE_REFERENCIA =
+  CUERPOS_DE_PLANTILLA[TEMPLATE] ?? CUERPOS_DE_PLANTILLA['consulta_portal_util']
 
-async function buildReplyLink(
-  leadPhone: string | null, leadName: string | null, advisorName: string, propertyLabel: string | null,
-): Promise<string> {
-  const phone = normalizePhone(leadPhone)
-  if (!phone) return '⚠️ No pude armar el link porque falta un teléfono válido'
-  // Saludo COMPLETO y bien estructurado para contactar al prospecto; el link se
-  // acorta con TinyURL (queda tipo tinyurl.com/xxxx en el WhatsApp).
-  // Sin propiedad identificada, el saludo NO la menciona (mejor genérico que
-  // mandarle al interesado un código interno o "(propiedad sin identificar)").
-  const propertyPart = propertyLabel
-    ? ` Te escribo por tu consulta de la propiedad en ${propertyLabel}.`
-    : ' Te escribo por la consulta que nos hiciste.'
-  const greeting =
-    `Hola ${(leadName ?? '').trim()}, buen día! Mi nombre es ${advisorName}, un gusto saludarte.` +
-    propertyPart
-  const longUrl = `https://wa.me/${phone}?text=${encodeURIComponent(greeting.replace(/\s+/g, ' ').trim())}`
-  return await shortenUrl(longUrl)
-}
+/** El "Aviso" ({{6}}) es el parámetro que cede si el cuerpo no entra en el tope. */
+const INDICE_AVISO = 5
 
 /**
  * Orden de parámetros del body de la plantilla. La plantilla aprobada en Meta
@@ -133,22 +110,31 @@ async function buildReplyLink(
  *   💬 Responder por WhatsApp:
  *   {{10}}
  *
- * El link wa.me ({{10}}) va URL-encodeado: no tiene espacios ni saltos, así que
- * cumple las restricciones de parámetros de Meta.
+ * El link ({{10}}) es un `wa.me` DIRECTO, sin acortador: es lo único que hace
+ * que WhatsApp abra el chat del interesado en vez de mandar al navegador. El
+ * precio es que ocupa lugar, así que se arma último, con lo que sobra del tope
+ * de 1024 de Meta. Ver `./reply-link.ts`.
  */
-function buildBodyParams(inq: NotifyInquiry, advisorLabel: string, replyLink: string): string[] {
-  return [
-    sanitizeParam(advisorLabel, 40),
-    sanitizeParam(`#${inq.seq}`, 12),
-    sanitizeParam(PORTAL_LABEL[inq.portal], 40),
-    sanitizeParam(inq.inquiryType ? TYPE_LABEL[inq.inquiryType] : '—', 20),
-    sanitizeParam(inq.propertyLabel, 120),
-    sanitizeParam(inq.avisoLabel, 120),
-    sanitizeParam(inq.leadName, 80),
-    sanitizeParam(inq.leadPhone, 40),
-    sanitizeParam(inq.leadEmail, 80),
-    sanitizeParam(replyLink, 700),
+function buildBodyParams(inq: NotifyInquiry, advisorLabel: string, saludos: string[]): string[] {
+  const otros = [
+    sanitizarParametro(advisorLabel, 40),
+    // Sin '#': la plantilla aprobada ya dice "Consulta #{{2}}". Con el '#' acá
+    // el mensaje salía "Consulta ##291".
+    sanitizarParametro(String(inq.seq), 12),
+    sanitizarParametro(PORTAL_LABEL[inq.portal], 40),
+    sanitizarParametro(inq.inquiryType ? TYPE_LABEL[inq.inquiryType] : '—', 20),
+    sanitizarParametro(inq.propertyLabel, 120),
+    sanitizarParametro(inq.avisoLabel, 120),
+    sanitizarParametro(inq.leadName, 80),
+    sanitizarParametro(inq.leadPhone, 40),
+    sanitizarParametro(inq.leadEmail, 80),
   ]
+  const link = armarLinkRespuesta(
+    normalizePhone(inq.leadPhone),
+    saludos,
+    espacioParaElLink(CUERPO_DE_REFERENCIA, otros),
+  )
+  return ajustarAlTope(CUERPO_DE_REFERENCIA, [...otros, link], INDICE_AVISO)
 }
 
 async function getOwner(supabase: SupabaseClient): Promise<ProfileLite | null> {
@@ -228,15 +214,14 @@ export async function notifyInquiry(supabase: SupabaseClient, inq: NotifyInquiry
   // El que responde (y firma el saludo) es el asesor asignado; sin match, Diego.
   const respondingProfile = assignedProfile ?? owner
   const advisorLabel = firstNameUpper(assignedProfile?.full_name ?? null)
-  const replyLink = await buildReplyLink(
-    inq.leadPhone,
-    inq.leadName,
-    respondingProfile?.full_name ?? 'el equipo',
+  const saludos = variantesDeSaludo({
+    leadName: inq.leadName,
+    advisorName: respondingProfile?.full_name ?? 'el equipo',
     // El saludo al interesado usa el label limpio; si el cron no lo mandó
     // (llamadas viejas), cae al propertyLabel de siempre.
-    inq.leadPropertyLabel !== undefined ? inq.leadPropertyLabel : inq.propertyLabel,
-  )
-  const bodyParams = buildBodyParams(inq, advisorLabel, replyLink)
+    propertyLabel: inq.leadPropertyLabel !== undefined ? inq.leadPropertyLabel : inq.propertyLabel,
+  })
+  const bodyParams = buildBodyParams(inq, advisorLabel, saludos)
   const attemptedPhones = new Set<string>()
 
   for (const r of recipients) {
