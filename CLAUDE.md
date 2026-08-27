@@ -374,6 +374,15 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Escritura:** ruta propia `POST /api/properties/[id]/commercial-status` (NO el `PUT` genérico, que crea tareas y manda emails al pasar a `pending_review`). Son dos escrituras sin transacción: primero la propiedad, después el evento con un reintento; si el evento falla igual, responde 200 con `warning`.
 - **Deuda documentada:** `descartada` se escribe TAMBIÉN en `status` (espejo heredado) porque cinco lugares todavía leen `status === 'descartada'` — badge del listado, descarte masivo, `isDiscarded`, `nextStep` y la vista `vw_properties_list`. `commercial_status` es la fuente de verdad; migrar esos cinco lectores y sacar el espejo queda pendiente.
 
+### Acortar un link de WhatsApp lo ROMPE — el `wa.me` va crudo (2026-08-27)
+
+- **Symptom:** el link "Responder al interesado" del aviso de consulta sacaba al asesor de WhatsApp: abría el navegador, había que esperar unos segundos y tocar "Continuar al chat" para recién ahí llegar al chat del interesado.
+- **Root cause:** WhatsApp intercepta NATIVAMENTE los links a sus propios dominios — un `https://wa.me/<tel>?text=<saludo>` tocado desde adentro de WhatsApp abre el chat con el mensaje ya escrito, sin navegador. Ese link se pasaba por TinyURL (commit `ce9aa8f`, 2026-06-30, por motivos **estéticos**: "que quede tipo tinyurl.com/xxxx"). WhatsApp veía `tinyurl.com`, un dominio ajeno → navegador interno → TinyURL redirigía a wa.me → wa.me YA EN EL NAVEGADOR muestra su pantalla intermedia de "Continuar al chat".
+- **Un acortador PROPIO no arregla nada.** El problema no es de quién es el dominio: es que cualquier salto por un dominio que no sea de WhatsApp rompe la intercepción. `inmodf.com.ar/r/abc` haría exactamente lo mismo. **NO REINTRODUCIR NINGÚN ACORTADOR** en `lib/integrations/portal-inquiries/reply-link.ts`.
+- **El precio, que es real:** el `wa.me` crudo es largo (~240 chars con el saludo encodeado) y Meta corta el cuerpo renderizado de una plantilla en **1024 caracteres**; pasarse no degrada el mensaje, lo RECHAZA — nadie se entera de la consulta. Por eso el saludo viene en VARIANTES de más completa a más corta y se elige la más larga que entre (`armarLinkRespuesta`), y hay una red de seguridad (`ajustarAlTope`) donde el "Aviso" cede si aun así no entra. El presupuesto se mide contra el cuerpo REAL aprobado (`CUERPOS_DE_PLANTILLA`), no contra una copia, así no se desincroniza.
+- **Se recorta por FRASE, nunca por carácter:** un saludo cortado al medio lo lee el cliente, y una URL cortada al medio no es un link — es texto azul que no lleva a ningún lado. Por eso `sanitizarParametro` **nunca trunca una URL**. Ese mismo bug tenía el campo "Aviso", cortado en 120 chars con un "…" (o sea, inservible justo cuando el asesor quería abrir el aviso del portal).
+- **Detection:** si un link del mensaje termina en "…", está truncado por NUESTRO código, no por WhatsApp. Y si el aviso no abre al tocarlo, mirar el tope del `sanitizarParametro` correspondiente.
+
 ### Foreign keys a `profiles(id)` deben ser `ON DELETE SET NULL`
 
 - **Symptom:** Borrar un usuario desde Supabase Auth devuelve "Database error deleting user".
