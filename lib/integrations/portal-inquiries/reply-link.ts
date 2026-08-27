@@ -54,6 +54,16 @@ export interface DatosDelSaludo {
    * mejor un saludo genérico que mandarle un código interno nuestro.
    */
   propertyLabel: string | null
+  /**
+   * El enlace del aviso del portal del que vino la consulta, si lo tenemos.
+   * Va al FINAL del saludo, en su propio renglón, para que el interesado tenga a
+   * mano el aviso que estuvo mirando (pedido del dueño, 2026-08-27).
+   *
+   * Se ignora si no es un enlace: `avisoLabel` a veces trae un código o un
+   * título ("⚠️ CÓD 12345 · Departamento 2 ambientes") y eso, pegado en el
+   * mensaje al cliente, es basura interna nuestra.
+   */
+  avisoUrl?: string | null
 }
 
 /**
@@ -62,7 +72,7 @@ export interface DatosDelSaludo {
  * Siempre son frases terminadas: la que se elija es la que va a leer el
  * interesado en su chat, así que ninguna puede quedar colgada a mitad.
  */
-export function variantesDeSaludo({ leadName, advisorName, propertyLabel }: DatosDelSaludo): string[] {
+export function variantesDeSaludo({ leadName, advisorName, propertyLabel, avisoUrl }: DatosDelSaludo): string[] {
   const nombre = (leadName ?? '').trim()
   const asesor = advisorName.trim() || 'el equipo'
   const apertura = nombre ? `Hola ${nombre}, buen día!` : 'Hola, buen día!'
@@ -71,7 +81,15 @@ export function variantesDeSaludo({ leadName, advisorName, propertyLabel }: Dato
     ? ` Te escribo por tu consulta de la propiedad en ${propertyLabel}.`
     : ' Te escribo por la consulta que nos hiciste.'
 
-  const variantes = [`${presentacion}${porQue}`, presentacion, apertura]
+  // Solo si es un enlace de verdad: ver `avisoUrl`.
+  const aviso = (avisoUrl ?? '').trim()
+  const conAviso = /^https?:\/\//i.test(aviso) ? `${presentacion}${porQue}\n\n${aviso}` : null
+
+  // De más completa a más corta. El aviso es lo PRIMERO que cede si no entra:
+  // el saludo sin enlace sigue sirviendo, un enlace sin saludo no.
+  const variantes = [conAviso, `${presentacion}${porQue}`, presentacion, apertura].filter(
+    (v): v is string => v !== null,
+  )
   // Sin duplicados y en orden estricto de largo: el buscador de más abajo se
   // queda con la primera que entra, así que dos iguales serían una pasada al pedo.
   return variantes.filter((s, i) => i === 0 || s.length < variantes[i - 1].length)
@@ -110,7 +128,13 @@ export function armarLinkRespuesta(
   for (const saludo of variantes) {
     // Se encodea la frase ENTERA, ya elegida. Recortar después de encodear
     // partiría un %XX al medio y dejaría una URL inválida.
-    const link = `${pelado}?text=${encodeURIComponent(saludo.replace(/\s+/g, ' ').trim())}`
+    //
+    // Se normalizan los espacios PERO NO los saltos de línea (`[^\S\n]`): el
+    // enlace del aviso va en su propio renglón, y un `\s+` los aplastaría todos
+    // dejando el saludo y el enlace pegados en una sola línea. Los saltos no
+    // rompen nada — `encodeURIComponent` los convierte en %0A.
+    const limpio = saludo.replace(/[^\S\n]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
+    const link = `${pelado}?text=${encodeURIComponent(limpio)}`
     if (link.length <= espacio) return link
   }
   return pelado

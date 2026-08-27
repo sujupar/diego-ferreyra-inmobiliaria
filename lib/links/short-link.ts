@@ -48,6 +48,30 @@ export function urlCorta(codigo: string, base = process.env.NEXT_PUBLIC_APP_URL 
   return `${base.replace(/\/+$/, '')}/r/${codigo}`
 }
 
+/**
+ * El código de una URL corta nuestra, o `null` si no lo es.
+ *
+ * Hace falta porque el **botón** de la plantilla de WhatsApp no recibe la URL
+ * entera: Meta guarda la parte fija (`https://inmodf.com.ar/r/`) en la plantilla
+ * aprobada y al enviar solo se le pasa el sufijo. Así que del link armado hay
+ * que poder sacar el código de vuelta.
+ */
+export function codigoDeUrlCorta(
+  url: string,
+  base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://inmodf.com.ar',
+): string | null {
+  try {
+    const u = new URL(url)
+    // El host tiene que ser el NUESTRO: `tinyurl.com/r/abc` tiene la misma forma
+    // de path y no es un link de este acortador.
+    if (u.hostname !== new URL(base).hostname) return null
+    const m = u.pathname.match(/^\/r\/([^/]+)\/?$/)
+    return m ? m[1] : null
+  } catch {
+    return null
+  }
+}
+
 /** Los únicos destinos que este acortador acepta. Ver el comentario de arriba. */
 const HOSTS_DE_WHATSAPP = new Set(['wa.me', 'api.whatsapp.com'])
 

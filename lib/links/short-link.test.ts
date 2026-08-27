@@ -6,6 +6,7 @@ import {
   esDestinoPermitido,
   deepLinkDeWhatsapp,
   paginaDeRebote,
+  codigoDeUrlCorta,
 } from './short-link'
 
 describe('generarCodigo', () => {
@@ -134,5 +135,23 @@ describe('paginaDeRebote', () => {
     const html = paginaDeRebote('https://wa.me/')
     expect(html).toContain('wa.me')
     expect(html).not.toContain('whatsapp://send?phone=&')
+  })
+})
+
+describe('codigoDeUrlCorta', () => {
+  it('recupera el código de un link nuestro — es lo que viaja en el botón', () => {
+    expect(codigoDeUrlCorta('https://inmodf.com.ar/r/Kx7mQ2p')).toBe('Kx7mQ2p')
+  })
+
+  it('no se confunde con otro dominio ni con otra ruta', () => {
+    expect(codigoDeUrlCorta('https://tinyurl.com/r/Kx7mQ2p')).toBeNull()
+    expect(codigoDeUrlCorta('https://inmodf.com.ar/v/Kx7mQ2p')).toBeNull()
+    expect(codigoDeUrlCorta('https://wa.me/5411')).toBeNull()
+    expect(codigoDeUrlCorta('cualquier cosa')).toBeNull()
+  })
+
+  it('un ida y vuelta con urlCorta devuelve el mismo código', () => {
+    const c = generarCodigo()
+    expect(codigoDeUrlCorta(urlCorta(c, 'https://inmodf.com.ar'))).toBe(c)
   })
 })
