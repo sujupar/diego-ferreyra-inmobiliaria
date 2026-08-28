@@ -5,6 +5,7 @@ import { buildGmailQuery, detectPortal, isLeadEmail, parseByPortal } from '@/lib
 import { matchProperty } from '@/lib/integrations/portal-inquiries/match'
 import { notifyInquiry } from '@/lib/integrations/portal-inquiries/notify'
 import { evaluateDrought } from '@/lib/integrations/portal-inquiries/drought'
+import { responderConsulta } from '@/lib/leads/responder-consulta'
 import { sendWhatsappTemplate, normalizePhone } from '@/lib/integrations/whatsapp/meta-cloud'
 
 export const dynamic = 'force-dynamic'
@@ -26,7 +27,25 @@ export const maxDuration = 60 // segundos
  * TODO el handler está envuelto en try/catch que SIEMPRE persiste estado —
  * para no repetir el bug histórico de "cron que falla en silencio".
  */
+/**
+ * Cuánto tiempo del request puede haberse consumido para que todavía tenga
+ * sentido ARRANCAR una respuesta automática más.
+ *
+ * `export const maxDuration` de arriba es una directiva de Vercel y en Netlify
+ * NO hace nada: la función se corta cerca de los 26s (ver CLAUDE.md § "nunca
+ * encadenar varias llamadas de IA dentro de UN request"). Cada respuesta al
+ * interesado es un POST a Meta con techo de 8s, dentro de un bucle: con el modo
+ * prueba apagado, tres consultas nuevas en una misma corrida ya rozan el
+ * límite, y si la función se muere a mitad del bucle se pierden las consultas
+ * que faltaban INSERTAR — que es lo único que este cron no puede perder.
+ *
+ * Pasado el presupuesto, la consulta queda sin contestar y marcada para que la
+ * atienda una persona. Es peor no registrarla que no contestarla.
+ */
+const PRESUPUESTO_RESPUESTAS_MS = 12_000
+
 export async function GET(req: NextRequest) {
+  const inicioCron = Date.now()
   const secret = req.headers.get('x-cron-secret')
   if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
@@ -49,6 +68,13 @@ export async function GET(req: NextRequest) {
     notifySent: 0,
     notifySkipped: 0,
     notifyFailed: 0,
+    // Respuesta automática al interesado. `requiereAtencion` es el que hay que
+    // mirar: son las consultas que quedaron SIN contestar y necesitan a una
+    // persona.
+    respuestaEnviada: 0,
+    respuestaOmitida: 0,
+    respuestaRequiereAtencion: 0,
+    respuestaPendientes: [] as Array<{ id: string; motivo: string }>,
     errors: 0,
     errorDetails: [] as Array<{ id: string; message: string }>,
   }
@@ -249,6 +275,34 @@ export async function GET(req: NextRequest) {
         stats.notifySent += n.sent
         stats.notifySkipped += n.skipped
         stats.notifyFailed += n.failed
+
+        // --- RESPUESTA AL INTERESADO ---------------------------------------
+        // Va DESPUÉS de avisarle al asesor, y ese orden importa: el aviso al
+        // equipo es lo que no se puede perder nunca. Si contestarle al
+        // interesado falla, el asesor ya tiene la consulta en la mano.
+        //
+        // NUNCA LANZA (contrato de `responderConsulta`) y está triplemente
+        // frenada: el interruptor `consulta_respuesta_enabled`, la lista de
+        // teléfonos de prueba, y —el freno que importa— sin saber por qué
+        // propiedad pregunta, no se le escribe nada. Ver `decidirEnvio`.
+        const transcurrido = Date.now() - inicioCron
+        const r =
+          transcurrido < PRESUPUESTO_RESPUESTAS_MS
+            ? await responderConsulta(inserted.id)
+            : {
+                enviado: false,
+                motivo: `no se alcanzó a contestar en esta corrida (${Math.round(transcurrido / 1000)}s consumidos)`,
+                requiereAtencion: true,
+              }
+        if (r.enviado) stats.respuestaEnviada++
+        else if (r.requiereAtencion) {
+          stats.respuestaRequiereAtencion++
+          // A la vista en la respuesta del cron: una consulta que el sistema no
+          // pudo contestar es una persona esperando que nadie sabe que existe.
+          stats.respuestaPendientes.push({ id: inserted.id, motivo: r.motivo })
+        } else {
+          stats.respuestaOmitida++
+        }
       } catch (err) {
         stats.errors++
         stats.errorDetails.push({ id: m.id, message: err instanceof Error ? err.message : String(err) })
