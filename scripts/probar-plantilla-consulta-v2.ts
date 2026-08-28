@@ -14,7 +14,7 @@
  *   node --env-file=.env.local --import tsx scripts/probar-plantilla-consulta-v2.ts <telefono>
  */
 import { Client } from 'pg'
-import { sendWhatsappTemplate, normalizePhone } from '../lib/integrations/whatsapp/core'
+import { sendWhatsappTemplate } from '../lib/integrations/whatsapp/core'
 import { generarCodigo, urlCorta } from '../lib/links/short-link'
 import { variantesDeSaludo, armarLinkRespuesta } from '../lib/integrations/portal-inquiries/reply-link'
 
@@ -23,8 +23,15 @@ const LANG = process.env.WHATSAPP_TEMPLATE_LANG ?? 'es_AR'
 const AVISO = 'https://www.zonaprop.com.ar/propiedades/clasificado/duplex-4-ambientes-59885245.html'
 
 async function main() {
-  const destino = normalizePhone(process.argv[2])
-  if (!destino) throw new Error(`Teléfono inválido: ${process.argv[2] ?? '(ninguno)'}`)
+  // El teléfono se pasa YA en E.164 sin '+' (ej. 573107822955), a propósito:
+  // `normalizePhone` usa libphonenumber-js/max, cuya metadata no carga bajo tsx
+  // (revienta con "Cannot read properties of undefined"). En la app corre sobre
+  // el bundler de Next y anda perfecto — es solo este runner. Como esto es un
+  // script manual, alcanza con validar la forma.
+  const destino = (process.argv[2] ?? '').replace(/^\+/, '')
+  if (!/^\d{8,15}$/.test(destino)) {
+    throw new Error(`Pasá el teléfono en E.164 sin '+', ej. 573107822955. Recibí: ${process.argv[2] ?? '(nada)'}`)
+  }
 
   const saludos = variantesDeSaludo({
     leadName: 'PRUEBA',
