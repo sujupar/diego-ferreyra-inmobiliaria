@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { formatMoney, operationLabel, propertyTypeLabel } from '@/lib/properties/detail-view'
 import { commercialStatusDef } from '@/lib/properties/commercial-status'
 import { PropertyCommercialStatusCard } from '../PropertyCommercialStatusCard'
+import { GenerarDescripcionButton } from '../../GenerarDescripcionButton'
 import { PropertyDetailsEditor } from '../PropertyDetailsEditor'
 import { PropertyLocationEditor } from '../PropertyLocationEditor'
 import { leerRefArgenprop } from '@/lib/properties/location-selection'
@@ -108,9 +109,25 @@ export function OverviewTab({ property, isAbogado, onChanged }: { property: Over
               {property.description}
             </p>
           ) : (
-            <p className="text-sm text-muted-foreground italic">
-              Esta propiedad todavía no tiene descripción cargada.
-            </p>
+            <>
+              <p className="text-sm text-muted-foreground italic">
+                Esta propiedad todavía no tiene descripción cargada.
+              </p>
+              {/*
+                El botón aparece SOLO cuando falta la descripción, que es el
+                agujero real: si el asesor no la genera al dar de alta la
+                propiedad, la ficha queda sin texto y no se puede publicar bien
+                en ningún portal. Con descripción cargada NO se muestra, para no
+                invitar a pisar de un clic algo que alguien escribió.
+
+                El abogado queda afuera: no participa de la difusión. La ruta
+                igual lo rechaza, pero mostrarle un botón que va a fallar es
+                peor que no mostrárselo.
+              */}
+              {!isAbogado && (
+                <GenerarDescripcionButton propertyId={property.id} onSaved={onChanged} />
+              )}
+            </>
           )}
         </section>
 
