@@ -37,7 +37,10 @@ export function BusquedaTexto({
     })
 
     return (
-        <div className="relative">
+        // El contenedor va dentro de una barra flexible: sin ancho propio se
+        // encoge al contenido y el `w-full` del campo no sirve de nada. En
+        // celular ocupa todo el ancho; de tablet para arriba, lo suyo.
+        <div className="relative w-full sm:w-auto">
             <Search
                 aria-hidden="true"
                 className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"

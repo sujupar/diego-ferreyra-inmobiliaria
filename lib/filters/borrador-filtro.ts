@@ -75,3 +75,26 @@ export function sincronizarBorrador(estado: EstadoBorrador, valorExterno: string
 export function debeEmitir(borrador: string, valorAplicado: string): boolean {
     return borrador !== valorAplicado
 }
+
+/**
+ * ¿Todavía corresponde aplicar lo que quedó esperando?
+ *
+ * La espera del control dura unos cientos de milisegundos, y en ese rato el
+ * filtro puede cambiar DESDE AFUERA: "Limpiar todo", el botón atrás, un link.
+ * Si la espera vence igual, vuelve a aplicar lo que la persona estaba
+ * escribiendo y DESHACE ese cambio unos milisegundos después — la pantalla se
+ * mueve sola y parece embrujada.
+ *
+ * `valorAlProgramar` es el filtro que regía cuando se armó la espera;
+ * `valorActual`, el que rige ahora. Si no son el mismo, alguien cambió el
+ * filtro en el medio y lo pendiente ya no corresponde.
+ *
+ * `undefined` = no hubo espera (Enter, el botón de limpiar): esos aplican en el
+ * acto y no hay nada que pueda haber quedado viejo.
+ */
+export function debeEmitirTrasEspera(
+    valorAlProgramar: string | undefined,
+    valorActual: string,
+): boolean {
+    return valorAlProgramar === undefined || valorAlProgramar === valorActual
+}

@@ -74,11 +74,19 @@ export function RangoPrecio({ value, onChange, esperaMs }: Props) {
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); max.aplicarYa() } }}
                 className={claseCampo}
             />
-            {invertido && (
-                <span role="status" className="text-xs text-destructive">
-                    El precio desde es mayor que el hasta: así no puede haber resultados.
-                </span>
-            )}
+            {/* SIEMPRE montada, y lo que cambia es el texto. Una región viva
+                que aparece junto con su contenido muchos lectores de pantalla
+                no la anuncian: entra al árbol de accesibilidad ya poblada, así
+                que no hay cambio que leer. Vacía va en `sr-only` para no dejar
+                un hueco en la barra. Mismo criterio que el aviso de filtro de
+                las dos pantallas. */}
+            <span
+                role="status"
+                aria-live="polite"
+                className={invertido ? 'text-xs text-destructive' : 'sr-only'}
+            >
+                {invertido ? 'El precio desde es mayor que el hasta: así no puede haber resultados.' : ''}
+            </span>
         </div>
     )
 }

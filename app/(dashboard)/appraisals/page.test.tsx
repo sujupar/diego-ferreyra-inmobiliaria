@@ -43,6 +43,8 @@ function deferred<T>(): Deferred<T> {
 
 /** A4: permite simular un 401/404 de /api/auth/me (que igual devuelve JSON). */
 let authOk = true
+/** Permite simular un 500 del listado (p. ej. una consulta que la base rechaza). */
+let appraisalsOk = true
 let authDeferred: Deferred<{ id: string; role: string }>
 let appraisalsCalls: { url: string; d: Deferred<{ data: unknown[]; count: number }> }[]
 
@@ -51,6 +53,7 @@ beforeEach(() => {
   escrituras.length = 0
   push.mockClear()
   authOk = true
+  appraisalsOk = true
   authDeferred = deferred()
   appraisalsCalls = []
   vi.stubGlobal('fetch', vi.fn((url: string) => {
@@ -60,7 +63,7 @@ beforeEach(() => {
     if (url.startsWith('/api/appraisals')) {
       const d = deferred<{ data: unknown[]; count: number }>()
       appraisalsCalls.push({ url, d })
-      return d.promise.then(data => ({ ok: true, json: async () => data }))
+      return d.promise.then(data => ({ ok: appraisalsOk, status: appraisalsOk ? 200 : 500, json: async () => data }))
     }
     return Promise.reject(new Error(`fetch inesperado: ${url}`))
   }))
@@ -117,6 +120,44 @@ describe('AppraisalsPage — efecto de datos con filtros en la URL', () => {
     expect(screen.queryByText('Cargando…')).not.toBeInTheDocument()
     // Y el listado del pedido viejo nunca llegó a pintarse, ni después.
     expect(screen.queryByText('Tasación Vieja')).not.toBeInTheDocument()
+  })
+
+  it('el texto buscado y el rango de precio viajan en el pedido', async () => {
+    const { rerender } = render(<AppraisalsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(appraisalsCalls.length).toBe(1))
+    appraisalsCalls[0].d.resolve({ data: [], count: 0 })
+
+    commitear(rerender, '/appraisals?q=almagro&min=100000&max=300000')
+    await waitFor(() => expect(appraisalsCalls.length).toBe(2))
+
+    const url = appraisalsCalls[1].url
+    expect(url).toContain('q=almagro')
+    expect(url).toContain('min=100000')
+    expect(url).toContain('max=300000')
+  })
+
+  it('si el pedido falla, NO deja el listado viejo haciendose pasar por el resultado', async () => {
+    // El buscador vuelve esto alcanzable: una consulta que la base rechaza sale
+    // 500, y sin estado de error la pantalla seguía mostrando las tasaciones
+    // anteriores con el término nuevo en la caja — o sea, afirmando que ESO es
+    // lo que encontró.
+    const { rerender } = render(<AppraisalsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(appraisalsCalls.length).toBe(1))
+    appraisalsCalls[0].d.resolve({ data: [tasacion('a', 'Tasación Original')], count: 1 })
+    await screen.findByText('Tasación Original')
+
+    appraisalsOk = false
+    commitear(rerender, '/appraisals?q=loquesea')
+    await waitFor(() => expect(appraisalsCalls.length).toBe(2))
+    appraisalsCalls[1].d.resolve({ data: [], count: 0 })
+
+    await waitFor(() => expect(screen.queryByText('Cargando…')).not.toBeInTheDocument())
+    expect(screen.queryByText('Tasación Original')).not.toBeInTheDocument()
+    // Y lo dice, en vez de hacer pasar el error por "no hay resultados".
+    expect(screen.getByRole('heading', { name: /no se pudo cargar/i })).toBeInTheDocument()
+    expect(screen.queryByText('Sin resultados')).not.toBeInTheDocument()
   })
 
   it('cambiar el filtro con la página en 3 vuelve a la página 1 sin duplicar el pedido', async () => {

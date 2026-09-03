@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sincronizarBorrador, debeEmitir, BORRADOR_INICIAL } from './borrador-filtro'
+import { sincronizarBorrador, debeEmitir, debeEmitirTrasEspera, BORRADOR_INICIAL } from './borrador-filtro'
 
 /**
  * La regla difícil de un control con espera: el valor vuelve DESDE AFUERA
@@ -72,5 +72,29 @@ describe('debeEmitir', () => {
 
   it('no emite cuando los dos estan vacios', () => {
     expect(debeEmitir('', '')).toBe(false)
+  })
+})
+
+/**
+ * La espera del control es un temporizador que vive unos cientos de
+ * milisegundos. En ese rato el filtro puede cambiar DESDE AFUERA —"Limpiar
+ * todo", el botón atrás, un link—. Si la espera vence igual, vuelve a aplicar
+ * lo que la persona estaba escribiendo y DESHACE ese cambio.
+ */
+describe('debeEmitirTrasEspera', () => {
+  it('emite si el filtro no cambio mientras se esperaba', () => {
+    expect(debeEmitirTrasEspera('alma', 'alma')).toBe(true)
+  })
+
+  it('NO emite si el filtro cambio desde afuera mientras se esperaba', () => {
+    // Escribí sobre "belgrano" y antes de que venciera la espera toqué
+    // "Limpiar todo": lo que quedó pendiente ya no corresponde.
+    expect(debeEmitirTrasEspera('belgrano', '')).toBe(false)
+  })
+
+  it('emite cuando no se habia programado contra nada (camino instantaneo)', () => {
+    // Enter y el botón de limpiar aplican en el acto: no hay espera de por
+    // medio, así que no hay nada que pueda haber quedado viejo.
+    expect(debeEmitirTrasEspera(undefined, 'lo que sea')).toBe(true)
   })
 })

@@ -15,7 +15,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BusquedaTexto } from './BusquedaTexto'
 
@@ -92,6 +92,49 @@ describe('BusquedaTexto', () => {
     await u.type(campo, 'gro')
     rerender(<BusquedaTexto value="alma" onChange={avisar} esperaMs={YA} />)
     expect(campo).toHaveValue('almagro')
+  })
+
+  it('un cambio de AFUERA cancela la espera pendiente', async () => {
+    // El caso que rompía: escribís, y antes de que venza la espera tocás
+    // "Limpiar todo". La espera vencía igual y volvía a aplicar lo que habías
+    // escrito, DESHACIENDO la limpieza sola, unos milisegundos después.
+    const avisar = vi.fn()
+    const { rerender } = render(<BusquedaTexto value="belgrano" onChange={avisar} esperaMs={YA} />)
+    const campo = screen.getByRole('searchbox')
+    fireEvent.change(campo, { target: { value: 'palermo' } })
+    rerender(<BusquedaTexto value="" onChange={avisar} esperaMs={YA} />)
+    await new Promise(r => setTimeout(r, YA * 10))
+    expect(avisar).not.toHaveBeenCalled()
+    expect(campo).toHaveValue('')
+  })
+
+  it('manda el texto NORMALIZADO, no lo que quedo tipeado', async () => {
+    // Sin la normalización, el espacio del final viaja a la dirección, no
+    // coincide con el eco y el campo se pisa a sí mismo mientras se escribe.
+    const avisar = vi.fn()
+    render(<BusquedaTexto value="" onChange={avisar} esperaMs={YA} />)
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '  villa   crespo  ' } })
+    await waitFor(() => expect(avisar).toHaveBeenCalled())
+    expect(avisar).toHaveBeenCalledWith('villa crespo')
+  })
+
+  it('Enter cancela la espera pendiente — no aplica dos veces', async () => {
+    const avisar = vi.fn()
+    render(<BusquedaTexto value="" onChange={avisar} esperaMs={YA} />)
+    const u = usuario()
+    await u.type(screen.getByRole('searchbox'), 'almagro')
+    await u.keyboard('{Enter}')
+    await new Promise(r => setTimeout(r, YA * 10))
+    expect(avisar).toHaveBeenCalledTimes(1)
+  })
+
+  it('desmontar cancela la espera pendiente', async () => {
+    const avisar = vi.fn()
+    const { unmount } = render(<BusquedaTexto value="" onChange={avisar} esperaMs={YA} />)
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'alma' } })
+    unmount()
+    await new Promise(r => setTimeout(r, YA * 10))
+    expect(avisar).not.toHaveBeenCalled()
   })
 
   it('no avisa de nuevo si el texto no cambio', async () => {

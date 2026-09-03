@@ -82,7 +82,17 @@ const METACARACTERES = new Set([...'\\^$.[]|()*+?{}'])
  * de la primera.
  */
 export function normalizarBusqueda(crudo: string): string {
-    return crudo.replace(/\s+/g, ' ').trim().slice(0, MAX_LARGO_BUSQUEDA).trim()
+    // `normalize('NFC')` PRIMERO, y no es un detalle: macOS entrega el texto
+    // DESCOMPUESTO —la «ó» son dos caracteres, la letra `o` más una tilde
+    // suelta (U+0301)—, así que copiar «Autónoma» del Finder, de un PDF o de
+    // la terminal y pegarlo acá producía un patrón que exigía esa tilde suelta
+    // literal y devolvía CERO fichas, sin ningún error: el asesor concluía que
+    // la propiedad no estaba cargada. Es el mismo U+0301 que ya rompe Turbopack
+    // por el nombre de esta carpeta (ver CLAUDE.md), o sea que es el entorno de
+    // trabajo real, no un caso exótico. Va antes del recorte para que el tope
+    // cuente letras y no pedazos de letra. NFC es idempotente, así que el
+    // contrato de `use-filtros-url` se mantiene.
+    return crudo.normalize('NFC').replace(/\s+/g, ' ').trim().slice(0, MAX_LARGO_BUSQUEDA).trim()
 }
 
 /** Parte el término en palabras. Todas tienen que aparecer (ver más abajo). */
@@ -127,6 +137,34 @@ export function valorPostgrest(patron: string): string {
 }
 
 /**
+ * Techo de lo que pueden pesar TODAS las condiciones juntas, ya codificadas
+ * para la dirección.
+ *
+ * `MAX_LARGO_BUSQUEDA` acota el TEXTO, que no es lo que revienta. Lo que
+ * revienta es el largo de la dirección, y la relación entre las dos cosas varía
+ * diez veces según qué se escriba: cada vocal se convierte en una clase de seis
+ * caracteres que codificada pesa ~35, y cada palabra repite la condición para
+ * TODAS las columnas. Medido contra la base real: 33 palabras de una letra —65
+ * caracteres, o sea DENTRO del tope de texto— arman una dirección de 10,9 KB y
+ * el pedido muere con `UND_ERR_HEADERS_OVERFLOW`; el listado responde 500.
+ *
+ * El corte empírico estuvo entre 10.571 (anda) y 10.898 (revienta). 6.000 deja
+ * margen de sobra para el resto de la dirección y para la consulta hermana de
+ * banderas, que nombra tres columnas más en su `select`.
+ */
+export const MAX_CARACTERES_CONSULTA = 6000
+
+function armarClausula(columnas: readonly string[], palabra: string): string {
+    const valor = valorPostgrest(patronRegex(palabra))
+    return columnas.map(columna => `${columna}.imatch.${valor}`).join(',')
+}
+
+/** Lo que va a pesar la condición dentro de la dirección, que es lo que tiene techo. */
+function pesoEnDireccion(clausula: string): number {
+    return encodeURIComponent(clausula).length
+}
+
+/**
  * Arma una cláusula `or()` de PostgREST POR PALABRA.
  *
  * La forma es "Y de O": cada palabra tiene que aparecer en ALGUNA de las
@@ -140,8 +178,31 @@ export function valorPostgrest(patron: string): string {
  */
 export function clausulasBusqueda(columnas: readonly string[], termino: string): string[] {
     if (columnas.length === 0) return []
-    return palabrasDeBusqueda(termino).map(palabra => {
-        const valor = valorPostgrest(patronRegex(palabra))
-        return columnas.map(columna => `${columna}.imatch.${valor}`).join(',')
-    })
+
+    const clausulas: string[] = []
+    let usado = 0
+
+    for (const palabra of palabrasDeBusqueda(termino)) {
+        let recortada = palabra
+        let clausula = armarClausula(columnas, recortada)
+
+        // Una sola palabra puede no entrar NI SOLA: 80 letras acentuadas pesan
+        // unos 14.000 caracteres. Se acorta a la mitad hasta que entre. Acortar
+        // la palabra deja la búsqueda MÁS ancha, nunca más angosta — devuelve de
+        // más, no de menos.
+        while (recortada.length > 1 && usado + pesoEnDireccion(clausula) > MAX_CARACTERES_CONSULTA) {
+            recortada = recortada.slice(0, Math.floor(recortada.length / 2))
+            clausula = armarClausula(columnas, recortada)
+        }
+
+        // A partir de la segunda, la palabra que no entra se descarta. La
+        // primera entra SIEMPRE: si la lista quedara vacía, buscar algo
+        // mostraría TODO el listado, que es una mentira peor que un error.
+        if (clausulas.length > 0 && usado + pesoEnDireccion(clausula) > MAX_CARACTERES_CONSULTA) break
+
+        clausulas.push(clausula)
+        usado += pesoEnDireccion(clausula)
+    }
+
+    return clausulas
 }

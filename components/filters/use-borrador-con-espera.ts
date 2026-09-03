@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
     BORRADOR_INICIAL,
     debeEmitir,
+    debeEmitirTrasEspera,
     sincronizarBorrador,
     type EstadoBorrador,
 } from '@/lib/filters/borrador-filtro'
@@ -78,8 +79,13 @@ export function useBorradorConEspera({
     // no está.
     useEffect(() => cancelar, [])
 
-    function emitir(texto: string) {
+    function emitir(texto: string, valorAlProgramar?: string) {
         cancelar()
+        // Lo que quedó esperando puede haber envejecido: ver
+        // `debeEmitirTrasEspera`. Sin esto, escribir y tocar "Limpiar todo"
+        // hacía que la espera venciera después y volviera a aplicar el texto,
+        // deshaciendo la limpieza sola.
+        if (!debeEmitirTrasEspera(valorAlProgramar, valueRef.current)) return
         const limpio = normalizarRef.current(texto)
         if (!debeEmitir(limpio, valueRef.current)) return
         setEstado(e => ({ ...e, ultimoEmitido: limpio }))
@@ -93,7 +99,10 @@ export function useBorradorConEspera({
         escribir(texto: string) {
             setEstado(e => ({ ...e, borrador: texto }))
             cancelar()
-            temporizador.current = setTimeout(() => emitir(texto), esperaMs)
+            // Se anota contra QUÉ filtro se armó la espera. Al vencer, si el
+            // filtro ya es otro, lo pendiente se descarta.
+            const valorAlProgramar = valueRef.current
+            temporizador.current = setTimeout(() => emitir(texto, valorAlProgramar), esperaMs)
         },
         /** Enter o "limpiar": aplica sin esperar. */
         aplicarYa(texto?: string) {

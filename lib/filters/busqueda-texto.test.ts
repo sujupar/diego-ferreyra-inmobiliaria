@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  MAX_CARACTERES_CONSULTA,
   MAX_LARGO_BUSQUEDA,
   normalizarBusqueda,
   palabrasDeBusqueda,
@@ -40,6 +41,30 @@ describe('normalizarBusqueda', () => {
   it('corta el termino larguisimo al tope', () => {
     const largo = 'a'.repeat(MAX_LARGO_BUSQUEDA + 50)
     expect(normalizarBusqueda(largo)).toHaveLength(MAX_LARGO_BUSQUEDA)
+  })
+
+  it('es idempotente cuando el corte cae justo en un espacio', () => {
+    // El contrato de `use-filtros-url` exige n(n(x)) === n(x). Sin el segundo
+    // trim, este caso deja un espacio al final en la primera pasada y lo saca
+    // en la segunda: el espejo del control nunca converge y el filtro se traba.
+    const justo = 'a'.repeat(MAX_LARGO_BUSQUEDA - 1) + ' bb'
+    const unaVez = normalizarBusqueda(justo)
+    expect(normalizarBusqueda(unaVez)).toBe(unaVez)
+  })
+
+  it('junta las tildes sueltas del texto pegado (Unicode descompuesto)', () => {
+    // macOS entrega el texto DESCOMPUESTO: la «ó» son dos caracteres (o + tilde
+    // suelta). Copiar «Autónoma» del Finder y pegarlo devolvia CERO fichas, sin
+    // error. Verificado: el propio nombre de esta carpeta esta descompuesto.
+    const descompuesto = 'Auto\u0301noma'
+    expect(descompuesto).toHaveLength(9)
+    expect(normalizarBusqueda(descompuesto)).toBe('Autónoma')
+    expect(normalizarBusqueda(descompuesto)).toHaveLength(8)
+  })
+
+  it('sigue siendo idempotente despues de juntar las tildes', () => {
+    const unaVez = normalizarBusqueda('Auto\u0301noma')
+    expect(normalizarBusqueda(unaVez)).toBe(unaVez)
   })
 })
 
@@ -180,5 +205,51 @@ describe('clausulasBusqueda', () => {
 
   it('normaliza el termino antes de partirlo', () => {
     expect(clausulasBusqueda(COLUMNAS, '  diaz    velez  ')).toHaveLength(2)
+  })
+
+  it('encuentra el dato acentuado aunque el texto pegado venga descompuesto', () => {
+    const [conTilde] = clausulasBusqueda(['property_location'], 'Auto\u0301noma')
+    const [sinTilde] = clausulasBusqueda(['property_location'], 'autonoma')
+    // Las dos formas tienen que producir la MISMA consulta.
+    expect(conTilde.toLowerCase()).toBe(sinTilde.toLowerCase())
+  })
+})
+
+/**
+ * El tope de 80 caracteres acota el TEXTO, no la consulta que ese texto genera,
+ * y la relación entre las dos cosas varía diez veces según qué se escriba: cada
+ * vocal se vuelve una clase de seis caracteres que al codificarse en la
+ * dirección pesa ~35, y cada palabra repite la condición para TODAS las
+ * columnas. Medido contra la base real: 33 palabras de una letra —65 caracteres,
+ * dentro del tope— arman una dirección de 10,9 KB y el pedido revienta con
+ * `UND_ERR_HEADERS_OVERFLOW`; el listado responde 500.
+ */
+describe('clausulasBusqueda — tope de tamaño de la consulta', () => {
+  const CINCO = ['address', 'neighborhood', 'city', 'property_type', 'operation_type']
+  const pesoDe = (cs: string[]) => cs.reduce((n, c) => n + encodeURIComponent(c).length, 0)
+
+  it('una busqueda normal no se recorta', () => {
+    expect(clausulasBusqueda(CINCO, 'diaz velez almagro')).toHaveLength(3)
+  })
+
+  it('muchas palabras cortas no pasan del tope', () => {
+    const muchas = Array.from({ length: 40 }, () => 'a').join(' ')
+    expect(pesoDe(clausulasBusqueda(CINCO, muchas))).toBeLessThanOrEqual(MAX_CARACTERES_CONSULTA)
+  })
+
+  it('una sola palabra larguisima con tildes tampoco pasa del tope', () => {
+    expect(pesoDe(clausulasBusqueda(CINCO, 'á'.repeat(MAX_LARGO_BUSQUEDA)))).toBeLessThanOrEqual(MAX_CARACTERES_CONSULTA)
+  })
+
+  it('el peor caso posible sigue dentro del tope', () => {
+    // Todo el termino en letras que se expanden a clase, en palabras de una letra.
+    const peor = Array.from({ length: MAX_LARGO_BUSQUEDA }, () => 'á').join(' ')
+    expect(pesoDe(clausulasBusqueda(CINCO, peor))).toBeLessThanOrEqual(MAX_CARACTERES_CONSULTA)
+  })
+
+  it('SIEMPRE deja al menos una condicion si habia texto', () => {
+    // Si el recorte dejara la lista vacia, buscar algo mostraria TODO — una
+    // mentira peor que un error.
+    expect(clausulasBusqueda(CINCO, 'á'.repeat(MAX_LARGO_BUSQUEDA)).length).toBeGreaterThanOrEqual(1)
   })
 })

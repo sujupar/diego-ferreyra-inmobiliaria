@@ -140,6 +140,12 @@ function AppraisalsClient() {
     const [totalCount, setTotalCount] = useState(0)
     const [page, setPage] = useState(1)
     const [loading, setLoading] = useState(true)
+    // Sin esto, un pedido fallido dejaba en pantalla el listado ANTERIOR con el
+    // término nuevo en la caja de búsqueda: la pantalla afirmaba que ESO era lo
+    // que había encontrado. El buscador lo vuelve alcanzable (una consulta que
+    // la base rechaza sale 500), así que dejar de mentir es parte del trabajo.
+    // Mismo patrón que Propiedades, que ya lo tenía.
+    const [loadError, setLoadError] = useState(false)
     const [deleting, setDeleting] = useState<string | null>(null)
     const [viewMode, setViewMode] = useState<'cards' | 'table'>('table')
     const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
@@ -225,6 +231,7 @@ function AppraisalsClient() {
         if (userInfo.role === 'asesor') params.set('assigned_to', userInfo.id)
 
         setLoading(true)
+        setLoadError(false)
         fetch(`/api/appraisals?${params}`, { signal })
             .then(r => {
                 if (!r.ok) throw new Error(`GET /api/appraisals respondió ${r.status}`)
@@ -236,8 +243,13 @@ function AppraisalsClient() {
                 setTotalCount(count || 0)
             })
             .catch(err => {
+                // Una respuesta (o un AbortError) de un pedido que ya no es el
+                // vigente no puede pintar NADA: ni datos ni error.
                 if (!pedidos.vigente(gen)) return
                 console.error('Error loading appraisals:', err)
+                setLoadError(true)
+                setAppraisals([])
+                setTotalCount(0)
             })
             // El spinner del listado va versionado: si lo apagara una
             // respuesta vieja, la pantalla mostraría el listado anterior como
@@ -323,7 +335,11 @@ function AppraisalsClient() {
                 <div>
                     <h1 className="text-2xl font-bold">Historial de Tasaciones</h1>
                     <p className="text-sm text-muted-foreground">
-                        {cargando ? 'Cargando…' : `${totalCount} tasacion${totalCount !== 1 ? 'es' : ''}`}
+                        {cargando
+                            ? 'Cargando…'
+                            : loadError
+                                ? 'No se pudo consultar'
+                                : `${totalCount} tasacion${totalCount !== 1 ? 'es' : ''}`}
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -385,6 +401,21 @@ function AppraisalsClient() {
                 <div className="flex items-center justify-center py-20">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
+            ) : loadError ? (
+                <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                        <FileText className="h-12 w-12 text-destructive mb-4" />
+                        <h3 className="text-lg font-medium mb-1">No se pudo cargar el historial</h3>
+                        <p className="text-sm text-muted-foreground mb-4 max-w-md">
+                            {hayFiltros
+                                ? 'Puede ser un filtro inválido en el link o un problema de conexión. Probá de nuevo o limpiá los filtros.'
+                                : 'Puede ser un problema de conexión. Probá de nuevo.'}
+                        </p>
+                        {hayFiltros && (
+                            <Button size="sm" variant="outline" onClick={limpiarTodo}>Limpiar filtros</Button>
+                        )}
+                    </CardContent>
+                </Card>
             ) : appraisals.length === 0 ? (
                 <Card>
                     <CardContent className="flex flex-col items-center justify-center py-16">
