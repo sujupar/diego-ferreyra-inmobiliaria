@@ -54,11 +54,15 @@ export const TASACION_CONTENT = {
  */
 export const TASACION_B_CONTENT = {
   hero: {
+    // El argumento que el dueño identificó como el que más engancha en la
+    // práctica: la pérdida evitable. Va ARRIBA del titular y en chico — planta
+    // el dolor sin robarle el lugar al reencuadre, que es la tesis de la oferta.
+    kicker: 'Evitá perder miles de dólares de tu propiedad por errores evitables',
     headlineA: 'No es cuánto pedís por tu propiedad.',
     headlineB: 'Es cuánto te queda el día que escriturás.',
     highlight: 'cuánto te queda',
     subhead:
-      'En 72 horas te entregamos el plan completo de tu venta: a cuánto se vende de verdad, a cuánto no se vende, y cuánta plata te queda limpia después de impuestos, IVA, escritura y honorarios.',
+      'La mayoría se enfoca en el precio de publicación y ahí es donde se pierde la plata: impuestos que se podían evitar, IVA, gastos de escritura y una mala negociación. En 72 horas te entregamos el plan completo de tu venta: a cuánto se vende de verdad, a cuánto no se vende, y cuánta plata te queda limpia.',
     heroAmountBefore: 'US$221.000',
     heroAmountAfter: 'US$237.600',
     credit:

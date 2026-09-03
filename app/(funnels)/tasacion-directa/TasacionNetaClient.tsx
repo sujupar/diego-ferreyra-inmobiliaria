@@ -124,6 +124,9 @@ export function TasacionNetaClient({
 
       <div className="mx-auto max-w-[1000px] px-5">
         <section data-hm="hero" className="pt-6">
+          <p className="mx-auto mb-4 max-w-[640px] text-[.82rem] font-bold uppercase leading-snug tracking-[.06em] text-[#084898] md:text-sm">
+            {C.hero.kicker}
+          </p>
           <h1 className="font-[family-name:var(--font-funnel-head)] text-[1.78rem] font-black leading-[1.14] tracking-[-.022em] text-[#152238] md:text-[3.1rem]">
             {C.hero.headlineA}
             <br />
