@@ -6,6 +6,17 @@ import { insertAppraisalWithComparables } from '@/lib/supabase/appraisals-write'
 import type { SaveAppraisalInput } from '@/lib/supabase/appraisals'
 import { currentPeriod } from '@/lib/market-data/period'
 import { inicioDelDiaArgentina, finDelDiaArgentina } from '@/lib/filters/rango-fechas'
+import { clausulasBusqueda } from '@/lib/filters/busqueda-texto'
+import { parsearPrecio } from '@/lib/filters/rango-precio'
+
+/**
+ * Columnas de texto donde busca el buscador del Historial de Tasaciones.
+ *
+ * `notes` hoy está vacío en las 41 tasaciones (verificado contra la base), pero
+ * se incluye igual: no cuesta nada y el día que el equipo lo use, el buscador
+ * ya lo mira.
+ */
+const COLUMNAS_BUSQUEDA = ['property_title', 'property_location', 'property_description', 'notes'] as const
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -25,6 +36,11 @@ export async function GET(request: NextRequest) {
     const from = searchParams.get('from')
     const to = searchParams.get('to')
     const assignedTo = searchParams.get('assigned_to')
+    // Buscador de texto y rango de precio. Los tres son OPCIONALES: sin ellos
+    // la consulta queda exactamente igual que antes de que existiera el buscador.
+    const q = searchParams.get('q') || ''
+    const precioMin = parsearPrecio(searchParams.get('min'))
+    const precioMax = parsearPrecio(searchParams.get('max'))
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -45,6 +61,25 @@ export async function GET(request: NextRequest) {
     // Día ARGENTINO, no UTC — ver lib/filters/rango-fechas.ts.
     if (from) query = query.gte('created_at', inicioDelDiaArgentina(from))
     if (to) query = query.lte('created_at', finDelDiaArgentina(to))
+
+    // UNA condición por palabra: cada palabra tiene que aparecer en alguna de
+    // las columnas, y todas las palabras tienen que aparecer. Varios `.or()`
+    // sobre la misma consulta se combinan con Y — `.or()` hace `append`, no
+    // pisa (verificado en el código de postgrest-js y contra la API real).
+    for (const clausula of clausulasBusqueda(COLUMNAS_BUSQUEDA, q)) {
+      query = query.or(clausula)
+    }
+
+    // Precio. El rango se compara contra el número guardado, así que solo tiene
+    // sentido sobre fichas en la MISMA moneda: hoy las 41 están en dólares.
+    // El nulo cuenta como dólar porque así lo muestra la pantalla
+    // (`currency || 'USD'`); si la consulta lo excluyera, el listado y el
+    // filtro estarían diciendo cosas distintas sobre la misma ficha.
+    if (precioMin !== null) query = query.gte('publication_price', precioMin)
+    if (precioMax !== null) query = query.lte('publication_price', precioMax)
+    if (precioMin !== null || precioMax !== null) {
+      query = query.or('currency.eq.USD,currency.is.null')
+    }
 
     // El asesor SOLO ve sus tasaciones: las que creó (user_id) O las que tiene asignadas
     // (assigned_to). Antes filtraba solo por assigned_to → si la tasación no se asignaba

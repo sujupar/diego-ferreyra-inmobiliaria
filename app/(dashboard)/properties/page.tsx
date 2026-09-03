@@ -9,6 +9,10 @@ import { Badge } from '@/components/ui/badge'
 import { StatTile } from '@/components/ui/StatTile'
 import { FilterBar } from '@/components/filters/FilterBar'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
+import { BusquedaTexto } from '@/components/filters/BusquedaTexto'
+import { RangoPrecio } from '@/components/filters/RangoPrecio'
+import { normalizarBusqueda } from '@/lib/filters/busqueda-texto'
+import { normalizarPrecioTexto } from '@/lib/filters/rango-precio'
 import { useFiltrosUrl } from '@/lib/filters/use-filtros-url'
 import { usePedidosVersionados } from '@/lib/filters/use-pedidos-versionados'
 import { DataTable, Column } from '@/components/ui/DataTable'
@@ -39,7 +43,9 @@ const OPCIONES_ESTADO = [
 // Filtros de esta pantalla en la URL (lib/filters/use-filtros-url). El objeto
 // de defaults NO se tipa con `interface`: le falta el index signature que pide
 // `Record<string, string>` y no compila (TS2345) — objeto literal, se infiere solo.
-const FILTROS_DEFECTO = { status: '', from: '', to: '', mios: '' }
+// `q` (buscador), `min` y `max` (precio) viajan en la dirección igual que el
+// resto: link compartible, botón atrás, y "Limpiar todo" los limpia gratis.
+const FILTROS_DEFECTO = { status: '', from: '', to: '', mios: '', q: '', min: '', max: '' }
 
 // Constantes de MÓDULO, no literales dentro del componente: el hook las lee por
 // ref y su contrato pide que sean estables.
@@ -64,6 +70,10 @@ function normalizarFiltros(f: typeof FILTROS_DEFECTO): typeof FILTROS_DEFECTO {
     ...f,
     from: FECHA_RE.test(f.from) ? f.from : '',
     to: FECHA_RE.test(f.to) ? f.to : '',
+    // Las dos son puras e idempotentes, como exige el contrato del hook.
+    q: normalizarBusqueda(f.q),
+    min: normalizarPrecioTexto(f.min),
+    max: normalizarPrecioTexto(f.max),
   }
 }
 
@@ -74,6 +84,9 @@ const ETIQUETAS_FILTRO: Record<string, string> = {
   from: 'Desde',
   to: 'Hasta',
   mios: 'Solo mías',
+  q: 'Búsqueda',
+  min: 'Precio desde',
+  max: 'Precio hasta',
 }
 
 function mensajeRechazo(claves: string[]): string {
@@ -81,10 +94,13 @@ function mensajeRechazo(claves: string[]): string {
   const lista = nombres.length > 1
     ? `${nombres.slice(0, -1).join(', ')} y ${nombres[nombres.length - 1]}`
     : nombres[0]
-  const soloFechas = claves.every(c => c === 'from' || c === 'to')
-  return soloFechas
-    ? `No se aplicó ${lista}: revisá la fecha (el año va con 4 dígitos, por ejemplo 2026-08-01).`
-    : `No se aplicó ${lista}: ese valor no es válido.`
+  if (claves.every(c => c === 'from' || c === 'to')) {
+    return `No se aplicó ${lista}: revisá la fecha (el año va con 4 dígitos, por ejemplo 2026-08-01).`
+  }
+  if (claves.every(c => c === 'min' || c === 'max')) {
+    return `No se aplicó ${lista}: escribí solo el número, por ejemplo 150000.`
+  }
+  return `No se aplicó ${lista}: ese valor no es válido.`
 }
 
 // Shape del LISTADO — viene de vw_properties_list (GET /api/properties), sin
@@ -297,6 +313,9 @@ function PropertiesClient() {
     if (filtros.from) params.set('from', filtros.from)
     if (filtros.to) params.set('to', filtros.to)
     if (filtros.mios === '1' && userInfo?.id) params.set('assigned_to', userInfo.id)
+    if (filtros.q) params.set('q', filtros.q)
+    if (filtros.min) params.set('min', filtros.min)
+    if (filtros.max) params.set('max', filtros.max)
     if (tableSort) {
       params.set('sort', tableSort.key)
       params.set('dir', tableSort.dir)
@@ -527,7 +546,9 @@ function PropertiesClient() {
   // H1: "Limpiar filtros" solo tiene sentido si hay filtros que limpiar. Sale
   // de `filtros` (la URL aplicada), no del espejo: en estado de error no hay
   // escritura pendiente y lo que importa es qué se pidió realmente.
-  const hayFiltros = !!filtros.status || !!filtros.from || !!filtros.to || filtros.mios === '1'
+  const hayFiltros =
+    !!filtros.status || !!filtros.from || !!filtros.to || filtros.mios === '1' ||
+    !!filtros.q || !!filtros.min || !!filtros.max
 
   const columns: Column<Property>[] = [
     { key: 'address', label: 'Direccion', sortable: true, render: r => <span className="font-medium">{r.address}</span> },
@@ -617,8 +638,20 @@ function PropertiesClient() {
         values={mostrado}
         onChange={setFiltro}
         onClear={limpiarTodo}
-        extraActivo={!!mostrado.from || !!mostrado.to || mostrado.mios === '1'}
+        extraActivo={
+          !!mostrado.from || !!mostrado.to || mostrado.mios === '1' ||
+          !!mostrado.q || !!mostrado.min || !!mostrado.max
+        }
       >
+        <BusquedaTexto
+          value={mostrado.q}
+          onChange={q => aplicarFiltros({ q })}
+          placeholder="Buscar por dirección, barrio, tipo…"
+        />
+        <RangoPrecio
+          value={{ min: mostrado.min, max: mostrado.max }}
+          onChange={r => aplicarFiltros({ min: r.min, max: r.max })}
+        />
         <DateRangeFilter
           value={{ from: mostrado.from, to: mostrado.to }}
           onChange={r => aplicarFiltros({ from: r.from, to: r.to })}
@@ -691,9 +724,22 @@ function PropertiesClient() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <Building2 className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-1">Sin propiedades</h3>
-            <p className="text-sm text-muted-foreground mb-4">Crea tu primera propiedad captada.</p>
-            <Link href="/properties/new"><Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nueva</Button></Link>
+            {/* Con filtros puestos, "creá tu primera propiedad" es mentira: hay
+                propiedades, no coinciden con la búsqueda. Y la salida útil no es
+                "Nueva", es limpiar los filtros. */}
+            <h3 className="text-lg font-medium mb-1">
+              {hayFiltros ? 'Sin resultados' : 'Sin propiedades'}
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4 max-w-md text-center">
+              {hayFiltros
+                ? (filtros.q
+                    ? `Ninguna propiedad coincide con «${filtros.q}» y los filtros puestos.`
+                    : 'Ninguna propiedad coincide con los filtros puestos.')
+                : 'Crea tu primera propiedad captada.'}
+            </p>
+            {hayFiltros
+              ? <Button size="sm" variant="outline" onClick={limpiarTodo}>Limpiar filtros</Button>
+              : <Link href="/properties/new"><Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nueva</Button></Link>}
           </CardContent>
         </Card>
       ) : viewMode === 'grid' ? (

@@ -9,6 +9,10 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { FilterBar } from '@/components/filters/FilterBar'
 import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
+import { BusquedaTexto } from '@/components/filters/BusquedaTexto'
+import { RangoPrecio } from '@/components/filters/RangoPrecio'
+import { normalizarBusqueda } from '@/lib/filters/busqueda-texto'
+import { normalizarPrecioTexto } from '@/lib/filters/rango-precio'
 import { useFiltrosUrl, mismosFiltros } from '@/lib/filters/use-filtros-url'
 import { usePedidosVersionados } from '@/lib/filters/use-pedidos-versionados'
 import { DataTable, Column } from '@/components/ui/DataTable'
@@ -34,9 +38,10 @@ function formatDate(d: string) {
 // identidad en cada render y el listado se re-pide sin parar (ver el hook).
 // Único filtro real hoy: el rango de fechas (antes vivía en un `useState`
 // suelto, `dateRange`; ahora en la URL, igual que en
-// Propiedades/Contactos/CRM/Visitas). No hay claves de lista cerrada, así que
-// no hace falta `permitidos`.
-const FILTROS_DEFECTO = { from: '', to: '' }
+// Propiedades/Contactos/CRM/Visitas), más el buscador (`q`) y el rango de
+// precio (`min`/`max`). No hay claves de lista cerrada, así que no hace falta
+// `permitidos`: los tres nuevos son texto libre y se validan en `normalizar`.
+const FILTROS_DEFECTO = { from: '', to: '', q: '', min: '', max: '' }
 
 // Claves propias, constante de módulo — la usa el reset de página de abajo
 // para comparar `filtros` por VALOR (no por identidad: ver el comentario
@@ -49,19 +54,29 @@ function normalizarFiltros(f: typeof FILTROS_DEFECTO): typeof FILTROS_DEFECTO {
     return {
         from: FECHA_RE.test(f.from) ? f.from : '',
         to: FECHA_RE.test(f.to) ? f.to : '',
+        // Las tres son puras e idempotentes, como exige el contrato del hook.
+        q: normalizarBusqueda(f.q),
+        min: normalizarPrecioTexto(f.min),
+        max: normalizarPrecioTexto(f.max),
     }
 }
 
-const ETIQUETAS_FILTRO: Record<string, string> = { from: 'Desde', to: 'Hasta' }
+const ETIQUETAS_FILTRO: Record<string, string> = {
+    from: 'Desde', to: 'Hasta', q: 'Búsqueda', min: 'Precio desde', max: 'Precio hasta',
+}
 
 function mensajeRechazo(claves: string[]): string {
     const nombres = claves.map(c => ETIQUETAS_FILTRO[c] ?? c)
     const lista = nombres.length > 1
         ? `${nombres.slice(0, -1).join(', ')} y ${nombres[nombres.length - 1]}`
         : nombres[0]
-    // Las dos claves posibles acá son fechas — el mensaje siempre es el de
-    // fecha (mismo patrón que Visitas/CRM/Contactos, que sí mezclan selects).
-    return `No se aplicó ${lista}: revisá la fecha (el año va con 4 dígitos, por ejemplo 2026-08-01).`
+    if (claves.every(c => c === 'from' || c === 'to')) {
+        return `No se aplicó ${lista}: revisá la fecha (el año va con 4 dígitos, por ejemplo 2026-08-01).`
+    }
+    if (claves.every(c => c === 'min' || c === 'max')) {
+        return `No se aplicó ${lista}: escribí solo el número, por ejemplo 150000.`
+    }
+    return `No se aplicó ${lista}: ese valor no es válido.`
 }
 
 export default function AppraisalsHistoryPage() {
@@ -204,6 +219,9 @@ function AppraisalsClient() {
         params.set('limit', String(pageSize))
         if (filtros.from) params.set('from', filtros.from)
         if (filtros.to) params.set('to', filtros.to)
+        if (filtros.q) params.set('q', filtros.q)
+        if (filtros.min) params.set('min', filtros.min)
+        if (filtros.max) params.set('max', filtros.max)
         if (userInfo.role === 'asesor') params.set('assigned_to', userInfo.id)
 
         setLoading(true)
@@ -276,6 +294,8 @@ function AppraisalsClient() {
         if (failed > 0) alert(`${failed} no se pudieron eliminar.`)
     }
 
+    const hayFiltros =
+        !!filtros.from || !!filtros.to || !!filtros.q || !!filtros.min || !!filtros.max
     const cargando = loading || escribiendo
     const totalPages = Math.ceil(totalCount / pageSize)
 
@@ -322,8 +342,20 @@ function AppraisalsClient() {
                 values={mostrado}
                 onChange={setFiltro}
                 onClear={limpiarTodo}
-                extraActivo={!!mostrado.from || !!mostrado.to}
+                extraActivo={
+                    !!mostrado.from || !!mostrado.to ||
+                    !!mostrado.q || !!mostrado.min || !!mostrado.max
+                }
             >
+                <BusquedaTexto
+                    value={mostrado.q}
+                    onChange={q => aplicarFiltros({ q })}
+                    placeholder="Buscar por dirección, barrio…"
+                />
+                <RangoPrecio
+                    value={{ min: mostrado.min, max: mostrado.max }}
+                    onChange={r => aplicarFiltros({ min: r.min, max: r.max })}
+                />
                 <DateRangeFilter
                     value={{ from: mostrado.from, to: mostrado.to }}
                     onChange={r => aplicarFiltros({ from: r.from, to: r.to })}
@@ -357,9 +389,22 @@ function AppraisalsClient() {
                 <Card>
                     <CardContent className="flex flex-col items-center justify-center py-16">
                         <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-                        <h3 className="text-lg font-medium mb-1">Sin tasaciones</h3>
-                        <p className="text-sm text-muted-foreground mb-4">Crea tu primera tasacion.</p>
-                        <Link href="/appraisal/new"><Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nueva Tasacion</Button></Link>
+                        {/* Con filtros puestos, "creá tu primera tasación" es
+                            mentira: hay tasaciones, no coinciden con la búsqueda.
+                            Y la salida útil no es "Nueva", es limpiar los filtros. */}
+                        <h3 className="text-lg font-medium mb-1">
+                            {hayFiltros ? 'Sin resultados' : 'Sin tasaciones'}
+                        </h3>
+                        <p className="text-sm text-muted-foreground mb-4 max-w-md text-center">
+                            {hayFiltros
+                                ? (filtros.q
+                                    ? `Ninguna tasación coincide con «${filtros.q}» y los filtros puestos.`
+                                    : 'Ninguna tasación coincide con los filtros puestos.')
+                                : 'Crea tu primera tasacion.'}
+                        </p>
+                        {hayFiltros
+                            ? <Button size="sm" variant="outline" onClick={limpiarTodo}>Limpiar filtros</Button>
+                            : <Link href="/appraisal/new"><Button size="sm"><Plus className="h-4 w-4 mr-1" /> Nueva Tasacion</Button></Link>}
                     </CardContent>
                 </Card>
             ) : viewMode === 'table' ? (

@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth/require-role'
 import { notifyPropertyCreated } from '@/lib/email/notifications/property-created'
 import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
 import { geocodePropertyBestEffort } from '@/lib/properties/geocode-on-write'
+import { parsearPrecio } from '@/lib/filters/rango-precio'
 
 const DEFAULT_PAGE_SIZE = 24
 const MAX_PAGE_SIZE = 100
@@ -22,6 +23,15 @@ export async function GET(request: NextRequest) {
     const to = searchParams.get('to') || undefined
     const assigned_to = searchParams.get('assigned_to') || undefined
 
+    // Buscador de texto y rango de precio (opcionales — sin ellos la consulta
+    // queda igual que antes de que existiera el buscador). El precio se
+    // interpreta ACÁ y viaja como número: `parsearPrecio` entiende el punto de
+    // miles argentino ("150.000" son ciento cincuenta mil, no ciento cincuenta)
+    // y descarta cualquier cosa que no sea un número.
+    const q = searchParams.get('q') || undefined
+    const min = parsearPrecio(searchParams.get('min')) ?? undefined
+    const max = parsearPrecio(searchParams.get('max')) ?? undefined
+
     const limitParam = Number(searchParams.get('limit'))
     const offsetParam = Number(searchParams.get('offset'))
     const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE
@@ -35,7 +45,7 @@ export async function GET(request: NextRequest) {
     const sort = sortParam ? { key: sortParam, dir: dirParam === 'asc' ? ('asc' as const) : ('desc' as const) } : undefined
 
     const { data, total, hasMore } = await getPropertiesListPage(
-      { status, origin, from, to, assigned_to },
+      { status, origin, from, to, assigned_to, q, min, max },
       { limit, offset },
       sort
     )

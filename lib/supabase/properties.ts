@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { inicioDelDiaArgentina, finDelDiaArgentina } from '@/lib/filters/rango-fechas'
+import { clausulasBusqueda } from '@/lib/filters/busqueda-texto'
 
 /**
  * Fire N8A (congratulations asesor) + N8B (captación admins) when a property
@@ -92,6 +93,63 @@ export interface PropertiesListFilters {
   from?: string
   to?: string
   assigned_to?: string
+  /** Texto libre del buscador. Ver `lib/filters/busqueda-texto.ts`. */
+  q?: string
+  /** Rango de precio, en la moneda de la ficha (ver `aplicarFiltrosListado`). */
+  min?: number
+  max?: number
+}
+
+/**
+ * Columnas donde busca el buscador del listado de Propiedades.
+ *
+ * Son las de `vw_properties_list`, que existen IGUAL en `properties` — eso es
+ * lo que permite mandar la misma condición a las dos consultas. `description`
+ * queda afuera a propósito: no está en la vista, y agregarla obligaría a
+ * recrear una vista compartida.
+ */
+const COLUMNAS_BUSQUEDA = ['address', 'neighborhood', 'city', 'property_type', 'operation_type'] as const
+
+/**
+ * Aplica TODOS los filtros del listado a una consulta.
+ *
+ * Existe para que sea IMPOSIBLE que las dos consultas de `getPropertiesListPage`
+ * se desincronicen. Antes los filtros estaban escritos dos veces, una por
+ * consulta; el cruce por id de abajo asume que las dos devuelven el mismo
+ * conjunto para el mismo tramo, así que un filtro agregado a una sola rompe ese
+ * cruce en silencio: las banderas terminarían pegadas a la propiedad
+ * equivocada. Con una sola función, agregar un filtro nuevo lo aplica a las dos
+ * por construcción.
+ */
+function aplicarFiltrosListado<T>(query: T, filters: PropertiesListFilters): T {
+  // El builder de supabase-js encadena devolviendo `this`; tiparlo acá
+  // obligaría a arrastrar los genéricos de PostgrestFilterBuilder sin ganar
+  // nada — el contrato real lo fijan las pruebas de `properties.busqueda.test.ts`.
+  let q = query as any
+
+  if (filters.status) q = q.eq('status', filters.status)
+  if (filters.origin) q = q.eq('origin', filters.origin)
+  // Día ARGENTINO en las dos puntas.
+  if (filters.from) q = q.gte('created_at', inicioDelDiaArgentina(filters.from))
+  if (filters.to) q = q.lte('created_at', finDelDiaArgentina(filters.to))
+  if (filters.assigned_to) q = q.eq('assigned_to', filters.assigned_to)
+
+  // UNA condición por palabra: cada palabra tiene que aparecer en alguna
+  // columna, y todas las palabras tienen que aparecer. Varios `.or()` se
+  // combinan con Y (`.or()` hace `append`, no pisa).
+  for (const clausula of clausulasBusqueda(COLUMNAS_BUSQUEDA, filters.q || '')) {
+    q = q.or(clausula)
+  }
+
+  // Precio. Comparar el número guardado solo tiene sentido dentro de la misma
+  // moneda: hoy las 34 propiedades están en dólares. El nulo cuenta como dólar
+  // porque así lo muestra la pantalla (`currency || 'USD'`) — si la consulta lo
+  // excluyera, el listado y el filtro dirían cosas distintas de la misma ficha.
+  if (filters.min != null) q = q.gte('asking_price', filters.min)
+  if (filters.max != null) q = q.lte('asking_price', filters.max)
+  if (filters.min != null || filters.max != null) q = q.or('currency.eq.USD,currency.is.null')
+
+  return q as T
 }
 
 /** Columnas de `vw_properties_list` que la tabla del listado deja ordenar por header. */
@@ -153,32 +211,25 @@ export async function getPropertiesListPage(
   const { limit, offset } = page
   const { column: sortColumn, ascending: sortAscending } = resolvePropertiesListSort(sort)
 
-  let listQuery = supabase
-    .from('vw_properties_list')
-    .select('*', { count: 'exact' })
-    .order(sortColumn, { ascending: sortAscending })
-    .order('id', { ascending: true })
+  // Las dos consultas se arman con la MISMA función de filtros — ver
+  // `aplicarFiltrosListado`. No repetir los filtros acá.
+  const listQuery = aplicarFiltrosListado(
+    supabase
+      .from('vw_properties_list')
+      .select('*', { count: 'exact' })
+      .order(sortColumn, { ascending: sortAscending })
+      .order('id', { ascending: true }),
+    filters,
+  )
 
-  if (filters.status) listQuery = listQuery.eq('status', filters.status)
-  if (filters.origin) listQuery = listQuery.eq('origin', filters.origin)
-  // Día ARGENTINO en las dos puntas — y tiene que ser EXACTAMENTE el mismo
-  // corte que el de `flagsQuery` de abajo, o las dos consultas devolverían
-  // conjuntos distintos para el mismo offset y el merge por id quedaría cojo.
-  if (filters.from) listQuery = listQuery.gte('created_at', inicioDelDiaArgentina(filters.from))
-  if (filters.to) listQuery = listQuery.lte('created_at', finDelDiaArgentina(filters.to))
-  if (filters.assigned_to) listQuery = listQuery.eq('assigned_to', filters.assigned_to)
-
-  let flagsQuery = supabase
-    .from('properties')
-    .select('id, legal_docs_pending, origin_pending')
-    .order(sortColumn, { ascending: sortAscending })
-    .order('id', { ascending: true })
-
-  if (filters.status) flagsQuery = flagsQuery.eq('status', filters.status)
-  if (filters.origin) flagsQuery = flagsQuery.eq('origin', filters.origin)
-  if (filters.from) flagsQuery = flagsQuery.gte('created_at', inicioDelDiaArgentina(filters.from))
-  if (filters.to) flagsQuery = flagsQuery.lte('created_at', finDelDiaArgentina(filters.to))
-  if (filters.assigned_to) flagsQuery = flagsQuery.eq('assigned_to', filters.assigned_to)
+  const flagsQuery = aplicarFiltrosListado(
+    supabase
+      .from('properties')
+      .select('id, legal_docs_pending, origin_pending')
+      .order(sortColumn, { ascending: sortAscending })
+      .order('id', { ascending: true }),
+    filters,
+  )
 
   const [{ data, error, count }, { data: flags, error: flagsError }] = await Promise.all([
     listQuery.range(offset, offset + limit - 1),
