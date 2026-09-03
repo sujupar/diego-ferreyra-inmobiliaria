@@ -157,6 +157,21 @@ describe('AppraisalsPage — efecto de datos con filtros en la URL', () => {
     expect(screen.queryByText('Tasación Vieja')).not.toBeInTheDocument()
   })
 
+  it('el texto buscado y el rango de precio viajan en el pedido', async () => {
+    const { rerender } = render(<AppraisalsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'admin' })
+    await waitFor(() => expect(appraisalsCalls.length).toBe(1))
+    appraisalsCalls[0].d.resolve({ data: [], count: 0 })
+
+    commitear(rerender, '/appraisals?q=almagro&min=100000&max=300000')
+    await waitFor(() => expect(appraisalsCalls.length).toBe(2))
+
+    const url = appraisalsCalls[1].url
+    expect(url).toContain('q=almagro')
+    expect(url).toContain('min=100000')
+    expect(url).toContain('max=300000')
+  })
+
   it('cambiar el filtro con la página en 3 vuelve a la página 1 sin duplicar el pedido', async () => {
     const { rerender } = render(<AppraisalsPage />)
     authDeferred.resolve({ id: 'u1', role: 'admin' })

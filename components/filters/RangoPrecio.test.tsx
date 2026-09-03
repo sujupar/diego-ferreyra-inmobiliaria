@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { RangoPrecio } from './RangoPrecio'
 
@@ -69,9 +69,24 @@ describe('RangoPrecio', () => {
     expect(screen.getByRole('status')).toHaveTextContent(/mayor/i)
   })
 
-  it('no avisa con el rango bien puesto', () => {
+  it('con el rango bien puesto la region esta pero vacia', () => {
+    // La región va SIEMPRE montada y lo que cambia es su texto. Una región que
+    // aparece junto con su contenido muchos lectores de pantalla no la
+    // anuncian: entra al árbol ya poblada, así que no hay cambio que leer. Es
+    // el mismo criterio que ya usan las dos pantallas para su aviso de filtro.
     render(<RangoPrecio value={{ min: '100000', max: '300000' }} onChange={() => {}} />)
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+  })
+
+  it('un cambio de AFUERA cancela la espera pendiente', () => {
+    const avisar = vi.fn()
+    const { rerender } = render(<RangoPrecio value={{ min: '100000', max: '' }} onChange={avisar} esperaMs={YA} />)
+    fireEvent.change(desde(), { target: { value: '250000' } })
+    rerender(<RangoPrecio value={{ min: '', max: '' }} onChange={avisar} esperaMs={YA} />)
+    return new Promise<void>(r => setTimeout(r, YA * 10)).then(() => {
+      expect(avisar).not.toHaveBeenCalled()
+      expect(desde()).toHaveValue('')
+    })
   })
 
   it('un cambio de AFUERA se refleja en los campos', () => {
