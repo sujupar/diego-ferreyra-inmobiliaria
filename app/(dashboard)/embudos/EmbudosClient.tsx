@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Check, Copy, Loader2, RefreshCw } from 'lucide-react'
 import { DateRangePicker, type DateRange } from '@/components/metrics/DateRangePicker'
 import { HeatmapPanel, type HeatSectionRow, type HeatTotalRow, type HeatGridRow } from '@/components/embudos/HeatmapPanel'
+import { AbTestPanel } from './AbTestPanel'
 
 interface FunnelByDayRow {
   day: string
@@ -307,7 +308,12 @@ function VideoAnalytics({
             <option value="anon">No registrados</option>
             <option value="reg">Registrados</option>
             {stages.map((s) => (
-              <option key={s} value={`stage:${s}`}>{`Etapa: ${STAGE_LABELS[s] || s}`}</option>
+              // "Etapa: X" se leía como si el video fuera de ese embudo. En
+              // realidad es la etapa que hoy tiene en el CRM quien vio ESTE
+              // video: alguien que se anotó en la clase y después miró el video
+              // de tasación aparecía como "Etapa: Clase gratuita" acá adentro y
+              // parecía un error de atribución. El rótulo lo aclara.
+              <option key={s} value={`stage:${s}`}>{`Registrados hoy en: ${STAGE_LABELS[s] || s}`}</option>
             ))}
           </select>
         </div>
@@ -439,7 +445,7 @@ function CampaignTable({ rows }: { rows: CampaignRow[] }) {
   )
 }
 
-function FunnelCard({ funnel }: { funnel: FunnelMetrics }) {
+function FunnelCard({ funnel, range }: { funnel: FunnelMetrics; range: DateRange }) {
   return (
     <Card>
       <CardHeader>
@@ -475,6 +481,11 @@ function FunnelCard({ funnel }: { funnel: FunnelMetrics }) {
           <p className="mb-2 text-xs text-muted-foreground">Visitas vs conversiones por día</p>
           <FunnelByDayChart rows={funnel.byDay} />
         </div>
+        {funnel.key === 'tasacion' && (
+          <div className="border-t pt-4">
+            <AbTestPanel funnel="tasacion" from={range.from} to={range.to} />
+          </div>
+        )}
         <div className="border-t pt-4">
           <VideoAnalytics
             stats={funnel.videoRows ?? []}
@@ -567,7 +578,7 @@ export function EmbudosClient() {
       ) : (
         <section className="grid gap-4 lg:grid-cols-2">
           {funnels.map((f) => (
-            <FunnelCard key={f.key} funnel={f} />
+            <FunnelCard key={f.key} funnel={f} range={range} />
           ))}
         </section>
       )}

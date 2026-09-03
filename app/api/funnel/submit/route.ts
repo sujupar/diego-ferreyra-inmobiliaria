@@ -63,6 +63,9 @@ const Schema = z
     fbp: z.string().max(200).nullable().optional(),
     fbc: z.string().max(300).nullable().optional(),
     anonId: z.string().min(8).max(64).nullable().optional(), // sesión anónima de video → stitching
+    // Variante A/B de la landing que se le sirvió. Es lo único que distingue a
+    // las dos landings en el CRM; sin esto el experimento no se puede medir.
+    landingVariant: z.enum(['A', 'B']).nullable().optional(),
     attribution: z
       .object({
         utm_source: z.string().max(200).nullable().optional(),
@@ -185,6 +188,7 @@ export async function POST(req: NextRequest) {
       tipoCliente: d.tipoCliente ?? null,
       message: d.message ?? null,
       attribution: d.attribution ?? null,
+      landingVariant: d.landingVariant ?? null,
     })
   } catch (e) {
     console.error('[funnel/submit] crearContactoYDeal falló', e)
