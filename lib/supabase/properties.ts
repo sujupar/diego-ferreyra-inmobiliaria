@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { inicioDelDiaArgentina, finDelDiaArgentina } from '@/lib/filters/rango-fechas'
+import { clausulasBusqueda } from '@/lib/filters/busqueda-texto'
 import { contarDocumentosCargados, debeAvanzarACaptada, ESTADOS_EN_CAPTACION } from '@/lib/properties/captacion'
 
 /**
@@ -104,7 +105,20 @@ export interface PropertiesListFilters {
    * coordinador concluía razonablemente que no había backlog.
    */
   cohorte?: 'sin_fotos'
+  /** Texto libre del buscador. Ver `lib/filters/busqueda-texto.ts`. */
+  q?: string
+  /** Rango de precio. Solo compara fichas en dólares — ver el uso más abajo. */
+  min?: number
+  max?: number
 }
+
+/**
+ * Columnas donde busca el buscador del listado.
+ *
+ * Son de `vw_properties_list`. `description` queda afuera a propósito: no está
+ * en la vista, y agregarla obligaría a recrear una vista compartida.
+ */
+const COLUMNAS_BUSQUEDA = ['address', 'neighborhood', 'city', 'property_type', 'operation_type'] as const
 
 /** Columnas de `vw_properties_list` que la tabla del listado deja ordenar por header. */
 export const SORTABLE_PROPERTY_LIST_COLUMNS = [
@@ -188,6 +202,23 @@ export async function getPropertiesListPage(
     listQuery = listQuery
       .in('status', ESTADOS_EN_CAPTACION as readonly string[])
       .eq('photo_count', 0)
+  }
+
+  // UNA condición por palabra: cada palabra tiene que aparecer en alguna
+  // columna, y todas las palabras tienen que aparecer. Varios `.or()` sobre la
+  // misma consulta se combinan con Y (`.or()` hace `append`, no pisa).
+  for (const clausula of clausulasBusqueda(COLUMNAS_BUSQUEDA, filters.q || '')) {
+    listQuery = listQuery.or(clausula)
+  }
+
+  // Precio. Comparar el número guardado solo tiene sentido dentro de la misma
+  // moneda: hoy las 34 propiedades están en dólares. El nulo cuenta como dólar
+  // porque así lo muestra la pantalla (`currency || 'USD'`) — si la consulta lo
+  // excluyera, el listado y el filtro dirían cosas distintas de la misma ficha.
+  if (filters.min != null) listQuery = listQuery.gte('asking_price', filters.min)
+  if (filters.max != null) listQuery = listQuery.lte('asking_price', filters.max)
+  if (filters.min != null || filters.max != null) {
+    listQuery = listQuery.or('currency.eq.USD,currency.is.null')
   }
 
   const { data, error, count } = await listQuery.range(offset, offset + limit - 1)
