@@ -65,8 +65,8 @@ describe('RangoPrecio', () => {
   })
 
   it('avisa cuando el desde es mayor que el hasta', () => {
-    render(<RangoPrecio value={{ min: '300000', max: '100000' }} onChange={() => {}} />)
-    expect(screen.getByRole('status')).toHaveTextContent(/mayor/i)
+    const { container } = render(<RangoPrecio value={{ min: '300000', max: '100000' }} onChange={() => {}} />)
+    expect(container.querySelector('[aria-live="polite"]')).toHaveTextContent(/mayor/i)
   })
 
   it('con el rango bien puesto la region esta pero vacia', () => {
@@ -74,8 +74,8 @@ describe('RangoPrecio', () => {
     // aparece junto con su contenido muchos lectores de pantalla no la
     // anuncian: entra al árbol ya poblada, así que no hay cambio que leer. Es
     // el mismo criterio que ya usan las dos pantallas para su aviso de filtro.
-    render(<RangoPrecio value={{ min: '100000', max: '300000' }} onChange={() => {}} />)
-    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+    const { container } = render(<RangoPrecio value={{ min: '100000', max: '300000' }} onChange={() => {}} />)
+    expect(container.querySelector('[aria-live="polite"]')).toBeEmptyDOMElement()
   })
 
   it('un cambio de AFUERA cancela la espera pendiente', () => {

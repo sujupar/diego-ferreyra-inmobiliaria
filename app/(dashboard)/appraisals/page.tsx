@@ -423,13 +423,13 @@ function AppraisalsClient() {
         }
     }
 
-    const hayFiltros =
-        !!filtros.from || !!filtros.to || !!filtros.q || !!filtros.min || !!filtros.max
     const cargando = loading || escribiendo
     const totalPages = Math.ceil(totalCount / pageSize)
     // Para el cartel de error: con filtros puestos, «limpiar filtros» suele ser
-    // la salida más rápida (un rango inválido en el link da 500).
-    const hayFiltros = !!filtros.from || !!filtros.to
+    // la salida más rápida (un rango inválido en el link da 500). Incluye el
+    // buscador y el precio: son filtros como cualquier otro.
+    const hayFiltros =
+        !!filtros.from || !!filtros.to || !!filtros.q || !!filtros.min || !!filtros.max
 
     // `card` = qué se ve cuando la tabla se apila como ficha en el teléfono.
     // Una tasación se reconoce por la PROPIEDAD; el precio y la fecha son lo

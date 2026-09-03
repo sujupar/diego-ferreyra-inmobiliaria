@@ -80,8 +80,12 @@ export function RangoPrecio({ value, onChange, esperaMs }: Props) {
                 que no hay cambio que leer. Vacía va en `sr-only` para no dejar
                 un hueco en la barra. Mismo criterio que el aviso de filtro de
                 las dos pantallas. */}
+            {/* `aria-live` SIN `role="status"` a propósito: el rol también
+                marcaría esto como región viva y las pantallas ya tienen la
+                suya (el aviso de filtro rechazado), así que habría DOS y las
+                pruebas —y los lectores— no sabrían cuál es cuál. `aria-live`
+                solo anuncia igual. */}
             <span
-                role="status"
                 aria-live="polite"
                 className={invertido ? 'text-xs text-destructive' : 'sr-only'}
             >
