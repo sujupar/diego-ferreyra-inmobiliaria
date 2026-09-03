@@ -243,20 +243,29 @@ async function runAiPipeline(ctx: InboundContext): Promise<void> {
     // viejo. `buscarTratoDeTasacion` devuelve null apenas el guion termina, así
     // que la conversación vuelve sola al camino normal.
     //
-    // Es UNA sola llamada al modelo igual que las otras ramas: el agente de
-    // tasación devuelve también el resumen y la prioridad del Inbox, así que
-    // NO se corre además `runConversationAnalysis` (ver la regla dura del
-    // proyecto sobre encadenar llamadas de IA en un mismo request).
+    // Es UNA sola llamada al modelo igual que las otras ramas: cuando el agente
+    // actúa devuelve también el resumen y la prioridad del Inbox, así que no se
+    // corre además `runConversationAnalysis` (regla dura del proyecto: nunca
+    // encadenar dos llamadas de IA en un request).
+    //
+    // Cuando NO actúa —hoy el caso normal: la tasación se coordina por teléfono
+    // y el agente está callado— tampoco hizo ninguna llamada al modelo, así que
+    // corresponde analizar. Sin esto, apagar el agente dejaba a estas
+    // conversaciones sin resumen ni prioridad: el Inbox no las ordenaba
+    // justo cuando pasaron a atenderse a mano, que es cuando más hace falta.
+    // Sigue siendo UNA sola llamada por mensaje entrante: o el agente, o el
+    // análisis, nunca los dos.
     if (ctx.textoEntrante) {
       const { buscarTratoDeTasacion, runTasacionAgent } = await import('@/lib/ai/tasacion-agent')
       const trato = await buscarTratoDeTasacion(ctx.phoneE164)
       if (trato) {
-        await runTasacionAgent({
+        const r = await runTasacionAgent({
           phoneE164: ctx.phoneE164,
           mensaje: ctx.textoEntrante,
           contactName: ctx.contactName,
           trato,
         })
+        if (!r.actuo && !r.consumioModelo) await runConversationAnalysis(ctx.phoneE164)
         return
       }
     }

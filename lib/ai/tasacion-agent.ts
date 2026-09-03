@@ -18,10 +18,19 @@
  *
  * ## Una sola llamada al modelo
  *
- * Esta llamada REEMPLAZA a la del análisis de bandeja para estas
- * conversaciones, no se suma a ella (regla dura del proyecto: nunca encadenar
- * dos llamadas de IA dentro de un request — ver CLAUDE.md). Por eso el prompt
- * devuelve también el resumen y la prioridad que ordenan el Inbox.
+ * Cuando el agente actúa, su llamada REEMPLAZA a la del análisis de bandeja
+ * para esa conversación, no se suma a ella (regla dura del proyecto: nunca
+ * encadenar dos llamadas de IA dentro de un request — ver CLAUDE.md). Por eso
+ * el prompt devuelve también el resumen y la prioridad que ordenan el Inbox.
+ * Cuando NO actúa, el webhook corre el análisis en su lugar — sigue siendo una
+ * sola llamada. Quién puede gastarla lo dice `consumioModelo` en el resultado.
+ *
+ * ## Qué lo apaga
+ *
+ * Dos frenos, y el primero es el que importa: la PLANTILLA vigente. Si el
+ * mensaje que la persona recibió no le pregunta nada, el agente no habla, y eso
+ * no se puede desactivar desde ningún panel. Después sí, el interruptor propio
+ * (`ai_agent_settings.tasacion_enabled`).
  *
  * Todos los frenos son fail-closed: si algo no se puede leer, no escribe.
  */
@@ -51,6 +60,74 @@ function admin() {
 
 /** Etapas en las que un lead de tasación todavía espera que lo coordinen. */
 const ETAPAS_ABIERTAS = ['request', 'scheduled', 'followup']
+
+/**
+ * Las plantillas que ABREN una conversación: le preguntan algo a la persona y
+ * esperan que conteste. Solo con una de estas tiene sentido que el agente
+ * atienda.
+ *
+ * POR QUÉ ESTO EXISTE (2026-09-02, pasó de verdad). El agente y la plantilla
+ * son dos cosas que tienen que decir lo mismo, y vivían en dos lugares
+ * distintos: la plantilla en una variable de Netlify, el agente en una columna
+ * de Supabase. El 29/8 se cambió la plantilla a `tasacion_llamada_v1` ("te
+ * llama Paula por teléfono") y el interruptor del agente quedó prendido. A
+ * Eduardo le llegó "te llamará Paula", contestó "bueno gracias", y el bot le
+ * pidió día, horario y dirección por chat — le prometimos dos caminos y
+ * cumplimos ninguno.
+ *
+ * Estaba documentado que los dos pasos van juntos. No alcanzó: un documento no
+ * frena nada. Así que ahora el agente NO tiene opinión propia sobre si
+ * corresponde hablar — lo deduce de la plantilla que realmente está saliendo.
+ * Cambiar la plantilla apaga el agente solo.
+ *
+ * Si mañana se crea otra plantilla que pregunte algo, hay que agregarla ACÁ
+ * además de setear la variable. Mientras no esté, el agente calla y avisa por
+ * consola: quedarse callado es el lado seguro del error.
+ */
+const PLANTILLAS_QUE_CONVERSAN = new Set(['tasacion_coordinar_util', 'tasacion_coordinar_v2'])
+
+/** Las que solo AVISAN algo y no esperan respuesta. Listadas para no confundir "no conversa" con "no la conozco". */
+const PLANTILLAS_QUE_SOLO_AVISAN = new Set(['tasacion_llamada_v1'])
+
+export type ModoDeLaPlantilla = 'conversa' | 'solo_avisa' | 'sin_plantilla' | 'desconocida'
+
+/**
+ * En qué modo está el primer WhatsApp de tasación, según la plantilla vigente.
+ * Pura: la decisión se toma con el nombre, sin tocar red ni base.
+ */
+export function modoDePlantilla(nombre: string | null | undefined): ModoDeLaPlantilla {
+  if (!nombre) return 'sin_plantilla'
+  if (PLANTILLAS_QUE_CONVERSAN.has(nombre)) return 'conversa'
+  if (PLANTILLAS_QUE_SOLO_AVISAN.has(nombre)) return 'solo_avisa'
+  return 'desconocida'
+}
+
+/**
+ * ¿La plantilla que está saliendo invita a conversar? Fail-closed en los tres
+ * casos que no son un sí explícito.
+ */
+function laPlantillaInvitaAConversar(): { ok: boolean; motivo: string } {
+  const nombre = process.env.WHATSAPP_TEMPLATE_TASACION ?? null
+  const modo = modoDePlantilla(nombre)
+  if (modo === 'conversa') return { ok: true, motivo: '' }
+  if (modo === 'desconocida') {
+    // Ni conversa ni avisa: no la conocemos. Se calla igual, pero esto se tiene
+    // que VER — si alguien estrenó una plantilla que pregunta y se olvidó de
+    // sumarla arriba, el síntoma sería "el agente no contesta" sin ninguna pista.
+    console.warn(
+      `[tasacion-agent] la plantilla "${nombre}" no está en PLANTILLAS_QUE_CONVERSAN ` +
+        'ni en PLANTILLAS_QUE_SOLO_AVISAN. El agente no contesta. Si esa plantilla ' +
+        'pregunta algo, agregala a PLANTILLAS_QUE_CONVERSAN en lib/ai/tasacion-agent.ts.',
+    )
+    return { ok: false, motivo: `plantilla desconocida (${nombre})` }
+  }
+  return {
+    ok: false,
+    motivo: modo === 'sin_plantilla'
+      ? 'no hay plantilla de tasación configurada'
+      : `la plantilla vigente (${nombre}) avisa, no pregunta`,
+  }
+}
 
 /** Interruptor propio. Fail-closed: si no se puede leer, NO escribe. */
 async function agenteHabilitado(): Promise<boolean> {
@@ -155,8 +232,19 @@ export interface RunTasacionAgentInput {
   trato?: TratoDeTasacion | null
 }
 
+/**
+ * `consumioModelo` NO es telemetría: es lo que le dice al webhook si todavía le
+ * queda permitida su única llamada al modelo.
+ *
+ * La regla dura del proyecto es una sola llamada de IA por request. Cuando el
+ * agente no actúa, el webhook aprovecha para analizar la conversación y ordenar
+ * el Inbox — pero hay un `actuo:false` que ocurre DESPUÉS de haberle preguntado
+ * al modelo ("devolvió algo inservible"), y ahí analizar sería la segunda
+ * llamada. Es obligatorio en la variante `false` justamente para que agregar un
+ * `return` nuevo obligue a contestar la pregunta en vez de olvidarla.
+ */
 export type ResultadoAgenteTasacion =
-  | { actuo: false; motivo: string }
+  | { actuo: false; motivo: string; consumioModelo: boolean }
   | { actuo: true; respondio: boolean; cerrado: boolean }
 
 /**
@@ -165,21 +253,27 @@ export type ResultadoAgenteTasacion =
  */
 export async function runTasacionAgent(input: RunTasacionAgentInput): Promise<ResultadoAgenteTasacion> {
   try {
-    if (!(await agenteHabilitado())) return { actuo: false, motivo: 'apagado' }
+    // El freno más barato primero: sin red ni base, solo el nombre de la
+    // plantilla vigente. Y el más importante — es el que hace imposible que el
+    // bot contradiga al mensaje que la persona acaba de recibir.
+    const plantilla = laPlantillaInvitaAConversar()
+    if (!plantilla.ok) return { actuo: false, motivo: plantilla.motivo, consumioModelo: false }
+
+    if (!(await agenteHabilitado())) return { actuo: false, motivo: 'apagado', consumioModelo: false }
 
     const trato = input.trato ?? (await buscarTratoDeTasacion(input.phoneE164))
-    if (!trato) return { actuo: false, motivo: 'sin trato de tasación con guion abierto' }
+    if (!trato) return { actuo: false, motivo: 'sin trato de tasación con guion abierto', consumioModelo: false }
 
     const previo = trato.estado
     const enviados = previo.enviados ?? 0
     if (enviados >= MAX_MENSAJES) {
       // Se marca cerrado para que no vuelva a entrar nunca más por este camino.
       await guardarEnTrato(trato.id, { ...previo, cerrado: true }, null)
-      return { actuo: false, motivo: 'tope de mensajes alcanzado' }
+      return { actuo: false, motivo: 'tope de mensajes alcanzado', consumioModelo: false }
     }
 
     const texto = input.mensaje.trim()
-    if (!texto) return { actuo: false, motivo: 'mensaje vacío' }
+    if (!texto) return { actuo: false, motivo: 'mensaje vacío', consumioModelo: false }
 
     // --- UNA llamada al modelo. Entiende y redacta en el mismo viaje.
     const res = await chatCompletion({
@@ -210,7 +304,7 @@ export async function runTasacionAgent(input: RunTasacionAgentInput): Promise<Re
     })
 
     const decision = coerceTasacionDecision(JSON.parse(res.content) as unknown)
-    if (!decision) return { actuo: false, motivo: 'el modelo devolvió algo inservible' }
+    if (!decision) return { actuo: false, motivo: 'el modelo devolvió algo inservible', consumioModelo: true }
 
     // El CÓDIGO decide qué pasa con lo que el modelo entendió.
     const { estado, avisarEquipo, motivo } = aplicarDecision(previo, decision)
@@ -263,6 +357,11 @@ export async function runTasacionAgent(input: RunTasacionAgentInput): Promise<Re
     return { actuo: true, respondio, cerrado: estado.cerrado === true }
   } catch (err) {
     console.warn('[tasacion-agent] excepción (continuando):', err)
-    return { actuo: false, motivo: 'excepción' }
+    // `consumioModelo: true` aunque no sepamos dónde se rompió: desde acá no se
+    // distingue una excepción anterior a la llamada de una posterior, y suponer
+    // que no se llamó haría que el webhook pidiera OTRA. Perder un análisis de
+    // bandeja es barato; encadenar dos llamadas de IA en un request es lo que la
+    // regla dura del proyecto prohíbe.
+    return { actuo: false, motivo: 'excepción', consumioModelo: true }
   }
 }

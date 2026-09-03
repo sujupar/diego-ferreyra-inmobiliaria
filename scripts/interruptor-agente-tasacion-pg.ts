@@ -4,19 +4,25 @@
  * VIVAS afecta antes de tocar nada.
  *
  * POR QUÉ UN SCRIPT Y NO UN UPDATE SUELTO: este interruptor y la plantilla que
- * elige `WHATSAPP_TEMPLATE_TASACION` en Netlify tienen que moverse JUNTOS.
+ * elige `WHATSAPP_TEMPLATE_TASACION` en Netlify tienen que decir lo mismo.
  *
  *   - Plantilla `tasacion_coordinar_*` (con los dos botones) → agente PRENDIDO.
  *     La plantilla pregunta "¿cómo preferís que la coordinemos?"; apagarlo deja
  *     esa pregunta sin nadie que lea la respuesta.
  *   - Plantilla `tasacion_llamada_v1` (sin botones, avisa que llama el equipo)
- *     → agente APAGADO. Prendido, le pediría día, horario y dirección por chat
- *     a alguien que acaba de leer que lo van a llamar.
+ *     → agente APAGADO.
  *
- * Cambiar uno solo de los dos rompe el flujo en alguna de las dos direcciones,
- * y el síntoma —"el agente no contesta" / "el agente contesta cualquier cosa"—
- * no señala la causa. Por eso el script IMPRIME la advertencia y las
- * conversaciones abiertas, en vez de solo correr el UPDATE.
+ * DE ESAS DOS, EL CÓDIGO YA GARANTIZA UNA. Desde el 2026-09-02 el agente mira
+ * la plantilla vigente y se calla solo si no pregunta nada
+ * (`PLANTILLAS_QUE_CONVERSAN` en `lib/ai/tasacion-agent.ts`), así que "plantilla
+ * que avisa + agente prendido" ya no puede pasar. Es el cruce que sí ocurrió:
+ * el 29/8 se cambió la plantilla, este interruptor quedó prendido, y a un
+ * cliente que leyó "te llamará Paula" el bot le pidió día y dirección por chat.
+ *
+ * La dirección contraria SIGUE dependiendo de una persona: si la plantilla
+ * pregunta y el interruptor está apagado, nadie lee las respuestas. Es el lado
+ * seguro del error —callarse, no hablar de más— pero hay que verlo, y por eso
+ * el script imprime el estado y las conversaciones abiertas antes de tocar nada.
  *
  * Apagarlo NO cierra las conversaciones vivas ni las esconde: los mensajes
  * entrantes se siguen guardando y quedan visibles en el Inbox para que los
@@ -130,8 +136,14 @@ if (quedo !== destino) {
   process.exit(1)
 }
 console.log(`\n✅ agente de tasación: ${estabaPrendido ? 'PRENDIDO' : 'apagado'} → ${quedo ? 'PRENDIDO' : 'apagado'}`)
-console.log(
-  destino
-    ? '   Acordate de que WHATSAPP_TEMPLATE_TASACION apunte a una plantilla CON botones (tasacion_coordinar_v2).'
-    : '   Acordate de que WHATSAPP_TEMPLATE_TASACION apunte a tasacion_llamada_v1 (sin botones).',
-)
+if (destino) {
+  console.log(
+    '\n   OJO: prender esto NO alcanza. El agente además exige que\n' +
+      '   WHATSAPP_TEMPLATE_TASACION apunte a una plantilla que PREGUNTE algo\n' +
+      '   (tasacion_coordinar_v2 / _util). Con tasacion_llamada_v1 va a seguir\n' +
+      '   callado por diseño, y el motivo aparece en los logs de Netlify.',
+  )
+} else {
+  console.log('   La plantilla que avisa (tasacion_llamada_v1) ya lo mantenía callado por su cuenta;')
+  console.log('   esto lo deja apagado también si algún día se vuelve a una plantilla que pregunte.')
+}

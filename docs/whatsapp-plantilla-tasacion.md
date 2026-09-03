@@ -11,7 +11,7 @@ Ese es el estado de estreno de cualquier plantilla nueva.
 | | |
 |---|---|
 | **Plantilla del corte** | `tasacion_llamada_v1` |
-| **Estado al 2026-08-27** | creada y **APROBADA** en Meta. **Todavía NO activa**: `WHATSAPP_TEMPLATE_TASACION` sigue valiendo `tasacion_coordinar_v2`. Ver "Cómo se estrena". |
+| **Estado** | **VIGENTE** desde el 2026-08-29. Aprobada en Meta y activa en `WHATSAPP_TEMPLATE_TASACION`. |
 | **Idioma** | `es_AR` |
 | **Categoría** | Utilidad — **pedida y obtenida** |
 | **Encabezado / botones** | Ninguno |
@@ -50,12 +50,11 @@ reales, todas buscadas, pero que conviene tener escritas:
 1. **WhatsApp queda como vía de salida, no de ida y vuelta.** Quien no escriba
    por su cuenta deja la ventana cerrada, y no hay ningún proceso automático de
    reintento. Si la llamada no ocurre, no hay segundo camino.
-2. **El agente de tasación se apaga en el corte** (`ai_agent_settings.tasacion_enabled
-   → false`; al 2026-08-27 todavía está en `true`, sosteniendo el flujo actual).
-   Prendido con la plantilla nueva, le pediría día, horario y dirección **por
-   chat** a quien acaba de leer que lo van a llamar. Su guion entero
-   (`lib/ai/tasacion-brain.ts`) apunta a coordinar por chat: no alcanza con "que
-   conteste menos".
+2. **El agente de tasación está apagado** (`ai_agent_settings.tasacion_enabled =
+   false` desde el 2026-09-02) **y además el código no lo dejaría hablar** con
+   esta plantilla, aunque alguien lo prendiera. Su guion entero
+   (`lib/ai/tasacion-brain.ts`) apunta a coordinar por chat: no alcanzaba con
+   "que conteste menos".
 3. **La marca `deals.tasacion_wa_state = {}` se sigue escribiendo**, y sacarla
    sería un error. Es lo que hace que un mensaje entrante se rutee a la rama de
    tasación; sin ella cae en el agente de PROPIEDADES y le habla al cliente de
@@ -103,8 +102,9 @@ node --experimental-strip-types --env-file=.env.local \
 
 ## Cómo se estrena (el orden importa)
 
-Los tres primeros pasos **ya están hechos** (2026-08-27) y quedan acá como
-receta para la próxima plantilla.
+Todos los pasos están hechos (la plantilla quedó vigente el 29/8; el agente se
+apagó el 2/9, tarde — ver "El incidente" más abajo). Quedan acá como receta
+para la próxima plantilla.
 
 1. ✅ **Crear la plantilla** en Meta:
    ```bash
@@ -125,10 +125,9 @@ receta para la próxima plantilla.
    que le dijimos al cliente". **Trampa:** el script filtra
    `status === 'APPROVED'`, así que corrido antes de la aprobación no incorpora
    nada **y no avisa** — parece que sincronizaste y no sincronizaste.
-4. ⬜ **Deployar.**
-5. ⬜ **Recién ahí**, en Netlify: `WHATSAPP_TEMPLATE_TASACION=tasacion_llamada_v1`
-   (hoy vale `tasacion_coordinar_v2`).
-6. ⬜ **Inmediatamente después**, apagar el agente:
+4. ✅ **Deployar.**
+5. ✅ **Recién ahí**, en Netlify: `WHATSAPP_TEMPLATE_TASACION=tasacion_llamada_v1`.
+6. ✅ **Inmediatamente después**, apagar el agente:
    ```bash
    node --experimental-strip-types --env-file=.env.local \
      scripts/interruptor-agente-tasacion-pg.ts --apagar
@@ -138,17 +137,46 @@ Al revés (env var antes del sync), los leads de ese intervalo quedan con el
 nombre de pila suelto como texto del chat. No se pierde nada: el Inbox rearma
 esos mensajes retroactivamente en cuanto el catálogo se sincroniza.
 
-**Los pasos 5 y 6 van pegados**, en ese orden y sin dejarlos a medias:
+**Los pasos 5 y 6 van pegados**, en ese orden. Uno de los dos descuidos ya no
+puede hacer daño; el otro sí:
 
-- Solo el 5 → la plantilla ya no pregunta nada, pero el agente sigue prendido y
-  le pide día, horario y dirección por chat a quien acaba de leer que lo llaman.
-- Solo el 6 → la plantilla sigue preguntando "¿cómo preferís que sigamos?" y no
-  queda nadie leyendo la respuesta.
+- Solo el 5 (plantilla nueva, agente prendido) → **ya no rompe nada**. Desde el
+  2026-09-02 el agente mira la plantilla vigente y se calla solo. Es el cruce que
+  de hecho ocurrió — ver "El incidente" abajo.
+- Solo el 6 (agente apagado, plantilla vieja) → la plantilla sigue preguntando
+  "¿cómo preferís que sigamos?" y no queda nadie leyendo la respuesta. Esto
+  **sigue dependiendo de una persona**: es el lado seguro del error (callarse en
+  vez de hablar de más), pero deja gente esperando.
 
-Entre uno y otro pasan segundos, y en esa ventana solo cae quien se registre
-justo ahí. Al 2026-08-27 hay **7 conversaciones con el guion abierto**: cuando se
-apague el agente dejan de recibir respuesta automática. Siguen visibles en el
-Inbox — hay que avisarle al equipo que las atienda a mano.
+Al apagar el agente, las conversaciones con el guion abierto dejan de recibir
+respuesta automática. Siguen visibles en el Inbox y con su resumen y prioridad
+al día — hay que avisarle al equipo que las atienda a mano.
+
+---
+
+## El incidente que hizo que el código lo garantice (2026-09-02)
+
+El 29/8 se cambió la plantilla a `tasacion_llamada_v1` y **el interruptor del
+agente quedó prendido**. La combinación estaba advertida en tres documentos
+—este, `CLAUDE.md` y el encabezado del script— y aun así pasó: un documento no
+frena nada.
+
+A Eduardo le llegó *"te llamará Paula desde el +54 9 11 2292-6434"*, contestó
+"bueno gracias", y el bot le pidió día, horario y dirección **por chat**. Le
+prometimos dos caminos y no cumplimos ninguno. Alcance real: de 4 personas que
+recibieron la plantilla nueva, 1 contestó, y esa 1 se llevó la contradicción.
+
+**El arreglo no fue apagar el interruptor, fue sacarle al agente la decisión.**
+Ahora deduce de la plantilla vigente si corresponde hablar
+(`PLANTILLAS_QUE_CONVERSAN` en `lib/ai/tasacion-agent.ts`): con una que solo
+avisa, frena antes de tocar la base, el modelo o WhatsApp. Cambiar la plantilla
+apaga el agente solo.
+
+**Si algún día se estrena otra plantilla que PREGUNTE algo**, hay que agregarla a
+`PLANTILLAS_QUE_CONVERSAN` además de setear la variable. Si no, el agente queda
+callado y el síntoma sería "no contesta" sin ninguna pista — por eso ante una
+plantilla que no conoce deja un `console.warn` en los logs de Netlify diciendo
+exactamente qué hacer.
 
 **Un nombre no aprobado hace fallar el envío de verdad.** El error no está en la
 lista de límites de volumen, así que quema los cinco reintentos (30 s, 2 min,

@@ -1164,20 +1164,24 @@ nada. Se selecciona con la env var `WHATSAPP_TEMPLATE_RECORRIDO` en Netlify.
 
 ## Agente que coordina la TASACIÓN por WhatsApp — 2026-08-13
 
-> **SE APAGA EN EL CORTE A COORDINACIÓN TELEFÓNICA** (2026-08-27). La tasación
-> pasa a coordinarse **por teléfono**: el primer WhatsApp es
-> `tasacion_llamada_v1` (aprobada UTILITY), que avisa que llama el equipo y NO
-> tiene botones ni pregunta nada. Con el agente prendido, a quien acaba de leer
-> "te llama Paula" le pediría día, horario y dirección por chat.
+> **APAGADO desde el 2026-09-02.** La tasación se coordina **por teléfono**: el
+> primer WhatsApp es `tasacion_llamada_v1` (UTILITY), que avisa que llama el
+> equipo y no pregunta nada. `ai_agent_settings.tasacion_enabled = false`.
 >
-> El corte son DOS pasos que van juntos y NO están hechos al momento de este
-> commit: `WHATSAPP_TEMPLATE_TASACION=tasacion_llamada_v1` en Netlify y después
-> `scripts/interruptor-agente-tasacion-pg.ts --apagar`. Hasta entonces sigue
-> vigente `tasacion_coordinar_v2` con `tasacion_enabled = true`.
+> **Y no depende solo de esa columna.** El agente ahora deduce de la PLANTILLA
+> vigente si corresponde hablar (`PLANTILLAS_QUE_CONVERSAN` en
+> `lib/ai/tasacion-agent.ts`): con una que solo avisa, frena antes de tocar la
+> base, el modelo o WhatsApp, aunque el interruptor esté prendido.
+>
+> Eso salió de un incidente. El 29/8 se cambió la plantilla y el interruptor
+> quedó prendido: a un cliente que leyó "te llamará Paula" el bot le pidió día,
+> horario y dirección por chat. La combinación estaba advertida en tres
+> documentos y pasó igual — **un documento no frena nada; el código sí**.
 >
 > Todo lo de abajo sigue siendo cierto sobre CÓMO funciona el agente, y vale
 > para el día que se vuelva a prender — ver `docs/whatsapp-plantilla-tasacion.md`,
-> § "Para volver a la coordinación por chat" (son tres cambios que van juntos).
+> § "Para volver a la coordinación por chat" (son tres cambios que van juntos, y
+> uno es agregar la plantilla a `PLANTILLAS_QUE_CONVERSAN`).
 
 Es OTRO agente, no una variante del que agenda visitas de propiedades. Atiende a
 quien pidió una tasación en la landing del embudo.
@@ -1274,8 +1278,32 @@ conversaciones vivas quedan sin respuesta automática antes de tocar nada.
 - `tasacion_enabled = false` va con `WHATSAPP_TEMPLATE_TASACION=tasacion_llamada_v1`
   (la que avisa que llaman, sin botones).
 
-Cualquier combinación cruzada rompe el flujo, y el síntoma —"el agente no
-contesta" / "el agente contesta cualquier cosa"— no señala la causa.
+**De los dos cruces posibles, uno ya es imposible y el otro no:**
+
+- Plantilla que avisa + interruptor prendido → **el código lo frena** (el agente
+  mira la plantilla). Es el que ocurrió el 29/8 y el que le habla de más a un
+  cliente.
+- Plantilla que pregunta + interruptor apagado → **sigue dependiendo de una
+  persona**. La plantilla pregunta y nadie lee la respuesta. Es el lado seguro
+  del error, pero deja gente esperando y el síntoma ("el agente no contesta") no
+  señala la causa.
+
+Y una trampa nueva: si se estrena otra plantilla que pregunte algo, hay que
+sumarla a `PLANTILLAS_QUE_CONVERSAN` además de setear la variable. Si no, el
+agente queda callado; el motivo sale por `console.warn` en los logs de Netlify.
+
+### Cuando el agente no actúa, el análisis de bandeja ocupa su lugar
+
+`runAiPipeline` corre `runConversationAnalysis` si el agente devolvió
+`actuo:false` **y** `consumioModelo:false`. Sigue siendo UNA sola llamada de IA
+por mensaje entrante (la regla dura del proyecto): o el agente, o el análisis.
+
+Sin eso, apagar el agente dejaba a las conversaciones de tasación sin resumen ni
+prioridad —el webhook cortaba antes del análisis—, justo cuando pasaron a
+atenderse a mano y el orden del Inbox es lo único que tiene el equipo. El campo
+`consumioModelo` es obligatorio en la variante `actuo:false` a propósito: hay un
+`return` que ocurre DESPUÉS de preguntarle al modelo ("devolvió algo
+inservible"), y ahí analizar sería la segunda llamada.
 
 ### Un metadato de tracking JAMÁS voltea una conversión (2026-08-15)
 
