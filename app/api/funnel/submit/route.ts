@@ -285,6 +285,7 @@ export async function POST(req: NextRequest) {
       tipoCliente: d.tipoCliente ?? null,
       message: d.message ?? null,
       attribution: d.attribution ?? null,
+      landingVariant: d.landingVariant ?? null,
     })
   } catch (e) {
     console.error('[funnel/submit] crearContactoYDeal falló', e)

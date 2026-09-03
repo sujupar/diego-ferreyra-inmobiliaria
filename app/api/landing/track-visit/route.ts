@@ -12,6 +12,7 @@ function getAdmin() {
 interface TrackBody {
   slug?: string
   funnel_type?: string
+  landing_variant?: string
   utm?: Partial<{ utm_source: string; utm_medium: string; utm_campaign: string; utm_content: string; utm_term: string }>
   fbclid?: string
   gclid?: string
@@ -78,6 +79,11 @@ export async function POST(req: NextRequest) {
       referrer:      cap(body.referrer, 500),
       user_agent:    cap(req.headers.get('user-agent'), 500),
       ip_hash:       ipHash,
+      // Solo 'A' o 'B'. Cualquier otra cosa entra como null: la columna tiene un
+      // CHECK y un valor inventado haría fallar el insert entero, perdiendo la
+      // visita por un dato accesorio.
+      landing_variant: body.landing_variant === 'A' || body.landing_variant === 'B'
+        ? body.landing_variant : null,
     } as never)
     return NextResponse.json({ ok: true })
   } catch (e) {

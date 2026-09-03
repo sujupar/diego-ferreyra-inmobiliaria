@@ -117,6 +117,10 @@ export const SubmitSchema = z.object({
   fbp: tracking(200),
   fbc: trackingEnteroONada(1024),
   anonId: tracking(64),
+  // Variante A/B de la landing. Lleva `.catch(null)` como el resto del tracking:
+  // si llegara algo que no es 'A' ni 'B', se pierde la marca del experimento
+  // pero NUNCA el lead. Un metadato no puede voltear una conversión.
+  landingVariant: z.enum(['A', 'B']).nullable().optional().catch(null),
   attribution: Attribution,
 })
 

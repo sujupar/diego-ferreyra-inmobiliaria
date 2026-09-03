@@ -10,6 +10,9 @@ type FunnelType = 'clase_gratuita' | 'tasacion' | 'venta_propiedad' | 'alto_valo
 interface Props {
   slug: string
   funnelType?: FunnelType
+  /** Variante A/B que se le sirvió a esta visita. Sin esto el panel del
+   *  experimento no puede calcular la tasa de conversión de cada landing. */
+  landingVariant?: 'A' | 'B'
 }
 
 /**
@@ -19,7 +22,7 @@ interface Props {
  * No bloquea ni reintenta: si el endpoint falla, la visita simplemente no se
  * registra. El componente es invisible (return null).
  */
-export function LandingVisitTracker({ slug, funnelType = 'otro' }: Props) {
+export function LandingVisitTracker({ slug, funnelType = 'otro', landingVariant }: Props) {
   const sent = useRef(false)
 
   useEffect(() => {
@@ -61,10 +64,11 @@ export function LandingVisitTracker({ slug, funnelType = 'otro' }: Props) {
         fb_ad_id:       clean('fb_ad_id'),
         fb_placement:   clean('fb_placement'),
         referrer: document.referrer || undefined,
+        landing_variant: landingVariant,
       }),
       keepalive: true,
     }).catch(() => { /* fire-and-forget */ })
-  }, [slug, funnelType])
+  }, [slug, funnelType, landingVariant])
 
   return null
 }

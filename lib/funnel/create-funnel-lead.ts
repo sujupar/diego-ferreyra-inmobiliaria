@@ -47,6 +47,8 @@ export interface FunnelLeadInput {
    * DESPUÉS de notificar: el email siempre mostraba la campaña vacía.
    */
   attribution?: FunnelAttribution | null
+  /** Variante A/B de la landing. null para todo lo anterior al experimento. */
+  landingVariant?: 'A' | 'B' | null
 }
 
 export interface FunnelLeadResult {
@@ -166,6 +168,9 @@ export async function crearContactoYDeal(input: FunnelLeadInput): Promise<Funnel
     origin: map.origin,
     stage: map.stage,
     notes: dealNotes,
+    // Se manda solo si vino: un undefined dejaría la columna en null igual, pero
+    // así el insert queda idéntico al de antes cuando no hay experimento.
+    ...(input.landingVariant ? { landing_variant: input.landingVariant } : {}),
     ...metaCols,
   })
 

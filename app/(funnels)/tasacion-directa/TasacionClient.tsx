@@ -93,6 +93,8 @@ export function TasacionClient({
         fbc,
         anonId: readAnonId() || undefined,
         attribution: readStoredAttribution() ?? undefined,
+        // Variante del experimento A/B. Esta es la landing original.
+        landingVariant: 'A',
       }),
     })
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean; redirect?: string; error?: string; deduplicated?: boolean; contactId?: string }
