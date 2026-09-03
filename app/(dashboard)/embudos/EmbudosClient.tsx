@@ -509,9 +509,59 @@ function FunnelCard({ funnel, range }: { funnel: FunnelMetrics; range: DateRange
   )
 }
 
+/**
+ * Tarjeta de resumen del embudo. Es lo que se ve al entrar a la pantalla: los
+ * tres números que importan y nada más.
+ *
+ * POR QUÉ RESUMEN + DETALLE Y NO TODO JUNTO: cada embudo trae análisis de video,
+ * mapa de calor, campañas y —en tasación— el panel del experimento. Los dos
+ * embudos completos, uno al lado del otro, dejan cada cosa en media pantalla y
+ * obligan a scrollear para comparar. Con el detalle a pantalla completa, cada
+ * embudo tiene el ancho entero.
+ */
+function FunnelSummaryCard({ funnel, onOpen }: { funnel: FunnelMetrics; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group w-full rounded-xl border bg-card p-5 text-left transition hover:border-brand/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+      aria-label={`Abrir el embudo ${funnel.label}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">{funnel.label}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">{funnel.url}</p>
+        </div>
+        <span className="shrink-0 text-xs font-medium text-muted-foreground group-hover:text-brand">
+          Ver detalle →
+        </span>
+      </div>
+      <div className="mt-5 grid grid-cols-3 gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Visitas</p>
+          <p className="text-3xl font-bold tabular-nums">{NUM.format(funnel.visits)}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Conversiones</p>
+          <p className="text-3xl font-bold tabular-nums">{NUM.format(funnel.conversions)}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">% Conversión</p>
+          <p className="text-3xl font-bold tabular-nums">{funnel.conversionPct}%</p>
+        </div>
+      </div>
+      <div className="mt-4">
+        <FunnelByDayChart rows={funnel.byDay} />
+      </div>
+    </button>
+  )
+}
+
 export function EmbudosClient() {
   const [range, setRange] = useState<DateRange>(defaultRange())
   const [funnels, setFunnels] = useState<FunnelMetrics[]>([])
+  // null = la vista de resumen con las dos tarjetas.
+  const [openKey, setOpenKey] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -538,11 +588,26 @@ export function EmbudosClient() {
     fetchAll()
   }, [fetchAll])
 
+  const abierto = openKey ? funnels.find((f) => f.key === openKey) ?? null : null
+
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Embudos</h1>
+          {abierto ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setOpenKey(null)}
+                className="mb-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+              >
+                ← Todos los embudos
+              </button>
+              <h1 className="text-2xl font-bold">{abierto.label}</h1>
+            </>
+          ) : (
+            <h1 className="text-2xl font-bold">Embudos</h1>
+          )}
           <p className="text-sm text-muted-foreground">
             {range.from} a {range.to}
           </p>
@@ -576,11 +641,15 @@ export function EmbudosClient() {
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       ) : (
-        <section className="grid gap-4 lg:grid-cols-2">
-          {funnels.map((f) => (
-            <FunnelCard key={f.key} funnel={f} range={range} />
-          ))}
-        </section>
+        abierto ? (
+          <FunnelCard funnel={abierto} range={range} />
+        ) : (
+          <section className="grid gap-4 lg:grid-cols-2">
+            {funnels.map((f) => (
+              <FunnelSummaryCard key={f.key} funnel={f} onOpen={() => setOpenKey(f.key)} />
+            ))}
+          </section>
+        )
       )}
 
       {!loading && !error && funnels.length === 0 && (
