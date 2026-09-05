@@ -6,6 +6,7 @@ import { reordenarSinPerder } from '@/lib/portals/photo-reorder'
 import { fetchCategoryAttributes } from '@/lib/portals/mercadolibre/category-attributes'
 import { validateCommon } from '@/lib/portals/validation'
 import type { Database } from '@/types/database.types'
+import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
 type PropertyRow = Database['public']['Tables']['properties']['Row']
 
@@ -31,15 +32,10 @@ function sanitizeHttpsUrl(v: unknown): string | null {
 }
 
 async function authorize(propertyId: string, userId: string, role: string) {
-  if (role === 'abogado') return false // El abogado no participa de marketing
-  if (role !== 'asesor') return true
-  const supabase = getAdmin()
-  const { data } = await supabase
-    .from('properties')
-    .select('assigned_to')
-    .eq('id', propertyId)
-    .single()
-  return data?.assigned_to === userId
+  // La política vive en `lib/properties/difusion-access.ts`, en UNA tabla.
+  // Antes cada archivo tenía su copia de "si sos asesor, solo las tuyas" y
+  // cambiarla significaba editar veinte archivos sin olvidarse ninguno.
+  return puedeDifundir(propertyId, userId, role, 'difundir')
 }
 
 /**

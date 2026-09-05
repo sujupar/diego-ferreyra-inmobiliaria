@@ -14,6 +14,7 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { runBatch } from '@/lib/marketing/ad-image-async-runner'
 import type { Database } from '@/types/database.types'
+import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
 export const maxDuration = 60 // segundos — Netlify Pro lo permite
 
@@ -36,15 +37,11 @@ export async function POST(
     if (user.profile.role === 'abogado') {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
-    if (user.profile.role === 'asesor') {
-      const { data: prop } = await supabase
-        .from('properties')
-        .select('assigned_to')
-        .eq('id', id)
-        .single()
-      if (!prop || prop.assigned_to !== user.id) {
-        return NextResponse.json({ error: 'forbidden' }, { status: 403 })
-      }
+    // La política de difusión vive en UNA tabla:
+    // `lib/properties/difusion-access.ts`. Antes este chequeo estaba
+    // copiado a mano en cada ruta.
+    if (!(await puedeDifundir(id, user.id, user.profile.role, 'difundir'))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 
     // Anti-IDOR: el jobId de la URL DEBE pertenecer a esta propiedad. Sin esto, un

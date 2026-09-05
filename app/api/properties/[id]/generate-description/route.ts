@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { generatePortalDescription } from '@/lib/marketing/portal-descriptions/generator'
 import type { Database } from '@/types/database.types'
+import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
 function getAdmin() {
   return createClient<Database>(
@@ -60,7 +61,8 @@ export async function POST(
     }
 
     // Asesor solo puede generar para sus propiedades
-    if (user.profile.role === 'asesor' && property.assigned_to !== user.id) {
+    // Se pasa la propiedad YA leída: sin esto se consultaría dos veces por request.
+    if (!(await puedeDifundir(id, user.id, user.profile.role, 'difundir', property))) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 

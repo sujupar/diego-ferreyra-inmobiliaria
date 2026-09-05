@@ -34,6 +34,7 @@ import { faltanRespuestas, bloqueoDePublicacion } from './answers-gate'
 import { getOrCreateLocationInsights, type LocationInsights } from '@/lib/marketing/location-insights'
 import type { EmpathyAvatar } from '@/lib/marketing/empathy-avatar'
 import type { LandingProperty } from './registry'
+import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
 function admin() {
   // Sin genérico <Database>: property_landings/property_avatars no están en los
@@ -83,13 +84,10 @@ export interface LandingRow {
 
 /** Autorización por rol para el flujo de landing. Abogado 403; asesor su propiedad. */
 export async function authorizeLanding(propertyId: string, userId: string, role: string): Promise<boolean> {
-  if (role === 'abogado') return false
-  if (['admin', 'dueno', 'coordinador'].includes(role)) return true
-  if (role === 'asesor') {
-    const { data } = await adminTyped().from('properties').select('assigned_to').eq('id', propertyId).single()
-    return !!data && data.assigned_to === userId
-  }
-  return false
+  // La política vive en `lib/properties/difusion-access.ts`, en UNA tabla.
+  // Antes cada archivo tenía su copia de "si sos asesor, solo las tuyas" y
+  // cambiarla significaba editar veinte archivos sin olvidarse ninguno.
+  return puedeDifundir(propertyId, userId, role, 'difundir')
 }
 
 export async function getLanding(propertyId: string): Promise<LandingRow | null> {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import type { Database } from '@/types/database.types'
+import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
 function getAdmin() {
   return createClient<Database>(
@@ -33,15 +34,11 @@ export async function GET(
 
     const supabase = getAdmin()
 
-    if (user.profile.role === 'asesor') {
-      const { data: prop } = await supabase
-        .from('properties')
-        .select('assigned_to')
-        .eq('id', id)
-        .single()
-      if (!prop || prop.assigned_to !== user.id) {
-        return NextResponse.json({ error: 'forbidden' }, { status: 403 })
-      }
+    // La política de difusión vive en UNA tabla:
+    // `lib/properties/difusion-access.ts`. Antes este chequeo estaba
+    // copiado a mano en cada ruta.
+    if (!(await puedeDifundir(id, user.id, user.profile.role, 'difundir'))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 
     const { data: campaign } = await supabase
@@ -101,25 +98,14 @@ export async function PATCH(
       )
     }
 
-    // Permisos por acción:
-    //  - admin/dueno/coordinador: todas las acciones
-    //  - asesor: SOLO archive sobre su propia propiedad (para escapar del
-    //    bloqueo cuando una campaña previa quedó zombi). NO puede pausar ni
-    //    activar — esas decisiones siguen siendo del manager.
-    const isManager = ['admin', 'dueno', 'coordinador'].includes(user.profile.role)
-    if (!isManager) {
-      if (user.profile.role !== 'asesor' || action !== 'archive') {
-        return NextResponse.json({ error: 'forbidden' }, { status: 403 })
-      }
-      const supabaseAuth = getAdmin()
-      const { data: prop } = await supabaseAuth
-        .from('properties')
-        .select('assigned_to')
-        .eq('id', id)
-        .single()
-      if (prop?.assigned_to !== user.id) {
-        return NextResponse.json({ error: 'forbidden' }, { status: 403 })
-      }
+    // Permisos por acción. DECISIÓN DEL DUEÑO (5 de septiembre de 2026): el
+    // asesor maneja la campaña de punta a punta — crear, pausar, reactivar y
+    // archivar. Antes pausar y activar eran solo del manager; el dueño pidió
+    // que no hubiera ninguna traba para los asesores.
+    //
+    // Quién puede qué vive en `lib/properties/difusion-access.ts`, no acá.
+    if (!(await puedeDifundir(id, user.id, user.profile.role, 'gestionar_campana'))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 
     const supabase = getAdmin()
@@ -205,11 +191,14 @@ export async function POST(
 ) {
   try {
     const user = await requireAuth()
-    const allowed = ['admin', 'dueno', 'coordinador']
-    if (!allowed.includes(user.profile.role)) {
+    const { id } = await params
+    // Mismo criterio que el otro handler: quién puede encender y apagar el
+    // gasto lo decide `lib/properties/difusion-access.ts`. Este chequeo además
+    // ATA LA ACCIÓN A LA PROPIEDAD, cosa que antes no hacía: la lista de roles
+    // suelta dejaba pausar la campaña de cualquier ficha sin mirar cuál.
+    if (!(await puedeDifundir(id, user.id, user.profile.role, 'gestionar_campana'))) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
-    const { id } = await params
     const body = (await req.json().catch(() => ({}))) as { action?: string }
     if (!['pause', 'activate', 'archive'].includes(body.action ?? '')) {
       return NextResponse.json({ error: 'action inválida' }, { status: 400 })

@@ -5,6 +5,7 @@ import { resolveCategory, mensajeSinCategoria, ML_LISTING_TYPES } from '@/lib/po
 import { fetchCategoryAttributes, type AttributeOverride } from '@/lib/portals/mercadolibre/category-attributes'
 import { fetchAvailableListingTypes } from '@/lib/portals/mercadolibre/listing-types'
 import type { Database } from '@/types/database.types'
+import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
 type PropertyRow = Database['public']['Tables']['properties']['Row']
 
@@ -37,7 +38,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const { data: property } = await supabase.from('properties').select('*').eq('id', id).maybeSingle()
     if (!property) return NextResponse.json({ error: 'not_found' }, { status: 404 })
-    if (user.profile.role === 'asesor' && property.assigned_to !== user.id) {
+    // Se pasa la propiedad YA leída: sin esto se consultaría dos veces por request.
+    if (!(await puedeDifundir(id, user.id, user.profile.role, 'difundir', property))) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 

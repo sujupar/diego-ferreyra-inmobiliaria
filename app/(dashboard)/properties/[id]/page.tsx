@@ -25,6 +25,7 @@ import { MediaTab } from '@/components/properties/detail/tabs/MediaTab'
 import { DocsTab } from '@/components/properties/detail/tabs/DocsTab'
 import { MarketingTab } from '@/components/properties/detail/tabs/MarketingTab'
 import { HistoryTab, type VisitFeedback } from '@/components/properties/detail/tabs/HistoryTab'
+import { puedeVerBotonDifusion } from '@/lib/properties/difusion-access'
 
 // El badge del encabezado lo arma `etiquetaDeCaptacion`, no un mapa por
 // literal: "Pendiente Documentos" era mentira desde que la documentación dejó
@@ -391,7 +392,7 @@ export default function PropertyDetailPage() {
         {tab === 'difusion' && (
           <MarketingTab
             propertyId={property.id}
-            canManage={['admin', 'dueno', 'coordinador'].includes(userInfo?.role ?? '')}
+            canManage={puedeVerBotonDifusion('gestionar_campana', userInfo?.role)}
             videoRecorridoUrl={property.video_recorrido_url}
             tour3dUrl={property.tour_3d_url}
             videoUrl={property.video_url}

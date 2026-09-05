@@ -20,6 +20,7 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { isCampaignZombie } from '@/lib/marketing/campaign-completeness'
 import type { Database } from '@/types/database.types'
+import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
 export const maxDuration = 30
 
@@ -31,18 +32,10 @@ function getAdmin() {
 }
 
 async function authorize(propertyId: string, userId: string, role: string): Promise<boolean> {
-  if (role === 'abogado') return false
-  if (['admin', 'dueno', 'coordinador'].includes(role)) return true
-  if (role === 'asesor') {
-    const supabase = getAdmin()
-    const { data } = await supabase
-      .from('properties')
-      .select('assigned_to')
-      .eq('id', propertyId)
-      .single()
-    return data?.assigned_to === userId
-  }
-  return false
+  // La política vive en `lib/properties/difusion-access.ts`, en UNA tabla.
+  // Antes cada archivo tenía su copia de "si sos asesor, solo las tuyas" y
+  // cambiarla significaba editar veinte archivos sin olvidarse ninguno.
+  return puedeDifundir(propertyId, userId, role, 'difundir')
 }
 
 async function archiveInMeta(campaignId: string): Promise<{ ok: boolean; error?: string }> {

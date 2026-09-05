@@ -14,6 +14,7 @@ import { buildFromTemplate, suggestTemplateId, TEMPLATES } from '@/lib/landing/t
 import { deriveFunnelType } from '@/lib/landing/funnel-type'
 import type { Database } from '@/types/database.types'
 import type { LandingProperty } from '@/lib/landing/registry'
+import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
 function getAdmin() {
   return createClient<Database>(
@@ -23,14 +24,10 @@ function getAdmin() {
 }
 
 async function authorize(propertyId: string, userId: string, role: string): Promise<boolean> {
-  if (role === 'abogado') return false
-  if (['admin', 'dueno', 'coordinador'].includes(role)) return true
-  if (role === 'asesor') {
-    const supabase = getAdmin()
-    const { data } = await supabase.from('properties').select('assigned_to').eq('id', propertyId).single()
-    return !!data && data.assigned_to === userId
-  }
-  return false
+  // La política vive en `lib/properties/difusion-access.ts`, en UNA tabla.
+  // Antes cada archivo tenía su copia de "si sos asesor, solo las tuyas" y
+  // cambiarla significaba editar veinte archivos sin olvidarse ninguno.
+  return puedeDifundir(propertyId, userId, role, 'difundir')
 }
 
 export async function GET(

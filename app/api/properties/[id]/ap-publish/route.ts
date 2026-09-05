@@ -4,18 +4,17 @@ import { requireAuth } from '@/lib/auth/require-role'
 import { initPortals, getAdapter } from '@/lib/portals'
 import { ArgenpropAdapter } from '@/lib/portals/argenprop/adapter'
 import type { Database } from '@/types/database.types'
+import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
 function getAdmin() {
   return createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
 async function authorize(propertyId: string, userId: string, role: string) {
-  if (role === 'asesor') {
-    const supabase = getAdmin()
-    const { data } = await supabase.from('properties').select('assigned_to').eq('id', propertyId).single()
-    return data?.assigned_to === userId
-  }
-  return ['admin', 'dueno', 'coordinador'].includes(role)
+  // La política vive en `lib/properties/difusion-access.ts`, en UNA tabla.
+  // Antes cada archivo tenía su copia de "si sos asesor, solo las tuyas" y
+  // cambiarla significaba editar veinte archivos sin olvidarse ninguno.
+  return puedeDifundir(propertyId, userId, role, 'difundir')
 }
 
 type PropertyRow = Database['public']['Tables']['properties']['Row']

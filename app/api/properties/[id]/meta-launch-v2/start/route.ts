@@ -19,6 +19,7 @@ import { analyzePropertyPhotos } from '@/lib/marketing/property-vision-analyzer'
 import { generateThreeAvatars } from '@/lib/marketing/buyer-avatar-generator'
 import { getOrGenerateBridgedDescription } from '@/lib/marketing/portal-description-bridge'
 import type { Database } from '@/types/database.types'
+import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
 // Máximo timeout Netlify Pro — start corre análisis Vision + 3 avatares en
 // cadena, ~30-50s worst case. Default de 26s no alcanza.
@@ -32,17 +33,10 @@ function getAdmin() {
 }
 
 async function authorize(propertyId: string, userId: string, role: string): Promise<boolean> {
-  if (role === 'abogado') return false
-  if (role === 'asesor') {
-    const supabase = getAdmin()
-    const { data } = await supabase
-      .from('properties')
-      .select('assigned_to')
-      .eq('id', propertyId)
-      .single()
-    return data?.assigned_to === userId
-  }
-  return ['admin', 'dueno', 'coordinador'].includes(role)
+  // La política vive en `lib/properties/difusion-access.ts`, en UNA tabla.
+  // Antes cada archivo tenía su copia de "si sos asesor, solo las tuyas" y
+  // cambiarla significaba editar veinte archivos sin olvidarse ninguno.
+  return puedeDifundir(propertyId, userId, role, 'difundir')
 }
 
 export async function POST(

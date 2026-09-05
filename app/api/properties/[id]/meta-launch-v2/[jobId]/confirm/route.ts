@@ -28,6 +28,7 @@ import {
   type SyncCampaignResult,
 } from '@/lib/marketing/meta-sync'
 import type { Database } from '@/types/database.types'
+import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
 export const maxDuration = 60
 
@@ -44,11 +45,15 @@ export async function POST(
 ) {
   try {
     const user = await requireAuth()
-    const allowed = ['admin', 'dueno', 'coordinador', 'asesor']
-    if (!allowed.includes(user.profile.role)) {
+    // AGUJERO QUE HABÍA: este endpoint —el que crea la campaña y ARRANCA EL
+    // GASTO— solo miraba el ROL, sin fijarse sobre qué propiedad. Cualquier rol
+    // de la lista podía confirmar el lanzamiento de una ficha ajena. Lo que
+    // sigue no le quita nada al asesor (la política le da 'todas'): cierra al
+    // abogado y a cualquier rol futuro que se agregue sin pensarlo.
+    const { id, jobId } = await params
+    if (!(await puedeDifundir(id, user.id, user.profile.role, 'difundir'))) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
-    const { id, jobId } = await params
     const supabase = getAdmin()
 
     // Cargar job

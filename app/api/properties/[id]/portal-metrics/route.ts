@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import type { Database } from '@/types/database.types'
+import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
 function getAdmin() {
   return createClient<Database>(
@@ -28,15 +29,11 @@ export async function GET(
 
     const supabase = getAdmin()
 
-    if (user.profile.role === 'asesor') {
-      const { data: prop } = await supabase
-        .from('properties')
-        .select('assigned_to')
-        .eq('id', id)
-        .single()
-      if (!prop || prop.assigned_to !== user.id) {
-        return NextResponse.json({ error: 'forbidden' }, { status: 403 })
-      }
+    // La política de difusión vive en UNA tabla:
+    // `lib/properties/difusion-access.ts`. Antes este chequeo estaba
+    // copiado a mano en cada ruta.
+    if (!(await puedeDifundir(id, user.id, user.profile.role, 'ver_difusion'))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 
     const { data, error } = await supabase

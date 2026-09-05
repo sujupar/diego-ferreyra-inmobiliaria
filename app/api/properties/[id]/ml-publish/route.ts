@@ -5,6 +5,7 @@ import { initPortals, getAdapter } from '@/lib/portals'
 import { MercadoLibreAdapter } from '@/lib/portals/mercadolibre/adapter'
 import { mensajeYDetalle } from '@/lib/portals/types'
 import type { Database } from '@/types/database.types'
+import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
 function getAdmin() {
   return createClient<Database>(
@@ -14,17 +15,10 @@ function getAdmin() {
 }
 
 async function authorize(propertyId: string, userId: string, role: string) {
-  if (role === 'asesor') {
-    const supabase = getAdmin()
-    const { data } = await supabase
-      .from('properties')
-      .select('assigned_to')
-      .eq('id', propertyId)
-      .single()
-    return data?.assigned_to === userId
-  }
-  // abogado queda excluido explícitamente
-  return ['admin', 'dueno', 'coordinador'].includes(role)
+  // La política vive en `lib/properties/difusion-access.ts`, en UNA tabla.
+  // Antes cada archivo tenía su copia de "si sos asesor, solo las tuyas" y
+  // cambiarla significaba editar veinte archivos sin olvidarse ninguno.
+  return puedeDifundir(propertyId, userId, role, 'difundir')
 }
 
 type PropertyRow = Database['public']['Tables']['properties']['Row']

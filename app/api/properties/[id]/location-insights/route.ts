@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { getOrCreateLocationInsights } from '@/lib/marketing/location-insights'
 import type { Database } from '@/types/database.types'
+import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
 export const maxDuration = 60
 
@@ -24,15 +25,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     const { id } = await params
-    if (user.profile.role === 'asesor') {
-      const admin = createClient<Database>(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      )
-      const { data } = await admin.from('properties').select('assigned_to').eq('id', id).maybeSingle()
-      if (!data || data.assigned_to !== user.id) {
-        return NextResponse.json({ error: 'forbidden' }, { status: 403 })
-      }
+    // La política de difusión vive en UNA tabla: `lib/properties/difusion-access.ts`.
+    if (!(await puedeDifundir(id, user.id, user.profile.role, 'difundir'))) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
 
     const body = (await req.json().catch(() => ({}))) as { refresh?: boolean }
