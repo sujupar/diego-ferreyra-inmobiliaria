@@ -201,13 +201,14 @@ admin), creado con `scripts/crear-usuario-claude-qa.ts` (se puede correr las
 veces que sea; no duplica). Sus datos de acceso viven en `.env.local`, fuera de
 git. Todo lo que Claude hace en la plataforma queda a nombre de ese usuario, no
 de una persona real. Para entrar sin tipear nada:
-`scripts/navegador-claude-login.ts` genera un enlace de acceso de un solo uso y
-lo abre en el navegador de Claude.
+`scripts/navegador-claude-login.ts` canjea un enlace de acceso de un solo uso y
+deja la sesión guardada en el navegador de Claude (verificado 2026-09-10).
+Si en esa ventana había otra sesión, la reemplaza: el QA siempre corre con
+"Claude · pruebas".
 
 **Quién publica:** el push, el PR y el merge a `main` los hace Claude, nunca el
-dueño. Requisito pendiente: la cuenta con la que `gh` está logueado
-(`Sujupar97`) no es colaboradora del repo, así que hoy no puede abrir PRs (y sin
-PR no hay vista previa). Es un ajuste único del dueño en GitHub.
+dueño. En la Mac hay dos cuentas de GitHub; la correcta es `sujupar` (admin del
+repo). Si `gh` está en la otra, `gh auth switch --user sujupar`.
 
 **Límites que hay que saber:**
 - **No hay base de datos de staging.** La vista previa de Netlify usa el MISMO
