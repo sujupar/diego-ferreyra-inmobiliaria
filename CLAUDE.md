@@ -1,5 +1,245 @@
 # Diego Ferreyra Inmobiliaria — Operational Notes
 
+# PROTOCOLO OBLIGATORIO PARA TODA SOLICITUD DE DESARROLLO (definido por el dueño, 2026-09-10)
+
+**Regla madre:** cualquier pedido que cambie la plataforma —por chico que sea, incluso
+"creame un botón en tal lado"— pasa por las **seis etapas**, en este orden, sin saltear
+ninguna. Lo que se adapta al tamaño del pedido es la PROFUNDIDAD de cada etapa, nunca si
+se hace o no. Cada etapa tiene una ENTRADA, unos PASOS, una SALIDA y una condición de
+HECHO; no se pasa a la siguiente sin la salida de la anterior. La versión narrativa está
+en `docs/proceso-de-desarrollo.md`; esta es la operativa, la que se sigue al pie de la letra.
+
+**Tamaños (para calibrar la profundidad, no para saltear):**
+- **Chico:** un componente, un texto, un botón, un campo, un arreglo puntual. Spec y plan
+  van dentro del mensaje al dueño (10–20 líneas), no en archivos aparte.
+- **Mediano:** una pantalla, una ruta nueva, una migración, un cambio de flujo. Spec en
+  `docs/superpowers/specs/`, plan en `docs/superpowers/plans/`.
+- **Grande:** una integración externa, un módulo nuevo, algo que toca dinero, mensajes a
+  clientes o permisos. Spec + plan en archivos, y aprobación explícita del dueño antes de
+  codear.
+
+## Etapa 0 — Preparar la sesión (antes de tocar nada)
+
+1. Anotar rama y HEAD de la carpeta compartida. El dueño corre varias sesiones en paralelo
+   sobre la misma copia: NUNCA cambiar de rama ni hacer reset ahí.
+2. Trabajar en un **worktree propio** desde `origin/main`, en ruta sin tildes:
+   `git fetch origin && git worktree add /private/tmp/claude-501/wt-<tema> -b <tipo>/<tema> origin/main`.
+   Tipos: `feat/`, `fix/`, `docs/`, `chore/`.
+3. Leer las secciones de `CLAUDE.md` y las memorias que toquen el área del pedido.
+4. Si el pedido toca base de datos, verificar contra qué proyecto de Supabase se trabaja
+   (`mncsnastmcjdjxrehdep`); hay más de uno en el Dashboard.
+
+**Hecho cuando:** existe el worktree, se sabe qué rama es, y se leyó el contexto del área.
+
+## Etapa 1 — Definir QUÉ se hace
+
+**Entrada:** el pedido del dueño, tal cual lo dijo.
+
+1. **Reformular** en dos frases: qué se pide y para qué sirve al negocio. Si no se puede
+   decir el "para qué", falta entender el pedido.
+2. **Preguntar solo lo que cambia el resultado**, una pregunta por vez, en el chat (nunca
+   formularios). Lo que tiene una respuesta razonable por defecto se asume y se deja
+   escrito como supuesto.
+3. **Escribir el spec** (en el mensaje si es chico; en `docs/superpowers/specs/AAAA-MM-DD-<tema>-design.md`
+   si es mediano/grande) con, como mínimo:
+   - Problema en una frase. Resultado esperado en una frase.
+   - **Qué ve el usuario:** pantalla, dónde exactamente, qué texto, qué pasa al tocar,
+     qué pasa si falla, qué roles lo ven.
+   - **Qué pasa por detrás:** datos que se leen/escriben, servicios externos que se llaman,
+     emails/WhatsApp/campañas que se disparan.
+   - **Qué queda afuera** explícitamente.
+   - **Criterios de aceptación** en lenguaje de negocio, cada uno verificable en la UI:
+     "al tocar el botón X en la ficha, aparece Y y en la base queda Z".
+4. **Pre-flight de choques** (skill `anticipating-implementation-conflicts`): recorrer la
+   lista y anotar cuáles aplican: límite de tiempo de Netlify (una llamada de IA por
+   request), RLS por rol, `pg_cron`/`pg_net`, migración antes del deploy, procesos que
+   mandan mensajes reales, campañas Meta que gastan plata, productores/consumidores de un
+   mismo enum, triggers que escriben otra tabla, upserts sin UNIQUE.
+5. **Aprobación:** chico → se muestra reformulación + criterios + supuestos y se avanza;
+   mediano/grande → se espera el OK del dueño sobre el spec antes de la Etapa 2.
+
+**Salida:** spec con criterios de aceptación numerados + lista de riesgos. **Hecho cuando**
+cada criterio se puede comprobar con un paso concreto en la interfaz o en la base.
+
+## Etapa 2 — Estructura (cómo se arma)
+
+**Entrada:** el spec aprobado.
+
+1. **Plan por tareas** en orden (en el mensaje si es chico; en `docs/superpowers/plans/`
+   si no). Cada tarea: archivos que toca, qué prueba la cubre, cómo se verifica.
+2. **Ubicación de cada pieza**, siguiendo el repo:
+   - Reglas de negocio → **módulo puro en `lib/<area>/`** (sin red, sin base), con su
+     `.test.ts` al lado. Ej.: `lib/properties/commercial-status.ts`, `lib/links/short-link.ts`.
+   - Rutas `app/api/**/route.ts` → finas: auth/rol, validación Zod, llamada al módulo,
+     persistencia, respuesta. Nada de lógica de negocio suelta adentro.
+   - UI → `components/<area>/`; las páginas de `app/(dashboard)/` componen, no calculan.
+   - Integraciones externas → `lib/<servicio>/` con **modo de prueba** que no llama al
+     servicio real.
+   - Emails → `emails/*.tsx` + `lib/email/notifications/`; cada evento tiene SU pieza,
+     no se reusa una "parecida".
+3. **Base de datos primero:** si hace falta columna/tabla/función/trigger, se escribe la
+   migración en `supabase/migrations/` (mirar el directorio para numerar: ya hubo un
+   prefijo duplicado), se aplica vía script `pg` (patrón `scripts/apply-*-pg.ts`) y se
+   verifica con un `select` ANTES del código que la usa. Reglas: FK a `profiles(id)` con
+   `ON DELETE SET NULL`; `upsert` con `onConflict` ⇒ UNIQUE en la base; trigger que
+   inserta en otra tabla ⇒ `AFTER`, nunca `BEFORE`; CHECK y catálogo en código se tocan
+   juntos; RLS por rol en toda tabla nueva.
+4. **Grep de consumidores:** antes de cambiar un nombre, enum, formato o firma, listar
+   TODOS los que lo leen (`grep -rn "<nombre>"`) y agregarlos al plan.
+5. **Variables de entorno nuevas:** nombre, para qué, y que hay que cargarlas en Netlify.
+
+**Salida:** plan con tareas ordenadas y archivos por tarea. **Hecho cuando** cada tarea
+tiene su prueba definida y no hay nombre/enum cambiado sin sus consumidores listados.
+
+## Etapa 3 — Código (buenas prácticas, todas, siempre)
+
+**Entrada:** el plan.
+
+- **TypeScript estricto.** Sin `any`, sin `as` para callar errores, sin `!` salvo con
+  comentario del porqué. Tipos de la base desde `lib/supabase/types` (con `Relationships`).
+- **Verificación de tipos acotada:** `npx tsc --noEmit -p <tsconfig acotado que extiende
+  el raíz e incluye solo lo tocado>`. El raíz se cuelga por iCloud.
+- **Lint limpio en lo tocado:** `npx eslint <archivos>`.
+- **Nombres en castellano para el negocio** (funciones, variables, tests); en la base se
+  respeta la convención existente de cada tabla. Nada de abreviaturas crípticas.
+- **Comentarios que explican el POR QUÉ** y qué se rompe si se "arregla" lo que parece
+  raro. Ninguno que repita lo que el código ya dice.
+- **Validación en el servidor de todo lo que viene de afuera:** navegador, portales,
+  webhooks, IA. URLs solo `https://`, hosts comparados exactos (nunca `includes`),
+  permutaciones verificadas, texto de terceros jamás dentro de un `<script>`.
+- **Permisos:** toda ruta nueva pasa por `requireAuth`/rol; el menú NO es la barrera.
+- **Fallos ruidosos:** un parser que no entiende falla y registra; un cron que decide no
+  hacer nada deja el motivo escrito; nunca un `catch` vacío.
+- **Sin secretos en el código ni en logs.** Solo `process.env`.
+- **Frontera servidor→cliente:** ningún componente/ícono/función viaja como prop de un
+  Server Component a un Client Component (pantalla en blanco).
+- **Nada de IA encadenada en un request:** una etapa por llamada y el cliente muestra
+  progreso. Respuestas leídas con un helper tolerante a HTML de error.
+- **Commits chicos**, mensaje en castellano que dice el cambio y el porqué, autor
+  `Sujupar <redstyle50@gmail.com>` (si no, Netlify no deploya), trailer
+  `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
+
+**Salida:** código en el worktree, tipos y lint limpios en lo tocado. **Hecho cuando** no
+queda ningún ítem de la lista sin cumplir en los archivos tocados.
+
+## Etapa 4 — Pruebas (las escribe la misma sesión que escribe el código)
+
+**Entrada:** cada tarea del plan.
+
+1. **TDD para toda lógica de `lib/`:** primero el test que describe el comportamiento
+   (nombre en castellano, un caso por `it`), verlo FALLAR, implementar lo mínimo, verlo
+   PASAR, limpiar. Sin excepción por "es una línea".
+2. **Qué se prueba con qué:**
+   - Lógica pura → `vitest` entorno node. Correr con config acotada:
+     `npx vitest run --config <config con include de las carpetas tocadas>` (~0,5 s).
+     La config raíz rastrea todo el proyecto en iCloud y tarda minutos.
+   - Componentes → `.test.tsx` con happy-dom + Testing Library. En frío tarda >60 s en
+     cargar (a veces falla el worker la primera vez): reintentar una vez, no cambiar el
+     código por eso. `userEvent` sin temporizadores simulados.
+   - Render de páginas/emails/PDF → `scripts/<tema>.probe.tsx` con `renderToStaticMarkup`
+     (estructura, textos, nada con `opacity:0`).
+   - Contra la base y APIs reales → `node --env-file=.env.local --import tsx scripts/<x>.ts`,
+     siempre con modos de prueba (`WHATSAPP_TEST_MODE`, modo prueba de email, guard `[TEST`).
+   - Overlays/imágenes generadas → renderizar un PNG real y MIRARLO.
+3. **Casos borde obligatorios:** vacío, nulo, duplicado, texto con tildes en forma NFD,
+   caracteres especiales de regex, fecha futura/pasada, rol sin permiso, red que falla.
+4. **Registro:** el resultado de cada corrida (comando + resumen de la salida) se pega en
+   el mensaje al dueño. **Nunca** decir "pasan" sin haberlas corrido en esta sesión.
+
+**Salida:** suite verde en lo tocado + lista de casos cubiertos. **Hecho cuando** cada
+regla del spec tiene al menos un test que la rompería si se borrara la implementación.
+
+## Etapa 5 — QA (control de calidad antes de tocar producción)
+
+**Entrada:** código con pruebas verdes y commits en la rama.
+
+**5a. Revisión adversarial del código.** Un revisor aparte (`/code-review` o subagente
+`feature-dev:code-reviewer`) busca bugs, huecos de seguridad, casos borde, consumidores
+olvidados. Si toca auth, inputs de terceros, dinero o mensajes a clientes: además
+`/security-review`. Cada hallazgo se VERIFICA antes de aplicarlo (no se acepta a ciegas ni
+se descarta sin argumento). Lo aplicado vuelve a la Etapa 4.
+
+**5b. Publicar la rama y abrir el PR.** `git push -u origin <rama>` y `gh pr create --base main`.
+Netlify construye la vista previa en
+`https://deploy-preview-<N>--inmobiliariadiegoferreyra.netlify.app` (3–6 min; el bot de
+Netlify comenta en el PR cuando está lista). Ahí se hace el QA de interfaz: NO en localhost
+(Turbopack no arranca por la tilde de la carpeta) ni en producción. Si `gh` no puede crear
+el PR (cuenta sin permiso) se avisa al dueño en una línea; mientras tanto se prueba en
+producción recién DESPUÉS del deploy, con revert listo.
+
+**5c. QA en la interfaz con el navegador de Claude.** Es un Chrome exclusivo con perfil
+propio y login guardado del usuario **"Claude · pruebas"** (rol admin, credenciales en
+`.env.local`: `CLAUDE_QA_EMAIL` / `CLAUDE_QA_PASSWORD`; si la sesión venció, se vuelve a
+loguear con esas). Ciclo de vida: **se abre al empezar el QA y se cierra cuando el desarrollo
+ya está desplegado y verificado**, no antes.
+- Abrir: `scripts/navegador-claude.sh abrir <url de la vista previa>`. Estado: `... estado`.
+- La herramienta `chrome-devtools` se conecta a él (`--browserUrl http://127.0.0.1:9222`).
+  Si dice "browser is already running", la configuración quedó en el perfil default: hay que
+  volver a apuntarla al puerto 9222.
+- Recorrido mínimo, con evidencia (captura + notas) por cada punto:
+  1. Cada pantalla tocada carga y coincide con el spec: ubicación, texto, estado vacío,
+     estado de error, estado cargando.
+  2. Consola sin errores (`list_console_messages`); red sin 4xx/5xx inesperados
+     (`list_network_requests`).
+  3. El flujo completo de punta a punta como lo haría el asesor, incluyendo lo que se
+     escribe en la base (verificar con `select` después).
+  4. Roles: admin, y cada rol que la pantalla distingue (asesor/coordinador/abogado) ve lo
+     que corresponde y no más. Para cambiar de rol: `UPDATE profiles SET role=... WHERE
+     email='claude.qa@inmodf.com.ar'` y volver a cargar; dejarlo en `admin` al terminar.
+  5. Si se tocó navegación o layout: menú colapsado (modo ícono) y viewport de celular
+     (`resize_page` a 390×844).
+  6. Datos de prueba: todo lo creado lleva `[TEST` en el título/nombre y se borra al
+     terminar. La vista previa usa el MISMO Supabase de producción: no hay staging.
+     Nunca disparar WhatsApp/email/Meta/portales reales desde el QA.
+- **Criterios de aceptación:** se recorren uno por uno y se arma una tabla
+  criterio → cómo se probó → resultado. Un criterio en rojo devuelve a la Etapa 3/4.
+
+**Salida:** tabla de criterios toda en verde + hallazgos de revisión resueltos.
+**Hecho cuando** no queda ningún criterio sin evidencia y el PR está aprobado por la revisión.
+
+## Etapa 6 — Despliegue y cierre
+
+**Entrada:** QA completo en verde.
+
+1. **Puertas, en este orden, siempre:**
+   1. Migraciones aplicadas y verificadas con `select` en el proyecto correcto de Supabase.
+   2. Variables de entorno nuevas cargadas en Netlify (avisar al dueño cuáles; él las carga
+      en el panel de Netlify, es lo único que no se puede hacer desde acá).
+   3. **Merge a `main` y push: lo hace Claude, nunca el dueño** (decisión 2026-09-10).
+      `git checkout main && git merge --ff-only <rama> && git push origin main` (o merge del
+      PR con `gh pr merge`). Antes: `git diff --name-only origin/main <rama>` tiene que
+      listar SOLO archivos propios; si aparece algo ajeno, reconstruir la rama limpia.
+   4. Jobs de `pg_cron` que apuntan a rutas nuevas: DESPUÉS de que el deploy esté servido.
+2. **Esperar el deploy** (2–5 min; Netlify deploya solo en cada push a `main`) y **humo en
+   producción** con el navegador de Claude: repetir el camino principal del cambio en
+   `https://inmodf.com.ar`, consola limpia, y confirmar en la base lo que corresponda
+   (crons escribiendo, columna presente).
+3. **Si algo salió mal:** `git revert -m 1 <merge>` (o del commit) y push. Netlify vuelve
+   solo. No se parchea a mano en producción ni se "arregla después".
+4. **Cerrar el navegador de Claude:** `scripts/navegador-claude.sh cerrar`.
+5. **Cerrar el ciclo:** todo error no obvio, trampa de API o decisión del dueño va a
+   `CLAUDE.md` (Síntoma / Causa / Fix / Detección); lo que sirve para futuras sesiones, a la
+   memoria. Borrar el worktree (`git worktree remove`).
+6. **Reporte al dueño**, en castellano simple, sin jerga: qué se hizo, cómo se verificó
+   (con la tabla de criterios), qué quedó pendiente y qué tiene que hacer él (si algo).
+
+**Hecho cuando** producción muestra el cambio, el humo pasó, el navegador está cerrado y
+el aprendizaje quedó escrito.
+
+## Ejemplo calibrado: "creame un botón en la ficha de propiedad que la marque como reservada"
+
+| Etapa | Qué se hace, concretamente |
+|---|---|
+| 0 | Worktree `wt-boton-reservada` desde `origin/main`; leer § Estado comercial en CLAUDE.md. |
+| 1 | Reformular: "botón en la ficha para pasar a `reservada` sin ir al menú". Spec de 10 líneas en el mensaje: dónde va, texto, qué roles, qué pasa si ya está reservada, criterios: (1) el botón aparece en la ficha para asesor y admin, (2) al tocarlo la propiedad queda `reservada` y aparece en el historial, (3) abogado no lo ve. Riesgos: usar la ruta propia `commercial-status`, no el PUT genérico. |
+| 2 | Plan: (a) reusar `lib/properties/commercial-status.ts` (ya valida transiciones), (b) componente `BotonReservar` en `components/properties/detail/`, (c) llamar `POST /api/properties/[id]/commercial-status`. Sin migración. Grep de `commercial_status` para no romper lectores. |
+| 3 | Componente cliente con estado cargando/error, texto en castellano, sin lógica de negocio en la UI. tsc + eslint acotados. |
+| 4 | Test del componente (render, click llama la ruta con `reservada`, deshabilitado si ya está reservada). Si hubo que tocar el módulo puro, su test primero. Pegar salida de vitest. |
+| 5 | Revisión adversarial; push + PR; en la vista previa con el navegador de Claude: ficha `[TEST`, tocar el botón, ver estado + historial, consola limpia, cambiar rol a abogado y confirmar que no aparece; tabla de 3 criterios en verde; borrar la ficha `[TEST`. |
+| 6 | Merge + push a `main`; esperar deploy; humo en producción sobre una ficha `[TEST`; cerrar navegador; reporte al dueño. |
+
+---
+
 ## Stack
 Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. shadcn/ui (new-york). Recharts para gráficos. @react-pdf/renderer para PDFs cliente.
 
@@ -1351,8 +1591,10 @@ inservible"), y ahí analizar sería la segunda llamada.
 
 ---
 
-## Proceso de desarrollo y QA en el navegador (2026-09-10)
+## Navegador de Claude y usuario de pruebas (2026-09-10)
 
-- **El proceso completo por etapas** (definir → estructura → código → pruebas → QA → deploy) está en `docs/proceso-de-desarrollo.md`. Seguirlo en ese orden.
-- **QA de UI = navegador de Claude**, no el perfil default de `chrome-devtools-mcp` (ese lo abre la primera sesión y las demás fallan con "The browser is already running"; pasó el 2026-09-10 con sesiones paralelas). Es un Chrome aparte con perfil `~/.cache/claude-browser` y `--remote-debugging-port=9222`; se abre con `scripts/navegador-claude.sh` (no-op si ya está abierto) y la herramienta se conecta con `--browserUrl http://127.0.0.1:9222`. La sesión de la plataforma queda guardada en ese perfil.
+- **El protocolo de las seis etapas está ARRIBA de todo en este archivo**; la versión narrativa en `docs/proceso-de-desarrollo.md`. Se aplica a todo pedido, por chico que sea.
+- **QA de UI = navegador de Claude**, no el perfil default de `chrome-devtools-mcp` (ese lo abre la primera sesión y las demás fallan con "The browser is already running"; pasó el 2026-09-10 con sesiones paralelas). Es un Chrome aparte con perfil `~/.cache/claude-browser` y `--remote-debugging-port=9222`: `scripts/navegador-claude.sh abrir|cerrar|estado`. La herramienta se conecta con `--browserUrl http://127.0.0.1:9222`. **Se abre para el QA y se cierra cuando el desarrollo ya está desplegado**; no queda abierto de forma permanente.
+- **Usuario "Claude · pruebas"** (rol `admin`, activo) creado el 2026-09-10 con `scripts/crear-usuario-claude-qa.ts` (idempotente); sus datos de acceso están en `.env.local`, fuera de git. Todo lo que Claude hace en la plataforma queda a nombre de ese usuario. Si la sesión del perfil venció, se vuelve a entrar por `/login` con esos datos.
+- **Push, PR y merge a `main` los hace Claude, nunca el dueño.** `gh` está logueado como `Sujupar97`, que no es colaborador del repo: `gh pr create` falla con "must be a collaborator". Sin PR no hay vista previa de Netlify (las ramas sueltas no se publican, verificado con 404), y el QA de interfaz pasa a hacerse en producción justo después del deploy, con revert listo. Ajuste único pendiente del dueño en GitHub.
 - **Dónde se prueba:** en la vista previa de Netlify del PR, `https://deploy-preview-<N>--inmobiliariadiegoferreyra.netlify.app` (verificado: el bot de Netlify la publica en cada PR). No en localhost (Turbopack roto por la tilde) ni en producción salvo el humo post-deploy. **OJO:** la vista previa usa el MISMO Supabase de producción — no hay staging. Marcar `[TEST` lo que se cree y usar los modos de prueba de WhatsApp/email.

@@ -181,22 +181,33 @@ navegador, así que ninguna choca con otra (con el perfil por defecto de la
 herramienta, la segunda sesión falla con "the browser is already running").
 
 **Piezas:**
-- `scripts/navegador-claude.sh` — lo abre si no está abierto (verificado 2026-09-10).
+- `scripts/navegador-claude.sh abrir|cerrar|estado` — lo abre (si no está),
+  lo cierra o dice qué pestañas tiene (verificado 2026-09-10).
 - La herramienta `chrome-devtools` de Claude configurada con
   `--browserUrl http://127.0.0.1:9222` (verificado: se conecta, lista las
   pestañas y opera sobre ellas). Se configura una vez con:
   `claude mcp remove chrome-devtools -s local; claude mcp add chrome-devtools -s local -- npx -y chrome-devtools-mcp@latest --browserUrl http://127.0.0.1:9222`
-- Opcional: `scripts/com.claude.navegador.plist` lo deja como servicio que se
-  abre solo al iniciar sesión en la Mac y se reabre si se cierra.
+
+**Ciclo de vida (decisión del dueño, 2026-09-10):** el navegador se abre al
+empezar el QA de un desarrollo y se cierra cuando ese desarrollo ya está
+desplegado en producción y verificado. No queda abierto de forma permanente.
 
 **Con eso, en cada cambio Claude puede:** navegar a la vista previa del PR o a
 producción, tocar botones, llenar formularios, leer la consola y la red, sacar
 capturas, y comparar contra el spec. Los errores se ven ANTES del merge.
 
-**Con qué usuario entra:** un usuario dedicado de la plataforma (por ejemplo
-"Claude · pruebas", rol admin) para que lo que haga quede atribuido a él y no a
-una persona real. Alternativa rápida: el dueño se loguea una vez a mano en la
-ventana del navegador de Claude; la sesión queda guardada en el perfil.
+**Con qué usuario entra:** el usuario dedicado **"Claude · pruebas"** (rol
+admin), creado con `scripts/crear-usuario-claude-qa.ts` (se puede correr las
+veces que sea; no duplica). Sus datos de acceso viven en `.env.local`, fuera de
+git. Todo lo que Claude hace en la plataforma queda a nombre de ese usuario, no
+de una persona real. Para entrar sin tipear nada:
+`scripts/navegador-claude-login.ts` genera un enlace de acceso de un solo uso y
+lo abre en el navegador de Claude.
+
+**Quién publica:** el push, el PR y el merge a `main` los hace Claude, nunca el
+dueño. Requisito pendiente: la cuenta con la que `gh` está logueado
+(`Sujupar97`) no es colaboradora del repo, así que hoy no puede abrir PRs (y sin
+PR no hay vista previa). Es un ajuste único del dueño en GitHub.
 
 **Límites que hay que saber:**
 - **No hay base de datos de staging.** La vista previa de Netlify usa el MISMO
