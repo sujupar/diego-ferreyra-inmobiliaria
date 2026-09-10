@@ -5,10 +5,14 @@ import { useParams, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import type { AppraisalDetail } from '@/lib/supabase/appraisals'
-import { updateAppraisal, saveReportEdits } from '@/lib/supabase/appraisals'
+import { updateAppraisal, saveReportEdits, generarValuacionIA, elegirTasadorDeTasacion, guardarSnapshotIA } from '@/lib/supabase/appraisals'
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
-import { PDFDownloadButton } from '@/components/appraisal/PDFDownloadButton'
-import { ValuationProperty, ValuationResult, calculateValuation, getQualityCoefficient, ExpenseRates } from '@/lib/valuation/calculator'
+import { SelectorDeTasador, type EstadoIAEnPantalla } from '@/components/appraisal/SelectorDeTasador'
+import { ValuationProperty, ValuationResult, ValuationFeatures, calculateValuation, getQualityCoefficient, ExpenseRates } from '@/lib/valuation/calculator'
+import { valuacionActiva, estadoTarjetaIA, comparablesNormales, filaAPropiedad, rehidratar, comparablesDelSnapshotIA } from '@/lib/valuation/valuacion-activa'
+import { huellaDeInsumos } from '@/lib/valuation/huella-insumos'
+import { recalcularSnapshotIA, type CambioSnapshotIA } from '@/lib/valuation/editar-snapshot-ia'
+import type { ValuationSource } from '@/lib/valuation/ia-tipos'
 import { ReportEdits, buildDefaultEdits } from '@/lib/types/report-edits'
 import type { PropertyFeatures, ScrapedProperty } from '@/lib/scraper/types'
 import type { MarketDataForReport } from '@/lib/market-data/types'
@@ -34,6 +38,11 @@ export default function AppraisalDetailPage() {
     const [reportEdits, setReportEdits] = useState<ReportEdits | null>(null)
     const [flowHistory, setFlowHistory] = useState<FlowHistoryData | null>(null)
     const [subjectFeaturesOverride, setSubjectFeaturesOverride] = useState<PropertyFeatures | null>(null)
+    // Tasador IA. `estadoIA` null = derivarlo de la fila; se fija a mano
+    // mientras se genera o cuando la ruta contesta que no está configurado.
+    const [estadoIA, setEstadoIA] = useState<EstadoIAEnPantalla | null>(null)
+    const [ocupadoIA, setOcupadoIA] = useState(false)
+    const [avisoTasador, setAvisoTasador] = useState<string | null>(null)
     const [valuationOverride, setValuationOverride] = useState<ValuationResult | null>(null)
     const [savingFeatures, setSavingFeatures] = useState(false)
     const [advisorPhotoUrl, setAdvisorPhotoUrl] = useState<string | undefined>(undefined)
@@ -123,8 +132,18 @@ export default function AppraisalDetailPage() {
     // CRÍTICO: los useMemo deben llamarse SIEMPRE — antes de cualquier early
     // return — porque las reglas de hooks de React requieren orden estable.
     // Manejamos el caso `appraisal === null` con fallbacks adentro.
+    // Qué tasador está en uso y su resultado (con los comparables rehidratados
+    // desde las filas; en modo IA, con las features que la IA interpretó).
+    const activa = useMemo(() => (appraisal ? valuacionActiva(appraisal, appraisal.comparables) : null), [appraisal])
+    const tasadorElegido: ValuationSource = activa?.source ?? 'calculator'
+    const snapshotIA = appraisal?.ai_valuation_result ?? null
+
+    // En modo IA, el subject que se muestra y edita es el del snapshot IA.
     const effectiveFeatures: PropertyFeatures | null =
-        subjectFeaturesOverride ?? (appraisal?.property_features ?? null)
+        subjectFeaturesOverride
+        ?? (tasadorElegido === 'ai' && snapshotIA
+            ? (snapshotIA.ai.subject.features as unknown as PropertyFeatures)
+            : (appraisal?.property_features ?? null))
 
     const subject: ValuationProperty | null = useMemo(() => {
         if (!appraisal) return null
@@ -246,7 +265,20 @@ export default function AppraisalDetailPage() {
         )
     }
 
-    const result: ValuationResult = valuationOverride ?? (appraisal.valuation_result || {} as ValuationResult)
+    const result: ValuationResult = valuationOverride ?? (activa?.result ?? appraisal.valuation_result ?? ({} as ValuationResult))
+    // Huella de los insumos objetivos de HOY: si difiere de la del snapshot IA,
+    // la tarjeta avisa "Desactualizada".
+    const huellaActual = huellaDeInsumos({
+        subject: {
+            price: appraisal.property_price, currency: appraisal.property_currency,
+            location: appraisal.property_location, description: appraisal.property_description ?? '',
+            features: (appraisal.property_features ?? {}) as ValuationFeatures,
+        },
+        comparables: comparablesNormales(appraisal.comparables).map(r => filaAPropiedad(r)),
+        expenseRates: appraisal.valuation_result?.expenseRates,
+        ownerSharePercent: appraisal.valuation_result?.ownerSharePercent ?? 100,
+    })
+    const estadoIAEfectivo: EstadoIAEnPantalla = estadoIA ?? estadoTarjetaIA(appraisal, huellaActual)
     const hasFullValuation = result.subjectSurface != null && result.comparableAnalysis?.length > 0
 
     // Detect coefficient drift: tasaciones guardadas antes del fix tenían subjectQualityCoef = 1.0 hardcoded.
@@ -258,8 +290,91 @@ export default function AppraisalDetailPage() {
         typeof storedQualityCoef === 'number' &&
         Math.abs(storedQualityCoef - expectedQualityCoef) > 0.01
 
+    /* ------------------------------ Tasador IA ------------------------------ */
+
+    async function handleGenerarIA() {
+        if (!appraisal) return
+        // Los overrides en memoria son de la versión ANTERIOR (una edición en
+        // línea del snapshot viejo): sin limpiarlos, `result` seguiría mostrando
+        // esa versión —y el PDF la descargaría— aunque la base ya tenga la nueva.
+        setValuationOverride(null)
+        setSubjectFeaturesOverride(null)
+        setEstadoIA('analizando')
+        setOcupadoIA(true)
+        try {
+            const cols = await generarValuacionIA(appraisal.id)
+            setAppraisal(prev => (prev ? { ...prev, ...cols } : prev))
+            setEstadoIA(null)
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : 'No se pudo generar la valuación IA'
+            if (/no configurado/i.test(msg)) {
+                setEstadoIA('no_configurado')
+            } else {
+                setEstadoIA('fallida')
+                setAppraisal(prev => (prev ? { ...prev, ai_valuation_status: 'failed', ai_valuation_error: msg } : prev))
+            }
+        } finally {
+            setOcupadoIA(false)
+        }
+    }
+
+    async function handleElegirTasador(source: ValuationSource) {
+        if (!appraisal || source === tasadorElegido) return
+        setOcupadoIA(true)
+        setAvisoTasador(null)
+        try {
+            const { teniaPreciosEditados } = await elegirTasadorDeTasacion(appraisal.id, source)
+            // Los overrides en memoria eran del tasador anterior: se descartan
+            // igual que en la base, y se relee la fila para que todo (precios
+            // desnormalizados, snapshot, elección) venga de una sola fuente.
+            setValuationOverride(null)
+            setSubjectFeaturesOverride(null)
+            if (teniaPreciosEditados) {
+                setReportEdits(prev => (prev ? { ...prev, priceOverrides: undefined } : prev))
+                setAvisoTasador('Se descartaron los precios editados a mano del PDF: eran de la otra versión.')
+            }
+            await loadAppraisal()
+        } catch (err) {
+            setAvisoTasador(err instanceof Error ? err.message : 'No se pudo cambiar el tasador')
+        } finally {
+            setOcupadoIA(false)
+        }
+    }
+
+    /**
+     * Edición en línea con la IA en uso: recalcula SOLO el snapshot IA (la
+     * versión clásica no se entera) y lo persiste por el PATCH liviano.
+     */
+    async function editarSnapshotIA(cambio: CambioSnapshotIA) {
+        if (!appraisal || !snapshotIA || !subject || !activa) return
+        setSavingFeatures(true)
+        try {
+            const nuevo = recalcularSnapshotIA(
+                snapshotIA,
+                { ...subject, features: snapshotIA.ai.subject.features },
+                activa.comparables,
+                cambio,
+            )
+            if (!nuevo) return
+            setValuationOverride(rehidratar(nuevo, comparablesDelSnapshotIA(appraisal.comparables, nuevo.ai)))
+            await guardarSnapshotIA(appraisal.id, nuevo)
+            setAppraisal(prev => (prev ? { ...prev, ai_valuation_result: nuevo } : prev))
+        } catch (err) {
+            console.error('editarSnapshotIA error:', err)
+        } finally {
+            setSavingFeatures(false)
+        }
+    }
+
     async function handleSubjectFeaturesChange(features: PropertyFeatures) {
         if (!appraisal) return
+        if (tasadorElegido === 'ai' && snapshotIA) {
+            // `PropertyFeatures` (del scraper, con null) y `ValuationFeatures` (con
+            // undefined) son la misma información; el cast es el que ya usa el
+            // camino clásico más abajo.
+            await editarSnapshotIA({ tipo: 'subject', features: features as unknown as ValuationFeatures })
+            return
+        }
         // Optimistic UI update
         setSubjectFeaturesOverride(features)
         setSavingFeatures(true)
@@ -346,6 +461,10 @@ export default function AppraisalDetailPage() {
 
     async function handleComparableFeaturesChange(index: number, newFeatures: Record<string, unknown>) {
         if (!appraisal) return
+        if (tasadorElegido === 'ai' && snapshotIA) {
+            await editarSnapshotIA({ tipo: 'comparable', index, features: newFeatures as ValuationFeatures })
+            return
+        }
         // El `index` que envía ValuationReport indexa result.comparableAnalysis,
         // que son SOLO los comparables normales (overpriced/purchase van aparte).
         // Mapeamos ese índice a la i-ésima fila normal dentro de appraisal.comparables.
@@ -441,6 +560,10 @@ export default function AppraisalDetailPage() {
 
     async function handleExpenseRatesChange(next: Partial<ExpenseRates>) {
         if (!appraisal || !appraisal.valuation_result) return
+        if (tasadorElegido === 'ai' && snapshotIA) {
+            await editarSnapshotIA({ tipo: 'gastos', expenseRates: next })
+            return
+        }
         const currentRates = (valuationOverride?.expenseRates ?? appraisal.valuation_result.expenseRates) || {
             saleDiscountPercent: 5,
             deedDiscountPercent: 30,
@@ -639,6 +762,25 @@ export default function AppraisalDetailPage() {
                 </div>
             )}
 
+            {/* Tasador en uso: clásico o IA */}
+            {hasFullValuation && activa && (
+                <SelectorDeTasador
+                    clasico={activa.source === 'calculator'
+                        ? activa.result
+                        : rehidratar(appraisal.valuation_result, comparablesNormales(appraisal.comparables).map(r => filaAPropiedad(r)))}
+                    ia={snapshotIA}
+                    estadoIA={estadoIAEfectivo}
+                    errorIA={appraisal.ai_valuation_error}
+                    elegido={tasadorElegido}
+                    ocupado={ocupadoIA}
+                    onElegir={handleElegirTasador}
+                    onGenerar={handleGenerarIA}
+                />
+            )}
+            {avisoTasador && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">{avisoTasador}</div>
+            )}
+
             {/* Report */}
             {hasFullValuation ? (
                 <ValuationReport
@@ -647,7 +789,7 @@ export default function AppraisalDetailPage() {
                     editable
                     onSubjectFeaturesChange={handleSubjectFeaturesChange}
                     onComparableFeaturesChange={handleComparableFeaturesChange}
-                    expenseRates={(valuationOverride?.expenseRates ?? appraisal.valuation_result?.expenseRates) || undefined}
+                    expenseRates={(valuationOverride?.expenseRates ?? result.expenseRates) || undefined}
                     onExpenseRatesChange={handleExpenseRatesChange}
                     noSaleZoneOverride={reportEdits?.priceOverrides?.noSaleZonePrice}
                     onNoSaleZoneOverrideChange={handleNoSaleZoneOverride}
@@ -673,7 +815,7 @@ export default function AppraisalDetailPage() {
                     onOpenChange={setShowPDFPreview}
                     appraisalId={appraisal.id}
                     subject={subject}
-                    comparables={comparables}
+                    comparables={activa?.comparables ?? comparables}
                     valuationResult={result}
                     overpriced={overpriced}
                     purchaseProperties={purchaseProperties}

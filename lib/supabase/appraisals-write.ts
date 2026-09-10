@@ -21,6 +21,17 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { sanitizeValuationResultForStorage, type SaveAppraisalInput } from './appraisals'
+import type { ValuationResult } from '@/lib/valuation/calculator'
+import type { AiValuationResult, ValuationSource } from '@/lib/valuation/ia-tipos'
+import { preciosDesnormalizados } from '@/lib/valuation/valuacion-activa'
+import type { ReportEdits } from '@/lib/types/report-edits'
+
+/** Qué tasador está EN USO en esta tasación (los precios desnormalizados lo siguen). */
+async function tasadorEnUso(supabase: SupabaseClient, id: string): Promise<ValuationSource> {
+    const { data, error } = await supabase.from('appraisals').select('valuation_source').eq('id', id).single()
+    if (error) throw error
+    return (data as { valuation_source?: string } | null)?.valuation_source === 'ai' ? 'ai' : 'calculator'
+}
 
 /** Build the appraisal_comparables rows for the normal comparables. */
 function buildComparableRows(appraisalId: string, input: SaveAppraisalInput) {
@@ -173,13 +184,16 @@ export async function replaceAppraisalComparables(
         property_images: subject.images,
         property_features: subject.features as any,
         valuation_result: leanValuation as any,
-        publication_price: leanValuation.publicationPrice,
-        sale_value: leanValuation.saleValue,
-        money_in_hand: leanValuation.moneyInHand,
         currency: leanValuation.currency,
         comparable_count: comparables.length,
         notes,
         // market_period NO se toca en updates: el mes queda CONGELADO al de creación.
+    }
+    // Los precios desnormalizados siguen al tasador EN USO. Si la IA está
+    // elegida, un guardado del camino clásico (autosave del wizard, edición en
+    // línea de la versión clásica) no debe pisar el precio que ve el listado.
+    if ((await tasadorEnUso(supabase, id)) === 'calculator') {
+        Object.assign(updatePayload, preciosDesnormalizados(leanValuation))
     }
     // Solo tocamos report_edits si el caller los provee. La página de detalle
     // edita features/rates SIN pasar reportEdits — si lo seteáramos a null acá,
@@ -208,4 +222,71 @@ export async function replaceAppraisalComparables(
     if (deleteError) throw deleteError
 
     await insertAllComparableRows(supabase, id, input)
+}
+
+/* ------------------------------ Tasador IA ------------------------------ */
+
+/**
+ * Guarda el estado/resultado del Tasador IA. Si la IA está en uso y el
+ * resultado está listo, los precios desnormalizados la siguen.
+ */
+export async function guardarValuacionIA(
+    supabase: SupabaseClient,
+    id: string,
+    patch: { status: 'pending' } | { status: 'ready'; result: AiValuationResult } | { status: 'failed'; error: string },
+): Promise<void> {
+    const payload: Record<string, unknown> = { ai_valuation_status: patch.status, ai_valuation_error: null }
+    if (patch.status === 'failed') payload.ai_valuation_error = patch.error
+    if (patch.status === 'ready') {
+        // Mismo saneado que el clásico: sin `comparableAnalysis[].property` (ya
+        // está en las filas) y sin NaN/Infinity.
+        const lean = sanitizeValuationResultForStorage(patch.result) as AiValuationResult
+        payload.ai_valuation_result = lean
+        if ((await tasadorEnUso(supabase, id)) === 'ai') Object.assign(payload, preciosDesnormalizados(lean))
+    }
+    const { error } = await supabase.from('appraisals').update(payload as never).eq('id', id)
+    if (error) throw error
+}
+
+/**
+ * Elige el tasador en uso. Reescribe los tres precios desnormalizados desde el
+ * elegido y BORRA `report_edits.priceOverrides`: fueron editados contra los
+ * números del otro tasador y quedarían mintiendo en el PDF.
+ */
+export async function elegirTasador(
+    supabase: SupabaseClient,
+    id: string,
+    source: ValuationSource,
+): Promise<{ teniaPreciosEditados: boolean }> {
+    const { data, error } = await supabase
+        .from('appraisals')
+        .select('valuation_result, ai_valuation_result, ai_valuation_status, report_edits')
+        .eq('id', id)
+        .single()
+    if (error) throw error
+    const fila = data as unknown as {
+        valuation_result: ValuationResult
+        ai_valuation_result: AiValuationResult | null
+        ai_valuation_status: string | null
+        report_edits: ReportEdits | null
+    }
+    const snapshotIA = fila.ai_valuation_result
+    if (source === 'ai' && (fila.ai_valuation_status !== 'ready' || !snapshotIA)) {
+        throw new Error('La valuación IA no está lista')
+    }
+    const elegido: ValuationResult = source === 'ai' && snapshotIA ? snapshotIA : fila.valuation_result
+    const overrides = fila.report_edits?.priceOverrides
+    const teniaPreciosEditados = Boolean(overrides && Object.keys(overrides).length > 0)
+    let report_edits: ReportEdits | null = fila.report_edits
+    if (report_edits) {
+        const { priceOverrides: _descartados, ...resto } = report_edits
+        void _descartados
+        report_edits = resto
+    }
+    const { error: e2 } = await supabase
+        .from('appraisals')
+        .update({ valuation_source: source, ...preciosDesnormalizados(elegido), report_edits } as never)
+        .eq('id', id)
+    if (e2) throw e2
+    return { teniaPreciosEditados }
 }

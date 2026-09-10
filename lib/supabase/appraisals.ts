@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ValuationResult, ValuationProperty } from '@/lib/valuation/calculator'
 import { ScrapedProperty } from '@/lib/scraper/types'
 import type { ReportEdits } from '@/lib/types/report-edits'
+import type { AiValuationResult, AiValuationStatus, ColumnasTasadorIA, ValuationSource } from '@/lib/valuation/ia-tipos'
 
 // ---- Input/Output Types ----
 
@@ -60,6 +61,11 @@ export interface AppraisalDetail {
     updated_at: string
     notes: string | null
     report_edits: ReportEdits | null
+    /** Tasador IA (ver `lib/valuation/ia-tipos.ts`). Tasaciones viejas: null / 'calculator'. */
+    ai_valuation_result: AiValuationResult | null
+    ai_valuation_status: AiValuationStatus | null
+    ai_valuation_error: string | null
+    valuation_source: ValuationSource
     comparables: ComparableRow[]
 }
 
@@ -245,6 +251,10 @@ export async function getAppraisal(id: string): Promise<AppraisalDetail | null> 
         ...appraisalRes.data,
         valuation_result: valuationResult,
         report_edits: (row.report_edits as ReportEdits | null | undefined) ?? null,
+        ai_valuation_result: (row.ai_valuation_result as AiValuationResult | null | undefined) ?? null,
+        ai_valuation_status: (row.ai_valuation_status as AiValuationStatus | null | undefined) ?? null,
+        ai_valuation_error: (row.ai_valuation_error as string | null | undefined) ?? null,
+        valuation_source: row.valuation_source === 'ai' ? 'ai' : 'calculator',
         comparables: allComparableRows,
     } as unknown as AppraisalDetail
 }
@@ -286,5 +296,57 @@ export async function saveReportEdits(id: string, reportEdits: ReportEdits): Pro
     if (!res.ok) {
         const data = await res.json().catch(() => null)
         throw buildApiError(data, 'No se pudieron guardar los ajustes del informe')
+    }
+}
+
+/* ------------------------------ Tasador IA ------------------------------ */
+
+/**
+ * Lee la respuesta aunque no sea JSON: cuando una función de Netlify se pasa
+ * de tiempo, el gateway devuelve una página HTML de error 504 y `res.json()`
+ * explota con "Unexpected token '<'", que no le dice nada a nadie.
+ */
+async function leerJson<T>(res: Response): Promise<T & { error?: string }> {
+    const text = await res.text()
+    try {
+        return JSON.parse(text) as T & { error?: string }
+    } catch {
+        if (res.status === 504 || res.status === 502 || res.status === 408) {
+            return { error: 'El servidor tardó demasiado y cortó la operación. Volvé a intentar.' } as T & { error?: string }
+        }
+        return { error: `El servidor respondió algo inesperado (${res.status}). Volvé a intentar.` } as T & { error?: string }
+    }
+}
+
+/** Dispara el Tasador IA (una llamada al modelo, en el servidor). Devuelve las columnas IA actualizadas. */
+export async function generarValuacionIA(id: string): Promise<ColumnasTasadorIA & { updated_at: string }> {
+    const res = await fetch(`/api/appraisals/${id}/ai-valuation`, { method: 'POST' })
+    const data = await leerJson<{ data?: ColumnasTasadorIA & { updated_at: string } }>(res)
+    if (!res.ok || !data.data) throw new Error(data.error || 'No se pudo generar la valuación IA')
+    return data.data
+}
+
+/** Elige el tasador en uso. Si había precios editados a mano en el PDF, el servidor los descarta y lo avisa. */
+export async function elegirTasadorDeTasacion(id: string, source: ValuationSource): Promise<{ teniaPreciosEditados: boolean }> {
+    const res = await fetch(`/api/appraisals/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ valuationSource: source }),
+    })
+    const data = await leerJson<{ teniaPreciosEditados?: boolean }>(res)
+    if (!res.ok) throw new Error(data.error || 'No se pudo cambiar el tasador')
+    return { teniaPreciosEditados: Boolean(data.teniaPreciosEditados) }
+}
+
+/** Persiste una edición en línea del snapshot IA (no toca comparables ni el resultado clásico). */
+export async function guardarSnapshotIA(id: string, result: AiValuationResult): Promise<void> {
+    const res = await fetch(`/api/appraisals/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aiValuationResult: sanitizeValuationResultForStorage(result) }),
+    })
+    if (!res.ok) {
+        const data = await leerJson<Record<string, unknown>>(res)
+        throw buildApiError(data, 'No se pudo guardar la versión IA')
     }
 }

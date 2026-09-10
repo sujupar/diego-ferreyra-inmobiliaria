@@ -5,8 +5,24 @@ import { canAccessAppraisal } from '@/lib/auth/entity-access'
 import {
   alcanceTasaciones, proyeccionDeTasacion, puedeBorrarTasacion, puedeEditarTasacion,
 } from '@/lib/auth/appraisal-access'
-import { replaceAppraisalComparables } from '@/lib/supabase/appraisals-write'
+import { replaceAppraisalComparables, elegirTasador, guardarValuacionIA } from '@/lib/supabase/appraisals-write'
 import type { SaveAppraisalInput } from '@/lib/supabase/appraisals'
+import type { AiValuationResult } from '@/lib/valuation/ia-tipos'
+import { z } from 'zod'
+
+/** Forma mínima de un snapshot IA editado en el navegador (lo demás pasa tal cual). */
+const snapshotIASchema = z.object({
+  publicationPrice: z.number().finite().nonnegative(),
+  saleValue: z.number().finite().nonnegative(),
+  moneyInHand: z.number().finite(),
+  currency: z.string().min(1),
+  comparableAnalysis: z.array(z.record(z.string(), z.unknown())),
+  ai: z.object({
+    inputFingerprint: z.string().min(1),
+    subject: z.record(z.string(), z.unknown()),
+    comparables: z.array(z.record(z.string(), z.unknown())),
+  }).passthrough(),
+}).passthrough()
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -118,11 +134,47 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!(await canAccessAppraisal(user, id))) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
-    const body = (await req.json()) as { reportEdits?: unknown }
+    const body = (await req.json()) as { reportEdits?: unknown; valuationSource?: unknown; aiValuationResult?: unknown }
+    const supabase = getAdmin()
+
+    // Tres usos, UNO por llamada: ajustes del informe (como siempre), elegir
+    // tasador, o guardar una edición en línea del snapshot IA.
+    if (body?.valuationSource !== undefined) {
+      if (body.valuationSource !== 'calculator' && body.valuationSource !== 'ai') {
+        return NextResponse.json({ error: 'valuationSource debe ser calculator o ai' }, { status: 400 })
+      }
+      try {
+        const r = await elegirTasador(supabase, id, body.valuationSource)
+        return NextResponse.json({ success: true, teniaPreciosEditados: r.teniaPreciosEditados })
+      } catch (e) {
+        if (e instanceof Error && /no está lista/.test(e.message)) {
+          return NextResponse.json({ error: e.message }, { status: 409 })
+        }
+        throw e
+      }
+    }
+    if (body?.aiValuationResult !== undefined) {
+      // Lo que llega es un snapshot armado en el navegador. Si la IA está en
+      // uso, sus precios pasan directo a las columnas que lee el listado, así
+      // que se exige la forma completa y que cuadre con los comparables REALES
+      // de la tasación (no un JSON suelto con un precio inventado).
+      const parsed = snapshotIASchema.safeParse(body.aiValuationResult)
+      if (!parsed.success) {
+        return NextResponse.json({ error: 'aiValuationResult inválido' }, { status: 400 })
+      }
+      const snapshot = parsed.data
+      const { data: filas } = await supabase.from('appraisal_comparables').select('analysis').eq('appraisal_id', id)
+      const normales = ((filas ?? []) as Array<{ analysis: { propertyType?: string } | null }>)
+        .filter(f => f.analysis?.propertyType !== 'overpriced' && f.analysis?.propertyType !== 'purchase').length
+      if (snapshot.comparableAnalysis.length !== normales || snapshot.ai.comparables.length !== normales) {
+        return NextResponse.json({ error: `aiValuationResult no cuadra con los ${normales} comparables de la tasación` }, { status: 400 })
+      }
+      await guardarValuacionIA(supabase, id, { status: 'ready', result: snapshot as unknown as AiValuationResult })
+      return NextResponse.json({ success: true })
+    }
     if (body?.reportEdits === undefined) {
       return NextResponse.json({ error: 'reportEdits es requerido' }, { status: 400 })
     }
-    const supabase = getAdmin()
     const { error } = await supabase
       .from('appraisals')
       .update({ report_edits: body.reportEdits } as never)
