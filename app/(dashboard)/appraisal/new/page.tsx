@@ -592,17 +592,6 @@ function NewAppraisalPageContent() {
         })
         setValuationResult(merged)
 
-        // Si cambiaron los insumos objetivos (precio, superficie, descripción,
-        // tasas), la valuación IA quedó vieja: la tarjeta lo avisa. No se
-        // regenera sola en cada autosave (sería una llamada paga por tecla).
-        if (snapshotIA && subject) {
-            const huella = huellaDelWizard(subject, comparables, expenseRates, ownerSharePercent)
-            setEstadoIA(prev =>
-                prev === 'lista' && huella !== snapshotIA.ai.inputFingerprint ? 'desactualizada'
-                : prev === 'desactualizada' && huella === snapshotIA.ai.inputFingerprint ? 'lista'
-                : prev)
-        }
-
         // Auto-save with 800ms debounce using the synchronous ref.
         // We DO NOT use savedAppraisalId state here because it's async and
         // may not be set yet when this effect fires right after handleCalculate.
@@ -659,6 +648,20 @@ function NewAppraisalPageContent() {
         }, 800)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [subject, comparables, overpriced, purchaseProperties, expenseRates, purchaseScenarios, selectedScenarioIds, reportEdits])
+
+    // Si cambiaron los insumos objetivos (precio, superficie, descripción, tasas,
+    // parte del propietario), la valuación IA quedó vieja: la tarjeta lo avisa.
+    // No se regenera sola en cada autosave (sería una llamada paga por tecla).
+    // Efecto propio, y no dentro del de recálculo: aquel no depende de
+    // `ownerSharePercent` y se lo perdía (verificado en el QA del 2026-09-10).
+    useEffect(() => {
+        if (!snapshotIA || !subject) return
+        const huella = huellaDelWizard(subject, comparables, expenseRates, ownerSharePercent)
+        setEstadoIA(prev =>
+            prev === 'lista' && huella !== snapshotIA.ai.inputFingerprint ? 'desactualizada'
+            : prev === 'desactualizada' && huella === snapshotIA.ai.inputFingerprint ? 'lista'
+            : prev)
+    }, [snapshotIA, subject, comparables, expenseRates, ownerSharePercent])
 
     // Foto del asesor para el PDF: resolver desde el agente asignado. Sin asignar /
     // no autorizado / sin foto → undefined → el PDF usa la foto default (Diego).
