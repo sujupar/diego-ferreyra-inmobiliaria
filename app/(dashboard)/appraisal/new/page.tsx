@@ -10,7 +10,8 @@ import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { ScrapedProperty, PropertyFeatures } from '@/lib/scraper/types'
 import { calculateValuation, getQualityCoefficient, calculateWeightedPricePerM2, ValuationResult, ValuationProperty, ExpenseRates, PurchaseResult } from '@/lib/valuation/calculator'
 import type { PurchaseScenarioId, PurchaseScenarioInput } from '@/lib/valuation/calculator'
-import { buildDefaultScenarios, calculateAllScenarios } from '@/lib/valuation/purchase-scenarios'
+import { buildDefaultScenarios } from '@/lib/valuation/purchase-scenarios'
+import { completarValuacion } from '@/lib/valuation/completar-valuacion'
 import { PurchaseScenariosEditor } from '@/components/appraisal/PurchaseScenariosEditor'
 import { ReportEdits, DEFAULT_REPORT_EDITS, buildDefaultEdits } from '@/lib/types/report-edits'
 import { saveAppraisal, updateAppraisal, getAppraisal } from '@/lib/supabase/appraisals'
@@ -542,28 +543,14 @@ function NewAppraisalPageContent() {
             setSaveErrorDetail('No se puede recalcular: revisá que el subject y los comparables tengan datos completos (precios, superficies).')
             return
         }
-        // Parte del propietario: cuando la propiedad está dividida entre herederos.
-        const ownerShareMoney = Math.round(next.moneyInHand * (ownerSharePercent / 100))
-        // Calcular escenarios si los hay — usan la parte del propietario como base.
-        const scenarioResults = purchaseScenarios.length > 0
-            ? calculateAllScenarios(purchaseScenarios, ownerShareMoney)
-            : undefined
-        // Si hay escenarios calculados, preservar la selección del usuario filtrada a IDs que existen.
-        // Si NO hay (porque borró las purchase properties), limpiar selectedIds y purchaseResult —
-        // preservar IDs huérfanos haría que el PDF intente renderizar tablas inexistentes.
-        const mergedScenarios = scenarioResults && scenarioResults.length > 0 ? scenarioResults : undefined
-        const mergedSelectedIds = mergedScenarios
-            ? selectedScenarioIds.filter(id => mergedScenarios.some(s => s.id === id))
-            : []
-        // Preserve purchase data that lives outside calculateValuation
-        const merged: ValuationResult = {
-            ...next,
-            purchaseResult: mergedScenarios ? valuationResult.purchaseResult : undefined,
-            purchaseScenarios: mergedScenarios,
-            selectedScenarioIds: mergedSelectedIds,
+        // Parte del propietario, escenarios de compra y selección: la MISMA
+        // función que usa el Tasador IA, para que las dos versiones sean comparables.
+        const merged = completarValuacion(next, {
             ownerSharePercent,
-            ownerShareMoney,
-        }
+            purchaseScenarios,
+            selectedScenarioIds,
+            previousPurchaseResult: valuationResult.purchaseResult,
+        })
         setValuationResult(merged)
 
         // Auto-save with 800ms debounce using the synchronous ref.
@@ -679,10 +666,6 @@ function NewAppraisalPageContent() {
             expenseRates,
         })
 
-        // Parte del propietario (default 100%). Aplicada también en handleCalculate para que el
-        // primer cálculo (sin haber entrado al efecto de recálculo) ya refleje el descuento.
-        const ownerShareMoney = result ? Math.round(result.moneyInHand * (ownerSharePercent / 100)) : 0
-
         // Calcular escenarios para todas las propiedades seleccionadas usando la parte del propietario.
         let scenariosForCalc = purchaseScenarios
         if (result && selectedPurchaseIndices.length > 0 && purchaseScenarios.length === 0) {
@@ -700,20 +683,14 @@ function NewAppraisalPageContent() {
             setPurchaseScenarios(scenariosForCalc)
         }
 
-        const scenarioResults = result && scenariosForCalc.length > 0
-            ? calculateAllScenarios(scenariosForCalc, ownerShareMoney)
-            : undefined
-
+        // Parte del propietario (default 100%) + escenarios: aplicado también acá para
+        // que el primer cálculo (sin pasar por el efecto de recálculo) ya lo refleje.
         if (result) {
-            result = {
-                ...result,
-                purchaseScenarios: scenarioResults,
-                selectedScenarioIds: scenarioResults
-                    ? selectedScenarioIds.filter(id => scenarioResults.some(s => s.id === id))
-                    : [],
+            result = completarValuacion(result, {
                 ownerSharePercent,
-                ownerShareMoney,
-            }
+                purchaseScenarios: scenariosForCalc,
+                selectedScenarioIds,
+            })
         }
         // El purchaseResult legacy (single property) ya no se genera por el nuevo flujo.
         setPurchaseResult(null)
