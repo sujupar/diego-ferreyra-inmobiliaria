@@ -1348,3 +1348,11 @@ inservible"), y ahí analizar sería la segunda llamada.
   - **(PENDIENTE) Resend:** 2 emails/registro = 60k/mes a 1000/día (sobre el plan Pro), sin manejo de 429; el canal de ALERTA del watchdog es el mismo Resend.
   - **(PENDIENTE) IA:** DeepSeek único sin retry/failover (cambiar = env + redeploy manual). OJO: un fallback automático encadenaría dos llamadas de IA en el request del webhook — necesita diseño propio, no un retry naive.
   - Nada de esto muerde a volumen actual; los PENDIENTES muerden antes de 1000/día.
+
+---
+
+## Proceso de desarrollo y QA en el navegador (2026-09-10)
+
+- **El proceso completo por etapas** (definir → estructura → código → pruebas → QA → deploy) está en `docs/proceso-de-desarrollo.md`. Seguirlo en ese orden.
+- **QA de UI = navegador de Claude**, no el perfil default de `chrome-devtools-mcp` (ese lo abre la primera sesión y las demás fallan con "The browser is already running"; pasó el 2026-09-10 con sesiones paralelas). Es un Chrome aparte con perfil `~/.cache/claude-browser` y `--remote-debugging-port=9222`; se abre con `scripts/navegador-claude.sh` (no-op si ya está abierto) y la herramienta se conecta con `--browserUrl http://127.0.0.1:9222`. La sesión de la plataforma queda guardada en ese perfil.
+- **Dónde se prueba:** en la vista previa de Netlify del PR, `https://deploy-preview-<N>--inmobiliariadiegoferreyra.netlify.app` (verificado: el bot de Netlify la publica en cada PR). No en localhost (Turbopack roto por la tilde) ni en producción salvo el humo post-deploy. **OJO:** la vista previa usa el MISMO Supabase de producción — no hay staging. Marcar `[TEST` lo que se cree y usar los modos de prueba de WhatsApp/email.

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Navegador de Claude como servicio de usuario (opcional). Instalar:
+         cp scripts/com.claude.navegador.plist ~/Library/LaunchAgents/
+         launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.claude.navegador.plist
+       Desinstalar:
+         launchctl bootout gui/$(id -u)/com.claude.navegador
+       Sin esto, alcanza con correr scripts/navegador-claude.sh cuando haga falta. -->
+  <key>Label</key><string>com.claude.navegador</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Applications/Google Chrome.app/Contents/MacOS/Google Chrome</string>
+    <string>--user-data-dir=/Users/apple/.cache/claude-browser</string>
+    <string>--remote-debugging-port=9222</string>
+    <string>--no-first-run</string>
+    <string>--no-default-browser-check</string>
+    <string>--window-size=1440,900</string>
+    <string>https://inmodf.com.ar/login</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>/Users/apple/.cache/claude-browser/launchd.log</string>
+  <key>StandardErrorPath</key><string>/Users/apple/.cache/claude-browser/launchd.log</string>
+</dict>
+</plist>
