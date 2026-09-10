@@ -8,6 +8,21 @@ import {
 import { replaceAppraisalComparables, elegirTasador, guardarValuacionIA } from '@/lib/supabase/appraisals-write'
 import type { SaveAppraisalInput } from '@/lib/supabase/appraisals'
 import type { AiValuationResult } from '@/lib/valuation/ia-tipos'
+import { z } from 'zod'
+
+/** Forma mínima de un snapshot IA editado en el navegador (lo demás pasa tal cual). */
+const snapshotIASchema = z.object({
+  publicationPrice: z.number().finite().nonnegative(),
+  saleValue: z.number().finite().nonnegative(),
+  moneyInHand: z.number().finite(),
+  currency: z.string().min(1),
+  comparableAnalysis: z.array(z.record(z.string(), z.unknown())),
+  ai: z.object({
+    inputFingerprint: z.string().min(1),
+    subject: z.record(z.string(), z.unknown()),
+    comparables: z.array(z.record(z.string(), z.unknown())),
+  }).passthrough(),
+}).passthrough()
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -139,11 +154,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
     if (body?.aiValuationResult !== undefined) {
-      const r = body.aiValuationResult as { ai?: { inputFingerprint?: unknown }; publicationPrice?: unknown } | null
-      if (!r || typeof r !== 'object' || typeof r.publicationPrice !== 'number' || typeof r.ai?.inputFingerprint !== 'string') {
+      // Lo que llega es un snapshot armado en el navegador. Si la IA está en
+      // uso, sus precios pasan directo a las columnas que lee el listado, así
+      // que se exige la forma completa y que cuadre con los comparables REALES
+      // de la tasación (no un JSON suelto con un precio inventado).
+      const parsed = snapshotIASchema.safeParse(body.aiValuationResult)
+      if (!parsed.success) {
         return NextResponse.json({ error: 'aiValuationResult inválido' }, { status: 400 })
       }
-      await guardarValuacionIA(supabase, id, { status: 'ready', result: body.aiValuationResult as AiValuationResult })
+      const snapshot = parsed.data
+      const { data: filas } = await supabase.from('appraisal_comparables').select('analysis').eq('appraisal_id', id)
+      const normales = ((filas ?? []) as Array<{ analysis: { propertyType?: string } | null }>)
+        .filter(f => f.analysis?.propertyType !== 'overpriced' && f.analysis?.propertyType !== 'purchase').length
+      if (snapshot.comparableAnalysis.length !== normales || snapshot.ai.comparables.length !== normales) {
+        return NextResponse.json({ error: `aiValuationResult no cuadra con los ${normales} comparables de la tasación` }, { status: 400 })
+      }
+      await guardarValuacionIA(supabase, id, { status: 'ready', result: snapshot as unknown as AiValuationResult })
       return NextResponse.json({ success: true })
     }
     if (body?.reportEdits === undefined) {

@@ -99,7 +99,11 @@ export function SelectorDeTasador({ clasico, ia, estadoIA, errorIA, elegido, ocu
                 role="button"
                 tabIndex={0}
                 aria-pressed={elegido === 'ai'}
-                aria-disabled={!iaElegible}
+                // Sin `aria-disabled` en la tarjeta: adentro viven los botones
+                // Generar/Reintentar/Regenerar, y un ancestro deshabilitado los
+                // deja inaccesibles para tecnologías asistivas (y para el QA
+                // automatizado, que se negó a tocarlos). Que no sea elegible se
+                // expresa con `iaElegible` en el onClick, no en la semántica.
                 className={claseTarjeta(elegido === 'ai', iaElegible)}
                 onClick={() => { if (!ocupado && iaElegible && elegido !== 'ai') onElegir('ai') }}
                 onKeyDown={tecla('ai', iaElegible)}

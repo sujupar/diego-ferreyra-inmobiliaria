@@ -63,6 +63,12 @@ describe('valuacionActiva', () => {
     const v = valuacionActiva(fila({ valuation_source: 'ai', ai_valuation_result: null, ai_valuation_status: 'failed' }), rows)
     expect(v.source).toBe('calculator')
   })
+  it('con IA elegida pero un snapshot con OTRA cantidad de comparables cae a la clásica (evita mezclar propiedades y coeficientes)', () => {
+    const iaVieja = { ...ia, ai: { ...ia.ai, comparables: [ia.ai.comparables[0]] } } as unknown as AiValuationResult
+    const v = valuacionActiva(fila({ valuation_source: 'ai', ai_valuation_result: iaVieja, ai_valuation_status: 'ready' }), rows)
+    expect(v.source).toBe('calculator')
+    expect(v.result.publicationPrice).toBe(100_000)
+  })
   it('no pisa un property ya presente en el resultado', () => {
     const conProp = { ...clasico, comparableAnalysis: [{ property: { title: 'ya', features: {} } }, {}] } as unknown as ValuationResult
     const v = valuacionActiva(fila({ valuation_result: conProp }), rows)

@@ -1007,7 +1007,11 @@ function NewAppraisalPageContent() {
     // Lo que ven las tablas y el PDF: el tasador EN USO. En modo IA, los
     // comparables llevan las features que la IA interpretó (las filas aportan
     // precio, título e imágenes) y el subject las del snapshot.
-    const iaEnUso = tasadorElegido === 'ai' && snapshotIA !== null && (estadoIA === 'lista' || estadoIA === 'desactualizada')
+    // Misma defensa que `valuacionActiva`: si la cantidad de comparables ya no
+    // cuadra con el snapshot, no se muestra la IA (mezclaría filas y coeficientes).
+    const iaEnUso = tasadorElegido === 'ai' && snapshotIA !== null
+        && (estadoIA === 'lista' || estadoIA === 'desactualizada')
+        && snapshotIA.ai.comparables.length === comparables.length
     const comparablesEnUso: ValuationProperty[] = comparables.map((c, i) => ({
         price: c.price,
         currency: c.currency,

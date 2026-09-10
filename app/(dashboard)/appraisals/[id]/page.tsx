@@ -294,6 +294,11 @@ export default function AppraisalDetailPage() {
 
     async function handleGenerarIA() {
         if (!appraisal) return
+        // Los overrides en memoria son de la versión ANTERIOR (una edición en
+        // línea del snapshot viejo): sin limpiarlos, `result` seguiría mostrando
+        // esa versión —y el PDF la descargaría— aunque la base ya tenga la nueva.
+        setValuationOverride(null)
+        setSubjectFeaturesOverride(null)
         setEstadoIA('analizando')
         setOcupadoIA(true)
         try {

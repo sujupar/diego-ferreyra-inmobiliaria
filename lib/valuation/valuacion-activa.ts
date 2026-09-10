@@ -73,11 +73,17 @@ export function valuacionActiva(
   rows: FilaComparable[],
 ): { source: ValuationSource; result: ValuationResult; comparables: ValuationProperty[] } {
   const snapshot = fila.ai_valuation_result
-  if (fila.valuation_source === 'ai' && fila.ai_valuation_status === 'ready' && snapshot) {
+  const normales = comparablesNormales(rows)
+  // El snapshot IA se empareja por ÍNDICE con las filas de hoy. Si la cantidad
+  // de comparables cambió desde que se generó (se agregó/quitó uno y la
+  // regeneración no llegó a completarse), la tabla mostraría el título y la
+  // foto de una propiedad junto a los coeficientes de OTRA. Ahí se lee la clásica.
+  const snapshotCoherente = !!snapshot && snapshot.ai.comparables.length === normales.length
+  if (fila.valuation_source === 'ai' && fila.ai_valuation_status === 'ready' && snapshot && snapshotCoherente) {
     const comparables = comparablesDelSnapshotIA(rows, snapshot.ai)
     return { source: 'ai', result: rehidratar(snapshot, comparables), comparables }
   }
-  // Defensa: si la IA está elegida pero no está lista, se lee la clásica.
+  // Defensa: si la IA está elegida pero no está lista (o no cuadra), se lee la clásica.
   const comparables = comparablesNormales(rows).map(r => filaAPropiedad(r))
   return { source: 'calculator', result: rehidratar(fila.valuation_result, comparables), comparables }
 }
