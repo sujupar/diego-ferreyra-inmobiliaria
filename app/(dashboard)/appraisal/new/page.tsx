@@ -12,6 +12,11 @@ import { calculateValuation, getQualityCoefficient, calculateWeightedPricePerM2,
 import type { PurchaseScenarioId, PurchaseScenarioInput } from '@/lib/valuation/calculator'
 import { buildDefaultScenarios } from '@/lib/valuation/purchase-scenarios'
 import { completarValuacion } from '@/lib/valuation/completar-valuacion'
+import { SelectorDeTasador, type EstadoIAEnPantalla } from '@/components/appraisal/SelectorDeTasador'
+import { estadoTarjetaIA, rehidratar } from '@/lib/valuation/valuacion-activa'
+import { huellaDeInsumos } from '@/lib/valuation/huella-insumos'
+import { generarValuacionIA, elegirTasadorDeTasacion } from '@/lib/supabase/appraisals'
+import type { AiValuationResult, ValuationSource } from '@/lib/valuation/ia-tipos'
 import { PurchaseScenariosEditor } from '@/components/appraisal/PurchaseScenariosEditor'
 import { ReportEdits, DEFAULT_REPORT_EDITS, buildDefaultEdits } from '@/lib/types/report-edits'
 import { saveAppraisal, updateAppraisal, getAppraisal } from '@/lib/supabase/appraisals'
@@ -92,6 +97,23 @@ export default function NewAppraisalPage() {
     )
 }
 
+/**
+ * Huella de los insumos objetivos tal como los tiene el wizard (ScrapedProperty).
+ * Tiene que dar lo MISMO que la del servidor (que la calcula desde las filas):
+ * por eso mapea exactamente los mismos campos.
+ */
+function huellaDelWizard(
+    subject: ScrapedProperty,
+    comparables: ScrapedProperty[],
+    expenseRates: ExpenseRates | undefined,
+    ownerSharePercent: number,
+): string {
+    const a = (p: ScrapedProperty) => ({
+        price: p.price, currency: p.currency, location: p.location, description: p.description, features: p.features,
+    })
+    return huellaDeInsumos({ subject: a(subject), comparables: comparables.map(a), expenseRates, ownerSharePercent })
+}
+
 function NewAppraisalPageContent() {
     const searchParams = useSearchParams()
     const router = useRouter()
@@ -112,6 +134,14 @@ function NewAppraisalPageContent() {
     const [comparables, setComparables] = useState<ScrapedProperty[]>([])
     const [overpriced, setOverpriced] = useState<ScrapedProperty[]>([])
     const [valuationResult, setValuationResult] = useState<ValuationResult | null>(null)
+
+    // Tasador IA: snapshot, estado de la tarjeta, elección y avisos.
+    const [snapshotIA, setSnapshotIA] = useState<AiValuationResult | null>(null)
+    const [estadoIA, setEstadoIA] = useState<EstadoIAEnPantalla>('sin_generar')
+    const [errorIA, setErrorIA] = useState<string | null>(null)
+    const [tasadorElegido, setTasadorElegido] = useState<ValuationSource>('calculator')
+    const [ocupadoIA, setOcupadoIA] = useState(false)
+    const [avisoTasador, setAvisoTasador] = useState<string | null>(null)
 
     // Origin and assignment
     const [origin, setOrigin] = useState<string>('')
@@ -324,6 +354,15 @@ function NewAppraisalPageContent() {
                 setOverpriced(overpricedComps)
                 setPurchaseProperties(purchaseComps)
                 setValuationResult(detail.valuation_result)
+
+                // Tasador IA guardado (si lo hay) y cuál está en uso.
+                setSnapshotIA(detail.ai_valuation_result)
+                setTasadorElegido(detail.valuation_source)
+                setErrorIA(detail.ai_valuation_error)
+                setEstadoIA(estadoTarjetaIA(detail, huellaDelWizard(
+                    reconstructedSubject, normalComps,
+                    detail.valuation_result?.expenseRates, detail.valuation_result?.ownerSharePercent ?? 100,
+                )))
 
                 // Período de mercado CONGELADO al momento de crear esta tasación.
                 // El preview del PDF en modo edición debe usar este período (no el
@@ -553,6 +592,17 @@ function NewAppraisalPageContent() {
         })
         setValuationResult(merged)
 
+        // Si cambiaron los insumos objetivos (precio, superficie, descripción,
+        // tasas), la valuación IA quedó vieja: la tarjeta lo avisa. No se
+        // regenera sola en cada autosave (sería una llamada paga por tecla).
+        if (snapshotIA && subject) {
+            const huella = huellaDelWizard(subject, comparables, expenseRates, ownerSharePercent)
+            setEstadoIA(prev =>
+                prev === 'lista' && huella !== snapshotIA.ai.inputFingerprint ? 'desactualizada'
+                : prev === 'desactualizada' && huella === snapshotIA.ai.inputFingerprint ? 'lista'
+                : prev)
+        }
+
         // Auto-save with 800ms debounce using the synchronous ref.
         // We DO NOT use savedAppraisalId state here because it's async and
         // may not be set yet when this effect fires right after handleCalculate.
@@ -639,6 +689,45 @@ function NewAppraisalPageContent() {
             .catch(() => { if (!cancelled) setMarketData(null) })
         return () => { cancelled = true }
     }, [subject?.neighborhoodSlug, frozenMarketPeriod])
+
+    /* ------------------------------ Tasador IA ------------------------------ */
+
+    async function generarIA(appraisalId: string) {
+        setEstadoIA('analizando')
+        setErrorIA(null)
+        setOcupadoIA(true)
+        try {
+            const cols = await generarValuacionIA(appraisalId)
+            setSnapshotIA(cols.ai_valuation_result)
+            setErrorIA(cols.ai_valuation_error)
+            setEstadoIA(cols.ai_valuation_status === 'ready' ? 'lista' : 'fallida')
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : 'No se pudo generar la valuación IA'
+            setErrorIA(msg)
+            setEstadoIA(/no configurado/i.test(msg) ? 'no_configurado' : 'fallida')
+        } finally {
+            setOcupadoIA(false)
+        }
+    }
+
+    async function handleElegirTasador(source: ValuationSource) {
+        const id = editId || savedAppraisalIdRef.current
+        if (!id || source === tasadorElegido) return
+        setOcupadoIA(true)
+        setAvisoTasador(null)
+        try {
+            const { teniaPreciosEditados } = await elegirTasadorDeTasacion(id, source)
+            setTasadorElegido(source)
+            if (teniaPreciosEditados) {
+                setReportEdits(prev => ({ ...prev, priceOverrides: undefined }))
+                setAvisoTasador('Se descartaron los precios editados a mano del PDF: eran de la otra versión.')
+            }
+        } catch (err) {
+            setAvisoTasador(err instanceof Error ? err.message : 'No se pudo cambiar el tasador')
+        } finally {
+            setOcupadoIA(false)
+        }
+    }
 
     function handleCalculate() {
         if (!subject) return
@@ -749,6 +838,11 @@ function NewAppraisalPageContent() {
                     setSaveErrorDetail(null)
                     autoSaveRetryRef.current = 0
                     try { localStorage.removeItem(`appraisalDraft:${appraisalId}`) } catch { /* */ }
+
+                    // Segunda opinión: el Tasador IA corre en el servidor en SU
+                    // propia request (una llamada al modelo), después de que la
+                    // tasación clásica ya quedó guardada. Nunca bloquea el guardado.
+                    if (appraisalId) void generarIA(appraisalId)
 
                     // First insert in this session: capture the new id and reflect
                     // it in the URL so future calcs are updates, not inserts.
@@ -909,6 +1003,27 @@ function NewAppraisalPageContent() {
             </div>
         )
     }
+
+    // Lo que ven las tablas y el PDF: el tasador EN USO. En modo IA, los
+    // comparables llevan las features que la IA interpretó (las filas aportan
+    // precio, título e imágenes) y el subject las del snapshot.
+    const iaEnUso = tasadorElegido === 'ai' && snapshotIA !== null && (estadoIA === 'lista' || estadoIA === 'desactualizada')
+    const comparablesEnUso: ValuationProperty[] = comparables.map((c, i) => ({
+        price: c.price,
+        currency: c.currency,
+        title: c.title,
+        location: c.location,
+        images: c.images,
+        description: c.description,
+        url: c.url,
+        features: (iaEnUso && snapshotIA ? snapshotIA.ai.comparables[i]?.features : undefined) ?? (c.features as unknown as ValuationProperty['features']),
+    }))
+    const subjectFeaturesEnUso: ValuationProperty['features'] | null = subject
+        ? (iaEnUso && snapshotIA ? snapshotIA.ai.subject.features : (subject.features as unknown as ValuationProperty['features']))
+        : null
+    const resultadoEnUso: ValuationResult | null = iaEnUso && snapshotIA
+        ? rehidratar(snapshotIA, comparablesEnUso)
+        : valuationResult
 
     return (
         <div className="w-full max-w-5xl mx-auto space-y-12 pb-20">
@@ -1520,20 +1635,43 @@ function NewAppraisalPageContent() {
                         <div className="h-px bg-border flex-1 max-w-[100px]" />
                     </div>
 
+                    {/* Tasador en uso: clásico o IA. La IA se genera al guardar. */}
+                    <SelectorDeTasador
+                        clasico={valuationResult}
+                        ia={snapshotIA}
+                        estadoIA={estadoIA}
+                        errorIA={errorIA}
+                        elegido={tasadorElegido}
+                        ocupado={ocupadoIA}
+                        onElegir={handleElegirTasador}
+                        onGenerar={() => { const id = editId || savedAppraisalIdRef.current; if (id) void generarIA(id) }}
+                    />
+                    {avisoTasador && (
+                        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">{avisoTasador}</div>
+                    )}
+                    {iaEnUso && (
+                        <p className="text-center text-sm text-muted-foreground">
+                            Estás viendo la versión del Tasador IA. Para ajustar sus coeficientes, hacelo desde el detalle de la tasación.
+                        </p>
+                    )}
+
+                    {/* En modo IA el informe es de solo lectura: el wizard edita las FILAS y
+                        su recálculo reescribe la versión clásica; mezclar los dos caminos acá
+                        duplicaría riesgo. El detalle sí edita las dos versiones. */}
                     <ValuationReport
                         subject={{
                             price: subject.price,
                             currency: subject.currency,
                             title: subject.title,
                             location: subject.location,
-                            features: subject.features as any
+                            features: subjectFeaturesEnUso ?? {},
                         }}
-                        result={valuationResult}
-                        editable
-                        onComparableFeaturesChange={handleComparableFeaturesChange}
-                        onSubjectFeaturesChange={handleSubjectFeaturesChange}
-                        expenseRates={valuationResult.expenseRates}
-                        onExpenseRatesChange={(next) => setExpenseRates(prev => ({ ...prev, ...next }))}
+                        result={resultadoEnUso ?? valuationResult}
+                        editable={!iaEnUso}
+                        onComparableFeaturesChange={iaEnUso ? undefined : handleComparableFeaturesChange}
+                        onSubjectFeaturesChange={iaEnUso ? undefined : handleSubjectFeaturesChange}
+                        expenseRates={(resultadoEnUso ?? valuationResult).expenseRates}
+                        onExpenseRatesChange={iaEnUso ? undefined : (next) => setExpenseRates(prev => ({ ...prev, ...next }))}
                     />
 
                     {/* Save status indicator */}
@@ -1642,18 +1780,9 @@ function NewAppraisalPageContent() {
                         location: subject.location,
                         images: subject.images,
                         description: subject.description,
-                        features: subject.features as any
+                        features: subjectFeaturesEnUso ?? {},
                     }}
-                    comparables={comparables.map(c => ({
-                        price: c.price,
-                        currency: c.currency,
-                        title: c.title,
-                        location: c.location,
-                        images: c.images,
-                        description: c.description,
-                        url: c.url,
-                        features: c.features as any
-                    }))}
+                    comparables={comparablesEnUso}
                     overpriced={overpriced.map(c => ({
                         price: c.price,
                         currency: c.currency,
@@ -1663,7 +1792,7 @@ function NewAppraisalPageContent() {
                         url: c.url,
                         features: c.features as any
                     }))}
-                    valuationResult={valuationResult}
+                    valuationResult={resultadoEnUso ?? valuationResult}
                     purchaseProperties={purchaseProperties.map(c => ({
                         price: c.price,
                         currency: c.currency,
