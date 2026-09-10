@@ -224,13 +224,16 @@ lo de siempre (calcula, guarda, crea deal). Con el id en mano dispara el POST de
 tasador → PATCH → recarga → toast "Precios editados a mano del PDF descartados" si había
 `priceOverrides`.
 
-**Edición en línea** (detalle y wizard): los tres handlers existentes se parametrizan por
-`target`. Con `calculator` hacen lo de siempre (PUT). Con `ai` recalculan sobre
+**Edición en línea.** En el **detalle**, los tres handlers existentes se ramifican por
+tasador en uso. Con `calculator` hacen lo de siempre (PUT). Con `ai` recalculan sobre
 `ai.comparables[i].features` / `ai.subject.features` con `calculateValuation` +
-`completeValuation`, actualizan el snapshot (`features` + `inputFingerprint` sin cambios,
-porque los insumos objetivos no se tocaron por esa vía) y hacen PATCH `aiValuationResult`.
-El cálculo de "qué cambia" vive en funciones puras en `lib/valuation/edit-snapshot.ts`
-(testeadas) para que ambas pantallas compartan la lógica.
+`completarValuacion`, actualizan el snapshot (`inputFingerprint` sin cambios, porque los
+insumos objetivos no se tocan por esa vía) y hacen PATCH `aiValuationResult`. El cálculo
+vive en `lib/valuation/editar-snapshot-ia.ts` (puro, testeado). En el **wizard**, con la
+IA elegida las tablas se muestran en solo lectura con el aviso "Para ajustar coeficientes
+de la versión IA, hacelo desde el detalle de la tasación": el wizard edita las FILAS y su
+efecto de recálculo reescribe el clásico; mezclar los dos caminos ahí duplicaría riesgo en
+un archivo de 1.700 líneas. (Decisión tomada al planificar, 2026-09-10.)
 
 **PDF.** Cero cambios en `PDFReport.tsx`/`PDFPreviewModal.tsx`: reciben el
 `ValuationResult` activo.
