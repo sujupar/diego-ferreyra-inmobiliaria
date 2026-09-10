@@ -185,6 +185,10 @@ export interface Database {
                     origin: string | null
                     assigned_to: string | null
                     report_edits: Json | null
+                    ai_valuation_result: Json | null
+                    ai_valuation_status: string | null
+                    ai_valuation_error: string | null
+                    valuation_source: string
                 }
                 Insert: {
                     id?: string
@@ -209,6 +213,10 @@ export interface Database {
                     origin?: string | null
                     assigned_to?: string | null
                     report_edits?: Json | null
+                    ai_valuation_result?: Json | null
+                    ai_valuation_status?: string | null
+                    ai_valuation_error?: string | null
+                    valuation_source?: string
                 }
                 Update: {
                     id?: string
@@ -233,6 +241,10 @@ export interface Database {
                     origin?: string | null
                     assigned_to?: string | null
                     report_edits?: Json | null
+                    ai_valuation_result?: Json | null
+                    ai_valuation_status?: string | null
+                    ai_valuation_error?: string | null
+                    valuation_source?: string
                 }
                 Relationships: [
                     {
