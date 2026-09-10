@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false },
+  "include": [
+    "next-env.d.ts",
+    "lib/valuation/**/*.ts",
+    "lib/supabase/appraisals.ts",
+    "lib/supabase/appraisals-write.ts",
+    "lib/ai/chat-client.ts",
+    "app/api/appraisals/**/*.ts",
+    "app/(dashboard)/appraisals/[id]/page.tsx",
+    "app/(dashboard)/appraisal/new/page.tsx",
+    "components/appraisal/SelectorDeTasador.tsx",
+    "types/database.types.ts",
+    "scripts/probar-tasador-ia.ts",
+    "scripts/apply-appraisal-ai-valuation-pg.ts"
+  ]
+}
