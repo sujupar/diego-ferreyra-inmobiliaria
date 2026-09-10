@@ -5,8 +5,9 @@ import { canAccessAppraisal } from '@/lib/auth/entity-access'
 import {
   alcanceTasaciones, proyeccionDeTasacion, puedeBorrarTasacion, puedeEditarTasacion,
 } from '@/lib/auth/appraisal-access'
-import { replaceAppraisalComparables } from '@/lib/supabase/appraisals-write'
+import { replaceAppraisalComparables, elegirTasador, guardarValuacionIA } from '@/lib/supabase/appraisals-write'
 import type { SaveAppraisalInput } from '@/lib/supabase/appraisals'
+import type { AiValuationResult } from '@/lib/valuation/ia-tipos'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -118,11 +119,36 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!(await canAccessAppraisal(user, id))) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
-    const body = (await req.json()) as { reportEdits?: unknown }
+    const body = (await req.json()) as { reportEdits?: unknown; valuationSource?: unknown; aiValuationResult?: unknown }
+    const supabase = getAdmin()
+
+    // Tres usos, UNO por llamada: ajustes del informe (como siempre), elegir
+    // tasador, o guardar una edición en línea del snapshot IA.
+    if (body?.valuationSource !== undefined) {
+      if (body.valuationSource !== 'calculator' && body.valuationSource !== 'ai') {
+        return NextResponse.json({ error: 'valuationSource debe ser calculator o ai' }, { status: 400 })
+      }
+      try {
+        const r = await elegirTasador(supabase, id, body.valuationSource)
+        return NextResponse.json({ success: true, teniaPreciosEditados: r.teniaPreciosEditados })
+      } catch (e) {
+        if (e instanceof Error && /no está lista/.test(e.message)) {
+          return NextResponse.json({ error: e.message }, { status: 409 })
+        }
+        throw e
+      }
+    }
+    if (body?.aiValuationResult !== undefined) {
+      const r = body.aiValuationResult as { ai?: { inputFingerprint?: unknown }; publicationPrice?: unknown } | null
+      if (!r || typeof r !== 'object' || typeof r.publicationPrice !== 'number' || typeof r.ai?.inputFingerprint !== 'string') {
+        return NextResponse.json({ error: 'aiValuationResult inválido' }, { status: 400 })
+      }
+      await guardarValuacionIA(supabase, id, { status: 'ready', result: body.aiValuationResult as AiValuationResult })
+      return NextResponse.json({ success: true })
+    }
     if (body?.reportEdits === undefined) {
       return NextResponse.json({ error: 'reportEdits es requerido' }, { status: 400 })
     }
-    const supabase = getAdmin()
     const { error } = await supabase
       .from('appraisals')
       .update({ report_edits: body.reportEdits } as never)

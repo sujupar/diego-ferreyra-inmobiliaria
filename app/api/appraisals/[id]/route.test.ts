@@ -69,7 +69,11 @@ vi.mock('@/lib/auth/require-role', () => ({
     profile: { id: 'yo-1', role: registro.rol },
   })),
 }))
-vi.mock('@/lib/supabase/appraisals-write', () => ({ replaceAppraisalComparables: vi.fn() }))
+vi.mock('@/lib/supabase/appraisals-write', () => ({
+  replaceAppraisalComparables: vi.fn(),
+  elegirTasador: vi.fn(async () => ({ teniaPreciosEditados: false })),
+  guardarValuacionIA: vi.fn(),
+}))
 
 import { GET, PUT, PATCH, DELETE } from './route'
 import { COLUMNAS_TASACION_RESUMIDA } from '@/lib/auth/appraisal-access'
@@ -318,5 +322,35 @@ describe('GET /api/appraisals/[id] — los demás roles no cambian', () => {
     registro.filas.appraisals = { assigned_to: 'otro-asesor', user_id: 'otro-asesor' }
     registro.filas.properties = { id: 'propiedad-1' }
     expect((await GET(pedido(), { params })).status).toBe(403)
+  })
+})
+
+describe('PATCH /api/appraisals/[id] — elegir tasador y guardar el snapshot IA', () => {
+  it('con valuationSource llama a elegirTasador y devuelve teniaPreciosEditados', async () => {
+    registro.rol = 'admin'
+    const res = await PATCH(pedido({ valuationSource: 'ai' }), { params })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ success: true, teniaPreciosEditados: false })
+  })
+
+  it('con valuationSource inválido → 400', async () => {
+    registro.rol = 'admin'
+    expect((await PATCH(pedido({ valuationSource: 'otro' }), { params })).status).toBe(400)
+  })
+
+  it('con aiValuationResult sin huella → 400 (no se guarda un snapshot a medias)', async () => {
+    registro.rol = 'admin'
+    expect((await PATCH(pedido({ aiValuationResult: { publicationPrice: 1 } }), { params })).status).toBe(400)
+  })
+
+  it('con aiValuationResult completo → 200', async () => {
+    registro.rol = 'admin'
+    const res = await PATCH(pedido({ aiValuationResult: { publicationPrice: 1, ai: { inputFingerprint: 'h' } } }), { params })
+    expect(res.status).toBe(200)
+  })
+
+  it('el abogado tampoco elige tasador', async () => {
+    registro.rol = 'abogado'
+    expect((await PATCH(pedido({ valuationSource: 'ai' }), { params })).status).toBe(403)
   })
 })
