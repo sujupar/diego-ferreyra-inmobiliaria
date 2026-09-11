@@ -100,7 +100,9 @@ async function main() {
         '/tmp/market-data.pdf',
     )
     console.log('OK data-driven → /tmp/market-data.pdf')
-    execSync('pdftoppm -png -r 60 -f 3 -l 6 /tmp/market-data.pdf /tmp/market-page && pdftoppm -png -r 60 -f 3 -l 4 /tmp/market-legacy.pdf /tmp/legacy-page')
+    // Desde el 2026-09-11 el bloque de mercado son 2 páginas con datos (stock, escrituras)
+    // y 1 legacy: las páginas 3-5 del data-driven cubren mercado + la primera de comparables.
+    execSync('pdftoppm -png -r 60 -f 3 -l 5 /tmp/market-data.pdf /tmp/market-page && pdftoppm -png -r 60 -f 3 -l 4 /tmp/market-legacy.pdf /tmp/legacy-page')
     console.log('PNGs: /tmp/market-page-*.png /tmp/legacy-page-*.png')
 }
 // Guard: correr solo como entrypoint (los mocks exportados se importan sin ejecutar el render).

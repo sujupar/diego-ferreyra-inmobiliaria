@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false },
+  "include": [
+    "next-env.d.ts",
+    "components/appraisal/pdf/**/*.tsx",
+    "components/appraisal/PDFPreviewModal.tsx",
+    "app/api/settings/market-images/route.ts",
+    "app/api/settings/upload-market-image/route.ts",
+    "app/(dashboard)/settings/page.tsx",
+    "lib/market-data/**/*.ts",
+    "scripts/render-market-pdf-test.tsx",
+    "scripts/apply-market-data-zonaprop-off-pg.ts"
+  ]
+}

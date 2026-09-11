@@ -216,7 +216,9 @@ export default function SettingsPage() {
                 <div>
                     <h2 className="text-xl font-semibold">Datos de Mercado Mensuales</h2>
                     <p className="text-muted-foreground text-sm mt-1">
-                        Estas imagenes aparecen en las paginas 3 y 4 del informe PDF. Actualizar mensualmente.
+                        Datos de CABA (stock y escrituras) que aparecen en las páginas de mercado del informe PDF.
+                        Los datos por barrio (precios con mapa y tipos de propiedades) ya no van en el PDF desde el
+                        11/09/2026: siguen guardándose, pero apagados.
                     </p>
                 </div>
 
@@ -235,15 +237,16 @@ export default function SettingsPage() {
                             <Button size="sm" variant="outline" disabled={!!refreshing} onClick={() => handleMdRefresh('core')}>
                                 {refreshing === 'core' ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refrescar fuentes'}
                             </Button>
-                            <Button size="sm" variant="outline" disabled={!!refreshing} onClick={() => handleMdRefresh('zonaprop')}>
-                                {refreshing === 'zonaprop' ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refrescar tipos (lote)'}
-                            </Button>
+                            {/* El botón "Refrescar tipos (lote)" se sacó el 2026-09-11: el
+                                scraping por barrio quedó APAGADO (no va al PDF y gastaba
+                                créditos de ScraperAPI). La ruta sigue existiendo por si se
+                                vuelve a encender. */}
                         </div>
                     </div>
                     {[mdStatus?.core, mdStatus?.zonaprop].filter(Boolean).map((s: any) => {
                         // Texto humano: nada de jerga técnica cruda en el panel. El detalle
                         // completo sigue en market_data_refresh_state.last_error (DB).
-                        const nombre = s.id === 'core' ? 'Fuentes (precios + escrituras)' : 'Tipos de propiedades (Zonaprop)'
+                        const nombre = s.id === 'core' ? 'Fuentes (stock + escrituras)' : 'Tipos de propiedades por barrio (Zonaprop) — apagado desde el 11/09/2026'
                         const estado = s.last_status === 'ok' ? '✓ al día'
                             : s.last_status === 'partial' ? 'parcial' : 'con errores'
                         const esDiferidaInfogram = s.id === 'core' && s.last_status === 'partial'

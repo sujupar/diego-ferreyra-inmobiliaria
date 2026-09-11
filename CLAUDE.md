@@ -937,6 +937,22 @@ iCloud lo baje, y a veces no baja.
 
 ## Datos de Mercado por Barrio (tasador) — 2026-07
 
+> **CAMBIO 2026-09-11 (decisión del dueño): los datos POR BARRIO ya NO van en el PDF.** El panel
+> "Datos de <barrio>" (precio promedio/usado/pozo/a estrenar/alquiler/renta/deptos + mapa) y la dona
+> "Tipos de propiedades en <barrio>" se sacaron de `PDFReport.tsx` (los componentes `BarrioPanelPDF` y
+> `TiposPDF` se borraron). Motivo: son precios de avisos públicos, que van por encima de lo que
+> realmente se vende, y jugaban en contra en la negociación. El bloque de mercado del PDF quedó en
+> **2 páginas** (stock CABA + escrituras) con datos, o 1 legacy con las dos imágenes. Los slots de
+> Configuración son ahora solo `stock-departamentos` y `escrituras-caba` (`market-images` y
+> `upload-market-image`). El job **`market-data-zonaprop` está DESPROGRAMADO** (migración
+> `20260911000001`, aplicada con `scripts/apply-market-data-zonaprop-off-pg.ts`): ya no gasta
+> ScraperAPI. `market-data-core` sigue (stock + escrituras); como efecto lateral sigue guardando
+> los precios por barrio de Bryn (fetch gratis) en `market_snapshot_neighborhood` — los datos
+> quedan por si más adelante se les da otra forma. Para volver a encender los tipos por barrio:
+> re-correr `20260701000012` y restaurar el botón "Refrescar tipos (lote)" en Configuración.
+> Lo que sigue abajo describe el sistema completo tal como se construyó; lo del barrio aplica solo a
+> la ingesta/almacenamiento, no al PDF.
+
 - **Qué es:** las 4 secciones de mercado del PDF (stock, escrituras, datos del barrio, tipos) se ingestan solas y 2 son POR BARRIO. Spec: `docs/superpowers/specs/2026-07-01-datos-mercado-por-barrio-design.md`.
 - **Fuentes (las 4 automáticas desde 2026-07-02):** JSON Bryn (precio 48 barrios + kpis; fallback: data-* del SVG del mapa), RSS Colegio de Escribanos (escrituras + imagen a Storage `market-data/escrituras/{period}.jpg`), Zonaprop `/barrios/capital-federal/{slug}` vía ScraperAPI (6 conteos, parser VERIFICADO contra HTML real: los counts viven en `.en-numeros .custom-chart-legend`, no en JSON embebido; slug especial: `nueva-pompeya → pompeya`), e **Infogram (composición del stock) vía ScraperAPI `render=true&wait_for_selector=svg`**: el embed trae 24 charts "live" con `chartData.data` vacío y el endpoint directo `getLiveData` da 401 — pero el render hidratado SÍ expone todo (pie-labels `igc-graph-pie-label` "Inmobiliaria 98.70%" + tabla de tipos en celdas `igc-table-cell`). `parseHydratedInfogram()` en `lib/market-data/sources/infogram.ts`; cada fetch cuesta ~10 créditos (1×/día vía cron). Plan B documentado: `&screenshot=true` expone header `sa-screenshot` con URL de PNG.
 - **Tablas:** `neighborhoods` (48+General), `market_snapshot_caba` (UNIQUE period), `market_snapshot_neighborhood` (UNIQUE neighborhood_id+period), `market_data_refresh_state` (observabilidad). Histórico ilimitado; upserts con merge (fallo parcial NUNCA borra lo capturado).
