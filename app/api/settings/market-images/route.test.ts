@@ -104,15 +104,15 @@ describe('GET /api/settings/market-images — sin sesión', () => {
 describe('GET /api/settings/market-images — los llamadores legítimos NO se rompen', () => {
   // Este bloque es el que protege a `PDFPreviewModal`.
   it.each(['asesor', 'coordinador', 'abogado'])(
-    'un %s con sesión sigue recibiendo los 4 slots (vista previa del PDF intacta)',
+    'un %s con sesión sigue recibiendo los 2 slots de CABA (vista previa del PDF intacta; los del barrio se sacaron el 2026-09-11)',
     async (role) => {
       estado.role = role
       const res = await GET()
       expect(res.status).toBe(200)
       const body = await res.json()
-      expect(body.slots).toHaveLength(4)
+      expect(body.slots).toHaveLength(2)
       expect(body.slots.map((s: { id: string }) => s.id)).toEqual([
-        'stock-departamentos', 'escrituras-caba', 'datos-barrio', 'tipos-propiedades',
+        'stock-departamentos', 'escrituras-caba',
       ])
       // Cae a las etiquetas por defecto porque la RLS le devuelve 0 filas —
       // exactamente lo mismo que pasaba antes del guard.
@@ -158,20 +158,20 @@ describe('PUT /api/settings/market-images — con sesión pero SIN settings.mana
 describe('PUT /api/settings/market-images — con settings.manage', () => {
   it.each(['admin', 'dueno'])('un %s sigue guardando igual que antes', async (role) => {
     estado.role = role
-    const res = await guardar({ id: 'datos-barrio', label: 'Datos del barrio', description: 'x' })
+    const res = await guardar({ id: 'escrituras-caba', label: 'Cantidad de Escrituras CABA', description: 'x' })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ success: true })
     expect(escrituras.upserts).toHaveLength(1)
     expect(escrituras.upserts[0]).toMatchObject({
-      id: 'datos-barrio',
-      label: 'Datos del barrio',
+      id: 'escrituras-caba',
+      label: 'Cantidad de Escrituras CABA',
       description: 'x',
     })
   })
 
   it('la validación de campos sigue viva (400, sin escribir)', async () => {
     estado.role = 'admin'
-    const res = await guardar({ id: 'datos-barrio' })
+    const res = await guardar({ id: 'escrituras-caba' })
     expect(res.status).toBe(400)
     expect(escrituras.upserts).toEqual([])
   })

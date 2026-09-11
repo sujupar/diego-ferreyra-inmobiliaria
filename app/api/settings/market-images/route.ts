@@ -3,11 +3,13 @@ import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 import { requireAuth, requirePermission } from '@/lib/auth/require-role'
 
+// Solo las secciones que el PDF todavía muestra. Los slots del barrio
+// (`datos-barrio`, `tipos-propiedades`) se sacaron el 2026-09-11 junto con esa
+// página del PDF; sus filas en `market_image_settings` y sus imágenes en
+// Storage quedan intactas por si se les da otra forma más adelante.
 const DEFAULT_SLOTS = [
     { id: 'stock-departamentos', label: 'Stock de Departamentos en venta en CABA', filename: 'stock-departamentos.png' },
     { id: 'escrituras-caba', label: 'Cantidad de Escrituras CABA', filename: 'escrituras-caba.png' },
-    { id: 'datos-barrio', label: 'Datos del barrio', filename: 'datos-barrio.png' },
-    { id: 'tipos-propiedades', label: 'Tipos de propiedades del barrio', filename: 'tipos-propiedades.png' },
 ]
 
 export async function GET(): Promise<Response> {

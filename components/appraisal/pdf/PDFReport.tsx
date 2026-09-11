@@ -9,8 +9,6 @@ import { ReportEdits, SemaphoreColor } from '@/lib/types/report-edits'
 import { extractAddress } from '@/lib/valuation/addressUtils'
 import { StockDashboardPDF } from './market/StockDashboardPDF'
 import { EscriturasPDF } from './market/EscriturasPDF'
-import { BarrioPanelPDF } from './market/BarrioPanelPDF'
-import { TiposPDF } from './market/TiposPDF'
 
 interface MarketImageLabel {
     label: string
@@ -587,30 +585,26 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                         <Text style={styles.headerSubtitle}>{neighborhood === 'CABA' ? 'CABA' : `${neighborhood}, CABA`}</Text>
                     </View>
                 )
+                // Los datos POR BARRIO (panel de precios con el mapa y la dona de tipos)
+                // se sacaron del PDF el 2026-09-11 a pedido del dueño: los precios de
+                // los avisos públicos van por encima de lo que realmente se vende y
+                // jugaban en contra en la negociación. Los datos siguen en la base y en
+                // Configuración (apagados), por si más adelante se les da otra forma.
+                // Quedan solo las secciones de CABA: stock y escrituras.
                 const md = marketData
                 if (!md) {
-                    // ===== CAMINO LEGACY (tasaciones sin snapshot): 2 páginas, igual que siempre =====
+                    // ===== CAMINO LEGACY (tasaciones sin snapshot): 1 página con las dos imágenes =====
                     return (
-                        <>
-                            <Page size="A4" style={styles.pageWithPadding}>
-                                <MarketHeader />
-                                <View style={{ marginTop: 60 }}>
-                                    <MarketImageSection slot="stock-departamentos" defaultLabel="Stock de Departamentos en venta en CABA" defaultSrc="/pdf-assets/monthly-data/stock-departamentos.png" />
-                                    <MarketImageSection slot="escrituras-caba" defaultLabel="Cantidad de Escrituras CABA" defaultSrc="/pdf-assets/monthly-data/escrituras-caba.png" last />
-                                </View>
-                            </Page>
-                            <Page size="A4" style={styles.pageWithPadding}>
-                                <MarketHeader />
-                                <View style={{ marginTop: 60 }}>
-                                    <MarketImageSection slot="datos-barrio" defaultLabel={`Datos de ${neighborhood}, CABA`} defaultSrc="/pdf-assets/monthly-data/datos-barrio.png" />
-                                    <MarketImageSection slot="tipos-propiedades" defaultLabel={`Tipos de propiedades en ${neighborhood}`} defaultSrc="/pdf-assets/monthly-data/tipos-propiedades.png" last />
-                                </View>
-                            </Page>
-                        </>
+                        <Page size="A4" style={styles.pageWithPadding}>
+                            <MarketHeader />
+                            <View style={{ marginTop: 60 }}>
+                                <MarketImageSection slot="stock-departamentos" defaultLabel="Stock de Departamentos en venta en CABA" defaultSrc="/pdf-assets/monthly-data/stock-departamentos.png" />
+                                <MarketImageSection slot="escrituras-caba" defaultLabel="Cantidad de Escrituras CABA" defaultSrc="/pdf-assets/monthly-data/escrituras-caba.png" last />
+                            </View>
+                        </Page>
                     )
                 }
-                // ===== CAMINO DATA-DRIVEN: 4 páginas; cada sección cae a su imagen legacy si SU dato falta =====
-                const barrioTitle = md.neighborhood.isGeneral ? 'CABA (general)' : md.neighborhood.name
+                // ===== CAMINO DATA-DRIVEN: 2 páginas; cada sección cae a su imagen legacy si SU dato falta =====
                 return (
                     <>
                         <Page size="A4" style={styles.pageWithPadding}>
@@ -633,27 +627,6 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                         <EscriturasPDF escrituras={md.caba.escrituras} />
                                     </>)
                                     : <MarketImageSection slot="escrituras-caba" defaultLabel="Cantidad de Escrituras CABA" defaultSrc="/pdf-assets/monthly-data/escrituras-caba.png" last />}
-                            </View>
-                        </Page>
-                        {/* Datos del barrio + Tipos de propiedades: UNA sola página (pedido del
-                            usuario 2026-07-06, mismo agrupado que el layout legacy original). */}
-                        <Page size="A4" style={styles.pageWithPadding}>
-                            <MarketHeader />
-                            <View style={{ marginTop: 60 }}>
-                                <View style={{ marginBottom: 28 }}>
-                                    {md.barrio.price
-                                        ? (<>
-                                            <Text style={styles.h2}>{`Datos de ${barrioTitle}`}</Text>
-                                            <BarrioPanelPDF name={md.neighborhood.name} price={md.barrio.price} highlightSlug={md.neighborhood.slug} isGeneral={md.neighborhood.isGeneral} />
-                                        </>)
-                                        : <MarketImageSection slot="datos-barrio" defaultLabel={`Datos de ${neighborhood}, CABA`} defaultSrc="/pdf-assets/monthly-data/datos-barrio.png" />}
-                                </View>
-                                {md.barrio.propertyTypes
-                                    ? (<>
-                                        <Text style={styles.h2}>{`Tipos de propiedades en ${barrioTitle}`}</Text>
-                                        <TiposPDF tipos={md.barrio.propertyTypes} />
-                                    </>)
-                                    : <MarketImageSection slot="tipos-propiedades" defaultLabel={`Tipos de propiedades en ${neighborhood}`} defaultSrc="/pdf-assets/monthly-data/tipos-propiedades.png" last />}
                             </View>
                         </Page>
                     </>

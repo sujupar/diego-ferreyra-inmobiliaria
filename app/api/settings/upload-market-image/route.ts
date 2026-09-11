@@ -3,7 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 import { requirePermission } from '@/lib/auth/require-role'
 
-const VALID_SLOTS = ['stock-departamentos', 'escrituras-caba', 'datos-barrio', 'tipos-propiedades']
+// Solo los slots que el PDF muestra (los del barrio se sacaron el 2026-09-11).
+const VALID_SLOTS = ['stock-departamentos', 'escrituras-caba']
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
 
 export async function POST(request: Request): Promise<Response> {
