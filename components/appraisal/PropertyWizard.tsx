@@ -228,13 +228,16 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
                 bedrooms: Number(formData.bedrooms) || null,
                 bathrooms: Number(formData.bathrooms) || null,
                 garages: Number(formData.garages) || null,
-                floor: Number(formData.floor) || null,
+                // Piso 0 (planta baja) y antigüedad 0 (a estrenar) son valores REALES:
+                // con `Number(x) || null` se guardaban como vacío y el Tasador IA los
+                // tomaba como "no cargados" (podía inventarlos). Vacío = string vacío.
+                floor: formData.floor === '' ? null : Number(formData.floor),
                 totalFloors: Number(formData.totalFloors) || null,
                 expenses: null,
                 orientation: null,
                 disposal: null,
                 condition: null,
-                age: Number(formData.age) || null,
+                age: formData.age === '' ? null : Number(formData.age),
                 disposition: formData.disposition || undefined,
                 quality: formData.quality || undefined,
                 conservationState: formData.conservationState || undefined,

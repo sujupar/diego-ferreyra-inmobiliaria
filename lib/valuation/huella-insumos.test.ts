@@ -12,7 +12,7 @@ const base: InsumosParaHuella = {
 }
 const clon = (): InsumosParaHuella => JSON.parse(JSON.stringify(base))
 
-describe('huellaDeInsumos — cambia con lo objetivo, no con el juicio', () => {
+describe('huellaDeInsumos — cambia con lo objetivo y con los juicios del asesor (que la IA respeta)', () => {
   it('es determinística', () => {
     expect(huellaDeInsumos(base)).toBe(huellaDeInsumos(clon()))
     expect(huellaDeInsumos(base)).toMatch(/^[0-9a-f]{8,16}$/)
@@ -27,14 +27,12 @@ describe('huellaDeInsumos — cambia con lo objetivo, no con el juicio', () => {
     const t = clon(); t.expenseRates = { saleDiscountPercent: 6 }
     for (const x of [s, d, t]) expect(huellaDeInsumos(x)).not.toBe(huellaDeInsumos(base))
   })
-  it('NO cambia con calidad, estado, disposición ni coeficiente de ubicación', () => {
-    const c = clon()
-    const f = c.comparables[0].features as Record<string, unknown>
-    f.quality = 'EXCELLENT'
-    f.conservationState = 'STATE_1'
-    f.disposition = 'FRONT'
-    f.locationCoefficient = 1.2
-    expect(huellaDeInsumos(c)).toBe(huellaDeInsumos(base))
+  it('cambia con calidad, estado, disposición o coeficiente de ubicación cargados por el asesor (la IA los respeta)', () => {
+    for (const cambio of [{ quality: 'EXCELLENT' }, { conservationState: 'STATE_1' }, { disposition: 'FRONT' }, { locationCoefficient: 1.2 }]) {
+      const c = clon()
+      Object.assign(c.comparables[0].features, cambio)
+      expect(huellaDeInsumos(c)).not.toBe(huellaDeInsumos(base))
+    }
   })
   it('trata null y undefined igual, y recorta espacios de la descripción', () => {
     const c = clon(); c.subject.price = undefined; c.subject.description = '  Luminoso  '

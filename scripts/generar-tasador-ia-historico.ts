@@ -18,14 +18,19 @@ import type { ValuationProperty, ValuationResult } from '../lib/valuation/calcul
 
 async function main() {
   const soloListar = process.argv.includes('--solo-listar')
+  // `--todas`: regenera también las que ya estaban listas (p. ej. cuando cambia
+  // la regla del tasador, como el 2026-09-12 al pasar a respetar los datos del
+  // asesor). Sigue sin tocar `valuation_source`.
+  const todas = process.argv.includes('--todas')
   const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-  const { data: pendientes, error } = await sb.from('appraisals')
+  let consulta = sb.from('appraisals')
     .select('id, property_title, property_location, valuation_source, ai_valuation_status')
-    .or('ai_valuation_status.is.null,ai_valuation_status.eq.failed')
     .order('created_at', { ascending: true })
+  if (!todas) consulta = consulta.or('ai_valuation_status.is.null,ai_valuation_status.eq.failed')
+  const { data: pendientes, error } = await consulta
   if (error) throw error
   const lista = pendientes ?? []
-  console.log(`Tasaciones sin valuación IA: ${lista.length}`)
+  console.log(`Tasaciones a generar${todas ? ' (todas, regenerando las listas)' : ' (sin valuación IA)'}: ${lista.length}`)
   if (soloListar) { for (const t of lista) console.log(`  ${t.id}  ${t.property_title ?? t.property_location}`); return }
 
   let ok = 0, fallidas = 0

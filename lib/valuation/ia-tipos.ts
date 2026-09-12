@@ -35,7 +35,7 @@ export interface AiValuationMeta {
   confidence: AiConfidence
   /** ≤ 600 chars, para la tarjeta. */
   summary: string
-  /** Huella de los insumos objetivos con los que se generó (ver `huella-insumos.ts`). */
+  /** Huella de los insumos con los que se generó: datos objetivos + juicios del asesor (ver `huella-insumos.ts`). */
   inputFingerprint: string
   subject: AiPropertyInterpretation
   /** Mismo orden que las filas normales (sort_order 0..n). */
