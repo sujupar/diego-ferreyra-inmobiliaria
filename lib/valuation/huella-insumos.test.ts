@@ -12,7 +12,7 @@ const base: InsumosParaHuella = {
 }
 const clon = (): InsumosParaHuella => JSON.parse(JSON.stringify(base))
 
-describe('huellaDeInsumos — cambia con lo objetivo, no con el juicio', () => {
+describe('huellaDeInsumos — cambia con lo objetivo y con los juicios del asesor (que la IA respeta)', () => {
   it('es determinística', () => {
     expect(huellaDeInsumos(base)).toBe(huellaDeInsumos(clon()))
     expect(huellaDeInsumos(base)).toMatch(/^[0-9a-f]{8,16}$/)

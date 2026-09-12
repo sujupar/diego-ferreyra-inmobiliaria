@@ -114,6 +114,10 @@ describe('fusionarInterpretacion — lo que cargó el asesor manda al 100%', () 
     expect(f.quality).toBe('EXCELLENT')
     expect(f.conservationState).toBe('STATE_2'); expect(f.disposition).toBe('FRONT')
   })
+  it('un piso 0 (planta baja) y una antigüedad 0 (a estrenar) cuentan como cargados', () => {
+    const f = fusionarInterpretacion({ coveredArea: 55, floor: 0, age: 0 }, ia)
+    expect(f.floor).toBe(0); expect(f.age).toBe(0)
+  })
   it('un texto vacío cuenta como no cargado', () => {
     const f = fusionarInterpretacion({ coveredArea: 55, quality: '' as unknown as 'GOOD' }, ia)
     expect(f.quality).toBe('EXCELLENT')
