@@ -123,6 +123,12 @@ function fichaParaPrompt(p: ValuationProperty, index?: number) {
     publicado: f.publishedDate ?? null,
     vistas: f.views ?? null,
     descripcion: sinHtml(p.description),
+    // Lo que cargó el asesor va marcado como FIJO: el modelo lo repite tal
+    // cual y solo decide lo que queda vacío. `fusionarInterpretacion` lo
+    // garantiza igual aunque el modelo desobedezca.
+    fijadoPorElAsesor: camposFijados(f),
+    aDecidir: (['quality', 'conservationState', 'disposition', 'floor', 'age', 'locationCoefficient'] as const)
+      .filter(k => !(k in camposFijados(f))),
   }
 }
 
@@ -130,7 +136,10 @@ export function armarPromptTasadorIA(e: EntradaTasadorIA): { system: string; use
   const system = [
     'Sos un tasador inmobiliario senior de Buenos Aires. Aplicás el método de comparables de la inmobiliaria, tal cual está descripto abajo, interpretando cada propiedad a partir de su descripción, ubicación, antigüedad y datos.',
     describirMetodo(),
-    'TU TAREA: para la propiedad a tasar y para CADA comparable, decidir quality, conservationState, disposition, floor, age y locationCoefficient, con una justificación corta (máx. 240 caracteres) por propiedad. Si la descripción dice "a estrenar" o "reciclado", reflejalo en conservationState. Si un comparable está en otro barrio o en una zona peor/mejor que la propiedad a tasar, ajustá su locationCoefficient. No inventes datos: si algo no se puede saber, usá el valor más probable y decilo en la justificación.',
+    'REGLA DE ORO: los valores que el asesor ya cargó vienen en "fijadoPorElAsesor" y son DEFINITIVOS. Repetilos exactamente iguales en tu respuesta; no los cambies bajo ningún concepto. Si tu lectura no coincide con alguno, decilo en la justificación (ej. "el asesor fijó Buena; por la descripción parece Muy Buena"), pero el valor queda el que fijó el asesor.',
+    'TU TAREA: para la propiedad a tasar y para CADA comparable, decidir SOLO los campos listados en "aDecidir", tomando en cuenta el conjunto de comparables, con una justificación corta (máx. 240 caracteres) por propiedad que resuma cómo la interpretás.',
+    'locationCoefficient es SOLO ubicación (barrio, zona, calle, cercanía a avenidas/transporte/verde): 1.00 si es equivalente a la de la propiedad a tasar; menor si es peor o más lejana; mayor si es mejor. NUNCA lo muevas por estado de conservación, antigüedad, calidad, piso o superficie: eso ya está contado en los otros coeficientes y sería contarlo dos veces. La propiedad a tasar lleva locationCoefficient 1.00 salvo que su ubicación sea claramente distinta del promedio de los comparables.',
+    'floor y age: completalos ÚNICAMENTE si la descripción o el título lo dicen de forma explícita (ej. "4to piso", "a estrenar", "50 años"). Si no está dicho, devolvé null: no adivines, la calculadora usa el mismo criterio que el tasador clásico.',
     'RESPONDÉ SOLO con un JSON con esta forma exacta:',
     '{"subject":{"quality":"GOOD","conservationState":"STATE_2","disposition":"FRONT","floor":3,"age":40,"locationCoefficient":1.0,"reasoning":"..."},"comparables":[{"index":0,"quality":"...","conservationState":"...","disposition":"...","floor":0,"age":0,"locationCoefficient":1.0,"reasoning":"..."}],"summary":"resumen de 2-4 frases sobre cómo interpretaste el conjunto","confidence":"alta|media|baja"}',
     `Valores permitidos: quality ∈ ${CALIDADES.join('|')}; conservationState ∈ ${ESTADOS.join('|')}; disposition ∈ ${DISPOSICIONES.join('|')}; locationCoefficient entre 0.70 y 1.30. Debe haber exactamente un objeto por comparable, con su index.`,
@@ -157,18 +166,38 @@ export function validarRespuestaTasadorIA(raw: unknown, cantidadComparables: num
   return parsed.data
 }
 
-/** Lo objetivo (superficies, precio) se respeta; piso/antigüedad solo si faltaban; el juicio es de la IA. */
+const tieneNumero = (v: number | null | undefined): v is number => typeof v === 'number' && Number.isFinite(v)
+const tieneTexto = (v: string | null | undefined): v is string => typeof v === 'string' && v.length > 0
+
+/**
+ * Regla del dueño (2026-09-12): lo que cargó el asesor MANDA, al 100%, para la
+ * propiedad tasada y para cada comparable. La IA solo completa lo que quedó
+ * vacío (típicamente el coeficiente de ubicación, que casi nunca se carga, y
+ * piso/antigüedad cuando faltan) y da su lectura en la justificación. Si no
+ * coincide con un valor fijado, lo dice, pero no lo cambia.
+ */
 export function fusionarInterpretacion(base: ValuationFeatures, ia: InterpretacionIA): ValuationFeatures {
-  const tiene = (v: number | null | undefined): v is number => typeof v === 'number' && Number.isFinite(v)
   return {
     ...base,
-    quality: ia.quality,
-    conservationState: ia.conservationState,
-    disposition: ia.disposition,
-    locationCoefficient: ia.locationCoefficient,
-    floor: tiene(base.floor) ? base.floor : (ia.floor ?? undefined),
-    age: tiene(base.age) ? base.age : (ia.age ?? undefined),
+    quality: tieneTexto(base.quality) ? base.quality : ia.quality,
+    conservationState: tieneTexto(base.conservationState) ? base.conservationState : ia.conservationState,
+    disposition: tieneTexto(base.disposition) ? base.disposition : ia.disposition,
+    locationCoefficient: tieneNumero(base.locationCoefficient) ? base.locationCoefficient : ia.locationCoefficient,
+    floor: tieneNumero(base.floor) ? base.floor : (ia.floor ?? undefined),
+    age: tieneNumero(base.age) ? base.age : (ia.age ?? undefined),
   }
+}
+
+/** Qué campos de juicio ya fijó el asesor en esta propiedad (la IA no los toca). */
+export function camposFijados(f: ValuationFeatures): Record<string, string | number> {
+  const fijos: Record<string, string | number> = {}
+  if (tieneTexto(f.quality)) fijos.quality = f.quality
+  if (tieneTexto(f.conservationState)) fijos.conservationState = f.conservationState
+  if (tieneTexto(f.disposition)) fijos.disposition = f.disposition
+  if (tieneNumero(f.locationCoefficient)) fijos.locationCoefficient = f.locationCoefficient
+  if (tieneNumero(f.floor)) fijos.floor = f.floor
+  if (tieneNumero(f.age)) fijos.age = f.age
+  return fijos
 }
 
 export async function correrTasadorIA(

@@ -51,6 +51,14 @@ describe('armarPromptTasadorIA', () => {
     expect(user).toContain('Luminoso, a estrenar, al frente')
     expect(user).not.toContain('<p>')
   })
+  it('marca lo que fijó el asesor y lo que queda a decidir', () => {
+    const { system, user } = armarPromptTasadorIA(entrada)
+    expect(system).toContain('REGLA DE ORO')
+    const ficha = JSON.parse(user) as { propiedadATasar: { fijadoPorElAsesor: Record<string, unknown>; aDecidir: string[] }; comparables: Array<{ fijadoPorElAsesor: Record<string, unknown>; aDecidir: string[] }> }
+    expect(ficha.propiedadATasar.fijadoPorElAsesor).toMatchObject({ quality: 'GOOD', conservationState: 'STATE_2', disposition: 'BACK', floor: 4 })
+    expect(ficha.propiedadATasar.aDecidir).toEqual(['age', 'locationCoefficient'])
+    expect(ficha.comparables[2].aDecidir).toEqual(['quality', 'conservationState', 'disposition', 'locationCoefficient'])
+  })
   it('recorta descripciones largas a 600 caracteres', () => {
     const larga = { ...entrada, subject: { ...subject, description: 'x'.repeat(2000) } }
     const { user } = armarPromptTasadorIA(larga)
@@ -86,22 +94,29 @@ describe('validarRespuestaTasadorIA — nunca datos a medias', () => {
   })
 })
 
-describe('fusionarInterpretacion — lo objetivo se respeta', () => {
-  const base = { coveredArea: 55, uncoveredArea: 5, floor: 2, age: 30, quality: 'GOOD_ECONOMIC' as const, locationCoefficient: 1 }
+describe('fusionarInterpretacion — lo que cargó el asesor manda al 100%', () => {
+  const base = { coveredArea: 55, uncoveredArea: 5, floor: 2, age: 30, quality: 'GOOD_ECONOMIC' as const, conservationState: 'STATE_3' as const, disposition: 'BACK' as const, locationCoefficient: 0.9 }
   const ia = { quality: 'EXCELLENT' as const, conservationState: 'STATE_1' as const, disposition: 'INTERNAL' as const, floor: 9, age: 5, locationCoefficient: 1.1, reasoning: 'r' }
-  it('mantiene superficies, y piso/antigüedad cuando ya estaban', () => {
+  it('mantiene superficies, piso y antigüedad cuando ya estaban', () => {
     const f = fusionarInterpretacion(base, ia)
     expect(f.coveredArea).toBe(55); expect(f.uncoveredArea).toBe(5)
     expect(f.floor).toBe(2); expect(f.age).toBe(30)
   })
-  it('toma calidad, estado, disposición y ubicación de la IA', () => {
+  it('NO cambia calidad, estado, disposición ni ubicación si el asesor los fijó', () => {
     const f = fusionarInterpretacion(base, ia)
-    expect(f.quality).toBe('EXCELLENT'); expect(f.conservationState).toBe('STATE_1')
-    expect(f.disposition).toBe('INTERNAL'); expect(f.locationCoefficient).toBe(1.1)
+    expect(f.quality).toBe('GOOD_ECONOMIC'); expect(f.conservationState).toBe('STATE_3')
+    expect(f.disposition).toBe('BACK'); expect(f.locationCoefficient).toBe(0.9)
   })
-  it('completa piso/antigüedad SOLO cuando faltan', () => {
-    const f = fusionarInterpretacion({ coveredArea: 55, floor: undefined, age: undefined }, ia)
+  it('completa SOLO lo que quedó vacío (ubicación sin cargar, piso y antigüedad faltantes, calidad vacía)', () => {
+    const f = fusionarInterpretacion({ coveredArea: 55, conservationState: 'STATE_2', disposition: 'FRONT' }, ia)
+    expect(f.locationCoefficient).toBe(1.1)
     expect(f.floor).toBe(9); expect(f.age).toBe(5)
+    expect(f.quality).toBe('EXCELLENT')
+    expect(f.conservationState).toBe('STATE_2'); expect(f.disposition).toBe('FRONT')
+  })
+  it('un texto vacío cuenta como no cargado', () => {
+    const f = fusionarInterpretacion({ coveredArea: 55, quality: '' as unknown as 'GOOD' }, ia)
+    expect(f.quality).toBe('EXCELLENT')
   })
 })
 
@@ -119,8 +134,10 @@ describe('correrTasadorIA', () => {
       expenseRates: entrada.expenseRates,
     })
     expect(r.publicationPrice).toBe(esperado?.publicationPrice)
-    expect(r.subjectQualityCoef).toBe(1.175)           // VERY_GOOD que dijo la IA
-    expect(r.comparableAnalysis[2].locationCoefficient).toBe(0.95)
+    expect(r.subjectQualityCoef).toBe(1.075)           // GOOD del asesor, aunque la IA dijo VERY_GOOD
+    expect(r.comparableAnalysis[0].qualityCoefficient).toBe(1.0)   // GOOD_ECONOMIC del asesor, aunque la IA dijo GOOD
+    expect(r.comparableAnalysis[2].qualityCoefficient).toBe(0.9)   // el comparable C no tenía calidad: ECONOMIC de la IA
+    expect(r.comparableAnalysis[2].locationCoefficient).toBe(0.95) // ubicación sin cargar: la decide la IA
     expect(r.ai.confidence).toBe('media')
     expect(r.ai.model).toBe('gpt-x')
     expect(r.ai.generatedAt).toBe('2026-09-10T12:00:00.000Z')

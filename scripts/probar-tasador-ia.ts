@@ -64,12 +64,13 @@ async function main() {
   for (const [k, l] of filas) {
     console.log(`${l.padEnd(22)}${f(Number(clasico[k])).padStart(16)}${f(Number(ia[k])).padStart(16)}`)
   }
-  const s = ia.ai.subject.features
-  console.log(`\nSubject: ${s.quality} ${s.conservationState} ${s.disposition} J=${s.locationCoefficient} — ${ia.ai.subject.reasoning}`)
+  const linea = (x: ValuationProperty['features'], antes: ValuationProperty['features']) =>
+    `${x.quality} ${x.conservationState} ${x.disposition} J=${x.locationCoefficient} piso=${x.floor ?? '-'} (asesor: ${antes.floor ?? '-'}) edad=${x.age ?? '-'} (asesor: ${antes.age ?? '-'})`
+  console.log(`\nSubject: ${linea(ia.ai.subject.features, subject.features)} — ${ia.ai.subject.reasoning}`)
   ia.ai.comparables.forEach((c, i) => {
-    const x = c.features
-    console.log(`Comp ${i + 1}: ${x.quality} ${x.conservationState} ${x.disposition} J=${x.locationCoefficient} — ${c.reasoning}`)
+    console.log(`Comp ${i + 1}: ${linea(c.features, comparables[i].features)} — ${c.reasoning}`)
   })
+  console.log(`\nN subject: clásico ${clasico.subjectTotalCoef?.toFixed(3)} / IA ${ia.subjectTotalCoef.toFixed(3)} · K piso: clásico ${clasico.subjectFloorCoef} / IA ${ia.subjectFloorCoef}`)
   if (ms > 15_000) console.warn('\n⚠️ latencia alta: achicar prompt/maxTokens antes de deployar')
 }
 main().catch(e => { console.error('Error:', e instanceof Error ? e.message : e); process.exit(1) })

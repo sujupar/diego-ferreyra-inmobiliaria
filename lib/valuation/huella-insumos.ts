@@ -1,9 +1,9 @@
 /**
- * Huella de los insumos OBJETIVOS de una tasación (precios, superficies,
- * descripciones, ubicación, piso, antigüedad, tasas, parte del propietario).
- * NO incluye lo que cada tasador decide (calidad, estado, disposición,
- * coeficiente de ubicación): eso es justamente lo que diferencia al clásico
- * de la IA.
+ * Huella de TODO lo que la IA toma como insumo de una tasación: los datos
+ * objetivos (precios, superficies, descripciones, ubicación, piso, antigüedad,
+ * tasas, parte del propietario) Y los juicios que cargó el asesor (calidad,
+ * estado, disposición, coeficiente de ubicación). Desde el 2026-09-12 esos
+ * juicios MANDAN sobre la IA, así que cambiar uno deja vieja la versión IA.
  *
  * Si la huella actual de la tasación ≠ la guardada en el snapshot IA, la
  * tarjeta IA avisa "Desactualizada". Corre en servidor y en navegador, por eso
@@ -24,6 +24,10 @@ export interface PropiedadParaHuella {
     floor?: number | null
     age?: number | null
     publishedDate?: string | null
+    quality?: string | null
+    conservationState?: string | null
+    disposition?: string | null
+    locationCoefficient?: number | null
   }
 }
 
@@ -43,6 +47,8 @@ function canonica(p: PropiedadParaHuella): unknown[] {
     n(p.price), s(p.currency), s(p.location), s(p.description),
     n(f.coveredArea), n(f.semiCoveredArea), n(f.uncoveredArea), n(f.totalArea),
     n(f.floor), n(f.age), s(f.publishedDate),
+    // Juicios del asesor: desde el 2026-09-12 la IA los respeta, así que forman parte del insumo.
+    s(f.quality), s(f.conservationState), s(f.disposition), n(f.locationCoefficient),
   ]
 }
 
