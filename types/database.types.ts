@@ -580,6 +580,8 @@ export interface Database {
                     video_recorrido_url: string | null
                     deliver_media: string | null
                     location_refs: Json
+                    portal_data: Json
+                    landing_answers: Json
                 }
                 Insert: {
                     id?: string
@@ -635,6 +637,8 @@ export interface Database {
                     video_recorrido_url?: string | null
                     deliver_media?: string | null
                     location_refs?: Json
+                    portal_data?: Json
+                    landing_answers?: Json
                 }
                 Update: {
                     id?: string
@@ -690,6 +694,8 @@ export interface Database {
                     video_recorrido_url?: string | null
                     deliver_media?: string | null
                     location_refs?: Json
+                    portal_data?: Json
+                    landing_answers?: Json
                 }
                 Relationships: []
             }

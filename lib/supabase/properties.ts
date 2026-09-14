@@ -54,6 +54,11 @@ export interface PropertyInput {
   video_url?: string | null
   tour_3d_url?: string | null
   video_file_url?: string | null
+  expensas?: number | null
+  /** Heredado de la visita (Sección 08): prefill de los wizards de ML/Argenprop. */
+  portal_data?: { ml?: Record<string, { value_id?: string; value_name?: string }>; ap?: Record<string, { value_id?: string; value_name?: string }> }
+  /** Heredado de la visita (Sección 09): con las cuatro, la landing se publica sola. */
+  landing_answers?: Record<string, string>
 }
 
 export async function createProperty(input: PropertyInput) {

@@ -70,9 +70,31 @@ export interface PurchaseVisitData {
   extra_notes: string | null
 }
 
+/** Valor de un atributo de portal, con la forma que usan los wizards de ML/Argenprop. */
+export interface ValorAtributoPortal {
+  value_id?: string
+  value_name?: string
+}
+
+/**
+ * Sección 08 de la visita — "Datos para portales" (2026-09-14). Lo que piden
+ * MercadoLibre y Argenprop y NO se deriva del resto de la visita. Al captar
+ * pasa a `properties.portal_data` (+ `expensas`) y prellena los wizards.
+ */
+export interface VisitPortalesData {
+  expensas: number | null
+  ml: Record<string, ValorAtributoPortal>
+  ap: Record<string, ValorAtributoPortal>
+}
+
+/** Sección 09 — respuestas a las preguntas FIJAS de la landing (q1..q4). */
+export type VisitLandingData = Record<string, string>
+
 export interface VisitDataSnapshot {
   sale: SaleVisitData | null
   purchase: PurchaseVisitData | null
+  portales?: VisitPortalesData | null
+  landing?: VisitLandingData | null
   updated_at: string
 }
 

@@ -9,10 +9,11 @@ import { Badge, badgeVariants } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { Home, ShoppingCart, Save, Loader2, CheckCircle2, Ruler, Building2, Hammer, Clock, Star, StickyNote, Wallet, MapPin } from 'lucide-react'
 import type {
-  VisitDataSnapshot, SaleVisitData, PurchaseVisitData,
+  VisitDataSnapshot, SaleVisitData, PurchaseVisitData, VisitPortalesData, VisitLandingData,
   PropertyTypeVenta, Disposition, Orientation, Quality, ConservationState,
 } from '@/types/visit-data.types'
 import { CONSTRUCTION_FEATURES_OPTIONS } from '@/types/visit-data.types'
+import { VisitDifusionSections } from './VisitDifusionSections'
 
 const EMPTY_SALE: SaleVisitData = {
   property_type: 'departamento',
@@ -43,15 +44,22 @@ const EMPTY_PURCHASE: PurchaseVisitData = {
   purchase_timeframe: null, required_features: [], extra_notes: null,
 }
 
+const EMPTY_PORTALES: VisitPortalesData = { expensas: null, ml: {}, ap: {} }
+
 interface Props {
   dealId: string
   initial: VisitDataSnapshot | null
+  /** Barrio del deal: personaliza la primera pregunta de la landing. */
+  neighborhood?: string | null
   onCompleted: () => void
 }
 
-export function VisitDataForm({ dealId, initial, onCompleted }: Props) {
+export function VisitDataForm({ dealId, initial, neighborhood, onCompleted }: Props) {
   const [sale, setSale] = useState<SaleVisitData>(initial?.sale || EMPTY_SALE)
   const [purchase, setPurchase] = useState<PurchaseVisitData>(initial?.purchase || EMPTY_PURCHASE)
+  // Secciones 08 y 09 (2026-09-14): lo que piden los portales y la landing.
+  const [portales, setPortales] = useState<VisitPortalesData>(initial?.portales || EMPTY_PORTALES)
+  const [landing, setLanding] = useState<VisitLandingData>(initial?.landing || {})
   const [activeTab, setActiveTab] = useState<'sale' | 'purchase'>('sale')
   const [savingStatus, setSavingStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [finalizing, setFinalizing] = useState(false)
@@ -128,7 +136,7 @@ export function VisitDataForm({ dealId, initial, onCompleted }: Props) {
       await fetch(`/api/deals/${dealId}/visit-data`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ snapshot: { sale, purchase }, complete: true }),
+        body: JSON.stringify({ snapshot: { sale, purchase, portales, landing }, complete: true }),
       })
       onCompleted()
     } catch {
@@ -173,12 +181,23 @@ export function VisitDataForm({ dealId, initial, onCompleted }: Props) {
       </div>
 
       {activeTab === 'sale' && (
-        <SaleSection
-          sale={sale}
-          onUpdate={updateSale}
-          onToggleFeature={toggleFeature}
-          onAddStrongPoint={addStrongPoint}
-        />
+        <>
+          <SaleSection
+            sale={sale}
+            onUpdate={updateSale}
+            onToggleFeature={toggleFeature}
+            onAddStrongPoint={addStrongPoint}
+          />
+          <VisitDifusionSections
+            dealId={dealId}
+            propertyType={sale.property_type}
+            neighborhood={neighborhood ?? null}
+            portales={portales}
+            landing={landing}
+            onPortalesChange={next => { setPortales(next); triggerAutoSave({ portales: next }) }}
+            onLandingChange={next => { setLanding(next); triggerAutoSave({ landing: next }) }}
+          />
+        </>
       )}
       {activeTab === 'purchase' && (
         <PurchaseSection purchase={purchase} onUpdate={updatePurchase} />

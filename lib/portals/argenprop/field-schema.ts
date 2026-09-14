@@ -34,7 +34,7 @@ export const AP_CATEGORIA: Record<string, { tipo: string; subtipo?: string }> = 
   oficina: { tipo: 'OFICINA' },
 }
 
-export function apCategoria(property: Property): { tipo: string; subtipo?: string } {
+export function apCategoria(property: Pick<Property, 'property_type'>): { tipo: string; subtipo?: string } {
   const t = (property.property_type || 'departamento').toLowerCase()
   return AP_CATEGORIA[t] ?? AP_CATEGORIA.departamento
 }
@@ -64,7 +64,7 @@ const DISPOSICION = ['FRENTE', 'CONTRA_FRENTE', 'LATERAL', 'INTERNO'].map(id => 
  * características son los reales de la API (CANTIDAD_AMBIENTES, etc.). Mapea a
  * AvisoPublicacionDto en mapping.ts.
  */
-export function getApSchema(property: Property): ApSchema {
+export function getApSchema(property: Pick<Property, 'property_type'>): ApSchema {
   const { tipo } = apCategoria(property)
   const required: ApField[] = [
     { id: 'TIPO_OPERACION', name: 'Operación', valueType: 'list', required: true, allowedValues: TIPO_OPERACION },
