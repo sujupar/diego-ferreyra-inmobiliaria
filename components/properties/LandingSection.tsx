@@ -77,6 +77,12 @@ interface LandingSectionProps {
    * landing: esta sección arranca la creación y se muestra (scroll). 0 = nada.
    */
   autoStartToken?: number
+  /**
+   * Avisa a la pestaña cuando la landing cambió de estado (publicada / borrada),
+   * para que la tarjeta "Landing" de arriba se vuelva a cargar y no diga "Sin
+   * landing" al lado del enlace público recién creado (visto en el QA 2026-09-14).
+   */
+  onChanged?: () => void
   videoRecorridoUrl?: string | null
   tour3dUrl?: string | null
   /** Video "de marketing" de la propiedad — cuenta como entregable de respaldo (2026-08-02). */
@@ -86,7 +92,7 @@ interface LandingSectionProps {
 }
 
 export function LandingSection({
-  propertyId, autoStartToken = 0, videoRecorridoUrl, tour3dUrl, videoUrl, videoFileUrl, deliverMediaSaved,
+  propertyId, autoStartToken = 0, onChanged, videoRecorridoUrl, tour3dUrl, videoUrl, videoFileUrl, deliverMediaSaved,
 }: LandingSectionProps) {
   const router = useRouter()
   const raizRef = useRef<HTMLDivElement>(null)
@@ -192,8 +198,9 @@ export function LandingSection({
     } finally {
       setEnriching(null)
       await load()
+      onChanged?.()
     }
-  }, [propertyId, load])
+  }, [propertyId, load, onChanged])
 
   const start = async () => {
     if (busy === 'start') return
@@ -379,6 +386,7 @@ export function LandingSection({
       if (!res.ok) throw new Error(data.error)
       toast.success('Landing publicada. Ya podés montar la campaña Meta.')
       await load()
+      onChanged?.()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Error al publicar')
     } finally { setBusy(null) }
@@ -405,6 +413,7 @@ export function LandingSection({
       const data = await readJson<{ error?: string }>(res)
       if (!res.ok) throw new Error(data.error)
       setLanding(null)
+      onChanged?.()
       setAnswers({})
       setEnriching(null)
       resumedRef.current = false

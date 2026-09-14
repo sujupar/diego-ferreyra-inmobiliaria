@@ -93,6 +93,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       delete wizardState.avatarCandidates
       delete wizardState.visionSummary
       delete wizardState.descriptionUsed
+      // autopilot lo decide SOLO el servidor al crear (respuestas de la visita).
+      delete wizardState.autopilot
       if (wizardState.copyFromAnswers !== false) delete wizardState.copyFromAnswers
       if (wizardState.enrich !== 'copy') delete wizardState.enrich
     }
