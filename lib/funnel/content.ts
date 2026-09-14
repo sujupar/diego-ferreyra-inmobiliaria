@@ -78,8 +78,12 @@ export const TASACION_B_CONTENT = {
     heroAmountAfter: 'US$237.600',
     credit:
       'Con el mismo método con el que un propietario que iba a quedarse con {antes} terminó con {despues} — por la misma propiedad, con la misma reserva.',
-    videoPath: 'web/tasacion-hero-web.mp4',
-    posterPath: 'web/tasacion-hero-poster.jpg',
+    // Archivo PROPIO, distinto al de la variante A. Las dos apuntaban al mismo
+    // `tasacion-hero-web.mp4`, así que reemplazarlo habría cambiado las DOS
+    // landings a la vez y el experimento habría dejado de comparar lo que cree
+    // comparar. La A se queda con su video de 3:16; esta lleva el VSL completo.
+    videoPath: 'web/tasacion-neta-vsl-web.mp4',
+    posterPath: 'web/tasacion-neta-vsl-poster.jpg',
   },
   qualifier: {
     lead: '*Pedila solamente si',
