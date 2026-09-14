@@ -19,6 +19,7 @@ export default defineConfig({
       'components/properties/wizards/**/*.test.ts',
       'components/properties/wizards/**/*.test.tsx',
       'components/properties/LandingSection.test.tsx',
+      'app/**/properties/new/*.test.ts',
     ],
     exclude: ['**/node_modules/**', '.next', '.netlify', '**/.claude/worktrees/**'],
   },
