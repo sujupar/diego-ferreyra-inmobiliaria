@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { PostCaptureActions } from '@/components/properties/PostCaptureActions'
 import { LandingSection } from '@/components/properties/LandingSection'
 import { MarketingTabs } from '@/components/properties/MarketingTabs'
@@ -22,6 +23,11 @@ interface Props {
  * descripción por su cuenta.
  */
 export function MarketingTab({ propertyId, canManage, videoRecorridoUrl, tour3dUrl, videoUrl, videoFileUrl, deliverMediaSaved }: Props) {
+  // El botón "Crear landing" de la tarjeta de arriba dispara la MISMA creación
+  // que la sección de abajo (antes linkeaba al editor, que sin landing
+  // redirigía a la ficha: "no hacía nada"). Un contador, no un booleano, para
+  // que dos toques seguidos cuenten como dos pedidos.
+  const [autoStartLanding, setAutoStartLanding] = useState(0)
   return (
     <div className="space-y-6">
       <div>
@@ -29,10 +35,11 @@ export function MarketingTab({ propertyId, canManage, videoRecorridoUrl, tour3dU
         <h2 className="display text-xl mt-1">Difusión y resultados</h2>
       </div>
 
-      <PostCaptureActions propertyId={propertyId} />
+      <PostCaptureActions propertyId={propertyId} onCrearLanding={() => setAutoStartLanding(n => n + 1)} />
 
       <LandingSection
         propertyId={propertyId}
+        autoStartToken={autoStartLanding}
         videoRecorridoUrl={videoRecorridoUrl}
         tour3dUrl={tour3dUrl}
         videoUrl={videoUrl}

@@ -36,6 +36,8 @@ interface WizardState {
   enrich?: 'vision' | 'location' | 'description' | 'avatars' | 'copy' | 'done'
   /** true = los textos se generaron con las respuestas del asesor (gate de publicar). */
   copyFromAnswers?: boolean
+  /** true = nació con las respuestas de la visita: se genera y publica sola. */
+  autopilot?: boolean
 }
 interface Landing {
   status: 'draft' | 'published' | 'archived'
@@ -70,6 +72,11 @@ async function readJson<T>(res: Response): Promise<T & { error?: string }> {
 
 interface LandingSectionProps {
   propertyId: string
+  /**
+   * Contador que sube cuando la tarjeta "Landing" de Difusión pide crear la
+   * landing: esta sección arranca la creación y se muestra (scroll). 0 = nada.
+   */
+  autoStartToken?: number
   videoRecorridoUrl?: string | null
   tour3dUrl?: string | null
   /** Video "de marketing" de la propiedad — cuenta como entregable de respaldo (2026-08-02). */
@@ -79,9 +86,12 @@ interface LandingSectionProps {
 }
 
 export function LandingSection({
-  propertyId, videoRecorridoUrl, tour3dUrl, videoUrl, videoFileUrl, deliverMediaSaved,
+  propertyId, autoStartToken = 0, videoRecorridoUrl, tour3dUrl, videoUrl, videoFileUrl, deliverMediaSaved,
 }: LandingSectionProps) {
   const router = useRouter()
+  const raizRef = useRef<HTMLDivElement>(null)
+  /** Última versión de `start` (la tarjeta de Difusión la dispara por efecto). */
+  const startRef = useRef<() => Promise<void>>(async () => {})
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [landing, setLanding] = useState<Landing | null>(null)
@@ -145,21 +155,48 @@ export function LandingSection({
    * Cada etapa es su propio request: si una falla, se reintenta sola sin volver
    * a pagar las anteriores. El tope de vueltas es un seguro anti-loop.
    */
-  const runEnrichment = useCallback(async (): Promise<void> => {
-    for (let i = 0; i < ENRICH_STAGES.length + 2; i++) {
+  const runEnrichment = useCallback(async (): Promise<Landing | null> => {
+    let ultima: Landing | null = null
+    // +3 y no +2: en autopilot la etapa de textos (copy) se encadena después de
+    // los avatares, o sea una llamada más que el arranque normal.
+    for (let i = 0; i < ENRICH_STAGES.length + 3; i++) {
       const res = await fetch(`/api/properties/${propertyId}/landing/enrich`, { method: 'POST' })
       const data = await readJson<{
         landing?: Landing; stage?: string; label?: string; percent?: number; done?: boolean; error?: string
       }>(res)
       if (!res.ok) throw new Error(data.error ?? 'Error al generar con IA')
-      if (data.landing) setLanding(data.landing ?? null)
-      if (data.done) { setEnriching(null); return }
+      if (data.landing) { ultima = data.landing; setLanding(data.landing) }
+      if (data.done) { setEnriching(null); return ultima }
       setEnriching({ label: data.label ?? 'Generando…', percent: data.percent ?? 0 })
     }
     setEnriching(null)
+    return ultima
   }, [propertyId])
 
+  /**
+   * Autopilot (2026-09-14): si la landing nació con las respuestas de la
+   * visita y los textos ya se generaron con ellas, se publica sola y se muestra
+   * el enlace. Si publicar falla (típico: falta el video), queda en borrador
+   * con todo listo y el motivo en pantalla — nunca se pierde nada.
+   */
+  const publicarSola = useCallback(async (l: Landing | null): Promise<void> => {
+    if (!l?.wizard_state?.autopilot || l.status !== 'draft' || bloqueoDePublicacion(l)) return
+    setEnriching({ label: 'Publicando la landing…', percent: 97 })
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/landing/publish`, { method: 'POST' })
+      const data = await readJson<{ error?: string }>(res)
+      if (!res.ok) throw new Error(data.error ?? 'No se pudo publicar la landing')
+      toast.success('Landing creada y publicada. Ya podés montar la campaña Meta.')
+    } catch (e) {
+      toast.error(`La landing quedó lista pero no se publicó: ${e instanceof Error ? e.message : 'error'}`)
+    } finally {
+      setEnriching(null)
+      await load()
+    }
+  }, [propertyId, load])
+
   const start = async () => {
+    if (busy === 'start') return
     setBusy('start')
     // El POST de creación ya no hace IA: vuelve en ~1s con la landing lista para
     // trabajar. El enriquecimiento (Vision → avatares → textos) va después, de a
@@ -178,8 +215,12 @@ export function LandingSection({
       // viera raro en pantalla.
       resumedRef.current = true
       setLanding(data.landing ?? null); setTemplates(data.templates ?? [])
-      await runEnrichment()
-      toast.success('Landing creada. Respondé las preguntas para generar los textos.')
+      const final = await runEnrichment()
+      if (final?.wizard_state?.autopilot) {
+        await publicarSola(final)
+      } else {
+        toast.success('Landing creada. Respondé las preguntas para generar los textos.')
+      }
     } catch (e) {
       setEnriching(null)
       toast.error(e instanceof Error ? e.message : 'Error al crear la landing')
@@ -200,11 +241,27 @@ export function LandingSection({
     resumedRef.current = true
     if (nextEnrichStage(landing.wizard_state ?? {}) === 'done') return
     setEnriching({ label: 'Retomando la generación…', percent: 5 })
-    runEnrichment().catch(e => {
-      setEnriching(null)
-      toast.error(e instanceof Error ? e.message : 'Error al generar con IA')
-    })
-  }, [loading, landing, runEnrichment])
+    runEnrichment()
+      .then(final => publicarSola(final))
+      .catch(e => {
+        setEnriching(null)
+        toast.error(e instanceof Error ? e.message : 'Error al generar con IA')
+      })
+  }, [loading, landing, runEnrichment, publicarSola])
+
+  /**
+   * La tarjeta "Landing" de Difusión pidió crear la landing: misma creación que
+   * el botón de acá, más el scroll hasta el progreso. Se lee `start` por ref
+   * para no atar el efecto al closure de cada render.
+   */
+  startRef.current = start
+  useEffect(() => {
+    if (!autoStartToken || loading || landing || busy) return
+    raizRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    void startRef.current()
+    // Solo cuando la tarjeta pide (el token cambia); el resto son guardas.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStartToken])
 
   /**
    * Guarda las respuestas (el server exige TODAS), regenera avatares y corre la
@@ -431,7 +488,7 @@ export function LandingSection({
   // --- Sin landing: CTA de creación ---
   if (!landing) {
     return (
-      <Card>
+      <Card ref={raizRef}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4" />Landing Page</CardTitle>
         </CardHeader>

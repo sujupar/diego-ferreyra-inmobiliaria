@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ENRICH_STAGES, nextEnrichStage, enrichLabel, enrichPercent } from './enrich'
+import { ENRICH_STAGES, nextEnrichStage, enrichLabel, enrichPercent, etapaTrasAvatares } from './enrich'
 
 describe('nextEnrichStage', () => {
   it('arranca por Vision cuando la landing recién se creó', () => {
@@ -28,6 +28,28 @@ describe('nextEnrichStage', () => {
 
   it('un valor desconocido se trata como completa (nunca loopea infinito)', () => {
     expect(nextEnrichStage({ enrich: 'basura' as never })).toBe('done')
+  })
+})
+
+describe('etapaTrasAvatares (autopilot, 2026-09-14)', () => {
+  const preguntas = [{ id: 'q1' }, { id: 'q2' }, { id: 'q3' }, { id: 'q4' }]
+  const respuestas = { q1: 'a', q2: 'b', q3: 'c', q4: 'd' }
+
+  it('sin autopilot, después de los avatares se frena (el asesor responde en la ficha)', () => {
+    expect(etapaTrasAvatares({ questions: preguntas, answers: respuestas })).toBe('done')
+  })
+
+  it('con autopilot y las respuestas de la visita, encadena la etapa de textos', () => {
+    expect(etapaTrasAvatares({ autopilot: true, questions: preguntas, answers: respuestas })).toBe('copy')
+  })
+
+  it('autopilot con una respuesta faltante NO encadena: no se publica copy genérico', () => {
+    expect(etapaTrasAvatares({ autopilot: true, questions: preguntas, answers: { q1: 'a', q2: 'b', q3: 'c' } })).toBe('done')
+    expect(etapaTrasAvatares({ autopilot: true, questions: preguntas, answers: { ...respuestas, q4: '  ' } })).toBe('done')
+  })
+
+  it('autopilot sin preguntas guardadas tampoco encadena', () => {
+    expect(etapaTrasAvatares({ autopilot: true, questions: [], answers: respuestas })).toBe('done')
   })
 })
 
