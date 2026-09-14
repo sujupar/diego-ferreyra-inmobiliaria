@@ -147,6 +147,10 @@ export function TasacionNetaClient({
           </p>
 
           <div data-hm="video" className="mt-7">
+            {/* `warmup` y `vslBar` van SOLO acá: el reproductor lo comparten la
+                variante A, la clase y gracias-clase, y la A es el control de este
+                mismo experimento. Cambiarle el comportamiento por defecto sería
+                mover las dos patas de la comparación a la vez. */}
             <FunnelClickToPlayVideo
               src={heroVideoUrl}
               poster={heroPosterUrl}
@@ -154,6 +158,8 @@ export function TasacionNetaClient({
               trackKey="hero-tasacion"
               funnel="tasacion"
               context="hero"
+              warmup
+              vslBar
             />
           </div>
 
