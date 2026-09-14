@@ -3,9 +3,11 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
 import { toast } from 'sonner'
-import { Loader2, ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react'
+import { Loader2, ArrowLeft, ArrowRight } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { StepperPills } from '../StepperPills'
+import { alcanzadaTras, puedeSaltarA } from '@/lib/portals/wizard-etapas'
 import { useApPublishDraft } from './useApPublishDraft'
 import { ManageListingPanel } from './ManageListingPanel'
 import { StepImages } from './steps/StepImages'
@@ -28,6 +30,8 @@ export function ArgenpropWizard({ propertyId }: { propertyId: string }) {
   const router = useRouter()
   const { loading, property, attrs, listing, validation, draft, patch, save, reload } = useApPublishDraft(propertyId)
   const [idx, setIdx] = useState(0)
+  /** Etapa más lejana ya visitada: hasta ahí se puede saltar con las pastillas. */
+  const [maxIdx, setMaxIdx] = useState(0)
   const [stepValid, setStepValid] = useState(false)
   const [saving, setSaving] = useState(false)
   const [managing, setManaging] = useState<'baja' | 'republish' | null>(null)
@@ -87,7 +91,9 @@ export function ArgenpropWizard({ propertyId }: { propertyId: string }) {
       const ok = await save()
       if (!ok) return
       setStepValid(false)
-      setIdx(i => Math.min(i + 1, STEPS.length - 1))
+      const siguiente = Math.min(idx + 1, STEPS.length - 1)
+      setMaxIdx(m => alcanzadaTras(m, siguiente))
+      setIdx(siguiente)
     } catch (e) {
       toast.error(e instanceof Error && e.message ? e.message : 'No se pudo guardar. Volvé a intentar.')
     } finally {
@@ -102,20 +108,24 @@ export function ArgenpropWizard({ propertyId }: { propertyId: string }) {
     setStepValid(true)
     setIdx(targetIdx)
   }
+  /** Ver el comentario gemelo en `ml/MercadoLibreWizard.tsx`. */
+  async function saltarA(destino: number) {
+    if (!puedeSaltarA({ destino, actual: idx, maxAlcanzada: maxIdx, actualValida: stepValid })) return
+    setSaving(true)
+    try {
+      const ok = await save()
+      if (!ok) return
+      goTo(destino)
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : 'No se pudo guardar. Volvé a intentar.')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
-      {/* Stepper */}
-      <div className="flex items-center gap-1.5 text-xs flex-wrap">
-        {STEPS.map((s, i) => (
-          <div key={s.id} className="flex items-center gap-1.5">
-            <span className={`px-2.5 py-1 rounded-full ${i < idx ? 'bg-emerald-600 text-white' : i === idx ? 'bg-[color:var(--brand)] text-white' : 'bg-muted text-muted-foreground'}`}>
-              {i < idx && <CheckCircle2 className="h-3 w-3 inline mr-1" />}{s.label}
-            </span>
-            {i < STEPS.length - 1 && <ArrowRight className="h-3 w-3 text-muted-foreground" />}
-          </div>
-        ))}
-      </div>
+      <StepperPills steps={STEPS} idx={idx} maxIdx={maxIdx} stepValid={stepValid} saving={saving} onJump={saltarA} />
 
       {validation.errors.length > 0 && current === 'confirm' && (
         <Card className="border-red-300">
