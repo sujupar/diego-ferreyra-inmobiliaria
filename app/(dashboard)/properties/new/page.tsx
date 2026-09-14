@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import Image from 'next/image'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Loader2, Home, DollarSign, FileText, MapPin, ArrowLeft, User, ImageIcon, Layers, Upload, Trash2 } from 'lucide-react'
+import { Loader2, Home, DollarSign, FileText, MapPin, ArrowLeft, User, Layers, Upload, Trash2 } from 'lucide-react'
 import { uploadPlans, validatePlanFile } from '@/lib/properties/upload-plans'
 import { armarDatosDifusionDesdeVisita } from '@/lib/portals/datos-visita'
 import type { VisitDataSnapshot } from '@/types/visit-data.types'
@@ -71,7 +70,6 @@ function NewPropertyContent() {
     // portal no responde, vuelven los campos de texto y el alta no se traba.
     const [ubicacion, setUbicacion] = useState<SeleccionUbicacion | null>(null)
     const [sinCatalogo, setSinCatalogo] = useState(false)
-    const [photos, setPhotos] = useState<string[]>([])
     const [planFiles, setPlanFiles] = useState<File[]>([])
     const [uploadingPlans, setUploadingPlans] = useState(false)
     // Mientras el modelo escribe, captar la propiedad la crearía SIN la
@@ -195,7 +193,10 @@ function NewPropertyContent() {
                     origin: 'tasacion',
                     assigned_to: dealAssignedTo || appr.assigned_to || prev.assigned_to,
                 }))
-                if (Array.isArray(appr.property_images)) setPhotos(appr.property_images)
+                // Las fotos de la tasación NO se heredan (decisión del dueño,
+                // 2026-09-14): son capturas del informe (Street View, mapa), no
+                // del aviso. Así entró la imagen incrustada de 4,4 MB que rompió
+                // ML y Argenprop. Las fotos se suben a mano en Multimedia.
                 setPrefillIds({
                     appraisalId,
                     contactId: dealContactId || appr.contact_id || null,
@@ -219,10 +220,6 @@ function NewPropertyContent() {
 
     function updateField(field: string, value: string) {
         setForm(prev => ({ ...prev, [field]: value }))
-    }
-
-    function removePhoto(idx: number) {
-        setPhotos(prev => prev.filter((_, i) => i !== idx))
     }
 
     function addPlanFiles(list: FileList | null) {
@@ -298,15 +295,14 @@ function NewPropertyContent() {
                 origin: form.origin || undefined,
                 assigned_to: form.assigned_to || undefined,
                 description: form.description || undefined,
-                photos: photos.length > 0 ? photos : undefined,
                 // Lo cargado en la VISITA (Secciones 08 y 09) viaja con el alta:
                 // expensas, atributos para los portales y respuestas de la landing.
                 // Sin visita, van vacíos y no cambia nada.
                 ...datosDifusion(dealData?.visit_data),
                 // Lo único que falta para captarla son las fotos: la
-                // documentación dejó de ser obligatoria (2026-08-09). Si el
-                // alta ya trae fotos (típico de una propiedad que viene de una
-                // tasación), el servidor la avanza a captada en el acto.
+                // documentación dejó de ser obligatoria (2026-08-09). El alta
+                // nunca manda fotos: se suben a mano en Multimedia y ahí el
+                // servidor la avanza a captada.
                 status: 'pending_photos',
             }
 
@@ -537,48 +533,6 @@ function NewPropertyContent() {
                     </CardContent>
                 </Card>
 
-                {photos.length > 0 && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-lg flex items-center gap-2">
-                                <ImageIcon className="h-5 w-5" />Fotos heredadas ({photos.length})
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <p className="text-xs text-muted-foreground mb-3">
-                                Estas fotos vienen de la tasación. Quitá las que no quieras conservar.
-                            </p>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                {photos.map((url, i) => (
-                                    <div key={`${url}-${i}`} className="relative group aspect-square rounded-md overflow-hidden border">
-                                        <Image
-                                            src={url}
-                                            alt={`Foto ${i + 1}`}
-                                            fill
-                                            className="object-cover"
-                                            unoptimized
-                                            sizes="(max-width: 640px) 50vw, 25vw"
-                                        />
-                                        {/* `group-hover` no existe en un
-                                            teléfono: el botón quedaba invisible
-                                            pero tocable, así que la foto se
-                                            borraba sola al intentar mirarla.
-                                            Abajo de `md` se muestra siempre y
-                                            con área de dedo. */}
-                                        <button
-                                            type="button"
-                                            onClick={() => removePhoto(i)}
-                                            aria-label={`Quitar la foto ${i + 1}`}
-                                            className="absolute top-1 right-1 bg-black/70 text-white text-xs px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity max-md:flex max-md:min-h-11 max-md:min-w-11 max-md:items-center max-md:justify-center max-md:opacity-100"
-                                        >
-                                            Quitar
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
-                )}
 
                 <Card>
                     <CardHeader><CardTitle className="text-lg flex items-center gap-2"><DollarSign className="h-5 w-5" />Datos Comerciales</CardTitle></CardHeader>

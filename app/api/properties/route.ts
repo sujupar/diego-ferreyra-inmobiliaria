@@ -161,9 +161,11 @@ export async function POST(request: NextRequest) {
       { failedNotificationType: 'property_created', entityType: 'property', entityId: id },
     )
 
-    // Una propiedad creada desde una tasación hereda las fotos: nace captada.
-    // Sin esta llamada quedaba trabada para siempre, porque el auto-avance solo
-    // corría al CONFIRMAR una subida de fotos — y ahí nunca se subió ninguna.
+    // Si el alta ya trae fotos (import masivo, API), la propiedad nace captada.
+    // Desde el 2026-09-14 el alta desde una tasación NO hereda las fotos de la
+    // tasación (son capturas del informe, no del aviso: así entró la de Street
+    // View que rompió ML y Argenprop), así que normalmente nace sin fotos y
+    // avanza a captada al CONFIRMAR la primera subida en Multimedia.
     // Best-effort: la propiedad ya existe, un fallo acá no puede tirar el alta.
     try { await checkAndAdvanceProperty(id) } catch (e) { console.error('[properties] auto-avance al crear:', e) }
 
