@@ -2,6 +2,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { soloElMensaje } from '@/lib/portals/types'
 import { Loader2, ArrowLeft, ExternalLink, Pause, Play, Trash2, Building2 } from 'lucide-react'
 import type { MlListing } from './types'
 
@@ -56,7 +57,7 @@ export function ManageListingPanel({
                 Publicado: {new Date(listing.last_published_at).toLocaleString('es-AR')}
               </p>
             )}
-            {listing.last_error && <p className="text-amber-700 text-xs mt-2">⚠ {listing.last_error}</p>}
+            {listing.last_error && <p className="text-amber-700 text-xs mt-2 break-words line-clamp-4">⚠ {soloElMensaje(listing.last_error)}</p>}
             {listing.external_url && (
               <a
                 href={listing.external_url}

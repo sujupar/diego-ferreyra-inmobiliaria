@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { leerJson } from '../leer-json'
+import { tituloSugerido, TITULO_MAX_AP } from '@/lib/portals/titulo-sugerido'
 import type { ApAttributesResponse, ApDraft, ApListing, ApPreviewProperty } from './types'
 
 interface PreviewResponse {
@@ -40,7 +41,9 @@ export function useApPublishDraft(propertyId: string) {
         mediaChoice: attrJson?.mediaChoice ?? (prev.property.video_url ? 'video' : prev.property.tour_3d_url ? 'tour' : 'none'),
         apAttributes: attrJson?.prefill ?? {},
         listingType: attrJson?.listingTypeSelected ?? 'estandar',
-        title: prev.property.title ?? '',
+        // Lo que se ve es lo que se publica: sin título propio, el mismo
+        // sugerido que arma el mapper (antes la caja quedaba en blanco).
+        title: tituloSugerido(prev.property, { max: TITULO_MAX_AP, conjuncion: true, tipoPorDefecto: 'Propiedad' }),
         description: prev.property.description ?? '',
         askingPrice: prev.property.asking_price,
         latitude: prev.property.latitude,

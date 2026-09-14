@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { initPortals, getAdapter } from '@/lib/portals'
 import { ArgenpropAdapter } from '@/lib/portals/argenprop/adapter'
+import { mensajeYDetalle } from '@/lib/portals/types'
 import type { Database } from '@/types/database.types'
 import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
@@ -71,16 +72,18 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
         attributeOverrides: (meta.ap_attributes ?? {}) as Record<string, { value_name?: string; value_id?: string }>,
       })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      // Igual que ML: la persona ve `mensaje` (castellano); en la base queda
+      // también el detalle crudo, separado, para diagnosticar.
+      const { mensaje, paraElLog } = mensajeYDetalle(err)
       await supabase.from('property_listings').upsert(
-        { property_id: id, portal: 'argenprop', status: 'failed', last_error: msg, attempts: 1 },
+        { property_id: id, portal: 'argenprop', status: 'failed', last_error: paraElLog, attempts: 1 },
         { onConflict: 'property_id,portal' },
       )
       await supabase.from('property_publish_events').insert({
-        property_id: id, portal: 'argenprop', event_type: 'failed', error_message: msg,
+        property_id: id, portal: 'argenprop', event_type: 'failed', error_message: paraElLog,
         actor: user.profile.full_name ?? user.id,
       })
-      return NextResponse.json({ error: msg }, { status: 502 })
+      return NextResponse.json({ error: mensaje }, { status: 502 })
     }
 
     const mergedMeta = { ...meta, aviso_id: pub.metadata?.avisoId ?? null, codigo: pub.metadata?.codigo ?? pub.externalId }
@@ -148,8 +151,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         await adapter.republicar(listing.external_id) // vuelve a Vigente
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      return NextResponse.json({ error: `${action} falló: ${msg}` }, { status: 502 })
+      const { mensaje } = mensajeYDetalle(err)
+      return NextResponse.json({ error: `${action} falló: ${mensaje}` }, { status: 502 })
     }
 
     const newStatus = action === 'baja' ? 'paused' : 'published'

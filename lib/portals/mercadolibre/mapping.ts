@@ -2,6 +2,8 @@ import type { Property } from '../types'
 import type { AttributeOverride } from './category-attributes'
 import { extractYouTubeId } from './media'
 import { ML_MAX_FOTOS_AVISO } from '../photo-limits'
+import { fotosPublicables } from '../fotos-publicables'
+import { tituloSugerido, TITULO_MAX_ML } from '../titulo-sugerido'
 
 export interface MlAttribute {
   id: string
@@ -118,7 +120,7 @@ export const ML_OPERACIONES_SOPORTADAS = ['venta', 'alquiler', 'temporario'] as 
  * publica en un rubro que no corresponde. Quien llame a esta función tiene que
  * manejar el `null` con un mensaje claro.
  */
-export function resolveCategory(property: Property): string | null {
+export function resolveCategory(property: Pick<Property, 'property_type' | 'operation_type'>): string | null {
   const operation = normalizarOperacion(property.operation_type)
   const type = (property.property_type || 'departamento').trim().toLowerCase()
   return CATEGORY_MAP[operation]?.[type] ?? null
@@ -154,13 +156,9 @@ export function todasLasCategorias(): { operacion: string; tipo: string; categor
   )
 }
 
+/** Misma regla que muestra el paso Descripción del wizard (lib/portals/titulo-sugerido.ts). */
 function buildTitle(property: Property): string {
-  if (property.title) return property.title.slice(0, 60)
-  const type = property.property_type || 'departamento'
-  const typeCap = type.charAt(0).toUpperCase() + type.slice(1)
-  const rooms = property.rooms ? `${property.rooms} amb` : ''
-  const parts = [typeCap, rooms, property.neighborhood].filter(Boolean)
-  return parts.join(' ').slice(0, 60)
+  return tituloSugerido(property, { max: TITULO_MAX_ML })
 }
 
 /** Atributos derivables de los campos de la propiedad (mapeo a ids ML conocidos). */
@@ -257,7 +255,9 @@ export function propertyToMlPayload(property: Property, opts: MlPayloadOptions =
     buying_mode: 'classified',
     listing_type_id: opts.listingType || 'free',
     condition: 'new',
-    pictures: (property.photos ?? []).slice(0, ML_MAX_FOTOS_AVISO).map(source => ({ source })),
+    // Solo enlaces https: una foto incrustada en base64 (heredada de la
+    // tasación) iba entera en el body y ML respondía 413 (2026-09-14).
+    pictures: fotosPublicables(property.photos).validas.slice(0, ML_MAX_FOTOS_AVISO).map(source => ({ source })),
     description: { plain_text: property.description || buildTitle(property) },
     attributes: buildAttributes(property, opts),
     location: buildLocation(property),

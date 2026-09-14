@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import { PortalAdapterError } from '../types'
 import type { ApCredentials } from '../credentials'
+import { explicarErrorArgenprop, recortarDetalle } from '../errores-legibles'
 
 /**
  * Cliente de la API REST de Argenprop (integradores.api.sosiva451.com, v1).
@@ -119,18 +120,30 @@ export async function apFetch<T = unknown>(
     await getAuthToken(creds, true)
     return apFetch<T>(creds, path, init, true)
   }
-  if (!res.ok) {
-    const code = json.ErrorCode ?? ''
-    const detail = json.Detail ?? json.Title ?? text.slice(0, 300)
-    const errors = json.Errors ? ` ${JSON.stringify(json.Errors)}` : ''
-    throw new PortalAdapterError(
-      `Argenprop ${res.status} ${code} ${path}: ${detail}${errors}`.trim(),
-      'argenprop',
-      res.status === 401 || res.status === 403 ? 'auth' : res.status === 429 ? 'rate_limit' : 'unknown',
-      res.status >= 500 || res.status === 429,
-    )
-  }
+  if (!res.ok) throw errorDeRespuestaArgenprop(res.status, text, path)
   return json
+}
+
+/**
+ * Arma el error de una respuesta !ok de Argenprop. Puro (sin red), para poder
+ * probarlo. `message` es lo que ve la asistente: castellano y corto. El crudo
+ * (código, detalle y `Errors` tal cual) va en `original`, recortado — es lo
+ * que `mensajeYDetalle` guarda en `last_error` para diagnosticar. Antes todo
+ * iba junto en `message` y la pantalla mostró un base64 de 4 MB (2026-09-14).
+ */
+export function errorDeRespuestaArgenprop(status: number, text: string, path: string): PortalAdapterError {
+  let json: ApiResult<unknown> = {}
+  try { json = text ? JSON.parse(text) : {} } catch { json = {} }
+  const code = json.ErrorCode ?? ''
+  const detail = json.Detail ?? json.Title ?? text.slice(0, 300)
+  const errors = json.Errors ? ` ${JSON.stringify(json.Errors)}` : ''
+  return new PortalAdapterError(
+    explicarErrorArgenprop(status, text),
+    'argenprop',
+    status === 401 || status === 403 ? 'auth' : status === 429 ? 'rate_limit' : 'unknown',
+    status >= 500 || status === 429,
+    recortarDetalle(`Argenprop ${status} ${code} ${path}: ${detail}${errors}`.trim()),
+  )
 }
 
 /** Helper: GET y devuelve el `.Result` (catálogos, localización, lecturas). */

@@ -1,5 +1,7 @@
 import type { Property } from '../types'
 import { AP_MAX_FOTOS_AVISO } from '../photo-limits'
+import { fotosPublicables } from '../fotos-publicables'
+import { tituloSugerido, TITULO_MAX_AP } from '../titulo-sugerido'
 import { apCategoria, derivedPrefill, getApSchema, type ApField, type AttributeOverride } from './field-schema'
 import { parseAddress } from '@/lib/properties/address'
 
@@ -38,11 +40,9 @@ export interface ApMappingOptions {
 // Campos del schema que NO son Caracteristicas (van a Precio/Categoria).
 const SPECIAL_FIELDS = new Set(['TIPO_OPERACION', 'MONEDA', 'SUBTIPO'])
 
+/** Misma regla que muestra el paso Descripción del wizard (lib/portals/titulo-sugerido.ts). */
 function buildTitulo(property: Property): string {
-  if (property.title) return property.title.slice(0, 80)
-  const tipo = property.property_type || 'Propiedad'
-  const amb = property.rooms ? `${property.rooms} amb` : ''
-  return [tipo.charAt(0).toUpperCase() + tipo.slice(1), amb, 'en', property.neighborhood].filter(Boolean).join(' ').slice(0, 80)
+  return tituloSugerido(property, { max: TITULO_MAX_AP, conjuncion: true, tipoPorDefecto: 'Propiedad' })
 }
 
 /** Separa "José Luis Cantilo 4300, Villa Devoto, ..." → { Nombre, Numero }. */
@@ -82,7 +82,9 @@ export function propertyToAvisoDto(property: Property, opts: ApMappingOptions): 
   }
 
   const multimedia: { Tipo: string; Url: string }[] = []
-  for (const url of (property.photos ?? []).slice(0, AP_MAX_FOTOS_AVISO)) multimedia.push({ Tipo: 'FOTO', Url: url })
+  // Solo enlaces https: Argenprop rechaza cualquier otra cosa con "Multimedia.Url:
+  // Valor inválido" (pasó con una foto incrustada en base64, 2026-09-14).
+  for (const url of fotosPublicables(property.photos).validas.slice(0, AP_MAX_FOTOS_AVISO)) multimedia.push({ Tipo: 'FOTO', Url: url })
   if (property.video_url) multimedia.push({ Tipo: 'VIDEO', Url: property.video_url })
   if (property.tour_3d_url) multimedia.push({ Tipo: 'TOUR', Url: property.tour_3d_url })
 

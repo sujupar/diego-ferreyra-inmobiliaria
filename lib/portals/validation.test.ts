@@ -89,4 +89,16 @@ describe('validateCommon', () => {
     expect(result.warnings.some(w => w.includes('video'))).toBe(true)
     expect(result.warnings.some(w => w.includes('tour 3D'))).toBe(true)
   })
+
+  it('si la ÚNICA foto es una imagen incrustada, bloquea y lo dice en castellano', () => {
+    const result = validateCommon(makeProperty({ photos: ['data:image/png;base64,iVBORw0KGgo='] }))
+    expect(result.ok).toBe(false)
+    expect(result.errors.some(e => /foto 1 .*imagen incrustada/i.test(e))).toBe(true)
+  })
+
+  it('una foto incrustada entre fotos válidas no bloquea, pero avisa cuál se descarta', () => {
+    const result = validateCommon(makeProperty({ photos: ['https://x/1.jpg', 'data:image/png;base64,iVBORw0KGgo='] }))
+    expect(result.ok).toBe(true)
+    expect(result.warnings.some(w => /foto 2 .*imagen incrustada/i.test(w))).toBe(true)
+  })
 })

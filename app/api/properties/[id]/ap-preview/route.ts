@@ -104,7 +104,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     // 1) Campos de la propiedad (mismo set y saneo que ml-preview)
     const update: Record<string, unknown> = {}
-    if (typeof body.title === 'string') update.title = body.title.slice(0, 60)
+    // Un título vacío NO pisa el de la ficha (antes cada "Siguiente" guardaba '').
+    if (typeof body.title === 'string' && body.title.trim()) update.title = body.title.trim().slice(0, 60)
     if (typeof body.description === 'string') update.description = body.description.slice(0, 5000)
     if (Array.isArray(body.photos)) {
       // Reorden sin pérdida: el wizard elige el orden, el conjunto lo gobierna

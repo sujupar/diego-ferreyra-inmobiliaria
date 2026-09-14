@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import { PortalAdapterError } from '../types'
+import { explicarErrorHttp, recortarDetalle } from '../errores-legibles'
 
 const ML_BASE = 'https://api.mercadolibre.com'
 
@@ -100,14 +101,10 @@ export async function mlFetch<T = unknown>(
  * corchetes al final para poder diagnosticar.
  */
 export function explicarErrorMl(status: number, cuerpo: string): string {
-  if (status === 401 || status === 403) {
-    return 'MercadoLibre rechazó las credenciales. Hay que volver a conectar la cuenta.'
-  }
-  if (status === 429) {
-    return 'MercadoLibre está limitando la cantidad de pedidos. Reintentá en unos minutos.'
-  }
-  if (status >= 500) {
-    return 'MercadoLibre tuvo un problema de su lado. Reintentá en unos minutos.'
+  // 401/403/413/429/5xx: el cuerpo no agrega nada (el 413 real era una página
+  // HTML de tengine). La frase sale del módulo compartido con Argenprop.
+  if (status === 401 || status === 403 || status === 413 || status === 429 || status >= 500) {
+    return explicarErrorHttp('MercadoLibre', status)
   }
 
   let causas: { code?: string; message?: string }[] = []
@@ -116,7 +113,7 @@ export function explicarErrorMl(status: number, cuerpo: string): string {
     causas = Array.isArray(j.cause) ? (j.cause as typeof causas) : []
     if (causas.length === 0 && j.message) causas = [{ message: j.message }]
   } catch {
-    return `MercadoLibre rechazó el aviso (error ${status}).`
+    return explicarErrorHttp('MercadoLibre', status)
   }
 
   const traducidas = causas.map(c => {
@@ -164,7 +161,9 @@ async function fetchConTraduccion(path: string, init: RequestInit, token: string
       'mercadolibre',
       res.status === 401 ? 'auth' : res.status === 429 ? 'rate_limit' : 'unknown',
       retryable,
-      `ML ${res.status} ${path}: ${text}`,
+      // Recortado: un 413 con el body reflejado, o un base64, no sirven para
+      // diagnosticar y antes terminaban enteros en last_error.
+      recortarDetalle(`ML ${res.status} ${path}: ${text}`),
     )
   }
   return res.json()
