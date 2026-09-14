@@ -33,7 +33,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const meta = (listing?.metadata ?? {}) as Record<string, unknown>
     const saved = (meta.ap_attributes ?? {}) as Record<string, AttributeOverride>
 
-    const prefill: Record<string, AttributeOverride> = { ...derivedPrefill(property), ...saved }
+    // columnas de la propiedad < lo cargado en la VISITA (portal_data.ap) < borrador del wizard.
+    const deLaVisita = ((property.portal_data ?? {}) as { ap?: Record<string, AttributeOverride> }).ap ?? {}
+    const prefill: Record<string, AttributeOverride> = { ...derivedPrefill(property), ...deLaVisita, ...saved }
 
     return NextResponse.json({
       categoryId: schema.categoryId,

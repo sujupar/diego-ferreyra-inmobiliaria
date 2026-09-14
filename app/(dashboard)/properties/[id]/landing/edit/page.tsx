@@ -20,7 +20,9 @@ export default async function LandingEditPage({ params }: { params: Promise<{ id
   if (!property) notFound()
 
   const landing = await getLanding(id)
-  if (!landing) redirect(`/properties/${id}`) // sin landing: se crea desde la ficha (asistente IA)
+  // Sin landing: se crea desde la pestaña Difusión (asistente IA). Antes redirigía a la
+  // ficha SIN la pestaña y el asesor caía en "Propiedad" sin entender qué pasó.
+  if (!landing) redirect(`/properties/${id}?tab=difusion`)
 
   const initialDocument =
     safeParseLandingDocument(landing.draft_content) ??

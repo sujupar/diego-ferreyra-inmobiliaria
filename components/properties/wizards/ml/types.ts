@@ -6,6 +6,8 @@ export interface MlPreviewProperty {
   id: string
   title: string | null
   description: string | null
+  /** Lo devuelve el preview (select *); el título sugerido lo necesita. */
+  property_type?: string | null
   photos: string[]
   asking_price: number
   currency: string

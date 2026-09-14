@@ -57,6 +57,14 @@ describe('explicarErrorMl', () => {
     expect(texto).toMatch(/rechazó el aviso/i)
     expect(texto).not.toContain('<html>')
   })
+
+  it('el 413 real (página HTML de tengine) explica que el aviso es demasiado pesado por una foto incrustada', () => {
+    const html = '<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">\n<html>\n<head><title>413 Request Entity Too Large</title></head>\n<body>\n<center><h1>413 Request Entity Too Large</h1></center>\n<hr><center>tengine</center>\n</body>\n</html>'
+    const texto = explicarErrorMl(413, html)
+    expect(texto).toMatch(/demasiado pesado/i)
+    expect(texto).toMatch(/imagen incrustada/i)
+    expect(texto).not.toContain('<')
+  })
 })
 
 describe('mensajeYDetalle / soloElMensaje', () => {

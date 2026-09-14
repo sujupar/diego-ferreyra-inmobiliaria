@@ -84,6 +84,13 @@ describe('propertyToMlPayload', () => {
     expect(payload.pictures[0].source).toBe('https://x/f0.jpg')
   })
 
+  it('una foto incrustada (base64) NUNCA viaja en pictures — fue el 413 real del 2026-09-14', () => {
+    const payload = propertyToMlPayload(makeProperty({
+      photos: ['https://x/a.jpg', 'data:image/png;base64,iVBORw0KGgo=', 'https://x/b.jpg'],
+    }))
+    expect(payload.pictures.map(p => p.source)).toEqual(['https://x/a.jpg', 'https://x/b.jpg'])
+  })
+
   it('includes expensas attribute when present', () => {
     const payload = propertyToMlPayload(makeProperty({ expensas: 75000 }))
     const expensas = payload.attributes.find(a => a.id === 'MAINTENANCE_FEE')

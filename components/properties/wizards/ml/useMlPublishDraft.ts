@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { leerJson } from '../leer-json'
+import { tituloSugerido, TITULO_MAX_ML } from '@/lib/portals/titulo-sugerido'
 import type { MlAttributesResponse, MlDraft, MlListing, MlPreviewProperty } from './types'
 
 interface PreviewResponse {
@@ -65,7 +66,9 @@ export function useMlPublishDraft(propertyId: string) {
         mediaChoice: attrJson?.mediaChoice ?? (prev.property.video_url ? 'video' : prev.property.tour_3d_url ? 'tour' : 'none'),
         mlAttributes: attrJson?.prefill ?? {},
         listingType: attrJson?.listingTypeSelected ?? 'free',
-        title: prev.property.title ?? '',
+        // Lo que se ve es lo que se publica: sin título propio, el mismo
+        // sugerido que arma el mapper (antes la caja quedaba en blanco).
+        title: tituloSugerido(prev.property, { max: TITULO_MAX_ML }),
         description: prev.property.description ?? '',
         askingPrice: prev.property.asking_price,
         latitude: prev.property.latitude,

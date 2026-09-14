@@ -24,7 +24,8 @@ import { buildLuxuryDocument } from './templates/luxury'
 import { buildConversionDocument } from './templates/conversion'
 import { resolveDeliverMedia } from '@/lib/properties/deliver-media'
 import { generateConversionCopy, deterministicConversionCopy } from './conversion-copy'
-import { ENRICH_STAGES, nextEnrichStage, type EnrichStage } from './enrich'
+import { ENRICH_STAGES, nextEnrichStage, etapaTrasAvatares, type EnrichStage } from './enrich'
+import { preguntasFijasLanding, respuestasFijasCompletas } from './questions-generator'
 import { deriveTier } from './tier'
 import { buildUtmBase } from './utm'
 import { LandingDocument, safeParseLandingDocument } from './schema'
@@ -64,6 +65,22 @@ export interface WizardState {
    * lo exige junto con `faltanRespuestas` — ver lib/landing/answers-gate.ts.
    */
   copyFromAnswers?: boolean
+  /**
+   * true = nació con las respuestas de la VISITA (properties.landing_answers):
+   * la etapa de avatares encadena los textos y el cliente publica solo. Lo
+   * escribe SOLO el servidor al crear; el PATCH del cliente no puede tocarlo.
+   */
+  autopilot?: boolean
+}
+
+/** Las cuatro respuestas fijas si están TODAS (y como strings); si no, null. */
+function respuestasFijasDe(json: unknown): Record<string, string> | null {
+  if (!json || typeof json !== 'object' || Array.isArray(json)) return null
+  const obj = json as Record<string, unknown>
+  if (!respuestasFijasCompletas(obj)) return null
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(obj)) if (typeof v === 'string' && v.trim()) out[k] = v.trim().slice(0, 1500)
+  return out
 }
 
 export interface LandingRow {
@@ -131,16 +148,24 @@ export async function startCoCreation(propertyId: string, userId: string | null)
     deriveTier(property),
   )
 
+  // Autopilot (2026-09-14): si el asesor contestó las cuatro preguntas fijas en
+  // la VISITA, la landing nace con esas preguntas y respuestas y se genera y
+  // publica sola. Sin ellas, todo sigue como hasta ahora (la IA propone
+  // preguntas y el asesor las responde en la ficha).
+  const respuestasDeLaVisita = respuestasFijasDe(property.landing_answers)
+  const autopilot = respuestasDeLaVisita !== null
+
   const wizard_state: WizardState = {
     step: 'questions',
-    questions: [],
-    answers: {},
+    questions: autopilot ? preguntasFijasLanding(property.neighborhood) : [],
+    answers: respuestasDeLaVisita ?? {},
     avatarCandidates: [],
     selectedAvatarIndex: 0,
     visionSummary: '',
     descriptionUsed: '',
     enrich: ENRICH_STAGES[0],
     copyFromAnswers: false,
+    ...(autopilot ? { autopilot: true } : {}),
   }
 
   const { data, error } = await admin()
@@ -209,6 +234,19 @@ export async function runEnrichStage(propertyId: string): Promise<LandingRow> {
     } catch { /* sin descripción */ }
     ws.descriptionUsed = description.slice(0, 2000)
     ws.enrich = 'avatars'
+  } else if (stage === 'avatars' && ws.autopilot) {
+    // Autopilot: las preguntas ya son las fijas y las respuestas vienen de la
+    // visita → los avatares se generan CON esas respuestas (como hace el envío
+    // de respuestas) y, si están todas, se encadena la etapa de textos.
+    const { avatars } = await generateEmpathyAvatars({
+      property, count: 3,
+      visionSummary: ws.visionSummary ?? '',
+      description: ws.descriptionUsed ?? '',
+      answers: ws.answers ?? {},
+    })
+    ws.avatarCandidates = avatars
+    ws.selectedAvatarIndex = 0
+    ws.enrich = etapaTrasAvatares(ws)
   } else if (stage === 'avatars') {
     const [{ avatars }, { questions }] = await Promise.all([
       generateEmpathyAvatars({

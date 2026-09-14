@@ -129,6 +129,55 @@ describe('LandingSection — creación de la landing', () => {
     expect(llamadasEnrich).toBe(ENRICH_STAGES.length + 1)
   })
 
+  it('autopilot: con las respuestas de la visita encadena los textos y PUBLICA sola, mostrando el enlace', async () => {
+    await act(async () => { await new Promise(r => setTimeout(r, 30)) })
+    llamadasEnrich = 0
+    let publicaciones = 0
+    let publicada = false
+    const preguntas = ['q1', 'q2', 'q3', 'q4'].map(id => ({ id, question: id }))
+    const respuestas = { q1: 'a', q2: 'b', q3: 'c', q4: 'd' }
+    const ETAPAS = [...ENRICH_STAGES, 'copy'] as const
+    let paso = 0
+
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const metodo = init?.method ?? 'GET'
+      await tardar()
+      const base = { ...LANDING_BASE, wizard_state: { autopilot: true, questions: preguntas, answers: respuestas } }
+      if (url.endsWith('/landing') && metodo === 'GET') {
+        return respuesta(publicada
+          ? { landing: { ...base, status: 'published', public_slug: 'depto-test', published_at: '2026-09-14', wizard_state: { ...base.wizard_state, enrich: 'done', copyFromAnswers: true } }, templates: [] }
+          : { landing: null, templates: [] })
+      }
+      if (url.endsWith('/landing') && metodo === 'POST') {
+        return respuesta({ landing: { ...base, wizard_state: { ...base.wizard_state, enrich: ENRICH_STAGES[0] } }, templates: [] })
+      }
+      if (url.endsWith('/landing/enrich') && metodo === 'POST') {
+        llamadasEnrich++
+        if (paso >= ETAPAS.length) {
+          return respuesta({ landing: { ...base, wizard_state: { ...base.wizard_state, enrich: 'done', copyFromAnswers: true } }, done: true })
+        }
+        paso++
+        const siguiente = ETAPAS[paso] ?? 'done'
+        return respuesta({ landing: { ...base, wizard_state: { ...base.wizard_state, enrich: siguiente } }, stage: siguiente, label: 'Generando…', percent: paso * 20 })
+      }
+      if (url.endsWith('/landing/publish') && metodo === 'POST') {
+        publicaciones++
+        publicada = true
+        return respuesta({ slug: 'depto-test', url: '/p/depto-test' })
+      }
+      throw new Error(`fetch no esperado: ${metodo} ${url}`)
+    }))
+
+    render(<LandingSection propertyId="prop-1" videoFileUrl="https://x/video.mp4" />)
+    fireEvent.click(await screen.findByRole('button', { name: /Crear landing con IA/i }))
+
+    await waitFor(() => expect(publicaciones).toBe(1), { timeout: 3000 })
+    // Una llamada por etapa (vision, location, description, avatars, copy) + la de done.
+    expect(llamadasEnrich).toBe(ETAPAS.length + 1)
+    // Y el enlace público queda a la vista, sin preguntas intermedias.
+    await screen.findByText('/p/depto-test')
+  })
+
   it('no vuelve a enriquecer una landing ya terminada', async () => {
     // Dejamos morir lo que el test anterior pudiera tener en vuelo antes de contar.
     await act(async () => { await new Promise(r => setTimeout(r, 30)) })

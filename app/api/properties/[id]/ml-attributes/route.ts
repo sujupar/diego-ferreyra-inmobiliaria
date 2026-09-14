@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth/require-role'
 import { resolveCategory, mensajeSinCategoria, ML_LISTING_TYPES } from '@/lib/portals/mercadolibre/mapping'
 import { fetchCategoryAttributes, type AttributeOverride } from '@/lib/portals/mercadolibre/category-attributes'
 import { fetchAvailableListingTypes } from '@/lib/portals/mercadolibre/listing-types'
+import { resolverIdsDeLista } from '@/lib/portals/datos-visita'
 import type { Database } from '@/types/database.types'
 import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
@@ -56,8 +57,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const meta = (listing?.metadata ?? {}) as Record<string, unknown>
     const saved = (meta.ml_attributes ?? {}) as Record<string, AttributeOverride>
 
+    // Orden de prioridad: columnas de la propiedad < lo cargado en la VISITA
+    // (portal_data.ml, 2026-09-14) < el borrador del wizard. Los derivados de
+    // la visita traen listas por nombre; se resuelven a id contra el schema
+    // para que el select los muestre elegidos.
+    const deLaVisita = resolverIdsDeLista(
+      (((property.portal_data ?? {}) as { ml?: Record<string, AttributeOverride> }).ml ?? {}),
+      [...required, ...recommended],
+    )
     const prefill: Record<string, AttributeOverride> = {
       ...derivedPrefill(property),
+      ...deLaVisita,
       ...saved, // lo guardado pisa lo derivado
     }
 

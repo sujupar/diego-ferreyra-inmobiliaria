@@ -115,7 +115,7 @@ export function PortalListingsCard({ propertyId }: { propertyId: string }) {
               <div className="flex flex-col gap-1">
                 <span className="font-medium text-sm">{PORTAL_LABEL[l.portal] ?? l.portal}</span>
                 {soloElMensaje(l.last_error) && (
-                  <span className="text-xs text-[color:var(--destructive)]">
+                  <span className="text-xs text-[color:var(--destructive)] break-words">
                     {soloElMensaje(l.last_error)!.slice(0, 200)}
                   </span>
                 )}

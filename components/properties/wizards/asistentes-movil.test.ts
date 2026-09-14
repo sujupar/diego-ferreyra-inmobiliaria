@@ -20,6 +20,7 @@ const ML = readFileSync(join(AQUI, 'ml', 'MercadoLibreWizard.tsx'), 'utf8')
 const AP = readFileSync(join(AQUI, 'ap', 'ArgenpropWizard.tsx'), 'utf8')
 const META_V2 = readFileSync(join(AQUI, 'MetaAdsWizardV2.tsx'), 'utf8')
 const META_V1 = readFileSync(join(AQUI, 'MetaAdsWizard.tsx'), 'utf8')
+const PILLS = readFileSync(join(AQUI, 'StepperPills.tsx'), 'utf8')
 
 describe.each([['MercadoLibre', ML], ['Argenprop', AP]])(
     'asistente de %s — navegación alcanzable en celular',
@@ -39,8 +40,11 @@ describe.each([['MercadoLibre', ML], ['Argenprop', AP]])(
 
         it('la barra de pasos sigue pudiendo bajar de renglón', () => {
             // Estos dos asistentes ya estaban bien: los pasos usan `flex-wrap`
-            // en vez de desbordar. No hay que "arreglarlos" con scroll.
-            expect(codigo).toContain('flex items-center gap-1.5 text-xs flex-wrap')
+            // en vez de desbordar. No hay que "arreglarlos" con scroll. Desde
+            // 2026-09-14 las pastillas viven en el componente compartido
+            // StepperPills (clickeables); el flex-wrap tiene que seguir ahí.
+            expect(codigo).toContain('<StepperPills')
+            expect(PILLS).toContain('flex items-center gap-1.5 text-xs flex-wrap')
         })
     }
 )
@@ -66,7 +70,10 @@ describe('pasos de campos — alto de dedo', () => {
         ['MercadoLibre', join(AQUI, 'ml', 'steps', 'StepFields.tsx')],
         ['Argenprop', join(AQUI, 'ap', 'steps', 'StepFields.tsx')],
     ])('%s: los controles crudos llegan a 44px en celular', (_n, ruta) => {
-        const codigo = readFileSync(ruta, 'utf8')
+        // Los tres controles de atributo (lista / Sí-No / texto) se mudaron al
+        // componente compartido AttrField (2026-09-14); el paso conserva los dos
+        // suyos (tipo de publicación y dirección). Se cuentan juntos.
+        const codigo = readFileSync(ruta, 'utf8') + readFileSync(join(AQUI, 'AttrField.tsx'), 'utf8')
         // Cada control crudo del paso (`px-3 py-2 text-sm`) tiene que llevar el
         // alto de dedo pegado atrás. Se cuentan las dos cosas por separado para
         // que sobrevivan cero apariciones huérfanas.

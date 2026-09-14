@@ -50,6 +50,12 @@ describe('propertyToAvisoDto', () => {
     expect(soloFotos[0].Url).toBe('https://cdn/x/f0.jpg')
   })
 
+  it('una foto incrustada (base64) NUNCA viaja en Multimedia — Argenprop la rechaza con "Multimedia.Url"', () => {
+    const d = propertyToAvisoDto({ ...(prop as object), photos: ['data:image/png;base64,iVBORw0KGgo=', 'https://cdn/x/1.jpg'] } as never, opts)
+    const soloFotos = d.Multimedia.filter((m: { Tipo: string }) => m.Tipo === 'FOTO')
+    expect(soloFotos).toEqual([{ Tipo: 'FOTO', Url: 'https://cdn/x/1.jpg' }])
+  })
+
   it('Multimedia: fotos + video + tour con sus Tipos', () => {
     expect(dto.Multimedia).toContainEqual({ Tipo: 'FOTO', Url: 'https://cdn/x/1.jpg' })
     expect(dto.Multimedia).toContainEqual({ Tipo: 'VIDEO', Url: 'https://youtu.be/abc' })

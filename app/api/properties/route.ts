@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { checkAndAdvanceProperty, createProperty, getPropertiesListPage } from '@/lib/supabase/properties'
+import { checkAndAdvanceProperty, createProperty, getPropertiesListPage, updateProperty } from '@/lib/supabase/properties'
+import { createClient } from '@supabase/supabase-js'
+import { esFotoIncrustada } from '@/lib/properties/fotos-incrustadas'
+import { materializarFotosIncrustadas, subidorStorage } from '@/lib/properties/materializar-fotos'
+import { sanearValoresAtributo, sanearRespuestasLanding } from '@/lib/supabase/visit-data-sanear'
 import { requireAuth } from '@/lib/auth/require-role'
 import { notifyPropertyCreated } from '@/lib/email/notifications/property-created'
 import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
@@ -7,6 +11,10 @@ import { geocodePropertyBestEffort } from '@/lib/properties/geocode-on-write'
 import { esOperacion, OPERACIONES_VALORES } from '@/lib/properties/operacion'
 import { resolverUbicacion, type SeleccionUbicacion } from '@/lib/properties/location-selection'
 import { parsearPrecio } from '@/lib/filters/rango-precio'
+
+function getStorageAdmin() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!).storage
+}
 
 const DEFAULT_PAGE_SIZE = 24
 const MAX_PAGE_SIZE = 100
@@ -103,13 +111,46 @@ export async function POST(request: NextRequest) {
       ubicacionPatch = { ...resuelta.patch }
     }
 
+    // Las fotos heredadas de una tasación pueden venir INCRUSTADAS (base64):
+    // el asistente de tasación las guarda así. Se sacan del INSERT, se suben a
+    // Storage y recién ahí se guardan como URLs — en el mismo orden. Con una
+    // de 4,4 MB adentro de `photos`, ML respondía 413 y Argenprop rechazaba
+    // "Multimedia.Url" (2026-09-14). Necesita el id para armar el path, por
+    // eso va después del insert y ANTES del auto-avance a captada.
+    // Lo heredado de la VISITA (Secciones 08/09, 2026-09-14) se acota antes
+    // del INSERT: termina en prefills de los wizards y en el prompt de la landing.
+    if (body.portal_data !== undefined) {
+      const pd = (body.portal_data && typeof body.portal_data === 'object' ? body.portal_data : {}) as { ml?: unknown; ap?: unknown }
+      body.portal_data = { ml: sanearValoresAtributo(pd.ml), ap: sanearValoresAtributo(pd.ap) }
+    }
+    if (body.landing_answers !== undefined) body.landing_answers = sanearRespuestasLanding(body.landing_answers)
+    if (body.expensas !== undefined) {
+      const n = Number(body.expensas)
+      body.expensas = Number.isFinite(n) && n > 0 ? n : null
+    }
+
+    const fotosDelAlta: unknown[] = Array.isArray(body.photos) ? body.photos : []
+    const hayIncrustadas = fotosDelAlta.some(esFotoIncrustada)
     const payload = {
       ...body,
       ...ubicacionPatch,
+      ...(hayIncrustadas ? { photos: fotosDelAlta.filter(f => typeof f === 'string' && !esFotoIncrustada(f)) } : {}),
       created_by: body.created_by ?? user.id,
       assigned_to: body.assigned_to,
     }
     const id = await createProperty(payload)
+
+    if (hayIncrustadas) {
+      try {
+        const r = await materializarFotosIncrustadas(id, fotosDelAlta, subidorStorage(getStorageAdmin()))
+        await updateProperty(id, { photos: r.photos })
+        console.info('[properties] fotos incrustadas materializadas', { id, subidas: r.subidas, descartadas: r.descartadas })
+      } catch (e) {
+        // La propiedad ya existe con las fotos que sí eran enlaces; lo que no
+        // se pudo subir se puede volver a cargar desde Multimedia.
+        console.error('[properties] no se pudieron materializar las fotos incrustadas:', e)
+      }
+    }
 
     await geocodePropertyBestEffort(id) // best-effort, nunca lanza
 

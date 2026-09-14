@@ -67,12 +67,20 @@ export async function generateCoCreationQuestions(input: {
   return { questions: fallbackQuestions(input.property), source: 'fallback' }
 }
 
-/** Preguntas por defecto: sirven para cualquier propiedad. */
-export function fallbackQuestions(property: LandingProperty): CoCreationQuestion[] {
+/**
+ * Las cuatro preguntas FIJAS de la landing. Son las mismas que se hacen en la
+ * visita de tasación (Sección 09, 2026-09-14) y las que usa el fallback: tener
+ * ids estables (q1..q4) es lo que permite contestarlas ANTES de que exista la
+ * landing y que después se cree y publique sola.
+ */
+export const IDS_PREGUNTAS_FIJAS = ['q1', 'q2', 'q3', 'q4'] as const
+
+export function preguntasFijasLanding(barrio: string | null | undefined): CoCreationQuestion[] {
+  const donde = (barrio ?? '').trim() ? ` en ${(barrio ?? '').trim()}` : ''
   return [
     {
       id: 'q1',
-      question: `¿Quién imaginás que es el comprador ideal de esta propiedad en ${property.neighborhood}?`,
+      question: `¿Quién imaginás que es el comprador ideal de esta propiedad${donde}?`,
       hint: 'Familia, inversor, pareja joven, primera vivienda, etc.',
     },
     {
@@ -91,4 +99,14 @@ export function fallbackQuestions(property: LandingProperty): CoCreationQuestion
       hint: 'Transporte, colegios, comercios, seguridad, verde.',
     },
   ]
+}
+
+/** ¿Están las cuatro respuestas fijas? (con eso la landing va en autopilot). */
+export function respuestasFijasCompletas(answers: Record<string, unknown> | null | undefined): boolean {
+  return IDS_PREGUNTAS_FIJAS.every(id => typeof answers?.[id] === 'string' && (answers[id] as string).trim().length > 0)
+}
+
+/** Preguntas por defecto: sirven para cualquier propiedad. */
+export function fallbackQuestions(property: LandingProperty): CoCreationQuestion[] {
+  return preguntasFijasLanding(property.neighborhood)
 }

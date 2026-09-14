@@ -10,6 +10,18 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, Home, DollarSign, FileText, MapPin, ArrowLeft, User, ImageIcon, Layers, Upload, Trash2 } from 'lucide-react'
 import { uploadPlans, validatePlanFile } from '@/lib/properties/upload-plans'
+import { armarDatosDifusionDesdeVisita } from '@/lib/portals/datos-visita'
+import type { VisitDataSnapshot } from '@/types/visit-data.types'
+
+/** Campos del alta que se heredan de la visita; solo los que tienen algo. */
+function datosDifusion(visita: VisitDataSnapshot | null | undefined) {
+    const d = armarDatosDifusionDesdeVisita(visita)
+    return {
+        ...(d.expensas != null ? { expensas: d.expensas } : {}),
+        ...(Object.keys(d.portal_data.ml).length + Object.keys(d.portal_data.ap).length > 0 ? { portal_data: d.portal_data } : {}),
+        ...(Object.keys(d.landing_answers).length > 0 ? { landing_answers: d.landing_answers } : {}),
+    }
+}
 import { OPERACIONES } from '@/lib/properties/operacion'
 import { GenerarDescripcion } from '@/components/properties/alta/GenerarDescripcion'
 import { LocationPicker } from '@/components/properties/LocationPicker'
@@ -38,7 +50,7 @@ function NewPropertyContent() {
     const [loading, setLoading] = useState(false)
     const [prefilling, setPrefilling] = useState(!!appraisalIdParam || !!dealId || !!scheduledAppraisalId)
     const [advisors, setAdvisors] = useState<Array<{ id: string; full_name: string }>>([])
-    const [dealData, setDealData] = useState<{ contact_id?: string; appraisal_id?: string; assigned_to?: string; property_address?: string; contacts?: { full_name?: string }; profiles?: { full_name?: string } } | null>(null)
+    const [dealData, setDealData] = useState<{ contact_id?: string; appraisal_id?: string; assigned_to?: string; property_address?: string; visit_data?: VisitDataSnapshot | null; contacts?: { full_name?: string }; profiles?: { full_name?: string } } | null>(null)
     const [prefillIds, setPrefillIds] = useState<PrefillState>({ appraisalId: null, contactId: null })
     // Tres estados distinguibles para la precarga: cargando (`prefilling`),
     // cargó (cartel azul) y NO se pudo (este aviso). Antes el fallo se veía
@@ -287,6 +299,10 @@ function NewPropertyContent() {
                 assigned_to: form.assigned_to || undefined,
                 description: form.description || undefined,
                 photos: photos.length > 0 ? photos : undefined,
+                // Lo cargado en la VISITA (Secciones 08 y 09) viaja con el alta:
+                // expensas, atributos para los portales y respuestas de la landing.
+                // Sin visita, van vacíos y no cambia nada.
+                ...datosDifusion(dealData?.visit_data),
                 // Lo único que falta para captarla son las fotos: la
                 // documentación dejó de ser obligatoria (2026-08-09). Si el
                 // alta ya trae fotos (típico de una propiedad que viene de una

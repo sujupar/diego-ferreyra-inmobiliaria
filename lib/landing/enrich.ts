@@ -40,6 +40,31 @@ export type EnrichStage = (typeof ENRICH_STAGES)[number] | 'copy' | 'done'
 
 interface WizardStateLike {
   enrich?: EnrichStage
+  /**
+   * true = la landing nació con las respuestas cargadas en la VISITA
+   * (properties.landing_answers, 2026-09-14): se genera y publica sola, sin
+   * frenar a pedir las respuestas en la ficha.
+   */
+  autopilot?: boolean
+  questions?: { id: string }[]
+  answers?: Record<string, string>
+}
+
+/**
+ * Qué viene después de la etapa de avatares.
+ *
+ * Normal: 'done' — el asesor responde las preguntas en la ficha y ESO re-arma
+ * la etapa de textos (decisión del usuario, 2026-08-06). Autopilot: si las
+ * respuestas ya están TODAS, se encadena 'copy' directo. Una sola respuesta
+ * vacía y se frena igual: lo que nunca se publica solo es copy genérico.
+ */
+export function etapaTrasAvatares(ws: WizardStateLike): EnrichStage {
+  if (!ws.autopilot) return 'done'
+  const preguntas = ws.questions ?? []
+  if (preguntas.length === 0) return 'done'
+  const respuestas = ws.answers ?? {}
+  const completas = preguntas.every(q => (respuestas[q.id] ?? '').trim().length > 0)
+  return completas ? 'copy' : 'done'
 }
 
 /**

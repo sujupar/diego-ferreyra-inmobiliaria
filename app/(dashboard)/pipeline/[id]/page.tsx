@@ -762,6 +762,7 @@ export default function DealDetailPage() {
             <VisitDataForm
               dealId={deal.id}
               initial={deal.visit_data || null}
+              neighborhood={deal.neighborhood ?? null}
               onCompleted={() => { setShowVisitModal(false); fetchDeal() }}
             />
           </div>

@@ -20,6 +20,12 @@ import {
 
 interface Props {
   propertyId: string
+  /**
+   * Arranca la creación de la landing (la hace `LandingSection`, más abajo en
+   * la misma pestaña). Sin este handler, el botón linkea al editor — que sin
+   * landing redirige a la ficha, o sea "no hace nada" (bug real, 2026-09-14).
+   */
+  onCrearLanding?: () => void
 }
 
 interface ListingsResponse {
@@ -39,7 +45,7 @@ interface MetaResponse {
   } | null
 }
 
-export function PostCaptureActions({ propertyId }: Props) {
+export function PostCaptureActions({ propertyId, onCrearLanding }: Props) {
   const [mlState, setMlState] = useState<{
     status: 'no_publicado' | 'publicado' | 'pausado' | 'en_proceso' | 'error' | 'loading'
     url?: string
@@ -173,7 +179,7 @@ export function PostCaptureActions({ propertyId }: Props) {
               </div>
               <MlStatusBadge state={mlState} />
             </div>
-            <p className="text-xs text-muted-foreground min-h-[2.5em]">
+            <p className="text-xs text-muted-foreground min-h-[2.5em] break-words line-clamp-4">
               {mlState.status === 'no_publicado' &&
                 'Vista previa, edición de título/descripción/fotos y publicación en un click.'}
               {mlState.status === 'publicado' && 'El aviso está activo en MercadoLibre.'}
@@ -226,7 +232,7 @@ export function PostCaptureActions({ propertyId }: Props) {
                   : apState.status === 'error' ? 'Error' : 'No publicado'}
               </Badge>
             </div>
-            <p className="text-xs text-muted-foreground min-h-[2.5em]">
+            <p className="text-xs text-muted-foreground min-h-[2.5em] break-words line-clamp-4">
               {apState.status === 'no_publicado' && 'Campos prellenados, edición y publicación en Argenprop en un click.'}
               {apState.status === 'publicado' && 'El aviso está activo en Argenprop.'}
               {apState.status === 'baja' && 'Aviso dado de baja.'}
@@ -257,7 +263,7 @@ export function PostCaptureActions({ propertyId }: Props) {
               </div>
               <MetaStatusBadge state={metaState} />
             </div>
-            <p className="text-xs text-muted-foreground min-h-[2.5em]">
+            <p className="text-xs text-muted-foreground min-h-[2.5em] break-words line-clamp-4">
               {metaState.status === 'sin_campana' &&
                 'Asistente con análisis de fotos, perfil de comprador, segmentación geográfica simple y presupuesto en pesos.'}
               {metaState.status === 'activa' && 'Campaña corriendo en Meta Ads.'}
@@ -299,24 +305,31 @@ export function PostCaptureActions({ propertyId }: Props) {
                 <Badge variant="outline" className="text-[10px] h-5">Sin landing</Badge>
               )}
             </div>
-            <p className="text-xs text-muted-foreground min-h-[2.5em]">
+            <p className="text-xs text-muted-foreground min-h-[2.5em] break-words line-clamp-4">
               {landingState.status === 'publicada' && 'La landing de conversión está publicada.'}
               {landingState.status === 'borrador' && 'Hay una landing empezada sin publicar.'}
               {landingState.status === 'sin_landing' && 'Página propia de la propiedad; es requisito para la campaña Meta.'}
               {landingState.status === 'loading' && 'Cargando estado…'}
             </p>
             <div className="flex gap-2">
-              <Button
-                asChild
-                size="sm"
-                className="flex-1"
-                variant={landingState.status === 'sin_landing' ? 'default' : 'outline'}
-              >
-                <Link href={`/properties/${propertyId}/landing/edit`}>
-                  {landingState.status === 'sin_landing' ? 'Crear landing' : 'Ver / Editar'}
+              {landingState.status === 'sin_landing' && onCrearLanding ? (
+                <Button size="sm" className="flex-1" onClick={onCrearLanding}>
+                  Crear landing
                   <ArrowRight className="h-4 w-4 ml-1" />
-                </Link>
-              </Button>
+                </Button>
+              ) : (
+                <Button
+                  asChild
+                  size="sm"
+                  className="flex-1"
+                  variant={landingState.status === 'sin_landing' ? 'default' : 'outline'}
+                >
+                  <Link href={landingState.status === 'sin_landing' ? `/properties/${propertyId}?tab=difusion` : `/properties/${propertyId}/landing/edit`}>
+                    {landingState.status === 'sin_landing' ? 'Crear landing' : 'Ver / Editar'}
+                    <ArrowRight className="h-4 w-4 ml-1" />
+                  </Link>
+                </Button>
+              )}
               {landingState.slug && (
                 <Button asChild size="sm" variant="ghost">
                   <a href={`/p/${landingState.slug}`} target="_blank" rel="noopener noreferrer">Abrir</a>
