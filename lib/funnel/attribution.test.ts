@@ -102,4 +102,32 @@ describe('attributionToDealColumns', () => {
     expect(cols.meta_campaign_id).toBe('999')
     expect(cols.meta_ad_name).toBeNull()
   })
+
+  it('DESCARTA los macros sin sustituir en vez de guardarlos como campaña', () => {
+    // Caso real del 2026-09-15: un registro entró desde una publicación
+    // impulsada, donde Meta NO reemplaza los macros, y quedó guardado
+    // `{{campaign.id}}` como si fuera el id de la campaña. El CRM mostraba una
+    // campaña inexistente. Vale más el campo vacío que un valor falso.
+    const cols = attributionToDealColumns({
+      utm_source: 'fb_ad',
+      fb_campaign_id: '{{campaign.id}}',
+    })
+    expect(cols.meta_campaign_id).toBeNull()
+    expect(cols.meta_site_source).toBe('fb_ad') // lo que SÍ vino se conserva
+  })
+
+  it('el blob de respaldo tampoco se queda con el macro', () => {
+    // Si `origin_metadata` guardara el objeto crudo, el macro volvería a entrar
+    // por la puerta de atrás: es lo que se mira cuando las columnas no alcanzan.
+    const cols = attributionToDealColumns({
+      utm_source: 'fb_ad',
+      utm_campaign: '{{campaign.name}}',
+      fb_campaign_id: '{{campaign.id}}',
+    })
+    expect(cols.origin_metadata).toEqual({ utm_source: 'fb_ad' })
+  })
+
+  it('solo macros → objeto vacío, sin UPDATE con datos falsos', () => {
+    expect(attributionToDealColumns({ fb_campaign_id: '{{campaign.id}}' })).toEqual({})
+  })
 })
