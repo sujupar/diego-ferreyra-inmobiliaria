@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
+import { esRastreador } from '@/lib/funnel/bots'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -60,9 +61,16 @@ export async function POST(req: NextRequest) {
   const utm = body.utm ?? {}
   const cap = (v: unknown, n: number) => typeof v === 'string' ? v.slice(0, n) : null
 
+  // Los rastreadores se MARCAN, no se descartan: un pico de `facebookexternalhit`
+  // avisa que alguien tocó un anuncio, y borrarlo haría imposible auditar por qué
+  // cambió un número. Lo que no pueden hacer es contar como visitantes en el
+  // panel del A/B — ver el comentario de `lib/funnel/bots.ts`.
+  const esBot = esRastreador(req.headers.get('user-agent'))
+
   try {
     const supabase = getAdmin()
     await supabase.from('landing_page_visits').insert({
+      is_bot:        esBot,
       slug:          cap(slug, 200),
       funnel_type:   funnelType,
       utm_source:    cap(utm.utm_source, 200),
