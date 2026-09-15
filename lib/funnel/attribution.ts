@@ -111,8 +111,15 @@ export function attributionToDealColumns(
   a: FunnelAttribution | null | undefined,
 ): Record<string, string | FunnelAttribution | null> {
   if (!a) return {}
+  // Descarta los macros sin sustituir, igual que `readAttributionFromParams`.
+  // Sin esto, un registro de una publicación impulsada guardaba literalmente
+  // `{{campaign.id}}` en `meta_campaign_id` (caso real, 2026-09-15): el CRM
+  // mostraba una campaña que no existe y los reportes contaban una fantasma.
+  // Mejor el campo vacío —que se lee como "no vino dato"— que un valor falso.
   const clean = (v?: string | null) =>
-    typeof v === 'string' && v.trim() ? v.trim().slice(0, 300) : null
+    typeof v === 'string' && v.trim() && !isUnsubstitutedMacro(v)
+      ? v.trim().slice(0, 300)
+      : null
   const cols = {
     meta_campaign_id: clean(a.fb_campaign_id),
     meta_campaign_name: clean(a.utm_campaign),
@@ -124,5 +131,10 @@ export function attributionToDealColumns(
     meta_site_source: clean(a.utm_source),
   }
   if (!Object.values(cols).some((v) => v !== null)) return {}
-  return { ...cols, origin_metadata: a }
+  // El blob de respaldo se limpia también: guardarlo crudo reintroducía el macro
+  // por la puerta de atrás, y es el que se mira cuando las columnas no alcanzan.
+  const respaldo = Object.fromEntries(
+    Object.entries(a).filter(([, v]) => !(typeof v === 'string' && isUnsubstitutedMacro(v))),
+  ) as FunnelAttribution
+  return { ...cols, origin_metadata: respaldo }
 }
