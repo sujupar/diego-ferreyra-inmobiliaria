@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   Loader2, ArrowLeft, User, MapPin, Calendar, Phone, Mail,
   ChevronRight, FileCheck, Home, Eye, MessageSquare, XCircle, Tag,
-  Edit2, Send, Mic, MicOff, Square, UserCog, Clock, Megaphone, ExternalLink
+  Edit2, Send, Mic, MicOff, Square, UserCog, Clock, Megaphone, ExternalLink, Layers
 } from 'lucide-react'
 
 type FollowUpChannel = 'call' | 'email' | 'message'
@@ -369,6 +369,10 @@ export default function DealDetailPage() {
             {deal.meta_adset_name && <><span className="text-muted-foreground">Conjunto:</span><span>{deal.meta_adset_name}</span></>}
             {deal.meta_ad_name && <><span className="text-muted-foreground">Anuncio:</span><span>{deal.meta_ad_id ? <a href={`https://www.facebook.com/adsmanager/manage/ads?selected_ad_ids=${deal.meta_ad_id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">{deal.meta_ad_name}<ExternalLink className="h-3 w-3" /></a> : deal.meta_ad_name}</span></>}
             {deal.meta_site_source && <><span className="text-muted-foreground">Plataforma:</span><span>{PLATFORM_LABELS[deal.meta_site_source] || deal.meta_site_source}{deal.meta_placement ? ` · ${deal.meta_placement}` : ''}</span></>}
+            {/* Qué landing vio esta persona. El dato se guardaba desde que existe
+                el A/B, pero no se mostraba en ninguna pantalla: al mirar un
+                contacto no había forma de saber de cuál de las dos páginas vino. */}
+            {deal.landing_variant && <><span className="text-muted-foreground flex items-center gap-1"><Layers className="h-3.5 w-3.5" />Landing:</span><span>{deal.landing_variant === 'B' ? 'Tasación Neta' : 'Actual'} <span className="text-muted-foreground">(variante {deal.landing_variant})</span></span></>}
             {deal.scheduled_date && (
               <>
                 <span className="text-muted-foreground flex items-center gap-1">
