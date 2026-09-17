@@ -15,6 +15,9 @@ import { linkPropertyToDeal } from '@/lib/supabase/deals'
 import { resolverProcesoDeCaptacion } from '@/lib/deals/proceso-manual'
 import { armarDatosDifusionDesdeVisita } from '@/lib/portals/datos-visita'
 import type { VisitDataSnapshot } from '@/types/visit-data.types'
+import { canAccessDeal } from '@/lib/auth/entity-access'
+import { ROLE_PERMISSIONS } from '@/lib/auth/roles'
+import type { Role } from '@/types/auth.types'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -22,6 +25,19 @@ function getAdmin() {
 
 function getStorageAdmin() {
   return getAdmin().storage
+}
+
+/**
+ * ¿Puede este usuario mover ESE proceso a "Captada"? Antes lo hacía
+ * `/api/deals/[id]/advance`, que pedía `pipeline.advance`. Al pasar el vínculo
+ * a esta ruta (que solo pide estar logueado) hay que pedir lo mismo —si no, un
+ * abogado movía procesos mandando un `deal_id`— y además acceso al proceso: un
+ * asesor, solo los suyos.
+ */
+async function puedeMoverProceso(user: Awaited<ReturnType<typeof requireAuth>>, dealId: string): Promise<boolean> {
+  const permisos = ROLE_PERMISSIONS[user.profile.role as Role] as string[] | undefined
+  if (!permisos?.includes('pipeline.advance')) return false
+  return canAccessDeal(user, dealId)
 }
 
 /** Una propiedad descartada no ocupa el lugar: esa tasación se puede volver a captar. */
@@ -236,6 +252,10 @@ export async function POST(request: NextRequest) {
     const dealIdPedido = typeof body.deal_id === 'string' && body.deal_id.trim() ? body.deal_id.trim() : null
     delete body.deal_id
     const appraisalIdPedido = typeof body.appraisal_id === 'string' && body.appraisal_id.trim() ? body.appraisal_id.trim() : null
+    // El proceso lo eligió la pantalla: si no puede moverlo, no se crea nada.
+    if (dealIdPedido && !(await puedeMoverProceso(user, dealIdPedido))) {
+      return NextResponse.json({ error: 'No podés captar para un proceso que no tenés asignado.' }, { status: 403 })
+    }
     const captacion = await resolverCaptacion(dealIdPedido, appraisalIdPedido)
     if (captacion.tipo === 'duplicado') {
       return NextResponse.json({
@@ -243,7 +263,15 @@ export async function POST(request: NextRequest) {
         propertyId: captacion.propertyId,
       }, { status: 409 })
     }
-    const dealId = captacion.tipo === 'proceso' ? captacion.dealId : null
+    let dealId = captacion.tipo === 'proceso' ? captacion.dealId : null
+    // Resuelto por la tasación: si ese proceso es de otro, la captación sigue
+    // (antes, desde la tasación, nunca se movía el proceso) pero no se toca ni
+    // se hereda nada de un proceso ajeno.
+    let avisoSinAcceso: string | null = null
+    if (dealId && !dealIdPedido && !(await puedeMoverProceso(user, dealId))) {
+      dealId = null
+      avisoSinAcceso = 'La propiedad se creó, pero el proceso de esa tasación no está a tu nombre: no se movió a "Captada". Avisá al coordinador.'
+    }
 
     // Sin proceso NO se frena el alta (el plan proponía un 400, pero eso dejaría
     // sin poder captarse a las tasaciones viejas que nunca tuvieron proceso, y a
@@ -282,7 +310,7 @@ export async function POST(request: NextRequest) {
 
     // Vincular el proceso y pasarlo a "Captada". Si falla, la propiedad ya
     // existe: se avisa en la respuesta en vez de perder el alta entera.
-    let avisoProceso: string | null = avisoSinProceso
+    let avisoProceso: string | null = avisoSinAcceso ?? avisoSinProceso
     if (dealId) {
       try {
         await linkPropertyToDeal(dealId, id)

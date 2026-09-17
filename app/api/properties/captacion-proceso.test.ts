@@ -20,12 +20,15 @@ const { estado } = vi.hoisted(() => ({
     // Las que cuelgan del proceso sin tener `appraisal_id` (vienen del CSV).
     propiedadesSueltas: [] as { id: string; status?: string; commercial_status?: string }[],
     visitData: null as unknown,
+    rol: 'admin',
+    accedeAlProceso: true,
   },
 }))
 
 vi.mock('@/lib/auth/require-role', () => ({
-  requireAuth: vi.fn(async () => ({ id: 'user-1', profile: { role: 'admin' } })),
+  requireAuth: vi.fn(async () => ({ id: 'user-1', profile: { id: 'user-1', role: estado.rol } })),
 }))
+vi.mock('@/lib/auth/entity-access', () => ({ canAccessDeal: vi.fn(async () => estado.accedeAlProceso) }))
 vi.mock('@/lib/supabase/properties', () => ({
   createProperty: vi.fn(async (input: Record<string, unknown>) => { estado.creadas.push(input); return 'prop-nueva' }),
   getPropertiesListPage: vi.fn(async () => ({ data: [], total: 0, hasMore: false })),
@@ -90,6 +93,8 @@ beforeEach(() => {
   estado.propiedadesDeLaTasacion = []
   estado.propiedadesSueltas = []
   estado.visitData = null
+  estado.rol = 'admin'
+  estado.accedeAlProceso = true
 })
 
 describe('POST /api/properties — vínculo con el proceso', () => {
@@ -179,5 +184,40 @@ describe('POST /api/properties — vínculo con el proceso', () => {
     const j = await res.json()
     expect(j.id).toBe('prop-nueva')
     expect(j.avisoProceso).toMatch(/proceso/i)
+  })
+})
+
+describe('POST /api/properties — quién puede mover el proceso', () => {
+  it('un rol sin permiso de avanzar procesos (abogado) no puede mover uno mandando deal_id', async () => {
+    estado.rol = 'abogado'
+    const res = await POST(pedido({ ...base, deal_id: 'deal-1' }))
+    expect(res.status).toBe(403)
+    expect(estado.creadas).toHaveLength(0)
+    expect(estado.vinculadas).toHaveLength(0)
+  })
+
+  it('un asesor no puede mover el proceso de OTRO asesor', async () => {
+    estado.rol = 'asesor'
+    estado.accedeAlProceso = false
+    const res = await POST(pedido({ ...base, deal_id: 'deal-ajeno' }))
+    expect(res.status).toBe(403)
+    expect(estado.vinculadas).toHaveLength(0)
+  })
+
+  it('un asesor con SU proceso sí', async () => {
+    estado.rol = 'asesor'
+    const res = await POST(pedido({ ...base, deal_id: 'deal-1' }))
+    expect(res.status).toBe(200)
+    expect(estado.vinculadas).toHaveLength(1)
+  })
+
+  it('desde la tasación, si el proceso es ajeno se capta igual pero SIN moverlo, y avisa', async () => {
+    estado.rol = 'asesor'
+    estado.accedeAlProceso = false
+    estado.dealsDeLaTasacion = [{ id: 'deal-ajeno', property_id: null }]
+    const res = await POST(pedido({ ...base, appraisal_id: 'tasacion-1' }))
+    expect(res.status).toBe(200)
+    expect(estado.vinculadas).toHaveLength(0)
+    expect((await res.json()).avisoProceso).toMatch(/proceso/i)
   })
 })
