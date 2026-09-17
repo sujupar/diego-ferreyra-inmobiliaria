@@ -244,13 +244,22 @@ export async function updateDealSchedule(
   if (error) throw error
 }
 
+/**
+ * Vincula la tasación al proceso. NO cambia la etapa: crear una tasación no es
+ * entregarla. Entregarla es un acto del asesor, con su botón "Marcar Tasación
+ * Entregada", que además dispara el email con el PDF.
+ *
+ * Antes esto movía el proceso a "Tasación Entregada", contra lo que decía el
+ * comentario de la ruta que la llama ("crear ≠ entregar"). Efecto real: cada
+ * tasación manual figuraba entregada sin estarlo, salteaba la visita —y con
+ * ella el formulario de portales y landing— y el email de entrega no salía
+ * nunca, porque ya estaba en esa etapa cuando el asesor apretaba el botón.
+ */
 export async function linkAppraisalToDeal(dealId: string, appraisalId: string) {
   const { error } = await getAdmin()
     .from('deals')
     .update({
       appraisal_id: appraisalId,
-      stage: 'appraisal_sent',
-      stage_changed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
     .eq('id', dealId)

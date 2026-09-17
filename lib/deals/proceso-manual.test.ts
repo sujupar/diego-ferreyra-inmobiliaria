@@ -1,0 +1,210 @@
+import { describe, it, expect } from 'vitest'
+import {
+  ORIGENES_MANUALES,
+  validarClienteNuevo,
+  etapaInicial,
+  debeNotificarCreacion,
+  resolverProcesoDeCaptacion,
+  pareceProcesoIncompleto,
+} from './proceso-manual'
+
+/**
+ * Reglas del trabajo MANUAL (tasación o captación cargada a mano).
+ *
+ * Decisiones del dueño (2026-09-17): no hay orígenes nuevos, y el proceso pasa
+ * por las MISMAS etapas que cualquier otro, sin saltear ninguna. Una tasación
+ * manual nace "Coordinada" (agendada) y avanza con los botones de siempre.
+ */
+
+const base = {
+  nombre: '  Marta Gómez ',
+  telefono: '11 5555-4444',
+  email: ' MARTA@Example.com ',
+  origen: 'referido',
+  asesorId: '36c721f8-00c5-4714-b085-ba4b784e7a5e',
+  direccion: ' Av. Belgrano 1500 ',
+  tipo: 'departamento',
+  barrio: 'Monserrat',
+  ambientes: 2,
+  fechaVisita: '2026-09-17',
+}
+
+describe('validarClienteNuevo', () => {
+  it('limpia y devuelve los datos del cliente cuando está todo', () => {
+    const r = validarClienteNuevo(base)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.valor.nombre).toBe('Marta Gómez')
+    expect(r.valor.email).toBe('marta@example.com')
+    expect(r.valor.telefono).toBe('11 5555-4444')
+    expect(r.valor.telefonoNormalizado).toBe('1155554444')
+    expect(r.valor.direccion).toBe('Av. Belgrano 1500')
+    expect(r.valor.ambientes).toBe(2)
+  })
+
+  it('el email es opcional', () => {
+    const r = validarClienteNuevo({ ...base, email: undefined })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.valor.email).toBeNull()
+  })
+
+  it('exige nombre de persona, no una dirección vacía', () => {
+    const r = validarClienteNuevo({ ...base, nombre: ' ' })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errores.join(' ')).toMatch(/nombre/i)
+  })
+
+  it('exige un teléfono que identifique al cliente (10 dígitos)', () => {
+    const corto = validarClienteNuevo({ ...base, telefono: '4444' })
+    expect(corto.ok).toBe(false)
+    if (!corto.ok) expect(corto.errores.join(' ')).toMatch(/teléfono/i)
+    // Con +54 9 adelante es el mismo número y tiene que pasar.
+    const largo = validarClienteNuevo({ ...base, telefono: '+54 9 11 5555-4444' })
+    expect(largo.ok).toBe(true)
+    if (largo.ok) expect(largo.valor.telefonoNormalizado).toBe('1155554444')
+  })
+
+  it('rechaza un email mal escrito', () => {
+    const r = validarClienteNuevo({ ...base, email: 'marta@@example' })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errores.join(' ')).toMatch(/email/i)
+  })
+
+  it('solo acepta los orígenes que la base permite, sin inventar ninguno', () => {
+    expect(ORIGENES_MANUALES).toEqual(['embudo', 'referido', 'historico'])
+    for (const o of ORIGENES_MANUALES) expect(validarClienteNuevo({ ...base, origen: o }).ok).toBe(true)
+    const inventado = validarClienteNuevo({ ...base, origen: 'contacto_directo' })
+    expect(inventado.ok).toBe(false)
+    if (!inventado.ok) expect(inventado.errores.join(' ')).toMatch(/origen/i)
+    // 'tasacion' se ofrecía en alguna pantalla y la base lo rechaza.
+    expect(validarClienteNuevo({ ...base, origen: 'tasacion' }).ok).toBe(false)
+  })
+
+  it('exige asesor: sin asesor el proceso queda invisible para él en el CRM', () => {
+    const r = validarClienteNuevo({ ...base, asesorId: '' })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errores.join(' ')).toMatch(/asesor/i)
+  })
+
+  it('exige dirección, barrio, tipo y ambientes válidos', () => {
+    expect(validarClienteNuevo({ ...base, direccion: '' }).ok).toBe(false)
+    expect(validarClienteNuevo({ ...base, barrio: '  ' }).ok).toBe(false)
+    expect(validarClienteNuevo({ ...base, tipo: 'castillo' }).ok).toBe(false)
+    expect(validarClienteNuevo({ ...base, ambientes: 0 }).ok).toBe(false)
+  })
+
+  it('el tipo "otro" pide aclarar cuál', () => {
+    expect(validarClienteNuevo({ ...base, tipo: 'otro' }).ok).toBe(false)
+    const r = validarClienteNuevo({ ...base, tipo: 'otro', tipoOtro: 'Cochera' })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.valor.tipoOtro).toBe('Cochera')
+  })
+
+  it('exige una fecha de visita con forma de fecha', () => {
+    expect(validarClienteNuevo({ ...base, fechaVisita: '' }).ok).toBe(false)
+    expect(validarClienteNuevo({ ...base, fechaVisita: '17/09/2026' }).ok).toBe(false)
+    expect(validarClienteNuevo({ ...base, fechaVisita: '2026-13-40' }).ok).toBe(false)
+    expect(validarClienteNuevo({ ...base, fechaVisita: '2026-09-17' }).ok).toBe(true)
+  })
+
+  it('junta todos los errores, no solo el primero', () => {
+    const r = validarClienteNuevo({ ...base, nombre: '', telefono: '', origen: 'x' })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errores.length).toBeGreaterThanOrEqual(3)
+  })
+})
+
+describe('etapaInicial', () => {
+  it('una tasación manual nace Coordinada: es una tasación agendada como cualquier otra', () => {
+    expect(etapaInicial('tasacion')).toBe('scheduled')
+  })
+  it('una captación manual nace Captada: la propiedad ya está en la agencia', () => {
+    expect(etapaInicial('captacion')).toBe('captured')
+  })
+  it('NUNCA arranca en Entregada: entregar es un acto del asesor, no un efecto de cargar datos', () => {
+    expect(etapaInicial('tasacion')).not.toBe('appraisal_sent')
+    expect(etapaInicial('captacion')).not.toBe('appraisal_sent')
+  })
+})
+
+describe('debeNotificarCreacion', () => {
+  it('no manda "Tasación agendada" al registrar trabajo ya hecho', () => {
+    expect(debeNotificarCreacion('tasacion')).toBe(false)
+    expect(debeNotificarCreacion('captacion')).toBe(false)
+  })
+})
+
+describe('resolverProcesoDeCaptacion', () => {
+  const proceso = { id: 'deal-1', stage: 'appraisal_sent' }
+
+  it('con el proceso elegido a mano, capta contra ese', () => {
+    const r = resolverProcesoDeCaptacion({ dealIdElegido: 'deal-9', procesosDeLaTasacion: [], propiedadesActivasDelProceso: [] })
+    expect(r).toEqual({ tipo: 'proceso', dealId: 'deal-9' })
+  })
+
+  it('sin elección, si la tasación tiene UN proceso, usa ese', () => {
+    const r = resolverProcesoDeCaptacion({ procesosDeLaTasacion: [proceso], propiedadesActivasDelProceso: [] })
+    expect(r).toEqual({ tipo: 'proceso', dealId: 'deal-1' })
+  })
+
+  it('si la tasación no tiene proceso, hay que elegir uno (no se inventa)', () => {
+    const r = resolverProcesoDeCaptacion({ procesosDeLaTasacion: [], propiedadesActivasDelProceso: [] })
+    expect(r.tipo).toBe('elegir')
+  })
+
+  it('si la tasación tiene DOS procesos, hay que elegir', () => {
+    const r = resolverProcesoDeCaptacion({ procesosDeLaTasacion: [proceso, { id: 'deal-2', stage: 'followup' }], propiedadesActivasDelProceso: [] })
+    expect(r.tipo).toBe('elegir')
+  })
+
+  it('frena el duplicado: el proceso ya tiene una propiedad activa', () => {
+    const r = resolverProcesoDeCaptacion({
+      procesosDeLaTasacion: [proceso],
+      propiedadesActivasDelProceso: [{ id: 'prop-1' }],
+    })
+    expect(r).toEqual({ tipo: 'duplicado', propertyId: 'prop-1' })
+  })
+
+  it('una propiedad descartada NO cuenta como duplicado', () => {
+    const r = resolverProcesoDeCaptacion({ procesosDeLaTasacion: [proceso], propiedadesActivasDelProceso: [] })
+    expect(r.tipo).toBe('proceso')
+  })
+})
+
+describe('pareceProcesoIncompleto', () => {
+  it('detecta los procesos que la tasación manual creaba con la dirección como cliente', () => {
+    expect(pareceProcesoIncompleto({
+      contactoNombre: 'Formosa 5176',
+      contactoTelefono: null,
+      propertyAddress: 'Formosa 5176, CABA, Villa Ballester, Buenos Aires',
+      assignedTo: null,
+    })).toBe(true)
+  })
+
+  it('un proceso con cliente y asesor de verdad está completo', () => {
+    expect(pareceProcesoIncompleto({
+      contactoNombre: 'Marta Gómez',
+      contactoTelefono: '+5491155554444',
+      propertyAddress: 'Av. Belgrano 1500',
+      assignedTo: 'asesor-1',
+    })).toBe(false)
+  })
+
+  it('sin asesor está incompleto aunque el cliente tenga nombre', () => {
+    expect(pareceProcesoIncompleto({
+      contactoNombre: 'Marta Gómez',
+      contactoTelefono: '+5491155554444',
+      propertyAddress: 'Av. Belgrano 1500',
+      assignedTo: null,
+    })).toBe(true)
+  })
+
+  it('sin teléfono está incompleto: no hay cómo llamar al cliente', () => {
+    expect(pareceProcesoIncompleto({
+      contactoNombre: 'Marta Gómez',
+      contactoTelefono: '',
+      propertyAddress: 'Av. Belgrano 1500',
+      assignedTo: 'asesor-1',
+    })).toBe(true)
+  })
+})
