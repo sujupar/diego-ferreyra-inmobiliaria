@@ -3,8 +3,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { getDeal, updateDealNotes, updateDealSchedule } from '@/lib/supabase/deals'
 import { requireAuth, requireRole } from '@/lib/auth/require-role'
 import { canAccessDeal } from '@/lib/auth/entity-access'
-import { ROLE_PERMISSIONS } from '@/lib/auth/roles'
-import type { Role } from '@/types/auth.types'
+import { puedeReasignarAsesor } from '@/lib/deals/proceso-manual'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const TIME_RE = /^\d{2}:\d{2}(:\d{2})?$/
@@ -47,11 +46,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // Mover trabajo entre asesores es decisión de quien ve todo el pipeline
     // (admin, dueño, coordinador). Un asesor que pudiera hacerlo se sacaría
     // procesos de encima o se los quitaría a otro. Se decide por PERMISO y no
-    // por nombre de rol, igual que en `lib/auth/scope.ts`; un rol desconocido
-    // cae del lado seguro.
+    // por nombre de rol (`puedeReasignarAsesor`, la misma regla que usa la
+    // pantalla para no ofrecer un botón que acá respondería 403).
     if (nuevoAsesor) {
-      const permisos = ROLE_PERMISSIONS[user.profile.role as Role] as string[] | undefined
-      if (!permisos?.includes('pipeline.view_all')) {
+      if (!puedeReasignarAsesor(user.profile.role)) {
         return NextResponse.json(
           { error: 'Solo un coordinador, dueño o admin puede cambiar el asesor de un proceso.' },
           { status: 403 },

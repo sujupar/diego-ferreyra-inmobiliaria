@@ -12,6 +12,8 @@
     "app/api/deals/**/*.ts",
     "app/api/properties/route.ts",
     "components/deals/**/*.tsx",
+    "app/(dashboard)/appraisals/[id]/page.tsx",
+    "components/contacts/ContactEditor.tsx",
     "components/pipeline/**/*.tsx",
     "app/(dashboard)/appraisal/new/page.tsx",
     "app/(dashboard)/properties/new/page.tsx",

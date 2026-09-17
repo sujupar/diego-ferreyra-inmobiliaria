@@ -1,5 +1,7 @@
 import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
 import type { DealStage } from '@/lib/supabase/deals'
+import { ROLE_PERMISSIONS } from '@/lib/auth/roles'
+import type { Role } from '@/types/auth.types'
 
 /**
  * Reglas del trabajo MANUAL: una tasación o una captación que el asesor carga a
@@ -239,22 +241,60 @@ function normalizar(texto: string | null | undefined): string {
     .replace(/[^a-z0-9]/g, '')
 }
 
-/**
- * ¿Este proceso quedó a medias por el camino viejo? Sirve para avisar en la
- * ficha que hay que completar los datos. Señales: el "cliente" es la dirección,
- * no hay teléfono, o no hay asesor.
- */
-export function pareceProcesoIncompleto(deal: {
+export interface DatosDelProceso {
   contactoNombre?: string | null
   contactoTelefono?: string | null
   propertyAddress?: string | null
   assignedTo?: string | null
-}): boolean {
-  if (!(deal.assignedTo ?? '').trim()) return true
-  if (!(deal.contactoTelefono ?? '').trim()) return true
+}
+
+/**
+ * ¿El "nombre" del contacto es en realidad la dirección? Así nacían los
+ * contactos del camino viejo ("Av. Hipólito Yrigoyen 1550").
+ *
+ * Exige un NÚMERO en el nombre: un nombre de persona no lleva altura de calle.
+ * Sin eso, "Ana" en "Anatole France 200" se marcaba como dirección, porque una
+ * dirección que empieza igual que un nombre corto es de lo más común.
+ */
+function nombreEsLaDireccion(nombre: string, direccion: string): boolean {
+  if (!nombre || !direccion || !/[0-9]/.test(nombre)) return false
+  return direccion.startsWith(nombre) || nombre.startsWith(direccion)
+}
+
+/**
+ * Qué le falta a un proceso para ser un proceso de verdad, en palabras para el
+ * asesor. Vacío = está completo. Sirve para el aviso de la ficha: decir QUÉ
+ * falta en vez de un genérico "completá los datos".
+ */
+export function faltantesDelProceso(deal: DatosDelProceso): string[] {
+  const faltan: string[] = []
   const nombre = normalizar(deal.contactoNombre)
-  const direccion = normalizar(deal.propertyAddress)
-  if (!nombre) return true
-  // El nombre del contacto es el principio de la dirección: era la dirección.
-  return direccion.length > 0 && direccion.startsWith(nombre)
+  if (!nombre) faltan.push('el nombre del propietario')
+  else if (nombreEsLaDireccion(nombre, normalizar(deal.propertyAddress))) {
+    faltan.push('el nombre real del propietario (hoy figura la dirección)')
+  }
+  if (!(deal.contactoTelefono ?? '').trim()) faltan.push('el teléfono')
+  if (!(deal.assignedTo ?? '').trim()) faltan.push('el asesor')
+  return faltan
+}
+
+/**
+ * ¿Este proceso quedó a medias por el camino viejo? Señales: el "cliente" es la
+ * dirección, no hay teléfono, o no hay asesor.
+ */
+export function pareceProcesoIncompleto(deal: DatosDelProceso): boolean {
+  return faltantesDelProceso(deal).length > 0
+}
+
+/**
+ * ¿Puede este rol mover un proceso de un asesor a otro? Solo quien ve todo el
+ * pipeline. Se decide por PERMISO, no por nombre de rol, como en
+ * `lib/auth/scope.ts`; un rol desconocido cae del lado seguro. La usan la ruta
+ * (que es la barrera real) y la pantalla (para no ofrecer un botón que después
+ * va a responder 403).
+ */
+export function puedeReasignarAsesor(role: string | null | undefined): boolean {
+  if (!role) return false
+  const permisos = ROLE_PERMISSIONS[role as Role] as string[] | undefined
+  return !!permisos?.includes('pipeline.view_all')
 }

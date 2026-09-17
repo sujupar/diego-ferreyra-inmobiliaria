@@ -24,6 +24,8 @@ const CHANNEL_LABEL: Record<FollowUpChannel, string> = {
 const todayIsoDate = () => new Date().toISOString().slice(0, 10)
 import { ContactEditor } from '@/components/contacts/ContactEditor'
 import { modoDeVisita } from '@/lib/pipeline/visita-datos'
+import { faltantesDelProceso } from '@/lib/deals/proceso-manual'
+import { AsesorDelProceso } from '@/components/deals/AsesorDelProceso'
 
 const VisitDataForm = dynamic(
   () => import('@/components/pipeline/VisitDataForm').then(m => ({ default: m.VisitDataForm })),
@@ -366,6 +368,27 @@ export default function DealDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Aviso de proceso a medias: los que creaba la tasación manual vieja
+          (el cliente era la dirección, sin teléfono ni asesor). Dice QUÉ falta. */}
+      {(() => {
+        const faltan = faltantesDelProceso({
+          contactoNombre: contact.full_name,
+          contactoTelefono: contact.phone,
+          propertyAddress: deal.property_address,
+          assignedTo: deal.assigned_to,
+        })
+        if (faltan.length === 0) return null
+        return (
+          <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-4 py-3 text-sm flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <p className="font-medium">A este proceso le falta {faltan.join(', ')}.</p>
+              <p className="text-muted-foreground mt-0.5">Sin eso no se puede contactar al cliente o no le aparece a ningún asesor en su CRM.</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setContactEditorOpen(true)}>Completar contacto</Button>
+          </div>
+        )
+      })()}
+
       {/* Contact info */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
@@ -410,7 +433,15 @@ export default function DealDetailPage() {
                 </span>
               </>
             )}
-            {deal.profiles && <><span className="text-muted-foreground">Asesor:</span><span>{deal.profiles.full_name}</span></>}
+            {/* Siempre visible: un proceso SIN asesor no le aparece a nadie en el
+                CRM, así que "Sin asignar" tiene que verse (y poder arreglarse). */}
+            <span className="text-muted-foreground">Asesor:</span>
+            <AsesorDelProceso
+              dealId={deal.id}
+              asesorId={deal.assigned_to}
+              asesorNombre={deal.profiles?.full_name}
+              onCambiado={fetchDeal}
+            />
           </div>
         </CardContent>
       </Card>

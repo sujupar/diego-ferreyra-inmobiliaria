@@ -6,6 +6,8 @@ import {
   debeNotificarCreacion,
   resolverProcesoDeCaptacion,
   pareceProcesoIncompleto,
+  faltantesDelProceso,
+  puedeReasignarAsesor,
   combinarProcesosEncontrados,
 } from './proceso-manual'
 
@@ -226,5 +228,50 @@ describe('pareceProcesoIncompleto', () => {
       propertyAddress: 'Av. Belgrano 1500',
       assignedTo: 'asesor-1',
     })).toBe(true)
+  })
+})
+
+describe('faltantesDelProceso', () => {
+  it('dice QUÉ falta, no un genérico', () => {
+    expect(faltantesDelProceso({
+      contactoNombre: 'Formosa 5176',
+      contactoTelefono: null,
+      propertyAddress: 'Formosa 5176, CABA',
+      assignedTo: null,
+    })).toEqual(['el nombre real del propietario (hoy figura la dirección)', 'el teléfono', 'el asesor'])
+  })
+
+  it('un nombre corto que coincide con el principio de la calle NO es la dirección', () => {
+    // "Ana" en "Anatole France 200": sin la regla del número, esto se marcaba.
+    expect(faltantesDelProceso({
+      contactoNombre: 'Ana',
+      contactoTelefono: '1155554444',
+      propertyAddress: 'Anatole France 200',
+      assignedTo: 'asesor-1',
+    })).toEqual([])
+  })
+
+  it('sin nombre lo pide', () => {
+    expect(faltantesDelProceso({ contactoNombre: '  ', contactoTelefono: '1155554444', assignedTo: 'a' }))
+      .toEqual(['el nombre del propietario'])
+  })
+
+  it('completo → vacío', () => {
+    expect(faltantesDelProceso({
+      contactoNombre: 'Marta Gómez', contactoTelefono: '1155554444',
+      propertyAddress: 'Av. Belgrano 1500', assignedTo: 'asesor-1',
+    })).toEqual([])
+  })
+})
+
+describe('puedeReasignarAsesor', () => {
+  it('admin, dueño y coordinador sí', () => {
+    for (const r of ['admin', 'dueno', 'coordinador']) expect(puedeReasignarAsesor(r)).toBe(true)
+  })
+
+  it('asesor, abogado, un rol inventado o ninguno: no', () => {
+    for (const r of ['asesor', 'abogado', 'rol-que-no-existe', '', null, undefined]) {
+      expect(puedeReasignarAsesor(r)).toBe(false)
+    }
   })
 })
