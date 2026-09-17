@@ -5,6 +5,7 @@
     "next-env.d.ts",
     "types/database.types.ts",
     "lib/deals/**/*.ts",
+    "lib/pipeline/**/*.ts",
     "lib/supabase/deals.ts",
     "lib/supabase/contactos.ts",
     "lib/auth/**/*.ts",
@@ -14,7 +15,10 @@
     "components/pipeline/**/*.tsx",
     "app/(dashboard)/appraisal/new/page.tsx",
     "app/(dashboard)/properties/new/page.tsx",
-    "app/(dashboard)/pipeline/[id]/page.tsx"
+    "app/(dashboard)/pipeline/[id]/page.tsx",
+    "app/(dashboard)/scheduled-appraisals/[id]/page.tsx",
+    "app/(dashboard)/_components/FlowHistoryCard.tsx",
+    "app/api/flow-history/route.ts"
   ],
   "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
 }

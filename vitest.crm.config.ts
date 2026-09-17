@@ -11,6 +11,7 @@ export default defineConfig({
     include: [
       'lib/deals/**/*.test.ts',
       'lib/supabase/deals*.test.ts',
+      'lib/pipeline/**/*.test.ts',
       'app/api/deals/**/*.test.ts',
       'app/api/properties/**/*.test.ts',
       'components/deals/**/*.test.tsx',

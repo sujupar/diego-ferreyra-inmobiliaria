@@ -23,6 +23,7 @@ const CHANNEL_LABEL: Record<FollowUpChannel, string> = {
 }
 const todayIsoDate = () => new Date().toISOString().slice(0, 10)
 import { ContactEditor } from '@/components/contacts/ContactEditor'
+import { modoDeVisita } from '@/lib/pipeline/visita-datos'
 
 const VisitDataForm = dynamic(
   () => import('@/components/pipeline/VisitDataForm').then(m => ({ default: m.VisitDataForm })),
@@ -604,6 +605,20 @@ export default function DealDetailPage() {
               </div>
             )}
 
+            {/* Ver y corregir lo cargado en la visita, una vez hecha. Antes el
+                formulario solo se abría en "Coordinada" y cerrarlo la terminaba,
+                así que no había forma de mirar ni arreglar nada: un dato mal
+                tipeado se arrastraba hasta el aviso publicado, porque de ahí
+                salen también los datos de portales y de la landing. Editar NO
+                mueve la etapa. */}
+            {modoDeVisita(deal.stage) === 'editar' && (
+              <div className="pt-2 border-t">
+                <Button variant="outline" size="lg" className="w-full" onClick={() => setShowVisitModal(true)}>
+                  <Eye className="h-4 w-4 mr-2" /> Datos de la visita
+                </Button>
+              </div>
+            )}
+
             {/* Always show Lost button */}
             <div className="pt-2 border-t">
               <Button
@@ -766,7 +781,7 @@ export default function DealDetailPage() {
           <div className="bg-background rounded-2xl shadow-xl w-full max-w-4xl my-8 p-6 space-y-4 max-h-[95dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between sticky top-0 bg-background pb-3 border-b z-10">
               <div className="space-y-1">
-                <p className="eyebrow">Visita Realizada</p>
+                <p className="eyebrow">{modoDeVisita(deal.stage) === 'editar' ? 'Corregir datos' : 'Visita Realizada'}</p>
                 <h2 className="display text-2xl flex items-center gap-2">
                   <Eye className="h-5 w-5 text-[color:var(--brand)]" />
                   Datos de la Visita
@@ -775,13 +790,15 @@ export default function DealDetailPage() {
               <Button variant="ghost" size="sm" onClick={() => setShowVisitModal(false)}>&times;</Button>
             </div>
             <p className="text-sm text-muted-foreground">
-              Recolectá los datos de la propiedad durante la visita. Todo se guarda automáticamente.
-              Al finalizar, el proceso pasa a "Visita Realizada".
+              {modoDeVisita(deal.stage) === 'editar'
+                ? 'Corregí lo que cargaste en la visita. De acá salen los datos de los portales y de la landing, así que conviene revisarlo antes de publicar. El proceso NO cambia de etapa.'
+                : 'Recolectá los datos de la propiedad durante la visita. Todo se guarda automáticamente. Al finalizar, el proceso pasa a "Visita Realizada".'}
             </p>
             <VisitDataForm
               dealId={deal.id}
               initial={deal.visit_data || null}
               neighborhood={deal.neighborhood ?? null}
+              modo={modoDeVisita(deal.stage) ?? 'finalizar'}
               onCompleted={() => {
                 setShowVisitModal(false)
                 // Si vino del asistente de tasación, la visita era el paso

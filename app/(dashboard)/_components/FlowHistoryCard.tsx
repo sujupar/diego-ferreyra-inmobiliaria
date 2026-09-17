@@ -16,6 +16,8 @@ export interface FlowHistoryData {
   buyerInterest?: Record<string, unknown> | null
   visitData?: Record<string, unknown> | null
   visitCompletedAt?: string | null
+  /** Personaliza la primera pregunta de la landing, igual que en el formulario. */
+  neighborhood?: string | null
 }
 
 export function FlowHistoryCard({
@@ -43,7 +45,7 @@ export function FlowHistoryCard({
       label: data.visitCompletedAt
         ? `Datos relevados en visita (${new Date(data.visitCompletedAt).toLocaleString('es-AR')})`
         : 'Datos relevados en visita',
-      value: <VisitDataView data={data.visitData} />,
+      value: <VisitDataView data={data.visitData} neighborhood={data.neighborhood} />,
     })
   }
 

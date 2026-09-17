@@ -13,6 +13,7 @@
 import type {
     Quality, Disposition, ConservationState, Orientation, PropertyTypeVenta,
 } from '@/types/visit-data.types'
+import { filasDeDifusion } from '@/lib/pipeline/visita-difusion-filas'
 
 // ── Label maps (los enums de visit_data son en minúscula/snake) ──────────────
 const QUALITY_LABELS: Record<Quality, string> = {
@@ -220,7 +221,7 @@ function Section({ title, rows }: { title?: string; rows: Row[] }) {
  * Render amigable de un snapshot de visit_data (o cualquier objeto). Nunca
  * muestra JSON crudo.
  */
-export function VisitDataView({ data }: { data: unknown }) {
+export function VisitDataView({ data, neighborhood }: { data: unknown; neighborhood?: string | null }) {
     // Robustez: visit_data debería ser JSONB (objeto), pero si por datos legacy
     // llegara como string JSON, lo parseamos en vez de no mostrar nada.
     let parsed: unknown = data
@@ -233,17 +234,22 @@ export function VisitDataView({ data }: { data: unknown }) {
     const saleObj = obj.sale && typeof obj.sale === 'object' ? (obj.sale as Record<string, unknown>) : null
     const purchaseObj = obj.purchase && typeof obj.purchase === 'object' ? (obj.purchase as Record<string, unknown>) : null
 
+    // Lo cargado para portales y landing (Secciones 08 y 09). Se guardaba desde
+    // el 2026-09-14 y no se veía en ninguna pantalla.
+    const difusionRows = filasDeDifusion(obj, neighborhood)
+
     // Forma canónica { sale, purchase }
     if (saleObj || purchaseObj) {
         const saleRows = saleObj ? buildRows(saleObj, SALE_SPEC) : []
         const purchaseRows = purchaseObj ? buildRows(purchaseObj, PURCHASE_SPEC) : []
-        if (saleRows.length === 0 && purchaseRows.length === 0) {
+        if (saleRows.length === 0 && purchaseRows.length === 0 && difusionRows.length === 0) {
             return <p className="text-sm text-muted-foreground italic">Sin datos relevados.</p>
         }
         return (
             <div className="space-y-4">
                 {saleRows.length > 0 && <Section title={purchaseRows.length > 0 ? 'Venta' : undefined} rows={saleRows} />}
                 {purchaseRows.length > 0 && <Section title="Búsqueda de compra" rows={purchaseRows} />}
+                {difusionRows.length > 0 && <Section title="Para portales y landing" rows={difusionRows} />}
             </div>
         )
     }

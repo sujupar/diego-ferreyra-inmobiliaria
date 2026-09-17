@@ -36,12 +36,13 @@ export async function GET(req: NextRequest) {
     visit_data: unknown
     visit_completed_at: string | null
     scheduled_appraisal_id: string | null
+    neighborhood: string | null
   } | null = null
 
   if (propertyId) {
     const { data } = await supabase
       .from('deals')
-      .select('id, visit_data, visit_completed_at, scheduled_appraisal_id')
+      .select('id, visit_data, visit_completed_at, scheduled_appraisal_id, neighborhood')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
   if (!deal && resolvedAppraisalId) {
     const { data } = await supabase
       .from('deals')
-      .select('id, visit_data, visit_completed_at, scheduled_appraisal_id')
+      .select('id, visit_data, visit_completed_at, scheduled_appraisal_id, neighborhood')
       .eq('appraisal_id', resolvedAppraisalId)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -86,6 +87,9 @@ export async function GET(req: NextRequest) {
       buyerInterest: (scheduledAppraisal?.buyer_interest as Record<string, unknown> | null) ?? null,
       visitData: (deal?.visit_data as Record<string, unknown> | null) ?? null,
       visitCompletedAt: deal?.visit_completed_at ?? null,
+      // El barrio viaja para que la pregunta de la landing se lea igual que
+      // cuando se contestó ("¿… el comprador ideal de esta propiedad en X?").
+      neighborhood: deal?.neighborhood ?? null,
     },
   })
 }
