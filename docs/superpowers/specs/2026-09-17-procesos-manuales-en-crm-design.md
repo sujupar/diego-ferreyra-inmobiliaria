@@ -92,12 +92,18 @@ en adelante siguen los botones de siempre.
   - **Buscar proceso existente** (por nombre, teléfono o dirección). Si se elige uno, se
     continúa exactamente como "Crear Tasación" desde la ficha del proceso (`?dealId=`).
     Esto evita los duplicados como Estado de Israel.
-  - **Cliente nuevo:** propietario (nombre), teléfono, email (opcional), origen, asesor,
-    dirección, tipo, barrio y ambientes. El servidor crea contacto y proceso en
-    **"Visita Realizada"** (si se tasa, la visita ya ocurrió). No manda el email de
-    "Tasación agendada".
-- Después se abre el **formulario de visita** (secciones 01–09) para ese proceso, y recién
-  ahí la tasación con `?dealId=`.
+  - **Cliente nuevo:** propietario (nombre), teléfono, email (opcional), origen
+    (Embudo / Referido / Histórico), asesor, dirección, tipo, barrio, ambientes y **fecha de
+    la visita**. El servidor crea contacto y proceso en **"Coordinada"**, que es la etapa de
+    una tasación agendada, igual que cualquier otra. No manda el email de "Tasación agendada":
+    ese aviso es para cuando el equipo coordina una visita futura, no para registrar trabajo
+    ya hecho.
+- **Ninguna etapa se saltea** (decisión del dueño, 2026-09-17). El proceso avanza a medida que
+  se registra el trabajo, con los mismos botones de siempre: se abre el **formulario de visita**
+  (secciones 01–09) y al finalizarlo queda en **"Visita Realizada"**; después se carga la
+  tasación con `?dealId=`; después "Marcar Tasación Entregada"; después "Captar Propiedad".
+- Si el asesor solo quiere **agendar** una tasación futura, eso ya existe y no cambia:
+  "Coordinar Tasación" deja el proceso en "Coordinada" con su fecha.
 - Luego el flujo normal: "Marcar Tasación Entregada" (email real al equipo) → Seguimiento →
   "Captar Propiedad".
 - Se **elimina** la creación de proceso desde el navegador (`page.tsx:871-961`).
@@ -128,7 +134,10 @@ en adelante siguen los botones de siempre.
 
 ### 3.5 Reparar lo que ya está mal (script con modo informe; se escribe recién con tu OK)
 - **Las 5 captaciones desvinculadas:** se vinculan a su proceso y pasan a "Captada".
-  Hipólito Yrigoyen 1550 queda afuera hasta que decidas cuál de las dos fichas se conserva.
+- **Hipólito Yrigoyen 1550 duplicada:** se conserva **la ficha más nueva** (17/9, 20 fotos,
+  decisión del dueño). La del 14/9 pasa a `commercial_status='descartada'` con el motivo
+  escrito, no se borra. **Ojo:** la landing publicada y el enlace público cuelgan de la ficha
+  vieja, así que la que queda necesita su propia landing. Se avisa en el informe del script.
 - **Los 16+ procesos creados por tasación manual:** el script no puede inventar nombres ni
   teléfonos. Se marcan con un aviso en la ficha ("Completá propietario, teléfono, origen y
   asesor") y salen en una lista para el equipo. La etapa no se toca (probablemente se
@@ -145,27 +154,26 @@ en adelante siguen los botones de siempre.
   `embudo`/`clase_gratuita`, así que no cambian.
 - Agente de WhatsApp (solo procesos del embudo), carga masiva del CSV, GHL en cuarentena.
 
-## 5. Decisiones del dueño (con la recomendación)
+## 5. Decisiones del dueño (2026-09-17)
 
-1. **Orígenes para clientes manuales.** Hoy: Embudo, Referido, Histórico. Mencionaste
-   también "gente que después nos contacta".
-   *Recomendación:* agregar **"Contacto directo"**. Requiere migración (CHECK en `deals` y
-   `contacts`) y etiquetas en 5 pantallas. Alternativa sin migración: usar "Referido".
-2. **Etapa inicial de una tasación manual.**
-   *Recomendación:* **"Visita Realizada"**. Así se llena el formulario 08/09 y el asesor marca
-   "Tasación Entregada" cuando la manda. Alternativa: "Entregada" directo, perdiendo 08/09
-   y el email de entrega.
-3. **Hipólito Yrigoyen 1550 duplicada.** ¿Qué ficha se conserva: la del 14/9 (10 fotos,
-   landing publicada) o la de hoy (20 fotos)? La otra se descarta, no se borra.
-4. **Email "Visita realizada" (N2).** Hoy no sale en el flujo real.
-   *Recomendación:* no cambiarlo en este trabajo (es otro tema). Queda anotado.
+1. **Orígenes: no se agrega ninguno.** Una tasación manual es de un referido o de un
+   histórico. Se usan los que ya existen: Embudo, Referido, Histórico. **Sin migración.**
+2. **Etapas: las mismas que en el resto del sistema, sin saltear ninguna.** Una tasación
+   manual es una tasación como cualquier otra: se agenda (Coordinada), se visita (Visita
+   Realizada), se entrega (Entregada) y se capta (Captada), en ese orden y con los mismos
+   botones. La etapa refleja lo que realmente pasó.
+3. **Hipólito Yrigoyen 1550: se conserva la ficha más nueva.** La anterior se descarta,
+   no se borra.
+4. **Email "Visita realizada" (N2):** no se cambia en este trabajo. Queda anotado.
 
 ## 6. Criterios de aceptación
 
 1. "Nueva tasación" sin proceso pide primero el cliente. Con "Cliente nuevo" se crea un
-   proceso con nombre y teléfono reales, el origen y asesor elegidos, en "Visita Realizada".
-   En la base: `contacts.full_name` es el nombre, `deals.assigned_to` es el asesor y
-   `deals.stage='visited'`.
+   proceso con nombre y teléfono reales, el origen y asesor elegidos, en **"Coordinada"** con
+   su fecha. En la base: `contacts.full_name` es el nombre, `deals.assigned_to` es el asesor,
+   `deals.stage='scheduled'` y `scheduled_date` tiene la fecha de la visita.
+1bis. Al finalizar el formulario de visita, ese proceso queda en "Visita Realizada"
+   (`stage='visited'`), y el historial muestra las dos etapas, sin saltos.
 2. Ese proceso aparece en el CRM **para el asesor asignado** (probado con rol asesor) y su
    ficha abre sin "sin permiso".
 3. No se manda "Tasación agendada" al crear el proceso de una tasación manual

@@ -7,24 +7,14 @@ Rama: `fix/crm-tasaciones-manuales` (worktree `/private/tmp/claude-501/wt-crm-ma
 Orden pensado para que cada tarea sea desplegable sola y no rompa lo anterior:
 primero el servidor, después las pantallas, al final la reparación de datos.
 
-## Tarea 0 — Migración (solo si se aprueba "Contacto directo")
-- `supabase/migrations/2026091700000X_origen_contacto_directo.sql`: recrear
-  `deals_origin_check` y `contacts_origin_check` con `contacto_directo`.
-  Mirar el directorio antes de numerar: ya hubo un prefijo duplicado.
-- `scripts/apply-origen-contacto-directo-pg.ts`: aplica y verifica que la base acepta el valor
-  nuevo y sigue rechazando uno inventado.
-- **Consumidores del enum** (grep `ORIGIN_LABELS`, `'historico'`, `referido`):
-  - `crm/_components/constants.ts`, `pipeline/[id]/page.tsx:51`, `contacts/page.tsx:23`,
-    `contacts/[id]/page.tsx:21`, `ContactEditor.tsx:33-38` y `pipeline/new/page.tsx:125-128`.
-  - Las etiquetas de `get_funnel_volume_by_origin` y `CostosPanel.tsx:16`.
-  - `get_funnel_stage_timings`: decidir si lo incluye por defecto, como `referido`.
-  - `resolveSequenceTag` de Mailchimp: el origen solo pesa en `request`/`scheduled`, así que no cambia.
-- Prueba: el script de aplicación.
+## Tarea 0 — SIN MIGRACIÓN
+El dueño decidió no agregar orígenes nuevos (2026-09-17): se usan Embudo, Referido e
+Histórico, que la base ya acepta. No se toca ningún CHECK ni ninguna tabla de métricas.
 
 ## Tarea 1 — Módulo puro de reglas del proceso manual
 - `lib/deals/proceso-manual.ts` (+ `.test.ts`):
-  - `validarClienteNuevo(input)`: nombre (≥2), teléfono (normalizable con `ultimos10Digitos`), email opcional válido, origen permitido, asesor, dirección, tipo, barrio, ambientes. Devuelve errores en castellano.
-  - `etapaInicial(motivo)`: `'tasacion'` da `visited` y `'captacion'` da `captured`.
+  - `validarClienteNuevo(input)`: nombre (≥2), teléfono (normalizable con `ultimos10Digitos`), email opcional válido, origen permitido (embudo, referido, historico), asesor, dirección, tipo, barrio, ambientes y fecha de visita. Devuelve errores en castellano.
+  - `etapaInicial(motivo)`: `'tasacion'` da `scheduled` (Coordinada, con fecha) y `'captacion'` da `captured`. **Ninguna etapa se saltea:** desde Coordinada el proceso avanza con los botones de siempre (formulario de visita, entregar, captar).
   - `resolverProcesoDeCaptacion({ dealId, appraisalId, dealsDeLaTasacion, propiedadesDelProceso })`: devuelve `{ dealId }`, `{ requiereElegir }` o `{ duplicado: propertyId }`.
   - `debeNotificarCreacion(motivo)`: `false` para los procesos creados después del hecho.
 - Casos borde: teléfono con +54/sin 9, tildes NFD en el nombre, tasación con 2 procesos, propiedad descartada (no cuenta como duplicado).
@@ -49,7 +39,7 @@ primero el servidor, después las pantallas, al final la reparación de datos.
 - `app/(dashboard)/appraisal/new/page.tsx`:
   - Sin `dealId`/`editId`, mostrar `ElegirCliente`.
   - Con un proceso existente, redirigir a `?dealId=`.
-  - Con cliente nuevo: `POST /api/deals/manual` (motivo `tasacion`), luego abrir el formulario de visita del proceso nuevo, luego la tasación con `?dealId=`.
+  - Con cliente nuevo: `POST /api/deals/manual` (motivo `tasacion`, proceso en Coordinada con su fecha), luego abrir el formulario de visita del proceso nuevo, que al finalizar lo deja en "Visita Realizada", y recién después la tasación con `?dealId=`.
   - **Borrar** el bloque de creación desde el navegador (`page.tsx:871-961`).
 - Formulario de visita reutilizable fuera de la ficha: extraer el modal de `pipeline/[id]/page.tsx:747-774` a `components/pipeline/VisitDataModal.tsx`.
 - Tests: componente (happy-dom) de `ElegirCliente`; probe de la página sin el bloque borrado (grep test como `no-hereda-fotos.test.ts`).
@@ -86,7 +76,8 @@ primero el servidor, después las pantallas, al final la reparación de datos.
 
 ## Tarea 8 — Reparación de datos (después del deploy, con OK del dueño)
 - `scripts/reparar-procesos-manuales.ts` (modo informe por defecto, `--commit` para escribir):
-  - Vincula las captaciones cuyo proceso de tasación no tiene propiedad: `linkPropertyToDeal` y herencia de `visit_data` si falta. **Excluye Hipólito Yrigoyen 1550** hasta la decisión 3.
+  - Vincula las captaciones cuyo proceso de tasación no tiene propiedad: `linkPropertyToDeal` y herencia de `visit_data` si falta.
+  - **Hipólito Yrigoyen 1550:** conserva la ficha más nueva (17/9) y la vincula al proceso; la del 14/9 pasa a `commercial_status='descartada'` con motivo, sin borrar. Avisa en el informe que la landing publicada cuelga de la ficha vieja y que la nueva necesita la suya.
   - Lista los procesos incompletos (contacto = dirección, sin teléfono o sin asesor), las tasaciones sin proceso y las direcciones con más de un proceso abierto.
   - Imprime el estado previo de cada fila que toca.
 - Verificación con `select` después de `--commit`.
@@ -109,6 +100,6 @@ primero el servidor, después las pantallas, al final la reparación de datos.
 - 🔴 **Emails:** hoy se mandan "Tasación agendada" falsos. El cambio los corta y además hace que "Tasación entregada" salga cuando el asesor la marca en procesos manuales. Es solo interno (va al equipo, no al cliente).
 - 🟡 **Mailchimp apagado:** si se prende, los clientes manuales con email entran en secuencias según etapa. Anotar en `CLAUDE.md`.
 - 🟡 **Permisos:** las rutas nuevas usan el cliente de servicio. La ruta es la barrera, con rol forzado (lección del 2026-09-14).
-- 🟡 **Métricas:** con orígenes correctos, los procesos manuales dejan de sumar a "Histórico". `get_funnel_stage_timings` ya incluye `referido`. El embudo de pago no cambia.
+- 🟡 **Métricas:** con orígenes correctos, los procesos manuales dejan de sumar a "Histórico" cuando el asesor elige Referido. `get_funnel_stage_timings` ya incluye `referido`. El embudo de pago no cambia. Sin migración.
 - 🟢 **Un pedido de IA por request:** no aplica (no hay IA en este flujo).
 - 🟢 **Sin cambios destructivos:** la migración solo amplía un CHECK y el script no borra nada.
