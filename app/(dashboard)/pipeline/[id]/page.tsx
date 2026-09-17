@@ -420,7 +420,9 @@ export default function DealDetailPage() {
         onOpenChange={setContactEditorOpen}
         contactId={deal.contact_id}
         dealId={deal.id}
-        initial={{ full_name: contact?.full_name || deal.property_address || '' }}
+        // Sin la dirección como nombre de respaldo: así nacieron los contactos
+        // llamados como la calle, que el asesor no encontraba buscando por nombre.
+        initial={{ full_name: contact?.full_name || '' }}
         onSaved={() => fetchDeal()}
       />
 
