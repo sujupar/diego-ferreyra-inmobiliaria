@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createDeal } from '@/lib/supabase/deals'
 import { encontrarOCrearContacto } from '@/lib/supabase/contactos'
 import { requirePermission } from '@/lib/auth/require-role'
-import { ROLE_PERMISSIONS, type Role } from '@/lib/auth/roles'
+import { ROLE_PERMISSIONS } from '@/lib/auth/roles'
+import type { Role } from '@/types/auth.types'
 import {
   validarClienteNuevo,
   etapaInicial,
@@ -35,7 +36,9 @@ export async function POST(request: NextRequest) {
     // Un asesor solo crea procesos para sí mismo. No es una restricción
     // estética: el CRM le muestra únicamente los procesos asignados a él, así
     // que uno asignado a otra persona le desaparecería apenas lo crea.
-    const permisos = ROLE_PERMISSIONS[user.profile.role as Role]
+    // Como en `lib/auth/scope.ts`: un rol desconocido cae del lado seguro
+    // (no puede asignarle el proceso a otra persona) en vez de romper.
+    const permisos = ROLE_PERMISSIONS[user.profile.role as Role] as string[] | undefined
     const puedeAsignarAOtro = !!permisos?.includes('pipeline.view_all')
     const propioId = user.profile.id || user.id
     const asesorId = puedeAsignarAOtro ? body?.cliente?.asesorId : propioId

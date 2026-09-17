@@ -9,18 +9,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, Home, DollarSign, FileText, MapPin, ArrowLeft, User, Layers, Upload, Trash2 } from 'lucide-react'
 import { uploadPlans, validatePlanFile } from '@/lib/properties/upload-plans'
-import { armarDatosDifusionDesdeVisita } from '@/lib/portals/datos-visita'
 import type { VisitDataSnapshot } from '@/types/visit-data.types'
-
-/** Campos del alta que se heredan de la visita; solo los que tienen algo. */
-function datosDifusion(visita: VisitDataSnapshot | null | undefined) {
-    const d = armarDatosDifusionDesdeVisita(visita)
-    return {
-        ...(d.expensas != null ? { expensas: d.expensas } : {}),
-        ...(Object.keys(d.portal_data.ml).length + Object.keys(d.portal_data.ap).length > 0 ? { portal_data: d.portal_data } : {}),
-        ...(Object.keys(d.landing_answers).length > 0 ? { landing_answers: d.landing_answers } : {}),
-    }
-}
+import { ElegirCliente } from '@/components/deals/ElegirCliente'
 import { OPERACIONES } from '@/lib/properties/operacion'
 import { GenerarDescripcion } from '@/components/properties/alta/GenerarDescripcion'
 import { LocationPicker } from '@/components/properties/LocationPicker'
@@ -267,6 +257,11 @@ function NewPropertyContent() {
 
         try {
             const body = {
+                // De qué proceso es esta captación. El servidor lo vincula, lo
+                // pasa a "Captada" y hereda lo cargado en la visita: entrando
+                // desde la tasación el navegador no tiene el proceso a mano, y
+                // así el resultado no depende de por dónde se entró.
+                deal_id: dealId || undefined,
                 appraisal_id: prefillIds.appraisalId || dealData?.appraisal_id || appraisalIdParam || undefined,
                 contact_id: prefillIds.contactId || dealData?.contact_id || undefined,
                 address: form.address,
@@ -295,10 +290,8 @@ function NewPropertyContent() {
                 origin: form.origin || undefined,
                 assigned_to: form.assigned_to || undefined,
                 description: form.description || undefined,
-                // Lo cargado en la VISITA (Secciones 08 y 09) viaja con el alta:
-                // expensas, atributos para los portales y respuestas de la landing.
-                // Sin visita, van vacíos y no cambia nada.
-                ...datosDifusion(dealData?.visit_data),
+                // Lo cargado en la VISITA (expensas, portales, landing) ya NO
+                // viaja desde acá: lo lee el servidor del proceso.
                 // Lo único que falta para captarla son las fotos: la
                 // documentación dejó de ser obligatoria (2026-08-09). El alta
                 // nunca manda fotos: se suben a mano en Multimedia y ahí el
@@ -313,24 +306,22 @@ function NewPropertyContent() {
             })
 
             if (!res.ok) {
-                const err = await res.json()
+                const err = await res.json().catch(() => ({} as { error?: string; propertyId?: string }))
+                // Ya se captó esta tasación (pasó con Hipólito Yrigoyen 1550,
+                // captada dos veces con tres días de diferencia). En vez de
+                // crear otra ficha, se abre la que ya existe.
+                if (res.status === 409 && err.propertyId) {
+                    toast.error(err.error || 'Esta tasación ya tiene una propiedad captada.')
+                    router.push(`/properties/${err.propertyId}`)
+                    return
+                }
                 throw new Error(err.error || 'Error al crear')
             }
 
-            const { id } = await res.json()
-
-            // Avanzar el deal ANTES de subir planos: la subida puede tardar
-            // (PDFs grandes) y si se cierra la pestaña a mitad, el deal ya
-            // quedó en "captured".
-            if (dealId) {
-                try {
-                    await fetch(`/api/deals/${dealId}/advance`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ stage: 'captured', property_id: id }),
-                    })
-                } catch (e) { console.error('Error linking deal:', e) }
-            }
+            const { id, avisoProceso } = await res.json()
+            // El vínculo con el proceso lo hace el servidor en el mismo pedido;
+            // si algo falló ahí, la propiedad igual existe y acá se avisa.
+            if (avisoProceso) toast.warning(avisoProceso)
 
             // Subir los planos elegidos (la propiedad ya existe; si falla,
             // se pueden subir después desde la ficha, pestaña Planos).
@@ -356,6 +347,25 @@ function NewPropertyContent() {
 
     if (prefilling) {
         return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin" /></div>
+    }
+
+    // Captar "desde cero" creaba una propiedad sin cliente y sin proceso: no
+    // aparecía en el embudo de nadie y el propietario no quedaba en ningún lado.
+    // Primero se dice de quién es; recién después se carga la ficha.
+    if (!dealId && !appraisalIdParam && !scheduledAppraisalId) {
+        return (
+            <div className="w-full space-y-6 max-w-3xl mx-auto">
+                <Button variant="ghost" size="sm" onClick={() => router.back()}>
+                    <ArrowLeft className="h-4 w-4 mr-1" /> Volver
+                </Button>
+                <ElegirCliente
+                    motivo="captacion"
+                    titulo="¿De quién es esta propiedad?"
+                    descripcion="Buscá el proceso del cliente o cargá sus datos. Sin esto la captación queda afuera del CRM."
+                    onProceso={dealIdElegido => router.push(`/properties/new?dealId=${dealIdElegido}`)}
+                />
+            </div>
+        )
     }
 
     return (

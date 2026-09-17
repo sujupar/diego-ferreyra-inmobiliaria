@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false },
+  "include": [
+    "next-env.d.ts",
+    "types/database.types.ts",
+    "lib/deals/**/*.ts",
+    "lib/supabase/deals.ts",
+    "lib/supabase/contactos.ts",
+    "lib/auth/**/*.ts",
+    "app/api/deals/**/*.ts",
+    "app/api/properties/route.ts",
+    "components/deals/**/*.tsx",
+    "components/pipeline/**/*.tsx",
+    "app/(dashboard)/appraisal/new/page.tsx",
+    "app/(dashboard)/properties/new/page.tsx",
+    "app/(dashboard)/pipeline/[id]/page.tsx"
+  ],
+  "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
+}
