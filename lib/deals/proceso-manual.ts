@@ -158,8 +158,10 @@ export function etapaInicial(motivo: MotivoProceso): DealStage {
  * es para cuando el equipo coordina una visita FUTURA. Acá se está registrando
  * trabajo ya hecho, y ese email falso le llegaba al dueño por cada tasación.
  */
-export function debeNotificarCreacion(_motivo: MotivoProceso): boolean {
-  return false
+export function debeNotificarCreacion(motivo: MotivoProceso): boolean {
+  // Hoy ningún motivo notifica. Se recibe igual para que, si mañana se quiere
+  // avisar de alguno, el cambio sea acá y quede cubierto por su test.
+  return motivo !== 'tasacion' && motivo !== 'captacion'
 }
 
 export interface ProcesoDeTasacion {
@@ -198,6 +200,35 @@ export function resolverProcesoDeCaptacion(entrada: EntradaCaptacion): Resolucio
   if (procesos.length > 1) return { tipo: 'elegir', motivo: 'varios_procesos' }
   if (activas.length > 0) return { tipo: 'duplicado', propertyId: activas[0].id }
   return { tipo: 'proceso', dealId: procesos[0].id }
+}
+
+export interface ProcesoEncontrado {
+  id: string
+  propertyAddress?: string | null
+  contactoNombre?: string | null
+  stage?: string
+  origin?: string | null
+}
+
+/**
+ * Junta los procesos que aparecieron buscando por dirección y por contacto.
+ * Primero los de dirección (es lo que el asesor tipea casi siempre), sin
+ * repetir y con tope: el desplegable tiene que ser elegible de un vistazo.
+ */
+export function combinarProcesosEncontrados(
+  porDireccion: ProcesoEncontrado[],
+  porContacto: ProcesoEncontrado[],
+  limite = 10,
+): ProcesoEncontrado[] {
+  const vistos = new Set<string>()
+  const salida: ProcesoEncontrado[] = []
+  for (const p of [...porDireccion, ...porContacto]) {
+    if (!p?.id || vistos.has(p.id)) continue
+    vistos.add(p.id)
+    salida.push(p)
+    if (salida.length >= limite) break
+  }
+  return salida
 }
 
 function normalizar(texto: string | null | undefined): string {

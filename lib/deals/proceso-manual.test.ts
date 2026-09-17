@@ -6,6 +6,7 @@ import {
   debeNotificarCreacion,
   resolverProcesoDeCaptacion,
   pareceProcesoIncompleto,
+  combinarProcesosEncontrados,
 } from './proceso-manual'
 
 /**
@@ -168,6 +169,25 @@ describe('resolverProcesoDeCaptacion', () => {
   it('una propiedad descartada NO cuenta como duplicado', () => {
     const r = resolverProcesoDeCaptacion({ procesosDeLaTasacion: [proceso], propiedadesActivasDelProceso: [] })
     expect(r.tipo).toBe('proceso')
+  })
+})
+
+describe('combinarProcesosEncontrados', () => {
+  const porDireccion = [{ id: 'd1', propertyAddress: 'Av. Belgrano 1500' }]
+  const porContacto = [{ id: 'd2', propertyAddress: 'Otra 100' }, { id: 'd1', propertyAddress: 'Av. Belgrano 1500' }]
+
+  it('junta los dos orígenes sin repetir procesos', () => {
+    const r = combinarProcesosEncontrados(porDireccion, porContacto)
+    expect(r.map(d => d.id)).toEqual(['d1', 'd2'])
+  })
+
+  it('respeta un tope para no volcar el CRM entero en un desplegable', () => {
+    const muchos = Array.from({ length: 30 }, (_, i) => ({ id: `x${i}`, propertyAddress: 'x' }))
+    expect(combinarProcesosEncontrados(muchos, [], 8)).toHaveLength(8)
+  })
+
+  it('sin resultados devuelve lista vacía, no null', () => {
+    expect(combinarProcesosEncontrados([], [])).toEqual([])
   })
 })
 

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { PropertyWizard } from '@/components/appraisal/PropertyWizard'
+import { ElegirCliente } from '@/components/deals/ElegirCliente'
 import { PropertyForm } from '@/components/appraisal/PropertyForm'
 import { ComparableEditor, ComparableMissingIndicator } from '@/components/appraisal/ComparableEditor'
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
@@ -859,108 +860,17 @@ function NewAppraisalPageContent() {
                         router.replace(`/appraisal/new?${params.toString()}`, { scroll: false })
                     }
 
-                    // Side-effects (auto-create deal) only run on the FIRST
-                    // insert — guarded by !isUpdate to avoid creating multiple
-                    // deals for the same appraisal across recalcs.
+                    // El vínculo con el PROCESO lo resuelve el endpoint
+                    // POST /api/appraisals en la misma request (server-side).
                     //
-                    // NOTA: el vínculo con un PROCESO EXISTENTE (dealId) ya lo
-                    // resolvió el endpoint POST /api/appraisals en la misma
-                    // request (server-side, service role, confiable). Antes se
-                    // hacía con un fetch aparte cuyo error se tragaba — esa era
-                    // una de las causas de "la tasación no quedó vinculada".
-                    if (!isUpdate && appraisalId) {
-                        if (!dealId && subject) {
-                            // Auto-create deal for tasaciones without a process.
-                            //
-                            // Derive property fields from subject features so the auto-created deal
-                            // passes /api/deals POST validation AND the deal's "Propiedad" card shows
-                            // the data the asesor entered in the wizard.
-                            try {
-                                const features = (subject.features || {}) as any
-                                // Try to extract neighborhood from the location string ("address, neighborhood, city")
-                                const locationParts = (subject.location || '').split(',').map((s: string) => s.trim()).filter(Boolean)
-                                const neighborhood = locationParts[1] || locationParts[0] || 'Sin definir'
-
-                                // Build a minimal sale snapshot from the wizard data so visit-prefill works
-                                // in reverse (if someone later wants to "Marcar Visita Realizada" on this deal,
-                                // the form will be pre-populated with what the asesor already entered).
-                                const saleSnapshot = {
-                                    property_type: 'departamento' as const,  // wizard is apt-centric (Ross-Heidecke)
-                                    rooms: features.rooms ?? null,
-                                    bedrooms: features.bedrooms ?? null,
-                                    bathrooms: features.bathrooms ?? null,
-                                    garages: features.garages ?? null,
-                                    covered_m2: features.coveredArea ?? null,
-                                    semi_covered_m2: features.semiCoveredArea ?? null,
-                                    uncovered_m2: features.uncoveredArea ?? null,
-                                    total_m2: features.totalArea ?? null,
-                                    terrain_m2: null,
-                                    age_years: features.age ?? null,
-                                    is_refurbished: false,
-                                    orientation: null,
-                                    floor: features.floor ?? null,
-                                    total_floors: features.totalFloors ?? null,
-                                    disposition: features.disposition === 'FRONT' ? 'frente'
-                                        : features.disposition === 'BACK' ? 'contrafrente'
-                                        : features.disposition === 'LATERAL' ? 'lateral'
-                                        : features.disposition === 'INTERNAL' ? 'interno'
-                                        : null,
-                                    quality: features.quality === 'ECONOMIC' ? 'economica'
-                                        : features.quality === 'GOOD_ECONOMIC' ? 'buena_economica'
-                                        : features.quality === 'GOOD' ? 'buena'
-                                        : features.quality === 'VERY_GOOD' ? 'muy_buena'
-                                        : features.quality === 'EXCELLENT' ? 'excelente'
-                                        : null,
-                                    // Conservation: map STATE_X → estado_X with whitelist guard so an
-                                    // unexpected value never lands in the JSONB column as garbage.
-                                    conservation: (() => {
-                                        const valid = new Set(['estado_1','estado_1_5','estado_2','estado_2_5','estado_3','estado_3_5','estado_4','estado_4_5','estado_5'])
-                                        if (!features.conservationState) return null
-                                        const mapped = features.conservationState.toLowerCase().replace(/^state_/, 'estado_')
-                                        return valid.has(mapped) ? mapped : null
-                                    })(),
-                                    construction_features: [],
-                                    reason_for_sale: null,
-                                    sale_timeframe: null,
-                                    strong_points: [],
-                                    extra_notes: null,
-                                }
-
-                                const res = await fetch('/api/deals', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                        contact_name: subject.title || subject.location || 'Sin nombre',
-                                        property_address: subject.location || subject.title || '',
-                                        origin: origin || 'historico',
-                                        property_type: 'departamento',  // wizard is apt-only for now
-                                        neighborhood,
-                                        // Belt-and-suspenders: PropertyWizard validates rooms > 0 before
-                                        // emitting, but coerce explicitly in case features.rooms is ever ''.
-                                        rooms: Number(features.rooms) || 1,
-                                        covered_area: features.coveredArea ? Number(features.coveredArea) : null,
-                                    }),
-                                })
-                                if (res.ok) {
-                                    const { id: newDealId } = await res.json()
-                                    // Save the wizard snapshot to the deal so visit-prefill works in reverse
-                                    try {
-                                        await fetch(`/api/deals/${newDealId}/visit-data`, {
-                                            method: 'PATCH',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ snapshot: { sale: saleSnapshot } }),
-                                        })
-                                    } catch (e) { console.error('Error saving visit snapshot:', e) }
-                                    // Then advance to appraisal_sent and link
-                                    await fetch(`/api/deals/${newDealId}/advance`, {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ stage: 'appraisal_sent', appraisal_id: appraisalId }),
-                                    })
-                                }
-                            } catch (e) { console.error('Error auto-creating deal:', e) }
-                        }
-                    }
+                    // Acá había una creación de proceso hecha desde el
+                    // navegador con tres fetch encadenados, para las tasaciones
+                    // que entraban sin proceso. Inventaba el cliente con la
+                    // dirección, no ponía asesor y saltaba a "Tasación
+                    // Entregada"; si algo fallaba, no avisaba. Se eliminó el
+                    // 2026-09-17: ahora el proceso se elige o se crea ANTES de
+                    // tasar (ver ElegirCliente y POST /api/deals/manual), así
+                    // que cuando se llega hasta acá siempre hay `dealId`.
                 })
                 .catch((err: { code?: string; message?: string; details?: string; hint?: string }) => {
                     const detail = `${err?.code || 'ERR'}: ${err?.message || 'Error desconocido'}${err?.details ? ` — ${err.details}` : ''}${err?.hint ? ` (${err.hint})` : ''}`
@@ -994,6 +904,28 @@ function NewAppraisalPageContent() {
             <div className="flex items-center justify-center py-32">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
+        )
+    }
+
+    // Toda tasación pertenece a un proceso del CRM (decisión del dueño,
+    // 2026-09-17). Sin `dealId` no se entra al asistente: primero se elige el
+    // cliente. Antes se tasaba primero y el proceso se inventaba después, con
+    // la dirección como nombre y sin asesor, así que el asesor no veía su
+    // propia tasación en el CRM.
+    if (!editMode && !dealId) {
+        return (
+            <ElegirCliente
+                motivo="tasacion"
+                onProceso={(dealIdElegido, _esNuevo, stage) => {
+                    // Si el proceso todavía no pasó por la visita, primero se
+                    // cargan los datos de la visita en su ficha; el formulario
+                    // se abre solo con ?visita=1 y al finalizarlo vuelve acá.
+                    const faltaVisita = !stage || stage === 'scheduled' || stage === 'request'
+                    router.push(faltaVisita
+                        ? `/pipeline/${dealIdElegido}?visita=1`
+                        : `/appraisal/new?dealId=${dealIdElegido}`)
+                }}
+            />
         )
     }
 

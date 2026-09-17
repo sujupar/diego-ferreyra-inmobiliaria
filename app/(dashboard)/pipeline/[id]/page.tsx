@@ -71,6 +71,14 @@ export default function DealDetailPage() {
 
   // Visit modal
   const [showVisitModal, setShowVisitModal] = useState(false)
+  /**
+   * `?visita=1` abre el formulario de visita apenas carga la ficha. Lo usa el
+   * asistente de tasación cuando el proceso todavía no pasó por la visita: así
+   * el asesor carga los datos (incluidas las secciones de portales y landing) y
+   * el proceso avanza a "Visita Realizada" sin saltear ninguna etapa.
+   */
+  const pedidoDeVisita = searchParams.get('visita') === '1'
+  const visitaAbiertaRef = useRef(false)
 
   // Reschedule modal — permite editar fecha/hora de una tasación ya coordinada.
   const [showScheduleModal, setShowScheduleModal] = useState(false)
@@ -94,6 +102,13 @@ export default function DealDetailPage() {
     } catch (err) { console.error(err) }
     finally { setLoading(false) }
   }
+
+  useEffect(() => {
+    if (!pedidoDeVisita || visitaAbiertaRef.current || !deal) return
+    if (deal.stage !== 'scheduled') return
+    visitaAbiertaRef.current = true
+    setShowVisitModal(true)
+  }, [pedidoDeVisita, deal])
 
   useEffect(() => { fetchDeal() }, [id])
 
@@ -767,7 +782,13 @@ export default function DealDetailPage() {
               dealId={deal.id}
               initial={deal.visit_data || null}
               neighborhood={deal.neighborhood ?? null}
-              onCompleted={() => { setShowVisitModal(false); fetchDeal() }}
+              onCompleted={() => {
+                setShowVisitModal(false)
+                // Si vino del asistente de tasación, la visita era el paso
+                // previo: se sigue con la tasación de ese mismo proceso.
+                if (pedidoDeVisita) { router.push(`/appraisal/new?dealId=${deal.id}`); return }
+                fetchDeal()
+              }}
             />
           </div>
         </div>
