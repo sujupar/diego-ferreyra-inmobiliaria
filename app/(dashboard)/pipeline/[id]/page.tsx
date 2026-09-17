@@ -372,6 +372,7 @@ export default function DealDetailPage() {
           (el cliente era la dirección, sin teléfono ni asesor). Dice QUÉ falta. */}
       {(() => {
         const faltan = faltantesDelProceso({
+          stage: deal.stage,
           contactoNombre: contact.full_name,
           contactoTelefono: contact.phone,
           propertyAddress: deal.property_address,

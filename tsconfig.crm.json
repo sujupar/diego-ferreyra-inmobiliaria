@@ -5,6 +5,7 @@
     "next-env.d.ts",
     "types/database.types.ts",
     "lib/deals/**/*.ts",
+    "scripts/reparar-procesos-manuales.ts",
     "lib/pipeline/**/*.ts",
     "lib/supabase/deals.ts",
     "lib/supabase/contactos.ts",

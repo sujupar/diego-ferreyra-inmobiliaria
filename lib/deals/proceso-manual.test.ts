@@ -275,3 +275,21 @@ describe('puedeReasignarAsesor', () => {
     }
   })
 })
+
+describe('faltantesDelProceso — etapas', () => {
+  const sinAsesor = { contactoNombre: 'Marta Gómez', contactoTelefono: '1155554444', propertyAddress: 'Calle 1', assignedTo: null }
+
+  it('una solicitud del embudo todavía no tiene asesor POR DISEÑO: no se marca', () => {
+    expect(faltantesDelProceso({ ...sinAsesor, stage: 'request' })).toEqual([])
+    expect(faltantesDelProceso({ ...sinAsesor, stage: 'clase_gratuita' })).toEqual([])
+  })
+
+  it('un proceso cerrado tampoco (no hay nada que hacer con él)', () => {
+    expect(faltantesDelProceso({ ...sinAsesor, stage: 'lost' })).toEqual([])
+    expect(faltantesDelProceso({ ...sinAsesor, stage: 'comprador' })).toEqual([])
+  })
+
+  it('una tasación coordinada sin asesor SÍ: nadie la ve en su CRM', () => {
+    expect(faltantesDelProceso({ ...sinAsesor, stage: 'scheduled' })).toEqual(['el asesor'])
+  })
+})

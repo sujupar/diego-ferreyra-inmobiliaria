@@ -233,7 +233,8 @@ export function combinarProcesosEncontrados(
   return salida
 }
 
-function normalizar(texto: string | null | undefined): string {
+/** Minúsculas, sin tildes ni signos: para comparar nombres y direcciones. */
+export function normalizar(texto: string | null | undefined): string {
   return (texto ?? '')
     .toLowerCase()
     .normalize('NFD')
@@ -242,6 +243,8 @@ function normalizar(texto: string | null | undefined): string {
 }
 
 export interface DatosDelProceso {
+  /** Etapa del proceso: en algunas, que falte el asesor es lo normal. */
+  stage?: string | null
   contactoNombre?: string | null
   contactoTelefono?: string | null
   propertyAddress?: string | null
@@ -266,7 +269,15 @@ function nombreEsLaDireccion(nombre: string, direccion: string): boolean {
  * asesor. Vacío = está completo. Sirve para el aviso de la ficha: decir QUÉ
  * falta en vez de un genérico "completá los datos".
  */
+/**
+ * Etapas donde NO se exige nada: una solicitud del embudo todavía no tiene
+ * asesor por diseño (se asigna al coordinar), y un proceso cerrado no tiene
+ * nada que completar. Sin esto, el aviso salía en CADA solicitud nueva.
+ */
+const ETAPAS_SIN_EXIGENCIA: readonly string[] = ['request', 'clase_gratuita', 'lost', 'comprador']
+
 export function faltantesDelProceso(deal: DatosDelProceso): string[] {
+  if (deal.stage && ETAPAS_SIN_EXIGENCIA.includes(deal.stage)) return []
   const faltan: string[] = []
   const nombre = normalizar(deal.contactoNombre)
   if (!nombre) faltan.push('el nombre del propietario')
