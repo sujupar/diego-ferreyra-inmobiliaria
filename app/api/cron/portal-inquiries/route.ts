@@ -5,6 +5,7 @@ import { buildGmailQuery, detectPortal, isLeadEmail, parseByPortal } from '@/lib
 import { matchProperty } from '@/lib/integrations/portal-inquiries/match'
 import { notifyInquiry } from '@/lib/integrations/portal-inquiries/notify'
 import { evaluateDrought } from '@/lib/integrations/portal-inquiries/drought'
+import { elegirPlantillaDelAviso } from '@/lib/integrations/portal-inquiries/plantilla-del-aviso'
 import { responderConsulta } from '@/lib/leads/responder-consulta'
 import { sendWhatsappTemplate, normalizePhone } from '@/lib/integrations/whatsapp/meta-cloud'
 
@@ -328,7 +329,13 @@ export async function GET(req: NextRequest) {
       if (verdict.shouldAlert) {
         // Reusa la plantilla UTILITY aprobada (formato de 10 params) — sin
         // depender de una plantilla nueva pendiente de aprobación de Meta.
-        const template = process.env.WHATSAPP_TEMPLATE_NAME ?? 'consulta_portal_util'
+        // La alarma no tiene link al chat de nadie, así que nunca puede llevar
+        // el botón: si la configurada lo tiene, sale su gemela sin botón. Sin
+        // esto, con `consulta_portal_v2` en Netlify la alarma que avisa que se
+        // cortaron las consultas moría callada con 131008.
+        const { templateName: template } = elegirPlantillaDelAviso(
+          process.env.WHATSAPP_TEMPLATE_NAME ?? 'consulta_portal_util',
+        )
         const lang = process.env.WHATSAPP_TEMPLATE_LANG ?? 'es_AR'
         const bodyParams = [
           'ALERTA', 'SISTEMA', 'Sistema', 'Alerta',

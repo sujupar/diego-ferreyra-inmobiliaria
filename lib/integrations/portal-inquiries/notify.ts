@@ -12,6 +12,7 @@ import {
 } from './reply-link'
 import { acortar } from '@/lib/links/short-link-store'
 import { codigoDeUrlCorta } from '@/lib/links/short-link'
+import { elegirPlantillaDelAviso } from './plantilla-del-aviso'
 
 /**
  * Orquesta el envío de WhatsApp para una consulta nueva:
@@ -93,17 +94,6 @@ const CUERPO_DE_REFERENCIA =
 const INDICE_AVISO = 5
 
 /**
- * Las plantillas que TIENEN el botón "Responder al interesado".
- *
- * Mandarle a Meta un componente de botón que la plantilla aprobada no declara
- * hace que RECHACE el envío entero. Mientras `WHATSAPP_TEMPLATE_NAME` siga
- * apuntando a `consulta_portal_util` (sin botón), acá no se manda nada y los
- * avisos salen como hoy. Cuando Meta apruebe `consulta_portal_v2` y se cambie
- * esa variable en Netlify, el botón se enciende solo — sin tocar código.
- */
-const PLANTILLAS_CON_BOTON = new Set(['consulta_portal_v2'])
-
-/**
  * Orden de parámetros del body de la plantilla. La plantilla aprobada en Meta
  * (WHATSAPP_TEMPLATE_NAME, idioma es_AR) DEBE tener exactamente 10 placeholders
  * en este orden — calca el formato de la captura del usuario:
@@ -158,7 +148,8 @@ async function buildBodyParams(
     params: ajustarAlTope(CUERPO_DE_REFERENCIA, [...otros, link], INDICE_AVISO),
     // El botón recibe SOLO el código: la parte fija de la URL vive en la
     // plantilla aprobada. Sin acortador no hay botón posible (el `wa.me` crudo
-    // no se puede partir en base + sufijo), pero el link del cuerpo sigue ahí.
+    // no se puede partir en base + sufijo) — y entonces NO se puede usar la
+    // plantilla con botón: ver `elegirPlantillaDelAviso`.
     codigoBoton: corto ? (codigoDeUrlCorta(corto) ?? undefined) : undefined,
   }
 }
@@ -253,7 +244,10 @@ export async function notifyInquiry(supabase: SupabaseClient, inq: NotifyInquiry
     propertyLabel: inq.leadPropertyLabel !== undefined ? inq.leadPropertyLabel : inq.propertyLabel,
   })
   const { params: bodyParams, codigoBoton } = await buildBodyParams(inq, advisorLabel, saludos)
-  const urlButtonParam = PLANTILLAS_CON_BOTON.has(TEMPLATE) ? codigoBoton : undefined
+  // Sin link al chat del interesado (sin teléfono, o uno mal escrito) la
+  // plantilla con botón NO se puede mandar: Meta la rechaza entera. Sale la
+  // gemela sin botón, mismo texto. Es el incidente de la #407 (2026-09-17).
+  const { templateName, urlButtonParam } = elegirPlantillaDelAviso(TEMPLATE, codigoBoton)
   const attemptedPhones = new Set<string>()
 
   for (const r of recipients) {
@@ -278,7 +272,7 @@ export async function notifyInquiry(supabase: SupabaseClient, inq: NotifyInquiry
 
     const send = await sendWhatsappTemplate({
       to: phone,
-      templateName: TEMPLATE,
+      templateName,
       languageCode: LANG,
       bodyParams,
       urlButtonParam,
@@ -310,7 +304,7 @@ export async function notifyInquiry(supabase: SupabaseClient, inq: NotifyInquiry
     }
     const send = await sendWhatsappTemplate({
       to: cc,
-      templateName: TEMPLATE,
+      templateName,
       languageCode: LANG,
       bodyParams,
       urlButtonParam,
