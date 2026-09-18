@@ -7,7 +7,7 @@ const prop = (p: Partial<PropiedadR> & { id: string }): PropiedadR => ({
 })
 const proc = (d: Partial<ProcesoR> & { id: string }): ProcesoR => ({
   appraisal_id: null, property_id: null, stage: 'appraisal_sent', property_address: 'Calle 1',
-  assigned_to: 'asesor-1', contactoNombre: 'Marta Gómez', contactoTelefono: '1155554444', visit_data: null, ...d,
+  assigned_to: 'asesor-1', contactoNombre: 'Marta Gómez', contactoTelefono: '1155554444', contactoEmail: 'marta@example.com', visit_data: null, ...d,
 })
 
 describe('planificarReparacion — vínculos', () => {
@@ -159,5 +159,12 @@ describe('planificarReparacion — direcciones repetidas', () => {
       tasaciones: [],
     })
     expect(plan.direccionesDuplicadas).toEqual([])
+  })
+})
+
+describe('planificarReparacion — el email cuenta', () => {
+  it('un proceso sin email aparece en la lista de incompletos', () => {
+    const plan = planificarReparacion({ propiedades: [], procesos: [proc({ id: 'sin-mail', contactoEmail: null })], tasaciones: [] })
+    expect(plan.incompletos).toEqual([expect.objectContaining({ dealId: 'sin-mail', faltan: ['el email'] })])
   })
 })
