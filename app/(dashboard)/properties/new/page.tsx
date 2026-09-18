@@ -307,11 +307,11 @@ function NewPropertyContent() {
 
             if (!res.ok) {
                 const err = await res.json().catch(() => ({} as { error?: string; propertyId?: string }))
-                // Ya se captó esta tasación (pasó con Hipólito Yrigoyen 1550,
+                // Ya se captó este proceso (pasó con Hipólito Yrigoyen 1550,
                 // captada dos veces con tres días de diferencia). En vez de
                 // crear otra ficha, se abre la que ya existe.
                 if (res.status === 409 && err.propertyId) {
-                    toast.error(err.error || 'Esta tasación ya tiene una propiedad captada.')
+                    toast.error(err.error || 'Este proceso ya tiene una propiedad captada.')
                     router.push(`/properties/${err.propertyId}`)
                     return
                 }

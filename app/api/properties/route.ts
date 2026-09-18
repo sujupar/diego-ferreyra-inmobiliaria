@@ -259,7 +259,7 @@ export async function POST(request: NextRequest) {
     const captacion = await resolverCaptacion(dealIdPedido, appraisalIdPedido)
     if (captacion.tipo === 'duplicado') {
       return NextResponse.json({
-        error: 'Esta tasación ya tiene una propiedad captada. Abrila en vez de crear otra.',
+        error: 'Este proceso ya tiene una propiedad captada: te llevamos a esa ficha en vez de crear otra.',
         propertyId: captacion.propertyId,
       }, { status: 409 })
     }

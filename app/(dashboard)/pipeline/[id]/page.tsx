@@ -382,7 +382,7 @@ export default function DealDetailPage() {
         return (
           <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-4 py-3 text-sm flex items-start justify-between gap-3 flex-wrap">
             <div>
-              <p className="font-medium">A este proceso le falta {faltan.join(', ')}.</p>
+              <p className="font-medium">A este proceso le falta {faltan.length > 1 ? `${faltan.slice(0, -1).join(', ')} y ${faltan[faltan.length - 1]}` : faltan[0]}.</p>
               <p className="text-muted-foreground mt-0.5">Sin eso no se puede contactar al cliente o no le aparece a ningún asesor en su CRM.</p>
             </div>
             <Button variant="outline" size="sm" onClick={() => setContactEditorOpen(true)}>Completar contacto</Button>
