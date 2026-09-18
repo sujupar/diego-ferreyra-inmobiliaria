@@ -920,7 +920,9 @@ function NewAppraisalPageContent() {
                     // Si el proceso todavía no pasó por la visita, primero se
                     // cargan los datos de la visita en su ficha; el formulario
                     // se abre solo con ?visita=1 y al finalizarlo vuelve acá.
-                    const faltaVisita = !stage || stage === 'scheduled' || stage === 'request'
+                    // "No Realizada" también va a la ficha: ahí está "Reagendar
+                    // Visita", y tasar sin visita sería saltear una etapa.
+                    const faltaVisita = !stage || stage === 'scheduled' || stage === 'request' || stage === 'not_visited'
                     router.push(faltaVisita
                         ? `/pipeline/${dealIdElegido}?visita=1`
                         : `/appraisal/new?dealId=${dealIdElegido}`)

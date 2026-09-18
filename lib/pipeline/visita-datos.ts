@@ -22,11 +22,11 @@ export type ModoVisita = 'finalizar' | 'editar'
 const ETAPAS_CON_VISITA_HECHA: readonly string[] = ['visited', 'appraisal_sent', 'followup', 'captured']
 
 /** En "Coordinada" la visita está por hacerse: el botón la FINALIZA y mueve la etapa. */
-const ETAPAS_CON_VISITA_PENDIENTE: readonly string[] = ['scheduled', 'not_visited']
+export const ETAPAS_CON_VISITA_PENDIENTE = ['scheduled', 'not_visited'] as const
 
 export function modoDeVisita(stage: DealStage | string | null | undefined): ModoVisita | null {
   const s = (stage ?? '').trim()
-  if (ETAPAS_CON_VISITA_PENDIENTE.includes(s)) return 'finalizar'
+  if ((ETAPAS_CON_VISITA_PENDIENTE as readonly string[]).includes(s)) return 'finalizar'
   if (ETAPAS_CON_VISITA_HECHA.includes(s)) return 'editar'
   return null
 }
