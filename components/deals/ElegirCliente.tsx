@@ -224,8 +224,8 @@ export function ElegirCliente({ motivo, onProceso, titulo, descripcion }: Props)
                 <Input id="cl-tel" required placeholder="11 5555-4444" {...campo('telefono')} />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="cl-email">Email</Label>
-                <Input id="cl-email" type="email" placeholder="Opcional" {...campo('email')} />
+                <Label htmlFor="cl-email">Email *</Label>
+                <Input id="cl-email" type="email" required placeholder="marta@ejemplo.com" {...campo('email')} />
               </div>
               <div className="space-y-1">
                 <Label htmlFor="cl-origen">Origen *</Label>

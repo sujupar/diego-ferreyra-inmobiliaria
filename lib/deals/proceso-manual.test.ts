@@ -9,6 +9,12 @@ import {
   faltantesDelProceso,
   puedeReasignarAsesor,
   combinarProcesosEncontrados,
+  validarDatosCliente,
+  camposFaltantes,
+  exigeDatosParaMover,
+  textoFaltantes,
+  valoresParaCompletar,
+  esRespuestaDatosDelCliente,
 } from './proceso-manual'
 
 /**
@@ -45,10 +51,16 @@ describe('validarClienteNuevo', () => {
     expect(r.valor.ambientes).toBe(2)
   })
 
-  it('el email es opcional', () => {
+  it('el email es OBLIGATORIO (decisión del dueño, 2026-09-18)', () => {
     const r = validarClienteNuevo({ ...base, email: undefined })
-    expect(r.ok).toBe(true)
-    if (r.ok) expect(r.valor.email).toBeNull()
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errores).toContain('Falta el email.')
+  })
+
+  it('un nombre que es la dirección no es un cliente', () => {
+    const r = validarClienteNuevo({ ...base, nombre: 'Av. Belgrano 1500' })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errores.join(' ')).toMatch(/nombre/i)
   })
 
   it('exige nombre de persona, no una dirección vacía', () => {
@@ -207,6 +219,7 @@ describe('pareceProcesoIncompleto', () => {
     expect(pareceProcesoIncompleto({
       contactoNombre: 'Marta Gómez',
       contactoTelefono: '+5491155554444',
+      contactoEmail: 'marta@example.com',
       propertyAddress: 'Av. Belgrano 1500',
       assignedTo: 'asesor-1',
     })).toBe(false)
@@ -238,7 +251,7 @@ describe('faltantesDelProceso', () => {
       contactoTelefono: null,
       propertyAddress: 'Formosa 5176, CABA',
       assignedTo: null,
-    })).toEqual(['el nombre real del propietario (hoy figura la dirección)', 'el teléfono', 'el asesor'])
+    })).toEqual(['el nombre real del propietario (hoy figura la dirección)', 'el teléfono', 'el email', 'el asesor'])
   })
 
   it('un nombre corto que coincide con el principio de la calle NO es la dirección', () => {
@@ -246,19 +259,20 @@ describe('faltantesDelProceso', () => {
     expect(faltantesDelProceso({
       contactoNombre: 'Ana',
       contactoTelefono: '1155554444',
+      contactoEmail: 'ana@example.com',
       propertyAddress: 'Anatole France 200',
       assignedTo: 'asesor-1',
     })).toEqual([])
   })
 
   it('sin nombre lo pide', () => {
-    expect(faltantesDelProceso({ contactoNombre: '  ', contactoTelefono: '1155554444', assignedTo: 'a' }))
+    expect(faltantesDelProceso({ contactoNombre: '  ', contactoTelefono: '1155554444', contactoEmail: 'x@example.com', assignedTo: 'a' }))
       .toEqual(['el nombre del propietario'])
   })
 
   it('completo → vacío', () => {
     expect(faltantesDelProceso({
-      contactoNombre: 'Marta Gómez', contactoTelefono: '1155554444',
+      contactoNombre: 'Marta Gómez', contactoTelefono: '1155554444', contactoEmail: 'marta@example.com',
       propertyAddress: 'Av. Belgrano 1500', assignedTo: 'asesor-1',
     })).toEqual([])
   })
@@ -277,7 +291,7 @@ describe('puedeReasignarAsesor', () => {
 })
 
 describe('faltantesDelProceso — etapas', () => {
-  const sinAsesor = { contactoNombre: 'Marta Gómez', contactoTelefono: '1155554444', propertyAddress: 'Calle 1', assignedTo: null }
+  const sinAsesor = { contactoNombre: 'Marta Gómez', contactoTelefono: '1155554444', contactoEmail: 'marta@example.com', propertyAddress: 'Calle 1', assignedTo: null }
 
   it('una solicitud del embudo todavía no tiene asesor POR DISEÑO: no se marca', () => {
     expect(faltantesDelProceso({ ...sinAsesor, stage: 'request' })).toEqual([])
@@ -291,5 +305,115 @@ describe('faltantesDelProceso — etapas', () => {
 
   it('una tasación coordinada sin asesor SÍ: nadie la ve en su CRM', () => {
     expect(faltantesDelProceso({ ...sinAsesor, stage: 'scheduled' })).toEqual(['el asesor'])
+  })
+})
+
+describe('validarDatosCliente — lo mínimo para trabajar un proceso', () => {
+  const ok = { nombre: ' Marta Gómez ', telefono: '11 5555-4444', email: ' MARTA@Example.com ' }
+
+  it('limpia y devuelve nombre, teléfono y email', () => {
+    const r = validarDatosCliente(ok)
+    expect(r).toEqual({ ok: true, valor: { nombre: 'Marta Gómez', telefono: '11 5555-4444', telefonoNormalizado: '1155554444', email: 'marta@example.com' } })
+  })
+
+  it('junta TODOS los errores de una vez', () => {
+    const r = validarDatosCliente({ nombre: '', telefono: '123', email: '' })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errores).toEqual([
+      'Falta el nombre del propietario.',
+      'El teléfono tiene que tener al menos 10 dígitos (código de área y número).',
+      'Falta el email.',
+    ])
+  })
+
+  it('un email mal escrito no pasa', () => {
+    const r = validarDatosCliente({ ...ok, email: 'marta@@example' })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errores).toEqual(['El email no parece válido.'])
+  })
+
+  it('si se conoce la dirección, el nombre no puede ser la dirección', () => {
+    const r = validarDatosCliente({ ...ok, nombre: 'Formosa 5176' }, 'Formosa 5176, CABA')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errores[0]).toMatch(/nombre del propietario/i)
+  })
+})
+
+describe('camposFaltantes', () => {
+  const completo = { contactoNombre: 'Marta Gómez', contactoTelefono: '1155554444', contactoEmail: 'marta@example.com', propertyAddress: 'Av. Belgrano 1500', assignedTo: 'a-1' }
+
+  it('completo → nada', () => {
+    expect(camposFaltantes(completo)).toEqual([])
+  })
+
+  it('el email ahora cuenta', () => {
+    expect(camposFaltantes({ ...completo, contactoEmail: null })).toEqual(['email'])
+    expect(camposFaltantes({ ...completo, contactoEmail: 'no-es-un-email' })).toEqual(['email'])
+  })
+
+  it('un teléfono incompleto cuenta como faltante', () => {
+    expect(camposFaltantes({ ...completo, contactoTelefono: '4444' })).toEqual(['telefono'])
+  })
+
+  it('el caso del camino viejo: todo', () => {
+    expect(camposFaltantes({ contactoNombre: 'Formosa 5176', propertyAddress: 'Formosa 5176, CABA' }))
+      .toEqual(['nombre', 'telefono', 'email', 'asesor'])
+  })
+
+  it('el aviso de la ficha también menciona el email', () => {
+    expect(faltantesDelProceso({ ...completo, contactoEmail: '', stage: 'scheduled' })).toEqual(['el email'])
+  })
+})
+
+describe('exigeDatosParaMover', () => {
+  it('avanzar exige datos', () => {
+    expect(exigeDatosParaMover('scheduled', 'visited')).toBe(true)
+    expect(exigeDatosParaMover('visited', 'appraisal_sent')).toBe(true)
+    expect(exigeDatosParaMover('appraisal_sent', 'followup')).toBe(true)
+    expect(exigeDatosParaMover('appraisal_sent', 'captured')).toBe(true)
+    expect(exigeDatosParaMover('followup', 'captured')).toBe(true)
+    // Reagendar: se va a volver a contactar al cliente.
+    expect(exigeDatosParaMover('not_visited', 'scheduled')).toBe(true)
+  })
+
+  it('descartar y "no se realizó" NO exigen nada (decisión del dueño)', () => {
+    expect(exigeDatosParaMover('appraisal_sent', 'lost')).toBe(false)
+    expect(exigeDatosParaMover('scheduled', 'not_visited')).toBe(false)
+  })
+
+  it('quedarse en la misma etapa no es moverse (otro seguimiento dentro de Seguimiento)', () => {
+    expect(exigeDatosParaMover('followup', 'followup')).toBe(false)
+  })
+})
+
+describe('textoFaltantes', () => {
+  it('se lee en castellano', () => {
+    expect(textoFaltantes(['email'])).toBe('Para avanzar falta el email del cliente.')
+    expect(textoFaltantes(['telefono', 'email'])).toBe('Para avanzar faltan el teléfono y el email del cliente.')
+    expect(textoFaltantes(['nombre', 'telefono', 'email', 'asesor'])).toBe('Para avanzar faltan el nombre, el teléfono y el email del cliente, y el asesor.')
+    expect(textoFaltantes(['asesor'])).toBe('Para avanzar falta asignar el asesor.')
+  })
+})
+
+describe('valoresParaCompletar — lo que precarga la ventana', () => {
+  it('lo que está bien viene cargado; lo que falta, vacío', () => {
+    expect(valoresParaCompletar({ full_name: 'Marta Gómez', phone: '1155554444', email: null }, 'Calle 1'))
+      .toEqual({ nombre: 'Marta Gómez', telefono: '1155554444', email: '' })
+  })
+
+  it('si el "nombre" es la dirección, el campo arranca vacío para escribir el real', () => {
+    expect(valoresParaCompletar({ full_name: 'Formosa 5176', phone: null, email: null }, 'Formosa 5176, CABA').nombre).toBe('')
+  })
+
+  it('sin contacto, todo vacío', () => {
+    expect(valoresParaCompletar(null, 'x')).toEqual({ nombre: '', telefono: '', email: '' })
+  })
+})
+
+describe('esRespuestaDatosDelCliente', () => {
+  it('reconoce la respuesta de la barrera y nada más', () => {
+    expect(esRespuestaDatosDelCliente({ code: 'DATOS_DEL_CLIENTE', faltan: ['email'] })).toBe(true)
+    expect(esRespuestaDatosDelCliente({ error: 'otra cosa' })).toBe(false)
+    expect(esRespuestaDatosDelCliente(null)).toBe(false)
   })
 })

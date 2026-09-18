@@ -27,18 +27,18 @@ async function leer() {
       .select('id, appraisal_id, created_at, status, commercial_status, address, expensas, portal_data, landing_answers')
       .range(0, 4999),
     db.from('deals')
-      .select('id, appraisal_id, property_id, stage, property_address, assigned_to, visit_data, contacts(full_name, phone)')
+      .select('id, appraisal_id, property_id, stage, property_address, assigned_to, visit_data, contacts(full_name, phone, email)')
       .range(0, 4999),
     db.from('appraisals').select('id, property_title, property_location').range(0, 4999),
   ])
   for (const r of [props, deals, tasaciones]) if (r.error) throw new Error(r.error.message)
 
   const procesos: ProcesoR[] = (deals.data ?? []).map(d => {
-    const c = (Array.isArray(d.contacts) ? d.contacts[0] : d.contacts) as { full_name?: string; phone?: string } | null
+    const c = (Array.isArray(d.contacts) ? d.contacts[0] : d.contacts) as { full_name?: string; phone?: string; email?: string } | null
     return {
       id: d.id, appraisal_id: d.appraisal_id, property_id: d.property_id, stage: d.stage,
       property_address: d.property_address, assigned_to: d.assigned_to, visit_data: d.visit_data,
-      contactoNombre: c?.full_name ?? null, contactoTelefono: c?.phone ?? null,
+      contactoNombre: c?.full_name ?? null, contactoTelefono: c?.phone ?? null, contactoEmail: c?.email ?? null,
     }
   })
   return {

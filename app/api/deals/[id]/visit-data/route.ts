@@ -3,6 +3,8 @@ import { saveVisitData, getVisitData, markVisitCompleted } from '@/lib/supabase/
 import { sanearSnapshotVisita } from '@/lib/supabase/visit-data-sanear'
 import { requireAuth } from '@/lib/auth/require-role'
 import { canAccessDeal } from '@/lib/auth/entity-access'
+import { leerDatosDelProceso, respuestaDatosIncompletos } from '@/lib/deals/datos-cliente'
+import { ETAPAS_CON_VISITA_PENDIENTE } from '@/lib/pipeline/visita-datos'
 
 /**
  * Datos de la visita de un deal. Las funciones de `lib/supabase/visit-data`
@@ -38,6 +40,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Si el proceso ya había pasado la visita, los datos se guardan igual pero la
   // etapa NO se toca (ver `markVisitCompleted`). No es un error para quien
   // estaba cargando: lo que quería guardar quedó guardado.
+  // Finalizar exige los datos del cliente (2026-09-18) — pero solo cuando de
+  // verdad se va a mover la etapa. Lo cargado en la visita ya quedó guardado
+  // arriba: completar los datos y reintentar no pierde nada.
+  if (complete) {
+    const datos = await leerDatosDelProceso(id)
+    const pendiente = !!datos && (ETAPAS_CON_VISITA_PENDIENTE as readonly string[]).includes(datos.stage)
+    if (datos && pendiente && datos.faltan.length > 0) return respuestaDatosIncompletos(id, datos.faltan)
+  }
   const etapaMovida = complete ? await markVisitCompleted(id) : false
   return NextResponse.json({ data: saved, ...(complete && !etapaMovida ? { etapaSinCambios: true } : {}) })
 }

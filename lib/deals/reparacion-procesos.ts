@@ -42,6 +42,7 @@ export interface ProcesoR {
   assigned_to: string | null
   contactoNombre: string | null
   contactoTelefono: string | null
+  contactoEmail?: string | null
   visit_data: unknown
 }
 
@@ -183,6 +184,7 @@ export function planificarReparacion(entrada: {
       stage: d.stage,
       contactoNombre: d.contactoNombre,
       contactoTelefono: d.contactoTelefono,
+      contactoEmail: d.contactoEmail,
       propertyAddress: d.property_address,
       assignedTo: d.assigned_to,
     })

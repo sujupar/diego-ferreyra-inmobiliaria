@@ -28,7 +28,9 @@ export async function encontrarOCrearContacto(datos: DatosContacto): Promise<str
   const telefono = (datos.telefono ?? '').trim()
 
   if (email) {
-    const { data } = await supabase.from('contacts').select('id').eq('email', email).maybeSingle()
+    // `limit(1)`: el email no es único en la base; con dos contactos iguales,
+    // `maybeSingle` sin límite daba error y se creaba un TERCERO.
+    const { data } = await supabase.from('contacts').select('id').eq('email', email).limit(1).maybeSingle()
     if (data?.id) return data.id as string
   }
 

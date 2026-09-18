@@ -22,6 +22,7 @@ const { estado } = vi.hoisted(() => ({
     visitData: null as unknown,
     rol: 'admin',
     accedeAlProceso: true,
+    faltanDatos: [] as string[],
   },
 }))
 
@@ -29,6 +30,10 @@ vi.mock('@/lib/auth/require-role', () => ({
   requireAuth: vi.fn(async () => ({ id: 'user-1', profile: { id: 'user-1', role: estado.rol } })),
 }))
 vi.mock('@/lib/auth/entity-access', () => ({ canAccessDeal: vi.fn(async () => estado.accedeAlProceso) }))
+vi.mock('@/lib/deals/datos-cliente', async () => {
+  const real = await vi.importActual<typeof import('@/lib/deals/datos-cliente')>('@/lib/deals/datos-cliente')
+  return { ...real, leerDatosDelProceso: vi.fn(async () => ({ stage: 'appraisal_sent', faltan: estado.faltanDatos })) }
+})
 vi.mock('@/lib/supabase/properties', () => ({
   createProperty: vi.fn(async (input: Record<string, unknown>) => { estado.creadas.push(input); return 'prop-nueva' }),
   getPropertiesListPage: vi.fn(async () => ({ data: [], total: 0, hasMore: false })),
@@ -95,6 +100,7 @@ beforeEach(() => {
   estado.visitData = null
   estado.rol = 'admin'
   estado.accedeAlProceso = true
+  estado.faltanDatos = []
 })
 
 describe('POST /api/properties — vínculo con el proceso', () => {
@@ -219,5 +225,31 @@ describe('POST /api/properties — quién puede mover el proceso', () => {
     expect(res.status).toBe(200)
     expect(estado.vinculadas).toHaveLength(0)
     expect((await res.json()).avisoProceso).toMatch(/proceso/i)
+  })
+})
+
+describe('POST /api/properties — datos del cliente para captar', () => {
+  it('con el proceso elegido incompleto: 422, y la ficha NO se crea', async () => {
+    estado.faltanDatos = ['email']
+    const res = await POST(pedido({ ...base, deal_id: 'deal-1' }))
+    expect(res.status).toBe(422)
+    expect(await res.json()).toMatchObject({ code: 'DATOS_DEL_CLIENTE', faltan: ['email'], dealId: 'deal-1' })
+    expect(estado.creadas).toHaveLength(0)
+    expect(estado.vinculadas).toHaveLength(0)
+  })
+
+  it('desde la tasación, con su proceso incompleto: también frena y dice de qué proceso', async () => {
+    estado.faltanDatos = ['telefono', 'email']
+    estado.dealsDeLaTasacion = [{ id: 'deal-7', property_id: null }]
+    const res = await POST(pedido({ ...base, appraisal_id: 'tasacion-1' }))
+    expect(res.status).toBe(422)
+    expect((await res.json()).dealId).toBe('deal-7')
+    expect(estado.creadas).toHaveLength(0)
+  })
+
+  it('sin proceso no hay nada que exigir: se crea como antes', async () => {
+    estado.faltanDatos = ['email']
+    const res = await POST(pedido(base))
+    expect(res.status).toBe(200)
   })
 })

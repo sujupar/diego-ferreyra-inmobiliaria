@@ -53,3 +53,17 @@ describe('guardarDatosDeVisita', () => {
     expect(cuerpo).not.toHaveProperty('complete')
   })
 })
+
+describe('guardarDatosDeVisita — datos del cliente', () => {
+  it('distingue la barrera de datos del cliente de un error común', async () => {
+    const buscar = vi.fn(async () => new Response(JSON.stringify({ code: 'DATOS_DEL_CLIENTE', faltan: ['email'], error: 'Para avanzar falta el email del cliente.' }), { status: 422 }))
+    const r = await guardarDatosDeVisita('deal-1', { snapshot: {}, complete: true }, buscar as unknown as typeof fetch)
+    expect(r).toEqual({ ok: false, error: 'Para avanzar falta el email del cliente.', faltanDatosCliente: true })
+  })
+
+  it('un 422 cualquiera no es la barrera', async () => {
+    const buscar = vi.fn(async () => new Response(JSON.stringify({ error: 'otra cosa' }), { status: 422 }))
+    const r = await guardarDatosDeVisita('deal-1', { snapshot: {} }, buscar as unknown as typeof fetch)
+    expect(r.faltanDatosCliente).toBeUndefined()
+  })
+})

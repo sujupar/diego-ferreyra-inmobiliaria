@@ -58,10 +58,16 @@ interface Props {
    * visita ya ocurrió, sin volver a mover ninguna etapa.
    */
   modo?: ModoVisita
+  /**
+   * Finalizar lo frenó el servidor porque faltan datos del cliente
+   * (2026-09-18). Lo cargado quedó guardado: la ficha abre la ventana de datos
+   * y, al guardarlos, llama `reintentar` para finalizar otra vez.
+   */
+  onFaltanDatosCliente?: (reintentar: () => void) => void
   onCompleted: () => void
 }
 
-export function VisitDataForm({ dealId, initial, neighborhood, modo = 'finalizar', onCompleted }: Props) {
+export function VisitDataForm({ dealId, initial, neighborhood, modo = 'finalizar', onFaltanDatosCliente, onCompleted }: Props) {
   const [sale, setSale] = useState<SaleVisitData>(initial?.sale || EMPTY_SALE)
   const [purchase, setPurchase] = useState<PurchaseVisitData>(initial?.purchase || EMPTY_PURCHASE)
   // Secciones 08 y 09 (2026-09-14): lo que piden los portales y la landing.
@@ -152,6 +158,10 @@ export function VisitDataForm({ dealId, initial, neighborhood, modo = 'finalizar
         : { snapshot: { sale, purchase, portales, landing } },
     )
     setFinalizing(false)
+    if (!r.ok && r.faltanDatosCliente && onFaltanDatosCliente) {
+      onFaltanDatosCliente(() => { void handleFinalize() })
+      return
+    }
     if (!r.ok) { setErrorFinalizar(r.error); return }
     onCompleted()
   }

@@ -19,6 +19,7 @@
     "app/(dashboard)/appraisal/new/page.tsx",
     "app/(dashboard)/properties/new/page.tsx",
     "app/(dashboard)/pipeline/[id]/page.tsx",
+    "app/(dashboard)/pipeline/new/page.tsx",
     "app/(dashboard)/scheduled-appraisals/[id]/page.tsx",
     "app/(dashboard)/_components/FlowHistoryCard.tsx",
     "app/api/flow-history/route.ts"

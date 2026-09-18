@@ -11,6 +11,8 @@ import { Loader2, Home, DollarSign, FileText, MapPin, ArrowLeft, User, Layers, U
 import { uploadPlans, validatePlanFile } from '@/lib/properties/upload-plans'
 import type { VisitDataSnapshot } from '@/types/visit-data.types'
 import { ElegirCliente } from '@/components/deals/ElegirCliente'
+import { CompletarDatosCliente } from '@/components/deals/CompletarDatosCliente'
+import { esRespuestaDatosDelCliente } from '@/lib/deals/proceso-manual'
 import { OPERACIONES } from '@/lib/properties/operacion'
 import { GenerarDescripcion } from '@/components/properties/alta/GenerarDescripcion'
 import { LocationPicker } from '@/components/properties/LocationPicker'
@@ -66,6 +68,10 @@ function NewPropertyContent() {
     // descripción que el asesor está esperando. Se bloquea el envío, no la
     // edición del resto del formulario.
     const [generandoDescripcion, setGenerandoDescripcion] = useState(false)
+    // Captar mueve el proceso a "Captada": si al cliente le faltan datos, el
+    // servidor frena el alta (422) y se piden acá; al guardarlos, se reenvía.
+    const [completarDe, setCompletarDe] = useState<string | null>(null)
+    const formRef = useRef<HTMLFormElement>(null)
     const planInput = useRef<HTMLInputElement>(null)
 
     // Cargar lista de asesores
@@ -315,6 +321,10 @@ function NewPropertyContent() {
                     router.push(`/properties/${err.propertyId}`)
                     return
                 }
+                if (esRespuestaDatosDelCliente(err) && err.dealId) {
+                    setCompletarDe(err.dealId)
+                    return
+                }
                 throw new Error(err.error || 'Error al crear')
             }
 
@@ -410,7 +420,16 @@ function NewPropertyContent() {
                 </div>
             ) : null}
 
-            <form onSubmit={handleSubmit} className="space-y-6">
+            {completarDe && (
+                <CompletarDatosCliente
+                    dealId={completarDe}
+                    motivo="captar la propiedad"
+                    onCerrar={() => setCompletarDe(null)}
+                    onListo={() => { setCompletarDe(null); formRef.current?.requestSubmit() }}
+                />
+            )}
+
+            <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
                 <Card>
                     <CardHeader><CardTitle className="text-lg flex items-center gap-2"><MapPin className="h-5 w-5" />Ubicación</CardTitle></CardHeader>
                     <CardContent className="space-y-4">

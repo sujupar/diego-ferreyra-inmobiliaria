@@ -7,6 +7,7 @@ import { resolverAlcanceAsignado } from '@/lib/auth/scope'
 import { notifyDealCreated } from '@/lib/email/notifications/deal-created'
 import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
 import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
+import { validarDatosCliente, puedeReasignarAsesor } from '@/lib/deals/proceso-manual'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -76,34 +77,55 @@ export async function POST(request: NextRequest) {
     if (!neighborhood?.trim()) return NextResponse.json({ error: 'neighborhood requerido' }, { status: 400 })
     if (!rooms || rooms < 1) return NextResponse.json({ error: 'rooms requerido' }, { status: 400 })
 
+    // DATOS DEL CLIENTE OBLIGATORIOS (2026-09-18). Esta ruta solo exigía nombre
+    // y dirección: teléfono, email y asesor eran opcionales, y por acá nacieron
+    // procesos que nadie podía llamar ni veía en su CRM. Exige lo mismo que la
+    // tasación manual (`validarDatosCliente`), y un asesor coordina a SU nombre:
+    // un proceso asignado a otro le desaparecería apenas lo crea.
+    const cliente = validarDatosCliente({ nombre: contact_name, telefono: contact_phone, email: contact_email }, property_address)
+    const asesorId = puedeReasignarAsesor(user.profile.role)
+      ? (typeof assigned_to === 'string' ? assigned_to.trim() : '')
+      : (user.profile.id || user.id)
+    const errores = [
+      ...(cliente.ok ? [] : cliente.errores),
+      ...(asesorId ? [] : ['Elegí el asesor: sin asesor el proceso no le aparece en su CRM.']),
+    ]
+    if (!cliente.ok || errores.length > 0) {
+      return NextResponse.json({ error: errores.join(' '), errores }, { status: 400 })
+    }
+    const { nombre: nombreCliente, telefono: telefonoCliente, email: emailCliente } = cliente.valor
+
     const supabase = getAdmin()
 
     // Create or find contact — dedupe by email first, then phone. The original
     // bug surfaced this gap: when only phone was provided, every coordinar
     // produced a brand-new contact, leaving the contacts table littered.
     let contactId: string | null = null
-    if (contact_email) {
-      const { data: existing } = await supabase.from('contacts').select('id').eq('email', contact_email).maybeSingle()
+    {
+      // Se busca con el email tal cual lo tipearon Y en minúsculas: los viejos
+      // pueden estar guardados con mayúsculas y no hay que duplicarlos.
+      const variantes = [...new Set([String(contact_email).trim(), emailCliente])]
+      const { data: existing } = await supabase.from('contacts').select('id').in('email', variantes).limit(1).maybeSingle()
       if (existing) contactId = existing.id
     }
-    if (!contactId && contact_phone) {
+    if (!contactId) {
       // Por últimos 10 dígitos (`phone_norm`), no por igualdad exacta: el
       // coordinador tipea el teléfono a mano libre ("11 4937-2737") y el
       // contacto puede estar guardado como '+549...' o '+54...'. La igualdad
       // exacta creaba un contacto NUEVO por cada formato distinto — es el
       // mismo bug del '9' argentino que dejó mudo al agente el 2026-08-15.
-      const clave = ultimos10Digitos(contact_phone)
+      const clave = ultimos10Digitos(telefonoCliente)
       const { data: existing } = clave
         ? await supabase.from('contacts').select('id').eq('phone_norm', clave)
             .order('created_at', { ascending: false }).limit(1).maybeSingle()
-        : await supabase.from('contacts').select('id').eq('phone', contact_phone).maybeSingle()
+        : await supabase.from('contacts').select('id').eq('phone', telefonoCliente).maybeSingle()
       if (existing) contactId = existing.id
     }
 
     if (!contactId) {
       const { data: newContact, error: cErr } = await supabase
         .from('contacts')
-        .insert({ full_name: contact_name, phone: contact_phone || null, email: contact_email || null, origin: origin || null, assigned_to: assigned_to || null })
+        .insert({ full_name: nombreCliente, phone: telefonoCliente, email: emailCliente, origin: origin || null, assigned_to: asesorId })
         .select('id').single()
       if (cErr) throw cErr
       contactId = newContact.id
@@ -119,7 +141,7 @@ export async function POST(request: NextRequest) {
       scheduled_date: scheduled_date || null,
       scheduled_time: scheduled_time || null,
       origin: origin || null,
-      assigned_to: assigned_to || null,
+      assigned_to: asesorId,
       created_by: user.id,
       notes: notes || null,
       property_type,
@@ -130,14 +152,14 @@ export async function POST(request: NextRequest) {
     } as any)
 
     // Auto-create tasks
-    if (assigned_to) {
+    if (asesorId) {
       try {
         // Task for asesor: new assignment
         await createTask({
           type: 'new_assignment',
           title: `Tasación coordinada: ${property_address}`,
-          description: `Contacto: ${contact_name}. ${scheduled_date ? 'Fecha: ' + scheduled_date : ''}`,
-          assigned_to,
+          description: `Contacto: ${nombreCliente}. ${scheduled_date ? 'Fecha: ' + scheduled_date : ''}`,
+          assigned_to: asesorId,
           deal_id: dealId,
           contact_id: contactId,
         })

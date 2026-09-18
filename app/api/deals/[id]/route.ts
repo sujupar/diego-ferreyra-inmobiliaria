@@ -4,6 +4,7 @@ import { getDeal, updateDealNotes, updateDealSchedule } from '@/lib/supabase/dea
 import { requireAuth, requireRole } from '@/lib/auth/require-role'
 import { canAccessDeal } from '@/lib/auth/entity-access'
 import { puedeReasignarAsesor } from '@/lib/deals/proceso-manual'
+import { esAsesorAsignable } from '@/lib/deals/asesor-asignable'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const TIME_RE = /^\d{2}:\d{2}(:\d{2})?$/
@@ -57,17 +58,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
 
       const admin = createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-      const { data: perfil } = await admin
-        .from('profiles')
-        .select('id, role, is_active')
-        .eq('id', nuevoAsesor)
-        .maybeSingle()
-
-      // Asignárselo a alguien dado de baja, o a un abogado, lo dejaría otra vez
-      // sin dueño real: el mismo agujero por otro camino. Los roles válidos son
-      // los mismos que ofrece `GET /api/users/advisors`.
-      const destino = perfil as { id: string; role: string; is_active: boolean } | null
-      if (!destino || !destino.is_active || !['asesor', 'dueno'].includes(destino.role)) {
+      if (!(await esAsesorAsignable(admin, nuevoAsesor))) {
         return NextResponse.json(
           { error: 'Ese usuario no puede tener procesos asignados (tiene que ser un asesor activo).' },
           { status: 400 },

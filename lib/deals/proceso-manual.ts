@@ -60,7 +60,7 @@ export interface ClienteNuevo {
   telefono: string
   /** Últimos 10 dígitos: con esto se busca si el contacto ya existe. */
   telefonoNormalizado: string
-  email: string | null
+  email: string
   origen: OrigenManual
   asesorId: string
   direccion: string
@@ -84,22 +84,54 @@ function esFechaReal(valor: string): boolean {
   return fecha.getUTCFullYear() === a && fecha.getUTCMonth() === m - 1 && fecha.getUTCDate() === d
 }
 
+export interface DatosCliente {
+  nombre: string
+  telefono: string
+  /** Últimos 10 dígitos: con esto se busca si el contacto ya existe. */
+  telefonoNormalizado: string
+  email: string
+}
+
 /**
- * Valida y limpia los datos del cliente nuevo. Junta TODOS los errores: que el
- * asesor los corrija de una vez y no de a uno.
+ * Lo mínimo para trabajar un proceso: nombre real, teléfono y email, los tres
+ * obligatorios (el email, decisión del dueño del 2026-09-18). Es LA regla: la
+ * usan crear un proceso, "Coordinar tasación" y completar los datos de uno que
+ * quedó a medias. Junta todos los errores para corregirlos de una vez.
+ *
+ * Con `direccion`, además rechaza que el nombre sea la dirección: así nacían
+ * los contactos del camino viejo.
  */
-export function validarClienteNuevo(input: ClienteNuevoInput): Validacion<ClienteNuevo> {
+export function validarDatosCliente(
+  input: { nombre?: string | null; telefono?: string | null; email?: string | null },
+  direccion?: string | null,
+): Validacion<DatosCliente> {
   const errores: string[] = []
 
   const nombre = (input.nombre ?? '').trim()
   if (nombre.length < 2) errores.push('Falta el nombre del propietario.')
+  else if (nombreEsLaDireccion(normalizar(nombre), normalizar(direccion))) {
+    errores.push('El nombre del propietario no puede ser la dirección de la propiedad.')
+  }
 
   const telefono = (input.telefono ?? '').trim()
   const telefonoNormalizado = ultimos10Digitos(telefono)
   if (!telefonoNormalizado) errores.push('El teléfono tiene que tener al menos 10 dígitos (código de área y número).')
 
-  const emailCrudo = (input.email ?? '').trim().toLowerCase()
-  if (emailCrudo && !EMAIL.test(emailCrudo)) errores.push('El email no parece válido.')
+  const email = (input.email ?? '').trim().toLowerCase()
+  if (!email) errores.push('Falta el email.')
+  else if (!EMAIL.test(email)) errores.push('El email no parece válido.')
+
+  if (errores.length > 0) return { ok: false, errores }
+  return { ok: true, valor: { nombre, telefono, telefonoNormalizado: telefonoNormalizado!, email } }
+}
+
+/**
+ * Valida y limpia los datos del cliente nuevo. Junta TODOS los errores: que el
+ * asesor los corrija de una vez y no de a uno.
+ */
+export function validarClienteNuevo(input: ClienteNuevoInput): Validacion<ClienteNuevo> {
+  const cliente = validarDatosCliente(input, input.direccion)
+  const errores: string[] = cliente.ok ? [] : [...cliente.errores]
 
   const origen = (input.origen ?? '').trim() as OrigenManual
   if (!ORIGENES_MANUALES.includes(origen)) {
@@ -126,14 +158,11 @@ export function validarClienteNuevo(input: ClienteNuevoInput): Validacion<Client
   const fechaVisita = (input.fechaVisita ?? '').trim()
   if (!esFechaReal(fechaVisita)) errores.push('Poné la fecha de la visita con el formato AAAA-MM-DD.')
 
-  if (errores.length > 0) return { ok: false, errores }
+  if (errores.length > 0 || !cliente.ok) return { ok: false, errores }
   return {
     ok: true,
     valor: {
-      nombre,
-      telefono,
-      telefonoNormalizado: telefonoNormalizado!,
-      email: emailCrudo || null,
+      ...cliente.valor,
       origen,
       asesorId,
       direccion,
@@ -247,9 +276,13 @@ export interface DatosDelProceso {
   stage?: string | null
   contactoNombre?: string | null
   contactoTelefono?: string | null
+  contactoEmail?: string | null
   propertyAddress?: string | null
   assignedTo?: string | null
 }
+
+/** Lo que puede faltarle a un proceso. Mismo orden en que se pide en pantalla. */
+export type CampoFaltante = 'nombre' | 'telefono' | 'email' | 'asesor'
 
 /**
  * ¿El "nombre" del contacto es en realidad la dirección? Así nacían los
@@ -265,28 +298,100 @@ function nombreEsLaDireccion(nombre: string, direccion: string): boolean {
 }
 
 /**
- * Qué le falta a un proceso para ser un proceso de verdad, en palabras para el
- * asesor. Vacío = está completo. Sirve para el aviso de la ficha: decir QUÉ
- * falta en vez de un genérico "completá los datos".
+ * Qué le falta a un proceso para poder trabajarse: nombre real, teléfono
+ * (10 dígitos), email válido y asesor. Vacío = completo. Es LA regla que usan
+ * las rutas que mueven etapas (la barrera), la ventana que pide los datos y el
+ * aviso de la ficha: no puede haber dos criterios distintos de "completo".
  */
+export function camposFaltantes(deal: DatosDelProceso): CampoFaltante[] {
+  const faltan: CampoFaltante[] = []
+  const nombre = normalizar(deal.contactoNombre)
+  if (!nombre || nombreEsLaDireccion(nombre, normalizar(deal.propertyAddress))) faltan.push('nombre')
+  if (!ultimos10Digitos(deal.contactoTelefono ?? '')) faltan.push('telefono')
+  if (!EMAIL.test((deal.contactoEmail ?? '').trim().toLowerCase())) faltan.push('email')
+  if (!(deal.assignedTo ?? '').trim()) faltan.push('asesor')
+  return faltan
+}
+
 /**
- * Etapas donde NO se exige nada: una solicitud del embudo todavía no tiene
- * asesor por diseño (se asigna al coordinar), y un proceso cerrado no tiene
- * nada que completar. Sin esto, el aviso salía en CADA solicitud nueva.
+ * Etapas donde el AVISO no se muestra: una solicitud del embudo todavía no
+ * tiene asesor por diseño (se asigna al coordinar), y un proceso cerrado no
+ * tiene nada que completar. Sin esto, el aviso salía en CADA solicitud nueva.
  */
 const ETAPAS_SIN_EXIGENCIA: readonly string[] = ['request', 'clase_gratuita', 'lost', 'comprador']
 
+/**
+ * Lo mismo que `camposFaltantes`, en palabras para el aviso de la ficha: decir
+ * QUÉ falta en vez de un genérico "completá los datos".
+ */
 export function faltantesDelProceso(deal: DatosDelProceso): string[] {
   if (deal.stage && ETAPAS_SIN_EXIGENCIA.includes(deal.stage)) return []
-  const faltan: string[] = []
-  const nombre = normalizar(deal.contactoNombre)
-  if (!nombre) faltan.push('el nombre del propietario')
-  else if (nombreEsLaDireccion(nombre, normalizar(deal.propertyAddress))) {
-    faltan.push('el nombre real del propietario (hoy figura la dirección)')
+  return camposFaltantes(deal).map(c => {
+    if (c === 'nombre') {
+      return normalizar(deal.contactoNombre)
+        ? 'el nombre real del propietario (hoy figura la dirección)'
+        : 'el nombre del propietario'
+    }
+    return { telefono: 'el teléfono', email: 'el email', asesor: 'el asesor' }[c]
+  })
+}
+
+/** Código de la respuesta 422 de la barrera; la pantalla lo reconoce para abrir la ventana. */
+export const CODIGO_DATOS_DEL_CLIENTE = 'DATOS_DEL_CLIENTE'
+
+export function esRespuestaDatosDelCliente(j: unknown): j is { code: string; faltan: CampoFaltante[]; dealId?: string; error?: string } {
+  return !!j && typeof j === 'object' && (j as { code?: unknown }).code === CODIGO_DATOS_DEL_CLIENTE
+}
+
+/**
+ * Lo que precarga la ventana de completar: lo que ya está bien, cargado (para
+ * no hacerlo tipear de nuevo); lo que falta o está mal, vacío. En particular,
+ * si el "nombre" es la dirección, el campo arranca vacío para escribir el real.
+ */
+export function valoresParaCompletar(
+  contacto: { full_name?: string | null; phone?: string | null; email?: string | null } | null | undefined,
+  direccion: string | null | undefined,
+): { nombre: string; telefono: string; email: string } {
+  const faltan = camposFaltantes({
+    contactoNombre: contacto?.full_name, contactoTelefono: contacto?.phone, contactoEmail: contacto?.email,
+    propertyAddress: direccion, assignedTo: 'no-aplica',
+  })
+  return {
+    nombre: faltan.includes('nombre') ? '' : (contacto?.full_name ?? '').trim(),
+    // Un teléfono incompleto se deja cargado: es más fácil corregirlo que retipearlo.
+    telefono: (contacto?.phone ?? '').trim(),
+    email: faltan.includes('email') ? '' : (contacto?.email ?? '').trim(),
   }
-  if (!(deal.contactoTelefono ?? '').trim()) faltan.push('el teléfono')
-  if (!(deal.assignedTo ?? '').trim()) faltan.push('el asesor')
-  return faltan
+}
+
+function unir(partes: string[]): string {
+  return partes.length > 1 ? `${partes.slice(0, -1).join(', ')} y ${partes[partes.length - 1]}` : partes[0]
+}
+
+/** El mensaje que ve el asesor cuando el servidor frena un avance. */
+export function textoFaltantes(faltan: CampoFaltante[]): string {
+  const delCliente = faltan
+    .filter(c => c !== 'asesor')
+    .map(c => ({ nombre: 'el nombre', telefono: 'el teléfono', email: 'el email' } as const)[c as 'nombre' | 'telefono' | 'email'])
+  const asesor = faltan.includes('asesor')
+  if (delCliente.length === 0) return asesor ? 'Para avanzar falta asignar el asesor.' : ''
+  const verbo = delCliente.length + (asesor ? 1 : 0) > 1 ? 'faltan' : 'falta'
+  return `Para avanzar ${verbo} ${unir(delCliente)} del cliente${asesor ? ', y el asesor' : ''}.`
+}
+
+/**
+ * ¿Pasar de `desde` a `hacia` exige los datos completos del cliente? Sí para
+ * todo AVANCE (y para reagendar: se va a volver a contactar al cliente). No
+ * para descartar ni para "no se realizó la visita": exigir datos para cerrar un
+ * proceso muerto invita a inventarlos (decisión del dueño, 2026-09-18). Y
+ * quedarse en la misma etapa —otro seguimiento dentro de Seguimiento— no es
+ * moverse.
+ */
+const DESTINOS_QUE_EXIGEN_DATOS: readonly string[] = ['scheduled', 'visited', 'appraisal_sent', 'followup', 'captured']
+
+export function exigeDatosParaMover(desde: string | null | undefined, hacia: string): boolean {
+  if (desde === hacia) return false
+  return DESTINOS_QUE_EXIGEN_DATOS.includes(hacia)
 }
 
 /**

@@ -167,8 +167,8 @@ export default function AgendarTasacionPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="contactEmail">Email</Label>
-              <Input id="contactEmail" type="email" value={form.contactEmail} onChange={e => updateField('contactEmail', e.target.value)} placeholder="juan@email.com" />
+              <Label htmlFor="contactEmail">Email *</Label>
+              <Input id="contactEmail" type="email" value={form.contactEmail} onChange={e => updateField('contactEmail', e.target.value)} placeholder="juan@email.com" required />
             </div>
           </CardContent>
         </Card>

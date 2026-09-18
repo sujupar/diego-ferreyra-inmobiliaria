@@ -1,4 +1,5 @@
 import type { DealStage } from '@/lib/supabase/deals'
+import { esRespuestaDatosDelCliente } from '@/lib/deals/proceso-manual'
 
 /**
  * Cuándo se cargan, se miran y se corrigen los datos de la visita.
@@ -44,6 +45,12 @@ export interface ResultadoGuardado {
   ok: boolean
   /** Mensaje ya legible para el asesor. Vacío si salió bien. */
   error: string
+  /**
+   * El servidor no dejó finalizar porque faltan datos del cliente (2026-09-18).
+   * Lo cargado en la visita SÍ quedó guardado; la pantalla pide los datos y
+   * reintenta.
+   */
+  faltanDatosCliente?: true
 }
 
 /**
@@ -65,8 +72,9 @@ export async function guardarDatosDeVisita(
     if (res.ok) return { ok: true, error: '' }
     // El cuerpo puede no ser JSON (una página de error 504 del gateway): se lee
     // con cuidado para no tapar el problema real con "Unexpected token '<'".
-    const detalle = await res.json().then((j: { error?: string }) => j?.error).catch(() => null)
-    return { ok: false, error: detalle || `No se pudo guardar (HTTP ${res.status}).` }
+    const j = await res.json().catch(() => null) as { error?: string } | null
+    const error = j?.error || `No se pudo guardar (HTTP ${res.status}).`
+    return esRespuestaDatosDelCliente(j) ? { ok: false, error, faltanDatosCliente: true } : { ok: false, error }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'No se pudo guardar.' }
   }
