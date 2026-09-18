@@ -31,9 +31,12 @@
 /**
  * Cada plantilla con botón, con su gemela sin botón.
  *
- * Una plantilla con botón que no esté acá se trata como SIN botón — nunca se le
- * manda el dato, así que un nombre nuevo configurado en Netlify no rompe nada:
- * sale sin botón hasta que se la dé de alta acá con su gemela.
+ * Una plantilla que no esté acá se trata como SIN botón: nunca se le manda el
+ * dato. OJO — eso solo es seguro si de verdad no tiene botón. Si alguien crea
+ * una plantilla nueva CON botón (una `consulta_portal_v3`) y la configura en
+ * Netlify sin darla de alta acá, Meta rechaza TODOS los avisos con el mismo
+ * 131008. Antes de cambiar `WHATSAPP_TEMPLATE_NAME` a una plantilla con botón,
+ * se agrega acá con su gemela sin botón (mismo texto, mismos 10 datos).
  */
 export const PLANTILLA_SIN_BOTON: Readonly<Record<string, string>> = {
   consulta_portal_v2: 'consulta_portal_util',
