@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { camposFaltantes, textoFaltantes, type CampoFaltante } from './proceso-manual'
+import { camposFaltantes, textoFaltantes, CODIGO_DATOS_DEL_CLIENTE, type CampoFaltante } from './proceso-manual'
 
 /**
  * La barrera de "datos del cliente para avanzar" (2026-09-18), del lado del
@@ -34,9 +34,6 @@ export async function leerDatosDelProceso(dealId: string): Promise<{ stage: stri
     }),
   }
 }
-
-/** Código que la pantalla reconoce para abrir la ventana de completar datos. */
-export const CODIGO_DATOS_DEL_CLIENTE = 'DATOS_DEL_CLIENTE'
 
 export function respuestaDatosIncompletos(dealId: string, faltan: CampoFaltante[]) {
   return NextResponse.json(

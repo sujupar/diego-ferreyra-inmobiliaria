@@ -13,6 +13,8 @@ import {
   camposFaltantes,
   exigeDatosParaMover,
   textoFaltantes,
+  valoresParaCompletar,
+  esRespuestaDatosDelCliente,
 } from './proceso-manual'
 
 /**
@@ -390,5 +392,28 @@ describe('textoFaltantes', () => {
     expect(textoFaltantes(['telefono', 'email'])).toBe('Para avanzar faltan el teléfono y el email del cliente.')
     expect(textoFaltantes(['nombre', 'telefono', 'email', 'asesor'])).toBe('Para avanzar faltan el nombre, el teléfono y el email del cliente, y el asesor.')
     expect(textoFaltantes(['asesor'])).toBe('Para avanzar falta asignar el asesor.')
+  })
+})
+
+describe('valoresParaCompletar — lo que precarga la ventana', () => {
+  it('lo que está bien viene cargado; lo que falta, vacío', () => {
+    expect(valoresParaCompletar({ full_name: 'Marta Gómez', phone: '1155554444', email: null }, 'Calle 1'))
+      .toEqual({ nombre: 'Marta Gómez', telefono: '1155554444', email: '' })
+  })
+
+  it('si el "nombre" es la dirección, el campo arranca vacío para escribir el real', () => {
+    expect(valoresParaCompletar({ full_name: 'Formosa 5176', phone: null, email: null }, 'Formosa 5176, CABA').nombre).toBe('')
+  })
+
+  it('sin contacto, todo vacío', () => {
+    expect(valoresParaCompletar(null, 'x')).toEqual({ nombre: '', telefono: '', email: '' })
+  })
+})
+
+describe('esRespuestaDatosDelCliente', () => {
+  it('reconoce la respuesta de la barrera y nada más', () => {
+    expect(esRespuestaDatosDelCliente({ code: 'DATOS_DEL_CLIENTE', faltan: ['email'] })).toBe(true)
+    expect(esRespuestaDatosDelCliente({ error: 'otra cosa' })).toBe(false)
+    expect(esRespuestaDatosDelCliente(null)).toBe(false)
   })
 })

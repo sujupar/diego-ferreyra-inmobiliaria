@@ -24,7 +24,8 @@ const CHANNEL_LABEL: Record<FollowUpChannel, string> = {
 const todayIsoDate = () => new Date().toISOString().slice(0, 10)
 import { ContactEditor } from '@/components/contacts/ContactEditor'
 import { modoDeVisita } from '@/lib/pipeline/visita-datos'
-import { faltantesDelProceso } from '@/lib/deals/proceso-manual'
+import { faltantesDelProceso, camposFaltantes, exigeDatosParaMover, esRespuestaDatosDelCliente } from '@/lib/deals/proceso-manual'
+import { CompletarDatosCliente } from '@/components/deals/CompletarDatosCliente'
 import { AsesorDelProceso } from '@/components/deals/AsesorDelProceso'
 
 const VisitDataForm = dynamic(
@@ -74,6 +75,9 @@ export default function DealDetailPage() {
 
   // Visit modal
   const [showVisitModal, setShowVisitModal] = useState(false)
+  // Ventana "Completá los datos del cliente para avanzar" (2026-09-18): qué se
+  // estaba intentando hacer, y cómo repetirlo cuando los datos queden completos.
+  const [completar, setCompletar] = useState<{ motivo?: string; reintentar: () => void } | null>(null)
   /**
    * `?visita=1` abre el formulario de visita apenas carga la ficha. Lo usa el
    * asistente de tasación cuando el proceso todavía no pasó por la visita: así
@@ -120,17 +124,62 @@ export default function DealDetailPage() {
     if (searchParams.get('editContact') === '1') setContactEditorOpen(true)
   }, [searchParams])
 
-  async function handleAdvance(nextStage: string, extraNotes?: string) {
+  // Qué se estaba haciendo, para el texto de la ventana de datos del cliente.
+  const MOTIVO_AVANCE: Record<string, string> = {
+    scheduled: 'reagendar la visita',
+    visited: 'finalizar la visita',
+    appraisal_sent: 'marcar la tasación como entregada',
+    followup: 'pasarlo a seguimiento',
+    captured: 'marcarlo como captado',
+  }
+
+  /**
+   * ¿Moverlo a `hacia` va a pedir datos del cliente? Se chequea ANTES para no
+   * hacer trabajo que después queda colgado (p. ej. la tarea de seguimiento).
+   * La barrera real es el servidor; esto solo evita el viaje de ida y vuelta.
+   */
+  function faltanDatosParaIr(hacia: string): boolean {
+    if (!deal || !exigeDatosParaMover(deal.stage, hacia)) return false
+    const c = deal.contacts || {}
+    return camposFaltantes({
+      contactoNombre: c.full_name, contactoTelefono: c.phone, contactoEmail: c.email,
+      propertyAddress: deal.property_address, assignedTo: deal.assigned_to,
+    }).length > 0
+  }
+
+  /**
+   * Avanza el proceso. Devuelve si avanzó. Antes no miraba la respuesta: un
+   * error del servidor se tragaba y la pantalla quedaba como si nada.
+   *
+   * `yaCompletado`: el reintento que viene de la ventana de datos NO vuelve a
+   * chequear con `deal` —en ese instante todavía tiene los datos viejos y la
+   * ventana se abriría en bucle—; va directo y el servidor decide.
+   */
+  async function handleAdvance(nextStage: string, extraNotes?: string, yaCompletado = false): Promise<boolean> {
+    const reintentar = () => { void handleAdvance(nextStage, extraNotes, true) }
+    if (!yaCompletado && faltanDatosParaIr(nextStage)) {
+      setCompletar({ motivo: MOTIVO_AVANCE[nextStage], reintentar })
+      return false
+    }
     setAdvancing(true)
     try {
-      await fetch(`/api/deals/${id}/advance`, {
+      const res = await fetch(`/api/deals/${id}/advance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stage: nextStage, notes: extraNotes || notes }),
       })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        if (esRespuestaDatosDelCliente(j)) { setCompletar({ motivo: MOTIVO_AVANCE[nextStage], reintentar }); return false }
+        toast.error((j as { error?: string }).error || 'No se pudo avanzar el proceso.')
+        return false
+      }
       await fetchDeal()
-    } catch (err) { alert('Error al avanzar') }
-    finally { setAdvancing(false) }
+      return true
+    } catch {
+      toast.error('No se pudo avanzar el proceso. Revisá la conexión.')
+      return false
+    } finally { setAdvancing(false) }
   }
 
   async function handleLost() {
@@ -196,7 +245,7 @@ export default function DealDetailPage() {
 
   // Followup submission: 1) crea task con fecha + canal, 2) avanza stage a followup
   // preservando el historial en deals.notes.
-  async function handleFollowupSubmit() {
+  async function handleFollowupSubmit(yaCompletado = false) {
     if (!followupNotes.trim()) {
       toast.error('Describí el seguimiento antes de continuar.')
       return
@@ -207,6 +256,12 @@ export default function DealDetailPage() {
     }
     if (!followupAllDay && !followupTime) {
       toast.error('Indicá una hora o marcá "Todo el día".')
+      return
+    }
+    // Los datos del cliente se piden ANTES de crear la tarea: si no, completar
+    // y reintentar dejaba dos tareas de seguimiento iguales.
+    if (!yaCompletado && faltanDatosParaIr('followup')) {
+      setCompletar({ motivo: MOTIVO_AVANCE.followup, reintentar: () => { void handleFollowupSubmit(true) } })
       return
     }
 
@@ -241,8 +296,11 @@ export default function DealDetailPage() {
       // Preserve historial en notes
       const header = `--- Seguimiento ${channelLabel} (${dateLabel} ${timeLabel}) ---`
       const combinedNotes = notes ? `${notes}\n\n${header}\n${followupNotes.trim()}` : `${header}\n${followupNotes.trim()}`
-      await handleAdvance('followup', combinedNotes)
-      toast.success(`Seguimiento agendado para el ${dateLabel}`)
+      // La tarea ya quedó creada: si el avance igual lo frena el servidor, la
+      // ventana de datos reintenta SOLO el avance (no vuelve a crear la tarea).
+      const avanzo = await handleAdvance('followup', combinedNotes, true)
+      if (avanzo) toast.success(`Seguimiento agendado para el ${dateLabel}`)
+      else toast.message('El seguimiento quedó agendado; falta completar los datos del cliente para moverlo de etapa.')
       setShowFollowupModal(false)
       setFollowupNotes('')
       setFollowupChannel('call')
@@ -375,6 +433,7 @@ export default function DealDetailPage() {
           stage: deal.stage,
           contactoNombre: contact.full_name,
           contactoTelefono: contact.phone,
+          contactoEmail: contact.email,
           propertyAddress: deal.property_address,
           assignedTo: deal.assigned_to,
         })
@@ -385,7 +444,7 @@ export default function DealDetailPage() {
               <p className="font-medium">A este proceso le falta {faltan.length > 1 ? `${faltan.slice(0, -1).join(', ')} y ${faltan[faltan.length - 1]}` : faltan[0]}.</p>
               <p className="text-muted-foreground mt-0.5">Sin eso no se puede contactar al cliente o no le aparece a ningún asesor en su CRM.</p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setContactEditorOpen(true)}>Completar contacto</Button>
+            <Button variant="outline" size="sm" onClick={() => setCompletar({ reintentar: () => {} })}>Completar datos</Button>
           </div>
         )
       })()}
@@ -446,6 +505,20 @@ export default function DealDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {completar && (
+        <CompletarDatosCliente
+          dealId={deal.id}
+          motivo={completar.motivo}
+          onCerrar={() => setCompletar(null)}
+          onListo={async () => {
+            const { reintentar } = completar
+            setCompletar(null)
+            await fetchDeal()
+            reintentar()
+          }}
+        />
+      )}
 
       <ContactEditor
         open={contactEditorOpen}
@@ -796,7 +869,7 @@ export default function DealDetailPage() {
                 Cancelar
               </Button>
               <Button
-                onClick={handleFollowupSubmit}
+                onClick={() => handleFollowupSubmit()}
                 disabled={!followupNotes.trim() || advancing}
                 className="flex-1 bg-orange-600 hover:bg-orange-700"
               >
@@ -833,6 +906,9 @@ export default function DealDetailPage() {
               initial={deal.visit_data || null}
               neighborhood={deal.neighborhood ?? null}
               modo={modoDeVisita(deal.stage) ?? 'finalizar'}
+              // Finalizar sin los datos del cliente: lo cargado queda guardado,
+              // se piden los datos y al guardarlos se vuelve a finalizar sola.
+              onFaltanDatosCliente={reintentar => setCompletar({ motivo: MOTIVO_AVANCE.visited, reintentar })}
               onCompleted={() => {
                 setShowVisitModal(false)
                 // Si vino del asistente de tasación, la visita era el paso

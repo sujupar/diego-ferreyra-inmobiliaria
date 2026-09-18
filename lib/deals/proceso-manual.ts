@@ -336,6 +336,34 @@ export function faltantesDelProceso(deal: DatosDelProceso): string[] {
   })
 }
 
+/** Código de la respuesta 422 de la barrera; la pantalla lo reconoce para abrir la ventana. */
+export const CODIGO_DATOS_DEL_CLIENTE = 'DATOS_DEL_CLIENTE'
+
+export function esRespuestaDatosDelCliente(j: unknown): j is { code: string; faltan: CampoFaltante[]; dealId?: string; error?: string } {
+  return !!j && typeof j === 'object' && (j as { code?: unknown }).code === CODIGO_DATOS_DEL_CLIENTE
+}
+
+/**
+ * Lo que precarga la ventana de completar: lo que ya está bien, cargado (para
+ * no hacerlo tipear de nuevo); lo que falta o está mal, vacío. En particular,
+ * si el "nombre" es la dirección, el campo arranca vacío para escribir el real.
+ */
+export function valoresParaCompletar(
+  contacto: { full_name?: string | null; phone?: string | null; email?: string | null } | null | undefined,
+  direccion: string | null | undefined,
+): { nombre: string; telefono: string; email: string } {
+  const faltan = camposFaltantes({
+    contactoNombre: contacto?.full_name, contactoTelefono: contacto?.phone, contactoEmail: contacto?.email,
+    propertyAddress: direccion, assignedTo: 'no-aplica',
+  })
+  return {
+    nombre: faltan.includes('nombre') ? '' : (contacto?.full_name ?? '').trim(),
+    // Un teléfono incompleto se deja cargado: es más fácil corregirlo que retipearlo.
+    telefono: (contacto?.phone ?? '').trim(),
+    email: faltan.includes('email') ? '' : (contacto?.email ?? '').trim(),
+  }
+}
+
 function unir(partes: string[]): string {
   return partes.length > 1 ? `${partes.slice(0, -1).join(', ')} y ${partes[partes.length - 1]}` : partes[0]
 }
