@@ -12,7 +12,8 @@ import { esOperacion, OPERACIONES_VALORES } from '@/lib/properties/operacion'
 import { resolverUbicacion, type SeleccionUbicacion } from '@/lib/properties/location-selection'
 import { parsearPrecio } from '@/lib/filters/rango-precio'
 import { linkPropertyToDeal } from '@/lib/supabase/deals'
-import { resolverProcesoDeCaptacion } from '@/lib/deals/proceso-manual'
+import { resolverProcesoDeCaptacion, exigeDatosParaMover } from '@/lib/deals/proceso-manual'
+import { leerDatosDelProceso, respuestaDatosIncompletos } from '@/lib/deals/datos-cliente'
 import { armarDatosDifusionDesdeVisita } from '@/lib/portals/datos-visita'
 import type { VisitDataSnapshot } from '@/types/visit-data.types'
 import { canAccessDeal } from '@/lib/auth/entity-access'
@@ -282,6 +283,17 @@ export async function POST(request: NextRequest) {
         ? 'La propiedad se creó, pero esa tasación tiene más de un proceso y no elegimos por vos. Vinculala desde el CRM.'
         : 'La propiedad se creó sin proceso en el CRM: no va a aparecer en el embudo. Vinculala desde el proceso del cliente.'
       : null
+
+    // DATOS DEL CLIENTE PARA CAPTAR (decisión del dueño, 2026-09-18). Captar
+    // mueve el proceso a "Captada": exige lo mismo que cualquier avance. Se
+    // frena ANTES de crear la ficha, para no dejar una propiedad colgando de un
+    // proceso a medias; la pantalla abre la ventana y reenvía el alta.
+    if (dealId) {
+      const datos = await leerDatosDelProceso(dealId)
+      if (datos && exigeDatosParaMover(datos.stage, 'captured') && datos.faltan.length > 0) {
+        return respuestaDatosIncompletos(dealId, datos.faltan)
+      }
+    }
 
     // Lo cargado en la visita (expensas, portales y landing) se hereda del
     // proceso EN EL SERVIDOR: así también lo hereda quien capta desde la ficha

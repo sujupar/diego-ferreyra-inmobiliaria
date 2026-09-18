@@ -336,6 +336,21 @@ export function faltantesDelProceso(deal: DatosDelProceso): string[] {
   })
 }
 
+function unir(partes: string[]): string {
+  return partes.length > 1 ? `${partes.slice(0, -1).join(', ')} y ${partes[partes.length - 1]}` : partes[0]
+}
+
+/** El mensaje que ve el asesor cuando el servidor frena un avance. */
+export function textoFaltantes(faltan: CampoFaltante[]): string {
+  const delCliente = faltan
+    .filter(c => c !== 'asesor')
+    .map(c => ({ nombre: 'el nombre', telefono: 'el teléfono', email: 'el email' } as const)[c as 'nombre' | 'telefono' | 'email'])
+  const asesor = faltan.includes('asesor')
+  if (delCliente.length === 0) return asesor ? 'Para avanzar falta asignar el asesor.' : ''
+  const verbo = delCliente.length + (asesor ? 1 : 0) > 1 ? 'faltan' : 'falta'
+  return `Para avanzar ${verbo} ${unir(delCliente)} del cliente${asesor ? ', y el asesor' : ''}.`
+}
+
 /**
  * ¿Pasar de `desde` a `hacia` exige los datos completos del cliente? Sí para
  * todo AVANCE (y para reagendar: se va a volver a contactar al cliente). No

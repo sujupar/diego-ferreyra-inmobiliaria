@@ -12,6 +12,7 @@ import {
   validarDatosCliente,
   camposFaltantes,
   exigeDatosParaMover,
+  textoFaltantes,
 } from './proceso-manual'
 
 /**
@@ -380,5 +381,14 @@ describe('exigeDatosParaMover', () => {
 
   it('quedarse en la misma etapa no es moverse (otro seguimiento dentro de Seguimiento)', () => {
     expect(exigeDatosParaMover('followup', 'followup')).toBe(false)
+  })
+})
+
+describe('textoFaltantes', () => {
+  it('se lee en castellano', () => {
+    expect(textoFaltantes(['email'])).toBe('Para avanzar falta el email del cliente.')
+    expect(textoFaltantes(['telefono', 'email'])).toBe('Para avanzar faltan el teléfono y el email del cliente.')
+    expect(textoFaltantes(['nombre', 'telefono', 'email', 'asesor'])).toBe('Para avanzar faltan el nombre, el teléfono y el email del cliente, y el asesor.')
+    expect(textoFaltantes(['asesor'])).toBe('Para avanzar falta asignar el asesor.')
   })
 })

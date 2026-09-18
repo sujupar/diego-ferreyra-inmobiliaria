@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { updateDealStage, linkAppraisalToDeal, linkPropertyToDeal, getDeal, DealStage } from '@/lib/supabase/deals'
 import { createTaskForRole } from '@/lib/supabase/tasks'
 import { requirePermission } from '@/lib/auth/require-role'
+import { leerDatosDelProceso, respuestaDatosIncompletos } from '@/lib/deals/datos-cliente'
+import { exigeDatosParaMover } from '@/lib/deals/proceso-manual'
 import { notifyAppraisalSent } from '@/lib/email/notifications/appraisal-sent'
 import { notifyVisitCompleted } from '@/lib/email/notifications/visit-completed'
 import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
@@ -37,6 +39,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       } catch (e) { console.error('Task creation error:', e) }
 
       return NextResponse.json({ success: true })
+    }
+
+    // DATOS DEL CLIENTE PARA AVANZAR (decisión del dueño, 2026-09-18). Todo
+    // avance exige nombre real, teléfono, email y asesor; descartar y "no se
+    // realizó" no. Va DESPUÉS de vincular la tasación (eso no mueve la etapa) y
+    // ANTES de cualquier movimiento: si faltan datos, responde 422 con la lista
+    // y la pantalla abre la ventana para completarlos.
+    const datosDelProceso = await leerDatosDelProceso(id)
+    if (!datosDelProceso) return NextResponse.json({ error: 'Proceso no encontrado' }, { status: 404 })
+    if (exigeDatosParaMover(datosDelProceso.stage, stage) && datosDelProceso.faltan.length > 0) {
+      return respuestaDatosIncompletos(id, datosDelProceso.faltan)
     }
 
     // If linking a property, use the dedicated function
