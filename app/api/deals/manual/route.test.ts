@@ -96,6 +96,13 @@ describe('POST /api/deals/manual', () => {
     expect(contactoMock).not.toHaveBeenCalled()
   })
 
+  it('sin email no crea nada: es obligatorio (decisión del dueño, 2026-09-18)', async () => {
+    const res = await pedir({ motivo: 'tasacion', cliente: { ...cliente, email: '' } })
+    expect(res.status).toBe(400)
+    expect((await res.json()).errores).toContain('Falta el email.')
+    expect(createDealMock).not.toHaveBeenCalled()
+  })
+
   it('un motivo desconocido se trata como tasación, no rompe', async () => {
     const res = await pedir({ motivo: 'cualquiera', cliente })
     expect(res.status).toBe(200)
