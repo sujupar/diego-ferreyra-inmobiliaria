@@ -98,7 +98,7 @@ export default async function ScheduledAppraisalDetailPage(
               </p>
             </CardHeader>
             <CardContent>
-              <VisitDataView data={deal.visit_data} />
+              <VisitDataView data={deal.visit_data} neighborhood={deal.neighborhood} />
             </CardContent>
           </Card>
         )}

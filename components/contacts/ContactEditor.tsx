@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2 } from 'lucide-react'
+import { ORIGENES_MANUALES } from '@/lib/deals/proceso-manual'
 
 interface ContactPayload {
     full_name: string
@@ -30,12 +31,15 @@ export interface ContactEditorProps {
     onSaved?: (contactId: string) => void
 }
 
-const ORIGINS = [
-    { value: 'embudo', label: 'Embudo' },
-    { value: 'referido', label: 'Referido' },
-    { value: 'historico', label: 'Histórico' },
-    { value: 'tasacion', label: 'Tasación' },
-]
+// Los tres que la base acepta. «Tasación» estaba en esta lista y NO es un
+// origen: el CHECK de `contacts.origin` lo rechaza (23514), así que elegirlo
+// hacía fallar el guardado con un error de Postgres crudo. Una tasación manual
+// es de un referido o de un histórico — el origen dice de DÓNDE vino el
+// cliente, no qué se hizo con él.
+const ORIGINS = ORIGENES_MANUALES.map(value => ({
+    value,
+    label: { embudo: 'Embudo', referido: 'Referido', historico: 'Histórico' }[value],
+}))
 
 export function ContactEditor({
     open,
@@ -108,7 +112,7 @@ export function ContactEditor({
                 full_name: seed?.full_name || '',
                 phone: seed?.phone || '',
                 email: seed?.email || '',
-                origin: seed?.origin || (appraisalId ? 'tasacion' : ''),
+                origin: seed?.origin || '',
                 notes: seed?.notes || '',
             })
         }

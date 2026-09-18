@@ -3,6 +3,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { getDeal, updateDealNotes, updateDealSchedule } from '@/lib/supabase/deals'
 import { requireAuth, requireRole } from '@/lib/auth/require-role'
 import { canAccessDeal } from '@/lib/auth/entity-access'
+import { puedeReasignarAsesor } from '@/lib/deals/proceso-manual'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const TIME_RE = /^\d{2}:\d{2}(:\d{2})?$/
@@ -32,9 +33,52 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const hasNotes = typeof body?.notes === 'string'
     const hasSchedule = 'scheduled_date' in (body ?? {}) || 'scheduled_time' in (body ?? {})
+    const nuevoAsesor = typeof body?.assigned_to === 'string' ? body.assigned_to.trim() : null
 
-    if (!hasNotes && !hasSchedule) {
+    if (!hasNotes && !hasSchedule && !nuevoAsesor) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
+    }
+
+    // REASIGNAR EL ASESOR (2026-09-17). Los procesos creados a mano quedaron sin
+    // asesor, y el CRM le muestra a cada uno solo lo asignado a él: sin esto, un
+    // proceso sin asesor es invisible para siempre.
+    //
+    // Mover trabajo entre asesores es decisión de quien ve todo el pipeline
+    // (admin, dueño, coordinador). Un asesor que pudiera hacerlo se sacaría
+    // procesos de encima o se los quitaría a otro. Se decide por PERMISO y no
+    // por nombre de rol (`puedeReasignarAsesor`, la misma regla que usa la
+    // pantalla para no ofrecer un botón que acá respondería 403).
+    if (nuevoAsesor) {
+      if (!puedeReasignarAsesor(user.profile.role)) {
+        return NextResponse.json(
+          { error: 'Solo un coordinador, dueño o admin puede cambiar el asesor de un proceso.' },
+          { status: 403 },
+        )
+      }
+
+      const admin = createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+      const { data: perfil } = await admin
+        .from('profiles')
+        .select('id, role, is_active')
+        .eq('id', nuevoAsesor)
+        .maybeSingle()
+
+      // Asignárselo a alguien dado de baja, o a un abogado, lo dejaría otra vez
+      // sin dueño real: el mismo agujero por otro camino. Los roles válidos son
+      // los mismos que ofrece `GET /api/users/advisors`.
+      const destino = perfil as { id: string; role: string; is_active: boolean } | null
+      if (!destino || !destino.is_active || !['asesor', 'dueno'].includes(destino.role)) {
+        return NextResponse.json(
+          { error: 'Ese usuario no puede tener procesos asignados (tiene que ser un asesor activo).' },
+          { status: 400 },
+        )
+      }
+
+      const { error } = await admin
+        .from('deals')
+        .update({ assigned_to: nuevoAsesor, updated_at: new Date().toISOString() })
+        .eq('id', id)
+      if (error) throw new Error(error.message)
     }
 
     if (hasNotes) {

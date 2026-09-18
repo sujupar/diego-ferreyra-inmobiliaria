@@ -23,6 +23,9 @@ const CHANNEL_LABEL: Record<FollowUpChannel, string> = {
 }
 const todayIsoDate = () => new Date().toISOString().slice(0, 10)
 import { ContactEditor } from '@/components/contacts/ContactEditor'
+import { modoDeVisita } from '@/lib/pipeline/visita-datos'
+import { faltantesDelProceso } from '@/lib/deals/proceso-manual'
+import { AsesorDelProceso } from '@/components/deals/AsesorDelProceso'
 
 const VisitDataForm = dynamic(
   () => import('@/components/pipeline/VisitDataForm').then(m => ({ default: m.VisitDataForm })),
@@ -71,6 +74,14 @@ export default function DealDetailPage() {
 
   // Visit modal
   const [showVisitModal, setShowVisitModal] = useState(false)
+  /**
+   * `?visita=1` abre el formulario de visita apenas carga la ficha. Lo usa el
+   * asistente de tasación cuando el proceso todavía no pasó por la visita: así
+   * el asesor carga los datos (incluidas las secciones de portales y landing) y
+   * el proceso avanza a "Visita Realizada" sin saltear ninguna etapa.
+   */
+  const pedidoDeVisita = searchParams.get('visita') === '1'
+  const visitaAbiertaRef = useRef(false)
 
   // Reschedule modal — permite editar fecha/hora de una tasación ya coordinada.
   const [showScheduleModal, setShowScheduleModal] = useState(false)
@@ -94,6 +105,13 @@ export default function DealDetailPage() {
     } catch (err) { console.error(err) }
     finally { setLoading(false) }
   }
+
+  useEffect(() => {
+    if (!pedidoDeVisita || visitaAbiertaRef.current || !deal) return
+    if (deal.stage !== 'scheduled') return
+    visitaAbiertaRef.current = true
+    setShowVisitModal(true)
+  }, [pedidoDeVisita, deal])
 
   useEffect(() => { fetchDeal() }, [id])
 
@@ -350,6 +368,28 @@ export default function DealDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Aviso de proceso a medias: los que creaba la tasación manual vieja
+          (el cliente era la dirección, sin teléfono ni asesor). Dice QUÉ falta. */}
+      {(() => {
+        const faltan = faltantesDelProceso({
+          stage: deal.stage,
+          contactoNombre: contact.full_name,
+          contactoTelefono: contact.phone,
+          propertyAddress: deal.property_address,
+          assignedTo: deal.assigned_to,
+        })
+        if (faltan.length === 0) return null
+        return (
+          <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-4 py-3 text-sm flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <p className="font-medium">A este proceso le falta {faltan.length > 1 ? `${faltan.slice(0, -1).join(', ')} y ${faltan[faltan.length - 1]}` : faltan[0]}.</p>
+              <p className="text-muted-foreground mt-0.5">Sin eso no se puede contactar al cliente o no le aparece a ningún asesor en su CRM.</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setContactEditorOpen(true)}>Completar contacto</Button>
+          </div>
+        )
+      })()}
+
       {/* Contact info */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
@@ -394,7 +434,15 @@ export default function DealDetailPage() {
                 </span>
               </>
             )}
-            {deal.profiles && <><span className="text-muted-foreground">Asesor:</span><span>{deal.profiles.full_name}</span></>}
+            {/* Siempre visible: un proceso SIN asesor no le aparece a nadie en el
+                CRM, así que "Sin asignar" tiene que verse (y poder arreglarse). */}
+            <span className="text-muted-foreground">Asesor:</span>
+            <AsesorDelProceso
+              dealId={deal.id}
+              asesorId={deal.assigned_to}
+              asesorNombre={deal.profiles?.full_name}
+              onCambiado={fetchDeal}
+            />
           </div>
         </CardContent>
       </Card>
@@ -404,7 +452,9 @@ export default function DealDetailPage() {
         onOpenChange={setContactEditorOpen}
         contactId={deal.contact_id}
         dealId={deal.id}
-        initial={{ full_name: contact?.full_name || deal.property_address || '' }}
+        // Sin la dirección como nombre de respaldo: así nacieron los contactos
+        // llamados como la calle, que el asesor no encontraba buscando por nombre.
+        initial={{ full_name: contact?.full_name || '' }}
         onSaved={() => fetchDeal()}
       />
 
@@ -589,6 +639,20 @@ export default function DealDetailPage() {
               </div>
             )}
 
+            {/* Ver y corregir lo cargado en la visita, una vez hecha. Antes el
+                formulario solo se abría en "Coordinada" y cerrarlo la terminaba,
+                así que no había forma de mirar ni arreglar nada: un dato mal
+                tipeado se arrastraba hasta el aviso publicado, porque de ahí
+                salen también los datos de portales y de la landing. Editar NO
+                mueve la etapa. */}
+            {modoDeVisita(deal.stage) === 'editar' && (
+              <div className="pt-2 border-t">
+                <Button variant="outline" size="lg" className="w-full" onClick={() => setShowVisitModal(true)}>
+                  <Eye className="h-4 w-4 mr-2" /> Datos de la visita
+                </Button>
+              </div>
+            )}
+
             {/* Always show Lost button */}
             <div className="pt-2 border-t">
               <Button
@@ -751,7 +815,7 @@ export default function DealDetailPage() {
           <div className="bg-background rounded-2xl shadow-xl w-full max-w-4xl my-8 p-6 space-y-4 max-h-[95dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between sticky top-0 bg-background pb-3 border-b z-10">
               <div className="space-y-1">
-                <p className="eyebrow">Visita Realizada</p>
+                <p className="eyebrow">{modoDeVisita(deal.stage) === 'editar' ? 'Corregir datos' : 'Visita Realizada'}</p>
                 <h2 className="display text-2xl flex items-center gap-2">
                   <Eye className="h-5 w-5 text-[color:var(--brand)]" />
                   Datos de la Visita
@@ -760,14 +824,22 @@ export default function DealDetailPage() {
               <Button variant="ghost" size="sm" onClick={() => setShowVisitModal(false)}>&times;</Button>
             </div>
             <p className="text-sm text-muted-foreground">
-              Recolectá los datos de la propiedad durante la visita. Todo se guarda automáticamente.
-              Al finalizar, el proceso pasa a "Visita Realizada".
+              {modoDeVisita(deal.stage) === 'editar'
+                ? 'Corregí lo que cargaste en la visita. De acá salen los datos de los portales y de la landing, así que conviene revisarlo antes de publicar. El proceso NO cambia de etapa.'
+                : 'Recolectá los datos de la propiedad durante la visita. Todo se guarda automáticamente. Al finalizar, el proceso pasa a "Visita Realizada".'}
             </p>
             <VisitDataForm
               dealId={deal.id}
               initial={deal.visit_data || null}
               neighborhood={deal.neighborhood ?? null}
-              onCompleted={() => { setShowVisitModal(false); fetchDeal() }}
+              modo={modoDeVisita(deal.stage) ?? 'finalizar'}
+              onCompleted={() => {
+                setShowVisitModal(false)
+                // Si vino del asistente de tasación, la visita era el paso
+                // previo: se sigue con la tasación de ese mismo proceso.
+                if (pedidoDeVisita) { router.push(`/appraisal/new?dealId=${deal.id}`); return }
+                fetchDeal()
+              }}
             />
           </div>
         </div>

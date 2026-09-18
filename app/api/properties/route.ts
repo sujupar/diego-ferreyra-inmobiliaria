@@ -11,9 +11,119 @@ import { geocodePropertyBestEffort } from '@/lib/properties/geocode-on-write'
 import { esOperacion, OPERACIONES_VALORES } from '@/lib/properties/operacion'
 import { resolverUbicacion, type SeleccionUbicacion } from '@/lib/properties/location-selection'
 import { parsearPrecio } from '@/lib/filters/rango-precio'
+import { linkPropertyToDeal } from '@/lib/supabase/deals'
+import { resolverProcesoDeCaptacion } from '@/lib/deals/proceso-manual'
+import { armarDatosDifusionDesdeVisita } from '@/lib/portals/datos-visita'
+import type { VisitDataSnapshot } from '@/types/visit-data.types'
+import { canAccessDeal } from '@/lib/auth/entity-access'
+import { ROLE_PERMISSIONS } from '@/lib/auth/roles'
+import type { Role } from '@/types/auth.types'
+
+function getAdmin() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+}
 
 function getStorageAdmin() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!).storage
+  return getAdmin().storage
+}
+
+/**
+ * ¿Puede este usuario mover ESE proceso a "Captada"? Antes lo hacía
+ * `/api/deals/[id]/advance`, que pedía `pipeline.advance`. Al pasar el vínculo
+ * a esta ruta (que solo pide estar logueado) hay que pedir lo mismo —si no, un
+ * abogado movía procesos mandando un `deal_id`— y además acceso al proceso: un
+ * asesor, solo los suyos.
+ */
+async function puedeMoverProceso(user: Awaited<ReturnType<typeof requireAuth>>, dealId: string): Promise<boolean> {
+  const permisos = ROLE_PERMISSIONS[user.profile.role as Role] as string[] | undefined
+  if (!permisos?.includes('pipeline.advance')) return false
+  return canAccessDeal(user, dealId)
+}
+
+/** Una propiedad descartada no ocupa el lugar: esa tasación se puede volver a captar. */
+function estaActiva(p: { status?: string | null; commercial_status?: string | null } | null | undefined): boolean {
+  if (!p) return false
+  return p.status !== 'descartada' && p.commercial_status !== 'descartada'
+}
+
+/**
+ * Con qué proceso se vincula esta captación. Las reglas están en
+ * `resolverProcesoDeCaptacion` (módulo puro y testeado); acá solo se leen los
+ * datos que esas reglas necesitan.
+ *
+ * Dos caminos, porque hay dos formas de captar:
+ *  - con el proceso ya elegido en la pantalla (`deal_id`);
+ *  - desde la ficha de la tasación (`appraisal_id`), que es lo habitual: ahí el
+ *    proceso se busca por la tasación y, si hay más de uno, no se adivina.
+ */
+async function resolverCaptacion(dealIdPedido: string | null, appraisalIdPedido: string | null) {
+  // Sin nada que resolver no se abre conexión: un alta suelta (carga masiva,
+  // script) no tiene por qué depender de que la base esté a mano.
+  if (!dealIdPedido && !appraisalIdPedido) return resolverProcesoDeCaptacion({})
+  const db = getAdmin()
+
+  if (dealIdPedido) {
+    const { data: deal } = await db.from('deals').select('property_id, visit_data').eq('id', dealIdPedido).maybeSingle()
+    let activas: { id: string }[] = []
+    const propertyId = (deal as { property_id?: string | null } | null)?.property_id
+    if (propertyId) {
+      const { data: prop } = await db
+        .from('properties')
+        .select('id, status, commercial_status')
+        .eq('id', propertyId)
+        .maybeSingle()
+      if (estaActiva(prop as { status?: string; commercial_status?: string } | null)) {
+        activas = [{ id: (prop as { id: string }).id }]
+      }
+    }
+    return resolverProcesoDeCaptacion({ dealIdElegido: dealIdPedido, propiedadesActivasDelProceso: activas })
+  }
+
+  const { data: deals } = await db.from('deals').select('id, stage, property_id').eq('appraisal_id', appraisalIdPedido!)
+  const procesos = (deals ?? []) as { id: string; stage?: string; property_id?: string | null }[]
+
+  const { data: props } = await db
+    .from('properties')
+    .select('id, status, commercial_status')
+    .eq('appraisal_id', appraisalIdPedido!)
+    .neq('status', 'descartada')
+  const candidatas = ((props ?? []) as { id: string; status?: string; commercial_status?: string }[]).filter(estaActiva)
+
+  // Una propiedad puede colgar del proceso SIN tener `appraisal_id` (las 25 que
+  // entraron por el CSV, o una vinculada a mano). Si el proceso ya apunta a
+  // una, también frena: es el mismo duplicado por otro camino.
+  const yaVistas = new Set(candidatas.map(p => p.id))
+  const sueltas = procesos.map(d => d.property_id).filter((id): id is string => !!id && !yaVistas.has(id))
+  if (sueltas.length > 0) {
+    const { data: otras } = await db.from('properties').select('id, status, commercial_status').in('id', sueltas)
+    for (const p of ((otras ?? []) as { id: string; status?: string; commercial_status?: string }[])) {
+      if (estaActiva(p) && !yaVistas.has(p.id)) { yaVistas.add(p.id); candidatas.push(p) }
+    }
+  }
+
+  return resolverProcesoDeCaptacion({
+    procesosDeLaTasacion: procesos.map(d => ({ id: d.id, stage: d.stage ?? '' })),
+    propiedadesActivasDelProceso: candidatas.map(p => ({ id: p.id })),
+  })
+}
+
+/**
+ * Lo que el asesor cargó en la visita (expensas, portales y landing) para que
+ * la propiedad nazca con eso adentro. Se lee ACÁ y no en el navegador: quien
+ * capta desde la ficha de la tasación no tiene el proceso a mano, y así el dato
+ * no depende de por dónde se entró.
+ */
+async function heredarDatosDeVisita(dealId: string) {
+  try {
+    const { data } = await getAdmin().from('deals').select('visit_data').eq('id', dealId).maybeSingle()
+    const snapshot = (data as { visit_data?: VisitDataSnapshot | null } | null)?.visit_data ?? null
+    if (!snapshot) return null
+    return armarDatosDifusionDesdeVisita(snapshot)
+  } catch (e) {
+    // Heredar es una comodidad, no un requisito: el alta no se cae por esto.
+    console.error('[properties] no se pudo heredar lo cargado en la visita:', e)
+    return null
+  }
 }
 
 const DEFAULT_PAGE_SIZE = 24
@@ -129,6 +239,64 @@ export async function POST(request: NextRequest) {
       body.expensas = Number.isFinite(n) && n > 0 ? n : null
     }
 
+    // A QUÉ PROCESO PERTENECE ESTA CAPTACIÓN (2026-09-17).
+    //
+    // El vínculo se resuelve y se escribe ACÁ, en el servidor. Antes lo hacía
+    // el navegador con un pedido aparte y solo si se entraba desde la ficha del
+    // proceso: captando desde la tasación —que es lo habitual— el proceso
+    // quedaba en "Tasación Entregada" para siempre y nada frenaba captar dos
+    // veces la misma tasación.
+    //
+    // `deal_id` NO es una columna de `properties`: se saca del body antes del
+    // INSERT o el alta falla.
+    const dealIdPedido = typeof body.deal_id === 'string' && body.deal_id.trim() ? body.deal_id.trim() : null
+    delete body.deal_id
+    const appraisalIdPedido = typeof body.appraisal_id === 'string' && body.appraisal_id.trim() ? body.appraisal_id.trim() : null
+    // El proceso lo eligió la pantalla: si no puede moverlo, no se crea nada.
+    if (dealIdPedido && !(await puedeMoverProceso(user, dealIdPedido))) {
+      return NextResponse.json({ error: 'No podés captar para un proceso que no tenés asignado.' }, { status: 403 })
+    }
+    const captacion = await resolverCaptacion(dealIdPedido, appraisalIdPedido)
+    if (captacion.tipo === 'duplicado') {
+      return NextResponse.json({
+        error: 'Este proceso ya tiene una propiedad captada: te llevamos a esa ficha en vez de crear otra.',
+        propertyId: captacion.propertyId,
+      }, { status: 409 })
+    }
+    let dealId = captacion.tipo === 'proceso' ? captacion.dealId : null
+    // Resuelto por la tasación: si ese proceso es de otro, la captación sigue
+    // (antes, desde la tasación, nunca se movía el proceso) pero no se toca ni
+    // se hereda nada de un proceso ajeno.
+    let avisoSinAcceso: string | null = null
+    if (dealId && !dealIdPedido && !(await puedeMoverProceso(user, dealId))) {
+      dealId = null
+      avisoSinAcceso = 'La propiedad se creó, pero el proceso de esa tasación no está a tu nombre: no se movió a "Captada". Avisá al coordinador.'
+    }
+
+    // Sin proceso NO se frena el alta (el plan proponía un 400, pero eso dejaría
+    // sin poder captarse a las tasaciones viejas que nunca tuvieron proceso, y a
+    // cualquier propiedad que llegue por otro camino). Se crea igual y se AVISA:
+    // el problema queda a la vista en vez de descubrirse meses después.
+    const avisoSinProceso = captacion.tipo === 'elegir'
+      ? captacion.motivo === 'varios_procesos'
+        ? 'La propiedad se creó, pero esa tasación tiene más de un proceso y no elegimos por vos. Vinculala desde el CRM.'
+        : 'La propiedad se creó sin proceso en el CRM: no va a aparecer en el embudo. Vinculala desde el proceso del cliente.'
+      : null
+
+    // Lo cargado en la visita (expensas, portales y landing) se hereda del
+    // proceso EN EL SERVIDOR: así también lo hereda quien capta desde la ficha
+    // de la tasación, que no tiene el proceso a mano. Lo que manda la pantalla
+    // gana sobre lo heredado.
+    const heredado = dealId ? await heredarDatosDeVisita(dealId) : null
+    if (heredado) {
+      if (body.expensas === undefined && heredado.expensas != null) body.expensas = heredado.expensas
+      const hayPortalData = Object.keys(heredado.portal_data.ml).length + Object.keys(heredado.portal_data.ap).length > 0
+      if (body.portal_data === undefined && hayPortalData) body.portal_data = heredado.portal_data
+      if (body.landing_answers === undefined && Object.keys(heredado.landing_answers).length > 0) {
+        body.landing_answers = heredado.landing_answers
+      }
+    }
+
     const fotosDelAlta: unknown[] = Array.isArray(body.photos) ? body.photos : []
     const hayIncrustadas = fotosDelAlta.some(esFotoIncrustada)
     const payload = {
@@ -139,6 +307,18 @@ export async function POST(request: NextRequest) {
       assigned_to: body.assigned_to,
     }
     const id = await createProperty(payload)
+
+    // Vincular el proceso y pasarlo a "Captada". Si falla, la propiedad ya
+    // existe: se avisa en la respuesta en vez de perder el alta entera.
+    let avisoProceso: string | null = avisoSinAcceso ?? avisoSinProceso
+    if (dealId) {
+      try {
+        await linkPropertyToDeal(dealId, id)
+      } catch (e) {
+        console.error('[properties] no se pudo vincular el proceso:', e)
+        avisoProceso = 'La propiedad se creó, pero no se pudo mover su proceso a "Captada". Avisá al equipo.'
+      }
+    }
 
     if (hayIncrustadas) {
       try {
@@ -169,7 +349,7 @@ export async function POST(request: NextRequest) {
     // Best-effort: la propiedad ya existe, un fallo acá no puede tirar el alta.
     try { await checkAndAdvanceProperty(id) } catch (e) { console.error('[properties] auto-avance al crear:', e) }
 
-    return NextResponse.json({ success: true, id })
+    return NextResponse.json({ success: true, id, ...(avisoProceso ? { avisoProceso } : {}) })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error' }, { status: 500 })
   }

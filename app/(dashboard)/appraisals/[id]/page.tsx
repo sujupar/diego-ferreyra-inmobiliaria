@@ -731,10 +731,10 @@ export default function AppraisalDetailPage() {
                 onOpenChange={setContactEditorOpen}
                 contactId={appraisal.contact_id}
                 appraisalId={appraisal.id}
-                initial={{
-                    full_name: appraisal.property_title || '',
-                    origin: 'tasacion',
-                }}
+                // SIN precarga, a propósito: ponía la DIRECCIÓN como nombre del
+                // propietario (`property_title`) y un origen que la base rechaza.
+                // De ahí salieron los contactos llamados "Av. Hipólito Yrigoyen
+                // 1550", que después nadie encontraba buscando por nombre.
                 onSaved={() => loadAppraisal()}
             />
 

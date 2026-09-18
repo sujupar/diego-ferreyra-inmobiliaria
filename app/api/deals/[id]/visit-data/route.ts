@@ -35,6 +35,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Las secciones nuevas (portales, landing) terminan en prefills y prompts:
   // se acotan antes de mezclarlas en el JSONB. sale/purchase pasan como siempre.
   const saved = await saveVisitData(id, sanearSnapshotVisita(snapshot))
-  if (complete) await markVisitCompleted(id)
-  return NextResponse.json({ data: saved })
+  // Si el proceso ya había pasado la visita, los datos se guardan igual pero la
+  // etapa NO se toca (ver `markVisitCompleted`). No es un error para quien
+  // estaba cargando: lo que quería guardar quedó guardado.
+  const etapaMovida = complete ? await markVisitCompleted(id) : false
+  return NextResponse.json({ data: saved, ...(complete && !etapaMovida ? { etapaSinCambios: true } : {}) })
 }

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import type { VisitDataSnapshot } from '@/types/visit-data.types'
+import { ETAPAS_CON_VISITA_PENDIENTE } from '@/lib/pipeline/visita-datos'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -22,8 +23,18 @@ export async function getVisitData(dealId: string): Promise<VisitDataSnapshot | 
   return (data?.visit_data as VisitDataSnapshot | null) || null
 }
 
-export async function markVisitCompleted(dealId: string) {
-  const { error } = await getAdmin()
+/**
+ * Pasa el proceso a "Visita Realizada" SOLO si la visita estaba pendiente.
+ * Devuelve si lo movió.
+ *
+ * Antes escribía `stage:'visited'` sin mirar la etapa: desde que el formulario
+ * se puede reabrir después de la visita (2026-09-17), una pestaña vieja con
+ * "Finalizar Visita" hacía RETROCEDER un proceso Captado. La condición va en la
+ * MISMA sentencia (`in('stage', …)`), no en una lectura previa: así no hay
+ * carrera entre leer la etapa y escribirla.
+ */
+export async function markVisitCompleted(dealId: string): Promise<boolean> {
+  const { data, error } = await getAdmin()
     .from('deals')
     .update({
       stage: 'visited',
@@ -32,5 +43,8 @@ export async function markVisitCompleted(dealId: string) {
       updated_at: new Date().toISOString(),
     })
     .eq('id', dealId)
+    .in('stage', [...ETAPAS_CON_VISITA_PENDIENTE])
+    .select('id')
   if (error) throw error
+  return (data ?? []).length > 0
 }

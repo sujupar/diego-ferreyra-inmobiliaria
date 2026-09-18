@@ -14,6 +14,7 @@ import type {
 } from '@/types/visit-data.types'
 import { CONSTRUCTION_FEATURES_OPTIONS } from '@/types/visit-data.types'
 import { VisitDifusionSections } from './VisitDifusionSections'
+import { guardarDatosDeVisita, type ModoVisita } from '@/lib/pipeline/visita-datos'
 
 const EMPTY_SALE: SaleVisitData = {
   property_type: 'departamento',
@@ -51,10 +52,16 @@ interface Props {
   initial: VisitDataSnapshot | null
   /** Barrio del deal: personaliza la primera pregunta de la landing. */
   neighborhood?: string | null
+  /**
+   * `finalizar` (default) cierra la visita y mueve el proceso a "Visita
+   * Realizada". `editar` solo guarda: sirve para corregir lo cargado cuando la
+   * visita ya ocurrió, sin volver a mover ninguna etapa.
+   */
+  modo?: ModoVisita
   onCompleted: () => void
 }
 
-export function VisitDataForm({ dealId, initial, neighborhood, onCompleted }: Props) {
+export function VisitDataForm({ dealId, initial, neighborhood, modo = 'finalizar', onCompleted }: Props) {
   const [sale, setSale] = useState<SaleVisitData>(initial?.sale || EMPTY_SALE)
   const [purchase, setPurchase] = useState<PurchaseVisitData>(initial?.purchase || EMPTY_PURCHASE)
   // Secciones 08 y 09 (2026-09-14): lo que piden los portales y la landing.
@@ -63,6 +70,7 @@ export function VisitDataForm({ dealId, initial, neighborhood, onCompleted }: Pr
   const [activeTab, setActiveTab] = useState<'sale' | 'purchase'>('sale')
   const [savingStatus, setSavingStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [finalizing, setFinalizing] = useState(false)
+  const [errorFinalizar, setErrorFinalizar] = useState<string | null>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Auto-save debounced (500ms tras cada cambio)
@@ -130,20 +138,22 @@ export function VisitDataForm({ dealId, initial, neighborhood, onCompleted }: Pr
 
   async function handleFinalize() {
     setFinalizing(true)
+    setErrorFinalizar(null)
     // Forzar flush del save pendiente
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-    try {
-      await fetch(`/api/deals/${dealId}/visit-data`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ snapshot: { sale, purchase, portales, landing }, complete: true }),
-      })
-      onCompleted()
-    } catch {
-      alert('Error al finalizar la visita. Los datos sí fueron guardados.')
-    } finally {
-      setFinalizing(false)
-    }
+    // Antes esto no miraba la respuesta: un 403 o un 500 cerraban el modal
+    // igual y el asesor se iba creyendo que la visita había quedado registrada.
+    const r = await guardarDatosDeVisita(
+      dealId,
+      // En modo editar NO viaja `complete`: corregir un dato no puede mover el
+      // proceso de etapa ni volver a disparar lo que dispara terminar la visita.
+      modo === 'finalizar'
+        ? { snapshot: { sale, purchase, portales, landing }, complete: true }
+        : { snapshot: { sale, purchase, portales, landing } },
+    )
+    setFinalizing(false)
+    if (!r.ok) { setErrorFinalizar(r.error); return }
+    onCompleted()
   }
 
   return (
@@ -203,10 +213,17 @@ export function VisitDataForm({ dealId, initial, neighborhood, onCompleted }: Pr
         <PurchaseSection purchase={purchase} onUpdate={updatePurchase} />
       )}
 
+      {errorFinalizar && (
+        <div role="alert" className="rounded-xl border border-[color:var(--destructive)]/40 bg-[color:var(--destructive)]/10 px-4 py-3 text-sm">
+          <p className="font-medium">{modo === 'finalizar' ? 'No se pudo finalizar la visita.' : 'No se pudieron guardar los cambios.'}</p>
+          <p className="text-muted-foreground mt-0.5">{errorFinalizar} Probá de nuevo; lo que cargaste sigue acá.</p>
+        </div>
+      )}
+
       <div className="flex gap-3 pt-4 border-t">
         <Button onClick={handleFinalize} disabled={finalizing} size="lg" className="flex-1">
           {finalizing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-          Finalizar Visita
+          {modo === 'finalizar' ? 'Finalizar Visita' : 'Guardar cambios'}
         </Button>
       </div>
     </div>
