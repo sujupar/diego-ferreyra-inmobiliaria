@@ -15,7 +15,13 @@ export interface DatosRequisitos {
   neighborhood?: string | null
   rooms?: number | null
   covered_area?: number | null
+  total_area?: number | null
   asking_price?: number | null
+}
+
+/** Un terreno no tiene ambientes ni superficie cubierta: lo que lo define es el lote. */
+export function esTerreno(tipo: string | null | undefined): boolean {
+  return (tipo ?? '').trim().toLowerCase() === 'terreno'
 }
 
 const tieneTexto = (v: string | null | undefined) => typeof v === 'string' && v.trim() !== ''
@@ -28,8 +34,12 @@ export function faltanParaGenerar(p: DatosRequisitos): string[] {
   if (!tieneTexto(p.property_type)) faltan.push('tipo de propiedad')
   if (!tieneTexto(p.address)) faltan.push('dirección')
   if (!tieneTexto(p.neighborhood)) faltan.push('barrio')
-  if (!esPositivo(p.rooms)) faltan.push('ambientes')
-  if (!esPositivo(p.covered_area)) faltan.push('superficie cubierta')
+  if (esTerreno(p.property_type)) {
+    if (!esPositivo(p.total_area)) faltan.push('superficie del lote')
+  } else {
+    if (!esPositivo(p.rooms)) faltan.push('ambientes')
+    if (!esPositivo(p.covered_area)) faltan.push('superficie cubierta')
+  }
   if (!esPositivo(p.asking_price)) faltan.push('precio')
   return faltan
 }

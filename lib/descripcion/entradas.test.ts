@@ -25,13 +25,33 @@ const visita: SaleVisitData = {
 describe('tipologiaDiego', () => {
   it.each([
     ['casa', 'CASA'], ['departamento', 'DEPARTAMENTO'], ['Departamento', 'DEPARTAMENTO'],
-    ['ph', 'PH'], ['PH', 'PH'], ['terreno', 'CASA'], ['oficina', 'DEPARTAMENTO'], ['', 'DEPARTAMENTO'],
+    ['ph', 'PH'], ['PH', 'PH'], ['terreno', 'TERRENO'], [' Terreno ', 'TERRENO'], ['oficina', 'DEPARTAMENTO'], ['', 'DEPARTAMENTO'],
   ])('%s → %s', (tipo, esperado) => {
     expect(tipologiaDiego(tipo)).toBe(esperado)
   })
 })
 
 describe('armarEntradaEscritura', () => {
+  it('un terreno presenta la superficie como la del lote y no lista ambientes', () => {
+    const t = armarEntradaEscritura({
+      ...base,
+      propiedad: {
+        property_type: 'terreno', operation_type: 'venta', address: 'Ruta Provincial 52', neighborhood: 'Tristán Suárez',
+        city: 'Ezeiza', asking_price: 28700, currency: 'USD', rooms: 0, bedrooms: 0, bathrooms: 0, total_area: 600, floor: 0,
+      },
+    })
+    expect(t).toContain('# TIPOLOGÍA: TERRENO')
+    expect(t).toContain('- Superficie del lote: 600 m²')
+    expect(t).not.toMatch(/Ambientes|Dormitorios|Baños|Superficie total|Piso:/)
+  })
+
+  it('la descripción actual de la propiedad NUNCA llega al prompt (la escribió el sistema viejo)', () => {
+    const conDescripcionVieja = { ...base.propiedad, description: 'Imaginá un café en tu balcón', title: 'Viejo título' }
+    const t = armarEntradaEscritura({ ...base, propiedad: conDescripcionVieja })
+    expect(t).not.toContain('café en tu balcón')
+    expect(t).not.toContain('Viejo título')
+  })
+
   it('el piso 0 se escribe "Planta baja" (el viejo generador escribió "primer piso")', () => {
     const t = armarEntradaEscritura(base)
     expect(t).toContain('Piso: Planta baja')

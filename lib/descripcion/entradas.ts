@@ -17,6 +17,7 @@ import type { SaleVisitData } from '@/types/visit-data.types'
 import type { RespuestaConocida } from './respuestas'
 import type { InventarioFotos, ZonaInvestigada } from './tipos'
 import { lineasATexto } from './zona-mapa'
+import { esTerreno } from './requisitos'
 
 export interface PropiedadParaEscribir {
   property_type: string
@@ -49,13 +50,18 @@ export interface EntradaEscritura {
   notas: string | null
 }
 
-export type TipologiaDiego = 'CASA' | 'DEPARTAMENTO' | 'PH'
+export type TipologiaDiego = 'CASA' | 'DEPARTAMENTO' | 'PH' | 'TERRENO'
 
-/** Diego escribió estructuras para casa, departamento y PH; el resto cae en la más cercana. */
+/**
+ * Diego escribió estructuras para casa, departamento y PH. TERRENO es una
+ * adaptación de la de casa (sin recorrido de ambientes, ver metodo-diego.ts):
+ * antes caía en CASA y el modelo buscaba un recorrido que no existe.
+ */
 export function tipologiaDiego(tipo: string): TipologiaDiego {
   const t = (tipo ?? '').trim().toLowerCase()
+  if (esTerreno(t)) return 'TERRENO'
   if (t === 'ph') return 'PH'
-  if (t === 'casa' || t === 'terreno' || t === 'quinta' || t === 'chalet') return 'CASA'
+  if (t === 'casa' || t === 'quinta' || t === 'chalet') return 'CASA'
   return 'DEPARTAMENTO'
 }
 
@@ -133,6 +139,15 @@ function bloqueDatosCargados(p: PropiedadParaEscribir): string[] {
   const moneda = p.currency === 'USD' ? 'US$' : '$'
   push('Precio (NO lo menciones: es para ubicar el segmento)', n(p.asking_price) ? `${moneda} ${numeroAr(p.asking_price)}` : null)
   push('Expensas', n(p.expensas) ? `$ ${numeroAr(p.expensas as number)} por mes` : null)
+  if (esTerreno(p.property_type)) {
+    // Un terreno no tiene ambientes, piso ni antigüedad: si llegan en 0 desde el
+    // formulario, escribirlos invita al modelo a hablar de lo que no hay.
+    push('Superficie del lote', n(p.total_area) ? `${numeroAr(p.total_area as number)} m²` : null)
+    push('Superficie cubierta (construcción existente)', n(p.covered_area) ? `${numeroAr(p.covered_area as number)} m²` : null)
+    const amenitiesTerreno = listaDeAmenities(p.amenities)
+    push('Amenities', amenitiesTerreno.length ? amenitiesTerreno.map(limpiar).join(', ') : null)
+    return l
+  }
   push('Ambientes', n(p.rooms)?.toString() ?? null)
   push('Dormitorios', n(p.bedrooms)?.toString() ?? null)
   push('Baños', n(p.bathrooms)?.toString() ?? null)

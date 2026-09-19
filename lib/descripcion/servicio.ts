@@ -45,6 +45,13 @@ const TECHO_WEB_MS = 16_000
  */
 export const MAX_FOTOS = 30
 const MAX_NOTAS = 2000
+/**
+ * Versión del prompt de fotos. Subirla invalida los análisis guardados con la
+ * anterior: la firma solo mira las fotos, así que sin esto una mejora del prompt
+ * nunca llegaba a las propiedades ya analizadas (v2, 2026-09-19: dejar de
+ * afirmar "esquina / cul de sac" desde una foto).
+ */
+export const VERSION_ANALISIS_FOTOS = 2
 const ANTERIORES_GUARDADAS = 3
 
 const modeloFotos = () => process.env.DESCRIPCION_MODELO_FOTOS || 'gpt-4.1'
@@ -193,7 +200,7 @@ export async function estadoDescripcion(id: string): Promise<EstadoDescripcion> 
     cantidadFotos: Array.isArray(fila.photos) ? fila.photos.length : 0,
     pendientes,
     conocidas,
-    fotosListas: !!ia.fotos && ia.fotos.firma === firmaFotos(fotosUsadas(fila)),
+    fotosListas: !!ia.fotos && ia.fotos.version === VERSION_ANALISIS_FOTOS && ia.fotos.firma === firmaFotos(fotosUsadas(fila)),
     zonaLista: !!ia.zona && ia.zona.completa === true && ia.zona.firma === firmaDireccion(fila),
     compradorSugerido: ia.fotos?.inventario?.compradorSugerido?.perfil || null,
     notas: ia.notas ?? null,
@@ -211,7 +218,7 @@ export async function ejecutarEtapaFotos(id: string, o: { forzar?: boolean } = {
   const firma = firmaFotos(urls)
   const ia = iaDe(fila)
 
-  if (!o.forzar && ia.fotos?.firma === firma) {
+  if (!o.forzar && ia.fotos?.firma === firma && ia.fotos.version === VERSION_ANALISIS_FOTOS) {
     const cacheado = validarInventario(ia.fotos.inventario)
     if (cacheado) return { reusada: true, inventario: cacheado, cantidad: urls.length }
   }
@@ -229,7 +236,7 @@ export async function ejecutarEtapaFotos(id: string, o: { forzar?: boolean } = {
   const inventario = validarInventario(json)
   if (!inventario) throw new ErrorDescripcion('El análisis de las fotos devolvió algo ilegible. Probá de nuevo.', 502)
 
-  await guardarIA(id, { fotos: { firma, cantidad: urls.length, inventario, en: new Date().toISOString() } })
+  await guardarIA(id, { fotos: { firma, cantidad: urls.length, inventario, en: new Date().toISOString(), version: VERSION_ANALISIS_FOTOS } })
   return { reusada: false, inventario, cantidad: urls.length }
 }
 

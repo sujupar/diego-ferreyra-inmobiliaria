@@ -25,6 +25,18 @@ describe('faltanParaGenerar', () => {
   it('una dirección de solo espacios no cuenta', () => {
     expect(faltanParaGenerar({ ...completa, address: '   ' })).toEqual(['dirección'])
   })
+  it('un terreno pide la superficie del lote, no ambientes ni superficie cubierta', () => {
+    const terreno = {
+      photos: fotos(8), property_type: 'terreno', address: 'Ruta Provincial 52', neighborhood: 'Tristán Suárez',
+      rooms: null, covered_area: null, total_area: 600, asking_price: 28700,
+    }
+    expect(faltanParaGenerar(terreno)).toEqual([])
+    expect(faltanParaGenerar({ ...terreno, total_area: null })).toEqual(['superficie del lote'])
+  })
+  it('reconoce el tipo sin importar mayúsculas ni espacios', () => {
+    expect(faltanParaGenerar({ ...completa, property_type: ' Terreno ', rooms: null, covered_area: null, total_area: 300 })).toEqual([])
+  })
+
   it('lista todo lo que falta, en orden', () => {
     expect(faltanParaGenerar({})).toEqual([
       'fotos (tiene 0, mínimo 5)', 'tipo de propiedad', 'dirección', 'barrio',

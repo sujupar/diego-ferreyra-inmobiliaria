@@ -60,7 +60,8 @@ export interface TextoGenerado {
 
 /** Forma de `properties.descripcion_ia`. Todo opcional: se llena por etapas. */
 export interface DescripcionIA {
-  fotos?: { firma: string; cantidad: number; inventario: InventarioFotos; en: string }
+  /** `version` = la del prompt de fotos que lo produjo (ver VERSION_ANALISIS_FOTOS). */
+  fotos?: { firma: string; cantidad: number; inventario: InventarioFotos; en: string; version?: number }
   /** `completa: false` = el mapa o la web fallaron: se usa, pero el próximo "Generar" la reintenta. */
   zona?: { firma: string; datos: ZonaInvestigada; en: string; completa?: boolean }
   /** "Lo que no se ve en las fotos", escrito por el asesor. */
