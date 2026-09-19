@@ -91,6 +91,11 @@ describe('promptEscritura', () => {
     expect(p).toMatch(/TAL CUAL/)
     expect(p).toMatch(/no "3 más uno de servicio"/)
   })
+  it('trae la estructura de TERRENO, rotulada como adaptación y sin usos inventados', () => {
+    expect(p).toMatch(/## TERRENO/)
+    expect(p).toMatch(/adaptaci[oó]n/i)
+    expect(p).toMatch(/Posibilidades de uso: SOLO si/)
+  })
   it('usa voseo (decisión del 2026-07-28)', () => {
     expect(p).toContain('VOSEO')
   })

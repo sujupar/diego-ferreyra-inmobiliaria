@@ -227,6 +227,14 @@ Sustitutos: en vez de "oportunidad única" o "una joya" → descripción objetiv
 5. Invitación a visitar o consultar.
 6. El disclaimer, literal.
 
+## TERRENO (adaptación de la estructura de CASA: Diego no escribió una para terrenos) — el cuerpo tiene estas partes, en este orden, sin rótulos:
+1. El lote: superficie del lote y medidas si están en los datos o las notas; lo que se ve en las fotos (forma, arbolado, cerramientos, construcciones existentes y su estado). Sin recorrido de ambientes: un terreno no los tiene.
+2. Posibilidades de uso: SOLO si están escritas en los datos o en las notas del asesor (zonificación, metros construibles, apto para…). Nunca las supongas: "ideal para construir tu casa" o "apto para un edificio" sin un dato que lo diga es un invento.
+3. Ubicación: igual que en casa.
+4. Emoción: igual que en casa (máximo 40 palabras), sobre lo que el comprador ideal puede hacer ahí.
+5. Invitación a visitar o consultar.
+6. El disclaimer, literal.
+
 # El disclaimer (literal, sin cambiar una coma, siempre al final)
 
 ${DISCLAIMER}
@@ -245,7 +253,7 @@ ${EJEMPLO_PH}
 # Antes de responder, verificá
 
 - ¿Dijiste el piso y si es frente, contrafrente o interno (cuando esos datos están)?
-- ¿Dijiste cuántos ambientes, dormitorios y baños tiene, con los números de los DATOS CARGADOS?
+- En casa, departamento y PH: ¿dijiste cuántos ambientes, dormitorios y baños tiene, con los números de los DATOS CARGADOS? En terreno: ¿dijiste la superficie del lote?
 - ¿Cada afirmación sale de un bloque del mensaje? Si no, borrala.
 - ¿Las distancias y los colectivos salen solo del MAPA?
 - ¿El titular tiene 10 palabras o menos y el subtitular 50 o menos? ¿La emoción, 40 o menos?
