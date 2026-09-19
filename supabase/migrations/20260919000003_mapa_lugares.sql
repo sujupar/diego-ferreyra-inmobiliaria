@@ -52,23 +52,28 @@ ALTER TABLE public.mapa_lugares ENABLE ROW LEVEL SECURITY;
 
 -- Lugares dentro de un radio POR TIPO (los radios los manda el código, que es
 -- donde viven: lib/descripcion/zona-mapa.ts). El índice GiST filtra por el radio
--- mayor; después se aplica el de cada tipo.
+-- mayor; después se aplica el de cada tipo. `ubicacion` es un punto o, para los
+-- tramos de recorrido, una línea: la distancia es al punto más cercano.
+--
+-- SECURITY INVOKER + search_path vacío con todo calificado (revisión de
+-- seguridad 2026-09-19): solo la ejecuta el service role, que ya saltea RLS, y
+-- así ninguna función homónima en `public` puede colarse.
 CREATE OR REPLACE FUNCTION public.lugares_cercanos(p_lat DOUBLE PRECISION, p_lng DOUBLE PRECISION, p_radios JSONB)
 RETURNS TABLE (osm_id TEXT, tipo TEXT, nombre TEXT, lineas TEXT[], metros INTEGER)
 LANGUAGE sql
 STABLE
-SECURITY DEFINER
-SET search_path = public, extensions
+SECURITY INVOKER
+SET search_path = ''
 AS $$
   WITH punto AS (
-    SELECT ST_SetSRID(ST_MakePoint(p_lng, p_lat), 4326)::geography AS g
+    SELECT extensions.ST_SetSRID(extensions.ST_MakePoint(p_lng, p_lat), 4326)::extensions.geography AS g
   ), radio_max AS (
     SELECT coalesce(max((value #>> '{}')::double precision), 0) AS m FROM jsonb_each(p_radios)
   )
-  SELECT l.osm_id, l.tipo, l.nombre, l.lineas, round(ST_Distance(l.ubicacion, punto.g))::int AS metros
+  SELECT l.osm_id, l.tipo, l.nombre, l.lineas, round(extensions.ST_Distance(l.ubicacion, punto.g))::int AS metros
   FROM public.mapa_lugares l, punto, radio_max
-  WHERE ST_DWithin(l.ubicacion, punto.g, radio_max.m)
-    AND ST_Distance(l.ubicacion, punto.g) <= coalesce((p_radios ->> l.tipo)::double precision, 0)
+  WHERE extensions.ST_DWithin(l.ubicacion, punto.g, radio_max.m)
+    AND extensions.ST_Distance(l.ubicacion, punto.g) <= coalesce((p_radios ->> l.tipo)::double precision, 0)
   ORDER BY metros;
 $$;
 

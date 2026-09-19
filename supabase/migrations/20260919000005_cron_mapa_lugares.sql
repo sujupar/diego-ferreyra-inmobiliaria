@@ -19,6 +19,15 @@
 -- Los marcadores __SECRETO__ y __SITIO__ los reemplaza el script.
 -- =============================================================================
 
+-- Candado: pegada a mano en el SQL Editor, el secreto quedaría en el literal
+-- '__SECRETO__' (que está en el repo) y cualquiera podría disparar la ruta. El
+-- script reemplaza el marcador; la concatenación de abajo no la toca.
+DO $$ BEGIN
+  IF '__SECRETO__' = '__' || 'SECRETO__' OR '__SITIO__' = '__' || 'SITIO__' THEN
+    RAISE EXCEPTION 'Esta migración se aplica con scripts/apply-cron-mapa-lugares-pg.ts (reemplaza el secreto y el dominio).';
+  END IF;
+END $$;
+
 INSERT INTO public.cron_config (key, value)
 VALUES ('mapa_lugares', '__SECRETO__')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;

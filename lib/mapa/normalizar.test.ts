@@ -1,5 +1,21 @@
 import { describe, it, expect } from 'vitest'
-import { lineaDeRuta, lineaDeColectivo, ordenarLineasColectivo } from './normalizar'
+import { lineaDeRuta, lineaDeColectivo, ordenarLineasColectivo, nombreUtil } from './normalizar'
+
+describe('nombreUtil', () => {
+  it('limpia caracteres de control y espacios de los bordes', () => {
+    expect(nombreUtil(`  Plaza Almagro${String.fromCharCode(0)} `)).toBe('Plaza Almagro')
+  })
+  it('descarta lo que no es un nombre citable: vacío, no texto, o más de 120 caracteres', () => {
+    expect(nombreUtil('   ')).toBeNull()
+    expect(nombreUtil(undefined)).toBeNull()
+    expect(nombreUtil(42)).toBeNull()
+    // Real (OpenStreetMap, González Catán): los tags pegados en el nombre.
+    expect(nombreUtil('addr:city=González Catan addr:housenumber=6067 addr:postcode=1759 addr:street=Enrique Simón Pérez building=school name=Instituto González Catán - Jardín Monigote')).toBeNull()
+  })
+  it('una ruta con nombre basura no da nombre de línea', () => {
+    expect(lineaDeRuta({ name: 'x'.repeat(130) })).toBeUndefined()
+  })
+})
 
 describe('lineaDeRuta (subte y tren)', () => {
   it('toma el nombre antes de los dos puntos', () => {

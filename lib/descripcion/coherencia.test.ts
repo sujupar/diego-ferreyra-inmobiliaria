@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { avisosDeCoherencia } from './coherencia'
+import { avisosDeCoherencia, avisosDeZona } from './coherencia'
 import type { InventarioFotos } from './tipos'
 
 const inventario = (nombres: string[]): InventarioFotos => ({
@@ -34,5 +34,17 @@ describe('avisosDeCoherencia', () => {
 
   it('no confunde "baño" dentro de otro nombre ni cuenta el pasillo', () => {
     expect(avisosDeCoherencia(inventario(['Pasillo', 'Dormitorio principal en suite']), { bedrooms: 1, bathrooms: 1 })).toEqual([])
+  })
+})
+
+describe('avisosDeZona', () => {
+  it('avisa si el mapa no encontró NADA cerca del pin (zona aislada o pin mal puesto): nunca en silencio', () => {
+    const avisos = avisosDeZona({ mapa: { lugares: [], colectivos: [] }, web: 'x' })
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0]).toMatch(/ubicación/)
+  })
+  it('con algo cerca no avisa', () => {
+    expect(avisosDeZona({ mapa: { lugares: [], colectivos: ['51'] }, web: 'x' })).toEqual([])
+    expect(avisosDeZona({ mapa: { lugares: [{ nombre: 'Plaza', tipo: 'plaza', metros: 300, cuadras: 3 }] }, web: 'x' })).toEqual([])
   })
 })

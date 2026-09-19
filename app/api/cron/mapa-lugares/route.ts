@@ -24,7 +24,8 @@ async function autorizado(provisto: string | null): Promise<boolean> {
     const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
     const { data } = await sb.from('cron_config').select('value').eq('key', 'mapa_lugares').maybeSingle()
     const secretoDb = (data as { value?: string } | null)?.value
-    return !!secretoDb && provisto === secretoDb
+    // Un marcador sin reemplazar ('__SECRETO__', público en el repo) nunca es un secreto.
+    return !!secretoDb && !secretoDb.startsWith('__') && provisto === secretoDb
   } catch {
     return false
   }

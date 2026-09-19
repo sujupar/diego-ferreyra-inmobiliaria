@@ -18,3 +18,9 @@ ALTER TABLE public.mapa_lugares
 ALTER TABLE public.mapa_lugares DROP CONSTRAINT IF EXISTS mapa_lugares_tipo_check;
 ALTER TABLE public.mapa_lugares ADD CONSTRAINT mapa_lugares_tipo_check
   CHECK (tipo IN ('subte', 'tren', 'plaza', 'colegio', 'universidad', 'hospital', 'parada', 'recorrido'));
+
+-- Reserva de una celda mientras se escribe (revisión adversarial 2026-09-19):
+-- con dos escrituras a la vez, la más nueva borra lo que la más vieja re-marcó
+-- con su fecha y la celda queda vacía. Se reserva con un UPDATE condicional
+-- (atómico) y se libera al terminar; si la función muere a mitad, vence sola.
+ALTER TABLE public.mapa_celdas ADD COLUMN IF NOT EXISTS reservada_hasta TIMESTAMPTZ;

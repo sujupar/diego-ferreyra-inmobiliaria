@@ -1,6 +1,6 @@
 /**
  * Aplica `20260919000004_mapa_recorridos.sql` (ubicación como cualquier
- * geometría + tipo 'recorrido') y verifica: un solo CHECK de tipo y con
+ * geometría + tipo 'recorrido' + reserva de celdas) y verifica: un solo CHECK de tipo y con
  * 'recorrido', la columna acepta líneas, la función mide distancia a una línea,
  * y no se perdió ninguna fila.
  *
@@ -24,6 +24,8 @@ async function main() {
     WHERE conrelid = 'public.mapa_lugares'::regclass AND contype = 'c'`)
   const { rows: tipo } = await c.query(`SELECT format_type(atttypid, atttypmod) AS t FROM pg_attribute
     WHERE attrelid = 'public.mapa_lugares'::regclass AND attname = 'ubicacion'`)
+  const { rows: reserva } = await c.query(`SELECT format_type(atttypid, atttypmod) AS t FROM pg_attribute
+    WHERE attrelid = 'public.mapa_celdas'::regclass AND attname = 'reservada_hasta' AND NOT attisdropped`)
 
   // Prueba real dentro de una transacción que se deshace: una línea a ~100 m del punto.
   await c.query('BEGIN')
@@ -35,11 +37,12 @@ async function main() {
   await c.end()
 
   console.log(`filas: antes ${antes} · después ${despues} · tras la prueba ${final}`)
-  console.log(`ubicacion: ${tipo[0]?.t}`)
+  console.log(`ubicacion: ${tipo[0]?.t} · reservada_hasta: ${reserva[0]?.t ?? 'NO'}`)
   console.log(`CHECKs: ${checks.map(k => `${k.conname}: ${k.def}`).join(' | ')}`)
   console.log(`línea de prueba encontrada a ${prueba[0]?.metros ?? 'NO'} m (esperado ~100)`)
   if (antes !== despues || despues !== final) throw new Error('¡ALERTA! cambió la cantidad de filas')
   if (!/geography\(Geometry,4326\)/i.test(tipo[0]?.t ?? '')) throw new Error('la columna no quedó como Geometry')
+  if (!reserva[0]) throw new Error('falta mapa_celdas.reservada_hasta')
   const deTipo = checks.filter(k => /tipo/.test(k.def))
   if (deTipo.length !== 1 || !/recorrido/.test(deTipo[0].def)) throw new Error('el CHECK de tipo no quedó bien (debe haber UNO y con recorrido)')
   if (!prueba[0] || Math.abs(prueba[0].metros - 100) > 5) throw new Error('la función no midió bien la distancia a la línea')

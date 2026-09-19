@@ -5,37 +5,21 @@
  * Reglas que hacen que una celda nunca quede peor que antes:
  *  - Si la descarga falla, NO se toca ningún lugar: la celda conserva sus datos
  *    y queda en 'error' para reintentar.
+ *  - Una descarga "buena" que trae menos de la mitad de lo que había cuenta
+ *    como fallida (`descargaSospechosa`).
  *  - Recién con la descarga buena se hace upsert de lo que vino y se borran SOLO
  *    los lugares de ESA celda que ya no vinieron (marcados con la fecha de esta
  *    actualización).
+ *  - Una sola escritura por celda a la vez (`reservarCelda`): con dos a la vez,
+ *    la más nueva borra lo que la más vieja re-marcó con su fecha y la celda
+ *    queda vacía.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Celda } from './celdas'
 import { consultaCelda, filasDesdeRespuesta, type FilaMapa } from './overpass-celda'
-import { SERVIDORES_OVERPASS } from '@/lib/descripcion/zona-mapa'
+import { SERVIDORES_OVERPASS, consultarServidorOverpass } from '@/lib/descripcion/zona-mapa'
 
 const LOTE_UPSERT = 500
-
-async function consultarServidor(url: string, cuerpo: string, signal: AbortSignal): Promise<unknown> {
-  const res = await fetch(url, {
-    method: 'POST',
-    signal,
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      'user-agent': 'DiegoFerreyraInmobiliaria/1.0 (contacto@inmodf.com.ar)',
-    },
-    body: cuerpo,
-  })
-  if (!res.ok) throw new Error(`${new URL(url).host} respondió ${res.status}`)
-  const json = (await res.json()) as { elements?: unknown; remark?: unknown }
-  // Overpass responde 200 con un "remark" cuando corta la consulta por tiempo o
-  // memoria: eso NO es una celda vacía, es una descarga fallida.
-  if (typeof json.remark === 'string' && /error|timeout|out of memory/i.test(json.remark)) {
-    throw new Error(`${new URL(url).host}: ${json.remark.slice(0, 120)}`)
-  }
-  if (!Array.isArray(json.elements)) throw new Error(`${new URL(url).host}: respuesta sin elements`)
-  return json
-}
 
 /** Los dos servidores a la vez; gana el primero que responde bien. Lanza si fallan todos. */
 export async function descargarCelda(c: Celda, signal: AbortSignal): Promise<unknown> {
@@ -43,7 +27,7 @@ export async function descargarCelda(c: Celda, signal: AbortSignal): Promise<unk
   const senal = AbortSignal.any([signal, alcanzo.signal])
   const cuerpo = `data=${encodeURIComponent(consultaCelda(c))}`
   try {
-    return await Promise.any(SERVIDORES_OVERPASS.map(url => consultarServidor(url, cuerpo, senal)))
+    return await Promise.any(SERVIDORES_OVERPASS.map(url => consultarServidorOverpass(url, cuerpo, senal)))
   } catch (err) {
     const motivos = err instanceof AggregateError ? err.errors.map(e => (e instanceof Error ? e.message : String(e))) : [String(err)]
     throw new Error(`ningún servidor respondió: ${motivos.join(' | ')}`)
@@ -57,6 +41,43 @@ function sinRepetidos(filas: FilaMapa[]): FilaMapa[] {
   const porClave = new Map<string, FilaMapa>()
   for (const f of filas) porClave.set(`${f.osm_id}|${f.tipo}`, f)
   return [...porClave.values()]
+}
+
+/**
+ * Un espejo de Overpass desactualizado o recortado puede responder 200 con
+ * `elements: []` o con media celda. Guardarlo borraría la celda y la dejaría
+ * "ok" 30 días: descripciones sin mapa en silencio. Un mes de cambios reales en
+ * OpenStreetMap no se lleva la mitad de una celda; si alguna vez pasa de
+ * verdad, la carga desde Geofabrik (`guardarCelda` directo) lo resuelve.
+ */
+export function descargaSospechosa(filasAntes: number, filasAhora: number): boolean {
+  return filasAntes >= 20 && filasAhora < filasAntes * 0.5
+}
+
+/** Más que lo que puede durar una actualización (Netlify corta a ~26 s). */
+const RESERVA_MS = 2 * 60_000
+
+/**
+ * Reserva la celda para escribirla: pone `reservada_hasta` solo si no hay otra
+ * reserva vigente. Es UN update condicional, atómico en Postgres: si dos llegan
+ * juntos, el segundo ya ve la reserva del primero. También marca `intentado_en`
+ * (la actualización mensual espera 1 hora antes de volver a intentar la celda).
+ * Devuelve las filas que tenía la celda, o null si está ocupada. Liberar con
+ * `liberarCelda`; si la función muere a mitad, la reserva vence sola.
+ */
+export async function reservarCelda(db: SupabaseClient, c: Celda): Promise<{ filas: number } | null> {
+  const ahora = new Date()
+  const { data, error } = await db.from('mapa_celdas')
+    .update({ reservada_hasta: new Date(ahora.getTime() + RESERVA_MS).toISOString(), intentado_en: ahora.toISOString() })
+    .eq('id', c.id).or(`reservada_hasta.is.null,reservada_hasta.lt."${ahora.toISOString()}"`).select('filas')
+  if (error) throw new Error(`no se pudo reservar la celda: ${error.message}`)
+  const fila = ((data ?? []) as Array<{ filas: number | null }>)[0]
+  return fila ? { filas: fila.filas ?? 0 } : null
+}
+
+export async function liberarCelda(db: SupabaseClient, c: Celda): Promise<void> {
+  const { error } = await db.from('mapa_celdas').update({ reservada_hasta: null }).eq('id', c.id)
+  if (error) console.warn(`[mapa] no se pudo liberar la celda ${c.id} (vence sola en 2 min): ${error.message}`)
 }
 
 /** Cómo se guarda la ubicación: un punto, o el trazado entero si es un tramo de recorrido. */
@@ -115,9 +136,20 @@ export async function actualizarCelda(db: SupabaseClient, c: Celda, timeoutMs: n
   const t = Date.now()
   try {
     await asegurarCeldas(db, [c])
-    const json = await descargarCelda(c, AbortSignal.timeout(timeoutMs))
-    const filas = await guardarCelda(db, c, filasDesdeRespuesta(json, c))
-    return { ok: true, filas, ms: Date.now() - t }
+    const reserva = await reservarCelda(db, c)
+    // Ocupada: otra corrida la está escribiendo. No es un error de la celda.
+    if (!reserva) return { ok: false, filas: 0, ms: Date.now() - t, error: 'celda ocupada por otra actualización' }
+    try {
+      const json = await descargarCelda(c, AbortSignal.timeout(timeoutMs))
+      const nuevas = filasDesdeRespuesta(json, c)
+      if (descargaSospechosa(reserva.filas, nuevas.length)) {
+        throw new Error(`descarga sospechosa: ${nuevas.length} filas contra ${reserva.filas} que había; no se toca la celda`)
+      }
+      const filas = await guardarCelda(db, c, nuevas)
+      return { ok: true, filas, ms: Date.now() - t }
+    } finally {
+      await liberarCelda(db, c)
+    }
   } catch (err) {
     const mensaje = err instanceof Error ? err.message : String(err)
     try { await marcarError(db, c, mensaje) } catch { /* el error original es el que importa */ }

@@ -33,4 +33,12 @@ describe('elegirCeldaParaActualizar', () => {
       { id: 'recien', estado: 'error', actualizado_en: hace(40), intentado_en: hace(0, 2) },
     ], ahora)).toBe('recien')
   })
+
+  it('un intento cortado a mitad (Netlify mató la función: sigue "ok" y vieja) también espera 1 hora', () => {
+    // Sin esto, la misma celda se reelegía cada 5 minutos y trababa el refresco del AMBA entero.
+    expect(elegirCeldaParaActualizar([
+      { id: 'cortada', estado: 'ok', actualizado_en: hace(40), intentado_en: hace(0, 0.1) },
+      { id: 'otra', estado: 'ok', actualizado_en: hace(31), intentado_en: hace(31) },
+    ], ahora)).toBe('otra')
+  })
 })

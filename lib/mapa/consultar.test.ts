@@ -10,6 +10,8 @@ const filas = [
   { osm_id: 'n100', tipo: 'parada', nombre: '', lineas: ['24', '160'], metros: 120 },
   { osm_id: 'n101', tipo: 'parada', nombre: '', lineas: ['19', '24'], metros: 300 },
   { osm_id: 'w900', tipo: 'recorrido', nombre: '', lineas: ['109', '24'], metros: 350 },
+  // Cargada antes del filtro: se descarta también al leer.
+  { osm_id: 'n9', tipo: 'colegio', nombre: `addr:city=González Catan ${'x'.repeat(130)}`, lineas: [], metros: 200 },
 ]
 
 describe('resultadoDesdeFilas', () => {
@@ -21,8 +23,9 @@ describe('resultadoDesdeFilas', () => {
     expect(r.lugares.find(l => l.tipo === 'hospital')?.cuadras).toBe(1)
   })
 
-  it('aplica la misma selección que el mapa en vivo (sin colegios para adultos, ordenado)', () => {
+  it('aplica la misma selección que el mapa en vivo (sin colegios para adultos ni nombres basura, ordenado)', () => {
     expect(r.lugares.map(l => l.nombre)).not.toContain('Escuela Primaria p/Adultos 23')
+    expect(r.lugares.some(l => l.nombre.startsWith('addr:'))).toBe(false)
     const metros = r.lugares.map(l => l.metros)
     expect(metros).toEqual([...metros].sort((a, b) => a - b))
   })

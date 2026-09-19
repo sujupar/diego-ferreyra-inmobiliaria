@@ -61,4 +61,9 @@ describe('ruta de la actualización mensual del mapa', () => {
   it('un secreto equivocado: 403', async () => {
     expect((await POST(pedido('cualquiera'))).status).toBe(403)
   })
+  it('el marcador sin reemplazar de la migración (público en el repo) nunca abre la puerta', async () => {
+    estado.secretoEnLaBase = '__SECRETO__'
+    expect((await POST(pedido('__SECRETO__'))).status).toBe(403)
+    expect(estado.corridas).toBe(0)
+  })
 })

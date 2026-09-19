@@ -33,7 +33,7 @@ import sys
 import osmium
 
 # El AMBA: lib/mapa/celdas.ts (AMBA). Mantener igual.
-SUR, OESTE, NORTE, ESTE = -35.25, -59.2, -34.3, -58.1
+SUR, OESTE, NORTE, ESTE = -35.25, -59.2, -34.3, -57.8
 RUTAS_RIEL = {"subway", "train", "light_rail", "tram"}
 
 
@@ -41,11 +41,26 @@ def dentro(lat, lng):
     return SUR <= lat <= NORTE and OESTE <= lng <= ESTE
 
 
+CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+MAX_NOMBRE = 120
+
+
+def nombre_util(crudo):
+    """lib/mapa/normalizar.ts#nombreUtil"""
+    if not isinstance(crudo, str):
+        return None
+    limpio = CONTROL.sub("", crudo).strip()
+    return limpio if limpio and len(limpio) <= MAX_NOMBRE else None
+
+
 def linea_de_ruta(tags):
     """lib/mapa/normalizar.ts#lineaDeRuta"""
-    nombre = (tags.get("name") or "").split(":")[0].strip()
+    crudo = (tags.get("name") or "").split(":")[0]
+    nombre = nombre_util(crudo)
     if nombre:
         return nombre
+    if crudo.strip():
+        return None
     ref = (tags.get("ref") or "").strip()
     return f"Línea {ref}" if ref else None
 
@@ -128,7 +143,7 @@ class Lugares(osmium.SimpleHandler):
         if not dentro(lat, lng):
             return
         tags = {t.k: t.v for t in n.tags}
-        nombre = (tags.get("name") or "").strip()
+        nombre = nombre_util(tags.get("name")) or ""
 
         if tags.get("railway") == "station" and nombre:
             lineas = set(self.rel.lineas_riel.get(n.id, set()))
@@ -168,7 +183,7 @@ class Lugares(osmium.SimpleHandler):
     def area(self, a):
         tags = {t.k: t.v for t in a.tags}
         tipo = tipo_de_lugar(tags)
-        nombre = (tags.get("name") or "").strip()
+        nombre = nombre_util(tags.get("name")) or ""
         if not tipo or not nombre:
             return
         lats, lngs = [], []
@@ -195,6 +210,9 @@ def main():
     with open(destino, "w", encoding="utf-8") as salida:
         lugares = Lugares(rel, salida)
         lugares.apply_file(archivo, locations=True, idx="flex_mem")
+        # Marca de fin: sin ella, el cargador no toca nada (un archivo cortado
+        # por una excepción a mitad vaciaría las celdas que faltan).
+        salida.write(json.dumps({"fin": True, "filas": sum(lugares.cuenta.values())}) + "\n")
     print("filas por tipo:", json.dumps(lugares.cuenta, ensure_ascii=False), flush=True)
 
 

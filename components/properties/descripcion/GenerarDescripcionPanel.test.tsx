@@ -159,4 +159,46 @@ describe('GenerarDescripcionPanel — recorrido completo', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo ubicar la dirección en el mapa.')
     expect(pedidos.filter(p => p.body.etapa === 'zona')).toHaveLength(1)
   })
+
+  it('si falla guardar, "Reintentar" vuelve a GUARDAR lo editado (no reescribe ni pisa las ediciones)', async () => {
+    let fallasGuardar = 3 // el intento + los 2 reintentos automáticos
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {}
+      pedidos.push({ url, body })
+      if (url.endsWith('/guardar') && fallasGuardar > 0) { fallasGuardar--; return new Response('<html>503</html>', { status: 503 }) }
+      if (url.endsWith('/guardar')) return new Response(JSON.stringify({ ok: true }), { status: 200 })
+      if (body.etapa === 'fotos') return new Response(JSON.stringify({ reusada: false, inventario, cantidad: 22 }), { status: 200 })
+      if (body.etapa === 'zona') return new Response(JSON.stringify({ reusada: false, zona: { mapa: null, web: 'x' }, avisos: [] }), { status: 200 })
+      return new Response(JSON.stringify(escrito([])), { status: 200 })
+    }))
+    const onGuardado = vi.fn()
+    render(<GenerarDescripcionPanel propertyId="p1" estado={{ ...estado, pendientes: [] }} abierto onCerrar={() => {}} onGuardado={onGuardado} esperasReintentoMs={[0, 0]} />)
+    const titulo = await screen.findByDisplayValue('Departamento luminoso de 3 ambientes')
+    await userEvent.type(titulo, ' editado')
+    const escriturasAntes = pedidos.filter(p => p.body.etapa === 'escribir').length
+
+    await userEvent.click(screen.getByRole('button', { name: /^guardar$/i }))
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /reintentar/i }))
+
+    await waitFor(() => expect(onGuardado).toHaveBeenCalled())
+    expect(pedidos.filter(p => p.body.etapa === 'escribir')).toHaveLength(escriturasAntes)
+    const ultimo = pedidos.filter(p => p.url.endsWith('/guardar')).at(-1)
+    expect(ultimo?.body.title).toBe('Departamento luminoso de 3 ambientes editado')
+  })
+
+  it('cerrar el panel durante la espera de un reintento no manda más pedidos (no se paga trabajo que nadie va a ver)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {}
+      pedidos.push({ url, body })
+      if (body.etapa === 'fotos') return new Response(JSON.stringify({ reusada: false, inventario, cantidad: 22 }), { status: 200 })
+      return new Response('<html>504</html>', { status: 504 })
+    }))
+    const props = { propertyId: 'p1', estado: { ...estado, pendientes: [] }, onCerrar: () => {}, onGuardado: () => {}, esperasReintentoMs: [150, 150] }
+    const { rerender } = render(<GenerarDescripcionPanel {...props} abierto />)
+    await waitFor(() => expect(pedidos.filter(p => p.body.etapa === 'zona')).toHaveLength(1))
+    rerender(<GenerarDescripcionPanel {...props} abierto={false} />)
+    await new Promise(r => setTimeout(r, 500))
+    expect(pedidos.filter(p => p.body.etapa === 'zona')).toHaveLength(1)
+  })
 })

@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { AMBA, TAMANO_CELDA, todasLasCeldas, celdaDe, celdasCubriendo, dentroDelAmba } from './celdas'
 
 describe('grilla del AMBA', () => {
-  it('cubre el AMBA con 418 celdas de 0,05° sin repetir', () => {
+  it('cubre el AMBA con 532 celdas de 0,05° sin repetir', () => {
     const celdas = todasLasCeldas()
     expect(TAMANO_CELDA).toBe(0.05)
-    expect(celdas).toHaveLength(19 * 22)
+    expect(celdas).toHaveLength(19 * 28)
     expect(new Set(celdas.map(c => c.id)).size).toBe(celdas.length)
     expect(celdas[0]).toEqual({ id: '-35.250_-59.200', sur: -35.25, oeste: -59.2, norte: -35.2, este: -59.15 })
   })
@@ -17,7 +17,15 @@ describe('grilla del AMBA', () => {
     expect(c!.norte).toBeGreaterThan(-34.6058567)
   })
 
+  it('incluye el Gran La Plata (City Bell, Gonnet, La Plata): un pin ahí no es un pin mal puesto', () => {
+    expect(celdaDe(-34.87, -58.05)).not.toBeNull()
+    expect(celdaDe(-34.88, -58.02)).not.toBeNull()
+    expect(celdaDe(-34.92, -57.95)).not.toBeNull()
+    expect(celdasCubriendo(-34.92, -57.95, 1500).completo).toBe(true)
+  })
+
   it('un punto fuera del AMBA no tiene celda', () => {
+    expect(celdaDe(-34.58, -60.96)).toBeNull() // Junín: donde estaba el pin de Almafuerte 2500
     expect(celdaDe(-31.42, -64.18)).toBeNull() // Córdoba
     expect(dentroDelAmba(-31.42, -64.18)).toBe(false)
     expect(dentroDelAmba(AMBA.sur, AMBA.oeste)).toBe(true)

@@ -19,16 +19,22 @@ async function main() {
   const { rows: tablas } = await c.query("SELECT relname, relrowsecurity FROM pg_class WHERE relname IN ('mapa_lugares','mapa_celdas') AND relkind = 'r'")
   const { rows: idx } = await c.query("SELECT indexname FROM pg_indexes WHERE tablename = 'mapa_lugares' AND indexname = 'idx_mapa_lugares_ubicacion'")
   const { rows: prueba } = await c.query(`SELECT count(*)::int AS n FROM lugares_cercanos(-34.61, -58.39, '{"subte":1500}'::jsonb)`)
-  const { rows: permisos } = await c.query("SELECT has_function_privilege('anon', 'lugares_cercanos(double precision, double precision, jsonb)', 'EXECUTE') AS anon")
+  const { rows: permisos } = await c.query(`SELECT
+    has_function_privilege('anon', 'lugares_cercanos(double precision, double precision, jsonb)', 'EXECUTE') AS anon,
+    has_function_privilege('authenticated', 'lugares_cercanos(double precision, double precision, jsonb)', 'EXECUTE') AS auth,
+    has_function_privilege('service_role', 'lugares_cercanos(double precision, double precision, jsonb)', 'EXECUTE') AS servicio,
+    (SELECT prosecdef FROM pg_proc WHERE proname = 'lugares_cercanos') AS definer`)
   const { rows: despues } = await c.query('SELECT count(*)::int AS n FROM properties')
   await c.end()
   console.log(`postgis: ${ext[0]?.extversion ?? 'NO'}`)
   console.log(`tablas: ${tablas.map(t => `${t.relname} (RLS ${t.relrowsecurity ? 'sí' : 'NO'})`).join(', ')}`)
-  console.log(`índice GiST: ${idx.length ? 'sí' : 'NO'} · función responde: ${prueba[0].n} filas (tabla vacía todavía) · anon puede ejecutarla: ${permisos[0].anon}`)
+  console.log(`índice GiST: ${idx.length ? 'sí' : 'NO'} · función responde: ${prueba[0].n} filas · ejecutan: anon ${permisos[0].anon}, authenticated ${permisos[0].auth}, service_role ${permisos[0].servicio} · security definer: ${permisos[0].definer}`)
   if (!ext[0]) throw new Error('PostGIS no quedó activado')
   if (tablas.length !== 2 || tablas.some(t => !t.relrowsecurity)) throw new Error('faltan tablas o RLS')
   if (!idx.length) throw new Error('falta el índice GiST')
-  if (permisos[0].anon) throw new Error('anon NO debería poder ejecutar la función')
+  if (permisos[0].anon || permisos[0].auth) throw new Error('anon/authenticated NO deberían poder ejecutar la función')
+  if (!permisos[0].servicio) throw new Error('service_role tiene que poder ejecutar la función')
+  if (permisos[0].definer) throw new Error('la función quedó SECURITY DEFINER')
   if (antes[0].n !== despues[0].n) throw new Error('¡ALERTA! cambió la cantidad de propiedades')
   console.log('\n✅ migración aplicada y verificada')
 }

@@ -10,8 +10,14 @@
  * (-35.25 + 12 × 0.05 da -34.650000000000006).
  */
 
-/** El AMBA con margen: incluye CABA, conurbano, Canning/Ezeiza, San Isidro, Pilar sur, La Plata norte. */
-export const AMBA = { sur: -35.25, oeste: -59.2, norte: -34.3, este: -58.1 } as const
+/**
+ * El AMBA con margen: CABA, conurbano, Canning/Ezeiza, San Isidro, Pilar sur y
+ * el Gran La Plata (City Bell, Gonnet, La Plata, Berisso, Ensenada). Un pin
+ * afuera se trata como mal puesto (la etapa de zona frena), así que el recuadro
+ * tiene que incluir todo lo que la inmobiliaria puede vender.
+ * Mantener igual en `scripts/mapa-extraer-osm.py`.
+ */
+export const AMBA = { sur: -35.25, oeste: -59.2, norte: -34.3, este: -57.8 } as const
 export const TAMANO_CELDA = 0.05
 
 export interface Celda {

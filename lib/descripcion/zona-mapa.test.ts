@@ -57,6 +57,14 @@ describe('lugaresDesdeOverpass', () => {
   it('una estación de tren queda como tren con su línea', () => {
     expect(lugares.find(l => l.nombre === 'General Urquiza')).toMatchObject({ tipo: 'tren', linea: 'Línea Mitre' })
   })
+  it('con rutas de tren y subte es subte y lleva TODAS sus líneas (misma regla que el mapa propio)', () => {
+    const once = { elements: [
+      { type: 'node', id: 1, lat: -34.6088, lon: -58.4060, tags: { name: 'Once', railway: 'station', network: 'Sarmiento' } },
+      { type: 'relation', id: 2, tags: { route: 'train', name: 'Línea Sarmiento: Once → Moreno' } },
+      { type: 'relation', id: 3, tags: { route: 'subway', name: 'Línea H: Hospitales → Facultad de Derecho' } },
+    ] }
+    expect(lugaresDesdeOverpass(once, ORIGEN).find(l => l.nombre === 'Once')).toMatchObject({ tipo: 'subte', linea: 'Línea H y Línea Sarmiento' })
+  })
   it('una estación sin rutas conocidas queda sin línea', () => {
     expect(lugares.find(l => l.nombre === 'Estación sin rutas')?.linea).toBeUndefined()
   })
@@ -158,6 +166,11 @@ describe('buscarLugaresCercanos', () => {
     expect(urls).toEqual(SERVIDORES_OVERPASS)
     expect(r?.lugares.length).toBeGreaterThan(0)
     expect(r?.colectivos).toEqual(['19', '24', '105', '160'])
+  })
+
+  it('un 200 con "remark" de error (Overpass cortó la consulta) es una falla, no un mapa vacío', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ elements: [], remark: 'runtime error: Query timed out in "query" at line 3 after 12 seconds.' }), { status: 200 })))
+    expect(await buscarLugaresCercanos(ORIGEN.lat, ORIGEN.lng, AbortSignal.timeout(5000))).toBeNull()
   })
 
   it('si fallan todos devuelve null (el texto sale sin distancias, nunca inventadas)', async () => {
