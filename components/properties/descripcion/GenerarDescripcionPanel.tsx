@@ -46,11 +46,30 @@ async function leerJson<T>(res: Response): Promise<T & { error?: string }> {
   }
 }
 
-async function pedir<T>(url: string, body: unknown): Promise<T> {
-  const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
-  const json = await leerJson<T>(res)
-  if (!res.ok) throw new Error(json.error || 'No se pudo completar el paso.')
-  return json
+/**
+ * Esperas de los reintentos automáticos ante un corte momentáneo (5xx o red):
+ * el dueño pidió que funcione "1.000 de 1.000 veces", y un 504 aislado de
+ * Netlify o de OpenAI no puede terminar en un error en pantalla. Los errores de
+ * datos (4xx: falta algo, sin permiso) NO se reintentan: repetirlos da lo mismo.
+ */
+const ESPERAS_REINTENTO_MS = [2_000, 5_000]
+
+const dormir = (ms: number) => new Promise(resolver => setTimeout(resolver, ms))
+
+async function pedir<T>(url: string, body: unknown, esperas: number[] = ESPERAS_REINTENTO_MS): Promise<T> {
+  for (let intento = 0; ; intento++) {
+    let res: Response
+    try {
+      res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    } catch {
+      if (intento < esperas.length) { await dormir(esperas[intento]); continue }
+      throw new Error('No hay conexión con el servidor. Tocá "Reintentar".')
+    }
+    const json = await leerJson<T>(res)
+    if (res.ok) return json
+    if (res.status >= 500 && intento < esperas.length) { await dormir(esperas[intento]); continue }
+    throw new Error(json.error || 'No se pudo completar el paso.')
+  }
 }
 
 function contarPalabras(t: string): number {
@@ -63,12 +82,15 @@ export function GenerarDescripcionPanel({
   abierto,
   onCerrar,
   onGuardado,
+  esperasReintentoMs = ESPERAS_REINTENTO_MS,
 }: {
   propertyId: string
   estado: EstadoDescripcion
   abierto: boolean
   onCerrar: () => void
   onGuardado: (t: TextoGenerado) => void
+  /** Solo para tests: esperas de los reintentos automáticos. */
+  esperasReintentoMs?: number[]
 }) {
   const url = `/api/properties/${propertyId}/descripcion`
   const [paso, setPaso] = useState<PasoPanel>('fotos')
@@ -98,9 +120,9 @@ export function GenerarDescripcionPanel({
         ...(o.primeraVez ? { respuestas: respuestasParaEnviar(estado.pendientes, respuestas) } : {}),
         ...(o.compradorElegido?.trim() ? { comprador: o.compradorElegido.trim() } : {}),
       }
-      let r = await pedir<ResultadoEscritura>(url, base)
+      let r = await pedir<ResultadoEscritura>(url, base, esperasReintentoMs)
       if (debePedirCorreccion(r.problemas, false)) {
-        r = await pedir<ResultadoEscritura>(url, { ...base, respuestas: undefined, corregir: r.problemas })
+        r = await pedir<ResultadoEscritura>(url, { ...base, respuestas: undefined, corregir: r.problemas }, esperasReintentoMs)
       }
       if (mia !== corrida.current) return
       setResultado(r)
@@ -114,13 +136,13 @@ export function GenerarDescripcionPanel({
       marcar('escribir', 'error')
       setError({ etapa: 'escribir', mensaje: e instanceof Error ? e.message : 'Error' })
     }
-  }, [estado.pendientes, notas, respuestas, url])
+  }, [estado.pendientes, notas, respuestas, url, esperasReintentoMs])
 
   const correrZona = useCallback(async (forzar: boolean) => {
     const mia = corrida.current
     setPaso('zona'); setError(null); marcar('zona', 'en_curso')
     try {
-      const r = await pedir<{ reusada: boolean; zona: ZonaInvestigada; avisos: string[] }>(url, { etapa: 'zona', forzar })
+      const r = await pedir<{ reusada: boolean; zona: ZonaInvestigada; avisos: string[] }>(url, { etapa: 'zona', forzar }, esperasReintentoMs)
       if (mia !== corrida.current) return
       setReusado(prev => ({ ...prev, zona: r.reusada }))
       setAvisosZona(r.avisos)
@@ -133,13 +155,13 @@ export function GenerarDescripcionPanel({
       marcar('zona', 'error')
       setError({ etapa: 'zona', mensaje: e instanceof Error ? e.message : 'Error' })
     }
-  }, [escribir, estado.pendientes.length, url])
+  }, [escribir, estado.pendientes.length, url, esperasReintentoMs])
 
   const correrFotos = useCallback(async (forzar: boolean) => {
     const mia = corrida.current
     setPaso('fotos'); setError(null); marcar('fotos', 'en_curso')
     try {
-      const r = await pedir<{ reusada: boolean; inventario: InventarioFotos; cantidad: number }>(url, { etapa: 'fotos', forzar })
+      const r = await pedir<{ reusada: boolean; inventario: InventarioFotos; cantidad: number }>(url, { etapa: 'fotos', forzar }, esperasReintentoMs)
       if (mia !== corrida.current) return
       setReusado(prev => ({ ...prev, fotos: r.reusada }))
       // La sugerencia de comprador NO se precarga en el campo: lo que queda como
@@ -154,7 +176,7 @@ export function GenerarDescripcionPanel({
       marcar('fotos', 'error')
       setError({ etapa: 'fotos', mensaje: e instanceof Error ? e.message : 'Error' })
     }
-  }, [correrZona, url])
+  }, [correrZona, url, esperasReintentoMs])
 
   const empezar = useCallback((forzar: boolean) => {
     corrida.current += 1
@@ -187,7 +209,7 @@ export function GenerarDescripcionPanel({
   async function guardar() {
     setGuardando(true); setError(null)
     try {
-      await pedir<{ ok: true }>(`${url}/guardar`, texto)
+      await pedir<{ ok: true }>(`${url}/guardar`, texto, esperasReintentoMs)
       onGuardado(texto)
       onCerrar()
     } catch (e) {

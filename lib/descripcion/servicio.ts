@@ -19,6 +19,7 @@ import { faltanParaGenerar } from './requisitos'
 import { firmaDireccion, firmaFotos } from './firmas'
 import { juntarRespuestas, type PreguntaPendiente, type RespuestaConocida } from './respuestas'
 import { buscarLugaresCercanos } from './zona-mapa'
+import { lugaresDesdeBase } from '@/lib/mapa/consultar'
 import { ESQUEMA_INVENTARIO, INSTRUCCIONES_ZONA, PROMPT_FOTOS, entradaFotos, promptZonaWeb, validarInventario } from './prompts-investigacion'
 import { limpiarTextoWeb } from './limpiar-web'
 import { ESQUEMA_TEXTO, promptEscritura } from './metodo-diego'
@@ -256,6 +257,17 @@ async function coordenadas(fila: FilaPropiedad): Promise<{ lat: number; lng: num
   return c?.latitude != null && c?.longitude != null ? { lat: c.latitude, lng: c.longitude } : null
 }
 
+/**
+ * El mapa de la zona. Primero el MAPA PROPIO (tabla `mapa_lugares`, sin servicios
+ * externos: los públicos de Overpass fallaron 1 de 5 en producción, con 429 y 504).
+ * Fuera del AMBA o con la zona sin cargar, se consulta en vivo. `null` = no hubo forma.
+ */
+async function mapaDeLaZona(punto: { lat: number; lng: number }): Promise<ZonaInvestigada['mapa']> {
+  const base = await lugaresDesdeBase(admin(), punto.lat, punto.lng)
+  if (base.estado === 'ok') return { lugares: base.lugares, colectivos: base.colectivos }
+  return buscarLugaresCercanos(punto.lat, punto.lng, AbortSignal.timeout(TECHO_MAPA_MS))
+}
+
 export async function ejecutarEtapaZona(id: string, o: { forzar?: boolean } = {}): Promise<{ reusada: boolean; zona: ZonaInvestigada; avisos: string[] }> {
   const fila = await leerPropiedad(id)
   exigirRequisitos(fila)
@@ -266,8 +278,12 @@ export async function ejecutarEtapaZona(id: string, o: { forzar?: boolean } = {}
   }
 
   const punto = await coordenadas(fila)
+  if (!punto) {
+    throw new ErrorDescripcion('No se pudo ubicar la dirección en el mapa. Revisá la ubicación en la ficha ("Cambiar ubicación") y volvé a generar.', 409)
+  }
+
   const [mapa, web] = await Promise.allSettled([
-    punto ? buscarLugaresCercanos(punto.lat, punto.lng, AbortSignal.timeout(TECHO_MAPA_MS)) : Promise.resolve(null),
+    mapaDeLaZona(punto),
     respuestaOpenAI({
       modelo: modeloTexto(),
       instrucciones: INSTRUCCIONES_ZONA,
@@ -278,23 +294,22 @@ export async function ejecutarEtapaZona(id: string, o: { forzar?: boolean } = {}
     }),
   ])
 
-  const delMapa = mapa.status === 'fulfilled' ? mapa.value : null
-  const textoWeb = web.status === 'fulfilled' ? limpiarTextoWeb(web.value.texto) : null
-  if (web.status === 'rejected') console.warn('[descripcion/zona] búsqueda web falló:', web.reason)
-  if (delMapa === null && !textoWeb) {
-    throw new ErrorDescripcion('No se pudo investigar la zona (ni el mapa ni la web respondieron). Probá de nuevo.', 502)
+  // NUNCA un texto sin mapa en silencio (pedido del dueño, 2026-09-19): si falta
+  // el mapa o la web, la etapa falla con un error reintentable (503) y el panel
+  // la reintenta sola antes de mostrar "Reintentar". Nada queda guardado a medias.
+  if (mapa.status === 'rejected' || mapa.value === null) {
+    console.warn('[descripcion/zona] el mapa no respondió:', mapa.status === 'rejected' ? mapa.reason : 'sin datos')
+    throw new ErrorDescripcion('El mapa de la zona no respondió. Tocá "Reintentar".', 503)
+  }
+  const textoWeb = web.status === 'fulfilled' ? limpiarTextoWeb(web.value.texto) : ''
+  if (!textoWeb) {
+    console.warn('[descripcion/zona] la búsqueda web no respondió:', web.status === 'rejected' ? web.reason : 'vacía')
+    throw new ErrorDescripcion('La búsqueda de la zona no respondió. Tocá "Reintentar".', 503)
   }
 
-  const zona: ZonaInvestigada = { mapa: delMapa, web: textoWeb || null }
-  const avisos: string[] = []
-  if (!punto) avisos.push('No se pudo ubicar la dirección en el mapa: el texto sale sin distancias.')
-  else if (delMapa === null) avisos.push('El mapa no respondió: el texto sale sin distancias ni colectivos.')
-  if (!textoWeb) avisos.push('La búsqueda web no respondió: el texto no nombra comercios ni lugares del barrio.')
-
-  // Se guarda aunque sea parcial (la escritura la lee de acá), marcada como
-  // incompleta para que el próximo "Generar" la vuelva a intentar.
-  await guardarIA(id, { zona: { firma, datos: zona, en: new Date().toISOString(), completa: avisos.length === 0 } })
-  return { reusada: false, zona, avisos }
+  const zona: ZonaInvestigada = { mapa: mapa.value, web: textoWeb }
+  await guardarIA(id, { zona: { firma, datos: zona, en: new Date().toISOString(), completa: true } })
+  return { reusada: false, zona, avisos: [] }
 }
 
 // ───────────────────────────── Paso 3: escribir ─────────────────────────────

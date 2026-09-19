@@ -112,22 +112,51 @@ describe('GenerarDescripcionPanel — recorrido completo', () => {
     expect(nuevos[0].body.comprador).toBe('Inversor')
   })
 
-  it('si un paso falla, muestra el error y "Reintentar" repite solo ese paso', async () => {
-    let fallar = true
+  it('un corte momentáneo (504) se reintenta solo, sin mostrar error', async () => {
+    let fallas = 1
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
       const body = init?.body ? JSON.parse(String(init.body)) : {}
       pedidos.push({ url, body })
       if (body.etapa === 'fotos') return new Response(JSON.stringify({ reusada: false, inventario, cantidad: 22 }), { status: 200 })
-      if (body.etapa === 'zona' && fallar) { fallar = false; return new Response('<html>504</html>', { status: 504 }) }
+      if (body.etapa === 'zona' && fallas > 0) { fallas--; return new Response('<html>504</html>', { status: 504 }) }
       if (body.etapa === 'zona') return new Response(JSON.stringify({ reusada: false, zona: { mapa: null, web: 'x' }, avisos: [] }), { status: 200 })
       return new Response(JSON.stringify(escrito([])), { status: 200 })
     }))
-    render(<GenerarDescripcionPanel propertyId="p1" estado={{ ...estado, pendientes: [] }} abierto onCerrar={() => {}} onGuardado={() => {}} />)
+    render(<GenerarDescripcionPanel propertyId="p1" estado={{ ...estado, pendientes: [] }} abierto onCerrar={() => {}} onGuardado={() => {}} esperasReintentoMs={[0, 0]} />)
+    await screen.findByDisplayValue('Departamento luminoso de 3 ambientes')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(pedidos.filter(p => p.body.etapa === 'zona')).toHaveLength(2)
+  })
+
+  it('si sigue fallando muestra el error y "Reintentar" repite solo ese paso', async () => {
+    let fallas = 3 // el intento + los 2 reintentos automáticos
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {}
+      pedidos.push({ url, body })
+      if (body.etapa === 'fotos') return new Response(JSON.stringify({ reusada: false, inventario, cantidad: 22 }), { status: 200 })
+      if (body.etapa === 'zona' && fallas > 0) { fallas--; return new Response('<html>504</html>', { status: 504 }) }
+      if (body.etapa === 'zona') return new Response(JSON.stringify({ reusada: false, zona: { mapa: null, web: 'x' }, avisos: [] }), { status: 200 })
+      return new Response(JSON.stringify(escrito([])), { status: 200 })
+    }))
+    render(<GenerarDescripcionPanel propertyId="p1" estado={{ ...estado, pendientes: [] }} abierto onCerrar={() => {}} onGuardado={() => {}} esperasReintentoMs={[0, 0]} />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('El servidor tardó demasiado')
+    expect(pedidos.filter(p => p.body.etapa === 'zona')).toHaveLength(3)
     await userEvent.click(screen.getByRole('button', { name: /reintentar/i }))
     await screen.findByDisplayValue('Departamento luminoso de 3 ambientes')
     expect(pedidos.filter(p => p.body.etapa === 'fotos')).toHaveLength(1)
-    expect(pedidos.filter(p => p.body.etapa === 'zona')).toHaveLength(2)
+    expect(pedidos.filter(p => p.body.etapa === 'zona')).toHaveLength(4)
+  })
+
+  it('un error de datos (409) NO se reintenta: se muestra enseguida', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {}
+      pedidos.push({ url, body })
+      if (body.etapa === 'fotos') return new Response(JSON.stringify({ reusada: false, inventario, cantidad: 22 }), { status: 200 })
+      return new Response(JSON.stringify({ error: 'No se pudo ubicar la dirección en el mapa.' }), { status: 409 })
+    }))
+    render(<GenerarDescripcionPanel propertyId="p1" estado={{ ...estado, pendientes: [] }} abierto onCerrar={() => {}} onGuardado={() => {}} esperasReintentoMs={[0, 0]} />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo ubicar la dirección en el mapa.')
+    expect(pedidos.filter(p => p.body.etapa === 'zona')).toHaveLength(1)
   })
 })

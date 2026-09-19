@@ -14,15 +14,23 @@
  * nunca lanza, devuelve `null` si falla, y el paso de zona sigue sin distancias.
  */
 import type { LugarCercano, TipoLugar } from './tipos'
+import { lineaDeRuta, lineaDeColectivo, ordenarLineasColectivo } from '@/lib/mapa/normalizar'
 
-const RADIO_ESTACIONES_M = 1500
-// 1 km: los parques grandes (Centenario, a 830 m de Perón 4227) son los que
-// valen la pena nombrar y quedaban afuera con 800 m.
-const RADIO_PLAZAS_M = 1000
-const RADIO_COLEGIOS_M = 600
-const RADIO_HOSPITALES_M = 500
-/** 400 m = unas 4 cuadras: "pasa cerca" de verdad, no "circula por el barrio". */
-const RADIO_COLECTIVOS_M = 400
+/**
+ * Radios de búsqueda por tipo, en metros. ÚNICA fuente: los usan la consulta en
+ * vivo (acá) y el mapa propio (`lib/mapa/consultar.ts`), que tienen que dar lo mismo.
+ *  - Plazas a 1 km: los parques grandes (Centenario, a 830 m de Perón 4227) son
+ *    los que valen la pena nombrar y quedaban afuera con 800 m.
+ *  - Paradas a 400 m = unas 4 cuadras: "pasa cerca" de verdad.
+ */
+export const RADIOS_METROS = {
+  subte: 1500, tren: 1500, plaza: 1000, colegio: 600, universidad: 600, hospital: 500, parada: 400,
+} as const
+const RADIO_ESTACIONES_M = RADIOS_METROS.subte
+const RADIO_PLAZAS_M = RADIOS_METROS.plaza
+const RADIO_COLEGIOS_M = RADIOS_METROS.colegio
+const RADIO_HOSPITALES_M = RADIOS_METROS.hospital
+const RADIO_COLECTIVOS_M = RADIOS_METROS.parada
 
 /** Cuántos de cada tipo llegan al prompt: más es ruido, no información. */
 const TOPE: Record<TipoLugar, number> = {
@@ -93,13 +101,6 @@ function tipoDeLugar(tags: Record<string, unknown>): TipoLugar | null {
   return null
 }
 
-/** "Línea B: Leandro N. Alem → Juan Manuel de Rosas" → "Línea B". */
-function lineaDeRuta(tags: Record<string, unknown>): string | undefined {
-  const nombre = typeof tags.name === 'string' ? tags.name.split(':')[0].trim() : ''
-  if (nombre) return nombre
-  return typeof tags.ref === 'string' && tags.ref.trim() ? `Línea ${tags.ref.trim()}` : undefined
-}
-
 export function lugaresDesdeOverpass(json: unknown, origen: { lat: number; lng: number }): LugarCercano[] {
   const elementos = (json as { elements?: unknown } | null)?.elements
   if (!Array.isArray(elementos)) return []
@@ -137,13 +138,20 @@ export function lugaresDesdeOverpass(json: unknown, origen: { lat: number; lng: 
 
     const tipo = tipoDeLugar(tags)
     if (!tipo) continue
-    if (tipo === 'colegio' && COLEGIO_NO_RELEVANTE.test(nombre)) continue
     lugares.push({ nombre, tipo, metros, cuadras })
   }
+  return seleccionarLugares(lugares)
+}
 
-  // Dedupe por nombre+tipo quedándose con el más cercano; después tope por tipo.
+/**
+ * La selección que llega al prompt, igual para el mapa en vivo y el propio:
+ * sin colegios que no le sirven al comprador, sin repetidos (queda el más
+ * cercano), ordenados por distancia y con tope por tipo.
+ */
+export function seleccionarLugares(lugares: LugarCercano[]): LugarCercano[] {
+  const relevantes = lugares.filter(l => !(l.tipo === 'colegio' && COLEGIO_NO_RELEVANTE.test(l.nombre)))
   const porClave = new Map<string, LugarCercano>()
-  for (const l of lugares) {
+  for (const l of relevantes) {
     const clave = `${l.tipo}|${l.nombre.toLowerCase()}`
     const previo = porClave.get(clave)
     if (!previo || l.metros < previo.metros) porClave.set(clave, l)
@@ -169,12 +177,10 @@ export function colectivosDesdeOverpass(json: unknown): string[] {
   for (const e of elementos as ElementoOverpass[]) {
     const tags = e?.tags && typeof e.tags === 'object' ? e.tags : {}
     if (e?.type !== 'relation' || tags.route !== 'bus') continue
-    const ref = typeof tags.ref === 'string' ? tags.ref.match(/^\d+/)?.[0] : undefined
-    const deNombre = typeof tags.name === 'string' ? tags.name.match(/l[ií]nea\s+(\d+)/i)?.[1] : undefined
-    const linea = ref ?? deNombre
-    if (linea) lineas.add(String(Number(linea)))
+    const linea = lineaDeColectivo(tags)
+    if (linea) lineas.add(linea)
   }
-  return [...lineas].sort((a, b) => Number(a) - Number(b))
+  return ordenarLineasColectivo(lineas)
 }
 
 const ETIQUETA: Record<TipoLugar, string> = {
