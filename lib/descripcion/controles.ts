@@ -36,7 +36,22 @@ const ROTULOS = [
 ]
 const MARKDOWN = /\*\*|__|^\s*#{1,6}\s/m
 
-export function controlarTexto(t: TextoGenerado): { texto: TextoGenerado; problemas: string[] } {
+const EN_PALABRAS = ['cero', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez']
+
+/**
+ * ¿El texto dice cuántos dormitorios tiene? El prompt lo pide y el modelo igual
+ * lo salteaba (Doblas 248 salió hablando solo del "dormitorio de servicio").
+ */
+function diceDormitorios(texto: string, n: number): boolean {
+  const palabra = EN_PALABRAS[n] ?? ''
+  const numero = n === 1 ? '(?:1|un|uno)' : `(?:${n}${palabra ? `|${palabra}` : ''})`
+  return new RegExp(`\\b${numero}\\s+(?:dormitorio|habitaci[oó]n|cuarto)`, 'i').test(sinTildes(texto))
+}
+
+export function controlarTexto(
+  t: TextoGenerado,
+  ficha?: { bedrooms?: number | null },
+): { texto: TextoGenerado; problemas: string[] } {
   const texto: TextoGenerado = {
     title: t.title.trim(),
     subtitle: t.subtitle.trim(),
@@ -52,6 +67,10 @@ export function controlarTexto(t: TextoGenerado): { texto: TextoGenerado; proble
   }
   if (ROTULOS.some(r => r.test(escrito))) problemas.push('nombra partes de la estructura (rótulos como "Primera parte:" o "Ubicación:")')
   if (MARKDOWN.test(escrito)) problemas.push('usa formato markdown (** o #)')
+
+  if (typeof ficha?.bedrooms === 'number' && ficha.bedrooms > 0 && !diceDormitorios(escrito, ficha.bedrooms)) {
+    problemas.push(`no dice cuántos dormitorios tiene (la ficha dice ${ficha.bedrooms})`)
+  }
 
   const enTitular = palabras(texto.title)
   if (enTitular > MAX_PALABRAS_TITULAR) problemas.push(`el titular tiene ${enTitular} palabras (máximo ${MAX_PALABRAS_TITULAR})`)

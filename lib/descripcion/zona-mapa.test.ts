@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { distanciaMetros, lugaresDesdeOverpass, consultaOverpass, lineasATexto, colectivosDesdeOverpass } from './zona-mapa'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { distanciaMetros, lugaresDesdeOverpass, consultaOverpass, lineasATexto, colectivosDesdeOverpass, buscarLugaresCercanos, SERVIDORES_OVERPASS } from './zona-mapa'
 
 // Perón 4227 (Almagro), geocodificada por Nominatim el 2026-09-19.
 const ORIGEN = { lat: -34.6058567, lng: -58.4265171 }
@@ -140,5 +140,28 @@ describe('lineasATexto', () => {
       '- Subte Línea B – Estación Medrano - Almagro: 600 m (a unas 6 cuadras)',
       '- Plaza/parque: Plaza Almagro: 681 m (a unas 7 cuadras)',
     ].join('\n'))
+  })
+})
+
+describe('buscarLugaresCercanos', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('consulta los servidores del mapa a la vez y se queda con el primero que responde bien', async () => {
+    // Medido 2026-09-19: el servidor principal respondió en 3 s y en 13 s según el momento.
+    const urls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      urls.push(url)
+      if (url === SERVIDORES_OVERPASS[0]) return new Response('Too Many Requests', { status: 429 })
+      return new Response(JSON.stringify(respuesta), { status: 200 })
+    }))
+    const r = await buscarLugaresCercanos(ORIGEN.lat, ORIGEN.lng, AbortSignal.timeout(5000))
+    expect(urls).toEqual(SERVIDORES_OVERPASS)
+    expect(r?.lugares.length).toBeGreaterThan(0)
+    expect(r?.colectivos).toEqual(['19', '24', '105', '160'])
+  })
+
+  it('si fallan todos devuelve null (el texto sale sin distancias, nunca inventadas)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('error', { status: 504 })))
+    expect(await buscarLugaresCercanos(ORIGEN.lat, ORIGEN.lng, AbortSignal.timeout(5000))).toBeNull()
   })
 })

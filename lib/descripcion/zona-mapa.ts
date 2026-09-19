@@ -195,29 +195,46 @@ export function lineasATexto(lugares: LugarCercano[]): string {
     .join('\n')
 }
 
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
+/**
+ * Servidores públicos de Overpass que se consultan A LA VEZ; gana el primero
+ * que responde bien. Medido el 2026-09-19 con la misma consulta: el principal
+ * tardó 3 s y 13 s según el momento, y de los espejos solo el de mail.ru
+ * respondió (kumi.systems y private.coffee no contestaron en 20 s).
+ */
+export const SERVIDORES_OVERPASS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+]
+
+async function consultarServidor(url: string, cuerpo: string, signal: AbortSignal): Promise<unknown> {
+  const res = await fetch(url, {
+    method: 'POST',
+    signal,
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      // Overpass pide identificarse; sin esto puede bloquear.
+      'user-agent': 'DiegoFerreyraInmobiliaria/1.0 (contacto@inmodf.com.ar)',
+    },
+    body: cuerpo,
+  })
+  if (!res.ok) throw new Error(`${url} respondió ${res.status}`)
+  return res.json()
+}
 
 /** Nunca lanza: `null` = el mapa no respondió y el texto sale sin distancias. */
 export async function buscarLugaresCercanos(lat: number, lng: number, signal: AbortSignal): Promise<{ lugares: LugarCercano[]; colectivos: string[] } | null> {
+  // Cuando uno responde, se cancelan los demás para no dejar pedidos colgados.
+  const alcanzo = new AbortController()
+  const senal = AbortSignal.any([signal, alcanzo.signal])
+  const cuerpo = `data=${encodeURIComponent(consultaOverpass(lat, lng))}`
   try {
-    const res = await fetch(OVERPASS_URL, {
-      method: 'POST',
-      signal,
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-        // Overpass pide identificarse; sin esto puede bloquear.
-        'user-agent': 'DiegoFerreyraInmobiliaria/1.0 (contacto@inmodf.com.ar)',
-      },
-      body: `data=${encodeURIComponent(consultaOverpass(lat, lng))}`,
-    })
-    if (!res.ok) {
-      console.warn('[descripcion/zona-mapa] Overpass respondió', res.status)
-      return null
-    }
-    const json = await res.json()
+    const json = await Promise.any(SERVIDORES_OVERPASS.map(url => consultarServidor(url, cuerpo, senal)))
     return { lugares: lugaresDesdeOverpass(json, { lat, lng }), colectivos: colectivosDesdeOverpass(json) }
   } catch (err) {
-    console.warn('[descripcion/zona-mapa] Overpass falló:', err instanceof Error ? err.message : err)
+    const motivos = err instanceof AggregateError ? err.errors.map(e => (e instanceof Error ? e.message : String(e))) : [String(err)]
+    console.warn('[descripcion/zona-mapa] ningún servidor de Overpass respondió:', motivos.join(' | '))
     return null
+  } finally {
+    alcanzo.abort()
   }
 }

@@ -113,7 +113,7 @@ async function main() {
     esquema: { nombre: 'descripcion', schema: ESQUEMA_TEXTO }, temperatura: 0.6, timeoutMs: TECHO_ETAPA_MS,
   }))
   console.log(`   tokens: ${JSON.stringify(escrito.uso)}`)
-  const { texto, problemas } = controlarTexto(JSON.parse(escrito.texto))
+  const { texto, problemas } = controlarTexto(JSON.parse(escrito.texto), p)
   console.log(`\n──── RESULTADO ────\nTITULAR: ${texto.title}\nSUBTITULAR: ${texto.subtitle}\n\n${texto.body}`)
   console.log(`\nPROBLEMAS DE CONTROL: ${problemas.length ? problemas.join(' | ') : 'ninguno'}`)
   const avisos = avisosDeCoherencia(inventario, p)

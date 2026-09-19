@@ -29,13 +29,14 @@ import type { DescripcionIA, InventarioFotos, TextoGenerado, ZonaInvestigada } f
 
 /** Techo de cada etapa: por debajo del corte de Netlify, con margen para leer y escribir la base. */
 export const TECHO_ETAPA_MS = 22_000
-const TECHO_MAPA_MS = 10_000
+const TECHO_MAPA_MS = 14_000
 /**
  * Ubicar la dirección va ANTES del mapa y la web (que corren en paralelo): con
  * hasta 3 intentos al geocodificador, sin techo total podía comerse el
- * presupuesto de la etapa. 7 s + 16 s de la web < corte de Netlify.
+ * presupuesto de la etapa. 5 s + 16 s de la web (el mapa, 14 s, corre en
+ * paralelo con ella) < corte de Netlify. Ubicar suele tardar 1–2 s.
  */
-const TECHO_GEOCODIFICAR_MS = 7_000
+const TECHO_GEOCODIFICAR_MS = 5_000
 const TECHO_WEB_MS = 16_000
 /**
  * Las fotos que se miran. Las primeras son la portada y el resto, el recorrido;
@@ -374,7 +375,7 @@ export async function ejecutarEtapaEscribir(id: string, o: {
   if (!json || typeof json.title !== 'string' || typeof json.subtitle !== 'string' || typeof json.body !== 'string') {
     throw new ErrorDescripcion('La escritura devolvió algo ilegible. Probá de nuevo.', 502)
   }
-  const { texto, problemas } = controlarTexto({ title: json.title, subtitle: json.subtitle, body: json.body })
+  const { texto, problemas } = controlarTexto({ title: json.title, subtitle: json.subtitle, body: json.body }, fila)
   return {
     texto,
     usado: { comprador, respuestas: conocidas, inventario, zona, notas: ia.notas ?? null },

@@ -234,12 +234,18 @@ function bloqueInventario(inv: InventarioFotos): string[] {
   return l
 }
 
+const MAX_COLECTIVOS = 8
+
 function bloqueZona(zona: ZonaInvestigada | null): string[] {
   const lugares = zona?.mapa?.lugares ?? []
   const colectivos = zona?.mapa?.colectivos ?? []
   const lineas = [
     lugares.length ? lineasATexto(lugares) : '',
-    colectivos.length ? `- Colectivos que pasan a menos de 4 cuadras: ${colectivos.join(', ')}` : '',
+    // Tope en código: con 20 líneas en el bloque, el modelo nombraba 16 aunque el
+    // prompt pidiera 8 (Doblas 248).
+    colectivos.length
+      ? `- Colectivos que pasan a menos de 4 cuadras: ${colectivos.slice(0, MAX_COLECTIVOS).join(', ')}${colectivos.length > MAX_COLECTIVOS ? ', entre otras' : ''}`
+      : '',
   ].filter(Boolean)
   const mapa = lineas.length
     ? ['# ZONA — MAPA (distancias y colectivos del mapa: los ÚNICOS que podés usar)', ...lineas]

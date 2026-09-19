@@ -107,6 +107,12 @@ describe('armarEntradaEscritura', () => {
     expect(t).toContain('- Colectivos que pasan a menos de 4 cuadras: 19, 24')
   })
 
+  it('pasa como máximo 8 colectivos (el modelo nombraba 16 aunque el prompt dijera 8)', () => {
+    const colectivos = Array.from({ length: 20 }, (_, i) => String(i + 1))
+    const t = armarEntradaEscritura({ ...base, zona: { mapa: { lugares: [], colectivos }, web: null } })
+    expect(t).toContain('- Colectivos que pasan a menos de 4 cuadras: 1, 2, 3, 4, 5, 6, 7, 8, entre otras')
+  })
+
   it('incluye el inventario de fotos con el uso de los exteriores', () => {
     const t = armarEntradaEscritura({
       ...base,

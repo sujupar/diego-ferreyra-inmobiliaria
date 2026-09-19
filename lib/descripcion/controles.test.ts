@@ -56,6 +56,20 @@ describe('controlarTexto', () => {
     ]))
   })
 
+  it('avisa si el texto no dice cuántos dormitorios tiene (auditoría de Doblas 248)', () => {
+    const sinCantidad = { ...ok, body: cuerpo(`El dormitorio de servicio es luminoso.\n\n${DISCLAIMER}`) }
+    expect(controlarTexto(sinCantidad, { bedrooms: 3 }).problemas).toEqual(['no dice cuántos dormitorios tiene (la ficha dice 3)'])
+  })
+  it('acepta la cantidad en número o en palabras', () => {
+    expect(controlarTexto({ ...ok, body: cuerpo(`Tiene tres dormitorios.\n\n${DISCLAIMER}`) }, { bedrooms: 3 }).problemas).toEqual([])
+    expect(controlarTexto({ ...ok, body: cuerpo(`Tiene 2 dormitorios.\n\n${DISCLAIMER}`) }, { bedrooms: 2 }).problemas).toEqual([])
+    expect(controlarTexto({ ...ok, body: cuerpo(`Un dormitorio amplio.\n\n${DISCLAIMER}`) }, { bedrooms: 1 }).problemas).toEqual([])
+  })
+  it('sin dato de dormitorios en la ficha no controla', () => {
+    expect(controlarTexto(ok, { bedrooms: null }).problemas).toEqual([])
+    expect(controlarTexto(ok).problemas).toEqual([])
+  })
+
   it('recorta espacios de los tres campos', () => {
     const r = controlarTexto({ title: '  T  ', subtitle: ' S ', body: `  B\n\n${DISCLAIMER}  ` })
     expect(r.texto).toEqual({ title: 'T', subtitle: 'S', body: `B\n\n${DISCLAIMER}` })
@@ -72,6 +86,10 @@ describe('promptEscritura', () => {
   })
   it('los ejemplos no traen rótulos de partes (el modelo los copiaba)', () => {
     expect(p).not.toMatch(/Primera parte:|Segunda parte:|Tercera Parte:|Cuarta Parte:/)
+  })
+  it('no infla calificaciones ni suma dormitorios de servicio a los de la ficha (auditoría de Doblas 248)', () => {
+    expect(p).toMatch(/TAL CUAL/)
+    expect(p).toMatch(/no "3 más uno de servicio"/)
   })
   it('usa voseo (decisión del 2026-07-28)', () => {
     expect(p).toContain('VOSEO')
