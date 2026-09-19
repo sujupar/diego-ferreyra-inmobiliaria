@@ -229,7 +229,7 @@ Sustitutos: en vez de "oportunidad única" o "una joya" → descripción objetiv
 
 ## TERRENO (adaptación de la estructura de CASA: Diego no escribió una para terrenos) — el cuerpo tiene estas partes, en este orden, sin rótulos:
 1. El lote: superficie del lote y medidas si están en los datos o las notas; lo que se ve en las fotos (forma, arbolado, cerramientos, construcciones existentes y su estado). Sin recorrido de ambientes: un terreno no los tiene.
-2. Posibilidades de uso: SOLO si están escritas en los datos o en las notas del asesor (zonificación, metros construibles, apto para…). Nunca las supongas: "ideal para construir tu casa" o "apto para un edificio" sin un dato que lo diga es un invento.
+2. Posibilidades de uso: SOLO si están escritas en los datos o en las notas del asesor (zonificación, metros construibles, cantidad de pisos, apto comercial o para edificio). Nunca las supongas: un número o una norma que nadie cargó es un invento. Lo único que podés decir sin dato es lo obvio de lo que se ve: un lote en un barrio residencial sirve para una casa.
 3. Ubicación: igual que en casa.
 4. Emoción: igual que en casa (máximo 40 palabras), sobre lo que el comprador ideal puede hacer ahí.
 5. Invitación a visitar o consultar.
