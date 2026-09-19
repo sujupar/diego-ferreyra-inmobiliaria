@@ -25,7 +25,11 @@ const respuesta = {
     { type: 'relation', id: 131, tags: { route: 'train', name: 'Línea Roca - Vía Circuito: Constitución → Constitución' } },
     { type: 'relation', id: 132, tags: { route: 'train', name: 'Ferrocarril Roca - Rápido' } },
     { type: 'way', id: 5, center: { lat: -34.607, lon: -58.426 }, tags: { name: 'Hospital Italiano', amenity: 'hospital' } },
-    { type: 'relation', id: 6, center: { lat: -34.604, lon: -58.42 }, tags: { name: 'Plaza Almagro', leisure: 'park' } },
+    { type: 'relation', id: 6, center: { lat: -34.604, lon: -58.42 }, tags: { name: 'Plaza Almagro', leisure: 'park', type: 'multipolygon' } },
+    // Real (Plaza Herrera, r6582137): relación SIN type=multipolygon. El extractor
+    // (osmium) no la puede armar como área; si la descarga la trajera, cada
+    // actualización mensual agregaría una plaza que la carga completa no tiene.
+    { type: 'relation', id: 60, center: { lat: -34.605, lon: -58.42 }, tags: { name: 'Plaza Herrera', leisure: 'park' } },
     { type: 'node', id: 7, lat: -34.606, lon: -58.425, tags: { name: 'Escuela 11', amenity: 'school' } },
     { type: 'node', id: 8, lat: -34.5, lon: -58.425, tags: { name: 'Colegio afuera', amenity: 'school' } },
     { type: 'node', id: 9, lat: -34.606, lon: -58.425, tags: { amenity: 'school' } },
@@ -85,6 +89,10 @@ describe('filasDesdeRespuesta', () => {
     expect(por('w5')).toMatchObject({ tipo: 'hospital', nombre: 'Hospital Italiano', lat: -34.607, lng: -58.426 })
     expect(por('r6')).toMatchObject({ tipo: 'plaza', nombre: 'Plaza Almagro' })
     expect(por('n7')).toMatchObject({ tipo: 'colegio' })
+  })
+
+  it('una relación sin type=multipolygon no es un área (misma regla que osmium en el extractor)', () => {
+    expect(por('r60')).toBeUndefined()
   })
 
   it('deja afuera lo que no tiene nombre y lo que cae fuera de la celda', () => {

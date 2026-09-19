@@ -173,7 +173,11 @@ export function filasDesdeRespuesta(json: unknown, c: Celda): FilaMapa[] {
       continue
     }
     const tipo = tipoDeLugar(tags)
-    if (tipo) filas.push({ osm_id, tipo, nombre, lineas: [], ...p, celda: c.id })
+    // Una relación es un área solo si es multipolygon o boundary: es lo único que
+    // arma osmium en `scripts/mapa-extraer-osm.py` (Plaza Herrera, r6582137, no
+    // tiene type y la carga completa no la tiene).
+    const esArea = e.type !== 'relation' || tags.type === 'multipolygon' || tags.type === 'boundary'
+    if (tipo && esArea) filas.push({ osm_id, tipo, nombre, lineas: [], ...p, celda: c.id })
   }
 
   for (const [id, lineas] of lineasPorParada) {
