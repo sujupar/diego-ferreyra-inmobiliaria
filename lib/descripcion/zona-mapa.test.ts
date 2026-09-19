@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { distanciaMetros, lugaresDesdeOverpass, consultaOverpass, lineasATexto } from './zona-mapa'
+import { distanciaMetros, lugaresDesdeOverpass, consultaOverpass, lineasATexto, colectivosDesdeOverpass } from './zona-mapa'
 
 // Perón 4227 (Almagro), geocodificada por Nominatim el 2026-09-19.
 const ORIGEN = { lat: -34.6058567, lng: -58.4265171 }
@@ -25,6 +25,12 @@ const respuesta = {
     { type: 'node', id: 10, lat: -34.6080, lon: -58.4240, tags: { name: 'Centro de Formación Profesional 29', amenity: 'school' } },
     { type: 'node', id: 13, lat: -34.6000, lon: -58.4300, tags: { name: 'CBC - Sede 7 - Doctor Ramos Mejía', amenity: 'university' } },
     { type: 'node', id: 14, lat: -34.6001, lon: -58.4301, tags: { amenity: 'school' } },
+    // Colectivos: al final, con los ramales tal como los carga OSM.
+    { type: 'relation', id: 40, tags: { route: 'bus', ref: '24-1', name: 'Línea 24: …' } },
+    { type: 'relation', id: 41, tags: { route: 'bus', ref: '160AG', name: 'Línea 160: …' } },
+    { type: 'relation', id: 42, tags: { route: 'bus', ref: '160GG', name: 'Línea 160: …' } },
+    { type: 'relation', id: 43, tags: { route: 'bus', ref: '19', name: 'Línea 19: …' } },
+    { type: 'relation', id: 44, tags: { route: 'bus', name: 'Línea 105: Plaza del Correo → Caseros' } },
   ],
 }
 
@@ -89,6 +95,25 @@ describe('lugaresDesdeOverpass', () => {
   })
 })
 
+describe('colectivosDesdeOverpass', () => {
+  it('junta las líneas sin ramales, sin repetir y en orden numérico', () => {
+    expect(colectivosDesdeOverpass(respuesta)).toEqual(['19', '24', '105', '160'])
+  })
+  it('una ruta de colectivo no se confunde con la línea de una estación', () => {
+    const conEstacionSinRuta = {
+      elements: [
+        { type: 'node', id: 1, lat: -34.6, lon: -58.42, tags: { name: 'Estación X', railway: 'station', station: 'subway' } },
+        { type: 'way', id: 2, center: { lat: -34.6, lon: -58.42 }, tags: { name: 'Plaza Y', leisure: 'park' } },
+        { type: 'relation', id: 3, tags: { route: 'bus', ref: '26' } },
+      ],
+    }
+    expect(lugaresDesdeOverpass(conEstacionSinRuta, ORIGEN).find(l => l.nombre === 'Estación X')?.linea).toBeUndefined()
+  })
+  it('con basura devuelve una lista vacía', () => {
+    expect(colectivosDesdeOverpass(null)).toEqual([])
+  })
+})
+
 describe('consultaOverpass', () => {
   it('pide estaciones con sus rutas y los lugares alrededor del punto', () => {
     const q = consultaOverpass(-34.6, -58.4)
@@ -97,6 +122,7 @@ describe('consultaOverpass', () => {
     expect(q).toContain('foreach')
     expect(q).toContain('[leisure=park]')
     expect(q).toContain('amenity=hospital')
+    expect(q).toContain('rel(around:400,-34.6,-58.4)[route=bus]')
   })
 })
 

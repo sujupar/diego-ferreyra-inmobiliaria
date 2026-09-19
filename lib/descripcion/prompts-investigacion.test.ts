@@ -65,6 +65,9 @@ describe('limpiarTextoWeb', () => {
   it('saca « », negritas y espacios de más, conservando renglones', () => {
     expect(limpiarTextoWeb('**Barrio**  «tranquilo»\n\n\n- Colectivos: 24')).toBe('Barrio tranquilo\n- Colectivos: 24')
   })
+  it('saca el conteo de palabras que agrega el modelo', () => {
+    expect(limpiarTextoWeb('1. Barrio residencial.\nTotal: 174 palabras.')).toBe('1. Barrio residencial.')
+  })
   it('recorta al máximo', () => {
     expect(limpiarTextoWeb('a'.repeat(50), 10)).toHaveLength(10)
   })

@@ -47,7 +47,7 @@ export interface LugarCercano {
 
 export interface ZonaInvestigada {
   /** null = no hubo coordenadas o el mapa falló: el texto NO lleva distancias. */
-  mapa: { lugares: LugarCercano[] } | null
+  mapa: { lugares: LugarCercano[]; colectivos?: string[] } | null
   /** Texto saneado de la búsqueda web (carácter, colectivos, comercios). */
   web: string | null
 }
@@ -61,7 +61,8 @@ export interface TextoGenerado {
 /** Forma de `properties.descripcion_ia`. Todo opcional: se llena por etapas. */
 export interface DescripcionIA {
   fotos?: { firma: string; cantidad: number; inventario: InventarioFotos; en: string }
-  zona?: { firma: string; datos: ZonaInvestigada; en: string }
+  /** `completa: false` = el mapa o la web fallaron: se usa, pero el próximo "Generar" la reintenta. */
+  zona?: { firma: string; datos: ZonaInvestigada; en: string; completa?: boolean }
   /** "Lo que no se ve en las fotos", escrito por el asesor. */
   notas?: string | null
   /** Descripciones reemplazadas, la más reciente primero (se guardan las últimas 3). */

@@ -18,6 +18,8 @@ export function limpiarTextoWeb(t: string, max = 1500): string {
     .replace(/[«»]/g, '')
     .replace(/\*\*|__|`/g, '')
     .replace(/^#{1,6}\s*/gm, '')
+    // Relleno del modelo: "Total: 174 palabras."
+    .replace(/^\s*\(?total:?\s*\d+\s*palabras\)?\.?\s*$/gim, '')
     .replace(/[^\S\n]+/g, ' ')
     .replace(/ *\n */g, '\n')
     .replace(/\n{2,}/g, '\n')

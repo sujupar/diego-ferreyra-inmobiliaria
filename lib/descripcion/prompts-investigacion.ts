@@ -127,14 +127,14 @@ export function promptZonaWeb(p: { address: string; neighborhood: string; city?:
   const lugar = [p.address, p.neighborhood, p.city].map(x => (x ?? '').trim()).filter(Boolean).join(', ')
   return `Investigá el entorno de ${lugar}, Argentina.
 
-Contá, en frases cortas y concretas (máximo 180 palabras en total):
+Contá, en frases cortas y concretas (máximo 150 palabras en total):
 1. El carácter del barrio y de esa zona puntual (residencial, comercial, tranquilo, arbolado, de oficinas…).
-2. Las líneas de colectivo que pasan a pocas cuadras.
-3. Las zonas comerciales, gastronómicas o de paseo cercanas, y lugares emblemáticos.
-4. Hitos cercanos relevantes (hospitales, universidades, parques grandes, avenidas principales).
+2. Las zonas comerciales, gastronómicas o de paseo cercanas, y lugares emblemáticos.
+3. Hitos cercanos relevantes (hospitales, universidades, parques grandes, avenidas principales).
 
 Reglas:
-- NO des distancias ni tiempos de caminata: se calculan aparte con un mapa.
+- NO des distancias, tiempos de caminata ni líneas de colectivo: se sacan aparte de un mapa.
+- Sin introducción ni cierre: empezá directo por el punto 1 y no cuentes las palabras.
 - Solo datos que encuentres; si algo no lo encontrás, no lo pongas.
 - Preferí fuentes oficiales, mapas, Wikipedia y medios. Los avisos de otras inmobiliarias, solo como último recurso para datos del barrio y NUNCA para describir la propiedad.
 - Sin links. Castellano rioplatense.`

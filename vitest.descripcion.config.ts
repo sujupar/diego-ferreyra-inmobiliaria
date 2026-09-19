@@ -11,6 +11,8 @@ export default defineConfig({
     include: [
       'lib/descripcion/**/*.test.ts',
       'lib/ai/openai-responses.test.ts',
+      'lib/properties/address.test.ts',
+      'lib/properties/geocoder.test.ts',
       'app/**/properties/new/*.test.ts',
     ],
     exclude: ['**/node_modules/**', '.next', '.netlify', '**/.claude/worktrees/**'],

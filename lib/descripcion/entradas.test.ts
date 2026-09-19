@@ -80,16 +80,17 @@ describe('armarEntradaEscritura', () => {
 
   it('sin mapa pide explícitamente no dar distancias', () => {
     const t = armarEntradaEscritura({ ...base, zona: { mapa: null, web: 'Barrio tranquilo' } })
-    expect(t).toMatch(/ZONA — MAPA\nSin datos del mapa: NO des ninguna distancia/)
+    expect(t).toMatch(/ZONA — MAPA\nSin datos del mapa: NO des ninguna distancia ni números de línea de colectivo/)
     expect(t).toContain('«Barrio tranquilo»')
   })
 
   it('con mapa lista los lugares con cuadras', () => {
     const t = armarEntradaEscritura({
       ...base,
-      zona: { mapa: { lugares: [{ nombre: 'Medrano - Almagro', tipo: 'subte', linea: 'Línea B', metros: 600, cuadras: 6 }] }, web: null },
+      zona: { mapa: { lugares: [{ nombre: 'Medrano - Almagro', tipo: 'subte', linea: 'Línea B', metros: 600, cuadras: 6 }], colectivos: ['19', '24'] }, web: null },
     })
     expect(t).toContain('- Subte Línea B – Estación Medrano - Almagro: 600 m (a unas 6 cuadras)')
+    expect(t).toContain('- Colectivos que pasan a menos de 4 cuadras: 19, 24')
   })
 
   it('incluye el inventario de fotos con el uso de los exteriores', () => {

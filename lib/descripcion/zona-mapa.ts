@@ -21,6 +21,8 @@ const RADIO_ESTACIONES_M = 1500
 const RADIO_PLAZAS_M = 1000
 const RADIO_COLEGIOS_M = 600
 const RADIO_HOSPITALES_M = 500
+/** 400 m = unas 4 cuadras: "pasa cerca" de verdad, no "circula por el barrio". */
+const RADIO_COLECTIVOS_M = 400
 
 /** Cuántos de cada tipo llegan al prompt: más es ruido, no información. */
 const TOPE: Record<TipoLugar, number> = {
@@ -64,7 +66,9 @@ foreach.st->.s(
   nwr(around:${RADIO_COLEGIOS_M},${p})[amenity~"^(school|college|university)$"][name];
   nwr(around:${RADIO_HOSPITALES_M},${p})[amenity=hospital][name];
 );
-out center tags;`
+out center tags;
+rel(around:${RADIO_COLECTIVOS_M},${p})[route=bus];
+out tags;`
 }
 
 interface ElementoOverpass {
@@ -106,6 +110,7 @@ export function lugaresDesdeOverpass(json: unknown, origen: { lat: number; lng: 
   for (const crudo of elementos as ElementoOverpass[]) {
     const tags = crudo?.tags && typeof crudo.tags === 'object' ? crudo.tags : {}
 
+    if (crudo?.type === 'relation' && tags.route === 'bus') continue // van por colectivosDesdeOverpass
     if (crudo?.type === 'relation' && typeof tags.route === 'string') {
       // Una ruta pertenece a la última estación leída (orden del foreach).
       if (estacionActual && !estacionActual.linea) {
@@ -115,6 +120,8 @@ export function lugaresDesdeOverpass(json: unknown, origen: { lat: number; lng: 
       continue
     }
 
+    // Cualquier otro elemento corta la racha de rutas de la estación anterior.
+    estacionActual = null
     const nombre = typeof tags.name === 'string' ? tags.name.trim() : ''
     const punto = coordenadas(crudo)
     if (!nombre || !punto) continue
@@ -150,6 +157,26 @@ export function lugaresDesdeOverpass(json: unknown, origen: { lat: number; lng: 
   })
 }
 
+/**
+ * Líneas de colectivo que pasan cerca, sin ramales ("24-1", "160AG" → "24",
+ * "160") y en orden numérico. Salen del mapa porque la web decía "algunas
+ * líneas que circulan por Almagro", que no es lo mismo que "pasan a 4 cuadras".
+ */
+export function colectivosDesdeOverpass(json: unknown): string[] {
+  const elementos = (json as { elements?: unknown } | null)?.elements
+  if (!Array.isArray(elementos)) return []
+  const lineas = new Set<string>()
+  for (const e of elementos as ElementoOverpass[]) {
+    const tags = e?.tags && typeof e.tags === 'object' ? e.tags : {}
+    if (e?.type !== 'relation' || tags.route !== 'bus') continue
+    const ref = typeof tags.ref === 'string' ? tags.ref.match(/^\d+/)?.[0] : undefined
+    const deNombre = typeof tags.name === 'string' ? tags.name.match(/l[ií]nea\s+(\d+)/i)?.[1] : undefined
+    const linea = ref ?? deNombre
+    if (linea) lineas.add(String(Number(linea)))
+  }
+  return [...lineas].sort((a, b) => Number(a) - Number(b))
+}
+
 const ETIQUETA: Record<TipoLugar, string> = {
   subte: 'Subte', tren: 'Tren', plaza: 'Plaza/parque', colegio: 'Colegio',
   universidad: 'Universidad/instituto', hospital: 'Hospital',
@@ -171,7 +198,7 @@ export function lineasATexto(lugares: LugarCercano[]): string {
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
 
 /** Nunca lanza: `null` = el mapa no respondió y el texto sale sin distancias. */
-export async function buscarLugaresCercanos(lat: number, lng: number, signal: AbortSignal): Promise<LugarCercano[] | null> {
+export async function buscarLugaresCercanos(lat: number, lng: number, signal: AbortSignal): Promise<{ lugares: LugarCercano[]; colectivos: string[] } | null> {
   try {
     const res = await fetch(OVERPASS_URL, {
       method: 'POST',
@@ -187,7 +214,8 @@ export async function buscarLugaresCercanos(lat: number, lng: number, signal: Ab
       console.warn('[descripcion/zona-mapa] Overpass respondió', res.status)
       return null
     }
-    return lugaresDesdeOverpass(await res.json(), { lat, lng })
+    const json = await res.json()
+    return { lugares: lugaresDesdeOverpass(json, { lat, lng }), colectivos: colectivosDesdeOverpass(json) }
   } catch (err) {
     console.warn('[descripcion/zona-mapa] Overpass falló:', err instanceof Error ? err.message : err)
     return null

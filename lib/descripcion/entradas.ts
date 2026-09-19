@@ -227,12 +227,17 @@ function bloqueInventario(inv: InventarioFotos): string[] {
 
 function bloqueZona(zona: ZonaInvestigada | null): string[] {
   const lugares = zona?.mapa?.lugares ?? []
-  const mapa = lugares.length
-    ? ['# ZONA — MAPA (distancias calculadas: las ÚNICAS que podés usar)', lineasATexto(lugares)]
-    : ['# ZONA — MAPA', 'Sin datos del mapa: NO des ninguna distancia.']
+  const colectivos = zona?.mapa?.colectivos ?? []
+  const lineas = [
+    lugares.length ? lineasATexto(lugares) : '',
+    colectivos.length ? `- Colectivos que pasan a menos de 4 cuadras: ${colectivos.join(', ')}` : '',
+  ].filter(Boolean)
+  const mapa = lineas.length
+    ? ['# ZONA — MAPA (distancias y colectivos del mapa: los ÚNICOS que podés usar)', ...lineas]
+    : ['# ZONA — MAPA', 'Sin datos del mapa: NO des ninguna distancia ni números de línea de colectivo.']
   const web = zona?.web?.trim()
     ? ['# ZONA — WEB (contexto del barrio; sin distancias)', dato(zona.web)]
-    : ['# ZONA — WEB', 'Sin datos de la web: no nombres líneas de colectivo ni comercios concretos; usá solo lo que sea ampliamente conocido del barrio y, ante la duda, omití.']
+    : ['# ZONA — WEB', 'Sin datos de la web: no nombres comercios ni lugares concretos que no estén en el MAPA; usá solo lo que sea ampliamente conocido del barrio y, ante la duda, omití.']
   return [...mapa, '', ...web]
 }
 

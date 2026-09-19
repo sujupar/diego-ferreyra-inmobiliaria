@@ -158,8 +158,27 @@ export async function geocodeAddress(query: string, expected?: GeocodeExpected):
     // calle + (provincia, país) — descarta los segmentos intermedios (localidad/barrio)
     const simplified = [segs[0], segs[segs.length - 2], segs[segs.length - 1]].join(', ')
     if (simplified !== query) {
-      return geocodeOnce(simplified, expected ? { ...expected, locality: null } : undefined)
+      const sinLocalidad = await geocodeOnce(simplified, expected ? { ...expected, locality: null } : undefined)
+      if (sinLocalidad) return sinLocalidad
     }
   }
+
+  // Último intento: OSM no entiende abreviaturas ni iniciales ("Tte. Gral. Juan
+  // D. Perón 4227" no resuelve y "Juan Perón 4227" sí, verificado 2026-09-19).
+  // Solo si hay algo que sacar: si no, sería repetir la primera consulta.
+  const calle = segs[0] ?? ''
+  const calleLimpia = sinAbreviaturas(calle)
+  if (calleLimpia && calleLimpia !== calle) {
+    return geocodeOnce([calleLimpia, ...segs.slice(1)].join(', '), expected)
+  }
   return null
+}
+
+/** "Tte. Gral. Juan D. Perón 4227" → "Juan Perón 4227": fuera abreviaturas con punto e iniciales sueltas. */
+function sinAbreviaturas(calle: string): string {
+  return calle
+    .split(/\s+/)
+    .filter(t => !/^\p{L}{1,6}\.$/u.test(t) && !/^\p{L}$/u.test(t))
+    .join(' ')
+    .trim()
 }
