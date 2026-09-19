@@ -27,10 +27,11 @@ function admin() {
 /**
  * Configuración vigente del experimento de un embudo.
  *
- * Se cachea 30 segundos: la landing recibe tráfico pago y no puede pegarle a la
- * base en cada visita, pero mover la barra tiene que verse rápido. Treinta
- * segundos es el punto medio — quien mueve el reparto ve el efecto casi al
- * instante y la base no recibe una consulta por visitante.
+ * NO SE CACHEA: es una consulta a la base por cada apertura de la landing. (Este
+ * comentario decía "se cachea 30 segundos" y nunca fue cierto — no hubo caché en
+ * ningún commit.) Si algún día el tráfico lo exige, se puede cachear ESTA
+ * configuración unos segundos, pero JAMÁS la variante que sale del sorteo: con el
+ * reparto por clic, una variante cacheada es el test entero clavado en 100/0.
  */
 export async function getExperiment(funnel: string): Promise<ExperimentRow> {
   const vacio: ExperimentRow = {
