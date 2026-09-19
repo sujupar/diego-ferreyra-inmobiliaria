@@ -225,7 +225,7 @@ import { POST } from './route'
 
 const IP = '200.10.20.30'
 
-function pedido(cuerpo: Record<string, unknown>, opciones: { ip?: string } = {}) {
+function pedido(cuerpo: Record<string, unknown>, opciones: { ip?: string; referer?: string } = {}) {
   return new Request('https://app.test/api/funnel/submit', {
     method: 'POST',
     body: JSON.stringify(cuerpo),
@@ -233,6 +233,7 @@ function pedido(cuerpo: Record<string, unknown>, opciones: { ip?: string } = {})
       'content-type': 'application/json',
       'x-forwarded-for': opciones.ip ?? IP,
       'user-agent': 'Mozilla/5.0 (prueba)',
+      ...(opciones.referer ? { referer: opciones.referer } : {}),
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   }) as any
@@ -412,6 +413,44 @@ describe('encolado de los avisos', () => {
     expect(res.status).toBe(200)
     expect(bd.trabajos).toHaveLength(6)
     expect(bd.envios[0].status).toBe('complete')
+  })
+})
+
+/**
+ * El visor del mapa de calor embebe la landing REAL con `?hm_preview=1`. Apagaba la
+ * visita, el calor, el video y el Píxel, pero el formulario seguía vivo: llenarlo
+ * "para probar" desde el mapa creaba un lead real, con aviso al equipo y conversión a
+ * Meta, y sumaba un registro a esa versión del A/B (2026-09-19). El formulario ya lo
+ * frena en el navegador; esto es la segunda barrera, por si el navegador tiene código
+ * viejo en caché o alguien le pega a la ruta a mano.
+ */
+describe('un envío desde el visor del mapa de calor', () => {
+  const VISOR = 'https://inmobiliariadiegoferreyra.com/tasacion-directa?hm_preview=1&lp=B'
+
+  it('se rechaza con 400 y un mensaje claro, sin tocar la base ni encolar avisos', async () => {
+    const res = await POST(pedido({ ...ENVIO_TASACION, eventSourceUrl: VISOR, landingVariant: 'B' }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/mapa de calor/i)
+    expect(bd.rpcs).toHaveLength(0)
+    expect(bd.envios).toHaveLength(0)
+    expect(bd.contactos).toHaveLength(0)
+    expect(bd.deals).toHaveLength(0)
+    expect(bd.trabajos).toHaveLength(0)
+    expect(fetchEspia).not.toHaveBeenCalled()
+  })
+
+  it('también se frena si la dirección no viene en el cuerpo pero sí en el Referer', async () => {
+    const res = await POST(pedido(ENVIO_TASACION, { referer: VISOR }))
+    expect(res.status).toBe(400)
+    expect(bd.deals).toHaveLength(0)
+    expect(bd.trabajos).toHaveLength(0)
+  })
+
+  it('una visita normal con parámetros de campaña NO se confunde con el visor', async () => {
+    const normal = 'https://inmobiliariadiegoferreyra.com/tasacion-directa?utm_source=meta&fbclid=abc&lp=B'
+    const res = await POST(pedido({ ...ENVIO_TASACION, eventSourceUrl: normal }, { referer: normal }))
+    expect(res.status).toBe(200)
+    expect(bd.deals).toHaveLength(1)
   })
 })
 

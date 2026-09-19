@@ -190,7 +190,11 @@ export function TasacionNetaClient({
               src={heroVideoUrl}
               poster={heroPosterUrl}
               priority
-              trackKey="hero-tasacion"
+              // Clave PROPIA de la B. Hasta el 2026-09-19 decía "hero-tasacion", la
+              // misma de la variante A: dos videos distintos (196 s y 711 s) con sus
+              // estadísticas mezcladas en un solo bloque de Embudos. El catálogo y la
+              // prueba que impide repetirla están en `lib/funnel/video-keys.ts`.
+              trackKey="hero-tasacion-neta"
               funnel="tasacion"
               context="hero"
               warmup
