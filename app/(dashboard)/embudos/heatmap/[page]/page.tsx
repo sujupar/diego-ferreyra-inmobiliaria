@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth/require-role'
-import { heatmapPage, heatmapPagesOfFunnel, heatmapPreviewSrc } from '@/lib/funnel/heatmap-pages'
+import { heatmapPage, heatmapPagesOfFunnel, heatmapPreviewSrc, heatmapRealHref } from '@/lib/funnel/heatmap-pages'
 import { HeatmapViewerClient } from './HeatmapViewerClient'
 
 export const dynamic = 'force-dynamic'
@@ -24,6 +24,7 @@ export default async function HeatmapViewerPage({ params }: { params: Promise<{ 
       page={def.page}
       label={def.label}
       src={heatmapPreviewSrc(def)}
+      realHref={heatmapRealHref(def)}
       versions={versions}
     />
   )

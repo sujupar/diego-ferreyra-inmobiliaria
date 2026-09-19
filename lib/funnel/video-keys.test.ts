@@ -29,8 +29,8 @@ function clavesEnLasLandings(): { clave: string; archivo: string }[] {
   }
   recorrer(join(RAIZ, 'app', '(funnels)'))
   return archivos.flatMap((a) =>
-    [...sinComentarios(readFileSync(a, 'utf8')).matchAll(/\btrackKey=(?:"([^"]+)"|\{[^}]*\})/g)].map((m) => ({
-      clave: m[1] ?? '(dinámica)',
+    [...sinComentarios(readFileSync(a, 'utf8')).matchAll(/\btrackKey=(?:"([^"]+)"|'([^']+)'|\{[^}]*\})/g)].map((m) => ({
+      clave: m[1] ?? m[2] ?? '(dinámica)',
       archivo: relative(RAIZ, a),
     })),
   )

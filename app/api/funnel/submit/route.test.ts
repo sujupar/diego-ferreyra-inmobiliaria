@@ -28,6 +28,8 @@ const bd = vi.hoisted(() => ({
   contactos: [] as Array<Record<string, unknown>>,
   deals: [] as Array<Record<string, unknown>>,
   trabajos: [] as Array<Record<string, unknown>>,
+  /** Rechazos registrados (`funnel_submit_rejections`): la red de seguridad de los leads rebotados. */
+  rechazos: [] as Array<Record<string, unknown>>,
   /** Cada llamada a `.rpc(nombre, args)`, en orden. */
   rpcs: [] as Array<{ nombre: string; args: Record<string, unknown> }>,
   /** Hace fallar el insert del deal (para el camino de error). */
@@ -49,6 +51,7 @@ vi.mock('@supabase/supabase-js', () => {
     if (nombre === 'contacts') return bd.contactos
     if (nombre === 'deals') return bd.deals
     if (nombre === 'funnel_lead_jobs') return bd.trabajos
+    if (nombre === 'funnel_submit_rejections') return bd.rechazos
     return []
   }
 
@@ -257,6 +260,7 @@ beforeEach(() => {
   bd.contactos = []
   bd.deals = []
   bd.trabajos = []
+  bd.rechazos = []
   bd.rpcs = []
   bd.fallaElDeal = false
   bd.fallosDeCierre = 0
@@ -427,16 +431,29 @@ describe('encolado de los avisos', () => {
 describe('un envío desde el visor del mapa de calor', () => {
   const VISOR = 'https://inmobiliariadiegoferreyra.com/tasacion-directa?hm_preview=1&lp=B'
 
-  it('se rechaza con 400 y un mensaje claro, sin tocar la base ni encolar avisos', async () => {
+  it('se rechaza con 400 y un mensaje claro, sin crear nada ni encolar avisos', async () => {
     const res = await POST(pedido({ ...ENVIO_TASACION, eventSourceUrl: VISOR, landingVariant: 'B' }))
     expect(res.status).toBe(400)
     expect((await res.json()).error).toMatch(/mapa de calor/i)
+    // Lo ÚNICO que se escribe es el registro del rechazo. Ni reserva, ni contacto, ni deal, ni avisos.
     expect(bd.rpcs).toHaveLength(0)
     expect(bd.envios).toHaveLength(0)
     expect(bd.contactos).toHaveLength(0)
     expect(bd.deals).toHaveLength(0)
     expect(bd.trabajos).toHaveLength(0)
     expect(fetchEspia).not.toHaveBeenCalled()
+  })
+
+  it('el rechazo queda REGISTRADO con los datos de contacto: si fuera un cliente real, se lo recupera a mano', async () => {
+    // Regla escrita de esta ruta desde el 2026-08-14: ningún rebote se pierde en silencio.
+    // El único falso positivo posible es que alguien comparta la dirección del visor.
+    await POST(pedido({ ...ENVIO_TASACION, eventSourceUrl: VISOR }, { referer: VISOR }))
+    expect(bd.rechazos).toHaveLength(1)
+    expect(bd.rechazos[0]).toMatchObject({
+      funnel: 'tasacion', name: 'Ana Pérez', email: 'ana@ejemplo.com', phone: '+5491133445566',
+      motivo: 'visor_mapa_calor',
+    })
+    expect(JSON.stringify(bd.rechazos[0].detalle)).toContain('hm_preview=1')
   })
 
   it('también se frena si la dirección no viene en el cuerpo pero sí en el Referer', async () => {

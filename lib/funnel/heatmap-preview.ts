@@ -6,7 +6,11 @@
  */
 export function isHeatmapPreview(): boolean {
   if (typeof window === 'undefined') return false
-  return /[?&]hm_preview=1/.test(window.location.search)
+  // Delega en la versión pura para que navegador y servidor digan LO MISMO. Antes acá había
+  // una expresión regular suelta (`/[?&]hm_preview=1/`) que también daba verdadero con
+  // `?hm_preview=11` o `?next=/y?hm_preview=1`; inofensivo cuando solo apagaba métricas,
+  // pero desde el 2026-09-19 esto también frena el formulario.
+  return esVistaPreviaDelMapa(window.location.href)
 }
 
 /**

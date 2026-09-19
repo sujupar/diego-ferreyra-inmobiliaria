@@ -8,7 +8,8 @@
  * como registro de esa versión en el test A/B.
  */
 import { describe, it, expect } from 'vitest'
-import { esVistaPreviaDelMapa } from './heatmap-preview'
+import { afterEach, vi } from 'vitest'
+import { esVistaPreviaDelMapa, isHeatmapPreview } from './heatmap-preview'
 
 describe('esVistaPreviaDelMapa', () => {
   it('reconoce la dirección que arma el visor, con el parámetro en cualquier posición', () => {
@@ -37,5 +38,38 @@ describe('esVistaPreviaDelMapa', () => {
     for (const v of [null, undefined, '', '   ', 'no es una url', 'http://[::1', '?']) {
       expect(esVistaPreviaDelMapa(v as string | null | undefined)).toBe(false)
     }
+  })
+})
+
+/**
+ * `isHeatmapPreview()` (navegador) y `esVistaPreviaDelMapa()` (servidor) tienen que decir
+ * LO MISMO. Antes el del navegador buscaba el texto con una expresión regular y el del
+ * servidor parseaba la URL: `?hm_preview=11` o `?next=/y?hm_preview=1` frenaban el
+ * formulario en el navegador sin ser el visor. Ahora el primero delega en el segundo.
+ */
+describe('isHeatmapPreview (navegador) coincide con esVistaPreviaDelMapa (servidor)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+  const en = (href: string) => {
+    vi.stubGlobal('window', { location: { href, search: new URL(href).search } })
+    return isHeatmapPreview()
+  }
+
+  it('sin navegador (render en el servidor) responde que no', () => {
+    expect(isHeatmapPreview()).toBe(false)
+  })
+
+  it('dice lo mismo que el del servidor, también en los casos tramposos', () => {
+    for (const href of [
+      'https://x.com/tasacion-directa?hm_preview=1&lp=B',
+      'https://x.com/tasacion-directa?lp=B',
+      'https://x.com/p?hm_preview=11',
+      'https://x.com/p?next=/y?hm_preview=1',
+      'https://x.com/p?utm_content=hm_preview=1',
+      'https://x.com/p?hm_preview=%31',
+    ]) {
+      expect(en(href), href).toBe(esVistaPreviaDelMapa(href))
+    }
+    expect(en('https://x.com/p?hm_preview=11')).toBe(false)
+    expect(en('https://x.com/tasacion-directa?hm_preview=1&lp=B')).toBe(true)
   })
 })

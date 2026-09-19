@@ -150,7 +150,7 @@ export function FunnelLeadForm({
     // para que el mensaje aparezca aunque los datos estén incompletos.
     if (isHeatmapPreview()) {
       return setError(
-        'Estás viendo el mapa de calor: acá el formulario no se envía, para no crear un registro de prueba. Para probarlo, abrí la landing en una pestaña aparte.',
+        'Estás viendo el mapa de calor: acá el formulario no se envía, para no crear un registro de prueba. Para probarlo, usá «Abrir la landing real», debajo del mapa.',
       )
     }
 

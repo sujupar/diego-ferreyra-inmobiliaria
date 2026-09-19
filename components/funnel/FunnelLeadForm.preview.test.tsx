@@ -7,7 +7,7 @@
  * desde el mapa de calor creaba un lead real, avisaba al equipo, mandaba la conversión
  * a Meta y sumaba un registro a esa versión del test A/B.
  */
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -23,7 +23,9 @@ async function llenarYEnviar() {
   await u.click(screen.getByRole('button', { name: 'SOLICITAR' }))
 }
 
-afterEach(() => irA(''))
+// El formulario consulta /api/geo para adivinar el país: acá no hay servidor.
+beforeEach(() => vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 }))))
+afterEach(() => { irA(''); vi.unstubAllGlobals() })
 
 describe('FunnelLeadForm dentro del visor del mapa de calor (?hm_preview=1)', () => {
   it('con datos perfectos NO envía, y explica por qué', async () => {
@@ -32,10 +34,16 @@ describe('FunnelLeadForm dentro del visor del mapa de calor (?hm_preview=1)', ()
     render(<FunnelLeadForm variant="tasacion" submitLabel="SOLICITAR" onSubmit={onSubmit} />)
     await llenarYEnviar()
     expect(await screen.findByRole('alert')).toHaveTextContent(/mapa de calor/i)
-    // Se le da tiempo al camino asíncrono del envío: si fuera a enviar, ya lo habría hecho.
-    await new Promise((r) => setTimeout(r, 400))
+    // "Enviando..." se pone de forma SINCRÓNICA apenas el formulario decide enviar, antes de
+    // cargar la librería del teléfono. Que no aparezca prueba que cortó antes, sin depender
+    // de cuánto tarde esa carga (con `setError` pero sin `return`, esto se pone rojo).
+    expect(screen.queryByText('Enviando...')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'SOLICITAR' })).toBeEnabled()
+    await new Promise((r) => setTimeout(r, 300))
     expect(onSubmit).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toHaveTextContent(/no se envía/i)
+    // Le dice por dónde probarlo de verdad: el botón del visor que abre la landing sin el modo visor.
+    expect(screen.getByRole('alert')).toHaveTextContent(/Abrir la landing real/)
   })
 })
 

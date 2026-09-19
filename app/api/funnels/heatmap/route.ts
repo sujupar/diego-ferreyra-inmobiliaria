@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { getUser } from '@/lib/auth/get-user'
 import { isHeatmapPageKey } from '@/lib/funnel/heatmap-pages'
+import { rpcPaginado, type ClienteRpc } from '@/lib/supabase/rpc-paginado'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -12,13 +13,12 @@ interface SectionRow { page: string; section: string; segment: string; stage: st
 interface TotalRow { page: string; segment: string; stage: string | null; device: string; sessions: number; avg_scroll: number }
 interface GridRow { page: string; section: string; segment: string; device: string; x_bin: number; y_bin: number; clicks: number; rage: number }
 
-async function rpc<T>(supabase: SupabaseClient, fn: string, args: Record<string, string>): Promise<T[]> {
-  const { data, error } = await supabase.rpc(fn, args)
-  if (error) {
-    console.warn(`[funnels/heatmap] ${fn}: ${error.message}`)
-    return []
-  }
-  return (data ?? []) as T[]
+/** Pagina siempre: la API de Supabase corta en 1000 filas sin avisar (ver `rpcPaginado`). */
+async function rpc<T>(supabase: SupabaseClient, fn: string, args: Record<string, string>, orden: readonly string[]): Promise<T[]> {
+  const r = await rpcPaginado<T>(supabase as unknown as ClienteRpc, fn, args, orden)
+  if (r.error) console.warn(`[funnels/heatmap] ${fn}: ${r.error}`)
+  if (r.truncado) console.warn(`[funnels/heatmap] ${fn}: resultado TRUNCADO en ${r.filas.length} filas`)
+  return r.filas
 }
 
 /**
@@ -56,9 +56,9 @@ export async function GET(req: NextRequest) {
     const args = { p_from: startIso, p_to: endEx.toISOString() }
 
     const [totals, sections, grid] = await Promise.all([
-      rpc<TotalRow>(supabase, 'heatmap_session_totals', args),
-      rpc<SectionRow>(supabase, 'heatmap_section_stats', args),
-      rpc<GridRow>(supabase, 'heatmap_clicks_grid', args),
+      rpc<TotalRow>(supabase, 'heatmap_session_totals', args, ['page', 'segment', 'stage', 'device']),
+      rpc<SectionRow>(supabase, 'heatmap_section_stats', args, ['page', 'section', 'segment', 'stage', 'device']),
+      rpc<GridRow>(supabase, 'heatmap_clicks_grid', args, ['page', 'section', 'segment', 'device', 'x_bin', 'y_bin']),
     ])
 
     return NextResponse.json({

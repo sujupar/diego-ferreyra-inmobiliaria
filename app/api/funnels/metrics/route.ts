@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { getUser } from '@/lib/auth/get-user'
 import { heatmapPagesOfFunnel } from '@/lib/funnel/heatmap-pages'
+import { rpcPaginado, type ClienteRpc } from '@/lib/supabase/rpc-paginado'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -136,15 +137,22 @@ interface HeatSectionRow { page: string; section: string; segment: string; stage
 interface HeatTotalRow { page: string; segment: string; stage: string | null; device: string; sessions: number; avg_scroll: number }
 interface HeatGridRow { page: string; section: string; segment: string; device: string; x_bin: number; y_bin: number; clicks: number; rage: number }
 
-/** Llama un RPC de agregación; si la migración aún no corrió, degrada a []. */
-async function safeRpc<T>(supabase: AdminClient, fn: string, args: Record<string, string>): Promise<T[]> {
+/**
+ * Llama un RPC de agregación; si la migración aún no corrió, degrada a [].
+ *
+ * Pagina SIEMPRE (`rpcPaginado`): la API de Supabase corta en 1000 filas sin avisar, y
+ * `funnel_video_heatmap` devuelve 100 por cada (video, segmento, etapa). Con 90 días eran
+ * 1300: se caían TODAS las filas del video de la landing B y su curva salía plana en 0 %.
+ * `orden` son las columnas que identifican cada fila: sin orden fijo no se puede paginar.
+ */
+async function safeRpc<T>(supabase: AdminClient, fn: string, args: Record<string, string>, orden: readonly string[]): Promise<T[]> {
   try {
-    const { data, error } = await supabase.rpc(fn, args)
-    if (error) {
-      console.warn(`[funnels/metrics] ${fn}: ${error.message}`)
-      return []
-    }
-    return (data ?? []) as T[]
+    // supabase-js tipa el resultado de `.rpc()` según un esquema generado que acá no existe;
+    // `rpcPaginado` solo necesita `.order().range()`, que es lo que declara `ClienteRpc`.
+    const r = await rpcPaginado<T>(supabase as unknown as ClienteRpc, fn, args, orden)
+    if (r.error) console.warn(`[funnels/metrics] ${fn}: ${r.error}`)
+    if (r.truncado) console.warn(`[funnels/metrics] ${fn}: resultado TRUNCADO en ${r.filas.length} filas — achicar el rango`)
+    return r.filas
   } catch (e) {
     console.warn(`[funnels/metrics] ${fn} threw`, e)
     return []
@@ -239,14 +247,14 @@ export async function GET(req: NextRequest) {
     const rpcArgs = { p_from: startIso, p_to: endIso }
 
     const [videoRows, retentionAll, heatmapAll, heatSections, heatTotals, heatGrid, visitCampaigns, convCampaigns, spendRows] = await Promise.all([
-      safeRpc<VideoStatRow>(supabase, 'funnel_video_stats', rpcArgs),
-      safeRpc<RetentionRow>(supabase, 'funnel_video_retention', rpcArgs),
-      safeRpc<HeatmapRow>(supabase, 'funnel_video_heatmap', rpcArgs),
-      safeRpc<HeatSectionRow>(supabase, 'heatmap_section_stats', rpcArgs),
-      safeRpc<HeatTotalRow>(supabase, 'heatmap_session_totals', rpcArgs),
-      safeRpc<HeatGridRow>(supabase, 'heatmap_clicks_grid', rpcArgs),
-      safeRpc<VisitCampRow>(supabase, 'funnel_campaign_visits', rpcArgs),
-      safeRpc<ConvCampRow>(supabase, 'funnel_campaign_conversions', rpcArgs),
+      safeRpc<VideoStatRow>(supabase, 'funnel_video_stats', rpcArgs, ['funnel', 'video_key', 'segment', 'stage']),
+      safeRpc<RetentionRow>(supabase, 'funnel_video_retention', rpcArgs, ['funnel', 'video_key', 'segment', 'stage', 'percent']),
+      safeRpc<HeatmapRow>(supabase, 'funnel_video_heatmap', rpcArgs, ['funnel', 'video_key', 'segment', 'stage', 'bucket']),
+      safeRpc<HeatSectionRow>(supabase, 'heatmap_section_stats', rpcArgs, ['page', 'section', 'segment', 'stage', 'device']),
+      safeRpc<HeatTotalRow>(supabase, 'heatmap_session_totals', rpcArgs, ['page', 'segment', 'stage', 'device']),
+      safeRpc<HeatGridRow>(supabase, 'heatmap_clicks_grid', rpcArgs, ['page', 'section', 'segment', 'device', 'x_bin', 'y_bin']),
+      safeRpc<VisitCampRow>(supabase, 'funnel_campaign_visits', rpcArgs, ['funnel_type', 'campaign']),
+      safeRpc<ConvCampRow>(supabase, 'funnel_campaign_conversions', rpcArgs, ['funnel', 'campaign']),
       (async (): Promise<SpendRow[]> => {
         try {
           const { data } = await supabase

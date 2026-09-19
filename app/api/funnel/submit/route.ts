@@ -200,9 +200,18 @@ export async function POST(req: NextRequest) {
   // cliente y también el Referer, porque `eventSourceUrl` es opcional. Se responde 400
   // con el motivo (y no un "ok" fingido como al honeypot) porque quien llega acá es el
   // dueño probando, no un bot: tiene que enterarse de que no se registró nada.
-  if (esVistaPreviaDelMapa(d.eventSourceUrl) || esVistaPreviaDelMapa(req.headers.get('referer'))) {
+  const referer = req.headers.get('referer')
+  if (esVistaPreviaDelMapa(d.eventSourceUrl) || esVistaPreviaDelMapa(referer)) {
+    // Se REGISTRA, como todo rechazo de esta ruta (regla del 2026-08-14). Esta es además la
+    // única excepción a "un metadato de tracking jamás voltea una conversión" (submit-schema):
+    // si alguien compartiera o pusiera en un anuncio la dirección del visor, un cliente real
+    // rebotaría acá. Con el registro, ese lead se ve y se recupera a mano.
+    await registrarRechazo(supabase, {
+      funnel: d.funnel, name: d.name, email: d.email ?? null, phone: d.phone ?? null,
+      motivo: 'visor_mapa_calor', detalle: { eventSourceUrl: d.eventSourceUrl ?? null, referer }, ipHash, userAgent,
+    })
     return NextResponse.json(
-      { error: 'Estás en el mapa de calor: desde acá el formulario no se envía. Abrí la landing en una pestaña aparte para probarlo.' },
+      { error: 'Estás en el mapa de calor: desde acá el formulario no se envía. Usá «Abrir la landing real», debajo del mapa, para probarlo.' },
       { status: 400 },
     )
   }

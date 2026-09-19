@@ -35,18 +35,29 @@ async function main() {
   const antes = await medir(c)
   console.log('ANTES:'); console.table(antes)
 
-  const r = await c.query(readFileSync('supabase/migrations/20260919000004_video_key_landing_b.sql', 'utf8'))
-  console.log(`filas reetiquetadas en esta corrida: ${r.rowCount ?? 0}`)
+  // Va todo dentro de una transacción: si la verificación no cuadra se hace ROLLBACK y la base
+  // queda como estaba. Antes el UPDATE ya había quedado aplicado cuando el script "abortaba".
+  await c.query('begin')
+  try {
+    const r = await c.query(readFileSync('supabase/migrations/20260919000004_video_key_landing_b.sql', 'utf8'))
+    console.log(`filas reetiquetadas en esta corrida: ${r.rowCount ?? 0}`)
 
-  const despues = await medir(c)
-  console.log('DESPUÉS:'); console.table(despues)
-  await c.end()
+    const despues = await medir(c)
+    console.log('DESPUÉS:'); console.table(despues)
 
-  const a = despues.find((x) => x.video_key === 'hero-tasacion')
-  const b = despues.find((x) => x.video_key === 'hero-tasacion-neta')
-  if (total(antes) !== total(despues)) throw new Error(`¡ALERTA! cambió la cantidad de filas: ${total(antes)} → ${total(despues)}`)
-  if (a && a.video_largo_711s > 0) throw new Error(`¡ALERTA! quedan ${a.video_largo_711s} videos de la B bajo la clave de la A`)
-  if (b && b.video_corto_196s > 0) throw new Error(`¡ALERTA! hay ${b.video_corto_196s} videos de la A bajo la clave de la B`)
+    const a = despues.find((x) => x.video_key === 'hero-tasacion')
+    const b = despues.find((x) => x.video_key === 'hero-tasacion-neta')
+    if (total(antes) !== total(despues)) throw new Error(`¡ALERTA! cambió la cantidad de filas: ${total(antes)} → ${total(despues)}`)
+    if (a && a.video_largo_711s > 0) throw new Error(`¡ALERTA! quedan ${a.video_largo_711s} videos de la B bajo la clave de la A (¿filas trabadas por el UNIQUE? ver "LÍMITES CONOCIDOS" en la migración)`)
+    if (b && b.video_corto_196s > 0) throw new Error(`¡ALERTA! hay ${b.video_corto_196s} videos de la A bajo la clave de la B`)
+    await c.query('commit')
+  } catch (e) {
+    await c.query('rollback')
+    console.error('ROLLBACK: la base quedó como estaba.')
+    throw e
+  } finally {
+    await c.end()
+  }
   console.log('\n✅ aplicada y verificada: ninguna fila perdida, y cada clave tiene solo SU video')
 }
 main().catch((e) => { console.error('Error:', e instanceof Error ? e.message : e); process.exit(1) })
