@@ -43,6 +43,19 @@ describe('parseAddress', () => {
     expect(p.number).toBe('935')
   })
 
+  it('extrae la altura cuando el piso va pegado con guion (caso real "4227-13 \\"B\\"")', () => {
+    // Sin esto, la propiedad nunca se ubicó en el mapa: ni al darla de alta ni
+    // al investigar la zona para la descripción (2026-09-19).
+    const p = parseAddress('Tte. Gral. Juan D. Perón 4227-13 "B"')
+    expect(p.street).toBe('Tte. Gral. Juan D. Perón')
+    expect(p.number).toBe('4227')
+  })
+
+  it('extrae la altura con barra o piso en otro formato ("Salta 297 2*D", "Corrientes 1234/5")', () => {
+    expect(parseAddress('SALTA 297 2*D').number).toBe('297')
+    expect(parseAddress('Corrientes 1234/5').number).toBe('1234')
+  })
+
   it('no se confunde con calle que tiene número en el nombre ("Avenida 9 de Julio 1234")', () => {
     const p = parseAddress('Avenida 9 de Julio 1234, San Nicolás, Capital Federal')
     expect(p.number).toBe('1234')

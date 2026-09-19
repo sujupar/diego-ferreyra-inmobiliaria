@@ -25,6 +25,13 @@ export interface GeocodeResult {
 }
 
 const LEVELS: GeoConfidence[] = ['low', 'medium', 'high']
+
+/**
+ * Techo de CADA consulta. Sin esto un Nominatim lento colgaba a quien llamara:
+ * el alta lo tolera, pero la etapa de zona del generador de descripciones corre
+ * con presupuesto de tiempo de Netlify (hallazgo de la revisión, 2026-09-19).
+ */
+const TECHO_CONSULTA_MS = 4_000
 function minConf(a: GeoConfidence, b: GeoConfidence): GeoConfidence {
   return LEVELS[Math.min(LEVELS.indexOf(a), LEVELS.indexOf(b))]
 }
@@ -48,7 +55,7 @@ interface GoogleResult {
 
 async function geocodeGoogle(query: string, key: string, expected?: GeocodeExpected): Promise<GeocodeResult | null> {
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&region=ar&key=${key}`
-  const res = await fetch(url)
+  const res = await fetch(url, { signal: AbortSignal.timeout(TECHO_CONSULTA_MS) })
   const data = (await res.json()) as { status: string; results: GoogleResult[] }
   if (data.status !== 'OK' || !data.results?.[0]) return null
   const r = data.results[0]
@@ -90,7 +97,10 @@ interface OsmResult {
 
 async function geocodeOsm(query: string, expected?: GeocodeExpected): Promise<GeocodeResult | null> {
   const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=ar&limit=1&q=${encodeURIComponent(query)}`
-  const res = await fetch(url, { headers: { 'User-Agent': 'DiegoFerreyraInmobiliaria/1.0 (contacto@inmodf.com.ar)' } })
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'DiegoFerreyraInmobiliaria/1.0 (contacto@inmodf.com.ar)' },
+    signal: AbortSignal.timeout(TECHO_CONSULTA_MS),
+  })
   const data = (await res.json()) as OsmResult[]
   const r = data?.[0]
   if (!r) return null
@@ -158,8 +168,27 @@ export async function geocodeAddress(query: string, expected?: GeocodeExpected):
     // calle + (provincia, país) — descarta los segmentos intermedios (localidad/barrio)
     const simplified = [segs[0], segs[segs.length - 2], segs[segs.length - 1]].join(', ')
     if (simplified !== query) {
-      return geocodeOnce(simplified, expected ? { ...expected, locality: null } : undefined)
+      const sinLocalidad = await geocodeOnce(simplified, expected ? { ...expected, locality: null } : undefined)
+      if (sinLocalidad) return sinLocalidad
     }
   }
+
+  // Último intento: OSM no entiende abreviaturas ni iniciales ("Tte. Gral. Juan
+  // D. Perón 4227" no resuelve y "Juan Perón 4227" sí, verificado 2026-09-19).
+  // Solo si hay algo que sacar: si no, sería repetir la primera consulta.
+  const calle = segs[0] ?? ''
+  const calleLimpia = sinAbreviaturas(calle)
+  if (calleLimpia && calleLimpia !== calle) {
+    return geocodeOnce([calleLimpia, ...segs.slice(1)].join(', '), expected)
+  }
   return null
+}
+
+/** "Tte. Gral. Juan D. Perón 4227" → "Juan Perón 4227": fuera abreviaturas con punto e iniciales sueltas. */
+function sinAbreviaturas(calle: string): string {
+  return calle
+    .split(/\s+/)
+    .filter(t => !/^\p{L}{1,6}\.$/u.test(t) && !/^\p{L}$/u.test(t))
+    .join(' ')
+    .trim()
 }

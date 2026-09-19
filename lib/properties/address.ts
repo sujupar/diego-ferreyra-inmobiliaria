@@ -80,8 +80,10 @@ export function parseAddress(
   // Fallback: si el segmento no termina en número (ej. "Aguero 935 5 A" con
   // depto), tomar la PRIMERA altura tras el nombre de la calle e ignorar el
   // sufijo de piso/depto. No aplica a "Avenida 9 de Julio 1234" porque ahí el
-  // primer match (termina-en-número) ya captura 1234.
-  const m = streetSeg.match(/^(.*?)\s+(\d+)\s*$/) ?? streetSeg.match(/^(.+?)\s+(\d{1,6})(?=\s|$)/)
+  // primer match (termina-en-número) ya captura 1234. El piso también puede ir
+  // pegado con guion o barra ("Perón 4227-13 \"B\"", "Corrientes 1234/5"): sin
+  // eso la altura quedaba null y la propiedad no se ubicaba en el mapa.
+  const m = streetSeg.match(/^(.*?)\s+(\d+)\s*$/) ?? streetSeg.match(/^(.+?)\s+(\d{1,6})(?=[\s\-–/]|$)/)
   const street = m ? m[1].trim() : (streetSeg || null)
   const number = m ? m[2] : null
 

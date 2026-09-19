@@ -66,6 +66,39 @@ describe('geocodeAddress (OSM, sin key de Google)', () => {
     expect(r).not.toBeNull()
     expect(fetchMock).toHaveBeenCalledTimes(2) // query completa (miss) + fallback (hit)
   })
+
+  it('último intento: sin abreviaturas ni iniciales (caso real "Tte. Gral. Juan D. Perón 4227")', async () => {
+    // OSM no entiende "Tte. Gral. Juan D." (verificado 2026-09-19) pero sí "Juan Perón 4227".
+    const urls: string[] = []
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      const q = decodeURIComponent(String(url).split('q=')[1] ?? '')
+      urls.push(q)
+      return Promise.resolve({ ok: true, json: async () => (q.startsWith('Juan Perón 4227,') ? OSM_ROOFTOP : []) } as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const r = await geocodeAddress(
+      'Tte. Gral. Juan D. Perón 4227, Almagro, Ciudad Autónoma de Buenos Aires, Argentina',
+      { isCaba: true, province: 'CABA' },
+    )
+    expect(r).not.toBeNull()
+    expect(urls.at(-1)).toBe('Juan Perón 4227, Almagro, Ciudad Autónoma de Buenos Aires, Argentina')
+  })
+
+  it('cada consulta lleva un tiempo máximo (Nominatim es gratis y sin garantía de latencia)', async () => {
+    const fetchMock = mockFetchOnce([])
+    vi.stubGlobal('fetch', fetchMock)
+    await geocodeAddress('Doblas 248, Caballito, Ciudad Autónoma de Buenos Aires, Argentina', { isCaba: true, province: 'CABA' })
+    for (const [, init] of fetchMock.mock.calls) {
+      expect((init as RequestInit | undefined)?.signal).toBeInstanceOf(AbortSignal)
+    }
+  })
+
+  it('sin abreviaturas que sacar no hace un intento de más', async () => {
+    const fetchMock = mockFetchOnce([])
+    vi.stubGlobal('fetch', fetchMock)
+    await geocodeAddress('Doblas 248, Caballito, Ciudad Autónoma de Buenos Aires, Argentina', { isCaba: true, province: 'CABA' })
+    expect(fetchMock).toHaveBeenCalledTimes(2) // completa + sin localidad, y nada más
+  })
 })
 
 describe('geocodeAddress (Google primero cuando hay key)', () => {

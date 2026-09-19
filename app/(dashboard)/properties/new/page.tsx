@@ -14,7 +14,6 @@ import { ElegirCliente } from '@/components/deals/ElegirCliente'
 import { CompletarDatosCliente } from '@/components/deals/CompletarDatosCliente'
 import { esRespuestaDatosDelCliente } from '@/lib/deals/proceso-manual'
 import { OPERACIONES } from '@/lib/properties/operacion'
-import { GenerarDescripcion } from '@/components/properties/alta/GenerarDescripcion'
 import { LocationPicker } from '@/components/properties/LocationPicker'
 import type { SeleccionUbicacion } from '@/lib/properties/location-selection'
 
@@ -67,7 +66,6 @@ function NewPropertyContent() {
     // Mientras el modelo escribe, captar la propiedad la crearía SIN la
     // descripción que el asesor está esperando. Se bloquea el envío, no la
     // edición del resto del formulario.
-    const [generandoDescripcion, setGenerandoDescripcion] = useState(false)
     // Captar mueve el proceso a "Captada": si al cliente le faltan datos, el
     // servidor frena el alta (422) y se piden acá; al guardarlos, se reenvía.
     const [completarDe, setCompletarDe] = useState<string | null>(null)
@@ -618,32 +616,31 @@ function NewPropertyContent() {
                     </CardContent>
                 </Card>
 
-                {/* La descripción va ÚLTIMA a propósito: el dueño pidió "llenar
-                    todo y, al final, generar". El modelo escribe con lo que haya
-                    cargado, así que generar a mitad de camino da un aviso genérico. */}
+                {/* La descripción AUTOMÁTICA ya no se genera acá (pedido del dueño,
+                    2026-09-19): se genera desde la ficha, con la propiedad cargada y
+                    sus fotos subidas, para que el método de Diego pueda MIRAR la
+                    propiedad. Acá solo queda el campo para escribir a mano. */}
                 <Card>
                     <CardHeader><CardTitle className="text-lg flex items-center gap-2"><FileText className="h-5 w-5" />Descripción</CardTitle></CardHeader>
-                    <CardContent className="space-y-4">
+                    <CardContent className="space-y-2">
                         <textarea
                             value={form.description}
                             onChange={e => updateField('description', e.target.value)}
-                            placeholder="Descripción comercial de la propiedad…"
+                            placeholder="Descripción comercial de la propiedad (opcional)…"
                             rows={5}
                             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-y"
                         />
-                        <GenerarDescripcion
-                            form={form}
-                            onAplicar={texto => updateField('description', texto)}
-                            onGenerandoChange={setGenerandoDescripcion}
-                        />
+                        <p className="text-xs text-muted-foreground">
+                            La descripción automática se genera desde la ficha, una vez cargadas las fotos: así el sistema puede ver la propiedad.
+                        </p>
                     </CardContent>
                 </Card>
 
                 <div className="flex gap-3">
                     <Button type="button" variant="outline" onClick={() => router.back()}>Cancelar</Button>
-                    <Button type="submit" disabled={loading || !form.assigned_to || generandoDescripcion} className="flex-1 bg-green-600 hover:bg-green-700">
+                    <Button type="submit" disabled={loading || !form.assigned_to} className="flex-1 bg-green-600 hover:bg-green-700">
                         {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {uploadingPlans ? 'Subiendo planos…' : generandoDescripcion ? 'Generando descripción…' : 'Captar Propiedad'}
+                        {uploadingPlans ? 'Subiendo planos…' : 'Captar Propiedad'}
                     </Button>
                 </div>
             </form>
