@@ -9,6 +9,7 @@ const filas = [
   { osm_id: 'n8', tipo: 'colegio', nombre: 'Escuela Primaria p/Adultos 23', lineas: [], metros: 279 },
   { osm_id: 'n100', tipo: 'parada', nombre: '', lineas: ['24', '160'], metros: 120 },
   { osm_id: 'n101', tipo: 'parada', nombre: '', lineas: ['19', '24'], metros: 300 },
+  { osm_id: 'w900', tipo: 'recorrido', nombre: '', lineas: ['109', '24'], metros: 350 },
 ]
 
 describe('resultadoDesdeFilas', () => {
@@ -26,12 +27,12 @@ describe('resultadoDesdeFilas', () => {
     expect(metros).toEqual([...metros].sort((a, b) => a - b))
   })
 
-  it('junta los colectivos de todas las paradas cercanas, sin repetir y en orden', () => {
-    expect(r.colectivos).toEqual(['19', '24', '160'])
+  it('junta los colectivos de paradas y recorridos cercanos, sin repetir y en orden', () => {
+    expect(r.colectivos).toEqual(['19', '24', '109', '160'])
   })
 
-  it('las paradas no aparecen como lugares', () => {
-    expect(r.lugares.some(l => (l.tipo as string) === 'parada')).toBe(false)
+  it('ni las paradas ni los recorridos aparecen como lugares', () => {
+    expect(r.lugares.some(l => ['parada', 'recorrido'].includes(l.tipo as string))).toBe(false)
   })
 
   it('sin filas: sin lugares ni colectivos (lugar sin nada cerca, no es un error)', () => {

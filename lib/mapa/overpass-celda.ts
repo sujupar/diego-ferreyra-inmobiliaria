@@ -7,22 +7,33 @@
  * por parada con `foreach` tardaba 94 s en la celda más densa (centro de CABA,
  * 880 paradas); así tarda ~11 s (medido 2026-09-19).
  *
- * Solo se guardan puntos DENTRO de la celda: cada fila pertenece a una sola
- * celda y la actualización de una celda puede borrar sin miedo lo que ya no vino.
+ * Los TRAMOS de esas rutas vienen con su trazado (`out geom`): así "pasa a
+ * 400 m" da lo mismo que la consulta en vivo (`rel(around:400)[route=bus]`),
+ * que cuenta toda ruta con algún miembro cerca. A muchas rutas de OpenStreetMap
+ * les faltan las paradas pero nunca el trazado: solo con paradas, Perón 4227
+ * perdía las líneas 19 y 109 (medido 2026-09-19).
+ *
+ * Solo se guardan filas DE la celda: cada fila pertenece a una sola celda y la
+ * actualización de una celda puede borrar sin miedo lo que ya no vino. Un tramo
+ * es de la celda donde está su primer punto dentro del AMBA (la misma regla que
+ * `scripts/mapa-extraer-osm.py`).
  */
-import type { Celda } from './celdas'
+import { celdaDe, dentroDelAmba, type Celda } from './celdas'
 import { lineaDeColectivo, lineaDeRuta, ordenarLineasColectivo } from './normalizar'
 
-export type TipoFila = 'subte' | 'tren' | 'plaza' | 'colegio' | 'universidad' | 'hospital' | 'parada'
+export type TipoFila = 'subte' | 'tren' | 'plaza' | 'colegio' | 'universidad' | 'hospital' | 'parada' | 'recorrido'
 
 export interface FilaMapa {
   osm_id: string
   tipo: TipoFila
   nombre: string
   lineas: string[]
+  /** El punto de la fila; en un recorrido, su primer punto dentro del AMBA (define la celda). */
   lat: number
   lng: number
   celda: string
+  /** Solo recorridos: el trazado completo, en [lng, lat] (el orden de WKT y GeoJSON). */
+  trazo?: Array<[number, number]>
 }
 
 export function consultaCelda(c: Celda): string {
@@ -42,9 +53,14 @@ foreach.estaciones->.s(
 );
 out center tags;
 node${b}[highway=bus_stop]->.paradas;
-rel(bn.paradas)[route=bus]->.rutas;
+rel(bn.paradas)[route=bus]->.rutasParadas;
+rel${b}[route=bus]->.rutasCelda;
+way(r.rutasCelda)${b}->.tramos;
+rel(bw.tramos)[route=bus]->.rutasTramos;
+(.rutasParadas; .rutasTramos;)->.rutas;
 .rutas out body;
-.paradas out skel;`
+.paradas out skel;
+.tramos out geom;`
 }
 
 interface Elemento {
@@ -55,6 +71,7 @@ interface Elemento {
   center?: { lat?: unknown; lon?: unknown }
   tags?: Record<string, unknown>
   members?: Array<{ type?: unknown; ref?: unknown }>
+  geometry?: Array<{ lat?: unknown; lon?: unknown } | null>
 }
 
 const PREFIJO: Record<string, string> = { node: 'n', way: 'w', relation: 'r' }
@@ -86,6 +103,8 @@ export function filasDesdeRespuesta(json: unknown, c: Celda): FilaMapa[] {
   let estacionConRuta = false
   const lineasPorParada = new Map<number, Set<string>>()
   const puntoDeParada = new Map<number, { lat: number; lng: number }>()
+  const lineasPorTramo = new Map<number, Set<string>>()
+  const trazoDeTramo = new Map<number, Array<[number, number]>>()
 
   for (const e of elementos as Elemento[]) {
     const tags = e?.tags && typeof e.tags === 'object' ? e.tags : {}
@@ -94,11 +113,23 @@ export function filasDesdeRespuesta(json: unknown, c: Celda): FilaMapa[] {
       const linea = lineaDeColectivo(tags)
       if (!linea) continue
       for (const m of e.members ?? []) {
-        if (m?.type !== 'node' || typeof m.ref !== 'number') continue
-        const set = lineasPorParada.get(m.ref) ?? new Set<string>()
+        if (typeof m?.ref !== 'number') continue
+        const destino = m.type === 'node' ? lineasPorParada : m.type === 'way' ? lineasPorTramo : null
+        if (!destino) continue
+        const set = destino.get(m.ref) ?? new Set<string>()
         set.add(linea)
-        lineasPorParada.set(m.ref, set)
+        destino.set(m.ref, set)
       }
+      continue
+    }
+    // Tramo de `out geom`: el único elemento que trae `geometry`.
+    if (e?.type === 'way' && Array.isArray(e.geometry) && typeof e.id === 'number') {
+      estacionActual = null
+      const trazo: Array<[number, number]> = []
+      for (const g of e.geometry) {
+        if (typeof g?.lat === 'number' && typeof g?.lon === 'number') trazo.push([g.lon, g.lat])
+      }
+      trazoDeTramo.set(e.id, trazo)
       continue
     }
     if (e?.type === 'relation' && typeof tags.route === 'string' && !e.center) {
@@ -141,6 +172,16 @@ export function filasDesdeRespuesta(json: unknown, c: Celda): FilaMapa[] {
     const p = puntoDeParada.get(id)
     if (!p || !dentro(c, p)) continue
     filas.push({ osm_id: `n${id}`, tipo: 'parada', nombre: '', lineas: ordenarLineasColectivo(lineas), ...p, celda: c.id })
+  }
+  for (const [id, trazo] of trazoDeTramo) {
+    const lineas = lineasPorTramo.get(id)
+    if (!lineas?.size || trazo.length < 2) continue
+    const primero = trazo.find(([lng, lat]) => dentroDelAmba(lat, lng))
+    if (!primero || celdaDe(primero[1], primero[0])?.id !== c.id) continue
+    filas.push({
+      osm_id: `w${id}`, tipo: 'recorrido', nombre: '', lineas: ordenarLineasColectivo(lineas),
+      lat: primero[1], lng: primero[0], celda: c.id, trazo,
+    })
   }
   return filas
 }

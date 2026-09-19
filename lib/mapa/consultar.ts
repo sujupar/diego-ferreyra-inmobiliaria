@@ -28,7 +28,8 @@ export function resultadoDesdeFilas(filas: FilaCercana[]): { lugares: LugarCerca
   const lugares: LugarCercano[] = []
   const colectivos: string[] = []
   for (const f of filas) {
-    if (f.tipo === 'parada') { colectivos.push(...f.lineas); continue }
+    // Una parada o un tramo de recorrido a menos de 400 m: la línea pasa cerca.
+    if (f.tipo === 'parada' || f.tipo === 'recorrido') { colectivos.push(...f.lineas); continue }
     if (!TIPOS_LUGAR.has(f.tipo as TipoLugar) || !f.nombre) continue
     const lugar: LugarCercano = { nombre: f.nombre, tipo: f.tipo as TipoLugar, metros: f.metros, cuadras: Math.max(1, Math.round(f.metros / 100)) }
     if (f.lineas.length) lugar.linea = f.lineas.join(' y ')

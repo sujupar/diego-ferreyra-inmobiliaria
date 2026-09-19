@@ -6,7 +6,8 @@ const celda: Celda = { id: '-34.650_-58.450', sur: -34.65, oeste: -58.45, norte:
 
 // Forma REAL de la respuesta (relevada el 2026-09-19 sobre la celda más densa):
 // 1) estaciones seguidas de sus rutas (foreach), 2) lugares con `center`,
-// 3) rutas de colectivo con sus miembros (`out body`), 4) paradas sin tags (`out skel`).
+// 3) rutas de colectivo con sus miembros (`out body`), 4) paradas sin tags (`out skel`),
+// 5) tramos de esas rutas con su trazado (`out geom`).
 const respuesta = {
   elements: [
     { type: 'node', id: 1, lat: -34.603, lon: -58.421, tags: { name: 'Medrano - Almagro', railway: 'station', station: 'subway' } },
@@ -25,9 +26,19 @@ const respuesta = {
     ] },
     { type: 'relation', id: 41, tags: { route: 'bus', ref: '160AG' }, members: [{ type: 'node', ref: 100, role: 'platform' }] },
     { type: 'relation', id: 42, tags: { route: 'bus', ref: '160GG' }, members: [{ type: 'node', ref: 100, role: 'platform' }] },
+    { type: 'relation', id: 43, tags: { route: 'bus', ref: '19' }, members: [{ type: 'way', ref: 900, role: '' }, { type: 'way', ref: 901, role: '' }] },
     { type: 'node', id: 100, lat: -34.605, lon: -58.424 },
     { type: 'node', id: 101, lat: -34.59, lon: -58.424 },
     { type: 'node', id: 102, lat: -34.606, lon: -58.423 },
+    // Empieza en esta celda y sale al norte.
+    { type: 'way', id: 900, nodes: [1, 2, 3], tags: { highway: 'primary', name: 'Av. Díaz Vélez' },
+      geometry: [{ lat: -34.605, lon: -58.43 }, { lat: -34.601, lon: -58.43 }, { lat: -34.598, lon: -58.431 }] },
+    // Pasa por la celda pero empieza en la de al lado: es de ESA celda (una fila, un dueño).
+    { type: 'way', id: 901, nodes: [4, 5], tags: { highway: 'primary' },
+      geometry: [{ lat: -34.59, lon: -58.44 }, { lat: -34.61, lon: -58.44 }] },
+    // No es de ninguna ruta de colectivo.
+    { type: 'way', id: 902, nodes: [6, 7], tags: { highway: 'residential' },
+      geometry: [{ lat: -34.62, lon: -58.42 }, { lat: -34.621, lon: -58.42 }] },
   ],
 }
 
@@ -60,6 +71,28 @@ describe('filasDesdeRespuesta', () => {
     expect(por('n102')).toBeUndefined()
   })
 
+  it('guarda cada tramo de recorrido con su trazado y TODAS las líneas que pasan por él', () => {
+    expect(por('w900')).toMatchObject({
+      tipo: 'recorrido', nombre: '', lineas: ['19', '24'], lat: -34.605, lng: -58.43, celda: celda.id,
+      trazo: [[-58.43, -34.605], [-58.43, -34.601], [-58.431, -34.598]],
+    })
+  })
+
+  it('un tramo es de la celda donde empieza (su primer punto dentro del AMBA), aunque pase por otras', () => {
+    expect(por('w901')).toBeUndefined()
+    expect(filasDesdeRespuesta(respuesta, { id: '-34.600_-58.450', sur: -34.6, oeste: -58.45, norte: -34.55, este: -58.4 })
+      .find(f => f.osm_id === 'w901')).toMatchObject({ tipo: 'recorrido', lineas: ['19'] })
+  })
+
+  it('no guarda tramos que no son de ninguna ruta de colectivo ni tramos de un solo punto', () => {
+    expect(por('w902')).toBeUndefined()
+    const unPunto = { elements: [
+      { type: 'relation', id: 1, tags: { route: 'bus', ref: '5' }, members: [{ type: 'way', ref: 7, role: '' }] },
+      { type: 'way', id: 7, nodes: [1], geometry: [{ lat: -34.62, lon: -58.42 }] },
+    ] }
+    expect(filasDesdeRespuesta(unPunto, celda)).toEqual([])
+  })
+
   it('las rutas de colectivo no se pegan como línea de una estación', () => {
     expect(por('n2')?.lineas).not.toContain('24')
   })
@@ -78,6 +111,9 @@ describe('consultaCelda', () => {
     expect(q).toContain('rel(bn.paradas)[route=bus]')
     expect(q).toContain('out body')
     expect(q).toContain('out skel')
+    // Los tramos de las rutas con su trazado: "pasa a 400 m" aunque falten paradas.
+    expect(q).toMatch(/way\(r\.rutasCelda\)/)
+    expect(q).toContain('out geom')
     // Preguntar parada por parada tardaba 94 s en la celda más densa.
     expect(q).not.toMatch(/foreach\.paradas/)
   })

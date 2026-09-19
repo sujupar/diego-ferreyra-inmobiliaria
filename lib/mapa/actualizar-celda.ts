@@ -59,6 +59,13 @@ function sinRepetidos(filas: FilaMapa[]): FilaMapa[] {
   return [...porClave.values()]
 }
 
+/** Cómo se guarda la ubicación: un punto, o el trazado entero si es un tramo de recorrido. */
+export function ubicacionWkt(f: FilaMapa): string {
+  if (f.tipo !== 'recorrido') return `SRID=4326;POINT(${f.lng} ${f.lat})`
+  if (!f.trazo || f.trazo.length < 2) throw new Error(`el recorrido ${f.osm_id} no tiene trazado`)
+  return `SRID=4326;LINESTRING(${f.trazo.map(([lng, lat]) => `${lng} ${lat}`).join(',')})`
+}
+
 export async function asegurarCeldas(db: SupabaseClient, celdas: Celda[]): Promise<void> {
   for (let i = 0; i < celdas.length; i += LOTE_UPSERT) {
     const lote = celdas.slice(i, i + LOTE_UPSERT).map(c => ({ id: c.id, sur: c.sur, oeste: c.oeste, norte: c.norte, este: c.este }))
@@ -77,7 +84,7 @@ export async function guardarCelda(db: SupabaseClient, c: Celda, filas: FilaMapa
       tipo: f.tipo,
       nombre: f.nombre,
       lineas: f.lineas,
-      ubicacion: `SRID=4326;POINT(${f.lng} ${f.lat})`,
+      ubicacion: ubicacionWkt(f),
       celda: f.celda,
       actualizado_en: inicio,
     }))

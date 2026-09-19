@@ -21,10 +21,12 @@ import { lineaDeRuta, lineaDeColectivo, ordenarLineasColectivo } from '@/lib/map
  * vivo (acá) y el mapa propio (`lib/mapa/consultar.ts`), que tienen que dar lo mismo.
  *  - Plazas a 1 km: los parques grandes (Centenario, a 830 m de Perón 4227) son
  *    los que valen la pena nombrar y quedaban afuera con 800 m.
- *  - Paradas a 400 m = unas 4 cuadras: "pasa cerca" de verdad.
+ *  - Colectivos a 400 m = unas 4 cuadras: "pasa cerca" de verdad. En vivo es
+ *    toda ruta con algún miembro (parada o tramo) a esa distancia; en el mapa
+ *    propio, las paradas y los tramos de recorrido (`recorrido`), con el mismo radio.
  */
 export const RADIOS_METROS = {
-  subte: 1500, tren: 1500, plaza: 1000, colegio: 600, universidad: 600, hospital: 500, parada: 400,
+  subte: 1500, tren: 1500, plaza: 1000, colegio: 600, universidad: 600, hospital: 500, parada: 400, recorrido: 400,
 } as const
 const RADIO_ESTACIONES_M = RADIOS_METROS.subte
 const RADIO_PLAZAS_M = RADIOS_METROS.plaza

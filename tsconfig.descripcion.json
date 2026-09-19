@@ -10,6 +10,7 @@
     "app/api/cron/mapa-lugares/**/*.ts",
     "scripts/mapa-cargar.ts",
     "scripts/mapa-verificar.ts",
+    "scripts/mapa-cargar-archivo.ts",
     "lib/ai/openai-responses.ts",
     "app/api/properties/[id]/descripcion/**/*.ts",
     "components/properties/descripcion/**/*.tsx",
