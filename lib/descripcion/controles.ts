@@ -12,6 +12,7 @@
  */
 import { ADJETIVOS_PROHIBIDOS, DISCLAIMER } from './metodo-diego'
 import type { TextoGenerado } from './tipos'
+import { esTerreno } from './requisitos'
 
 const MAX_PALABRAS_TITULAR = 10
 const MAX_PALABRAS_SUBTITULAR = 50
@@ -50,7 +51,7 @@ function diceDormitorios(texto: string, n: number): boolean {
 
 export function controlarTexto(
   t: TextoGenerado,
-  ficha?: { bedrooms?: number | null },
+  ficha?: { bedrooms?: number | null; property_type?: string | null },
 ): { texto: TextoGenerado; problemas: string[] } {
   const texto: TextoGenerado = {
     title: t.title.trim(),
@@ -68,7 +69,10 @@ export function controlarTexto(
   if (ROTULOS.some(r => r.test(escrito))) problemas.push('nombra partes de la estructura (rótulos como "Primera parte:" o "Ubicación:")')
   if (MARKDOWN.test(escrito)) problemas.push('usa formato markdown (** o #)')
 
-  if (typeof ficha?.bedrooms === 'number' && ficha.bedrooms > 0 && !diceDormitorios(escrito, ficha.bedrooms)) {
+  // Un terreno no tiene dormitorios aunque la ficha arrastre un valor de cuando
+  // era otra cosa: el modelo no lo recibe (entradas.ts) y no debe inventarlo.
+  const exigeDormitorios = !esTerreno(ficha?.property_type)
+  if (exigeDormitorios && typeof ficha?.bedrooms === 'number' && ficha.bedrooms > 0 && !diceDormitorios(escrito, ficha.bedrooms)) {
     problemas.push(`no dice cuántos dormitorios tiene (la ficha dice ${ficha.bedrooms})`)
   }
 

@@ -165,6 +165,7 @@ REGLAS DURAS (nunca se rompen):
 16. Colectivos: si el MAPA trae más de 8 líneas, nombrá 8 y cerrá con "entre otras".
 17. Las calificaciones van TAL CUAL están cargadas: si la calidad o el estado dice "buena", no escribas "muy buena" ni "excelente".
 18. La cantidad de dormitorios y de baños que nombrás, sumando los de servicio, es la de los DATOS CARGADOS: si los datos dicen 3 dormitorios y uno es de servicio, son 3 en total, no "3 más uno de servicio".
+19. La posición del lote o de la unidad (esquina, interno, cul de sac) y la disposición (frente, contrafrente, interno) SOLO salen de los DATOS CARGADOS, la visita o las notas del asesor; nunca del inventario de fotos.
 
 # Personalidad y tono (documento Tono de Diego)
 

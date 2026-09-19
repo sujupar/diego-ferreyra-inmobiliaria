@@ -65,6 +65,12 @@ describe('controlarTexto', () => {
     expect(controlarTexto({ ...ok, body: cuerpo(`Tiene 2 dormitorios.\n\n${DISCLAIMER}`) }, { bedrooms: 2 }).problemas).toEqual([])
     expect(controlarTexto({ ...ok, body: cuerpo(`Un dormitorio amplio.\n\n${DISCLAIMER}`) }, { bedrooms: 1 }).problemas).toEqual([])
   })
+  it('en un terreno no exige dormitorios aunque la ficha traiga un valor residual (hallazgo de la revisión)', () => {
+    // Una casa a demoler reclasificada como terreno conserva bedrooms=3: el
+    // modelo no recibe ese dato y no debe inventarlo, así que exigirlo pedía
+    // una corrección inútil y dejaba un aviso falso para siempre.
+    expect(controlarTexto(ok, { bedrooms: 3, property_type: 'terreno' }).problemas).toEqual([])
+  })
   it('sin dato de dormitorios en la ficha no controla', () => {
     expect(controlarTexto(ok, { bedrooms: null }).problemas).toEqual([])
     expect(controlarTexto(ok).problemas).toEqual([])
@@ -95,6 +101,9 @@ describe('promptEscritura', () => {
     expect(p).toMatch(/## TERRENO/)
     expect(p).toMatch(/adaptaci[oó]n/i)
     expect(p).toMatch(/Posibilidades de uso: SOLO si/)
+  })
+  it('la posición del lote o la disposición solo salen de los datos, nunca de las fotos', () => {
+    expect(p).toMatch(/esquina, interno, cul de sac/)
   })
   it('usa voseo (decisión del 2026-07-28)', () => {
     expect(p).toContain('VOSEO')

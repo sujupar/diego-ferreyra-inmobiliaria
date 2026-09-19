@@ -26,6 +26,7 @@ Qué hacer:
 Reglas:
 - NUNCA inventes. Si no se ve, no existe. No supongas lo que hay detrás de una puerta cerrada.
 - No calcules metros cuadrados. No afirmes orientación.
+- No afirmes la posición del lote o de la unidad (esquina, interno, cul de sac, frente, contrafrente): una foto no alcanza para saberlo y es un error caro (un lote interno salió como "en esquina y sobre un cul de sac"). Si se ve, describilo como lo que se ve ("calle arbolada al frente de la foto"), no como un dato.
 - No afirmes cómo se conectan los ambientes salvo que una foto lo muestre.
 - Castellano rioplatense.`
 

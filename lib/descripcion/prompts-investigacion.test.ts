@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validarInventario, promptZonaWeb, entradaFotos, ESQUEMA_INVENTARIO } from './prompts-investigacion'
+import { validarInventario, promptZonaWeb, entradaFotos, ESQUEMA_INVENTARIO, PROMPT_FOTOS } from './prompts-investigacion'
 import { limpiarTextoWeb } from './limpiar-web'
 
 const valido = {
@@ -26,6 +26,12 @@ describe('validarInventario', () => {
     const r = validarInventario({ ...valido, vistas: ['Abierta', 3, null], fotosAmbientadas: [2, 'x'] })
     expect(r?.vistas).toEqual(['Abierta'])
     expect(r?.fotosAmbientadas).toEqual([2])
+  })
+})
+
+describe('PROMPT_FOTOS', () => {
+  it('prohíbe afirmar la posición del lote o de la unidad (caso real: "esquina y cul de sac" en un lote interno)', () => {
+    expect(PROMPT_FOTOS).toMatch(/esquina, interno, cul de sac, frente, contrafrente/)
   })
 })
 
