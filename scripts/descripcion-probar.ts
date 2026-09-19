@@ -23,6 +23,7 @@ import { limpiarTextoWeb } from '@/lib/descripcion/limpiar-web'
 import { ESQUEMA_TEXTO, promptEscritura } from '@/lib/descripcion/metodo-diego'
 import { armarEntradaEscritura } from '@/lib/descripcion/entradas'
 import { controlarTexto } from '@/lib/descripcion/controles'
+import { avisosDeCoherencia } from '@/lib/descripcion/coherencia'
 import { MAX_FOTOS, TECHO_ETAPA_MS } from '@/lib/descripcion/servicio'
 import type { ZonaInvestigada } from '@/lib/descripcion/tipos'
 
@@ -115,6 +116,8 @@ async function main() {
   const { texto, problemas } = controlarTexto(JSON.parse(escrito.texto))
   console.log(`\n──── RESULTADO ────\nTITULAR: ${texto.title}\nSUBTITULAR: ${texto.subtitle}\n\n${texto.body}`)
   console.log(`\nPROBLEMAS DE CONTROL: ${problemas.length ? problemas.join(' | ') : 'ninguno'}`)
+  const avisos = avisosDeCoherencia(inventario, p)
+  console.log(`AVISOS AL ASESOR: ${avisos.length ? avisos.join(' | ') : 'ninguno'}`)
   console.log(`\n(Nada se guardó en la base.)`)
 }
 

@@ -59,6 +59,20 @@ describe('armarEntradaEscritura', () => {
     expect(t).toContain('Estado de la propiedad: EXCELENTE')
   })
 
+  it('no repite en el checklist lo que ya dijo la visita, ni lo que MercadoLibre y Argenprop repiten entre sí', () => {
+    const t = armarEntradaEscritura({
+      ...base,
+      visita,
+      portalData: {
+        ml: { DISPOSITION: { value_name: 'Frente' }, FLOORS: { value_name: '9' }, PARKING_LOTS: { value_name: '1' } },
+        ap: { DISPOSICION: { value_id: 'FRENTE' } },
+      },
+    })
+    expect(t.match(/Disposición:/g)).toHaveLength(1)
+    expect(t.match(/Pisos del edificio:/g)).toHaveLength(1)
+    expect(t).toContain('- Cocheras: 1')
+  })
+
   it('marca la objeción como guarda y delimita las respuestas', () => {
     const t = armarEntradaEscritura({
       ...base,

@@ -168,9 +168,15 @@ function bloqueVisita(v: SaleVisitData): string[] {
   return l.length > 1 ? l : []
 }
 
-function bloquePortales(portalData: unknown): string[] {
+/**
+ * `yaDichas` = etiquetas que ya salieron en DATOS DE LA VISITA. MercadoLibre y
+ * Argenprop repiten disposición y pisos (Doblas 248 los tenía tres veces): se
+ * dice una sola vez, la primera.
+ */
+function bloquePortales(portalData: unknown, yaDichas: Set<string>): string[] {
   const pd = portalData && typeof portalData === 'object' ? (portalData as Record<string, unknown>) : {}
   const l: string[] = []
+  const dichas = new Set([...yaDichas].map(e => e.toLowerCase()))
   for (const portal of ['ml', 'ap']) {
     const attrs = pd[portal] && typeof pd[portal] === 'object' ? (pd[portal] as Record<string, unknown>) : {}
     for (const [id, crudo] of Object.entries(attrs)) {
@@ -178,7 +184,10 @@ function bloquePortales(portalData: unknown): string[] {
       const v = crudo && typeof crudo === 'object' ? (crudo as { value_name?: unknown; value_id?: unknown }) : {}
       const valor = typeof v.value_name === 'string' && v.value_name.trim() ? v.value_name
         : typeof v.value_id === 'string' && v.value_id.trim() ? v.value_id : ''
-      if (valor) l.push(`- ${etiquetaAtributo(id)}: ${limpiar(valor)}`)
+      const etiqueta = etiquetaAtributo(id)
+      if (!valor || dichas.has(etiqueta.toLowerCase())) continue
+      dichas.add(etiqueta.toLowerCase())
+      l.push(`- ${etiqueta}: ${limpiar(valor)}`)
     }
   }
   return l.length ? ['# CHECKLIST DE PORTALES (cargado por el asesor)', ...l] : []
@@ -241,13 +250,18 @@ function bloqueZona(zona: ZonaInvestigada | null): string[] {
   return [...mapa, '', ...web]
 }
 
+function etiquetasDe(bloque: string[]): Set<string> {
+  return new Set(bloque.filter(l => l.startsWith('- ')).map(l => l.slice(2).split(':')[0].trim()))
+}
+
 export function armarEntradaEscritura(e: EntradaEscritura): string {
   const tipologia = tipologiaDiego(e.propiedad.property_type)
+  const visita = e.visita ? bloqueVisita(e.visita) : []
   const bloques: string[][] = [
     [`# TIPOLOGÍA: ${tipologia} (cargada como "${limpiar(e.propiedad.property_type)}")`],
     bloqueDatosCargados(e.propiedad),
-    e.visita ? bloqueVisita(e.visita) : [],
-    bloquePortales(e.portalData),
+    visita,
+    bloquePortales(e.portalData, etiquetasDe(visita)),
     bloqueRespuestas(e.respuestas),
     ['# COMPRADOR IDEAL', e.comprador?.trim() ? dato(e.comprador) : 'No definido: escribí para el comprador más probable según los datos y las fotos.'],
     e.notas?.trim() ? ['# LO QUE NO SE VE EN LAS FOTOS (notas del asesor)', dato(e.notas)] : [],

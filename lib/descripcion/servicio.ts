@@ -24,6 +24,7 @@ import { limpiarTextoWeb } from './limpiar-web'
 import { ESQUEMA_TEXTO, promptEscritura } from './metodo-diego'
 import { armarEntradaEscritura } from './entradas'
 import { controlarTexto } from './controles'
+import { avisosDeCoherencia } from './coherencia'
 import type { DescripcionIA, InventarioFotos, TextoGenerado, ZonaInvestigada } from './tipos'
 
 /** Techo de cada etapa: por debajo del corte de Netlify, con margen para leer y escribir la base. */
@@ -282,7 +283,10 @@ export async function ejecutarEtapaZona(id: string, o: { forzar?: boolean } = {}
 export interface ResultadoEscritura {
   texto: TextoGenerado
   usado: { comprador: string | null; respuestas: RespuestaConocida[]; inventario: InventarioFotos | null; zona: ZonaInvestigada | null; notas: string | null }
+  /** Controles del texto que no se pudieron corregir (el panel pide una corrección). */
   problemas: string[]
+  /** Para el asesor: fotos que no coinciden con la ficha, etc. No bloquean. */
+  avisos: string[]
 }
 
 /**
@@ -360,7 +364,12 @@ export async function ejecutarEtapaEscribir(id: string, o: {
     throw new ErrorDescripcion('La escritura devolvió algo ilegible. Probá de nuevo.', 502)
   }
   const { texto, problemas } = controlarTexto({ title: json.title, subtitle: json.subtitle, body: json.body })
-  return { texto, usado: { comprador, respuestas: conocidas, inventario, zona, notas: ia.notas ?? null }, problemas }
+  return {
+    texto,
+    usado: { comprador, respuestas: conocidas, inventario, zona, notas: ia.notas ?? null },
+    problemas,
+    avisos: avisosDeCoherencia(inventario, fila),
+  }
 }
 
 // ───────────────────────────── Guardar ─────────────────────────────
