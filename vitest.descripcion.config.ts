@@ -10,6 +10,8 @@ export default defineConfig({
     globals: true,
     include: [
       'lib/descripcion/**/*.test.ts',
+      'lib/mapa/**/*.test.ts',
+      'app/api/cron/mapa-lugares/*.test.ts',
       'components/properties/descripcion/**/*.test.tsx',
       'lib/ai/openai-responses.test.ts',
       'lib/properties/address.test.ts',

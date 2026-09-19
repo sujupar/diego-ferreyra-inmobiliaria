@@ -164,7 +164,7 @@ REGLAS DURAS (nunca se rompen):
 15. La cochera, el edificio y los ambientes llevan SOLO las cualidades que están escritas: nada de "de cómodo acceso", "en excelente estado" o "amplio" si ningún bloque lo dice. El "Estado de la propiedad" es de la unidad, no del edificio.
 16. Colectivos: si el MAPA trae más de 8 líneas, nombrá 8 y cerrá con "entre otras".
 17. Las calificaciones van TAL CUAL están cargadas: si la calidad o el estado dice "buena", no escribas "muy buena" ni "excelente".
-18. La cantidad de dormitorios y de baños que nombrás, sumando los de servicio, es la de los DATOS CARGADOS: si los datos dicen 3 dormitorios y uno es de servicio, son 3 en total, no "3 más uno de servicio".
+18. La cantidad de dormitorios y de baños que nombrás, sumando los de servicio, es la de los DATOS CARGADOS: si los datos dicen 3 dormitorios y uno es de servicio, son 3 en total, no "3 más uno de servicio". Con 1 dormitorio escribí "el dormitorio", nunca "el dormitorio principal": da a entender que hay otro.
 19. La posición del lote o de la unidad (esquina, interno, cul de sac) y la disposición (frente, contrafrente, interno) SOLO salen de los DATOS CARGADOS, la visita o las notas del asesor; nunca del inventario de fotos.
 
 # Personalidad y tono (documento Tono de Diego)

@@ -71,6 +71,15 @@ describe('controlarTexto', () => {
     // una corrección inútil y dejaba un aviso falso para siempre.
     expect(controlarTexto(ok, { bedrooms: 3, property_type: 'terreno' }).problemas).toEqual([])
   })
+  it('con 1 dormitorio, "el dormitorio" cuenta (frase real de Hipólito Yrigoyen 1550, falso positivo)', () => {
+    const real = { ...ok, body: cuerpo(`El dormitorio principal tiene también parquet, placard empotrado y un gran ventanal.\n\n${DISCLAIMER}`) }
+    expect(controlarTexto(real, { bedrooms: 1, property_type: 'departamento' }).problemas).toEqual([])
+    expect(controlarTexto({ ...ok, body: cuerpo(`Su dormitorio es amplio.\n\n${DISCLAIMER}`) }, { bedrooms: 1 }).problemas).toEqual([])
+  })
+  it('con 2 dormitorios, "el dormitorio" NO alcanza: tiene que decir cuántos', () => {
+    expect(controlarTexto({ ...ok, body: cuerpo(`El dormitorio principal es amplio.\n\n${DISCLAIMER}`) }, { bedrooms: 2 }).problemas)
+      .toEqual(['no dice cuántos dormitorios tiene (la ficha dice 2)'])
+  })
   it('sin dato de dormitorios en la ficha no controla', () => {
     expect(controlarTexto(ok, { bedrooms: null }).problemas).toEqual([])
     expect(controlarTexto(ok).problemas).toEqual([])
@@ -104,6 +113,9 @@ describe('promptEscritura', () => {
   })
   it('la posición del lote o la disposición solo salen de los datos, nunca de las fotos', () => {
     expect(p).toMatch(/esquina, interno, cul de sac/)
+  })
+  it('con 1 dormitorio pide "el dormitorio", no "el dormitorio principal"', () => {
+    expect(p).toMatch(/Con 1 dormitorio/)
   })
   it('usa voseo (decisión del 2026-07-28)', () => {
     expect(p).toContain('VOSEO')

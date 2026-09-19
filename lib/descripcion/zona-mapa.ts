@@ -10,19 +10,33 @@
  * Es línea recta: se redondea a cuadras ("a unas 6 cuadras") y el prompt pide
  * decirlo así, aproximado, nunca como tiempo exacto de caminata.
  *
- * Overpass es un servicio público gratuito con límites de uso: `buscarLugaresCercanos`
- * nunca lanza, devuelve `null` si falla, y el paso de zona sigue sin distancias.
+ * Desde 2026-09-19 la zona sale del MAPA PROPIO (`lib/mapa/consultar.ts`), con
+ * los mismos radios y la misma selección que este archivo. La consulta en vivo a
+ * Overpass (`buscarLugaresCercanos`) queda de respaldo, solo para una zona sin
+ * cargar: es un servicio público con límites de uso que falló 1 de 5 veces. Si
+ * falla devuelve `null` y la etapa de zona da un error reintentable: nunca un
+ * texto sin distancias en silencio.
  */
 import type { LugarCercano, TipoLugar } from './tipos'
+import { lineaDeRuta, lineaDeColectivo, nombreUtil, ordenarLineasColectivo, tipoDeEstacion } from '@/lib/mapa/normalizar'
 
-const RADIO_ESTACIONES_M = 1500
-// 1 km: los parques grandes (Centenario, a 830 m de Perón 4227) son los que
-// valen la pena nombrar y quedaban afuera con 800 m.
-const RADIO_PLAZAS_M = 1000
-const RADIO_COLEGIOS_M = 600
-const RADIO_HOSPITALES_M = 500
-/** 400 m = unas 4 cuadras: "pasa cerca" de verdad, no "circula por el barrio". */
-const RADIO_COLECTIVOS_M = 400
+/**
+ * Radios de búsqueda por tipo, en metros. ÚNICA fuente: los usan la consulta en
+ * vivo (acá) y el mapa propio (`lib/mapa/consultar.ts`), que tienen que dar lo mismo.
+ *  - Plazas a 1 km: los parques grandes (Centenario, a 830 m de Perón 4227) son
+ *    los que valen la pena nombrar y quedaban afuera con 800 m.
+ *  - Colectivos a 400 m = unas 4 cuadras: "pasa cerca" de verdad. En vivo es
+ *    toda ruta con algún miembro (parada o tramo) a esa distancia; en el mapa
+ *    propio, las paradas y los tramos de recorrido (`recorrido`), con el mismo radio.
+ */
+export const RADIOS_METROS = {
+  subte: 1500, tren: 1500, plaza: 1000, colegio: 600, universidad: 600, hospital: 500, parada: 400, recorrido: 400,
+} as const
+const RADIO_ESTACIONES_M = RADIOS_METROS.subte
+const RADIO_PLAZAS_M = RADIOS_METROS.plaza
+const RADIO_COLEGIOS_M = RADIOS_METROS.colegio
+const RADIO_HOSPITALES_M = RADIOS_METROS.hospital
+const RADIO_COLECTIVOS_M = RADIOS_METROS.parada
 
 /** Cuántos de cada tipo llegan al prompt: más es ruido, no información. */
 const TOPE: Record<TipoLugar, number> = {
@@ -93,36 +107,36 @@ function tipoDeLugar(tags: Record<string, unknown>): TipoLugar | null {
   return null
 }
 
-/** "Línea B: Leandro N. Alem → Juan Manuel de Rosas" → "Línea B". */
-function lineaDeRuta(tags: Record<string, unknown>): string | undefined {
-  const nombre = typeof tags.name === 'string' ? tags.name.split(':')[0].trim() : ''
-  if (nombre) return nombre
-  return typeof tags.ref === 'string' && tags.ref.trim() ? `Línea ${tags.ref.trim()}` : undefined
-}
-
 export function lugaresDesdeOverpass(json: unknown, origen: { lat: number; lng: number }): LugarCercano[] {
   const elementos = (json as { elements?: unknown } | null)?.elements
   if (!Array.isArray(elementos)) return []
 
   const lugares: LugarCercano[] = []
   let estacionActual: LugarCercano | null = null
+  const lineasDe = new Map<LugarCercano, Set<string>>()
+  const rutasDe = new Map<LugarCercano, { rutas: Set<string>; tagsDicenSubte: boolean }>()
 
   for (const crudo of elementos as ElementoOverpass[]) {
     const tags = crudo?.tags && typeof crudo.tags === 'object' ? crudo.tags : {}
 
     if (crudo?.type === 'relation' && tags.route === 'bus') continue // van por colectivosDesdeOverpass
     if (crudo?.type === 'relation' && typeof tags.route === 'string') {
-      // Una ruta pertenece a la última estación leída (orden del foreach).
-      if (estacionActual && !estacionActual.linea) {
-        estacionActual.linea = lineaDeRuta(tags)
-        estacionActual.tipo = tags.route === 'subway' ? 'subte' : 'tren'
+      // Una ruta pertenece a la última estación leída (orden del foreach). Todas
+      // sus líneas, y subte si ALGUNA ruta es subte: la misma regla que el mapa
+      // propio (`lib/mapa/overpass-celda.ts`), así los dos caminos dicen lo mismo.
+      const linea = lineaDeRuta(tags)
+      if (estacionActual && linea) {
+        const set = lineasDe.get(estacionActual) ?? new Set<string>()
+        set.add(linea)
+        lineasDe.set(estacionActual, set)
+        rutasDe.get(estacionActual)?.rutas.add(String(tags.route))
       }
       continue
     }
 
     // Cualquier otro elemento corta la racha de rutas de la estación anterior.
     estacionActual = null
-    const nombre = typeof tags.name === 'string' ? tags.name.trim() : ''
+    const nombre = nombreUtil(tags.name) ?? ''
     const punto = coordenadas(crudo)
     if (!nombre || !punto) continue
     const metros = distanciaMetros(origen, punto)
@@ -131,19 +145,29 @@ export function lugaresDesdeOverpass(json: unknown, origen: { lat: number; lng: 
     if (tags.railway === 'station') {
       const esSubte = tags.station === 'subway' || /subte/i.test(String(tags.network ?? ''))
       estacionActual = { nombre, tipo: esSubte ? 'subte' : 'tren', metros, cuadras }
+      rutasDe.set(estacionActual, { rutas: new Set(), tagsDicenSubte: esSubte })
       lugares.push(estacionActual)
       continue
     }
 
     const tipo = tipoDeLugar(tags)
     if (!tipo) continue
-    if (tipo === 'colegio' && COLEGIO_NO_RELEVANTE.test(nombre)) continue
     lugares.push({ nombre, tipo, metros, cuadras })
   }
+  for (const [estacion, lineas] of lineasDe) estacion.linea = [...lineas].sort().join(' y ')
+  for (const [estacion, { rutas, tagsDicenSubte }] of rutasDe) estacion.tipo = tipoDeEstacion(rutas, tagsDicenSubte)
+  return seleccionarLugares(lugares)
+}
 
-  // Dedupe por nombre+tipo quedándose con el más cercano; después tope por tipo.
+/**
+ * La selección que llega al prompt, igual para el mapa en vivo y el propio:
+ * sin colegios que no le sirven al comprador, sin repetidos (queda el más
+ * cercano), ordenados por distancia y con tope por tipo.
+ */
+export function seleccionarLugares(lugares: LugarCercano[]): LugarCercano[] {
+  const relevantes = lugares.filter(l => !(l.tipo === 'colegio' && COLEGIO_NO_RELEVANTE.test(l.nombre)))
   const porClave = new Map<string, LugarCercano>()
-  for (const l of lugares) {
+  for (const l of relevantes) {
     const clave = `${l.tipo}|${l.nombre.toLowerCase()}`
     const previo = porClave.get(clave)
     if (!previo || l.metros < previo.metros) porClave.set(clave, l)
@@ -169,12 +193,10 @@ export function colectivosDesdeOverpass(json: unknown): string[] {
   for (const e of elementos as ElementoOverpass[]) {
     const tags = e?.tags && typeof e.tags === 'object' ? e.tags : {}
     if (e?.type !== 'relation' || tags.route !== 'bus') continue
-    const ref = typeof tags.ref === 'string' ? tags.ref.match(/^\d+/)?.[0] : undefined
-    const deNombre = typeof tags.name === 'string' ? tags.name.match(/l[ií]nea\s+(\d+)/i)?.[1] : undefined
-    const linea = ref ?? deNombre
-    if (linea) lineas.add(String(Number(linea)))
+    const linea = lineaDeColectivo(tags)
+    if (linea) lineas.add(linea)
   }
-  return [...lineas].sort((a, b) => Number(a) - Number(b))
+  return ordenarLineasColectivo(lineas)
 }
 
 const ETIQUETA: Record<TipoLugar, string> = {
@@ -206,7 +228,13 @@ export const SERVIDORES_OVERPASS = [
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ]
 
-async function consultarServidor(url: string, cuerpo: string, signal: AbortSignal): Promise<unknown> {
+/**
+ * Un pedido a UN servidor de Overpass. Lanza si no responde bien, incluido el
+ * 200 con un "remark" de error: Overpass corta la consulta por tiempo o memoria
+ * y responde 200 con `elements` vacío o a medias. Eso NO es "no hay nada cerca",
+ * es una descarga fallida. Lo usan la consulta en vivo y el refresco del mapa propio.
+ */
+export async function consultarServidorOverpass(url: string, cuerpo: string, signal: AbortSignal): Promise<unknown> {
   const res = await fetch(url, {
     method: 'POST',
     signal,
@@ -217,18 +245,23 @@ async function consultarServidor(url: string, cuerpo: string, signal: AbortSigna
     },
     body: cuerpo,
   })
-  if (!res.ok) throw new Error(`${url} respondió ${res.status}`)
-  return res.json()
+  if (!res.ok) throw new Error(`${new URL(url).host} respondió ${res.status}`)
+  const json = (await res.json()) as { elements?: unknown; remark?: unknown }
+  if (typeof json.remark === 'string' && /error|timeout|timed out|out of memory/i.test(json.remark)) {
+    throw new Error(`${new URL(url).host}: ${json.remark.slice(0, 120)}`)
+  }
+  if (!Array.isArray(json.elements)) throw new Error(`${new URL(url).host}: respuesta sin elements`)
+  return json
 }
 
-/** Nunca lanza: `null` = el mapa no respondió y el texto sale sin distancias. */
+/** Nunca lanza: `null` = el mapa no respondió (la etapa de zona da un error reintentable). */
 export async function buscarLugaresCercanos(lat: number, lng: number, signal: AbortSignal): Promise<{ lugares: LugarCercano[]; colectivos: string[] } | null> {
   // Cuando uno responde, se cancelan los demás para no dejar pedidos colgados.
   const alcanzo = new AbortController()
   const senal = AbortSignal.any([signal, alcanzo.signal])
   const cuerpo = `data=${encodeURIComponent(consultaOverpass(lat, lng))}`
   try {
-    const json = await Promise.any(SERVIDORES_OVERPASS.map(url => consultarServidor(url, cuerpo, senal)))
+    const json = await Promise.any(SERVIDORES_OVERPASS.map(url => consultarServidorOverpass(url, cuerpo, senal)))
     return { lugares: lugaresDesdeOverpass(json, { lat, lng }), colectivos: colectivosDesdeOverpass(json) }
   } catch (err) {
     const motivos = err instanceof AggregateError ? err.errors.map(e => (e instanceof Error ? e.message : String(e))) : [String(err)]

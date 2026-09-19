@@ -45,7 +45,10 @@ const EN_PALABRAS = ['cero', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'si
  */
 function diceDormitorios(texto: string, n: number): boolean {
   const palabra = EN_PALABRAS[n] ?? ''
-  const numero = n === 1 ? '(?:1|un|uno)' : `(?:${n}${palabra ? `|${palabra}` : ''})`
+  // Con UN dormitorio, "el dormitorio" / "su dormitorio" ya dice cuántos: no
+  // aceptarlo daba un falso positivo (Hipólito Yrigoyen 1550: "El dormitorio
+  // principal tiene parquet…") que gastaba una corrección y dejaba un aviso falso.
+  const numero = n === 1 ? '(?:1|un|uno|el|su)' : `(?:${n}${palabra ? `|${palabra}` : ''})`
   return new RegExp(`\\b${numero}\\s+(?:dormitorio|habitaci[oó]n|cuarto)`, 'i').test(sinTildes(texto))
 }
 

@@ -16,28 +16,32 @@ import { respuestaOpenAI } from '@/lib/ai/openai-responses'
 import { sanearRespuestasLanding } from '@/lib/supabase/visit-data-sanear'
 import { geocodePropertyBestEffort } from '@/lib/properties/geocode-on-write'
 import { faltanParaGenerar } from './requisitos'
-import { firmaDireccion, firmaFotos } from './firmas'
+import { firmaZona, firmaFotos } from './firmas'
 import { juntarRespuestas, type PreguntaPendiente, type RespuestaConocida } from './respuestas'
 import { buscarLugaresCercanos } from './zona-mapa'
+import { lugaresDesdeBase, type ResultadoBase } from '@/lib/mapa/consultar'
+import { dentroDelAmba } from '@/lib/mapa/celdas'
 import { ESQUEMA_INVENTARIO, INSTRUCCIONES_ZONA, PROMPT_FOTOS, entradaFotos, promptZonaWeb, validarInventario } from './prompts-investigacion'
 import { limpiarTextoWeb } from './limpiar-web'
 import { ESQUEMA_TEXTO, promptEscritura } from './metodo-diego'
 import { armarEntradaEscritura } from './entradas'
 import { controlarTexto } from './controles'
-import { avisosDeCoherencia } from './coherencia'
+import { avisosDeCoherencia, avisosDeZona } from './coherencia'
 import type { DescripcionIA, InventarioFotos, TextoGenerado, ZonaInvestigada } from './tipos'
 
 /** Techo de cada etapa: por debajo del corte de Netlify, con margen para leer y escribir la base. */
 export const TECHO_ETAPA_MS = 22_000
 const TECHO_MAPA_MS = 14_000
 /**
- * Ubicar la dirección va ANTES del mapa y la web (que corren en paralelo): con
- * hasta 3 intentos al geocodificador, sin techo total podía comerse el
- * presupuesto de la etapa. 5 s + 16 s de la web (el mapa, 14 s, corre en
- * paralelo con ella) < corte de Netlify. Ubicar suele tardar 1–2 s.
+ * La etapa de zona hace, en orden: ubicar la dirección (solo si no hay pin;
+ * suele tardar 1–2 s, techo 5 s), el mapa propio (milisegundos, techo 4 s) y la
+ * búsqueda web (techo 16 s). La web recibe lo que quede de PRESUPUESTO_ZONA_MS,
+ * así el peor caso no pasa el corte de Netlify (~26 s).
  */
 const TECHO_GEOCODIFICAR_MS = 5_000
 const TECHO_WEB_MS = 16_000
+const PRESUPUESTO_ZONA_MS = 21_000
+const MINIMO_WEB_MS = 6_000
 /**
  * Las fotos que se miran. Las primeras son la portada y el resto, el recorrido;
  * más de 30 alarga la lectura sin aportar ambientes nuevos (se mide con Doblas
@@ -201,7 +205,7 @@ export async function estadoDescripcion(id: string): Promise<EstadoDescripcion> 
     pendientes,
     conocidas,
     fotosListas: !!ia.fotos && ia.fotos.version === VERSION_ANALISIS_FOTOS && ia.fotos.firma === firmaFotos(fotosUsadas(fila)),
-    zonaLista: !!ia.zona && ia.zona.completa === true && ia.zona.firma === firmaDireccion(fila),
+    zonaLista: zonaGuardadaVale(fila, ia),
     compradorSugerido: ia.fotos?.inventario?.compradorSugerido?.perfil || null,
     notas: ia.notas ?? null,
     portalesPublicados: extra.portalesPublicados,
@@ -242,59 +246,108 @@ export async function ejecutarEtapaFotos(id: string, o: { forzar?: boolean } = {
 
 // ───────────────────────────── Paso 2: zona ─────────────────────────────
 
-async function coordenadas(fila: FilaPropiedad): Promise<{ lat: number; lng: number } | null> {
-  if (fila.latitude != null && fila.longitude != null) return { lat: fila.latitude, lng: fila.longitude }
+function pinDe(fila: FilaPropiedad): { lat: number; lng: number } | null {
+  return fila.latitude != null && fila.longitude != null ? { lat: fila.latitude, lng: fila.longitude } : null
+}
+
+/** La zona guardada sirve si se investigó completa con ESTA dirección y ESTE pin. */
+function zonaGuardadaVale(fila: FilaPropiedad, ia: DescripcionIA): boolean {
+  const pin = pinDe(fila)
+  return !!pin && !!ia.zona && ia.zona.completa === true && ia.zona.firma === firmaZona(fila, pin)
+}
+
+type Ubicacion =
+  | { estado: 'ok'; punto: { lat: number; lng: number } }
+  | { estado: 'sin_resultado' } // el geocodificador terminó y no encontró la dirección
+  | { estado: 'tarde' } // no terminó a tiempo: es momentáneo, se reintenta
+
+async function coordenadas(fila: FilaPropiedad): Promise<Ubicacion> {
+  const pin = pinDe(fila)
+  if (pin) return { estado: 'ok', punto: pin }
   // Mismo geocodificador que el alta: solo escribe si la propiedad NO tenía pin.
-  // Si no termina a tiempo se sigue sin coordenadas (texto sin distancias); si
-  // termina después, igual deja el pin guardado para la próxima vez.
+  // Si termina después del techo, igual deja el pin guardado para el reintento.
+  let termino = false
+  const marcar = () => { termino = true }
   await Promise.race([
-    geocodePropertyBestEffort(fila.id),
+    geocodePropertyBestEffort(fila.id).then(marcar, marcar),
     new Promise<void>(resolver => setTimeout(resolver, TECHO_GEOCODIFICAR_MS)),
   ])
   const { data } = await admin().from('properties').select('latitude, longitude').eq('id', fila.id).maybeSingle()
   const c = data as { latitude: number | null; longitude: number | null } | null
-  return c?.latitude != null && c?.longitude != null ? { lat: c.latitude, lng: c.longitude } : null
+  if (c?.latitude != null && c?.longitude != null) return { estado: 'ok', punto: { lat: c.latitude, lng: c.longitude } }
+  return { estado: termino ? 'sin_resultado' : 'tarde' }
 }
 
 export async function ejecutarEtapaZona(id: string, o: { forzar?: boolean } = {}): Promise<{ reusada: boolean; zona: ZonaInvestigada; avisos: string[] }> {
   const fila = await leerPropiedad(id)
   exigirRequisitos(fila)
-  const firma = firmaDireccion(fila)
   const ia = iaDe(fila)
-  if (!o.forzar && ia.zona?.firma === firma && ia.zona.completa) {
-    return { reusada: true, zona: ia.zona.datos, avisos: [] }
+  if (!o.forzar && ia.zona && zonaGuardadaVale(fila, ia)) {
+    return { reusada: true, zona: ia.zona.datos, avisos: avisosDeZona(ia.zona.datos) }
   }
 
-  const punto = await coordenadas(fila)
+  const inicio = Date.now()
+  const ubicacion = await coordenadas(fila)
+  if (ubicacion.estado === 'tarde') {
+    throw new ErrorDescripcion('Ubicar la dirección en el mapa tardó más de la cuenta. Tocá "Reintentar".', 503)
+  }
+  if (ubicacion.estado === 'sin_resultado') {
+    throw new ErrorDescripcion('No se pudo ubicar la dirección en el mapa. Revisá la ubicación en la ficha ("Cambiar ubicación") y volvé a generar.', 409)
+  }
+  const punto = ubicacion.punto
+  // Un pin fuera de Capital y GBA es, en la práctica, un pin mal puesto
+  // (Almafuerte 2500, de San Martín, tenía el pin en Junín): el texto hablaría
+  // de los lugares de otra ciudad sin que nadie lo note. Se frena y se dice cómo
+  // arreglarlo, en vez de escribir sobre la zona equivocada.
+  if (!dentroDelAmba(punto.lat, punto.lng)) {
+    throw new ErrorDescripcion('El pin de la ficha está fuera de Capital Federal y el Gran Buenos Aires, así que el mapa de la zona no es el de esta propiedad. Corregí la ubicación en la ficha ("Cambiar ubicación") y volvé a generar.', 409)
+  }
+  const firma = firmaZona(fila, punto)
+
+  // El MAPA PROPIO primero (tabla `mapa_lugares`, sin servicios externos: los
+  // públicos de Overpass fallaron 1 de 5 en producción). Tarda milisegundos, y
+  // si la base no responde se corta ACÁ, antes de pagar la búsqueda web.
+  let base: ResultadoBase
+  try {
+    base = await lugaresDesdeBase(admin(), punto.lat, punto.lng)
+  } catch (err) {
+    console.warn('[descripcion/zona] el mapa propio no respondió:', err)
+    throw new ErrorDescripcion('El mapa de la zona no respondió. Tocá "Reintentar".', 503)
+  }
+
+  // Solo si una celda de alrededor nunca se cargó (hoy están todas) se consulta
+  // en vivo, en paralelo con la web.
+  const restante = PRESUPUESTO_ZONA_MS - (Date.now() - inicio)
   const [mapa, web] = await Promise.allSettled([
-    punto ? buscarLugaresCercanos(punto.lat, punto.lng, AbortSignal.timeout(TECHO_MAPA_MS)) : Promise.resolve(null),
+    base.estado === 'ok'
+      ? Promise.resolve({ lugares: base.lugares, colectivos: base.colectivos })
+      : buscarLugaresCercanos(punto.lat, punto.lng, AbortSignal.timeout(Math.min(TECHO_MAPA_MS, Math.max(MINIMO_WEB_MS, restante)))),
     respuestaOpenAI({
       modelo: modeloTexto(),
       instrucciones: INSTRUCCIONES_ZONA,
       entrada: [{ tipo: 'texto', texto: promptZonaWeb(fila) }],
       webSearch: true,
       temperatura: 0.2,
-      timeoutMs: TECHO_WEB_MS,
+      timeoutMs: Math.min(TECHO_WEB_MS, Math.max(MINIMO_WEB_MS, restante)),
     }),
   ])
 
-  const delMapa = mapa.status === 'fulfilled' ? mapa.value : null
-  const textoWeb = web.status === 'fulfilled' ? limpiarTextoWeb(web.value.texto) : null
-  if (web.status === 'rejected') console.warn('[descripcion/zona] búsqueda web falló:', web.reason)
-  if (delMapa === null && !textoWeb) {
-    throw new ErrorDescripcion('No se pudo investigar la zona (ni el mapa ni la web respondieron). Probá de nuevo.', 502)
+  // NUNCA un texto sin mapa en silencio (pedido del dueño, 2026-09-19): si falta
+  // el mapa o la web, la etapa falla con un error reintentable (503) y el panel
+  // la reintenta sola antes de mostrar "Reintentar". Nada queda guardado a medias.
+  if (mapa.status === 'rejected' || mapa.value === null) {
+    console.warn('[descripcion/zona] el mapa no respondió:', mapa.status === 'rejected' ? mapa.reason : 'sin datos')
+    throw new ErrorDescripcion('El mapa de la zona no respondió. Tocá "Reintentar".', 503)
+  }
+  const textoWeb = web.status === 'fulfilled' ? limpiarTextoWeb(web.value.texto) : ''
+  if (!textoWeb) {
+    console.warn('[descripcion/zona] la búsqueda web no respondió:', web.status === 'rejected' ? web.reason : 'vacía')
+    throw new ErrorDescripcion('La búsqueda de la zona no respondió. Tocá "Reintentar".', 503)
   }
 
-  const zona: ZonaInvestigada = { mapa: delMapa, web: textoWeb || null }
-  const avisos: string[] = []
-  if (!punto) avisos.push('No se pudo ubicar la dirección en el mapa: el texto sale sin distancias.')
-  else if (delMapa === null) avisos.push('El mapa no respondió: el texto sale sin distancias ni colectivos.')
-  if (!textoWeb) avisos.push('La búsqueda web no respondió: el texto no nombra comercios ni lugares del barrio.')
-
-  // Se guarda aunque sea parcial (la escritura la lee de acá), marcada como
-  // incompleta para que el próximo "Generar" la vuelva a intentar.
-  await guardarIA(id, { zona: { firma, datos: zona, en: new Date().toISOString(), completa: avisos.length === 0 } })
-  return { reusada: false, zona, avisos }
+  const zona: ZonaInvestigada = { mapa: mapa.value, web: textoWeb }
+  await guardarIA(id, { zona: { firma, datos: zona, en: new Date().toISOString(), completa: true } })
+  return { reusada: false, zona, avisos: avisosDeZona(zona) }
 }
 
 // ───────────────────────────── Paso 3: escribir ─────────────────────────────
@@ -402,12 +455,17 @@ export async function guardarDescripcion(id: string, t: TextoGenerado): Promise<
   const fila = await leerPropiedad(id)
   const ia = iaDe(fila)
   const { texto } = controlarTexto(t)
-  const anteriores = (fila.title?.trim() || fila.description?.trim())
+  const description = `${texto.subtitle}\n\n${texto.body}`
+  // Idempotente: si el panel reintenta un guardado que en realidad ya se hizo
+  // (5xx después de escribir), el texto guardado es el mismo y NO se respalda
+  // como "anterior" (eso empujaba afuera el respaldo más viejo de verdad).
+  const cambia = fila.title !== texto.title || fila.description !== description
+  const anteriores = cambia && (fila.title?.trim() || fila.description?.trim())
     ? [{ title: fila.title, description: fila.description, reemplazadaEn: new Date().toISOString() }, ...(ia.anteriores ?? [])]
     : (ia.anteriores ?? [])
   const { error } = await admin().from('properties').update({
     title: texto.title,
-    description: `${texto.subtitle}\n\n${texto.body}`,
+    description,
     descripcion_ia: { ...ia, anteriores: anteriores.slice(0, ANTERIORES_GUARDADAS) },
   }).eq('id', id)
   if (error) throw new Error(`No se pudo guardar la descripción: ${error.message}`)

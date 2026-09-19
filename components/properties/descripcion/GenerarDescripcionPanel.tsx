@@ -46,11 +46,41 @@ async function leerJson<T>(res: Response): Promise<T & { error?: string }> {
   }
 }
 
-async function pedir<T>(url: string, body: unknown): Promise<T> {
-  const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
-  const json = await leerJson<T>(res)
-  if (!res.ok) throw new Error(json.error || 'No se pudo completar el paso.')
-  return json
+/**
+ * Esperas de los reintentos automáticos ante un corte momentáneo (5xx o red):
+ * el dueño pidió que funcione "1.000 de 1.000 veces", y un 504 aislado de
+ * Netlify o de OpenAI no puede terminar en un error en pantalla. Los errores de
+ * datos (4xx: falta algo, sin permiso) NO se reintentan: repetirlos da lo mismo.
+ */
+const ESPERAS_REINTENTO_MS = [2_000, 5_000]
+
+const dormir = (ms: number) => new Promise(resolver => setTimeout(resolver, ms))
+
+/**
+ * Espera antes de reintentar, y corta si la corrida ya no está vigente (se
+ * cerró el panel o se tocó "Analizar todo de nuevo"): cada pedido es trabajo
+ * pago que nadie va a ver, y escribiría `descripcion_ia` en paralelo con la
+ * corrida nueva.
+ */
+async function esperarSiSigue(ms: number, vigente: () => boolean): Promise<void> {
+  await dormir(ms)
+  if (!vigente()) throw new Error('corrida cancelada')
+}
+
+async function pedir<T>(url: string, body: unknown, esperas: number[] = ESPERAS_REINTENTO_MS, vigente: () => boolean = () => true): Promise<T> {
+  for (let intento = 0; ; intento++) {
+    let res: Response
+    try {
+      res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    } catch {
+      if (intento < esperas.length) { await esperarSiSigue(esperas[intento], vigente); continue }
+      throw new Error('No hay conexión con el servidor. Tocá "Reintentar".')
+    }
+    const json = await leerJson<T>(res)
+    if (res.ok) return json
+    if (res.status >= 500 && intento < esperas.length) { await esperarSiSigue(esperas[intento], vigente); continue }
+    throw new Error(json.error || 'No se pudo completar el paso.')
+  }
 }
 
 function contarPalabras(t: string): number {
@@ -63,18 +93,23 @@ export function GenerarDescripcionPanel({
   abierto,
   onCerrar,
   onGuardado,
+  esperasReintentoMs = ESPERAS_REINTENTO_MS,
 }: {
   propertyId: string
   estado: EstadoDescripcion
   abierto: boolean
   onCerrar: () => void
   onGuardado: (t: TextoGenerado) => void
+  /** Solo para tests: esperas de los reintentos automáticos. */
+  esperasReintentoMs?: number[]
 }) {
   const url = `/api/properties/${propertyId}/descripcion`
   const [paso, setPaso] = useState<PasoPanel>('fotos')
   const [pasos, setPasos] = useState<Record<Etapa, EstadoPaso>>({ fotos: 'pendiente', zona: 'pendiente', escribir: 'pendiente' })
   const [reusado, setReusado] = useState<Record<Etapa, boolean>>({ fotos: false, zona: false, escribir: false })
-  const [error, setError] = useState<{ etapa: Etapa; mensaje: string } | null>(null)
+  // 'guardar' aparte: "Reintentar" tiene que volver a GUARDAR lo editado, no
+  // reescribir (eso pagaba otra escritura y pisaba las ediciones del asesor).
+  const [error, setError] = useState<{ etapa: Etapa | 'guardar'; mensaje: string } | null>(null)
   const [avisosZona, setAvisosZona] = useState<string[]>([])
   const [respuestas, setRespuestas] = useState<Record<string, string>>({})
   const [notas, setNotas] = useState(estado.notas ?? '')
@@ -98,9 +133,10 @@ export function GenerarDescripcionPanel({
         ...(o.primeraVez ? { respuestas: respuestasParaEnviar(estado.pendientes, respuestas) } : {}),
         ...(o.compradorElegido?.trim() ? { comprador: o.compradorElegido.trim() } : {}),
       }
-      let r = await pedir<ResultadoEscritura>(url, base)
-      if (debePedirCorreccion(r.problemas, false)) {
-        r = await pedir<ResultadoEscritura>(url, { ...base, respuestas: undefined, corregir: r.problemas })
+      const vigente = () => mia === corrida.current
+      let r = await pedir<ResultadoEscritura>(url, base, esperasReintentoMs, vigente)
+      if (debePedirCorreccion(r.problemas, false) && vigente()) {
+        r = await pedir<ResultadoEscritura>(url, { ...base, respuestas: undefined, corregir: r.problemas }, esperasReintentoMs, vigente)
       }
       if (mia !== corrida.current) return
       setResultado(r)
@@ -114,13 +150,13 @@ export function GenerarDescripcionPanel({
       marcar('escribir', 'error')
       setError({ etapa: 'escribir', mensaje: e instanceof Error ? e.message : 'Error' })
     }
-  }, [estado.pendientes, notas, respuestas, url])
+  }, [estado.pendientes, notas, respuestas, url, esperasReintentoMs])
 
   const correrZona = useCallback(async (forzar: boolean) => {
     const mia = corrida.current
     setPaso('zona'); setError(null); marcar('zona', 'en_curso')
     try {
-      const r = await pedir<{ reusada: boolean; zona: ZonaInvestigada; avisos: string[] }>(url, { etapa: 'zona', forzar })
+      const r = await pedir<{ reusada: boolean; zona: ZonaInvestigada; avisos: string[] }>(url, { etapa: 'zona', forzar }, esperasReintentoMs, () => mia === corrida.current)
       if (mia !== corrida.current) return
       setReusado(prev => ({ ...prev, zona: r.reusada }))
       setAvisosZona(r.avisos)
@@ -133,13 +169,13 @@ export function GenerarDescripcionPanel({
       marcar('zona', 'error')
       setError({ etapa: 'zona', mensaje: e instanceof Error ? e.message : 'Error' })
     }
-  }, [escribir, estado.pendientes.length, url])
+  }, [escribir, estado.pendientes.length, url, esperasReintentoMs])
 
   const correrFotos = useCallback(async (forzar: boolean) => {
     const mia = corrida.current
     setPaso('fotos'); setError(null); marcar('fotos', 'en_curso')
     try {
-      const r = await pedir<{ reusada: boolean; inventario: InventarioFotos; cantidad: number }>(url, { etapa: 'fotos', forzar })
+      const r = await pedir<{ reusada: boolean; inventario: InventarioFotos; cantidad: number }>(url, { etapa: 'fotos', forzar }, esperasReintentoMs, () => mia === corrida.current)
       if (mia !== corrida.current) return
       setReusado(prev => ({ ...prev, fotos: r.reusada }))
       // La sugerencia de comprador NO se precarga en el campo: lo que queda como
@@ -154,7 +190,7 @@ export function GenerarDescripcionPanel({
       marcar('fotos', 'error')
       setError({ etapa: 'fotos', mensaje: e instanceof Error ? e.message : 'Error' })
     }
-  }, [correrZona, url])
+  }, [correrZona, url, esperasReintentoMs])
 
   const empezar = useCallback((forzar: boolean) => {
     corrida.current += 1
@@ -179,7 +215,8 @@ export function GenerarDescripcionPanel({
 
   function reintentar() {
     if (!error) return
-    if (error.etapa === 'fotos') void correrFotos(false)
+    if (error.etapa === 'guardar') void guardar()
+    else if (error.etapa === 'fotos') void correrFotos(false)
     else if (error.etapa === 'zona') void correrZona(false)
     else void escribir({ primeraVez: !resultado, compradorElegido: comprador })
   }
@@ -187,11 +224,11 @@ export function GenerarDescripcionPanel({
   async function guardar() {
     setGuardando(true); setError(null)
     try {
-      await pedir<{ ok: true }>(`${url}/guardar`, texto)
+      await pedir<{ ok: true }>(`${url}/guardar`, texto, esperasReintentoMs)
       onGuardado(texto)
       onCerrar()
     } catch (e) {
-      setError({ etapa: 'escribir', mensaje: e instanceof Error ? e.message : 'No se pudo guardar.' })
+      setError({ etapa: 'guardar', mensaje: e instanceof Error ? e.message : 'No se pudo guardar.' })
     } finally {
       setGuardando(false)
     }
