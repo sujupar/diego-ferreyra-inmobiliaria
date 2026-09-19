@@ -19,6 +19,7 @@ import {
   heatmapPage,
   heatmapPagesOfFunnel,
   heatmapPreviewSrc,
+  heatmapRealHref,
   isHeatmapPageKey,
   sectionLabel,
 } from './heatmap-pages'
@@ -77,6 +78,20 @@ describe('heatmapPreviewSrc — la dirección que carga el visor', () => {
 
   it('la clase no tiene variantes que forzar', () => {
     expect(heatmapPreviewSrc(HEATMAP_PAGES.clase)).toBe('/vsl-clase-propietarios?hm_preview=1')
+  })
+})
+
+describe('heatmapRealHref — el botón "Abrir la landing real" del visor', () => {
+  it('NUNCA lleva hm_preview: es la dirección para probar el formulario de verdad', () => {
+    // Si el dueño abre el marco del visor en otra pestaña, la dirección conserva hm_preview=1 y
+    // el formulario sigue frenado. Este enlace es la salida limpia.
+    for (const p of Object.values(HEATMAP_PAGES)) expect(heatmapRealHref(p)).not.toMatch(/hm_preview/)
+  })
+
+  it('en tasación fuerza la versión que se estaba mirando; en la clase va pelada', () => {
+    expect(heatmapRealHref(HEATMAP_PAGES.tasacion)).toBe('/tasacion-directa?lp=A')
+    expect(heatmapRealHref(HEATMAP_PAGES['tasacion-neta'])).toBe('/tasacion-directa?lp=B')
+    expect(heatmapRealHref(HEATMAP_PAGES.clase)).toBe('/vsl-clase-propietarios')
   })
 })
 

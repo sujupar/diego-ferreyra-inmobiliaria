@@ -103,6 +103,17 @@ export function heatmapPreviewSrc(def: HeatmapPageDef): string {
   return `/${def.slug}?hm_preview=1${def.variant ? `&lp=${def.variant}` : ''}`
 }
 
+/**
+ * Dirección de la landing REAL (sin `hm_preview`), para el botón "Abrir la landing real" del
+ * visor. Dentro del visor el formulario no envía; si el dueño quiere probarlo y abre el marco
+ * en otra pestaña con el clic derecho, esa dirección CONSERVA `hm_preview=1` y sigue frenado.
+ * Este es el camino limpio. En tasación fuerza la versión que estaba mirando (`lp`); esa
+ * visita sí se registra, como cualquier visita forzada con `?lp=`.
+ */
+export function heatmapRealHref(def: HeatmapPageDef): string {
+  return `/${def.slug}${def.variant ? `?lp=${def.variant}` : ''}`
+}
+
 const SECTION_LABELS: Record<string, string> = {
   topbar: 'Barra superior',
   logo: 'Logo',

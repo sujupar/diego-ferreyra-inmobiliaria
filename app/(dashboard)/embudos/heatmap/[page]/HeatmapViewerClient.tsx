@@ -55,12 +55,15 @@ export function HeatmapViewerClient({
   page,
   label,
   src,
+  realHref,
   versions,
 }: {
   page: string
   label: string
   /** Dirección de la landing a embeber. La arma `heatmapPreviewSrc` (siempre con `hm_preview=1`). */
   src: string
+  /** Dirección de la landing REAL, sin el modo visor: ahí el formulario sí envía. */
+  realHref: string
   /** Versiones del mismo embudo (A y B en tasación). Con una sola no se muestra el selector. */
   versions: { page: string; tabLabel: string }[]
 }) {
@@ -283,6 +286,14 @@ export function HeatmapViewerClient({
           />
         </div>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Acá adentro el formulario no se envía, para no crear registros de prueba. Para probarlo de
+        verdad:{' '}
+        <a href={realHref} target="_blank" rel="noopener noreferrer" className="font-medium text-foreground underline underline-offset-2">
+          Abrir la landing real ↗
+        </a>
+        {' '}(esa visita sí se registra).
+      </p>
       <p className="text-xs text-muted-foreground">
         Es la página real en vivo (la visita del visor no cuenta en las métricas). Más rojo = más clics.
         El ancho cambia según el dispositivo filtrado para ver el calor sobre el layout correspondiente.
