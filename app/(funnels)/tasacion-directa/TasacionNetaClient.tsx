@@ -149,28 +149,37 @@ export function TasacionNetaClient({
       </div>
 
       <div className="mx-auto max-w-[1000px] px-5">
-        <section data-hm="hero" className="pt-6">
-          <p className="mx-auto mb-4 max-w-[640px] text-[.82rem] font-bold uppercase leading-snug tracking-[.06em] text-[#084898] md:text-sm">
-            {C.hero.kicker}
-          </p>
-          <h1 className="font-[family-name:var(--font-funnel-head)] text-[1.78rem] font-black leading-[1.14] tracking-[-.022em] text-[#152238] md:text-[3.1rem]">
-            {C.hero.headlineA}
-            <br />
-            Es <span className="text-[#084898]">{C.hero.highlight}</span>{' '}
-            {C.hero.headlineB.replace(`Es ${C.hero.highlight} `, '')}
-          </h1>
+        <section className="pt-6">
+          {/* La sección "hero" del mapa de calor envuelve SOLO el título y el texto. Hasta el 2026-09-19
+              estaba en el <section> y envolvía también al video, al recuadro y al
+              botón, que son secciones propias: una sección adentro de otra. El
+              bloque entero mide varias pantallas en celular, así que casi nadie
+              "llegaba" al hero (72% contra 90% en la A) y la caída hero → video del
+              panel no significaba nada, porque el video estaba ADENTRO del hero.
+              Este <div> no tiene clases a propósito: no cambia nada de lo que se ve. */}
+          <div data-hm="hero">
+            <p className="mx-auto mb-4 max-w-[640px] text-[.82rem] font-bold uppercase leading-snug tracking-[.06em] text-[#084898] md:text-sm">
+              {C.hero.kicker}
+            </p>
+            <h1 className="font-[family-name:var(--font-funnel-head)] text-[1.78rem] font-black leading-[1.14] tracking-[-.022em] text-[#152238] md:text-[3.1rem]">
+              {C.hero.headlineA}
+              <br />
+              Es <span className="text-[#084898]">{C.hero.highlight}</span>{' '}
+              {C.hero.headlineB.replace(`Es ${C.hero.highlight} `, '')}
+            </h1>
 
-          <p className="mx-auto mt-5 max-w-[760px] text-base leading-relaxed text-[#4A5561] md:text-lg">
-            {C.hero.subhead}
-          </p>
+            <p className="mx-auto mt-5 max-w-[760px] text-base leading-relaxed text-[#4A5561] md:text-lg">
+              {C.hero.subhead}
+            </p>
 
-          <p className="mx-auto mt-5 max-w-[760px] rounded-[10px] border border-[#E3E6EA] bg-[#F6F8F9] px-5 py-4 text-[.95rem] leading-relaxed text-[#4A5561] md:text-base">
-            {credit[0]}
-            <b className="font-bold text-[#152238]">{C.hero.heroAmountBefore}</b>
-            {creditTail[0]}
-            <span className="whitespace-nowrap font-bold text-[#084898]">{C.hero.heroAmountAfter}</span>
-            {creditTail[1]}
-          </p>
+            <p className="mx-auto mt-5 max-w-[760px] rounded-[10px] border border-[#E3E6EA] bg-[#F6F8F9] px-5 py-4 text-[.95rem] leading-relaxed text-[#4A5561] md:text-base">
+              {credit[0]}
+              <b className="font-bold text-[#152238]">{C.hero.heroAmountBefore}</b>
+              {creditTail[0]}
+              <span className="whitespace-nowrap font-bold text-[#084898]">{C.hero.heroAmountAfter}</span>
+              {creditTail[1]}
+            </p>
+          </div>
 
           <div data-hm="video" className="mt-7">
             {/* `warmup` y `vslBar` van SOLO acá: el reproductor lo comparten la

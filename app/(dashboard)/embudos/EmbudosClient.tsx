@@ -499,7 +499,7 @@ function FunnelCard({ funnel, range }: { funnel: FunnelMetrics; range: DateRange
         </div>
         <div className="border-t pt-4">
           <HeatmapPanel
-            page={funnel.key}
+            funnel={funnel.key}
             sections={funnel.pageHeatSections ?? []}
             totals={funnel.pageHeatTotals ?? []}
           />

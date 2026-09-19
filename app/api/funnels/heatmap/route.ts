@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { getUser } from '@/lib/auth/get-user'
+import { isHeatmapPageKey } from '@/lib/funnel/heatmap-pages'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
-const PAGES = new Set(['tasacion', 'clase'])
 
 interface SectionRow { page: string; section: string; segment: string; stage: string | null; device: string; reached: number; avg_visible_ms: number; clicks: number }
 interface TotalRow { page: string; segment: string; stage: string | null; device: string; sessions: number; avg_scroll: number }
@@ -37,7 +37,8 @@ export async function GET(req: NextRequest) {
   const page = sp.get('page') ?? ''
   const from = sp.get('from')
   const to = sp.get('to')
-  if (!PAGES.has(page)) {
+  // Las páginas válidas salen del catálogo único (incluye la B de tasación).
+  if (!isHeatmapPageKey(page)) {
     return NextResponse.json({ error: 'page inválida' }, { status: 400 })
   }
   if (!from || !to || !DATE_RE.test(from) || !DATE_RE.test(to) || from > to) {

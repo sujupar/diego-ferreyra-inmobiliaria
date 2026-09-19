@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Flame } from 'lucide-react'
+import { heatmapPagesOfFunnel, sectionLabel } from '@/lib/funnel/heatmap-pages'
 
 export interface HeatSectionRow {
   page: string
@@ -33,21 +34,6 @@ export interface HeatGridRow {
   rage: number
 }
 
-const SECTION_ORDER: Record<string, string[]> = {
-  tasacion: ['topbar', 'hero', 'benefits', 'stat', 'testimonios', 'cta-final', 'footer'],
-  clase: ['topbar', 'hero', 'social-proof', 'bio', 'cta-final', 'footer'],
-}
-const SECTION_LABELS: Record<string, string> = {
-  topbar: 'Barra superior',
-  hero: 'Hero (video + título)',
-  benefits: 'Beneficios',
-  stat: 'Estadística',
-  testimonios: 'Testimonios',
-  'social-proof': 'Prueba social',
-  bio: 'Quién soy',
-  'cta-final': 'CTA final',
-  footer: 'Pie',
-}
 const STAGE_LABELS: Record<string, string> = {
   request: 'Solicitud', scheduled: 'Coordinada', not_visited: 'No realizada', visited: 'Visita realizada',
   appraisal_sent: 'Tasación entregada', followup: 'Seguimiento', captured: 'Captada', lost: 'Descartado',
@@ -64,25 +50,89 @@ function matchSeg(row: { segment: string; stage: string | null }, f: string): bo
 }
 const matchDev = (d: string, f: string) => f === 'all' || d === f
 
+/**
+ * Resumen del mapa de calor de un embudo: embudo de secciones (cuántos llegaron,
+ * cuánto miraron, dónde hicieron clic).
+ *
+ * Un embudo puede tener MÁS DE UNA landing: tasación tiene la versión A y la B del
+ * test A/B, y cada una registra su calor con su propio nombre de página. Por eso
+ * el panel recibe las filas de TODAS las páginas del embudo y deja elegir cuál
+ * mirar. Nunca se suman entre sí: son páginas distintas, con secciones distintas,
+ * y un "hero" de la A no es comparable con un "hero" de la B.
+ */
 export function HeatmapPanel({
-  page,
-  sections,
-  totals,
+  funnel,
+  sections: allSections,
+  totals: allTotals,
 }: {
-  page: string
+  /** `key` del embudo (`tasacion`, `clase`). Sus páginas salen del catálogo único. */
+  funnel: string
   sections: HeatSectionRow[]
   totals: HeatTotalRow[]
 }) {
+  const pages = heatmapPagesOfFunnel(funnel)
+  const [selected, setSelected] = useState(pages[0]?.page ?? funnel)
   const [seg, setSeg] = useState('all')
   const [dev, setDev] = useState('all')
 
+  const def = pages.find((p) => p.page === selected) ?? pages[0]
+  const page = def?.page ?? funnel
+  const sections = allSections.filter((r) => r.page === page)
+  const totals = allTotals.filter((r) => r.page === page)
+
+  // Botones con `aria-pressed`, no `role="tab"`: unas pestañas de verdad exigen
+  // tabpanel, aria-controls y flechas del teclado, y a medias confunden al lector
+  // de pantalla. Esto es un interruptor entre dos vistas, y eso dice.
+  const selector = pages.length > 1 && (
+    <div role="group" aria-label="Versión de la landing" className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+      {pages.map((p) => (
+        <button
+          key={p.page}
+          type="button"
+          aria-pressed={p.page === page}
+          onClick={() => {
+            setSelected(p.page)
+            // El filtro de etapa NO sobrevive al cambio: las etapas salen de los datos
+            // de cada versión. Si la A estaba en "Etapa: Seguimiento" y la B no tiene a
+            // nadie ahí, el desplegable mostraría "Todos" (la opción ya no existe) con el
+            // filtro viejo todavía aplicado: "0 sesiones" sin explicación. El dispositivo
+            // sí se conserva: "celular" significa lo mismo en las dos.
+            setSeg('all')
+          }}
+          className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+            p.page === page ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          {p.tabLabel}
+        </button>
+      ))}
+    </div>
+  )
+
+  const verMapa = (
+    <Link
+      href={`/embudos/heatmap/${page}`}
+      className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-orange-300 bg-orange-50/50 px-4 py-3 text-sm font-medium text-orange-700 transition hover:bg-orange-50"
+    >
+      <Flame className="h-4 w-4" />
+      Ver mapa de calor sobre la página
+    </Link>
+  )
+
   if (totals.length === 0) {
-    return <p className="text-sm text-muted-foreground">Sin datos de mapa de calor para el rango.</p>
+    return (
+      <div className="space-y-4">
+        {selector}
+        <p className="text-sm text-muted-foreground">Sin datos de mapa de calor para el rango.</p>
+        {/* El visor igual sirve: muestra la página, y otro rango puede tener datos. */}
+        {verMapa}
+      </div>
+    )
   }
 
   const stages = Array.from(new Set(totals.filter((t) => t.segment === 'registrado' && t.stage).map((t) => t.stage as string)))
   const totalSessions = totals.filter((t) => matchSeg(t, seg) && matchDev(t.device, dev)).reduce((s, t) => s + t.sessions, 0)
-  const order = SECTION_ORDER[page] ?? Array.from(new Set(sections.map((s) => s.section)))
+  const order = def ? [...def.sections] : Array.from(new Set(sections.map((s) => s.section)))
 
   // v1 — por sección: % que llegó + tiempo medio + clics
   const rows = order.map((key) => {
@@ -97,6 +147,7 @@ export function HeatmapPanel({
 
   return (
     <div className="space-y-4">
+      {selector}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-medium text-muted-foreground">
           Mapa de calor · {NUM.format(totalSessions)} sesiones
@@ -126,8 +177,8 @@ export function HeatmapPanel({
           const drop = prev - r.pct
           return (
             <div key={r.key} className="flex items-center gap-2 text-xs">
-              <span className="w-36 shrink-0 truncate text-muted-foreground" title={SECTION_LABELS[r.key] || r.key}>
-                {SECTION_LABELS[r.key] || r.key}
+              <span className="w-36 shrink-0 truncate text-muted-foreground" title={sectionLabel(r.key, page)}>
+                {sectionLabel(r.key, page)}
               </span>
               <div className="relative h-4 flex-1 overflow-hidden rounded bg-muted">
                 <div className="h-full bg-primary/80" style={{ width: `${r.pct}%` }} />
@@ -150,13 +201,7 @@ export function HeatmapPanel({
       </div>
 
       {/* El "dónde hacen clic" visual vive en el visor sobre la página real. */}
-      <Link
-        href={`/embudos/heatmap/${page}`}
-        className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-orange-300 bg-orange-50/50 px-4 py-3 text-sm font-medium text-orange-700 transition hover:bg-orange-50"
-      >
-        <Flame className="h-4 w-4" />
-        Ver mapa de calor sobre la página
-      </Link>
+      {verMapa}
     </div>
   )
 }
