@@ -65,6 +65,13 @@ describe('lugaresDesdeOverpass', () => {
     ] }
     expect(lugaresDesdeOverpass(once, ORIGEN).find(l => l.nombre === 'Once')).toMatchObject({ tipo: 'subte', linea: 'Línea H y Línea Sarmiento' })
   })
+  it('con rutas de tren y ninguna de subte es tren aunque los tags digan subte (Plaza Constitución)', () => {
+    const constitucion = { elements: [
+      { type: 'node', id: 1, lat: -34.628, lon: -58.381, tags: { name: 'Plaza Constitución', railway: 'station', network: 'Subte;Trenes Argentinos' } },
+      { type: 'relation', id: 2, tags: { route: 'train', name: 'Línea Roca - Vía Circuito: Constitución → Constitución' } },
+    ] }
+    expect(lugaresDesdeOverpass(constitucion, ORIGEN).find(l => l.nombre === 'Plaza Constitución')).toMatchObject({ tipo: 'tren', linea: 'Línea Roca' })
+  })
   it('una estación sin rutas conocidas queda sin línea', () => {
     expect(lugares.find(l => l.nombre === 'Estación sin rutas')?.linea).toBeUndefined()
   })

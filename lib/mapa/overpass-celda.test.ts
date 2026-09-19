@@ -20,6 +20,10 @@ const respuesta = {
     { type: 'relation', id: 31, tags: { route: 'tram', name: 'Premetro: Intendente Saguier → General Savio' } },
     { type: 'relation', id: 32, tags: { route: 'subway', name: 'Línea E: Retiro → Plaza de los Virreyes' } },
     { type: 'node', id: 12, lat: -34.6, lon: -58.43, tags: { name: 'Plaza del borde', leisure: 'park' } },
+    // Plaza Constitución: los tags dicen subte, pero sus rutas son del Roca → tren, "Línea Roca".
+    { type: 'node', id: 13, lat: -34.628, lon: -58.431, tags: { name: 'Plaza Constitución', railway: 'station', network: 'Subte;Trenes Argentinos' } },
+    { type: 'relation', id: 131, tags: { route: 'train', name: 'Línea Roca - Vía Circuito: Constitución → Constitución' } },
+    { type: 'relation', id: 132, tags: { route: 'train', name: 'Ferrocarril Roca - Rápido' } },
     { type: 'way', id: 5, center: { lat: -34.607, lon: -58.426 }, tags: { name: 'Hospital Italiano', amenity: 'hospital' } },
     { type: 'relation', id: 6, center: { lat: -34.604, lon: -58.42 }, tags: { name: 'Plaza Almagro', leisure: 'park' } },
     { type: 'node', id: 7, lat: -34.606, lon: -58.425, tags: { name: 'Escuela 11', amenity: 'school' } },
@@ -66,6 +70,10 @@ describe('filasDesdeRespuesta', () => {
     expect(por('n2')?.tipo).toBe('subte')
     // Premetro: station=subway y la primera ruta es tram → sigue siendo subte.
     expect(por('n3')?.tipo).toBe('subte')
+  })
+
+  it('el tipo lo deciden las rutas: con rutas de tren y ninguna de subte es tren, aunque los tags digan subte', () => {
+    expect(por('n13')).toMatchObject({ tipo: 'tren', lineas: ['Línea Roca'] })
   })
 
   it('una fila es de la celda que le toca por celdaDe, también en el borde', () => {

@@ -21,12 +21,31 @@ export function nombreUtil(crudo: unknown): string | null {
   return limpio && limpio.length <= MAX_NOMBRE ? limpio : null
 }
 
-/** Subte y tren: "Línea B: Leandro N. Alem → Juan Manuel de Rosas" → "Línea B". */
+/**
+ * Subte y tren: "Línea B: Leandro N. Alem → Juan Manuel de Rosas" → "Línea B".
+ * Las variantes de una misma línea de tren se unen, porque para un comprador
+ * son la misma: "Línea Roca - Vía Circuito" y "Ferrocarril Roca - Rápido" →
+ * "Línea Roca" (si no, el texto decía "Línea Roca y Línea Roca - Vía Circuito").
+ * Misma regla en `scripts/mapa-extraer-osm.py` (`linea_de_ruta`).
+ */
 export function lineaDeRuta(tags: Record<string, unknown>): string | undefined {
-  const nombre = typeof tags.name === 'string' ? nombreUtil(tags.name.split(':')[0]) : null
-  if (nombre) return nombre
-  if (typeof tags.name === 'string' && tags.name.split(':')[0].trim()) return undefined
+  const crudo = typeof tags.name === 'string' ? tags.name.split(':')[0] : ''
+  const nombre = nombreUtil(crudo)
+  if (nombre) return nombre.split(' - ')[0].trim().replace(/^Ferrocarril\s+/i, 'Línea ')
+  if (crudo.trim()) return undefined
   return typeof tags.ref === 'string' && tags.ref.trim() ? `Línea ${tags.ref.trim()}` : undefined
+}
+
+/**
+ * Subte o tren, según las RUTAS de la estación: con una ruta de subte es subte;
+ * si no, con una de tren es tren. Los tags de la estación deciden solo si no hay
+ * rutas: Plaza Constitución dice "Subte" en su red pero sus rutas son del Roca.
+ */
+export function tipoDeEstacion(rutas: Iterable<string>, tagsDicenSubte: boolean): 'subte' | 'tren' {
+  const r = new Set(rutas)
+  if (r.has('subway')) return 'subte'
+  if (r.has('train') || r.has('light_rail')) return 'tren'
+  return tagsDicenSubte ? 'subte' : 'tren'
 }
 
 /** Colectivo, sin ramal: "24-1" → "24", "160AG" → "160"; si no hay ref, del nombre "Línea 105: …". */

@@ -19,7 +19,7 @@
  * `scripts/mapa-extraer-osm.py`).
  */
 import { celdaDe, dentroDelAmba, type Celda } from './celdas'
-import { lineaDeColectivo, lineaDeRuta, nombreUtil, ordenarLineasColectivo } from './normalizar'
+import { lineaDeColectivo, lineaDeRuta, nombreUtil, ordenarLineasColectivo, tipoDeEstacion } from './normalizar'
 
 export type TipoFila = 'subte' | 'tren' | 'plaza' | 'colegio' | 'universidad' | 'hospital' | 'parada' | 'recorrido'
 
@@ -107,6 +107,7 @@ export function filasDesdeRespuesta(json: unknown, c: Celda): FilaMapa[] {
 
   const filas: FilaMapa[] = []
   let estacionActual: FilaMapa | null = null
+  const rutasDe = new Map<FilaMapa, { rutas: Set<string>; tagsDicenSubte: boolean }>()
   const lineasPorParada = new Map<number, Set<string>>()
   const puntoDeParada = new Map<number, { lat: number; lng: number }>()
   const lineasPorTramo = new Map<number, Set<string>>()
@@ -140,12 +141,12 @@ export function filasDesdeRespuesta(json: unknown, c: Celda): FilaMapa[] {
     }
     if (e?.type === 'relation' && typeof tags.route === 'string' && !e.center) {
       // Ruta de subte/tren: pertenece a la última estación (orden del foreach).
-      // Subte si ALGUNA ruta es subte (Once: Sarmiento + Línea H): la misma
-      // regla que `scripts/mapa-extraer-osm.py`, o el refresco cambiaría el tipo.
+      // El tipo sale de las rutas al final (`tipoDeEstacion`): la misma regla que
+      // `scripts/mapa-extraer-osm.py`, o el refresco cambiaría el tipo.
       const linea = lineaDeRuta(tags)
       if (estacionActual && linea) {
         if (!estacionActual.lineas.includes(linea)) estacionActual.lineas.push(linea)
-        if (tags.route === 'subway') estacionActual.tipo = 'subte'
+        rutasDe.get(estacionActual)?.rutas.add(String(tags.route))
       }
       continue
     }
@@ -167,6 +168,7 @@ export function filasDesdeRespuesta(json: unknown, c: Celda): FilaMapa[] {
     if (tags.railway === 'station') {
       const esSubte = tags.station === 'subway' || /subte/i.test(String(tags.network ?? ''))
       estacionActual = { osm_id, tipo: esSubte ? 'subte' : 'tren', nombre, lineas: [], ...p, celda: c.id }
+      rutasDe.set(estacionActual, { rutas: new Set(), tagsDicenSubte: esSubte })
       filas.push(estacionActual)
       continue
     }
@@ -179,8 +181,11 @@ export function filasDesdeRespuesta(json: unknown, c: Celda): FilaMapa[] {
     if (!p || !deLaCelda(c, p)) continue
     filas.push({ osm_id: `n${id}`, tipo: 'parada', nombre: '', lineas: ordenarLineasColectivo(lineas), ...p, celda: c.id })
   }
-  // Orden estable de las líneas de cada estación (el extractor usa `sorted`).
-  for (const f of filas) if (f.tipo === 'subte' || f.tipo === 'tren') f.lineas.sort()
+  // Tipo por sus rutas y orden estable de sus líneas (el extractor usa `sorted`).
+  for (const [estacion, { rutas, tagsDicenSubte }] of rutasDe) {
+    estacion.tipo = tipoDeEstacion(rutas, tagsDicenSubte)
+    estacion.lineas.sort()
+  }
   for (const [id, trazo] of trazoDeTramo) {
     const lineas = lineasPorTramo.get(id)
     if (!lineas?.size || trazo.length < 2) continue

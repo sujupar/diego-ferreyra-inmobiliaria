@@ -18,7 +18,7 @@
  * texto sin distancias en silencio.
  */
 import type { LugarCercano, TipoLugar } from './tipos'
-import { lineaDeRuta, lineaDeColectivo, nombreUtil, ordenarLineasColectivo } from '@/lib/mapa/normalizar'
+import { lineaDeRuta, lineaDeColectivo, nombreUtil, ordenarLineasColectivo, tipoDeEstacion } from '@/lib/mapa/normalizar'
 
 /**
  * Radios de búsqueda por tipo, en metros. ÚNICA fuente: los usan la consulta en
@@ -114,6 +114,7 @@ export function lugaresDesdeOverpass(json: unknown, origen: { lat: number; lng: 
   const lugares: LugarCercano[] = []
   let estacionActual: LugarCercano | null = null
   const lineasDe = new Map<LugarCercano, Set<string>>()
+  const rutasDe = new Map<LugarCercano, { rutas: Set<string>; tagsDicenSubte: boolean }>()
 
   for (const crudo of elementos as ElementoOverpass[]) {
     const tags = crudo?.tags && typeof crudo.tags === 'object' ? crudo.tags : {}
@@ -128,7 +129,7 @@ export function lugaresDesdeOverpass(json: unknown, origen: { lat: number; lng: 
         const set = lineasDe.get(estacionActual) ?? new Set<string>()
         set.add(linea)
         lineasDe.set(estacionActual, set)
-        if (tags.route === 'subway') estacionActual.tipo = 'subte'
+        rutasDe.get(estacionActual)?.rutas.add(String(tags.route))
       }
       continue
     }
@@ -144,6 +145,7 @@ export function lugaresDesdeOverpass(json: unknown, origen: { lat: number; lng: 
     if (tags.railway === 'station') {
       const esSubte = tags.station === 'subway' || /subte/i.test(String(tags.network ?? ''))
       estacionActual = { nombre, tipo: esSubte ? 'subte' : 'tren', metros, cuadras }
+      rutasDe.set(estacionActual, { rutas: new Set(), tagsDicenSubte: esSubte })
       lugares.push(estacionActual)
       continue
     }
@@ -153,6 +155,7 @@ export function lugaresDesdeOverpass(json: unknown, origen: { lat: number; lng: 
     lugares.push({ nombre, tipo, metros, cuadras })
   }
   for (const [estacion, lineas] of lineasDe) estacion.linea = [...lineas].sort().join(' y ')
+  for (const [estacion, { rutas, tagsDicenSubte }] of rutasDe) estacion.tipo = tipoDeEstacion(rutas, tagsDicenSubte)
   return seleccionarLugares(lugares)
 }
 

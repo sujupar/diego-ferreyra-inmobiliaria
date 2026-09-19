@@ -22,6 +22,12 @@ describe('lineaDeRuta (subte y tren)', () => {
     expect(lineaDeRuta({ name: 'Línea B: Leandro N. Alem → Juan Manuel de Rosas', ref: 'B' })).toBe('Línea B')
     expect(lineaDeRuta({ name: 'Línea Mitre: Retiro → José León Suárez' })).toBe('Línea Mitre')
   })
+  it('une las variantes de una misma línea de tren (ramal y "Ferrocarril")', () => {
+    expect(lineaDeRuta({ name: 'Línea Roca - Vía Circuito: Constitución → Constitución' })).toBe('Línea Roca')
+    expect(lineaDeRuta({ name: 'Ferrocarril Roca - Rápido' })).toBe('Línea Roca')
+    expect(lineaDeRuta({ name: 'Ferrocarril San Martín: Retiro → Pilar' })).toBe('Línea San Martín')
+    expect(lineaDeRuta({ name: 'Tren Universitario: La Plata → Policlínico' })).toBe('Tren Universitario')
+  })
   it('sin nombre usa la referencia', () => {
     expect(lineaDeRuta({ ref: 'A' })).toBe('Línea A')
     expect(lineaDeRuta({})).toBeUndefined()
