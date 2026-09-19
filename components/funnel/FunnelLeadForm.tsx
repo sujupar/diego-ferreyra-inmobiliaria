@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react'
 import { PhoneField } from '@/components/landing/PhoneField'
 import { composePhoneForSubmit } from '@/lib/landing/phone-country'
 import type { CountryCode } from 'libphonenumber-js/max'
+import { isHeatmapPreview } from '@/lib/funnel/heatmap-preview'
 
 /**
  * Formulario de captura de los embudos (tasación / clase).
@@ -141,6 +142,17 @@ export function FunnelLeadForm({
     e.preventDefault()
     if (submittingRef.current) return
     setError(null)
+
+    // Dentro del visor del mapa de calor (?hm_preview=1) el formulario NO envía. El
+    // visor muestra la landing REAL: hasta el 2026-09-19 llenarlo "para probar" desde
+    // ahí creaba un lead de verdad, avisaba al equipo, mandaba la conversión a Meta y
+    // le sumaba un registro a esa versión del test A/B. Va antes que todo lo demás
+    // para que el mensaje aparezca aunque los datos estén incompletos.
+    if (isHeatmapPreview()) {
+      return setError(
+        'Estás viendo el mapa de calor: acá el formulario no se envía, para no crear un registro de prueba. Para probarlo, usá «Abrir la landing real», debajo del mapa.',
+      )
+    }
 
     // Honeypot: si un bot lo llenó, fingimos éxito sin enviar nada.
     if ((values.company ?? '').trim()) {

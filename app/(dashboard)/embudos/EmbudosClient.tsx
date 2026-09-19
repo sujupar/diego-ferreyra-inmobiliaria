@@ -17,6 +17,7 @@ import { Check, Copy, Loader2, RefreshCw } from 'lucide-react'
 import { DateRangePicker, type DateRange } from '@/components/metrics/DateRangePicker'
 import { HeatmapPanel, type HeatSectionRow, type HeatTotalRow, type HeatGridRow } from '@/components/embudos/HeatmapPanel'
 import { AbTestPanel } from './AbTestPanel'
+import { ordenarClavesDeVideo, videoLabel } from '@/lib/funnel/video-keys'
 
 interface FunnelByDayRow {
   day: string
@@ -190,11 +191,6 @@ const STAGE_LABELS: Record<string, string> = {
   clase_gratuita: 'Clase gratuita',
   comprador: 'Comprador',
 }
-const VIDEO_LABELS: Record<string, string> = {
-  'hero-tasacion': 'Video del hero',
-  'hero-clase': 'Video del hero',
-  'clase-completa': 'Clase completa (página de gracias)',
-}
 
 interface VideoAgg {
   viewers: number
@@ -281,7 +277,10 @@ function VideoAnalytics({
   const sFiltered = stats.filter((r) => matchesFilter(r, filter))
   const rFiltered = retention.filter((r) => matchesFilter(r, filter))
   const hFiltered = heatmap.filter((r) => matchesFilter(r, filter))
-  const videoKeys = Array.from(new Set(sFiltered.map((r) => r.video_key)))
+  // Un bloque por video, con la Versión A antes que la B. Los nombres y el orden salen
+  // del catálogo único (`lib/funnel/video-keys.ts`): cada landing registra SU video con
+  // su propia clave — del 15 al 19/9/2026 la A y la B compartían una y se mezclaban.
+  const videoKeys = ordenarClavesDeVideo(Array.from(new Set(sFiltered.map((r) => r.video_key))))
 
   return (
     <div className="space-y-4">
@@ -365,7 +364,7 @@ function VideoAnalytics({
 
         return (
           <div key={vk} className="rounded-lg border p-3">
-            <p className="text-sm font-medium">{VIDEO_LABELS[vk] || vk}</p>
+            <p className="text-sm font-medium">{videoLabel(vk)}</p>
             <div className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
               <Stat label="Vistas" value={NUM.format(agg.viewers)} />
               <Stat
@@ -499,7 +498,7 @@ function FunnelCard({ funnel, range }: { funnel: FunnelMetrics; range: DateRange
         </div>
         <div className="border-t pt-4">
           <HeatmapPanel
-            page={funnel.key}
+            funnel={funnel.key}
             sections={funnel.pageHeatSections ?? []}
             totals={funnel.pageHeatTotals ?? []}
           />

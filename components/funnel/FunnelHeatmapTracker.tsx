@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { getOrCreateAnonId } from '@/lib/funnel/anon-id'
 import { HeatmapSession } from '@/lib/funnel/heatmap-session'
 import { isHeatmapPreview } from '@/lib/funnel/heatmap-preview'
+import { seccionEnVista, UMBRALES_DE_VISTA } from '@/lib/funnel/heatmap-visibility'
 
 function deviceBucket(): string {
   const w = window.innerWidth
@@ -36,7 +37,17 @@ export function FunnelHeatmapTracker({ page, funnel }: { page: string; funnel: s
         for (const en of entries) {
           const key = (en.target as HTMLElement).dataset.hm
           if (!key) continue
-          if (en.isIntersecting && en.intersectionRatio >= 0.5) {
+          // La regla vive en `heatmap-visibility.ts` (con sus pruebas): media sección
+          // O media pantalla. Con solo "media sección", las secciones más altas que dos
+          // pantallas nunca contaban como vistas (Testimonios daba 0% en celular).
+          const enVista =
+            en.isIntersecting &&
+            seccionEnVista({
+              ratio: en.intersectionRatio,
+              altoVisible: en.intersectionRect.height,
+              altoPantalla: en.rootBounds?.height ?? window.innerHeight,
+            })
+          if (enVista) {
             session.markReached(key)
             if (!visibleSince.has(key)) visibleSince.set(key, now)
           } else {
@@ -48,7 +59,7 @@ export function FunnelHeatmapTracker({ page, funnel }: { page: string; funnel: s
           }
         }
       },
-      { threshold: [0, 0.5, 1] },
+      { threshold: [...UMBRALES_DE_VISTA] },
     )
     els.forEach((e) => io.observe(e))
 

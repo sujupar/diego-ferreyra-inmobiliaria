@@ -51,7 +51,22 @@ function matchSeg(row: { segment: string; stage?: string | null }, f: string): b
 }
 const matchDev = (d: string, f: string) => f === 'all' || d === f
 
-export function HeatmapViewerClient({ page, label, slug }: { page: string; label: string; slug: string }) {
+export function HeatmapViewerClient({
+  page,
+  label,
+  src,
+  realHref,
+  versions,
+}: {
+  page: string
+  label: string
+  /** Dirección de la landing a embeber. La arma `heatmapPreviewSrc` (siempre con `hm_preview=1`). */
+  src: string
+  /** Dirección de la landing REAL, sin el modo visor: ahí el formulario sí envía. */
+  realHref: string
+  /** Versiones del mismo embudo (A y B en tasación). Con una sola no se muestra el selector. */
+  versions: { page: string; tabLabel: string }[]
+}) {
   const [range, setRange] = useState<DateRange>(defaultRange())
   const [seg, setSeg] = useState('all')
   const [dev, setDev] = useState('all')
@@ -118,6 +133,12 @@ export function HeatmapViewerClient({ page, label, slug }: { page: string; label
     const gridSeg = seg.startsWith('stage:') ? 'reg' : seg
     const cellMap = new Map<string, { section: string; x_bin: number; y_bin: number; clicks: number; rage: number }>()
     for (const g of data.grid) {
+      // Los clics SIN sección (los del formulario, que se abre por fuera de toda
+      // `data-hm`) se guardan todos en el centro: una sola celda "fantasma" con más
+      // de 100 clics. El overlay no la dibuja —no tiene dónde— pero calculaba la
+      // intensidad contra ella, así que ninguna mancha real pasaba de naranja pálido
+      // (en la A la celda real más caliente tenía 7 clics contra 116 de la fantasma).
+      if (!g.section) continue
       if (!matchSeg({ segment: g.segment }, gridSeg) || !matchDev(g.device, dev)) continue
       const k = `${g.section}|${g.x_bin}|${g.y_bin}`
       const cur = cellMap.get(k)
@@ -222,6 +243,25 @@ export function HeatmapViewerClient({ page, label, slug }: { page: string; label
         </div>
       </header>
 
+      {/* Test A/B: cada versión es una página distinta con su propio calor. Son
+          enlaces (no estado) para que cada mapa tenga su dirección y se pueda compartir. */}
+      {versions.length > 1 && (
+        <nav aria-label="Versión de la landing" className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+          {versions.map((v) => (
+            <Link
+              key={v.page}
+              href={`/embudos/heatmap/${v.page}`}
+              aria-current={v.page === page ? 'page' : undefined}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                v.page === page ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {v.tabLabel}
+            </Link>
+          ))}
+        </nav>
+      )}
+
       {error && (
         <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>
       )}
@@ -234,20 +274,26 @@ export function HeatmapViewerClient({ page, label, slug }: { page: string; label
       {/* La landing REAL embebida (con tracking apagado) + overlay de calor encima. */}
       <div className="overflow-x-auto rounded-xl border bg-muted/30 p-3">
         <div className="mx-auto transition-all" style={{ width: DEVICE_WIDTH[dev] ?? '100%', maxWidth: '100%' }}>
-          {/* `lp=A` en tasación: los datos de calor de `page=tasacion` son SOLO de la
-              variante A (la B registra como `tasacion-neta`). Desde que el A/B reparte
-              por clic, sin forzarla el iframe cargaría una variante al azar y pintaría
-              el calor de la A encima de la B sin avisar. `hm_preview` apaga el registro
-              de la visita, así que forzar la variante acá no ensucia el test. */}
+          {/* `src` ya viene con `hm_preview=1` (no registra la visita ni el calor del
+              que mira) y con la variante forzada: el A/B reparte por clic, y sin
+              forzarla el iframe cargaría una versión al azar bajo el calor de la otra. */}
           <iframe
             ref={iframeRef}
-            src={`/${slug}?hm_preview=1${page === 'tasacion' ? '&lp=A' : ''}`}
+            src={src}
             title={`Mapa de calor — ${label}`}
             className="w-full rounded-lg border bg-white shadow-sm"
             style={{ height: frameH }}
           />
         </div>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Acá adentro el formulario no se envía, para no crear registros de prueba. Para probarlo de
+        verdad:{' '}
+        <a href={realHref} target="_blank" rel="noopener noreferrer" className="font-medium text-foreground underline underline-offset-2">
+          Abrir la landing real ↗
+        </a>
+        {' '}(esa visita sí se registra).
+      </p>
       <p className="text-xs text-muted-foreground">
         Es la página real en vivo (la visita del visor no cuenta en las métricas). Más rojo = más clics.
         El ancho cambia según el dispositivo filtrado para ver el calor sobre el layout correspondiente.

@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { crearContactoYDeal } from '@/lib/funnel/create-funnel-lead'
 import { construirTrabajos } from '@/lib/funnel/jobs-logic'
 import { SubmitSchema, resolverCanales } from '@/lib/funnel/submit-schema'
+import { esVistaPreviaDelMapa } from '@/lib/funnel/heatmap-preview'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -191,6 +192,28 @@ export async function POST(req: NextRequest) {
   // Honeypot: si viene relleno, fingimos éxito sin crear nada.
   if (d.company && d.company.trim().length > 0) {
     return NextResponse.json({ ok: true, redirect: redirectFor(d.funnel) })
+  }
+
+  // Envío desde el visor del mapa de calor (?hm_preview=1): se rechaza ANTES de tocar
+  // la base. El formulario ya se frena en el navegador; esta es la segunda barrera,
+  // para un navegador con el código viejo en caché. Se mira la dirección que manda el
+  // cliente y también el Referer, porque `eventSourceUrl` es opcional. Se responde 400
+  // con el motivo (y no un "ok" fingido como al honeypot) porque quien llega acá es el
+  // dueño probando, no un bot: tiene que enterarse de que no se registró nada.
+  const referer = req.headers.get('referer')
+  if (esVistaPreviaDelMapa(d.eventSourceUrl) || esVistaPreviaDelMapa(referer)) {
+    // Se REGISTRA, como todo rechazo de esta ruta (regla del 2026-08-14). Esta es además la
+    // única excepción a "un metadato de tracking jamás voltea una conversión" (submit-schema):
+    // si alguien compartiera o pusiera en un anuncio la dirección del visor, un cliente real
+    // rebotaría acá. Con el registro, ese lead se ve y se recupera a mano.
+    await registrarRechazo(supabase, {
+      funnel: d.funnel, name: d.name, email: d.email ?? null, phone: d.phone ?? null,
+      motivo: 'visor_mapa_calor', detalle: { eventSourceUrl: d.eventSourceUrl ?? null, referer }, ipHash, userAgent,
+    })
+    return NextResponse.json(
+      { error: 'Estás en el mapa de calor: desde acá el formulario no se envía. Usá «Abrir la landing real», debajo del mapa, para probarlo.' },
+      { status: 400 },
+    )
   }
 
   // Canales de contacto: degradar antes que rechazar (la tabla de verdad está
