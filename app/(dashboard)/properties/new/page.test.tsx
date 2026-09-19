@@ -23,9 +23,6 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() } }))
 vi.mock('next/image', () => ({ default: (p: Record<string, unknown>) => <img {...p} /> }))
-vi.mock('@/components/properties/alta/GenerarDescripcion', () => ({
-  GenerarDescripcion: () => <div data-testid="generar-descripcion" />,
-}))
 vi.mock('@/lib/properties/upload-plans', () => ({
   uploadPlans: vi.fn(async () => {}),
   validatePlanFile: () => null,

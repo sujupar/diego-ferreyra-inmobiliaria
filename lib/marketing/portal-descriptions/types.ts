@@ -12,8 +12,12 @@ import type { LocationInsights } from '@/lib/marketing/location-insights'
  * abandona dejaría una propiedad basura y mails que no se pueden desenviar.
  *
  * Es una interfaz ESTRUCTURAL a propósito: una fila completa de `properties`
- * sigue siendo asignable (los llamadores de siempre compilan sin tocarlos) y un
- * objeto armado desde el formulario del alta también entra.
+ * sigue siendo asignable (los llamadores de siempre compilan sin tocarlos).
+ *
+ * DESDE 2026-09-19 este generador de un solo paso ya NO lo usa ninguna pantalla:
+ * las descripciones se hacen con el método de Diego (`lib/descripcion/`), desde
+ * la ficha y mirando las fotos. Queda solo para `portal-description-bridge.ts`
+ * (landing/Meta), que genera al vuelo cuando una propiedad no tiene descripción.
  */
 export interface DatosParaDescripcion {
   property_type: string
@@ -39,7 +43,7 @@ export interface DatosParaDescripcion {
   amenities?: unknown
   video_url?: string | null
   tour_3d_url?: string | null
-  /** Lo que escribió el ASESOR, nunca lo que escribió el modelo (ver `datosParaDescripcion`). */
+  /** Lo que escribió el ASESOR (referencia para el modelo). */
   description?: string | null
   location_insights?: LocationInsights | null
 }

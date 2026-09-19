@@ -89,7 +89,7 @@ const ATRIBUTO_PORTAL: Record<string, string> = {
   IS_SUITABLE_FOR_PETS: 'Apto mascotas', UNITS_PER_FLOOR: 'Departamentos por piso', FLOORS: 'Pisos del edificio',
   DISPOSITION: 'Disposición', FACING: 'Orientación', PARKING_LOTS: 'Cocheras', WAREHOUSES: 'Bauleras',
   BALCONY_AREA: 'Superficie del balcón',
-  ESTADO_PROPIEDAD: 'Estado de la propiedad', DISPOSICION: 'Disposición', ORIENTACION: 'Orientación', SUBTIPO: 'Subtipo',
+  ESTADO_PROPIEDAD: 'Estado de la unidad (no del edificio)', DISPOSICION: 'Disposición', ORIENTACION: 'Orientación', SUBTIPO: 'Subtipo',
 }
 /**
  * Repiten datos que ya están en DATOS CARGADOS. Se omiten para no ofrecerle al

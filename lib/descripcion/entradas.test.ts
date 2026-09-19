@@ -56,7 +56,7 @@ describe('armarEntradaEscritura', () => {
     })
     expect(t).toContain('Balcón: Sí')
     expect(t).toContain('Ascensor: No')
-    expect(t).toContain('Estado de la propiedad: EXCELENTE')
+    expect(t).toContain('Estado de la unidad (no del edificio): EXCELENTE')
   })
 
   it('no repite en el checklist lo que ya dijo la visita, ni lo que MercadoLibre y Argenprop repiten entre sí', () => {
