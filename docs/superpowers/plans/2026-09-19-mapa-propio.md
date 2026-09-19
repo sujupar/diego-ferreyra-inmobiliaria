@@ -17,10 +17,10 @@
    - upsert por lotes;
    - borrar las filas propias que ya no vinieron, solo si la descarga fue buena;
    - actualizar `mapa_celdas` (estado, filas, error, fecha).
-5. **Carga inicial** — `scripts/mapa-cargar.ts`:
-   - todas las celdas, con reintentos y pausa;
-   - informe de celdas ok / con error.
-   - Correr hasta tener todas en `ok`.
+5. **Carga inicial** — ~~`scripts/mapa-cargar.ts`~~ (Overpass bloqueó la IP a mitad de la carga) → **desde Geofabrik**:
+   - `scripts/mapa-extraer-osm.py` (pyosmium, mismas reglas que `overpass-celda.ts`) → JSONL;
+   - `scripts/mapa-cargar-archivo.ts` → `guardarCelda` en las 418 celdas.
+   - `scripts/mapa-cargar.ts` queda para completar celdas sueltas por Overpass.
 6. **Consultar (IO)** — `lib/mapa/consultar.ts`:
    - `lugaresDesdeBase(lat, lng)` verifica la cobertura y llama a la RPC;
    - la selección y el tope por tipo se comparten con el camino en vivo (refactor en `zona-mapa.ts`: `seleccionarLugares`, `normalizarLineaColectivo`).
@@ -32,7 +32,9 @@
 9. **Dormitorios**: control y prompt. Tests con la frase real.
 10. **Verificación**
     - `scripts/mapa-verificar.ts`: comparación base vs. en vivo (Perón, Doblas, Hipólito), las 31 propiedades y los 1.000 puntos al azar.
+    - Hallazgos y arreglos: (a) faltaban líneas de colectivo → tipo `recorrido` con el trazado (migración `20260919000004`, extractor, descarga por celda, consulta); (b) Almafuerte 2500 con el pin en Junín → freno de pin fuera del AMBA y `firmaZona` con el pin.
+    - Paridad Overpass ↔ archivo en la celda más densa: mismas filas en los 8 tipos.
 11. **Actualización mensual**
     - Ruta `app/api/cron/mapa-lugares` (ping, autenticación dual, celda más vieja con más de 30 días).
-    - Migración del job + script (después del deploy).
+    - Migración `20260919000005` del job + `scripts/apply-cron-mapa-lugares-pg.ts` (verifica `?ping=1`; reusa el secreto de `send_report` sin imprimirlo).
 12. **Cierre**: revisión adversarial, PR, QA en la vista previa (Hipólito Yrigoyen), merge, deploy, programar el job y verificarlo, CLAUDE.md, reporte.
