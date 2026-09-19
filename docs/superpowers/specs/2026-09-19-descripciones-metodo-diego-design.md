@@ -59,10 +59,26 @@ propiedad cargada se puede regenerar con el sistema nuevo.
 - **Vista previa:** titular, subtitular y cuerpo, y un desplegable "Qué tuvo en cuenta"
   con el comprador ideal usado, lo que vio en las fotos y los datos de la zona (con
   distancias). **No se guarda nada** hasta tocar "Guardar".
-- **Ajustar y volver a escribir:** en la vista previa hay un campo "Comprador ideal"
-  (precargado) y un recuadro opcional "Lo que no se ve en las fotos" (orientación,
-  expensas, estado de las instalaciones, apto crédito, medidas de ambientes…). "Volver
-  a escribir" repite **solo el paso 3**: no se vuelven a pagar fotos ni zona.
+- **Preguntas, UNA sola vez en toda la plataforma** (ajuste del dueño, 2026-09-19): las
+  preguntas del comprador ideal, el diferencial, la objeción y el barrio son las mismas
+  cuatro que se hacen en la visita de tasación (Sección 09) y al crear la landing. Antes
+  de escribir, el panel junta lo que ya se contestó en cualquiera de esos lugares:
+  1. `properties.landing_answers` (lo contestado en la visita, heredado al captar);
+  2. la visita del proceso vinculado (`deals.visit_data.landing`), para propiedades
+     captadas antes de que existiera esa herencia;
+  3. las respuestas que se dieron al crear la landing (`property_landings.wizard_state`).
+
+  **Solo pregunta lo que falta.** Si está todo contestado, no frena: escribe directo y en
+  "Qué tuvo en cuenta" muestra las respuestas usadas y de dónde salieron. Si falta algo
+  (hoy es el caso de casi todas: el formulario de la visita es nuevo), muestra solo esas
+  preguntas, todas opcionales, con el comprador ideal precargado con la sugerencia del
+  análisis de fotos, más el recuadro "Lo que no se ve en las fotos" (orientación,
+  expensas, estado de las instalaciones, apto crédito, medidas de ambientes…). Lo que se
+  conteste acá se guarda en `properties.landing_answers`, el MISMO lugar que la visita:
+  así no se vuelve a preguntar ni acá ni al crear la landing.
+- **Ajustar y volver a escribir:** desde la vista previa se puede cambiar el comprador
+  ideal y las notas. "Volver a escribir" repite **solo el paso 3**: no se vuelven a
+  pagar fotos ni zona.
 - **Guardar:** escribe el titular y la descripción de la propiedad y cierra el panel.
   Si la propiedad está publicada en portales, aparece antes un aviso: "Esta propiedad
   está publicada en MercadoLibre/Argenprop: al guardar se actualiza también ahí."
@@ -75,8 +91,14 @@ propiedad cargada se puede regenerar con el sistema nuevo.
 
 ### Asistentes de MercadoLibre y Argenprop → paso "Descripción"
 
-- Su botón "Generar / Regenerar descripción" ejecuta el **mismo proceso** de tres pasos
-  (no el generador viejo) y carga el resultado en el borrador del aviso, como hoy.
+Condicional (ajuste del dueño, 2026-09-19): la descripción se crea UNA vez y los portales
+la toman.
+- **Si la propiedad ya tiene descripción:** el paso la trae cargada (como hoy), editable,
+  y NO muestra ningún botón de generar. Solo una línea: "Tomada de la ficha. Para
+  regenerarla con el método de Diego, usá el botón de la ficha."
+- **Si no tiene:** muestra "Generar descripción", que abre el **mismo panel** de tres
+  pasos. Al guardar, queda en la ficha (para el otro portal y la landing) y se carga en
+  el borrador del aviso.
 
 ### Roles
 
@@ -137,9 +159,15 @@ Dos fuentes en paralelo, dentro del mismo pedido:
 - **Entradas**, en el orden del Checklist:
   - Datos cargados de la propiedad (tipo, ambientes, dormitorios, baños, m², piso,
     antigüedad, precio, expensas, cochera, amenities).
-  - Datos de la visita que hoy no se usan: `portal_data` (disposición, orientación,
-    estado, el checklist Sí/No de MercadoLibre: balcón, terraza, ascensor…) y
-    `landing_answers` (comprador ideal, diferencial, objeción, el barrio).
+  - Datos de la visita que hoy no se usan: de `deals.visit_data.sale` la orientación,
+    disposición, pisos del edificio, calidad, estado de conservación, si está reciclada,
+    las características constructivas, los puntos fuertes y las notas; de
+    `portal_data` el checklist Sí/No de MercadoLibre (balcón, terraza, ascensor…) y el
+    estado/subtipo de Argenprop. **Nunca** el motivo de venta ni el plazo del dueño
+    (`reason_for_sale`, `sale_timeframe`): son datos privados del cliente.
+  - Las respuestas a las cuatro preguntas (de donde hayan salido, ver arriba). La
+    objeción se usa SOLO para no afirmar lo contrario (ej.: "no tiene balcón"); nunca
+    se menciona en el texto.
   - El inventario de fotos (paso 1) y la zona (paso 2).
   - Comprador ideal, en este orden: lo que escriba el asesor en el panel → la
     respuesta de la visita → el sugerido por el análisis de fotos.
@@ -232,13 +260,21 @@ Dos fuentes en paralelo, dentro del mismo pedido:
     si falla la zona, se puede terminar igual y la vista previa lo avisa.
 11. En una propiedad publicada, antes de guardar aparece el aviso de que se actualizan
     los portales.
-12. En los asistentes de MercadoLibre y Argenprop, "Generar / Regenerar descripción"
-    usa los tres pasos y carga el resultado en el borrador.
-13. **Prueba real (Perón 4227, 13° "B", Almagro — sin portales, sin landing, sin
-    campaña y ya sin descripción):** en la vista previa del deploy, el proceso corre de
-    punta a punta; se audita la salida de cada paso (lo que vio en las fotos contra las
-    fotos, la zona contra el mapa, el texto contra todo) y **el dueño aprueba la calidad
-    del texto** antes de dar por estandarizado el sistema para las demás.
+12. En los asistentes de MercadoLibre y Argenprop: con descripción en la ficha, el paso
+    la trae cargada y editable y NO muestra botón de generar; sin descripción, "Generar
+    descripción" abre el mismo panel y, al guardar, el texto queda en la ficha y en el
+    borrador del aviso.
+13. **Preguntas una sola vez:** en una propiedad con las cuatro respuestas ya dadas (en
+    la visita o en la landing, ej. Díaz Colodrero), el panel NO muestra preguntas y
+    escribe directo usando esas respuestas. En una sin respuestas (Perón 4227), las
+    pregunta; lo contestado queda en `properties.landing_answers` y al regenerar ya no
+    se vuelve a preguntar.
+14. El texto nunca menciona el motivo de venta ni la objeción del interesado.
+15. **Prueba real (Perón 4227, 13° "B", Almagro — sin portales, sin landing, sin
+    campaña y ya sin descripción):** el dueño corre el proceso de punta a punta y avisa;
+    se audita la salida de cada paso (lo que vio en las fotos contra las fotos, la zona
+    contra el mapa, el texto contra todo) y **el dueño aprueba la calidad del texto**
+    antes de dar por estandarizado el sistema para las demás.
 
 ## Riesgos (pre-flight)
 
