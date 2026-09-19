@@ -11,7 +11,7 @@
  * de cada landing. Si alguien agrega una landing, le cambia el nombre con el que
  * registra, o le agrega/saca una sección, esto se pone rojo.
  */
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
@@ -91,6 +91,15 @@ describe('sectionLabel', () => {
 
   it('una sección que no conoce se muestra tal cual, no explota', () => {
     expect(sectionLabel('seccion-nueva')).toBe('seccion-nueva')
+    expect(sectionLabel('constructor')).toBe('constructor')
+  })
+
+  it('el "hero" se llama distinto en cada versión, porque ES distinto', () => {
+    // En la A el video está adentro del hero. En la B el video es una sección aparte:
+    // decirle "Hero (video + título)" mostraría 4 clics al lado de los 26 del Video.
+    expect(sectionLabel('hero', 'tasacion')).toBe('Hero (video + título)')
+    expect(sectionLabel('hero', 'tasacion-neta')).toBe('Título y texto')
+    expect(sectionLabel('hero', 'tasacion-neta')).not.toMatch(/video/i)
   })
 })
 
@@ -102,8 +111,12 @@ describe('el catálogo coincide con el CÓDIGO de cada landing', () => {
     clase: 'app/(funnels)/vsl-clase-propietarios/ClaseClient.tsx',
   }
 
+  /** El código sin comentarios: una sección nombrada en un comentario no es una sección. */
+  const sinComentarios = (txt: string) =>
+    txt.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+
   for (const [page, archivo] of Object.entries(LANDINGS)) {
-    const fuente = readFileSync(join(RAIZ, archivo), 'utf8')
+    const fuente = sinComentarios(readFileSync(join(RAIZ, archivo), 'utf8'))
 
     it(`${page}: la landing registra su calor con ese mismo nombre`, () => {
       const m = fuente.match(/<FunnelHeatmapTracker\s+page="([^"]+)"\s+funnel="([^"]+)"/)
@@ -118,12 +131,23 @@ describe('el catálogo coincide con el CÓDIGO de cada landing', () => {
     })
   }
 
-  it('ninguna landing del embudo registra calor con un nombre que el catálogo no conozca', () => {
-    // Si mañana aparece una landing C, esta prueba obliga a sumarla acá.
-    const archivos = Object.values(LANDINGS)
-    const nombres = archivos.flatMap((a) =>
-      [...readFileSync(join(RAIZ, a), 'utf8').matchAll(/<FunnelHeatmapTracker\s+page="([^"]+)"/g)].map((x) => x[1]),
+  it('TODA landing de app/(funnels) que registre calor está en el catálogo, y viceversa', () => {
+    // Se recorre la carpeta entera, no una lista fija: si mañana aparece una landing C
+    // (otro archivo, otro nombre de página), esto se pone rojo hasta que se la sume acá.
+    const archivos: string[] = []
+    const recorrer = (dir: string) => {
+      for (const nombre of readdirSync(dir)) {
+        const ruta = join(dir, nombre)
+        if (statSync(ruta).isDirectory()) recorrer(ruta)
+        else if (/\.tsx$/.test(nombre) && !/\.test\.tsx$/.test(nombre)) archivos.push(ruta)
+      }
+    }
+    recorrer(join(RAIZ, 'app', '(funnels)'))
+    const registran = archivos.flatMap((a) =>
+      [...sinComentarios(readFileSync(a, 'utf8')).matchAll(/<FunnelHeatmapTracker\s[^>]*?page=(?:"([^"]+)"|\{[^}]*\})/g)].map((x) => x[1] ?? '(dinámico)'),
     )
-    for (const n of nombres) expect(isHeatmapPageKey(n), n).toBe(true)
+    expect(registran.length).toBeGreaterThan(0)
+    for (const n of registran) expect(isHeatmapPageKey(n), `una landing registra calor como "${n}"`).toBe(true)
+    expect([...new Set(registran)].sort()).toEqual(Object.keys(HEATMAP_PAGES).sort())
   })
 })

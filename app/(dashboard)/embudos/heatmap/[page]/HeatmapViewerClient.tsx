@@ -130,6 +130,12 @@ export function HeatmapViewerClient({
     const gridSeg = seg.startsWith('stage:') ? 'reg' : seg
     const cellMap = new Map<string, { section: string; x_bin: number; y_bin: number; clicks: number; rage: number }>()
     for (const g of data.grid) {
+      // Los clics SIN sección (los del formulario, que se abre por fuera de toda
+      // `data-hm`) se guardan todos en el centro: una sola celda "fantasma" con más
+      // de 100 clics. El overlay no la dibuja —no tiene dónde— pero calculaba la
+      // intensidad contra ella, así que ninguna mancha real pasaba de naranja pálido
+      // (en la A la celda real más caliente tenía 7 clics contra 116 de la fantasma).
+      if (!g.section) continue
       if (!matchSeg({ segment: g.segment }, gridSeg) || !matchDev(g.device, dev)) continue
       const k = `${g.section}|${g.x_bin}|${g.y_bin}`
       const cur = cellMap.get(k)

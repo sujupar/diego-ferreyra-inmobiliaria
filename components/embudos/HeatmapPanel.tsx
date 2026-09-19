@@ -80,15 +80,25 @@ export function HeatmapPanel({
   const sections = allSections.filter((r) => r.page === page)
   const totals = allTotals.filter((r) => r.page === page)
 
+  // Botones con `aria-pressed`, no `role="tab"`: unas pestañas de verdad exigen
+  // tabpanel, aria-controls y flechas del teclado, y a medias confunden al lector
+  // de pantalla. Esto es un interruptor entre dos vistas, y eso dice.
   const selector = pages.length > 1 && (
-    <div role="tablist" aria-label="Versión de la landing" className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+    <div role="group" aria-label="Versión de la landing" className="inline-flex rounded-lg border bg-muted/40 p-0.5">
       {pages.map((p) => (
         <button
           key={p.page}
           type="button"
-          role="tab"
-          aria-selected={p.page === page}
-          onClick={() => setSelected(p.page)}
+          aria-pressed={p.page === page}
+          onClick={() => {
+            setSelected(p.page)
+            // El filtro de etapa NO sobrevive al cambio: las etapas salen de los datos
+            // de cada versión. Si la A estaba en "Etapa: Seguimiento" y la B no tiene a
+            // nadie ahí, el desplegable mostraría "Todos" (la opción ya no existe) con el
+            // filtro viejo todavía aplicado: "0 sesiones" sin explicación. El dispositivo
+            // sí se conserva: "celular" significa lo mismo en las dos.
+            setSeg('all')
+          }}
           className={`rounded-md px-3 py-1 text-xs font-medium transition ${
             p.page === page ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
           }`}
@@ -167,8 +177,8 @@ export function HeatmapPanel({
           const drop = prev - r.pct
           return (
             <div key={r.key} className="flex items-center gap-2 text-xs">
-              <span className="w-36 shrink-0 truncate text-muted-foreground" title={sectionLabel(r.key)}>
-                {sectionLabel(r.key)}
+              <span className="w-36 shrink-0 truncate text-muted-foreground" title={sectionLabel(r.key, page)}>
+                {sectionLabel(r.key, page)}
               </span>
               <div className="relative h-4 flex-1 overflow-hidden rounded bg-muted">
                 <div className="h-full bg-primary/80" style={{ width: `${r.pct}%` }} />

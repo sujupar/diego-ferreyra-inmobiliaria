@@ -66,11 +66,16 @@ export const HEATMAP_PAGES = {
 export type HeatmapPageKey = keyof typeof HEATMAP_PAGES
 
 /**
- * ¿Es una página del catálogo? Se usa `Object.hasOwn` y no `in`: el valor viene
- * de la URL, y con `in` claves como `constructor` o `toString` darían verdadero.
+ * ¿`obj` tiene `key` como propiedad PROPIA? No se usa `in`: los valores vienen de la
+ * URL o de la base, y con `in` claves como `constructor` o `toString` darían verdadero.
+ * Tampoco `Object.hasOwn`: este módulo corre en el navegador (panel de /embudos) y
+ * Safari anterior a 15.4 no lo tiene — un TypeError ahí tumba el detalle del embudo.
  */
+const tiene = (obj: object, key: string): boolean => Object.prototype.hasOwnProperty.call(obj, key)
+
+/** ¿Es una página del catálogo? */
 export function isHeatmapPageKey(page: string | null | undefined): page is HeatmapPageKey {
-  return typeof page === 'string' && Object.hasOwn(HEATMAP_PAGES, page)
+  return typeof page === 'string' && tiene(HEATMAP_PAGES, page)
 }
 
 /** La definición de una página, o null si no está en el catálogo. */
@@ -114,7 +119,19 @@ const SECTION_LABELS: Record<string, string> = {
   footer: 'Pie',
 }
 
+/**
+ * Nombres que cambian según la página, porque la MISMA clave nombra cosas distintas.
+ * En la A, `hero` tiene el video adentro. En la B el video es una sección aparte
+ * (`video`): llamarle "Hero (video + título)" pondría una fila con 4 clics al lado
+ * de la fila "Video" con 26, y el dueño leería que el video no le interesa a nadie.
+ */
+const SECTION_LABELS_BY_PAGE: Record<string, Record<string, string>> = {
+  'tasacion-neta': { hero: 'Título y texto' },
+}
+
 /** Nombre en castellano de una sección; si no la conoce, devuelve la clave tal cual. */
-export function sectionLabel(section: string): string {
-  return Object.hasOwn(SECTION_LABELS, section) ? SECTION_LABELS[section] : section
+export function sectionLabel(section: string, page?: string): string {
+  const propias = page && tiene(SECTION_LABELS_BY_PAGE, page) ? SECTION_LABELS_BY_PAGE[page] : null
+  if (propias && tiene(propias, section)) return propias[section]
+  return tiene(SECTION_LABELS, section) ? SECTION_LABELS[section] : section
 }

@@ -41,9 +41,12 @@ const fila = (nombre: string) => screen.getByText(nombre).closest('div') as HTML
 describe('HeatmapPanel — embudo con dos versiones (tasación)', () => {
   it('muestra el selector con las dos versiones y arranca en la A', () => {
     render(<HeatmapPanel funnel="tasacion" sections={SECCIONES} totals={TOTALES} />)
-    expect(screen.getByRole('tab', { name: /Versión A/ })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('tab', { name: /Versión B/ })).toHaveAttribute('aria-selected', 'false')
+    expect(screen.getByRole('button', { name: /Versión A/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /Versión B/ })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByText(/200 sesiones/)).toBeInTheDocument()
+    // `hero` existe en las DOS versiones: es la fila que delata una mezcla. A: 190 de 200 = 95%.
+    expect(within(fila('Hero (video + título)')).getByText('95%')).toBeInTheDocument()
+    expect(within(fila('Hero (video + título)')).getByText(/30 clic/)).toBeInTheDocument()
     // Secciones de la A, no de la B.
     expect(screen.getByText('Beneficios')).toBeInTheDocument()
     expect(screen.queryByText('Botón bajo el video')).not.toBeInTheDocument()
@@ -51,13 +54,18 @@ describe('HeatmapPanel — embudo con dos versiones (tasación)', () => {
 
   it('al elegir la B muestra SUS secciones y SUS números, sin mezclar con la A', async () => {
     render(<HeatmapPanel funnel="tasacion" sections={SECCIONES} totals={TOTALES} />)
-    await userEvent.setup().click(screen.getByRole('tab', { name: /Versión B/ }))
+    await userEvent.setup().click(screen.getByRole('button', { name: /Versión B/ }))
 
-    expect(screen.getByRole('tab', { name: /Versión B/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('button', { name: /Versión B/ })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText(/50 sesiones/)).toBeInTheDocument()
     expect(screen.queryByText(/200 sesiones/)).not.toBeInTheDocument()
     expect(screen.getByText('Botón bajo el video')).toBeInTheDocument()
     expect(screen.queryByText('Beneficios')).not.toBeInTheDocument()
+    // La sección compartida: en la B son 40 de 50 = 80% y 4 clics. Si las filas de la A se
+    // colaran serían 230 "llegaron" y 34 clics. Y en la B se llama distinto: no tiene el video adentro.
+    expect(within(fila('Título y texto')).getByText('80%')).toBeInTheDocument()
+    expect(within(fila('Título y texto')).getByText(/^4 clic/)).toBeInTheDocument()
+    expect(screen.queryByText('Hero (video + título)')).not.toBeInTheDocument()
     // 35 de 50 sesiones llegaron al video = 70%, con sus 26 clics (no los 30 del hero de la A).
     expect(within(fila('Video')).getByText('70%')).toBeInTheDocument()
     expect(within(fila('Video')).getByText(/26 clic/)).toBeInTheDocument()
@@ -67,16 +75,36 @@ describe('HeatmapPanel — embudo con dos versiones (tasación)', () => {
     render(<HeatmapPanel funnel="tasacion" sections={SECCIONES} totals={TOTALES} />)
     const enlace = () => screen.getByRole('link', { name: /Ver mapa de calor/ })
     expect(enlace()).toHaveAttribute('href', '/embudos/heatmap/tasacion')
-    await userEvent.setup().click(screen.getByRole('tab', { name: /Versión B/ }))
+    await userEvent.setup().click(screen.getByRole('button', { name: /Versión B/ }))
     expect(enlace()).toHaveAttribute('href', '/embudos/heatmap/tasacion-neta')
   })
 
   it('una versión sin datos lo dice, pero deja el selector y el enlace al visor a mano', async () => {
     render(<HeatmapPanel funnel="tasacion" sections={SECCIONES.filter((s) => s.page === 'tasacion')} totals={[total('tasacion', 200)]} />)
-    await userEvent.setup().click(screen.getByRole('tab', { name: /Versión B/ }))
+    await userEvent.setup().click(screen.getByRole('button', { name: /Versión B/ }))
     expect(screen.getByText(/Sin datos de mapa de calor/)).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /Versión A/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Versión A/ })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Ver mapa de calor/ })).toHaveAttribute('href', '/embudos/heatmap/tasacion-neta')
+  })
+})
+
+describe('HeatmapPanel — el filtro de etapa no sobrevive al cambio de versión', () => {
+  it('pasar de la A (filtrada por una etapa que la B no tiene) a la B muestra TODAS las sesiones de la B', async () => {
+    // La A tiene registrados en "Seguimiento"; la B todavía no tiene ninguno en esa etapa.
+    const totales = [
+      total('tasacion', 200),
+      { ...total('tasacion', 10), segment: 'registrado', stage: 'followup' },
+      total('tasacion-neta', 50),
+    ]
+    render(<HeatmapPanel funnel="tasacion" sections={SECCIONES} totals={totales} />)
+    const u = userEvent.setup()
+    await u.selectOptions(screen.getByLabelText('Segmento'), 'stage:followup')
+    expect(screen.getByText(/10 sesiones/)).toBeInTheDocument()
+
+    await u.click(screen.getByRole('button', { name: /Versión B/ }))
+    // Sin el reseteo: "0 sesiones" con el desplegable mostrando "Todos" (la opción ya no existe).
+    expect(screen.getByText(/50 sesiones/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Segmento')).toHaveValue('all')
   })
 })
 
@@ -89,7 +117,7 @@ describe('HeatmapPanel — embudo con una sola landing (clase)', () => {
         totals={[total('clase', 100)]}
       />,
     )
-    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: /Versión de la landing/ })).not.toBeInTheDocument()
     expect(screen.getByText(/100 sesiones/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Ver mapa de calor/ })).toHaveAttribute('href', '/embudos/heatmap/clase')
   })
