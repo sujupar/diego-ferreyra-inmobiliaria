@@ -16,10 +16,11 @@ import { respuestaOpenAI } from '@/lib/ai/openai-responses'
 import { sanearRespuestasLanding } from '@/lib/supabase/visit-data-sanear'
 import { geocodePropertyBestEffort } from '@/lib/properties/geocode-on-write'
 import { faltanParaGenerar } from './requisitos'
-import { firmaDireccion, firmaFotos } from './firmas'
+import { firmaZona, firmaFotos } from './firmas'
 import { juntarRespuestas, type PreguntaPendiente, type RespuestaConocida } from './respuestas'
 import { buscarLugaresCercanos } from './zona-mapa'
 import { lugaresDesdeBase } from '@/lib/mapa/consultar'
+import { dentroDelAmba } from '@/lib/mapa/celdas'
 import { ESQUEMA_INVENTARIO, INSTRUCCIONES_ZONA, PROMPT_FOTOS, entradaFotos, promptZonaWeb, validarInventario } from './prompts-investigacion'
 import { limpiarTextoWeb } from './limpiar-web'
 import { ESQUEMA_TEXTO, promptEscritura } from './metodo-diego'
@@ -202,7 +203,7 @@ export async function estadoDescripcion(id: string): Promise<EstadoDescripcion> 
     pendientes,
     conocidas,
     fotosListas: !!ia.fotos && ia.fotos.version === VERSION_ANALISIS_FOTOS && ia.fotos.firma === firmaFotos(fotosUsadas(fila)),
-    zonaLista: !!ia.zona && ia.zona.completa === true && ia.zona.firma === firmaDireccion(fila),
+    zonaLista: zonaGuardadaVale(fila, ia),
     compradorSugerido: ia.fotos?.inventario?.compradorSugerido?.perfil || null,
     notas: ia.notas ?? null,
     portalesPublicados: extra.portalesPublicados,
@@ -243,8 +244,19 @@ export async function ejecutarEtapaFotos(id: string, o: { forzar?: boolean } = {
 
 // ───────────────────────────── Paso 2: zona ─────────────────────────────
 
+function pinDe(fila: FilaPropiedad): { lat: number; lng: number } | null {
+  return fila.latitude != null && fila.longitude != null ? { lat: fila.latitude, lng: fila.longitude } : null
+}
+
+/** La zona guardada sirve si se investigó completa con ESTA dirección y ESTE pin. */
+function zonaGuardadaVale(fila: FilaPropiedad, ia: DescripcionIA): boolean {
+  const pin = pinDe(fila)
+  return !!pin && !!ia.zona && ia.zona.completa === true && ia.zona.firma === firmaZona(fila, pin)
+}
+
 async function coordenadas(fila: FilaPropiedad): Promise<{ lat: number; lng: number } | null> {
-  if (fila.latitude != null && fila.longitude != null) return { lat: fila.latitude, lng: fila.longitude }
+  const pin = pinDe(fila)
+  if (pin) return pin
   // Mismo geocodificador que el alta: solo escribe si la propiedad NO tenía pin.
   // Si no termina a tiempo se sigue sin coordenadas (texto sin distancias); si
   // termina después, igual deja el pin guardado para la próxima vez.
@@ -258,9 +270,11 @@ async function coordenadas(fila: FilaPropiedad): Promise<{ lat: number; lng: num
 }
 
 /**
- * El mapa de la zona. Primero el MAPA PROPIO (tabla `mapa_lugares`, sin servicios
+ * El mapa de la zona: el MAPA PROPIO (tabla `mapa_lugares`, sin servicios
  * externos: los públicos de Overpass fallaron 1 de 5 en producción, con 429 y 504).
- * Fuera del AMBA o con la zona sin cargar, se consulta en vivo. `null` = no hubo forma.
+ * Solo si una celda de alrededor nunca se cargó se consulta en vivo (hoy están
+ * las 418 cargadas). Fuera del AMBA no se llega acá: la etapa frena antes.
+ * `null` = no hubo forma.
  */
 async function mapaDeLaZona(punto: { lat: number; lng: number }): Promise<ZonaInvestigada['mapa']> {
   const base = await lugaresDesdeBase(admin(), punto.lat, punto.lng)
@@ -271,9 +285,8 @@ async function mapaDeLaZona(punto: { lat: number; lng: number }): Promise<ZonaIn
 export async function ejecutarEtapaZona(id: string, o: { forzar?: boolean } = {}): Promise<{ reusada: boolean; zona: ZonaInvestigada; avisos: string[] }> {
   const fila = await leerPropiedad(id)
   exigirRequisitos(fila)
-  const firma = firmaDireccion(fila)
   const ia = iaDe(fila)
-  if (!o.forzar && ia.zona?.firma === firma && ia.zona.completa) {
+  if (!o.forzar && ia.zona && zonaGuardadaVale(fila, ia)) {
     return { reusada: true, zona: ia.zona.datos, avisos: [] }
   }
 
@@ -281,6 +294,14 @@ export async function ejecutarEtapaZona(id: string, o: { forzar?: boolean } = {}
   if (!punto) {
     throw new ErrorDescripcion('No se pudo ubicar la dirección en el mapa. Revisá la ubicación en la ficha ("Cambiar ubicación") y volvé a generar.', 409)
   }
+  // Un pin fuera de Capital y GBA es, en la práctica, un pin mal puesto
+  // (Almafuerte 2500, de San Martín, tenía el pin en Junín): el texto hablaría
+  // de los lugares de otra ciudad sin que nadie lo note. Se frena y se dice cómo
+  // arreglarlo, en vez de escribir sobre la zona equivocada.
+  if (!dentroDelAmba(punto.lat, punto.lng)) {
+    throw new ErrorDescripcion('El pin de la ficha está fuera de Capital Federal y el Gran Buenos Aires, así que el mapa de la zona no es el de esta propiedad. Corregí la ubicación en la ficha ("Cambiar ubicación") y volvé a generar.', 409)
+  }
+  const firma = firmaZona(fila, punto)
 
   const [mapa, web] = await Promise.allSettled([
     mapaDeLaZona(punto),

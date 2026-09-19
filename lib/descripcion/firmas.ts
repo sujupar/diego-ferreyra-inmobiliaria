@@ -3,9 +3,11 @@
  *
  * El análisis de fotos vale mientras las fotos sean las mismas Y en el mismo
  * orden (las primeras son la portada y el modelo numera por posición). La
- * investigación de zona vale mientras la dirección sea la misma; se normaliza
- * para que un espacio de más o una tilde en otra forma Unicode (macOS entrega
- * NFD, ver CLAUDE.md) no obliguen a pagar la búsqueda de nuevo.
+ * investigación de zona vale mientras la dirección Y el pin sean los mismos:
+ * corregir el pin con "Cambiar ubicación" cambia el mapa aunque la dirección no
+ * cambie. La dirección se normaliza para que un espacio de más o una tilde en
+ * otra forma Unicode (macOS entrega NFD, ver CLAUDE.md) no obliguen a pagar la
+ * búsqueda de nuevo.
  */
 
 /** Hash FNV-1a de 32 bits: estable, sin dependencias. No es criptográfico ni hace falta. */
@@ -33,6 +35,10 @@ function normalizar(v: string | null | undefined): string {
     .trim()
 }
 
-export function firmaDireccion(p: { address?: string | null; neighborhood?: string | null; city?: string | null }): string {
-  return hash([normalizar(p.address), normalizar(p.neighborhood), normalizar(p.city)].join('|'))
+export function firmaZona(
+  p: { address?: string | null; neighborhood?: string | null; city?: string | null },
+  pin: { lat: number; lng: number },
+): string {
+  // 5 decimales ≈ 1 m: menos que eso es ruido, no un pin corregido.
+  return hash([normalizar(p.address), normalizar(p.neighborhood), normalizar(p.city), pin.lat.toFixed(5), pin.lng.toFixed(5)].join('|'))
 }
