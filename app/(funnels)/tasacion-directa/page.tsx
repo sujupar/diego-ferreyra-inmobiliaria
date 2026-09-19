@@ -1,11 +1,10 @@
 import type { Metadata } from 'next'
-import { cookies } from 'next/headers'
 import { LandingVisitTracker } from '@/components/landing/LandingVisitTracker'
 import { getActiveTestimonials } from '@/lib/funnel/testimonials'
 import { funnelMediaUrl } from '@/lib/funnel/media'
 import { TASACION_CONTENT, TASACION_B_CONTENT, BRAND } from '@/lib/funnel/content'
 import { getExperiment } from '@/lib/funnel/experiment'
-import { decideVariant, rollFromCookie, AB_ROLL_COOKIE } from '@/lib/funnel/ab-test'
+import { variantePorClic } from '@/lib/funnel/ab-test'
 import { TasacionClient } from './TasacionClient'
 import { TasacionNetaClient } from './TasacionNetaClient'
 
@@ -21,33 +20,36 @@ export const metadata: Metadata = {
 }
 
 /**
+ * NO SACAR. El sorteo del A/B ocurre en el servidor, en cada pedido. Si Next o la
+ * CDN de Netlify llegaran a guardar esta página, TODO el mundo vería la variante
+ * que salió en el primer pedido y el test quedaría 100/0 sin que nada falle ni
+ * avise. Antes lo garantizaba de rebote la lectura de `cookies()`; desde que el
+ * reparto es por clic esa lectura no existe más, así que se declara a mano.
+ * Se verifica con `curl -I`: `cache-control: private, no-cache, no-store`.
+ */
+export const dynamic = 'force-dynamic'
+
+/**
  * `/tasacion-directa` sirve una de dos landings según el experimento A/B.
  *
- * La variante se resuelve ACÁ y no en el middleware a propósito: el middleware
- * corre en cada request y no puede pegarle a Postgres sin sumarle latencia a
- * tráfico pago. Él solo deja un número al azar en una cookie; la decisión —que
- * necesita la configuración vigente— se toma en el servidor de esta página.
+ * El reparto es POR CLIC (decisión del dueño, 2026-09-19): cada apertura se sortea
+ * de nuevo con el porcentaje del panel, sin recordar qué vio esa persona antes.
+ * El porqué y lo que se cede están en `variantePorClic` (`lib/funnel/ab-test.ts`).
  *
- * `?lp=B` fuerza una variante para poder revisarla antes de encender el test.
- * No ensucia la medición porque la visita se registra igual con la variante que
- * se sirvió: si mirás la B a propósito, cuenta como visita de la B.
+ * `?lp=B` fuerza una variante para poder revisarla. La visita se registra igual con
+ * la variante que se sirvió: si mirás la B a propósito, cuenta como visita de la B.
  */
 export default async function TasacionPage({
   searchParams,
 }: {
   searchParams: Promise<{ lp?: string }>
 }) {
-  const [testimonials, cookieStore, sp] = await Promise.all([
-    getActiveTestimonials(),
-    cookies(),
-    searchParams,
-  ])
+  const [testimonials, sp] = await Promise.all([getActiveTestimonials(), searchParams])
   const pixelId = process.env.META_PIXEL_ID ?? ''
 
   const forced = sp?.lp === 'A' || sp?.lp === 'B' ? sp.lp : null
   const experiment = forced ? null : await getExperiment('tasacion')
-  const variant =
-    forced ?? decideVariant(experiment, rollFromCookie(cookieStore.get(AB_ROLL_COOKIE)?.value))
+  const variant = forced ?? variantePorClic(experiment)
 
   const logoUrl = funnelMediaUrl(BRAND.logoPath)
 

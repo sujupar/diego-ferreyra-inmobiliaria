@@ -1,7 +1,7 @@
 /**
  * Reparto A/B de las landings del embudo. Módulo PURO: no lee cookies, no toca
- * la red, no mira el reloj. Todo lo que necesita entra por parámetro para que el
- * middleware sea una cáscara fina y esta decisión se pueda testear entera.
+ * la red, no mira el reloj. Todo lo que necesita entra por parámetro para que la
+ * página sea una cáscara fina y esta decisión se pueda testear entera.
  *
  * REGLA DE ORO: ante cualquier duda se sirve 'A' (la landing que ya está viva y
  * recibiendo tráfico pago). Un experimento roto NUNCA puede dejar sin página al
@@ -23,18 +23,33 @@ export interface ExperimentConfig {
 export const FALLBACK: ExperimentConfig = { status: 'off', splitB: 0, winner: null }
 
 /**
- * Cookie con el número al azar (0–999) del visitante. Guarda el NÚMERO, no la
- * variante: ver el comentario de `withAbRoll` en middleware.ts.
+ * Reparto POR CLIC: cada apertura de la landing se sortea de nuevo. Es lo que usa
+ * la página (`app/(funnels)/tasacion-directa/page.tsx`).
+ *
+ * DECISIÓN DEL DUEÑO (2026-09-19), reafirmada después de escuchar el reparo: quiere
+ * que funcione como el split test de GoHighLevel, donde cada clic puede abrir una
+ * versión distinta. Hasta ese día el reparto era POR VISITANTE (un número 0–999 en
+ * la cookie `df_lp_roll`, 90 días): funcionaba 50/50, pero el dueño —que abría el
+ * enlace siempre desde el mismo navegador— veía siempre la misma versión y concluyó
+ * que todo el tráfico iba a la B.
+ *
+ * LO QUE SE CEDE, con números de ese día: el 17,6% de las personas entra más de una
+ * vez y el 20% de las visitas son re-visitas. Esa gente puede ver una versión
+ * distinta cada vez, y un registro se le anota a la versión donde llenó el
+ * formulario aunque la que lo convenció haya sido la otra. La medición sigue siendo
+ * honesta sobre lo que mide —visitas y registros POR PÁGINA SERVIDA— porque la
+ * variante viaja fija en cada landing (`landingVariant` en el submit y en
+ * `LandingVisitTracker`), no sale de ninguna cookie.
+ *
+ * Para volver al reparto por visitante: ver el commit que introdujo esta función.
+ *
+ * @param random  el dado, en [0,1). Inyectable para que el test sea determinístico.
  */
-export const AB_ROLL_COOKIE = 'df_lp_roll'
-/** 90 días: la misma ventana de atribución que usa el embudo. */
-export const AB_ROLL_MAX_AGE = 90 * 24 * 60 * 60
-
-/** Pasa el valor crudo de la cookie a un roll en [0,1). Fuera de rango → 1 (=A). */
-export function rollFromCookie(raw: string | null | undefined): number {
-  if (!raw || !/^\d{1,3}$/.test(raw)) return 1
-  const n = Number(raw)
-  return n <= 999 ? n / 1000 : 1
+export function variantePorClic(
+  config: ExperimentConfig | null | undefined,
+  random: () => number = Math.random,
+): Variant {
+  return decideVariant(config, random())
 }
 
 /**
@@ -43,7 +58,9 @@ export function rollFromCookie(raw: string | null | undefined): number {
  * @param config  configuración del experimento
  * @param roll    número en [0,1). Se compara contra el split. Inyectado para
  *                que el test sea determinístico.
- * @param sticky  variante ya asignada a este visitante, si la trae en la cookie
+ * @param sticky  variante ya asignada a este visitante. HOY NADIE LA PASA: el
+ *                reparto es por clic (ver `variantePorClic`). Se conserva porque
+ *                es la pieza que haría falta para volver al reparto por visitante.
  */
 export function decideVariant(
   config: ExperimentConfig | null | undefined,

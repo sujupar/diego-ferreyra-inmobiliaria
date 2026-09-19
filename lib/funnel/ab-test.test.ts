@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   decideVariant,
-  rollFromCookie,
+  variantePorClic,
   normalizeConfig,
   shouldPersist,
   validateConfigChange,
@@ -137,23 +137,57 @@ describe('validateConfigChange', () => {
   })
 })
 
-describe('rollFromCookie', () => {
-  it('convierte el número de la cookie a un roll en [0,1)', () => {
-    expect(rollFromCookie('0')).toBe(0)
-    expect(rollFromCookie('500')).toBe(0.5)
-    expect(rollFromCookie('999')).toBe(0.999)
+/**
+ * Reparto POR CLIC (decisión del dueño, 2026-09-19): cada apertura de la landing
+ * se sortea de nuevo, sin recordar qué vio esa persona antes — igual que el split
+ * test de GoHighLevel, que es con lo que el dueño compara.
+ */
+describe('variantePorClic', () => {
+  /** Dado que devuelve, en orden, los valores que se le pasan. */
+  const dado = (...valores: number[]) => {
+    let i = 0
+    return () => valores[i++ % valores.length]
+  }
+
+  it('cada clic se sortea de nuevo: la misma persona puede ver A y después B', () => {
+    const tirar = dado(0.9, 0.1, 0.49, 0.5)
+    const vistas = [1, 2, 3, 4].map(() => variantePorClic(running(50), tirar))
+    expect(vistas).toEqual(['A', 'B', 'B', 'A'])
   })
 
-  it('ante una cookie ausente o con basura devuelve 1, que cae en A', () => {
-    for (const malo of [null, undefined, '', 'abc', '1000', '-5', '12.5', '<script>']) {
-      expect(rollFromCookie(malo)).toBe(1)
+  it('tira el dado UNA vez por clic', () => {
+    let tiradas = 0
+    variantePorClic(running(50), () => { tiradas++; return 0.3 })
+    expect(tiradas).toBe(1)
+  })
+
+  it('sobre muchos clics reparte el porcentaje pedido', () => {
+    // Generador determinístico (LCG): la prueba no puede fallar "por mala suerte".
+    let s = 12345
+    const azar = () => (s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296
+    for (const split of [50, 30, 80]) {
+      let b = 0
+      for (let i = 0; i < 20000; i++) if (variantePorClic(running(split), azar) === 'B') b++
+      expect(b / 20000).toBeGreaterThan(split / 100 - 0.02)
+      expect(b / 20000).toBeLessThan(split / 100 + 0.02)
     }
-    expect(decideVariant(running(99), rollFromCookie('nada'))).toBe('A')
   })
 
-  it('el reparto es proporcional sobre los 1000 valores posibles', () => {
-    let b = 0
-    for (let i = 0; i < 1000; i++) if (decideVariant(running(25), rollFromCookie(String(i))) === 'B') b++
-    expect(b).toBe(250)
+  it('pausado o apagado mandan sobre el dado: nadie ve B por azar', () => {
+    const siempreB = () => 0
+    expect(variantePorClic({ status: 'paused', splitB: 100, winner: null }, siempreB)).toBe('A')
+    expect(variantePorClic({ status: 'off', splitB: 100, winner: null }, siempreB)).toBe('A')
+    expect(variantePorClic({ status: 'off', splitB: 0, winner: 'B' }, () => 0.99)).toBe('B')
+  })
+
+  it('un dado roto o sin configuración caen en A (regla de oro)', () => {
+    expect(variantePorClic(running(50), () => NaN)).toBe('A')
+    expect(variantePorClic(running(99), () => 1)).toBe('A')
+    expect(variantePorClic(null, () => 0)).toBe('A')
+  })
+
+  it('usa el azar real si no se le pasa un dado', () => {
+    const vistas = new Set(Array.from({ length: 200 }, () => variantePorClic(running(50))))
+    expect(vistas).toEqual(new Set(['A', 'B']))
   })
 })

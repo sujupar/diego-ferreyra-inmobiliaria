@@ -167,6 +167,9 @@ export function AbTestPanel({ funnel, from, to }: { funnel: string; from: string
             {corriendo
               ? 'El cambio aplica a las visitas nuevas en menos de un minuto.'
               : 'Se guarda ahora y empieza a repartir cuando actives el test.'}
+            {' '}
+            El reparto es por clic: cada vez que alguien abre la landing se sortea de nuevo,
+            así que la misma persona puede ver las dos versiones.
           </p>
           {dirty && (
             <button onClick={() => void save({ splitB: split })} disabled={busy}
