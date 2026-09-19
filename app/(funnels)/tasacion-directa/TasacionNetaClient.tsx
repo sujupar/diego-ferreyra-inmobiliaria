@@ -20,6 +20,47 @@ const FunnelLeadModal = dynamic(
 )
 
 /**
+ * Botón verde de la landing B.
+ *
+ * VA A NIVEL DE MÓDULO, NO ADENTRO DE `TasacionNetaClient` — y no es prolijidad.
+ * Un componente declarado dentro del render es un TIPO NUEVO en cada render. Acá
+ * el primer gesto sobre el botón llama a `onPrime`, que cambia un estado de la
+ * landing; la landing se vuelve a dibujar, React ve "otro" componente y DESTRUYE
+ * el botón para montar uno nuevo… en pleno toque. El clic cae sobre un nodo que
+ * ya no está en la página y se pierde. En compu no se nota (el hover precarga
+ * antes del clic); en celular el primer toque no abría el formulario.
+ * Estuvo así en producción del 15 al 19/9/2026: 59 visitas a la B (86% desde
+ * celular) y 0 registros reales. La prueba que lo clava está al lado
+ * (`TasacionNetaClient.test.tsx`); la variante A siempre lo tuvo afuera.
+ */
+function Cta({
+  onClick,
+  onPrime,
+  label,
+  note,
+}: {
+  onClick: () => void
+  onPrime: () => void
+  label: string
+  note: string
+}) {
+  return (
+    <div className="mt-7 flex flex-col items-center gap-3">
+      <button
+        type="button"
+        onClick={onClick}
+        onMouseEnter={onPrime}
+        onFocus={onPrime}
+        className="w-full max-w-[520px] rounded-xl bg-[#00BF63] px-6 py-5 font-[family-name:var(--font-funnel-head)] text-base font-extrabold tracking-wide text-white shadow-[0_12px_30px_-10px_rgba(0,191,99,.65)] transition hover:-translate-y-px hover:bg-[#00A857] md:text-lg"
+      >
+        {label}
+      </button>
+      <p className="text-sm text-[#7C8794]">{note}</p>
+    </div>
+  )
+}
+
+/**
  * Variante B de la landing de tasación — "La Tasación Neta".
  *
  * Emula una VSL de dos pasos: el video es el centro de la página y todo lo demás
@@ -93,21 +134,6 @@ export function TasacionNetaClient({
     if (data.redirect && typeof window !== 'undefined') window.location.href = data.redirect
   }
 
-  const Cta = ({ note }: { note: string }) => (
-    <div className="mt-7 flex flex-col items-center gap-3">
-      <button
-        type="button"
-        onClick={openModal}
-        onMouseEnter={prime}
-        onFocus={prime}
-        className="w-full max-w-[520px] rounded-xl bg-[#00BF63] px-6 py-5 font-[family-name:var(--font-funnel-head)] text-base font-extrabold tracking-wide text-white shadow-[0_12px_30px_-10px_rgba(0,191,99,.65)] transition hover:-translate-y-px hover:bg-[#00A857] md:text-lg"
-      >
-        {C.cta.label}
-      </button>
-      <p className="text-sm text-[#7C8794]">{note}</p>
-    </div>
-  )
-
   const credit = C.hero.credit.split('{antes}')
   const creditTail = credit[1]?.split('{despues}') ?? ['', '']
 
@@ -169,7 +195,9 @@ export function TasacionNetaClient({
             </p>
           </div>
 
-          <div data-hm="cta-1"><Cta note={C.cta.note} /></div>
+          <div data-hm="cta-1">
+            <Cta onClick={openModal} onPrime={prime} label={C.cta.label} note={C.cta.note} />
+          </div>
         </section>
 
         {testimonials.length > 0 && (
@@ -189,7 +217,7 @@ export function TasacionNetaClient({
           <h2 className="mx-auto max-w-[760px] font-[family-name:var(--font-funnel-head)] text-[1.32rem] font-extrabold leading-tight tracking-[-.015em] text-[#152238] md:text-[2rem]">
             {C.finalHeading}
           </h2>
-          <Cta note={C.cta.noteShort} />
+          <Cta onClick={openModal} onPrime={prime} label={C.cta.label} note={C.cta.noteShort} />
         </section>
       </div>
 
