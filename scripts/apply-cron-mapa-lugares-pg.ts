@@ -13,7 +13,7 @@
 import { readFileSync } from 'node:fs'
 import { Client } from 'pg'
 
-const MIGRACION = 'supabase/migrations/20260919000005_cron_mapa_lugares.sql'
+const MIGRACION = 'supabase/migrations/20260919000012_cron_mapa_lugares.sql'
 
 async function main() {
   if (!process.env.SUPABASE_DB_PASSWORD) throw new Error('falta SUPABASE_DB_PASSWORD (está en .env.local)')

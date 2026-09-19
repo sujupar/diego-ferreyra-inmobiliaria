@@ -1,5 +1,5 @@
 /**
- * Aplica `20260919000003_mapa_lugares.sql` (PostGIS + tablas + función, aditivo)
+ * Aplica `20260919000010_mapa_lugares.sql` (PostGIS + tablas + función, aditivo)
  * y verifica cada pieza, incluida una llamada real a la función.
  *
  * Correr: node --env-file=.env.local --import tsx scripts/apply-mapa-lugares-pg.ts
@@ -14,7 +14,7 @@ async function main() {
     database: 'postgres', ssl: { rejectUnauthorized: false } })
   await c.connect()
   const { rows: antes } = await c.query('SELECT count(*)::int AS n FROM properties')
-  await c.query(readFileSync('supabase/migrations/20260919000003_mapa_lugares.sql', 'utf8'))
+  await c.query(readFileSync('supabase/migrations/20260919000010_mapa_lugares.sql', 'utf8'))
   const { rows: ext } = await c.query("SELECT extversion FROM pg_extension WHERE extname = 'postgis'")
   const { rows: tablas } = await c.query("SELECT relname, relrowsecurity FROM pg_class WHERE relname IN ('mapa_lugares','mapa_celdas') AND relkind = 'r'")
   const { rows: idx } = await c.query("SELECT indexname FROM pg_indexes WHERE tablename = 'mapa_lugares' AND indexname = 'idx_mapa_lugares_ubicacion'")

@@ -1,5 +1,5 @@
 /**
- * Aplica `20260919000004_mapa_recorridos.sql` (ubicación como cualquier
+ * Aplica `20260919000011_mapa_recorridos.sql` (ubicación como cualquier
  * geometría + tipo 'recorrido' + reserva de celdas) y verifica: un solo CHECK de tipo y con
  * 'recorrido', la columna acepta líneas, la función mide distancia a una línea,
  * y no se perdió ninguna fila.
@@ -17,7 +17,7 @@ async function main() {
   await c.connect()
   const cuenta = async () => (await c.query('SELECT count(*)::int AS n FROM mapa_lugares')).rows[0].n as number
   const antes = await cuenta()
-  await c.query(readFileSync('supabase/migrations/20260919000004_mapa_recorridos.sql', 'utf8'))
+  await c.query(readFileSync('supabase/migrations/20260919000011_mapa_recorridos.sql', 'utf8'))
   const despues = await cuenta()
 
   const { rows: checks } = await c.query(`SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint
