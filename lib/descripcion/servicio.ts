@@ -30,6 +30,12 @@ import type { DescripcionIA, InventarioFotos, TextoGenerado, ZonaInvestigada } f
 /** Techo de cada etapa: por debajo del corte de Netlify, con margen para leer y escribir la base. */
 export const TECHO_ETAPA_MS = 22_000
 const TECHO_MAPA_MS = 10_000
+/**
+ * Ubicar la dirección va ANTES del mapa y la web (que corren en paralelo): con
+ * hasta 3 intentos al geocodificador, sin techo total podía comerse el
+ * presupuesto de la etapa. 7 s + 16 s de la web < corte de Netlify.
+ */
+const TECHO_GEOCODIFICAR_MS = 7_000
 const TECHO_WEB_MS = 16_000
 /**
  * Las fotos que se miran. Las primeras son la portada y el resto, el recorrido;
@@ -231,7 +237,12 @@ export async function ejecutarEtapaFotos(id: string, o: { forzar?: boolean } = {
 async function coordenadas(fila: FilaPropiedad): Promise<{ lat: number; lng: number } | null> {
   if (fila.latitude != null && fila.longitude != null) return { lat: fila.latitude, lng: fila.longitude }
   // Mismo geocodificador que el alta: solo escribe si la propiedad NO tenía pin.
-  await geocodePropertyBestEffort(fila.id)
+  // Si no termina a tiempo se sigue sin coordenadas (texto sin distancias); si
+  // termina después, igual deja el pin guardado para la próxima vez.
+  await Promise.race([
+    geocodePropertyBestEffort(fila.id),
+    new Promise<void>(resolver => setTimeout(resolver, TECHO_GEOCODIFICAR_MS)),
+  ])
   const { data } = await admin().from('properties').select('latitude, longitude').eq('id', fila.id).maybeSingle()
   const c = data as { latitude: number | null; longitude: number | null } | null
   return c?.latitude != null && c?.longitude != null ? { lat: c.latitude, lng: c.longitude } : null

@@ -84,6 +84,15 @@ describe('geocodeAddress (OSM, sin key de Google)', () => {
     expect(urls.at(-1)).toBe('Juan Perón 4227, Almagro, Ciudad Autónoma de Buenos Aires, Argentina')
   })
 
+  it('cada consulta lleva un tiempo máximo (Nominatim es gratis y sin garantía de latencia)', async () => {
+    const fetchMock = mockFetchOnce([])
+    vi.stubGlobal('fetch', fetchMock)
+    await geocodeAddress('Doblas 248, Caballito, Ciudad Autónoma de Buenos Aires, Argentina', { isCaba: true, province: 'CABA' })
+    for (const [, init] of fetchMock.mock.calls) {
+      expect((init as RequestInit | undefined)?.signal).toBeInstanceOf(AbortSignal)
+    }
+  })
+
   it('sin abreviaturas que sacar no hace un intento de más', async () => {
     const fetchMock = mockFetchOnce([])
     vi.stubGlobal('fetch', fetchMock)
