@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { getUser } from '@/lib/auth/get-user'
+import { heatmapPagesOfFunnel } from '@/lib/funnel/heatmap-pages'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -91,6 +92,17 @@ async function countByDay(
   }
 
   return { total, byDay }
+}
+
+/** Nombres de página con los que registran calor las landings de un embudo. */
+const heatPagesCache = new Map<string, Set<string>>()
+function heatPages(funnel: string): Set<string> {
+  let set = heatPagesCache.get(funnel)
+  if (!set) {
+    set = new Set(heatmapPagesOfFunnel(funnel).map((p) => p.page))
+    heatPagesCache.set(funnel, set)
+  }
+  return set
 }
 
 function pct(conversions: number, visits: number): number {
@@ -297,9 +309,12 @@ export async function GET(req: NextRequest) {
         retentionRows: retentionAll.filter((r) => r.funnel === f.key),
         heatmapRows: heatmapAll.filter((r) => r.funnel === f.key),
         byCampaign,
-        pageHeatSections: heatSections.filter((r) => r.page === f.key),
-        pageHeatTotals: heatTotals.filter((r) => r.page === f.key),
-        pageHeatGrid: heatGrid.filter((r) => r.page === f.key),
+        // Un embudo puede tener varias landings (tasación: versión A y B), cada una
+        // con su nombre de página. Se mandan TODAS y el panel deja elegir cuál mirar.
+        // Filtrar por `r.page === f.key` dejaba afuera a la B sin que nada fallara.
+        pageHeatSections: heatSections.filter((r) => heatPages(f.key).has(r.page)),
+        pageHeatTotals: heatTotals.filter((r) => heatPages(f.key).has(r.page)),
+        pageHeatGrid: heatGrid.filter((r) => heatPages(f.key).has(r.page)),
       }
     })
 
