@@ -79,6 +79,7 @@ export function GenerarDescripcionPanel({
   const [respuestas, setRespuestas] = useState<Record<string, string>>({})
   const [notas, setNotas] = useState(estado.notas ?? '')
   const [comprador, setComprador] = useState('')
+  const [sugerencia, setSugerencia] = useState('')
   const [resultado, setResultado] = useState<ResultadoEscritura | null>(null)
   const [texto, setTexto] = useState<TextoGenerado>({ title: '', subtitle: '', body: '' })
   const [reescribiendo, setReescribiendo] = useState(false)
@@ -141,12 +142,11 @@ export function GenerarDescripcionPanel({
       const r = await pedir<{ reusada: boolean; inventario: InventarioFotos; cantidad: number }>(url, { etapa: 'fotos', forzar })
       if (mia !== corrida.current) return
       setReusado(prev => ({ ...prev, fotos: r.reusada }))
-      // El comprador ideal, si no se contestó en ningún lado, arranca con la
-      // sugerencia del análisis de fotos: el asesor la corrige o la deja.
-      const q1 = estado.pendientes.find(p => p.tema === 'comprador')
-      if (q1 && r.inventario.compradorSugerido.perfil) {
-        setRespuestas(prev => (prev[q1.id] ? prev : { ...prev, [q1.id]: r.inventario.compradorSugerido.perfil }))
-      }
+      // La sugerencia de comprador NO se precarga en el campo: lo que queda como
+      // respuesta en la ficha tiene que haberlo escrito una persona (si no, la
+      // landing tampoco lo preguntaría y la "respuesta del asesor" sería de la IA).
+      // Si el campo queda vacío, el servidor igual escribe para esta sugerencia.
+      setSugerencia(r.inventario.compradorSugerido.perfil ?? '')
       marcar('fotos', 'listo')
       await correrZona(forzar)
     } catch (e) {
@@ -154,7 +154,7 @@ export function GenerarDescripcionPanel({
       marcar('fotos', 'error')
       setError({ etapa: 'fotos', mensaje: e instanceof Error ? e.message : 'Error' })
     }
-  }, [correrZona, estado.pendientes, url])
+  }, [correrZona, url])
 
   const empezar = useCallback((forzar: boolean) => {
     corrida.current += 1
@@ -200,10 +200,11 @@ export function GenerarDescripcionPanel({
   const trabajando = Object.values(pasos).includes('en_curso')
   const portales = estado.portalesPublicados.map(p => PORTALES[p] ?? p)
 
-  const filas: Array<{ etapa: Etapa; enCurso: string; listo: string }> = [
-    { etapa: 'fotos', enCurso: `Mirando las ${Math.min(estado.cantidadFotos, 30)} fotos…`, listo: reusado.fotos ? 'Fotos ya analizadas (sin cambios desde la última vez)' : 'Fotos analizadas' },
-    { etapa: 'zona', enCurso: 'Investigando la zona…', listo: reusado.zona ? 'Zona ya investigada (misma dirección)' : 'Zona investigada' },
-    { etapa: 'escribir', enCurso: 'Escribiendo con el método de Diego…', listo: 'Descripción escrita' },
+  const cantidad = Math.min(estado.cantidadFotos, 30)
+  const filas: Array<{ etapa: Etapa; pendiente: string; enCurso: string; listo: string }> = [
+    { etapa: 'fotos', pendiente: `Mirar las ${cantidad} fotos`, enCurso: `Mirando las ${cantidad} fotos…`, listo: reusado.fotos ? 'Fotos ya analizadas (sin cambios desde la última vez)' : 'Fotos analizadas' },
+    { etapa: 'zona', pendiente: 'Investigar la zona', enCurso: 'Investigando la zona…', listo: reusado.zona ? 'Zona ya investigada (misma dirección)' : 'Zona investigada' },
+    { etapa: 'escribir', pendiente: 'Escribir con el método de Diego', enCurso: 'Escribiendo con el método de Diego…', listo: 'Descripción escrita' },
   ]
 
   return (
@@ -226,7 +227,7 @@ export function GenerarDescripcionPanel({
                 {e === 'error' && <X className="h-4 w-4 text-red-600" aria-hidden />}
                 {e === 'pendiente' && <span className="h-4 w-4 rounded-full border" aria-hidden />}
                 <span className={e === 'pendiente' ? 'text-muted-foreground' : ''}>
-                  {e === 'listo' ? f.listo : f.enCurso.replace('…', e === 'pendiente' ? '' : '…')}
+                  {e === 'listo' ? f.listo : e === 'pendiente' ? f.pendiente : f.enCurso}
                 </span>
               </li>
             )
@@ -265,8 +266,15 @@ export function GenerarDescripcionPanel({
                   onChange={e => setRespuestas(prev => ({ ...prev, [p.id]: e.target.value }))}
                   placeholder={p.ayuda}
                 />
-                {p.tema === 'comprador' && (
-                  <p className="text-xs text-muted-foreground">Precargado con lo que sugiere el análisis de las fotos: editalo si no coincide.</p>
+                {p.tema === 'comprador' && sugerencia && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span>Sugerencia del análisis de las fotos: «{sugerencia}». Si lo dejás vacío, se escribe para ese comprador.</span>
+                    {!(respuestas[p.id] ?? '').trim() && (
+                      <Button type="button" size="sm" variant="outline" onClick={() => setRespuestas(prev => ({ ...prev, [p.id]: sugerencia }))}>
+                        Usar la sugerencia
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             ))}

@@ -52,14 +52,17 @@ describe('GenerarDescripcionPanel — recorrido completo', () => {
     const onCerrar = vi.fn()
     render(<GenerarDescripcionPanel propertyId="p1" estado={estado} abierto onCerrar={onCerrar} onGuardado={onGuardado} />)
 
-    // Pregunta solo lo pendiente, con el comprador precargado desde las fotos.
+    // Pregunta solo lo pendiente. La sugerencia de las fotos NO se precarga en
+    // el campo: lo que se guarda como respuesta tiene que haberlo escrito una persona.
     const q1 = await screen.findByLabelText('¿Quién imaginás que es el comprador ideal?')
-    expect(q1).toHaveValue('Pareja joven')
+    expect(q1).toHaveValue('')
+    expect(screen.getByText(/Sugerencia del análisis de las fotos: «Pareja joven»/)).toBeInTheDocument()
     expect(screen.getByText('El mapa no respondió: el texto sale sin distancias ni colectivos.')).toBeInTheDocument()
     expect(screen.getByText('Zona ya investigada (misma dirección)')).toBeInTheDocument()
 
-    await userEvent.clear(q1)
-    await userEvent.type(q1, 'Pareja joven con un hijo')
+    await userEvent.click(screen.getByRole('button', { name: /usar la sugerencia/i }))
+    expect(q1).toHaveValue('Pareja joven')
+    await userEvent.type(q1, ' con un hijo')
     await userEvent.click(screen.getByRole('button', { name: /escribir la descripción/i }))
 
     // Vista previa editable, con el aviso de coherencia y el de portales.
@@ -81,6 +84,15 @@ describe('GenerarDescripcionPanel — recorrido completo', () => {
     const guardar = pedidos.find(p => p.url.endsWith('/guardar'))
     expect(guardar?.body).toEqual(escrito([]).texto)
     expect(onCerrar).toHaveBeenCalled()
+  })
+
+  it('si el comprador queda vacío no se manda como respuesta (la sugerencia no se guarda como si la hubiera dicho el asesor)', async () => {
+    render(<GenerarDescripcionPanel propertyId="p1" estado={estado} abierto onCerrar={() => {}} onGuardado={() => {}} />)
+    await screen.findByLabelText('¿Quién imaginás que es el comprador ideal?')
+    expect(screen.getByText('Escribir con el método de Diego')).toBeInTheDocument() // todavía no empezó
+    await userEvent.click(screen.getByRole('button', { name: /escribir la descripción/i }))
+    await screen.findByDisplayValue('Departamento luminoso de 3 ambientes')
+    expect(pedidos.find(p => p.body.etapa === 'escribir')?.body.respuestas).toEqual({})
   })
 
   it('"Volver a escribir" repite solo la escritura, con el comprador elegido', async () => {
