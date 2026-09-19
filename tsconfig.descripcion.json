@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false },
+  "include": [
+    "next-env.d.ts",
+    "types/database.types.ts",
+    "types/visit-data.types.ts",
+    "lib/descripcion/**/*.ts",
+    "lib/ai/openai-responses.ts",
+    "app/api/properties/[id]/descripcion/**/*.ts",
+    "components/properties/descripcion/**/*.tsx",
+    "components/properties/detail/tabs/OverviewTab.tsx",
+    "components/properties/wizards/ml/steps/StepDescription.tsx",
+    "components/properties/wizards/ap/steps/StepDescription.tsx",
+    "app/(dashboard)/properties/new/page.tsx",
+    "scripts/descripcion-probar.ts",
+    "scripts/apply-descripcion-ia-pg.ts"
+  ],
+  "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
+}
