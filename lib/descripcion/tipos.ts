@@ -14,7 +14,13 @@ export interface InventarioFotos {
     fotos: number[]
     detalle: string
   }>
-  exteriores: string[]
+  /**
+   * Balcón, terraza, patio, jardín… con de QUIÉN es. Una foto no dice si la
+   * terraza es de la unidad o del edificio, y publicar "terraza propia" cuando
+   * es común es un reclamo seguro: por eso `no_se_sabe` es un valor válido.
+   */
+  exteriores: Array<{ espacio: string; detalle: string; uso: 'propio' | 'comun' | 'no_se_sabe'; fotos: number[] }>
+  /** Partes comunes visibles: hall, ascensores, amenities, fachada. */
   edificio: string[]
   vistas: string[]
   estilo: string

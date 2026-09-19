@@ -13,8 +13,7 @@
     "components/properties/wizards/ml/steps/StepDescription.tsx",
     "components/properties/wizards/ap/steps/StepDescription.tsx",
     "app/(dashboard)/properties/new/page.tsx",
-    "scripts/descripcion-probar.ts",
-    "scripts/apply-descripcion-ia-pg.ts"
+    "scripts/descripcion-probar.ts"
   ],
   "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
 }
