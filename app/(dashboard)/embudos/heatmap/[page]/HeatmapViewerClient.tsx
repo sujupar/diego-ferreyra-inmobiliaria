@@ -234,9 +234,14 @@ export function HeatmapViewerClient({ page, label, slug }: { page: string; label
       {/* La landing REAL embebida (con tracking apagado) + overlay de calor encima. */}
       <div className="overflow-x-auto rounded-xl border bg-muted/30 p-3">
         <div className="mx-auto transition-all" style={{ width: DEVICE_WIDTH[dev] ?? '100%', maxWidth: '100%' }}>
+          {/* `lp=A` en tasación: los datos de calor de `page=tasacion` son SOLO de la
+              variante A (la B registra como `tasacion-neta`). Desde que el A/B reparte
+              por clic, sin forzarla el iframe cargaría una variante al azar y pintaría
+              el calor de la A encima de la B sin avisar. `hm_preview` apaga el registro
+              de la visita, así que forzar la variante acá no ensucia el test. */}
           <iframe
             ref={iframeRef}
-            src={`/${slug}?hm_preview=1`}
+            src={`/${slug}?hm_preview=1${page === 'tasacion' ? '&lp=A' : ''}`}
             title={`Mapa de calor — ${label}`}
             className="w-full rounded-lg border bg-white shadow-sm"
             style={{ height: frameH }}

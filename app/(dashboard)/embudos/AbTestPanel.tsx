@@ -20,6 +20,13 @@ interface Result {
 }
 
 /**
+ * Primer día en que las dos versiones de la landing de tasación se pueden comparar:
+ * ese día se arregló el botón de la B en celular y el reparto pasó a ser por clic.
+ * Se compara como texto contra `from` (YYYY-MM-DD).
+ */
+const INICIO_MEDICION_VALIDA = '2026-09-19'
+
+/**
  * Panel de A/B testing de landings, dentro del embudo.
  *
  * Tres acciones y son distintas a propósito:
@@ -123,6 +130,18 @@ export function AbTestPanel({ funnel, from, to }: { funnel: string; from: string
           </button>
         )}
       </div>
+
+      {/* Un rango que arranca antes del 19/9/2026 compara peras con manzanas: hasta
+          ese día la B tenía el botón roto en celular (59 visitas, 0 registros) y el
+          reparto era por visitante. Sin este aviso, el panel le diría al dueño que
+          la B "convierte 0%" cuando lo que medía era un botón que no abría. */}
+      {funnel === 'tasacion' && from < INICIO_MEDICION_VALIDA && (
+        <p className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-950">
+          Ojo: este rango incluye días anteriores al 19/9/2026. Hasta esa fecha el botón de la
+          versión B no abría al primer toque en celular y el reparto era por visitante. Para
+          comparar las dos versiones en serio, mirá desde el 19/9 en adelante.
+        </p>
+      )}
 
       {/* Resultados lado a lado */}
       <div className="mt-4 grid gap-3 sm:grid-cols-2">

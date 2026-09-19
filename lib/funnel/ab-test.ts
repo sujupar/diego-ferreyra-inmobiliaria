@@ -1,7 +1,9 @@
 /**
  * Reparto A/B de las landings del embudo. Módulo PURO: no lee cookies, no toca
  * la red, no mira el reloj. Todo lo que necesita entra por parámetro para que la
- * página sea una cáscara fina y esta decisión se pueda testear entera.
+ * página sea una cáscara fina y esta decisión se pueda testear entera. La única
+ * fuente de azar es el dado por defecto de `variantePorClic` (`Math.random`), y es
+ * inyectable justamente para que las pruebas no dependan de él.
  *
  * REGLA DE ORO: ante cualquier duda se sirve 'A' (la landing que ya está viva y
  * recibiendo tráfico pago). Un experimento roto NUNCA puede dejar sin página al
@@ -103,6 +105,9 @@ export function normalizeConfig(config: ExperimentConfig | null | undefined): Ex
 }
 
 /**
+ * SIN USO desde que el reparto es por clic (nadie recuerda asignaciones). Se
+ * conserva, igual que `sticky`, como pieza del reparto por visitante.
+ *
  * ¿Hay que persistir la asignación en la cookie? Solo mientras el test corre:
  * con el test apagado la variante se deduce del ganador y guardar una cookie
  * dejaría a la gente clavada en una versión después de terminar el experimento.

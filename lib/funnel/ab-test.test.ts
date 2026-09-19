@@ -21,7 +21,7 @@ describe('decideVariant — el test apagado', () => {
     expect(decideVariant({ status: 'off', splitB: 50, winner: 'A' }, 0.99)).toBe('A')
   })
 
-  it('IGNORA la cookie: apagar el test lo apaga para todos, no solo para los nuevos', () => {
+  it('IGNORA una asignación previa: apagar el test lo apaga para todos, no solo para los nuevos', () => {
     expect(decideVariant({ status: 'off', splitB: 50, winner: null }, 0.9, 'B')).toBe('A')
   })
 })
@@ -31,7 +31,7 @@ describe('decideVariant — el test pausado', () => {
     expect(decideVariant({ status: 'paused', splitB: 100, winner: null }, 0.01)).toBe('A')
   })
 
-  it('ignora la cookie, igual que apagado', () => {
+  it('ignora una asignación previa, igual que apagado', () => {
     expect(decideVariant({ status: 'paused', splitB: 50, winner: null }, 0.1, 'B')).toBe('A')
   })
 })
@@ -61,7 +61,7 @@ describe('decideVariant — el test corriendo', () => {
     expect(b).toBe(400)
   })
 
-  it('una cookie con basura no cuenta como asignación previa', () => {
+  it('basura en lugar de una variante no cuenta como asignación previa', () => {
     expect(decideVariant(running(0), 0.5, 'X')).toBe('A')
     expect(decideVariant(running(100), 0.5, '')).toBe('B')
   })
@@ -104,7 +104,7 @@ describe('normalizeConfig', () => {
 })
 
 describe('shouldPersist', () => {
-  it('guarda la cookie solo con el test corriendo y sin asignación previa', () => {
+  it('solo habría que recordar la asignación con el test corriendo y sin asignación previa', () => {
     expect(shouldPersist(running(50))).toBe(true)
     expect(shouldPersist(running(50), 'A')).toBe(false)
   })
