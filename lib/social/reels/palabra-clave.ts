@@ -41,8 +41,68 @@ export function normalizarParaComparar(texto: string): string {
  */
 const NO_ES_LETRA = /[^\p{L}\p{N}]/u
 
+/* -------------------------------------------------------------------------- */
+/*  Varias palabras por reel                                                  */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Por qué varias: el reel del 20/09 pedía "PARQUE RIVADAVIA" y de 21
+ * comentarios solo 3 la usaron; 6 escribieron "doblas" (lo que se dijo en el
+ * video), 4 "info" y 4 "precio". Con una sola palabra, a 18 de 21 no se les
+ * habría respondido.
+ *
+ * Se guardan en la MISMA columna de texto, separadas por coma, en vez de pasar
+ * a un arreglo: así ningún lector de `palabra_clave` cambia de tipo, y un reel
+ * con una sola palabra (sin comas) es una lista de una. El formato vive SOLO
+ * acá: todo el que necesite la lista la pide a `separarPalabras`.
+ */
+
+export const MAX_PALABRAS = 10
+export const MAX_CARACTERES_PALABRAS = 200
+
 /**
- * ¿El comentario contiene la palabra configurada?
+ * La lista de palabras de un reel: separadas por coma, sin espacios de más,
+ * sin vacías y sin repetidas (comparadas sin tildes ni mayúsculas, quedándose
+ * con la primera tal como la escribió el asesor: es la que va en la descripción).
+ */
+export function separarPalabras(texto: string | null | undefined): string[] {
+  if (!texto) return []
+  const vistas = new Set<string>()
+  const lista: string[] = []
+  for (const cruda of texto.split(',')) {
+    const palabra = cruda.replace(/\s+/g, ' ').trim()
+    if (!palabra) continue
+    const clave = normalizarParaComparar(palabra)
+    if (vistas.has(clave)) continue
+    vistas.add(clave)
+    lista.push(palabra)
+  }
+  return lista
+}
+
+export type ResultadoPalabras = { ok: true; valor: string | null } | { ok: false; error: string }
+
+/**
+ * Lo que se guarda en la base. `null` si no quedó ninguna: "sin palabra" tiene
+ * que seguir siendo un estado distinguible, porque sin palabra no se activa.
+ * Los topes se miden sobre la lista YA limpia, así una repetida no le quita
+ * lugar a una palabra de verdad.
+ */
+export function limpiarPalabras(texto: string | null | undefined): ResultadoPalabras {
+  const lista = separarPalabras(texto)
+  if (lista.length === 0) return { ok: true, valor: null }
+  if (lista.length > MAX_PALABRAS) {
+    return { ok: false, error: `Son ${lista.length} palabras: el máximo es ${MAX_PALABRAS} palabras por reel.` }
+  }
+  const valor = lista.join(', ')
+  if (valor.length > MAX_CARACTERES_PALABRAS) {
+    return { ok: false, error: `Las palabras suman ${valor.length} caracteres: el máximo es ${MAX_CARACTERES_PALABRAS}.` }
+  }
+  return { ok: true, valor }
+}
+
+/**
+ * ¿El comentario contiene alguna de las palabras configuradas?
  *
  * Contiene, no es igual: el dueño lo pidió así ("que comente la palabra o que
  * la contenga"). Pero la palabra tiene que estar ENTERA — "impropiedades" no
@@ -59,13 +119,17 @@ const NO_ES_LETRA = /[^\p{L}\p{N}]/u
  */
 export function comentarioCoincide(
   comentario: string | null | undefined,
-  palabra: string | null | undefined,
+  palabras: string | null | undefined,
 ): boolean {
-  if (!comentario || !palabra) return false
+  if (!comentario) return false
+  // Los espacios se juntan en los dos lados: "parque  rivadavia" (doble espacio,
+  // típico del teclado del celular) es la misma frase.
+  const pajar = normalizarParaComparar(comentario).replace(/\s+/g, ' ')
+  return separarPalabras(palabras).some((palabra) => contieneEntera(pajar, normalizarParaComparar(palabra)))
+}
 
-  const aguja = normalizarParaComparar(palabra)
+function contieneEntera(pajar: string, aguja: string): boolean {
   if (!aguja) return false
-  const pajar = normalizarParaComparar(comentario)
 
   let desde = 0
   for (;;) {
