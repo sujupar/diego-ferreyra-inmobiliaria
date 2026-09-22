@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "//": "Verificación de tipos ACOTADA a los reels. El tsconfig raíz se cuelga: rastrea todo el proyecto, que está en iCloud.",
+  "include": [
+    "next-env.d.ts",
+    "types/**/*.ts",
+    "lib/social/reels/**/*.ts",
+    "lib/integrations/instagram/**/*.ts",
+    "app/api/properties/[id]/reels/**/*.ts",
+    "app/api/instagram/**/*.ts",
+    "app/api/webhooks/instagram/**/*.ts",
+    "app/api/cron/reels-publish/**/*.ts",
+    "components/properties/reels/**/*.tsx"
+  ]
+}
