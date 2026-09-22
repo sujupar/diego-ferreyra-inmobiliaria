@@ -45,12 +45,28 @@ export interface ResumenCorrida {
   detalle: string[]
 }
 
-async function marcar(reelId: string, campos: Record<string, unknown>): Promise<void> {
-  const { error } = await admin()
-    .from('property_reels')
-    .update({ ...campos, updated_at: new Date().toISOString() })
-    .eq('id', reelId)
-  if (error) console.error('[cron/reels] no se pudo actualizar', reelId, error.message)
+/**
+ * Escribe el estado del reel, con UN reintento.
+ *
+ * POR QUÉ EL REINTENTO: esta escritura es lo único que conecta lo que ya pasó en
+ * Instagram con lo que sabemos nosotros. Si se pierde justo después de publicar,
+ * el reel queda online pero marcado 'procesando', y la corrida siguiente lo
+ * encuentra en estado PUBLISHED. Antes eso terminaba en un segundo reel
+ * idéntico; ahora `etapaPublicar` lo reconoce, pero igual conviene no perderla.
+ *
+ * Devuelve `false` si ni el reintento funcionó, para que el llamador lo cuente
+ * en el resumen en vez de dar por hecho que salió bien.
+ */
+async function marcar(reelId: string, campos: Record<string, unknown>): Promise<boolean> {
+  for (let intento = 1; intento <= 2; intento++) {
+    const { error } = await admin()
+      .from('property_reels')
+      .update({ ...campos, updated_at: new Date().toISOString() })
+      .eq('id', reelId)
+    if (!error) return true
+    console.error(`[cron/reels] intento ${intento} no pudo actualizar`, reelId, error.message)
+  }
+  return false
 }
 
 /** ¿La propiedad sigue teniendo landing publicada? */
@@ -115,6 +131,28 @@ async function etapaPublicar(reel: FilaReel, resumen: ResumenCorrida): Promise<v
       resumen.detalle.push(`${reel.id}: Instagram sigue procesando`)
       return
     }
+
+    if (estado === 'YA_PUBLICADO') {
+      // El reel YA está en Instagram: se publicó y después se perdió la
+      // escritura. Volver a llamar a media_publish daría error y, peor, un
+      // "Reintentar" crearía un SEGUNDO reel idéntico en la cuenta.
+      //
+      // No se puede recuperar el identificador del aviso desde el contenedor, y
+      // ese identificador es justo lo que el webhook usa para rutear los
+      // comentarios. Así que se marca publicado y se le dice al asesor, con
+      // todas las letras, qué tiene que hacer: engancharlo desde la lista, que
+      // es un camino que ya existe.
+      await marcar(reel.id, {
+        estado: 'publicado',
+        publicado_en: new Date().toISOString(),
+        ultimo_error:
+          'El reel se publicó, pero no quedó vinculado. Para automatizar sus comentarios, ' +
+          'usá "Enganchar uno ya publicado" y elegilo de la lista.',
+      })
+      resumen.publicados++
+      resumen.detalle.push(`${reel.id}: ya estaba publicado, sin vincular`)
+      return
+    }
     if (estado === 'ERROR' || estado === 'VENCIDO') {
       await marcar(reel.id, {
         estado: 'fallido',
@@ -128,7 +166,7 @@ async function etapaPublicar(reel: FilaReel, resumen: ResumenCorrida): Promise<v
     }
 
     const { igMediaId, permalink } = await publicarContenedor(reel.ig_creation_id)
-    await marcar(reel.id, {
+    const guardado = await marcar(reel.id, {
       estado: 'publicado',
       ig_media_id: igMediaId,
       ig_permalink: permalink,
@@ -136,7 +174,11 @@ async function etapaPublicar(reel: FilaReel, resumen: ResumenCorrida): Promise<v
       ultimo_error: null,
     })
     resumen.publicados++
-    resumen.detalle.push(`${reel.id}: publicado ${igMediaId}`)
+    resumen.detalle.push(
+      guardado
+        ? `${reel.id}: publicado ${igMediaId}`
+        : `${reel.id}: PUBLICADO EN INSTAGRAM pero no se pudo guardar (${igMediaId})`,
+    )
   } catch (e) {
     await marcar(reel.id, { estado: 'fallido', ultimo_error: mensajeLegible(e) })
     resumen.fallidos++

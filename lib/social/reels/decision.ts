@@ -128,3 +128,56 @@ export function decidirQueHacer(
 
   return { accion: 'responder_y_dm' }
 }
+
+/* -------------------------------------------------------------------------- */
+/*  El botón del mensaje privado                                              */
+/* -------------------------------------------------------------------------- */
+
+export interface ReelParaBoton {
+  automatizacion_activa: boolean
+  simulacro: boolean
+  estado: string
+}
+
+export type DecisionBoton =
+  | { accion: 'mandar_enlace' }
+  | { accion: 'ignorar'; motivo: string }
+
+/**
+ * ¿Se le manda el enlace a quien tocó el botón?
+ *
+ * VIVE ACÁ, y no suelto en el procesador, por el mismo motivo que todo lo
+ * demás: es un freno, y los frenos se prueban uno por uno sin tocar Instagram.
+ *
+ * El botón es distinto de un comentario en algo importante: está en un mensaje
+ * que YA ESTÁ en el teléfono de la persona y se puede tocar días después. Entre
+ * que se mandó y que lo tocan, el asesor pudo apagar ese reel o ponerlo en
+ * simulacro — y apagar tiene que significar apagar, también para los botones que
+ * quedaron dando vueltas.
+ */
+export function decidirBoton(
+  reel: ReelParaBoton,
+  ajustes: AjustesGlobales,
+  enlaceYaEnviado: boolean,
+): DecisionBoton {
+  if (!ajustes.automatizacion_habilitada) {
+    return { accion: 'ignorar', motivo: 'automatizacion_global_apagada' }
+  }
+  if (!ajustes.dm_habilitado) {
+    return { accion: 'ignorar', motivo: 'dm_deshabilitado' }
+  }
+  if (reel.estado !== 'publicado') {
+    return { accion: 'ignorar', motivo: 'reel_no_publicado' }
+  }
+  if (!reel.automatizacion_activa) {
+    return { accion: 'ignorar', motivo: 'reel_sin_automatizacion' }
+  }
+  if (reel.simulacro) {
+    return { accion: 'ignorar', motivo: 'simulacro' }
+  }
+  // Meta reintenta sus avisos: sin esto, el mismo toque manda el enlace dos veces.
+  if (enlaceYaEnviado) {
+    return { accion: 'ignorar', motivo: 'enlace_ya_enviado' }
+  }
+  return { accion: 'mandar_enlace' }
+}

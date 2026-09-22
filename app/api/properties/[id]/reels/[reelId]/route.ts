@@ -51,7 +51,11 @@ export async function PATCH(
       if (!actual) {
         return NextResponse.json({ error: 'No se encontró el reel.' }, { status: 404 })
       }
-      if (!actual.palabra_clave && !cambios.palabra_clave) {
+      // `.trim()`: una palabra de solo espacios se guarda como null (lo hace
+      // `camposEditables`), así que sin esto quedaba "Automatización activa"
+      // sobre un reel que no puede coincidir con nada, nunca.
+      const palabraFinal = (cambios.palabra_clave ?? actual.palabra_clave ?? '').trim()
+      if (!palabraFinal) {
         return NextResponse.json(
           { error: 'Antes de activar la automatización hay que escribir la palabra del llamado a la acción.' },
           { status: 400 },

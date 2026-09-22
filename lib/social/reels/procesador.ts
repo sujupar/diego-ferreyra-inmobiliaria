@@ -18,9 +18,9 @@
 import { createClient } from '@supabase/supabase-js'
 import { esComentarioDeLaCuenta, responderComentario } from '@/lib/integrations/instagram/comentarios'
 import { leerDatoDelBoton, mandarPrivadoConBoton, mandarTexto } from '@/lib/integrations/instagram/mensajes'
-import { mensajeLegible } from '@/lib/integrations/instagram/client'
+import { esReintentable, mensajeLegible } from '@/lib/integrations/instagram/client'
 import type { ComentarioDelAviso } from '@/lib/integrations/instagram/webhook'
-import { decidirQueHacer, type AjustesGlobales } from './decision'
+import { decidirBoton, decidirQueHacer, type AjustesGlobales } from './decision'
 import { elegirRespuesta } from './respuestas'
 import type { FilaReel } from './servicio'
 
@@ -117,6 +117,25 @@ async function anotar(comentarioId: string, campos: Record<string, unknown>): Pr
   if (error) console.error('[reels] no se pudo anotar el comentario', comentarioId, error.message)
 }
 
+/**
+ * Un reintento ante fallos PASAJEROS de Instagram (500, 429, límites de
+ * volumen). Sin esto, un tropezón de un segundo dejaba ese comentario sin
+ * respuesta PARA SIEMPRE: el comentario ya quedó registrado, así que el
+ * reintento del aviso de Meta lo descarta como repetido y nadie vuelve sobre él.
+ *
+ * Un solo reintento, y solo de lo que vale la pena: insistir con un permiso
+ * faltante es quemar el tiempo del webhook para nada.
+ */
+async function conReintento<T>(hacer: () => Promise<T>): Promise<T> {
+  try {
+    return await hacer()
+  } catch (e) {
+    if (!esReintentable(e)) throw e
+    await new Promise((seguir) => setTimeout(seguir, 600))
+    return hacer()
+  }
+}
+
 export type ResultadoComentario =
   | { accion: 'ignorado'; motivo: string }
   | { accion: 'repetido' }
@@ -172,12 +191,12 @@ export async function procesarComentario(
 
   if (decision.accion === 'responder_y_dm') {
     try {
-      await mandarPrivadoConBoton({
+      await conReintento(() => mandarPrivadoConBoton({
         comentarioId: c.comentarioId,
         texto: reel.dm_texto?.trim() || DM_POR_DEFECTO,
         textoBoton: reel.dm_boton,
         reelId: reel.id,
-      })
+      }))
       privadoEnviado = true
     } catch (e) {
       // El privado falla pero la respuesta pública sale igual: el comentario no
@@ -187,7 +206,8 @@ export async function procesarComentario(
   }
 
   try {
-    await responderComentario(c.comentarioId, elegirRespuesta(c.comentarioId, privadoEnviado))
+    await conReintento(() =>
+      responderComentario(c.comentarioId, elegirRespuesta(c.comentarioId, privadoEnviado)))
   } catch (e) {
     error = error ? `${error} · ${mensajeLegible(e)}` : mensajeLegible(e)
     await anotar(c.comentarioId, { coincide: true, error })
@@ -217,20 +237,35 @@ export async function procesarBoton(
   dato: string,
   ajustes: AjustesGlobales,
 ): Promise<{ ok: boolean; motivo?: string }> {
-  if (!ajustes.automatizacion_habilitada || !ajustes.dm_habilitado) {
-    return { ok: false, motivo: 'interruptor_apagado' }
-  }
-
   const reelId = leerDatoDelBoton(dato)
   if (!reelId) return { ok: false, motivo: 'dato_ajeno' }
 
   const { data } = await admin()
     .from('property_reels')
-    .select('id, property_id, dm_seguimiento')
+    .select('id, property_id, dm_seguimiento, automatizacion_activa, simulacro, estado')
     .eq('id', reelId)
     .maybeSingle()
-  const reel = data as { id: string; property_id: string; dm_seguimiento: string | null } | null
+  const reel = data as {
+    id: string
+    property_id: string
+    dm_seguimiento: string | null
+    automatizacion_activa: boolean
+    simulacro: boolean
+    estado: string
+  } | null
   if (!reel) return { ok: false, motivo: 'reel_inexistente' }
+
+  const { data: previos } = await admin()
+    .from('reel_comentarios')
+    .select('id')
+    .eq('reel_id', reel.id)
+    .eq('ig_user_id', remitenteId)
+    .not('enlace_enviado_en', 'is', null)
+    .limit(1)
+
+  // Todos los frenos, en un módulo puro y probado uno por uno.
+  const decision = decidirBoton(reel, ajustes, (previos ?? []).length > 0)
+  if (decision.accion === 'ignorar') return { ok: false, motivo: decision.motivo }
 
   const { data: landing } = await admin()
     .from('property_landings')
@@ -254,7 +289,8 @@ export async function procesarBoton(
   })
 
   // Queda anotado contra el último comentario de esa persona en ese reel: es lo
-  // que alimenta el contador de "botones tocados" de la pantalla.
+  // que alimenta el contador de "botones tocados" y lo que evita el duplicado
+  // de arriba en el reintento siguiente.
   const { data: comentarios } = await admin()
     .from('reel_comentarios')
     .select('id')
@@ -270,6 +306,10 @@ export async function procesarBoton(
       .from('reel_comentarios')
       .update({ boton_tocado_en: ahora, enlace_enviado_en: ahora })
       .eq('id', ultimo.id)
+  } else {
+    // Sin comentario donde anotarlo, el freno anti-duplicado de arriba no puede
+    // funcionar la próxima vez. Queda registrado para no perder el rastro.
+    console.warn('[reels] enlace enviado sin comentario donde anotarlo', reel.id, remitenteId)
   }
 
   return { ok: true }

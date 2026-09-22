@@ -74,7 +74,12 @@ describe('estadoContenedor', () => {
   const casos = [
     ['IN_PROGRESS', 'EN_PROCESO'],
     ['FINISHED', 'LISTO'],
-    ['PUBLISHED', 'LISTO'],
+    // PUBLISHED NO es LISTO. "Listo" significa "terminé de procesarlo,
+    // publicalo"; PUBLISHED significa "esto YA está publicado". Confundirlos
+    // hacía que el cron llamara a media_publish sobre algo ya publicado → el
+    // reel quedaba marcado fallido estando online, y un "Reintentar" publicaba
+    // un SEGUNDO reel idéntico en la cuenta.
+    ['PUBLISHED', 'YA_PUBLICADO'],
     ['ERROR', 'ERROR'],
     ['EXPIRED', 'VENCIDO'],
   ] as const

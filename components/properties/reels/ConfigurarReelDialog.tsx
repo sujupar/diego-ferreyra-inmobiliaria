@@ -56,6 +56,10 @@ export function ConfigurarReelDialog({ propertyId, reelId, landingPublicada, onC
 
   const cargar = useCallback(async () => {
     if (!reelId) return
+    // Se limpia ANTES de pedir: si no, al abrir otro reel se ven los textos del
+    // anterior mientras carga, y lo que se llegue a tipear en ese lapso lo pisa
+    // la respuesta que viene en camino.
+    setReel(null)
     setCargando(true)
     setError(null)
     try {
@@ -220,17 +224,29 @@ export function ConfigurarReelDialog({ propertyId, reelId, landingPublicada, onC
                     Solo actúa sobre los comentarios nuevos, desde el momento en que se activa.
                   </p>
                 </div>
+                {/*
+                  Se bloquea solo para ENCENDER. Apagar tiene que poder hacerse
+                  siempre: si la landing se despublica mientras el reel está
+                  respondiendo solo, bloquear el interruptor dejaba al asesor sin
+                  forma de frenarlo — justo cuando más falta hace.
+                */}
                 <Switch
                   id="cfg-automatizacion"
                   checked={reel.automatizacion_activa}
-                  disabled={guardando || !landingPublicada}
+                  disabled={guardando || (!landingPublicada && !reel.automatizacion_activa)}
                   onCheckedChange={(v) => editar({ automatizacion_activa: v })}
                 />
               </div>
 
-              {!landingPublicada && (
+              {!landingPublicada && !reel.automatizacion_activa && (
                 <p className="text-xs text-amber-700 dark:text-amber-500">
                   Para activarla hace falta la landing publicada: es el enlace que recibe la persona.
+                </p>
+              )}
+              {!landingPublicada && reel.automatizacion_activa && (
+                <p className="text-xs text-amber-700 dark:text-amber-500">
+                  Este reel está respondiendo solo pero la landing no está publicada: quien toque
+                  el botón no va a recibir nada. Publicá la landing o apagá la automatización.
                 </p>
               )}
             </div>

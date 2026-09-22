@@ -259,17 +259,34 @@ export async function resumenDeReels(reelIds: string[]): Promise<Record<string, 
   const vacio: Record<string, ResumenReel> = {}
   if (reelIds.length === 0) return vacio
 
-  const { data } = await admin()
-    .from('reel_comentarios')
-    .select('reel_id, coincide, dm_enviado_en, boton_tocado_en')
-    .in('reel_id', reelIds)
-
-  const filas = (data ?? []) as Array<{
+  // PostgREST devuelve como mucho 1000 filas por consulta, en silencio. Un reel
+  // con muchos comentarios haría que los contadores de la tarjeta MIENTAN sin
+  // ningún error a la vista. Es el mismo tope que ya mordió a los listados
+  // (ver `lib/supabase/rpc-paginado.ts`), así que se pagina.
+  const PAGINA = 1000
+  const TOPE_PAGINAS = 50 // 50.000 comentarios: más que eso pide una vista, no una consulta
+  type FilaComentario = {
     reel_id: string
     coincide: boolean
     dm_enviado_en: string | null
     boton_tocado_en: string | null
-  }>
+  }
+  const filas: FilaComentario[] = []
+
+  for (let pagina = 0; pagina < TOPE_PAGINAS; pagina++) {
+    const desde = pagina * PAGINA
+    const { data, error } = await admin()
+      .from('reel_comentarios')
+      .select('reel_id, coincide, dm_enviado_en, boton_tocado_en')
+      .in('reel_id', reelIds)
+      .order('created_at', { ascending: true })
+      .range(desde, desde + PAGINA - 1)
+
+    if (error) throw new Error(`No se pudieron leer los contadores: ${error.message}`)
+    const lote = (data ?? []) as FilaComentario[]
+    filas.push(...lote)
+    if (lote.length < PAGINA) break
+  }
 
   for (const id of reelIds) {
     vacio[id] = { coincidencias: 0, privadosEnviados: 0, botonesTocados: 0 }

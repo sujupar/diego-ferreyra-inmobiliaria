@@ -15,7 +15,7 @@
 import { cuentaInstagram, instagramFetch } from './client'
 
 /** Traducción de los estados de Instagram a los nuestros. */
-export type EstadoContenedor = 'EN_PROCESO' | 'LISTO' | 'ERROR' | 'VENCIDO'
+export type EstadoContenedor = 'EN_PROCESO' | 'LISTO' | 'YA_PUBLICADO' | 'ERROR' | 'VENCIDO'
 
 export interface ReelPublicado {
   id: string
@@ -66,6 +66,14 @@ export async function crearContenedorReel(a: {
  * Lo desconocido se trata como EN_PROCESO, nunca como listo: dar por terminado
  * algo que no entendemos publicaría un reel a medio procesar o rompería el paso
  * siguiente con un identificador vacío.
+ *
+ * `PUBLISHED` NO es lo mismo que `FINISHED`, y confundirlos sale caro:
+ * `FINISHED` significa "terminé de procesarlo, publicalo"; `PUBLISHED`
+ * significa "esto YA está publicado". Se llega a `PUBLISHED` cuando publicamos
+ * y después falló la escritura en nuestra base. Tratarlo como `LISTO` hacía que
+ * la corrida siguiente volviera a llamar a `media_publish` sobre algo ya
+ * publicado → error → el reel quedaba marcado `fallido` aunque estuviera
+ * online, y un "Reintentar" publicaba un SEGUNDO reel idéntico en la cuenta.
  */
 export async function estadoContenedor(creationId: string): Promise<EstadoContenedor> {
   const { status_code } = await instagramFetch<{ status_code?: string }>(
@@ -73,8 +81,9 @@ export async function estadoContenedor(creationId: string): Promise<EstadoConten
   )
   switch (status_code) {
     case 'FINISHED':
-    case 'PUBLISHED':
       return 'LISTO'
+    case 'PUBLISHED':
+      return 'YA_PUBLICADO'
     case 'ERROR':
       return 'ERROR'
     case 'EXPIRED':
