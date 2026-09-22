@@ -37,6 +37,10 @@ interface ReelCompleto {
 export interface InterruptoresGenerales {
   automatizacion: boolean
   privados: boolean
+  /** Cuántos reels de todas las propiedades responderían (para el aviso antes de prender). */
+  reelsActivos?: { prueba: number; en_vivo: number }
+  /** Si quien mira puede tocar el interruptor general (admin o dueño). */
+  puedeCambiar?: boolean
 }
 
 interface Props {

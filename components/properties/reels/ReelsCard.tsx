@@ -18,6 +18,7 @@ import { ReelFila, type ContadoresVisibles, type ReelVisible } from './ReelFila'
 import { SubirReelDialog } from './SubirReelDialog'
 import { EngancharReelDialog } from './EngancharReelDialog'
 import { ConfigurarReelDialog, type InterruptoresGenerales } from './ConfigurarReelDialog'
+import { InterruptorGeneral } from './InterruptorGeneral'
 
 /** Donde salta el atajo "Ir a Reels" de la tarjeta de canales. */
 export const ANCLA_REELS = 'reels-instagram'
@@ -81,6 +82,18 @@ export function ReelsCard({ propertyId, puedeGestionar }: Props) {
 
   useEffect(() => { void cargar() }, [cargar])
 
+  const cambiarGeneral = useCallback(async (prendida: boolean) => {
+    const res = await fetch('/api/instagram/ajustes', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ automatizacion: prendida }),
+    })
+    const cuerpo = await leerJson<{ general?: InterruptoresGenerales; error?: string }>(res)
+    if (!res.ok) throw new Error(cuerpo.error || 'No se pudo cambiar la automatización general')
+    // Se vuelve a cargar todo: el aviso del selector de modo depende de esto.
+    await cargar()
+  }, [cargar])
+
   const accion = useCallback(async (reelId: string, metodo: 'POST' | 'DELETE') => {
     setOcupado(reelId)
     setError(null)
@@ -116,6 +129,16 @@ export function ReelsCard({ propertyId, puedeGestionar }: Props) {
         <p className="text-xs text-muted-foreground">
           Publicá un reel de esta propiedad y respondé solo a quien comente alguna de las palabras que elijas.
         </p>
+
+        {!cargando && !error && (
+          <InterruptorGeneral
+            prendida={general.automatizacion}
+            privados={general.privados}
+            reelsActivos={general.reelsActivos ?? { prueba: 0, en_vivo: 0 }}
+            puedeCambiar={general.puedeCambiar === true}
+            onCambiar={cambiarGeneral}
+          />
+        )}
 
         {/* `!cargando`: mientras la respuesta no llegó, "no hay landing" es
             desconocido, no falso. Mostrarlo igual hacía parpadear el aviso en
