@@ -121,7 +121,7 @@ export function ConfigurarReelDialog({ propertyId, reelId, landingPublicada, onC
         <DialogHeader>
           <DialogTitle>Configurar el reel</DialogTitle>
           <DialogDescription>
-            Qué palabra se caza y qué se le responde a quien la escriba.
+            Qué palabras se reconocen y qué se le responde a quien escriba alguna.
           </DialogDescription>
         </DialogHeader>
 
