@@ -72,6 +72,13 @@ describe('elegirRespuesta', () => {
     expect(RESPUESTAS_SIN_PRIVADO).toContain(elegirRespuesta('x', false, { con: ['  ', ''], sin: null }))
   })
 
+  it('no revienta si la base devuelve algo que no es texto (cae en las de fábrica)', () => {
+    // Un arreglo de dos dimensiones escrito directo en la base llegaba acá como
+    // arreglos adentro de arreglos, y f.trim() tiraba la excepción.
+    const raro = { sin: [['a', 'b']] as unknown as string[] }
+    expect(RESPUESTAS_SIN_PRIVADO).toContain(elegirRespuesta('x', false, raro))
+  })
+
   it('con la misma semilla devuelve siempre lo mismo', () => {
     // Determinística a propósito: Meta REINTENTA sus avisos. Si el reintento
     // eligiera otra frase, quedarían dos respuestas distintas bajo el mismo

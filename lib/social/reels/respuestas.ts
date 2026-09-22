@@ -63,7 +63,13 @@ export interface FrasesDelReel {
  */
 export function elegirRespuesta(semilla: string, privadoEnviado: boolean, frases: FrasesDelReel = {}): string {
   const delReel = (privadoEnviado ? frases.con : frases.sin) ?? []
-  const utiles = delReel.map((f) => f.trim()).filter((f) => f.length > 0)
+  // `typeof` antes de `trim`: si alguien escribió en la base un arreglo de dos
+  // dimensiones, acá llegan arreglos y `trim` tiraba una excepción que dejaba el
+  // comentario sin respuesta.
+  const utiles = (Array.isArray(delReel) ? delReel : [])
+    .filter((f): f is string => typeof f === 'string')
+    .map((f) => f.trim())
+    .filter((f) => f.length > 0)
   const catalogo = utiles.length > 0 ? utiles : privadoEnviado ? FRASES_CON_PRIVADO : FRASES_SIN_PRIVADO
   return catalogo[semillaNumerica(semilla) % catalogo.length]
 }

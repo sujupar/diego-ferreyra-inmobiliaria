@@ -30,15 +30,24 @@ ALTER TABLE public.property_reels
 
 -- De 1 a 3 frases, cada una de 1 a 300 caracteres. Un CHECK no admite
 -- subconsultas, así que la regla va en una función inmutable.
+--
+-- `cardinality` + `array_ndims = 1`, y no `array_length(frases, 1)`: esa cuenta
+-- solo la primera dimensión, así que un arreglo 3x3 pasaba con 9 frases
+-- (revisión de seguridad). Y `btrim` con saltos de línea y tabulaciones: una
+-- frase que es solo un "\n" no es una frase.
+-- `SET search_path = ''`: todo lo que usa vive en pg_catalog, que siempre se busca.
 CREATE OR REPLACE FUNCTION public.reels_frases_validas(frases text[])
 RETURNS boolean
 LANGUAGE sql
 IMMUTABLE
+SET search_path = ''
 AS $$
-  SELECT coalesce(array_length(frases, 1), 0) BETWEEN 1 AND 3
+  SELECT frases IS NOT NULL
+     AND array_ndims(frases) = 1
+     AND cardinality(frases) BETWEEN 1 AND 3
      AND NOT EXISTS (
        SELECT 1 FROM unnest(frases) AS f
-       WHERE f IS NULL OR char_length(btrim(f)) = 0 OR char_length(f) > 300
+       WHERE f IS NULL OR char_length(btrim(f, E' \t\r\n')) = 0 OR char_length(f) > 300
      )
 $$;
 

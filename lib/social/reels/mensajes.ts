@@ -17,6 +17,36 @@ export const MAX_CARACTERES_MENSAJE = 1000
 
 type Resultado<T> = { ok: true; valor: T } | { ok: false; error: string }
 
+/**
+ * Los únicos dominios que pueden aparecer en un texto que sale desde la cuenta.
+ * El enlace de la landing lo agrega el sistema solo; no hay motivo legítimo para
+ * que el asesor escriba otro, y un enlace ajeno en un privado de una cuenta de
+ * 26.000 seguidores es un phishing con nuestra credibilidad (revisión de
+ * seguridad, 2026-09-22). Se compara el HOST exacto o sus subdominios, nunca con
+ * `includes`: "inmodf.com.ar.evil.com" pasaría cualquier comparación floja.
+ */
+const DOMINIOS_PROPIOS = ['inmodf.com.ar', 'inmobiliariadiegoferreyra.com']
+
+/** Algo con forma de dominio: letras/números, un punto y un final de 2+ letras. */
+const PARECE_DOMINIO = /(?:https?:\/\/)?(?:www\.)?((?:[a-z0-9-]+\.)+[a-z]{2,})(?=[\/\s?#:),.!]|$)/gi
+
+/** El primer dominio ajeno que aparece en el texto, o `null`. */
+export function enlaceAjeno(texto: string): string | null {
+  for (const m of texto.matchAll(PARECE_DOMINIO)) {
+    const host = m[1].toLowerCase().replace(/^www\./, '')
+    const propio = DOMINIOS_PROPIOS.some((d) => host === d || host.endsWith(`.${d}`))
+    if (!propio) return m[1]
+  }
+  return null
+}
+
+function rechazoPorEnlace(texto: string): string | null {
+  const ajeno = enlaceAjeno(texto)
+  return ajeno
+    ? `No se puede poner un enlace a otro sitio (${ajeno}): el de la landing lo agrega el sistema solo.`
+    : null
+}
+
 function limpio(texto: string): string {
   return texto.normalize('NFC').trim()
 }
@@ -32,6 +62,10 @@ export function limpiarFrases(frases: readonly string[]): Resultado<string[]> {
   const larga = utiles.find((f) => f.length > MAX_CARACTERES_FRASE)
   if (larga) {
     return { ok: false, error: `Una frase tiene ${larga.length} caracteres: el máximo es ${MAX_CARACTERES_FRASE}.` }
+  }
+  for (const f of utiles) {
+    const rechazo = rechazoPorEnlace(f)
+    if (rechazo) return { ok: false, error: rechazo }
   }
   return { ok: true, valor: utiles }
 }
@@ -77,6 +111,8 @@ export function validarMensajes(m: MensajesDelReel): Resultado<MensajesLimpios> 
     if (boton.length > MAX_CARACTERES_BOTON) {
       return { ok: false, error: `El texto del botón tiene ${boton.length} caracteres: el máximo es ${MAX_CARACTERES_BOTON}.` }
     }
+    const rechazo = rechazoPorEnlace(boton)
+    if (rechazo) return { ok: false, error: rechazo }
     salida.dm_boton = boton
   }
 
@@ -87,6 +123,8 @@ export function validarMensajes(m: MensajesDelReel): Resultado<MensajesLimpios> 
     if (texto.length > MAX_CARACTERES_MENSAJE) {
       return { ok: false, error: `El mensaje tiene ${texto.length} caracteres: el máximo es ${MAX_CARACTERES_MENSAJE}.` }
     }
+    const rechazo = rechazoPorEnlace(texto)
+    if (rechazo) return { ok: false, error: rechazo }
     salida[clave] = texto.length > 0 ? texto : null
   }
 

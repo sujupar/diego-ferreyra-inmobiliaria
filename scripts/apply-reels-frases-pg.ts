@@ -55,6 +55,8 @@ async function main() {
         ['4 frases', ['a1', 'b2', 'c3', 'd4']],
         ['una frase vacía', ['hola', '  ']],
         ['ninguna frase', []],
+        ['un arreglo de 3x3 (9 frases)', [['a1', 'b2', 'c3'], ['d4', 'e5', 'f6'], ['g7', 'h8', 'i9']]],
+        ['una frase que es solo un salto de línea', ['hola', '\n\t']],
       ] as const) {
         await c.query('BEGIN')
         try {

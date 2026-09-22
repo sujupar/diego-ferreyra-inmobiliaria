@@ -74,3 +74,27 @@ describe('validarMensajes', () => {
     if (!r.ok) expect(r.error).toMatch(/si el privado no sale/i)
   })
 })
+
+describe('enlaces en los mensajes (revisión de seguridad)', () => {
+  it('rechaza un enlace a otro sitio en el privado: sería phishing desde la cuenta de la inmobiliaria', () => {
+    const r = validarMensajes({ dm_texto: 'Mirala acá: https://sitio-falso.com/ficha' })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/enlace/)
+  })
+
+  it('rechaza también un dominio sin https y un "www."', () => {
+    expect(validarMensajes({ dm_seguimiento: 'entrá a sitio-falso.com' }).ok).toBe(false)
+    expect(validarMensajes({ dm_seguimiento: 'www.otra-cosa.net' }).ok).toBe(false)
+    expect(validarMensajes({ respuestas_sin_privado: ['Gracias! mirá bit.ly/abc'] }).ok).toBe(false)
+  })
+
+  it('acepta los dominios de la inmobiliaria', () => {
+    expect(validarMensajes({ dm_texto: 'Todo en inmodf.com.ar' }).ok).toBe(true)
+    expect(validarMensajes({ dm_texto: 'https://inmobiliariadiegoferreyra.com/tasacion' }).ok).toBe(true)
+  })
+
+  it('no confunde texto normal con un dominio', () => {
+    expect(validarMensajes({ dm_texto: 'Hola! Te paso la ficha. ¿Te sirve? Son 3 amb.' }).ok).toBe(true)
+    expect(validarMensajes({ respuestas_con_privado: ['¡Listo! Te escribí al privado 📩'] }).ok).toBe(true)
+  })
+})

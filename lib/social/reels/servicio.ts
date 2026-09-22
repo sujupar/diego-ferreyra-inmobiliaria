@@ -146,6 +146,9 @@ export async function crearReel(a: {
   const { data, error } = await admin()
     .from('property_reels')
     .insert({
+      // Los mensajes van PRIMERO: si algún día ese tipo aceptara otra clave, no
+      // podría pisar la propiedad, el estado ni nada de lo que sigue.
+      ...(a.mensajes ?? {}),
       property_id: a.propertyId,
       created_by: a.creadoPor,
       origen: a.origen,
@@ -159,7 +162,6 @@ export async function crearReel(a: {
       // La ruta ya la validó con `limpiarPalabras`; se vuelve a normalizar por si
       // otro llamador (un script) la pasa cruda.
       palabra_clave: separarPalabras(a.palabraClave).join(', ') || null,
-      ...(a.mensajes ?? {}),
     })
     .select('*')
     .single()
