@@ -9,6 +9,7 @@ import { Progress } from '@/components/ui/progress'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { REEL_EXTS } from '@/lib/properties/media'
 import { subirReel, validarArchivoReel } from '@/lib/properties/upload-reel'
+import { CampoPalabras, palabrasSonValidas } from './CampoPalabras'
 
 interface Props {
   propertyId: string
@@ -91,21 +92,12 @@ export function SubirReelDialog({ propertyId, abierto, onCerrar, onListo }: Prop
             </p>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="palabra-reel">Palabra del llamado a la acción</Label>
-            <Input
-              id="palabra-reel"
-              value={palabra}
-              maxLength={60}
-              disabled={subiendo}
-              placeholder="PROPIEDAD"
-              onChange={(e) => setPalabra(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Las personas que escriban esta palabra en los comentarios reciben el mensaje
-              automático. Podés cambiarla después.
-            </p>
-          </div>
+          <CampoPalabras
+            id="palabra-reel"
+            valor={palabra}
+            onCambiar={setPalabra}
+            deshabilitado={subiendo}
+          />
 
           {subiendo && progreso > 0 && (
             <div className="space-y-1">
@@ -124,7 +116,7 @@ export function SubirReelDialog({ propertyId, abierto, onCerrar, onListo }: Prop
 
         <DialogFooter>
           <Button variant="ghost" onClick={onCerrar} disabled={subiendo}>Cancelar</Button>
-          <Button onClick={() => void confirmar()} disabled={!archivo || subiendo}>
+          <Button onClick={() => void confirmar()} disabled={!archivo || subiendo || !palabrasSonValidas(palabra)}>
             {subiendo && <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden />}
             Guardar
           </Button>

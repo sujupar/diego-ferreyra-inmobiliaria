@@ -34,6 +34,19 @@ describe('armarDescripcionReel', () => {
     expect(armarDescripcionReel(depto, 'más info')).toContain('MÁS INFO')
   })
 
+  it('con varias palabras, en la descripción va SOLO la primera', () => {
+    // Las demás son las variantes que la gente escribe de verdad ("doblas",
+    // "info"): se aceptan, pero pedirle al público cuatro palabras confunde.
+    const texto = armarDescripcionReel(depto, 'parque rivadavia, doblas, info')
+    expect(texto).toContain('Comentá la palabra PARQUE RIVADAVIA ')
+    expect(texto).not.toMatch(/doblas/i)
+    expect(texto).not.toMatch(/\binfo\b/i)
+  })
+
+  it('una lista de solo comas no inventa un llamado a la acción', () => {
+    expect(armarDescripcionReel(depto, ' , , ')).not.toContain('Comentá')
+  })
+
   it('NUNCA incluye un precio', () => {
     // Regla dura del pedido. El tipo DatosDescripcion no tiene campo de precio,
     // así que no hay ningún camino que lo escriba. Esta prueba existe para que

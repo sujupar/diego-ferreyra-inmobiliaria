@@ -14,6 +14,7 @@ import { createClient } from '@supabase/supabase-js'
 import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 import { armarDescripcionReel, type DatosDescripcion } from './descripcion'
 import { camposEditables, type CamposEditablesReel } from './edicion'
+import { separarPalabras } from './palabra-clave'
 import type { EstadoReel } from './estados'
 
 function admin() {
@@ -148,7 +149,9 @@ export async function crearReel(a: {
       estado: a.origen === 'existente' ? 'publicado' : 'borrador',
       publicado_en: a.origen === 'existente' ? new Date().toISOString() : null,
       descripcion,
-      palabra_clave: a.palabraClave?.trim() || null,
+      // La ruta ya la validó con `limpiarPalabras`; se vuelve a normalizar por si
+      // otro llamador (un script) la pasa cruda.
+      palabra_clave: separarPalabras(a.palabraClave).join(', ') || null,
     })
     .select('*')
     .single()

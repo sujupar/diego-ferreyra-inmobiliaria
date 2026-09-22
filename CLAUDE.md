@@ -1198,6 +1198,48 @@ La landing (`app/p/[slug]`) se rediseñó a nivel premium (estilo editorial/lujo
 
 ---
 
+## Reels de Instagram por propiedad — 2026-09-22 (PR #24 y #25)
+
+Tarjeta "Reels de Instagram" en la pestaña **Difusión**, debajo de la landing (con atajo "Ir a
+Reels" en la tarjeta de canales). Subir un reel (descripción sin precio) o enganchar uno ya
+publicado; ante un comentario con alguna de las palabras → respuesta pública rotada + privado con
+botón que lleva a la landing. Specs: `docs/superpowers/specs/2026-09-22-reels-*`. Código:
+`lib/social/reels/` (reglas puras, testeadas) y `lib/integrations/instagram/`.
+
+- **Frenos, todos apagados de fábrica:** `instagram_ajustes.automatizacion_habilitada` (global),
+  `.dm_habilitado` (privados), y por reel `automatizacion_activa` + `simulacro`. Activar un reel
+  exige **landing publicada** (el botón del privado lleva a ella) y al menos una palabra. Solo actúa
+  sobre comentarios posteriores a `automatizacion_desde`.
+- **Cuentas de prueba** (`instagram_ajustes.cuentas_de_prueba`, script `scripts/reels-cuentas-de-prueba.ts`):
+  con el reel en simulacro, esas cuentas reciben la respuesta REAL y el resto sigue simulado. Se
+  reconocen por **nombre de usuario, que su dueño puede cambiar** → vaciar la lista al terminar de
+  probar (si el nombre queda libre, otro podría tomarlo y recibir respuestas reales).
+- **Varias palabras en la MISMA columna** `palabra_clave`, separadas por coma. El formato vive solo
+  en `separarPalabras`; la primera es la que va en la descripción. Cada palabra necesita 2 letras o
+  números (`"a"` o `"!"` coincidían con casi todo) y la lista tiene tope de 10 / 200 caracteres
+  (también como CHECK en la base).
+- **TRAMPA — la hora del comentario:** los avisos de comentarios de Instagram NO traen `timestamp`
+  dentro de `value`; la hora está en `entry.time` (segundos). Leyendo solo `value.timestamp`, cada
+  comentario real llegaba sin hora, se trataba como anterior a la activación y el sistema **no le
+  respondía a nadie, sin ningún error** (el QA del PR #24 no lo vio porque armó los avisos a mano
+  con ese campo). **Detection:** filas en `reel_comentarios` con `motivo_ignorado =
+  'comentario_anterior_a_la_activacion'` para comentarios que se hicieron después de activar.
+- **TRAMPA — alta del webhook:** la app se suscribe al objeto `instagram` con `comments,messages`,
+  pero la PÁGINA no tiene campo `comments` (#100) y `messages` exige `pages_messaging` (#200). A la
+  página alcanza suscribirla a `feed`. Con el token nuevo: `scripts/suscribir-webhook-instagram.ts --con-mensajes`.
+- **Privado bloqueado hasta tener `pages_messaging` en el token.** El token vive en
+  `META_ACCESS_TOKEN`, el MISMO que usan las campañas Meta y `meta-sync`: antes de reemplazarlo,
+  verificar con `debug_token` que conserva todos los permisos anteriores (19 al 2026-09-22) +
+  `pages_messaging`, o se caen las campañas.
+- **RLS:** el asesor LEE sus reels y comentarios pero no los escribe (todas las escrituras pasan por
+  el servidor con la clave de servicio). Estaba en `FOR ALL` y permitía saltearse las reglas por la
+  API REST; corregido en `20260922000004` Y en `20260922000001` (si no, re-correr el script de la
+  vieja lo revertía).
+- **Proceso de publicación:** job `reels-publish` en pg_cron cada 5 min (jobid 19), una etapa de
+  Instagram por corrida (crear contenedor → publicar).
+
+---
+
 ## Agente de IA que agenda visitas por WhatsApp — 2026-08-03
 
 Plan: `docs/superpowers/plans/2026-08-03-agente-ia-agenda-y-prioridad.md`.

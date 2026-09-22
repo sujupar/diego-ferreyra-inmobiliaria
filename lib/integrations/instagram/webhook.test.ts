@@ -87,6 +87,50 @@ describe('parsearAviso — comentarios', () => {
     }])
   })
 
+  it('sin `timestamp` en el comentario, toma la hora del evento (`entry.time`, en segundos)', () => {
+    // Los ejemplos de Meta para comentarios de Instagram NO traen `timestamp`
+    // dentro de `value`: la hora viene en `entry.time`. Sin esta lectura, cada
+    // comentario real llegaba sin hora, la decisión lo trataba como anterior a
+    // la activación y el sistema no le respondía a NADIE, sin ningún error.
+    const aviso = {
+      object: 'instagram',
+      entry: [{
+        id: '17841421542114621',
+        time: 1758542636,
+        changes: [{ field: 'comments', value: { id: 'c1', text: 'doblas', media: { id: 'm1' }, from: { id: 'u1', username: 'juan' } } }],
+      }],
+    }
+    expect(parsearAviso(aviso).comentarios[0]?.creadoEn).toBe(new Date(1758542636 * 1000).toISOString())
+  })
+
+  it('entiende `entry.time` también si viene en milisegundos', () => {
+    const aviso = {
+      object: 'instagram',
+      entry: [{
+        id: 'x',
+        time: 1758542636000,
+        changes: [{ field: 'comments', value: { id: 'c1', text: 'a', media: { id: 'm1' }, from: { id: 'u1' } } }],
+      }],
+    }
+    expect(parsearAviso(aviso).comentarios[0]?.creadoEn).toBe(new Date(1758542636000).toISOString())
+  })
+
+  it('sin ninguna de las dos horas deja la fecha vacía (la decisión la trata como vieja: no escribe)', () => {
+    const aviso = {
+      object: 'instagram',
+      entry: [{ id: 'x', changes: [{ field: 'comments', value: { id: 'c1', text: 'a', media: { id: 'm1' }, from: { id: 'u1' } } }] }],
+    }
+    expect(parsearAviso(aviso).comentarios[0]?.creadoEn).toBe('')
+  })
+
+  it('una hora de evento absurda no se usa', () => {
+    const aviso = {
+      object: 'instagram',
+      entry: [{ id: 'x', time: 'ayer', changes: [{ field: 'comments', value: { id: 'c1', text: 'a', media: { id: 'm1' }, from: { id: 'u1' } } }] }],
+    }
+    expect(parsearAviso(aviso).comentarios[0]?.creadoEn).toBe('')
+  })
+
   it('descarta un comentario sin el id del reel: no sabríamos de qué propiedad es', () => {
     const aviso = {
       object: 'instagram',

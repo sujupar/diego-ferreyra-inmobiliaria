@@ -38,18 +38,23 @@ const SEGUIMIENTO_POR_DEFECTO = 'Acá la tenés 👇'
  * leerlo" nunca puede significar "andá y escribile a la gente".
  */
 export async function leerAjustes(): Promise<AjustesGlobales> {
-  const apagado: AjustesGlobales = { automatizacion_habilitada: false, dm_habilitado: false }
+  const apagado: AjustesGlobales = { automatizacion_habilitada: false, dm_habilitado: false, cuentas_de_prueba: [] }
   try {
     const { data, error } = await admin()
       .from('instagram_ajustes')
-      .select('automatizacion_habilitada, dm_habilitado')
+      .select('automatizacion_habilitada, dm_habilitado, cuentas_de_prueba')
       .eq('id', 'default')
       .maybeSingle()
     if (error || !data) return apagado
-    const fila = data as { automatizacion_habilitada?: boolean; dm_habilitado?: boolean }
+    const fila = data as { automatizacion_habilitada?: boolean; dm_habilitado?: boolean; cuentas_de_prueba?: unknown }
     return {
       automatizacion_habilitada: fila.automatizacion_habilitada === true,
       dm_habilitado: fila.dm_habilitado === true,
+      // Algo que no sea una lista de textos se lee como "ninguna cuenta de
+      // prueba": el simulacro queda para todos, que es el lado seguro.
+      cuentas_de_prueba: Array.isArray(fila.cuentas_de_prueba)
+        ? fila.cuentas_de_prueba.filter((x): x is string => typeof x === 'string')
+        : [],
     }
   } catch {
     return apagado
@@ -168,6 +173,7 @@ export async function procesarComentario(
       texto: c.texto,
       creado_en: c.creadoEn,
       autor_ig_id: c.autorId,
+      autor_username: c.username,
       es_de_la_cuenta: await esComentarioDeLaCuenta(c.autorId),
       ya_recibio_dm: await yaRecibioDm(reel.id, c.autorId),
     },

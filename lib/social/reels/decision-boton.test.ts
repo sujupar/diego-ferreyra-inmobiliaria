@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { decidirBoton, type AjustesGlobales, type ReelParaBoton } from './decision'
 
-const todoPrendido: AjustesGlobales = { automatizacion_habilitada: true, dm_habilitado: true }
+const todoPrendido: AjustesGlobales = { automatizacion_habilitada: true, dm_habilitado: true, cuentas_de_prueba: [] }
 const reelOk: ReelParaBoton = { automatizacion_activa: true, simulacro: false, estado: 'publicado' }
 
 describe('decidirBoton', () => {

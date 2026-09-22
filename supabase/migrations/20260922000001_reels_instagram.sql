@@ -131,13 +131,12 @@ CREATE POLICY reels_ops_all ON public.property_reels
   USING (public.is_operations_user())
   WITH CHECK (public.is_operations_user());
 
+-- SOLO LECTURA para el asesor (corregido el 2026-09-22, ver 20260922000004):
+-- todas las escrituras pasan por el servidor con la clave de servicio.
 DROP POLICY IF EXISTS reels_asesor_own ON public.property_reels;
 CREATE POLICY reels_asesor_own ON public.property_reels
-  FOR ALL TO authenticated
+  FOR SELECT TO authenticated
   USING (EXISTS (
-    SELECT 1 FROM public.properties p
-    WHERE p.id = property_id AND p.assigned_to = auth.uid()))
-  WITH CHECK (EXISTS (
     SELECT 1 FROM public.properties p
     WHERE p.id = property_id AND p.assigned_to = auth.uid()));
 
@@ -149,12 +148,8 @@ CREATE POLICY reel_comentarios_ops ON public.reel_comentarios
 
 DROP POLICY IF EXISTS reel_comentarios_asesor ON public.reel_comentarios;
 CREATE POLICY reel_comentarios_asesor ON public.reel_comentarios
-  FOR ALL TO authenticated
+  FOR SELECT TO authenticated
   USING (EXISTS (
-    SELECT 1 FROM public.property_reels r
-    JOIN public.properties p ON p.id = r.property_id
-    WHERE r.id = reel_id AND p.assigned_to = auth.uid()))
-  WITH CHECK (EXISTS (
     SELECT 1 FROM public.property_reels r
     JOIN public.properties p ON p.id = r.property_id
     WHERE r.id = reel_id AND p.assigned_to = auth.uid()));

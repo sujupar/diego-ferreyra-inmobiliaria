@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import { ReelsCard } from './ReelsCard'
+import { ReelsCard, ANCLA_REELS } from './ReelsCard'
 
 function respuesta(cuerpo: unknown, ok = true) {
   return { ok, status: ok ? 200 : 500, text: async () => JSON.stringify(cuerpo) }
@@ -55,6 +55,33 @@ describe('ReelsCard', () => {
     expect(await screen.findByText(/falta publicar la landing/i)).toBeTruthy()
   })
 
+  it('mientras carga NO dice que falta la landing (no parpadea en fichas que la tienen)', () => {
+    // La respuesta nunca llega: el estado es "cargando" para siempre.
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})))
+    render(<ReelsCard propertyId="p1" puedeGestionar />)
+    expect(screen.getByText(/cargando/i)).toBeTruthy()
+    expect(screen.queryByText(/falta publicar la landing/i)).toBeNull()
+  })
+
+  it('tiene el ancla a la que salta el atajo "Ir a Reels"', async () => {
+    const { container } = render(<ReelsCard propertyId="p1" puedeGestionar />)
+    await waitFor(() => expect(screen.queryByText(/cargando/i)).toBeNull())
+    expect(container.querySelector(`#${ANCLA_REELS}`)).toBeTruthy()
+  })
+
+  it('una fila con varias palabras las muestra todas', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      respuesta({
+        reels: [{ ...REEL_PUBLICADO, palabra_clave: 'parque rivadavia, doblas' }],
+        resumen: {},
+        landing: { publicada: true, slug: 'abc' },
+      }),
+    ))
+    render(<ReelsCard propertyId="p1" puedeGestionar />)
+    expect(await screen.findByText('parque rivadavia · doblas')).toBeTruthy()
+    expect(screen.getByText(/palabras:/)).toBeTruthy()
+  })
+
   it('con landing publicada NO muestra el aviso', async () => {
     render(<ReelsCard propertyId="p1" puedeGestionar />)
     await waitFor(() => expect(screen.queryByText(/cargando/i)).toBeNull())
@@ -85,7 +112,7 @@ describe('ReelsCard', () => {
       }),
     ))
     render(<ReelsCard propertyId="p1" puedeGestionar />)
-    expect(await screen.findByText(/5 con la palabra/)).toBeTruthy()
+    expect(await screen.findByText(/5 con alguna palabra/)).toBeTruthy()
     expect(screen.getByText(/3 privados/)).toBeTruthy()
   })
 

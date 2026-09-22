@@ -18,10 +18,24 @@
  * Correr:
  *   node --env-file=.env.local --import tsx scripts/suscribir-webhook-instagram.ts --verificar
  *   node --env-file=.env.local --import tsx scripts/suscribir-webhook-instagram.ts
+ *   node --env-file=.env.local --import tsx scripts/suscribir-webhook-instagram.ts --con-mensajes   (con pages_messaging)
  */
 
 const API = 'https://graph.facebook.com/v21.0'
+/** Lo que la APP escucha del objeto `instagram`. El toque del botón es una respuesta rápida: llega por `messages`. */
 const CAMPOS = 'comments,messages'
+/**
+ * La PÁGINA no tiene campo `comments`: Meta lo rechaza con (#100) "Param
+ * subscribed_fields[0] must be one of {feed, …, messages, …}". Para Instagram
+ * alcanza con que la página tenga la app instalada, suscripta a un campo
+ * cualquiera: `feed`.
+ *
+ * `messages` exige `pages_messaging` — sin él Meta responde (#200) "To subscribe
+ * to the messages field, one of these permissions is needed: pages_messaging".
+ * Por eso va aparte, con `--con-mensajes`, cuando el token lo tenga. Las dos
+ * cosas verificadas el 2026-09-22.
+ */
+const CAMPOS_PAGINA = process.argv.includes('--con-mensajes') ? 'feed,messages' : 'feed'
 
 interface RespuestaMeta {
   error?: { message?: string; code?: number; error_subcode?: number }
@@ -112,7 +126,7 @@ async function main() {
   // 2) La página (con SU token, no el de usuario de sistema).
   const { pageId, pageToken } = await tokenDePagina(token)
   const altaPagina = await pedir(
-    `${API}/${pageId}/subscribed_apps?subscribed_fields=${CAMPOS}&access_token=${pageToken}`,
+    `${API}/${pageId}/subscribed_apps?subscribed_fields=${CAMPOS_PAGINA}&access_token=${pageToken}`,
     { method: 'POST' },
   )
   if (altaPagina.error) throw new Error(`alta de la página: ${JSON.stringify(altaPagina.error)}`)

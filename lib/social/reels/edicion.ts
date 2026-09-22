@@ -15,6 +15,7 @@
  * Una lista de prohibidos falla ABIERTA: la columna que se agregue mañana queda
  * habilitada sin que nadie lo decida. Una lista blanca falla cerrada.
  */
+import { separarPalabras } from './palabra-clave'
 
 export interface CamposEditablesReel {
   descripcion?: string
@@ -51,9 +52,12 @@ export function camposEditables(entrada: CamposEditablesReel): Record<string, un
     // para siempre y el sistema nunca hablaría.
     if (valor === undefined) continue
 
+    // Los topes (10 palabras, 200 caracteres) los hace cumplir la ruta con
+    // `limpiarPalabras` ANTES de llegar acá, para poder contestar con el motivo.
+    // Acá solo se normaliza la forma: la lista vacía se guarda como null, que
+    // es lo que impide activar un reel sin palabra.
     if (clave === 'palabra_clave' && typeof valor === 'string') {
-      const limpia = valor.trim()
-      salida[clave] = limpia.length > 0 ? limpia : null
+      salida[clave] = separarPalabras(valor).join(', ') || null
       continue
     }
     salida[clave] = valor

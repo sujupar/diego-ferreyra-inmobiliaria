@@ -1,5 +1,101 @@
 import { describe, it, expect } from 'vitest'
-import { comentarioCoincide, normalizarParaComparar } from './palabra-clave'
+import {
+  comentarioCoincide,
+  limpiarPalabras,
+  normalizarParaComparar,
+  separarPalabras,
+  MAX_PALABRAS,
+  MAX_CARACTERES_PALABRAS,
+} from './palabra-clave'
+
+describe('separarPalabras', () => {
+  it('separa por coma y saca los espacios de los bordes', () => {
+    expect(separarPalabras('parque rivadavia, doblas ,info')).toEqual(['parque rivadavia', 'doblas', 'info'])
+  })
+
+  it('descarta las vacías', () => {
+    expect(separarPalabras('doblas, , info,')).toEqual(['doblas', 'info'])
+  })
+
+  it('descarta las repetidas aunque cambien tildes o mayúsculas, y se queda con la primera', () => {
+    expect(separarPalabras('Tasación, TASACION, tasación, info')).toEqual(['Tasación', 'info'])
+  })
+
+  it('una sola palabra sin comas es una lista de una', () => {
+    // Los reels guardados antes de este cambio tienen una sola palabra: tienen
+    // que seguir funcionando igual, sin migrar nada.
+    expect(separarPalabras('propiedad')).toEqual(['propiedad'])
+  })
+
+  it('nulo, vacío o solo comas dan una lista vacía', () => {
+    expect(separarPalabras(null)).toEqual([])
+    expect(separarPalabras(undefined)).toEqual([])
+    expect(separarPalabras('')).toEqual([])
+    expect(separarPalabras(' , ,, ')).toEqual([])
+  })
+
+  it('junta los espacios de más dentro de una frase', () => {
+    expect(separarPalabras('parque    rivadavia')).toEqual(['parque rivadavia'])
+  })
+})
+
+describe('limpiarPalabras', () => {
+  it('devuelve la lista limpia, separada por coma y espacio', () => {
+    expect(limpiarPalabras('doblas, DOBLAS, , info')).toEqual({ ok: true, valor: 'doblas, info' })
+  })
+
+  it('una lista vacía se guarda como null (sin palabra no se puede activar)', () => {
+    expect(limpiarPalabras('  , ')).toEqual({ ok: true, valor: null })
+    expect(limpiarPalabras(null)).toEqual({ ok: true, valor: null })
+  })
+
+  it(`acepta hasta ${MAX_PALABRAS} palabras`, () => {
+    const diez = Array.from({ length: MAX_PALABRAS }, (_, i) => `p${i}`).join(', ')
+    expect(limpiarPalabras(diez).ok).toBe(true)
+  })
+
+  it(`rechaza más de ${MAX_PALABRAS} palabras con un mensaje en castellano`, () => {
+    const once = Array.from({ length: MAX_PALABRAS + 1 }, (_, i) => `p${i}`).join(', ')
+    const r = limpiarPalabras(once)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/10 palabras/)
+  })
+
+  it(`rechaza una lista de más de ${MAX_CARACTERES_PALABRAS} caracteres`, () => {
+    const larga = ['a'.repeat(120), 'b'.repeat(90)].join(', ')
+    const r = limpiarPalabras(larga)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/200/)
+  })
+
+  it('las repetidas no cuentan para el tope', () => {
+    // Once escritas, pero dos son la misma: quedan diez y se acepta.
+    const conRepetida = [...Array.from({ length: MAX_PALABRAS }, (_, i) => `p${i}`), 'P0'].join(', ')
+    expect(limpiarPalabras(conRepetida).ok).toBe(true)
+  })
+})
+
+describe('comentarioCoincide con varias palabras', () => {
+  const palabras = 'parque rivadavia, doblas'
+
+  it('coincide con cualquiera de las palabras', () => {
+    expect(comentarioCoincide('Doblas precio', palabras)).toBe(true)
+    expect(comentarioCoincide('Parque Rivadavía!', palabras)).toBe(true)
+  })
+
+  it('no coincide si no está ninguna', () => {
+    expect(comentarioCoincide('info', palabras)).toBe(false)
+  })
+
+  it('cada palabra tiene que estar entera, como con una sola', () => {
+    // "doblaa" (un error de tipeo real del reel del 20/09) no es "doblas".
+    expect(comentarioCoincide('doblaa', palabras)).toBe(false)
+  })
+
+  it('una lista de solo comas nunca coincide (falla cerrado)', () => {
+    expect(comentarioCoincide('lo que sea', ' , , ')).toBe(false)
+  })
+})
 
 describe('normalizarParaComparar', () => {
   it('pasa a minúsculas y saca las tildes', () => {
@@ -84,5 +180,36 @@ describe('comentarioCoincide', () => {
     // asterisco, esto no puede tirar una excepción dentro del webhook.
     expect(comentarioCoincide('quiero info (ya)', 'info (ya)')).toBe(true)
     expect(comentarioCoincide('precio?', '?')).toBe(false)
+  })
+})
+
+describe('palabras que no sirven (revisión de seguridad)', () => {
+  it('rechaza una palabra sin letras ni números', () => {
+    // "!" coincide con "hermoso!!": un signo suelto en la lista convertiría al
+    // sistema en un contestador de casi todos los comentarios.
+    const r = limpiarPalabras('info, !')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/2 letras o números/)
+  })
+
+  it('rechaza una palabra de una sola letra', () => {
+    // "a" es una preposición: está en casi cualquier comentario.
+    expect(limpiarPalabras('doblas, a').ok).toBe(false)
+  })
+
+  it('acepta palabras cortas de verdad, de dos letras', () => {
+    expect(limpiarPalabras('sí, info').ok).toBe(true)
+  })
+
+  it('al comparar, ignora las palabras que no sirven aunque estén guardadas', () => {
+    // Defensa por si la lista llegó a la base sin pasar por la ruta.
+    expect(comentarioCoincide('hermoso!!', 'info, !')).toBe(false)
+    expect(comentarioCoincide('me encanta a la tarde', 'doblas, a')).toBe(false)
+    expect(comentarioCoincide('info por favor', 'info, !')).toBe(true)
+  })
+
+  it('una lista guardada con más del tope no coincide con nada (falla cerrado)', () => {
+    const muchas = Array.from({ length: MAX_PALABRAS + 5 }, (_, i) => `palabra${i}`).join(', ')
+    expect(comentarioCoincide('palabra0', muchas)).toBe(false)
   })
 })
