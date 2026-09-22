@@ -1215,6 +1215,14 @@ botón que lleva a la landing. Specs: `docs/superpowers/specs/2026-09-22-reels-*
   CHECK 1 a 3 de hasta 300), privado, botón y mensaje del enlace. Los textos de fábrica viven SOLO en
   `textos-por-defecto.ts` (los usan la pantalla y el procesador; una prueba los compara con el default
   de la migración 000005). Sin privados habilitados se usan las frases de RESPALDO.
+- **Interruptor general en la pantalla** (`InterruptorGeneral.tsx`, arriba de la tarjeta de Reels): lo
+  ve todo el equipo, lo cambian solo admin y dueño (`PATCH /api/instagram/ajustes`, 403 al resto). Prender
+  pide confirmación con cuántos reels de TODAS las propiedades empiezan a responder; apagar es inmediato.
+  Los privados (`dm_habilitado`) NO se cambian desde ahí.
+- **"Me gusta" al comentario: NO existe en la API de Instagram** (verificado 2026-09-22: `POST
+  /{comment-id}/likes` → "Unsupported post request" con token de sistema y de página, v21 y v25; el
+  campo `likes` de un comentario "no existe"). No es un permiso. Las herramientas que lo hacen entran con
+  usuario y contraseña, contra las reglas de Instagram: riesgo de bloqueo de la cuenta. No reintentar.
 - **Frenos, todos apagados de fábrica:** `instagram_ajustes.automatizacion_habilitada` (global),
   `.dm_habilitado` (privados), y por reel `automatizacion_activa` + `simulacro`. Activar un reel
   exige **landing publicada** (el botón del privado lleva a ella) y al menos una palabra. Solo actúa
