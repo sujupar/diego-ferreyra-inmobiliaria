@@ -46,6 +46,18 @@ describe('InterruptorGeneral', () => {
     expect(screen.queryByRole('alertdialog')).toBeNull()
   })
 
+  it('si el servidor rechaza el ENCENDIDO, el interruptor vuelve a verse apagado', async () => {
+    // Revisión de código: quedaba "prendido" a la vista aunque el servidor no lo
+    // prendió, y un admin podía creer que ya le estaba hablando a clientes.
+    const onCambiar = vi.fn(async () => { throw new Error('No se pudo cambiar') })
+    render(<InterruptorGeneral {...base} prendida={false} puedeCambiar onCambiar={onCambiar} />)
+    fireEvent.click(screen.getByRole('switch'))
+    fireEvent.click(screen.getByRole('button', { name: /Sí, encender/ }))
+    expect((await screen.findByRole('alert')).textContent).toMatch(/No se pudo cambiar/)
+    expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('false')
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
   it('si el servidor rechaza, se ve el motivo', async () => {
     const onCambiar = vi.fn(async () => { throw new Error('Solo el admin o el dueño pueden cambiar la automatización general.') })
     render(<InterruptorGeneral {...base} prendida puedeCambiar onCambiar={onCambiar} />)

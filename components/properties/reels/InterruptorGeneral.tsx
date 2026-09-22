@@ -37,6 +37,10 @@ export function InterruptorGeneral({ prendida, privados, reelsActivos, puedeCamb
       setConfirmando(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error')
+      // Si no se prendió, no se puede seguir VIÉNDOSE prendido: el interruptor
+      // muestra `prendida || confirmando`, y un admin leería "ya está hablándole
+      // a clientes" sobre algo que el servidor rechazó.
+      setConfirmando(false)
     } finally {
       setGuardando(false)
     }
