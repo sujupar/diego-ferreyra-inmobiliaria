@@ -8,6 +8,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuth } from '@/lib/auth/require-role'
 import { REEL_EXTS } from '@/lib/properties/media'
+import { esVideoDeLaPropiedad } from '@/lib/social/reels/video-propio'
 import {
   autorizarReel,
   autorizarVerReels,
@@ -69,12 +70,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const datos = analisis.data
 
     if (datos.origen === 'subido') {
-      // Se vuelve a validar acá aunque el navegador ya lo haya hecho: el cuerpo
-      // viene de afuera y un formato que Instagram no acepta fallaría recién en
-      // el cron, minutos después y lejos del asesor.
-      if (!datos.videoUrl.startsWith('https://')) {
-        return NextResponse.json({ error: 'La URL del video tiene que ser https.' }, { status: 400 })
+      // EL VIDEO TIENE QUE SER NUESTRO, de ESTA propiedad.
+      //
+      // Sin esta comprobación, el cuerpo del pedido —que lo arma el navegador—
+      // podía traer cualquier URL de internet, y el cron se la pasaba a
+      // Instagram para que la descargara y la PUBLICARA en la cuenta de la
+      // inmobiliaria. O sea: cualquiera con permiso de difundir podía publicar
+      // un video arbitrario, de cualquier origen, ante 26.000 seguidores.
+      //
+      // Es el mismo candado que ya tienen las fotos, el video y los planos en
+      // `media/commit`. Ojo con la barra final de NEXT_PUBLIC_SUPABASE_URL: sin
+      // normalizarla el prefijo no coincide y se rompen TODAS las subidas
+      // (está documentado en CLAUDE.md, ya pasó una vez).
+      if (!esVideoDeLaPropiedad(datos.videoUrl, id, process.env.NEXT_PUBLIC_SUPABASE_URL)) {
+        return NextResponse.json(
+          { error: 'El video tiene que subirse desde esta misma propiedad.' },
+          { status: 400 },
+        )
       }
+
+      // El formato se vuelve a validar acá aunque el navegador ya lo haya hecho:
+      // uno que Instagram no acepta fallaría recién en el cron, minutos después
+      // y lejos del asesor.
       const extension = new URL(datos.videoUrl).pathname.split('.').pop()?.toLowerCase() ?? ''
       if (!(REEL_EXTS as readonly string[]).includes(extension)) {
         return NextResponse.json(
