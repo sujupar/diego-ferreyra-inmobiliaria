@@ -129,6 +129,17 @@ export const API_PUBLICAS: readonly RutaPublica[] = [
             'x-hub-signature-256. Meta no manda cookies.',
     },
     {
+        ruta: '/api/webhooks/instagram',
+        tipo: 'exacta',
+        motivo:
+            'Comentarios y mensajes de Instagram. GET = verificación del alta (hub.challenge ' +
+            'contra INSTAGRAM_WEBHOOK_VERIFY_TOKEN); POST = avisos, validados con firma HMAC ' +
+            'x-hub-signature-256 contra META_APP_SECRET, que falla cerrada. Meta no manda ' +
+            'cookies. SIN esta entrada el middleware responde una redirección al login y la ' +
+            'automatización muere EN SILENCIO: Meta no reporta ese 307 en ningún lado visible ' +
+            'y el síntoma sería "no contesta los comentarios", sin ningún error a la vista.',
+    },
+    {
         ruta: '/api/webhooks/mailchimp',
         tipo: 'exacta',
         motivo:
