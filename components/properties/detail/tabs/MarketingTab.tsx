@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { PostCaptureActions } from '@/components/properties/PostCaptureActions'
 import { LandingSection } from '@/components/properties/LandingSection'
 import { MarketingTabs } from '@/components/properties/MarketingTabs'
+import { ReelsCard } from '@/components/properties/reels/ReelsCard'
 
 interface Props {
   propertyId: string
@@ -14,6 +15,14 @@ interface Props {
   videoUrl: string | null
   videoFileUrl: string | null
   deliverMediaSaved: string | null
+  /**
+   * Capacidad `difundir`, NO `gestionar_campana`: son distintas a propósito
+   * (`lib/properties/difusion-access.ts`). Hoy los dos roles coinciden, pero
+   * atar los reels a la de campañas haría que el día que se separen —por
+   * ejemplo, si el asesor deja de poder tocar el gasto— los reels se apaguen
+   * con ellas sin que nadie lo haya decidido.
+   */
+  puedeDifundir: boolean
 }
 
 /**
@@ -22,7 +31,7 @@ interface Props {
  * a pedido del usuario (2026-07-31): cada asistente de portal ya genera la
  * descripción por su cuenta.
  */
-export function MarketingTab({ propertyId, canManage, videoRecorridoUrl, tour3dUrl, videoUrl, videoFileUrl, deliverMediaSaved }: Props) {
+export function MarketingTab({ propertyId, canManage, puedeDifundir, videoRecorridoUrl, tour3dUrl, videoUrl, videoFileUrl, deliverMediaSaved }: Props) {
   // El botón "Crear landing" de la tarjeta de arriba dispara la MISMA creación
   // que la sección de abajo (antes linkeaba al editor, que sin landing
   // redirigía a la ficha: "no hacía nada"). Un contador, no un booleano, para
@@ -50,6 +59,11 @@ export function MarketingTab({ propertyId, canManage, videoRecorridoUrl, tour3dU
         videoFileUrl={videoFileUrl}
         deliverMediaSaved={deliverMediaSaved}
       />
+
+      {/* Debajo de la landing a propósito: el reel DEPENDE de ella (es el
+          enlace que recibe la persona), así que el requisito queda a la vista
+          justo arriba en vez de mandar al asesor a otra pestaña a buscarlo. */}
+      <ReelsCard propertyId={propertyId} puedeGestionar={puedeDifundir} />
 
       <MarketingTabs propertyId={propertyId} canManage={canManage} />
     </div>

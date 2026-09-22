@@ -114,6 +114,16 @@ describe('rutas de API públicas — pasan SIN sesión', () => {
         expect(await pasa('/api/webhooks/whatsapp', 'POST')).toBe(true)
     })
 
+    it('/api/webhooks/instagram (comentarios y botones) — lo llama Meta', async () => {
+        // Si alguien saca esta entrada, el middleware responde una redirección
+        // al login y la automatización de los reels muere EN SILENCIO: Meta no
+        // reporta ese 307 en ningún lado visible y el síntoma sería "no
+        // contesta los comentarios", sin ningún error a la vista. Este test es
+        // lo único que lo atrapa.
+        expect(await pasa('/api/webhooks/instagram')).toBe(true)
+        expect(await pasa('/api/webhooks/instagram', 'POST')).toBe(true)
+    })
+
     it('/api/webhooks/mailchimp — lo llama Mailchimp con su secreto en ?s=', async () => {
         expect(await pasa('/api/webhooks/mailchimp')).toBe(true)
         expect(await pasa('/api/webhooks/mailchimp', 'POST')).toBe(true)

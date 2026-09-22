@@ -3,7 +3,7 @@ import { requireAuth } from '@/lib/auth/require-role'
 import { puedeGestionarMedia } from '@/lib/properties/acceso-media'
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'crypto'
-import { PHOTO_EXTS, VIDEO_EXTS, PLAN_EXTS, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES, MAX_PLAN_BYTES, sanitizeFileBase } from '@/lib/properties/media'
+import { PHOTO_EXTS, VIDEO_EXTS, PLAN_EXTS, REEL_EXTS, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES, MAX_PLAN_BYTES, sanitizeFileBase } from '@/lib/properties/media'
 
 function getStorage() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!).storage
@@ -26,11 +26,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'forbidden' }, { status: 403 })
     }
     const body = await req.json().catch(() => ({}))
-    const kind = body.kind as 'photo' | 'video' | 'plan'
+    // 'reel' va a su propia carpeta y NO se committea como media de la ficha:
+    // es material de Instagram, no el video de la propiedad. Mezclarlos haría
+    // que un reel apareciera como el video del aviso en los portales.
+    const kind = body.kind as 'photo' | 'video' | 'plan' | 'reel'
     const files: FileMeta[] = Array.isArray(body.files) ? body.files : []
 
-    if (kind !== 'photo' && kind !== 'video' && kind !== 'plan') {
-      return NextResponse.json({ error: 'kind inválido (photo|video|plan)' }, { status: 400 })
+    if (kind !== 'photo' && kind !== 'video' && kind !== 'plan' && kind !== 'reel') {
+      return NextResponse.json({ error: 'kind inválido (photo|video|plan|reel)' }, { status: 400 })
     }
     if (files.length === 0) {
       return NextResponse.json({ error: 'No se enviaron archivos' }, { status: 400 })
@@ -42,9 +45,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     const allowed: readonly string[] =
-      kind === 'photo' ? PHOTO_EXTS : kind === 'plan' ? PLAN_EXTS : VIDEO_EXTS
+      kind === 'photo' ? PHOTO_EXTS
+        : kind === 'plan' ? PLAN_EXTS
+          // Instagram no acepta webm ni m4v: se rechaza acá y no minutos después.
+          : kind === 'reel' ? REEL_EXTS
+            : VIDEO_EXTS
     const maxBytes = kind === 'photo' ? MAX_PHOTO_BYTES : kind === 'plan' ? MAX_PLAN_BYTES : MAX_VIDEO_BYTES
-    const folder = kind === 'photo' ? 'photos' : kind === 'plan' ? 'plans' : 'video'
+    const folder = kind === 'photo' ? 'photos' : kind === 'plan' ? 'plans' : kind === 'reel' ? 'reels' : 'video'
     const bucket = getStorage().from('property-files')
 
     const uploads: Array<{ signedUrl: string; token: string; path: string; publicUrl: string; contentType: string }> = []
