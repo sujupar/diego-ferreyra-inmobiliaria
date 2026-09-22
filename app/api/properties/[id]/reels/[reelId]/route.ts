@@ -7,11 +7,14 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuth } from '@/lib/auth/require-role'
 import { validarProgramacion } from '@/lib/social/reels/edicion'
+import { limpiarPalabras, separarPalabras } from '@/lib/social/reels/palabra-clave'
 import { actualizarReel, autorizarReel, borrarReel, landingPublicada, obtenerReel } from '@/lib/social/reels/servicio'
 
 const cuerpoEditar = z.object({
   descripcion: z.string().max(2200).optional(),
-  palabra_clave: z.string().max(60).nullable().optional(),
+  // Tope amplio para el texto crudo (espacios, repetidas); el tope real, sobre
+  // la lista ya limpia, lo aplica `limpiarPalabras` con un mensaje legible.
+  palabra_clave: z.string().max(500).nullable().optional(),
   dm_texto: z.string().max(1000).nullable().optional(),
   dm_boton: z.string().max(20).optional(),
   dm_seguimiento: z.string().max(1000).nullable().optional(),
@@ -37,6 +40,14 @@ export async function PATCH(
     }
     const cambios = analisis.data
 
+    if (typeof cambios.palabra_clave === 'string') {
+      const palabras = limpiarPalabras(cambios.palabra_clave)
+      if (!palabras.ok) {
+        return NextResponse.json({ error: palabras.error }, { status: 400 })
+      }
+      cambios.palabra_clave = palabras.valor
+    }
+
     if (cambios.programado_para !== undefined) {
       const validacion = validarProgramacion(cambios.programado_para, new Date())
       if (!validacion.ok) {
@@ -51,13 +62,13 @@ export async function PATCH(
       if (!actual) {
         return NextResponse.json({ error: 'No se encontró el reel.' }, { status: 404 })
       }
-      // `.trim()`: una palabra de solo espacios se guarda como null (lo hace
-      // `camposEditables`), así que sin esto quedaba "Automatización activa"
-      // sobre un reel que no puede coincidir con nada, nunca.
-      const palabraFinal = (cambios.palabra_clave ?? actual.palabra_clave ?? '').trim()
-      if (!palabraFinal) {
+      // Si en ESTE pedido vinieron las palabras, mandan las nuevas aunque sean
+      // null: con `??` se caía en las viejas, y "borrar todas y activar" dejaba
+      // "Automatización activa" sobre un reel que no coincide con nada, nunca.
+      const palabrasFinales = cambios.palabra_clave !== undefined ? cambios.palabra_clave : actual.palabra_clave
+      if (separarPalabras(palabrasFinales).length === 0) {
         return NextResponse.json(
-          { error: 'Antes de activar la automatización hay que escribir la palabra del llamado a la acción.' },
+          { error: 'Antes de activar la automatización hay que escribir al menos una palabra.' },
           { status: 400 },
         )
       }

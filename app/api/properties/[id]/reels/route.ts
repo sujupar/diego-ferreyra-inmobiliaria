@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { requireAuth } from '@/lib/auth/require-role'
 import { REEL_EXTS } from '@/lib/properties/media'
 import { esVideoDeLaPropiedad } from '@/lib/social/reels/video-propio'
+import { limpiarPalabras } from '@/lib/social/reels/palabra-clave'
 import {
   autorizarReel,
   autorizarVerReels,
@@ -22,12 +23,12 @@ const cuerpoCrear = z.discriminatedUnion('origen', [
   z.object({
     origen: z.literal('subido'),
     videoUrl: z.string().url(),
-    palabraClave: z.string().trim().max(60).optional(),
+    palabraClave: z.string().trim().max(500).optional(),
   }),
   z.object({
     origen: z.literal('existente'),
     igMediaId: z.string().trim().min(1).max(64),
-    palabraClave: z.string().trim().max(60).optional(),
+    palabraClave: z.string().trim().max(500).optional(),
   }),
 ])
 
@@ -69,6 +70,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
     const datos = analisis.data
 
+    const palabras = limpiarPalabras(datos.palabraClave)
+    if (!palabras.ok) {
+      return NextResponse.json({ error: palabras.error }, { status: 400 })
+    }
+
     if (datos.origen === 'subido') {
       // EL VIDEO TIENE QUE SER NUESTRO, de ESTA propiedad.
       //
@@ -107,7 +113,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       origen: datos.origen,
       videoUrl: datos.origen === 'subido' ? datos.videoUrl : null,
       igMediaId: datos.origen === 'existente' ? datos.igMediaId : null,
-      palabraClave: datos.palabraClave ?? null,
+      palabraClave: palabras.valor,
     })
 
     return NextResponse.json({ reel })

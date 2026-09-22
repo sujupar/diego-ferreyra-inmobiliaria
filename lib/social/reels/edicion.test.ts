@@ -48,6 +48,14 @@ describe('camposEditables', () => {
     expect(camposEditables({ palabra_clave: '  propiedad  ' })).toEqual({ palabra_clave: 'propiedad' })
     expect(camposEditables({ palabra_clave: '   ' })).toEqual({ palabra_clave: null })
   })
+
+  it('guarda la lista de palabras limpia: sin repetidas ni vacías', () => {
+    expect(camposEditables({ palabra_clave: 'doblas, DOBLAS, , info' })).toEqual({ palabra_clave: 'doblas, info' })
+  })
+
+  it('una lista de solo comas se guarda como null', () => {
+    expect(camposEditables({ palabra_clave: ' , , ' })).toEqual({ palabra_clave: null })
+  })
 })
 
 describe('validarProgramacion', () => {
