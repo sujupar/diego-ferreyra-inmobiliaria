@@ -88,7 +88,21 @@ describe('ReelsCard', () => {
     expect(screen.queryByText(/falta publicar la landing/i)).toBeNull()
   })
 
-  it('muestra el simulacro cuando está puesto', async () => {
+  it('un reel ya publicado muestra su modo y NO la palabra "Publicado"', async () => {
+    // El dueño leyó "Publicado" como "ya está respondiendo" (2026-09-22).
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      respuesta({
+        reels: [{ ...REEL_PUBLICADO, automatizacion_activa: false }],
+        resumen: {},
+        landing: { publicada: true, slug: 'abc' },
+      }),
+    ))
+    render(<ReelsCard propertyId="p1" puedeGestionar />)
+    expect(await screen.findByText('Apagado')).toBeTruthy()
+    expect(screen.queryByText('Publicado')).toBeNull()
+  })
+
+  it('muestra el modo prueba cuando está puesto', async () => {
     // Es la diferencia entre "esto le escribe a la gente" y "esto no le escribe
     // a nadie": tiene que verse sin abrir nada.
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
@@ -99,8 +113,8 @@ describe('ReelsCard', () => {
       }),
     ))
     render(<ReelsCard propertyId="p1" puedeGestionar />)
-    expect(await screen.findByText('Simulacro')).toBeTruthy()
-    expect(screen.queryByText('Automatización activa')).toBeNull()
+    expect(await screen.findByText('Modo prueba')).toBeTruthy()
+    expect(screen.queryByText('En vivo')).toBeNull()
   })
 
   it('muestra los contadores de un reel publicado', async () => {

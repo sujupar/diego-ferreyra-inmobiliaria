@@ -1,7 +1,7 @@
 /**
  * Las respuestas públicas al comentario.
  *
- * ## Por qué hay DOS catálogos y no uno
+ * ## Por qué hay DOS grupos de frases y no uno
  *
  * La respuesta pública y el mensaje privado son dos acciones separadas, y la
  * primera sale aunque la segunda no. Pasa hoy mismo —Meta todavía no destrabó el
@@ -14,6 +14,10 @@
  * quedaría escrito abajo del reel. Por eso el texto depende de lo que REALMENTE
  * pasó: solo se promete el mensaje cuando el mensaje salió.
  *
+ * Desde 2026-09-22 las frases son DEL REEL (el asesor las ve y las edita al
+ * engancharlo). Las de fábrica quedan como respaldo: si las del reel llegaran
+ * vacías, el comentario igual recibe una respuesta con sentido.
+ *
  * ## Por qué la elección es determinística
  *
  * Meta reintenta sus avisos cuando no recibe un 200 a tiempo. Con una elección
@@ -21,30 +25,20 @@
  * bajo el mismo comentario. Con la semilla atada al identificador del comentario,
  * el reintento vuelve a elegir exactamente la misma.
  */
+import { FRASES_CON_PRIVADO, FRASES_SIN_PRIVADO } from './textos-por-defecto'
 
-/** Cuando el privado SÍ salió: se le avisa que lo mire. */
-export const RESPUESTAS_CON_PRIVADO: readonly string[] = [
-  '¡Listo! Te escribí al privado 📩',
-  'Gracias por comentar 🙌 Te dejé todo en el privado',
-  'Hecho, fijate tu bandeja 👀',
-  'Te acabo de escribir por privado ✅',
-  '¡Gracias! Te mandé la info al privado 📲',
-]
+/** Se mantienen con estos nombres: los catálogos de fábrica. */
+export const RESPUESTAS_CON_PRIVADO = FRASES_CON_PRIVADO
+export const RESPUESTAS_SIN_PRIVADO = FRASES_SIN_PRIVADO
 
 /**
- * Cuando el privado NO salió: se agradece y nada más.
- *
- * Es deliberadamente sobrio. Cualquier promesa acá ("en breve te contactamos")
- * sería otra vez algo que el sistema no puede garantizar. Agradecer es verdad,
- * cuesta cero, y además mueve el reel — que es la mitad del valor de responder.
+ * ¿La frase le dice a la persona que se le mandó un mensaje? La pantalla lo usa
+ * para avisar si alguien escribe algo así en las frases de respaldo, que son las
+ * que salen justamente cuando el privado NO salió.
  */
-export const RESPUESTAS_SIN_PRIVADO: readonly string[] = [
-  '¡Gracias por comentar! 🙌',
-  '¡Gracias! 🙏',
-  'Gracias por pasar 👋',
-  '¡Gracias por el interés! ✨',
-  'Gracias 🙌',
-]
+export function prometePrivado(frase: string): boolean {
+  return /privado|\bdm\b|mensaje|bandeja|mand[eé]|envi[eé]|escrib[ií]/i.test(frase)
+}
 
 /** Suma de códigos de carácter: estable, barata y sin dependencias. */
 function semillaNumerica(semilla: string): number {
@@ -55,13 +49,27 @@ function semillaNumerica(semilla: string): number {
   return acumulado
 }
 
+export interface FrasesDelReel {
+  con?: readonly string[] | null
+  sin?: readonly string[] | null
+}
+
 /**
  * Elige la frase para este comentario.
  *
  * @param semilla identificador del comentario — misma semilla, misma frase.
  * @param privadoEnviado si el mensaje privado salió de verdad.
+ * @param frases las frases del reel; vacías o ausentes → las de fábrica.
  */
-export function elegirRespuesta(semilla: string, privadoEnviado: boolean): string {
-  const catalogo = privadoEnviado ? RESPUESTAS_CON_PRIVADO : RESPUESTAS_SIN_PRIVADO
+export function elegirRespuesta(semilla: string, privadoEnviado: boolean, frases: FrasesDelReel = {}): string {
+  const delReel = (privadoEnviado ? frases.con : frases.sin) ?? []
+  // `typeof` antes de `trim`: si alguien escribió en la base un arreglo de dos
+  // dimensiones, acá llegan arreglos y `trim` tiraba una excepción que dejaba el
+  // comentario sin respuesta.
+  const utiles = (Array.isArray(delReel) ? delReel : [])
+    .filter((f): f is string => typeof f === 'string')
+    .map((f) => f.trim())
+    .filter((f) => f.length > 0)
+  const catalogo = utiles.length > 0 ? utiles : privadoEnviado ? FRASES_CON_PRIVADO : FRASES_SIN_PRIVADO
   return catalogo[semillaNumerica(semilla) % catalogo.length]
 }

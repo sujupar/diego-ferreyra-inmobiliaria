@@ -22,15 +22,18 @@ import { esReintentable, mensajeLegible } from '@/lib/integrations/instagram/cli
 import type { ComentarioDelAviso } from '@/lib/integrations/instagram/webhook'
 import { decidirBoton, decidirQueHacer, type AjustesGlobales } from './decision'
 import { elegirRespuesta } from './respuestas'
+import { PRIVADO_POR_DEFECTO, SEGUIMIENTO_POR_DEFECTO } from './textos-por-defecto'
 import type { FilaReel } from './servicio'
 
 function admin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
-/** Texto por defecto del privado, por si el asesor no escribió el suyo. */
-const DM_POR_DEFECTO = 'Hola! Vi que comentaste en el reel. Te armé la ficha completa de la propiedad, con fotos y todos los detalles. ¿Te la paso?'
-const SEGUIMIENTO_POR_DEFECTO = 'Acá la tenés 👇'
+/**
+ * Los textos de fábrica viven en textos-por-defecto.ts: la pantalla de revisión
+ * muestra esos mismos, así lo que el asesor aprueba es lo que se manda.
+ */
+const DM_POR_DEFECTO = PRIVADO_POR_DEFECTO
 
 /**
  * Los interruptores globales. FALLA CERRADO: si la tabla no existe, si la
@@ -213,7 +216,10 @@ export async function procesarComentario(
 
   try {
     await conReintento(() =>
-      responderComentario(c.comentarioId, elegirRespuesta(c.comentarioId, privadoEnviado)))
+      responderComentario(c.comentarioId, elegirRespuesta(c.comentarioId, privadoEnviado, {
+        con: reel.respuestas_con_privado,
+        sin: reel.respuestas_sin_privado,
+      })))
   } catch (e) {
     error = error ? `${error} · ${mensajeLegible(e)}` : mensajeLegible(e)
     await anotar(c.comentarioId, { coincide: true, error })

@@ -10,6 +10,8 @@ import { requireAuth } from '@/lib/auth/require-role'
 import { REEL_EXTS } from '@/lib/properties/media'
 import { esVideoDeLaPropiedad } from '@/lib/social/reels/video-propio'
 import { limpiarPalabras } from '@/lib/social/reels/palabra-clave'
+import { validarMensajes } from '@/lib/social/reels/mensajes'
+import { leerAjustes } from '@/lib/social/reels/procesador'
 import {
   autorizarReel,
   autorizarVerReels,
@@ -19,16 +21,27 @@ import {
   resumenDeReels,
 } from '@/lib/social/reels/servicio'
 
+/** Lo revisado en el paso "Revisá los mensajes". Topes amplios: los reales los aplica `validarMensajes`. */
+const mensajesRevisados = z.object({
+  respuestas_con_privado: z.array(z.string().max(1000)).max(10).optional(),
+  respuestas_sin_privado: z.array(z.string().max(1000)).max(10).optional(),
+  dm_texto: z.string().max(2000).nullable().optional(),
+  dm_boton: z.string().max(100).optional(),
+  dm_seguimiento: z.string().max(2000).nullable().optional(),
+}).optional()
+
 const cuerpoCrear = z.discriminatedUnion('origen', [
   z.object({
     origen: z.literal('subido'),
     videoUrl: z.string().url(),
     palabraClave: z.string().trim().max(500).optional(),
+    mensajes: mensajesRevisados,
   }),
   z.object({
     origen: z.literal('existente'),
     igMediaId: z.string().trim().min(1).max(64),
     palabraClave: z.string().trim().max(500).optional(),
+    mensajes: mensajesRevisados,
   }),
 ])
 
@@ -42,12 +55,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     }
 
     const reels = await listarReels(id)
-    const [resumen, landing] = await Promise.all([
+    const [resumen, landing, ajustes] = await Promise.all([
       resumenDeReels(reels.map((r) => r.id)),
       landingPublicada(id),
+      leerAjustes(),
     ])
 
-    return NextResponse.json({ reels, resumen, landing })
+    // Solo los dos interruptores, para que la pantalla avise si están apagados.
+    // La lista de cuentas de prueba NO viaja al navegador.
+    const general = { automatizacion: ajustes.automatizacion_habilitada, privados: ajustes.dm_habilitado }
+    return NextResponse.json({ reels, resumen, landing, general })
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Error' },
@@ -73,6 +90,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const palabras = limpiarPalabras(datos.palabraClave)
     if (!palabras.ok) {
       return NextResponse.json({ error: palabras.error }, { status: 400 })
+    }
+    const mensajes = validarMensajes(datos.mensajes ?? {})
+    if (!mensajes.ok) {
+      return NextResponse.json({ error: mensajes.error }, { status: 400 })
     }
 
     if (datos.origen === 'subido') {
@@ -114,6 +135,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       videoUrl: datos.origen === 'subido' ? datos.videoUrl : null,
       igMediaId: datos.origen === 'existente' ? datos.igMediaId : null,
       palabraClave: palabras.valor,
+      mensajes: mensajes.valor,
     })
 
     return NextResponse.json({ reel })
