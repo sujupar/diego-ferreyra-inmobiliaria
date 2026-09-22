@@ -16,6 +16,7 @@ import { armarDescripcionReel, type DatosDescripcion } from './descripcion'
 import { camposEditables, type CamposEditablesReel } from './edicion'
 import { separarPalabras } from './palabra-clave'
 import type { MensajesLimpios } from './mensajes'
+import type { ReelsActivos } from './interruptor'
 import type { EstadoReel } from './estados'
 
 function admin() {
@@ -312,4 +313,37 @@ export async function resumenDeReels(reelIds: string[]): Promise<Record<string, 
     if (fila.boton_tocado_en) resumen.botonesTocados++
   }
   return vacio
+}
+
+/**
+ * Cuántos reels de TODAS las propiedades responderían si el interruptor general
+ * estuviera prendido. Lo usa el aviso que se muestra antes de prenderlo.
+ * Solo reels publicados: uno en borrador no recibe comentarios.
+ */
+export async function contarReelsActivos(): Promise<ReelsActivos> {
+  const { data, error } = await admin()
+    .from('property_reels')
+    .select('simulacro')
+    .eq('automatizacion_activa', true)
+    .eq('estado', 'publicado')
+  if (error) throw new Error(`No se pudieron contar los reels: ${error.message}`)
+  const filas = (data ?? []) as Array<{ simulacro: boolean }>
+  return {
+    prueba: filas.filter((f) => f.simulacro).length,
+    en_vivo: filas.filter((f) => !f.simulacro).length,
+  }
+}
+
+/**
+ * Prende o apaga el interruptor general. Solo lo llama la ruta, que ya verificó
+ * que quien lo pide es admin o dueño. Los privados NO se tocan desde acá:
+ * dependen del permiso de Meta y se habilitan a mano cuando está.
+ */
+export async function cambiarAutomatizacionGeneral(prendida: boolean): Promise<void> {
+  const { error, count } = await admin()
+    .from('instagram_ajustes')
+    .update({ automatizacion_habilitada: prendida, updated_at: new Date().toISOString() }, { count: 'exact' })
+    .eq('id', 'default')
+  if (error) throw new Error(`No se pudo cambiar la automatización general: ${error.message}`)
+  if (count !== 1) throw new Error('No se encontró la configuración de Instagram.')
 }

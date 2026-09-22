@@ -12,6 +12,7 @@ import { esVideoDeLaPropiedad } from '@/lib/social/reels/video-propio'
 import { limpiarPalabras } from '@/lib/social/reels/palabra-clave'
 import { validarMensajes } from '@/lib/social/reels/mensajes'
 import { leerAjustes } from '@/lib/social/reels/procesador'
+import { puedeCambiarInterruptorGeneral } from '@/lib/social/reels/interruptor'
 import {
   autorizarReel,
   autorizarVerReels,
@@ -19,6 +20,7 @@ import {
   landingPublicada,
   listarReels,
   resumenDeReels,
+  contarReelsActivos,
 } from '@/lib/social/reels/servicio'
 
 /** Lo revisado en el paso "Revisá los mensajes". Topes amplios: los reales los aplica `validarMensajes`. */
@@ -55,15 +57,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     }
 
     const reels = await listarReels(id)
-    const [resumen, landing, ajustes] = await Promise.all([
+    const [resumen, landing, ajustes, reelsActivos] = await Promise.all([
       resumenDeReels(reels.map((r) => r.id)),
       landingPublicada(id),
       leerAjustes(),
+      contarReelsActivos(),
     ])
 
-    // Solo los dos interruptores, para que la pantalla avise si están apagados.
-    // La lista de cuentas de prueba NO viaja al navegador.
-    const general = { automatizacion: ajustes.automatizacion_habilitada, privados: ajustes.dm_habilitado }
+    // Los dos interruptores, cuántos reels responderían (para el aviso antes de
+    // prender) y si esta persona puede tocar el general. La lista de cuentas de
+    // prueba NO viaja al navegador.
+    const general = {
+      automatizacion: ajustes.automatizacion_habilitada,
+      privados: ajustes.dm_habilitado,
+      reelsActivos,
+      puedeCambiar: puedeCambiarInterruptorGeneral(user.profile.role),
+    }
     return NextResponse.json({ reels, resumen, landing, general })
   } catch (err) {
     return NextResponse.json(
