@@ -324,40 +324,17 @@ The output must be a clean photograph — only photographic content, no text, no
 }
 
 /**
- * Normaliza property_type a español argentino. Duplicado deliberado del helper
- * de ad-image-prompts.ts — los tokens del overlay son source of truth, no
- * dependen del prompt v1.
+ * El tipo y la operación en castellano viven en `lib/properties/etiquetas.ts`:
+ * un módulo PURO, sin `sharp` ni nada de este archivo colgando. Se reexportan
+ * desde acá para que los consumidores que ya los importaban de este módulo
+ * (copy-ai-generator, ad-image-async-runner y dos scripts de render) sigan
+ * funcionando sin tocar una sola línea.
+ *
+ * Se movieron porque el webhook de Instagram los necesita y corre por cada
+ * comentario que entra: importarlos de acá le arrastraba toda la maquinaria de
+ * generación de imágenes.
  */
-export function normalizePropertyTypeLabel(t: string | null | undefined): string {
-  const map: Record<string, string> = {
-    apartment: 'Departamento',
-    departamento: 'Departamento',
-    depto: 'Departamento',
-    dpto: 'Departamento',
-    house: 'Casa',
-    casa: 'Casa',
-    ph: 'PH',
-    'p.h.': 'PH',
-    loft: 'Loft',
-    duplex: 'Dúplex',
-    'dúplex': 'Dúplex',
-    studio: 'Monoambiente',
-    monoambiente: 'Monoambiente',
-    mono: 'Monoambiente',
-  }
-  const key = (t ?? '').toString().toLowerCase().trim()
-  // Fallback: capitalizar la primera letra (nunca dejar el tipo en minúscula cruda).
-  const raw = (t ?? 'Propiedad').toString()
-  return map[key] ?? (raw.charAt(0).toUpperCase() + raw.slice(1))
-}
-
-/** Etiqueta de operación para el overlay: "En venta" / "En alquiler" / "Alquiler temporario". */
-export function operationLabelFor(op: string | null | undefined): string {
-  const key = (op ?? 'venta').toString().toLowerCase().trim()
-  if (key === 'alquiler') return 'En alquiler'
-  if (key === 'temporario' || key === 'alquiler_temporario' || key === 'temporal') return 'Alquiler temporario'
-  return 'En venta'
-}
+export { normalizePropertyTypeLabel, operationLabelFor } from '@/lib/properties/etiquetas'
 
 function formatPrice(price: number, currency: string): string {
   return new Intl.NumberFormat('es-AR', {
