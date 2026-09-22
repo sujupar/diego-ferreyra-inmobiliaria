@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { CampoPalabras, palabrasSonValidas } from './CampoPalabras'
+import { separarPalabras } from '@/lib/social/reels/palabra-clave'
 
 interface ReelCompleto {
   id: string
@@ -235,6 +236,13 @@ export function ConfigurarReelDialog({ propertyId, reelId, landingPublicada, onC
                 />
               </div>
 
+              {/* La misma regla que la ruta: activo sin palabras no se guarda.
+                  Avisarlo acá evita el clic que el servidor igual rechazaría. */}
+              {reel.automatizacion_activa && separarPalabras(reel.palabra_clave).length === 0 && (
+                <p className="text-xs text-destructive">
+                  Para dejar la automatización activa hace falta al menos una palabra.
+                </p>
+              )}
               {!landingPublicada && !reel.automatizacion_activa && (
                 <p className="text-xs text-amber-700 dark:text-amber-500">
                   Para activarla hace falta la landing publicada: es el enlace que recibe la persona.
@@ -259,7 +267,10 @@ export function ConfigurarReelDialog({ propertyId, reelId, landingPublicada, onC
 
         <DialogFooter>
           <Button variant="ghost" onClick={onCerrar} disabled={guardando}>Cancelar</Button>
-          <Button onClick={() => void guardar()} disabled={!reel || guardando || !palabrasSonValidas(reel.palabra_clave ?? '')}>
+          <Button onClick={() => void guardar()} disabled={
+              !reel || guardando || !palabrasSonValidas(reel.palabra_clave ?? '') ||
+              (reel.automatizacion_activa && separarPalabras(reel.palabra_clave).length === 0)
+            }>
             {guardando && <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden />}
             Guardar
           </Button>

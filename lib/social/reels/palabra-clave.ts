@@ -83,6 +83,18 @@ export function separarPalabras(texto: string | null | undefined): string[] {
 export type ResultadoPalabras = { ok: true; valor: string | null } | { ok: false; error: string }
 
 /**
+ * Una palabra tiene que tener al menos 2 letras o números. "a" es una
+ * preposición y "!" está en "hermoso!!": con una de esas en la lista, un error
+ * de tipeo del asesor haría que el sistema le conteste a casi cualquier
+ * comentario, a clientes reales. Dos alcanza para palabras cortas de verdad ("sí").
+ */
+const MIN_LETRAS_O_NUMEROS = 2
+
+export function esPalabraUtil(palabra: string): boolean {
+  return (normalizarParaComparar(palabra).match(/[\p{L}\p{N}]/gu) ?? []).length >= MIN_LETRAS_O_NUMEROS
+}
+
+/**
  * Lo que se guarda en la base. `null` si no quedó ninguna: "sin palabra" tiene
  * que seguir siendo un estado distinguible, porque sin palabra no se activa.
  * Los topes se miden sobre la lista YA limpia, así una repetida no le quita
@@ -91,6 +103,10 @@ export type ResultadoPalabras = { ok: true; valor: string | null } | { ok: false
 export function limpiarPalabras(texto: string | null | undefined): ResultadoPalabras {
   const lista = separarPalabras(texto)
   if (lista.length === 0) return { ok: true, valor: null }
+  const inutil = lista.find((palabra) => !esPalabraUtil(palabra))
+  if (inutil !== undefined) {
+    return { ok: false, error: `"${inutil}" no sirve como palabra: necesita al menos ${MIN_LETRAS_O_NUMEROS} letras o números.` }
+  }
   if (lista.length > MAX_PALABRAS) {
     return { ok: false, error: `Son ${lista.length} palabras: el máximo es ${MAX_PALABRAS} palabras por reel.` }
   }
@@ -125,7 +141,14 @@ export function comentarioCoincide(
   // Los espacios se juntan en los dos lados: "parque  rivadavia" (doble espacio,
   // típico del teclado del celular) es la misma frase.
   const pajar = normalizarParaComparar(comentario).replace(/\s+/g, ' ')
-  return separarPalabras(palabras).some((palabra) => contieneEntera(pajar, normalizarParaComparar(palabra)))
+  const lista = separarPalabras(palabras)
+  // La ruta nunca guarda más del tope. Si llega más, vino por otro camino (una
+  // escritura directa a la base): no se sabe qué es, así que no se responde.
+  if (lista.length > MAX_PALABRAS) return false
+  // Las que no sirven se ignoran aunque estén guardadas, por el mismo motivo.
+  return lista
+    .filter(esPalabraUtil)
+    .some((palabra) => contieneEntera(pajar, normalizarParaComparar(palabra)))
 }
 
 function contieneEntera(pajar: string, aguja: string): boolean {

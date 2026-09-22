@@ -67,12 +67,19 @@ export type Decision =
   /** Responde en público sin prometer un mensaje que no va a salir. */
   | { accion: 'solo_responder'; motivo: string }
 
+/** Lo que Instagram acepta en un nombre de usuario: letras, números, punto y guion bajo. */
+export const USUARIO_INSTAGRAM = /^[A-Za-z0-9._]{1,30}$/
+
 /**
  * El usuario de Instagram en la forma en que se compara: sin `@`, sin espacios
  * y en minúscula (Instagram no distingue mayúsculas en los nombres de usuario).
  */
 export function normalizarUsuario(usuario: string): string {
-  return usuario.trim().replace(/^@+/, '').trim().toLowerCase()
+  return sinArroba(usuario).toLowerCase()
+}
+
+function sinArroba(usuario: string): string {
+  return usuario.trim().replace(/^@+/, '').trim()
 }
 
 /**
@@ -84,8 +91,11 @@ export function normalizarUsuario(usuario: string): string {
  */
 export function esCuentaDePrueba(usuario: string | null, cuentas: readonly string[]): boolean {
   if (!usuario) return false
+  // Solo el alfabeto de Instagram, y comprobado ANTES de pasar a minúscula: el
+  // signo Kelvin (U+212A) se vuelve una "k" común al hacerlo, así que mirándolo
+  // después ya parece una letra normal y un nombre falso calzaría con uno real.
+  if (!USUARIO_INSTAGRAM.test(sinArroba(usuario))) return false
   const buscado = normalizarUsuario(usuario)
-  if (!buscado) return false
   return cuentas.some((cuenta) => normalizarUsuario(cuenta) === buscado)
 }
 

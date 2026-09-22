@@ -190,6 +190,13 @@ describe('cuentas de prueba — reconocer la cuenta', () => {
     expect(esCuentaDePrueba('  @ ', ['@'])).toBe(false)
   })
 
+  it('un nombre con caracteres que Instagram no permite nunca es cuenta de prueba', () => {
+    // El signo Kelvin (U+212A) se convierte en "k" al pasar a minúscula: sin
+    // exigir el alfabeto de Instagram, "\u212Aaren" calzaría con "karen".
+    expect(esCuentaDePrueba('\u212Aaren', ['karen'])).toBe(false)
+    expect(esCuentaDePrueba('julian david', ['julian david'])).toBe(false)
+  })
+
   it('con la lista vacía nadie es cuenta de prueba', () => {
     expect(esCuentaDePrueba('juliandavidpr', [])).toBe(false)
   })

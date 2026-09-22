@@ -14,10 +14,7 @@
  *   node --env-file=<ruta>/.env.local --import tsx scripts/reels-cuentas-de-prueba.ts --quitar juliandavidpr
  */
 import { Client } from 'pg'
-import { normalizarUsuario } from '../lib/social/reels/decision'
-
-/** Lo que Instagram acepta en un nombre de usuario: letras, números, punto y guion bajo. */
-const USUARIO_VALIDO = /^[a-z0-9._]{1,30}$/
+import { normalizarUsuario, USUARIO_INSTAGRAM } from '../lib/social/reels/decision'
 
 async function main() {
   const [accion, crudo] = process.argv.slice(2)
@@ -38,8 +35,9 @@ async function main() {
 
   try {
     if (accion !== '--ver') {
+      // Se valida lo escrito ANTES de pasar a minúscula (ver esCuentaDePrueba).
       const usuario = normalizarUsuario(crudo ?? '')
-      if (!USUARIO_VALIDO.test(usuario)) {
+      if (!USUARIO_INSTAGRAM.test((crudo ?? '').trim().replace(/^@+/, '')) || !usuario) {
         throw new Error(`"${crudo ?? ''}" no es un nombre de usuario de Instagram válido`)
       }
       const sql = accion === '--agregar'

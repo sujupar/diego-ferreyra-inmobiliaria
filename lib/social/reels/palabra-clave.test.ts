@@ -182,3 +182,34 @@ describe('comentarioCoincide', () => {
     expect(comentarioCoincide('precio?', '?')).toBe(false)
   })
 })
+
+describe('palabras que no sirven (revisión de seguridad)', () => {
+  it('rechaza una palabra sin letras ni números', () => {
+    // "!" coincide con "hermoso!!": un signo suelto en la lista convertiría al
+    // sistema en un contestador de casi todos los comentarios.
+    const r = limpiarPalabras('info, !')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/2 letras o números/)
+  })
+
+  it('rechaza una palabra de una sola letra', () => {
+    // "a" es una preposición: está en casi cualquier comentario.
+    expect(limpiarPalabras('doblas, a').ok).toBe(false)
+  })
+
+  it('acepta palabras cortas de verdad, de dos letras', () => {
+    expect(limpiarPalabras('sí, info').ok).toBe(true)
+  })
+
+  it('al comparar, ignora las palabras que no sirven aunque estén guardadas', () => {
+    // Defensa por si la lista llegó a la base sin pasar por la ruta.
+    expect(comentarioCoincide('hermoso!!', 'info, !')).toBe(false)
+    expect(comentarioCoincide('me encanta a la tarde', 'doblas, a')).toBe(false)
+    expect(comentarioCoincide('info por favor', 'info, !')).toBe(true)
+  })
+
+  it('una lista guardada con más del tope no coincide con nada (falla cerrado)', () => {
+    const muchas = Array.from({ length: MAX_PALABRAS + 5 }, (_, i) => `palabra${i}`).join(', ')
+    expect(comentarioCoincide('palabra0', muchas)).toBe(false)
+  })
+})
