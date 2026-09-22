@@ -16,6 +16,7 @@
  * prueba de `descripcion.test.ts` lo obliga a decidirlo a conciencia.
  */
 import { normalizePropertyTypeLabel, operationLabelFor } from '@/lib/properties/etiquetas'
+import { separarPalabras } from './palabra-clave'
 
 export interface DatosDescripcion {
   property_type?: string | null
@@ -35,7 +36,13 @@ function cantidad(n: number | null | undefined, singular: string, plural: string
   return `${n} ${n === 1 ? singular : plural}`
 }
 
-export function armarDescripcionReel(datos: DatosDescripcion, palabra: string): string {
+/**
+ * `palabras` es la lista del reel ("parque rivadavia, doblas, info"). En el
+ * texto va SOLO la primera: las demás son las variantes que la gente escribe de
+ * verdad y se aceptan igual, pero pedirle cuatro palabras al público confunde.
+ */
+export function armarDescripcionReel(datos: DatosDescripcion, palabras: string): string {
+  const palabra = separarPalabras(palabras)[0] ?? ''
   const tipo = normalizePropertyTypeLabel(datos.property_type)
   const operacion = operationLabelFor(datos.operation_type)
   const barrio = datos.neighborhood?.trim()
