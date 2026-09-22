@@ -76,7 +76,7 @@ export async function mandarPrivadoConBoton(a: {
   textoBoton: string
   reelId: string
 }): Promise<void> {
-  const { igId } = cuentaInstagram()
+  const { igId } = await cuentaInstagram()
 
   const titulo = a.textoBoton.trim().slice(0, MAX_TITULO_BOTON) || 'Sí, pasámela'
 
@@ -102,7 +102,7 @@ export async function mandarTexto(a: {
   destinatarioId: string
   texto: string
 }): Promise<void> {
-  const { igId } = cuentaInstagram()
+  const { igId } = await cuentaInstagram()
 
   await instagramFetch(`/${igId}/messages`, {
     method: 'POST',

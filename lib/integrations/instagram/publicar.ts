@@ -43,7 +43,7 @@ export async function crearContenedorReel(a: {
     throw new Error('La URL del video tiene que ser https:// para que Instagram pueda descargarlo.')
   }
 
-  const { igId } = cuentaInstagram()
+  const { igId } = await cuentaInstagram()
   const respuesta = await instagramFetch<{ id?: string }>(`/${igId}/media`, {
     method: 'POST',
     body: JSON.stringify({
@@ -104,7 +104,7 @@ export async function estadoContenedor(creationId: string): Promise<EstadoConten
 export async function publicarContenedor(
   creationId: string,
 ): Promise<{ igMediaId: string; permalink: string | null }> {
-  const { igId } = cuentaInstagram()
+  const { igId } = await cuentaInstagram()
   const publicado = await instagramFetch<{ id?: string }>(`/${igId}/media_publish`, {
     method: 'POST',
     body: JSON.stringify({ creation_id: creationId }),
@@ -142,7 +142,7 @@ interface MediaDeInstagram {
  * publicaciones y la mayoría son fotos y carruseles, que no sirven acá.
  */
 export async function listarReelsPublicados(limite = 25): Promise<ReelPublicado[]> {
-  const { igId } = cuentaInstagram()
+  const { igId } = await cuentaInstagram()
   const campos = 'id,media_product_type,permalink,caption,thumbnail_url,timestamp,comments_count'
   // Se piden de más porque el filtro descarta las fotos y los carruseles.
   const aPedir = Math.min(limite * 4, 100)

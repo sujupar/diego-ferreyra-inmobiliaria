@@ -39,8 +39,8 @@ export async function responderComentario(comentarioId: string, mensaje: string)
  * Sin identificador de autor se asume AJENO: asumirlo propio silenciaría
  * comentarios de gente real, que es el error caro de los dos.
  */
-export function esComentarioDeLaCuenta(autorId: string | null | undefined): boolean {
+export async function esComentarioDeLaCuenta(autorId: string | null | undefined): Promise<boolean> {
   if (!autorId) return false
-  const { igId } = cuentaInstagram()
+  const { igId } = await cuentaInstagram()
   return autorId === igId
 }

@@ -34,19 +34,63 @@ export class ErrorInstagram extends Error {
   }
 }
 
-/**
- * La cuenta con la que se publica.
- *
- * `META_INSTAGRAM_ACCOUNT_ID` es opcional: sin ella se resuelve desde la página,
- * igual que hace `getInstagramActorId()` en el constructor de campañas. Pero el
- * token no tiene respaldo posible — si falta, no hay nada que hacer.
- */
-export function cuentaInstagram(): { igId: string; token: string } {
+export function tokenInstagram(): string {
   const token = process.env.META_ACCESS_TOKEN
-  if (!token) throw new Error('Falta META_ACCESS_TOKEN')
-  const igId = process.env.META_INSTAGRAM_ACCOUNT_ID
-  if (!igId) throw new Error('Falta META_INSTAGRAM_ACCOUNT_ID')
-  return { igId, token }
+  if (!token) {
+    throw new Error(
+      'La conexión con Instagram no está configurada en el sistema. ' +
+      'Avisale al administrador (falta META_ACCESS_TOKEN).',
+    )
+  }
+  return token
+}
+
+/**
+ * La cuenta de Instagram con la que se publica.
+ *
+ * `META_INSTAGRAM_ACCOUNT_ID` es OPCIONAL: si no está, se averigua sola desde la
+ * página de Facebook conectada, igual que hace `getInstagramActorId()` en el
+ * constructor de campañas. Esto salió del QA — sin la variable cargada, la
+ * pantalla moría con "Falta META_INSTAGRAM_ACCOUNT_ID", que no le dice nada a un
+ * asesor y obligaba a configurar algo que el sistema puede deducir.
+ *
+ * Solo se cachea el ÉXITO: un fallo pasajero de red no puede dejar la cuenta
+ * fijada en "no hay" hasta el próximo despliegue.
+ */
+let cuentaCacheada: string | null = null
+
+export async function cuentaInstagram(): Promise<{ igId: string; token: string }> {
+  const token = tokenInstagram()
+  if (cuentaCacheada) return { igId: cuentaCacheada, token }
+
+  const delEntorno = process.env.META_INSTAGRAM_ACCOUNT_ID
+  if (delEntorno) {
+    cuentaCacheada = delEntorno
+    return { igId: delEntorno, token }
+  }
+
+  const res = await fetch(
+    `${API}/me/accounts?fields=instagram_business_account&access_token=${encodeURIComponent(token)}`,
+  )
+  const texto = await res.text()
+  let cuerpo: { data?: Array<{ instagram_business_account?: { id?: string } }> } = {}
+  try {
+    cuerpo = JSON.parse(texto) as typeof cuerpo
+  } catch {
+    // Cae al error de abajo con el mensaje entendible.
+  }
+
+  const id = cuerpo.data?.find((p) => p.instagram_business_account?.id)
+    ?.instagram_business_account?.id
+  if (!id) {
+    throw new Error(
+      'No se pudo identificar la cuenta de Instagram de la inmobiliaria. ' +
+      'Avisale al administrador (revisar el token de Meta o cargar META_INSTAGRAM_ACCOUNT_ID).',
+    )
+  }
+
+  cuentaCacheada = id
+  return { igId: id, token }
 }
 
 interface CuerpoDeError {
@@ -92,7 +136,9 @@ export function esReintentable(e: unknown): boolean {
 }
 
 export async function instagramFetch<T>(ruta: string, init: RequestInit = {}): Promise<T> {
-  const { token } = cuentaInstagram()
+  // El token, no la cuenta: pedir la cuenta acá sería recursivo (la consulta que
+  // la averigua pasa por este mismo camino).
+  const token = tokenInstagram()
   const base = ruta.startsWith('http') ? ruta : `${API}${ruta}`
   const separador = base.includes('?') ? '&' : '?'
   const url = `${base}${separador}access_token=${encodeURIComponent(token)}`

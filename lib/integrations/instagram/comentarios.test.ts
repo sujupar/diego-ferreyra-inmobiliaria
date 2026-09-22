@@ -46,18 +46,23 @@ describe('responderComentario', () => {
 })
 
 describe('esComentarioDeLaCuenta', () => {
-  it('reconoce nuestras propias respuestas', () => {
+  it('reconoce nuestras propias respuestas', async () => {
     // Entran por el mismo webhook: sin este freno el sistema se contesta solo.
-    expect(esComentarioDeLaCuenta(IG)).toBe(true)
+    expect(await esComentarioDeLaCuenta(IG)).toBe(true)
   })
 
-  it('un comentario de otra persona no es nuestro', () => {
-    expect(esComentarioDeLaCuenta('1133632795784463')).toBe(false)
+  it('un comentario de otra persona no es nuestro', async () => {
+    expect(await esComentarioDeLaCuenta('1133632795784463')).toBe(false)
   })
 
-  it('sin identificador de autor se asume ajeno, no propio', () => {
-    // Asumirlo propio silenciaría comentarios reales de gente real.
-    expect(esComentarioDeLaCuenta(null)).toBe(false)
-    expect(esComentarioDeLaCuenta(undefined)).toBe(false)
+  it('sin identificador de autor se asume ajeno, no propio SIN consultar la red', async () => {
+    // Asumirlo propio silenciaría comentarios reales de gente real. Y se
+    // resuelve antes de preguntar la cuenta: cada comentario del lote pasa por
+    // acá, no puede costar una llamada.
+    const espia = vi.fn()
+    vi.stubGlobal('fetch', espia)
+    expect(await esComentarioDeLaCuenta(null)).toBe(false)
+    expect(await esComentarioDeLaCuenta(undefined)).toBe(false)
+    expect(espia).not.toHaveBeenCalled()
   })
 })

@@ -168,7 +168,7 @@ export async function procesarComentario(
       texto: c.texto,
       creado_en: c.creadoEn,
       autor_ig_id: c.autorId,
-      es_de_la_cuenta: esComentarioDeLaCuenta(c.autorId),
+      es_de_la_cuenta: await esComentarioDeLaCuenta(c.autorId),
       ya_recibio_dm: await yaRecibioDm(reel.id, c.autorId),
     },
     ajustes,
