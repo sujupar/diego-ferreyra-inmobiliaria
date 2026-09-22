@@ -28,6 +28,12 @@ import { comentarioCoincide } from './palabra-clave'
 export interface AjustesGlobales {
   automatizacion_habilitada: boolean
   dm_habilitado: boolean
+  /**
+   * Usuarios de Instagram a los que se les responde DE VERDAD aunque el reel
+   * esté en simulacro. Obligatorio a propósito: quien arma los ajustes tiene
+   * que decidir la lista, no heredar un valor por omisión sin darse cuenta.
+   */
+  cuentas_de_prueba: string[]
 }
 
 export interface ReelParaDecidir {
@@ -43,6 +49,8 @@ export interface ComentarioEntrante {
   texto: string | null
   creado_en: string
   autor_ig_id: string
+  /** Tal como lo manda Meta en el aviso. Puede no venir: entonces no es cuenta de prueba. */
+  autor_username: string | null
   /** El comentario lo escribió la propia cuenta (una respuesta nuestra). */
   es_de_la_cuenta: boolean
   /** Esta persona ya recibió su privado por ESTE reel. */
@@ -58,6 +66,28 @@ export type Decision =
   | { accion: 'responder_y_dm' }
   /** Responde en público sin prometer un mensaje que no va a salir. */
   | { accion: 'solo_responder'; motivo: string }
+
+/**
+ * El usuario de Instagram en la forma en que se compara: sin `@`, sin espacios
+ * y en minúscula (Instagram no distingue mayúsculas en los nombres de usuario).
+ */
+export function normalizarUsuario(usuario: string): string {
+  return usuario.trim().replace(/^@+/, '').trim().toLowerCase()
+}
+
+/**
+ * ¿Este comentario viene de una cuenta de prueba?
+ *
+ * FALLA CERRADO: sin nombre de usuario, o con uno que no está EXACTO en la
+ * lista, la respuesta es no. Equivocarse para este lado deja una prueba sin
+ * respuesta; equivocarse para el otro le escribe a un cliente real.
+ */
+export function esCuentaDePrueba(usuario: string | null, cuentas: readonly string[]): boolean {
+  if (!usuario) return false
+  const buscado = normalizarUsuario(usuario)
+  if (!buscado) return false
+  return cuentas.some((cuenta) => normalizarUsuario(cuenta) === buscado)
+}
 
 /** Instagram no acepta un privado pasados 7 días del comentario. */
 const DIAS_DE_VENTANA = 7
@@ -111,7 +141,11 @@ export function decidirQueHacer(
   }
 
   // --- Simulacro: después de los descartes, antes de cualquier envío -----
-  if (reel.simulacro) {
+  // La única excepción son las cuentas de prueba del dueño: les responde de
+  // verdad para que pueda probar sobre un reel real sin que ningún cliente
+  // reciba nada. Va ACÁ, después de todos los descartes, para que una cuenta de
+  // prueba no se salte ningún freno más que el simulacro mismo.
+  if (reel.simulacro && !esCuentaDePrueba(comentario.autor_username, ajustes.cuentas_de_prueba)) {
     return { accion: 'simular' }
   }
 

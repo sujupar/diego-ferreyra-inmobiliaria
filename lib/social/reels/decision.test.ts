@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   decidirQueHacer,
+  esCuentaDePrueba,
+  normalizarUsuario,
   type AjustesGlobales,
   type ComentarioEntrante,
   type ReelParaDecidir,
@@ -19,12 +21,14 @@ const reelOk: ReelParaDecidir = {
 const todoPrendido: AjustesGlobales = {
   automatizacion_habilitada: true,
   dm_habilitado: true,
+  cuentas_de_prueba: [],
 }
 
 const comentarioOk: ComentarioEntrante = {
   texto: 'hola, propiedad',
   creado_en: '2026-09-22T11:00:00Z',
   autor_ig_id: '123',
+  autor_username: 'cliente_real',
   es_de_la_cuenta: false,
   ya_recibio_dm: false,
 }
@@ -162,5 +166,85 @@ describe('decidirQueHacer — cuando responde pero no manda el privado', () => {
     const raro = { ...comentarioOk, creado_en: 'ayer a la tarde' }
     expect(decidirQueHacer(reelOk, raro, todoPrendido, AHORA))
       .toEqual({ accion: 'ignorar', motivo: 'comentario_anterior_a_la_activacion' })
+  })
+})
+
+describe('cuentas de prueba — reconocer la cuenta', () => {
+  it('normaliza el usuario: sin @, sin espacios, en minúscula', () => {
+    expect(normalizarUsuario('  @JulianDavidPR ')).toBe('juliandavidpr')
+  })
+
+  it('reconoce la cuenta aunque en la lista esté escrita con @ o mayúsculas', () => {
+    expect(esCuentaDePrueba('juliandavidpr', ['@JulianDavidPR'])).toBe(true)
+  })
+
+  it('exige el nombre EXACTO: un pedazo no alcanza', () => {
+    // "julian" está adentro de "juliandavidpr", pero es otra persona.
+    expect(esCuentaDePrueba('julian', ['juliandavidpr'])).toBe(false)
+    expect(esCuentaDePrueba('juliandavidpr2', ['juliandavidpr'])).toBe(false)
+  })
+
+  it('sin nombre de usuario NO es cuenta de prueba (falla cerrado)', () => {
+    expect(esCuentaDePrueba(null, ['juliandavidpr'])).toBe(false)
+    expect(esCuentaDePrueba('', ['juliandavidpr'])).toBe(false)
+    expect(esCuentaDePrueba('  @ ', ['@'])).toBe(false)
+  })
+
+  it('con la lista vacía nadie es cuenta de prueba', () => {
+    expect(esCuentaDePrueba('juliandavidpr', [])).toBe(false)
+  })
+})
+
+describe('decidirQueHacer — cuentas de prueba con el reel en simulacro', () => {
+  const enSimulacro = { ...reelOk, simulacro: true }
+  const conPrueba: AjustesGlobales = { ...todoPrendido, cuentas_de_prueba: ['juliandavidpr'] }
+  const delDueno: ComentarioEntrante = { ...comentarioOk, autor_ig_id: '999', autor_username: 'juliandavidpr' }
+
+  it('a la cuenta de prueba le responde de verdad', () => {
+    expect(decidirQueHacer(enSimulacro, delDueno, conPrueba, AHORA))
+      .toEqual({ accion: 'responder_y_dm' })
+  })
+
+  it('con los privados apagados, la cuenta de prueba recibe solo la respuesta pública', () => {
+    // Es el caso de HOY: falta pages_messaging. La respuesta que sale no promete
+    // un privado que no va a llegar.
+    expect(decidirQueHacer(enSimulacro, delDueno, { ...conPrueba, dm_habilitado: false }, AHORA))
+      .toEqual({ accion: 'solo_responder', motivo: 'dm_deshabilitado' })
+  })
+
+  it('a cualquier otra persona la sigue simulando: no se le manda nada', () => {
+    expect(decidirQueHacer(enSimulacro, comentarioOk, conPrueba, AHORA))
+      .toEqual({ accion: 'simular' })
+  })
+
+  it('un aviso sin nombre de usuario queda en simulacro', () => {
+    expect(decidirQueHacer(enSimulacro, { ...delDueno, autor_username: null }, conPrueba, AHORA))
+      .toEqual({ accion: 'simular' })
+  })
+
+  it('la cuenta de prueba sin la palabra se ignora como cualquiera', () => {
+    expect(decidirQueHacer(enSimulacro, { ...delDueno, texto: 'qué lindo' }, conPrueba, AHORA))
+      .toEqual({ accion: 'ignorar', motivo: 'no_coincide' })
+  })
+
+  it('la excepción NO salta los frenos globales', () => {
+    expect(decidirQueHacer(enSimulacro, delDueno, { ...conPrueba, automatizacion_habilitada: false }, AHORA))
+      .toEqual({ accion: 'ignorar', motivo: 'automatizacion_global_apagada' })
+  })
+
+  it('la excepción NO salta el freno de los comentarios viejos', () => {
+    const viejo = { ...delDueno, creado_en: '2026-09-22T09:00:00Z' }
+    expect(decidirQueHacer(enSimulacro, viejo, conPrueba, AHORA))
+      .toEqual({ accion: 'ignorar', motivo: 'comentario_anterior_a_la_activacion' })
+  })
+
+  it('la cuenta de prueba tampoco recibe dos privados por el mismo reel', () => {
+    expect(decidirQueHacer(enSimulacro, { ...delDueno, ya_recibio_dm: true }, conPrueba, AHORA))
+      .toEqual({ accion: 'solo_responder', motivo: 'ya_recibio_dm' })
+  })
+
+  it('sin simulacro la lista no cambia nada: a todos se les responde', () => {
+    expect(decidirQueHacer(reelOk, comentarioOk, conPrueba, AHORA))
+      .toEqual({ accion: 'responder_y_dm' })
   })
 })
