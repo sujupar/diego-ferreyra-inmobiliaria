@@ -4,6 +4,17 @@
 
 export const PHOTO_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'] as const
 export const VIDEO_EXTS = ['mp4', 'mov', 'webm', 'm4v'] as const
+/**
+ * Los formatos que acepta Instagram para un reel: un subconjunto de VIDEO_EXTS.
+ *
+ * `webm` y `m4v` sirven para el video de la ficha pero Instagram NO los toma. Si
+ * se dejaran pasar, el asesor subiría el archivo, se iría tranquilo, y el fallo
+ * aparecería minutos más tarde en el cron — lejos de él y sin que se entere.
+ *
+ * Esta lista es la ÚNICA: la usan el formulario y la ruta que lo recibe. Tenerla
+ * dos veces es la receta para que una se actualice y la otra no.
+ */
+export const REEL_EXTS = ['mp4', 'mov'] as const
 export const PLAN_EXTS = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'] as const
 export const MAX_PHOTO_BYTES = 15 * 1024 * 1024 // 15 MB
 export const MAX_VIDEO_BYTES = 200 * 1024 * 1024 // 200 MB
