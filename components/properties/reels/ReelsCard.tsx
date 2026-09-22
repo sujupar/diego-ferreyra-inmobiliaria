@@ -19,6 +19,9 @@ import { SubirReelDialog } from './SubirReelDialog'
 import { EngancharReelDialog } from './EngancharReelDialog'
 import { ConfigurarReelDialog } from './ConfigurarReelDialog'
 
+/** Donde salta el atajo "Ir a Reels" de la tarjeta de canales. */
+export const ANCLA_REELS = 'reels-instagram'
+
 interface Props {
   propertyId: string
   /** Puede crear, publicar y activar. El abogado entra con esto en false. */
@@ -91,21 +94,26 @@ export function ReelsCard({ propertyId, puedeGestionar }: Props) {
   }, [propertyId, cargar])
 
   return (
-    <Card>
+    // `id` + `scroll-mt`: el atajo "Ir a Reels" de la tarjeta de arriba salta
+    // hasta acá, y sin el margen la barra de pestañas fija taparía el título.
+    <Card id={ANCLA_REELS} className="scroll-mt-40">
       <CardContent className="space-y-3 pt-5">
         <div className="flex flex-wrap items-center gap-2">
-          <Instagram className="h-4 w-4 text-muted-foreground" aria-hidden />
-          <h3 className="text-sm font-medium">Reels de Instagram</h3>
+          <Instagram className="h-5 w-5 text-pink-600" aria-hidden />
+          <h3 className="text-base font-semibold">Reels de Instagram</h3>
           {reels.length > 0 && (
             <Badge variant="outline" className="text-[10px] h-5">{reels.length}</Badge>
           )}
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Publicá un reel de esta propiedad y respondé solo a quien comente la palabra que elijas.
+          Publicá un reel de esta propiedad y respondé solo a quien comente alguna de las palabras que elijas.
         </p>
 
-        {!landingPublicada && (
+        {/* `!cargando`: mientras la respuesta no llegó, "no hay landing" es
+            desconocido, no falso. Mostrarlo igual hacía parpadear el aviso en
+            fichas que SÍ tienen landing. */}
+        {!cargando && !landingPublicada && (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300/60 bg-amber-50 p-2.5 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
             <span>

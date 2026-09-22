@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { etiquetaEstado, puedeCancelar, puedePedirPublicacion, puedeReintentar, type EstadoReel } from '@/lib/social/reels/estados'
 import { AlertTriangle, ExternalLink, Loader2, MessageCircle, Send, Video } from 'lucide-react'
+import { separarPalabras } from '@/lib/social/reels/palabra-clave'
 
 export interface ReelVisible {
   id: string
@@ -54,6 +55,7 @@ function colorEstado(estado: EstadoReel): 'default' | 'secondary' | 'destructive
 export function ReelFila({
   reel, contadores, puedeGestionar, ocupado, onPublicar, onCancelar, onConfigurar,
 }: Props) {
+  const palabras = separarPalabras(reel.palabra_clave)
   return (
     <div className="flex flex-col gap-2 rounded-lg border p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -63,9 +65,10 @@ export function ReelFila({
           {etiquetaEstado(reel.estado)}
         </Badge>
 
-        {reel.palabra_clave ? (
+        {palabras.length > 0 ? (
           <span className="text-xs text-muted-foreground">
-            palabra: <strong className="text-foreground">{reel.palabra_clave}</strong>
+            {palabras.length === 1 ? 'palabra' : 'palabras'}:{' '}
+            <strong className="text-foreground">{palabras.join(' · ')}</strong>
           </span>
         ) : (
           <span className="text-xs text-amber-700 dark:text-amber-500">Sin palabra configurada</span>
@@ -91,7 +94,7 @@ export function ReelFila({
         <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1">
             <MessageCircle className="h-3 w-3" aria-hidden />
-            {contadores.coincidencias} con la palabra
+            {contadores.coincidencias} con alguna palabra
           </span>
           <span className="inline-flex items-center gap-1">
             <Send className="h-3 w-3" aria-hidden />

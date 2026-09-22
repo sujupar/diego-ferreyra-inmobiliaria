@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { AlertTriangle, Loader2 } from 'lucide-react'
+import { CampoPalabras, palabrasSonValidas } from './CampoPalabras'
 
 interface ReelCompleto {
   id: string
@@ -149,17 +150,13 @@ export function ConfigurarReelDialog({ propertyId, reelId, landingPublicada, onC
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <Label htmlFor="cfg-palabra">Palabra del llamado a la acción</Label>
-              <Input
-                id="cfg-palabra"
-                value={reel.palabra_clave ?? ''}
-                maxLength={60}
-                disabled={guardando}
-                placeholder="PROPIEDAD"
-                onChange={(e) => editar({ palabra_clave: e.target.value })}
-              />
-            </div>
+            <CampoPalabras
+              id="cfg-palabra"
+              valor={reel.palabra_clave ?? ''}
+              onCambiar={(valor) => editar({ palabra_clave: valor })}
+              deshabilitado={guardando}
+              conDescripcion={reel.origen !== 'existente'}
+            />
 
             <div className="space-y-1.5">
               <Label htmlFor="cfg-dm">Mensaje privado</Label>
@@ -262,7 +259,7 @@ export function ConfigurarReelDialog({ propertyId, reelId, landingPublicada, onC
 
         <DialogFooter>
           <Button variant="ghost" onClick={onCerrar} disabled={guardando}>Cancelar</Button>
-          <Button onClick={() => void guardar()} disabled={!reel || guardando}>
+          <Button onClick={() => void guardar()} disabled={!reel || guardando || !palabrasSonValidas(reel.palabra_clave ?? '')}>
             {guardando && <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden />}
             Guardar
           </Button>

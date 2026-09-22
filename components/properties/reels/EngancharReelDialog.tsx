@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { AlertTriangle, Info, Loader2, MessageCircle } from 'lucide-react'
+import { CampoPalabras, palabrasSonValidas } from './CampoPalabras'
 
 interface ReelDeInstagram {
   id: string
@@ -161,17 +160,13 @@ export function EngancharReelDialog({ propertyId, abierto, onCerrar, onListo }: 
           ))}
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="palabra-enganchar">Palabra del llamado a la acción</Label>
-          <Input
-            id="palabra-enganchar"
-            value={palabra}
-            maxLength={60}
-            disabled={guardando}
-            placeholder="PROPIEDAD"
-            onChange={(e) => setPalabra(e.target.value)}
-          />
-        </div>
+        <CampoPalabras
+          id="palabra-enganchar"
+          valor={palabra}
+          onCambiar={setPalabra}
+          deshabilitado={guardando}
+          conDescripcion={false}
+        />
 
         {error && (
           <p className="flex items-start gap-1.5 text-xs text-destructive">
@@ -182,7 +177,7 @@ export function EngancharReelDialog({ propertyId, abierto, onCerrar, onListo }: 
 
         <DialogFooter>
           <Button variant="ghost" onClick={onCerrar} disabled={guardando}>Cancelar</Button>
-          <Button onClick={() => void confirmar()} disabled={!elegido || guardando}>
+          <Button onClick={() => void confirmar()} disabled={!elegido || guardando || !palabrasSonValidas(palabra)}>
             {guardando && <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden />}
             Enganchar
           </Button>

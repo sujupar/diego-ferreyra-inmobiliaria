@@ -15,8 +15,11 @@ import {
   Loader2,
   Sparkles,
   ArrowRight,
+  ArrowDown,
   Globe,
+  Instagram,
 } from 'lucide-react'
+import { ANCLA_REELS } from '@/components/properties/reels/ReelsCard'
 
 interface Props {
   propertyId: string
@@ -337,6 +340,27 @@ export function PostCaptureActions({ propertyId, onCrearLanding }: Props) {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Reels: la tarjeta vive más abajo (debajo de la landing, porque
+            depende de ella) y el dueño no la encontraba. Este atajo la deja a la
+            vista junto a los demás canales sin mover nada de lugar. */}
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-4">
+          <Instagram className="h-4 w-4 shrink-0 text-pink-600" aria-hidden />
+          <div className="min-w-[12rem] flex-1">
+            <p className="text-sm font-medium">Reels de Instagram</p>
+            <p className="text-xs text-muted-foreground">
+              Subí un reel o enganchá uno ya publicado, y respondé solo a quien comente las palabras que elijas.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => document.getElementById(ANCLA_REELS)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          >
+            Ir a Reels
+            <ArrowDown className="ml-1 h-4 w-4" aria-hidden />
+          </Button>
         </div>
       </CardContent>
     </Card>
