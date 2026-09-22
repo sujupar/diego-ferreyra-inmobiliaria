@@ -1,15 +1,4 @@
 {
   "extends": "./tsconfig.json",
-  "//": "Verificación de tipos ACOTADA a los reels. El tsconfig raíz se cuelga: rastrea todo el proyecto, que está en iCloud.",
-  "include": [
-    "next-env.d.ts",
-    "types/**/*.ts",
-    "lib/social/reels/**/*.ts",
-    "lib/integrations/instagram/**/*.ts",
-    "app/api/properties/[id]/reels/**/*.ts",
-    "app/api/instagram/**/*.ts",
-    "app/api/webhooks/instagram/**/*.ts",
-    "app/api/cron/reels-publish/**/*.ts",
-    "components/properties/reels/**/*.tsx"
-  ]
+  "include": ["next-env.d.ts", "types/**/*.ts", "lib/social/reels/**/*.ts", "lib/integrations/instagram/**/*.ts", "lib/properties/etiquetas.ts", "lib/properties/upload-reel.ts", "lib/marketing/ad-image-generator-v2.ts", "lib/marketing/copy-ai-generator.ts", "lib/marketing/ad-image-async-runner.ts", "components/properties/reels/**/*.tsx", "components/properties/detail/tabs/MarketingTab.tsx", "app/api/properties/[id]/reels/**/*.ts", "app/api/properties/[id]/media/upload-init/**/*.ts", "app/api/instagram/**/*.ts", "app/api/webhooks/instagram/**/*.ts", "app/api/cron/reels-publish/**/*.ts"]
 }

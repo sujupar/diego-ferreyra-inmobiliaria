@@ -334,7 +334,12 @@ The output must be a clean photograph — only photographic content, no text, no
  * comentario que entra: importarlos de acá le arrastraba toda la maquinaria de
  * generación de imágenes.
  */
-export { normalizePropertyTypeLabel, operationLabelFor } from '@/lib/properties/etiquetas'
+import { normalizePropertyTypeLabel, operationLabelFor } from '@/lib/properties/etiquetas'
+// Se IMPORTAN además de reexportarse porque este mismo archivo las usa más
+// abajo (buildOverlayTokens). Con solo `export ... from`, los consumidores de
+// afuera funcionan pero el módulo no tiene los nombres en su alcance: el
+// build se rompe y ningún test lo atrapa, porque todos importan desde afuera.
+export { normalizePropertyTypeLabel, operationLabelFor }
 
 function formatPrice(price: number, currency: string): string {
   return new Intl.NumberFormat('es-AR', {

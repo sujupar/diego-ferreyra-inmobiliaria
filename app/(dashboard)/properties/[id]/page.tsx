@@ -393,6 +393,7 @@ export default function PropertyDetailPage() {
           <MarketingTab
             propertyId={property.id}
             canManage={puedeVerBotonDifusion('gestionar_campana', userInfo?.role)}
+            puedeDifundir={puedeVerBotonDifusion('difundir', userInfo?.role)}
             videoRecorridoUrl={property.video_recorrido_url}
             tour3dUrl={property.tour_3d_url}
             videoUrl={property.video_url}
