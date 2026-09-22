@@ -23,6 +23,8 @@ export interface CamposEditablesReel {
   dm_texto?: string | null
   dm_boton?: string
   dm_seguimiento?: string | null
+  respuestas_con_privado?: string[]
+  respuestas_sin_privado?: string[]
   simulacro?: boolean
   automatizacion_activa?: boolean
   programado_para?: string | null
@@ -34,6 +36,8 @@ const PERMITIDOS = [
   'dm_texto',
   'dm_boton',
   'dm_seguimiento',
+  'respuestas_con_privado',
+  'respuestas_sin_privado',
   'simulacro',
   'automatizacion_activa',
   'programado_para',

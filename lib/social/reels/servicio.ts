@@ -15,6 +15,7 @@ import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 import { armarDescripcionReel, type DatosDescripcion } from './descripcion'
 import { camposEditables, type CamposEditablesReel } from './edicion'
 import { separarPalabras } from './palabra-clave'
+import type { MensajesLimpios } from './mensajes'
 import type { EstadoReel } from './estados'
 
 function admin() {
@@ -34,6 +35,10 @@ export interface FilaReel {
   dm_texto: string | null
   dm_boton: string
   dm_seguimiento: string | null
+  /** Las frases públicas cuando el privado salió. De 1 a 3 (CHECK en la base). */
+  respuestas_con_privado: string[]
+  /** Las frases públicas cuando el privado NO salió. De 1 a 3. */
+  respuestas_sin_privado: string[]
   estado: EstadoReel
   programado_para: string | null
   /** El contenedor que Instagram está procesando. Vive solo entre las dos etapas del cron. */
@@ -127,6 +132,8 @@ export async function crearReel(a: {
   igMediaId?: string | null
   palabraClave?: string | null
   descripcion?: string | null
+  /** Lo que el asesor revisó en el paso "Revisá los mensajes". Lo que no venga queda con el default de la base. */
+  mensajes?: MensajesLimpios
 }): Promise<FilaReel> {
   // Para uno subido, si el asesor todavía no escribió nada, se le ofrece una
   // descripción armada con los datos de la propiedad. Para uno ya publicado no:
@@ -152,6 +159,7 @@ export async function crearReel(a: {
       // La ruta ya la validó con `limpiarPalabras`; se vuelve a normalizar por si
       // otro llamador (un script) la pasa cruda.
       palabra_clave: separarPalabras(a.palabraClave).join(', ') || null,
+      ...(a.mensajes ?? {}),
     })
     .select('*')
     .single()

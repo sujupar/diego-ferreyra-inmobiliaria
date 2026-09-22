@@ -16,6 +16,11 @@ describe('camposEditables', () => {
     expect(Object.keys(camposEditables(entrada)).sort()).toEqual(Object.keys(entrada).sort())
   })
 
+  it('deja pasar las frases públicas del reel', () => {
+    const frases = { respuestas_con_privado: ['Uno 📩'], respuestas_sin_privado: ['Gracias'] }
+    expect(camposEditables(frases)).toEqual(frases)
+  })
+
   it('DESCARTA cualquier campo que no esté en la lista', () => {
     // Sin lista blanca, un PATCH podría escribir ig_media_id, estado o
     // property_id y reapuntar un reel a otra propiedad. Es el mismo agujero que

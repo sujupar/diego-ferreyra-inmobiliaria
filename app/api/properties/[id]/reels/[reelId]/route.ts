@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { requireAuth } from '@/lib/auth/require-role'
 import { validarProgramacion } from '@/lib/social/reels/edicion'
 import { limpiarPalabras, separarPalabras } from '@/lib/social/reels/palabra-clave'
+import { validarMensajes } from '@/lib/social/reels/mensajes'
 import { actualizarReel, autorizarReel, borrarReel, landingPublicada, obtenerReel } from '@/lib/social/reels/servicio'
 
 const cuerpoEditar = z.object({
@@ -15,9 +16,13 @@ const cuerpoEditar = z.object({
   // Tope amplio para el texto crudo (espacios, repetidas); el tope real, sobre
   // la lista ya limpia, lo aplica `limpiarPalabras` con un mensaje legible.
   palabra_clave: z.string().max(500).nullable().optional(),
-  dm_texto: z.string().max(1000).nullable().optional(),
-  dm_boton: z.string().max(20).optional(),
-  dm_seguimiento: z.string().max(1000).nullable().optional(),
+  // Topes amplios para el texto crudo; los reales (1000 / 20 / 1 a 3 frases de
+  // 300) los aplica `validarMensajes`, con un motivo que se muestra en pantalla.
+  dm_texto: z.string().max(2000).nullable().optional(),
+  dm_boton: z.string().max(100).optional(),
+  dm_seguimiento: z.string().max(2000).nullable().optional(),
+  respuestas_con_privado: z.array(z.string().max(1000)).max(10).optional(),
+  respuestas_sin_privado: z.array(z.string().max(1000)).max(10).optional(),
   simulacro: z.boolean().optional(),
   automatizacion_activa: z.boolean().optional(),
   programado_para: z.string().nullable().optional(),
@@ -39,6 +44,18 @@ export async function PATCH(
       return NextResponse.json({ error: 'Datos inválidos.' }, { status: 400 })
     }
     const cambios = analisis.data
+
+    const mensajes = validarMensajes({
+      respuestas_con_privado: cambios.respuestas_con_privado,
+      respuestas_sin_privado: cambios.respuestas_sin_privado,
+      dm_texto: cambios.dm_texto,
+      dm_boton: cambios.dm_boton,
+      dm_seguimiento: cambios.dm_seguimiento,
+    })
+    if (!mensajes.ok) {
+      return NextResponse.json({ error: mensajes.error }, { status: 400 })
+    }
+    Object.assign(cambios, mensajes.valor)
 
     if (typeof cambios.palabra_clave === 'string') {
       const palabras = limpiarPalabras(cambios.palabra_clave)
