@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { etiquetaEstado, puedeCancelar, puedePedirPublicacion, puedeReintentar, type EstadoReel } from '@/lib/social/reels/estados'
 import { AlertTriangle, ExternalLink, Loader2, MessageCircle, Send, Video } from 'lucide-react'
 import { separarPalabras } from '@/lib/social/reels/palabra-clave'
+import { ETIQUETA_MODO, modoDelReel, type ModoReel } from '@/lib/social/reels/modo'
 
 export interface ReelVisible {
   id: string
@@ -45,6 +46,12 @@ function fechaLegible(iso: string | null): string {
   })
 }
 
+function colorModo(modo: ModoReel): 'default' | 'secondary' | 'destructive' | 'outline' {
+  if (modo === 'en_vivo') return 'default'
+  if (modo === 'prueba') return 'secondary'
+  return 'outline'
+}
+
 function colorEstado(estado: EstadoReel): 'default' | 'secondary' | 'destructive' | 'outline' {
   if (estado === 'publicado') return 'default'
   if (estado === 'fallido') return 'destructive'
@@ -56,14 +63,21 @@ export function ReelFila({
   reel, contadores, puedeGestionar, ocupado, onPublicar, onCancelar, onConfigurar,
 }: Props) {
   const palabras = separarPalabras(reel.palabra_clave)
+  const modo = modoDelReel(reel)
   return (
     <div className="flex flex-col gap-2 rounded-lg border p-3">
       <div className="flex flex-wrap items-center gap-2">
         <Video className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
 
-        <Badge variant={colorEstado(reel.estado)} className="text-[10px] h-5">
-          {etiquetaEstado(reel.estado)}
-        </Badge>
+        {/* Un reel que ya está en Instagram muestra su MODO, no "Publicado": el
+            dueño leyó "Publicado" como "ya está respondiendo" (2026-09-22). */}
+        {reel.estado === 'publicado' ? (
+          <Badge variant={colorModo(modo)} className="text-[10px] h-5">{ETIQUETA_MODO[modo]}</Badge>
+        ) : (
+          <Badge variant={colorEstado(reel.estado)} className="text-[10px] h-5">
+            {etiquetaEstado(reel.estado)}
+          </Badge>
+        )}
 
         {palabras.length > 0 ? (
           <span className="text-xs text-muted-foreground">
@@ -74,14 +88,6 @@ export function ReelFila({
           <span className="text-xs text-amber-700 dark:text-amber-500">Sin palabra configurada</span>
         )}
 
-        {/* El simulacro se avisa SIEMPRE que está puesto: es la diferencia entre
-            "esto le escribe a la gente" y "esto no le escribe a nadie". */}
-        {reel.automatizacion_activa && reel.simulacro && (
-          <Badge variant="outline" className="text-[10px] h-5">Simulacro</Badge>
-        )}
-        {reel.automatizacion_activa && !reel.simulacro && (
-          <Badge variant="secondary" className="text-[10px] h-5">Automatización activa</Badge>
-        )}
 
         <span className="ml-auto text-xs text-muted-foreground">
           {reel.estado === 'programado' && reel.programado_para

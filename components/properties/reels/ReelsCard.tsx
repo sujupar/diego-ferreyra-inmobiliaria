@@ -17,7 +17,7 @@ import { AlertTriangle, Instagram, Loader2, Plus, Link2 } from 'lucide-react'
 import { ReelFila, type ContadoresVisibles, type ReelVisible } from './ReelFila'
 import { SubirReelDialog } from './SubirReelDialog'
 import { EngancharReelDialog } from './EngancharReelDialog'
-import { ConfigurarReelDialog } from './ConfigurarReelDialog'
+import { ConfigurarReelDialog, type InterruptoresGenerales } from './ConfigurarReelDialog'
 
 /** Donde salta el atajo "Ir a Reels" de la tarjeta de canales. */
 export const ANCLA_REELS = 'reels-instagram'
@@ -32,6 +32,7 @@ interface RespuestaLista {
   reels?: ReelVisible[]
   resumen?: Record<string, ContadoresVisibles>
   landing?: { publicada: boolean; slug: string | null }
+  general?: InterruptoresGenerales
   error?: string
 }
 
@@ -49,6 +50,10 @@ export function ReelsCard({ propertyId, puedeGestionar }: Props) {
   const [reels, setReels] = useState<ReelVisible[]>([])
   const [resumen, setResumen] = useState<Record<string, ContadoresVisibles>>({})
   const [landingPublicada, setLandingPublicada] = useState(false)
+  const [slugLanding, setSlugLanding] = useState<string | null>(null)
+  // Apagados hasta saber lo contrario: si la respuesta no los trae, avisar que
+  // están apagados es el error seguro (el otro diría "responde" y no respondería).
+  const [general, setGeneral] = useState<InterruptoresGenerales>({ automatizacion: false, privados: false })
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
@@ -64,6 +69,8 @@ export function ReelsCard({ propertyId, puedeGestionar }: Props) {
       setReels(cuerpo.reels ?? [])
       setResumen(cuerpo.resumen ?? {})
       setLandingPublicada(cuerpo.landing?.publicada ?? false)
+      setSlugLanding(cuerpo.landing?.slug ?? null)
+      setGeneral(cuerpo.general ?? { automatizacion: false, privados: false })
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error')
@@ -173,12 +180,16 @@ export function ReelsCard({ propertyId, puedeGestionar }: Props) {
           <SubirReelDialog
             propertyId={propertyId}
             abierto={abrirSubir}
+            slugLanding={slugLanding}
+            privadosActivos={general.privados}
             onCerrar={() => setAbrirSubir(false)}
             onListo={() => { setAbrirSubir(false); void cargar() }}
           />
           <EngancharReelDialog
             propertyId={propertyId}
             abierto={abrirEnganchar}
+            slugLanding={slugLanding}
+            privadosActivos={general.privados}
             onCerrar={() => setAbrirEnganchar(false)}
             onListo={() => { setAbrirEnganchar(false); void cargar() }}
           />
@@ -186,6 +197,8 @@ export function ReelsCard({ propertyId, puedeGestionar }: Props) {
             propertyId={propertyId}
             reelId={configurando}
             landingPublicada={landingPublicada}
+            slugLanding={slugLanding}
+            general={general}
             onCerrar={() => setConfigurando(null)}
             onListo={() => { setConfigurando(null); void cargar() }}
           />
