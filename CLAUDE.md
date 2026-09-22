@@ -1206,6 +1206,15 @@ publicado; ante un comentario con alguna de las palabras → respuesta pública 
 botón que lleva a la landing. Specs: `docs/superpowers/specs/2026-09-22-reels-*`. Código:
 `lib/social/reels/` (reglas puras, testeadas) y `lib/integrations/instagram/`.
 
+- **Modo del reel = un solo selector** (`lib/social/reels/modo.ts`): Apagado / Modo prueba / En vivo,
+  traducido a `automatizacion_activa` + `simulacro` (no hay columna nueva). Los dos interruptores de
+  antes no se entendían; "Publicado" en la fila se leía como "ya está activo" → la fila muestra el modo.
+  En vivo pide confirmación. Enganchar/Subir dejan el reel Apagado.
+- **Revisión obligatoria de mensajes** (`RevisionMensajes.tsx`, paso 2 de Enganchar/Subir y en
+  Configurar): 3 frases del comentario + 3 de respaldo (`respuestas_con_privado` / `respuestas_sin_privado`,
+  CHECK 1 a 3 de hasta 300), privado, botón y mensaje del enlace. Los textos de fábrica viven SOLO en
+  `textos-por-defecto.ts` (los usan la pantalla y el procesador; una prueba los compara con el default
+  de la migración 000005). Sin privados habilitados se usan las frases de RESPALDO.
 - **Frenos, todos apagados de fábrica:** `instagram_ajustes.automatizacion_habilitada` (global),
   `.dm_habilitado` (privados), y por reel `automatizacion_activa` + `simulacro`. Activar un reel
   exige **landing publicada** (el botón del privado lleva a ella) y al menos una palabra. Solo actúa
