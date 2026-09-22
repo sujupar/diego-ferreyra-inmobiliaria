@@ -42,8 +42,12 @@ Pestaña **Difusión** de la ficha (`components/properties/detail/tabs/Marketing
 debajo de la sección de landing. Ahí es donde ya viven los canales de publicación y la
 landing, que es justo el requisito del reel. **No** se crea una pestaña nueva.
 
-Roles: lo ve y lo usa quien puede gestionar la propiedad. **El abogado no lo ve**, igual
-que no ve Multimedia ni Difusión.
+Roles: se usa la tabla de permisos que ya existe, `lib/properties/difusion-access.ts`. Ver
+la tarjeta = capacidad `ver_difusion`; crear, publicar y activar la automatización =
+capacidad `difundir`. En la práctica: admin, dueño, coordinador y asesor hacen todo; **el
+abogado ve la tarjeta pero sin ningún botón**, igual que ya le pasa con la landing y los
+portales. No se inventa una regla de roles nueva: esa tabla existe justamente porque la
+regla estaba copiada a mano en más de veinte archivos.
 
 ### Tarjeta "Reels de Instagram"
 
@@ -168,9 +172,10 @@ el descarte de repetidos.
 
 **`instagram_ajustes`** — una sola fila (`id = 'default'`) con los dos interruptores globales.
 
-RLS en las tres: lectura y escritura solo para usuarios de operaciones (`is_operations_user()`),
-como el resto de las tablas nuevas del repo. El webhook y el cron entran con la clave de
-servicio, que no pasa por RLS.
+RLS en las tres, copiando **exactamente** el patrón de `property_landings`
+(`20260723000002`): una política para operaciones (`is_operations_user()`) y otra para el
+asesor asignado a esa propiedad. El webhook y el cron entran con la clave de servicio, que
+no pasa por RLS — por eso el permiso de verdad lo decide `puedeDifundir()` en cada ruta.
 
 ### Reglas de Instagram que el diseño respeta
 
@@ -196,7 +201,8 @@ Cada uno se comprueba en la interfaz de la vista previa o con un `select`.
 
 1. En la pestaña **Difusión** de una propiedad captada aparece la tarjeta "Reels de
    Instagram" con los botones "Subir un reel" y "Enganchar uno ya publicado". Con el usuario
-   en rol **abogado**, la tarjeta **no aparece**.
+   en rol **abogado**, la tarjeta aparece pero **sin ningún botón de acción**, y el servidor
+   responde 403 si se la llama igual.
 2. Al elegir un archivo `.webm`, el formulario lo rechaza con un mensaje que nombra los
    formatos aceptados; con un `.mp4` lo acepta.
 3. Al subir un `.mp4` y escribir la palabra `TASACIÓN`, la descripción se arma sola,
