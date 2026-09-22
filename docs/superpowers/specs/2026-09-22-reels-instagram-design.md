@@ -44,10 +44,18 @@ landing, que es justo el requisito del reel. **No** se crea una pestaña nueva.
 
 Roles: se usa la tabla de permisos que ya existe, `lib/properties/difusion-access.ts`. Ver
 la tarjeta = capacidad `ver_difusion`; crear, publicar y activar la automatización =
-capacidad `difundir`. En la práctica: admin, dueño, coordinador y asesor hacen todo; **el
-abogado ve la tarjeta pero sin ningún botón**, igual que ya le pasa con la landing y los
-portales. No se inventa una regla de roles nueva: esa tabla existe justamente porque la
-regla estaba copiada a mano en más de veinte archivos.
+capacidad `difundir`. No se inventa una regla de roles nueva: esa tabla existe justamente
+porque la regla estaba copiada a mano en más de veinte archivos.
+
+**Al abogado, en la práctica, la pestaña Difusión no le aparece.** No es algo que decida
+esta pantalla: `visibleTabs` (`lib/properties/detail-view.ts:91`) ya excluía la pestaña
+entera para ese rol desde antes. Verificado en la vista previa el 2026-09-22: con el
+usuario en rol abogado, la ficha muestra solo Propiedad, Documentación e Historial.
+
+Aun así el servidor NO confía en eso —el menú nunca es la barrera—: con sesión de abogado,
+`GET /api/properties/[id]/reels` responde 200 (solo lectura), y tanto
+`POST /api/properties/[id]/reels` como `GET /api/instagram/media` responden **403**.
+También verificado en vivo.
 
 ### Tarjeta "Reels de Instagram"
 
@@ -201,8 +209,8 @@ Cada uno se comprueba en la interfaz de la vista previa o con un `select`.
 
 1. En la pestaña **Difusión** de una propiedad captada aparece la tarjeta "Reels de
    Instagram" con los botones "Subir un reel" y "Enganchar uno ya publicado". Con el usuario
-   en rol **abogado**, la tarjeta aparece pero **sin ningún botón de acción**, y el servidor
-   responde 403 si se la llama igual.
+   en rol **abogado** la pestaña Difusión no existe, y aunque se llame a la API igual, crear
+   un reel responde **403**.
 2. Al elegir un archivo `.webm`, el formulario lo rechaza con un mensaje que nombra los
    formatos aceptados; con un `.mp4` lo acepta.
 3. Al subir un `.mp4` y escribir la palabra `TASACIÓN`, la descripción se arma sola,
