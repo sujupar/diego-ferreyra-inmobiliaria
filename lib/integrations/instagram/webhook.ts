@@ -76,7 +76,25 @@ function lista(x: unknown): unknown[] {
   return Array.isArray(x) ? x : []
 }
 
-function leerComentario(valor: unknown): ComentarioDelAviso | null {
+/**
+ * La hora del evento que trae la ENTRADA del aviso (`entry.time`).
+ *
+ * Por qué hace falta: los ejemplos de Meta para comentarios de Instagram no
+ * traen `timestamp` dentro de `value`, y la hora del comentario decide si es
+ * "nuevo" (se responde) o "anterior a la activación" (se ignora). Sin esto, un
+ * comentario real llegaba sin hora, se trataba como viejo y el sistema no le
+ * respondía a nadie, en silencio. Meta la manda en segundos; se aceptan
+ * milisegundos por las dudas. Lo que no sea un número razonable se descarta.
+ */
+function horaDelEvento(entrada: unknown): string | null {
+  const t = campo(entrada, 'time')
+  if (typeof t !== 'number' || !Number.isFinite(t) || t <= 0) return null
+  const ms = t > 1e12 ? t : t * 1000
+  const fecha = new Date(ms)
+  return Number.isNaN(fecha.getTime()) ? null : fecha.toISOString()
+}
+
+function leerComentario(valor: unknown, horaEntrada: string | null): ComentarioDelAviso | null {
   const comentarioId = texto(campo(valor, 'id'))
   const igMediaId = texto(campo(campo(valor, 'media'), 'id'))
   const autorId = texto(campo(campo(valor, 'from'), 'id'))
@@ -91,7 +109,9 @@ function leerComentario(valor: unknown): ComentarioDelAviso | null {
     autorId,
     username: texto(campo(campo(valor, 'from'), 'username')),
     texto: texto(campo(valor, 'text')),
-    creadoEn: texto(campo(valor, 'timestamp')) ?? '',
+    // Sin ninguna de las dos queda vacía: la decisión la trata como vieja y no
+    // escribe. Ese motivo queda anotado en reel_comentarios, así que se ve.
+    creadoEn: texto(campo(valor, 'timestamp')) ?? horaEntrada ?? '',
   }
 }
 
@@ -119,7 +139,7 @@ export function parsearAviso(cuerpo: unknown): {
   for (const entrada of lista(campo(cuerpo, 'entry'))) {
     for (const cambio of lista(campo(entrada, 'changes'))) {
       if (campo(cambio, 'field') !== 'comments') continue
-      const comentario = leerComentario(campo(cambio, 'value'))
+      const comentario = leerComentario(campo(cambio, 'value'), horaDelEvento(entrada))
       if (comentario) comentarios.push(comentario)
     }
 
