@@ -35,6 +35,8 @@ export interface FilaReel {
   dm_seguimiento: string | null
   estado: EstadoReel
   programado_para: string | null
+  /** El contenedor que Instagram está procesando. Vive solo entre las dos etapas del cron. */
+  ig_creation_id: string | null
   ig_media_id: string | null
   ig_permalink: string | null
   publicado_en: string | null
