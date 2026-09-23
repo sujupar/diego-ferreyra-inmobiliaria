@@ -138,7 +138,66 @@ export function esReintentable(e: unknown): boolean {
 export async function instagramFetch<T>(ruta: string, init: RequestInit = {}): Promise<T> {
   // El token, no la cuenta: pedir la cuenta acá sería recursivo (la consulta que
   // la averigua pasa por este mismo camino).
-  const token = tokenInstagram()
+  return llamarConToken<T>(ruta, init, tokenInstagram())
+}
+
+/* -------------------------------------------------------------------------- */
+/*  La página: por donde salen los mensajes privados                          */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Los privados NO pueden salir por /{ig}/messages con el token de sistema: Meta
+ * responde "(#3) Application does not have the capability to make this API call"
+ * con CUALQUIER token (verificado el 2026-09-23 con dos tokens que tienen
+ * pages_messaging). Ese camino es el de "Instagram API con inicio de sesión de
+ * Instagram", que esta app no usa. El que sí funciona es el de la plataforma de
+ * Messenger: /{página}/messages con el token DE LA PÁGINA conectada a la cuenta.
+ * Con ese camino el error de un comentario inventado pasa a ser "parámetro
+ * inválido" (1893060): el permiso ya no frena.
+ */
+let paginaCacheada: { pageId: string; pageToken: string } | null = null
+
+/** Solo para las pruebas: el caché vive en el módulo. */
+export function olvidarPaginaCacheada(): void {
+  paginaCacheada = null
+}
+
+/**
+ * La página de Facebook conectada a la cuenta de Instagram, con su token.
+ * Se pide una vez y se guarda; solo se guarda el ÉXITO, como con la cuenta.
+ */
+export async function paginaDeLaCuenta(): Promise<{ pageId: string; pageToken: string }> {
+  if (paginaCacheada) return paginaCacheada
+  const { igId } = await cuentaInstagram()
+  const cuerpo = await instagramFetch<{
+    data?: Array<{ id?: string; access_token?: string; instagram_business_account?: { id?: string } }>
+  }>('/me/accounts?fields=id,access_token,instagram_business_account')
+  const pagina = cuerpo.data?.find((p) => p.instagram_business_account?.id === igId && p.id && p.access_token)
+  if (!pagina?.id || !pagina.access_token) {
+    throw new Error(
+      'No se encontró la página de Facebook conectada a la cuenta de Instagram, y los mensajes ' +
+      'privados salen por ella. Avisale al administrador.',
+    )
+  }
+  paginaCacheada = { pageId: pagina.id, pageToken: pagina.access_token }
+  return paginaCacheada
+}
+
+/** Igual que `instagramFetch`, pero con el token de la página. */
+export async function paginaFetch<T>(ruta: string, init: RequestInit = {}): Promise<T> {
+  const { pageToken } = await paginaDeLaCuenta()
+  try {
+    return await llamarConToken<T>(ruta, init, pageToken)
+  } catch (e) {
+    // Un token de página vencido o revocado (190 / 401) NO puede quedar guardado:
+    // si no, todos los privados fallarían hasta el próximo deploy. Se descarta y
+    // el próximo envío vuelve a pedir la página y un token fresco.
+    if (e instanceof ErrorInstagram && (e.code === 190 || e.httpStatus === 401)) paginaCacheada = null
+    throw e
+  }
+}
+
+async function llamarConToken<T>(ruta: string, init: RequestInit, token: string): Promise<T> {
   const base = ruta.startsWith('http') ? ruta : `${API}${ruta}`
   const separador = base.includes('?') ? '&' : '?'
   const url = `${base}${separador}access_token=${encodeURIComponent(token)}`

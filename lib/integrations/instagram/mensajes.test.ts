@@ -1,19 +1,42 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { DATO_BOTON, datoDelBoton, leerDatoDelBoton, mandarPrivadoConBoton, mandarTexto } from './mensajes'
+import { olvidarPaginaCacheada } from './client'
 
 const IG = '17841421542114621'
+const PAGINA = '103823292484521'
 
 beforeEach(() => {
   process.env.META_ACCESS_TOKEN = 'token-de-prueba'
   process.env.META_INSTAGRAM_ACCOUNT_ID = IG
+  olvidarPaginaCacheada()
 })
 
 afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+/** La cuenta tiene dos páginas: la que importa es la conectada a ESTE Instagram. */
+const CUENTAS = JSON.stringify({
+  data: [
+    { id: '999', access_token: 'token-de-otra-pagina' },
+    { id: PAGINA, access_token: 'token-de-la-pagina', instagram_business_account: { id: IG } },
+  ],
+})
+
+/**
+ * El privado sale por la PÁGINA: primero se pide la página y su token
+ * (/me/accounts) y después se manda. Esta función responde a las dos llamadas.
+ */
 function responde(texto: string, ok = true, status = 200) {
-  return vi.fn().mockResolvedValue({ ok, status, text: async () => texto })
+  return vi.fn(async (url: string) =>
+    String(url).includes('/me/accounts')
+      ? { ok: true, status: 200, text: async () => CUENTAS }
+      : { ok, status, text: async () => texto })
+}
+
+function llamadaDeEnvio(espia: ReturnType<typeof responde>): [string, RequestInit] {
+  const llamada = espia.mock.calls.find(([url]) => !String(url).includes('/me/accounts'))
+  return llamada as unknown as [string, RequestInit]
 }
 
 describe('el dato escondido en el botón', () => {
@@ -49,8 +72,13 @@ describe('mandarPrivadoConBoton', () => {
       reelId: 'abc-123',
     })
 
-    const [url, init] = espia.mock.calls[0] as [string, RequestInit]
-    expect(url).toContain(`/${IG}/messages`)
+    const [url, init] = llamadaDeEnvio(espia)
+    // Por la página y con el token DE LA PÁGINA: el camino /{ig}/messages con el
+    // token de sistema da "(#3) la app no tiene la capacidad" con cualquier
+    // token (verificado contra Meta el 2026-09-23).
+    expect(url).toContain(`/${PAGINA}/messages`)
+    expect(url).toContain('access_token=token-de-la-pagina')
+    expect(url).not.toContain('token-de-prueba')
     const cuerpo = JSON.parse(init.body as string)
     expect(cuerpo.recipient).toEqual({ comment_id: 'c1' })
     expect(cuerpo.message.text).toBe('Hola, te paso la ficha')
@@ -73,7 +101,7 @@ describe('mandarPrivadoConBoton', () => {
       reelId: 'abc',
     })
 
-    const titulo = JSON.parse((espia.mock.calls[0][1] as RequestInit).body as string)
+    const titulo = JSON.parse((llamadaDeEnvio(espia)[1]).body as string)
       .message.quick_replies[0].title as string
     expect(titulo.length).toBeLessThanOrEqual(20)
   })
@@ -89,7 +117,7 @@ describe('mandarPrivadoConBoton', () => {
       reelId: 'abc',
     })
 
-    const texto = JSON.parse((espia.mock.calls[0][1] as RequestInit).body as string)
+    const texto = JSON.parse((llamadaDeEnvio(espia)[1]).body as string)
       .message.text as string
     expect(texto.length).toBeLessThanOrEqual(1000)
   })
@@ -100,7 +128,7 @@ describe('mandarPrivadoConBoton', () => {
 
     await mandarPrivadoConBoton({ comentarioId: 'c1', texto: 'Hola', textoBoton: '   ', reelId: 'abc' })
 
-    const titulo = JSON.parse((espia.mock.calls[0][1] as RequestInit).body as string)
+    const titulo = JSON.parse((llamadaDeEnvio(espia)[1]).body as string)
       .message.quick_replies[0].title as string
     expect(titulo.trim().length).toBeGreaterThan(0)
   })
@@ -125,7 +153,7 @@ describe('mandarTexto', () => {
 
     await mandarTexto({ destinatarioId: 'u1', texto: 'Acá la tenés 👇 https://inmodf.com.ar/p/abc' })
 
-    const cuerpo = JSON.parse((espia.mock.calls[0][1] as RequestInit).body as string)
+    const cuerpo = JSON.parse((llamadaDeEnvio(espia)[1]).body as string)
     expect(cuerpo.recipient).toEqual({ id: 'u1' })
     expect(cuerpo.message.text).toContain('https://inmodf.com.ar/p/abc')
     expect(cuerpo.message.quick_replies).toBeUndefined()
@@ -140,8 +168,54 @@ describe('mandarTexto', () => {
 
     await mandarTexto({ destinatarioId: 'u1', texto: 'x'.repeat(1200) + '\n' + enlace })
 
-    const texto = JSON.parse((espia.mock.calls[0][1] as RequestInit).body as string).message.text as string
+    const texto = JSON.parse((llamadaDeEnvio(espia)[1]).body as string).message.text as string
     expect(texto.length).toBeLessThanOrEqual(1000)
     expect(texto).toContain(enlace)
+  })
+})
+
+describe('la página por la que sale el privado', () => {
+  it('se pide una sola vez y se reusa', async () => {
+    const espia = responde('{"message_id":"m1"}')
+    vi.stubGlobal('fetch', espia)
+    await mandarTexto({ destinatarioId: 'u1', texto: 'a' })
+    await mandarTexto({ destinatarioId: 'u2', texto: 'b' })
+    expect(espia.mock.calls.filter(([url]) => String(url).includes('/me/accounts'))).toHaveLength(1)
+  })
+
+  it('si ninguna página está conectada a la cuenta de Instagram, el error se entiende', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ data: [{ id: '999', access_token: 'x' }] }) })))
+    await expect(mandarTexto({ destinatarioId: 'u1', texto: 'a' })).rejects.toThrow(/página de Facebook/)
+  })
+
+  it('un fallo al pedir la página no queda guardado: el siguiente intento vuelve a preguntar', async () => {
+    const fallo = vi.fn(async () => ({ ok: false, status: 500, text: async () => '{"error":{"message":"caído"}}' }))
+    vi.stubGlobal('fetch', fallo)
+    await expect(mandarTexto({ destinatarioId: 'u1', texto: 'a' })).rejects.toThrow()
+    const espia = responde('{"message_id":"m1"}')
+    vi.stubGlobal('fetch', espia)
+    await mandarTexto({ destinatarioId: 'u1', texto: 'a' })
+    expect(llamadaDeEnvio(espia)[0]).toContain(`/${PAGINA}/messages`)
+  })
+})
+
+describe('si el token de la página deja de ser válido', () => {
+  it('se descarta el guardado y el siguiente envío pide la página de nuevo', async () => {
+    // Sin esto, un token de página vencido quedaba en memoria y TODOS los
+    // privados fallaban hasta el próximo deploy (revisión de código).
+    let envios = 0
+    const espia = vi.fn(async (url: string) => {
+      if (String(url).includes('/me/accounts')) return { ok: true, status: 200, text: async () => CUENTAS }
+      envios++
+      return envios === 1
+        ? { ok: false, status: 400, text: async () => '{"error":{"message":"token vencido","code":190}}' }
+        : { ok: true, status: 200, text: async () => '{"message_id":"m1"}' }
+    })
+    vi.stubGlobal('fetch', espia)
+
+    await expect(mandarTexto({ destinatarioId: 'u1', texto: 'a' })).rejects.toThrow()
+    await mandarTexto({ destinatarioId: 'u1', texto: 'a' })
+
+    expect(espia.mock.calls.filter(([url]) => String(url).includes('/me/accounts'))).toHaveLength(2)
   })
 })
