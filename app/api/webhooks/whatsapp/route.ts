@@ -6,7 +6,14 @@ import { mapMetaStatus } from '@/lib/integrations/whatsapp/log'
 import { downloadAndStoreInboundMedia } from '@/lib/integrations/whatsapp/media'
 import { runConversationAnalysis } from '@/lib/ai/analyze-conversation'
 import { runSchedulingAgent } from '@/lib/ai/scheduling-agent'
-import { esPalabraDeReinicio, reiniciarPrueba, reenviarApertura, mensajeDeConfirmacion } from '@/lib/ai/reset-prueba'
+import {
+  esPalabraDeReinicio,
+  reiniciarPrueba,
+  reenviarApertura,
+  mensajeDeConfirmacion,
+  prepararConsultaDePrueba,
+  PROPIEDAD_DE_LA_PRUEBA,
+} from '@/lib/ai/reset-prueba'
 import { sendWhatsappText } from '@/lib/integrations/whatsapp/core'
 
 export const dynamic = 'force-dynamic'
@@ -539,16 +546,24 @@ export async function POST(request: NextRequest) {
     // Solo funciona desde un teléfono de la lista de prueba. Para cualquier otra
     // persona la frase es un mensaje común y el agente le contesta normal.
     if (aAnalizar && esPalabraDeReinicio(aAnalizar.textoEntrante)) {
-      const r = await reiniciarPrueba(aAnalizar.phoneE164, aAnalizar.propertyId, aAnalizar.leadId)
+      // La propiedad de la prueba es FIJA (Roque Pérez), no la que traiga la
+      // conversación: el lead más reciente del dueño puede ser de cualquier
+      // ensayo viejo, y con eso la prueba terminaba hablando de una propiedad
+      // que solo existía para otra prueba. Ver `PROPIEDAD_DE_LA_PRUEBA`.
+      const r = await reiniciarPrueba(aAnalizar.phoneE164, PROPIEDAD_DE_LA_PRUEBA.id, aAnalizar.leadId)
       if (r.reiniciado) {
         console.log(`[whatsapp-webhook] prueba reiniciada para ${aAnalizar.phoneE164}: ${r.limpiado.join(', ')}`)
+        // Recién acá, con el teléfono YA autorizado por `reiniciarPrueba`, se
+        // deja la conversación apuntando a la propiedad de la prueba. Antes del
+        // permiso no se escribe nada: cualquiera podría escribir "reiniciar".
+        const prueba = await prepararConsultaDePrueba(aAnalizar.phoneE164, aAnalizar.contactName)
         // 1) La confirmación primero, para que el chat se lea en el orden en que
         //    pasaron las cosas.
         await sendWhatsappText({
           to: aAnalizar.phoneE164,
           text: mensajeDeConfirmacion(r.limpiado),
-          leadId: aAnalizar.leadId,
-          propertyId: aAnalizar.propertyId,
+          leadId: prueba.leadId ?? aAnalizar.leadId,
+          propertyId: prueba.propertyId,
           sentBy: null,
           aiGenerated: true,
           timeoutMs: 8000,
@@ -556,12 +571,9 @@ export async function POST(request: NextRequest) {
         // 2) Y después la apertura de verdad: la misma plantilla, con el mismo
         //    plano en el encabezado, que recibe alguien que consulta un portal.
         //    Sin esto el reinicio dejaba la conversación limpia pero muda.
-        let apertura = 'sin propiedad asociada'
-        if (aAnalizar.propertyId) {
-          const a = await reenviarApertura(aAnalizar.phoneE164, aAnalizar.propertyId, aAnalizar.leadId)
-          apertura = a.detalle
-          if (!a.ok) console.warn(`[whatsapp-webhook] no se pudo reenviar la apertura: ${a.detalle}`)
-        }
+        const a = await reenviarApertura(aAnalizar.phoneE164, prueba.propertyId, prueba.leadId)
+        const apertura = a.detalle
+        if (!a.ok) console.warn(`[whatsapp-webhook] no se pudo reenviar la apertura: ${a.detalle}`)
         return NextResponse.json({
           ok: true,
           inbound: inbound.length,
