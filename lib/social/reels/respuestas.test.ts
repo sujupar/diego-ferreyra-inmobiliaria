@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { elegirRespuesta, prometePrivado, RESPUESTAS_CON_PRIVADO, RESPUESTAS_SIN_PRIVADO } from './respuestas'
+import { elegirRespuesta, prometePrivado, tienePrivado, RESPUESTAS_CON_PRIVADO, RESPUESTAS_SIN_PRIVADO } from './respuestas'
 import { BOTON_POR_DEFECTO, FRASES_CON_PRIVADO, FRASES_SIN_PRIVADO, PRIVADO_POR_DEFECTO } from './textos-por-defecto'
 
 const TODAS = [...RESPUESTAS_CON_PRIVADO, ...RESPUESTAS_SIN_PRIVADO]
@@ -113,5 +113,24 @@ describe('elegirRespuesta', () => {
   it('usa todas las frases si hay suficientes comentarios', () => {
     const vistas = new Set(Array.from({ length: 400 }, (_, i) => elegirRespuesta(`c${i}`, true)))
     expect(vistas.size).toBe(RESPUESTAS_CON_PRIVADO.length)
+  })
+})
+
+describe('tienePrivado: qué grupo de frases corresponde', () => {
+  it('si el privado salió ahora, las principales', () => {
+    expect(tienePrivado({ privadoEnviado: true, motivo: null })).toBe(true)
+  })
+
+  it('si ya lo había recibido antes por este reel, TAMBIÉN las principales: es verdad que lo tiene', () => {
+    // Caso real del 2026-09-23: la persona comentó de nuevo, no se le mandó un
+    // segundo privado y se le respondió "¡Gracias por comentar!" como si nunca
+    // hubiera recibido nada. El dueño lo marcó como un error grave.
+    expect(tienePrivado({ privadoEnviado: false, motivo: 'ya_recibio_dm' })).toBe(true)
+  })
+
+  it('si el privado nunca salió, las de respaldo', () => {
+    for (const motivo of ['dm_deshabilitado', 'ventana_de_7_dias_vencida', 'landing_no_publicada', null]) {
+      expect(tienePrivado({ privadoEnviado: false, motivo })).toBe(false)
+    }
   })
 })

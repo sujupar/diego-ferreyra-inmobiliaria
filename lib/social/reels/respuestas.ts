@@ -49,6 +49,19 @@ function semillaNumerica(semilla: string): number {
   return acumulado
 }
 
+/**
+ * ¿La persona tiene el privado de este reel? Decide qué grupo de frases va.
+ *
+ * Sí si salió ahora, y TAMBIÉN si ya lo había recibido antes: no se le manda
+ * otro, pero es verdad que lo tiene, así que corresponde "te escribí al
+ * privado". Responderle "¡Gracias por comentar!" como si nunca hubiera recibido
+ * nada fue el error que marcó el dueño el 2026-09-23. Las de respaldo quedan
+ * solo para cuando el privado nunca salió.
+ */
+export function tienePrivado(a: { privadoEnviado: boolean; motivo: string | null }): boolean {
+  return a.privadoEnviado || a.motivo === 'ya_recibio_dm'
+}
+
 export interface FrasesDelReel {
   con?: readonly string[] | null
   sin?: readonly string[] | null

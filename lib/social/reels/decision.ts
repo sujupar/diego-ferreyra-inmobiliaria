@@ -160,7 +160,9 @@ export function decidirQueHacer(
   }
 
   // --- Frenos que solo impiden el privado --------------------------------
-  if (comentario.ya_recibio_dm) {
+  // Un privado por persona y por reel, salvo las cuentas de prueba: el dueño
+  // prueba el mismo reel varias veces y la regla lo frenaba cada vez.
+  if (comentario.ya_recibio_dm && !esCuentaDePrueba(comentario.autor_username, ajustes.cuentas_de_prueba)) {
     return { accion: 'solo_responder', motivo: 'ya_recibio_dm' }
   }
   if (!ajustes.dm_habilitado) {

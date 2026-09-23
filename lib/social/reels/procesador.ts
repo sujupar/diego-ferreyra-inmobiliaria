@@ -21,7 +21,7 @@ import { leerDatoDelBoton, mandarPrivadoConEnlace, mandarTexto } from '@/lib/int
 import { esReintentable, mensajeLegible } from '@/lib/integrations/instagram/client'
 import type { ComentarioDelAviso } from '@/lib/integrations/instagram/webhook'
 import { decidirBoton, decidirQueHacer, type AjustesGlobales } from './decision'
-import { elegirRespuesta } from './respuestas'
+import { elegirRespuesta, tienePrivado } from './respuestas'
 import { PRIVADO_POR_DEFECTO, SEGUIMIENTO_POR_DEFECTO } from './textos-por-defecto'
 import { enlaceDelReel } from './enlace'
 import type { FilaReel } from './servicio'
@@ -244,7 +244,7 @@ export async function procesarComentario(
 
   try {
     await conReintento(() =>
-      responderComentario(c.comentarioId, elegirRespuesta(c.comentarioId, privadoEnviado, {
+      responderComentario(c.comentarioId, elegirRespuesta(c.comentarioId, tienePrivado({ privadoEnviado, motivo: motivoSinPrivado }), {
         con: reel.respuestas_con_privado,
         sin: reel.respuestas_sin_privado,
       })))
