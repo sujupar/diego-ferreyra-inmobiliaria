@@ -198,3 +198,24 @@ describe('la página por la que sale el privado', () => {
     expect(llamadaDeEnvio(espia)[0]).toContain(`/${PAGINA}/messages`)
   })
 })
+
+describe('si el token de la página deja de ser válido', () => {
+  it('se descarta el guardado y el siguiente envío pide la página de nuevo', async () => {
+    // Sin esto, un token de página vencido quedaba en memoria y TODOS los
+    // privados fallaban hasta el próximo deploy (revisión de código).
+    let envios = 0
+    const espia = vi.fn(async (url: string) => {
+      if (String(url).includes('/me/accounts')) return { ok: true, status: 200, text: async () => CUENTAS }
+      envios++
+      return envios === 1
+        ? { ok: false, status: 400, text: async () => '{"error":{"message":"token vencido","code":190}}' }
+        : { ok: true, status: 200, text: async () => '{"message_id":"m1"}' }
+    })
+    vi.stubGlobal('fetch', espia)
+
+    await expect(mandarTexto({ destinatarioId: 'u1', texto: 'a' })).rejects.toThrow()
+    await mandarTexto({ destinatarioId: 'u1', texto: 'a' })
+
+    expect(espia.mock.calls.filter(([url]) => String(url).includes('/me/accounts'))).toHaveLength(2)
+  })
+})

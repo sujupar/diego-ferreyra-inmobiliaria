@@ -186,7 +186,15 @@ export async function paginaDeLaCuenta(): Promise<{ pageId: string; pageToken: s
 /** Igual que `instagramFetch`, pero con el token de la página. */
 export async function paginaFetch<T>(ruta: string, init: RequestInit = {}): Promise<T> {
   const { pageToken } = await paginaDeLaCuenta()
-  return llamarConToken<T>(ruta, init, pageToken)
+  try {
+    return await llamarConToken<T>(ruta, init, pageToken)
+  } catch (e) {
+    // Un token de página vencido o revocado (190 / 401) NO puede quedar guardado:
+    // si no, todos los privados fallarían hasta el próximo deploy. Se descarta y
+    // el próximo envío vuelve a pedir la página y un token fresco.
+    if (e instanceof ErrorInstagram && (e.code === 190 || e.httpStatus === 401)) paginaCacheada = null
+    throw e
+  }
 }
 
 async function llamarConToken<T>(ruta: string, init: RequestInit, token: string): Promise<T> {
