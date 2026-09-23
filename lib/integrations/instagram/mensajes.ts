@@ -20,7 +20,7 @@
  * plantillas de WhatsApp, ya documentada en CLAUDE.md: pasarse no degrada el
  * mensaje, lo hace desaparecer.
  */
-import { cuentaInstagram, instagramFetch } from './client'
+import { paginaDeLaCuenta, paginaFetch } from './client'
 
 /** Prefijo del dato del botón. Distingue lo nuestro de cualquier otra cosa. */
 export const DATO_BOTON = 'reel:'
@@ -76,11 +76,12 @@ export async function mandarPrivadoConBoton(a: {
   textoBoton: string
   reelId: string
 }): Promise<void> {
-  const { igId } = await cuentaInstagram()
+  // Por la PÁGINA y con su token: ver `paginaDeLaCuenta` en client.ts.
+  const { pageId } = await paginaDeLaCuenta()
 
   const titulo = a.textoBoton.trim().slice(0, MAX_TITULO_BOTON) || 'Sí, pasámela'
 
-  await instagramFetch(`/${igId}/messages`, {
+  await paginaFetch(`/${pageId}/messages`, {
     method: 'POST',
     body: JSON.stringify({
       recipient: { comment_id: a.comentarioId },
@@ -102,9 +103,9 @@ export async function mandarTexto(a: {
   destinatarioId: string
   texto: string
 }): Promise<void> {
-  const { igId } = await cuentaInstagram()
+  const { pageId } = await paginaDeLaCuenta()
 
-  await instagramFetch(`/${igId}/messages`, {
+  await paginaFetch(`/${pageId}/messages`, {
     method: 'POST',
     body: JSON.stringify({
       recipient: { id: a.destinatarioId },
