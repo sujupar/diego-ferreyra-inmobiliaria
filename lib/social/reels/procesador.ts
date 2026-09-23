@@ -250,7 +250,13 @@ export async function procesarComentario(
       })))
   } catch (e) {
     error = error ? `${error} · ${mensajeLegible(e)}` : mensajeLegible(e)
-    await anotar(c.comentarioId, { coincide: true, error })
+    // Si el privado SÍ salió, queda anotado aunque la respuesta pública falle:
+    // si no, el próximo comentario de esa persona recibiría otro privado.
+    await anotar(c.comentarioId, {
+      coincide: true,
+      error,
+      dm_enviado_en: privadoEnviado ? new Date().toISOString() : null,
+    })
     return { accion: 'error', error }
   }
 
