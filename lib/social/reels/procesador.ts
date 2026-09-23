@@ -224,6 +224,8 @@ export async function procesarComentario(
       motivoSinPrivado = 'landing_no_publicada'
     } else {
       try {
+        // El reintento envuelve el envío entero (botón + texto). No duplica:
+        // Instagram admite UN solo privado por comentario y rechaza el segundo.
         const forma = await conReintento(() => mandarPrivadoConEnlace({
           comentarioId: c.comentarioId,
           texto: reel.dm_texto?.trim() || DM_POR_DEFECTO,
