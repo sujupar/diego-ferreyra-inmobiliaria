@@ -14,6 +14,8 @@ export const MAX_CARACTERES_FRASE = 300
 /** Instagram rechaza el mensaje ENTERO si el botón pasa de 20. */
 export const MAX_CARACTERES_BOTON = 20
 export const MAX_CARACTERES_MENSAJE = 1000
+/** El privado va con un botón con enlace, y ahí Instagram corta en 640. */
+export const MAX_CARACTERES_PRIVADO = 640
 
 type Resultado<T> = { ok: true; valor: T } | { ok: false; error: string }
 
@@ -120,8 +122,9 @@ export function validarMensajes(m: MensajesDelReel): Resultado<MensajesLimpios> 
     const valor = m[clave]
     if (valor === undefined) continue
     const texto = valor === null ? '' : limpio(valor)
-    if (texto.length > MAX_CARACTERES_MENSAJE) {
-      return { ok: false, error: `El mensaje tiene ${texto.length} caracteres: el máximo es ${MAX_CARACTERES_MENSAJE}.` }
+    const maximo = clave === 'dm_texto' ? MAX_CARACTERES_PRIVADO : MAX_CARACTERES_MENSAJE
+    if (texto.length > maximo) {
+      return { ok: false, error: `El mensaje tiene ${texto.length} caracteres: el máximo es ${maximo}.` }
     }
     const rechazo = rechazoPorEnlace(texto)
     if (rechazo) return { ok: false, error: rechazo }

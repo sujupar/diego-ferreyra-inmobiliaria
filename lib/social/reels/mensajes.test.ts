@@ -98,3 +98,15 @@ describe('enlaces en los mensajes (revisión de seguridad)', () => {
     expect(validarMensajes({ respuestas_con_privado: ['¡Listo! Te escribí al privado 📩'] }).ok).toBe(true)
   })
 })
+
+describe('el privado lleva un botón con enlace: tope de 640', () => {
+  it('rechaza un privado de más de 640 caracteres, con el motivo', () => {
+    const r = validarMensajes({ dm_texto: 'x'.repeat(641) })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/640/)
+  })
+
+  it('acepta uno de 640 justo', () => {
+    expect(validarMensajes({ dm_texto: 'x'.repeat(640) }).ok).toBe(true)
+  })
+})

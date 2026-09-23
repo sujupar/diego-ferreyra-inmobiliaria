@@ -1244,10 +1244,21 @@ botón que lleva a la landing. Specs: `docs/superpowers/specs/2026-09-22-reels-*
 - **TRAMPA — alta del webhook:** la app se suscribe al objeto `instagram` con `comments,messages`,
   pero la PÁGINA no tiene campo `comments` (#100) y `messages` exige `pages_messaging` (#200). A la
   página alcanza suscribirla a `feed`. Con el token nuevo: `scripts/suscribir-webhook-instagram.ts --con-mensajes`.
-- **Privado bloqueado hasta tener `pages_messaging` en el token.** El token vive en
-  `META_ACCESS_TOKEN`, el MISMO que usan las campañas Meta y `meta-sync`: antes de reemplazarlo,
-  verificar con `debug_token` que conserva todos los permisos anteriores (19 al 2026-09-22) +
-  `pages_messaging`, o se caen las campañas.
+- **El privado: lo que Meta deja y lo que no (verificado 2026-09-23).** Los permisos se asignan al
+  USUARIO DE SISTEMA, no al token: al generar uno nuevo con `pages_messaging`, el viejo también lo
+  recibió (por eso no se cambió `META_ACCESS_TOKEN`). Con el acceso ESTÁNDAR de la app:
+  - `POST /{ig}/messages` da "(#3) Application does not have the capability" con CUALQUIER token →
+    el privado sale por `POST /{página}/messages` con el TOKEN DE LA PÁGINA (`paginaFetch` en client.ts).
+  - El privado que responde a un comentario SÍ sale (probado con una cuenta sin rol en la app).
+  - Lo que NO: el aviso del toque de un botón de respuesta y un segundo mensaje. Meta: "(#200) La app no
+    tiene acceso avanzado a instagram_manage_messages y el usuario no tiene ningún rol en ella". Por eso
+    el enlace va en el PRIMER privado: botón `web_url` "Ver la propiedad" (`mandarPrivadoConEnlace`), y si
+    Meta rechaza ese formato (código 100), el enlace escrito en el texto. Conversar por privado requiere
+    pedirle a Meta el acceso avanzado (App Review).
+  - El enlace lleva `utm_source=instagram&utm_medium=reel&utm_campaign=propiedad_<slug>&utm_content=reel_<id8>`
+    (`lib/social/reels/enlace.ts`); `LandingVisitTracker` ya lo registra.
+  - Un comentario borrado da 1893060 "identificador de comentario de respuesta privada no válido": no es
+    un problema de permisos (nos confundió una vez).
 - **RLS:** el asesor LEE sus reels y comentarios pero no los escribe (todas las escrituras pasan por
   el servidor con la clave de servicio). Estaba en `FOR ALL` y permitía saltearse las reglas por la
   API REST; corregido en `20260922000004` Y en `20260922000001` (si no, re-correr el script de la
