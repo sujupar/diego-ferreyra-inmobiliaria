@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { DATO_BOTON, datoDelBoton, leerDatoDelBoton, mandarPrivadoConBoton, mandarTexto } from './mensajes'
+import { DATO_BOTON, datoDelBoton, leerDatoDelBoton, mandarPrivadoConBoton, mandarPrivadoConEnlace, mandarTexto } from './mensajes'
 import { olvidarPaginaCacheada } from './client'
 
 const IG = '17841421542114621'
@@ -217,5 +217,68 @@ describe('si el token de la página deja de ser válido', () => {
     await mandarTexto({ destinatarioId: 'u1', texto: 'a' })
 
     expect(espia.mock.calls.filter(([url]) => String(url).includes('/me/accounts'))).toHaveLength(2)
+  })
+})
+
+describe('mandarPrivadoConEnlace (el privado lleva el enlace directo)', () => {
+  const ENLACE = 'https://inmodf.com.ar/p/depto?utm_source=instagram&utm_medium=reel'
+
+  it('manda un botón que abre la landing, con el texto arriba', async () => {
+    const espia = responde('{"message_id":"m1"}')
+    vi.stubGlobal('fetch', espia)
+    const r = await mandarPrivadoConEnlace({ comentarioId: 'c1', texto: 'Acá tenés la ficha 👇', textoBoton: 'Ver la propiedad', enlace: ENLACE })
+
+    expect(r).toBe('boton')
+    const cuerpo = JSON.parse(llamadaDeEnvio(espia)[1].body as string)
+    expect(cuerpo.recipient).toEqual({ comment_id: 'c1' })
+    expect(cuerpo.message.attachment.payload).toEqual({
+      template_type: 'button',
+      text: 'Acá tenés la ficha 👇',
+      buttons: [{ type: 'web_url', url: ENLACE, title: 'Ver la propiedad' }],
+    })
+  })
+
+  it('si Meta rechaza el formato del botón, manda el enlace escrito en el texto', async () => {
+    // El privado de un comentario es UNO solo: el intento rechazado no lo gasta,
+    // así que el segundo sale. El enlace escrito siempre funciona en un privado.
+    let envios = 0
+    const espia = vi.fn(async (url: string) => {
+      if (String(url).includes('/me/accounts')) return { ok: true, status: 200, text: async () => CUENTAS }
+      envios++
+      return envios === 1
+        ? { ok: false, status: 400, text: async () => '{"error":{"message":"Invalid parameter","code":100}}' }
+        : { ok: true, status: 200, text: async () => '{"message_id":"m2"}' }
+    })
+    vi.stubGlobal('fetch', espia)
+
+    const r = await mandarPrivadoConEnlace({ comentarioId: 'c1', texto: 'Acá tenés la ficha 👇', textoBoton: 'Ver la propiedad', enlace: ENLACE })
+
+    expect(r).toBe('texto')
+    const envio = espia.mock.calls.filter(([url]) => !String(url).includes('/me/accounts'))[1] as unknown as [string, RequestInit]
+    const cuerpo = JSON.parse(envio[1].body as string)
+    expect(cuerpo.message.text).toBe(`Acá tenés la ficha 👇\n${ENLACE}`)
+    expect(cuerpo.message.attachment).toBeUndefined()
+  })
+
+  it('un comentario que ya no existe NO se reintenta en texto (fallaría igual)', async () => {
+    const espia = responde('{"error":{"message":"Invalid parameter","code":100,"error_subcode":1893060}}', false, 400)
+    vi.stubGlobal('fetch', espia)
+    await expect(mandarPrivadoConEnlace({ comentarioId: 'c1', texto: 'a', textoBoton: 'Ver', enlace: ENLACE })).rejects.toThrow()
+    expect(espia.mock.calls.filter(([url]) => !String(url).includes('/me/accounts'))).toHaveLength(1)
+  })
+
+  it('un error de permisos o de token NO se disfraza con el segundo intento', async () => {
+    const espia = responde('{"error":{"message":"token vencido","code":190}}', false, 400)
+    vi.stubGlobal('fetch', espia)
+    await expect(mandarPrivadoConEnlace({ comentarioId: 'c1', texto: 'a', textoBoton: 'Ver', enlace: ENLACE })).rejects.toThrow()
+    expect(espia.mock.calls.filter(([url]) => !String(url).includes('/me/accounts'))).toHaveLength(1)
+  })
+
+  it('con el texto del botón vacío usa "Ver la propiedad"', async () => {
+    const espia = responde('{"message_id":"m1"}')
+    vi.stubGlobal('fetch', espia)
+    await mandarPrivadoConEnlace({ comentarioId: 'c1', texto: 'a', textoBoton: '   ', enlace: ENLACE })
+    const cuerpo = JSON.parse(llamadaDeEnvio(espia)[1].body as string)
+    expect(cuerpo.message.attachment.payload.buttons[0].title).toBe('Ver la propiedad')
   })
 })

@@ -59,7 +59,7 @@ describe('EngancharReelDialog', () => {
     const cuerpo = JSON.parse(String(post?.[1]?.body))
     expect(cuerpo).toMatchObject({ origen: 'existente', igMediaId: 'm1', palabraClave: 'doblas' })
     expect(cuerpo.mensajes.respuestas_sin_privado[0]).toBe('¡Gracias, Julián! 🙌')
-    expect(cuerpo.mensajes.dm_boton).toBe('Sí, pasámela')
+    expect(cuerpo.mensajes.dm_boton).toBe('Ver la propiedad')
   })
 
   it('Atrás vuelve al paso 1 sin perder lo elegido', async () => {

@@ -20,7 +20,7 @@
  * plantillas de WhatsApp, ya documentada en CLAUDE.md: pasarse no degrada el
  * mensaje, lo hace desaparecer.
  */
-import { paginaDeLaCuenta, paginaFetch } from './client'
+import { ErrorInstagram, paginaDeLaCuenta, paginaFetch } from './client'
 
 /** Prefijo del dato del botón. Distingue lo nuestro de cualquier otra cosa. */
 export const DATO_BOTON = 'reel:'
@@ -61,6 +61,70 @@ function recortarCuidandoEnlaces(texto: string, maximo: number): string {
 
   const antes = texto.slice(0, texto.lastIndexOf(enlace)).trimEnd()
   return `${antes.slice(0, disponible).trimEnd()}\n${enlace}`
+}
+
+/** Instagram corta el texto de un mensaje con botón en 640 caracteres. */
+export const MAX_TEXTO_CON_BOTON = 640
+
+/**
+ * El privado que va HOY: el texto y un botón que abre la landing directo.
+ *
+ * Por qué no el de respuesta rápida (`mandarPrivadoConBoton`, abajo): con el
+ * acceso ESTÁNDAR de la app, Meta deja mandar el privado de un comentario, pero
+ * no avisa cuando la persona toca un botón de respuesta ni deja escribirle un
+ * segundo mensaje ("(#200) La app no tiene acceso avanzado a
+ * instagram_manage_messages y el usuario no tiene ningún rol en ella",
+ * verificado 2026-09-23). Así, el enlace tiene que viajar en el PRIMER mensaje.
+ * Además es un paso menos para la persona (decisión del dueño).
+ *
+ * Primero se intenta el botón con enlace; si Meta rechaza ESE FORMATO (código
+ * 100 genérico), se manda el enlace escrito en el texto, que siempre funciona.
+ * El intento rechazado no gasta el único privado del comentario. No se reintenta
+ * ante un comentario inexistente (1893060) ni ante permisos o token: fallaría
+ * igual y taparía el motivo real.
+ *
+ * @returns cómo salió: 'boton' o 'texto' (queda en el registro).
+ */
+export async function mandarPrivadoConEnlace(a: {
+  comentarioId: string
+  texto: string
+  textoBoton: string
+  enlace: string
+}): Promise<'boton' | 'texto'> {
+  const { pageId } = await paginaDeLaCuenta()
+  const titulo = a.textoBoton.trim().slice(0, MAX_TITULO_BOTON) || 'Ver la propiedad'
+
+  try {
+    await paginaFetch(`/${pageId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({
+        recipient: { comment_id: a.comentarioId },
+        message: {
+          attachment: {
+            type: 'template',
+            payload: {
+              template_type: 'button',
+              text: a.texto.trim().slice(0, MAX_TEXTO_CON_BOTON),
+              buttons: [{ type: 'web_url', url: a.enlace, title: titulo }],
+            },
+          },
+        },
+      }),
+    })
+    return 'boton'
+  } catch (e) {
+    const esFormato = e instanceof ErrorInstagram && e.code === 100 && e.subcode !== 1893060
+    if (!esFormato) throw e
+  }
+
+  await paginaFetch(`/${pageId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({
+      recipient: { comment_id: a.comentarioId },
+      message: { text: recortarCuidandoEnlaces(`${a.texto.trim()}\n${a.enlace}`, MAX_TEXTO) },
+    }),
+  })
+  return 'texto'
 }
 
 /**

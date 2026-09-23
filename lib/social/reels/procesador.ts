@@ -17,12 +17,13 @@
  */
 import { createClient } from '@supabase/supabase-js'
 import { esComentarioDeLaCuenta, responderComentario } from '@/lib/integrations/instagram/comentarios'
-import { leerDatoDelBoton, mandarPrivadoConBoton, mandarTexto } from '@/lib/integrations/instagram/mensajes'
+import { leerDatoDelBoton, mandarPrivadoConEnlace, mandarTexto } from '@/lib/integrations/instagram/mensajes'
 import { esReintentable, mensajeLegible } from '@/lib/integrations/instagram/client'
 import type { ComentarioDelAviso } from '@/lib/integrations/instagram/webhook'
 import { decidirBoton, decidirQueHacer, type AjustesGlobales } from './decision'
 import { elegirRespuesta } from './respuestas'
 import { PRIVADO_POR_DEFECTO, SEGUIMIENTO_POR_DEFECTO } from './textos-por-defecto'
+import { enlaceDelReel } from './enlace'
 import type { FilaReel } from './servicio'
 
 function admin() {
@@ -62,6 +63,21 @@ export async function leerAjustes(): Promise<AjustesGlobales> {
   } catch {
     return apagado
   }
+}
+
+/**
+ * El enlace a la landing publicada de la propiedad, con las marcas del reel, o
+ * `null` si no hay landing publicada.
+ */
+async function enlaceDeLaLanding(propertyId: string, reelId: string): Promise<string | null> {
+  const { data } = await admin()
+    .from('property_landings')
+    .select('public_slug, status')
+    .eq('property_id', propertyId)
+    .maybeSingle()
+  const fila = data as { public_slug?: string | null; status?: string } | null
+  if (fila?.status !== 'published' || !fila.public_slug) return null
+  return enlaceDelReel(process.env.NEXT_PUBLIC_APP_URL ?? 'https://inmodf.com.ar', fila.public_slug, reelId)
 }
 
 async function reelPorMedia(igMediaId: string): Promise<FilaReel | null> {
@@ -197,20 +213,30 @@ export async function procesarComentario(
 
   let privadoEnviado = false
   let error: string | null = null
+  let motivoSinPrivado: string | null = decision.accion === 'solo_responder' ? decision.motivo : null
 
   if (decision.accion === 'responder_y_dm') {
-    try {
-      await conReintento(() => mandarPrivadoConBoton({
-        comentarioId: c.comentarioId,
-        texto: reel.dm_texto?.trim() || DM_POR_DEFECTO,
-        textoBoton: reel.dm_boton,
-        reelId: reel.id,
-      }))
-      privadoEnviado = true
-    } catch (e) {
-      // El privado falla pero la respuesta pública sale igual: el comentario no
-      // puede quedar sin contestar por un problema nuestro.
-      error = mensajeLegible(e)
+    // El enlace va en el PRIMER privado: con el acceso estándar de Meta no hay
+    // segundo mensaje (ver `mandarPrivadoConEnlace`). Sin landing publicada no
+    // se manda nada: un enlace roto es peor que no mandar.
+    const enlace = await enlaceDeLaLanding(reel.property_id, reel.id)
+    if (!enlace) {
+      motivoSinPrivado = 'landing_no_publicada'
+    } else {
+      try {
+        const forma = await conReintento(() => mandarPrivadoConEnlace({
+          comentarioId: c.comentarioId,
+          texto: reel.dm_texto?.trim() || DM_POR_DEFECTO,
+          textoBoton: reel.dm_boton,
+          enlace,
+        }))
+        privadoEnviado = true
+        console.log(`[reels] privado enviado (${forma}) al comentario ${c.comentarioId}`)
+      } catch (e) {
+        // El privado falla pero la respuesta pública sale igual: el comentario no
+        // puede quedar sin contestar por un problema nuestro.
+        error = mensajeLegible(e)
+      }
     }
   }
 
@@ -231,7 +257,7 @@ export async function procesarComentario(
     respondido_en: new Date().toISOString(),
     dm_enviado_en: privadoEnviado ? new Date().toISOString() : null,
     error,
-    motivo_ignorado: decision.accion === 'solo_responder' ? decision.motivo : null,
+    motivo_ignorado: motivoSinPrivado,
   })
 
   return { accion: 'respondido', privadoEnviado }
@@ -279,21 +305,10 @@ export async function procesarBoton(
   const decision = decidirBoton(reel, ajustes, (previos ?? []).length > 0)
   if (decision.accion === 'ignorar') return { ok: false, motivo: decision.motivo }
 
-  const { data: landing } = await admin()
-    .from('property_landings')
-    .select('public_slug, status')
-    .eq('property_id', reel.property_id)
-    .maybeSingle()
-  const fila = landing as { public_slug?: string | null; status?: string } | null
-
   // Sin landing publicada no hay nada que mandar. Mandar un enlace roto es peor
   // que no contestar: la persona lo toca, no pasa nada y se va.
-  if (fila?.status !== 'published' || !fila.public_slug) {
-    return { ok: false, motivo: 'landing_no_publicada' }
-  }
-
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://inmodf.com.ar'
-  const enlace = `${base.replace(/\/+$/, '')}/p/${fila.public_slug}`
+  const enlace = await enlaceDeLaLanding(reel.property_id, reel.id)
+  if (!enlace) return { ok: false, motivo: 'landing_no_publicada' }
 
   await mandarTexto({
     destinatarioId: remitenteId,

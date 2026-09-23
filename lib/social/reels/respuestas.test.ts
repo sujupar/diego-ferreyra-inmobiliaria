@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { elegirRespuesta, prometePrivado, RESPUESTAS_CON_PRIVADO, RESPUESTAS_SIN_PRIVADO } from './respuestas'
-import { FRASES_CON_PRIVADO, FRASES_SIN_PRIVADO } from './textos-por-defecto'
+import { BOTON_POR_DEFECTO, FRASES_CON_PRIVADO, FRASES_SIN_PRIVADO, PRIVADO_POR_DEFECTO } from './textos-por-defecto'
 
 const TODAS = [...RESPUESTAS_CON_PRIVADO, ...RESPUESTAS_SIN_PRIVADO]
 
@@ -40,6 +40,24 @@ describe('catálogos de fábrica', () => {
     for (const frase of [...FRASES_CON_PRIVADO, ...FRASES_SIN_PRIVADO]) {
       expect(sql).toContain(`'${frase.replaceAll("'", "''")}'`)
     }
+  })
+})
+
+describe('textos de fábrica del privado', () => {
+  it('son los mismos que pone la migración 20260923000001 (lo que se ve es lo que se manda)', () => {
+    const sql = readFileSync('supabase/migrations/20260923000001_reels_privado_con_enlace.sql', 'utf8')
+    expect(sql).toContain(`'${BOTON_POR_DEFECTO}'`)
+    expect(sql).toContain(`'${PRIVADO_POR_DEFECTO.replaceAll("'", "''")}'`)
+  })
+
+  it('el botón ahora abre la landing: dice qué hace, no "Sí, pasámela"', () => {
+    expect(BOTON_POR_DEFECTO).toBe('Ver la propiedad')
+    expect(BOTON_POR_DEFECTO.length).toBeLessThanOrEqual(20)
+  })
+
+  it('el privado de fábrica no trae un enlace escrito (el de la landing lo agrega el sistema)', () => {
+    expect(PRIVADO_POR_DEFECTO).not.toMatch(/https?:|\.com|\/p\//)
+    expect(PRIVADO_POR_DEFECTO.length).toBeLessThanOrEqual(640)
   })
 })
 

@@ -29,10 +29,16 @@ export const FRASES_SIN_PRIVADO: readonly string[] = [
   'Gracias por pasar 👋',
 ]
 
+/**
+ * El privado lleva el enlace a la landing en un botón (o escrito, si Meta no
+ * acepta el botón). Por eso ya no pregunta "¿te la paso?": se la da. Ver
+ * `mandarPrivadoConEnlace` para el porqué (2026-09-23). No lleva el enlace
+ * escrito: lo agrega el sistema.
+ */
 export const PRIVADO_POR_DEFECTO =
-  'Hola! Vi que comentaste en el reel. Te armé la ficha completa de la propiedad, con fotos y todos los detalles. ¿Te la paso?'
+  '¡Hola! Gracias por comentar 🙌 Te dejo la ficha completa de la propiedad, con fotos y todos los detalles 👇'
 
-/** Instagram rechaza el mensaje ENTERO si el botón pasa de 20 caracteres. */
-export const BOTON_POR_DEFECTO = 'Sí, pasámela'
+/** El botón ABRE la landing: dice lo que hace. Instagram corta en 20 caracteres. */
+export const BOTON_POR_DEFECTO = 'Ver la propiedad'
 
 export const SEGUIMIENTO_POR_DEFECTO = 'Acá la tenés 👇'

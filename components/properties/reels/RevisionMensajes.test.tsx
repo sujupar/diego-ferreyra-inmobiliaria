@@ -19,19 +19,24 @@ function Probador({ inicial = mensajesDeFabrica(), privados = false, onCambio }:
 }
 
 describe('RevisionMensajes', () => {
-  it('muestra las 3 frases, las 3 de respaldo, el privado, el botón y el mensaje del enlace, precargados', () => {
+  it('muestra las 3 frases, las 3 de respaldo, el privado y su botón, precargados', () => {
     render(<Probador />)
     FRASES_CON_PRIVADO.forEach((f, i) => expect((screen.getByLabelText(`Frase ${i + 1} cuando el privado sale`) as HTMLInputElement).value).toBe(f))
     FRASES_SIN_PRIVADO.forEach((f, i) => expect((screen.getByLabelText(`Frase ${i + 1} si el privado no sale`) as HTMLInputElement).value).toBe(f))
     expect((screen.getByLabelText('Mensaje privado') as HTMLTextAreaElement).value).toBe(PRIVADO_POR_DEFECTO)
-    expect((screen.getByLabelText('Texto del botón') as HTMLInputElement).value).toBe('Sí, pasámela')
-    expect((screen.getByLabelText('Mensaje que acompaña al enlace') as HTMLTextAreaElement).value).toBe('Acá la tenés 👇')
+    expect((screen.getByLabelText('Texto del botón') as HTMLInputElement).value).toBe('Ver la propiedad')
   })
 
-  it('muestra el comentario de ejemplo con la palabra del reel y el enlace real de la landing', () => {
+  it('ya no muestra un "cuando toca el botón": el enlace va en el primer privado', () => {
+    render(<Probador />)
+    expect(screen.queryByLabelText('Mensaje que acompaña al enlace')).toBeNull()
+    expect(screen.queryByText('Cuando toca el botón')).toBeNull()
+  })
+
+  it('muestra el comentario de ejemplo y a qué landing lleva el botón', () => {
     render(<Probador />)
     expect(screen.getByText('doblas')).toBeTruthy()
-    expect(screen.getByText(/\/p\/depto-doblas$/)).toBeTruthy()
+    expect(screen.getByText(/Abre .*\/p\/depto-doblas$/)).toBeTruthy()
   })
 
   it('con los privados apagados avisa que HOY se usan las frases de respaldo', () => {
@@ -72,7 +77,7 @@ describe('mensajesDelReel / problemaDeMensajes', () => {
     expect(m.respuestas_con_privado).toEqual(['Una sola 📩', '', ''])
     expect(m.respuestas_sin_privado).toEqual([...FRASES_SIN_PRIVADO])
     expect(m.dm_texto).toBe(PRIVADO_POR_DEFECTO)
-    expect(m.dm_boton).toBe('Sí, pasámela')
+    expect(m.dm_boton).toBe('Ver la propiedad')
   })
 
   it('sin ninguna frase no deja guardar', () => {

@@ -24,7 +24,7 @@ import {
   PRIVADO_POR_DEFECTO,
   SEGUIMIENTO_POR_DEFECTO,
 } from '@/lib/social/reels/textos-por-defecto'
-import { MAX_CARACTERES_BOTON, MAX_FRASES, validarMensajes } from '@/lib/social/reels/mensajes'
+import { MAX_CARACTERES_BOTON, MAX_CARACTERES_PRIVADO, MAX_FRASES, validarMensajes } from '@/lib/social/reels/mensajes'
 import { prometePrivado } from '@/lib/social/reels/respuestas'
 
 export interface MensajesEditables {
@@ -194,20 +194,20 @@ export function RevisionMensajes({ valor, onCambiar, palabraDeEjemplo, slugLandi
       <Seccion
         numero={2}
         titulo="Por privado"
-        ayuda="Le llega a su bandeja de Instagram con un botón para que responda."
+        ayuda="Le llega a su bandeja de Instagram (a veces a «Solicitudes de mensajes») con un botón que abre la landing de la propiedad."
       >
         <Burbuja de={nuestra} nuestra>
           <Textarea
             aria-label="Mensaje privado"
             rows={3}
-            maxLength={1000}
+            maxLength={MAX_CARACTERES_PRIVADO}
             value={valor.dm_texto}
             disabled={deshabilitado}
             className="min-h-0 resize-none border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
             onChange={(e) => cambiar({ dm_texto: e.target.value })}
           />
           <div className="mt-2 border-t pt-2">
-            <Label htmlFor="rm-boton" className="text-[10px] text-muted-foreground">Botón</Label>
+            <Label htmlFor="rm-boton" className="text-[10px] text-muted-foreground">Botón (abre la landing)</Label>
             <Input
               id="rm-boton"
               aria-label="Texto del botón"
@@ -217,34 +217,19 @@ export function RevisionMensajes({ valor, onCambiar, palabraDeEjemplo, slugLandi
               className="mt-1 h-8 rounded-full text-center font-medium"
               onChange={(e) => cambiar({ dm_boton: e.target.value })}
             />
-            <p className="mt-1 text-right text-[10px] text-muted-foreground">
-              {valor.dm_boton.trim().length}/{MAX_CARACTERES_BOTON}
+            <p className="mt-1 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+              <span className="flex min-w-0 items-center gap-1 break-all text-primary">
+                <Link2 className="h-3 w-3 shrink-0" aria-hidden />
+                {slugLanding ? `Abre ${BASE_ENLACE}/p/${slugLanding}` : 'Falta publicar la landing: sin ella no hay enlace para mandar'}
+              </span>
+              <span className="shrink-0">{valor.dm_boton.trim().length}/{MAX_CARACTERES_BOTON}</span>
             </p>
           </div>
         </Burbuja>
-      </Seccion>
-
-      <Seccion
-        numero={3}
-        titulo="Cuando toca el botón"
-        ayuda="Le contestamos con este mensaje y el enlace de la landing de la propiedad."
-      >
-        <Burbuja de="@alguien">{valor.dm_boton.trim() || 'el botón'}</Burbuja>
-        <Burbuja de={nuestra} nuestra>
-          <Textarea
-            aria-label="Mensaje que acompaña al enlace"
-            rows={2}
-            maxLength={1000}
-            value={valor.dm_seguimiento}
-            disabled={deshabilitado}
-            className="min-h-0 resize-none border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
-            onChange={(e) => cambiar({ dm_seguimiento: e.target.value })}
-          />
-          <p className="mt-1 flex items-center gap-1 break-all text-xs text-primary">
-            <Link2 className="h-3 w-3 shrink-0" aria-hidden />
-            {slugLanding ? `${BASE_ENLACE}/p/${slugLanding}` : 'Falta publicar la landing: sin ella no hay enlace para mandar'}
-          </p>
-        </Burbuja>
+        <p className="text-[11px] text-muted-foreground">
+          El enlace lo agrega el sistema, con una marca para saber cuántas visitas trae este reel. Si
+          Instagram no acepta el botón, va escrito al final del mensaje.
+        </p>
       </Seccion>
 
       {problema && (
