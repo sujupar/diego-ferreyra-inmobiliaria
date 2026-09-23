@@ -104,7 +104,15 @@ vi.mock('@supabase/supabase-js', () => {
     q.update = self
     q.upsert = (row: Record<string, unknown>) => {
       if (table === 'whatsapp_messages') db.upserts.push(row)
-      return Promise.resolve({ error: null })
+      // El código real encadena `.select('id')` sobre el upsert: con
+      // `ignoreDuplicates`, que devuelva fila o no es la señal de "este mensaje
+      // es NUEVO" que hace idempotente al pipeline de IA (2026-08-16). El
+      // simulador tiene que ofrecer ese eslabón; sin él, `persistInbound`
+      // explotaba con "upsert(...).select is not a function" y el pipeline nunca
+      // corría. No se notaba porque este archivo entero no cargaba desde que
+      // `server-only` entró a la cadena de imports.
+      const fila = { data: [{ id: `msg-${db.upserts.length}` }], error: null }
+      return Object.assign(Promise.resolve({ error: null }), { select: () => Promise.resolve(fila) })
     }
     q.maybeSingle = () => {
       // El único `maybeSingle` sobre `whatsapp_messages` de esta ruta es el que
