@@ -1522,6 +1522,38 @@ Esa ruta esquiva `analysis_enabled` a propósito (no es automática, la dispara
 una persona con permiso de configuración): apagar el agente no debe impedir
 probarlo.
 
+### La palabra "reiniciar" corre SIEMPRE sobre Roque Pérez
+
+La prueba contra el WhatsApp real se reinicia escribiendo **"reiniciar"** desde un
+teléfono de `ai_agent_settings.consulta_test_phones`. Todo vive en
+`lib/ai/reset-prueba.ts`.
+
+- **La propiedad es FIJA: `PROPIEDAD_DE_LA_PRUEBA` (Roque Pérez 3059).** No es la
+  de la conversación. **Síntoma que lo originó (2026-09-23):** el dueño escribió
+  "reiniciar" y el agente le habló de *Díaz Colodrero 2327*, una propiedad que
+  solo existía para otro ensayo. **Causa:** el webhook resuelve la propiedad de
+  una conversación con el lead **más reciente** de ese teléfono
+  (`findLeadIdByPhone`), y el dueño prueba muchas cosas: el último lead era de
+  una prueba de landing. **Detección:** si la apertura del reinicio nombra una
+  propiedad que no es Roque Pérez, mirá el último `property_leads` de ese
+  teléfono.
+- **No alcanza con mandar la apertura de Roque Pérez:** el mensaje SIGUIENTE del
+  dueño se vuelve a resolver contra el lead viejo y el agente le contesta sobre
+  la propiedad equivocada. Por eso `prepararConsultaDePrueba` deja un lead propio
+  (`source='prueba:reinicio'`), igual que hace una consulta de portal real.
+- **Nunca toca un lead ajeno:** solo reusa el suyo (`esLeadDeLaPrueba`), y el
+  `select` filtra por ese origen — Roque Pérez es una propiedad REAL con
+  interesados de verdad, y traer "los primeros 200 leads" sin orden dejaba de
+  encontrar el propio en cuanto la propiedad creciera.
+- **El permiso va primero:** no se escribe NADA hasta que `reiniciarPrueba`
+  confirma que el teléfono está en la lista. Para cualquier otra persona
+  "reiniciar" es un mensaje común y el agente le contesta normal.
+- **Cambiar la propiedad de la prueba** = cambiar el id de esa constante. Va el
+  id y no la dirección porque una dirección se edita desde la ficha y rompería la
+  prueba en silencio.
+- **Efecto lateral asumido:** en la ficha de Roque Pérez aparece un lead de
+  prueba junto a los interesados reales. Es UNO solo y se reusa.
+
 ### Apagar el agente en UNA conversación
 
 Botón en el chat del Inbox (`ThreadActionsBar`) → `POST

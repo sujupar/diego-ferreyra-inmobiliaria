@@ -38,9 +38,46 @@ import {
   COLUMNAS_APERTURA,
   type PropiedadParaConsulta,
 } from '@/lib/leads/responder-consulta'
+import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
 
 function admin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+}
+
+/**
+ * La propiedad con la que corre la prueba, SIEMPRE la misma.
+ *
+ * POR QUÉ ES FIJA (pedido del dueño, 2026-09-23): antes la prueba usaba la
+ * propiedad de la conversación, que sale del lead MÁS RECIENTE de ese teléfono.
+ * Como el dueño prueba muchas cosas, el último lead podía ser de cualquier
+ * ensayo viejo: escribió "reiniciar" y el agente le habló de Díaz Colodrero
+ * 2327, una propiedad que solo existía para otra prueba. La prueba del agente
+ * tiene que correr sobre una propiedad conocida y estable, no sobre lo último
+ * que se tocó.
+ *
+ * Para cambiarla, se cambia acá y listo. Va el id y no la dirección porque una
+ * dirección se edita desde la ficha y rompería la prueba en silencio.
+ */
+export const PROPIEDAD_DE_LA_PRUEBA = {
+  id: '863b43c5-c107-4b9e-963d-8e9d6f8b4bb9',
+  direccion: 'Roque Pérez 3059',
+} as const
+
+/**
+ * El origen del lead que crea la prueba. Sirve para dos cosas: reconocerlo como
+ * propio (y poder reusarlo) y distinguirlo en el CRM de un interesado de verdad.
+ */
+export const ORIGEN_LEAD_DE_PRUEBA = 'prueba:reinicio'
+
+/**
+ * Pura. ¿Este lead lo creó la prueba, o es de una persona de verdad?
+ *
+ * Solo un lead PROPIO se reusa (y se le adelanta la fecha para que vuelva a ser
+ * el más reciente). Uno que llegó por una landing o por un portal no se toca
+ * jamás: es el registro de que alguien consultó.
+ */
+export function esLeadDeLaPrueba(lead: { source?: string | null } | null | undefined): boolean {
+  return (lead?.source ?? '') === ORIGEN_LEAD_DE_PRUEBA
 }
 
 /** La frase canónica, la que se documenta y se muestra. */
@@ -139,10 +176,12 @@ export function parcheDeReinicio(ahoraISO: string) {
   }
 }
 
+// Sin `leadId`: la función acota por TELÉFONO (la memoria) y por
+// propiedad+teléfono (las visitas). Recibía un lead que nunca usaba, y eso hacía
+// pensar que el reinicio estaba acotado por lead, que es otra cosa.
 export async function reiniciarPrueba(
   phoneE164: string,
   propertyId: string | null,
-  leadId: string | null = null,
 ): Promise<ResultadoReinicio> {
   try {
     const sb = admin()
@@ -237,6 +276,100 @@ export async function reiniciarPrueba(
       motivo: `excepción reiniciando: ${err instanceof Error ? err.message : String(err)}`,
       limpiado: [],
     }
+  }
+}
+
+/**
+ * Deja la conversación apuntando a la propiedad de la prueba, como si la persona
+ * acabara de consultar por ella en un portal.
+ *
+ * ## Por qué hace falta tocar los leads y no alcanza con mandar la apertura
+ *
+ * El webhook resuelve la propiedad de una conversación con el lead MÁS RECIENTE
+ * de ese teléfono (`findLeadIdByPhone`). Si el reinicio solo mandara la apertura
+ * de Roque Pérez, el mensaje siguiente del dueño volvería a resolverse contra el
+ * lead viejo y el agente le contestaría sobre la propiedad equivocada — que es
+ * exactamente el problema que esto viene a arreglar. Así que la prueba deja su
+ * propio lead, igual que hace una consulta de portal real (`asegurarLead` en
+ * `responder-consulta.ts`).
+ *
+ * ## Por qué NO rompe las otras pruebas
+ *
+ * No se pisa nada: se crea un lead nuevo, o se reusa el que ya dejó otra prueba.
+ * Si mañana el dueño prueba una landing de otra propiedad, ese lead va a ser más
+ * reciente y la conversación pasa a ser de esa otra propiedad, como corresponde.
+ *
+ * Best-effort: si algo falla, devuelve `leadId: null` y la apertura igual sale
+ * (sin nombre). Una prueba no puede tumbar el webhook.
+ */
+export async function prepararConsultaDePrueba(
+  phoneE164: string,
+  nombre: string | null,
+): Promise<{ propertyId: string; leadId: string | null }> {
+  const propertyId = PROPIEDAD_DE_LA_PRUEBA.id
+  try {
+    const sb = admin()
+    const ahora = new Date().toISOString()
+
+    // Se piden SOLO los leads de la prueba, no todos los de la propiedad.
+    //
+    // Roque Pérez es una propiedad REAL en venta y junta interesados de verdad.
+    // Trayendo "los primeros 200 leads de la propiedad" (sin orden garantizado,
+    // que es lo que devuelve Postgres sin `ORDER BY`) el día que pasara de 200 el
+    // lote podía no incluir el lead de la prueba: no lo encontraba, creaba otro,
+    // y cada uno hacía más probable el siguiente. Filtrando por `source` el
+    // tamaño no depende de cuántos interesados reales tenga la propiedad.
+    const { data: existentes } = await sb
+      .from('property_leads')
+      .select('id, phone, source')
+      .eq('property_id', propertyId)
+      .eq('source', ORIGEN_LEAD_DE_PRUEBA)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    // Los leads guardan el teléfono TAL CUAL lo escribió la persona, así que la
+    // comparación se hace normalizada, no con `eq` (mismo criterio que el webhook).
+    const mio = normalizeWhatsappPhone(phoneE164)
+    const suyos = ((existentes as Array<{ id: string; phone: string | null; source: string | null }> | null) ?? [])
+      .filter(l => mio && normalizeWhatsappPhone(l.phone) === mio)
+
+    // `esLeadDeLaPrueba` vuelve a mirar el origen aunque el `select` ya filtró:
+    // es la regla de "solo se toca lo propio" y no depende de que la consulta de
+    // arriba siga teniendo ese filtro mañana.
+    const reusable = suyos.find(esLeadDeLaPrueba)
+    if (reusable) {
+      // Se le adelanta la fecha para que vuelva a ser el lead más reciente del
+      // teléfono: es lo que hace que la conversación quede en esta propiedad.
+      const { error } = await sb
+        .from('property_leads')
+        // `updated_at` no se toca: lo pone el trigger `touch_updated_at`.
+        .update({ created_at: ahora, ...(nombre?.trim() ? { name: nombre.trim() } : {}) } as never)
+        .eq('id', reusable.id)
+      if (!error) return { propertyId, leadId: reusable.id }
+      console.warn('[reinicio] no se pudo refrescar el lead de la prueba:', error.message)
+    }
+
+    const { data: prop } = await sb.from('properties').select('assigned_to').eq('id', propertyId).maybeSingle()
+    const { data: creado, error: errCrear } = await sb
+      .from('property_leads')
+      .insert({
+        property_id: propertyId,
+        name: nombre?.trim() || 'Prueba del agente',
+        phone: phoneE164.startsWith('+') ? phoneE164 : `+${phoneE164}`,
+        source: ORIGEN_LEAD_DE_PRUEBA,
+        message: `Lead creado por la palabra de reinicio para probar el agente sobre ${PROPIEDAD_DE_LA_PRUEBA.direccion}.`,
+        assigned_to: (prop as { assigned_to?: string | null } | null)?.assigned_to ?? null,
+      })
+      .select('id')
+      .single()
+    if (errCrear) {
+      console.warn('[reinicio] no se pudo crear el lead de la prueba (la apertura sale igual):', errCrear.message)
+      return { propertyId, leadId: null }
+    }
+    return { propertyId, leadId: (creado as { id: string }).id }
+  } catch (err) {
+    console.warn('[reinicio] excepción preparando la consulta de prueba:', err)
+    return { propertyId, leadId: null }
   }
 }
 

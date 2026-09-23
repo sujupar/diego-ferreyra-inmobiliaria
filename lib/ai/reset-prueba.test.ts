@@ -1,5 +1,40 @@
 import { describe, it, expect } from 'vitest'
-import { esPalabraDeReinicio, puedeReiniciar, mensajeDeConfirmacion } from './reset-prueba'
+import {
+  esPalabraDeReinicio,
+  puedeReiniciar,
+  mensajeDeConfirmacion,
+  PROPIEDAD_DE_LA_PRUEBA,
+  ORIGEN_LEAD_DE_PRUEBA,
+  esLeadDeLaPrueba,
+} from './reset-prueba'
+
+describe('PROPIEDAD_DE_LA_PRUEBA', () => {
+  // El dueño lo pidió explícito (2026-09-23): la prueba corre SIEMPRE sobre
+  // Roque Pérez, nunca sobre la última propiedad que le tocó a la conversación.
+  it('es Roque Pérez, fija, y no la que quedó de la última prueba', () => {
+    expect(PROPIEDAD_DE_LA_PRUEBA.direccion).toContain('Roque Pérez')
+    expect(PROPIEDAD_DE_LA_PRUEBA.id).toMatch(/^[0-9a-f-]{36}$/)
+  })
+})
+
+describe('esLeadDeLaPrueba', () => {
+  // Decide si el lead que ya existe se puede reusar (lo creó la prueba) o si hay
+  // que crear uno nuevo. Un lead de verdad NO se toca jamás.
+  it('reconoce el que creó la propia prueba', () => {
+    expect(esLeadDeLaPrueba({ source: ORIGEN_LEAD_DE_PRUEBA })).toBe(true)
+  })
+
+  it('NO toca un lead real, venga de donde venga', () => {
+    for (const source of ['landing', 'portal:zonaprop', 'portal:argenprop', null, '']) {
+      expect(esLeadDeLaPrueba({ source }), String(source)).toBe(false)
+    }
+  })
+
+  it('sin lead previo no hay nada que reusar', () => {
+    expect(esLeadDeLaPrueba(null)).toBe(false)
+    expect(esLeadDeLaPrueba(undefined)).toBe(false)
+  })
+})
 
 describe('esPalabraDeReinicio', () => {
   it('reconoce la palabra como se escribe desde un teléfono', () => {

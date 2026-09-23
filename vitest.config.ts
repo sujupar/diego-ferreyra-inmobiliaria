@@ -22,6 +22,13 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, '.'),
+      // `server-only` lo aporta Next en el build y NO está en node_modules: sin
+      // este reemplazo, todo archivo de prueba que alcance un módulo de servidor
+      // moría con "Cannot find package 'server-only'" y quedaba en rojo
+      // permanente. Eran 4, entre ellos el de la palabra de reinicio. Mismo
+      // criterio que el `exclude` de arriba: una suite que siempre se ve rota es
+      // una suite que nadie mira.
+      'server-only': path.resolve(__dirname, 'test/stubs/server-only.ts'),
     },
   },
 })
