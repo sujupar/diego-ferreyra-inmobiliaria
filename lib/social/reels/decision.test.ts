@@ -245,8 +245,14 @@ describe('decidirQueHacer — cuentas de prueba con el reel en simulacro', () =>
       .toEqual({ accion: 'ignorar', motivo: 'comentario_anterior_a_la_activacion' })
   })
 
-  it('la cuenta de prueba tampoco recibe dos privados por el mismo reel', () => {
+  it('la cuenta de prueba SÍ recibe otro privado aunque ya haya recibido uno: es para probar las veces que haga falta', () => {
     expect(decidirQueHacer(enSimulacro, { ...delDueno, ya_recibio_dm: true }, conPrueba, AHORA))
+      .toEqual({ accion: 'responder_y_dm' })
+  })
+
+  it('un cliente que ya recibió el privado de este reel no recibe otro', () => {
+    const cliente = { ...comentarioOk, ya_recibio_dm: true }
+    expect(decidirQueHacer(reelOk, cliente, conPrueba, AHORA))
       .toEqual({ accion: 'solo_responder', motivo: 'ya_recibio_dm' })
   })
 

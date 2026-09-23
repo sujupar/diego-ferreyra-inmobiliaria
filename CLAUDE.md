@@ -1223,6 +1223,10 @@ botón que lleva a la landing. Specs: `docs/superpowers/specs/2026-09-22-reels-*
   /{comment-id}/likes` → "Unsupported post request" con token de sistema y de página, v21 y v25; el
   campo `likes` de un comentario "no existe"). No es un permiso. Las herramientas que lo hacen entran con
   usuario y contraseña, contra las reglas de Instagram: riesgo de bloqueo de la cuenta. No reintentar.
+- **Qué frase pública va** (`tienePrivado` en respuestas.ts): las PRINCIPALES si el privado salió ahora
+  o si la persona YA lo había recibido por ese reel (es verdad que lo tiene); las de RESPALDO solo si el
+  privado nunca salió. Responder "¡Gracias por comentar!" a quien ya tenía el privado fue un error que el
+  dueño marcó como grave (2026-09-23). Un privado por persona y por reel, salvo cuentas de prueba.
 - **Frenos, todos apagados de fábrica:** `instagram_ajustes.automatizacion_habilitada` (global),
   `.dm_habilitado` (privados), y por reel `automatizacion_activa` + `simulacro`. Activar un reel
   exige **landing publicada** (el botón del privado lleva a ella) y al menos una palabra. Solo actúa

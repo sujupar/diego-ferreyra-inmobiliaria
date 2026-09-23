@@ -167,7 +167,7 @@ export function RevisionMensajes({ valor, onCambiar, palabraDeEjemplo, slugLandi
           </p>
           <p className="text-[11px] text-muted-foreground">
             {privadosActivos
-              ? 'Se usan cuando el privado no se puede mandar (por ejemplo, si la persona ya recibió uno por este reel).'
+              ? 'Se usan solo si el privado no sale (por ejemplo, si la landing no está publicada o Instagram lo rechaza). A quien ya recibió el privado de este reel se le responde con las de arriba.'
               : 'Los mensajes privados todavía no están habilitados, así que por ahora se responde con estas. No prometas un privado acá.'}
           </p>
           {valor.respuestas_sin_privado.map((frase, i) => (
