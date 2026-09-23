@@ -23,7 +23,16 @@ import { createHmac } from 'node:crypto'
 
 const APP_SECRET = 'secreto-de-prueba'
 
-const { db, ai, reloj } = vi.hoisted(() => ({
+const { db, ai, reloj, reinicio } = vi.hoisted(() => ({
+  /** Lo que recibió cada pieza del reinicio de prueba, en orden. */
+  reinicio: {
+    reiniciar: [] as Array<{ phone: string; propertyId: string | null }>,
+    preparar: [] as Array<{ phone: string; nombre: string | null }>,
+    apertura: [] as Array<{ phone: string; propertyId: string; leadId: string | null }>,
+    textos: [] as Array<{ to: string; text: string; propertyId: string | null }>,
+    /** `false` simula un teléfono que NO está en la lista de prueba. */
+    autorizado: true,
+  },
   db: {
     upserts: [] as Array<Record<string, unknown>>,
     leads: [] as Array<Record<string, unknown>>,
@@ -160,9 +169,41 @@ vi.mock('@/lib/ai/scheduling-agent', () => ({
   }),
 }))
 
-import { POST } from './route'
+// El reinicio de prueba se moquea en sus BORDES (los que tocan la base y Meta),
+// pero `esPalabraDeReinicio` y `PROPIEDAD_DE_LA_PRUEBA` quedan REALES: lo que se
+// prueba acá es justamente con qué propiedad los llama el webhook.
+vi.mock('@/lib/ai/reset-prueba', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/ai/reset-prueba')>()
+  return {
+    ...real,
+    reiniciarPrueba: vi.fn(async (phone: string, propertyId: string | null) => {
+      reinicio.reiniciar.push({ phone, propertyId })
+      return reinicio.autorizado
+        ? { reiniciado: true, motivo: 'reiniciado', limpiado: ['la memoria y el contador de mensajes'] }
+        : { reiniciado: false, motivo: 'este teléfono no está en la lista de prueba', limpiado: [] }
+    }),
+    prepararConsultaDePrueba: vi.fn(async (phone: string, nombre: string | null) => {
+      reinicio.preparar.push({ phone, nombre })
+      return { propertyId: real.PROPIEDAD_DE_LA_PRUEBA.id, leadId: 'lead-de-la-prueba' }
+    }),
+    reenviarApertura: vi.fn(async (phone: string, propertyId: string, leadId: string | null) => {
+      reinicio.apertura.push({ phone, propertyId, leadId })
+      return { ok: true, detalle: 'plantilla consulta_plano' }
+    }),
+  }
+})
 
-function mensaje(opts: { id: string; from: string; nombre: string; imagen?: boolean }) {
+vi.mock('@/lib/integrations/whatsapp/core', () => ({
+  sendWhatsappText: vi.fn(async (input: { to: string; text: string; propertyId?: string | null }) => {
+    reinicio.textos.push({ to: input.to, text: input.text, propertyId: input.propertyId ?? null })
+    return { ok: true, skipped: false }
+  }),
+}))
+
+import { POST } from './route'
+import { PROPIEDAD_DE_LA_PRUEBA } from '@/lib/ai/reset-prueba'
+
+function mensaje(opts: { id: string; from: string; nombre: string; imagen?: boolean; texto?: string }) {
   const raw: Record<string, unknown> = {
     id: opts.id,
     from: opts.from,
@@ -170,7 +211,7 @@ function mensaje(opts: { id: string; from: string; nombre: string; imagen?: bool
     type: opts.imagen ? 'image' : 'text',
   }
   if (opts.imagen) raw.image = { id: `media-${opts.id}`, mime_type: 'image/jpeg' }
-  else raw.text = { body: 'hola, me interesa' }
+  else raw.text = { body: opts.texto ?? 'hola, me interesa' }
   return { raw, contacto: { profile: { name: opts.nombre }, wa_id: opts.from } }
 }
 
@@ -228,6 +269,11 @@ beforeEach(() => {
   db.statusLookups = []
   db.traza = []
   db.explotaCreateClient = false
+  reinicio.reiniciar = []
+  reinicio.preparar = []
+  reinicio.apertura = []
+  reinicio.textos = []
+  reinicio.autorizado = true
   ai.analisis = []
   ai.agente = []
   ai.duracionAnalisisMs = 0
@@ -422,5 +468,63 @@ describe('POST /api/webhooks/whatsapp — contrato de respuesta', () => {
     expect(res.status).toBe(403)
     expect(db.upserts).toHaveLength(0)
     expect(ai.analisis).toHaveLength(0)
+  })
+})
+
+/**
+ * La palabra de reinicio arranca una prueba del agente. Estos tests fijan LO
+ * QUE COSTÓ EL BUG del 2026-09-23: la prueba usaba la propiedad de la
+ * conversación —que sale del lead más reciente del teléfono— y terminaba
+ * hablando de una propiedad de otro ensayo. Ahora es fija (Roque Pérez), y esto
+ * es lo único que impide que alguien la vuelva a atar a la conversación sin que
+ * ninguna prueba se entere: los dos parámetros son `string | null` y TypeScript
+ * no nota la diferencia.
+ */
+describe('POST /api/webhooks/whatsapp — la palabra de reinicio', () => {
+  it('reinicia y abre SIEMPRE con la propiedad de la prueba, aunque la conversación sea de otra', async () => {
+    // El lead del teléfono apunta a otra propiedad, como pasó de verdad.
+    db.leads = [{ id: 'lead-A', phone: `+${TEL_A}`, property_id: 'prop-de-otra-prueba', created_at: '2026-09-15T14:07:00Z' }]
+
+    const res = await POST(request(payload([mensaje({ id: 'wamid.R', from: TEL_A, nombre: 'Diego', texto: 'reiniciar' })])))
+    const body = await res.json()
+
+    expect(body.reiniciado).toBe(true)
+    expect(reinicio.reiniciar[0].propertyId).toBe(PROPIEDAD_DE_LA_PRUEBA.id)
+    expect(reinicio.apertura[0].propertyId).toBe(PROPIEDAD_DE_LA_PRUEBA.id)
+    expect(reinicio.apertura[0].propertyId).not.toBe('prop-de-otra-prueba')
+  })
+
+  it('el mensaje entrante se guarda igual y ese turno NO se analiza', async () => {
+    // Analizarlo volvería a llenar la memoria que se acaba de vaciar.
+    await POST(request(payload([mensaje({ id: 'wamid.R2', from: TEL_A, nombre: 'Diego', texto: 'Reiniciar.' })])))
+
+    expect(db.upserts.map(u => u.wa_message_id)).toEqual(['wamid.R2'])
+    expect(ai.analisis).toHaveLength(0)
+    expect(ai.agente).toHaveLength(0)
+  })
+
+  it('primero la confirmación y después la apertura, para que el chat se lea en orden', async () => {
+    await POST(request(payload([mensaje({ id: 'wamid.R3', from: TEL_A, nombre: 'Diego', texto: 'reiniciar' })])))
+
+    expect(reinicio.textos).toHaveLength(1)
+    expect(reinicio.textos[0].text).toContain('arranca de cero')
+    // La confirmación también queda archivada bajo la propiedad de la prueba.
+    expect(reinicio.textos[0].propertyId).toBe(PROPIEDAD_DE_LA_PRUEBA.id)
+    expect(reinicio.apertura).toHaveLength(1)
+  })
+
+  it('un teléfono que NO está en la lista de prueba no reinicia nada: se le contesta como a un cliente', async () => {
+    reinicio.autorizado = false
+
+    const res = await POST(request(payload([mensaje({ id: 'wamid.R4', from: TEL_A, nombre: 'Curioso', texto: 'reiniciar' })])))
+    const body = await res.json()
+
+    expect(body.reiniciado).toBeUndefined()
+    // Nada de escribir en la base ni de mandar mensajes antes del permiso.
+    expect(reinicio.preparar).toHaveLength(0)
+    expect(reinicio.textos).toHaveLength(0)
+    expect(reinicio.apertura).toHaveLength(0)
+    // Y el agente lo atiende como a cualquiera.
+    expect(ai.agente).toHaveLength(1)
   })
 })

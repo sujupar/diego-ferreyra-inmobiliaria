@@ -176,10 +176,12 @@ export function parcheDeReinicio(ahoraISO: string) {
   }
 }
 
+// Sin `leadId`: la función acota por TELÉFONO (la memoria) y por
+// propiedad+teléfono (las visitas). Recibía un lead que nunca usaba, y eso hacía
+// pensar que el reinicio estaba acotado por lead, que es otra cosa.
 export async function reiniciarPrueba(
   phoneE164: string,
   propertyId: string | null,
-  leadId: string | null = null,
 ): Promise<ResultadoReinicio> {
   try {
     const sb = admin()
@@ -309,18 +311,31 @@ export async function prepararConsultaDePrueba(
     const sb = admin()
     const ahora = new Date().toISOString()
 
-    // Los leads guardan el teléfono TAL CUAL lo escribió la persona, así que la
-    // comparación se hace normalizada, no con `eq` (mismo criterio que el webhook).
+    // Se piden SOLO los leads de la prueba, no todos los de la propiedad.
+    //
+    // Roque Pérez es una propiedad REAL en venta y junta interesados de verdad.
+    // Trayendo "los primeros 200 leads de la propiedad" (sin orden garantizado,
+    // que es lo que devuelve Postgres sin `ORDER BY`) el día que pasara de 200 el
+    // lote podía no incluir el lead de la prueba: no lo encontraba, creaba otro,
+    // y cada uno hacía más probable el siguiente. Filtrando por `source` el
+    // tamaño no depende de cuántos interesados reales tenga la propiedad.
     const { data: existentes } = await sb
       .from('property_leads')
       .select('id, phone, source')
       .eq('property_id', propertyId)
+      .eq('source', ORIGEN_LEAD_DE_PRUEBA)
       .is('deleted_at', null)
-      .limit(200)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    // Los leads guardan el teléfono TAL CUAL lo escribió la persona, así que la
+    // comparación se hace normalizada, no con `eq` (mismo criterio que el webhook).
     const mio = normalizeWhatsappPhone(phoneE164)
     const suyos = ((existentes as Array<{ id: string; phone: string | null; source: string | null }> | null) ?? [])
       .filter(l => mio && normalizeWhatsappPhone(l.phone) === mio)
 
+    // `esLeadDeLaPrueba` vuelve a mirar el origen aunque el `select` ya filtró:
+    // es la regla de "solo se toca lo propio" y no depende de que la consulta de
+    // arriba siga teniendo ese filtro mañana.
     const reusable = suyos.find(esLeadDeLaPrueba)
     if (reusable) {
       // Se le adelanta la fecha para que vuelva a ser el lead más reciente del

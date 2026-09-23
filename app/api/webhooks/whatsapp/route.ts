@@ -550,7 +550,7 @@ export async function POST(request: NextRequest) {
       // conversación: el lead más reciente del dueño puede ser de cualquier
       // ensayo viejo, y con eso la prueba terminaba hablando de una propiedad
       // que solo existía para otra prueba. Ver `PROPIEDAD_DE_LA_PRUEBA`.
-      const r = await reiniciarPrueba(aAnalizar.phoneE164, PROPIEDAD_DE_LA_PRUEBA.id, aAnalizar.leadId)
+      const r = await reiniciarPrueba(aAnalizar.phoneE164, PROPIEDAD_DE_LA_PRUEBA.id)
       if (r.reiniciado) {
         console.log(`[whatsapp-webhook] prueba reiniciada para ${aAnalizar.phoneE164}: ${r.limpiado.join(', ')}`)
         // Recién acá, con el teléfono YA autorizado por `reiniciarPrueba`, se
