@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { esConsultaDeVerdad, traeInteresado, FORMATOS_DE_CONSULTA } from './es-consulta'
+import { isLeadEmail as esLeadEmail } from './extract'
 import type { Portal } from './types'
 
 const CASILLA = 'contacto@diegoferreyrainmobiliaria.com'
@@ -119,6 +120,32 @@ describe('esConsultaDeVerdad', () => {
   it('cada portal tiene declarados sus formatos de consulta', () => {
     for (const portal of ['argenprop', 'zonaprop', 'mercadolibre'] as Portal[]) {
       expect(FORMATOS_DE_CONSULTA[portal].length, portal).toBeGreaterThan(0)
+    }
+  })
+
+  /**
+   * MercadoLibre es el caso delicado: como OCULTA el contacto, sus consultas
+   * llegan siempre sin datos y el asunto es la ÚNICA red que las salva. Si esta
+   * lista fuera más angosta que la del filtro de entrada (`isLeadEmail`), un
+   * correo entraría por la puerta y esta regla lo tiraría — un lead perdido, y
+   * en silencio.
+   */
+  it('TODO asunto que el filtro de entrada acepta para ML, esta regla lo deja pasar', () => {
+    const comoLosManda = [
+      'Te preguntaron en Venta Departamento 2 Ambientes',
+      'Te contactaron por tu publicación',
+      'Alguien está interesado en tu publicación',
+      'Te contactó un interesado por tu aviso',
+      'Un comprador quiere saber más de tu publicación',
+      'Nueva consulta en tu publicación',
+      'Tenés una pregunta nueva',
+    ]
+    for (const s of comoLosManda) {
+      expect(esLeadEmail('vendedor@mercadolibre.com.ar', s, 'mercadolibre'), `puerta: ${s}`).toBe(true)
+      expect(
+        esConsultaDeVerdad({ portal: 'mercadolibre', subject: s, ...vacio, leadEmail: CASILLA }, CASILLA).esConsulta,
+        `regla: ${s}`,
+      ).toBe(true)
     }
   })
 })

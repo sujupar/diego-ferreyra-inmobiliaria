@@ -42,6 +42,7 @@
  * Verificado contra las 473 consultas guardadas: descarta exactamente las 10
  * publicitarias y no toca ninguna de las reales.
  */
+import { ASUNTO_DE_CONSULTA_ML } from './extract'
 import type { Portal } from './types'
 
 /**
@@ -55,8 +56,12 @@ export const FORMATOS_DE_CONSULTA: Record<Portal, RegExp[]> = {
   argenprop: [/contacto por/, /te ha enviado un mensaje/, /hay alguien interesado/],
   // 246 + 85 + 42.
   zonaprop: [/nueva consulta/, /consultaron tu whatsapp/, /vieron tu telefono/],
-  // ML oculta el contacto: estos dos asuntos son toda la señal que hay.
-  mercadolibre: [/te preguntaron/, /te contactaron/, /pregunta/, /consulta/],
+  // ML oculta el contacto de quien pregunta, así que sus consultas llegan
+  // SIEMPRE sin datos y el asunto es la única señal que hay. Por eso se reusa
+  // EXACTAMENTE la misma lista que usa el filtro de la puerta: si esta fuera más
+  // angosta, un correo entraría por la puerta y esta regla lo tiraría, que es un
+  // lead perdido sin que nadie se entere. No copiar los patrones acá.
+  mercadolibre: [ASUNTO_DE_CONSULTA_ML],
 }
 
 export interface CorreoParaClasificar {

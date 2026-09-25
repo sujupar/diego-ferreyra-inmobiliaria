@@ -27,6 +27,18 @@ export function detectPortal(from: string, subject = ''): Portal | null {
  *  - MercadoLibre: no tenemos muestra de lead aún. Excluimos marketing
  *    (info.mercadolibre) y exigimos un asunto de pregunta/consulta.
  */
+/**
+ * Los asuntos con los que MercadoLibre avisa que alguien preguntó.
+ *
+ * Vive acá y se EXPORTA porque hay dos lugares que necesitan la misma respuesta:
+ * este filtro de la puerta y `es-consulta.ts` (que decide si un correo sin datos
+ * del interesado es una consulta). ML **oculta el contacto de quien pregunta**,
+ * así que para ese portal el asunto es la ÚNICA señal: si las dos listas
+ * divergieran, un correo entraría por la puerta y la otra regla lo tiraría — un
+ * lead perdido, y en silencio. Una sola lista, un solo lugar donde ampliarla.
+ */
+export const ASUNTO_DE_CONSULTA_ML = /pregunta|consulta|interesad|te\s+contact|quiere/
+
 export function isLeadEmail(from: string, subject: string, portal: Portal): boolean {
   const f = (from ?? '').toLowerCase()
   const s = (subject ?? '').toLowerCase()
@@ -37,7 +49,7 @@ export function isLeadEmail(from: string, subject: string, portal: Portal): bool
       return f.includes('noresponder@argenprop.com')
     case 'mercadolibre':
       if (f.includes('info.mercadolibre')) return false // marketing
-      return /pregunta|consulta|interesad|te\s+contact|quiere/.test(s)
+      return ASUNTO_DE_CONSULTA_ML.test(s)
   }
 }
 
