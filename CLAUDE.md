@@ -1018,6 +1018,28 @@ iCloud lo baje, y a veces no baja.
 - **Detección:** `SELECT * FROM portal_emails_descartados ORDER BY created_at DESC`
   — si aparece algo que era una consulta de verdad, el formato del portal cambió.
   Y al revés: si vuelve a colarse publicidad, mirar qué dato del interesado trajo.
+- **Limpieza de las que ya habían entrado (2026-09-25, con el OK del dueño):** se
+  sacaron las 10 de `portal_inquiries` con
+  `scripts/limpiar-consultas-publicidad.ts`, que NO tiene una lista escrita a
+  mano: reusa `esConsultaDeVerdad`, la misma función del cron, y aborta si alguna
+  candidata tiene datos de una persona o si son más de 15. Cada una quedó anotada
+  en `portal_emails_descartados` antes de borrarse, con respaldo JSON. Septiembre
+  pasó de 173 a **163 consultas reales**. Borrar una consulta arrastra en CASCADA
+  sus filas de `portal_inquiry_notifications` (los avisos que se mandaron por
+  ella): es correcto, eran avisos de algo que no era una consulta.
+
+### La respuesta automática al interesado está FRENADA A PROPÓSITO
+
+**No es un bug. No lo "arregles".** `consulta_respuesta_enabled` está en `true`,
+pero `ai_agent_settings.consulta_test_phones` tiene dos números (Diego y Julián)
+y `decidirEnvio` (`lib/leads/consulta-envio.ts`) solo le escribe a los de esa
+lista mientras tenga algo. Efecto medido el 2026-09-25: en septiembre entraron
+148 consultas, 131 con teléfono, y **ningún interesado real recibió el mensaje**.
+
+El dueño lo sabe y es deliberado: **falta la aprobación de Diego para que el
+sistema le hable a los clientes** (decisión 2026-09-25). Para activarlo se vacía
+esa lista — y recién ahí conviene revisar el resto del camino, porque nunca
+corrió contra gente de verdad.
 
 ---
 
