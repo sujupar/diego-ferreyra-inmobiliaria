@@ -982,6 +982,43 @@ iCloud lo baje, y a veces no baja.
   el UPDATE #4 de la migración `20260711000001` (idempotente) — propaga la FK a
   las consultas históricas y a las ingresadas entre migración y deploy.
 
+### La publicidad de los portales NO es una consulta (2026-09-25)
+
+- **Síntoma:** llegaban avisos de WhatsApp al equipo por consultas de propiedades
+  de OTRAS inmobiliarias, sin interesado, sin teléfono y con el email de la
+  propia casilla como "interesado". Casos: #463 y #485.
+- **Causa:** el 5/9 Argenprop empezó a mandar su newsletter ("🚩 Hoy ingresó esta
+  nueva propiedad Diego!") desde **`noresponder@argenprop.com`, la MISMA
+  dirección por la que llegan las consultas reales**. `isLeadEmail` decide por
+  REMITENTE para Argenprop —ZonaProp tiene un relay propio y ML exige un asunto—
+  así que toda esa publicidad entraba. 10 en 20 días: ruido para Diego y 6% de
+  basura en el conteo de septiembre.
+- **Fix:** `lib/integrations/portal-inquiries/es-consulta.ts`, enganchado en el
+  cron DESPUÉS de parsear y ANTES de `stats.parsed++`/match/insert. La regla es
+  **doble**: se descarta solo si (1) no trae NINGÚN dato del interesado —ni
+  nombre, ni teléfono, ni un email distinto de `GMAIL_IMPERSONATE_EMAIL`— **y**
+  (2) el asunto no matchea ningún formato de consulta conocido del portal
+  (`FORMATOS_DE_CONSULTA`, sacados de las 482 consultas guardadas, no inventados).
+- **Por qué doble, y no cualquiera de las dos sola:** solo (1) tiraría consultas
+  reales —**MercadoLibre oculta el contacto de quien pregunta**, y Argenprop tiene
+  un tercer formato raro ("Felicitaciones… hay alguien interesado") que a veces
+  viene vacío y fue un lead real en junio—; solo (2) sería una lista blanca que
+  se rompe sola el día que un portal estrene un formato.
+- **⚠️ NO usar el triángulo del mensaje como criterio.** Es la salida que parece
+  obvia y es la peor: sobre 60 días, de **139 consultas con ⚠️, 129 eran personas
+  reales** preguntando por avisos NUESTROS que todavía no están en el mapa
+  (publicados a mano, códigos sin cruzar). Callarlas son ~2 interesados perdidos
+  por día. El ⚠️ dice "no reconocí el aviso", no "no es una consulta", y está
+  puesto justamente para que se note que falta cargarlo.
+- **Lo descartado queda anotado** en `portal_emails_descartados` (migración
+  `20260925000001`, RLS, lectura para operaciones) con su motivo, y el cron lo
+  cuenta en `descartados`. Un filtro que tira en silencio es peor que el problema
+  que arregla: el día que un portal cambie el formato, el síntoma sería "dejaron
+  de llegar consultas" y esta tabla es el único lugar donde mirar.
+- **Detección:** `SELECT * FROM portal_emails_descartados ORDER BY created_at DESC`
+  — si aparece algo que era una consulta de verdad, el formato del portal cambió.
+  Y al revés: si vuelve a colarse publicidad, mirar qué dato del interesado trajo.
+
 ---
 
 ## Datos de Mercado por Barrio (tasador) — 2026-07
