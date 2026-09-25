@@ -19,6 +19,7 @@ import path from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 import { gmailConfigured, listMessages, getMessage } from '../lib/integrations/gmail/core'
 import { buildGmailQuery, detectPortal, isLeadEmail, parseByPortal } from '../lib/integrations/portal-inquiries/index'
+import { esConsultaDeVerdad } from '../lib/integrations/portal-inquiries/es-consulta'
 import { matchProperty } from '../lib/integrations/portal-inquiries/match'
 
 function loadEnvLocal() {
@@ -52,7 +53,7 @@ async function main() {
   console.log(`\n${DRY_RUN ? '🔎 DRY-RUN' : '✍️  COMMIT'} — leyendo Gmail (últimos ${DAYS} días, máx ${MAX})...\n`)
   const messages = await listMessages(buildGmailQuery(DAYS), MAX)
 
-  const stats = { fetched: messages.length, leads: 0, inserted: 0, duplicates: 0, skippedNotLead: 0, ignored: 0, unmatched: 0, errors: 0 }
+  const stats = { fetched: messages.length, leads: 0, inserted: 0, duplicates: 0, skippedNotLead: 0, descartados: 0, ignored: 0, unmatched: 0, errors: 0 }
 
   for (const m of messages) {
     try {
@@ -63,6 +64,20 @@ async function main() {
       stats.leads++
 
       const parsed = parseByPortal(portal, { from: full.from, subject: full.subject, text: full.text, html: full.html })
+
+      // La MISMA regla que el cron: la publicidad del portal no es una consulta.
+      // Sin esto, un backfill sobre un rango que incluya septiembre volvería a
+      // meter la publicidad de Argenprop que el cron ya descarta.
+      const veredicto = esConsultaDeVerdad(
+        { portal, subject: full.subject, leadName: parsed.leadName, leadEmail: parsed.leadEmail, leadPhone: parsed.leadPhone },
+        process.env.GMAIL_IMPERSONATE_EMAIL,
+      )
+      if (!veredicto.esConsulta) {
+        stats.descartados++
+        if (DRY_RUN) console.log(`  (descartado) ${portal} · ${full.subject.slice(0, 50)}`)
+        continue
+      }
+
       const match = await matchProperty(supabase, parsed)
       const isUnmatched = !match.assignedTo
       if (isUnmatched) stats.unmatched++

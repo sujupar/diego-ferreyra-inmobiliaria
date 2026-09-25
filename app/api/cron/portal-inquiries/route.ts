@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { gmailConfigured, getMessage, listMessages } from '@/lib/integrations/gmail/client'
 import { buildGmailQuery, detectPortal, isLeadEmail, parseByPortal } from '@/lib/integrations/portal-inquiries'
+import { esConsultaDeVerdad } from '@/lib/integrations/portal-inquiries/es-consulta'
+import { anotarDescartado, yaFueDescartado } from '@/lib/integrations/portal-inquiries/descartados'
 import { matchProperty } from '@/lib/integrations/portal-inquiries/match'
 import { notifyInquiry } from '@/lib/integrations/portal-inquiries/notify'
 import { evaluateDrought } from '@/lib/integrations/portal-inquiries/drought'
@@ -65,6 +67,7 @@ export async function GET(req: NextRequest) {
     duplicates: 0,
     ignored: 0, // remitente no reconocido
     skippedNotLead: 0, // del portal pero no es consulta (factura/marketing/soporte)
+    descartados: 0, // publicidad del portal disfrazada de consulta (ver es-consulta.ts)
     unmatched: 0, // sin asesor → fallback a Diego
     notifySent: 0,
     notifySkipped: 0,
@@ -124,6 +127,14 @@ export async function GET(req: NextRequest) {
           stats.duplicates++
           continue
         }
+        // Tampoco vale la pena volver a bajar un correo que ya se descartó: el
+        // cron ve los mismos mensajes cada 5 minutos durante 2 días. Se consulta
+        // SOLO si no estaba entre las consultas, así el caso normal sigue
+        // costando una sola consulta a la base.
+        if (await yaFueDescartado(supabase, m.id)) {
+          stats.duplicates++
+          continue
+        }
 
         const full = await getMessage(m.id)
         const portal = detectPortal(full.from, full.subject)
@@ -137,6 +148,33 @@ export async function GET(req: NextRequest) {
           continue
         }
         const parsed = parseByPortal(portal, { from: full.from, subject: full.subject, text: full.text, html: full.html })
+
+        // ¿Es una consulta, o es publicidad del propio portal? Argenprop manda su
+        // newsletter desde la MISMA dirección que las consultas, así que el
+        // filtro del remitente no alcanza. Ver `es-consulta.ts` — y OJO: la regla
+        // es doble a propósito, mirar solo si el aviso es nuestro callaría a las
+        // ~2 personas reales por día que preguntan por avisos sin mapear.
+        const veredicto = esConsultaDeVerdad(
+          {
+            portal,
+            subject: full.subject,
+            leadName: parsed.leadName,
+            leadEmail: parsed.leadEmail,
+            leadPhone: parsed.leadPhone,
+          },
+          process.env.GMAIL_IMPERSONATE_EMAIL,
+        )
+        if (!veredicto.esConsulta) {
+          await anotarDescartado(supabase, {
+            gmailMessageId: m.id,
+            portal,
+            remitente: full.from,
+            asunto: full.subject,
+            motivo: veredicto.motivo,
+          })
+          stats.descartados++
+          continue
+        }
         stats.parsed++
 
         const match = await matchProperty(supabase, parsed)
