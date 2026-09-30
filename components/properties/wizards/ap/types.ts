@@ -73,4 +73,5 @@ export interface ApListing {
   external_url: string | null
   last_published_at: string | null
   last_error: string | null
+  metadata?: Record<string, unknown> | null
 }

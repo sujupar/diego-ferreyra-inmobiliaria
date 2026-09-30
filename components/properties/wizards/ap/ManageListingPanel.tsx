@@ -1,26 +1,36 @@
 'use client'
+import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { soloElMensaje } from '@/lib/portals/types'
-import { Loader2, ArrowLeft, ExternalLink, Play, Trash2, Building2 } from 'lucide-react'
+import { Loader2, ArrowLeft, ExternalLink, Play, Trash2, Building2, Pencil } from 'lucide-react'
+import { EditarAvisoPanel } from '../EditarAvisoPanel'
+import { esFalloActualizacion } from '../editar-aviso-estado'
 import type { ApListing } from './types'
 
 export function ManageListingPanel({
   listing,
+  propertyId,
   propertyAddress,
   propertyTitle,
   managing,
   onAction,
   onBackToDetail,
+  onReintentarEnvio,
 }: {
   listing: ApListing
+  propertyId: string
   propertyAddress: string
   propertyTitle: string | null
   managing: 'baja' | 'republish' | null
   onAction: (action: 'baja' | 'republish') => void
   onBackToDetail: () => void
+  onReintentarEnvio: () => void
 }) {
+  const [editando, setEditando] = useState(false)
+  if (editando) return <EditarAvisoPanel propertyId={propertyId} portal="argenprop" onCerrar={() => setEditando(false)} />
+
   const statusInfo = {
     published: { label: 'Activo y visible', color: 'bg-emerald-600' },
     paused: { label: 'Dado de baja', color: 'bg-amber-500' },
@@ -66,7 +76,21 @@ export function ManageListingPanel({
             )}
           </div>
 
+          {(() => {
+            const f = listing.metadata?.actualizacion_fallida ?? null
+            if (!esFalloActualizacion(f)) return null
+            return (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 space-y-2">
+                <p>No se pudo mandar un cambio de la ficha a este portal: {soloElMensaje(f.motivo)}</p>
+                <Button size="sm" variant="outline" onClick={onReintentarEnvio}>Reintentar</Button>
+              </div>
+            )
+          })()}
+
           <div className="border-t pt-4 space-y-2">
+            <Button onClick={() => setEditando(true)} className="w-full justify-start">
+              <Pencil className="h-4 w-4 mr-2" />Editar datos del aviso
+            </Button>
             <p className="text-sm font-medium">¿Qué querés hacer?</p>
 
             {listing.status === 'published' && (

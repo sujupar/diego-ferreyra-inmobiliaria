@@ -71,11 +71,20 @@ export function MercadoLibreWizard({ propertyId }: { propertyId: string }) {
     return (
       <ManageListingPanel
         listing={listing}
+        propertyId={propertyId}
         propertyAddress={property.address}
         propertyTitle={property.title}
         managing={managing}
         onAction={changeStatus}
         onBackToDetail={() => router.push(`/properties/${propertyId}`)}
+        onReintentarEnvio={async () => {
+          const r = await fetch(`/api/properties/${propertyId}/portal-actualizacion`, {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ portal: 'mercadolibre' }),
+          })
+          toast[r.ok ? 'success' : 'error'](r.ok ? 'Se va a reintentar en un minuto.' : 'No se pudo reintentar.')
+          await reload()
+        }}
       />
     )
   }

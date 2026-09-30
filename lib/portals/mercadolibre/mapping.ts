@@ -4,6 +4,7 @@ import { extractYouTubeId } from './media'
 import { ML_MAX_FOTOS_AVISO } from '../photo-limits'
 import { fotosPublicables } from '../fotos-publicables'
 import { tituloSugerido, TITULO_MAX_ML } from '../titulo-sugerido'
+import { numeroArgentino } from '../edicion-comun'
 
 export interface MlAttribute {
   id: string
@@ -188,11 +189,38 @@ function derivedAttributes(property: Property): MlAttribute[] {
  * Si un valor llega como número pelado ("95"), ML lo rechaza:
  *   "Attribute COVERED_AREA ... is required and was omitted. The provided unit is not valid."
  * Esto pasa cuando un override del wizard (o el prefill) trae el número sin unidad.
- * Normalizamos al chokepoint: a los *_AREA les ponemos "m²" y a PROPERTY_AGE "años".
+ * Normalizamos al chokepoint: a los *_AREA les ponemos "m²", a PROPERTY_AGE "años" y a
+ * MAINTENANCE_FEE "ARS"/"USD"/"UVA" (expensas incluidas, 2026-09-30) — ML
+ * permite las tres monedas para expensas; una en USD/UVA que ya está así en
+ * el aviso vivo NO se puede pisar en pesos solo porque pasó por acá.
+ *
+ * El "$" que alguien tipea a mano ("$345.678", "$ 345.678 ARS") es parte de
+ * cómo se escribe un monto, no un símbolo pegado que haya que rechazar — se
+ * acepta como prefijo opcional y se interpreta como pesos. "US$"/"U$S"
+ * (con o sin espacio) es el prefijo habitual para dólares: sin este caso, un
+ * asesor que escribe "$345.678" ve la pantalla decir "Listo" mientras ML
+ * descarta el atributo en silencio (no matchea number_unit y lo omite del
+ * ítem, sin devolver error) — bug real, 2026-09-30.
  */
-function normalizeUnit(attr: MlAttribute): MlAttribute {
+export function normalizeUnit(attr: MlAttribute): MlAttribute {
   if (!attr.value_name) return attr
   const v = attr.value_name.trim()
+  if (attr.id === 'MAINTENANCE_FEE') {
+    // "600.000" (formato argentino, miles con punto) es un `Number()` de JS
+    // igual a 600 — hay que pasarlo por numeroArgentino ANTES de agregar la
+    // unidad (corrige también "600.000 ARS": numeroArgentino descarta las
+    // letras al limpiar). Un valor no numérico (ej. "A convenir") o con
+    // cualquier otra unidad/texto pegado no tiene nada que convertir con
+    // certeza — se deja igual en vez de adivinar.
+    const match = /^(US\$|U\$S|\$)?\s*([\d.,]+)\s*(ARS|USD|UVA)?$/i.exec(v)
+    if (!match) return attr
+    const n = numeroArgentino(match[2])
+    if (Number.isNaN(n)) return attr
+    const unit = match[3]?.toUpperCase()
+    if (unit === 'USD' || unit === 'UVA') return { ...attr, value_name: `${n} ${unit}` }
+    if (/^(US\$|U\$S)$/i.test(match[1] ?? '')) return { ...attr, value_name: `${n} USD` }
+    return { ...attr, value_name: `${Math.round(n)} ARS` } // default_unit de ML
+  }
   if (!/^[\d.,]+$/.test(v)) return attr // ya tiene unidad, o es texto (ej. "A estrenar")
   if (/_AREA$/.test(attr.id)) return { ...attr, value_name: `${v} m²` }
   if (attr.id === 'PROPERTY_AGE') return { ...attr, value_name: `${v} años` }

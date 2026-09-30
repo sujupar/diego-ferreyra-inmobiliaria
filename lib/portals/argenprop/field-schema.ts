@@ -86,7 +86,13 @@ export function getApSchema(property: Pick<Property, 'property_type'>): ApSchema
     { id: 'ESTADO_PROPIEDAD', name: 'Estado', valueType: 'list', required: false, allowedValues: ESTADO_PROPIEDAD },
     { id: 'ORIENTACION', name: 'Orientación', valueType: 'list', required: false, allowedValues: ORIENTACION },
     { id: 'DISPOSICION', name: 'Disposición', valueType: 'list', required: false, allowedValues: DISPOSICION },
+    { id: 'APTO_CREDITO', name: 'Apto crédito', valueType: 'boolean', required: false },
   )
+  // APTO_PROFESIONAL existe en el catálogo de Argenprop solo para DEPARTAMENTO
+  // (y DEPARTAMENTO_TIPO_CASA); en CASA no está (verificado 2026-09-26).
+  if (tipo === 'DEPARTAMENTO') {
+    recommended.push({ id: 'APTO_PROFESIONAL', name: 'Apto profesional', valueType: 'boolean', required: false })
+  }
   return { categoryId: tipo, required, recommended }
 }
 

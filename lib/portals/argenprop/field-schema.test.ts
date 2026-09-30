@@ -47,6 +47,17 @@ describe('field-schema argenprop', () => {
     expect(a).toMatch(/^60U6_[0-9a-f]{12}$/)
   })
 
+  it('ofrece apto crédito siempre y apto profesional solo en departamento y PH', () => {
+    const ids = (t: string) => {
+      const s = getApSchema({ property_type: t } as never)
+      return [...s.required, ...s.recommended].map(f => f.id)
+    }
+    expect(ids('departamento')).toEqual(expect.arrayContaining(['APTO_CREDITO', 'APTO_PROFESIONAL']))
+    expect(ids('ph')).toContain('APTO_PROFESIONAL')
+    expect(ids('casa')).toContain('APTO_CREDITO')
+    expect(ids('casa')).not.toContain('APTO_PROFESIONAL')
+  })
+
   it('apPublicUrl arma argenprop.com/{slug}--{idAviso}', () => {
     const u = apPublicUrl({ property_type: 'departamento', operation_type: 'venta', neighborhood: 'Palermo' } as never, 19840713)
     expect(u).toBe('https://www.argenprop.com/departamento-en-venta-palermo--19840713')

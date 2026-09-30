@@ -4,6 +4,7 @@ import { fetchAvailableListingTypes } from './listing-types'
 import { asegurarCategoriaPublicable } from './category-attributes'
 import { validateCommon } from '../validation'
 import { PortalAdapterError, mensajeYDetalle } from '../types'
+import type { MlItemVivo } from './edicion'
 import type {
   PortalAdapter,
   Property,
@@ -24,6 +25,19 @@ interface MlVisitsResponse {
 
 interface MlQuestionsResponse {
   total?: number
+}
+
+/**
+ * Distingue el 404 real de "este ítem no tiene descripción" de cualquier otro
+ * error (red, auth, 5xx). `mlFetch` no expone el status HTTP como campo propio,
+ * pero `PortalAdapterError.original` guarda el detalle crudo tal cual lo arma
+ * `fetchConTraduccion` en client.ts: `` `ML ${status} ${path}: ${text}` `` —
+ * de ahí sale el "404" que matcheamos acá. Exportada + pura para poder
+ * testearla sin pegarle a la red.
+ */
+export function esDescripcionInexistente(err: unknown): boolean {
+  const { paraElLog } = mensajeYDetalle(err)
+  return /\b404\b|not[_ ]?found/i.test(paraElLog)
 }
 
 export class MercadoLibreAdapter implements PortalAdapter {
@@ -132,38 +146,42 @@ export class MercadoLibreAdapter implements PortalAdapter {
     throw lastErr
   }
 
-  async update(property: Property, externalId: string): Promise<void> {
-    const payload = propertyToMlPayload(property)
-    // PUT no acepta category_id ni listing_type_id (son inmutables tras crear)
-    const updateable: Partial<typeof payload> = { ...payload }
-    delete updateable.category_id
-    delete (updateable as { listing_type_id?: string }).listing_type_id
-    // ML rechaza atributos "calculados" si se envían como input. Los detecta
-    // y los marca como warnings (cause_id 3611). Para evitar ruido en logs y
-    // posibles 400 en updates parciales, filtramos los conocidos.
-    const CALCULATED_ATTRS = new Set([
-      'HAS_LOWER_PRICE',
-      'BASE_PRICE',
-      'PRICE_TO_PAY',
-      'HAS_DISCOUNT',
-    ])
-    if (updateable.attributes) {
-      updateable.attributes = updateable.attributes.filter(
-        a => !CALCULATED_ATTRS.has(a.id),
-      )
+  async update(): Promise<void> {
+    // Reemplazado por el flujo de edición real: leerAviso + armarActualizacionMl
+    // (edicion.ts, puro y testeado) + enviarEdicion. Este `update` mandaba la
+    // FICHA completa y pisaba lo que alguien haya corregido a mano en el portal.
+    throw new Error('update() quedó en desuso: usar leerAviso + armarActualizacionMl + enviarEdicion (ver cambios-ficha.ts)')
+  }
+
+  /** Lee el ítem VIVO y su descripción (sub-recurso aparte en ML). */
+  async leerAviso(externalId: string): Promise<{ item: MlItemVivo; descripcion: string }> {
+    const item = await mlFetch<MlItemVivo>(`/items/${encodeURIComponent(externalId)}`)
+    let plainText = ''
+    try {
+      const desc = await mlFetch<{ plain_text?: string }>(`/items/${encodeURIComponent(externalId)}/description`)
+      plainText = desc.plain_text ?? ''
+    } catch (err) {
+      // Un ítem sin descripción responde 404 — eso sí es "no hay descripción".
+      // Cualquier OTRO error (red, 401, 5xx) NO puede leerse como "vacío": si se
+      // guardara así, una edición posterior pisaría una descripción real que
+      // simplemente no se pudo leer en este intento.
+      if (!esDescripcionInexistente(err)) throw err
     }
-    // La descripción se actualiza por su sub-recurso, no en el PUT del item.
-    const plainText = updateable.description?.plain_text
-    delete updateable.description
-    await mlFetch(`/items/${externalId}`, {
-      method: 'PUT',
-      body: JSON.stringify(updateable),
-    })
-    if (plainText) {
-      await mlFetch(`/items/${externalId}/description`, {
-        method: 'PUT',
-        body: JSON.stringify({ plain_text: plainText }),
-      }).catch(err => console.error(`[ml.update] descripción falló para ${externalId}`, err))
+    return { item, descripcion: plainText }
+  }
+
+  /**
+   * PUT del ítem (cuerpo ya armado por armarActualizacionMl) y, si cambió, la
+   * descripción. Un `body` vacío (`{}`) es la señal de "no cambió nada del
+   * ítem, solo la descripción" — se manda ESE PUT solo, para no pegarle a
+   * `/items/{id}` sin necesidad cuando lo único que cambió es texto aparte.
+   */
+  async enviarEdicion(externalId: string, body: Record<string, unknown>, descripcion?: string): Promise<void> {
+    if (Object.keys(body).length > 0) {
+      await mlFetch(`/items/${encodeURIComponent(externalId)}`, { method: 'PUT', body: JSON.stringify(body) })
+    }
+    if (descripcion !== undefined) {
+      await mlFetch(`/items/${encodeURIComponent(externalId)}/description`, { method: 'PUT', body: JSON.stringify({ plain_text: descripcion }) })
     }
   }
 

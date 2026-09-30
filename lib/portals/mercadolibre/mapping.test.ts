@@ -7,6 +7,7 @@ import {
   ML_LISTING_TYPES,
   ML_TIPOS_SOPORTADOS,
   ML_OPERACIONES_SOPORTADAS,
+  normalizeUnit,
 } from './mapping'
 import type { Property } from '../types'
 
@@ -248,5 +249,105 @@ describe('resolveCategory', () => {
 describe('ML_LISTING_TYPES', () => {
   it('gold_premium es el primer listing type', () => {
     expect(ML_LISTING_TYPES[0].id).toBe('gold_premium')
+  })
+})
+
+describe('expensas', () => {
+  it('expensas sin moneda salen con " ARS"', () => {
+    const p = makeProperty({ latitude: -34.6, longitude: -58.4 })
+    const payload = propertyToMlPayload(p, { attributeOverrides: { MAINTENANCE_FEE: { value_name: '150000' } } })
+    expect(payload.attributes.find(a => a.id === 'MAINTENANCE_FEE')?.value_name).toBe('150000 ARS')
+  })
+})
+
+describe('normalizeUnit — MAINTENANCE_FEE en formato argentino', () => {
+  // "600.000" tipeado en el wizard es formato argentino (miles con punto), no
+  // JS: sin pasar por numeroArgentino, ML recibe "600.000 ARS" y lo lee como
+  // 600 — la expensa se guarda con una pérdida de 1000x.
+  it('"600.000" (miles con punto) pasa a "600000 ARS", no "600.000 ARS"', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '600.000' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '600000 ARS',
+    })
+  })
+  it('"600000" (ya sin puntos) sigue dando "600000 ARS"', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '600000' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '600000 ARS',
+    })
+  })
+  it('un valor que YA trae " ARS" con formato argentino también se corrige', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '600.000 ARS' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '600000 ARS',
+    })
+  })
+  it('un valor no numérico queda intacto (no revienta)', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: 'A convenir' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: 'A convenir',
+    })
+  })
+})
+
+describe('normalizeUnit — MAINTENANCE_FEE en USD/UVA no se pisa a pesos', () => {
+  it('"500 USD" mantiene la moneda, sin redondear', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '500 USD' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '500 USD',
+    })
+  })
+  it('"500usd" (sin espacio, minúscula) también mantiene USD', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '500usd' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '500 USD',
+    })
+  })
+  it('"1.200 UVA" (miles con punto) normaliza el número y mantiene UVA', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '1.200 UVA' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '1200 UVA',
+    })
+  })
+  it('"1.5 USD" no se redondea', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '1.5 USD' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '1.5 USD',
+    })
+  })
+  it('una unidad desconocida ("500 EUR") queda intacta, no se adivina', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '500 EUR' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '500 EUR',
+    })
+  })
+})
+
+describe('normalizeUnit — MAINTENANCE_FEE con "$" tipeado a mano (bug 2026-09-30)', () => {
+  // Bug real: el asesor tipeó "$345.678", la pantalla dijo "Listo", pero ML
+  // descartó el atributo en silencio porque el "$" no matcheaba number_unit.
+  it('"$345.678" pasa a "345678 ARS"', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '$345.678' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '345678 ARS',
+    })
+  })
+  it('"$ 345.678 ARS" (con espacio y sufijo explícito) también da "345678 ARS"', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '$ 345.678 ARS' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '345678 ARS',
+    })
+  })
+  it('"US$ 500" se interpreta como dólares', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: 'US$ 500' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '500 USD',
+    })
+  })
+  it('"U$S 500" (otra forma habitual de escribir dólares) también da USD', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: 'U$S 500' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '500 USD',
+    })
   })
 })

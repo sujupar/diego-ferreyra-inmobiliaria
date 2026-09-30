@@ -1,6 +1,7 @@
-import { apFetch } from './client'
+import { apFetch, apGet } from './client'
 import { propertyToAvisoDto } from './mapping'
 import { apCodigo, apPublicUrl, type AttributeOverride } from './field-schema'
+import type { ApAvisoVivo } from './edicion'
 import {
   resolveCabaBarrioId,
   resolveBarrioId,
@@ -184,18 +185,22 @@ export class ArgenpropAdapter implements PortalAdapter {
     }
   }
 
-  /** Update = PUT /v1/avisos con el mismo JSON; el aviso se identifica por Codigo. */
-  async update(property: Property, _externalId: string, opts: ApPublishOptions = {}): Promise<void> {
-    const v = this.validate(property)
-    if (!v.ok) throw new PortalAdapterError(`Validación falló: ${v.errors.join(', ')}`, 'argenprop', 'validation', false)
-    const creds = this.requireCreds()
-    const codigo = apCodigo(property)
-    const { localidadId, barrioId } = await this.resolveLocalizacion(property)
-    const dto = propertyToAvisoDto(property, {
-      idAnunciante: creds.idAnunciante, codigo, localidadId, barrioId,
-      attributeOverrides: opts.attributeOverrides,
-    })
-    await apFetch(creds, '/v1/avisos', { method: 'PUT', body: JSON.stringify(dto) })
+  async update(): Promise<void> {
+    // Reemplazado por el flujo de edición real: leerAviso + armarAvisoActualizado
+    // (edicion.ts, puro y testeado) + enviarAviso. Este `update` mandaba la FICHA
+    // completa y borraba AptoCredito/lo corregido a mano en el portal.
+    throw new Error('update() quedó en desuso: usar leerAviso + armarAvisoActualizado + enviarAviso (ver cambios-ficha.ts)')
+  }
+
+  idAnunciante(): number { return this.requireCreds().idAnunciante }
+
+  async leerAviso(codigo: string): Promise<ApAvisoVivo> {
+    return apGet<ApAvisoVivo>(this.requireCreds(), `/v1/avisos/${encodeURIComponent(codigo)}`)
+  }
+
+  /** PUT /v1/avisos con el aviso COMPLETO (armarAvisoActualizado). */
+  async enviarAviso(dto: Record<string, unknown>): Promise<void> {
+    await apFetch(this.requireCreds(), '/v1/avisos', { method: 'PUT', body: JSON.stringify(dto) })
   }
 
   /** Cambia el estado del aviso. `externalId` = Codigo. */
