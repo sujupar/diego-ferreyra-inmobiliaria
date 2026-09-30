@@ -7,6 +7,7 @@ import {
   ML_LISTING_TYPES,
   ML_TIPOS_SOPORTADOS,
   ML_OPERACIONES_SOPORTADAS,
+  normalizeUnit,
 } from './mapping'
 import type { Property } from '../types'
 
@@ -256,5 +257,35 @@ describe('expensas', () => {
     const p = makeProperty({ latitude: -34.6, longitude: -58.4 })
     const payload = propertyToMlPayload(p, { attributeOverrides: { MAINTENANCE_FEE: { value_name: '150000' } } })
     expect(payload.attributes.find(a => a.id === 'MAINTENANCE_FEE')?.value_name).toBe('150000 ARS')
+  })
+})
+
+describe('normalizeUnit — MAINTENANCE_FEE en formato argentino', () => {
+  // "600.000" tipeado en el wizard es formato argentino (miles con punto), no
+  // JS: sin pasar por numeroArgentino, ML recibe "600.000 ARS" y lo lee como
+  // 600 — la expensa se guarda con una pérdida de 1000x.
+  it('"600.000" (miles con punto) pasa a "600000 ARS", no "600.000 ARS"', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '600.000' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '600000 ARS',
+    })
+  })
+  it('"600000" (ya sin puntos) sigue dando "600000 ARS"', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '600000' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '600000 ARS',
+    })
+  })
+  it('un valor que YA trae " ARS" con formato argentino también se corrige', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '600.000 ARS' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '600000 ARS',
+    })
+  })
+  it('un valor no numérico queda intacto (no revienta)', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: 'A convenir' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: 'A convenir',
+    })
   })
 })

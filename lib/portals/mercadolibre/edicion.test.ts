@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { valoresDesdeItem, armarActualizacionMl, normalizarMl, type MlItemVivo } from './edicion'
+import { mismoValor } from '../edicion-comun'
 import type { CategoryAttribute, MlRawAttribute } from './category-attributes'
 
 const schema: CategoryAttribute[] = [
@@ -75,5 +76,15 @@ describe('normalizarMl', () => {
     expect(normalizarMl('MAINTENANCE_FEE', '600000')).toBe('600000 ARS')
     expect(normalizarMl('COVERED_AREA', '90')).toBe('90 m²')
     expect(normalizarMl('ROOMS', '4')).toBe('4')
+  })
+  // El uso real de normalizarMl es como normalizador de mismoValor: el valor
+  // VIVO que devuelve ML ("600.000 ARS", formato argentino) y lo que la
+  // persona tipeó sin puntos ("600000") tienen que contar como el MISMO
+  // valor — si no, cada guardado de esta ficha se marca "cambiado" sin que
+  // nadie haya tocado nada.
+  it('"600000" y "600.000 ARS" cuentan como el mismo valor (vía mismoValor)', () => {
+    expect(
+      mismoValor({ value_name: '600000' }, { value_name: '600.000 ARS' }, v => normalizarMl('MAINTENANCE_FEE', v)),
+    ).toBe(true)
   })
 })

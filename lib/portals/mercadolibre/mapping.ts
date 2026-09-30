@@ -4,6 +4,7 @@ import { extractYouTubeId } from './media'
 import { ML_MAX_FOTOS_AVISO } from '../photo-limits'
 import { fotosPublicables } from '../fotos-publicables'
 import { tituloSugerido, TITULO_MAX_ML } from '../titulo-sugerido'
+import { numeroArgentino } from '../edicion-comun'
 
 export interface MlAttribute {
   id: string
@@ -194,10 +195,19 @@ function derivedAttributes(property: Property): MlAttribute[] {
 export function normalizeUnit(attr: MlAttribute): MlAttribute {
   if (!attr.value_name) return attr
   const v = attr.value_name.trim()
+  if (attr.id === 'MAINTENANCE_FEE') {
+    // "600.000" (formato argentino, miles con punto) es un `Number()` de JS
+    // igual a 600 — hay que pasarlo por numeroArgentino ANTES de agregar
+    // " ARS", tenga o no ya un sufijo de unidad ("600.000 ARS" también se
+    // corrige: numeroArgentino descarta las letras al limpiar). Un valor no
+    // numérico (ej. "A convenir") no tiene nada que convertir, se deja igual.
+    const n = numeroArgentino(v)
+    if (Number.isNaN(n)) return attr
+    return { ...attr, value_name: `${Math.round(n)} ARS` } // default_unit de ML
+  }
   if (!/^[\d.,]+$/.test(v)) return attr // ya tiene unidad, o es texto (ej. "A estrenar")
   if (/_AREA$/.test(attr.id)) return { ...attr, value_name: `${v} m²` }
   if (attr.id === 'PROPERTY_AGE') return { ...attr, value_name: `${v} años` }
-  if (attr.id === 'MAINTENANCE_FEE') return { ...attr, value_name: `${v} ARS` } // default_unit de ML
   return attr
 }
 
