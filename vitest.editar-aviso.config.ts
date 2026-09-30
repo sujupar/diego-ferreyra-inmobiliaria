@@ -7,6 +7,7 @@ export default defineConfig({
     globals: true,
     include: [
       'lib/portals/edicion-comun.test.ts',
+      'lib/portals/edicion-validacion.test.ts',
       'lib/portals/cambios-ficha.test.ts',
       'lib/portals/worker-logic.test.ts',
       'lib/portals/mercadolibre/*.test.ts',
