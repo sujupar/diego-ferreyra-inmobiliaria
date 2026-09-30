@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": [
+    "next-env.d.ts", "types/**/*.ts",
+    "lib/portals/**/*.ts",
+    "app/api/properties/[[]id]/ml-aviso/**/*.ts",
+    "app/api/properties/[[]id]/ap-aviso/**/*.ts",
+    "app/api/properties/[[]id]/portal-actualizacion/**/*.ts",
+    "app/api/properties/[[]id]/ml-attributes/**/*.ts",
+    "components/properties/wizards/**/*.tsx", "components/properties/wizards/**/*.ts"
+  ]
+}
