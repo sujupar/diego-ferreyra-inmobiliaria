@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { esquemaCambios, validarIds, expensasDesdeCambio } from './edicion-validacion'
+import { esquemaCambios, validarIds, expensasDesdeCambio, expensasMlValidas } from './edicion-validacion'
 
 describe('validación de la edición', () => {
   it('rechaza títulos largos y descripciones de más de 5000', () => {
@@ -23,5 +23,22 @@ describe('validación de la edición', () => {
     expect(expensasDesdeCambio(undefined)).toBeUndefined()
     expect(expensasDesdeCambio({ value_id: 'x' })).toBeUndefined() // solo value_id: no hay número
     expect(expensasDesdeCambio({ value_name: '-' })).toBeUndefined() // no interpretable (NaN)
+  })
+  it('expensasMlValidas: acepta lo que normalizeUnit sabe convertir (incluido "$" a mano)', () => {
+    expect(expensasMlValidas({ value_name: '600000' })).toBe(true)
+    expect(expensasMlValidas({ value_name: '600.000' })).toBe(true)
+    expect(expensasMlValidas({ value_name: '$345.678' })).toBe(true)
+    expect(expensasMlValidas({ value_name: '500 USD' })).toBe(true)
+    expect(expensasMlValidas({ value_name: 'US$ 500' })).toBe(true)
+  })
+  it('expensasMlValidas: rechaza texto que ML descartaría en silencio', () => {
+    expect(expensasMlValidas({ value_name: 'A convenir' })).toBe(false)
+    expect(expensasMlValidas({ value_name: '500 EUR' })).toBe(false)
+  })
+  it('expensasMlValidas: nada que validar cuando no hay texto (no tocar, vaciar, o solo value_id)', () => {
+    expect(expensasMlValidas(undefined)).toBe(true)
+    expect(expensasMlValidas(null)).toBe(true)
+    expect(expensasMlValidas({ value_name: '' })).toBe(true)
+    expect(expensasMlValidas({ value_id: 'x' })).toBe(true)
   })
 })

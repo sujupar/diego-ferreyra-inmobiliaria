@@ -5,6 +5,7 @@
  */
 import { z } from 'zod'
 import { numeroArgentino, type CambiosDeValores, type Valor } from './edicion-comun'
+import { normalizeUnit } from './mercadolibre/mapping'
 
 const valor = z.object({ value_name: z.string().max(500).optional(), value_id: z.string().max(100).optional() }).strict()
 
@@ -44,4 +45,23 @@ export function expensasDesdeCambio(v: Valor | null | undefined): number | null 
   const n = numeroArgentino(texto)
   if (!Number.isFinite(n)) return undefined
   return n <= 0 ? null : Math.round(n)
+}
+
+/**
+ * Defensa en profundidad para MercadoLibre: `normalizeUnit` (lib/portals/mercadolibre/mapping.ts)
+ * agrega la unidad ("ARS"/"USD"/"UVA") a un valor de expensas que sepa interpretar; si el
+ * texto no matchea ninguna de sus formas conocidas, lo devuelve TAL CUAL, sin unidad. ML
+ * acepta ese POST igual (200 "Listo" en pantalla) pero descarta el atributo en silencio —
+ * no hay error que mostrar, así que hay que frenarlo ACÁ, antes de mandarlo (bug real
+ * "$345.678" no reconocido, 2026-09-30, ya arreglado en normalizeUnit; este chequeo cubre
+ * cualquier otro texto que se le escape en el futuro).
+ * `undefined`/`null` (no tocar / vaciar el dato) no tienen nada que validar → `true`.
+ * Un valor solo por `value_id` tampoco pasa por `normalizeUnit` (que solo mira `value_name`).
+ */
+export function expensasMlValidas(v: Valor | null | undefined): boolean {
+  if (v == null) return true
+  if (v.value_name === undefined) return true
+  if (v.value_name.trim() === '') return true // vaciar el dato (convención ML_VALOR_VACIO): nada que validar
+  const normalizado = normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: v.value_name }).value_name ?? ''
+  return /\s(ARS|USD|UVA)$/.test(normalizado)
 }

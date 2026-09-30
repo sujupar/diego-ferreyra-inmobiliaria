@@ -52,6 +52,28 @@ describe('explicarErrorMl', () => {
     expect(new Set(frases).size).toBe(frases.length)
   })
 
+  it('cuando ML mezcla warning y error, el mensaje sale del error, no del warning', () => {
+    // Visto en QA: ML rechazó una edición y el `cause` traía un warning de
+    // HAS_LOWER_PRICE (informativo) junto al error real. Antes del fix, el
+    // warning se mezclaba con el resto del texto tapando el motivo real.
+    const cuerpo = JSON.stringify({
+      cause: [
+        { code: 'item.warning.has_lower_price', message: 'Hay una publicación con menor precio', type: 'warning' },
+        { code: 'item.attributes.invalid', message: 'Expensas inválidas', type: 'error' },
+      ],
+    })
+    const texto = explicarErrorMl(400, cuerpo)
+    expect(texto).not.toMatch(/menor precio/i)
+    expect(texto).toMatch(/campo que MercadoLibre exige/i)
+  })
+
+  it('si TODO lo que manda ML son warnings (sin ningún error), se usan igual', () => {
+    const cuerpo = JSON.stringify({
+      cause: [{ code: 'item.warning.other', message: 'Hay una publicación con menor precio', type: 'warning' }],
+    })
+    expect(explicarErrorMl(400, cuerpo)).toMatch(/menor precio/i)
+  })
+
   it('un cuerpo que no es JSON no rompe: da un mensaje entendible igual', () => {
     const texto = explicarErrorMl(400, '<html><body>Bad Request</body></html>')
     expect(texto).toMatch(/rechazó el aviso/i)

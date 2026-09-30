@@ -322,3 +322,32 @@ describe('normalizeUnit — MAINTENANCE_FEE en USD/UVA no se pisa a pesos', () =
     })
   })
 })
+
+describe('normalizeUnit — MAINTENANCE_FEE con "$" tipeado a mano (bug 2026-09-30)', () => {
+  // Bug real: el asesor tipeó "$345.678", la pantalla dijo "Listo", pero ML
+  // descartó el atributo en silencio porque el "$" no matcheaba number_unit.
+  it('"$345.678" pasa a "345678 ARS"', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '$345.678' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '345678 ARS',
+    })
+  })
+  it('"$ 345.678 ARS" (con espacio y sufijo explícito) también da "345678 ARS"', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '$ 345.678 ARS' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '345678 ARS',
+    })
+  })
+  it('"US$ 500" se interpreta como dólares', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: 'US$ 500' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '500 USD',
+    })
+  })
+  it('"U$S 500" (otra forma habitual de escribir dólares) también da USD', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: 'U$S 500' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '500 USD',
+    })
+  })
+})

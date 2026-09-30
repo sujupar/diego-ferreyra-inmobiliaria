@@ -107,10 +107,16 @@ export function explicarErrorMl(status: number, cuerpo: string): string {
     return explicarErrorHttp('MercadoLibre', status)
   }
 
-  let causas: { code?: string; message?: string }[] = []
+  let causas: { code?: string; message?: string; type?: string }[] = []
   try {
     const j = JSON.parse(cuerpo) as { cause?: unknown; message?: string }
     causas = Array.isArray(j.cause) ? (j.cause as typeof causas) : []
+    // ML mezcla en `cause` tipos "warning" (ej. HAS_LOWER_PRICE, informativo) y
+    // "error" (por qué realmente rechazó el pedido). Si el rechazo trae al menos
+    // un "error", ese es el que le importa al asesor — sin este filtro, un
+    // warning podía taparle el mensaje real de por qué falló la edición.
+    const errores = causas.filter(c => c.type !== 'warning')
+    if (errores.length > 0) causas = errores
     if (causas.length === 0 && j.message) causas = [{ message: j.message }]
   } catch {
     return explicarErrorHttp('MercadoLibre', status)

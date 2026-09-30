@@ -9,7 +9,7 @@ import { valoresDesdeItem, armarActualizacionMl, ML_VALOR_VACIO } from '@/lib/po
 import { derivedPrefill } from '@/lib/portals/mercadolibre/prefill'
 import { resolverIdsDeLista } from '@/lib/portals/datos-visita'
 import { sugeridosPara, type Valores } from '@/lib/portals/edicion-comun'
-import { esquemaCambios, validarIds, expensasDesdeCambio } from '@/lib/portals/edicion-validacion'
+import { esquemaCambios, validarIds, expensasDesdeCambio, expensasMlValidas } from '@/lib/portals/edicion-validacion'
 import { writeAudit } from '@/lib/portals/audit'
 import { mensajeYDetalle } from '@/lib/portals/types'
 import { TITULO_MAX_ML } from '@/lib/portals/titulo-sugerido'
@@ -81,6 +81,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { required, recommended } = await fetchCategoryAttributes(item.category_id)
     const errorIds = validarIds(cambios.valores, new Set([...required, ...recommended].map(a => a.id)), ML_VALOR_VACIO !== null)
     if (errorIds) return NextResponse.json({ error: errorIds }, { status: 400 })
+    // Defensa en profundidad: un texto que normalizeUnit no sabe convertir (ej. "$345.678"
+    // antes del fix, o cualquier otro formato raro) hace que ML acepte el POST pero
+    // descarte el atributo en silencio — sin esto, la pantalla diría "Listo" y la
+    // expensa jamás llegaría al aviso.
+    if (!expensasMlValidas(cambios.valores.MAINTENANCE_FEE)) {
+      return NextResponse.json({ error: 'Las expensas tienen que ser un número, por ejemplo 150000.' }, { status: 400 })
+    }
     const { body, cambiados } = armarActualizacionMl(item, { titulo: cambios.titulo, valores: cambios.valores }, raw)
     const nuevaDescripcion = cambios.descripcion !== undefined && cambios.descripcion !== descripcion ? cambios.descripcion : undefined
     // Si lo ÚNICO que cambió es la descripción, el ítem no tiene nada que decirle a ML:

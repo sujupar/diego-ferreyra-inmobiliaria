@@ -193,6 +193,14 @@ function derivedAttributes(property: Property): MlAttribute[] {
  * MAINTENANCE_FEE "ARS"/"USD"/"UVA" (expensas incluidas, 2026-09-30) — ML
  * permite las tres monedas para expensas; una en USD/UVA que ya está así en
  * el aviso vivo NO se puede pisar en pesos solo porque pasó por acá.
+ *
+ * El "$" que alguien tipea a mano ("$345.678", "$ 345.678 ARS") es parte de
+ * cómo se escribe un monto, no un símbolo pegado que haya que rechazar — se
+ * acepta como prefijo opcional y se interpreta como pesos. "US$"/"U$S"
+ * (con o sin espacio) es el prefijo habitual para dólares: sin este caso, un
+ * asesor que escribe "$345.678" ve la pantalla decir "Listo" mientras ML
+ * descarta el atributo en silencio (no matchea number_unit y lo omite del
+ * ítem, sin devolver error) — bug real, 2026-09-30.
  */
 export function normalizeUnit(attr: MlAttribute): MlAttribute {
   if (!attr.value_name) return attr
@@ -204,12 +212,13 @@ export function normalizeUnit(attr: MlAttribute): MlAttribute {
     // letras al limpiar). Un valor no numérico (ej. "A convenir") o con
     // cualquier otra unidad/texto pegado no tiene nada que convertir con
     // certeza — se deja igual en vez de adivinar.
-    const match = /^([\d.,]+)\s*(ARS|USD|UVA)?$/i.exec(v)
+    const match = /^(US\$|U\$S|\$)?\s*([\d.,]+)\s*(ARS|USD|UVA)?$/i.exec(v)
     if (!match) return attr
-    const n = numeroArgentino(match[1])
+    const n = numeroArgentino(match[2])
     if (Number.isNaN(n)) return attr
-    const unit = match[2]?.toUpperCase()
+    const unit = match[3]?.toUpperCase()
     if (unit === 'USD' || unit === 'UVA') return { ...attr, value_name: `${n} ${unit}` }
+    if (/^(US\$|U\$S)$/i.test(match[1] ?? '')) return { ...attr, value_name: `${n} USD` }
     return { ...attr, value_name: `${Math.round(n)} ARS` } // default_unit de ML
   }
   if (!/^[\d.,]+$/.test(v)) return attr // ya tiene unidad, o es texto (ej. "A estrenar")
