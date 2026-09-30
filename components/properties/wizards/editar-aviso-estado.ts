@@ -19,3 +19,16 @@ export function resumenDeCambios(cambios: CambiosDeValores, campos: readonly Cam
 export function esFalloActualizacion(x: unknown): x is { motivo: string } {
   return typeof x === 'object' && x !== null && typeof (x as { motivo?: unknown }).motivo === 'string'
 }
+
+/**
+ * Mensaje para cuando el `fetch` de guardar() TIRA (sin red, DNS caído,
+ * timeout del navegador) — antes de que exista una Response que leer, así
+ * que `leerJson()` no llega a correr. Sin esto el catch dejaba pasar el error
+ * crudo del navegador (o nada) y la persona perdía lo que había tipeado sin
+ * saber por qué se quedó ahí. Un solo mensaje fijo: no importa la forma
+ * exacta del error (TypeError de fetch, lo que sea), lo único accionable
+ * para la persona es "probá de nuevo".
+ */
+export function mensajeDeErrorDeRed(_e: unknown): string {
+  return 'No se pudo conectar. Revisá la conexión y probá de nuevo.'
+}

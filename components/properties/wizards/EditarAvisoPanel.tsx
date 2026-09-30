@@ -4,7 +4,7 @@ import { Loader2, ExternalLink, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AttrField, type CampoAtributo } from './AttrField'
 import { aplicarCambios, diferencias, type Valores } from '@/lib/portals/edicion-comun'
-import { resumenDeCambios } from './editar-aviso-estado'
+import { resumenDeCambios, mensajeDeErrorDeRed } from './editar-aviso-estado'
 
 type Portal = 'mercadolibre' | 'argenprop'
 interface Aviso {
@@ -52,14 +52,22 @@ export function EditarAvisoPanel({ propertyId, portal, onCerrar }: { propertyId:
     if (!aviso) return
     setEnviando(true); setError(null)
     try {
-      const r = await fetch(`/api/properties/${propertyId}/${RUTA[portal]}`, {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ cambios: {
-          ...(cambioTitulo ? { titulo: titulo.trim() } : {}),
-          ...(cambioDescripcion ? { descripcion } : {}),
-          valores: cambiosValores,
-        } }),
-      })
+      let r: Response
+      try {
+        r = await fetch(`/api/properties/${propertyId}/${RUTA[portal]}`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ cambios: {
+            ...(cambioTitulo ? { titulo: titulo.trim() } : {}),
+            ...(cambioDescripcion ? { descripcion } : {}),
+            valores: cambiosValores,
+          } }),
+        })
+      } catch (e) {
+        // El fetch mismo tiró (sin conexión) — no hay Response que leer con
+        // leerJson(). Se muestra el aviso y se sigue en confirmando=true con
+        // lo que la persona tipeó intacto, para que pueda reintentar.
+        setError(mensajeDeErrorDeRed(e)); return
+      }
       const j = await leerJson(r)
       if (!r.ok) { setError(String(j.error ?? 'El portal rechazó el cambio.')); setConfirmando(false); return }
       setListo({ expensasEnFicha: j.expensasEnFicha === true })
@@ -103,7 +111,7 @@ export function EditarAvisoPanel({ propertyId, portal, onCerrar }: { propertyId:
               <label key={a.id} className="space-y-1">
                 <span className="text-sm">{a.name}{sugerido && <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-800">Se va a agregar</span>}</span>
                 <AttrField attr={a} value={valores[a.id]} onSet={v => {
-                  if (!v && tieneEnPortal && !aviso.permiteVaciar) return // ML no deja vaciar (sonda T1)
+                  if (!v && tieneEnPortal && !aviso.permiteVaciar) return // ML SÍ deja vaciar (sonda 2026-09-30); guard para portales que no
                   setValores(prev => { const n = { ...prev }; if (v) n[a.id] = v; else delete n[a.id]; return n })
                 }} />
               </label>
