@@ -289,3 +289,36 @@ describe('normalizeUnit — MAINTENANCE_FEE en formato argentino', () => {
     })
   })
 })
+
+describe('normalizeUnit — MAINTENANCE_FEE en USD/UVA no se pisa a pesos', () => {
+  it('"500 USD" mantiene la moneda, sin redondear', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '500 USD' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '500 USD',
+    })
+  })
+  it('"500usd" (sin espacio, minúscula) también mantiene USD', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '500usd' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '500 USD',
+    })
+  })
+  it('"1.200 UVA" (miles con punto) normaliza el número y mantiene UVA', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '1.200 UVA' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '1200 UVA',
+    })
+  })
+  it('"1.5 USD" no se redondea', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '1.5 USD' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '1.5 USD',
+    })
+  })
+  it('una unidad desconocida ("500 EUR") queda intacta, no se adivina', () => {
+    expect(normalizeUnit({ id: 'MAINTENANCE_FEE', value_name: '500 EUR' })).toEqual({
+      id: 'MAINTENANCE_FEE',
+      value_name: '500 EUR',
+    })
+  })
+})

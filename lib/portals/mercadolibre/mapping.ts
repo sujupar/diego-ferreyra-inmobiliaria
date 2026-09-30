@@ -190,19 +190,26 @@ function derivedAttributes(property: Property): MlAttribute[] {
  *   "Attribute COVERED_AREA ... is required and was omitted. The provided unit is not valid."
  * Esto pasa cuando un override del wizard (o el prefill) trae el número sin unidad.
  * Normalizamos al chokepoint: a los *_AREA les ponemos "m²", a PROPERTY_AGE "años" y a
- * MAINTENANCE_FEE "ARS" (expensas incluidas, 2026-09-30).
+ * MAINTENANCE_FEE "ARS"/"USD"/"UVA" (expensas incluidas, 2026-09-30) — ML
+ * permite las tres monedas para expensas; una en USD/UVA que ya está así en
+ * el aviso vivo NO se puede pisar en pesos solo porque pasó por acá.
  */
 export function normalizeUnit(attr: MlAttribute): MlAttribute {
   if (!attr.value_name) return attr
   const v = attr.value_name.trim()
   if (attr.id === 'MAINTENANCE_FEE') {
     // "600.000" (formato argentino, miles con punto) es un `Number()` de JS
-    // igual a 600 — hay que pasarlo por numeroArgentino ANTES de agregar
-    // " ARS", tenga o no ya un sufijo de unidad ("600.000 ARS" también se
-    // corrige: numeroArgentino descarta las letras al limpiar). Un valor no
-    // numérico (ej. "A convenir") no tiene nada que convertir, se deja igual.
-    const n = numeroArgentino(v)
+    // igual a 600 — hay que pasarlo por numeroArgentino ANTES de agregar la
+    // unidad (corrige también "600.000 ARS": numeroArgentino descarta las
+    // letras al limpiar). Un valor no numérico (ej. "A convenir") o con
+    // cualquier otra unidad/texto pegado no tiene nada que convertir con
+    // certeza — se deja igual en vez de adivinar.
+    const match = /^([\d.,]+)\s*(ARS|USD|UVA)?$/i.exec(v)
+    if (!match) return attr
+    const n = numeroArgentino(match[1])
     if (Number.isNaN(n)) return attr
+    const unit = match[2]?.toUpperCase()
+    if (unit === 'USD' || unit === 'UVA') return { ...attr, value_name: `${n} ${unit}` }
     return { ...attr, value_name: `${Math.round(n)} ARS` } // default_unit de ML
   }
   if (!/^[\d.,]+$/.test(v)) return attr // ya tiene unidad, o es texto (ej. "A estrenar")

@@ -63,6 +63,12 @@ describe('armarActualizacionMl', () => {
     expect(body.pictures).toEqual([{ source: 'https://x/1.jpg' }])
     expect(cambiados).toEqual(['titulo', 'fotos'])
   })
+  it('una expensa VIVA en USD no se pisa a pesos por un cambio ajeno', () => {
+    const vivo = item([{ id: 'MAINTENANCE_FEE', value_id: null, value_name: '500 USD' }])
+    const { body } = armarActualizacionMl(vivo, { valores: { ROOMS: { value_name: '5' } } }, raw)
+    const attrs = body.attributes as { id: string; value_name?: string | null }[]
+    expect(attrs.find(a => a.id === 'MAINTENANCE_FEE')?.value_name).toBe('500 USD')
+  })
   it('vaciar usa ML_VALOR_VACIO o falla si ML no permite vaciar', () => {
     // Ajustado al resultado de la Tarea 1: ML_VALOR_VACIO = { value_name: '' } (no null),
     // así que vaciar SÍ está permitido y no debe tirar.
