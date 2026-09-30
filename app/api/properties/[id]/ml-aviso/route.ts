@@ -42,11 +42,12 @@ async function contexto(id: string) {
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const ctx = await contexto(id)
+  if ('error' in ctx) return ctx.error
   try {
-    const { id } = await params
-    const ctx = await contexto(id)
-    if ('error' in ctx) return ctx.error
     const { item, descripcion } = await ctx.ml.leerAviso(ctx.listing.external_id)
+    if (item.status === 'closed') return NextResponse.json({ error: 'El aviso está cerrado en MercadoLibre.' }, { status: 409 })
     const { required, recommended } = await fetchCategoryAttributes(item.category_id)
     const schema = [...required, ...recommended]
     const valores = valoresDesdeItem(item, schema)
@@ -75,15 +76,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     // Se RE-lee el aviso: si alguien lo tocó en ML mientras la pantalla estaba abierta, se respeta.
     const { item, descripcion } = await ctx.ml.leerAviso(ctx.listing.external_id)
+    if (item.status === 'closed') return NextResponse.json({ error: 'El aviso está cerrado en MercadoLibre.' }, { status: 409 })
     const raw = await getRawAttributes(item.category_id)
     const { required, recommended } = await fetchCategoryAttributes(item.category_id)
     const errorIds = validarIds(cambios.valores, new Set([...required, ...recommended].map(a => a.id)), ML_VALOR_VACIO !== null)
     if (errorIds) return NextResponse.json({ error: errorIds }, { status: 400 })
     const { body, cambiados } = armarActualizacionMl(item, { titulo: cambios.titulo, valores: cambios.valores }, raw)
     const nuevaDescripcion = cambios.descripcion !== undefined && cambios.descripcion !== descripcion ? cambios.descripcion : undefined
+    // Si lo ÚNICO que cambió es la descripción, el ítem no tiene nada que decirle a ML:
+    // se manda `{}` para que enviarEdicion se salte el PUT del ítem.
+    const soloDescripcion = cambiados.length === 0 && nuevaDescripcion !== undefined
     if (nuevaDescripcion !== undefined) cambiados.push('descripcion')
     if (cambiados.length === 0) return NextResponse.json({ ok: true, cambiados: [], expensasEnFicha: false })
-    await ctx.ml.enviarEdicion(ctx.listing.external_id, body, nuevaDescripcion)
+    await ctx.ml.enviarEdicion(ctx.listing.external_id, soloDescripcion ? {} : body, nuevaDescripcion)
     await writeAudit(ctx.supabase, { listingId: ctx.listing.id, propertyId: id, portal: 'mercadolibre', eventType: 'updated',
       payload: { origen: 'edicion', cambiados }, actor: ctx.user.profile.full_name ?? ctx.user.id })
     // DESPUÉS del éxito en el portal: las expensas pasan a la ficha (y el trigger las lleva al otro portal).

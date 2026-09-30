@@ -170,9 +170,16 @@ export class MercadoLibreAdapter implements PortalAdapter {
     return { item, descripcion: plainText }
   }
 
-  /** PUT del ítem (cuerpo ya armado por armarActualizacionMl) y, si cambió, la descripción. */
+  /**
+   * PUT del ítem (cuerpo ya armado por armarActualizacionMl) y, si cambió, la
+   * descripción. Un `body` vacío (`{}`) es la señal de "no cambió nada del
+   * ítem, solo la descripción" — se manda ESE PUT solo, para no pegarle a
+   * `/items/{id}` sin necesidad cuando lo único que cambió es texto aparte.
+   */
   async enviarEdicion(externalId: string, body: Record<string, unknown>, descripcion?: string): Promise<void> {
-    await mlFetch(`/items/${encodeURIComponent(externalId)}`, { method: 'PUT', body: JSON.stringify(body) })
+    if (Object.keys(body).length > 0) {
+      await mlFetch(`/items/${encodeURIComponent(externalId)}`, { method: 'PUT', body: JSON.stringify(body) })
+    }
     if (descripcion !== undefined) {
       await mlFetch(`/items/${encodeURIComponent(externalId)}/description`, { method: 'PUT', body: JSON.stringify({ plain_text: descripcion }) })
     }

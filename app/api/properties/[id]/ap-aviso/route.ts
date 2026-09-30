@@ -20,6 +20,9 @@ const NO_EDITABLES = new Set(['TIPO_OPERACION', 'MONEDA', 'SUBTIPO'])
 const sinNoEditables = <T extends { id: string }>(campos: readonly T[]) => campos.filter(c => !NO_EDITABLES.has(c.id))
 const valoresSinNoEditables = (v: Valores): Valores =>
   Object.fromEntries(Object.entries(v).filter(([id]) => !NO_EDITABLES.has(id)))
+// El GET ya normaliza a mayúsculas casi todo, pero Publicacion.EstadoPublicacion
+// es texto libre del portal — comparar sin asumir su casing.
+const eliminado = (estado: string | undefined) => (estado ?? '').trim().toUpperCase() === 'ELIMINADO'
 
 /** Auth + propiedad + listing publicado + adapter. Devuelve Response si algo falla. */
 async function contexto(id: string) {
@@ -46,12 +49,12 @@ async function contexto(id: string) {
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const ctx = await contexto(id)
+  if ('error' in ctx) return ctx.error
   try {
-    const { id } = await params
-    const ctx = await contexto(id)
-    if ('error' in ctx) return ctx.error
     const aviso = await ctx.ap.leerAviso(ctx.listing.external_id)
-    if (aviso.Publicacion.EstadoPublicacion === 'ELIMINADO') {
+    if (eliminado(aviso.Publicacion.EstadoPublicacion)) {
       return NextResponse.json({ error: 'El aviso fue eliminado en Argenprop' }, { status: 409 })
     }
     const s = getApSchema(ctx.property)
@@ -85,7 +88,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { cambios } = parsed.data
   try {
     const aviso = await ctx.ap.leerAviso(ctx.listing.external_id)
-    if (aviso.Publicacion.EstadoPublicacion === 'ELIMINADO') {
+    if (eliminado(aviso.Publicacion.EstadoPublicacion)) {
       return NextResponse.json({ error: 'El aviso fue eliminado en Argenprop' }, { status: 409 })
     }
     const s = getApSchema(ctx.property)
