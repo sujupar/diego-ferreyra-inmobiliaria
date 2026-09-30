@@ -16,10 +16,17 @@ async function main() {
   const { rows: [def] } = await c.query(`SELECT pg_get_functiondef('public.requeue_listings_on_update'::regproc) AS d`)
   if (!def.d.includes('cambios_ficha') || def.d.includes('OLD.title')) throw new Error('la función no quedó actualizada')
 
+  // Si el listing elegido ya tenía cambios_ficha/needs_update de ANTES (una
+  // marca vieja que quedó pendiente), el UPDATE de la prueba no puede probar
+  // nada: el metadata leído después bien podría ser el rastro previo, no el
+  // que dejó este UPDATE. Por eso se exige que arranque limpio.
   const { rows: [pl] } = await c.query(`
     SELECT pl.id, pl.property_id FROM property_listings pl JOIN properties p ON p.id = pl.property_id
-     WHERE pl.status = 'published' AND p.status = 'approved' LIMIT 1`)
-  if (!pl) throw new Error('no hay listing publicado para probar')
+     WHERE pl.status = 'published' AND p.status = 'approved'
+       AND pl.metadata->'cambios_ficha' IS NULL
+       AND COALESCE((pl.metadata->>'needs_update')::boolean, false) = false
+     LIMIT 1`)
+  if (!pl) throw new Error('no hay listing publicado y limpio (sin cambios_ficha/needs_update previos) para probar')
   await c.query('BEGIN')
   try {
     await c.query(`UPDATE properties SET asking_price = asking_price + 1, title = coalesce(title,'') || ' ' WHERE id = $1`, [pl.property_id])
