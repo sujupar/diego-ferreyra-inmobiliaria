@@ -4,12 +4,19 @@ import type { Database } from '@/types/database.types'
 import { initPortals, getAdapter } from '@/lib/portals'
 import { writeAudit } from '@/lib/portals/audit'
 import type { PortalName } from '@/lib/portals/types'
-import { nextStateAfterError, stripFlag, swapFlag } from '@/lib/portals/worker-logic'
+import { mensajeYDetalle } from '@/lib/portals/types'
+import { nextStateAfterError, stripFlag, swapFlag, estadoTrasFalloActualizacion, metadataTrasExito } from '@/lib/portals/worker-logic'
 import { ensurePublicSlug } from '@/lib/landing/assign-slug'
 import { mlFetch } from '@/lib/portals/mercadolibre/client'
 import { resolveCategory } from '@/lib/portals/mercadolibre/mapping'
-import { fetchCategoryAttributes } from '@/lib/portals/mercadolibre/category-attributes'
+import { fetchCategoryAttributes, getRawAttributes } from '@/lib/portals/mercadolibre/category-attributes'
 import type { Property } from '@/lib/portals/types'
+import { leerCambiosFicha, cambiosMlDesdeFicha, cambiosApDesdeFicha } from '@/lib/portals/cambios-ficha'
+import { armarActualizacionMl } from '@/lib/portals/mercadolibre/edicion'
+import { armarAvisoActualizado } from '@/lib/portals/argenprop/edicion'
+import { MercadoLibreAdapter } from '@/lib/portals/mercadolibre/adapter'
+import { ArgenpropAdapter } from '@/lib/portals/argenprop/adapter'
+import { getApSchema } from '@/lib/portals/argenprop/field-schema'
 
 type SB = ReturnType<typeof createClient<Database>>
 
@@ -318,21 +325,53 @@ async function processUpdates(supabase: SB) {
       continue
     }
 
+    const campos = leerCambiosFicha(locked.metadata)
+    if (campos.length === 0) {
+      // Marca vieja (trigger anterior) o sin campos relevantes: no sabemos qué
+      // cambió, y reenviar la ficha entera es justo lo que pisaba lo corregido
+      // a mano en el portal. Se limpia sin enviar.
+      await supabase.from('property_listings').update({ metadata: metadataTrasExito(locked.metadata) as never }).eq('id', listing.id)
+      continue
+    }
     try {
-      await adapter.update(property, listing.external_id)
-      const meta = stripFlag(locked.metadata, 'update_in_progress')
-      await supabase.from('property_listings').update({ metadata: meta as never }).eq('id', listing.id)
+      let cambiados: string[] = []
+      if (listing.portal === 'mercadolibre' && adapter instanceof MercadoLibreAdapter) {
+        const { item } = await adapter.leerAviso(listing.external_id)
+        const raw = await getRawAttributes(item.category_id)
+        const r = armarActualizacionMl(item, cambiosMlDesdeFicha(campos, property), raw)
+        cambiados = r.cambiados
+        if (cambiados.length > 0) await adapter.enviarEdicion(listing.external_id, r.body)
+      } else if (listing.portal === 'argenprop' && adapter instanceof ArgenpropAdapter) {
+        const aviso = await adapter.leerAviso(listing.external_id)
+        const s = getApSchema(property)
+        const r = armarAvisoActualizado(aviso, cambiosApDesdeFicha(campos, property), [...s.required, ...s.recommended], adapter.idAnunciante())
+        cambiados = r.cambiados
+        if (cambiados.length > 0) await adapter.enviarAviso(r.dto)
+      }
+      await supabase.from('property_listings').update({ metadata: metadataTrasExito(locked.metadata) as never, last_error: null }).eq('id', listing.id)
+      if (cambiados.length > 0) {
+        await writeAudit(supabase, {
+          listingId: listing.id,
+          propertyId: listing.property_id,
+          portal: listing.portal as PortalName,
+          eventType: 'updated',
+          payload: { origen: 'ficha', cambiados },
+        })
+      }
+    } catch (err) {
+      const { paraElLog } = mensajeYDetalle(err)
+      await supabase.from('property_listings')
+        .update({ metadata: estadoTrasFalloActualizacion(locked.metadata, paraElLog) as never, last_error: paraElLog })
+        .eq('id', listing.id)
       await writeAudit(supabase, {
         listingId: listing.id,
         propertyId: listing.property_id,
         portal: listing.portal as PortalName,
-        eventType: 'updated',
+        eventType: 'failed',
+        errorMessage: paraElLog,
+        payload: { origen: 'ficha', campos },
       })
-    } catch (err) {
-      const meta = stripFlag(locked.metadata, 'update_in_progress')
-      ;(meta as Record<string, unknown>).needs_update = true
-      await supabase.from('property_listings').update({ metadata: meta as never }).eq('id', listing.id)
-      console.error(`[update-listing] ${listing.portal} ${listing.id}`, err)
+      console.error(`[update-listing] ${listing.portal} ${listing.id}`, paraElLog)
     }
   }
 }

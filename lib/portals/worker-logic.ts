@@ -87,3 +87,37 @@ export function swapFlag(
   m[to] = true
   return m
 }
+
+/** Cuántas veces se reintenta el envío por cambio de ficha antes de rendirse y avisar. */
+export const MAX_INTENTOS_ACTUALIZACION = 3
+
+/**
+ * Estado del listing tras un fallo al enviar un cambio de ficha (precio/fotos/
+ * expensas) a un portal. Reintenta hasta MAX_INTENTOS_ACTUALIZACION veces (el
+ * worker vuelve a levantarlo porque needs_update queda en true); al llegar al
+ * tope, deja de reintentar y guarda el fallo en `actualizacion_fallida` para
+ * que la ficha lo muestre — un reintento eterno mandando la ficha entera es
+ * justo lo que este diseño evita.
+ */
+export function estadoTrasFalloActualizacion(metadata: unknown, motivo: string): Record<string, unknown> {
+  const m = stripFlag(metadata, 'update_in_progress')
+  const intentos = Number(m.intentos_actualizacion ?? 0) + 1
+  if (intentos < MAX_INTENTOS_ACTUALIZACION) return { ...m, needs_update: true, intentos_actualizacion: intentos }
+  return {
+    ...m,
+    needs_update: false,
+    intentos_actualizacion: intentos,
+    actualizacion_fallida: { motivo, cambios_ficha: m.cambios_ficha ?? [], fecha: new Date().toISOString() },
+  }
+}
+
+/**
+ * Metadata tras enviar con éxito un cambio de ficha: borra todas las marcas
+ * del ciclo de actualización (lock, cola, contador, fallo previo) y conserva
+ * el resto (ej. ml_attributes del wizard).
+ */
+export function metadataTrasExito(metadata: unknown): Record<string, unknown> {
+  let m = { ...((metadata as Record<string, unknown>) ?? {}) }
+  for (const k of ['needs_update', 'update_in_progress', 'cambios_ficha', 'intentos_actualizacion', 'actualizacion_fallida']) m = stripFlag(m, k)
+  return m
+}

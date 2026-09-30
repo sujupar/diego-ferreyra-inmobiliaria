@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { nextStateAfterError, stripFlag, setFlag, swapFlag } from './worker-logic'
+import { nextStateAfterError, stripFlag, setFlag, swapFlag, estadoTrasFalloActualizacion, metadataTrasExito } from './worker-logic'
 import { PortalAdapterError } from './types'
 
 describe('nextStateAfterError', () => {
@@ -104,5 +104,33 @@ describe('swapFlag', () => {
   it('works when source flag is missing', () => {
     const result = swapFlag({ other: 'x' }, 'needs_update', 'update_in_progress')
     expect(result).toEqual({ other: 'x', update_in_progress: true })
+  })
+})
+
+describe('estadoTrasFalloActualizacion', () => {
+  it('reintenta hasta 3 y después deja el fallo visible', () => {
+    const m1 = estadoTrasFalloActualizacion({ cambios_ficha: ['precio'] }, 'ML 400')
+    expect(m1).toMatchObject({ needs_update: true, intentos_actualizacion: 1 })
+    const m3 = estadoTrasFalloActualizacion({ ...m1, intentos_actualizacion: 2 }, 'ML 400')
+    expect(m3.needs_update).toBe(false)
+    expect(m3.actualizacion_fallida).toMatchObject({ motivo: 'ML 400', cambios_ficha: ['precio'] })
+  })
+
+  it('limpia update_in_progress y no arrastra un actualizacion_fallida viejo si vuelve a reintentar', () => {
+    const m1 = estadoTrasFalloActualizacion({ update_in_progress: true, cambios_ficha: ['fotos'] }, 'timeout')
+    expect(m1).not.toHaveProperty('update_in_progress')
+    expect(m1.needs_update).toBe(true)
+    expect(m1.intentos_actualizacion).toBe(1)
+  })
+})
+
+describe('metadataTrasExito', () => {
+  it('limpia todas las marcas de actualización y conserva lo demás', () => {
+    expect(metadataTrasExito({ needs_update: true, cambios_ficha: ['precio'], intentos_actualizacion: 2, ml_attributes: { A: 1 } }))
+      .toEqual({ ml_attributes: { A: 1 } })
+  })
+
+  it('metadata null → objeto vacío', () => {
+    expect(metadataTrasExito(null)).toEqual({})
   })
 })
