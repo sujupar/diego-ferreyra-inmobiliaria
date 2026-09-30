@@ -76,6 +76,10 @@ export function armarActualizacionMl(item: MlItemVivo, cambios: CambiosMl, raw: 
   const cambiaPrecio = cambios.precio !== undefined && cambios.precio !== item.price
   if (cambiaTitulo) body.title = cambios.titulo!.trim() // `!`: cambiaTitulo ya garantiza que existe
   if (cambiaPrecio) body.price = cambios.precio
+  // Sin comparar contra `item.attributes`/pictures actuales: `cambios.fotos`
+  // solo llega definido cuando ALGO en la DB marcó "fotos" como cambiado (ver
+  // cambios-ficha.ts), así que reenviar la lista entera acá es inofensivo —
+  // nunca se dispara por un cambio ajeno a las fotos.
   if (cambios.fotos !== undefined) body.pictures = cambios.fotos.slice(0, ML_MAX_FOTOS_AVISO).map(source => ({ source }))
   const cambiados = [
     ...(cambiaTitulo ? ['titulo'] : []), ...ids,

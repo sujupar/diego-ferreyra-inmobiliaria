@@ -121,3 +121,29 @@ export function metadataTrasExito(metadata: unknown): Record<string, unknown> {
   for (const k of ['needs_update', 'update_in_progress', 'cambios_ficha', 'intentos_actualizacion', 'actualizacion_fallida']) m = stripFlag(m, k)
   return m
 }
+
+/** El resultado del envío a un portal: éxito, o fallo con el motivo para el log/la ficha. */
+export type ResultadoEnvioFicha = { ok: true } | { ok: false; motivo: string }
+
+/**
+ * Metadata final tras terminar un envío, calculada sobre una lectura FRESCA
+ * de la fila (no la foto `locked` de cuando arrancó el envío). El trigger de
+ * la ficha puede correr MIENTRAS el adapter está en el aire: mergea
+ * `needs_update:true` + el nuevo `cambios_ficha` en la metadata sin tocar
+ * `update_in_progress` (ese lock es cosa del worker). Si eso pasó, escribir
+ * sobre la foto vieja pisaría el cambio nuevo y se perdería para siempre —
+ * por eso todo lo que decide qué guardar vive acá, sobre la metadata fresca.
+ */
+export function metadataFinalTrasEnvio(fresca: unknown, resultado: ResultadoEnvioFicha): Record<string, unknown> {
+  const reMarcado = ((fresca as { needs_update?: unknown } | null)?.needs_update) === true
+  if (resultado.ok) {
+    // Re-marcado: alguien volvió a tocar la ficha durante el envío. Se deja
+    // needs_update en true (y su cambios_ficha ya mergeado) para que el
+    // próximo tick del worker lo mande — solo se saca el lock del envío que
+    // recién terminó.
+    return reMarcado ? stripFlag(fresca, 'update_in_progress') : metadataTrasExito(fresca)
+  }
+  // Fallo: el flujo normal de reintentos/tope sirve igual esté re-marcado o
+  // no, porque `fresca.cambios_ficha` YA es la unión que dejó el trigger.
+  return estadoTrasFalloActualizacion(fresca, resultado.motivo)
+}

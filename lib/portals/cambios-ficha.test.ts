@@ -38,4 +38,16 @@ describe('desde la ficha', () => {
     expect(cambiosMlDesdeFicha([], p)).toEqual({ valores: {} })
     expect(cambiosApDesdeFicha([], p)).toEqual({ valores: {} })
   })
+
+  it('sin fotos publicables (todas borradas o base64) → NO manda fotos, para no vaciar el aviso', () => {
+    const sinFotos = { ...p, photos: ['data:image/png;base64,xx', 'http://inseguro/1.jpg'] }
+    expect(cambiosMlDesdeFicha(['fotos'], sinFotos)).toEqual({ valores: {} })
+    expect(cambiosApDesdeFicha(['fotos'], sinFotos)).toEqual({ valores: {} })
+  })
+
+  it('sin fotos publicables con photos vacío/null → tampoco manda fotos', () => {
+    expect(cambiosMlDesdeFicha(['fotos'], { ...p, photos: [] })).toEqual({ valores: {} })
+    expect(cambiosMlDesdeFicha(['fotos'], { ...p, photos: null })).toEqual({ valores: {} })
+    expect(cambiosApDesdeFicha(['fotos'], { ...p, photos: null })).toEqual({ valores: {} })
+  })
 })

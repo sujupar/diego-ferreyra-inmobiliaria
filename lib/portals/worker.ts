@@ -5,7 +5,7 @@ import { initPortals, getAdapter } from '@/lib/portals'
 import { writeAudit } from '@/lib/portals/audit'
 import type { PortalName } from '@/lib/portals/types'
 import { mensajeYDetalle } from '@/lib/portals/types'
-import { nextStateAfterError, stripFlag, swapFlag, estadoTrasFalloActualizacion, metadataTrasExito } from '@/lib/portals/worker-logic'
+import { nextStateAfterError, stripFlag, swapFlag, metadataTrasExito, metadataFinalTrasEnvio } from '@/lib/portals/worker-logic'
 import { ensurePublicSlug } from '@/lib/landing/assign-slug'
 import { mlFetch } from '@/lib/portals/mercadolibre/client'
 import { resolveCategory } from '@/lib/portals/mercadolibre/mapping'
@@ -301,6 +301,10 @@ async function processUpdates(supabase: SB) {
     .limit(10)
 
   for (const listing of listings ?? []) {
+    // Solo ML y Argenprop tienen flujo de edición (leerAviso/armarActualizacion*).
+    // Explícito acá, y no solo vía adapter.enabled, para que un Zonaprop que
+    // algún día se habilite no le pise marcas needs_update a nadie sin querer.
+    if (listing.portal !== 'mercadolibre' && listing.portal !== 'argenprop') continue
     const adapter = getAdapter(listing.portal as PortalName)
     if (!adapter || !adapter.enabled || !listing.external_id) continue
 
@@ -348,7 +352,14 @@ async function processUpdates(supabase: SB) {
         cambiados = r.cambiados
         if (cambiados.length > 0) await adapter.enviarAviso(r.dto)
       }
-      await supabase.from('property_listings').update({ metadata: metadataTrasExito(locked.metadata) as never, last_error: null }).eq('id', listing.id)
+      // Metadata FRESCA, no `locked`: el trigger de la ficha pudo haber
+      // mergeado un needs_update nuevo mientras el adapter estaba en el aire
+      // (ver comentario de metadataFinalTrasEnvio) — escribir sobre `locked`
+      // lo perdería.
+      const { data: fresca } = await supabase.from('property_listings').select('metadata').eq('id', listing.id).maybeSingle()
+      await supabase.from('property_listings')
+        .update({ metadata: metadataFinalTrasEnvio(fresca?.metadata ?? locked.metadata, { ok: true }) as never, last_error: null })
+        .eq('id', listing.id)
       if (cambiados.length > 0) {
         await writeAudit(supabase, {
           listingId: listing.id,
@@ -360,8 +371,9 @@ async function processUpdates(supabase: SB) {
       }
     } catch (err) {
       const { paraElLog } = mensajeYDetalle(err)
+      const { data: fresca } = await supabase.from('property_listings').select('metadata').eq('id', listing.id).maybeSingle()
       await supabase.from('property_listings')
-        .update({ metadata: estadoTrasFalloActualizacion(locked.metadata, paraElLog) as never, last_error: paraElLog })
+        .update({ metadata: metadataFinalTrasEnvio(fresca?.metadata ?? locked.metadata, { ok: false, motivo: paraElLog }) as never, last_error: paraElLog })
         .eq('id', listing.id)
       await writeAudit(supabase, {
         listingId: listing.id,

@@ -18,10 +18,24 @@ export function leerCambiosFicha(metadata: unknown): CampoFicha[] {
   return CONOCIDOS.filter(c => raw.includes(c))
 }
 
+/**
+ * Fotos publicables desde la ficha, o `undefined` si no queda ninguna. Si
+ * TODAS las fotos se borraron o eran base64, un array vacío se traduciría en
+ * `pictures: []`/`Multimedia` sin FOTO → el envío VACIARÍA el aviso publicado
+ * en vez de no tocar sus fotos. Omitir el campo entero es lo seguro.
+ */
+function fotosONada(photos: unknown[] | null): string[] | undefined {
+  const validas = fotosPublicables(photos).validas
+  return validas.length > 0 ? validas : undefined
+}
+
 export function cambiosMlDesdeFicha(campos: CampoFicha[], p: Ficha): CambiosMl {
   const out: CambiosMl = { valores: {} }
   if (campos.includes('precio')) out.precio = p.asking_price
-  if (campos.includes('fotos')) out.fotos = fotosPublicables(p.photos).validas
+  if (campos.includes('fotos')) {
+    const fotos = fotosONada(p.photos)
+    if (fotos) out.fotos = fotos
+  }
   if (campos.includes('expensas')) out.valores.MAINTENANCE_FEE = p.expensas ? { value_name: `${p.expensas} ARS` } : null
   return out
 }
@@ -29,7 +43,10 @@ export function cambiosMlDesdeFicha(campos: CampoFicha[], p: Ficha): CambiosMl {
 export function cambiosApDesdeFicha(campos: CampoFicha[], p: Ficha): CambiosAp {
   const out: CambiosAp = { valores: {} }
   if (campos.includes('precio')) out.precio = p.asking_price
-  if (campos.includes('fotos')) out.fotos = fotosPublicables(p.photos).validas
+  if (campos.includes('fotos')) {
+    const fotos = fotosONada(p.photos)
+    if (fotos) out.fotos = fotos
+  }
   if (campos.includes('expensas')) out.valores.EXPENSAS = p.expensas ? { value_name: String(p.expensas) } : null
   return out
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { nextStateAfterError, stripFlag, setFlag, swapFlag, estadoTrasFalloActualizacion, metadataTrasExito } from './worker-logic'
+import { nextStateAfterError, stripFlag, setFlag, swapFlag, estadoTrasFalloActualizacion, metadataTrasExito, metadataFinalTrasEnvio } from './worker-logic'
 import { PortalAdapterError } from './types'
 
 describe('nextStateAfterError', () => {
@@ -132,5 +132,43 @@ describe('metadataTrasExito', () => {
 
   it('metadata null → objeto vacío', () => {
     expect(metadataTrasExito(null)).toEqual({})
+  })
+})
+
+describe('metadataFinalTrasEnvio', () => {
+  // El trigger de la ficha corre en paralelo al envío al portal: si alguien
+  // toca precio/fotos/expensas MIENTRAS el worker está mandando el cambio
+  // anterior, el trigger mergea needs_update:true + cambios_ficha en la
+  // metadata SIN tocar update_in_progress. Escribir sobre la foto vieja
+  // (`locked`) pisaría ese cambio nuevo y se perdería para siempre.
+
+  it('éxito, re-marcado durante el envío → conserva needs_update y el cambio nuevo, solo saca el lock', () => {
+    const fresca = { update_in_progress: true, needs_update: true, cambios_ficha: ['precio', 'fotos'], ml_attributes: { A: 1 } }
+    expect(metadataFinalTrasEnvio(fresca, { ok: true }))
+      .toEqual({ needs_update: true, cambios_ficha: ['precio', 'fotos'], ml_attributes: { A: 1 } })
+  })
+
+  it('éxito, no re-marcado → limpia todo (metadataTrasExito)', () => {
+    const fresca = { update_in_progress: true, cambios_ficha: ['precio'], ml_attributes: { A: 1 } }
+    expect(metadataFinalTrasEnvio(fresca, { ok: true })).toEqual({ ml_attributes: { A: 1 } })
+  })
+
+  it('fallo, re-marcado durante el envío → conserva el cambio unido y cuenta como un reintento normal', () => {
+    const fresca = { update_in_progress: true, needs_update: true, cambios_ficha: ['precio', 'fotos'], intentos_actualizacion: 1 }
+    const r = metadataFinalTrasEnvio(fresca, { ok: false, motivo: 'ML 500' })
+    expect(r).toMatchObject({ needs_update: true, cambios_ficha: ['precio', 'fotos'], intentos_actualizacion: 2 })
+  })
+
+  it('fallo, no re-marcado → comportamiento normal de estadoTrasFalloActualizacion', () => {
+    const fresca = { update_in_progress: true, cambios_ficha: ['precio'] }
+    const r = metadataFinalTrasEnvio(fresca, { ok: false, motivo: 'x' })
+    expect(r).toMatchObject({ needs_update: true, intentos_actualizacion: 1 })
+  })
+
+  it('fallo, no re-marcado, último intento → deja actualizacion_fallida visible', () => {
+    const fresca = { update_in_progress: true, cambios_ficha: ['precio'], intentos_actualizacion: 2 }
+    const r = metadataFinalTrasEnvio(fresca, { ok: false, motivo: 'ML 400' })
+    expect(r.needs_update).toBe(false)
+    expect(r.actualizacion_fallida).toMatchObject({ motivo: 'ML 400', cambios_ficha: ['precio'] })
   })
 })
