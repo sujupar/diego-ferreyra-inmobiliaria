@@ -17,10 +17,8 @@ const vacio = (v: Valor | undefined | null) => !v || (!v.value_id && !(v.value_n
 export function mismoValor(a: Valor | undefined, b: Valor | undefined, normalizar: (v: string) => string = s => s): boolean {
   if (vacio(a) && vacio(b)) return true
   if (vacio(a) || vacio(b)) return false
-  const aValue = a as Valor
-  const bValue = b as Valor
-  if (aValue.value_id && bValue.value_id) return aValue.value_id === bValue.value_id
-  const na = aValue.value_name ?? '', nb = bValue.value_name ?? ''
+  if (a?.value_id && b?.value_id) return a.value_id === b.value_id
+  const na = a?.value_name ?? '', nb = b?.value_name ?? ''
   return plano(normalizar(na)) === plano(normalizar(nb))
 }
 
