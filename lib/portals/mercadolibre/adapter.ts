@@ -4,6 +4,7 @@ import { fetchAvailableListingTypes } from './listing-types'
 import { asegurarCategoriaPublicable } from './category-attributes'
 import { validateCommon } from '../validation'
 import { PortalAdapterError, mensajeYDetalle } from '../types'
+import type { MlItemVivo } from './edicion'
 import type {
   PortalAdapter,
   Property,
@@ -132,38 +133,26 @@ export class MercadoLibreAdapter implements PortalAdapter {
     throw lastErr
   }
 
-  async update(property: Property, externalId: string): Promise<void> {
-    const payload = propertyToMlPayload(property)
-    // PUT no acepta category_id ni listing_type_id (son inmutables tras crear)
-    const updateable: Partial<typeof payload> = { ...payload }
-    delete updateable.category_id
-    delete (updateable as { listing_type_id?: string }).listing_type_id
-    // ML rechaza atributos "calculados" si se envían como input. Los detecta
-    // y los marca como warnings (cause_id 3611). Para evitar ruido en logs y
-    // posibles 400 en updates parciales, filtramos los conocidos.
-    const CALCULATED_ATTRS = new Set([
-      'HAS_LOWER_PRICE',
-      'BASE_PRICE',
-      'PRICE_TO_PAY',
-      'HAS_DISCOUNT',
-    ])
-    if (updateable.attributes) {
-      updateable.attributes = updateable.attributes.filter(
-        a => !CALCULATED_ATTRS.has(a.id),
-      )
-    }
-    // La descripción se actualiza por su sub-recurso, no en el PUT del item.
-    const plainText = updateable.description?.plain_text
-    delete updateable.description
-    await mlFetch(`/items/${externalId}`, {
-      method: 'PUT',
-      body: JSON.stringify(updateable),
-    })
-    if (plainText) {
-      await mlFetch(`/items/${externalId}/description`, {
-        method: 'PUT',
-        body: JSON.stringify({ plain_text: plainText }),
-      }).catch(err => console.error(`[ml.update] descripción falló para ${externalId}`, err))
+  async update(): Promise<void> {
+    // Reemplazado por el flujo de edición real: leerAviso + armarActualizacionMl
+    // (edicion.ts, puro y testeado) + enviarEdicion. Este `update` mandaba la
+    // FICHA completa y pisaba lo que alguien haya corregido a mano en el portal.
+    throw new Error('update() quedó en desuso: usar leerAviso + armarActualizacionMl + enviarEdicion (ver cambios-ficha.ts)')
+  }
+
+  /** Lee el ítem VIVO y su descripción (sub-recurso aparte en ML). */
+  async leerAviso(externalId: string): Promise<{ item: MlItemVivo; descripcion: string }> {
+    const item = await mlFetch<MlItemVivo>(`/items/${encodeURIComponent(externalId)}`)
+    const desc = await mlFetch<{ plain_text?: string }>(`/items/${encodeURIComponent(externalId)}/description`)
+      .catch(() => ({ plain_text: '' })) // un ítem sin descripción responde 404
+    return { item, descripcion: desc.plain_text ?? '' }
+  }
+
+  /** PUT del ítem (cuerpo ya armado por armarActualizacionMl) y, si cambió, la descripción. */
+  async enviarEdicion(externalId: string, body: Record<string, unknown>, descripcion?: string): Promise<void> {
+    await mlFetch(`/items/${encodeURIComponent(externalId)}`, { method: 'PUT', body: JSON.stringify(body) })
+    if (descripcion !== undefined) {
+      await mlFetch(`/items/${encodeURIComponent(externalId)}/description`, { method: 'PUT', body: JSON.stringify({ plain_text: descripcion }) })
     }
   }
 
