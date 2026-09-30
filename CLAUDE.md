@@ -982,6 +982,18 @@ iCloud lo baje, y a veces no baja.
   el UPDATE #4 de la migración `20260711000001` (idempotente) — propaga la FK a
   las consultas históricas y a las ingresadas entre migración y deploy.
 
+### Editar un aviso YA publicado (ML + Argenprop) y el envío automático — 2026-09-30 (PR #34)
+
+- **Qué es:** botón "Editar datos del aviso" en el panel de gestión de ML y de Argenprop (`EditarAvisoPanel.tsx`) → `GET/POST /api/properties/[id]/ml-aviso` y `/ap-aviso`. Antes, con el aviso publicado no se podía tocar nada y el equipo corregía a mano en los portales.
+- **Regla madre de TODA escritura a un portal: leer el aviso VIVO → aplicar SOLO lo cambiado → enviar completo.** Módulos puros: `lib/portals/edicion-comun.ts`, `mercadolibre/edicion.ts` (`armarActualizacionMl`), `argenprop/edicion.ts` (`armarAvisoActualizado`). Argenprop `PUT /v1/avisos` REEMPLAZA el aviso entero (GET devuelve "Muy_Bueno"/`SubTipo`; el PUT quiere "MUY_BUENO"/`Subtipo` y `Localizacion` solo con Ids). `adapter.update(property, id)` quedó en DESUSO (tira error): reenviaba la ficha entera y pisaba lo corregido a mano.
+- **ML medido con un ítem [TEST] (sonda 2026-09-30):** un PUT con TODOS los atributos escribibles no pierde ninguno; un PUT parcial FUSIONA; `{ value_name: '' }` borra un atributo (`ML_VALOR_VACIO`), `{ value_id: '-1' }` lo deja como "No aplica". Se excluyen `read_only`, `fixed` y los calculados (`HAS_LOWER_PRICE`…). ML normaliza títulos ("[TEST" → "[test"): los guards de scripts deben mirar el título de la FICHA.
+- **Envío automático:** el trigger `requeue_listings_on_update` (migración `20260930000001`) solo reacciona a `asking_price`, `photos`, `expensas` y anota `metadata.cambios_ficha`; el worker (`processUpdates` + `lib/portals/cambios-ficha.ts`) aplica solo eso sobre el aviso vivo, re-lee la metadata antes de escribir (no pierde un cambio hecho durante el envío), nunca manda una lista de fotos vacía, y a los 3 fallos deja `actualizacion_fallida` visible con "Reintentar" (`POST /portal-actualizacion`). Título y descripción ya NO viajan solos: los wizards los escriben en la ficha y publicar en Argenprop le cambiaba el título a ML. Una marca `needs_update` sin `cambios_ficha` se limpia SIN enviar.
+- **Orden de despliegue (si se toca esto):** primero el código, ENSEGUIDA la migración. Con el trigger nuevo y el worker viejo se reenvía la ficha entera; confirmado en el QA: el worker viejo borró el `AptoCredito` de Argenprop a los ~40 s de editar expensas.
+- **Montos:** `numeroArgentino()` (edicion-comun) interpreta "$600.000", "600.000,50", "US$ 500". Sin eso, `Number("600.000")` = 600 (pasó en tres lugares). Expensas de ML siempre con unidad; USD/UVA se respetan (ML acepta las tres). Unas expensas editadas en un portal se escriben en `properties.expensas` SOLO después de que el portal aceptó, y el trigger las lleva al otro.
+- **Argenprop suma "Apto crédito"** (campo top-level `AptoCredito`, nunca en Caracteristicas) **y "Apto profesional"** (solo DEPARTAMENTO/PH). Aparecen también en la Sección 08 de la visita.
+- **Pendiente (Parte 2):** diccionario común para cargar un dato una vez para los dos portales, `properties.amenities` → portales, el resto del catálogo de Argenprop (≈150 datos: `GET /v1/catalogo/categorias/{CAT}/caracteristicas`), apto crédito/profesional en CASAS de ML (ML los marca `hidden`).
+- **Pruebas:** `npx vitest run --config vitest.editar-aviso.config.ts` (~1 s, 207 pruebas).
+
 ### La publicidad de los portales NO es una consulta (2026-09-25)
 
 - **Síntoma:** llegaban avisos de WhatsApp al equipo por consultas de propiedades
