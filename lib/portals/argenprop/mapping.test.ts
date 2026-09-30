@@ -83,6 +83,16 @@ describe('propertyToAvisoDto', () => {
     const d3 = propertyToAvisoDto(prop, { ...opts, barrioId: null })
     expect(d3.Localizacion.Barrio).toBeUndefined()
   })
+
+  it('APTO_CREDITO va al campo AptoCredito, no a Caracteristicas', () => {
+    const d4 = propertyToAvisoDto(prop, {
+      ...opts,
+      attributeOverrides: { APTO_CREDITO: { value_name: 'Sí' }, APTO_PROFESIONAL: { value_name: 'Sí' } },
+    })
+    expect(d4.AptoCredito).toBe(true)
+    expect(d4.Caracteristicas.find(c => c.Id === 'APTO_CREDITO')).toBeUndefined()
+    expect(d4.Caracteristicas.find(c => c.Id === 'APTO_PROFESIONAL')?.Valor).toBe(true)
+  })
 })
 
 describe('parseCalleFromAddress', () => {

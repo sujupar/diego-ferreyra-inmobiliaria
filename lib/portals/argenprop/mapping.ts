@@ -12,6 +12,7 @@ export interface AvisoPublicacionDto {
   Descripcion: string
   Codigo: string
   AptoCredito?: boolean
+  AceptaPermuta?: boolean
   Categoria: { Tipo: string; Subtipo?: string }
   Publicacion: { Visible: boolean }
   Precio: { Monto: number; Moneda: string; Operacion: string; Mostrar: boolean }
@@ -24,6 +25,7 @@ export interface AvisoPublicacionDto {
     Localidad: { Id: string }
     Barrio?: { Id: string }
   }
+  Contacto?: Record<string, unknown>
 }
 
 export interface ApMappingOptions {
@@ -37,8 +39,8 @@ export interface ApMappingOptions {
   attributeOverrides?: Record<string, AttributeOverride>
 }
 
-// Campos del schema que NO son Caracteristicas (van a Precio/Categoria).
-const SPECIAL_FIELDS = new Set(['TIPO_OPERACION', 'MONEDA', 'SUBTIPO'])
+// Campos del schema que NO son Caracteristicas (van a Precio/Categoria/AptoCredito).
+const SPECIAL_FIELDS = new Set(['TIPO_OPERACION', 'MONEDA', 'SUBTIPO', 'APTO_CREDITO'])
 
 /** Misma regla que muestra el paso Descripción del wizard (lib/portals/titulo-sugerido.ts). */
 function buildTitulo(property: Property): string {
@@ -93,6 +95,7 @@ export function propertyToAvisoDto(property: Property, opts: ApMappingOptions): 
     Titulo: buildTitulo(property),
     Descripcion: property.description || buildTitulo(property),
     Codigo: opts.codigo,
+    ...(eff.APTO_CREDITO ? { AptoCredito: /^(s[ií]|true|1)$/i.test(eff.APTO_CREDITO.value_name ?? '') } : {}),
     Categoria: { Tipo: tipo, ...(subtipo ? { Subtipo: subtipo } : {}) },
     Publicacion: { Visible: true },
     Precio: { Monto: Math.round(property.asking_price), Moneda: moneda, Operacion: operacion, Mostrar: true },
