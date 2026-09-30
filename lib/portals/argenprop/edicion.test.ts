@@ -56,4 +56,26 @@ describe('armarAvisoActualizado', () => {
     expect(dto.Multimedia).toEqual([{ Tipo: 'FOTO', Url: 'https://a/1.jpg' }])
     expect(cambiados).toEqual(['precio', 'fotos'])
   })
+  it('interpreta miles en formato argentino ("600.000" → 600000, no 600)', () => {
+    const { dto, cambiados } = armarAvisoActualizado(aviso(), { valores: { EXPENSAS: { value_name: '600.000' } } }, schema, 1)
+    expect(cambiados).toEqual(['EXPENSAS'])
+    const c = dto.Caracteristicas as { Id: string; Valor: unknown }[]
+    expect(c.find(x => x.Id === 'EXPENSAS')?.Valor).toBe(600000)
+  })
+  it('"600.000 ARS" contra un valor vivo de 600000 no es un cambio', () => {
+    const conExpensas: ApAvisoVivo = { ...aviso(), Caracteristicas: [...aviso().Caracteristicas, { Id: 'EXPENSAS', Valor: 600000 }] }
+    const { cambiados } = armarAvisoActualizado(conExpensas, { valores: { EXPENSAS: { value_name: '600.000 ARS' } } }, schema, 1)
+    expect(cambiados).toEqual([])
+  })
+  it('interpreta miles + decimal con coma ("1.250.000,50" → 1250000.5)', () => {
+    const { dto } = armarAvisoActualizado(aviso(), { valores: { EXPENSAS: { value_name: '1.250.000,50' } } }, schema, 1)
+    const c = dto.Caracteristicas as { Id: string; Valor: unknown }[]
+    expect(c.find(x => x.Id === 'EXPENSAS')?.Valor).toBe(1250000.5)
+  })
+  it('un número simple sin separadores no se altera ("80" → 80)', () => {
+    const { dto, cambiados } = armarAvisoActualizado(aviso(), { valores: { ANTIGUEDAD: { value_name: '80' } } }, schema, 1)
+    expect(cambiados).toEqual(['ANTIGUEDAD'])
+    const c = dto.Caracteristicas as { Id: string; Valor: unknown }[]
+    expect(c.find(x => x.Id === 'ANTIGUEDAD')?.Valor).toBe(80)
+  })
 })

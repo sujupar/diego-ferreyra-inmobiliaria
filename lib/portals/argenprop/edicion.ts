@@ -27,8 +27,24 @@ const esSi = (s: string | undefined) => /^(s[ií]|true|1)$/i.test((s ?? '').norm
 // El GET devuelve "Muy_Bueno"/"Contra_Frente"; el catálogo y el PUT usan "MUY_BUENO".
 const aId = (s: string) => (/^[A-Za-z_]+$/.test(s) ? s.toUpperCase() : s)
 
+/**
+ * "600.000" (miles con punto) y "1.250.000,50" (miles + decimal con coma) son
+ * formato argentino, no el `Number()` de JS — sin esto, `Number("600.000")`
+ * da 600 (el punto se lee como decimal) y una expensa de $600.000 se guarda
+ * como $600: pérdida silenciosa de 1000x. Reglas, en orden: (1) miles con
+ * punto + opcional decimal con coma → sacar los puntos, coma a punto; (2) un
+ * solo decimal con coma y sin punto → coma a punto; (3) cualquier otra cosa
+ * (ya en formato JS, o sin separadores) → `Number()` de la limpieza de siempre.
+ */
+function numeroArgentino(s: string): number {
+  const limpio = s.replace(/ars/gi, '').replace(/\s+/g, '')
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(limpio)) return Number(limpio.replace(/\./g, '').replace(',', '.'))
+  if (/^\d+,\d+$/.test(limpio)) return Number(limpio.replace(',', '.'))
+  return Number(limpio.replace(/[^\d.-]/g, ''))
+}
+
 export function normalizarAp(_id: string, v: string): string {
-  const n = Number(v.replace(/[^\d.-]/g, ''))
+  const n = numeroArgentino(v)
   return /^[\d.,\s]+(ars)?$/i.test(v.trim()) && !Number.isNaN(n) ? String(n) : v
 }
 
@@ -53,7 +69,7 @@ export function valoresDesdeAviso(aviso: ApAvisoVivo, schema: readonly ApField[]
 function valorParaEnviar(f: ApField | undefined, v: { value_name?: string; value_id?: string }): string | number | boolean {
   const raw = v.value_id ?? v.value_name ?? ''
   if (f?.valueType === 'boolean') return esSi(raw)
-  if (f?.valueType === 'number' || f?.valueType === 'number_unit') return Number(String(raw).replace(/[^\d.-]/g, ''))
+  if (f?.valueType === 'number' || f?.valueType === 'number_unit') return numeroArgentino(String(raw))
   return aId(String(raw))
 }
 
