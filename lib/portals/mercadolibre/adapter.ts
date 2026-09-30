@@ -27,6 +27,19 @@ interface MlQuestionsResponse {
   total?: number
 }
 
+/**
+ * Distingue el 404 real de "este ítem no tiene descripción" de cualquier otro
+ * error (red, auth, 5xx). `mlFetch` no expone el status HTTP como campo propio,
+ * pero `PortalAdapterError.original` guarda el detalle crudo tal cual lo arma
+ * `fetchConTraduccion` en client.ts: `` `ML ${status} ${path}: ${text}` `` —
+ * de ahí sale el "404" que matcheamos acá. Exportada + pura para poder
+ * testearla sin pegarle a la red.
+ */
+export function esDescripcionInexistente(err: unknown): boolean {
+  const { paraElLog } = mensajeYDetalle(err)
+  return /\b404\b|not[_ ]?found/i.test(paraElLog)
+}
+
 export class MercadoLibreAdapter implements PortalAdapter {
   readonly name = 'mercadolibre' as const
 
@@ -143,9 +156,18 @@ export class MercadoLibreAdapter implements PortalAdapter {
   /** Lee el ítem VIVO y su descripción (sub-recurso aparte en ML). */
   async leerAviso(externalId: string): Promise<{ item: MlItemVivo; descripcion: string }> {
     const item = await mlFetch<MlItemVivo>(`/items/${encodeURIComponent(externalId)}`)
-    const desc = await mlFetch<{ plain_text?: string }>(`/items/${encodeURIComponent(externalId)}/description`)
-      .catch(() => ({ plain_text: '' })) // un ítem sin descripción responde 404
-    return { item, descripcion: desc.plain_text ?? '' }
+    let plainText = ''
+    try {
+      const desc = await mlFetch<{ plain_text?: string }>(`/items/${encodeURIComponent(externalId)}/description`)
+      plainText = desc.plain_text ?? ''
+    } catch (err) {
+      // Un ítem sin descripción responde 404 — eso sí es "no hay descripción".
+      // Cualquier OTRO error (red, 401, 5xx) NO puede leerse como "vacío": si se
+      // guardara así, una edición posterior pisaría una descripción real que
+      // simplemente no se pudo leer en este intento.
+      if (!esDescripcionInexistente(err)) throw err
+    }
+    return { item, descripcion: plainText }
   }
 
   /** PUT del ítem (cuerpo ya armado por armarActualizacionMl) y, si cambió, la descripción. */
