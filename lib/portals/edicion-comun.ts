@@ -64,9 +64,16 @@ export function aplicarCambios(base: Valores, cambios: CambiosDeValores): Valore
  * (ya en formato JS, o sin separadores) → `Number()` de la limpieza de siempre.
  * Compartida entre Argenprop (sus Caracteristicas numéricas) y las expensas
  * de la ficha (`expensasDesdeCambio` en edicion-validacion.ts).
+ *
+ * Un "$" adelante ("$600.000", "$ 600.000 ARS") tiene que leerse IGUAL que sin
+ * él — es como la persona escribe un monto a mano. Por eso se descarta TODO lo
+ * que no sea dígito/punto/coma/guion ANTES de las regexes de formato: así "$"
+ * y cualquier otro texto pegado (además de "ARS") desaparecen de una, en vez
+ * de agregar un caso especial por cada símbolo que alguien tipee.
  */
 export function numeroArgentino(s: string): number {
-  const limpio = s.replace(/ars/gi, '').replace(/\s+/g, '')
+  const limpio = s.replace(/[^\d.,-]/g, '')
+  if (!/\d/.test(limpio)) return NaN // "abc", "$" solo: nada que convertir, nunca 0
   if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(limpio)) return Number(limpio.replace(/\./g, '').replace(',', '.'))
   if (/^\d+,\d+$/.test(limpio)) return Number(limpio.replace(',', '.'))
   return Number(limpio.replace(/[^\d.-]/g, ''))

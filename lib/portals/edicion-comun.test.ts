@@ -68,4 +68,14 @@ describe('numeroArgentino', () => {
   it('sin dígitos da NaN', () => {
     expect(Number.isNaN(numeroArgentino('-'))).toBe(true)
   })
+  it('con signo pesos adelante, con o sin espacio: "$600.000" y "$ 600.000 ARS"', () => {
+    expect(numeroArgentino('$600.000')).toBe(600000)
+    expect(numeroArgentino('$ 600.000 ARS')).toBe(600000)
+  })
+  it('signo pesos + decimal con coma: "$600.000,50"', () => {
+    expect(numeroArgentino('$600.000,50')).toBe(600000.5)
+  })
+  it('texto sin dígitos sigue dando NaN aunque tenga signo pesos', () => {
+    expect(Number.isNaN(numeroArgentino('abc'))).toBe(true)
+  })
 })
