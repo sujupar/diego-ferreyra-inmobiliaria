@@ -4,7 +4,7 @@
  * cambió) porque acá se valida el INPUT crudo del POST antes de tocar nada.
  */
 import { z } from 'zod'
-import type { CambiosDeValores, Valor } from './edicion-comun'
+import { numeroArgentino, type CambiosDeValores, type Valor } from './edicion-comun'
 
 const valor = z.object({ value_name: z.string().max(500).optional(), value_id: z.string().max(100).optional() }).strict()
 
@@ -25,10 +25,23 @@ export function validarIds(valores: CambiosDeValores, aceptados: ReadonlySet<str
   return null
 }
 
-/** Las expensas en pesos, como número; "600.000 ARS" → 600000. `undefined` = no tocar la ficha. */
+/**
+ * Las expensas en pesos, como número entero. `undefined` = no tocar la ficha
+ * (nada que interpretar: sin cambio, o el dato llegó solo por `value_id` o no
+ * se pudo leer como número). `null` = la persona vació el dato explícitamente
+ * (v===null, `value_name` vacío -- forma de `ML_VALOR_VACIO` -- o "0", que acá
+ * también significa "sin expensas"). Usa el mismo parser argentino que
+ * Argenprop ("600.000" → 600000, no 600; "600.000,50" → 600001, redondeado a
+ * pesos enteros) para no repetir el bug de perder 3 ceros por leer el punto
+ * de miles como decimal.
+ */
 export function expensasDesdeCambio(v: Valor | null | undefined): number | null | undefined {
   if (v === undefined) return undefined
   if (v === null) return null
-  const n = Number((v.value_name ?? '').replace(/[^\d]/g, ''))
-  return Number.isFinite(n) && n > 0 ? n : null
+  if (v.value_name === undefined) return undefined // solo value_id: no hay texto que interpretar
+  const texto = v.value_name.trim()
+  if (texto === '') return null
+  const n = numeroArgentino(texto)
+  if (!Number.isFinite(n)) return undefined
+  return n <= 0 ? null : Math.round(n)
 }

@@ -53,3 +53,21 @@ export function aplicarCambios(base: Valores, cambios: CambiosDeValores): Valore
   }
   return out
 }
+
+/**
+ * "600.000" (miles con punto) y "1.250.000,50" (miles + decimal con coma) son
+ * formato argentino, no el `Number()` de JS — sin esto, `Number("600.000")`
+ * da 600 (el punto se lee como decimal) y una expensa de $600.000 se guarda
+ * como $600: pérdida silenciosa de 1000x. Reglas, en orden: (1) miles con
+ * punto + opcional decimal con coma → sacar los puntos, coma a punto; (2) un
+ * solo decimal con coma y sin punto → coma a punto; (3) cualquier otra cosa
+ * (ya en formato JS, o sin separadores) → `Number()` de la limpieza de siempre.
+ * Compartida entre Argenprop (sus Caracteristicas numéricas) y las expensas
+ * de la ficha (`expensasDesdeCambio` en edicion-validacion.ts).
+ */
+export function numeroArgentino(s: string): number {
+  const limpio = s.replace(/ars/gi, '').replace(/\s+/g, '')
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(limpio)) return Number(limpio.replace(/\./g, '').replace(',', '.'))
+  if (/^\d+,\d+$/.test(limpio)) return Number(limpio.replace(',', '.'))
+  return Number(limpio.replace(/[^\d.-]/g, ''))
+}

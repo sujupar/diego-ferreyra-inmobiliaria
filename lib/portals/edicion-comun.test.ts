@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mismoValor, diferencias, sugeridosPara, aplicarCambios } from './edicion-comun'
+import { mismoValor, diferencias, sugeridosPara, aplicarCambios, numeroArgentino } from './edicion-comun'
 
 describe('mismoValor', () => {
   it('compara por id cuando los dos tienen id', () => {
@@ -48,5 +48,24 @@ describe('aplicarCambios', () => {
     const r = aplicarCambios(base, { A: { value_name: '9' }, B: null, C: { value_id: 'c' } })
     expect(r).toEqual({ A: { value_name: '9' }, C: { value_id: 'c' } })
     expect(base.B).toEqual({ value_name: '2' })
+  })
+})
+
+describe('numeroArgentino', () => {
+  it('miles con punto: "600.000" → 600000, no 600', () => {
+    expect(numeroArgentino('600.000')).toBe(600000)
+  })
+  it('miles con punto + decimal con coma: "1.250.000,50"', () => {
+    expect(numeroArgentino('1.250.000,50')).toBe(1250000.5)
+  })
+  it('decimal con coma sin miles: "600000,50"', () => {
+    expect(numeroArgentino('600000,50')).toBe(600000.5)
+  })
+  it('ya en formato JS, con o sin sufijo ARS', () => {
+    expect(numeroArgentino('600000 ARS')).toBe(600000)
+    expect(numeroArgentino('600000')).toBe(600000)
+  })
+  it('sin dígitos da NaN', () => {
+    expect(Number.isNaN(numeroArgentino('-'))).toBe(true)
   })
 })

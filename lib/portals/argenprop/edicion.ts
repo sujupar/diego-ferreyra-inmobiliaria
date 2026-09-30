@@ -5,7 +5,7 @@
  * aplicados. Mandar la ficha, como hacía el worker, borraba AptoCredito y lo
  * corregido a mano en el portal.
  */
-import { mismoValor, type CambiosDeValores, type Valores } from '../edicion-comun'
+import { mismoValor, numeroArgentino, type CambiosDeValores, type Valores } from '../edicion-comun'
 import type { ApField } from './field-schema'
 import { AP_MAX_FOTOS_AVISO } from '../photo-limits'
 
@@ -26,22 +26,6 @@ const SI_NO = (b: boolean) => ({ value_name: b ? 'Sí' : 'No' })
 const esSi = (s: string | undefined) => /^(s[ií]|true|1)$/i.test((s ?? '').normalize('NFC').trim())
 // El GET devuelve "Muy_Bueno"/"Contra_Frente"; el catálogo y el PUT usan "MUY_BUENO".
 const aId = (s: string) => (/^[A-Za-z_]+$/.test(s) ? s.toUpperCase() : s)
-
-/**
- * "600.000" (miles con punto) y "1.250.000,50" (miles + decimal con coma) son
- * formato argentino, no el `Number()` de JS — sin esto, `Number("600.000")`
- * da 600 (el punto se lee como decimal) y una expensa de $600.000 se guarda
- * como $600: pérdida silenciosa de 1000x. Reglas, en orden: (1) miles con
- * punto + opcional decimal con coma → sacar los puntos, coma a punto; (2) un
- * solo decimal con coma y sin punto → coma a punto; (3) cualquier otra cosa
- * (ya en formato JS, o sin separadores) → `Number()` de la limpieza de siempre.
- */
-function numeroArgentino(s: string): number {
-  const limpio = s.replace(/ars/gi, '').replace(/\s+/g, '')
-  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(limpio)) return Number(limpio.replace(/\./g, '').replace(',', '.'))
-  if (/^\d+,\d+$/.test(limpio)) return Number(limpio.replace(',', '.'))
-  return Number(limpio.replace(/[^\d.-]/g, ''))
-}
 
 export function normalizarAp(_id: string, v: string): string {
   const n = numeroArgentino(v)
