@@ -12,6 +12,7 @@ export default defineConfig({
       'lib/portals/worker-logic.test.ts',
       'lib/portals/mercadolibre/*.test.ts',
       'lib/portals/argenprop/*.test.ts',
+      'components/properties/wizards/editar-aviso-estado.test.ts',
     ],
     exclude: ['**/node_modules/**'],
   },
