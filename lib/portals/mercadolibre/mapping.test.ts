@@ -250,3 +250,11 @@ describe('ML_LISTING_TYPES', () => {
     expect(ML_LISTING_TYPES[0].id).toBe('gold_premium')
   })
 })
+
+describe('expensas', () => {
+  it('expensas sin moneda salen con " ARS"', () => {
+    const p = makeProperty({ latitude: -34.6, longitude: -58.4 })
+    const payload = propertyToMlPayload(p, { attributeOverrides: { MAINTENANCE_FEE: { value_name: '150000' } } })
+    expect(payload.attributes.find(a => a.id === 'MAINTENANCE_FEE')?.value_name).toBe('150000 ARS')
+  })
+})

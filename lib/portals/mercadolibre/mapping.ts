@@ -188,14 +188,16 @@ function derivedAttributes(property: Property): MlAttribute[] {
  * Si un valor llega como número pelado ("95"), ML lo rechaza:
  *   "Attribute COVERED_AREA ... is required and was omitted. The provided unit is not valid."
  * Esto pasa cuando un override del wizard (o el prefill) trae el número sin unidad.
- * Normalizamos al chokepoint: a los *_AREA les ponemos "m²" y a PROPERTY_AGE "años".
+ * Normalizamos al chokepoint: a los *_AREA les ponemos "m²", a PROPERTY_AGE "años" y a
+ * MAINTENANCE_FEE "ARS" (expensas incluidas, 2026-09-30).
  */
-function normalizeUnit(attr: MlAttribute): MlAttribute {
+export function normalizeUnit(attr: MlAttribute): MlAttribute {
   if (!attr.value_name) return attr
   const v = attr.value_name.trim()
   if (!/^[\d.,]+$/.test(v)) return attr // ya tiene unidad, o es texto (ej. "A estrenar")
   if (/_AREA$/.test(attr.id)) return { ...attr, value_name: `${v} m²` }
   if (attr.id === 'PROPERTY_AGE') return { ...attr, value_name: `${v} años` }
+  if (attr.id === 'MAINTENANCE_FEE') return { ...attr, value_name: `${v} ARS` } // default_unit de ML
   return attr
 }
 

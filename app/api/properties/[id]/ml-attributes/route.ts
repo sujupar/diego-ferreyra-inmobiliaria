@@ -3,30 +3,14 @@ import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { resolveCategory, mensajeSinCategoria, ML_LISTING_TYPES } from '@/lib/portals/mercadolibre/mapping'
 import { fetchCategoryAttributes, type AttributeOverride } from '@/lib/portals/mercadolibre/category-attributes'
+import { derivedPrefill } from '@/lib/portals/mercadolibre/prefill'
 import { fetchAvailableListingTypes } from '@/lib/portals/mercadolibre/listing-types'
 import { resolverIdsDeLista } from '@/lib/portals/datos-visita'
 import type { Database } from '@/types/database.types'
 import { puedeDifundir } from '@/lib/properties/difusion-access-server'
 
-type PropertyRow = Database['public']['Tables']['properties']['Row']
-
 function getAdmin() {
   return createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-}
-
-function derivedPrefill(property: PropertyRow): Record<string, AttributeOverride> {
-  const out: Record<string, AttributeOverride> = {}
-  if (property.rooms) out.ROOMS = { value_name: String(property.rooms) }
-  if (property.bedrooms) out.BEDROOMS = { value_name: String(property.bedrooms) }
-  if (property.bathrooms) out.FULL_BATHROOMS = { value_name: String(property.bathrooms) }
-  if (property.garages) out.PARKING_LOTS = { value_name: String(property.garages) }
-  // number_unit: ML exige unidad explícita (sino rechaza el aviso). Mismo formato que derivedAttributes.
-  if (property.covered_area) out.COVERED_AREA = { value_name: `${property.covered_area} m²` }
-  if (property.total_area) out.TOTAL_AREA = { value_name: `${property.total_area} m²` }
-  if (property.expensas) out.MAINTENANCE_FEE = { value_name: `${property.expensas} ARS` }
-  if (property.age != null) out.PROPERTY_AGE = { value_name: property.age === 0 ? 'A estrenar' : `${property.age} años` }
-  if (property.floor != null) out.FLOORS = { value_name: String(property.floor) }
-  return out
 }
 
 /** GET → schema dinámico de atributos de ML + valores prellenos (propiedad + draft). */
