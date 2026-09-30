@@ -4,6 +4,7 @@ import { fotosPublicables } from '../fotos-publicables'
 import { tituloSugerido, TITULO_MAX_AP } from '../titulo-sugerido'
 import { apCategoria, derivedPrefill, getApSchema, type ApField, type AttributeOverride } from './field-schema'
 import { parseAddress } from '@/lib/properties/address'
+import { numeroArgentino } from '../edicion-comun'
 
 /** AvisoPublicacionDto — body de POST/PUT /v1/avisos (sección 6 doc). */
 export interface AvisoPublicacionDto {
@@ -74,7 +75,10 @@ export function propertyToAvisoDto(property: Property, opts: ApMappingOptions): 
     const raw = ov.value_id ?? ov.value_name
     if (raw == null || raw === '') continue
     if (field && (field.valueType === 'number' || field.valueType === 'number_unit')) {
-      const n = Number(String(raw).replace(/[^\d.-]/g, ''))
+      // "600.000" tipeado en el wizard/visita es formato argentino (miles con
+      // punto) — Number(...) leería el punto como decimal y daría 600. Mismo
+      // parser que usa la edición de avisos publicados (edicion-comun.ts).
+      const n = numeroArgentino(String(raw))
       if (!Number.isNaN(n)) caracteristicas.push({ Id: id, Valor: n })
     } else if (field && field.valueType === 'boolean') {
       caracteristicas.push({ Id: id, Valor: /^(s[ií]|true|1)$/i.test(String(raw)) })
