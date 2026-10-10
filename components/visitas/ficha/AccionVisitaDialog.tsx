@@ -16,6 +16,11 @@ const TITULO: Record<TipoAccion, string> = {
   realizada: 'Se realizó', no_realizada: 'No se realizó', cambiar_asesor: 'Cambiar asesor', reabrir: 'Reabrir visita',
 }
 
+type EstadoAsesores =
+  | { tipo: 'cargando' }
+  | { tipo: 'error' }
+  | { tipo: 'listo'; lista: Array<{ id: string; full_name: string }> }
+
 export function AccionVisitaDialog({ visita, accion, onClose, onHecho, onRecargar }: {
   visita: VisitaConHistorial
   accion: TipoAccion | null
@@ -33,7 +38,8 @@ export function AccionVisitaDialog({ visita, accion, onClose, onHecho, onRecarga
   const [fecha, setFecha] = useState<string | null>(null)
   const [hora, setHora] = useState<string | null>(null)
   const [asesorId, setAsesorId] = useState<string>('')
-  const [asesores, setAsesores] = useState<Array<{ id: string; full_name: string }>>([])
+  const [asesores, setAsesores] = useState<EstadoAsesores>({ tipo: 'cargando' })
+  const [intentoAsesores, setIntentoAsesores] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [conflicto, setConflicto] = useState(false)
   const [guardando, setGuardando] = useState(false)
@@ -45,23 +51,41 @@ export function AccionVisitaDialog({ visita, accion, onClose, onHecho, onRecarga
     setFecha(null); setHora(null); setAsesorId(''); setError(null); setConflicto(false)
   }, [accion])
 
+  // `intentoAsesores` solo cambia cuando se toca "Reintentar": un fallo real
+  // de red (no solo un rol sin permiso) dejaba la lista vacía en silencio y
+  // "Elegí el asesor" al guardar, que no dice la verdad (no es que no se eligió,
+  // es que nunca llegó a cargar).
   useEffect(() => {
-    if (accion !== 'cambiar_asesor' || asesores.length > 0) return
+    if (accion !== 'cambiar_asesor') return
     let vigente = true
-    fetch('/api/users/advisors').then(r => leerRespuesta<Array<{ id: string; full_name: string }>>(r))
-      .then(r => { if (vigente && r.ok) setAsesores(r.data ?? []) })
+    setAsesores({ tipo: 'cargando' })
+    fetch('/api/users/advisors')
+      .then(r => leerRespuesta<Array<{ id: string; full_name: string }>>(r))
+      .then(r => {
+        if (!vigente) return
+        if (!r.ok) { setAsesores({ tipo: 'error' }); return }
+        setAsesores({ tipo: 'listo', lista: r.data ?? [] })
+      })
+      .catch(() => { if (vigente) setAsesores({ tipo: 'error' }) })
     return () => { vigente = false }
-  }, [accion, asesores.length])
+  }, [accion, intentoAsesores])
 
   function cuerpo(): Record<string, unknown> | string {
     switch (accion) {
       case 'confirmar': return { tipo: 'confirmar' }
       case 'realizada': return { tipo: 'realizada', interes, notas }
       case 'no_realizada':
-      case 'cancelar':
+      case 'cancelar': {
         if (!motivo) return 'Elegí un motivo'
         if (motivo === 'otro' && detalle.trim().length < 3) return 'Contanos el motivo'
-        return { tipo: accion, motivo, detalle }
+        // Solo "otro" tiene un texto que mandar: un detalle tipeado para "Otro"
+        // y después descartado al elegir "No vino" no puede viajar igual — el
+        // servidor lo guardaría como nota del motivo elegido, mintiendo en el
+        // historial. El onClick de cada opción YA limpia `detalle` al cambiar
+        // de motivo (ver más abajo); esto es el cinturón de seguridad por si
+        // algún día cambia esa lógica y deja de limpiarlo.
+        return { tipo: accion, motivo, detalle: motivo === 'otro' ? detalle : null }
+      }
       case 'reprogramar':
         if (!fecha || !hora) return 'Elegí el nuevo día y la hora'
         return { tipo: 'reprogramar', fecha, hora }
@@ -130,7 +154,17 @@ export function AccionVisitaDialog({ visita, accion, onClose, onHecho, onRecarga
             <fieldset className="space-y-2">
               <legend className="text-sm font-medium">¿Por qué?</legend>
               {MOTIVOS_NO_REALIZADA.map(m => (
-                <button key={m} type="button" role="radio" aria-checked={motivo === m} onClick={() => setMotivo(m)} className={opcion(motivo === m)}>
+                <button
+                  key={m} type="button" role="radio" aria-checked={motivo === m}
+                  onClick={() => {
+                    setMotivo(m)
+                    // Un detalle tipeado para "Otro" no puede sobrevivir a elegir
+                    // otro motivo: quedaría mandándose sin que nadie lo vea en
+                    // pantalla (ver el cinturón de seguridad en `cuerpo()`).
+                    if (m !== 'otro') setDetalle('')
+                  }}
+                  className={opcion(motivo === m)}
+                >
                   {MOTIVO_ETIQUETA[m]}
                 </button>
               ))}
@@ -145,11 +179,22 @@ export function AccionVisitaDialog({ visita, accion, onClose, onHecho, onRecarga
           )}
           {accion === 'cambiar_asesor' && (
             <div role="radiogroup" aria-label="Asesor" className="space-y-2">
-              {asesores.filter(a => a.id !== visita.advisor_id).map(a => (
-                <button key={a.id} type="button" role="radio" aria-checked={asesorId === a.id} onClick={() => setAsesorId(a.id)} className={opcion(asesorId === a.id)}>
-                  {a.full_name}
-                </button>
-              ))}
+              {asesores.tipo === 'cargando' && <p className="text-sm text-muted-foreground">Cargando asesores…</p>}
+              {asesores.tipo === 'error' && (
+                <div className="space-y-2">
+                  <p className="text-sm text-destructive">No pudimos cargar los asesores</p>
+                  <Button type="button" variant="outline" onClick={() => setIntentoAsesores(n => n + 1)}>Reintentar</Button>
+                </div>
+              )}
+              {asesores.tipo === 'listo' && (() => {
+                const otros = asesores.lista.filter(a => a.id !== visita.advisor_id)
+                if (otros.length === 0) return <p className="text-sm text-muted-foreground">No hay asesores activos</p>
+                return otros.map(a => (
+                  <button key={a.id} type="button" role="radio" aria-checked={asesorId === a.id} onClick={() => setAsesorId(a.id)} className={opcion(asesorId === a.id)}>
+                    {a.full_name}
+                  </button>
+                ))
+              })()}
             </div>
           )}
           {accion === 'reabrir' && (

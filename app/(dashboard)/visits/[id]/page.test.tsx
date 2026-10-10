@@ -21,7 +21,7 @@ function visita(p: Record<string, unknown> = {}) {
     id: ID, scheduled_at: '2026-08-05T15:00:00Z', status: 'scheduled', client_name: 'Cliente Uno',
     client_email: 'cliente@example.com', client_phone: '11-1111-1111', origin: 'portal', origin_detail: 'zonaprop',
     propiedad: { id: 'p1', address: 'Calle Falsa 123', neighborhood: 'Palermo', foto: null },
-    asesor: { id: 'a1', full_name: 'Lucas' }, comprador: null, consulta: null, notes: null, completion_notes: null,
+    advisor_id: 'a1', asesor: { id: 'a1', full_name: 'Lucas' }, comprador: null, consulta: null, notes: null, completion_notes: null,
     outcome_reason: null, advisor_interest: null, reschedule_count: 0, created_by_ai: false,
     updated_at: VERSION,
     eventos: [{ id: 'e1', kind: 'creada', from_status: null, to_status: 'scheduled', from_scheduled_at: null,
@@ -105,11 +105,67 @@ describe('VisitDetailPage — cambiar de etapa', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'No vino' }))
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
     await waitFor(() => expect(posteos).toHaveLength(1))
+    // El motivo elegido no es "otro": no hay texto que mandar (ver el test de
+    // abajo, que cubre el caso en que SÍ se había escrito uno y se descarta).
     expect(posteos[0]).toEqual({
       url: `/api/visits/${ID}/estado`,
-      body: { tipo: 'no_realizada', motivo: 'no_vino', detalle: '', version: VERSION },
+      body: { tipo: 'no_realizada', motivo: 'no_vino', detalle: null, version: VERSION },
     })
     expect(await screen.findByRole('button', { name: 'Reabrir' })).toBeInTheDocument()
+  })
+
+  it('cambiar de motivo dentro de la misma acción descarta el detalle anterior', async () => {
+    render(<VisitDetailPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'No se realizó' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Otro' }))
+    fireEvent.change(screen.getByPlaceholderText('Contanos el motivo'), { target: { value: 'Se mudó de día sin avisar' } })
+    // El campo de texto desaparece (ya no es "otro"): si el detalle no se
+    // limpiara, viajaría igual en el body sin que nadie lo vea en pantalla.
+    fireEvent.click(screen.getByRole('radio', { name: 'No vino' }))
+    expect(screen.queryByPlaceholderText('Contanos el motivo')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+    await waitFor(() => expect(posteos).toHaveLength(1))
+    expect(posteos[0].body).toEqual({ tipo: 'no_realizada', motivo: 'no_vino', detalle: null, version: VERSION })
+  })
+})
+
+describe('VisitDetailPage — cambiar de asesor', () => {
+  it('si falla la carga de asesores avisa, y "Reintentar" la trae', async () => {
+    let pedidosAdvisors = 0
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        posteos.push({ url, body: JSON.parse(String(init.body)) })
+        return Promise.resolve(ok(visita()))
+      }
+      if (url.startsWith('/api/users/advisors')) {
+        pedidosAdvisors++
+        if (pedidosAdvisors === 1) return Promise.resolve({ ok: false, status: 500, json: async () => ({ error: 'boom' }) })
+        return Promise.resolve(ok([{ id: 'a9', full_name: 'Marina' }]))
+      }
+      if (url.startsWith('/api/visits/')) return respuesta()
+      return Promise.reject(new Error(`fetch inesperado: ${url}`))
+    }))
+    render(<VisitDetailPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Cambiar asesor' }))
+    expect(await screen.findByText('No pudimos cargar los asesores')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+    expect(await screen.findByRole('radio', { name: 'Marina' })).toBeInTheDocument()
+    expect(screen.queryByText('No pudimos cargar los asesores')).not.toBeInTheDocument()
+  })
+
+  it('sin asesores activos (fuera de la persona que ya la tiene) avisa en vez de mostrar una lista vacía', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return Promise.resolve(ok(visita()))
+      if (url.startsWith('/api/users/advisors')) return Promise.resolve(ok([{ id: 'a1', full_name: 'Lucas' }]))
+      if (url.startsWith('/api/visits/')) return respuesta()
+      return Promise.reject(new Error(`fetch inesperado: ${url}`))
+    }))
+    render(<VisitDetailPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Cambiar asesor' }))
+    // El único asesor que devuelve la API es el que YA tiene la visita (a1,
+    // Lucas): queda afuera de la lista de destino.
+    expect(await screen.findByText('No hay asesores activos')).toBeInTheDocument()
   })
 })
 

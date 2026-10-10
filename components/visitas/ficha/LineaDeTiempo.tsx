@@ -1,6 +1,6 @@
 'use client'
 import { formatearFechaHora } from '@/lib/visitas/horario'
-import { MOTIVO_ETIQUETA, type MotivoNoRealizada } from '@/lib/visitas/transiciones'
+import { MOTIVO_ETIQUETA, MOTIVOS_NO_REALIZADA, type MotivoNoRealizada } from '@/lib/visitas/transiciones'
 import type { EventoVisitaR } from '@/lib/visitas/tipos'
 
 const TEXTO: Record<string, string> = {
@@ -9,12 +9,22 @@ const TEXTO: Record<string, string> = {
   reabierta: 'Reabierta', estado_cambiado: 'Cambió el estado',
 }
 
+/** Guard real en vez de un `as MotivoNoRealizada`: `reason` llega como
+ *  `string | null` desde la base (es una columna TEXT), y el trigger SOLO la
+ *  escribe con el valor de `outcome_reason` para 'no_realizada'/'cancelada'
+ *  (migración 20261010000002, antes 1) — siempre uno de MOTIVOS_NO_REALIZADA —
+ *  pero el tipo no lo sabe. Forzarlo con `as` callaría un error real si algún
+ *  día el trigger cambia y empieza a escribir otra cosa ahí. */
+function esMotivoNoRealizada(valor: string): valor is MotivoNoRealizada {
+  return (MOTIVOS_NO_REALIZADA as readonly string[]).includes(valor)
+}
+
 function detalle(e: EventoVisitaR): string | null {
   if (e.kind === 'reprogramada' && e.from_scheduled_at && e.to_scheduled_at) {
     return `${formatearFechaHora(e.from_scheduled_at)} → ${formatearFechaHora(e.to_scheduled_at)}`
   }
   if (e.kind === 'asesor_cambiado') return `${e.desde_asesor ?? 'sin asesor'} → ${e.hacia_asesor ?? 'sin asesor'}`
-  if (e.reason) return MOTIVO_ETIQUETA[e.reason as MotivoNoRealizada] ?? e.reason
+  if (e.reason) return esMotivoNoRealizada(e.reason) ? MOTIVO_ETIQUETA[e.reason] : e.reason
   return e.note
 }
 
