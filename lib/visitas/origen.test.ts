@@ -53,6 +53,15 @@ describe('origenDesdeLead', () => {
   it('un reinicio de prueba es "otro · Prueba"', () => {
     expect(origenDesdeLead({ source: 'prueba:reinicio', utm: null })).toEqual({ origen: 'otro', detalle: 'Prueba' })
   })
+  it('un formulario de Meta (meta_form, lo acepta POST /api/leads) es publicidad de Meta', () => {
+    expect(origenDesdeLead({ source: 'meta_form', utm: null })).toEqual({ origen: 'publicidad_meta', detalle: null })
+    expect(origenDesdeLead({ source: ' Meta_Form ', utm: null })).toEqual({ origen: 'publicidad_meta', detalle: null })
+  })
+  it('el formato viejo portal_<portal> también es portal, con el portal como detalle', () => {
+    expect(origenDesdeLead({ source: 'portal_zonaprop', utm: null })).toEqual({ origen: 'portal', detalle: 'zonaprop' })
+    expect(origenDesdeLead({ source: 'portal_mercadolibre', utm: null })).toEqual({ origen: 'portal', detalle: 'mercadolibre' })
+    expect(origenDesdeLead({ source: 'portal_', utm: null })).toEqual({ origen: 'portal', detalle: null })
+  })
   it('una fuente desconocida cae en "otro" sin inventar detalle', () => {
     expect(origenDesdeLead({ source: 'algo-raro', utm: null })).toEqual({ origen: 'otro', detalle: null })
   })

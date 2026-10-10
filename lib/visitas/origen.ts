@@ -66,6 +66,11 @@ function utmTexto(utm: unknown, clave: string): string | null {
 export function origenDesdeLead(lead: LeadParaOrigen): OrigenDerivado {
   const source = (lead.source ?? '').trim().toLowerCase()
   if (source.startsWith('portal:')) return { origen: 'portal', detalle: source.slice('portal:'.length) || null }
+  // Los formatos que acepta POST /api/leads (`meta_form`, `portal_<portal>`, ver el
+  // comentario de property_leads.source en 20260514000000). Hoy no hay filas así en la
+  // base, pero si llegan no tienen que caer en "otro".
+  if (source === 'meta_form') return { origen: 'publicidad_meta', detalle: null }
+  if (source.startsWith('portal_')) return { origen: 'portal', detalle: source.slice('portal_'.length) || null }
   if (source.startsWith('visita:')) {
     const o = source.slice('visita:'.length)
     if (esOrigenVisita(o)) return { origen: o, detalle: null }
