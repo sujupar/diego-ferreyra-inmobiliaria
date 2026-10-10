@@ -26,6 +26,20 @@ export function SelectorDiaHora({ hoy, fecha, hora, onFecha, onHora, avisos }: P
   const horaFueraDeLista = hora !== null && !HORARIOS_SUGERIDOS.includes(hora)
   const [libre, setLibre] = useState(fechaFueraDeLista || horaFueraDeLista)
 
+  // El padre puede cambiar `fecha`/`hora` DESPUÉS del montaje (ej. al cargar
+  // un valor guardado o al elegir "Reprogramar" con un horario fuera de lista)
+  // a algo que no está en los botones. El `useState` inicial solo corre una
+  // vez: sin este ajuste, ese valor queda guardado pero invisible, con el
+  // campo libre cerrado. Se hace DURANTE el render, no en un `useEffect`
+  // (`react-hooks/set-state-in-effect` lo prohíbe por las re-renderizaciones
+  // en cascada) — patrón "Adjusting state while rendering" de React: React
+  // detecta el setState y repite el render antes de pintar, sin pasar por un
+  // efecto. Solo ABRE — nunca lo cierra solo (si el usuario ya lo abrió a
+  // mano, o quedó abierto por esto, no se le cierra por abajo).
+  if ((fechaFueraDeLista || horaFueraDeLista) && !libre) {
+    setLibre(true)
+  }
+
   return (
     <div className="space-y-4">
       <div role="group" aria-label="Día" className="grid grid-cols-4 gap-2 sm:grid-cols-7">

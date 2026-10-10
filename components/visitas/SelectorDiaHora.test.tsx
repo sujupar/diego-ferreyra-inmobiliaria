@@ -19,4 +19,10 @@ describe('SelectorDiaHora', () => {
     render(<SelectorDiaHora hoy="2026-10-10" fecha="2026-10-12" hora="11:00" onFecha={vi.fn()} onHora={vi.fn()} avisos={['El asesor ya tiene una visita a las 11:30']} />)
     expect(screen.getByRole('status')).toHaveTextContent('El asesor ya tiene una visita a las 11:30')
   })
+  it('si el padre cambia a fecha/hora fuera de las listas DESPUÉS del montaje, abre el campo libre', () => {
+    const { rerender } = render(<SelectorDiaHora hoy="2026-10-10" fecha={null} hora={null} onFecha={vi.fn()} onHora={vi.fn()} avisos={[]} />)
+    rerender(<SelectorDiaHora hoy="2026-10-10" fecha="2026-12-25" hora="07:15" onFecha={vi.fn()} onHora={vi.fn()} avisos={[]} />)
+    expect(screen.getByLabelText('Otro día')).toHaveValue('2026-12-25')
+    expect(screen.getByLabelText('Otro horario')).toHaveValue('07:15')
+  })
 })
