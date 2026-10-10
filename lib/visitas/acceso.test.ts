@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { puedeGestionarVisitas, puedeVerTodasLasVisitas, puedeVerVisita, asesorParaLaVisita, accionesParaRol } from './acceso'
+import {
+  puedeGestionarVisitas, puedeVerTodasLasVisitas, puedeVerVisita, asesorParaLaVisita, accionesParaRol,
+  puedeAgendarVisitaEnPropiedad,
+} from './acceso'
 import type { TipoAccion } from './transiciones'
 
 const YO = '11111111-1111-4111-8111-111111111111'
@@ -31,6 +34,33 @@ describe('asesorParaLaVisita', () => {
   it('quien ve todo tiene que elegir el asesor', () => {
     expect(asesorParaLaVisita('coordinador', YO, OTRO)).toEqual({ ok: true, asesorId: OTRO, esPropio: false })
     expect(asesorParaLaVisita('admin', YO, ' ')).toEqual({ ok: false, error: 'Elegí el asesor que va a mostrar la propiedad' })
+  })
+})
+
+describe('puedeAgendarVisitaEnPropiedad', () => {
+  const PROPIEDAD_APROBADA_DISPONIBLE = { assigned_to: YO, status: 'approved', commercial_status: 'disponible' }
+
+  it('el asesor dueño de una propiedad aprobada y disponible puede agendar', () => {
+    expect(puedeAgendarVisitaEnPropiedad('asesor', YO, PROPIEDAD_APROBADA_DISPONIBLE)).toBe(true)
+  })
+  it('el asesor NO puede agendar en una propiedad ajena (misma regla que el servidor)', () => {
+    expect(puedeAgendarVisitaEnPropiedad('asesor', YO, { ...PROPIEDAD_APROBADA_DISPONIBLE, assigned_to: OTRO })).toBe(false)
+  })
+  it('quien ve todas las visitas puede agendar en una propiedad ajena', () => {
+    expect(puedeAgendarVisitaEnPropiedad('coordinador', YO, { ...PROPIEDAD_APROBADA_DISPONIBLE, assigned_to: OTRO })).toBe(true)
+  })
+  it('el abogado no puede agendar aunque sea "su" propiedad', () => {
+    expect(puedeAgendarVisitaEnPropiedad('abogado', YO, PROPIEDAD_APROBADA_DISPONIBLE)).toBe(false)
+  })
+  it('no se agenda sobre una propiedad que todavía no está aprobada', () => {
+    expect(puedeAgendarVisitaEnPropiedad('asesor', YO, { ...PROPIEDAD_APROBADA_DISPONIBLE, status: 'pending_review' })).toBe(false)
+  })
+  it('no se agenda sobre una propiedad vendida, reservada SÍ', () => {
+    expect(puedeAgendarVisitaEnPropiedad('asesor', YO, { ...PROPIEDAD_APROBADA_DISPONIBLE, commercial_status: 'vendida' })).toBe(false)
+    expect(puedeAgendarVisitaEnPropiedad('asesor', YO, { ...PROPIEDAD_APROBADA_DISPONIBLE, commercial_status: 'reservada' })).toBe(true)
+  })
+  it('sin commercial_status (null) se trata como disponible', () => {
+    expect(puedeAgendarVisitaEnPropiedad('asesor', YO, { ...PROPIEDAD_APROBADA_DISPONIBLE, commercial_status: null })).toBe(true)
   })
 })
 

@@ -45,6 +45,25 @@ export function accionesParaRol(acciones: TipoAccion[], role: Role): TipoAccion[
   return acciones.filter(a => a !== 'cambiar_asesor')
 }
 
+/**
+ * Puede este usuario agendar una visita en ESTA propiedad. Misma regla que
+ * `POST /api/visits` (app/api/visits/route.ts): captada+disponible/reservada,
+ * y solo el asesor dueño (o quien ve todas las visitas). La pantalla la usa
+ * para mostrar/ocultar el botón ANTES de que el servidor la revalide — sin
+ * esto, un asesor veía el botón en una propiedad ajena y recién al enviar se
+ * enteraba del 403 "Solo podés agendar visitas en tus propiedades".
+ */
+export function puedeAgendarVisitaEnPropiedad(
+  role: Role,
+  userId: string,
+  propiedad: { assigned_to: string | null; status: string; commercial_status: string | null },
+): boolean {
+  if (!puedeGestionarVisitas(role)) return false
+  if (!puedeVerTodasLasVisitas(role) && propiedad.assigned_to !== userId) return false
+  if (propiedad.status !== 'approved') return false
+  return ['disponible', 'reservada'].includes(propiedad.commercial_status ?? 'disponible')
+}
+
 export function asesorParaLaVisita(
   role: Role,
   userId: string,
