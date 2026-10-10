@@ -16,6 +16,7 @@ export default defineConfig({
       'lib/leads/visit-scheduling.test.ts',
       'lib/leads/responder-consulta.test.ts',
       'lib/leads/resolve-crm-visit-lead.test.ts',
+      'lib/email/notifications/visit-scheduled-client.test.ts',
       'app/api/visits/**/*.test.ts',
       'app/api/properties/*/interesados/*.test.ts',
       'components/visitas/**/*.test.tsx',

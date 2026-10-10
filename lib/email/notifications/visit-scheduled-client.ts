@@ -14,11 +14,19 @@ import VisitScheduledClientEmail from '@/emails/VisitScheduledClientEmail'
  * RLS por asesor, y este envío ocurre en la misma solicitud que creó la visita.
  */
 function admin() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) throw new Error('Faltan las credenciales de Supabase en el servidor')
+  return createClient(url, key)
 }
 
+/**
+ * Los dos fallos posibles NO lanzan (supabase-js devuelve { error }; sendEmail nunca
+ * lanza y devuelve { ok, sent, failed, errors }): se registran con console.error para
+ * que un mail que no salió deje rastro. Solo el id de la visita, sin datos personales.
+ */
 export async function sendVisitScheduledToClient(visitId: string) {
-  const { data: visit } = await admin()
+  const { data: visit, error } = await admin()
     .from('property_visits')
     .select(`
       id, client_name, client_email, scheduled_at,
@@ -28,6 +36,10 @@ export async function sendVisitScheduledToClient(visitId: string) {
     .eq('id', visitId)
     .maybeSingle()
 
+  if (error) {
+    console.error(`[visit-scheduled-client] no se pudo leer la visita ${visitId}: ${error.message}`)
+    return
+  }
   if (!visit || !visit.client_email) {
     console.warn('[visit-scheduled-client] missing visit or client_email', visitId)
     return
@@ -49,7 +61,7 @@ export async function sendVisitScheduledToClient(visitId: string) {
     })
   )
 
-  await sendEmail({
+  const resultado = await sendEmail({
     notificationType: 'visit_scheduled_client',
     entityType: 'property',
     entityId: visit.id,
@@ -58,4 +70,8 @@ export async function sendVisitScheduledToClient(visitId: string) {
     html,
     idempotent: true,
   })
+  // `ok:false` con `failed:0` es "falta RESEND_API_KEY": también es un mail que no salió.
+  if (!resultado.ok || resultado.failed > 0) {
+    console.error(`[visit-scheduled-client] no salió la confirmación de la visita ${visitId}:`, resultado.errors)
+  }
 }
