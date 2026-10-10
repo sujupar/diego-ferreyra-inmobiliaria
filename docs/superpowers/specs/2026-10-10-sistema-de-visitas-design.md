@@ -153,8 +153,8 @@ paso que corresponde, sin perder lo cargado.
 Experiencia Typeform, una pregunta por pantalla, celular primero, con la marca (Geist, azul
 marino de la plataforma), prellenada por el código del link.
 
-1. **Bienvenida enfocada en el regalo:** foto de la propiedad con "Visitaste <dirección>"; tarjeta
-   del regalo (portada + título); "<Nombre>, este regalo es tuyo." · "Contanos qué te pareció la
+1. **Bienvenida enfocada en el regalo:** foto de la propiedad; debajo (nada montado encima de la
+   foto) "Visitaste <dirección>"; tarjeta del regalo (portada + título); "<Nombre>, este regalo es tuyo." · "Contanos qué te pareció la
    visita y es tuyo al instante. Te lleva menos de un minuto." Botón **Quiero mi regalo**.
    *No* dice cuántas preguntas son. Si el regalo todavía no está configurado, la bienvenida es
    neutra ("<Nombre>, ¿qué te pareció <dirección>? Te lleva menos de un minuto.").
@@ -480,6 +480,10 @@ con `aria-live`; contraste AA (4,5:1); datos solo en nuestra base.
     visita, la pestaña de la propiedad y las estadísticas. Un doble toque no duplica nada.
 23. Un link vencido o inventado muestra una página amable y no revela datos.
 24. Lighthouse en celular sobre la encuesta: rendimiento ≥ 90, accesibilidad ≥ 95.
+25. **Nada superpuesto:** en cada pantalla de la encuesta, a 360, 390 y 430 px de ancho (y con
+    el teclado abierto en el monto y el contacto), ningún texto, tarjeta o botón queda encima de
+    otro ni cortado. Se verifica con capturas reales de la vista previa, una por pantalla y ancho,
+    y con un chequeo automático que compara los rectángulos de los elementos visibles.
 
 ---
 
@@ -545,10 +549,12 @@ el diff. Cada hallazgo se verifica antes de aplicarlo.
 
 ---
 
-## 10. Lo que el dueño aprueba con este documento
+## 10. Aprobación del dueño — 2026-10-10 (todo aprobado)
 
-- [ ] El diseño completo de arriba.
-- [ ] Mover las 39 consultas de Entre Ríos 2333 a la ficha viva.
-- [ ] Mandar la plantilla `encuesta_visita_v1` a revisión de Meta (Entrega 3).
-- [ ] Mantener "El propietario no ve tu nombre" (al propietario solo se le muestran resultados
+- [x] El diseño completo de arriba.
+- [x] Mover las 39 consultas de Entre Ríos 2333 a la ficha viva ("Hazlo").
+- [x] Mandar la plantilla `encuesta_visita_v1` a revisión de Meta (Entrega 3).
+- [x] Mantener "El propietario no ve tu nombre" (al propietario solo se le muestran resultados
       agrupados) y la casilla "Avisame si entra una propiedad parecida".
+- Pedido adicional: **nada superpuesto en la encuesta** (criterio 25). En la maqueta se sacaron
+  la etiqueta y la tarjeta del regalo que iban montadas sobre la foto.
