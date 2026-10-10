@@ -14,6 +14,7 @@ import type { PurchaseScenarioId, PurchaseScenarioInput } from '@/lib/valuation/
 import { buildDefaultScenarios } from '@/lib/valuation/purchase-scenarios'
 import { precioDeCompraValido } from '@/lib/valuation/precio-compra'
 import { completarValuacion } from '@/lib/valuation/completar-valuacion'
+import { valuacionConPreciosManuales } from '@/lib/valuation/precio-manual'
 import { SelectorDeTasador, type EstadoIAEnPantalla } from '@/components/appraisal/SelectorDeTasador'
 import { estadoTarjetaIA, rehidratar } from '@/lib/valuation/valuacion-activa'
 import { huellaDeInsumos } from '@/lib/valuation/huella-insumos'
@@ -1572,10 +1573,10 @@ function NewAppraisalPageContent() {
                             <div className="mt-6">
                                 <PurchaseScenariosEditor
                                     scenarios={purchaseScenarios}
-                                    results={valuationResult.purchaseScenarios || []}
+                                    results={valuacionConPreciosManuales(valuationResult, reportEdits.priceOverrides).purchaseScenarios || []}
                                     selectedIds={selectedScenarioIds}
                                     currency={valuationResult.currency}
-                                    moneyFromSale={valuationResult.moneyInHand}
+                                    moneyFromSale={valuacionConPreciosManuales(valuationResult, reportEdits.priceOverrides).moneyInHand}
                                     onScenariosChange={setPurchaseScenarios}
                                     onSelectedIdsChange={setSelectedScenarioIds}
                                 />
@@ -1709,6 +1710,8 @@ function NewAppraisalPageContent() {
                         su recálculo reescribe la versión clásica; mezclar los dos caminos acá
                         duplicaría riesgo. El detalle sí edita las dos versiones. */}
                     <ValuationReport
+                        precioCalculado={(resultadoEnUso ?? valuationResult).publicationPrice}
+                        noSaleZoneOverride={reportEdits.priceOverrides?.noSaleZonePrice}
                         subject={{
                             price: subject.price,
                             currency: subject.currency,
@@ -1716,7 +1719,8 @@ function NewAppraisalPageContent() {
                             location: subject.location,
                             features: subjectFeaturesEnUso ?? {},
                         }}
-                        result={resultadoEnUso ?? valuationResult}
+                        // El precio cargado a mano manda en toda la cadena, igual que en el PDF (B5).
+                        result={valuacionConPreciosManuales(resultadoEnUso ?? valuationResult, reportEdits.priceOverrides)}
                         editable={!iaEnUso}
                         onComparableFeaturesChange={iaEnUso ? undefined : handleComparableFeaturesChange}
                         onSubjectFeaturesChange={iaEnUso ? undefined : handleSubjectFeaturesChange}

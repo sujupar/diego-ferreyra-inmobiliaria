@@ -3,6 +3,7 @@
 import { memo, useState } from 'react'
 import { ValuationResult, ValuationProperty, ExpenseRates } from '@/lib/valuation/calculator'
 import { formatCurrency } from '@/lib/valuation/utils'
+import { validarZonaDeNoVenta } from '@/lib/valuation/precio-manual'
 import {
     DISPOSITION_LABELS,
     QUALITY_LABELS,
@@ -31,6 +32,9 @@ interface ValuationReportProps {
      *  y aplica también al PDF). undefined = usar el valor calculado (publicación × 1.05). */
     noSaleZoneOverride?: number
     onNoSaleZoneOverrideChange?: (value: number | undefined) => void
+    /** Precio de publicación CALCULADO, cuando `result` trae uno cargado a mano
+     *  (valuacionConPreciosManuales). Solo para aclararlo en pantalla. */
+    precioCalculado?: number
 }
 
 const DISPOSITION_OPTIONS: DispositionType[] = ['FRONT', 'BACK', 'LATERAL', 'INTERNAL']
@@ -56,6 +60,7 @@ function ValuationReportInner({
     onExpenseRatesChange,
     noSaleZoneOverride,
     onNoSaleZoneOverrideChange,
+    precioCalculado,
 }: ValuationReportProps) {
     // Zona de No Venta: valor mostrado = override manual o el calculado.
     const effectiveNoSaleZone = noSaleZoneOverride ?? result.noSaleZonePrice
@@ -69,6 +74,20 @@ function ValuationReportInner({
         agencyFeesPercent: 3,
     }
     const ratesEditable = editable && Boolean(onExpenseRatesChange)
+    // La Zona de No Venta se valida al CONFIRMAR (salir del campo o Enter), no
+    // por tecla: escribiendo "2" de camino a 250.000 sería "menor" y no se
+    // podría tipear. Nunca queda por debajo de la publicación (B5).
+    const [borradorZnv, setBorradorZnv] = useState<string | null>(null)
+    const [errorZnv, setErrorZnv] = useState<string | null>(null)
+    const confirmarZnv = () => {
+        if (borradorZnv === null || !onNoSaleZoneOverrideChange) return
+        const valor = borradorZnv.trim() === '' ? undefined : Number(borradorZnv)
+        const error = validarZonaDeNoVenta(valor, result.publicationPrice, result.currency)
+        if (error) { setErrorZnv(error); return }
+        onNoSaleZoneOverrideChange(valor)
+        setBorradorZnv(null)
+        setErrorZnv(null)
+    }
     const [isEditing, setIsEditing] = useState(false)
 
     const today = new Date().toLocaleDateString('es-AR', {
@@ -137,8 +156,15 @@ function ValuationReportInner({
                 <div className="mt-6 pt-6 border-t border-primary/10 grid grid-cols-2 gap-6">
                     <div className="flex justify-between items-center">
                         <span className="text-base font-medium text-foreground/70">PRECIO DE PUBLICACIÓN</span>
-                        <span className="text-3xl font-bold text-primary">
-                            {formatCurrency(result.publicationPrice, result.currency)}
+                        <span className="flex flex-col items-end">
+                            <span className="text-3xl font-bold text-primary">
+                                {formatCurrency(result.publicationPrice, result.currency)}
+                            </span>
+                            {precioCalculado !== undefined && precioCalculado !== result.publicationPrice && (
+                                <span className="text-[11px] text-muted-foreground">
+                                    Cargado a mano · calculado {formatCurrency(precioCalculado, result.currency)}
+                                </span>
+                            )}
                         </span>
                     </div>
                     <div className="flex justify-between items-center">
@@ -151,15 +177,21 @@ function ValuationReportInner({
                                         type="number"
                                         inputMode="numeric"
                                         aria-label="Zona de No Venta (editable)"
+                                        aria-invalid={errorZnv !== null}
                                         className="w-36 bg-transparent text-right text-3xl font-bold text-red-500 outline-none border-b border-red-300 focus:border-red-500 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                                        value={effectiveNoSaleZone ?? ''}
-                                        onChange={e => onNoSaleZoneOverrideChange!(e.target.value === '' ? undefined : Number(e.target.value))}
+                                        value={borradorZnv ?? effectiveNoSaleZone ?? ''}
+                                        onChange={e => { setBorradorZnv(e.target.value); setErrorZnv(null) }}
+                                        onBlur={confirmarZnv}
+                                        onKeyDown={e => { if (e.key === 'Enter') confirmarZnv() }}
                                     />
                                 </div>
+                                {errorZnv && (
+                                    <p role="alert" className="mt-0.5 max-w-xs text-right text-[11px] text-red-600">{errorZnv}</p>
+                                )}
                                 {noSaleZoneOverride !== undefined && (
                                     <button
                                         type="button"
-                                        onClick={() => onNoSaleZoneOverrideChange!(undefined)}
+                                        onClick={() => { setBorradorZnv(null); setErrorZnv(null); onNoSaleZoneOverrideChange!(undefined) }}
                                         className="mt-0.5 text-[11px] text-muted-foreground underline hover:no-underline"
                                     >
                                         volver al calculado ({formatCurrency(result.noSaleZonePrice, result.currency)})

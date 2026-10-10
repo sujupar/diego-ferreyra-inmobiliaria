@@ -16,13 +16,12 @@ import {
     calculateHomogenizedSurface,
     calculateValuation,
     type ExpenseRates,
-    type PurchaseScenarioInput,
-    type PurchaseScenarioResult,
     type ValuationFeatures,
     type ValuationProperty,
     type ValuationResult,
 } from './calculator'
 import { completarValuacion } from './completar-valuacion'
+import { entradaDeEscenario } from './purchase-scenarios'
 
 /** Lo mínimo de una fila de `appraisal_comparables` que hace falta acá. */
 export interface FilaFicha {
@@ -61,21 +60,6 @@ function posicionesNormales(filas: FilaFicha[]): number[] {
         .filter(({ f }) => esNormal(f))
         .sort((a, b) => a.f.sort_order - b.f.sort_order)
         .map(({ i }) => i)
-}
-
-/** Los escenarios guardados son resultados; para recalcularlos hace falta solo la entrada. */
-function entradaDeEscenario(s: PurchaseScenarioResult | PurchaseScenarioInput): PurchaseScenarioInput {
-    return {
-        id: s.id,
-        level: s.level,
-        propertyKey: s.propertyKey,
-        propertyLabel: s.propertyLabel,
-        label: s.label,
-        publicationPrice: s.publicationPrice,
-        purchaseDiscountPercent: s.purchaseDiscountPercent,
-        deedDiscountPercent: s.deedDiscountPercent,
-        rates: s.rates,
-    }
 }
 
 export function recalcularFicha<T extends FilaFicha>(

@@ -1,7 +1,9 @@
 'use client'
 
+import { useState } from 'react'
 import { ValuationProperty, ValuationResult, PurchaseResult } from '@/lib/valuation/calculator'
 import { ReportEdits, SemaphoreColor, MARCADOR_PRECIO } from '@/lib/types/report-edits'
+import { validarZonaDeNoVenta } from '@/lib/valuation/precio-manual'
 
 interface ReportEditorProps {
     subject: ValuationProperty
@@ -21,7 +23,7 @@ const SEMAPHORE_COLORS: { value: SemaphoreColor; label: string; bg: string; ring
 ]
 
 function formatCurrency(value: number, currency: string = 'USD'): string {
-    return `${currency} ${value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+    return `${currency} ${value.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 }
 
 export function ReportEditor({
@@ -47,6 +49,19 @@ export function ReportEditor({
             ...reportEdits,
             priceOverrides: Object.keys(next).length > 0 ? next : undefined,
         })
+    }
+
+    const publicacionVigente = reportEdits.priceOverrides?.publicationPrice ?? valuationResult.publicationPrice
+    const [borradorZnv, setBorradorZnv] = useState<string | null>(null)
+    const [errorZnvBorrador, setErrorZnvBorrador] = useState<string | null>(null)
+    function confirmarZnv() {
+        if (borradorZnv === null) return
+        const valor = borradorZnv.trim() === '' ? undefined : Number(borradorZnv)
+        const error = validarZonaDeNoVenta(valor, publicacionVigente, valuationResult.currency)
+        if (error) { setErrorZnvBorrador(error); return }
+        updatePriceOverride('noSaleZonePrice', valor)
+        setBorradorZnv(null)
+        setErrorZnvBorrador(null)
     }
 
     function updateSemaphore(key: string, color: SemaphoreColor) {
@@ -75,8 +90,8 @@ export function ReportEditor({
                 <h3 className="text-lg font-semibold text-primary border-b pb-2">Precios (manual)</h3>
                 <p className="text-xs text-muted-foreground -mt-2">
                     Estos valores reemplazan los calculados en el PDF. Dejá el campo vacío para usar el valor
-                    calculado. No actualiza las menciones de precio dentro de los textos de Análisis/Estrategia
-                    (editá esos textos si querés reflejarlo ahí).
+                    calculado. El precio de publicación a mano recalcula venta, escritura, gastos, dinero en
+                    mano y escenarios de compra, y es el que aparece en los textos ({MARCADOR_PRECIO}).
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {([
@@ -85,17 +100,31 @@ export function ReportEditor({
                         { key: 'noSaleZonePrice', label: 'Precio de No Venta', calc: valuationResult.noSaleZonePrice },
                     ] as const).map(({ key, label, calc }) => {
                         const override = reportEdits.priceOverrides?.[key]
+                        const esZnv = key === 'noSaleZonePrice'
+                        // La ZNV se confirma al salir del campo (validarla por tecla
+                        // impediría tipear 250.000 pasando por "2"). Nunca por debajo
+                        // de la publicación vigente (B5).
+                        const errorZnv = esZnv
+                            ? (errorZnvBorrador ?? validarZonaDeNoVenta(override, publicacionVigente, valuationResult.currency))
+                            : null
                         return (
                             <div key={key} className="space-y-1.5">
-                                <label className="text-sm font-medium">{label}</label>
+                                <label htmlFor={`precio-manual-${key}`} className="text-sm font-medium">{label}</label>
                                 <input
+                                    id={`precio-manual-${key}`}
                                     type="number"
                                     inputMode="numeric"
-                                    className="w-full rounded-md border px-3 py-2 text-sm"
-                                    placeholder={`${valuationResult.currency} ${calc.toLocaleString('en-US')}`}
-                                    value={override ?? ''}
-                                    onChange={e => updatePriceOverride(key, e.target.value === '' ? undefined : Number(e.target.value))}
+                                    aria-invalid={errorZnv !== null}
+                                    className={`w-full rounded-md border px-3 py-2 text-sm ${errorZnv ? 'border-red-400' : ''}`}
+                                    placeholder={`${valuationResult.currency} ${calc.toLocaleString('es-AR')}`}
+                                    value={esZnv && borradorZnv !== null ? borradorZnv : (override ?? '')}
+                                    onChange={e => {
+                                        if (esZnv) { setBorradorZnv(e.target.value); setErrorZnvBorrador(null); return }
+                                        updatePriceOverride(key, e.target.value === '' ? undefined : Number(e.target.value))
+                                    }}
+                                    onBlur={esZnv ? confirmarZnv : undefined}
                                 />
+                                {errorZnv && <p role="alert" className="text-[11px] text-red-600">{errorZnv}</p>}
                                 <div className="flex items-center justify-between gap-2">
                                     <span className="text-[11px] text-muted-foreground">
                                         Calculado: {formatCurrency(calc, valuationResult.currency)}
@@ -103,7 +132,10 @@ export function ReportEditor({
                                     {override !== undefined && (
                                         <button
                                             type="button"
-                                            onClick={() => updatePriceOverride(key, undefined)}
+                                            onClick={() => {
+                                                if (esZnv) { setBorradorZnv(null); setErrorZnvBorrador(null) }
+                                                updatePriceOverride(key, undefined)
+                                            }}
                                             className="text-[11px] text-primary underline hover:no-underline whitespace-nowrap"
                                         >
                                             Restablecer

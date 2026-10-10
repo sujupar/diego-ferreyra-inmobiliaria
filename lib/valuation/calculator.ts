@@ -119,6 +119,41 @@ export function calculateWeightedPricePerM2(
     return price / surface
 }
 
+/** Tasas de gastos de venta con los valores de fábrica para lo que falte. */
+export function tasasDeVenta(expenseRates?: ExpenseRates): Required<ExpenseRates> {
+    return {
+        saleDiscountPercent: expenseRates?.saleDiscountPercent ?? 5,
+        deedDiscountPercent: expenseRates?.deedDiscountPercent ?? 30,
+        stampsPercent: expenseRates?.stampsPercent ?? 1.35,
+        deedExpensesPercent: expenseRates?.deedExpensesPercent ?? 1.5,
+        agencyFeesPercent: expenseRates?.agencyFeesPercent ?? 3,
+    }
+}
+
+/** Valor de Venta = Publicación × (1 − descuento de venta). */
+export function valorDeVenta(publicationPrice: number, rates: Required<ExpenseRates>): number {
+    return Math.round(publicationPrice * (1 - rates.saleDiscountPercent / 100))
+}
+
+/**
+ * Cadena de gastos de venta a partir del valor de venta. Una sola definición:
+ * la usa el cálculo y el precio cargado a mano (precio-manual.ts), para que un
+ * mismo precio dé siempre los mismos gastos (auditoría 2026-10-03, B5/C5).
+ */
+export function gastosDeVenta(saleValue: number, rates: Required<ExpenseRates>) {
+    const deedValue = Math.round(saleValue * (1 - rates.deedDiscountPercent / 100))
+    const stampsCost = Math.round(deedValue * (rates.stampsPercent / 100))
+    const deedExpenses = Math.round(saleValue * (rates.deedExpensesPercent / 100))
+    const agencyFees = Math.round(saleValue * (rates.agencyFeesPercent / 100))
+    const totalExpenses = stampsCost + deedExpenses + agencyFees
+    return { deedValue, stampsCost, deedExpenses, agencyFees, totalExpenses, moneyInHand: saleValue - totalExpenses }
+}
+
+/** Zona de No Venta = Publicación × 1,05, redondeada al millar. */
+export function zonaDeNoVenta(publicationPrice: number): number {
+    return Math.round((publicationPrice * 1.05) / 1000) * 1000
+}
+
 // Extended property for valuation
 export interface ValuationProperty {
     price?: number | null
@@ -373,23 +408,12 @@ export function calculateValuation({ subject, comparables, expenseRates }: Valua
     const publicationPrice = Math.round(finalValue / 1000) * 1000
 
     // Zona de No Venta = Publicación × 1.05 (5% por encima)
-    const noSaleZonePrice = Math.round((publicationPrice * 1.05) / 1000) * 1000
+    const noSaleZonePrice = zonaDeNoVenta(publicationPrice)
 
     // ─── Cost calculations (configurable rates) ───
-    const rates: Required<ExpenseRates> = {
-        saleDiscountPercent: expenseRates?.saleDiscountPercent ?? 5,
-        deedDiscountPercent: expenseRates?.deedDiscountPercent ?? 30,
-        stampsPercent: expenseRates?.stampsPercent ?? 1.35,
-        deedExpensesPercent: expenseRates?.deedExpensesPercent ?? 1.5,
-        agencyFeesPercent: expenseRates?.agencyFeesPercent ?? 3,
-    }
-    const saleValue = Math.round(publicationPrice * (1 - rates.saleDiscountPercent / 100))
-    const deedValue = Math.round(saleValue * (1 - rates.deedDiscountPercent / 100))
-    const stampsCost = Math.round(deedValue * (rates.stampsPercent / 100))
-    const deedExpenses = Math.round(saleValue * (rates.deedExpensesPercent / 100))
-    const agencyFees = Math.round(saleValue * (rates.agencyFeesPercent / 100))
-    const totalExpenses = stampsCost + deedExpenses + agencyFees
-    const moneyInHand = saleValue - totalExpenses
+    const rates = tasasDeVenta(expenseRates)
+    const saleValue = valorDeVenta(publicationPrice, rates)
+    const { deedValue, stampsCost, deedExpenses, agencyFees, totalExpenses, moneyInHand } = gastosDeVenta(saleValue, rates)
 
     // Determine currency
     const currency = comparables.find(c => c.currency)?.currency || 'USD'

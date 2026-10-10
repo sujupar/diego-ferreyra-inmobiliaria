@@ -4,6 +4,7 @@ import React from 'react'
 import { Document, Page, Text, View, Image, Link, Svg, Path, Circle as SvgCircle, Rect as SvgRect } from '@react-pdf/renderer'
 import { ValuationProperty, ValuationResult, PurchaseResult, PurchaseScenarioResult } from '@/lib/valuation/calculator'
 import { formatCurrency } from '@/lib/valuation/utils'
+import { valuacionConPreciosManuales } from '@/lib/valuation/precio-manual'
 import { styles, colors } from './PDFStyles'
 import { ReportEdits, SemaphoreColor, textoConPrecio } from '@/lib/types/report-edits'
 import { extractAddress } from '@/lib/valuation/addressUtils'
@@ -168,8 +169,8 @@ function SaleSimTable({
     valuationResult, subject, neighborhood, pubDisplay, saleDisplay,
 }: { valuationResult: ValuationResult; subject: ValuationProperty; neighborhood: string; pubDisplay?: number; saleDisplay?: number }) {
     const r = valuationResult
-    // Override de display de los precios (mismo criterio que la página de Costos): no
-    // recalcula gastos/dinero-en-mano, solo muestra el valor cargado a mano si existe.
+    // `valuationResult` ya viene con los precios a mano aplicados a toda la cadena
+    // (valuacionConPreciosManuales); pub/sale quedan por compatibilidad.
     const pub = pubDisplay ?? r.publicationPrice
     const sale = saleDisplay ?? r.saleValue
     const rates = r.expenseRates
@@ -301,15 +302,17 @@ function PurchaseSimTable({
     )
 }
 
-export function PDFReportDocument({ subject, comparables, valuationResult, overpriced = [], purchaseProperties = [], purchaseResult, marketImageLabels = {}, marketImageUrls = {}, reportEdits, appraisalDate, advisorPhotoUrl = '/pdf-assets/photos/advisor-default.png', marketData, neighborhoodName }: PDFReportProps) {
+export function PDFReportDocument({ subject, comparables, valuationResult: resultadoCalculado, overpriced = [], purchaseProperties = [], purchaseResult, marketImageLabels = {}, marketImageUrls = {}, reportEdits, appraisalDate, advisorPhotoUrl = '/pdf-assets/photos/advisor-default.png', marketData, neighborhoodName }: PDFReportProps) {
     const neighborhood = neighborhoodName || extractNeighborhood(subject.location || '')
-    // Precios mostrados: override manual (reportEdits.priceOverrides) o el valor calculado.
-    // Override de display puro: NO recalcula la cadena de costos/gastos. Los textos
-    // sí lo usan: su {precio} se resuelve con este precio (ver textoConPrecio).
-    const recommendedPrice = reportEdits?.priceOverrides?.publicationPrice ?? valuationResult.publicationPrice
+    // Precio cargado a mano (reportEdits.priceOverrides): TODA la cadena —venta,
+    // escritura, gastos, dinero en mano, parte del propietario y escenarios de
+    // compra— sale de él. Antes era solo visual y el PDF se contradecía
+    // (auditoría 2026-10-03, B5). Los textos usan el mismo precio ({precio}).
+    const valuationResult = valuacionConPreciosManuales(resultadoCalculado, reportEdits?.priceOverrides)
+    const recommendedPrice = valuationResult.publicationPrice
     const precioEnTextos = formatCurrency(recommendedPrice, valuationResult.currency)
     const noSaleZone = reportEdits?.priceOverrides?.noSaleZonePrice ?? valuationResult.noSaleZonePrice
-    const saleValueDisplay = reportEdits?.priceOverrides?.saleValue ?? valuationResult.saleValue
+    const saleValueDisplay = valuationResult.saleValue
 
     // Helper: calculate homogenized surface for a comparable
     const getHomogenizedSurface = (comp: ValuationProperty) => {

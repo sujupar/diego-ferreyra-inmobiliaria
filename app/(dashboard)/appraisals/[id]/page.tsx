@@ -10,6 +10,7 @@ import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { SelectorDeTasador, type EstadoIAEnPantalla } from '@/components/appraisal/SelectorDeTasador'
 import { ValuationProperty, ValuationResult, ValuationFeatures, getQualityCoefficient, ExpenseRates } from '@/lib/valuation/calculator'
 import { recalcularFicha, type CambioFicha } from '@/lib/valuation/recalculo-ficha'
+import { valuacionConPreciosManuales } from '@/lib/valuation/precio-manual'
 import { valuacionActiva, estadoTarjetaIA, comparablesNormales, filaAPropiedad, rehidratar, comparablesDelSnapshotIA } from '@/lib/valuation/valuacion-activa'
 import { huellaDeInsumos } from '@/lib/valuation/huella-insumos'
 import { recalcularSnapshotIA, type CambioSnapshotIA } from '@/lib/valuation/editar-snapshot-ia'
@@ -628,7 +629,9 @@ export default function AppraisalDetailPage() {
             {hasFullValuation ? (
                 <ValuationReport
                     subject={subject}
-                    result={result}
+                    // El precio cargado a mano manda en toda la cadena, igual que en el PDF (B5).
+                    result={valuacionConPreciosManuales(result, reportEdits?.priceOverrides)}
+                    precioCalculado={result.publicationPrice}
                     editable
                     onSubjectFeaturesChange={handleSubjectFeaturesChange}
                     onComparableFeaturesChange={handleComparableFeaturesChange}
