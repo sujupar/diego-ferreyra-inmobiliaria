@@ -5,7 +5,7 @@ import { Document, Page, Text, View, Image, Link, Svg, Path, Circle as SvgCircle
 import { ValuationProperty, ValuationResult, PurchaseResult, PurchaseScenarioResult } from '@/lib/valuation/calculator'
 import { formatCurrency } from '@/lib/valuation/utils'
 import { styles, colors } from './PDFStyles'
-import { ReportEdits, SemaphoreColor } from '@/lib/types/report-edits'
+import { ReportEdits, SemaphoreColor, textoConPrecio } from '@/lib/types/report-edits'
 import { extractAddress } from '@/lib/valuation/addressUtils'
 import { StockDashboardPDF } from './market/StockDashboardPDF'
 import { EscriturasPDF } from './market/EscriturasPDF'
@@ -304,8 +304,10 @@ function PurchaseSimTable({
 export function PDFReportDocument({ subject, comparables, valuationResult, overpriced = [], purchaseProperties = [], purchaseResult, marketImageLabels = {}, marketImageUrls = {}, reportEdits, appraisalDate, advisorPhotoUrl = '/pdf-assets/photos/advisor-default.png', marketData, neighborhoodName }: PDFReportProps) {
     const neighborhood = neighborhoodName || extractNeighborhood(subject.location || '')
     // Precios mostrados: override manual (reportEdits.priceOverrides) o el valor calculado.
-    // Override de display puro: NO recalcula la cadena de costos/gastos ni los textos.
+    // Override de display puro: NO recalcula la cadena de costos/gastos. Los textos
+    // sí lo usan: su {precio} se resuelve con este precio (ver textoConPrecio).
     const recommendedPrice = reportEdits?.priceOverrides?.publicationPrice ?? valuationResult.publicationPrice
+    const precioEnTextos = formatCurrency(recommendedPrice, valuationResult.currency)
     const noSaleZone = reportEdits?.priceOverrides?.noSaleZonePrice ?? valuationResult.noSaleZonePrice
     const saleValueDisplay = reportEdits?.priceOverrides?.saleValue ?? valuationResult.saleValue
 
@@ -1128,7 +1130,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                 {reportEdits?.analysisText ? (
                     // El analysisText editable YA incluye la frase de cierre ("Una buena
                     // tasación..."), así que NO se agrega la línea estática (evita duplicado).
-                    <Text style={styles.body}>{reportEdits.analysisText}</Text>
+                    <Text style={styles.body}>{textoConPrecio(reportEdits.analysisText, precioEnTextos)}</Text>
                 ) : (
                     <>
                         <Text style={styles.body}>
@@ -1582,7 +1584,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                     <Text style={styles.h2}>Estrategia de Precio</Text>
 
                     {reportEdits?.strategyPriceText ? (
-                        <Text style={[styles.body, { marginBottom: 24 }]}>{reportEdits.strategyPriceText}</Text>
+                        <Text style={[styles.body, { marginBottom: 24 }]}>{textoConPrecio(reportEdits.strategyPriceText, precioEnTextos)}</Text>
                     ) : (
                         <>
                             <Text style={styles.body}>

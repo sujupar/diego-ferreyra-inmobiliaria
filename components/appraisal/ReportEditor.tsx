@@ -1,7 +1,7 @@
 'use client'
 
 import { ValuationProperty, ValuationResult, PurchaseResult } from '@/lib/valuation/calculator'
-import { ReportEdits, SemaphoreColor } from '@/lib/types/report-edits'
+import { ReportEdits, SemaphoreColor, MARCADOR_PRECIO } from '@/lib/types/report-edits'
 
 interface ReportEditorProps {
     subject: ValuationProperty
@@ -283,6 +283,7 @@ export function ReportEditor({
                     </div>
                     <div className="space-y-2">
                         <label className="text-sm font-medium">Texto de analisis</label>
+                        <p className="text-xs text-muted-foreground">Escribí {MARCADOR_PRECIO} donde va el precio: en el informe se reemplaza por el precio de publicación vigente.</p>
                         <textarea
                             className="w-full rounded-md border px-3 py-2 text-sm min-h-[60px]"
                             placeholder={`Debido a la competencia para tener visitas y potencial de venta la propiedad se deberia publicar en ${formatCurrency(valuationResult.publicationPrice, valuationResult.currency)}.`}
@@ -299,6 +300,7 @@ export function ReportEditor({
                 <div className="space-y-4">
                     <div className="space-y-2">
                         <label className="text-sm font-medium">Estrategia de Precio</label>
+                        <p className="text-xs text-muted-foreground">{MARCADOR_PRECIO} se reemplaza por el precio de publicación vigente.</p>
                         <textarea
                             className="w-full rounded-md border px-3 py-2 text-sm min-h-[60px]"
                             placeholder="El valor de publicacion recomendado es..."

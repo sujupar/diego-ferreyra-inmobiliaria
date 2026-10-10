@@ -13,7 +13,7 @@ import { valuacionActiva, estadoTarjetaIA, comparablesNormales, filaAPropiedad, 
 import { huellaDeInsumos } from '@/lib/valuation/huella-insumos'
 import { recalcularSnapshotIA, type CambioSnapshotIA } from '@/lib/valuation/editar-snapshot-ia'
 import type { ValuationSource } from '@/lib/valuation/ia-tipos'
-import { ReportEdits, buildDefaultEdits } from '@/lib/types/report-edits'
+import { ReportEdits, buildDefaultEdits, normalizarEdiciones } from '@/lib/types/report-edits'
 import type { PropertyFeatures, ScrapedProperty } from '@/lib/scraper/types'
 import type { MarketDataForReport } from '@/lib/market-data/types'
 import { Button } from '@/components/ui/button'
@@ -72,7 +72,9 @@ export default function AppraisalDetailPage() {
                 setAppraisal(data as AppraisalDetail)
                 // Cargar los ajustes guardados (textos, semáforos, overrides de precio) para
                 // que el informe web y el modal muestren lo persistido (ej. Zona de No Venta).
-                if (data.report_edits) setReportEdits(data.report_edits as ReportEdits)
+                // Normalizadas: los precios viejos escritos en los textos pasan al
+                // marcador {precio}, que el informe resuelve con el precio vigente.
+                if (data.report_edits) setReportEdits(normalizarEdiciones(data.report_edits as ReportEdits))
             })
             .catch(err => {
                 console.error('Error loading appraisal:', err)
@@ -664,7 +666,6 @@ export default function AppraisalDetailPage() {
         if (!appraisal) return
         const base = reportEdits || buildDefaultEdits(
             { title: appraisal.property_title || '', location: appraisal.property_location, description: appraisal.property_description || '' },
-            result,
         )
         const nextPO = { ...(base.priceOverrides || {}) }
         if (value === undefined || Number.isNaN(value)) delete nextPO.noSaleZonePrice
@@ -822,7 +823,6 @@ export default function AppraisalDetailPage() {
                     purchaseResult={result.purchaseResult}
                     reportEdits={reportEdits || buildDefaultEdits(
                         { title: appraisal.property_title || '', location: appraisal.property_location, description: appraisal.property_description || '' },
-                        result
                     )}
                     onReportEditsChange={setReportEdits}
                     appraisalDate={appraisal.created_at}
