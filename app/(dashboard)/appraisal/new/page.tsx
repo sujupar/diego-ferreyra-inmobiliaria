@@ -12,6 +12,7 @@ import { ScrapedProperty, PropertyFeatures } from '@/lib/scraper/types'
 import { calculateValuation, calculateWeightedPricePerM2, ValuationResult, ValuationProperty, ExpenseRates, PurchaseResult } from '@/lib/valuation/calculator'
 import type { PurchaseScenarioId, PurchaseScenarioInput } from '@/lib/valuation/calculator'
 import { buildDefaultScenarios } from '@/lib/valuation/purchase-scenarios'
+import { precioDeCompraValido } from '@/lib/valuation/precio-compra'
 import { completarValuacion } from '@/lib/valuation/completar-valuacion'
 import { SelectorDeTasador, type EstadoIAEnPantalla } from '@/components/appraisal/SelectorDeTasador'
 import { estadoTarjetaIA, rehidratar } from '@/lib/valuation/valuacion-activa'
@@ -222,6 +223,9 @@ function NewAppraisalPageContent() {
     const [purchaseProperties, setPurchaseProperties] = useState<ScrapedProperty[]>([])
     // Múltiples propiedades de compra pueden estar marcadas para comparar lado-a-lado.
     const [selectedPurchaseIndices, setSelectedPurchaseIndices] = useState<number[]>([])
+    // Propiedad de compra sin precio que el asesor intentó marcar: se le pide el
+    // precio antes de marcarla (B4). `valor` es lo que va escribiendo.
+    const [precioCompraPendiente, setPrecioCompraPendiente] = useState<{ index: number; valor: string } | null>(null)
     // Legacy: tasaciones viejas guardaron un PurchaseResult único. Se preserva sólo para
     // back-compat de lectura; el nuevo flujo siempre usa purchaseScenarios.
     const [purchaseResult, setPurchaseResult] = useState<PurchaseResult | null>(null)
@@ -249,7 +253,10 @@ function NewAppraisalPageContent() {
                 if (next.some(s => s.propertyKey === propertyKey)) continue
                 const prop = purchaseProperties[idx]
                 if (!prop) continue
-                const basePrice = prop.price || 100000
+                // Sin precio no hay escenarios: nunca un precio inventado (B4).
+                // La UI no deja marcar una propiedad sin precio; esto es la red.
+                const basePrice = precioDeCompraValido(prop.price)
+                if (basePrice === null) continue
                 const propertyLabel = prop.title || prop.location || `Propiedad ${idx + 1}`
                 next.push(...buildDefaultScenarios(basePrice, propertyKey, propertyLabel))
             }
@@ -814,7 +821,8 @@ function NewAppraisalPageContent() {
                 const prop = purchaseProperties[idx]
                 if (!prop) continue
                 const propertyKey = `prop_${idx}`
-                const basePrice = prop.price || 100000
+                const basePrice = precioDeCompraValido(prop.price)
+                if (basePrice === null) continue
                 const propertyLabel = prop.title || prop.location || `Propiedad ${idx + 1}`
                 scenariosForCalc.push(...buildDefaultScenarios(basePrice, propertyKey, propertyLabel))
             }
@@ -1417,7 +1425,13 @@ function NewAppraisalPageContent() {
                                                     <input
                                                         type="checkbox"
                                                         checked={isSelected}
+                                                        aria-label={`Marcar ${prop.title || prop.location || `la propiedad ${index + 1}`} para la compra`}
                                                         onChange={() => {
+                                                            // Sin precio no se marca: se pide primero (B4).
+                                                            if (!isSelected && precioDeCompraValido(prop.price) === null) {
+                                                                setPrecioCompraPendiente({ index, valor: '' })
+                                                                return
+                                                            }
                                                             setSelectedPurchaseIndices(prev =>
                                                                 prev.includes(index)
                                                                     ? prev.filter(i => i !== index)
@@ -1458,6 +1472,8 @@ function NewAppraisalPageContent() {
                                                         onClick={() => {
                                                             const newProps = purchaseProperties.filter((_, i) => i !== index)
                                                             setPurchaseProperties(newProps)
+                                                            // Los índices se corren: un editor de precio abierto apuntaría a otra.
+                                                            setPrecioCompraPendiente(null)
                                                             // Reajustar indices: remover el borrado y decrementar los mayores.
                                                             setSelectedPurchaseIndices(prev =>
                                                                 prev
@@ -1474,6 +1490,43 @@ function NewAppraisalPageContent() {
                                             )
                                         })}
                                     </div>
+                                    {precioCompraPendiente && purchaseProperties[precioCompraPendiente.index] && (
+                                        <form
+                                            className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3"
+                                            onSubmit={e => {
+                                                e.preventDefault()
+                                                const precio = precioDeCompraValido(Number(precioCompraPendiente.valor))
+                                                if (precio === null) return
+                                                const idx = precioCompraPendiente.index
+                                                setPurchaseProperties(prev => prev.map((p, i) => (i === idx ? { ...p, price: precio, currency: 'USD' } : p)))
+                                                setSelectedPurchaseIndices(prev => (prev.includes(idx) ? prev : [...prev, idx].sort((a, b) => a - b)))
+                                                setPrecioCompraPendiente(null)
+                                            }}
+                                        >
+                                            <p className="text-sm font-medium text-amber-900">
+                                                «{purchaseProperties[precioCompraPendiente.index].title || purchaseProperties[precioCompraPendiente.index].location}» no tiene precio. Cargalo para poder compararla en el informe.
+                                            </p>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <label htmlFor="precio-compra-pendiente" className="text-sm text-amber-900">Precio de publicación (USD)</label>
+                                                <input
+                                                    id="precio-compra-pendiente"
+                                                    type="number"
+                                                    min={1}
+                                                    inputMode="numeric"
+                                                    autoFocus
+                                                    value={precioCompraPendiente.valor}
+                                                    onChange={e => setPrecioCompraPendiente(p => (p ? { ...p, valor: e.target.value } : p))}
+                                                    className="w-40 rounded-md border px-3 py-2 text-sm max-md:min-h-11"
+                                                />
+                                                <Button type="submit" size="sm" disabled={precioDeCompraValido(Number(precioCompraPendiente.valor)) === null}>
+                                                    Guardar y marcar
+                                                </Button>
+                                                <Button type="button" size="sm" variant="ghost" onClick={() => setPrecioCompraPendiente(null)}>
+                                                    Cancelar
+                                                </Button>
+                                            </div>
+                                        </form>
+                                    )}
                                     {selectedPurchaseIndices.length === 0 && (
                                         <p className="text-xs text-amber-600">Marcá una o más propiedades para compararlas en el informe</p>
                                     )}
