@@ -67,6 +67,38 @@ describe('getMarketData', () => {
     })
 })
 
+describe('getMarketData — total de inmuebles del período anterior', () => {
+    const fila = (period: string, total: number | null) =>
+        ({ period, stock: { stockDeptos: 74584, totalInmuebles: total }, escrituras: null, price_caba: null })
+
+    it('trae el total del mes anterior al período servido para CABA', async () => {
+        const d = await getMarketData(fakeSupabase([fila('2026-09-01', 110907), fila('2026-10-01', 110214)], NB), 'general', '2026-10-01')
+        expect(d?.caba.totalInmueblesAnterior).toBe(110907)
+    })
+    it('compara contra el anterior al período EFECTIVAMENTE servido, no al pedido', async () => {
+        const filas = [fila('2026-08-01', 110907), fila('2026-09-01', 110907), fila('2026-10-01', 110214)]
+        const d = await getMarketData(fakeSupabase(filas, NB), 'general', '2026-12-01')
+        expect(d?.cabaResolvedPeriod).toBe('2026-10-01')
+        expect(d?.caba.totalInmueblesAnterior).toBe(110907)
+    })
+    it('cruza el año: enero se compara contra diciembre', async () => {
+        const d = await getMarketData(fakeSupabase([fila('2025-12-01', 100000), fila('2026-01-01', 101000)], NB), 'general', '2026-01-01')
+        expect(d?.caba.totalInmueblesAnterior).toBe(100000)
+    })
+    it('sin fila del período anterior → null', async () => {
+        const d = await getMarketData(fakeSupabase([fila('2026-10-01', 110214)], NB), 'general', '2026-10-01')
+        expect(d?.caba.totalInmueblesAnterior).toBeNull()
+    })
+    it('no salta a un mes más viejo si falta el anterior inmediato', async () => {
+        const d = await getMarketData(fakeSupabase([fila('2026-08-01', 110907), fila('2026-10-01', 110214)], NB), 'general', '2026-10-01')
+        expect(d?.caba.totalInmueblesAnterior).toBeNull()
+    })
+    it('fila anterior sin total → null', async () => {
+        const d = await getMarketData(fakeSupabase([fila('2026-09-01', null), fila('2026-10-01', 110214)], NB), 'general', '2026-10-01')
+        expect(d?.caba.totalInmueblesAnterior).toBeNull()
+    })
+})
+
 describe('sumPropertyTypes', () => {
     it('suma con nulls', () => {
         const s = sumPropertyTypes([{ departamentos: 10, terrenos: null, locales: 1, casas: 2, ph: null, oficinas: 3, total: 16 },

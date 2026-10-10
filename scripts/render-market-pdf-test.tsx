@@ -57,7 +57,7 @@ const marketData: MarketDataForReport = {
     neighborhood: { slug: 'palermo', name: 'Palermo', isGeneral: false },
     caba: {
         stock: {
-            stockDeptos: 79624, stockVm: 0.0297, absorcion: 21.2, totalInmuebles: 115277,
+            stockDeptos: 74692, stockVm: 0.0014, absorcion: 18.2, totalInmuebles: 110214,
             tipos: [
                 { label: 'Casa', pct: 4.87, count: 5611 }, { label: 'Departamentos', pct: 69.07, count: 79624 },
                 { label: 'Terrenos', pct: 4.96, count: 5713 }, { label: 'PH', pct: 6.92, count: 7979 },
@@ -78,6 +78,8 @@ const marketData: MarketDataForReport = {
             articleUrl: 'https://www.colegio-escribanos.org.ar/', imageUrl: null,
             summary: 'En Mayo 2026 se registraron 5.435 escrituras de compraventa en CABA (-3,1% interanual) por un monto total de $848.932 millones. Se firmaron 584 escrituras con hipoteca.',
         },
+        // Total de septiembre 2026 (base real): el hero debe decir "-0,6 % mensual".
+        totalInmueblesAnterior: 110907,
         price: { prom: 2462, vm: 0.0008, via: 0.019, usado: 2318, pozo: 3086, estrenar: 2939, alq2amb: 634679, renta: 0.0449, deptos: 79624 },
     },
     barrio: {
