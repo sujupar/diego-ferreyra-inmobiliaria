@@ -54,6 +54,9 @@ export interface MarketDataForReport {
         stock: StockComposition | null
         escrituras: EscriturasData | null
         price: NeighborhoodPrice | null   // panel de precios CABA-wide (para General)
+        /** stock.totalInmuebles del mes anterior a cabaResolvedPeriod (nuestro
+         *  historial; la fuente no publica la variación del total). null si no hay. */
+        totalInmueblesAnterior: number | null
     }
     barrio: {
         price: NeighborhoodPrice | null

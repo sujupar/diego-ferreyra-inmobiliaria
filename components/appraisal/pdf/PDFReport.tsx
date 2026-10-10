@@ -613,7 +613,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult, overp
                                 {md.caba.stock && md.caba.stock.tipos?.length
                                     ? (<>
                                         <Text style={styles.h2}>Stock de inmuebles en venta en CABA</Text>
-                                        <StockDashboardPDF stock={md.caba.stock} />
+                                        <StockDashboardPDF stock={md.caba.stock} /* ?? null: una respuesta del resolver anterior a este campo no lo trae */ totalInmueblesAnterior={md.caba.totalInmueblesAnterior ?? null} />
                                     </>)
                                     : <MarketImageSection slot="stock-departamentos" defaultLabel="Stock de Departamentos en venta en CABA" defaultSrc="/pdf-assets/monthly-data/stock-departamentos.png" last />}
                             </View>

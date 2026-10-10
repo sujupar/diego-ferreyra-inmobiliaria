@@ -2,6 +2,7 @@ import React from 'react'
 import { View, Text } from '@react-pdf/renderer'
 import type { StockComposition, CompositionSlice } from '@/lib/market-data/types'
 import { fmtInt, fmtPct } from '@/lib/market-data/arc-geometry'
+import { stockDestacado } from '@/lib/market-data/stock-destacado'
 import { SemiDonutPDF } from './gauges'
 import { MKT } from './palette'
 
@@ -30,21 +31,22 @@ function Legend({ slices, palette }: { slices: CompositionSlice[]; palette: stri
     )
 }
 
-export function StockDashboardPDF({ stock }: { stock: StockComposition }) {
+export function StockDashboardPDF({ stock, totalInmueblesAnterior }: { stock: StockComposition; totalInmueblesAnterior: number | null }) {
     const withColors = (sl: CompositionSlice[], pal: string[]) => sl.map((s, i) => ({ pct: s.pct, color: pal[i % pal.length] }))
+    const destacado = stockDestacado(stock, totalInmueblesAnterior)
     return (
         <View>
-            {/* hero */}
+            {/* hero: el total de inmuebles (o deptos si falta) y SU variación; la absorción es solo de deptos */}
             <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginBottom: 10 }}>
-                <Text style={{ fontSize: 26, fontWeight: 800, color: MKT.azul }}>{fmtInt(stock.stockDeptos)}</Text>
-                <Text style={{ fontSize: 9, color: MKT.gris }}>deptos en venta</Text>
-                {stock.stockVm !== null && (
-                    <Text style={{ fontSize: 9, fontWeight: 700, color: stock.stockVm >= 0 ? MKT.verde : MKT.rojo }}>
-                        {fmtPct(stock.stockVm)} mensual
+                <Text style={{ fontSize: 26, fontWeight: 800, color: MKT.azul }}>{fmtInt(destacado.valor)}</Text>
+                <Text style={{ fontSize: 9, color: MKT.gris }}>{destacado.rotulo}</Text>
+                {destacado.variacion !== null && (
+                    <Text style={{ fontSize: 9, fontWeight: 700, color: destacado.variacion >= 0 ? MKT.verde : MKT.rojo }}>
+                        {fmtPct(destacado.variacion)} mensual
                     </Text>
                 )}
                 {stock.absorcion !== null && (
-                    <Text style={{ fontSize: 9, color: MKT.gris }}>· absorción {stock.absorcion.toFixed(1).replace('.', ',')} meses</Text>
+                    <Text style={{ fontSize: 9, color: MKT.gris }}>· absorción deptos {stock.absorcion.toFixed(1).replace('.', ',')} meses</Text>
                 )}
             </View>
             {/* tabla + gauge principal */}
