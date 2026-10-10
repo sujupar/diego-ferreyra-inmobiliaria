@@ -1,5 +1,6 @@
 import { CheerioAPI } from 'cheerio'
 import { ScrapedProperty, PropertyFeatures } from './types'
+import { completarDescubiertaDeducida } from './superficie-deducida'
 import {
     parsePrice,
     parseArea,
@@ -111,11 +112,9 @@ export function extractArgenProp($: CheerioAPI, url: string): ScrapedProperty {
         }
     })
 
-    // Derive uncovered area when portal only exposes total + covered
-    if (features.uncoveredArea === null && features.totalArea !== null && features.coveredArea !== null) {
-        const diff = features.totalArea - features.coveredArea
-        features.uncoveredArea = diff > 0 ? diff : 0
-    }
+    // Descubierta deducida (total − cubierta) cuando el portal no la informa:
+    // queda marcada para que el editor pida revisarla (B9).
+    Object.assign(features, completarDescubiertaDeducida(features))
 
     // Images
     const images = extractImages($, [

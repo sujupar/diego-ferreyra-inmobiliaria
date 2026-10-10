@@ -53,7 +53,7 @@ function canonica(p: PropiedadParaHuella): unknown[] {
 }
 
 /** cyrb53 — hash de 53 bits, público y determinístico. */
-function cyrb53(str: string, seed = 0): string {
+export function cyrb53(str: string, seed = 0): string {
   let h1 = 0xdeadbeef ^ seed
   let h2 = 0x41c6ce57 ^ seed
   for (let i = 0; i < str.length; i++) {

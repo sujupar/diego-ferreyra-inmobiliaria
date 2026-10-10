@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MarketDataForReport, NeighborhoodPrice, PropertyTypesCounts, StockComposition, EscriturasData } from './types'
 import { findBySlug } from './neighborhoods'
+import { periodoAnterior } from './period'
 
 export function sumPropertyTypes(rows: PropertyTypesCounts[]): PropertyTypesCounts {
     const acc: PropertyTypesCounts = { departamentos: 0, terrenos: 0, locales: 0, casas: 0, ph: 0, oficinas: 0, total: 0 }
@@ -22,6 +23,17 @@ async function resolveCaba(supabase: SupabaseClient, period: string): Promise<Ca
         .select('period, stock, escrituras, price_caba')
         .order('period', { ascending: false }).limit(1)
     return (any?.[0] as unknown as CabaRow) ?? null
+}
+
+/** Total de inmuebles en venta del mes INMEDIATAMENTE anterior a `period`, o null.
+ *  Solo ese mes: si falta, no se compara contra uno más viejo, porque la
+ *  variación se rotula "mensual" y sería falsa. */
+async function totalInmueblesDelMesAnterior(supabase: SupabaseClient, period: string): Promise<number | null> {
+    const { data } = await supabase.from('market_snapshot_caba')
+        .select('stock').eq('period', periodoAnterior(period)).limit(1)
+    const stock = (data?.[0]?.stock ?? null) as Partial<StockComposition> | null
+    const total = stock?.totalInmuebles
+    return typeof total === 'number' ? total : null
 }
 
 export async function getMarketData(
@@ -63,10 +75,14 @@ export async function getMarketData(
         }
     }
 
+    // Contra el período EFECTIVAMENTE servido para CABA (puede no ser el pedido
+    // si hubo fallback al último disponible): el stock que se muestra es ese.
+    const totalInmueblesAnterior = await totalInmueblesDelMesAnterior(supabase, caba.period)
+
     return {
         period, resolvedPeriod, cabaResolvedPeriod: caba.period,
         neighborhood: { slug: canonical.slug, name: canonical.name, isGeneral: !!canonical.isGeneral },
-        caba: { stock: caba.stock, escrituras: caba.escrituras, price: caba.price_caba },
+        caba: { stock: caba.stock, escrituras: caba.escrituras, price: caba.price_caba, totalInmueblesAnterior },
         barrio: { price: barrioPrice, propertyTypes: barrioTipos },
     }
 }

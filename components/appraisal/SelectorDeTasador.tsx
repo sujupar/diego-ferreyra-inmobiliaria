@@ -10,6 +10,7 @@ import type { ValuationResult } from '@/lib/valuation/calculator'
 import type { AiValuationResult, ValuationSource } from '@/lib/valuation/ia-tipos'
 import type { EstadoTarjetaIA } from '@/lib/valuation/valuacion-activa'
 import { cn } from '@/lib/utils'
+import { distanciaEntreTasadores, explicarDistancia, resumenCorrecciones, UMBRAL_DISTANCIA } from '@/lib/valuation/distancia-tasadores'
 
 /** Lo que la tarjeta IA puede mostrar. `no_configurado` llega por el 503 de la ruta. */
 export type EstadoIAEnPantalla = EstadoTarjetaIA | 'no_configurado'
@@ -45,12 +46,7 @@ function Numeros({ r }: { r: ValuationResult }) {
     )
 }
 
-function diferencia(ia: number, clasico: number): string {
-    if (!clasico) return '—'
-    const pct = ((ia - clasico) / clasico) * 100
-    const signo = pct > 0 ? '+' : ''
-    return `${signo}${pct.toFixed(1)}% vs. clásico`
-}
+const textoPct = (p: number) => `${p > 0 ? '+' : ''}${p.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`
 
 const CONFIANZA: Record<string, string> = { alta: 'Confianza alta', media: 'Confianza media', baja: 'Confianza baja' }
 
@@ -62,6 +58,17 @@ const CONFIANZA: Record<string, string> = { alta: 'Confianza alta', media: 'Conf
  */
 export function SelectorDeTasador({ clasico, ia, estadoIA, errorIA, elegido, ocupado, onElegir, onGenerar }: SelectorDeTasadorProps) {
     const iaElegible = ia != null && (estadoIA === 'lista' || estadoIA === 'desactualizada')
+    const distancia = ia ? distanciaEntreTasadores(clasico, ia) : null
+    const explicacion = ia && distancia?.excede ? explicarDistancia(clasico, ia) : []
+    const correcciones = ia ? resumenCorrecciones(ia.ai) : { total: 0, lineas: [] }
+
+    // Más allá del umbral, usar el IA es una decisión que se confirma (spec D3).
+    const elegirIA = () => {
+        if (distancia?.excede && !window.confirm(
+            `El Tasador IA está a ${textoPct(distancia.porcentaje)} del clásico (más del ${UMBRAL_DISTANCIA * 100} %). ¿Usarlo igual para esta tasación?`,
+        )) return
+        onElegir('ai')
+    }
 
     const claseTarjeta = (activa: boolean, clickable: boolean) => cn(
         'relative transition-shadow',
@@ -74,7 +81,10 @@ export function SelectorDeTasador({ clasico, ia, estadoIA, errorIA, elegido, ocu
     // tocar "Generar" también elegiría la tarjeta.
     const accion = (fn: () => void) => (e: MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); fn() }
     const tecla = (source: ValuationSource, habilitado: boolean) => (e: KeyboardEvent<HTMLDivElement>) => {
-        if ((e.key === 'Enter' || e.key === ' ') && habilitado && !ocupado) { e.preventDefault(); onElegir(source) }
+        if ((e.key === 'Enter' || e.key === ' ') && habilitado && !ocupado) {
+            e.preventDefault()
+            if (source === 'ai') elegirIA(); else onElegir(source)
+        }
     }
 
     return (
@@ -105,7 +115,7 @@ export function SelectorDeTasador({ clasico, ia, estadoIA, errorIA, elegido, ocu
                 // automatizado, que se negó a tocarlos). Que no sea elegible se
                 // expresa con `iaElegible` en el onClick, no en la semántica.
                 className={claseTarjeta(elegido === 'ai', iaElegible)}
-                onClick={() => { if (!ocupado && iaElegible && elegido !== 'ai') onElegir('ai') }}
+                onClick={() => { if (!ocupado && iaElegible && elegido !== 'ai') elegirIA() }}
                 onKeyDown={tecla('ai', iaElegible)}
             >
                 {elegido === 'ai' && enUso}
@@ -153,12 +163,40 @@ export function SelectorDeTasador({ clasico, ia, estadoIA, errorIA, elegido, ocu
                             <Numeros r={ia} />
                             <div className="flex flex-wrap items-center gap-2 text-xs">
                                 <Badge variant="secondary">{CONFIANZA[ia.ai.confidence] ?? ia.ai.confidence}</Badge>
-                                <span className="text-muted-foreground">{diferencia(ia.publicationPrice, clasico.publicationPrice)}</span>
+                                {distancia && (
+                                    <span className={distancia.excede ? 'font-semibold text-destructive' : 'text-muted-foreground'}>
+                                        {textoPct(distancia.porcentaje)} vs. clásico
+                                    </span>
+                                )}
                                 <span className="text-muted-foreground">· {ia.ai.model}</span>
                             </div>
+                            {distancia?.excede && (
+                                <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
+                                    <p className="font-semibold text-destructive">
+                                        Se aleja más del {UMBRAL_DISTANCIA * 100} % del clásico. Revisá de dónde sale la diferencia:
+                                    </p>
+                                    {explicacion.length > 0 ? (
+                                        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-foreground">
+                                            {explicacion.map(l => <li key={l}>{l}</li>)}
+                                        </ul>
+                                    ) : (
+                                        <p className="mt-1 text-foreground">Los coeficientes de la propiedad coinciden: la diferencia viene de cómo interpretó los comparables (ver abajo).</p>
+                                    )}
+                                </div>
+                            )}
                             <details className="text-xs text-muted-foreground">
                                 <summary className="cursor-pointer select-none">Cómo lo interpretó</summary>
                                 <p className="mt-1 whitespace-pre-line">{ia.ai.summary}</p>
+                                {correcciones.total > 0 && (
+                                    <div className="mt-2">
+                                        <p className="font-medium text-foreground">
+                                            El método corrigió {correcciones.total} {correcciones.total === 1 ? 'cuenta' : 'cuentas'} del modelo (se usó la tabla):
+                                        </p>
+                                        <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                                            {correcciones.lineas.map(l => <li key={l}>{l}</li>)}
+                                        </ul>
+                                    </div>
+                                )}
                             </details>
                             {estadoIA === 'lista' && (
                                 <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={accion(onGenerar)} disabled={ocupado}>

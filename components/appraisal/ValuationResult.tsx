@@ -15,7 +15,7 @@ export function ValuationResult({ valuation, currency }: ValuationResultProps) {
             </CardHeader>
             <CardContent>
                 <div className="text-4xl font-bold text-primary">
-                    {currency} {valuation.toLocaleString()}
+                    {currency} {valuation.toLocaleString('es-AR')}
                 </div>
                 <p className="text-sm text-muted-foreground mt-2">
                     Based on comparable market analysis.

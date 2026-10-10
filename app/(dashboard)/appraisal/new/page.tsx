@@ -9,22 +9,29 @@ import { PropertyForm } from '@/components/appraisal/PropertyForm'
 import { ComparableEditor, ComparableMissingIndicator } from '@/components/appraisal/ComparableEditor'
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { ScrapedProperty, PropertyFeatures } from '@/lib/scraper/types'
-import { calculateValuation, getQualityCoefficient, calculateWeightedPricePerM2, ValuationResult, ValuationProperty, ExpenseRates, PurchaseResult } from '@/lib/valuation/calculator'
+import { calculateValuation, calculateWeightedPricePerM2, ValuationResult, ValuationProperty, ExpenseRates, PurchaseResult } from '@/lib/valuation/calculator'
 import type { PurchaseScenarioId, PurchaseScenarioInput } from '@/lib/valuation/calculator'
 import { buildDefaultScenarios } from '@/lib/valuation/purchase-scenarios'
+import { precioDeCompraValido } from '@/lib/valuation/precio-compra'
 import { completarValuacion } from '@/lib/valuation/completar-valuacion'
+import { valuacionConPreciosManuales } from '@/lib/valuation/precio-manual'
+import { requiereConversion, comparablesEnOtraMoneda } from '@/lib/valuation/moneda'
+import { claveDeBorrador } from '@/lib/valuation/borrador-asistente'
 import { SelectorDeTasador, type EstadoIAEnPantalla } from '@/components/appraisal/SelectorDeTasador'
 import { estadoTarjetaIA, rehidratar } from '@/lib/valuation/valuacion-activa'
 import { huellaDeInsumos } from '@/lib/valuation/huella-insumos'
 import { generarValuacionIA, elegirTasadorDeTasacion } from '@/lib/supabase/appraisals'
 import type { AiValuationResult, ValuationSource } from '@/lib/valuation/ia-tipos'
 import { PurchaseScenariosEditor } from '@/components/appraisal/PurchaseScenariosEditor'
-import { ReportEdits, DEFAULT_REPORT_EDITS, buildDefaultEdits } from '@/lib/types/report-edits'
+import { ReportEdits, DEFAULT_REPORT_EDITS, buildDefaultEdits, completarEdiciones, normalizarEdiciones } from '@/lib/types/report-edits'
+import { huellaDeEdicion, cambioPorReglasActuales, type CambioDePrecio } from '@/lib/valuation/hidratacion'
+import { formatCurrency } from '@/lib/valuation/utils'
 import { saveAppraisal, updateAppraisal, getAppraisal } from '@/lib/supabase/appraisals'
 import { mapDealToWizardInitialData, hasSaleVisitPrefill } from '@/lib/mapping/visit-to-wizard'
 import { findByText } from '@/lib/market-data/neighborhoods'
 import type { MarketDataForReport } from '@/lib/market-data/types'
 import { Button } from '@/components/ui/button'
+import { BotonAsistente } from '@/components/appraisal/asistente/BotonAsistente'
 import {
     Calculator,
     FileCheck,
@@ -115,6 +122,17 @@ function huellaDelWizard(
     return huellaDeInsumos({ subject: a(subject), comparables: comparables.map(a), expenseRates, ownerSharePercent })
 }
 
+// Tasas de gastos de venta por defecto. Constante (y no literal dentro del
+// useState) porque la huella de carga de una tasación sin tasas guardadas
+// necesita exactamente el mismo valor que tiene el estado.
+const TASAS_POR_DEFECTO: ExpenseRates = {
+    saleDiscountPercent: 5,
+    deedDiscountPercent: 30,
+    stampsPercent: 1.35,
+    deedExpensesPercent: 1.5,
+    agencyFeesPercent: 3,
+}
+
 function NewAppraisalPageContent() {
     const searchParams = useSearchParams()
     const router = useRouter()
@@ -150,12 +168,9 @@ function NewAppraisalPageContent() {
     const [advisorPhotoUrl, setAdvisorPhotoUrl] = useState<string | undefined>(undefined)
     const [advisors, setAdvisors] = useState<Array<{ id: string; full_name: string }>>([])
 
-    // Clear stale PropertyWizard draft when starting a fresh creation
-    useEffect(() => {
-        if (!editId) {
-            localStorage.removeItem('propertyWizardDraft')
-        }
-    }, [editId])
+    // El borrador del asistente es por proceso (claveDeBorrador) y el asistente
+    // descarta el global viejo al montarse: ya no depende de que este efecto
+    // corra antes que el del hijo, que era el bug (B7).
 
     // Keep the ref in sync with whichever id is current (URL or in-session insert)
     useEffect(() => {
@@ -202,18 +217,15 @@ function NewAppraisalPageContent() {
     const [showPDFPreview, setShowPDFPreview] = useState(false)
 
     // Expense rates
-    const [expenseRates, setExpenseRates] = useState<ExpenseRates>({
-        saleDiscountPercent: 5,
-        deedDiscountPercent: 30,
-        stampsPercent: 1.35,
-        deedExpensesPercent: 1.5,
-        agencyFeesPercent: 3,
-    })
+    const [expenseRates, setExpenseRates] = useState<ExpenseRates>(TASAS_POR_DEFECTO)
 
     // Purchase properties
     const [purchaseProperties, setPurchaseProperties] = useState<ScrapedProperty[]>([])
     // Múltiples propiedades de compra pueden estar marcadas para comparar lado-a-lado.
     const [selectedPurchaseIndices, setSelectedPurchaseIndices] = useState<number[]>([])
+    // Propiedad de compra sin precio que el asesor intentó marcar: se le pide el
+    // precio antes de marcarla (B4). `valor` es lo que va escribiendo.
+    const [precioCompraPendiente, setPrecioCompraPendiente] = useState<{ index: number; valor: string } | null>(null)
     // Legacy: tasaciones viejas guardaron un PurchaseResult único. Se preserva sólo para
     // back-compat de lectura; el nuevo flujo siempre usa purchaseScenarios.
     const [purchaseResult, setPurchaseResult] = useState<PurchaseResult | null>(null)
@@ -241,7 +253,10 @@ function NewAppraisalPageContent() {
                 if (next.some(s => s.propertyKey === propertyKey)) continue
                 const prop = purchaseProperties[idx]
                 if (!prop) continue
-                const basePrice = prop.price || 100000
+                // Sin precio no hay escenarios: nunca un precio inventado (B4).
+                // La UI no deja marcar una propiedad sin precio; esto es la red.
+                const basePrice = precioDeCompraValido(prop.price)
+                if (basePrice === null) continue
                 const propertyLabel = prop.title || prop.location || `Propiedad ${idx + 1}`
                 next.push(...buildDefaultScenarios(basePrice, propertyKey, propertyLabel))
             }
@@ -272,6 +287,11 @@ function NewAppraisalPageContent() {
 
     // Auto-save state
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+    // Separado de `saveStatus`: un cálculo imposible NO es un error de guardado
+    // y el botón no debe decir "Calculando…" mientras se autoguarda (C2).
+    const [errorCalculo, setErrorCalculo] = useState<string | null>(null)
+    // Fecha de creación de la tasación que se edita; undefined en una nueva.
+    const [fechaTasacion, setFechaTasacion] = useState<string | undefined>(undefined)
     const [saveErrorDetail, setSaveErrorDetail] = useState<string | null>(null)
     // Retry counter for transient failures with exponential backoff
     const autoSaveRetryRef = useRef<number>(0)
@@ -291,11 +311,15 @@ function NewAppraisalPageContent() {
     }, [saveStatus])
 
     // Coefficient drift warning: legacy appraisals stored subjectQualityCoef = 1.0 hardcoded.
-    const [coefficientDriftWarning, setCoefficientDriftWarning] = useState<{
-        storedCoef: number
-        expectedCoef: number
-        quality: string
-    } | null>(null)
+    // Abrir una tasación NO la cambia (ver lib/valuation/hidratacion.ts). Huella
+    // del estado tal como se cargó: mientras el estado siga siendo ese, el efecto
+    // de recálculo no recalcula ni guarda. Se anula con el primer cambio real,
+    // con "Calcular" o con "Actualizar".
+    const huellaCargadaRef = useRef<string | null>(null)
+    // Si las reglas de hoy darían otro precio, se avisa; nunca se aplica solo.
+    const [cambioPorReglas, setCambioPorReglas] = useState<CambioDePrecio | null>(null)
+    // "Actualizar" no cambia ningún dato: este contador re-dispara el recálculo.
+    const [recalculoForzado, setRecalculoForzado] = useState(0)
 
     // Load existing appraisal when in edit mode
     useEffect(() => {
@@ -372,6 +396,9 @@ function NewAppraisalPageContent() {
                 // no manda &period y la API resuelve al vigente (mismo comportamiento
                 // que create mode).
                 setFrozenMarketPeriod(detail.market_period ?? null)
+                // Fecha de la tasación para el informe y la vista previa del PDF:
+                // antes la vista previa en edición usaba la de hoy (C4).
+                setFechaTasacion(detail.created_at ?? undefined)
 
                 // Restore purchaseResult if present
                 if (detail.valuation_result?.purchaseResult) {
@@ -386,14 +413,19 @@ function NewAppraisalPageContent() {
                 // Restore report_edits (textos custom del PDF) si la tasación los tiene.
                 // Sin esto, los cambios en estrategia/conclusiones/títulos custom
                 // se perderían en cada recarga.
-                if (detail.report_edits) {
-                    setReportEdits(detail.report_edits as ReportEdits)
-                }
+                // Normalizadas: los precios viejos escritos en los textos pasan al
+                // marcador {precio}, que se resuelve con el precio vigente.
+                const edicionesCargadas = detail.report_edits
+                    ? normalizarEdiciones(detail.report_edits as ReportEdits)
+                    : DEFAULT_REPORT_EDITS
+                setReportEdits(edicionesCargadas)
 
                 // Restore escenarios de compra if present.
                 // Migración legacy: tasaciones viejas guardaron `id='conservative'` (literal)
                 // y no tenían propertyKey/propertyLabel/level. Cuando detectamos eso,
                 // asumimos que el escenario pertenece a la primera (y única) propiedad de compra.
+                let escenariosCargados: PurchaseScenarioInput[] = []
+                let idsCargados: PurchaseScenarioId[] = []
                 if (detail.valuation_result?.purchaseScenarios) {
                     const legacyPropLabel =
                         purchaseComps[0]?.title || purchaseComps[0]?.location || 'Propiedad 1'
@@ -417,12 +449,14 @@ function NewAppraisalPageContent() {
                         }
                     })
                     setPurchaseScenarios(migrated)
+                    escenariosCargados = migrated
                 }
                 if (detail.valuation_result?.selectedScenarioIds) {
                     const migratedIds = detail.valuation_result.selectedScenarioIds.map((id: string) =>
                         id.includes(':') ? id : `prop_0:${id}`
                     )
                     setSelectedScenarioIds(migratedIds)
+                    idsCargados = migratedIds
                 }
                 // Restore ownerSharePercent
                 if (typeof detail.valuation_result?.ownerSharePercent === 'number') {
@@ -449,14 +483,21 @@ function NewAppraisalPageContent() {
                     if (idxs.length > 0) setSelectedPurchaseIndices(idxs.sort((a, b) => a - b))
                 }
 
-                // Aviso si la tasación legacy tiene un coeficiente de calidad hardcoded a 1.0.
-                // Al recalcular, el precio puede cambiar significativamente.
-                const storedCoef = detail.valuation_result?.subjectQualityCoef
-                const subjectQuality = (detail.property_features as Record<string, unknown> | undefined)?.quality as string | undefined
-                const expectedCoef = getQualityCoefficient(subjectQuality as Parameters<typeof getQualityCoefficient>[0])
-                if (typeof storedCoef === 'number' && Math.abs(storedCoef - expectedCoef) > 0.01) {
-                    setCoefficientDriftWarning({ storedCoef, expectedCoef, quality: subjectQuality || 'no definida' })
-                }
+                // Huella de lo cargado, con EXACTAMENTE los mismos valores que
+                // quedaron en el estado (mismos defaults que los useState).
+                huellaCargadaRef.current = huellaDeEdicion({
+                    subject: reconstructedSubject,
+                    comparables: normalComps,
+                    overpriced: overpricedComps,
+                    purchaseProperties: purchaseComps,
+                    expenseRates: detail.valuation_result?.expenseRates ?? TASAS_POR_DEFECTO,
+                    purchaseScenarios: escenariosCargados,
+                    selectedScenarioIds: idsCargados,
+                    reportEdits: edicionesCargadas,
+                    ownerSharePercent: typeof detail.valuation_result?.ownerSharePercent === 'number'
+                        ? detail.valuation_result.ownerSharePercent
+                        : 100,
+                })
 
                 // Recuperar draft local si quedó pendiente por un guardado fallido.
                 try {
@@ -475,6 +516,8 @@ function NewAppraisalPageContent() {
                         // Si el draft local es más reciente que la última escritura en DB,
                         // hay cambios sin guardar. Restaurarlos sobre el state cargado.
                         if (draftTime > dbTime && draft.subject) {
+                            // Hay cambios sin guardar: esos sí se recalculan y guardan.
+                            huellaCargadaRef.current = null
                             if (draft.subject) setSubject(draft.subject)
                             if (draft.comparables) setComparables(draft.comparables)
                             if (draft.overpriced) setOverpriced(draft.overpriced)
@@ -552,6 +595,14 @@ function NewAppraisalPageContent() {
     // Do NOT depend on `valuationResult` here to avoid infinite loops.
     useEffect(() => {
         if (!valuationResult || !subject) return
+        // Un comparable en otra moneda no entra al promedio sin aviso (B6): no se
+        // recalcula hasta que el asesor lo convierta a USD o lo descarte.
+        const enOtraMoneda = comparablesEnOtraMoneda(comparables)
+        if (enOtraMoneda.length > 0) {
+            const i = enOtraMoneda[0]
+            setErrorCalculo(`El comparable ${i + 1} está en ${comparables[i].currency}: cargá su precio en USD o descartalo para recalcular.`)
+            return
+        }
         const subjectVal: ValuationProperty = {
             price: subject.price,
             currency: subject.currency,
@@ -571,18 +622,34 @@ function NewAppraisalPageContent() {
             comparables: compsVal,
             expenseRates,
         })
+
+        // Recién cargada y sin cambios: no se recalcula ni se guarda. Solo se
+        // avisa si las reglas de hoy darían otro precio (lib/valuation/hidratacion.ts).
+        const huellaActual = huellaDeEdicion({
+            subject, comparables, overpriced, purchaseProperties, expenseRates,
+            purchaseScenarios, selectedScenarioIds, reportEdits, ownerSharePercent,
+        })
+        if (huellaCargadaRef.current !== null && huellaActual === huellaCargadaRef.current) {
+            setCambioPorReglas(cambioPorReglasActuales(valuationResult, next))
+            return
+        }
+        huellaCargadaRef.current = null
+        setCambioPorReglas(null)
+
         if (!next) {
             // Datos inválidos: subject sin features mínimas o comparables sin precio.
-            // Preservar el último resultado válido y avisar en el banner.
+            // Es un error de CÁLCULO, no de guardado (no se intentó guardar nada),
+            // y el informe anterior deja de mostrarse: ya no corresponde a los
+            // datos de pantalla (auditoría 2026-10-03, C2).
             console.warn('[recalc] calculateValuation devolvió null — datos insuficientes', {
                 hasSubject: !!subject,
                 comparableCount: comparables.length,
                 comparablesConPrecio: comparables.filter(c => c.price).length,
             })
-            setSaveStatus('error')
-            setSaveErrorDetail('No se puede recalcular: revisá que el subject y los comparables tengan datos completos (precios, superficies).')
+            setErrorCalculo('No se pudo recalcular con estos datos: revisá que la propiedad y los comparables tengan precio y superficie. No se guardó nada.')
             return
         }
+        setErrorCalculo(null)
         // Parte del propietario, escenarios de compra y selección: la MISMA
         // función que usa el Tasador IA, para que las dos versiones sean comparables.
         const merged = completarValuacion(next, {
@@ -648,7 +715,7 @@ function NewAppraisalPageContent() {
                 })
         }, 800)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [subject, comparables, overpriced, purchaseProperties, expenseRates, purchaseScenarios, selectedScenarioIds, reportEdits])
+    }, [subject, comparables, overpriced, purchaseProperties, expenseRates, purchaseScenarios, selectedScenarioIds, reportEdits, ownerSharePercent, recalculoForzado])
 
     // Si cambiaron los insumos objetivos (precio, superficie, descripción, tasas,
     // parte del propietario), la valuación IA quedó vieja: la tarjeta lo avisa.
@@ -735,6 +802,9 @@ function NewAppraisalPageContent() {
 
     function handleCalculate() {
         if (!subject) return
+        // "Calcular" es una decisión explícita: aplica las reglas de hoy.
+        huellaCargadaRef.current = null
+        setCambioPorReglas(null)
 
         // Convert ScrapedProperty to ValuationProperty format
         const subjectValuation: ValuationProperty = {
@@ -769,7 +839,8 @@ function NewAppraisalPageContent() {
                 const prop = purchaseProperties[idx]
                 if (!prop) continue
                 const propertyKey = `prop_${idx}`
-                const basePrice = prop.price || 100000
+                const basePrice = precioDeCompraValido(prop.price)
+                if (basePrice === null) continue
                 const propertyLabel = prop.title || prop.location || `Propiedad ${idx + 1}`
                 scenariosForCalc.push(...buildDefaultScenarios(basePrice, propertyKey, propertyLabel))
             }
@@ -788,18 +859,22 @@ function NewAppraisalPageContent() {
         // El purchaseResult legacy (single property) ya no se genera por el nuevo flujo.
         setPurchaseResult(null)
 
+        if (!result) {
+            setErrorCalculo('No se pudo calcular con estos datos: revisá que la propiedad y los comparables tengan precio y superficie.')
+            return
+        }
+        setErrorCalculo(null)
         setValuationResult(result)
 
-        // Pre-fill report edits with real data.
-        // Capturamos el valor en una variable local para usarlo en el payload —
-        // setReportEdits es async y `reportEdits` (closure) seguiría siendo el
-        // valor viejo al construir el payload más abajo (stale closure bug).
+        // Completa SOLO lo vacío con los textos de fábrica: nunca pisa lo que el
+        // asesor ajustó (textos, precios a mano, semáforos, páginas del PDF).
+        // Variable local para el payload: setReportEdits es async y `reportEdits`
+        // (closure) seguiría siendo el valor viejo más abajo (stale closure bug).
         let nextReportEdits = reportEdits
         if (subject && result) {
-            nextReportEdits = buildDefaultEdits(
+            nextReportEdits = completarEdiciones(reportEdits, buildDefaultEdits(
                 { title: subject.title, location: subject.location, description: subject.description },
-                { publicationPrice: result.publicationPrice, currency: result.currency, noSaleZonePrice: result.noSaleZonePrice }
-            )
+            ))
             setReportEdits(nextReportEdits)
         }
 
@@ -886,9 +961,10 @@ function NewAppraisalPageContent() {
     }
 
     // Check if all comparables have complete data
+    // Un comparable en otra moneda no está completo hasta convertirlo a USD (B6).
     const allComparablesComplete = comparables.every(c => {
         const f = c.features
-        return c.price && f.coveredArea && f.age !== null && f.disposition && f.quality && f.conservationState
+        return c.price && !requiereConversion(c.currency) && f.coveredArea && f.age !== null && f.disposition && f.quality && f.conservationState
     })
 
     if (editMode && editLoading) {
@@ -975,7 +1051,7 @@ function NewAppraisalPageContent() {
                 </h1>
                 <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
                     {editMode
-                        ? 'Modificá los datos del sujeto, comparables o el análisis de valor. Los cambios se guardan al presionar "Recalcular y Guardar".'
+                        ? 'Modificá los datos del sujeto, comparables o el análisis de valor. Los cambios se guardan solos; abrir la tasación no cambia nada.'
                         : 'Genera informes de valor precisos y profesionales utilizando el método de comparables de mercado.'}
                 </p>
             </div>
@@ -1005,16 +1081,28 @@ function NewAppraisalPageContent() {
                 </div>
             )}
 
-            {/* Banner: coeficiente de calidad constructiva desactualizado */}
-            {coefficientDriftWarning && (
-                <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm">
-                    <strong className="text-amber-800">⚠️ Aviso de actualización del motor de cálculo</strong>
-                    <p className="mt-1 text-amber-700">
-                        Esta tasación fue creada con un coeficiente de calidad fijo en {coefficientDriftWarning.storedCoef.toFixed(2)}.
-                        Al editar y recalcular se aplicará el coeficiente real de la calidad seleccionada
-                        (<strong>{coefficientDriftWarning.quality} = {coefficientDriftWarning.expectedCoef.toFixed(3)}</strong>).
-                        Esto puede modificar el precio de publicación.
-                    </p>
+            {/* Las reglas de hoy darían otro precio: se avisa, nunca se aplica solo. */}
+            {cambioPorReglas && (
+                <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p className="font-semibold text-amber-900">
+                            Con las reglas actuales esta tasación daría {formatCurrency(cambioPorReglas.despues, valuationResult?.currency)} (hoy figura {formatCurrency(cambioPorReglas.antes, valuationResult?.currency)}).
+                        </p>
+                        <p className="mt-1 text-amber-800">
+                            No se cambió nada: el precio entregado sigue igual. Si querés aplicar las reglas actuales, tocá Actualizar.
+                        </p>
+                    </div>
+                    <Button
+                        variant="outline"
+                        className="shrink-0 border-amber-400 bg-white"
+                        onClick={() => {
+                            huellaCargadaRef.current = null
+                            setCambioPorReglas(null)
+                            setRecalculoForzado(n => n + 1)
+                        }}
+                    >
+                        Actualizar
+                    </Button>
                 </div>
             )}
 
@@ -1039,6 +1127,7 @@ function NewAppraisalPageContent() {
                 {!subject || isEditingSubject ? (
                     <div className="bg-card rounded-2xl border shadow-sm p-6 md:p-8 transition-all duration-300 hover:shadow-md">
                         <PropertyWizard
+                            claveBorrador={editMode ? null : claveDeBorrador(dealId)}
                             onComplete={(p) => { handleSubjectComplete(p); setIsEditingSubject(false) }}
                             initialData={
                                 subject
@@ -1174,7 +1263,7 @@ function NewAppraisalPageContent() {
                                                 <p className="text-xs text-muted-foreground line-clamp-1">{comp.location}</p>
                                                 <div className="flex items-center gap-3 mt-1 flex-wrap">
                                                     <span className="text-sm font-semibold text-primary">
-                                                        {comp.price ? `USD ${comp.price.toLocaleString()}` : 'Sin precio'}
+                                                        {comp.price ? formatCurrency(comp.price, comp.currency) : 'Sin precio'}
                                                     </span>
                                                     <span className="text-xs text-muted-foreground">
                                                         {comp.features.coveredArea}m²
@@ -1184,7 +1273,7 @@ function NewAppraisalPageContent() {
                                                             className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full border tabular-nums ${semaforo}`}
                                                             title="Precio por m² ponderado = precio / (cubierta + 0.5·semi + 0.5·descubierta)"
                                                         >
-                                                            USD {Math.round(wppm).toLocaleString()}/m² pond.
+                                                            USD {Math.round(wppm).toLocaleString('es-AR')}/m² pond.
                                                             {delta !== null && valid.length >= 2 && (
                                                                 <span className="opacity-80">
                                                                     ({delta >= 0 ? '+' : ''}{Math.round(delta * 100)}% vs prom.)
@@ -1283,7 +1372,7 @@ function NewAppraisalPageContent() {
                                                     <p className="text-xs text-muted-foreground line-clamp-1">{prop.location}</p>
                                                     <div className="flex items-center gap-3 mt-1">
                                                         <span className="text-sm font-semibold text-red-600">
-                                                            {prop.price ? `USD ${prop.price.toLocaleString()}` : 'Sin precio'}
+                                                            {prop.price ? formatCurrency(prop.price, prop.currency) : 'Sin precio'}
                                                         </span>
                                                         {prop.features.coveredArea && (
                                                             <span className="text-xs text-muted-foreground">
@@ -1347,8 +1436,8 @@ function NewAppraisalPageContent() {
                                     </h3>
                                     <div className="grid gap-3">
                                         {purchaseProperties.map((prop, index) => {
-                                            const homSurface = (prop.features.coveredArea || 0) + ((prop.features.uncoveredArea || 0) * 0.5)
-                                            const pricePerM2 = homSurface > 0 ? (prop.price || 0) / homSurface : 0
+                                            // Misma fórmula que el cálculo (antes ignoraba la semicubierta, C5).
+                                            const pricePerM2 = calculateWeightedPricePerM2(prop.price, prop.features) ?? 0
                                             const isSelected = selectedPurchaseIndices.includes(index)
                                             return (
                                                 <div
@@ -1361,7 +1450,13 @@ function NewAppraisalPageContent() {
                                                     <input
                                                         type="checkbox"
                                                         checked={isSelected}
+                                                        aria-label={`Marcar ${prop.title || prop.location || `la propiedad ${index + 1}`} para la compra`}
                                                         onChange={() => {
+                                                            // Sin precio no se marca: se pide primero (B4).
+                                                            if (!isSelected && precioDeCompraValido(prop.price) === null) {
+                                                                setPrecioCompraPendiente({ index, valor: '' })
+                                                                return
+                                                            }
                                                             setSelectedPurchaseIndices(prev =>
                                                                 prev.includes(index)
                                                                     ? prev.filter(i => i !== index)
@@ -1382,7 +1477,7 @@ function NewAppraisalPageContent() {
                                                         <p className="text-xs text-muted-foreground line-clamp-1">{prop.location}</p>
                                                         <div className="flex items-center gap-3 mt-1">
                                                             <span className="text-sm font-semibold text-blue-600">
-                                                                {prop.price ? `USD ${prop.price.toLocaleString()}` : 'Sin precio'}
+                                                                {prop.price ? formatCurrency(prop.price, prop.currency) : 'Sin precio'}
                                                             </span>
                                                             {prop.features.coveredArea && (
                                                                 <span className="text-xs text-muted-foreground">
@@ -1391,7 +1486,7 @@ function NewAppraisalPageContent() {
                                                             )}
                                                             {pricePerM2 > 0 && (
                                                                 <span className="text-xs text-muted-foreground">
-                                                                    {Math.round(pricePerM2).toLocaleString()} USD/m²
+                                                                    {Math.round(pricePerM2).toLocaleString('es-AR')} USD/m²
                                                                 </span>
                                                             )}
                                                         </div>
@@ -1402,6 +1497,8 @@ function NewAppraisalPageContent() {
                                                         onClick={() => {
                                                             const newProps = purchaseProperties.filter((_, i) => i !== index)
                                                             setPurchaseProperties(newProps)
+                                                            // Los índices se corren: un editor de precio abierto apuntaría a otra.
+                                                            setPrecioCompraPendiente(null)
                                                             // Reajustar indices: remover el borrado y decrementar los mayores.
                                                             setSelectedPurchaseIndices(prev =>
                                                                 prev
@@ -1418,6 +1515,43 @@ function NewAppraisalPageContent() {
                                             )
                                         })}
                                     </div>
+                                    {precioCompraPendiente && purchaseProperties[precioCompraPendiente.index] && (
+                                        <form
+                                            className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3"
+                                            onSubmit={e => {
+                                                e.preventDefault()
+                                                const precio = precioDeCompraValido(Number(precioCompraPendiente.valor))
+                                                if (precio === null) return
+                                                const idx = precioCompraPendiente.index
+                                                setPurchaseProperties(prev => prev.map((p, i) => (i === idx ? { ...p, price: precio, currency: 'USD' } : p)))
+                                                setSelectedPurchaseIndices(prev => (prev.includes(idx) ? prev : [...prev, idx].sort((a, b) => a - b)))
+                                                setPrecioCompraPendiente(null)
+                                            }}
+                                        >
+                                            <p className="text-sm font-medium text-amber-900">
+                                                «{purchaseProperties[precioCompraPendiente.index].title || purchaseProperties[precioCompraPendiente.index].location}» no tiene precio. Cargalo para poder compararla en el informe.
+                                            </p>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <label htmlFor="precio-compra-pendiente" className="text-sm text-amber-900">Precio de publicación (USD)</label>
+                                                <input
+                                                    id="precio-compra-pendiente"
+                                                    type="number"
+                                                    min={1}
+                                                    inputMode="numeric"
+                                                    autoFocus
+                                                    value={precioCompraPendiente.valor}
+                                                    onChange={e => setPrecioCompraPendiente(p => (p ? { ...p, valor: e.target.value } : p))}
+                                                    className="w-40 rounded-md border px-3 py-2 text-sm max-md:min-h-11"
+                                                />
+                                                <Button type="submit" size="sm" disabled={precioDeCompraValido(Number(precioCompraPendiente.valor)) === null}>
+                                                    Guardar y marcar
+                                                </Button>
+                                                <Button type="button" size="sm" variant="ghost" onClick={() => setPrecioCompraPendiente(null)}>
+                                                    Cancelar
+                                                </Button>
+                                            </div>
+                                        </form>
+                                    )}
                                     {selectedPurchaseIndices.length === 0 && (
                                         <p className="text-xs text-amber-600">Marcá una o más propiedades para compararlas en el informe</p>
                                     )}
@@ -1463,10 +1597,10 @@ function NewAppraisalPageContent() {
                             <div className="mt-6">
                                 <PurchaseScenariosEditor
                                     scenarios={purchaseScenarios}
-                                    results={valuationResult.purchaseScenarios || []}
+                                    results={valuacionConPreciosManuales(valuationResult, reportEdits.priceOverrides).purchaseScenarios || []}
                                     selectedIds={selectedScenarioIds}
                                     currency={valuationResult.currency}
-                                    moneyFromSale={valuationResult.moneyInHand}
+                                    moneyFromSale={valuacionConPreciosManuales(valuationResult, reportEdits.priceOverrides).moneyInHand}
                                     onScenariosChange={setPurchaseScenarios}
                                     onSelectedIdsChange={setSelectedScenarioIds}
                                 />
@@ -1554,7 +1688,7 @@ function NewAppraisalPageContent() {
                         {saveStatus === 'saving' ? (
                             <>
                                 <Loader2 className="h-5 w-5 animate-spin" />
-                                Calculando...
+                                Guardando...
                             </>
                         ) : (
                             <>
@@ -1567,8 +1701,22 @@ function NewAppraisalPageContent() {
                 </section>
             )}
 
-            {/* Results Section - Full HTML Report */}
-            {valuationResult && subject && (
+            {errorCalculo && subject && (
+                <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800 flex items-start gap-3">
+                    <AlertCircle className="h-5 w-5 shrink-0 text-red-600" />
+                    <div>
+                        <p className="font-semibold">No se pudo calcular</p>
+                        <p className="mt-1">{errorCalculo}</p>
+                        {valuationResult && (
+                            <p className="mt-1 text-red-700">El informe anterior se ocultó porque ya no corresponde a los datos cargados.</p>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Results Section - Full HTML Report. Oculto si el último cálculo
+                falló: mostrar el viejo haría creer que es el vigente (C2). */}
+            {valuationResult && subject && !errorCalculo && (
                 <section id="valuation-report" className="space-y-8 animate-in fade-in slide-in-from-bottom-12 duration-1000">
                     <div className="flex items-center justify-center gap-2 mb-8 text-muted-foreground">
                         <div className="h-px bg-border flex-1 max-w-[100px]" />
@@ -1600,6 +1748,9 @@ function NewAppraisalPageContent() {
                         su recálculo reescribe la versión clásica; mezclar los dos caminos acá
                         duplicaría riesgo. El detalle sí edita las dos versiones. */}
                     <ValuationReport
+                        precioCalculado={(resultadoEnUso ?? valuationResult).publicationPrice}
+                        fechaTasacion={fechaTasacion}
+                        noSaleZoneOverride={reportEdits.priceOverrides?.noSaleZonePrice}
                         subject={{
                             price: subject.price,
                             currency: subject.currency,
@@ -1607,7 +1758,8 @@ function NewAppraisalPageContent() {
                             location: subject.location,
                             features: subjectFeaturesEnUso ?? {},
                         }}
-                        result={resultadoEnUso ?? valuationResult}
+                        // El precio cargado a mano manda en toda la cadena, igual que en el PDF (B5).
+                        result={valuacionConPreciosManuales(resultadoEnUso ?? valuationResult, reportEdits.priceOverrides)}
                         editable={!iaEnUso}
                         onComparableFeaturesChange={iaEnUso ? undefined : handleComparableFeaturesChange}
                         onSubjectFeaturesChange={iaEnUso ? undefined : handleSubjectFeaturesChange}
@@ -1685,6 +1837,8 @@ function NewAppraisalPageContent() {
                             <Printer className="mr-2 h-4 w-4" />
                             Imprimir
                         </Button>
+                        {/* El asistente necesita la tasación guardada (sus conversaciones cuelgan de ella). */}
+                        {savedAppraisalId && <BotonAsistente tasacionId={savedAppraisalId} size="lg" className="h-12 gap-2" />}
                         <Button
                             size="lg"
                             className="h-12 gap-2"
@@ -1703,6 +1857,11 @@ function NewAppraisalPageContent() {
                     property={pendingComparable || editingComparable!.property}
                     onSave={handleComparableSaved}
                     onCancel={() => {
+                        setPendingComparable(null)
+                        setEditingComparable(null)
+                    }}
+                    onDiscard={() => {
+                        if (editingComparable) handleRemoveComparable(editingComparable.index)
                         setPendingComparable(null)
                         setEditingComparable(null)
                     }}
@@ -1747,7 +1906,8 @@ function NewAppraisalPageContent() {
                     purchaseResult={purchaseResult || undefined}
                     reportEdits={reportEdits}
                     onReportEditsChange={setReportEdits}
-                    appraisalDate={new Date().toISOString()}
+                    // En edición, la fecha de la tasación; nueva, hoy (C4).
+                    appraisalDate={fechaTasacion ?? new Date().toISOString()}
                     advisorPhotoUrl={advisorPhotoUrl}
                     marketData={marketData}
                     neighborhoodName={marketData?.neighborhood.name}

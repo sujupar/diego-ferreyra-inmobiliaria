@@ -4,7 +4,12 @@ export interface PropertyFeatures {
     bedrooms: number | null
     bathrooms: number | null
     coveredArea: number | null      // Superficie Cubierta (100%)
+    /** Semicubierta (50 % para homologar). Opcional: los portales casi nunca la
+     *  informan y las tasaciones anteriores al 2026-10 no la guardaban (B2). */
+    semiCoveredArea?: number | null
     uncoveredArea: number | null    // Superficie Descubierta (50% para homologar)
+    /** true si la descubierta se DEDUJO (total − cubierta) y nadie la confirmó (B9). */
+    uncoveredAreaDeducida?: boolean
     totalArea: number | null        // Solo para referencia, no se usa en cálculos
     age: number | null
     floor: number | null // 0 for PB

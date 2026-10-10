@@ -109,7 +109,7 @@ export function ComparablesList({ comparables, onAddComparable, onRemoveComparab
                                 </div>
                                 <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent text-white">
                                     <div className="text-xl font-bold tracking-tight">
-                                        {comp.currency} {comp.price?.toLocaleString()}
+                                        {comp.currency} {comp.price?.toLocaleString('es-AR')}
                                     </div>
                                 </div>
                             </div>

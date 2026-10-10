@@ -5,7 +5,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrapedProperty } from '@/lib/scraper/types'
-import { DispositionType, QualityType, ConservationStateType } from '@/lib/valuation/rules'
+import { DispositionType, QualityType, ConservationStateType, textoCoeficienteEstado } from '@/lib/valuation/rules'
+import { calculateHomogenizedSurface } from '@/lib/valuation/calculator'
+import { requiereConversion } from '@/lib/valuation/moneda'
+import { completarDescubiertaDeducida, confirmarDescubierta } from '@/lib/scraper/superficie-deducida'
+import { formatCurrency } from '@/lib/valuation/utils'
 import {
     X,
     Edit2,
@@ -20,6 +24,8 @@ interface ComparableEditorProps {
     property: ScrapedProperty
     onSave: (property: ScrapedProperty) => void
     onCancel: () => void
+    /** Quitar el comparable (p. ej. un aviso en pesos que no se quiere convertir). */
+    onDiscard?: () => void
 }
 
 // Check which required fields are missing
@@ -33,22 +39,23 @@ function getMissingFields(property: ScrapedProperty): string[] {
     if (!f.quality) missing.push('Calidad Constructiva')
     if (!f.conservationState) missing.push('Estado de Conservación')
     if (!property.price) missing.push('Precio')
+    // Un precio en otra moneda no se puede promediar con los de USD (B6).
+    else if (requiereConversion(property.currency)) missing.push(`Precio en USD (el aviso está en ${property.currency})`)
 
     return missing
 }
 
-export function ComparableEditor({ property, onSave, onCancel }: ComparableEditorProps) {
-    const [editedProperty, setEditedProperty] = useState<ScrapedProperty>(() => {
-        const f = { ...property.features }
-        // Safety net: derive uncovered area if the portal only exposed total + covered
-        if (f.uncoveredArea == null && f.totalArea != null && f.coveredArea != null) {
-            const diff = f.totalArea - f.coveredArea
-            f.uncoveredArea = diff > 0 ? diff : 0
-        }
-        return { ...property, features: f }
-    })
+export function ComparableEditor({ property, onSave, onCancel, onDiscard }: ComparableEditorProps) {
+    // Red de seguridad: si el portal solo dio total + cubierta, se deduce la
+    // descubierta MARCADA como deducida, para que se revise (B9).
+    const [editedProperty, setEditedProperty] = useState<ScrapedProperty>(() => ({
+        ...property,
+        features: completarDescubiertaDeducida(property.features),
+    }))
+    const descubiertaDeducida = editedProperty.features.uncoveredAreaDeducida === true
 
     const missingFields = getMissingFields(editedProperty)
+    const enOtraMoneda = requiereConversion(editedProperty.currency)
     const isValid = missingFields.length === 0
 
     const updateFeature = <K extends keyof typeof editedProperty.features>(
@@ -131,21 +138,42 @@ export function ComparableEditor({ property, onSave, onCancel }: ComparableEdito
                     </div>
                 )}
 
+                {/* Aviso en otra moneda: no entra al promedio hasta convertirlo (B6). */}
+                {enOtraMoneda && (
+                    <div role="alert" className="mx-4 mt-4 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-3">
+                        <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+                        <div className="text-sm text-red-800 dark:text-red-200">
+                            <p className="font-medium">
+                                Este aviso está publicado en {editedProperty.currency}
+                                {editedProperty.price ? ` (${formatCurrency(editedProperty.price, editedProperty.currency)})` : ''}.
+                            </p>
+                            <p className="text-xs mt-1">
+                                El tasador promedia en dólares: cargá el precio convertido a USD en «Precio (USD)»
+                                {onDiscard ? ' o descartá este comparable' : ''}. Hasta entonces no entra al cálculo.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Form */}
                 <div className="p-4 space-y-6">
                     {/* Basic Info */}
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <Label>Precio (USD) *</Label>
+                            <Label htmlFor="comparable-precio">Precio (USD) *</Label>
                             <Input
+                                id="comparable-precio"
                                 type="number"
-                                value={editedProperty.price || ''}
+                                // En otra moneda el campo arranca vacío: lo que se carga
+                                // acá es el precio EN USD, y al cargarlo queda en USD.
+                                value={enOtraMoneda ? '' : (editedProperty.price || '')}
                                 onChange={(e) => setEditedProperty(prev => ({
                                     ...prev,
-                                    price: e.target.value ? Number(e.target.value) : null
+                                    price: e.target.value ? Number(e.target.value) : null,
+                                    currency: e.target.value ? 'USD' : prev.currency,
                                 }))}
-                                placeholder="450000"
-                                className={!editedProperty.price ? 'border-amber-400' : ''}
+                                placeholder={enOtraMoneda ? 'Precio convertido a USD' : '450000'}
+                                className={!editedProperty.price || enOtraMoneda ? 'border-amber-400' : ''}
                             />
                         </div>
                         <div className="space-y-2">
@@ -159,26 +187,64 @@ export function ComparableEditor({ property, onSave, onCancel }: ComparableEdito
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label>Superficie Descubierta (m²)</Label>
+                            <Label>Superficie Semicubierta (m²)</Label>
                             <Input
                                 type="number"
-                                value={editedProperty.features.uncoveredArea || ''}
-                                onChange={(e) => updateFeature('uncoveredArea', e.target.value ? Number(e.target.value) : null)}
-                                placeholder="12"
+                                value={editedProperty.features.semiCoveredArea || ''}
+                                onChange={(e) => updateFeature('semiCoveredArea', e.target.value ? Number(e.target.value) : null)}
+                                placeholder="0"
                             />
-                            <p className="text-xs text-muted-foreground">Patios, balcones, terrazas (se calcula al 50%)</p>
+                            <p className="text-xs text-muted-foreground">Balcones techados, galerías (se calcula al 50%)</p>
+                        </div>
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                                <Label htmlFor="comparable-descubierta">Superficie Descubierta (m²)</Label>
+                                {descubiertaDeducida && (
+                                    <span className="text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                                        deducida: revisar
+                                    </span>
+                                )}
+                            </div>
+                            <Input
+                                id="comparable-descubierta"
+                                type="number"
+                                value={editedProperty.features.uncoveredArea || ''}
+                                onChange={(e) => setEditedProperty(prev => ({
+                                    ...prev,
+                                    // Cargarla a mano es confirmarla: deja de ser deducida.
+                                    features: confirmarDescubierta(prev.features, e.target.value ? Number(e.target.value) : null),
+                                }))}
+                                placeholder="12"
+                                className={descubiertaDeducida ? 'border-amber-400' : ''}
+                            />
+                            {descubiertaDeducida ? (
+                                <p className="text-xs text-amber-700">
+                                    Calculada como total − cubierta ({editedProperty.features.totalArea ?? '—'} − {editedProperty.features.coveredArea ?? '—'} m²): el portal no la informa.
+                                    Verificala en el aviso.{' '}
+                                    <button
+                                        type="button"
+                                        className="underline hover:no-underline"
+                                        onClick={() => setEditedProperty(prev => ({ ...prev, features: confirmarDescubierta(prev.features) }))}
+                                    >
+                                        Está bien
+                                    </button>
+                                </p>
+                            ) : (
+                                <p className="text-xs text-muted-foreground">Patios, balcones, terrazas (se calcula al 50%)</p>
+                            )}
                         </div>
                         <div className="space-y-2">
                             <Label className="text-primary font-medium">M² Homologados</Label>
                             <div className="h-10 flex items-center px-3 bg-primary/10 border border-primary/20 rounded-md text-primary font-semibold">
-                                {(() => {
-                                    const covered = editedProperty.features.coveredArea || 0
-                                    const uncovered = editedProperty.features.uncoveredArea || 0
-                                    const homologized = covered + (uncovered * 0.5)
-                                    return `${homologized.toFixed(0)} m²`
-                                })()}
+                                {/* La MISMA fórmula que el cálculo (C5): antes este número
+                                    ignoraba la semicubierta y no coincidía con el informe. */}
+                                {`${calculateHomogenizedSurface({
+                                    coveredArea: editedProperty.features.coveredArea ?? undefined,
+                                    semiCoveredArea: editedProperty.features.semiCoveredArea ?? undefined,
+                                    uncoveredArea: editedProperty.features.uncoveredArea ?? undefined,
+                                }).toLocaleString('es-AR', { maximumFractionDigits: 1 })} m²`}
                             </div>
-                            <p className="text-xs text-muted-foreground">= Cubierta + (Descubierta × 0.5)</p>
+                            <p className="text-xs text-muted-foreground">= Cubierta + (Semicubierta + Descubierta) × 0,5</p>
                         </div>
                         <div className="space-y-2">
                             <Label>Antigüedad (años) *</Label>
@@ -272,22 +338,30 @@ export function ComparableEditor({ property, onSave, onCancel }: ComparableEdito
                     {/* Conservation State */}
                     <div className="space-y-3">
                         <Label className="text-base font-medium">Estado de Conservación *</Label>
+                        <p className="text-xs text-muted-foreground">
+                            Coeficiente que se aplica {editedProperty.features.age == null ? 'a estrenar (cargá la antigüedad)' : `con ${editedProperty.features.age} años`}.
+                        </p>
                         <div className="grid grid-cols-3 gap-2">
-                            {[
-                                { value: 'STATE_1', label: 'Estado 1 — Nuevo (0%)' },
+                            {/* Coeficiente que se APLICA con la antigüedad de este comparable,
+                                no el % de la tabla (auditoría 2026-10-03, C1). */}
+                            {([
+                                { value: 'STATE_1', label: 'Estado 1 — Nuevo' },
                                 { value: 'STATE_1_5', label: 'Estado 1.5 — Nuevo/Normal' },
-                                { value: 'STATE_2', label: 'Estado 2 — Normal (2.52%)' },
+                                { value: 'STATE_2', label: 'Estado 2 — Normal' },
                                 { value: 'STATE_2_5', label: 'Estado 2.5 — Normal/Repar.' },
-                                { value: 'STATE_3', label: 'Estado 3 — Reparaciones (18.1%)' },
-                                { value: 'STATE_3_5', label: 'Estado 3.5 — Senc./Imp. (33.2%)' },
-                                { value: 'STATE_4', label: 'Estado 4 — Repar. Imp. (52.6%)' },
-                                { value: 'STATE_4_5', label: 'Estado 4.5 — Imp./Demol. (75.2%)' },
-                                { value: 'STATE_5', label: 'Estado 5 — Demolición (100%)' },
-                            ].map(opt => (
+                                { value: 'STATE_3', label: 'Estado 3 — Reparaciones' },
+                                { value: 'STATE_3_5', label: 'Estado 3.5 — Senc./Imp.' },
+                                { value: 'STATE_4', label: 'Estado 4 — Repar. Imp.' },
+                                { value: 'STATE_4_5', label: 'Estado 4.5 — Imp./Demol.' },
+                                { value: 'STATE_5', label: 'Estado 5 — Demolición' },
+                            ] satisfies Array<{ value: ConservationStateType; label: string }>).map(opt => ({
+                                ...opt,
+                                label: `${opt.label} (${textoCoeficienteEstado(opt.value, editedProperty.features.age)})`,
+                            })).map(opt => (
                                 <button
                                     key={opt.value}
                                     type="button"
-                                    onClick={() => updateFeature('conservationState', opt.value as ConservationStateType)}
+                                    onClick={() => updateFeature('conservationState', opt.value)}
                                     className={`p-2 rounded-lg border-2 transition-all duration-200 ${editedProperty.features.conservationState === opt.value
                                         ? 'border-primary bg-primary/10'
                                         : 'border-muted hover:border-primary/50'
@@ -302,6 +376,11 @@ export function ComparableEditor({ property, onSave, onCancel }: ComparableEdito
 
                 {/* Footer */}
                 <div className="sticky bottom-0 bg-card/95 backdrop-blur-sm border-t p-4 flex justify-end gap-3">
+                    {onDiscard && (
+                        <Button variant="ghost" className="mr-auto text-destructive hover:text-destructive" onClick={onDiscard}>
+                            Descartar comparable
+                        </Button>
+                    )}
                     <Button variant="outline" onClick={onCancel}>
                         Cancelar
                     </Button>
