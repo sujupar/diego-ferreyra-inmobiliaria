@@ -120,6 +120,8 @@ export async function POST(req: NextRequest) {
       leadId = await datos.asegurarComprador({
         propertyId: propiedad.id, nombre, telefono, email, mensaje: c.lead_message,
         source: fuenteDelComprador('portal', c.portal), asignadoA: propiedad.assigned_to,
+        // Con visita ya no es una "consulta sin responder" (GET /api/leads/count cuenta 'new').
+        estado: 'scheduled',
       })
     } else if (b.persona.tipo === 'registro') {
       const r = await datos.leerRegistro(b.persona.id)
@@ -141,6 +143,7 @@ export async function POST(req: NextRequest) {
       leadId = await datos.asegurarComprador({
         propertyId: propiedad.id, nombre, telefono, email, mensaje: null,
         source: fuenteDelComprador(b.origen), asignadoA: propiedad.assigned_to,
+        estado: 'scheduled',
       })
     }
 
@@ -172,6 +175,13 @@ export async function POST(req: NextRequest) {
     // Lo de abajo es secundario: la visita YA está. Un fallo acá se registra y
     // no hace parecer que no se agendó.
     try { await advancePipelineState(leadId, 'visit_scheduled') } catch (e) { console.error('[visits] avance del comprador falló', e) }
+    // El registro elegido de la lista ya existía: con la visita creada deja de ser una
+    // "consulta sin responder" ('new' → 'scheduled'; uno 'discarded' no se toca). Va
+    // DESPUÉS del alta (y no antes, como en asegurarComprador) para que un fallo al crear
+    // la visita no deje marcada como agendada a una persona sin visita.
+    if (b.persona.tipo === 'registro') {
+      try { await datos.marcarCompradorAgendado(leadId) } catch (e) { console.error('[visits] marcar comprador agendado falló', e) }
+    }
     // Solo si la visita es FUTURA: la ventana deja registrar visitas de hasta 60 días
     // atrás con "Sí, confirmada" marcado por defecto, y registrar hoy la visita de ayer le
     // mandaría a un cliente real "te confirmamos la cita del jueves".

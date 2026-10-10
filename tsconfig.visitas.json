@@ -20,7 +20,9 @@
     "app/(dashboard)/visits/[id]/page.tsx",
     "app/(dashboard)/properties/[id]/page.tsx",
     "app/(dashboard)/properties/page.tsx",
-    "app/(dashboard)/properties/_components/PropertyDetailModal.tsx"
+    "app/(dashboard)/properties/_components/PropertyDetailModal.tsx",
+    "app/(dashboard)/inbox/InboxClient.tsx",
+    "app/(dashboard)/inbox/LeadDetailSheet.tsx"
   ],
   "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
 }

@@ -83,6 +83,27 @@ export function origenDesdeLead(lead: LeadParaOrigen): OrigenDerivado {
   return { origen: 'otro', detalle: null }
 }
 
+/**
+ * Cómo se MUESTRA un `property_leads.source` de los que escribe este módulo
+ * (`portal:<portal>` y `visita:<origen>`, ver fuenteDelComprador). El Inbox tenía una
+ * tabla fija con los formatos viejos (`portal_zonaprop`) y mostraba estos crudos.
+ * `null` si no lo reconoce: quien llama decide el respaldo (el texto crudo).
+ */
+export function etiquetaDeFuente(source: string): string | null {
+  const s = source.trim().toLowerCase()
+  if (s.startsWith('portal:')) {
+    const portal = s.slice('portal:'.length)
+    // Object.hasOwn: el source viene de la base y "portal:constructor" leería
+    // Object.prototype.constructor (una función) en vez de "no lo conozco".
+    return Object.hasOwn(PORTAL_ETIQUETA, portal) ? PORTAL_ETIQUETA[portal] : null
+  }
+  if (s.startsWith('visita:')) {
+    const o = s.slice('visita:'.length)
+    return esOrigenVisita(o) ? `Visita · ${ORIGEN_INFO[o].etiqueta}` : null
+  }
+  return null
+}
+
 /** `property_leads.source` de un comprador creado desde la ventana de agendar. */
 export function fuenteDelComprador(origen: OrigenVisita, portal?: string | null): string {
   if (origen === 'portal' && portal) return `portal:${portal}`

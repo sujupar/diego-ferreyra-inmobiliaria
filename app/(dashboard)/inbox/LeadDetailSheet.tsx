@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { etiquetaDeFuente } from '@/lib/visitas/origen'
 import {
   X,
   Loader2,
@@ -12,7 +13,6 @@ import {
   ExternalLink,
   Building2,
   Calendar,
-  CheckCircle2,
   XCircle,
   Clock,
   Save,
@@ -46,6 +46,8 @@ const STATUS_ACTIONS = [
   { value: 'discarded', label: 'Descartado', icon: XCircle, color: 'bg-gray-500' },
 ] as const
 
+// Formatos viejos. Los nuevos (`portal:<p>`, `visita:<origen>`, los que escribe la
+// ventana de agendar) los nombra etiquetaDeFuente (lib/visitas/origen.ts), como respaldo.
 const SOURCE_LABELS: Record<string, string> = {
   landing: 'Landing pública',
   meta_form: 'Meta Ads',
@@ -182,7 +184,7 @@ export function LeadDetailSheet({
               <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
                 Origen
               </h3>
-              <Badge variant="outline">{SOURCE_LABELS[lead.source] ?? lead.source}</Badge>
+              <Badge variant="outline">{SOURCE_LABELS[lead.source] ?? etiquetaDeFuente(lead.source) ?? lead.source}</Badge>
               {lead.utm && Object.keys(lead.utm).length > 0 && (
                 <div className="mt-2 text-xs text-muted-foreground space-y-0.5">
                   {Object.entries(lead.utm).map(([k, v]) => (

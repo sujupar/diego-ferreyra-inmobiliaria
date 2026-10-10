@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
   ORIGENES_VISITA, ORIGEN_INFO, esOrigenVisita, origenDesdeLead, fuenteDelComprador, validarDetalleDeOrigen,
+  etiquetaDeFuente,
 } from './origen'
 
 describe('catálogo de orígenes', () => {
@@ -83,5 +84,28 @@ describe('validarDetalleDeOrigen', () => {
   it('recorta un detalle demasiado largo a 120 caracteres', () => {
     const r = validarDetalleDeOrigen('otro', 'x'.repeat(300))
     expect(r.ok && r.detalle?.length).toBe(120)
+  })
+})
+
+describe('etiquetaDeFuente (cómo se muestra property_leads.source en el Inbox)', () => {
+  it('una consulta de portal muestra el nombre del portal', () => {
+    expect(etiquetaDeFuente('portal:zonaprop')).toBe('Zonaprop')
+    expect(etiquetaDeFuente('portal:mercadolibre')).toBe('MercadoLibre')
+    expect(etiquetaDeFuente('portal:argenprop')).toBe('Argenprop')
+  })
+  it('un comprador creado desde la ventana de agendar dice "Visita · <origen>"', () => {
+    expect(etiquetaDeFuente('visita:cartel')).toBe('Visita · Cartel en la propiedad')
+    expect(etiquetaDeFuente('visita:publicidad_meta')).toBe('Visita · Publicidad de Meta')
+  })
+  it('lo que no reconoce devuelve null (quien llama decide el respaldo)', () => {
+    expect(etiquetaDeFuente('landing')).toBeNull()
+    expect(etiquetaDeFuente('')).toBeNull()
+    expect(etiquetaDeFuente('portal:')).toBeNull()
+    expect(etiquetaDeFuente('portal:desconocido')).toBeNull()
+    expect(etiquetaDeFuente('visita:tasacion')).toBeNull()
+  })
+  it('un nombre que choca con Object.prototype ("constructor") no devuelve una función', () => {
+    expect(etiquetaDeFuente('portal:constructor')).toBeNull()
+    expect(etiquetaDeFuente('portal:__proto__')).toBeNull()
   })
 })

@@ -6,7 +6,7 @@ const { estado, datosMock, avanzarMock, emailMock, listVisitsMock } = vi.hoisted
   datosMock: {
     leerPropiedadParaVisita: vi.fn(), leerConsulta: vi.fn(), leerRegistro: vi.fn(),
     asegurarComprador: vi.fn(), completarTelefonoDelRegistro: vi.fn(), visitasActivasDeLaPropiedad: vi.fn(),
-    insertarVisita: vi.fn(), asesorAsignable: vi.fn(),
+    insertarVisita: vi.fn(), asesorAsignable: vi.fn(), marcarCompradorAgendado: vi.fn(),
   },
   avanzarMock: vi.fn(),
   emailMock: vi.fn(),
@@ -239,6 +239,37 @@ describe('POST /api/visits', () => {
   it('hoy pero más tarde que ahora es futura: sí manda el email', async () => {
     await pedir({ ...base, fecha: '2099-01-10', hora: '13:00', persona: { ...base.persona, email: 'sofia@mail.com' } })
     expect(emailMock).toHaveBeenCalledTimes(1)
+  })
+  it('el comprador de una persona nueva se crea/reusa como "scheduled" (no suma como consulta sin responder)', async () => {
+    await pedir(base)
+    expect(datosMock.asegurarComprador.mock.calls[0][0]).toMatchObject({ estado: 'scheduled' })
+  })
+  it('el comprador de una consulta de portal también queda "scheduled"', async () => {
+    datosMock.leerConsulta.mockResolvedValue({ id: CONSULTA, property_id: PROP, lead_name: 'Mariana López',
+      lead_phone: '1158234521', lead_email: null, portal: 'zonaprop', received_at: null, created_at: '2099-01-09T00:00:00Z', lead_message: 'Hola' })
+    await pedir({ ...base, origen: 'portal', persona: { tipo: 'consulta', id: CONSULTA } })
+    expect(datosMock.asegurarComprador.mock.calls[0][0]).toMatchObject({ estado: 'scheduled' })
+  })
+  it('registro ya existente: una vez creada la visita, se marca agendado (de "new" a "scheduled")', async () => {
+    datosMock.leerRegistro.mockResolvedValue({ id: REGISTRO, property_id: PROP, name: 'Lucas Paz',
+      phone: '+5491144444444', email: null, source: 'landing', utm: null, created_at: '2099-01-01T00:00:00Z',
+      suspected_bot: false, deleted_at: null })
+    const res = await pedir({ ...base, persona: { tipo: 'registro', id: REGISTRO } })
+    expect(res.status).toBe(201)
+    expect(datosMock.marcarCompradorAgendado).toHaveBeenCalledWith(REGISTRO)
+    expect(datosMock.asegurarComprador).not.toHaveBeenCalled()
+  })
+  it('registro: si marcarlo agendado falla, la visita igual quedó (201) y se registra el error', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      datosMock.leerRegistro.mockResolvedValue({ id: REGISTRO, property_id: PROP, name: 'Lucas Paz',
+        phone: '+5491144444444', email: null, source: 'landing', utm: null, created_at: '2099-01-01T00:00:00Z',
+        suspected_bot: false, deleted_at: null })
+      datosMock.marcarCompradorAgendado.mockRejectedValue(new Error('marcar comprador como agendado: boom'))
+      const res = await pedir({ ...base, persona: { tipo: 'registro', id: REGISTRO } })
+      expect(res.status).toBe(201)
+      expect(errores).toHaveBeenCalled()
+    } finally { errores.mockRestore() }
   })
   it('un fallo de la base responde 500 con mensaje en castellano', async () => {
     datosMock.insertarVisita.mockRejectedValue(new Error('crear visita: boom'))
