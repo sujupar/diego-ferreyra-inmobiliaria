@@ -10,6 +10,7 @@ import { ViewportProbe } from '@/components/dashboard/ViewportProbe'
 import { ContentScrollReset } from '@/components/dashboard/ContentScrollReset'
 import { getNotificationSettings } from '@/lib/email/settings'
 import { SidebarForRole, TopbarForRole, BottomNavForRole } from '@/components/nav/NavForRole'
+import { BotonNuevo } from '@/components/visitas/BotonNuevo'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { Suspense } from 'react'
 
@@ -117,6 +118,7 @@ export default async function DashboardLayout({
                     </div>
                 )}
                 <TopbarForRole role={user.profile.role}>
+                    <BotonNuevo role={user.profile.role} />
                     <UserMenu profile={user.profile} />
                 </TopbarForRole>
                 {/*

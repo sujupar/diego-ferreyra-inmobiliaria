@@ -21,7 +21,7 @@ import { BulkActionsBar } from '@/components/ui/BulkActionsBar'
 import { Building2, Plus, MapPin, Calendar, Loader2, ChevronRight, LayoutList, LayoutGrid, Table2, Archive, Trash2 } from 'lucide-react'
 import { PropertyCard } from './_components/PropertyCard'
 import { PropertyDetailModal, type DetailProperty } from './_components/PropertyDetailModal'
-import { ScheduleVisitDialog } from './_components/ScheduleVisitDialog'
+import { AgendarVisitaDialog } from '@/components/visitas/agendar/AgendarVisitaDialog'
 
 // Catálogo de valores REALES de `properties.status`. Solo se usa para el badge
 // de las filas que YA salieron de captación; las que siguen en captación se
@@ -897,11 +897,10 @@ function PropertiesClient() {
         }}
       />
 
-      <ScheduleVisitDialog
-        propertyId={scheduleForPropertyId}
-        propertyAddress={properties.find(p => p.id === scheduleForPropertyId)?.address}
+      <AgendarVisitaDialog
         open={scheduleVisitOpen}
         onOpenChange={setScheduleVisitOpen}
+        propiedadId={scheduleForPropertyId ?? undefined}
       />
     </div>
   )
