@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false },
+  "include": [
+    "next-env.d.ts",
+    "lib/valuation/**/*.ts",
+    "lib/scraper/**/*.ts",
+    "lib/types/**/*.ts",
+    "lib/mapping/visit-to-wizard.ts",
+    "lib/supabase/appraisals.ts",
+    "lib/supabase/appraisals-write.ts",
+    "app/(dashboard)/appraisals/[id]/page.tsx",
+    "app/(dashboard)/appraisal/new/page.tsx",
+    "components/appraisal/**/*.tsx",
+    "components/appraisal/**/*.ts",
+    "types/database.types.ts"
+  ]
+}
