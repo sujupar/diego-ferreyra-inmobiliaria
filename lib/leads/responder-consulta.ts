@@ -32,6 +32,7 @@ import {
   escaleraDeApertura,
   type IntentoDeApertura,
 } from '@/lib/leads/consulta-apertura-v2'
+import { asegurarComprador } from '@/lib/visitas/datos'
 
 function admin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -177,7 +178,7 @@ export async function responderConsulta(
     // El lead se crea ANTES de mandar: si el WhatsApp sale y el lead no existe,
     // la respuesta del cliente llega a una conversación sin propiedad y el
     // agente no sabe de qué le hablan. Al revés no molesta a nadie.
-    const leadId = await asegurarLead(sb, c, prop)
+    const leadId = await asegurarLead(c, prop)
 
     const res = await enviarAperturaDeConsulta({
       telefono: decision.telefono,
@@ -318,43 +319,27 @@ export type { PropiedadParaConsulta }
  * El lead de esta persona para esta propiedad. Si ya existe (consultó dos veces,
  * o vino por otro lado), se reusa: dos leads del mismo teléfono para la misma
  * propiedad ensucian el CRM y confunden al agente.
+ *
+ * Usa la misma búsqueda por últimos 10 dígitos que la ventana de agendar
+ * (lib/visitas/datos.asegurarComprador): antes comparaba el teléfono exacto y
+ * duplicaba compradores.
  */
 async function asegurarLead(
-  sb: ReturnType<typeof admin>,
   c: { lead_name: string | null; lead_phone: string | null; lead_email: string | null; lead_message: string | null; portal: string },
   prop: PropiedadParaConsulta,
 ): Promise<string | null> {
   try {
-    const { data: existente } = await sb
-      .from('property_leads')
-      .select('id')
-      .eq('property_id', prop.id)
-      .eq('phone', c.lead_phone)
-      .is('deleted_at', null)
-      .limit(1)
-    const yaEsta = (existente as Array<{ id: string }> | null)?.[0]
-    if (yaEsta) return yaEsta.id
-
-    const { data: creado, error } = await sb
-      .from('property_leads')
-      .insert({
-        property_id: prop.id,
-        name: c.lead_name?.trim() || 'Consulta de portal',
-        phone: c.lead_phone,
-        email: c.lead_email,
-        message: c.lead_message,
-        source: `portal:${c.portal}`,
-        assigned_to: prop.assigned_to,
-      })
-      .select('id')
-      .single()
-    if (error) {
-      console.warn('[consulta] no se pudo crear el lead (se manda igual):', error.message)
-      return null
-    }
-    return (creado as { id: string }).id
+    return await asegurarComprador({
+      propertyId: prop.id,
+      nombre: c.lead_name?.trim() || 'Consulta de portal',
+      telefono: c.lead_phone,
+      email: c.lead_email,
+      mensaje: c.lead_message,
+      source: `portal:${c.portal}`,
+      asignadoA: prop.assigned_to,
+    })
   } catch (err) {
-    console.warn('[consulta] excepción creando el lead (se manda igual):', err)
+    console.warn('[consulta] no se pudo asegurar el comprador (se manda igual):', err)
     return null
   }
 }
