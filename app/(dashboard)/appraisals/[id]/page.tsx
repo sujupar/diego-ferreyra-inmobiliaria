@@ -17,6 +17,7 @@ import { ReportEdits, buildDefaultEdits, normalizarEdiciones } from '@/lib/types
 import type { PropertyFeatures, ScrapedProperty } from '@/lib/scraper/types'
 import type { MarketDataForReport } from '@/lib/market-data/types'
 import { Button } from '@/components/ui/button'
+import { BotonAsistente } from '@/components/appraisal/asistente/BotonAsistente'
 import { ArrowLeft, FileText, AlertCircle, Edit2, Loader2, UserCog, Home } from 'lucide-react'
 import { ContactEditor } from '@/components/contacts/ContactEditor'
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog'
@@ -720,6 +721,7 @@ export default function AppraisalDetailPage() {
                             Captar como propiedad
                         </Button>
                     </Link>
+                    <BotonAsistente tasacionId={appraisal.id} className="gap-2" />
                     <Button className="gap-2" onClick={() => setShowPDFPreview(true)}>
                         <FileText className="h-4 w-4" />
                         Vista Previa PDF

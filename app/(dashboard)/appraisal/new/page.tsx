@@ -27,6 +27,7 @@ import { mapDealToWizardInitialData, hasSaleVisitPrefill } from '@/lib/mapping/v
 import { findByText } from '@/lib/market-data/neighborhoods'
 import type { MarketDataForReport } from '@/lib/market-data/types'
 import { Button } from '@/components/ui/button'
+import { BotonAsistente } from '@/components/appraisal/asistente/BotonAsistente'
 import {
     Calculator,
     FileCheck,
@@ -1740,6 +1741,8 @@ function NewAppraisalPageContent() {
                             <Printer className="mr-2 h-4 w-4" />
                             Imprimir
                         </Button>
+                        {/* El asistente necesita la tasación guardada (sus conversaciones cuelgan de ella). */}
+                        {savedAppraisalId && <BotonAsistente tasacionId={savedAppraisalId} size="lg" className="h-12 gap-2" />}
                         <Button
                             size="lg"
                             className="h-12 gap-2"

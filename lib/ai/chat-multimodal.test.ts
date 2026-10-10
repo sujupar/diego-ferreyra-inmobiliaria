@@ -13,25 +13,31 @@ const entrada = (extra: Partial<EntradaMultimodal> = {}): EntradaMultimodal => (
     ...extra,
 })
 
-function fetchFalso(respuesta: { status: number; body: unknown }, capturar?: (body: any) => void): typeof fetch {
+interface CuerpoEnviado {
+    model: string
+    response_format: unknown
+    messages: { role: string; content: unknown }[]
+}
+
+function fetchFalso(respuesta: { status: number; body: unknown }, capturar?: (body: CuerpoEnviado) => void): typeof fetch {
     return (async (_url: string, init: RequestInit) => {
-        capturar?.(JSON.parse(String(init.body)))
+        capturar?.(JSON.parse(String(init.body)) as CuerpoEnviado)
         return new Response(JSON.stringify(respuesta.body), { status: respuesta.status })
     }) as unknown as typeof fetch
 }
 
 describe('pedirRespuestaMultimodal', () => {
     it('manda la imagen como image_url y el PDF como file, en el último mensaje del usuario', async () => {
-        let body: any
+        let body!: CuerpoEnviado
         await pedirRespuestaMultimodal(entrada({ fetchImpl: fetchFalso({ status: 200, body: { choices: [{ message: { content: '{}' } }], model: 'gpt-4.1' } }, b => { body = b }) }))
-        const ultimo = body.messages.at(-1)
+        const ultimo = body.messages.at(-1) as { role: string; content: unknown[] }
         expect(ultimo.role).toBe('user')
         expect(ultimo.content[0]).toEqual({ type: 'text', text: 'mirá esta captura' })
         expect(ultimo.content[1]).toEqual({ type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } })
         expect(ultimo.content[2]).toEqual({ type: 'file', file: { filename: 'otra.pdf', file_data: 'data:application/pdf;base64,BBB' } })
     })
     it('lleva el sistema, el historial en orden y pide JSON', async () => {
-        let body: any
+        let body!: CuerpoEnviado
         await pedirRespuestaMultimodal(entrada({ fetchImpl: fetchFalso({ status: 200, body: { choices: [{ message: { content: '{}' } }] } }, b => { body = b }) }))
         expect(body.messages[0]).toEqual({ role: 'system', content: 'sos el asistente' })
         expect(body.messages[1]).toEqual({ role: 'user', content: 'hola' })

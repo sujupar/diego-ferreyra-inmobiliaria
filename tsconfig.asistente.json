@@ -10,6 +10,8 @@
     "lib/ai/chat-multimodal*.ts",
     "types/database.types.ts",
     "app/api/appraisals/[id]/asistente/**/*.ts",
-    "components/appraisal/asistente/**/*.tsx"
+    "components/appraisal/asistente/**/*.tsx",
+    "app/(dashboard)/appraisals/[id]/page.tsx",
+    "app/(dashboard)/appraisal/new/page.tsx"
   ]
 }
