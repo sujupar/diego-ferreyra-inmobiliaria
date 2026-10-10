@@ -4,7 +4,7 @@
  * Un rol desconocido cae del lado seguro (mismo criterio que lib/auth/scope.ts:
  * `hasPermission` explota con un rol fuera del catálogo).
  */
-import { hasPermission, type Permission } from '@/lib/auth/roles'
+import { hasPermission, ROLES, type Permission } from '@/lib/auth/roles'
 import type { Role } from '@/types/auth.types'
 import type { TipoAccion } from './transiciones'
 
@@ -62,6 +62,30 @@ export function puedeAgendarVisitaEnPropiedad(
   if (!puedeVerTodasLasVisitas(role) && propiedad.assigned_to !== userId) return false
   if (propiedad.status !== 'approved') return false
   return ['disponible', 'reservada'].includes(propiedad.commercial_status ?? 'disponible')
+}
+
+function esRol(v: string | null | undefined): v is Role {
+  return typeof v === 'string' && (ROLES as readonly string[]).includes(v)
+}
+
+/**
+ * Misma regla que `puedeAgendarVisitaEnPropiedad`, para el modal del LISTADO de
+ * propiedades, donde (a) el rol llega como texto de `/api/auth/me` y (b) el modal
+ * arranca con la fila del listado (`vw_properties_list`), que NO trae
+ * `commercial_status`, hasta que llega el detalle completo. Ante la duda NO se
+ * muestra el botón: un rol fuera del catálogo, sin usuario, o un dato que todavía
+ * no llegó (`undefined`; `null` en commercial_status sí es un valor: disponible).
+ * Sin esto el botón aparecía para el abogado, en propiedades ajenas y en vendidas.
+ */
+export function puedeAgendarDesdeElListado(
+  rol: string | null | undefined,
+  userId: string | null | undefined,
+  propiedad: { assigned_to?: string | null; status?: string | null; commercial_status?: string | null },
+): boolean {
+  if (!esRol(rol) || !userId) return false
+  const { assigned_to, status, commercial_status } = propiedad
+  if (assigned_to === undefined || status === undefined || status === null || commercial_status === undefined) return false
+  return puedeAgendarVisitaEnPropiedad(rol, userId, { assigned_to, status, commercial_status })
 }
 
 export function asesorParaLaVisita(

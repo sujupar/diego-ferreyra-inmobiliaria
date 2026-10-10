@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   puedeGestionarVisitas, puedeVerTodasLasVisitas, puedeVerVisita, asesorParaLaVisita, accionesParaRol,
-  puedeAgendarVisitaEnPropiedad,
+  puedeAgendarVisitaEnPropiedad, puedeAgendarDesdeElListado,
 } from './acceso'
 import type { TipoAccion } from './transiciones'
 
@@ -61,6 +61,30 @@ describe('puedeAgendarVisitaEnPropiedad', () => {
   })
   it('sin commercial_status (null) se trata como disponible', () => {
     expect(puedeAgendarVisitaEnPropiedad('asesor', YO, { ...PROPIEDAD_APROBADA_DISPONIBLE, commercial_status: null })).toBe(true)
+  })
+})
+
+describe('puedeAgendarDesdeElListado (modal del listado: rol como texto y datos que pueden faltar)', () => {
+  const COMPLETA = { assigned_to: YO, status: 'approved', commercial_status: 'disponible' }
+
+  it('con todos los datos, misma regla que la ficha', () => {
+    expect(puedeAgendarDesdeElListado('asesor', YO, COMPLETA)).toBe(true)
+    expect(puedeAgendarDesdeElListado('asesor', YO, { ...COMPLETA, assigned_to: OTRO })).toBe(false)
+    expect(puedeAgendarDesdeElListado('coordinador', YO, { ...COMPLETA, assigned_to: OTRO })).toBe(true)
+    expect(puedeAgendarDesdeElListado('abogado', YO, COMPLETA)).toBe(false)
+    expect(puedeAgendarDesdeElListado('asesor', YO, { ...COMPLETA, commercial_status: 'vendida' })).toBe(false)
+    expect(puedeAgendarDesdeElListado('asesor', YO, { ...COMPLETA, commercial_status: null })).toBe(true)
+  })
+  it('un rol que no es del catálogo (o vacío, o sin sesión) no muestra el botón', () => {
+    expect(puedeAgendarDesdeElListado('', YO, COMPLETA)).toBe(false)
+    expect(puedeAgendarDesdeElListado('jefe', YO, COMPLETA)).toBe(false)
+    expect(puedeAgendarDesdeElListado(null, YO, COMPLETA)).toBe(false)
+    expect(puedeAgendarDesdeElListado('coordinador', null, COMPLETA)).toBe(false)
+  })
+  it('si falta un dato para decidir (la fila del listado no trae commercial_status), no se muestra', () => {
+    expect(puedeAgendarDesdeElListado('asesor', YO, { assigned_to: YO, status: 'approved' })).toBe(false)
+    expect(puedeAgendarDesdeElListado('coordinador', YO, { assigned_to: YO, commercial_status: 'disponible' })).toBe(false)
+    expect(puedeAgendarDesdeElListado('asesor', YO, { status: 'approved', commercial_status: 'disponible' })).toBe(false)
   })
 })
 

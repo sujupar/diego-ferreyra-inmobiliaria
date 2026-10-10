@@ -19,6 +19,7 @@ export default defineConfig({
       'app/api/properties/*/interesados/*.test.ts',
       'components/visitas/**/*.test.tsx',
       'app/*/visits/**/*.test.tsx',
+      'app/*/properties/_components/PropertyDetailModal.test.tsx',
     ],
     exclude: ['**/node_modules/**', '.next', '.netlify'],
   },

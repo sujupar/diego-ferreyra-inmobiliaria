@@ -890,6 +890,7 @@ function PropertiesClient() {
         loading={modalLoading}
         onOpenChange={setModalOpen}
         currentUserId={userInfo?.id}
+        rol={userInfo?.role ?? null}
         onScheduleVisit={(id) => {
           setScheduleForPropertyId(id)
           setScheduleVisitOpen(true)
