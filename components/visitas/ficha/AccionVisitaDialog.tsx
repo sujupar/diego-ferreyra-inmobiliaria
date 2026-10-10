@@ -122,6 +122,12 @@ export function AccionVisitaDialog({ visita, accion, onClose, onHecho, onRecarga
       // pintar: se cierra y se recarga en vez de pasarle `null` a `onHecho`.
       if (r.data) { onHecho(r.data); onClose() }
       else { onClose(); onRecargar() }
+    } catch (e) {
+      // `fetch` RECHAZA sin red (no devuelve una respuesta con error): sin este catch
+      // el botón volvía a "Guardar" sin ningún mensaje y el asesor no sabía si se
+      // había guardado. leerRespuesta nunca lanza, así que lo que llega acá es la red.
+      console.error('[visita] no se pudo guardar la acción:', e)
+      setError('No hay conexión. Probá de nuevo.')
     } finally {
       setGuardando(false)
     }

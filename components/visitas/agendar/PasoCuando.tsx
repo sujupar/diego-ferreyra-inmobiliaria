@@ -16,8 +16,22 @@ export function PasoCuando({ estado, despachar }: { estado: EstadoAgendar; despa
     if (!estado.fecha || !propiedadId) return
     let vigente = true
     const qs = new URLSearchParams({ fecha: estado.fecha, propiedad: propiedadId, ...(estado.asesorId ? { asesor: estado.asesorId } : {}) })
+    // Los avisos de choque son una AYUDA: si la agenda no se puede leer (red caída o
+    // error del servidor), simplemente no aparecen — el servidor no bloquea por
+    // choques. Pero el fallo queda en la consola y no deja una promesa sin atrapar.
+    // Se vacía la lista para no avisar con la agenda de OTRO día ya leída antes.
     fetch(`/api/visits/agenda-del-asesor?${qs}`).then(r => leerRespuesta<VisitaAgendaR[]>(r))
-      .then(r => { if (vigente && r.ok) setVisitasDelDia(r.data) })
+      .then(r => {
+        if (!vigente) return
+        if (r.ok) { setVisitasDelDia(r.data); return }
+        console.warn('[agendar] no se pudo leer la agenda del asesor:', r.status, r.error)
+        setVisitasDelDia([])
+      })
+      .catch(e => {
+        if (!vigente) return
+        console.warn('[agendar] no se pudo leer la agenda del asesor:', e)
+        setVisitasDelDia([])
+      })
     return () => { vigente = false }
   }, [estado.fecha, estado.asesorId, propiedadId])
 
