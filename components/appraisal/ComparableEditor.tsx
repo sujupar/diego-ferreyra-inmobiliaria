@@ -8,6 +8,7 @@ import { ScrapedProperty } from '@/lib/scraper/types'
 import { DispositionType, QualityType, ConservationStateType } from '@/lib/valuation/rules'
 import { calculateHomogenizedSurface } from '@/lib/valuation/calculator'
 import { requiereConversion } from '@/lib/valuation/moneda'
+import { completarDescubiertaDeducida, confirmarDescubierta } from '@/lib/scraper/superficie-deducida'
 import { formatCurrency } from '@/lib/valuation/utils'
 import {
     X,
@@ -45,15 +46,13 @@ function getMissingFields(property: ScrapedProperty): string[] {
 }
 
 export function ComparableEditor({ property, onSave, onCancel, onDiscard }: ComparableEditorProps) {
-    const [editedProperty, setEditedProperty] = useState<ScrapedProperty>(() => {
-        const f = { ...property.features }
-        // Safety net: derive uncovered area if the portal only exposed total + covered
-        if (f.uncoveredArea == null && f.totalArea != null && f.coveredArea != null) {
-            const diff = f.totalArea - f.coveredArea
-            f.uncoveredArea = diff > 0 ? diff : 0
-        }
-        return { ...property, features: f }
-    })
+    // Red de seguridad: si el portal solo dio total + cubierta, se deduce la
+    // descubierta MARCADA como deducida, para que se revise (B9).
+    const [editedProperty, setEditedProperty] = useState<ScrapedProperty>(() => ({
+        ...property,
+        features: completarDescubiertaDeducida(property.features),
+    }))
+    const descubiertaDeducida = editedProperty.features.uncoveredAreaDeducida === true
 
     const missingFields = getMissingFields(editedProperty)
     const enOtraMoneda = requiereConversion(editedProperty.currency)
@@ -198,14 +197,41 @@ export function ComparableEditor({ property, onSave, onCancel, onDiscard }: Comp
                             <p className="text-xs text-muted-foreground">Balcones techados, galerías (se calcula al 50%)</p>
                         </div>
                         <div className="space-y-2">
-                            <Label>Superficie Descubierta (m²)</Label>
+                            <div className="flex items-center justify-between gap-2">
+                                <Label htmlFor="comparable-descubierta">Superficie Descubierta (m²)</Label>
+                                {descubiertaDeducida && (
+                                    <span className="text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                                        deducida: revisar
+                                    </span>
+                                )}
+                            </div>
                             <Input
+                                id="comparable-descubierta"
                                 type="number"
                                 value={editedProperty.features.uncoveredArea || ''}
-                                onChange={(e) => updateFeature('uncoveredArea', e.target.value ? Number(e.target.value) : null)}
+                                onChange={(e) => setEditedProperty(prev => ({
+                                    ...prev,
+                                    // Cargarla a mano es confirmarla: deja de ser deducida.
+                                    features: confirmarDescubierta(prev.features, e.target.value ? Number(e.target.value) : null),
+                                }))}
                                 placeholder="12"
+                                className={descubiertaDeducida ? 'border-amber-400' : ''}
                             />
-                            <p className="text-xs text-muted-foreground">Patios, balcones, terrazas (se calcula al 50%)</p>
+                            {descubiertaDeducida ? (
+                                <p className="text-xs text-amber-700">
+                                    Calculada como total − cubierta ({editedProperty.features.totalArea ?? '—'} − {editedProperty.features.coveredArea ?? '—'} m²): el portal no la informa.
+                                    Verificala en el aviso.{' '}
+                                    <button
+                                        type="button"
+                                        className="underline hover:no-underline"
+                                        onClick={() => setEditedProperty(prev => ({ ...prev, features: confirmarDescubierta(prev.features) }))}
+                                    >
+                                        Está bien
+                                    </button>
+                                </p>
+                            ) : (
+                                <p className="text-xs text-muted-foreground">Patios, balcones, terrazas (se calcula al 50%)</p>
+                            )}
                         </div>
                         <div className="space-y-2">
                             <Label className="text-primary font-medium">M² Homologados</Label>
