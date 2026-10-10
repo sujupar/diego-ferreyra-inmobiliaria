@@ -24,8 +24,14 @@ function detalle(e: EventoVisitaR): string | null {
     return `${formatearFechaHora(e.from_scheduled_at)} → ${formatearFechaHora(e.to_scheduled_at)}`
   }
   if (e.kind === 'asesor_cambiado') return `${e.desde_asesor ?? 'sin asesor'} → ${e.hacia_asesor ?? 'sin asesor'}`
-  if (e.reason) return esMotivoNoRealizada(e.reason) ? MOTIVO_ETIQUETA[e.reason] : e.reason
-  return e.note
+  const nota = e.note?.trim() || null
+  if (e.reason) {
+    const etiqueta = esMotivoNoRealizada(e.reason) ? MOTIVO_ETIQUETA[e.reason] : e.reason
+    // Con "Otro" el texto que escribió el asesor viaja en la nota: mostrar solo la
+    // etiqueta lo perdía y el historial decía "Otro" sin decir qué pasó.
+    return nota ? `${etiqueta} — ${nota}` : etiqueta
+  }
+  return nota
 }
 
 export function LineaDeTiempo({ eventos }: { eventos: EventoVisitaR[] }) {
