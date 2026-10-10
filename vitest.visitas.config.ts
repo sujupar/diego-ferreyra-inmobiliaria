@@ -15,6 +15,7 @@ export default defineConfig({
       'lib/portals/fichas-fusionadas.test.ts',
       'lib/leads/visit-scheduling.test.ts',
       'lib/leads/responder-consulta.test.ts',
+      'lib/leads/resolve-crm-visit-lead.test.ts',
       'app/api/visits/**/*.test.ts',
       'app/api/properties/*/interesados/*.test.ts',
       'components/visitas/**/*.test.tsx',

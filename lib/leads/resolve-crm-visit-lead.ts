@@ -13,9 +13,11 @@
  * Este módulo agrega un FALLBACK best-effort: si no hay token, busca un
  * `property_leads` de la MISMA propiedad cuyo email o teléfono coincida con
  * el contacto cargado en la visita (`client_email`/`client_phone`). No es una
- * FK real — `property_visits` no tiene columna `lead_id` propia (ver
- * `types/visits.types.ts` / migración `20260513000001`) — es un match de
- * mejor esfuerzo. Si no matchea nada, se devuelve `null` y el caller
+ * FK real — es un match de mejor esfuerzo. Desde la migración 20261010000002
+ * `property_visits.lead_id` existe y la ruta de estado lo usa primero: este
+ * respaldo queda para las visitas viejas que no lo tienen. Teléfono por
+ * últimos 10 dígitos (`phone_norm`) y email sin distinguir mayúsculas
+ * (revisión final, grupo L). Si no matchea nada, se devuelve `null` y el caller
  * simplemente no avanza el estado: no rompe nada (mismo contrato que
  * `resolveLeadIdForVisit`: nunca lanza).
  *
@@ -24,10 +26,15 @@
  * lib/leads/tags.ts / pipeline-state.ts").
  */
 import { createClient } from '@supabase/supabase-js'
+import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
 import { resolveLeadIdForVisit } from './pipeline-state'
 
 function admin() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  // Sin `!`: si faltan, el catch de abajo lo registra y devuelve null (contrato: nunca lanza).
+  if (!url || !key) throw new Error('Faltan las credenciales de Supabase en el servidor')
+  return createClient(url, key)
 }
 
 export async function resolveLeadIdForVisitWithFallback(visitId: string): Promise<string | null> {
@@ -40,38 +47,53 @@ export async function resolveLeadIdForVisitWithFallback(visitId: string): Promis
     //    email/teléfono DENTRO de la misma propiedad (evita cruzar leads de
     //    otra ficha que casualmente comparten contacto).
     const sb = admin()
-    const { data: visit } = await sb
+    const { data: visit, error: errorVisita } = await sb
       .from('property_visits')
       .select('property_id, client_email, client_phone')
       .eq('id', visitId)
       .maybeSingle()
+    // supabase-js NO lanza ante un error de Postgres: devuelve { error }.
+    if (errorVisita) {
+      console.warn('[resolve-crm-visit-lead] no se pudo leer la visita (continuando):', errorVisita.message)
+      return null
+    }
     const v = visit as { property_id: string; client_email: string | null; client_phone: string | null } | null
     if (!v) return null
 
-    if (v.client_email) {
-      const { data } = await sb
+    // Email: normalizado (trim + minúsculas) y con ilike, porque el lead pudo
+    // guardarse con otra capitalización. % _ \ se escapan: son comodines de LIKE y
+    // un email con "_" o "%" matchearía el de OTRA persona.
+    const email = v.client_email?.trim().toLowerCase() || null
+    if (email) {
+      const { data, error } = await sb
         .from('property_leads')
         .select('id')
         .eq('property_id', v.property_id)
-        .eq('email', v.client_email)
+        .ilike('email', email.replace(/[%_\\]/g, '\\$&'))
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
+      if (error) console.warn('[resolve-crm-visit-lead] búsqueda por email falló (continuando):', error.message)
       const id = (data as { id: string } | null)?.id
       if (id) return id
     }
 
-    if (v.client_phone) {
-      const { data } = await sb
+    // Teléfono: NUNCA igualdad exacta (CLAUDE.md § Teléfonos). El mismo celular vive
+    // como '+5491158234521', '+541158234521' o '1158234521': se compara por
+    // `phone_norm` (últimos 10 dígitos, columna generada). Sin 10 dígitos no se busca.
+    const norm = ultimos10Digitos(v.client_phone)
+    if (norm) {
+      const { data, error } = await sb
         .from('property_leads')
         .select('id')
         .eq('property_id', v.property_id)
-        .eq('phone', v.client_phone)
+        .eq('phone_norm', norm)
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
+      if (error) console.warn('[resolve-crm-visit-lead] búsqueda por teléfono falló (continuando):', error.message)
       const id = (data as { id: string } | null)?.id
       if (id) return id
     }
