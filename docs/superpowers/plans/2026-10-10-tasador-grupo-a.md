@@ -58,8 +58,10 @@ Archivos: `components/appraisal/pdf/PDFReport.tsx`, `components/appraisal/Report
 
 ## Tarea 5 — Datos existentes
 
-Script `scripts/migrar-marcador-precio-pg.ts`: modo `listar` (muestra antes/después de cada
-fila) y `aplicar`. Solo reemplaza las frases de fábrica. Aunque no se corra, el PDF ya muestra
+Script `scripts/migrar-marcador-precio.ts`: modo `listar` (muestra antes/después de cada
+fila) y `aplicar`. Listado real del 2026-10-10: 51 de 56 tasaciones con ediciones.
+**ORDEN OBLIGATORIO: aplicar DESPUÉS del deploy.** Antes, el código viejo de producción
+mostraría "{precio}" literal en el PDF. Solo reemplaza las frases de fábrica. Aunque no se corra, el PDF ya muestra
 el precio vigente (el render normaliza), así que el script es limpieza, no requisito.
 
 ## Verificación

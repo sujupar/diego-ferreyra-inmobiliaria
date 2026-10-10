@@ -98,6 +98,17 @@ export function textoConPrecio(texto: string | undefined | null, precioFormatead
     return conMarcadorDePrecio(texto).split(MARCADOR_PRECIO).join(precioFormateado)
 }
 
+/**
+ * Las ediciones tal como se cargan de la base, con los precios viejos de las
+ * frases de fábrica pasados al marcador. Solo toca los dos textos con precio.
+ */
+export function normalizarEdiciones(e: ReportEdits): ReportEdits {
+    const r: ReportEdits = { ...e }
+    if (e.analysisText !== undefined) r.analysisText = conMarcadorDePrecio(e.analysisText)
+    if (e.strategyPriceText !== undefined) r.strategyPriceText = conMarcadorDePrecio(e.strategyPriceText)
+    return r
+}
+
 const vacio = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '')
 
 /**
@@ -115,9 +126,7 @@ export function completarEdiciones(actual: ReportEdits, porDefecto: ReportEdits)
             Object.assign(resultado, { [clave]: porDefecto[clave] })
         }
     }
-    resultado.analysisText = resultado.analysisText && conMarcadorDePrecio(resultado.analysisText)
-    resultado.strategyPriceText = resultado.strategyPriceText && conMarcadorDePrecio(resultado.strategyPriceText)
-    return resultado
+    return normalizarEdiciones(resultado)
 }
 
 /**
@@ -127,7 +136,6 @@ export function completarEdiciones(actual: ReportEdits, porDefecto: ReportEdits)
  */
 export function buildDefaultEdits(
     subject: { title?: string; location?: string; description?: string },
-    _valuationResult: { publicationPrice: number; currency: string; noSaleZonePrice?: number }
 ): ReportEdits {
     const formattedPrice = MARCADOR_PRECIO
 

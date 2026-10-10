@@ -3,6 +3,7 @@ import {
     MARCADOR_PRECIO,
     buildDefaultEdits,
     completarEdiciones,
+    normalizarEdiciones,
     conMarcadorDePrecio,
     textoConPrecio,
     type ReportEdits,
@@ -12,7 +13,7 @@ const sujeto = { title: 'Depto', location: 'Paraguay 3682', description: 'Lindo'
 
 describe('buildDefaultEdits', () => {
     it('escribe el marcador de precio, no el número, en los dos textos con precio', () => {
-        const e = buildDefaultEdits(sujeto, { publicationPrice: 193000, currency: 'USD' })
+        const e = buildDefaultEdits(sujeto)
         expect(e.analysisText).toContain(MARCADOR_PRECIO)
         expect(e.strategyPriceText).toContain(MARCADOR_PRECIO)
         expect(e.analysisText).not.toContain('193.000')
@@ -62,7 +63,7 @@ describe('textoConPrecio', () => {
 })
 
 describe('completarEdiciones', () => {
-    const porDefecto = buildDefaultEdits(sujeto, { publicationPrice: 193000, currency: 'USD' })
+    const porDefecto = buildDefaultEdits(sujeto)
 
     it('conserva un texto que el asesor editó', () => {
         const actual: ReportEdits = { semaphoreOverrides: {}, strategyDiffusionText: 'Texto mío' }
@@ -99,5 +100,25 @@ describe('completarEdiciones', () => {
     it('pasa al marcador un texto de fábrica que traía un precio viejo', () => {
         const actual: ReportEdits = { semaphoreOverrides: {}, analysisText: 'se debería publicar en USD 252.000.' }
         expect(completarEdiciones(actual, porDefecto).analysisText).toBe(`se debería publicar en ${MARCADOR_PRECIO}.`)
+    })
+})
+
+describe('normalizarEdiciones', () => {
+    it('pasa al marcador los precios viejos de las frases de fábrica y deja el resto igual', () => {
+        const cargadas: ReportEdits = {
+            semaphoreOverrides: { 'comparable-1': 'green' },
+            analysisText: 'se debería publicar en USD 252.000.',
+            strategyPriceText: 'El valor de publicación recomendado es: USD 252.000.',
+            feesText: 'Honorarios 3%',
+        }
+        expect(normalizarEdiciones(cargadas)).toEqual({
+            ...cargadas,
+            analysisText: `se debería publicar en ${MARCADOR_PRECIO}.`,
+            strategyPriceText: `El valor de publicación recomendado es: ${MARCADOR_PRECIO}.`,
+        })
+    })
+
+    it('no inventa textos que no estaban', () => {
+        expect(normalizarEdiciones({ semaphoreOverrides: {} })).toEqual({ semaphoreOverrides: {} })
     })
 })
