@@ -5,6 +5,7 @@ import {
 } from './tasador-ia'
 import { calculateValuation, type ValuationProperty } from './calculator'
 import { huellaDeInsumos } from './huella-insumos'
+import { planillaDelMetodo } from './planilla-ia'
 
 const subject: ValuationProperty = {
   price: null, currency: 'USD', title: 'Depto 3 amb', location: 'Almagro, CABA',
@@ -21,12 +22,13 @@ const entrada: EntradaTasadorIA = {
   ownerSharePercent: 100, purchaseScenarios: [], selectedScenarioIds: [],
 }
 
+const planillaCualquiera = () => planillaDelMetodo({ coveredArea: 50, floor: 3, age: 20 })
 const interp = (i: number, extra: Record<string, unknown> = {}) => ({
   index: i, quality: 'GOOD', conservationState: 'STATE_2', disposition: 'FRONT', floor: 3, age: 20,
-  locationCoefficient: 1.0, reasoning: `c${i}`, ...extra,
+  locationCoefficient: 1.0, planilla: planillaCualquiera(), reasoning: `c${i}`, ...extra,
 })
 const respuestaOk = () => ({
-  subject: { quality: 'VERY_GOOD', conservationState: 'STATE_1', disposition: 'FRONT', floor: 4, age: 0, locationCoefficient: 1.05, reasoning: 'a estrenar' },
+  subject: { quality: 'VERY_GOOD', conservationState: 'STATE_1', disposition: 'FRONT', floor: 4, age: 0, locationCoefficient: 1.05, planilla: planillaCualquiera(), reasoning: 'a estrenar' },
   comparables: [interp(0), interp(1, { conservationState: 'STATE_3', quality: 'GOOD' }), interp(2, { locationCoefficient: 0.95, quality: 'ECONOMIC' })],
   summary: 'Zona homogénea', confidence: 'media',
 })
@@ -39,6 +41,31 @@ describe('describirMetodo — el prompt lleva las tablas del método, generadas 
     expect(t).toContain('INTERNAL')
     expect(t).toContain('STATE_4_5')
     expect(t).toContain('70')
+  })
+})
+
+describe('describirMetodo — el método COMPLETO, para que la IA calcule todo (pedido del dueño 2026-10-10)', () => {
+  it('lleva la tabla Ross-Heidecke entera por % de vida, no solo la fila de un edificio nuevo', () => {
+    const t = describirMetodo()
+    expect(t).toMatch(/43: .*32\.49/)   // fila 43 % de vida, Estado 2
+    expect(t).toMatch(/99: /)
+  })
+  it('explica el % de vida y la regla W = 1 − K/200', () => {
+    const t = describirMetodo()
+    expect(t).toContain('100 × antigüedad / 70')
+    expect(t).toContain('W = 1 − K / 200')
+  })
+  it('describe el piso como lo aplica la calculadora, sin coeficientes que la calculadora no usa', () => {
+    const t = describirMetodo()
+    expect(t).not.toContain('TOP_FLOOR')
+    expect(t).not.toContain('GROUND_FLOOR_GARDEN')
+    expect(t).toContain('vacío')
+  })
+  it('pide la planilla completa de coeficientes por propiedad', () => {
+    const { system } = armarPromptTasadorIA(entrada)
+    for (const campo of ['superficieHomologada', 'kPiso', 'kDisposicion', 'mCalidad', 'porcentajeVida', 'kTabla', 'wEdadEstado', 'jUbicacion', 'nTotal']) {
+      expect(system).toContain(campo)
+    }
   })
 })
 
@@ -74,9 +101,15 @@ describe('validarRespuestaTasadorIA — nunca datos a medias', () => {
     const r = respuestaOk(); r.comparables[0].quality = 'LUJO'
     expect(() => validarRespuestaTasadorIA(r, 3)).toThrow(/quality/i)
   })
-  it('rechaza coeficiente de ubicación fuera de [0.70, 1.30]', () => {
-    const r = respuestaOk(); r.subject.locationCoefficient = 1.6
+  it('rechaza coeficiente de ubicación fuera de [0.85, 1.15] (spec D2)', () => {
+    const r = respuestaOk(); r.subject.locationCoefficient = 1.2
     expect(() => validarRespuestaTasadorIA(r, 3)).toThrow(/locationCoefficient/i)
+    const r2 = respuestaOk(); r2.comparables[0].locationCoefficient = 0.8
+    expect(() => validarRespuestaTasadorIA(r2, 3)).toThrow(/locationCoefficient/i)
+  })
+  it('rechaza una respuesta sin la planilla de coeficientes', () => {
+    const r = respuestaOk() as Record<string, any>; delete r.subject.planilla
+    expect(() => validarRespuestaTasadorIA(r, 3)).toThrow(/planilla/i)
   })
   it('rechaza índices faltantes o repetidos', () => {
     const falta = respuestaOk(); falta.comparables.pop()
@@ -149,6 +182,28 @@ describe('correrTasadorIA', () => {
     expect(r.ownerSharePercent).toBe(100)
     expect(r.ai.comparables[1].reasoning).toBe('c1')
     expect(r.ai.usage?.totalTokens).toBe(15)
+  })
+  it('verifica la planilla del modelo contra el método y registra las correcciones', async () => {
+    const r = await correrTasadorIA(entrada, { chat: chatOk })
+    // El modelo devolvió una planilla de OTRA propiedad: el piso 4 del sujeto da 1.0
+    // y la superficie 60 + 8×0,5 = 64, no las de la planilla cualquiera (50 m²).
+    expect(r.ai.subject.planilla?.superficieHomologada).toBe(64)
+    expect(r.ai.subject.correcciones?.map(c => c.coeficiente)).toContain('superficieHomologada')
+    // La planilla guardada es la del método (la que se usó), no la del modelo.
+    expect(r.ai.subject.planilla?.nTotal).toBeCloseTo(r.subjectTotalCoef, 12)
+  })
+  it('no registra correcciones cuando el modelo calculó como el método', async () => {
+    const chat: ChatTasador = async (i) => {
+      const resp = respuestaOk()
+      // Fusionadas como las va a fusionar el código: lo del asesor manda.
+      const fs = fusionarInterpretacion(subject.features, resp.subject as never)
+      resp.subject.planilla = planillaDelMetodo(fs)
+      resp.comparables.forEach((c, k) => { c.planilla = planillaDelMetodo(fusionarInterpretacion(comparables[k].features, c as never)) })
+      return { ...(await chatOk(i)), content: JSON.stringify(resp) }
+    }
+    const r = await correrTasadorIA(entrada, { chat })
+    expect(r.ai.subject.correcciones).toEqual([])
+    expect(r.ai.comparables.every(c => c.correcciones?.length === 0)).toBe(true)
   })
   it('hace UNA sola llamada, en modo JSON y con techo de tiempo', async () => {
     const llamadas: unknown[] = []

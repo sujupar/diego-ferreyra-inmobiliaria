@@ -31,7 +31,7 @@ export interface ValuationFeatures {
  * Get floor coefficient based on Excel formula:
  * IF(I="PB", 0.9, IF(I="PBP", 1, IF(I=1, 0.85, IF(I=2, 0.93, IF(I<=4, 1, IF(I<=6, 1.05, IF(I<=8, 1.1, IF(I>8, 1.15, 0))))))))
  */
-function getFloorCoefficient(floor: number, totalFloors: number | null): number {
+export function getFloorCoefficient(floor: number, totalFloors: number | null): number {
     if (floor === 0) return VALUATION_RULES.FLOOR_COEFFICIENTS.GROUND_FLOOR // 0.90
     if (floor === 1) return VALUATION_RULES.FLOOR_COEFFICIENTS.FLOOR_1 // 0.85
     if (floor === 2) return VALUATION_RULES.FLOOR_COEFFICIENTS.FLOOR_2 // 0.93
@@ -47,7 +47,7 @@ function getFloorCoefficient(floor: number, totalFloors: number | null): number 
  * Get disposition coefficient based on Excel formula:
  * IF(I="Fte", 1, IF(I="Cta Fte", 0.95, IF(I="Int", 0.9, IF(I="Lat", 0.93, 0))))
  */
-function getDispositionCoefficient(disposition?: DispositionType): number {
+export function getDispositionCoefficient(disposition?: DispositionType): number {
     if (!disposition) return 1.0
     return VALUATION_RULES.DISPOSITION_COEFFICIENTS[disposition] || 1.0
 }
