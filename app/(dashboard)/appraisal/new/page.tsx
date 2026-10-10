@@ -287,6 +287,9 @@ function NewAppraisalPageContent() {
 
     // Auto-save state
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+    // Separado de `saveStatus`: un cálculo imposible NO es un error de guardado
+    // y el botón no debe decir "Calculando…" mientras se autoguarda (C2).
+    const [errorCalculo, setErrorCalculo] = useState<string | null>(null)
     const [saveErrorDetail, setSaveErrorDetail] = useState<string | null>(null)
     // Retry counter for transient failures with exponential backoff
     const autoSaveRetryRef = useRef<number>(0)
@@ -592,8 +595,7 @@ function NewAppraisalPageContent() {
         const enOtraMoneda = comparablesEnOtraMoneda(comparables)
         if (enOtraMoneda.length > 0) {
             const i = enOtraMoneda[0]
-            setSaveStatus('error')
-            setSaveErrorDetail(`El comparable ${i + 1} está en ${comparables[i].currency}: cargá su precio en USD o descartalo para recalcular.`)
+            setErrorCalculo(`El comparable ${i + 1} está en ${comparables[i].currency}: cargá su precio en USD o descartalo para recalcular.`)
             return
         }
         const subjectVal: ValuationProperty = {
@@ -631,16 +633,18 @@ function NewAppraisalPageContent() {
 
         if (!next) {
             // Datos inválidos: subject sin features mínimas o comparables sin precio.
-            // Preservar el último resultado válido y avisar en el banner.
+            // Es un error de CÁLCULO, no de guardado (no se intentó guardar nada),
+            // y el informe anterior deja de mostrarse: ya no corresponde a los
+            // datos de pantalla (auditoría 2026-10-03, C2).
             console.warn('[recalc] calculateValuation devolvió null — datos insuficientes', {
                 hasSubject: !!subject,
                 comparableCount: comparables.length,
                 comparablesConPrecio: comparables.filter(c => c.price).length,
             })
-            setSaveStatus('error')
-            setSaveErrorDetail('No se puede recalcular: revisá que el subject y los comparables tengan datos completos (precios, superficies).')
+            setErrorCalculo('No se pudo recalcular con estos datos: revisá que la propiedad y los comparables tengan precio y superficie. No se guardó nada.')
             return
         }
+        setErrorCalculo(null)
         // Parte del propietario, escenarios de compra y selección: la MISMA
         // función que usa el Tasador IA, para que las dos versiones sean comparables.
         const merged = completarValuacion(next, {
@@ -850,6 +854,11 @@ function NewAppraisalPageContent() {
         // El purchaseResult legacy (single property) ya no se genera por el nuevo flujo.
         setPurchaseResult(null)
 
+        if (!result) {
+            setErrorCalculo('No se pudo calcular con estos datos: revisá que la propiedad y los comparables tengan precio y superficie.')
+            return
+        }
+        setErrorCalculo(null)
         setValuationResult(result)
 
         // Completa SOLO lo vacío con los textos de fábrica: nunca pisa lo que el
@@ -1674,7 +1683,7 @@ function NewAppraisalPageContent() {
                         {saveStatus === 'saving' ? (
                             <>
                                 <Loader2 className="h-5 w-5 animate-spin" />
-                                Calculando...
+                                Guardando...
                             </>
                         ) : (
                             <>
@@ -1687,8 +1696,22 @@ function NewAppraisalPageContent() {
                 </section>
             )}
 
-            {/* Results Section - Full HTML Report */}
-            {valuationResult && subject && (
+            {errorCalculo && subject && (
+                <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800 flex items-start gap-3">
+                    <AlertCircle className="h-5 w-5 shrink-0 text-red-600" />
+                    <div>
+                        <p className="font-semibold">No se pudo calcular</p>
+                        <p className="mt-1">{errorCalculo}</p>
+                        {valuationResult && (
+                            <p className="mt-1 text-red-700">El informe anterior se ocultó porque ya no corresponde a los datos cargados.</p>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Results Section - Full HTML Report. Oculto si el último cálculo
+                falló: mostrar el viejo haría creer que es el vigente (C2). */}
+            {valuationResult && subject && !errorCalculo && (
                 <section id="valuation-report" className="space-y-8 animate-in fade-in slide-in-from-bottom-12 duration-1000">
                     <div className="flex items-center justify-center gap-2 mb-8 text-muted-foreground">
                         <div className="h-px bg-border flex-1 max-w-[100px]" />
