@@ -1436,8 +1436,8 @@ function NewAppraisalPageContent() {
                                     </h3>
                                     <div className="grid gap-3">
                                         {purchaseProperties.map((prop, index) => {
-                                            const homSurface = (prop.features.coveredArea || 0) + ((prop.features.uncoveredArea || 0) * 0.5)
-                                            const pricePerM2 = homSurface > 0 ? (prop.price || 0) / homSurface : 0
+                                            // Misma fórmula que el cálculo (antes ignoraba la semicubierta, C5).
+                                            const pricePerM2 = calculateWeightedPricePerM2(prop.price, prop.features) ?? 0
                                             const isSelected = selectedPurchaseIndices.includes(index)
                                             return (
                                                 <div

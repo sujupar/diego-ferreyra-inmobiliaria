@@ -16,6 +16,7 @@ import { CONSTRUCTION_FEATURES_OPTIONS } from '@/types/visit-data.types'
 import { VisitDifusionSections } from './VisitDifusionSections'
 import { guardarDatosDeVisita, type ModoVisita } from '@/lib/pipeline/visita-datos'
 import { ESTADOS_CONSERVACION, textoCoeficienteEstado } from '@/lib/valuation/rules'
+import { calculateHomogenizedSurface } from '@/lib/valuation/calculator'
 
 const EMPTY_SALE: SaleVisitData = {
   property_type: 'departamento',
@@ -131,17 +132,17 @@ export function VisitDataForm({ dealId, initial, neighborhood, modo = 'finalizar
     }, 500)
   }, [dealId])
 
-  // Total = cubiertos + (semicubiertos * 0.5) + (descubiertos * 0.5). Null si los tres están vacíos.
+  // Total homologado con la fórmula única del tasador (C5). Null si los tres están vacíos.
   const computeSaleTotal = (s: SaleVisitData): number | null => {
     const c = s.covered_m2, sc = s.semi_covered_m2, u = s.uncovered_m2
     if (c == null && sc == null && u == null) return null
-    return (c ?? 0) + 0.5 * (sc ?? 0) + 0.5 * (u ?? 0)
+    return calculateHomogenizedSurface({ coveredArea: c, semiCoveredArea: sc, uncoveredArea: u })
   }
 
   const computePurchaseTotal = (p: PurchaseVisitData): number | null => {
     const c = p.covered_m2_target, sc = p.semi_covered_m2_target, u = p.uncovered_m2_target
     if (c == null && sc == null && u == null) return null
-    return (c ?? 0) + 0.5 * (sc ?? 0) + 0.5 * (u ?? 0)
+    return calculateHomogenizedSurface({ coveredArea: c, semiCoveredArea: sc, uncoveredArea: u })
   }
 
   const updateSale = <K extends keyof SaleVisitData>(key: K, value: SaleVisitData[K]) => {

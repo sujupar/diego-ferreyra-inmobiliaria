@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { Document, Page, Text, View, Image, Link, Svg, Path, Circle as SvgCircle, Rect as SvgRect } from '@react-pdf/renderer'
-import { ValuationProperty, ValuationResult, PurchaseResult, PurchaseScenarioResult } from '@/lib/valuation/calculator'
+import { ValuationProperty, ValuationResult, PurchaseResult, PurchaseScenarioResult, calculateHomogenizedSurface } from '@/lib/valuation/calculator'
 import { formatCurrency, formatMiles } from '@/lib/valuation/utils'
 import { valuacionConPreciosManuales } from '@/lib/valuation/precio-manual'
 import { styles, colors } from './PDFStyles'
@@ -314,13 +314,8 @@ export function PDFReportDocument({ subject, comparables, valuationResult: resul
     const noSaleZone = reportEdits?.priceOverrides?.noSaleZonePrice ?? valuationResult.noSaleZonePrice
     const saleValueDisplay = valuationResult.saleValue
 
-    // Helper: calculate homogenized surface for a comparable
-    const getHomogenizedSurface = (comp: ValuationProperty) => {
-        const covered = comp.features.coveredArea || 0
-        const semi = comp.features.semiCoveredArea || 0
-        const uncovered = comp.features.uncoveredArea || 0
-        return covered + (semi * 0.5) + (uncovered * 0.5)
-    }
+    // Superficie homologada: la MISMA fórmula que el cálculo (C5).
+    const getHomogenizedSurface = (comp: ValuationProperty) => calculateHomogenizedSurface(comp.features)
 
     return (
         <Document>

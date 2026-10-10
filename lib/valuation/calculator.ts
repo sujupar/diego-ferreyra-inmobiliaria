@@ -77,7 +77,7 @@ function calculateAgeFactor(
  * Excel: G = (C) + (D*0.5) + (E*0.5)
  * Example: 48m² cubiertos + 0m² semi + 12m² descubiertos = 48 + 0 + 6 = 54m² homologados
  */
-export function calculateHomogenizedSurface(features: ValuationFeatures): number {
+export function calculateHomogenizedSurface(features: SuperficiesParaHomologar): number {
     const covered = features.coveredArea || 0
     const semiCovered = features.semiCoveredArea || 0
     const uncovered = features.uncoveredArea || 0
@@ -88,6 +88,18 @@ export function calculateHomogenizedSurface(features: ValuationFeatures): number
 }
 
 /**
+ * Lo que hace falta para homologar. Acepta null (portales, filas guardadas) y
+ * undefined (ValuationFeatures). Única fórmula de la superficie homologada:
+ * antes había copias en el editor de comparables, el asistente, la lista de
+ * compra y el PDF, y algunas ignoraban la semicubierta (auditoría 2026-10-03, C5).
+ */
+export interface SuperficiesParaHomologar {
+    coveredArea?: number | null
+    semiCoveredArea?: number | null
+    uncoveredArea?: number | null
+}
+
+/**
  * Calculate Weighted Price per m² (precio por m² ponderado).
  *
  * Fórmula estándar argentina: divide el precio total por la superficie
@@ -95,26 +107,14 @@ export function calculateHomogenizedSurface(features: ValuationFeatures): number
  * costo por metro útil del comparable, ignorando inflación por balcones o
  * patios grandes.
  *
- * Acepta features con null o undefined (compat con scraper PropertyFeatures
- * y con ValuationFeatures). Returns null si no hay precio o si la superficie
- * homologada es 0.
+ * Returns null si no hay precio o si la superficie homologada es 0.
  */
 export function calculateWeightedPricePerM2(
     price: number | null | undefined,
-    features: {
-        coveredArea?: number | null
-        semiCoveredArea?: number | null
-        uncoveredArea?: number | null
-    },
+    features: SuperficiesParaHomologar,
 ): number | null {
     if (!price || price <= 0) return null
-    const covered = features.coveredArea || 0
-    const semiCovered = features.semiCoveredArea || 0
-    const uncovered = features.uncoveredArea || 0
-    const surface =
-        covered * VALUATION_RULES.SURFACE_COEFFICIENTS.COVERED +
-        semiCovered * VALUATION_RULES.SURFACE_COEFFICIENTS.SEMI_COVERED +
-        uncovered * VALUATION_RULES.SURFACE_COEFFICIENTS.UNCOVERED
+    const surface = calculateHomogenizedSurface(features)
     if (surface <= 0) return null
     return price / surface
 }
@@ -441,60 +441,5 @@ export function calculateValuation({ subject, comparables, expenseRates }: Valua
         moneyInHand,
         currency,
         expenseRates: rates,
-    }
-}
-
-/**
- * Calculate purchase costs for a selected property
- *
- * Based on the reference PDF (Pichincha 105):
- *   Valor de Publicación → Valor de Compra (with optional discount) → Valor de Escritura
- *   Gastos de Compra:
- *     - Sellos 1.75%
- *     - Honorarios de Escribano 1%
- *     - Gastos de Escritura 1.75%
- *     - Honorarios Inmobiliaria 4%
- */
-export function calculatePurchaseCosts(
-    purchasePublicationPrice: number,
-    purchaseTitle: string,
-    moneyFromSale: number,
-    rates?: PurchaseExpenseRates,
-): PurchaseResult {
-    const r: Required<PurchaseExpenseRates> = {
-        purchaseDiscountPercent: rates?.purchaseDiscountPercent ?? 0,
-        deedDiscountPercent: rates?.deedDiscountPercent ?? 30,
-        stampsPercent: rates?.stampsPercent ?? 1.75,
-        notaryFeesPercent: rates?.notaryFeesPercent ?? 1,
-        deedExpensesPercent: rates?.deedExpensesPercent ?? 1.75,
-        buyerCommissionPercent: rates?.buyerCommissionPercent ?? 4,
-    }
-
-    const purchasePrice = Math.round(purchasePublicationPrice * (1 - r.purchaseDiscountPercent / 100))
-    const deedValue = Math.round(purchasePrice * (1 - r.deedDiscountPercent / 100))
-
-    // Gastos de compra - based on reference PDF table
-    const stampsCost = Math.round(deedValue * (r.stampsPercent / 100))
-    const notaryFees = Math.round(deedValue * (r.notaryFeesPercent / 100))
-    const deedExpenses = Math.round(deedValue * (r.deedExpensesPercent / 100))
-    const buyerCommission = Math.round(purchasePrice * (r.buyerCommissionPercent / 100))
-    const totalPurchaseCosts = stampsCost + notaryFees + deedExpenses + buyerCommission
-    const totalCostWithPurchase = purchasePrice + totalPurchaseCosts
-
-    return {
-        selectedPropertyTitle: purchaseTitle,
-        publicationPrice: purchasePublicationPrice,
-        purchasePrice,
-        deedValue,
-        stampsCost,
-        notaryFees,
-        deedExpenses,
-        buyerCommission,
-        totalPurchaseCosts,
-        totalCostWithPurchase,
-        moneyFromSale,
-        moneyNeededForPurchase: totalCostWithPurchase,
-        remainingMoney: moneyFromSale - totalCostWithPurchase,
-        purchaseExpenseRates: r,
     }
 }
