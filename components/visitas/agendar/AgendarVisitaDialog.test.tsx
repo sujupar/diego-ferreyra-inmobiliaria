@@ -302,6 +302,81 @@ describe('AgendarVisitaDialog', () => {
     await screen.findByRole('heading', { name: 'Revisá y agendá' })
     expect(screen.getAllByText(/Mariana López/).length).toBeGreaterThan(0)
   })
+
+  // Ronda 2, ítem 1 (regresión de la ronda 1): si falla la carga de
+  // interesados, el botón "cargar a mano" quedaba atrapado adentro del caso
+  // `lista.length > 0` — un 500/504/sin red dejaba el paso SIN salida. Ahora
+  // el error viene siempre con "Reintentar" + "Cargar a mano".
+  it('si falla la carga de interesados: error + "Reintentar" vuelve a pedir y, si trae gente, se ve', async () => {
+    let llamadasInteresados = 0
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.startsWith('/api/auth/me')) return new Response(JSON.stringify({ id: PROP.assigned_to, role: rol }), { status: 200 })
+      if (url.startsWith('/api/visits/propiedades')) return json([PROP])
+      if (url.includes('/interesados')) {
+        llamadasInteresados += 1
+        if (llamadasInteresados === 1) return new Response('{}', { status: 500 })
+        return json([{ clave: 'consulta:c1', tipo: 'consulta', id: 'c1', nombre: 'Mariana López', telefono: '1158234521', email: null, detalle: 'Zonaprop', fecha: '2026-10-08T00:00:00Z', tieneTelefono: true, consultas: 1, coincideConElOrigen: true, visitaActiva: null }])
+      }
+      if (url.startsWith('/api/users/advisors')) return json([{ id: PROP.assigned_to, full_name: 'Lucas' }])
+      if (url.startsWith('/api/visits/agenda-del-asesor')) return json([])
+      return new Response('{}', { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    await irAPersonaYLuegoCuando()
+    expect(await screen.findByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cargar a mano' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+    expect(await screen.findByText('Mariana López')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument()
+  })
+
+  it('si falla la carga de interesados: "Cargar a mano" abre el formulario igual', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.startsWith('/api/auth/me')) return new Response(JSON.stringify({ id: PROP.assigned_to, role: rol }), { status: 200 })
+      if (url.startsWith('/api/visits/propiedades')) return json([PROP])
+      if (url.includes('/interesados')) return new Response('{}', { status: 500 })
+      if (url.startsWith('/api/users/advisors')) return json([{ id: PROP.assigned_to, full_name: 'Lucas' }])
+      if (url.startsWith('/api/visits/agenda-del-asesor')) return json([])
+      return new Response('{}', { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    await irAPersonaYLuegoCuando()
+    fireEvent.click(await screen.findByRole('button', { name: 'Cargar a mano' }))
+    expect(await screen.findByText('Nombre y apellido')).toBeInTheDocument()
+    expect(screen.getByText('Teléfono (WhatsApp)')).toBeInTheDocument()
+  })
+
+  // Ronda 2, ítem 2: mismo defecto en PasoAsesor — "Probá de nuevo" sin
+  // ningún botón. `onReintentar` vive en el armazón (ahí está el fetch de
+  // /api/users/advisors) y sube `intentoAsesores`.
+  it('si falla la carga de asesores: "Reintentar" vuelve a pedir y, si trae asesores, se ven', async () => {
+    rol = 'admin'
+    let llamadasAsesores = 0
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.startsWith('/api/auth/me')) return new Response(JSON.stringify({ id: PROP.assigned_to, role: rol }), { status: 200 })
+      if (url.startsWith('/api/visits/propiedades')) return json([PROP])
+      if (url.includes('/interesados')) return json([{ clave: 'consulta:c1', tipo: 'consulta', id: 'c1', nombre: 'Mariana López', telefono: '1158234521', email: null, detalle: 'Zonaprop', fecha: '2026-10-08T00:00:00Z', tieneTelefono: true, consultas: 1, coincideConElOrigen: true, visitaActiva: null }])
+      if (url.startsWith('/api/users/advisors')) {
+        llamadasAsesores += 1
+        if (llamadasAsesores === 1) return new Response('{}', { status: 500 })
+        return json([{ id: PROP.assigned_to, full_name: 'Lucas' }])
+      }
+      if (url.startsWith('/api/visits/agenda-del-asesor')) return json([])
+      return new Response('{}', { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    await irAPersonaYLuegoCuando()
+    fireEvent.click(await screen.findByRole('button', { name: /Mariana López/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+    await screen.findByRole('heading', { name: '¿Cuándo?' })
+    fireEvent.click(screen.getByRole('button', { name: /Hoy/ }))
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+    await screen.findByRole('heading', { name: '¿Quién la muestra?' })
+    expect(await screen.findByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+    expect(await screen.findByRole('radio', { name: /Lucas/ })).toBeInTheDocument()
+  })
 })
 
 /** Hoy, en Argentina, con el mismo formato (AAAA-MM-DD) que usa el selector. */

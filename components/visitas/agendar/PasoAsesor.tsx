@@ -9,19 +9,29 @@ export interface Asesor { id: string; full_name: string }
  * (`AgendarVisitaDialog`) — este paso ya no hace su propio fetch. El nombre
  * del elegido también se resuelve arriba (useMemo sobre esta misma lista),
  * así solo hay una fuente de verdad y una sola llamada por apertura.
+ *
+ * Ronda 2, ítem 2: ante un error, `onReintentar` (que vive en el armazón,
+ * donde está el fetch) vuelve a pedir la lista — antes el paso quedaba sin
+ * salida con solo "Probá de nuevo" y nada para tocar.
  */
-export function PasoAsesor({ estado, despachar, asesores, cargando, error }: {
+export function PasoAsesor({ estado, despachar, asesores, cargando, error, onReintentar }: {
   estado: EstadoAgendar
   despachar: (a: AccionAgendar) => void
   asesores: Asesor[]
   cargando: boolean
   error: boolean
+  onReintentar: () => void
 }) {
   return (
     <div className="space-y-4">
       <h2 tabIndex={-1} className="text-xl font-semibold outline-none">¿Quién la muestra?</h2>
       {cargando && <p className="text-sm text-muted-foreground">Cargando asesores…</p>}
-      {error && <p role="alert" className="text-sm text-destructive">No pudimos cargar los asesores. Probá de nuevo.</p>}
+      {error && (
+        <div className="space-y-3">
+          <p role="alert" className="text-sm text-destructive">No pudimos cargar los asesores. Probá de nuevo.</p>
+          <button type="button" onClick={onReintentar} className="h-11 rounded-lg border px-3 text-sm">Reintentar</button>
+        </div>
+      )}
       {!cargando && !error && asesores.length === 0 && <p className="text-sm text-muted-foreground">No hay asesores disponibles.</p>}
       {!cargando && !error && asesores.length > 0 && (
         <div role="radiogroup" aria-label="Asesor" className="grid gap-2 sm:grid-cols-2">

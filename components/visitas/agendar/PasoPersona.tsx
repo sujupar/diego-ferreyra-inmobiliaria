@@ -23,6 +23,9 @@ export function PasoPersona({ estado, despachar }: { estado: EstadoAgendar; desp
   const [lista, setLista] = useState<Interesado[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [texto, setTexto] = useState('')
+  // Ronda 2: "Reintentar" ante un error vuelve a pedir la lista — sube este
+  // contador, que está en las dependencias del efecto de abajo.
+  const [intento, setIntento] = useState(0)
 
   useEffect(() => {
     if (!conLista || !estado.propiedad || !estado.origen) return
@@ -39,7 +42,7 @@ export function PasoPersona({ estado, despachar }: { estado: EstadoAgendar; desp
       .then(r => { if (!vigente) return; if (r.ok) { setLista(r.data); setError(null) } else setError(r.error) })
       .catch(() => { if (vigente) setError('No pudimos cargar la lista. Probá de nuevo.') })
     return () => { vigente = false }
-  }, [conLista, estado.propiedad, estado.origen])
+  }, [conLista, estado.propiedad, estado.origen, intento])
 
   const visibles = useMemo(() => filtrarInteresados(lista ?? [], texto), [lista, texto])
   const nueva = estado.persona?.tipo === 'nueva' ? estado.persona : { tipo: 'nueva' as const, nombre: '', telefono: '', email: '' }
@@ -48,6 +51,10 @@ export function PasoPersona({ estado, despachar }: { estado: EstadoAgendar; desp
   const elegida = estado.persona && estado.persona.tipo !== 'nueva' ? estado.persona : null
 
   const cargarAMano = () => { setManual(true); despachar({ tipo: 'elegirPersona', persona: null }) }
+  // Limpia el error ACÁ (en el click, no en el cuerpo del efecto) para que
+  // "Cargando…" se vea de inmediato en vez del mensaje viejo hasta que
+  // responda el segundo pedido.
+  const reintentar = () => { setError(null); setIntento(n => n + 1) }
 
   const titulo = estado.origen === 'portal' ? '¿Quién consultó?' : conLista ? '¿Quién se registró?' : '¿Quién viene?'
   return (
@@ -63,15 +70,32 @@ export function PasoPersona({ estado, despachar }: { estado: EstadoAgendar; desp
         )}
       </div>
 
-      {conLista && !manual && (
-        <>
-          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-          {lista === null && !error && <p className="text-sm text-muted-foreground">Cargando…</p>}
+      {/* Ronda 2, ítem 1: con error el paso NO puede quedar sin salida — el
+          mensaje viene siempre con "Reintentar" Y el botón de carga manual.
+          Antes el botón de carga manual vivía solo adentro del caso
+          `lista.length > 0`, así que un 500/504/sin red dejaba al asesor sin
+          ningún botón para seguir. */}
+      {conLista && !manual && error && (
+        <div className="space-y-3">
+          <p role="alert" className="text-sm text-destructive">{error}</p>
+          <div className="flex gap-2">
+            <button type="button" onClick={reintentar} className="h-11 rounded-lg border px-3 text-sm">Reintentar</button>
+            <button type="button" onClick={cargarAMano} className="h-11 rounded-lg border border-dashed px-3 text-sm">
+              Cargar a mano
+            </button>
+          </div>
+        </div>
+      )}
 
-          {/* Ítem 7: 0 interesados no es "nadie coincide con la búsqueda" —
-              es que todavía no llegó nadie. Mensaje propio + ir directo a
-              cargar a mano (la búsqueda/lista de abajo no tendría sentido). */}
-          {lista !== null && lista.length === 0 && !error && (
+      {conLista && !manual && !error && (
+        <>
+          {lista === null && <p className="text-sm text-muted-foreground">Cargando…</p>}
+
+          {/* Ítem 7 (ronda 1): 0 interesados no es "nadie coincide con la
+              búsqueda" — es que todavía no llegó nadie. Mensaje propio + ir
+              directo a cargar a mano (la búsqueda/lista de abajo no tendría
+              sentido). */}
+          {lista !== null && lista.length === 0 && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
                 {estado.origen === 'portal' ? 'Nadie consultó todavía por esta propiedad.' : 'Nadie se registró todavía en la landing.'}

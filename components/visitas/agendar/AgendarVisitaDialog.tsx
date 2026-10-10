@@ -77,6 +77,7 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, onAgendad
   const [enviando, setEnviando] = useState(false)
   const [asesores, setAsesores] = useState<Asesor[]>([])
   const [asesoresEstado, setAsesoresEstado] = useState<'cargando' | 'ok' | 'error'>('cargando')
+  const [intentoAsesores, setIntentoAsesores] = useState(0)
   const enviandoRef = useRef(false)
   const marcaConfirmarRef = useRef(0)
   // Ítem 6: sube en cada apertura. Si el diálogo se cierra con un POST en
@@ -135,6 +136,8 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, onAgendad
   // Ítem 5: los asesores se cargan UNA vez en el armazón (antes: un fetch en
   // PasoAsesor y OTRO acá solo para resolver el nombre — dos llamadas por
   // cada cambio de asesor elegido). El nombre sale de esta misma lista.
+  // Ronda 2, ítem 2: `intentoAsesores` en las dependencias — el botón
+  // "Reintentar" de PasoAsesor lo sube para volver a pedir la lista.
   useEffect(() => {
     if (!open) return
     let vigente = true
@@ -143,7 +146,7 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, onAgendad
       .then(r => { if (!vigente) return; if (r.ok) { setAsesores(r.data); setAsesoresEstado('ok') } else setAsesoresEstado('error') })
       .catch(() => { if (vigente) setAsesoresEstado('error') })
     return () => { vigente = false }
-  }, [open])
+  }, [open, intentoAsesores])
 
   const listo = cargaInicial === 'ok'
   const opciones = { puedeElegirAsesor: yo ? puedeVerTodasLasVisitas(yo.role) : false }
@@ -307,7 +310,8 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, onAgendad
                   {estado.paso === 'persona' && <PasoPersona {...props} />}
                   {estado.paso === 'cuando' && <PasoCuando {...props} />}
                   {estado.paso === 'asesor' && (
-                    <PasoAsesor {...props} asesores={asesores} cargando={asesoresEstado === 'cargando'} error={asesoresEstado === 'error'} />
+                    <PasoAsesor {...props} asesores={asesores} cargando={asesoresEstado === 'cargando'}
+                      error={asesoresEstado === 'error'} onReintentar={() => setIntentoAsesores(n => n + 1)} />
                   )}
                   {estado.paso === 'confirmar' && (
                     <PasoConfirmar {...props} nombreAsesor={nombreAsesor} duplicado={duplicado} error={errorEnvio} />
