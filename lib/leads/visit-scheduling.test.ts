@@ -188,4 +188,26 @@ describe('upsertPendingVisit (I/O)', () => {
     })
     expect(result).toEqual({ ok: false, error: 'boom' })
   })
+
+  it('guarda origen, comprador y changed_by=null en el alta (escritor automático)', async () => {
+    const { upsertPendingVisit, admin } = await import('./visit-scheduling')
+    insertSingle.mockResolvedValueOnce({ data: { id: 'visit-1' }, error: null })
+    await upsertPendingVisit(admin(), {
+      propertyId: 'prop-1', advisorId: null, clientName: 'Juan', clientEmail: null, clientPhone: '+5491122334455',
+      scheduledAt: new Date('2026-08-04T12:00:00Z'), notes: 'nota',
+      leadId: 'lead-1', origin: 'publicidad_meta', originDetail: null,
+    })
+    expect(insertFn).toHaveBeenCalledWith(expect.objectContaining({
+      lead_id: 'lead-1', origin: 'publicidad_meta', origin_detail: null, changed_by: null,
+    }))
+  })
+  it('al actualizar la propuesta también deja changed_by=null (el historial no se la atribuye a nadie)', async () => {
+    const { upsertPendingVisit, admin } = await import('./visit-scheduling')
+    updateMaybeSingle.mockResolvedValueOnce({ data: { id: 'visit-old' }, error: null })
+    await upsertPendingVisit(admin(), {
+      propertyId: 'prop-1', advisorId: null, clientName: 'Juan', clientEmail: null, clientPhone: '+5491122334455',
+      scheduledAt: new Date('2026-08-04T12:00:00Z'), notes: 'otra', existingVisitId: 'visit-old',
+    })
+    expect(updateFn).toHaveBeenCalledWith(expect.objectContaining({ changed_by: null }))
+  })
 })

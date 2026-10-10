@@ -260,6 +260,9 @@ export async function reiniciarPrueba(
               status: 'cancelled',
               notes: `[Cancelada por un reinicio de prueba del agente, ${new Date().toISOString().slice(0, 10)}. La fila se conserva a propósito: no se borra nada.]`,
               updated_at: new Date().toISOString(),
+              // La cancela el reinicio de prueba, no una persona: igual que el
+              // resto de las escrituras automáticas sobre property_visits.
+              changed_by: null,
             } as never)
             .eq('id', v.id)
         }

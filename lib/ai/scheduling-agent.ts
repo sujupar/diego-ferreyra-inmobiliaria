@@ -82,6 +82,7 @@ import { updateAgentState, getConversationAiState, memoriaVigente } from '@/lib/
 import { materialPedidoExplicito } from '@/lib/ai/material-request'
 import { runConversationAnalysis } from '@/lib/ai/analyze-conversation'
 import { validateProposedVisit, MAX_TIPOS_POR_TURNO, type MaterialTipo } from '@/lib/ai/agent-brain'
+import { origenDeLead } from '@/lib/visitas/datos'
 
 // ---------------------------------------------------------------------------
 // Parser determinístico de "cuándo" — nunca IA. Entiende los patrones de
@@ -1441,6 +1442,17 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
     // propiedad sin que lo espere nadie.
     let visitId: string | null = null
     if (decision.visit) {
+      // `origenDeLead` lanza si la base falla (no si el lead no existe):
+      // agendar pesa más que registrar el origen, así que un fallo de lectura
+      // no frena la visita — se agenda igual con origin: null.
+      let origen: Awaited<ReturnType<typeof origenDeLead>> = null
+      if (input.leadId) {
+        try {
+          origen = await origenDeLead(input.leadId)
+        } catch (err) {
+          console.warn('[agente] no se pudo leer el origen del comprador (se agenda igual):', err)
+        }
+      }
       const result = await upsertPendingVisit(sb, {
         propertyId: input.propertyId,
         advisorId: prop.assigned_to,
@@ -1451,6 +1463,9 @@ export async function runSchedulingAgent(input: RunSchedulingAgentInput): Promis
         notes: `Propuesta por el cliente vía WhatsApp (agente de IA, ${decision.visit.hour}hs).`,
         existingVisitId: null,
         createdByAi: true,
+        leadId: input.leadId,
+        origin: origen?.origen ?? null,
+        originDetail: origen?.detalle ?? null,
       })
       if (!result.ok) {
         console.warn('[agente] no se pudo crear la visita pending_confirmation:', result.error)
