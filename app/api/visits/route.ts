@@ -129,7 +129,11 @@ export async function POST(req: NextRequest) {
       const telCrudo = telefonoEfectivo(r.phone, b.persona.telefono)
       if (!ultimos10Digitos(telCrudo)) return error(400, 'Falta el teléfono de la persona')
       const tel = telefonoCanonico(telCrudo)
-      if (!ultimos10Digitos(r.phone)) await datos.completarTelefonoDelRegistro(r.id, tel)
+      // Solo se completa un HUECO (phone nulo), igual que decidirComprador: un teléfono
+      // guardado que no sirve ("123" de una carga vieja) NO se pisa desde acá —
+      // completarTelefonoDelRegistro filtra `.is('phone', null)` y no lo tocaría igual.
+      // La visita sí usa el teléfono bueno que mandó el navegador (telefonoEfectivo).
+      if (r.phone == null) await datos.completarTelefonoDelRegistro(r.id, tel)
       nombre = r.name?.trim() || 'Sin nombre'
       telefono = tel
       email = r.email?.trim().toLowerCase() || null

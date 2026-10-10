@@ -155,6 +155,16 @@ describe('POST /api/visits', () => {
     expect(datosMock.completarTelefonoDelRegistro).toHaveBeenCalledWith(REGISTRO, '+5491158234521')
     expect(datosMock.insertarVisita.mock.calls[0][0]).toMatchObject({ client_phone: '+5491158234521', lead_id: REGISTRO })
   })
+  it('registro con un teléfono guardado INVÁLIDO (no nulo): la visita usa el del navegador, pero el registro no se pisa', async () => {
+    // Solo se completan huecos (misma regla que decidirComprador): un dato que ya
+    // existe —aunque esté mal— no se reescribe desde la ventana de agendar.
+    datosMock.leerRegistro.mockResolvedValue({ id: REGISTRO, property_id: PROP, name: 'Lucas Paz', phone: '123',
+      email: null, source: null, utm: null, created_at: '2099-01-01T00:00:00Z', suspected_bot: false, deleted_at: null })
+    const res = await pedir({ ...base, persona: { tipo: 'registro', id: REGISTRO, telefono: '11 5823-4521' } })
+    expect(res.status).toBe(201)
+    expect(datosMock.insertarVisita.mock.calls[0][0]).toMatchObject({ client_phone: '+5491158234521', lead_id: REGISTRO })
+    expect(datosMock.completarTelefonoDelRegistro).not.toHaveBeenCalled()
+  })
   it('registro de OTRA propiedad: 400', async () => {
     datosMock.leerRegistro.mockResolvedValue({ id: REGISTRO, property_id: 'otra', name: 'X', phone: '1158234521',
       email: null, source: null, utm: null, created_at: '2099-01-01T00:00:00Z', suspected_bot: false, deleted_at: null })
