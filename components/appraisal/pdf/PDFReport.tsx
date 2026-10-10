@@ -3,7 +3,7 @@
 import React from 'react'
 import { Document, Page, Text, View, Image, Link, Svg, Path, Circle as SvgCircle, Rect as SvgRect } from '@react-pdf/renderer'
 import { ValuationProperty, ValuationResult, PurchaseResult, PurchaseScenarioResult } from '@/lib/valuation/calculator'
-import { formatCurrency } from '@/lib/valuation/utils'
+import { formatCurrency, formatMiles } from '@/lib/valuation/utils'
 import { valuacionConPreciosManuales } from '@/lib/valuation/precio-manual'
 import { styles, colors } from './PDFStyles'
 import { ReportEdits, SemaphoreColor, textoConPrecio } from '@/lib/types/report-edits'
@@ -159,7 +159,7 @@ function ExpRow({ label, value, bold }: { label: string; value: number; currency
         }}>
             <Text style={{ fontSize: 8, fontWeight: bold ? 'bold' : 'normal' }}>{label}</Text>
             <Text style={{ fontSize: 8, fontWeight: bold ? 'bold' : 'normal' }}>
-                USD {value.toLocaleString()}
+                USD {value.toLocaleString('es-AR')}
             </Text>
         </View>
     )
@@ -190,9 +190,9 @@ function SaleSimTable({
                 borderWidth: 1, borderColor: colors.lightGray, borderStyle: 'solid',
                 borderTopWidth: 0,
             }}>
-                <ValueCell label="Valor de Publicación" value={`USD ${pub.toLocaleString()}`} flex />
-                <ValueCell label="Valor de Venta" value={`USD ${sale.toLocaleString()}`} flex />
-                <ValueCell label="Valor de Escritura" value={`USD ${r.deedValue.toLocaleString()}`} flex />
+                <ValueCell label="Valor de Publicación" value={`USD ${pub.toLocaleString('es-AR')}`} flex />
+                <ValueCell label="Valor de Venta" value={`USD ${sale.toLocaleString('es-AR')}`} flex />
+                <ValueCell label="Valor de Escritura" value={`USD ${r.deedValue.toLocaleString('es-AR')}`} flex />
             </View>
             <View style={{
                 backgroundColor: '#e8f4fd', padding: 4,
@@ -212,7 +212,7 @@ function SaleSimTable({
             }}>
                 <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.white, letterSpacing: 0.5 }}>DINERO LUEGO DE VENTA</Text>
                 <Text style={{ fontSize: 20, fontWeight: 'bold', color: colors.white, marginTop: 3 }}>
-                    USD {r.moneyInHand.toLocaleString()}
+                    USD {r.moneyInHand.toLocaleString('es-AR')}
                 </Text>
             </View>
             {showOwnerShare && (
@@ -224,7 +224,7 @@ function SaleSimTable({
                         Parte del Propietario ({r.ownerSharePercent}%)
                     </Text>
                     <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#92400e' }}>
-                        USD {(r.ownerShareMoney as number).toLocaleString()}
+                        USD {(r.ownerShareMoney as number).toLocaleString('es-AR')}
                     </Text>
                 </View>
             )}
@@ -263,9 +263,9 @@ function PurchaseSimTable({
                 borderWidth: 1, borderColor: colors.lightGray, borderStyle: 'solid',
                 borderTopWidth: 0,
             }}>
-                <ValueCell label="Publicación" value={`USD ${scenario.publicationPrice.toLocaleString()}`} flex />
-                <ValueCell label="Compra" value={`USD ${scenario.purchasePrice.toLocaleString()}`} flex />
-                <ValueCell label="Escritura" value={`USD ${scenario.deedValue.toLocaleString()}`} flex />
+                <ValueCell label="Publicación" value={`USD ${scenario.publicationPrice.toLocaleString('es-AR')}`} flex />
+                <ValueCell label="Compra" value={`USD ${scenario.purchasePrice.toLocaleString('es-AR')}`} flex />
+                <ValueCell label="Escritura" value={`USD ${scenario.deedValue.toLocaleString('es-AR')}`} flex />
             </View>
             <View style={{
                 backgroundColor: '#e8f4fd', padding: 4,
@@ -285,7 +285,7 @@ function PurchaseSimTable({
                 <View style={{ padding: 7, backgroundColor: colors.primary, borderRadius: 3, alignItems: 'center' }}>
                     <Text style={{ fontSize: 6.5, fontWeight: 'bold', color: colors.white, letterSpacing: 0.3 }}>COSTO TOTAL</Text>
                     <Text style={{ fontSize: 12, fontWeight: 'bold', color: colors.white, marginTop: 1 }} wrap={false}>
-                        USD {scenario.totalCostWithPurchase.toLocaleString()}
+                        USD {scenario.totalCostWithPurchase.toLocaleString('es-AR')}
                     </Text>
                 </View>
                 <View style={{
@@ -294,7 +294,7 @@ function PurchaseSimTable({
                 }}>
                     <Text style={{ fontSize: 6.5, fontWeight: 'bold', color: colors.white, letterSpacing: 0.3 }}>DIFERENCIA EN MANO</Text>
                     <Text style={{ fontSize: 15, fontWeight: 'bold', color: colors.white, marginTop: 1 }} wrap={false}>
-                        USD {scenario.remainingMoney.toLocaleString()}
+                        USD {scenario.remainingMoney.toLocaleString('es-AR')}
                     </Text>
                 </View>
             </View>
@@ -829,7 +829,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult: resul
                                                 <View style={styles.priceBullet}>
                                                     <View style={styles.bullet} />
                                                     <Text style={styles.priceText}>
-                                                        Valor del m² hom. {Math.round(pricePerM2).toLocaleString()} {valuationResult.currency}
+                                                        Valor del m² hom. {Math.round(pricePerM2).toLocaleString('es-AR')} {valuationResult.currency}
                                                     </Text>
                                                 </View>
                                             </View>
@@ -933,7 +933,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult: resul
                                                     <View style={styles.priceBullet}>
                                                         <View style={[styles.bullet, { backgroundColor: colors.semaphoreRed }]} />
                                                         <Text style={[styles.priceText, { color: colors.semaphoreRed }]}>
-                                                            {Math.round(pricePerM2).toLocaleString()} {valuationResult.currency}/m²
+                                                            {Math.round(pricePerM2).toLocaleString('es-AR')} {valuationResult.currency}/m²
                                                         </Text>
                                                     </View>
                                                 )}
@@ -1018,7 +1018,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult: resul
                             {subject.features.rooms || '-'}
                         </Text>
                         <Text style={{ width: '7%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'right', color: colors.primary }}>
-                            {Math.round(valuationResult.subjectPriceM2).toLocaleString()}
+                            {Math.round(valuationResult.subjectPriceM2).toLocaleString('es-AR')}
                         </Text>
                         <Text style={{ width: '6%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'center', color: colors.primary }}>
                             {valuationResult.subjectLocationCoef.toFixed(2)}
@@ -1039,7 +1039,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult: resul
                             {valuationResult.subjectTotalCoef.toFixed(4)}
                         </Text>
                         <Text style={{ width: '8%', fontSize: 5, fontWeight: 'bold', padding: 2, textAlign: 'right', color: colors.primary }}>
-                            {Math.round(valuationResult.subjectPriceM2).toLocaleString()}
+                            {Math.round(valuationResult.subjectPriceM2).toLocaleString('es-AR')}
                         </Text>
                     </View>
 
@@ -1056,7 +1056,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult: resul
                                 {(prop.location || `Comp. ${index + 1}`).slice(0, 26)}
                             </Text>
                             <Text style={{ width: '7%', fontSize: 5, padding: 2, textAlign: 'right' }}>
-                                {((prop.price || 0) / 1000).toFixed(0)}k
+                                {formatMiles(prop.price)}
                             </Text>
                             <Text style={{ width: '5%', fontSize: 5, padding: 2, textAlign: 'center' }}>
                                 {propFeatures.coveredArea || '-'}
@@ -1074,7 +1074,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult: resul
                                 {propFeatures.rooms || '-'}
                             </Text>
                             <Text style={{ width: '7%', fontSize: 5, padding: 2, textAlign: 'right' }}>
-                                {Math.round(analysis.originalPriceM2).toLocaleString()}
+                                {Math.round(analysis.originalPriceM2).toLocaleString('es-AR')}
                             </Text>
                             <Text style={{ width: '6%', fontSize: 5, padding: 2, textAlign: 'center' }}>
                                 {analysis.locationCoefficient.toFixed(2)}
@@ -1095,7 +1095,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult: resul
                                 {analysis.totalCoefficient.toFixed(4)}
                             </Text>
                             <Text style={{ width: '8%', fontSize: 5, padding: 2, textAlign: 'right', fontWeight: 'bold' }}>
-                                {Math.round(analysis.adjustedPriceM2).toLocaleString()}
+                                {Math.round(analysis.adjustedPriceM2).toLocaleString('es-AR')}
                             </Text>
                         </View>
                         )
@@ -1107,7 +1107,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult: resul
                             Promedio $/m² Ajustado:
                         </Text>
                         <Text style={{ width: '8%', fontSize: 7, fontWeight: 'bold', padding: 3, textAlign: 'right', color: colors.primary }}>
-                            {Math.round(valuationResult.averagePriceM2).toLocaleString()}
+                            {Math.round(valuationResult.averagePriceM2).toLocaleString('es-AR')}
                         </Text>
                     </View>
                 </View>
@@ -1352,7 +1352,7 @@ export function PDFReportDocument({ subject, comparables, valuationResult: resul
                                                             <View style={styles.priceBullet}>
                                                                 <View style={styles.bullet} />
                                                                 <Text style={styles.priceText}>
-                                                                    Valor del m² {Math.round(pricePerM2).toLocaleString()} {valuationResult.currency}
+                                                                    Valor del m² {Math.round(pricePerM2).toLocaleString('es-AR')} {valuationResult.currency}
                                                                 </Text>
                                                             </View>
                                                         )}
@@ -1468,15 +1468,15 @@ export function PDFReportDocument({ subject, comparables, valuationResult: resul
                                         <View style={{ flexDirection: 'row', borderWidth: 1, borderColor: colors.lightGray, borderTopWidth: 0 }}>
                                             <View style={{ flex: 1, padding: 4, borderRightWidth: 1, borderColor: colors.lightGray }}>
                                                 <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Publicación</Text>
-                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {recommendedPrice.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {recommendedPrice.toLocaleString('es-AR')}</Text>
                                             </View>
                                             <View style={{ flex: 1, padding: 4, borderRightWidth: 1, borderColor: colors.lightGray }}>
                                                 <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Venta</Text>
-                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {saleValueDisplay.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {saleValueDisplay.toLocaleString('es-AR')}</Text>
                                             </View>
                                             <View style={{ flex: 1, padding: 4 }}>
                                                 <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Escritura</Text>
-                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {valuationResult.deedValue.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {valuationResult.deedValue.toLocaleString('es-AR')}</Text>
                                             </View>
                                         </View>
                                         {/* Gastos de venta header */}
@@ -1491,18 +1491,18 @@ export function PDFReportDocument({ subject, comparables, valuationResult: resul
                                         ].map((row, i) => (
                                             <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 4, borderWidth: 1, borderColor: colors.lightGray, borderTopWidth: 0 }}>
                                                 <Text style={{ fontSize: 7 }}>{row.label}</Text>
-                                                <Text style={{ fontSize: 7 }}>USD {row.value.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 7 }}>USD {row.value.toLocaleString('es-AR')}</Text>
                                             </View>
                                         ))}
                                         {/* Total */}
                                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 4, borderWidth: 1, borderColor: colors.darkGray, borderTopWidth: 0, backgroundColor: '#f5f5f5' }}>
                                             <Text style={{ fontSize: 7, fontWeight: 'bold' }}>Total gastos venta</Text>
-                                            <Text style={{ fontSize: 7, fontWeight: 'bold' }}>USD {valuationResult.totalExpenses.toLocaleString()}</Text>
+                                            <Text style={{ fontSize: 7, fontWeight: 'bold' }}>USD {valuationResult.totalExpenses.toLocaleString('es-AR')}</Text>
                                         </View>
                                         {/* Money after sale */}
                                         <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'space-between', padding: 6, backgroundColor: '#ecfdf5', borderRadius: 2 }}>
                                             <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#065f46' }}>Dinero luego de venta</Text>
-                                            <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.semaphoreGreen }}>USD {valuationResult.moneyInHand.toLocaleString()}</Text>
+                                            <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.semaphoreGreen }}>USD {valuationResult.moneyInHand.toLocaleString('es-AR')}</Text>
                                         </View>
                                     </View>
 
@@ -1518,15 +1518,15 @@ export function PDFReportDocument({ subject, comparables, valuationResult: resul
                                         <View style={{ flexDirection: 'row', borderWidth: 1, borderColor: colors.lightGray, borderTopWidth: 0 }}>
                                             <View style={{ flex: 1, padding: 4, borderRightWidth: 1, borderColor: colors.lightGray }}>
                                                 <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Publicación</Text>
-                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {purchaseResult.publicationPrice.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {purchaseResult.publicationPrice.toLocaleString('es-AR')}</Text>
                                             </View>
                                             <View style={{ flex: 1, padding: 4, borderRightWidth: 1, borderColor: colors.lightGray }}>
                                                 <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Compra</Text>
-                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {purchaseResult.purchasePrice.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {purchaseResult.purchasePrice.toLocaleString('es-AR')}</Text>
                                             </View>
                                             <View style={{ flex: 1, padding: 4 }}>
                                                 <Text style={{ fontSize: 6, color: colors.mediumGray, textAlign: 'center' }}>Valor de Escritura</Text>
-                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {purchaseResult.deedValue.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 8, fontWeight: 'bold', textAlign: 'center' }}>USD {purchaseResult.deedValue.toLocaleString('es-AR')}</Text>
                                             </View>
                                         </View>
                                         {/* Gastos de compra header */}
@@ -1542,18 +1542,18 @@ export function PDFReportDocument({ subject, comparables, valuationResult: resul
                                         ].map((row, i) => (
                                             <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 4, borderWidth: 1, borderColor: colors.lightGray, borderTopWidth: 0 }}>
                                                 <Text style={{ fontSize: 7 }}>{row.label}</Text>
-                                                <Text style={{ fontSize: 7 }}>USD {row.value.toLocaleString()}</Text>
+                                                <Text style={{ fontSize: 7 }}>USD {row.value.toLocaleString('es-AR')}</Text>
                                             </View>
                                         ))}
                                         {/* Total */}
                                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 4, borderWidth: 1, borderColor: colors.darkGray, borderTopWidth: 0, backgroundColor: '#f5f5f5' }}>
                                             <Text style={{ fontSize: 7, fontWeight: 'bold' }}>Total gastos compra</Text>
-                                            <Text style={{ fontSize: 7, fontWeight: 'bold' }}>USD {purchaseResult.totalPurchaseCosts.toLocaleString()}</Text>
+                                            <Text style={{ fontSize: 7, fontWeight: 'bold' }}>USD {purchaseResult.totalPurchaseCosts.toLocaleString('es-AR')}</Text>
                                         </View>
                                         {/* Cost of purchase */}
                                         <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'space-between', padding: 6, backgroundColor: '#eff6ff', borderRadius: 2 }}>
                                             <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#1e40af' }}>Costo de compra</Text>
-                                            <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.primary }}>USD {purchaseResult.totalCostWithPurchase.toLocaleString()}</Text>
+                                            <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.primary }}>USD {purchaseResult.totalCostWithPurchase.toLocaleString('es-AR')}</Text>
                                         </View>
                                     </View>
                                 </View>

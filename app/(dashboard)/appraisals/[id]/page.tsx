@@ -632,6 +632,7 @@ export default function AppraisalDetailPage() {
                     // El precio cargado a mano manda en toda la cadena, igual que en el PDF (B5).
                     result={valuacionConPreciosManuales(result, reportEdits?.priceOverrides)}
                     precioCalculado={result.publicationPrice}
+                    fechaTasacion={appraisal.created_at}
                     editable
                     onSubjectFeaturesChange={handleSubjectFeaturesChange}
                     onComparableFeaturesChange={handleComparableFeaturesChange}

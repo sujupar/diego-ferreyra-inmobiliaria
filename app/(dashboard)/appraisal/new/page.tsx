@@ -290,6 +290,8 @@ function NewAppraisalPageContent() {
     // Separado de `saveStatus`: un cálculo imposible NO es un error de guardado
     // y el botón no debe decir "Calculando…" mientras se autoguarda (C2).
     const [errorCalculo, setErrorCalculo] = useState<string | null>(null)
+    // Fecha de creación de la tasación que se edita; undefined en una nueva.
+    const [fechaTasacion, setFechaTasacion] = useState<string | undefined>(undefined)
     const [saveErrorDetail, setSaveErrorDetail] = useState<string | null>(null)
     // Retry counter for transient failures with exponential backoff
     const autoSaveRetryRef = useRef<number>(0)
@@ -394,6 +396,9 @@ function NewAppraisalPageContent() {
                 // no manda &period y la API resuelve al vigente (mismo comportamiento
                 // que create mode).
                 setFrozenMarketPeriod(detail.market_period ?? null)
+                // Fecha de la tasación para el informe y la vista previa del PDF:
+                // antes la vista previa en edición usaba la de hoy (C4).
+                setFechaTasacion(detail.created_at ?? undefined)
 
                 // Restore purchaseResult if present
                 if (detail.valuation_result?.purchaseResult) {
@@ -1268,7 +1273,7 @@ function NewAppraisalPageContent() {
                                                             className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full border tabular-nums ${semaforo}`}
                                                             title="Precio por m² ponderado = precio / (cubierta + 0.5·semi + 0.5·descubierta)"
                                                         >
-                                                            USD {Math.round(wppm).toLocaleString()}/m² pond.
+                                                            USD {Math.round(wppm).toLocaleString('es-AR')}/m² pond.
                                                             {delta !== null && valid.length >= 2 && (
                                                                 <span className="opacity-80">
                                                                     ({delta >= 0 ? '+' : ''}{Math.round(delta * 100)}% vs prom.)
@@ -1481,7 +1486,7 @@ function NewAppraisalPageContent() {
                                                             )}
                                                             {pricePerM2 > 0 && (
                                                                 <span className="text-xs text-muted-foreground">
-                                                                    {Math.round(pricePerM2).toLocaleString()} USD/m²
+                                                                    {Math.round(pricePerM2).toLocaleString('es-AR')} USD/m²
                                                                 </span>
                                                             )}
                                                         </div>
@@ -1744,6 +1749,7 @@ function NewAppraisalPageContent() {
                         duplicaría riesgo. El detalle sí edita las dos versiones. */}
                     <ValuationReport
                         precioCalculado={(resultadoEnUso ?? valuationResult).publicationPrice}
+                        fechaTasacion={fechaTasacion}
                         noSaleZoneOverride={reportEdits.priceOverrides?.noSaleZonePrice}
                         subject={{
                             price: subject.price,
@@ -1900,7 +1906,8 @@ function NewAppraisalPageContent() {
                     purchaseResult={purchaseResult || undefined}
                     reportEdits={reportEdits}
                     onReportEditsChange={setReportEdits}
-                    appraisalDate={new Date().toISOString()}
+                    // En edición, la fecha de la tasación; nueva, hoy (C4).
+                    appraisalDate={fechaTasacion ?? new Date().toISOString()}
                     advisorPhotoUrl={advisorPhotoUrl}
                     marketData={marketData}
                     neighborhoodName={marketData?.neighborhood.name}

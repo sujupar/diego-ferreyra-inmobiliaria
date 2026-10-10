@@ -36,6 +36,8 @@ interface ValuationReportProps {
     /** Precio de publicación CALCULADO, cuando `result` trae uno cargado a mano
      *  (valuacionConPreciosManuales). Solo para aclararlo en pantalla. */
     precioCalculado?: number
+    /** Fecha de la tasación (ISO). Sin ella, hoy (tasación nueva). */
+    fechaTasacion?: string
 }
 
 const DISPOSITION_OPTIONS: DispositionType[] = ['FRONT', 'BACK', 'LATERAL', 'INTERNAL']
@@ -62,6 +64,7 @@ function ValuationReportInner({
     noSaleZoneOverride,
     onNoSaleZoneOverrideChange,
     precioCalculado,
+    fechaTasacion,
 }: ValuationReportProps) {
     // Zona de No Venta: valor mostrado = override manual o el calculado.
     const effectiveNoSaleZone = noSaleZoneOverride ?? result.noSaleZonePrice
@@ -91,7 +94,9 @@ function ValuationReportInner({
     }
     const [isEditing, setIsEditing] = useState(false)
 
-    const today = new Date().toLocaleDateString('es-AR', {
+    // La fecha de LA TASACIÓN, no la de hoy: un informe de abril abierto en
+    // octubre decía "emitido en octubre" (auditoría 2026-10-03, C4).
+    const today = (fechaTasacion ? new Date(fechaTasacion) : new Date()).toLocaleDateString('es-AR', {
         year: 'numeric',
         month: 'long',
         day: 'numeric'
