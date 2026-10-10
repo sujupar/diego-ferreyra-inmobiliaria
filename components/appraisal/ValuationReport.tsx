@@ -189,9 +189,15 @@ function ValuationReportInner({
                                 <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">Sup. Cubierta</p>
                                 <p className="font-medium text-foreground">{subject.features.coveredArea || '-'} m²</p>
                             </div>
+                            {(subject.features.semiCoveredArea ?? 0) > 0 && (
+                                <div>
+                                    <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">Sup. Semicubierta</p>
+                                    <p className="font-medium text-foreground">{subject.features.semiCoveredArea} m²</p>
+                                </div>
+                            )}
                             <div>
                                 <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">Sup. Descubierta</p>
-                                <p className="font-medium text-foreground">{(subject.features as any).uncoveredArea || '-'} m²</p>
+                                <p className="font-medium text-foreground">{subject.features.uncoveredArea || '-'} m²</p>
                             </div>
                             <div>
                                 <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">Sup. Homogeneizada</p>
@@ -237,6 +243,7 @@ function ValuationReportInner({
                         <SubjectFeaturesEditor
                             value={{
                                 coveredArea: subject.features.coveredArea ?? null,
+                                semiCoveredArea: subject.features.semiCoveredArea ?? null,
                                 uncoveredArea: subject.features.uncoveredArea ?? null,
                                 rooms: subject.features.rooms ?? null,
                                 bedrooms: subject.features.bedrooms ?? null,

@@ -6,8 +6,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Stepper, StepContent } from '@/components/ui/stepper'
 import { NeighborhoodSelect } from './NeighborhoodSelect'
-import { ScrapedProperty, PropertyFeatures } from '@/lib/scraper/types'
+import { ScrapedProperty } from '@/lib/scraper/types'
 import { DispositionType, QualityType, ConservationStateType } from '@/lib/valuation/rules'
+import { featuresDelFormulario, superficieDelFormulario } from '@/lib/valuation/formulario-sujeto'
 import {
     MapPin,
     Ruler,
@@ -103,12 +104,10 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
     const [isSaving, setIsSaving] = useState(false)
     const [savedMessage, setSavedMessage] = useState(false)
 
-    // Auto-calculate total area (homogenized: covered 100% + semi 50% + uncovered 50%)
+    // "Superficie Total" que ve el asesor = la homologada, con la MISMA fórmula
+    // que usa el cálculo (auditoría 2026-10-03, C5).
     useEffect(() => {
-        const covered = Number(formData.coveredArea) || 0
-        const semiCovered = Number(formData.semiCoveredArea) || 0
-        const uncovered = Number(formData.uncoveredArea) || 0
-        const total = covered + (semiCovered * 0.5) + (uncovered * 0.5)
+        const total = superficieDelFormulario(formData)
 
         if (total > 0) {
             setFormData(prev => ({ ...prev, totalArea: total }))
@@ -220,28 +219,8 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
             description: '',
             url: '',
             portal: 'manual',
-            features: {
-                coveredArea: Number(formData.coveredArea) || null,
-                uncoveredArea: Number(formData.uncoveredArea) || null,
-                totalArea: Number(formData.totalArea) || null,
-                rooms: Number(formData.rooms) || null,
-                bedrooms: Number(formData.bedrooms) || null,
-                bathrooms: Number(formData.bathrooms) || null,
-                garages: Number(formData.garages) || null,
-                // Piso 0 (planta baja) y antigüedad 0 (a estrenar) son valores REALES:
-                // con `Number(x) || null` se guardaban como vacío y el Tasador IA los
-                // tomaba como "no cargados" (podía inventarlos). Vacío = string vacío.
-                floor: formData.floor === '' ? null : Number(formData.floor),
-                totalFloors: Number(formData.totalFloors) || null,
-                expenses: null,
-                orientation: null,
-                disposal: null,
-                condition: null,
-                age: formData.age === '' ? null : Number(formData.age),
-                disposition: formData.disposition || undefined,
-                quality: formData.quality || undefined,
-                conservationState: formData.conservationState || undefined,
-            },
+            // Incluye la semicubierta: antes se pedía en el paso 2 y se perdía acá (B2).
+            features: featuresDelFormulario(formData),
         }
 
         // Clear draft

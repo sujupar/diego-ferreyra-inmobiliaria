@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrapedProperty } from '@/lib/scraper/types'
 import { DispositionType, QualityType, ConservationStateType } from '@/lib/valuation/rules'
+import { calculateHomogenizedSurface } from '@/lib/valuation/calculator'
 import {
     X,
     Edit2,
@@ -159,6 +160,16 @@ export function ComparableEditor({ property, onSave, onCancel }: ComparableEdito
                             />
                         </div>
                         <div className="space-y-2">
+                            <Label>Superficie Semicubierta (m²)</Label>
+                            <Input
+                                type="number"
+                                value={editedProperty.features.semiCoveredArea || ''}
+                                onChange={(e) => updateFeature('semiCoveredArea', e.target.value ? Number(e.target.value) : null)}
+                                placeholder="0"
+                            />
+                            <p className="text-xs text-muted-foreground">Balcones techados, galerías (se calcula al 50%)</p>
+                        </div>
+                        <div className="space-y-2">
                             <Label>Superficie Descubierta (m²)</Label>
                             <Input
                                 type="number"
@@ -171,14 +182,15 @@ export function ComparableEditor({ property, onSave, onCancel }: ComparableEdito
                         <div className="space-y-2">
                             <Label className="text-primary font-medium">M² Homologados</Label>
                             <div className="h-10 flex items-center px-3 bg-primary/10 border border-primary/20 rounded-md text-primary font-semibold">
-                                {(() => {
-                                    const covered = editedProperty.features.coveredArea || 0
-                                    const uncovered = editedProperty.features.uncoveredArea || 0
-                                    const homologized = covered + (uncovered * 0.5)
-                                    return `${homologized.toFixed(0)} m²`
-                                })()}
+                                {/* La MISMA fórmula que el cálculo (C5): antes este número
+                                    ignoraba la semicubierta y no coincidía con el informe. */}
+                                {`${calculateHomogenizedSurface({
+                                    coveredArea: editedProperty.features.coveredArea ?? undefined,
+                                    semiCoveredArea: editedProperty.features.semiCoveredArea ?? undefined,
+                                    uncoveredArea: editedProperty.features.uncoveredArea ?? undefined,
+                                }).toLocaleString('es-AR', { maximumFractionDigits: 1 })} m²`}
                             </div>
-                            <p className="text-xs text-muted-foreground">= Cubierta + (Descubierta × 0.5)</p>
+                            <p className="text-xs text-muted-foreground">= Cubierta + (Semicubierta + Descubierta) × 0,5</p>
                         </div>
                         <div className="space-y-2">
                             <Label>Antigüedad (años) *</Label>

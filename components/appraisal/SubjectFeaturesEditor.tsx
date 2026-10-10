@@ -4,6 +4,7 @@ import { Label } from '@/components/ui/label'
 
 export interface SubjectFeaturesEditableValues {
     coveredArea?: number | null
+    semiCoveredArea?: number | null
     uncoveredArea?: number | null
     rooms?: number | null
     bedrooms?: number | null
@@ -21,6 +22,9 @@ interface Props {
 
 const FIELDS: Array<{ key: keyof SubjectFeaturesEditableValues; label: string; suffix?: string; step?: string }> = [
     { key: 'coveredArea', label: 'Sup. Cubierta', suffix: 'm²' },
+    // Se homologa al 50 %. Antes no estaba acá y la cargada en el asistente no
+    // se podía corregir después (auditoría 2026-10-03, B2).
+    { key: 'semiCoveredArea', label: 'Sup. Semicubierta', suffix: 'm²' },
     { key: 'uncoveredArea', label: 'Sup. Descubierta', suffix: 'm²' },
     { key: 'rooms', label: 'Ambientes' },
     { key: 'bedrooms', label: 'Dormitorios' },
