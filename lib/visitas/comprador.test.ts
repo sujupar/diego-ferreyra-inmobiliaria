@@ -30,4 +30,10 @@ describe('decidirComprador', () => {
     expect(decidirComprador([], { telefono: '1158234521', email: null })).toEqual({ accion: 'crear' })
     expect(decidirComprador([existente({ phone: '1100000000' })], { telefono: '1158234521', email: null })).toEqual({ accion: 'crear' })
   })
+  it('un email compartido no une a dos personas con teléfonos distintos', () => {
+    expect(decidirComprador(
+      [existente({ phone: '+5491158234521', email: 'compartido@mail.com' })],
+      { telefono: '1199999999', email: 'compartido@mail.com' },
+    )).toEqual({ accion: 'crear' })
+  })
 })

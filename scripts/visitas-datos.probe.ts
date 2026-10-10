@@ -1,4 +1,5 @@
-// node --require scripts/_qa-precarga-server-only.cjs --env-file=../../../.env.local --import tsx scripts/visitas-datos.probe.ts
+// node --require ./scripts/precarga-server-only.cjs --env-file=.env.local --import tsx scripts/visitas-datos.probe.ts
+// (desde un worktree el env vive 3 niveles arriba: --env-file=../../../.env.local)
 /**
  * Ejercita lib/visitas/datos.ts contra la base REAL con una visita `[TEST]` que
  * borra al final. Necesita la migración 20261010000001 aplicada.
@@ -32,9 +33,11 @@ async function main() {
     status: 'pending_confirmation', notes: null, origin: 'otro', origin_detail: 'probe', lead_id: leadId,
     portal_inquiry_id: null, created_by: asesor, changed_by: asesor,
   })
-  const r1 = await datos.actualizarVisita(visitaId, 'pending_confirmation', { status: 'scheduled' }, asesor)
-  const r2 = await datos.actualizarVisita(visitaId, 'pending_confirmation', { status: 'cancelled' }, asesor)
-  console.log(`confirmar: ${r1.ok ? 'ok ✓' : 'falló ✗'} · segunda escritura con estado viejo: ${r2.ok ? 'PISÓ ✗' : 'rechazada ✓'}`)
+  const inicial = await datos.leerVisita(visitaId)
+  if (!inicial) throw new Error('no se pudo leer la visita recién creada')
+  const r1 = await datos.actualizarVisita(visitaId, inicial.updated_at, { status: 'scheduled' }, asesor)
+  const r2 = await datos.actualizarVisita(visitaId, inicial.updated_at, { status: 'cancelled' }, asesor)
+  console.log(`confirmar con la versión leída: ${r1.ok ? 'ok ✓' : 'falló ✗'} · segunda escritura con la MISMA versión vieja: ${r2.ok ? 'PISÓ ✗' : 'rechazada ✓'}`)
   const v = await datos.leerVisita(visitaId)
   const ev = await datos.eventosDeLaVisita(visitaId)
   console.log(`visita leída: ${v?.status} · origen ${v?.origin} · eventos: ${ev.map(e => e.kind).join(', ')}`)

@@ -28,6 +28,18 @@ function fallo(contexto: string, error: { message: string } | null): never {
   throw new Error(`${contexto}: ${error?.message ?? 'error desconocido'}`)
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * `visitasDelDia` mete estos ids CRUDOS dentro de un filtro `or()` de
+ * PostgREST (ver el comentario ahí). Un UUID no puede traer comas ni
+ * paréntesis, así que validar la forma ACÁ, antes de armar el filtro, cierra
+ * esa puerta sin depender de que quien llama ya los haya validado.
+ */
+function exigirUuid(valor: string, campo: string): void {
+  if (!UUID_RE.test(valor)) throw new Error(`${campo} no es un UUID válido`)
+}
+
 function primeraFotoUsable(photos: unknown): string | null {
   if (!Array.isArray(photos)) return null
   const f = photos.find(p => typeof p === 'string' && !p.startsWith('data:'))
@@ -135,6 +147,10 @@ export interface EntradaComprador {
 export async function asegurarComprador(e: EntradaComprador): Promise<string> {
   const db = sb()
   const norm = ultimos10Digitos(e.telefono)
+  // Normalizado UNA vez: se usa igual para buscar y para crear, así los dos
+  // caminos ven exactamente el mismo valor (si no, "Ana@Mail.com" podría
+  // buscar distinto de cómo queda guardado).
+  const emailNorm = e.email?.trim().toLowerCase() || null
   const candidatos: CompradorExistente[] = []
   if (norm) {
     const { data, error } = await db.from('property_leads').select('id, phone, email, created_at')
@@ -142,22 +158,32 @@ export async function asegurarComprador(e: EntradaComprador): Promise<string> {
     if (error) fallo('buscar comprador por teléfono', error)
     candidatos.push(...((data ?? []) as CompradorExistente[]))
   }
-  if (e.email) {
+  if (emailNorm) {
     const { data, error } = await db.from('property_leads').select('id, phone, email, created_at')
-      .eq('property_id', e.propertyId).ilike('email', e.email.replace(/[%_\\]/g, '\\$&')).is('deleted_at', null)
+      .eq('property_id', e.propertyId).ilike('email', emailNorm.replace(/[%_\\]/g, '\\$&')).is('deleted_at', null)
     if (error) fallo('buscar comprador por email', error)
     candidatos.push(...((data ?? []) as CompradorExistente[]))
   }
-  const decision = decidirComprador(candidatos, { telefono: e.telefono, email: e.email })
+  const decision = decidirComprador(candidatos, { telefono: e.telefono, email: emailNorm })
   if (decision.accion === 'reusar') {
-    if (Object.keys(decision.completar).length > 0) {
-      const { error } = await db.from('property_leads').update(decision.completar).eq('id', decision.leadId)
-      if (error) fallo('completar comprador', error)
+    // Un UPDATE por campo, cada uno con su propia guarda `.is('<campo>', null)`:
+    // si dos pedidos llegan a la vez y los dos quieren completar el mismo
+    // hueco, el segundo UPDATE no encuentra fila (ya no es null) y no pisa lo
+    // que acaba de escribir el primero.
+    if (decision.completar.phone) {
+      const { error } = await db.from('property_leads').update({ phone: decision.completar.phone })
+        .eq('id', decision.leadId).is('phone', null)
+      if (error) fallo('completar teléfono del comprador', error)
+    }
+    if (decision.completar.email) {
+      const { error } = await db.from('property_leads').update({ email: decision.completar.email })
+        .eq('id', decision.leadId).is('email', null)
+      if (error) fallo('completar email del comprador', error)
     }
     return decision.leadId
   }
   const { data, error } = await db.from('property_leads').insert({
-    property_id: e.propertyId, name: e.nombre, phone: e.telefono, email: e.email,
+    property_id: e.propertyId, name: e.nombre, phone: e.telefono, email: emailNorm,
     message: e.mensaje, source: e.source, assigned_to: e.asignadoA,
   }).select('id').single()
   if (error || !data) fallo('crear comprador', error)
@@ -195,11 +221,11 @@ export async function insertarVisita(fila: FilaVisitaNueva): Promise<string> {
 const SELECT_VISITA = `
   id, property_id, advisor_id, created_by, lead_id, portal_inquiry_id, client_name, client_email,
   client_phone, scheduled_at, status, origin, origin_detail, notes, completion_notes, outcome_reason,
-  advisor_interest, confirmed_at, outcome_at, reschedule_count, created_at, created_by_ai,
+  advisor_interest, confirmed_at, outcome_at, reschedule_count, created_at, updated_at, created_by_ai,
   property:properties(id, address, neighborhood, photos),
   advisor:profiles!property_visits_advisor_id_fkey(id, full_name),
-  lead:property_leads(id, name, lead_number),
-  consulta:portal_inquiries(id, portal, received_at)`
+  lead:property_leads!property_visits_lead_id_fkey(id, name, lead_number),
+  consulta:portal_inquiries!property_visits_portal_inquiry_id_fkey(id, portal, received_at)`
 
 function uno<T>(v: T | T[] | null | undefined): T | null {
   if (Array.isArray(v)) return v[0] ?? null
@@ -212,8 +238,33 @@ export async function leerVisita(id: string): Promise<VisitaDetalle | null> {
   if (!data) return null
   const r = data as Record<string, unknown>
   const p = uno<Record<string, unknown>>(r.property as Record<string, unknown> | null)
+  // Armado EXPLÍCITO campo por campo: ni la fila cruda (con `property`/`advisor`/
+  // `lead`/`consulta` tal como los devuelve PostgREST) ni un `as unknown as`
+  // viajan afuera de esta función — solo lo que `VisitaDetalle` declara.
   return {
-    ...(r as unknown as VisitaDetalle),
+    id: String(r.id),
+    property_id: String(r.property_id),
+    advisor_id: (r.advisor_id as string | null) ?? null,
+    created_by: (r.created_by as string | null) ?? null,
+    lead_id: (r.lead_id as string | null) ?? null,
+    portal_inquiry_id: (r.portal_inquiry_id as string | null) ?? null,
+    client_name: String(r.client_name ?? ''),
+    client_email: (r.client_email as string | null) ?? null,
+    client_phone: (r.client_phone as string | null) ?? null,
+    scheduled_at: String(r.scheduled_at),
+    status: r.status as VisitaDetalle['status'],
+    origin: (r.origin as VisitaDetalle['origin']) ?? null,
+    origin_detail: (r.origin_detail as string | null) ?? null,
+    notes: (r.notes as string | null) ?? null,
+    completion_notes: (r.completion_notes as string | null) ?? null,
+    outcome_reason: (r.outcome_reason as VisitaDetalle['outcome_reason']) ?? null,
+    advisor_interest: (r.advisor_interest as VisitaDetalle['advisor_interest']) ?? null,
+    confirmed_at: (r.confirmed_at as string | null) ?? null,
+    outcome_at: (r.outcome_at as string | null) ?? null,
+    reschedule_count: Number(r.reschedule_count ?? 0),
+    created_at: String(r.created_at),
+    updated_at: String(r.updated_at),
+    created_by_ai: Boolean(r.created_by_ai),
     propiedad: p ? { id: String(p.id), address: String(p.address ?? ''), neighborhood: (p.neighborhood as string | null) ?? null, foto: primeraFotoUsable(p.photos) } : null,
     asesor: uno(r.advisor as VisitaDetalle['asesor']),
     comprador: uno(r.lead as VisitaDetalle['comprador']),
@@ -242,21 +293,30 @@ export async function eventosDeLaVisita(id: string): Promise<EventoVisitaR[]> {
 }
 
 /**
- * Concurrencia optimista: la fila se actualiza SOLO si sigue en el estado que se
- * leyó. Si otra persona la cambió en el medio, no se pisa nada.
+ * Concurrencia optimista POR VERSIÓN: la fila se actualiza SOLO si su
+ * `updated_at` sigue siendo exactamente el que se leyó. `updated_at` lo
+ * mantiene el trigger `trg_property_visits_updated_at` (se toca en CUALQUIER
+ * UPDATE, no solo cuando cambia `status`), así que es una versión real de la
+ * fila — comparar contra el `status` leído no alcanzaría: dos acciones que no
+ * tocan el status (p. ej. reprogramar dos veces seguidas, o cambiar el asesor
+ * mientras alguien más reprograma) podrían pisarse sin que esa guarda lo note.
+ * Si otra persona cambió la fila en el medio —tocando CUALQUIER columna—,
+ * `updated_at` ya no coincide y no se pisa nada.
  */
 export async function actualizarVisita(
-  id: string, estadoPrevio: EstadoVisita, patch: PatchVisita, actorId: string,
+  id: string, versionLeida: string, patch: PatchVisita, actorId: string,
 ): Promise<{ ok: true } | { ok: false; motivo: 'cambio_concurrente' }> {
   const { data, error } = await sb().from('property_visits')
     .update({ ...patch, changed_by: actorId })
-    .eq('id', id).eq('status', estadoPrevio)
+    .eq('id', id).eq('updated_at', versionLeida)
     .select('id').maybeSingle()
   if (error) fallo('actualizar visita', error)
   return data ? { ok: true } : { ok: false, motivo: 'cambio_concurrente' }
 }
 
 export async function visitasDelDia(f: { fecha: string; asesorId: string | null; propiedadId: string }): Promise<VisitaAgendaR[]> {
+  exigirUuid(f.propiedadId, 'propiedadId')
+  if (f.asesorId) exigirUuid(f.asesorId, 'asesorId')
   const desde = inicioDelDiaArgentina(f.fecha)
   const hasta = finDelDiaArgentina(f.fecha)
   const filtroDuenio = f.asesorId ? `advisor_id.eq.${f.asesorId},property_id.eq.${f.propiedadId}` : `property_id.eq.${f.propiedadId}`
@@ -274,7 +334,8 @@ export async function visitasDelDia(f: { fecha: string; asesorId: string | null;
 
 export async function origenDeLead(leadId: string): Promise<OrigenDerivado | null> {
   const { data, error } = await sb().from('property_leads').select('source, utm').eq('id', leadId).maybeSingle()
-  if (error || !data) return null
+  if (error) fallo('leer origen del comprador', error)
+  if (!data) return null
   return origenDesdeLead(data as { source: string | null; utm: unknown })
 }
 

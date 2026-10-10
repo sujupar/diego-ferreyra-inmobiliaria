@@ -81,6 +81,9 @@ export interface VisitaDetalle {
   outcome_at: string | null
   reschedule_count: number
   created_at: string
+  /** La mantiene el trigger `trg_property_visits_updated_at`. Es la versión para la
+   *  concurrencia optimista de `actualizarVisita` (lib/visitas/datos.ts). */
+  updated_at: string
   created_by_ai: boolean
   propiedad: { id: string; address: string; neighborhood: string | null; foto: string | null } | null
   asesor: { id: string; full_name: string } | null
