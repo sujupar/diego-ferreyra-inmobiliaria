@@ -125,16 +125,18 @@ export const CONSERVATION_LABELS: Record<ConservationStateType, string> = {
     STATE_5: 'Estado 5 — Demolición',
 }
 
+// Sin porcentajes a propósito: el % de la tabla NO es lo que se aplica (C1).
+// Para mostrar el coeficiente real usar `textoCoeficienteEstado`.
 export const CONSERVATION_SHORT_LABELS: Record<ConservationStateType, string> = {
-    STATE_1: 'Nuevo (0%)',
+    STATE_1: 'Nuevo',
     STATE_1_5: 'Nuevo/Normal',
-    STATE_2: 'Normal (2.52%)',
+    STATE_2: 'Normal',
     STATE_2_5: 'Normal/Repar.',
-    STATE_3: 'Reparaciones (18.1%)',
-    STATE_3_5: 'Sencillas/Importantes (33.2%)',
-    STATE_4: 'Repar. Importantes (52.6%)',
-    STATE_4_5: 'Importantes/Demolición (75.2%)',
-    STATE_5: 'Demolición (100%)',
+    STATE_3: 'Reparaciones',
+    STATE_3_5: 'Sencillas/Importantes',
+    STATE_4: 'Repar. Importantes',
+    STATE_4_5: 'Importantes/Demolición',
+    STATE_5: 'Demolición',
 }
 
 /**
@@ -145,6 +147,12 @@ export const CONSERVATION_SHORT_LABELS: Record<ConservationStateType, string> = 
  *
  * Formula: K(p, s) = D_age + D_state - D_age × D_state / 100
  * Where D_age = State 1 value, D_state = base depreciation for that state
+ *
+ * 2026-10-10 (auditoría C3): se corrigieron 5 valores mal tipeados respecto de
+ * esta fórmula — fila 21 Estado 2 (14,51 → 14,9), fila 24 Estado 1 (14,83 →
+ * 14,88), fila 41 Estado 3 (42 → 41,77), fila 59 Estado 3 (55,61 → 56,52, que
+ * además rompía la monotonía) y fila 96 Estado 2 (94,56 → 94,23). Un test
+ * (rules.test.ts) verifica la tabla ENTERA contra la fórmula.
  */
 export const ROSS_HEIDECKE_TABLE: Record<number, number[]> = {
     0: [0, 0.032, 2.52, 8.09, 18.1, 33.2, 52.6, 75.2, 100],
@@ -168,10 +176,10 @@ export const ROSS_HEIDECKE_TABLE: Record<number, number[]> = {
     18: [10.62, 10.649, 12.87, 17.85, 26.8, 40.29, 57.634, 77.834, 100],
     19: [11.305, 11.333, 13.54, 18.48, 27.36, 40.75, 57.959, 78.004, 100],
     20: [12.0, 12.028, 14.22, 19.12, 27.93, 41.22, 58.288, 78.176, 100],
-    21: [12.705, 12.733, 14.51, 19.77, 28.51, 41.69, 58.622, 78.351, 100],
+    21: [12.705, 12.733, 14.9, 19.77, 28.51, 41.69, 58.622, 78.351, 100],
     22: [13.42, 13.448, 15.6, 20.42, 29.09, 42.16, 58.961, 78.528, 100],
     23: [14.145, 14.173, 16.31, 21.09, 29.68, 42.65, 59.305, 78.708, 100],
-    24: [14.83, 14.907, 17.03, 21.77, 30.28, 43.14, 59.629, 78.878, 100],
+    24: [14.88, 14.907, 17.03, 21.77, 30.28, 43.14, 59.629, 78.878, 100],
     25: [15.625, 15.652, 17.75, 22.45, 30.89, 43.64, 60.006, 79.075, 100],
     26: [16.38, 16.407, 18.49, 23.14, 31.51, 44.14, 60.364, 79.262, 100],
     27: [17.145, 17.171, 19.23, 23.85, 32.14, 44.65, 60.727, 79.452, 100],
@@ -188,7 +196,7 @@ export const ROSS_HEIDECKE_TABLE: Record<number, number[]> = {
     38: [26.22, 26.244, 28.08, 32.19, 39.57, 50.71, 65.028, 81.703, 100],
     39: [27.105, 27.128, 28.94, 33.0, 40.3, 51.3, 65.448, 81.922, 100],
     40: [28.0, 28.023, 29.81, 33.82, 41.03, 51.9, 65.872, 82.144, 100],
-    41: [28.905, 28.928, 30.7, 34.66, 42.0, 52.51, 66.301, 82.368, 100],
+    41: [28.905, 28.928, 30.7, 34.66, 41.77, 52.51, 66.301, 82.368, 100],
     42: [29.82, 29.842, 31.59, 35.5, 42.52, 53.12, 66.735, 82.595, 100],
     43: [30.745, 30.767, 32.49, 36.35, 43.28, 53.74, 67.173, 82.825, 100],
     44: [31.68, 31.702, 33.4, 37.21, 44.05, 54.36, 67.616, 83.057, 100],
@@ -206,7 +214,7 @@ export const ROSS_HEIDECKE_TABLE: Record<number, number[]> = {
     56: [43.68, 43.698, 45.1, 48.24, 53.87, 62.38, 73.304, 86.033, 100],
     57: [44.745, 44.763, 46.14, 49.22, 54.74, 63.09, 73.809, 86.297, 100],
     58: [45.82, 45.837, 47.19, 50.2, 55.62, 63.81, 74.319, 86.563, 100],
-    59: [46.905, 46.922, 48.25, 51.2, 55.61, 64.53, 74.833, 86.832, 100],
+    59: [46.905, 46.922, 48.25, 51.2, 56.52, 64.53, 74.833, 86.832, 100],
     60: [48.0, 48.017, 49.32, 52.2, 57.41, 65.26, 75.352, 87.104, 100],
     61: [49.105, 49.121, 50.39, 53.22, 58.32, 66.0, 75.876, 87.378, 100],
     62: [50.22, 50.236, 51.47, 54.25, 59.23, 66.75, 76.404, 87.655, 100],
@@ -243,7 +251,7 @@ export const ROSS_HEIDECKE_TABLE: Record<number, number[]> = {
     93: [89.745, 89.748, 90.0, 90.57, 91.59, 93.15, 95.139, 97.457, 100],
     94: [91.18, 91.183, 91.4, 91.89, 92.77, 94.11, 95.819, 97.813, 100],
     95: [92.625, 92.627, 92.81, 93.22, 93.96, 95.07, 96.504, 98.171, 100],
-    96: [94.08, 94.082, 94.56, 94.56, 95.15, 96.04, 97.194, 98.532, 100],
+    96: [94.08, 94.082, 94.23, 94.56, 95.15, 96.04, 97.194, 98.532, 100],
     97: [95.545, 95.546, 95.66, 95.91, 96.45, 97.02, 97.888, 98.895, 100],
     98: [97.02, 97.021, 97.1, 97.26, 97.56, 98.01, 98.587, 99.261, 100],
     99: [98.505, 98.505, 98.54, 98.63, 98.78, 99.0, 99.291, 99.629, 100],
@@ -309,4 +317,22 @@ export function calculateAgeStateCoefficient(
     const coefficient = 1 - (K / 100 / 2)
 
     return Math.max(0, Math.min(1, coefficient))
+}
+
+/** Los 9 estados en el orden de la tabla (para armar selectores). */
+export const ESTADOS_CONSERVACION: ConservationStateType[] = [
+    'STATE_1', 'STATE_1_5', 'STATE_2', 'STATE_2_5', 'STATE_3', 'STATE_3_5', 'STATE_4', 'STATE_4_5', 'STATE_5',
+]
+
+/**
+ * Coeficiente edad-estado que REALMENTE se aplica, como texto: "×0,91".
+ *
+ * Auditoría del 2026-10-03 (C1): los selectores mostraban el % de la fila 0 de
+ * la tabla ("Estado 3 — 18,1 %"), pero el cálculo aplica W = 1 − K/200 (la
+ * mitad) y K depende de la antigüedad. El asesor veía 18 % de castigo y se
+ * aplicaba 9 %. Sin antigüedad cargada se muestra el de 0 años.
+ */
+export function textoCoeficienteEstado(estado: ConservationStateType, edad?: number | null): string {
+    const w = calculateAgeStateCoefficient(typeof edad === 'number' && edad >= 0 ? edad : 0, estado)
+    return `×${w.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }

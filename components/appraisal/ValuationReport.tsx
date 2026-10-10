@@ -3,10 +3,12 @@
 import { memo, useState } from 'react'
 import { ValuationResult, ValuationProperty, ExpenseRates } from '@/lib/valuation/calculator'
 import { formatCurrency } from '@/lib/valuation/utils'
+import { validarZonaDeNoVenta } from '@/lib/valuation/precio-manual'
 import {
     DISPOSITION_LABELS,
     QUALITY_LABELS,
     CONSERVATION_LABELS,
+    textoCoeficienteEstado,
     DispositionType,
     QualityType,
     ConservationStateType
@@ -31,6 +33,11 @@ interface ValuationReportProps {
      *  y aplica también al PDF). undefined = usar el valor calculado (publicación × 1.05). */
     noSaleZoneOverride?: number
     onNoSaleZoneOverrideChange?: (value: number | undefined) => void
+    /** Precio de publicación CALCULADO, cuando `result` trae uno cargado a mano
+     *  (valuacionConPreciosManuales). Solo para aclararlo en pantalla. */
+    precioCalculado?: number
+    /** Fecha de la tasación (ISO). Sin ella, hoy (tasación nueva). */
+    fechaTasacion?: string
 }
 
 const DISPOSITION_OPTIONS: DispositionType[] = ['FRONT', 'BACK', 'LATERAL', 'INTERNAL']
@@ -56,6 +63,8 @@ function ValuationReportInner({
     onExpenseRatesChange,
     noSaleZoneOverride,
     onNoSaleZoneOverrideChange,
+    precioCalculado,
+    fechaTasacion,
 }: ValuationReportProps) {
     // Zona de No Venta: valor mostrado = override manual o el calculado.
     const effectiveNoSaleZone = noSaleZoneOverride ?? result.noSaleZonePrice
@@ -69,9 +78,25 @@ function ValuationReportInner({
         agencyFeesPercent: 3,
     }
     const ratesEditable = editable && Boolean(onExpenseRatesChange)
+    // La Zona de No Venta se valida al CONFIRMAR (salir del campo o Enter), no
+    // por tecla: escribiendo "2" de camino a 250.000 sería "menor" y no se
+    // podría tipear. Nunca queda por debajo de la publicación (B5).
+    const [borradorZnv, setBorradorZnv] = useState<string | null>(null)
+    const [errorZnv, setErrorZnv] = useState<string | null>(null)
+    const confirmarZnv = () => {
+        if (borradorZnv === null || !onNoSaleZoneOverrideChange) return
+        const valor = borradorZnv.trim() === '' ? undefined : Number(borradorZnv)
+        const error = validarZonaDeNoVenta(valor, result.publicationPrice, result.currency)
+        if (error) { setErrorZnv(error); return }
+        onNoSaleZoneOverrideChange(valor)
+        setBorradorZnv(null)
+        setErrorZnv(null)
+    }
     const [isEditing, setIsEditing] = useState(false)
 
-    const today = new Date().toLocaleDateString('es-AR', {
+    // La fecha de LA TASACIÓN, no la de hoy: un informe de abril abierto en
+    // octubre decía "emitido en octubre" (auditoría 2026-10-03, C4).
+    const today = (fechaTasacion ? new Date(fechaTasacion) : new Date()).toLocaleDateString('es-AR', {
         year: 'numeric',
         month: 'long',
         day: 'numeric'
@@ -137,8 +162,15 @@ function ValuationReportInner({
                 <div className="mt-6 pt-6 border-t border-primary/10 grid grid-cols-2 gap-6">
                     <div className="flex justify-between items-center">
                         <span className="text-base font-medium text-foreground/70">PRECIO DE PUBLICACIÓN</span>
-                        <span className="text-3xl font-bold text-primary">
-                            {formatCurrency(result.publicationPrice, result.currency)}
+                        <span className="flex flex-col items-end">
+                            <span className="text-3xl font-bold text-primary">
+                                {formatCurrency(result.publicationPrice, result.currency)}
+                            </span>
+                            {precioCalculado !== undefined && precioCalculado !== result.publicationPrice && (
+                                <span className="text-[11px] text-muted-foreground">
+                                    Cargado a mano · calculado {formatCurrency(precioCalculado, result.currency)}
+                                </span>
+                            )}
                         </span>
                     </div>
                     <div className="flex justify-between items-center">
@@ -151,15 +183,21 @@ function ValuationReportInner({
                                         type="number"
                                         inputMode="numeric"
                                         aria-label="Zona de No Venta (editable)"
+                                        aria-invalid={errorZnv !== null}
                                         className="w-36 bg-transparent text-right text-3xl font-bold text-red-500 outline-none border-b border-red-300 focus:border-red-500 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                                        value={effectiveNoSaleZone ?? ''}
-                                        onChange={e => onNoSaleZoneOverrideChange!(e.target.value === '' ? undefined : Number(e.target.value))}
+                                        value={borradorZnv ?? effectiveNoSaleZone ?? ''}
+                                        onChange={e => { setBorradorZnv(e.target.value); setErrorZnv(null) }}
+                                        onBlur={confirmarZnv}
+                                        onKeyDown={e => { if (e.key === 'Enter') confirmarZnv() }}
                                     />
                                 </div>
+                                {errorZnv && (
+                                    <p role="alert" className="mt-0.5 max-w-xs text-right text-[11px] text-red-600">{errorZnv}</p>
+                                )}
                                 {noSaleZoneOverride !== undefined && (
                                     <button
                                         type="button"
-                                        onClick={() => onNoSaleZoneOverrideChange!(undefined)}
+                                        onClick={() => { setBorradorZnv(null); setErrorZnv(null); onNoSaleZoneOverrideChange!(undefined) }}
                                         className="mt-0.5 text-[11px] text-muted-foreground underline hover:no-underline"
                                     >
                                         volver al calculado ({formatCurrency(result.noSaleZonePrice, result.currency)})
@@ -189,9 +227,15 @@ function ValuationReportInner({
                                 <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">Sup. Cubierta</p>
                                 <p className="font-medium text-foreground">{subject.features.coveredArea || '-'} m²</p>
                             </div>
+                            {(subject.features.semiCoveredArea ?? 0) > 0 && (
+                                <div>
+                                    <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">Sup. Semicubierta</p>
+                                    <p className="font-medium text-foreground">{subject.features.semiCoveredArea} m²</p>
+                                </div>
+                            )}
                             <div>
                                 <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">Sup. Descubierta</p>
-                                <p className="font-medium text-foreground">{(subject.features as any).uncoveredArea || '-'} m²</p>
+                                <p className="font-medium text-foreground">{subject.features.uncoveredArea || '-'} m²</p>
                             </div>
                             <div>
                                 <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">Sup. Homogeneizada</p>
@@ -237,6 +281,7 @@ function ValuationReportInner({
                         <SubjectFeaturesEditor
                             value={{
                                 coveredArea: subject.features.coveredArea ?? null,
+                                semiCoveredArea: subject.features.semiCoveredArea ?? null,
                                 uncoveredArea: subject.features.uncoveredArea ?? null,
                                 rooms: subject.features.rooms ?? null,
                                 bedrooms: subject.features.bedrooms ?? null,
@@ -370,7 +415,7 @@ function ValuationReportInner({
                                                     onChange={(e) => updateSubjectFeature('conservationState', e.target.value)}
                                                 >
                                                     {CONSERVATION_OPTIONS.map(s => (
-                                                        <option key={s} value={s}>{CONSERVATION_LABELS[s]}</option>
+                                                        <option key={s} value={s}>{CONSERVATION_LABELS[s]} · {textoCoeficienteEstado(s, subject.features.age)}</option>
                                                     ))}
                                                 </select>
                                             </div>
@@ -473,7 +518,7 @@ function ValuationReportInner({
                                                             onChange={(e) => updateCompFeature(index, 'conservationState', e.target.value)}
                                                         >
                                                             {CONSERVATION_OPTIONS.map(s => (
-                                                                <option key={s} value={s}>{CONSERVATION_LABELS[s]}</option>
+                                                                <option key={s} value={s}>{CONSERVATION_LABELS[s]} · {textoCoeficienteEstado(s, f.age as number | null | undefined)}</option>
                                                             ))}
                                                         </select>
                                                     </div>

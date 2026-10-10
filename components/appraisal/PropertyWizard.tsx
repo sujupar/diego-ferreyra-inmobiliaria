@@ -6,8 +6,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Stepper, StepContent } from '@/components/ui/stepper'
 import { NeighborhoodSelect } from './NeighborhoodSelect'
-import { ScrapedProperty, PropertyFeatures } from '@/lib/scraper/types'
-import { DispositionType, QualityType, ConservationStateType } from '@/lib/valuation/rules'
+import { ScrapedProperty } from '@/lib/scraper/types'
+import { DispositionType, QualityType, ConservationStateType, textoCoeficienteEstado } from '@/lib/valuation/rules'
+import { featuresDelFormulario, superficieDelFormulario } from '@/lib/valuation/formulario-sujeto'
+import { leerBorrador } from '@/lib/valuation/borrador-asistente'
 import {
     MapPin,
     Ruler,
@@ -91,9 +93,12 @@ const initialFormData: PropertyFormData = {
 interface PropertyWizardProps {
     onComplete: (property: ScrapedProperty) => void
     initialData?: Partial<PropertyFormData>
+    /** Clave del borrador local (por proceso, ver `claveDeBorrador`). Sin clave
+     *  no se guarda ni se restaura nada: nunca se mezcla con otra tasación (B7). */
+    claveBorrador?: string | null
 }
 
-export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps) {
+export function PropertyWizard({ onComplete, initialData, claveBorrador = null }: PropertyWizardProps) {
     const [currentStep, setCurrentStep] = useState(0)
     const [direction, setDirection] = useState<'forward' | 'backward'>('forward')
     const [formData, setFormData] = useState<PropertyFormData>(() => ({
@@ -103,12 +108,10 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
     const [isSaving, setIsSaving] = useState(false)
     const [savedMessage, setSavedMessage] = useState(false)
 
-    // Auto-calculate total area (homogenized: covered 100% + semi 50% + uncovered 50%)
+    // "Superficie Total" que ve el asesor = la homologada, con la MISMA fórmula
+    // que usa el cálculo (auditoría 2026-10-03, C5).
     useEffect(() => {
-        const covered = Number(formData.coveredArea) || 0
-        const semiCovered = Number(formData.semiCoveredArea) || 0
-        const uncovered = Number(formData.uncoveredArea) || 0
-        const total = covered + (semiCovered * 0.5) + (uncovered * 0.5)
+        const total = superficieDelFormulario(formData)
 
         if (total > 0) {
             setFormData(prev => ({ ...prev, totalArea: total }))
@@ -150,16 +153,17 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
 
     // Auto-save simulation (exclude images to avoid exceeding localStorage limit)
     const autoSave = useCallback(() => {
+        if (!claveBorrador) return
         setIsSaving(true)
-        const { images, ...dataWithoutImages } = formData
-        localStorage.setItem('propertyWizardDraft', JSON.stringify(dataWithoutImages))
+        const { images: _imagenes, ...dataWithoutImages } = formData
+        try { localStorage.setItem(claveBorrador, JSON.stringify(dataWithoutImages)) } catch { /* cuota llena: el borrador es una comodidad */ }
 
         setTimeout(() => {
             setIsSaving(false)
             setSavedMessage(true)
             setTimeout(() => setSavedMessage(false), 2000)
         }, 500)
-    }, [formData])
+    }, [formData, claveBorrador])
 
     // Auto-save on step change
     useEffect(() => {
@@ -167,25 +171,20 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
         return () => clearTimeout(timeout)
     }, [currentStep, autoSave])
 
-    // Load saved draft on mount — only when editing an in-progress draft (no initialData)
+    // Restaurar el borrador SOLO si es de este mismo proceso y no vinieron datos
+    // iniciales (edición o visita). Antes leía una clave global y una "Nueva
+    // tasación" podía arrancar con datos de otra (B7, ver borrador-asistente.ts).
     useEffect(() => {
-        if (initialData) {
-            // Clear any stale draft when pre-loaded data is provided
-            localStorage.removeItem('propertyWizardDraft')
-            return
-        }
-        const saved = localStorage.getItem('propertyWizardDraft')
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved)
-                // Drafts viejos (pre-Task 12) no tienen neighborhoodSlug — defaultear a ''
-                // para que no crasheen y caigan al camino legacy (texto libre).
-                setFormData(prev => ({ ...prev, ...parsed, neighborhoodSlug: parsed.neighborhoodSlug ?? '' }))
-            } catch (e) {
-                localStorage.removeItem('propertyWizardDraft')
-            }
-        }
-    }, [initialData])
+        const parsed = leerBorrador(localStorage, claveBorrador, Boolean(initialData))
+        if (!parsed) return
+        // Drafts viejos (pre-Task 12) no tienen neighborhoodSlug — defaultear a ''
+        // para que no crasheen y caigan al camino legacy (texto libre).
+        setFormData(prev => ({
+            ...prev,
+            ...parsed,
+            neighborhoodSlug: typeof parsed.neighborhoodSlug === 'string' ? parsed.neighborhoodSlug : '',
+        }))
+    }, [initialData, claveBorrador])
 
     const updateField = <K extends keyof PropertyFormData>(
         field: K,
@@ -220,32 +219,12 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
             description: '',
             url: '',
             portal: 'manual',
-            features: {
-                coveredArea: Number(formData.coveredArea) || null,
-                uncoveredArea: Number(formData.uncoveredArea) || null,
-                totalArea: Number(formData.totalArea) || null,
-                rooms: Number(formData.rooms) || null,
-                bedrooms: Number(formData.bedrooms) || null,
-                bathrooms: Number(formData.bathrooms) || null,
-                garages: Number(formData.garages) || null,
-                // Piso 0 (planta baja) y antigüedad 0 (a estrenar) son valores REALES:
-                // con `Number(x) || null` se guardaban como vacío y el Tasador IA los
-                // tomaba como "no cargados" (podía inventarlos). Vacío = string vacío.
-                floor: formData.floor === '' ? null : Number(formData.floor),
-                totalFloors: Number(formData.totalFloors) || null,
-                expenses: null,
-                orientation: null,
-                disposal: null,
-                condition: null,
-                age: formData.age === '' ? null : Number(formData.age),
-                disposition: formData.disposition || undefined,
-                quality: formData.quality || undefined,
-                conservationState: formData.conservationState || undefined,
-            },
+            // Incluye la semicubierta: antes se pedía en el paso 2 y se perdía acá (B2).
+            features: featuresDelFormulario(formData),
         }
 
-        // Clear draft
-        localStorage.removeItem('propertyWizardDraft')
+        // Terminado: el borrador ya no hace falta.
+        if (claveBorrador) localStorage.removeItem(claveBorrador)
 
         onComplete(property)
     }
@@ -599,21 +578,26 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
                             <div className="space-y-3">
                                 <Label className="text-base font-medium">Estado de Conservación *</Label>
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                                    {[
-                                        { value: 'STATE_1', label: 'Estado 1 — Nuevo', desc: 'Depreciación 0%' },
-                                        { value: 'STATE_1_5', label: 'Estado 1.5', desc: 'Entre nuevo y normal' },
-                                        { value: 'STATE_2', label: 'Estado 2 — Normal', desc: 'Depreciación 2.52%' },
-                                        { value: 'STATE_2_5', label: 'Estado 2.5', desc: 'Entre normal y reparaciones' },
-                                        { value: 'STATE_3', label: 'Estado 3 — Reparaciones', desc: 'Depreciación 18.10%' },
-                                        { value: 'STATE_3_5', label: 'Estado 3.5', desc: 'Entre sencillas e importantes' },
-                                        { value: 'STATE_4', label: 'Estado 4 — Repar. Importantes', desc: 'Depreciación 52.6%' },
-                                        { value: 'STATE_4_5', label: 'Estado 4.5', desc: 'Entre importantes y demolición' },
-                                        { value: 'STATE_5', label: 'Estado 5 — Demolición', desc: 'Depreciación 100%' },
-                                    ].map(opt => (
+                                    {/* El coeficiente que se APLICA con la antigüedad cargada en el
+                                        paso anterior, no el % de la tabla (auditoría 2026-10-03, C1). */}
+                                    {([
+                                        { value: 'STATE_1', label: 'Estado 1 — Nuevo' },
+                                        { value: 'STATE_1_5', label: 'Estado 1.5 — Entre nuevo y normal' },
+                                        { value: 'STATE_2', label: 'Estado 2 — Normal' },
+                                        { value: 'STATE_2_5', label: 'Estado 2.5 — Entre normal y reparaciones' },
+                                        { value: 'STATE_3', label: 'Estado 3 — Reparaciones' },
+                                        { value: 'STATE_3_5', label: 'Estado 3.5 — Entre sencillas e importantes' },
+                                        { value: 'STATE_4', label: 'Estado 4 — Repar. Importantes' },
+                                        { value: 'STATE_4_5', label: 'Estado 4.5 — Entre importantes y demolición' },
+                                        { value: 'STATE_5', label: 'Estado 5 — Demolición' },
+                                    ] satisfies Array<{ value: ConservationStateType; label: string }>).map(opt => ({
+                                        ...opt,
+                                        desc: `Coeficiente ${textoCoeficienteEstado(opt.value, formData.age === '' ? null : Number(formData.age))} ${formData.age === '' ? 'a estrenar' : `con ${formData.age} años`}`,
+                                    })).map(opt => (
                                         <button
                                             key={opt.value}
                                             type="button"
-                                            onClick={() => updateField('conservationState', opt.value as ConservationStateType)}
+                                            onClick={() => updateField('conservationState', opt.value)}
                                             className={`p-3 rounded-xl border-2 transition-all duration-200 text-left ${formData.conservationState === opt.value
                                                 ? 'border-primary bg-primary/10 shadow-md'
                                                 : 'border-muted hover:border-primary/50 hover:bg-muted/50'

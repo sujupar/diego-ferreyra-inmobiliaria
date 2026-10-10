@@ -30,3 +30,19 @@ export function buildAppraisalFilename(propertyName: string | null | undefined):
         .trim() || 'Propiedad'
     return `Informe Tasacion ${base}.pdf`
 }
+
+/**
+ * Número entero con formato argentino ("214.000"). El PDF usaba
+ * `toLocaleString()` sin locale: según el navegador salía "214,000"
+ * (auditoría 2026-10-03, C4).
+ */
+export function formatNumero(value: number | null | undefined): string {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return '—'
+    return Math.round(value).toLocaleString('es-AR')
+}
+
+/** "125k" para la columna Valor del Mapa de Valor; sin precio, "—" (antes "0k"). */
+export function formatMiles(precio: number | null | undefined): string {
+    if (typeof precio !== 'number' || !Number.isFinite(precio) || precio <= 0) return '—'
+    return `${formatNumero(precio / 1000)}k`
+}

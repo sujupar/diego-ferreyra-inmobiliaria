@@ -59,6 +59,21 @@ export function buildDefaultScenarios(
     }))
 }
 
+/** Los escenarios guardados son RESULTADOS; para recalcularlos hace falta solo la entrada. */
+export function entradaDeEscenario(s: PurchaseScenarioInput): PurchaseScenarioInput {
+    return {
+        id: s.id,
+        level: s.level,
+        propertyKey: s.propertyKey,
+        propertyLabel: s.propertyLabel,
+        label: s.label,
+        publicationPrice: s.publicationPrice,
+        purchaseDiscountPercent: s.purchaseDiscountPercent,
+        deedDiscountPercent: s.deedDiscountPercent,
+        rates: s.rates,
+    }
+}
+
 /** Calcula resultados financieros para un escenario. */
 export function calculateScenario(
     input: PurchaseScenarioInput,
