@@ -10,14 +10,22 @@ interface PropiedadApi { id: string; address: string; neighborhood: string | nul
 export function PasoPropiedad({ estado, despachar }: { estado: EstadoAgendar; despachar: (a: AccionAgendar) => void }) {
   const [texto, setTexto] = useState('')
   const [lista, setLista] = useState<PropiedadApi[]>([])
+  const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let vigente = true
+    setCargando(true)
     const t = setTimeout(async () => {
-      const r = await leerRespuesta<PropiedadApi[]>(await fetch(`/api/visits/propiedades?q=${encodeURIComponent(texto)}`))
-      if (!vigente) return
-      if (r.ok) { setLista(r.data); setError(null) } else setError(r.error)
+      try {
+        const r = await leerRespuesta<PropiedadApi[]>(await fetch(`/api/visits/propiedades?q=${encodeURIComponent(texto)}`))
+        if (!vigente) return
+        if (r.ok) { setLista(r.data); setError(null) } else setError(r.error)
+      } catch {
+        if (vigente) setError('No hay conexión. Probá de nuevo.')
+      } finally {
+        if (vigente) setCargando(false)
+      }
     }, 300)
     return () => { vigente = false; clearTimeout(t) }
   }, [texto])
@@ -29,7 +37,7 @@ export function PasoPropiedad({ estado, despachar }: { estado: EstadoAgendar; de
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold">¿Qué propiedad van a visitar?</h2>
+      <h2 tabIndex={-1} className="text-xl font-semibold outline-none">¿Qué propiedad van a visitar?</h2>
       <label className="flex h-11 items-center gap-2 rounded-lg border bg-card px-3">
         <Search className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
         <span className="sr-only">Buscar por dirección o barrio</span>
@@ -37,6 +45,7 @@ export function PasoPropiedad({ estado, despachar }: { estado: EstadoAgendar; de
           className="flex-1 bg-transparent text-base outline-none" />
       </label>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {cargando && !error && <p className="text-sm text-muted-foreground">Buscando…</p>}
       <ul className="space-y-2">
         {lista.map(p => (
           <li key={p.id}>
@@ -54,7 +63,7 @@ export function PasoPropiedad({ estado, despachar }: { estado: EstadoAgendar; de
           </li>
         ))}
       </ul>
-      {lista.length === 0 && !error && <p className="text-sm text-muted-foreground">No hay propiedades captadas disponibles con ese texto.</p>}
+      {!cargando && lista.length === 0 && !error && <p className="text-sm text-muted-foreground">No hay propiedades captadas disponibles con ese texto.</p>}
     </div>
   )
 }

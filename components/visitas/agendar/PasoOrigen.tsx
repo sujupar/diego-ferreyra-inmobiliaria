@@ -8,7 +8,7 @@ export function PasoOrigen({ estado, despachar }: { estado: EstadoAgendar; despa
   return (
     <div className="space-y-5">
       <div className="space-y-1">
-        <h2 className="text-xl font-semibold">¿De dónde viene esta visita?</h2>
+        <h2 tabIndex={-1} className="text-xl font-semibold outline-none">¿De dónde viene esta visita?</h2>
         <p className="text-sm text-muted-foreground">Con esto sabemos qué canal trae visitas que se concretan.</p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">

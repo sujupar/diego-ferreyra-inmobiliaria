@@ -16,7 +16,15 @@ export async function leerRespuesta<T>(
   } catch {
     /* HTML de error del gateway (504) u otra respuesta no-JSON */
   }
-  if (res.ok) return { ok: true, data: cuerpo.data as T }
+  if (res.ok) {
+    // Un 2xx sin `data` no es un éxito utilizable: todas las rutas que
+    // consume esta ventana devuelven `{ data }` en el camino feliz. Tratarlo
+    // como éxito con `data: undefined` dejaría a cada consumidor adivinando.
+    if (!('data' in cuerpo)) {
+      return { ok: false, status: res.status, error: 'Respuesta inesperada del servidor. Probá de nuevo.', cuerpo }
+    }
+    return { ok: true, data: cuerpo.data as T }
+  }
   const error = typeof cuerpo.error === 'string'
     ? cuerpo.error
     : res.status === 504 ? 'El servidor tardó demasiado. Probá de nuevo.' : 'Algo falló. Probá de nuevo.'
