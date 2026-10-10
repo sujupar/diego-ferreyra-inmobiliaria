@@ -16,6 +16,7 @@ import { precioDeCompraValido } from '@/lib/valuation/precio-compra'
 import { completarValuacion } from '@/lib/valuation/completar-valuacion'
 import { valuacionConPreciosManuales } from '@/lib/valuation/precio-manual'
 import { requiereConversion, comparablesEnOtraMoneda } from '@/lib/valuation/moneda'
+import { claveDeBorrador } from '@/lib/valuation/borrador-asistente'
 import { SelectorDeTasador, type EstadoIAEnPantalla } from '@/components/appraisal/SelectorDeTasador'
 import { estadoTarjetaIA, rehidratar } from '@/lib/valuation/valuacion-activa'
 import { huellaDeInsumos } from '@/lib/valuation/huella-insumos'
@@ -167,12 +168,9 @@ function NewAppraisalPageContent() {
     const [advisorPhotoUrl, setAdvisorPhotoUrl] = useState<string | undefined>(undefined)
     const [advisors, setAdvisors] = useState<Array<{ id: string; full_name: string }>>([])
 
-    // Clear stale PropertyWizard draft when starting a fresh creation
-    useEffect(() => {
-        if (!editId) {
-            localStorage.removeItem('propertyWizardDraft')
-        }
-    }, [editId])
+    // El borrador del asistente es por proceso (claveDeBorrador) y el asistente
+    // descarta el global viejo al montarse: ya no depende de que este efecto
+    // corra antes que el del hijo, que era el bug (B7).
 
     // Keep the ref in sync with whichever id is current (URL or in-session insert)
     useEffect(() => {
@@ -1115,6 +1113,7 @@ function NewAppraisalPageContent() {
                 {!subject || isEditingSubject ? (
                     <div className="bg-card rounded-2xl border shadow-sm p-6 md:p-8 transition-all duration-300 hover:shadow-md">
                         <PropertyWizard
+                            claveBorrador={editMode ? null : claveDeBorrador(dealId)}
                             onComplete={(p) => { handleSubjectComplete(p); setIsEditingSubject(false) }}
                             initialData={
                                 subject

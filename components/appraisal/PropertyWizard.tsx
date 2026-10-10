@@ -9,6 +9,7 @@ import { NeighborhoodSelect } from './NeighborhoodSelect'
 import { ScrapedProperty } from '@/lib/scraper/types'
 import { DispositionType, QualityType, ConservationStateType } from '@/lib/valuation/rules'
 import { featuresDelFormulario, superficieDelFormulario } from '@/lib/valuation/formulario-sujeto'
+import { leerBorrador } from '@/lib/valuation/borrador-asistente'
 import {
     MapPin,
     Ruler,
@@ -92,9 +93,12 @@ const initialFormData: PropertyFormData = {
 interface PropertyWizardProps {
     onComplete: (property: ScrapedProperty) => void
     initialData?: Partial<PropertyFormData>
+    /** Clave del borrador local (por proceso, ver `claveDeBorrador`). Sin clave
+     *  no se guarda ni se restaura nada: nunca se mezcla con otra tasación (B7). */
+    claveBorrador?: string | null
 }
 
-export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps) {
+export function PropertyWizard({ onComplete, initialData, claveBorrador = null }: PropertyWizardProps) {
     const [currentStep, setCurrentStep] = useState(0)
     const [direction, setDirection] = useState<'forward' | 'backward'>('forward')
     const [formData, setFormData] = useState<PropertyFormData>(() => ({
@@ -149,16 +153,17 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
 
     // Auto-save simulation (exclude images to avoid exceeding localStorage limit)
     const autoSave = useCallback(() => {
+        if (!claveBorrador) return
         setIsSaving(true)
-        const { images, ...dataWithoutImages } = formData
-        localStorage.setItem('propertyWizardDraft', JSON.stringify(dataWithoutImages))
+        const { images: _imagenes, ...dataWithoutImages } = formData
+        try { localStorage.setItem(claveBorrador, JSON.stringify(dataWithoutImages)) } catch { /* cuota llena: el borrador es una comodidad */ }
 
         setTimeout(() => {
             setIsSaving(false)
             setSavedMessage(true)
             setTimeout(() => setSavedMessage(false), 2000)
         }, 500)
-    }, [formData])
+    }, [formData, claveBorrador])
 
     // Auto-save on step change
     useEffect(() => {
@@ -166,25 +171,20 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
         return () => clearTimeout(timeout)
     }, [currentStep, autoSave])
 
-    // Load saved draft on mount — only when editing an in-progress draft (no initialData)
+    // Restaurar el borrador SOLO si es de este mismo proceso y no vinieron datos
+    // iniciales (edición o visita). Antes leía una clave global y una "Nueva
+    // tasación" podía arrancar con datos de otra (B7, ver borrador-asistente.ts).
     useEffect(() => {
-        if (initialData) {
-            // Clear any stale draft when pre-loaded data is provided
-            localStorage.removeItem('propertyWizardDraft')
-            return
-        }
-        const saved = localStorage.getItem('propertyWizardDraft')
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved)
-                // Drafts viejos (pre-Task 12) no tienen neighborhoodSlug — defaultear a ''
-                // para que no crasheen y caigan al camino legacy (texto libre).
-                setFormData(prev => ({ ...prev, ...parsed, neighborhoodSlug: parsed.neighborhoodSlug ?? '' }))
-            } catch (e) {
-                localStorage.removeItem('propertyWizardDraft')
-            }
-        }
-    }, [initialData])
+        const parsed = leerBorrador(localStorage, claveBorrador, Boolean(initialData))
+        if (!parsed) return
+        // Drafts viejos (pre-Task 12) no tienen neighborhoodSlug — defaultear a ''
+        // para que no crasheen y caigan al camino legacy (texto libre).
+        setFormData(prev => ({
+            ...prev,
+            ...parsed,
+            neighborhoodSlug: typeof parsed.neighborhoodSlug === 'string' ? parsed.neighborhoodSlug : '',
+        }))
+    }, [initialData, claveBorrador])
 
     const updateField = <K extends keyof PropertyFormData>(
         field: K,
@@ -223,8 +223,8 @@ export function PropertyWizard({ onComplete, initialData }: PropertyWizardProps)
             features: featuresDelFormulario(formData),
         }
 
-        // Clear draft
-        localStorage.removeItem('propertyWizardDraft')
+        // Terminado: el borrador ya no hace falta.
+        if (claveBorrador) localStorage.removeItem(claveBorrador)
 
         onComplete(property)
     }
