@@ -175,7 +175,10 @@ export function PanelAsistente({ tasacionId, abierto, onCerrar, onTasacionCambia
                     {mensajes.map((m, i) => (
                         <MensajeAsistente
                             key={m.id} mensaje={m} urlsAdjuntos={urls} ocupado={enviando}
-                            onReintentar={m.role === 'assistant' && m.status === 'failed' ? () => void reintentar(i) : undefined}
+                            // Reintentar solo mientras no haya una respuesta buena después: un
+                            // reintento exitoso deja el fallo en el historial, pero ya resuelto.
+                            onReintentar={m.role === 'assistant' && m.status === 'failed' && !mensajes.slice(i + 1).some(x => x.role === 'assistant' && x.status === 'ok')
+                                ? () => void reintentar(i) : undefined}
                             onAplicar={m.propuesta ? () => void aplicar(m.id) : undefined}
                         />
                     ))}
