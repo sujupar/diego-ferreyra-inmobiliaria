@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
@@ -8,7 +8,8 @@ import type { AppraisalDetail } from '@/lib/supabase/appraisals'
 import { updateAppraisal, saveReportEdits, generarValuacionIA, elegirTasadorDeTasacion, guardarSnapshotIA } from '@/lib/supabase/appraisals'
 import { ValuationReport } from '@/components/appraisal/ValuationReport'
 import { SelectorDeTasador, type EstadoIAEnPantalla } from '@/components/appraisal/SelectorDeTasador'
-import { ValuationProperty, ValuationResult, ValuationFeatures, calculateValuation, getQualityCoefficient, ExpenseRates } from '@/lib/valuation/calculator'
+import { ValuationProperty, ValuationResult, ValuationFeatures, getQualityCoefficient, ExpenseRates } from '@/lib/valuation/calculator'
+import { recalcularFicha, type CambioFicha } from '@/lib/valuation/recalculo-ficha'
 import { valuacionActiva, estadoTarjetaIA, comparablesNormales, filaAPropiedad, rehidratar, comparablesDelSnapshotIA } from '@/lib/valuation/valuacion-activa'
 import { huellaDeInsumos } from '@/lib/valuation/huella-insumos'
 import { recalcularSnapshotIA, type CambioSnapshotIA } from '@/lib/valuation/editar-snapshot-ia'
@@ -28,6 +29,47 @@ const PDFPreviewModal = dynamic(
     { ssr: false }
 )
 
+type FilaDeFicha = AppraisalDetail['comparables'][number]
+
+const tipoDeFila = (c: FilaDeFicha): string | undefined =>
+    (c.analysis as { propertyType?: string } | null)?.propertyType
+
+function filaAScraped(c: FilaDeFicha): ScrapedProperty {
+    return {
+        url: c.url || '',
+        title: c.title || '',
+        price: c.price,
+        currency: (c.currency as 'USD' | 'ARS' | null) ?? null,
+        location: c.location || '',
+        description: c.description || '',
+        features: c.features as PropertyFeatures,
+        images: c.images || [],
+        portal: '',
+    }
+}
+
+/** El PUT recibe sujeto + las tres listas por separado; se arman desde el estado vigente. */
+function payloadDeFicha(a: AppraisalDetail) {
+    return {
+        subject: {
+            url: a.property_url || '',
+            title: a.property_title || '',
+            price: a.property_price,
+            currency: (a.property_currency as 'USD' | 'ARS' | null) ?? null,
+            location: a.property_location,
+            description: a.property_description || '',
+            features: (a.property_features ?? {}) as PropertyFeatures,
+            images: a.property_images || [],
+            portal: '',
+            neighborhoodSlug: a.neighborhood_slug ?? undefined,
+        } satisfies ScrapedProperty,
+        comparables: a.comparables.filter(c => tipoDeFila(c) !== 'overpriced' && tipoDeFila(c) !== 'purchase').map(filaAScraped),
+        overpriced: a.comparables.filter(c => tipoDeFila(c) === 'overpriced').map(filaAScraped),
+        purchaseProperties: a.comparables.filter(c => tipoDeFila(c) === 'purchase').map(filaAScraped),
+        valuationResult: a.valuation_result,
+    }
+}
+
 export default function AppraisalDetailPage() {
     const params = useParams()
     const searchParams = useSearchParams()
@@ -46,6 +88,10 @@ export default function AppraisalDetailPage() {
     const [avisoTasador, setAvisoTasador] = useState<string | null>(null)
     const [valuationOverride, setValuationOverride] = useState<ValuationResult | null>(null)
     const [savingFeatures, setSavingFeatures] = useState(false)
+    const [errorEdicion, setErrorEdicion] = useState<string | null>(null)
+    // Estado VIGENTE de la ficha para las ediciones en línea (B3). Se actualiza
+    // sincrónicamente al editar y se re-sincroniza con cada cambio de `appraisal`.
+    const fichaRef = useRef<AppraisalDetail | null>(null)
     const [advisorPhotoUrl, setAdvisorPhotoUrl] = useState<string | undefined>(undefined)
     /**
      * El servidor mandó la ficha RESUMIDA (alcance `vinculadas`: el abogado
@@ -70,6 +116,7 @@ export default function AppraisalDetailPage() {
             .then(({ data, resumida }) => {
                 if (!data) { setError('Tasación no encontrada'); return }
                 if (resumida) { setSoloDesdeLaPropiedad(true); return }
+                fichaRef.current = data as AppraisalDetail
                 setAppraisal(data as AppraisalDetail)
                 // Cargar los ajustes guardados (textos, semáforos, overrides de precio) para
                 // que el informe web y el modal muestren lo persistido (ej. Zona de No Venta).
@@ -83,6 +130,10 @@ export default function AppraisalDetailPage() {
             })
             .finally(() => setLoading(false))
     }
+
+    useEffect(() => {
+        fichaRef.current = appraisal
+    }, [appraisal])
 
     useEffect(() => {
         loadAppraisal()
@@ -369,296 +420,79 @@ export default function AppraisalDetailPage() {
         }
     }
 
-    async function handleSubjectFeaturesChange(features: PropertyFeatures) {
-        if (!appraisal) return
-        if (tasadorElegido === 'ai' && snapshotIA) {
-            // `PropertyFeatures` (del scraper, con null) y `ValuationFeatures` (con
-            // undefined) son la misma información; el cast es el que ya usa el
-            // camino clásico más abajo.
-            await editarSnapshotIA({ tipo: 'subject', features: features as unknown as ValuationFeatures })
+    /**
+     * Edición en línea con la versión CLÁSICA en uso. Parte SIEMPRE del estado
+     * vigente (`fichaRef`), no de lo cargado al abrir: antes, editar el
+     * comparable 1 y después el 2 mandaba el 1 original y deshacía la primera
+     * edición (auditoría 2026-10-03, B3). `recalcularFicha` además conserva la
+     * parte del propietario y recalcula los escenarios de compra.
+     */
+    async function aplicarCambioClasico(cambio: CambioFicha) {
+        const actual = fichaRef.current
+        if (!actual || !subject) return
+        const nuevo = recalcularFicha(
+            {
+                sujeto: { ...subject, features: (actual.property_features ?? {}) as ValuationFeatures },
+                filas: actual.comparables,
+                resultado: actual.valuation_result,
+            },
+            cambio,
+        )
+        if (!nuevo) {
+            setErrorEdicion('No se pudo recalcular con ese dato: revisá superficies y precios. No se guardó nada.')
             return
         }
-        // Optimistic UI update
-        setSubjectFeaturesOverride(features)
+        setErrorEdicion(null)
+        const siguiente: AppraisalDetail = {
+            ...actual,
+            comparables: nuevo.filas,
+            property_features: nuevo.sujeto.features,
+            valuation_result: nuevo.resultado,
+            publication_price: nuevo.resultado.publicationPrice,
+            sale_value: nuevo.resultado.saleValue,
+            money_in_hand: nuevo.resultado.moneyInHand,
+        }
+        // Sincrónico: si el asesor edita otro campo antes del próximo render,
+        // ya parte de este estado.
+        fichaRef.current = siguiente
+        setAppraisal(siguiente)
+        setValuationOverride(null)
+        setSubjectFeaturesOverride(null)
         setSavingFeatures(true)
         try {
-            // Filter out overpriced AND purchase properties before recalculation —
-            // only normal comparables contribute to the average $/m².
-            const onlyNormalRows = appraisal.comparables.filter(c => {
-                const a = c.analysis as Record<string, unknown> | null
-                return a?.propertyType !== 'overpriced' && a?.propertyType !== 'purchase'
-            })
-            const recalc = calculateValuation({
-                subject: { ...subject, features: features as unknown as ValuationProperty['features'] },
-                comparables: onlyNormalRows.map(c => ({
-                    price: c.price,
-                    currency: c.currency,
-                    title: c.title || undefined,
-                    location: c.location || undefined,
-                    features: c.features as ValuationProperty['features'],
-                })),
-                expenseRates: result?.expenseRates,
-            })
-            if (recalc) {
-                const merged: ValuationResult = {
-                    ...recalc,
-                    purchaseResult: result?.purchaseResult,
-                    purchaseScenarios: result?.purchaseScenarios,
-                    selectedScenarioIds: result?.selectedScenarioIds,
-                }
-                setValuationOverride(merged)
-
-                // Persist via updateAppraisal — we must rebuild the input shape
-                // (subject as ScrapedProperty + comparables as ScrapedProperty[]).
-                const subjectScraped: ScrapedProperty = {
-                    url: appraisal.property_url || '',
-                    title: appraisal.property_title || '',
-                    price: appraisal.property_price,
-                    currency: (appraisal.property_currency as 'USD' | 'ARS' | null) ?? null,
-                    location: appraisal.property_location,
-                    description: appraisal.property_description || '',
-                    features,
-                    images: appraisal.property_images || [],
-                    portal: '',
-                    neighborhoodSlug: appraisal.neighborhood_slug ?? undefined,
-                }
-                const allComparablesScraped: ScrapedProperty[] = appraisal.comparables.map(c => ({
-                    url: c.url || '',
-                    title: c.title || '',
-                    price: c.price,
-                    currency: (c.currency as 'USD' | 'ARS' | null) ?? null,
-                    location: c.location || '',
-                    description: c.description || '',
-                    features: c.features as PropertyFeatures,
-                    images: c.images || [],
-                    portal: '',
-                }))
-                // Split for updateAppraisal payload (it accepts overpriced/purchase separately).
-                const normalScraped = allComparablesScraped.filter((_, i) => {
-                    const a = appraisal.comparables[i].analysis as Record<string, unknown> | null
-                    return a?.propertyType !== 'overpriced' && a?.propertyType !== 'purchase'
-                })
-                const overpricedScraped = allComparablesScraped.filter((_, i) => {
-                    const a = appraisal.comparables[i].analysis as Record<string, unknown> | null
-                    return a?.propertyType === 'overpriced'
-                })
-                const purchaseScraped = allComparablesScraped.filter((_, i) => {
-                    const a = appraisal.comparables[i].analysis as Record<string, unknown> | null
-                    return a?.propertyType === 'purchase'
-                })
-
-                await updateAppraisal(appraisal.id, {
-                    subject: subjectScraped,
-                    comparables: normalScraped,
-                    overpriced: overpricedScraped,
-                    purchaseProperties: purchaseScraped,
-                    valuationResult: merged,
-                })
-            }
+            await updateAppraisal(actual.id, payloadDeFicha(siguiente))
         } catch (err) {
-            console.error('handleSubjectFeaturesChange error:', err)
+            console.error('aplicarCambioClasico error:', err)
+            setErrorEdicion('El cambio se ve en pantalla pero NO se guardó. Recargá la página para ver lo guardado.')
         } finally {
             setSavingFeatures(false)
         }
     }
 
+    async function handleSubjectFeaturesChange(features: PropertyFeatures) {
+        if (tasadorElegido === 'ai' && snapshotIA) {
+            // `PropertyFeatures` (del scraper, con null) y `ValuationFeatures` (con
+            // undefined) son la misma información.
+            await editarSnapshotIA({ tipo: 'subject', features: features as unknown as ValuationFeatures })
+            return
+        }
+        await aplicarCambioClasico({ tipo: 'sujeto', features: features as unknown as ValuationFeatures })
+    }
+
     async function handleComparableFeaturesChange(index: number, newFeatures: Record<string, unknown>) {
-        if (!appraisal) return
         if (tasadorElegido === 'ai' && snapshotIA) {
             await editarSnapshotIA({ tipo: 'comparable', index, features: newFeatures as ValuationFeatures })
             return
         }
-        // El `index` que envía ValuationReport indexa result.comparableAnalysis,
-        // que son SOLO los comparables normales (overpriced/purchase van aparte).
-        // Mapeamos ese índice a la i-ésima fila normal dentro de appraisal.comparables.
-        setSavingFeatures(true)
-        try {
-            let normalIdx = -1
-            const updatedRows = appraisal.comparables.map(c => {
-                const a = c.analysis as Record<string, unknown> | null
-                const isNormal = a?.propertyType !== 'overpriced' && a?.propertyType !== 'purchase'
-                if (!isNormal) return c
-                normalIdx++
-                if (normalIdx === index) {
-                    return { ...c, features: newFeatures as unknown as typeof c.features }
-                }
-                return c
-            })
-
-            const isNormalRow = (c: typeof updatedRows[number]) => {
-                const a = c.analysis as Record<string, unknown> | null
-                return a?.propertyType !== 'overpriced' && a?.propertyType !== 'purchase'
-            }
-            const normalRows = updatedRows.filter(isNormalRow)
-
-            // Subject: mantener las features efectivas actuales (sin tocar).
-            const safeSubjectFeatures = (effectiveFeatures ?? {}) as PropertyFeatures
-            const recalc = calculateValuation({
-                subject: { ...subject, features: safeSubjectFeatures as unknown as ValuationProperty['features'] },
-                comparables: normalRows.map(c => ({
-                    price: c.price,
-                    currency: c.currency,
-                    title: c.title || undefined,
-                    location: c.location || undefined,
-                    features: c.features as ValuationProperty['features'],
-                })),
-                expenseRates: result?.expenseRates,
-            })
-            if (recalc) {
-                const merged: ValuationResult = {
-                    ...recalc,
-                    purchaseResult: result?.purchaseResult,
-                    purchaseScenarios: result?.purchaseScenarios,
-                    selectedScenarioIds: result?.selectedScenarioIds,
-                }
-                setValuationOverride(merged)
-
-                // Persistir: reconstruir el payload de updateAppraisal desde updatedRows
-                // (para que las features editadas del comparable queden guardadas).
-                const subjectScraped: ScrapedProperty = {
-                    url: appraisal.property_url || '',
-                    title: appraisal.property_title || '',
-                    price: appraisal.property_price,
-                    currency: (appraisal.property_currency as 'USD' | 'ARS' | null) ?? null,
-                    location: appraisal.property_location,
-                    description: appraisal.property_description || '',
-                    features: safeSubjectFeatures,
-                    images: appraisal.property_images || [],
-                    portal: '',
-                    neighborhoodSlug: appraisal.neighborhood_slug ?? undefined,
-                }
-                const toScraped = (c: typeof updatedRows[number]): ScrapedProperty => ({
-                    url: c.url || '',
-                    title: c.title || '',
-                    price: c.price,
-                    currency: (c.currency as 'USD' | 'ARS' | null) ?? null,
-                    location: c.location || '',
-                    description: c.description || '',
-                    features: c.features as PropertyFeatures,
-                    images: c.images || [],
-                    portal: '',
-                })
-                const normalScraped = updatedRows.filter(isNormalRow).map(toScraped)
-                const overpricedScraped = updatedRows
-                    .filter(c => (c.analysis as Record<string, unknown> | null)?.propertyType === 'overpriced')
-                    .map(toScraped)
-                const purchaseScraped = updatedRows
-                    .filter(c => (c.analysis as Record<string, unknown> | null)?.propertyType === 'purchase')
-                    .map(toScraped)
-
-                await updateAppraisal(appraisal.id, {
-                    subject: subjectScraped,
-                    comparables: normalScraped,
-                    overpriced: overpricedScraped,
-                    purchaseProperties: purchaseScraped,
-                    valuationResult: merged,
-                })
-            }
-        } catch (err) {
-            console.error('handleComparableFeaturesChange error:', err)
-        } finally {
-            setSavingFeatures(false)
-        }
+        await aplicarCambioClasico({ tipo: 'comparable', indice: index, features: newFeatures as ValuationFeatures })
     }
 
     async function handleExpenseRatesChange(next: Partial<ExpenseRates>) {
-        if (!appraisal || !appraisal.valuation_result) return
         if (tasadorElegido === 'ai' && snapshotIA) {
             await editarSnapshotIA({ tipo: 'gastos', expenseRates: next })
             return
         }
-        const currentRates = (valuationOverride?.expenseRates ?? appraisal.valuation_result.expenseRates) || {
-            saleDiscountPercent: 5,
-            deedDiscountPercent: 30,
-            stampsPercent: 1.35,
-            deedExpensesPercent: 1.5,
-            agencyFeesPercent: 3,
-        }
-        const newRates: Required<ExpenseRates> = { ...currentRates, ...next } as Required<ExpenseRates>
-        setSavingFeatures(true)
-        try {
-            // Filter out overpriced AND purchase properties — only normal comparables
-            // contribute to the average $/m².
-            const onlyNormalRows = appraisal.comparables.filter(c => {
-                const a = c.analysis as Record<string, unknown> | null
-                return a?.propertyType !== 'overpriced' && a?.propertyType !== 'purchase'
-            })
-            // En este punto subject e effectiveFeatures son no-null (early return
-            // del render lo garantiza, y la función solo se llama desde JSX renderizado
-            // post-early-return). Casts para satisfacer al type checker.
-            const safeSubject = subject as ValuationProperty
-            const safeFeatures = (effectiveFeatures ?? {}) as PropertyFeatures
-            const recalc = calculateValuation({
-                subject: safeSubject,
-                comparables: onlyNormalRows.map(c => ({
-                    price: c.price,
-                    currency: c.currency,
-                    title: c.title || undefined,
-                    location: c.location || undefined,
-                    features: c.features as ValuationProperty['features'],
-                })),
-                expenseRates: newRates,
-            })
-            if (recalc) {
-                const merged: ValuationResult = {
-                    ...recalc,
-                    purchaseResult: result?.purchaseResult,
-                    purchaseScenarios: result?.purchaseScenarios,
-                    selectedScenarioIds: result?.selectedScenarioIds,
-                }
-                setValuationOverride(merged)
-
-                // Persist via updateAppraisal — same payload-rebuilding pattern as
-                // handleSubjectFeaturesChange.
-                const subjectScraped: ScrapedProperty = {
-                    url: appraisal.property_url || '',
-                    title: appraisal.property_title || '',
-                    price: appraisal.property_price,
-                    currency: (appraisal.property_currency as 'USD' | 'ARS' | null) ?? null,
-                    location: appraisal.property_location,
-                    description: appraisal.property_description || '',
-                    features: safeFeatures,
-                    images: appraisal.property_images || [],
-                    portal: '',
-                    neighborhoodSlug: appraisal.neighborhood_slug ?? undefined,
-                }
-                const allComparablesScraped: ScrapedProperty[] = appraisal.comparables.map(c => ({
-                    url: c.url || '',
-                    title: c.title || '',
-                    price: c.price,
-                    currency: (c.currency as 'USD' | 'ARS' | null) ?? null,
-                    location: c.location || '',
-                    description: c.description || '',
-                    features: c.features as PropertyFeatures,
-                    images: c.images || [],
-                    portal: '',
-                }))
-                const normalScraped = allComparablesScraped.filter((_, i) => {
-                    const a = appraisal.comparables[i].analysis as Record<string, unknown> | null
-                    return a?.propertyType !== 'overpriced' && a?.propertyType !== 'purchase'
-                })
-                const overpricedScraped = allComparablesScraped.filter((_, i) => {
-                    const a = appraisal.comparables[i].analysis as Record<string, unknown> | null
-                    return a?.propertyType === 'overpriced'
-                })
-                const purchaseScraped = allComparablesScraped.filter((_, i) => {
-                    const a = appraisal.comparables[i].analysis as Record<string, unknown> | null
-                    return a?.propertyType === 'purchase'
-                })
-
-                await updateAppraisal(appraisal.id, {
-                    subject: subjectScraped,
-                    comparables: normalScraped,
-                    overpriced: overpricedScraped,
-                    purchaseProperties: purchaseScraped,
-                    valuationResult: merged,
-                })
-            }
-        } catch (err) {
-            console.error('handleExpenseRatesChange error:', err)
-        } finally {
-            setSavingFeatures(false)
-        }
+        await aplicarCambioClasico({ tipo: 'tasas', tasas: next })
     }
 
     // Override manual de la Zona de No Venta. Se guarda en reportEdits.priceOverrides
@@ -746,6 +580,12 @@ export default function AppraisalDetailPage() {
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Guardando cambios...
+                </div>
+            )}
+
+            {errorEdicion && (
+                <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+                    {errorEdicion}
                 </div>
             )}
 
