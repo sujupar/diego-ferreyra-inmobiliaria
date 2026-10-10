@@ -15,6 +15,7 @@ import { buildDefaultScenarios } from '@/lib/valuation/purchase-scenarios'
 import { precioDeCompraValido } from '@/lib/valuation/precio-compra'
 import { completarValuacion } from '@/lib/valuation/completar-valuacion'
 import { valuacionConPreciosManuales } from '@/lib/valuation/precio-manual'
+import { requiereConversion, comparablesEnOtraMoneda } from '@/lib/valuation/moneda'
 import { SelectorDeTasador, type EstadoIAEnPantalla } from '@/components/appraisal/SelectorDeTasador'
 import { estadoTarjetaIA, rehidratar } from '@/lib/valuation/valuacion-activa'
 import { huellaDeInsumos } from '@/lib/valuation/huella-insumos'
@@ -588,6 +589,15 @@ function NewAppraisalPageContent() {
     // Do NOT depend on `valuationResult` here to avoid infinite loops.
     useEffect(() => {
         if (!valuationResult || !subject) return
+        // Un comparable en otra moneda no entra al promedio sin aviso (B6): no se
+        // recalcula hasta que el asesor lo convierta a USD o lo descarte.
+        const enOtraMoneda = comparablesEnOtraMoneda(comparables)
+        if (enOtraMoneda.length > 0) {
+            const i = enOtraMoneda[0]
+            setSaveStatus('error')
+            setSaveErrorDetail(`El comparable ${i + 1} está en ${comparables[i].currency}: cargá su precio en USD o descartalo para recalcular.`)
+            return
+        }
         const subjectVal: ValuationProperty = {
             price: subject.price,
             currency: subject.currency,
@@ -939,9 +949,10 @@ function NewAppraisalPageContent() {
     }
 
     // Check if all comparables have complete data
+    // Un comparable en otra moneda no está completo hasta convertirlo a USD (B6).
     const allComparablesComplete = comparables.every(c => {
         const f = c.features
-        return c.price && f.coveredArea && f.age !== null && f.disposition && f.quality && f.conservationState
+        return c.price && !requiereConversion(c.currency) && f.coveredArea && f.age !== null && f.disposition && f.quality && f.conservationState
     })
 
     if (editMode && editLoading) {
@@ -1239,7 +1250,7 @@ function NewAppraisalPageContent() {
                                                 <p className="text-xs text-muted-foreground line-clamp-1">{comp.location}</p>
                                                 <div className="flex items-center gap-3 mt-1 flex-wrap">
                                                     <span className="text-sm font-semibold text-primary">
-                                                        {comp.price ? `USD ${comp.price.toLocaleString()}` : 'Sin precio'}
+                                                        {comp.price ? formatCurrency(comp.price, comp.currency) : 'Sin precio'}
                                                     </span>
                                                     <span className="text-xs text-muted-foreground">
                                                         {comp.features.coveredArea}m²
@@ -1348,7 +1359,7 @@ function NewAppraisalPageContent() {
                                                     <p className="text-xs text-muted-foreground line-clamp-1">{prop.location}</p>
                                                     <div className="flex items-center gap-3 mt-1">
                                                         <span className="text-sm font-semibold text-red-600">
-                                                            {prop.price ? `USD ${prop.price.toLocaleString()}` : 'Sin precio'}
+                                                            {prop.price ? formatCurrency(prop.price, prop.currency) : 'Sin precio'}
                                                         </span>
                                                         {prop.features.coveredArea && (
                                                             <span className="text-xs text-muted-foreground">
@@ -1453,7 +1464,7 @@ function NewAppraisalPageContent() {
                                                         <p className="text-xs text-muted-foreground line-clamp-1">{prop.location}</p>
                                                         <div className="flex items-center gap-3 mt-1">
                                                             <span className="text-sm font-semibold text-blue-600">
-                                                                {prop.price ? `USD ${prop.price.toLocaleString()}` : 'Sin precio'}
+                                                                {prop.price ? formatCurrency(prop.price, prop.currency) : 'Sin precio'}
                                                             </span>
                                                             {prop.features.coveredArea && (
                                                                 <span className="text-xs text-muted-foreground">
@@ -1818,6 +1829,11 @@ function NewAppraisalPageContent() {
                     property={pendingComparable || editingComparable!.property}
                     onSave={handleComparableSaved}
                     onCancel={() => {
+                        setPendingComparable(null)
+                        setEditingComparable(null)
+                    }}
+                    onDiscard={() => {
+                        if (editingComparable) handleRemoveComparable(editingComparable.index)
                         setPendingComparable(null)
                         setEditingComparable(null)
                     }}

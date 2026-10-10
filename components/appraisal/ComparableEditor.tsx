@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label'
 import { ScrapedProperty } from '@/lib/scraper/types'
 import { DispositionType, QualityType, ConservationStateType } from '@/lib/valuation/rules'
 import { calculateHomogenizedSurface } from '@/lib/valuation/calculator'
+import { requiereConversion } from '@/lib/valuation/moneda'
+import { formatCurrency } from '@/lib/valuation/utils'
 import {
     X,
     Edit2,
@@ -21,6 +23,8 @@ interface ComparableEditorProps {
     property: ScrapedProperty
     onSave: (property: ScrapedProperty) => void
     onCancel: () => void
+    /** Quitar el comparable (p. ej. un aviso en pesos que no se quiere convertir). */
+    onDiscard?: () => void
 }
 
 // Check which required fields are missing
@@ -34,11 +38,13 @@ function getMissingFields(property: ScrapedProperty): string[] {
     if (!f.quality) missing.push('Calidad Constructiva')
     if (!f.conservationState) missing.push('Estado de Conservación')
     if (!property.price) missing.push('Precio')
+    // Un precio en otra moneda no se puede promediar con los de USD (B6).
+    else if (requiereConversion(property.currency)) missing.push(`Precio en USD (el aviso está en ${property.currency})`)
 
     return missing
 }
 
-export function ComparableEditor({ property, onSave, onCancel }: ComparableEditorProps) {
+export function ComparableEditor({ property, onSave, onCancel, onDiscard }: ComparableEditorProps) {
     const [editedProperty, setEditedProperty] = useState<ScrapedProperty>(() => {
         const f = { ...property.features }
         // Safety net: derive uncovered area if the portal only exposed total + covered
@@ -50,6 +56,7 @@ export function ComparableEditor({ property, onSave, onCancel }: ComparableEdito
     })
 
     const missingFields = getMissingFields(editedProperty)
+    const enOtraMoneda = requiereConversion(editedProperty.currency)
     const isValid = missingFields.length === 0
 
     const updateFeature = <K extends keyof typeof editedProperty.features>(
@@ -132,21 +139,42 @@ export function ComparableEditor({ property, onSave, onCancel }: ComparableEdito
                     </div>
                 )}
 
+                {/* Aviso en otra moneda: no entra al promedio hasta convertirlo (B6). */}
+                {enOtraMoneda && (
+                    <div role="alert" className="mx-4 mt-4 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-3">
+                        <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+                        <div className="text-sm text-red-800 dark:text-red-200">
+                            <p className="font-medium">
+                                Este aviso está publicado en {editedProperty.currency}
+                                {editedProperty.price ? ` (${formatCurrency(editedProperty.price, editedProperty.currency)})` : ''}.
+                            </p>
+                            <p className="text-xs mt-1">
+                                El tasador promedia en dólares: cargá el precio convertido a USD en «Precio (USD)»
+                                {onDiscard ? ' o descartá este comparable' : ''}. Hasta entonces no entra al cálculo.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Form */}
                 <div className="p-4 space-y-6">
                     {/* Basic Info */}
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <Label>Precio (USD) *</Label>
+                            <Label htmlFor="comparable-precio">Precio (USD) *</Label>
                             <Input
+                                id="comparable-precio"
                                 type="number"
-                                value={editedProperty.price || ''}
+                                // En otra moneda el campo arranca vacío: lo que se carga
+                                // acá es el precio EN USD, y al cargarlo queda en USD.
+                                value={enOtraMoneda ? '' : (editedProperty.price || '')}
                                 onChange={(e) => setEditedProperty(prev => ({
                                     ...prev,
-                                    price: e.target.value ? Number(e.target.value) : null
+                                    price: e.target.value ? Number(e.target.value) : null,
+                                    currency: e.target.value ? 'USD' : prev.currency,
                                 }))}
-                                placeholder="450000"
-                                className={!editedProperty.price ? 'border-amber-400' : ''}
+                                placeholder={enOtraMoneda ? 'Precio convertido a USD' : '450000'}
+                                className={!editedProperty.price || enOtraMoneda ? 'border-amber-400' : ''}
                             />
                         </div>
                         <div className="space-y-2">
@@ -314,6 +342,11 @@ export function ComparableEditor({ property, onSave, onCancel }: ComparableEdito
 
                 {/* Footer */}
                 <div className="sticky bottom-0 bg-card/95 backdrop-blur-sm border-t p-4 flex justify-end gap-3">
+                    {onDiscard && (
+                        <Button variant="ghost" className="mr-auto text-destructive hover:text-destructive" onClick={onDiscard}>
+                            Descartar comparable
+                        </Button>
+                    )}
                     <Button variant="outline" onClick={onCancel}>
                         Cancelar
                     </Button>
