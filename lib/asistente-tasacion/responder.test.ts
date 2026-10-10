@@ -8,7 +8,7 @@ const comps = [
     { id: 'c1', title: 'Thames', location: 'Palermo', url: null, price: 150_000, currency: 'USD', description: null, images: null, features: { coveredArea: 70, floor: 4 }, analysis: null, sort_order: 0 },
     { id: 'c2', title: 'Gurruchaga', location: 'Palermo', url: null, price: 160_000, currency: 'USD', description: null, images: null, features: { coveredArea: 72, floor: 2 }, analysis: null, sort_order: 1 },
 ]
-const resultado = calculateValuation({ subject: sujeto, comparables: comps.map(c => ({ ...c, title: c.title, features: c.features })) })!
+const resultado = calculateValuation({ subject: sujeto, comparables: comps.map(c => ({ title: c.title, price: c.price, currency: c.currency, features: c.features })) })!
 const datos: DatosTasacion = {
     fila: {
         id: 't1', property_title: 'Paraguay 3682', property_location: 'Palermo', property_description: null, property_price: null,
