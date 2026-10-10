@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "lib/asistente-tasacion/**/*.ts",
+    "lib/ai/chat-multimodal*.ts",
+    "types/database.types.ts",
+    "app/api/appraisals/[id]/asistente/**/*.ts",
+    "components/appraisal/asistente/**/*.tsx"
+  ]
+}
