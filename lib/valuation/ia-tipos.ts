@@ -8,6 +8,7 @@
  * calcular ese snapshot sin tocar el clásico.
  */
 import type { ValuationFeatures, ValuationResult } from './calculator'
+import type { CorreccionDePlanilla, PlanillaCoeficientes } from './planilla-ia'
 
 /** Qué tasador está EN USO en una tasación. */
 export type ValuationSource = 'calculator' | 'ai'
@@ -25,6 +26,13 @@ export interface AiPropertyInterpretation {
   features: ValuationFeatures
   /** Justificación corta (≤ 240 chars) de calidad/estado/disposición/ubicación. */
   reasoning: string
+  /**
+   * Planilla del método con las features definitivas (desde 2026-10-10). Opcional:
+   * los snapshots generados antes no la tienen.
+   */
+  planilla?: PlanillaCoeficientes
+  /** Cuentas del modelo que no coincidieron con la tabla del método (manda la tabla). */
+  correcciones?: CorreccionDePlanilla[]
 }
 
 export interface AiValuationMeta {

@@ -1232,6 +1232,14 @@ Genera carruseles de campaña (largo variable, narrativa de curiosidad) a partir
 - **Probar sin UI:** `node --env-file=.env.local --import tsx scripts/probar-tasador-ia.ts <appraisalId>` (sin id lista candidatas; **no escribe**). Tests: `npx vitest run --config vitest.tasador-ia.config.ts` (~4 s). Estados del selector: `node --import tsx scripts/selector-de-tasador.probe.tsx`.
 - **Detection:** `SELECT ai_valuation_status, count(*) FROM appraisals GROUP BY 1;` — muchos `failed` = cambió el modelo o el prompt (mirar `ai_valuation_error`); `pending` viejos = la función se corta (bajar `MAX_DESCRIPCION`/`maxTokens` en `tasador-ia.ts`). Si el listado muestra un precio que no coincide con el informe, mirar `valuation_source`: los precios desnormalizados deben ser los del tasador elegido.
 
+### CRÍTICO: NUNCA `select('*')` sobre `appraisals` de muchas filas — tumbó la base (2026-10-10)
+
+- **Symptom:** la plataforma entera caída ~15 min (06:14–06:29): Supabase no respondía ni al login, el pooler no entregaba conexiones ("ECHECKOUTTIMEOUT"), las tareas de pg_cron fallaban con "job startup timeout" y la base terminó reiniciándose sola (`pg_postmaster_start_time()` = 06:29:05).
+- **Root cause:** un script de QA pidió `select('*')` de TODAS las tasaciones. La tabla pesa 243 MB y **215 MB son fotos guardadas como texto base64 en `appraisals.property_images`** (67 filas, la más grande 4,7 MB). Armar esa respuesta de >200 MB agotó la base, que es chica (shared_buffers 256 MB, ~1 GB de memoria).
+- **Regla:** contra `appraisals` (y cualquier tabla con imágenes incrustadas) pedir SIEMPRE columnas explícitas, sin `property_images`, salvo de UNA fila por id. Vale para scripts, rutas y consultas de diagnóstico.
+- **Deuda de fondo:** las fotos del sujeto deberían vivir en Storage (como las de propiedades), no en la fila. Mientras sigan ahí, la tabla es una mina.
+- **Detection:** si Supabase deja de responder entero, mirar `pg_postmaster_start_time()` (¿se reinició?) y `cron.job_run_details` (desde qué minuto fallan los jobs de cada minuto) y cruzarlo con lo que se corrió en ese minuto.
+
 ### Gotcha CRÍTICO: Turbopack panica por el acento de la carpeta "Gestión" en el path
 
 - **Symptom:** `next build` y `next dev` (Turbopack, default en Next 16) revientan con `TurbopackInternalError: byte index N is not a char boundary; it is inside '\u{301}'` apuntando a `...Gestión - Diego Ferreyra Inmobiliaria_...`. Explota en archivos preexistentes (no es tu código) durante la emisión de chunks.
