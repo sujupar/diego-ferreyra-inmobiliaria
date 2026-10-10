@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { Mail, Phone } from 'lucide-react'
+import { Mail, MessageCircle, Phone } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { AccionVisitaDialog, type VisitaConHistorial } from '@/components/visitas/ficha/AccionVisitaDialog'
@@ -21,6 +21,7 @@ import { LineaDeTiempo } from '@/components/visitas/ficha/LineaDeTiempo'
 import { leerRespuesta } from '@/components/visitas/agendar/leer-respuesta'
 import { formatearFechaLarga } from '@/lib/visitas/horario'
 import { ORIGEN_INFO } from '@/lib/visitas/origen'
+import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
 import { ESTADO_ETIQUETA, MOTIVO_ETIQUETA, INTERES_ETIQUETA, type TipoAccion, type EstadoVisita } from '@/lib/visitas/transiciones'
 import { cn } from '@/lib/utils'
 
@@ -106,14 +107,26 @@ export default function VisitDetailPage() {
   const secundarias = v.acciones.filter(a => a !== principal)
   const telefono = v.client_phone?.trim() || null
   const email = v.client_email?.trim() || null
+  // Solo si se puede normalizar de verdad (libphonenumber): un número inventado
+  // ("123" de una carga vieja) daría un wa.me que abre un chat con nadie.
+  const whatsapp = normalizeWhatsappPhone(telefono)
+  const direccion = v.propiedad?.address ?? 'Visita'
 
   return (
     <div className={MARCO}>
       <Volver />
       <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 space-y-1">
-          <h1 className="break-words text-2xl font-semibold">{v.propiedad?.address ?? 'Visita'}</h1>
-          <p className="text-sm text-muted-foreground">{formatearFechaLarga(v.scheduled_at)}</p>
+        {/* Foto de tamaño fijo y `shrink-0`: en celular queda al lado del título (que
+            sí se encoge) y el estado sigue apilándose debajo. */}
+        <div className="flex min-w-0 items-start gap-3">
+          {v.propiedad?.foto && (
+            // eslint-disable-next-line @next/next/no-img-element -- como el resto del repo: las fotos vienen de Storage/portales con hosts variables
+            <img src={v.propiedad.foto} alt={`Foto de ${direccion}`} className="h-16 w-16 shrink-0 rounded-lg object-cover" />
+          )}
+          <div className="min-w-0 space-y-1">
+            <h1 className="break-words text-2xl font-semibold">{direccion}</h1>
+            <p className="text-sm text-muted-foreground">{formatearFechaLarga(v.scheduled_at)}</p>
+          </div>
         </div>
         <span className={cn('shrink-0 self-start rounded-full px-3 py-1 text-xs font-semibold', COLOR_ESTADO[v.status])}>
           {ESTADO_ETIQUETA[v.status]}
@@ -139,9 +152,17 @@ export default function VisitDetailPage() {
           <CardContent className="space-y-2 text-sm">
             <p className="font-semibold">{v.client_name}</p>
             {telefono && (
-              <a href={`tel:${telefono.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-2 text-brand max-md:min-h-11">
-                <Phone className="h-4 w-4" aria-hidden="true" />{telefono}
-              </a>
+              <div className="flex flex-wrap items-center gap-x-4">
+                <a href={`tel:${telefono.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-2 text-brand max-md:min-h-11">
+                  <Phone className="h-4 w-4" aria-hidden="true" />{telefono}
+                </a>
+                {whatsapp && (
+                  <a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-brand max-md:min-h-11">
+                    <MessageCircle className="h-4 w-4" aria-hidden="true" />WhatsApp
+                  </a>
+                )}
+              </div>
             )}
             {email && (
               // Codificado: el email lo escribió un tercero (portal, formulario) y
@@ -153,6 +174,13 @@ export default function VisitDetailPage() {
             )}
             {v.origin && (
               <p>Origen: {ORIGEN_INFO[v.origin].etiqueta}{v.origin_detail ? ` · ${v.origin_detail}` : ''}</p>
+            )}
+            {v.lead_id && (
+              // Deep link que ya resuelve el Inbox (InboxTabs: `tab=campanas&lead=<id>`).
+              <Link href={`/inbox?tab=campanas&lead=${encodeURIComponent(v.lead_id)}`}
+                className="inline-flex items-center text-brand max-md:min-h-11">
+                Ver en el Inbox
+              </Link>
             )}
             {v.comprador && (
               <p className="text-muted-foreground">Comprador{v.comprador.lead_number ? ` #${v.comprador.lead_number}` : ''}</p>

@@ -104,6 +104,49 @@ describe('VisitDetailPage — la pantalla no se queda en "Cargando…" ante un f
   })
 })
 
+describe('VisitDetailPage — encabezado (spec §3.3): foto, WhatsApp y enlace al registro original', () => {
+  it('muestra la miniatura de la propiedad con su alt', async () => {
+    respuesta = async () => ok(visita({ propiedad: { id: 'p1', address: 'Calle Falsa 123', neighborhood: 'Palermo', foto: 'https://cdn.example.com/f1.jpg' } }))
+    render(<VisitDetailPage />)
+    const foto = await screen.findByRole('img', { name: 'Foto de Calle Falsa 123' })
+    expect(foto).toHaveAttribute('src', 'https://cdn.example.com/f1.jpg')
+    expect(foto.className).toContain('object-cover')
+    expect(foto.className).toContain('shrink-0')
+  })
+  it('sin foto no dibuja una imagen rota', async () => {
+    render(<VisitDetailPage />)
+    await screen.findByText('Calle Falsa 123')
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+  it('con un teléfono válido hay botón de WhatsApp a wa.me, en pestaña nueva y tocable en celular', async () => {
+    respuesta = async () => ok(visita({ client_phone: '11 5823-4521' }))
+    render(<VisitDetailPage />)
+    const wa = await screen.findByRole('link', { name: /WhatsApp/ })
+    expect(wa).toHaveAttribute('href', 'https://wa.me/5491158234521')
+    expect(wa).toHaveAttribute('target', '_blank')
+    expect(wa).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(wa.className).toContain('max-md:min-h-11')
+  })
+  it('con un teléfono que no se puede normalizar no hay botón de WhatsApp', async () => {
+    respuesta = async () => ok(visita({ client_phone: '123' }))
+    render(<VisitDetailPage />)
+    await screen.findByText('Calle Falsa 123')
+    expect(screen.queryByRole('link', { name: /WhatsApp/ })).not.toBeInTheDocument()
+  })
+  it('con lead_id enlaza al registro en el Inbox', async () => {
+    respuesta = async () => ok(visita({ lead_id: '55555555-5555-4555-8555-555555555555' }))
+    render(<VisitDetailPage />)
+    const enlace = await screen.findByRole('link', { name: 'Ver en el Inbox' })
+    expect(enlace).toHaveAttribute('href', '/inbox?tab=campanas&lead=55555555-5555-4555-8555-555555555555')
+  })
+  it('sin lead_id no hay enlace al Inbox', async () => {
+    respuesta = async () => ok(visita({ lead_id: null }))
+    render(<VisitDetailPage />)
+    await screen.findByText('Calle Falsa 123')
+    expect(screen.queryByRole('link', { name: 'Ver en el Inbox' })).not.toBeInTheDocument()
+  })
+})
+
 describe('VisitDetailPage — cambiar de etapa', () => {
   it('"No se realizó" exige un motivo antes de guardar, y después guarda y pinta la respuesta', async () => {
     render(<VisitDetailPage />)
