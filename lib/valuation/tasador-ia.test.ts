@@ -107,8 +107,20 @@ describe('validarRespuestaTasadorIA — nunca datos a medias', () => {
     const r2 = respuestaOk(); r2.comparables[0].locationCoefficient = 0.8
     expect(() => validarRespuestaTasadorIA(r2, 3)).toThrow(/locationCoefficient/i)
   })
+  it('un % de vida mayor a 99 no tira la tasación: lo corrige la verificación', () => {
+    const r = respuestaOk(); r.subject.planilla.porcentajeVida = 120
+    expect(validarRespuestaTasadorIA(r, 3).subject.planilla.porcentajeVida).toBe(120)
+  })
+  it('un piso negativo cuenta como vacío, igual que en el clásico', () => {
+    const r = respuestaOk(); (r.comparables[0] as { floor: number | null }).floor = -1
+    expect(validarRespuestaTasadorIA(r, 3).comparables[0].floor).toBeNull()
+  })
+  it('el ejemplo del prompt no trae números para copiar', () => {
+    const { system } = armarPromptTasadorIA(entrada)
+    expect(system).not.toMatch(/"kTabla":\s*\d/)
+  })
   it('rechaza una respuesta sin la planilla de coeficientes', () => {
-    const r = respuestaOk() as Record<string, any>; delete r.subject.planilla
+    const r: { subject: { planilla?: unknown } } = respuestaOk(); delete r.subject.planilla
     expect(() => validarRespuestaTasadorIA(r, 3)).toThrow(/planilla/i)
   })
   it('rechaza índices faltantes o repetidos', () => {
