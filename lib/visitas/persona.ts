@@ -4,6 +4,7 @@
  * (decisión del dueño, 2026-10-10). Email opcional. Módulo puro.
  */
 import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
+import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
 
 export interface PersonaNueva {
   nombre: string
@@ -28,4 +29,23 @@ export function validarPersonaNueva(input: { nombre?: unknown; telefono?: unknow
   if (email && !EMAIL.test(email)) errores.push('El email no es válido')
   if (errores.length > 0) return { ok: false, errores }
   return { ok: true, valor: { nombre, telefono, email: email || null } }
+}
+
+/**
+ * Formato ÚNICO para guardar un teléfono de visita (`property_visits.client_phone`,
+ * y lo que llega a `asegurarComprador`/`completarTelefonoDelRegistro`): E.164 con
+ * '+' cuando `normalizeWhatsappPhone` puede CONFIRMAR que es un número real
+ * (lib/integrations/whatsapp/phone.ts, libphonenumber-js contra la metadata real,
+ * no una heurística de longitud). Así "011 15 5823-4521" y "11 5823-4521" —el
+ * mismo celular argentino, escrito con y sin el "15"— quedan guardados
+ * IDÉNTICOS; sin esto, `ultimos10Digitos` ya los trata igual para comparar, pero
+ * la FILA queda con el texto crudo de quien lo escribió, y dos cargas de la
+ * misma persona en días distintos podrían guardar formatos distintos sin que
+ * nada lo note. Si no se puede confirmar (texto raro, número extranjero no
+ * reconocido), se guarda el texto tal cual recortado de espacios — NUNCA se
+ * inventa un número.
+ */
+export function telefonoCanonico(tel: string): string {
+  const normalizado = normalizeWhatsappPhone(tel)
+  return normalizado ? `+${normalizado}` : tel.trim()
 }

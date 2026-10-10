@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validarPersonaNueva } from './persona'
+import { validarPersonaNueva, telefonoCanonico } from './persona'
 
 describe('validarPersonaNueva', () => {
   it('acepta nombre y teléfono, limpia espacios y deja el email en minúsculas', () => {
@@ -26,5 +26,17 @@ describe('validarPersonaNueva', () => {
   })
   it('tolera entradas que no son texto', () => {
     expect(validarPersonaNueva({ nombre: 42, telefono: null }).ok).toBe(false)
+  })
+})
+
+describe('telefonoCanonico', () => {
+  it('normaliza un celular argentino a E.164 con "+"', () => {
+    expect(telefonoCanonico('11 5823-4521')).toBe('+5491158234521')
+  })
+  it('un celular escrito con el "15" queda guardado en el mismo formato que sin el "15"', () => {
+    expect(telefonoCanonico('011 15 5823-4521')).toBe(telefonoCanonico('11 5823-4521'))
+  })
+  it('si no se puede confirmar el número, deja el texto tal cual (recortado)', () => {
+    expect(telefonoCanonico('  no es un teléfono  ')).toBe('no es un teléfono')
   })
 })
