@@ -6,7 +6,7 @@ import {
 
 describe('catálogo de orígenes', () => {
   it('es EXACTAMENTE el del CHECK de la base (se tocan juntos)', () => {
-    const sql = readFileSync('supabase/migrations/20261010000001_visitas_origen_e_historial.sql', 'utf8')
+    const sql = readFileSync('supabase/migrations/20261010000002_visitas_origen_e_historial.sql', 'utf8')
     const m = /property_visits_origin_check\s+CHECK \(origin IS NULL OR origin IN \(([^)]*)\)\)/.exec(sql)
     expect(m).not.toBeNull()
     const enLaBase = (m?.[1] ?? '').split(',').map(s => s.trim().replace(/'/g, ''))

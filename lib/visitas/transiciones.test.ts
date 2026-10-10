@@ -98,7 +98,7 @@ describe('pasoSinResultado', () => {
 // Agregado por el controlador (task-2-6: "mismo criterio que el test de orígenes: se tocan
 // juntos"): MOTIVOS_NO_REALIZADA e INTERESES tienen que ser EXACTAMENTE los CHECK de la base.
 describe('catálogo de motivos e interés (igual al CHECK de la base)', () => {
-  const sql = readFileSync('supabase/migrations/20261010000001_visitas_origen_e_historial.sql', 'utf8')
+  const sql = readFileSync('supabase/migrations/20261010000002_visitas_origen_e_historial.sql', 'utf8')
 
   it('MOTIVOS_NO_REALIZADA es EXACTAMENTE la lista del CHECK property_visits_outcome_reason_check', () => {
     const m = /property_visits_outcome_reason_check\s+CHECK \(outcome_reason IS NULL OR outcome_reason IN\s*\(([^)]*)\)\)/.exec(sql)

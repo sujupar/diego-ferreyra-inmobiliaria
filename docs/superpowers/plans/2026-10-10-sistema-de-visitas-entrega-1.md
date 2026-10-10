@@ -74,7 +74,7 @@ shadcn/ui (`radix-ui`), sonner, lucide-react, vitest 4 (+ happy-dom para compone
 
 | Archivo | Responsabilidad |
 |---|---|
-| `supabase/migrations/20261010000001_visitas_origen_e_historial.sql` | Columnas nuevas, `phone_norm`, historial, triggers, RLS. |
+| `supabase/migrations/20261010000002_visitas_origen_e_historial.sql` | Columnas nuevas, `phone_norm`, historial, triggers, RLS. |
 | `scripts/apply-visitas-origen-pg.ts` | Aplica y VERIFICA la migración (aborta si algo no cuadra). |
 | `lib/visitas/origen.ts` (+test) | Catálogo de orígenes, derivación desde el registro del comprador. |
 | `lib/visitas/horario.ts` (+test) | Construir/validar/mostrar fechas en horario argentino. Seguro para el navegador. |
@@ -193,7 +193,7 @@ export default defineConfig({
 ### Tarea 1: Migración de la base (origen, persona, historial, RLS)
 
 **Files:**
-- Create: `supabase/migrations/20261010000001_visitas_origen_e_historial.sql`
+- Create: `supabase/migrations/20261010000002_visitas_origen_e_historial.sql`
 - Create: `scripts/apply-visitas-origen-pg.ts`
 
 **Interfaces:**
@@ -420,7 +420,7 @@ CREATE POLICY property_visits_select_scoped ON public.property_visits
 
 ```ts
 /**
- * Aplica `20261010000001_visitas_origen_e_historial.sql` y VERIFICA lo que importa.
+ * Aplica `20261010000002_visitas_origen_e_historial.sql` y VERIFICA lo que importa.
  * Aborta (exit 1) si algo no cuadra. Las pruebas de triggers corren dentro de
  * una transacción que se DESHACE: no deja filas de prueba.
  *
@@ -439,7 +439,7 @@ async function main() {
     user: 'postgres.mncsnastmcjdjxrehdep', password: process.env.SUPABASE_DB_PASSWORD,
     database: 'postgres', ssl: { rejectUnauthorized: false } })
   await c.connect()
-  await c.query(readFileSync('supabase/migrations/20261010000001_visitas_origen_e_historial.sql', 'utf8'))
+  await c.query(readFileSync('supabase/migrations/20261010000002_visitas_origen_e_historial.sql', 'utf8'))
   console.log('migración aplicada; verificando…')
 
   const { rows: cols } = await c.query(
@@ -548,7 +548,7 @@ import {
 
 describe('catálogo de orígenes', () => {
   it('es EXACTAMENTE el del CHECK de la base (se tocan juntos)', () => {
-    const sql = readFileSync('supabase/migrations/20261010000001_visitas_origen_e_historial.sql', 'utf8')
+    const sql = readFileSync('supabase/migrations/20261010000002_visitas_origen_e_historial.sql', 'utf8')
     const m = /property_visits_origin_check\s+CHECK \(origin IS NULL OR origin IN \(([^)]*)\)\)/.exec(sql)
     expect(m).not.toBeNull()
     const enLaBase = (m?.[1] ?? '').split(',').map(s => s.trim().replace(/'/g, ''))

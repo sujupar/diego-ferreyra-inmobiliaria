@@ -198,7 +198,7 @@ quedó; si ya terminó, ve la pantalla de gracias (con el regalo).
 
 ### 4.1 Modelo de datos
 
-**Entrega 1 — migración `20261010000001_visitas_origen_e_historial.sql` (aditiva):**
+**Entrega 1 — migración `20261010000002_visitas_origen_e_historial.sql` (aditiva):**
 
 - `property_leads.phone_norm` — columna generada, misma expresión que `contacts.phone_norm`
   (últimos 10 dígitos o NULL) + índice `(property_id, phone_norm)`. Regla de CLAUDE.md: los

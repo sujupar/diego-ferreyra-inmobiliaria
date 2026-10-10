@@ -1,5 +1,5 @@
 /**
- * Aplica `20261010000001_visitas_origen_e_historial.sql` y VERIFICA lo que importa, TODO
+ * Aplica `20261010000002_visitas_origen_e_historial.sql` y VERIFICA lo que importa, TODO
  * dentro de UNA SOLA transacción: si cualquier verificación falla, se hace ROLLBACK de la
  * migración entera (no queda nada aplicado a medias) y el proceso sale con código 1. "Abortar"
  * significa eso — no solo "salir con error" (auditoría, I3).
@@ -31,7 +31,7 @@ async function main() {
     // (auditoría, I3): todo lo que sigue, migración + verificaciones, en UNA transacción.
     await c.query('BEGIN')
 
-    await c.query(readFileSync('supabase/migrations/20261010000001_visitas_origen_e_historial.sql', 'utf8'))
+    await c.query(readFileSync('supabase/migrations/20261010000002_visitas_origen_e_historial.sql', 'utf8'))
     console.log('migración aplicada (sin commitear todavía); verificando…')
 
     const { rows: cols } = await c.query(
