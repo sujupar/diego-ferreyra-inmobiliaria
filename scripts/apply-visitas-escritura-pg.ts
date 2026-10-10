@@ -151,9 +151,14 @@ async function main() {
 
       // El servidor (rol del script y service_role, que es la clave que usa la app) sigue escribiendo.
       await c.query('SAVEPOINT servidor_postgres')
-      const updPostgres = await c.query(`UPDATE property_visits SET notes = notes WHERE id=$1`, [idPrueba])
-      await c.query('ROLLBACK TO SAVEPOINT servidor_postgres')
-      ok(updPostgres.rowCount === 1, 'con el rol del script un UPDATE inocuo funciona')
+      let filasPostgres: number | null = null
+      try {
+        const updPostgres = await c.query(`UPDATE property_visits SET notes = notes WHERE id=$1`, [idPrueba])
+        filasPostgres = updPostgres.rowCount
+      } finally {
+        await c.query('ROLLBACK TO SAVEPOINT servidor_postgres')
+      }
+      ok(filasPostgres === 1, 'con el rol del script un UPDATE inocuo funciona')
 
       await c.query('SAVEPOINT servidor_service_role')
       try {
@@ -165,8 +170,10 @@ async function main() {
         await c.query('RESET ROLE')
       }
     } finally {
-      await c.query('RESET ROLE')
+      // Primero el ROLLBACK TO SAVEPOINT: si una sentencia falló, la transacción quedó
+      // abortada y un RESET ROLE antes tiraría 25P02, tapando el error real.
       await c.query('ROLLBACK TO SAVEPOINT pruebas')
+      await c.query('RESET ROLE')
     }
 
     const { rows: resto } = await c.query(
