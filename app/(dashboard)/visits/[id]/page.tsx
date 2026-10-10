@@ -144,7 +144,10 @@ export default function VisitDetailPage() {
               </a>
             )}
             {email && (
-              <a href={`mailto:${email}`} className="flex items-center gap-2 break-all text-brand max-md:min-h-11">
+              // Codificado: el email lo escribió un tercero (portal, formulario) y
+              // "a@b.com?bcc=x@evil.com&body=…" crudo prellenaría el correo del asesor.
+              // RFC 6068 acepta la arroba como %40.
+              <a href={`mailto:${encodeURIComponent(email)}`} className="flex items-center gap-2 break-all text-brand max-md:min-h-11">
                 <Mail className="h-4 w-4 shrink-0" aria-hidden="true" />{email}
               </a>
             )}

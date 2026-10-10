@@ -58,6 +58,16 @@ describe('VisitDetailPage — la pantalla no se queda en "Cargando…" ante un f
     expect(screen.getByText('Creada')).toBeInTheDocument()
     expect(screen.queryByText('Cargando…')).not.toBeInTheDocument()
   })
+  it('el mailto: va con el email codificado: un "?bcc=" escrito por un tercero no prellena el correo', async () => {
+    // El email lo escribió el interesado en un portal o formulario: no es de fiar.
+    respuesta = async () => ok(visita({ client_email: 'a@b.com?bcc=x@evil.com&body=hola' }))
+    render(<VisitDetailPage />)
+    const mail = await screen.findByRole('link', { name: 'a@b.com?bcc=x@evil.com&body=hola' })
+    const href = mail.getAttribute('href') ?? ''
+    expect(href).toBe(`mailto:${encodeURIComponent('a@b.com?bcc=x@evil.com&body=hola')}`)
+    expect(href).not.toContain('?')
+    expect(href).not.toContain('&')
+  })
   it('un 404 dice que no se encontró la visita, con salida a /visits', async () => {
     respuesta = async () => ({ ok: false, status: 404, json: async () => ({ error: 'No encontramos la visita' }) })
     render(<VisitDetailPage />)

@@ -57,7 +57,8 @@ describe('ficha de visita — el cliente se puede llamar desde el teléfono', ()
   it('el mail es un enlace mailto: y parte si no entra', async () => {
     render(<VisitDetailPage />)
     const mail = await screen.findByRole('link', { name: VISITA.client_email })
-    expect(mail).toHaveAttribute('href', `mailto:${VISITA.client_email}`)
+    // Codificado (la arroba viaja como %40, RFC 6068): ver page.test.tsx.
+    expect(mail).toHaveAttribute('href', `mailto:${encodeURIComponent(VISITA.client_email)}`)
     expect(mail.className).toContain('break-all')
   })
   it('sin teléfono ni mail no dibuja enlaces vacíos', async () => {
