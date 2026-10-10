@@ -27,6 +27,7 @@ import { PasoPersona } from './PasoPersona'
 import { PasoCuando } from './PasoCuando'
 import { PasoAsesor, type Asesor } from './PasoAsesor'
 import { PasoConfirmar, type DuplicadoVisita } from './PasoConfirmar'
+import { LUGAR_PARA_LA_X } from './titulo-paso'
 import { cn } from '@/lib/utils'
 
 const ETIQUETA: Record<PasoAgendar, string> = {
@@ -288,14 +289,15 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, onAgendad
             <div className="h-1 shrink-0 bg-secondary md:hidden" aria-hidden="true">
               <div className="h-1 bg-brand transition-[width]" style={{ width: `${((indice + 1) / pasos.length) * 100}%` }} />
             </div>
-            {/* `max-md:pr-16`: en celular la X de cerrar (44px, arriba a la
-                derecha) se agranda y pisa el título del paso si no le dejamos
-                margen — a partir de md la X vuelve a su tamaño chico y el
-                padding normal ya alcanza. */}
-            <div ref={contenidoRef} className="flex-1 min-h-0 space-y-4 overflow-y-auto p-6 max-md:pr-16">
-              {cargaInicial === 'cargando' && <p className="text-sm text-muted-foreground">Cargando…</p>}
+            {/* El lugar para la X de cerrar (en celular mide 44px, arriba a la
+                derecha) NO va acá: en todo el contenido le comía 40px a cada fila
+                de la lista. Va solo en lo que queda arriba — el título de cada
+                paso (CLASE_TITULO_PASO) o el aviso/cargando que lo reemplaza
+                (LUGAR_PARA_LA_X). Ver ./titulo-paso.ts. */}
+            <div ref={contenidoRef} className="flex-1 min-h-0 space-y-4 overflow-y-auto p-6">
+              {cargaInicial === 'cargando' && <p className={cn('text-sm text-muted-foreground', LUGAR_PARA_LA_X)}>Cargando…</p>}
               {cargaInicial === 'error' && (
-                <div className="space-y-3">
+                <div className={cn('space-y-3', LUGAR_PARA_LA_X)}>
                   <p role="alert" className="text-sm text-destructive">No pudimos cargar los datos. Probá de nuevo.</p>
                   <Button type="button" variant="outline" onClick={() => setIntentoInicial(n => n + 1)}>Reintentar</Button>
                 </div>
@@ -303,7 +305,7 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, onAgendad
               {listo && (
                 <>
                   {avisoPropiedad && estado.paso === 'propiedad' && (
-                    <p role="alert" className="text-sm text-destructive">{avisoPropiedad}</p>
+                    <p role="alert" className={cn('text-sm text-destructive', LUGAR_PARA_LA_X)}>{avisoPropiedad}</p>
                   )}
                   {estado.paso === 'propiedad' && <PasoPropiedad {...props} />}
                   {estado.paso === 'origen' && <PasoOrigen {...props} />}

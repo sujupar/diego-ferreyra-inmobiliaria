@@ -6,6 +6,7 @@ import { avisosDeChoque } from '@/lib/visitas/choques'
 import type { VisitaAgendaR } from '@/lib/visitas/tipos'
 import type { EstadoAgendar, AccionAgendar } from '@/lib/visitas/agendar-estado'
 import { leerRespuesta } from './leer-respuesta'
+import { CLASE_TITULO_PASO } from './titulo-paso'
 
 export function PasoCuando({ estado, despachar }: { estado: EstadoAgendar; despachar: (a: AccionAgendar) => void }) {
   const [visitasDelDia, setVisitasDelDia] = useState<VisitaAgendaR[]>([])
@@ -28,7 +29,7 @@ export function PasoCuando({ estado, despachar }: { estado: EstadoAgendar; despa
   return (
     <div className="space-y-4">
       <div className="space-y-1">
-        <h2 tabIndex={-1} className="text-xl font-semibold outline-none">¿Cuándo?</h2>
+        <h2 tabIndex={-1} className={CLASE_TITULO_PASO}>¿Cuándo?</h2>
         <p className="text-sm text-muted-foreground">Horario de Argentina. Te avisamos si el asesor ya tiene algo a esa hora.</p>
       </div>
       <SelectorDiaHora hoy={fechaEnArgentina(new Date())} fecha={estado.fecha} hora={estado.hora}

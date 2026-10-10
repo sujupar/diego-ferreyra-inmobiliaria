@@ -2,13 +2,14 @@
 import { ORIGENES_VISITA, ORIGEN_INFO } from '@/lib/visitas/origen'
 import type { EstadoAgendar, AccionAgendar } from '@/lib/visitas/agendar-estado'
 import { cn } from '@/lib/utils'
+import { CLASE_TITULO_PASO } from './titulo-paso'
 
 export function PasoOrigen({ estado, despachar }: { estado: EstadoAgendar; despachar: (a: AccionAgendar) => void }) {
   const info = estado.origen ? ORIGEN_INFO[estado.origen] : null
   return (
     <div className="space-y-5">
       <div className="space-y-1">
-        <h2 tabIndex={-1} className="text-xl font-semibold outline-none">¿De dónde viene esta visita?</h2>
+        <h2 tabIndex={-1} className={CLASE_TITULO_PASO}>¿De dónde viene esta visita?</h2>
         <p className="text-sm text-muted-foreground">Con esto sabemos qué canal trae visitas que se concretan.</p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">

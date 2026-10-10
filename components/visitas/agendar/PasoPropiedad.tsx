@@ -4,6 +4,7 @@ import { Search } from 'lucide-react'
 import type { EstadoAgendar, AccionAgendar, PropiedadElegida } from '@/lib/visitas/agendar-estado'
 import { leerRespuesta } from './leer-respuesta'
 import { cn } from '@/lib/utils'
+import { CLASE_TITULO_PASO } from './titulo-paso'
 
 interface PropiedadApi { id: string; address: string; neighborhood: string | null; foto: string | null; assigned_to: string | null }
 
@@ -37,7 +38,7 @@ export function PasoPropiedad({ estado, despachar }: { estado: EstadoAgendar; de
 
   return (
     <div className="space-y-4">
-      <h2 tabIndex={-1} className="text-xl font-semibold outline-none">¿Qué propiedad van a visitar?</h2>
+      <h2 tabIndex={-1} className={CLASE_TITULO_PASO}>¿Qué propiedad van a visitar?</h2>
       <label className="flex h-11 items-center gap-2 rounded-lg border bg-card px-3">
         <Search className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
         <span className="sr-only">Buscar por dirección o barrio</span>

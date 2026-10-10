@@ -3,6 +3,7 @@ import { construirInstante, formatearFechaLarga, yaOcurrio } from '@/lib/visitas
 import { ORIGEN_INFO } from '@/lib/visitas/origen'
 import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
 import type { EstadoAgendar, AccionAgendar } from '@/lib/visitas/agendar-estado'
+import { CLASE_TITULO_PASO } from './titulo-paso'
 
 /**
  * Ronda 1, ítem 12: un duplicado puede ser DOS cosas distintas. Si el
@@ -47,7 +48,7 @@ export function PasoConfirmar({ estado, despachar, nombreAsesor, duplicado, erro
   ]
   return (
     <div className="space-y-5">
-      <h2 tabIndex={-1} className="text-xl font-semibold outline-none">Revisá y agendá</h2>
+      <h2 tabIndex={-1} className={CLASE_TITULO_PASO}>Revisá y agendá</h2>
       <dl className="divide-y rounded-xl border bg-card">
         {filas.map(([k, v]) => (
           <div key={k} className="flex justify-between gap-4 px-4 py-3 text-sm">

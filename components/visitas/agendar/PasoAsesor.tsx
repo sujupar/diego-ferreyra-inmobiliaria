@@ -1,6 +1,7 @@
 'use client'
 import type { EstadoAgendar, AccionAgendar } from '@/lib/visitas/agendar-estado'
 import { cn } from '@/lib/utils'
+import { CLASE_TITULO_PASO } from './titulo-paso'
 
 export interface Asesor { id: string; full_name: string }
 
@@ -24,7 +25,7 @@ export function PasoAsesor({ estado, despachar, asesores, cargando, error, onRei
 }) {
   return (
     <div className="space-y-4">
-      <h2 tabIndex={-1} className="text-xl font-semibold outline-none">¿Quién la muestra?</h2>
+      <h2 tabIndex={-1} className={CLASE_TITULO_PASO}>¿Quién la muestra?</h2>
       {cargando && <p className="text-sm text-muted-foreground">Cargando asesores…</p>}
       {error && (
         <div className="space-y-3">

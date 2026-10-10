@@ -7,6 +7,7 @@ import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
 import type { EstadoAgendar, AccionAgendar } from '@/lib/visitas/agendar-estado'
 import { leerRespuesta } from './leer-respuesta'
 import { cn } from '@/lib/utils'
+import { CLASE_TITULO_PASO } from './titulo-paso'
 
 function haceCuanto(iso: string): string {
   const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
@@ -60,7 +61,7 @@ export function PasoPersona({ estado, despachar }: { estado: EstadoAgendar; desp
   return (
     <div className="space-y-4">
       <div className="space-y-1">
-        <h2 tabIndex={-1} className="text-xl font-semibold outline-none">{titulo}</h2>
+        <h2 tabIndex={-1} className={CLASE_TITULO_PASO}>{titulo}</h2>
         {conLista && lista && lista.length > 0 && !manual && (
           <p className="text-sm text-muted-foreground">
             {estado.origen === 'portal'
@@ -124,15 +125,18 @@ export function PasoPersona({ estado, despachar }: { estado: EstadoAgendar; desp
                     <li key={i.clave}>
                       <button type="button" aria-pressed={activa}
                         onClick={() => despachar({ tipo: 'elegirPersona', persona: { tipo: i.tipo, id: i.id, nombre: i.nombre, telefono: i.telefono, detalle: i.detalle } })}
-                        className={cn('flex min-h-14 w-full items-center gap-3 rounded-xl px-3 py-2 text-left',
+                        // En celular (360 px) el aviso "Ya tiene visita …" mide ~230 px y la
+                        // fila ~248: lado a lado aplastaba el nombre. Va DEBAJO del nombre
+                        // hasta `sm`, y desde ahí vuelve a la derecha (criterio 25).
+                        className={cn('flex min-h-14 w-full flex-col items-start gap-1 rounded-xl px-3 py-2 text-left sm:flex-row sm:items-center sm:gap-3',
                           activa ? 'border-2 border-brand bg-brand-soft/40' : 'border bg-card hover:bg-secondary')}>
-                        <span className="flex min-w-0 flex-1 flex-col">
-                          <span className="font-semibold">{i.nombre}</span>
+                        <span className="flex w-full min-w-0 flex-col sm:w-auto sm:flex-1">
+                          <span className="break-words font-semibold">{i.nombre}</span>
                           <span className="truncate text-xs text-muted-foreground">
                             {i.detalle} · {haceCuanto(i.fecha)}{i.telefono ? ` · ${i.telefono}` : ''}
                           </span>
                         </span>
-                        {nota && <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-900">{nota}</span>}
+                        {nota && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-900 sm:shrink-0">{nota}</span>}
                       </button>
                     </li>
                   )
