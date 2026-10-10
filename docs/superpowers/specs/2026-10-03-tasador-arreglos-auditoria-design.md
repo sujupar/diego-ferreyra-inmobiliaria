@@ -84,6 +84,25 @@ coeficientes se multiplican. Así es posible 130.000 vs 240.000.
 - **D3. Banda de distancia.** *(umbral a confirmar)* Si el IA queda a más del X % del clásico,
   la pantalla lo muestra en rojo, con el desglose de qué coeficientes explican la diferencia, y no
   se puede elegir el IA como tasación en uso sin confirmar.
+- **D5. El IA calcula TODOS los coeficientes con el mismo método (decisión del dueño,
+  2026-10-10).** Hallazgo que lo confirma: hoy el prompt solo le da al modelo el % de
+  depreciación de un edificio nuevo por estado ("Estado 3: 18,10 %"); no recibe la tabla
+  Ross-Heidecke por edad ni la regla W = 1 − K/200, así que no puede calcular edad-estado
+  como el clásico. Cambio:
+  - El prompt lleva el método COMPLETO: superficie homologada, tabla de piso, disposición,
+    calidad, la tabla Ross-Heidecke entera (100 filas × 9 estados) con la regla de vida útil
+    y W, y cómo se arma N y el precio por m² ajustado.
+  - Para la propiedad a tasar y cada comparable, el modelo devuelve la PLANILLA entera:
+    cada dato usado (piso, disposición, calidad, estado, antigüedad, ubicación) Y cada
+    coeficiente calculado (superficie homologada, K_piso, K_disp, M, % de vida, K de la
+    tabla, W, J, N), con una justificación por coeficiente.
+  - El código verifica cada coeficiente del modelo contra la tabla del método para el dato
+    que el propio modelo eligió. Si no coincide, manda la tabla y queda registrado como
+    corrección (visible). El precio final lo saca siempre la calculadora: la IA decide los
+    datos y explica; la aritmética no se le delega.
+  - Lo que cargó el asesor sigue mandando (regla del 2026-09-12): con todos los datos
+    cargados, IA y clásico dan exactamente lo mismo. La diferencia solo puede venir de lo
+    que faltaba y de la ubicación, acotada a 0,85–1,15.
 - **D4. Medición.** Se re-corre el IA sobre las 62 tasaciones (sin cambiar cuál está en uso) y se
   reporta la distribución de diferencias antes y después.
 
@@ -108,6 +127,6 @@ coeficientes se multiplican. Así es posible 130.000 vs 240.000.
 
 1. **Piso vacío (B1):** ¿lo hacemos obligatorio, o lo tratamos como neutro (×1,00)? Neutro
    cambia precios de tasaciones que se re-calculen.
-2. **Umbral de distancia IA (D3):** propuesta 15 %.
+2. ~~Umbral de distancia IA (D3)~~: aprobado 15 % (2026-10-10).
 3. **Gastos de escritura:** en la venta se calculan sobre el precio de venta y en la compra sobre
    el valor de escritura. ¿Es intencional?
