@@ -142,22 +142,17 @@ export interface EntradaComprador {
   mensaje: string | null
   source: string
   asignadoA: string | null
-  /**
-   * Estado con el que queda el comprador. La ventana de agendar manda 'scheduled': una
-   * persona que ya tiene visita NO es una "consulta sin responder", y GET /api/leads/count
-   * cuenta `status='new'` para el globito del Inbox y la tarjeta de /inicio. Default 'new'
-   * (responder-consulta: ahí sí es una consulta nueva).
-   */
-  estado?: EstadoComprador
 }
-
-/** Los dos estados que este módulo escribe en `property_leads.status`. */
-export type EstadoComprador = 'new' | 'scheduled'
 
 /**
  * Pasa un comprador a 'scheduled' SOLO si hoy está 'new' (`.eq('status','new')` como
  * guarda en el mismo UPDATE): uno 'discarded' o 'contacted' lo decidió una persona y no
  * se pisa. Si no está en 'new', el UPDATE no encuentra fila y no hace nada.
+ *
+ * Lo llama POST /api/visits DESPUÉS de crear la visita, para los tres caminos: una
+ * persona con visita no es una "consulta sin responder" (GET /api/leads/count cuenta
+ * `status='new'`). No va dentro de `asegurarComprador` a propósito: ahí todavía puede
+ * cortar el duplicado (409) o fallar el alta, y la persona quedaría "agendada" sin visita.
  */
 export async function marcarCompradorAgendado(leadId: string): Promise<void> {
   const { error } = await sb().from('property_leads').update({ status: 'scheduled' })
@@ -166,7 +161,6 @@ export async function marcarCompradorAgendado(leadId: string): Promise<void> {
 }
 
 export async function asegurarComprador(e: EntradaComprador): Promise<string> {
-  const estado: EstadoComprador = e.estado ?? 'new'
   const db = sb()
   const norm = ultimos10Digitos(e.telefono)
   // Normalizado UNA vez: se usa igual para buscar y para crear, así los dos
@@ -202,17 +196,13 @@ export async function asegurarComprador(e: EntradaComprador): Promise<string> {
         .eq('id', decision.leadId).is('email', null)
       if (error) fallo('completar email del comprador', error)
     }
-    if (estado === 'scheduled') {
-      // Misma guarda que marcarCompradorAgendado: solo 'new' → 'scheduled'.
-      const { error } = await db.from('property_leads').update({ status: 'scheduled' })
-        .eq('id', decision.leadId).eq('status', 'new')
-      if (error) fallo('marcar comprador como agendado', error)
-    }
     return decision.leadId
   }
+  // Nace 'new' siempre; si después se le crea una visita, marcarCompradorAgendado la pasa
+  // a 'scheduled' (ver ahí por qué no se hace acá).
   const { data, error } = await db.from('property_leads').insert({
     property_id: e.propertyId, name: e.nombre, phone: e.telefono, email: emailNorm,
-    message: e.mensaje, source: e.source, assigned_to: e.asignadoA, status: estado,
+    message: e.mensaje, source: e.source, assigned_to: e.asignadoA, status: 'new',
   }).select('id').single()
   if (error || !data) fallo('crear comprador', error)
   return String((data as { id: string }).id)

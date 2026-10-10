@@ -188,6 +188,7 @@ describe('POST /api/visits', () => {
     expect(res.status).toBe(409)
     expect(await res.json()).toMatchObject({ code: 'VISITA_DUPLICADA', visita: { id: 'v1' } })
     expect(datosMock.insertarVisita).not.toHaveBeenCalled()
+    expect(datosMock.marcarCompradorAgendado).not.toHaveBeenCalled()
   })
   it('doble toque: el teléfono guardado en OTRO formato ("15") también se detecta, con lead_id distinto', async () => {
     datosMock.visitasActivasDeLaPropiedad.mockResolvedValue([{ id: 'v1', lead_id: 'otro-lead-no-relacionado',
@@ -250,15 +251,27 @@ describe('POST /api/visits', () => {
     await pedir({ ...base, fecha: '2099-01-10', hora: '13:00', persona: { ...base.persona, email: 'sofia@mail.com' } })
     expect(emailMock).toHaveBeenCalledTimes(1)
   })
-  it('el comprador de una persona nueva se crea/reusa como "scheduled" (no suma como consulta sin responder)', async () => {
-    await pedir(base)
-    expect(datosMock.asegurarComprador.mock.calls[0][0]).toMatchObject({ estado: 'scheduled' })
+  it('persona nueva: una vez creada la visita, su comprador se marca agendado (no suma como consulta sin responder)', async () => {
+    datosMock.asegurarComprador.mockResolvedValue('lead-nuevo')
+    const res = await pedir(base)
+    expect(res.status).toBe(201)
+    expect(datosMock.marcarCompradorAgendado).toHaveBeenCalledWith('lead-nuevo')
   })
-  it('el comprador de una consulta de portal también queda "scheduled"', async () => {
+  it('consulta de portal: también se marca agendado después del alta', async () => {
     datosMock.leerConsulta.mockResolvedValue({ id: CONSULTA, property_id: PROP, lead_name: 'Mariana López',
       lead_phone: '1158234521', lead_email: null, portal: 'zonaprop', received_at: null, created_at: '2099-01-09T00:00:00Z', lead_message: 'Hola' })
+    datosMock.asegurarComprador.mockResolvedValue('lead-portal')
     await pedir({ ...base, origen: 'portal', persona: { tipo: 'consulta', id: CONSULTA } })
-    expect(datosMock.asegurarComprador.mock.calls[0][0]).toMatchObject({ estado: 'scheduled' })
+    expect(datosMock.marcarCompradorAgendado).toHaveBeenCalledWith('lead-portal')
+  })
+  it('si crear la visita falla, el comprador NO queda marcado agendado', async () => {
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      datosMock.insertarVisita.mockRejectedValue(new Error('crear visita: boom'))
+      const res = await pedir(base)
+      expect(res.status).toBe(500)
+      expect(datosMock.marcarCompradorAgendado).not.toHaveBeenCalled()
+    } finally { errores.mockRestore() }
   })
   it('registro ya existente: una vez creada la visita, se marca agendado (de "new" a "scheduled")', async () => {
     datosMock.leerRegistro.mockResolvedValue({ id: REGISTRO, property_id: PROP, name: 'Lucas Paz',

@@ -83,35 +83,20 @@ beforeEach(() => {
 })
 
 describe('asegurarComprador — estado del comprador', () => {
-  it('al CREAR desde la ventana de agendar queda "scheduled"', async () => {
+  // El paso a 'scheduled' NO ocurre acá: lo hace marcarCompradorAgendado recién cuando
+  // la visita quedó creada (si el alta corta por duplicado o falla, la persona no puede
+  // quedar "agendada" sin visita).
+  it('al CREAR, el comprador nace "new"', async () => {
     base([])
-    expect(await asegurarComprador({ ...entrada, estado: 'scheduled' })).toBe('lead-nuevo')
-    const fila = usa(inserts()[0], 'insert')?.args[0] as Record<string, unknown>
-    expect(fila.status).toBe('scheduled')
-  })
-  it('sin estado pedido crea "new", como hasta ahora (lo usa responder-consulta)', async () => {
-    base([])
-    await asegurarComprador(entrada)
+    expect(await asegurarComprador(entrada)).toBe('lead-nuevo')
     const fila = usa(inserts()[0], 'insert')?.args[0] as Record<string, unknown>
     expect(fila.status).toBe('new')
   })
-  it('al REUSAR con "scheduled" lo pasa a "scheduled" SOLO si hoy es "new" (guarda en el UPDATE)', async () => {
+  it('al REUSAR no toca el estado', async () => {
     base([EXISTENTE])
-    expect(await asegurarComprador({ ...entrada, estado: 'scheduled' })).toBe('lead-existente')
+    expect(await asegurarComprador(entrada)).toBe('lead-existente')
     expect(inserts()).toHaveLength(0)
-    const cambioDeEstado = updates().find(l => 'status' in (usa(l, 'update')?.args[0] as Record<string, unknown>))
-    expect(cambioDeEstado).toBeDefined()
-    expect(usa(cambioDeEstado as Llamada, 'update')?.args[0]).toEqual({ status: 'scheduled' })
-    expect(filtros(cambioDeEstado as Llamada)).toEqual([['id', 'lead-existente'], ['status', 'new']])
-  })
-  it('al REUSAR sin estado pedido no toca el estado', async () => {
-    base([EXISTENTE])
-    await asegurarComprador(entrada)
     expect(updates().filter(l => 'status' in (usa(l, 'update')?.args[0] as Record<string, unknown>))).toHaveLength(0)
-  })
-  it('si el UPDATE del estado falla, lanza (supabase-js no lanza: hay que mirar { error })', async () => {
-    base([EXISTENTE], true)
-    await expect(asegurarComprador({ ...entrada, estado: 'scheduled' })).rejects.toThrow(/boom/)
   })
 })
 
