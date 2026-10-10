@@ -9,7 +9,7 @@ import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
 import * as datos from '@/lib/visitas/datos'
 import { ORIGENES_VISITA, fuenteDelComprador, validarDetalleDeOrigen } from '@/lib/visitas/origen'
 import { validarHorarioDeVisita } from '@/lib/visitas/horario'
-import { validarPersonaNueva, telefonoCanonico } from '@/lib/visitas/persona'
+import { validarPersonaNueva, telefonoCanonico, telefonoEfectivo } from '@/lib/visitas/persona'
 import { puedeGestionarVisitas, puedeVerTodasLasVisitas, asesorParaLaVisita } from '@/lib/visitas/acceso'
 import type { Role } from '@/types/auth.types'
 
@@ -67,8 +67,28 @@ export async function POST(req: NextRequest) {
     if (propiedad.status !== 'approved' || !['disponible', 'reservada'].includes(propiedad.commercial_status ?? 'disponible')) {
       return error(409, 'La propiedad no está disponible para visitas', { code: 'PROPIEDAD_NO_DISPONIBLE' })
     }
-    if (!asesor.esPropio && !(await datos.asesorAsignable(asesor.asesorId))) {
-      return error(400, 'Ese asesor no está activo')
+    // Ronda 1 de revisión (Tarea 8): si el rol puede ver TODAS las visitas, se
+    // valida SIEMPRE que el asesor sea asignable — incluso cuando se elige a sí
+    // mismo (un coordinador recién dado de baja como asesor igual puede seguir
+    // operando el CRM un rato; que la propia sesión siga activa no prueba que
+    // la cuenta todavía sea "asesor o dueño"). Para el rol asesor no hace falta
+    // la consulta: `asesorParaLaVisita` ya lo fuerza a sí mismo siempre.
+    if (puedeVerTodasLasVisitas(role) && !(await datos.asesorAsignable(asesor.asesorId))) {
+      return error(400, 'Esa persona no puede mostrar propiedades (tiene que ser asesor o dueño activo)')
+    }
+
+    // ── Detalle del origen (M1, ronda 1) ─────────────────────────────────────
+    // Para los orígenes que NO son "portal" se valida ACÁ, antes de tocar la
+    // persona: así "otro" sin escribir el detalle no llega a crear ni a
+    // actualizar un comprador a mitad de camino. Para "portal" el detalle ES
+    // el portal de la consulta —nunca puede fallar, `validarDetalleDeOrigen`
+    // siempre da ok para ese origen— y se resuelve más abajo, apenas se lee
+    // la consulta.
+    let origenDetalle: string | null = null
+    if (b.origen !== 'portal') {
+      const d = validarDetalleDeOrigen(b.origen, b.origenDetalle, null)
+      if (!d.ok) return error(400, d.error)
+      origenDetalle = d.detalle
     }
 
     // ── La persona ─────────────────────────────────────────────────────────
@@ -77,19 +97,22 @@ export async function POST(req: NextRequest) {
     let email: string | null = null
     let leadId: string
     let portalInquiryId: string | null = null
-    let portal: string | null = null
 
     if (b.persona.tipo === 'consulta') {
       if (b.origen !== 'portal') return error(400, 'Una consulta de portal solo va con el origen "Consulta de portal"')
       const c = await datos.leerConsulta(b.persona.id)
       if (!c || c.property_id !== propiedad.id) return error(400, 'Esa consulta no es de esta propiedad')
-      const telCrudo = (b.persona.telefono?.trim() || c.lead_phone || '').trim()
+      // El teléfono GUARDADO manda si ya es válido: lo que mandó el navegador
+      // es apenas una sugerencia (lib/visitas/persona.ts, telefonoEfectivo).
+      const telCrudo = telefonoEfectivo(c.lead_phone, b.persona.telefono)
       if (!ultimos10Digitos(telCrudo)) return error(400, 'Falta el teléfono de la persona')
       // Teléfono canónico (lib/visitas/persona.ts): así "11 5823-4521" y
       // "011 15 5823-4521" —el mismo celular, escrito distinto— quedan
       // guardados IDÉNTICOS en client_phone y en property_leads.phone.
       const tel = telefonoCanonico(telCrudo)
-      portal = c.portal
+      const d = validarDetalleDeOrigen(b.origen, b.origenDetalle, c.portal)
+      if (!d.ok) return error(400, d.error) // defensivo: origen==='portal' siempre da ok (ver origen.ts)
+      origenDetalle = d.detalle
       nombre = c.lead_name?.trim() || 'Sin nombre'
       telefono = tel
       email = c.lead_email?.trim().toLowerCase() || null
@@ -101,10 +124,10 @@ export async function POST(req: NextRequest) {
     } else if (b.persona.tipo === 'registro') {
       const r = await datos.leerRegistro(b.persona.id)
       if (!r || r.property_id !== propiedad.id || r.deleted_at) return error(400, 'Esa persona no está registrada en esta propiedad')
-      const telCrudo = (b.persona.telefono?.trim() || r.phone || '').trim()
+      const telCrudo = telefonoEfectivo(r.phone, b.persona.telefono)
       if (!ultimos10Digitos(telCrudo)) return error(400, 'Falta el teléfono de la persona')
       const tel = telefonoCanonico(telCrudo)
-      if (!r.phone) await datos.completarTelefonoDelRegistro(r.id, tel)
+      if (!ultimos10Digitos(r.phone)) await datos.completarTelefonoDelRegistro(r.id, tel)
       nombre = r.name?.trim() || 'Sin nombre'
       telefono = tel
       email = r.email?.trim().toLowerCase() || null
@@ -121,14 +144,16 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const detalle = validarDetalleDeOrigen(b.origen, b.origenDetalle, portal)
-    if (!detalle.ok) return error(400, detalle.error)
-
     // ── Duplicado: misma persona con una visita viva en esta propiedad ──────
+    // Lo de arriba YA pudo escribir en property_leads (comprador reutilizado,
+    // o un hueco de teléfono/email completado) aunque la visita termine en 409
+    // acá abajo — aceptado a propósito: ese dato queda correcto igual, y sirve
+    // la próxima vez que esta persona agende (no hace falta deshacerlo).
     if (!b.forzarDuplicado) {
       const norm = ultimos10Digitos(telefono)
       const activa = (await datos.visitasActivasDeLaPropiedad(propiedad.id))
-        .find(v => v.lead_id === leadId || (norm !== null && ultimos10Digitos(v.client_phone) === norm))
+        .find(v => v.lead_id === leadId
+          || (norm !== null && ultimos10Digitos(telefonoCanonico(v.client_phone ?? '')) === norm))
       if (activa) {
         return error(409, 'Esta persona ya tiene una visita agendada en esta propiedad', {
           code: 'VISITA_DUPLICADA', visita: { id: activa.id, scheduled_at: activa.scheduled_at },
@@ -140,7 +165,7 @@ export async function POST(req: NextRequest) {
       property_id: propiedad.id, advisor_id: asesor.asesorId, client_name: nombre, client_email: email,
       client_phone: telefono, scheduled_at: horario.instante.toISOString(),
       status: b.confirmada ? 'scheduled' : 'pending_confirmation',
-      notes: b.notas?.trim() || null, origin: b.origen, origin_detail: detalle.detalle,
+      notes: b.notas?.trim() || null, origin: b.origen, origin_detail: origenDetalle,
       lead_id: leadId, portal_inquiry_id: portalInquiryId, created_by: user.id, changed_by: user.id,
     })
 

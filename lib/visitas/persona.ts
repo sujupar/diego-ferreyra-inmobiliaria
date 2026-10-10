@@ -49,3 +49,19 @@ export function telefonoCanonico(tel: string): string {
   const normalizado = normalizeWhatsappPhone(tel)
   return normalizado ? `+${normalizado}` : tel.trim()
 }
+
+/**
+ * Teléfono a usar cuando la persona YA existe (consulta de portal, registro
+ * del formulario público): el que manda el navegador en la ventana de
+ * "Agendar" es solo una SUGERENCIA del asesor (a veces ni la toca, queda lo
+ * que precargó la pantalla) — el teléfono GUARDADO es la fuente de verdad SI
+ * ya es válido. Si no (falta, o no llega a 10 dígitos), recién ahí se usa lo
+ * que mandó el navegador. Decisión de la ronda 1 de revisión de la Tarea 8:
+ * sin esto, un typo en ese campo del formulario podía pisarle el teléfono
+ * real a una consulta/registro existente.
+ */
+export function telefonoEfectivo(guardado: string | null | undefined, enviado: string | null | undefined): string {
+  const g = (guardado ?? '').trim()
+  if (ultimos10Digitos(g)) return g
+  return (enviado ?? '').trim() || g
+}

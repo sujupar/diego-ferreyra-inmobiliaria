@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validarPersonaNueva, telefonoCanonico } from './persona'
+import { validarPersonaNueva, telefonoCanonico, telefonoEfectivo } from './persona'
 
 describe('validarPersonaNueva', () => {
   it('acepta nombre y teléfono, limpia espacios y deja el email en minúsculas', () => {
@@ -38,5 +38,18 @@ describe('telefonoCanonico', () => {
   })
   it('si no se puede confirmar el número, deja el texto tal cual (recortado)', () => {
     expect(telefonoCanonico('  no es un teléfono  ')).toBe('no es un teléfono')
+  })
+})
+
+describe('telefonoEfectivo', () => {
+  it('el teléfono guardado gana si ya es válido, aunque llegue uno distinto del navegador', () => {
+    expect(telefonoEfectivo('+5491144444444', '11 5823-4521')).toBe('+5491144444444')
+  })
+  it('si no hay guardado válido, usa el que manda el navegador', () => {
+    expect(telefonoEfectivo(null, '11 5823-4521')).toBe('11 5823-4521')
+    expect(telefonoEfectivo('123', '11 5823-4521')).toBe('11 5823-4521')
+  })
+  it('sin ninguno de los dos, devuelve vacío (la validación es de quien llama)', () => {
+    expect(telefonoEfectivo(null, undefined)).toBe('')
   })
 })
