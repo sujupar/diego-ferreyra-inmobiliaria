@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import VisitDetailPage from './page'
 
 /**
@@ -167,6 +168,20 @@ describe('VisitDetailPage — cambiar de etapa', () => {
     expect(await screen.findByRole('button', { name: 'Reabrir' })).toBeInTheDocument()
   })
 
+  it('"Se realizó" exige elegir cómo se vio el interés antes de guardar (spec §3.3)', async () => {
+    const usuario = userEvent.setup()
+    render(<VisitDetailPage />)
+    await usuario.click(await screen.findByRole('button', { name: 'Se realizó' }))
+    await usuario.click(await screen.findByRole('button', { name: 'Guardar' }))
+    expect(await screen.findByText('Elegí cómo viste el interés')).toBeInTheDocument()
+    expect(posteos).toHaveLength(0)
+
+    await usuario.click(screen.getByRole('radio', { name: 'Medio' }))
+    await usuario.click(screen.getByRole('button', { name: 'Guardar' }))
+    await waitFor(() => expect(posteos).toHaveLength(1))
+    expect(posteos[0].body).toMatchObject({ tipo: 'realizada', interes: 'medio', version: VERSION })
+  })
+
   it('cambiar de motivo dentro de la misma acción descarta el detalle anterior', async () => {
     render(<VisitDetailPage />)
     fireEvent.click(await screen.findByRole('button', { name: 'No se realizó' }))
@@ -225,10 +240,11 @@ describe('VisitDetailPage — cambiar de asesor', () => {
 describe('VisitDetailPage — concurrencia optimista', () => {
   it('manda en el body la version que vio la pantalla, carácter por carácter', async () => {
     render(<VisitDetailPage />)
-    // "Se realizó" no exige ningún campo: un clic en Guardar alcanza para
-    // aislar que la version viaja, sin mezclarlo con la validación del motivo.
+    // "Se realizó" solo exige el interés (un toque): alcanza para aislar que la
+    // version viaja, sin mezclarlo con la validación del motivo.
     fireEvent.click(await screen.findByRole('button', { name: 'Se realizó' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }))
+    fireEvent.click(await screen.findByRole('radio', { name: 'Alto' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
     await waitFor(() => expect(posteos).toHaveLength(1))
     const cuerpo = posteos[0].body as Record<string, unknown>
     expect(cuerpo.version).toBe(VERSION)
@@ -273,7 +289,8 @@ describe('VisitDetailPage — concurrencia optimista', () => {
     }))
     render(<VisitDetailPage />)
     fireEvent.click(await screen.findByRole('button', { name: 'Se realizó' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }))
+    fireEvent.click(await screen.findByRole('radio', { name: 'Alto' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
     await waitFor(() => expect(posteos).toHaveLength(1))
     await waitFor(() => expect(pedidosGet).toBeGreaterThan(1))
     await screen.findByText('Calle Falsa 123')

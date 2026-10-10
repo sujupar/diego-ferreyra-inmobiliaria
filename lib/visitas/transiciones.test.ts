@@ -62,8 +62,22 @@ describe('aplicarAccion', () => {
     expect(aplicarAccion(pasada('scheduled'), { tipo: 'realizada', interes: 'alto', notas: ' Quiere volver ' }, AHORA))
       .toEqual({ ok: true, patch: { status: 'completed', advisor_interest: 'alto', completion_notes: 'Quiere volver', outcome_reason: null } })
   })
+  it('"Se realizó" exige cómo se vio el interés (spec §3.3)', () => {
+    // El tipo ya lo exige; esto es la barrera en tiempo de ejecución por si llega
+    // un cuerpo sin interés (o con uno inventado) que se haya saltado la validación.
+    const sinInteres = JSON.parse('{"tipo":"realizada","notas":"Le gustó"}') as Parameters<typeof aplicarAccion>[1]
+    expect(aplicarAccion(pasada('scheduled'), sinInteres, AHORA))
+      .toEqual({ ok: false, error: 'Elegí cómo viste el interés' })
+    const inventado = JSON.parse('{"tipo":"realizada","interes":"altisimo"}') as Parameters<typeof aplicarAccion>[1]
+    expect(aplicarAccion(pasada('scheduled'), inventado, AHORA))
+      .toEqual({ ok: false, error: 'Elegí cómo viste el interés' })
+  })
+  it('"Se realizó" con interés y sin notas guarda notas en null', () => {
+    expect(aplicarAccion(pasada('scheduled'), { tipo: 'realizada', interes: 'bajo' }, AHORA))
+      .toEqual({ ok: true, patch: { status: 'completed', advisor_interest: 'bajo', completion_notes: null, outcome_reason: null } })
+  })
   it('no se marca "Se realizó" una visita de pasado mañana', () => {
-    expect(aplicarAccion(futura('scheduled'), { tipo: 'realizada' }, AHORA))
+    expect(aplicarAccion(futura('scheduled'), { tipo: 'realizada', interes: 'alto' }, AHORA))
       .toEqual({ ok: false, error: 'Todavía no llegó el horario de la visita' })
   })
   it('"No se realizó" exige motivo', () => {

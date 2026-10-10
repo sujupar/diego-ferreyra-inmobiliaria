@@ -17,7 +17,8 @@ const accionSchema = z.discriminatedUnion('tipo', [
   z.object({ tipo: z.literal('confirmar') }),
   z.object({ tipo: z.literal('reprogramar'), fecha: z.string().max(10), hora: z.string().max(5) }),
   z.object({ tipo: z.literal('cancelar'), motivo: z.enum(MOTIVOS_NO_REALIZADA), detalle: z.string().max(500).nullish() }),
-  z.object({ tipo: z.literal('realizada'), interes: z.enum(INTERESES).nullish(), notas: z.string().max(1000).nullish() }),
+  // El interés es OBLIGATORIO (spec §3.3: "Se realizó" pide ¿Cómo viste el interés?).
+  z.object({ tipo: z.literal('realizada'), interes: z.enum(INTERESES), notas: z.string().max(1000).nullish() }),
   z.object({ tipo: z.literal('no_realizada'), motivo: z.enum(MOTIVOS_NO_REALIZADA), detalle: z.string().max(500).nullish() }),
   z.object({ tipo: z.literal('cambiar_asesor'), asesorId: z.string().uuid() }),
   z.object({ tipo: z.literal('reabrir'), motivo: z.string().max(500) }),
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const bodyCrudo = await req.json().catch(() => null)
   const parsed = accionSchema.safeParse(bodyCrudo)
   if (!parsed.success) return NextResponse.json({ error: 'Acción inválida' }, { status: 400 })
-  const accion = parsed.data as AccionVisita
+  const accion: AccionVisita = parsed.data
 
   const versionParsed = versionSchema.safeParse(bodyCrudo)
   if (!versionParsed.success) return NextResponse.json({ error: 'Versión inválida' }, { status: 400 })

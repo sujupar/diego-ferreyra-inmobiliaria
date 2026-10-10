@@ -73,7 +73,10 @@ export function AccionVisitaDialog({ visita, accion, onClose, onHecho, onRecarga
   function cuerpo(): Record<string, unknown> | string {
     switch (accion) {
       case 'confirmar': return { tipo: 'confirmar' }
-      case 'realizada': return { tipo: 'realizada', interes, notas }
+      case 'realizada':
+        // Spec §3.3: el interés es obligatorio (el servidor también lo exige).
+        if (!interes) return 'Elegí cómo viste el interés'
+        return { tipo: 'realizada', interes, notas }
       case 'no_realizada':
       case 'cancelar': {
         if (!motivo) return 'Elegí un motivo'

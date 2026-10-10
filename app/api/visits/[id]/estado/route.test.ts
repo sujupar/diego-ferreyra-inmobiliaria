@@ -106,12 +106,12 @@ describe('POST /api/visits/[id]/estado', () => {
   })
   it('un abogado: 403 sin leer nada', async () => {
     estado.role = 'abogado'
-    expect((await pedir({ tipo: 'realizada' })).status).toBe(403)
+    expect((await pedir({ tipo: 'realizada', interes: 'alto' })).status).toBe(403)
     expect(datosMock.leerVisita).not.toHaveBeenCalled()
   })
   it('una visita ajena: 404, no 403', async () => {
     datosMock.leerVisita.mockResolvedValue(visita({ advisor_id: 'otro', created_by: 'otro' }))
-    const res = await pedir({ tipo: 'realizada' })
+    const res = await pedir({ tipo: 'realizada', interes: 'alto' })
     expect(res.status).toBe(404)
     expect(await res.json()).toMatchObject({ error: 'No encontramos la visita' })
   })
@@ -128,6 +128,13 @@ describe('POST /api/visits/[id]/estado', () => {
   it('visita inexistente: 404; cuerpo inválido: 400', async () => {
     expect((await pedir({ tipo: 'bailar' })).status).toBe(400)
     datosMock.leerVisita.mockResolvedValue(null)
-    expect((await pedir({ tipo: 'realizada' })).status).toBe(404)
+    expect((await pedir({ tipo: 'realizada', interes: 'alto' })).status).toBe(404)
+  })
+  it('"Se realizó" sin el interés: 400 y no escribe nada (spec §3.3)', async () => {
+    const res = await pedir({ tipo: 'realizada', notas: 'Le gustó' })
+    expect(res.status).toBe(400)
+    expect(datosMock.actualizarVisita).not.toHaveBeenCalled()
+    expect((await pedir({ tipo: 'realizada', interes: null })).status).toBe(400)
+    expect(datosMock.actualizarVisita).not.toHaveBeenCalled()
   })
 })

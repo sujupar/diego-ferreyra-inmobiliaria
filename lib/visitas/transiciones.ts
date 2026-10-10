@@ -54,7 +54,7 @@ export type AccionVisita =
   | { tipo: 'confirmar' }
   | { tipo: 'reprogramar'; fecha: string; hora: string }
   | { tipo: 'cancelar'; motivo: MotivoNoRealizada; detalle?: string | null }
-  | { tipo: 'realizada'; interes?: Interes | null; notas?: string | null }
+  | { tipo: 'realizada'; interes: Interes; notas?: string | null }
   | { tipo: 'no_realizada'; motivo: MotivoNoRealizada; detalle?: string | null }
   | { tipo: 'cambiar_asesor'; asesorId: string }
   | { tipo: 'reabrir'; motivo: string }
@@ -153,10 +153,13 @@ export function aplicarAccion(v: VisitaParaAccion, accion: AccionVisita, ahora: 
       return { ok: true, patch: { status: 'no_show', outcome_reason: accion.motivo, completion_notes: m.nota } }
     }
     case 'realizada': {
-      const interes = accion.interes ?? null
-      if (interes !== null && !(INTERESES as readonly string[]).includes(interes)) return { ok: false, error: 'Elegí un nivel de interés' }
+      // Spec §3.3: "Se realizó" pide ¿Cómo viste el interés? (Alto / Medio / Bajo). Sin
+      // ese dato la visita realizada no le dice nada al seguimiento. El tipo ya lo
+      // exige; esto lo frena en tiempo de ejecución (un cuerpo sin interés o inventado).
+      const interes: unknown = accion.interes
+      if (!(INTERESES as readonly unknown[]).includes(interes)) return { ok: false, error: 'Elegí cómo viste el interés' }
       const notas = limpiar(accion.notas, LARGO_NOTAS)
-      return { ok: true, patch: { status: 'completed', advisor_interest: interes, completion_notes: notas || null, outcome_reason: null } }
+      return { ok: true, patch: { status: 'completed', advisor_interest: accion.interes, completion_notes: notas || null, outcome_reason: null } }
     }
     case 'cambiar_asesor': {
       const id = accion.asesorId.trim()
