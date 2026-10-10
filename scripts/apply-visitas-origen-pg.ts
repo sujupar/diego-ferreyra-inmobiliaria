@@ -98,15 +98,11 @@ async function main() {
 
     // ─── Pruebas de RLS con sesión simulada (auditoría, I4) ───
     // Correr todo como `postgres` (rolbypassrls=true en producción) nunca ejercita la RLS
-    // nueva, que es lo único que cambia el comportamiento del código viejo. Se simula sesión
-    // de un asesor real y de un abogado con SET LOCAL ROLE + request.jwt.claims.
+    // nueva, que es lo único que cambia el comportamiento del código viejo. Se simula la sesión
+    // de un abogado con SET LOCAL ROLE + request.jwt.claims (ver la nota de abajo sobre el asesor).
     await c.query('SAVEPOINT rls')
     try {
-      const { rows: asesores } = await c.query(`SELECT id FROM profiles WHERE role='asesor' LIMIT 2`)
       const { rows: abogados } = await c.query(`SELECT id FROM profiles WHERE role='abogado' LIMIT 1`)
-      ok(asesores.length >= 1, 'hay al menos un perfil con role=asesor para probar la RLS')
-      const ase = asesores[0].id as string
-      const otroAsesor = asesores[1]?.id as string | undefined
       const abo = abogados[0]?.id as string | undefined
 
       const comoUsuario = async (uid: string) => {
@@ -114,35 +110,20 @@ async function main() {
         await c.query(`SELECT set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: uid, role: 'authenticated' })])
       }
 
+      // (revisión final, grupo A): ACÁ había pruebas que escribían en property_visits CON
+      // sesión de asesor (INSERT/UPDATE "la RLS no lo bloquea", y el actor que sale del JWT).
+      // Eran ciertas cuando este script corrió (ya está aplicado y no se vuelve a correr),
+      // pero dejaron de serlo: la migración 20261010000003 cierra la escritura directa desde
+      // anon/authenticated (solo el servidor escribe, con service role). Se sacaron para que
+      // este archivo no afirme lo contrario de la política vigente. Lo que hoy vale se
+      // verifica en scripts/apply-visitas-escritura-pg.ts. La visita de prueba de abajo se
+      // crea con el rol del script, igual que la crea el servidor.
       const { rows: prop2 } = await c.query(`SELECT id FROM properties WHERE status='approved' LIMIT 1`)
-      await comoUsuario(ase)
       const { rows: v2 } = await c.query(
-        `INSERT INTO property_visits (property_id, advisor_id, created_by, client_name, client_phone, scheduled_at, status, origin)
-         VALUES ($1,$2,$2,'[TEST] trigger rls','+5491100000000', now()+interval '1 day','pending_confirmation','portal') RETURNING id`,
-        [prop2[0].id, ase])
-      ok(v2.length === 1, 'INSERT … RETURNING con sesión de asesor (la RLS no lo bloquea)')
+        `INSERT INTO property_visits (property_id, client_name, client_phone, scheduled_at, status, origin)
+         VALUES ($1,'[TEST] trigger rls','+5491100000000', now()+interval '1 day','pending_confirmation','portal') RETURNING id`,
+        [prop2[0].id])
       const idRls = v2[0].id as string
-      const upd = await c.query(`UPDATE property_visits SET status='scheduled' WHERE id=$1 RETURNING id`, [idRls])
-      ok(upd.rowCount === 1, 'UPDATE … RETURNING con sesión de asesor (la RLS no lo bloquea)')
-      await c.query(`UPDATE property_visits SET scheduled_at = scheduled_at + interval '1 hour' WHERE id=$1`, [idRls])
-
-      const ev = (await c.query(`SELECT kind, actor_id FROM property_visit_events WHERE visit_id=$1`, [idRls])).rows
-      ok(ev.length === 3, `exactamente 3 eventos: creada + confirmada + reprogramada (hubo ${ev.length})`)
-      ok(ev.filter(e => e.kind === 'creada').length === 1, 'exactamente un "creada", no duplicado')
-      ok(ev.some(e => e.kind === 'confirmada'), 'quedó el evento "confirmada"')
-      ok(ev.some(e => e.kind === 'reprogramada'), 'quedó el evento "reprogramada"')
-      ok(ev.every(e => e.actor_id === ase), 'el actor de CADA evento es el asesor de la sesión (I1: sale del JWT)')
-
-      if (otroAsesor) {
-        // Intento de falsificación: mandar changed_by de otra persona en el mismo UPDATE que
-        // hace el propio asesor. El trigger lo tiene que pisar con auth.uid() porque hay sesión.
-        await c.query(`UPDATE property_visits SET status='no_show', outcome_reason='no_vino', changed_by=$2 WHERE id=$1`, [idRls, otroAsesor])
-        const evFalsificado = (await c.query(
-          `SELECT actor_id FROM property_visit_events WHERE visit_id=$1 AND kind='no_realizada'`, [idRls])).rows[0]
-        ok(evFalsificado?.actor_id === ase, 'no se puede falsificar el actor mandando otro changed_by: manda el JWT')
-      } else {
-        console.log('⚠ solo hay un perfil role=asesor: no se pudo probar la falsificación de changed_by')
-      }
 
       if (abo) {
         await comoUsuario(abo)
