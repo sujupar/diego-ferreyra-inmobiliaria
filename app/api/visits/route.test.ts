@@ -225,6 +225,21 @@ describe('POST /api/visits', () => {
     await pedir({ ...base, confirmada: false, persona: { ...base.persona, email: 'sofia@mail.com' } })
     expect(emailMock).not.toHaveBeenCalled()
   })
+  it('una visita que YA PASÓ no manda "tu visita está confirmada", aunque esté confirmada y haya email', async () => {
+    // Reloj: 2099-01-10T15:00Z = 12:00 en Argentina. Registrar hoy la visita de ayer.
+    const res = await pedir({ ...base, fecha: '2099-01-09', persona: { ...base.persona, email: 'sofia@mail.com' } })
+    expect(res.status).toBe(201)
+    expect(datosMock.insertarVisita).toHaveBeenCalledTimes(1)
+    expect(emailMock).not.toHaveBeenCalled()
+  })
+  it('hoy pero más temprano que ahora también ya pasó: no manda el email', async () => {
+    await pedir({ ...base, fecha: '2099-01-10', hora: '11:00', persona: { ...base.persona, email: 'sofia@mail.com' } })
+    expect(emailMock).not.toHaveBeenCalled()
+  })
+  it('hoy pero más tarde que ahora es futura: sí manda el email', async () => {
+    await pedir({ ...base, fecha: '2099-01-10', hora: '13:00', persona: { ...base.persona, email: 'sofia@mail.com' } })
+    expect(emailMock).toHaveBeenCalledTimes(1)
+  })
   it('un fallo de la base responde 500 con mensaje en castellano', async () => {
     datosMock.insertarVisita.mockRejectedValue(new Error('crear visita: boom'))
     const res = await pedir(base)

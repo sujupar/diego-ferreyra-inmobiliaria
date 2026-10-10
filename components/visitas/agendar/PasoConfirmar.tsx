@@ -1,5 +1,5 @@
 'use client'
-import { construirInstante, formatearFechaLarga } from '@/lib/visitas/horario'
+import { construirInstante, formatearFechaLarga, yaOcurrio } from '@/lib/visitas/horario'
 import { ORIGEN_INFO } from '@/lib/visitas/origen'
 import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
 import type { EstadoAgendar, AccionAgendar } from '@/lib/visitas/agendar-estado'
@@ -25,6 +25,10 @@ export function PasoConfirmar({ estado, despachar, nombreAsesor, duplicado, erro
   error: string | null
 }) {
   const instante = estado.fecha && estado.hora ? construirInstante(estado.fecha, estado.hora) : null
+  // Misma regla que el servidor (POST /api/visits): a una visita que ya pasó no se le manda
+  // "tu visita está confirmada". Se avisa acá para que no sorprenda; la pregunta de abajo
+  // sigue, porque igual queda registrado si estaba confirmada.
+  const visitaPasada = yaOcurrio(instante, new Date())
   const persona = estado.persona
   // Ítem 2: el teléfono de una persona de LISTA se muestra solo si es
   // utilizable; si no, lo que cuenta es lo completado a mano (el crudo '123'
@@ -62,6 +66,9 @@ export function PasoConfirmar({ estado, despachar, nombreAsesor, duplicado, erro
             </button>
           ))}
         </div>
+        {visitaPasada && (
+          <p className="text-sm text-muted-foreground">Es una visita que ya ocurrió: no le mandamos confirmación a la persona.</p>
+        )}
       </fieldset>
       <label className="block space-y-1 text-sm">
         <span>Notas (opcional)</span>

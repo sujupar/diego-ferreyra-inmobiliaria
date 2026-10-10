@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   construirInstante, validarHorarioDeVisita, formatearFechaHora, formatearFechaLarga,
-  fechaEnArgentina, horaEnArgentina, diasParaElegir, HORARIOS_SUGERIDOS, sumarDias,
+  fechaEnArgentina, horaEnArgentina, diasParaElegir, HORARIOS_SUGERIDOS, sumarDias, yaOcurrio,
 } from './horario'
 
 const AHORA = new Date('2026-10-10T15:00:00Z') // sábado 10/10, 12:00 en Argentina
@@ -70,5 +70,20 @@ describe('selector de días y horarios', () => {
     expect(HORARIOS_SUGERIDOS[0]).toBe('08:00')
     expect(HORARIOS_SUGERIDOS[HORARIOS_SUGERIDOS.length - 1]).toBe('20:30')
     expect(HORARIOS_SUGERIDOS).toHaveLength(26)
+  })
+})
+
+describe('yaOcurrio', () => {
+  it('un instante anterior a ahora ya ocurrió', () => {
+    expect(yaOcurrio(construirInstante('2026-10-10', '11:00'), AHORA)).toBe(true)
+  })
+  it('el mismo instante cuenta como ocurrido (no es futuro)', () => {
+    expect(yaOcurrio(construirInstante('2026-10-10', '12:00'), AHORA)).toBe(true)
+  })
+  it('un instante posterior todavía no ocurrió', () => {
+    expect(yaOcurrio(construirInstante('2026-10-10', '12:30'), AHORA)).toBe(false)
+  })
+  it('sin instante (día u hora sin elegir, o inválidos) no ocurrió', () => {
+    expect(yaOcurrio(null, AHORA)).toBe(false)
   })
 })

@@ -8,7 +8,7 @@ import { sendVisitScheduledToClient } from '@/lib/email/notifications/visit-sche
 import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
 import * as datos from '@/lib/visitas/datos'
 import { ORIGENES_VISITA, fuenteDelComprador, validarDetalleDeOrigen } from '@/lib/visitas/origen'
-import { validarHorarioDeVisita } from '@/lib/visitas/horario'
+import { validarHorarioDeVisita, yaOcurrio } from '@/lib/visitas/horario'
 import { validarPersonaNueva, telefonoCanonico, telefonoEfectivo } from '@/lib/visitas/persona'
 import { puedeGestionarVisitas, puedeVerTodasLasVisitas, asesorParaLaVisita } from '@/lib/visitas/acceso'
 import type { Role } from '@/types/auth.types'
@@ -172,7 +172,10 @@ export async function POST(req: NextRequest) {
     // Lo de abajo es secundario: la visita YA está. Un fallo acá se registra y
     // no hace parecer que no se agendó.
     try { await advancePipelineState(leadId, 'visit_scheduled') } catch (e) { console.error('[visits] avance del comprador falló', e) }
-    if (b.confirmada && email) {
+    // Solo si la visita es FUTURA: la ventana deja registrar visitas de hasta 60 días
+    // atrás con "Sí, confirmada" marcado por defecto, y registrar hoy la visita de ayer le
+    // mandaría a un cliente real "te confirmamos la cita del jueves".
+    if (b.confirmada && email && !yaOcurrio(horario.instante, new Date())) {
       try { await sendVisitScheduledToClient(visitaId) } catch (e) { console.error('[visits] email de confirmación falló', e) }
     }
     return NextResponse.json({ data: { id: visitaId } }, { status: 201 })

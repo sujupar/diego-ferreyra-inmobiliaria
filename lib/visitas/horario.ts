@@ -60,6 +60,16 @@ export function validarHorarioDeVisita(
   return { ok: true, instante }
 }
 
+/**
+ * ¿La visita ya ocurrió? Es la regla del email "tu visita está confirmada": solo se
+ * manda si la visita es FUTURA (POST /api/visits), y la ventana de agendar avisa
+ * cuando no se va a mandar. El mismo instante cuenta como ocurrido. `ahora` es
+ * obligatorio para que el componente lo pase explícito (sin reloj escondido acá).
+ */
+export function yaOcurrio(instante: Date | null, ahora: Date): boolean {
+  return instante !== null && instante.getTime() <= ahora.getTime()
+}
+
 function aFecha(v: string | Date): Date {
   return typeof v === 'string' ? new Date(v) : v
 }
