@@ -6,6 +6,7 @@
     "lib/valuation/**/*.ts",
     "lib/scraper/**/*.ts",
     "lib/types/**/*.ts",
+    "lib/asistente-tasacion/**/*.ts",
     "lib/mapping/visit-to-wizard.ts",
     "lib/supabase/appraisals.ts",
     "lib/supabase/appraisals-write.ts",
