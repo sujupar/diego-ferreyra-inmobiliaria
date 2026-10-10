@@ -71,8 +71,9 @@ export function explicarCalculo(r: ValuationResult): ExplicacionDelCalculo {
         tablaComparables: {
             columnas: ['Comparable', 'Precio', 'M² homologados', 'USD/m²', 'Coeficiente total', 'USD/m² ajustado'],
             filas: comps.map((c, i) => [
-                c.property.title || `Comparable ${i + 1}`,
-                usd(c.property.price ?? 0, c.property.currency || moneda),
+                // `property` puede faltar si el resultado no se rehidrató: nunca romper la explicación.
+                c.property?.title || `Comparable ${i + 1}`,
+                usd(c.property?.price ?? 0, c.property?.currency || moneda),
                 m2(c.homogenizedSurface),
                 usd(c.originalPriceM2, moneda),
                 coef(c.totalCoefficient),

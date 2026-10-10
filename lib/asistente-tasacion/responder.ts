@@ -7,7 +7,7 @@
  */
 import { textoConPrecio } from '../types/report-edits'
 import { formatCurrency } from '../valuation/utils'
-import { filaAPropiedad } from '../valuation/valuacion-activa'
+import { filaAPropiedad, rehidratar } from '../valuation/valuacion-activa'
 import { resumenCorrecciones } from '../valuation/distancia-tasadores'
 import { armarContexto, type OtraTasacion } from './contexto'
 import { recortarHistorial } from './historial'
@@ -54,8 +54,13 @@ export async function responder(
 ): Promise<RespuestaArmada> {
     const { fila, sujeto, normales } = datos
     const iaEnUso = fila.valuation_source === 'ai' && fila.ai_valuation_result
-    const resultado = iaEnUso ? fila.ai_valuation_result! : fila.valuation_result
-    if (!resultado) throw new Error('La tasación todavía no tiene un resultado calculado: tocá "Calcular" primero.')
+    const guardado = iaEnUso ? fila.ai_valuation_result! : fila.valuation_result
+    if (!guardado) throw new Error('La tasación todavía no tiene un resultado calculado: tocá "Calcular" primero.')
+    const comparables = normales.map(r => filaAPropiedad(r))
+    // Al guardar, el análisis de cada comparable se recorta (sin `property`: ya
+    // está en appraisal_comparables). Sin rehidratar, la explicación no sabe de
+    // qué comparable habla — falla encontrada en el QA del 2026-10-10.
+    const resultado = rehidratar(guardado, comparables)
 
     const edits = fila.report_edits
     const precioTextos = formatCurrency(edits?.priceOverrides?.publicationPrice ?? resultado.publicationPrice, resultado.currency)
@@ -73,7 +78,7 @@ export async function responder(
             barrio: fila.neighborhood_slug, fecha: fila.created_at.slice(0, 10), tasadorEnUso: iaEnUso ? 'ai' : 'calculator',
         },
         sujeto,
-        comparables: normales.map(r => filaAPropiedad(r)),
+        comparables,
         resultado,
         ia,
         informe: { textos, preciosAMano: edits?.priceOverrides },

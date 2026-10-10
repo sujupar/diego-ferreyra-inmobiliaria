@@ -80,6 +80,17 @@ describe('responder', () => {
     })
 })
 
+describe('responder con el resultado tal como queda guardado en la base', () => {
+    it('funciona aunque el análisis guardado no traiga los datos de cada comparable (se recortan al guardar)', async () => {
+        const guardado = JSON.parse(JSON.stringify({ ...resultado, comparableAnalysis: resultado.comparableAnalysis.map(({ property: _p, ...a }) => a) }))
+        const conGuardado = { ...datos, fila: { ...datos.fila, valuation_result: guardado } }
+        let system = ''
+        await responder(conGuardado, [], [], { texto: '¿Cómo llegó?', adjuntos: [] }, deps(respuestaOk(), e => { system = e.system }))
+        expect(system).toContain('Thames')
+        expect(system).toContain('Gurruchaga')
+    })
+})
+
 describe('textoDeBloques', () => {
     it('convierte pasos y borradores en texto legible', () => {
         expect(textoDeBloques([
