@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Stepper, StepContent } from '@/components/ui/stepper'
 import { NeighborhoodSelect } from './NeighborhoodSelect'
 import { ScrapedProperty } from '@/lib/scraper/types'
-import { DispositionType, QualityType, ConservationStateType } from '@/lib/valuation/rules'
+import { DispositionType, QualityType, ConservationStateType, textoCoeficienteEstado } from '@/lib/valuation/rules'
 import { featuresDelFormulario, superficieDelFormulario } from '@/lib/valuation/formulario-sujeto'
 import { leerBorrador } from '@/lib/valuation/borrador-asistente'
 import {
@@ -578,21 +578,26 @@ export function PropertyWizard({ onComplete, initialData, claveBorrador = null }
                             <div className="space-y-3">
                                 <Label className="text-base font-medium">Estado de Conservación *</Label>
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                                    {[
-                                        { value: 'STATE_1', label: 'Estado 1 — Nuevo', desc: 'Depreciación 0%' },
-                                        { value: 'STATE_1_5', label: 'Estado 1.5', desc: 'Entre nuevo y normal' },
-                                        { value: 'STATE_2', label: 'Estado 2 — Normal', desc: 'Depreciación 2.52%' },
-                                        { value: 'STATE_2_5', label: 'Estado 2.5', desc: 'Entre normal y reparaciones' },
-                                        { value: 'STATE_3', label: 'Estado 3 — Reparaciones', desc: 'Depreciación 18.10%' },
-                                        { value: 'STATE_3_5', label: 'Estado 3.5', desc: 'Entre sencillas e importantes' },
-                                        { value: 'STATE_4', label: 'Estado 4 — Repar. Importantes', desc: 'Depreciación 52.6%' },
-                                        { value: 'STATE_4_5', label: 'Estado 4.5', desc: 'Entre importantes y demolición' },
-                                        { value: 'STATE_5', label: 'Estado 5 — Demolición', desc: 'Depreciación 100%' },
-                                    ].map(opt => (
+                                    {/* El coeficiente que se APLICA con la antigüedad cargada en el
+                                        paso anterior, no el % de la tabla (auditoría 2026-10-03, C1). */}
+                                    {([
+                                        { value: 'STATE_1', label: 'Estado 1 — Nuevo' },
+                                        { value: 'STATE_1_5', label: 'Estado 1.5 — Entre nuevo y normal' },
+                                        { value: 'STATE_2', label: 'Estado 2 — Normal' },
+                                        { value: 'STATE_2_5', label: 'Estado 2.5 — Entre normal y reparaciones' },
+                                        { value: 'STATE_3', label: 'Estado 3 — Reparaciones' },
+                                        { value: 'STATE_3_5', label: 'Estado 3.5 — Entre sencillas e importantes' },
+                                        { value: 'STATE_4', label: 'Estado 4 — Repar. Importantes' },
+                                        { value: 'STATE_4_5', label: 'Estado 4.5 — Entre importantes y demolición' },
+                                        { value: 'STATE_5', label: 'Estado 5 — Demolición' },
+                                    ] satisfies Array<{ value: ConservationStateType; label: string }>).map(opt => ({
+                                        ...opt,
+                                        desc: `Coeficiente ${textoCoeficienteEstado(opt.value, formData.age === '' ? null : Number(formData.age))} ${formData.age === '' ? 'a estrenar' : `con ${formData.age} años`}`,
+                                    })).map(opt => (
                                         <button
                                             key={opt.value}
                                             type="button"
-                                            onClick={() => updateField('conservationState', opt.value as ConservationStateType)}
+                                            onClick={() => updateField('conservationState', opt.value)}
                                             className={`p-3 rounded-xl border-2 transition-all duration-200 text-left ${formData.conservationState === opt.value
                                                 ? 'border-primary bg-primary/10 shadow-md'
                                                 : 'border-muted hover:border-primary/50 hover:bg-muted/50'

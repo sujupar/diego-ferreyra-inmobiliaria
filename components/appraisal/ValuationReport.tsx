@@ -8,6 +8,7 @@ import {
     DISPOSITION_LABELS,
     QUALITY_LABELS,
     CONSERVATION_LABELS,
+    textoCoeficienteEstado,
     DispositionType,
     QualityType,
     ConservationStateType
@@ -409,7 +410,7 @@ function ValuationReportInner({
                                                     onChange={(e) => updateSubjectFeature('conservationState', e.target.value)}
                                                 >
                                                     {CONSERVATION_OPTIONS.map(s => (
-                                                        <option key={s} value={s}>{CONSERVATION_LABELS[s]}</option>
+                                                        <option key={s} value={s}>{CONSERVATION_LABELS[s]} · {textoCoeficienteEstado(s, subject.features.age)}</option>
                                                     ))}
                                                 </select>
                                             </div>
@@ -512,7 +513,7 @@ function ValuationReportInner({
                                                             onChange={(e) => updateCompFeature(index, 'conservationState', e.target.value)}
                                                         >
                                                             {CONSERVATION_OPTIONS.map(s => (
-                                                                <option key={s} value={s}>{CONSERVATION_LABELS[s]}</option>
+                                                                <option key={s} value={s}>{CONSERVATION_LABELS[s]} · {textoCoeficienteEstado(s, f.age as number | null | undefined)}</option>
                                                             ))}
                                                         </select>
                                                     </div>

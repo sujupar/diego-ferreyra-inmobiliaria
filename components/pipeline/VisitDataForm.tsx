@@ -15,6 +15,7 @@ import type {
 import { CONSTRUCTION_FEATURES_OPTIONS } from '@/types/visit-data.types'
 import { VisitDifusionSections } from './VisitDifusionSections'
 import { guardarDatosDeVisita, type ModoVisita } from '@/lib/pipeline/visita-datos'
+import { ESTADOS_CONSERVACION, textoCoeficienteEstado } from '@/lib/valuation/rules'
 
 const EMPTY_SALE: SaleVisitData = {
   property_type: 'departamento',
@@ -65,6 +66,37 @@ interface Props {
    */
   onFaltanDatosCliente?: (reintentar: () => void) => void
   onCompleted: () => void
+}
+
+
+/**
+ * Opciones del estado de conservación con el coeficiente que REALMENTE aplica
+ * el tasador para la antigüedad cargada (W = 1 − K/200), no el % de la tabla:
+ * "Estado 3 — 18,10 %" hacía creer en un castigo del doble (auditoría
+ * 2026-10-03, C1). Mismo orden que `ESTADOS_CONSERVACION`.
+ */
+const ESTADOS_VISITA: Array<{ valor: ConservationState; etiqueta: string }> = [
+  { valor: 'estado_1', etiqueta: 'Estado 1 — Nuevo' },
+  { valor: 'estado_1_5', etiqueta: 'Estado 1.5 — Entre nuevo y normal' },
+  { valor: 'estado_2', etiqueta: 'Estado 2 — Normal' },
+  { valor: 'estado_2_5', etiqueta: 'Estado 2.5 — Entre normal y reparaciones' },
+  { valor: 'estado_3', etiqueta: 'Estado 3 — Reparaciones' },
+  { valor: 'estado_3_5', etiqueta: 'Estado 3.5 — Entre sencillas e importantes' },
+  { valor: 'estado_4', etiqueta: 'Estado 4 — Reparaciones Importantes' },
+  { valor: 'estado_4_5', etiqueta: 'Estado 4.5 — Entre importantes y demolición' },
+  { valor: 'estado_5', etiqueta: 'Estado 5 — Demolición' },
+]
+
+function OpcionesEstadoConservacion({ edad }: { edad: number | null | undefined }) {
+  return (
+    <>
+      {ESTADOS_VISITA.map((e, i) => (
+        <option key={e.valor} value={e.valor}>
+          {e.etiqueta} ({textoCoeficienteEstado(ESTADOS_CONSERVACION[i], edad)}{typeof edad === 'number' ? ` con ${edad} años` : ' a estrenar'})
+        </option>
+      ))}
+    </>
+  )
 }
 
 export function VisitDataForm({ dealId, initial, neighborhood, modo = 'finalizar', onFaltanDatosCliente, onCompleted }: Props) {
@@ -356,15 +388,7 @@ function SaleSection({
           <div><Label>Estado conservación</Label>
             <select value={sale.conservation ?? ''} onChange={e => onUpdate('conservation', (e.target.value || null) as ConservationState | null)} className="w-full rounded-md border px-3 py-2 max-md:min-h-11">
               <option value="">Sin definir</option>
-              <option value="estado_1">Estado 1 — Nuevo (0%)</option>
-              <option value="estado_1_5">Estado 1.5 — Entre nuevo y normal</option>
-              <option value="estado_2">Estado 2 — Normal (2.52%)</option>
-              <option value="estado_2_5">Estado 2.5 — Entre normal y reparaciones</option>
-              <option value="estado_3">Estado 3 — Reparaciones (18.10%)</option>
-              <option value="estado_3_5">Estado 3.5 — Entre sencillas e importantes</option>
-              <option value="estado_4">Estado 4 — Reparaciones Importantes (52.6%)</option>
-              <option value="estado_4_5">Estado 4.5 — Entre importantes y demolición</option>
-              <option value="estado_5">Estado 5 — Demolición (100%)</option>
+              <OpcionesEstadoConservacion edad={sale.age_years} />
             </select>
           </div>
         </CardContent>
@@ -615,15 +639,7 @@ function PurchaseSection({ purchase, onUpdate }: {
               <div><Label>Estado conservación</Label>
                 <select value={purchase.conservation_target ?? ''} onChange={e => onUpdate('conservation_target', (e.target.value || null) as ConservationState | null)} className="w-full rounded-md border px-3 py-2 max-md:min-h-11">
                   <option value="">Sin definir</option>
-                  <option value="estado_1">Estado 1 — Nuevo (0%)</option>
-                  <option value="estado_1_5">Estado 1.5 — Entre nuevo y normal</option>
-                  <option value="estado_2">Estado 2 — Normal (2.52%)</option>
-                  <option value="estado_2_5">Estado 2.5 — Entre normal y reparaciones</option>
-                  <option value="estado_3">Estado 3 — Reparaciones (18.10%)</option>
-                  <option value="estado_3_5">Estado 3.5 — Entre sencillas e importantes</option>
-                  <option value="estado_4">Estado 4 — Reparaciones Importantes (52.6%)</option>
-                  <option value="estado_4_5">Estado 4.5 — Entre importantes y demolición</option>
-                  <option value="estado_5">Estado 5 — Demolición (100%)</option>
+                  <OpcionesEstadoConservacion edad={purchase.age_years_target} />
                 </select>
               </div>
             </CardContent>

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrapedProperty } from '@/lib/scraper/types'
-import { DispositionType, QualityType, ConservationStateType } from '@/lib/valuation/rules'
+import { DispositionType, QualityType, ConservationStateType, textoCoeficienteEstado } from '@/lib/valuation/rules'
 import { calculateHomogenizedSurface } from '@/lib/valuation/calculator'
 import { requiereConversion } from '@/lib/valuation/moneda'
 import { completarDescubiertaDeducida, confirmarDescubierta } from '@/lib/scraper/superficie-deducida'
@@ -338,22 +338,30 @@ export function ComparableEditor({ property, onSave, onCancel, onDiscard }: Comp
                     {/* Conservation State */}
                     <div className="space-y-3">
                         <Label className="text-base font-medium">Estado de Conservación *</Label>
+                        <p className="text-xs text-muted-foreground">
+                            Coeficiente que se aplica {editedProperty.features.age == null ? 'a estrenar (cargá la antigüedad)' : `con ${editedProperty.features.age} años`}.
+                        </p>
                         <div className="grid grid-cols-3 gap-2">
-                            {[
-                                { value: 'STATE_1', label: 'Estado 1 — Nuevo (0%)' },
+                            {/* Coeficiente que se APLICA con la antigüedad de este comparable,
+                                no el % de la tabla (auditoría 2026-10-03, C1). */}
+                            {([
+                                { value: 'STATE_1', label: 'Estado 1 — Nuevo' },
                                 { value: 'STATE_1_5', label: 'Estado 1.5 — Nuevo/Normal' },
-                                { value: 'STATE_2', label: 'Estado 2 — Normal (2.52%)' },
+                                { value: 'STATE_2', label: 'Estado 2 — Normal' },
                                 { value: 'STATE_2_5', label: 'Estado 2.5 — Normal/Repar.' },
-                                { value: 'STATE_3', label: 'Estado 3 — Reparaciones (18.1%)' },
-                                { value: 'STATE_3_5', label: 'Estado 3.5 — Senc./Imp. (33.2%)' },
-                                { value: 'STATE_4', label: 'Estado 4 — Repar. Imp. (52.6%)' },
-                                { value: 'STATE_4_5', label: 'Estado 4.5 — Imp./Demol. (75.2%)' },
-                                { value: 'STATE_5', label: 'Estado 5 — Demolición (100%)' },
-                            ].map(opt => (
+                                { value: 'STATE_3', label: 'Estado 3 — Reparaciones' },
+                                { value: 'STATE_3_5', label: 'Estado 3.5 — Senc./Imp.' },
+                                { value: 'STATE_4', label: 'Estado 4 — Repar. Imp.' },
+                                { value: 'STATE_4_5', label: 'Estado 4.5 — Imp./Demol.' },
+                                { value: 'STATE_5', label: 'Estado 5 — Demolición' },
+                            ] satisfies Array<{ value: ConservationStateType; label: string }>).map(opt => ({
+                                ...opt,
+                                label: `${opt.label} (${textoCoeficienteEstado(opt.value, editedProperty.features.age)})`,
+                            })).map(opt => (
                                 <button
                                     key={opt.value}
                                     type="button"
-                                    onClick={() => updateFeature('conservationState', opt.value as ConservationStateType)}
+                                    onClick={() => updateFeature('conservationState', opt.value)}
                                     className={`p-2 rounded-lg border-2 transition-all duration-200 ${editedProperty.features.conservationState === opt.value
                                         ? 'border-primary bg-primary/10'
                                         : 'border-muted hover:border-primary/50'

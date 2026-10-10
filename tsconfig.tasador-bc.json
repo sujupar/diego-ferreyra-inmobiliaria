@@ -13,6 +13,7 @@
     "app/(dashboard)/appraisal/new/page.tsx",
     "components/appraisal/**/*.tsx",
     "components/appraisal/**/*.ts",
+    "components/pipeline/VisitDataForm.tsx",
     "types/database.types.ts"
   ]
 }

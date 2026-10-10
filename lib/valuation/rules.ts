@@ -125,16 +125,18 @@ export const CONSERVATION_LABELS: Record<ConservationStateType, string> = {
     STATE_5: 'Estado 5 — Demolición',
 }
 
+// Sin porcentajes a propósito: el % de la tabla NO es lo que se aplica (C1).
+// Para mostrar el coeficiente real usar `textoCoeficienteEstado`.
 export const CONSERVATION_SHORT_LABELS: Record<ConservationStateType, string> = {
-    STATE_1: 'Nuevo (0%)',
+    STATE_1: 'Nuevo',
     STATE_1_5: 'Nuevo/Normal',
-    STATE_2: 'Normal (2.52%)',
+    STATE_2: 'Normal',
     STATE_2_5: 'Normal/Repar.',
-    STATE_3: 'Reparaciones (18.1%)',
-    STATE_3_5: 'Sencillas/Importantes (33.2%)',
-    STATE_4: 'Repar. Importantes (52.6%)',
-    STATE_4_5: 'Importantes/Demolición (75.2%)',
-    STATE_5: 'Demolición (100%)',
+    STATE_3: 'Reparaciones',
+    STATE_3_5: 'Sencillas/Importantes',
+    STATE_4: 'Repar. Importantes',
+    STATE_4_5: 'Importantes/Demolición',
+    STATE_5: 'Demolición',
 }
 
 /**
@@ -309,4 +311,22 @@ export function calculateAgeStateCoefficient(
     const coefficient = 1 - (K / 100 / 2)
 
     return Math.max(0, Math.min(1, coefficient))
+}
+
+/** Los 9 estados en el orden de la tabla (para armar selectores). */
+export const ESTADOS_CONSERVACION: ConservationStateType[] = [
+    'STATE_1', 'STATE_1_5', 'STATE_2', 'STATE_2_5', 'STATE_3', 'STATE_3_5', 'STATE_4', 'STATE_4_5', 'STATE_5',
+]
+
+/**
+ * Coeficiente edad-estado que REALMENTE se aplica, como texto: "×0,91".
+ *
+ * Auditoría del 2026-10-03 (C1): los selectores mostraban el % de la fila 0 de
+ * la tabla ("Estado 3 — 18,1 %"), pero el cálculo aplica W = 1 − K/200 (la
+ * mitad) y K depende de la antigüedad. El asesor veía 18 % de castigo y se
+ * aplicaba 9 %. Sin antigüedad cargada se muestra el de 0 años.
+ */
+export function textoCoeficienteEstado(estado: ConservationStateType, edad?: number | null): string {
+    const w = calculateAgeStateCoefficient(typeof edad === 'number' && edad >= 0 ? edad : 0, estado)
+    return `×${w.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
