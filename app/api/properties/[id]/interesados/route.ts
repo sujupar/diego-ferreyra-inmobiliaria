@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { getUser } from '@/lib/auth/get-user'
 import * as datos from '@/lib/visitas/datos'
 import { esOrigenVisita } from '@/lib/visitas/origen'
@@ -15,6 +16,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const origen = req.nextUrl.searchParams.get('origen')
   if (!esOrigenVisita(origen)) return NextResponse.json({ error: 'Origen inválido' }, { status: 400 })
   const { id } = await params
+  // Un id con forma rara nunca va a matchear una propiedad: cortar ACÁ evita
+  // una consulta a la base que solo puede terminar en "no encontramos nada".
+  if (!z.string().uuid().safeParse(id).success) return NextResponse.json({ error: 'No encontramos la propiedad' }, { status: 404 })
   try {
     const prop = await datos.leerPropiedadParaVisita(id)
     if (!prop) return NextResponse.json({ error: 'No encontramos la propiedad' }, { status: 404 })

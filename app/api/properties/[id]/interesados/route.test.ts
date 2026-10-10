@@ -15,9 +15,9 @@ vi.mock('@/lib/visitas/datos', () => datosMock)
 import { GET } from './route'
 
 const PROP = '33333333-3333-4333-8333-333333333333'
-function pedir(origen: string) {
-  const req = new Request(`http://local/api/properties/${PROP}/interesados?origen=${origen}`)
-  return GET(Object.assign(req, { nextUrl: new URL(req.url) }) as never, { params: Promise.resolve({ id: PROP }) })
+function pedir(origen: string, id = PROP) {
+  const req = new Request(`http://local/api/properties/${id}/interesados?origen=${origen}`)
+  return GET(Object.assign(req, { nextUrl: new URL(req.url) }) as never, { params: Promise.resolve({ id }) })
 }
 
 beforeEach(() => {
@@ -46,5 +46,10 @@ describe('GET /api/properties/[id]/interesados', () => {
     expect((await pedir('tasacion')).status).toBe(400)
     estado.role = 'abogado'
     expect((await pedir('portal')).status).toBe(403)
+  })
+  it('id que no es UUID: 404, sin tocar la base', async () => {
+    const res = await pedir('portal', 'no-es-un-uuid')
+    expect(res.status).toBe(404)
+    expect(datosMock.leerPropiedadParaVisita).not.toHaveBeenCalled()
   })
 })

@@ -6,6 +6,7 @@
  */
 import { hasPermission, type Permission } from '@/lib/auth/roles'
 import type { Role } from '@/types/auth.types'
+import type { TipoAccion } from './transiciones'
 
 function permiso(role: Role, p: Permission): boolean {
   try {
@@ -31,6 +32,17 @@ export function puedeVerVisita(
   if (!puedeGestionarVisitas(role)) return false
   if (puedeVerTodasLasVisitas(role)) return true
   return visita.advisor_id === userId || visita.created_by === userId
+}
+
+/**
+ * Las acciones que calcula `accionesDisponibles` (lib/visitas/transiciones.ts)
+ * son sobre la VISITA, sin noción de quién mira — "cambiar_asesor" sale ahí
+ * si la visita todavía admite cambios, no si quien pregunta puede hacerlo.
+ * Filtro final por rol antes de mandar la lista a la pantalla/respuesta.
+ */
+export function accionesParaRol(acciones: TipoAccion[], role: Role): TipoAccion[] {
+  if (puedeVerTodasLasVisitas(role)) return acciones
+  return acciones.filter(a => a !== 'cambiar_asesor')
 }
 
 export function asesorParaLaVisita(

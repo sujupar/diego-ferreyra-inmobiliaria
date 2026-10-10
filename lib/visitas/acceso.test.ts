@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { puedeGestionarVisitas, puedeVerTodasLasVisitas, puedeVerVisita, asesorParaLaVisita } from './acceso'
+import { puedeGestionarVisitas, puedeVerTodasLasVisitas, puedeVerVisita, asesorParaLaVisita, accionesParaRol } from './acceso'
+import type { TipoAccion } from './transiciones'
 
 const YO = '11111111-1111-4111-8111-111111111111'
 const OTRO = '22222222-2222-4222-8222-222222222222'
@@ -30,5 +31,19 @@ describe('asesorParaLaVisita', () => {
   it('quien ve todo tiene que elegir el asesor', () => {
     expect(asesorParaLaVisita('coordinador', YO, OTRO)).toEqual({ ok: true, asesorId: OTRO, esPropio: false })
     expect(asesorParaLaVisita('admin', YO, ' ')).toEqual({ ok: false, error: 'Elegí el asesor que va a mostrar la propiedad' })
+  })
+})
+
+describe('accionesParaRol', () => {
+  const todas: TipoAccion[] = ['confirmar', 'realizada', 'no_realizada', 'reprogramar', 'cancelar', 'cambiar_asesor']
+
+  it('a quien no ve todas las visitas se le saca "cambiar_asesor"', () => {
+    expect(accionesParaRol(todas, 'asesor')).toEqual(['confirmar', 'realizada', 'no_realizada', 'reprogramar', 'cancelar'])
+  })
+  it('quien ve todas las visitas conserva "cambiar_asesor"', () => {
+    expect(accionesParaRol(todas, 'coordinador')).toEqual(todas)
+  })
+  it('sin "cambiar_asesor" en la lista, no cambia nada', () => {
+    expect(accionesParaRol(['confirmar'], 'asesor')).toEqual(['confirmar'])
   })
 })
