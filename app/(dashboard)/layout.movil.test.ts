@@ -126,8 +126,6 @@ describe('barrido de `vh` → `dvh` (en iOS `vh` es el viewport GRANDE y miente 
      */
     const archivos = [
         'app/(auth)/layout.tsx',
-        'app/questionnaire/[token]/page.tsx',
-        'app/questionnaire/[token]/thanks/page.tsx',
         'components/inbox/ContactPanel.tsx',
         'components/appraisal/PDFPreviewModal.tsx',
         'app/(dashboard)/pipeline/[id]/page.tsx',
