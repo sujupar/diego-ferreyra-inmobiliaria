@@ -244,6 +244,10 @@ export default function InicioPage() {
       const scope = identidad.role === 'asesor' ? `&advisor_id=${identidad.id}` : ''
       trabajos.push(
         pedirNumero(`/api/visits?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${scope}`, j => {
+          // El total lo cuenta la base: desde la Entrega 2 la lista viene paginada (50 por
+          // página) y su largo dejaría de ser el número del día en un día cargado.
+          const total = (j as { total?: unknown })?.total
+          if (typeof total === 'number') return total
           const arr = (j as { data?: unknown })?.data
           return Array.isArray(arr) ? arr.length : NaN
         }).then(n => { if (!cancelado) setNumeros(prev => ({ ...prev, visitasHoy: n })) })

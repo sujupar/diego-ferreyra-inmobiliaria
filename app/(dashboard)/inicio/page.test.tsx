@@ -296,6 +296,21 @@ describe('InicioPage — la tarjeta lleva al recorte que contó (D37)', () => {
       vi.useRealTimers()
     }
   })
+
+  it('"Visitas de hoy" usa el TOTAL de la base, no el largo de la página (la lista viene paginada)', async () => {
+    render(<InicioPage />)
+    authDeferred.resolve({ ok: true, body: { id: 'u1', role: 'admin' } })
+    await waitFor(() => expect(calls.some(c => c.startsWith('/api/visits'))).toBe(true))
+    tasksDeferred.resolve({ ok: true, body: { data: [] } })
+    leadsDeferred.resolve({ ok: true, body: { new: 0 } })
+    propertiesDeferred.resolve({ ok: true, body: { total: 0 } })
+    avisosDeferred.resolve({ ok: true, body: { data: [] } })
+    visitsDeferred.resolve({ ok: true, body: { data: [{ id: 'v1' }], total: 75 } })
+    await waitFor(() => expect(screen.queryByText('Cargando…')).not.toBeInTheDocument())
+    const tarjeta = screen.getByText('Visitas de hoy').closest('a')
+    expect(tarjeta).not.toBeNull()
+    expect(within(tarjeta as HTMLElement).getByText('75')).toBeInTheDocument()
+  })
 })
 
 describe('InicioPage — el cartel de avisos sin identificar (D39)', () => {

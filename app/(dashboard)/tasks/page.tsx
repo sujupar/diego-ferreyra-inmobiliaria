@@ -13,7 +13,8 @@ import {
 } from 'lucide-react'
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog'
 import { UnidentifiedBanner } from '@/components/inbox/UnidentifiedBanner'
-import type { PropertyVisitWithRelations } from '@/types/visits.types'
+import type { VisitaListado } from '@/lib/visitas/tipos'
+import { formatearFechaHora } from '@/lib/visitas/horario'
 
 const TYPE_CONFIG: Record<string, { icon: typeof Bell; color: string; label: string; urgent?: boolean }> = {
   update_contact: { icon: User, color: 'bg-amber-100 text-amber-800', label: 'Actualizar Contacto' },
@@ -168,7 +169,7 @@ export default function TasksPage() {
   const [truncado, setTruncado] = useState(false)
   const [reintentos, setReintentos] = useState(0)
   const [completing, setCompleting] = useState<string | null>(null)
-  const [overdueVisits, setOverdueVisits] = useState<PropertyVisitWithRelations[]>([])
+  const [overdueVisits, setOverdueVisits] = useState<VisitaListado[]>([])
   // Con "Todas" salen tres pedidos en paralelo: si el usuario cambia de filtro
   // mientras vuelan, la respuesta vieja no puede pisar la nueva.
   const generacion = useRef(0)
@@ -333,10 +334,10 @@ export default function TasksPage() {
                     href={`/visits/${v.id}`}
                     className="block hover:underline max-md:flex max-md:min-h-11 max-md:flex-col max-md:justify-center max-md:py-2"
                   >
-                    <span className="font-medium break-words">{v.property?.address ?? '-'}</span>
+                    <span className="font-medium break-words">{v.direccion ?? '-'}</span>
                     <span className="text-muted-foreground max-md:block max-md:text-xs">
                       <span className="max-md:hidden"> · </span>
-                      {v.client_name} · {fechaHoraCorta(v.scheduled_at)}
+                      {v.client_name} · {formatearFechaHora(v.scheduled_at)}
                     </span>
                   </Link>
                 </li>
