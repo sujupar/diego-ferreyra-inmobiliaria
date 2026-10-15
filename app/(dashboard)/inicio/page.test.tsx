@@ -34,6 +34,12 @@ let propertiesDeferred: Deferred<Respuesta>
 let visitsDeferred: Deferred<Respuesta>
 let avisosDeferred: Deferred<Respuesta>
 let calls: string[]
+// Grupo E (revisión final E2): la tarjeta ahora pide DOS números — el total del
+// día y el total de canceladas de ese día — y los resta. Casi ningún test
+// necesita controlar el segundo pedido a mano, así que responde SOLO (sin
+// deferred) con este valor por defecto (0 canceladas); el test que prueba la
+// exclusión lo pisa antes de renderizar.
+let visitasCanceladasBody: Respuesta
 
 beforeEach(() => {
   authDeferred = deferred()
@@ -42,6 +48,7 @@ beforeEach(() => {
   propertiesDeferred = deferred()
   visitsDeferred = deferred()
   avisosDeferred = deferred()
+  visitasCanceladasBody = { ok: true, body: { total: 0 } }
   calls = []
   vi.stubGlobal('fetch', vi.fn((url: string) => {
     calls.push(url)
@@ -61,6 +68,10 @@ beforeEach(() => {
       return propertiesDeferred.promise.then(r => ({ ok: r.ok, json: async () => r.body }))
     }
     if (url.startsWith('/api/visits')) {
+      if (url.includes('status=cancelled')) {
+        const r = visitasCanceladasBody
+        return Promise.resolve({ ok: r.ok, json: async () => r.body })
+      }
       return visitsDeferred.promise.then(r => ({ ok: r.ok, json: async () => r.body }))
     }
     return Promise.reject(new Error(`fetch inesperado: ${url}`))
@@ -160,11 +171,18 @@ describe('InicioPage — las tarjetas dependen del rol', () => {
 })
 
 describe('InicioPage — cada tarjeta declara su propia base (revisión final Fase 3)', () => {
-  // I1: el pedido es `/api/visits?from&to` SIN `status`, y `listVisits` no
-  // filtra por estado — o sea que el número incluye canceladas y no-shows.
-  // Decir "agendadas para hoy" ahí es afirmar algo falso sobre el día del
-  // asesor (3 visitas de las que 2 se cayeron seguía diciendo "3 · agendadas").
-  it('"Visitas de hoy" declara que cuenta todos los estados, no solo las agendadas', async () => {
+  // I1 (histórico): decía "agendadas para hoy" contando TAMBIÉN las canceladas
+  // y las que no se presentaron — se corrigió primero a "todos los estados".
+  //
+  // Grupo E (revisión final E2): "todos los estados" tampoco es lo que se
+  // quiere — `lib/visitas/resumen.ts` ("Visitas hoy" de la sección Visitas)
+  // EXCLUYE canceladas, y esta tarjeta contaba el mismo día con un criterio
+  // distinto. Ahora las dos excluyen canceladas.
+  it('"Visitas de hoy" excluye canceladas, igual que lib/visitas/resumen.ts', async () => {
+    // Tres visitas de hoy en total, de las cuales dos están canceladas: el
+    // número que se muestra tiene que ser 1, no 3. Se fija ANTES de montar: el
+    // pedido de "canceladas" sale apenas resuelve la identidad, no después.
+    visitasCanceladasBody = { ok: true, body: { total: 2 } }
     render(<InicioPage />)
     authDeferred.resolve({ ok: true, body: { id: 'u1', role: 'admin' } })
 
@@ -172,25 +190,21 @@ describe('InicioPage — cada tarjeta declara su propia base (revisión final Fa
     tasksDeferred.resolve({ ok: true, body: { data: [] } })
     leadsDeferred.resolve({ ok: true, body: { new: 0 } })
     propertiesDeferred.resolve({ ok: true, body: { total: 0 } })
-    // Tres visitas de hoy, de las cuales dos están canceladas: el número que
-    // devuelve la ruta es 3 igual, porque nadie filtra por estado.
-    visitsDeferred.resolve({
-      ok: true,
-      body: { data: [{ id: 'v1', status: 'scheduled' }, { id: 'v2', status: 'cancelled' }, { id: 'v3', status: 'cancelled' }] },
-    })
+    visitsDeferred.resolve({ ok: true, body: { total: 3 } })
     await waitFor(() => expect(screen.queryByText('Cargando…')).not.toBeInTheDocument())
 
     const visitas = within(screen.getByText('Visitas de hoy').parentElement as HTMLElement)
-    expect(visitas.getByText('3')).toBeInTheDocument()
-    expect(visitas.getByText('en la agenda de hoy, todos los estados')).toBeInTheDocument()
+    expect(visitas.getByText('1')).toBeInTheDocument()
+    expect(visitas.getByText('en la agenda de hoy')).toBeInTheDocument()
+    expect(visitas.queryByText('en la agenda de hoy, todos los estados')).not.toBeInTheDocument()
     // El contexto viejo afirmaba que las 3 estaban agendadas.
     expect(visitas.queryByText('agendadas para hoy')).not.toBeInTheDocument()
 
-    // Y el pedido sigue siendo UNO solo, sin parámetro de estado: la ruta
-    // aplica `status` con un `.eq()` de un valor y los estados vivos son dos.
+    // Dos pedidos: el total del día y el total de canceladas de ese día.
     const visitsUrls = calls.filter(c => c.startsWith('/api/visits'))
-    expect(visitsUrls).toHaveLength(1)
-    expect(visitsUrls[0]).not.toContain('status=')
+    expect(visitsUrls).toHaveLength(2)
+    expect(visitsUrls.some(u => u.includes('status=cancelled'))).toBe(true)
+    expect(visitsUrls.some(u => !u.includes('status='))).toBe(true)
   })
 
   // M1: `getMyTasks` corta con `.limit(50)`. Con 63 pendientes la tarjeta
