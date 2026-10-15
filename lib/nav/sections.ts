@@ -143,6 +143,7 @@ export function getNavSections(role: Role): NavGroup[] {
           { href: '/settings', label: 'General', icon: Settings },
           { href: '/settings/notifications', label: 'Notificaciones', icon: Settings },
           { href: '/settings/portals', label: 'Portales', icon: Settings },
+          { href: '/settings/encuesta', label: 'Encuesta de visitas', icon: Settings },
         ],
       })
       admin.push({
