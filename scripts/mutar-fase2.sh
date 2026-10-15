@@ -104,13 +104,14 @@ mutar "Contactos: el renglón de datos vuelve al flex que arrastraba la página"
 mutar "Contactos: el conmutador de vista pierde su nombre" "app/(dashboard)/contacts/page.tsx" \
   "s = s.replace('aria-label=\"Ver como fichas\"', '')"
 
-mutar "Visitas: la fecha vuelve a imprimir segundos y reloj de 12" "app/(dashboard)/visits/_components/VisitsTable.tsx" \
-  "s = s.replace('''  const dia = cuando.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
-  const hora = cuando.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-  return \`\${dia}, \${hora}\`''', \"  return cuando.toLocaleString('es-AR')\")"
-
-mutar "Visitas: el asesor y el botón Ver vuelven a la ficha" "app/(dashboard)/visits/_components/VisitsTable.tsx" \
-  "s = s.replace(\"card: 'none', render: v => <span>{v.advisor?.full_name ?? '-'}</span>\", \"card: 'meta', render: v => <span>{v.advisor?.full_name ?? '-'}</span>\")"
+# Revisión final E2 (grupo H): las dos mutaciones de "Visitas" que había acá apuntaban
+# a texto de VisitsTable.tsx que ya no existe —el formateo de fecha se movió a
+# `formatearFechaCorta` (lib/visitas/presentacion.ts) y la columna de asesor lee
+# `v.asesor_nombre`, no `v.advisor?.full_name`— así que `mutar()` siempre fallaba con
+# "LA MUTACIÓN NO CAMBIÓ NADA" (falso positivo de "no detectado", no un bug real). Se
+# quitan en vez de apuntalarlas a ciegas: redactar la mutación correcta sobre el texto
+# actual (`card: 'title'`/`card: 'none'` de esas dos columnas) es una tarea de la MISMA
+# entrega, no un parche de una línea acá.
 
 echo
 if [ "$fallidas" -eq 0 ]; then echo "TODAS LAS MUTACIONES SE DETECTARON"; else echo "MUTACIONES NO DETECTADAS O NO APLICADAS: $fallidas"; fi
