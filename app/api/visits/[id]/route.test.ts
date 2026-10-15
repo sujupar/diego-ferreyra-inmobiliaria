@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { estado, datosMock } = vi.hoisted(() => ({
+const { estado, datosMock, servicioMock } = vi.hoisted(() => ({
   estado: { role: 'asesor', id: '22222222-2222-4222-8222-222222222222' },
   datosMock: { leerVisita: vi.fn(), eventosDeLaVisita: vi.fn() },
+  servicioMock: { encuestaParaFichaSegura: vi.fn() },
 }))
 vi.mock('@/lib/auth/get-user', () => ({
   getUser: vi.fn(async () => ({ id: estado.id, email: 'a@b.c', profile: { id: estado.id, role: estado.role, is_active: true } })),
 }))
 vi.mock('@/lib/visitas/datos', () => datosMock)
+vi.mock('@/lib/visitas/encuesta/servicio', () => servicioMock)
 
 import { GET } from './route'
 
@@ -22,6 +24,7 @@ function pedir(id: string) {
 
 beforeEach(() => {
   Object.values(datosMock).forEach(m => m.mockReset())
+  servicioMock.encuestaParaFichaSegura.mockReset().mockResolvedValue(null)
   estado.role = 'asesor'; estado.id = '22222222-2222-4222-8222-222222222222'
   datosMock.leerVisita.mockResolvedValue(visita())
   datosMock.eventosDeLaVisita.mockResolvedValue([])
@@ -56,5 +59,18 @@ describe('GET /api/visits/[id]', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.data.acciones).toContain('cambiar_asesor')
+  })
+  it('suma la encuesta y sus eventos ordenados en el historial', async () => {
+    servicioMock.encuestaParaFichaSegura.mockResolvedValue({
+      link: 'x', estado: { clave: 'enviada', texto: 'Enviada' }, puedeReenviar: false, vencida: false, venceEl: '2099-02-09T00:00:00Z',
+      respondidaEl: null, respuestas: null,
+      eventos: [{ id: 'encuesta-enviada-1', kind: 'encuesta_enviada', created_at: '2099-01-02T00:00:00Z', from_status: null, to_status: null,
+        from_scheduled_at: null, to_scheduled_at: null, reason: null, note: null, actor: null, desde_asesor: null, hacia_asesor: null }],
+    })
+    datosMock.eventosDeLaVisita.mockResolvedValue([{ id: 'e1', kind: 'creada', created_at: '2099-01-01T00:00:00Z', from_status: null, to_status: null,
+      from_scheduled_at: null, to_scheduled_at: null, reason: null, note: null, actor: 'Lucas', desde_asesor: null, hacia_asesor: null }])
+    const body = await (await pedir(VISITA)).json()
+    expect(body.data.encuesta.estado.texto).toBe('Enviada')
+    expect(body.data.eventos.map((e: { kind: string }) => e.kind)).toEqual(['creada', 'encuesta_enviada'])
   })
 })

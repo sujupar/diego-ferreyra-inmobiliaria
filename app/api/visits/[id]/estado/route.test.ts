@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-const { estado, datosMock, avanzarMock, resolverFallbackMock } = vi.hoisted(() => ({
+const { estado, datosMock, avanzarMock, resolverFallbackMock, servicioMock } = vi.hoisted(() => ({
   estado: { role: 'asesor', id: '22222222-2222-4222-8222-222222222222' },
   datosMock: { leerVisita: vi.fn(), actualizarVisita: vi.fn(), eventosDeLaVisita: vi.fn(), asesorAsignable: vi.fn() },
   avanzarMock: vi.fn(),
   resolverFallbackMock: vi.fn(),
+  servicioMock: { prepararYEnviarEncuesta: vi.fn(), encuestaParaFichaSegura: vi.fn() },
 }))
 vi.mock('@/lib/auth/get-user', () => ({
   getUser: vi.fn(async () => ({ id: estado.id, email: 'a@b.c', profile: { id: estado.id, role: estado.role, is_active: true } })),
@@ -12,6 +13,7 @@ vi.mock('@/lib/auth/get-user', () => ({
 vi.mock('@/lib/visitas/datos', () => datosMock)
 vi.mock('@/lib/leads/pipeline-state', () => ({ advancePipelineState: avanzarMock }))
 vi.mock('@/lib/leads/resolve-crm-visit-lead', () => ({ resolveLeadIdForVisitWithFallback: resolverFallbackMock }))
+vi.mock('@/lib/visitas/encuesta/servicio', () => servicioMock)
 
 import { POST } from './route'
 
@@ -30,8 +32,15 @@ function pedir(body: unknown) {
     { params: Promise.resolve({ id: VISITA }) })
 }
 
+const ENCUESTA_FICHA = {
+  link: 'https://inmodf.com.ar/encuesta/Ab3xK9pQ2rTz8LmN4vWq1Y', estado: { clave: 'sin_enviar', texto: 'Sin enviar (envío apagado)' },
+  puedeReenviar: false, vencida: false, venceEl: '2099-02-09T15:00:00.000Z', respondidaEl: null, respuestas: null, eventos: [],
+}
+
 beforeEach(() => {
   Object.values(datosMock).forEach(m => m.mockReset()); avanzarMock.mockReset(); resolverFallbackMock.mockReset()
+  servicioMock.prepararYEnviarEncuesta.mockReset().mockResolvedValue(ENCUESTA_FICHA)
+  servicioMock.encuestaParaFichaSegura.mockReset().mockResolvedValue(null)
   estado.role = 'asesor'; estado.id = '22222222-2222-4222-8222-222222222222'
   datosMock.leerVisita.mockResolvedValue(visita())
   datosMock.actualizarVisita.mockResolvedValue({ ok: true })
@@ -136,5 +145,21 @@ describe('POST /api/visits/[id]/estado', () => {
     expect(datosMock.actualizarVisita).not.toHaveBeenCalled()
     expect((await pedir({ tipo: 'realizada', interes: null })).status).toBe(400)
     expect(datosMock.actualizarVisita).not.toHaveBeenCalled()
+  })
+  it('"Se realizó" crea la encuesta con el autor y la devuelve', async () => {
+    const res = await pedir({ tipo: 'realizada', interes: 'alto' })
+    expect(servicioMock.prepararYEnviarEncuesta).toHaveBeenCalledWith(VISITA, { reenvio: false, actorId: estado.id, ahora: expect.any(Date) })
+    expect((await res.json()).data.encuesta).toEqual(ENCUESTA_FICHA)
+  })
+  it('si la encuesta falla, la visita queda realizada igual (200) y la ficha la relee', async () => {
+    servicioMock.prepararYEnviarEncuesta.mockRejectedValue(new Error('boom'))
+    const res = await pedir({ tipo: 'realizada', interes: 'medio' })
+    expect(res.status).toBe(200)
+    expect(datosMock.actualizarVisita).toHaveBeenCalled()
+    expect(servicioMock.encuestaParaFichaSegura).toHaveBeenCalledWith(VISITA, expect.any(Date))
+  })
+  it('"No se realizó" no crea encuesta', async () => {
+    await pedir({ tipo: 'no_realizada', motivo: 'no_vino' })
+    expect(servicioMock.prepararYEnviarEncuesta).not.toHaveBeenCalled()
   })
 })
