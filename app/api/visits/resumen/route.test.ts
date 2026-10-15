@@ -47,7 +47,10 @@ describe('GET /api/visits/resumen', () => {
     expect(periodo).toMatchObject({ alcance: { tipo: 'todo' }, asesorId: ASESOR, origen: 'portal',
       desde: '2026-09-16T00:00:00.000-03:00', hasta: '2026-10-15T23:59:59.999999-03:00' })
     expect(abiertas).toMatchObject({ estados: ['pending_confirmation', 'scheduled'], asesorId: ASESOR })
-    expect(abiertas.desde).toBeUndefined()
+    // Grupo B de la revisión final E2: "abiertas" ahora tiene tope de 90 días hacia
+    // atrás (antes no tenía ningún límite de fechas).
+    expect(abiertas.desde).toBe('2026-07-17T00:00:00.000-03:00')
+    expect(abiertas.hasta).toBeUndefined()
     expect(proximas).toMatchObject({ desde: '2026-10-15T00:00:00.000-03:00', hasta: '2026-10-21T23:59:59.999999-03:00' })
   })
   it('asesor: alcance propio, su ?asesor= no cuenta, y "por asesor" vacío', async () => {
@@ -69,6 +72,11 @@ describe('GET /api/visits/resumen', () => {
     todasMock.mockResolvedValueOnce({ filas: [], truncado: true })
     const { data } = await (await pedir(PERIODO)).json()
     expect(data.truncado).toBe(true)
+  })
+  it('"abiertas" tiene tope de 90 días hacia atrás, no busca desde el origen de los tiempos', async () => {
+    await pedir(PERIODO)
+    const abiertas = todasMock.mock.calls[1][0]
+    expect(abiertas.desde).toBe('2026-07-17T00:00:00.000-03:00')
   })
   it('un fallo de la base: 500 en castellano', async () => {
     todasMock.mockRejectedValue(new Error('listar visitas: boom'))

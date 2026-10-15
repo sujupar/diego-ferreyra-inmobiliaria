@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getUser } from '@/lib/auth/get-user'
 import * as datos from '@/lib/visitas/datos'
 import { leerFiltrosResumen } from '@/lib/visitas/filtros'
-import { armarResumen, DIAS_DE_AGENDA } from '@/lib/visitas/resumen'
+import { armarResumen, DIAS_DE_AGENDA, DIAS_ABIERTAS_HACIA_ATRAS } from '@/lib/visitas/resumen'
 import { puedeGestionarVisitas, puedeVerTodasLasVisitas, alcanceDeVisitas } from '@/lib/visitas/acceso'
 import { ESTADOS_ACTIVOS } from '@/lib/visitas/transiciones'
 import { fechaEnArgentina, sumarDias } from '@/lib/visitas/horario'
@@ -37,7 +37,14 @@ export async function GET(req: NextRequest) {
   try {
     const [delPeriodo, abiertas, proximas] = await Promise.all([
       datos.todasLasVisitas({ ...base, desde: inicioDelDiaArgentina(f.desde), hasta: finDelDiaArgentina(f.hasta) }),
-      datos.todasLasVisitas({ ...base, estados: ESTADOS_ACTIVOS }),
+      // Sin tope de fechas esto crece sin parar (lectura de TODAS las abiertas desde el
+      // origen de los tiempos). Lo más viejo sin resultado ya no se va a marcar, y si
+      // quedó algo real más atrás, `truncado` lo avisa igual.
+      datos.todasLasVisitas({
+        ...base,
+        estados: ESTADOS_ACTIVOS,
+        desde: inicioDelDiaArgentina(sumarDias(hoy, -DIAS_ABIERTAS_HACIA_ATRAS)),
+      }),
       datos.todasLasVisitas({ ...base, desde: inicioDelDiaArgentina(hoy), hasta: finDelDiaArgentina(sumarDias(hoy, DIAS_DE_AGENDA - 1)) }),
     ])
     const resumen = armarResumen({

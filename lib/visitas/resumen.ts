@@ -10,6 +10,13 @@ import { fechaEnArgentina, diasParaElegir } from './horario'
 
 export const DIAS_DE_AGENDA = 7
 export const MAX_POR_LISTA = 50
+/**
+ * Tope hacia atrás para "requieren tu acción" (sin resultado / a confirmar): sin esto la
+ * lectura de visitas ABIERTAS no tiene límite de fechas y crece sin parar. Lo más viejo
+ * sin resultado ya no se va a marcar — no cambia nada mostrarlo o no —, y si de verdad
+ * quedó algo más viejo sin resolver, el `truncado` de la ruta lo avisa igual.
+ */
+export const DIAS_ABIERTAS_HACIA_ATRAS = 90
 
 export interface DiaDeAgenda {
   fecha: string
