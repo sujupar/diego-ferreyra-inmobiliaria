@@ -24,6 +24,11 @@ describe('GET /api/public/encuesta/[token]/regalo', () => {
     expect((await pedir()).status).toBe(404)
     expect(datosMock.urlFirmada).not.toHaveBeenCalled()
   })
+  it('visita reabierta después de "Se realizó": el mismo 404, aunque la encuesta ya esté completed_at', async () => {
+    datosMock.leerEncuestaConVisita.mockResolvedValue(encuestaConVisitaDePrueba({ completed_at: '2026-10-15T14:00:00Z' }, { status: 'scheduled' }))
+    expect((await pedir()).status).toBe(404)
+    expect(datosMock.urlFirmada).not.toHaveBeenCalled()
+  })
   it('terminada: 302 a una URL firmada de 10 minutos, con nombre seguro, sin caché', async () => {
     const res = await pedir()
     expect(res.status).toBe(302)

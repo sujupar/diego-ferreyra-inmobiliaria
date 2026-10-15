@@ -181,4 +181,19 @@ describe('Storage', () => {
     expect(await datos.urlFirmada('x', 60)).toBeNull()
     expect(await datos.existeArchivo('x')).toBe(false)
   })
+  it('infoArchivo lee tamaño y mimetype REALES listando la carpeta, nunca lo declarado', async () => {
+    registro.storageRespuesta = (metodo) => metodo === 'list'
+      ? { data: [{ name: 'regalo-y.pdf', metadata: { size: 12345, mimetype: 'application/pdf' } }], error: null }
+      : { data: null, error: null }
+    expect(await datos.infoArchivo('properties/x/regalo-y.pdf')).toEqual({ bytes: 12345, mimetype: 'application/pdf' })
+    expect(registro.storage.at(-1)).toEqual({ bucket: 'visit-survey-gifts', metodo: 'list', args: ['properties/x', { search: 'regalo-y.pdf' }] })
+  })
+  it('infoArchivo: sin el archivo en la lista (no subió), metadata incompleta, o un error: null', async () => {
+    registro.storageRespuesta = () => ({ data: [], error: null })
+    expect(await datos.infoArchivo('properties/x/regalo-y.pdf')).toBeNull()
+    registro.storageRespuesta = () => ({ data: [{ name: 'regalo-y.pdf', metadata: {} }], error: null })
+    expect(await datos.infoArchivo('properties/x/regalo-y.pdf')).toBeNull()
+    registro.storageRespuesta = () => ({ data: null, error: { message: 'boom' } })
+    expect(await datos.infoArchivo('properties/x/regalo-y.pdf')).toBeNull()
+  })
 })

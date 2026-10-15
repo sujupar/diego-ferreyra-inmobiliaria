@@ -9,7 +9,7 @@ import 'server-only'
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { esEstadoVisita } from '../transiciones'
-import { BUCKET_REGALOS } from './regalo'
+import { BUCKET_REGALOS, type InfoArchivoSubido } from './regalo'
 import {
   COLUMNAS_DE_CANAL, ESTADOS_AVISO, ESTADOS_ENVIO, MONEDAS, MOTIVOS_OMISION, OPINIONES_PRECIO, PASOS_GUARDABLES,
   type AjustesEncuesta, type CanalAviso, type EncuestaConVisita, type EncuestaFila, type EstadoAviso, type EstadoEnvio,
@@ -135,6 +135,25 @@ export async function crearSubidaFirmada(path: string): Promise<{ signedUrl: str
 export async function existeArchivo(path: string): Promise<boolean> {
   const { data, error } = await sb().storage.from(BUCKET_REGALOS).createSignedUrl(path, 60)
   return !error && !!data?.signedUrl
+}
+
+/**
+ * Tamaño y `mimetype` REALES del objeto ya subido (ronda 1 de revisión, 2026-10-15): nunca lo que
+ * declaró el navegador al pedir la URL firmada. `null` si el objeto no existe (la subida no
+ * terminó) o si Storage no pudo listarlo.
+ */
+export async function infoArchivo(path: string): Promise<InfoArchivoSubido | null> {
+  const i = path.lastIndexOf('/')
+  const carpeta = i === -1 ? '' : path.slice(0, i)
+  const nombreArchivo = i === -1 ? path : path.slice(i + 1)
+  const { data, error } = await sb().storage.from(BUCKET_REGALOS).list(carpeta, { search: nombreArchivo })
+  if (error || !data) return null
+  const fila = (data as Array<{ name: string; metadata?: Record<string, unknown> | null }>).find(f => f.name === nombreArchivo)
+  if (!fila) return null
+  const bytes = numero(fila.metadata?.size)
+  if (bytes === null) return null
+  const mimetype = fila.metadata?.mimetype
+  return { bytes, mimetype: typeof mimetype === 'string' ? mimetype : null }
 }
 
 /** NO lanza: sin URL, quien llama responde 503 o deja el canal pendiente. */

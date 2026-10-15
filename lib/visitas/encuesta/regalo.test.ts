@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   validarArchivoRegalo, validarPortada, pathDelRegalo, pathDePortada, esPathDelRegalo, esPathDePortada,
-  nombreDeDescarga, validarTitulo, MAX_REGALO_BYTES,
+  nombreDeDescarga, validarTitulo, MAX_REGALO_BYTES, validarArchivoRegaloSubido, validarPortadaSubida,
 } from './regalo'
 
 const PROP = '33333333-3333-4333-8333-333333333333'
@@ -19,6 +19,26 @@ describe('archivo y portada', () => {
     expect(validarPortada({ nombre: 'tapa.jpeg', bytes: 100 })).toBeNull()
     expect(validarPortada({ nombre: 'tapa.gif', bytes: 100 })).toBe('La portada tiene que ser JPG, PNG o WEBP')
     expect(validarPortada({ nombre: 'tapa.png', bytes: 6 * 1024 * 1024 })).toBe('La portada supera los 5 MB')
+  })
+})
+
+describe('validación contra lo REALMENTE subido (nunca lo declarado por el navegador)', () => {
+  it('archivo: exige el mimetype application/pdf real, no una extensión declarada', () => {
+    expect(validarArchivoRegaloSubido({ bytes: 1000, mimetype: 'application/pdf' })).toBeNull()
+    expect(validarArchivoRegaloSubido({ bytes: 1000, mimetype: 'application/octet-stream' })).toBe('El regalo tiene que ser un PDF')
+    expect(validarArchivoRegaloSubido({ bytes: MAX_REGALO_BYTES + 1, mimetype: 'application/pdf' })).toBe('El PDF supera los 20 MB')
+  })
+  it('archivo: sin metadatos (no terminó de subir) es un error distinto, no "no es PDF"', () => {
+    expect(validarArchivoRegaloSubido(null)).toBe('El archivo no terminó de subir. Probá de nuevo.')
+  })
+  it('portada: exige un mimetype de imagen real', () => {
+    expect(validarPortadaSubida({ bytes: 100, mimetype: 'image/webp' })).toBeNull()
+    expect(validarPortadaSubida({ bytes: 100, mimetype: 'application/pdf' })).toBe('La portada tiene que ser JPG, PNG o WEBP')
+    expect(validarPortadaSubida({ bytes: 100, mimetype: null })).toBe('La portada tiene que ser JPG, PNG o WEBP')
+    expect(validarPortadaSubida({ bytes: 6 * 1024 * 1024, mimetype: 'image/png' })).toBe('La portada supera los 5 MB')
+  })
+  it('portada: sin metadatos es "no terminó de subir"', () => {
+    expect(validarPortadaSubida(null)).toBe('La portada no terminó de subir. Probá de nuevo.')
   })
 })
 

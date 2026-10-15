@@ -19,7 +19,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
   if (!esTokenEncuesta(token)) return texto('Este link no está disponible.', 404)
   try {
     const ec = await datos.leerEncuestaConVisita({ token })
-    if (!ec || !ec.encuesta.completed_at) return texto('Este link no está disponible.', 404)
+    // Visita reabierta (se marcó "Se realizó" por error): el mismo 404 amable que el resto del link.
+    if (!ec || ec.visita.status !== 'completed' || !ec.encuesta.completed_at) return texto('Este link no está disponible.', 404)
     const regalo = await datos.leerRegalo(ec.visita.property_id)
     if (!regalo) return texto('Esta propiedad ya no tiene material para descargar.', 404)
     const url = await datos.urlFirmada(regalo.archivoPath, SEGUNDOS_URL_DESCARGA, nombreDeDescarga(regalo.archivoNombre))

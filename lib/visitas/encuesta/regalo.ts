@@ -40,6 +40,33 @@ export function validarPortada(m: MetaArchivo): string | null {
   return null
 }
 
+/**
+ * Metadatos REALES de un objeto ya subido a Storage (ronda 1 de revisión, 2026-10-15): `nombre` y
+ * `bytes` en `validarArchivoRegalo`/`validarPortada` son lo que DECLARA el navegador al pedir la
+ * URL firmada — útil para rechazar rápido antes de subir nada, pero nunca prueba qué se subió.
+ * Alguien puede declarar "foto.pdf" y subir un ejecutable. Esto valida contra lo que Storage
+ * efectivamente guardó (tamaño y `mimetype` que infiere el propio servicio).
+ */
+export interface InfoArchivoSubido { bytes: number; mimetype: string | null }
+
+export const MIME_REGALO = 'application/pdf'
+export const MIMES_PORTADA = ['image/jpeg', 'image/png', 'image/webp'] as const
+
+/** `info` es `null` cuando el objeto todavía no existe en Storage (la subida no terminó). */
+export function validarArchivoRegaloSubido(info: InfoArchivoSubido | null): string | null {
+  if (!info) return 'El archivo no terminó de subir. Probá de nuevo.'
+  if (info.mimetype !== MIME_REGALO) return 'El regalo tiene que ser un PDF'
+  if (info.bytes > MAX_REGALO_BYTES) return 'El PDF supera los 20 MB'
+  return null
+}
+
+export function validarPortadaSubida(info: InfoArchivoSubido | null): string | null {
+  if (!info) return 'La portada no terminó de subir. Probá de nuevo.'
+  if (!info.mimetype || !(MIMES_PORTADA as readonly string[]).includes(info.mimetype)) return 'La portada tiene que ser JPG, PNG o WEBP'
+  if (info.bytes > MAX_PORTADA_BYTES) return 'La portada supera los 5 MB'
+  return null
+}
+
 export function pathDelRegalo(propertyId: string, uuid: string): string {
   return `properties/${propertyId}/regalo-${uuid}.pdf`
 }
