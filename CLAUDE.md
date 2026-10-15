@@ -1962,6 +1962,44 @@ estadísticas en `/visits` + recordatorio, la 3 es la encuesta post-visita). Pla
   `SELECT policyname, cmd FROM pg_policies WHERE tablename='property_visits';` (solo debe quedar
   `property_visits_select_scoped`).
 
+## Sistema de visitas — Entrega 2 (en producción 2026-10-15, PR #43)
+
+Plan: `docs/superpowers/plans/2026-10-15-sistema-de-visitas-entrega-2.md`.
+
+- **Qué hay:** `/visits` (resumen del día, período, filtros, tarjetas, agenda, "Requieren tu acción" con
+  acciones ahí mismo, "Cómo vienen las visitas"), `/visits/todas` (lista paginada), pestaña "Visitas" en la
+  ficha de propiedad (reemplazó "Feedback de visitas"; se borró `/api/properties/[id]/feedback`), y el
+  recordatorio "¿se realizó?" por email al asesor.
+- **Las cifras viven en `lib/visitas/metricas.ts`** (puro; 20.000 visitas en ~21 ms) y viajan con su base:
+  `valor:null` con base 0 → la pantalla dice "Sin datos", nunca 0; base < 20 → "orientativo". Dos
+  criterios deliberados: "Confirmadas" del embudo = `confirmed_at` O realizada (si no, el embudo subía), y la
+  base del "% se realizó" incluye las canceladas por adelantado. Lo que depende de la encuesta dice
+  "Sin datos — llega con la encuesta" hasta la Entrega 3 (no se lee `visit_questionnaires`).
+- **Rutas:** `GET /api/visits` (filtros `desde/hasta/asesor/propiedad/estado/origen`, acepta los nombres
+  viejos `from/to/advisor_id/property_id/status`, paginado con `total`) y `GET /api/visits/resumen`
+  (exige `desde` y `hasta`; la pantalla resuelve el período). Alcance: asesor = asignadas o creadas por él;
+  su `?asesor=` se ignora en el servidor. "Requieren tu acción" mira 90 días hacia atrás.
+  **Se borró `lib/supabase/visits.ts`**: Inicio y Pendientes leen la respuesta nueva.
+- **"Visitas hoy" excluye canceladas en Inicio Y en /visits** (Inicio resta las canceladas del total: el
+  filtro `estado=activas` deja afuera también las realizadas y no sirve para esto).
+- **Recordatorio (`/api/cron/visit-reminders`, pg_cron `visit-reminders`, minuto 5 de cada hora):** solo
+  visitas `scheduled` que pasaron hace entre 1 y 48 h (la primera corrida no manda ráfagas viejas; una
+  "a confirmar" pasada no recibe email pero aparece en "Requieren tu acción"), asesor activo con email.
+  Reserva atómica de `reminder_sent_at` antes de enviar; si el email falla se libera y reintenta la hora
+  siguiente, **salvo si falló por tiempo** (Resend pudo haberlo mandado): ahí no se libera y se cuenta en
+  `vencidas` — se prefiere perder un aviso a duplicarlo. Presupuesto de 10 s por corrida. Escribir
+  `reminder_sent_at` cambia `updated_at`: si el asesor tenía la ficha abierta ve un "Recargar" (aceptado).
+  Aplicado el 2026-10-15 con `scripts/apply-cron-visit-reminders-pg.ts` (reusa el secreto de `send_report`).
+  Se borró la scheduled function de Netlify.
+- **Detección:** corrida → `SELECT status_code, left(content,200) FROM net._http_response ORDER BY created
+  DESC LIMIT 5;` (el del recordatorio trae `"ventana"`); aviso colgado (la función murió entre reservar y
+  enviar) → la consulta del comentario de `lib/visitas/recordatorio.ts`.
+- **Trampa de celular encontrada en el QA (arreglada en el `FilterBar` compartido):** un `<select>` toma el
+  ancho de su opción más larga; con direcciones de propiedades llegaba a 419 px en un teléfono de 360.
+  Ahora `w-full min-w-0 max-w-full h-11` en celular y compacto desde `md` — vale para Contactos, CRM,
+  Tasaciones y Propiedades también.
+- **Cómo verificar:** `npx vitest run --config vitest.visitas.config.ts` (~45 s en frío, 578 pruebas).
+
 ---
 
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
