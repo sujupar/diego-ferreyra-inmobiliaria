@@ -935,3 +935,14 @@ html:has(.landing-root) {
     opacity: 1;
   }
 }
+
+/* Encuesta post-visita (components/encuesta/EncuestaVisita.tsx): entrada de cada paso. La clase la
+   pone el JS RECIÉN al cambiar de paso (la primera pantalla sale del servidor sin ella) y solo si la
+   persona no pidió reducir movimiento. Nunca arranca invisible: opacidad mínima 0.35. */
+@media (prefers-reduced-motion: no-preference) {
+  .encuesta-entra { animation: encuesta-entra 260ms ease-out both; }
+}
+@keyframes encuesta-entra {
+  from { transform: translateY(14px); opacity: 0.35; }
+  to { transform: none; opacity: 1; }
+}
