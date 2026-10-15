@@ -7,13 +7,13 @@
  * Las letras A/B/C y "presioná Enter ↵" solo se ven con mouse (@media hover:hover).
  */
 import Image from 'next/image'
-import type { ReactNode, RefObject } from 'react'
+import { useState, type ReactNode, type RefObject } from 'react'
 import { ArrowLeft, Check, Download, Gift, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { atajosDeOferta, textoMonto } from '@/lib/visitas/encuesta/oferta'
 import { OTRA, type OpcionEncuesta } from '@/lib/visitas/encuesta/opciones'
 import type { EncuestaPublica } from '@/lib/visitas/encuesta/publica'
-import type { ContactoBorrador } from '@/lib/visitas/encuesta/reproductor'
+import { emailEscritoValido, telefonoEscritoValido, type ContactoBorrador } from '@/lib/visitas/encuesta/reproductor'
 
 export const LETRAS = 'ABCDEFGH'
 type Titulo = RefObject<HTMLHeadingElement | null>
@@ -222,6 +222,12 @@ export function PasoContacto({ encuesta, contacto, onCambio, onEnviar, puedeEnvi
   tituloRef: Titulo
   ocupado: boolean
 }) {
+  // "Tocado" recién al SALIR del campo (ronda 1, hallazgo 4): nadie necesita ver el error mientras
+  // todavía está escribiendo — eso sería peor que el botón apagado sin explicación que vinimos a arreglar.
+  const [telTocado, setTelTocado] = useState(false)
+  const [emailTocado, setEmailTocado] = useState(false)
+  const telInvalido = telTocado && !telefonoEscritoValido(contacto.telefono)
+  const emailInvalido = emailTocado && !emailEscritoValido(contacto.email)
   return (
     <form className="relative flex flex-col gap-5" onSubmit={e => { e.preventDefault(); if (puedeEnviar && !ocupado) onEnviar() }}>
       <TituloPaso tituloRef={tituloRef}>{encuesta.regalo ? 'Confirmá tus datos para recibirlo' : 'Último paso: confirmá tus datos'}</TituloPaso>
@@ -239,14 +245,20 @@ export function PasoContacto({ encuesta, contacto, onCambio, onEnviar, puedeEnvi
           <>
             <label htmlFor="telefono" className="text-sm font-medium">Tu WhatsApp</label>
             <input id="telefono" type="tel" inputMode="tel" autoComplete="tel" enterKeyHint="next" placeholder="11 5823-4521"
-              className={CAMPO} value={contacto.telefono} onChange={e => onCambio({ telefono: e.target.value })} />
+              className={CAMPO} value={contacto.telefono} onChange={e => onCambio({ telefono: e.target.value })}
+              onBlur={() => setTelTocado(true)} aria-invalid={telInvalido} aria-describedby={telInvalido ? 'telefono-ayuda' : undefined}
+              // Enter en el teléfono NO manda el formulario (faltaría el email): pasa al siguiente campo.
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('email')?.focus() } }} />
+            {telInvalido && <p id="telefono-ayuda" className="text-sm text-red-700">El teléfono tiene que tener al menos 8 números.</p>}
           </>
         )}
       </div>
       <div className="flex flex-col gap-1">
         <label htmlFor="email" className="text-sm font-medium">Tu email (opcional)</label>
         <input id="email" type="email" inputMode="email" autoComplete="email" enterKeyHint="send"
-          className={CAMPO} value={contacto.email} onChange={e => onCambio({ email: e.target.value })} />
+          className={CAMPO} value={contacto.email} onChange={e => onCambio({ email: e.target.value })}
+          onBlur={() => setEmailTocado(true)} aria-invalid={emailInvalido} aria-describedby={emailInvalido ? 'email-ayuda' : undefined} />
+        {emailInvalido && <p id="email-ayuda" className="text-sm text-red-700">Revisá el email, o dejalo vacío.</p>}
       </div>
       <label className="flex min-h-11 items-start gap-3 text-base">
         <input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-[color:var(--brand)]" checked={contacto.similares} onChange={e => onCambio({ similares: e.target.checked })} />

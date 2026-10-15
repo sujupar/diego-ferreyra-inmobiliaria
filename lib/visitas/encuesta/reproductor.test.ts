@@ -32,7 +32,8 @@ describe('transiciones', () => {
   it('guardado → siguiente; error → se queda con el mensaje; atrás → anterior', () => {
     const ocupado = reducir(en(s0, 'gusto'), { tipo: 'ocupado' })
     expect(ocupado.ocupado).toBe(true)
-    expect(reducir(ocupado, { tipo: 'avanzar' })).toMatchObject({ paso: 'mas_gusto', ocupado: false })
+    expect(reducir(ocupado, { tipo: 'avanzar', desde: 'gusto' })).toMatchObject({ paso: 'mas_gusto', ocupado: false })
+    expect(reducir(ocupado, { tipo: 'avanzar', desde: 'precio' })).toBe(ocupado)
     expect(reducir(ocupado, { tipo: 'error', mensaje: 'x' })).toMatchObject({ paso: 'gusto', ocupado: false, error: 'x' })
     expect(reducir(en(s0, 'precio'), { tipo: 'atras' }).paso).toBe('menos_gusto')
     expect(reducir(s0, { tipo: 'atras' })).toBe(s0)

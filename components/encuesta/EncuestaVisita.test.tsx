@@ -149,10 +149,125 @@ describe('EncuestaVisita (criterios 20, 21, 22)', () => {
     await userEvent.keyboard('b')
     await waitFor(() => expect(patches('gusto')[0]?.cuerpo).toEqual({ paso: 'gusto', valor: false }))
   })
-  it('sin precio publicado pregunta en general y no ofrece atajos', () => {
+  it('sin precio publicado pregunta en general y no ofrece atajos', async () => {
     // propiedad siempre existe en el constructor de pruebas
     const sinPrecio = encuestaConVisitaDePrueba().visita.propiedad!
     render(<EncuestaVisita encuesta={encuesta({ liked: true, most_liked_tags: ['luz'], least_liked_tags: ['nada'] }, { propiedad: { ...sinPrecio, asking_price: null } })} />)
     expect(screen.getByRole('heading', { name: '¿Qué te parece el precio?' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('radio', { name: 'Correcto' }))
+    expect(await screen.findByRole('heading', { name: /ofertarías/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /%:/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('EncuestaVisita — ronda 1 (revisión)', () => {
+  it('letra + Enter rápido no saltea una pregunta (hallazgo 1)', async () => {
+    render(<EncuestaVisita encuesta={encuesta({}, {}, null)} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Empezar' }))
+    await screen.findByRole('radio', { name: /Sí/ })
+    await userEvent.keyboard('a')
+    await userEvent.keyboard('{Enter}')
+    expect(await screen.findByRole('heading', { name: '¿Qué fue lo que más te gustó?' })).toBeInTheDocument()
+    // Si el temporizador del auto-avance no se hubiera cancelado, a los 350 ms saltaría OTRA vez.
+    await new Promise(r => setTimeout(r, 400))
+    expect(screen.getByRole('heading', { name: '¿Qué fue lo que más te gustó?' })).toBeInTheDocument()
+    expect(patches('gusto')).toHaveLength(1)
+  })
+  it('"Sí" y atrás antes de los 350 ms no vuelve solo a "gusto" (hallazgo 2)', async () => {
+    render(<EncuestaVisita encuesta={encuesta()} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Quiero mi regalo' }))
+    await userEvent.click(await screen.findByRole('radio', { name: /Sí/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Volver a la pregunta anterior' }))
+    expect(screen.getByRole('heading', { name: /este regalo es tuyo/ })).toBeInTheDocument()
+    await new Promise(r => setTimeout(r, 400))
+    expect(screen.getByRole('heading', { name: /este regalo es tuyo/ })).toBeInTheDocument()
+  })
+  it('Enter en el teléfono pasa al email, no manda el formulario (hallazgo 3)', async () => {
+    render(<EncuestaVisita encuesta={encuesta({ liked: true, most_liked_tags: ['luz'], least_liked_tags: ['nada'], price_opinion: 'correcto', offer_declined: true }, { client_phone: null })} />)
+    const telefono = await screen.findByLabelText('Tu WhatsApp')
+    await userEvent.type(telefono, '1158234521')
+    await userEvent.keyboard('{Enter}')
+    expect(screen.getByLabelText('Tu email (opcional)')).toHaveFocus()
+    expect(llamadas.filter(l => l.metodo === 'POST')).toHaveLength(0)
+  })
+  it('el botón sigue apagado pero explica por qué, al salir del campo (hallazgo 4)', async () => {
+    render(<EncuestaVisita encuesta={encuesta({ liked: true, most_liked_tags: ['luz'], least_liked_tags: ['nada'], price_opinion: 'correcto', offer_declined: true }, { client_phone: null })} />)
+    const telefono = await screen.findByLabelText('Tu WhatsApp')
+    expect(screen.queryByText(/El teléfono tiene que tener/)).not.toBeInTheDocument()
+    await userEvent.type(telefono, '123')
+    await userEvent.tab()
+    expect(await screen.findByText('El teléfono tiene que tener al menos 8 números.')).toBeInTheDocument()
+    expect(telefono).toHaveAttribute('aria-invalid', 'true')
+    expect(telefono).toHaveAttribute('aria-describedby', 'telefono-ayuda')
+    const email = screen.getByLabelText('Tu email (opcional)')
+    await userEvent.type(email, 'ana@')
+    await userEvent.tab()
+    expect(await screen.findByText('Revisá el email, o dejalo vacío.')).toBeInTheDocument()
+    expect(email).toHaveAttribute('aria-invalid', 'true')
+    expect(email).toHaveAttribute('aria-describedby', 'email-ayuda')
+    expect(screen.getByRole('button', { name: 'Quiero mi regalo' })).toBeDisabled()
+  })
+  it('Reintentar vuelve a mandar la misma respuesta (hallazgo 5)', async () => {
+    let fallos = 0
+    responder = l => {
+      if (l.metodo === 'PATCH' && (l.cuerpo as { paso: string } | null)?.paso === 'gusto') {
+        fallos++
+        return fallos === 1 ? Promise.reject(new Error('red')) : ok()
+      }
+      return ok()
+    }
+    render(<EncuestaVisita encuesta={encuesta({}, {}, null)} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Empezar' }))
+    await userEvent.click(await screen.findByRole('radio', { name: /No/ }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('No pudimos guardar tu respuesta')
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: '¿Qué fue lo que más te gustó?' })).toBeInTheDocument())
+    expect(patches('gusto')).toHaveLength(2)
+  })
+  it('↑/↓ mueve el foco entre opciones; las letras no despachan mientras hay un guardado en curso (hallazgo 6)', async () => {
+    let soltar: () => void = () => {}
+    responder = l => {
+      if (l.metodo === 'PATCH' && (l.cuerpo as { paso: string } | null)?.paso === 'gusto') {
+        return new Promise<Response>(r => { soltar = () => r(ok()) })
+      }
+      return ok()
+    }
+    render(<EncuestaVisita encuesta={encuesta({}, {}, null)} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Empezar' }))
+    const si = await screen.findByRole('radio', { name: /Sí/ })
+    const no = screen.getByRole('radio', { name: /No/ })
+    si.focus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(no).toHaveFocus()
+    await userEvent.keyboard('{ArrowUp}')
+    expect(si).toHaveFocus()
+    await userEvent.click(si)
+    await new Promise(r => setTimeout(r, 400)) // dispara el auto-avance: queda "ocupado" hasta soltar()
+    await userEvent.keyboard('b')
+    expect(patches('gusto')).toHaveLength(1)
+    soltar()
+    await waitFor(() => expect(screen.getByRole('heading', { name: '¿Qué fue lo que más te gustó?' })).toBeInTheDocument())
+  })
+  it('doble toque en la misma opción manda UNA sola vez', async () => {
+    render(<EncuestaVisita encuesta={encuesta({}, {}, null)} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Empezar' }))
+    const si = await screen.findByRole('radio', { name: /Sí/ })
+    await userEvent.dblClick(si)
+    await waitFor(() => expect(screen.getByRole('heading', { name: '¿Qué fue lo que más te gustó?' })).toBeInTheDocument())
+    expect(patches('gusto')).toHaveLength(1)
+  })
+  it('el foco va al título al cambiar de paso', async () => {
+    render(<EncuestaVisita encuesta={encuesta({}, {}, null)} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Empezar' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Mariana, ¿te gustó Doblas 248?' })).toHaveFocus())
+  })
+  it('la barra de avance tiene valores consistentes (nunca "paso N de M" visible)', async () => {
+    render(<EncuestaVisita encuesta={encuesta({}, {}, null)} />)
+    const barra = screen.getByRole('progressbar', { name: 'Avance de la encuesta' })
+    expect(barra).toHaveAttribute('aria-valuemin', '0')
+    expect(barra).toHaveAttribute('aria-valuemax', '100')
+    expect(barra).toHaveAttribute('aria-valuenow', '0')
+    await userEvent.click(screen.getByRole('button', { name: 'Empezar' }))
+    await waitFor(() => expect(barra).toHaveAttribute('aria-valuenow', String(Math.round((1 / 7) * 100))))
   })
 })

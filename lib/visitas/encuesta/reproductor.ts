@@ -41,7 +41,10 @@ export type AccionReproductor =
   | { tipo: 'declinar_oferta' }
   | { tipo: 'contacto'; cambios: Partial<ContactoBorrador> }
   | { tipo: 'ocupado' }
-  | { tipo: 'avanzar' }
+  /** `desde` es el paso que pidió el guardado: si para entonces ya se fue a otro lado (atrás, un
+   * "ir_a" del servidor), este avance quedó VIEJO y el reductor lo ignora (ronda 1: doble avance
+   * con tecla + Enter rápido, o "Sí" + atrás antes de los 350 ms del auto-avance). */
+  | { tipo: 'avanzar'; desde: PasoEncuesta }
   | { tipo: 'error'; mensaje: string }
   | { tipo: 'ir_a'; paso: PasoEncuesta; mensaje?: string }
   | { tipo: 'atras' }
@@ -106,6 +109,8 @@ export function reducir(s: EstadoReproductor, a: AccionReproductor): EstadoRepro
     case 'ocupado':
       return { ...s, ocupado: true, error: null }
     case 'avanzar':
+      // Avance VIEJO (el paso ya cambió para otro lado desde que se pidió este guardado): no hacer nada.
+      if (s.paso !== a.desde) return s
       return { ...s, paso: pasoSiguiente(s.paso), ocupado: false, animar: true, error: null }
     case 'error':
       return { ...s, ocupado: false, error: a.mensaje }
@@ -121,6 +126,20 @@ export function reducir(s: EstadoReproductor, a: AccionReproductor): EstadoRepro
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+/** Mismo mínimo que exige `contactoFinal` en el servidor (respuestas.ts). */
+export const MIN_DIGITOS_TELEFONO = 8
+
+/** El teléfono escrito a mano, con el mismo límite que el servidor. Exportada para que la
+ * pantalla explique por qué el botón sigue apagado (ronda 1, hallazgo 4), sin duplicar el número. */
+export function telefonoEscritoValido(telefono: string): boolean {
+  return telefono.replace(/\D/g, '').length >= MIN_DIGITOS_TELEFONO
+}
+
+/** Vacío es válido (el email es opcional); lo inválido es un email A MEDIAS escribir. */
+export function emailEscritoValido(email: string): boolean {
+  const t = email.trim()
+  return t === '' || EMAIL_RE.test(t)
+}
 
 export function puedeAvanzar(s: EstadoReproductor, conTelefonoPrecargado: boolean): boolean {
   const r = s.respuestas
@@ -132,9 +151,8 @@ export function puedeAvanzar(s: EstadoReproductor, conTelefonoPrecargado: boolea
     case 'precio': return r.price_opinion !== null
     case 'oferta': return r.offer_amount !== null || r.offer_declined === true
     case 'contacto': {
-      const tel = (!s.contacto.cambiarTelefono && conTelefonoPrecargado) || s.contacto.telefono.replace(/\D/g, '').length >= 8
-      const email = s.contacto.email.trim()
-      return tel && (email === '' || EMAIL_RE.test(email))
+      const tel = (!s.contacto.cambiarTelefono && conTelefonoPrecargado) || telefonoEscritoValido(s.contacto.telefono)
+      return tel && emailEscritoValido(s.contacto.email)
     }
     case 'bienvenida':
     case 'gracias':

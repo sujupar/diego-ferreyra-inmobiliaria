@@ -72,13 +72,21 @@ export function EncuestaVisita({ encuesta }: { encuesta: EncuestaPublica }) {
     }).catch(() => {})
   }, [base, encuesta.completa])
 
+  /** Cancela el auto-avance pendiente (ronda 1, hallazgo 1 y 2): un cambio de paso por OTRO
+   * camino (Enter, atrás, el servidor) no puede dejar un guardado viejo esperando en el aire. */
+  function cancelarAutoavance() {
+    if (temporizador.current) { clearTimeout(temporizador.current); temporizador.current = null }
+  }
+
   useEffect(() => {
     if (primerPaso.current) { primerPaso.current = false; return }
     tituloRef.current?.focus()
     document.title = s.paso === 'gracias' ? 'Gracias · Encuesta de tu visita' : `Paso ${PASOS_ENCUESTA.indexOf(s.paso)} · Encuesta de tu visita`
+    // Cambió el paso por CUALQUIER camino: lo que estuviera programado para el paso anterior queda viejo.
+    return () => cancelarAutoavance()
   }, [s.paso])
 
-  useEffect(() => () => { if (temporizador.current) clearTimeout(temporizador.current) }, [])
+  useEffect(() => () => cancelarAutoavance(), [])
 
   async function guardar(cuerpo: CuerpoPasoCliente) {
     if (ocupadoRef.current) return
@@ -87,7 +95,7 @@ export function EncuestaVisita({ encuesta }: { encuesta: EncuestaPublica }) {
     try {
       const res = await fetch(base, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) })
       const j = await leerCuerpo(res)
-      if (res.ok) despachar({ tipo: 'avanzar' })
+      if (res.ok) despachar({ tipo: 'avanzar', desde: cuerpo.paso })
       else if (j.code === 'COMPLETA') despachar({ tipo: 'terminado', descarga: encuesta.regalo ? urlDescargaDelRegalo(encuesta.token) : null })
       else despachar({ tipo: 'error', mensaje: typeof j.error === 'string' ? j.error : NO_GUARDO })
     } catch {
@@ -100,7 +108,7 @@ export function EncuestaVisita({ encuesta }: { encuesta: EncuestaPublica }) {
   function elegirYAvanzar(accion: AccionReproductor, cuerpo: CuerpoPasoCliente) {
     if (ocupadoRef.current) return
     despachar(accion)
-    if (temporizador.current) clearTimeout(temporizador.current)
+    cancelarAutoavance()
     temporizador.current = setTimeout(() => { void guardar(cuerpo) }, ESPERA_AUTOAVANCE_MS)
   }
 
@@ -130,6 +138,7 @@ export function EncuestaVisita({ encuesta }: { encuesta: EncuestaPublica }) {
 
   function okDelPaso() {
     if (!puedeAvanzar(s, telPrecargado) || ocupadoRef.current) return
+    cancelarAutoavance()
     if (s.paso === 'bienvenida') { despachar({ tipo: 'empezar' }); return }
     if (s.paso === 'contacto') { void terminar(); return }
     const cuerpo = cuerpoDelPaso(s)
@@ -149,6 +158,22 @@ export function EncuestaVisita({ encuesta }: { encuesta: EncuestaPublica }) {
         okDelPaso()
         return
       }
+      // ↑↓ entre opciones (spec §3.6.3): mueve el FOCO, nunca la selección por sí sola — la elige
+      // quien toca Enter o la opción. Es navegación pura: corre aunque haya un guardado en curso.
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && t instanceof HTMLElement) {
+        const contenedor = t.closest('[role="radiogroup"], [role="group"]')
+        if (!contenedor) return
+        const botones = Array.from(contenedor.querySelectorAll<HTMLButtonElement>('button[role="radio"], button[aria-pressed]'))
+        const i = botones.indexOf(t as HTMLButtonElement)
+        if (i < 0) return
+        e.preventDefault()
+        const siguiente = e.key === 'ArrowDown' ? (i + 1) % botones.length : (i - 1 + botones.length) % botones.length
+        botones[siguiente]?.focus()
+        return
+      }
+      // Ronda 1, hallazgo 6: con un guardado en curso, las letras no despachan nada (ni "alternar",
+      // que no pasa por `elegirYAvanzar` y por eso no tenía este freno).
+      if (ocupadoRef.current) return
       const i = LETRAS.indexOf(e.key.toUpperCase())
       if (e.key.length !== 1 || i < 0) return
       if (s.paso === 'gusto' && i < OPCIONES_GUSTO.length) {
@@ -169,6 +194,8 @@ export function EncuestaVisita({ encuesta }: { encuesta: EncuestaPublica }) {
   const r = s.respuestas
   const puede = puedeAvanzar(s, telPrecargado)
   const mostrarAtras = pasoAnterior(s.paso) !== null
+  // Lo que se reintenta si este paso falló: null en bienvenida/contacto/gracias (tienen su propio botón).
+  const cuerpoActual = cuerpoDelPaso(s)
 
   // Una VARIABLE con el JSX del paso, no un componente declarado acá adentro (CLAUDE.md § A/B).
   let pantalla: ReactNode
@@ -228,14 +255,24 @@ export function EncuestaVisita({ encuesta }: { encuesta: EncuestaPublica }) {
     <div className="mx-auto flex min-h-[100dvh] w-full max-w-xl flex-col gap-4 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
       <div className="flex items-center gap-2">
         {mostrarAtras
-          ? <BotonAtras onAtras={() => despachar({ tipo: 'atras' })} deshabilitado={s.ocupado} />
+          ? <BotonAtras onAtras={() => { cancelarAutoavance(); despachar({ tipo: 'atras' }) }} deshabilitado={s.ocupado} />
           : <span className="h-11 w-11 shrink-0" aria-hidden="true" />}
         <BarraDeAvance valor={avance(s.paso)} />
       </div>
       <div key={s.paso} className={cn('flex flex-1 flex-col justify-center py-2', s.animar && 'encuesta-entra')}>
         {pantalla}
       </div>
-      {s.error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-900">{s.error}</p>}
+      {s.error && (
+        <p role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-900">
+          <span className="min-w-0 break-words">{s.error}</span>
+          {cuerpoActual && (
+            <button type="button" className="shrink-0 font-semibold underline disabled:opacity-60" disabled={s.ocupado}
+              onClick={() => void guardar(cuerpoActual)}>
+              Reintentar
+            </button>
+          )}
+        </p>
+      )}
     </div>
   )
 }
