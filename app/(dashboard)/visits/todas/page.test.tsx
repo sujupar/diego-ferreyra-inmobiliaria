@@ -18,15 +18,24 @@ import TodasLasVisitasPage from './page'
 let rol = 'admin'
 let respuesta: { status: number; body: unknown } = { status: 200, body: { data: [], total: 0, pagina: 1, porPagina: 25 } }
 const pedidos: string[] = []
+// Grupo G (revisión final E2): mientras llega la respuesta tras cambiar un filtro, el
+// pedido anterior sigue en pantalla pero tiene que haber un indicador de "actualizando".
+// `demora`, cuando está puesta, frena la respuesta de `/api/visits` hasta que el test la
+// libera — por defecto `null` (resuelve de inmediato, como hoy).
+let demora: Promise<void> | null = null
 
 beforeEach(() => {
-  busqueda = ''; escrituras.length = 0; pedidos.length = 0; rol = 'admin'
+  busqueda = ''; escrituras.length = 0; pedidos.length = 0; rol = 'admin'; demora = null
   respuesta = { status: 200, body: { data: [visitaDePrueba()], total: 60, pagina: 1, porPagina: 25 } }
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
     if (url.startsWith('/api/auth/me')) return json(200, { id: '11111111-1111-4111-8111-111111111111', role: rol })
     if (url.startsWith('/api/users/advisors')) return json(200, { data: [] })
-    if (url.startsWith('/api/visits?')) { pedidos.push(url); return json(respuesta.status, respuesta.body) }
+    if (url.startsWith('/api/visits?')) {
+      pedidos.push(url)
+      if (demora) await demora
+      return json(respuesta.status, respuesta.body)
+    }
     throw new Error(`fetch inesperado: ${url}`)
   }))
 })
@@ -56,5 +65,30 @@ describe('/visits/todas', () => {
     respuesta = { status: 400, body: { error: 'El estado no es válido' } }
     render(<TodasLasVisitasPage />)
     expect(await screen.findByText('El estado no es válido')).toBeInTheDocument()
+  })
+
+  it('grupo G: al cambiar de filtro, mientras llega la respuesta nueva, se ve un indicador de "actualizando"', async () => {
+    const { rerender } = render(<TodasLasVisitasPage />)
+    expect(await screen.findByText('Página 1 de 3 · 60 visitas')).toBeInTheDocument()
+    expect(screen.queryByText(/Actualizando/i)).not.toBeInTheDocument()
+    expect(screen.getByTestId('visitas-todas-tabla')).toHaveAttribute('aria-busy', 'false')
+
+    // Lo que de verdad dispara un pedido nuevo es la URL confirmada
+    // (`aplicados`, derivada de `useSearchParams`), no la escritura optimista:
+    // acá se simula la navegación ya confirmada con un filtro nuevo.
+    let liberar!: () => void
+    demora = new Promise<void>(r => { liberar = r })
+    busqueda = 'estado=completed'
+    rerender(<TodasLasVisitasPage />)
+
+    // Mientras la respuesta nueva no llegó, la tabla sigue mostrando lo viejo
+    // (no se vacía), pero avisa que está actualizando.
+    await waitFor(() => expect(screen.getByTestId('visitas-todas-tabla')).toHaveAttribute('aria-busy', 'true'))
+    expect(screen.getByText(/Actualizando/i)).toBeInTheDocument()
+    expect(screen.getByText('Página 1 de 3 · 60 visitas')).toBeInTheDocument()
+
+    liberar()
+    await waitFor(() => expect(screen.getByTestId('visitas-todas-tabla')).toHaveAttribute('aria-busy', 'false'))
+    expect(screen.queryByText(/Actualizando/i)).not.toBeInTheDocument()
   })
 })

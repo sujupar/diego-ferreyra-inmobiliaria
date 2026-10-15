@@ -54,6 +54,10 @@ function Lista() {
   const [asesores, setAsesores] = useState<Array<{ id: string; full_name: string }>>([])
   const [pagina, setPagina] = useState<{ filas: VisitaListado[]; total: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Grupo G (revisión final E2): al cambiar un filtro, la tabla seguía mostrando el lote
+  // VIEJO sin ningún aviso mientras llegaba el nuevo — igual que `/visits` (`cargando`),
+  // pero acá además faltaba `aria-busy` sobre la tabla.
+  const [actualizando, setActualizando] = useState(false)
   const pedidos = usePedidosVersionados()
 
   useEffect(() => {
@@ -81,6 +85,7 @@ function Lista() {
     if (filtros.origen) qs.set('origen', filtros.origen)
     if (filtros.estado) qs.set('estado', filtros.estado)
     setError(null)
+    setActualizando(true)
     fetch(`/api/visits?${qs}`, { signal })
       .then(async r => {
         const lectura = await leerRespuesta<VisitaListado[]>(r.clone())
@@ -91,6 +96,7 @@ function Lista() {
         setPagina({ filas: lectura.data ?? [], total: total ?? (lectura.data ?? []).length })
       })
       .catch(() => { if (pedidos.vigente(gen)) setError('No hay conexión. Probá de nuevo.') })
+      .finally(() => pedidos.siVigente(gen, () => setActualizando(false)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtros, rol])
 
@@ -121,10 +127,13 @@ function Lista() {
       </FilterBar>
 
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      <p role="status" aria-live="polite" className="sr-only">{actualizando ? 'Actualizando las visitas' : ''}</p>
       {!pagina && !error && <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}
       {pagina && (
         <>
-          <VisitsTable visits={pagina.filas} mostrarAsesor={verTodo} />
+          <div data-testid="visitas-todas-tabla" aria-busy={actualizando} className={actualizando ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+            <VisitsTable visits={pagina.filas} mostrarAsesor={verTodo} />
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-muted-foreground">
               Página {numeroDePagina} de {paginas} · {pagina.total} visita{pagina.total === 1 ? '' : 's'}
