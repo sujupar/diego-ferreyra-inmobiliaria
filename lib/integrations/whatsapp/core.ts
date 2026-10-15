@@ -13,7 +13,7 @@
  *   WHATSAPP_TEST_MODE         — 'true' para no enviar (default true por seguridad)
  */
 import { normalizeWhatsappPhone } from './phone'
-import { logOutbound } from './log'
+import { logOutbound, type OrigenWhatsapp } from './log'
 import { textoDePlantilla, SEPARADOR_DE_PARAMETROS } from './cuerpos'
 
 /**
@@ -26,7 +26,7 @@ const WHATSAPP_TIMEOUT_DEFAULT_MS = 8000
 
 export interface SendTemplateInput {
   /** De dónde nació la conversación (ver migración 20260806000001). */
-  origen?: 'consulta_portal' | 'landing' | 'manual' | null
+  origen?: OrigenWhatsapp | null
   to: string // E.164 sin '+', ej. 5491122334455
   templateName: string
   languageCode: string // ej. es_AR
@@ -271,7 +271,7 @@ export async function sendWhatsappTemplate(input: SendTemplateInput): Promise<Se
  */
 export interface SendTextInput {
   /** De dónde nació la conversación (ver migración 20260806000001). */
-  origen?: 'consulta_portal' | 'landing' | 'manual' | null
+  origen?: OrigenWhatsapp | null
   to: string // E.164 sin '+', ej. 5491122334455
   text: string
   /** Timeout del POST a Meta en ms. Default 8s. */
@@ -312,7 +312,7 @@ export type SendTextResult = SendTemplateResult
  */
 export interface SendMediaInput {
   /** De dónde nació la conversación (ver migración 20260806000001). */
-  origen?: 'consulta_portal' | 'landing' | 'manual' | null
+  origen?: OrigenWhatsapp | null
   to: string // E.164 sin '+'
   mediaType: 'image' | 'video' | 'document'
   link: string
