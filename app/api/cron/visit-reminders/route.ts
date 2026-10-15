@@ -43,7 +43,13 @@ async function autorizado(provisto: string | null): Promise<boolean> {
   const clave = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !clave) return false
   try {
-    const { data } = await createClient(url, clave).from('cron_config').select('value').eq('key', 'visit_reminders').maybeSingle()
+    const { data, error } = await createClient(url, clave).from('cron_config').select('value').eq('key', 'visit_reminders').maybeSingle()
+    if (error) {
+      // supabase-js no lanza ante un error de Postgres: sin leer `error` esto fallaba en
+      // silencio y el cron quedaba "sin autorizar" sin ningún rastro en los logs.
+      console.error('[cron/visit-reminders] no se pudo leer cron_config', error.message)
+      return false
+    }
     const secretoDb = (data as { value?: string } | null)?.value
     // Un marcador sin reemplazar ('__SECRETO__', público en el repo) nunca es un secreto.
     return !!secretoDb && !secretoDb.startsWith('__') && compararEnTiempoConstante(provisto, secretoDb)

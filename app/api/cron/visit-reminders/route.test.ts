@@ -8,6 +8,7 @@ import type { VisitaParaRecordar } from '@/lib/visitas/tipos'
 
 const estado = vi.hoisted(() => ({
   secretoEnLaBase: 'secreto-de-la-base' as string | null,
+  errorCronConfig: null as { message: string } | null,
   visitas: [] as VisitaParaRecordar[],
   reservas: new Map<string, string | null>(),
   resultadoEmail: { ok: true, sent: 1, skipped: 0, failed: 0, errors: [] as string[] },
@@ -19,7 +20,9 @@ const estado = vi.hoisted(() => ({
 vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     from: () => ({ select: () => ({ eq: () => ({
-      maybeSingle: async () => (estado.secretoEnLaBase === null ? { data: null, error: null } : { data: { value: estado.secretoEnLaBase }, error: null }),
+      maybeSingle: async () => (estado.errorCronConfig
+        ? { data: null, error: estado.errorCronConfig }
+        : estado.secretoEnLaBase === null ? { data: null, error: null } : { data: { value: estado.secretoEnLaBase }, error: null }),
     }) }) }),
   }),
 }))
@@ -44,6 +47,7 @@ const pedido = (secreto?: string, url = 'https://app.test/api/cron/visit-reminde
 
 beforeEach(() => {
   estado.secretoEnLaBase = 'secreto-de-la-base'
+  estado.errorCronConfig = null
   estado.visitas = []; estado.reservas = new Map(); estado.enviados = []; estado.liberadas = []; estado.falla = null
   estado.resultadoEmail = { ok: true, sent: 1, skipped: 0, failed: 0, errors: [] }
   delete process.env.CRON_SECRET
@@ -72,6 +76,12 @@ describe('cron del recordatorio "¿se realizó?"', () => {
   it('secreto incorrecto (ni el de env ni el de la base, con largo distinto de los dos): 403', async () => {
     process.env.CRON_SECRET = 'secreto-de-netlify'
     expect((await POST(pedido('otra-cosa-cualquiera-mas-corta'))).status).toBe(403)
+  })
+  it('si falla la lectura de cron_config, 403 (nunca lanza) y lo deja anotado en el log', async () => {
+    estado.errorCronConfig = { message: 'conexión rechazada' }
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect((await POST(pedido('secreto-de-la-base'))).status).toBe(403)
+    expect(spy).toHaveBeenCalledWith('[cron/visit-reminders] no se pudo leer cron_config', 'conexión rechazada')
   })
   it('manda a las que corresponden, saltea las demás con su motivo, y lo dice', async () => {
     estado.visitas = [visita('a'), visita('b', { asesor: null })]
