@@ -26,6 +26,17 @@ export class ReenvioNoPermitido extends Error {
   }
 }
 
+/** Ronda 1 de revisión: otro envío de ESTA MISMA encuesta está en curso (candado tomado). */
+export class EnvioEnCurso extends Error {
+  constructor() {
+    super('Ya se está enviando, esperá unos segundos')
+    this.name = 'EnvioEnCurso'
+  }
+}
+
+/** Más que el techo de 8 s de `mandarPlantilla`: cubre la llamada a Meta completa con margen. */
+const DURACION_CANDADO_SEGUNDOS = 30
+
 function baseDeLaApp(): string {
   // `||`: una variable seteada pero VACÍA (vista previa mal configurada) no deja un link relativo.
   return (process.env.NEXT_PUBLIC_APP_URL || 'https://inmodf.com.ar').replace(/\/+$/, '')
@@ -94,27 +105,52 @@ export async function prepararYEnviarEncuesta(
 
   if (!decision.enviar) {
     if (o.reenvio) throw new ReenvioNoPermitido(decision.motivo)
-    if (encuesta.send_status !== 'enviada' && decision.motivo !== 'ya_enviada') {
+    // Un envío que YA SALIÓ (enviada) o que YA FALLÓ (fallida, con su motivo guardado) no se pisa
+    // con un "omitida": perdería el rastro de lo que pasó de verdad.
+    if (encuesta.send_status !== 'enviada' && encuesta.send_status !== 'fallida' && decision.motivo !== 'ya_enviada') {
       await datos.registrarEnvio(encuesta.id, { send_status: 'omitida', send_skip_reason: decision.motivo, send_error: null })
     }
   } else {
-    const envio = armarEnvioEncuesta(plantilla, {
-      nombre: visita.client_name, direccion: visita.propiedad?.address ?? null,
-      fecha: fechaCorta(visita.scheduled_at), token: encuesta.token,
-    })
-    if (!envio) {
-      await datos.registrarEnvio(encuesta.id, { send_status: 'omitida', send_skip_reason: 'plantilla_desconocida', send_error: null })
+    // Candado de corta duración (ronda 1 de revisión): hasta acá la decisión es la misma para
+    // un doble toque de "Reenviar" o para dos personas reenviando casi juntas — nada escrito
+    // todavía las distingue. Quien no consigue el candado no manda nada.
+    const tieneCandado = await datos.reservarEnvio(encuesta.id, DURACION_CANDADO_SEGUNDOS)
+    if (!tieneCandado) {
+      if (o.reenvio) throw new EnvioEnCurso()
+      // Envío automático en carrera con otro (otra pestaña, un reenvío simultáneo): la otra
+      // llamada ya se está encargando, así que acá no hay nada más para hacer.
     } else {
-      const r = await mandarPlantilla(envio, { telefono: decision.telefono, leadId: visita.lead_id, propertyId: visita.property_id, sentBy: o.actorId })
-      if (r.ok && r.modoPrueba) {
-        await datos.registrarEnvio(encuesta.id, { send_status: 'omitida', send_skip_reason: 'modo_prueba_whatsapp', send_error: null })
-      } else if (r.ok) {
-        await datos.registrarEnvio(encuesta.id, {
-          send_status: 'enviada', send_skip_reason: null, send_error: null,
-          sent_at: o.ahora.toISOString(), sent_to: decision.telefono, wa_message_id: r.messageId,
+      try {
+        const envio = armarEnvioEncuesta(plantilla, {
+          nombre: visita.client_name, direccion: visita.propiedad?.address ?? null,
+          fecha: fechaCorta(visita.scheduled_at), token: encuesta.token,
         })
-      } else {
-        await datos.registrarEnvio(encuesta.id, { send_status: 'fallida', send_skip_reason: null, send_error: motivoLegibleDeMeta(r.codigo, r.error) })
+        if (!envio) {
+          await datos.registrarEnvio(encuesta.id, { send_status: 'omitida', send_skip_reason: 'plantilla_desconocida', send_error: null })
+        } else {
+          const r = await mandarPlantilla(envio, { telefono: decision.telefono, leadId: visita.lead_id, propertyId: visita.property_id, sentBy: o.actorId })
+          if (r.ok && r.modoPrueba) {
+            await datos.registrarEnvio(encuesta.id, { send_status: 'omitida', send_skip_reason: 'modo_prueba_whatsapp', send_error: null })
+          } else if (r.ok) {
+            try {
+              await datos.registrarEnvio(encuesta.id, {
+                send_status: 'enviada', send_skip_reason: null, send_error: null,
+                sent_at: o.ahora.toISOString(), sent_to: decision.telefono, wa_message_id: r.messageId,
+              })
+            } catch (e) {
+              // Meta YA mandó el mensaje: si esto no queda guardado, un reintento podría volver a
+              // mandarlo sin saber que ya salió. El rastro completo (a quién, con qué mensaje) va
+              // en el log y en el mensaje del error para poder arreglarlo a mano.
+              const rastro = `Meta mandó el mensaje (wa_message_id=${r.messageId ?? 'desconocido'}, a ${decision.telefono}) pero no se pudo guardar el envío`
+              console.error(`[encuesta] ${rastro}`, e)
+              throw new Error(`${rastro}: ${e instanceof Error ? e.message : String(e)}`)
+            }
+          } else {
+            await datos.registrarEnvio(encuesta.id, { send_status: 'fallida', send_skip_reason: null, send_error: motivoLegibleDeMeta(r.codigo, r.error) })
+          }
+        }
+      } finally {
+        await datos.liberarEnvio(encuesta.id)
       }
     }
   }
@@ -128,7 +164,12 @@ export async function encuestaParaFicha(visitaId: string, ahora: Date): Promise<
   if (!ec) return null
   const wa = ec.encuesta.wa_message_id ? await datos.estadoDelMensaje(ec.encuesta.wa_message_id) : null
   const { decision } = await decidir(ec, true, ahora)
-  return armarEncuestaParaFicha(ec.encuesta, { wa, puedeReenviar: decision.enviar, ahora, base: baseDeLaApp() })
+  // Visita reabierta (adenda, ronda 1 de revisión): ya no corresponde ofrecer el link ni
+  // reenviar, aunque la decisión "pura" (que no sabe de la visita) diga que sí se podría.
+  const visitaCompletada = ec.visita.status === 'completed'
+  return armarEncuestaParaFicha(ec.encuesta, {
+    wa, puedeReenviar: visitaCompletada && decision.enviar, linkDisponible: visitaCompletada, ahora, base: baseDeLaApp(),
+  })
 }
 
 /** Para las rutas de la ficha: si la encuesta no se puede leer, la ficha se muestra igual (sin la tarjeta). */

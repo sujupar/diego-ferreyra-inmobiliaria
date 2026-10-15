@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { getUser } from '@/lib/auth/get-user'
 import * as datos from '@/lib/visitas/datos'
 import { puedeGestionarVisitas, puedeVerVisita } from '@/lib/visitas/acceso'
-import { asegurarLinkDeEncuesta, encuestaParaFicha, prepararYEnviarEncuesta, ReenvioNoPermitido } from '@/lib/visitas/encuesta/servicio'
+import { asegurarLinkDeEncuesta, encuestaParaFicha, prepararYEnviarEncuesta, ReenvioNoPermitido, EnvioEnCurso } from '@/lib/visitas/encuesta/servicio'
 import type { Role, UserWithProfile } from '@/types/auth.types'
 
 /**
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     try {
       return NextResponse.json({ data: await prepararYEnviarEncuesta(id, { reenvio: true, actorId: p.user.id, ahora }) })
     } catch (e) {
-      if (e instanceof ReenvioNoPermitido) return NextResponse.json({ error: e.message }, { status: 409 })
+      if (e instanceof ReenvioNoPermitido || e instanceof EnvioEnCurso) return NextResponse.json({ error: e.message }, { status: 409 })
       throw e
     }
   } catch (e) {

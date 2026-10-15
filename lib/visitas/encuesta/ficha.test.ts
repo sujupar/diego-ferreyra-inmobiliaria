@@ -70,11 +70,17 @@ describe('eventos de la encuesta en la línea de tiempo', () => {
 describe('armarEncuestaParaFicha', () => {
   it('link copiable, estado, vencimiento y si se puede reenviar', () => {
     const f = armarEncuestaParaFicha(encuestaDePrueba({ send_status: 'omitida', send_skip_reason: 'envio_apagado' }),
-      { wa: null, puedeReenviar: false, ahora: AHORA, base: 'https://inmodf.com.ar' })
+      { wa: null, puedeReenviar: false, linkDisponible: true, ahora: AHORA, base: 'https://inmodf.com.ar' })
     expect(f).toMatchObject({
       link: `https://inmodf.com.ar/encuesta/${TOKEN_DE_PRUEBA}`,
+      linkDisponible: true,
       estado: { clave: 'sin_enviar', texto: 'Sin enviar (envío apagado)' },
       puedeReenviar: false, vencida: false, respondidaEl: null, respuestas: null, eventos: [],
     })
+  })
+  it('visita reabierta: ni "copiar link" ni reenviar, aunque la decisión diga que sí se podría', () => {
+    const f = armarEncuestaParaFicha(encuestaDePrueba(), { wa: null, puedeReenviar: false, linkDisponible: false, ahora: AHORA, base: 'https://inmodf.com.ar' })
+    expect(f.linkDisponible).toBe(false)
+    expect(f.puedeReenviar).toBe(false)
   })
 })

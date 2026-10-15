@@ -19,6 +19,8 @@ const { mem, datosMock, mandarMock } = vi.hoisted(() => {
       leerRegalo: vi.fn(),
       registrarEnvio: vi.fn(async (_id: string, c: Partial<EncuestaFila>) => { if (mem.fila) mem.fila = { ...mem.fila, ...c } }),
       estadoDelMensaje: vi.fn(async () => null),
+      reservarEnvio: vi.fn(async () => true),
+      liberarEnvio: vi.fn(async () => undefined),
     },
   }
 })
@@ -31,7 +33,7 @@ vi.mock('@/lib/integrations/whatsapp/phone', () => ({
   },
 }))
 
-import { prepararYEnviarEncuesta, encuestaParaFicha, ReenvioNoPermitido } from './servicio'
+import { prepararYEnviarEncuesta, encuestaParaFicha, ReenvioNoPermitido, EnvioEnCurso } from './servicio'
 import { encuestaConVisitaDePrueba, encuestaDePrueba, VISITA_DE_PRUEBA } from '@/test/visitas/encuesta-de-prueba'
 import { AJUSTES_PRUEBA } from './envio.test-datos'
 
@@ -106,6 +108,50 @@ describe('prepararYEnviarEncuesta', () => {
     const f = await prepararYEnviarEncuesta(VISITA_DE_PRUEBA, { reenvio: false, actorId: 'u1', ahora: AHORA })
     expect(f.estado.texto).toBe('Sin enviar (la propiedad no tiene regalo)')
   })
+  it('un envío que ya FALLÓ tampoco se pisa con "omitida" al volver a marcar realizada', async () => {
+    mem.existe = true
+    mem.fila = encuestaDePrueba({ send_status: 'fallida', send_error: 'la plantilla no existe' })
+    await prepararYEnviarEncuesta(VISITA_DE_PRUEBA, { reenvio: false, actorId: 'u1', ahora: AHORA })
+    expect(datosMock.registrarEnvio).not.toHaveBeenCalled()
+  })
+  it('candado: dos reenvíos casi juntos, el segundo no manda y responde "ya se está enviando"', async () => {
+    mem.existe = true
+    datosMock.leerAjustesEncuesta.mockResolvedValue({ ...AJUSTES_PRUEBA, telefonos_prueba: ['11 5823-4521'] })
+    datosMock.reservarEnvio.mockResolvedValueOnce(false)
+    await expect(prepararYEnviarEncuesta(VISITA_DE_PRUEBA, { reenvio: true, actorId: 'u1', ahora: AHORA }))
+      .rejects.toThrow(new EnvioEnCurso())
+    expect(mandarMock).not.toHaveBeenCalled()
+    expect(datosMock.registrarEnvio).not.toHaveBeenCalled()
+  })
+  it('candado: el envío automático en carrera con otro no manda ni registra nada (la otra llamada se encarga)', async () => {
+    datosMock.leerAjustesEncuesta.mockResolvedValue({ ...AJUSTES_PRUEBA, telefonos_prueba: ['11 5823-4521'] })
+    datosMock.reservarEnvio.mockResolvedValueOnce(false)
+    await prepararYEnviarEncuesta(VISITA_DE_PRUEBA, { reenvio: false, actorId: 'u1', ahora: AHORA })
+    expect(mandarMock).not.toHaveBeenCalled()
+    expect(datosMock.registrarEnvio).not.toHaveBeenCalled()
+  })
+  it('el candado se toma por 30 segundos y se libera al terminar (éxito o fallo)', async () => {
+    datosMock.leerAjustesEncuesta.mockResolvedValue({ ...AJUSTES_PRUEBA, telefonos_prueba: ['11 5823-4521'] })
+    mandarMock.mockResolvedValue({ ok: true, modoPrueba: false, messageId: 'wamid.7' })
+    await prepararYEnviarEncuesta(VISITA_DE_PRUEBA, { reenvio: false, actorId: 'u1', ahora: AHORA })
+    expect(datosMock.reservarEnvio).toHaveBeenCalledWith(mem.fila?.id, 30)
+    expect(datosMock.liberarEnvio).toHaveBeenCalledWith(mem.fila?.id)
+    mandarMock.mockResolvedValue({ ok: false, error: 'rechazado', codigo: null })
+    // Primer envío ya quedó "enviada": con reenvio:true la decisión no lo bloquea por "ya_enviada".
+    await prepararYEnviarEncuesta(VISITA_DE_PRUEBA, { reenvio: true, actorId: 'u1', ahora: AHORA })
+    expect(datosMock.liberarEnvio).toHaveBeenCalledTimes(2)
+  })
+  it('Meta aceptó pero no se pudo guardar el envío: el error y el log llevan el wa_message_id y el teléfono', async () => {
+    datosMock.leerAjustesEncuesta.mockResolvedValue({ ...AJUSTES_PRUEBA, telefonos_prueba: ['11 5823-4521'] })
+    mandarMock.mockResolvedValue({ ok: true, modoPrueba: false, messageId: 'wamid.9' })
+    datosMock.registrarEnvio.mockImplementationOnce(async () => { throw new Error('boom') })
+    const consola = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(prepararYEnviarEncuesta(VISITA_DE_PRUEBA, { reenvio: false, actorId: 'u1', ahora: AHORA }))
+      .rejects.toThrow(/wamid\.9.*5491158234521/)
+    expect(consola.mock.calls.some(c => String(c[0]).includes('wamid.9') && String(c[0]).includes('5491158234521'))).toBe(true)
+    expect(datosMock.liberarEnvio).toHaveBeenCalled()
+    consola.mockRestore()
+  })
 })
 
 describe('encuestaParaFicha', () => {
@@ -119,6 +165,13 @@ describe('encuestaParaFicha', () => {
     datosMock.leerAjustesEncuesta.mockResolvedValue({ ...AJUSTES_PRUEBA, envio_automatico: true })
     const f = await encuestaParaFicha(VISITA_DE_PRUEBA, AHORA)
     expect(datosMock.estadoDelMensaje).toHaveBeenCalledWith('wamid.1')
-    expect(f).toMatchObject({ estado: { texto: 'Entregada' }, puedeReenviar: true })
+    expect(f).toMatchObject({ estado: { texto: 'Entregada' }, puedeReenviar: true, linkDisponible: true })
+  })
+  it('visita reabierta (ya no "completed"): ni link disponible ni se puede reenviar', async () => {
+    datosMock.leerAjustesEncuesta.mockResolvedValue({ ...AJUSTES_PRUEBA, telefonos_prueba: ['11 5823-4521'] })
+    datosMock.leerEncuestaConVisita.mockImplementation(async () =>
+      (mem.fila ? encuestaConVisitaDePrueba(mem.fila, { status: 'scheduled' }) : null))
+    const f = await encuestaParaFicha(VISITA_DE_PRUEBA, AHORA)
+    expect(f).toMatchObject({ linkDisponible: false, puedeReenviar: false })
   })
 })

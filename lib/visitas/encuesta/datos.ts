@@ -294,6 +294,29 @@ export async function registrarEnvio(id: string, c: CamposEnvio): Promise<void> 
   if (error) fallo('registrar envío de la encuesta', error)
 }
 
+/**
+ * Candado de corta duración (ronda 1 de revisión, Tarea 8): un doble toque de "Reenviar", o dos
+ * personas haciéndolo casi al mismo tiempo, disparaban DOS llamadas a Meta en paralelo —las dos
+ * ven la misma decisión porque todavía no hay nada escrito que la frene. UPDATE condicional,
+ * atómico en Postgres (mismo patrón que `reservarCelda` de `lib/mapa/actualizar-celda.ts`): solo
+ * quien encuentra el candado libre (NULL o vencido) lo toma. Liberar con `liberarEnvio`; si la
+ * función muere a mitad, el candado vence solo.
+ */
+export async function reservarEnvio(id: string, segundos: number): Promise<boolean> {
+  const ahora = new Date()
+  const { data, error } = await sb().from('visit_surveys')
+    .update({ send_lock_until: new Date(ahora.getTime() + segundos * 1000).toISOString() })
+    .eq('id', id).or(`send_lock_until.is.null,send_lock_until.lt."${ahora.toISOString()}"`).select('id')
+  if (error) fallo('reservar el envío de la encuesta', error)
+  return ((data ?? []) as Array<{ id: unknown }>).length > 0
+}
+
+/** Best-effort: si no se pudo liberar, el candado igual vence solo a los `segundos` de reservado. */
+export async function liberarEnvio(id: string): Promise<void> {
+  const { error } = await sb().from('visit_surveys').update({ send_lock_until: null }).eq('id', id)
+  if (error) console.error('[encuesta] no se pudo liberar el candado de envío (vence solo)', id, error.message)
+}
+
 /** NO lanza: sin estado del webhook, la ficha dice "Enviada" (lo último que se sabe con certeza). */
 export async function estadoDelMensaje(waMessageId: string): Promise<EstadoWa | null> {
   const { data, error } = await sb().from('whatsapp_messages').select('status, error_code, error_message')

@@ -32,6 +32,9 @@ export interface RespuestasParaFicha {
 
 export interface EncuestaParaFicha {
   link: string
+  /** `false` con la visita reabierta (ronda 1 de revisión): la ficha no ofrece "Copiar link" de
+   * algo que ya no corresponde a una visita realizada. */
+  linkDisponible: boolean
   estado: EstadoEncuestaVisible
   puedeReenviar: boolean
   vencida: boolean
@@ -104,10 +107,11 @@ export function mezclarEventos(historial: readonly EventoVisitaR[], deEncuesta: 
 
 export function armarEncuestaParaFicha(
   e: EncuestaFila,
-  x: { wa: EstadoWa | null; puedeReenviar: boolean; ahora: Date; base: string },
+  x: { wa: EstadoWa | null; puedeReenviar: boolean; linkDisponible: boolean; ahora: Date; base: string },
 ): EncuestaParaFicha {
   return {
     link: urlDeLaEncuesta(e.token, x.base),
+    linkDisponible: x.linkDisponible,
     estado: estadoVisibleDeLaEncuesta(e, x.wa, x.ahora),
     puedeReenviar: x.puedeReenviar,
     vencida: e.completed_at === null && estaVencida(e.expires_at, x.ahora),

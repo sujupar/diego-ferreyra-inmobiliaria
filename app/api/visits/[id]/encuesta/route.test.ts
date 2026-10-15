@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const { estado, datosMock, servicioMock } = vi.hoisted(() => ({
   estado: { role: 'asesor', id: '22222222-2222-4222-8222-222222222222', logueado: true },
   datosMock: { leerVisita: vi.fn() },
-  servicioMock: { asegurarLinkDeEncuesta: vi.fn(), encuestaParaFicha: vi.fn(), prepararYEnviarEncuesta: vi.fn(), ReenvioNoPermitido: class extends Error {} },
+  servicioMock: { asegurarLinkDeEncuesta: vi.fn(), encuestaParaFicha: vi.fn(), prepararYEnviarEncuesta: vi.fn(), ReenvioNoPermitido: class extends Error {}, EnvioEnCurso: class extends Error {} },
 }))
 vi.mock('@/lib/auth/get-user', () => ({
   getUser: vi.fn(async () => estado.logueado ? { id: estado.id, email: 'a@b.c', profile: { id: estado.id, role: estado.role, is_active: true } } : null),
@@ -65,5 +65,11 @@ describe('/api/visits/[id]/encuesta', () => {
   })
   it('acción inválida: 400', async () => {
     expect((await post({ accion: 'borrar' })).status).toBe(400)
+  })
+  it('candado tomado por otro reenvío: 409 "Ya se está enviando, esperá unos segundos"', async () => {
+    servicioMock.prepararYEnviarEncuesta.mockRejectedValue(new servicioMock.EnvioEnCurso('Ya se está enviando, esperá unos segundos'))
+    const res = await post({ accion: 'reenviar' })
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toBe('Ya se está enviando, esperá unos segundos')
   })
 })

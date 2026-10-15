@@ -126,6 +126,22 @@ describe('encuesta', () => {
     registro.rpcRespuesta = { data: false, error: null }
     expect(await datos.registrarUso(FILA.token, 'escritura')).toBe(false)
   })
+  it('reservarEnvio: UPDATE condicional (candado libre o vencido), devuelve si lo tomó', async () => {
+    registro.responder = () => ({ data: [{ id: FILA.id }], error: null })
+    expect(await datos.reservarEnvio(FILA.id, 30)).toBe(true)
+    const l = registro.llamadas[0]
+    expect(pasos(l, 'update')[0][0]).toHaveProperty('send_lock_until')
+    expect(pasos(l, 'eq')).toEqual([['id', FILA.id]])
+    expect(pasos(l, 'or')[0][0]).toMatch(/^send_lock_until\.is\.null,send_lock_until\.lt\."\d{4}-\d{2}-\d{2}T/)
+    registro.responder = () => ({ data: [], error: null })
+    expect(await datos.reservarEnvio(FILA.id, 30)).toBe(false)
+  })
+  it('liberarEnvio limpia el candado y no lanza si falla', async () => {
+    await datos.liberarEnvio(FILA.id)
+    expect(pasos(registro.llamadas[0], 'update')).toEqual([[{ send_lock_until: null }]])
+    registro.responder = () => ({ data: null, error: { message: 'boom' } })
+    await expect(datos.liberarEnvio(FILA.id)).resolves.toBeUndefined()
+  })
 })
 
 describe('avisos', () => {
