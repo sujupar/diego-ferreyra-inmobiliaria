@@ -11,6 +11,13 @@ import type { VisitaDetalle, EventoVisitaR } from '@/lib/visitas/tipos'
 
 export type VisitaConHistorial = VisitaDetalle & { eventos: EventoVisitaR[]; acciones: TipoAccion[] }
 
+/**
+ * Lo mínimo que la ventana usa de la visita: el id (ruta), la versión (concurrencia) y el
+ * asesor actual (para no ofrecerlo en "Cambiar asesor"). Así la abre la ficha
+ * (`VisitaConHistorial`) y también una fila de la sección Visitas (`VisitaListado`).
+ */
+export type VisitaParaDialogo = Pick<VisitaDetalle, 'id' | 'updated_at' | 'advisor_id'>
+
 const TITULO: Record<TipoAccion, string> = {
   confirmar: 'Confirmar visita', reprogramar: 'Reprogramar', cancelar: 'Cancelar visita',
   realizada: 'Se realizó', no_realizada: 'No se realizó', cambiar_asesor: 'Cambiar asesor', reabrir: 'Reabrir visita',
@@ -22,7 +29,7 @@ type EstadoAsesores =
   | { tipo: 'listo'; lista: Array<{ id: string; full_name: string }> }
 
 export function AccionVisitaDialog({ visita, accion, onClose, onHecho, onRecargar }: {
-  visita: VisitaConHistorial
+  visita: VisitaParaDialogo
   accion: TipoAccion | null
   onClose: () => void
   onHecho: (v: VisitaConHistorial) => void

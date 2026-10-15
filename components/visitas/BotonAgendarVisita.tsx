@@ -4,8 +4,8 @@ import { CalendarPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AgendarVisitaDialog } from './agendar/AgendarVisitaDialog'
 
-/** "Agendar visita" con la propiedad ya elegida (ficha de propiedad). */
-export function BotonAgendarVisita({ propiedadId, onAgendada }: { propiedadId: string; onAgendada?: (id: string) => void }) {
+/** "Agendar visita". Con propiedadId, la propiedad ya viene elegida (ficha); sin él, el paso 1 la pide (sección Visitas). */
+export function BotonAgendarVisita({ propiedadId, onAgendada }: { propiedadId?: string; onAgendada?: (id: string) => void }) {
   const [abierto, setAbierto] = useState(false)
   return (
     <>
