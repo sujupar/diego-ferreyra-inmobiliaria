@@ -99,9 +99,11 @@ describe('rutas de API públicas — pasan SIN sesión', () => {
         expect(await pasa('/api/v/Ab3xK9pQ2r/schedule', 'POST')).toBe(true)
     })
 
-    it('/api/public/questionnaire/<token> (GET y POST) — cuestionario post-visita', async () => {
-        expect(await pasa('/api/public/questionnaire/Ab3xK9pQ2r')).toBe(true)
-        expect(await pasa('/api/public/questionnaire/Ab3xK9pQ2r', 'POST')).toBe(true)
+    it('/api/public/encuesta/<token> (PATCH, POST, avisos y descarga del regalo) — encuesta post-visita', async () => {
+        expect(await pasa('/api/public/encuesta/Ab3xK9pQ2rTz8LmN4vWq1Y', 'PATCH')).toBe(true)
+        expect(await pasa('/api/public/encuesta/Ab3xK9pQ2rTz8LmN4vWq1Y', 'POST')).toBe(true)
+        expect(await pasa('/api/public/encuesta/Ab3xK9pQ2rTz8LmN4vWq1Y/avisos', 'POST')).toBe(true)
+        expect(await pasa('/api/public/encuesta/Ab3xK9pQ2rTz8LmN4vWq1Y/regalo')).toBe(true)
     })
 
     it('/api/auth/accept-invite (GET y POST) — el invitado todavía no tiene sesión', async () => {
@@ -311,13 +313,14 @@ describe('rutas de página — sin cambios de comportamiento', () => {
     it.each([
         '/login',
         '/accept-invite',
-        '/questionnaire',
-        '/questionnaire/Ab3xK9pQ2r',
-        '/questionnaire/Ab3xK9pQ2r/thanks',
         '/privacidad',
         '/eliminacion-de-datos',
     ])('%s es pública', (ruta) => {
         expect(esPaginaPublica(ruta)).toBe(true)
+    })
+
+    it.each(['/questionnaire', '/questionnaire/Ab3xK9pQ2r'])('%s ya NO es pública (el cuestionario viejo se borró)', (ruta) => {
+        expect(esPaginaPublica(ruta)).toBe(false)
     })
 
     it.each(['/dashboard', '/properties', '/metrics', '/settings', '/inbox', '/'])(
