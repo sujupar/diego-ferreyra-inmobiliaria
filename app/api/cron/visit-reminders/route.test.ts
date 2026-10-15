@@ -34,6 +34,8 @@ vi.mock('@/lib/visitas/datos', () => ({
 vi.mock('@/lib/email/notifications/visit-reminder-advisor', () => ({
   enviarRecordatorioDeVisita: async (d: { visitaId: string }) => { estado.enviados.push(d.visitaId); return estado.resultadoEmail },
 }))
+const { barrerMock } = vi.hoisted(() => ({ barrerMock: vi.fn() }))
+vi.mock('@/lib/visitas/encuesta/avisos-servicio', () => ({ barrerAvisosPendientes: barrerMock }))
 
 import { POST, GET } from './route'
 
@@ -55,6 +57,7 @@ beforeEach(() => {
   vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://falso.supabase.co')
   vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'clave-falsa')
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(AHORA)
+  barrerMock.mockReset().mockResolvedValue({ revisadas: 1, canalesEnviados: 2, sinTiempo: 0 })
 })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllEnvs() })
 
@@ -136,5 +139,16 @@ describe('cron del recordatorio "¿se realizó?"', () => {
     const r = await POST(pedido('secreto-de-la-base'))
     expect(r.status).toBe(500)
     expect(await r.json()).toMatchObject({ ok: false, error: 'visitas para recordar: boom' })
+  })
+  it('barre los avisos de encuestas pendientes y lo cuenta en la respuesta', async () => {
+    const body = await (await POST(pedido('secreto-de-la-base'))).json()
+    expect(barrerMock).toHaveBeenCalledWith({ inicio: expect.any(Number), ahora: expect.any(Date) })
+    expect(body.encuestas).toEqual({ revisadas: 1, canalesEnviados: 2, sinTiempo: 0 })
+  })
+  it('si el barrido falla, el recordatorio responde igual y dice qué falló', async () => {
+    barrerMock.mockRejectedValue(new Error('boom'))
+    const res = await POST(pedido('secreto-de-la-base'))
+    expect(res.status).toBe(200)
+    expect((await res.json()).encuestas).toEqual({ error: 'boom' })
   })
 })
