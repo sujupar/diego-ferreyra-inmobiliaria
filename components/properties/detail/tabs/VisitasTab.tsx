@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { RegaloDeLaEncuesta } from '@/components/visitas/encuesta/RegaloDeLaEncuesta'
 import { FilaVisita } from '@/components/visitas/seccion/FilaVisita'
 import { leerRespuesta } from '@/components/visitas/agendar/leer-respuesta'
 import { separarProximasYPasadas } from '@/lib/visitas/resumen'
@@ -41,6 +42,8 @@ export function VisitasTab({ propertyId, mostrarAsesor }: { propertyId: string; 
         <p className="eyebrow">Compradores</p>
         <h2 className="display mt-1 text-xl">Visitas</h2>
       </div>
+
+      <RegaloDeLaEncuesta propertyId={propertyId} />
 
       {estado.tipo === 'cargando' && <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>}
       {estado.tipo === 'error' && (

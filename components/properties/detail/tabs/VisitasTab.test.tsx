@@ -3,6 +3,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+
+const { regaloMock } = vi.hoisted(() => ({ regaloMock: vi.fn((_props: { propertyId: string }) => null) }))
+vi.mock('@/components/visitas/encuesta/RegaloDeLaEncuesta', () => ({ RegaloDeLaEncuesta: regaloMock }))
+
 import { VisitasTab } from './VisitasTab'
 import { visitaDePrueba as v } from '@/test/visitas/visita-de-prueba'
 
@@ -45,5 +49,11 @@ describe('VisitasTab', () => {
     expect(await screen.findByText('No pudimos cargar las visitas')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
     await waitFor(() => expect(screen.getByText('Todavía no hay visitas en esta propiedad.')).toBeInTheDocument())
+  })
+  it('monta la tarjeta del regalo de ESTA propiedad', async () => {
+    respuestas = [{ status: 200, body: { data: [], total: 0 } }]
+    render(<VisitasTab propertyId={PROP} mostrarAsesor />)
+    await screen.findByText('Todavía no hay visitas en esta propiedad.')
+    expect(regaloMock.mock.calls[0][0]).toMatchObject({ propertyId: PROP })
   })
 })
