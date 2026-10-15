@@ -7,6 +7,10 @@
 -- Los catálogos con CHECK se comparan con lib/visitas/encuesta/tipos.ts en tipos.test.ts: cada
 -- lista va en UNA línea y se tocan JUNTOS.
 
+-- El script que aplica esto ya pone su propio lock_timeout en la conexión; lo repetimos ACÁ
+-- porque este mismo SQL también se puede pegar a mano en el Dashboard (sin el script alrededor).
+SET LOCAL lock_timeout = '5s';
+
 -- ───────────────────────────────────────────────────────────────────────────
 -- 0) El cuestionario de mayo: 0 filas medidas el 2026-10-10. Si alguien cargó algo, ABORTA.
 -- ───────────────────────────────────────────────────────────────────────────
@@ -52,7 +56,7 @@ CREATE TABLE IF NOT EXISTS public.visit_surveys (
   least_liked_tags TEXT[] NOT NULL DEFAULT '{}' CHECK (cardinality(least_liked_tags) <= 8),
   least_liked_other TEXT CHECK (least_liked_other IS NULL OR length(least_liked_other) <= 280),
   price_opinion TEXT CHECK (price_opinion IS NULL OR price_opinion IN ('correcto', 'alto', 'bajo')),
-  offer_amount NUMERIC CHECK (offer_amount IS NULL OR offer_amount > 0),
+  offer_amount NUMERIC CHECK (offer_amount IS NULL OR (offer_amount > 0 AND offer_amount < 1000000000000)),
   offer_currency TEXT CHECK (offer_currency IS NULL OR offer_currency IN ('USD', 'ARS')),
   offer_declined BOOLEAN,
   contact_phone TEXT CHECK (contact_phone IS NULL OR length(contact_phone) <= 20),
@@ -67,7 +71,14 @@ CREATE TABLE IF NOT EXISTS public.visit_surveys (
   gift_email_at TIMESTAMPTZ,
   notice_attempts INT NOT NULL DEFAULT 0 CHECK (notice_attempts >= 0),
   notice_error TEXT CHECK (notice_error IS NULL OR length(notice_error) <= 500),
-  gift_downloaded_at TIMESTAMPTZ
+  gift_downloaded_at TIMESTAMPTZ,
+  -- Una oferta sin moneda (o una moneda sin monto) es un dato a medias que ningún consumidor
+  -- sabría interpretar: las dos columnas se cargan juntas o ninguna.
+  CONSTRAINT visit_surveys_offer_pair_check CHECK ((offer_amount IS NULL) = (offer_currency IS NULL)),
+  -- El tope de cardinalidad (8) no limita el PESO: 8 etiquetas largas igual pueden ser un
+  -- texto libre disfrazado de tags. Topeamos el total de caracteres de cada arreglo.
+  CONSTRAINT visit_surveys_most_liked_len_check CHECK (length(array_to_string(most_liked_tags, '')) <= 400),
+  CONSTRAINT visit_surveys_least_liked_len_check CHECK (length(array_to_string(least_liked_tags, '')) <= 400)
 );
 
 -- El barrido de avisos busca encuestas completas recientes; el estado de la ficha busca por mensaje.
@@ -142,17 +153,27 @@ ON CONFLICT (id) DO UPDATE
 -- ───────────────────────────────────────────────────────────────────────────
 -- 5) Límite por link + "abierta", ATÓMICO (un read-modify-write desde JS no lo sería).
 -- ───────────────────────────────────────────────────────────────────────────
+-- p_tipo fuera de ('abierta','escritura') es un bug del llamador (un tercer valor que nadie
+-- definió todavía): falla RUIDOSO en vez de devolver false en silencio (CLAUDE.md § fallos
+-- ruidosos) — un false silencioso ahí se vería exactamente igual que "se agotó el límite".
 CREATE OR REPLACE FUNCTION public.visit_survey_registrar(p_token TEXT, p_tipo TEXT, p_max INT)
-RETURNS BOOLEAN LANGUAGE sql SECURITY INVOKER SET search_path = public AS $$
-  WITH u AS (
-    UPDATE public.visit_surveys
-       SET write_count = write_count + 1,
-           opened_at = CASE WHEN p_tipo = 'abierta' THEN coalesce(opened_at, now()) ELSE opened_at END,
-           open_count = open_count + CASE WHEN p_tipo = 'abierta' THEN 1 ELSE 0 END
-     WHERE token = p_token AND write_count < p_max
-    RETURNING 1
-  )
-  SELECT EXISTS (SELECT 1 FROM u)
+RETURNS BOOLEAN LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$
+BEGIN
+  IF p_tipo NOT IN ('abierta', 'escritura') THEN
+    RAISE EXCEPTION 'visit_survey_registrar: tipo desconocido "%"', p_tipo;
+  END IF;
+  RETURN (
+    WITH u AS (
+      UPDATE public.visit_surveys
+         SET write_count = write_count + 1,
+             opened_at = CASE WHEN p_tipo = 'abierta' THEN coalesce(opened_at, now()) ELSE opened_at END,
+             open_count = open_count + CASE WHEN p_tipo = 'abierta' THEN 1 ELSE 0 END
+       WHERE token = p_token AND write_count < p_max
+      RETURNING 1
+    )
+    SELECT EXISTS (SELECT 1 FROM u)
+  );
+END
 $$;
 REVOKE ALL ON FUNCTION public.visit_survey_registrar(TEXT, TEXT, INT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.visit_survey_registrar(TEXT, TEXT, INT) FROM anon, authenticated;
@@ -160,13 +181,21 @@ GRANT EXECUTE ON FUNCTION public.visit_survey_registrar(TEXT, TEXT, INT) TO serv
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- 6) RLS: lectura por rol; escritura NINGUNA (todo escribe el servidor con service role).
+--    OJO: el ACL por defecto de `public` le da a anon/authenticated `arwdDxtm` (todos los
+--    privilegios de tabla). Revocar solo INSERT/UPDATE/DELETE deja parado SELECT (bien) pero
+--    TAMBIÉN TRUNCATE, REFERENCES, TRIGGER y MAINTAIN (mal): hay que REVOKE ALL y recién
+--    después otorgar, explícito, lo único que corresponde (SELECT a authenticated; anon no
+--    entra en ninguna de estas tres tablas, ni para leer).
 -- ───────────────────────────────────────────────────────────────────────────
 ALTER TABLE public.visit_surveys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.visit_survey_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.property_survey_gifts ENABLE ROW LEVEL SECURITY;
-REVOKE INSERT, UPDATE, DELETE ON public.visit_surveys FROM anon, authenticated;
-REVOKE INSERT, UPDATE, DELETE ON public.visit_survey_settings FROM anon, authenticated;
-REVOKE INSERT, UPDATE, DELETE ON public.property_survey_gifts FROM anon, authenticated;
+REVOKE ALL ON public.visit_surveys FROM anon, authenticated;
+REVOKE ALL ON public.visit_survey_settings FROM anon, authenticated;
+REVOKE ALL ON public.property_survey_gifts FROM anon, authenticated;
+GRANT SELECT ON public.visit_surveys TO authenticated;
+GRANT SELECT ON public.visit_survey_settings TO authenticated;
+GRANT SELECT ON public.property_survey_gifts TO authenticated;
 
 DROP POLICY IF EXISTS visit_surveys_select_scoped ON public.visit_surveys;
 CREATE POLICY visit_surveys_select_scoped ON public.visit_surveys
@@ -198,8 +227,15 @@ CREATE POLICY property_survey_gifts_select_scoped ON public.property_survey_gift
   );
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 7) whatsapp_messages.origen suma 'encuesta_visita'. NOT VALID + VALIDATE: el lock pesado
---    dura solo lo que tarda el DROP/ADD, no el recorrido de la tabla.
+-- 7) whatsapp_messages.origen suma 'encuesta_visita'. NOT VALID + VALIDATE normalmente separa
+--    el lock pesado (ADD CONSTRAINT, instantáneo) del recorrido de la tabla (VALIDATE, con un
+--    lock liviano que no bloquea lecturas) EN DOS TRANSACCIONES DISTINTAS. Acá no ahorra nada:
+--    `apply-encuesta-visita-pg.ts` corre TODA esta migración dentro de UNA sola transacción
+--    (BEGIN…COMMIT), así que el ACCESS EXCLUSIVE del ADD CONSTRAINT se sostiene hasta el COMMIT
+--    final de todas formas. Queda igual (en vez de un simple CHECK validado de una) porque es
+--    el patrón que ya usan el resto de migraciones de este proyecto sobre esta misma columna, y
+--    porque si este SQL se llegara a pegar a mano en el Dashboard SÍ ahorraría el lock si cada
+--    sentencia corriera en su propia transacción implícita.
 -- ───────────────────────────────────────────────────────────────────────────
 DO $$
 DECLARE c TEXT;

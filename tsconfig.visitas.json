@@ -43,9 +43,7 @@
     "lib/integrations/whatsapp/log.ts",
     "lib/supabase/middleware.ts",
     "middleware.ts",
-    "lib/nav/sections.ts",
-    "scripts/apply-encuesta-visita-pg.ts",
-    "scripts/create-whatsapp-templates-encuesta-visita.ts"
+    "lib/nav/sections.ts"
   ],
   "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
 }
