@@ -14,25 +14,25 @@ const conDatos = () => calcularMetricas([
 ], AHORA)
 
 describe('ComoVienen', () => {
-  it('el embudo resalta UN solo salto y deja los pasos de la encuesta en gris', () => {
-    const { container } = render(<ComoVienen metricas={conDatos()} mostrarAsesor />)
+  it('el embudo tiene los 5 pasos y resalta UN solo salto', () => {
+    const { container } = render(<ComoVienen metricas={conDatos()} mostrarAsesor opiniones={[]} />)
     expect(container.querySelectorAll('[data-salto="true"]')).toHaveLength(1)
     expect(container.querySelector('[data-salto="true"]')).toHaveTextContent('Se realizaron')
     expect(screen.getByText('Respondieron la encuesta')).toBeInTheDocument()
     expect(screen.getByText('Dijeron cuánto ofertarían')).toBeInTheDocument()
   })
   it('por origen con el % realizado y su base', () => {
-    render(<ComoVienen metricas={conDatos()} mostrarAsesor />)
+    render(<ComoVienen metricas={conDatos()} mostrarAsesor opiniones={[]} />)
     expect(screen.getByText('Consulta de portal')).toBeInTheDocument()
     expect(screen.getByText('4 visitas · 100 % se realizó (de 4 · orientativo)')).toBeInTheDocument()
   })
   it('sin visitas: sin datos en todo, y "Qué opinan" espera a la encuesta', () => {
-    render(<ComoVienen metricas={calcularMetricas([], AHORA)} mostrarAsesor />)
+    render(<ComoVienen metricas={calcularMetricas([], AHORA)} mostrarAsesor opiniones={[]} />)
     expect(screen.getByText('Todavía no hay visitas en este período.')).toBeInTheDocument()
-    expect(screen.getAllByText('Sin datos — llega con la encuesta').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Sin datos — todavía nadie respondió la encuesta')).toBeInTheDocument()
   })
   it('el asesor no ve "Por asesor"', () => {
-    render(<ComoVienen metricas={conDatos()} mostrarAsesor={false} />)
+    render(<ComoVienen metricas={conDatos()} mostrarAsesor={false} opiniones={[]} />)
     expect(screen.queryByRole('heading', { name: 'Por asesor' })).not.toBeInTheDocument()
   })
 })

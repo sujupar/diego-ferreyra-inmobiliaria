@@ -1,5 +1,7 @@
 import type { Metricas, FilaGrupo, Cifra } from '@/lib/visitas/metricas'
-import { textoPorcentaje, textoDeTiempo, textoDeBase, TEXTO_LLEGA_CON_LA_ENCUESTA, TEXTO_SIN_DATOS } from '@/lib/visitas/presentacion'
+import type { OpinionPropiedad } from '@/lib/visitas/opiniones'
+import { textoPorcentaje, textoDeTiempo, textoDeBase, TEXTO_SIN_DATOS } from '@/lib/visitas/presentacion'
+import { QueOpinan } from './QueOpinan'
 
 const VISITAS = { uno: 'visita', varios: 'visitas' }
 
@@ -37,10 +39,11 @@ const TIEMPOS: ReadonlyArray<{ clave: keyof Metricas['tiempos']; etiqueta: strin
   { clave: 'anticipacion', etiqueta: 'Anticipación (de agendar a la visita)' },
   { clave: 'confirmacion', etiqueta: 'Confirmación (de agendar a confirmada)' },
   { clave: 'marcarResultado', etiqueta: 'Marcar el resultado (después de la visita)' },
+  { clave: 'respuestaEncuesta', etiqueta: 'Responder la encuesta (desde que se envió)' },
 ]
 
 /** "Cómo vienen las visitas" + "Qué opinan los que visitaron" (spec §3.4). */
-export function ComoVienen({ metricas: m, mostrarAsesor }: { metricas: Metricas; mostrarAsesor: boolean }) {
+export function ComoVienen({ metricas: m, mostrarAsesor, opiniones }: { metricas: Metricas; mostrarAsesor: boolean; opiniones: OpinionPropiedad[] }) {
   const base = m.embudo[0]?.cantidad ?? 0
   return (
     <>
@@ -66,11 +69,6 @@ export function ComoVienen({ metricas: m, mostrarAsesor }: { metricas: Metricas;
                       />
                     </div>
                     {p.saltoMasGrande && <p className="text-xs font-medium text-brand">Acá se pierde la mayor parte</p>}
-                  </li>
-                ))}
-                {['Respondieron la encuesta', 'Dijeron cuánto ofertarían'].map(paso => (
-                  <li key={paso} className="flex flex-wrap justify-between gap-2 text-sm text-muted-foreground">
-                    <span>{paso}</span><span>{TEXTO_LLEGA_CON_LA_ENCUESTA}</span>
                   </li>
                 ))}
               </ol>
@@ -114,10 +112,7 @@ export function ComoVienen({ metricas: m, mostrarAsesor }: { metricas: Metricas;
         {mostrarAsesor && <Grupo titulo="Por asesor" filas={m.porAsesor} />}
       </section>
 
-      <section aria-labelledby="opinan-titulo" className="space-y-2 rounded-xl border bg-card p-4">
-        <h2 id="opinan-titulo" className="text-lg font-semibold">Qué opinan los que visitaron</h2>
-        <p className="text-sm text-muted-foreground">{TEXTO_LLEGA_CON_LA_ENCUESTA}</p>
-      </section>
+      <QueOpinan opiniones={opiniones} modo="seccion" />
     </>
   )
 }

@@ -17,15 +17,15 @@ const DE_UNA_A_CONFIRMAR: ReadonlyArray<{ accion: TipoAccion; texto: string; pri
 ]
 
 /**
- * Lo que hay que resolver (spec §3.4): visitas que pasaron sin resultado y visitas a
- * confirmar, con la acción AHÍ MISMO (la misma ventana que la ficha; el servidor valida
- * la transición y la versión). Al terminar, `onCambio` hace que la pantalla vuelva a
- * pedir el resumen: así la visita sale de la lista y suma donde corresponde (criterio 14).
- * "Encuestas sin responder hace más de 48 h" llega con la Entrega 3.
+ * Lo que hay que resolver (spec §3.4): visitas que pasaron sin resultado, visitas a
+ * confirmar y encuestas sin responder hace más de 48 h, con la acción AHÍ MISMO (la
+ * misma ventana que la ficha; el servidor valida la transición y la versión). Al
+ * terminar, `onCambio` hace que la pantalla vuelva a pedir el resumen: así la visita
+ * sale de la lista y suma donde corresponde (criterio 14).
  */
 export function RequierenAccion({ requieren, mostrarAsesor, onCambio }: { requieren: Pendientes; mostrarAsesor: boolean; onCambio: () => void }) {
   const [abierta, setAbierta] = useState<{ visita: VisitaListado; accion: TipoAccion } | null>(null)
-  const mostradas = requieren.sinResultado.length + requieren.aConfirmar.length
+  const mostradas = requieren.sinResultado.length + requieren.aConfirmar.length + requieren.encuestasSinResponder.length
 
   function botones(visita: VisitaListado, lista: typeof DE_UNA_PASADA) {
     return lista.map(b => (
@@ -63,6 +63,17 @@ export function RequierenAccion({ requieren, mostrarAsesor, onCambio }: { requie
           <ul className="space-y-2">
             {requieren.aConfirmar.map(v => (
               <FilaVisita key={v.id} visita={v} mostrarAsesor={mostrarAsesor}>{botones(v, DE_UNA_A_CONFIRMAR)}</FilaVisita>
+            ))}
+          </ul>
+        </div>
+      )}
+      {requieren.encuestasSinResponder.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="eyebrow">Encuestas sin responder hace más de 48 h</h3>
+          <ul className="space-y-2">
+            {requieren.encuestasSinResponder.map(v => (
+              // Sin botones: copiar o reenviar se hace desde la ficha (la fila lleva ahí).
+              <FilaVisita key={v.id} visita={v} mostrarAsesor={mostrarAsesor} />
             ))}
           </ul>
         </div>

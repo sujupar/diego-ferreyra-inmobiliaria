@@ -37,11 +37,19 @@ describe('VisitasTab', () => {
     expect(screen.getByRole('link', { name: /Futura/ })).toHaveAttribute('href', `/visits/${futura.id}`)
     expect(urls[0]).toBe(`/api/visits?propiedad=${PROP}&porPagina=200`)
   })
-  it('sin visitas lo dice; "Qué opinan" espera a la encuesta', async () => {
+  it('sin visitas lo dice; "Qué opinan" dice que nadie respondió', async () => {
     respuestas = [{ status: 200, body: { data: [], total: 0 } }]
     render(<VisitasTab propertyId={PROP} mostrarAsesor />)
     expect(await screen.findByText('Todavía no hay visitas en esta propiedad.')).toBeInTheDocument()
-    expect(screen.getByText('Sin datos — llega con la encuesta')).toBeInTheDocument()
+    expect(screen.getByText('Sin datos — todavía nadie respondió la encuesta')).toBeInTheDocument()
+  })
+  it('"Qué opinan" de ESTA propiedad con lo que respondieron', async () => {
+    const enc = { sent_at: '2026-10-01T12:00:00Z', completed_at: '2026-10-01T13:00:00Z', expires_at: '2026-10-31T12:00:00Z', liked: true,
+      price_opinion: 'correcto', offer_amount: null, offer_currency: null, offer_declined: true,
+      most_liked_tags: ['luz'], least_liked_tags: ['nada'], most_liked_other: null, least_liked_other: null }
+    respuestas = [{ status: 200, body: { data: [v({ scheduled_at: '2026-10-01T13:00:00Z', status: 'completed', encuesta: enc })], total: 1 } }]
+    render(<VisitasTab propertyId={PROP} mostrarAsesor />)
+    expect(await screen.findByText('La luz (1)')).toBeInTheDocument()
   })
   it('si falla: el mensaje real y "Reintentar"', async () => {
     respuestas = [{ status: 500, body: { error: 'No pudimos cargar las visitas' } }, { status: 200, body: { data: [], total: 0 } }]

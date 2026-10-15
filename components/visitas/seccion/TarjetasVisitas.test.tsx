@@ -27,6 +27,7 @@ describe('TarjetasVisitas', () => {
     expect(within(tarjeta('Se realizaron')).getByText('50 %')).toBeInTheDocument()
     expect(within(tarjeta('Se realizaron')).getByText('de 2 con resultado · orientativo · 1 sin marcar')).toBeInTheDocument()
     expect(within(tarjeta('No se hicieron')).getByText('1 no se realizó · 0 canceladas')).toBeInTheDocument()
-    expect(within(tarjeta('Encuestas respondidas')).getByText('Llega con la encuesta')).toBeInTheDocument()
+    expect(within(tarjeta('Encuestas respondidas')).getByText('0 %')).toBeInTheDocument()
+    expect(within(tarjeta('Encuestas respondidas')).getByText('de 1 realizada · orientativo')).toBeInTheDocument()
   })
 })

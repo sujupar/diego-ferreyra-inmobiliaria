@@ -206,7 +206,7 @@ function VisitasClient() {
             <AgendaVisitas agenda={resumen.agenda} mostrarAsesor={verTodo} hrefTodas={hrefTodas} />
             <RequierenAccion requieren={resumen.requieren} mostrarAsesor={verTodo} onCambio={recargar} />
           </div>
-          <ComoVienen metricas={resumen.metricas} mostrarAsesor={verTodo} />
+          <ComoVienen metricas={resumen.metricas} mostrarAsesor={verTodo} opiniones={resumen.opiniones} />
         </>
       )}
     </div>
