@@ -11,6 +11,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { Client } from 'pg'
+import { reemplazarPlaceholder, validarSecretoCron, validarSitioHttps } from '../lib/visitas/cron-secreto'
 
 const MIGRACION = 'supabase/migrations/20261015000001_cron_visit_reminders.sql'
 
@@ -29,6 +30,10 @@ async function main() {
     const sitio: string | undefined = job?.sitio
     if (!secreto) throw new Error('no está cron_config(send_report)')
     if (!sitio) throw new Error('no pude leer el dominio del job meta-sync')
+    // Antes de tocar nada: rechazar un secreto/sitio con forma rara (inyección SQL o
+    // patrón de reemplazo `$&`/`$$`) — sin imprimir el secreto en ningún caso.
+    validarSecretoCron(secreto)
+    validarSitioHttps(sitio)
 
     const ping = await fetch(`https://${sitio}/api/cron/visit-reminders?ping=1`)
       .then(r => r.json()).catch(() => null) as { ok?: boolean; route?: string } | null
@@ -37,7 +42,11 @@ async function main() {
     }
     console.log(`deploy verificado en ${sitio}`)
 
-    const sql = readFileSync(MIGRACION, 'utf8').replaceAll('__SECRETO__', secreto).replaceAll('__SITIO__', sitio)
+    const sql = reemplazarPlaceholder(
+      reemplazarPlaceholder(readFileSync(MIGRACION, 'utf8'), '__SECRETO__', secreto),
+      '__SITIO__',
+      sitio
+    )
     await c.query(sql)
 
     const { rows: [nuevo] } = await c.query(`SELECT jobname, schedule, active FROM cron.job WHERE jobname = 'visit-reminders'`)
