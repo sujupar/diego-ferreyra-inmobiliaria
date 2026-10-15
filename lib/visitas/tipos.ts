@@ -121,3 +121,14 @@ export interface VisitaListado {
   /** `created_at` del registro de comprador vinculado (`property_leads`). */
   registro_creado_at: string | null
 }
+
+/** Lo que necesita el recordatorio "¿se realizó?" (lib/visitas/recordatorio.ts + cron). */
+export interface VisitaParaRecordar {
+  id: string
+  scheduled_at: string
+  status: EstadoVisita
+  reminder_sent_at: string | null
+  client_name: string
+  direccion: string | null
+  asesor: { nombre: string; email: string | null } | null
+}

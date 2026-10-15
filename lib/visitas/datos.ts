@@ -15,7 +15,7 @@ import { esAsesorAsignable } from '@/lib/deals/asesor-asignable'
 import { decidirComprador, type CompradorExistente } from './comprador'
 import { origenDesdeLead, esOrigenVisita, type OrigenDerivado, type OrigenVisita } from './origen'
 import { ESTADOS_ACTIVOS, esEstadoVisita, MOTIVOS_NO_REALIZADA, type EstadoVisita, type PatchVisita } from './transiciones'
-import type { ConsultaR, RegistroR, VisitaActivaR, VisitaAgendaR, VisitaDetalle, EventoVisitaR, VisitaListado } from './tipos'
+import type { ConsultaR, RegistroR, VisitaActivaR, VisitaAgendaR, VisitaDetalle, EventoVisitaR, VisitaListado, VisitaParaRecordar } from './tipos'
 import type { Alcance } from './acceso'
 import type { FiltroOrigen } from './filtros'
 
@@ -482,4 +482,58 @@ export async function todasLasVisitas(
     if (lote.length < TAMANO_PAGINA_BASE) return { filas, truncado: false }
   }
   return { filas, truncado: true }
+}
+
+// ───────────────────────── Recordatorio "¿se realizó?" (Entrega 2) ─────────────────────────
+
+/** Confirmadas, sin aviso, con horario dentro de la ventana. 200 por corrida alcanza y sobra (cada hora). */
+export async function visitasParaRecordar(ventana: { desde: string; hasta: string }): Promise<VisitaParaRecordar[]> {
+  const { data, error } = await sb().from('property_visits')
+    .select(`id, scheduled_at, status, reminder_sent_at, client_name,
+      property:properties(address),
+      advisor:profiles!property_visits_advisor_id_fkey(full_name, email)`)
+    .eq('status', 'scheduled')
+    .is('reminder_sent_at', null)
+    .gte('scheduled_at', ventana.desde)
+    .lte('scheduled_at', ventana.hasta)
+    .order('scheduled_at', { ascending: true })
+    .limit(200)
+  if (error) fallo('visitas para recordar', error)
+  return ((data ?? []) as Record<string, unknown>[]).map(r => {
+    if (!esEstadoVisita(r.status)) throw new Error(`visitas para recordar: estado desconocido "${String(r.status)}"`)
+    const p = uno(r.property as { address?: unknown } | null)
+    const a = uno(r.advisor as { full_name?: unknown; email?: unknown } | null)
+    return {
+      id: String(r.id),
+      scheduled_at: String(r.scheduled_at),
+      status: r.status,
+      reminder_sent_at: textoONulo(r.reminder_sent_at),
+      client_name: String(r.client_name ?? ''),
+      direccion: textoONulo(p?.address),
+      asesor: a ? { nombre: textoONulo(a.full_name) ?? '', email: textoONulo(a.email) } : null,
+    }
+  })
+}
+
+/**
+ * Reserva ATÓMICA: escribe la marca solo si nadie la escribió antes y la visita sigue
+ * confirmada. Devuelve la marca (para poder liberarla) o `null` si otra corrida ganó.
+ * No toca status/scheduled_at/advisor_id: no deja evento en el historial.
+ */
+export async function reservarRecordatorio(id: string, ahora: Date): Promise<string | null> {
+  const marca = ahora.toISOString()
+  const { data, error } = await sb().from('property_visits')
+    .update({ reminder_sent_at: marca })
+    .eq('id', id).is('reminder_sent_at', null).eq('status', 'scheduled')
+    .select('id').maybeSingle()
+  if (error) fallo('reservar recordatorio', error)
+  return data ? marca : null
+}
+
+/** El email no salió: se devuelve la visita a "sin aviso" para que la próxima hora reintente. Solo si sigue con SU marca. */
+export async function liberarRecordatorio(id: string, marca: string): Promise<void> {
+  const { error } = await sb().from('property_visits')
+    .update({ reminder_sent_at: null })
+    .eq('id', id).eq('reminder_sent_at', marca)
+  if (error) fallo('liberar recordatorio', error)
 }
