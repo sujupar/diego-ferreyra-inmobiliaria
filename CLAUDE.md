@@ -1907,6 +1907,63 @@ inservible"), y ahí analizar sería la segunda llamada.
 
 ---
 
+## Sistema de visitas — Entrega 1 (en producción 2026-10-14, PR #41)
+
+Spec: `docs/superpowers/specs/2026-10-10-sistema-de-visitas-design.md` (3 entregas; la 2 son
+estadísticas en `/visits` + recordatorio, la 3 es la encuesta post-visita). Plan de la 1:
+`docs/superpowers/plans/2026-10-10-sistema-de-visitas-entrega-1.md`.
+
+- **Qué hay:** botón "＋ Nuevo" arriba (Agendar visita / Nueva tasación), "Agendar visita" en la
+  ficha de propiedad y en el listado (solo si `puedeAgendarVisitaEnPropiedad`), ventana paso a
+  paso (`components/visitas/agendar/`), ficha de la visita `/visits/[id]` con acciones y línea de
+  tiempo (`components/visitas/ficha/`). Reglas puras en `lib/visitas/` (origen, horario,
+  transiciones, acceso, persona, comprador, choques); la base en `lib/visitas/datos.ts`.
+- **Toda visita tiene origen** (`portal`, `publicidad_meta`, `publicidad_paga`, `cartel`, `otro`,
+  CHECK en la base + `ORIGENES_VISITA`: se tocan juntos) y queda vinculada a un comprador
+  (`property_leads`). Las que crean solas el agente y el link del recorrido derivan el origen con
+  `origenDeLead` (si la base falla se agendan igual con `origin: null`).
+- **Historial por trigger:** `property_visit_events` lo escribe un trigger AFTER SECURITY DEFINER;
+  el BEFORE solo toca `NEW`. **Todo escritor de `property_visits` manda `changed_by`**: el usuario
+  en las rutas, `null` en procesos automáticos (agente, recorrido, reinicio de prueba). Sin
+  mandarlo, el evento queda con el autor de la edición humana anterior.
+- **Escritura SOLO desde el servidor** (migración `20261010000003`, aplicada después del deploy con
+  `scripts/apply-visitas-escritura-pg.ts --commit`): `anon` y `authenticated` ya no tienen
+  INSERT/UPDATE/DELETE sobre `property_visits` (antes un abogado podía crear visitas por la API REST
+  y un asesor cambiar estado/asesor/autor salteando las reglas). Lectura por rol
+  (`property_visits_select_scoped`): operaciones todo, asesor lo suyo (`advisor_id` o `created_by`),
+  abogado nada. **Cualquier escritura nueva va por clave de servicio en una ruta con permisos.**
+- **Concurrencia por versión:** cada acción manda `version` = el `updated_at` EXACTO que vino del GET
+  (texto, sin re-serializar: PostgREST devuelve microsegundos y `+00:00`); distinto → 409
+  `CAMBIO_CONCURRENTE` y la ficha ofrece "Recargar".
+- **Rutas:** `POST/GET /api/visits`, `GET /api/visits/[id]`, `POST /api/visits/[id]/estado`,
+  `GET /api/visits/agenda-del-asesor`, `GET /api/visits/propiedades`,
+  `GET /api/properties/[id]/interesados`. **Se borraron** `PUT /api/visits/[id]` y
+  `POST /api/visits/[id]/complete` (no controlaban permisos), `ScheduleVisitDialog`,
+  `CompleteVisitDialog` y `createVisit/updateVisit/getVisit` de `lib/supabase/visits.ts`.
+- **Email al cliente:** solo si la visita se agenda "confirmada", tiene email y es FUTURA (registrar
+  hoy una visita de ayer no le manda "te confirmamos la cita"). Confirmar desde la ficha NO manda
+  email (pendiente de decisión del dueño). Nunca WhatsApp en esta entrega.
+- **El comprador agendado pasa a `status='scheduled'`** (solo desde `'new'`) DESPUÉS de crear la
+  visita, así no suma en "consultas sin responder" (`/api/leads/count`).
+- **Límite conocido de teléfonos:** `ultimos10Digitos` no entiende el "15" de celular
+  ("011 15 5823-4521" ≠ "11 5823-4521"). Se mitiga guardando el teléfono CANÓNICO
+  (`telefonoCanonico`, `+549…`) en todo lo que entra por la ventana; el duplicado compara
+  canónicos. Un teléfono viejo cargado con "15" en otra tabla puede no coincidir.
+- **Trampa de celular que estaba en TODA la plataforma:** la regla de áreas táctiles de
+  `app/globals.css` (`@media (pointer: coarse)`) le ponía `position: relative` a la X de cerrar de
+  diálogos y paneles, pisando su `absolute`: en todo teléfono la X caía al FINAL del contenido.
+  Ahora aplica solo a `:not(.absolute)`. Y un diálogo con lista larga necesita
+  `flex flex-col overflow-hidden` + cuerpo con `min-h-0 overflow-y-auto` (ver
+  `AgendarVisitaDialog`): el primitivo scrollea el diálogo ENTERO y el pie queda flotando.
+  Esto solo se ve emulando un celular TÁCTIL (`emulate` con `mobile,touch`), no achicando la ventana.
+- **Cómo verificar:** `npx vitest run --config vitest.visitas.config.ts` (~10 s, 351 pruebas);
+  `npx tsc --noEmit -p tsconfig.visitas.json`. En la base:
+  `SELECT origin, count(*) FROM property_visits GROUP BY 1;` y
+  `SELECT policyname, cmd FROM pg_policies WHERE tablename='property_visits';` (solo debe quedar
+  `property_visits_select_scoped`).
+
+---
+
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
 
 - **El protocolo de las seis etapas está ARRIBA de todo en este archivo**; la versión narrativa en `docs/proceso-de-desarrollo.md`. Se aplica a todo pedido, por chico que sea.
