@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Loader2, ArrowLeft } from 'lucide-react'
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog'
 import { BotonAgendarVisita } from '@/components/visitas/BotonAgendarVisita'
-import { puedeAgendarVisitaEnPropiedad } from '@/lib/visitas/acceso'
+import { puedeAgendarVisitaEnPropiedad, puedeVerTodasLasVisitas } from '@/lib/visitas/acceso'
+import { VisitasTab } from '@/components/properties/detail/tabs/VisitasTab'
 import { VisitDataView } from '@/components/pipeline/VisitDataView'
 import type { LegalDocsState, LegalFlags } from '@/types/legal-docs.types'
 import type { Role } from '@/types/auth.types'
@@ -27,7 +28,7 @@ import { OverviewTab } from '@/components/properties/detail/tabs/OverviewTab'
 import { MediaTab } from '@/components/properties/detail/tabs/MediaTab'
 import { DocsTab } from '@/components/properties/detail/tabs/DocsTab'
 import { MarketingTab } from '@/components/properties/detail/tabs/MarketingTab'
-import { HistoryTab, type VisitFeedback } from '@/components/properties/detail/tabs/HistoryTab'
+import { HistoryTab } from '@/components/properties/detail/tabs/HistoryTab'
 import { puedeVerBotonDifusion } from '@/lib/properties/difusion-access'
 
 // El badge del encabezado lo arma `etiquetaDeCaptacion`, no un mapa por
@@ -123,8 +124,8 @@ export default function PropertyDetailPage() {
   const [userInfo, setUserInfo] = useState<{ id: string; role: Role } | null>(null)
   const [legalDocsData, setLegalDocsData] = useState<{ docs: LegalDocsState; flags: LegalFlags } | null>(null)
   const [flowHistory, setFlowHistory] = useState<FlowHistoryData | null>(null)
-  const [feedback, setFeedback] = useState<VisitFeedback[]>([])
   const [tab, setTab] = useState<TabKey>('propiedad')
+  const [recargaVisitas, setRecargaVisitas] = useState(0)
 
   const fetchProperty = useCallback(async () => {
     try {
@@ -159,14 +160,6 @@ export default function PropertyDetailPage() {
     fetch(`/api/flow-history?propertyId=${id}`)
       .then(r => r.json()).then(({ data }) => setFlowHistory(data)).catch(() => setFlowHistory(null))
   }, [id])
-  useEffect(() => {
-    if (!id) return
-    fetch(`/api/properties/${id}/feedback`)
-      .then(r => (r.ok ? r.json() : { data: [] }))
-      .then(({ data }) => setFeedback(Array.isArray(data) ? data : []))
-      .catch(() => setFeedback([]))
-  }, [id])
-
   // ARRIBA de los early returns de abajo (`loading` / `!property`): un hook que
   // quede después se saltea en esos renders y React tumba la ficha entera con
   // "Rendered fewer hooks than expected".
@@ -314,7 +307,7 @@ export default function PropertyDetailPage() {
           <ArrowLeft className="h-4 w-4 mr-1" /> Volver
         </Button>
         <div className="flex flex-wrap items-center gap-2">
-          {puedeAgendarVisita && <BotonAgendarVisita propiedadId={property.id} />}
+          {puedeAgendarVisita && <BotonAgendarVisita propiedadId={property.id} onAgendada={() => setRecargaVisitas(n => n + 1)} />}
           <AddTaskDialog entity={{ kind: 'property', id: property.id, label: property.address }} />
         </div>
       </div>
@@ -421,8 +414,16 @@ export default function PropertyDetailPage() {
           />
         )}
 
+        {tab === 'visitas' && (
+          <VisitasTab
+            key={recargaVisitas}
+            propertyId={property.id}
+            mostrarAsesor={!!userInfo && puedeVerTodasLasVisitas(userInfo.role)}
+          />
+        )}
+
         {tab === 'historial' && (
-          <HistoryTab propertyId={property.id} flowHistory={flowHistory} feedback={feedback} />
+          <HistoryTab propertyId={property.id} flowHistory={flowHistory} />
         )}
       </div>
 

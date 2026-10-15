@@ -102,3 +102,15 @@ export function armarResumen(e: EntradaResumen): ResumenVisitas {
     truncado: e.truncado,
   }
 }
+
+/** Pestaña de la ficha (spec §3.5): próximas (de hoy en adelante) y pasadas, cada una con su estado. */
+export function separarProximasYPasadas(
+  visitas: readonly VisitaListado[],
+  ahora: Date,
+): { proximas: VisitaListado[]; pasadas: VisitaListado[] } {
+  const t = ahora.getTime()
+  return {
+    proximas: visitas.filter(v => Date.parse(v.scheduled_at) >= t).sort(porHorario),
+    pasadas: visitas.filter(v => Date.parse(v.scheduled_at) < t).sort((a, b) => porHorario(b, a)),
+  }
+}

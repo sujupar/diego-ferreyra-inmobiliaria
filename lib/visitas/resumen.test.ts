@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { armarAgenda, requierenAccion, armarResumen } from './resumen'
+import { armarAgenda, requierenAccion, armarResumen, separarProximasYPasadas } from './resumen'
 import { visitaDePrueba as v } from '@/test/visitas/visita-de-prueba'
 
 const HOY = '2026-10-15'
@@ -77,5 +77,18 @@ describe('armarResumen', () => {
   })
   it('propaga el aviso de datos truncados', () => {
     expect(armarResumen({ ...base, verTodo: true, truncado: true }).truncado).toBe(true)
+  })
+})
+
+describe('separarProximasYPasadas', () => {
+  it('próximas por horario (más cerca primero) y pasadas de la más reciente a la más vieja', () => {
+    const r = separarProximasYPasadas([
+      v({ scheduled_at: '2026-10-20T13:00:00Z', client_name: 'Lejos' }),
+      v({ scheduled_at: '2026-10-16T13:00:00Z', client_name: 'Cerca', status: 'cancelled' }),
+      v({ scheduled_at: '2026-10-01T13:00:00Z', client_name: 'Vieja', status: 'completed' }),
+      v({ scheduled_at: '2026-10-14T13:00:00Z', client_name: 'Ayer' }),
+    ], AHORA)
+    expect(r.proximas.map(x => x.client_name)).toEqual(['Cerca', 'Lejos'])
+    expect(r.pasadas.map(x => x.client_name)).toEqual(['Ayer', 'Vieja'])
   })
 })

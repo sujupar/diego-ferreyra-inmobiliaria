@@ -9,13 +9,14 @@
 
 import { evaluarCaptacion, estadoLegal } from './captacion'
 
-export type TabKey = 'propiedad' | 'multimedia' | 'documentacion' | 'difusion' | 'historial'
+export type TabKey = 'propiedad' | 'multimedia' | 'documentacion' | 'difusion' | 'visitas' | 'historial'
 
 export const TAB_LABELS: Record<TabKey, string> = {
   propiedad: 'Propiedad',
   multimedia: 'Multimedia',
   documentacion: 'Documentación',
   difusion: 'Difusión',
+  visitas: 'Visitas',
   historial: 'Historial',
 }
 
@@ -89,6 +90,8 @@ export function visibleTabs(input: { role: string | null | undefined; status: st
   if (!isAbogado) tabs.push('multimedia')
   tabs.push('documentacion')
   if (!isAbogado && input.status === 'approved') tabs.push('difusion')
+  // Visitas (spec §3.5): solo propiedades captadas y nunca el abogado (no ve visitas).
+  if (!isAbogado && input.status === 'approved') tabs.push('visitas')
   tabs.push('historial')
   return tabs
 }
