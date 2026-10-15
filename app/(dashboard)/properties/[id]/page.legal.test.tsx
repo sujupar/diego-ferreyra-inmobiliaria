@@ -89,7 +89,6 @@ beforeEach(() => {
   fetchMock = vi.fn((url: string) => {
     if (url.startsWith('/api/auth/me')) return json({ id: 'u1', role: rol })
     if (url.startsWith('/api/properties/prop-1/legal-docs')) return json({ data: { docs: legalDocs, flags: FLAGS } })
-    if (url.startsWith('/api/properties/prop-1/feedback')) return json({ data: [] })
     if (url.startsWith('/api/properties/prop-1/legal-submit')) return json({ success: true })
     if (url.startsWith('/api/flow-history')) return json({ data: null })
     if (url.startsWith('/api/properties/prop-1')) return json({ data: ficha })

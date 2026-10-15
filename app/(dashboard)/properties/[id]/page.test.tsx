@@ -88,7 +88,6 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn((url: string) => {
     if (url.startsWith('/api/auth/me')) return json({ id: 'u1', role: rol })
     if (url.startsWith('/api/properties/prop-1/legal-docs')) return json({ data: { docs: legalDocs, flags: {} } })
-    if (url.startsWith('/api/properties/prop-1/feedback')) return json({ data: [] })
     if (url.startsWith('/api/flow-history')) return json({ data: null })
     if (url.startsWith('/api/properties/prop-1')) return json({ data: propiedad })
     return Promise.reject(new Error(`fetch inesperado: ${url}`))

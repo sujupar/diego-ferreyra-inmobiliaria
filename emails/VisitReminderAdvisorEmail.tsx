@@ -12,15 +12,18 @@ export default function VisitReminderAdvisorEmail(p: Props) {
   return (
     <Html>
       <Head />
-      <Preview>¿Se realizó la visita de {p.propertyAddress}?</Preview>
+      <Preview>¿Se realizó la visita de {p.clientName} en {p.propertyAddress}?</Preview>
       <Body style={{ backgroundColor: '#f6f9fc', fontFamily: 'system-ui, sans-serif' }}>
         <Container style={{ backgroundColor: '#fff', maxWidth: 560, margin: '40px auto', padding: 32, borderRadius: 8 }}>
-          <Heading style={{ fontSize: 20 }}>Marcá el resultado de la visita</Heading>
+          <Heading style={{ fontSize: 20 }}>¿Se realizó la visita?</Heading>
           <Text>Hola {p.advisorName},</Text>
-          <Text>Pasó la fecha de la siguiente visita y necesitamos saber si se realizó:</Text>
+          <Text>
+            La visita de {p.clientName} a {p.propertyAddress} era el {p.scheduledAt} y todavía no tiene resultado.
+            Contanos cómo salió: tocá el botón y elegí “Se realizó” o “No se realizó”.
+          </Text>
           <Section style={{ backgroundColor: '#f0f4f8', padding: 16, borderRadius: 6 }}>
             <Text style={{ margin: 0, fontWeight: 600 }}>{p.propertyAddress}</Text>
-            <Text style={{ margin: '4px 0 0' }}>Cliente: {p.clientName}</Text>
+            <Text style={{ margin: '4px 0 0' }}>Persona: {p.clientName}</Text>
             <Text style={{ margin: '4px 0 0' }}>Fecha: {p.scheduledAt}</Text>
           </Section>
           <Section style={{ textAlign: 'center', padding: '24px 0' }}>
@@ -29,7 +32,7 @@ export default function VisitReminderAdvisorEmail(p: Props) {
             </Button>
           </Section>
           <Hr />
-          <Text style={{ color: '#888', fontSize: 12 }}>Diego Ferreyra Inmobiliaria</Text>
+          <Text style={{ color: '#888', fontSize: 12 }}>Si la visita se movió, reprogramala desde la misma ficha. Diego Ferreyra Inmobiliaria</Text>
         </Container>
       </Body>
     </Html>

@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
-const { estado, datosMock, avanzarMock, emailMock, listVisitsMock } = vi.hoisted(() => ({
+const { estado, datosMock, avanzarMock, emailMock } = vi.hoisted(() => ({
   estado: { role: 'coordinador', id: '11111111-1111-4111-8111-111111111111', activo: true, logueado: true },
   datosMock: {
     leerPropiedadParaVisita: vi.fn(), leerConsulta: vi.fn(), leerRegistro: vi.fn(),
     asegurarComprador: vi.fn(), completarTelefonoDelRegistro: vi.fn(), visitasActivasDeLaPropiedad: vi.fn(),
     insertarVisita: vi.fn(), asesorAsignable: vi.fn(), marcarCompradorAgendado: vi.fn(),
+    listarVisitas: vi.fn(),
   },
   avanzarMock: vi.fn(),
   emailMock: vi.fn(),
-  listVisitsMock: vi.fn(async () => []),
 }))
 
 vi.mock('@/lib/auth/get-user', () => ({
@@ -21,7 +21,6 @@ vi.mock('@/lib/auth/get-user', () => ({
 vi.mock('@/lib/visitas/datos', () => datosMock)
 vi.mock('@/lib/leads/pipeline-state', () => ({ advancePipelineState: avanzarMock }))
 vi.mock('@/lib/email/notifications/visit-scheduled-client', () => ({ sendVisitScheduledToClient: emailMock }))
-vi.mock('@/lib/supabase/visits', () => ({ listVisits: listVisitsMock }))
 
 import { POST, GET } from './route'
 
@@ -48,8 +47,8 @@ const base = {
 
 beforeEach(() => {
   Object.values(datosMock).forEach(m => m.mockReset())
-  avanzarMock.mockReset(); emailMock.mockReset(); listVisitsMock.mockReset()
-  listVisitsMock.mockResolvedValue([])
+  avanzarMock.mockReset(); emailMock.mockReset()
+  datosMock.listarVisitas.mockResolvedValue({ filas: [], total: 0 })
   estado.role = 'coordinador'; estado.activo = true; estado.logueado = true
   estado.id = '11111111-1111-4111-8111-111111111111'
   datosMock.leerPropiedadParaVisita.mockResolvedValue(propiedad)
@@ -303,19 +302,44 @@ describe('POST /api/visits', () => {
 })
 
 describe('GET /api/visits', () => {
+  const llamada = () => datosMock.listarVisitas.mock.calls[0]
   it('sin sesión 401; abogado 403', async () => {
     estado.logueado = false
     expect((await pedirLista()).status).toBe(401)
     estado.logueado = true; estado.role = 'abogado'
     expect((await pedirLista()).status).toBe(403)
+    expect(datosMock.listarVisitas).not.toHaveBeenCalled()
   })
-  it('un asesor que pide el advisor_id de otro queda forzado al suyo', async () => {
+  it('un asesor ve lo propio (asignado o creado por él) y su ?asesor= no amplía nada', async () => {
     estado.role = 'asesor'; estado.id = ASESOR
-    await pedirLista(`advisor_id=${'77777777-7777-4777-8777-777777777777'}`)
-    expect(listVisitsMock.mock.calls[0][0]).toMatchObject({ advisorId: ASESOR })
+    await pedirLista(`asesor=${'77777777-7777-4777-8777-777777777777'}`)
+    expect(llamada()[0]).toMatchObject({ alcance: { tipo: 'propio', usuarioId: ASESOR }, asesorId: null })
   })
-  it('un coordinador puede pedir el advisor_id de otro: se respeta', async () => {
-    await pedirLista(`advisor_id=${ASESOR}`)
-    expect(listVisitsMock.mock.calls[0][0]).toMatchObject({ advisorId: ASESOR })
+  it('un coordinador ve todo y puede filtrar por asesor', async () => {
+    await pedirLista(`asesor=${ASESOR}`)
+    expect(llamada()[0]).toMatchObject({ alcance: { tipo: 'todo' }, asesorId: ASESOR })
+  })
+  it('alias viejo de /tasks: advisor_id + status + to', async () => {
+    await pedirLista(`advisor_id=${ASESOR}&status=scheduled&to=${encodeURIComponent('2099-01-10T15:00:00.000Z')}`)
+    expect(llamada()[0]).toMatchObject({ asesorId: ASESOR, estados: ['scheduled'], hasta: '2099-01-10T15:00:00.000Z' })
+  })
+  it('pagina y ordena de más reciente a más vieja', async () => {
+    datosMock.listarVisitas.mockResolvedValue({ filas: [{ id: 'v1' }], total: 120 })
+    const res = await pedirLista('pagina=3&porPagina=25')
+    expect(llamada()[1]).toEqual({ desde: 50, hasta: 74 })
+    expect(llamada()[2]).toBe('desc')
+    expect(await res.json()).toEqual({ data: [{ id: 'v1' }], total: 120, pagina: 3, porPagina: 25 })
+  })
+  it('un parámetro inválido es 400 y no toca la base', async () => {
+    const res = await pedirLista('estado=borrada')
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('El estado no es válido')
+    expect(datosMock.listarVisitas).not.toHaveBeenCalled()
+  })
+  it('un fallo de la base: 500 en castellano', async () => {
+    datosMock.listarVisitas.mockRejectedValue(new Error('listar visitas: boom'))
+    const res = await pedirLista()
+    expect(res.status).toBe(500)
+    expect((await res.json()).error).toBe('No pudimos cargar las visitas')
   })
 })

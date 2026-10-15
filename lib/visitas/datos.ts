@@ -13,9 +13,11 @@ import { clausulasBusqueda } from '@/lib/filters/busqueda-texto'
 import { inicioDelDiaArgentina, finDelDiaArgentina } from '@/lib/filters/rango-fechas'
 import { esAsesorAsignable } from '@/lib/deals/asesor-asignable'
 import { decidirComprador, type CompradorExistente } from './comprador'
-import { origenDesdeLead, type OrigenDerivado, type OrigenVisita } from './origen'
-import { ESTADOS_ACTIVOS, type EstadoVisita, type PatchVisita } from './transiciones'
-import type { ConsultaR, RegistroR, VisitaActivaR, VisitaAgendaR, VisitaDetalle, EventoVisitaR } from './tipos'
+import { origenDesdeLead, esOrigenVisita, type OrigenDerivado, type OrigenVisita } from './origen'
+import { ESTADOS_ACTIVOS, esEstadoVisita, MOTIVOS_NO_REALIZADA, type EstadoVisita, type PatchVisita } from './transiciones'
+import type { ConsultaR, RegistroR, VisitaActivaR, VisitaAgendaR, VisitaDetalle, EventoVisitaR, VisitaListado, VisitaParaRecordar } from './tipos'
+import type { Alcance } from './acceso'
+import type { FiltroOrigen } from './filtros'
 
 function sb(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -359,4 +361,181 @@ export async function origenDeLead(leadId: string): Promise<OrigenDerivado | nul
 
 export async function asesorAsignable(id: string): Promise<boolean> {
   return esAsesorAsignable(sb(), id)
+}
+
+// ───────────────────────── Listado de la sección Visitas (Entrega 2) ─────────────────────────
+
+export interface FiltroConsultaVisitas {
+  alcance: Alcance
+  asesorId?: string | null
+  propiedadId?: string | null
+  origen?: FiltroOrigen | null
+  estados?: readonly EstadoVisita[] | null
+  /** Instantes ISO inclusivos sobre `scheduled_at`. */
+  desde?: string | null
+  hasta?: string | null
+}
+
+/** PostgREST corta TODA respuesta en 1000 filas sin avisar (CLAUDE.md § tope de 1000 filas). */
+export const TAMANO_PAGINA_BASE = 1000
+/** 20.000 visitas: muy por encima de cualquier período de un año de esta inmobiliaria. */
+export const MAX_PAGINAS_BASE = 20
+
+const SELECT_LISTADO = `
+  id, property_id, advisor_id, created_by, client_name, client_phone, status, origin, origin_detail,
+  outcome_reason, scheduled_at, created_at, updated_at, confirmed_at, outcome_at,
+  property:properties(address, neighborhood),
+  advisor:profiles!property_visits_advisor_id_fkey(full_name),
+  lead:property_leads!property_visits_lead_id_fkey(created_at),
+  consulta:portal_inquiries!property_visits_portal_inquiry_id_fkey(received_at, created_at)`
+
+function textoONulo(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() !== '' ? v : null
+}
+
+function motivoONulo(v: unknown): VisitaListado['outcome_reason'] {
+  return typeof v === 'string' && (MOTIVOS_NO_REALIZADA as readonly string[]).includes(v)
+    ? MOTIVOS_NO_REALIZADA.find(m => m === v) ?? null
+    : null
+}
+
+/** Campo por campo: la fila cruda de PostgREST (con sus joins anidados) no sale de acá. */
+function aListado(r: Record<string, unknown>): VisitaListado {
+  const p = uno<Record<string, unknown>>(r.property as Record<string, unknown> | null)
+  const a = uno(r.advisor as { full_name?: unknown } | null)
+  const l = uno(r.lead as { created_at?: unknown } | null)
+  const c = uno(r.consulta as { received_at?: unknown; created_at?: unknown } | null)
+  if (!esEstadoVisita(r.status)) throw new Error(`listar visitas: estado desconocido "${String(r.status)}"`)
+  return {
+    id: String(r.id),
+    property_id: String(r.property_id),
+    direccion: textoONulo(p?.address),
+    barrio: textoONulo(p?.neighborhood),
+    advisor_id: textoONulo(r.advisor_id),
+    asesor_nombre: textoONulo(a?.full_name),
+    created_by: textoONulo(r.created_by),
+    client_name: String(r.client_name ?? ''),
+    client_phone: textoONulo(r.client_phone),
+    status: r.status,
+    origin: esOrigenVisita(r.origin) ? r.origin : null,
+    origin_detail: textoONulo(r.origin_detail),
+    outcome_reason: motivoONulo(r.outcome_reason),
+    scheduled_at: String(r.scheduled_at),
+    created_at: String(r.created_at),
+    updated_at: String(r.updated_at),
+    confirmed_at: textoONulo(r.confirmed_at),
+    outcome_at: textoONulo(r.outcome_at),
+    consulta_recibida_at: textoONulo(c?.received_at) ?? textoONulo(c?.created_at),
+    registro_creado_at: textoONulo(l?.created_at),
+  }
+}
+
+function consultaDeVisitas(f: FiltroConsultaVisitas, conConteo: boolean) {
+  let q = sb().from('property_visits').select(SELECT_LISTADO, conConteo ? { count: 'exact' } : undefined)
+  if (f.alcance.tipo === 'propio') {
+    // El id va CRUDO dentro del or(): validar la forma ANTES (ver exigirUuid).
+    exigirUuid(f.alcance.usuarioId, 'usuarioId')
+    q = q.or(`advisor_id.eq.${f.alcance.usuarioId},created_by.eq.${f.alcance.usuarioId}`)
+  }
+  if (f.asesorId) q = q.eq('advisor_id', f.asesorId)
+  if (f.propiedadId) q = q.eq('property_id', f.propiedadId)
+  if (f.origen === 'sin_origen') q = q.is('origin', null)
+  else if (f.origen) q = q.eq('origin', f.origen)
+  if (f.estados && f.estados.length > 0) q = q.in('status', [...f.estados])
+  if (f.desde) q = q.gte('scheduled_at', f.desde)
+  if (f.hasta) q = q.lte('scheduled_at', f.hasta)
+  return q
+}
+
+/** Una página de la lista "Ver todas" (y de la pestaña de la ficha), con el total exacto. */
+export async function listarVisitas(
+  f: FiltroConsultaVisitas,
+  rango: { desde: number; hasta: number },
+  orden: 'asc' | 'desc',
+): Promise<{ filas: VisitaListado[]; total: number }> {
+  const ascending = orden === 'asc'
+  const { data, error, count } = await consultaDeVisitas(f, true)
+    .order('scheduled_at', { ascending }).order('id', { ascending })
+    .range(rango.desde, rango.hasta)
+  if (error) fallo('listar visitas', error)
+  return { filas: ((data ?? []) as Record<string, unknown>[]).map(aListado), total: count ?? 0 }
+}
+
+/**
+ * TODAS las filas del filtro, de a 1000, con orden fijo y único (`scheduled_at`, `id`):
+ * paginar sin orden repite o saltea filas. Para el resumen de un período largo.
+ */
+export async function todasLasVisitas(
+  f: FiltroConsultaVisitas,
+  orden: 'asc' | 'desc' = 'asc',
+): Promise<{ filas: VisitaListado[]; truncado: boolean }> {
+  const ascending = orden === 'asc'
+  const filas: VisitaListado[] = []
+  for (let pagina = 0; pagina < MAX_PAGINAS_BASE; pagina++) {
+    const desde = pagina * TAMANO_PAGINA_BASE
+    const { data, error } = await consultaDeVisitas(f, false)
+      .order('scheduled_at', { ascending }).order('id', { ascending })
+      .range(desde, desde + TAMANO_PAGINA_BASE - 1)
+    if (error) fallo('listar visitas', error)
+    const lote = (data ?? []) as Record<string, unknown>[]
+    filas.push(...lote.map(aListado))
+    if (lote.length < TAMANO_PAGINA_BASE) return { filas, truncado: false }
+  }
+  return { filas, truncado: true }
+}
+
+// ───────────────────────── Recordatorio "¿se realizó?" (Entrega 2) ─────────────────────────
+
+/** Confirmadas, sin aviso, con horario dentro de la ventana. 200 por corrida alcanza y sobra (cada hora). */
+export async function visitasParaRecordar(ventana: { desde: string; hasta: string }): Promise<VisitaParaRecordar[]> {
+  const { data, error } = await sb().from('property_visits')
+    .select(`id, scheduled_at, status, reminder_sent_at, client_name,
+      property:properties(address),
+      advisor:profiles!property_visits_advisor_id_fkey(full_name, email, is_active)`)
+    .eq('status', 'scheduled')
+    .is('reminder_sent_at', null)
+    .gte('scheduled_at', ventana.desde)
+    .lte('scheduled_at', ventana.hasta)
+    .order('scheduled_at', { ascending: true })
+    .limit(200)
+  if (error) fallo('visitas para recordar', error)
+  return ((data ?? []) as Record<string, unknown>[]).map(r => {
+    if (!esEstadoVisita(r.status)) throw new Error(`visitas para recordar: estado desconocido "${String(r.status)}"`)
+    const p = uno(r.property as { address?: unknown } | null)
+    const a = uno(r.advisor as { full_name?: unknown; email?: unknown; is_active?: unknown } | null)
+    return {
+      id: String(r.id),
+      scheduled_at: String(r.scheduled_at),
+      status: r.status,
+      reminder_sent_at: textoONulo(r.reminder_sent_at),
+      client_name: String(r.client_name ?? ''),
+      direccion: textoONulo(p?.address),
+      // `is_active` ausente (perfil viejo sin la columna, join fallido) cuenta como inactivo:
+      // ante la duda, no se manda. Solo `true` explícito habilita el aviso.
+      asesor: a ? { nombre: textoONulo(a.full_name) ?? '', email: textoONulo(a.email), activo: a.is_active === true } : null,
+    }
+  })
+}
+
+/**
+ * Reserva ATÓMICA: escribe la marca solo si nadie la escribió antes y la visita sigue
+ * confirmada. Devuelve la marca (para poder liberarla) o `null` si otra corrida ganó.
+ * No toca status/scheduled_at/advisor_id: no deja evento en el historial.
+ */
+export async function reservarRecordatorio(id: string, ahora: Date): Promise<string | null> {
+  const marca = ahora.toISOString()
+  const { data, error } = await sb().from('property_visits')
+    .update({ reminder_sent_at: marca })
+    .eq('id', id).is('reminder_sent_at', null).eq('status', 'scheduled')
+    .select('id').maybeSingle()
+  if (error) fallo('reservar recordatorio', error)
+  return data ? marca : null
+}
+
+/** El email no salió: se devuelve la visita a "sin aviso" para que la próxima hora reintente. Solo si sigue con SU marca. */
+export async function liberarRecordatorio(id: string, marca: string): Promise<void> {
+  const { error } = await sb().from('property_visits')
+    .update({ reminder_sent_at: null })
+    .eq('id', id).eq('reminder_sent_at', marca)
+  if (error) fallo('liberar recordatorio', error)
 }

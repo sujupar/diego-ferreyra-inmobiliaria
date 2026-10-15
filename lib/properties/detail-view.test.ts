@@ -44,14 +44,16 @@ describe('heroLayout', () => {
 })
 
 describe('visibleTabs / resolveTab', () => {
-  it('el asesor con propiedad captada ve las cinco', () => {
+  it('el asesor con propiedad captada ve las seis, con Visitas antes de Historial', () => {
     expect(visibleTabs({ role: 'asesor', status: 'approved' }))
-      .toEqual(['propiedad', 'multimedia', 'documentacion', 'difusion', 'historial'])
+      .toEqual(['propiedad', 'multimedia', 'documentacion', 'difusion', 'visitas', 'historial'])
   })
-  it('sin captar todavía, no hay Difusión', () => {
-    expect(visibleTabs({ role: 'asesor', status: 'pending_docs' })).not.toContain('difusion')
+  it('sin captar todavía, no hay Difusión ni Visitas', () => {
+    const tabs = visibleTabs({ role: 'asesor', status: 'pending_docs' })
+    expect(tabs).not.toContain('difusion')
+    expect(tabs).not.toContain('visitas')
   })
-  it('el abogado no ve Multimedia ni Difusión', () => {
+  it('el abogado no ve Multimedia, Difusión ni Visitas', () => {
     expect(visibleTabs({ role: 'abogado', status: 'approved' }))
       .toEqual(['propiedad', 'documentacion', 'historial'])
   })

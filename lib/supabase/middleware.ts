@@ -163,10 +163,13 @@ export const API_PUBLICAS: readonly RutaPublica[] = [
             'Los jobs de pg_cron los ejecuta Supabase con net.http_post DESDE POSTGRES: no hay ' +
             'navegador ni cookie posible. Verificado contra la tabla `cron.job` el 2026-08-08 — hay 11 ' +
             'jobs activos pegándole a send-report, publish-listings, portal-inquiries, meta-sync, ' +
-            'refresh-market-data, refresh-portal-map y mailchimp-sync. Tres más los llaman las ' +
-            'funciones de Netlify (ghl-poll, visit-reminders, portal-inquiries). Va por PREFIJO a ' +
-            'propósito: cada ruta valida su `x-cron-secret`, y una que quedara cerrada por olvido ' +
-            'fallaría en silencio (403 dentro de Postgres, sin nadie mirando).',
+            'refresh-market-data, refresh-portal-map y mailchimp-sync. Dos más los llaman las ' +
+            'funciones de Netlify (ghl-poll, portal-inquiries). `visit-reminders` pasó a pegarle ' +
+            'directo desde pg_cron (migración 20261015000001): antes lo llamaba una scheduled ' +
+            'function de Netlify que nunca corría (no se disparan en este sitio), así que el ' +
+            'recordatorio nunca salía. Va por PREFIJO a propósito: cada ruta valida su ' +
+            '`x-cron-secret`, y una que quedara cerrada por olvido fallaría en silencio (403 ' +
+            'dentro de Postgres, sin nadie mirando).',
     },
 
     // ── Diagnóstico ──

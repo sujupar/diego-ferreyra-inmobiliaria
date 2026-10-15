@@ -1,50 +1,50 @@
 import 'server-only'
-import { cookies } from 'next/headers'
-import { sendEmail } from '@/lib/email/resend-client'
+import { sendEmail, type SendEmailResult } from '@/lib/email/resend-client'
 import { renderEmail } from '@/lib/email/render'
-import { createClient } from '@/lib/supabase/server'
+import { formatearFechaLarga } from '@/lib/visitas/horario'
 import VisitReminderAdvisorEmail from '@/emails/VisitReminderAdvisorEmail'
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.inmodf.com.ar'
+/**
+ * Email "¿Se realizó la visita?" al asesor (spec §4.7). No lee la base: los datos los trae
+ * la ruta del cron (con clave de servicio). Devuelve el resultado de `sendEmail`, que
+ * NUNCA lanza: quien llama tiene que mirar `ok`/`failed`/`sent` (CLAUDE.md § cola durable:
+ * un `ok:false` con `failed:0` es "falta RESEND_API_KEY" y también es un fallo).
+ *
+ * `idempotent: false` a propósito: si la visita se reprograma, el trigger vuelve
+ * `reminder_sent_at` a NULL y el aviso tiene que poder salir de nuevo por la MISMA visita.
+ * El "una sola vez" lo garantiza la reserva atómica de `reminder_sent_at` en la ruta.
+ * `entityType: 'property'` es el que ya usaba este aviso (el log no tiene tipo "visita").
+ */
+function urlDeLaApp(): string {
+  // `||`, no `??`: una env var seteada pero VACÍA (deploy preview mal configurado) no
+  // tiene que dejar el link relativo (`/visits/<id>`, que en el email no apunta a nada).
+  return (process.env.NEXT_PUBLIC_APP_URL || 'https://inmodf.com.ar').replace(/\/+$/, '')
+}
 
-export async function sendReminderForVisit(visitId: string) {
-  const cookieStore = await cookies()
-  const supabase = createClient(cookieStore)
-  const { data: v } = await supabase
-    .from('property_visits')
-    .select(`
-      id, scheduled_at, client_name, reminder_sent_at,
-      property:properties(address),
-      advisor:profiles!property_visits_advisor_id_fkey(id, full_name, email)
-    `)
-    .eq('id', visitId)
-    .maybeSingle()
+export interface DatosRecordatorio {
+  visitaId: string
+  scheduledAt: string
+  cliente: string
+  direccion: string | null
+  asesor: { nombre: string; email: string }
+}
 
-  if (!v) return
-  const advisor = Array.isArray(v.advisor) ? v.advisor[0] : v.advisor
-  const property = Array.isArray(v.property) ? v.property[0] : v.property
-  if (!advisor?.email) return
-  if (v.reminder_sent_at) return
-
-  const html = await renderEmail(
-    VisitReminderAdvisorEmail({
-      advisorName: advisor.full_name,
-      propertyAddress: property?.address ?? '',
-      clientName: v.client_name,
-      scheduledAt: new Date(v.scheduled_at).toLocaleString('es-AR'),
-      visitUrl: `${APP_URL}/visits/${v.id}`,
-    })
-  )
-
-  await sendEmail({
+export async function enviarRecordatorioDeVisita(d: DatosRecordatorio): Promise<SendEmailResult> {
+  const direccion = d.direccion?.trim() || 'la propiedad'
+  const html = await renderEmail(VisitReminderAdvisorEmail({
+    advisorName: d.asesor.nombre,
+    propertyAddress: direccion,
+    clientName: d.cliente.trim() || 'la persona',
+    scheduledAt: formatearFechaLarga(d.scheduledAt),
+    visitUrl: `${urlDeLaApp()}/visits/${d.visitaId}`,
+  }))
+  return sendEmail({
     notificationType: 'visit_reminder_advisor',
     entityType: 'property',
-    entityId: v.id,
-    to: advisor.email,
-    subject: `¿Se realizó la visita? ${property?.address ?? ''}`,
+    entityId: d.visitaId,
+    to: d.asesor.email,
+    subject: `¿Se realizó la visita? ${direccion}`,
     html,
-    idempotent: true,
+    idempotent: false,
   })
-
-  await supabase.from('property_visits').update({ reminder_sent_at: new Date().toISOString() }).eq('id', v.id)
 }

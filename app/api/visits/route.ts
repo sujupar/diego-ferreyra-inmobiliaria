@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getUser } from '@/lib/auth/get-user'
-import { resolverAlcanceAsignado } from '@/lib/auth/scope'
-import { listVisits } from '@/lib/supabase/visits'
 import { advancePipelineState } from '@/lib/leads/pipeline-state'
 import { sendVisitScheduledToClient } from '@/lib/email/notifications/visit-scheduled-client'
 import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
@@ -10,7 +8,8 @@ import * as datos from '@/lib/visitas/datos'
 import { ORIGENES_VISITA, fuenteDelComprador, validarDetalleDeOrigen } from '@/lib/visitas/origen'
 import { validarHorarioDeVisita, yaOcurrio } from '@/lib/visitas/horario'
 import { validarPersonaNueva, telefonoCanonico, telefonoEfectivo } from '@/lib/visitas/persona'
-import { puedeGestionarVisitas, puedeVerTodasLasVisitas, asesorParaLaVisita } from '@/lib/visitas/acceso'
+import { puedeGestionarVisitas, puedeVerTodasLasVisitas, asesorParaLaVisita, alcanceDeVisitas } from '@/lib/visitas/acceso'
+import { leerFiltrosLista } from '@/lib/visitas/filtros'
 import type { Role } from '@/types/auth.types'
 
 /**
@@ -195,22 +194,31 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** Lista (la pantalla /visits se rehace en la Entrega 2; acá solo se cierran permisos y alcance). */
+/**
+ * Lista de visitas con filtros, alcance por rol y paginado (spec §4.4). La lee con clave
+ * de servicio: el alcance va EN LA CONSULTA (`alcanceDeVisitas`), no en la RLS. El asesor
+ * ve lo propio y su `asesor=` se ignora (no puede ampliar). Acepta los nombres viejos de
+ * los parámetros (ver lib/visitas/filtros.ts): /inicio y /tasks los usan.
+ */
 export async function GET(req: NextRequest) {
   const user = await getUser()
   if (!user || !user.profile.is_active) return error(401, 'Iniciá sesión de nuevo')
   const role = user.profile.role as Role
   if (!puedeGestionarVisitas(role)) return error(403, 'No tenés permiso para ver visitas')
-  const sp = req.nextUrl.searchParams
+  const filtros = leerFiltrosLista(req.nextUrl.searchParams, new Date())
+  if (!filtros.ok) return error(400, filtros.error)
+  const f = filtros.valor
   try {
-    const visits = await listVisits({
-      advisorId: resolverAlcanceAsignado(role, user.id, sp.get('advisor_id')),
-      propertyId: sp.get('property_id') || undefined,
-      status: sp.get('status') || undefined,
-      from: sp.get('from') || undefined,
-      to: sp.get('to') || undefined,
-    })
-    return NextResponse.json({ data: visits })
+    const { filas, total } = await datos.listarVisitas({
+      alcance: alcanceDeVisitas(role, user.id),
+      asesorId: puedeVerTodasLasVisitas(role) ? f.asesorId : null,
+      propiedadId: f.propiedadId,
+      origen: f.origen,
+      estados: f.estados,
+      desde: f.desdeInstante,
+      hasta: f.hastaInstante,
+    }, { desde: (f.pagina - 1) * f.porPagina, hasta: f.pagina * f.porPagina - 1 }, 'desc')
+    return NextResponse.json({ data: filas, total, pagina: f.pagina, porPagina: f.porPagina })
   } catch (e) {
     console.error('[GET /api/visits]', e)
     return error(500, 'No pudimos cargar las visitas')

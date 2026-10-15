@@ -1,405 +1,115 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react'
-import VisitsPage from './page'
-
-/**
- * Visitas absorbe `useFiltrosUrl` + `usePedidosVersionados` (task-12), mismo
- * patrón que `contacts/page.test.tsx` y `crm/page.test.tsx`.
- *
- * Diferencia clave con Contactos: acá el efecto de datos NO espera a resolver
- * la identidad antes de pedir — ya era así en la versión vieja de la pantalla
- * (`user` solo afina `advisor_id` cuando "Solo mías" está activo). Por eso no
- * hay un test análogo al de "no pide hasta identidad" de Contactos, y tampoco
- * hay uno de la regla 3 del versionado (`actual()`/bandera de botón): Visitas
- * no pagina ni tiene "cargar más"/"refrescar" — ver `crm/page.test.tsx` para
- * ese caso.
- *
- * Mutar cualquiera de las dos reglas de abajo tiene que romper el primer test:
- *   1. Un filtro nuevo mientras un pedido viaja → el viejo NO pinta.
- *   2. El spinner se apaga con la respuesta VIGENTE, no con cualquiera.
- */
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { armarResumen, type ResumenVisitas } from '@/lib/visitas/resumen'
+import { visitaDePrueba as v } from '@/test/visitas/visita-de-prueba'
 
 let busqueda = ''
 const escrituras: string[] = []
-
 vi.mock('next/navigation', () => ({
   usePathname: () => '/visits',
   useSearchParams: () => new URLSearchParams(busqueda),
-  useRouter: () => ({
-    replace: (href: string) => { escrituras.push(href) },
-    push: () => {},
-  }),
+  useRouter: () => ({ replace: (href: string) => { escrituras.push(href) }, push: vi.fn() }),
+}))
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+// La ventana de agendar tiene sus propias pruebas (Entrega 1); acá solo importa que el botón esté.
+vi.mock('@/components/visitas/BotonAgendarVisita', () => ({
+  BotonAgendarVisita: () => <button type="button" className="min-h-11">Agendar visita</button>,
 }))
 
-interface Deferred<T> { promise: Promise<T>; resolve: (v: T) => void }
-function deferred<T>(): Deferred<T> {
-  let resolve!: (v: T) => void
-  const promise = new Promise<T>(r => { resolve = r })
-  return { promise, resolve }
-}
+import VisitsPage from './page'
 
-let authDeferred: Deferred<{ id: string; role: string }>
-let visitsCalls: { url: string; d: Deferred<{ data: unknown[] }> }[]
+const YO = '11111111-1111-4111-8111-111111111111'
+const AHORA = new Date('2026-10-15T15:00:00Z')
+let rol = 'admin'
+let respuestas: Array<{ status: number; body: unknown }> = []
+let pedidosResumen: string[] = []
+
+function resumen(cambios: Partial<Parameters<typeof armarResumen>[0]> = {}): ResumenVisitas {
+  return armarResumen({
+    periodo: { desde: '2026-09-16', hasta: '2026-10-15' }, delPeriodo: [], abiertas: [], proximas: [],
+    ahora: AHORA, truncado: false, verTodo: rol !== 'asesor', ...cambios,
+  })
+}
 
 beforeEach(() => {
-  busqueda = ''
-  escrituras.length = 0
-  authDeferred = deferred()
-  visitsCalls = []
-  vi.stubGlobal('fetch', vi.fn((url: string) => {
-    if (url.startsWith('/api/auth/me')) {
-      return authDeferred.promise.then(data => ({ ok: true, json: async () => data }))
+  busqueda = ''; escrituras.length = 0; rol = 'admin'; pedidosResumen = []
+  respuestas = [{ status: 200, body: { data: resumen() } }]
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(AHORA)
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+    if (url.startsWith('/api/auth/me')) return json(200, { id: YO, role: rol })
+    if (url.startsWith('/api/users/advisors')) return json(200, { data: [{ id: '22222222-2222-4222-8222-222222222222', full_name: 'Lucas Pérez' }] })
+    if (url.startsWith('/api/visits/resumen')) {
+      pedidosResumen.push(url)
+      const r = respuestas.length > 1 ? respuestas.shift() : respuestas[0]
+      return json(r?.status ?? 500, r?.body ?? {})
     }
-    if (url.startsWith('/api/profiles')) {
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({ data: [{ id: 'adv1', full_name: 'Asesor Uno' }] }),
-      })
-    }
-    if (url.startsWith('/api/visits')) {
-      const d = deferred<{ data: unknown[] }>()
-      visitsCalls.push({ url, d })
-      return d.promise.then(data => ({ ok: true, json: async () => data }))
-    }
-    return Promise.reject(new Error(`fetch inesperado: ${url}`))
+    if (url.includes('/estado') && init?.method === 'POST') return json(200, { data: null })
+    throw new Error(`fetch inesperado: ${url}`)
   }))
 })
+afterEach(() => { vi.useRealTimers() })
 
-/** Simula que Next terminó de commitear una URL — mismo patrón que el hook. */
-function commitear(rerender: (ui: React.ReactElement) => void, href: string) {
-  const i = href.indexOf('?')
-  busqueda = i === -1 ? '' : href.slice(i + 1)
-  act(() => { rerender(<VisitsPage />) })
-}
-
-function visita(id: string, cliente: string, status = 'scheduled') {
-  return {
-    id,
-    scheduled_at: '2026-08-01T15:00:00Z',
-    client_name: cliente,
-    status,
-    property: { id: 'p1', address: `Dirección de ${cliente}`, neighborhood: 'Palermo', photos: [] },
-    advisor: null,
-  }
-}
-
-describe('VisitsPage — efecto de datos con filtros en la URL', () => {
-  it('un filtro nuevo mientras un pedido viaja: el viejo no pinta y el spinner se apaga con el vigente', async () => {
-    const { rerender } = render(<VisitsPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-
-    // A diferencia de Contactos, acá el efecto NO espera a la identidad para
-    // pedir: dispara en el montaje (`user=null`) y otra vez apenas `user`
-    // resuelve (mismo filtro, pero `user` es dependencia del efecto). Los dos
-    // pedidos son de la MISMA ráfaga de filtro — el segundo es el vigente.
-    await waitFor(() => expect(visitsCalls.length).toBe(2))
-    visitsCalls[1].d.resolve({ data: [visita('a', 'Cliente Original')] })
-    await screen.findByText('Cliente Original')
-
-    // La URL commitea a status=scheduled (gen 3) — sin resolver todavía.
-    commitear(rerender, '/visits?status=scheduled')
-    await waitFor(() => expect(visitsCalls.length).toBe(3))
-
-    // Y antes de que responda, otro commit a status=completed (gen 4).
-    commitear(rerender, '/visits?status=completed')
-    await waitFor(() => expect(visitsCalls.length).toBe(4))
-
-    // Responde PRIMERO el pedido viejo (gen 3, scheduled): no tiene que pintar.
-    visitsCalls[2].d.resolve({ data: [visita('b', 'Cliente Agendado Viejo', 'scheduled')] })
-    await act(async () => { await Promise.resolve() })
-    expect(screen.queryByText('Cliente Agendado Viejo')).not.toBeInTheDocument()
-    // Regla 2: el spinner sigue prendido — la respuesta VIGENTE (gen 4) no llegó.
-    expect(screen.getByText('Cargando…')).toBeInTheDocument()
-
-    // Responde el pedido vigente (gen 4, completed).
-    visitsCalls[3].d.resolve({ data: [visita('c', 'Cliente Realizado Vigente', 'completed')] })
-    await screen.findByText('Cliente Realizado Vigente')
-
-    // El spinner se apagó con la respuesta que correspondía.
-    expect(screen.queryByText('Cargando…')).not.toBeInTheDocument()
-    // Y el listado del pedido viejo nunca llegó a pintarse, ni después.
-    expect(screen.queryByText('Cliente Agendado Viejo')).not.toBeInTheDocument()
-  })
-})
-
-describe('VisitsPage — visibilidad del desplegable Asesor', () => {
-  it('no aparece mientras no se conoce el rol, ni para el rol asesor una vez resuelto', async () => {
+describe('/visits', () => {
+  it('pide el resumen de los últimos 30 días argentinos', async () => {
     render(<VisitsPage />)
-    // Antes de resolver identidad no se muestra — si el gate fuera solo
-    // `!isAsesor`, acá aparecería (parpadeo, la lección de CRM).
-    expect(screen.queryByLabelText('Asesor')).not.toBeInTheDocument()
-
-    authDeferred.resolve({ id: 'u1', role: 'asesor' })
-    await waitFor(() => expect(visitsCalls.length).toBeGreaterThanOrEqual(1))
-    expect(screen.queryByLabelText('Asesor')).not.toBeInTheDocument()
+    await waitFor(() => expect(pedidosResumen).toHaveLength(1))
+    const qs = new URL(pedidosResumen[0], 'http://x').searchParams
+    expect(qs.get('desde')).toBe('2026-09-16')
+    expect(qs.get('hasta')).toBe('2026-10-15')
   })
-
-  it('aparece para un rol admin/dueño/coordinador una vez resuelta la identidad', async () => {
+  it('el link de Inicio (?from=hoy&to=hoy&onlyMine=true) pide HOY a nombre de quien mira', async () => {
+    busqueda = 'from=2026-10-15&to=2026-10-15&onlyMine=true'
     render(<VisitsPage />)
-    authDeferred.resolve({ id: 'u1', role: 'coordinador' })
-    await waitFor(() => expect(screen.getByLabelText('Asesor')).toBeInTheDocument())
+    await waitFor(() => expect(pedidosResumen).toHaveLength(1))
+    const qs = new URL(pedidosResumen[0], 'http://x').searchParams
+    expect([qs.get('desde'), qs.get('hasta'), qs.get('asesor')]).toEqual(['2026-10-15', '2026-10-15', YO])
   })
-})
-
-describe('VisitsPage — "Solo mías"', () => {
-  it('escribe onlyMine=true en la URL al tocarlo', async () => {
+  it('un período sin visitas: "Sin datos" en las tarjetas y el resumen del día', async () => {
     render(<VisitsPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    // Dos pedidos por el mismo motivo que en el test de la carrera (montaje
-    // sin identidad + identidad resuelta); el vigente es el segundo.
-    await waitFor(() => expect(visitsCalls.length).toBe(2))
-    visitsCalls[1].d.resolve({ data: [] })
-    await screen.findByText('No hay visitas')
-
-    fireEvent.click(screen.getByText('Solo mías'))
-    expect(escrituras[escrituras.length - 1]).toContain('onlyMine=true')
+    expect(await screen.findByText('Sin visitas hoy · nada para resolver')).toBeInTheDocument()
+    expect(screen.getAllByText('Sin datos').length).toBeGreaterThanOrEqual(5)
   })
-
-  it('con onlyMine=true ya en la URL (F5), el pedido lleva advisor_id = el id propio', async () => {
-    busqueda = 'onlyMine=true'
+  it('el asesor no ve el filtro de asesor ni "Por asesor", y no pide la lista de asesores', async () => {
+    rol = 'asesor'
+    respuestas = [{ status: 200, body: { data: resumen({ delPeriodo: [v({ status: 'completed', scheduled_at: '2026-10-14T13:00:00Z' })] }) } }]
     render(<VisitsPage />)
-    authDeferred.resolve({ id: 'u1', role: 'asesor' })
-    // El primer pedido (montaje, sin identidad) no puede llevarlo — recién el
-    // que sigue a la identidad resuelta.
-    await waitFor(() => expect(visitsCalls.length).toBe(2))
-    expect(visitsCalls[1].url).toContain('advisor_id=u1')
+    await screen.findByText('Cómo vienen las visitas')
+    expect(screen.queryByRole('combobox', { name: 'Asesor' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Por asesor' })).not.toBeInTheDocument()
+    expect(vi.mocked(fetch).mock.calls.some(([u]) => String(u).startsWith('/api/users/advisors'))).toBe(false)
   })
-})
-
-/**
- * D32 — "Solo mías" y el desplegable "Asesor" escriben el MISMO campo del
- * pedido (`advisor_id`) y "Solo mías" gana en silencio. Con los dos puestos, la
- * pantalla mostraba la ficha del OTRO asesor sobre un listado que era el
- * propio: dos controles afirmando cosas incompatibles sobre la misma lista.
- */
-describe('VisitsPage — "Solo mías" y "Asesor" no pueden contradecirse (D32)', () => {
-  const OTRO = '00000000-0000-0000-0000-0000000000aa'
-
-  beforeEach(() => {
-    // Mismo stub que el de arriba, pero con un asesor de id UUID: el de
-    // `/api/profiles` por defecto ('adv1') no sobrevive a `normalizarFiltros`
-    // y nunca llegaría a dibujar la ficha con el nombre.
-    vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url.startsWith('/api/auth/me')) {
-        return authDeferred.promise.then(data => ({ ok: true, json: async () => data }))
-      }
-      if (url.startsWith('/api/profiles')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ data: [{ id: OTRO, full_name: 'Juan Pérez' }] }),
-        })
-      }
-      if (url.startsWith('/api/visits')) {
-        const d = deferred<{ data: unknown[] }>()
-        visitsCalls.push({ url, d })
-        return d.promise.then(data => ({ ok: true, json: async () => data }))
-      }
-      return Promise.reject(new Error(`fetch inesperado: ${url}`))
-    }))
-  })
-
-  it('activar "Solo mías" saca el asesor elegido de la URL y de la ficha', async () => {
-    busqueda = `advisorId=${OTRO}`
-    const { rerender } = render(<VisitsPage />)
-    authDeferred.resolve({ id: 'u1', role: 'coordinador' })
-    await waitFor(() => expect(visitsCalls.length).toBe(2))
-    visitsCalls[1].d.resolve({ data: [] })
-    await screen.findByText('No hay visitas')
-    // La ficha (no el `<option>`, que siempre está en el desplegable): su
-    // botón de quitar solo existe cuando `FilterBar` la dibuja.
-    expect(screen.getByLabelText('Quitar filtro Asesor')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByText('Solo mías'))
-    const ultima = escrituras[escrituras.length - 1]
-    expect(ultima).toContain('onlyMine=true')
-    expect(ultima).not.toContain('advisorId')
-
-    commitear(rerender, ultima)
-    // La ficha del otro asesor ya no se muestra: el listado que se pide es el
-    // propio y los controles lo dicen.
-    expect(screen.queryByLabelText('Quitar filtro Asesor')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Asesor')).toHaveValue('')
-  })
-
-  it('elegir un asesor apaga "Solo mías" (manda el último que se toca)', async () => {
-    busqueda = 'onlyMine=true'
+  it('elegir "7 días" escribe el período en la dirección', async () => {
     render(<VisitsPage />)
-    authDeferred.resolve({ id: 'u1', role: 'coordinador' })
-    await waitFor(() => expect(visitsCalls.length).toBe(2))
-    visitsCalls[1].d.resolve({ data: [] })
-    await screen.findByText('No hay visitas')
-
-    fireEvent.change(screen.getByLabelText('Asesor'), { target: { value: OTRO } })
-    const ultima = escrituras[escrituras.length - 1]
-    expect(ultima).toContain(`advisorId=${OTRO}`)
-    expect(ultima).not.toContain('onlyMine')
-    // Y no se reporta como filtro rechazado: el asesor SÍ se aplicó.
-    expect(screen.queryByText(/No se aplicó/)).not.toBeInTheDocument()
+    await screen.findByText('Sin visitas hoy · nada para resolver')
+    await userEvent.click(screen.getByRole('button', { name: '7 días' }))
+    expect(escrituras.some(h => h.includes('periodo=7d'))).toBe(true)
   })
-
-  it('un deep link con los dos puestos no anuncia al otro asesor sobre el listado propio', async () => {
-    busqueda = `advisorId=${OTRO}&onlyMine=true`
+  it('criterio 14: "Se realizó" desde "Requieren tu acción" vuelve a pedir el resumen y la visita sale de la lista', async () => {
+    const pasada = v({ status: 'scheduled', scheduled_at: '2026-10-14T13:00:00Z', client_name: 'Pasada' })
+    respuestas = [
+      { status: 200, body: { data: resumen({ abiertas: [pasada] }) } },
+      { status: 200, body: { data: resumen({ delPeriodo: [{ ...pasada, status: 'completed' }] }) } },
+    ]
     render(<VisitsPage />)
-    authDeferred.resolve({ id: 'u1', role: 'coordinador' })
-    await waitFor(() => expect(visitsCalls.length).toBe(2))
-
-    // Lo que se pide es el listado PROPIO (así era antes también).
-    expect(visitsCalls[1].url).toContain('advisor_id=u1')
-    expect(visitsCalls[1].url).not.toContain(OTRO)
-    // Lo nuevo: los controles ya no dicen otra cosa.
-    expect(screen.queryByLabelText('Quitar filtro Asesor')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Asesor')).toHaveValue('')
+    await userEvent.click(await screen.findByRole('button', { name: 'Se realizó' }))
+    await userEvent.click(await screen.findByRole('radio', { name: 'Alto' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+    await waitFor(() => expect(pedidosResumen).toHaveLength(2))
+    expect(await screen.findByText('No hay nada para resolver.')).toBeInTheDocument()
+    expect(screen.getByText('100 %')).toBeInTheDocument()
   })
-})
-
-describe('VisitsPage — "Limpiar todo"', () => {
-  it('limpia estado, fechas y "solo mías"', async () => {
-    busqueda = 'status=scheduled&from=2026-08-01&to=2026-08-08&onlyMine=true'
+  it('si el servidor falla: el mensaje real y "Reintentar"', async () => {
+    respuestas = [
+      { status: 500, body: { error: 'No pudimos cargar el resumen de visitas' } },
+      { status: 200, body: { data: resumen() } },
+    ]
     render(<VisitsPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(visitsCalls.length).toBe(2))
-    visitsCalls[1].d.resolve({ data: [] })
-    await screen.findByText('No hay visitas')
-
-    fireEvent.click(screen.getByText('Limpiar todo'))
-    expect(escrituras[escrituras.length - 1]).toBe('/visits')
-  })
-})
-
-describe('VisitsPage — tarjeta de número (task 16)', () => {
-  it('muestra el largo del arreglo ya cargado, con el contexto de "sin filtros"', async () => {
-    render(<VisitsPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(visitsCalls.length).toBe(2))
-    visitsCalls[1].d.resolve({ data: [visita('a', 'Cliente Uno'), visita('b', 'Cliente Dos')] })
-    await screen.findByText('Cliente Uno')
-
-    const tarjeta = within(screen.getByTestId('tarjetas-numeros'))
-    expect(tarjeta.getByText('2')).toBeInTheDocument()
-    expect(tarjeta.getByText('en el sistema')).toBeInTheDocument()
-  })
-
-  it('con un filtro puesto, el contexto dice "con los filtros puestos"', async () => {
-    busqueda = 'status=scheduled'
-    render(<VisitsPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(visitsCalls.length).toBe(2))
-    visitsCalls[1].d.resolve({ data: [visita('a', 'Cliente Agendado')] })
-    await screen.findByText('Cliente Agendado')
-
-    const tarjeta = within(screen.getByTestId('tarjetas-numeros'))
-    expect(tarjeta.getByText('con los filtros puestos')).toBeInTheDocument()
-    expect(tarjeta.queryByText('en el sistema')).not.toBeInTheDocument()
-  })
-
-  it('un /api/visits caído apaga el número a "Sin datos" — no al 0 inicial', async () => {
-    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      vi.stubGlobal('fetch', vi.fn((url: string) => {
-        if (url.startsWith('/api/auth/me')) return authDeferred.promise.then(data => ({ ok: true, json: async () => data }))
-        if (url.startsWith('/api/profiles')) return Promise.resolve({ ok: true, json: async () => ({ data: [] }) })
-        if (url.startsWith('/api/visits')) return Promise.reject(new Error('caído'))
-        return Promise.reject(new Error(`fetch inesperado: ${url}`))
-      }))
-      render(<VisitsPage />)
-      authDeferred.resolve({ id: 'u1', role: 'admin' })
-
-      const tarjeta = within(screen.getByTestId('tarjetas-numeros'))
-      // Se espera el CONTEXTO de error, no el "Sin datos": desde el arreglo C1
-      // el "Sin datos" ya está puesto mientras carga.
-      await waitFor(() => expect(tarjeta.getByText('No se pudo consultar')).toBeInTheDocument())
-      expect(tarjeta.getByText('Sin datos')).toBeInTheDocument()
-    } finally {
-      errores.mockRestore()
-    }
-  })
-
-  it('agregar la tarjeta no dispara ninguna llamada de más', async () => {
-    render(<VisitsPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(visitsCalls.length).toBe(2))
-    visitsCalls[1].d.resolve({ data: [] })
-    await screen.findByText('No hay visitas')
-
-    // auth + profiles + 2 de /api/visits (montaje sin identidad + con
-    // identidad resuelta, ya documentado arriba) = 4 — ni una llamada más.
-    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(4)
-  })
-
-  // Revisión final Fase 3 — C1. Los tests de arriba resuelven el fetch ANTES
-  // de mirar la tarjeta; el defecto vivía en la ventana anterior.
-  it('mientras la respuesta viaja, la tarjeta dice "Sin datos" — nunca 0', async () => {
-    render(<VisitsPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(visitsCalls.length).toBe(2))
-
-    const tarjeta = within(screen.getByTestId('tarjetas-numeros'))
-    expect(tarjeta.getByText('Sin datos')).toBeInTheDocument()
-    expect(tarjeta.getByText('todavía cargando')).toBeInTheDocument()
-    expect(tarjeta.queryByText('0')).not.toBeInTheDocument()
-    expect(tarjeta.queryByText('en el sistema')).not.toBeInTheDocument()
-
-    visitsCalls[1].d.resolve({ data: [visita('a', 'Cliente Uno'), visita('b', 'Cliente Dos')] })
-    await screen.findByText('Cliente Uno')
-    expect(tarjeta.getByText('2')).toBeInTheDocument()
-    expect(tarjeta.getByText('en el sistema')).toBeInTheDocument()
-  })
-
-  it('al cambiar de filtro, el conteo VIEJO no queda bajo "con los filtros puestos"', async () => {
-    const { rerender } = render(<VisitsPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(visitsCalls.length).toBe(2))
-    visitsCalls[1].d.resolve({ data: [visita('a', 'Cliente Uno'), visita('b', 'Cliente Dos')] })
-    await screen.findByText('Cliente Uno')
-
-    const tarjeta = within(screen.getByTestId('tarjetas-numeros'))
-    expect(tarjeta.getByText('2')).toBeInTheDocument()
-
-    // Filtro nuevo, respuesta todavía en vuelo: el 2 es de la base ANTERIOR.
-    commitear(rerender, '/visits?status=completed')
-    await waitFor(() => expect(visitsCalls.length).toBe(3))
-    expect(tarjeta.queryByText('2')).not.toBeInTheDocument()
-    expect(tarjeta.queryByText('con los filtros puestos')).not.toBeInTheDocument()
-    expect(tarjeta.getByText('Sin datos')).toBeInTheDocument()
-
-    visitsCalls[2].d.resolve({ data: [visita('c', 'Cliente Realizado', 'completed')] })
-    await screen.findByText('Cliente Realizado')
-    expect(tarjeta.getByText('1')).toBeInTheDocument()
-    expect(tarjeta.getByText('con los filtros puestos')).toBeInTheDocument()
-  })
-})
-
-describe('VisitsPage — el rango de fechas se interpreta en hora LOCAL (A5)', () => {
-  // Se fija la zona horaria del proceso para que el test valga igual en
-  // cualquier máquina (y en CI): con TZ=UTC el bug es invisible, porque la
-  // medianoche local y la UTC coinciden.
-  const tzOriginal = process.env.TZ
-
-  beforeEach(() => { process.env.TZ = 'America/Argentina/Buenos_Aires' })
-  afterEach(() => { process.env.TZ = tzOriginal })
-
-  it('un rango de UN solo día no incluye nada del día anterior', async () => {
-    busqueda = 'from=2026-08-05&to=2026-08-05'
-    render(<VisitsPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(visitsCalls.length).toBe(2))
-
-    const params = new URLSearchParams(visitsCalls[1].url.split('?')[1])
-    const desde = new Date(params.get('from') as string)
-    const hasta = new Date(params.get('to') as string)
-
-    // El "desde" es la medianoche LOCAL del 5, no las 21:00 del 4.
-    expect(desde.getFullYear()).toBe(2026)
-    expect(desde.getMonth()).toBe(7) // agosto
-    expect(desde.getDate()).toBe(5)
-    expect(desde.getHours()).toBe(0)
-    expect(desde.getMinutes()).toBe(0)
-
-    // Y el "hasta" sigue cerrando al final del MISMO día local (no cambió).
-    expect(hasta.getDate()).toBe(5)
-    expect(hasta.getHours()).toBe(23)
-    expect(hasta.getMinutes()).toBe(59)
+    expect(await screen.findByText('No pudimos cargar el resumen de visitas')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+    expect(await screen.findByText('Sin visitas hoy · nada para resolver')).toBeInTheDocument()
   })
 })

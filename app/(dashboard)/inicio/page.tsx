@@ -108,21 +108,18 @@ const TARJETAS: TarjetaDef[] = [
     // las visitas de todos y el número de la tarjeta no cerraría con la lista.
     destino: (identidad, hoy) =>
       `/visits?from=${hoy}&to=${hoy}${identidad.role === 'asesor' ? '&onlyMine=true' : ''}`,
-    // Revisión final Fase 3 — I1: decía "agendadas para hoy" contando TAMBIÉN
-    // las canceladas y las que no se presentaron. El pedido es
-    // `/api/visits?from&to` sin `status`, y `listVisits` no filtra por estado.
+    // Revisión final Fase 3 — I1/N2: decía "agendadas para hoy" contando
+    // TAMBIÉN las canceladas y las que no se presentaron; el pulido pre-entrega
+    // lo corrigió a "todos los estados" (correcto para lo que la ruta hacía
+    // entonces: un solo pedido sin `status`, que `listVisits` no filtraba).
     //
-    // Elegido: que el contexto diga la verdad, no recortar el pedido. La ruta
-    // sí acepta `status`, pero `listVisits` lo aplica con un `.eq()` de UN
-    // solo valor y los estados vivos son DOS (`scheduled` y
-    // `pending_confirmation`): pedir uno dejaría afuera las visitas que el
-    // cliente propuso y el equipo todavía no confirmó — otro número falso, por
-    // la puerta de al lado. Ensanchar ese filtro es tocar `lib/supabase/`.
-    //
-    // Pulido pre-entrega (N2): "canceladas incluidas" SUB-declaraba — el
-    // conteo también incluye `no_show` y `completed`, no solo canceladas.
-    // "todos los estados" es exacto y no cuesta nada más.
-    context: v => (v === null ? 'No se pudo consultar' : 'en la agenda de hoy, todos los estados'),
+    // Revisión final E2 (grupo E): ese "todos los estados" ya no es cierto, y
+    // tampoco debería serlo — `lib/visitas/resumen.ts` ("Visitas hoy" de la
+    // sección Visitas) EXCLUYE canceladas, y esta tarjeta contaba el mismo día
+    // con un criterio distinto (dos números para "lo mismo"). Ahora los dos
+    // excluyen canceladas (ver el pedido de arriba), así que alcanza con decir
+    // de qué agenda se trata.
+    context: v => (v === null ? 'No se pudo consultar' : 'en la agenda de hoy'),
   },
 ]
 
@@ -242,11 +239,30 @@ export default function InicioPage() {
       // El asesor solo ve lo suyo (pipeline.view_own); el resto de los roles
       // que llegan acá tienen pipeline.view_all.
       const scope = identidad.role === 'asesor' ? `&advisor_id=${identidad.id}` : ''
+      const comun = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${scope}`
+      const total = (j: unknown) => {
+        // El total lo cuenta la base: desde la Entrega 2 la lista viene paginada (50 por
+        // página) y su largo dejaría de ser el número del día en un día cargado.
+        const t = (j as { total?: unknown })?.total
+        if (typeof t === 'number') return t
+        const arr = (j as { data?: unknown })?.data
+        return Array.isArray(arr) ? arr.length : NaN
+      }
       trabajos.push(
-        pedirNumero(`/api/visits?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${scope}`, j => {
-          const arr = (j as { data?: unknown })?.data
-          return Array.isArray(arr) ? arr.length : NaN
-        }).then(n => { if (!cancelado) setNumeros(prev => ({ ...prev, visitasHoy: n })) })
+        // Revisión final E2 (grupo E): igualar el criterio de `lib/visitas/resumen.ts`
+        // ("Visitas hoy" de la sección Visitas) — cualquier estado SALVO canceladas.
+        // `estado=activas` no sirve (son solo `scheduled`/`pending_confirmation`: dejaría
+        // afuera las realizadas de hoy), y `leerFiltrosLista` no tiene un parámetro para
+        // "todo menos X". Se pide el total general y el total de canceladas (dos consultas
+        // de conteo, no de filas: así no se corre el riesgo de la paginación) y se resta.
+        Promise.all([
+          pedirNumero(`/api/visits?${comun}`, total),
+          pedirNumero(`/api/visits?${comun}&status=cancelled`, total),
+        ]).then(([todas, canceladas]) => {
+          if (cancelado) return
+          const n = todas === null ? null : canceladas === null ? todas : Math.max(0, todas - canceladas)
+          setNumeros(prev => ({ ...prev, visitasHoy: n }))
+        })
       )
     }
 

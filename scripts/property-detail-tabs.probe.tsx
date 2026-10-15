@@ -62,7 +62,7 @@ if (renderToStaticMarkup(<OverviewTab property={property} isAbogado />).includes
 }
 
 check('pestaña Historial', renderToStaticMarkup(
-  <HistoryTab propertyId="p1" flowHistory={null} feedback={[]} />,
+  <HistoryTab propertyId="p1" flowHistory={null} />,
 ), ['Historial'])
 
 // 2) Sin fotos

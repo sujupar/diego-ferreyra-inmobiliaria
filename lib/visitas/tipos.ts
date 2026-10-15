@@ -90,3 +90,46 @@ export interface VisitaDetalle {
   comprador: { id: string; name: string; lead_number: number | null } | null
   consulta: { id: string; portal: string; received_at: string | null } | null
 }
+
+/**
+ * Una visita tal como la leen la sección Visitas, su lista, la pestaña de la ficha y
+ * las métricas (lib/visitas/datos.ts → `listarVisitas` / `todasLasVisitas`). Plana a
+ * propósito: los joins de PostgREST se aplanan en `datos.ts` y nada más los ve.
+ */
+export interface VisitaListado {
+  id: string
+  property_id: string
+  direccion: string | null
+  barrio: string | null
+  advisor_id: string | null
+  asesor_nombre: string | null
+  created_by: string | null
+  client_name: string
+  client_phone: string | null
+  status: EstadoVisita
+  origin: OrigenVisita | null
+  origin_detail: string | null
+  outcome_reason: MotivoNoRealizada | null
+  scheduled_at: string
+  created_at: string
+  /** Versión para la concurrencia optimista de POST /api/visits/[id]/estado (texto EXACTO). */
+  updated_at: string
+  confirmed_at: string | null
+  outcome_at: string | null
+  /** De la consulta de portal vinculada: `received_at`, o su `created_at` si el portal no trajo fecha. */
+  consulta_recibida_at: string | null
+  /** `created_at` del registro de comprador vinculado (`property_leads`). */
+  registro_creado_at: string | null
+}
+
+/** Lo que necesita el recordatorio "¿se realizó?" (lib/visitas/recordatorio.ts + cron). */
+export interface VisitaParaRecordar {
+  id: string
+  scheduled_at: string
+  status: EstadoVisita
+  reminder_sent_at: string | null
+  client_name: string
+  direccion: string | null
+  /** `activo` = `profiles.is_active`: un asesor desactivado no tiene que recibir avisos (ronda 1). */
+  asesor: { nombre: string; email: string | null; activo: boolean } | null
+}
