@@ -9,6 +9,7 @@
  */
 import type { VisitaListado } from './tipos'
 import { ESTADOS_ACTIVOS, MOTIVO_ETIQUETA, type MotivoNoRealizada } from './transiciones'
+import { ORIGEN_INFO } from './origen'
 
 export const BASE_ORIENTATIVA = 20
 
@@ -124,4 +125,107 @@ export function armarEmbudo(visitas: readonly VisitaListado[]): PasoEmbudo[] {
     if (caida > mayorCaida) { mayorCaida = caida; indiceSalto = i }
   }
   return pasos.map((p, i) => ({ ...p, saltoMasGrande: i === indiceSalto }))
+}
+
+/** Un registro de comprador creado a menos de esto de la visita nació CON ella (cartel, a mano). */
+export const MARGEN_REGISTRO_CON_LA_VISITA_MS = 2 * 60_000
+
+export interface TiemposVisitas {
+  anticipacion: Cifra
+  confirmacion: Cifra
+  marcarResultado: Cifra
+  consultaAVisita: Cifra
+}
+
+/** Medianas en MILISEGUNDOS. Las guardas de cada una están explicadas en el plan de la Entrega 2 (Tarea 3). */
+export function tiemposDeVisitas(visitas: readonly VisitaListado[]): TiemposVisitas {
+  const anticipacion: number[] = []
+  const confirmacion: number[] = []
+  const marcar: number[] = []
+  const consulta: number[] = []
+  for (const v of visitas) {
+    const creada = Date.parse(v.created_at)
+    const cuando = Date.parse(v.scheduled_at)
+    if (cuando - creada >= 0) anticipacion.push(cuando - creada)
+    if (v.confirmed_at) {
+      const d = Date.parse(v.confirmed_at) - creada
+      if (d > 0) confirmacion.push(d)
+    }
+    if ((v.status === 'completed' || v.status === 'no_show') && v.outcome_at) {
+      marcar.push(Math.max(0, Date.parse(v.outcome_at) - cuando))
+    }
+    if (v.consulta_recibida_at) {
+      const d = creada - Date.parse(v.consulta_recibida_at)
+      if (d >= 0) consulta.push(d)
+    } else if (v.registro_creado_at) {
+      const d = creada - Date.parse(v.registro_creado_at)
+      if (d >= MARGEN_REGISTRO_CON_LA_VISITA_MS) consulta.push(d)
+    }
+  }
+  return {
+    anticipacion: mediana(anticipacion),
+    confirmacion: mediana(confirmacion),
+    marcarResultado: mediana(marcar),
+    consultaAVisita: mediana(consulta),
+  }
+}
+
+export interface FilaGrupo {
+  clave: string
+  etiqueta: string
+  cantidad: number
+  /** % realizado sobre las visitas del grupo con resultado. */
+  realizado: Cifra
+}
+
+interface Acumulado { etiqueta: string; cantidad: number; realizadas: number; conResultado: number }
+
+function agrupar(visitas: readonly VisitaListado[], claveDe: (v: VisitaListado) => { clave: string; etiqueta: string }): FilaGrupo[] {
+  const grupos = new Map<string, Acumulado>()
+  for (const v of visitas) {
+    const { clave, etiqueta } = claveDe(v)
+    const g = grupos.get(clave) ?? { etiqueta, cantidad: 0, realizadas: 0, conResultado: 0 }
+    g.cantidad++
+    if (v.status === 'completed') { g.realizadas++; g.conResultado++ }
+    else if (v.status === 'no_show' || v.status === 'cancelled') g.conResultado++
+    grupos.set(clave, g)
+  }
+  return [...grupos.entries()]
+    .map(([clave, g]) => ({ clave, etiqueta: g.etiqueta, cantidad: g.cantidad, realizado: porcentaje(g.realizadas, g.conResultado) }))
+    .sort((a, b) => b.cantidad - a.cantidad || a.etiqueta.localeCompare(b.etiqueta, 'es'))
+}
+
+export function porOrigen(visitas: readonly VisitaListado[]): FilaGrupo[] {
+  return agrupar(visitas, v => v.origin
+    ? { clave: v.origin, etiqueta: ORIGEN_INFO[v.origin].etiqueta }
+    : { clave: 'sin_origen', etiqueta: 'Sin origen' })
+}
+
+export function porAsesor(visitas: readonly VisitaListado[]): FilaGrupo[] {
+  return agrupar(visitas, v => v.advisor_id
+    ? { clave: v.advisor_id, etiqueta: v.asesor_nombre?.trim() || 'Asesor sin nombre' }
+    : { clave: 'sin_asesor', etiqueta: 'Sin asesor' })
+}
+
+export function porPropiedad(visitas: readonly VisitaListado[]): FilaGrupo[] {
+  return agrupar(visitas, v => ({ clave: v.property_id, etiqueta: v.direccion?.trim() || 'Propiedad sin dirección' }))
+}
+
+export interface Metricas extends ConteosVisitas {
+  tiempos: TiemposVisitas
+  embudo: PasoEmbudo[]
+  porOrigen: FilaGrupo[]
+  porAsesor: FilaGrupo[]
+  porPropiedad: FilaGrupo[]
+}
+
+export function calcularMetricas(visitas: readonly VisitaListado[], ahora: Date): Metricas {
+  return {
+    ...contarVisitas(visitas, ahora),
+    tiempos: tiemposDeVisitas(visitas),
+    embudo: armarEmbudo(visitas),
+    porOrigen: porOrigen(visitas),
+    porAsesor: porAsesor(visitas),
+    porPropiedad: porPropiedad(visitas),
+  }
 }
