@@ -5,6 +5,23 @@
  */
 import type { EstadoVisita, MotivoNoRealizada, Interes } from './transiciones'
 import type { OrigenVisita } from './origen'
+import type { Moneda, OpinionPrecio } from './encuesta/tipos'
+
+/** La encuesta de una visita, tal como la leen los listados y las métricas (sin datos de contacto). */
+export interface EncuestaListado {
+  sent_at: string | null
+  completed_at: string | null
+  expires_at: string
+  liked: boolean | null
+  price_opinion: OpinionPrecio | null
+  offer_amount: number | null
+  offer_currency: Moneda | null
+  offer_declined: boolean | null
+  most_liked_tags: string[]
+  least_liked_tags: string[]
+  most_liked_other: string | null
+  least_liked_other: string | null
+}
 
 export interface ConsultaR {
   id: string
@@ -120,6 +137,10 @@ export interface VisitaListado {
   consulta_recibida_at: string | null
   /** `created_at` del registro de comprador vinculado (`property_leads`). */
   registro_creado_at: string | null
+  /** Precio publicado HOY (la diferencia de la oferta se mide contra este, en la misma moneda). */
+  precio_publicado: number | null
+  moneda_publicada: Moneda | null
+  encuesta: EncuestaListado | null
 }
 
 /** Lo que necesita el recordatorio "¿se realizó?" (lib/visitas/recordatorio.ts + cron). */

@@ -7,6 +7,8 @@ import type { VisitaListado } from './tipos'
 import { calcularMetricas, type Metricas } from './metricas'
 import { ESTADOS_ACTIVOS } from './transiciones'
 import { fechaEnArgentina, diasParaElegir } from './horario'
+import { opinionesPorPropiedad, type OpinionPropiedad } from './opiniones'
+import { estaVencida } from './encuesta/link'
 
 export const DIAS_DE_AGENDA = 7
 export const MAX_POR_LISTA = 50
@@ -24,9 +26,23 @@ export interface DiaDeAgenda {
   visitas: VisitaListado[]
 }
 
+export const HORAS_SIN_RESPONDER = 48
+/** El link vence a los 30 días de creado (al marcar realizada): 31 días hacia atrás alcanza. */
+export const DIAS_ENCUESTAS_HACIA_ATRAS = 31
+
+/** Spec §3.4: "Encuestas sin responder hace más de 48 h" (enviadas, sin responder, sin vencer). */
+export function encuestasSinResponder(realizadas: readonly VisitaListado[], ahora: Date): VisitaListado[] {
+  const limite = ahora.getTime() - HORAS_SIN_RESPONDER * 3_600_000
+  return realizadas
+    .filter(v => v.status === 'completed' && v.encuesta?.sent_at && !v.encuesta.completed_at
+      && Date.parse(v.encuesta.sent_at) <= limite && !estaVencida(v.encuesta.expires_at, ahora))
+    .sort((a, b) => Date.parse(a.encuesta?.sent_at ?? '') - Date.parse(b.encuesta?.sent_at ?? ''))
+}
+
 export interface RequierenAccion {
   sinResultado: VisitaListado[]
   aConfirmar: VisitaListado[]
+  encuestasSinResponder: VisitaListado[]
   /** Total REAL (las listas se cortan en MAX_POR_LISTA). */
   total: number
 }
@@ -39,6 +55,7 @@ export interface ResumenVisitas {
   agenda: DiaDeAgenda[]
   requieren: RequierenAccion
   propiedades: Array<{ id: string; direccion: string }>
+  opiniones: OpinionPropiedad[]
   /** Se llegó al techo de filas leídas: los números pueden estar incompletos y la pantalla lo dice. */
   truncado: boolean
 }
@@ -64,17 +81,19 @@ export function armarAgenda(visitas: readonly VisitaListado[], hoy: string): Dia
     .filter((d, i) => i === 0 || d.visitas.length > 0)
 }
 
-export function requierenAccion(abiertas: readonly VisitaListado[], ahora: Date): RequierenAccion {
+export function requierenAccion(abiertas: readonly VisitaListado[], ahora: Date, realizadasRecientes: readonly VisitaListado[] = []): RequierenAccion {
   const t = ahora.getTime()
   const activas = abiertas.filter(v => ESTADOS_ACTIVOS.includes(v.status))
   const sinResultado = activas.filter(v => Date.parse(v.scheduled_at) < t).sort((a, b) => porHorario(b, a))
   const aConfirmar = activas
     .filter(v => v.status === 'pending_confirmation' && Date.parse(v.scheduled_at) >= t)
     .sort(porHorario)
+  const encuestas = encuestasSinResponder(realizadasRecientes, ahora)
   return {
     sinResultado: sinResultado.slice(0, MAX_POR_LISTA),
     aConfirmar: aConfirmar.slice(0, MAX_POR_LISTA),
-    total: sinResultado.length + aConfirmar.length,
+    encuestasSinResponder: encuestas.slice(0, MAX_POR_LISTA),
+    total: sinResultado.length + aConfirmar.length + encuestas.length,
   }
 }
 
@@ -86,6 +105,7 @@ export interface EntradaResumen {
   ahora: Date
   truncado: boolean
   verTodo: boolean
+  realizadasRecientes?: readonly VisitaListado[]
 }
 
 export function armarResumen(e: EntradaResumen): ResumenVisitas {
@@ -93,7 +113,7 @@ export function armarResumen(e: EntradaResumen): ResumenVisitas {
   const metricas = calcularMetricas(e.delPeriodo, e.ahora)
   const agenda = armarAgenda(e.proximas, hoy)
   const propiedades = new Map<string, string>()
-  for (const v of [...e.delPeriodo, ...e.abiertas, ...e.proximas]) {
+  for (const v of [...e.delPeriodo, ...e.abiertas, ...e.proximas, ...(e.realizadasRecientes ?? [])]) {
     if (!propiedades.has(v.property_id)) propiedades.set(v.property_id, v.direccion?.trim() || 'Propiedad sin dirección')
   }
   return {
@@ -102,10 +122,11 @@ export function armarResumen(e: EntradaResumen): ResumenVisitas {
     visitasHoy: agenda[0].visitas.filter(v => v.status !== 'cancelled').length,
     metricas: e.verTodo ? metricas : { ...metricas, porAsesor: [] },
     agenda,
-    requieren: requierenAccion(e.abiertas, e.ahora),
+    requieren: requierenAccion(e.abiertas, e.ahora, e.realizadasRecientes ?? []),
     propiedades: [...propiedades.entries()]
       .map(([id, direccion]) => ({ id, direccion }))
       .sort((a, b) => a.direccion.localeCompare(b.direccion, 'es')),
+    opiniones: opinionesPorPropiedad(e.delPeriodo),
     truncado: e.truncado,
   }
 }

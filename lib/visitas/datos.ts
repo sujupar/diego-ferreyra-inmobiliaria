@@ -15,7 +15,8 @@ import { esAsesorAsignable } from '@/lib/deals/asesor-asignable'
 import { decidirComprador, type CompradorExistente } from './comprador'
 import { origenDesdeLead, esOrigenVisita, type OrigenDerivado, type OrigenVisita } from './origen'
 import { ESTADOS_ACTIVOS, esEstadoVisita, MOTIVOS_NO_REALIZADA, type EstadoVisita, type PatchVisita } from './transiciones'
-import type { ConsultaR, RegistroR, VisitaActivaR, VisitaAgendaR, VisitaDetalle, EventoVisitaR, VisitaListado, VisitaParaRecordar } from './tipos'
+import { MONEDAS, OPINIONES_PRECIO } from './encuesta/tipos'
+import type { ConsultaR, RegistroR, VisitaActivaR, VisitaAgendaR, VisitaDetalle, EventoVisitaR, VisitaListado, VisitaParaRecordar, EncuestaListado } from './tipos'
 import type { Alcance } from './acceso'
 import type { FiltroOrigen } from './filtros'
 
@@ -384,10 +385,12 @@ export const MAX_PAGINAS_BASE = 20
 const SELECT_LISTADO = `
   id, property_id, advisor_id, created_by, client_name, client_phone, status, origin, origin_detail,
   outcome_reason, scheduled_at, created_at, updated_at, confirmed_at, outcome_at,
-  property:properties(address, neighborhood),
+  property:properties(address, neighborhood, asking_price, currency),
   advisor:profiles!property_visits_advisor_id_fkey(full_name),
   lead:property_leads!property_visits_lead_id_fkey(created_at),
-  consulta:portal_inquiries!property_visits_portal_inquiry_id_fkey(received_at, created_at)`
+  consulta:portal_inquiries!property_visits_portal_inquiry_id_fkey(received_at, created_at),
+  encuesta:visit_surveys!visit_surveys_visit_id_fkey(sent_at, completed_at, expires_at, liked, price_opinion,
+    offer_amount, offer_currency, offer_declined, most_liked_tags, least_liked_tags, most_liked_other, least_liked_other)`
 
 function textoONulo(v: unknown): string | null {
   return typeof v === 'string' && v.trim() !== '' ? v : null
@@ -397,6 +400,35 @@ function motivoONulo(v: unknown): VisitaListado['outcome_reason'] {
   return typeof v === 'string' && (MOTIVOS_NO_REALIZADA as readonly string[]).includes(v)
     ? MOTIVOS_NO_REALIZADA.find(m => m === v) ?? null
     : null
+}
+
+function numeroPositivo(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+function listaDeTextos(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+}
+
+/** La encuesta embebida (1 a 1 por UNIQUE visit_id; PostgREST puede mandarla como objeto o lista). */
+function aEncuestaListado(e: Record<string, unknown> | null): EncuestaListado | null {
+  if (!e) return null
+  return {
+    sent_at: textoONulo(e.sent_at),
+    completed_at: textoONulo(e.completed_at),
+    expires_at: String(e.expires_at ?? ''),
+    liked: typeof e.liked === 'boolean' ? e.liked : null,
+    price_opinion: OPINIONES_PRECIO.find(p => p === e.price_opinion) ?? null,
+    offer_amount: numeroPositivo(e.offer_amount),
+    offer_currency: MONEDAS.find(m => m === e.offer_currency) ?? null,
+    offer_declined: typeof e.offer_declined === 'boolean' ? e.offer_declined : null,
+    most_liked_tags: listaDeTextos(e.most_liked_tags),
+    least_liked_tags: listaDeTextos(e.least_liked_tags),
+    most_liked_other: textoONulo(e.most_liked_other),
+    least_liked_other: textoONulo(e.least_liked_other),
+  }
 }
 
 /** Campo por campo: la fila cruda de PostgREST (con sus joins anidados) no sale de acá. */
@@ -427,6 +459,9 @@ function aListado(r: Record<string, unknown>): VisitaListado {
     outcome_at: textoONulo(r.outcome_at),
     consulta_recibida_at: textoONulo(c?.received_at) ?? textoONulo(c?.created_at),
     registro_creado_at: textoONulo(l?.created_at),
+    precio_publicado: numeroPositivo(p?.asking_price),
+    moneda_publicada: MONEDAS.find(m => m === p?.currency) ?? null,
+    encuesta: aEncuestaListado(uno(r.encuesta as Record<string, unknown> | Record<string, unknown>[] | null)),
   }
 }
 

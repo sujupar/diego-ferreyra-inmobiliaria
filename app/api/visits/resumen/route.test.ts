@@ -52,6 +52,8 @@ describe('GET /api/visits/resumen', () => {
     expect(abiertas.desde).toBe('2026-07-17T00:00:00.000-03:00')
     expect(abiertas.hasta).toBeUndefined()
     expect(proximas).toMatchObject({ desde: '2026-10-15T00:00:00.000-03:00', hasta: '2026-10-21T23:59:59.999999-03:00' })
+    const realizadas = todasMock.mock.calls[3][0]
+    expect(realizadas).toMatchObject({ estados: ['completed'], desde: '2026-09-14T00:00:00.000-03:00' })
   })
   it('asesor: alcance propio, su ?asesor= no cuenta, y "por asesor" vacío', async () => {
     estado.role = 'asesor'; estado.id = ASESOR

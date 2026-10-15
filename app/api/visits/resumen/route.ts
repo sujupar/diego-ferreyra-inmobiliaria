@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getUser } from '@/lib/auth/get-user'
 import * as datos from '@/lib/visitas/datos'
 import { leerFiltrosResumen } from '@/lib/visitas/filtros'
-import { armarResumen, DIAS_DE_AGENDA, DIAS_ABIERTAS_HACIA_ATRAS } from '@/lib/visitas/resumen'
+import { armarResumen, DIAS_DE_AGENDA, DIAS_ABIERTAS_HACIA_ATRAS, DIAS_ENCUESTAS_HACIA_ATRAS } from '@/lib/visitas/resumen'
 import { puedeGestionarVisitas, puedeVerTodasLasVisitas, alcanceDeVisitas } from '@/lib/visitas/acceso'
 import { ESTADOS_ACTIVOS } from '@/lib/visitas/transiciones'
 import { fechaEnArgentina, sumarDias } from '@/lib/visitas/horario'
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     origen: f.origen,
   }
   try {
-    const [delPeriodo, abiertas, proximas] = await Promise.all([
+    const [delPeriodo, abiertas, proximas, realizadas] = await Promise.all([
       datos.todasLasVisitas({ ...base, desde: inicioDelDiaArgentina(f.desde), hasta: finDelDiaArgentina(f.hasta) }),
       // Sin tope de fechas esto crece sin parar (lectura de TODAS las abiertas desde el
       // origen de los tiempos). Lo más viejo sin resultado ya no se va a marcar, y si
@@ -46,6 +46,12 @@ export async function GET(req: NextRequest) {
         desde: inicioDelDiaArgentina(sumarDias(hoy, -DIAS_ABIERTAS_HACIA_ATRAS)),
       }),
       datos.todasLasVisitas({ ...base, desde: inicioDelDiaArgentina(hoy), hasta: finDelDiaArgentina(sumarDias(hoy, DIAS_DE_AGENDA - 1)) }),
+      // Realizadas del último mes para "Encuestas sin responder hace más de 48 h" (el link vence a los 30 días).
+      datos.todasLasVisitas({
+        ...base,
+        estados: ['completed'],
+        desde: inicioDelDiaArgentina(sumarDias(hoy, -DIAS_ENCUESTAS_HACIA_ATRAS)),
+      }),
     ])
     const resumen = armarResumen({
       periodo: { desde: f.desde, hasta: f.hasta },
@@ -53,8 +59,9 @@ export async function GET(req: NextRequest) {
       abiertas: abiertas.filas,
       proximas: proximas.filas,
       ahora,
-      truncado: delPeriodo.truncado || abiertas.truncado || proximas.truncado,
+      truncado: delPeriodo.truncado || abiertas.truncado || proximas.truncado || realizadas.truncado,
       verTodo,
+      realizadasRecientes: realizadas.filas,
     })
     return NextResponse.json({ data: resumen })
   } catch (e) {

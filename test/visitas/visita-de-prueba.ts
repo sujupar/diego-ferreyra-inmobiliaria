@@ -34,6 +34,9 @@ export function visitaDePrueba(cambios: Partial<VisitaListado> = {}): VisitaList
     outcome_at: null,
     consulta_recibida_at: null,
     registro_creado_at: '2026-10-10T14:59:59.000Z',
+    precio_publicado: 150000,
+    moneda_publicada: 'USD',
+    encuesta: null,
     ...cambios,
   }
 }
