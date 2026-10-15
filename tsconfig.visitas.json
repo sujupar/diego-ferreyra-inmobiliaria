@@ -12,18 +12,26 @@
     "lib/ai/reset-prueba.ts",
     "lib/ai/scheduling-agent.ts",
     "lib/email/notifications/visit-scheduled-client.ts",
+    "lib/email/notifications/visit-reminder-advisor.ts",
+    "emails/VisitReminderAdvisorEmail.tsx",
+    "lib/properties/detail-view.ts",
     "app/api/visits/**/*.ts",
+    "app/api/cron/visit-reminders/route.ts",
     "app/api/properties/[id]/interesados/route.ts",
     "app/api/v/[token]/schedule/route.ts",
     "components/visitas/**/*.tsx",
+    "components/properties/detail/tabs/*.tsx",
     "components/dashboard/Topbar.tsx",
     "app/(dashboard)/layout.tsx",
-    "app/(dashboard)/visits/[id]/page.tsx",
+    "app/(dashboard)/visits/**/*.tsx",
     "app/(dashboard)/properties/[id]/page.tsx",
     "app/(dashboard)/properties/page.tsx",
     "app/(dashboard)/properties/_components/PropertyDetailModal.tsx",
     "app/(dashboard)/inbox/InboxClient.tsx",
-    "app/(dashboard)/inbox/LeadDetailSheet.tsx"
+    "app/(dashboard)/inbox/LeadDetailSheet.tsx",
+    "app/(dashboard)/inicio/page.tsx",
+    "app/(dashboard)/tasks/page.tsx",
+    "scripts/apply-cron-visit-reminders-pg.ts"
   ],
   "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
 }
