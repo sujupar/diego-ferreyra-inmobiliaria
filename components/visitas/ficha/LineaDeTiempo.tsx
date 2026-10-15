@@ -7,6 +7,7 @@ const TEXTO: Record<string, string> = {
   creada: 'Creada', confirmada: 'Confirmada', reprogramada: 'Reprogramada', realizada: 'Se realizó',
   no_realizada: 'No se realizó', cancelada: 'Cancelada', asesor_cambiado: 'Cambió el asesor',
   reabierta: 'Reabierta', estado_cambiado: 'Cambió el estado',
+  encuesta_enviada: 'Se envió la encuesta', encuesta_abierta: 'Abrió la encuesta', encuesta_respondida: 'Respondió la encuesta',
 }
 
 /** Guard real en vez de un `as MotivoNoRealizada`: `reason` llega como

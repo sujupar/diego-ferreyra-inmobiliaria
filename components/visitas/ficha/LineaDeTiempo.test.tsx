@@ -35,4 +35,15 @@ describe('LineaDeTiempo — motivo y nota', () => {
     expect(screen.getByText('Canceló la persona')).toBeInTheDocument()
     expect(screen.queryByText(/—/)).not.toBeInTheDocument()
   })
+  it('nombra los eventos de la encuesta', () => {
+    const base = { from_status: null, to_status: null, from_scheduled_at: null, to_scheduled_at: null, reason: null, note: null, actor: null, desde_asesor: null, hacia_asesor: null }
+    render(<LineaDeTiempo eventos={[
+      { ...base, id: 'a', kind: 'encuesta_enviada', created_at: '2026-10-14T18:00:00Z' },
+      { ...base, id: 'b', kind: 'encuesta_abierta', created_at: '2026-10-14T19:00:00Z' },
+      { ...base, id: 'c', kind: 'encuesta_respondida', created_at: '2026-10-14T19:02:00Z' },
+    ]} />)
+    expect(screen.getByText('Se envió la encuesta')).toBeInTheDocument()
+    expect(screen.getByText('Abrió la encuesta')).toBeInTheDocument()
+    expect(screen.getByText('Respondió la encuesta')).toBeInTheDocument()
+  })
 })

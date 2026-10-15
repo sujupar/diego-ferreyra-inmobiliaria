@@ -296,3 +296,16 @@ describe('VisitDetailPage — concurrencia optimista', () => {
     await screen.findByText('Calle Falsa 123')
   })
 })
+
+describe('VisitDetailPage — encuesta (Entrega 3)', () => {
+  it('una visita realizada muestra su encuesta con el estado y "Copiar link"', async () => {
+    respuesta = async () => ok(visita({
+      status: 'completed', acciones: ['reabrir'],
+      encuesta: { link: 'https://inmodf.com.ar/encuesta/Ab3xK9pQ2rTz8LmN4vWq1Y', linkDisponible: true, estado: { clave: 'sin_enviar', texto: 'Sin enviar (envío apagado)' },
+        puedeReenviar: false, vencida: false, venceEl: '2026-09-04T15:00:00.000Z', respondidaEl: null, respuestas: null, eventos: [] },
+    }))
+    render(<VisitDetailPage />)
+    expect(await screen.findByText('Sin enviar (envío apagado)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Copiar link/ })).toBeInTheDocument()
+  })
+})

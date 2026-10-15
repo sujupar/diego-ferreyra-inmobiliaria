@@ -18,7 +18,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { AccionVisitaDialog, type VisitaConHistorial } from '@/components/visitas/ficha/AccionVisitaDialog'
 import { LineaDeTiempo } from '@/components/visitas/ficha/LineaDeTiempo'
+import { EncuestaDeLaVisita } from '@/components/visitas/ficha/EncuestaDeLaVisita'
 import { leerRespuesta } from '@/components/visitas/agendar/leer-respuesta'
+import { mezclarEventos } from '@/lib/visitas/encuesta/ficha'
 import { formatearFechaLarga } from '@/lib/visitas/horario'
 import { ORIGEN_INFO } from '@/lib/visitas/origen'
 import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
@@ -201,6 +203,13 @@ export default function VisitDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <EncuestaDeLaVisita
+        visitaId={v.id}
+        realizada={v.status === 'completed'}
+        encuesta={v.encuesta ?? null}
+        onCambio={nueva => setFase({ tipo: 'lista', visita: { ...v, encuesta: nueva, eventos: mezclarEventos(v.eventos, nueva.eventos) } })}
+      />
 
       <Card>
         <CardHeader><CardTitle className="text-base">Historial</CardTitle></CardHeader>
