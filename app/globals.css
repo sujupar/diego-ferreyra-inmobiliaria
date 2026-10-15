@@ -276,10 +276,15 @@ body[data-scroll-locked] #contenido {
    no cambia de comportamiento. Dos controles pegados no quedan con zona muerta:
    el límite se corre, pero todo punto sigue perteneciendo a uno de los dos. */
 @media (pointer: coarse) {
+  /* `:not(.absolute)` en las X: las de los primitivos de diálogo y panel ya son
+     `absolute top-2 right-2` y eso alcanza para ubicar el halo. Pisarlas con
+     `relative` (esta regla gana a las utilidades de Tailwind) las sacaba de la
+     esquina y las mandaba al FINAL del contenido en todo teléfono: visto en el
+     QA de visitas (2026-10-14), la X quedaba abajo de todo o fuera de alcance. */
   input[type='checkbox'],
   input[type='radio'],
-  [data-slot='dialog-close'],
-  [data-slot='sheet-close'] {
+  [data-slot='dialog-close']:not(.absolute),
+  [data-slot='sheet-close']:not(.absolute) {
     position: relative;
   }
   input[type='checkbox']::after,
