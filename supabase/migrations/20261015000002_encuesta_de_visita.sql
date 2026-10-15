@@ -156,23 +156,27 @@ ON CONFLICT (id) DO UPDATE
 -- p_tipo fuera de ('abierta','escritura') es un bug del llamador (un tercer valor que nadie
 -- definió todavía): falla RUIDOSO en vez de devolver false en silencio (CLAUDE.md § fallos
 -- ruidosos) — un false silencioso ahí se vería exactamente igual que "se agotó el límite".
+-- plpgsql, no sql: el IF de arriba necesita procedimental, y un UPDATE con WITH no puede ir
+-- metido dentro de un RETURN (...) — "WITH clause containing a data-modifying statement must
+-- be at the top level" — tiene que ser su propia sentencia, con el resultado leído por
+-- GET DIAGNOSTICS.
 CREATE OR REPLACE FUNCTION public.visit_survey_registrar(p_token TEXT, p_tipo TEXT, p_max INT)
 RETURNS BOOLEAN LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$
+DECLARE
+  v_filas INT;
 BEGIN
   IF p_tipo NOT IN ('abierta', 'escritura') THEN
     RAISE EXCEPTION 'visit_survey_registrar: tipo desconocido "%"', p_tipo;
   END IF;
-  RETURN (
-    WITH u AS (
-      UPDATE public.visit_surveys
-         SET write_count = write_count + 1,
-             opened_at = CASE WHEN p_tipo = 'abierta' THEN coalesce(opened_at, now()) ELSE opened_at END,
-             open_count = open_count + CASE WHEN p_tipo = 'abierta' THEN 1 ELSE 0 END
-       WHERE token = p_token AND write_count < p_max
-      RETURNING 1
-    )
-    SELECT EXISTS (SELECT 1 FROM u)
-  );
+
+  UPDATE public.visit_surveys
+     SET write_count = write_count + 1,
+         opened_at = CASE WHEN p_tipo = 'abierta' THEN coalesce(opened_at, now()) ELSE opened_at END,
+         open_count = open_count + CASE WHEN p_tipo = 'abierta' THEN 1 ELSE 0 END
+   WHERE token = p_token AND write_count < p_max;
+
+  GET DIAGNOSTICS v_filas = ROW_COUNT;
+  RETURN v_filas > 0;
 END
 $$;
 REVOKE ALL ON FUNCTION public.visit_survey_registrar(TEXT, TEXT, INT) FROM PUBLIC;
