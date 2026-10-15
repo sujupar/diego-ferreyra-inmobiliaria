@@ -251,10 +251,19 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, onAgendad
   const props = { estado, despachar }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 p-0 sm:max-w-[900px]">
+      {/* QA en celular (360 px, 2026-10-14): el primitivo pone `grid` +
+          `overflow-y-auto` en DialogContent, así que con una lista larga
+          (79 interesados) el contenido se estiraba a ~5.900 px y scrolleaba
+          la ventana ENTERA: el pie quedaba flotando con la lista asomando
+          debajo y la X de cerrar se iba fuera de alcance. Por eso acá la
+          ventana es una columna que NO scrollea (`flex flex-col
+          overflow-hidden`), la grilla interna se acota (`min-h-0 flex-1` +
+          una sola fila `minmax(0,1fr)`) y el único que scrollea es el cuerpo
+          del paso. No sacar ninguna de esas clases sin mirarlo en un celular. */}
+      <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-[900px]">
         <DialogTitle className="sr-only">Agendar visita</DialogTitle>
         <DialogDescription className="sr-only">Paso {indice + 1} de {pasos.length}: {ETIQUETA[estado.paso]}</DialogDescription>
-        <div className="grid md:min-h-[560px] md:grid-cols-[236px_1fr]">
+        <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] md:min-h-[560px] md:grid-cols-[236px_1fr]">
           <aside className="hidden flex-col gap-5 border-r bg-secondary/60 p-5 md:flex">
             <div>
               <p className="text-base font-semibold">Agendar visita</p>
@@ -322,7 +331,8 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, onAgendad
                 </>
               )}
             </div>
-            <div className="sticky bottom-0 flex shrink-0 items-center justify-between gap-3 border-t bg-background px-6 py-4">
+            {/* El pie respeta la barra de inicio del iPhone (área segura). */}
+            <div className="sticky bottom-0 flex shrink-0 items-center justify-between gap-3 border-t bg-background px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               <Button variant="outline" onClick={volver} disabled={indice <= 0 || enviando}>Atrás</Button>
               <Button onClick={avanzar} disabled={!listo || enviando || Boolean(duplicado?.mismoInstante)}
                 className="min-w-32 bg-brand text-brand-foreground hover:bg-brand/90">

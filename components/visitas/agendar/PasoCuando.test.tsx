@@ -63,4 +63,11 @@ describe('PasoCuando — la agenda del asesor', () => {
       expect(screen.queryByText(AVISO)).not.toBeInTheDocument()
     } finally { aviso.mockRestore() }
   })
+  it('con una fecha a medio tipear ("0020-10-13") no pide la agenda (visto en el QA: cada una daba 400)', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: [] }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<PasoCuando estado={{ ...estado(), fecha: '0020-10-13' }} despachar={vi.fn()} />)
+    await new Promise(r => setTimeout(r, 50))
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 })

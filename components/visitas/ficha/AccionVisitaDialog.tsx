@@ -140,7 +140,9 @@ export function AccionVisitaDialog({ visita, accion, onClose, onHecho, onRecarga
 
   return (
     <Dialog open={accion !== null} onOpenChange={o => { if (!o) onClose() }}>
-      <DialogContent className="sm:max-w-lg">
+      {/* Sin descripción propia: el título ya dice la acción. `aria-describedby`
+          explícito en undefined evita el aviso de Radix en la consola (QA). */}
+      <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
         <DialogHeader><DialogTitle>{accion ? TITULO[accion] : ''}</DialogTitle></DialogHeader>
         <div className="space-y-4">
           {accion === 'confirmar' && <p className="text-sm">¿La persona confirmó que viene?</p>}

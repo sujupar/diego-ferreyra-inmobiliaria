@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { SelectorDiaHora } from '@/components/visitas/SelectorDiaHora'
-import { construirInstante, fechaEnArgentina } from '@/lib/visitas/horario'
+import { construirInstante, fechaEnArgentina, validarHorarioDeVisita } from '@/lib/visitas/horario'
 import { avisosDeChoque } from '@/lib/visitas/choques'
 import type { VisitaAgendaR } from '@/lib/visitas/tipos'
 import type { EstadoAgendar, AccionAgendar } from '@/lib/visitas/agendar-estado'
@@ -14,6 +14,11 @@ export function PasoCuando({ estado, despachar }: { estado: EstadoAgendar; despa
 
   useEffect(() => {
     if (!estado.fecha || !propiedadId) return
+    // Mientras se tipea la fecha a mano, el campo emite años a medio escribir
+    // ("0002-10-13", "0020-10-13"…): visto en el QA, cada uno era un pedido que el
+    // servidor rechazaba con 400. Solo se pide la agenda de un día que se podría
+    // agendar (misma ventana que valida el servidor).
+    if (!validarHorarioDeVisita(estado.fecha, '12:00').ok) return
     let vigente = true
     const qs = new URLSearchParams({ fecha: estado.fecha, propiedad: propiedadId, ...(estado.asesorId ? { asesor: estado.asesorId } : {}) })
     // Los avisos de choque son una AYUDA: si la agenda no se puede leer (red caída o

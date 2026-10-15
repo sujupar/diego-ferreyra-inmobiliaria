@@ -95,3 +95,30 @@ describe('AgendarVisitaDialog en celular — el lugar para la X va solo en el t�
     expect((await screen.findByRole('heading', { name: '¿Quién viene?' })).className).toContain('max-md:pr-16')
   })
 })
+
+/**
+ * QA en celular (360 px, 2026-10-14): con 79 interesados el contenido se estiraba
+ * a ~5.900 px y scrolleaba la ventana ENTERA (el primitivo pone `grid` +
+ * `overflow-y-auto`): el pie quedaba flotando con la lista asomando debajo y la X
+ * de cerrar se iba de la pantalla. La ventana no scrollea; scrollea solo el cuerpo.
+ */
+describe('AgendarVisitaDialog en celular — solo el cuerpo del paso scrollea', () => {
+  it('la ventana es una columna que no scrollea', async () => {
+    await abrirListaDeInteresados()
+    const clases = screen.getByRole('dialog').className.split(/\s+/)
+    expect(clases).toEqual(expect.arrayContaining(['flex', 'flex-col', 'overflow-hidden']))
+    expect(clases).not.toContain('overflow-y-auto')
+    expect(clases).not.toContain('grid')
+  })
+  it('la grilla interna queda acotada al alto de la ventana', async () => {
+    await abrirListaDeInteresados()
+    const grilla = screen.getByRole('dialog').querySelector(':scope > div.grid')
+    expect(grilla).toBeTruthy()
+    expect(grilla?.className.split(/\s+/)).toEqual(expect.arrayContaining(['min-h-0', 'flex-1', 'grid-rows-[minmax(0,1fr)]']))
+  })
+  it('el pie deja lugar a la barra de inicio del iPhone', async () => {
+    await abrirListaDeInteresados()
+    const pie = screen.getByRole('button', { name: 'Siguiente' }).parentElement
+    expect(pie?.className).toContain('pb-[max(1rem,env(safe-area-inset-bottom))]')
+  })
+})
