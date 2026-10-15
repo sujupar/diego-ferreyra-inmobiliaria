@@ -491,7 +491,7 @@ export async function visitasParaRecordar(ventana: { desde: string; hasta: strin
   const { data, error } = await sb().from('property_visits')
     .select(`id, scheduled_at, status, reminder_sent_at, client_name,
       property:properties(address),
-      advisor:profiles!property_visits_advisor_id_fkey(full_name, email)`)
+      advisor:profiles!property_visits_advisor_id_fkey(full_name, email, is_active)`)
     .eq('status', 'scheduled')
     .is('reminder_sent_at', null)
     .gte('scheduled_at', ventana.desde)
@@ -502,7 +502,7 @@ export async function visitasParaRecordar(ventana: { desde: string; hasta: strin
   return ((data ?? []) as Record<string, unknown>[]).map(r => {
     if (!esEstadoVisita(r.status)) throw new Error(`visitas para recordar: estado desconocido "${String(r.status)}"`)
     const p = uno(r.property as { address?: unknown } | null)
-    const a = uno(r.advisor as { full_name?: unknown; email?: unknown } | null)
+    const a = uno(r.advisor as { full_name?: unknown; email?: unknown; is_active?: unknown } | null)
     return {
       id: String(r.id),
       scheduled_at: String(r.scheduled_at),
@@ -510,7 +510,9 @@ export async function visitasParaRecordar(ventana: { desde: string; hasta: strin
       reminder_sent_at: textoONulo(r.reminder_sent_at),
       client_name: String(r.client_name ?? ''),
       direccion: textoONulo(p?.address),
-      asesor: a ? { nombre: textoONulo(a.full_name) ?? '', email: textoONulo(a.email) } : null,
+      // `is_active` ausente (perfil viejo sin la columna, join fallido) cuenta como inactivo:
+      // ante la duda, no se manda. Solo `true` explícito habilita el aviso.
+      asesor: a ? { nombre: textoONulo(a.full_name) ?? '', email: textoONulo(a.email), activo: a.is_active === true } : null,
     }
   })
 }

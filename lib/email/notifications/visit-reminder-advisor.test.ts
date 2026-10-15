@@ -36,6 +36,11 @@ describe('enviarRecordatorioDeVisita', () => {
     await enviarRecordatorioDeVisita(datos)
     expect(JSON.parse(String(enviados[0].html)).visitUrl).toBe(`https://deploy-preview-50--inmobiliariadiegoferreyra.netlify.app/visits/${datos.visitaId}`)
   })
+  it('NEXT_PUBLIC_APP_URL vacía no deja el link relativo: usa el default', async () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', '')
+    await enviarRecordatorioDeVisita(datos)
+    expect(JSON.parse(String(enviados[0].html)).visitUrl).toBe(`https://inmodf.com.ar/visits/${datos.visitaId}`)
+  })
   it('sin dirección no queda un asunto cortado', async () => {
     await enviarRecordatorioDeVisita({ ...datos, direccion: null })
     expect(enviados[0].subject).toBe('¿Se realizó la visita? la propiedad')

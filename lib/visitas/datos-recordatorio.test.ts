@@ -46,15 +46,22 @@ beforeEach(() => {
 describe('datos del recordatorio', () => {
   it('lee solo confirmadas, sin aviso, dentro de la ventana, y aplana asesor y dirección', async () => {
     registro.responder = () => ({ data: [{ id: ID, scheduled_at: '2026-10-15T12:00:00+00:00', status: 'scheduled', reminder_sent_at: null,
-      client_name: 'Sofía', property: { address: 'Doblas 248' }, advisor: { full_name: 'Lucas', email: 'lucas@inmodf.com.ar' } }], error: null })
+      client_name: 'Sofía', property: { address: 'Doblas 248' }, advisor: { full_name: 'Lucas', email: 'lucas@inmodf.com.ar', is_active: true } }], error: null })
     const r = await visitasParaRecordar({ desde: 'D', hasta: 'H' })
     const l = registro.llamadas[0]
     expect(pasos(l, 'eq')).toEqual([['status', 'scheduled']])
     expect(pasos(l, 'is')).toEqual([['reminder_sent_at', null]])
     expect(pasos(l, 'gte')).toEqual([['scheduled_at', 'D']])
     expect(pasos(l, 'lte')).toEqual([['scheduled_at', 'H']])
+    expect(pasos(l, 'select')[0][0]).toContain('is_active')
     expect(r).toEqual([{ id: ID, scheduled_at: '2026-10-15T12:00:00+00:00', status: 'scheduled', reminder_sent_at: null,
-      client_name: 'Sofía', direccion: 'Doblas 248', asesor: { nombre: 'Lucas', email: 'lucas@inmodf.com.ar' } }])
+      client_name: 'Sofía', direccion: 'Doblas 248', asesor: { nombre: 'Lucas', email: 'lucas@inmodf.com.ar', activo: true } }])
+  })
+  it('asesor desactivado (o sin la columna): activo=false, nunca se asume activo', async () => {
+    registro.responder = () => ({ data: [{ id: ID, scheduled_at: '2026-10-15T12:00:00+00:00', status: 'scheduled', reminder_sent_at: null,
+      client_name: 'Sofía', property: { address: 'Doblas 248' }, advisor: { full_name: 'Lucas', email: 'lucas@inmodf.com.ar', is_active: false } }], error: null })
+    const r = await visitasParaRecordar({ desde: 'D', hasta: 'H' })
+    expect(r[0]?.asesor?.activo).toBe(false)
   })
   it('reservar es atómico: solo si sigue sin aviso y confirmada; devuelve la marca o null', async () => {
     registro.responder = () => ({ data: { id: ID }, error: null })

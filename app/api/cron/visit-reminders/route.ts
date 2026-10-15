@@ -1,19 +1,31 @@
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import * as datos from '@/lib/visitas/datos'
 import { ventanaDeRecordatorio, decidirRecordatorio, type MotivoSinRecordatorio } from '@/lib/visitas/recordatorio'
 import { enviarRecordatorioDeVisita } from '@/lib/email/notifications/visit-reminder-advisor'
-import type { SendEmailResult } from '@/lib/email/resend-client'
+import { PREFIJO_ERROR_TIEMPO, type SendEmailResult } from '@/lib/email/resend-client'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /**
  * Netlify corta la función a los ~26 s (y `maxDuration` no sirve acá). Cada email tiene
- * techo de 8 s (`sendEmail`): con 15 s de presupuesto el último envío entra con margen.
- * Lo que no entra queda para la corrida siguiente (cada hora) y se cuenta.
+ * techo de 8 s (`sendEmail`): con 10 s de presupuesto entra un envío con margen y lo que
+ * no entra queda para la corrida siguiente (cada hora) y se cuenta (`pendientesPorTiempo`).
  */
-export const PRESUPUESTO_MS = 15_000
+export const PRESUPUESTO_MS = 10_000
+
+/**
+ * Compara dos secretos sin filtrar por tiempo CUÁNTO se parecen. `timingSafeEqual` tira
+ * si los buffers tienen largo distinto (el secreto correcto siempre tiene el mismo largo;
+ * uno provisto más corto o más largo rompería la comparación), así que primero se hashean
+ * los dos a un digest de 32 bytes: el largo deja de depender del secreto y nunca hace falta
+ * ramificar por longitud (eso sí filtraría cuántos caracteres coinciden).
+ */
+function compararEnTiempoConstante(a: string, b: string): boolean {
+  return timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest())
+}
 
 /**
  * POST/GET /api/cron/visit-reminders — recordatorio "¿se realizó?" al asesor (spec §4.7).
@@ -26,7 +38,7 @@ export const PRESUPUESTO_MS = 15_000
  */
 async function autorizado(provisto: string | null): Promise<boolean> {
   if (!provisto) return false
-  if (process.env.CRON_SECRET && provisto === process.env.CRON_SECRET) return true
+  if (process.env.CRON_SECRET && compararEnTiempoConstante(provisto, process.env.CRON_SECRET)) return true
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const clave = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !clave) return false
@@ -34,7 +46,7 @@ async function autorizado(provisto: string | null): Promise<boolean> {
     const { data } = await createClient(url, clave).from('cron_config').select('value').eq('key', 'visit_reminders').maybeSingle()
     const secretoDb = (data as { value?: string } | null)?.value
     // Un marcador sin reemplazar ('__SECRETO__', público en el repo) nunca es un secreto.
-    return !!secretoDb && !secretoDb.startsWith('__') && provisto === secretoDb
+    return !!secretoDb && !secretoDb.startsWith('__') && compararEnTiempoConstante(provisto, secretoDb)
   } catch {
     return false
   }
@@ -46,6 +58,8 @@ interface Corrida {
   revisadas: number
   enviadas: number
   fallidas: number
+  /** Subconjunto de `fallidas`: el envío venció y Resend pudo haberlo mandado igual antes del corte. */
+  vencidas: number
   salteadas: Array<{ id: string; motivo: MotivoSinRecordatorio | 'reservada_por_otra_corrida' }>
   pendientesPorTiempo: number
   motivo?: string
@@ -54,6 +68,18 @@ interface Corrida {
 
 function salio(r: SendEmailResult | null): boolean {
   return !!r && r.ok && r.failed === 0 && r.sent > 0
+}
+
+/**
+ * Un vencimiento de `sendEmail` aborta el socket de ESTE lado, pero Resend pudo haber
+ * aceptado y encolado el mensaje antes del corte (ver el comentario de `enviarConTecho`
+ * en resend-client.ts). Si liberáramos la reserva igual que ante cualquier otro fallo, la
+ * corrida siguiente reintentaría y podría DUPLICAR un email que en realidad sí salió.
+ * Ante esa ambigüedad se prefiere perder un aviso a duplicarlo: no se libera, y queda
+ * contado aparte (`vencidas`) para poder mirarlo.
+ */
+function fueVencimiento(r: SendEmailResult | null): boolean {
+  return !!r && r.errors.some(e => e.startsWith(PREFIJO_ERROR_TIEMPO))
 }
 
 async function handle(req: NextRequest): Promise<Response> {
@@ -67,7 +93,7 @@ async function handle(req: NextRequest): Promise<Response> {
   const inicio = Date.now()
   const ahora = new Date()
   const corrida: Corrida = {
-    ok: true, ventana: ventanaDeRecordatorio(ahora), revisadas: 0, enviadas: 0, fallidas: 0,
+    ok: true, ventana: ventanaDeRecordatorio(ahora), revisadas: 0, enviadas: 0, fallidas: 0, vencidas: 0,
     salteadas: [], pendientesPorTiempo: 0, firedAt: ahora.toISOString(),
   }
   try {
@@ -89,6 +115,11 @@ async function handle(req: NextRequest): Promise<Response> {
       }
       if (salio(resultado)) { corrida.enviadas++; continue }
       corrida.fallidas++
+      if (fueVencimiento(resultado)) {
+        corrida.vencidas++
+        console.error('[cron/visit-reminders] el envío venció; Resend pudo haberlo mandado igual: NO se libera (se prefiere perder a duplicar)', v.id)
+        continue
+      }
       console.error('[cron/visit-reminders] el aviso no salió; se libera para reintentar', v.id, resultado?.errors ?? [])
       try {
         await datos.liberarRecordatorio(v.id, marca)

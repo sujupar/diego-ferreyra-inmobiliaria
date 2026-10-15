@@ -37,7 +37,7 @@ import { POST, GET } from './route'
 const AHORA = new Date('2026-10-15T15:00:00.000Z')
 const visita = (id: string, cambios: Partial<VisitaParaRecordar> = {}): VisitaParaRecordar => ({
   id, scheduled_at: '2026-10-15T12:00:00.000Z', status: 'scheduled', reminder_sent_at: null, client_name: 'Sofía',
-  direccion: 'Doblas 248', asesor: { nombre: 'Lucas', email: 'lucas@inmodf.com.ar' }, ...cambios,
+  direccion: 'Doblas 248', asesor: { nombre: 'Lucas', email: 'lucas@inmodf.com.ar', activo: true }, ...cambios,
 })
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const pedido = (secreto?: string, url = 'https://app.test/api/cron/visit-reminders') => new Request(url, { method: 'POST', headers: secreto ? { 'x-cron-secret': secreto } : {} }) as any
@@ -69,6 +69,10 @@ describe('cron del recordatorio "¿se realizó?"', () => {
     expect((await POST(pedido('secreto-de-netlify'))).status).toBe(200)
     expect((await POST(pedido('secreto-de-la-base'))).status).toBe(200)
   })
+  it('secreto incorrecto (ni el de env ni el de la base, con largo distinto de los dos): 403', async () => {
+    process.env.CRON_SECRET = 'secreto-de-netlify'
+    expect((await POST(pedido('otra-cosa-cualquiera-mas-corta'))).status).toBe(403)
+  })
   it('manda a las que corresponden, saltea las demás con su motivo, y lo dice', async () => {
     estado.visitas = [visita('a'), visita('b', { asesor: null })]
     const r = await POST(pedido('secreto-de-la-base'))
@@ -84,11 +88,11 @@ describe('cron del recordatorio "¿se realizó?"', () => {
     expect(estado.enviados).toEqual([])
     expect(cuerpo.salteadas).toEqual([{ id: 'a', motivo: 'reservada_por_otra_corrida' }])
   })
-  it('si el email falla, libera la reserva para reintentar la próxima hora', async () => {
+  it('si el email falla por un motivo cualquiera, libera la reserva para reintentar la próxima hora', async () => {
     estado.visitas = [visita('a')]
-    estado.resultadoEmail = { ok: false, sent: 0, skipped: 0, failed: 1, errors: ['Tiempo de espera agotado'] }
+    estado.resultadoEmail = { ok: false, sent: 0, skipped: 0, failed: 1, errors: ['Network error'] }
     const cuerpo = await (await POST(pedido('secreto-de-la-base'))).json()
-    expect(cuerpo).toMatchObject({ enviadas: 0, fallidas: 1 })
+    expect(cuerpo).toMatchObject({ enviadas: 0, fallidas: 1, vencidas: 0 })
     expect(estado.liberadas).toEqual([['a', AHORA.toISOString()]])
   })
   it('ok:false con failed:0 (falta RESEND_API_KEY) también es un fallo', async () => {
@@ -98,9 +102,16 @@ describe('cron del recordatorio "¿se realizó?"', () => {
     expect(cuerpo.fallidas).toBe(1)
     expect(estado.liberadas).toHaveLength(1)
   })
+  it('si el envío VENCE, Resend pudo haberlo mandado igual: NO libera (se prefiere perder a duplicar) y lo cuenta aparte', async () => {
+    estado.visitas = [visita('a')]
+    estado.resultadoEmail = { ok: false, sent: 0, skipped: 0, failed: 1, errors: ['Tiempo de espera agotado: Resend no respondió en 8000 ms'] }
+    const cuerpo = await (await POST(pedido('secreto-de-la-base'))).json()
+    expect(cuerpo).toMatchObject({ enviadas: 0, fallidas: 1, vencidas: 1 })
+    expect(estado.liberadas).toEqual([])
+  })
   it('si se acaba el presupuesto de tiempo, deja el resto para la próxima corrida y lo cuenta', async () => {
     estado.visitas = [visita('a'), visita('b')]
-    vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(0).mockReturnValue(20_000)
+    vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(0).mockReturnValue(11_000)
     const cuerpo = await (await POST(pedido('secreto-de-la-base'))).json()
     expect(estado.enviados).toEqual(['a'])
     expect(cuerpo.pendientesPorTiempo).toBe(1)

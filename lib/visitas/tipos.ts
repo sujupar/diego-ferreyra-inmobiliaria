@@ -130,5 +130,6 @@ export interface VisitaParaRecordar {
   reminder_sent_at: string | null
   client_name: string
   direccion: string | null
-  asesor: { nombre: string; email: string | null } | null
+  /** `activo` = `profiles.is_active`: un asesor desactivado no tiene que recibir avisos (ronda 1). */
+  asesor: { nombre: string; email: string | null; activo: boolean } | null
 }

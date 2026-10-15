@@ -30,8 +30,7 @@
     "app/(dashboard)/inbox/InboxClient.tsx",
     "app/(dashboard)/inbox/LeadDetailSheet.tsx",
     "app/(dashboard)/inicio/page.tsx",
-    "app/(dashboard)/tasks/page.tsx",
-    "scripts/apply-cron-visit-reminders-pg.ts"
+    "app/(dashboard)/tasks/page.tsx"
   ],
   "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
 }

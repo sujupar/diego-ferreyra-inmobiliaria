@@ -16,7 +16,9 @@ import VisitReminderAdvisorEmail from '@/emails/VisitReminderAdvisorEmail'
  * `entityType: 'property'` es el que ya usaba este aviso (el log no tiene tipo "visita").
  */
 function urlDeLaApp(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL ?? 'https://inmodf.com.ar').replace(/\/+$/, '')
+  // `||`, no `??`: una env var seteada pero VACÍA (deploy preview mal configurado) no
+  // tiene que dejar el link relativo (`/visits/<id>`, que en el email no apunta a nada).
+  return (process.env.NEXT_PUBLIC_APP_URL || 'https://inmodf.com.ar').replace(/\/+$/, '')
 }
 
 export interface DatosRecordatorio {
