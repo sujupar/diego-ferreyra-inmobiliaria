@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   puedeGestionarVisitas, puedeVerTodasLasVisitas, puedeVerVisita, asesorParaLaVisita, accionesParaRol,
-  puedeAgendarVisitaEnPropiedad, puedeAgendarDesdeElListado,
+  puedeAgendarVisitaEnPropiedad, puedeAgendarDesdeElListado, alcanceDeVisitas, esRol,
 } from './acceso'
 import type { TipoAccion } from './transiciones'
 
@@ -99,5 +99,19 @@ describe('accionesParaRol', () => {
   })
   it('sin "cambiar_asesor" en la lista, no cambia nada', () => {
     expect(accionesParaRol(['confirmar'], 'asesor')).toEqual(['confirmar'])
+  })
+})
+
+describe('alcanceDeVisitas', () => {
+  it('operaciones ve todo; el asesor, lo propio; un rol desconocido cae en lo propio', () => {
+    expect(alcanceDeVisitas('coordinador', YO)).toEqual({ tipo: 'todo' })
+    expect(alcanceDeVisitas('dueno', YO)).toEqual({ tipo: 'todo' })
+    expect(alcanceDeVisitas('asesor', YO)).toEqual({ tipo: 'propio', usuarioId: YO })
+    expect(alcanceDeVisitas('inventado' as never, YO)).toEqual({ tipo: 'propio', usuarioId: YO })
+  })
+  it('esRol solo acepta roles del catálogo', () => {
+    expect(esRol('asesor')).toBe(true)
+    expect(esRol('jefe')).toBe(false)
+    expect(esRol(null)).toBe(false)
   })
 })

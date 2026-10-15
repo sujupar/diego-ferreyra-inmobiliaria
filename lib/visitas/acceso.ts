@@ -64,7 +64,7 @@ export function puedeAgendarVisitaEnPropiedad(
   return ['disponible', 'reservada'].includes(propiedad.commercial_status ?? 'disponible')
 }
 
-function esRol(v: string | null | undefined): v is Role {
+export function esRol(v: string | null | undefined): v is Role {
   return typeof v === 'string' && (ROLES as readonly string[]).includes(v)
 }
 
@@ -97,4 +97,16 @@ export function asesorParaLaVisita(
   const elegido = pedido?.trim()
   if (!elegido) return { ok: false, error: 'Elegí el asesor que va a mostrar la propiedad' }
   return { ok: true, asesorId: elegido, esPropio: elegido === userId }
+}
+
+/**
+ * Qué visitas puede LEER alguien en los listados y la sección (spec §3.4): quien ve
+ * todo, todo; el resto, solo lo propio (`advisor_id` o `created_by`, la misma regla que
+ * `puedeVerVisita` y que la política `property_visits_select_scoped`). Un rol
+ * desconocido cae en lo propio: fail-closed, nunca en "todo".
+ */
+export type Alcance = { tipo: 'todo' } | { tipo: 'propio'; usuarioId: string }
+
+export function alcanceDeVisitas(role: Role, userId: string): Alcance {
+  return puedeVerTodasLasVisitas(role) ? { tipo: 'todo' } : { tipo: 'propio', usuarioId: userId }
 }
