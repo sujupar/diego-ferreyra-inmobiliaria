@@ -30,7 +30,22 @@
     "app/(dashboard)/inbox/InboxClient.tsx",
     "app/(dashboard)/inbox/LeadDetailSheet.tsx",
     "app/(dashboard)/inicio/page.tsx",
-    "app/(dashboard)/tasks/page.tsx"
+    "app/(dashboard)/tasks/page.tsx",
+    "components/encuesta/**/*.tsx",
+    "app/encuesta/**/*.tsx",
+    "app/api/public/encuesta/**/*.ts",
+    "app/api/properties/[id]/regalo/**/*.ts",
+    "app/api/settings/encuesta-visitas/route.ts",
+    "app/(dashboard)/settings/encuesta/page.tsx",
+    "lib/email/notifications/visit-survey-*.ts",
+    "emails/VisitSurvey*.tsx",
+    "lib/integrations/whatsapp/core.ts",
+    "lib/integrations/whatsapp/log.ts",
+    "lib/supabase/middleware.ts",
+    "middleware.ts",
+    "lib/nav/sections.ts",
+    "scripts/apply-encuesta-visita-pg.ts",
+    "scripts/create-whatsapp-templates-encuesta-visita.ts"
   ],
   "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
 }
