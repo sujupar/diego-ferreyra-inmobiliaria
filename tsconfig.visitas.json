@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false },
+  "include": [
+    "next-env.d.ts",
+    "types/**/*.ts",
+    "lib/visitas/**/*.ts",
+    "lib/portals/fichas-fusionadas.ts",
+    "lib/leads/visit-scheduling.ts",
+    "lib/leads/responder-consulta.ts",
+    "lib/leads/resolve-crm-visit-lead.ts",
+    "lib/ai/reset-prueba.ts",
+    "lib/ai/scheduling-agent.ts",
+    "lib/email/notifications/visit-scheduled-client.ts",
+    "app/api/visits/**/*.ts",
+    "app/api/properties/[id]/interesados/route.ts",
+    "app/api/v/[token]/schedule/route.ts",
+    "components/visitas/**/*.tsx",
+    "components/dashboard/Topbar.tsx",
+    "app/(dashboard)/layout.tsx",
+    "app/(dashboard)/visits/[id]/page.tsx",
+    "app/(dashboard)/properties/[id]/page.tsx",
+    "app/(dashboard)/properties/page.tsx",
+    "app/(dashboard)/properties/_components/PropertyDetailModal.tsx",
+    "app/(dashboard)/inbox/InboxClient.tsx",
+    "app/(dashboard)/inbox/LeadDetailSheet.tsx"
+  ],
+  "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
+}

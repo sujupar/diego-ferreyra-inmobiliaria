@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { MapPin, Bed, Bath, Square, Calendar, ExternalLink, Video, Box, Loader2 } from 'lucide-react'
 import { PropertyGallery } from './PropertyGallery'
 import { OwnershipBadge } from './OwnershipBadge'
+import { puedeAgendarDesdeElListado } from '@/lib/visitas/acceso'
 
 export interface DetailProperty {
   id: string
@@ -26,6 +27,8 @@ export interface DetailProperty {
   video_url?: string | null
   tour_3d_url?: string | null
   assigned_to?: string | null
+  /** No viene en la fila del listado (vw_properties_list): llega con el detalle completo. */
+  commercial_status?: string | null
 }
 
 function formatCurrency(v: number, c: string) {
@@ -45,12 +48,18 @@ interface Props {
   loading?: boolean
   onOpenChange: (open: boolean) => void
   currentUserId?: string
+  /** Rol tal como lo devuelve /api/auth/me. Uno fuera del catálogo no muestra "Agendar visita". */
+  rol?: string | null
   onScheduleVisit: (propertyId: string) => void
 }
 
-export function PropertyDetailModal({ property, open, loading, onOpenChange, currentUserId, onScheduleVisit }: Props) {
+export function PropertyDetailModal({ property, open, loading, onOpenChange, currentUserId, rol, onScheduleVisit }: Props) {
   if (!property) return null
   const isMine = !!currentUserId && property.assigned_to === currentUserId
+  // Misma regla que la ficha de la propiedad (y que POST /api/visits). Mientras el modal
+  // muestra la fila del listado, commercial_status todavía no llegó: no se muestra
+  // hasta poder decidir (aparece cuando carga el detalle completo).
+  const puedeAgendar = puedeAgendarDesdeElListado(rol, currentUserId, property)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -124,10 +133,12 @@ export function PropertyDetailModal({ property, open, loading, onOpenChange, cur
           <Button variant="outline" asChild>
             <Link href={`/properties/${property.id}`}>Ver detalle completo</Link>
           </Button>
-          <Button onClick={() => onScheduleVisit(property.id)} className="gap-2">
-            <Calendar className="size-4" />
-            Agendar visita
-          </Button>
+          {puedeAgendar && (
+            <Button onClick={() => onScheduleVisit(property.id)} className="gap-2">
+              <Calendar className="size-4" />
+              Agendar visita
+            </Button>
+          )}
         </footer>
       </DialogContent>
     </Dialog>

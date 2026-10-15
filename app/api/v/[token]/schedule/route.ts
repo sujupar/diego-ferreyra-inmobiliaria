@@ -14,6 +14,7 @@ import {
   upsertPendingVisit,
   notifyAndAdvancePipeline,
 } from '@/lib/leads/visit-scheduling'
+import { origenDeLead } from '@/lib/visitas/datos'
 
 /** Ventana de agenda: desde mañana hasta 90 días. Endpoint público sin sesión. */
 const MAX_DIAS_ADELANTE = 90
@@ -89,6 +90,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     const previousVisitId = (tokenRow as { visit_id?: string | null } | null)?.visit_id ?? null
     const leadId = (tokenRow as { lead_id?: string | null } | null)?.lead_id ?? null
 
+    // `origenDeLead` lanza si la base falla (no si el lead no existe): agendar
+    // pesa más que registrar el origen, así que un fallo de lectura no frena
+    // la visita — se agenda igual con origin: null.
+    let origen: Awaited<ReturnType<typeof origenDeLead>> = null
+    if (leadId) {
+      try {
+        origen = await origenDeLead(leadId)
+      } catch (err) {
+        console.warn('[visita] no se pudo leer el origen del comprador (se agenda igual):', err)
+      }
+    }
+
     const result = await upsertPendingVisit(sb, {
       propertyId: access.propertyId,
       advisorId: (prop as { assigned_to?: string | null } | null)?.assigned_to ?? null,
@@ -98,6 +111,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       scheduledAt,
       notes,
       existingVisitId: previousVisitId,
+      leadId,
+      origin: origen?.origen ?? null,
+      originDetail: origen?.detalle ?? null,
     })
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 500 })

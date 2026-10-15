@@ -5,8 +5,11 @@ import { useParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Loader2, ArrowLeft } from 'lucide-react'
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog'
+import { BotonAgendarVisita } from '@/components/visitas/BotonAgendarVisita'
+import { puedeAgendarVisitaEnPropiedad } from '@/lib/visitas/acceso'
 import { VisitDataView } from '@/components/pipeline/VisitDataView'
 import type { LegalDocsState, LegalFlags } from '@/types/legal-docs.types'
+import type { Role } from '@/types/auth.types'
 import type { FlowHistoryData } from '@/app/(dashboard)/_components/FlowHistoryCard'
 
 import {
@@ -51,6 +54,13 @@ interface PropertyData {
    */
   province: string | null
   location_refs: Record<string, unknown> | null
+  /**
+   * Asesor dueño de la propiedad. Hace falta DECLARARLA para que
+   * `puedeAgendarVisita` la vea — misma trampa de `appraisal_id`/`province`:
+   * lo que no está en esta lista llega `undefined` aunque la API haga
+   * `select('*')`.
+   */
+  assigned_to: string | null
   property_type: string
   operation_type: string | null
   rooms: number | null
@@ -110,7 +120,7 @@ export default function PropertyDetailPage() {
   const [property, setProperty] = useState<PropertyData | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [userInfo, setUserInfo] = useState<{ id: string; role: string } | null>(null)
+  const [userInfo, setUserInfo] = useState<{ id: string; role: Role } | null>(null)
   const [legalDocsData, setLegalDocsData] = useState<{ docs: LegalDocsState; flags: LegalFlags } | null>(null)
   const [flowHistory, setFlowHistory] = useState<FlowHistoryData | null>(null)
   const [feedback, setFeedback] = useState<VisitFeedback[]>([])
@@ -249,6 +259,12 @@ export default function PropertyDetailPage() {
   if (!property) return <div className="text-center py-20"><p>Propiedad no encontrada</p></div>
 
   const isAbogado = userInfo?.role === 'abogado'
+  // Misma regla que el servidor (lib/visitas/acceso + app/api/visits/route.ts):
+  // captada+disponible/reservada y solo el asesor dueño (o quien ve todas las
+  // visitas). El servidor revalida esto mismo — sin este chequeo acá, un
+  // asesor veía el botón en una propiedad ajena y recién al enviar se
+  // enteraba del 403 "Solo podés agendar visitas en tus propiedades".
+  const puedeAgendarVisita = !!userInfo && puedeAgendarVisitaEnPropiedad(userInfo.role, userInfo.id, property)
   const canHardDelete = userInfo?.role === 'admin' || userInfo?.role === 'dueno'
   const photos = property.photos || []
   const plans = property.plans || []
@@ -293,11 +309,14 @@ export default function PropertyDetailPage() {
 
   return (
     <div className="w-full space-y-6 max-w-6xl mx-auto pb-10">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
           <ArrowLeft className="h-4 w-4 mr-1" /> Volver
         </Button>
-        <AddTaskDialog entity={{ kind: 'property', id: property.id, label: property.address }} />
+        <div className="flex flex-wrap items-center gap-2">
+          {puedeAgendarVisita && <BotonAgendarVisita propiedadId={property.id} />}
+          <AddTaskDialog entity={{ kind: 'property', id: property.id, label: property.address }} />
+        </div>
       </div>
 
       {/*

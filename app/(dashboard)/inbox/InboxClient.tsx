@@ -10,7 +10,6 @@ import {
   Mail,
   Phone,
   Building2,
-  ExternalLink,
   CheckCircle2,
   Clock,
   Calendar,
@@ -20,6 +19,7 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import { LeadDetailSheet } from './LeadDetailSheet'
+import { etiquetaDeFuente } from '@/lib/visitas/origen'
 import { isWhatsappUsable } from '@/lib/integrations/whatsapp/phone'
 import { parametrosDeListado, usaVentanaDeFechas } from '@/components/inbox/lead-query'
 
@@ -76,6 +76,8 @@ const STATUS_OPTIONS = [
   { value: 'discarded', label: 'Descartados' },
 ] as const
 
+// Formatos viejos. Los nuevos (`portal:<p>`, `visita:<origen>`, los que escribe la
+// ventana de agendar) los nombra etiquetaDeFuente (lib/visitas/origen.ts), como respaldo.
 const SOURCE_LABELS: Record<string, string> = {
   landing: 'Landing',
   meta_form: 'Meta Ads',
@@ -506,7 +508,7 @@ export function InboxClient({
                           </Badge>
                         )}
                         <Badge variant="outline" className="text-xs">
-                          {SOURCE_LABELS[lead.source] ?? lead.source}
+                          {SOURCE_LABELS[lead.source] ?? etiquetaDeFuente(lead.source) ?? lead.source}
                         </Badge>
                         {lead.phone && !isWhatsappUsable(lead.phone) && (
                           <Badge className="text-xs bg-amber-500 text-white">
@@ -536,7 +538,7 @@ export function InboxClient({
                       </div>
                       {lead.message && (
                         <p className="text-sm text-foreground/80 line-clamp-2 mt-1">
-                          "{lead.message}"
+                          &quot;{lead.message}&quot;
                         </p>
                       )}
                     </div>

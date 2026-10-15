@@ -1,318 +1,218 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+/**
+ * Ficha de una visita (spec §3.3): quién, cuándo, de dónde vino, en qué etapa
+ * está, qué se puede hacer AHORA (lo calcula el servidor con su hora) y todo lo
+ * que pasó (historial que escribe el trigger de la base).
+ *
+ * Garantías heredadas de la ficha anterior, fijadas por sus tests: nunca queda
+ * en "Cargando…" (404, error y cuerpo no-JSON tienen su pantalla); el link de
+ * vuelta existe en todos los estados; en celular el título y el estado se
+ * apilan, el teléfono y el mail se tocan, y la acción principal ocupa el ancho.
+ */
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useParams } from 'next/navigation'
+import { Mail, MessageCircle, Phone } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { CompleteVisitDialog } from '../_components/CompleteVisitDialog'
-import { toast } from 'sonner'
-import type { PropertyVisitWithRelations } from '@/types/visits.types'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { AccionVisitaDialog, type VisitaConHistorial } from '@/components/visitas/ficha/AccionVisitaDialog'
+import { LineaDeTiempo } from '@/components/visitas/ficha/LineaDeTiempo'
+import { leerRespuesta } from '@/components/visitas/agendar/leer-respuesta'
+import { formatearFechaLarga } from '@/lib/visitas/horario'
+import { ORIGEN_INFO } from '@/lib/visitas/origen'
+import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
+import { ESTADO_ETIQUETA, MOTIVO_ETIQUETA, INTERES_ETIQUETA, type TipoAccion, type EstadoVisita } from '@/lib/visitas/transiciones'
+import { cn } from '@/lib/utils'
 
-/** Mismas etiquetas que el listado (`VisitsTable`) — mantener sincronizadas. */
-const STATUS_LABEL: Record<string, string> = {
-  pending_confirmation: 'A confirmar',
-  scheduled: 'Agendada',
-  completed: 'Realizada',
-  no_show: 'No se realizó',
-  cancelled: 'Cancelada',
+type Fase =
+  | { tipo: 'cargando' }
+  | { tipo: 'no_encontrada' }
+  | { tipo: 'error' }
+  | { tipo: 'lista'; visita: VisitaConHistorial }
+
+const TEXTO_ACCION: Record<TipoAccion, string> = {
+  confirmar: 'Confirmar visita', realizada: 'Se realizó', no_realizada: 'No se realizó', reprogramar: 'Reprogramar',
+  cancelar: 'Cancelar', cambiar_asesor: 'Cambiar asesor', reabrir: 'Reabrir',
+}
+/** Si ya pasó, lo primero es decir si se hizo; si no, confirmarla. */
+const PRIORIDAD: TipoAccion[] = ['realizada', 'confirmar', 'reprogramar', 'reabrir']
+
+const COLOR_ESTADO: Record<EstadoVisita, string> = {
+  pending_confirmation: 'bg-amber-50 text-amber-900',
+  scheduled: 'bg-brand-soft text-brand',
+  completed: 'bg-emerald-50 text-emerald-900',
+  no_show: 'bg-red-50 text-red-900',
+  cancelled: 'bg-secondary text-muted-foreground',
 }
 
-/**
- * "viernes, 1 de agosto de 2026, 12:00".
- *
- * `toLocaleString('es-AR')` a secas imprime "1/8/2026, 12:00:00": los segundos
- * de una visita no le sirven a nadie, y en la FICHA —donde hay lugar y donde el
- * asesor confirma un día con el cliente por teléfono— el día de la semana vale
- * más que ahorrar caracteres. El listado usa la forma corta; son dos lecturas
- * distintas a propósito.
- *
- * Va en dos llamadas porque `hour: '2-digit'` sin `hourCycle` devuelve
- * "12:00 p. m.", reloj de 12 horas que en Argentina no se usa.
- */
-function fechaHoraLarga(iso: string): string {
-  const cuando = new Date(iso)
-  const dia = cuando.toLocaleDateString('es-AR', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  })
-  const hora = cuando.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-  return `${dia}, ${hora}`
+function Volver() {
+  return <Link href="/visits" className="text-sm text-muted-foreground hover:text-foreground">← Volver a visitas</Link>
 }
 
-interface QuestionnaireRow {
-  id: string
-  response_source: 'advisor' | 'client'
-  liked: boolean | null
-  most_liked: string | null
-  least_liked: string | null
-  in_price: boolean | null
-  hypothetical_offer: number | null
-  responded_at: string
-}
-
-/**
- * D30 — tres estados, no dos. Antes la pantalla solo distinguía "hay visita" de
- * "no hay visita", y esta segunda se pintaba SIEMPRE como "Cargando…": una
- * visita borrada, un id que no es UUID (500) o un corte de red dejaban la
- * palabra "Cargando…" sobre fondo vacío, para siempre, sin mensaje ni salida
- * (el botón "Volver a visitas" quedaba debajo del early-return).
- */
-type EstadoCarga = 'cargando' | 'ok' | 'no-encontrada' | 'error'
+const MARCO = 'w-full max-w-4xl mx-auto space-y-6 pb-10'
 
 export default function VisitDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const [visit, setVisit] = useState<PropertyVisitWithRelations | null>(null)
-  const [estado, setEstado] = useState<EstadoCarga>('cargando')
-  const [completeOpen, setCompleteOpen] = useState(false)
-  const [confirming, setConfirming] = useState(false)
-  const [questionnaires, setQuestionnaires] = useState<QuestionnaireRow[]>([])
+  const [fase, setFase] = useState<Fase>({ tipo: 'cargando' })
+  const [accion, setAccion] = useState<TipoAccion | null>(null)
 
-  const load = useCallback(async () => {
-    // El render solo mira `estado` cuando NO hay visita, así que esto no
-    // parpadea en los recargados de `confirmVisit`/`onCompleted`; sirve para
-    // que el botón "Reintentar" del cartel de error muestre que está haciendo
-    // algo en vez de dejar el mismo error en pantalla.
-    setEstado('cargando')
+  const cargar = useCallback(async () => {
+    setFase({ tipo: 'cargando' })
     try {
-      const res = await fetch(`/api/visits/${id}`)
-      // 404 es distinto de "se rompió": la visita no existe (link viejo, o la
-      // propiedad se borró y la cascada se la llevó). Reintentar no la trae.
-      if (res.status === 404) {
-        setEstado('no-encontrada')
+      const r = await leerRespuesta<VisitaConHistorial | null>(await fetch(`/api/visits/${id}`))
+      if (!r.ok) {
+        if (r.status === 404) { setFase({ tipo: 'no_encontrada' }); return }
+        console.error('[visita] no se pudo cargar:', r.error)
+        setFase({ tipo: 'error' })
         return
       }
-      // Sin este chequeo, un 401/500 devolvía JSON `{error}`, `json.data` era
-      // `undefined` y `setVisit(undefined)` volvía al mismo "Cargando…" eterno.
-      // OJO: hoy es REDUNDANTE con el `if (!json?.data)` de abajo — sacarlo no
-      // rompe ningún test, porque ninguna respuesta de error trae `data`. Se
-      // deja igual: nombra el status en el log (sin él, un 500 se investiga
-      // como "no devolvió la visita") y no hace depender el camino de error de
-      // la forma del cuerpo. Si algún día el guard de abajo se toca, este es
-      // el que sigue cubriendo el 500.
-      if (!res.ok) throw new Error(`GET /api/visits/${id} respondió ${res.status}`)
-      const json = await res.json()
-      if (!json?.data) throw new Error(`GET /api/visits/${id} no devolvió la visita`)
-      setVisit(json.data)
-      setEstado('ok')
-    } catch (err) {
-      // `res.json()` también lanza si el cuerpo no es JSON (el 504 con HTML del
-      // gateway). Antes eso dejaba la promesa rechazada sin catch: mismo
-      // "Cargando…" eterno, más un error mudo en consola.
-      console.error(err)
-      setEstado('error')
-      return
-    }
-    // El cuestionario es accesorio: que falle no puede tumbar la ficha.
-    try {
-      const qr = await fetch(`/api/visits/${id}/questionnaire`)
-      const qj = qr.ok ? await qr.json() : null
-      setQuestionnaires(Array.isArray(qj?.data) ? qj.data : [])
-    } catch (err) {
-      console.error(err)
-      setQuestionnaires([])
+      if (!r.data) { console.error('[visita] la respuesta no trae la visita'); setFase({ tipo: 'error' }); return }
+      setFase({ tipo: 'lista', visita: r.data })
+    } catch (e) {
+      console.error('[visita] no se pudo cargar:', e)
+      setFase({ tipo: 'error' })
     }
   }, [id])
 
   useEffect(() => {
-    void load()
-  }, [load])
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- al montar el estado inicial YA es 'cargando'; esto solo dispara el pedido (lo mismo pasa al reintentar/recargar, que vuelven a pasar por acá)
+    void cargar()
+  }, [cargar])
 
-  /**
-   * La visita llega como 'pending_confirmation' cuando la propuso el cliente desde
-   * el recorrido. Recién al confirmarla pasa a 'scheduled' y habilita "¿Se realizó?".
-   */
-  async function confirmVisit() {
-    setConfirming(true)
-    try {
-      const res = await fetch(`/api/visits/${id}`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ status: 'scheduled' }),
-      })
-      if (!res.ok) throw new Error('No se pudo confirmar')
-      toast.success('Visita confirmada')
-      await load()
-    } catch {
-      toast.error('No pudimos confirmar la visita. Probá de nuevo.')
-    } finally {
-      setConfirming(false)
-    }
+  if (fase.tipo === 'cargando') {
+    return <div className={MARCO}><Volver /><p className="text-sm text-muted-foreground">Cargando…</p></div>
   }
-
-  async function sendQuestionnaire() {
-    const res = await fetch(`/api/visits/${id}/send-questionnaire`, { method: 'POST' })
-    if (res.ok) toast.success('Cuestionario enviado al cliente')
-    else toast.error('No se pudo enviar (¿endpoint todavía no creado?)')
-  }
-
-  // Con la visita ya en pantalla, un recargado que falle NO la borra: se
-  // conserva lo que hay (el `console.error` queda, y las acciones avisan por
-  // su cuenta con un toast). El cartel de error es solo para cuando no hay nada
-  // que mostrar.
-  if (!visit) {
+  if (fase.tipo === 'no_encontrada') {
     return (
-      // Sin `container mx-auto py-6` — mismo motivo que el listado: el layout
-      // del dashboard ya pone el marco (`p-4 md:p-6`) y esos 24px extra de
-      // arriba corrían el encabezado hacia abajo en una pantalla donde hay
-      // ~640px de alto y nada de sobra.
-      <div className="space-y-4">
-        {/* El link de vuelta va ARRIBA del corte: antes vivía debajo y en el
-            camino de error no se dibujaba nunca. */}
-        <Button variant="ghost" asChild>
-          <Link href="/visits">← Volver a visitas</Link>
-        </Button>
-        {estado === 'cargando' ? (
-          <p className="p-6 text-muted-foreground">Cargando…</p>
-        ) : (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-              <h2 className="text-lg font-medium">
-                {estado === 'no-encontrada' ? 'No encontramos esta visita' : 'No pudimos cargar la visita'}
-              </h2>
-              <p className="max-w-md text-sm text-muted-foreground">
-                {estado === 'no-encontrada'
-                  ? 'Puede que se haya cancelado, o que la propiedad ya no esté en el sistema. Si llegaste desde un mail viejo, el link puede haber quedado sin destino.'
-                  : 'Puede ser un problema de conexión o un link mal formado. Probá de nuevo.'}
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                <Button size="sm" onClick={() => void load()}>Reintentar</Button>
-                <Button size="sm" variant="outline" asChild>
-                  <Link href="/visits">Ver todas las visitas</Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+      <div className={MARCO}>
+        <Volver />
+        <p className="font-medium">No encontramos esta visita</p>
+        <Link href="/visits" className="text-sm text-brand">Ver todas las visitas</Link>
+      </div>
+    )
+  }
+  if (fase.tipo === 'error') {
+    return (
+      <div className={MARCO}>
+        <Volver />
+        <p className="font-medium">No pudimos cargar la visita</p>
+        <Button variant="outline" onClick={() => void cargar()}>Reintentar</Button>
       </div>
     )
   }
 
+  const v = fase.visita
+  const principal = PRIORIDAD.find(a => v.acciones.includes(a)) ?? null
+  const secundarias = v.acciones.filter(a => a !== principal)
+  const telefono = v.client_phone?.trim() || null
+  const email = v.client_email?.trim() || null
+  // Solo si se puede normalizar de verdad (libphonenumber): un número inventado
+  // ("123" de una carga vieja) daría un wa.me que abre un chat con nadie.
+  const whatsapp = normalizeWhatsappPhone(telefono)
+  const direccion = v.propiedad?.address ?? 'Visita'
+
   return (
-    <div className="space-y-4">
-      <Button variant="ghost" asChild>
-        <Link href="/visits">← Volver a visitas</Link>
-      </Button>
-      {/*
-        Antes era `flex items-start justify-between` a secas: sin `gap`, sin
-        `min-w-0` y sin apilado. Una dirección larga —"Av. Rivadavia 5400, piso
-        8 A"— empujaba al Badge, que es encogible, y "A confirmar" se partía en
-        dos renglones pegados al borde derecho. En celular el título ocupa su
-        propio renglón y el estado va abajo; desde `sm` vuelve la fila de antes.
-      */}
+    <div className={MARCO}>
+      <Volver />
       <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold break-words">{visit.property?.address}</h1>
-          <p className="text-muted-foreground">{fechaHoraLarga(visit.scheduled_at)}</p>
+        {/* Foto de tamaño fijo y `shrink-0`: en celular queda al lado del título (que
+            sí se encoge) y el estado sigue apilándose debajo. */}
+        <div className="flex min-w-0 items-start gap-3">
+          {v.propiedad?.foto && (
+            // eslint-disable-next-line @next/next/no-img-element -- como el resto del repo: las fotos vienen de Storage/portales con hosts variables
+            <img src={v.propiedad.foto} alt={`Foto de ${direccion}`} className="h-16 w-16 shrink-0 rounded-lg object-cover" />
+          )}
+          <div className="min-w-0 space-y-1">
+            <h1 className="break-words text-2xl font-semibold">{direccion}</h1>
+            <p className="text-sm text-muted-foreground">{formatearFechaLarga(v.scheduled_at)}</p>
+          </div>
         </div>
-        <Badge className="shrink-0 self-start">{STATUS_LABEL[visit.status] ?? visit.status}</Badge>
+        <span className={cn('shrink-0 self-start rounded-full px-3 py-1 text-xs font-semibold', COLOR_ESTADO[v.status])}>
+          {ESTADO_ETIQUETA[v.status]}
+        </span>
       </header>
 
+      {(principal || secundarias.length > 0) && (
+        <div className="flex flex-wrap gap-2">
+          {principal && (
+            <Button onClick={() => setAccion(principal)} className="max-md:w-full max-md:min-h-11 bg-brand text-brand-foreground hover:bg-brand/90">
+              {TEXTO_ACCION[principal]}
+            </Button>
+          )}
+          {secundarias.map(a => (
+            <Button key={a} variant="outline" onClick={() => setAccion(a)} className="max-md:min-h-11">{TEXTO_ACCION[a]}</Button>
+          ))}
+        </div>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle className="text-base">Persona</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p className="font-semibold">{v.client_name}</p>
+            {telefono && (
+              <div className="flex flex-wrap items-center gap-x-4">
+                <a href={`tel:${telefono.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-2 text-brand max-md:min-h-11">
+                  <Phone className="h-4 w-4" aria-hidden="true" />{telefono}
+                </a>
+                {whatsapp && (
+                  <a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-brand max-md:min-h-11">
+                    <MessageCircle className="h-4 w-4" aria-hidden="true" />WhatsApp
+                  </a>
+                )}
+              </div>
+            )}
+            {email && (
+              // Codificado: el email lo escribió un tercero (portal, formulario) y
+              // "a@b.com?bcc=x@evil.com&body=…" crudo prellenaría el correo del asesor.
+              // RFC 6068 acepta la arroba como %40.
+              <a href={`mailto:${encodeURIComponent(email)}`} className="flex items-center gap-2 break-all text-brand max-md:min-h-11">
+                <Mail className="h-4 w-4 shrink-0" aria-hidden="true" />{email}
+              </a>
+            )}
+            {v.origin && (
+              <p>Origen: {ORIGEN_INFO[v.origin].etiqueta}{v.origin_detail ? ` · ${v.origin_detail}` : ''}</p>
+            )}
+            {v.lead_id && (
+              // Deep link que ya resuelve el Inbox (InboxTabs: `tab=campanas&lead=<id>`).
+              <Link href={`/inbox?tab=campanas&lead=${encodeURIComponent(v.lead_id)}`}
+                className="inline-flex items-center text-brand max-md:min-h-11">
+                Ver en el Inbox
+              </Link>
+            )}
+            {v.comprador && (
+              <p className="text-muted-foreground">Comprador{v.comprador.lead_number ? ` #${v.comprador.lead_number}` : ''}</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-base">Visita</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p>Asesor: {v.asesor?.full_name ?? 'Sin asesor'}</p>
+            {v.reschedule_count > 0 && <p>Reprogramada {v.reschedule_count} {v.reschedule_count === 1 ? 'vez' : 'veces'}</p>}
+            {v.created_by_ai && <p className="text-muted-foreground">La propuso el agente de WhatsApp</p>}
+            {v.notes && <p className="whitespace-pre-line text-muted-foreground">{v.notes}</p>}
+            {v.outcome_reason && <p>Motivo: {MOTIVO_ETIQUETA[v.outcome_reason]}</p>}
+            {v.advisor_interest && <p>Interés: {INTERES_ETIQUETA[v.advisor_interest]}</p>}
+            {v.completion_notes && <p className="whitespace-pre-line">{v.completion_notes}</p>}
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
-        <CardHeader>
-          <CardTitle>Cliente</CardTitle>
-        </CardHeader>
-        {/*
-          El asesor abre esta ficha para LLAMAR al cliente. Que el teléfono y el
-          mail fueran texto plano obligaba a seleccionar a mano un número en una
-          pantalla táctil; ahora son enlaces `tel:`/`mailto:` con 44px de alto,
-          que es exactamente para lo que existe el teléfono que tiene en la mano.
-        */}
-        <CardContent className="text-sm space-y-1">
-          <p>
-            <strong className="break-words">{visit.client_name}</strong>
-          </p>
-          {visit.client_email
-            ? (
-              <p>
-                <a
-                  href={`mailto:${visit.client_email}`}
-                  className="inline-flex items-center break-all underline underline-offset-2 max-md:min-h-11"
-                >
-                  {visit.client_email}
-                </a>
-              </p>
-            )
-            : null}
-          {visit.client_phone
-            ? (
-              <p>
-                <a
-                  href={`tel:${visit.client_phone.replace(/[^\d+]/g, '')}`}
-                  className="inline-flex items-center underline underline-offset-2 max-md:min-h-11"
-                >
-                  {visit.client_phone}
-                </a>
-              </p>
-            )
-            : null}
-        </CardContent>
+        <CardHeader><CardTitle className="text-base">Historial</CardTitle></CardHeader>
+        <CardContent><LineaDeTiempo eventos={v.eventos} /></CardContent>
       </Card>
 
-      {/* Las acciones de la ficha van a ancho completo en celular: son la única
-          razón por la que se abre esta pantalla parado en la puerta, y un botón
-          de 140px alineado a la izquierda es un blanco chico y ambiguo. */}
-      {visit.status === 'pending_confirmation' && (
-        <Card className="border-amber-300">
-          <CardContent className="pt-6 space-y-3">
-            <p className="text-sm text-muted-foreground">
-              El cliente propuso este día y esta franja desde el recorrido. Llamalo para
-              cerrar el horario y, cuando esté acordado, confirmá la visita.
-            </p>
-            <Button className="max-md:w-full" onClick={confirmVisit} disabled={confirming}>
-              {confirming ? 'Confirmando…' : 'Confirmar visita'}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {visit.status === 'scheduled' && (
-        <Card>
-          <CardContent className="pt-6 flex flex-wrap gap-2">
-            <Button className="max-md:w-full" onClick={() => setCompleteOpen(true)}>¿Se realizó?</Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {visit.status === 'completed' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Cuestionario</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {questionnaires.length > 0 ? (
-              <div className="space-y-2">
-                {questionnaires.map((q) => (
-                  <div key={q.id} className="border rounded p-3 space-y-1 text-sm">
-                    <Badge>{q.response_source === 'client' ? 'Cliente' : 'Asesor'}</Badge>
-                    <p>
-                      ¿Le gustó? <strong>{q.liked === null ? '-' : q.liked ? 'Sí' : 'No'}</strong>
-                    </p>
-                    <p className="break-words">Más le gustó: {q.most_liked ?? '-'}</p>
-                    <p className="break-words">Menos le gustó: {q.least_liked ?? '-'}</p>
-                    <p>
-                      ¿En precio? <strong>{q.in_price === null ? '-' : q.in_price ? 'Sí' : 'No'}</strong>
-                    </p>
-                    <p>Oferta hipotética: USD {q.hypothetical_offer ?? '-'}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {fechaHoraLarga(q.responded_at)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Sin respuestas todavía</p>
-            )}
-            <Button className="max-md:w-full" onClick={sendQuestionnaire}>Enviar cuestionario al cliente</Button>
-          </CardContent>
-        </Card>
-      )}
-
-      <CompleteVisitDialog
-        visitId={visit.id}
-        open={completeOpen}
-        onOpenChange={setCompleteOpen}
-        onCompleted={load}
+      <AccionVisitaDialog
+        visita={v}
+        accion={accion}
+        onClose={() => setAccion(null)}
+        onHecho={nueva => setFase({ tipo: 'lista', visita: nueva })}
+        onRecargar={() => void cargar()}
       />
     </div>
   )

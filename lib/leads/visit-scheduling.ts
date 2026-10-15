@@ -13,6 +13,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { notifyVisitProposed } from '@/lib/email/notifications/visit-proposed'
 import { advancePipelineState } from '@/lib/leads/pipeline-state'
+import type { OrigenVisita } from '@/lib/visitas/origen'
 
 export type Franja = 'manana' | 'mediodia' | 'tarde'
 
@@ -102,6 +103,11 @@ export interface UpsertPendingVisitInput {
    * El agente arranca apagado, así que no hay ventana de deploy rota.
    */
   createdByAi?: boolean
+  /** Comprador (`property_leads`) de la visita. Spec §4.2: toda visita tiene uno. */
+  leadId?: string | null
+  /** Origen derivado del comprador (`origenDesdeLead`). */
+  origin?: OrigenVisita | null
+  originDetail?: string | null
 }
 
 export type UpsertPendingVisitResult =
@@ -120,9 +126,12 @@ export async function upsertPendingVisit(
   input: UpsertPendingVisitInput,
 ): Promise<UpsertPendingVisitResult> {
   if (input.existingVisitId) {
+    // changed_by=null a propósito: lo escribe un proceso automático (agente o
+    // cliente), y el trigger del historial copia este valor. Sin mandarlo,
+    // quedaría el autor de la última edición humana.
     const { data: updated } = await sb
       .from('property_visits')
-      .update({ scheduled_at: input.scheduledAt.toISOString(), notes: input.notes })
+      .update({ scheduled_at: input.scheduledAt.toISOString(), notes: input.notes, changed_by: null })
       .eq('id', input.existingVisitId)
       .eq('status', 'pending_confirmation')
       .select('id')
@@ -142,6 +151,11 @@ export async function upsertPendingVisit(
       scheduled_at: input.scheduledAt.toISOString(),
       status: 'pending_confirmation',
       notes: input.notes,
+      lead_id: input.leadId ?? null,
+      origin: input.origin ?? null,
+      origin_detail: input.originDetail ?? null,
+      // Mismo motivo que en el update de arriba: lo crea un proceso automático.
+      changed_by: null,
       // Solo presente cuando la crea el agente — ver `createdByAi` arriba.
       ...(input.createdByAi === true ? { created_by_ai: true } : {}),
     })
