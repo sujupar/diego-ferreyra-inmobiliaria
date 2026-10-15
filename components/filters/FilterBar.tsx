@@ -58,7 +58,11 @@ export function FilterBar({ selects, values, onChange, onClear, extraActivo, chi
             aria-label={s.label}
             value={values[s.key] ?? ''}
             onChange={e => onChange(s.key, e.target.value)}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            // Un <select> toma el ancho de su opción más larga: con direcciones de
+            // propiedades llegaba a 419 px en un teléfono de 360 y quedaba cortado
+            // (QA de visitas, 2026-10-15). En celular ocupa el renglón y no pasa del
+            // ancho; 44 px de alto para el dedo. Desde md vuelve al tamaño compacto.
+            className="h-11 w-full min-w-0 max-w-full truncate rounded-md border border-input bg-background px-3 text-sm md:h-9 md:w-auto"
           >
             {s.options.map(o => (
               <option key={o.value} value={o.value}>{o.label}</option>

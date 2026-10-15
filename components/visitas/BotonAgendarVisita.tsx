@@ -9,7 +9,7 @@ export function BotonAgendarVisita({ propiedadId, onAgendada }: { propiedadId?: 
   const [abierto, setAbierto] = useState(false)
   return (
     <>
-      <Button size="sm" onClick={() => setAbierto(true)} className="gap-1.5 bg-brand text-brand-foreground hover:bg-brand/90">
+      <Button size="sm" onClick={() => setAbierto(true)} className="min-h-11 gap-1.5 bg-brand text-brand-foreground hover:bg-brand/90 md:min-h-0">
         <CalendarPlus className="h-4 w-4" aria-hidden="true" />Agendar visita
       </Button>
       <AgendarVisitaDialog open={abierto} onOpenChange={setAbierto} propiedadId={propiedadId} onAgendada={onAgendada} />
