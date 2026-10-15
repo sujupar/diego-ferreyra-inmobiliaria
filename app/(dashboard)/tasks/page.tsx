@@ -170,6 +170,9 @@ export default function TasksPage() {
   const [reintentos, setReintentos] = useState(0)
   const [completing, setCompleting] = useState<string | null>(null)
   const [overdueVisits, setOverdueVisits] = useState<VisitaListado[]>([])
+  // El `total` real de /api/visits, no el largo del lote: con la paginación por
+  // defecto (50) el título mentía "(50)" sobre un atraso mayor.
+  const [overdueTotal, setOverdueTotal] = useState(0)
   // Con "Todas" salen tres pedidos en paralelo: si el usuario cambia de filtro
   // mientras vuelan, la respuesta vieja no puede pisar la nueva.
   const generacion = useRef(0)
@@ -216,8 +219,12 @@ export default function TasksPage() {
         if (!r.ok) throw new Error(`GET /api/visits respondió ${r.status}`)
         return r.json()
       })
-      .then(({ data }) => { if (!cancelado) setOverdueVisits(Array.isArray(data) ? data : []) })
-      .catch(() => { if (!cancelado) setOverdueVisits([]) })
+      .then(({ data, total }) => {
+        if (cancelado) return
+        setOverdueVisits(Array.isArray(data) ? data : [])
+        setOverdueTotal(typeof total === 'number' ? total : Array.isArray(data) ? data.length : 0)
+      })
+      .catch(() => { if (!cancelado) { setOverdueVisits([]); setOverdueTotal(0) } })
     return () => { cancelado = true }
   }, [userInfo])
 
@@ -316,7 +323,7 @@ export default function TasksPage() {
           <CardContent className="pt-6">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-lg font-semibold text-orange-700">
-                Visitas pendientes de marcar ({overdueVisits.length})
+                Visitas pendientes de marcar ({overdueTotal})
               </h3>
               {/* 44px de alto en celular sin dejar de ser un enlace de texto. */}
               <Link href="/visits" className="inline-flex items-center text-sm text-primary underline max-md:min-h-11">

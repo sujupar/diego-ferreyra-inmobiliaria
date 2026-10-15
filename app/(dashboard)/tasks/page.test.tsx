@@ -55,6 +55,7 @@ function tarea(id: string, extra: Partial<Record<string, unknown>> = {}) {
 let auth: Respuesta
 let porEstado: Record<string, Respuesta>
 let putRespuesta: Respuesta
+let visitasAtrasadas: Respuesta
 let calls: string[]
 let puts: string[]
 
@@ -67,6 +68,7 @@ beforeEach(() => {
     dismissed: ok({ data: [] }),
   }
   putRespuesta = ok({ success: true })
+  visitasAtrasadas = ok({ data: [], total: 0 })
   calls = []
   puts = []
   vi.stubGlobal('fetch', vi.fn((url: string, init?: { method?: string }) => {
@@ -84,7 +86,7 @@ beforeEach(() => {
       return Promise.resolve({ ok: r.ok, status: r.status, json: async () => r.body })
     }
     if (url.startsWith('/api/visits')) {
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({ data: [] }) })
+      return Promise.resolve({ ok: visitasAtrasadas.ok, status: visitasAtrasadas.status, json: async () => visitasAtrasadas.body })
     }
     if (url.startsWith('/api/portal-inquiries/unidentified')) {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({ data: [] }) })
@@ -236,6 +238,26 @@ describe('/tasks — D14: la fila sale de la pantalla solo si el servidor confir
     await waitFor(() => expect(screen.queryByText('Tarea t1')).not.toBeInTheDocument())
     expect(puts).toHaveLength(1)
     expect(toastError).not.toHaveBeenCalled()
+  })
+})
+
+describe('/tasks — revisión final E2 (grupo D): el cartel de atrasadas no se topa en 50', () => {
+  it('con más de 50 atrasadas (el lote por defecto), el título muestra el TOTAL real, no el largo del lote', async () => {
+    const atrasadas = Array.from({ length: 50 }, (_, i) => ({
+      id: `v${i}`, client_name: 'Cliente', direccion: 'Doblas 248', scheduled_at: '2026-10-01T13:00:00Z',
+    }))
+    visitasAtrasadas = ok({ data: atrasadas, total: 73 })
+    render(<TasksPage />)
+    await esperarPintado()
+    expect(await screen.findByText('Visitas pendientes de marcar (73)')).toBeInTheDocument()
+    expect(screen.queryByText('Visitas pendientes de marcar (50)')).not.toBeInTheDocument()
+  })
+
+  it('con pocas atrasadas, el título sigue mostrando el total (coincide con el largo del lote)', async () => {
+    visitasAtrasadas = ok({ data: [{ id: 'v1', client_name: 'Cliente', direccion: 'Doblas 248', scheduled_at: '2026-10-01T13:00:00Z' }], total: 1 })
+    render(<TasksPage />)
+    await esperarPintado()
+    expect(await screen.findByText('Visitas pendientes de marcar (1)')).toBeInTheDocument()
   })
 })
 
