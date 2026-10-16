@@ -2012,6 +2012,13 @@ Plan: `docs/superpowers/plans/2026-10-15-sistema-de-visitas-entrega-3.md`; spec 
   SOLO con la encuesta completa y la visita realizada. Configuración en `/settings/encuesta` (admin/dueño).
   Respuestas en la ficha de la visita; "Qué opinan" y el embudo en `/visits`. Se borró el cuestionario viejo
   (`visit_questionnaires*`, 0 filas).
+- **Decisión del dueño (2026-10-16):** confirmar una visita desde la ficha NO le manda email al cliente.
+- **Variables de entorno nuevas en Netlify solo entran con un deploy nuevo.** El 2026-10-16 se cargaron
+  `WHATSAPP_TEMPLATE_ENCUESTA_VISITA`/`_REGALO_VISITA` y `/settings/encuesta` seguía diciendo "Sin
+  configurar" hasta el siguiente push a `main`. Esa pantalla es la forma de verificarlo.
+- **Textos de las plantillas v1:** los aprobó el dueño SOLO para probar ("no comunican nada, no hablan
+  del regalo"). Antes de activar con clientes hay que escribir una v2 que hable del regalo, cuidando
+  que Meta no la pase a MARKETING (ver § agente de tasación: el disparador es el vocabulario de venta).
 - **TODO arranca apagado** (`visit_survey_settings`): `envio_automatico=false`, `regalo_por_whatsapp=false`.
   Con el envío automático prendido, solo se manda si la propiedad tiene regalo (`solo_con_regalo`) o el teléfono
   está en `telefonos_prueba`. La decisión es pura y cerrada ante la duda (`lib/visitas/encuesta/envio.ts`): si no
