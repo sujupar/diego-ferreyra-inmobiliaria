@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { armarEncuestaParaFicha, respuestasParaFicha, eventosDeLaEncuesta, mezclarEventos, filasDeRespuestas } from './ficha'
+import { armarEncuestaParaFicha, respuestasParaFicha, eventosDeLaEncuesta, mezclarEventos, filasDeRespuestas, avisosParaFicha } from './ficha'
 import { encuestaDePrueba, TOKEN_DE_PRUEBA, ENCUESTA_DE_PRUEBA } from '@/test/visitas/encuesta-de-prueba'
 import type { EventoVisitaR } from '../tipos'
 
@@ -64,6 +64,34 @@ describe('eventos de la encuesta en la línea de tiempo', () => {
     const deEncuesta = eventosDeLaEncuesta(encuestaDePrueba({ send_status: 'enviada', sent_at: '2026-10-14T18:00:00Z' }))
     const r = mezclarEventos(historial, deEncuesta)
     expect(r.map(e => e.kind)).toEqual(['realizada', 'encuesta_enviada'])
+  })
+})
+
+describe('avisosParaFicha', () => {
+  it('sin responder: nada que mostrar (los avisos todavía no se dispararon)', () => {
+    expect(avisosParaFicha(encuestaDePrueba())).toEqual([])
+  })
+  it('todo enviado/no corresponde: nada que mostrar', () => {
+    expect(avisosParaFicha(encuestaDePrueba({
+      completed_at: '2026-10-15T14:00:00Z', team_notice_status: 'enviado',
+      gift_whatsapp_status: 'no_corresponde', gift_email_status: 'enviado',
+    }))).toEqual([])
+  })
+  it('un fallido muestra el motivo; un pendiente dice "pendiente"', () => {
+    expect(avisosParaFicha(encuestaDePrueba({
+      completed_at: '2026-10-15T14:00:00Z', team_notice_status: 'pendiente',
+      gift_whatsapp_status: 'fallido', gift_email_status: 'enviado',
+      notice_error: 'Meta rechazó el envío: plantilla sin aprobar',
+    }))).toEqual([
+      { etiqueta: 'Aviso al equipo', texto: 'pendiente' },
+      { etiqueta: 'Regalo por WhatsApp', texto: 'no salió — Meta rechazó el envío: plantilla sin aprobar' },
+    ])
+  })
+  it('un canal trabado ("enviando") también se avisa', () => {
+    expect(avisosParaFicha(encuestaDePrueba({
+      completed_at: '2026-10-15T14:00:00Z', team_notice_status: 'enviado',
+      gift_whatsapp_status: 'no_corresponde', gift_email_status: 'enviando',
+    }))).toEqual([{ etiqueta: 'Regalo por email', texto: 'enviándose' }])
   })
 })
 

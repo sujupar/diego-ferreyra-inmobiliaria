@@ -135,10 +135,18 @@ describe('EncuestaVisita (criterios 20, 21, 22)', () => {
     await new Promise(r => setTimeout(r, 20))
     expect(patches('abierta')).toHaveLength(0)
   })
+  it('un título de regalo largo no desborda: el botón envuelve en vez de salirse del celular', () => {
+    const titulo = 'Guía completa de compraventa de propiedades en Caballito y alrededores para compradores primerizos'
+    render(<EncuestaVisita encuesta={encuesta({ completed_at: '2026-10-15T14:00:00Z' }, {}, { titulo, portada: null })} />)
+    const link = screen.getByRole('link', { name: new RegExp(`Descargar ${titulo}`) })
+    expect(link.className).toMatch(/whitespace-normal/)
+    expect(link.className).toMatch(/break-words/)
+    expect(link.className).toMatch(/min-w-0/)
+  })
   it('el honeypot existe pero no es para personas', () => {
     const todo = { liked: true, most_liked_tags: ['luz'], least_liked_tags: ['nada'], price_opinion: 'correcto' as const, offer_declined: true }
     const { container } = render(<EncuestaVisita encuesta={encuesta(todo)} />)
-    const trampa = container.querySelector('input[name="empresa"]')
+    const trampa = container.querySelector('input[name="hp_campo_x"]')
     expect(trampa).toHaveAttribute('tabindex', '-1')
     expect(trampa?.closest('[aria-hidden="true"]')).not.toBeNull()
   })

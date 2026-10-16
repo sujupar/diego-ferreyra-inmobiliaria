@@ -20,6 +20,21 @@ import { filasDeRespuestas, type EncuestaParaFicha } from '@/lib/visitas/encuest
 import type { ClaveEstadoEncuesta } from '@/lib/visitas/encuesta/estado-envio'
 import { cn } from '@/lib/utils'
 
+/**
+ * "Encuesta reenviada" no siempre es verdad: con la plantilla sin aprobar o un teléfono que Meta
+ * rechaza, el estado nuevo lo dice. El motivo ya se ve en la etiqueta de abajo, así que el toast de
+ * error no lo repite.
+ */
+function avisarResultadoDeReenvio(estado: { clave: ClaveEstadoEncuesta; texto: string }): void {
+  if (estado.clave === 'enviada' || estado.clave === 'entregada' || estado.clave === 'leida') {
+    toast.success('Encuesta reenviada')
+  } else if (estado.clave === 'fallo') {
+    toast.error('WhatsApp no aceptó el envío')
+  } else if (estado.clave === 'sin_enviar') {
+    toast.info(`No se envió: ${estado.texto}`)
+  }
+}
+
 const COLOR: Record<ClaveEstadoEncuesta, string> = {
   respondida: 'bg-emerald-50 text-emerald-900',
   abierta: 'bg-brand-soft text-brand',
@@ -50,7 +65,7 @@ export function EncuestaDeLaVisita({ visitaId, realizada, encuesta, onCambio }: 
       if (!r.ok) { setError(r.error); return }
       if (r.data) {
         onCambio(r.data)
-        if (accion === 'reenviar') toast.success('Encuesta reenviada')
+        if (accion === 'reenviar') avisarResultadoDeReenvio(r.data.estado)
       }
     } catch {
       setError('No hay conexión. Probá de nuevo.')
@@ -117,6 +132,13 @@ export function EncuestaDeLaVisita({ visitaId, realizada, encuesta, onCambio }: 
                   ))}
                 </dl>
               </div>
+            )}
+            {encuesta.avisos.length > 0 && (
+              <ul className="space-y-1 text-sm text-muted-foreground">
+                {encuesta.avisos.map(a => (
+                  <li key={a.etiqueta} className="break-words">{a.etiqueta}: {a.texto}</li>
+                ))}
+              </ul>
             )}
           </>
         )}

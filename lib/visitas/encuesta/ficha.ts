@@ -12,7 +12,10 @@ import { estaVencida, urlDeLaEncuesta } from './link'
 import { etiquetaDeOpcion, OTRA } from './opciones'
 import { textoMonto } from './oferta'
 import { pasoRespondido } from './pasos'
-import { PASOS_GUARDABLES, type EncuestaFila, type EstadoWa, type OpinionPrecio } from './tipos'
+import {
+  CANALES_AVISO, COLUMNAS_DE_CANAL, PASOS_GUARDABLES,
+  type CanalAviso, type EncuestaFila, type EstadoWa, type OpinionPrecio,
+} from './tipos'
 
 export const TEXTO_PRECIO: Readonly<Record<OpinionPrecio, string>> = {
   correcto: 'Le parece correcto', alto: 'Le parece alto', bajo: 'Le parece bajo',
@@ -42,6 +45,9 @@ export interface EncuestaParaFicha {
   respondidaEl: string | null
   respuestas: RespuestasParaFicha | null
   eventos: EventoVisitaR[]
+  /** Un renglón por cada canal de aviso (equipo/regalo) que NO salió bien. Vacío si todo salió
+   * bien o si la encuesta todavía no fue respondida (los avisos recién se disparan al completarla). */
+  avisos: AvisoParaFicha[]
 }
 
 function etiquetas(tags: readonly string[], otra: string | null): string[] {
@@ -105,6 +111,36 @@ export function mezclarEventos(historial: readonly EventoVisitaR[], deEncuesta: 
     .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id.localeCompare(b.id))
 }
 
+export interface AvisoParaFicha { etiqueta: string; texto: string }
+
+const ETIQUETA_CANAL: Readonly<Record<CanalAviso, string>> = {
+  equipo: 'Aviso al equipo',
+  regalo_whatsapp: 'Regalo por WhatsApp',
+  regalo_email: 'Regalo por email',
+}
+
+/**
+ * Un renglón por cada canal que no esté `enviado` ni `no_corresponde` (el "no aplica" de este
+ * catálogo). Solo tiene sentido una vez respondida: antes de completar la encuesta ningún aviso
+ * se disparó todavía. `notice_error` es una sola columna compartida por los tres canales — el
+ * texto que muestra puede corresponder a OTRO canal si hubo más de un fallo (límite conocido).
+ */
+export function avisosParaFicha(
+  e: Pick<EncuestaFila, 'completed_at' | 'team_notice_status' | 'gift_whatsapp_status' | 'gift_email_status' | 'notice_error'>,
+): AvisoParaFicha[] {
+  if (!e.completed_at) return []
+  const avisos: AvisoParaFicha[] = []
+  for (const canal of CANALES_AVISO) {
+    const estado = e[COLUMNAS_DE_CANAL[canal].estado]
+    if (estado === 'enviado' || estado === 'no_corresponde') continue
+    const texto = estado === 'fallido' ? `no salió — ${e.notice_error ?? 'sin detalle'}`
+      : estado === 'enviando' ? 'enviándose'
+      : 'pendiente'
+    avisos.push({ etiqueta: ETIQUETA_CANAL[canal], texto })
+  }
+  return avisos
+}
+
 export function armarEncuestaParaFicha(
   e: EncuestaFila,
   x: { wa: EstadoWa | null; puedeReenviar: boolean; linkDisponible: boolean; ahora: Date; base: string },
@@ -119,5 +155,6 @@ export function armarEncuestaParaFicha(
     respondidaEl: e.completed_at,
     respuestas: respuestasParaFicha(e),
     eventos: eventosDeLaEncuesta(e),
+    avisos: avisosParaFicha(e),
   }
 }

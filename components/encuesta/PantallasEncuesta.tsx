@@ -264,10 +264,12 @@ export function PasoContacto({ encuesta, contacto, onCambio, onEnviar, puedeEnvi
         <input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-[color:var(--brand)]" checked={contacto.similares} onChange={e => onCambio({ similares: e.target.checked })} />
         <span>Avisame si entra una propiedad parecida</span>
       </label>
-      {/* Honeypot: fuera de la pantalla, sin tab y sin autocompletar. Una persona no lo ve; un robot lo llena. */}
+      {/* Honeypot: fuera de la pantalla, sin tab y sin autocompletar. Una persona no lo ve; un robot
+          lo llena. Nombre/id sin sentido A PROPÓSITO: con "empresa" Chrome autocompletaba el campo
+          (lo reconoce como "company") y una persona real quedaba marcada como robot. */}
       <div aria-hidden="true" className="absolute -left-[9999px] top-0 h-px w-px overflow-hidden">
-        <label htmlFor="empresa">Empresa</label>
-        <input id="empresa" name="empresa" tabIndex={-1} autoComplete="off" value={contacto.empresa} onChange={e => onCambio({ empresa: e.target.value })} />
+        <label htmlFor="hp_campo_x">No completar este campo</label>
+        <input id="hp_campo_x" name="hp_campo_x" tabIndex={-1} autoComplete="off" value={contacto.hp_campo_x} onChange={e => onCambio({ hp_campo_x: e.target.value })} />
       </div>
       <button type="submit" className={BOTON} disabled={!puedeEnviar || ocupado}>
         {ocupado ? 'Enviando…' : encuesta.regalo ? 'Quiero mi regalo' : 'Enviar'}
@@ -284,7 +286,13 @@ export function Gracias({ encuesta, descarga, dejoEmail, tituloRef }: { encuesta
       {encuesta.regalo && descarga && (
         <>
           <p className="text-base">Acá tenés tu regalo:</p>
-          <a href={descarga} className={BOTON}><Download className="h-5 w-5" aria-hidden="true" />Descargar {encuesta.regalo.titulo}</a>
+          {/* Un título de regalo largo (120 caracteres) no tiene por qué entrar en una línea: sin
+              estas clases desbordaba el ancho de un celular de 360 px (CLAUDE.md § celular). */}
+          <div className="min-w-0">
+            <a href={descarga} className={cn(BOTON, 'h-auto min-w-0 whitespace-normal break-words')}>
+              <Download className="h-5 w-5 shrink-0" aria-hidden="true" />Descargar {encuesta.regalo.titulo}
+            </a>
+          </div>
           {canales.length > 0 && <p className="text-sm text-muted-foreground">También te lo mandamos {canales.join(' y ')}.</p>}
         </>
       )}
