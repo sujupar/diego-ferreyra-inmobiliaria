@@ -85,7 +85,9 @@ export function EncuestaDeLaVisita({ visitaId, realizada, encuesta, onCambio }: 
           <>
             <span className={cn('inline-block rounded-full px-3 py-1 text-xs font-semibold', COLOR[encuesta.estado.clave])}>{encuesta.estado.texto}</span>
             {!encuesta.respondidaEl && (
-              <p className="text-muted-foreground">{encuesta.vencida ? 'El link ya venció.' : `El link vence el ${formatearFechaLarga(encuesta.venceEl)}.`}</p>
+              // Con la visita reabierta el link sirve la página "no disponible": decir
+              // "vence el <fecha futura>" sería mentir sobre un link que ya no anda.
+              <p className="text-muted-foreground">{!encuesta.linkDisponible ? 'El link no está disponible mientras la visita no esté marcada como realizada.' : encuesta.vencida ? 'El link ya venció.' : `El link vence el ${formatearFechaLarga(encuesta.venceEl)}.`}</p>
             )}
             <div className="flex flex-wrap gap-2">
               {encuesta.linkDisponible && (
