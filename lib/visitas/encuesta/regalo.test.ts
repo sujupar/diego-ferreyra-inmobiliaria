@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest'
 import {
   validarArchivoRegalo, validarPortada, pathDelRegalo, pathDePortada, esPathDelRegalo, esPathDePortada,
   nombreDeDescarga, validarTitulo, MAX_REGALO_BYTES, validarArchivoRegaloSubido, validarPortadaSubida,
+  esPdf, esImagenValida,
 } from './regalo'
+
+const bytes = (...n: number[]) => new Uint8Array(n)
 
 const PROP = '33333333-3333-4333-8333-333333333333'
 const OTRA = '77777777-7777-4777-8777-777777777777'
@@ -39,6 +42,28 @@ describe('validación contra lo REALMENTE subido (nunca lo declarado por el nave
   })
   it('portada: sin metadatos es "no terminó de subir"', () => {
     expect(validarPortadaSubida(null)).toBe('La portada no terminó de subir. Probá de nuevo.')
+  })
+})
+
+describe('esPdf / esImagenValida (bytes reales, nunca lo que declara el Content-Type)', () => {
+  it('un PDF de verdad empieza con %PDF-', () => {
+    expect(esPdf(bytes(0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34))).toBe(true)
+  })
+  it('un ejecutable con Content-Type: application/pdf no engaña a esPdf', () => {
+    expect(esPdf(bytes(0x4d, 0x5a, 0x90, 0x00))).toBe(false) // cabecera MZ de un .exe
+    expect(esPdf(bytes())).toBe(false)
+  })
+  it('JPEG, PNG y WebP válidos', () => {
+    expect(esImagenValida(bytes(0xff, 0xd8, 0xff, 0xe0))).toBe(true)
+    expect(esImagenValida(bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))).toBe(true)
+    expect(esImagenValida(bytes(0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50))).toBe(true)
+  })
+  it('un RIFF que no es WebP (ej. un .wav) no pasa', () => {
+    expect(esImagenValida(bytes(0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45))).toBe(false)
+  })
+  it('bytes vacíos o de otro formato no pasan', () => {
+    expect(esImagenValida(bytes())).toBe(false)
+    expect(esImagenValida(bytes(0x25, 0x50, 0x44, 0x46))).toBe(false)
   })
 })
 

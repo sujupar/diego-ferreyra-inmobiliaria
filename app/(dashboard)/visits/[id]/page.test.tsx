@@ -302,7 +302,7 @@ describe('VisitDetailPage — encuesta (Entrega 3)', () => {
     respuesta = async () => ok(visita({
       status: 'completed', acciones: ['reabrir'],
       encuesta: { link: 'https://inmodf.com.ar/encuesta/Ab3xK9pQ2rTz8LmN4vWq1Y', linkDisponible: true, estado: { clave: 'sin_enviar', texto: 'Sin enviar (envío apagado)' },
-        puedeReenviar: false, vencida: false, venceEl: '2026-09-04T15:00:00.000Z', respondidaEl: null, respuestas: null, eventos: [] },
+        puedeReenviar: false, vencida: false, venceEl: '2026-09-04T15:00:00.000Z', respondidaEl: null, respuestas: null, eventos: [], avisos: [] },
     }))
     render(<VisitDetailPage />)
     expect(await screen.findByText('Sin enviar (envío apagado)')).toBeInTheDocument()

@@ -44,8 +44,11 @@ export function validarPortada(m: MetaArchivo): string | null {
  * Metadatos REALES de un objeto ya subido a Storage (ronda 1 de revisión, 2026-10-15): `nombre` y
  * `bytes` en `validarArchivoRegalo`/`validarPortada` son lo que DECLARA el navegador al pedir la
  * URL firmada — útil para rechazar rápido antes de subir nada, pero nunca prueba qué se subió.
- * Alguien puede declarar "foto.pdf" y subir un ejecutable. Esto valida contra lo que Storage
- * efectivamente guardó (tamaño y `mimetype` que infiere el propio servicio).
+ * Alguien puede declarar "foto.pdf" y subir un ejecutable. Esto valida contra el tamaño real y el
+ * `mimetype` que Storage GUARDÓ — pero ese `mimetype` es el header `Content-Type` que mandó el
+ * NAVEGADOR al subir, no algo que Storage infiera leyendo el contenido (ronda 2, 2026-10-16): un
+ * cliente puede declarar `Content-Type: application/pdf` y subir cualquier otra cosa. Por eso
+ * `esPdf`/`esImagenValida` (más abajo) miran los primeros bytes de verdad.
  */
 export interface InfoArchivoSubido { bytes: number; mimetype: string | null }
 
@@ -65,6 +68,33 @@ export function validarPortadaSubida(info: InfoArchivoSubido | null): string | n
   if (!info.mimetype || !(MIMES_PORTADA as readonly string[]).includes(info.mimetype)) return 'La portada tiene que ser JPG, PNG o WEBP'
   if (info.bytes > MAX_PORTADA_BYTES) return 'La portada supera los 5 MB'
   return null
+}
+
+/**
+ * Ronda 2 de revisión (2026-10-16): `mimetype` en `InfoArchivoSubido` es lo que Storage registró
+ * del header `Content-Type` que mandó el NAVEGADOR al subir — no lo infiere leyendo el contenido.
+ * Alguien puede subir cualquier cosa con `Content-Type: application/pdf` y pasar
+ * `validarArchivoRegaloSubido` igual. Esto mira los bytes de verdad.
+ */
+function empiezaCon(bytes: Uint8Array, firma: readonly number[]): boolean {
+  return bytes.length >= firma.length && firma.every((b, i) => bytes[i] === b)
+}
+
+const FIRMA_PDF = [0x25, 0x50, 0x44, 0x46, 0x2d] as const // "%PDF-"
+const FIRMA_JPEG = [0xff, 0xd8, 0xff] as const
+const FIRMA_PNG = [0x89, 0x50, 0x4e, 0x47] as const
+const FIRMA_RIFF = [0x52, 0x49, 0x46, 0x46] as const // "RIFF"
+const FIRMA_WEBP = [0x57, 0x45, 0x42, 0x50] as const // "WEBP", en el byte 8
+
+export function esPdf(bytes: Uint8Array): boolean {
+  return empiezaCon(bytes, FIRMA_PDF)
+}
+
+export function esImagenValida(bytes: Uint8Array): boolean {
+  if (empiezaCon(bytes, FIRMA_JPEG)) return true
+  if (empiezaCon(bytes, FIRMA_PNG)) return true
+  if (empiezaCon(bytes, FIRMA_RIFF) && bytes.length >= 12 && FIRMA_WEBP.every((b, i) => bytes[8 + i] === b)) return true
+  return false
 }
 
 export function pathDelRegalo(propertyId: string, uuid: string): string {

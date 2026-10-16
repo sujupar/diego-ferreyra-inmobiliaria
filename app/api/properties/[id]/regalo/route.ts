@@ -4,7 +4,7 @@ import { autorizarRegalo } from '@/lib/visitas/encuesta/acceso-regalo'
 import * as datos from '@/lib/visitas/encuesta/datos'
 import {
   esPathDelRegalo, esPathDePortada, nombreDeDescarga, validarArchivoRegalo, validarArchivoRegaloSubido,
-  validarPortadaSubida, validarTitulo, SEGUNDOS_URL_DESCARGA, SEGUNDOS_URL_PORTADA, type RegaloVista,
+  validarPortadaSubida, validarTitulo, esPdf, esImagenValida, SEGUNDOS_URL_DESCARGA, SEGUNDOS_URL_PORTADA, type RegaloVista,
 } from '@/lib/visitas/encuesta/regalo'
 import type { RegaloDeLaPropiedad } from '@/lib/visitas/encuesta/tipos'
 
@@ -72,12 +72,24 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       await datos.borrarArchivos([b.archivoPath])
       return NextResponse.json({ error: errReal ?? 'El archivo no terminó de subir. Probá de nuevo.' }, { status: 400 })
     }
+    // El Content-Type que Storage guardó es lo que mandó el navegador, no algo que infiera leyendo
+    // el contenido: se mira la firma real de los primeros bytes antes de aceptar el archivo.
+    const bytesArchivo = await datos.primerosBytes(b.archivoPath, 16)
+    if (!bytesArchivo || !esPdf(bytesArchivo)) {
+      await datos.borrarArchivos([b.archivoPath])
+      return NextResponse.json({ error: 'El archivo no es un PDF válido.' }, { status: 400 })
+    }
     if (b.portadaPath !== null) {
       const infoPortadaReal = await datos.infoArchivo(b.portadaPath)
       const errPortadaReal = validarPortadaSubida(infoPortadaReal)
       if (errPortadaReal) {
         await datos.borrarArchivos([b.portadaPath])
         return NextResponse.json({ error: errPortadaReal }, { status: 400 })
+      }
+      const bytesPortada = await datos.primerosBytes(b.portadaPath, 16)
+      if (!bytesPortada || !esImagenValida(bytesPortada)) {
+        await datos.borrarArchivos([b.portadaPath])
+        return NextResponse.json({ error: 'La portada no es una imagen válida.' }, { status: 400 })
       }
     }
     const anterior = await datos.leerRegalo(id)

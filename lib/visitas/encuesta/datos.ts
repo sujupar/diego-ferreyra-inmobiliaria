@@ -12,9 +12,11 @@ import { esEstadoVisita } from '../transiciones'
 import { BUCKET_REGALOS, type InfoArchivoSubido } from './regalo'
 import {
   COLUMNAS_DE_CANAL, ESTADOS_AVISO, ESTADOS_ENVIO, MONEDAS, MOTIVOS_OMISION, OPINIONES_PRECIO, PASOS_GUARDABLES,
+  CANALES_AVISO,
   type AjustesEncuesta, type CanalAviso, type EncuestaConVisita, type EncuestaFila, type EstadoAviso, type EstadoEnvio,
   type EstadoWa, type MotivoOmision, type PropiedadDeEncuesta, type RegaloDeLaPropiedad,
 } from './tipos'
+import { UMBRAL_TRABADO_MS, MOTIVO_AVISO_TRABADO } from './avisos'
 import type { PatchPaso, ContactoFinal } from './respuestas'
 
 function sb(): SupabaseClient {
@@ -154,6 +156,19 @@ export async function infoArchivo(path: string): Promise<InfoArchivoSubido | nul
   if (bytes === null) return null
   const mimetype = fila.metadata?.mimetype
   return { bytes, mimetype: typeof mimetype === 'string' ? mimetype : null }
+}
+
+/**
+ * Primeros `n` bytes de un objeto ya subido, para verificar la firma real del archivo (ronda 2 de
+ * revisión, 2026-10-16): `infoArchivo` solo mira el `Content-Type` que declaró el navegador, que
+ * no prueba qué hay adentro. El SDK de Storage no soporta pedir un rango — se descarga el objeto
+ * entero (tope conocido: 20 MB para el regalo, 5 MB para la portada) y se recorta acá.
+ */
+export async function primerosBytes(path: string, n: number): Promise<Uint8Array | null> {
+  const { data, error } = await sb().storage.from(BUCKET_REGALOS).download(path)
+  if (error || !data) return null
+  const buf = await data.arrayBuffer()
+  return new Uint8Array(buf.slice(0, n))
 }
 
 /** NO lanza: sin URL, quien llama responde 503 o deja el canal pendiente. */
@@ -398,6 +413,26 @@ export async function cerrarAviso(
   if (extra.intentos !== undefined) cambios.notice_attempts = extra.intentos
   const { error } = await sb().from('visit_surveys').update(cambios).eq('id', id).eq(col.estado, 'enviando')
   if (error) fallo('cerrar aviso', error)
+}
+
+/**
+ * Antes de procesar el barrido: un canal que quedó "enviando" porque la función murió a mitad del
+ * envío pasa a "fallido" (NO a pendiente: preferimos perder un aviso a duplicarlo). UPDATE
+ * condicional por canal — solo toca filas que SIGUEN en "enviando" al momento de la escritura.
+ */
+export async function liberarAvisosTrabados(ahora: Date): Promise<number> {
+  const limite = new Date(ahora.getTime() - UMBRAL_TRABADO_MS).toISOString()
+  let liberados = 0
+  for (const canal of CANALES_AVISO) {
+    const col = COLUMNAS_DE_CANAL[canal]
+    const { data, error } = await sb().from('visit_surveys')
+      .update({ [col.estado]: 'fallido', notice_error: MOTIVO_AVISO_TRABADO })
+      .eq(col.estado, 'enviando').lte(col.momento, limite)
+      .select('id')
+    if (error) fallo('liberar avisos trabados', error)
+    liberados += (data ?? []).length
+  }
+  return liberados
 }
 
 export async function encuestasConAvisosPendientes(

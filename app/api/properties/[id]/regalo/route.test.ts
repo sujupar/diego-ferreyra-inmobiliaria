@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { accesoMock, datosMock } = vi.hoisted(() => ({
   accesoMock: vi.fn(),
-  datosMock: { leerRegalo: vi.fn(), guardarRegalo: vi.fn(), borrarRegalo: vi.fn(), infoArchivo: vi.fn(), urlFirmada: vi.fn(), borrarArchivos: vi.fn() },
+  datosMock: { leerRegalo: vi.fn(), guardarRegalo: vi.fn(), borrarRegalo: vi.fn(), infoArchivo: vi.fn(), primerosBytes: vi.fn(), urlFirmada: vi.fn(), borrarArchivos: vi.fn() },
 }))
 vi.mock('@/lib/visitas/encuesta/acceso-regalo', () => ({ autorizarRegalo: accesoMock }))
 vi.mock('@/lib/visitas/encuesta/datos', () => datosMock)
@@ -22,12 +22,16 @@ const REGALO = { propertyId: PROP, titulo: 'Guía', archivoPath: ARCHIVO, archiv
 // ruta tiene que guardar el REAL (2048), no el declarado — es justamente lo que prueban los tests.
 const PUT_OK = { titulo: 'Guía de Caballito', archivoPath: ARCHIVO_NUEVO, archivoNombre: 'Guía nueva.pdf', archivoBytes: 2000, portadaPath: null }
 const INFO_PDF_REAL = { bytes: 2048, mimetype: 'application/pdf' }
+const BYTES_PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d])
+const BYTES_JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0])
+const BYTES_EXE = new Uint8Array([0x4d, 0x5a, 0x90, 0x00])
 
 beforeEach(() => {
   accesoMock.mockReset().mockResolvedValue({ ok: true, userId: 'u1' })
   Object.values(datosMock).forEach(m => m.mockReset())
   datosMock.leerRegalo.mockResolvedValue(REGALO)
   datosMock.infoArchivo.mockResolvedValue(INFO_PDF_REAL)
+  datosMock.primerosBytes.mockImplementation(async (path: string) => (path.includes('/portada-') ? BYTES_JPEG : BYTES_PDF))
   datosMock.urlFirmada.mockResolvedValue('https://firmada')
 })
 
@@ -63,7 +67,29 @@ describe('/api/properties/[id]/regalo', () => {
     expect(datosMock.borrarArchivos).toHaveBeenCalledWith([ARCHIVO_NUEVO])
     expect(datosMock.guardarRegalo).not.toHaveBeenCalled()
   })
-  it('PUT: la portada real no es una imagen válida → 400, se borra SOLO la portada y no se guarda nada', async () => {
+  it('PUT: Content-Type dice application/pdf pero los bytes reales no son un PDF → 400, se borra y no se guarda', async () => {
+    datosMock.primerosBytes.mockResolvedValue(BYTES_EXE)
+    const res = await PUT(req('PUT', PUT_OK), ctx)
+    expect([res.status, (await res.json()).error]).toEqual([400, 'El archivo no es un PDF válido.'])
+    expect(datosMock.borrarArchivos).toHaveBeenCalledWith([ARCHIVO_NUEVO])
+    expect(datosMock.guardarRegalo).not.toHaveBeenCalled()
+  })
+  it('PUT: no se pudo leer el contenido del archivo (descarga falló) → se trata igual que "no es un PDF"', async () => {
+    datosMock.primerosBytes.mockResolvedValue(null)
+    const res = await PUT(req('PUT', PUT_OK), ctx)
+    expect([res.status, (await res.json()).error]).toEqual([400, 'El archivo no es un PDF válido.'])
+    expect(datosMock.borrarArchivos).toHaveBeenCalledWith([ARCHIVO_NUEVO])
+  })
+  it('PUT: la portada declara mimetype de imagen pero los bytes reales no lo son → 400, se borra SOLO la portada', async () => {
+    datosMock.infoArchivo.mockImplementation(async (path: string) =>
+      path === PORTADA_NUEVA ? { bytes: 100, mimetype: 'image/jpeg' } : INFO_PDF_REAL)
+    datosMock.primerosBytes.mockImplementation(async (path: string) => (path === PORTADA_NUEVA ? BYTES_EXE : BYTES_PDF))
+    const res = await PUT(req('PUT', { ...PUT_OK, portadaPath: PORTADA_NUEVA }), ctx)
+    expect([res.status, (await res.json()).error]).toEqual([400, 'La portada no es una imagen válida.'])
+    expect(datosMock.borrarArchivos).toHaveBeenCalledWith([PORTADA_NUEVA])
+    expect(datosMock.guardarRegalo).not.toHaveBeenCalled()
+  })
+  it('PUT: la portada real no es una imagen válida (mimetype) → 400, se borra SOLO la portada y no se guarda nada', async () => {
     datosMock.infoArchivo.mockImplementation(async (path: string) =>
       path === PORTADA_NUEVA ? { bytes: 100, mimetype: 'application/pdf' } : INFO_PDF_REAL)
     const res = await PUT(req('PUT', { ...PUT_OK, portadaPath: PORTADA_NUEVA }), ctx)

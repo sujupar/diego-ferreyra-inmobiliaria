@@ -159,6 +159,17 @@ describe('avisos', () => {
     expect(pasos(l, 'update')).toEqual([[{ gift_whatsapp_status: 'enviado', gift_wa_message_id: 'wamid.9' }]])
     expect(pasos(l, 'eq')).toEqual([['id', FILA.id], ['gift_whatsapp_status', 'enviando']])
   })
+  it('liberar trabados: UPDATE condicional por canal, solo filas que siguen en enviando y vencidas', async () => {
+    registro.responder = () => ({ data: [{ id: 'x' }], error: null })
+    const total = await datos.liberarAvisosTrabados(AHORA)
+    expect(total).toBe(3) // una fila liberada por cada uno de los 3 canales con esta respuesta fija
+    expect(registro.llamadas).toHaveLength(3)
+    const l = registro.llamadas[0]
+    expect(pasos(l, 'update')[0][0]).toMatchObject({ team_notice_status: 'fallido', notice_error: expect.stringContaining('Se cortó a mitad del envío') })
+    expect(pasos(l, 'eq')).toEqual([['team_notice_status', 'enviando']])
+    expect(pasos(l, 'lte')[0][0]).toBe('team_notice_at')
+    expect(pasos(l, 'lte')[0][1]).toBe('2026-10-15T14:50:00.000Z')
+  })
   it('pendientes: terminadas en la ventana, con intentos bajo el tope, algún canal pendiente', async () => {
     registro.responder = () => ({ data: [{ id: 'a' }, { id: 'b' }], error: null })
     const ids = await datos.encuestasConAvisosPendientes({ desde: '2026-10-08T15:00:00.000Z', hasta: '2026-10-15T14:58:00.000Z' }, 3)
@@ -195,5 +206,16 @@ describe('Storage', () => {
     expect(await datos.infoArchivo('properties/x/regalo-y.pdf')).toBeNull()
     registro.storageRespuesta = () => ({ data: null, error: { message: 'boom' } })
     expect(await datos.infoArchivo('properties/x/regalo-y.pdf')).toBeNull()
+  })
+  it('primerosBytes descarga el objeto entero y recorta a los primeros n (el SDK no tiene Range)', async () => {
+    const contenido = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 1, 2, 3])
+    registro.storageRespuesta = (metodo) => (metodo === 'download' ? { data: new Blob([contenido]), error: null } : { data: null, error: null })
+    const r = await datos.primerosBytes('properties/x/regalo-y.pdf', 5)
+    expect(r).toEqual(new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]))
+    expect(registro.storage.at(-1)).toEqual({ bucket: 'visit-survey-gifts', metodo: 'download', args: ['properties/x/regalo-y.pdf'] })
+  })
+  it('primerosBytes: sin datos o con error, null (no explota)', async () => {
+    registro.storageRespuesta = () => ({ data: null, error: { message: 'boom' } })
+    expect(await datos.primerosBytes('properties/x/regalo-y.pdf', 5)).toBeNull()
   })
 })
