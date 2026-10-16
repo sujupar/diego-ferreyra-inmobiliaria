@@ -8,6 +8,7 @@
  */
 import { PREFIJO_ERROR_TIEMPO } from '@/lib/email/resend-client'
 import { TECHO_POR_DESTINATARIO_MS } from '@/lib/email/notifications/visit-survey-answered'
+import type { EstadoVisita } from '../transiciones'
 import { CANALES_AVISO, COLUMNAS_DE_CANAL, type CanalAviso, type EncuestaFila } from './tipos'
 
 export const TECHO_NETLIFY_MS = 26_000
@@ -37,6 +38,37 @@ export function canalesPendientes(
 ): CanalAviso[] {
   if (!e.completed_at || e.notice_attempts >= MAX_INTENTOS_AVISO) return []
   return CANALES_AVISO.filter(c => e[COLUMNAS_DE_CANAL[c].estado] === 'pendiente')
+}
+
+/** Canales del regalo (todo lo que no sea el aviso al equipo). */
+const CANALES_REGALO: readonly CanalAviso[] = CANALES_AVISO.filter(c => c !== 'equipo')
+
+/**
+ * Con la visita reabierta (ya no `completed`), el regalo NO se manda: quien reabrió una visita
+ * para corregirla no puede haber "entregado" ya el material prometido. El aviso al EQUIPO sí sale
+ * (es información interna, no una promesa al cliente). Los canales de regalo quedan intactos en
+ * `pendiente` — si la visita vuelve a marcarse realizada, el barrido los manda.
+ */
+export function canalesSegunEstadoVisita(canales: readonly CanalAviso[], estadoVisita: EstadoVisita): CanalAviso[] {
+  if (estadoVisita === 'completed') return [...canales]
+  return canales.filter(c => !CANALES_REGALO.includes(c))
+}
+
+/**
+ * Si la función de Netlify muere entre reservar un canal (pendiente → enviando) y cerrarlo, el
+ * canal queda "enviando" para siempre: nadie lo reintenta (`canalesPendientes` solo mira
+ * `pendiente`) y nadie lo ve fallido. `team_notice_at`/`gift_whatsapp_at`/`gift_email_at` guardan
+ * el momento de la reserva (lo escribe `reservarAviso`, `cerrarAviso` no los toca) — son la marca de
+ * tiempo que faltaba.
+ */
+export const UMBRAL_TRABADO_MS = 10 * 60_000
+export const MOTIVO_AVISO_TRABADO = 'Se cortó a mitad del envío; pudo haber salido. Revisar antes de reenviar.'
+
+export function estaTrabado(reservadoEn: string | null, ahora: Date, umbralMs = UMBRAL_TRABADO_MS): boolean {
+  if (!reservadoEn) return false
+  const t = new Date(reservadoEn).getTime()
+  if (Number.isNaN(t)) return false
+  return ahora.getTime() - t >= umbralMs
 }
 
 export interface ResultadoEmailLike { ok: boolean; sent: number; failed: number; errors: string[] }

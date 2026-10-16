@@ -17,6 +17,7 @@ import { decidirEnvioEncuesta, type DecisionEnvio } from './envio'
 import { armarEnvioEncuesta } from './plantillas'
 import { motivoLegibleDeMeta, TEXTO_MOTIVO_OMISION } from './estado-envio'
 import { armarEncuestaParaFicha, type EncuestaParaFicha } from './ficha'
+import { enmascararTelefono } from './contacto'
 import type { EncuestaConVisita, EncuestaFila, MotivoOmision } from './tipos'
 
 export class ReenvioNoPermitido extends Error {
@@ -141,7 +142,7 @@ export async function prepararYEnviarEncuesta(
               // Meta YA mandó el mensaje: si esto no queda guardado, un reintento podría volver a
               // mandarlo sin saber que ya salió. El rastro completo (a quién, con qué mensaje) va
               // en el log y en el mensaje del error para poder arreglarlo a mano.
-              const rastro = `Meta mandó el mensaje (wa_message_id=${r.messageId ?? 'desconocido'}, a ${decision.telefono}) pero no se pudo guardar el envío`
+              const rastro = `Meta mandó el mensaje (wa_message_id=${r.messageId ?? 'desconocido'}, a ${enmascararTelefono(decision.telefono) ?? '(teléfono no disponible)'}) pero no se pudo guardar el envío`
               console.error(`[encuesta] ${rastro}`, e)
               throw new Error(`${rastro}: ${e instanceof Error ? e.message : String(e)}`)
             }

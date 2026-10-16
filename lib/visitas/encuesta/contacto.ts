@@ -9,3 +9,14 @@ export function enmascararTelefono(t: string | null | undefined): string | null 
   const diez = d.slice(-10)
   return `${diez.slice(0, 2)} ••••-${diez.slice(-4)}`
 }
+
+const PATRON_EMAIL = /[^\s@]+@([^\s@]+\.[^\s@]+)/g
+
+/**
+ * Los errores de Resend (p. ej. "send failed to ana@mail.com: ...") pueden traer el email entero.
+ * Se guardan en `notice_error` (una columna de texto libre, sin RLS de ocultamiento) y se logean en
+ * la consola de Netlify: ninguno de los dos lugares debería tener el email completo de un cliente.
+ */
+export function ocultarEmailsEnTexto(texto: string): string {
+  return texto.replace(PATRON_EMAIL, (_m, dominio: string) => `***@${dominio}`)
+}

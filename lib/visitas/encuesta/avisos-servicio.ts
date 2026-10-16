@@ -11,12 +11,13 @@ import { enviarRegaloPorEmail } from '@/lib/email/notifications/visit-survey-gif
 import * as datos from './datos'
 import { mandarPlantilla } from './whatsapp'
 import { armarEnvioRegalo, nombreDePila } from './plantillas'
+import { ocultarEmailsEnTexto } from './contacto'
 import { decidirRegaloPorWhatsapp } from './envio'
 import { motivoLegibleDeMeta } from './estado-envio'
 import { respuestasParaFicha } from './ficha'
 import { nombreDeDescarga, SEGUNDOS_URL_WHATSAPP } from './regalo'
 import { urlDescargaDelRegalo } from './publica'
-import { canalesPendientes, puedeEmpezar, cierreDeEmail, cierreTrasFallo, rangoDelBarrido, MAX_INTENTOS_AVISO, LIMITE_INICIO_MS } from './avisos'
+import { canalesPendientes, canalesSegunEstadoVisita, puedeEmpezar, cierreDeEmail, cierreTrasFallo, rangoDelBarrido, MAX_INTENTOS_AVISO, LIMITE_INICIO_MS } from './avisos'
 import type { CanalAviso, EncuestaConVisita } from './tipos'
 
 export type ResultadoCanal = 'enviado' | 'fallido' | 'no_corresponde' | 'pendiente' | 'ocupado' | 'sin_tiempo'
@@ -42,7 +43,9 @@ async function ejecutar(canal: CanalAviso, ec: EncuestaConVisita): Promise<Cierr
       const r = await notificarEncuestaRespondida({ visitaId: v.id, asesorId: v.advisor_id, direccion, persona: v.client_name, scheduledAt: v.scheduled_at, respuestas })
       if (r === null) return { estado: 'no_corresponde', error: 'no hay nadie activo para avisarle' }
       const estado = cierreDeEmail(r)
-      return estado === 'enviado' ? { estado } : { estado, error: r.errors[0] ?? 'el email no salió' }
+      // Un error de Resend puede traer el email del destinatario (p. ej. "send failed to x@y.com"):
+      // no queda ni en notice_error (texto libre, sin RLS) ni en el log de Netlify.
+      return estado === 'enviado' ? { estado } : { estado, error: ocultarEmailsEnTexto(r.errors[0] ?? 'el email no salió') }
     }
     case 'regalo_whatsapp': {
       // Un error de la base acá LANZA: el canal vuelve a pendiente y se reintenta (no se pierde el regalo).
@@ -74,7 +77,7 @@ async function ejecutar(canal: CanalAviso, ec: EncuestaConVisita): Promise<Cierr
         titulo: regalo.titulo, urlDescarga: `${baseDeLaApp()}${urlDescargaDelRegalo(e.token)}`,
       })
       const estado = cierreDeEmail(r)
-      return estado === 'enviado' ? { estado } : { estado, error: r.errors[0] ?? 'el email no salió' }
+      return estado === 'enviado' ? { estado } : { estado, error: ocultarEmailsEnTexto(r.errors[0] ?? 'el email no salió') }
     }
   }
 }
@@ -86,7 +89,8 @@ export async function procesarAvisosDeEncuesta(encuestaId: string, ctx: Contexto
   const id = ec.encuesta.id
   let intentos = ec.encuesta.notice_attempts
   const resultado: Partial<Record<CanalAviso, ResultadoCanal>> = {}
-  for (const canal of canalesPendientes(ec.encuesta)) {
+  const canales = canalesSegunEstadoVisita(canalesPendientes(ec.encuesta), ec.visita.status)
+  for (const canal of canales) {
     if (!puedeEmpezar(canal, reloj() - ctx.inicio)) { resultado[canal] = 'sin_tiempo'; continue }
     if (!(await datos.reservarAviso(id, canal))) { resultado[canal] = 'ocupado'; continue }
     let cierre: Cierre
@@ -117,6 +121,7 @@ export interface ResumenBarrido { revisadas: number; canalesEnviados: number; si
 
 export async function barrerAvisosPendientes(ctx: ContextoAvisos): Promise<ResumenBarrido> {
   const reloj = ctx.reloj ?? Date.now
+  await datos.liberarAvisosTrabados(ctx.ahora)
   const ids = await datos.encuestasConAvisosPendientes(rangoDelBarrido(ctx.ahora), MAX_INTENTOS_AVISO)
   const r: ResumenBarrido = { revisadas: ids.length, canalesEnviados: 0, sinTiempo: 0 }
   for (const id of ids) {

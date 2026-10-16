@@ -4,6 +4,7 @@ const { datosMock, mandarMock, equipoMock, regaloEmailMock } = vi.hoisted(() => 
   datosMock: {
     leerEncuestaConVisita: vi.fn(), reservarAviso: vi.fn(), cerrarAviso: vi.fn(), leerRegalo: vi.fn(),
     leerAjustesEncuesta: vi.fn(), urlFirmada: vi.fn(), encuestasConAvisosPendientes: vi.fn(),
+    liberarAvisosTrabados: vi.fn(),
   },
   mandarMock: vi.fn(),
   equipoMock: vi.fn(),
@@ -40,6 +41,7 @@ beforeEach(() => {
   datosMock.leerRegalo.mockResolvedValue(REGALO)
   datosMock.leerAjustesEncuesta.mockResolvedValue(AJUSTES_PRUEBA)
   datosMock.urlFirmada.mockResolvedValue('https://firmada/pdf')
+  datosMock.liberarAvisosTrabados.mockResolvedValue(0)
   equipoMock.mockResolvedValue(SALIO)
   regaloEmailMock.mockResolvedValue(SALIO)
   vi.stubEnv('WHATSAPP_TEMPLATE_REGALO_VISITA', 'regalo_visita_v1')
@@ -77,6 +79,12 @@ describe('procesarAvisosDeEncuesta', () => {
     expect(r.regalo_email).toBe('pendiente')
     expect(datosMock.cerrarAviso).toHaveBeenCalledWith(ENCUESTA_DE_PRUEBA, 'regalo_email', 'pendiente', { error: '500 Resend', intentos: 1 })
   })
+  it('un error de Resend con el email del destinatario se guarda ocultado', async () => {
+    regaloEmailMock.mockResolvedValue({ ok: false, sent: 0, failed: 1, skipped: 0, errors: ['send failed to ana@mail.com: Invalid recipient'] })
+    const r = await procesarAvisosDeEncuesta(ENCUESTA_DE_PRUEBA, ctx())
+    expect(r.regalo_email).toBe('pendiente')
+    expect(datosMock.cerrarAviso).toHaveBeenCalledWith(ENCUESTA_DE_PRUEBA, 'regalo_email', 'pendiente', { error: 'send failed to ***@mail.com: Invalid recipient', intentos: 1 })
+  })
   it('si ya pasaron 6 s, el email al equipo queda para el barrido pero el regalo sale', async () => {
     t = 6_000
     const r = await procesarAvisosDeEncuesta(ENCUESTA_DE_PRUEBA, ctx())
@@ -95,9 +103,38 @@ describe('procesarAvisosDeEncuesta', () => {
     expect(await procesarAvisosDeEncuesta(ENCUESTA_DE_PRUEBA, ctx())).toEqual({})
     expect(datosMock.reservarAviso).not.toHaveBeenCalled()
   })
+  it('visita reabierta (ya no completed): el equipo se avisa, el regalo NO sale por ningún canal', async () => {
+    datosMock.leerEncuestaConVisita.mockResolvedValue(encuestaConVisitaDePrueba(
+      { completed_at: '2026-10-15T14:59:00Z', contact_phone: '5491158234521', contact_email: 'ana@mail.com', liked: true },
+      { status: 'scheduled' },
+    ))
+    const r = await procesarAvisosDeEncuesta(ENCUESTA_DE_PRUEBA, ctx())
+    expect(r).toEqual({ equipo: 'enviado' })
+    expect(mandarMock).not.toHaveBeenCalled()
+    expect(regaloEmailMock).not.toHaveBeenCalled()
+    expect(datosMock.reservarAviso).toHaveBeenCalledTimes(1)
+    expect(datosMock.reservarAviso).toHaveBeenCalledWith(ENCUESTA_DE_PRUEBA, 'equipo')
+  })
+  it('visita completed de nuevo: el barrido manda el regalo que había quedado pendiente', async () => {
+    datosMock.leerEncuestaConVisita.mockResolvedValue(encuestaConVisitaDePrueba(
+      { completed_at: '2026-10-15T14:59:00Z', contact_email: 'ana@mail.com', team_notice_status: 'enviado' },
+      { status: 'completed' },
+    ))
+    const r = await procesarAvisosDeEncuesta(ENCUESTA_DE_PRUEBA, ctx())
+    expect(r.regalo_email).toBe('enviado')
+  })
 })
 
 describe('barrerAvisosPendientes', () => {
+  it('libera los canales trabados en "enviando" ANTES de procesar las pendientes', async () => {
+    datosMock.encuestasConAvisosPendientes.mockResolvedValue([])
+    const orden: string[] = []
+    datosMock.liberarAvisosTrabados.mockImplementation(async () => { orden.push('liberar'); return 2 })
+    datosMock.encuestasConAvisosPendientes.mockImplementation(async () => { orden.push('buscar'); return [] })
+    await barrerAvisosPendientes(ctx())
+    expect(orden).toEqual(['liberar', 'buscar'])
+    expect(datosMock.liberarAvisosTrabados).toHaveBeenCalledWith(AHORA)
+  })
   it('procesa las pendientes y corta cuando se acaba el tiempo', async () => {
     datosMock.encuestasConAvisosPendientes.mockResolvedValue(['a', 'b'])
     let llamadas = 0

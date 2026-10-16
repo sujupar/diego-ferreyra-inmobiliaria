@@ -22,6 +22,11 @@ describe('catálogo de plantillas', () => {
     expect(BOTON_ENCUESTA_V1.url).toBe('https://inmodf.com.ar/encuesta/{{1}}')
     expect(BOTON_ENCUESTA_V1.texto.length).toBeLessThanOrEqual(25)
   })
+  it('ningún cuerpo empieza ni termina con una variable (Meta rechaza el cuerpo así)', () => {
+    for (const d of [...Object.values(PLANTILLAS_ENCUESTA), ...Object.values(PLANTILLAS_REGALO)]) {
+      expect(d.cuerpo).not.toMatch(/^\s*\{\{|\}\}\s*$/)
+    }
+  })
 })
 
 describe('armarEnvioEncuesta', () => {
@@ -32,7 +37,7 @@ describe('armarEnvioEncuesta', () => {
       bodyParams: ['Mariana', 'Doblas 248', '14/10', TOKEN],
       urlButtonParam: TOKEN,
       necesitaDocumento: false,
-      bodyText: `Hola Mariana. Registramos tu visita a Doblas 248 del 14/10. Para completar la ficha de la visita, entrá acá: https://inmodf.com.ar/encuesta/${TOKEN}`,
+      bodyText: `Hola Mariana. Registramos tu visita a Doblas 248 del 14/10. Para completar la ficha de la visita, entrá acá: https://inmodf.com.ar/encuesta/${TOKEN}\n\nDiego Ferreyra Inmobiliaria`,
     })
   })
   it('una plantilla que no está en el catálogo no se arma (no se adivinan datos ni botón)', () => {

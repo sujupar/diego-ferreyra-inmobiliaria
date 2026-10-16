@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  puedeEmpezar, canalesPendientes, cierreDeEmail, cierreTrasFallo, rangoDelBarrido, peorCasoEquipoMs,
+  puedeEmpezar, canalesPendientes, canalesSegunEstadoVisita, cierreDeEmail, cierreTrasFallo, rangoDelBarrido, peorCasoEquipoMs,
+  estaTrabado, UMBRAL_TRABADO_MS,
   LIMITE_INICIO_MS, TECHO_NETLIFY_MS, TIMEOUT_CANAL_MS, MAX_INTENTOS_AVISO,
 } from './avisos'
 import { encuestaDePrueba } from '@/test/visitas/encuesta-de-prueba'
@@ -27,6 +28,36 @@ describe('canalesPendientes', () => {
     const hecha = encuestaDePrueba({ completed_at: '2026-10-15T14:00:00Z', gift_whatsapp_status: 'no_corresponde' })
     expect(canalesPendientes(hecha)).toEqual(['equipo', 'regalo_email'])
     expect(canalesPendientes({ ...hecha, notice_attempts: MAX_INTENTOS_AVISO })).toEqual([])
+  })
+})
+
+describe('canalesSegunEstadoVisita', () => {
+  it('visita completada: no filtra nada', () => {
+    expect(canalesSegunEstadoVisita(['equipo', 'regalo_whatsapp', 'regalo_email'], 'completed'))
+      .toEqual(['equipo', 'regalo_whatsapp', 'regalo_email'])
+  })
+  it('visita reabierta (scheduled/no_show/cancelled/pending_confirmation): el regalo no sale, el equipo sí', () => {
+    for (const estado of ['scheduled', 'no_show', 'cancelled', 'pending_confirmation'] as const) {
+      expect(canalesSegunEstadoVisita(['equipo', 'regalo_whatsapp', 'regalo_email'], estado)).toEqual(['equipo'])
+      expect(canalesSegunEstadoVisita(['regalo_whatsapp', 'regalo_email'], estado)).toEqual([])
+    }
+  })
+})
+
+describe('estaTrabado', () => {
+  const ahora = new Date('2026-10-15T15:10:00Z')
+  it('sin marca de reserva, no está trabado', () => {
+    expect(estaTrabado(null, ahora)).toBe(false)
+  })
+  it('reservado hace menos del umbral: no está trabado', () => {
+    expect(estaTrabado('2026-10-15T15:00:01Z', ahora)).toBe(false)
+  })
+  it('reservado hace 10 minutos o más: está trabado', () => {
+    expect(estaTrabado('2026-10-15T15:00:00Z', ahora)).toBe(true)
+    expect(UMBRAL_TRABADO_MS).toBe(10 * 60_000)
+  })
+  it('una marca inválida no explota: se trata como no trabado', () => {
+    expect(estaTrabado('no-es-una-fecha', ahora)).toBe(false)
   })
 })
 

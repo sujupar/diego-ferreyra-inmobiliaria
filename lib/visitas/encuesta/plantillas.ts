@@ -14,7 +14,7 @@ export const IDIOMA_PLANTILLAS = 'es_AR'
 export const PLANTILLA_ENCUESTA_V1 = 'encuesta_visita_v1'
 /** {{1}} nombre de pila · {{2}} dirección · {{3}} fecha (dd/mm) · {{4}} token. Texto aprobado por el dueño (§4.11). */
 export const CUERPO_ENCUESTA_V1 =
-  'Hola {{1}}. Registramos tu visita a {{2}} del {{3}}. Para completar la ficha de la visita, entrá acá: https://inmodf.com.ar/encuesta/{{4}}'
+  'Hola {{1}}. Registramos tu visita a {{2}} del {{3}}. Para completar la ficha de la visita, entrá acá: https://inmodf.com.ar/encuesta/{{4}}\n\nDiego Ferreyra Inmobiliaria'
 /** El botón abre en el celular; el link del cuerpo salva a WhatsApp de computadora (verificado 2026-08-03). */
 export const BOTON_ENCUESTA_V1 = { texto: 'Completar ficha', url: 'https://inmodf.com.ar/encuesta/{{1}}' } as const
 

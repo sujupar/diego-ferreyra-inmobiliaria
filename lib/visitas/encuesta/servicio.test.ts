@@ -141,14 +141,16 @@ describe('prepararYEnviarEncuesta', () => {
     await prepararYEnviarEncuesta(VISITA_DE_PRUEBA, { reenvio: true, actorId: 'u1', ahora: AHORA })
     expect(datosMock.liberarEnvio).toHaveBeenCalledTimes(2)
   })
-  it('Meta aceptó pero no se pudo guardar el envío: el error y el log llevan el wa_message_id y el teléfono', async () => {
+  it('Meta aceptó pero no se pudo guardar el envío: el error y el log llevan el wa_message_id y el teléfono ENMASCARADO', async () => {
     datosMock.leerAjustesEncuesta.mockResolvedValue({ ...AJUSTES_PRUEBA, telefonos_prueba: ['11 5823-4521'] })
     mandarMock.mockResolvedValue({ ok: true, modoPrueba: false, messageId: 'wamid.9' })
     datosMock.registrarEnvio.mockImplementationOnce(async () => { throw new Error('boom') })
     const consola = vi.spyOn(console, 'error').mockImplementation(() => {})
     await expect(prepararYEnviarEncuesta(VISITA_DE_PRUEBA, { reenvio: false, actorId: 'u1', ahora: AHORA }))
-      .rejects.toThrow(/wamid\.9.*5491158234521/)
-    expect(consola.mock.calls.some(c => String(c[0]).includes('wamid.9') && String(c[0]).includes('5491158234521'))).toBe(true)
+      .rejects.toThrow(/wamid\.9.*11 ••••-4521/)
+    expect(consola.mock.calls.some(c => String(c[0]).includes('wamid.9') && String(c[0]).includes('11 ••••-4521'))).toBe(true)
+    // El teléfono entero no queda en el error ni en el log: solo los últimos 4 dígitos.
+    expect(consola.mock.calls.every(c => !String(c[0]).includes('5491158234521'))).toBe(true)
     expect(datosMock.liberarEnvio).toHaveBeenCalled()
     consola.mockRestore()
   })
