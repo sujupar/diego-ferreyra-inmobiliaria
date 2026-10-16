@@ -45,7 +45,7 @@ describe('VisitasTab', () => {
   })
   it('"Qué opinan" de ESTA propiedad con lo que respondieron', async () => {
     const enc = { sent_at: '2026-10-01T12:00:00Z', completed_at: '2026-10-01T13:00:00Z', expires_at: '2026-10-31T12:00:00Z', liked: true,
-      price_opinion: 'correcto', offer_amount: null, offer_currency: null, offer_declined: true,
+      price_opinion: 'correcto' as const, offer_amount: null, offer_currency: null, offer_declined: true,
       most_liked_tags: ['luz'], least_liked_tags: ['nada'], most_liked_other: null, least_liked_other: null }
     respuestas = [{ status: 200, body: { data: [v({ scheduled_at: '2026-10-01T13:00:00Z', status: 'completed', encuesta: enc })], total: 1 } }]
     render(<VisitasTab propertyId={PROP} mostrarAsesor />)

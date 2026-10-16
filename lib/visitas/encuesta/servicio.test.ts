@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { EncuestaFila } from './tipos'
+import type { EncuestaFila, EstadoWa } from './tipos'
 
 const { mem, datosMock, mandarMock } = vi.hoisted(() => {
   const mem: { fila: EncuestaFila | null; existe: boolean } = { fila: null, existe: false }
@@ -18,7 +18,7 @@ const { mem, datosMock, mandarMock } = vi.hoisted(() => {
       leerAjustesEncuesta: vi.fn(),
       leerRegalo: vi.fn(),
       registrarEnvio: vi.fn(async (_id: string, c: Partial<EncuestaFila>) => { if (mem.fila) mem.fila = { ...mem.fila, ...c } }),
-      estadoDelMensaje: vi.fn(async () => null),
+      estadoDelMensaje: vi.fn(async (): Promise<EstadoWa | null> => null),
       reservarEnvio: vi.fn(async () => true),
       liberarEnvio: vi.fn(async () => undefined),
     },
