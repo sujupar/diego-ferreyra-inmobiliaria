@@ -36,6 +36,10 @@ async function vista(r: RegaloDeLaPropiedad): Promise<RegaloVista> {
   }
 }
 
+
+const NO_SE_PUDO_LEER = () =>
+  NextResponse.json({ error: 'No se pudo revisar el archivo. Probá de nuevo en un momento.' }, { status: 503 })
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const a = await autorizarRegalo(id)
@@ -75,7 +79,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     // El Content-Type que Storage guardó es lo que mandó el navegador, no algo que infiera leyendo
     // el contenido: se mira la firma real de los primeros bytes antes de aceptar el archivo.
     const bytesArchivo = await datos.primerosBytes(b.archivoPath, 16)
-    if (!bytesArchivo || !esPdf(bytesArchivo)) {
+    // Sin bytes = Storage no respondió, no "archivo inválido": NO se borra un PDF que puede estar bien.
+    if (!bytesArchivo) return NO_SE_PUDO_LEER()
+    if (!esPdf(bytesArchivo)) {
       await datos.borrarArchivos([b.archivoPath])
       return NextResponse.json({ error: 'El archivo no es un PDF válido.' }, { status: 400 })
     }
@@ -87,7 +93,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         return NextResponse.json({ error: errPortadaReal }, { status: 400 })
       }
       const bytesPortada = await datos.primerosBytes(b.portadaPath, 16)
-      if (!bytesPortada || !esImagenValida(bytesPortada)) {
+      if (!bytesPortada) return NO_SE_PUDO_LEER()
+      if (!esImagenValida(bytesPortada)) {
         await datos.borrarArchivos([b.portadaPath])
         return NextResponse.json({ error: 'La portada no es una imagen válida.' }, { status: 400 })
       }

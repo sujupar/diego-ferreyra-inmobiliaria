@@ -74,11 +74,12 @@ describe('/api/properties/[id]/regalo', () => {
     expect(datosMock.borrarArchivos).toHaveBeenCalledWith([ARCHIVO_NUEVO])
     expect(datosMock.guardarRegalo).not.toHaveBeenCalled()
   })
-  it('PUT: no se pudo leer el contenido del archivo (descarga falló) → se trata igual que "no es un PDF"', async () => {
+  it('PUT: no se pudo leer el contenido (Storage no respondió) → 503 y NO se borra un PDF que puede estar bien', async () => {
     datosMock.primerosBytes.mockResolvedValue(null)
     const res = await PUT(req('PUT', PUT_OK), ctx)
-    expect([res.status, (await res.json()).error]).toEqual([400, 'El archivo no es un PDF válido.'])
-    expect(datosMock.borrarArchivos).toHaveBeenCalledWith([ARCHIVO_NUEVO])
+    expect([res.status, (await res.json()).error]).toEqual([503, 'No se pudo revisar el archivo. Probá de nuevo en un momento.'])
+    expect(datosMock.borrarArchivos).not.toHaveBeenCalled()
+    expect(datosMock.guardarRegalo).not.toHaveBeenCalled()
   })
   it('PUT: la portada declara mimetype de imagen pero los bytes reales no lo son → 400, se borra SOLO la portada', async () => {
     datosMock.infoArchivo.mockImplementation(async (path: string) =>

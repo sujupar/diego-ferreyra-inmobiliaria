@@ -2038,7 +2038,10 @@ Plan: `docs/superpowers/plans/2026-10-15-sistema-de-visitas-entrega-3.md`; spec 
   el tipo que declara el navegador.
 - **Deuda aceptada:** la descarga del regalo no gasta el tope por token (un límite le impediría bajarlo a quien
   vuelve desde el email días después; la URL dura 10 min). Si la portada no pasa la validación, el PDF ya subido
-  queda huérfano en Storage.
+  queda huérfano en Storage. El barrido mira encuestas completadas en los últimos 7 días (`DIAS_DEL_BARRIDO`)
+  y de a 20: si una visita se reabre y se vuelve a marcar realizada más de 7 días después, su regalo queda
+  `pendiente` (se ve en la ficha); y más de 20 encuestas con la visita reabierta en la ventana frenarían a las
+  nuevas. Con el volumen actual no muerde.
 - **Detección:**
   ```sql
   SELECT send_status, send_skip_reason, count(*) FROM visit_surveys GROUP BY 1,2;
