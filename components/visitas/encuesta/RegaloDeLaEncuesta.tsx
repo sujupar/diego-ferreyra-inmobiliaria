@@ -19,6 +19,8 @@ type Estado =
   | { tipo: 'listo'; regalo: RegaloVista | null }
 
 function megas(bytes: number): string {
+  // Debajo de 1 MB decía "0 MB", que parece un archivo vacío.
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
   return `${(bytes / 1024 / 1024).toLocaleString('es-AR', { maximumFractionDigits: 1 })} MB`
 }
 

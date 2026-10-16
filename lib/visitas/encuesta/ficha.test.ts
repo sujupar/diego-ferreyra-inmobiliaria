@@ -42,7 +42,7 @@ describe('filasDeRespuestas', () => {
       { etiqueta: 'El precio', valor: 'Le parece alto' },
       { etiqueta: 'Cuánto ofertaría', valor: '—' },
       { etiqueta: 'Avisarle si entra algo parecido', valor: 'No' },
-      { etiqueta: 'WhatsApp', valor: '5491158234521' },
+      { etiqueta: 'WhatsApp', valor: '+5491158234521' },
     ])
   })
 })

@@ -85,7 +85,8 @@ export function filasDeRespuestas(r: RespuestasParaFicha): Array<{ etiqueta: str
     { etiqueta: 'Cuánto ofertaría', valor: r.oferta ?? '—' },
     { etiqueta: 'Avisarle si entra algo parecido', valor: siNo(r.quiereSimilares) },
   ]
-  if (r.telefono) filas.push({ etiqueta: 'WhatsApp', valor: r.telefono })
+  // Se guarda en dígitos (549…): sin el "+" no se lee como un número de WhatsApp.
+  if (r.telefono) filas.push({ etiqueta: 'WhatsApp', valor: /^\d+$/.test(r.telefono) ? `+${r.telefono}` : r.telefono })
   if (r.email) filas.push({ etiqueta: 'Email', valor: r.email })
   return filas
 }
