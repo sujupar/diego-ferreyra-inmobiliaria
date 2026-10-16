@@ -141,20 +141,27 @@ export function armarEmbudo(visitas: readonly VisitaListado[]): PasoEmbudo[] {
 
 export interface ConteoEncuestas { respondidas: Cifra; completas: number; conOferta: number }
 
-/** "Encuestas respondidas %" = encuestas completas ÷ visitas realizadas del período (spec §4.5). */
+/**
+ * "Encuestas respondidas %" = encuestas completas ÷ visitas realizadas del período (spec §4.5).
+ * Si NINGUNA realizada del período tiene encuesta (todas de antes de la Entrega 3, o la encuesta
+ * ni se creó), "Sin datos" — no "0%": un 0% dice "nadie respondió", y acá nadie tenía nada para
+ * responder. Mismo guard `conEncuesta` que usa armarEmbudo.
+ */
 export function contarEncuestas(visitas: readonly VisitaListado[]): ConteoEncuestas {
   let realizadas = 0
   let completas = 0
   let conOferta = 0
+  let conEncuesta = false
   for (const v of visitas) {
     if (v.status !== 'completed') continue
     realizadas++
+    if (v.encuesta) conEncuesta = true
     if (v.encuesta?.completed_at) {
       completas++
       if (v.encuesta.offer_amount !== null) conOferta++
     }
   }
-  return { respondidas: porcentaje(completas, realizadas), completas, conOferta }
+  return { respondidas: conEncuesta ? porcentaje(completas, realizadas) : cifra(0, 0), completas, conOferta }
 }
 
 /** Un registro de comprador creado a menos de esto de la visita nació CON ella (cartel, a mano). */

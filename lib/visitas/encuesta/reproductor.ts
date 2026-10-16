@@ -16,7 +16,7 @@ export interface ContactoBorrador {
   email: string
   similares: boolean
   /** Honeypot: queda vacío para una persona. */
-  empresa: string
+  hp_campo_x: string
 }
 
 export interface EstadoReproductor {
@@ -59,7 +59,7 @@ export function estadoInicial(e: EncuestaPublica): EstadoReproductor {
     paso: e.pasoInicial,
     respuestas: e.respuestas,
     ofertaTexto: e.respuestas.offer_amount ? formatearMiles(String(e.respuestas.offer_amount)) : '',
-    contacto: { cambiarTelefono: e.telefonoEnmascarado === null, telefono: '', email: '', similares: false, empresa: '' },
+    contacto: { cambiarTelefono: e.telefonoEnmascarado === null, telefono: '', email: '', similares: false, hp_campo_x: '' },
     animar: false,
     ocupado: false,
     error: null,
@@ -178,11 +178,11 @@ export function cuerpoDelPaso(s: EstadoReproductor): CuerpoPasoCliente | null {
   }
 }
 
-export function cuerpoFinalDelEstado(s: EstadoReproductor): { telefono: string | null; email: string | null; similares: boolean; empresa: string } {
+export function cuerpoFinalDelEstado(s: EstadoReproductor): { telefono: string | null; email: string | null; similares: boolean; hp_campo_x: string } {
   return {
     telefono: s.contacto.cambiarTelefono ? s.contacto.telefono.trim() || null : null,
     email: s.contacto.email.trim() || null,
     similares: s.contacto.similares,
-    empresa: s.contacto.empresa,
+    hp_campo_x: s.contacto.hp_campo_x,
   }
 }

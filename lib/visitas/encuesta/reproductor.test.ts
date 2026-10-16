@@ -96,9 +96,9 @@ describe('puedeAvanzar y cuerpos', () => {
   })
   it('el final manda el teléfono solo si se cambió, y el honeypot tal cual', () => {
     const c = en(s, 'contacto')
-    expect(cuerpoFinalDelEstado(c)).toEqual({ telefono: null, email: null, similares: false, empresa: '' })
-    expect(cuerpoFinalDelEstado({ ...c, contacto: { cambiarTelefono: true, telefono: ' 11 4444-5555 ', email: ' ana@mail.com ', similares: true, empresa: 'x' } }))
-      .toEqual({ telefono: '11 4444-5555', email: 'ana@mail.com', similares: true, empresa: 'x' })
+    expect(cuerpoFinalDelEstado(c)).toEqual({ telefono: null, email: null, similares: false, hp_campo_x: '' })
+    expect(cuerpoFinalDelEstado({ ...c, contacto: { cambiarTelefono: true, telefono: ' 11 4444-5555 ', email: ' ana@mail.com ', similares: true, hp_campo_x: 'x' } }))
+      .toEqual({ telefono: '11 4444-5555', email: 'ana@mail.com', similares: true, hp_campo_x: 'x' })
   })
   it('esPasoEncuesta', () => {
     expect(esPasoEncuesta('precio')).toBe(true)

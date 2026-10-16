@@ -83,7 +83,7 @@ describe('POST (final)', () => {
     datosMock.completarEncuesta.mockResolvedValue(encuestaDePrueba({ ...TODO, completed_at: '2026-10-15T15:00:00Z' }))
   })
   it('honeypot lleno: éxito falso sin tocar la base', async () => {
-    const res = await post({ similares: false, empresa: 'ACME' })
+    const res = await post({ similares: false, hp_campo_x: 'ACME' })
     expect(await res.json()).toEqual({ data: { completa: true, regalo: null } })
     expect(datosMock.leerEncuestaConVisita).not.toHaveBeenCalled()
   })

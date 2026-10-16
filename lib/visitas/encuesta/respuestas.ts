@@ -93,8 +93,10 @@ export const cuerpoFinal = z.object({
   telefono: z.string().max(40).nullish(),
   email: z.string().max(254).nullish(),
   similares: z.boolean(),
-  /** Honeypot: invisible para personas; los robots lo llenan. */
-  empresa: z.string().max(200).optional(),
+  /** Honeypot: invisible para personas; los robots lo llenan. Nombre sin sentido A PROPÓSITO
+   * (nunca "empresa"/"company"): Chrome autocompleta esos campos, y un campo autocompletado
+   * ya no está vacío para una persona real — rechazaría encuestas de verdad como si fueran bots. */
+  hp_campo_x: z.string().max(200).optional(),
 }).strict()
 export type CuerpoFinal = z.infer<typeof cuerpoFinal>
 
@@ -124,8 +126,8 @@ export function contactoFinal(
   return { ok: true, contacto: { contact_phone: telefono, contact_email: email || null, wants_similar: c.similares } }
 }
 
-export function esHoneypot(c: Pick<CuerpoFinal, 'empresa'>): boolean {
-  return !!c.empresa?.trim()
+export function esHoneypot(c: Pick<CuerpoFinal, 'hp_campo_x'>): boolean {
+  return !!c.hp_campo_x?.trim()
 }
 
 /** El primer paso sin responder; `null` = se puede terminar. */

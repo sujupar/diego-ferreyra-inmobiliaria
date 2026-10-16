@@ -117,4 +117,9 @@ describe('contarEncuestas', () => {
       .toEqual({ respondidas: { valor: 50, base: 2, orientativo: true }, completas: 1, conOferta: 0 })
     expect(contarEncuestas([v({ status: 'scheduled' })]).respondidas.valor).toBeNull()
   })
+  it('realizadas pero NINGUNA tiene encuesta (período anterior a la Entrega 3): "Sin datos", no "0%"', () => {
+    const r = contarEncuestas([v({ status: 'completed' }), v({ status: 'completed' })])
+    expect(r.respondidas).toEqual({ valor: null, base: 0, orientativo: false })
+    expect(r.completas).toBe(0)
+  })
 })

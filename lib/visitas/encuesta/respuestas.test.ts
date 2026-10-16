@@ -100,8 +100,8 @@ describe('final', () => {
     expect(contactoFinal({ email: 'ana@', similares: false }, '+5491158234521', normalizar)).toEqual({ ok: false, error: 'Revisá el email' })
   })
   it('honeypot', () => {
-    expect(esHoneypot({ similares: false, empresa: 'ACME' })).toBe(true)
-    expect(esHoneypot({ similares: false, empresa: '' })).toBe(false)
+    expect(esHoneypot({ similares: false, hp_campo_x: 'ACME' })).toBe(true)
+    expect(esHoneypot({ similares: false, hp_campo_x: '' })).toBe(false)
     expect(esHoneypot({ similares: false })).toBe(false)
   })
   it('faltaParaTerminar devuelve el primer paso sin responder', () => {

@@ -33,9 +33,11 @@ export function TarjetasVisitas({ metricas: m, etiquetaPeriodo }: { metricas: Me
       <StatTile
         label="Encuestas respondidas"
         value={textoPorcentaje(m.encuestas.respondidas)}
-        context={m.encuestas.respondidas.valor === null
-          ? 'ninguna visita realizada todavía'
-          : textoDeBase(m.encuestas.respondidas, { uno: 'realizada', varios: 'realizadas' })}
+        context={m.encuestas.respondidas.valor !== null
+          ? textoDeBase(m.encuestas.respondidas, { uno: 'realizada', varios: 'realizadas' })
+          // "Sin datos" también sale cuando SÍ hubo realizadas pero ninguna tiene encuesta (de
+          // antes de la Entrega 3): distinto mensaje de "todavía no hay nada que mostrar".
+          : m.conteos.realizadas > 0 ? 'ninguna tiene encuesta en el período' : 'ninguna visita realizada todavía'}
       />
       <StatTile
         label="De la consulta a la visita"
