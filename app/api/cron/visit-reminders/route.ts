@@ -5,6 +5,7 @@ import * as datos from '@/lib/visitas/datos'
 import { ventanaDeRecordatorio, decidirRecordatorio, type MotivoSinRecordatorio } from '@/lib/visitas/recordatorio'
 import { enviarRecordatorioDeVisita } from '@/lib/email/notifications/visit-reminder-advisor'
 import { PREFIJO_ERROR_TIEMPO, type SendEmailResult } from '@/lib/email/resend-client'
+import { barrerAvisosPendientes, type ResumenBarrido } from '@/lib/visitas/encuesta/avisos-servicio'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -70,6 +71,7 @@ interface Corrida {
   pendientesPorTiempo: number
   motivo?: string
   firedAt: string
+  encuestas?: ResumenBarrido | { error: string }
 }
 
 function salio(r: SendEmailResult | null): boolean {
@@ -133,6 +135,14 @@ async function handle(req: NextRequest): Promise<Response> {
         // Queda marcada como avisada sin haberlo sido: no se reintenta sola. Va al log con el id.
         console.error('[cron/visit-reminders] no se pudo liberar la reserva; esta visita NO se va a reintentar', v.id, e)
       }
+    }
+    // Avisos de encuestas que la pantalla de gracias no llegó a disparar (la persona cerró la
+    // página). Corre con el MISMO reloj que el recordatorio: cada canal mira cuánto queda.
+    try {
+      corrida.encuestas = await barrerAvisosPendientes({ inicio, ahora })
+    } catch (e) {
+      console.error('[cron/visit-reminders] el barrido de encuestas falló', e)
+      corrida.encuestas = { error: e instanceof Error ? e.message : 'Error' }
     }
     if (visitas.length === 0) {
       corrida.motivo = 'No hay visitas confirmadas de las últimas 48 h que hayan pasado sin resultado ni aviso.'

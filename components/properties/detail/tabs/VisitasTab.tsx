@@ -2,10 +2,12 @@
 import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { RegaloDeLaEncuesta } from '@/components/visitas/encuesta/RegaloDeLaEncuesta'
 import { FilaVisita } from '@/components/visitas/seccion/FilaVisita'
 import { leerRespuesta } from '@/components/visitas/agendar/leer-respuesta'
 import { separarProximasYPasadas } from '@/lib/visitas/resumen'
-import { TEXTO_LLEGA_CON_LA_ENCUESTA } from '@/lib/visitas/presentacion'
+import { QueOpinan } from '@/components/visitas/seccion/QueOpinan'
+import { opinionesPorPropiedad } from '@/lib/visitas/opiniones'
 import type { VisitaListado } from '@/lib/visitas/tipos'
 
 export const MAX_VISITAS_PESTANA = 200
@@ -15,7 +17,6 @@ type Estado = { tipo: 'cargando' } | { tipo: 'error'; mensaje: string } | { tipo
 /**
  * Pestaña "Visitas" de la ficha de la propiedad (spec §3.5). Lee GET /api/visits con el
  * filtro de la propiedad: el alcance por rol lo aplica la ruta (un asesor ve las suyas).
- * "Qué opinan los que visitaron" llega con la encuesta (Entrega 3).
  */
 export function VisitasTab({ propertyId, mostrarAsesor }: { propertyId: string; mostrarAsesor: boolean }) {
   const [estado, setEstado] = useState<Estado>({ tipo: 'cargando' })
@@ -42,6 +43,8 @@ export function VisitasTab({ propertyId, mostrarAsesor }: { propertyId: string; 
         <h2 className="display mt-1 text-xl">Visitas</h2>
       </div>
 
+      <RegaloDeLaEncuesta propertyId={propertyId} />
+
       {estado.tipo === 'cargando' && <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>}
       {estado.tipo === 'error' && (
         <div role="alert" className="flex flex-wrap items-center gap-3 text-sm">
@@ -51,10 +54,7 @@ export function VisitasTab({ propertyId, mostrarAsesor }: { propertyId: string; 
       )}
       {estado.tipo === 'listo' && <Listas visitas={estado.visitas} mostrarAsesor={mostrarAsesor} />}
 
-      <section aria-labelledby="opinan-propiedad" className="space-y-2 rounded-xl border bg-card p-4">
-        <h3 id="opinan-propiedad" className="text-base font-semibold">Qué opinan los que visitaron</h3>
-        <p className="text-sm text-muted-foreground">{TEXTO_LLEGA_CON_LA_ENCUESTA}</p>
-      </section>
+      {estado.tipo === 'listo' && <QueOpinan opiniones={opinionesPorPropiedad(estado.visitas)} modo="propiedad" />}
     </div>
   )
 }

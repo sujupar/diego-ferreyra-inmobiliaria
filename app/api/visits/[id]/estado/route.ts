@@ -6,6 +6,8 @@ import { resolveLeadIdForVisitWithFallback } from '@/lib/leads/resolve-crm-visit
 import * as datos from '@/lib/visitas/datos'
 import { aplicarAccion, accionesDisponibles, MOTIVOS_NO_REALIZADA, INTERESES, type AccionVisita } from '@/lib/visitas/transiciones'
 import { puedeVerVisita, puedeGestionarVisitas, puedeVerTodasLasVisitas, accionesParaRol } from '@/lib/visitas/acceso'
+import { prepararYEnviarEncuesta, encuestaParaFichaSegura } from '@/lib/visitas/encuesta/servicio'
+import { mezclarEventos, type EncuestaParaFicha } from '@/lib/visitas/encuesta/ficha'
 import type { Role } from '@/types/auth.types'
 
 /**
@@ -103,6 +105,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       } catch (e) { console.error('[visits/estado] avance falló', e) }
     }
 
+    // La encuesta se crea SIEMPRE al marcar "Se realizó" (adenda §11.1) y se decide el envío.
+    // Un fallo acá (base, Meta) NUNCA revierte la visita: ya quedó realizada, y la ficha ofrece
+    // "Crear link de la encuesta" o "Reenviar por WhatsApp".
+    let encuesta: EncuestaParaFicha | null = null
+    if (r.patch.status === 'completed') {
+      try {
+        encuesta = await prepararYEnviarEncuesta(id, { reenvio: false, actorId: user.id, ahora })
+      } catch (e) {
+        console.error('[visits/estado] la encuesta no se pudo preparar; la visita quedó realizada igual', e)
+      }
+    }
+
     // La escritura YA se hizo: si la relectura falla, no es un error del
     // cambio (que se guardó bien), así que no es un 500 — se informa con
     // `data: null` y quien llamó recarga la ficha.
@@ -111,12 +125,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     try {
       actualizada = await datos.leerVisita(id)
       eventos = await datos.eventosDeLaVisita(id)
+      if (!encuesta) encuesta = await encuestaParaFichaSegura(id, new Date())
     } catch (e) {
       console.error('[visits/estado] relectura falló', e)
       actualizada = null
     }
     return NextResponse.json({
-      data: actualizada ? { ...actualizada, eventos, acciones: accionesParaRol(accionesDisponibles(actualizada, new Date()), role) } : null,
+      data: actualizada
+        ? { ...actualizada, eventos: mezclarEventos(eventos, encuesta?.eventos ?? []), acciones: accionesParaRol(accionesDisponibles(actualizada, new Date()), role), encuesta }
+        : null,
     })
   } catch (e) {
     console.error('[POST /api/visits/[id]/estado]', e)

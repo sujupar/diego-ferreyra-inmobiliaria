@@ -37,6 +37,12 @@ export function mapMetaStatus(status: string): string {
   return KNOWN_META_STATUSES.has(normalized) ? normalized : status
 }
 
+/**
+ * De dónde nació la conversación. Mismo catálogo que el CHECK `whatsapp_messages_origen_check`
+ * (migraciones 20260806000001 y 20261015000002): se tocan JUNTOS.
+ */
+export type OrigenWhatsapp = 'consulta_portal' | 'landing' | 'manual' | 'encuesta_visita'
+
 export interface LogOutboundInput {
   /** Teléfono E.164 sin '+' al que se INTENTÓ mandar (nuestro `to`, no el de Meta). */
   phone: string
@@ -63,7 +69,7 @@ export interface LogOutboundInput {
    */
   aiGenerated?: boolean
   /** De dónde nació la conversación. Ver la migración 20260806000001. */
-  origen?: 'consulta_portal' | 'landing' | 'manual' | null
+  origen?: OrigenWhatsapp | null
   /**
    * Qué ARCHIVO se le mandó a la persona, si se le mandó alguno. Columnas
    * `media_*`, que existían desde el principio y nadie escribía.

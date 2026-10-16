@@ -51,7 +51,7 @@ describe('getNavSections — permisos del menú', () => {
     const hrefs = navHrefs(getNavSections('admin'))
     for (const h of [
       '/properties/review', '/metrics', '/embudos', '/users',
-      '/settings', '/settings/notifications', '/settings/portals',
+      '/settings', '/settings/notifications', '/settings/portals', '/settings/encuesta',
       '/admin/pipeline-test', '/admin/email-test', '/admin/ai-agent', '/admin/ai-usage',
     ]) expect(hrefs).toContain(h)
   })

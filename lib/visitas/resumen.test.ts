@@ -51,6 +51,24 @@ describe('requierenAccion', () => {
     expect(r.sinResultado).toHaveLength(50)
     expect(r.total).toBe(60)
   })
+  it('encuestas enviadas hace más de 48 h, sin responder ni vencer, la más vieja primero', () => {
+    const enc = (sent_at: string, completed_at: string | null = null, expires_at = '2026-11-01T00:00:00Z') => ({
+      sent_at, completed_at, expires_at, liked: null, price_opinion: null, offer_amount: null, offer_currency: null,
+      offer_declined: null, most_liked_tags: [], least_liked_tags: [], most_liked_other: null, least_liked_other: null,
+    })
+    const vieja = v({ status: 'completed', encuesta: enc('2026-10-10T12:00:00Z') })
+    const doce = v({ status: 'completed', encuesta: enc('2026-10-12T12:00:00Z') })
+    const r = requierenAccion([], AHORA, [
+      doce,
+      vieja,
+      v({ status: 'completed', encuesta: enc('2026-10-14T12:00:00Z') }),
+      v({ status: 'completed', encuesta: enc('2026-10-09T12:00:00Z', '2026-10-10T00:00:00Z') }),
+      v({ status: 'completed', encuesta: enc('2026-09-01T12:00:00Z', null, '2026-10-01T00:00:00Z') }),
+      v({ status: 'completed', encuesta: null }),
+    ])
+    expect(r.encuestasSinResponder.map(x => x.id)).toEqual([vieja.id, doce.id])
+    expect(r.total).toBe(2)
+  })
 })
 
 describe('armarResumen', () => {
@@ -77,6 +95,11 @@ describe('armarResumen', () => {
   })
   it('propaga el aviso de datos truncados', () => {
     expect(armarResumen({ ...base, verTodo: true, truncado: true }).truncado).toBe(true)
+  })
+  it('suma las opiniones del período y las encuestas pendientes', () => {
+    const r = armarResumen({ ...base, verTodo: true, realizadasRecientes: [] })
+    expect(r.opiniones).toEqual([])
+    expect(r.requieren.encuestasSinResponder).toEqual([])
   })
 })
 

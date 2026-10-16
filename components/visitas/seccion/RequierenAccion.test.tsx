@@ -49,4 +49,13 @@ describe('RequierenAccion', () => {
     await waitFor(() => expect(onCambio).toHaveBeenCalled())
     expect(cuerpos[0]).toEqual({ tipo: 'realizada', interes: 'alto', notas: '', version: pasada.updated_at })
   })
+  it('lista las encuestas sin responder hace más de 48 h, sin botones de etapa', () => {
+    const enc = { sent_at: '2026-10-10T12:00:00Z', completed_at: null, expires_at: '2026-11-09T12:00:00Z', liked: null, price_opinion: null,
+      offer_amount: null, offer_currency: null, offer_declined: null, most_liked_tags: [], least_liked_tags: [], most_liked_other: null, least_liked_other: null }
+    const r = requierenAccion([], AHORA, [v({ status: 'completed', client_name: 'Ana Encuesta', encuesta: enc })])
+    render(<RequierenAccion requieren={r} mostrarAsesor onCambio={() => {}} />)
+    expect(screen.getByRole('heading', { name: 'Encuestas sin responder hace más de 48 h' })).toBeInTheDocument()
+    expect(screen.getByText(/Ana Encuesta/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Se realizó' })).not.toBeInTheDocument()
+  })
 })

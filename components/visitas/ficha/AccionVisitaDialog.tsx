@@ -8,8 +8,9 @@ import { leerRespuesta } from '@/components/visitas/agendar/leer-respuesta'
 import { MOTIVOS_NO_REALIZADA, MOTIVO_ETIQUETA, INTERESES, INTERES_ETIQUETA, type TipoAccion, type MotivoNoRealizada, type Interes } from '@/lib/visitas/transiciones'
 import { fechaEnArgentina } from '@/lib/visitas/horario'
 import type { VisitaDetalle, EventoVisitaR } from '@/lib/visitas/tipos'
+import type { EncuestaParaFicha } from '@/lib/visitas/encuesta/ficha'
 
-export type VisitaConHistorial = VisitaDetalle & { eventos: EventoVisitaR[]; acciones: TipoAccion[] }
+export type VisitaConHistorial = VisitaDetalle & { eventos: EventoVisitaR[]; acciones: TipoAccion[]; encuesta?: EncuestaParaFicha | null }
 
 /**
  * Lo mínimo que la ventana usa de la visita: el id (ruta), la versión (concurrencia) y el

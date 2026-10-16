@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cifra, conteo, porcentaje, mediana, contarVisitas, armarEmbudo } from './metricas'
+import { cifra, conteo, porcentaje, mediana, contarVisitas, armarEmbudo, contarEncuestas } from './metricas'
 import { visitaDePrueba as v } from '@/test/visitas/visita-de-prueba'
 
 const AHORA = new Date('2026-10-15T15:00:00Z')
@@ -75,24 +75,51 @@ describe('contarVisitas', () => {
 })
 
 describe('armarEmbudo', () => {
-  it('sin visitas: tres pasos en 0 y ningún salto resaltado', () => {
+  it('sin visitas: cinco pasos en 0 y ningún salto resaltado', () => {
     const e = armarEmbudo([])
-    expect(e.map(p => p.cantidad)).toEqual([0, 0, 0])
+    expect(e.map(p => p.cantidad)).toEqual([0, 0, 0, 0, 0])
     expect(e.some(p => p.saltoMasGrande)).toBe(false)
   })
-  it('resalta SOLO el salto relativo más grande', () => {
+  it('resalta SOLO el salto relativo más grande; sin encuestas, sus pasos no compiten', () => {
     const visitas = [
       ...Array.from({ length: 10 }, () => v({ confirmed_at: null, status: 'pending_confirmation' })),
       ...Array.from({ length: 6 }, () => v({ status: 'scheduled' })),
       ...Array.from({ length: 4 }, () => v({ status: 'completed' })),
     ]
     const e = armarEmbudo(visitas)
-    expect(e.map(p => [p.clave, p.cantidad])).toEqual([['agendadas', 20], ['confirmadas', 10], ['realizadas', 4]])
-    // 20→10 pierde 50 %; 10→4 pierde 60 %: el salto más grande es el de "Se realizaron".
+    expect(e.map(p => [p.clave, p.cantidad])).toEqual([['agendadas', 20], ['confirmadas', 10], ['realizadas', 4], ['respondieron', 0], ['ofertarian', 0]])
+    // 20→10 pierde 50 %; 10→4 pierde 60 %; los de encuesta no cuentan porque ninguna realizada tiene encuesta.
     expect(e.filter(p => p.saltoMasGrande).map(p => p.clave)).toEqual(['realizadas'])
+  })
+  it('con encuestas, "respondieron" y "dijeron cuánto ofertarían" entran al cálculo', () => {
+    const enc = { sent_at: '2026-10-14T18:00:00Z', expires_at: '2026-11-13T18:00:00Z', liked: true, price_opinion: null, offer_currency: null,
+      offer_declined: null, most_liked_tags: [], least_liked_tags: [], most_liked_other: null, least_liked_other: null }
+    const e = armarEmbudo([
+      v({ status: 'completed', encuesta: { ...enc, completed_at: '2026-10-14T19:00:00Z', offer_amount: 100000, offer_currency: 'USD' } }),
+      v({ status: 'completed', encuesta: { ...enc, completed_at: null, offer_amount: null } }),
+      v({ status: 'completed', encuesta: { ...enc, completed_at: null, offer_amount: null } }),
+      v({ status: 'completed', encuesta: { ...enc, completed_at: null, offer_amount: null } }),
+    ])
+    expect(e.map(p => p.cantidad)).toEqual([4, 4, 4, 1, 1])
+    expect(e.filter(p => p.saltoMasGrande).map(p => p.clave)).toEqual(['respondieron'])
   })
   it('una realizada sin haber pasado por "Confirmar" igual cuenta como confirmada (el embudo nunca sube)', () => {
     const e = armarEmbudo([v({ confirmed_at: null, status: 'completed' }), v({ confirmed_at: null, status: 'pending_confirmation' })])
-    expect(e.map(p => p.cantidad)).toEqual([2, 1, 1])
+    expect(e.map(p => p.cantidad)).toEqual([2, 1, 1, 0, 0])
+  })
+})
+
+describe('contarEncuestas', () => {
+  it('respondidas sobre las realizadas, con su base; sin realizadas, "Sin datos"', () => {
+    const enc = { sent_at: null, expires_at: '2026-11-13T18:00:00Z', liked: true, price_opinion: null, offer_amount: null, offer_currency: null,
+      offer_declined: true, most_liked_tags: [], least_liked_tags: [], most_liked_other: null, least_liked_other: null }
+    expect(contarEncuestas([v({ status: 'completed', encuesta: { ...enc, completed_at: '2026-10-14T19:00:00Z' } }), v({ status: 'completed' })]))
+      .toEqual({ respondidas: { valor: 50, base: 2, orientativo: true }, completas: 1, conOferta: 0 })
+    expect(contarEncuestas([v({ status: 'scheduled' })]).respondidas.valor).toBeNull()
+  })
+  it('realizadas pero NINGUNA tiene encuesta (período anterior a la Entrega 3): "Sin datos", no "0%"', () => {
+    const r = contarEncuestas([v({ status: 'completed' }), v({ status: 'completed' })])
+    expect(r.respondidas).toEqual({ valor: null, base: 0, orientativo: false })
+    expect(r.completas).toBe(0)
   })
 })

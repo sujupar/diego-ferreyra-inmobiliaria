@@ -558,3 +558,257 @@ el diff. Cada hallazgo se verifica antes de aplicarlo.
       agrupados) y la casilla "Avisame si entra una propiedad parecida".
 - Pedido adicional: **nada superpuesto en la encuesta** (criterio 25). En la maqueta se sacaron
   la etiqueta y la tarjeta del regalo que iban montadas sobre la foto.
+
+---
+
+## 11. Adenda — Entrega 3 con el regalo por propiedad (2026-10-15)
+
+> **Esta sección MANDA** sobre lo que se le oponga en §3.6, §3.7, §4.1 (bloque "Entrega 3"),
+> §4.4 (fila de la ruta pública), §4.9 (punto 9), §4.10, §4.11, §5, §6 y §7. El texto original se
+> deja como estaba para que se entienda de dónde se partió. Plan:
+> `docs/superpowers/plans/2026-10-15-sistema-de-visitas-entrega-3.md`.
+
+### 11.1 Decisiones del dueño (2026-10-15)
+
+1. **El regalo es POR PROPIEDAD**: "lo que queda para el final es solamente el archivo que le
+   entregamos a la persona… asociado a cada propiedad". Reemplaza a `visit_survey_settings.regalo`
+   (global) de §4.1.
+2. **La encuesta se crea siempre** al marcar "Se realizó" (un link por visita, vence a los 30 días)
+   y "Copiar link" funciona siempre. Bienvenida con regalo si la propiedad lo tiene; neutra si no.
+3. **Envío automático por WhatsApp** (`encuesta_visita_v1`, UTILITY, cuerpo de §4.11) solo si
+   (a) el interruptor general está prendido **y** (b) la propiedad tiene regalo — salvo que el
+   ajuste "solo propiedades con regalo" (prendido de fábrica) esté apagado — **o** el teléfono está
+   en la lista de prueba. Fail-closed. Plantilla y botón se deciden juntos (lección del
+   2026-09-17). El estado (y el error de Meta en castellano) se ve en la ficha de la visita.
+4. **Entrega del regalo**, tres caminos: (a) descarga inmediata en la pantalla de gracias; (b) email
+   con el link de descarga si dejó email; (c) WhatsApp con el PDF adjunto mediante una SEGUNDA
+   plantilla UTILITY `regalo_visita_v1` (encabezado de documento, texto neutro «Hola {{1}}. Acá
+   tenés el material de {{2}} que pediste.»), con su propio interruptor **apagado** hasta que Meta
+   la apruebe. La encuesta promete "te lo mandamos por WhatsApp" solo cuando ese envío va a ocurrir
+   de verdad para ESA persona.
+5. **Pantalla de configuración** en `/settings/encuesta` (solo admin y dueño): interruptor de envío,
+   "solo propiedades con regalo", interruptor del regalo por WhatsApp, teléfonos de prueba y estado
+   de las dos plantillas. Todo por API con permisos; nada de SQL a mano. Reemplaza lo de §3.7 "por
+   SQL en esta entrega".
+6. Las métricas que la Entrega 2 dejó en "Sin datos — llega con la encuesta" se conectan.
+7. Al completar: email al asesor + coordinadores + admins/dueños, y la respuesta en la ficha.
+8. Las rutas y tablas viejas del cuestionario (0 filas, nunca funcionaron) se reemplazan.
+9. Plantillas: se crean con un script (estado / `--create`) en la tarea de despliegue. El OK de
+   `encuesta_visita_v1` ya está dado (§10); el de `regalo_visita_v1` se pide al dueño en ese momento.
+
+### 11.2 El regalo de la propiedad
+
+- **Dónde:** pestaña **Visitas** de la ficha de propiedad (la ve quien ve esa pestaña: nunca el
+  abogado), tarjeta "Regalo de la encuesta" ARRIBA de las visitas.
+- **Qué se carga:** un PDF (hasta 20 MB), un título (3 a 120 caracteres) y una portada opcional
+  (JPG/PNG/WEBP hasta 5 MB). Sin portada, la encuesta muestra la primera foto de la propiedad.
+- **Quién:** quien puede gestionar el material de la propiedad (`puedeGestionarMedia`: operaciones,
+  el asesor asignado o el que la captó). Se puede reemplazar y quitar.
+- **Subida:** URL firmada directa a Storage (init → PUT del navegador → confirmar), igual que fotos
+  y planos: el archivo nunca pasa por el servidor de Next. Bucket **privado** `visit-survey-gifts`
+  (20 MB, solo `application/pdf`, `image/jpeg`, `image/png`, `image/webp`). El servidor confirma que
+  el path es de ESA propiedad (regex exacta, no un `startsWith` sobre texto del cliente) y que el
+  objeto existe antes de guardarlo.
+- **Descarga:** nunca una URL pública. El servidor genera una URL firmada de 10 minutos solo para
+  quien tiene un link de encuesta existente **y ya la completó**. El regalo sigue disponible después
+  de los 30 días del link: los 30 días son para RESPONDER; lo ganado no se quita.
+- **Tabla nueva** `property_survey_gifts` (una fila por propiedad; ver 11.5).
+
+### 11.3 La encuesta pública (cambios a §3.6 y §4.9)
+
+- Bienvenida: **con regalo** = foto (sin nada montado encima), "Visitaste <dirección>", tarjeta del
+  regalo (portada + título), "<Nombre>, este regalo es tuyo." · "Contanos qué te pareció la visita y
+  es tuyo al instante. Te lleva menos de un minuto.", botón **Quiero mi regalo**. **Sin regalo** =
+  "<Nombre>, ¿qué te pareció <dirección>? Te lleva menos de un minuto.", botón **Empezar**.
+- Paso de datos: con regalo, "Confirmá tus datos para recibirlo"; sin regalo, "Último paso:
+  confirmá tus datos". Botón final: "Quiero mi regalo" / "Enviar".
+- Gracias: con regalo, botón **Descargar <título>** (descarga inmediata) + "También te lo mandamos
+  a tu email" (si dejó email) + "y por WhatsApp" (solo si ese envío va a ocurrir). Sin regalo:
+  agradecimiento + "Si querés volver a verla o hacer una oferta, respondé el WhatsApp de la visita".
+- **§4.9 punto 9 se modifica:** el botón de cada paso va **en el flujo, debajo de la pregunta**
+  (como el "OK ✓" de Typeform), no fijo al borde. Un botón fijo queda encima del campo con el
+  teclado abierto en iOS, que es justo lo que prohíbe el criterio 25. Se mantienen `dvh`,
+  `env(safe-area-inset-bottom)` como relleno inferior, inputs de 16 px y nada de foco automático.
+- **"Abierta" la marca el navegador de la persona** (un pedido al montar la página), no el render
+  del servidor: el previsualizador de links de WhatsApp pide la página sin ejecutar JavaScript y
+  marcaría "Abierta" a todos.
+- **El link vale solo si la visita sigue "Realizada".** Si alguien la reabre (se marcó por error),
+  la página muestra el mensaje amable de link no disponible; al volver a marcarla "Se realizó" se
+  reusa el mismo link.
+
+### 11.4 Envío y ficha de la visita (cambios a §3.7)
+
+- Al marcar **Se realizó** se crea el link SIEMPRE y se decide el envío con
+  `decidirEnvioEncuesta` (puro), en este orden: ajustes ilegibles → no; ya respondida → no;
+  vencida → no; teléfono no usable → no; teléfono de prueba → sí (saltea interruptor y regalo);
+  interruptor apagado → no; "solo con regalo" y la propiedad sin regalo → no; plantilla sin
+  configurar o desconocida → no; ya enviada (sin pedir reenvío) → no. Un fallo del envío **nunca**
+  revierte la visita.
+- Estados visibles: *Sin enviar (<motivo>)* · *Enviada* · *Entregada* · *Leída* · *Abierta* ·
+  *Respondida* · *Venció sin respuesta* · *Falló: <motivo de Meta en castellano>*. Entregada/Leída
+  salen de `whatsapp_messages.status` (lo mantiene el webhook de estados) por `wa_message_id`; no se
+  copian a otra tabla. *Sin enviar (WhatsApp en modo prueba)* cuando `WHATSAPP_TEST_MODE` lo frenó.
+- Botones: **Copiar link** (siempre que haya link), **Crear link de la encuesta** (visitas
+  realizadas antes de esta entrega), **Reenviar por WhatsApp** (solo si un reenvío pasaría la
+  decisión de arriba).
+- Línea de tiempo: "Encuesta enviada / abierta / respondida" se arman a partir de la fila de la
+  encuesta (no se agregan valores al CHECK de `property_visit_events.kind`).
+
+### 11.5 Modelo de datos (reemplaza el bloque "Entrega 3" de §4.1)
+
+**Migración `20261015000002_encuesta_de_visita.sql`** (el nombre `20261010000002_…` que proponía
+§4.1 ya lo usa la Entrega 1). Se aplica por script `pg` con verificación ANTES del merge.
+
+- **Se crean tablas nuevas y se borran las viejas** en vez de ampliar `visit_questionnaires` +
+  `visit_questionnaire_tokens`. Justificación: tienen **0 filas** (la migración aborta si encuentra
+  alguna); separaban el link de la respuesta (dos filas y un join para algo que es 1 a 1 con la
+  visita), tenían `sent_to NOT NULL`, `response_source='advisor'` sin uso y una política de INSERT
+  abierta a cualquier usuario logueado. Con UNA fila por visita el guardado progresivo es un UPDATE
+  y el final es UN UPDATE condicional (`completed_at IS NULL`): sin upsert ni índice parcial.
+- `visit_surveys` (una fila por visita): `visit_id` UNIQUE → `property_visits` ON DELETE CASCADE;
+  `token` UNIQUE con CHECK de 22 caracteres base64url; `expires_at`; envío (`send_status` CHECK
+  `sin_enviar|enviada|fallida|omitida`, `send_skip_reason` CHECK con el catálogo de motivos,
+  `send_error`, `sent_at`, `sent_to`, `wa_message_id`); apertura (`opened_at`, `open_count`);
+  `write_count` (límite por token); `last_step`; `completed_at`; respuestas (`liked`,
+  `most_liked_tags TEXT[]`, `most_liked_other`, `least_liked_tags TEXT[]`, `least_liked_other`,
+  `price_opinion` CHECK, `offer_amount` CHECK > 0, `offer_currency` CHECK `USD|ARS`,
+  `offer_declined`, `contact_phone`, `contact_email`, `wants_similar`); avisos
+  (`team_notice_status`, `gift_whatsapp_status`, `gift_email_status` con CHECK
+  `pendiente|enviando|enviado|fallido|no_corresponde` y su `*_at`, `gift_wa_message_id`,
+  `notice_attempts`, `notice_error`, `gift_downloaded_at`); `created_by` → profiles ON DELETE SET
+  NULL. Índices: parcial sobre `completed_at` para el barrido de avisos y sobre `wa_message_id`.
+  (`started_at` de §4.1 no se crea: nada lo lee; `opened_at` alcanza.)
+- `visit_survey_settings` (una fila, `id boolean PK CHECK (id)`): `envio_automatico` (false),
+  `solo_con_regalo` (true), `regalo_por_whatsapp` (false), `telefonos_prueba TEXT[]` (máx. 10),
+  `updated_at`, `updated_by` → profiles SET NULL.
+- `property_survey_gifts` (una fila por propiedad, `property_id` PK → properties ON DELETE
+  CASCADE): `title`, `file_path` (CHECK atado al `property_id`), `file_name`, `file_size`
+  (≤ 20 MB), `cover_path`, `created_at`, `updated_at`, `updated_by` → profiles SET NULL.
+- Bucket privado `visit-survey-gifts` (sin políticas en `storage.objects`: solo el servidor).
+- Función `visit_survey_registrar(p_token, p_tipo, p_max)` (SECURITY INVOKER, solo
+  `service_role`): suma `write_count` de forma atómica si no llegó al tope y, si `p_tipo='abierta'`,
+  marca `opened_at`/`open_count`. Es el límite por token.
+- **RLS:** las tres tablas con RLS. Lectura: operaciones, o el asesor de la visita / de la
+  propiedad. **Escritura: ninguna política** y se revoca INSERT/UPDATE/DELETE a `anon` y
+  `authenticated` (todo lo escribe el servidor con clave de servicio, como `property_visits` desde
+  la migración `20261010000003`).
+- `whatsapp_messages.origen`: el CHECK suma `'encuesta_visita'` (ningún lector filtra hoy por ese
+  campo: verificado con grep; el Inbox muestra la conversación como cualquier otra).
+
+### 11.6 Rutas (completa §4.4)
+
+| Ruta | Qué hace | Permiso |
+|---|---|---|
+| `POST /api/visits/[id]/estado` (cambia) | Al pasar a realizada, crea el link y decide/manda el envío; devuelve `encuesta`. | igual que hoy |
+| `GET /api/visits/[id]` (cambia) | Suma `encuesta` y los eventos de la encuesta a la línea de tiempo. | igual que hoy |
+| `GET/POST /api/visits/[id]/encuesta` | Estado; `{accion:'link'}` crea el link; `{accion:'reenviar'}` reenvía. | puede ver la visita; abogado 403 |
+| `PATCH /api/public/encuesta/[token]` | `abierta` o una respuesta por paso (Zod estricto por paso). | público (token) |
+| `POST /api/public/encuesta/[token]` | Final: contacto + reserva atómica. Devuelve el regalo. | público (token) |
+| `POST /api/public/encuesta/[token]/avisos` | Corre los avisos pendientes (equipo, regalo por WhatsApp y por email). | público (token) |
+| `GET /api/public/encuesta/[token]/regalo` | 302 a una URL firmada de 10 min (solo encuesta completa). | público (token) |
+| `GET/PUT/DELETE /api/properties/[id]/regalo` + `POST …/regalo/subida` | Regalo de la propiedad. | `puedeGestionarMedia`; abogado 403 |
+| `GET/PATCH /api/settings/encuesta-visitas` | Ajustes de la encuesta. | `settings.manage` (admin, dueño) |
+
+No hay `GET /api/public/encuesta/[token]`: la página es un componente de servidor que lee los datos
+directo (la primera pantalla sale armada del servidor, §4.9). Se borran: `app/questionnaire/**`,
+`app/api/public/questionnaire/**`, `app/api/visits/[id]/questionnaire`,
+`app/api/visits/[id]/send-questionnaire`, `lib/email/notifications/questionnaire-invite-client.ts`,
+`emails/QuestionnaireInviteClientEmail.tsx`. Middleware: `/encuesta/` pasa a ser página pública y
+`/questionnaire` deja de serlo.
+
+### 11.7 Guardado, final y avisos (cambios a §4.10)
+
+- Guardado progresivo: `PATCH` por paso; el navegador ESPERA la respuesta antes de avanzar (si
+  falla, se queda en el paso con "No pudimos guardar tu respuesta" y el botón para reintentar). Las
+  etiquetas se validan contra las opciones de ESA propiedad en el servidor.
+- Final: valida que no falte ninguna respuesta (si falta, 409 con el paso), honeypot `empresa`
+  (lleno ⇒ respuesta de éxito sin escribir nada) y reserva atómica. Un doble toque devuelve el mismo
+  éxito sin duplicar. Límite: 200 escrituras por link (429 después).
+- **Avisos en dos tiempos** (la persona no espera a nadie): el final responde enseguida y la pantalla
+  de gracias pide `…/avisos` (con `keepalive`). Cada canal se reserva de forma atómica
+  (`pendiente → enviando`), se manda y se cierra. Si la persona cierra la página antes, el barrido
+  que se suma al cron que ya corre cada hora (`/api/cron/visit-reminders`) toma los pendientes.
+  Presupuesto de Netlify (~26 s): un canal empieza solo si pasaron menos de 5 s (equipo), 12 s
+  (WhatsApp) o 16 s (email) desde el inicio del pedido, y el email al equipo usa techo de 3 s por
+  destinatario. Un email vencido no se reintenta (Resend pudo haberlo mandado: se prefiere perder a
+  duplicar); otro fallo vuelve a `pendiente` hasta 3 intentos. Un WhatsApp que falla queda `fallido`
+  con el motivo (los rechazos de Meta no se arreglan reintentando).
+- El texto libre se guarda como texto (NFC, sin caracteres de control, máx. 280) y se muestra
+  siempre como texto.
+- Los datos de contacto de la encuesta **no** se copian al registro del comprador
+  (`property_leads`) ni disparan alertas de "propiedad parecida": quedan en la encuesta (ver 11.9).
+
+### 11.8 WhatsApp (cambios a §4.11)
+
+- Dos plantillas con el cuerpo en UN solo lugar (`lib/visitas/encuesta/plantillas.ts`), que usan el
+  envío y el script de creación: `encuesta_visita_v1` (4 datos + botón URL «Completar ficha» →
+  `https://inmodf.com.ar/encuesta/{{1}}`; el link también va en el cuerpo) y `regalo_visita_v1`
+  (encabezado DOCUMENTO + 2 datos, sin botón).
+- Catálogo `PLANTILLAS_ENCUESTA` / `PLANTILLAS_REGALO`: una plantilla configurada que no está en el
+  catálogo **no se manda** (motivo "plantilla desconocida"): sus datos y su botón no se pueden
+  adivinar, y Meta rechaza el mensaje entero (incidente 2026-09-17).
+- Variables nuevas (las carga el dueño en Netlify): `WHATSAPP_TEMPLATE_ENCUESTA_VISITA`
+  (= `encuesta_visita_v1`) y `WHATSAPP_TEMPLATE_REGALO_VISITA` (= `regalo_visita_v1`). Sin ellas no
+  se manda nada (fail-closed).
+- **Lista de prueba PROPIA** (`visit_survey_settings.telefonos_prueba`), no
+  `ai_agent_settings.consulta_test_phones`: aquella significa "mientras tenga algo, SOLO esos
+  reciben" (es el freno de la respuesta a consultas, que espera la aprobación de Diego); la nuestra
+  significa "estos reciben aunque el envío esté apagado". Compartirla haría que vaciar una para
+  activar la otra cambie en silencio el comportamiento de las dos.
+- El regalo por WhatsApp sale al teléfono que la persona confirmó en la encuesta, con el PDF por una
+  URL firmada de 1 h (Meta lo descarga) y el nombre del archivo. También lo recibe un teléfono de la
+  lista de prueba con el interruptor apagado (para poder probarlo sin prenderlo para todos).
+- Todo se registra en `whatsapp_messages` con `origen='encuesta_visita'`, `lead_id` y
+  `property_id`, y respeta `WHATSAPP_TEST_MODE`.
+
+### 11.9 Qué queda afuera (reemplaza las dos primeras líneas de §5)
+
+- Copiar el email/teléfono de la encuesta al registro del comprador, y la alerta de "entró una
+  propiedad parecida" (la casilla se guarda; usarla es otro desarrollo).
+- Recordatorio automático a quien no respondió (aparece en "Requieren tu acción" y se reenvía a mano).
+- Borrar de Storage los archivos de un regalo cuando se borra la propiedad (quedan huérfanos; costo
+  despreciable).
+- El reporte al propietario con las opiniones (sigue afuera).
+
+### 11.10 Criterios de aceptación de la Entrega 3 (reemplazan 18–25 y suman 26–31)
+
+18. Al marcar "Se realizó" se crea el link; con el envío apagado la ficha dice "Sin enviar (envío
+    apagado)" y "Copiar link" copia `https://inmodf.com.ar/encuesta/<22 caracteres>`.
+19. Con un teléfono de la lista de prueba (y el envío apagado), la plantilla llega a ese WhatsApp con
+    el link correcto (en el teléfono y en `whatsapp_messages` con `origen='encuesta_visita'`).
+20. La encuesta abre en el celular con nombre, foto y dirección de ESA propiedad, opciones adaptadas,
+    sin decir cuántas preguntas son, y dice "menos de un minuto"; con regalo muestra su portada y
+    título, sin regalo la bienvenida es neutra.
+21. Abandonar en la pregunta 3 deja guardadas las 1 y 2; reabrir el link retoma en la 3.
+22. Terminar guarda todo, notifica por email al asesor + coordinadores + admins/dueños y aparece en la
+    ficha de la visita, la pestaña de la propiedad y las estadísticas. Un doble toque no duplica
+    nada (y 20 envíos simultáneos dan 1 respuesta y 1 email).
+23. Un link vencido, inventado o de una visita reabierta muestra una página amable y no revela datos.
+24. Lighthouse en celular sobre la encuesta: rendimiento ≥ 90, accesibilidad ≥ 95.
+25. Nada superpuesto en ninguna pantalla de la encuesta a 360, 390 y 430 px, también con el teclado
+    abierto en el monto y en el contacto (capturas reales + chequeo automático de rectángulos).
+26. En la pestaña Visitas de la ficha, un admin y el asesor de la propiedad suben un PDF de regalo con
+    título (y portada opcional), lo reemplazan y lo quitan; el abogado no ve la pestaña y la ruta le
+    responde 403.
+27. En una propiedad con regalo, la pantalla de gracias descarga el PDF al instante; pedir la
+    descarga sin haber terminado la encuesta no entrega nada.
+28. Si la persona dejó email, recibe el email con el link de descarga (verificado en
+    `email_notifications_log`, con el modo prueba de email prendido).
+29. Con el regalo por WhatsApp prendido y un teléfono de prueba, llega el PDF por WhatsApp
+    (`regalo_visita_v1` aprobada); sin aprobar o apagado, la encuesta no promete WhatsApp y no se
+    manda nada.
+30. `/settings/encuesta` la ven y la cambian solo admin y dueño (coordinador/asesor: 403 en la ruta);
+    los cambios persisten y prender el envío pide confirmación en la misma pantalla.
+31. Las cifras de la encuesta en `/visits` (tarjeta, embudo de 5 pasos, "Qué opinan", "Encuestas sin
+    responder hace más de 48 h") coinciden con un `select` sobre `visit_surveys` del mismo período.
+
+### 11.11 Riesgos nuevos (suman a §7)
+
+| # | Riesgo | Sev. | Mitigación |
+|---|---|---|---|
+| 15 | Archivo del regalo accesible sin completar la encuesta. | 🔴 | Bucket privado; URL firmada de 10 min solo tras `completed_at`; ninguna URL pública guardada. |
+| 16 | Plantilla del regalo (encabezado de documento) rechazada o reclasificada por Meta. | 🟡 | Interruptor propio apagado; el script muestra categoría y estado; sin aprobación el regalo sale igual por descarga y email. |
+| 17 | Avisos cortados por el límite de Netlify (varios destinatarios × 8 s). | 🟡 | Avisos fuera del pedido final, límites de inicio por canal, techo de 3 s en el email al equipo, barrido horario. |
+| 18 | El previsualizador de WhatsApp marca "Abierta" sin que nadie abra. | 🟢 | "Abierta" la marca el JavaScript de la página, no el servidor. |
+| 19 | Borrar las tablas viejas con datos. | 🟢 | La migración aborta si alguna tiene filas. |
+| 20 | Migración aplicada antes del merge con código viejo en producción. | 🟢 | Todo es aditivo para el código vivo: las tablas que se borran solo las usan rutas sin consumidores (0 links emitidos). |

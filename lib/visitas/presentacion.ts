@@ -8,7 +8,8 @@ import { ORIGEN_INFO, PORTAL_ETIQUETA, type OrigenVisita } from './origen'
 import { fechaEnArgentina, horaEnArgentina } from './horario'
 
 export const TEXTO_SIN_DATOS = 'Sin datos'
-export const TEXTO_LLEGA_CON_LA_ENCUESTA = 'Sin datos — llega con la encuesta'
+/** "Qué opinan" sin ninguna encuesta respondida en el período (regla del tablero: nunca 0). */
+export const TEXTO_SIN_RESPUESTAS = 'Sin datos — todavía nadie respondió la encuesta'
 
 export function textoPorcentaje(c: Cifra): string | null {
   return c.valor === null ? null : `${c.valor} %`

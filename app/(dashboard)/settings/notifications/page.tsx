@@ -42,6 +42,8 @@ const TYPE_LABELS: Record<string, string> = {
   property_captured_admins: 'Captación (admins)',
   user_invitation: 'Invitación',
   admin_failure_alert: 'Alerta admin',
+  visit_survey_answered: 'Encuesta respondida (equipo)',
+  visit_survey_gift_client: 'Regalo de la encuesta (cliente)',
 }
 
 export default function NotificationsSettingsPage() {

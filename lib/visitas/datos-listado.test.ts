@@ -92,6 +92,19 @@ describe('listarVisitas', () => {
     registro.responder = () => ({ data: null, error: { message: 'boom' } })
     await expect(listarVisitas({ alcance: { tipo: 'todo' } }, { desde: 0, hasta: 9 }, 'asc')).rejects.toThrow('listar visitas: boom')
   })
+  it('suma el precio publicado y la encuesta (objeto o lista de PostgREST), sin datos de contacto', async () => {
+    const encuesta = { sent_at: '2026-10-14T18:00:00+00:00', completed_at: '2026-10-14T19:00:00+00:00', expires_at: '2026-11-13T18:00:00+00:00',
+      liked: true, price_opinion: 'alto', offer_amount: '135000', offer_currency: 'USD', offer_declined: false,
+      most_liked_tags: ['luz'], least_liked_tags: ['nada'], most_liked_other: null, least_liked_other: null }
+    registro.responder = () => ({ data: [{ ...fila(1), property: { address: 'Doblas 248', neighborhood: 'Caballito', asking_price: 150000, currency: 'USD' }, encuesta: [encuesta] }], error: null, count: 1 })
+    const r = await listarVisitas({ alcance: { tipo: 'todo' } }, { desde: 0, hasta: 49 }, 'desc')
+    expect(r.filas[0]).toMatchObject({ precio_publicado: 150000, moneda_publicada: 'USD', encuesta: { offer_amount: 135000, price_opinion: 'alto', completed_at: '2026-10-14T19:00:00+00:00' } })
+    expect(String(pasos(registro.llamadas[0], 'select')[0][0])).toContain('visit_surveys!visit_surveys_visit_id_fkey')
+  })
+  it('sin encuesta y sin precio: null (no 0)', async () => {
+    const r = await listarVisitas({ alcance: { tipo: 'todo' } }, { desde: 0, hasta: 49 }, 'desc')
+    expect(r.filas[0]).toMatchObject({ precio_publicado: null, moneda_publicada: null, encuesta: null })
+  })
 })
 
 describe('todasLasVisitas: pagina de a 1000 (tope de PostgREST)', () => {

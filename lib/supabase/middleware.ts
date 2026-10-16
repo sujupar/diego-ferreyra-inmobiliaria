@@ -2,15 +2,13 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 /**
- * Rutas de PÁGINA (no `/api/`) que no requieren sesión. Se comparan por
- * PREFIJO, igual que siempre — `/questionnaire/<token>` cuelga de
- * `/questionnaire`. `/p/`, `/v/` y los paths del embudo se resuelven antes,
- * en `middleware.ts`, y ni siquiera llegan acá.
+ * Rutas de PÁGINA (no `/api/`) que no requieren sesión. Se comparan por PREFIJO. `/p/`, `/v/`,
+ * `/r/`, `/encuesta/` y los paths del embudo se resuelven antes, en `middleware.ts`, y ni siquiera
+ * llegan acá. (`/questionnaire` se borró en la Entrega 3 del sistema de visitas.)
  */
 const PAGINAS_PUBLICAS = [
     '/login',
     '/accept-invite',
-    '/questionnaire',
     '/privacidad',
     '/eliminacion-de-datos',
 ]
@@ -105,8 +103,9 @@ export const API_PUBLICAS: readonly RutaPublica[] = [
         ruta: '/api/public/',
         tipo: 'prefijo',
         motivo:
-            'Cuestionario posterior a la visita (`/api/public/questionnaire/<token>`), que responde ' +
-            'un comprador sin cuenta desde la página pública `/questionnaire/<token>`.',
+            'Encuesta post-visita (`/api/public/encuesta/<token>`: PATCH por paso, POST final, ' +
+            '`/avisos` y `/regalo`), que responde un comprador sin cuenta desde `/encuesta/<token>`. ' +
+            'La seguridad es el token, validado por forma antes de tocar la base, más el límite por link.',
     },
 
     // ── Alta de usuarios: cerrar esto deja a la gente afuera del CRM ──

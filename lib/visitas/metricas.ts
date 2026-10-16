@@ -91,40 +91,77 @@ export function contarVisitas(visitas: readonly VisitaListado[], ahora: Date): C
 }
 
 export interface PasoEmbudo {
-  clave: 'agendadas' | 'confirmadas' | 'realizadas'
+  clave: 'agendadas' | 'confirmadas' | 'realizadas' | 'respondieron' | 'ofertarian'
   etiqueta: string
   cantidad: number
   saltoMasGrande: boolean
 }
 
 /**
- * Agendadas → Confirmadas → Se realizaron (los dos pasos de la encuesta llegan en la
- * Entrega 3). "Confirmadas" = tuvieron `confirmed_at` O se realizaron: una visita
- * marcada "Se realizó" sin pasar por "Confirmar" igual ocurrió, y así el embudo nunca
- * sube. Se resalta SOLO el paso con la mayor caída relativa (patrón "emphasis" de
- * CLAUDE.md § Tablero): el resto va en gris.
+ * Agendadas → Confirmadas → Se realizaron → Respondieron la encuesta → Dijeron cuánto
+ * ofertarían (spec §3.4). "Confirmadas" = tuvieron `confirmed_at` O se realizaron (el
+ * embudo nunca sube). Los dos pasos de la encuesta compiten por el "salto más grande"
+ * SOLO si alguna realizada del período tiene encuesta: las visitas anteriores a la
+ * Entrega 3 no tienen link y no son "no respondió".
  */
 export function armarEmbudo(visitas: readonly VisitaListado[]): PasoEmbudo[] {
   let confirmadas = 0
   let realizadas = 0
+  let respondieron = 0
+  let ofertarian = 0
+  let conEncuesta = false
   for (const v of visitas) {
-    if (v.status === 'completed') { realizadas++; confirmadas++ }
-    else if (v.confirmed_at) confirmadas++
+    if (v.status === 'completed') {
+      realizadas++; confirmadas++
+      if (v.encuesta) conEncuesta = true
+      if (v.encuesta?.completed_at) {
+        respondieron++
+        if (v.encuesta.offer_amount !== null) ofertarian++
+      }
+    } else if (v.confirmed_at) confirmadas++
   }
   const pasos: Omit<PasoEmbudo, 'saltoMasGrande'>[] = [
     { clave: 'agendadas', etiqueta: 'Agendadas', cantidad: visitas.length },
     { clave: 'confirmadas', etiqueta: 'Confirmadas', cantidad: confirmadas },
     { clave: 'realizadas', etiqueta: 'Se realizaron', cantidad: realizadas },
+    { clave: 'respondieron', etiqueta: 'Respondieron la encuesta', cantidad: respondieron },
+    { clave: 'ofertarian', etiqueta: 'Dijeron cuánto ofertarían', cantidad: ofertarian },
   ]
+  const hasta = conEncuesta ? pasos.length : 3
   let indiceSalto = -1
   let mayorCaida = 0
-  for (let i = 1; i < pasos.length; i++) {
+  for (let i = 1; i < hasta; i++) {
     const anterior = pasos[i - 1].cantidad
     if (anterior <= 0) continue
     const caida = (anterior - pasos[i].cantidad) / anterior
     if (caida > mayorCaida) { mayorCaida = caida; indiceSalto = i }
   }
   return pasos.map((p, i) => ({ ...p, saltoMasGrande: i === indiceSalto }))
+}
+
+export interface ConteoEncuestas { respondidas: Cifra; completas: number; conOferta: number }
+
+/**
+ * "Encuestas respondidas %" = encuestas completas ÷ visitas realizadas del período (spec §4.5).
+ * Si NINGUNA realizada del período tiene encuesta (todas de antes de la Entrega 3, o la encuesta
+ * ni se creó), "Sin datos" — no "0%": un 0% dice "nadie respondió", y acá nadie tenía nada para
+ * responder. Mismo guard `conEncuesta` que usa armarEmbudo.
+ */
+export function contarEncuestas(visitas: readonly VisitaListado[]): ConteoEncuestas {
+  let realizadas = 0
+  let completas = 0
+  let conOferta = 0
+  let conEncuesta = false
+  for (const v of visitas) {
+    if (v.status !== 'completed') continue
+    realizadas++
+    if (v.encuesta) conEncuesta = true
+    if (v.encuesta?.completed_at) {
+      completas++
+      if (v.encuesta.offer_amount !== null) conOferta++
+    }
+  }
+  return { respondidas: conEncuesta ? porcentaje(completas, realizadas) : cifra(0, 0), completas, conOferta }
 }
 
 /** Un registro de comprador creado a menos de esto de la visita nació CON ella (cartel, a mano). */
@@ -135,6 +172,7 @@ export interface TiemposVisitas {
   confirmacion: Cifra
   marcarResultado: Cifra
   consultaAVisita: Cifra
+  respuestaEncuesta: Cifra
 }
 
 /** Medianas en MILISEGUNDOS. Las guardas de cada una están explicadas en el plan de la Entrega 2 (Tarea 3). */
@@ -143,6 +181,7 @@ export function tiemposDeVisitas(visitas: readonly VisitaListado[]): TiemposVisi
   const confirmacion: number[] = []
   const marcar: number[] = []
   const consulta: number[] = []
+  const respuesta: number[] = []
   for (const v of visitas) {
     const creada = Date.parse(v.created_at)
     const cuando = Date.parse(v.scheduled_at)
@@ -161,12 +200,17 @@ export function tiemposDeVisitas(visitas: readonly VisitaListado[]): TiemposVisi
       const d = creada - Date.parse(v.registro_creado_at)
       if (d >= MARGEN_REGISTRO_CON_LA_VISITA_MS) consulta.push(d)
     }
+    if (v.encuesta?.sent_at && v.encuesta.completed_at) {
+      const d = Date.parse(v.encuesta.completed_at) - Date.parse(v.encuesta.sent_at)
+      if (d >= 0) respuesta.push(d)
+    }
   }
   return {
     anticipacion: mediana(anticipacion),
     confirmacion: mediana(confirmacion),
     marcarResultado: mediana(marcar),
     consultaAVisita: mediana(consulta),
+    respuestaEncuesta: mediana(respuesta),
   }
 }
 
@@ -217,6 +261,7 @@ export interface Metricas extends ConteosVisitas {
   porOrigen: FilaGrupo[]
   porAsesor: FilaGrupo[]
   porPropiedad: FilaGrupo[]
+  encuestas: ConteoEncuestas
 }
 
 export function calcularMetricas(visitas: readonly VisitaListado[], ahora: Date): Metricas {
@@ -227,5 +272,6 @@ export function calcularMetricas(visitas: readonly VisitaListado[], ahora: Date)
     porOrigen: porOrigen(visitas),
     porAsesor: porAsesor(visitas),
     porPropiedad: porPropiedad(visitas),
+    encuestas: contarEncuestas(visitas),
   }
 }

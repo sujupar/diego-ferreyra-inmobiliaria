@@ -74,7 +74,7 @@ describe('calcularMetricas', () => {
     const m = calcularMetricas([v({ status: 'completed', scheduled_at: '2026-10-14T13:30:00Z' })], AHORA)
     expect(m.agendadas.valor).toBe(1)
     expect(m.realizadas.valor).toBe(100)
-    expect(m.embudo).toHaveLength(3)
+    expect(m.embudo).toHaveLength(5)
     expect(m.porOrigen[0].clave).toBe('cartel')
     expect(m.tiempos.anticipacion.base).toBe(1)
   })
@@ -104,5 +104,17 @@ describe('calcularMetricas', () => {
       mejor = Math.min(mejor, performance.now() - t0)
     }
     expect(mejor).toBeLessThan(150)
+  })
+})
+
+describe('tiempo de respuesta de la encuesta', () => {
+  it('de enviada a respondida; sin envío no cuenta', () => {
+    const enc = { expires_at: '2026-11-13T18:00:00Z', liked: true, price_opinion: null, offer_amount: null, offer_currency: null,
+      offer_declined: true, most_liked_tags: [], least_liked_tags: [], most_liked_other: null, least_liked_other: null }
+    const t = tiemposDeVisitas([
+      v({ status: 'completed', encuesta: { ...enc, sent_at: '2026-10-14T18:00:00Z', completed_at: '2026-10-14T20:00:00Z' } }),
+      v({ status: 'completed', encuesta: { ...enc, sent_at: null, completed_at: '2026-10-14T20:00:00Z' } }),
+    ])
+    expect(t.respuestaEncuesta).toEqual({ valor: 7_200_000, base: 1, orientativo: true })
   })
 })

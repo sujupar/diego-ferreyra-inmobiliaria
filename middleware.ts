@@ -24,6 +24,10 @@ export async function middleware(request: NextRequest) {
     // sin sesión del CRM. Mismo criterio que `/v/`: la protección es el código
     // al azar, no el login, y del otro lado solo hay un chat de WhatsApp.
     request.nextUrl.pathname.startsWith('/r/') ||
+    // `/encuesta/<token>` es la encuesta post-visita que se manda por WhatsApp (spec §11): la
+    // responde un comprador sin cuenta. Mismo criterio que `/v/`: la seguridad es el token (128
+    // bits), no la sesión. Con barra final: `/encuestas` NO es pública.
+    request.nextUrl.pathname.startsWith('/encuesta/') ||
     publicFunnelPaths.some((p) => request.nextUrl.pathname === p || request.nextUrl.pathname.startsWith(p + '/'))
   ) {
     // Rutas públicas: pasan sin tocar la sesión. Hasta el 2026-09-19 acá se dejaba
