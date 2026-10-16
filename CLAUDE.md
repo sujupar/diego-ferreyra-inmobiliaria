@@ -2000,6 +2000,54 @@ Plan: `docs/superpowers/plans/2026-10-15-sistema-de-visitas-entrega-2.md`.
   Tasaciones y Propiedades también.
 - **Cómo verificar:** `npx vitest run --config vitest.visitas.config.ts` (~45 s en frío, 578 pruebas).
 
+## Sistema de visitas — Entrega 3: encuesta post-visita (2026-10-16)
+
+Plan: `docs/superpowers/plans/2026-10-15-sistema-de-visitas-entrega-3.md`; spec §11 (adenda).
+
+- **Qué hay:** al marcar "Se realizó" se crea el link `inmodf.com.ar/encuesta/<token>` (`visit_surveys`, token de
+  22 caracteres, vence) y se decide si se manda por WhatsApp. Página pública estilo Typeform
+  (`app/encuesta/[token]`, `components/encuesta/`), guarda paso a paso y cierra con el paso final (WhatsApp/email
+  para el regalo). El regalo es UNO por propiedad (`property_survey_gifts`, PDF ≤ 20 MB + portada opcional,
+  bucket PRIVADO `visit-survey-gifts`), se carga en la ficha de la propiedad y se baja con URL firmada de 10 min
+  SOLO con la encuesta completa y la visita realizada. Configuración en `/settings/encuesta` (admin/dueño).
+  Respuestas en la ficha de la visita; "Qué opinan" y el embudo en `/visits`. Se borró el cuestionario viejo
+  (`visit_questionnaires*`, 0 filas).
+- **TODO arranca apagado** (`visit_survey_settings`): `envio_automatico=false`, `regalo_por_whatsapp=false`.
+  Con el envío automático prendido, solo se manda si la propiedad tiene regalo (`solo_con_regalo`) o el teléfono
+  está en `telefonos_prueba`. La decisión es pura y cerrada ante la duda (`lib/visitas/encuesta/envio.ts`): si no
+  se pueden leer los ajustes, no sale nada. "Copiar link" en la ficha siempre está.
+- **Plantillas** (`lib/visitas/encuesta/plantillas.ts`, cuerpo en UN lugar, lo usan el envío y
+  `scripts/create-whatsapp-templates-encuesta-visita.ts`): `encuesta_visita_v1` (botón URL a `/encuesta/{{1}}`) y
+  `regalo_visita_v1` (encabezado DOCUMENTO). Env vars `WHATSAPP_TEMPLATE_ENCUESTA_VISITA` y
+  `WHATSAPP_TEMPLATE_REGALO_VISITA`. Una plantilla configurada que no está en el catálogo NO se manda (sus datos no
+  se adivinan, lección del 2026-09-17). **Meta rechaza un cuerpo que empieza o termina con una variable:** por eso
+  el de la encuesta cierra con "Diego Ferreyra Inmobiliaria" después del link (hay test). Sin "regalo" en el
+  texto: Meta lo leería como promoción.
+- **Una sola vez:** el envío de la encuesta se reserva con `send_lock_until` (migración `20261015000003`; reenvío
+  simultáneo → 409 "Ya se está enviando"). El final es un UPDATE condicional sobre `completed_at`. Cada aviso
+  (equipo, regalo por WhatsApp, regalo por email) se reserva por canal `pendiente → enviando` y lo cierra la
+  ruta `/api/public/encuesta/[token]/avisos` o, si la persona cerró la página, el barrido dentro del cron
+  `visit-reminders`. Un canal que quedó **`enviando` más de 10 min pasa a `fallido`** con "pudo haber salido":
+  nunca vuelve a pendiente (preferimos perder un aviso a duplicarlo). Con la visita reabierta el regalo NO sale y
+  queda pendiente; el aviso al equipo sí.
+- **Rutas públicas:** solo `/encuesta/` (middleware) y `/api/public/encuesta/[token]/*`. Token mal formado → 404
+  igual para todo; vencido → 410; tope de 200 escrituras por token (RPC `visit_survey_registrar`, atómica);
+  campo trampa `hp_campo_x` (NO llamarlo "empresa": el autocompletado de Chrome lo llena y una persona real recibe
+  un éxito falso). El paso final acepta cualquier WhatsApp/email UNA vez por link (por diseño).
+- **El regalo se valida por sus BYTES** (`%PDF-`; portada JPEG/PNG/WebP), no por el `Content-Type`: Storage guarda
+  el tipo que declara el navegador.
+- **Deuda aceptada:** la descarga del regalo no gasta el tope por token (un límite le impediría bajarlo a quien
+  vuelve desde el email días después; la URL dura 10 min). Si la portada no pasa la validación, el PDF ya subido
+  queda huérfano en Storage.
+- **Detección:**
+  ```sql
+  SELECT send_status, send_skip_reason, count(*) FROM visit_surveys GROUP BY 1,2;
+  SELECT id, team_notice_status, gift_whatsapp_status, gift_email_status FROM visit_surveys
+   WHERE completed_at IS NOT NULL AND 'fallido' IN (team_notice_status, gift_whatsapp_status, gift_email_status);
+  ```
+  Los avisos que no salieron también se ven en la tarjeta "Encuesta" de la ficha de la visita.
+- **Cómo verificar:** `npx vitest run --config vitest.visitas.config.ts` (~25 s, 1109 pruebas).
+
 ---
 
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
