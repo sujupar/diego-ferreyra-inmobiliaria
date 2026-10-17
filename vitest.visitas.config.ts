@@ -37,7 +37,7 @@ export default defineConfig({
       'app/encuesta/**/*.test.tsx',
       'app/api/public/encuesta/**/*.test.ts',
       'app/api/properties/*/regalo/**/*.test.ts',
-      'app/api/settings/encuesta-visitas/*.test.ts',
+      'app/api/settings/encuesta-visitas/**/*.test.ts',
       'app/*/settings/encuesta/*.test.tsx',
       'lib/email/notifications/visit-survey-*.test.ts',
       'lib/supabase/middleware.test.ts',

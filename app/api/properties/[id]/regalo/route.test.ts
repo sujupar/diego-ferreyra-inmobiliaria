@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { accesoMock, datosMock } = vi.hoisted(() => ({
   accesoMock: vi.fn(),
-  datosMock: { leerRegalo: vi.fn(), guardarRegalo: vi.fn(), borrarRegalo: vi.fn(), infoArchivo: vi.fn(), primerosBytes: vi.fn(), urlFirmada: vi.fn(), borrarArchivos: vi.fn() },
+  datosMock: { leerRegaloDeLaPropiedad: vi.fn(), guardarRegalo: vi.fn(), borrarRegalo: vi.fn(), infoArchivo: vi.fn(), primerosBytes: vi.fn(), urlFirmada: vi.fn(), borrarArchivos: vi.fn() },
 }))
 vi.mock('@/lib/visitas/encuesta/acceso-regalo', () => ({ autorizarRegalo: accesoMock }))
 vi.mock('@/lib/visitas/encuesta/datos', () => datosMock)
@@ -29,7 +29,7 @@ const BYTES_EXE = new Uint8Array([0x4d, 0x5a, 0x90, 0x00])
 beforeEach(() => {
   accesoMock.mockReset().mockResolvedValue({ ok: true, userId: 'u1' })
   Object.values(datosMock).forEach(m => m.mockReset())
-  datosMock.leerRegalo.mockResolvedValue(REGALO)
+  datosMock.leerRegaloDeLaPropiedad.mockResolvedValue(REGALO)
   datosMock.infoArchivo.mockResolvedValue(INFO_PDF_REAL)
   datosMock.primerosBytes.mockImplementation(async (path: string) => (path.includes('/portada-') ? BYTES_JPEG : BYTES_PDF))
   datosMock.urlFirmada.mockResolvedValue('https://firmada')
@@ -109,6 +109,6 @@ describe('/api/properties/[id]/regalo', () => {
   it('sin permiso: ningún método toca la base', async () => {
     accesoMock.mockResolvedValue({ ok: false, status: 403, error: 'El regalo no está disponible para tu rol' })
     for (const r of [await GET(req('GET'), ctx), await PUT(req('PUT', PUT_OK), ctx), await DELETE(req('DELETE'), ctx)]) expect(r.status).toBe(403)
-    expect(datosMock.leerRegalo).not.toHaveBeenCalled()
+    expect(datosMock.leerRegaloDeLaPropiedad).not.toHaveBeenCalled()
   })
 })

@@ -22,6 +22,34 @@ export const PLANTILLA_REGALO_V1 = 'regalo_visita_v1'
 /** {{1}} nombre de pila · {{2}} dirección. Encabezado DOCUMENTO (el PDF). Sin "regalo": Meta lo leería como promoción. */
 export const CUERPO_REGALO_V1 = 'Hola {{1}}. Acá tenés el material de {{2}} que pediste.'
 
+/**
+ * v2/v3 (2026-10-17): las que hablan de la guía de gastos para compradores, el regalo GENERAL. Textos
+ * aprobados por el dueño tal cual. Nombran el dolor (los US$ 7.000) sin vocabulario de venta: la
+ * promesa es "te mandamos la guía", nunca "regalo/gratis". Si Meta igual las clasifica como
+ * MARKETING, no se configuran: se reescriben (ver CLAUDE.md § agente de tasación).
+ * Mismas variables que las v1, así el envío no cambia: solo cambia el nombre en Netlify.
+ */
+export const PLANTILLA_ENCUESTA_V2 = 'encuesta_visita_v2'
+export const CUERPO_ENCUESTA_V2 =
+  'Hola {{1}}. Gracias por visitar {{2}} el {{3}}.\n\n' +
+  'Un dato que casi nadie tiene en cuenta: además del precio, escriturar cuesta cerca de un 7 %. ' +
+  'En un departamento de US$ 100.000 son unos US$ 7.000 que tienen que estar el día de la firma.\n\n' +
+  'Contanos en menos de un minuto qué te pareció la propiedad y te mandamos la guía de gastos que usamos con nuestros clientes: ' +
+  'https://inmodf.com.ar/encuesta/{{4}}\n\nDiego Ferreyra Inmobiliaria'
+export const BOTON_ENCUESTA_V2 = { texto: 'Contar qué me pareció', url: 'https://inmodf.com.ar/encuesta/{{1}}' } as const
+
+/**
+ * La entrega de la guía es la v3: `regalo_visita_v2` ("…Si querés que hagamos la de una propiedad
+ * que estés mirando, respondé este mensaje.") Meta la aprobó como MARKETING el 2026-10-17 — ofrecer
+ * un servicio la vuelve promoción. NO está en el catálogo a propósito: configurarla por error da
+ * `plantilla_desconocida` y no sale nada. La v3 dice solo lo que la persona pidió; la invitación a
+ * escribirle a Diego ya va DENTRO del PDF (botón de WhatsApp de la última página).
+ */
+export const PLANTILLA_REGALO_V3 = 'regalo_visita_v3'
+export const CUERPO_REGALO_V3 =
+  'Hola {{1}}, gracias por contarnos qué te pareció {{2}}. Acá tenés la guía de gastos para compradores que pediste al completar la encuesta. ' +
+  'En la página 2 está la cuenta completa.'
+
 export interface DefinicionPlantilla {
   nombre: string
   cuerpo: string
@@ -32,10 +60,12 @@ export interface DefinicionPlantilla {
 
 export const PLANTILLAS_ENCUESTA: Readonly<Record<string, DefinicionPlantilla>> = {
   [PLANTILLA_ENCUESTA_V1]: { nombre: PLANTILLA_ENCUESTA_V1, cuerpo: CUERPO_ENCUESTA_V1, variables: 4, conBoton: true, encabezado: null },
+  [PLANTILLA_ENCUESTA_V2]: { nombre: PLANTILLA_ENCUESTA_V2, cuerpo: CUERPO_ENCUESTA_V2, variables: 4, conBoton: true, encabezado: null },
 }
 
 export const PLANTILLAS_REGALO: Readonly<Record<string, DefinicionPlantilla>> = {
   [PLANTILLA_REGALO_V1]: { nombre: PLANTILLA_REGALO_V1, cuerpo: CUERPO_REGALO_V1, variables: 2, conBoton: false, encabezado: 'document' },
+  [PLANTILLA_REGALO_V3]: { nombre: PLANTILLA_REGALO_V3, cuerpo: CUERPO_REGALO_V3, variables: 2, conBoton: false, encabezado: 'document' },
 }
 
 export interface EnvioArmado {

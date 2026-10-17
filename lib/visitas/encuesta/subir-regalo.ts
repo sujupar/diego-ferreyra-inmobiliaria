@@ -1,6 +1,9 @@
 /**
  * Subida del regalo desde el navegador: init (firma) → PUT directo a Storage → confirmar.
  * Mismo patrón que lib/properties/upload-plans.ts: el archivo nunca pasa por el body de Next.
+ *
+ * `base` es la ruta del regalo: el de una propiedad (`/api/properties/<id>/regalo`) o el general
+ * (`/api/settings/encuesta-visitas/regalo-general`). Las dos tienen el mismo `/subida`, PUT y DELETE.
  */
 import { validarArchivoRegalo, validarPortada, validarTitulo, type RegaloVista } from './regalo'
 
@@ -28,8 +31,14 @@ function subirASlot(archivo: File, slot: SlotSubida, alAvanzar?: (cargados: numb
   })
 }
 
-async function guardar(propertyId: string, cuerpo: Record<string, unknown>): Promise<RegaloVista> {
-  const res = await fetch(`/api/properties/${propertyId}/regalo`, {
+export const BASE_REGALO_GENERAL = '/api/settings/encuesta-visitas/regalo-general'
+
+export function baseDelRegaloDeLaPropiedad(propertyId: string): string {
+  return `/api/properties/${propertyId}/regalo`
+}
+
+async function guardar(base: string, cuerpo: Record<string, unknown>): Promise<RegaloVista> {
+  const res = await fetch(base, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo),
   })
   const j = await leerJson(res)
@@ -38,7 +47,7 @@ async function guardar(propertyId: string, cuerpo: Record<string, unknown>): Pro
 }
 
 export async function subirRegalo(
-  propertyId: string,
+  base: string,
   d: { titulo: string; archivo: File; portada: File | null },
   alAvanzar?: (pct: number) => void,
 ): Promise<RegaloVista> {
@@ -49,7 +58,7 @@ export async function subirRegalo(
   const e2 = d.portada ? validarPortada({ nombre: d.portada.name, bytes: d.portada.size }) : null
   if (e2) throw new Error(e2)
 
-  const init = await fetch(`/api/properties/${propertyId}/regalo/subida`, {
+  const init = await fetch(`${base}/subida`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       archivo: { nombre: d.archivo.name, bytes: d.archivo.size },
@@ -67,20 +76,20 @@ export async function subirRegalo(
   if (d.portada && slots.portada) {
     await subirASlot(d.portada, slots.portada, n => { cargadoPortada = n; alAvanzar?.(Math.round(((d.archivo.size + n) / total) * 100)) })
   }
-  return guardar(propertyId, {
+  return guardar(base, {
     titulo: t.titulo, archivoPath: slots.archivo.path, archivoNombre: d.archivo.name,
     archivoBytes: d.archivo.size, portadaPath: slots.portada?.path ?? null,
   })
 }
 
-export async function cambiarTitulo(propertyId: string, actual: RegaloVista, titulo: string): Promise<RegaloVista> {
-  return guardar(propertyId, {
+export async function cambiarTitulo(base: string, actual: RegaloVista, titulo: string): Promise<RegaloVista> {
+  return guardar(base, {
     titulo, archivoPath: actual.archivoPath, archivoNombre: actual.archivoNombre,
     archivoBytes: actual.archivoBytes, portadaPath: actual.portadaPath,
   })
 }
 
-export async function quitarRegalo(propertyId: string): Promise<void> {
-  const res = await fetch(`/api/properties/${propertyId}/regalo`, { method: 'DELETE' })
+export async function quitarRegalo(base: string): Promise<void> {
+  const res = await fetch(base, { method: 'DELETE' })
   if (!res.ok) throw error(await leerJson(res), 'No pudimos quitar el regalo')
 }

@@ -82,6 +82,12 @@ export interface RegaloDeLaPropiedad {
   actualizadoEl: string
 }
 
+/**
+ * El regalo GENERAL (2026-10-17): uno solo para todas las visitas, hoy la guía de gastos para
+ * compradores. Mismo contenido que el de una propiedad, sin propiedad.
+ */
+export type RegaloGeneral = Omit<RegaloDeLaPropiedad, 'propertyId'>
+
 export interface EncuestaFila extends RespuestasEncuesta {
   id: string
   visit_id: string

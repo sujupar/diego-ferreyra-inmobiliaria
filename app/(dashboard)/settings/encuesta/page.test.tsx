@@ -3,6 +3,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+// El panel del regalo general tiene sus propias pruebas (RegaloDeLaEncuesta.test.tsx) y su propio
+// fetch: acá solo importa que la pantalla lo incluya.
+vi.mock('@/components/visitas/encuesta/RegaloDeLaEncuesta', () => ({
+  RegaloGeneralDeLaEncuesta: () => <section aria-label="Regalo general de la encuesta" />,
+}))
 import AjustesEncuestaPage from './page'
 
 const DATOS = {
@@ -37,6 +42,10 @@ describe('/settings/encuesta', () => {
     expect(screen.getByText('5491158234521')).toBeInTheDocument()
     expect(screen.getByText('encuesta_visita_v1')).toBeInTheDocument()
     expect(screen.getByText('Sin configurar: no se manda nada')).toBeInTheDocument()
+  })
+  it('incluye el panel del regalo general', async () => {
+    render(<AjustesEncuestaPage />)
+    expect(await screen.findByRole('region', { name: 'Regalo general de la encuesta' })).toBeInTheDocument()
   })
   it('prender el envío pide confirmación y recién ahí guarda', async () => {
     render(<AjustesEncuestaPage />)

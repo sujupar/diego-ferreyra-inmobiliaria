@@ -9,12 +9,12 @@ import 'server-only'
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { esEstadoVisita } from '../transiciones'
-import { BUCKET_REGALOS, type InfoArchivoSubido } from './regalo'
+import { BUCKET_REGALOS, regaloQueAplica, type InfoArchivoSubido } from './regalo'
 import {
   COLUMNAS_DE_CANAL, ESTADOS_AVISO, ESTADOS_ENVIO, MONEDAS, MOTIVOS_OMISION, OPINIONES_PRECIO, PASOS_GUARDABLES,
   CANALES_AVISO,
   type AjustesEncuesta, type CanalAviso, type EncuestaConVisita, type EncuestaFila, type EstadoAviso, type EstadoEnvio,
-  type EstadoWa, type MotivoOmision, type PropiedadDeEncuesta, type RegaloDeLaPropiedad,
+  type EstadoWa, type MotivoOmision, type PropiedadDeEncuesta, type RegaloDeLaPropiedad, type RegaloGeneral,
 } from './tipos'
 import { UMBRAL_TRABADO_MS, MOTIVO_AVISO_TRABADO } from './avisos'
 import type { PatchPaso, ContactoFinal } from './respuestas'
@@ -88,18 +88,59 @@ export async function guardarAjustesEncuesta(cambios: Partial<AjustesEncuesta>, 
 // ───────────────────────────── Regalo ─────────────────────────────
 
 const SELECT_REGALO = 'property_id, title, file_path, file_name, file_size, cover_path, updated_at'
+const SELECT_REGALO_GENERAL = 'title, file_path, file_name, file_size, cover_path, updated_at'
 
-export async function leerRegalo(propertyId: string): Promise<RegaloDeLaPropiedad | null> {
-  const { data, error } = await sb().from('property_survey_gifts').select(SELECT_REGALO).eq('property_id', propertyId).maybeSingle()
-  if (error) fallo('leer regalo', error)
-  if (!data) return null
-  const r = data as Record<string, unknown>
+function filaDeRegalo(r: Record<string, unknown>, contexto: string): RegaloGeneral {
   const titulo = texto(r.title)
   const archivoPath = texto(r.file_path)
   const archivoNombre = texto(r.file_name)
   const archivoBytes = numero(r.file_size)
-  if (!titulo || !archivoPath || !archivoNombre || archivoBytes === null) throw new Error('leer regalo: fila incompleta')
-  return { propertyId: String(r.property_id), titulo, archivoPath, archivoNombre, archivoBytes, portadaPath: texto(r.cover_path), actualizadoEl: String(r.updated_at) }
+  if (!titulo || !archivoPath || !archivoNombre || archivoBytes === null) throw new Error(`${contexto}: fila incompleta`)
+  return { titulo, archivoPath, archivoNombre, archivoBytes, portadaPath: texto(r.cover_path), actualizadoEl: String(r.updated_at) }
+}
+
+/** El regalo cargado en ESTA propiedad, ignorando el general. Solo para la ficha, que lo administra. */
+export async function leerRegaloDeLaPropiedad(propertyId: string): Promise<RegaloDeLaPropiedad | null> {
+  const { data, error } = await sb().from('property_survey_gifts').select(SELECT_REGALO).eq('property_id', propertyId).maybeSingle()
+  if (error) fallo('leer regalo', error)
+  if (!data) return null
+  const r = data as Record<string, unknown>
+  return { propertyId: String(r.property_id), ...filaDeRegalo(r, 'leer regalo') }
+}
+
+/** Un error de la base LANZA: "no se pudo leer" nunca se confunde con "no hay regalo general". */
+export async function leerRegaloGeneral(): Promise<RegaloGeneral | null> {
+  const { data, error } = await sb().from('visit_survey_general_gift').select(SELECT_REGALO_GENERAL).eq('id', true).maybeSingle()
+  if (error) fallo('leer regalo general', error)
+  if (!data) return null
+  return filaDeRegalo(data as Record<string, unknown>, 'leer regalo general')
+}
+
+/**
+ * El regalo que recibe quien visitó esta propiedad: el general si existe (manda), si no el propio.
+ * Lo usan TODOS los caminos hacia la persona (envío de la encuesta, página pública, descarga, avisos);
+ * la ficha usa `leerRegaloDeLaPropiedad`. La regla vive en `regaloQueAplica` (pura, testeada).
+ */
+export async function leerRegalo(propertyId: string): Promise<RegaloDeLaPropiedad | null> {
+  const general = await leerRegaloGeneral()
+  if (general) return regaloQueAplica(general, null, propertyId)
+  return regaloQueAplica(null, await leerRegaloDeLaPropiedad(propertyId), propertyId)
+}
+
+export type RegaloGeneralNuevo = Omit<RegaloNuevo, 'propertyId'>
+
+/** `onConflict: 'id'`: es la PK de la fila única (CLAUDE.md: upsert con onConflict ⇒ UNIQUE en la base). */
+export async function guardarRegaloGeneral(r: RegaloGeneralNuevo): Promise<void> {
+  const { error } = await sb().from('visit_survey_general_gift').upsert({
+    id: true, title: r.titulo, file_path: r.archivoPath, file_name: r.archivoNombre,
+    file_size: r.archivoBytes, cover_path: r.portadaPath, updated_at: new Date().toISOString(), updated_by: r.actorId,
+  }, { onConflict: 'id' })
+  if (error) fallo('guardar regalo general', error)
+}
+
+export async function borrarRegaloGeneral(): Promise<void> {
+  const { error } = await sb().from('visit_survey_general_gift').delete().eq('id', true)
+  if (error) fallo('borrar regalo general', error)
 }
 
 export interface RegaloNuevo {
