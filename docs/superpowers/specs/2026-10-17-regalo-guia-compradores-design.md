@@ -48,13 +48,19 @@ el link va en el cuerpo además del botón (WhatsApp de computadora no abre los 
 >
 > Diego Ferreyra Inmobiliaria
 
-**`regalo_visita_v2`** — encabezado DOCUMENTO (el PDF de la guía)
+**`regalo_visita_v3`** — encabezado DOCUMENTO (el PDF de la guía)
 {{1}} nombre · {{2}} dirección
 
-> Hola {{1}}, gracias por contarnos qué te pareció {{2}}. Acá tenés la guía de gastos para compradores: en la página 2 está la cuenta completa. Si querés que hagamos la de una propiedad que estés mirando, respondé este mensaje.
+> Hola {{1}}, gracias por contarnos qué te pareció {{2}}. Acá tenés la guía de gastos para compradores que pediste al completar la encuesta. En la página 2 está la cuenta completa.
+
+*Por qué v3 y no v2:* la v2 (el texto aprobado por el dueño, que terminaba con "Si querés que
+hagamos la de una propiedad que estés mirando, respondé este mensaje.") Meta la aprobó como
+**MARKETING** el 2026-10-17: ofrecer un servicio la vuelve promoción. Se aplicó el plan de
+contingencia del spec: misma entrega sin la oferta. La invitación a escribirle a Diego sigue en la
+guía (botón de WhatsApp de la última página). `regalo_visita_v2` queda fuera del catálogo.
 
 Se activan cambiando en Netlify `WHATSAPP_TEMPLATE_ENCUESTA_VISITA=encuesta_visita_v2` y
-`WHATSAPP_TEMPLATE_REGALO_VISITA=regalo_visita_v2` (lo hace el dueño; entra con el próximo deploy)
+`WHATSAPP_TEMPLATE_REGALO_VISITA=regalo_visita_v3` (lo hace el dueño; entra con el próximo deploy)
 recién cuando Meta las apruebe como UTILITY. Las v1 quedan en el catálogo: volver atrás es
 cambiar la variable.
 
@@ -103,7 +109,7 @@ cambiar la variable.
    ofrece la guía al final y la descarga baja el PDF de la guía.
 5. Con la general cargada, una propiedad CON regalo propio también ofrece la guía (manda la general).
 6. Sin regalo general, todo se comporta exactamente como hoy (el de la propiedad o ninguno).
-7. `encuesta_visita_v2` y `regalo_visita_v2` creadas en Meta y aprobadas como UTILITY.
+7. `encuesta_visita_v2` y `regalo_visita_v3` creadas en Meta y aprobadas como UTILITY.
 8. Prueba total con un teléfono de prueba: marcar una visita [TEST] como realizada → llega la v2 de
    la encuesta → se completa → llega el PDF de la guía por WhatsApp con la v2 del regalo → el botón
    de WhatsApp del PDF abre el chat con Diego con el mensaje armado.
@@ -116,8 +122,6 @@ cambiar la variable.
   (fail-closed ya probado en la E3).
 - **Meta puede clasificar la v2 como MARKETING** (la invitación a "mandarte la guía" puede leerse
   como incentivo). Si pasa, NO se configura: se reescribe sin la promesa y se reintenta.
-- **"Respondé este mensaje"** abre la ventana de 24 h: la respuesta entra al Inbox. Si el agente de
-  IA de WhatsApp está prendido, podría contestar él; se revisa antes de activar.
 - **Consumidores del regalo:** son 6 lecturas de `leerRegalo`; se cambian todas menos la de la ficha
   (grep en el plan).
 - **Migración antes del deploy:** el código lee columnas nuevas; se aplica y verifica primero.

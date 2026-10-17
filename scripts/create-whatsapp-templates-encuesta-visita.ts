@@ -4,7 +4,8 @@
  *
  *   encuesta_visita_v1 → 4 datos + botón URL "Completar ficha" (el link también va en el cuerpo)
  *   regalo_visita_v1   → encabezado DOCUMENTO (el PDF) + 2 datos, sin botón
- *   encuesta_visita_v2 / regalo_visita_v2 → las de la guía de gastos (2026-10-17), mismos datos
+ *   encuesta_visita_v2 / regalo_visita_v3 → las de la guía de gastos (2026-10-17), mismos datos
+ *   (regalo_visita_v2 quedó MARKETING: no se usa, ver lib/visitas/encuesta/plantillas.ts)
  *
  * Meta no acepta una URL de ejemplo para el encabezado: pide un `header_handle`, que se obtiene
  * subiendo un PDF de muestra por la Resumable Upload API (dos pasos; el segundo son los bytes crudos
@@ -16,7 +17,7 @@
  *   node --env-file=../../../.env.local --import tsx scripts/create-whatsapp-templates-encuesta-visita.ts --create=encuesta
  *   node --env-file=../../../.env.local --import tsx scripts/create-whatsapp-templates-encuesta-visita.ts --create=regalo --muestra=https://…/plano.pdf
  *   … --create=encuesta-v2
- *   … --create=regalo-v2 --muestra=/ruta/local/guia.pdf      (la muestra puede ser un archivo local)
+ *   … --create=regalo-v3 --muestra=/ruta/local/guia.pdf      (la muestra puede ser un archivo local)
  *
  * Después de que Meta apruebe: correr scripts/sincronizar-cuerpos-plantillas.ts (para que el Inbox
  * muestre el texto real) y pedirle al dueño que cargue en Netlify WHATSAPP_TEMPLATE_ENCUESTA_VISITA
@@ -25,7 +26,7 @@
 import { readFile } from 'node:fs/promises'
 import {
   PLANTILLA_ENCUESTA_V1, CUERPO_ENCUESTA_V1, BOTON_ENCUESTA_V1, PLANTILLA_REGALO_V1, CUERPO_REGALO_V1, IDIOMA_PLANTILLAS,
-  PLANTILLA_ENCUESTA_V2, CUERPO_ENCUESTA_V2, BOTON_ENCUESTA_V2, PLANTILLA_REGALO_V2, CUERPO_REGALO_V2,
+  PLANTILLA_ENCUESTA_V2, CUERPO_ENCUESTA_V2, BOTON_ENCUESTA_V2, PLANTILLA_REGALO_V3, CUERPO_REGALO_V3,
 } from '../lib/visitas/encuesta/plantillas'
 
 /** Qué crea cada valor de --create. Las cuatro comparten datos de ejemplo: mismas variables. */
@@ -33,9 +34,10 @@ const PEDIDOS = {
   encuesta: { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V1, cuerpo: CUERPO_ENCUESTA_V1, boton: BOTON_ENCUESTA_V1 },
   'encuesta-v2': { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V2, cuerpo: CUERPO_ENCUESTA_V2, boton: BOTON_ENCUESTA_V2 },
   regalo: { tipo: 'regalo', nombre: PLANTILLA_REGALO_V1, cuerpo: CUERPO_REGALO_V1, boton: null },
-  'regalo-v2': { tipo: 'regalo', nombre: PLANTILLA_REGALO_V2, cuerpo: CUERPO_REGALO_V2, boton: null },
+  'regalo-v3': { tipo: 'regalo', nombre: PLANTILLA_REGALO_V3, cuerpo: CUERPO_REGALO_V3, boton: null },
 } as const
-const NOMBRES = new Set<string>(Object.values(PEDIDOS).map(p => p.nombre))
+// regalo_visita_v2 se sigue mostrando en el estado (Meta la aprobó como MARKETING): que se vea por qué no se usa.
+const NOMBRES = new Set<string>([...Object.values(PEDIDOS).map(p => p.nombre), 'regalo_visita_v2'])
 
 const API = process.env.WHATSAPP_API_VERSION ?? 'v21.0'
 const TOKEN_EJEMPLO = 'Ab3xK9pQ2rTz8LmN4vWq1Y'

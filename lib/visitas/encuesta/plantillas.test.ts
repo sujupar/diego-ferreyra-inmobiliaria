@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   PLANTILLAS_ENCUESTA, PLANTILLAS_REGALO, CUERPO_ENCUESTA_V1, CUERPO_REGALO_V1, BOTON_ENCUESTA_V1,
-  CUERPO_ENCUESTA_V2, CUERPO_REGALO_V2, BOTON_ENCUESTA_V2,
+  CUERPO_ENCUESTA_V2, CUERPO_REGALO_V3, BOTON_ENCUESTA_V2,
   cantidadDeVariables, armarEnvioEncuesta, armarEnvioRegalo, nombreDePila, paramSeguro,
 } from './plantillas'
 
@@ -14,7 +14,7 @@ describe('catálogo de plantillas', () => {
     }
   })
   it('sin vocabulario de venta (Meta las reclasifica a MARKETING y deja de entregarlas)', () => {
-    for (const cuerpo of [CUERPO_ENCUESTA_V1, CUERPO_REGALO_V1, CUERPO_ENCUESTA_V2, CUERPO_REGALO_V2]) {
+    for (const cuerpo of [CUERPO_ENCUESTA_V1, CUERPO_REGALO_V1, CUERPO_ENCUESTA_V2, CUERPO_REGALO_V3]) {
       expect(cuerpo).not.toMatch(/regalo|gratis|gratuit|oferta|descuento|promo|sin costo|sin compromiso/i)
     }
   })
@@ -71,19 +71,25 @@ describe('plantillas v2 (guía de gastos, aprobadas por el dueño el 2026-10-17)
       `https://inmodf.com.ar/encuesta/${TOKEN}\n\nDiego Ferreyra Inmobiliaria`,
     )
   })
-  it('la entrega lleva el PDF y deja la puerta abierta para responder', () => {
-    expect(armarEnvioRegalo('regalo_visita_v2', { nombre: 'Mariana', direccion: 'Doblas 248' })).toEqual({
-      templateName: 'regalo_visita_v2',
+  it('la entrega (v3) lleva el PDF y dice solo lo que la persona pidió', () => {
+    expect(armarEnvioRegalo('regalo_visita_v3', { nombre: 'Mariana', direccion: 'Doblas 248' })).toEqual({
+      templateName: 'regalo_visita_v3',
       bodyParams: ['Mariana', 'Doblas 248'],
       urlButtonParam: null,
       necesitaDocumento: true,
-      bodyText: 'Hola Mariana, gracias por contarnos qué te pareció Doblas 248. Acá tenés la guía de gastos para compradores: ' +
-        'en la página 2 está la cuenta completa. Si querés que hagamos la de una propiedad que estés mirando, respondé este mensaje.',
+      bodyText: 'Hola Mariana, gracias por contarnos qué te pareció Doblas 248. Acá tenés la guía de gastos para compradores que pediste al completar la encuesta. ' +
+        'En la página 2 está la cuenta completa.',
     })
+  })
+  it('sin ofrecer servicios: es lo que hizo que Meta pasara la v2 a MARKETING', () => {
+    expect(CUERPO_REGALO_V3).not.toMatch(/hagamos|respond|escribinos|contactanos|asesor/i)
+  })
+  it('regalo_visita_v2 (aprobada como MARKETING) NO está en el catálogo: configurarla no manda nada', () => {
+    expect(armarEnvioRegalo('regalo_visita_v2', { nombre: 'Mariana', direccion: 'Doblas 248' })).toBeNull()
   })
   it('las v1 siguen en el catálogo: volver atrás es cambiar la variable de Netlify', () => {
     expect(Object.keys(PLANTILLAS_ENCUESTA).sort()).toEqual(['encuesta_visita_v1', 'encuesta_visita_v2'])
-    expect(Object.keys(PLANTILLAS_REGALO).sort()).toEqual(['regalo_visita_v1', 'regalo_visita_v2'])
+    expect(Object.keys(PLANTILLAS_REGALO).sort()).toEqual(['regalo_visita_v1', 'regalo_visita_v3'])
   })
 })
 
