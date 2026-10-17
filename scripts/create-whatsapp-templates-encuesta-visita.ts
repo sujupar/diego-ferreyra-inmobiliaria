@@ -4,6 +4,7 @@
  *
  *   encuesta_visita_v1 → 4 datos + botón URL "Completar ficha" (el link también va en el cuerpo)
  *   regalo_visita_v1   → encabezado DOCUMENTO (el PDF) + 2 datos, sin botón
+ *   encuesta_visita_v2 / regalo_visita_v2 → las de la guía de gastos (2026-10-17), mismos datos
  *
  * Meta no acepta una URL de ejemplo para el encabezado: pide un `header_handle`, que se obtiene
  * subiendo un PDF de muestra por la Resumable Upload API (dos pasos; el segundo son los bytes crudos
@@ -14,14 +15,27 @@
  *   node --env-file=../../../.env.local --import tsx scripts/create-whatsapp-templates-encuesta-visita.ts                     # estado
  *   node --env-file=../../../.env.local --import tsx scripts/create-whatsapp-templates-encuesta-visita.ts --create=encuesta
  *   node --env-file=../../../.env.local --import tsx scripts/create-whatsapp-templates-encuesta-visita.ts --create=regalo --muestra=https://…/plano.pdf
+ *   … --create=encuesta-v2
+ *   … --create=regalo-v2 --muestra=/ruta/local/guia.pdf      (la muestra puede ser un archivo local)
  *
  * Después de que Meta apruebe: correr scripts/sincronizar-cuerpos-plantillas.ts (para que el Inbox
  * muestre el texto real) y pedirle al dueño que cargue en Netlify WHATSAPP_TEMPLATE_ENCUESTA_VISITA
  * y/o WHATSAPP_TEMPLATE_REGALO_VISITA. Si una queda en MARKETING, NO se configura: se rediseña.
  */
+import { readFile } from 'node:fs/promises'
 import {
   PLANTILLA_ENCUESTA_V1, CUERPO_ENCUESTA_V1, BOTON_ENCUESTA_V1, PLANTILLA_REGALO_V1, CUERPO_REGALO_V1, IDIOMA_PLANTILLAS,
+  PLANTILLA_ENCUESTA_V2, CUERPO_ENCUESTA_V2, BOTON_ENCUESTA_V2, PLANTILLA_REGALO_V2, CUERPO_REGALO_V2,
 } from '../lib/visitas/encuesta/plantillas'
+
+/** Qué crea cada valor de --create. Las cuatro comparten datos de ejemplo: mismas variables. */
+const PEDIDOS = {
+  encuesta: { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V1, cuerpo: CUERPO_ENCUESTA_V1, boton: BOTON_ENCUESTA_V1 },
+  'encuesta-v2': { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V2, cuerpo: CUERPO_ENCUESTA_V2, boton: BOTON_ENCUESTA_V2 },
+  regalo: { tipo: 'regalo', nombre: PLANTILLA_REGALO_V1, cuerpo: CUERPO_REGALO_V1, boton: null },
+  'regalo-v2': { tipo: 'regalo', nombre: PLANTILLA_REGALO_V2, cuerpo: CUERPO_REGALO_V2, boton: null },
+} as const
+const NOMBRES = new Set<string>(Object.values(PEDIDOS).map(p => p.nombre))
 
 const API = process.env.WHATSAPP_API_VERSION ?? 'v21.0'
 const TOKEN_EJEMPLO = 'Ab3xK9pQ2rTz8LmN4vWq1Y'
@@ -40,9 +54,15 @@ function argumento(nombre: string): string | null {
 async function subirMuestra(url: string): Promise<string> {
   const appId = env('META_APP_ID')
   const token = env('WHATSAPP_ACCESS_TOKEN')
-  const archivo = await fetch(url)
-  if (!archivo.ok) throw new Error(`No se pudo bajar la muestra (${archivo.status}): ${url}`)
-  const bytes = Buffer.from(await archivo.arrayBuffer())
+  let bytes: Buffer
+  if (url.startsWith('https://')) {
+    const archivo = await fetch(url)
+    if (!archivo.ok) throw new Error(`No se pudo bajar la muestra (${archivo.status}): ${url}`)
+    bytes = Buffer.from(await archivo.arrayBuffer())
+  } else {
+    bytes = await readFile(url)
+  }
+  if (bytes.subarray(0, 5).toString('latin1') !== '%PDF-') throw new Error(`La muestra no es un PDF: ${url}`)
   const sesion = await fetch(
     `https://graph.facebook.com/${API}/${appId}/uploads?file_length=${bytes.length}&file_type=application%2Fpdf&access_token=${encodeURIComponent(token)}`,
     { method: 'POST' },
@@ -63,7 +83,7 @@ async function estado(waba: string, token: string): Promise<Array<Record<string,
   const r = await fetch(`https://graph.facebook.com/${API}/${waba}/message_templates?limit=200&fields=name,status,category,rejected_reason&access_token=${encodeURIComponent(token)}`)
   const j = (await r.json()) as { data?: Array<Record<string, string>>; error?: unknown }
   if (!r.ok || j.error) throw new Error(`Meta rechazó la consulta: ${JSON.stringify(j.error ?? j).slice(0, 300)}`)
-  return (j.data ?? []).filter(t => t.name === PLANTILLA_ENCUESTA_V1 || t.name === PLANTILLA_REGALO_V1)
+  return (j.data ?? []).filter(t => NOMBRES.has(t.name))
 }
 
 async function crear(waba: string, token: string, cuerpo: Record<string, unknown>): Promise<void> {
@@ -89,28 +109,28 @@ async function main() {
   }
   const pedido = argumento('create')
   if (!pedido) { console.log('\nSin --create: solo estado.'); return }
-  const nombre = pedido === 'encuesta' ? PLANTILLA_ENCUESTA_V1 : pedido === 'regalo' ? PLANTILLA_REGALO_V1 : null
-  if (!nombre) throw new Error('--create tiene que ser "encuesta" o "regalo"')
-  if (actuales.some(t => t.name === nombre)) { console.log(`\n"${nombre}" ya existe: no se vuelve a crear.`); return }
+  if (!Object.hasOwn(PEDIDOS, pedido)) throw new Error(`--create tiene que ser uno de: ${Object.keys(PEDIDOS).join(', ')}`)
+  const p = PEDIDOS[pedido as keyof typeof PEDIDOS]
+  if (actuales.some(t => t.name === p.nombre)) { console.log(`\n"${p.nombre}" ya existe: no se vuelve a crear.`); return }
 
-  if (pedido === 'encuesta') {
+  if (p.tipo === 'encuesta' && p.boton) {
     await crear(waba, token, {
-      name: PLANTILLA_ENCUESTA_V1, language: IDIOMA_PLANTILLAS, category: 'UTILITY',
+      name: p.nombre, language: IDIOMA_PLANTILLAS, category: 'UTILITY',
       components: [
-        { type: 'BODY', text: CUERPO_ENCUESTA_V1, example: { body_text: [['Mariana', 'Doblas 248', '14/10', TOKEN_EJEMPLO]] } },
-        { type: 'BUTTONS', buttons: [{ type: 'URL', text: BOTON_ENCUESTA_V1.texto, url: BOTON_ENCUESTA_V1.url, example: [`https://inmodf.com.ar/encuesta/${TOKEN_EJEMPLO}`] }] },
+        { type: 'BODY', text: p.cuerpo, example: { body_text: [['Mariana', 'Doblas 248', '14/10', TOKEN_EJEMPLO]] } },
+        { type: 'BUTTONS', buttons: [{ type: 'URL', text: p.boton.texto, url: p.boton.url, example: [`https://inmodf.com.ar/encuesta/${TOKEN_EJEMPLO}`] }] },
       ],
     })
     return
   }
   const muestra = argumento('muestra')
-  if (!muestra) throw new Error('Para la del regalo hace falta --muestra=<url de un PDF>')
+  if (!muestra) throw new Error('Para la del regalo hace falta --muestra=<url o ruta de un PDF>')
   const handle = await subirMuestra(muestra)
   await crear(waba, token, {
-    name: PLANTILLA_REGALO_V1, language: IDIOMA_PLANTILLAS, category: 'UTILITY',
+    name: p.nombre, language: IDIOMA_PLANTILLAS, category: 'UTILITY',
     components: [
       { type: 'HEADER', format: 'DOCUMENT', example: { header_handle: [handle] } },
-      { type: 'BODY', text: CUERPO_REGALO_V1, example: { body_text: [['Mariana', 'Doblas 248']] } },
+      { type: 'BODY', text: p.cuerpo, example: { body_text: [['Mariana', 'Doblas 248']] } },
     ],
   })
 }
