@@ -7,6 +7,8 @@
  * el navegador deja pasar "properties/<id>/regalo-x.pdf/../../otra-cosa". La base tiene el mismo
  * CHECK (property_survey_gifts_file_path_check): se tocan juntos.
  */
+import type { RegaloDeLaPropiedad, RegaloGeneral } from './tipos'
+
 export const BUCKET_REGALOS = 'visit-survey-gifts'
 export const MAX_REGALO_BYTES = 20 * 1024 * 1024
 export const MAX_PORTADA_BYTES = 5 * 1024 * 1024
@@ -114,6 +116,42 @@ export function esPathDelRegalo(path: string, propertyId: string): boolean {
 export function esPathDePortada(path: string, propertyId: string): boolean {
   if (!UUID_RE.test(propertyId)) return false
   return new RegExp(`^properties/${propertyId}/portada-${UUID}\\.(jpg|png|webp)$`).test(path)
+}
+
+/**
+ * Regalo GENERAL (2026-10-17): vive en `general/` del mismo bucket privado. Misma regla de regex
+ * exacta que los de una propiedad; la base repite el CHECK (visit_survey_general_gift): se tocan juntos.
+ */
+export function pathDelRegaloGeneral(uuid: string): string {
+  return `general/regalo-${uuid}.pdf`
+}
+
+export function pathDePortadaGeneral(uuid: string, nombreArchivo: string): string {
+  const ext = extension(nombreArchivo) === 'jpeg' ? 'jpg' : extension(nombreArchivo)
+  return `general/portada-${uuid}.${ext}`
+}
+
+export function esPathDelRegaloGeneral(path: string): boolean {
+  return new RegExp(`^general/regalo-${UUID}\\.pdf$`).test(path)
+}
+
+export function esPathDePortadaGeneral(path: string): boolean {
+  return new RegExp(`^general/portada-${UUID}\\.(jpg|png|webp)$`).test(path)
+}
+
+/**
+ * Qué regalo recibe quien visitó una propiedad. La GENERAL manda sobre la de la propiedad: los
+ * mensajes v2 prometen "la guía de gastos", y si una propiedad con regalo propio mandara otra cosa,
+ * el mensaje mentiría. Sin general, todo queda como antes. `propertyId` es el de la visita: los
+ * consumidores no lo usan para elegir archivos (los paths ya vienen en el regalo).
+ */
+export function regaloQueAplica(
+  general: RegaloGeneral | null,
+  propio: RegaloDeLaPropiedad | null,
+  propertyId: string,
+): RegaloDeLaPropiedad | null {
+  if (general) return { ...general, propertyId }
+  return propio
 }
 
 /** El nombre con que se baja el archivo: sin rutas, comillas ni caracteres raros; siempre .pdf. */

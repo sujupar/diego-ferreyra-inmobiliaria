@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { leerRespuesta } from '@/components/visitas/agendar/leer-respuesta'
+import { RegaloGeneralDeLaEncuesta } from '@/components/visitas/encuesta/RegaloDeLaEncuesta'
 import type { AjustesEncuesta } from '@/lib/visitas/encuesta/tipos'
 import type { EstadoPlantilla } from '@/lib/visitas/encuesta/ajustes'
 
@@ -33,7 +34,7 @@ const INTERRUPTORES: ReadonlyArray<{ clave: Interruptor; titulo: string; ayuda: 
   {
     clave: 'regalo_por_whatsapp', titulo: 'Mandar el regalo por WhatsApp',
     ayuda: 'Quien completa la encuesta recibe el PDF por WhatsApp. Prendelo solo cuando Meta haya aprobado la plantilla del regalo.',
-    confirmar: 'Quien complete la encuesta va a recibir el PDF del regalo por WhatsApp. Prendelo solo si Meta ya aprobó la plantilla regalo_visita_v1. ¿Prender?',
+    confirmar: 'Quien complete la encuesta va a recibir el PDF del regalo por WhatsApp. Prendelo solo si Meta ya aprobó la plantilla del regalo que está configurada. ¿Prender?',
   },
 ]
 
@@ -162,6 +163,8 @@ export default function AjustesEncuestaPage() {
         </CardContent>
       </Card>
 
+      <RegaloGeneralDeLaEncuesta />
+
       <Card>
         <CardHeader><CardTitle className="text-base">Plantillas de WhatsApp</CardTitle></CardHeader>
         <CardContent>
@@ -171,7 +174,7 @@ export default function AjustesEncuestaPage() {
                 <p className="font-medium">{p.uso === 'encuesta' ? 'Encuesta' : 'Regalo'} <span className="font-mono text-xs text-muted-foreground">({p.variable})</span></p>
                 {p.configurada ? <p className="font-mono">{p.configurada}</p> : <p className="text-muted-foreground">Sin configurar: no se manda nada</p>}
                 {p.configurada && !p.conocida && <p className="text-destructive">No es una de las plantillas conocidas: no se manda (Meta rechazaría el mensaje).</p>}
-                {p.conocida && <p className="text-muted-foreground">{p.conBoton ? 'Con botón "Completar ficha".' : ''}{p.conDocumento ? 'Lleva el PDF adjunto.' : ''}</p>}
+                {p.conocida && <p className="text-muted-foreground">{p.conBoton ? 'Con botón que abre la encuesta.' : ''}{p.conDocumento ? 'Lleva el PDF adjunto.' : ''}</p>}
               </li>
             ))}
           </ul>
