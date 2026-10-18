@@ -39,6 +39,20 @@ export const CUERPO_ENCUESTA_V2 =
 export const BOTON_ENCUESTA_V2 = { texto: 'Contar qué me pareció', url: 'https://inmodf.com.ar/encuesta/{{1}}' } as const
 
 /**
+ * `encuesta_visita_v2` Meta la aprobó como MARKETING el 2026-10-17 (el dolor + "te mandamos la guía"
+ * se lee como incentivo). Queda en el catálogo como respaldo, elegido por el dueño, si la v3 tampoco
+ * pasa como UTILITY. La v3 presenta lo mismo como información de la visita: primero el registro y el
+ * link, después qué llega al terminar y el dato del 7 %.
+ */
+export const PLANTILLA_ENCUESTA_V3 = 'encuesta_visita_v3'
+export const CUERPO_ENCUESTA_V3 =
+  'Hola {{1}}. Registramos tu visita a {{2}} del {{3}}. Para cerrar la ficha, contanos qué te pareció (menos de un minuto): ' +
+  'https://inmodf.com.ar/encuesta/{{4}}\n\n' +
+  'Al terminar te llega la guía de gastos de compra: además del precio, escriturar cuesta cerca de un 7 %.\n\n' +
+  'Diego Ferreyra Inmobiliaria'
+export const BOTON_ENCUESTA_V3 = { texto: 'Contar qué me pareció', url: 'https://inmodf.com.ar/encuesta/{{1}}' } as const
+
+/**
  * La entrega de la guía es la v3: `regalo_visita_v2` ("…Si querés que hagamos la de una propiedad
  * que estés mirando, respondé este mensaje.") Meta la aprobó como MARKETING el 2026-10-17 — ofrecer
  * un servicio la vuelve promoción. NO está en el catálogo a propósito: configurarla por error da
@@ -61,6 +75,7 @@ export interface DefinicionPlantilla {
 export const PLANTILLAS_ENCUESTA: Readonly<Record<string, DefinicionPlantilla>> = {
   [PLANTILLA_ENCUESTA_V1]: { nombre: PLANTILLA_ENCUESTA_V1, cuerpo: CUERPO_ENCUESTA_V1, variables: 4, conBoton: true, encabezado: null },
   [PLANTILLA_ENCUESTA_V2]: { nombre: PLANTILLA_ENCUESTA_V2, cuerpo: CUERPO_ENCUESTA_V2, variables: 4, conBoton: true, encabezado: null },
+  [PLANTILLA_ENCUESTA_V3]: { nombre: PLANTILLA_ENCUESTA_V3, cuerpo: CUERPO_ENCUESTA_V3, variables: 4, conBoton: true, encabezado: null },
 }
 
 export const PLANTILLAS_REGALO: Readonly<Record<string, DefinicionPlantilla>> = {

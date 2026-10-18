@@ -48,6 +48,15 @@ el link va en el cuerpo además del botón (WhatsApp de computadora no abre los 
 >
 > Diego Ferreyra Inmobiliaria
 
+**`encuesta_visita_v3`** (la que se usa; la v2 quedó MARKETING y es el respaldo si el dueño la elige)
+— mismo botón, mismas variables. Aprobada por el dueño el 2026-10-17 después de que la v2 cayó en marketing:
+
+> Hola {{1}}. Registramos tu visita a {{2}} del {{3}}. Para cerrar la ficha, contanos qué te pareció (menos de un minuto): https://inmodf.com.ar/encuesta/{{4}}
+>
+> Al terminar te llega la guía de gastos de compra: además del precio, escriturar cuesta cerca de un 7 %.
+>
+> Diego Ferreyra Inmobiliaria
+
 **`regalo_visita_v3`** — encabezado DOCUMENTO (el PDF de la guía)
 {{1}} nombre · {{2}} dirección
 
@@ -59,7 +68,7 @@ hagamos la de una propiedad que estés mirando, respondé este mensaje.") Meta l
 contingencia del spec: misma entrega sin la oferta. La invitación a escribirle a Diego sigue en la
 guía (botón de WhatsApp de la última página). `regalo_visita_v2` queda fuera del catálogo.
 
-Se activan cambiando en Netlify `WHATSAPP_TEMPLATE_ENCUESTA_VISITA=encuesta_visita_v2` y
+Se activan cambiando en Netlify `WHATSAPP_TEMPLATE_ENCUESTA_VISITA=encuesta_visita_v3` y
 `WHATSAPP_TEMPLATE_REGALO_VISITA=regalo_visita_v3` (lo hace el dueño; entra con el próximo deploy)
 recién cuando Meta las apruebe como UTILITY. Las v1 quedan en el catálogo: volver atrás es
 cambiar la variable.
@@ -109,7 +118,7 @@ cambiar la variable.
    ofrece la guía al final y la descarga baja el PDF de la guía.
 5. Con la general cargada, una propiedad CON regalo propio también ofrece la guía (manda la general).
 6. Sin regalo general, todo se comporta exactamente como hoy (el de la propiedad o ninguno).
-7. `encuesta_visita_v2` y `regalo_visita_v3` creadas en Meta y aprobadas como UTILITY.
+7. `encuesta_visita_v3` y `regalo_visita_v3` creadas en Meta y aprobadas como UTILITY.
 8. Prueba total con un teléfono de prueba: marcar una visita [TEST] como realizada → llega la v2 de
    la encuesta → se completa → llega el PDF de la guía por WhatsApp con la v2 del regalo → el botón
    de WhatsApp del PDF abre el chat con Diego con el mensaje armado.

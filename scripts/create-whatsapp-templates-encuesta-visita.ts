@@ -26,13 +26,14 @@
 import { readFile } from 'node:fs/promises'
 import {
   PLANTILLA_ENCUESTA_V1, CUERPO_ENCUESTA_V1, BOTON_ENCUESTA_V1, PLANTILLA_REGALO_V1, CUERPO_REGALO_V1, IDIOMA_PLANTILLAS,
-  PLANTILLA_ENCUESTA_V2, CUERPO_ENCUESTA_V2, BOTON_ENCUESTA_V2, PLANTILLA_REGALO_V3, CUERPO_REGALO_V3,
+  PLANTILLA_ENCUESTA_V2, CUERPO_ENCUESTA_V2, BOTON_ENCUESTA_V2, PLANTILLA_ENCUESTA_V3, CUERPO_ENCUESTA_V3, BOTON_ENCUESTA_V3, PLANTILLA_REGALO_V3, CUERPO_REGALO_V3,
 } from '../lib/visitas/encuesta/plantillas'
 
 /** Qué crea cada valor de --create. Las cuatro comparten datos de ejemplo: mismas variables. */
 const PEDIDOS = {
   encuesta: { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V1, cuerpo: CUERPO_ENCUESTA_V1, boton: BOTON_ENCUESTA_V1 },
   'encuesta-v2': { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V2, cuerpo: CUERPO_ENCUESTA_V2, boton: BOTON_ENCUESTA_V2 },
+  'encuesta-v3': { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V3, cuerpo: CUERPO_ENCUESTA_V3, boton: BOTON_ENCUESTA_V3 },
   regalo: { tipo: 'regalo', nombre: PLANTILLA_REGALO_V1, cuerpo: CUERPO_REGALO_V1, boton: null },
   'regalo-v3': { tipo: 'regalo', nombre: PLANTILLA_REGALO_V3, cuerpo: CUERPO_REGALO_V3, boton: null },
 } as const
