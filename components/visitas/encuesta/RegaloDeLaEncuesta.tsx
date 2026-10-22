@@ -1,7 +1,10 @@
 'use client'
 /**
- * "Regalo de la encuesta" en la pestaña Visitas de la ficha (adenda §11.2): el PDF que recibe quien
- * completa la encuesta de ESTA propiedad. Sin permiso (403) no se muestra: la barrera es la ruta.
+ * "Regalo de la encuesta" (adenda §11.2). Dos lugares, un solo panel:
+ * - Ficha → Visitas: el PDF de ESTA propiedad. Si hay regalo GENERAL, avisa que ese es el que se
+ *   manda (manda sobre el de la propiedad, ver `regaloQueAplica`).
+ * - Configuración › Encuesta: el regalo GENERAL (2026-10-17), uno para todas las visitas.
+ * Sin permiso (403) no se muestra: la barrera es la ruta.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Gift, Loader2 } from 'lucide-react'
@@ -9,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { leerRespuesta } from '@/components/visitas/agendar/leer-respuesta'
-import { subirRegalo, quitarRegalo } from '@/lib/visitas/encuesta/subir-regalo'
+import { subirRegalo, quitarRegalo, baseDelRegaloDeLaPropiedad, BASE_REGALO_GENERAL } from '@/lib/visitas/encuesta/subir-regalo'
 import { validarArchivoRegalo, validarPortada, type RegaloVista } from '@/lib/visitas/encuesta/regalo'
 
 type Estado =
@@ -24,7 +27,67 @@ function megas(bytes: number): string {
   return `${(bytes / 1024 / 1024).toLocaleString('es-AR', { maximumFractionDigits: 1 })} MB`
 }
 
+interface Variante {
+  titulo: string
+  idTitulo: string
+  explicacion: string
+  ejemplo: string
+  ayudaPortada: string
+  confirmarQuitar: string
+}
+
+const VARIANTES: Record<'propiedad' | 'general', Variante> = {
+  propiedad: {
+    titulo: 'Regalo de la encuesta', idTitulo: 'regalo-encuesta',
+    explicacion: 'Es el material (PDF de hasta 20 MB) que recibe quien responde la encuesta de esta propiedad. Sin regalo, la encuesta se ofrece igual pero no sale sola por WhatsApp.',
+    ejemplo: 'Ej.: Guía del barrio de Caballito',
+    ayudaPortada: 'Sin portada, la encuesta muestra la primera foto de la propiedad.',
+    confirmarQuitar: '¿Quitar el regalo? La encuesta de esta propiedad deja de ofrecerlo y, con "solo propiedades con regalo", deja de mandarse.',
+  },
+  general: {
+    titulo: 'Regalo general de la encuesta', idTitulo: 'regalo-general-encuesta',
+    explicacion: 'Es el PDF (hasta 20 MB) que recibe quien responde la encuesta de cualquier propiedad. Mientras esté cargado, se manda este y no el regalo de cada propiedad.',
+    ejemplo: 'Ej.: Guía de gastos para compradores',
+    ayudaPortada: 'La portada se muestra al final de la encuesta, junto al botón de descarga.',
+    confirmarQuitar: '¿Quitar el regalo general? Desde ese momento vuelve a usarse el regalo de cada propiedad (y las que no tienen, no ofrecen ninguno).',
+  },
+}
+
+/** El regalo de UNA propiedad, en la ficha. */
 export function RegaloDeLaEncuesta({ propertyId }: { propertyId: string }) {
+  return <PanelRegalo base={baseDelRegaloDeLaPropiedad(propertyId)} variante="propiedad" />
+}
+
+/** El regalo GENERAL, en Configuración › Encuesta. */
+export function RegaloGeneralDeLaEncuesta() {
+  return <PanelRegalo base={BASE_REGALO_GENERAL} variante="general" />
+}
+
+/**
+ * En la ficha: "hoy se manda la guía general, no el de esta propiedad". Si no se puede leer, no se
+ * muestra nada (es información, no una barrera: la regla la aplica el servidor igual).
+ */
+function useTituloDelRegaloGeneral(activo: boolean): string | null {
+  const [titulo, setTitulo] = useState<string | null>(null)
+  useEffect(() => {
+    if (!activo) return
+    let vigente = true
+    void (async () => {
+      try {
+        const r = await leerRespuesta<RegaloVista | null>(await fetch(BASE_REGALO_GENERAL))
+        if (vigente && r.ok && r.data) setTitulo(r.data.titulo)
+      } catch {
+        // sin conexión: el aviso es informativo, no se muestra
+      }
+    })()
+    return () => { vigente = false }
+  }, [activo])
+  return titulo
+}
+
+function PanelRegalo({ base, variante }: { base: string; variante: 'propiedad' | 'general' }) {
+  const v = VARIANTES[variante]
+  const tituloGeneral = useTituloDelRegaloGeneral(variante === 'propiedad')
   const [estado, setEstado] = useState<Estado>({ tipo: 'cargando' })
   const [editando, setEditando] = useState(false)
   const [titulo, setTitulo] = useState('')
@@ -37,7 +100,7 @@ export function RegaloDeLaEncuesta({ propertyId }: { propertyId: string }) {
   const cargar = useCallback(async () => {
     setEstado({ tipo: 'cargando' })
     try {
-      const r = await leerRespuesta<RegaloVista | null>(await fetch(`/api/properties/${propertyId}/regalo`))
+      const r = await leerRespuesta<RegaloVista | null>(await fetch(base))
       if (!r.ok) {
         setEstado(r.status === 403 || r.status === 401 ? { tipo: 'sin_permiso' } : { tipo: 'error', mensaje: r.error })
         return
@@ -46,7 +109,7 @@ export function RegaloDeLaEncuesta({ propertyId }: { propertyId: string }) {
     } catch {
       setEstado({ tipo: 'error', mensaje: 'No hay conexión. Probá de nuevo.' })
     }
-  }, [propertyId])
+  }, [base])
 
   useEffect(() => {
     // Dispara la primera lectura; el estado inicial ya es 'cargando'.
@@ -66,7 +129,7 @@ export function RegaloDeLaEncuesta({ propertyId }: { propertyId: string }) {
     if (!archivo) return
     setError(null); setAvance(0)
     try {
-      const regalo = await subirRegalo(propertyId, { titulo, archivo, portada }, setAvance)
+      const regalo = await subirRegalo(base, { titulo, archivo, portada }, setAvance)
       setEstado({ tipo: 'listo', regalo }); setEditando(false); setArchivo(null); setPortada(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No pudimos subir el regalo')
@@ -78,7 +141,7 @@ export function RegaloDeLaEncuesta({ propertyId }: { propertyId: string }) {
   async function quitar() {
     setError(null)
     try {
-      await quitarRegalo(propertyId)
+      await quitarRegalo(base)
       setConfirmarQuitar(false); setTitulo('')
       setEstado({ tipo: 'listo', regalo: null })
     } catch (e) {
@@ -93,11 +156,17 @@ export function RegaloDeLaEncuesta({ propertyId }: { propertyId: string }) {
   const subiendo = avance !== null
 
   return (
-    <section aria-labelledby="regalo-encuesta" className="space-y-3 rounded-xl border bg-card p-4">
+    <section aria-labelledby={v.idTitulo} className="space-y-3 rounded-xl border bg-card p-4">
       <div className="flex items-center gap-2">
         <Gift className="h-5 w-5 text-brand" aria-hidden="true" />
-        <h3 id="regalo-encuesta" className="text-base font-semibold">Regalo de la encuesta</h3>
+        <h3 id={v.idTitulo} className="text-base font-semibold">{v.titulo}</h3>
       </div>
+
+      {tituloGeneral && (
+        <p className="rounded-lg bg-brand-soft p-3 text-sm">
+          Hoy todas las visitas reciben el regalo general: <strong>{tituloGeneral}</strong>. El de esta propiedad queda guardado, pero no se manda mientras haya regalo general (se cambia en Configuración › Encuesta).
+        </p>
+      )}
 
       {estado.tipo === 'cargando' && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Cargando" />}
       {estado.tipo === 'error' && (
@@ -129,7 +198,7 @@ export function RegaloDeLaEncuesta({ propertyId }: { propertyId: string }) {
 
       {confirmarQuitar && (
         <div className="space-y-2 rounded-lg border border-destructive/40 p-3 text-sm">
-          <p>¿Quitar el regalo? La encuesta de esta propiedad deja de ofrecerlo y, con &quot;solo propiedades con regalo&quot;, deja de mandarse.</p>
+          <p>{v.confirmarQuitar}</p>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="destructive" className="min-h-11" onClick={() => void quitar()}>Sí, quitar el regalo</Button>
             <Button type="button" variant="outline" className="min-h-11" onClick={() => setConfirmarQuitar(false)}>Cancelar</Button>
@@ -140,13 +209,11 @@ export function RegaloDeLaEncuesta({ propertyId }: { propertyId: string }) {
       {mostrarFormulario && (
         <form className="space-y-3" onSubmit={e => { e.preventDefault(); void subir() }}>
           {!regalo && (
-            <p className="text-sm text-muted-foreground">
-              Es el material (PDF de hasta 20 MB) que recibe quien responde la encuesta de esta propiedad. Sin regalo, la encuesta se ofrece igual pero no sale sola por WhatsApp.
-            </p>
+            <p className="text-sm text-muted-foreground">{v.explicacion}</p>
           )}
           <div className="space-y-1">
             <Label htmlFor="regalo-titulo">Título</Label>
-            <Input id="regalo-titulo" className="min-h-11 text-base" value={titulo} onChange={e => setTitulo(e.target.value)} maxLength={120} placeholder="Ej.: Guía del barrio de Caballito" />
+            <Input id="regalo-titulo" className="min-h-11 text-base" value={titulo} onChange={e => setTitulo(e.target.value)} maxLength={120} placeholder={v.ejemplo} />
           </div>
           <div className="space-y-1">
             <Label htmlFor="regalo-archivo">Archivo PDF</Label>
@@ -155,7 +222,7 @@ export function RegaloDeLaEncuesta({ propertyId }: { propertyId: string }) {
           <div className="space-y-1">
             <Label htmlFor="regalo-portada">Portada (opcional, JPG/PNG/WEBP)</Label>
             <Input id="regalo-portada" type="file" accept="image/jpeg,image/png,image/webp" className="min-h-11" onChange={e => elegirPortada(e.target.files?.[0] ?? null)} />
-            <p className="text-xs text-muted-foreground">Sin portada, la encuesta muestra la primera foto de la propiedad.</p>
+            <p className="text-xs text-muted-foreground">{v.ayudaPortada}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button type="submit" className="min-h-11 bg-brand text-brand-foreground hover:bg-brand/90" disabled={subiendo || !archivo || titulo.trim().length < 3}>

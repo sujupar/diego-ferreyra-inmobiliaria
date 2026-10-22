@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest'
 import {
   validarArchivoRegalo, validarPortada, pathDelRegalo, pathDePortada, esPathDelRegalo, esPathDePortada,
   nombreDeDescarga, validarTitulo, MAX_REGALO_BYTES, validarArchivoRegaloSubido, validarPortadaSubida,
-  esPdf, esImagenValida,
+  esPdf, esImagenValida, pathDelRegaloGeneral, pathDePortadaGeneral, esPathDelRegaloGeneral, esPathDePortadaGeneral,
+  regaloQueAplica,
 } from './regalo'
+import type { RegaloDeLaPropiedad, RegaloGeneral } from './tipos'
 
 const bytes = (...n: number[]) => new Uint8Array(n)
 
@@ -93,5 +95,41 @@ describe('nombreDeDescarga y validarTitulo', () => {
     expect(validarTitulo('Guía\ndel barrio')).toEqual({ ok: true, titulo: 'Guía del barrio' })
     expect(validarTitulo('ab')).toEqual({ ok: false, error: 'El título tiene que tener entre 3 y 120 caracteres' })
     expect(validarTitulo(42)).toEqual({ ok: false, error: 'El título tiene que tener entre 3 y 120 caracteres' })
+  })
+})
+
+describe('regalo general (la guía de gastos, 2026-10-17)', () => {
+  it('paths en la carpeta general/, nunca dentro de una propiedad', () => {
+    expect(pathDelRegaloGeneral(UUID)).toBe(`general/regalo-${UUID}.pdf`)
+    expect(pathDePortadaGeneral(UUID, 'Tapa.JPEG')).toBe(`general/portada-${UUID}.jpg`)
+    expect(esPathDelRegaloGeneral(`general/regalo-${UUID}.pdf`)).toBe(true)
+    expect(esPathDePortadaGeneral(`general/portada-${UUID}.png`)).toBe(true)
+  })
+  it('rechaza paths de una propiedad, recorridos de carpeta y extensiones cambiadas', () => {
+    expect(esPathDelRegaloGeneral(`properties/${PROP}/regalo-${UUID}.pdf`)).toBe(false)
+    expect(esPathDelRegaloGeneral(`general/regalo-${UUID}.pdf/../../otra`)).toBe(false)
+    expect(esPathDelRegaloGeneral(`general/regalo-${UUID}.exe`)).toBe(false)
+    expect(esPathDelRegaloGeneral(`xgeneral/regalo-${UUID}.pdf`)).toBe(false)
+    expect(esPathDePortadaGeneral(`general/portada-${UUID}.gif`)).toBe(false)
+    expect(esPathDePortadaGeneral(`general/regalo-${UUID}.pdf`)).toBe(false)
+  })
+})
+
+describe('regaloQueAplica: la general manda sobre la de la propiedad', () => {
+  const general: RegaloGeneral = {
+    titulo: 'Guía de gastos para compradores', archivoPath: `general/regalo-${UUID}.pdf`, archivoNombre: 'guia.pdf',
+    archivoBytes: 1000, portadaPath: `general/portada-${UUID}.jpg`, actualizadoEl: '2026-10-17T12:00:00Z',
+  }
+  const propio: RegaloDeLaPropiedad = {
+    propertyId: PROP, titulo: 'Guía de Caballito', archivoPath: `properties/${PROP}/regalo-${UUID}.pdf`, archivoNombre: 'c.pdf',
+    archivoBytes: 500, portadaPath: null, actualizadoEl: '2026-10-16T12:00:00Z',
+  }
+  it('con general: la general, aunque la propiedad tenga la suya (los mensajes prometen la guía)', () => {
+    expect(regaloQueAplica(general, propio, PROP)).toEqual({ ...general, propertyId: PROP })
+    expect(regaloQueAplica(general, null, OTRA)).toEqual({ ...general, propertyId: OTRA })
+  })
+  it('sin general: exactamente como antes (la de la propiedad o ninguna)', () => {
+    expect(regaloQueAplica(null, propio, PROP)).toBe(propio)
+    expect(regaloQueAplica(null, null, PROP)).toBeNull()
   })
 })

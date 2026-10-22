@@ -219,3 +219,55 @@ describe('Storage', () => {
     expect(await datos.primerosBytes('properties/x/regalo-y.pdf', 5)).toBeNull()
   })
 })
+
+describe('regalo general y "el regalo que aplica" (2026-10-17)', () => {
+  const U = '11111111-1111-4111-8111-111111111111'
+  const PROP = '33333333-3333-4333-8333-333333333333'
+  const GENERAL = { title: 'Guía de gastos para compradores', file_path: `general/regalo-${U}.pdf`, file_name: 'guia.pdf', file_size: 1000, cover_path: `general/portada-${U}.jpg`, updated_at: '2026-10-17T12:00:00Z' }
+  const PROPIO = { property_id: PROP, title: 'Guía de Caballito', file_path: `properties/${PROP}/regalo-${U}.pdf`, file_name: 'c.pdf', file_size: 500, cover_path: null, updated_at: '2026-10-16T12:00:00Z' }
+
+  it('leerRegaloGeneral lee la fila única', async () => {
+    registro.responder = () => ({ data: GENERAL, error: null })
+    expect(await datos.leerRegaloGeneral()).toEqual({
+      titulo: 'Guía de gastos para compradores', archivoPath: `general/regalo-${U}.pdf`, archivoNombre: 'guia.pdf',
+      archivoBytes: 1000, portadaPath: `general/portada-${U}.jpg`, actualizadoEl: '2026-10-17T12:00:00Z',
+    })
+    expect(registro.llamadas[0].tabla).toBe('visit_survey_general_gift')
+    expect(pasos(registro.llamadas[0], 'eq')).toEqual([['id', true]])
+  })
+  it('sin fila → null; error de la base → LANZA (no se confunde con "no hay regalo")', async () => {
+    registro.responder = () => ({ data: null, error: null })
+    expect(await datos.leerRegaloGeneral()).toBeNull()
+    registro.responder = () => ({ data: null, error: { message: 'boom' } })
+    await expect(datos.leerRegaloGeneral()).rejects.toThrow()
+  })
+  it('leerRegalo: con general, la general aunque la propiedad tenga la suya', async () => {
+    registro.responder = l => ({ data: l.tabla === 'visit_survey_general_gift' ? GENERAL : PROPIO, error: null })
+    const r = await datos.leerRegalo(PROP)
+    expect(r?.titulo).toBe('Guía de gastos para compradores')
+    expect(r?.archivoPath).toBe(`general/regalo-${U}.pdf`)
+    expect(r?.propertyId).toBe(PROP)
+  })
+  it('leerRegalo: sin general, el de la propiedad (como antes)', async () => {
+    registro.responder = l => ({ data: l.tabla === 'visit_survey_general_gift' ? null : PROPIO, error: null })
+    expect((await datos.leerRegalo(PROP))?.titulo).toBe('Guía de Caballito')
+    registro.responder = () => ({ data: null, error: null })
+    expect(await datos.leerRegalo(PROP)).toBeNull()
+  })
+  it('leerRegaloDeLaPropiedad ignora la general (la usa la ficha, que administra el propio)', async () => {
+    registro.responder = l => ({ data: l.tabla === 'visit_survey_general_gift' ? GENERAL : PROPIO, error: null })
+    expect((await datos.leerRegaloDeLaPropiedad(PROP))?.titulo).toBe('Guía de Caballito')
+    expect(registro.llamadas.map(l => l.tabla)).toEqual(['property_survey_gifts'])
+  })
+  it('guardar: upsert sobre la fila única (PK id) y borrar', async () => {
+    registro.responder = () => ({ data: null, error: null })
+    await datos.guardarRegaloGeneral({ titulo: 'Guía', archivoPath: `general/regalo-${U}.pdf`, archivoNombre: 'g.pdf', archivoBytes: 10, portadaPath: null, actorId: 'yo' })
+    const [fila, opciones] = pasos(registro.llamadas[0], 'upsert')[0] as [Record<string, unknown>, unknown]
+    expect(registro.llamadas[0].tabla).toBe('visit_survey_general_gift')
+    expect(fila).toMatchObject({ id: true, title: 'Guía', file_path: `general/regalo-${U}.pdf`, file_name: 'g.pdf', file_size: 10, cover_path: null, updated_by: 'yo' })
+    expect(opciones).toEqual({ onConflict: 'id' })
+    await datos.borrarRegaloGeneral()
+    expect(pasos(registro.llamadas[1], 'delete')).toEqual([[]])
+    expect(pasos(registro.llamadas[1], 'eq')).toEqual([['id', true]])
+  })
+})
