@@ -5,7 +5,7 @@
     "types/**/*.ts",
     "lib/informes/**/*.ts",
     "app/api/informes/**/*.ts",
-    "app/api/properties/[[]id]/informes/**/*.ts",
+    "app/api/properties/*/informes/**/*.ts",
     "components/informes/**/*.tsx",
     "app/(dashboard)/informes/**/*.tsx"
   ]
