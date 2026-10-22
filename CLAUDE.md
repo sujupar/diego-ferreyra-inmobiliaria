@@ -2101,6 +2101,49 @@ Spec: `docs/superpowers/specs/2026-10-17-regalo-guia-compradores-design.md`.
 
 ---
 
+## Informe quincenal por propiedad — Entrega 1 (en producción 2026-10-22, PR #52)
+
+Spec: `docs/superpowers/specs/2026-10-22-informe-quincenal-design.md`; plan homónimo. La Entrega 2 (armado
+automático el 1 y el 16 + tarea y email a Paula + listado `/informes`) está pendiente.
+
+- **Qué hay:** pestaña "Informes" en la ficha (captadas; el abogado no la ve) con "Nuevo informe" (última
+  quincena / ciclo de la propiedad / fechas), y la pantalla `/informes/[id]`: fuentes automáticas, números y
+  capturas de Zonaprop/Argenprop/ML/TikTok, información escrita, competidoras, faltantes en naranja, vista previa
+  y "Marcar como listo". El PDF (`components/informes/pdf/`) reproduce los informes de ejemplo con sus imágenes
+  ORIGINALES (`public/informe-quincenal/`, sacadas de los PDF con PyMuPDF). Lógica pura en `lib/informes/`.
+- **Base:** `property_reports` (UNIQUE propiedad+período, ≤120 días, RLS solo lectura por rol), bucket privado
+  `property-reports`, y dos funciones atómicas solo para service role: `informe_guardar_fuente` y
+  `informe_guardar_captura` (migraciones `20261022000001/2/3`, aplicadas con `scripts/apply-informes-pg.ts` y
+  `scripts/apply-informe-captura-pg.ts`). **Antes había leer-modificar-escribir del JSON entero: dos capturas
+  subidas a la vez dejaban una sola.** Todo jsonb que se escriba por partes va por una función así.
+- **Fuentes, una por pedido** (regla de Netlify): consultas, visitas+ficha, reserva, visitas de ML (aviso de la
+  plataforma, del mapa o el que pega Paula), Meta (edad/sexo y plataforma), reels de Instagram (rotulado
+  ACUMULADO: Instagram no da el reel por período). Ninguna lanza: `ok` / `sin_datos` / `error`. Techo de 15 s por
+  fuente (`TOPE_FUENTE_MS`) y 8 s por llamada: sin techo, una API colgada mataba la función y la fuente quedaba
+  "pendiente" para siempre. **Un error nunca se muestra como 0**, ni en la pantalla ni en el PDF.
+- **Las consultas se guardan cuando el cron lee el mail (`created_at`), no cuando llegaron:** una recibida el 15 a
+  las 23:55 entra el 16. La base se pide con 7 días de margen a cada lado y se recorta por `received_at`.
+- **Regla de los totales (la de los ejemplos):** vieron = exposición ZP + visualizaciones AP + visitas ML; entraron
+  = visualizaciones ZP + AP + visitas ML. Un portal con `publicado:false` no cuenta ni es faltante.
+- **El servidor reemplaza `manual` ENTERO en cada PATCH.** Por eso el editor (a) encola los guardados, (b) valida
+  con `sanearCambios` ANTES de aplicar —un aviso de ML mal pegado hacía fallar TODOS los guardados siguientes— y
+  (c) si el servidor rechaza, vuelve a lo último confirmado. Las competidoras del scraper se recortan a
+  `TOPES_COMPETIDORA` (una sola definición, la usa también el servidor).
+- **"Marcar como listo" va con versión:** el navegador arma el PDF con el informe que leyó y manda su
+  `updated_at`; `/listo` marca solo si sigue siendo ese (`.eq('updated_at', version)`, verificado contra la base con
+  el texto tal cual lo devuelve PostgREST). Si cambió algo mientras se armaba: 409 y el PDF se borra.
+- **QA:** `scripts/render-informe-test.tsx` arma el PDF con fuentes reales (react-pdf en Node no lee rutas con
+  espacios: copia los assets a una carpeta sin espacios). En el navegador de Claude, `fill` del MCP NO dispara el
+  onChange de React en `<input type=date>` ni deja el campo enfocado si su uid quedó viejo: escribir con el teclado
+  (`type_text`) después de enfocar por `id`. Para subir archivos, el MCP solo lee dentro de la carpeta del proyecto.
+- **Cómo verificar:** `npx vitest run --config vitest.informes.config.ts` (~5 s, 210 pruebas);
+  `npx tsc --noEmit -p tsconfig.informes.json`. En la base:
+  `SELECT estado, count(*) FROM property_reports GROUP BY 1;`
+- **Dato:** una sola propiedad captada no tiene `captured_at` (la [TEST] ad5c6ba9); sin esa fecha no hay "ciclo de
+  la propiedad" y la pantalla lo dice.
+
+---
+
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
 
 - **El protocolo de las seis etapas está ARRIBA de todo en este archivo**; la versión narrativa en `docs/proceso-de-desarrollo.md`. Se aplica a todo pedido, por chico que sea.
