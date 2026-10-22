@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, ListChecks, Inbox, Flag, Columns3, Contact, CalendarCheck, ClipboardList,
-  Building2, Megaphone, BarChart3, Filter, Settings, Wrench, UserCog,
+  Building2, Megaphone, Newspaper, BarChart3, Filter, Settings, Wrench, UserCog,
 } from 'lucide-react'
 import type { Role } from '@/types/auth.types'
 import { hasPermission, hasAnyPermission, type Permission } from '@/lib/auth/roles'
@@ -41,6 +41,7 @@ const AVISOS: NavItem = { href: '/avisos', label: 'Avisos por identificar', icon
 const CRM: NavItem = { href: '/crm', label: 'CRM', icon: Columns3 }
 const VISITAS: NavItem = { href: '/visits', label: 'Visitas', icon: CalendarCheck }
 const REDES: NavItem = { href: '/redes-sociales', label: 'Redes sociales', icon: Megaphone }
+const NOTICIAS: NavItem = { href: '/noticias', label: 'Noticias', icon: Newspaper }
 const CONTACTOS: NavItem = { href: '/contacts', label: 'Contactos', icon: Contact }
 const LISTADO: NavItem = { href: '/properties', label: 'Listado', icon: Building2 }
 const NUEVA_PROPIEDAD: NavItem = { href: '/properties/new', label: 'Nueva', icon: Building2 }
@@ -87,7 +88,7 @@ export function getNavSections(role: Role): NavGroup[] {
           { href: '/properties', label: 'Mis propiedades', icon: Building2 },
         ],
       },
-      { label: 'Marketing', entries: [REDES] },
+      { label: 'Marketing', entries: [REDES, NOTICIAS] },
     ]
   }
 
@@ -102,13 +103,13 @@ export function getNavSections(role: Role): NavGroup[] {
         ],
       },
       { label: 'Comercial', entries: [INBOX, AVISOS, CRM, CONTACTOS, VISITAS] },
-      { label: 'Marketing', entries: [REDES] },
+      { label: 'Marketing', entries: [REDES, NOTICIAS] },
     ]
   }
 
   // admin, dueno y los roles heredados (agent, viewer) — igual que el `default:`
   // del switch anterior. Los guardas por permiso hacen el resto del filtrado.
-  const marketing: NavItem[] = [REDES]
+  const marketing: NavItem[] = [REDES, NOTICIAS]
   if (can('metrics.view')) {
     marketing.push(
       { href: '/metrics', label: 'Métricas', icon: BarChart3 },
