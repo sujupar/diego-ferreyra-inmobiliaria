@@ -18,7 +18,7 @@ opinión del asesor.
 | # | Página | De dónde sale |
 |---|---|---|
 | 1 | Portada "INFORME QUINCENAL" + dirección | Automático |
-| 2 | Resumen de gestión: métricas con ✅/❌, acciones realizadas, acciones a realizar | Números automáticos; textos los escribe Paula/asesor |
+| 2 | Resumen de gestión: métricas con ✅/❌, acciones realizadas, acciones a realizar | Números automáticos; la información la carga Paula/asesor |
 | 3 | "¡Comencemos!" con el embudo INFORMES → VENTAS | Fijo, **la imagen tal cual** (decisión del dueño) |
 | 4 | Divisor "Etapa publicidad" | Fijo |
 | 5 | Portales: Zonaprop, Argenprop, MercadoLibre + frase de totales | Ver tabla de fuentes |
@@ -30,7 +30,7 @@ opinión del asesor.
 | 11 | Ficha de visitas: le gustó (torta), qué no le gustó, precio (torta), cuánto ofertaría (barras) — o "Aún no han completado la ficha de visitas" | Automático (encuesta post-visita) |
 | 12 | Divisor "Propiedades que compiten" | Fijo |
 | 13 | Propiedades en venta en el barrio (2 por página: foto, precio, m², ambientes, baños, dormitorios, antigüedad, cocheras, valor del m², link, publicado hace / visualizaciones) | Paula pega los links; la plataforma completa los datos |
-| 14 | Análisis final | Lo escribe el asesor (con borrador sugerido, ver decisiones) |
+| 14 | Análisis final | Lo carga el asesor |
 | 15 | ¡Gracias por tu tiempo! + contacto | Fijo |
 
 Las páginas de un canal sin datos en el período (sin campaña Meta, sin reel, sin TikTok) no salen,
@@ -70,9 +70,10 @@ Zonaprop + visualizaciones de Argenprop + visitas de ML (930 + 125 + 84 = 1.139 
 
 ## Qué pasa por detrás
 
-1. **Ciclo:** un proceso diario (pg_cron, como los demás) busca propiedades captadas
-   (`status='approved'`, `commercial_status` disponible o reservada) cuyo último informe cerró
-   hace 15 días o más (el primero cuenta desde `captured_at`) y crea el borrador del período.
+1. **Ciclo:** un proceso (pg_cron, como los demás) corre el 1 y el 16 de cada mes y crea, para cada
+   propiedad captada (`status='approved'`, `commercial_status` disponible o reservada), el borrador
+   de la quincena que cerró (del 16 al fin de mes, o del 1 al 15). Una propiedad captada a mitad de
+   quincena arranca desde `captured_at`.
 2. **Borrador:** tabla nueva `property_reports` (período, estado `borrador → listo`, datos
    automáticos congelados al crearlo, campos manuales, links de competidoras, path del PDF).
    Los datos automáticos se juntan **una fuente por pedido** (regla dura de Netlify: nunca
@@ -93,21 +94,23 @@ Zonaprop + visualizaciones de Argenprop + visitas de ML (930 + 125 + 84 = 1.139 
 - Sesión de navegador abierta que lea el panel de Zonaprop: frágil (cambian la página, piden
   captcha, la sesión vence) y contra sus términos. Se puede evaluar después; v1 es carga manual.
 
-## Decisiones que necesito del dueño
+## Decisiones del dueño (2026-10-22)
 
-1. **La imagen del embudo** de la página 3: no está en el repo. Necesito el archivo original (PNG)
-   para ponerla tal cual.
-2. **Textos (resumen, acciones, análisis final):** ¿los escribe siempre una persona, o la
-   plataforma propone un borrador con IA a partir de los datos y el asesor lo corrige? Recomiendo
-   el borrador: el análisis final de Roque Pérez son dos páginas que salen casi enteras de los números.
-3. **Ciclo:** ¿cada 15 días desde la captación de cada propiedad (cada una en su fecha), o en
-   fechas fijas para todas (1 y 16 de cada mes, Paula las hace en tanda)? Recomiendo fechas fijas:
-   es más fácil de organizar para una sola persona.
-4. **Paula:** ¿es la única con rol coordinador? (la tarea y el email van al rol coordinador).
+1. **Imágenes:** se usan las ORIGINALES, sacadas de los PDF de ejemplo con PyMuPDF (embudo con
+   transparencia, portada, fondo de divisores, foto de Diego, cierre, pie de competidoras, logo,
+   íconos). Viven en `public/informe-quincenal/`.
+2. **Textos (resumen, acciones realizadas, acciones a realizar, resumen de consultas, análisis
+   final):** son INFORMACIÓN que carga una persona, no redacción. Sin IA. La pantalla los pide como
+   campos, con los datos automáticos a la vista para escribirlos.
+3. **Ciclo:** **fechas fijas** — el 1 y el 16 de cada mes se crea el borrador de la quincena que
+   cerró para todas las propiedades. Además, el selector de "Nuevo informe" ofrece los atajos
+   "Última quincena" y "Ciclo de la propiedad" (los 15 días que tocan contando desde su captación),
+   y fechas libres.
+4. **Paula es la única coordinadora:** la tarea y el email van al rol coordinador.
 
 ## Criterios de aceptación
 
-1. El día del ciclo, cada propiedad captada disponible/reservada tiene un borrador de informe del
+1. El 1 y el 16, cada propiedad captada disponible/reservada tiene un borrador de informe del
    período, y Paula recibe un email y una tarea por cada una (sin duplicados si el anterior sigue abierto).
 2. El borrador ya trae: visitas de ML en el rango, campaña Meta (con edad/sexo y plataforma) si
    hubo, reel de Instagram si hubo, consultas por portal, visitas y ficha de visitas, y estado de reserva.
@@ -118,7 +121,7 @@ Zonaprop + visualizaciones de Argenprop + visitas de ML (930 + 125 + 84 = 1.139 
 5. Con encuestas completas en el período, la página de ficha de visitas muestra los gráficos; sin
    encuestas, dice "Aún no han completado la ficha de visitas".
 6. Las páginas de canales sin datos no salen.
-7. "Nuevo informe" con selector de fechas arma un informe de cualquier período.
+7. "Nuevo informe" con selector de fechas (atajos "Última quincena" y "Ciclo de la propiedad", o fechas libres) arma un informe de cualquier período.
 8. "Marcar como listo" genera el PDF con la misma estructura y estética de los ejemplos, y queda
    descargable en la pestaña Informes.
 9. Asesor ve y edita los informes de sus propiedades; coordinador, admin y dueño todos; abogado ninguno.
