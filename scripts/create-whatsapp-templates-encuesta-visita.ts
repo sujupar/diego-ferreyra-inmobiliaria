@@ -26,7 +26,7 @@
 import { readFile } from 'node:fs/promises'
 import {
   PLANTILLA_ENCUESTA_V1, CUERPO_ENCUESTA_V1, BOTON_ENCUESTA_V1, PLANTILLA_REGALO_V1, CUERPO_REGALO_V1, IDIOMA_PLANTILLAS,
-  PLANTILLA_ENCUESTA_V2, CUERPO_ENCUESTA_V2, BOTON_ENCUESTA_V2, PLANTILLA_ENCUESTA_V3, CUERPO_ENCUESTA_V3, BOTON_ENCUESTA_V3, PLANTILLA_ENCUESTA_V4, CUERPO_ENCUESTA_V4, BOTON_ENCUESTA_V4, PLANTILLA_REGALO_V3, CUERPO_REGALO_V3,
+  PLANTILLA_ENCUESTA_V2, CUERPO_ENCUESTA_V2, BOTON_ENCUESTA_V2, PLANTILLA_ENCUESTA_V3, CUERPO_ENCUESTA_V3, BOTON_ENCUESTA_V3, PLANTILLA_ENCUESTA_V4, CUERPO_ENCUESTA_V4, BOTON_ENCUESTA_V4, PLANTILLA_ENCUESTA_V5, CUERPO_ENCUESTA_V5, BOTON_ENCUESTA_V5, PLANTILLA_REGALO_V3, CUERPO_REGALO_V3,
 } from '../lib/visitas/encuesta/plantillas'
 
 /** Qué crea cada valor de --create. Las cuatro comparten datos de ejemplo: mismas variables. */
@@ -36,6 +36,8 @@ const PEDIDOS = {
   'encuesta-v3': { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V3, cuerpo: CUERPO_ENCUESTA_V3, boton: BOTON_ENCUESTA_V3 },
   // MARKETING a propósito (decisión del dueño 2026-10-22): no se pide UTILITY para que Meta no la reclasifique.
   'encuesta-v4': { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V4, cuerpo: CUERPO_ENCUESTA_V4, boton: BOTON_ENCUESTA_V4, categoria: 'MARKETING' },
+  // Respaldo de la v4 (lo manda el webhook si Meta frena la de marketing): tiene que quedar UTILITY.
+  'encuesta-v5': { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V5, cuerpo: CUERPO_ENCUESTA_V5, boton: BOTON_ENCUESTA_V5 },
   regalo: { tipo: 'regalo', nombre: PLANTILLA_REGALO_V1, cuerpo: CUERPO_REGALO_V1, boton: null },
   'regalo-v3': { tipo: 'regalo', nombre: PLANTILLA_REGALO_V3, cuerpo: CUERPO_REGALO_V3, boton: null },
 } as const

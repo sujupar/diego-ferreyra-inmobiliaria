@@ -21,6 +21,8 @@ const { mem, datosMock, mandarMock } = vi.hoisted(() => {
       estadoDelMensaje: vi.fn(async (): Promise<EstadoWa | null> => null),
       reservarEnvio: vi.fn(async () => true),
       liberarEnvio: vi.fn(async () => undefined),
+      plantillaDelMensaje: vi.fn(async (): Promise<string | null> => 'encuesta_visita_v4'),
+      leerEncuestaPorMensaje: vi.fn(),
     },
   }
 })
@@ -33,7 +35,7 @@ vi.mock('@/lib/integrations/whatsapp/phone', () => ({
   },
 }))
 
-import { prepararYEnviarEncuesta, encuestaParaFicha, ReenvioNoPermitido, EnvioEnCurso } from './servicio'
+import { prepararYEnviarEncuesta, encuestaParaFicha, ReenvioNoPermitido, EnvioEnCurso, mandarRespaldoSiCorresponde } from './servicio'
 import { encuestaConVisitaDePrueba, encuestaDePrueba, VISITA_DE_PRUEBA } from '@/test/visitas/encuesta-de-prueba'
 import { AJUSTES_PRUEBA } from './envio.test-datos'
 
@@ -175,5 +177,47 @@ describe('encuestaParaFicha', () => {
       (mem.fila ? encuestaConVisitaDePrueba(mem.fila, { status: 'scheduled' }) : null))
     const f = await encuestaParaFicha(VISITA_DE_PRUEBA, AHORA)
     expect(f).toMatchObject({ linkDisponible: false, puedeReenviar: false })
+  })
+})
+
+describe('mandarRespaldoSiCorresponde (Meta frenó la invitación de marketing)', () => {
+  const FALLO = { waMessageId: 'wamid.v4', estado: 'failed', codigoError: '131049' }
+  beforeEach(() => {
+    mem.fila = { ...encuestaDePrueba(), send_status: 'enviada', wa_message_id: 'wamid.v4', sent_to: '5491158234521', completed_at: null }
+    datosMock.leerEncuestaPorMensaje.mockImplementation(async () => (mem.fila ? { ...encuestaConVisitaDePrueba(), encuesta: mem.fila } : null))
+  })
+  it('manda la v5 al mismo teléfono, con los mismos datos, y la encuesta pasa a apuntar al mensaje nuevo', async () => {
+    mandarMock.mockResolvedValue({ ok: true, modoPrueba: false, messageId: 'wamid.v5' })
+    expect(await mandarRespaldoSiCorresponde(FALLO, AHORA)).toBe('mandado')
+    const [envio, destino] = mandarMock.mock.calls[0]
+    expect(envio.templateName).toBe('encuesta_visita_v5')
+    expect(envio.bodyParams).toEqual(['Mariana', 'Doblas 248', '14/10', mem.fila?.token])
+    expect(destino).toMatchObject({ telefono: '5491158234521', sentBy: null })
+    expect(datosMock.registrarEnvio).toHaveBeenCalledWith(mem.fila?.id, expect.objectContaining({ send_status: 'enviada', wa_message_id: 'wamid.v5' }))
+    expect(datosMock.liberarEnvio).toHaveBeenCalled()
+  })
+  it('si la v5 también falla, la encuesta queda "fallida" con el motivo (nunca "Enviada" mintiendo)', async () => {
+    mandarMock.mockResolvedValue({ ok: false, error: 'boom', codigo: 131026 })
+    expect(await mandarRespaldoSiCorresponde(FALLO, AHORA)).toBe('fallido')
+    expect(datosMock.registrarEnvio).toHaveBeenCalledWith(mem.fila?.id, expect.objectContaining({ send_status: 'fallida' }))
+  })
+  it('un estado que no es fallo no toca la base (pasan cientos por el webhook)', async () => {
+    expect(await mandarRespaldoSiCorresponde({ ...FALLO, estado: 'delivered' }, AHORA)).toBe('no_fallo')
+    expect(datosMock.plantillaDelMensaje).not.toHaveBeenCalled()
+    expect(mandarMock).not.toHaveBeenCalled()
+  })
+  it('reintento de Meta sobre el mensaje viejo después del respaldo: no duplica', async () => {
+    mem.fila = { ...mem.fila!, wa_message_id: 'wamid.v5' }
+    expect(await mandarRespaldoSiCorresponde(FALLO, AHORA)).toBe('ya_reemplazado')
+    expect(mandarMock).not.toHaveBeenCalled()
+  })
+  it('candado tomado (otro respaldo en curso): no manda', async () => {
+    datosMock.reservarEnvio.mockResolvedValueOnce(false)
+    expect(await mandarRespaldoSiCorresponde(FALLO, AHORA)).toBe('en_curso')
+    expect(mandarMock).not.toHaveBeenCalled()
+  })
+  it('NUNCA lanza: si la base falla, devuelve "error" (el webhook tiene que responder 200 a Meta)', async () => {
+    datosMock.plantillaDelMensaje.mockRejectedValueOnce(new Error('base caída'))
+    expect(await mandarRespaldoSiCorresponde(FALLO, AHORA)).toBe('error')
   })
 })

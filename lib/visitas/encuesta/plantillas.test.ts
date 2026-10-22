@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   PLANTILLAS_ENCUESTA, PLANTILLAS_REGALO, CUERPO_ENCUESTA_V1, CUERPO_REGALO_V1, BOTON_ENCUESTA_V1,
-  CUERPO_ENCUESTA_V2, CUERPO_REGALO_V3, BOTON_ENCUESTA_V2, CUERPO_ENCUESTA_V3, BOTON_ENCUESTA_V3, CUERPO_ENCUESTA_V4, BOTON_ENCUESTA_V4,
+  CUERPO_ENCUESTA_V2, CUERPO_REGALO_V3, BOTON_ENCUESTA_V2, CUERPO_ENCUESTA_V3, BOTON_ENCUESTA_V3, CUERPO_ENCUESTA_V4, BOTON_ENCUESTA_V4, CUERPO_ENCUESTA_V5, RESPALDO_DE_ENCUESTA,
   cantidadDeVariables, armarEnvioEncuesta, armarEnvioRegalo, nombreDePila, paramSeguro,
 } from './plantillas'
 
@@ -14,7 +14,7 @@ describe('catálogo de plantillas', () => {
     }
   })
   it('sin vocabulario de venta (Meta las reclasifica a MARKETING y deja de entregarlas)', () => {
-    for (const cuerpo of [CUERPO_ENCUESTA_V1, CUERPO_REGALO_V1, CUERPO_ENCUESTA_V2, CUERPO_REGALO_V3, CUERPO_ENCUESTA_V3, CUERPO_ENCUESTA_V4]) {
+    for (const cuerpo of [CUERPO_ENCUESTA_V1, CUERPO_REGALO_V1, CUERPO_ENCUESTA_V2, CUERPO_REGALO_V3, CUERPO_ENCUESTA_V3, CUERPO_ENCUESTA_V4, CUERPO_ENCUESTA_V5]) {
       expect(cuerpo).not.toMatch(/regalo|gratis|gratuit|oferta|descuento|promo|sin costo|sin compromiso/i)
     }
   })
@@ -114,8 +114,21 @@ describe('plantillas v2 (guía de gastos, aprobadas por el dueño el 2026-10-17)
     )
     expect(CUERPO_ENCUESTA_V4).not.toContain('100.000')
   })
+  it('la v5 es el respaldo de la v4: el mismo dolor, armado como utilidad (la ficha primero)', () => {
+    expect(RESPALDO_DE_ENCUESTA).toEqual({ encuesta_visita_v4: 'encuesta_visita_v5' })
+    const e = armarEnvioEncuesta('encuesta_visita_v5', { nombre: 'Mariana', direccion: 'Doblas 248', fecha: '14/10', token: TOKEN })
+    expect(e?.urlButtonParam).toBe(TOKEN)
+    expect(e?.bodyText).toBe(
+      'Hola Mariana 👋 Gracias por venir a ver Doblas 248 el 14/10.\n\n' +
+      'Para cerrar la ficha de tu visita, contame qué te pareció (1 minuto) 👇\n' +
+      `https://inmodf.com.ar/encuesta/${TOKEN}\n\n` +
+      'Al terminar te llega la guía de gastos de compra: comprar un departamento te puede salir hasta US$ 7.000 más de lo que tenías presupuestado.\n\n' +
+      'Diego Ferreyra',
+    )
+    expect(CUERPO_ENCUESTA_V5).toContain('https://inmodf.com.ar/encuesta/{{4}}')
+  })
   it('las v1 siguen en el catálogo: volver atrás es cambiar la variable de Netlify', () => {
-    expect(Object.keys(PLANTILLAS_ENCUESTA).sort()).toEqual(['encuesta_visita_v1', 'encuesta_visita_v2', 'encuesta_visita_v3', 'encuesta_visita_v4'])
+    expect(Object.keys(PLANTILLAS_ENCUESTA).sort()).toEqual(['encuesta_visita_v1', 'encuesta_visita_v2', 'encuesta_visita_v3', 'encuesta_visita_v4', 'encuesta_visita_v5'])
     expect(Object.keys(PLANTILLAS_REGALO).sort()).toEqual(['regalo_visita_v1', 'regalo_visita_v3'])
   })
 })

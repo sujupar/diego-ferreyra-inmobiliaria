@@ -15,6 +15,7 @@ import {
   PROPIEDAD_DE_LA_PRUEBA,
 } from '@/lib/ai/reset-prueba'
 import { sendWhatsappText } from '@/lib/integrations/whatsapp/core'
+import { mandarRespaldoSiCorresponde } from '@/lib/visitas/encuesta/servicio'
 
 export const dynamic = 'force-dynamic'
 
@@ -518,6 +519,12 @@ export async function POST(request: NextRequest) {
     // análisis (que se recupera solo), no ellos.
     for (const s of statuses) {
       await persistStatus(supabase, s)
+      // Invitación a la encuesta frenada por Meta (va como marketing y Meta limita cuántos
+      // recibe cada persona): sale la versión de utilidad. Solo mira los `failed`, nunca lanza,
+      // y como mucho UNA llamada a Meta con techo de 8 s. Ver lib/visitas/encuesta/respaldo.ts.
+      if (s.status === 'failed') {
+        await mandarRespaldoSiCorresponde({ waMessageId: s.waMessageId, estado: s.status, codigoError: s.errorCode }, new Date())
+      }
     }
 
     // FASE 3 — ANALIZAR. COMO MUCHO UN pipeline por POST, y es el del ÚLTIMO

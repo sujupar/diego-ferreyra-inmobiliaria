@@ -193,6 +193,9 @@ vi.mock('@/lib/ai/reset-prueba', async (importOriginal) => {
   }
 })
 
+const { respaldoMock } = vi.hoisted(() => ({ respaldoMock: vi.fn(async () => 'no_fallo') }))
+vi.mock('@/lib/visitas/encuesta/servicio', () => ({ mandarRespaldoSiCorresponde: respaldoMock }))
+
 vi.mock('@/lib/integrations/whatsapp/core', () => ({
   sendWhatsappText: vi.fn(async (input: { to: string; text: string; propertyId?: string | null }) => {
     reinicio.textos.push({ to: input.to, text: input.text, propertyId: input.propertyId ?? null })
@@ -528,3 +531,27 @@ describe('POST /api/webhooks/whatsapp — la palabra de reinicio', () => {
     expect(ai.agente).toHaveLength(1)
   })
 })
+
+describe('respaldo de la invitación a la encuesta (Meta frenó la de marketing)', () => {
+  function conEstado(status: string, error?: { code: number; title: string }) {
+    return {
+      object: 'whatsapp_business_account',
+      entry: [{ id: 'waba-1', changes: [{ field: 'messages', value: {
+        messaging_product: 'whatsapp',
+        statuses: [{ id: 'wamid.V4', status, timestamp: '1754215200', ...(error ? { errors: [error] } : {}) }],
+      } }] }],
+    }
+  }
+  it('un "failed" llama al respaldo con el mensaje y el código de error de Meta', async () => {
+    respaldoMock.mockClear()
+    const res = await POST(request(conEstado('failed', { code: 131049, title: 'healthy ecosystem' })))
+    expect(res.status).toBe(200)
+    expect(respaldoMock).toHaveBeenCalledWith({ waMessageId: 'wamid.V4', estado: 'failed', codigoError: '131049' }, expect.any(Date))
+  })
+  it('un "delivered" no lo llama', async () => {
+    respaldoMock.mockClear()
+    await POST(request(conEstado('delivered')))
+    expect(respaldoMock).not.toHaveBeenCalled()
+  })
+})
+
