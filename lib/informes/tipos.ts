@@ -147,3 +147,16 @@ export interface Informe {
   createdAt: string
   updatedAt: string
 }
+
+/** Lo que muestran la pantalla y el PDF de la propiedad del informe. */
+export interface PropiedadDelInforme {
+  id: string
+  direccion: string
+  barrio: string | null
+  ciudad: string | null
+  tipo: string | null
+  precio: number | null
+  moneda: string | null
+  capturadaEl: string | null
+  foto: string | null
+}

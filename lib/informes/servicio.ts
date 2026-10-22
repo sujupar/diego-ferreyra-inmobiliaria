@@ -10,7 +10,7 @@ import { traerFuente } from './fuentes'
 import { esImagen, esPathDeCaptura, esPathDelPdf, esPdf, MAX_CAPTURA_BYTES, MAX_PDF_BYTES, nombreDelPdf, pathDeCaptura, pathDelPdf, SEGUNDOS_URL_LECTURA, validarCaptura } from './archivos'
 import { validarRango } from './periodo'
 import { faltantes, paginasDelInforme, resumenDeMetricas, type Pagina, type Resumen } from './resumen'
-import { FUENTES, type Capturas, type FuenteGuardada, type Fuentes, type Informe, type NombreCaptura, type NombreFuente } from './tipos'
+import { FUENTES, type Capturas, type FuenteGuardada, type Fuentes, type Informe, type NombreCaptura, type NombreFuente, type PropiedadDelInforme } from './tipos'
 
 export class ErrorInforme extends Error {
   constructor(public readonly status: 400 | 404 | 409 | 503, mensaje: string) {
@@ -111,7 +111,7 @@ export async function marcarInformeListo(i: Informe, pdfPath: string, userId: st
 
 export interface VistaInforme {
   informe: Informe
-  propiedad: datos.PropiedadDelInforme
+  propiedad: PropiedadDelInforme
   resumen: Resumen
   paginas: Pagina[]
   faltantes: string[]

@@ -6,7 +6,7 @@ import 'server-only'
  */
 import { sb } from './sb'
 import { BUCKET_INFORMES } from './archivos'
-import type { Capturas, Competidora, Fuentes, FuenteGuardada, Informe, Manual, NombreFuente } from './tipos'
+import type { Capturas, Competidora, Fuentes, FuenteGuardada, Informe, Manual, NombreFuente, PropiedadDelInforme } from './tipos'
 import type { CambiosInforme } from './sanear'
 
 function fallo(contexto: string, error: { message: string } | null): never {
@@ -105,17 +105,6 @@ export async function volverABorrador(id: string): Promise<boolean> {
 
 // ─── La propiedad (lo que muestran la pantalla y el PDF) ─────────────────────
 
-export interface PropiedadDelInforme {
-  id: string
-  direccion: string
-  barrio: string | null
-  ciudad: string | null
-  tipo: string | null
-  precio: number | null
-  moneda: string | null
-  capturadaEl: string | null
-  foto: string | null
-}
 
 export async function leerPropiedad(propertyId: string): Promise<PropiedadDelInforme | null> {
   const { data, error } = await sb().from('properties')
