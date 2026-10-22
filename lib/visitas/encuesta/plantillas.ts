@@ -69,24 +69,25 @@ export const CUERPO_ENCUESTA_V4 =
 export const BOTON_ENCUESTA_V4 = { texto: 'Quiero la guía', url: 'https://inmodf.com.ar/encuesta/{{1}}' } as const
 
 /**
- * v5 (2026-10-22): el RESPALDO de la v4. Meta descarta mensajes de marketing a quien ya recibió
- * muchos (error 131049, "healthy ecosystem engagement") o a quien bloqueó el marketing (131050):
- * le pasó al dueño en la prueba. La v5 dice lo mismo que la v4, lo más parecido posible, pero
- * armada como utilidad (primero la ficha de la visita, después lo que llega al terminar) para que
- * Meta la entregue. La manda sola el webhook cuando la v4 falla por eso (`respaldo.ts`).
+ * `encuesta_visita_v5` (la v4 con emojis, ordenada como utilidad) Meta la clasificó MARKETING el
+ * 2026-10-22: no sirve de respaldo (Meta la frenaría igual). NO está en el catálogo.
+ *
+ * v6: el intento de respaldo más parecido a la v4 SIN emojis y con la estructura de la v3 (que Meta
+ * sí aprobó como utilidad). Mientras Meta no la apruebe como UTILITY, el respaldo es la v3.
  */
-export const PLANTILLA_ENCUESTA_V5 = 'encuesta_visita_v5'
-export const CUERPO_ENCUESTA_V5 =
-  'Hola {{1}} 👋 Gracias por venir a ver {{2}} el {{3}}.\n\n' +
-  'Para cerrar la ficha de tu visita, contame qué te pareció (1 minuto) 👇\n' +
+export const PLANTILLA_ENCUESTA_V6 = 'encuesta_visita_v6'
+export const CUERPO_ENCUESTA_V6 =
+  'Hola {{1}}. Gracias por venir a ver {{2}} el {{3}}. Para cerrar la ficha de tu visita, contame qué te pareció (menos de un minuto): ' +
   'https://inmodf.com.ar/encuesta/{{4}}\n\n' +
-  'Al terminar te llega la guía de gastos de compra: comprar un departamento te puede salir hasta US$ 7.000 más de lo que tenías presupuestado.\n\n' +
-  'Diego Ferreyra'
-export const BOTON_ENCUESTA_V5 = { texto: 'Contar qué me pareció', url: 'https://inmodf.com.ar/encuesta/{{1}}' } as const
+  'Al terminar te llega la guía de gastos de compra: además del precio, comprar puede costar hasta US$ 7.000 más.\n\n' +
+  'Diego Ferreyra Inmobiliaria'
+export const BOTON_ENCUESTA_V6 = { texto: 'Contar qué me pareció', url: 'https://inmodf.com.ar/encuesta/{{1}}' } as const
 
 /** Qué plantilla de utilidad reemplaza a cada invitación de marketing cuando Meta la frena. */
 export const RESPALDO_DE_ENCUESTA: Readonly<Record<string, string>> = {
-  [PLANTILLA_ENCUESTA_V4]: PLANTILLA_ENCUESTA_V5,
+  // La v3 (UTILITY aprobada, verificada en la prueba del 2026-10-22). Pasar a la v6 recién cuando
+  // Meta la apruebe como UTILITY: un respaldo de marketing no sirve.
+  [PLANTILLA_ENCUESTA_V4]: PLANTILLA_ENCUESTA_V3,
 }
 
 /**
@@ -114,7 +115,7 @@ export const PLANTILLAS_ENCUESTA: Readonly<Record<string, DefinicionPlantilla>> 
   [PLANTILLA_ENCUESTA_V2]: { nombre: PLANTILLA_ENCUESTA_V2, cuerpo: CUERPO_ENCUESTA_V2, variables: 4, conBoton: true, encabezado: null },
   [PLANTILLA_ENCUESTA_V3]: { nombre: PLANTILLA_ENCUESTA_V3, cuerpo: CUERPO_ENCUESTA_V3, variables: 4, conBoton: true, encabezado: null },
   [PLANTILLA_ENCUESTA_V4]: { nombre: PLANTILLA_ENCUESTA_V4, cuerpo: CUERPO_ENCUESTA_V4, variables: 4, conBoton: true, encabezado: null },
-  [PLANTILLA_ENCUESTA_V5]: { nombre: PLANTILLA_ENCUESTA_V5, cuerpo: CUERPO_ENCUESTA_V5, variables: 4, conBoton: true, encabezado: null },
+  [PLANTILLA_ENCUESTA_V6]: { nombre: PLANTILLA_ENCUESTA_V6, cuerpo: CUERPO_ENCUESTA_V6, variables: 4, conBoton: true, encabezado: null },
 }
 
 export const PLANTILLAS_REGALO: Readonly<Record<string, DefinicionPlantilla>> = {

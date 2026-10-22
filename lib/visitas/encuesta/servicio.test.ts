@@ -190,7 +190,7 @@ describe('mandarRespaldoSiCorresponde (Meta frenó la invitación de marketing)'
     mandarMock.mockResolvedValue({ ok: true, modoPrueba: false, messageId: 'wamid.v5' })
     expect(await mandarRespaldoSiCorresponde(FALLO, AHORA)).toBe('mandado')
     const [envio, destino] = mandarMock.mock.calls[0]
-    expect(envio.templateName).toBe('encuesta_visita_v5')
+    expect(envio.templateName).toBe('encuesta_visita_v3')
     expect(envio.bodyParams).toEqual(['Mariana', 'Doblas 248', '14/10', mem.fila?.token])
     expect(destino).toMatchObject({ telefono: '5491158234521', sentBy: null })
     expect(datosMock.registrarEnvio).toHaveBeenCalledWith(mem.fila?.id, expect.objectContaining({ send_status: 'enviada', wa_message_id: 'wamid.v5' }))
