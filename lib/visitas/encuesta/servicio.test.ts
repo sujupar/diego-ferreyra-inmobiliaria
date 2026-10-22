@@ -211,6 +211,24 @@ describe('mandarRespaldoSiCorresponde (Meta frenó la invitación de marketing)'
     expect(await mandarRespaldoSiCorresponde(FALLO, AHORA)).toBe('ya_reemplazado')
     expect(mandarMock).not.toHaveBeenCalled()
   })
+  it('carrera: otro reintento ya mandó el respaldo mientras esperaba el candado → al releer, no manda', async () => {
+    // Revisión adversarial 2026-10-22: dos POST de Meta con el mismo "failed" en paralelo. El
+    // segundo decidió con la encuesta vieja; con el candado ya tomado, la relectura lo frena.
+    datosMock.leerEncuestaConVisita.mockImplementationOnce(async () => ({
+      ...encuestaConVisitaDePrueba(), encuesta: { ...mem.fila!, wa_message_id: 'wamid.v5' },
+    }))
+    expect(await mandarRespaldoSiCorresponde(FALLO, AHORA)).toBe('ya_reemplazado')
+    expect(mandarMock).not.toHaveBeenCalled()
+    expect(datosMock.liberarEnvio).toHaveBeenCalled()
+  })
+  it('Meta mandó la v5 pero la base no la pudo guardar: deja el rastro con el mensaje nuevo', async () => {
+    mandarMock.mockResolvedValue({ ok: true, modoPrueba: false, messageId: 'wamid.v5' })
+    datosMock.registrarEnvio.mockRejectedValueOnce(new Error('base caída'))
+    const errores = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    expect(await mandarRespaldoSiCorresponde(FALLO, AHORA)).toBe('error')
+    expect(errores.mock.calls.flat().join(' ')).toContain('wamid.v5')
+    errores.mockRestore()
+  })
   it('candado tomado (otro respaldo en curso): no manda', async () => {
     datosMock.reservarEnvio.mockResolvedValueOnce(false)
     expect(await mandarRespaldoSiCorresponde(FALLO, AHORA)).toBe('en_curso')

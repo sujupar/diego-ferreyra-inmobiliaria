@@ -177,42 +177,62 @@ export async function mandarRespaldoSiCorresponde(
   if (s.estado !== 'failed') return 'no_fallo'
   try {
     const plantilla = await datos.plantillaDelMensaje(s.waMessageId)
-    const ec = await datos.leerEncuestaPorMensaje(s.waMessageId)
-    const decision = decidirRespaldo({
+    const evaluar = (ec: EncuestaConVisita | null) => decidirRespaldo({
       estado: s.estado, codigoError: s.codigoError, plantillaDelMensaje: plantilla, waMessageIdFallido: s.waMessageId,
       encuesta: ec ? {
         waMessageIdActual: ec.encuesta.wa_message_id, completada: ec.encuesta.completed_at !== null,
         vencida: estaVencida(ec.encuesta.expires_at, ahora),
       } : null,
     })
-    if (!decision.mandar || !ec) return decision.mandar ? 'sin_encuesta' : decision.motivo
-    const { encuesta, visita } = ec
-    const telefono = encuesta.sent_to
-    if (!telefono) return 'sin_encuesta'
-    if (!(await datos.reservarEnvio(encuesta.id, DURACION_CANDADO_SEGUNDOS))) return 'en_curso'
+    const previa = await datos.leerEncuestaPorMensaje(s.waMessageId)
+    const decision = evaluar(previa)
+    if (!decision.mandar) return decision.motivo
+    if (!previa) return 'sin_encuesta'
+    if (!(await datos.reservarEnvio(previa.encuesta.id, DURACION_CANDADO_SEGUNDOS))) return 'en_curso'
     try {
-      const envio = armarEnvioEncuesta(decision.plantilla, {
+      // Revisión adversarial 2026-10-22: dos reintentos de Meta en paralelo deciden los dos con la
+      // encuesta vieja; el primero manda y libera el candado, y el segundo lo toma y volvería a
+      // mandar. Con el candado YA tomado se relee y se decide de nuevo: si la encuesta ya apunta a
+      // otro mensaje, el respaldo ya salió.
+      const ec = await datos.leerEncuestaConVisita({ id: previa.encuesta.id })
+      const confirmada = evaluar(ec)
+      if (!confirmada.mandar) return confirmada.motivo
+      if (!ec) return 'sin_encuesta'
+      const { encuesta, visita } = ec
+      const telefono = encuesta.sent_to
+      if (!telefono) return 'sin_encuesta'
+      const envio = armarEnvioEncuesta(confirmada.plantilla, {
         nombre: visita.client_name, direccion: visita.propiedad?.address ?? null,
         fecha: fechaCorta(visita.scheduled_at), token: encuesta.token,
       })
       if (!envio) return 'plantilla_sin_respaldo'
       const r = await mandarPlantilla(envio, { telefono, leadId: visita.lead_id, propertyId: visita.property_id, sentBy: null })
       if (r.ok && !r.modoPrueba) {
-        await datos.registrarEnvio(encuesta.id, {
-          send_status: 'enviada', send_skip_reason: null, send_error: null,
-          sent_at: ahora.toISOString(), sent_to: telefono, wa_message_id: r.messageId,
-        })
-        console.log(`[encuesta] Meta frenó la invitación de marketing (${s.codigoError}); salió el respaldo ${decision.plantilla} (encuesta ${encuesta.id})`)
+        try {
+          await datos.registrarEnvio(encuesta.id, {
+            send_status: 'enviada', send_skip_reason: null, send_error: null,
+            sent_at: ahora.toISOString(), sent_to: telefono, wa_message_id: r.messageId,
+          })
+        } catch (e) {
+          // Meta YA mandó la v5: sin esto guardado, un reintento del aviso podría mandarla de nuevo.
+          // El rastro completo va al log para arreglarlo a mano (mismo criterio que el envío normal).
+          console.error(`[encuesta] Meta mandó el respaldo (wa_message_id=${r.messageId ?? 'desconocido'}, a ${enmascararTelefono(telefono) ?? '(sin teléfono)'}) pero no se pudo guardar`, e)
+          return 'error'
+        }
+        console.log(`[encuesta] Meta frenó la invitación de marketing (${s.codigoError}); salió el respaldo ${confirmada.plantilla} (encuesta ${encuesta.id})`)
         return 'mandado'
       }
-      if (r.ok) return 'fallido'
+      if (r.ok) {
+        console.log(`[encuesta] respaldo ${confirmada.plantilla} no salió: WhatsApp está en modo prueba (encuesta ${encuesta.id})`)
+        return 'fallido'
+      }
       await datos.registrarEnvio(encuesta.id, {
         send_status: 'fallida', send_skip_reason: null,
         send_error: `Meta frenó la invitación de marketing y el respaldo también falló: ${motivoLegibleDeMeta(r.codigo, r.error)}`,
       })
       return 'fallido'
     } finally {
-      await datos.liberarEnvio(encuesta.id)
+      await datos.liberarEnvio(previa.encuesta.id)
     }
   } catch (e) {
     console.error('[encuesta] no se pudo evaluar o mandar el respaldo de la invitación', s.waMessageId, e)
