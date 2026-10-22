@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { quincenaQueCerro, cicloDeLaPropiedad, recortarALaCaptacion, validarRango, diasDelPeriodo } from './periodo'
+import { quincenaQueCerro, cicloDeLaPropiedad, recortarALaCaptacion, validarRango, diasDelPeriodo, textoDelPeriodo } from './periodo'
 
 describe('quincenaQueCerro (el ciclo fijo: se corre el 1 y el 16)', () => {
   it('el 16 cierra la primera quincena del mes: del 1 al 15', () => {
@@ -72,5 +72,17 @@ describe('diasDelPeriodo', () => {
   it('cuenta los dos extremos', () => {
     expect(diasDelPeriodo({ desde: '2026-10-01', hasta: '2026-10-15' })).toBe(15)
     expect(diasDelPeriodo({ desde: '2026-10-10', hasta: '2026-10-10' })).toBe(1)
+  })
+})
+
+describe('textoDelPeriodo', () => {
+  it('mismo mes', () => {
+    expect(textoDelPeriodo('2026-10-01', '2026-10-15')).toBe('del 1 al 15 de octubre de 2026')
+  })
+  it('meses distintos del mismo año', () => {
+    expect(textoDelPeriodo('2026-08-16', '2026-09-16')).toBe('del 16 de agosto al 16 de septiembre de 2026')
+  })
+  it('cruza el año', () => {
+    expect(textoDelPeriodo('2026-12-16', '2027-01-15')).toBe('del 16 de diciembre de 2026 al 15 de enero de 2027')
   })
 })

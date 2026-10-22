@@ -9,7 +9,7 @@
 
 import { evaluarCaptacion, estadoLegal } from './captacion'
 
-export type TabKey = 'propiedad' | 'multimedia' | 'documentacion' | 'difusion' | 'visitas' | 'historial'
+export type TabKey = 'propiedad' | 'multimedia' | 'documentacion' | 'difusion' | 'visitas' | 'informes' | 'historial'
 
 export const TAB_LABELS: Record<TabKey, string> = {
   propiedad: 'Propiedad',
@@ -17,6 +17,7 @@ export const TAB_LABELS: Record<TabKey, string> = {
   documentacion: 'Documentación',
   difusion: 'Difusión',
   visitas: 'Visitas',
+  informes: 'Informes',
   historial: 'Historial',
 }
 
@@ -92,6 +93,8 @@ export function visibleTabs(input: { role: string | null | undefined; status: st
   if (!isAbogado && input.status === 'approved') tabs.push('difusion')
   // Visitas (spec §3.5): solo propiedades captadas y nunca el abogado (no ve visitas).
   if (!isAbogado && input.status === 'approved') tabs.push('visitas')
+  // Informe quincenal: de propiedades captadas; el abogado no ve informes (la ruta igual lo frena).
+  if (!isAbogado && input.status === 'approved') tabs.push('informes')
   tabs.push('historial')
   return tabs
 }

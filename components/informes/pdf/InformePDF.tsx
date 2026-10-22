@@ -8,6 +8,7 @@
  * el script que lo renderiza a archivo para mirarlo.
  */
 import { Document, Image, Link, Page, Text, View } from '@react-pdf/renderer'
+import { textoDelPeriodo } from '@/lib/informes/periodo'
 import { competidorasDeLaPagina, valorDelM2, type Pagina, type Resumen } from '@/lib/informes/resumen'
 import type { Competidora, Informe, NombreCaptura, PropiedadDelInforme } from '@/lib/informes/tipos'
 import { C, HOJA, s } from './estilos'
@@ -21,16 +22,6 @@ export interface DatosDelPdf {
   /** Imágenes ya convertidas a data URL (capturas del bucket privado y fotos de las competidoras). */
   imagenes: { capturas: Partial<Record<NombreCaptura, string>>; competidoras: Array<string | null> }
   base: string
-}
-
-const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
-
-export function textoDelPeriodo(desde: string, hasta: string): string {
-  const [ad, md, dd] = desde.split('-').map(Number)
-  const [ah, mh, dh] = hasta.split('-').map(Number)
-  if (ad === ah && md === mh) return `del ${dd} al ${dh} de ${MESES[mh - 1]} de ${ah}`
-  if (ad === ah) return `del ${dd} de ${MESES[md - 1]} al ${dh} de ${MESES[mh - 1]} de ${ah}`
-  return `del ${dd} de ${MESES[md - 1]} de ${ad} al ${dh} de ${MESES[mh - 1]} de ${ah}`
 }
 
 function Portada({ d }: { d: DatosDelPdf }) {

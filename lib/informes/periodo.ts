@@ -78,3 +78,14 @@ export function validarRango(desde: string, hasta: string, hoy: string): RangoVa
   if (h - d + 1 > MAX_DIAS_PERIODO) return { ok: false, error: `El período no puede pasar de ${MAX_DIAS_PERIODO} días` }
   return { ok: true, desde, hasta }
 }
+
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+
+/** "del 1 al 15 de octubre de 2026": como lo escriben los ejemplos (portada y listado). */
+export function textoDelPeriodo(desde: string, hasta: string): string {
+  const [ad, md, dd] = desde.split('-').map(Number)
+  const [ah, mh, dh] = hasta.split('-').map(Number)
+  if (ad === ah && md === mh) return `del ${dd} al ${dh} de ${MESES[mh - 1]} de ${ah}`
+  if (ad === ah) return `del ${dd} de ${MESES[md - 1]} al ${dh} de ${MESES[mh - 1]} de ${ah}`
+  return `del ${dd} de ${MESES[md - 1]} de ${ad} al ${dh} de ${MESES[mh - 1]} de ${ah}`
+}
