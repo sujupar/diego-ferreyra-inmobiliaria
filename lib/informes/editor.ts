@@ -5,6 +5,7 @@
  */
 import type { ScrapedProperty } from '@/lib/scraper/types'
 import { valorDelM2 } from './resumen'
+import { TOPES_COMPETIDORA } from './sanear'
 import { FUENTES, type Competidora, type DatosPorFuente, type FuenteGuardada, type Fuentes, type NombreFuente } from './tipos'
 
 /** "Quesada 3250, Coghlan, Capital Federal" → dirección y barrio (lo que muestran los portales). */
@@ -13,8 +14,11 @@ export function separarUbicacion(ubicacion: string): { direccion: string; barrio
   return { direccion: partes[0] ?? '', barrio: partes[1] ?? null }
 }
 
-const numeroOVacio = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null)
-const textoOVacio = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null)
+// Lo que el servidor rechazaría (un precio de miles de millones, un título larguísimo) se vacía o se
+// recorta acá: si no, la lista entera quedaba sin poder guardarse por una sola competidora.
+const numeroOVacio = (v: unknown): number | null =>
+  (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= TOPES_COMPETIDORA.numero ? v : null)
+const textoOVacio = (v: unknown, tope: number): string | null => (typeof v === 'string' && v.trim() ? v.trim().slice(0, tope) : null)
 
 /** La respuesta de `/api/scrape` viene de afuera: se revisa su forma antes de usarla. */
 export function esAvisoDelScraper(v: unknown): v is ScrapedProperty {
@@ -35,11 +39,11 @@ export function competidoraDesdeAviso(url: string, aviso: ScrapedProperty): Comp
   const m2 = numeroOVacio(f.totalArea) ?? numeroOVacio(f.coveredArea)
   const precio = numeroOVacio(aviso.price)
   // La foto va a un <img> y al PDF: solo https, como valida el servidor al guardar.
-  const foto = aviso.images.find(i => i.startsWith('https://')) ?? null
+  const foto = aviso.images.find(i => i.startsWith('https://') && i.length <= TOPES_COMPETIDORA.link) ?? null
   return {
     url,
-    direccion: direccion || aviso.title.trim(),
-    barrio,
+    direccion: (direccion || aviso.title.trim()).slice(0, TOPES_COMPETIDORA.direccion),
+    barrio: barrio ? barrio.slice(0, TOPES_COMPETIDORA.barrio) : null,
     precio,
     moneda: aviso.currency,
     m2,
@@ -50,7 +54,7 @@ export function competidoraDesdeAviso(url: string, aviso: ScrapedProperty): Comp
     antiguedad: numeroOVacio(f.age),
     cocheras: numeroOVacio(f.garages),
     foto,
-    publicadoHace: textoOVacio(f.publishedDate),
+    publicadoHace: textoOVacio(f.publishedDate, TOPES_COMPETIDORA.publicadoHace),
     visualizaciones: numeroOVacio(f.views),
     bajoDePrecio: false,
   }

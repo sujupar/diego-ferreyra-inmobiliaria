@@ -6,7 +6,7 @@ import 'server-only'
  */
 import { sb } from './sb'
 import { BUCKET_INFORMES } from './archivos'
-import type { Capturas, Competidora, Fuentes, FuenteGuardada, Informe, Manual, NombreFuente, PropiedadDelInforme } from './tipos'
+import type { Capturas, Competidora, Fuentes, FuenteGuardada, Informe, Manual, NombreCaptura, NombreFuente, PropiedadDelInforme } from './tipos'
 import type { CambiosInforme } from './sanear'
 
 function fallo(contexto: string, error: { message: string } | null): never {
@@ -78,18 +78,29 @@ export async function guardarCambios(id: string, c: CambiosInforme): Promise<boo
   return (data ?? []).length > 0
 }
 
-export async function guardarCapturas(id: string, capturas: Capturas): Promise<boolean> {
-  const { data, error } = await sb().from('property_reports').update({ capturas, updated_at: new Date().toISOString() })
-    .eq('id', id).eq('estado', 'borrador').select('id')
-  if (error) fallo('guardar capturas', error)
-  return (data ?? []).length > 0
+/**
+ * Guarda (o quita, con `path` null) UNA captura de forma atómica en la base: dos subidas a la vez
+ * ya no se pisan. Devuelve las capturas que quedaron y la anterior de esa clave (para borrar el
+ * archivo viejo). null = el informe ya está "listo".
+ */
+export async function guardarCaptura(id: string, cual: NombreCaptura, path: string | null): Promise<{ capturas: Capturas; anterior: string | null } | null> {
+  const { data, error } = await sb().rpc('informe_guardar_captura', { p_id: id, p_cual: cual, p_path: path })
+  if (error) fallo('guardar captura', error)
+  if (data === null) return null
+  const r = objeto(data)
+  return { capturas: objeto(r.capturas) as Capturas, anterior: typeof r.anterior === 'string' ? r.anterior : null }
 }
 
-export async function marcarListo(id: string, pdfPath: string, userId: string): Promise<boolean> {
+/**
+ * Condicionado a la VERSIÓN (`updated_at`) con la que se armó el PDF: si algo cambió mientras el
+ * navegador lo generaba (un campo, una fuente, otra pestaña), no se marca y el PDF no queda
+ * distinto de los datos guardados. La versión se compara como la devolvió la base, sin re-serializar.
+ */
+export async function marcarListo(id: string, pdfPath: string, userId: string, version: string): Promise<boolean> {
   const ahora = new Date().toISOString()
   const { data, error } = await sb().from('property_reports')
     .update({ estado: 'listo', pdf_path: pdfPath, listo_at: ahora, listo_by: userId, updated_at: ahora })
-    .eq('id', id).eq('estado', 'borrador').select('id')
+    .eq('id', id).eq('estado', 'borrador').eq('updated_at', version).select('id')
   if (error) fallo('marcar listo', error)
   return (data ?? []).length > 0
 }

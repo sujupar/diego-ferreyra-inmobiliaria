@@ -96,4 +96,14 @@ describe('/api/informes/[id]', () => {
     expect((await listo(req({}), p({ id: INF }))).status).toBe(400)
     expect(servicioMock.marcarInformeListo).not.toHaveBeenCalled()
   })
+  it('"listo" sin la versión con la que se armó el PDF es 400', async () => {
+    expect((await listo(req({ pdfPath: 'informes/x/informe-y.pdf' }), p({ id: INF }))).status).toBe(400)
+    expect(servicioMock.marcarInformeListo).not.toHaveBeenCalled()
+  })
+  it('"listo" le pasa la versión al servicio', async () => {
+    servicioMock.marcarInformeListo.mockResolvedValue(undefined)
+    const r = await listo(req({ pdfPath: 'informes/x/informe-y.pdf', version: '2026-10-22T15:00:00.123456+00:00' }), p({ id: INF }))
+    expect(r.status).toBe(200)
+    expect(servicioMock.marcarInformeListo).toHaveBeenCalledWith(expect.objectContaining({ id: expect.any(String) }), 'informes/x/informe-y.pdf', expect.any(String), '2026-10-22T15:00:00.123456+00:00')
+  })
 })

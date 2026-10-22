@@ -19,8 +19,14 @@ const TIMEOUT_MS = 8_000
 async function consultas(c: ContextoFuente): Promise<FuenteGuardada<DatosPorFuente['consultas']>> {
   const { desdeISO, hastaISO } = instantesDelPeriodo(c)
   // received_at puede venir vacío (el portal no trajo fecha): se usa created_at, como en las métricas.
+  // La consulta se GUARDA cuando el cron lee el mail (created_at), que puede ser después de recibida:
+  // una recibida el 15 a las 23:55 entra el 16. Por eso la base se pide con 7 días de margen a cada
+  // lado y el período se recorta abajo por la fecha de recepción.
+  const margen = 7 * 86_400_000
   const q = await sb().from('portal_inquiries').select('portal, lead_name, lead_email, received_at, created_at')
-    .eq('property_id', c.propertyId).gte('created_at', new Date(Date.parse(desdeISO) - 7 * 86_400_000).toISOString()).lt('created_at', hastaISO)
+    .eq('property_id', c.propertyId)
+    .gte('created_at', new Date(Date.parse(desdeISO) - margen).toISOString())
+    .lt('created_at', new Date(Date.parse(hastaISO) + margen).toISOString())
   if (q.error) throw new Error(`consultas: ${q.error.message}`)
   const enRango = (q.data ?? []).filter(r => {
     const t = Date.parse(String(r.received_at ?? r.created_at))
@@ -70,7 +76,7 @@ async function avisoDeMercadoLibre(c: ContextoFuente): Promise<string | null> {
 async function mercadolibre(c: ContextoFuente): Promise<FuenteGuardada<DatosPorFuente['mercadolibre']>> {
   const avisoId = await avisoDeMercadoLibre(c)
   if (!avisoId) return sinDatos(c.ahora)
-  const r = await mlFetch<unknown>(`/items/visits?ids=${encodeURIComponent(avisoId)}&date_from=${c.desde}&date_to=${c.hasta}`)
+  const r = await mlFetch<unknown>(`/items/visits?ids=${encodeURIComponent(avisoId)}&date_from=${c.desde}&date_to=${c.hasta}`, { signal: AbortSignal.timeout(TIMEOUT_MS) })
   return ok(c.ahora, { avisoId, visitas: visitasDeMercadoLibre(r, avisoId) })
 }
 
@@ -111,11 +117,11 @@ async function instagram(c: ContextoFuente): Promise<FuenteGuardada<DatosPorFuen
   const { hastaISO } = instantesDelPeriodo(c)
   const reels = (r.data ?? []).filter(x => !x.publicado_en || Date.parse(String(x.publicado_en)) < Date.parse(hastaISO))
   if (!reels.length) return sinDatos(c.ahora)
-  const datos = []
-  for (const reel of reels) {
-    const ins = await instagramFetch<unknown>(`/${reel.ig_media_id}/insights?metric=views,reach,likes,comments,saved,shares`)
-    datos.push(reelDeInsights(ins, { permalink: reel.ig_permalink ? String(reel.ig_permalink) : null, publicadoEn: reel.publicado_en ? String(reel.publicado_en) : null }))
-  }
+  // En paralelo y con corte cada uno: en serie, tres reels lentos sumaban más que el techo de Netlify.
+  const datos = await Promise.all(reels.map(async reel => {
+    const ins = await instagramFetch<unknown>(`/${reel.ig_media_id}/insights?metric=views,reach,likes,comments,saved,shares`, { signal: AbortSignal.timeout(TIMEOUT_MS) })
+    return reelDeInsights(ins, { permalink: reel.ig_permalink ? String(reel.ig_permalink) : null, publicadoEn: reel.publicado_en ? String(reel.publicado_en) : null })
+  }))
   return ok(c.ahora, { reels: datos })
 }
 

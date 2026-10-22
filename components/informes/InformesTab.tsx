@@ -72,7 +72,7 @@ export function InformesTab({ propertyId }: { propertyId: string }) {
 // Componentes de MÓDULO: ver CLAUDE.md § "NUNCA declarar un componente dentro de otro".
 function ListaDeInformes({ informes }: { informes: FilaInforme[] }) {
   if (informes.length === 0) {
-    return <p className="text-sm text-muted-foreground">Todavía no hay informes. El 1 y el 16 de cada mes se arma solo el de la quincena que cerró; también podés armar uno con &quot;Nuevo informe&quot;.</p>
+    return <p className="text-sm text-muted-foreground">Todavía no hay informes. Armá el primero con &quot;Nuevo informe&quot;.</p>
   }
   return (
     <ul className="space-y-2">

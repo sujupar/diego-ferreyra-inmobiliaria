@@ -6,7 +6,8 @@ import { volverABorrador } from '@/lib/informes/datos'
 
 export const dynamic = 'force-dynamic'
 
-const cuerpo = z.object({ pdfPath: z.string().max(300) }).strict()
+// `version` = el updated_at con el que se armó el PDF: si el informe cambió después, no se marca.
+const cuerpo = z.object({ pdfPath: z.string().max(300), version: z.string().min(1).max(64) }).strict()
 
 /** "Marcar como listo": el PDF subido se revisa por sus bytes y el informe queda cerrado. */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const p = cuerpo.safeParse(await req.json().catch(() => null))
   if (!p.success) return NextResponse.json({ error: 'Falta el PDF' }, { status: 400 })
   try {
-    await marcarInformeListo(c.informe, p.data.pdfPath, c.userId)
+    await marcarInformeListo(c.informe, p.data.pdfPath, c.userId, p.data.version)
     return NextResponse.json({ data: { ok: true } })
   } catch (e) {
     return respuestaDeError(e, 'marcar listo')

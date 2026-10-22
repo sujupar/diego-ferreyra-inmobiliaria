@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const { datosMock, traerMock } = vi.hoisted(() => ({
   traerMock: vi.fn(),
   datosMock: {
-    leerPropiedad: vi.fn(), crearInforme: vi.fn(), guardarFuente: vi.fn(), guardarCapturas: vi.fn(), marcarListo: vi.fn(),
+    leerPropiedad: vi.fn(), crearInforme: vi.fn(), guardarFuente: vi.fn(), guardarCaptura: vi.fn(), marcarListo: vi.fn(),
     crearSubidaFirmada: vi.fn(), primerosBytes: vi.fn(), urlFirmada: vi.fn(), borrarArchivos: vi.fn(),
   },
 }))
@@ -24,7 +24,7 @@ function informe(extra: Partial<Informe> = {}): Informe {
     id: ID, propertyId: 'p', desde: '2026-10-01', hasta: '2026-10-15', origen: 'manual', estado: 'borrador',
     fuentes: { ...fuentes, mercadolibre: { ...ok, datos: { avisoId: 'MLA1', visitas: 1 } } } as never,
     manual: { zonaprop: { exposicion: 1, visualizaciones: 1 }, argenprop: { publicado: false }, textos: { accionesRealizadas: 'a', accionesARealizar: 'b' } },
-    competidoras: [], capturas: {}, pdfPath: null, listoAt: null, createdAt: '', updatedAt: '', ...extra,
+    competidoras: [], capturas: {}, pdfPath: null, listoAt: null, createdAt: '', updatedAt: 'v1', ...extra,
   }
 }
 
@@ -34,8 +34,6 @@ beforeEach(() => {
   datosMock.leerPropiedad.mockResolvedValue({ id: 'p', direccion: 'Roque Pérez 3059' })
   datosMock.crearInforme.mockImplementation(async (f: Record<string, unknown>) => ({ informe: f, nuevo: true }))
   datosMock.guardarFuente.mockResolvedValue(true)
-  datosMock.guardarCapturas.mockResolvedValue(true)
-  datosMock.marcarListo.mockResolvedValue(true)
 })
 
 describe('crearInformeManual', () => {
@@ -66,17 +64,25 @@ describe('refrescarFuente', () => {
 
 describe('confirmarCaptura', () => {
   const PATH = `informes/${ID}/captura-zonaprop-${U}.png`
-  it('una imagen de verdad queda guardada y borra la anterior', async () => {
+  it('una imagen de verdad se guarda SOLO en su clave (atómico en la base) y borra la anterior que devuelve la base', async () => {
     datosMock.primerosBytes.mockResolvedValue({ bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]), tamano: 1000 })
-    const c = await confirmarCaptura(informe({ capturas: { zonaprop: 'vieja' } }), 'zonaprop', PATH)
-    expect(c).toEqual({ zonaprop: PATH })
+    datosMock.guardarCaptura.mockResolvedValue({ capturas: { zonaprop: PATH, argenprop: 'de-otra-pestaña' }, anterior: 'vieja' })
+    const c = await confirmarCaptura(informe({ capturas: {} }), 'zonaprop', PATH)
+    expect(datosMock.guardarCaptura).toHaveBeenCalledWith(ID, 'zonaprop', PATH)
+    expect(c).toEqual({ zonaprop: PATH, argenprop: 'de-otra-pestaña' })
     expect(datosMock.borrarArchivos).toHaveBeenCalledWith(['vieja'])
+  })
+  it('si el informe ya está listo (la base no lo toca) → 409 y la captura subida se borra', async () => {
+    datosMock.primerosBytes.mockResolvedValue({ bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]), tamano: 1000 })
+    datosMock.guardarCaptura.mockResolvedValue(null)
+    await expect(confirmarCaptura(informe(), 'zonaprop', PATH)).rejects.toMatchObject({ status: 409 })
+    expect(datosMock.borrarArchivos).toHaveBeenCalledWith([PATH])
   })
   it('un archivo que no es imagen se borra y se rechaza', async () => {
     datosMock.primerosBytes.mockResolvedValue({ bytes: new Uint8Array([0x4d, 0x5a]), tamano: 10 })
     await expect(confirmarCaptura(informe(), 'zonaprop', PATH)).rejects.toMatchObject({ status: 400 })
     expect(datosMock.borrarArchivos).toHaveBeenCalledWith([PATH])
-    expect(datosMock.guardarCapturas).not.toHaveBeenCalled()
+    expect(datosMock.guardarCaptura).not.toHaveBeenCalled()
   })
   it('un path de otro informe o de otra captura → 400 sin tocar Storage', async () => {
     await expect(confirmarCaptura(informe(), 'argenprop', PATH)).rejects.toBeInstanceOf(ErrorInforme)
@@ -94,17 +100,29 @@ describe('listo', () => {
   it('con algo sin completar no se puede (ni preparar el PDF ni marcar)', async () => {
     const incompleto = informe({ manual: {} })
     await expect(prepararPdf(incompleto)).rejects.toMatchObject({ status: 400 })
-    await expect(marcarInformeListo(incompleto, PDF, 'u1')).rejects.toMatchObject({ status: 400 })
+    await expect(marcarInformeListo(incompleto, PDF, 'u1', 'v1')).rejects.toMatchObject({ status: 400 })
     expect(datosMock.marcarListo).not.toHaveBeenCalled()
   })
-  it('completo + PDF de verdad → listo', async () => {
+  it('completo + PDF de verdad → listo, condicionado a la versión con la que se armó el PDF', async () => {
     datosMock.primerosBytes.mockResolvedValue({ bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]), tamano: 50000 })
-    await marcarInformeListo(informe(), PDF, 'u1')
-    expect(datosMock.marcarListo).toHaveBeenCalledWith(ID, PDF, 'u1')
+    datosMock.marcarListo.mockResolvedValue(true)
+    await marcarInformeListo(informe(), PDF, 'u1', 'v1')
+    expect(datosMock.marcarListo).toHaveBeenCalledWith(ID, PDF, 'u1', 'v1')
+  })
+  it('si el informe cambió después de armar el PDF → 409 y el PDF viejo se borra', async () => {
+    await expect(marcarInformeListo(informe({ updatedAt: 'v2' }), PDF, 'u1', 'v1')).rejects.toMatchObject({ status: 409 })
+    expect(datosMock.marcarListo).not.toHaveBeenCalled()
+    expect(datosMock.borrarArchivos).toHaveBeenCalledWith([PDF])
+  })
+  it('si cambia justo entre la lectura y la escritura (la base no encuentra la versión) → 409', async () => {
+    datosMock.primerosBytes.mockResolvedValue({ bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]), tamano: 50000 })
+    datosMock.marcarListo.mockResolvedValue(false)
+    await expect(marcarInformeListo(informe(), PDF, 'u1', 'v1')).rejects.toMatchObject({ status: 409 })
+    expect(datosMock.borrarArchivos).toHaveBeenCalledWith([PDF])
   })
   it('un archivo que no es PDF se borra y no marca listo', async () => {
     datosMock.primerosBytes.mockResolvedValue({ bytes: new Uint8Array([0x89, 0x50]), tamano: 10 })
-    await expect(marcarInformeListo(informe(), PDF, 'u1')).rejects.toMatchObject({ status: 400 })
+    await expect(marcarInformeListo(informe(), PDF, 'u1', 'v1')).rejects.toMatchObject({ status: 400 })
     expect(datosMock.borrarArchivos).toHaveBeenCalledWith([PDF])
     expect(datosMock.marcarListo).not.toHaveBeenCalled()
   })

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { competidoraDesdeAviso, esAvisoDelScraper, fuentesPorTraer, numeroDelCampo, resumenDeLaFuente, rotuloDeLaFuente, separarUbicacion } from './editor'
 import type { Fuentes } from './tipos'
+import { sanearCambios } from './sanear'
 
 const aviso = {
   url: 'https://www.zonaprop.com.ar/propiedades/x-123.html',
@@ -44,6 +45,17 @@ describe('competidoraDesdeAviso', () => {
 
   it('descarta una foto que no es https (va a un <img> y al PDF)', () => {
     expect(competidoraDesdeAviso(aviso.url, { ...aviso, images: ['http://x.com/a.jpg', 'data:image/png;base64,AA'] }).foto).toBeNull()
+  })
+
+  it('lo que trae el portal siempre se puede guardar: textos recortados a los topes del servidor, números absurdos vacíos', () => {
+    const c = competidoraDesdeAviso(aviso.url, {
+      ...aviso, location: '', title: 'x'.repeat(300), price: 5_000_000_000,
+      features: { ...aviso.features, publishedDate: 'p'.repeat(200) },
+    })
+    expect(c.direccion).toHaveLength(200)
+    expect(c.precio).toBeNull()
+    expect(c.publicadoHace).toHaveLength(80)
+    expect(sanearCambios({ competidoras: [c] }).ok).toBe(true)
   })
 
   it('sin ubicación usa el título como dirección', () => {

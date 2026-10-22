@@ -62,7 +62,7 @@ export function CampoNumero({ id, etiqueta, valor, onGuardar, deshabilitado, fal
   )
 }
 
-export function CampoLinea({ id, etiqueta, valor, onGuardar, deshabilitado, ayuda, placeholder }: {
+export function CampoLinea({ id, etiqueta, valor, onGuardar, deshabilitado, ayuda, placeholder, maxLength }: {
   id: string
   etiqueta: string
   valor: string | undefined | null
@@ -70,6 +70,8 @@ export function CampoLinea({ id, etiqueta, valor, onGuardar, deshabilitado, ayud
   deshabilitado?: boolean
   ayuda?: string
   placeholder?: string
+  /** El mismo tope que valida el servidor: lo que no entra, no se puede escribir. */
+  maxLength?: number
 }) {
   const [texto, setTexto] = useState(valor ?? '')
   return (
@@ -79,6 +81,7 @@ export function CampoLinea({ id, etiqueta, valor, onGuardar, deshabilitado, ayud
         id={id}
         value={texto}
         placeholder={placeholder}
+        maxLength={maxLength}
         disabled={deshabilitado}
         className="h-11"
         onChange={e => setTexto(e.target.value)}

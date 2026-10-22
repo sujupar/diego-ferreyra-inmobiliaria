@@ -32,12 +32,29 @@ export const sinDatos = <T>(ahora: Date) => guardada<T>('sin_datos', ahora, null
 export const conError = <T>(ahora: Date, e: unknown) =>
   guardada<T>('error', ahora, null, (e instanceof Error ? e.message : String(e)).slice(0, 300))
 
-/** Envuelve una fuente: cualquier excepción se vuelve `error` con su mensaje. */
-export async function sinLanzar<T>(ahora: Date, f: () => Promise<FuenteGuardada<T>>): Promise<FuenteGuardada<T>> {
+/**
+ * Techo de una fuente entera. Netlify corta la función a los ~26 s con una página HTML: si una API
+ * se cuelga, la fuente nunca llegaría a guardarse y quedaría "pendiente" para siempre, sin motivo.
+ * Con el techo se guarda como `error` y la pantalla ofrece "Reintentar".
+ */
+export const TOPE_FUENTE_MS = 15_000
+
+/** Envuelve una fuente: cualquier excepción —o pasarse del techo— se vuelve `error` con su mensaje. */
+export async function sinLanzar<T>(
+  ahora: Date,
+  f: () => Promise<FuenteGuardada<T>>,
+  { topeMs = TOPE_FUENTE_MS }: { topeMs?: number } = {},
+): Promise<FuenteGuardada<T>> {
+  let reloj: ReturnType<typeof setTimeout> | undefined
+  const corte = new Promise<never>((_, rechazar) => {
+    reloj = setTimeout(() => rechazar(new Error(`el servicio tardó demasiado (más de ${Math.round(topeMs / 1000)} s); reintentá`)), topeMs)
+  })
   try {
-    return await f()
+    return await Promise.race([f(), corte])
   } catch (e) {
     return conError<T>(ahora, e)
+  } finally {
+    clearTimeout(reloj)
   }
 }
 

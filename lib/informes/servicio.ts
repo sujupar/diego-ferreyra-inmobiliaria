@@ -65,21 +65,22 @@ export async function confirmarCaptura(i: Informe, cual: NombreCaptura, path: st
     await datos.borrarArchivos([path])
     throw new ErrorInforme(400, 'La captura no es una imagen válida de hasta 5 MB')
   }
-  const anterior = i.capturas[cual]
-  const capturas = { ...i.capturas, [cual]: path }
-  if (!(await datos.guardarCapturas(i.id, capturas))) throw new ErrorInforme(409, 'El informe ya está listo')
-  if (anterior && anterior !== path) await datos.borrarArchivos([anterior])
-  return capturas
+  // Atómico en la base (solo esta clave): subir dos capturas a la vez ya no deja una afuera.
+  const r = await datos.guardarCaptura(i.id, cual, path)
+  if (!r) {
+    await datos.borrarArchivos([path])
+    throw new ErrorInforme(409, 'El informe ya está listo')
+  }
+  if (r.anterior && r.anterior !== path) await datos.borrarArchivos([r.anterior])
+  return r.capturas
 }
 
 export async function quitarCaptura(i: Informe, cual: NombreCaptura): Promise<Capturas> {
   exigirBorrador(i)
-  const anterior = i.capturas[cual]
-  const capturas = { ...i.capturas }
-  delete capturas[cual]
-  if (!(await datos.guardarCapturas(i.id, capturas))) throw new ErrorInforme(409, 'El informe ya está listo')
-  if (anterior) await datos.borrarArchivos([anterior])
-  return capturas
+  const r = await datos.guardarCaptura(i.id, cual, null)
+  if (!r) throw new ErrorInforme(409, 'El informe ya está listo')
+  if (r.anterior) await datos.borrarArchivos([r.anterior])
+  return r.capturas
 }
 
 // ─── PDF y "listo" ───────────────────────────────────────────────────────────
@@ -91,11 +92,21 @@ export async function prepararPdf(i: Informe) {
   return datos.crearSubidaFirmada(pathDelPdf(i.id, randomUUID()))
 }
 
-export async function marcarInformeListo(i: Informe, pdfPath: string, userId: string): Promise<void> {
+const CAMBIO_MIENTRAS_SE_ARMABA = 'El informe cambió mientras se armaba el PDF. Volvé a tocar "Marcar como listo".'
+
+/**
+ * `version` = el `updated_at` del informe con el que el navegador armó el PDF. Si no coincide con el
+ * actual, el PDF no refleja lo guardado (se editó algo, llegó una fuente, otra pestaña): no se marca.
+ */
+export async function marcarInformeListo(i: Informe, pdfPath: string, userId: string, version: string): Promise<void> {
   exigirBorrador(i)
+  if (!esPathDelPdf(pdfPath, i.id)) throw new ErrorInforme(400, 'El PDF no corresponde a este informe')
+  if (i.updatedAt !== version) {
+    await datos.borrarArchivos([pdfPath])
+    throw new ErrorInforme(409, CAMBIO_MIENTRAS_SE_ARMABA)
+  }
   const pendientes = faltantes(i)
   if (pendientes.length) throw new ErrorInforme(400, `Falta completar: ${pendientes.join(', ')}`)
-  if (!esPathDelPdf(pdfPath, i.id)) throw new ErrorInforme(400, 'El PDF no corresponde a este informe')
   const archivo = await datos.primerosBytes(pdfPath, 16)
   if (!archivo) throw new ErrorInforme(503, 'No se pudo revisar el PDF. Probá de nuevo en un momento.')
   if (!esPdf(archivo.bytes) || archivo.tamano > MAX_PDF_BYTES) {
@@ -103,7 +114,10 @@ export async function marcarInformeListo(i: Informe, pdfPath: string, userId: st
     throw new ErrorInforme(400, 'El archivo no es un PDF válido')
   }
   const anterior = i.pdfPath
-  if (!(await datos.marcarListo(i.id, pdfPath, userId))) throw new ErrorInforme(409, 'El informe ya estaba listo')
+  if (!(await datos.marcarListo(i.id, pdfPath, userId, version))) {
+    await datos.borrarArchivos([pdfPath])
+    throw new ErrorInforme(409, CAMBIO_MIENTRAS_SE_ARMABA)
+  }
   if (anterior && anterior !== pdfPath) await datos.borrarArchivos([anterior])
 }
 

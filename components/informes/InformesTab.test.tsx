@@ -41,10 +41,10 @@ describe('InformesTab', () => {
     expect(llamadas[0].url).toBe(`/api/properties/${PROP}/informes`)
   })
 
-  it('sin informes explica cuándo se arman solos', async () => {
+  it('sin informes invita a armar el primero', async () => {
     respuestas = [listado([])]
     render(<InformesTab propertyId={PROP} />)
-    expect(await screen.findByText(/El 1 y el 16 de cada mes/)).toBeInTheDocument()
+    expect(await screen.findByText(/Armá el primero/)).toBeInTheDocument()
   })
 
   it('"Nuevo informe" con la última quincena crea el informe y abre su pantalla', async () => {
@@ -91,6 +91,6 @@ describe('InformesTab', () => {
     render(<InformesTab propertyId={PROP} />)
     expect(await screen.findByRole('alert')).toHaveTextContent('Solo quien gestiona')
     await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
-    expect(await screen.findByText(/El 1 y el 16/)).toBeInTheDocument()
+    expect(await screen.findByText(/Armá el primero/)).toBeInTheDocument()
   })
 })

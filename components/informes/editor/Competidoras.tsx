@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { valorDelM2 } from '@/lib/informes/resumen'
+import { sanearCambios, TOPES_COMPETIDORA } from '@/lib/informes/sanear'
 import type { Competidora } from '@/lib/informes/tipos'
 import { buscarCompetidora } from './api'
 import { CampoLinea, CampoNumero } from './campos'
@@ -17,6 +18,7 @@ const vacia = (url: string): Competidora => ({
 })
 
 function esHttps(v: string): boolean {
+  if (v.length > TOPES_COMPETIDORA.link) return false
   try { return new URL(v).protocol === 'https:' } catch { return false }
 }
 
@@ -41,7 +43,12 @@ export function Competidoras({ iniciales, onGuardar, deshabilitado }: {
 
   async function cambiar(nueva: Competidora[]) {
     setLista(nueva)
+    setError(null)
     if (nueva.some(c => !c.direccion.trim())) return
+    // Misma regla que el servidor ANTES de mandar: una competidora inválida no puede trabar el
+    // guardado de toda la lista (el servidor recibe la lista entera en cada cambio).
+    const validado = sanearCambios({ competidoras: nueva })
+    if (!validado.ok) { setError(`No se guardó: ${validado.error}. Revisá los datos de la última propiedad que cambiaste.`); return }
     await onGuardar(nueva)
   }
 

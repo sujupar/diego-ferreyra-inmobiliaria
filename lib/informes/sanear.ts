@@ -9,9 +9,12 @@ import { idDeAvisoMercadoLibre } from './aviso-ml'
 import { valorDelM2 } from './resumen'
 import type { Competidora, Manual } from './tipos'
 
+/** Topes de una competidora. Los usa también `competidoraDesdeAviso`: lo que trae el portal tiene que poder guardarse. */
+export const TOPES_COMPETIDORA = { direccion: 200, barrio: 100, publicadoHace: 80, link: 1000, numero: 1_000_000_000 } as const
+
 const conteo = z.number().int().min(0).max(1_000_000_000)
 const texto = (max: number) => z.string().max(max).transform(s => s.trim())
-const httpsUrl = z.string().max(1000).refine(u => {
+const httpsUrl = z.string().max(TOPES_COMPETIDORA.link).refine(u => {
   try { return new URL(u).protocol === 'https:' } catch { return false }
 }, 'link inválido')
 
@@ -26,11 +29,11 @@ const manual = z.object({
   }).partial().strict(),
 }).partial().strict()
 
-const numeroONull = z.number().min(0).max(1_000_000_000).nullable().optional()
+const numeroONull = z.number().min(0).max(TOPES_COMPETIDORA.numero).nullable().optional()
 const competidora = z.object({
   url: httpsUrl,
-  direccion: z.string().min(1).max(200).transform(s => s.trim()),
-  barrio: z.string().max(100).nullable().optional(),
+  direccion: z.string().min(1).max(TOPES_COMPETIDORA.direccion).transform(s => s.trim()),
+  barrio: z.string().max(TOPES_COMPETIDORA.barrio).nullable().optional(),
   precio: numeroONull,
   moneda: z.enum(['USD', 'ARS']).nullable().optional(),
   m2: numeroONull,
@@ -41,7 +44,7 @@ const competidora = z.object({
   antiguedad: numeroONull,
   cocheras: numeroONull,
   foto: httpsUrl.nullable().optional(),
-  publicadoHace: z.string().max(80).nullable().optional(),
+  publicadoHace: z.string().max(TOPES_COMPETIDORA.publicadoHace).nullable().optional(),
   visualizaciones: numeroONull,
   bajoDePrecio: z.boolean().optional(),
 }).strict()

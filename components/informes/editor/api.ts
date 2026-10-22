@@ -62,11 +62,14 @@ export async function subirCaptura(id: string, cual: NombreCaptura, archivo: Fil
 
 export const quitarCaptura = (id: string, cual: NombreCaptura) => pedir<Capturas>(`${base(id)}/capturas/${cual}`, json('DELETE'))
 
-/** Sube el PDF generado y cierra el informe. El servidor revisa los bytes y que no falte nada. */
-export async function subirPdfYMarcarListo(id: string, pdf: Blob): Promise<void> {
+/**
+ * Sube el PDF generado y cierra el informe. El servidor revisa los bytes, que no falte nada, y que
+ * `version` (el updated_at del informe con el que se armó el PDF) siga siendo la vigente.
+ */
+export async function subirPdfYMarcarListo(id: string, pdf: Blob, version: string): Promise<void> {
   const slot = await pedir<Slot>(`${base(id)}/pdf`, json('POST'))
   await subirASlot(pdf, slot, 'application/pdf')
-  await pedir<{ ok: true }>(`${base(id)}/listo`, json('POST', { pdfPath: slot.path }))
+  await pedir<{ ok: true }>(`${base(id)}/listo`, json('POST', { pdfPath: slot.path, version }))
 }
 
 export const volverABorrador = (id: string) => pedir<{ ok: true }>(`${base(id)}/listo`, json('DELETE'))

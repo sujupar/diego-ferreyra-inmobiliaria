@@ -83,6 +83,32 @@ describe('EditorInforme', () => {
     })
   })
 
+  it('un aviso de ML inválido no se aplica ni se manda, y no traba el guardado de los demás campos', async () => {
+    api.leerVista.mockResolvedValue(vista(informe()))
+    render(<EditorInforme informeId="inf-1" />)
+    await userEvent.type(await screen.findByLabelText('Aviso de MercadoLibre'), 'cualquier cosa')
+    await userEvent.tab()
+    expect(await screen.findByText(/No reconocemos ese aviso/)).toBeInTheDocument()
+    expect(api.guardarManual).not.toHaveBeenCalled()
+    await userEvent.type(screen.getByLabelText(/Exposición/), '930')
+    await userEvent.tab()
+    await waitFor(() => expect(api.guardarManual).toHaveBeenCalledTimes(1))
+    expect(api.guardarManual.mock.calls[0][1].mercadolibre).toBeUndefined()
+  })
+
+  it('si el servidor rechaza un guardado, la pantalla vuelve a lo último confirmado (el siguiente no arrastra el dato)', async () => {
+    api.leerVista.mockResolvedValue(vista(informe()))
+    api.guardarManual.mockRejectedValueOnce(new Error('Datos del informe inválidos')).mockResolvedValue({ ok: true })
+    render(<EditorInforme informeId="inf-1" />)
+    await userEvent.type(await screen.findByLabelText(/Exposición/), '930')
+    await userEvent.tab()
+    expect(await screen.findByText('Datos del informe inválidos')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText(/Interesados/), '{backspace}2')
+    await userEvent.tab()
+    await waitFor(() => expect(api.guardarManual).toHaveBeenCalledTimes(2))
+    expect(api.guardarManual.mock.calls[1][1].zonaprop).toEqual({ interesados: 2 })
+  })
+
   it('"Marcar como listo" está deshabilitado mientras falte algo', async () => {
     api.leerVista.mockResolvedValue(vista(informe()))
     render(<EditorInforme informeId="inf-1" />)
@@ -99,7 +125,7 @@ describe('EditorInforme', () => {
     await waitFor(() => expect(boton).toBeEnabled())
     const lecturasAntes = api.leerVista.mock.calls.length
     await userEvent.click(boton)
-    await waitFor(() => expect(api.subirPdfYMarcarListo).toHaveBeenCalledWith('inf-1', expect.any(Blob)))
+    await waitFor(() => expect(api.subirPdfYMarcarListo).toHaveBeenCalledWith('inf-1', expect.any(Blob), 'x'))
     expect(api.leerVista.mock.calls.length).toBeGreaterThan(lecturasAntes)
     expect(generar).toHaveBeenCalledTimes(1)
   })

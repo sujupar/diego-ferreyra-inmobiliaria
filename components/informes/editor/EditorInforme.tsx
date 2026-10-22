@@ -17,6 +17,7 @@ import Link from 'next/link'
 import { ArrowLeft, CheckCircle2, Download, Eye, Loader2, RefreshCw, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { sanearCambios } from '@/lib/informes/sanear'
 import { fuentesPorTraer, resumenDeLaFuente, rotuloDeLaFuente, type Tono } from '@/lib/informes/editor'
 import { textoDelPeriodo } from '@/lib/informes/periodo'
 import type { VistaInforme } from '@/lib/informes/servicio'
@@ -49,6 +50,8 @@ export function EditorInforme({ informeId }: { informeId: string }) {
   const [previa, setPrevia] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(0)
   const manualRef = useRef<Manual | null>(null)
+  /** Lo último que el servidor aceptó: adonde se vuelve si un guardado falla. */
+  const confirmado = useRef<Manual>({})
   const cola = useRef<Promise<void>>(Promise.resolve())
   const yaTrajo = useRef(false)
 
@@ -75,6 +78,7 @@ export function EditorInforme({ informeId }: { informeId: string }) {
         const vista = await api.leerVista(informeId)
         if (!vigente) return
         manualRef.current = vista.informe.manual
+        confirmado.current = vista.informe.manual
         setManual(vista.informe.manual)
         setFase({ tipo: 'lista', vista })
         if (vista.informe.estado !== 'borrador' || yaTrajo.current) return
@@ -102,13 +106,28 @@ export function EditorInforme({ informeId }: { informeId: string }) {
     }).finally(() => setTrayendo(null))
   }
 
+  /**
+   * El servidor reemplaza `manual` ENTERO, así que un dato inválido aplicado en pantalla viajaría en
+   * cada guardado siguiente y los haría fallar a todos (revisión adversarial): se valida ANTES con la
+   * misma regla del servidor y, si igual lo rechaza, la pantalla vuelve a lo último confirmado.
+   */
   function guardarManual(cambio: (m: Manual) => Manual, despues?: () => Promise<void>) {
     const siguiente = cambio(manualRef.current ?? {})
+    const validado = sanearCambios({ manual: siguiente })
+    if (!validado.ok) { setAviso(validado.error); return }
     manualRef.current = siguiente
     setManual(siguiente)
     setAviso(null)
     void encolar(async () => {
-      await api.guardarManual(informeId, manualRef.current ?? siguiente)
+      const enviado = manualRef.current ?? siguiente
+      try {
+        await api.guardarManual(informeId, enviado)
+      } catch (e) {
+        manualRef.current = confirmado.current
+        setManual(confirmado.current)
+        throw e
+      }
+      confirmado.current = enviado
       if (despues) await despues()
       await recargar()
     })
@@ -148,7 +167,7 @@ export function EditorInforme({ informeId }: { informeId: string }) {
     try {
       const { blob, vista } = await armarPdf()
       if (vista.faltantes.length) { setAviso(`Falta completar: ${vista.faltantes.join(', ')}`); return }
-      await api.subirPdfYMarcarListo(informeId, blob)
+      await api.subirPdfYMarcarListo(informeId, blob, vista.informe.updatedAt)
       await recargar()
     } catch (e) {
       setAviso(e instanceof Error ? e.message : 'No se pudo marcar como listo')
@@ -189,6 +208,8 @@ export function EditorInforme({ informeId }: { informeId: string }) {
   // Los rótulos de `faltantes()` llevan aclaraciones ("… (o marcar que no está publicada)"): se compara el comienzo.
   const falta = (...comienzos: string[]) => !listo && faltantes.some(x => comienzos.some(c => x.startsWith(c)))
   const ocupado = armandoPdf !== null || guardando > 0
+  // Mientras se arma el PDF no se edita: lo escrito en ese momento no saldría en el PDF.
+  const bloqueado = listo || armandoPdf !== null
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-28">
@@ -234,84 +255,84 @@ export function EditorInforme({ informeId }: { informeId: string }) {
       </Seccion>
 
       <Seccion id="sec-zonaprop" titulo="Zonaprop" ayuda="Copiá los números del panel de Zonaprop para este período.">
-        <Publicada id="zp-publicado" portal="Zonaprop" publicado={m.zonaprop?.publicado} deshabilitado={listo}
+        <Publicada id="zp-publicado" portal="Zonaprop" publicado={m.zonaprop?.publicado} deshabilitado={bloqueado}
           onCambiar={v => guardarManual(x => ({ ...x, zonaprop: { ...x.zonaprop, publicado: v } }))} />
         {m.zonaprop?.publicado !== false ? (
           <>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <CampoNumero id="zp-exposicion" etiqueta="Exposición (veces en los listados)" valor={m.zonaprop?.exposicion} deshabilitado={listo}
+              <CampoNumero id="zp-exposicion" etiqueta="Exposición (veces en los listados)" valor={m.zonaprop?.exposicion} deshabilitado={bloqueado}
                 falta={falta('Zonaprop: exposición')} onGuardar={n => guardarManual(x => ({ ...x, zonaprop: { ...x.zonaprop, exposicion: n } }))} />
-              <CampoNumero id="zp-visualizaciones" etiqueta="Visualizaciones (entraron al aviso)" valor={m.zonaprop?.visualizaciones} deshabilitado={listo}
+              <CampoNumero id="zp-visualizaciones" etiqueta="Visualizaciones (entraron al aviso)" valor={m.zonaprop?.visualizaciones} deshabilitado={bloqueado}
                 falta={falta('Zonaprop: visualizaciones', 'Zonaprop: exposición y')} onGuardar={n => guardarManual(x => ({ ...x, zonaprop: { ...x.zonaprop, visualizaciones: n } }))} />
-              <CampoNumero id="zp-interesados" etiqueta="Interesados" valor={m.zonaprop?.interesados} deshabilitado={listo}
+              <CampoNumero id="zp-interesados" etiqueta="Interesados" valor={m.zonaprop?.interesados} deshabilitado={bloqueado}
                 onGuardar={n => guardarManual(x => ({ ...x, zonaprop: { ...x.zonaprop, interesados: n } }))} />
             </div>
-            <CapturaPortal informeId={informe.id} cual="zonaprop" portal="Zonaprop" url={capturasUrl.zonaprop} deshabilitado={listo} onCambio={() => void recargar()} />
+            <CapturaPortal informeId={informe.id} cual="zonaprop" portal="Zonaprop" url={capturasUrl.zonaprop} deshabilitado={bloqueado} onCambio={() => void recargar()} />
           </>
         ) : null}
       </Seccion>
 
       <Seccion id="sec-argenprop" titulo="Argenprop">
-        <Publicada id="ap-publicado" portal="Argenprop" publicado={m.argenprop?.publicado} deshabilitado={listo}
+        <Publicada id="ap-publicado" portal="Argenprop" publicado={m.argenprop?.publicado} deshabilitado={bloqueado}
           onCambiar={v => guardarManual(x => ({ ...x, argenprop: { ...x.argenprop, publicado: v } }))} />
         {m.argenprop?.publicado !== false ? (
           <>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <CampoNumero id="ap-visualizaciones" etiqueta="Visualizaciones" valor={m.argenprop?.visualizaciones} deshabilitado={listo}
+              <CampoNumero id="ap-visualizaciones" etiqueta="Visualizaciones" valor={m.argenprop?.visualizaciones} deshabilitado={bloqueado}
                 falta={falta('Argenprop: visualizaciones')} onGuardar={n => guardarManual(x => ({ ...x, argenprop: { ...x.argenprop, visualizaciones: n } }))} />
             </div>
-            <CapturaPortal informeId={informe.id} cual="argenprop" portal="Argenprop" url={capturasUrl.argenprop} deshabilitado={listo} onCambio={() => void recargar()} />
+            <CapturaPortal informeId={informe.id} cual="argenprop" portal="Argenprop" url={capturasUrl.argenprop} deshabilitado={bloqueado} onCambio={() => void recargar()} />
           </>
         ) : null}
       </Seccion>
 
       <Seccion id="sec-ml" titulo="MercadoLibre" ayuda="Las visitas al aviso se traen solas. Si la plataforma no conoce el aviso (se publicó a mano), pegá su link o su código MLA.">
-        <CampoLinea id="ml-aviso" etiqueta="Aviso de MercadoLibre" valor={m.mercadolibre?.aviso} placeholder="MLA1234567890 o el link del aviso" deshabilitado={listo}
+        <CampoLinea id="ml-aviso" etiqueta="Aviso de MercadoLibre" valor={m.mercadolibre?.aviso} placeholder="MLA1234567890 o el link del aviso" maxLength={500} deshabilitado={bloqueado}
           onGuardar={t => guardarManual(x => ({ ...x, mercadolibre: { ...x.mercadolibre, aviso: t } }), async () => { await api.traerFuente(informeId, 'mercadolibre') })} />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {(['contactos', 'llamadas', 'whatsapp', 'preguntas'] as const).map(k => (
             <CampoNumero key={k} id={`ml-${k}`} etiqueta={{ contactos: 'Contactos', llamadas: 'Llamadas', whatsapp: 'WhatsApp', preguntas: 'Preguntas' }[k]}
-              valor={m.mercadolibre?.[k]} deshabilitado={listo}
+              valor={m.mercadolibre?.[k]} deshabilitado={bloqueado}
               onGuardar={n => guardarManual(x => ({ ...x, mercadolibre: { ...x.mercadolibre, [k]: n } }))} />
           ))}
         </div>
-        <CapturaPortal informeId={informe.id} cual="mercadolibre" portal="MercadoLibre" url={capturasUrl.mercadolibre} deshabilitado={listo} onCambio={() => void recargar()} />
+        <CapturaPortal informeId={informe.id} cual="mercadolibre" portal="MercadoLibre" url={capturasUrl.mercadolibre} deshabilitado={bloqueado} onCambio={() => void recargar()} />
       </Seccion>
 
       <Seccion id="sec-tiktok" titulo="TikTok" ayuda="Opcional. Si no hubo video en el período, dejalo vacío y la página no sale.">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <CampoNumero id="tk-visualizaciones" etiqueta="Visualizaciones del video" valor={m.tiktok?.visualizaciones} deshabilitado={listo}
+          <CampoNumero id="tk-visualizaciones" etiqueta="Visualizaciones del video" valor={m.tiktok?.visualizaciones} deshabilitado={bloqueado}
             onGuardar={n => guardarManual(x => ({ ...x, tiktok: { ...x.tiktok, visualizaciones: n } }))} />
-          <CampoLinea id="tk-total" etiqueta="Tiempo total" valor={m.tiktok?.tiempoTotal} placeholder="0h:23m:04s" deshabilitado={listo}
+          <CampoLinea id="tk-total" etiqueta="Tiempo total" valor={m.tiktok?.tiempoTotal} placeholder="0h:23m:04s" maxLength={20} deshabilitado={bloqueado}
             onGuardar={t => guardarManual(x => ({ ...x, tiktok: { ...x.tiktok, tiempoTotal: t || undefined } }))} />
-          <CampoLinea id="tk-promedio" etiqueta="Tiempo promedio" valor={m.tiktok?.tiempoPromedio} placeholder="4.98s" deshabilitado={listo}
+          <CampoLinea id="tk-promedio" etiqueta="Tiempo promedio" valor={m.tiktok?.tiempoPromedio} placeholder="4.98s" maxLength={20} deshabilitado={bloqueado}
             onGuardar={t => guardarManual(x => ({ ...x, tiktok: { ...x.tiktok, tiempoPromedio: t || undefined } }))} />
-          <CampoNumero id="tk-completo" etiqueta="Vieron el video completo" sufijo="%" valor={m.tiktok?.vieronCompleto} deshabilitado={listo}
+          <CampoNumero id="tk-completo" etiqueta="Vieron el video completo" sufijo="%" valor={m.tiktok?.vieronCompleto} deshabilitado={bloqueado}
             onGuardar={n => guardarManual(x => ({ ...x, tiktok: { ...x.tiktok, vieronCompleto: n === undefined ? undefined : Math.min(n, 100) } }))} />
-          <CampoNumero id="tk-seguidores" etiqueta="Nuevos seguidores" valor={m.tiktok?.nuevosSeguidores} deshabilitado={listo}
+          <CampoNumero id="tk-seguidores" etiqueta="Nuevos seguidores" valor={m.tiktok?.nuevosSeguidores} deshabilitado={bloqueado}
             onGuardar={n => guardarManual(x => ({ ...x, tiktok: { ...x.tiktok, nuevosSeguidores: n } }))} />
         </div>
-        <CapturaPortal informeId={informe.id} cual="tiktok" portal="TikTok" url={capturasUrl.tiktok} deshabilitado={listo} onCambio={() => void recargar()} />
+        <CapturaPortal informeId={informe.id} cual="tiktok" portal="TikTok" url={capturasUrl.tiktok} deshabilitado={bloqueado} onCambio={() => void recargar()} />
       </Seccion>
 
       <Seccion id="sec-textos" titulo="Información del período" ayuda="Lo que pasó y lo que sigue, en tus palabras. Cada renglón de las acciones es una viñeta en el informe.">
-        <CampoTexto id="tx-metricas" etiqueta="Resumen de métricas" valor={m.textos?.resumenMetricas} deshabilitado={listo} filas={3}
+        <CampoTexto id="tx-metricas" etiqueta="Resumen de métricas" valor={m.textos?.resumenMetricas} deshabilitado={bloqueado} filas={3}
           onGuardar={t => guardarManual(x => ({ ...x, textos: { ...x.textos, resumenMetricas: t } }))} />
-        <CampoTexto id="tx-realizadas" etiqueta="Acciones realizadas" valor={m.textos?.accionesRealizadas} deshabilitado={listo}
+        <CampoTexto id="tx-realizadas" etiqueta="Acciones realizadas" valor={m.textos?.accionesRealizadas} deshabilitado={bloqueado}
           falta={falta('Acciones realizadas')} ayuda="Una acción por renglón."
           onGuardar={t => guardarManual(x => ({ ...x, textos: { ...x.textos, accionesRealizadas: t } }))} />
-        <CampoTexto id="tx-a-realizar" etiqueta="Acciones a realizar para lograr vender" valor={m.textos?.accionesARealizar} deshabilitado={listo}
+        <CampoTexto id="tx-a-realizar" etiqueta="Acciones a realizar para lograr vender" valor={m.textos?.accionesARealizar} deshabilitado={bloqueado}
           falta={falta('Acciones a realizar')} ayuda="Una acción por renglón."
           onGuardar={t => guardarManual(x => ({ ...x, textos: { ...x.textos, accionesARealizar: t } }))} />
-        <CampoTexto id="tx-consultas" etiqueta="Resumen de las consultas" valor={m.textos?.resumenConsultas} deshabilitado={listo}
+        <CampoTexto id="tx-consultas" etiqueta="Resumen de las consultas" valor={m.textos?.resumenConsultas} deshabilitado={bloqueado}
           ayuda={resumenDeLaFuente('consultas', informe.fuentes) ?? undefined}
           onGuardar={t => guardarManual(x => ({ ...x, textos: { ...x.textos, resumenConsultas: t } }))} />
-        <CampoTexto id="tx-analisis" etiqueta="Análisis final" valor={m.textos?.analisisFinal} deshabilitado={listo} filas={6}
+        <CampoTexto id="tx-analisis" etiqueta="Análisis final" valor={m.textos?.analisisFinal} deshabilitado={bloqueado} filas={6}
           onGuardar={t => guardarManual(x => ({ ...x, textos: { ...x.textos, analisisFinal: t } }))} />
       </Seccion>
 
       <Seccion id="sec-competidoras" titulo="Propiedades que compiten" ayuda="Pegá el link del aviso y se completan los datos. Lo que el portal no muestre lo podés completar a mano.">
-        <Competidoras iniciales={informe.competidoras} deshabilitado={listo} onGuardar={guardarCompetidoras} />
+        <Competidoras iniciales={informe.competidoras} deshabilitado={bloqueado} onGuardar={guardarCompetidoras} />
       </Seccion>
 
       {!listo ? (
