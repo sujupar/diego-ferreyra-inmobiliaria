@@ -34,6 +34,7 @@ async function main() {
     await c.query("SET lock_timeout = '5s'")
     await c.query('BEGIN')
     await c.query(readFileSync('supabase/migrations/20261022000001_informes_quincenales.sql', 'utf8'))
+    await c.query(readFileSync('supabase/migrations/20261022000002_informe_guardar_fuente.sql', 'utf8'))
     console.log('migración aplicada (sin commitear todavía); verificando…')
 
     const t = (await c.query(`SELECT relrowsecurity FROM pg_class WHERE relnamespace='public'::regnamespace AND relname='property_reports'`)).rows
@@ -57,6 +58,20 @@ async function main() {
       'rechaza un path de PDF fuera de informes/')
     ok(await rechaza(c, 'r6', `INSERT INTO public.property_reports (property_id, desde, hasta, origen, competidoras) VALUES ($1,'2026-10-01','2026-10-15','manual','{}'::jsonb)`, [prop]),
       'competidoras tiene que ser una lista')
+
+    await c.query('SAVEPOINT fuente')
+    const nuevo = (await c.query(`INSERT INTO public.property_reports (property_id, desde, hasta, origen) VALUES ($1,'2026-01-01','2026-01-15','manual') RETURNING id`, [prop])).rows[0].id
+    const g1 = (await c.query(`SELECT public.informe_guardar_fuente($1, 'meta', '{"estado":"ok"}'::jsonb) AS r`, [nuevo])).rows[0].r
+    const g2 = (await c.query(`SELECT public.informe_guardar_fuente($1, 'consultas', '{"estado":"error"}'::jsonb) AS r`, [nuevo])).rows[0].r
+    const f = (await c.query(`SELECT fuentes FROM public.property_reports WHERE id=$1`, [nuevo])).rows[0].fuentes
+    ok(g1 === true && g2 === true && f.meta.estado === 'ok' && f.consultas.estado === 'error', 'informe_guardar_fuente guarda cada fuente sin pisar la otra')
+    ok(await rechaza(c, 'f1', `SELECT public.informe_guardar_fuente($1, 'otra', '{}'::jsonb)`, [nuevo]), 'rechaza una fuente desconocida')
+    await c.query(`UPDATE public.property_reports SET estado='listo', listo_at=now(), pdf_path='informes/' || id || '/informe-' || id || '.pdf' WHERE id=$1`, [nuevo])
+    const g3 = (await c.query(`SELECT public.informe_guardar_fuente($1, 'meta', '{"estado":"error"}'::jsonb) AS r`, [nuevo])).rows[0].r
+    ok(g3 === false, 'no toca un informe ya "listo"')
+    await c.query('ROLLBACK TO SAVEPOINT fuente')
+    const ex = (await c.query(`SELECT has_function_privilege('authenticated', 'public.informe_guardar_fuente(uuid,text,jsonb)', 'EXECUTE') AS a`)).rows[0].a
+    ok(ex === false, 'authenticated NO puede ejecutar informe_guardar_fuente')
 
     const pol = (await c.query(`SELECT polname FROM pg_policy WHERE polrelid='public.property_reports'::regclass`)).rows
     ok(pol.length === 1 && pol[0].polname === 'property_reports_select_scoped', 'una sola policy: lectura por rol')

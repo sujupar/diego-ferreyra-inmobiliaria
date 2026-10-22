@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "next-env.d.ts",
+    "types/**/*.ts",
+    "lib/informes/**/*.ts",
+    "app/api/informes/**/*.ts",
+    "app/api/properties/[[]id]/informes/**/*.ts",
+    "components/informes/**/*.tsx",
+    "app/(dashboard)/informes/**/*.tsx"
+  ]
+}
