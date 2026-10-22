@@ -114,8 +114,8 @@ describe('plantillas v2 (guía de gastos, aprobadas por el dueño el 2026-10-17)
     )
     expect(CUERPO_ENCUESTA_V4).not.toContain('100.000')
   })
-  it('respaldo de la v4 = la v3 (UTILITY aprobada); la v5 quedó MARKETING y no está en el catálogo', () => {
-    expect(RESPALDO_DE_ENCUESTA).toEqual({ encuesta_visita_v4: 'encuesta_visita_v3' })
+  it('respaldo de la v4 = la v6 (UTILITY aprobada); la v5 quedó MARKETING y no está en el catálogo', () => {
+    expect(RESPALDO_DE_ENCUESTA).toEqual({ encuesta_visita_v4: 'encuesta_visita_v6' })
     expect(armarEnvioEncuesta('encuesta_visita_v5', { nombre: 'A', direccion: 'B', fecha: '1/1', token: TOKEN })).toBeNull()
   })
   it('la v6 (candidata a respaldo): sin emojis, la ficha primero y el dato de los US$ 7.000', () => {

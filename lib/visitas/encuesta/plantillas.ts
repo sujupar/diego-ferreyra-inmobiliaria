@@ -73,7 +73,7 @@ export const BOTON_ENCUESTA_V4 = { texto: 'Quiero la guía', url: 'https://inmod
  * 2026-10-22: no sirve de respaldo (Meta la frenaría igual). NO está en el catálogo.
  *
  * v6: el intento de respaldo más parecido a la v4 SIN emojis y con la estructura de la v3 (que Meta
- * sí aprobó como utilidad). Mientras Meta no la apruebe como UTILITY, el respaldo es la v3.
+ * sí aprobó como utilidad). Meta la aprobó como UTILITY el 2026-10-22: es el respaldo vigente.
  */
 export const PLANTILLA_ENCUESTA_V6 = 'encuesta_visita_v6'
 export const CUERPO_ENCUESTA_V6 =
@@ -85,9 +85,9 @@ export const BOTON_ENCUESTA_V6 = { texto: 'Contar qué me pareció', url: 'https
 
 /** Qué plantilla de utilidad reemplaza a cada invitación de marketing cuando Meta la frena. */
 export const RESPALDO_DE_ENCUESTA: Readonly<Record<string, string>> = {
-  // La v3 (UTILITY aprobada, verificada en la prueba del 2026-10-22). Pasar a la v6 recién cuando
-  // Meta la apruebe como UTILITY: un respaldo de marketing no sirve.
-  [PLANTILLA_ENCUESTA_V4]: PLANTILLA_ENCUESTA_V3,
+  // La v6: UTILITY aprobada por Meta el 2026-10-22 (la más parecida a la v4 sin ser marketing).
+  // Si algún día Meta la reclasifica, volver a la v3. Un respaldo de marketing no sirve.
+  [PLANTILLA_ENCUESTA_V4]: PLANTILLA_ENCUESTA_V6,
 }
 
 /**
