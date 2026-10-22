@@ -77,6 +77,13 @@ describe('InformesTab', () => {
     expect(screen.getByText('Todavía no cumplió 15 días captada')).toBeInTheDocument()
   })
 
+  it('sin fecha de captación lo dice (no "no cumplió 15 días")', async () => {
+    respuestas = [listado([], { ultimaQuincena: { desde: '2026-10-01', hasta: '2026-10-15' }, cicloDeLaPropiedad: null, sinFechaDeCaptacion: true } as never)]
+    render(<InformesTab propertyId={PROP} />)
+    await userEvent.click(await screen.findByRole('button', { name: /Nuevo informe/ }))
+    expect(screen.getByText('La propiedad no tiene fecha de captación cargada')).toBeInTheDocument()
+  })
+
   it('si el servidor rechaza las fechas, muestra su motivo y no navega', async () => {
     respuestas = [listado([]), { status: 400, body: { error: 'El informe no puede terminar en el futuro' } }]
     render(<InformesTab propertyId={PROP} />)

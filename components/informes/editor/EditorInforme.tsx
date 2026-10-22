@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, CheckCircle2, Download, Eye, Loader2, RefreshCw, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { sanearCambios } from '@/lib/informes/sanear'
 import { fuentesPorTraer, resumenDeLaFuente, rotuloDeLaFuente, type Tono } from '@/lib/informes/editor'
 import { textoDelPeriodo } from '@/lib/informes/periodo'
@@ -353,6 +353,7 @@ export function EditorInforme({ informeId }: { informeId: string }) {
       <Dialog open={!!previa} onOpenChange={o => { if (!o) cerrarPrevia() }}>
         <DialogContent className="flex h-[90vh] max-w-4xl flex-col overflow-hidden p-0">
           <DialogTitle className="px-4 pt-4">Vista previa del informe</DialogTitle>
+          <DialogDescription className="sr-only">El PDF tal como va a quedar con los datos guardados.</DialogDescription>
           {previa ? <iframe src={previa} title="Vista previa del informe" className="min-h-0 w-full flex-1" /> : null}
         </DialogContent>
       </Dialog>

@@ -10,6 +10,7 @@ export default defineConfig({
     include: [
       'lib/informes/**/*.test.ts',
       'lib/properties/detail-view.test.ts',
+      'lib/nav/sections.test.ts',
       'app/api/informes/**/*.test.ts',
       'app/api/properties/*/informes/*.test.ts',
       'components/informes/**/*.test.tsx',

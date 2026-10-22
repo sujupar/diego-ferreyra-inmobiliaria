@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resumenDeMetricas, valorDelM2, paginasDelInforme, faltantes } from './resumen'
+import { resumenDeMetricas, valorDelM2, paginasDelInforme, faltantes, textoDeConsultas } from './resumen'
 import type { Fuentes, Informe, Manual } from './tipos'
 
 const ok = <T,>(datos: T) => ({ estado: 'ok' as const, actualizadoEn: '2026-10-16T12:00:00Z', datos, error: null })
@@ -112,5 +112,18 @@ describe('faltantes: qué tiene que completar Paula antes de "listo"', () => {
       'Acciones realizadas',
       'Acciones a realizar',
     ])
+  })
+})
+
+describe('textoDeConsultas (resumen de la página de consultas cuando Paula no escribió uno)', () => {
+  it('cero se dice como "no se obtuvieron", no "0 consultas"', () => {
+    expect(textoDeConsultas(0)).toBe('En este último periodo no se obtuvieron consultas.')
+  })
+  it('singular y plural', () => {
+    expect(textoDeConsultas(1)).toBe('En este último periodo se obtuvo 1 consulta.')
+    expect(textoDeConsultas(9)).toBe('En este último periodo se obtuvieron 9 consultas.')
+  })
+  it('sin el dato (la fuente falló) no inventa un cero', () => {
+    expect(textoDeConsultas(null)).toBe('No se pudieron contar las consultas de este período.')
   })
 })

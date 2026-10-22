@@ -146,6 +146,10 @@ describe('titleForPath', () => {
     expect(titleForPath(admin, '/properties/abc-123')).toEqual({ section: null, title: 'Propiedades' })
   })
 
+  it('la pantalla de un informe quincenal se titula "Informes" (no el nombre de la empresa)', () => {
+    expect(titleForPath(admin, '/informes/abc-123')).toEqual({ section: null, title: 'Informes' })
+  })
+
   it('un ítem suelto SÍ hereda su propia etiqueta en una subruta — su etiqueta ya nombra toda el área', () => {
     // A diferencia de un desplegable, un ítem suelto (sin hermanos que sean
     // pantallas distintas) es el único punto de entrada a esa área: su

@@ -58,6 +58,16 @@ export function resumenDeMetricas(fuentes: Fuentes, manual: Manual): Resumen {
   }
 }
 
+/**
+ * Resumen de la página de consultas cuando Paula no escribió uno. `null` = la fuente no se pudo
+ * traer: se dice así, nunca "0 consultas" (un cero inventado frente al propietario).
+ */
+export function textoDeConsultas(total: number | null): string {
+  if (total === null) return 'No se pudieron contar las consultas de este período.'
+  if (total === 0) return 'En este último periodo no se obtuvieron consultas.'
+  return `En este último periodo se ${total === 1 ? 'obtuvo 1 consulta' : `obtuvieron ${total} consultas`}.`
+}
+
 export function valorDelM2(precio: number | null, m2: number | null): number | null {
   if (!precio || !m2 || m2 <= 0) return null
   return Math.round(precio / m2)

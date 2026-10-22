@@ -11,7 +11,7 @@ import { leerRespuesta } from '@/components/visitas/agendar/leer-respuesta'
 import { textoDelPeriodo, type Periodo } from '@/lib/informes/periodo'
 
 interface FilaInforme { id: string; desde: string; hasta: string; origen: 'ciclo' | 'manual'; estado: 'borrador' | 'listo'; listoAt: string | null }
-interface Listado { informes: FilaInforme[]; atajos: { ultimaQuincena: Periodo | null; cicloDeLaPropiedad: Periodo | null } }
+interface Listado { informes: FilaInforme[]; atajos: { ultimaQuincena: Periodo | null; cicloDeLaPropiedad: Periodo | null; sinFechaDeCaptacion?: boolean } }
 
 type Estado = { tipo: 'cargando' } | { tipo: 'error'; mensaje: string } | { tipo: 'listo'; listado: Listado }
 
@@ -128,7 +128,7 @@ function NuevoInforme({ propertyId, atajos, abierto, onCerrar }: {
 
   const opciones: Array<{ valor: Opcion; titulo: string; detalle: string | null; disponible: boolean }> = [
     { valor: 'quincena', titulo: 'Última quincena', detalle: atajos.ultimaQuincena ? textoDelPeriodo(atajos.ultimaQuincena.desde, atajos.ultimaQuincena.hasta) : 'La propiedad se captó después', disponible: !!atajos.ultimaQuincena },
-    { valor: 'ciclo', titulo: 'Ciclo de la propiedad', detalle: atajos.cicloDeLaPropiedad ? textoDelPeriodo(atajos.cicloDeLaPropiedad.desde, atajos.cicloDeLaPropiedad.hasta) : 'Todavía no cumplió 15 días captada', disponible: !!atajos.cicloDeLaPropiedad },
+    { valor: 'ciclo', titulo: 'Ciclo de la propiedad', detalle: atajos.cicloDeLaPropiedad ? textoDelPeriodo(atajos.cicloDeLaPropiedad.desde, atajos.cicloDeLaPropiedad.hasta) : (atajos.sinFechaDeCaptacion ? 'La propiedad no tiene fecha de captación cargada' : 'Todavía no cumplió 15 días captada'), disponible: !!atajos.cicloDeLaPropiedad },
     { valor: 'fechas', titulo: 'Elegir fechas', detalle: null, disponible: true },
   ]
 

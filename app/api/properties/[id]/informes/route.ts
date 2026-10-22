@@ -28,6 +28,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         atajos: {
           ultimaQuincena: recortarALaCaptacion(quincenaQueCerro(hoy), captada),
           cicloDeLaPropiedad: captada ? cicloDeLaPropiedad(captada, hoy) : null,
+          // Sin fecha de captación no hay ciclo que contar: la pantalla lo dice en vez de "no cumplió 15 días".
+          sinFechaDeCaptacion: !captada,
         },
       },
     })

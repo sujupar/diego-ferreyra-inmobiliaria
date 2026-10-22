@@ -9,7 +9,7 @@
  */
 import { Document, Image, Link, Page, Text, View } from '@react-pdf/renderer'
 import { textoDelPeriodo } from '@/lib/informes/periodo'
-import { competidorasDeLaPagina, valorDelM2, type Pagina, type Resumen } from '@/lib/informes/resumen'
+import { competidorasDeLaPagina, textoDeConsultas, valorDelM2, type Pagina, type Resumen } from '@/lib/informes/resumen'
 import type { Competidora, Informe, NombreCaptura, PropiedadDelInforme } from '@/lib/informes/tipos'
 import { C, HOJA, s } from './estilos'
 import { Barras, Cifra, Divisor, Encabezado, EtiquetasDeBarras, FondoCompetencia, LineaTilde, Pie, Punto, Torta, Vinetas, formato, numero } from './piezas'
@@ -244,7 +244,7 @@ function Consultas({ d }: { d: DatosDelPdf }) {
       <Text style={[s.subtitulo, { fontSize: 17 }]}>Hemos tenido las siguientes consultas por los portales.</Text>
       {filas.map(([k, v]) => <LineaTilde key={k} bien={v > 0}>{k}: {v}</LineaTilde>)}
       <Text style={[s.subtitulo, { marginTop: 18 }]}>Resumen</Text>
-      <Text style={[s.cuerpo, { fontSize: 13 }]}>{resumen || `En este último periodo se ${c?.total === 1 ? 'obtuvo 1 consulta' : `obtuvieron ${c?.total ?? 0} consultas`}.`}</Text>
+      <Text style={[s.cuerpo, { fontSize: 13 }]}>{resumen || textoDeConsultas(c?.total ?? null)}</Text>
       <Pie base={d.base} />
     </Page>
   )
