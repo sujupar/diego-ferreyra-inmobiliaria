@@ -48,7 +48,20 @@ el link va en el cuerpo además del botón (WhatsApp de computadora no abre los 
 >
 > Diego Ferreyra Inmobiliaria
 
-**`encuesta_visita_v3`** (la que se usa; la v2 quedó MARKETING y es el respaldo si el dueño la elige)
+**`encuesta_visita_v4`** — la que se usa desde el 2026-10-22, MARKETING por decisión del dueño (la v3 "no comunica nada"). Texto del dueño:
+
+> Hola {{1}} 👋 Gracias por venir a ver {{2}} el {{3}}.
+>
+> ¿Sabías que comprar un departamento te puede salir hasta US$ 7.000 más de lo que tenías presupuestado? Casi nadie te lo cuenta hasta que ya estás por firmar 😬
+>
+> Contame qué te pareció la visita (1 minuto) y te mando la guía con la cuenta completa 👇
+> https://inmodf.com.ar/encuesta/{{4}}
+>
+> Diego Ferreyra
+
+Botón "Quiero la guía".
+
+**`encuesta_visita_v3`** (UTILITY, reemplazada por la v4; la v2 quedó MARKETING y es el respaldo si el dueño la elige)
 — mismo botón, mismas variables. Aprobada por el dueño el 2026-10-17 después de que la v2 cayó en marketing:
 
 > Hola {{1}}. Registramos tu visita a {{2}} del {{3}}. Para cerrar la ficha, contanos qué te pareció (menos de un minuto): https://inmodf.com.ar/encuesta/{{4}}
@@ -68,7 +81,7 @@ hagamos la de una propiedad que estés mirando, respondé este mensaje.") Meta l
 contingencia del spec: misma entrega sin la oferta. La invitación a escribirle a Diego sigue en la
 guía (botón de WhatsApp de la última página). `regalo_visita_v2` queda fuera del catálogo.
 
-Se activan cambiando en Netlify `WHATSAPP_TEMPLATE_ENCUESTA_VISITA=encuesta_visita_v3` y
+Se activan cambiando en Netlify `WHATSAPP_TEMPLATE_ENCUESTA_VISITA=encuesta_visita_v4` y
 `WHATSAPP_TEMPLATE_REGALO_VISITA=regalo_visita_v3` (lo hace el dueño; entra con el próximo deploy)
 recién cuando Meta las apruebe como UTILITY. Las v1 quedan en el catálogo: volver atrás es
 cambiar la variable.

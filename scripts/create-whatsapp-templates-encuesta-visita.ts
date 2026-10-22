@@ -26,7 +26,7 @@
 import { readFile } from 'node:fs/promises'
 import {
   PLANTILLA_ENCUESTA_V1, CUERPO_ENCUESTA_V1, BOTON_ENCUESTA_V1, PLANTILLA_REGALO_V1, CUERPO_REGALO_V1, IDIOMA_PLANTILLAS,
-  PLANTILLA_ENCUESTA_V2, CUERPO_ENCUESTA_V2, BOTON_ENCUESTA_V2, PLANTILLA_ENCUESTA_V3, CUERPO_ENCUESTA_V3, BOTON_ENCUESTA_V3, PLANTILLA_REGALO_V3, CUERPO_REGALO_V3,
+  PLANTILLA_ENCUESTA_V2, CUERPO_ENCUESTA_V2, BOTON_ENCUESTA_V2, PLANTILLA_ENCUESTA_V3, CUERPO_ENCUESTA_V3, BOTON_ENCUESTA_V3, PLANTILLA_ENCUESTA_V4, CUERPO_ENCUESTA_V4, BOTON_ENCUESTA_V4, PLANTILLA_REGALO_V3, CUERPO_REGALO_V3,
 } from '../lib/visitas/encuesta/plantillas'
 
 /** Qué crea cada valor de --create. Las cuatro comparten datos de ejemplo: mismas variables. */
@@ -34,6 +34,8 @@ const PEDIDOS = {
   encuesta: { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V1, cuerpo: CUERPO_ENCUESTA_V1, boton: BOTON_ENCUESTA_V1 },
   'encuesta-v2': { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V2, cuerpo: CUERPO_ENCUESTA_V2, boton: BOTON_ENCUESTA_V2 },
   'encuesta-v3': { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V3, cuerpo: CUERPO_ENCUESTA_V3, boton: BOTON_ENCUESTA_V3 },
+  // MARKETING a propósito (decisión del dueño 2026-10-22): no se pide UTILITY para que Meta no la reclasifique.
+  'encuesta-v4': { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V4, cuerpo: CUERPO_ENCUESTA_V4, boton: BOTON_ENCUESTA_V4, categoria: 'MARKETING' },
   regalo: { tipo: 'regalo', nombre: PLANTILLA_REGALO_V1, cuerpo: CUERPO_REGALO_V1, boton: null },
   'regalo-v3': { tipo: 'regalo', nombre: PLANTILLA_REGALO_V3, cuerpo: CUERPO_REGALO_V3, boton: null },
 } as const
@@ -106,7 +108,7 @@ async function main() {
   for (const t of actuales) {
     console.log(`  ${String(t.category).padEnd(9)} ${String(t.status).padEnd(9)} ${t.name}` +
       (t.rejected_reason && t.rejected_reason !== 'NONE' ? `  (${t.rejected_reason})` : ''))
-    if (t.status === 'APPROVED' && t.category !== 'UTILITY') {
+    if (t.status === 'APPROVED' && t.category !== 'UTILITY' && t.name !== PLANTILLA_ENCUESTA_V4) {
       console.log(`  ⚠️  ${t.name} quedó como ${t.category}: NO configurarla en Netlify (Meta retiene las de marketing).`)
     }
   }
@@ -118,7 +120,7 @@ async function main() {
 
   if (p.tipo === 'encuesta' && p.boton) {
     await crear(waba, token, {
-      name: p.nombre, language: IDIOMA_PLANTILLAS, category: 'UTILITY',
+      name: p.nombre, language: IDIOMA_PLANTILLAS, category: 'categoria' in p ? p.categoria : 'UTILITY',
       components: [
         { type: 'BODY', text: p.cuerpo, example: { body_text: [['Mariana', 'Doblas 248', '14/10', TOKEN_EJEMPLO]] } },
         { type: 'BUTTONS', buttons: [{ type: 'URL', text: p.boton.texto, url: p.boton.url, example: [`https://inmodf.com.ar/encuesta/${TOKEN_EJEMPLO}`] }] },
