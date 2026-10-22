@@ -8,6 +8,7 @@ import { AddTaskDialog } from '@/components/tasks/AddTaskDialog'
 import { BotonAgendarVisita } from '@/components/visitas/BotonAgendarVisita'
 import { puedeAgendarVisitaEnPropiedad, puedeVerTodasLasVisitas } from '@/lib/visitas/acceso'
 import { VisitasTab } from '@/components/properties/detail/tabs/VisitasTab'
+import { InformesTab } from '@/components/informes/InformesTab'
 import { VisitDataView } from '@/components/pipeline/VisitDataView'
 import type { LegalDocsState, LegalFlags } from '@/types/legal-docs.types'
 import type { Role } from '@/types/auth.types'
@@ -421,6 +422,8 @@ export default function PropertyDetailPage() {
             mostrarAsesor={!!userInfo && puedeVerTodasLasVisitas(userInfo.role)}
           />
         )}
+
+        {tab === 'informes' && <InformesTab propertyId={property.id} />}
 
         {tab === 'historial' && (
           <HistoryTab propertyId={property.id} flowHistory={flowHistory} />

@@ -227,6 +227,9 @@ const EXTRA_TITLES: { prefix: string; title: string }[] = [
   // enlazada desde Inicio. No hay listado propio en el menú; pertenece al
   // área de Tasaciones (mismo nombre que usa el desplegable Tasaciones).
   { prefix: '/scheduled-appraisals', title: 'Tasaciones' },
+  // /informes/[id]: el informe quincenal de una propiedad. Se llega desde la pestaña Informes de la
+  // ficha; todavía no hay ítem de menú (el listado llega en la Entrega 2 del informe).
+  { prefix: '/informes', title: 'Informes' },
   // /properties/[id]: para casi todos los roles esto lo resuelve el menú
   // (/properties está adentro del desplegable "Propiedades"). El ABOGADO es la
   // excepción: su menú solo tiene /properties/review, que no matchea la ficha de

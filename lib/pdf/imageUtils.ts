@@ -49,7 +49,7 @@ function withDeadline<T>(promise: Promise<T>, ms: number, fallback: T): Promise<
     })
 }
 
-async function convertUrlToBase64(url: string): Promise<string> {
+export async function convertUrlToBase64(url: string): Promise<string> {
     if (!url || url.startsWith('data:')) return url
 
     const cached = imageCache.get(url)

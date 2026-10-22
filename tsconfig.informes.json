@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "next-env.d.ts",
+    "types/**/*.ts",
+    "lib/informes/**/*.ts",
+    "app/api/informes/**/*.ts",
+    "app/api/properties/*/informes/**/*.ts",
+    "components/informes/**/*.tsx",
+    "app/(dashboard)/informes/**/*.tsx",
+    "app/(dashboard)/properties/*/page.tsx",
+    "lib/properties/detail-view.ts",
+    "lib/pdf/imageUtils.ts"
+  ]
+}
