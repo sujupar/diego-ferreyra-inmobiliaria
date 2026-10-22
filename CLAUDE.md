@@ -2058,6 +2058,38 @@ Plan: `docs/superpowers/plans/2026-10-15-sistema-de-visitas-entrega-3.md`; spec 
   Los avisos que no salieron también se ven en la tarjeta "Encuesta" de la ficha de la visita.
 - **Cómo verificar:** `npx vitest run --config vitest.visitas.config.ts` (~25 s, 1109 pruebas).
 
+### Regalo general (la guía de gastos) y plantillas v3/v4 — 2026-10-17/22 (PR #47)
+
+Spec: `docs/superpowers/specs/2026-10-17-regalo-guia-compradores-design.md`.
+
+- **Regalo GENERAL** (`visit_survey_general_gift`, fila única, paths `general/…` con CHECK; migración
+  `20261017000001`, aplicada): hoy la guía "Los US$ 7.000 que podés perder antes de comprar" (lienzo
+  https://claude.ai/artifact/2GqAtnXuBFpxHfjeZuKZfU). Si existe, **MANDA sobre el regalo de cada propiedad**: los
+  mensajes prometen la guía. `datos.leerRegalo` devuelve el que aplica (`regaloQueAplica`, puro) y lo usan los 6
+  caminos hacia quien visitó; la ficha administra el suyo con `leerRegaloDeLaPropiedad` y avisa cuando se manda
+  el general. Se carga/reemplaza/quita en Configuración › Encuesta (ruta `/api/settings/encuesta-visitas/regalo-general`:
+  ver = equipo menos abogado, escribir = `settings.manage`). La validación por bytes reales es común a las dos
+  rutas (`verificar-subida.ts`). Borrar la fila = vuelve el comportamiento anterior.
+- **PDF de la guía:** se exporta del lienzo con Chrome sin ventana (`--print-to-pdf`, hoja 794×1123); el botón de
+  WhatsApp de la última página queda como enlace real a `wa.me/5491159109252` con mensaje armado. Chrome redondea
+  la hoja a 794,56 px y deja una línea blanca a la derecha: se tapa escalando el contenido ×1.0015.
+- **Meta y la categoría (tres intentos, todos el mismo día):** `encuesta_visita_v2` (dolor + "te mandamos la guía")
+  y `regalo_visita_v2` (terminaba ofreciendo "si querés que hagamos la de una propiedad… respondé") cayeron en
+  **MARKETING**. `regalo_visita_v3` (sin la oferta) y `encuesta_visita_v3` (presentada como "registramos tu
+  visita") salieron UTILITY. **Ofrecer un servicio o un incentivo = marketing**, aunque no haya ninguna palabra de venta.
+- **DECISIÓN DEL DUEÑO (2026-10-22): la invitación va como MARKETING, `encuesta_visita_v4`.** La v3 "no comunica
+  nada": un mensaje técnico no hace que nadie abra la encuesta. Se acepta el costo (más caro, tope de Meta por
+  persona). Texto del dueño palabra por palabra, con emojis y la voz de Diego; se pide como MARKETING desde el
+  script (`--create=encuesta-v4`). La entrega del PDF sigue en `regalo_visita_v3` (UTILITY). Variables en Netlify:
+  `WHATSAPP_TEMPLATE_ENCUESTA_VISITA=encuesta_visita_v4`, `WHATSAPP_TEMPLATE_REGALO_VISITA=regalo_visita_v3`.
+  `regalo_visita_v2` NO está en el catálogo (configurarla no manda nada).
+- **Trampa del QA del deploy:** `curl` a una ruta `/api/…` sin sesión da **401 exista o no la ruta** (el
+  middleware corta antes). No sirve para saber si el deploy llegó: preguntar con sesión algo que solo el código
+  nuevo responde (acá: `GET /api/settings/encuesta-visitas` → `plantillas[].conocida`).
+- **Prueba total del 2026-10-22 (con el teléfono del dueño, en producción):** visita [TEST] → "Se realizó" →
+  invitación v3 → encuesta completa → aviso al equipo + guía por WhatsApp (`regalo_visita_v3`) → botón del PDF
+  abre el chat con Diego. Datos [TEST] borrados. Falta repetir el primer paso con la v4 cuando Meta la apruebe.
+
 ---
 
 ## Navegador de Claude y usuario de pruebas (2026-09-10)

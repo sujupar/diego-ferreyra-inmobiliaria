@@ -53,6 +53,22 @@ export const CUERPO_ENCUESTA_V3 =
 export const BOTON_ENCUESTA_V3 = { texto: 'Contar qué me pareció', url: 'https://inmodf.com.ar/encuesta/{{1}}' } as const
 
 /**
+ * v4 (2026-10-22): la que se usa. MARKETING A PROPÓSITO, decisión del dueño: la v3 (utilidad) "no
+ * comunica nada, no va a lograr que abran la ficha". Abre con el dolor (US$ 7.000 fuera del
+ * presupuesto) con la voz de Diego, corta y con emojis. Se acepta el costo de marketing (más caro y
+ * con tope de Meta por persona): a quien visitó ayer le llega igual. Texto del dueño, palabra por palabra.
+ */
+export const PLANTILLA_ENCUESTA_V4 = 'encuesta_visita_v4'
+export const CUERPO_ENCUESTA_V4 =
+  'Hola {{1}} 👋 Gracias por venir a ver {{2}} el {{3}}.\n\n' +
+  '¿Sabías que comprar un departamento te puede salir hasta US$ 7.000 más de lo que tenías presupuestado? ' +
+  'Casi nadie te lo cuenta hasta que ya estás por firmar 😬\n\n' +
+  'Contame qué te pareció la visita (1 minuto) y te mando la guía con la cuenta completa 👇\n' +
+  'https://inmodf.com.ar/encuesta/{{4}}\n\n' +
+  'Diego Ferreyra'
+export const BOTON_ENCUESTA_V4 = { texto: 'Quiero la guía', url: 'https://inmodf.com.ar/encuesta/{{1}}' } as const
+
+/**
  * La entrega de la guía es la v3: `regalo_visita_v2` ("…Si querés que hagamos la de una propiedad
  * que estés mirando, respondé este mensaje.") Meta la aprobó como MARKETING el 2026-10-17 — ofrecer
  * un servicio la vuelve promoción. NO está en el catálogo a propósito: configurarla por error da
@@ -76,6 +92,7 @@ export const PLANTILLAS_ENCUESTA: Readonly<Record<string, DefinicionPlantilla>> 
   [PLANTILLA_ENCUESTA_V1]: { nombre: PLANTILLA_ENCUESTA_V1, cuerpo: CUERPO_ENCUESTA_V1, variables: 4, conBoton: true, encabezado: null },
   [PLANTILLA_ENCUESTA_V2]: { nombre: PLANTILLA_ENCUESTA_V2, cuerpo: CUERPO_ENCUESTA_V2, variables: 4, conBoton: true, encabezado: null },
   [PLANTILLA_ENCUESTA_V3]: { nombre: PLANTILLA_ENCUESTA_V3, cuerpo: CUERPO_ENCUESTA_V3, variables: 4, conBoton: true, encabezado: null },
+  [PLANTILLA_ENCUESTA_V4]: { nombre: PLANTILLA_ENCUESTA_V4, cuerpo: CUERPO_ENCUESTA_V4, variables: 4, conBoton: true, encabezado: null },
 }
 
 export const PLANTILLAS_REGALO: Readonly<Record<string, DefinicionPlantilla>> = {
