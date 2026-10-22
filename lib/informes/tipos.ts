@@ -85,7 +85,10 @@ export type Fuentes = { [K in NombreFuente]?: FuenteGuardada<DatosPorFuente[K]> 
 /** Un portal que Paula completa a mano. `publicado: false` = no está en ese portal (no es un faltante). */
 export interface ManualZonaprop { publicado?: boolean; exposicion?: number; visualizaciones?: number; interesados?: number }
 export interface ManualArgenprop { publicado?: boolean; visualizaciones?: number }
-export interface ManualMercadoLibre { contactos?: number; llamadas?: number; whatsapp?: number; preguntas?: number }
+export interface ManualMercadoLibre {
+  /** El aviso, cuando la plataforma no lo conoce (publicado a mano): código MLA o link. */
+  aviso?: string
+  contactos?: number; llamadas?: number; whatsapp?: number; preguntas?: number }
 export interface ManualTiktok { visualizaciones?: number; tiempoTotal?: string; tiempoPromedio?: string; vieronCompleto?: number; nuevosSeguidores?: number }
 
 export interface Textos {
