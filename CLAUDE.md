@@ -2083,6 +2083,15 @@ Spec: `docs/superpowers/specs/2026-10-17-regalo-guia-compradores-design.md`.
   script (`--create=encuesta-v4`). La entrega del PDF sigue en `regalo_visita_v3` (UTILITY). Variables en Netlify:
   `WHATSAPP_TEMPLATE_ENCUESTA_VISITA=encuesta_visita_v4`, `WHATSAPP_TEMPLATE_REGALO_VISITA=regalo_visita_v3`.
   `regalo_visita_v2` NO está en el catálogo (configurarla no manda nada).
+- **Respaldo automático de la invitación (2026-10-22, PR #50/#51):** Meta descarta mensajes de marketing a
+  quien ya recibió muchos (**131049** "healthy ecosystem engagement") o a quien bloqueó el marketing (131050), y
+  lo avisa MINUTOS DESPUÉS por el webhook de estados (al enviar respondió "aceptado"). Le pasó al dueño en la
+  prueba; minutos después la misma v4 sí le llegó: el freno es por persona y cambia, no se puede forzar. El webhook
+  (`mandarRespaldoSiCorresponde`, regla pura `respaldo.ts`) manda entonces `RESPALDO_DE_ENCUESTA[v4]` =
+  **`encuesta_visita_v6`** (UTILITY). Una sola vez: relee la encuesta CON el candado tomado (revisión adversarial:
+  dos reintentos de Meta en paralelo la mandaban dos veces). **`encuesta_visita_v5` (la v4 ordenada como utilidad
+  pero CON emojis) Meta la clasificó MARKETING:** el respaldo no puede tener emojis ni el tono de venta de la v4.
+  Detección: `SELECT template_name, status, error_code FROM whatsapp_messages WHERE template_name LIKE 'encuesta_visita_%' ORDER BY created_at DESC;`
 - **Trampa del QA del deploy:** `curl` a una ruta `/api/…` sin sesión da **401 exista o no la ruta** (el
   middleware corta antes). No sirve para saber si el deploy llegó: preguntar con sesión algo que solo el código
   nuevo responde (acá: `GET /api/settings/encuesta-visitas` → `plantillas[].conocida`).

@@ -10,11 +10,11 @@ const BASE = {
 }
 
 describe('decidirRespaldo: cuándo la invitación de marketing se reemplaza por la de utilidad', () => {
-  it('Meta frenó la v4 por el tope de marketing (131049) → manda la de utilidad (v3)', () => {
-    expect(decidirRespaldo(BASE)).toEqual({ mandar: true, plantilla: 'encuesta_visita_v3' })
+  it('Meta frenó la v4 por el tope de marketing (131049) → manda la de utilidad (v6)', () => {
+    expect(decidirRespaldo(BASE)).toEqual({ mandar: true, plantilla: 'encuesta_visita_v6' })
   })
   it('también si la persona bloqueó los mensajes de marketing (131050)', () => {
-    expect(decidirRespaldo({ ...BASE, codigoError: '131050' })).toEqual({ mandar: true, plantilla: 'encuesta_visita_v3' })
+    expect(decidirRespaldo({ ...BASE, codigoError: '131050' })).toEqual({ mandar: true, plantilla: 'encuesta_visita_v6' })
   })
   it('otro error (número inválido, plantilla rota) NO tiene respaldo: fallaría igual', () => {
     expect(decidirRespaldo({ ...BASE, codigoError: '131026' })).toEqual({ mandar: false, motivo: 'error_sin_respaldo' })
@@ -25,8 +25,8 @@ describe('decidirRespaldo: cuándo la invitación de marketing se reemplaza por 
       expect(decidirRespaldo({ ...BASE, estado })).toEqual({ mandar: false, motivo: 'no_fallo' })
     }
   })
-  it('una plantilla sin respaldo (la v3 misma —sin bucles—, la del regalo, cualquier otra) no dispara nada', () => {
-    for (const plantillaDelMensaje of ['encuesta_visita_v3', 'encuesta_visita_v1', 'regalo_visita_v3', 'consulta_portal_v2', null]) {
+  it('una plantilla sin respaldo (la v6 misma —sin bucles—, la v3, la del regalo, cualquier otra) no dispara nada', () => {
+    for (const plantillaDelMensaje of ['encuesta_visita_v6', 'encuesta_visita_v3', 'encuesta_visita_v1', 'regalo_visita_v3', 'consulta_portal_v2', null]) {
       expect(decidirRespaldo({ ...BASE, plantillaDelMensaje })).toEqual({ mandar: false, motivo: 'plantilla_sin_respaldo' })
     }
   })
