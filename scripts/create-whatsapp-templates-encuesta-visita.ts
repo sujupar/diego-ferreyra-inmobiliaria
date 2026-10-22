@@ -26,7 +26,7 @@
 import { readFile } from 'node:fs/promises'
 import {
   PLANTILLA_ENCUESTA_V1, CUERPO_ENCUESTA_V1, BOTON_ENCUESTA_V1, PLANTILLA_REGALO_V1, CUERPO_REGALO_V1, IDIOMA_PLANTILLAS,
-  PLANTILLA_ENCUESTA_V2, CUERPO_ENCUESTA_V2, BOTON_ENCUESTA_V2, PLANTILLA_ENCUESTA_V3, CUERPO_ENCUESTA_V3, BOTON_ENCUESTA_V3, PLANTILLA_ENCUESTA_V4, CUERPO_ENCUESTA_V4, BOTON_ENCUESTA_V4, PLANTILLA_REGALO_V3, CUERPO_REGALO_V3,
+  PLANTILLA_ENCUESTA_V2, CUERPO_ENCUESTA_V2, BOTON_ENCUESTA_V2, PLANTILLA_ENCUESTA_V3, CUERPO_ENCUESTA_V3, BOTON_ENCUESTA_V3, PLANTILLA_ENCUESTA_V4, CUERPO_ENCUESTA_V4, BOTON_ENCUESTA_V4, PLANTILLA_ENCUESTA_V6, CUERPO_ENCUESTA_V6, BOTON_ENCUESTA_V6, PLANTILLA_REGALO_V3, CUERPO_REGALO_V3,
 } from '../lib/visitas/encuesta/plantillas'
 
 /** Qué crea cada valor de --create. Las cuatro comparten datos de ejemplo: mismas variables. */
@@ -36,11 +36,13 @@ const PEDIDOS = {
   'encuesta-v3': { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V3, cuerpo: CUERPO_ENCUESTA_V3, boton: BOTON_ENCUESTA_V3 },
   // MARKETING a propósito (decisión del dueño 2026-10-22): no se pide UTILITY para que Meta no la reclasifique.
   'encuesta-v4': { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V4, cuerpo: CUERPO_ENCUESTA_V4, boton: BOTON_ENCUESTA_V4, categoria: 'MARKETING' },
+  // Candidata a respaldo de la v4 (la v5 quedó MARKETING): tiene que quedar UTILITY.
+  'encuesta-v6': { tipo: 'encuesta', nombre: PLANTILLA_ENCUESTA_V6, cuerpo: CUERPO_ENCUESTA_V6, boton: BOTON_ENCUESTA_V6 },
   regalo: { tipo: 'regalo', nombre: PLANTILLA_REGALO_V1, cuerpo: CUERPO_REGALO_V1, boton: null },
   'regalo-v3': { tipo: 'regalo', nombre: PLANTILLA_REGALO_V3, cuerpo: CUERPO_REGALO_V3, boton: null },
 } as const
 // regalo_visita_v2 se sigue mostrando en el estado (Meta la aprobó como MARKETING): que se vea por qué no se usa.
-const NOMBRES = new Set<string>([...Object.values(PEDIDOS).map(p => p.nombre), 'regalo_visita_v2'])
+const NOMBRES = new Set<string>([...Object.values(PEDIDOS).map(p => p.nombre), 'regalo_visita_v2', 'encuesta_visita_v5'])
 
 const API = process.env.WHATSAPP_API_VERSION ?? 'v21.0'
 const TOKEN_EJEMPLO = 'Ab3xK9pQ2rTz8LmN4vWq1Y'

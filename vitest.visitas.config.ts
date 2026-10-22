@@ -46,6 +46,8 @@ export default defineConfig({
       'app/*/layout.movil.test.ts',
       'lib/integrations/whatsapp/core.test.ts',
       'lib/integrations/whatsapp/log.test.ts',
+      // Respaldo de la invitación (2026-10-22): el webhook de estados lo dispara.
+      'app/api/webhooks/whatsapp/route.test.ts',
     ],
     exclude: ['**/node_modules/**', '.next', '.netlify'],
   },

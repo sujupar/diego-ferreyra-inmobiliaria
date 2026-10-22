@@ -392,6 +392,22 @@ export async function liberarEnvio(id: string): Promise<void> {
   if (error) console.error('[encuesta] no se pudo liberar el candado de envío (vence solo)', id, error.message)
 }
 
+/** La plantilla con que salió un mensaje (para saber si el que falló tiene respaldo). */
+export async function plantillaDelMensaje(waMessageId: string): Promise<string | null> {
+  const { data, error } = await sb().from('whatsapp_messages').select('template_name')
+    .eq('wa_message_id', waMessageId).limit(1).maybeSingle()
+  if (error) fallo('leer la plantilla del mensaje', error)
+  return data ? texto((data as Record<string, unknown>).template_name) : null
+}
+
+/** La encuesta cuyo envío VIGENTE es este mensaje (`visit_surveys.wa_message_id`), o null. */
+export async function leerEncuestaPorMensaje(waMessageId: string): Promise<EncuestaConVisita | null> {
+  const { data, error } = await sb().from('visit_surveys').select('id').eq('wa_message_id', waMessageId).limit(1).maybeSingle()
+  if (error) fallo('buscar la encuesta del mensaje', error)
+  if (!data) return null
+  return leerEncuestaConVisita({ id: String((data as Record<string, unknown>).id) })
+}
+
 /** NO lanza: sin estado del webhook, la ficha dice "Enviada" (lo último que se sabe con certeza). */
 export async function estadoDelMensaje(waMessageId: string): Promise<EstadoWa | null> {
   const { data, error } = await sb().from('whatsapp_messages').select('status, error_code, error_message')
