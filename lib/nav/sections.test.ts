@@ -21,12 +21,20 @@ describe('getNavSections — permisos del menú', () => {
     expect(groups[0].label).toBeNull()
   })
 
-  it('el asesor ve las mismas 10 rutas de siempre más Inicio (11)', () => {
+  it('el asesor ve las mismas 10 rutas de siempre más Inicio y Noticias (12)', () => {
     const hrefs = navHrefs(getNavSections('asesor'))
     expect(hrefs.sort()).toEqual([
       '/appraisal/new', '/appraisals', '/contacts', '/crm', '/inbox', '/inicio',
-      '/pipeline/new', '/properties', '/redes-sociales', '/tasks', '/visits',
+      '/noticias', '/pipeline/new', '/properties', '/redes-sociales', '/tasks', '/visits',
     ])
+  })
+
+  it('Noticias vive en Marketing para los roles que ven Marketing (asesor, coordinador, admin, dueño)', () => {
+    for (const role of ['asesor', 'coordinador', 'admin', 'dueno'] as const) {
+      expect(navHrefs(getNavSections(role))).toContain('/noticias')
+    }
+    // El abogado no tiene Marketing → tampoco Noticias.
+    expect(navHrefs(getNavSections('abogado'))).not.toContain('/noticias')
   })
 
   it('el asesor no ve administración, métricas ni avisos', () => {
