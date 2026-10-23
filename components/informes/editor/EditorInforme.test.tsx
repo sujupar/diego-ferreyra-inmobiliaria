@@ -176,6 +176,16 @@ describe('EditorInforme', () => {
     await waitFor(() => expect(api.guardarCompetidoras).toHaveBeenCalledWith('inf-1', [expect.objectContaining({ url: 'https://www.argenprop.com/x--1', direccion: 'Quesada 3250', barrio: 'Coghlan' })]))
   })
 
+  it('un portal que falla se reintenta una vez sola (Argenprop falló así en la vista previa y anduvo al rato)', async () => {
+    const sinBuscar = informe({ candidatas: { detalles: {} } })
+    api.leerVista.mockResolvedValue(vista(sinBuscar))
+    const ok = { estado: 'ok', error: null, buscadoEn: 'x', url: null, avisos: [] }
+    api.buscarCompetencia.mockResolvedValueOnce({ ...ok, estado: 'error', error: 'no reconoce' }).mockResolvedValue(ok)
+    render(<EditorInforme informeId="inf-1" />)
+    await waitFor(() => expect(api.buscarCompetencia).toHaveBeenCalledTimes(3))
+    expect(api.buscarCompetencia.mock.calls.map(c => c[1])).toEqual(['argenprop', 'argenprop', 'mercadolibre'])
+  })
+
   it('con la búsqueda ya hecha, no vuelve a buscar sola', async () => {
     api.leerVista.mockResolvedValue(vista(informe()))
     render(<EditorInforme informeId="inf-1" />)

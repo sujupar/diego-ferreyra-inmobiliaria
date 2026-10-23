@@ -97,7 +97,13 @@ export function EditorInforme({ informeId }: { informeId: string }) {
     try {
       for (const [portal, nombre] of [['argenprop', 'Argenprop'], ['mercadolibre', 'MercadoLibre']] as const) {
         setProgresoCompetencia(`Buscando en ${nombre}…`)
-        try { await api.buscarCompetencia(informeId, portal) } catch { /* queda como error del portal; se ve y se reintenta */ }
+        // Un reintento: el listado de Argenprop a veces llega distinto y al rato anda (vista previa, 2026-10-22). Va en
+        // otro pedido, así no se suman dos esperas dentro del techo de Netlify.
+        for (let intento = 0; intento < 2; intento++) {
+          try {
+            if ((await api.buscarCompetencia(informeId, portal)).estado !== 'error') break
+          } catch { /* queda como error del portal; se ve y se puede buscar de nuevo */ }
+        }
       }
       const vista = await recargar()
       const porAbrir = vista.candidatas.filter(c => !c.abierta).slice(0, 6)
