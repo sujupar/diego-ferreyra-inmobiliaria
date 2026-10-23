@@ -30,12 +30,13 @@ const unDecimal = (n: number) => Math.round(n * 10) / 10
 
 export type EtapaDelCuello = 'presentacion' | 'precio' | 'seguimiento' | 'ajuste_precio' | 'difusion'
 
+// Redactadas como viñeta lista para el propietario (el modelo a veces las copia tal cual al informe).
 const RECOMENDACION: Record<EtapaDelCuello, string> = {
-  presentacion: 'Menos de 1 de cada 10 que la ven entra al aviso: mejorar la presentación (fotos, portada, título).',
-  precio: 'Entran al aviso pero casi nadie consulta: la presentación funciona; revisar el precio frente a la competencia.',
-  seguimiento: 'Hay consultas pero no se concretan visitas: hacer seguimiento a los interesados para coordinarlas.',
-  ajuste_precio: 'Los que visitaron opinan que el precio está por encima del mercado: conversar un ajuste de precio.',
-  difusion: 'Avanza en todas las etapas: seguir con la máxima difusión.',
+  presentacion: 'Renovar la presentación del aviso (portada, fotos y título) para que más personas entren a verlo.',
+  precio: 'Revisar el precio de publicación frente a las propiedades que compiten en la zona.',
+  seguimiento: 'Hacer seguimiento a las personas que consultaron para coordinar visitas.',
+  ajuste_precio: 'Conversar un ajuste de precio, en línea con lo que opinaron quienes visitaron la propiedad.',
+  difusion: 'Seguir con la máxima difusión.',
 }
 
 /**
