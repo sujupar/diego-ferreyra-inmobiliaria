@@ -1,16 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { datosMock, traerMock } = vi.hoisted(() => ({
+const { datosMock, traerMock, openaiMock } = vi.hoisted(() => ({
   traerMock: vi.fn(),
+  openaiMock: vi.fn(),
   datosMock: {
     leerPropiedad: vi.fn(), crearInforme: vi.fn(), guardarFuente: vi.fn(), guardarCaptura: vi.fn(), marcarListo: vi.fn(),
     crearSubidaFirmada: vi.fn(), primerosBytes: vi.fn(), urlFirmada: vi.fn(), borrarArchivos: vi.fn(),
+    leerInforme: vi.fn(), leerInformeAnterior: vi.fn(), guardarCambios: vi.fn(),
   },
 }))
 vi.mock('./datos', () => datosMock)
 vi.mock('./fuentes', () => ({ traerFuente: traerMock }))
+vi.mock('@/lib/ai/openai-responses', () => ({ respuestaOpenAI: openaiMock }))
 
-import { crearInformeManual, refrescarFuente, confirmarCaptura, marcarInformeListo, prepararPdf, ErrorInforme, fuentesPendientes } from './servicio'
+import { crearInformeManual, refrescarFuente, confirmarCaptura, marcarInformeListo, prepararPdf, ErrorInforme, fuentesPendientes, escribirTextos } from './servicio'
 import type { Informe } from './tipos'
 
 const ID = '11111111-1111-4111-8111-111111111111'
@@ -19,6 +22,10 @@ const AHORA = new Date('2026-10-22T15:00:00Z')
 const ok = { estado: 'ok' as const, actualizadoEn: '', datos: {}, error: null }
 
 function informe(extra: Partial<Informe> = {}): Informe {
+  return informeBase(extra)
+}
+
+function informeBase(extra: Partial<Informe> = {}): Informe {
   const fuentes = Object.fromEntries(Object.keys(fuentesPendientes()).map(k => [k, ok]))
   return {
     id: ID, propertyId: 'p', desde: '2026-10-01', hasta: '2026-10-15', origen: 'manual', estado: 'borrador',
@@ -125,5 +132,52 @@ describe('listo', () => {
     await expect(marcarInformeListo(informe(), PDF, 'u1', 'v1')).rejects.toMatchObject({ status: 400 })
     expect(datosMock.borrarArchivos).toHaveBeenCalledWith([PDF])
     expect(datosMock.marcarListo).not.toHaveBeenCalled()
+  })
+})
+
+describe('escribirTextos', () => {
+  const salida = {
+    resumenMetricas: 'La están viendo muchos compradores.',
+    accionesRealizadas: ['Se publicó la propiedad en todos los portales'],
+    accionesARealizar: ['Seguir con la máxima difusión.'],
+    resumenConsultas: 'En este último periodo se obtuvieron 45 consultas.',
+    analisisFinal: 'Análisis.',
+  }
+  // Fuentes respondidas pero sin datos (estado real): los datos de las otras pruebas son objetos vacíos.
+  const sinDatos = { estado: 'sin_datos' as const, actualizadoEn: 'x', datos: null, error: null }
+  const fuentesListas = Object.fromEntries(Object.keys(fuentesPendientes()).map(k => [k, sinDatos])) as Informe['fuentes']
+  const informe = (extra: Partial<Informe> = {}) => informeBase({ fuentes: fuentesListas, ...extra })
+  beforeEach(() => {
+    openaiMock.mockReset()
+    datosMock.leerPropiedad.mockResolvedValue({ id: 'p', direccion: 'Roque Pérez 3059', barrio: null, ciudad: null, tipo: null, precio: null, moneda: null, capturadaEl: null, foto: null })
+    datosMock.leerInformeAnterior.mockResolvedValue(null)
+    datosMock.guardarCambios.mockResolvedValue(true)
+  })
+
+  it('con datos todavía llegando no escribe (409) y no llama al modelo', async () => {
+    const i = informe({ fuentes: { ...fuentesListas, meta: { estado: 'pendiente', actualizadoEn: null, datos: null, error: null } } })
+    await expect(escribirTextos(i, AHORA, false)).rejects.toMatchObject({ status: 409 })
+    expect(openaiMock).not.toHaveBeenCalled()
+  })
+
+  it('guarda los textos, respeta lo que Paula corrigió y marca lo que tiene números sin respaldo', async () => {
+    openaiMock.mockResolvedValue({ texto: JSON.stringify(salida) })
+    const fresco = informe({ manual: { ...informe().manual, textos: { accionesRealizadas: 'Lo escribió Paula' } } })
+    datosMock.leerInforme.mockResolvedValue(fresco)
+    const r = await escribirTextos(informe(), AHORA, false)
+    const guardado = datosMock.guardarCambios.mock.calls[0][1].manual
+    expect(guardado.textos.accionesRealizadas).toBe('Lo escribió Paula')
+    expect(guardado.textos.resumenMetricas).toBe('La están viendo muchos compradores.')
+    expect(guardado.redaccion.revisar).toEqual(['resumenConsultas'])
+    expect(guardado.zonaprop).toEqual(fresco.manual.zonaprop)
+    expect(r.manual.textos?.accionesRealizadas).toBe('Lo escribió Paula')
+  })
+
+  it('si el modelo falla o devuelve otra cosa, error legible (503) y no se guarda nada', async () => {
+    openaiMock.mockRejectedValueOnce(new Error('OpenAI 500'))
+    await expect(escribirTextos(informe(), AHORA, false)).rejects.toMatchObject({ status: 503 })
+    openaiMock.mockResolvedValueOnce({ texto: '{"otra":"cosa"}' })
+    await expect(escribirTextos(informe(), AHORA, false)).rejects.toMatchObject({ status: 503 })
+    expect(datosMock.guardarCambios).not.toHaveBeenCalled()
   })
 })

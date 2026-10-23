@@ -61,6 +61,14 @@ export async function crearInforme(f: { propertyId: string; desde: string; hasta
   return { informe: aInforme(existente.data as Record<string, unknown>), nuevo: false }
 }
 
+/** El informe más reciente de la propiedad que terminó antes de que empiece este (para mostrar la evolución). */
+export async function leerInformeAnterior(propertyId: string, desde: string): Promise<Informe | null> {
+  const { data, error } = await sb().from('property_reports').select(SELECT).eq('property_id', propertyId)
+    .lt('hasta', desde).order('hasta', { ascending: false }).limit(1).maybeSingle()
+  if (error) fallo('leer el informe anterior', error)
+  return data ? aInforme(data as Record<string, unknown>) : null
+}
+
 /** Atómico (RPC): no pisa otra fuente guardada a la vez. false = el informe ya está "listo". */
 export async function guardarFuente(id: string, nombre: NombreFuente, valor: FuenteGuardada<unknown>): Promise<boolean> {
   const { data, error } = await sb().rpc('informe_guardar_fuente', { p_id: id, p_fuente: nombre, p_valor: valor })
@@ -117,9 +125,14 @@ export async function volverABorrador(id: string): Promise<boolean> {
 // ─── La propiedad (lo que muestran la pantalla y el PDF) ─────────────────────
 
 
+function numeroONull(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
 export async function leerPropiedad(propertyId: string): Promise<PropiedadDelInforme | null> {
   const { data, error } = await sb().from('properties')
-    .select('id, address, neighborhood, city, property_type, asking_price, currency, captured_at, photos')
+    .select('id, address, neighborhood, city, property_type, asking_price, currency, captured_at, photos, total_area, covered_area, rooms')
     .eq('id', propertyId).maybeSingle()
   if (error) fallo('leer la propiedad', error)
   if (!data) return null
@@ -131,6 +144,8 @@ export async function leerPropiedad(propertyId: string): Promise<PropiedadDelInf
     precio: typeof r.asking_price === 'number' ? r.asking_price : r.asking_price ? Number(r.asking_price) : null,
     moneda: r.currency ? String(r.currency) : null, capturadaEl: r.captured_at ? String(r.captured_at) : null,
     foto: fotos[0] ?? null,
+    m2: numeroONull(r.total_area) ?? numeroONull(r.covered_area),
+    ambientes: numeroONull(r.rooms),
   }
 }
 

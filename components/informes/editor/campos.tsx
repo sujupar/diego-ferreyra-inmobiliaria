@@ -93,7 +93,7 @@ export function CampoLinea({ id, etiqueta, valor, onGuardar, deshabilitado, ayud
   )
 }
 
-export function CampoTexto({ id, etiqueta, valor, onGuardar, deshabilitado, falta, ayuda, filas = 4 }: {
+export function CampoTexto({ id, etiqueta, valor, onGuardar, deshabilitado, falta, ayuda, filas = 4, revisar }: {
   id: string
   etiqueta: string
   valor: string | undefined
@@ -102,12 +102,15 @@ export function CampoTexto({ id, etiqueta, valor, onGuardar, deshabilitado, falt
   falta?: boolean
   ayuda?: string
   filas?: number
+  /** La plataforma escribió un número que no está en los datos del informe: hay que mirarlo. */
+  revisar?: boolean
 }) {
   const [texto, setTexto] = useState(valor ?? '')
   return (
     <div className="space-y-1">
       <Label htmlFor={id} className={cn(falta && 'text-orange-700')}>{etiqueta}{falta ? ' (falta)' : ''}</Label>
       {ayuda ? <p className="text-xs text-muted-foreground">{ayuda}</p> : null}
+      {revisar ? <p className="text-xs text-orange-700">Tiene un número que no encontré en los datos del informe: revisalo antes de marcar listo.</p> : null}
       <Textarea
         id={id}
         rows={filas}

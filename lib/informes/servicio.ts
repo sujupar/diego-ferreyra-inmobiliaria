@@ -10,6 +10,8 @@ import { traerFuente } from './fuentes'
 import { esImagen, esPathDeCaptura, esPathDelPdf, esPdf, MAX_CAPTURA_BYTES, MAX_PDF_BYTES, nombreDelPdf, pathDeCaptura, pathDelPdf, SEGUNDOS_URL_LECTURA, validarCaptura } from './archivos'
 import { validarRango } from './periodo'
 import { faltantes, paginasDelInforme, resumenDeMetricas, type Pagina, type Resumen } from './resumen'
+import { combinarTextos, datosParaRedactar, entradaDeRedaccion, ESQUEMA_REDACCION, INSTRUCCIONES_REDACCION, validarRedaccion } from './redaccion'
+import { respuestaOpenAI } from '@/lib/ai/openai-responses'
 import { FUENTES, type Capturas, type FuenteGuardada, type Fuentes, type Informe, type NombreCaptura, type NombreFuente, type PropiedadDelInforme } from './tipos'
 
 export class ErrorInforme extends Error {
@@ -45,6 +47,55 @@ export async function refrescarFuente(i: Informe, nombre: NombreFuente, ahora: D
   })
   if (!(await datos.guardarFuente(i.id, nombre, valor as FuenteGuardada<unknown>))) throw new ErrorInforme(409, 'El informe ya está listo')
   return valor as FuenteGuardada<unknown>
+}
+
+// ─── Textos escritos por la plataforma ───────────────────────────────────────
+
+/** Modelo de los textos. `gpt-4.1` es el que ya escribe las descripciones de las propiedades. */
+const MODELO_TEXTOS = process.env.INFORME_MODELO_TEXTO ?? 'gpt-4.1'
+/** Netlify corta a los ~26 s; cortamos antes para responder un error legible (no una página HTML). */
+const TOPE_TEXTOS_MS = 22_000
+
+/**
+ * Escribe los cinco textos con UNA llamada al modelo. Antes de guardar relee el informe: lo que Paula haya
+ * corregido mientras tanto se respeta (salvo `forzar`). Los campos con números que no están en los datos
+ * quedan marcados en `redaccion.revisar`.
+ */
+export async function escribirTextos(i: Informe, ahora: Date, forzar: boolean): Promise<Informe> {
+  exigirBorrador(i)
+  if (Object.values(i.fuentes).some(f => !f || f.estado === 'pendiente')) {
+    throw new ErrorInforme(409, 'Todavía están llegando los datos del período. Esperá a que terminen.')
+  }
+  const propiedad = await datos.leerPropiedad(i.propertyId)
+  if (!propiedad) throw new ErrorInforme(404, 'No encontramos la propiedad del informe')
+  const previo = await datos.leerInformeAnterior(i.propertyId, i.desde)
+  const rPrevio = previo ? resumenDeMetricas(previo.fuentes, previo.manual) : null
+  const d = datosParaRedactar({
+    informe: i, propiedad, resumen: resumenDeMetricas(i.fuentes, i.manual),
+    anterior: previo && rPrevio ? {
+      desde: previo.desde, hasta: previo.hasta, vieron: rPrevio.vieron.valor, entraron: rPrevio.entraron.valor,
+      consultas: rPrevio.consultas, visitas: rPrevio.visitas,
+    } : null,
+  })
+  let crudo: string
+  try {
+    crudo = (await respuestaOpenAI({
+      modelo: MODELO_TEXTOS, instrucciones: INSTRUCCIONES_REDACCION, entrada: [{ tipo: 'texto', texto: entradaDeRedaccion(d) }],
+      esquema: ESQUEMA_REDACCION, temperatura: 0.4, timeoutMs: TOPE_TEXTOS_MS,
+    })).texto
+  } catch (e) {
+    const tardo = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')
+    throw new ErrorInforme(503, tardo ? 'La redacción tardó demasiado. Probá de nuevo.' : 'No se pudieron escribir los textos. Probá de nuevo en un momento.')
+  }
+  const v = validarRedaccion(crudo, d)
+  if (!v.ok) throw new ErrorInforme(503, `No se pudieron escribir los textos (${v.error}). Probá de nuevo.`)
+  const fresco = await datos.leerInforme(i.id)
+  if (!fresco) throw new ErrorInforme(404, 'No encontramos el informe')
+  exigirBorrador(fresco)
+  const textos = combinarTextos({ actuales: fresco.manual.textos ?? {}, original: fresco.manual.redaccion?.original ?? {}, nuevos: v.textos, forzar })
+  const manual = { ...fresco.manual, textos, redaccion: { generadoEn: ahora.toISOString(), original: v.textos, revisar: v.revisar } }
+  if (!(await datos.guardarCambios(i.id, { manual }))) throw new ErrorInforme(409, 'El informe ya está listo')
+  return { ...fresco, manual }
 }
 
 // ─── Capturas ────────────────────────────────────────────────────────────────

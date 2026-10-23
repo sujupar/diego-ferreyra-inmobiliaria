@@ -109,12 +109,21 @@ export interface Textos {
   analisisFinal?: string
 }
 
+/** Lo que escribió la plataforma la última vez: para no pisar lo que Paula corrigió y señalar qué revisar. */
+export interface Redaccion {
+  generadoEn: string
+  original: Textos
+  /** Campos con algún número que no está en los datos del informe. */
+  revisar: Array<keyof Textos>
+}
+
 export interface Manual {
   zonaprop?: ManualZonaprop
   argenprop?: ManualArgenprop
   mercadolibre?: ManualMercadoLibre
   tiktok?: ManualTiktok
   textos?: Textos
+  redaccion?: Redaccion
 }
 
 export interface Competidora {
@@ -169,4 +178,7 @@ export interface PropiedadDelInforme {
   moneda: string | null
   capturadaEl: string | null
   foto: string | null
+  /** Superficie total (o cubierta si no hay total): para el valor del m² del análisis. */
+  m2?: number | null
+  ambientes?: number | null
 }

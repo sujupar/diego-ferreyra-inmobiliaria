@@ -28,6 +28,15 @@ const manual = z.object({
     resumenMetricas: texto(2000), accionesRealizadas: texto(3000), accionesARealizar: texto(3000),
     resumenConsultas: texto(3000), analisisFinal: texto(6000),
   }).partial().strict(),
+  // Lo escribe el servidor al redactar; la pantalla lo devuelve tal cual en cada guardado (manual va entero).
+  redaccion: z.object({
+    generadoEn: z.string().max(40),
+    original: z.object({
+      resumenMetricas: texto(2000), accionesRealizadas: texto(3000), accionesARealizar: texto(3000),
+      resumenConsultas: texto(3000), analisisFinal: texto(6000),
+    }).partial().strict(),
+    revisar: z.array(z.enum(['resumenMetricas', 'accionesRealizadas', 'accionesARealizar', 'resumenConsultas', 'analisisFinal'])).max(5),
+  }).strict(),
 }).partial().strict()
 
 const numeroONull = z.number().min(0).max(TOPES_COMPETIDORA.numero).nullable().optional()

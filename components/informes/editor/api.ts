@@ -37,6 +37,10 @@ export const traerFuente = (id: string, nombre: NombreFuente) =>
 /** El servidor reemplaza `manual` ENTERO: siempre se manda el objeto completo. */
 export const guardarManual = (id: string, manual: Manual) => pedir<{ ok: true }>(base(id), json('PATCH', { manual }))
 
+/** La plataforma escribe los textos (una llamada al modelo). Devuelve el `manual` con los textos nuevos. */
+export const escribirTextos = (id: string, forzar: boolean) =>
+  pedir<{ manual: Manual }>(`${base(id)}/textos`, json('POST', { forzar }))
+
 export const guardarCompetidoras = (id: string, competidoras: Competidora[]) =>
   pedir<{ ok: true }>(base(id), json('PATCH', { competidoras }))
 

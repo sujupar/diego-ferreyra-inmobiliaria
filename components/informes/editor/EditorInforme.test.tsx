@@ -9,7 +9,7 @@ import type { Informe } from '@/lib/informes/tipos'
 
 const api = vi.hoisted(() => ({
   leerVista: vi.fn(), traerFuente: vi.fn(), guardarManual: vi.fn(), guardarCompetidoras: vi.fn(),
-  subirCaptura: vi.fn(), quitarCaptura: vi.fn(), subirPdfYMarcarListo: vi.fn(), volverABorrador: vi.fn(), buscarCompetidora: vi.fn(),
+  subirCaptura: vi.fn(), quitarCaptura: vi.fn(), subirPdfYMarcarListo: vi.fn(), volverABorrador: vi.fn(), buscarCompetidora: vi.fn(), escribirTextos: vi.fn(),
 }))
 vi.mock('./api', () => api)
 const { generar } = vi.hoisted(() => ({ generar: vi.fn(async () => new Blob(['%PDF-'])) }))
@@ -128,6 +128,27 @@ describe('EditorInforme', () => {
     await waitFor(() => expect(api.guardarManual).toHaveBeenCalled())
     expect(api.guardarManual.mock.calls[0][1].mercadolibre).toEqual({ excluidos: ['MLA4071627624'] })
     await waitFor(() => expect(api.traerFuente).toHaveBeenCalledWith('inf-1', 'mercadolibre'))
+  })
+
+  it('con los textos vacíos, al terminar de llegar los datos la plataforma los escribe y aparecen en los campos', async () => {
+    const sinTextos = informe({ manual: { zonaprop: { interesados: 1 } } })
+    const listos = informe({ manual: { zonaprop: { interesados: 1 } }, fuentes: Object.fromEntries(Object.keys(informe().fuentes).map(k => [k, { estado: 'sin_datos' as const, actualizadoEn: 'x', datos: null, error: null }])) as Informe['fuentes'] })
+    api.leerVista.mockResolvedValueOnce(vista(sinTextos)).mockResolvedValue(vista(listos))
+    const escrito = { zonaprop: { interesados: 1 }, textos: { resumenMetricas: 'La están viendo muchos compradores.', analisisFinal: 'Tuvo 1.139 apariciones.' },
+      redaccion: { generadoEn: '2026-10-22T15:00:00.000Z', original: { analisisFinal: 'Tuvo 1.139 apariciones.' }, revisar: ['analisisFinal' as const] } }
+    api.escribirTextos.mockResolvedValue({ manual: escrito })
+    render(<EditorInforme informeId="inf-1" />)
+    await waitFor(() => expect(api.escribirTextos).toHaveBeenCalledWith('inf-1', false))
+    expect(await screen.findByDisplayValue('La están viendo muchos compradores.')).toBeInTheDocument()
+    expect(screen.getByText(/no encontré en los datos/)).toBeInTheDocument()
+    expect(api.escribirTextos).toHaveBeenCalledTimes(1)
+  })
+
+  it('con textos ya cargados no los escribe solo', async () => {
+    api.leerVista.mockResolvedValue(vista(informe()))
+    render(<EditorInforme informeId="inf-1" />)
+    await waitFor(() => expect(api.leerVista).toHaveBeenCalledTimes(2))
+    expect(api.escribirTextos).not.toHaveBeenCalled()
   })
 
   it('"Marcar como listo" está deshabilitado mientras falte algo', async () => {
