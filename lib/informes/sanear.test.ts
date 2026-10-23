@@ -2,12 +2,16 @@ import { describe, it, expect } from 'vitest'
 import { sanearCambios } from './sanear'
 
 describe('sanearCambios (lo que manda la pantalla del informe)', () => {
+  it('los contactos de ML ya no se cargan a mano (vienen de su API): se rechazan', () => {
+    expect(sanearCambios({ manual: { mercadolibre: { aviso: 'MLA3968141346', contactos: 2 } } }).ok).toBe(false)
+  })
+
   it('acepta los números de los portales, los textos y el aviso de ML', () => {
     const r = sanearCambios({
       manual: {
         zonaprop: { exposicion: 930, visualizaciones: 62, interesados: 1 },
         argenprop: { publicado: false },
-        mercadolibre: { aviso: 'MLA-3968141346', contactos: 2, whatsapp: 2 },
+        mercadolibre: { aviso: 'MLA-3968141346' },
         tiktok: { visualizaciones: 264, tiempoPromedio: '4.98s' },
         textos: { accionesRealizadas: '  Se publicó en todos los portales  ', analisisFinal: '' },
       },
@@ -15,7 +19,7 @@ describe('sanearCambios (lo que manda la pantalla del informe)', () => {
     expect(r).toEqual({ ok: true, cambios: { manual: {
       zonaprop: { exposicion: 930, visualizaciones: 62, interesados: 1 },
       argenprop: { publicado: false },
-      mercadolibre: { aviso: 'MLA3968141346', contactos: 2, whatsapp: 2 },
+      mercadolibre: { aviso: 'MLA3968141346' },
       tiktok: { visualizaciones: 264, tiempoPromedio: '4.98s' },
       textos: { accionesRealizadas: 'Se publicó en todos los portales', analisisFinal: '' },
     } } })

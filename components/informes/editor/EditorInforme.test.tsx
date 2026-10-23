@@ -9,7 +9,8 @@ import type { Informe } from '@/lib/informes/tipos'
 
 const api = vi.hoisted(() => ({
   leerVista: vi.fn(), traerFuente: vi.fn(), guardarManual: vi.fn(), guardarCompetidoras: vi.fn(),
-  subirCaptura: vi.fn(), quitarCaptura: vi.fn(), subirPdfYMarcarListo: vi.fn(), volverABorrador: vi.fn(), buscarCompetidora: vi.fn(),
+  subirCaptura: vi.fn(), quitarCaptura: vi.fn(), subirPdfYMarcarListo: vi.fn(), volverABorrador: vi.fn(), buscarCompetidora: vi.fn(), escribirTextos: vi.fn(),
+  buscarCompetencia: vi.fn(), abrirCandidata: vi.fn(),
 }))
 vi.mock('./api', () => api)
 const { generar } = vi.hoisted(() => ({ generar: vi.fn(async () => new Blob(['%PDF-'])) }))
@@ -19,6 +20,13 @@ import { EditorInforme } from './EditorInforme'
 
 const ok = <T,>(datos: T) => ({ estado: 'ok' as const, actualizadoEn: 'x', datos, error: null })
 const pendiente = { estado: 'pendiente' as const, actualizadoEn: null, datos: null, error: null }
+
+/** La búsqueda de competidoras ya se hizo (si no, cada prueba dispararía la búsqueda automática). */
+const YA_BUSCADO: Informe['candidatas'] = {
+  detalles: {},
+  argenprop: { estado: 'ok', error: null, buscadoEn: 'x', url: null, avisos: [] },
+  mercadolibre: { estado: 'sin_busqueda', error: 'fuera de Capital', buscadoEn: 'x', url: null, avisos: [] },
+}
 
 function informe(cambios: Partial<Informe> = {}): Informe {
   return {
@@ -30,7 +38,7 @@ function informe(cambios: Partial<Informe> = {}): Informe {
       instagram: { estado: 'sin_datos', actualizadoEn: 'x', datos: null, error: 'La propiedad no tiene reels' },
     },
     manual: { zonaprop: { interesados: 1 }, textos: { accionesRealizadas: 'Publicamos' } },
-    competidoras: [], capturas: {}, pdfPath: null, listoAt: null, createdAt: 'x', updatedAt: 'x', ...cambios,
+    competidoras: [], candidatas: YA_BUSCADO, capturas: {}, pdfPath: null, listoAt: null, createdAt: 'x', updatedAt: 'x', ...cambios,
   }
 }
 
@@ -38,7 +46,7 @@ function vista(i: Informe, faltantes: string[] = ['Zonaprop: exposición']): Vis
   return {
     informe: i, propiedad: { id: 'prop-1', direccion: 'Roque Pérez 3059', barrio: 'Coghlan', ciudad: null, tipo: null, precio: null, moneda: null, capturadaEl: null, foto: null },
     resumen: resumenDeMetricas(i.fuentes, i.manual),
-    paginas: [], faltantes, capturasUrl: {}, pdfUrl: null,
+    paginas: [], faltantes, capturasUrl: {}, pdfUrl: null, candidatas: [],
   }
 }
 
@@ -86,7 +94,7 @@ describe('EditorInforme', () => {
   it('un aviso de ML inválido no se aplica ni se manda, y no traba el guardado de los demás campos', async () => {
     api.leerVista.mockResolvedValue(vista(informe()))
     render(<EditorInforme informeId="inf-1" />)
-    await userEvent.type(await screen.findByLabelText('Aviso de MercadoLibre'), 'cualquier cosa')
+    await userEvent.type(await screen.findByLabelText('Agregar otro aviso de MercadoLibre'), 'cualquier cosa')
     await userEvent.tab()
     expect(await screen.findByText(/No reconocemos ese aviso/)).toBeInTheDocument()
     expect(api.guardarManual).not.toHaveBeenCalled()
@@ -107,6 +115,82 @@ describe('EditorInforme', () => {
     await userEvent.tab()
     await waitFor(() => expect(api.guardarManual).toHaveBeenCalledTimes(2))
     expect(api.guardarManual.mock.calls[1][1].zonaprop).toEqual({ interesados: 2 })
+  })
+
+  it('MercadoLibre: muestra los avisos que se suman y "No es de esta propiedad" lo saca y vuelve a traer la fuente', async () => {
+    const i = informe()
+    i.fuentes.mercadolibre = ok({
+      avisos: [
+        { id: 'MLA2185347399', titulo: 'Departamento 3 Amb Belgrano', url: 'https://articulo.mercadolibre.com.ar/MLA-2185347399', origen: 'plataforma' as const },
+        { id: 'MLA4071627624', titulo: 'Depto de calidad', url: 'https://articulo.mercadolibre.com.ar/MLA-4071627624', origen: 'cuenta' as const },
+      ],
+      visitas: 7,
+    })
+    api.leerVista.mockResolvedValue(vista(i))
+    render(<EditorInforme informeId="inf-1" />)
+    expect(await screen.findByText('Avisos que se suman (2)')).toBeInTheDocument()
+    expect(screen.getByText(/MLA4071627624 · encontrado en la cuenta por la dirección/)).toBeInTheDocument()
+    await waitFor(() => expect(api.leerVista).toHaveBeenCalledTimes(2))
+    api.traerFuente.mockClear()
+    await userEvent.click(screen.getAllByRole('button', { name: 'No es de esta propiedad' })[1])
+    await waitFor(() => expect(api.guardarManual).toHaveBeenCalled())
+    expect(api.guardarManual.mock.calls[0][1].mercadolibre).toEqual({ excluidos: ['MLA4071627624'] })
+    await waitFor(() => expect(api.traerFuente).toHaveBeenCalledWith('inf-1', 'mercadolibre'))
+  })
+
+  it('con los textos vacíos, al terminar de llegar los datos la plataforma los escribe y aparecen en los campos', async () => {
+    const sinTextos = informe({ manual: { zonaprop: { interesados: 1 } } })
+    const listos = informe({ manual: { zonaprop: { interesados: 1 } }, fuentes: Object.fromEntries(Object.keys(informe().fuentes).map(k => [k, { estado: 'sin_datos' as const, actualizadoEn: 'x', datos: null, error: null }])) as Informe['fuentes'] })
+    api.leerVista.mockResolvedValueOnce(vista(sinTextos)).mockResolvedValue(vista(listos))
+    const escrito = { zonaprop: { interesados: 1 }, textos: { resumenMetricas: 'La están viendo muchos compradores.', analisisFinal: 'Tuvo 1.139 apariciones.' },
+      redaccion: { generadoEn: '2026-10-22T15:00:00.000Z', original: { analisisFinal: 'Tuvo 1.139 apariciones.' }, revisar: ['analisisFinal' as const] } }
+    api.escribirTextos.mockResolvedValue({ manual: escrito })
+    render(<EditorInforme informeId="inf-1" />)
+    await waitFor(() => expect(api.escribirTextos).toHaveBeenCalledWith('inf-1', false))
+    expect(await screen.findByDisplayValue('La están viendo muchos compradores.')).toBeInTheDocument()
+    expect(screen.getByText(/no encontré en los datos/)).toBeInTheDocument()
+    expect(api.escribirTextos).toHaveBeenCalledTimes(1)
+  })
+
+  it('con textos ya cargados no los escribe solo', async () => {
+    api.leerVista.mockResolvedValue(vista(informe()))
+    render(<EditorInforme informeId="inf-1" />)
+    await waitFor(() => expect(api.leerVista).toHaveBeenCalledTimes(2))
+    expect(api.escribirTextos).not.toHaveBeenCalled()
+  })
+
+  it('sin búsqueda de competencia, busca en los dos portales y abre las candidatas para leer disposición y estado', async () => {
+    const sinBuscar = informe({ candidatas: { detalles: {} } })
+    const candidata = { portal: 'argenprop' as const, url: 'https://www.argenprop.com/x--1', titulo: null, direccion: 'Quesada 3250, Coghlan', precio: 200000,
+      moneda: 'USD' as const, m2: 70, ambientes: 3, dormitorios: 2, banos: 1, cocheras: null, antiguedad: 10, foto: null, vistas: null, inmobiliaria: null,
+      puntaje: 90, porque: ['mismos ambientes'], disposicion: null, estado: null, orientacion: null, publicadoHace: null, abierta: false }
+    api.leerVista.mockResolvedValueOnce(vista(sinBuscar)).mockResolvedValue({ ...vista(sinBuscar), candidatas: [candidata] })
+    api.buscarCompetencia.mockResolvedValue({ estado: 'ok', error: null, buscadoEn: 'x', url: null, avisos: [] })
+    api.abrirCandidata.mockResolvedValue({})
+    render(<EditorInforme informeId="inf-1" />)
+    await waitFor(() => expect(api.abrirCandidata).toHaveBeenCalledWith('inf-1', 'https://www.argenprop.com/x--1'))
+    expect(api.buscarCompetencia.mock.calls.map(c => c[1])).toEqual(['argenprop', 'mercadolibre'])
+    expect(await screen.findByText('Quesada 3250, Coghlan')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Ver en el portal/ })).toHaveAttribute('href', 'https://www.argenprop.com/x--1')
+    await userEvent.click(screen.getByRole('button', { name: /Agregar al informe/ }))
+    await waitFor(() => expect(api.guardarCompetidoras).toHaveBeenCalledWith('inf-1', [expect.objectContaining({ url: 'https://www.argenprop.com/x--1', direccion: 'Quesada 3250', barrio: 'Coghlan' })]))
+  })
+
+  it('un portal que falla se reintenta una vez sola (Argenprop falló así en la vista previa y anduvo al rato)', async () => {
+    const sinBuscar = informe({ candidatas: { detalles: {} } })
+    api.leerVista.mockResolvedValue(vista(sinBuscar))
+    const ok = { estado: 'ok', error: null, buscadoEn: 'x', url: null, avisos: [] }
+    api.buscarCompetencia.mockResolvedValueOnce({ ...ok, estado: 'error', error: 'no reconoce' }).mockResolvedValue(ok)
+    render(<EditorInforme informeId="inf-1" />)
+    await waitFor(() => expect(api.buscarCompetencia).toHaveBeenCalledTimes(3))
+    expect(api.buscarCompetencia.mock.calls.map(c => c[1])).toEqual(['argenprop', 'argenprop', 'mercadolibre'])
+  })
+
+  it('con la búsqueda ya hecha, no vuelve a buscar sola', async () => {
+    api.leerVista.mockResolvedValue(vista(informe()))
+    render(<EditorInforme informeId="inf-1" />)
+    await waitFor(() => expect(api.leerVista).toHaveBeenCalledTimes(2))
+    expect(api.buscarCompetencia).not.toHaveBeenCalled()
   })
 
   it('"Marcar como listo" está deshabilitado mientras falte algo', async () => {

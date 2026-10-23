@@ -29,7 +29,7 @@ describe('Competidoras', () => {
     respuesta = { status: 200, body: aviso }
     const onGuardar = vi.fn<(l: Competidora[]) => Promise<void>>(async () => {})
     render(<Competidoras iniciales={[]} onGuardar={onGuardar} deshabilitado={false} />)
-    await userEvent.type(screen.getByLabelText(/Link de una propiedad/), LINK)
+    await userEvent.type(screen.getByLabelText(/link de una propiedad/i), LINK)
     await userEvent.click(screen.getByRole('button', { name: 'Traer datos' }))
     expect(await screen.findByDisplayValue('Quesada 3250')).toBeInTheDocument()
     expect(pedidos).toEqual(['/api/scrape'])
@@ -40,7 +40,7 @@ describe('Competidoras', () => {
 
   it('un link que no es https se rechaza sin llamar al scraper', async () => {
     render(<Competidoras iniciales={[]} onGuardar={vi.fn()} deshabilitado={false} />)
-    await userEvent.type(screen.getByLabelText(/Link de una propiedad/), 'zonaprop.com/x')
+    await userEvent.type(screen.getByLabelText(/link de una propiedad/i), 'zonaprop.com/x')
     await userEvent.click(screen.getByRole('button', { name: 'Traer datos' }))
     expect(screen.getByRole('alert')).toHaveTextContent('https://')
     expect(pedidos).toEqual([])
@@ -50,7 +50,7 @@ describe('Competidoras', () => {
     respuesta = { status: 422, body: { error: 'Failed to scrape property' } }
     const onGuardar = vi.fn<(l: Competidora[]) => Promise<void>>(async () => {})
     render(<Competidoras iniciales={[]} onGuardar={onGuardar} deshabilitado={false} />)
-    await userEvent.type(screen.getByLabelText(/Link de una propiedad/), LINK)
+    await userEvent.type(screen.getByLabelText(/link de una propiedad/i), LINK)
     await userEvent.click(screen.getByRole('button', { name: 'Traer datos' }))
     await userEvent.click(await screen.findByRole('button', { name: /Cargarla a mano/ }))
     expect(screen.getByText(/Completá la dirección/)).toBeInTheDocument()
@@ -77,7 +77,7 @@ describe('Competidoras', () => {
     const inicial = { url: LINK, direccion: 'X', barrio: null, precio: null, moneda: null, m2: null, valorM2: null, ambientes: null, banos: null,
       dormitorios: null, antiguedad: null, cocheras: null, foto: null, publicadoHace: null, visualizaciones: null, bajoDePrecio: false } satisfies Competidora
     render(<Competidoras iniciales={[inicial]} onGuardar={vi.fn()} deshabilitado={false} />)
-    await userEvent.type(screen.getByLabelText(/Link de una propiedad/), LINK)
+    await userEvent.type(screen.getByLabelText(/link de una propiedad/i), LINK)
     await userEvent.click(screen.getByRole('button', { name: 'Traer datos' }))
     expect(screen.getByRole('alert')).toHaveTextContent('ya está en la lista')
     expect(pedidos).toEqual([])

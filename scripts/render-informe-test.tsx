@@ -53,7 +53,7 @@ async function main() {
       { url: 'https://www.zonaprop.com.ar/x-1.html', direccion: 'Quesada 3250', barrio: 'Coghlan', precio: 695000, moneda: 'USD', m2: 436, valorM2: 1678, ambientes: 6, banos: 4, dormitorios: 5, antiguedad: 50, cocheras: 3, foto: null, publicadoHace: 'Publicado hace 84 días', visualizaciones: 346, bajoDePrecio: true },
       { url: 'https://www.zonaprop.com.ar/x-2.html', direccion: 'Zapiola 3000', barrio: 'Coghlan', precio: 798000, moneda: 'USD', m2: 600, valorM2: 1761, ambientes: 6, banos: 3, dormitorios: 4, antiguedad: 29, cocheras: 3, foto: null, publicadoHace: 'Publicado hace 23 días', visualizaciones: 385, bajoDePrecio: false },
     ],
-    capturas: {}, pdfPath: null, listoAt: null, createdAt: '', updatedAt: '',
+    candidatas: { detalles: {} }, capturas: {}, pdfPath: null, listoAt: null, createdAt: '', updatedAt: '',
   }
   // react-pdf en Node trata la ruta de las imágenes como URL y codifica los espacios de la carpeta
   // del proyecto ("01.%20Anti%20Gravity"): se copian junto a la salida, en una ruta sin espacios.

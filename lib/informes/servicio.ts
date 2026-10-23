@@ -10,7 +10,14 @@ import { traerFuente } from './fuentes'
 import { esImagen, esPathDeCaptura, esPathDelPdf, esPdf, MAX_CAPTURA_BYTES, MAX_PDF_BYTES, nombreDelPdf, pathDeCaptura, pathDelPdf, SEGUNDOS_URL_LECTURA, validarCaptura } from './archivos'
 import { validarRango } from './periodo'
 import { faltantes, paginasDelInforme, resumenDeMetricas, type Pagina, type Resumen } from './resumen'
-import { FUENTES, type Capturas, type FuenteGuardada, type Fuentes, type Informe, type NombreCaptura, type NombreFuente, type PropiedadDelInforme } from './tipos'
+import { combinarTextos, datosParaRedactar, entradaDeRedaccion, ESQUEMA_REDACCION, INSTRUCCIONES_REDACCION, validarRedaccion } from './redaccion'
+import { respuestaOpenAI } from '@/lib/ai/openai-responses'
+import { scrapeProperty } from '@/lib/scraper'
+import { urlBusquedaArgenprop, urlBusquedaMercadoLibre } from './competencia/busqueda'
+import { esLinkDelPortal, parsearListadoArgenprop, parsearListadoMercadoLibre } from './competencia/listados'
+import { ordenarCandidatas, type Candidata, type DetalleCandidata } from './competencia/puntaje'
+import { traerListado } from './competencia/traer'
+import { FUENTES, type Capturas, type FuenteGuardada, type Fuentes, type Informe, type NombreCaptura, type NombreFuente, type PropiedadDelInforme, type BusquedaPortal } from './tipos'
 
 export class ErrorInforme extends Error {
   constructor(public readonly status: 400 | 404 | 409 | 503, mensaje: string) {
@@ -41,9 +48,140 @@ export async function refrescarFuente(i: Informe, nombre: NombreFuente, ahora: D
   exigirBorrador(i)
   const valor = await traerFuente(nombre, {
     propertyId: i.propertyId, desde: i.desde, hasta: i.hasta, ahora, avisoMercadoLibre: i.manual.mercadolibre?.aviso ?? null,
+    excluidosMercadoLibre: i.manual.mercadolibre?.excluidos ?? [],
   })
   if (!(await datos.guardarFuente(i.id, nombre, valor as FuenteGuardada<unknown>))) throw new ErrorInforme(409, 'El informe ya está listo')
   return valor as FuenteGuardada<unknown>
+}
+
+// ─── Textos escritos por la plataforma ───────────────────────────────────────
+
+/** Modelo de los textos. `gpt-4.1` es el que ya escribe las descripciones de las propiedades. */
+const MODELO_TEXTOS = process.env.INFORME_MODELO_TEXTO ?? 'gpt-4.1'
+/** Netlify corta a los ~26 s; cortamos antes para responder un error legible (no una página HTML). */
+const TOPE_TEXTOS_MS = 22_000
+/** Abrir una ficha de candidata: debajo del techo de Netlify (~26 s), con margen para guardar el resultado. */
+const TOPE_ABRIR_MS = 20_000
+
+/**
+ * Escribe los cinco textos con UNA llamada al modelo. Antes de guardar relee el informe: lo que Paula haya
+ * corregido mientras tanto se respeta (salvo `forzar`). Los campos con números que no están en los datos
+ * quedan marcados en `redaccion.revisar`.
+ */
+export async function escribirTextos(i: Informe, ahora: Date, forzar: boolean): Promise<Informe> {
+  exigirBorrador(i)
+  if (Object.values(i.fuentes).some(f => !f || f.estado === 'pendiente')) {
+    throw new ErrorInforme(409, 'Todavía están llegando los datos del período. Esperá a que terminen.')
+  }
+  const propiedad = await datos.leerPropiedad(i.propertyId)
+  if (!propiedad) throw new ErrorInforme(404, 'No encontramos la propiedad del informe')
+  const previo = await datos.leerInformeAnterior(i.propertyId, i.desde)
+  const rPrevio = previo ? resumenDeMetricas(previo.fuentes, previo.manual) : null
+  const d = datosParaRedactar({
+    informe: i, propiedad, resumen: resumenDeMetricas(i.fuentes, i.manual),
+    anterior: previo && rPrevio ? {
+      desde: previo.desde, hasta: previo.hasta, vieron: rPrevio.vieron.valor, entraron: rPrevio.entraron.valor,
+      consultas: rPrevio.consultas, visitas: rPrevio.visitas,
+    } : null,
+  })
+  let crudo: string
+  try {
+    crudo = (await respuestaOpenAI({
+      modelo: MODELO_TEXTOS, instrucciones: INSTRUCCIONES_REDACCION, entrada: [{ tipo: 'texto', texto: entradaDeRedaccion(d) }],
+      esquema: ESQUEMA_REDACCION, temperatura: 0.4, timeoutMs: TOPE_TEXTOS_MS,
+    })).texto
+  } catch (e) {
+    const tardo = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')
+    throw new ErrorInforme(503, tardo ? 'La redacción tardó demasiado. Probá de nuevo.' : 'No se pudieron escribir los textos. Probá de nuevo en un momento.')
+  }
+  const v = validarRedaccion(crudo, d)
+  if (!v.ok) throw new ErrorInforme(503, `No se pudieron escribir los textos (${v.error}). Probá de nuevo.`)
+  const fresco = await datos.leerInforme(i.id)
+  if (!fresco) throw new ErrorInforme(404, 'No encontramos el informe')
+  exigirBorrador(fresco)
+  const textos = combinarTextos({ actuales: fresco.manual.textos ?? {}, original: fresco.manual.redaccion?.original ?? {}, nuevos: v.textos, forzar })
+  const manual = { ...fresco.manual, textos, redaccion: { generadoEn: ahora.toISOString(), original: v.textos, revisar: v.revisar } }
+  if (!(await datos.guardarCambios(i.id, { manual }))) throw new ErrorInforme(409, 'El informe ya está listo')
+  return { ...fresco, manual }
+}
+
+// ─── Competidoras que busca la plataforma ────────────────────────────────────
+
+export type PortalDeBusqueda = 'argenprop' | 'mercadolibre'
+
+const esCapital = (p: PropiedadDelInforme) => /^(caba|capital federal|ciudad aut[oó]noma)/i.test((p.provincia ?? p.ciudad ?? '').trim())
+
+/**
+ * Busca candidatas en UN portal (una integración lenta por pedido). Nunca lanza por el portal: un portal caído o un
+ * HTML que cambió queda guardado como `error` con su motivo, para que la pantalla lo diga y ofrezca reintentar.
+ */
+export async function buscarCompetencia(i: Informe, portal: PortalDeBusqueda, ahora: Date): Promise<BusquedaPortal> {
+  exigirBorrador(i)
+  const p = await datos.leerPropiedad(i.propertyId)
+  if (!p) throw new ErrorInforme(404, 'No encontramos la propiedad del informe')
+  const url = portal === 'argenprop'
+    ? urlBusquedaArgenprop({ tipo: p.tipo, barrio: p.barrio, ambientes: p.ambientes ?? null })
+    : urlBusquedaMercadoLibre({ tipo: p.tipo, barrio: p.barrio, ambientes: p.ambientes ?? null, esCapital: esCapital(p) })
+  let valor: BusquedaPortal
+  if (!url) {
+    const motivo = !p.barrio ? 'La propiedad no tiene barrio cargado'
+      : portal === 'mercadolibre' && !esCapital(p) ? 'En MercadoLibre la búsqueda por barrio solo se puede armar en Capital'
+      : 'Ese tipo de propiedad no se puede buscar en este portal'
+    valor = { estado: 'sin_busqueda', error: motivo, buscadoEn: ahora.toISOString(), url: null, avisos: [] }
+  } else {
+    try {
+      const html = await traerListado(url)
+      const avisos = portal === 'argenprop' ? parsearListadoArgenprop(html) : parsearListadoMercadoLibre(html)
+      valor = { estado: 'ok', error: null, buscadoEn: ahora.toISOString(), url, avisos }
+    } catch (e) {
+      console.error(`[informes] búsqueda de competidoras en ${portal} falló`, url, e instanceof Error ? e.message : e)
+      valor = { estado: 'error', error: (e instanceof Error ? e.message : 'No se pudo buscar').slice(0, 300), buscadoEn: ahora.toISOString(), url, avisos: [] }
+    }
+  }
+  if (!(await datos.guardarCandidatas(i.id, [portal], valor))) throw new ErrorInforme(409, 'El informe ya está listo')
+  return valor
+}
+
+/**
+ * Abre UN aviso candidato para leer disposición y estado (el listado no los muestra). Solo avisos que la propia
+ * búsqueda encontró: la ruta no abre cualquier URL que le manden.
+ */
+export async function abrirCandidata(i: Informe, url: string): Promise<DetalleCandidata> {
+  exigirBorrador(i)
+  const conocidas = [...(i.candidatas.argenprop?.avisos ?? []), ...(i.candidatas.mercadolibre?.avisos ?? [])].map(a => a.url)
+  if (!conocidas.includes(url)) throw new ErrorInforme(400, 'Ese aviso no está entre las candidatas del informe')
+  // Candidatas guardadas antes de que el parser validara el host: tampoco se abren.
+  if (!esLinkDelPortal('argenprop', url) && !esLinkDelPortal('mercadolibre', url)) throw new ErrorInforme(400, 'Ese link no es de Argenprop ni de MercadoLibre')
+  // El scraper espera hasta 30 s, más que el techo de Netlify (~26 s): se corta antes y queda anotado, así la ficha
+  // lenta no se convierte en un 504 que el navegador no puede leer.
+  let corte: ReturnType<typeof setTimeout> | undefined
+  const r = await Promise.race([
+    scrapeProperty(url),
+    new Promise<{ success: false; data?: undefined; error: string }>(ok => {
+      corte = setTimeout(() => ok({ success: false, error: 'El portal tardó demasiado en responder' }), TOPE_ABRIR_MS)
+    }),
+  ]).finally(() => clearTimeout(corte))
+  const f = r.data?.features
+  const detalle: DetalleCandidata = r.success && f ? {
+    disposicion: typeof f.disposal === 'string' ? f.disposal : null,
+    estado: typeof f.condition === 'string' ? f.condition : null,
+    orientacion: typeof f.orientation === 'string' ? f.orientation : null,
+    vistas: typeof f.views === 'number' ? f.views : null,
+    publicadoHace: typeof f.publishedDate === 'string' ? f.publishedDate.slice(0, 80) : null,
+    antiguedad: typeof f.age === 'number' ? f.age : null,
+    cocheras: typeof f.garages === 'number' ? f.garages : null,
+  } : { disposicion: null, estado: null, orientacion: null, vistas: null, publicadoHace: null, antiguedad: null, cocheras: null, error: (r.error ?? 'No se pudo abrir el aviso').slice(0, 300) }
+  if (!(await datos.guardarCandidatas(i.id, ['detalles', url], detalle))) throw new ErrorInforme(409, 'El informe ya está listo')
+  return detalle
+}
+
+/** Las candidatas ordenadas por parecido a la propiedad (lo que muestra la pantalla). */
+export function candidatasOrdenadas(i: Informe, p: PropiedadDelInforme): Candidata[] {
+  const avisos = [...(i.candidatas.argenprop?.avisos ?? []), ...(i.candidatas.mercadolibre?.avisos ?? [])]
+  return ordenarCandidatas({
+    direccion: p.direccion, ambientes: p.ambientes ?? null, m2: p.m2 ?? null, precio: p.precio, antiguedad: p.antiguedad ?? null,
+    disposicion: p.disposicion ?? null, estado: p.estadoConservacion ?? null,
+  }, avisos, i.candidatas.detalles)
 }
 
 // ─── Capturas ────────────────────────────────────────────────────────────────
@@ -131,6 +269,7 @@ export interface VistaInforme {
   faltantes: string[]
   capturasUrl: Partial<Record<NombreCaptura, string>>
   pdfUrl: string | null
+  candidatas: Candidata[]
 }
 
 export async function vistaDelInforme(i: Informe): Promise<VistaInforme> {
@@ -144,6 +283,6 @@ export async function vistaDelInforme(i: Informe): Promise<VistaInforme> {
   const pdfUrl = i.pdfPath ? await datos.urlFirmada(i.pdfPath, SEGUNDOS_URL_LECTURA, nombreDelPdf(propiedad.direccion, i.desde, i.hasta)) : null
   return {
     informe: i, propiedad, resumen: resumenDeMetricas(i.fuentes, i.manual), paginas: paginasDelInforme(i),
-    faltantes: faltantes(i), capturasUrl, pdfUrl,
+    faltantes: faltantes(i), capturasUrl, pdfUrl, candidatas: candidatasOrdenadas(i, propiedad),
   }
 }

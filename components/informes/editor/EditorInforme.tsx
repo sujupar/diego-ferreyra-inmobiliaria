@@ -18,6 +18,7 @@ import { ArrowLeft, CheckCircle2, Download, Eye, Loader2, RefreshCw, Undo2 } fro
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { sanearCambios } from '@/lib/informes/sanear'
+import type { CampoTexto as CampoDeTexto } from '@/lib/informes/redaccion'
 import { fuentesPorTraer, resumenDeLaFuente, rotuloDeLaFuente, type Tono } from '@/lib/informes/editor'
 import { textoDelPeriodo } from '@/lib/informes/periodo'
 import type { VistaInforme } from '@/lib/informes/servicio'
@@ -49,6 +50,8 @@ export function EditorInforme({ informeId }: { informeId: string }) {
   const [armandoPdf, setArmandoPdf] = useState<'previa' | 'listo' | null>(null)
   const [previa, setPrevia] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(0)
+  const [escribiendo, setEscribiendo] = useState(false)
+  const [progresoCompetencia, setProgresoCompetencia] = useState<string | null>(null)
   const manualRef = useRef<Manual | null>(null)
   /** Lo último que el servidor aceptó: adonde se vuelve si un guardado falla. */
   const confirmado = useRef<Manual>({})
@@ -70,6 +73,52 @@ export function EditorInforme({ informeId }: { informeId: string }) {
     return cola.current
   }, [])
 
+  /**
+   * La plataforma escribe los textos (una llamada al modelo, en la fila de guardados para no cruzarse con un
+   * PATCH de `manual`). Al volver, la pantalla toma el `manual` del servidor: ahí están los textos nuevos.
+   */
+  const escribir = useCallback((forzar: boolean) => {
+    setEscribiendo(true)
+    setAviso(null)
+    void encolar(async () => {
+      const r = await api.escribirTextos(informeId, forzar)
+      manualRef.current = r.manual
+      confirmado.current = r.manual
+      setManual(r.manual)
+      await recargar()
+    }).finally(() => setEscribiendo(false))
+  }, [encolar, informeId, recargar])
+
+  /**
+   * Busca competidoras: Argenprop y MercadoLibre de a uno (un portal por pedido), y después abre las 6 mejores de a
+   * una para leer disposición y estado (~1 crédito de ScraperAPI cada página). Un fallo no corta el resto.
+   */
+  const buscarCompetidoras = useCallback(async () => {
+    try {
+      for (const [portal, nombre] of [['argenprop', 'Argenprop'], ['mercadolibre', 'MercadoLibre']] as const) {
+        setProgresoCompetencia(`Buscando en ${nombre}…`)
+        // Un reintento: el listado de Argenprop a veces llega distinto y al rato anda (vista previa, 2026-10-22). Va en
+        // otro pedido, así no se suman dos esperas dentro del techo de Netlify.
+        for (let intento = 0; intento < 2; intento++) {
+          try {
+            if ((await api.buscarCompetencia(informeId, portal)).estado !== 'error') break
+          } catch { /* queda como error del portal; se ve y se puede buscar de nuevo */ }
+        }
+      }
+      const vista = await recargar()
+      const porAbrir = vista.candidatas.filter(c => !c.abierta).slice(0, 6)
+      for (const [n, c] of porAbrir.entries()) {
+        setProgresoCompetencia(`Revisando los avisos (${n + 1} de ${porAbrir.length})…`)
+        try { await api.abrirCandidata(informeId, c.url) } catch { /* sin disposición/estado: la candidata igual queda */ }
+      }
+      await recargar()
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : 'No se pudieron buscar competidoras')
+    } finally {
+      setProgresoCompetencia(null)
+    }
+  }, [informeId, recargar])
+
   // Primera carga + traer las fuentes pendientes de a una.
   useEffect(() => {
     let vigente = true
@@ -90,13 +139,15 @@ export function EditorInforme({ informeId }: { informeId: string }) {
         }
         if (!vigente) return
         setTrayendo(null)
-        await recargar()
+        const fresca = await recargar()
+        if (vigente && debeEscribirSolo(fresca)) escribir(false)
+        if (vigente && !fresca.informe.candidatas.argenprop && !fresca.informe.candidatas.mercadolibre) void buscarCompetidoras()
       } catch (e) {
         if (vigente) setFase({ tipo: 'error', mensaje: e instanceof Error ? e.message : 'No pudimos abrir el informe' })
       }
     })()
     return () => { vigente = false }
-  }, [informeId, recargar])
+  }, [informeId, recargar, escribir, buscarCompetidoras])
 
   function reintentar(nombre: NombreFuente) {
     setTrayendo(nombre)
@@ -207,9 +258,14 @@ export function EditorInforme({ informeId }: { informeId: string }) {
   const m = manual ?? informe.manual
   // Los rótulos de `faltantes()` llevan aclaraciones ("… (o marcar que no está publicada)"): se compara el comienzo.
   const falta = (...comienzos: string[]) => !listo && faltantes.some(x => comienzos.some(c => x.startsWith(c)))
-  const ocupado = armandoPdf !== null || guardando > 0
+  // La búsqueda de competidoras escribe el informe (cambia su versión): marcarlo listo en el medio daría 409.
+  const ocupado = armandoPdf !== null || guardando > 0 || progresoCompetencia !== null
   // Mientras se arma el PDF no se edita: lo escrito en ese momento no saldría en el PDF.
-  const bloqueado = listo || armandoPdf !== null
+  const bloqueado = listo || armandoPdf !== null || escribiendo
+  // Un texto escrito por la plataforma con un número que no está en los datos, que nadie corrigió todavía.
+  const aRevisar = (c: CampoDeTexto) => !listo && !!m.redaccion?.revisar.includes(c)
+    && (m.textos?.[c] ?? '').trim() === (m.redaccion?.original[c] ?? '').trim()
+  const claveTexto = (c: CampoDeTexto) => `${c}-${m.redaccion?.generadoEn ?? ''}`
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-28">
@@ -286,16 +342,15 @@ export function EditorInforme({ informeId }: { informeId: string }) {
         ) : null}
       </Seccion>
 
-      <Seccion id="sec-ml" titulo="MercadoLibre" ayuda="Las visitas al aviso se traen solas. Si la plataforma no conoce el aviso (se publicó a mano), pegá su link o su código MLA.">
-        <CampoLinea id="ml-aviso" etiqueta="Aviso de MercadoLibre" valor={m.mercadolibre?.aviso} placeholder="MLA1234567890 o el link del aviso" maxLength={500} deshabilitado={bloqueado}
+      <Seccion id="sec-ml" titulo="MercadoLibre" ayuda="Visitas, interesados y vistas del teléfono se traen solos. Se suman todos los avisos activos de la cuenta con la dirección de la propiedad, aunque se hayan publicado a mano.">
+        <AvisosDeML
+          avisos={informe.fuentes.mercadolibre?.estado === 'ok' ? informe.fuentes.mercadolibre.datos?.avisos ?? [] : []}
+          excluidos={m.mercadolibre?.excluidos ?? []}
+          deshabilitado={bloqueado}
+          onCambiarExcluidos={lista => guardarManual(x => ({ ...x, mercadolibre: { ...x.mercadolibre, excluidos: lista } }), async () => { await api.traerFuente(informeId, 'mercadolibre') })}
+        />
+        <CampoLinea id="ml-aviso" etiqueta="Agregar otro aviso de MercadoLibre" valor={m.mercadolibre?.aviso} placeholder="MLA1234567890 o el link del aviso" maxLength={500} deshabilitado={bloqueado}
           onGuardar={t => guardarManual(x => ({ ...x, mercadolibre: { ...x.mercadolibre, aviso: t } }), async () => { await api.traerFuente(informeId, 'mercadolibre') })} />
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {(['contactos', 'llamadas', 'whatsapp', 'preguntas'] as const).map(k => (
-            <CampoNumero key={k} id={`ml-${k}`} etiqueta={{ contactos: 'Contactos', llamadas: 'Llamadas', whatsapp: 'WhatsApp', preguntas: 'Preguntas' }[k]}
-              valor={m.mercadolibre?.[k]} deshabilitado={bloqueado}
-              onGuardar={n => guardarManual(x => ({ ...x, mercadolibre: { ...x.mercadolibre, [k]: n } }))} />
-          ))}
-        </div>
         <CapturaPortal informeId={informe.id} cual="mercadolibre" portal="MercadoLibre" url={capturasUrl.mercadolibre} deshabilitado={bloqueado} onCambio={() => void recargar()} />
       </Seccion>
 
@@ -315,24 +370,38 @@ export function EditorInforme({ informeId }: { informeId: string }) {
         <CapturaPortal informeId={informe.id} cual="tiktok" portal="TikTok" url={capturasUrl.tiktok} deshabilitado={bloqueado} onCambio={() => void recargar()} />
       </Seccion>
 
-      <Seccion id="sec-textos" titulo="Información del período" ayuda="Lo que pasó y lo que sigue, en tus palabras. Cada renglón de las acciones es una viñeta en el informe.">
-        <CampoTexto id="tx-metricas" etiqueta="Resumen de métricas" valor={m.textos?.resumenMetricas} deshabilitado={bloqueado} filas={3}
+      <Seccion id="sec-textos" titulo="Información del período" ayuda="La plataforma los escribe con los datos del período y el estilo de los informes de Diego. Revisalos y corregí lo que haga falta: lo que corregís se mantiene. Cada renglón de las acciones es una viñeta en el informe.">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {escribiendo ? (
+            <span className="inline-flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Escribiendo los textos…</span>
+          ) : m.redaccion ? (
+            <span className="text-muted-foreground">Escritos por la plataforma el {new Date(m.redaccion.generadoEn).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}.</span>
+          ) : null}
+          <Button type="button" variant="outline" size="sm" className="min-h-11" disabled={bloqueado || escribiendo || trayendo !== null} onClick={() => escribir(false)}>
+            <RefreshCw className="mr-1 h-4 w-4" aria-hidden /> {m.redaccion ? 'Volver a escribir' : 'Escribir los textos'}
+          </Button>
+        </div>
+        <CampoTexto key={claveTexto('resumenMetricas')} revisar={aRevisar('resumenMetricas')} id="tx-metricas" etiqueta="Resumen de métricas" valor={m.textos?.resumenMetricas} deshabilitado={bloqueado} filas={3}
           onGuardar={t => guardarManual(x => ({ ...x, textos: { ...x.textos, resumenMetricas: t } }))} />
-        <CampoTexto id="tx-realizadas" etiqueta="Acciones realizadas" valor={m.textos?.accionesRealizadas} deshabilitado={bloqueado}
+        <CampoTexto key={claveTexto('accionesRealizadas')} revisar={aRevisar('accionesRealizadas')} id="tx-realizadas" etiqueta="Acciones realizadas" valor={m.textos?.accionesRealizadas} deshabilitado={bloqueado}
           falta={falta('Acciones realizadas')} ayuda="Una acción por renglón."
           onGuardar={t => guardarManual(x => ({ ...x, textos: { ...x.textos, accionesRealizadas: t } }))} />
-        <CampoTexto id="tx-a-realizar" etiqueta="Acciones a realizar para lograr vender" valor={m.textos?.accionesARealizar} deshabilitado={bloqueado}
+        <CampoTexto key={claveTexto('accionesARealizar')} revisar={aRevisar('accionesARealizar')} id="tx-a-realizar" etiqueta="Acciones a realizar para lograr vender" valor={m.textos?.accionesARealizar} deshabilitado={bloqueado}
           falta={falta('Acciones a realizar')} ayuda="Una acción por renglón."
           onGuardar={t => guardarManual(x => ({ ...x, textos: { ...x.textos, accionesARealizar: t } }))} />
-        <CampoTexto id="tx-consultas" etiqueta="Resumen de las consultas" valor={m.textos?.resumenConsultas} deshabilitado={bloqueado}
+        <CampoTexto key={claveTexto('resumenConsultas')} revisar={aRevisar('resumenConsultas')} id="tx-consultas" etiqueta="Resumen de las consultas" valor={m.textos?.resumenConsultas} deshabilitado={bloqueado}
           ayuda={resumenDeLaFuente('consultas', informe.fuentes) ?? undefined}
           onGuardar={t => guardarManual(x => ({ ...x, textos: { ...x.textos, resumenConsultas: t } }))} />
-        <CampoTexto id="tx-analisis" etiqueta="Análisis final" valor={m.textos?.analisisFinal} deshabilitado={bloqueado} filas={6}
+        <CampoTexto key={claveTexto('analisisFinal')} revisar={aRevisar('analisisFinal')} id="tx-analisis" etiqueta="Análisis final" valor={m.textos?.analisisFinal} deshabilitado={bloqueado} filas={6}
           onGuardar={t => guardarManual(x => ({ ...x, textos: { ...x.textos, analisisFinal: t } }))} />
       </Seccion>
 
-      <Seccion id="sec-competidoras" titulo="Propiedades que compiten" ayuda="Pegá el link del aviso y se completan los datos. Lo que el portal no muestre lo podés completar a mano.">
-        <Competidoras iniciales={informe.competidoras} deshabilitado={bloqueado} onGuardar={guardarCompetidoras} />
+      <Seccion id="sec-competidoras" titulo="Propiedades que compiten" ayuda="La plataforma busca en el barrio avisos parecidos (ambientes, m², precio, antigüedad, disposición y estado). Miralos en el portal y agregá los que quieras al informe (hasta 8). Si después tocás «Volver a escribir», el análisis las compara.">
+        <Competidoras iniciales={informe.competidoras} deshabilitado={bloqueado} onGuardar={guardarCompetidoras}
+          busqueda={{
+            candidatas: vista.candidatas, argenprop: informe.candidatas.argenprop, mercadolibre: informe.candidatas.mercadolibre,
+            progreso: progresoCompetencia, onBuscarDeNuevo: () => void buscarCompetidoras(),
+          }} />
       </Seccion>
 
       {!listo ? (
@@ -362,6 +431,54 @@ export function EditorInforme({ informeId }: { informeId: string }) {
 }
 
 // Componentes de MÓDULO: ver CLAUDE.md § "NUNCA declarar un componente dentro de otro".
+const ORIGEN_AVISO: Record<'plataforma' | 'cuenta' | 'manual', string> = {
+  plataforma: 'publicado desde la plataforma', cuenta: 'encontrado en la cuenta por la dirección', manual: 'agregado a mano',
+}
+
+/** Los avisos de ML que se suman, con "No es de esta propiedad" para un emparejado por dirección equivocado. */
+function AvisosDeML({ avisos, excluidos, deshabilitado, onCambiarExcluidos }: {
+  avisos: Array<{ id: string; titulo: string | null; url: string | null; origen: 'plataforma' | 'cuenta' | 'manual' }>
+  excluidos: string[]
+  deshabilitado: boolean
+  onCambiarExcluidos: (lista: string[]) => void
+}) {
+  if (!avisos.length && !excluidos.length) return <p className="text-sm text-muted-foreground">No hay avisos activos de MercadoLibre para esta propiedad.</p>
+  return (
+    <div className="space-y-2">
+      {avisos.length ? <p className="text-sm font-medium">Avisos que se suman ({avisos.length})</p> : null}
+      <ul className="space-y-2">
+        {avisos.map(a => (
+          <li key={a.id} className="flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm">
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium">{a.titulo ?? a.id}</span>
+              <span className="block text-xs text-muted-foreground">{a.id} · {ORIGEN_AVISO[a.origen]}</span>
+            </span>
+            {a.url ? <a href={a.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center text-primary underline">Ver en ML</a> : null}
+            <Button type="button" variant="ghost" size="sm" className="min-h-11" disabled={deshabilitado}
+              onClick={() => onCambiarExcluidos([...excluidos, a.id])}>No es de esta propiedad</Button>
+          </li>
+        ))}
+      </ul>
+      {excluidos.length ? (
+        <p className="text-xs text-muted-foreground">
+          Sacados: {excluidos.map((id, i) => (
+            <span key={id}>{i ? ', ' : ''}{id} <button type="button" className="underline" disabled={deshabilitado}
+              onClick={() => onCambiarExcluidos(excluidos.filter(x => x !== id))}>volver a sumar</button></span>
+          ))}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+/** Los textos se escriben solos una vez: con las fuentes listas, sin textos y sin haberlos escrito nunca. */
+function debeEscribirSolo(v: VistaInforme): boolean {
+  const i = v.informe
+  if (i.estado !== 'borrador' || i.manual.redaccion) return false
+  if (Object.values(i.manual.textos ?? {}).some(t => (t ?? '').trim())) return false
+  return !Object.values(i.fuentes).some(f => !f || f.estado === 'pendiente')
+}
+
 function Volver({ propertyId }: { propertyId?: string }) {
   return (
     <Link href={propertyId ? `/properties/${propertyId}?tab=informes` : '/properties'} className="inline-flex min-h-11 items-center gap-1 text-sm text-muted-foreground hover:text-foreground">

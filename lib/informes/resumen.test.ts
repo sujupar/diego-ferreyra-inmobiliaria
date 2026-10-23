@@ -13,7 +13,7 @@ const FUENTES_ROQUE: Fuentes = {
   consultas: ok({ total: 3, porPortal: { zonaprop: 1, argenprop: 0, mercadolibre: 2, redes: 0, otros: 0 } }),
   visitas: ok({ realizadas: 0, ficha: FICHA_VACIA }),
   reserva: ok({ reservada: false, fecha: null }),
-  mercadolibre: ok({ avisoId: 'MLA1', visitas: 84 }),
+  mercadolibre: ok({ avisos: [{ id: 'MLA1', titulo: null, url: null, origen: 'plataforma' as const }], visitas: 84 }),
   meta: ok({ campanas: 1, alcance: 3026, impresiones: 4136, resultados: 3, gasto: 12678, edadSexo: [], plataformas: [] }),
   instagram: sinDatos,
 }
@@ -68,7 +68,7 @@ describe('valorDelM2 (competidoras)', () => {
 
 const INFORME: Informe = {
   id: 'i', propertyId: 'p', desde: '2026-10-01', hasta: '2026-10-15', origen: 'ciclo', estado: 'borrador',
-  fuentes: FUENTES_ROQUE, manual: MANUAL_ROQUE, competidoras: [], capturas: {}, pdfPath: null, listoAt: null, createdAt: '', updatedAt: '',
+  fuentes: FUENTES_ROQUE, manual: MANUAL_ROQUE, competidoras: [], candidatas: { detalles: {} }, capturas: {}, pdfPath: null, listoAt: null, createdAt: '', updatedAt: '',
 }
 
 describe('paginasDelInforme: qué páginas salen', () => {

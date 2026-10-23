@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { competidoraDesdeAviso, esAvisoDelScraper, fuentesPorTraer, numeroDelCampo, resumenDeLaFuente, rotuloDeLaFuente, separarUbicacion } from './editor'
+import { competidoraDesdeAviso, competidoraDesdeCandidata, esAvisoDelScraper, fuentesPorTraer, numeroDelCampo, resumenDeLaFuente, rotuloDeLaFuente, separarUbicacion } from './editor'
 import type { Fuentes } from './tipos'
 import { sanearCambios } from './sanear'
 
@@ -60,6 +60,26 @@ describe('competidoraDesdeAviso', () => {
 
   it('sin ubicación usa el título como dirección', () => {
     expect(competidoraDesdeAviso(aviso.url, { ...aviso, location: '' }).direccion).toBe('Casa en Coghlan')
+  })
+})
+
+describe('competidoraDesdeCandidata (Paula elige una candidata que encontró la plataforma)', () => {
+  const candidata = {
+    portal: 'argenprop' as const, url: 'https://www.argenprop.com/departamento--20258532', titulo: 'Exclusivo 3 ambientes',
+    direccion: 'Roque Pérez 2500, Piso 9, Coghlan', precio: 220000, moneda: 'USD' as const, m2: 60, ambientes: 3, dormitorios: 2, banos: 1,
+    cocheras: null, antiguedad: 2, foto: 'https://www.argenprop.com/static-content/1.jpg', vistas: 2210, inmobiliaria: 'X',
+    puntaje: 80, porque: [], disposicion: 'frente' as const, estado: 'muy bueno' as const, orientacion: null, publicadoHace: 'Publicado hace 5 días', abierta: true,
+  }
+  it('pasa a competidora con el valor del m² propuesto y se puede guardar', () => {
+    const c = competidoraDesdeCandidata(candidata)
+    expect(c).toMatchObject({ url: candidata.url, direccion: 'Roque Pérez 2500', barrio: 'Coghlan', precio: 220000, m2: 60, valorM2: 3667,
+      ambientes: 3, dormitorios: 2, banos: 1, antiguedad: 2, visualizaciones: 2210, publicadoHace: 'Publicado hace 5 días', bajoDePrecio: false })
+    expect(sanearCambios({ competidoras: [c] }).ok).toBe(true)
+  })
+  it('el barrio es la parte de la dirección que no es piso ni provincia', () => {
+    expect(competidoraDesdeCandidata({ ...candidata, direccion: 'Romulo Naon Al 2800, Coghlan, Capital Federal' }))
+      .toMatchObject({ direccion: 'Romulo Naon Al 2800', barrio: 'Coghlan' })
+    expect(competidoraDesdeCandidata({ ...candidata, direccion: 'Superí 2400' }).barrio).toBeNull()
   })
 })
 
@@ -144,7 +164,15 @@ describe('resumenDeLaFuente', () => {
     expect(resumenDeLaFuente('reserva', { reserva: ok({ reservada: true, fecha: '2026-10-03' }) })).toBe('Reservada')
   })
   it('MercadoLibre, Meta e Instagram (este último rotulado como acumulado)', () => {
-    expect(resumenDeLaFuente('mercadolibre', { mercadolibre: ok({ avisoId: 'MLA123', visitas: 1234 }) })).toBe('1.234 visitas al aviso MLA123')
+    expect(resumenDeLaFuente('mercadolibre', { mercadolibre: ok({ avisos: [{ id: 'MLA123', titulo: null, url: null, origen: 'plataforma' as const }], visitas: 1234 }) })).toBe('1.234 visitas al aviso MLA123')
+    expect(resumenDeLaFuente('mercadolibre', { mercadolibre: ok({
+      avisos: [{ id: 'MLA123', titulo: null, url: null, origen: 'plataforma' as const }], visitas: 15, vistasTelefono: 2,
+      contactos: { interesados: 3, preguntas: 2, whatsapp: 1, llamadas: 0, otros: 0 },
+    }) })).toBe('15 visitas al aviso MLA123 · 3 interesados (2 preguntas, 1 WhatsApp) · vieron el teléfono 2 veces')
+    expect(resumenDeLaFuente('mercadolibre', { mercadolibre: ok({
+      avisos: [{ id: 'MLA1', titulo: null, url: null, origen: 'plataforma' as const }, { id: 'MLA2', titulo: null, url: null, origen: 'cuenta' as const }],
+      visitas: 20,
+    }) })).toBe('20 visitas en 2 avisos')
     expect(resumenDeLaFuente('meta', { meta: ok({ campanas: 1, alcance: 4910, impresiones: 7516, resultados: 5, gasto: 0, edadSexo: [], plataformas: [] }) }))
       .toBe('1 campaña · alcance 4.910 · 5 clientes potenciales')
     expect(resumenDeLaFuente('instagram', { instagram: ok({ reels: [{ permalink: null, publicadoEn: null, reproducciones: 1500, alcance: 900, meGusta: 1, comentarios: 0, guardados: 0, compartidos: 0 }] }) }))

@@ -2,6 +2,9 @@
  * Tipos del informe quincenal (spec 2026-10-22). Lo que vive en las columnas jsonb de
  * `property_reports`: `fuentes` (lo automático), `manual` (lo que carga Paula), `competidoras`.
  */
+import type { AvisoDeListado, DetalleCandidata } from './competencia/puntaje'
+import type { Disposicion, Estado } from './competencia/caracteristicas'
+
 export const FUENTES = ['consultas', 'visitas', 'reserva', 'mercadolibre', 'meta', 'instagram'] as const
 export type NombreFuente = (typeof FUENTES)[number]
 
@@ -45,7 +48,15 @@ export interface DatosVisitas {
 
 export interface DatosReserva { reservada: boolean; fecha: string | null }
 
-export interface DatosMercadoLibre { avisoId: string; visitas: number }
+export interface DatosMercadoLibre {
+  /** Los avisos que se sumaron (plataforma, cuenta por dirección, agregado a mano). */
+  avisos: Array<{ id: string; titulo: string | null; url: string | null; origen: 'plataforma' | 'cuenta' | 'manual' }>
+  visitas: number
+  /** Interesados del período por canal (API de leads de clasificados). Opcional: informes viejos no lo tienen. */
+  contactos?: { interesados: number; preguntas: number; whatsapp: number; llamadas: number; otros: number }
+  /** Veces que vieron el teléfono en el período. null = la ventana de ML (150 días) no llega a ese período. */
+  vistasTelefono?: number | null
+}
 
 export interface DatosMeta {
   campanas: number
@@ -88,7 +99,9 @@ export interface ManualArgenprop { publicado?: boolean; visualizaciones?: number
 export interface ManualMercadoLibre {
   /** El aviso, cuando la plataforma no lo conoce (publicado a mano): código MLA o link. */
   aviso?: string
-  contactos?: number; llamadas?: number; whatsapp?: number; preguntas?: number }
+  /** Avisos que la plataforma sumó y Paula sacó (emparejado por dirección equivocado). */
+  excluidos?: string[]
+}
 export interface ManualTiktok { visualizaciones?: number; tiempoTotal?: string; tiempoPromedio?: string; vieronCompleto?: number; nuevosSeguidores?: number }
 
 export interface Textos {
@@ -99,12 +112,21 @@ export interface Textos {
   analisisFinal?: string
 }
 
+/** Lo que escribió la plataforma la última vez: para no pisar lo que Paula corrigió y señalar qué revisar. */
+export interface Redaccion {
+  generadoEn: string
+  original: Textos
+  /** Campos con algún número que no está en los datos del informe. */
+  revisar: Array<keyof Textos>
+}
+
 export interface Manual {
   zonaprop?: ManualZonaprop
   argenprop?: ManualArgenprop
   mercadolibre?: ManualMercadoLibre
   tiktok?: ManualTiktok
   textos?: Textos
+  redaccion?: Redaccion
 }
 
 export interface Competidora {
@@ -131,6 +153,23 @@ export const CAPTURAS = ['zonaprop', 'argenprop', 'mercadolibre', 'tiktok'] as c
 export type NombreCaptura = (typeof CAPTURAS)[number]
 export type Capturas = { [K in NombreCaptura]?: string }
 
+/** Resultado de buscar competidoras en UN portal (ver `lib/informes/competencia`). */
+export interface BusquedaPortal {
+  /** sin_busqueda = el portal no se puede buscar para esta propiedad (tipo o zona), con el motivo en `error`. */
+  estado: 'ok' | 'error' | 'sin_busqueda'
+  error: string | null
+  buscadoEn: string
+  url: string | null
+  avisos: AvisoDeListado[]
+}
+
+export interface CandidatasGuardadas {
+  argenprop?: BusquedaPortal
+  mercadolibre?: BusquedaPortal
+  /** Lo leído al abrir cada aviso, por URL. */
+  detalles: Record<string, DetalleCandidata>
+}
+
 export interface Informe {
   id: string
   propertyId: string
@@ -141,6 +180,7 @@ export interface Informe {
   fuentes: Fuentes
   manual: Manual
   competidoras: Competidora[]
+  candidatas: CandidatasGuardadas
   capturas: Capturas
   pdfPath: string | null
   listoAt: string | null
@@ -159,4 +199,12 @@ export interface PropiedadDelInforme {
   moneda: string | null
   capturadaEl: string | null
   foto: string | null
+  /** Superficie total (o cubierta si no hay total): para el valor del m² del análisis. */
+  m2?: number | null
+  ambientes?: number | null
+  provincia?: string | null
+  antiguedad?: number | null
+  /** Disposición y estado cargados para los portales (portal_data), ya normalizados. */
+  disposicion?: Disposicion | null
+  estadoConservacion?: Estado | null
 }
