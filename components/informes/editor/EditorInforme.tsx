@@ -51,6 +51,7 @@ export function EditorInforme({ informeId }: { informeId: string }) {
   const [previa, setPrevia] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(0)
   const [escribiendo, setEscribiendo] = useState(false)
+  const [progresoCompetencia, setProgresoCompetencia] = useState<string | null>(null)
   const manualRef = useRef<Manual | null>(null)
   /** Lo último que el servidor aceptó: adonde se vuelve si un guardado falla. */
   const confirmado = useRef<Manual>({})
@@ -88,6 +89,30 @@ export function EditorInforme({ informeId }: { informeId: string }) {
     }).finally(() => setEscribiendo(false))
   }, [encolar, informeId, recargar])
 
+  /**
+   * Busca competidoras: Argenprop y MercadoLibre de a uno (un portal por pedido), y después abre las 6 mejores de a
+   * una para leer disposición y estado (~1 crédito de ScraperAPI cada página). Un fallo no corta el resto.
+   */
+  const buscarCompetidoras = useCallback(async () => {
+    try {
+      for (const [portal, nombre] of [['argenprop', 'Argenprop'], ['mercadolibre', 'MercadoLibre']] as const) {
+        setProgresoCompetencia(`Buscando en ${nombre}…`)
+        try { await api.buscarCompetencia(informeId, portal) } catch { /* queda como error del portal; se ve y se reintenta */ }
+      }
+      const vista = await recargar()
+      const porAbrir = vista.candidatas.filter(c => !c.abierta).slice(0, 6)
+      for (const [n, c] of porAbrir.entries()) {
+        setProgresoCompetencia(`Revisando los avisos (${n + 1} de ${porAbrir.length})…`)
+        try { await api.abrirCandidata(informeId, c.url) } catch { /* sin disposición/estado: la candidata igual queda */ }
+      }
+      await recargar()
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : 'No se pudieron buscar competidoras')
+    } finally {
+      setProgresoCompetencia(null)
+    }
+  }, [informeId, recargar])
+
   // Primera carga + traer las fuentes pendientes de a una.
   useEffect(() => {
     let vigente = true
@@ -110,12 +135,13 @@ export function EditorInforme({ informeId }: { informeId: string }) {
         setTrayendo(null)
         const fresca = await recargar()
         if (vigente && debeEscribirSolo(fresca)) escribir(false)
+        if (vigente && !fresca.informe.candidatas.argenprop && !fresca.informe.candidatas.mercadolibre) void buscarCompetidoras()
       } catch (e) {
         if (vigente) setFase({ tipo: 'error', mensaje: e instanceof Error ? e.message : 'No pudimos abrir el informe' })
       }
     })()
     return () => { vigente = false }
-  }, [informeId, recargar, escribir])
+  }, [informeId, recargar, escribir, buscarCompetidoras])
 
   function reintentar(nombre: NombreFuente) {
     setTrayendo(nombre)
@@ -363,8 +389,12 @@ export function EditorInforme({ informeId }: { informeId: string }) {
           onGuardar={t => guardarManual(x => ({ ...x, textos: { ...x.textos, analisisFinal: t } }))} />
       </Seccion>
 
-      <Seccion id="sec-competidoras" titulo="Propiedades que compiten" ayuda="Pegá el link del aviso y se completan los datos. Lo que el portal no muestre lo podés completar a mano.">
-        <Competidoras iniciales={informe.competidoras} deshabilitado={bloqueado} onGuardar={guardarCompetidoras} />
+      <Seccion id="sec-competidoras" titulo="Propiedades que compiten" ayuda="La plataforma busca en el barrio avisos parecidos (ambientes, m², precio, antigüedad, disposición y estado). Miralos en el portal y agregá los que quieras al informe (hasta 8). Si después tocás «Volver a escribir», el análisis las compara.">
+        <Competidoras iniciales={informe.competidoras} deshabilitado={bloqueado} onGuardar={guardarCompetidoras}
+          busqueda={{
+            candidatas: vista.candidatas, argenprop: informe.candidatas.argenprop, mercadolibre: informe.candidatas.mercadolibre,
+            progreso: progresoCompetencia, onBuscarDeNuevo: () => void buscarCompetidoras(),
+          }} />
       </Seccion>
 
       {!listo ? (

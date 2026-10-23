@@ -20,7 +20,7 @@ const informe: Informe = {
   manual: { zonaprop: { exposicion: 930, visualizaciones: 62 }, argenprop: { visualizaciones: 125 } },
   competidoras: [{ url: 'https://x', direccion: 'Quesada 3250', barrio: 'Coghlan', precio: 695000, moneda: 'USD', m2: 436, valorM2: 1678,
     ambientes: 6, banos: 4, dormitorios: 5, antiguedad: 50, cocheras: 3, foto: null, publicadoHace: null, visualizaciones: null, bajoDePrecio: true }],
-  capturas: {}, pdfPath: null, listoAt: null, createdAt: '', updatedAt: '',
+  candidatas: { detalles: {} }, capturas: {}, pdfPath: null, listoAt: null, createdAt: '', updatedAt: '',
 }
 
 const propiedad: PropiedadDelInforme = { id: 'p', direccion: 'Roque Pérez 3059', barrio: 'Coghlan', ciudad: null, tipo: 'casa',

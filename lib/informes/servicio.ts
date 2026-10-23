@@ -12,7 +12,12 @@ import { validarRango } from './periodo'
 import { faltantes, paginasDelInforme, resumenDeMetricas, type Pagina, type Resumen } from './resumen'
 import { combinarTextos, datosParaRedactar, entradaDeRedaccion, ESQUEMA_REDACCION, INSTRUCCIONES_REDACCION, validarRedaccion } from './redaccion'
 import { respuestaOpenAI } from '@/lib/ai/openai-responses'
-import { FUENTES, type Capturas, type FuenteGuardada, type Fuentes, type Informe, type NombreCaptura, type NombreFuente, type PropiedadDelInforme } from './tipos'
+import { scrapeProperty } from '@/lib/scraper'
+import { urlBusquedaArgenprop, urlBusquedaMercadoLibre } from './competencia/busqueda'
+import { parsearListadoArgenprop, parsearListadoMercadoLibre } from './competencia/listados'
+import { ordenarCandidatas, type Candidata, type DetalleCandidata } from './competencia/puntaje'
+import { traerListado } from './competencia/traer'
+import { FUENTES, type Capturas, type FuenteGuardada, type Fuentes, type Informe, type NombreCaptura, type NombreFuente, type PropiedadDelInforme, type BusquedaPortal } from './tipos'
 
 export class ErrorInforme extends Error {
   constructor(public readonly status: 400 | 404 | 409 | 503, mensaje: string) {
@@ -96,6 +101,75 @@ export async function escribirTextos(i: Informe, ahora: Date, forzar: boolean): 
   const manual = { ...fresco.manual, textos, redaccion: { generadoEn: ahora.toISOString(), original: v.textos, revisar: v.revisar } }
   if (!(await datos.guardarCambios(i.id, { manual }))) throw new ErrorInforme(409, 'El informe ya está listo')
   return { ...fresco, manual }
+}
+
+// ─── Competidoras que busca la plataforma ────────────────────────────────────
+
+export type PortalDeBusqueda = 'argenprop' | 'mercadolibre'
+
+const esCapital = (p: PropiedadDelInforme) => /^(caba|capital federal|ciudad aut[oó]noma)/i.test((p.provincia ?? p.ciudad ?? '').trim())
+
+/**
+ * Busca candidatas en UN portal (una integración lenta por pedido). Nunca lanza por el portal: un portal caído o un
+ * HTML que cambió queda guardado como `error` con su motivo, para que la pantalla lo diga y ofrezca reintentar.
+ */
+export async function buscarCompetencia(i: Informe, portal: PortalDeBusqueda, ahora: Date): Promise<BusquedaPortal> {
+  exigirBorrador(i)
+  const p = await datos.leerPropiedad(i.propertyId)
+  if (!p) throw new ErrorInforme(404, 'No encontramos la propiedad del informe')
+  const url = portal === 'argenprop'
+    ? urlBusquedaArgenprop({ tipo: p.tipo, barrio: p.barrio, ambientes: p.ambientes ?? null })
+    : urlBusquedaMercadoLibre({ tipo: p.tipo, barrio: p.barrio, ambientes: p.ambientes ?? null, esCapital: esCapital(p) })
+  let valor: BusquedaPortal
+  if (!url) {
+    const motivo = !p.barrio ? 'La propiedad no tiene barrio cargado'
+      : portal === 'mercadolibre' && !esCapital(p) ? 'En MercadoLibre la búsqueda por barrio solo se puede armar en Capital'
+      : 'Ese tipo de propiedad no se puede buscar en este portal'
+    valor = { estado: 'sin_busqueda', error: motivo, buscadoEn: ahora.toISOString(), url: null, avisos: [] }
+  } else {
+    try {
+      const html = await traerListado(url)
+      const avisos = portal === 'argenprop' ? parsearListadoArgenprop(html) : parsearListadoMercadoLibre(html)
+      valor = { estado: 'ok', error: null, buscadoEn: ahora.toISOString(), url, avisos }
+    } catch (e) {
+      console.error(`[informes] búsqueda de competidoras en ${portal} falló`, url, e instanceof Error ? e.message : e)
+      valor = { estado: 'error', error: (e instanceof Error ? e.message : 'No se pudo buscar').slice(0, 300), buscadoEn: ahora.toISOString(), url, avisos: [] }
+    }
+  }
+  if (!(await datos.guardarCandidatas(i.id, [portal], valor))) throw new ErrorInforme(409, 'El informe ya está listo')
+  return valor
+}
+
+/**
+ * Abre UN aviso candidato para leer disposición y estado (el listado no los muestra). Solo avisos que la propia
+ * búsqueda encontró: la ruta no abre cualquier URL que le manden.
+ */
+export async function abrirCandidata(i: Informe, url: string): Promise<DetalleCandidata> {
+  exigirBorrador(i)
+  const conocidas = [...(i.candidatas.argenprop?.avisos ?? []), ...(i.candidatas.mercadolibre?.avisos ?? [])].map(a => a.url)
+  if (!conocidas.includes(url)) throw new ErrorInforme(400, 'Ese aviso no está entre las candidatas del informe')
+  const r = await scrapeProperty(url)
+  const f = r.data?.features
+  const detalle: DetalleCandidata = r.success && f ? {
+    disposicion: typeof f.disposal === 'string' ? f.disposal : null,
+    estado: typeof f.condition === 'string' ? f.condition : null,
+    orientacion: typeof f.orientation === 'string' ? f.orientation : null,
+    vistas: typeof f.views === 'number' ? f.views : null,
+    publicadoHace: typeof f.publishedDate === 'string' ? f.publishedDate.slice(0, 80) : null,
+    antiguedad: typeof f.age === 'number' ? f.age : null,
+    cocheras: typeof f.garages === 'number' ? f.garages : null,
+  } : { disposicion: null, estado: null, orientacion: null, vistas: null, publicadoHace: null, antiguedad: null, cocheras: null, error: (r.error ?? 'No se pudo abrir el aviso').slice(0, 300) }
+  if (!(await datos.guardarCandidatas(i.id, ['detalles', url], detalle))) throw new ErrorInforme(409, 'El informe ya está listo')
+  return detalle
+}
+
+/** Las candidatas ordenadas por parecido a la propiedad (lo que muestra la pantalla). */
+export function candidatasOrdenadas(i: Informe, p: PropiedadDelInforme): Candidata[] {
+  const avisos = [...(i.candidatas.argenprop?.avisos ?? []), ...(i.candidatas.mercadolibre?.avisos ?? [])]
+  return ordenarCandidatas({
+    direccion: p.direccion, ambientes: p.ambientes ?? null, m2: p.m2 ?? null, precio: p.precio, antiguedad: p.antiguedad ?? null,
+    disposicion: p.disposicion ?? null, estado: p.estadoConservacion ?? null,
+  }, avisos, i.candidatas.detalles)
 }
 
 // ─── Capturas ────────────────────────────────────────────────────────────────
@@ -183,6 +257,7 @@ export interface VistaInforme {
   faltantes: string[]
   capturasUrl: Partial<Record<NombreCaptura, string>>
   pdfUrl: string | null
+  candidatas: Candidata[]
 }
 
 export async function vistaDelInforme(i: Informe): Promise<VistaInforme> {
@@ -196,6 +271,6 @@ export async function vistaDelInforme(i: Informe): Promise<VistaInforme> {
   const pdfUrl = i.pdfPath ? await datos.urlFirmada(i.pdfPath, SEGUNDOS_URL_LECTURA, nombreDelPdf(propiedad.direccion, i.desde, i.hasta)) : null
   return {
     informe: i, propiedad, resumen: resumenDeMetricas(i.fuentes, i.manual), paginas: paginasDelInforme(i),
-    faltantes: faltantes(i), capturasUrl, pdfUrl,
+    faltantes: faltantes(i), capturasUrl, pdfUrl, candidatas: candidatasOrdenadas(i, propiedad),
   }
 }

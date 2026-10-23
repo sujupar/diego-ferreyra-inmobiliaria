@@ -1,19 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { datosMock, traerMock, openaiMock } = vi.hoisted(() => ({
+const { datosMock, traerMock, openaiMock, listadoMock, scrapeMock } = vi.hoisted(() => ({
   traerMock: vi.fn(),
   openaiMock: vi.fn(),
+  listadoMock: vi.fn(),
+  scrapeMock: vi.fn(),
   datosMock: {
     leerPropiedad: vi.fn(), crearInforme: vi.fn(), guardarFuente: vi.fn(), guardarCaptura: vi.fn(), marcarListo: vi.fn(),
     crearSubidaFirmada: vi.fn(), primerosBytes: vi.fn(), urlFirmada: vi.fn(), borrarArchivos: vi.fn(),
-    leerInforme: vi.fn(), leerInformeAnterior: vi.fn(), guardarCambios: vi.fn(),
+    leerInforme: vi.fn(), leerInformeAnterior: vi.fn(), guardarCambios: vi.fn(), guardarCandidatas: vi.fn(),
   },
 }))
 vi.mock('./datos', () => datosMock)
 vi.mock('./fuentes', () => ({ traerFuente: traerMock }))
 vi.mock('@/lib/ai/openai-responses', () => ({ respuestaOpenAI: openaiMock }))
+vi.mock('./competencia/traer', () => ({ traerListado: listadoMock }))
+vi.mock('@/lib/scraper', () => ({ scrapeProperty: scrapeMock }))
 
-import { crearInformeManual, refrescarFuente, confirmarCaptura, marcarInformeListo, prepararPdf, ErrorInforme, fuentesPendientes, escribirTextos } from './servicio'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { crearInformeManual, refrescarFuente, confirmarCaptura, marcarInformeListo, prepararPdf, ErrorInforme, fuentesPendientes, escribirTextos, buscarCompetencia, abrirCandidata } from './servicio'
 import type { Informe } from './tipos'
 
 const ID = '11111111-1111-4111-8111-111111111111'
@@ -31,7 +37,7 @@ function informeBase(extra: Partial<Informe> = {}): Informe {
     id: ID, propertyId: 'p', desde: '2026-10-01', hasta: '2026-10-15', origen: 'manual', estado: 'borrador',
     fuentes: { ...fuentes, mercadolibre: { ...ok, datos: { avisos: [{ id: 'MLA1', titulo: null, url: null, origen: 'plataforma' as const }], visitas: 1 } } } as never,
     manual: { zonaprop: { exposicion: 1, visualizaciones: 1 }, argenprop: { publicado: false }, textos: { accionesRealizadas: 'a', accionesARealizar: 'b' } },
-    competidoras: [], capturas: {}, pdfPath: null, listoAt: null, createdAt: '', updatedAt: 'v1', ...extra,
+    competidoras: [], candidatas: { detalles: {} }, capturas: {}, pdfPath: null, listoAt: null, createdAt: '', updatedAt: 'v1', ...extra,
   }
 }
 
@@ -179,5 +185,52 @@ describe('escribirTextos', () => {
     openaiMock.mockResolvedValueOnce({ texto: '{"otra":"cosa"}' })
     await expect(escribirTextos(informe(), AHORA, false)).rejects.toMatchObject({ status: 503 })
     expect(datosMock.guardarCambios).not.toHaveBeenCalled()
+  })
+})
+
+describe('competidoras que busca la plataforma', () => {
+  const capital = { id: 'p', direccion: 'Roque Pérez 3059', barrio: 'Coghlan', ciudad: null, provincia: 'CABA', tipo: 'Departamento', precio: 200000, moneda: 'USD', capturadaEl: null, foto: null, ambientes: 3 }
+  beforeEach(() => {
+    listadoMock.mockReset(); scrapeMock.mockReset()
+    datosMock.guardarCandidatas.mockResolvedValue(true)
+  })
+
+  it('busca en Argenprop por barrio y ambientes y guarda los avisos', async () => {
+    datosMock.leerPropiedad.mockResolvedValue(capital)
+    listadoMock.mockResolvedValue(readFileSync(path.join(__dirname, 'competencia', '__fixtures__', 'argenprop-listado.html'), 'utf8'))
+    const r = await buscarCompetencia(informe(), 'argenprop', AHORA)
+    expect(listadoMock).toHaveBeenCalledWith('https://www.argenprop.com/departamentos/venta/coghlan/3-ambientes')
+    expect(r.estado).toBe('ok')
+    expect(datosMock.guardarCandidatas).toHaveBeenCalledWith(ID, ['argenprop'], expect.objectContaining({ estado: 'ok' }))
+    expect(r.avisos.length).toBeGreaterThan(0)
+  })
+
+  it('si el portal falla, queda guardado como error con su motivo (no como "no hay competencia")', async () => {
+    datosMock.leerPropiedad.mockResolvedValue(capital)
+    listadoMock.mockRejectedValue(new Error('El portal tardó demasiado en responder'))
+    const r = await buscarCompetencia(informe(), 'mercadolibre', AHORA)
+    expect(r).toMatchObject({ estado: 'error', error: 'El portal tardó demasiado en responder', avisos: [] })
+    expect(datosMock.guardarCandidatas).toHaveBeenCalledWith(ID, ['mercadolibre'], expect.objectContaining({ estado: 'error' }))
+  })
+
+  it('fuera de Capital no busca en MercadoLibre y dice por qué', async () => {
+    datosMock.leerPropiedad.mockResolvedValue({ ...capital, provincia: 'Buenos Aires', barrio: 'Villa Ballester' })
+    const r = await buscarCompetencia(informe(), 'mercadolibre', AHORA)
+    expect(r).toMatchObject({ estado: 'sin_busqueda', error: expect.stringMatching(/solo se puede armar en Capital/) })
+    expect(listadoMock).not.toHaveBeenCalled()
+  })
+
+  it('solo abre avisos que encontró la propia búsqueda (no cualquier URL)', async () => {
+    await expect(abrirCandidata(informe(), 'https://evil.example/x')).rejects.toMatchObject({ status: 400 })
+    expect(scrapeMock).not.toHaveBeenCalled()
+  })
+
+  it('abre una candidata y guarda disposición y estado', async () => {
+    const url = 'https://www.argenprop.com/x--1'
+    const i = informe({ candidatas: { detalles: {}, argenprop: { estado: 'ok', error: null, buscadoEn: 'x', url: null, avisos: [{ url } as never] } } })
+    scrapeMock.mockResolvedValue({ success: true, data: { features: { disposal: 'Frente', condition: 'Muy bueno', orientation: 'Norte', age: 12, garages: 1 } } })
+    const d = await abrirCandidata(i, url)
+    expect(d).toMatchObject({ disposicion: 'Frente', estado: 'Muy bueno', antiguedad: 12, cocheras: 1 })
+    expect(datosMock.guardarCandidatas).toHaveBeenCalledWith(ID, ['detalles', url], expect.objectContaining({ disposicion: 'Frente' }))
   })
 })

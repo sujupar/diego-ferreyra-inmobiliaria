@@ -68,7 +68,7 @@ describe('valorDelM2 (competidoras)', () => {
 
 const INFORME: Informe = {
   id: 'i', propertyId: 'p', desde: '2026-10-01', hasta: '2026-10-15', origen: 'ciclo', estado: 'borrador',
-  fuentes: FUENTES_ROQUE, manual: MANUAL_ROQUE, competidoras: [], capturas: {}, pdfPath: null, listoAt: null, createdAt: '', updatedAt: '',
+  fuentes: FUENTES_ROQUE, manual: MANUAL_ROQUE, competidoras: [], candidatas: { detalles: {} }, capturas: {}, pdfPath: null, listoAt: null, createdAt: '', updatedAt: '',
 }
 
 describe('paginasDelInforme: qué páginas salen', () => {

@@ -8,6 +8,10 @@ import { valorDelM2 } from '@/lib/informes/resumen'
 import { sanearCambios, TOPES_COMPETIDORA } from '@/lib/informes/sanear'
 import type { Competidora } from '@/lib/informes/tipos'
 import { buscarCompetidora } from './api'
+import { Candidatas } from './Candidatas'
+import { competidoraDesdeCandidata } from '@/lib/informes/editor'
+import type { Candidata } from '@/lib/informes/competencia/puntaje'
+import type { BusquedaPortal } from '@/lib/informes/tipos'
 import { CampoLinea, CampoNumero } from './campos'
 
 export const MAX_COMPETIDORAS = 8
@@ -28,10 +32,20 @@ function esHttps(v: string): boolean {
  * lista ENTERA en cada cambio, y solo cuando todas tienen dirección (el servidor la exige: es el
  * título de la tarjeta en el PDF).
  */
-export function Competidoras({ iniciales, onGuardar, deshabilitado }: {
+export interface BusquedaDeCompetencia {
+  candidatas: Candidata[]
+  argenprop: BusquedaPortal | undefined
+  mercadolibre: BusquedaPortal | undefined
+  progreso: string | null
+  onBuscarDeNuevo: () => void
+}
+
+export function Competidoras({ iniciales, onGuardar, deshabilitado, busqueda }: {
   iniciales: Competidora[]
   onGuardar: (lista: Competidora[]) => Promise<void>
   deshabilitado: boolean
+  /** Las candidatas que buscó la plataforma (Argenprop + MercadoLibre). */
+  busqueda?: BusquedaDeCompetencia
 }) {
   const [lista, setLista] = useState<Competidora[]>(iniciales)
   const [link, setLink] = useState('')
@@ -84,6 +98,11 @@ export function Competidoras({ iniciales, onGuardar, deshabilitado }: {
 
   return (
     <div className="space-y-4">
+      {busqueda ? (
+        <Candidatas {...busqueda} elegidas={lista.map(c => c.url)} lleno={lista.length >= MAX_COMPETIDORAS} deshabilitado={deshabilitado}
+          onElegir={c => void cambiar([...lista, competidoraDesdeCandidata(c)])} />
+      ) : null}
+      {lista.length ? <p className="text-sm font-medium">Elegidas para el informe ({lista.length} de {MAX_COMPETIDORAS})</p> : null}
       {lista.map((c, i) => (
         <FichaCompetidora key={c.url} indice={i} c={c} deshabilitado={deshabilitado}
           onCambiar={cambios => actualizar(i, cambios)}
@@ -93,7 +112,7 @@ export function Competidoras({ iniciales, onGuardar, deshabilitado }: {
 
       {lista.length < MAX_COMPETIDORAS ? (
         <div className="space-y-2">
-          <Label htmlFor="competidora-link">Link de una propiedad que compite</Label>
+          <Label htmlFor="competidora-link">¿Falta alguna? Pegá el link de una propiedad que compite</Label>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input id="competidora-link" value={link} placeholder="https://www.zonaprop.com.ar/propiedades/…" disabled={deshabilitado || buscando}
               className="h-11" onChange={e => setLink(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void traer() }} />

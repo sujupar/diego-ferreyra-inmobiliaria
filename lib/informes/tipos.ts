@@ -2,6 +2,9 @@
  * Tipos del informe quincenal (spec 2026-10-22). Lo que vive en las columnas jsonb de
  * `property_reports`: `fuentes` (lo automático), `manual` (lo que carga Paula), `competidoras`.
  */
+import type { AvisoDeListado, DetalleCandidata } from './competencia/puntaje'
+import type { Disposicion, Estado } from './competencia/caracteristicas'
+
 export const FUENTES = ['consultas', 'visitas', 'reserva', 'mercadolibre', 'meta', 'instagram'] as const
 export type NombreFuente = (typeof FUENTES)[number]
 
@@ -150,6 +153,23 @@ export const CAPTURAS = ['zonaprop', 'argenprop', 'mercadolibre', 'tiktok'] as c
 export type NombreCaptura = (typeof CAPTURAS)[number]
 export type Capturas = { [K in NombreCaptura]?: string }
 
+/** Resultado de buscar competidoras en UN portal (ver `lib/informes/competencia`). */
+export interface BusquedaPortal {
+  /** sin_busqueda = el portal no se puede buscar para esta propiedad (tipo o zona), con el motivo en `error`. */
+  estado: 'ok' | 'error' | 'sin_busqueda'
+  error: string | null
+  buscadoEn: string
+  url: string | null
+  avisos: AvisoDeListado[]
+}
+
+export interface CandidatasGuardadas {
+  argenprop?: BusquedaPortal
+  mercadolibre?: BusquedaPortal
+  /** Lo leído al abrir cada aviso, por URL. */
+  detalles: Record<string, DetalleCandidata>
+}
+
 export interface Informe {
   id: string
   propertyId: string
@@ -160,6 +180,7 @@ export interface Informe {
   fuentes: Fuentes
   manual: Manual
   competidoras: Competidora[]
+  candidatas: CandidatasGuardadas
   capturas: Capturas
   pdfPath: string | null
   listoAt: string | null
@@ -181,4 +202,9 @@ export interface PropiedadDelInforme {
   /** Superficie total (o cubierta si no hay total): para el valor del m² del análisis. */
   m2?: number | null
   ambientes?: number | null
+  provincia?: string | null
+  antiguedad?: number | null
+  /** Disposición y estado cargados para los portales (portal_data), ya normalizados. */
+  disposicion?: Disposicion | null
+  estadoConservacion?: Estado | null
 }

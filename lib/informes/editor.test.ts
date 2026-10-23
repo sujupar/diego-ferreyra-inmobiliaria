@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { competidoraDesdeAviso, esAvisoDelScraper, fuentesPorTraer, numeroDelCampo, resumenDeLaFuente, rotuloDeLaFuente, separarUbicacion } from './editor'
+import { competidoraDesdeAviso, competidoraDesdeCandidata, esAvisoDelScraper, fuentesPorTraer, numeroDelCampo, resumenDeLaFuente, rotuloDeLaFuente, separarUbicacion } from './editor'
 import type { Fuentes } from './tipos'
 import { sanearCambios } from './sanear'
 
@@ -60,6 +60,26 @@ describe('competidoraDesdeAviso', () => {
 
   it('sin ubicación usa el título como dirección', () => {
     expect(competidoraDesdeAviso(aviso.url, { ...aviso, location: '' }).direccion).toBe('Casa en Coghlan')
+  })
+})
+
+describe('competidoraDesdeCandidata (Paula elige una candidata que encontró la plataforma)', () => {
+  const candidata = {
+    portal: 'argenprop' as const, url: 'https://www.argenprop.com/departamento--20258532', titulo: 'Exclusivo 3 ambientes',
+    direccion: 'Roque Pérez 2500, Piso 9, Coghlan', precio: 220000, moneda: 'USD' as const, m2: 60, ambientes: 3, dormitorios: 2, banos: 1,
+    cocheras: null, antiguedad: 2, foto: 'https://www.argenprop.com/static-content/1.jpg', vistas: 2210, inmobiliaria: 'X',
+    puntaje: 80, porque: [], disposicion: 'frente' as const, estado: 'muy bueno' as const, orientacion: null, publicadoHace: 'Publicado hace 5 días', abierta: true,
+  }
+  it('pasa a competidora con el valor del m² propuesto y se puede guardar', () => {
+    const c = competidoraDesdeCandidata(candidata)
+    expect(c).toMatchObject({ url: candidata.url, direccion: 'Roque Pérez 2500', barrio: 'Coghlan', precio: 220000, m2: 60, valorM2: 3667,
+      ambientes: 3, dormitorios: 2, banos: 1, antiguedad: 2, visualizaciones: 2210, publicadoHace: 'Publicado hace 5 días', bajoDePrecio: false })
+    expect(sanearCambios({ competidoras: [c] }).ok).toBe(true)
+  })
+  it('el barrio es la parte de la dirección que no es piso ni provincia', () => {
+    expect(competidoraDesdeCandidata({ ...candidata, direccion: 'Romulo Naon Al 2800, Coghlan, Capital Federal' }))
+      .toMatchObject({ direccion: 'Romulo Naon Al 2800', barrio: 'Coghlan' })
+    expect(competidoraDesdeCandidata({ ...candidata, direccion: 'Superí 2400' }).barrio).toBeNull()
   })
 })
 

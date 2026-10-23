@@ -4,6 +4,7 @@
  * quedan por traer.
  */
 import type { ScrapedProperty } from '@/lib/scraper/types'
+import type { Candidata } from './competencia/puntaje'
 import { valorDelM2 } from './resumen'
 import { TOPES_COMPETIDORA } from './sanear'
 import { FUENTES, type Competidora, type DatosPorFuente, type FuenteGuardada, type Fuentes, type NombreFuente } from './tipos'
@@ -69,7 +70,37 @@ export function numeroDelCampo(texto: string): number | undefined {
   return digitos ? Number(digitos) : undefined
 }
 
-export type Tono ='pendiente' | 'ok' | 'neutro' | 'error'
+/** Partes de una dirección de listado que no son el barrio: el piso/depto y la provincia. */
+const NO_ES_BARRIO = /^(piso|depto|dpto|departamento|unidad|uf)\b|capital federal|^caba$|buenos aires|^g\.?b\.?a/i
+
+/**
+ * Una candidata que encontró la plataforma, elegida por Paula, pasa a competidora (lo que sale en el PDF).
+ * "Roque Pérez 2500, Piso 9, Coghlan" → dirección "Roque Pérez 2500", barrio "Coghlan".
+ */
+export function competidoraDesdeCandidata(c: Candidata): Competidora {
+  const partes = c.direccion.split(',').map(p => p.trim()).filter(Boolean)
+  const barrio = partes.slice(1).find(p => !NO_ES_BARRIO.test(p)) ?? null
+  return {
+    url: c.url,
+    direccion: (partes[0] ?? c.titulo ?? c.url).slice(0, TOPES_COMPETIDORA.direccion),
+    barrio: barrio ? barrio.slice(0, TOPES_COMPETIDORA.barrio) : null,
+    precio: numeroOVacio(c.precio),
+    moneda: c.moneda,
+    m2: numeroOVacio(c.m2),
+    valorM2: valorDelM2(numeroOVacio(c.precio), numeroOVacio(c.m2)),
+    ambientes: numeroOVacio(c.ambientes),
+    banos: numeroOVacio(c.banos),
+    dormitorios: numeroOVacio(c.dormitorios),
+    antiguedad: numeroOVacio(c.antiguedad),
+    cocheras: numeroOVacio(c.cocheras),
+    foto: c.foto?.startsWith('https://') && c.foto.length <= TOPES_COMPETIDORA.link ? c.foto : null,
+    publicadoHace: textoOVacio(c.publicadoHace, TOPES_COMPETIDORA.publicadoHace),
+    visualizaciones: numeroOVacio(c.vistas),
+    bajoDePrecio: false,
+  }
+}
+
+export type Tono = 'pendiente' | 'ok' | 'neutro' | 'error'
 
 /** Una fuente caída se dice como tal ("No se pudo traer"), nunca como un cero (criterio 10). */
 export function rotuloDeLaFuente(f: FuenteGuardada<unknown> | undefined): { texto: string; tono: Tono } {

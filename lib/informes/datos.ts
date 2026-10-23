@@ -5,15 +5,16 @@ import 'server-only'
  * inesperada falla ruidoso, nunca se adivina.
  */
 import { sb } from './sb'
+import { normalizarDisposicion, normalizarEstado } from './competencia/caracteristicas'
 import { BUCKET_INFORMES } from './archivos'
-import type { Capturas, Competidora, Fuentes, FuenteGuardada, Informe, Manual, NombreCaptura, NombreFuente, PropiedadDelInforme } from './tipos'
+import type { CandidatasGuardadas, Capturas, Competidora, Fuentes, FuenteGuardada, Informe, Manual, NombreCaptura, NombreFuente, PropiedadDelInforme } from './tipos'
 import type { CambiosInforme } from './sanear'
 
 function fallo(contexto: string, error: { message: string } | null): never {
   throw new Error(`${contexto}: ${error?.message ?? 'sin datos'}`)
 }
 
-const SELECT = 'id, property_id, desde, hasta, origen, estado, fuentes, manual, competidoras, capturas, pdf_path, listo_at, created_at, updated_at'
+const SELECT = 'id, property_id, desde, hasta, origen, estado, fuentes, manual, competidoras, candidatas, capturas, pdf_path, listo_at, created_at, updated_at'
 
 function objeto(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
@@ -27,6 +28,7 @@ function aInforme(r: Record<string, unknown>): Informe {
     id: String(r.id), propertyId: String(r.property_id), desde: String(r.desde), hasta: String(r.hasta), origen, estado,
     fuentes: objeto(r.fuentes) as Fuentes, manual: objeto(r.manual) as Manual,
     competidoras: Array.isArray(r.competidoras) ? (r.competidoras as Competidora[]) : [],
+    candidatas: { detalles: {}, ...(objeto(r.candidatas) as Partial<CandidatasGuardadas>) },
     capturas: objeto(r.capturas) as Capturas, pdfPath: r.pdf_path ? String(r.pdf_path) : null,
     listoAt: r.listo_at ? String(r.listo_at) : null, createdAt: String(r.created_at), updatedAt: String(r.updated_at),
   }
@@ -67,6 +69,16 @@ export async function leerInformeAnterior(propertyId: string, desde: string): Pr
     .lt('hasta', desde).order('hasta', { ascending: false }).limit(1).maybeSingle()
   if (error) fallo('leer el informe anterior', error)
   return data ? aInforme(data as Record<string, unknown>) : null
+}
+
+/**
+ * Guarda la búsqueda de UN portal (['argenprop'] / ['mercadolibre']) o el detalle de UN aviso (['detalles', url]).
+ * Atómico (RPC): búsquedas y aperturas en pedidos paralelos no se pisan. false = el informe ya está "listo".
+ */
+export async function guardarCandidatas(id: string, camino: string[], valor: unknown): Promise<boolean> {
+  const { data, error } = await sb().rpc('informe_guardar_candidatas', { p_id: id, p_camino: camino, p_valor: valor })
+  if (error) fallo('guardar candidatas', error)
+  return data === true
 }
 
 /** Atómico (RPC): no pisa otra fuente guardada a la vez. false = el informe ya está "listo". */
@@ -125,6 +137,11 @@ export async function volverABorrador(id: string): Promise<boolean> {
 // ─── La propiedad (lo que muestran la pantalla y el PDF) ─────────────────────
 
 
+function portal(pd: unknown, cual: 'ap' | 'ml', atributo: string): unknown {
+  const p = objeto(pd)[cual]
+  return p && typeof p === 'object' ? (p as Record<string, unknown>)[atributo] : undefined
+}
+
 function numeroONull(v: unknown): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN
   return Number.isFinite(n) && n > 0 ? n : null
@@ -132,7 +149,7 @@ function numeroONull(v: unknown): number | null {
 
 export async function leerPropiedad(propertyId: string): Promise<PropiedadDelInforme | null> {
   const { data, error } = await sb().from('properties')
-    .select('id, address, neighborhood, city, property_type, asking_price, currency, captured_at, photos, total_area, covered_area, rooms')
+    .select('id, address, neighborhood, city, province, property_type, asking_price, currency, captured_at, photos, total_area, covered_area, rooms, age, portal_data')
     .eq('id', propertyId).maybeSingle()
   if (error) fallo('leer la propiedad', error)
   if (!data) return null
@@ -146,6 +163,11 @@ export async function leerPropiedad(propertyId: string): Promise<PropiedadDelInf
     foto: fotos[0] ?? null,
     m2: numeroONull(r.total_area) ?? numeroONull(r.covered_area),
     ambientes: numeroONull(r.rooms),
+    provincia: r.province ? String(r.province) : null,
+    antiguedad: typeof r.age === 'number' ? r.age : null,
+    // Solo 6 de 36 captadas lo tienen (2026-10-22): sin dato no se compara, pero la candidata igual muestra el suyo.
+    disposicion: normalizarDisposicion(portal(r.portal_data, 'ap', 'DISPOSICION')) ?? normalizarDisposicion(portal(r.portal_data, 'ml', 'DISPOSITION')),
+    estadoConservacion: normalizarEstado(portal(r.portal_data, 'ap', 'ESTADO_PROPIEDAD')),
   }
 }
 

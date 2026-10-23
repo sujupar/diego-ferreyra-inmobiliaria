@@ -7,7 +7,7 @@
 import { leerRespuesta } from '@/components/visitas/agendar/leer-respuesta'
 import { competidoraDesdeAviso, esAvisoDelScraper } from '@/lib/informes/editor'
 import type { VistaInforme } from '@/lib/informes/servicio'
-import type { Capturas, Competidora, FuenteGuardada, Manual, NombreCaptura, NombreFuente } from '@/lib/informes/tipos'
+import type { BusquedaPortal, Capturas, Competidora, FuenteGuardada, Manual, NombreCaptura, NombreFuente } from '@/lib/informes/tipos'
 
 interface Slot { signedUrl: string; token: string; path: string }
 
@@ -40,6 +40,13 @@ export const guardarManual = (id: string, manual: Manual) => pedir<{ ok: true }>
 /** La plataforma escribe los textos (una llamada al modelo). Devuelve el `manual` con los textos nuevos. */
 export const escribirTextos = (id: string, forzar: boolean) =>
   pedir<{ manual: Manual }>(`${base(id)}/textos`, json('POST', { forzar }))
+
+/** Busca competidoras en UN portal (un portal caído vuelve con `estado: 'error'`, no como excepción). */
+export const buscarCompetencia = (id: string, portal: 'argenprop' | 'mercadolibre') =>
+  pedir<BusquedaPortal>(`${base(id)}/competencia/buscar/${portal}`, json('POST'))
+
+/** Abre UNA candidata para leer disposición y estado. */
+export const abrirCandidata = (id: string, url: string) => pedir<unknown>(`${base(id)}/competencia/abrir`, json('POST', { url }))
 
 export const guardarCompetidoras = (id: string, competidoras: Competidora[]) =>
   pedir<{ ok: true }>(base(id), json('PATCH', { competidoras }))

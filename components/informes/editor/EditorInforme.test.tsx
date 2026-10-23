@@ -10,6 +10,7 @@ import type { Informe } from '@/lib/informes/tipos'
 const api = vi.hoisted(() => ({
   leerVista: vi.fn(), traerFuente: vi.fn(), guardarManual: vi.fn(), guardarCompetidoras: vi.fn(),
   subirCaptura: vi.fn(), quitarCaptura: vi.fn(), subirPdfYMarcarListo: vi.fn(), volverABorrador: vi.fn(), buscarCompetidora: vi.fn(), escribirTextos: vi.fn(),
+  buscarCompetencia: vi.fn(), abrirCandidata: vi.fn(),
 }))
 vi.mock('./api', () => api)
 const { generar } = vi.hoisted(() => ({ generar: vi.fn(async () => new Blob(['%PDF-'])) }))
@@ -19,6 +20,13 @@ import { EditorInforme } from './EditorInforme'
 
 const ok = <T,>(datos: T) => ({ estado: 'ok' as const, actualizadoEn: 'x', datos, error: null })
 const pendiente = { estado: 'pendiente' as const, actualizadoEn: null, datos: null, error: null }
+
+/** La búsqueda de competidoras ya se hizo (si no, cada prueba dispararía la búsqueda automática). */
+const YA_BUSCADO: Informe['candidatas'] = {
+  detalles: {},
+  argenprop: { estado: 'ok', error: null, buscadoEn: 'x', url: null, avisos: [] },
+  mercadolibre: { estado: 'sin_busqueda', error: 'fuera de Capital', buscadoEn: 'x', url: null, avisos: [] },
+}
 
 function informe(cambios: Partial<Informe> = {}): Informe {
   return {
@@ -30,7 +38,7 @@ function informe(cambios: Partial<Informe> = {}): Informe {
       instagram: { estado: 'sin_datos', actualizadoEn: 'x', datos: null, error: 'La propiedad no tiene reels' },
     },
     manual: { zonaprop: { interesados: 1 }, textos: { accionesRealizadas: 'Publicamos' } },
-    competidoras: [], capturas: {}, pdfPath: null, listoAt: null, createdAt: 'x', updatedAt: 'x', ...cambios,
+    competidoras: [], candidatas: YA_BUSCADO, capturas: {}, pdfPath: null, listoAt: null, createdAt: 'x', updatedAt: 'x', ...cambios,
   }
 }
 
@@ -38,7 +46,7 @@ function vista(i: Informe, faltantes: string[] = ['Zonaprop: exposición']): Vis
   return {
     informe: i, propiedad: { id: 'prop-1', direccion: 'Roque Pérez 3059', barrio: 'Coghlan', ciudad: null, tipo: null, precio: null, moneda: null, capturadaEl: null, foto: null },
     resumen: resumenDeMetricas(i.fuentes, i.manual),
-    paginas: [], faltantes, capturasUrl: {}, pdfUrl: null,
+    paginas: [], faltantes, capturasUrl: {}, pdfUrl: null, candidatas: [],
   }
 }
 
@@ -149,6 +157,30 @@ describe('EditorInforme', () => {
     render(<EditorInforme informeId="inf-1" />)
     await waitFor(() => expect(api.leerVista).toHaveBeenCalledTimes(2))
     expect(api.escribirTextos).not.toHaveBeenCalled()
+  })
+
+  it('sin búsqueda de competencia, busca en los dos portales y abre las candidatas para leer disposición y estado', async () => {
+    const sinBuscar = informe({ candidatas: { detalles: {} } })
+    const candidata = { portal: 'argenprop' as const, url: 'https://www.argenprop.com/x--1', titulo: null, direccion: 'Quesada 3250, Coghlan', precio: 200000,
+      moneda: 'USD' as const, m2: 70, ambientes: 3, dormitorios: 2, banos: 1, cocheras: null, antiguedad: 10, foto: null, vistas: null, inmobiliaria: null,
+      puntaje: 90, porque: ['mismos ambientes'], disposicion: null, estado: null, orientacion: null, publicadoHace: null, abierta: false }
+    api.leerVista.mockResolvedValueOnce(vista(sinBuscar)).mockResolvedValue({ ...vista(sinBuscar), candidatas: [candidata] })
+    api.buscarCompetencia.mockResolvedValue({ estado: 'ok', error: null, buscadoEn: 'x', url: null, avisos: [] })
+    api.abrirCandidata.mockResolvedValue({})
+    render(<EditorInforme informeId="inf-1" />)
+    await waitFor(() => expect(api.abrirCandidata).toHaveBeenCalledWith('inf-1', 'https://www.argenprop.com/x--1'))
+    expect(api.buscarCompetencia.mock.calls.map(c => c[1])).toEqual(['argenprop', 'mercadolibre'])
+    expect(await screen.findByText('Quesada 3250, Coghlan')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Ver en el portal/ })).toHaveAttribute('href', 'https://www.argenprop.com/x--1')
+    await userEvent.click(screen.getByRole('button', { name: /Agregar al informe/ }))
+    await waitFor(() => expect(api.guardarCompetidoras).toHaveBeenCalledWith('inf-1', [expect.objectContaining({ url: 'https://www.argenprop.com/x--1', direccion: 'Quesada 3250', barrio: 'Coghlan' })]))
+  })
+
+  it('con la búsqueda ya hecha, no vuelve a buscar sola', async () => {
+    api.leerVista.mockResolvedValue(vista(informe()))
+    render(<EditorInforme informeId="inf-1" />)
+    await waitFor(() => expect(api.leerVista).toHaveBeenCalledTimes(2))
+    expect(api.buscarCompetencia).not.toHaveBeenCalled()
   })
 
   it('"Marcar como listo" está deshabilitado mientras falte algo', async () => {
