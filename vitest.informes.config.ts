@@ -9,6 +9,7 @@ export default defineConfig({
     globals: true,
     include: [
       'lib/informes/**/*.test.ts',
+      'lib/scraper/mercadoLibreExtractor.test.ts',
       'lib/properties/detail-view.test.ts',
       'lib/nav/sections.test.ts',
       'app/api/informes/**/*.test.ts',

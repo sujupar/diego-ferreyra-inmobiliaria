@@ -54,11 +54,9 @@ export function extractMercadoLibre($: CheerioAPI, url: string): ScrapedProperty
         }
     }
 
-    // Expenses
-    const expensesText = getText($, [
-        '.ui-pdp-maintenance-fee-wrapper',
-        '.ui-pdp-price__second-line'
-    ])
+    // Expensas: de su fila en la tabla (más abajo) o del bloque propio. NO de '.ui-pdp-price__second-line': en la
+    // ficha actual esa línea repite el PRECIO, y un depto de USD 95.000 salía con expensas de 95.000 (2026-10-22).
+    const expensesText = getText($, ['.ui-pdp-maintenance-fee-wrapper'])
     const expenses = parseExpenses(expensesText)
 
     // Location
@@ -93,9 +91,11 @@ export function extractMercadoLibre($: CheerioAPI, url: string): ScrapedProperty
 
 
     // Parse specs table rows
+    // La ficha actual trae el nombre en <th> y el valor en <td> (las clases __label/__value ya no existen: con ellas
+    // TODAS las características salían vacías, verificado contra MLA-2073595273 el 2026-10-22).
     $('.ui-vpp-striped-specs__row').each((_, row) => {
-        const label = $(row).find('.ui-vpp-striped-specs__label').text().toLowerCase()
-        const value = cleanText($(row).find('.ui-vpp-striped-specs__value').text())
+        const label = ($(row).find('.ui-vpp-striped-specs__label').text() || $(row).find('th').text()).toLowerCase()
+        const value = cleanText($(row).find('.ui-vpp-striped-specs__value').text() || $(row).find('td').text())
 
         if (label.includes('superficie total')) {
             features.totalArea = parseArea(value)
@@ -117,6 +117,8 @@ export function extractMercadoLibre($: CheerioAPI, url: string): ScrapedProperty
             features.disposal = value
         } else if (label.includes('estado')) {
             features.condition = value
+        } else if (label.includes('expensas') && !features.expenses) {
+            features.expenses = parseExpenses(value)
         }
     })
 
