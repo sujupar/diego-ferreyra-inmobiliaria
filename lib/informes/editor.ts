@@ -110,7 +110,7 @@ export function resumenDeLaFuente(nombre: NombreFuente, f: Fuentes): string | nu
     case 'mercadolibre': {
       const d = f.mercadolibre?.estado === 'ok' ? f.mercadolibre.datos : null
       if (!d) return null
-      const partes = [`${plural(d.visitas, 'visita', 'visitas')} al aviso ${d.avisoId}`]
+      const partes = [`${plural(d.visitas, 'visita', 'visitas')} ${d.avisos.length === 1 ? `al aviso ${d.avisos[0].id}` : `en ${d.avisos.length} avisos`}`]
       if (d.contactos) {
         const c = d.contactos
         const canales = ([[c.preguntas, 'pregunta', 'preguntas'], [c.whatsapp, 'WhatsApp', 'WhatsApp'], [c.llamadas, 'llamada', 'llamadas'], [c.otros, 'otro', 'otros']] as const)

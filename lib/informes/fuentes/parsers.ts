@@ -127,6 +127,19 @@ export function vistasDelTelefonoEnPeriodo(respuesta: unknown, desde: string, ha
   return dias.filter(d => d.dia >= desde && d.dia <= hasta).reduce((a, d) => a + d.total, 0)
 }
 
+export interface NumerosDeUnAviso { visitas: number; contactos: ContactosMercadoLibre; vistasTelefono: number | null }
+
+/** Suma los avisos de una misma propiedad. Un teléfono desconocido en uno vuelve desconocido el total (no una suma de menos). */
+export function sumarAvisosMercadoLibre(avisos: NumerosDeUnAviso[]): NumerosDeUnAviso {
+  const total: NumerosDeUnAviso = { visitas: 0, contactos: { interesados: 0, preguntas: 0, whatsapp: 0, llamadas: 0, otros: 0 }, vistasTelefono: 0 }
+  for (const a of avisos) {
+    total.visitas += a.visitas
+    for (const k of Object.keys(total.contactos) as Array<keyof ContactosMercadoLibre>) total.contactos[k] += a.contactos[k]
+    total.vistasTelefono = total.vistasTelefono === null || a.vistasTelefono === null ? null : total.vistasTelefono + a.vistasTelefono
+  }
+  return total
+}
+
 // ─── Meta Ads ────────────────────────────────────────────────────────────────
 
 type Accion = { action_type: string; value: string }

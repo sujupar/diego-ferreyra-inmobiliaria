@@ -22,7 +22,7 @@ const manual = z.object({
   zonaprop: z.object({ publicado: z.boolean(), exposicion: conteo, visualizaciones: conteo, interesados: conteo }).partial().strict(),
   argenprop: z.object({ publicado: z.boolean(), visualizaciones: conteo }).partial().strict(),
   // Contactos, llamadas, WhatsApp y preguntas de ML ya vienen de su API (fuente `mercadolibre`): solo queda el aviso.
-  mercadolibre: z.object({ aviso: z.string().max(500) }).partial().strict(),
+  mercadolibre: z.object({ aviso: z.string().max(500), excluidos: z.array(z.string().regex(/^MLA\d{8,}$/)).max(20) }).partial().strict(),
   tiktok: z.object({ visualizaciones: conteo, tiempoTotal: texto(20), tiempoPromedio: texto(20), vieronCompleto: z.number().min(0).max(100), nuevosSeguidores: conteo }).partial().strict(),
   textos: z.object({
     resumenMetricas: texto(2000), accionesRealizadas: texto(3000), accionesARealizar: texto(3000),

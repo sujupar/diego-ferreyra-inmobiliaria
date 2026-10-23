@@ -286,8 +286,14 @@ export function EditorInforme({ informeId }: { informeId: string }) {
         ) : null}
       </Seccion>
 
-      <Seccion id="sec-ml" titulo="MercadoLibre" ayuda="Las visitas al aviso se traen solas. Si la plataforma no conoce el aviso (se publicó a mano), pegá su link o su código MLA.">
-        <CampoLinea id="ml-aviso" etiqueta="Aviso de MercadoLibre" valor={m.mercadolibre?.aviso} placeholder="MLA1234567890 o el link del aviso" maxLength={500} deshabilitado={bloqueado}
+      <Seccion id="sec-ml" titulo="MercadoLibre" ayuda="Visitas, interesados y vistas del teléfono se traen solos. Se suman todos los avisos activos de la cuenta con la dirección de la propiedad, aunque se hayan publicado a mano.">
+        <AvisosDeML
+          avisos={informe.fuentes.mercadolibre?.estado === 'ok' ? informe.fuentes.mercadolibre.datos?.avisos ?? [] : []}
+          excluidos={m.mercadolibre?.excluidos ?? []}
+          deshabilitado={bloqueado}
+          onCambiarExcluidos={lista => guardarManual(x => ({ ...x, mercadolibre: { ...x.mercadolibre, excluidos: lista } }), async () => { await api.traerFuente(informeId, 'mercadolibre') })}
+        />
+        <CampoLinea id="ml-aviso" etiqueta="Agregar otro aviso de MercadoLibre" valor={m.mercadolibre?.aviso} placeholder="MLA1234567890 o el link del aviso" maxLength={500} deshabilitado={bloqueado}
           onGuardar={t => guardarManual(x => ({ ...x, mercadolibre: { ...x.mercadolibre, aviso: t } }), async () => { await api.traerFuente(informeId, 'mercadolibre') })} />
         <CapturaPortal informeId={informe.id} cual="mercadolibre" portal="MercadoLibre" url={capturasUrl.mercadolibre} deshabilitado={bloqueado} onCambio={() => void recargar()} />
       </Seccion>
@@ -355,6 +361,46 @@ export function EditorInforme({ informeId }: { informeId: string }) {
 }
 
 // Componentes de MÓDULO: ver CLAUDE.md § "NUNCA declarar un componente dentro de otro".
+const ORIGEN_AVISO: Record<'plataforma' | 'cuenta' | 'manual', string> = {
+  plataforma: 'publicado desde la plataforma', cuenta: 'encontrado en la cuenta por la dirección', manual: 'agregado a mano',
+}
+
+/** Los avisos de ML que se suman, con "No es de esta propiedad" para un emparejado por dirección equivocado. */
+function AvisosDeML({ avisos, excluidos, deshabilitado, onCambiarExcluidos }: {
+  avisos: Array<{ id: string; titulo: string | null; url: string | null; origen: 'plataforma' | 'cuenta' | 'manual' }>
+  excluidos: string[]
+  deshabilitado: boolean
+  onCambiarExcluidos: (lista: string[]) => void
+}) {
+  if (!avisos.length && !excluidos.length) return <p className="text-sm text-muted-foreground">No hay avisos activos de MercadoLibre para esta propiedad.</p>
+  return (
+    <div className="space-y-2">
+      {avisos.length ? <p className="text-sm font-medium">Avisos que se suman ({avisos.length})</p> : null}
+      <ul className="space-y-2">
+        {avisos.map(a => (
+          <li key={a.id} className="flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm">
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium">{a.titulo ?? a.id}</span>
+              <span className="block text-xs text-muted-foreground">{a.id} · {ORIGEN_AVISO[a.origen]}</span>
+            </span>
+            {a.url ? <a href={a.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center text-primary underline">Ver en ML</a> : null}
+            <Button type="button" variant="ghost" size="sm" className="min-h-11" disabled={deshabilitado}
+              onClick={() => onCambiarExcluidos([...excluidos, a.id])}>No es de esta propiedad</Button>
+          </li>
+        ))}
+      </ul>
+      {excluidos.length ? (
+        <p className="text-xs text-muted-foreground">
+          Sacados: {excluidos.map((id, i) => (
+            <span key={id}>{i ? ', ' : ''}{id} <button type="button" className="underline" disabled={deshabilitado}
+              onClick={() => onCambiarExcluidos(excluidos.filter(x => x !== id))}>volver a sumar</button></span>
+          ))}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 function Volver({ propertyId }: { propertyId?: string }) {
   return (
     <Link href={propertyId ? `/properties/${propertyId}?tab=informes` : '/properties'} className="inline-flex min-h-11 items-center gap-1 text-sm text-muted-foreground hover:text-foreground">

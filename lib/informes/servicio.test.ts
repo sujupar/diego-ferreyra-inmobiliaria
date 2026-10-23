@@ -22,7 +22,7 @@ function informe(extra: Partial<Informe> = {}): Informe {
   const fuentes = Object.fromEntries(Object.keys(fuentesPendientes()).map(k => [k, ok]))
   return {
     id: ID, propertyId: 'p', desde: '2026-10-01', hasta: '2026-10-15', origen: 'manual', estado: 'borrador',
-    fuentes: { ...fuentes, mercadolibre: { ...ok, datos: { avisoId: 'MLA1', visitas: 1 } } } as never,
+    fuentes: { ...fuentes, mercadolibre: { ...ok, datos: { avisos: [{ id: 'MLA1', titulo: null, url: null, origen: 'plataforma' as const }], visitas: 1 } } } as never,
     manual: { zonaprop: { exposicion: 1, visualizaciones: 1 }, argenprop: { publicado: false }, textos: { accionesRealizadas: 'a', accionesARealizar: 'b' } },
     competidoras: [], capturas: {}, pdfPath: null, listoAt: null, createdAt: '', updatedAt: 'v1', ...extra,
   }

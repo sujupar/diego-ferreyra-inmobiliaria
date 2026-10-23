@@ -46,7 +46,8 @@ export interface DatosVisitas {
 export interface DatosReserva { reservada: boolean; fecha: string | null }
 
 export interface DatosMercadoLibre {
-  avisoId: string
+  /** Los avisos que se sumaron (plataforma, cuenta por dirección, agregado a mano). */
+  avisos: Array<{ id: string; titulo: string | null; url: string | null; origen: 'plataforma' | 'cuenta' | 'manual' }>
   visitas: number
   /** Interesados del período por canal (API de leads de clasificados). Opcional: informes viejos no lo tienen. */
   contactos?: { interesados: number; preguntas: number; whatsapp: number; llamadas: number; otros: number }
@@ -95,6 +96,8 @@ export interface ManualArgenprop { publicado?: boolean; visualizaciones?: number
 export interface ManualMercadoLibre {
   /** El aviso, cuando la plataforma no lo conoce (publicado a mano): código MLA o link. */
   aviso?: string
+  /** Avisos que la plataforma sumó y Paula sacó (emparejado por dirección equivocado). */
+  excluidos?: string[]
 }
 export interface ManualTiktok { visualizaciones?: number; tiempoTotal?: string; tiempoPromedio?: string; vieronCompleto?: number; nuevosSeguidores?: number }
 

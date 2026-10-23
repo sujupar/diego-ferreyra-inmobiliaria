@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { contarConsultas, contactosDeMercadoLibre, fichaDeVisitas, visitasDeMercadoLibre, vistasDelTelefonoEnPeriodo, sumarMeta, resultadosDe, reelDeInsights } from './parsers'
+import { contarConsultas, contactosDeMercadoLibre, fichaDeVisitas, sumarAvisosMercadoLibre, visitasDeMercadoLibre, vistasDelTelefonoEnPeriodo, sumarMeta, resultadosDe, reelDeInsights } from './parsers'
 import type { VisitaListado, EncuestaListado } from '@/lib/visitas/tipos'
 
 describe('contarConsultas', () => {
@@ -115,6 +115,22 @@ describe('vistasDelTelefonoEnPeriodo (respuesta real de /items/{id}/contacts/pho
   })
   it('una respuesta rara es un error', () => {
     expect(() => vistasDelTelefonoEnPeriodo({ error: 'x' }, '2026-10-01', '2026-10-15')).toThrow()
+  })
+})
+
+describe('sumarAvisosMercadoLibre (varios avisos de la misma propiedad)', () => {
+  const c = (interesados: number, preguntas: number, whatsapp = 0) => ({ interesados, preguntas, whatsapp, llamadas: 0, otros: 0 })
+  it('suma visitas, contactos por canal y vistas del teléfono', () => {
+    expect(sumarAvisosMercadoLibre([
+      { visitas: 4, contactos: c(1, 1), vistasTelefono: 2 },
+      { visitas: 10, contactos: c(2, 1, 1), vistasTelefono: 0 },
+    ])).toEqual({ visitas: 14, contactos: c(3, 2, 1), vistasTelefono: 2 })
+  })
+  it('si a uno le falta la ventana del teléfono, el total del teléfono es desconocido (null), no una suma de menos', () => {
+    expect(sumarAvisosMercadoLibre([
+      { visitas: 4, contactos: c(0, 0), vistasTelefono: null },
+      { visitas: 1, contactos: c(0, 0), vistasTelefono: 3 },
+    ]).vistasTelefono).toBeNull()
   })
 })
 

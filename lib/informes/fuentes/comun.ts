@@ -13,6 +13,8 @@ export interface ContextoFuente {
   ahora: Date
   /** El aviso de ML que cargó Paula (código o link), si la plataforma no conoce el de la propiedad. */
   avisoMercadoLibre?: string | null
+  /** Avisos de ML que Paula sacó (un emparejado por dirección equivocado). */
+  excluidosMercadoLibre?: string[]
 }
 
 /** El período como instantes: desde las 00:00 de Argentina del primer día hasta las 00:00 del día siguiente al último. */

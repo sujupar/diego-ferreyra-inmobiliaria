@@ -86,7 +86,7 @@ describe('EditorInforme', () => {
   it('un aviso de ML inválido no se aplica ni se manda, y no traba el guardado de los demás campos', async () => {
     api.leerVista.mockResolvedValue(vista(informe()))
     render(<EditorInforme informeId="inf-1" />)
-    await userEvent.type(await screen.findByLabelText('Aviso de MercadoLibre'), 'cualquier cosa')
+    await userEvent.type(await screen.findByLabelText('Agregar otro aviso de MercadoLibre'), 'cualquier cosa')
     await userEvent.tab()
     expect(await screen.findByText(/No reconocemos ese aviso/)).toBeInTheDocument()
     expect(api.guardarManual).not.toHaveBeenCalled()
@@ -107,6 +107,27 @@ describe('EditorInforme', () => {
     await userEvent.tab()
     await waitFor(() => expect(api.guardarManual).toHaveBeenCalledTimes(2))
     expect(api.guardarManual.mock.calls[1][1].zonaprop).toEqual({ interesados: 2 })
+  })
+
+  it('MercadoLibre: muestra los avisos que se suman y "No es de esta propiedad" lo saca y vuelve a traer la fuente', async () => {
+    const i = informe()
+    i.fuentes.mercadolibre = ok({
+      avisos: [
+        { id: 'MLA2185347399', titulo: 'Departamento 3 Amb Belgrano', url: 'https://articulo.mercadolibre.com.ar/MLA-2185347399', origen: 'plataforma' as const },
+        { id: 'MLA4071627624', titulo: 'Depto de calidad', url: 'https://articulo.mercadolibre.com.ar/MLA-4071627624', origen: 'cuenta' as const },
+      ],
+      visitas: 7,
+    })
+    api.leerVista.mockResolvedValue(vista(i))
+    render(<EditorInforme informeId="inf-1" />)
+    expect(await screen.findByText('Avisos que se suman (2)')).toBeInTheDocument()
+    expect(screen.getByText(/MLA4071627624 · encontrado en la cuenta por la dirección/)).toBeInTheDocument()
+    await waitFor(() => expect(api.leerVista).toHaveBeenCalledTimes(2))
+    api.traerFuente.mockClear()
+    await userEvent.click(screen.getAllByRole('button', { name: 'No es de esta propiedad' })[1])
+    await waitFor(() => expect(api.guardarManual).toHaveBeenCalled())
+    expect(api.guardarManual.mock.calls[0][1].mercadolibre).toEqual({ excluidos: ['MLA4071627624'] })
+    await waitFor(() => expect(api.traerFuente).toHaveBeenCalledWith('inf-1', 'mercadolibre'))
   })
 
   it('"Marcar como listo" está deshabilitado mientras falte algo', async () => {

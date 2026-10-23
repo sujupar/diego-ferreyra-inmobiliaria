@@ -8,10 +8,10 @@ import { mlFetch } from '@/lib/portals/mercadolibre/client'
 import { instagramFetch } from '@/lib/integrations/instagram/client'
 import { todasLasVisitas } from '@/lib/visitas/datos'
 import { sb } from '../sb'
-import { idDeAvisoMercadoLibre } from '../aviso-ml'
+import { combinarAvisos, idDeAvisoMercadoLibre, mismaDireccion } from '../aviso-ml'
 import type { DatosPorFuente, FuenteGuardada, NombreFuente } from '../tipos'
 import { conError, instantesDelPeriodo, ok, sinDatos, sinLanzar, type ContextoFuente } from './comun'
-import { contactosDeMercadoLibre, contarConsultas, fichaDeVisitas, reelDeInsights, sumarMeta, visitasDeMercadoLibre, vistasDelTelefonoEnPeriodo } from './parsers'
+import { contactosDeMercadoLibre, contarConsultas, fichaDeVisitas, reelDeInsights, sumarAvisosMercadoLibre, sumarMeta, visitasDeMercadoLibre, vistasDelTelefonoEnPeriodo } from './parsers'
 
 const GRAPH = 'https://graph.facebook.com/v21.0'
 const TIMEOUT_MS = 8_000
@@ -54,28 +54,51 @@ async function reserva(c: ContextoFuente): Promise<FuenteGuardada<DatosPorFuente
   return ok(c.ahora, { reservada: !!primera, fecha: primera ? String(primera) : null })
 }
 
-/** El aviso de ML: el que cargó Paula, el que publicó la plataforma o el del mapa de avisos. */
-async function avisoDeMercadoLibre(c: ContextoFuente): Promise<string | null> {
-  const manual = idDeAvisoMercadoLibre(c.avisoMercadoLibre)
-  if (manual) return manual
+/** Los avisos de ML que la plataforma conoce de la propiedad: el que publicó y los del mapa de avisos. */
+async function avisosDeLaPlataforma(c: ContextoFuente): Promise<string[]> {
+  const ids: string[] = []
   const l = await sb().from('property_listings').select('external_id').eq('property_id', c.propertyId)
-    .eq('portal', 'mercadolibre').not('external_id', 'is', null).maybeSingle()
+    .eq('portal', 'mercadolibre').not('external_id', 'is', null)
   if (l.error) throw new Error(`aviso de MercadoLibre: ${l.error.message}`)
-  const publicado = idDeAvisoMercadoLibre(l.data?.external_id ? String(l.data.external_id) : null)
-  if (publicado) return publicado
+  for (const fila of l.data ?? []) { const id = idDeAvisoMercadoLibre(String(fila.external_id ?? '')); if (id) ids.push(id) }
   const m = await sb().from('portal_property_map').select('external_code, external_url').eq('property_id', c.propertyId)
     .eq('portal', 'mercadolibre').limit(5)
   if (m.error) throw new Error(`mapa de avisos: ${m.error.message}`)
   for (const fila of m.data ?? []) {
     const id = idDeAvisoMercadoLibre(String(fila.external_code ?? '')) ?? idDeAvisoMercadoLibre(String(fila.external_url ?? ''))
-    if (id) return id
+    if (id) ids.push(id)
   }
-  return null
+  return ids
+}
+
+type AvisoDeLaCuenta = { id: string; titulo: string | null; url: string | null; direccion: string }
+
+/**
+ * Los avisos ACTIVOS de nuestra cuenta de ML con su dirección. La mayoría se publicó a mano y la plataforma no
+ * los conoce (2026-10-22: 32 activos; los de la plataforma, 10). `seller_address` NO sirve: es la oficina.
+ */
+async function avisosActivosDeLaCuenta(usuario: number): Promise<AvisoDeLaCuenta[]> {
+  const corte = () => ({ signal: AbortSignal.timeout(TIMEOUT_MS) })
+  const ids: string[] = []
+  for (let offset = 0; offset < 500; offset += 50) {
+    const p = await mlFetch<{ results?: string[]; paging?: { total?: number } }>(`/users/${usuario}/items/search?status=active&limit=50&offset=${offset}`, corte())
+    ids.push(...(p.results ?? []))
+    if (offset + 50 >= (p.paging?.total ?? 0)) break
+  }
+  const lotes: string[][] = []
+  for (let i = 0; i < ids.length; i += 20) lotes.push(ids.slice(i, i + 20))
+  const respuestas = await Promise.all(lotes.map(lote =>
+    mlFetch<Array<{ code?: number; body?: Record<string, unknown> }>>(`/items?ids=${lote.join(',')}&attributes=id,title,permalink,location`, corte())))
+  return respuestas.flat().filter(r => r.code === 200 && r.body).map(r => {
+    const b = r.body as { id?: unknown; title?: unknown; permalink?: unknown; location?: { address_line?: unknown } }
+    return { id: String(b.id), titulo: typeof b.title === 'string' ? b.title : null, url: typeof b.permalink === 'string' ? b.permalink : null,
+      direccion: typeof b.location?.address_line === 'string' ? b.location.address_line : '' }
+  })
 }
 
 /**
- * Interesados del aviso en el período, todas las páginas (de a 50, tope 10 páginas). OJO: ML limita mucho este
- * endpoint (429 "quota exceeded" con unos pocos pedidos seguidos, medido 2026-10-22): un informe pide UN aviso.
+ * Interesados de un aviso en el período, todas las páginas (de a 50, tope 10). OJO: ML limita mucho este endpoint
+ * (429 "quota exceeded" con unos pocos pedidos seguidos, medido 2026-10-22): por eso hay tope de avisos.
  */
 async function leadsDelPeriodo(usuario: number, avisoId: string, c: ContextoFuente): Promise<unknown[]> {
   const paginas: unknown[] = []
@@ -90,26 +113,45 @@ async function leadsDelPeriodo(usuario: number, avisoId: string, c: ContextoFuen
   return paginas
 }
 
+/**
+ * Suma TODOS los avisos de ML de la propiedad: el de la plataforma, los activos de la cuenta con la misma
+ * dirección (publicados a mano) y el que agregó Paula, menos los que sacó. Un solo aviso se quedaba corto:
+ * Moldes 2112 tenía dos activos a la vez.
+ */
 async function mercadolibre(c: ContextoFuente): Promise<FuenteGuardada<DatosPorFuente['mercadolibre']>> {
-  const avisoId = await avisoDeMercadoLibre(c)
-  if (!avisoId) return sinDatos(c.ahora)
   const corte = () => ({ signal: AbortSignal.timeout(TIMEOUT_MS) })
-  const id = encodeURIComponent(avisoId)
+  const prop = await sb().from('properties').select('address').eq('id', c.propertyId).maybeSingle()
+  if (prop.error) throw new Error(`propiedad: ${prop.error.message}`)
   const yo = await mlFetch<{ id?: number }>('/users/me', corte())
   if (!yo.id) throw new Error('MercadoLibre no devolvió el usuario de la cuenta')
+  const usuario = yo.id
+  const [plataforma, cuenta] = await Promise.all([avisosDeLaPlataforma(c), avisosActivosDeLaCuenta(usuario)])
+  const direccion = String(prop.data?.address ?? '')
+  const avisos = combinarAvisos({
+    plataforma,
+    cuenta: cuenta.filter(a => plataforma.includes(a.id) || mismaDireccion(direccion, a.direccion)),
+    manual: idDeAvisoMercadoLibre(c.avisoMercadoLibre),
+    excluidos: c.excluidosMercadoLibre ?? [],
+  })
+  if (!avisos.length) return sinDatos(c.ahora)
   // Vistas del teléfono: ML las da día por día en una ventana hacia atrás desde hoy (máximo 150 días).
   const diasAtras = Math.ceil((Date.parse(c.ahora.toISOString().slice(0, 10)) - Date.parse(c.desde)) / 86_400_000) + 1
-  const [visitas, paginas, telefono] = await Promise.all([
-    mlFetch<unknown>(`/items/visits?ids=${id}&date_from=${c.desde}&date_to=${c.hasta}`, corte()),
-    leadsDelPeriodo(yo.id, avisoId, c),
-    diasAtras <= 150 ? mlFetch<unknown>(`/items/${id}/contacts/phone_views/time_window?last=${diasAtras}&unit=day`, corte()) : Promise.resolve(null),
-  ])
-  return ok(c.ahora, {
-    avisoId,
-    visitas: visitasDeMercadoLibre(visitas, avisoId),
-    contactos: contactosDeMercadoLibre(paginas),
-    vistasTelefono: telefono === null ? null : vistasDelTelefonoEnPeriodo(telefono, c.desde, c.hasta),
-  })
+  const porAviso = []
+  // De a un aviso (no en paralelo entre avisos): el cupo de interesados es chico.
+  for (const a of avisos) {
+    // `/items/visits` acepta UN aviso por pedido ("maximum amount of items to query is 1", 2026-10-22).
+    const [visitas, paginas, telefono] = await Promise.all([
+      mlFetch<unknown>(`/items/visits?ids=${encodeURIComponent(a.id)}&date_from=${c.desde}&date_to=${c.hasta}`, corte()),
+      leadsDelPeriodo(usuario, a.id, c),
+      diasAtras <= 150 ? mlFetch<unknown>(`/items/${encodeURIComponent(a.id)}/contacts/phone_views/time_window?last=${diasAtras}&unit=day`, corte()) : Promise.resolve(null),
+    ])
+    porAviso.push({
+      visitas: visitasDeMercadoLibre(visitas, a.id),
+      contactos: contactosDeMercadoLibre(paginas),
+      vistasTelefono: telefono === null ? null : vistasDelTelefonoEnPeriodo(telefono, c.desde, c.hasta),
+    })
+  }
+  return ok(c.ahora, { avisos, ...sumarAvisosMercadoLibre(porAviso) })
 }
 
 async function graph(ruta: string): Promise<{ data?: Array<Record<string, unknown>> }> {

@@ -41,6 +41,7 @@ export async function refrescarFuente(i: Informe, nombre: NombreFuente, ahora: D
   exigirBorrador(i)
   const valor = await traerFuente(nombre, {
     propertyId: i.propertyId, desde: i.desde, hasta: i.hasta, ahora, avisoMercadoLibre: i.manual.mercadolibre?.aviso ?? null,
+    excluidosMercadoLibre: i.manual.mercadolibre?.excluidos ?? [],
   })
   if (!(await datos.guardarFuente(i.id, nombre, valor as FuenteGuardada<unknown>))) throw new ErrorInforme(409, 'El informe ya está listo')
   return valor as FuenteGuardada<unknown>
