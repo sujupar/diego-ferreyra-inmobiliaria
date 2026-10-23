@@ -2142,6 +2142,53 @@ automático el 1 y el 16 + tarea y email a Paula + listado `/informes`) está pe
 - **Dato:** una sola propiedad captada no tiene `captured_at` (la [TEST] ad5c6ba9); sin esa fecha no hay "ciclo de
   la propiedad" y la pantalla lo dice.
 
+### Informe quincenal — la plataforma hace el trabajo (2026-10-22, PR #54)
+
+Spec `docs/superpowers/specs/2026-10-22-informe-quincenal-mejoras-design.md`; plan homónimo (la tarea C quedó DESCARTADA).
+
+- **MercadoLibre completo por API** (`lib/informes/fuentes/`): visitas, interesados por canal
+  (`/vis/users/{id}/leads/buyers`) y vistas del teléfono (`/items/{id}/contacts/phone_views/time_window`, ventana de
+  150 días: si no cubre el período, `vistasTelefono: null`, nunca 0). Se suman TODOS los avisos de la propiedad: el
+  de la plataforma, los activos de la cuenta con la misma dirección (`mismaDireccion`: altura + última palabra de la
+  calle; `location.address_line`, NUNCA `seller_address`, que es la oficina) y el que pegue Paula (va antes que los
+  emparejados: con el tope `MAX_AVISOS_ML=5` nunca se cae). Paula puede excluir uno ("No es de esta propiedad").
+  Trampas de la API: `/items/visits` acepta UN id por pedido; leads tiene cupo chico (429) → de a un aviso; los
+  avisos AJENOS dan 403 (no sirve para competidoras); `/sites/MLA/search` da 403 a nuestra app.
+- **Argenprop no da estadísticas:** `/v1/estadisticas/avisos/{id}` responde 401 AUT005 "Anunciante inválido" con
+  nuestras credenciales (pedido hecho a Argenprop por mail el 2026-10-22). Las páginas públicas tampoco sirven: el
+  contador de vistas se carga por JS y el de Zonaprop es "últimos 30 días". Argenprop y Zonaprop siguen a mano.
+- **Textos escritos por la plataforma** (`lib/informes/redaccion.ts`): UNA llamada a gpt-4.1 por pedido (`POST
+  /api/informes/[id]/textos`, ~4 s), solo con los datos del informe y fragmentos reales de los informes de Diego.
+  Los números del texto se verifican en código contra los datos; uno sin respaldo marca el campo "revisar" (naranja).
+  "Volver a escribir" no pisa lo que Paula corrigió (`combinarTextos`). Se escriben solos al abrir si no hay textos.
+- **El cuello del recorrido lo decide el CÓDIGO** (`cuelloDelRecorrido`): <10% entra al aviso → presentación;
+  entra y menos de 1 consulta cada 100 → precio; consultas sin visitas → seguimiento; visitas que opinan precio alto →
+  ajuste. Viaja como dato y la validación marca para revisar un texto que recomiende fotos/portada si el cuello no
+  es la presentación. **Síntoma que lo originó:** con 25% de ingreso y 0 consultas el modelo recomendó "mejorar las
+  fotos" aunque el prompt decía lo contrario. Las recomendaciones están redactadas como viñeta final porque el
+  modelo a veces las copia tal cual.
+- **Competidoras buscadas solas** (`lib/informes/competencia/`): listados de Argenprop y ML del barrio + ambientes
+  por ScraperAPI (1 crédito, SIN `country_code`, corte 18 s), un portal por pedido; después se abren las 6 mejores de
+  a una para leer disposición y estado (corte 20 s). Puntaje en `puntaje.ts` (ambientes, m², precio, antigüedad,
+  disposición, estado); se descartan emprendimientos y "pozo". Guardado atómico con `informe_guardar_candidatas`
+  (migración `20261022000004`, columna `candidatas`). Zonaprop: sus listados no pasan ScraperAPI (ni premium) →
+  solo link pegado a mano. ML por barrio solo en Capital.
+  - **Links de terceros:** el link de cada candidata sale del HTML del portal y termina en "Ver en el portal", en el
+    PDF del propietario y en el scraper → `esLinkDelPortal`: https + host EXACTO + largo ≤ el tope de competidora.
+  - **Fallo intermitente:** el listado de Argenprop falló dos veces seguidas en la vista previa y a los minutos
+    anduvo (desde esta Mac: 5 de 5). La pantalla reintenta una vez sola (en otro pedido) y el error dice qué página
+    llegó (`[llegó una página de N KB: «título»]`), para distinguir un bloqueo de un cambio de HTML.
+- **Fotos webp en el PDF:** react-pdf solo dibuja JPEG/PNG y los portales sirven webp → las fotos de competidoras
+  salían en blanco ("Base64 image invalid format: webp"). `generar.tsx` las pasa a JPEG con un canvas.
+- **Arreglo de paso, compartido con el TASADOR:** la ficha de ML cambió la tabla (nombre en `<th>`, valor en `<td>`)
+  y `mercadoLibreExtractor` devolvía TODAS las características vacías (superficies, ambientes, antigüedad,
+  disposición), también para los comparables de las tasaciones; y leía las expensas de la segunda línea del precio,
+  que hoy repite el PRECIO (USD 95.000 → "expensas 95.000"). Verificado contra MLA-2073595273.
+- **Informes guardados con la forma de la Entrega 1** (fuente ML `{avisoId}`, manual ML con contactos) se actualizan
+  al LEER (`forma-vieja.ts`): uno real tiraba la pantalla.
+- **Probar sin UI:** `scripts/_qa-*` no se commitean. `vitest.informes.config.ts` incluye ahora el test del extractor
+  de ML (~10 s, 290 pruebas en total).
+
 ---
 
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
