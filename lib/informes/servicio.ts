@@ -14,7 +14,7 @@ import { combinarTextos, datosParaRedactar, entradaDeRedaccion, ESQUEMA_REDACCIO
 import { respuestaOpenAI } from '@/lib/ai/openai-responses'
 import { scrapeProperty } from '@/lib/scraper'
 import { urlBusquedaArgenprop, urlBusquedaMercadoLibre } from './competencia/busqueda'
-import { parsearListadoArgenprop, parsearListadoMercadoLibre } from './competencia/listados'
+import { esLinkDelPortal, parsearListadoArgenprop, parsearListadoMercadoLibre } from './competencia/listados'
 import { ordenarCandidatas, type Candidata, type DetalleCandidata } from './competencia/puntaje'
 import { traerListado } from './competencia/traer'
 import { FUENTES, type Capturas, type FuenteGuardada, type Fuentes, type Informe, type NombreCaptura, type NombreFuente, type PropiedadDelInforme, type BusquedaPortal } from './tipos'
@@ -60,6 +60,8 @@ export async function refrescarFuente(i: Informe, nombre: NombreFuente, ahora: D
 const MODELO_TEXTOS = process.env.INFORME_MODELO_TEXTO ?? 'gpt-4.1'
 /** Netlify corta a los ~26 s; cortamos antes para responder un error legible (no una página HTML). */
 const TOPE_TEXTOS_MS = 22_000
+/** Abrir una ficha de candidata: debajo del techo de Netlify (~26 s), con margen para guardar el resultado. */
+const TOPE_ABRIR_MS = 20_000
 
 /**
  * Escribe los cinco textos con UNA llamada al modelo. Antes de guardar relee el informe: lo que Paula haya
@@ -148,7 +150,17 @@ export async function abrirCandidata(i: Informe, url: string): Promise<DetalleCa
   exigirBorrador(i)
   const conocidas = [...(i.candidatas.argenprop?.avisos ?? []), ...(i.candidatas.mercadolibre?.avisos ?? [])].map(a => a.url)
   if (!conocidas.includes(url)) throw new ErrorInforme(400, 'Ese aviso no está entre las candidatas del informe')
-  const r = await scrapeProperty(url)
+  // Candidatas guardadas antes de que el parser validara el host: tampoco se abren.
+  if (!esLinkDelPortal('argenprop', url) && !esLinkDelPortal('mercadolibre', url)) throw new ErrorInforme(400, 'Ese link no es de Argenprop ni de MercadoLibre')
+  // El scraper espera hasta 30 s, más que el techo de Netlify (~26 s): se corta antes y queda anotado, así la ficha
+  // lenta no se convierte en un 504 que el navegador no puede leer.
+  let corte: ReturnType<typeof setTimeout> | undefined
+  const r = await Promise.race([
+    scrapeProperty(url),
+    new Promise<{ success: false; data?: undefined; error: string }>(ok => {
+      corte = setTimeout(() => ok({ success: false, error: 'El portal tardó demasiado en responder' }), TOPE_ABRIR_MS)
+    }),
+  ]).finally(() => clearTimeout(corte))
   const f = r.data?.features
   const detalle: DetalleCandidata = r.success && f ? {
     disposicion: typeof f.disposal === 'string' ? f.disposal : null,

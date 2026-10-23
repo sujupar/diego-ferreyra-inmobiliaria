@@ -56,9 +56,11 @@ export function combinarAvisos(f: {
     if (fuera.has(id) || vistos.has(id)) return
     vistos.set(id, { id, titulo: datos.get(id)?.titulo ?? null, url: datos.get(id)?.url ?? null, origen })
   }
+  // El que agregó Paula va antes que los emparejados por dirección: con el tope, nunca se cae en silencio lo que
+  // una persona eligió a propósito.
   f.plataforma.forEach(id => sumar(id, 'plataforma'))
-  f.cuenta.forEach(c => sumar(c.id, 'cuenta'))
   if (f.manual) sumar(f.manual, 'manual')
+  f.cuenta.forEach(c => sumar(c.id, 'cuenta'))
   return [...vistos.values()].slice(0, MAX_AVISOS_ML)
 }
 

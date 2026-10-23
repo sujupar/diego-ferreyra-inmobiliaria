@@ -63,4 +63,10 @@ describe('combinarAvisos', () => {
     const cuenta = Array.from({ length: 8 }, (_, i) => ({ id: `MLA100000000${i}`, titulo: null, url: null }))
     expect(combinarAvisos({ plataforma: [], cuenta, manual: null, excluidos: [] })).toHaveLength(5)
   })
+  it('con el tope lleno, el que agregó Paula no se cae', () => {
+    const cuenta = Array.from({ length: 8 }, (_, i) => ({ id: `MLA100000000${i}`, titulo: null, url: null }))
+    const r = combinarAvisos({ plataforma: [], cuenta, manual: 'MLA1111111111', excluidos: [] })
+    expect(r).toHaveLength(5)
+    expect(r.map(a => a.id)).toContain('MLA1111111111')
+  })
 })

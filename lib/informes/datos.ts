@@ -7,6 +7,7 @@ import 'server-only'
 import { sb } from './sb'
 import { normalizarDisposicion, normalizarEstado } from './competencia/caracteristicas'
 import { BUCKET_INFORMES } from './archivos'
+import { actualizarFormaVieja } from './forma-vieja'
 import type { CandidatasGuardadas, Capturas, Competidora, Fuentes, FuenteGuardada, Informe, Manual, NombreCaptura, NombreFuente, PropiedadDelInforme } from './tipos'
 import type { CambiosInforme } from './sanear'
 
@@ -24,9 +25,10 @@ function aInforme(r: Record<string, unknown>): Informe {
   const origen = r.origen === 'ciclo' || r.origen === 'manual' ? r.origen : null
   const estado = r.estado === 'borrador' || r.estado === 'listo' ? r.estado : null
   if (!origen || !estado) throw new Error(`informe ${String(r.id)}: origen o estado desconocido`)
+  const { fuentes, manual } = actualizarFormaVieja(objeto(r.fuentes) as Fuentes, objeto(r.manual) as Manual)
   return {
     id: String(r.id), propertyId: String(r.property_id), desde: String(r.desde), hasta: String(r.hasta), origen, estado,
-    fuentes: objeto(r.fuentes) as Fuentes, manual: objeto(r.manual) as Manual,
+    fuentes, manual,
     competidoras: Array.isArray(r.competidoras) ? (r.competidoras as Competidora[]) : [],
     candidatas: { detalles: {}, ...(objeto(r.candidatas) as Partial<CandidatasGuardadas>) },
     capturas: objeto(r.capturas) as Capturas, pdfPath: r.pdf_path ? String(r.pdf_path) : null,

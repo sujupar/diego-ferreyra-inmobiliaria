@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { parsearListadoArgenprop, parsearListadoMercadoLibre } from './listados'
+import { esLinkDelPortal, parsearListadoArgenprop, parsearListadoMercadoLibre } from './listados'
 import { slugDeBarrio, urlBusquedaArgenprop, urlBusquedaMercadoLibre } from './busqueda'
 import { ordenarCandidatas, type AvisoDeListado } from './puntaje'
 import { normalizarDisposicion, normalizarEstado } from './caracteristicas'
@@ -120,5 +120,36 @@ describe('ordenarCandidatas', () => {
   })
   it('tope de 12 candidatas', () => {
     expect(ordenarCandidatas(ref, Array.from({ length: 20 }, (_, i) => aviso({ direccion: `Calle ${i + 1}00` })))).toHaveLength(12)
+  })
+})
+
+describe('esLinkDelPortal (el link de una candidata va a la pantalla, al PDF y al scraper)', () => {
+  it('acepta los avisos de cada portal con https y host exacto', () => {
+    expect(esLinkDelPortal('argenprop', 'https://www.argenprop.com/departamento-en-venta-en-coghlan--1234')).toBe(true)
+    expect(esLinkDelPortal('mercadolibre', 'https://departamento.mercadolibre.com.ar/MLA-123456789-x')).toBe(true)
+    expect(esLinkDelPortal('mercadolibre', 'https://mercadolibre.com.ar/MLA-1')).toBe(true)
+  })
+
+  it('rechaza otro protocolo, otro host o un host que solo CONTIENE el del portal', () => {
+    expect(esLinkDelPortal('argenprop', 'http://www.argenprop.com/x--1')).toBe(false)
+    expect(esLinkDelPortal('argenprop', 'javascript:alert(1)//--1')).toBe(false)
+    expect(esLinkDelPortal('argenprop', 'https://evil.com/argenprop.com--1')).toBe(false)
+    expect(esLinkDelPortal('argenprop', 'https://www.argenprop.com.evil.com/x--1')).toBe(false)
+    expect(esLinkDelPortal('mercadolibre', 'https://evilmercadolibre.com.ar/MLA-1')).toBe(false)
+    expect(esLinkDelPortal('mercadolibre', 'https://mercadolibre.com.ar.evil.com/MLA-1')).toBe(false)
+    expect(esLinkDelPortal('mercadolibre', 'no es una url MLA')).toBe(false)
+  })
+
+  it('rechaza un link más largo de lo que acepta una competidora', () => {
+    expect(esLinkDelPortal('argenprop', `https://www.argenprop.com/${'a'.repeat(1000)}--1`)).toBe(false)
+  })
+
+  it('un aviso con link ajeno en el listado se descarta, el resto queda', () => {
+    const ap = readFileSync(path.join(__dirname, '__fixtures__/argenprop-listado.html'), 'utf8')
+    const hostil = ap.replace(/href="\/([^"]*--\d+)"/, 'href="https://evil.com/$1"')
+    expect(hostil).not.toBe(ap)
+    const avisos = parsearListadoArgenprop(hostil)
+    expect(avisos.length).toBe(parsearListadoArgenprop(ap).length - 1)
+    expect(avisos.every(a => a.url.startsWith('https://www.argenprop.com/'))).toBe(true)
   })
 })

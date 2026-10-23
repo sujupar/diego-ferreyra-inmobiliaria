@@ -252,7 +252,8 @@ export function EditorInforme({ informeId }: { informeId: string }) {
   const m = manual ?? informe.manual
   // Los rótulos de `faltantes()` llevan aclaraciones ("… (o marcar que no está publicada)"): se compara el comienzo.
   const falta = (...comienzos: string[]) => !listo && faltantes.some(x => comienzos.some(c => x.startsWith(c)))
-  const ocupado = armandoPdf !== null || guardando > 0
+  // La búsqueda de competidoras escribe el informe (cambia su versión): marcarlo listo en el medio daría 409.
+  const ocupado = armandoPdf !== null || guardando > 0 || progresoCompetencia !== null
   // Mientras se arma el PDF no se edita: lo escrito en ese momento no saldría en el PDF.
   const bloqueado = listo || armandoPdf !== null || escribiendo
   // Un texto escrito por la plataforma con un número que no está en los datos, que nadie corrigió todavía.

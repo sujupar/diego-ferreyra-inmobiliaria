@@ -5,6 +5,21 @@
  */
 import * as cheerio from 'cheerio'
 import type { AvisoDeListado } from './puntaje'
+import { TOPES_COMPETIDORA } from '../sanear'
+
+/**
+ * El link de una candidata sale del HTML del portal (contenido de terceros) y termina en "Ver en el portal", en el
+ * PDF que recibe el propietario y en el scraper. Solo https, host EXACTO (nunca `includes`: `evil.com/argenprop.com`
+ * pasaría) y dentro del largo que acepta una competidora (si no, "Agregar al informe" fallaría al guardar).
+ */
+export function esLinkDelPortal(portal: 'argenprop' | 'mercadolibre', link: string): boolean {
+  if (link.length > TOPES_COMPETIDORA.link) return false
+  let u: URL
+  try { u = new URL(link) } catch { return false }
+  if (u.protocol !== 'https:') return false
+  if (portal === 'argenprop') return u.hostname === 'www.argenprop.com'
+  return u.hostname === 'mercadolibre.com.ar' || u.hostname.endsWith('.mercadolibre.com.ar')
+}
 
 const texto = (s: string | undefined | null) => (s ?? '').replace(/\s+/g, ' ').trim()
 
@@ -41,9 +56,12 @@ export function parsearListadoArgenprop(html: string): AvisoDeListado[] {
       return li.length ? primerNumero(texto(li.text())) : null
     }
     const fotos = c.find('img').map((__, img) => $(img).attr('data-src') ?? $(img).attr('src')).get()
+    let url: string
+    try { url = new URL(href.split('?')[0], 'https://www.argenprop.com').toString() } catch { return }
+    if (!esLinkDelPortal('argenprop', url)) return
     avisos.push({
       portal: 'argenprop',
-      url: new URL(href.split('?')[0], 'https://www.argenprop.com').toString(),
+      url,
       titulo: texto(c.find('.card__title').text()) || null,
       direccion: texto(c.find('.card__address').text()),
       precio: /consultar/i.test(precioTxt) ? null : entero(precioTxt),
@@ -80,9 +98,11 @@ export function parsearListadoMercadoLibre(html: string): AvisoDeListado[] {
     if (/desde\s*(?:US\$|U\$S|\$)/i.test(todo) || /unidades disponibles/i.test(todo) || atributos.some(a => /\d+\s+a\s+\d+/.test(a)) || /\bpozo\b/i.test(titulo)) return
     const attr = (re: RegExp) => { const a = atributos.find(x => re.test(x)); return a ? primerNumero(a) : null }
     const simbolo = texto(c.find('.andes-money-amount__currency-symbol').first().text())
+    const url = href.split('#')[0]
+    if (!esLinkDelPortal('mercadolibre', url)) return
     avisos.push({
       portal: 'mercadolibre',
-      url: href.split('#')[0],
+      url,
       titulo: texto(c.find('.poly-component__title').first().text()) || null,
       direccion: texto(c.find('.poly-component__location').first().text()),
       precio: entero(c.find('.andes-money-amount__fraction').first().text()),
