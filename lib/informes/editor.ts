@@ -109,7 +109,16 @@ export function resumenDeLaFuente(nombre: NombreFuente, f: Fuentes): string | nu
     }
     case 'mercadolibre': {
       const d = f.mercadolibre?.estado === 'ok' ? f.mercadolibre.datos : null
-      return d ? `${plural(d.visitas, 'visita', 'visitas')} al aviso ${d.avisoId}` : null
+      if (!d) return null
+      const partes = [`${plural(d.visitas, 'visita', 'visitas')} al aviso ${d.avisoId}`]
+      if (d.contactos) {
+        const c = d.contactos
+        const canales = ([[c.preguntas, 'pregunta', 'preguntas'], [c.whatsapp, 'WhatsApp', 'WhatsApp'], [c.llamadas, 'llamada', 'llamadas'], [c.otros, 'otro', 'otros']] as const)
+          .filter(([n]) => n > 0).map(([n, uno, varios]) => plural(n, uno, varios))
+        partes.push(`${plural(c.interesados, 'interesado', 'interesados')}${canales.length ? ` (${canales.join(', ')})` : ''}`)
+      }
+      if (typeof d.vistasTelefono === 'number' && d.vistasTelefono > 0) partes.push(`vieron el teléfono ${plural(d.vistasTelefono, 'vez', 'veces')}`)
+      return partes.join(' · ')
     }
     case 'meta': {
       const d = f.meta?.estado === 'ok' ? f.meta.datos : null

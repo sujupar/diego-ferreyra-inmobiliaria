@@ -78,6 +78,55 @@ export function visitasDeMercadoLibre(respuesta: unknown, avisoId: string): numb
   return numero(fila.total_visits)
 }
 
+export interface ContactosMercadoLibre { interesados: number; preguntas: number; whatsapp: number; llamadas: number; otros: number }
+
+function canalDeContacto(lead: Record<string, unknown>): keyof Omit<ContactosMercadoLibre, 'interesados'> {
+  const t = `${String(lead.contact_type ?? '')} ${String(lead.channel ?? '')}`.toLowerCase()
+  if (t.includes('question')) return 'preguntas'
+  if (t.includes('whatsapp')) return 'whatsapp'
+  if (/\b(call|phone|llamada)\b/.test(t)) return 'llamadas'
+  return 'otros'
+}
+
+/**
+ * Páginas de `GET /vis/users/{id}/leads/buyers?item_id&date_from&date_to` → interesados (personas) y contactos
+ * por canal. Medido con avisos reales (2026-10-22): cada resultado es un comprador con sus `leads`. Un canal que
+ * no conocemos va a "otros" en vez de perderse. Si las páginas no suman el total que declara ML, es un error:
+ * un conteo a medias frente al propietario es peor que un "no se pudo traer".
+ */
+export function contactosDeMercadoLibre(paginas: unknown[]): ContactosMercadoLibre {
+  const r: ContactosMercadoLibre = { interesados: 0, preguntas: 0, whatsapp: 0, llamadas: 0, otros: 0 }
+  let declarado: number | null = null
+  for (const p of paginas) {
+    const pag = p as { paging?: { total?: unknown }; results?: unknown }
+    if (!pag || typeof pag !== 'object' || !Array.isArray(pag.results) || typeof pag.paging?.total !== 'number') {
+      throw new Error('MercadoLibre devolvió una respuesta inesperada de interesados')
+    }
+    declarado = pag.paging.total
+    for (const comprador of pag.results as Array<Record<string, unknown>>) {
+      r.interesados++
+      for (const lead of Array.isArray(comprador.leads) ? (comprador.leads as Array<Record<string, unknown>>) : []) r[canalDeContacto(lead)]++
+    }
+  }
+  if (declarado !== null && r.interesados !== declarado) {
+    throw new Error(`La lista de interesados de MercadoLibre vino incompleta (${r.interesados} de ${declarado})`)
+  }
+  return r
+}
+
+/**
+ * `GET /items/{id}/contacts/phone_views/time_window?last=N&unit=day` → vistas del teléfono día por día. Se suman
+ * solo los días del período (extremos incluidos). Si la ventana no llega al primer día, es un error.
+ */
+export function vistasDelTelefonoEnPeriodo(respuesta: unknown, desde: string, hasta: string): number {
+  const resultados = (respuesta as { results?: unknown })?.results
+  if (!Array.isArray(resultados)) throw new Error('MercadoLibre devolvió una respuesta inesperada de vistas del teléfono')
+  const dias = resultados.map(x => ({ dia: String((x as Record<string, unknown>).date ?? '').slice(0, 10), total: numero((x as Record<string, unknown>).total) }))
+  const primero = dias.map(d => d.dia).sort()[0]
+  if (!primero || primero > desde) throw new Error('La ventana de vistas del teléfono de MercadoLibre no cubre todo el período')
+  return dias.filter(d => d.dia >= desde && d.dia <= hasta).reduce((a, d) => a + d.total, 0)
+}
+
 // ─── Meta Ads ────────────────────────────────────────────────────────────────
 
 type Accion = { action_type: string; value: string }

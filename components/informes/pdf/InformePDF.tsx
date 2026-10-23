@@ -121,10 +121,11 @@ function Portales({ d }: { d: DatosDelPdf }) {
         {caps.mercadolibre ? <Captura src={caps.mercadolibre} /> : (
           <View style={[s.fila, { flexWrap: 'wrap' }]}>
             <Cifra titulo="Visitas" valor={numero(ml.datos.visitas)} ancho={100} />
-            {typeof m.mercadolibre?.contactos === 'number' ? <Cifra titulo="Contactos" valor={numero(m.mercadolibre.contactos)} ancho={100} /> : null}
-            {typeof m.mercadolibre?.llamadas === 'number' ? <Cifra titulo="Llamadas" valor={numero(m.mercadolibre.llamadas)} ancho={100} /> : null}
-            {typeof m.mercadolibre?.whatsapp === 'number' ? <Cifra titulo="WhatsApp" valor={numero(m.mercadolibre.whatsapp)} ancho={100} /> : null}
-            {typeof m.mercadolibre?.preguntas === 'number' ? <Cifra titulo="Preguntas" valor={numero(m.mercadolibre.preguntas)} ancho={100} /> : null}
+            {ml.datos.contactos ? <Cifra titulo="Interesados" valor={numero(ml.datos.contactos.interesados)} ancho={100} /> : null}
+            {ml.datos.contactos ? <Cifra titulo="Preguntas" valor={numero(ml.datos.contactos.preguntas)} ancho={100} /> : null}
+            {ml.datos.contactos ? <Cifra titulo="WhatsApp" valor={numero(ml.datos.contactos.whatsapp)} ancho={100} /> : null}
+            {ml.datos.contactos ? <Cifra titulo="Llamadas" valor={numero(ml.datos.contactos.llamadas)} ancho={100} /> : null}
+            {typeof ml.datos.vistasTelefono === 'number' ? <Cifra titulo="Vieron el teléfono" valor={numero(ml.datos.vistasTelefono)} ancho={110} /> : null}
           </View>
         )}
       </>) : null}

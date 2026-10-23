@@ -289,13 +289,6 @@ export function EditorInforme({ informeId }: { informeId: string }) {
       <Seccion id="sec-ml" titulo="MercadoLibre" ayuda="Las visitas al aviso se traen solas. Si la plataforma no conoce el aviso (se publicó a mano), pegá su link o su código MLA.">
         <CampoLinea id="ml-aviso" etiqueta="Aviso de MercadoLibre" valor={m.mercadolibre?.aviso} placeholder="MLA1234567890 o el link del aviso" maxLength={500} deshabilitado={bloqueado}
           onGuardar={t => guardarManual(x => ({ ...x, mercadolibre: { ...x.mercadolibre, aviso: t } }), async () => { await api.traerFuente(informeId, 'mercadolibre') })} />
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {(['contactos', 'llamadas', 'whatsapp', 'preguntas'] as const).map(k => (
-            <CampoNumero key={k} id={`ml-${k}`} etiqueta={{ contactos: 'Contactos', llamadas: 'Llamadas', whatsapp: 'WhatsApp', preguntas: 'Preguntas' }[k]}
-              valor={m.mercadolibre?.[k]} deshabilitado={bloqueado}
-              onGuardar={n => guardarManual(x => ({ ...x, mercadolibre: { ...x.mercadolibre, [k]: n } }))} />
-          ))}
-        </div>
         <CapturaPortal informeId={informe.id} cual="mercadolibre" portal="MercadoLibre" url={capturasUrl.mercadolibre} deshabilitado={bloqueado} onCambio={() => void recargar()} />
       </Seccion>
 

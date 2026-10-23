@@ -145,6 +145,10 @@ describe('resumenDeLaFuente', () => {
   })
   it('MercadoLibre, Meta e Instagram (este último rotulado como acumulado)', () => {
     expect(resumenDeLaFuente('mercadolibre', { mercadolibre: ok({ avisoId: 'MLA123', visitas: 1234 }) })).toBe('1.234 visitas al aviso MLA123')
+    expect(resumenDeLaFuente('mercadolibre', { mercadolibre: ok({
+      avisoId: 'MLA123', visitas: 15, vistasTelefono: 2,
+      contactos: { interesados: 3, preguntas: 2, whatsapp: 1, llamadas: 0, otros: 0 },
+    }) })).toBe('15 visitas al aviso MLA123 · 3 interesados (2 preguntas, 1 WhatsApp) · vieron el teléfono 2 veces')
     expect(resumenDeLaFuente('meta', { meta: ok({ campanas: 1, alcance: 4910, impresiones: 7516, resultados: 5, gasto: 0, edadSexo: [], plataformas: [] }) }))
       .toBe('1 campaña · alcance 4.910 · 5 clientes potenciales')
     expect(resumenDeLaFuente('instagram', { instagram: ok({ reels: [{ permalink: null, publicadoEn: null, reproducciones: 1500, alcance: 900, meGusta: 1, comentarios: 0, guardados: 0, compartidos: 0 }] }) }))

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { contarConsultas, fichaDeVisitas, visitasDeMercadoLibre, sumarMeta, resultadosDe, reelDeInsights } from './parsers'
+import { contarConsultas, contactosDeMercadoLibre, fichaDeVisitas, visitasDeMercadoLibre, vistasDelTelefonoEnPeriodo, sumarMeta, resultadosDe, reelDeInsights } from './parsers'
 import type { VisitaListado, EncuestaListado } from '@/lib/visitas/tipos'
 
 describe('contarConsultas', () => {
@@ -67,6 +67,54 @@ describe('visitasDeMercadoLibre', () => {
   it('una respuesta rara o de otro aviso es un error, no un 0', () => {
     expect(() => visitasDeMercadoLibre({ error: 'x' }, 'MLA1')).toThrow()
     expect(() => visitasDeMercadoLibre([{ item_id: 'MLA2', total_visits: 3 }], 'MLA1')).toThrow()
+  })
+})
+
+describe('contactosDeMercadoLibre (respuesta real de /vis/users/{id}/leads/buyers)', () => {
+  const pagina = (total: number, results: unknown[]) => ({ paging: { offset: 0, limit: 50, total }, results })
+  it('cuenta interesados (personas) y contactos por canal', () => {
+    const r = contactosDeMercadoLibre([pagina(3, [
+      { id: 1, item_id: 'MLA1', leads: [{ channel: 'question', contact_type: 'question' }, { channel: 'whatsapp', contact_type: 'whatsapp' }] },
+      { id: 2, item_id: 'MLA1', leads: [{ channel: 'phone', contact_type: 'call' }] },
+      { id: 3, item_id: 'MLA1', leads: [{ channel: 'question', contact_type: 'question' }] },
+    ])])
+    expect(r).toEqual({ interesados: 3, preguntas: 2, whatsapp: 1, llamadas: 1, otros: 0 })
+  })
+  it('junta varias páginas', () => {
+    const r = contactosDeMercadoLibre([
+      pagina(2, [{ id: 1, leads: [{ channel: 'question', contact_type: 'question' }] }]),
+      pagina(2, [{ id: 2, leads: [{ channel: 'whatsapp', contact_type: 'whatsapp' }] }]),
+    ])
+    expect(r.interesados).toBe(2)
+    expect(r.whatsapp).toBe(1)
+  })
+  it('un canal desconocido va a "otros", no se pierde', () => {
+    expect(contactosDeMercadoLibre([pagina(1, [{ id: 1, leads: [{ channel: 'video_call', contact_type: 'video_call' }] }])]).otros).toBe(1)
+  })
+  it('sin interesados es cero (respuesta real vacía)', () => {
+    expect(contactosDeMercadoLibre([pagina(0, [])])).toEqual({ interesados: 0, preguntas: 0, whatsapp: 0, llamadas: 0, otros: 0 })
+  })
+  it('una respuesta rara o incompleta es un error, no un 0', () => {
+    expect(() => contactosDeMercadoLibre([{ error: 'x' }])).toThrow()
+    expect(() => contactosDeMercadoLibre([pagina(5, [{ id: 1, leads: [] }])])).toThrow(/incompleta/)
+  })
+})
+
+describe('vistasDelTelefonoEnPeriodo (respuesta real de /items/{id}/contacts/phone_views/time_window)', () => {
+  const resp = {
+    total: 6, item_id: 'MLA1', results: [
+      { date: '2026-09-30T00:00:00Z', total: 4 }, { date: '2026-10-01T00:00:00Z', total: 1 },
+      { date: '2026-10-15T00:00:00Z', total: 1 }, { date: '2026-10-16T00:00:00Z', total: 0 },
+    ],
+  }
+  it('suma solo los días del período, ambos extremos incluidos', () => {
+    expect(vistasDelTelefonoEnPeriodo(resp, '2026-10-01', '2026-10-15')).toBe(2)
+  })
+  it('si la ventana no cubre el período completo es un error (no un número de menos)', () => {
+    expect(() => vistasDelTelefonoEnPeriodo(resp, '2026-09-20', '2026-10-15')).toThrow(/no cubre/)
+  })
+  it('una respuesta rara es un error', () => {
+    expect(() => vistasDelTelefonoEnPeriodo({ error: 'x' }, '2026-10-01', '2026-10-15')).toThrow()
   })
 })
 

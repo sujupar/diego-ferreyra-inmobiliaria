@@ -11,7 +11,7 @@ import { sb } from '../sb'
 import { idDeAvisoMercadoLibre } from '../aviso-ml'
 import type { DatosPorFuente, FuenteGuardada, NombreFuente } from '../tipos'
 import { conError, instantesDelPeriodo, ok, sinDatos, sinLanzar, type ContextoFuente } from './comun'
-import { contarConsultas, fichaDeVisitas, reelDeInsights, sumarMeta, visitasDeMercadoLibre } from './parsers'
+import { contactosDeMercadoLibre, contarConsultas, fichaDeVisitas, reelDeInsights, sumarMeta, visitasDeMercadoLibre, vistasDelTelefonoEnPeriodo } from './parsers'
 
 const GRAPH = 'https://graph.facebook.com/v21.0'
 const TIMEOUT_MS = 8_000
@@ -73,11 +73,43 @@ async function avisoDeMercadoLibre(c: ContextoFuente): Promise<string | null> {
   return null
 }
 
+/**
+ * Interesados del aviso en el período, todas las páginas (de a 50, tope 10 páginas). OJO: ML limita mucho este
+ * endpoint (429 "quota exceeded" con unos pocos pedidos seguidos, medido 2026-10-22): un informe pide UN aviso.
+ */
+async function leadsDelPeriodo(usuario: number, avisoId: string, c: ContextoFuente): Promise<unknown[]> {
+  const paginas: unknown[] = []
+  for (let offset = 0, i = 0; i < 10; i++, offset += 50) {
+    const p = await mlFetch<{ paging?: { total?: number }; results?: unknown[] }>(
+      `/vis/users/${usuario}/leads/buyers?item_id=${encodeURIComponent(avisoId)}&date_from=${c.desde}&date_to=${c.hasta}&limit=50&offset=${offset}`,
+      { signal: AbortSignal.timeout(TIMEOUT_MS) },
+    )
+    paginas.push(p)
+    if (offset + 50 >= (p.paging?.total ?? 0)) break
+  }
+  return paginas
+}
+
 async function mercadolibre(c: ContextoFuente): Promise<FuenteGuardada<DatosPorFuente['mercadolibre']>> {
   const avisoId = await avisoDeMercadoLibre(c)
   if (!avisoId) return sinDatos(c.ahora)
-  const r = await mlFetch<unknown>(`/items/visits?ids=${encodeURIComponent(avisoId)}&date_from=${c.desde}&date_to=${c.hasta}`, { signal: AbortSignal.timeout(TIMEOUT_MS) })
-  return ok(c.ahora, { avisoId, visitas: visitasDeMercadoLibre(r, avisoId) })
+  const corte = () => ({ signal: AbortSignal.timeout(TIMEOUT_MS) })
+  const id = encodeURIComponent(avisoId)
+  const yo = await mlFetch<{ id?: number }>('/users/me', corte())
+  if (!yo.id) throw new Error('MercadoLibre no devolvió el usuario de la cuenta')
+  // Vistas del teléfono: ML las da día por día en una ventana hacia atrás desde hoy (máximo 150 días).
+  const diasAtras = Math.ceil((Date.parse(c.ahora.toISOString().slice(0, 10)) - Date.parse(c.desde)) / 86_400_000) + 1
+  const [visitas, paginas, telefono] = await Promise.all([
+    mlFetch<unknown>(`/items/visits?ids=${id}&date_from=${c.desde}&date_to=${c.hasta}`, corte()),
+    leadsDelPeriodo(yo.id, avisoId, c),
+    diasAtras <= 150 ? mlFetch<unknown>(`/items/${id}/contacts/phone_views/time_window?last=${diasAtras}&unit=day`, corte()) : Promise.resolve(null),
+  ])
+  return ok(c.ahora, {
+    avisoId,
+    visitas: visitasDeMercadoLibre(visitas, avisoId),
+    contactos: contactosDeMercadoLibre(paginas),
+    vistasTelefono: telefono === null ? null : vistasDelTelefonoEnPeriodo(telefono, c.desde, c.hasta),
+  })
 }
 
 async function graph(ruta: string): Promise<{ data?: Array<Record<string, unknown>> }> {
