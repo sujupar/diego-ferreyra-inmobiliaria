@@ -153,3 +153,11 @@ describe('esLinkDelPortal (el link de una candidata va a la pantalla, al PDF y a
     expect(avisos.every(a => a.url.startsWith('https://www.argenprop.com/'))).toBe(true)
   })
 })
+
+describe('cuando el listado no trae avisos, el error dice qué página llegó', () => {
+  it('nombra el título y el tamaño (distingue un bloqueo de un cambio de HTML)', () => {
+    const bloqueo = `<html><head><title>Attention Required! | Cloudflare</title></head><body>${'x'.repeat(3000)}</body></html>`
+    expect(() => parsearListadoArgenprop(bloqueo)).toThrow(/no reconoce.*«Attention Required! \| Cloudflare»/)
+    expect(() => parsearListadoMercadoLibre(bloqueo)).toThrow(/3 KB/)
+  })
+})

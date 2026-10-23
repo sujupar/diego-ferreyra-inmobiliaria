@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { combinarTextos, datosParaRedactar, numerosDelTexto, validarRedaccion } from './redaccion'
+import { combinarTextos, cuelloDelRecorrido, datosParaRedactar, numerosDelTexto, validarRedaccion } from './redaccion'
 import { resumenDeMetricas } from './resumen'
 import type { Fuentes, Informe, PropiedadDelInforme } from './tipos'
 
@@ -91,5 +91,46 @@ describe('combinarTextos', () => {
   })
   it('"Volver a escribir todo" reemplaza también lo corregido', () => {
     expect(combinarTextos({ actuales: { accionesRealizadas: 'Paula' }, original: {}, nuevos, forzar: true }).accionesRealizadas).toBe('nuevo B')
+  })
+})
+
+describe('cuelloDelRecorrido (lo decide el código: el modelo recomendó fotos con 25% de ingreso y 0 consultas)', () => {
+  const base = { porcentajeQueEntro: 25, entraron: 825, consultas: 0, visitasRealizadas: 0, precioAlto: 0, precioNoAlto: 0 }
+  it('menos del 10% entra al aviso → la presentación', () => {
+    expect(cuelloDelRecorrido({ ...base, porcentajeQueEntro: 6 })?.etapa).toBe('presentacion')
+  })
+  it('entra 10% o más y casi nadie consulta → el precio, no las fotos', () => {
+    expect(cuelloDelRecorrido(base)?.etapa).toBe('precio')
+    expect(cuelloDelRecorrido({ ...base, consultas: 4 })?.etapa).toBe('precio')
+  })
+  it('hay consultas pero no visitas → seguimiento a los interesados', () => {
+    expect(cuelloDelRecorrido({ ...base, consultas: 20 })?.etapa).toBe('seguimiento')
+  })
+  it('los que visitaron dicen que el precio está alto → ajuste de precio', () => {
+    expect(cuelloDelRecorrido({ ...base, consultas: 20, visitasRealizadas: 3, precioAlto: 2, precioNoAlto: 1 })?.etapa).toBe('ajuste_precio')
+  })
+  it('avanza en todas las etapas → seguir con la difusión', () => {
+    expect(cuelloDelRecorrido({ ...base, consultas: 20, visitasRealizadas: 3, precioAlto: 0, precioNoAlto: 3 })?.etapa).toBe('difusion')
+  })
+  it('sin el porcentaje o sin consultas confiables no decide nada', () => {
+    expect(cuelloDelRecorrido({ ...base, porcentajeQueEntro: null })).toBeNull()
+    expect(cuelloDelRecorrido({ ...base, consultas: null })).toBeNull()
+  })
+})
+
+describe('validarRedaccion marca un texto que contradice el cuello', () => {
+  const salida = {
+    resumenMetricas: 'Buena visibilidad.', accionesRealizadas: ['Publicada en portales.'],
+    accionesARealizar: ['Mejorar las fotos y la portada del aviso.'], resumenConsultas: 'Sin consultas.', analisisFinal: 'Hay que revisar las fotos.',
+  }
+  it('con el cuello en el precio, recomendar fotos queda para revisar', () => {
+    const d = { ...datos(), cuello: { etapa: 'precio' as const, recomendacion: 'x' } }
+    const r = validarRedaccion(salida, d)
+    expect(r.ok && r.revisar).toEqual(expect.arrayContaining(['accionesARealizar', 'analisisFinal']))
+  })
+  it('con el cuello en la presentación, recomendar fotos es lo correcto', () => {
+    const d = { ...datos(), cuello: { etapa: 'presentacion' as const, recomendacion: 'x' } }
+    const r = validarRedaccion(salida, d)
+    expect(r.ok && r.revisar).not.toContain('accionesARealizar')
   })
 })

@@ -28,6 +28,39 @@ const NOMBRE_FUENTE: Record<string, string> = {
 
 const unDecimal = (n: number) => Math.round(n * 10) / 10
 
+export type EtapaDelCuello = 'presentacion' | 'precio' | 'seguimiento' | 'ajuste_precio' | 'difusion'
+
+const RECOMENDACION: Record<EtapaDelCuello, string> = {
+  presentacion: 'Menos de 1 de cada 10 que la ven entra al aviso: mejorar la presentación (fotos, portada, título).',
+  precio: 'Entran al aviso pero casi nadie consulta: la presentación funciona; revisar el precio frente a la competencia.',
+  seguimiento: 'Hay consultas pero no se concretan visitas: hacer seguimiento a los interesados para coordinarlas.',
+  ajuste_precio: 'Los que visitaron opinan que el precio está por encima del mercado: conversar un ajuste de precio.',
+  difusion: 'Avanza en todas las etapas: seguir con la máxima difusión.',
+}
+
+/**
+ * Dónde se corta el recorrido. Lo decide el CÓDIGO, no el modelo: con 25% de ingreso y 0 consultas el modelo
+ * recomendó "mejorar las fotos" aunque el prompt decía lo contrario (vista previa, 2026-10-22). null = no hay
+ * datos para decidir; el modelo no recomienda una etapa sin base.
+ */
+export function cuelloDelRecorrido(e: {
+  porcentajeQueEntro: number | null; entraron: number | null; consultas: number | null
+  visitasRealizadas: number | null; precioAlto: number; precioNoAlto: number
+}): { etapa: EtapaDelCuello; recomendacion: string } | null {
+  if (e.porcentajeQueEntro === null || e.consultas === null) return null
+  const etapa: EtapaDelCuello =
+    e.porcentajeQueEntro < 10 ? 'presentacion'
+    // "Casi nadie consulta": menos de 1 consulta cada 100 que entran.
+    : !e.entraron || e.consultas * 100 < e.entraron ? 'precio'
+    : !e.visitasRealizadas ? 'seguimiento'
+    : e.precioAlto > 0 && e.precioAlto > e.precioNoAlto ? 'ajuste_precio'
+    : 'difusion'
+  return { etapa, recomendacion: RECOMENDACION[etapa] }
+}
+
+/** Recomendar tocar fotos/portada/título cuando el problema no es ese. */
+const RECOMIENDA_PRESENTACION = /(mejorar|cambiar|revisar|renovar|actualizar|trabajar)[^.\n]{0,80}(fotos?|portada|t[ií]tulo|presentaci[oó]n)/i
+
 export function datosParaRedactar(e: { informe: Informe; propiedad: PropiedadDelInforme; resumen: Resumen; anterior: InformeAnterior | null }) {
   const { informe: i, propiedad: p, resumen: r } = e
   const f = i.fuentes
@@ -38,7 +71,13 @@ export function datosParaRedactar(e: { informe: Informe; propiedad: PropiedadDel
   const ig = okDe('instagram')
   const zp = i.manual.zonaprop
   const ap = i.manual.argenprop
+  const porcentajeQueEntro = r.vieron.valor && r.entraron.valor !== null ? unDecimal((r.entraron.valor / r.vieron.valor) * 100) : null
+  const consultas = okDe('consultas')
   return {
+    cuello: cuelloDelRecorrido({
+      porcentajeQueEntro, entraron: r.entraron.valor, consultas: consultas?.total ?? null, visitasRealizadas: vis?.realizadas ?? null,
+      precioAlto: vis?.ficha.precio.alto ?? 0, precioNoAlto: (vis?.ficha.precio.correcto ?? 0) + (vis?.ficha.precio.bajo ?? 0),
+    }),
     periodo: { desde: i.desde, hasta: i.hasta, texto: textoDelPeriodo(i.desde, i.hasta) },
     propiedad: {
       direccion: p.direccion, barrio: p.barrio, tipo: p.tipo, ambientes: p.ambientes ?? null,
@@ -47,7 +86,7 @@ export function datosParaRedactar(e: { informe: Informe; propiedad: PropiedadDel
     portales: {
       vieron: r.vieron.valor,
       entraron: r.entraron.valor,
-      porcentajeQueEntro: r.vieron.valor && r.entraron.valor !== null ? unDecimal((r.entraron.valor / r.vieron.valor) * 100) : null,
+      porcentajeQueEntro,
       zonaprop: zp?.publicado === false ? 'no publicada' : { exposicion: zp?.exposicion ?? null, visualizaciones: zp?.visualizaciones ?? null, interesados: zp?.interesados ?? null },
       argenprop: ap?.publicado === false ? 'no publicada' : { visualizaciones: ap?.visualizaciones ?? null },
     },
@@ -55,7 +94,7 @@ export function datosParaRedactar(e: { informe: Informe; propiedad: PropiedadDel
       avisos: ml.avisos.length, visitas: ml.visitas, interesados: ml.contactos?.interesados ?? null, preguntas: ml.contactos?.preguntas ?? null,
       whatsapp: ml.contactos?.whatsapp ?? null, llamadas: ml.contactos?.llamadas ?? null, vistasTelefono: ml.vistasTelefono ?? null,
     } : null,
-    consultas: okDe('consultas'),
+    consultas,
     visitas: vis ? {
       realizadas: vis.realizadas, fichasCompletas: vis.ficha.respuestas, leGusto: vis.ficha.leGusto, precio: vis.ficha.precio,
       ofertas: vis.ficha.ofertas, monedaOfertas: vis.ficha.moneda, loQueMenosGusto: vis.ficha.menosGusto, loQueMasGusto: vis.ficha.masGusto,
@@ -138,6 +177,11 @@ export function validarRedaccion(crudo: unknown, d: DatosRedaccion): ResultadoRe
   const permitidos = numerosPermitidos(d)
   const respaldado = (x: number) => permitidos.some(y => Math.abs(x - y) <= (Number.isInteger(x) ? 0 : 0.11))
   const revisar = CAMPOS_TEXTO.filter(c => numerosDelTexto(textos[c]).some(x => !respaldado(x)))
+  if (d.cuello && d.cuello.etapa !== 'presentacion') {
+    for (const c of ['accionesARealizar', 'analisisFinal'] as const) {
+      if (RECOMIENDA_PRESENTACION.test(textos[c]) && !revisar.includes(c)) revisar.push(c)
+    }
+  }
   return { ok: true, textos, revisar }
 }
 
@@ -201,14 +245,10 @@ Qué va en cada campo:
 - accionesRealizadas: SOLO hechos que están en los datos: dónde está publicada, campaña de Meta si hubo, reels si
   hubo, visitas realizadas si hubo. NO digas que se respondieron consultas ni que se hizo algo que el JSON no dice.
   Una acción por elemento, frase corta.
-- accionesARealizar: una recomendación coherente con el análisis, según dónde se corta el recorrido:
-  · porcentajeQueEntro menor a 10 → la presentación no atrae: mejorar fotos, título o portada.
-  · porcentajeQueEntro de 10 o más y pocas consultas → la presentación SÍ funciona (no recomiendes cambiar fotos);
-    el comprador entra y no avanza: revisar el precio frente a la competencia.
-  · consultas sin visitas → hacer seguimiento a los interesados para coordinar visitas.
-  · visitas que opinan "precio por encima del valor de mercado" → conversar un ajuste de precio.
-  · si avanza bien en todas las etapas: "Seguir con la máxima difusión."
-  Una por elemento.
+- accionesARealizar: el JSON trae "cuello" (dónde se corta el recorrido, ya decidido con los números). Tu
+  recomendación y el cierre del análisis SIGUEN "cuello.recomendacion", con tus palabras. No recomiendes otra cosa:
+  si cuello.etapa no es "presentacion", NO recomiendes cambiar fotos, portada ni título (la presentación funciona).
+  Si "cuello" es null, recomendá "Seguir con la máxima difusión." Una por elemento.
 - resumenConsultas: cuántas consultas hubo y por dónde; si hay datos de visitas/encuesta que agreguen contexto, sumalo.
 - analisisFinal: 3 a 6 párrafos como el ejemplo: apariciones → ingresos (con el porcentaje que entró) → consultas →
   visitas; dónde está el cuello; qué dijeron los que visitaron (si hay fichas); comparación con la competencia por

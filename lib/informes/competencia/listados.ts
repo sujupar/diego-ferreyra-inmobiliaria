@@ -41,6 +41,15 @@ function moneda(s: string): 'USD' | 'ARS' | null {
   return null
 }
 
+/**
+ * Qué página llegó, para el mensaje de error: sin esto, "no reconoce ningún aviso" no distingue un portal que
+ * cambió su HTML de una página de bloqueo o de un listado vacío (pasó en la vista previa del 2026-10-22).
+ */
+function queLlego($: cheerio.CheerioAPI, html: string): string {
+  const titulo = texto($('title').first().text()).slice(0, 80) || 'sin título'
+  return `[llegó una página de ${Math.round(html.length / 1024)} KB: «${titulo}»]`
+}
+
 const httpsONull = (u: string | undefined) => (u && u.startsWith('https://') ? u : null)
 
 export function parsearListadoArgenprop(html: string): AvisoDeListado[] {
@@ -77,7 +86,7 @@ export function parsearListadoArgenprop(html: string): AvisoDeListado[] {
       inmobiliaria: texto(c.find('.card__agent-name').text()) || null,
     })
   })
-  if (!avisos.length) throw new Error('La plataforma no reconoce ningún aviso en la página de Argenprop (¿cambió el portal?)')
+  if (!avisos.length) throw new Error(`La plataforma no reconoce ningún aviso en la página de Argenprop (¿cambió el portal?) ${queLlego($, html)}`)
   return avisos
 }
 
@@ -118,6 +127,6 @@ export function parsearListadoMercadoLibre(html: string): AvisoDeListado[] {
       inmobiliaria: texto(c.find('.poly-component__seller').first().text()) || null,
     })
   })
-  if (!tarjetas) throw new Error('La plataforma no reconoce ningún aviso en la página de MercadoLibre (¿cambió el portal?)')
+  if (!tarjetas) throw new Error(`La plataforma no reconoce ningún aviso en la página de MercadoLibre (¿cambió el portal?) ${queLlego($, html)}`)
   return avisos
 }
