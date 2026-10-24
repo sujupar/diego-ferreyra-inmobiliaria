@@ -1,12 +1,38 @@
 import { describe, expect, it } from 'vitest'
-import { esReintentable, esperaParaReintento, estadoDelGuardado, ESPERA_AL_TIPEAR_MS } from './autoguardado'
+import { esReintentable, esperaParaReintento, estadoDelGuardado, mezclarTrasEscribir, ESPERA_AL_TIPEAR_MS } from './autoguardado'
+import type { Manual } from './tipos'
+
+describe('mezclarTrasEscribir (la plataforma escribió los textos mientras Paula cargaba datos)', () => {
+  const antes: Manual = { zonaprop: { exposicion: 100 }, textos: { analisisFinal: 'viejo', resumenMetricas: 'viejo' } }
+  const servidor: Manual = { zonaprop: { exposicion: 100 }, textos: { analisisFinal: 'NUEVO', resumenMetricas: 'NUEVO' }, redaccion: { generadoEn: 'x', original: {}, revisar: [] } }
+  it('sin nada escrito en el medio, queda lo del servidor tal cual', () => {
+    expect(mezclarTrasEscribir({ local: antes, confirmadoAntes: antes, servidor })).toEqual({ manual: servidor, hayQueMandar: false })
+  })
+  it('un número cargado en el medio se conserva (antes se perdía) y hay que mandarlo', () => {
+    const local: Manual = { ...antes, zonaprop: { exposicion: 930 } }
+    const r = mezclarTrasEscribir({ local, confirmadoAntes: antes, servidor })
+    expect(r.hayQueMandar).toBe(true)
+    expect(r.manual.zonaprop).toEqual({ exposicion: 930 })
+    expect(r.manual.textos).toEqual(servidor.textos)
+    expect(r.manual.redaccion).toEqual(servidor.redaccion)
+  })
+  it('un texto que Paula escribió en el medio gana sobre el de la plataforma; los otros textos son los nuevos', () => {
+    const local: Manual = { ...antes, textos: { ...antes.textos, analisisFinal: 'lo de Paula' } }
+    const r = mezclarTrasEscribir({ local, confirmadoAntes: antes, servidor })
+    expect(r.manual.textos).toEqual({ analisisFinal: 'lo de Paula', resumenMetricas: 'NUEVO' })
+    expect(r.hayQueMandar).toBe(true)
+  })
+})
 
 describe('esReintentable (qué fallos se reintentan solos)', () => {
   it('sin conexión, servidor caído o lento: sí (el dato es bueno, falló el camino)', () => {
     for (const s of [0, 408, 429, 500, 502, 503, 504]) expect(esReintentable(s)).toBe(true)
   })
+  it('sesión vencida: sí (al volver a entrar, lo escrito se manda solo; descartarlo perdería el trabajo)', () => {
+    expect(esReintentable(401)).toBe(true)
+  })
   it('dato inválido, sin permiso, informe inexistente o ya listo: no (insistir no lo arregla)', () => {
-    for (const s of [400, 401, 403, 404, 409]) expect(esReintentable(s)).toBe(false)
+    for (const s of [400, 403, 404, 409]) expect(esReintentable(s)).toBe(false)
   })
 })
 

@@ -35,9 +35,9 @@ async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
  * Último recurso al cerrar o recargar la pestaña: `keepalive` deja que el pedido termine aunque la página se vaya
  * (un `fetch` común se cancela). No se espera la respuesta: no hay a quién mostrársela.
  */
-export function guardarManualAlSalir(id: string, manual: Manual): void {
+export function guardarAlSalir(id: string, cambios: { manual?: Manual; competidoras?: Competidora[] }): void {
   try {
-    void fetch(base(id), { ...json('PATCH', { manual }), keepalive: true }).catch(() => {})
+    void fetch(base(id), { ...json('PATCH', cambios), keepalive: true }).catch(() => {})
   } catch { /* el navegador no aceptó el pedido (cuerpo > 64 KB): lo cubre el aviso de "cambios sin guardar" */ }
 }
 

@@ -22,7 +22,7 @@ import { ArrowLeft, CheckCircle2, Download, Eye, Loader2, RefreshCw, Undo2 } fro
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { sanearCambios } from '@/lib/informes/sanear'
-import { esReintentable, esperaParaReintento, estadoDelGuardado } from '@/lib/informes/autoguardado'
+import { esReintentable, esperaParaReintento, estadoDelGuardado, mezclarTrasEscribir } from '@/lib/informes/autoguardado'
 import type { CampoTexto as CampoDeTexto } from '@/lib/informes/redaccion'
 import { fuentesPorTraer, resumenDeLaFuente, rotuloDeLaFuente, type Tono } from '@/lib/informes/editor'
 import { textoDelPeriodo } from '@/lib/informes/periodo'
@@ -69,6 +69,15 @@ export function EditorInforme({ informeId }: { informeId: string }) {
   const pendientes = useRef(new Map<string, () => void>())
   const [nPendientes, setNPendientes] = useState(0)
   const reintento = useRef<{ timer: ReturnType<typeof setTimeout> | null; intento: number }>({ timer: null, intento: 0 })
+  /** Lista de competidoras que todavía no entró a la base (se reintenta igual que `manual`). */
+  const competidorasSinGuardar = useRef<Competidora[] | null>(null)
+  /** Lo que había que hacer después de un guardado que falló (traer de nuevo ML): corre cuando el reintento entra. */
+  const despuesPendiente = useRef<(() => Promise<void>) | null>(null)
+  const desmontado = useRef(false)
+  /** Sube cuando un guardado se RECHAZA y se vuelve atrás: los campos se re-montan y muestran lo que sí quedó. */
+  const [versionCampos, setVersionCampos] = useState(0)
+  // `escribir` se declara antes que `enviarManual`: lo llama por acá.
+  const enviarRef = useRef<() => Promise<boolean>>(async () => true)
 
   const onPendiente = useCallback<AvisarPendiente>((id, enviar) => {
     if (enviar) pendientes.current.set(id, enviar)
@@ -96,13 +105,19 @@ export function EditorInforme({ informeId }: { informeId: string }) {
    * PATCH de `manual`). Al volver, la pantalla toma el `manual` del servidor: ahí están los textos nuevos.
    */
   const escribir = useCallback((forzar: boolean) => {
+    // Lo escrito sin mandar entra a la cola ANTES: la plataforma escribe sobre lo último que cargó Paula.
+    for (const enviar of [...pendientes.current.values()]) enviar()
     setEscribiendo(true)
     setAviso(null)
     void encolar(async () => {
+      const antes = confirmado.current
       const r = await api.escribirTextos(informeId, forzar)
-      manualRef.current = r.manual
+      // Antes se adoptaba lo del servidor y lo cargado mientras escribía se perdía (revisión adversarial).
+      const mezcla = mezclarTrasEscribir({ local: manualRef.current ?? {}, confirmadoAntes: antes, servidor: r.manual })
       confirmado.current = r.manual
-      setManual(r.manual)
+      manualRef.current = mezcla.manual
+      setManual(mezcla.manual)
+      if (mezcla.hayQueMandar) await enviarRef.current()
       await recargar()
     }).finally(() => setEscribiendo(false))
   }, [encolar, informeId, recargar])
@@ -192,6 +207,8 @@ export function EditorInforme({ informeId }: { informeId: string }) {
       manualRef.current = confirmado.current
       setManual(confirmado.current)
       setFallo(null)
+      setGuardadoEn(null)
+      setVersionCampos(v => v + 1)
       throw e
     }
     confirmado.current = enviado
@@ -201,40 +218,81 @@ export function EditorInforme({ informeId }: { informeId: string }) {
     setGuardadoEn(new Date())
     return true
   }, [informeId])
+  useEffect(() => { enviarRef.current = enviarManual }, [enviarManual])
+
+  /** Igual que `enviarManual`, para la lista de competidoras (el servidor también la reemplaza entera). */
+  const enviarCompetidoras = useCallback(async (): Promise<boolean> => {
+    const lista = competidorasSinGuardar.current
+    if (!lista) return true
+    try {
+      await api.guardarCompetidoras(informeId, lista)
+    } catch (e) {
+      if (e instanceof api.ErrorDePedido && esReintentable(e.status)) {
+        programarReintento.current(e.message)
+        return false
+      }
+      competidorasSinGuardar.current = null
+      throw e
+    }
+    if (competidorasSinGuardar.current === lista) competidorasSinGuardar.current = null
+    setGuardadoEn(new Date())
+    return true
+  }, [informeId])
 
   // En una ref: `enviarManual` y el reintento se llaman entre sí.
   const programarReintento = useRef<(motivo: string) => void>(() => {})
   useEffect(() => {
     programarReintento.current = (motivo: string) => {
+      if (desmontado.current) return
       setFallo(motivo)
       if (reintento.current.timer) return
       reintento.current.timer = setTimeout(() => {
         reintento.current.timer = null
         reintento.current.intento++
-        void encolar(async () => { if (await enviarManual()) await recargar() })
+        void encolar(async () => {
+          const manualOk = manualRef.current === confirmado.current || await enviarManual()
+          const listaOk = await enviarCompetidoras()
+          if (!manualOk || !listaOk) return
+          const despues = despuesPendiente.current
+          despuesPendiente.current = null
+          if (despues) await despues()
+          await recargar()
+        })
       }, esperaParaReintento(reintento.current.intento))
     }
-  }, [encolar, enviarManual, recargar])
-  useEffect(() => () => { if (reintento.current.timer) clearTimeout(reintento.current.timer) }, [])
+  }, [encolar, enviarManual, enviarCompetidoras, recargar])
 
   // Cerrar o recargar la pestaña con algo sin guardar: se manda igual (keepalive) y el navegador avisa antes.
   useEffect(() => {
-    const sinGuardar = () => pendientes.current.size > 0 || manualRef.current !== confirmado.current
+    desmontado.current = false
+    const reintentoActual = reintento.current
+    const sinGuardar = () => pendientes.current.size > 0 || manualRef.current !== confirmado.current || competidorasSinGuardar.current !== null
     const antesDeSalir = (e: BeforeUnloadEvent) => {
       if (!sinGuardar()) return
       e.preventDefault()
       e.returnValue = ''
     }
-    const alOcultar = () => {
-      // Pasa lo escrito sin mandar al `manual` en memoria (cada `enviar` lo aplica) y lo manda de una.
+    const mandarTodoYa = () => {
+      // Pasa lo escrito sin mandar a la memoria (cada `enviar` lo aplica) y lo manda de una con keepalive.
       for (const enviar of [...pendientes.current.values()]) enviar()
-      if (manualRef.current && manualRef.current !== confirmado.current) api.guardarManualAlSalir(informeId, manualRef.current)
+      const manual = manualRef.current && manualRef.current !== confirmado.current ? manualRef.current : undefined
+      const competidoras = competidorasSinGuardar.current ?? undefined
+      if (manual || competidoras) api.guardarAlSalir(informeId, { manual, competidoras })
     }
+    // En el celular, cambiar de app puede matar la pestaña sin `pagehide`: la señal confiable es `hidden`.
+    const alCambiarVisibilidad = () => { if (document.visibilityState === 'hidden') mandarTodoYa() }
     window.addEventListener('beforeunload', antesDeSalir)
-    window.addEventListener('pagehide', alOcultar)
+    window.addEventListener('pagehide', mandarTodoYa)
+    document.addEventListener('visibilitychange', alCambiarVisibilidad)
     return () => {
       window.removeEventListener('beforeunload', antesDeSalir)
-      window.removeEventListener('pagehide', alOcultar)
+      window.removeEventListener('pagehide', mandarTodoYa)
+      document.removeEventListener('visibilitychange', alCambiarVisibilidad)
+      // Salir a otra pantalla de la plataforma (no dispara `pagehide`): lo pendiente sale igual y no quedan reintentos
+      // corriendo en una pantalla que ya no está.
+      desmontado.current = true
+      if (reintentoActual.timer) { clearTimeout(reintentoActual.timer); reintentoActual.timer = null }
+      mandarTodoYa()
     }
   }, [informeId])
 
@@ -251,17 +309,20 @@ export function EditorInforme({ informeId }: { informeId: string }) {
     setManual(siguiente)
     setAviso(null)
     void encolar(async () => {
-      if (!(await enviarManual())) return
+      if (!(await enviarManual())) {
+        if (despues) despuesPendiente.current = despues
+        return
+      }
       if (despues) await despues()
       await recargar()
     })
   }
 
   async function guardarCompetidoras(lista: Competidora[]) {
+    competidorasSinGuardar.current = lista
     setAviso(null)
     await encolar(async () => {
-      await api.guardarCompetidoras(informeId, lista)
-      await recargar()
+      if (await enviarCompetidoras()) await recargar()
     })
   }
 
@@ -339,7 +400,7 @@ export function EditorInforme({ informeId }: { informeId: string }) {
   // Un texto escrito por la plataforma con un número que no está en los datos, que nadie corrigió todavía.
   const aRevisar = (c: CampoDeTexto) => !listo && !!m.redaccion?.revisar.includes(c)
     && (m.textos?.[c] ?? '').trim() === (m.redaccion?.original[c] ?? '').trim()
-  const claveTexto = (c: CampoDeTexto) => `${c}-${m.redaccion?.generadoEn ?? ''}`
+  const claveTexto = (c: CampoDeTexto) => `${c}-${m.redaccion?.generadoEn ?? ''}-${versionCampos}`
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-28">
@@ -390,11 +451,11 @@ export function EditorInforme({ informeId }: { informeId: string }) {
         {m.zonaprop?.publicado !== false ? (
           <>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <CampoNumero id="zp-exposicion" alTipear onPendiente={onPendiente} etiqueta="Exposición (veces en los listados)" valor={m.zonaprop?.exposicion} deshabilitado={bloqueado}
+              <CampoNumero key={`zp-exposicion-${versionCampos}`} id="zp-exposicion" alTipear onPendiente={onPendiente} etiqueta="Exposición (veces en los listados)" valor={m.zonaprop?.exposicion} deshabilitado={bloqueado}
                 falta={falta('Zonaprop: exposición')} onGuardar={n => guardarManual(x => ({ ...x, zonaprop: { ...x.zonaprop, exposicion: n } }))} />
-              <CampoNumero id="zp-visualizaciones" alTipear onPendiente={onPendiente} etiqueta="Visualizaciones (entraron al aviso)" valor={m.zonaprop?.visualizaciones} deshabilitado={bloqueado}
+              <CampoNumero key={`zp-visualizaciones-${versionCampos}`} id="zp-visualizaciones" alTipear onPendiente={onPendiente} etiqueta="Visualizaciones (entraron al aviso)" valor={m.zonaprop?.visualizaciones} deshabilitado={bloqueado}
                 falta={falta('Zonaprop: visualizaciones', 'Zonaprop: exposición y')} onGuardar={n => guardarManual(x => ({ ...x, zonaprop: { ...x.zonaprop, visualizaciones: n } }))} />
-              <CampoNumero id="zp-interesados" alTipear onPendiente={onPendiente} etiqueta="Interesados" valor={m.zonaprop?.interesados} deshabilitado={bloqueado}
+              <CampoNumero key={`zp-interesados-${versionCampos}`} id="zp-interesados" alTipear onPendiente={onPendiente} etiqueta="Interesados" valor={m.zonaprop?.interesados} deshabilitado={bloqueado}
                 onGuardar={n => guardarManual(x => ({ ...x, zonaprop: { ...x.zonaprop, interesados: n } }))} />
             </div>
             <CapturaPortal informeId={informe.id} cual="zonaprop" portal="Zonaprop" url={capturasUrl.zonaprop} deshabilitado={bloqueado} onCambio={() => void recargar()} />
@@ -408,7 +469,7 @@ export function EditorInforme({ informeId }: { informeId: string }) {
         {m.argenprop?.publicado !== false ? (
           <>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <CampoNumero id="ap-visualizaciones" alTipear onPendiente={onPendiente} etiqueta="Visualizaciones" valor={m.argenprop?.visualizaciones} deshabilitado={bloqueado}
+              <CampoNumero key={`ap-visualizaciones-${versionCampos}`} id="ap-visualizaciones" alTipear onPendiente={onPendiente} etiqueta="Visualizaciones" valor={m.argenprop?.visualizaciones} deshabilitado={bloqueado}
                 falta={falta('Argenprop: visualizaciones')} onGuardar={n => guardarManual(x => ({ ...x, argenprop: { ...x.argenprop, visualizaciones: n } }))} />
             </div>
             <CapturaPortal informeId={informe.id} cual="argenprop" portal="Argenprop" url={capturasUrl.argenprop} deshabilitado={bloqueado} onCambio={() => void recargar()} />
@@ -423,22 +484,22 @@ export function EditorInforme({ informeId }: { informeId: string }) {
           deshabilitado={bloqueado}
           onCambiarExcluidos={lista => guardarManual(x => ({ ...x, mercadolibre: { ...x.mercadolibre, excluidos: lista } }), async () => { await api.traerFuente(informeId, 'mercadolibre') })}
         />
-        <CampoLinea id="ml-aviso" onPendiente={onPendiente} etiqueta="Agregar otro aviso de MercadoLibre" valor={m.mercadolibre?.aviso} placeholder="MLA1234567890 o el link del aviso" maxLength={500} deshabilitado={bloqueado}
+        <CampoLinea key={`ml-aviso-${versionCampos}`} id="ml-aviso" onPendiente={onPendiente} etiqueta="Agregar otro aviso de MercadoLibre" valor={m.mercadolibre?.aviso} placeholder="MLA1234567890 o el link del aviso" maxLength={500} deshabilitado={bloqueado}
           onGuardar={t => guardarManual(x => ({ ...x, mercadolibre: { ...x.mercadolibre, aviso: t } }), async () => { await api.traerFuente(informeId, 'mercadolibre') })} />
         <CapturaPortal informeId={informe.id} cual="mercadolibre" portal="MercadoLibre" url={capturasUrl.mercadolibre} deshabilitado={bloqueado} onCambio={() => void recargar()} />
       </Seccion>
 
       <Seccion id="sec-tiktok" titulo="TikTok" ayuda="Opcional. Si no hubo video en el período, dejalo vacío y la página no sale.">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <CampoNumero id="tk-visualizaciones" alTipear onPendiente={onPendiente} etiqueta="Visualizaciones del video" valor={m.tiktok?.visualizaciones} deshabilitado={bloqueado}
+          <CampoNumero key={`tk-visualizaciones-${versionCampos}`} id="tk-visualizaciones" alTipear onPendiente={onPendiente} etiqueta="Visualizaciones del video" valor={m.tiktok?.visualizaciones} deshabilitado={bloqueado}
             onGuardar={n => guardarManual(x => ({ ...x, tiktok: { ...x.tiktok, visualizaciones: n } }))} />
-          <CampoLinea id="tk-total" alTipear onPendiente={onPendiente} etiqueta="Tiempo total" valor={m.tiktok?.tiempoTotal} placeholder="0h:23m:04s" maxLength={20} deshabilitado={bloqueado}
+          <CampoLinea key={`tk-total-${versionCampos}`} id="tk-total" alTipear onPendiente={onPendiente} etiqueta="Tiempo total" valor={m.tiktok?.tiempoTotal} placeholder="0h:23m:04s" maxLength={20} deshabilitado={bloqueado}
             onGuardar={t => guardarManual(x => ({ ...x, tiktok: { ...x.tiktok, tiempoTotal: t || undefined } }))} />
-          <CampoLinea id="tk-promedio" alTipear onPendiente={onPendiente} etiqueta="Tiempo promedio" valor={m.tiktok?.tiempoPromedio} placeholder="4.98s" maxLength={20} deshabilitado={bloqueado}
+          <CampoLinea key={`tk-promedio-${versionCampos}`} id="tk-promedio" alTipear onPendiente={onPendiente} etiqueta="Tiempo promedio" valor={m.tiktok?.tiempoPromedio} placeholder="4.98s" maxLength={20} deshabilitado={bloqueado}
             onGuardar={t => guardarManual(x => ({ ...x, tiktok: { ...x.tiktok, tiempoPromedio: t || undefined } }))} />
-          <CampoNumero id="tk-completo" alTipear onPendiente={onPendiente} etiqueta="Vieron el video completo" sufijo="%" valor={m.tiktok?.vieronCompleto} deshabilitado={bloqueado}
+          <CampoNumero key={`tk-completo-${versionCampos}`} id="tk-completo" alTipear onPendiente={onPendiente} etiqueta="Vieron el video completo" sufijo="%" valor={m.tiktok?.vieronCompleto} deshabilitado={bloqueado}
             onGuardar={n => guardarManual(x => ({ ...x, tiktok: { ...x.tiktok, vieronCompleto: n === undefined ? undefined : Math.min(n, 100) } }))} />
-          <CampoNumero id="tk-seguidores" alTipear onPendiente={onPendiente} etiqueta="Nuevos seguidores" valor={m.tiktok?.nuevosSeguidores} deshabilitado={bloqueado}
+          <CampoNumero key={`tk-seguidores-${versionCampos}`} id="tk-seguidores" alTipear onPendiente={onPendiente} etiqueta="Nuevos seguidores" valor={m.tiktok?.nuevosSeguidores} deshabilitado={bloqueado}
             onGuardar={n => guardarManual(x => ({ ...x, tiktok: { ...x.tiktok, nuevosSeguidores: n } }))} />
         </div>
         <CapturaPortal informeId={informe.id} cual="tiktok" portal="TikTok" url={capturasUrl.tiktok} deshabilitado={bloqueado} onCambio={() => void recargar()} />
@@ -451,7 +512,7 @@ export function EditorInforme({ informeId }: { informeId: string }) {
           ) : m.redaccion ? (
             <span className="text-muted-foreground">Escritos por la plataforma el {new Date(m.redaccion.generadoEn).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}.</span>
           ) : null}
-          <Button type="button" variant="outline" size="sm" className="min-h-11" disabled={bloqueado || escribiendo || trayendo !== null} onClick={() => escribir(false)}>
+          <Button type="button" variant="outline" size="sm" className="min-h-11" disabled={bloqueado || escribiendo || trayendo !== null || fallo !== null} onClick={() => escribir(false)}>
             <RefreshCw className="mr-1 h-4 w-4" aria-hidden /> {m.redaccion ? 'Volver a escribir' : 'Escribir los textos'}
           </Button>
         </div>
@@ -471,7 +532,7 @@ export function EditorInforme({ informeId }: { informeId: string }) {
       </Seccion>
 
       <Seccion id="sec-competidoras" titulo="Propiedades que compiten" ayuda="La plataforma busca en el barrio avisos parecidos (ambientes, m², precio, antigüedad, disposición y estado). Miralos en el portal y agregá los que quieras al informe (hasta 8). Si después tocás «Volver a escribir», el análisis las compara.">
-        <Competidoras iniciales={informe.competidoras} deshabilitado={bloqueado} onGuardar={guardarCompetidoras}
+        <Competidoras iniciales={informe.competidoras} deshabilitado={bloqueado} onGuardar={guardarCompetidoras} onPendiente={onPendiente}
           busqueda={{
             candidatas: vista.candidatas, argenprop: informe.candidatas.argenprop, mercadolibre: informe.candidatas.mercadolibre,
             progreso: progresoCompetencia, onBuscarDeNuevo: () => void buscarCompetidoras(),
