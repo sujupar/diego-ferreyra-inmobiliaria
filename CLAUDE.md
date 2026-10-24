@@ -2219,6 +2219,27 @@ Spec `docs/superpowers/specs/2026-10-22-informe-quincenal-mejoras-design.md`; pl
   DESC LIMIT 5;` → `SELECT estado, count(*), count(avisado_at) FROM property_reports WHERE origen='ciclo' GROUP BY 1;`
   Un ciclo sano: borradores creados en los primeros minutos del 1/16 y `avisado_at` lleno ~1 hora después.
 
+### Informe quincenal — autoguardado (en producción 2026-10-24, PR #58)
+
+- **Pedido del dueño:** "es fundamental que el auto guardado funcione perfectamente". Antes se guardaba SOLO al salir
+  de cada campo: cerrar o recargar escribiendo perdía lo escrito, y un guardado que fallaba no se reintentaba.
+- **Cómo funciona hoy** (reglas en `lib/informes/autoguardado.ts`, campos en `components/informes/editor/campos.tsx`):
+  - los campos del informe guardan a los 1,5 s de dejar de tipear (`alTipear`) y al salir del campo; acá SÍ se
+    guarda por temporizador porque el informe es un borrador interno (la regla contraria de "Modificar ficha" es
+    por la landing, que lee el precio en vivo). Las competidoras guardan al salir del campo: sus campos se
+    re-montan al guardar (`key` con el valor) y un guardado al tipear les robaría el foco;
+  - un fallo del CAMINO (sin red, 5xx, 401 sesión vencida) no vuelve atrás: lo escrito queda, reintenta solo
+    (2, 5, 10, 20, 30 s…) y la barra dice "Sin guardar — reintentando"; un rechazo del DATO (400/403/404/409)
+    vuelve a lo confirmado y re-monta los campos (`versionCampos`) para que no muestren algo que no está guardado;
+  - cerrar, recargar, cambiar de app en el celular (`visibilitychange`) o salir a otra pantalla: lo pendiente se
+    manda con `keepalive` (`guardarAlSalir`) y el navegador avisa antes de cerrar;
+  - cuando la plataforma escribe los textos, `mezclarTrasEscribir` junta lo del servidor con lo cargado en el medio
+    (antes lo pisaba); no se puede marcar listo con algo sin guardar.
+- **Trampa:** los campos comparan contra lo último ENVIADO, no contra lo que llegó de la base: después de un guardado
+  por pausa la base tarda en devolver el valor, y volver al texto de antes ("AB" → "A") no se habría mandado.
+- **Probado en el navegador real** (vista previa y producción): pausa al tipear, recarga inmediata (el texto llegó
+  por keepalive), red cortada (reintentó solo al volver) y salida a otra pantalla. En la base, cada vez.
+
 ---
 
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
