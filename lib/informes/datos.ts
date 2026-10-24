@@ -8,7 +8,9 @@ import { sb } from './sb'
 import { normalizarDisposicion, normalizarEstado } from './competencia/caracteristicas'
 import { BUCKET_INFORMES } from './archivos'
 import { actualizarFormaVieja } from './forma-vieja'
-import type { CandidatasGuardadas, Capturas, Competidora, Fuentes, FuenteGuardada, Informe, Manual, NombreCaptura, NombreFuente, PropiedadDelInforme } from './tipos'
+import { FUENTES, type CandidatasGuardadas, type Capturas, type Competidora, type Fuentes, type FuenteGuardada, type Informe, type Manual, type NombreCaptura, type NombreFuente, type PropiedadDelInforme } from './tipos'
+import type { InformeDelPeriodo, PropiedadDelCiclo } from './ciclo-servicio'
+import { fechaEnArgentina } from '@/lib/visitas/horario'
 import type { CambiosInforme } from './sanear'
 
 function fallo(contexto: string, error: { message: string } | null): never {
@@ -134,6 +136,45 @@ export async function volverABorrador(id: string): Promise<boolean> {
     .eq('id', id).eq('estado', 'listo').select('id')
   if (error) fallo('volver a borrador', error)
   return (data ?? []).length > 0
+}
+
+// ─── Ciclo automático (cron del 1 y el 16) ───────────────────────────────────
+
+/** Las captadas, con lo que el ciclo necesita para decidir. El filtro fino (estado comercial, [TEST]) es puro. */
+export async function propiedadesParaElCiclo(): Promise<PropiedadDelCiclo[]> {
+  const { data, error } = await sb().from('properties')
+    .select('id, title, address, status, commercial_status, captured_at').eq('status', 'approved').limit(1000)
+  if (error) fallo('leer las propiedades del ciclo', error)
+  return (data ?? []).map(r => ({
+    id: String(r.id), titulo: r.title ? String(r.title) : null, direccion: String(r.address ?? ''), status: String(r.status),
+    commercialStatus: r.commercial_status ? String(r.commercial_status) : null,
+    // `captured_at` es un instante: el día que cuenta es el de Argentina (a las 22 h de Buenos Aires ya es mañana en UTC).
+    capturadaEl: r.captured_at ? fechaEnArgentina(new Date(String(r.captured_at))) : null,
+  }))
+}
+
+export async function informesDelPeriodo(hasta: string): Promise<InformeDelPeriodo[]> {
+  const { data, error } = await sb().from('property_reports')
+    .select('id, property_id, desde, origen, estado, fuentes, created_at, avisado_at').eq('hasta', hasta).limit(1000)
+  if (error) fallo('leer los informes del período', error)
+  return (data ?? []).map(r => {
+    const f = objeto(r.fuentes) as Fuentes
+    return {
+      id: String(r.id), propertyId: String(r.property_id), desde: String(r.desde),
+      origen: r.origen === 'ciclo' ? 'ciclo' : 'manual', estado: r.estado === 'listo' ? 'listo' : 'borrador',
+      creadoEn: String(r.created_at), avisadoEn: r.avisado_at ? String(r.avisado_at) : null,
+      pendientes: FUENTES.filter(n => !f[n] || f[n]?.estado === 'pendiente'),
+    }
+  })
+}
+
+/** UPDATE condicional: dos corridas a la vez nunca reclaman el mismo informe (no hay dos emails por él). */
+export async function reclamarAviso(ids: string[], ahora: Date): Promise<string[]> {
+  if (!ids.length) return []
+  const { data, error } = await sb().from('property_reports')
+    .update({ avisado_at: ahora.toISOString() }).in('id', ids).is('avisado_at', null).select('id')
+  if (error) fallo('reclamar el aviso', error)
+  return (data ?? []).map(r => String(r.id))
 }
 
 // ─── La propiedad (lo que muestran la pantalla y el PDF) ─────────────────────

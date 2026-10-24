@@ -10,6 +10,10 @@
     "app/(dashboard)/informes/**/*.tsx",
     "app/(dashboard)/properties/*/page.tsx",
     "lib/properties/detail-view.ts",
-    "lib/pdf/imageUtils.ts"
+    "lib/pdf/imageUtils.ts",
+    "app/api/cron/informes-quincenales/route.ts",
+    "lib/email/notifications/informes-quincenales.ts",
+    "emails/InformesQuincenalesEmail.tsx",
+    "lib/supabase/tasks.ts"
   ]
 }
