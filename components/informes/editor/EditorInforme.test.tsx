@@ -10,9 +10,12 @@ import type { Informe } from '@/lib/informes/tipos'
 const api = vi.hoisted(() => ({
   leerVista: vi.fn(), traerFuente: vi.fn(), guardarManual: vi.fn(), guardarCompetidoras: vi.fn(),
   subirCaptura: vi.fn(), quitarCaptura: vi.fn(), subirPdfYMarcarListo: vi.fn(), volverABorrador: vi.fn(), buscarCompetidora: vi.fn(), escribirTextos: vi.fn(),
-  buscarCompetencia: vi.fn(), abrirCandidata: vi.fn(),
+  buscarCompetencia: vi.fn(), abrirCandidata: vi.fn(), guardarAlSalir: vi.fn(),
 }))
-vi.mock('./api', () => api)
+const { ErrorDePedido } = vi.hoisted(() => ({
+  ErrorDePedido: class extends Error { constructor(m: string, public status: number) { super(m) } },
+}))
+vi.mock('./api', () => ({ ...api, ErrorDePedido }))
 const { generar } = vi.hoisted(() => ({ generar: vi.fn(async () => new Blob(['%PDF-'])) }))
 vi.mock('../pdf/generar', () => ({ generarPdfDelInforme: generar }))
 
@@ -91,6 +94,119 @@ describe('EditorInforme', () => {
     })
   })
 
+  describe('autoguardado (pedido del dueño: no perder nunca lo escrito)', () => {
+    it('guarda a la pausa al tipear, sin tener que salir del campo, y una sola vez', async () => {
+      api.leerVista.mockResolvedValue(vista(informe()))
+      render(<EditorInforme informeId="inf-1" />)
+      await userEvent.type(await screen.findByLabelText(/Exposición/), '930')
+      await waitFor(() => expect(api.guardarManual).toHaveBeenCalled(), { timeout: 4_000 })
+      expect(api.guardarManual).toHaveBeenCalledTimes(1)
+      expect(api.guardarManual.mock.calls[0][1].zonaprop).toEqual({ interesados: 1, exposicion: 930 })
+      expect(await screen.findByText(/Guardado \d\d:\d\d/)).toBeInTheDocument()
+    })
+
+    it('si se corta la red, lo escrito NO se pierde: queda en pantalla, dice "Sin guardar" y reintenta solo', async () => {
+      api.leerVista.mockResolvedValue(vista(informe()))
+      api.guardarManual.mockRejectedValueOnce(new ErrorDePedido('No hay conexión. Probá de nuevo.', 0)).mockResolvedValue({ ok: true })
+      render(<EditorInforme informeId="inf-1" />)
+      const exposicion = await screen.findByLabelText(/Exposición/)
+      await userEvent.type(exposicion, '930')
+      await userEvent.tab()
+      expect(await screen.findByText(/Sin guardar — reintentando/)).toBeInTheDocument()
+      expect(exposicion).toHaveValue('930')
+      expect(screen.getByRole('button', { name: /Marcar como listo/ })).toBeDisabled()
+      await waitFor(() => expect(api.guardarManual).toHaveBeenCalledTimes(2), { timeout: 5_000 })
+      expect(api.guardarManual.mock.calls[1][1].zonaprop).toEqual({ interesados: 1, exposicion: 930 })
+      expect(await screen.findByText(/Guardado \d\d:\d\d/)).toBeInTheDocument()
+    }, 10_000)
+
+    it('al cerrar o recargar la pestaña escribiendo, manda lo escrito igual (keepalive)', async () => {
+      api.leerVista.mockResolvedValue(vista(informe()))
+      render(<EditorInforme informeId="inf-1" />)
+      await userEvent.type(await screen.findByLabelText(/Análisis final/), 'Bajó el interés')
+      window.dispatchEvent(new Event('pagehide'))
+      expect(api.guardarAlSalir).toHaveBeenCalledWith('inf-1', expect.objectContaining({
+        manual: expect.objectContaining({ textos: expect.objectContaining({ analisisFinal: 'Bajó el interés', accionesRealizadas: 'Publicamos' }) }),
+      }))
+    })
+
+    it('en el celular, cambiar de app (la pestaña pasa a oculta) también manda lo escrito', async () => {
+      api.leerVista.mockResolvedValue(vista(informe()))
+      render(<EditorInforme informeId="inf-1" />)
+      await userEvent.type(await screen.findByLabelText(/Análisis final/), 'Desde el celu')
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
+      document.dispatchEvent(new Event('visibilitychange'))
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
+      expect(api.guardarAlSalir).toHaveBeenCalledWith('inf-1', expect.objectContaining({
+        manual: expect.objectContaining({ textos: expect.objectContaining({ analisisFinal: 'Desde el celu' }) }),
+      }))
+    })
+
+    it('salir a otra pantalla de la plataforma con algo sin guardar lo manda igual', async () => {
+      api.leerVista.mockResolvedValue(vista(informe()))
+      const { unmount } = render(<EditorInforme informeId="inf-1" />)
+      await userEvent.type(await screen.findByLabelText(/Análisis final/), 'Antes de irme')
+      unmount()
+      expect(api.guardarAlSalir).toHaveBeenCalledWith('inf-1', expect.objectContaining({
+        manual: expect.objectContaining({ textos: expect.objectContaining({ analisisFinal: 'Antes de irme' }) }),
+      }))
+    })
+
+    it('sesión vencida (401): no descarta nada, dice "Sin guardar" y reintenta', async () => {
+      api.leerVista.mockResolvedValue(vista(informe()))
+      api.guardarManual.mockRejectedValueOnce(new ErrorDePedido('Iniciá sesión de nuevo', 401)).mockResolvedValue({ ok: true })
+      render(<EditorInforme informeId="inf-1" />)
+      await userEvent.type(await screen.findByLabelText(/Exposición/), '930')
+      await userEvent.tab()
+      expect(await screen.findByText(/Sin guardar — reintentando \(Iniciá sesión de nuevo\)/)).toBeInTheDocument()
+      await waitFor(() => expect(api.guardarManual).toHaveBeenCalledTimes(2), { timeout: 5_000 })
+      expect(api.guardarManual.mock.calls[1][1].zonaprop).toEqual({ interesados: 1, exposicion: 930 })
+    }, 10_000)
+
+    it('un rechazo del dato vuelve atrás y el campo MUESTRA lo que quedó (no un valor que no está guardado)', async () => {
+      api.leerVista.mockResolvedValue(vista(informe()))
+      api.guardarManual.mockRejectedValueOnce(new ErrorDePedido('Datos del informe inválidos', 400))
+      render(<EditorInforme informeId="inf-1" />)
+      await userEvent.type(await screen.findByLabelText(/Exposición/), '930')
+      await userEvent.tab()
+      expect(await screen.findByText('Datos del informe inválidos')).toBeInTheDocument()
+      await waitFor(() => expect(screen.getByLabelText(/Exposición/)).toHaveValue(''))
+      expect(screen.queryByText(/Guardado \d\d:\d\d/)).not.toBeInTheDocument()
+    })
+
+    it('si la plataforma escribe los textos mientras se carga un número, el número NO se pierde', async () => {
+      const sinTextos = informe({ manual: { zonaprop: { interesados: 1 } }, fuentes: { ...informe().fuentes, visitas: ok({ realizadas: 0, ficha: { respuestas: 0, leGusto: { si: 0, no: 0 }, precio: { correcto: 0, alto: 0, bajo: 0 }, ofertas: [], moneda: null, masGusto: [], menosGusto: [], comentariosMenosGusto: [] } }), reserva: ok({ reservada: false, fecha: null }), mercadolibre: { estado: 'sin_datos', actualizadoEn: 'x', datos: null, error: 'sin aviso' } } })
+      api.leerVista.mockResolvedValue(vista(sinTextos))
+      let terminar: (v: unknown) => void = () => {}
+      api.escribirTextos.mockReturnValue(new Promise(r => { terminar = r }))
+      render(<EditorInforme informeId="inf-1" />)
+      await waitFor(() => expect(api.escribirTextos).toHaveBeenCalled())
+      // Mientras la plataforma escribe, el número cargado justo antes ya está en camino.
+      terminar({ manual: { zonaprop: { interesados: 1 }, textos: { analisisFinal: 'Escrito por la plataforma' }, redaccion: { generadoEn: 'x', original: { analisisFinal: 'Escrito por la plataforma' }, revisar: [] } } })
+      await waitFor(() => expect(screen.getByLabelText(/Análisis final/)).toHaveValue('Escrito por la plataforma'))
+      await userEvent.type(screen.getByLabelText(/Exposición/), '930')
+      await userEvent.tab()
+      await waitFor(() => expect(api.guardarManual).toHaveBeenCalled())
+      const ultimo = api.guardarManual.mock.calls.at(-1)?.[1]
+      expect(ultimo.zonaprop).toEqual({ interesados: 1, exposicion: 930 })
+      expect(ultimo.textos.analisisFinal).toBe('Escrito por la plataforma')
+    })
+
+    it('con algo sin guardar, el navegador avisa antes de salir; con todo guardado, no', async () => {
+      api.leerVista.mockResolvedValue(vista(informe()))
+      render(<EditorInforme informeId="inf-1" />)
+      const campo = await screen.findByLabelText(/Análisis final/)
+      await waitFor(() => expect(api.leerVista).toHaveBeenCalledTimes(2))
+      const sinCambios = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(sinCambios)
+      expect(sinCambios.defaultPrevented).toBe(false)
+      await userEvent.type(campo, 'Hola')
+      const conCambios = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(conCambios)
+      expect(conCambios.defaultPrevented).toBe(true)
+    })
+  })
+
   it('un aviso de ML inválido no se aplica ni se manda, y no traba el guardado de los demás campos', async () => {
     api.leerVista.mockResolvedValue(vista(informe()))
     render(<EditorInforme informeId="inf-1" />)
@@ -150,6 +266,8 @@ describe('EditorInforme', () => {
     expect(await screen.findByDisplayValue('La están viendo muchos compradores.')).toBeInTheDocument()
     expect(screen.getByText(/no encontré en los datos/)).toBeInTheDocument()
     expect(api.escribirTextos).toHaveBeenCalledTimes(1)
+    // Lo que escribió la plataforma ya está en la base: la barra lo dice.
+    expect(await screen.findByText(/Guardado \d\d:\d\d/)).toBeInTheDocument()
   })
 
   it('con textos ya cargados no los escribe solo', async () => {

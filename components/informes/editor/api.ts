@@ -11,16 +11,34 @@ import type { BusquedaPortal, Capturas, Competidora, FuenteGuardada, Manual, Nom
 
 interface Slot { signedUrl: string; token: string; path: string }
 
+/** Error de un pedido con su código: 0 = no hubo conexión. El autoguardado lo usa para saber si reintentar. */
+export class ErrorDePedido extends Error {
+  constructor(mensaje: string, public readonly status: number) {
+    super(mensaje)
+    this.name = 'ErrorDePedido'
+  }
+}
+
 async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
     res = await fetch(url, init)
   } catch {
-    throw new Error('No hay conexión. Probá de nuevo.')
+    throw new ErrorDePedido('No hay conexión. Probá de nuevo.', 0)
   }
   const r = await leerRespuesta<T>(res)
-  if (!r.ok) throw new Error(r.error)
+  if (!r.ok) throw new ErrorDePedido(r.error, r.status)
   return r.data
+}
+
+/**
+ * Último recurso al cerrar o recargar la pestaña: `keepalive` deja que el pedido termine aunque la página se vaya
+ * (un `fetch` común se cancela). No se espera la respuesta: no hay a quién mostrársela.
+ */
+export function guardarAlSalir(id: string, cambios: { manual?: Manual; competidoras?: Competidora[] }): void {
+  try {
+    void fetch(base(id), { ...json('PATCH', cambios), keepalive: true }).catch(() => {})
+  } catch { /* el navegador no aceptó el pedido (cuerpo > 64 KB): lo cubre el aviso de "cambios sin guardar" */ }
 }
 
 const json = (method: string, cuerpo?: unknown): RequestInit => ({

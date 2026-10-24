@@ -12,7 +12,7 @@ import { Candidatas } from './Candidatas'
 import { competidoraDesdeCandidata } from '@/lib/informes/editor'
 import type { Candidata } from '@/lib/informes/competencia/puntaje'
 import type { BusquedaPortal } from '@/lib/informes/tipos'
-import { CampoLinea, CampoNumero } from './campos'
+import { CampoLinea, CampoNumero, type AvisarPendiente } from './campos'
 
 export const MAX_COMPETIDORAS = 8
 
@@ -40,10 +40,12 @@ export interface BusquedaDeCompetencia {
   onBuscarDeNuevo: () => void
 }
 
-export function Competidoras({ iniciales, onGuardar, deshabilitado, busqueda }: {
+export function Competidoras({ iniciales, onGuardar, deshabilitado, busqueda, onPendiente }: {
   iniciales: Competidora[]
   onGuardar: (lista: Competidora[]) => Promise<void>
   deshabilitado: boolean
+  /** Avisa lo escrito sin mandar (para el aviso del navegador y el envío al cerrar la pestaña). */
+  onPendiente?: AvisarPendiente
   /** Las candidatas que buscó la plataforma (Argenprop + MercadoLibre). */
   busqueda?: BusquedaDeCompetencia
 }) {
@@ -104,7 +106,7 @@ export function Competidoras({ iniciales, onGuardar, deshabilitado, busqueda }: 
       ) : null}
       {lista.length ? <p className="text-sm font-medium">Elegidas para el informe ({lista.length} de {MAX_COMPETIDORAS})</p> : null}
       {lista.map((c, i) => (
-        <FichaCompetidora key={c.url} indice={i} c={c} deshabilitado={deshabilitado}
+        <FichaCompetidora key={c.url} indice={i} c={c} deshabilitado={deshabilitado} onPendiente={onPendiente}
           onCambiar={cambios => actualizar(i, cambios)}
           onQuitar={() => void cambiar(lista.filter((_, j) => j !== i))} />
       ))}
@@ -139,8 +141,9 @@ export function Competidoras({ iniciales, onGuardar, deshabilitado, busqueda }: 
 
 type CampoNumerico = 'precio' | 'm2' | 'valorM2' | 'ambientes' | 'dormitorios' | 'banos' | 'cocheras' | 'antiguedad' | 'visualizaciones'
 
-function FichaCompetidora({ indice, c, onCambiar, onQuitar, deshabilitado }: {
+function FichaCompetidora({ indice, c, onCambiar, onQuitar, deshabilitado, onPendiente }: {
   indice: number
+  onPendiente?: AvisarPendiente
   c: Competidora
   onCambiar: (cambios: Partial<Competidora>) => void
   onQuitar: () => void
@@ -153,7 +156,7 @@ function FichaCompetidora({ indice, c, onCambiar, onQuitar, deshabilitado }: {
     // precio), el campo se vuelve a montar con el número nuevo en vez de mostrar el viejo.
     return (
       <CampoNumero key={`${campo}-${v ?? ''}`} id={id(campo)} etiqueta={etiqueta} sufijo={sufijo} deshabilitado={deshabilitado}
-        valor={v} onGuardar={n => onCambiar({ [campo]: n ?? null })} />
+        valor={v} onGuardar={n => onCambiar({ [campo]: n ?? null })} onPendiente={onPendiente} />
     )
   }
   return (
@@ -164,8 +167,8 @@ function FichaCompetidora({ indice, c, onCambiar, onQuitar, deshabilitado }: {
           {c.foto ? <img src={c.foto} alt="" className="h-full w-full object-cover" /> : null}
         </div>
         <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
-          <CampoLinea id={id('direccion')} etiqueta="Dirección" valor={c.direccion} deshabilitado={deshabilitado} onGuardar={t => onCambiar({ direccion: t })} />
-          <CampoLinea id={id('barrio')} etiqueta="Barrio" valor={c.barrio} deshabilitado={deshabilitado} onGuardar={t => onCambiar({ barrio: t || null })} />
+          <CampoLinea id={id('direccion')} etiqueta="Dirección" valor={c.direccion} deshabilitado={deshabilitado} onGuardar={t => onCambiar({ direccion: t })} onPendiente={onPendiente} />
+          <CampoLinea id={id('barrio')} etiqueta="Barrio" valor={c.barrio} deshabilitado={deshabilitado} onGuardar={t => onCambiar({ barrio: t || null })} onPendiente={onPendiente} />
           <a href={c.url} target="_blank" rel="noopener noreferrer" className="truncate text-sm text-primary underline sm:col-span-2">{c.url}</a>
         </div>
       </div>
@@ -190,7 +193,7 @@ function FichaCompetidora({ indice, c, onCambiar, onQuitar, deshabilitado }: {
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <CampoLinea id={id('publicado')} etiqueta="Publicado hace" valor={c.publicadoHace} placeholder="Publicado hace 84 días" deshabilitado={deshabilitado}
-          onGuardar={t => onCambiar({ publicadoHace: t || null })} />
+          onGuardar={t => onCambiar({ publicadoHace: t || null })} onPendiente={onPendiente} />
         <label className="flex min-h-11 cursor-pointer items-center gap-2 self-end text-sm">
           <input type="checkbox" className="h-4 w-4" checked={c.bajoDePrecio} disabled={deshabilitado} onChange={e => onCambiar({ bajoDePrecio: e.target.checked })} />
           Bajó de precio
