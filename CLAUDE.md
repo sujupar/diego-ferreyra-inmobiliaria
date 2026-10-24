@@ -2189,6 +2189,36 @@ Spec `docs/superpowers/specs/2026-10-22-informe-quincenal-mejoras-design.md`; pl
 - **Probar sin UI:** `scripts/_qa-*` no se commitean. `vitest.informes.config.ts` incluye ahora el test del extractor
   de ML (~10 s, 290 pruebas en total).
 
+### Informe quincenal — Entrega 2: el ciclo del 1 y el 16 (en producción 2026-10-24, PR #56)
+
+- **Qué hace:** job pg_cron `informes-quincenales` (`*/2 * 1,2,16,17 * *`, programado el 2026-10-24 con
+  `scripts/apply-cron-informes-quincenales-pg.ts`) → `/api/cron/informes-quincenales`. Cada corrida
+  (`lib/informes/ciclo-servicio.ts`, dependencias inyectadas en `ciclo-real.ts`): crea los borradores que falten
+  de la quincena que cerró (captadas, disponible/reservada, sin `[TEST`; recortado a la captación), trae fuentes
+  de a una con presupuesto de 8 s, y cuando la tanda terminó avisa: una tarea `informe_quincenal` por propiedad para
+  el rol coordinador + UN email (`emails/InformesQuincenalesEmail.tsx`). Listado `/informes` en el menú; marcar listo
+  el último borrador del ciclo de una propiedad cierra su tarea (`cerrarTareasDelInforme`).
+- **El día lo decide la ruta en hora de Argentina**, no pg_cron (UTC): las corridas de 00:00–02:59 UTC del 1 salen
+  `fuera_de_fecha`, y el 2/17 son repechaje del MISMO período (no duplican: UNIQUE propiedad+período).
+- **El aviso NUNCA queda marcado sin haber salido** (hallazgos de la revisión adversarial):
+  - `avisado_at` se reclama con un UPDATE condicional (dos corridas no mandan dos emails);
+  - la corrida que trajo fuentes NO avisa (gastó su presupuesto; tareas + email pasaban el techo de Netlify
+    DESPUÉS de reclamar y el aviso se perdía): avisa la siguiente;
+  - `createTaskForRole` NUNCA lanza → `crearTarea` verifica después que la tarea exista (`hayTareaDelInforme`);
+    si una tarea o el email fallan, se libera `avisado_at` (`liberarAviso`) y la corrida siguiente repite todo
+    (las tareas no se duplican por el índice único);
+  - un informe ya `listo` queda avisado sin tarea ni línea en el email; las 6 horas de espera máxima se cuentan
+    desde los informes SIN avisar.
+- **Probar sin molestar a Paula:** `?propiedad=<id>` corre el ciclo solo para esa ficha (con el secreto). OJO:
+  con las dependencias reales la tarea y el email van a TODOS los coordinadores; para el QA se usó un script que
+  desvía la tarea y el email al usuario de pruebas. Nunca correrlo con `?propiedad=` sobre una ficha real.
+- **Destinatarios:** rol `coordinador` activo. Al 2026-10-24 hay DOS: Paula Pandolfo y "Julian Coordinador"
+  (passmail.com, consultado al dueño si es de prueba).
+- **Verificación (3 capas):** `SELECT jobname, schedule, active FROM cron.job WHERE jobname='informes-quincenales';`
+  → `SELECT status_code, left(content,300) FROM net._http_response WHERE content LIKE '%"creados"%' ORDER BY created
+  DESC LIMIT 5;` → `SELECT estado, count(*), count(avisado_at) FROM property_reports WHERE origen='ciclo' GROUP BY 1;`
+  Un ciclo sano: borradores creados en los primeros minutos del 1/16 y `avisado_at` lleno ~1 hora después.
+
 ---
 
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
