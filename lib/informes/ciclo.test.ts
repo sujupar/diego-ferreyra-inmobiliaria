@@ -55,6 +55,9 @@ describe('tandaParaAvisar (UN email por tanda, no uno por propiedad)', () => {
   it('mientras algún informe de la tanda tenga fuentes pendientes, todavía no se avisa', () => {
     expect(tandaParaAvisar([inf('a', []), inf('b', ['meta'])], ahora)).toEqual({ avisar: [], motivo: 'faltan_fuentes' })
   })
+  it('un informe ya avisado con fuentes pendientes no traba el aviso de los nuevos', () => {
+    expect(tandaParaAvisar([inf('a', ['meta'], { avisadoEn: 'x' }), inf('b', [])], ahora)).toEqual({ avisar: ['b'], motivo: 'tanda_completa' })
+  })
   it('cuando ninguno tiene pendientes, se avisan todos los que no se avisaron', () => {
     expect(tandaParaAvisar([inf('a', []), inf('b', [], { avisadoEn: '2026-11-01T09:30:00Z' })], ahora))
       .toEqual({ avisar: ['a'], motivo: 'tanda_completa' })
@@ -62,6 +65,12 @@ describe('tandaParaAvisar (UN email por tanda, no uno por propiedad)', () => {
   it('a las 6 horas se avisa igual: una fuente trabada no deja a Paula sin aviso (el editor la vuelve a traer)', () => {
     const tarde = new Date('2026-11-01T15:01:00Z')
     expect(tandaParaAvisar([inf('a', []), inf('b', ['meta'])], tarde)).toEqual({ avisar: ['a', 'b'], motivo: 'tiempo_cumplido' })
+  })
+  it('las 6 horas se cuentan desde los informes SIN avisar: uno nuevo del día 2 no sale avisado vacío', () => {
+    const dia2 = new Date('2026-11-02T10:00:00Z')
+    const viejo = inf('a', [], { creadoEn: '2026-11-01T09:00:00Z', avisadoEn: '2026-11-01T10:00:00Z' })
+    const nuevo = inf('b', ['meta'], { creadoEn: '2026-11-02T09:58:00Z' })
+    expect(tandaParaAvisar([viejo, nuevo], dia2)).toEqual({ avisar: [], motivo: 'faltan_fuentes' })
   })
   it('si ya se avisó todo, o no hay informes, no hay nada que hacer', () => {
     expect(tandaParaAvisar([inf('a', [], { avisadoEn: 'x' })], ahora)).toEqual({ avisar: [], motivo: 'ya_avisado' })

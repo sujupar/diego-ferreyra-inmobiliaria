@@ -60,8 +60,10 @@ export function tandaParaAvisar(informes: InformeDelCiclo[], ahora: Date): { avi
   if (!informes.length) return { avisar: [], motivo: 'sin_informes' }
   const sinAvisar = informes.filter(i => !i.avisadoEn)
   if (!sinAvisar.length) return { avisar: [], motivo: 'ya_avisado' }
-  const completa = informes.every(i => i.pendientes.length === 0)
-  const primero = Math.min(...informes.map(i => Date.parse(i.creadoEn)))
+  // Se mira solo lo que falta avisar: un informe que entra tarde (el 2 o el 17) espera SUS fuentes y sus 6 horas,
+  // no las de la tanda que ya se avisó.
+  const completa = sinAvisar.every(i => i.pendientes.length === 0)
+  const primero = Math.min(...sinAvisar.map(i => Date.parse(i.creadoEn)))
   const tiempoCumplido = ahora.getTime() - primero >= ESPERA_MAXIMA_MS
   if (!completa && !tiempoCumplido) return { avisar: [], motivo: 'faltan_fuentes' }
   return { avisar: sinAvisar.map(i => i.id), motivo: completa ? 'tanda_completa' : 'tiempo_cumplido' }

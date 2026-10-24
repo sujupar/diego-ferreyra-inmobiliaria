@@ -177,13 +177,31 @@ export async function reclamarAviso(ids: string[], ahora: Date): Promise<string[
   return (data ?? []).map(r => String(r.id))
 }
 
+/** Deshace un reclamo cuyo aviso no salió entero: la corrida siguiente lo vuelve a intentar. */
+export async function liberarAviso(ids: string[]): Promise<void> {
+  if (!ids.length) return
+  const { error } = await sb().from('property_reports').update({ avisado_at: null }).in('id', ids)
+  if (error) fallo('liberar el aviso', error)
+}
+
+/** ¿Hay una tarea `informe_quincenal` pendiente para la propiedad? (`createTaskForRole` no avisa si no la creó). */
+export async function hayTareaDelInforme(propertyId: string): Promise<boolean> {
+  const { count, error } = await sb().from('tasks').select('id', { count: 'exact', head: true })
+    .eq('property_id', propertyId).eq('type', 'informe_quincenal').eq('status', 'pending')
+  if (error) fallo('verificar la tarea del informe', error)
+  return (count ?? 0) > 0
+}
+
 /**
  * Informes para el listado `/informes`, con la dirección de su propiedad. `propertyIds` null = todos (operaciones);
  * una lista = solo esas (asesor). `estado` y `hasta` filtran. Tope de 300: son 36 propiedades × 2 por mes.
  */
 export async function listarParaElListado(f: { propertyIds: string[] | null; estado: 'borrador' | 'listo' | null; hasta: string | null }): Promise<Array<{ informe: Informe; direccion: string }>> {
   if (f.propertyIds && !f.propertyIds.length) return []
-  let q = sb().from('property_reports').select(`${SELECT}, properties(address)`).order('hasta', { ascending: false }).limit(300)
+  // Borradores primero EN LA CONSULTA ('borrador' < 'listo'): con el tope, uno viejo sin completar no puede quedar
+  // afuera por la cantidad de listos más nuevos.
+  let q = sb().from('property_reports').select(`${SELECT}, properties(address)`)
+    .order('estado', { ascending: true }).order('hasta', { ascending: false }).limit(300)
   if (f.propertyIds) q = q.in('property_id', f.propertyIds)
   if (f.estado) q = q.eq('estado', f.estado)
   if (f.hasta) q = q.eq('hasta', f.hasta)

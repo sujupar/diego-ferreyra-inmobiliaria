@@ -20,6 +20,7 @@ export function dependenciasReales(ahora: Date): DependenciasCiclo {
       await refrescarFuente(i, fuente, ahora)
     },
     reclamar: ids => datos.reclamarAviso(ids, ahora),
+    liberar: datos.liberarAviso,
     crearTarea: async ({ propertyId, direccion }) => {
       // Una tarea por propiedad y coordinador; si la del informe anterior sigue abierta, el índice único
       // (y `pendingTaskExists`) no la duplica: esa misma tarea lleva a la pestaña con los dos pendientes.
@@ -29,6 +30,9 @@ export function dependenciasReales(ahora: Date): DependenciasCiclo {
         description: 'Cargar los números de Zonaprop y Argenprop, revisar los textos y las competidoras, y marcarlo como listo.',
         property_id: propertyId,
       })
+      // `createTaskForRole` NUNCA lanza (registra y sigue): sin esta verificación, una tarea que no se creó (base
+      // caída, ningún coordinador activo) contaría como avisada y Paula no se enteraría nunca.
+      if (!(await datos.hayTareaDelInforme(propertyId))) throw new Error('la tarea no quedó creada (¿no hay coordinadores activos?)')
     },
     avisar: async (periodo, informes) => {
       const r = await notificarInformesQuincenales({ periodo, informes })

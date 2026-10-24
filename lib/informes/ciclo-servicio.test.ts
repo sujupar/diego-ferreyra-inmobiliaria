@@ -22,6 +22,7 @@ function deps(informes: InformeDelPeriodo[] = [], extra: Partial<DependenciasCic
       if (i) i.pendientes = i.pendientes.filter(f => f !== fuente)
     }),
     reclamar: vi.fn(async (ids: string[]) => ids),
+    liberar: vi.fn(async () => {}),
     crearTarea: vi.fn(async () => {}),
     avisar: vi.fn(async () => ({ ok: true, detalle: 'enviado a 1' })),
     reloj: () => 0,
@@ -72,9 +73,18 @@ describe('correrCiclo', () => {
     expect(r.fuentes).toBeGreaterThan(1)
   })
 
-  it('con la tanda completa: tarea por propiedad y UN email con todas', async () => {
+  it('la corrida que trae fuentes NO avisa (el aviso va con todo el presupuesto, en la siguiente)', async () => {
     const d = deps()
     const r = await correrCiclo(d, new Date('2026-11-01T12:00:00Z'))
+    expect(r.fuentes).toBe(12)
+    expect(r.motivo).toBe('aviso_en_la_proxima')
+    expect(d.reclamar).not.toHaveBeenCalled()
+  })
+
+  it('con la tanda completa: tarea por propiedad y UN email con todas', async () => {
+    const d = deps()
+    await correrCiclo(d, new Date('2026-11-01T12:00:00Z'))
+    const r = await correrCiclo(d, new Date('2026-11-01T12:02:00Z'))
     expect(r.avisados).toBe(2)
     expect(d.crearTarea).toHaveBeenCalledTimes(2)
     expect(d.crearTarea).toHaveBeenCalledWith({ propertyId: 'p1', direccion: 'Roque Pérez 3059', informeId: 'i-p1' })
@@ -86,17 +96,41 @@ describe('correrCiclo', () => {
 
   it('solo avisa lo que esta corrida reclamó (otra corrida a la vez no duplica el email)', async () => {
     const d = deps([], { reclamar: vi.fn(async () => []) })
-    const r = await correrCiclo(d, new Date('2026-11-01T12:00:00Z'))
+    await correrCiclo(d, new Date('2026-11-01T12:00:00Z'))
+    const r = await correrCiclo(d, new Date('2026-11-01T12:02:00Z'))
     expect(r.avisados).toBe(0)
     expect(d.crearTarea).not.toHaveBeenCalled()
     expect(d.avisar).not.toHaveBeenCalled()
   })
 
-  it('un email que falla queda en el resultado (las tareas ya están creadas)', async () => {
+  it('si el email falla, se libera el aviso para que la próxima corrida lo repita (las tareas no se duplican)', async () => {
     const d = deps([], { avisar: vi.fn(async () => ({ ok: false, detalle: 'Resend caído' })) })
-    const r = await correrCiclo(d, new Date('2026-11-01T12:00:00Z'))
+    await correrCiclo(d, new Date('2026-11-01T12:00:00Z'))
+    const r = await correrCiclo(d, new Date('2026-11-01T12:02:00Z'))
     expect(d.crearTarea).toHaveBeenCalledTimes(2)
     expect(r.email).toEqual({ ok: false, detalle: 'Resend caído' })
+    expect(d.liberar).toHaveBeenCalledWith(['i-p1', 'i-p2'])
+    expect(r.avisados).toBe(0)
+  })
+
+  it('si una tarea no se pudo crear, se libera todo y no se manda el email (se repite entero en la próxima)', async () => {
+    const d = deps([], { crearTarea: vi.fn(async ({ propertyId }) => { if (propertyId === 'p2') throw new Error('insert falló') }) })
+    await correrCiclo(d, new Date('2026-11-01T12:00:00Z'))
+    const r = await correrCiclo(d, new Date('2026-11-01T12:02:00Z'))
+    expect(d.avisar).not.toHaveBeenCalled()
+    expect(d.liberar).toHaveBeenCalledWith(['i-p1', 'i-p2'])
+    expect(r.errores).toEqual([expect.stringContaining('insert falló')])
+  })
+
+  it('un informe que Paula ya marcó listo queda avisado pero sin tarea ni línea en el email', async () => {
+    const d = deps()
+    await correrCiclo(d, new Date('2026-11-01T12:00:00Z'))
+    const listo = d.informes.find(i => i.propertyId === 'p1')
+    if (listo) listo.estado = 'listo'
+    await correrCiclo(d, new Date('2026-11-01T12:02:00Z'))
+    expect(d.reclamar).toHaveBeenCalledWith(['i-p1', 'i-p2'])
+    expect(d.crearTarea).toHaveBeenCalledTimes(1)
+    expect(d.avisar).toHaveBeenCalledWith(expect.any(String), [{ id: 'i-p2', direccion: 'Entre Ríos 2333' }])
   })
 
   it('con propiedades elegidas (prueba) usa solo esas, aunque sean [TEST]', async () => {
