@@ -12,6 +12,9 @@ export type TaskType =
   | 'rejected_docs'
   | 'complete_imported_property'
   | 'follow_up'
+  // Lo crea el ciclo del informe quincenal (lib/informes/ciclo-real.ts). Va JUNTO con el CHECK `tasks_type_check`
+  // (migración 20261024000001): un tipo que el CHECK no conoce hace fallar el INSERT con 23514.
+  | 'informe_quincenal'
 
 // Los 3 canales de contacto originales del modal de Seguimiento. Se conserva por
 // compatibilidad (lo importa el pipeline). El set completo de "tipos" de tarea de

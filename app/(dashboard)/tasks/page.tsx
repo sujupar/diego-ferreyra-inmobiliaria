@@ -23,6 +23,7 @@ const TYPE_CONFIG: Record<string, { icon: typeof Bell; color: string; label: str
   rejected_docs: { icon: AlertTriangle, color: 'bg-red-100 text-red-800', label: 'Docs Rechazados' },
   follow_up: { icon: MessageSquare, color: 'bg-orange-100 text-orange-800', label: 'Seguimiento' },
   complete_imported_property: { icon: Home, color: 'bg-blue-100 text-blue-800', label: 'Completar Propiedad' },
+  informe_quincenal: { icon: FileText, color: 'bg-emerald-100 text-emerald-800', label: 'Informe quincenal' },
 }
 
 const CHANNEL_CONFIG: Record<string, { icon: typeof Phone; label: string }> = {
@@ -109,6 +110,9 @@ function getTaskLink(task: Task): string {
     if (task.contact_id) return `/contacts/${task.contact_id}?edit=1`
     return '#'
   }
+  // La tarea del ciclo lleva a la pestaña Informes de la ficha: ahí están TODOS los informes pendientes de la
+  // propiedad (si quedó uno de la quincena anterior, la misma tarea los representa a los dos).
+  if (task.type === 'informe_quincenal' && task.property_id) return `/properties/${task.property_id}?tab=informes`
   if (task.deal_id) return `/pipeline/${task.deal_id}`
   if (task.property_id) return `/properties/${task.property_id}`
   if (task.appraisal_id) return `/appraisals/${task.appraisal_id}`

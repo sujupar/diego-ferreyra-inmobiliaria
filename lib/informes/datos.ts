@@ -8,7 +8,9 @@ import { sb } from './sb'
 import { normalizarDisposicion, normalizarEstado } from './competencia/caracteristicas'
 import { BUCKET_INFORMES } from './archivos'
 import { actualizarFormaVieja } from './forma-vieja'
-import type { CandidatasGuardadas, Capturas, Competidora, Fuentes, FuenteGuardada, Informe, Manual, NombreCaptura, NombreFuente, PropiedadDelInforme } from './tipos'
+import { FUENTES, type CandidatasGuardadas, type Capturas, type Competidora, type Fuentes, type FuenteGuardada, type Informe, type Manual, type NombreCaptura, type NombreFuente, type PropiedadDelInforme } from './tipos'
+import type { InformeDelPeriodo, PropiedadDelCiclo } from './ciclo-servicio'
+import { fechaEnArgentina } from '@/lib/visitas/horario'
 import type { CambiosInforme } from './sanear'
 
 function fallo(contexto: string, error: { message: string } | null): never {
@@ -134,6 +136,112 @@ export async function volverABorrador(id: string): Promise<boolean> {
     .eq('id', id).eq('estado', 'listo').select('id')
   if (error) fallo('volver a borrador', error)
   return (data ?? []).length > 0
+}
+
+// ─── Ciclo automático (cron del 1 y el 16) ───────────────────────────────────
+
+/** Las captadas, con lo que el ciclo necesita para decidir. El filtro fino (estado comercial, [TEST]) es puro. */
+export async function propiedadesParaElCiclo(): Promise<PropiedadDelCiclo[]> {
+  const { data, error } = await sb().from('properties')
+    .select('id, title, address, status, commercial_status, captured_at').eq('status', 'approved').limit(1000)
+  if (error) fallo('leer las propiedades del ciclo', error)
+  return (data ?? []).map(r => ({
+    id: String(r.id), titulo: r.title ? String(r.title) : null, direccion: String(r.address ?? ''), status: String(r.status),
+    commercialStatus: r.commercial_status ? String(r.commercial_status) : null,
+    // `captured_at` es un instante: el día que cuenta es el de Argentina (a las 22 h de Buenos Aires ya es mañana en UTC).
+    capturadaEl: r.captured_at ? fechaEnArgentina(new Date(String(r.captured_at))) : null,
+  }))
+}
+
+export async function informesDelPeriodo(hasta: string): Promise<InformeDelPeriodo[]> {
+  const { data, error } = await sb().from('property_reports')
+    .select('id, property_id, desde, origen, estado, fuentes, created_at, avisado_at').eq('hasta', hasta).limit(1000)
+  if (error) fallo('leer los informes del período', error)
+  return (data ?? []).map(r => {
+    const f = objeto(r.fuentes) as Fuentes
+    return {
+      id: String(r.id), propertyId: String(r.property_id), desde: String(r.desde),
+      origen: r.origen === 'ciclo' ? 'ciclo' : 'manual', estado: r.estado === 'listo' ? 'listo' : 'borrador',
+      creadoEn: String(r.created_at), avisadoEn: r.avisado_at ? String(r.avisado_at) : null,
+      pendientes: FUENTES.filter(n => !f[n] || f[n]?.estado === 'pendiente'),
+    }
+  })
+}
+
+/** UPDATE condicional: dos corridas a la vez nunca reclaman el mismo informe (no hay dos emails por él). */
+export async function reclamarAviso(ids: string[], ahora: Date): Promise<string[]> {
+  if (!ids.length) return []
+  const { data, error } = await sb().from('property_reports')
+    .update({ avisado_at: ahora.toISOString() }).in('id', ids).is('avisado_at', null).select('id')
+  if (error) fallo('reclamar el aviso', error)
+  return (data ?? []).map(r => String(r.id))
+}
+
+/** Deshace un reclamo cuyo aviso no salió entero: la corrida siguiente lo vuelve a intentar. */
+export async function liberarAviso(ids: string[]): Promise<void> {
+  if (!ids.length) return
+  const { error } = await sb().from('property_reports').update({ avisado_at: null }).in('id', ids)
+  if (error) fallo('liberar el aviso', error)
+}
+
+/** ¿Hay una tarea `informe_quincenal` pendiente para la propiedad? (`createTaskForRole` no avisa si no la creó). */
+export async function hayTareaDelInforme(propertyId: string): Promise<boolean> {
+  const { count, error } = await sb().from('tasks').select('id', { count: 'exact', head: true })
+    .eq('property_id', propertyId).eq('type', 'informe_quincenal').eq('status', 'pending')
+  if (error) fallo('verificar la tarea del informe', error)
+  return (count ?? 0) > 0
+}
+
+/**
+ * Informes para el listado `/informes`, con la dirección de su propiedad. `propertyIds` null = todos (operaciones);
+ * una lista = solo esas (asesor). `estado` y `hasta` filtran. Tope de 300: son 36 propiedades × 2 por mes.
+ */
+export async function listarParaElListado(f: { propertyIds: string[] | null; estado: 'borrador' | 'listo' | null; hasta: string | null }): Promise<Array<{ informe: Informe; direccion: string }>> {
+  if (f.propertyIds && !f.propertyIds.length) return []
+  // Borradores primero EN LA CONSULTA ('borrador' < 'listo'): con el tope, uno viejo sin completar no puede quedar
+  // afuera por la cantidad de listos más nuevos.
+  let q = sb().from('property_reports').select(`${SELECT}, properties(address)`)
+    .order('estado', { ascending: true }).order('hasta', { ascending: false }).limit(300)
+  if (f.propertyIds) q = q.in('property_id', f.propertyIds)
+  if (f.estado) q = q.eq('estado', f.estado)
+  if (f.hasta) q = q.eq('hasta', f.hasta)
+  const { data, error } = await q
+  if (error) fallo('listar los informes', error)
+  return (data ?? []).map(r => {
+    const fila = r as Record<string, unknown>
+    const prop = objeto(fila.properties)
+    return { informe: aInforme(fila), direccion: String(prop.address ?? '') }
+  })
+}
+
+/** Las propiedades de un asesor: las que muestra o las que captó (el criterio de `puedeGestionarMedia`). */
+export async function propiedadesDelAsesor(userId: string): Promise<string[]> {
+  const { data, error } = await sb().from('properties').select('id').or(`assigned_to.eq.${userId},created_by.eq.${userId}`).limit(1000)
+  if (error) fallo('leer las propiedades del asesor', error)
+  return (data ?? []).map(r => String(r.id))
+}
+
+/** Los cierres de período que existen (para el filtro del listado), del más nuevo al más viejo. */
+export async function cierresDePeriodo(): Promise<string[]> {
+  const { data, error } = await sb().from('property_reports').select('hasta').order('hasta', { ascending: false }).limit(1000)
+  if (error) fallo('leer los períodos', error)
+  return [...new Set((data ?? []).map(r => String(r.hasta)))]
+}
+
+/**
+ * Cierra las tareas `informe_quincenal` pendientes de la propiedad, SOLO si no le queda ningún borrador del ciclo:
+ * con dos quincenas abiertas, la misma tarea las representa a las dos. Devuelve cuántas cerró.
+ */
+export async function cerrarTareasDelInforme(propertyId: string): Promise<number> {
+  const quedan = await sb().from('property_reports').select('id', { count: 'exact', head: true })
+    .eq('property_id', propertyId).eq('origen', 'ciclo').eq('estado', 'borrador')
+  if (quedan.error) fallo('contar los borradores del ciclo', quedan.error)
+  if ((quedan.count ?? 0) > 0) return 0
+  const { data, error } = await sb().from('tasks')
+    .update({ status: 'completed', completed_at: new Date().toISOString() })
+    .eq('property_id', propertyId).eq('type', 'informe_quincenal').eq('status', 'pending').select('id')
+  if (error) fallo('cerrar la tarea del informe', error)
+  return (data ?? []).length
 }
 
 // ─── La propiedad (lo que muestran la pantalla y el PDF) ─────────────────────

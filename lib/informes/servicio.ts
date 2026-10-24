@@ -257,6 +257,13 @@ export async function marcarInformeListo(i: Informe, pdfPath: string, userId: st
     throw new ErrorInforme(409, CAMBIO_MIENTRAS_SE_ARMABA)
   }
   if (anterior && anterior !== pdfPath) await datos.borrarArchivos([anterior])
+  // La tarea de Pendientes que creó el ciclo se cierra sola si la propiedad no tiene otro informe del ciclo
+  // por completar. Si falla, el informe igual quedó listo: la tarea se cierra a mano.
+  try {
+    await datos.cerrarTareasDelInforme(i.propertyId)
+  } catch (e) {
+    console.error('[informes] no se pudo cerrar la tarea del informe', i.propertyId, e)
+  }
 }
 
 // ─── Lo que ve la pantalla (y con lo que se arma el PDF) ─────────────────────
