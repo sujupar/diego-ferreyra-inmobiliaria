@@ -117,7 +117,9 @@ export function EditorInforme({ informeId }: { informeId: string }) {
       confirmado.current = r.manual
       manualRef.current = mezcla.manual
       setManual(mezcla.manual)
+      // Lo que escribió la plataforma ya quedó en la base (si además hubo que mandar lo de Paula, `enviarManual` lo marca).
       if (mezcla.hayQueMandar) await enviarRef.current()
+      else setGuardadoEn(new Date())
       await recargar()
     }).finally(() => setEscribiendo(false))
   }, [encolar, informeId, recargar])

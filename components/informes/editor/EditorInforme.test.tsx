@@ -266,6 +266,8 @@ describe('EditorInforme', () => {
     expect(await screen.findByDisplayValue('La están viendo muchos compradores.')).toBeInTheDocument()
     expect(screen.getByText(/no encontré en los datos/)).toBeInTheDocument()
     expect(api.escribirTextos).toHaveBeenCalledTimes(1)
+    // Lo que escribió la plataforma ya está en la base: la barra lo dice.
+    expect(await screen.findByText(/Guardado \d\d:\d\d/)).toBeInTheDocument()
   })
 
   it('con textos ya cargados no los escribe solo', async () => {
