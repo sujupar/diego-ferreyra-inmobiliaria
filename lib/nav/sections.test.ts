@@ -21,10 +21,10 @@ describe('getNavSections — permisos del menú', () => {
     expect(groups[0].label).toBeNull()
   })
 
-  it('el asesor ve las mismas 10 rutas de siempre más Inicio y Noticias (12)', () => {
+  it('el asesor ve las mismas 10 rutas de siempre más Inicio, Noticias e Informes quincenales (13)', () => {
     const hrefs = navHrefs(getNavSections('asesor'))
     expect(hrefs.sort()).toEqual([
-      '/appraisal/new', '/appraisals', '/contacts', '/crm', '/inbox', '/inicio',
+      '/appraisal/new', '/appraisals', '/contacts', '/crm', '/inbox', '/informes', '/inicio',
       '/noticias', '/pipeline/new', '/properties', '/redes-sociales', '/tasks', '/visits',
     ])
   })
@@ -146,8 +146,9 @@ describe('titleForPath', () => {
     expect(titleForPath(admin, '/properties/abc-123')).toEqual({ section: null, title: 'Propiedades' })
   })
 
-  it('la pantalla de un informe quincenal se titula "Informes" (no el nombre de la empresa)', () => {
-    expect(titleForPath(admin, '/informes/abc-123')).toEqual({ section: null, title: 'Informes' })
+  it('el listado y la pantalla de un informe quincenal se titulan con el área del menú (no el nombre de la empresa)', () => {
+    expect(titleForPath(admin, '/informes/abc-123')).toEqual({ section: null, title: 'Propiedades' })
+    expect(titleForPath(getNavSections('asesor'), '/informes')).toEqual({ section: null, title: 'Informes quincenales' })
   })
 
   it('un ítem suelto SÍ hereda su propia etiqueta en una subruta — su etiqueta ya nombra toda el área', () => {

@@ -9,6 +9,7 @@ const { datosMock, traerMock, openaiMock, listadoMock, scrapeMock } = vi.hoisted
     leerPropiedad: vi.fn(), crearInforme: vi.fn(), guardarFuente: vi.fn(), guardarCaptura: vi.fn(), marcarListo: vi.fn(),
     crearSubidaFirmada: vi.fn(), primerosBytes: vi.fn(), urlFirmada: vi.fn(), borrarArchivos: vi.fn(),
     leerInforme: vi.fn(), leerInformeAnterior: vi.fn(), guardarCambios: vi.fn(), guardarCandidatas: vi.fn(),
+    cerrarTareasDelInforme: vi.fn(),
   },
 }))
 vi.mock('./datos', () => datosMock)
@@ -121,6 +122,25 @@ describe('listo', () => {
     datosMock.marcarListo.mockResolvedValue(true)
     await marcarInformeListo(informe(), PDF, 'u1', 'v1')
     expect(datosMock.marcarListo).toHaveBeenCalledWith(ID, PDF, 'u1', 'v1')
+  })
+  it('al marcarlo listo se cierra la tarea de Pendientes de esa propiedad (si no le queda otro del ciclo)', async () => {
+    datosMock.primerosBytes.mockResolvedValue({ bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]), tamano: 50000 })
+    datosMock.marcarListo.mockResolvedValue(true)
+    datosMock.cerrarTareasDelInforme.mockResolvedValue(1)
+    await marcarInformeListo(informe(), PDF, 'u1', 'v1')
+    expect(datosMock.cerrarTareasDelInforme).toHaveBeenCalledWith(informe().propertyId)
+  })
+  it('si cerrar la tarea falla, el informe igual queda listo (la tarea se cierra a mano)', async () => {
+    datosMock.primerosBytes.mockResolvedValue({ bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]), tamano: 50000 })
+    datosMock.marcarListo.mockResolvedValue(true)
+    datosMock.cerrarTareasDelInforme.mockRejectedValue(new Error('base caída'))
+    await expect(marcarInformeListo(informe(), PDF, 'u1', 'v1')).resolves.toBeUndefined()
+  })
+  it('si no llegó a quedar listo, la tarea no se toca', async () => {
+    datosMock.primerosBytes.mockResolvedValue({ bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]), tamano: 50000 })
+    datosMock.marcarListo.mockResolvedValue(false)
+    await expect(marcarInformeListo(informe(), PDF, 'u1', 'v1')).rejects.toMatchObject({ status: 409 })
+    expect(datosMock.cerrarTareasDelInforme).not.toHaveBeenCalled()
   })
   it('si el informe cambió después de armar el PDF → 409 y el PDF viejo se borra', async () => {
     await expect(marcarInformeListo(informe({ updatedAt: 'v2' }), PDF, 'u1', 'v1')).rejects.toMatchObject({ status: 409 })

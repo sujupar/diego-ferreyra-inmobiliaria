@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, ListChecks, Inbox, Flag, Columns3, Contact, CalendarCheck, ClipboardList,
-  Building2, Megaphone, Newspaper, BarChart3, Filter, Settings, Wrench, UserCog,
+  Building2, Megaphone, Newspaper, BarChart3, Filter, Settings, Wrench, UserCog, FileText,
 } from 'lucide-react'
 import type { Role } from '@/types/auth.types'
 import { hasPermission, hasAnyPermission, type Permission } from '@/lib/auth/roles'
@@ -50,6 +50,8 @@ const COORDINAR: NavItem = { href: '/pipeline/new', label: 'Coordinar', icon: Cl
 const NUEVA_TASACION: NavItem = { href: '/appraisal/new', label: 'Nueva tasación', icon: ClipboardList }
 const HISTORIAL: NavItem = { href: '/appraisals', label: 'Historial', icon: ClipboardList }
 const REVISION_LEGAL: NavItem = { href: '/properties/review', label: 'Revisión legal', icon: Building2 }
+// Informes quincenales de todas las propiedades (el de cada una también está en la pestaña de su ficha).
+const INFORMES: NavItem = { href: '/informes', label: 'Informes quincenales', icon: FileText }
 
 /**
  * El menú de cada rol. Las condiciones de permiso son EXACTAMENTE las que había en
@@ -86,6 +88,7 @@ export function getNavSections(role: Role): NavGroup[] {
         entries: [
           { label: 'Tasaciones', icon: ClipboardList, items: [COORDINAR, NUEVA_TASACION, HISTORIAL] },
           { href: '/properties', label: 'Mis propiedades', icon: Building2 },
+          INFORMES,
         ],
       },
       { label: 'Marketing', entries: [REDES, NOTICIAS] },
@@ -99,7 +102,7 @@ export function getNavSections(role: Role): NavGroup[] {
         label: 'Captación',
         entries: [
           { label: 'Tasaciones', icon: ClipboardList, items: [COORDINAR, HISTORIAL] },
-          { label: 'Propiedades', icon: Building2, items: [LISTADO, NUEVA_PROPIEDAD] },
+          { label: 'Propiedades', icon: Building2, items: [LISTADO, NUEVA_PROPIEDAD, INFORMES] },
         ],
       },
       { label: 'Comercial', entries: [INBOX, AVISOS, CRM, CONTACTOS, VISITAS] },
@@ -126,7 +129,7 @@ export function getNavSections(role: Role): NavGroup[] {
         {
           label: 'Propiedades',
           icon: Building2,
-          items: [LISTADO, NUEVA_PROPIEDAD, ...(can('properties.review') ? [REVISION_LEGAL] : [])],
+          items: [LISTADO, NUEVA_PROPIEDAD, INFORMES, ...(can('properties.review') ? [REVISION_LEGAL] : [])],
         },
       ],
     },
@@ -227,8 +230,8 @@ const EXTRA_TITLES: { prefix: string; title: string }[] = [
   // enlazada desde Inicio. No hay listado propio en el menú; pertenece al
   // área de Tasaciones (mismo nombre que usa el desplegable Tasaciones).
   { prefix: '/scheduled-appraisals', title: 'Tasaciones' },
-  // /informes/[id]: el informe quincenal de una propiedad. Se llega desde la pestaña Informes de la
-  // ficha; todavía no hay ítem de menú (el listado llega en la Entrega 2 del informe).
+  // /informes: desde la Entrega 2 está en el menú (`INFORMES`) y el menú resuelve el título. Queda como red
+  // para un rol sin ese ítem (hoy el abogado, que igual no tiene acceso: la ruta le responde 403).
   { prefix: '/informes', title: 'Informes' },
   // /properties/[id]: para casi todos los roles esto lo resuelve el menú
   // (/properties está adentro del desplegable "Propiedades"). El ABOGADO es la

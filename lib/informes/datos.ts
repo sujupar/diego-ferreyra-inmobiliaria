@@ -177,6 +177,55 @@ export async function reclamarAviso(ids: string[], ahora: Date): Promise<string[
   return (data ?? []).map(r => String(r.id))
 }
 
+/**
+ * Informes para el listado `/informes`, con la dirección de su propiedad. `propertyIds` null = todos (operaciones);
+ * una lista = solo esas (asesor). `estado` y `hasta` filtran. Tope de 300: son 36 propiedades × 2 por mes.
+ */
+export async function listarParaElListado(f: { propertyIds: string[] | null; estado: 'borrador' | 'listo' | null; hasta: string | null }): Promise<Array<{ informe: Informe; direccion: string }>> {
+  if (f.propertyIds && !f.propertyIds.length) return []
+  let q = sb().from('property_reports').select(`${SELECT}, properties(address)`).order('hasta', { ascending: false }).limit(300)
+  if (f.propertyIds) q = q.in('property_id', f.propertyIds)
+  if (f.estado) q = q.eq('estado', f.estado)
+  if (f.hasta) q = q.eq('hasta', f.hasta)
+  const { data, error } = await q
+  if (error) fallo('listar los informes', error)
+  return (data ?? []).map(r => {
+    const fila = r as Record<string, unknown>
+    const prop = objeto(fila.properties)
+    return { informe: aInforme(fila), direccion: String(prop.address ?? '') }
+  })
+}
+
+/** Las propiedades de un asesor: las que muestra o las que captó (el criterio de `puedeGestionarMedia`). */
+export async function propiedadesDelAsesor(userId: string): Promise<string[]> {
+  const { data, error } = await sb().from('properties').select('id').or(`assigned_to.eq.${userId},created_by.eq.${userId}`).limit(1000)
+  if (error) fallo('leer las propiedades del asesor', error)
+  return (data ?? []).map(r => String(r.id))
+}
+
+/** Los cierres de período que existen (para el filtro del listado), del más nuevo al más viejo. */
+export async function cierresDePeriodo(): Promise<string[]> {
+  const { data, error } = await sb().from('property_reports').select('hasta').order('hasta', { ascending: false }).limit(1000)
+  if (error) fallo('leer los períodos', error)
+  return [...new Set((data ?? []).map(r => String(r.hasta)))]
+}
+
+/**
+ * Cierra las tareas `informe_quincenal` pendientes de la propiedad, SOLO si no le queda ningún borrador del ciclo:
+ * con dos quincenas abiertas, la misma tarea las representa a las dos. Devuelve cuántas cerró.
+ */
+export async function cerrarTareasDelInforme(propertyId: string): Promise<number> {
+  const quedan = await sb().from('property_reports').select('id', { count: 'exact', head: true })
+    .eq('property_id', propertyId).eq('origen', 'ciclo').eq('estado', 'borrador')
+  if (quedan.error) fallo('contar los borradores del ciclo', quedan.error)
+  if ((quedan.count ?? 0) > 0) return 0
+  const { data, error } = await sb().from('tasks')
+    .update({ status: 'completed', completed_at: new Date().toISOString() })
+    .eq('property_id', propertyId).eq('type', 'informe_quincenal').eq('status', 'pending').select('id')
+  if (error) fallo('cerrar la tarea del informe', error)
+  return (data ?? []).length
+}
+
 // ─── La propiedad (lo que muestran la pantalla y el PDF) ─────────────────────
 
 

@@ -41,6 +41,7 @@ export function InformesTab({ propertyId }: { propertyId: string }) {
         <div>
           <p className="eyebrow">Para el propietario</p>
           <h2 className="display mt-1 text-xl">Informes quincenales</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Mientras esté captada, el 1 y el 16 la plataforma arma sola el de la quincena que cerró.</p>
         </div>
         {estado.tipo === 'listo' && (
           <Button type="button" className="min-h-11" onClick={() => setNuevoAbierto(true)}>
