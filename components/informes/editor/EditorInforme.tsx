@@ -11,6 +11,10 @@
  *   relee el informe, para que no salga con un dato escrito un segundo antes.
  * - Un solo render de react-pdf a la vez (`armandoPdf`): dos en paralelo se corrompen (CLAUDE.md,
  *   gotcha del PDFViewer de tasaciones). Por eso la vista previa es un blob en un iframe.
+ * - AUTOGUARDADO (pedido del dueño, 2026-10-24): los campos guardan a la pausa al tipear; un guardado que falla
+ *   por el camino (red, servidor) NO vuelve atrás: lo escrito queda y se reintenta solo; al cerrar o recargar la
+ *   pestaña se manda lo pendiente con `keepalive` y el navegador avisa. La barra de abajo dice siempre si quedó
+ *   guardado. Las reglas viven en lib/informes/autoguardado.ts.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
@@ -18,6 +22,7 @@ import { ArrowLeft, CheckCircle2, Download, Eye, Loader2, RefreshCw, Undo2 } fro
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { sanearCambios } from '@/lib/informes/sanear'
+import { esReintentable, esperaParaReintento, estadoDelGuardado } from '@/lib/informes/autoguardado'
 import type { CampoTexto as CampoDeTexto } from '@/lib/informes/redaccion'
 import { fuentesPorTraer, resumenDeLaFuente, rotuloDeLaFuente, type Tono } from '@/lib/informes/editor'
 import { textoDelPeriodo } from '@/lib/informes/periodo'
@@ -26,7 +31,7 @@ import { FUENTES, type Competidora, type Manual, type NombreFuente } from '@/lib
 import { cn } from '@/lib/utils'
 import { generarPdfDelInforme } from '../pdf/generar'
 import * as api from './api'
-import { CampoLinea, CampoNumero, CampoTexto, Publicada, Seccion } from './campos'
+import { CampoLinea, CampoNumero, CampoTexto, Publicada, Seccion, type AvisarPendiente } from './campos'
 import { CapturaPortal } from './CapturaPortal'
 import { Competidoras } from './Competidoras'
 
@@ -57,6 +62,19 @@ export function EditorInforme({ informeId }: { informeId: string }) {
   const confirmado = useRef<Manual>({})
   const cola = useRef<Promise<void>>(Promise.resolve())
   const yaTrajo = useRef(false)
+  /** Un guardado que falló por el camino y se está reintentando: mientras tanto NO se puede decir "guardado". */
+  const [fallo, setFallo] = useState<string | null>(null)
+  const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
+  /** Campos con algo escrito que todavía no se mandó (la pausa al tipear no se cumplió). */
+  const pendientes = useRef(new Map<string, () => void>())
+  const [nPendientes, setNPendientes] = useState(0)
+  const reintento = useRef<{ timer: ReturnType<typeof setTimeout> | null; intento: number }>({ timer: null, intento: 0 })
+
+  const onPendiente = useCallback<AvisarPendiente>((id, enviar) => {
+    if (enviar) pendientes.current.set(id, enviar)
+    else pendientes.current.delete(id)
+    setNPendientes(pendientes.current.size)
+  }, [])
 
   const recargar = useCallback(async () => {
     const vista = await api.leerVista(informeId)
@@ -158,6 +176,69 @@ export function EditorInforme({ informeId }: { informeId: string }) {
   }
 
   /**
+   * Manda el `manual` ACTUAL (no el de cuando se pidió: si en el medio se escribió algo más, va también).
+   * Devuelve si entró. Un fallo del camino deja lo escrito y programa un reintento; un rechazo del dato vuelve a
+   * lo último confirmado y lo dice.
+   */
+  const enviarManual = useCallback(async (): Promise<boolean> => {
+    const enviado = manualRef.current ?? {}
+    try {
+      await api.guardarManual(informeId, enviado)
+    } catch (e) {
+      if (e instanceof api.ErrorDePedido && esReintentable(e.status)) {
+        programarReintento.current(e.message)
+        return false
+      }
+      manualRef.current = confirmado.current
+      setManual(confirmado.current)
+      setFallo(null)
+      throw e
+    }
+    confirmado.current = enviado
+    if (reintento.current.timer) { clearTimeout(reintento.current.timer); reintento.current.timer = null }
+    reintento.current.intento = 0
+    setFallo(null)
+    setGuardadoEn(new Date())
+    return true
+  }, [informeId])
+
+  // En una ref: `enviarManual` y el reintento se llaman entre sí.
+  const programarReintento = useRef<(motivo: string) => void>(() => {})
+  useEffect(() => {
+    programarReintento.current = (motivo: string) => {
+      setFallo(motivo)
+      if (reintento.current.timer) return
+      reintento.current.timer = setTimeout(() => {
+        reintento.current.timer = null
+        reintento.current.intento++
+        void encolar(async () => { if (await enviarManual()) await recargar() })
+      }, esperaParaReintento(reintento.current.intento))
+    }
+  }, [encolar, enviarManual, recargar])
+  useEffect(() => () => { if (reintento.current.timer) clearTimeout(reintento.current.timer) }, [])
+
+  // Cerrar o recargar la pestaña con algo sin guardar: se manda igual (keepalive) y el navegador avisa antes.
+  useEffect(() => {
+    const sinGuardar = () => pendientes.current.size > 0 || manualRef.current !== confirmado.current
+    const antesDeSalir = (e: BeforeUnloadEvent) => {
+      if (!sinGuardar()) return
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    const alOcultar = () => {
+      // Pasa lo escrito sin mandar al `manual` en memoria (cada `enviar` lo aplica) y lo manda de una.
+      for (const enviar of [...pendientes.current.values()]) enviar()
+      if (manualRef.current && manualRef.current !== confirmado.current) api.guardarManualAlSalir(informeId, manualRef.current)
+    }
+    window.addEventListener('beforeunload', antesDeSalir)
+    window.addEventListener('pagehide', alOcultar)
+    return () => {
+      window.removeEventListener('beforeunload', antesDeSalir)
+      window.removeEventListener('pagehide', alOcultar)
+    }
+  }, [informeId])
+
+  /**
    * El servidor reemplaza `manual` ENTERO, así que un dato inválido aplicado en pantalla viajaría en
    * cada guardado siguiente y los haría fallar a todos (revisión adversarial): se valida ANTES con la
    * misma regla del servidor y, si igual lo rechaza, la pantalla vuelve a lo último confirmado.
@@ -170,15 +251,7 @@ export function EditorInforme({ informeId }: { informeId: string }) {
     setManual(siguiente)
     setAviso(null)
     void encolar(async () => {
-      const enviado = manualRef.current ?? siguiente
-      try {
-        await api.guardarManual(informeId, enviado)
-      } catch (e) {
-        manualRef.current = confirmado.current
-        setManual(confirmado.current)
-        throw e
-      }
-      confirmado.current = enviado
+      if (!(await enviarManual())) return
       if (despues) await despues()
       await recargar()
     })
@@ -259,7 +332,8 @@ export function EditorInforme({ informeId }: { informeId: string }) {
   // Los rótulos de `faltantes()` llevan aclaraciones ("… (o marcar que no está publicada)"): se compara el comienzo.
   const falta = (...comienzos: string[]) => !listo && faltantes.some(x => comienzos.some(c => x.startsWith(c)))
   // La búsqueda de competidoras escribe el informe (cambia su versión): marcarlo listo en el medio daría 409.
-  const ocupado = armandoPdf !== null || guardando > 0 || progresoCompetencia !== null
+  // Con algo sin guardar (pendiente o reintentando) tampoco: el PDF saldría sin eso.
+  const ocupado = armandoPdf !== null || guardando > 0 || progresoCompetencia !== null || fallo !== null || nPendientes > 0
   // Mientras se arma el PDF no se edita: lo escrito en ese momento no saldría en el PDF.
   const bloqueado = listo || armandoPdf !== null || escribiendo
   // Un texto escrito por la plataforma con un número que no está en los datos, que nadie corrigió todavía.
@@ -316,11 +390,11 @@ export function EditorInforme({ informeId }: { informeId: string }) {
         {m.zonaprop?.publicado !== false ? (
           <>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <CampoNumero id="zp-exposicion" etiqueta="Exposición (veces en los listados)" valor={m.zonaprop?.exposicion} deshabilitado={bloqueado}
+              <CampoNumero id="zp-exposicion" alTipear onPendiente={onPendiente} etiqueta="Exposición (veces en los listados)" valor={m.zonaprop?.exposicion} deshabilitado={bloqueado}
                 falta={falta('Zonaprop: exposición')} onGuardar={n => guardarManual(x => ({ ...x, zonaprop: { ...x.zonaprop, exposicion: n } }))} />
-              <CampoNumero id="zp-visualizaciones" etiqueta="Visualizaciones (entraron al aviso)" valor={m.zonaprop?.visualizaciones} deshabilitado={bloqueado}
+              <CampoNumero id="zp-visualizaciones" alTipear onPendiente={onPendiente} etiqueta="Visualizaciones (entraron al aviso)" valor={m.zonaprop?.visualizaciones} deshabilitado={bloqueado}
                 falta={falta('Zonaprop: visualizaciones', 'Zonaprop: exposición y')} onGuardar={n => guardarManual(x => ({ ...x, zonaprop: { ...x.zonaprop, visualizaciones: n } }))} />
-              <CampoNumero id="zp-interesados" etiqueta="Interesados" valor={m.zonaprop?.interesados} deshabilitado={bloqueado}
+              <CampoNumero id="zp-interesados" alTipear onPendiente={onPendiente} etiqueta="Interesados" valor={m.zonaprop?.interesados} deshabilitado={bloqueado}
                 onGuardar={n => guardarManual(x => ({ ...x, zonaprop: { ...x.zonaprop, interesados: n } }))} />
             </div>
             <CapturaPortal informeId={informe.id} cual="zonaprop" portal="Zonaprop" url={capturasUrl.zonaprop} deshabilitado={bloqueado} onCambio={() => void recargar()} />
@@ -334,7 +408,7 @@ export function EditorInforme({ informeId }: { informeId: string }) {
         {m.argenprop?.publicado !== false ? (
           <>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <CampoNumero id="ap-visualizaciones" etiqueta="Visualizaciones" valor={m.argenprop?.visualizaciones} deshabilitado={bloqueado}
+              <CampoNumero id="ap-visualizaciones" alTipear onPendiente={onPendiente} etiqueta="Visualizaciones" valor={m.argenprop?.visualizaciones} deshabilitado={bloqueado}
                 falta={falta('Argenprop: visualizaciones')} onGuardar={n => guardarManual(x => ({ ...x, argenprop: { ...x.argenprop, visualizaciones: n } }))} />
             </div>
             <CapturaPortal informeId={informe.id} cual="argenprop" portal="Argenprop" url={capturasUrl.argenprop} deshabilitado={bloqueado} onCambio={() => void recargar()} />
@@ -349,22 +423,22 @@ export function EditorInforme({ informeId }: { informeId: string }) {
           deshabilitado={bloqueado}
           onCambiarExcluidos={lista => guardarManual(x => ({ ...x, mercadolibre: { ...x.mercadolibre, excluidos: lista } }), async () => { await api.traerFuente(informeId, 'mercadolibre') })}
         />
-        <CampoLinea id="ml-aviso" etiqueta="Agregar otro aviso de MercadoLibre" valor={m.mercadolibre?.aviso} placeholder="MLA1234567890 o el link del aviso" maxLength={500} deshabilitado={bloqueado}
+        <CampoLinea id="ml-aviso" onPendiente={onPendiente} etiqueta="Agregar otro aviso de MercadoLibre" valor={m.mercadolibre?.aviso} placeholder="MLA1234567890 o el link del aviso" maxLength={500} deshabilitado={bloqueado}
           onGuardar={t => guardarManual(x => ({ ...x, mercadolibre: { ...x.mercadolibre, aviso: t } }), async () => { await api.traerFuente(informeId, 'mercadolibre') })} />
         <CapturaPortal informeId={informe.id} cual="mercadolibre" portal="MercadoLibre" url={capturasUrl.mercadolibre} deshabilitado={bloqueado} onCambio={() => void recargar()} />
       </Seccion>
 
       <Seccion id="sec-tiktok" titulo="TikTok" ayuda="Opcional. Si no hubo video en el período, dejalo vacío y la página no sale.">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <CampoNumero id="tk-visualizaciones" etiqueta="Visualizaciones del video" valor={m.tiktok?.visualizaciones} deshabilitado={bloqueado}
+          <CampoNumero id="tk-visualizaciones" alTipear onPendiente={onPendiente} etiqueta="Visualizaciones del video" valor={m.tiktok?.visualizaciones} deshabilitado={bloqueado}
             onGuardar={n => guardarManual(x => ({ ...x, tiktok: { ...x.tiktok, visualizaciones: n } }))} />
-          <CampoLinea id="tk-total" etiqueta="Tiempo total" valor={m.tiktok?.tiempoTotal} placeholder="0h:23m:04s" maxLength={20} deshabilitado={bloqueado}
+          <CampoLinea id="tk-total" alTipear onPendiente={onPendiente} etiqueta="Tiempo total" valor={m.tiktok?.tiempoTotal} placeholder="0h:23m:04s" maxLength={20} deshabilitado={bloqueado}
             onGuardar={t => guardarManual(x => ({ ...x, tiktok: { ...x.tiktok, tiempoTotal: t || undefined } }))} />
-          <CampoLinea id="tk-promedio" etiqueta="Tiempo promedio" valor={m.tiktok?.tiempoPromedio} placeholder="4.98s" maxLength={20} deshabilitado={bloqueado}
+          <CampoLinea id="tk-promedio" alTipear onPendiente={onPendiente} etiqueta="Tiempo promedio" valor={m.tiktok?.tiempoPromedio} placeholder="4.98s" maxLength={20} deshabilitado={bloqueado}
             onGuardar={t => guardarManual(x => ({ ...x, tiktok: { ...x.tiktok, tiempoPromedio: t || undefined } }))} />
-          <CampoNumero id="tk-completo" etiqueta="Vieron el video completo" sufijo="%" valor={m.tiktok?.vieronCompleto} deshabilitado={bloqueado}
+          <CampoNumero id="tk-completo" alTipear onPendiente={onPendiente} etiqueta="Vieron el video completo" sufijo="%" valor={m.tiktok?.vieronCompleto} deshabilitado={bloqueado}
             onGuardar={n => guardarManual(x => ({ ...x, tiktok: { ...x.tiktok, vieronCompleto: n === undefined ? undefined : Math.min(n, 100) } }))} />
-          <CampoNumero id="tk-seguidores" etiqueta="Nuevos seguidores" valor={m.tiktok?.nuevosSeguidores} deshabilitado={bloqueado}
+          <CampoNumero id="tk-seguidores" alTipear onPendiente={onPendiente} etiqueta="Nuevos seguidores" valor={m.tiktok?.nuevosSeguidores} deshabilitado={bloqueado}
             onGuardar={n => guardarManual(x => ({ ...x, tiktok: { ...x.tiktok, nuevosSeguidores: n } }))} />
         </div>
         <CapturaPortal informeId={informe.id} cual="tiktok" portal="TikTok" url={capturasUrl.tiktok} deshabilitado={bloqueado} onCambio={() => void recargar()} />
@@ -381,18 +455,18 @@ export function EditorInforme({ informeId }: { informeId: string }) {
             <RefreshCw className="mr-1 h-4 w-4" aria-hidden /> {m.redaccion ? 'Volver a escribir' : 'Escribir los textos'}
           </Button>
         </div>
-        <CampoTexto key={claveTexto('resumenMetricas')} revisar={aRevisar('resumenMetricas')} id="tx-metricas" etiqueta="Resumen de métricas" valor={m.textos?.resumenMetricas} deshabilitado={bloqueado} filas={3}
+        <CampoTexto key={claveTexto('resumenMetricas')} revisar={aRevisar('resumenMetricas')} id="tx-metricas" alTipear onPendiente={onPendiente} etiqueta="Resumen de métricas" valor={m.textos?.resumenMetricas} deshabilitado={bloqueado} filas={3}
           onGuardar={t => guardarManual(x => ({ ...x, textos: { ...x.textos, resumenMetricas: t } }))} />
-        <CampoTexto key={claveTexto('accionesRealizadas')} revisar={aRevisar('accionesRealizadas')} id="tx-realizadas" etiqueta="Acciones realizadas" valor={m.textos?.accionesRealizadas} deshabilitado={bloqueado}
+        <CampoTexto key={claveTexto('accionesRealizadas')} revisar={aRevisar('accionesRealizadas')} id="tx-realizadas" alTipear onPendiente={onPendiente} etiqueta="Acciones realizadas" valor={m.textos?.accionesRealizadas} deshabilitado={bloqueado}
           falta={falta('Acciones realizadas')} ayuda="Una acción por renglón."
           onGuardar={t => guardarManual(x => ({ ...x, textos: { ...x.textos, accionesRealizadas: t } }))} />
-        <CampoTexto key={claveTexto('accionesARealizar')} revisar={aRevisar('accionesARealizar')} id="tx-a-realizar" etiqueta="Acciones a realizar para lograr vender" valor={m.textos?.accionesARealizar} deshabilitado={bloqueado}
+        <CampoTexto key={claveTexto('accionesARealizar')} revisar={aRevisar('accionesARealizar')} id="tx-a-realizar" alTipear onPendiente={onPendiente} etiqueta="Acciones a realizar para lograr vender" valor={m.textos?.accionesARealizar} deshabilitado={bloqueado}
           falta={falta('Acciones a realizar')} ayuda="Una acción por renglón."
           onGuardar={t => guardarManual(x => ({ ...x, textos: { ...x.textos, accionesARealizar: t } }))} />
-        <CampoTexto key={claveTexto('resumenConsultas')} revisar={aRevisar('resumenConsultas')} id="tx-consultas" etiqueta="Resumen de las consultas" valor={m.textos?.resumenConsultas} deshabilitado={bloqueado}
+        <CampoTexto key={claveTexto('resumenConsultas')} revisar={aRevisar('resumenConsultas')} id="tx-consultas" alTipear onPendiente={onPendiente} etiqueta="Resumen de las consultas" valor={m.textos?.resumenConsultas} deshabilitado={bloqueado}
           ayuda={resumenDeLaFuente('consultas', informe.fuentes) ?? undefined}
           onGuardar={t => guardarManual(x => ({ ...x, textos: { ...x.textos, resumenConsultas: t } }))} />
-        <CampoTexto key={claveTexto('analisisFinal')} revisar={aRevisar('analisisFinal')} id="tx-analisis" etiqueta="Análisis final" valor={m.textos?.analisisFinal} deshabilitado={bloqueado} filas={6}
+        <CampoTexto key={claveTexto('analisisFinal')} revisar={aRevisar('analisisFinal')} id="tx-analisis" alTipear onPendiente={onPendiente} etiqueta="Análisis final" valor={m.textos?.analisisFinal} deshabilitado={bloqueado} filas={6}
           onGuardar={t => guardarManual(x => ({ ...x, textos: { ...x.textos, analisisFinal: t } }))} />
       </Seccion>
 
@@ -415,7 +489,7 @@ export function EditorInforme({ informeId }: { informeId: string }) {
               {armandoPdf === 'listo' ? 'Armando el PDF…' : 'Marcar como listo'}
             </Button>
           </div>
-          {guardando > 0 ? <p className="mx-auto mt-1 max-w-3xl text-right text-xs text-muted-foreground">Guardando…</p> : null}
+          <EstadoDelGuardado estado={estadoDelGuardado({ guardando, escribiendo: nPendientes, fallo, guardadoEn })} />
         </div>
       ) : null}
 
@@ -431,6 +505,16 @@ export function EditorInforme({ informeId }: { informeId: string }) {
 }
 
 // Componentes de MÓDULO: ver CLAUDE.md § "NUNCA declarar un componente dentro de otro".
+function EstadoDelGuardado({ estado }: { estado: ReturnType<typeof estadoDelGuardado> }) {
+  if (estado.tipo === 'nada') return null
+  return (
+    <p role="status" aria-live="polite" className={cn('mx-auto mt-1 max-w-3xl text-right text-xs',
+      estado.tipo === 'sin_guardar' ? 'font-medium text-orange-700' : estado.tipo === 'guardado' ? 'text-emerald-700' : 'text-muted-foreground')}>
+      {estado.tipo === 'guardado' ? '✓ ' : ''}{estado.texto}
+    </p>
+  )
+}
+
 const ORIGEN_AVISO: Record<'plataforma' | 'cuenta' | 'manual', string> = {
   plataforma: 'publicado desde la plataforma', cuenta: 'encontrado en la cuenta por la dirección', manual: 'agregado a mano',
 }

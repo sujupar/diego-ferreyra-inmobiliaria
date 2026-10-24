@@ -10,9 +10,12 @@ import type { Informe } from '@/lib/informes/tipos'
 const api = vi.hoisted(() => ({
   leerVista: vi.fn(), traerFuente: vi.fn(), guardarManual: vi.fn(), guardarCompetidoras: vi.fn(),
   subirCaptura: vi.fn(), quitarCaptura: vi.fn(), subirPdfYMarcarListo: vi.fn(), volverABorrador: vi.fn(), buscarCompetidora: vi.fn(), escribirTextos: vi.fn(),
-  buscarCompetencia: vi.fn(), abrirCandidata: vi.fn(),
+  buscarCompetencia: vi.fn(), abrirCandidata: vi.fn(), guardarManualAlSalir: vi.fn(),
 }))
-vi.mock('./api', () => api)
+const { ErrorDePedido } = vi.hoisted(() => ({
+  ErrorDePedido: class extends Error { constructor(m: string, public status: number) { super(m) } },
+}))
+vi.mock('./api', () => ({ ...api, ErrorDePedido }))
 const { generar } = vi.hoisted(() => ({ generar: vi.fn(async () => new Blob(['%PDF-'])) }))
 vi.mock('../pdf/generar', () => ({ generarPdfDelInforme: generar }))
 
@@ -88,6 +91,57 @@ describe('EditorInforme', () => {
     await waitFor(() => expect(api.guardarManual).toHaveBeenCalled())
     expect(api.guardarManual).toHaveBeenLastCalledWith('inf-1', {
       zonaprop: { interesados: 1, exposicion: 930 }, textos: { accionesRealizadas: 'Publicamos' },
+    })
+  })
+
+  describe('autoguardado (pedido del dueño: no perder nunca lo escrito)', () => {
+    it('guarda a la pausa al tipear, sin tener que salir del campo, y una sola vez', async () => {
+      api.leerVista.mockResolvedValue(vista(informe()))
+      render(<EditorInforme informeId="inf-1" />)
+      await userEvent.type(await screen.findByLabelText(/Exposición/), '930')
+      await waitFor(() => expect(api.guardarManual).toHaveBeenCalled(), { timeout: 4_000 })
+      expect(api.guardarManual).toHaveBeenCalledTimes(1)
+      expect(api.guardarManual.mock.calls[0][1].zonaprop).toEqual({ interesados: 1, exposicion: 930 })
+      expect(await screen.findByText(/Guardado \d\d:\d\d/)).toBeInTheDocument()
+    })
+
+    it('si se corta la red, lo escrito NO se pierde: queda en pantalla, dice "Sin guardar" y reintenta solo', async () => {
+      api.leerVista.mockResolvedValue(vista(informe()))
+      api.guardarManual.mockRejectedValueOnce(new ErrorDePedido('No hay conexión. Probá de nuevo.', 0)).mockResolvedValue({ ok: true })
+      render(<EditorInforme informeId="inf-1" />)
+      const exposicion = await screen.findByLabelText(/Exposición/)
+      await userEvent.type(exposicion, '930')
+      await userEvent.tab()
+      expect(await screen.findByText(/Sin guardar — reintentando/)).toBeInTheDocument()
+      expect(exposicion).toHaveValue('930')
+      expect(screen.getByRole('button', { name: /Marcar como listo/ })).toBeDisabled()
+      await waitFor(() => expect(api.guardarManual).toHaveBeenCalledTimes(2), { timeout: 5_000 })
+      expect(api.guardarManual.mock.calls[1][1].zonaprop).toEqual({ interesados: 1, exposicion: 930 })
+      expect(await screen.findByText(/Guardado \d\d:\d\d/)).toBeInTheDocument()
+    }, 10_000)
+
+    it('al cerrar o recargar la pestaña escribiendo, manda lo escrito igual (keepalive)', async () => {
+      api.leerVista.mockResolvedValue(vista(informe()))
+      render(<EditorInforme informeId="inf-1" />)
+      await userEvent.type(await screen.findByLabelText(/Análisis final/), 'Bajó el interés')
+      window.dispatchEvent(new Event('pagehide'))
+      expect(api.guardarManualAlSalir).toHaveBeenCalledWith('inf-1', expect.objectContaining({
+        textos: expect.objectContaining({ analisisFinal: 'Bajó el interés', accionesRealizadas: 'Publicamos' }),
+      }))
+    })
+
+    it('con algo sin guardar, el navegador avisa antes de salir; con todo guardado, no', async () => {
+      api.leerVista.mockResolvedValue(vista(informe()))
+      render(<EditorInforme informeId="inf-1" />)
+      const campo = await screen.findByLabelText(/Análisis final/)
+      await waitFor(() => expect(api.leerVista).toHaveBeenCalledTimes(2))
+      const sinCambios = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(sinCambios)
+      expect(sinCambios.defaultPrevented).toBe(false)
+      await userEvent.type(campo, 'Hola')
+      const conCambios = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(conCambios)
+      expect(conCambios.defaultPrevented).toBe(true)
     })
   })
 
