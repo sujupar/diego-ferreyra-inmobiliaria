@@ -2240,6 +2240,29 @@ Spec `docs/superpowers/specs/2026-10-22-informe-quincenal-mejoras-design.md`; pl
 - **Probado en el navegador real** (vista previa y producción): pausa al tipear, recarga inmediata (el texto llegó
   por keepalive), red cortada (reintentó solo al volver) y salida a otra pantalla. En la base, cada vez.
 
+### Informe quincenal — corregir a mano y competidoras más baratas (en producción 2026-10-29, PR #60)
+
+Spec `docs/superpowers/specs/2026-10-29-informe-ajustes-manuales-y-competencia-design.md` (aprobado por el dueño).
+
+- **Corregir a mano:** cada fuente automática tiene "Corregir a mano" (`AjusteDeFuente.tsx`). Lo corregido va en
+  `manual.ajustes` y `aplicarAjustes` (`lib/informes/ajustes.ts`, puro) lo aplica en UN lugar: `datos.aInforme`.
+  `informe.fuentes` = con ajustes (lo usan resumen, textos, faltantes y PDF); `informe.fuentesAutomaticas` = lo
+  que trajo la plataforma (para "Automático: …" y para saber qué fuentes falta traer). **La base guarda las dos
+  cosas por separado: nunca escribir `informe.fuentes` de vuelta** (`aMano` es solo de memoria).
+  - Campo vacío = ese dato vuelve a lo automático; un 0 escrito sí es un ajuste.
+  - Instagram corregido es UN total (el PDF muestra totales); `cantidadReels` conserva cuántos reels hay de verdad
+    para que los textos no digan "1 reel".
+  - "Volver a escribir": el aviso sale si hay `ajustesEn` y textos escritos. No compara horas (reloj del navegador
+    contra el del servidor): `escribirTextos` BORRA `ajustesEn`, y `mezclarTrasEscribir` no lo revive.
+  - **Trampa vista en el navegador:** los campos del ajuste arrancan con lo corregido o, si no hay, con lo
+    AUTOMÁTICO en memoria. Si arrancan con `informe.fuentes`, "Volver al automático" mostraba el número viejo hasta
+    recargar (la vista llega después). Se re-montan con `versionCampos`.
+- **Competidoras más baratas por m²** (`filtroMasBaratas`, `lib/informes/competencia/puntaje.ts`): la búsqueda
+  propone solo las de valor del m² ESTRICTAMENTE menor al de la propiedad, en la misma moneda. Sin precio o m² en la
+  ficha no se filtra y la pantalla lo dice. Otra moneda se cuenta aparte (una propiedad en pesos pierde casi todo).
+  La lista y el conteo de descartadas usan la misma `deduplicarAvisos`. Una competidora pegada a mano no se filtra:
+  si vale más por m², la tarjeta lo marca (`masCara`).
+
 ---
 
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
