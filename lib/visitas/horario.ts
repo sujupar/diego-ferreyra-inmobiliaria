@@ -95,6 +95,12 @@ export function formatearFechaLarga(v: string | Date): string {
   return `${DIAS_LARGOS[diaDeSemana(fecha)]} ${Number(dia)} de ${MESES[Number(mes) - 1]}, ${horaEnArgentina(d)}`
 }
 
+/** "jueves 30" — día de la semana y número de un AAAA-MM-DD. `null` si la fecha no existe. */
+export function formatearDiaYNumero(fecha: string): string | null {
+  if (!construirInstante(fecha, '12:00')) return null
+  return `${DIAS_LARGOS[diaDeSemana(fecha)]} ${Number(fecha.slice(8, 10))}`
+}
+
 export function sumarDias(fecha: string, dias: number): string {
   const d = new Date(`${fecha}T12:00:00Z`)
   d.setUTCDate(d.getUTCDate() + dias)

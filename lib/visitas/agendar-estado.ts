@@ -4,7 +4,7 @@
  * El servidor vuelve a validar TODO (esto es ayuda, no barrera).
  */
 import { ORIGEN_INFO, validarDetalleDeOrigen, type OrigenVisita } from './origen'
-import { validarHorarioDeVisita } from './horario'
+import { construirInstante, formatearDiaYNumero, validarHorarioDeVisita } from './horario'
 import { validarPersonaNueva } from './persona'
 import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
 
@@ -36,30 +36,71 @@ export interface EstadoAgendar {
   asesorId: string | null
   confirmada: boolean
   notas: string
+  /**
+   * Modo rápido: se abrió desde una consulta que ya dice quién es, de dónde
+   * vino y qué propiedad miró. Solo queda elegir día y hora.
+   */
+  rapido: boolean
 }
 
 export interface OpcionesPasos { puedeElegirAsesor: boolean }
 
-export function estadoInicial(o: { propiedad?: PropiedadElegida | null; asesorPropio?: string | null }): EstadoAgendar {
+/**
+ * Lo que trae quien abre la ventana desde una consulta (sección Consultas).
+ * El origen lo decide el llamador (para un registro de landing, con
+ * `origenDesdeLead`); acá se toma tal cual.
+ */
+export interface InicioRapido {
+  origen: OrigenVisita
+  origenDetalle?: string
+  persona: PersonaElegida
+  /** Teléfono ya leído de la consulta; va a `telefonoFaltante` y viaja en el pedido. */
+  telefono?: string
+}
+
+export function estadoInicial(o: {
+  propiedad?: PropiedadElegida | null
+  asesorPropio?: string | null
+  rapido?: InicioRapido | null
+}): EstadoAgendar {
   const propiedad = o.propiedad ?? null
+  // Sin propiedad no hay modo rápido: si la propiedad de la consulta no se
+  // pudo cargar (no está disponible), la ventana arranca el flujo normal.
+  const rapido = propiedad ? o.rapido ?? null : null
   return {
-    paso: propiedad ? 'origen' : 'propiedad',
+    paso: rapido ? 'cuando' : propiedad ? 'origen' : 'propiedad',
     propiedadFija: propiedad !== null,
     propiedad,
-    origen: null,
-    origenDetalle: '',
-    persona: null,
-    telefonoFaltante: '',
+    origen: rapido?.origen ?? null,
+    origenDetalle: rapido?.origenDetalle ?? '',
+    persona: rapido?.persona ?? null,
+    telefonoFaltante: rapido?.telefono ?? '',
     fecha: null,
     hora: null,
     asesorId: propiedad?.asesorId ?? o.asesorPropio ?? null,
     confirmada: true,
     notas: '',
+    rapido: rapido !== null,
   }
 }
 
 export function pasosVisibles(e: EstadoAgendar, o: OpcionesPasos): PasoAgendar[] {
+  // En modo rápido solo existe "cuándo". "Asesor" aparece mientras se está en
+  // él (se llega con "Cambiar") y "Confirmar" solo cuando el servidor avisó un
+  // duplicado (409): ahí se muestra la revisión con "Agendar igual".
+  if (e.rapido) {
+    return ORDEN.filter(p => p === 'cuando'
+      || (p === 'asesor' && e.paso === 'asesor' && o.puedeElegirAsesor)
+      || (p === 'confirmar' && e.paso === 'confirmar'))
+  }
   return ORDEN.filter(p => !(p === 'propiedad' && e.propiedadFija) && !(p === 'asesor' && !o.puedeElegirAsesor))
+}
+
+/** "Agendar jueves 30 · 17:00" con día y hora válidos; "Agendar" si falta algo. */
+export function textoAgendarRapido(e: EstadoAgendar): string {
+  if (!e.fecha || !e.hora || !construirInstante(e.fecha, e.hora)) return 'Agendar'
+  const dia = formatearDiaYNumero(e.fecha)
+  return dia ? `Agendar ${dia} · ${e.hora}` : 'Agendar'
 }
 
 export function siguientePaso(e: EstadoAgendar, o: OpcionesPasos): PasoAgendar | null {

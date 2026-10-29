@@ -5,10 +5,91 @@ import { construirInstante, fechaEnArgentina, validarHorarioDeVisita } from '@/l
 import { avisosDeChoque } from '@/lib/visitas/choques'
 import type { VisitaAgendaR } from '@/lib/visitas/tipos'
 import type { EstadoAgendar, AccionAgendar } from '@/lib/visitas/agendar-estado'
+import { leerTelefono } from '@/lib/consultas/telefono'
+import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
 import { leerRespuesta } from './leer-respuesta'
 import { CLASE_TITULO_PASO } from './titulo-paso'
 
-export function PasoCuando({ estado, despachar }: { estado: EstadoAgendar; despachar: (a: AccionAgendar) => void }) {
+/** Lo que el armazón le pasa al paso cuando la ventana está en modo rápido. */
+export interface DatosModoRapido {
+  nombreAsesor: string | null
+  puedeElegirAsesor: boolean
+  onCambiarAsesor: () => void
+}
+
+/** Teléfono para mostrar: el formateado si se puede leer; si no, el texto tal cual. */
+function telefonoParaMostrar(crudo: string | null): string | null {
+  if (!crudo?.trim()) return null
+  const leido = leerTelefono(crudo)
+  return leido.ok ? leido.mostrado : crudo.trim()
+}
+
+/**
+ * Modo rápido: arriba, quién viene, a qué propiedad y quién la muestra; abajo,
+ * si ya está confirmada. Lo demás ya lo dijo la consulta.
+ */
+function ResumenRapido({ estado, despachar, datos }: {
+  estado: EstadoAgendar
+  despachar: (a: AccionAgendar) => void
+  datos: DatosModoRapido
+}) {
+  const persona = estado.persona
+  // El teléfono que trajo la consulta (ya leído) gana sobre el crudo de la persona.
+  const telefono = persona
+    ? persona.tipo === 'nueva' ? persona.telefono : (estado.telefonoFaltante.trim() || persona.telefono)
+    : null
+  // Si el teléfono guardado de la persona no es utilizable, se ofrece el campo
+  // (con lo que trajo la consulta, si trajo algo): sin esto el servidor rechaza
+  // el alta y no habría dónde completarlo (el paso "Persona" no existe en este
+  // modo). La condición mira SOLO el guardado, no lo tipeado: si mirara lo
+  // tipeado, el campo desaparecería en plena escritura.
+  const pedirTelefono = persona !== null && persona.tipo !== 'nueva' && !ultimos10Digitos(persona.telefono)
+  const mostrado = telefonoParaMostrar(telefono)
+  return (
+    <dl className="divide-y rounded-xl border bg-card text-sm">
+      <div className="flex justify-between gap-4 px-4 py-3">
+        <dt className="text-muted-foreground">Persona</dt>
+        <dd className="min-w-0 text-right">
+          <span className="block break-words font-medium">{persona?.nombre ?? '—'}</span>
+          {mostrado && <span className="block text-muted-foreground">{mostrado}</span>}
+        </dd>
+      </div>
+      {pedirTelefono && persona && (
+        <div className="px-4 py-3">
+          <label className="block space-y-1">
+            <span>Teléfono de {persona.nombre} (falta o está incompleto)</span>
+            <input type="tel" inputMode="tel" value={estado.telefonoFaltante}
+              onChange={e => despachar({ tipo: 'telefonoFaltante', texto: e.target.value })}
+              placeholder="11 5555-5555" className="h-11 w-full rounded-lg border bg-background px-3 text-base" />
+          </label>
+        </div>
+      )}
+      <div className="flex justify-between gap-4 px-4 py-3">
+        <dt className="text-muted-foreground">Propiedad</dt>
+        <dd className="min-w-0 break-words text-right font-medium">{estado.propiedad?.address ?? '—'}</dd>
+      </div>
+      <div className="flex items-center justify-between gap-4 px-4 py-3">
+        <dt className="text-muted-foreground">Asesor</dt>
+        <dd className="flex min-w-0 items-center justify-end gap-2 text-right">
+          <span className="break-words font-medium">{datos.nombreAsesor ?? 'Sin asesor'}</span>
+          {datos.puedeElegirAsesor && (
+            <button type="button" onClick={datos.onCambiarAsesor}
+              className="min-h-11 shrink-0 rounded-lg px-2 text-sm font-semibold text-brand underline-offset-2 hover:underline">
+              Cambiar<span className="sr-only"> el asesor</span>
+            </button>
+          )}
+        </dd>
+      </div>
+    </dl>
+  )
+}
+
+export function PasoCuando({ estado, despachar, rapido }: {
+  estado: EstadoAgendar
+  despachar: (a: AccionAgendar) => void
+  /** Solo en modo rápido (`estado.rapido`): datos para la tarjeta de arriba. */
+  rapido?: DatosModoRapido
+}) {
   const [visitasDelDia, setVisitasDelDia] = useState<VisitaAgendaR[]>([])
   const propiedadId = estado.propiedad?.id ?? null
 
@@ -51,9 +132,17 @@ export function PasoCuando({ estado, despachar }: { estado: EstadoAgendar; despa
         <h2 tabIndex={-1} className={CLASE_TITULO_PASO}>¿Cuándo?</h2>
         <p className="text-sm text-muted-foreground">Horario de Argentina. Te avisamos si el asesor ya tiene algo a esa hora.</p>
       </div>
+      {estado.rapido && rapido && <ResumenRapido estado={estado} despachar={despachar} datos={rapido} />}
       <SelectorDiaHora hoy={fechaEnArgentina(new Date())} fecha={estado.fecha} hora={estado.hora}
         onFecha={f => despachar({ tipo: 'elegirFecha', fecha: f })}
         onHora={h => despachar({ tipo: 'elegirHora', hora: h })} avisos={avisos} />
+      {estado.rapido && (
+        <label className="flex min-h-11 items-center gap-3 rounded-lg border bg-card px-4 text-sm">
+          <input type="checkbox" checked={estado.confirmada} className="h-5 w-5 accent-brand"
+            onChange={e => despachar({ tipo: 'confirmada', valor: e.target.checked })} />
+          <span>Ya la confirmé con la persona</span>
+        </label>
+      )}
     </div>
   )
 }

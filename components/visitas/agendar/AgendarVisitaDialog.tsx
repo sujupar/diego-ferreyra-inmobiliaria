@@ -13,8 +13,8 @@ import { Check } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import {
-  estadoInicial, reducirAgendar, pasosVisibles, siguientePaso, pasoAnterior, errorDelPaso, armarPedido,
-  type PasoAgendar, type PropiedadElegida,
+  estadoInicial, reducirAgendar, pasosVisibles, siguientePaso, pasoAnterior, errorDelPaso, armarPedido, textoAgendarRapido,
+  type PasoAgendar, type PropiedadElegida, type InicioRapido,
 } from '@/lib/visitas/agendar-estado'
 import { puedeVerTodasLasVisitas } from '@/lib/visitas/acceso'
 import { ORIGEN_INFO } from '@/lib/visitas/origen'
@@ -43,7 +43,14 @@ interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   propiedadId?: string
-  onAgendada?: (visitaId: string) => void
+  /**
+   * Modo rápido (desde una consulta): con `propiedadId`, abre directo en "Día
+   * y hora" con la persona y el origen ya puestos. Si la propiedad no carga,
+   * se ignora y la ventana sigue el flujo normal con el aviso de siempre.
+   */
+  rapido?: InicioRapido
+  /** El segundo argumento es el día y la hora agendados (horario de Argentina). */
+  onAgendada?: (visitaId: string, cuando: { fecha: string; hora: string }) => void
 }
 
 interface PropiedadApi { id: string; address: string; neighborhood: string | null; foto: string | null; assigned_to: string | null }
@@ -65,7 +72,14 @@ function duplicadoDesdeCuerpo(cuerpo: Record<string, unknown>, instanteSolicitad
   return { id, scheduled_at, mismoInstante }
 }
 
-export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, onAgendada }: Props) {
+export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, rapido, onAgendada }: Props) {
+  // `rapido` se lee por ref y NO va en las dependencias de la carga inicial: el
+  // llamador suele armarlo en cada render (objeto nuevo), y eso reiniciaría la
+  // ventana —borrando el día y la hora elegidos— en cada render del padre.
+  // Se actualiza en un efecto declarado ANTES de la carga inicial: los efectos
+  // corren en orden, así la carga siempre lee el último valor.
+  const rapidoRef = useRef(rapido)
+  useEffect(() => { rapidoRef.current = rapido })
   const router = useRouter()
   const [yo, setYo] = useState<{ id: string; role: Role } | null>(null)
   const [estado, despachar] = useReducer(reducirAgendar, estadoInicial({}))
@@ -122,7 +136,11 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, onAgendad
         setAvisoPropiedad(aviso)
         despachar({
           tipo: 'reiniciar',
-          estado: estadoInicial({ propiedad, asesorPropio: quien && !puedeVerTodasLasVisitas(quien.role) ? quien.id : null }),
+          estado: estadoInicial({
+            propiedad,
+            asesorPropio: quien && !puedeVerTodasLasVisitas(quien.role) ? quien.id : null,
+            rapido: rapidoRef.current ?? null,
+          }),
         })
         setErrorPaso(null); setErrorEnvio(null); setDuplicado(null)
         enviandoRef.current = false; setEnviando(false)
@@ -201,7 +219,7 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, onAgendad
         toast.success('Visita agendada', {
           action: { label: 'Ver visita', onClick: () => router.push(`/visits/${r.data.id}`) },
         })
-        onAgendada?.(r.data.id)
+        onAgendada?.(r.data.id, { fecha: pedido.fecha, hora: pedido.hora })
         onOpenChange(false)
         router.refresh()
         return
@@ -212,6 +230,9 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, onAgendad
         if (!d) { setErrorEnvio('Algo falló. Probá de nuevo.'); return }
         marcaConfirmarRef.current = Date.now()
         setDuplicado(d)
+        // En modo rápido no se pasó por la revisión: se la abre ahora, que es
+        // donde se muestra el duplicado y "Agendar igual".
+        if (estado.paso !== 'confirmar') despachar({ tipo: 'irA', paso: 'confirmar' })
         return
       }
       setErrorEnvio(r.error)
@@ -241,6 +262,28 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, onAgendad
     }
   }
 
+  /**
+   * Modo rápido, botón "Agendar jueves 30 · 17:00": valida lo que la ventana
+   * ya no pregunta (día y hora, el teléfono de la persona y, si se puede
+   * elegir, el asesor) y manda. El doble envío lo frena `enviandoRef`.
+   */
+  function agendarRapido() {
+    const aRevisar: PasoAgendar[] = opciones.puedeElegirAsesor ? ['cuando', 'persona', 'asesor'] : ['cuando', 'persona']
+    for (const p of aRevisar) {
+      const e = errorDelPaso(estado, p)
+      if (e) { setErrorPaso(e); return }
+    }
+    setErrorPaso(null)
+    void enviar(false)
+  }
+
+  /** Modo rápido, paso "Asesor" (al que se llega con "Cambiar"): vuelve a "Día y hora". */
+  function listoConElAsesor() {
+    const e = errorDelPaso(estado, 'asesor')
+    if (e) { setErrorPaso(e); return }
+    despachar({ tipo: 'irA', paso: 'cuando' })
+  }
+
   function volver() {
     setErrorPaso(null); setErrorEnvio(null); setDuplicado(null)
     const ant = pasoAnterior(estado, opciones)
@@ -248,6 +291,8 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, onAgendad
   }
 
   const esUltimo = indice === pasos.length - 1
+  const rapidoEnCuando = estado.rapido && estado.paso === 'cuando'
+  const rapidoEnAsesor = estado.rapido && estado.paso === 'asesor'
   const props = { estado, despachar }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -319,7 +364,16 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, onAgendad
                   {estado.paso === 'propiedad' && <PasoPropiedad {...props} />}
                   {estado.paso === 'origen' && <PasoOrigen {...props} />}
                   {estado.paso === 'persona' && <PasoPersona {...props} />}
-                  {estado.paso === 'cuando' && <PasoCuando {...props} />}
+                  {estado.paso === 'cuando' && (
+                    <PasoCuando {...props} rapido={estado.rapido ? {
+                      nombreAsesor,
+                      puedeElegirAsesor: opciones.puedeElegirAsesor,
+                      onCambiarAsesor: () => { setErrorEnvio(null); despachar({ tipo: 'irA', paso: 'asesor' }) },
+                    } : undefined} />
+                  )}
+                  {estado.rapido && estado.paso === 'cuando' && errorEnvio && (
+                    <p role="alert" className="text-sm text-destructive">{errorEnvio}</p>
+                  )}
                   {estado.paso === 'asesor' && (
                     <PasoAsesor {...props} asesores={asesores} cargando={asesoresEstado === 'cargando'}
                       error={asesoresEstado === 'error'} onReintentar={() => setIntentoAsesores(n => n + 1)} />
@@ -333,10 +387,21 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, onAgendad
             </div>
             {/* El pie respeta la barra de inicio del iPhone (área segura). */}
             <div className="sticky bottom-0 flex shrink-0 items-center justify-between gap-3 border-t bg-background px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-              <Button variant="outline" onClick={volver} disabled={indice <= 0 || enviando}>Atrás</Button>
-              <Button onClick={avanzar} disabled={!listo || enviando || Boolean(duplicado?.mismoInstante)}
-                className="min-w-32 bg-brand text-brand-foreground hover:bg-brand/90">
-                {enviando ? 'Agendando…' : esUltimo ? (duplicado && !duplicado.mismoInstante ? 'Agendar igual' : 'Agendar') : 'Siguiente'}
+              {/* Modo rápido en "Día y hora": no hay paso anterior, así que el
+                  botón de la izquierda cierra. El principal agenda directo y
+                  dice el día y la hora, para que se vea qué se va a guardar. */}
+              {rapidoEnCuando ? (
+                <Button variant="outline" className="min-h-11" onClick={() => onOpenChange(false)} disabled={enviando}>Cancelar</Button>
+              ) : (
+                <Button variant="outline" className="min-h-11" onClick={volver} disabled={indice <= 0 || enviando}>Atrás</Button>
+              )}
+              <Button onClick={rapidoEnCuando ? agendarRapido : rapidoEnAsesor ? listoConElAsesor : avanzar}
+                disabled={!listo || enviando || Boolean(duplicado?.mismoInstante)}
+                className="min-h-11 min-w-32 bg-brand text-brand-foreground hover:bg-brand/90">
+                {enviando ? 'Agendando…'
+                  : rapidoEnCuando ? textoAgendarRapido(estado)
+                  : rapidoEnAsesor ? 'Listo'
+                  : esUltimo ? (duplicado && !duplicado.mismoInstante ? 'Agendar igual' : 'Agendar') : 'Siguiente'}
               </Button>
             </div>
           </div>
