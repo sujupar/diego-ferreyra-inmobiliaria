@@ -51,6 +51,8 @@ interface Props {
   rapido?: InicioRapido
   /** El segundo argumento es el día y la hora agendados (horario de Argentina). */
   onAgendada?: (visitaId: string, cuando: { fecha: string; hora: string }) => void
+  /** Sin el toast de "Visita agendada": el llamador muestra su propia confirmación (Consultas). */
+  silencioso?: boolean
 }
 
 interface PropiedadApi { id: string; address: string; neighborhood: string | null; foto: string | null; assigned_to: string | null }
@@ -72,7 +74,7 @@ function duplicadoDesdeCuerpo(cuerpo: Record<string, unknown>, instanteSolicitad
   return { id, scheduled_at, mismoInstante }
 }
 
-export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, rapido, onAgendada }: Props) {
+export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, rapido, onAgendada, silencioso = false }: Props) {
   // `rapido` se lee por ref y NO va en las dependencias de la carga inicial: el
   // llamador suele armarlo en cada render (objeto nuevo), y eso reiniciaría la
   // ventana —borrando el día y la hora elegidos— en cada render del padre.
@@ -220,9 +222,11 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, rapido, o
       // vuelo: esta respuesta es de la apertura VIEJA — no toca nada ni cierra.
       if (miGeneracion !== generacionRef.current) return
       if (r.ok) {
-        toast.success('Visita agendada', {
-          action: { label: 'Ver visita', onClick: () => router.push(`/visits/${r.data.id}`) },
-        })
+        if (!silencioso) {
+          toast.success('Visita agendada', {
+            action: { label: 'Ver visita', onClick: () => router.push(`/visits/${r.data.id}`) },
+          })
+        }
         onAgendada?.(r.data.id, { fecha: pedido.fecha, hora: pedido.hora })
         onOpenChange(false)
         router.refresh()

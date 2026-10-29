@@ -79,12 +79,27 @@ export function AgendarDesdeConsulta({ consulta: c, puedeIdentificar, onTerminad
         open
         onOpenChange={(o) => { if (!o && !agendadaRef.current) cerrar() }}
         propiedadId={propiedadId}
+        silencioso
         rapido={inicioRapidoDe(c, telefono ? { telefono } : {})}
         onAgendada={(id, cuando) => {
           agendadaRef.current = true
           setVisita({ id, ...cuando })
           setPaso('listo')
         }}
+      />
+    )
+  }
+
+  // 'agendar' sin propiedad no debería pasar (pasoInicial lo evita); si pasa,
+  // se vuelve a elegirla en vez de quedar con la pantalla vacía.
+  if (paso === 'agendar' && !propiedadId) {
+    return (
+      <HojaElegirPropiedad
+        consulta={c}
+        puedeIdentificar={puedeIdentificar}
+        siguienteEsTelefono={!telefono && pasoTrasPropiedad(c) === 'telefono'}
+        onConectada={(p) => { setPropiedad(p); setPaso(telefono ? 'agendar' : pasoTrasPropiedad(c)) }}
+        onCerrar={cerrar}
       />
     )
   }

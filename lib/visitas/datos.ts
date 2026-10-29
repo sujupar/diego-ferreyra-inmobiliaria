@@ -82,11 +82,16 @@ export async function leerPropiedadParaVisita(id: string): Promise<PropiedadPara
   return data ? aPropiedad(data as Record<string, unknown>) : null
 }
 
-/** Captadas y disponibles/reservadas. `asesorId` acota (rol asesor). */
-export async function buscarPropiedadesParaVisita(f: { q?: string; id?: string; asesorId?: string }): Promise<PropiedadParaVisita[]> {
+/**
+ * Captadas y disponibles/reservadas. `asesorId` acota (rol asesor). `limite`
+ * (default 20, lo que usa la ventana de visitas): Consultas pide el inventario
+ * entero para ordenar primero las del barrio del aviso, y con 20 cortadas por
+ * dirección la del barrio podía no estar en la lista.
+ */
+export async function buscarPropiedadesParaVisita(f: { q?: string; id?: string; asesorId?: string; limite?: number }): Promise<PropiedadParaVisita[]> {
   let q = sb().from('properties').select(COLUMNAS_PROPIEDAD)
     .eq('status', 'approved').in('commercial_status', ['disponible', 'reservada'])
-    .order('address').limit(20)
+    .order('address').limit(f.limite ?? 20)
   if (f.id) q = q.eq('id', f.id)
   if (f.asesorId) q = q.eq('assigned_to', f.asesorId)
   for (const clausula of clausulasBusqueda(['address', 'neighborhood'], f.q ?? '')) q = q.or(clausula)

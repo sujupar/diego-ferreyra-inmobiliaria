@@ -442,6 +442,34 @@ describe('AgendarVisitaDialog — modo rápido desde una consulta', () => {
     expect(fetchMock.mock.calls.filter(([u]) => u === '/api/visits')).toHaveLength(0)
   })
 
+  it('con `silencioso` no muestra el toast de "Visita agendada" (el llamador muestra su propia confirmación)', async () => {
+    const { toast } = await import('sonner')
+    vi.mocked(toast.success).mockClear()
+    vi.stubGlobal('fetch', mockConPost(() => json({ id: VISITA_ID }, 201)))
+    const onAgendada = vi.fn()
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} rapido={RAPIDO} onAgendada={onAgendada} silencioso />)
+    await screen.findByRole('heading', { name: '¿Cuándo?' })
+    fireEvent.click(screen.getByRole('button', { name: /Hoy/ }))
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Agendar .* · 10:00$/ }))
+    await waitFor(() => expect(onAgendada).toHaveBeenCalled())
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('sin `silencioso` sí muestra el toast', async () => {
+    const { toast } = await import('sonner')
+    vi.mocked(toast.success).mockClear()
+    vi.stubGlobal('fetch', mockConPost(() => json({ id: VISITA_ID }, 201)))
+    const onAgendada = vi.fn()
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} rapido={RAPIDO} onAgendada={onAgendada} />)
+    await screen.findByRole('heading', { name: '¿Cuándo?' })
+    fireEvent.click(screen.getByRole('button', { name: /Hoy/ }))
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Agendar .* · 10:00$/ }))
+    await waitFor(() => expect(onAgendada).toHaveBeenCalled())
+    expect(toast.success).toHaveBeenCalledWith('Visita agendada', expect.anything())
+  })
+
   it('desmarcar "Ya la confirmé" manda la visita a confirmar', async () => {
     const fetchMock = mockConPost(() => json({ id: VISITA_ID }, 201))
     vi.stubGlobal('fetch', fetchMock)

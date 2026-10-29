@@ -14,11 +14,18 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams
   const id = sp.get('id')
   if (id && !z.string().uuid().safeParse(id).success) return NextResponse.json({ error: 'Propiedad inválida' }, { status: 400 })
+  // Entero de 1 a 200; sin el parámetro, 20 (la ventana de visitas no cambia).
+  const limiteCrudo = sp.get('limite')
+  const limite = limiteCrudo === null ? 20 : Number(limiteCrudo)
+  if (!/^\d+$/.test(limiteCrudo ?? '20') || !Number.isInteger(limite) || limite < 1 || limite > 200) {
+    return NextResponse.json({ error: 'Límite inválido' }, { status: 400 })
+  }
   try {
     const data = await datos.buscarPropiedadesParaVisita({
       q: (sp.get('q') ?? '').slice(0, 80),
       id: id ?? undefined,
       asesorId: puedeVerTodasLasVisitas(role) ? undefined : user.id,
+      limite,
     })
     return NextResponse.json({ data })
   } catch (e) {

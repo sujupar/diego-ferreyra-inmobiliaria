@@ -70,7 +70,10 @@ export function HojaElegirPropiedad({ consulta: c, puedeIdentificar, siguienteEs
     setBuscando(true)
     const t = setTimeout(async () => {
       try {
-        const r = await leerRespuesta<PropiedadParaAgendar[]>(await fetch(`/api/visits/propiedades?q=${encodeURIComponent(texto)}`))
+        // Sin texto se pide el inventario entero (≈40 hoy): el orden "primero las
+        // del barrio" necesita verlas todas, no las primeras 20 por dirección.
+        const limite = texto.trim() ? '' : '&limite=200'
+        const r = await leerRespuesta<PropiedadParaAgendar[]>(await fetch(`/api/visits/propiedades?q=${encodeURIComponent(texto)}${limite}`))
         if (!vigente) return
         if (r.ok) { setLista(r.data); setErrorBusqueda(null) } else setErrorBusqueda(r.error)
       } catch {
@@ -137,7 +140,7 @@ export function HojaElegirPropiedad({ consulta: c, puedeIdentificar, siguienteEs
         {titulo && <span className="break-words">«{titulo}»</span>}
         {direccion && <span className="break-words">{direccion}</span>}
         {enlaceAviso && (
-          <a href={enlaceAviso} target="_blank" rel="noopener noreferrer" className="mt-1 font-semibold underline">
+          <a href={enlaceAviso} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex min-h-11 items-center font-semibold underline">
             Abrir el aviso para mirarlo
           </a>
         )}

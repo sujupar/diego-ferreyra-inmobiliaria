@@ -166,6 +166,42 @@ describe('AgendarDesdeConsulta', () => {
     ))
   }, 20000)
 
+  it('cancelar después de conectar la propiedad avisa onCerrar(true): la bandeja se re-pide', async () => {
+    const onCerrar = vi.fn()
+    render(<AgendarDesdeConsulta consulta={consulta({ property_id: null, propiedad: null, accion: 'elegir_propiedad' })}
+      puedeIdentificar onTerminado={vi.fn()} onCerrar={onCerrar} />)
+    fireEvent.click(await screen.findByRole('radio', { name: /Tarija 4000/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Seguir/ }))
+    await screen.findByRole('heading', { name: '¿Cuándo?' }, { timeout: 4000 })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+    await waitFor(() => expect(onCerrar).toHaveBeenCalledWith(true))
+  }, 20000)
+
+  it('cancelar sin haber conectado nada avisa onCerrar(false)', async () => {
+    const onCerrar = vi.fn()
+    render(<AgendarDesdeConsulta consulta={consulta({ property_id: null, propiedad: null, accion: 'elegir_propiedad' })}
+      puedeIdentificar onTerminado={vi.fn()} onCerrar={onCerrar} />)
+    await screen.findByRole('heading', { name: '¿Qué propiedad quiere ver?' })
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }))
+    await waitFor(() => expect(onCerrar).toHaveBeenCalledWith(false))
+  })
+
+  it('la búsqueda inicial pide el inventario entero (limite=200) para ordenar por barrio', async () => {
+    render(<AgendarDesdeConsulta consulta={consulta({ property_id: null, propiedad: null, accion: 'elegir_propiedad' })}
+      puedeIdentificar onTerminado={vi.fn()} onCerrar={vi.fn()} />)
+    await screen.findByRole('radio', { name: /Tarija 4000/ })
+    expect(fetchMock.mock.calls.some(([u]) => String(u) === '/api/visits/propiedades?q=&limite=200')).toBe(true)
+  })
+
+  it('al agendar no se repite el toast de la ventana: la confirmación es la hoja "Visita agendada"', async () => {
+    const { toast } = await import('sonner')
+    vi.mocked(toast.success).mockClear()
+    render(<AgendarDesdeConsulta consulta={consulta()} puedeIdentificar onTerminado={vi.fn()} onCerrar={vi.fn()} />)
+    await agendarHoyALas10()
+    await screen.findByRole('heading', { name: /Visita agendada/ })
+    expect(toast.success).not.toHaveBeenCalled()
+  }, 20000)
+
   it('si conectar la propiedad falla, muestra el error y se queda', async () => {
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === `/api/consultas/${CONSULTA_ID}/propiedad` && init?.method === 'POST') {
