@@ -97,7 +97,7 @@ function Contenido({ c, otras, onCerrar, onAgendar }: {
   c: ConsultaEnBandeja; otras: ConsultaEnBandeja[]; onCerrar: () => void; onAgendar: (c: ConsultaEnBandeja) => void
 }) {
   const propiedad = textoPropiedad(c)
-  const aviso = enlaceSeguro(c.aviso_url)
+  const aviso = enlaceSeguro(c.aviso_url, c.portal)
   const visita = textoVisita(c)
   const visitaId = c.estado.tipo === 'sin_visita' ? null : c.estado.visitaId
   const encabezado = [

@@ -140,12 +140,30 @@ export function contarFiltrosActivos(f: FiltrosEnUrl): number {
   return resto + (periodoDistinto ? 1 : 0)
 }
 
-/** Enlaces que vienen de un portal (texto de terceros): solo `https://` con host. */
-export function enlaceSeguro(url: string | null | undefined): string | null {
+/** El dominio de cada portal. Un enlace a un aviso solo se muestra si es de ESE dominio. */
+const DOMINIO_DEL_PORTAL: Readonly<Record<string, string>> = {
+  zonaprop: 'zonaprop.com.ar',
+  argenprop: 'argenprop.com',
+  mercadolibre: 'mercadolibre.com.ar',
+}
+
+/**
+ * Enlaces que vienen de un portal (texto de terceros, sacado de un mail): solo
+ * `https://` y del dominio EXACTO de ese portal o un subdominio suyo
+ * (MercadoLibre usa `articulo.`, `departamento.`, …). Se compara el host
+ * completo, nunca con `includes`: `zonaprop.com.ar.otro.com` no pasa. Un
+ * enlace de otro dominio en un mail del portal no se muestra: no hay forma de
+ * saber a dónde lleva.
+ */
+export function enlaceSeguro(url: string | null | undefined, portal: string): string | null {
   if (!url) return null
+  const dominio = Object.hasOwn(DOMINIO_DEL_PORTAL, portal) ? DOMINIO_DEL_PORTAL[portal] : null
+  if (!dominio) return null
   try {
     const u = new URL(url)
-    return u.protocol === 'https:' && u.hostname ? u.toString() : null
+    const host = u.hostname.toLowerCase()
+    if (u.protocol !== 'https:' || (host !== dominio && !host.endsWith(`.${dominio}`))) return null
+    return u.toString()
   } catch {
     return null
   }

@@ -6,30 +6,27 @@
  * propiedad y se la conecta con `POST /api/consultas/[id]/propiedad` ANTES de
  * agendar: `POST /api/visits` rechaza una consulta sin su propiedad.
  *
- * Solo operaciones identifica avisos (recordar cambia a quién se le avisan las
- * consultas futuras). Un asesor ve lo que sabemos del aviso y a quién pedírselo.
+ * Una conexión vale para el AVISO entero (spec Entrega 2 §3.2): si la consulta
+ * trae el código del aviso, todas sus consultas quedan con la propiedad. La hoja
+ * lo dice ANTES de conectar, para que nadie se sorprenda.
+ *
+ * Solo operaciones conecta avisos (decide a quién le llegan las consultas
+ * futuras). Un asesor ve lo que sabemos del aviso y a quién pedírselo.
  */
-import { useEffect, useMemo, useState } from 'react'
-import { Search } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { leerRespuesta } from '@/components/visitas/agendar/leer-respuesta'
 import { enlaceSeguro, etiquetaPortal, nombreVisible } from '@/lib/consultas/pantalla'
-import { leerConexion, ordenarCercanasPrimero } from '@/lib/consultas/agendar-desde-consulta'
+import { leerConexion } from '@/lib/consultas/agendar-desde-consulta'
+import { codigoAgrupable } from '@/lib/consultas/avisos'
 import type { ConsultaEnBandeja } from '@/lib/consultas/tipos'
-import { cn } from '@/lib/utils'
 import { HojaArmazon } from './HojaArmazon'
+import { BuscadorDePropiedades, type PropiedadParaAgendar } from './BuscadorDePropiedades'
 
-export interface PropiedadParaAgendar {
-  id: string
-  address: string
-  neighborhood: string | null
-  foto: string | null
-  assigned_to: string | null
-}
+export type { PropiedadParaAgendar } from './BuscadorDePropiedades'
 
-const AVISO_NO_RECORDADO =
-  'No se pudo recordar el aviso (la propiedad no tiene asesor o el aviso no tiene código). Esta consulta sí quedó conectada.'
+export const AVISO_SIN_ASESOR =
+  'La propiedad no tiene asesor: las próximas consultas de este aviso no se van a conectar solas. Asigná un asesor a la propiedad.'
 
 interface Props {
   consulta: ConsultaEnBandeja
@@ -40,71 +37,30 @@ interface Props {
   onCerrar: () => void
 }
 
-function OpcionPropiedad({ p, elegida, onElegir }: { p: PropiedadParaAgendar; elegida: boolean; onElegir: () => void }) {
-  return (
-    <label className={cn('flex min-h-11 cursor-pointer items-center gap-3 rounded-xl p-3',
-      elegida ? 'border-2 border-brand bg-brand-soft/40' : 'border bg-card hover:bg-secondary')}>
-      <input type="radio" name="propiedad-de-la-consulta" checked={elegida} onChange={onElegir}
-        className="h-5 w-5 shrink-0 accent-brand" />
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate font-semibold">{p.address}</span>
-        {p.neighborhood && <span className="truncate text-xs text-muted-foreground">{p.neighborhood}</span>}
-      </span>
-    </label>
-  )
-}
-
 export function HojaElegirPropiedad({ consulta: c, puedeIdentificar, siguienteEsTelefono, onConectada, onCerrar }: Props) {
-  const [texto, setTexto] = useState('')
-  const [lista, setLista] = useState<PropiedadParaAgendar[]>([])
-  const [buscando, setBuscando] = useState(true)
-  const [errorBusqueda, setErrorBusqueda] = useState<string | null>(null)
   const [elegida, setElegida] = useState<PropiedadParaAgendar | null>(null)
-  const [recordar, setRecordar] = useState(true)
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!puedeIdentificar) return
-    let vigente = true
-    setBuscando(true)
-    const t = setTimeout(async () => {
-      try {
-        // Sin texto se pide el inventario entero (≈40 hoy): el orden "primero las
-        // del barrio" necesita verlas todas, no las primeras 20 por dirección.
-        const limite = texto.trim() ? '' : '&limite=200'
-        const r = await leerRespuesta<PropiedadParaAgendar[]>(await fetch(`/api/visits/propiedades?q=${encodeURIComponent(texto)}${limite}`))
-        if (!vigente) return
-        if (r.ok) { setLista(r.data); setErrorBusqueda(null) } else setErrorBusqueda(r.error)
-      } catch {
-        if (vigente) setErrorBusqueda('No hay conexión. Probá de nuevo.')
-      } finally {
-        if (vigente) setBuscando(false)
-      }
-    }, 300)
-    return () => { vigente = false; clearTimeout(t) }
-  }, [texto, puedeIdentificar])
-
-  const { cercanas, resto, barrios } = useMemo(
-    () => ordenarCercanasPrimero(lista, [c.aviso_direccion, c.aviso_titulo]),
-    [lista, c.aviso_direccion, c.aviso_titulo],
-  )
-  // Recordar necesita el código del aviso: sin código no hay nada que recordar.
-  const ofreceRecordar = puedeIdentificar && !!c.aviso_codigo?.trim()
+  const codigo = c.aviso_codigo?.trim()
+  const titulo = c.aviso_titulo?.trim()
+  const direccion = c.aviso_direccion?.trim()
+  const agrupable = codigoAgrupable(c.portal, c.aviso_codigo)
+  const textosDelAviso = useMemo(() => [c.aviso_direccion, c.aviso_titulo], [c.aviso_direccion, c.aviso_titulo])
 
   async function seguir() {
     if (!elegida || enviando) return
     setEnviando(true)
     setError(null)
-    const pidioRecordar = ofreceRecordar && recordar
     try {
       const r = await leerConexion(await fetch(`/api/consultas/${c.id}/propiedad`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ propertyId: elegida.id, recordar: pidioRecordar }),
+        body: JSON.stringify({ propertyId: elegida.id }),
       }))
       if (!r.ok) { setError(r.error); return }
-      // No frena: la consulta ya quedó conectada y se puede agendar igual.
-      if (pidioRecordar && !r.recordado) toast.warning(AVISO_NO_RECORDADO)
+      if (r.actualizadas > 1) toast.success(`Se conectaron las ${r.actualizadas} consultas de este aviso con ${elegida.address}`)
+      // No frena: las consultas ya quedaron conectadas y se puede agendar igual.
+      if (agrupable && !r.recordado) toast.warning(AVISO_SIN_ASESOR)
       onConectada(elegida)
     } catch {
       setError('No hay conexión. Probá de nuevo.')
@@ -113,10 +69,7 @@ export function HojaElegirPropiedad({ consulta: c, puedeIdentificar, siguienteEs
     }
   }
 
-  const enlaceAviso = enlaceSeguro(c.aviso_url)
-  const codigo = c.aviso_codigo?.trim()
-  const titulo = c.aviso_titulo?.trim()
-  const direccion = c.aviso_direccion?.trim()
+  const enlaceAviso = enlaceSeguro(c.aviso_url, c.portal)
 
   const pie = puedeIdentificar ? (
     <Button type="button" onClick={seguir} disabled={!elegida || enviando}
@@ -152,48 +105,15 @@ export function HojaElegirPropiedad({ consulta: c, puedeIdentificar, siguienteEs
         </p>
       ) : (
         <>
-          <label className="flex flex-col gap-1.5 text-sm font-semibold">
-            Buscar propiedad
-            <span className="flex h-12 items-center gap-2 rounded-lg border bg-card px-3 font-normal">
-              <Search className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              <input type="search" value={texto} onChange={(e) => setTexto(e.target.value)}
-                placeholder="Calle, número o barrio" className="min-w-0 flex-1 bg-transparent text-base outline-none" />
-            </span>
-          </label>
-
-          {errorBusqueda && <p role="alert" className="text-sm text-destructive">{errorBusqueda}</p>}
-          {buscando && !errorBusqueda && lista.length === 0 && <p className="text-sm text-muted-foreground">Buscando…</p>}
-
-          <fieldset className="flex flex-col gap-2">
-            <legend className="sr-only">Propiedades</legend>
-            {cercanas.length > 0 && (
-              <p className="text-xs text-muted-foreground">Primero las de {barrios.join(' y ')}</p>
-            )}
-            {cercanas.map((p) => (
-              <OpcionPropiedad key={p.id} p={p} elegida={elegida?.id === p.id} onElegir={() => setElegida(p)} />
-            ))}
-            {cercanas.length > 0 && resto.length > 0 && <p className="pt-1 text-xs text-muted-foreground">Otras propiedades</p>}
-            {resto.map((p) => (
-              <OpcionPropiedad key={p.id} p={p} elegida={elegida?.id === p.id} onElegir={() => setElegida(p)} />
-            ))}
-          </fieldset>
-          {!buscando && !errorBusqueda && lista.length === 0 && (
-            <p className="text-sm text-muted-foreground">No hay propiedades captadas disponibles con ese texto.</p>
-          )}
-
-          {ofreceRecordar && (
-            <label className="flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm">
-              <input type="checkbox" checked={recordar} onChange={(e) => setRecordar(e.target.checked)}
-                className="mt-0.5 h-5 w-5 shrink-0 accent-brand" />
-              <span className="flex flex-col gap-0.5">
-                <span className="font-medium">Recordar que este aviso es {elegida ? elegida.address : 'la propiedad que elijas'}</span>
-                <span className="text-xs text-muted-foreground">
-                  Las otras consultas de ese aviso pasan a esta propiedad y las próximas entran solas.
-                </span>
-              </span>
-            </label>
-          )}
-
+          <BuscadorDePropiedades textosDelAviso={textosDelAviso} elegida={elegida} onElegir={setElegida} />
+          <p className="rounded-xl border bg-muted/40 p-3 text-sm">
+            {agrupable
+              ? <>Se conectan <strong>todas las consultas sin propiedad de este aviso</strong>{elegida ? <> con <strong>{elegida.address}</strong></> : ''}
+                {elegida && !elegida.assigned_to
+                  ? '. La propiedad no tiene asesor: las próximas consultas de este aviso no se van a conectar solas.'
+                  : ', y las que lleguen después entran solas.'}</>
+              : 'Esta consulta no trae el código del aviso: se conecta solo esta.'}
+          </p>
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         </>
       )}

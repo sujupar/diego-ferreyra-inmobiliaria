@@ -172,20 +172,20 @@ describe('armarBandeja', () => {
   ].map((f) => ({ ...f, tel: leerTelefono(f.telefono) }))
 
   it('las tarjetas no cambian al filtrar por estado', () => {
-    const todo = armarBandeja(filas, { estado: null, telefonoRevisar: false, pagina: 1 })
-    const filtrado = armarBandeja(filas, { estado: 'visito', telefonoRevisar: false, pagina: 1 })
+    const todo = armarBandeja(filas, { estado: null, telefonoRevisar: false, visibles: 25 })
+    const filtrado = armarBandeja(filas, { estado: 'visito', telefonoRevisar: false, visibles: 25 })
     expect(filtrado.tarjetas).toEqual(todo.tarjetas)
     expect(filtrado.total).toBe(1)
     expect(todo.tarjetas).toEqual({ sinVisita: 3, sinPropiedad: 1, telefonoRevisar: 2 })
   })
 
   it('MercadoLibre sin teléfono no cuenta ni filtra como "teléfono a revisar"', () => {
-    const r = armarBandeja(filas, { estado: null, telefonoRevisar: true, pagina: 1 })
+    const r = armarBandeja(filas, { estado: null, telefonoRevisar: true, visibles: 25 })
     expect(r.filas.map((f) => f.id).sort()).toEqual(['b', 'e'])
   })
 
   it('con_visita filtra solo con_visita (no visito)', () => {
-    const r = armarBandeja(filas, { estado: 'con_visita', telefonoRevisar: false, pagina: 1 })
+    const r = armarBandeja(filas, { estado: 'con_visita', telefonoRevisar: false, visibles: 25 })
     expect(r.filas.map((f) => f.id)).toEqual(['b'])
   })
 
@@ -194,21 +194,23 @@ describe('armarBandeja', () => {
       enBandeja({ id: 'x1', recibida_at: '2026-10-27T10:00:00Z' }),
       enBandeja({ id: 'x2', recibida_at: '2026-10-28T10:00:00Z' }),
       enBandeja({ id: 'x3', recibida_at: '2026-10-28T10:00:00Z' }),
-    ], { estado: null, telefonoRevisar: false, pagina: 1 })
+    ], { estado: null, telefonoRevisar: false, visibles: 25 })
     expect(r.filas.map((f) => f.id)).toEqual(['x3', 'x2', 'x1'])
   })
 
-  it('página 2 de 30 filas → 5 filas y total 30', () => {
+  it('muestra las primeras `visibles`: 25 de 30 y, con "Ver más", las 30', () => {
     const treinta = Array.from({ length: 30 }, (_, i) => enBandeja({ id: `id-${String(i).padStart(2, '0')}` }))
-    const r = armarBandeja(treinta, { estado: null, telefonoRevisar: false, pagina: 2 })
-    expect(r.filas).toHaveLength(5)
+    expect(armarBandeja(treinta, { estado: null, telefonoRevisar: false, visibles: 25 }).filas).toHaveLength(25)
+    const r = armarBandeja(treinta, { estado: null, telefonoRevisar: false, visibles: 50 })
+    expect(r.filas).toHaveLength(30)
     expect(r.total).toBe(30)
   })
 
-  it('una página después del final viene vacía, con el total correcto', () => {
-    const r = armarBandeja(filas, { estado: null, telefonoRevisar: false, pagina: 9 })
-    expect(r.filas).toEqual([])
-    expect(r.total).toBe(5)
+  it('un `visibles` raro (0, negativo, NaN) muestra igual la primera página', () => {
+    const treinta = Array.from({ length: 30 }, (_, i) => enBandeja({ id: `id-${String(i).padStart(2, '0')}` }))
+    for (const visibles of [0, -3, Number.NaN]) {
+      expect(armarBandeja(treinta, { estado: null, telefonoRevisar: false, visibles }).filas).toHaveLength(25)
+    }
   })
 })
 
@@ -295,16 +297,14 @@ describe('contarPorPortal', () => {
 })
 
 describe('contarPorPropiedad', () => {
-  const propiedades = new Map([
-    ['p1', { address: 'Doblas 248', neighborhood: null }],
-    ['p2', { address: 'Roque Pérez 3059', neighborhood: null }],
-  ])
+  const con = (id: string, property_id: string | null, address?: string) =>
+    enBandeja({ id, property_id, propiedad: address ? { address, neighborhood: null } : null })
 
   it('"Sin propiedad identificada" va primero; el resto de mayor a menor', () => {
     const r = contarPorPropiedad([
-      consulta({ id: '1', property_id: 'p1' }), consulta({ id: '2', property_id: 'p2' }),
-      consulta({ id: '3', property_id: 'p2' }), consulta({ id: '4', property_id: null }),
-    ], propiedades, null)
+      con('1', 'p1', 'Doblas 248'), con('2', 'p2', 'Roque Pérez 3059'),
+      con('3', 'p2', 'Roque Pérez 3059'), con('4', null),
+    ], null)
     expect(r).toEqual([
       { valor: 'sin', etiqueta: 'Sin propiedad identificada', n: 1 },
       { valor: 'p2', etiqueta: 'Roque Pérez 3059', n: 2 },
@@ -313,13 +313,18 @@ describe('contarPorPropiedad', () => {
   })
 
   it('sin consultas sin propiedad, ese renglón no aparece salvo que esté elegido', () => {
-    const filas = [consulta({ property_id: 'p1' })]
-    expect(contarPorPropiedad(filas, propiedades, null).map((o) => o.valor)).toEqual(['p1'])
-    expect(contarPorPropiedad(filas, propiedades, 'sin')[0]).toEqual({ valor: 'sin', etiqueta: 'Sin propiedad identificada', n: 0 })
+    const filas = [con('1', 'p1', 'Doblas 248')]
+    expect(contarPorPropiedad(filas, null).map((o) => o.valor)).toEqual(['p1'])
+    expect(contarPorPropiedad(filas, 'sin')[0]).toEqual({ valor: 'sin', etiqueta: 'Sin propiedad identificada', n: 0 })
   })
 
   it('una propiedad sin dirección conocida no rompe la lista', () => {
-    expect(contarPorPropiedad([consulta({ property_id: 'p9' })], propiedades, null))
+    expect(contarPorPropiedad([con('1', 'p9')], null))
       .toEqual([{ valor: 'p9', etiqueta: 'Propiedad sin dirección', n: 1 }])
+  })
+
+  it('la propiedad elegida que no tiene consultas aparece con 0 y su dirección si se conoce', () => {
+    expect(contarPorPropiedad([con('1', 'p1', 'Doblas 248')], 'p7', 'Amenábar 1500'))
+      .toContainEqual({ valor: 'p7', etiqueta: 'Amenábar 1500', n: 0 })
   })
 })
