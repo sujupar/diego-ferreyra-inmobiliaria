@@ -121,7 +121,7 @@ describe('GET /api/consultas', () => {
       truncado: false,
     })
     datosMock.visitasParaConsultas.mockResolvedValue([
-      { id: 'v1', property_id: PROP, portal_inquiry_id: 'a', client_phone: null, status: 'scheduled', scheduled_at: '2099-01-12T14:00:00Z' },
+      { id: 'v1', property_id: PROP, portal_inquiry_id: 'a', lead_id: null, client_phone: null, status: 'scheduled', scheduled_at: '2099-01-12T14:00:00Z' },
     ])
     datosMock.propiedadesYAsesores.mockResolvedValue({
       propiedades: new Map([[PROP, { address: 'Doblas 248', neighborhood: 'Caballito' }]]),

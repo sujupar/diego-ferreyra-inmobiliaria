@@ -36,6 +36,8 @@ export interface VisitaDeConsulta {
   id: string
   property_id: string
   portal_inquiry_id: string | null
+  /** El comprador (`property_leads.id`); en una consulta de landing es el id de la consulta. */
+  lead_id: string | null
   client_phone: string | null
   status: EstadoVisita
   scheduled_at: string

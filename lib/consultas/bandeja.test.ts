@@ -19,7 +19,7 @@ function consulta(p: Partial<ConsultaFila> = {}): ConsultaFila {
 
 function visita(p: Partial<VisitaDeConsulta> = {}): VisitaDeConsulta {
   return {
-    id: 'v-1', property_id: PROP, portal_inquiry_id: null, client_phone: null,
+    id: 'v-1', property_id: PROP, portal_inquiry_id: null, lead_id: null, client_phone: null,
     status: 'scheduled', scheduled_at: '2026-10-30T15:00:00Z', ...p,
   }
 }
@@ -66,6 +66,22 @@ describe('estadoDeConsulta', () => {
   it('teléfonos inválidos no se emparejan entre sí', () => {
     const c = consulta({ telefono: '4941-0027' })
     expect(estadoDeConsulta(c, [visita({ client_phone: '4941-0027' })])).toEqual({ tipo: 'sin_visita' })
+  })
+
+  it('landing con teléfono corregido: coincide por lead_id aunque el teléfono guardado sea inválido', () => {
+    const c = consulta({ id: 'lead-1', tipo: 'landing', portal: 'landing', canal: 'landing', telefono: '4941-0027' })
+    const e = estadoDeConsulta(c, [visita({ lead_id: 'lead-1', client_phone: '+5491161400496' })])
+    expect(e).toEqual({ tipo: 'con_visita', visitaId: 'v-1', scheduled_at: '2026-10-30T15:00:00Z' })
+  })
+
+  it('landing con visita realizada por lead_id → visito', () => {
+    const c = consulta({ id: 'lead-1', tipo: 'landing', portal: 'landing', canal: 'landing', telefono: '4941-0027' })
+    expect(estadoDeConsulta(c, [visita({ lead_id: 'lead-1', status: 'completed' })]).tipo).toBe('visito')
+  })
+
+  it('el lead_id no empareja una consulta de PORTAL con el mismo id', () => {
+    const c = consulta({ id: 'x-1', telefono: '4941-0027' })
+    expect(estadoDeConsulta(c, [visita({ lead_id: 'x-1' })])).toEqual({ tipo: 'sin_visita' })
   })
 
   it('completed → visito', () => {

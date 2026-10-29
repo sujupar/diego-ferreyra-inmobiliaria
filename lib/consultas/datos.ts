@@ -156,7 +156,7 @@ function sinRepetir(ids: readonly string[]): string[] {
   return [...new Set(ids.filter((id) => id))]
 }
 
-const COLUMNAS_VISITA = 'id, property_id, portal_inquiry_id, client_phone, status, scheduled_at'
+const COLUMNAS_VISITA = 'id, property_id, portal_inquiry_id, lead_id, client_phone, status, scheduled_at'
 
 function aVisita(r: Record<string, unknown>): VisitaDeConsulta {
   if (!esEstadoVisita(r.status)) throw new Error(`visitas de consultas: estado desconocido "${String(r.status)}"`)
@@ -164,6 +164,7 @@ function aVisita(r: Record<string, unknown>): VisitaDeConsulta {
     id: String(r.id),
     property_id: String(r.property_id),
     portal_inquiry_id: textoONulo(r.portal_inquiry_id),
+    lead_id: textoONulo(r.lead_id),
     client_phone: textoONulo(r.client_phone),
     status: r.status,
     scheduled_at: String(r.scheduled_at),
@@ -192,8 +193,10 @@ async function visitasPor(columna: 'portal_inquiry_id' | 'property_id', ids: rea
 /**
  * Las visitas que pueden ser de estas consultas: las vinculadas por
  * `portal_inquiry_id` y, para las cargadas sin ese vínculo, todas las de las
- * mismas propiedades (`estadoDeConsulta` las empareja por teléfono). Dos
- * consultas y no un `or()`: así cada una usa su índice. Sin canceladas: no
+ * mismas propiedades (`estadoDeConsulta` las empareja por teléfono o, en las de
+ * landing, por `lead_id`). Las de landing no necesitan una tercera consulta por
+ * `lead_id`: `property_leads.property_id` es NOT NULL, así que su visita ya viene
+ * en la de propiedades. Dos consultas y no un `or()`: así cada una usa su índice. Sin canceladas: no
  * cuentan como visita. Sin repetidas (una visita puede salir en las dos).
  */
 export async function visitasParaConsultas(propertyIds: string[], inquiryIds: string[]): Promise<VisitaDeConsulta[]> {

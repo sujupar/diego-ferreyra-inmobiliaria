@@ -48,7 +48,9 @@ function whatsappDe(crudo: string | null): string | null {
 
 /**
  * Si la consulta ya tiene visita. Coincide por el vínculo explícito
- * (`portal_inquiry_id`) o, para las visitas cargadas sin ese vínculo, por
+ * (`portal_inquiry_id` en las de portal; `lead_id` en las de landing, cuyo id
+ * ES el del comprador, así una consulta cuyo teléfono se corrigió al agendar
+ * igual queda "con visita") o, para las visitas cargadas sin ese vínculo, por
  * MISMA propiedad + MISMO teléfono leído con la regla del 549: así
  * `011 15 6140-0496` y `+5491161400496` son la misma persona. Un teléfono
  * inválido nunca empareja (dos "4941-0027" no prueban que sea la misma
@@ -59,7 +61,7 @@ export function estadoDeConsulta(c: ConsultaFila, visitas: readonly VisitaDeCons
   let elegida: VisitaDeConsulta | null = null
   for (const v of visitas) {
     if (v.status === 'cancelled') continue
-    const porVinculo = v.portal_inquiry_id === c.id
+    const porVinculo = c.tipo === 'landing' ? v.lead_id === c.id : v.portal_inquiry_id === c.id
     const porPersona = telConsulta !== null && v.property_id === c.property_id
       && whatsappDe(v.client_phone) === telConsulta
     if (!porVinculo && !porPersona) continue
