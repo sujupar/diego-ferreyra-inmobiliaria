@@ -15,7 +15,8 @@ import { respuestaOpenAI } from '@/lib/ai/openai-responses'
 import { scrapeProperty } from '@/lib/scraper'
 import { urlBusquedaArgenprop, urlBusquedaMercadoLibre } from './competencia/busqueda'
 import { esLinkDelPortal, parsearListadoArgenprop, parsearListadoMercadoLibre } from './competencia/listados'
-import { ordenarCandidatas, type Candidata, type DetalleCandidata } from './competencia/puntaje'
+import { filtroMasBaratas, ordenarCandidatas, type Candidata, type DetalleCandidata, type FiltroMasBaratas, type Referencia } from './competencia/puntaje'
+import { mismaDireccion } from './aviso-ml'
 import { traerListado } from './competencia/traer'
 import { FUENTES, type Capturas, type FuenteGuardada, type Fuentes, type Informe, type NombreCaptura, type NombreFuente, type PropiedadDelInforme, type BusquedaPortal } from './tipos'
 
@@ -176,12 +177,26 @@ export async function abrirCandidata(i: Informe, url: string): Promise<DetalleCa
 }
 
 /** Las candidatas ordenadas por parecido a la propiedad (lo que muestra la pantalla). */
-export function candidatasOrdenadas(i: Informe, p: PropiedadDelInforme): Candidata[] {
-  const avisos = [...(i.candidatas.argenprop?.avisos ?? []), ...(i.candidatas.mercadolibre?.avisos ?? [])]
-  return ordenarCandidatas({
+function referenciaDe(p: PropiedadDelInforme): Referencia {
+  return {
     direccion: p.direccion, ambientes: p.ambientes ?? null, m2: p.m2 ?? null, precio: p.precio, antiguedad: p.antiguedad ?? null,
     disposicion: p.disposicion ?? null, estado: p.estadoConservacion ?? null,
-  }, avisos, i.candidatas.detalles)
+    moneda: p.moneda === 'USD' || p.moneda === 'ARS' ? p.moneda : null,
+  }
+}
+
+const avisosDe = (i: Informe) => [...(i.candidatas.argenprop?.avisos ?? []), ...(i.candidatas.mercadolibre?.avisos ?? [])]
+
+/** Solo las que valen menos por m² que la nuestra (`filtroMasBaratas`), ordenadas por parecido. */
+export function candidatasOrdenadas(i: Informe, p: PropiedadDelInforme): Candidata[] {
+  return ordenarCandidatas(referenciaDe(p), avisosDe(i), i.candidatas.detalles)
+}
+
+/** Lo que la pantalla dice arriba de la lista: con qué valor del m² se filtró y cuántas quedaron afuera. */
+export function filtroDeCompetencia(i: Informe, p: PropiedadDelInforme): Omit<FiltroMasBaratas, 'avisos'> & { moneda: string | null } {
+  const ref = referenciaDe(p)
+  const f = filtroMasBaratas(ref, avisosDe(i).filter(a => !mismaDireccion(ref.direccion, a.direccion)))
+  return { valorM2Nuestro: f.valorM2Nuestro, descartadasPorPrecio: f.descartadasPorPrecio, sinComparar: f.sinComparar, moneda: ref.moneda ?? null }
 }
 
 // ─── Capturas ────────────────────────────────────────────────────────────────
@@ -277,6 +292,7 @@ export interface VistaInforme {
   capturasUrl: Partial<Record<NombreCaptura, string>>
   pdfUrl: string | null
   candidatas: Candidata[]
+  filtroCompetencia: ReturnType<typeof filtroDeCompetencia>
 }
 
 export async function vistaDelInforme(i: Informe): Promise<VistaInforme> {
@@ -291,5 +307,6 @@ export async function vistaDelInforme(i: Informe): Promise<VistaInforme> {
   return {
     informe: i, propiedad, resumen: resumenDeMetricas(i.fuentes, i.manual), paginas: paginasDelInforme(i),
     faltantes: faltantes(i), capturasUrl, pdfUrl, candidatas: candidatasOrdenadas(i, propiedad),
+    filtroCompetencia: filtroDeCompetencia(i, propiedad),
   }
 }

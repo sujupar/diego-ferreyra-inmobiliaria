@@ -536,7 +536,7 @@ export function EditorInforme({ informeId }: { informeId: string }) {
       <Seccion id="sec-competidoras" titulo="Propiedades que compiten" ayuda="La plataforma busca en el barrio avisos parecidos (ambientes, m², precio, antigüedad, disposición y estado). Miralos en el portal y agregá los que quieras al informe (hasta 8). Si después tocás «Volver a escribir», el análisis las compara.">
         <Competidoras iniciales={informe.competidoras} deshabilitado={bloqueado} onGuardar={guardarCompetidoras} onPendiente={onPendiente}
           busqueda={{
-            candidatas: vista.candidatas, argenprop: informe.candidatas.argenprop, mercadolibre: informe.candidatas.mercadolibre,
+            candidatas: vista.candidatas, filtro: vista.filtroCompetencia, argenprop: informe.candidatas.argenprop, mercadolibre: informe.candidatas.mercadolibre,
             progreso: progresoCompetencia, onBuscarDeNuevo: () => void buscarCompetidoras(),
           }} />
       </Seccion>

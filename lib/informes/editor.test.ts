@@ -68,7 +68,7 @@ describe('competidoraDesdeCandidata (Paula elige una candidata que encontró la 
     portal: 'argenprop' as const, url: 'https://www.argenprop.com/departamento--20258532', titulo: 'Exclusivo 3 ambientes',
     direccion: 'Roque Pérez 2500, Piso 9, Coghlan', precio: 220000, moneda: 'USD' as const, m2: 60, ambientes: 3, dormitorios: 2, banos: 1,
     cocheras: null, antiguedad: 2, foto: 'https://www.argenprop.com/static-content/1.jpg', vistas: 2210, inmobiliaria: 'X',
-    puntaje: 80, porque: [], disposicion: 'frente' as const, estado: 'muy bueno' as const, orientacion: null, publicadoHace: 'Publicado hace 5 días', abierta: true,
+    puntaje: 80, porque: [], disposicion: 'frente' as const, estado: 'muy bueno' as const, orientacion: null, publicadoHace: 'Publicado hace 5 días', abierta: true, valorM2: 3667,
   }
   it('pasa a competidora con el valor del m² propuesto y se puede guardar', () => {
     const c = competidoraDesdeCandidata(candidata)

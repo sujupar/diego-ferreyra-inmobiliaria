@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Competidoras } from './Competidoras'
+import { Competidoras, masCara } from './Competidoras'
+import { textoDelFiltro } from './Candidatas'
 import type { Competidora } from '@/lib/informes/tipos'
 
 const LINK = 'https://www.zonaprop.com.ar/propiedades/x-1.html'
@@ -81,5 +82,25 @@ describe('Competidoras', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Traer datos' }))
     expect(screen.getByRole('alert')).toHaveTextContent('ya está en la lista')
     expect(pedidos).toEqual([])
+  })
+})
+
+describe('filtro por valor del m² (pedido del dueño: solo competidoras más baratas por m²)', () => {
+  const filtro = { valorM2Nuestro: 2128, descartadasPorPrecio: 5, sinComparar: 2, moneda: 'USD' }
+  it('el aviso dice con qué valor se filtró y cuántas quedaron afuera', () => {
+    expect(textoDelFiltro(filtro)).toBe('Se muestran solo las que valen menos por m² que la nuestra (USD 2.128/m²): 5 descartadas por valer igual o más y 2 sin precio o m² para comparar.')
+    expect(textoDelFiltro({ ...filtro, descartadasPorPrecio: 1, sinComparar: 0 })).toBe('Se muestran solo las que valen menos por m² que la nuestra (USD 2.128/m²): 1 descartada por valer igual o más.')
+  })
+  it('sin precio o m² en la ficha lo dice y no filtra', () => {
+    expect(textoDelFiltro({ valorM2Nuestro: null, descartadasPorPrecio: 0, sinComparar: 0, moneda: 'USD' })).toMatch(/falta el precio o los m² en la ficha/)
+  })
+  it('una elegida a mano más cara por m² (misma moneda) se marca; una más barata o en otra moneda, no', () => {
+    const c = (valorM2: number | null, moneda: 'USD' | 'ARS' = 'USD') => ({ valorM2, moneda }) as Competidora
+    expect(masCara(c(2500), filtro)).toBe(true)
+    expect(masCara(c(2128), filtro)).toBe(true)
+    expect(masCara(c(1900), filtro)).toBe(false)
+    expect(masCara(c(2500, 'ARS'), filtro)).toBe(false)
+    expect(masCara(c(null), filtro)).toBe(false)
+    expect(masCara(c(2500), undefined)).toBe(false)
   })
 })

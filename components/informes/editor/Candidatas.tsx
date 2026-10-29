@@ -18,8 +18,22 @@ function estadoDeLaBusqueda(portal: 'argenprop' | 'mercadolibre', b: BusquedaPor
  * Las propiedades que la plataforma encontró en Argenprop y MercadoLibre, ordenadas por parecido, con el porqué y
  * "Ver en el portal" para mirarlas antes de elegirlas. Elegir = pasa a las competidoras del informe.
  */
-export function Candidatas({ candidatas, argenprop, mercadolibre, progreso, elegidas, lleno, deshabilitado, onElegir, onBuscarDeNuevo }: {
+/** Con qué valor del m² se filtró (lo arma el servidor con `filtroDeCompetencia`). */
+export interface FiltroDeCompetencia { valorM2Nuestro: number | null; descartadasPorPrecio: number; sinComparar: number; moneda: string | null }
+
+/** El aviso de arriba de la lista: con qué se filtró y cuántas quedaron afuera (o por qué no se pudo filtrar). */
+export function textoDelFiltro(f: FiltroDeCompetencia): string {
+  if (f.valorM2Nuestro === null) return 'No se pudo comparar el precio por m²: falta el precio o los m² en la ficha de la propiedad. Se muestran todas.'
+  const afuera = [
+    f.descartadasPorPrecio ? `${f.descartadasPorPrecio} descartada${f.descartadasPorPrecio === 1 ? '' : 's'} por valer igual o más` : '',
+    f.sinComparar ? `${f.sinComparar} sin precio o m² para comparar` : '',
+  ].filter(Boolean).join(' y ')
+  return `Se muestran solo las que valen menos por m² que la nuestra (${f.moneda ?? 'USD'} ${miles.format(f.valorM2Nuestro)}/m²)${afuera ? `: ${afuera}` : ''}.`
+}
+
+export function Candidatas({ candidatas, argenprop, mercadolibre, progreso, elegidas, lleno, deshabilitado, onElegir, onBuscarDeNuevo, filtro }: {
   candidatas: Candidata[]
+  filtro?: FiltroDeCompetencia
   argenprop: BusquedaPortal | undefined
   mercadolibre: BusquedaPortal | undefined
   /** "Buscando en Argenprop…", "Revisando avisos (2/6)…"; null = quieto. */
@@ -43,11 +57,13 @@ export function Candidatas({ candidatas, argenprop, mercadolibre, progreso, eleg
         )}
       </div>
       <p className="text-xs text-muted-foreground">{estadoDeLaBusqueda('argenprop', argenprop)} · {estadoDeLaBusqueda('mercadolibre', mercadolibre)}. Zonaprop no permite buscar: si querés una de ahí, pegá su link abajo.</p>
-      {!candidatas.length && !progreso ? <p className="text-sm text-muted-foreground">No hay candidatas todavía.</p> : null}
+      {filtro && (argenprop || mercadolibre) ? <p className="text-xs text-muted-foreground">{textoDelFiltro(filtro)}</p> : null}
+      {!candidatas.length && !progreso ? <p className="text-sm text-muted-foreground">{filtro?.valorM2Nuestro ? 'No hay candidatas que valgan menos por m² que la nuestra.' : 'No hay candidatas todavía.'}</p> : null}
       <ul className="space-y-2">
         {candidatas.map(c => {
           const elegida = elegidas.includes(c.url)
-          const valorM2 = c.precio && c.m2 ? Math.round(c.precio / c.m2) : null
+          const valorM2 = c.valorM2 ?? (c.precio && c.m2 ? Math.round(c.precio / c.m2) : null)
+          const nuestro = filtro?.valorM2Nuestro ?? null
           return (
             <li key={c.url} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row">
               <div className="h-24 w-full shrink-0 overflow-hidden rounded-md bg-muted sm:w-32">
@@ -58,7 +74,7 @@ export function Candidatas({ candidatas, argenprop, mercadolibre, progreso, eleg
                 <p className="font-medium">{c.direccion || c.titulo}</p>
                 <p className="text-muted-foreground">
                   {[c.precio ? `${c.moneda ?? 'USD'} ${miles.format(c.precio)}` : 'sin precio', c.m2 ? `${c.m2} m²` : null,
-                    valorM2 ? `${c.moneda ?? 'USD'} ${miles.format(valorM2)}/m²` : null, c.ambientes ? `${c.ambientes} amb.` : null,
+                    valorM2 ? `${c.moneda ?? 'USD'} ${miles.format(valorM2)}/m²${nuestro ? ` (la nuestra: ${filtro?.moneda ?? 'USD'} ${miles.format(nuestro)}/m²)` : ''}` : null, c.ambientes ? `${c.ambientes} amb.` : null,
                     c.disposicion, c.estado, c.antiguedad !== null ? `${c.antiguedad} años` : null].filter(Boolean).join(' · ')}
                 </p>
                 {c.porque.length ? <p className="text-xs text-emerald-800">Parecida: {c.porque.join(', ')}</p> : null}

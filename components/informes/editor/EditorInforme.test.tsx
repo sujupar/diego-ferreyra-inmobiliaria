@@ -50,6 +50,7 @@ function vista(i: Informe, faltantes: string[] = ['Zonaprop: exposición']): Vis
     informe: i, propiedad: { id: 'prop-1', direccion: 'Roque Pérez 3059', barrio: 'Coghlan', ciudad: null, tipo: null, precio: null, moneda: null, capturadaEl: null, foto: null },
     resumen: resumenDeMetricas(i.fuentes, i.manual),
     paginas: [], faltantes, capturasUrl: {}, pdfUrl: null, candidatas: [],
+    filtroCompetencia: { valorM2Nuestro: null, descartadasPorPrecio: 0, sinComparar: 0, moneda: null },
   }
 }
 
