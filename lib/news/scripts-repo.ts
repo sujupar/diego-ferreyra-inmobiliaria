@@ -63,15 +63,19 @@ export async function getPendingScripts(): Promise<NewsScript[]> {
     .from('news_scripts')
     .select('*')
     .eq('estado', 'guionizando')
+    .order('created_at', { ascending: true })
   if (error) throw new Error(error.message)
   return (data ?? []) as NewsScript[]
 }
 
+// Claim: solo transiciona si la pieza sigue en 'guionizando' (evita pisar estados
+// cuando dos corridas se solapan).
 export async function markListo(id: string, guion: string): Promise<void> {
   const { error } = await admin()
     .from('news_scripts')
     .update({ guion, estado: 'listo', updated_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('estado', 'guionizando')
   if (error) throw new Error(error.message)
 }
 
@@ -80,5 +84,17 @@ export async function markError(id: string, msg: string): Promise<void> {
     .from('news_scripts')
     .update({ estado: 'error', error_msg: msg, updated_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('estado', 'guionizando')
+  if (error) throw new Error(error.message)
+}
+
+// Piezas 'guionizando' demasiado viejas pasan a error para no reintentarse siempre.
+export async function expireStaleScripts(maxAgeHours: number, msg: string): Promise<void> {
+  const cutoff = new Date(Date.now() - maxAgeHours * 3600_000).toISOString()
+  const { error } = await admin()
+    .from('news_scripts')
+    .update({ estado: 'error', error_msg: msg, updated_at: new Date().toISOString() })
+    .eq('estado', 'guionizando')
+    .lt('created_at', cutoff)
   if (error) throw new Error(error.message)
 }

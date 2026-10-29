@@ -11,7 +11,7 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(() => ({ from: fromMock })),
 }))
 
-import { createPendingScripts, markListo, markError, listScripts, getPendingScripts } from './scripts-repo'
+import { createPendingScripts, markListo, markError, listScripts, getPendingScripts, expireStaleScripts } from './scripts-repo'
 
 const cand = (n: number) => ({
   titulo: `T${n}`, medio: 'M', fecha: '2026-10-28', url: `https://x.com/${n}`, resumen: `R${n}`,
@@ -74,30 +74,48 @@ describe('listScripts / getPendingScripts', () => {
     expect(orderMock).toHaveBeenCalledWith('created_at', { ascending: false })
   })
   it('getPendingScripts filtra estado guionizando', async () => {
-    eqMock.mockResolvedValue({ data: [], error: null })
+    orderMock.mockResolvedValue({ data: [], error: null })
+    eqMock.mockReturnValue({ order: orderMock })
     selectMock.mockReturnValue({ eq: eqMock })
     fromMock.mockReturnValue({ select: selectMock })
     await getPendingScripts()
     expect(eqMock).toHaveBeenCalledWith('estado', 'guionizando')
+    expect(orderMock).toHaveBeenCalledWith('created_at', { ascending: true })
   })
 })
 
-describe('markListo / markError', () => {
-  it('markListo setea guion, estado listo y updated_at', async () => {
-    eqMock.mockResolvedValue({ error: null })
+describe('markListo / markError / expireStaleScripts', () => {
+  // update().eq('id').eq('estado','guionizando')
+  const setup = () => {
+    const eq2 = vi.fn().mockResolvedValue({ error: null })
+    eqMock.mockReturnValue({ eq: eq2 })
     updateMock.mockReturnValue({ eq: eqMock })
     fromMock.mockReturnValue({ update: updateMock })
+    return eq2
+  }
+  it('markListo setea guion, estado listo y solo si sigue guionizando', async () => {
+    const eq2 = setup()
     await markListo('id1', 'guion')
     const patch = updateMock.mock.calls[0][0]
     expect(patch).toMatchObject({ guion: 'guion', estado: 'listo' })
     expect(typeof patch.updated_at).toBe('string')
     expect(eqMock).toHaveBeenCalledWith('id', 'id1')
+    expect(eq2).toHaveBeenCalledWith('estado', 'guionizando')
   })
-  it('markError setea estado error y error_msg', async () => {
-    eqMock.mockResolvedValue({ error: null })
-    updateMock.mockReturnValue({ eq: eqMock })
-    fromMock.mockReturnValue({ update: updateMock })
+  it('markError setea estado error y solo si sigue guionizando', async () => {
+    const eq2 = setup()
     await markError('id2', 'fallo')
     expect(updateMock.mock.calls[0][0]).toMatchObject({ estado: 'error', error_msg: 'fallo' })
+    expect(eq2).toHaveBeenCalledWith('estado', 'guionizando')
+  })
+  it('expireStaleScripts pasa a error las guionizando viejas', async () => {
+    const ltMock = vi.fn().mockResolvedValue({ error: null })
+    eqMock.mockReturnValue({ lt: ltMock })
+    updateMock.mockReturnValue({ eq: eqMock })
+    fromMock.mockReturnValue({ update: updateMock })
+    await expireStaleScripts(6, 'viejo')
+    expect(updateMock.mock.calls[0][0]).toMatchObject({ estado: 'error', error_msg: 'viejo' })
+    expect(eqMock).toHaveBeenCalledWith('estado', 'guionizando')
+    expect(ltMock.mock.calls[0][0]).toBe('created_at')
   })
 })

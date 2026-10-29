@@ -1,24 +1,22 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import type { NewsScript } from './scripts-repo'
+// Import estático: los textos de voz entran al bundle (generados por scripts/sync-voz-diego.sh).
+import reglas from '@/lib/guion/voz/reglas'
+import metodo from '@/lib/guion/voz/metodo'
+import playbook from '@/lib/guion/voz/playbook'
+import corpus from '@/lib/guion/voz/corpus'
 
-// Snapshot de la voz de Diego (ver scripts/sync-voz-diego.sh).
-const VOZ_FILES = [
-  ['REGLAS DE VOZ DE DIEGO', 'REGLAS-VOZ-DIEGO.md'],
-  ['MÉTODO DEL GUIONISTA', 'METODO-GUIONISTA.md'],
-  ['PLAYBOOK DE FORMATOS', 'PLAYBOOK-FORMATOS.md'],
-  ['CORPUS REAL DE LA VOZ DE DIEGO (transcripciones)', 'diego-voz-corpus.txt'],
+const VOZ = [
+  ['REGLAS DE VOZ DE DIEGO', reglas],
+  ['MÉTODO DEL GUIONISTA', metodo],
+  ['PLAYBOOK DE FORMATOS', playbook],
+  ['CORPUS REAL DE LA VOZ DE DIEGO (transcripciones)', corpus],
 ] as const
 
-let cachedVoz: string | null = null
+// Timeout por llamada: debe ser < presupuesto de reloj de la ruta (techo real de Netlify ~26s).
+export const GEMINI_TIMEOUT_MS = 18_000
 
 function loadVoz(): string {
-  if (cachedVoz) return cachedVoz
-  const dir = join(process.cwd(), 'lib', 'guion', 'voz')
-  cachedVoz = VOZ_FILES.map(
-    ([titulo, file]) => `=== ${titulo} ===\n${readFileSync(join(dir, file), 'utf8').trim()}`,
-  ).join('\n\n')
-  return cachedVoz
+  return VOZ.map(([titulo, texto]) => `=== ${titulo} ===\n${texto.trim()}`).join('\n\n')
 }
 
 function buildSystemPrompt(): string {
@@ -31,7 +29,7 @@ Te paso una noticia. Escribí el guion del video de Diego sobre esa noticia, lis
 }
 
 interface GeminiTextResponse {
-  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+  candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ text?: string }> } }>
 }
 
 export async function guionizarPieza(p: NewsScript): Promise<string> {
@@ -54,12 +52,12 @@ export async function guionizarPieza(p: NewsScript): Promise<string> {
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
     {
       method: 'POST',
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: buildSystemPrompt() }] },
         contents: [{ role: 'user', parts: [{ text: noticia }] }],
-        generationConfig: { temperature: 0.8, maxOutputTokens: 2000 },
+        generationConfig: { temperature: 0.8, maxOutputTokens: 4000, thinkingConfig: { thinkingBudget: 0 } },
       }),
     },
   )
@@ -68,7 +66,22 @@ export async function guionizarPieza(p: NewsScript): Promise<string> {
     throw new Error(`Gemini ${res.status}: ${errText}`)
   }
   const data = (await res.json()) as GeminiTextResponse
-  const text = data.candidates?.[0]?.content?.parts?.find((x) => x.text)?.text?.trim()
+  const cand = data.candidates?.[0]
+  const text = cand?.content?.parts?.find((x) => x.text)?.text?.trim()
   if (!text) throw new Error('Gemini devolvió un guion vacío')
+  if (cand?.finishReason && cand.finishReason !== 'STOP') {
+    throw new Error(`Gemini cortó el guion (finishReason=${cand.finishReason})`)
+  }
   return text
+}
+
+/** Mensaje acotado y sin paths de filesystem ni API keys (lo leen usuarios autenticados). */
+export function sanitizeError(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e)
+  return raw
+    .replace(/key=[^&\s"']+/gi, 'key=***')
+    .replace(/(?:[A-Za-z]:)?(?:\/[\w.@ -]+){2,}/g, '[ruta]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200) || 'error desconocido'
 }

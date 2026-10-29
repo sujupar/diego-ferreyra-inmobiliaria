@@ -6,8 +6,6 @@ const nextConfig: NextConfig = {
     // para que se require en runtime y el build no rompa. Los usa el pipeline Meta Ads v2
     // (lib/marketing/ad-image-*.ts → satori + resvg + sharp).
     serverExternalPackages: ['@resvg/resvg-js', 'satori', 'sharp'],
-    // Archivos de voz de Diego que guionizar.ts lee con fs en runtime: sin esto el tracing no los incluye en la función.
-    outputFileTracingIncludes: { '/api/cron/guionizar-pendientes': ['./lib/guion/voz/**/*'] },
     // Commit deployado, horneado en el BUILD (Netlify inyecta COMMIT_REF al buildear).
     // Lo expone GET /api/version — permite verificar QUÉ código sirve producción
     // (los deploys de Netlify pueden fallar en silencio para nosotros).

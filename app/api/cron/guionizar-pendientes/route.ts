@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { getPendingScripts, markListo, markError } from '@/lib/news/scripts-repo'
-import { guionizarPieza } from '@/lib/news/guionizar'
+import { getPendingScripts, markListo, markError, expireStaleScripts } from '@/lib/news/scripts-repo'
+import { guionizarPieza, sanitizeError } from '@/lib/news/guionizar'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
+
+// Techo real de Netlify ~26s (maxDuration no aplica): cortamos el loop antes para que
+// markListo/markError corran y ninguna pieza quede colgada en 'guionizando'.
+const PRESUPUESTO_MS = 22_000
+const MAX_EDAD_HORAS = 6
 
 /**
  * POST /api/cron/guionizar-pendientes
@@ -28,13 +33,24 @@ async function isAuthorized(provided: string | null): Promise<boolean> {
 
 export async function POST(req: NextRequest): Promise<Response> {
   if (!(await isAuthorized(req.headers.get('x-cron-secret')))) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
 
-  const pendientes = await getPendingScripts()
+  // Piezas que llevan demasiado 'guionizando' (corridas muertas) -> error, no reintentar infinito.
+  try {
+    await expireStaleScripts(MAX_EDAD_HORAS, 'guionizado no completado a tiempo')
+  } catch {
+    // no bloquea el procesamiento
+  }
+
+  const inicio = Date.now()
+  const pendientes = await getPendingScripts() // created_at asc
+  let procesadas = 0
   let ok = 0
   let error = 0
   for (const p of pendientes) {
+    if (Date.now() - inicio >= PRESUPUESTO_MS) break // el resto se toma en la próxima corrida
+    procesadas++
     try {
       const guion = await guionizarPieza(p)
       await markListo(p.id, guion)
@@ -42,11 +58,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     } catch (e) {
       error++
       try {
-        await markError(p.id, e instanceof Error ? e.message : String(e))
+        await markError(p.id, sanitizeError(e))
       } catch {
         // si ni siquiera se puede marcar el error, seguimos con la siguiente
       }
     }
   }
-  return NextResponse.json({ procesadas: pendientes.length, ok, error })
+  return NextResponse.json({ procesadas, ok, error, pendientes: pendientes.length - procesadas })
 }
