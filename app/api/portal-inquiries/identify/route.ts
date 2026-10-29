@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { requireAuth } from '@/lib/auth/require-role'
+import { identificarAviso } from '@/lib/consultas/identificar'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,55 +44,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'datos_invalidos' }, { status: 400 })
     }
     const d = parsed.data
-    const supabase = getAdmin()
 
-    // 1) Completar (o crear) la fila del mapa de ese aviso.
-    const record = {
+    // Mapa + corrección hacia atrás: la misma pieza que usa la sección Consultas
+    // al conectar una consulta "recordando el aviso".
+    const { actualizadas } = await identificarAviso(getAdmin(), {
       portal: d.portal,
-      external_code: d.externalCode,
+      externalCode: d.externalCode,
       address: d.address,
-      assigned_to: d.assignedTo,
-      property_id: d.propertyId ?? null,
-      external_url: d.externalUrl || null,
-      active: true,
-    }
-    const { data: existing } = await supabase
-      .from('portal_property_map')
-      .select('id')
-      .eq('portal', d.portal)
-      .eq('external_code', d.externalCode)
-      .maybeSingle()
+      assignedTo: d.assignedTo,
+      propertyId: d.propertyId ?? null,
+      externalUrl: d.externalUrl ?? null,
+    })
 
-    let mapId: string | null = (existing as { id?: string } | null)?.id ?? null
-    if (mapId) {
-      const { error } = await supabase.from('portal_property_map').update(record).eq('id', mapId)
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    } else {
-      const { data: created, error } = await supabase
-        .from('portal_property_map')
-        .insert(record)
-        .select('id')
-        .single()
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-      mapId = (created as { id: string }).id
-    }
-
-    // 2) Corregir hacia atrás las consultas de ese aviso.
-    const { data: updated, error: updErr } = await supabase
-      .from('portal_inquiries')
-      .update({
-        assigned_to: d.assignedTo,
-        property_id: d.propertyId ?? null,
-        property_address: d.address,
-        matched_map_id: mapId,
-        is_unmatched: false,
-      })
-      .eq('portal', d.portal)
-      .eq('property_external_code', d.externalCode)
-      .select('id')
-    if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
-
-    return NextResponse.json({ updatedInquiries: (updated ?? []).length })
+    return NextResponse.json({ updatedInquiries: actualizadas })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Error' }, { status: 500 })
   }
