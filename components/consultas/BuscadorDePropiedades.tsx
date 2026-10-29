@@ -82,7 +82,7 @@ export function BuscadorDePropiedades({ textosDelAviso, elegida, onElegir }: {
   )
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3">
       <label className="flex flex-col gap-1.5 text-sm font-semibold">
         Buscar propiedad
         <span className="flex h-12 items-center gap-2 rounded-lg border bg-card px-3 font-normal">
@@ -95,7 +95,10 @@ export function BuscadorDePropiedades({ textosDelAviso, elegida, onElegir }: {
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {buscando && !error && lista.length === 0 && <p className="text-sm text-muted-foreground">Buscando…</p>}
 
-      <fieldset className="flex flex-col gap-2">
+      {/* `min-w-0`: un <fieldset> por defecto no se achica más que su contenido
+          (min-inline-size: min-content) y las direcciones largas lo sacaban de la
+          hoja por la derecha en el celular. */}
+      <fieldset className="flex min-w-0 flex-col gap-2">
         <legend className="sr-only">Propiedades</legend>
         {sugeridas.length > 0 && (
           <p className="flex items-center gap-1.5 text-xs font-semibold text-brand">
