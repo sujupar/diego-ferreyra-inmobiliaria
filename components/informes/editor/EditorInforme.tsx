@@ -18,21 +18,23 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, CheckCircle2, Download, Eye, Loader2, RefreshCw, Undo2 } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Download, Eye, Loader2, Pencil, RefreshCw, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { sanearCambios } from '@/lib/informes/sanear'
 import { esReintentable, esperaParaReintento, estadoDelGuardado, mezclarTrasEscribir } from '@/lib/informes/autoguardado'
+import { hayAjustes, textosDesactualizados } from '@/lib/informes/ajustes'
 import type { CampoTexto as CampoDeTexto } from '@/lib/informes/redaccion'
 import { fuentesPorTraer, resumenDeLaFuente, rotuloDeLaFuente, type Tono } from '@/lib/informes/editor'
 import { textoDelPeriodo } from '@/lib/informes/periodo'
 import type { VistaInforme } from '@/lib/informes/servicio'
-import { FUENTES, type Competidora, type Manual, type NombreFuente } from '@/lib/informes/tipos'
+import { FUENTES, type Ajustes, type Competidora, type Manual, type NombreFuente } from '@/lib/informes/tipos'
 import { cn } from '@/lib/utils'
 import { generarPdfDelInforme } from '../pdf/generar'
 import * as api from './api'
 import { CampoLinea, CampoNumero, CampoTexto, Publicada, Seccion, type AvisarPendiente } from './campos'
 import { CapturaPortal } from './CapturaPortal'
+import { AjusteDeFuente } from './AjusteDeFuente'
 import { Competidoras } from './Competidoras'
 
 const NOMBRE_FUENTE: Record<NombreFuente, string> = {
@@ -167,7 +169,7 @@ export function EditorInforme({ informeId }: { informeId: string }) {
         setFase({ tipo: 'lista', vista })
         if (vista.informe.estado !== 'borrador' || yaTrajo.current) return
         yaTrajo.current = true
-        for (const nombre of fuentesPorTraer(vista.informe.fuentes)) {
+        for (const nombre of fuentesPorTraer(vista.informe.fuentesAutomaticas ?? vista.informe.fuentes)) {
           if (!vigente) return
           setTrayendo(nombre)
           try { await api.traerFuente(informeId, nombre) } catch { /* queda pendiente: se ve y se reintenta */ }
@@ -320,6 +322,25 @@ export function EditorInforme({ informeId }: { informeId: string }) {
     })
   }
 
+  /** Un campo de "Corregir a mano". Vacío = ese dato vuelve a lo automático. */
+  function ajustar(fuente: NombreFuente, campo: string, valor: number | boolean | string | null | undefined) {
+    guardarManual(x => {
+      const actual: Record<string, unknown> = { ...(x.ajustes?.[fuente] ?? {}) }
+      if (valor === undefined || valor === null || valor === '') delete actual[campo]
+      else actual[campo] = valor
+      const ajustes: Ajustes = { ...x.ajustes, [fuente]: actual }
+      return { ...x, ajustes, ajustesEn: new Date().toISOString() }
+    })
+  }
+
+  function volverAlAutomatico(fuente: NombreFuente) {
+    guardarManual(x => {
+      const ajustes: Ajustes = { ...x.ajustes }
+      delete ajustes[fuente]
+      return { ...x, ajustes, ajustesEn: new Date().toISOString() }
+    })
+  }
+
   async function guardarCompetidoras(lista: Competidora[]) {
     competidorasSinGuardar.current = lista
     setAviso(null)
@@ -436,7 +457,9 @@ export function EditorInforme({ informeId }: { informeId: string }) {
       <Seccion id="sec-automatico" titulo="Lo que juntó la plataforma" ayuda="Se trae solo. Si algo no se pudo traer, el informe lo dice y no lo cuenta como cero.">
         <ul className="space-y-2">
           {FUENTES.map(n => (
-            <FilaFuente key={n} nombre={n} vista={vista} trayendo={trayendo === n} deshabilitado={listo || trayendo !== null} onReintentar={() => reintentar(n)} />
+            <FilaFuente key={n} nombre={n} vista={vista} trayendo={trayendo === n} deshabilitado={listo || trayendo !== null} onReintentar={() => reintentar(n)}
+              ajustes={m.ajustes} bloqueado={bloqueado} onAjustar={(campo, v) => ajustar(n, campo, v)} onAutomatico={() => volverAlAutomatico(n)}
+              onPendiente={onPendiente} />
           ))}
         </ul>
         <div className="rounded-lg bg-muted/50 p-3 text-sm">
@@ -513,6 +536,9 @@ export function EditorInforme({ informeId }: { informeId: string }) {
             <span className="inline-flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Escribiendo los textos…</span>
           ) : m.redaccion ? (
             <span className="text-muted-foreground">Escritos por la plataforma el {new Date(m.redaccion.generadoEn).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}.</span>
+          ) : null}
+          {!escribiendo && textosDesactualizados(m) ? (
+            <span role="status" className="w-full text-sm font-medium text-orange-700">Corregiste datos después de que se escribieron los textos: tocá «Volver a escribir» para que los usen.</span>
           ) : null}
           <Button type="button" variant="outline" size="sm" className="min-h-11" disabled={bloqueado || escribiendo || trayendo !== null || fallo !== null} onClick={() => escribir(false)}>
             <RefreshCw className="mr-1 h-4 w-4" aria-hidden /> {m.redaccion ? 'Volver a escribir' : 'Escribir los textos'}
@@ -634,24 +660,52 @@ function Volver({ propertyId }: { propertyId?: string }) {
   )
 }
 
-function FilaFuente({ nombre, vista, trayendo, deshabilitado, onReintentar }: {
+function FilaFuente({ nombre, vista, trayendo, deshabilitado, onReintentar, ajustes, bloqueado, onAjustar, onAutomatico, onPendiente }: {
   nombre: NombreFuente; vista: VistaInforme; trayendo: boolean; deshabilitado: boolean; onReintentar: () => void
+  ajustes: Ajustes | undefined; bloqueado: boolean
+  onAjustar: (campo: string, valor: number | boolean | string | null | undefined) => void
+  onAutomatico: () => void
+  onPendiente: AvisarPendiente
 }) {
+  const [abierto, setAbierto] = useState(false)
   const f = vista.informe.fuentes[nombre]
-  const rotulo = trayendo ? { texto: 'Trayendo…', tono: 'pendiente' as const } : rotuloDeLaFuente(f)
+  const automaticas = vista.informe.fuentesAutomaticas ?? vista.informe.fuentes
+  const aMano = hayAjustes(ajustes, nombre)
+  const rotulo = trayendo ? { texto: 'Trayendo…', tono: 'pendiente' as const }
+    : aMano ? { texto: 'Cargado a mano', tono: 'neutro' as const } : rotuloDeLaFuente(f)
   const resumen = resumenDeLaFuente(nombre, vista.informe.fuentes)
+  const automatico = aMano ? (resumenDeLaFuente(nombre, automaticas) || rotuloDeLaFuente(automaticas[nombre]).texto) : null
   return (
-    <li className="flex flex-wrap items-center gap-2 rounded-lg border p-3">
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium">{NOMBRE_FUENTE[nombre]}</p>
-        {resumen ? <p className="text-sm text-muted-foreground">{resumen}</p> : null}
+    <li className="space-y-3 rounded-lg border p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">{NOMBRE_FUENTE[nombre]}</p>
+          {resumen ? <p className="text-sm text-muted-foreground">{resumen}</p> : null}
+          {automatico ? <p className="text-xs text-muted-foreground">Automático: {automatico}</p> : null}
+        </div>
+        <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', TONO[rotulo.tono])}>{rotulo.texto}</span>
+        <Button type="button" variant="ghost" size="sm" className="min-h-11" disabled={deshabilitado} onClick={onReintentar}
+          aria-label={`Volver a traer: ${NOMBRE_FUENTE[nombre]}`}>
+          {trayendo ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
+          <span className="ml-1">{f?.estado === 'error' ? 'Reintentar' : 'Actualizar'}</span>
+        </Button>
+        <Button type="button" variant="ghost" size="sm" className="min-h-11" disabled={bloqueado} aria-expanded={abierto}
+          aria-label={`Corregir a mano: ${NOMBRE_FUENTE[nombre]}`} onClick={() => setAbierto(a => !a)}>
+          <Pencil className="mr-1 h-4 w-4" aria-hidden /> {abierto ? 'Cerrar' : 'Corregir a mano'}
+        </Button>
       </div>
-      <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', TONO[rotulo.tono])}>{rotulo.texto}</span>
-      <Button type="button" variant="ghost" size="sm" className="min-h-11" disabled={deshabilitado} onClick={onReintentar}
-        aria-label={`Volver a traer: ${NOMBRE_FUENTE[nombre]}`}>
-        {trayendo ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
-        <span className="ml-1">{f?.estado === 'error' ? 'Reintentar' : 'Actualizar'}</span>
-      </Button>
+      {abierto ? (
+        <div className="space-y-3 rounded-md bg-muted/40 p-3">
+          <p className="text-xs text-muted-foreground">Lo que cargues acá vale en todo el informe (resumen, textos y PDF). Un campo vacío usa lo que trae la plataforma.</p>
+          <AjusteDeFuente nombre={nombre} fuentes={vista.informe.fuentes} ajustes={ajustes} deshabilitado={bloqueado}
+            onCambiar={onAjustar} onPendiente={onPendiente} />
+          {aMano ? (
+            <Button type="button" variant="outline" size="sm" className="min-h-11" disabled={bloqueado} onClick={onAutomatico}>
+              <Undo2 className="mr-1 h-4 w-4" aria-hidden /> Volver al automático
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </li>
   )
 }

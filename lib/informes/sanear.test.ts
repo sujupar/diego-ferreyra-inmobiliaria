@@ -55,3 +55,19 @@ describe('sanearCambios (lo que manda la pantalla del informe)', () => {
     expect(sanearCambios({}).ok).toBe(false)
   })
 })
+
+describe('sanearCambios: correcciones a mano de lo automático', () => {
+  it('acepta números por fuente, la reserva con fecha y cuándo se corrigió', () => {
+    const r = sanearCambios({ manual: { ajustes: {
+      consultas: { zonaprop: 3 }, visitas: { realizadas: 2 }, reserva: { reservada: true, fecha: '2026-10-19' },
+      mercadolibre: { visitas: 40, interesados: 1 }, meta: { alcance: 5000 }, instagram: { reproducciones: 900 },
+    }, ajustesEn: '2026-10-29T12:00:00.000Z' } })
+    expect(r.ok).toBe(true)
+  })
+  it('rechaza negativos, campos inventados y fechas mal formadas', () => {
+    expect(sanearCambios({ manual: { ajustes: { visitas: { realizadas: -1 } } } }).ok).toBe(false)
+    expect(sanearCambios({ manual: { ajustes: { visitas: { ficha: 3 } } } }).ok).toBe(false)
+    expect(sanearCambios({ manual: { ajustes: { reserva: { fecha: '19/10/2026' } } } }).ok).toBe(false)
+    expect(sanearCambios({ manual: { ajustes: { tiktok: { visualizaciones: 3 } } } }).ok).toBe(false)
+  })
+})

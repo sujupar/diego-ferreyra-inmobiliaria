@@ -208,6 +208,46 @@ describe('EditorInforme', () => {
     })
   })
 
+  describe('corregir a mano lo automático (pedido del dueño)', () => {
+    it('"Corregir a mano" en Visitas: cargar 3 guarda el ajuste y cuándo se corrigió', async () => {
+      api.leerVista.mockResolvedValue(vista(informe()))
+      render(<EditorInforme informeId="inf-1" />)
+      await userEvent.click(await screen.findByRole('button', { name: 'Corregir a mano: Visitas y ficha de visitas' }))
+      await userEvent.type(screen.getByLabelText('Visitas realizadas'), '3')
+      await userEvent.tab()
+      await waitFor(() => expect(api.guardarManual).toHaveBeenCalled())
+      const m = api.guardarManual.mock.calls.at(-1)?.[1]
+      expect(m.ajustes).toEqual({ visitas: { realizadas: 3 } })
+      expect(typeof m.ajustesEn).toBe('string')
+      // Lo demás del informe viaja igual (el servidor reemplaza `manual` entero).
+      expect(m.zonaprop).toEqual({ interesados: 1 })
+    })
+
+    it('una fuente corregida dice "Cargado a mano", muestra lo automático y deja volver', async () => {
+      const auto = informe()
+      const corregido = informe({
+        manual: { ...auto.manual, ajustes: { visitas: { realizadas: 3 } } },
+        fuentes: { ...auto.fuentes, visitas: { estado: 'ok', actualizadoEn: 'x', error: null, aMano: true, datos: { realizadas: 3, ficha: { respuestas: 0, leGusto: { si: 0, no: 0 }, precio: { correcto: 0, alto: 0, bajo: 0 }, ofertas: [], moneda: null, masGusto: [], menosGusto: [], comentariosMenosGusto: [] } } } },
+        fuentesAutomaticas: auto.fuentes,
+      })
+      api.leerVista.mockResolvedValue(vista(corregido))
+      render(<EditorInforme informeId="inf-1" />)
+      expect(await screen.findByText('Cargado a mano')).toBeInTheDocument()
+      expect(screen.getByText(/^Automático:/)).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Corregir a mano: Visitas y ficha de visitas' }))
+      await userEvent.click(screen.getByRole('button', { name: /Volver al automático/ }))
+      await waitFor(() => expect(api.guardarManual).toHaveBeenCalled())
+      expect(api.guardarManual.mock.calls.at(-1)?.[1].ajustes).toEqual({})
+    })
+
+    it('si se corrigió después de que la plataforma escribió los textos, pide "Volver a escribir"', async () => {
+      api.leerVista.mockResolvedValue(vista(informe({ manual: { textos: { accionesRealizadas: 'Publicamos' },
+        redaccion: { generadoEn: '2026-10-29T10:00:00Z', original: {}, revisar: [] }, ajustesEn: '2026-10-29T11:00:00Z' } })))
+      render(<EditorInforme informeId="inf-1" />)
+      expect(await screen.findByText(/Corregiste datos después de que se escribieron los textos/)).toBeInTheDocument()
+    })
+  })
+
   it('un aviso de ML inválido no se aplica ni se manda, y no traba el guardado de los demás campos', async () => {
     api.leerVista.mockResolvedValue(vista(informe()))
     render(<EditorInforme informeId="inf-1" />)

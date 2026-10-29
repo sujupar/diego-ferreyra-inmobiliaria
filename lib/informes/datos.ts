@@ -8,6 +8,7 @@ import { sb } from './sb'
 import { normalizarDisposicion, normalizarEstado } from './competencia/caracteristicas'
 import { BUCKET_INFORMES } from './archivos'
 import { actualizarFormaVieja } from './forma-vieja'
+import { aplicarAjustes } from './ajustes'
 import { FUENTES, type CandidatasGuardadas, type Capturas, type Competidora, type Fuentes, type FuenteGuardada, type Informe, type Manual, type NombreCaptura, type NombreFuente, type PropiedadDelInforme } from './tipos'
 import type { InformeDelPeriodo, PropiedadDelCiclo } from './ciclo-servicio'
 import { fechaEnArgentina } from '@/lib/visitas/horario'
@@ -30,7 +31,8 @@ function aInforme(r: Record<string, unknown>): Informe {
   const { fuentes, manual } = actualizarFormaVieja(objeto(r.fuentes) as Fuentes, objeto(r.manual) as Manual)
   return {
     id: String(r.id), propertyId: String(r.property_id), desde: String(r.desde), hasta: String(r.hasta), origen, estado,
-    fuentes, manual,
+    // Las correcciones a mano se aplican ACÁ, una sola vez: resumen, textos, faltantes y PDF ya las ven.
+    fuentes: aplicarAjustes(fuentes, manual.ajustes), fuentesAutomaticas: fuentes, manual,
     competidoras: Array.isArray(r.competidoras) ? (r.competidoras as Competidora[]) : [],
     candidatas: { detalles: {}, ...(objeto(r.candidatas) as Partial<CandidatasGuardadas>) },
     capturas: objeto(r.capturas) as Capturas, pdfPath: r.pdf_path ? String(r.pdf_path) : null,
