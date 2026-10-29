@@ -13,7 +13,10 @@ import { detectInquiryType, emailToText, extractPhone, firstLeadEmail, valueAfte
 export function parseZonaprop(email: RawEmail): ParsedInquiry {
   const text = emailToText(email)
   const subj = email.subject ?? ''
-  const cod = subj.match(/C[ÓO]D[:\s]*([A-Za-z0-9]+)/i)?.[1] ?? null
+  // Un CÓD seguido de ":" o "/" es un ENLACE que el anunciante cargó en ese
+  // campo ("CÓD:https://…"): tomar "https" como código juntaba consultas de
+  // avisos distintos bajo un aviso falso. Sin CÓD de verdad, queda la REF.
+  const cod = subj.match(/C[ÓO]D[:\s]*([A-Za-z0-9]+)(?![A-Za-z0-9]*[:/])/i)?.[1] ?? null
   const ref = subj.match(/REF[:\s#]*#?(\d+)/i)?.[1] ?? null
 
   return {

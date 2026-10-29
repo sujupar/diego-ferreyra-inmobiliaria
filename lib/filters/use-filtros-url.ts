@@ -71,6 +71,17 @@ export interface OpcionesFiltrosUrl<T extends Record<string, string>> {
    * cambia en cada pasada nunca converge.
    */
   normalizar?: (filtros: T) => T
+  /**
+   * Escribir la URL con `history.replaceState` en vez de `router.replace`.
+   *
+   * Para pantallas que filtran EN MEMORIA (Consultas): con `router.replace`,
+   * Next vuelve a pedirle al servidor la página entera en cada cambio de filtro
+   * (la página es dinámica: valida la sesión) y eso cuesta ~1 s aunque no haga
+   * falta ningún dato nuevo. Next sincroniza `useSearchParams` con
+   * `replaceState` sin ir al servidor. Las pantallas que SÍ necesitan que el
+   * servidor vuelva a renderizar con el filtro nuevo no deben usarlo.
+   */
+  soloNavegador?: boolean
 }
 
 export interface FiltrosUrl<T extends Record<string, string>> {
@@ -149,6 +160,7 @@ export function useFiltrosUrl<T extends Record<string, string>>({
   defectos,
   permitidos,
   normalizar,
+  soloNavegador = false,
 }: OpcionesFiltrosUrl<T>): FiltrosUrl<T> {
   const router = useRouter()
   const pathname = usePathname()
@@ -346,9 +358,11 @@ export function useFiltrosUrl<T extends Record<string, string>>({
     setEspejo(validados)
     // `replace` y no `push`: con push, cada ajuste del rango de fechas deja una
     // entrada en el historial y el botón Atrás se vuelve inusable.
-    router.replace(busqueda ? `${pathname}?${busqueda}` : pathname, { scroll: false })
+    const href = busqueda ? `${pathname}?${busqueda}` : pathname
+    if (soloNavegador) window.history.replaceState(window.history.state, '', href)
+    else router.replace(href, { scroll: false })
     return { estado: 'escrito', rechazadas }
-  }, [construirBusqueda, defectos, igual, leerDe, pathname, router])
+  }, [construirBusqueda, defectos, igual, leerDe, pathname, router, soloNavegador])
 
   const limpiar = useCallback(() => aplicar(defectos as Partial<T>), [aplicar, defectos])
 

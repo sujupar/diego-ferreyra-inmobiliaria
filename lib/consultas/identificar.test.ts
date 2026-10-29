@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { crearSupabaseFalso, type Fila } from './supabase-falso'
-import { identificarAviso, conectarConsulta, ConsultaNoConectable } from './identificar'
+import { identificarAviso, conectarConsulta, conectarAviso, ConsultaNoConectable } from './identificar'
 
 const PROP = '33333333-3333-4333-8333-333333333333'
 const ASESOR = '22222222-2222-4222-8222-222222222222'
@@ -83,10 +83,10 @@ describe('identificarAviso', () => {
 })
 
 describe('conectarConsulta', () => {
-  it('con recordar: todas las consultas del mismo portal+código quedan con la propiedad y se crea la fila del mapa', async () => {
+  it('con código de aviso: todas las consultas del mismo portal+código quedan con la propiedad y se recuerda el aviso', async () => {
     const sb = base()
-    const r = await conectarConsulta(sb.cliente, { consultaId: 'c1', propertyId: PROP, recordar: true })
-    expect(r).toEqual({ actualizadas: 2, recordado: true })
+    const r = await conectarConsulta(sb.cliente, { consultaId: 'c1', propertyId: PROP })
+    expect(r).toEqual({ actualizadas: 2, recordado: true, agrupable: true })
     expect(fila(sb, 'c2')).toMatchObject({ property_id: PROP, assigned_to: ASESOR, is_unmatched: false })
     expect(sb.tablas.portal_property_map[0]).toMatchObject({
       portal: 'zonaprop', external_code: 'ZP123', property_id: PROP, assigned_to: ASESOR,
@@ -94,69 +94,71 @@ describe('conectarConsulta', () => {
     })
   })
 
-  it('sin recordar: solo esa consulta, y el mapa no se toca', async () => {
+  it('consulta sin código: solo esa, sin tocar el mapa', async () => {
     const sb = base()
-    const r = await conectarConsulta(sb.cliente, { consultaId: 'c1', propertyId: PROP, recordar: false })
-    expect(r).toEqual({ actualizadas: 1, recordado: false })
-    expect(fila(sb, 'c1')).toMatchObject({ property_id: PROP, assigned_to: ASESOR, property_address: 'Doblas 248', is_unmatched: false })
-    expect(fila(sb, 'c2')!.property_id).toBeNull()
-    expect(sb.tablas.portal_property_map).toHaveLength(0)
-  })
-
-  it('consulta sin código y recordar: solo esa, recordado false', async () => {
-    const sb = base()
-    const r = await conectarConsulta(sb.cliente, { consultaId: 'c5', propertyId: PROP, recordar: true })
-    expect(r).toEqual({ actualizadas: 1, recordado: false })
+    const r = await conectarConsulta(sb.cliente, { consultaId: 'c5', propertyId: PROP })
+    expect(r).toEqual({ actualizadas: 1, recordado: false, agrupable: false })
     expect(fila(sb, 'c5')).toMatchObject({ property_id: PROP, assigned_to: ASESOR })
     expect(sb.tablas.portal_property_map).toHaveLength(0)
   })
 
-  it('código en blanco cuenta como sin código', async () => {
-    const sb = base({ portal_inquiries: [consulta({ id: 'cb', property_external_code: '   ' })] })
-    const r = await conectarConsulta(sb.cliente, { consultaId: 'cb', propertyId: PROP, recordar: true })
-    expect(r).toEqual({ actualizadas: 1, recordado: false })
+  it('código en blanco, "https" o la REF de ZonaProp: solo esa consulta', async () => {
+    for (const codigo of ['   ', 'https', '309710959']) {
+      const sb = base({ portal_inquiries: [consulta({ id: 'cb', property_external_code: codigo }), consulta({ id: 'cc', property_external_code: codigo })] })
+      const r = await conectarConsulta(sb.cliente, { consultaId: 'cb', propertyId: PROP })
+      expect(r).toEqual({ actualizadas: 1, recordado: false, agrupable: false })
+      expect(fila(sb, 'cc')!.property_id).toBeNull()
+      expect(sb.tablas.portal_property_map).toHaveLength(0)
+    }
+  })
+
+  it('propiedad sin asesor: se conectan todas las del aviso, pero el aviso NO se recuerda y no se borra el asesor', async () => {
+    const sb = base({ portal_inquiries: [consulta({ id: 'c1', assigned_to: OTRO_ASESOR }), consulta({ id: 'c2' })] })
+    const r = await conectarConsulta(sb.cliente, { consultaId: 'c1', propertyId: 'p-sin-asesor' })
+    expect(r).toEqual({ actualizadas: 2, recordado: false, agrupable: true })
+    expect(fila(sb, 'c1')).toMatchObject({ property_id: 'p-sin-asesor', assigned_to: OTRO_ASESOR, property_address: 'Rivadavia 5000', is_unmatched: false })
+    expect(fila(sb, 'c2')).toMatchObject({ property_id: 'p-sin-asesor', assigned_to: null })
     expect(sb.tablas.portal_property_map).toHaveLength(0)
   })
 
-  it('propiedad sin asesor y recordar: no se recuerda el aviso y no se le borra el asesor a la consulta', async () => {
+  it('consulta sin código y propiedad sin asesor: no se le borra el asesor a la consulta', async () => {
     const sb = base()
-    const r = await conectarConsulta(sb.cliente, { consultaId: 'c5', propertyId: 'p-sin-asesor', recordar: true })
-    expect(r).toEqual({ actualizadas: 1, recordado: false })
-    expect(fila(sb, 'c5')).toMatchObject({ property_id: 'p-sin-asesor', assigned_to: OTRO_ASESOR, property_address: 'Rivadavia 5000', is_unmatched: false })
-    expect(sb.tablas.portal_property_map).toHaveLength(0)
+    const r = await conectarConsulta(sb.cliente, { consultaId: 'c5', propertyId: 'p-sin-asesor' })
+    expect(r).toEqual({ actualizadas: 1, recordado: false, agrupable: false })
+    expect(fila(sb, 'c5')).toMatchObject({ property_id: 'p-sin-asesor', assigned_to: OTRO_ASESOR })
   })
 
   it('una consulta que ya tenía propiedad se puede reconectar (corrección)', async () => {
     const sb = base({ portal_inquiries: [consulta({ id: 'cx', property_id: 'p-sin-asesor', assigned_to: OTRO_ASESOR })] })
-    const r = await conectarConsulta(sb.cliente, { consultaId: 'cx', propertyId: PROP, recordar: false })
+    const r = await conectarConsulta(sb.cliente, { consultaId: 'cx', propertyId: PROP })
     expect(r.actualizadas).toBe(1)
     expect(sb.tablas.portal_inquiries[0]).toMatchObject({ property_id: PROP, assigned_to: ASESOR })
   })
 
   it('consulta de landing: 400 "Esta consulta ya tiene propiedad"', async () => {
     const sb = base()
-    const e = await conectarConsulta(sb.cliente, { consultaId: 'l1', propertyId: PROP, recordar: true }).catch((x) => x)
+    const e = await conectarConsulta(sb.cliente, { consultaId: 'l1', propertyId: PROP }).catch((x) => x)
     expect(e).toBeInstanceOf(ConsultaNoConectable)
     expect(e).toMatchObject({ status: 400, message: 'Esta consulta ya tiene propiedad' })
   })
 
   it('consulta de landing SIN propiedad: 400 "Las consultas de landing no se conectan desde acá"', async () => {
     const sb = base({ property_leads: [{ id: 'l2', property_id: null }] })
-    const e = await conectarConsulta(sb.cliente, { consultaId: 'l2', propertyId: PROP, recordar: false }).catch((x) => x)
+    const e = await conectarConsulta(sb.cliente, { consultaId: 'l2', propertyId: PROP }).catch((x) => x)
     expect(e).toBeInstanceOf(ConsultaNoConectable)
     expect(e).toMatchObject({ status: 400, message: 'Las consultas de landing no se conectan desde acá' })
   })
 
   it('consulta inexistente: 404', async () => {
     const sb = base()
-    const e = await conectarConsulta(sb.cliente, { consultaId: 'nada', propertyId: PROP, recordar: false }).catch((x) => x)
+    const e = await conectarConsulta(sb.cliente, { consultaId: 'nada', propertyId: PROP }).catch((x) => x)
     expect(e).toBeInstanceOf(ConsultaNoConectable)
     expect(e.status).toBe(404)
   })
 
   it('propiedad inexistente: 404 y no se toca la consulta', async () => {
     const sb = base()
-    const e = await conectarConsulta(sb.cliente, { consultaId: 'c1', propertyId: 'no-existe', recordar: true }).catch((x) => x)
+    const e = await conectarConsulta(sb.cliente, { consultaId: 'c1', propertyId: 'no-existe' }).catch((x) => x)
     expect(e).toBeInstanceOf(ConsultaNoConectable)
     expect(e.status).toBe(404)
     expect(fila(sb, 'c1')!.property_id).toBeNull()
@@ -165,7 +167,7 @@ describe('conectarConsulta', () => {
   it('error de la base al leer la consulta: se lanza (no se confunde con "no existe")', async () => {
     const sb = base()
     sb.fallar('portal_inquiries', 'select', 'sin conexión')
-    const e = await conectarConsulta(sb.cliente, { consultaId: 'c1', propertyId: PROP, recordar: false }).catch((x) => x)
+    const e = await conectarConsulta(sb.cliente, { consultaId: 'c1', propertyId: PROP }).catch((x) => x)
     expect(e).not.toBeInstanceOf(ConsultaNoConectable)
     expect(String(e)).toContain('sin conexión')
   })
@@ -173,6 +175,44 @@ describe('conectarConsulta', () => {
   it('error de la base al actualizar: se lanza', async () => {
     const sb = base()
     sb.fallar('portal_inquiries', 'update', 'rls')
-    await expect(conectarConsulta(sb.cliente, { consultaId: 'c1', propertyId: PROP, recordar: false })).rejects.toThrow('rls')
+    await expect(conectarConsulta(sb.cliente, { consultaId: 'c1', propertyId: PROP })).rejects.toThrow('rls')
+  })
+})
+
+describe('conectarAviso', () => {
+  it('conecta TODAS las consultas del aviso con una sola llamada y lo recuerda', async () => {
+    const sb = base()
+    const r = await conectarAviso(sb.cliente, { portal: 'zonaprop', codigo: 'ZP123', propertyId: PROP })
+    expect(r).toEqual({ actualizadas: 2, recordado: true })
+    for (const id of ['c1', 'c2']) expect(fila(sb, id)).toMatchObject({ property_id: PROP, assigned_to: ASESOR })
+    expect(fila(sb, 'c3')!.property_id).toBeNull()
+    expect(sb.tablas.portal_property_map).toHaveLength(1)
+  })
+
+  it('propiedad sin asesor: conecta las que hay y no recuerda', async () => {
+    const sb = base()
+    const r = await conectarAviso(sb.cliente, { portal: 'zonaprop', codigo: 'ZP123', propertyId: 'p-sin-asesor' })
+    expect(r).toEqual({ actualizadas: 2, recordado: false })
+    expect(sb.tablas.portal_property_map).toHaveLength(0)
+  })
+
+  it('un código que no agrupa: 400 y no toca nada', async () => {
+    const sb = base()
+    await expect(conectarAviso(sb.cliente, { portal: 'zonaprop', codigo: 'https', propertyId: PROP }))
+      .rejects.toMatchObject({ status: 400 })
+    expect(sb.tablas.portal_inquiries.every((f) => f.property_id === null)).toBe(true)
+  })
+
+  it('propiedad inexistente: 404 y no toca nada', async () => {
+    const sb = base()
+    await expect(conectarAviso(sb.cliente, { portal: 'zonaprop', codigo: 'ZP123', propertyId: 'no-existe' }))
+      .rejects.toBeInstanceOf(ConsultaNoConectable)
+    expect(sb.tablas.portal_property_map).toHaveLength(0)
+  })
+
+  it('error de la base al actualizar: se lanza', async () => {
+    const sb = base()
+    sb.fallar('portal_inquiries', 'update', 'boom')
+    await expect(conectarAviso(sb.cliente, { portal: 'zonaprop', codigo: 'ZP123', propertyId: 'p-sin-asesor' })).rejects.toThrow('boom')
   })
 })

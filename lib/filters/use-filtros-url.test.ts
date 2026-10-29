@@ -467,3 +467,27 @@ describe('useFiltrosUrl — parámetros ajenos', () => {
     expect(vista.result.current.escribiendo).toBe(false)
   })
 })
+
+describe('useFiltrosUrl — soloNavegador (Consultas)', () => {
+  it('escribe con history.replaceState y NO con el router: la página no se vuelve a pedir', () => {
+    busqueda = ''
+    escrituras.length = 0
+    const replaceState = vi.spyOn(window.history, 'replaceState')
+    const vista = renderHook(() => useFiltrosUrl({ defectos: DEFECTOS, permitidos: PERMITIDOS, normalizar, soloNavegador: true }))
+    act(() => { vista.result.current.aplicar({ status: 'approved' }) })
+    expect(escrituras).toEqual([])
+    expect(replaceState).toHaveBeenCalledTimes(1)
+    expect(String(replaceState.mock.calls[0][2])).toBe('/properties?status=approved')
+    expect(vista.result.current.filtros.status).toBe('approved')
+    replaceState.mockRestore()
+  })
+
+  it('sin la opción sigue usando el router', () => {
+    const vista = montar()
+    const replaceState = vi.spyOn(window.history, 'replaceState')
+    act(() => { vista.result.current.aplicar({ status: 'approved' }) })
+    expect(escrituras).toEqual(['/properties?status=approved'])
+    expect(replaceState).not.toHaveBeenCalled()
+    replaceState.mockRestore()
+  })
+})
