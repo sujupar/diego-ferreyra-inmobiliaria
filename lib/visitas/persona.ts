@@ -4,7 +4,7 @@
  * (decisión del dueño, 2026-10-10). Email opcional. Módulo puro.
  */
 import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
-import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
+import { leerTelefono } from '@/lib/consultas/telefono'
 
 export interface PersonaNueva {
   nombre: string
@@ -46,8 +46,11 @@ export function validarPersonaNueva(input: { nombre?: unknown; telefono?: unknow
  * inventa un número.
  */
 export function telefonoCanonico(tel: string): string {
-  const normalizado = normalizeWhatsappPhone(tel)
-  return normalizado ? `+${normalizado}` : tel.trim()
+  const leido = leerTelefono(tel)
+  // Si `leerTelefono` no lo da por bueno se guarda crudo: el normalizador viejo
+  // "completaba" cualquier cosa con un código de país inventado (4571430985
+  // quedaba +4571430985, un número extranjero que nadie escribió).
+  return leido.ok ? leido.canonico : tel.trim()
 }
 
 /**
@@ -62,6 +65,9 @@ export function telefonoCanonico(tel: string): string {
  */
 export function telefonoEfectivo(guardado: string | null | undefined, enviado: string | null | undefined): string {
   const g = (guardado ?? '').trim()
-  if (ultimos10Digitos(g)) return g
+  // "Válido" es válido PARA WHATSAPP (leerTelefono), no "tiene 10 dígitos":
+  // 541103305864 tiene 12 y no sirve; si el asesor lo corrigió en la pantalla,
+  // tiene que ganar el corregido.
+  if (leerTelefono(g).ok) return g
   return (enviado ?? '').trim() || g
 }

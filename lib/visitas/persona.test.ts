@@ -52,4 +52,19 @@ describe('telefonoEfectivo', () => {
   it('sin ninguno de los dos, devuelve vacío (la validación es de quien llama)', () => {
     expect(telefonoEfectivo(null, undefined)).toBe('')
   })
+  it('guardado de 12 dígitos inválido pierde contra el corregido', () => {
+    expect(telefonoEfectivo('541103305864', '+5491149410027')).toBe('+5491149410027')
+  })
+  it('guardado válido sigue ganando', () => {
+    expect(telefonoEfectivo('541161400496', '+5491100000000')).toBe('541161400496')
+  })
+})
+
+describe('telefonoCanonico con la regla del 549', () => {
+  it('canónico de un número con 540', () => {
+    expect(telefonoCanonico('5401162653949')).toBe('+5491162653949')
+  })
+  it('canónico no inventa extranjero', () => {
+    expect(telefonoCanonico('4571430985')).toBe('4571430985')
+  })
 })
