@@ -379,6 +379,224 @@ describe('AgendarVisitaDialog', () => {
   })
 })
 
+// Modo rápido (sección Consultas): la consulta ya dice quién es, de dónde vino
+// y qué propiedad miró. La ventana abre directo en "Día y hora".
+describe('AgendarVisitaDialog — modo rápido desde una consulta', () => {
+  const RAPIDO = {
+    origen: 'portal' as const,
+    persona: { tipo: 'consulta' as const, id: 'c1', nombre: 'Mariana López', telefono: '1158234521', detalle: 'Zonaprop' },
+    telefono: '+5491158234521',
+    telefonoMostrado: '+54 9 11 5823-4521',
+    telefonoValido: true,
+  }
+  const VISITA_ID = '55555555-5555-4555-8555-555555555555'
+
+  function mockConPost(post: () => Response) {
+    return vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/visits' && init?.method === 'POST') return post()
+      return mockPorDefecto()(url)
+    })
+  }
+
+  it('abre en "Día y hora" con la persona, su teléfono y la propiedad a la vista', async () => {
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} rapido={RAPIDO} />)
+    expect(await screen.findByRole('heading', { name: '¿Cuándo?' })).toBeInTheDocument()
+    expect(screen.getByText('Mariana López')).toBeInTheDocument()
+    expect(screen.getByText(/\+54 9 11 5823-4521/)).toBeInTheDocument()
+    expect(screen.getByText('Doblas 248')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Ya la confirmé con la persona' })).toBeChecked()
+    expect(screen.queryByRole('heading', { name: '¿De dónde viene esta visita?' })).not.toBeInTheDocument()
+  })
+
+  it('día + hora + "Agendar …" hace UN solo POST con la consulta y avisa el día y la hora', async () => {
+    const fetchMock = mockConPost(() => json({ id: VISITA_ID }, 201))
+    vi.stubGlobal('fetch', fetchMock)
+    const onAgendada = vi.fn()
+    const onOpenChange = vi.fn()
+    render(<AgendarVisitaDialog open onOpenChange={onOpenChange} propiedadId={PROP.id} rapido={RAPIDO} onAgendada={onAgendada} />)
+    await screen.findByRole('heading', { name: '¿Cuándo?' })
+    fireEvent.click(screen.getByRole('button', { name: /Hoy/ }))
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }))
+    const boton = await screen.findByRole('button', { name: /^Agendar \S+ \d+ · 10:00$/ })
+    fireEvent.click(boton)
+    fireEvent.click(boton)
+    await waitFor(() => expect(onAgendada).toHaveBeenCalled())
+    const posts = fetchMock.mock.calls.filter(([u]) => u === '/api/visits')
+    expect(posts).toHaveLength(1)
+    const cuerpo = JSON.parse((posts[0][1] as RequestInit).body as string) as Record<string, unknown>
+    expect(cuerpo).toMatchObject({
+      propiedadId: PROP.id, origen: 'portal', confirmada: true, fecha: hoyEnArgentina(), hora: '10:00',
+      persona: { tipo: 'consulta', id: 'c1', telefono: '+5491158234521' },
+    })
+    expect(onAgendada).toHaveBeenCalledWith(VISITA_ID, { fecha: hoyEnArgentina(), hora: '10:00' })
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('sin día ni hora no manda nada y explica qué falta', async () => {
+    const fetchMock = mockConPost(() => json({ id: VISITA_ID }, 201))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} rapido={RAPIDO} />)
+    await screen.findByRole('heading', { name: '¿Cuándo?' })
+    fireEvent.click(screen.getByRole('button', { name: 'Agendar' }))
+    expect(await screen.findByText('Elegí el día y la hora')).toBeInTheDocument()
+    expect(fetchMock.mock.calls.filter(([u]) => u === '/api/visits')).toHaveLength(0)
+  })
+
+  it('con `silencioso` no muestra el toast de "Visita agendada" (el llamador muestra su propia confirmación)', async () => {
+    const { toast } = await import('sonner')
+    vi.mocked(toast.success).mockClear()
+    vi.stubGlobal('fetch', mockConPost(() => json({ id: VISITA_ID }, 201)))
+    const onAgendada = vi.fn()
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} rapido={RAPIDO} onAgendada={onAgendada} silencioso />)
+    await screen.findByRole('heading', { name: '¿Cuándo?' })
+    fireEvent.click(screen.getByRole('button', { name: /Hoy/ }))
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Agendar .* · 10:00$/ }))
+    await waitFor(() => expect(onAgendada).toHaveBeenCalled())
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('sin `silencioso` sí muestra el toast', async () => {
+    const { toast } = await import('sonner')
+    vi.mocked(toast.success).mockClear()
+    vi.stubGlobal('fetch', mockConPost(() => json({ id: VISITA_ID }, 201)))
+    const onAgendada = vi.fn()
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} rapido={RAPIDO} onAgendada={onAgendada} />)
+    await screen.findByRole('heading', { name: '¿Cuándo?' })
+    fireEvent.click(screen.getByRole('button', { name: /Hoy/ }))
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Agendar .* · 10:00$/ }))
+    await waitFor(() => expect(onAgendada).toHaveBeenCalled())
+    expect(toast.success).toHaveBeenCalledWith('Visita agendada', expect.anything())
+  })
+
+  it('desmarcar "Ya la confirmé" manda la visita a confirmar', async () => {
+    const fetchMock = mockConPost(() => json({ id: VISITA_ID }, 201))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} rapido={RAPIDO} />)
+    await screen.findByRole('heading', { name: '¿Cuándo?' })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Ya la confirmé con la persona' }))
+    fireEvent.click(screen.getByRole('button', { name: /Hoy/ }))
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Agendar .* · 10:00$/ }))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([u]) => u === '/api/visits')).toBe(true))
+    const post = fetchMock.mock.calls.find(([u]) => u === '/api/visits')
+    expect(JSON.parse((post?.[1] as RequestInit).body as string)).toMatchObject({ confirmada: false })
+  })
+
+  it('409 VISITA_DUPLICADA → pasa a la revisión con el aviso del duplicado', async () => {
+    vi.stubGlobal('fetch', mockConPost(() => new Response(JSON.stringify({
+      error: 'Ya tiene una visita', code: 'VISITA_DUPLICADA',
+      visita: { id: '66666666-6666-4666-8666-666666666666', scheduled_at: construirInstante('2026-12-25', '09:00')!.toISOString() },
+    }), { status: 409 })))
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} rapido={RAPIDO} />)
+    await screen.findByRole('heading', { name: '¿Cuándo?' })
+    fireEvent.click(screen.getByRole('button', { name: /Hoy/ }))
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Agendar .* · 10:00$/ }))
+    expect(await screen.findByRole('heading', { name: 'Revisá y agendá' })).toBeInTheDocument()
+    expect(screen.getByText(/Esta persona ya tiene una visita el/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Agendar igual' })).toBeInTheDocument()
+  })
+
+  it('409 PROPIEDAD_NO_DISPONIBLE → el error se ve ahí mismo, sin cambiar de paso', async () => {
+    vi.stubGlobal('fetch', mockConPost(() => new Response(JSON.stringify({
+      error: 'La propiedad ya no está disponible', code: 'PROPIEDAD_NO_DISPONIBLE',
+    }), { status: 409 })))
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} rapido={RAPIDO} />)
+    await screen.findByRole('heading', { name: '¿Cuándo?' })
+    fireEvent.click(screen.getByRole('button', { name: /Hoy/ }))
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Agendar .* · 10:00$/ }))
+    expect(await screen.findByText('La propiedad ya no está disponible')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '¿Cuándo?' })).toBeInTheDocument()
+  })
+
+  it('con un teléfono inválido (aunque tenga 10 dígitos o más) no manda y dice dónde corregirlo', async () => {
+    const fetchMock = mockConPost(() => json({ id: VISITA_ID }, 201))
+    vi.stubGlobal('fetch', fetchMock)
+    const invalido = {
+      ...RAPIDO, telefono: undefined, telefonoMostrado: null, telefonoValido: false,
+      persona: { ...RAPIDO.persona, telefono: '33652765622' },
+    }
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} rapido={invalido} />)
+    await screen.findByRole('heading', { name: '¿Cuándo?' })
+    expect(screen.getByText('33652765622')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /Teléfono/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Hoy/ }))
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Agendar .* · 10:00$/ }))
+    expect(await screen.findByText('El teléfono de esta persona no sirve para WhatsApp. Corregilo desde la consulta.')).toBeInTheDocument()
+    expect(fetchMock.mock.calls.filter(([u]) => u === '/api/visits')).toHaveLength(0)
+  })
+
+  it('el error del envío se borra al cambiar la hora', async () => {
+    vi.stubGlobal('fetch', mockConPost(() => new Response(JSON.stringify({
+      error: 'La propiedad ya no está disponible', code: 'PROPIEDAD_NO_DISPONIBLE',
+    }), { status: 409 })))
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} rapido={RAPIDO} />)
+    await screen.findByRole('heading', { name: '¿Cuándo?' })
+    fireEvent.click(screen.getByRole('button', { name: /Hoy/ }))
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Agendar .* · 10:00$/ }))
+    expect(await screen.findByText('La propiedad ya no está disponible')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '10:30' }))
+    await waitFor(() => expect(screen.queryByText('La propiedad ya no está disponible')).not.toBeInTheDocument())
+  })
+
+  it('si la propiedad no está disponible, NO cae al flujo normal: avisa y solo deja cerrar', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/visits/propiedades')) return json([])
+      if (url === '/api/visits' && init?.method === 'POST') return json({ id: VISITA_ID }, 201)
+      return mockPorDefecto()(url)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const onOpenChange = vi.fn()
+    render(<AgendarVisitaDialog open onOpenChange={onOpenChange} propiedadId={PROP.id} rapido={RAPIDO} />)
+    expect(await screen.findByText('Esa propiedad no está disponible para agendar.')).toBeInTheDocument()
+    expect(screen.getByText('Esta consulta no se puede agendar desde acá: la propiedad no está disponible o no es tuya.')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '¿Cuándo?' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '¿Qué propiedad van a visitar?' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Siguiente' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Atrás' })).not.toBeInTheDocument()
+    // La X del diálogo también se llama "Cerrar" (por aria-label): el del pie no lo tiene.
+    const cerrarDelPie = screen.getAllByRole('button', { name: 'Cerrar' }).find(b => !b.hasAttribute('aria-label'))
+    expect(cerrarDelPie).toBeDefined()
+    if (cerrarDelPie) fireEvent.click(cerrarDelPie)
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(fetchMock.mock.calls.some(([u, i]) => u === '/api/visits' && i?.method === 'POST')).toBe(false)
+  })
+
+  it('sin modo rápido, una propiedad no disponible sigue cayendo al paso "Propiedad" con el aviso', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.startsWith('/api/visits/propiedades')) return json([])
+      return mockPorDefecto()(url)
+    }))
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} />)
+    expect(await screen.findByText('Esa propiedad no está disponible para agendar.')).toBeInTheDocument()
+    expect(screen.queryByText(/Esta consulta no se puede agendar desde acá/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Siguiente' })).toBeInTheDocument()
+  })
+
+  it('un asesor ve quién la muestra pero no "Cambiar"', async () => {
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} rapido={RAPIDO} />)
+    await screen.findByRole('heading', { name: '¿Cuándo?' })
+    expect(await screen.findByText('Lucas')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Cambiar/ })).not.toBeInTheDocument()
+  })
+
+  it('un admin toca "Cambiar", elige asesor y vuelve a "Día y hora"', async () => {
+    rol = 'admin'
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} rapido={RAPIDO} />)
+    await screen.findByRole('heading', { name: '¿Cuándo?' })
+    fireEvent.click(await screen.findByRole('button', { name: /Cambiar/ }))
+    await screen.findByRole('heading', { name: '¿Quién la muestra?' })
+    fireEvent.click(await screen.findByRole('radio', { name: /Lucas/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Listo' }))
+    expect(await screen.findByRole('heading', { name: '¿Cuándo?' })).toBeInTheDocument()
+  })
+})
+
 /** Hoy, en Argentina, con el mismo formato (AAAA-MM-DD) que usa el selector. */
 function hoyEnArgentina(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())

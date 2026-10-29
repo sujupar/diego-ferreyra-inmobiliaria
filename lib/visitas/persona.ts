@@ -4,7 +4,7 @@
  * (decisión del dueño, 2026-10-10). Email opcional. Módulo puro.
  */
 import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
-import { normalizeWhatsappPhone } from '@/lib/integrations/whatsapp/phone'
+import { leerTelefono } from '@/lib/consultas/telefono'
 
 export interface PersonaNueva {
   nombre: string
@@ -33,21 +33,23 @@ export function validarPersonaNueva(input: { nombre?: unknown; telefono?: unknow
 
 /**
  * Formato ÚNICO para guardar un teléfono de visita (`property_visits.client_phone`,
- * y lo que llega a `asegurarComprador`/`completarTelefonoDelRegistro`): E.164 con
- * '+' cuando `normalizeWhatsappPhone` puede CONFIRMAR que es un número real
- * (lib/integrations/whatsapp/phone.ts, libphonenumber-js contra la metadata real,
- * no una heurística de longitud). Así "011 15 5823-4521" y "11 5823-4521" —el
- * mismo celular argentino, escrito con y sin el "15"— quedan guardados
- * IDÉNTICOS; sin esto, `ultimos10Digitos` ya los trata igual para comparar, pero
- * la FILA queda con el texto crudo de quien lo escribió, y dos cargas de la
- * misma persona en días distintos podrían guardar formatos distintos sin que
- * nada lo note. Si no se puede confirmar (texto raro, número extranjero no
- * reconocido), se guarda el texto tal cual recortado de espacios — NUNCA se
- * inventa un número.
+ * y lo que llega a `asegurarComprador`/`completarTelefonoDelRegistro`): el
+ * `canonico` (E.164 con '+') de `leerTelefono` (lib/consultas/telefono.ts), la
+ * misma lectura que usa la sección Consultas. Así "011 15 5823-4521" y
+ * "11 5823-4521" —el mismo celular argentino, con y sin el "15"— quedan
+ * guardados IDÉNTICOS (+5491158234521), y un número extranjero escrito con su
+ * código ("+598 94 123 456") queda en E.164.
+ *
+ * Si `leerTelefono` no lo da por válido, se guarda el texto tal cual (recortado
+ * de espacios): NUNCA se adivina un código de país extranjero ni se inventa un
+ * número.
  */
 export function telefonoCanonico(tel: string): string {
-  const normalizado = normalizeWhatsappPhone(tel)
-  return normalizado ? `+${normalizado}` : tel.trim()
+  const leido = leerTelefono(tel)
+  // Si `leerTelefono` no lo da por bueno se guarda crudo: el normalizador viejo
+  // "completaba" cualquier cosa con un código de país inventado (4571430985
+  // quedaba +4571430985, un número extranjero que nadie escribió).
+  return leido.ok ? leido.canonico : tel.trim()
 }
 
 /**
@@ -55,13 +57,18 @@ export function telefonoCanonico(tel: string): string {
  * del formulario público): el que manda el navegador en la ventana de
  * "Agendar" es solo una SUGERENCIA del asesor (a veces ni la toca, queda lo
  * que precargó la pantalla) — el teléfono GUARDADO es la fuente de verdad SI
- * ya es válido. Si no (falta, o no llega a 10 dígitos), recién ahí se usa lo
- * que mandó el navegador. Decisión de la ronda 1 de revisión de la Tarea 8:
- * sin esto, un typo en ese campo del formulario podía pisarle el teléfono
- * real a una consulta/registro existente.
+ * es un celular válido para WhatsApp (`leerTelefono`). Si no lo es (falta, o no
+ * sirve para WhatsApp), se usa lo que mandó el navegador, aunque tampoco sea
+ * válido: el asesor lo tuvo a la vista y es lo último que se escribió. Solo si
+ * el navegador no mandó nada queda el guardado. Decisión de la ronda 1 de
+ * revisión de la Tarea 8: sin esto, un typo en ese campo del formulario podía
+ * pisarle el teléfono real a una consulta/registro existente.
  */
 export function telefonoEfectivo(guardado: string | null | undefined, enviado: string | null | undefined): string {
   const g = (guardado ?? '').trim()
-  if (ultimos10Digitos(g)) return g
+  // "Válido" es válido PARA WHATSAPP (leerTelefono), no "tiene 10 dígitos":
+  // 541103305864 tiene 12 y no sirve; si el asesor lo corrigió en la pantalla,
+  // tiene que ganar el corregido.
+  if (leerTelefono(g).ok) return g
   return (enviado ?? '').trim() || g
 }

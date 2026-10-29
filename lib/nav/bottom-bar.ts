@@ -32,6 +32,7 @@ export const PREFERENCIA_DE_DESTINOS = [
   '/inicio',
   '/tasks',
   '/inbox',
+  '/consultas',
   '/crm',
   '/visits',
   '/properties/review',

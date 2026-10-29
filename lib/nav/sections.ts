@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, ListChecks, Inbox, Flag, Columns3, Contact, CalendarCheck, ClipboardList,
-  Building2, Megaphone, Newspaper, BarChart3, Filter, Settings, Wrench, UserCog, FileText,
+  Building2, Megaphone, Newspaper, BarChart3, Filter, Settings, Wrench, UserCog, FileText, MessageSquareText,
 } from 'lucide-react'
 import type { Role } from '@/types/auth.types'
 import { hasPermission, hasAnyPermission, type Permission } from '@/lib/auth/roles'
@@ -37,6 +37,8 @@ export function isCollapsible(e: NavEntry): e is NavCollapsible {
 const INICIO: NavItem = { href: '/inicio', label: 'Inicio', icon: LayoutDashboard }
 const PENDIENTES: NavItem = { href: '/tasks', label: 'Pendientes', icon: ListChecks }
 const INBOX: NavItem = { href: '/inbox', label: 'Inbox', icon: Inbox, badge: 'inbox' }
+// Consultas de portales y publicidad: sección propia desde 2026-10-29 (antes era una pestaña del Inbox).
+const CONSULTAS: NavItem = { href: '/consultas', label: 'Consultas', icon: MessageSquareText }
 const AVISOS: NavItem = { href: '/avisos', label: 'Avisos por identificar', icon: Flag }
 const CRM: NavItem = { href: '/crm', label: 'CRM', icon: Columns3 }
 const VISITAS: NavItem = { href: '/visits', label: 'Visitas', icon: CalendarCheck }
@@ -82,7 +84,7 @@ export function getNavSections(role: Role): NavGroup[] {
   if (role === 'asesor') {
     return [
       { label: null, entries: [INICIO, PENDIENTES] },
-      { label: 'Mi día', entries: [INBOX, CRM, VISITAS, { ...CONTACTOS, label: 'Mis contactos' }] },
+      { label: 'Mi día', entries: [INBOX, CONSULTAS, CRM, VISITAS, { ...CONTACTOS, label: 'Mis contactos' }] },
       {
         label: 'Captación',
         entries: [
@@ -105,7 +107,7 @@ export function getNavSections(role: Role): NavGroup[] {
           { label: 'Propiedades', icon: Building2, items: [LISTADO, NUEVA_PROPIEDAD, INFORMES] },
         ],
       },
-      { label: 'Comercial', entries: [INBOX, AVISOS, CRM, CONTACTOS, VISITAS] },
+      { label: 'Comercial', entries: [INBOX, CONSULTAS, AVISOS, CRM, CONTACTOS, VISITAS] },
       { label: 'Marketing', entries: [REDES, NOTICIAS] },
     ]
   }
@@ -133,7 +135,7 @@ export function getNavSections(role: Role): NavGroup[] {
         },
       ],
     },
-    { label: 'Comercial', entries: [INBOX, AVISOS, CRM, CONTACTOS, VISITAS] },
+    { label: 'Comercial', entries: [INBOX, CONSULTAS, AVISOS, CRM, CONTACTOS, VISITAS] },
     { label: 'Marketing', entries: marketing },
   ]
 

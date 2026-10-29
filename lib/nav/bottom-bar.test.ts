@@ -41,16 +41,16 @@ describe('itemsBarraInferior — qué le toca a cada rol', () => {
       '/inicio',
       '/tasks',
       '/inbox',
-      '/crm',
+      '/consultas',
     ])
   })
 
   it('coordinador y admin llegan a los mismos cuatro', () => {
     expect(itemsBarraInferior(getNavSections('coordinador')).map(i => i.href)).toEqual([
-      '/inicio', '/tasks', '/inbox', '/crm',
+      '/inicio', '/tasks', '/inbox', '/consultas',
     ])
     expect(itemsBarraInferior(getNavSections('admin')).map(i => i.href)).toEqual([
-      '/inicio', '/tasks', '/inbox', '/crm',
+      '/inicio', '/tasks', '/inbox', '/consultas',
     ])
   })
 
@@ -76,7 +76,7 @@ describe('destinoActivo — uno solo encendido', () => {
   })
 
   it('una pantalla de adentro enciende su sección', () => {
-    expect(destinoActivo(items, '/crm/algo')).toBe('/crm')
+    expect(destinoActivo(items, '/consultas/algo')).toBe('/consultas')
   })
 
   it('fuera de los cuatro, ninguno', () => {

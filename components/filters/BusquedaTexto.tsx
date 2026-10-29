@@ -60,14 +60,19 @@ export function BusquedaTexto({
                 // `appearance-none` saca la crucecita nativa de `type=search`
                 // de WebKit: ya hay un botón propio, y el nativo no lleva
                 // nombre accesible ni avisa a React.
-                className="h-9 w-full appearance-none rounded-md border border-input bg-background pl-8 pr-8 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring sm:w-72 [&::-webkit-search-cancel-button]:hidden"
+                // En celular (`max-md:`) mide 44 px de alto y la letra es de
+                // 16 px (con menos, iOS hace zoom al enfocar); en compu queda
+                // igual que siempre.
+                className="h-9 w-full appearance-none rounded-md border border-input bg-background pl-8 pr-8 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring sm:w-72 max-md:h-11 max-md:pr-11 max-md:text-base [&::-webkit-search-cancel-button]:hidden"
             />
             {borrador !== '' && (
                 <button
                     type="button"
                     onClick={limpiar}
                     aria-label="Limpiar búsqueda"
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    // En celular el área de toque es de 44 px (la cruz sigue
+                    // del mismo tamaño): con los 22 px de compu se erraba el dedo.
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground max-md:right-0 max-md:flex max-md:size-11 max-md:items-center max-md:justify-center max-md:p-0"
                 >
                     <X className="h-3.5 w-3.5" />
                 </button>

@@ -52,4 +52,31 @@ describe('telefonoEfectivo', () => {
   it('sin ninguno de los dos, devuelve vacío (la validación es de quien llama)', () => {
     expect(telefonoEfectivo(null, undefined)).toBe('')
   })
+  it('guardado de 12 dígitos inválido pierde contra el corregido', () => {
+    expect(telefonoEfectivo('541103305864', '+5491149410027')).toBe('+5491149410027')
+  })
+  it('guardado válido sigue ganando', () => {
+    expect(telefonoEfectivo('541161400496', '+5491100000000')).toBe('541161400496')
+  })
+})
+
+describe('telefonoCanonico con la regla del 549', () => {
+  it('canónico de un número con 540', () => {
+    expect(telefonoCanonico('5401162653949')).toBe('+5491162653949')
+  })
+  it('canónico no inventa extranjero', () => {
+    expect(telefonoCanonico('4571430985')).toBe('4571430985')
+  })
+  it('un número extranjero escrito con su código (+598) se guarda en E.164', () => {
+    expect(telefonoCanonico('+598 94 123 456')).toBe('+59894123456')
+  })
+  it('el celular argentino con "15" queda con el 549', () => {
+    expect(telefonoCanonico('11 15 5823-4521')).toBe('+5491158234521')
+  })
+})
+
+describe('telefonoEfectivo cuando ninguno sirve para WhatsApp', () => {
+  it('si el guardado no es un celular válido, gana el enviado aunque tampoco lo sea', () => {
+    expect(telefonoEfectivo('4941-0027', '123')).toBe('123')
+  })
 })

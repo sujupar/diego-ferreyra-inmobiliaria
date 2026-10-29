@@ -4,7 +4,7 @@
  * El servidor vuelve a validar TODO (esto es ayuda, no barrera).
  */
 import { ORIGEN_INFO, validarDetalleDeOrigen, type OrigenVisita } from './origen'
-import { validarHorarioDeVisita } from './horario'
+import { construirInstante, formatearDiaYNumero, validarHorarioDeVisita } from './horario'
 import { validarPersonaNueva } from './persona'
 import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
 
@@ -36,30 +36,110 @@ export interface EstadoAgendar {
   asesorId: string | null
   confirmada: boolean
   notas: string
+  /**
+   * Modo rápido: se abrió desde una consulta que ya dice quién es, de dónde
+   * vino y qué propiedad miró. Solo queda elegir día y hora.
+   */
+  rapido: boolean
+  /**
+   * Solo en modo rápido: el teléfono como lo leyó el llamador. Lo calcula quien
+   * abre la ventana (con `leerTelefono`): la ventana no lee teléfonos por su
+   * cuenta, recibe el resultado ya decidido. (No es para dejar libphonenumber
+   * fuera del bundle: este módulo lo importa igual vía `./persona`.) `null`
+   * fuera del modo rápido.
+   */
+  telefonoRapido: { mostrado: string | null; valido: boolean } | null
+  /**
+   * Se pidió el modo rápido pero la propiedad de la consulta no se pudo cargar
+   * (no está disponible, o un asesor abrió una que no es suya). NO se cae al
+   * flujo normal: ahí se podía elegir otra propiedad u otra persona y, al
+   * terminar, la hoja "Listo" de Consultas mostraba la dirección y el teléfono
+   * de la CONSULTA, no lo que se agendó. La ventana solo avisa y deja cerrar.
+   */
+  rapidoBloqueado: boolean
 }
 
 export interface OpcionesPasos { puedeElegirAsesor: boolean }
 
-export function estadoInicial(o: { propiedad?: PropiedadElegida | null; asesorPropio?: string | null }): EstadoAgendar {
+export const ERROR_TELEFONO_RAPIDO = 'El teléfono de esta persona no sirve para WhatsApp. Corregilo desde la consulta.'
+
+/**
+ * Lo que trae quien abre la ventana desde una consulta (sección Consultas).
+ * El origen lo decide el llamador (para un registro de landing, con
+ * `origenDesdeLead`); acá se toma tal cual.
+ */
+export interface InicioRapido {
+  origen: OrigenVisita
+  origenDetalle?: string
+  persona: PersonaElegida
+  /**
+   * Teléfono canónico ya revisado (la hoja "revisar teléfono" de Consultas corre
+   * ANTES de abrir la ventana); va a `telefonoFaltante` y viaja en el pedido.
+   */
+  telefono?: string
+  /** `leerTelefono(rapido.telefono ?? persona.telefono).mostrado` si se pudo leer; si no, `null`. */
+  telefonoMostrado: string | null
+  /** `leerTelefono(...).ok`. Si es `false`, el botón rápido no manda (la ventana no corrige teléfonos). */
+  telefonoValido: boolean
+}
+
+/**
+ * Freno del modo rápido: la ventana ya no tiene paso "Persona" para corregir
+ * el teléfono, así que si el llamador lo marcó como inválido no se manda.
+ * Usa la lectura completa (`leerTelefono`) del llamador, no `ultimos10Digitos`:
+ * un número de 10 o más dígitos igual puede ser inválido.
+ */
+export function errorTelefonoRapido(e: EstadoAgendar): string | null {
+  return e.rapido && e.telefonoRapido && !e.telefonoRapido.valido ? ERROR_TELEFONO_RAPIDO : null
+}
+
+export function estadoInicial(o: {
+  propiedad?: PropiedadElegida | null
+  asesorPropio?: string | null
+  rapido?: InicioRapido | null
+}): EstadoAgendar {
   const propiedad = o.propiedad ?? null
+  // Sin propiedad no hay modo rápido; si se lo pidió, la ventana queda
+  // bloqueada (ver `rapidoBloqueado`) en vez de arrancar el flujo normal.
+  const rapido = propiedad ? o.rapido ?? null : null
   return {
-    paso: propiedad ? 'origen' : 'propiedad',
+    paso: rapido ? 'cuando' : propiedad ? 'origen' : 'propiedad',
     propiedadFija: propiedad !== null,
     propiedad,
-    origen: null,
-    origenDetalle: '',
-    persona: null,
-    telefonoFaltante: '',
+    origen: rapido?.origen ?? null,
+    origenDetalle: rapido?.origenDetalle ?? '',
+    persona: rapido?.persona ?? null,
+    telefonoFaltante: rapido?.telefono ?? '',
     fecha: null,
     hora: null,
     asesorId: propiedad?.asesorId ?? o.asesorPropio ?? null,
     confirmada: true,
     notas: '',
+    rapido: rapido !== null,
+    telefonoRapido: rapido ? { mostrado: rapido.telefonoMostrado, valido: rapido.telefonoValido } : null,
+    rapidoBloqueado: propiedad === null && o.rapido != null,
   }
 }
 
 export function pasosVisibles(e: EstadoAgendar, o: OpcionesPasos): PasoAgendar[] {
+  // Bloqueada: no hay ningún paso para recorrer, solo el aviso y "Cerrar".
+  if (e.rapidoBloqueado) return []
+  // En modo rápido solo existe "cuándo". "Asesor" aparece mientras se está en
+  // él (se llega con "Cambiar") y "Confirmar" solo cuando el servidor avisó un
+  // duplicado (409): ahí se muestra la revisión con "Agendar igual".
+  if (e.rapido) {
+    return ORDEN.filter(p => p === 'cuando'
+      || (p === 'asesor' && e.paso === 'asesor' && o.puedeElegirAsesor)
+      || (p === 'confirmar' && e.paso === 'confirmar'))
+  }
   return ORDEN.filter(p => !(p === 'propiedad' && e.propiedadFija) && !(p === 'asesor' && !o.puedeElegirAsesor))
+}
+
+/** "Agendar jueves 30 · 17:00" con día y hora válidos; "Agendar" si falta algo. */
+export function textoAgendarRapido(e: EstadoAgendar): string {
+  if (!e.fecha || !e.hora || !construirInstante(e.fecha, e.hora)) return 'Agendar'
+  const dia = formatearDiaYNumero(e.fecha)
+  return dia ? `Agendar ${dia} · ${e.hora}` : 'Agendar'
 }
 
 export function siguientePaso(e: EstadoAgendar, o: OpcionesPasos): PasoAgendar | null {

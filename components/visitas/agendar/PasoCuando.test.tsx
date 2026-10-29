@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { PasoCuando } from './PasoCuando'
 import { estadoInicial, type EstadoAgendar } from '@/lib/visitas/agendar-estado'
 import { construirInstante, fechaEnArgentina, sumarDias } from '@/lib/visitas/horario'
@@ -29,6 +29,59 @@ let rechazosSinAtrapar: unknown[] = []
 const anotar = (motivo: unknown) => { rechazosSinAtrapar.push(motivo) }
 beforeEach(() => { rechazosSinAtrapar = []; process.on('unhandledRejection', anotar) })
 afterEach(() => { process.off('unhandledRejection', anotar) })
+
+describe('PasoCuando — modo rápido', () => {
+  const PROPIEDAD = { id: PROP, address: 'Doblas 248', neighborhood: null, foto: null, asesorId: ASESOR }
+  // El formateado y la validez los calcula el llamador (con leerTelefono): acá
+  // se pasan a mano, el paso no lee teléfonos.
+  function rapido(telefonoGuardado: string | null, telefono?: string, mostrado: string | null = null, valido = true): EstadoAgendar {
+    return estadoInicial({ propiedad: PROPIEDAD, rapido: {
+      origen: 'portal',
+      persona: { tipo: 'consulta', id: 'c1', nombre: 'Ana Gómez', telefono: telefonoGuardado, detalle: 'Zonaprop' },
+      ...(telefono ? { telefono } : {}),
+      telefonoMostrado: mostrado, telefonoValido: valido,
+    } })
+  }
+  const datos = { nombreAsesor: 'Lucas', puedeElegirAsesor: false, onCambiarAsesor: vi.fn() }
+  beforeEach(() => { vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ data: [] }), { status: 200 }))) })
+
+  it('muestra persona con el teléfono formateado, la propiedad y el asesor', () => {
+    render(<PasoCuando estado={rapido('1158234521', '+5491158234521', '+54 9 11 5823-4521')} despachar={vi.fn()} rapido={datos} />)
+    expect(screen.getByText('Ana Gómez')).toBeInTheDocument()
+    expect(screen.getByText('+54 9 11 5823-4521')).toBeInTheDocument()
+    expect(screen.getByText('Doblas 248')).toBeInTheDocument()
+    expect(screen.getByText('Lucas')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Cambiar/ })).not.toBeInTheDocument()
+  })
+  it('un teléfono que no se pudo leer se muestra tal cual', () => {
+    render(<PasoCuando estado={rapido('4941-0027', undefined, null, false)} despachar={vi.fn()} rapido={datos} />)
+    expect(screen.getByText('4941-0027')).toBeInTheDocument()
+  })
+  it('no ofrece corregir el teléfono acá (se corrige en Consultas, antes de abrir)', () => {
+    render(<PasoCuando estado={rapido('123', undefined, null, false)} despachar={vi.fn()} rapido={datos} />)
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Teléfono de Ana Gómez/)).not.toBeInTheDocument()
+  })
+  it('"Cambiar" aparece solo si se puede elegir asesor y lleva al paso', () => {
+    const onCambiarAsesor = vi.fn()
+    render(<PasoCuando estado={rapido('1158234521')} despachar={vi.fn()} rapido={{ ...datos, puedeElegirAsesor: true, onCambiarAsesor }} />)
+    fireEvent.click(screen.getByRole('button', { name: /Cambiar/ }))
+    expect(onCambiarAsesor).toHaveBeenCalled()
+  })
+  it('la casilla "Ya la confirmé con la persona" arranca marcada y despacha al desmarcarla', () => {
+    const despachar = vi.fn()
+    render(<PasoCuando estado={rapido('1158234521')} despachar={despachar} rapido={datos} />)
+    const casilla = screen.getByRole('checkbox', { name: 'Ya la confirmé con la persona' })
+    expect(casilla).toBeChecked()
+    fireEvent.click(casilla)
+    expect(despachar).toHaveBeenCalledWith({ tipo: 'confirmada', valor: false })
+  })
+  it('fuera del modo rápido no hay tarjeta ni casilla', () => {
+    render(<PasoCuando estado={estado()} despachar={vi.fn()} />)
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.queryByText('Doblas 248')).not.toBeInTheDocument()
+  })
+})
 
 describe('PasoCuando — la agenda del asesor', () => {
   it('con la agenda cargada avisa el choque (control: el aviso SÍ puede aparecer)', async () => {

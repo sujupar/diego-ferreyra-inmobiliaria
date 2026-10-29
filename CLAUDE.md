@@ -2265,6 +2265,19 @@ Spec `docs/superpowers/specs/2026-10-29-informe-ajustes-manuales-y-competencia-d
 
 ---
 
+## Sección Consultas — Entrega 1 (PR #62, 2026-10-29)
+
+Spec `docs/superpowers/specs/2026-10-29-seccion-consultas-design.md`; plan `docs/superpowers/plans/2026-10-29-seccion-consultas-entrega-1.md`.
+La Entrega 2 (pestaña Estadísticas, criterio 13) está pendiente.
+
+- **Qué es:** `/consultas` (menú Comercial, entre Inbox y Visitas; también en la barra del celular, donde CRM salió por el tope de 4). Muestra todas las consultas de portales y de landings, filtros en la dirección y agendar en dos toques. `/inbox?tab=consultas` redirige ahí, y `PortalInquiriesClient` se borró.
+- **Lectura:** vista `consultas_unificadas` (migración `20261029000001`, `security_invoker`, `REVOKE` a anon) que une `portal_inquiries` + `property_leads source='landing'` (sin bots ni borrados). `GET /api/consultas` trae TODO el período (de a 1000, tope un año) y calcula en TypeScript el estado, las tarjetas, el filtro de estado y el paginado (`lib/consultas/bandeja.ts`). No hay columna de estado: está "con visita" si hay una visita no cancelada con `portal_inquiry_id` (portal) o `lead_id` (landing) = la consulta, **o** misma propiedad + mismo WhatsApp.
+- **Regla del 549 (`lib/consultas/telefono.ts`, `leerTelefono`):** un número sin `+` se lee SIEMPRE como argentino (se le antepone `+54` antes de libphonenumber). Si no cierra, queda "a revisar": **nunca se adivina extranjero** (`4571430985` se leía como danés). El "15" lo saca el código, porque libphonenumber no lo saca con `+54` adelante. Se probó con 558 formatos reales anonimizados (`telefono.formatos.ts`).
+- **Cambió código compartido:** `telefonoEfectivo` hace ganar al teléfono corregido si el guardado no sirve para WhatsApp (antes ganaba cualquier guardado de 10+ dígitos y la corrección se perdía). `telefonoCanonico` ya no guarda un `+extranjero` inventado: guarda el texto crudo.
+- **Agendar = el mismo `AgendarVisitaDialog` + `POST /api/visits`** con `rapido` (arranca en día y hora) y `silencioso`. En modo rápido, si la propiedad no carga, la ventana queda bloqueada con "Cerrar" y NO cae al flujo normal: así la hoja "Listo" nunca muestra los datos de otra persona. La consulta sin propiedad se conecta ANTES de agendar (`POST /api/consultas/[id]/propiedad`, solo operaciones). Ese paso reusa `identificarAviso` (`lib/consultas/identificar.ts`), igual que `/api/portal-inquiries/identify`. Si la propiedad no tiene asesor, conecta solo esa consulta y no "recuerda" el aviso.
+- **Nada se manda solo:** "Confirmarle por WhatsApp" es un enlace `wa.me` armado (`lib/consultas/confirmar.ts`).
+- **Pruebas:** `npx vitest run -c vitest.consultas.config.ts` (420) y `-p tsconfig.consultas.json`. El QA se hizo en la vista previa con 3 consultas `[TEST QA consultas]` sobre Diaz Velez 3841 (ya borradas). Carga en `portal_inquiries`: `gmail_message_id` es obligatorio.
+
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
 
 - **El protocolo de las seis etapas está ARRIBA de todo en este archivo**; la versión narrativa en `docs/proceso-de-desarrollo.md`. Se aplica a todo pedido, por chico que sea.

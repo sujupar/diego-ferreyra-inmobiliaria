@@ -63,6 +63,13 @@ describe('BusquedaTexto', () => {
     expect(screen.getByRole('button', { name: /limpiar/i })).toBeInTheDocument()
   })
 
+  it('en celular el boton de limpiar y el campo miden 44 px (criterio de toque)', () => {
+    render(<BusquedaTexto value="almagro" onChange={() => {}} />)
+    const boton = screen.getByRole('button', { name: /limpiar/i })
+    expect(boton.className).toContain('max-md:size-11')
+    expect(screen.getByRole('searchbox').className).toContain('max-md:h-11')
+  })
+
   it('limpiar vacia el campo y avisa al instante', async () => {
     const avisar = vi.fn()
     render(<BusquedaTexto value="almagro" onChange={avisar} esperaMs={NUNCA} />)
