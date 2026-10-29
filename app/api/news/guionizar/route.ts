@@ -10,9 +10,12 @@ const isStr = (v: unknown): v is string => typeof v === 'string' && v.trim().len
 function isCandidate(v: unknown): v is NewsCandidate {
   if (!v || typeof v !== 'object') return false
   const o = v as Record<string, unknown>
-  return isStr(o.titulo) && isStr(o.url) && typeof o.medio === 'string' &&
-    typeof o.fecha === 'string' && typeof o.resumen === 'string'
+  return isStr(o.titulo) && isStr(o.url) && /^https?:\/\//i.test(o.url.trim()) &&
+    typeof o.medio === 'string' && typeof o.resumen === 'string' &&
+    typeof o.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(o.fecha)
 }
+
+const MAX_ITEMS = 50
 
 // POST: crea piezas en estado 'guionizando'. No guioniza acá (Task 4).
 export async function POST(req: Request) {
@@ -24,7 +27,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
   }
   const items = (body as { items?: unknown })?.items
-  if (!Array.isArray(items) || items.length === 0 || !items.every(isCandidate)) {
+  if (!Array.isArray(items) || items.length === 0 || items.length > MAX_ITEMS || !items.every(isCandidate)) {
     return NextResponse.json({ error: 'items inválidos' }, { status: 400 })
   }
 
@@ -32,6 +35,7 @@ export async function POST(req: Request) {
     const { ids } = await createPendingScripts(items, user.id)
     return NextResponse.json({ ids })
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'Error' }, { status: 500 })
+    console.error('[news/guionizar]', e)
+    return NextResponse.json({ error: 'No se pudieron crear las piezas' }, { status: 500 })
   }
 }

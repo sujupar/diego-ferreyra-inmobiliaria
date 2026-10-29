@@ -53,6 +53,18 @@ describe('createPendingScripts', () => {
   })
 })
 
+describe('createPendingScripts fecha inválida', () => {
+  it('mapea fecha vacía/inválida a null', async () => {
+    selectMock.mockResolvedValue({ data: [{ id: 'a' }, { id: 'b' }], error: null })
+    insertMock.mockReturnValue({ select: selectMock })
+    fromMock.mockReturnValue({ insert: insertMock })
+    await createPendingScripts([{ ...cand(1), fecha: '' }, { ...cand(2), fecha: 'hace 2 días' }], 'u')
+    const rows = insertMock.mock.calls[0][0]
+    expect(rows[0].fecha_articulo).toBeNull()
+    expect(rows[1].fecha_articulo).toBeNull()
+  })
+})
+
 describe('listScripts / getPendingScripts', () => {
   it('listScripts ordena por created_at desc', async () => {
     orderMock.mockResolvedValue({ data: [{ id: 'x' }], error: null })

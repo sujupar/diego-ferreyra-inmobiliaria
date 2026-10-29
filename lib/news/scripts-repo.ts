@@ -37,7 +37,7 @@ export async function createPendingScripts(
   const rows = items.map((it) => ({
     titulo: it.titulo,
     medio: it.medio,
-    fecha_articulo: it.fecha,
+    fecha_articulo: /^\d{4}-\d{2}-\d{2}$/.test(it.fecha ?? '') ? it.fecha : null,
     url: it.url,
     resumen: it.resumen,
     formato: (it as NewsCandidate & { formato?: string }).formato ?? null,
