@@ -22,6 +22,7 @@ export default defineConfig({
       'components/visitas/agendar/**/*.test.tsx',
       'app/api/portal-inquiries/**/*.test.ts',
       'lib/nav/*.test.ts',
+      'app/*/inbox/**/*.test.ts',
     ],
     exclude: ['**/node_modules/**', '.next', '.netlify'],
   },

@@ -180,11 +180,9 @@ export function PropertyInquiriesPanel({ range }: { range: DateRange }) {
                         {u.property_address ?? u.property_url ?? (u.property_external_code ? `CÓD ${u.property_external_code}` : u.raw_subject) ?? ''}
                       </span>
                       <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">{fmtDate(u.received_at ?? u.created_at)}</span>
-                      {/* `?tab=consultas`: esta lista son consultas de portales
-                          SIN propiedad identificada. Desde que el Inbox abre en
-                          WhatsApp (2026-08-08), `/inbox` pelado dejaba al
-                          usuario en una pantalla donde no hay ninguna. */}
-                      <Link href="/inbox?tab=consultas" className="text-xs underline text-[color:var(--brand)]">Ver en inbox</Link>
+                      {/* Sección propia `/consultas`: esta lista son consultas de
+                          portales SIN propiedad identificada. */}
+                      <Link href="/consultas" className="text-xs underline text-[color:var(--brand)]">Ver consultas</Link>
                     </li>
                   ))}
                   {data.unidentified.length < data.summary.unidentified && (

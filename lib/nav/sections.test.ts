@@ -21,12 +21,20 @@ describe('getNavSections — permisos del menú', () => {
     expect(groups[0].label).toBeNull()
   })
 
-  it('el asesor ve las mismas 10 rutas de siempre más Inicio, Noticias e Informes quincenales (13)', () => {
+  it('el asesor ve las mismas 10 rutas de siempre más Inicio, Noticias, Informes quincenales y Consultas (14)', () => {
     const hrefs = navHrefs(getNavSections('asesor'))
     expect(hrefs.sort()).toEqual([
-      '/appraisal/new', '/appraisals', '/contacts', '/crm', '/inbox', '/informes', '/inicio',
+      '/appraisal/new', '/appraisals', '/consultas', '/contacts', '/crm', '/inbox', '/informes', '/inicio',
       '/noticias', '/pipeline/new', '/properties', '/redes-sociales', '/tasks', '/visits',
     ])
+  })
+
+  it('Consultas va justo después del Inbox para asesor, coordinador, admin y dueño; el abogado no la ve', () => {
+    for (const role of ['asesor', 'coordinador', 'admin', 'dueno'] as const) {
+      const hrefs = navHrefs(getNavSections(role))
+      expect(hrefs.indexOf('/consultas'), role).toBe(hrefs.indexOf('/inbox') + 1)
+    }
+    expect(navHrefs(getNavSections('abogado'))).not.toContain('/consultas')
   })
 
   it('Noticias vive en Marketing para los roles que ven Marketing (asesor, coordinador, admin, dueño)', () => {

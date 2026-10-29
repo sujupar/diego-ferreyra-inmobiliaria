@@ -155,7 +155,7 @@ describe('InboxTabs — la barra de pestañas no arrastra la página de costado'
     expect(fila![1]).not.toMatch(/(?<!md:)min-w-max/)
   })
 
-  it('en celular las tres pestañas se reparten el ancho y truncan: no pueden desbordar', () => {
+  it('en celular las pestañas se reparten el ancho y truncan: no pueden desbordar', () => {
     // `flex-1 basis-0 min-w-0` + `truncate` vuelve el desborde IMPOSIBLE por
     // construcción, a CUALQUIER ancho (390, 360, 320 y lo que venga). Acortar
     // textos a ojo "hasta que entre en 390" es una cuenta que se vence sola el
@@ -171,11 +171,13 @@ describe('InboxTabs — la barra de pestañas no arrastra la página de costado'
     expect(boton![1]).toContain('max-md:min-h-11')
   })
 
-  it('el ícono y el "(portales)" se van en celular, que es de donde sale el ancho', () => {
-    // 24px por ícono × 3, y ~85px del paréntesis, sobre 288 útiles a 320px.
+  it('el ícono se va en celular, que es de donde sale el ancho', () => {
     expect(tabsCodigo).toContain('className="h-4 w-4 max-md:hidden"')
-    expect(tabsCodigo).toContain('<span className="max-md:hidden">{resto}</span>')
-    expect(tabsCodigo).toContain("resto: ' (portales)'")
+  })
+
+  it('la pestaña Consultas ya no existe: vive en /consultas', () => {
+    expect(tabsCodigo).not.toContain('PortalInquiriesClient')
+    expect(tabsCodigo).not.toMatch(/id: 'consultas'/)
   })
 })
 
@@ -191,7 +193,7 @@ describe('InboxTabs — el Inbox abre en WhatsApp', () => {
     // Si es lo principal y queda tercera, con la barra deslizable la pantalla
     // abriría con la pestaña activa fuera de cuadro — peor que antes.
     const orden = [...tabsCodigo.matchAll(/\{ id: '(\w+)'/g)].map(m => m[1])
-    expect(orden).toEqual(['whatsapp', 'campanas', 'consultas'])
+    expect(orden).toEqual(['whatsapp', 'campanas'])
   })
 
   it('un `?tab=` explícito sigue mandando (los enlaces profundos no se rompen)', () => {
@@ -258,9 +260,9 @@ describe('los enlaces al Inbox llevan su pestaña (no heredan la por omisión)',
       ['components/properties/PropertyLeadsCard.tsx', 'href="/inbox?tab=campanas"'],
       ['components/properties/PropertyLeadsCard.tsx', 'href={`/inbox?tab=campanas&lead=${l.id}`}'],
       ['components/inbox/ContactPanel.tsx', 'href={`/inbox?tab=campanas&lead=${lead.id}`}'],
-      // Consultas de portales → Consultas.
-      ['components/properties/PropertyInquiriesCard.tsx', 'href="/inbox?tab=consultas"'],
-      ['components/metrics/PropertyInquiriesPanel.tsx', 'href="/inbox?tab=consultas"'],
+      // Consultas de portales → sección propia /consultas (ya no es una pestaña del Inbox).
+      ['components/properties/PropertyInquiriesCard.tsx', 'href={`/consultas?propiedad=${propertyId}&periodo=30d`}'],
+      ['components/metrics/PropertyInquiriesPanel.tsx', 'href="/consultas"'],
       // El número de `/inicio` sale de `/api/leads/count` → Campañas.
       ['app/(dashboard)/inicio/page.tsx', "destino: () => '/inbox?tab=campanas'"],
     ]

@@ -2,15 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Megaphone, Globe, MessageCircle, type LucideIcon } from 'lucide-react'
+import { Megaphone, MessageCircle, type LucideIcon } from 'lucide-react'
 import { InboxClient } from './InboxClient'
-import { PortalInquiriesClient } from './PortalInquiriesClient'
 import { WhatsappClient } from './WhatsappClient'
 
-type Tab = 'campanas' | 'consultas' | 'whatsapp'
+type Tab = 'campanas' | 'whatsapp'
 
 function isTab(v: string | null): v is Tab {
-  return v === 'campanas' || v === 'consultas' || v === 'whatsapp'
+  return v === 'campanas' || v === 'whatsapp'
 }
 
 /**
@@ -27,26 +26,25 @@ function isTab(v: string | null): v is Tab {
 const TAB_INICIAL: Tab = 'whatsapp'
 
 /**
- * Las tres secciones, EN EL ORDEN EN QUE SE VEN. WhatsApp va primera por el
+ * Las dos secciones, EN EL ORDEN EN QUE SE VEN. WhatsApp va primera por el
  * mismo motivo por el que es la inicial: si es lo principal y queda tercera, en
  * un teléfono la pantalla abriría con la pestaña activa fuera de cuadro.
  *
- * `corto` / `resto`: en celular la etiqueta es solo «Consultas». El paréntesis
- * «(portales)» son ~85px de los ~288 útiles de un teléfono de 320px — una
- * aclaración que en escritorio suma y en el teléfono se come el lugar de las
- * otras dos pestañas.
+ * Las consultas de portales ya no son una pestaña: desde 2026-10-29 viven en su
+ * propia sección `/consultas` (`inbox/page.tsx` redirige el viejo `?tab=consultas`).
+ *
+ * `resto`: sufijo opcional de la etiqueta que se oculta en celular, donde cada
+ * pixel cuenta. Hoy ninguna pestaña lo usa.
  */
 const PESTANAS: { id: Tab; corto: string; resto?: string; icon: LucideIcon }[] = [
   { id: 'whatsapp', corto: 'WhatsApp', icon: MessageCircle },
   { id: 'campanas', corto: 'Campañas', icon: Megaphone },
-  { id: 'consultas', corto: 'Consultas', resto: ' (portales)', icon: Globe },
 ]
 
 /**
- * Inbox con tres secciones:
+ * Inbox con dos secciones:
  *  - WhatsApp: chat del CRM — lo que sale automáticamente + lo que responden los clientes.
  *  - Campañas: leads de landing / Meta Ads (InboxClient existente).
- *  - Consultas: consultas entrantes de los portales (MercadoLibre/ZonaProp/Argenprop).
  */
 export function InboxTabs({ userRole, userId }: { userRole: string; userId: string }) {
   const [tab, setTab] = useState<Tab>(TAB_INICIAL)
@@ -83,7 +81,7 @@ export function InboxTabs({ userRole, userId }: { userRole: string; userId: stri
       ? 'Los WhatsApp de tus propiedades: los que salen del sistema y las respuestas de los clientes.'
       : 'Todos los WhatsApp del equipo: los que salen del sistema y las respuestas de los clientes.'
 
-  // LA FRANJA DE PESTAÑAS, QUE EN CELULAR NO SE DESLIZA: ENTRAN LAS TRES.
+  // LA FRANJA DE PESTAÑAS, QUE EN CELULAR NO SE DESLIZA: ENTRAN TODAS.
   //
   // Lo que había antes: `inline-flex min-w-max` adentro de un `scroll-x-fade`.
   // Los tres botones sumaban ~459px indivisibles contra los ~358 útiles de un
@@ -181,9 +179,9 @@ export function InboxTabs({ userRole, userId }: { userRole: string; userId: stri
   // 520 no hace nada bueno, y con el teclado abierto (~300px) forzaría scroll de
   // página compitiendo con el del hilo.
   //
-  // Campañas y Consultas NO se tocan: siguen con el scroll de página de siempre
+  // Campañas NO se toca: siguen con el scroll de página de siempre
   // (`space-y-6`, sin alto fijo) — cada una arma su propio título más abajo, ver
-  // `InboxClient.tsx` / `PortalInquiriesClient.tsx`.
+  // `InboxClient.tsx`.
   const isWhatsapp = tab === 'whatsapp'
   const chatAbierto = isWhatsapp && Boolean(chatParam)
 
@@ -250,8 +248,6 @@ export function InboxTabs({ userRole, userId }: { userRole: string; userId: stri
 
       {tab === 'campanas' ? (
         <InboxClient userRole={userRole} userId={userId} openLeadId={openLeadId} />
-      ) : tab === 'consultas' ? (
-        <PortalInquiriesClient userRole={userRole} />
       ) : (
         <WhatsappClient userRole={userRole} userId={userId} />
       )}
