@@ -43,8 +43,10 @@ export interface EstadoAgendar {
   rapido: boolean
   /**
    * Solo en modo rápido: el teléfono como lo leyó el llamador. Lo calcula quien
-   * abre la ventana (con `leerTelefono`) para no meter libphonenumber en este
-   * bundle. `null` fuera del modo rápido.
+   * abre la ventana (con `leerTelefono`): la ventana no lee teléfonos por su
+   * cuenta, recibe el resultado ya decidido. (No es para dejar libphonenumber
+   * fuera del bundle: este módulo lo importa igual vía `./persona`.) `null`
+   * fuera del modo rápido.
    */
   telefonoRapido: { mostrado: string | null; valido: boolean } | null
   /**

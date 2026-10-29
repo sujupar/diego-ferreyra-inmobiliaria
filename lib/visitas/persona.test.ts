@@ -67,4 +67,16 @@ describe('telefonoCanonico con la regla del 549', () => {
   it('canónico no inventa extranjero', () => {
     expect(telefonoCanonico('4571430985')).toBe('4571430985')
   })
+  it('un número extranjero escrito con su código (+598) se guarda en E.164', () => {
+    expect(telefonoCanonico('+598 94 123 456')).toBe('+59894123456')
+  })
+  it('el celular argentino con "15" queda con el 549', () => {
+    expect(telefonoCanonico('11 15 5823-4521')).toBe('+5491158234521')
+  })
+})
+
+describe('telefonoEfectivo cuando ninguno sirve para WhatsApp', () => {
+  it('si el guardado no es un celular válido, gana el enviado aunque tampoco lo sea', () => {
+    expect(telefonoEfectivo('4941-0027', '123')).toBe('123')
+  })
 })

@@ -21,8 +21,8 @@ export interface DatosModoRapido {
  *
  * El teléfono NO se corrige acá: la sección Consultas lo revisa antes de abrir
  * la ventana. El formateado (`telefonoRapido.mostrado`) lo calcula el llamador
- * con `leerTelefono`, así libphonenumber no entra en este bundle; si no se pudo
- * leer, se muestra el texto tal cual.
+ * con `leerTelefono` y llega ya resuelto: este paso no lee teléfonos por su
+ * cuenta. Si no se pudo leer, se muestra el texto tal cual.
  */
 function ResumenRapido({ estado, datos }: { estado: EstadoAgendar; datos: DatosModoRapido }) {
   const persona = estado.persona
