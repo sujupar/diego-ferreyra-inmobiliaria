@@ -103,6 +103,14 @@ describe('inicioRapidoDe', () => {
     expect(r.telefonoValido).toBe(false)
     expect(r.telefonoMostrado).toBe('4941-0027')
   })
+  it('con el teléfono corregido en Consultas: viaja ese canónico y el botón queda habilitado', () => {
+    const corregido = leerTelefono('1149410027')
+    if (!corregido.ok) throw new Error('el teléfono de prueba tendría que servir')
+    const r = inicioRapidoDe(c({ telefono: '4941-0027' }), { telefono: corregido })
+    expect(r.telefono).toBe('+5491149410027')
+    expect(r.telefonoMostrado).toBe('+54 9 11 4941-0027')
+    expect(r.telefonoValido).toBe(true)
+  })
 })
 
 describe('otrasDeLaPersona', () => {

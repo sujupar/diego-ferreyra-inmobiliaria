@@ -12,25 +12,24 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Loader2, SlidersHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import { useFiltrosUrl } from '@/lib/filters/use-filtros-url'
 import { usePedidosVersionados } from '@/lib/filters/use-pedidos-versionados'
 import { leerRespuesta } from '@/components/visitas/agendar/leer-respuesta'
-import { AgendarVisitaDialog } from '@/components/visitas/agendar/AgendarVisitaDialog'
 import { TarjetasAtender, type TarjetaAtender } from '@/components/consultas/TarjetasAtender'
 import { FiltrosConsultas, type ValoresFiltrosConsultas } from '@/components/consultas/FiltrosConsultas'
 import { ListaConsultas } from '@/components/consultas/ListaConsultas'
 import { DetalleConsulta } from '@/components/consultas/DetalleConsulta'
+import { AgendarDesdeConsulta } from '@/components/consultas/AgendarDesdeConsulta'
 import {
   ESTADOS_FILTRO, FILTROS_DEFECTO_CONSULTAS, PERIODOS_CONSULTAS, PORTALES_FILTRO, TELEFONO_REVISAR,
 } from '@/lib/consultas/filtros'
-import { contarFiltrosActivos, inicioRapidoDe, otrasDeLaPersona, unirSinRepetir } from '@/lib/consultas/pantalla'
+import { contarFiltrosActivos, otrasDeLaPersona, unirSinRepetir } from '@/lib/consultas/pantalla'
 import { esFechaValida } from '@/lib/visitas/periodo'
 import { fechaEnArgentina } from '@/lib/visitas/horario'
 import { normalizarBusqueda } from '@/lib/filters/busqueda-texto'
 import { esRol, puedeVerTodasLasVisitas } from '@/lib/visitas/acceso'
-import type { AccionAgendar, ConsultaEnBandeja, RespuestaBandeja } from '@/lib/consultas/tipos'
+import type { ConsultaEnBandeja, RespuestaBandeja } from '@/lib/consultas/tipos'
 
 // Constantes de MÓDULO: dentro del componente cambiarían de identidad en cada
 // render y el hook de filtros re-pediría sin parar.
@@ -60,11 +59,8 @@ function normalizar(f: ValoresFiltrosConsultas): ValoresFiltrosConsultas {
   }
 }
 
-const POR_ACCION: Record<Exclude<AccionAgendar, 'agendar'>, string> = {
-  elegir_propiedad: 'Primero hay que identificar qué propiedad miró.',
-  revisar_telefono: 'Primero hay que revisar el teléfono que dejó.',
-  pedir_telefono: 'Primero hay que conseguir su teléfono.',
-}
+/** Los únicos que conectan un aviso con su propiedad (igual que POST /api/consultas/[id]/propiedad). */
+const ROLES_QUE_IDENTIFICAN = ['admin', 'dueno', 'coordinador']
 
 type Identidad = { id: string; rol: string } | null
 
@@ -128,7 +124,6 @@ export function ConsultasClient() {
   const [seleccionadaId, setSeleccionadaId] = useState<string | null>(null)
   const [detalleAbierto, setDetalleAbierto] = useState(false)
   const [consultaAgendando, setConsultaAgendando] = useState<ConsultaEnBandeja | null>(null)
-  const [faltaUnPaso, setFaltaUnPaso] = useState<ConsultaEnBandeja | null>(null)
   const [hojaFiltros, setHojaFiltros] = useState(false)
   const pedidos = usePedidosVersionados()
   const hoy = useMemo(() => fechaEnArgentina(new Date()), [])
@@ -142,6 +137,7 @@ export function ConsultasClient() {
 
   const yo = identidad === 'cargando' ? null : identidad
   const verTodo = !!yo && esRol(yo.rol) && puedeVerTodasLasVisitas(yo.rol)
+  const puedeIdentificar = !!yo && ROLES_QUE_IDENTIFICAN.includes(yo.rol)
 
   useEffect(() => {
     if (!verTodo) return
@@ -159,6 +155,9 @@ export function ConsultasClient() {
     if (identidad === 'cargando') return
     const { gen, signal } = pedidos.abrir()
     setCargando(true)
+    // El error del pedido anterior hablaba de OTRO filtro: no queda a la vista
+    // mientras se pide el nuevo.
+    setError(null)
     setErrorMas(null)
     fetch(clave, { signal })
       .then(leerBandeja)
@@ -229,14 +228,12 @@ export function ConsultasClient() {
   }
 
   /**
-   * Despacho del botón "Agendar visita" según lo que la consulta necesita. Solo
-   * `agendar` tiene todo para abrir la ventana en modo rápido; los otros pasos
-   * (elegir propiedad, revisar o pedir teléfono) llegan con la Tarea 10.
+   * "Agendar visita": AgendarDesdeConsulta decide por dónde arranca (elegir la
+   * propiedad, revisar o pedir el teléfono, o directo al día y la hora).
    */
   function abrirAgendar(c: ConsultaEnBandeja) {
     setDetalleAbierto(false)
-    if (c.accion === 'agendar' && c.property_id) setConsultaAgendando(c)
-    else setFaltaUnPaso(c)
+    setConsultaAgendando(c)
   }
 
   function abrirDetalle(c: ConsultaEnBandeja) {
@@ -306,6 +303,8 @@ export function ConsultasClient() {
       <Sheet open={hojaFiltros} onOpenChange={setHojaFiltros}>
         <SheetContent side="bottom" showCloseButton={false} className="gap-3 p-4">
           <SheetTitle>Filtros</SheetTitle>
+          {/* Radix avisa en consola si la hoja no tiene descripción. */}
+          <SheetDescription className="sr-only">Elegí qué consultas ver.</SheetDescription>
           <FiltrosConsultas {...filtrosProps} />
           <Button type="button" className="min-h-11" onClick={() => setHojaFiltros(false)}>
             {bandeja ? `Ver ${bandeja.total} consultas` : 'Listo'}
@@ -363,33 +362,16 @@ export function ConsultasClient() {
         onAgendar={abrirAgendar}
       />
 
-      {consultaAgendando && consultaAgendando.property_id && (
-        <AgendarVisitaDialog
-          // key: cambiar de consulta REMONTA la ventana; con el diálogo abierto un
-          // `rapido` nuevo no se tomaría (lo dejó anotado la revisión de la Tarea 7).
+      {consultaAgendando && (
+        <AgendarDesdeConsulta
+          // key: otra consulta arranca la máquina de cero (paso, propiedad, teléfono).
           key={consultaAgendando.id}
-          open
-          onOpenChange={(o) => { if (!o) setConsultaAgendando(null) }}
-          propiedadId={consultaAgendando.property_id}
-          rapido={inicioRapidoDe(consultaAgendando)}
-          onAgendada={() => { setConsultaAgendando(null); void refrescar() }}
+          consulta={consultaAgendando}
+          puedeIdentificar={puedeIdentificar}
+          onTerminado={() => { setConsultaAgendando(null); void refrescar() }}
+          onCerrar={(cambio) => { setConsultaAgendando(null); if (cambio) void refrescar() }}
         />
       )}
-
-      <Dialog open={faltaUnPaso !== null} onOpenChange={(o) => { if (!o) setFaltaUnPaso(null) }}>
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Falta un paso</DialogTitle>
-            <DialogDescription>
-              Esta consulta necesita un paso más antes de agendar (próximamente).
-              {faltaUnPaso && faltaUnPaso.accion !== 'agendar' ? ` ${POR_ACCION[faltaUnPaso.accion]}` : ''}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" className="min-h-11" onClick={() => setFaltaUnPaso(null)}>Entendido</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

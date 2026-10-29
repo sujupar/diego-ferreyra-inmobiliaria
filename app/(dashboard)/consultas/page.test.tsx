@@ -78,6 +78,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-29T15:00:00Z'))
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     if (url.startsWith('/api/auth/me')) return json(200, { id: YO, role: rol })
+    if (url.startsWith('/api/visits/propiedades')) return json(200, { data: [] })
     if (url.startsWith('/api/users/advisors')) return json(200, { data: [{ id: '22222222-2222-4222-8222-222222222222', full_name: 'Lucas Pérez' }] })
     if (url.startsWith('/api/consultas')) {
       pedidos.push(url)
@@ -232,15 +233,29 @@ describe('/consultas', () => {
       persona: { tipo: 'consulta', id: 'c-1', nombre: 'Martina Gómez' },
     })
     await userEvent.click(screen.getByRole('button', { name: 'Simular agendada' }))
+    // Primero la hoja "Visita agendada"; la bandeja se re-pide al volver.
+    expect(await screen.findByRole('heading', { name: /Visita agendada/ })).toBeInTheDocument()
+    expect(pedidos).toHaveLength(1)
+    await userEvent.click(screen.getByRole('button', { name: 'Volver a consultas' }))
     await waitFor(() => expect(pedidos).toHaveLength(2))
     expect(await screen.findByRole('link', { name: 'Visita vie 30 · 17:00' })).toBeInTheDocument()
   })
 
-  it('una consulta que necesita otro paso avisa en vez de abrir la ventana', async () => {
+  it('una consulta sin propiedad abre primero "¿Qué propiedad quiere ver?", no la ventana', async () => {
     respuestas.set(1, [bandeja([c({ property_id: null, propiedad: null, accion: 'elegir_propiedad' })])])
     render(<ConsultasClient />)
     await userEvent.click(await screen.findByRole('button', { name: 'Agendar visita' }))
-    expect(await screen.findByText(/necesita un paso más antes de agendar/)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '¿Qué propiedad quiere ver?' })).toBeInTheDocument()
+    // Admin identifica avisos: puede seguir (aunque todavía no eligió).
+    expect(screen.getByRole('button', { name: /^Seguir/ })).toBeDisabled()
+    expect(rapidoRecibido).toBeNull()
+  })
+
+  it('un teléfono a revisar abre primero "Revisá el teléfono"', async () => {
+    respuestas.set(1, [bandeja([c({ telefono: '4941-0027', accion: 'revisar_telefono' })])])
+    render(<ConsultasClient />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Agendar visita' }))
+    expect(await screen.findByRole('heading', { name: 'Revisá el teléfono' })).toBeInTheDocument()
     expect(rapidoRecibido).toBeNull()
   })
 

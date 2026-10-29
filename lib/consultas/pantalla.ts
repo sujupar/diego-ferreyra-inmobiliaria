@@ -7,6 +7,7 @@
  * Módulo puro y seguro para el navegador.
  */
 import type { ConsultaEnBandeja } from './tipos'
+import type { TelefonoLeido } from './telefono'
 import type { InicioRapido } from '@/lib/visitas/agendar-estado'
 import { ETIQUETA_PORTAL } from './bandeja'
 import { FILTROS_DEFECTO_CONSULTAS } from './filtros'
@@ -91,12 +92,18 @@ export function unirSinRepetir(actuales: readonly ConsultaEnBandeja[], nuevas: r
 /**
  * Lo que necesita la ventana de agendar para abrir directo en "Día y hora".
  * El teléfono lo valida la regla del 549 (`tel`), no la ventana: si no sirve,
- * el botón rápido queda bloqueado y el teléfono se corrige antes (Tarea 10).
+ * el botón rápido queda bloqueado y el teléfono se corrige antes, en la hoja
+ * "Revisá el teléfono": lo corregido llega en `opciones.telefono` y reemplaza
+ * al de la consulta (el servidor lo guarda en la visita y en la consulta).
  */
-export function inicioRapidoDe(c: ConsultaEnBandeja): InicioRapido {
+export function inicioRapidoDe(
+  c: ConsultaEnBandeja,
+  opciones: { telefono?: Extract<TelefonoLeido, { ok: true }> } = {},
+): InicioRapido {
   const esLanding = c.tipo === 'landing'
   const hora = horaDeLaConsulta(c)
   const portal = etiquetaPortal(c.portal)
+  const tel = opciones.telefono ?? c.tel
   const base = {
     persona: {
       tipo: esLanding ? ('registro' as const) : ('consulta' as const),
@@ -105,9 +112,9 @@ export function inicioRapidoDe(c: ConsultaEnBandeja): InicioRapido {
       telefono: c.telefono,
       detalle: hora ? `${portal} · ${hora}` : portal,
     },
-    telefonoMostrado: c.tel.ok ? c.tel.mostrado : (c.telefono ?? null),
-    telefonoValido: c.tel.ok,
-    ...(c.tel.ok ? { telefono: c.tel.canonico } : {}),
+    telefonoMostrado: tel.ok ? tel.mostrado : (c.telefono ?? null),
+    telefonoValido: tel.ok,
+    ...(tel.ok ? { telefono: tel.canonico } : {}),
   }
   // Portal: el detalle (qué portal) lo deriva el servidor de la consulta.
   if (!esLanding) return { ...base, origen: 'portal' }
