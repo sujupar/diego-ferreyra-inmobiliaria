@@ -78,4 +78,10 @@ export interface RespuestaBandeja {
   porPortal: ConteoOpcion[]
   porPropiedad: ConteoOpcion[]
   periodo: { desde: string; hasta: string; etiqueta: string }
+  /**
+   * Solo presente (y `true`) si la base tenía más consultas de las que se leen
+   * en un pedido (20.000): los totales y conteos son de lo leído, no del período
+   * entero, y la pantalla tiene que poder decirlo.
+   */
+  truncado?: true
 }

@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { estadoDeConsulta, accionDeAgendar, contarRepetidas, armarBandeja, agruparPorDia } from './bandeja'
+import {
+  estadoDeConsulta, accionDeAgendar, contarRepetidas, armarBandeja, agruparPorDia, consultasEnBandeja,
+  contarPorPortal, contarPorPropiedad,
+} from './bandeja'
 import { leerTelefono } from './telefono'
 import type { ConsultaFila, ConsultaEnBandeja, VisitaDeConsulta } from './tipos'
 
@@ -221,5 +224,86 @@ describe('agruparPorDia', () => {
       enBandeja({ id: '3', recibida_at: '2026-10-28T10:00:00Z' }),
     ], HOY)
     expect(g.map((d) => d.filas.map((f) => f.id))).toEqual([['1', '2'], ['3']])
+  })
+})
+
+describe('consultasEnBandeja', () => {
+  const propiedades = new Map([[PROP, { address: 'Doblas 248', neighborhood: 'Caballito' }]])
+  const asesores = new Map([['as-prop', 'Lucas'], ['as-consulta', 'Julián']])
+
+  it('arma estado, teléfono, acción, propiedad y repetidas de cada fila', () => {
+    const filas = [
+      consulta({ id: 'a', telefono: '011 15 6140-0496' }),
+      consulta({ id: 'b', telefono: '+5491161400496', property_id: null }),
+    ]
+    const r = consultasEnBandeja(filas, [visita({ portal_inquiry_id: 'a' })], propiedades, asesores)
+    expect(r[0]).toMatchObject({
+      id: 'a', estado: { tipo: 'con_visita', visitaId: 'v-1' }, accion: 'agendar', repetidas: 2,
+      propiedad: { address: 'Doblas 248', neighborhood: 'Caballito' },
+    })
+    expect(r[0].tel.ok).toBe(true)
+    expect(r[1]).toMatchObject({ estado: { tipo: 'sin_visita' }, accion: 'elegir_propiedad', propiedad: null, repetidas: 2 })
+  })
+
+  it('el asesor es el de la propiedad; sin él, el de la consulta; sin ninguno, null', () => {
+    const r = consultasEnBandeja([
+      consulta({ id: '1', asesor_propiedad: 'as-prop', assigned_to: 'as-consulta' }),
+      consulta({ id: '2', asesor_propiedad: null, assigned_to: 'as-consulta' }),
+      consulta({ id: '3' }),
+      consulta({ id: '4', asesor_propiedad: 'desconocido' }),
+    ], [], propiedades, asesores)
+    expect(r.map((f) => f.asesor_nombre)).toEqual(['Lucas', 'Julián', null, null])
+  })
+})
+
+describe('contarPorPortal', () => {
+  it('cuenta por portal con el nombre de marca, de mayor a menor', () => {
+    const r = contarPorPortal([
+      consulta({ id: '1', portal: 'argenprop' }), consulta({ id: '2', portal: 'zonaprop' }),
+      consulta({ id: '3', portal: 'zonaprop' }), consulta({ id: '4', portal: 'landing' }),
+    ], null)
+    expect(r).toEqual([
+      { valor: 'zonaprop', etiqueta: 'ZonaProp', n: 2 },
+      { valor: 'argenprop', etiqueta: 'Argenprop', n: 1 },
+      { valor: 'landing', etiqueta: 'Landing', n: 1 },
+    ])
+  })
+
+  it('el portal elegido aparece aunque no tenga consultas', () => {
+    expect(contarPorPortal([], 'mercadolibre')).toEqual([{ valor: 'mercadolibre', etiqueta: 'MercadoLibre', n: 0 }])
+  })
+
+  it('un portal fuera del catálogo se muestra con su nombre crudo', () => {
+    expect(contarPorPortal([consulta({ portal: 'properati' })], null)).toEqual([{ valor: 'properati', etiqueta: 'properati', n: 1 }])
+  })
+})
+
+describe('contarPorPropiedad', () => {
+  const propiedades = new Map([
+    ['p1', { address: 'Doblas 248', neighborhood: null }],
+    ['p2', { address: 'Roque Pérez 3059', neighborhood: null }],
+  ])
+
+  it('"Sin propiedad identificada" va primero; el resto de mayor a menor', () => {
+    const r = contarPorPropiedad([
+      consulta({ id: '1', property_id: 'p1' }), consulta({ id: '2', property_id: 'p2' }),
+      consulta({ id: '3', property_id: 'p2' }), consulta({ id: '4', property_id: null }),
+    ], propiedades, null)
+    expect(r).toEqual([
+      { valor: 'sin', etiqueta: 'Sin propiedad identificada', n: 1 },
+      { valor: 'p2', etiqueta: 'Roque Pérez 3059', n: 2 },
+      { valor: 'p1', etiqueta: 'Doblas 248', n: 1 },
+    ])
+  })
+
+  it('sin consultas sin propiedad, ese renglón no aparece salvo que esté elegido', () => {
+    const filas = [consulta({ property_id: 'p1' })]
+    expect(contarPorPropiedad(filas, propiedades, null).map((o) => o.valor)).toEqual(['p1'])
+    expect(contarPorPropiedad(filas, propiedades, 'sin')[0]).toEqual({ valor: 'sin', etiqueta: 'Sin propiedad identificada', n: 0 })
+  })
+
+  it('una propiedad sin dirección conocida no rompe la lista', () => {
+    expect(contarPorPropiedad([consulta({ property_id: 'p9' })], propiedades, null))
+      .toEqual([{ valor: 'p9', etiqueta: 'Propiedad sin dirección', n: 1 }])
   })
 })

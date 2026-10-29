@@ -9,7 +9,7 @@
  */
 import { leerTelefono, type TelefonoLeido } from './telefono'
 import type {
-  AccionAgendar, ConsultaEnBandeja, ConsultaFila, EstadoConsulta, RespuestaBandeja, TarjetasBandeja,
+  AccionAgendar, ConsultaEnBandeja, ConsultaFila, ConteoOpcion, EstadoConsulta, RespuestaBandeja, TarjetasBandeja,
   VisitaDeConsulta,
 } from './tipos'
 import type { FiltrosConsultas } from './filtros'
@@ -144,6 +144,91 @@ export function armarBandeja(
     })
   const inicio = (Math.max(1, Math.trunc(f.pagina)) - 1) * POR_PAGINA
   return { filas: filtradas.slice(inicio, inicio + POR_PAGINA), total: filtradas.length, tarjetas }
+}
+
+type DatosPropiedad = { address: string; neighborhood: string | null }
+
+/**
+ * Cada fila de la vista con todo lo que la pantalla necesita para mostrarla.
+ * Las repetidas se cuentan sobre TODAS las filas recibidas (el período entero
+ * con sus filtros), no sobre la página: "consultó 3 veces" tiene que ser
+ * verdad aunque las otras dos estén en la página siguiente.
+ * El asesor es el de la PROPIEDAD; el de la consulta solo cuando no hay
+ * propiedad (o la propiedad no tiene asesor).
+ */
+export function consultasEnBandeja(
+  filas: readonly ConsultaFila[],
+  visitas: readonly VisitaDeConsulta[],
+  propiedades: ReadonlyMap<string, DatosPropiedad>,
+  asesores: ReadonlyMap<string, string>,
+): ConsultaEnBandeja[] {
+  const repetidas = contarRepetidas(filas)
+  return filas.map((fila) => {
+    const tel = leerTelefono(fila.telefono)
+    const asesorId = fila.asesor_propiedad ?? fila.assigned_to
+    return {
+      ...fila,
+      estado: estadoDeConsulta(fila, visitas),
+      tel,
+      repetidas: repetidas.get(fila.id) ?? 1,
+      accion: accionDeAgendar(fila, tel),
+      propiedad: fila.property_id ? propiedades.get(fila.property_id) ?? null : null,
+      asesor_nombre: asesorId ? asesores.get(asesorId) ?? null : null,
+    }
+  })
+}
+
+/** Cómo se escribe cada portal en pantalla. Uno fuera del catálogo sale con su nombre crudo. */
+export const ETIQUETA_PORTAL: Readonly<Record<string, string>> = {
+  zonaprop: 'ZonaProp',
+  argenprop: 'Argenprop',
+  mercadolibre: 'MercadoLibre',
+  landing: 'Landing',
+}
+
+export const SIN_PROPIEDAD = { valor: 'sin', etiqueta: 'Sin propiedad identificada' } as const
+
+/** De mayor a menor; a igual cantidad, alfabético, para que el orden no baile entre pedidos. */
+function porCantidad(a: ConteoOpcion, b: ConteoOpcion): number {
+  return b.n - a.n || a.etiqueta.localeCompare(b.etiqueta, 'es')
+}
+
+function contar(filas: readonly ConsultaFila[], clave: (f: ConsultaFila) => string | null): Map<string, number> {
+  const n = new Map<string, number>()
+  for (const f of filas) {
+    const k = clave(f)
+    if (k !== null) n.set(k, (n.get(k) ?? 0) + 1)
+  }
+  return n
+}
+
+/**
+ * Los números del selector de portal. El portal elegido aparece aunque tenga 0:
+ * si desapareciera del selector, no habría forma de ver qué está filtrado.
+ */
+export function contarPorPortal(filas: readonly ConsultaFila[], elegido: string | null): ConteoOpcion[] {
+  const n = contar(filas, (f) => f.portal)
+  if (elegido && !n.has(elegido)) n.set(elegido, 0)
+  return [...n].map(([valor, cantidad]) => ({ valor, etiqueta: ETIQUETA_PORTAL[valor] ?? valor, n: cantidad }))
+    .sort(porCantidad)
+}
+
+/**
+ * Los números del selector de propiedad. "Sin propiedad identificada" va
+ * PRIMERO: es lo que el equipo tiene que resolver, no una propiedad más.
+ */
+export function contarPorPropiedad(
+  filas: readonly ConsultaFila[],
+  propiedades: ReadonlyMap<string, DatosPropiedad>,
+  elegido: string | null,
+): ConteoOpcion[] {
+  const n = contar(filas, (f) => f.property_id)
+  if (elegido && elegido !== SIN_PROPIEDAD.valor && !n.has(elegido)) n.set(elegido, 0)
+  const resto = [...n].map(([valor, cantidad]) => ({
+    valor, etiqueta: propiedades.get(valor)?.address || 'Propiedad sin dirección', n: cantidad,
+  })).sort(porCantidad)
+  const sin = filas.filter((f) => f.property_id === null).length
+  return sin > 0 || elegido === SIN_PROPIEDAD.valor ? [{ ...SIN_PROPIEDAD, n: sin }, ...resto] : resto
 }
 
 const formatoDia = new Intl.DateTimeFormat('es-AR', {
