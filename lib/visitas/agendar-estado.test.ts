@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { estadoInicial, reducirAgendar, pasosVisibles, errorDelPaso, siguientePaso, pasoAnterior, armarPedido, textoAgendarRapido, type PropiedadElegida, type InicioRapido } from './agendar-estado'
+import { estadoInicial, reducirAgendar, pasosVisibles, errorDelPaso, siguientePaso, pasoAnterior, armarPedido, textoAgendarRapido, errorTelefonoRapido, type PropiedadElegida, type InicioRapido } from './agendar-estado'
 
 const PROP: PropiedadElegida = { id: '33333333-3333-4333-8333-333333333333', address: 'Doblas 248', neighborhood: 'Caballito', foto: null, asesorId: '22222222-2222-4222-8222-222222222222' }
 const AHORA = new Date('2026-10-10T15:00:00Z')
@@ -88,7 +88,20 @@ describe('modo rápido (agendar desde una consulta)', () => {
     origen: 'portal',
     persona: { tipo: 'consulta', id: '44444444-4444-4444-8444-444444444444', nombre: 'Ana', telefono: '1158234521', detalle: 'Zonaprop' },
     telefono: '+5491158234521',
+    telefonoMostrado: '+54 9 11 5823-4521',
+    telefonoValido: true,
   }
+  it('el teléfono leído por el llamador queda en el estado; fuera del modo rápido no hay', () => {
+    expect(estadoInicial({ propiedad: PROP, rapido: RAPIDO }).telefonoRapido).toEqual({ mostrado: '+54 9 11 5823-4521', valido: true })
+    expect(estadoInicial({ propiedad: PROP }).telefonoRapido).toBeNull()
+    expect(estadoInicial({ propiedad: null, rapido: RAPIDO }).telefonoRapido).toBeNull()
+  })
+  it('con teléfono inválido el modo rápido no deja mandar (aunque tenga 10 dígitos o más)', () => {
+    const e = estadoInicial({ propiedad: PROP, rapido: { ...RAPIDO, telefono: undefined, persona: { ...RAPIDO.persona, telefono: '33652765622' }, telefonoMostrado: null, telefonoValido: false } })
+    expect(errorTelefonoRapido(e)).toBe('El teléfono de esta persona no sirve para WhatsApp. Corregilo desde la consulta.')
+    expect(errorTelefonoRapido(estadoInicial({ propiedad: PROP, rapido: RAPIDO }))).toBeNull()
+    expect(errorTelefonoRapido(estadoInicial({ propiedad: PROP }))).toBeNull()
+  })
   it('con propiedad abre directo en "cuando" con origen, persona y teléfono puestos', () => {
     const e = estadoInicial({ propiedad: PROP, rapido: RAPIDO })
     expect(e.rapido).toBe(true)
@@ -122,7 +135,7 @@ describe('modo rápido (agendar desde una consulta)', () => {
     expect(e.origenDetalle).toBe('Recomendación')
   })
   it('sin teléfono aparte, el campo a completar queda vacío', () => {
-    const e = estadoInicial({ propiedad: PROP, rapido: { origen: RAPIDO.origen, persona: RAPIDO.persona } })
+    const e = estadoInicial({ propiedad: PROP, rapido: { origen: RAPIDO.origen, persona: RAPIDO.persona, telefonoMostrado: null, telefonoValido: true } })
     expect(e.telefonoFaltante).toBe('')
   })
   it('armarPedido con día y hora: persona de la consulta con su teléfono y origen portal', () => {

@@ -386,6 +386,8 @@ describe('AgendarVisitaDialog — modo rápido desde una consulta', () => {
     origen: 'portal' as const,
     persona: { tipo: 'consulta' as const, id: 'c1', nombre: 'Mariana López', telefono: '1158234521', detalle: 'Zonaprop' },
     telefono: '+5491158234521',
+    telefonoMostrado: '+54 9 11 5823-4521',
+    telefonoValido: true,
   }
   const VISITA_ID = '55555555-5555-4555-8555-555555555555'
 
@@ -480,6 +482,38 @@ describe('AgendarVisitaDialog — modo rápido desde una consulta', () => {
     fireEvent.click(await screen.findByRole('button', { name: /^Agendar .* · 10:00$/ }))
     expect(await screen.findByText('La propiedad ya no está disponible')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '¿Cuándo?' })).toBeInTheDocument()
+  })
+
+  it('con un teléfono inválido (aunque tenga 10 dígitos o más) no manda y dice dónde corregirlo', async () => {
+    const fetchMock = mockConPost(() => json({ id: VISITA_ID }, 201))
+    vi.stubGlobal('fetch', fetchMock)
+    const invalido = {
+      ...RAPIDO, telefono: undefined, telefonoMostrado: null, telefonoValido: false,
+      persona: { ...RAPIDO.persona, telefono: '33652765622' },
+    }
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} rapido={invalido} />)
+    await screen.findByRole('heading', { name: '¿Cuándo?' })
+    expect(screen.getByText('33652765622')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /Teléfono/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Hoy/ }))
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Agendar .* · 10:00$/ }))
+    expect(await screen.findByText('El teléfono de esta persona no sirve para WhatsApp. Corregilo desde la consulta.')).toBeInTheDocument()
+    expect(fetchMock.mock.calls.filter(([u]) => u === '/api/visits')).toHaveLength(0)
+  })
+
+  it('el error del envío se borra al cambiar la hora', async () => {
+    vi.stubGlobal('fetch', mockConPost(() => new Response(JSON.stringify({
+      error: 'La propiedad ya no está disponible', code: 'PROPIEDAD_NO_DISPONIBLE',
+    }), { status: 409 })))
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} rapido={RAPIDO} />)
+    await screen.findByRole('heading', { name: '¿Cuándo?' })
+    fireEvent.click(screen.getByRole('button', { name: /Hoy/ }))
+    fireEvent.click(screen.getByRole('button', { name: '10:00' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Agendar .* · 10:00$/ }))
+    expect(await screen.findByText('La propiedad ya no está disponible')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '10:30' }))
+    await waitFor(() => expect(screen.queryByText('La propiedad ya no está disponible')).not.toBeInTheDocument())
   })
 
   it('si la propiedad no está disponible, vuelve al flujo normal con el aviso', async () => {

@@ -5,8 +5,6 @@ import { construirInstante, fechaEnArgentina, validarHorarioDeVisita } from '@/l
 import { avisosDeChoque } from '@/lib/visitas/choques'
 import type { VisitaAgendaR } from '@/lib/visitas/tipos'
 import type { EstadoAgendar, AccionAgendar } from '@/lib/visitas/agendar-estado'
-import { leerTelefono } from '@/lib/consultas/telefono'
-import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
 import { leerRespuesta } from './leer-respuesta'
 import { CLASE_TITULO_PASO } from './titulo-paso'
 
@@ -17,34 +15,21 @@ export interface DatosModoRapido {
   onCambiarAsesor: () => void
 }
 
-/** Teléfono para mostrar: el formateado si se puede leer; si no, el texto tal cual. */
-function telefonoParaMostrar(crudo: string | null): string | null {
-  if (!crudo?.trim()) return null
-  const leido = leerTelefono(crudo)
-  return leido.ok ? leido.mostrado : crudo.trim()
-}
-
 /**
  * Modo rápido: arriba, quién viene, a qué propiedad y quién la muestra; abajo,
  * si ya está confirmada. Lo demás ya lo dijo la consulta.
+ *
+ * El teléfono NO se corrige acá: la sección Consultas lo revisa antes de abrir
+ * la ventana. El formateado (`telefonoRapido.mostrado`) lo calcula el llamador
+ * con `leerTelefono`, así libphonenumber no entra en este bundle; si no se pudo
+ * leer, se muestra el texto tal cual.
  */
-function ResumenRapido({ estado, despachar, datos }: {
-  estado: EstadoAgendar
-  despachar: (a: AccionAgendar) => void
-  datos: DatosModoRapido
-}) {
+function ResumenRapido({ estado, datos }: { estado: EstadoAgendar; datos: DatosModoRapido }) {
   const persona = estado.persona
-  // El teléfono que trajo la consulta (ya leído) gana sobre el crudo de la persona.
-  const telefono = persona
+  const crudo = persona
     ? persona.tipo === 'nueva' ? persona.telefono : (estado.telefonoFaltante.trim() || persona.telefono)
     : null
-  // Si el teléfono guardado de la persona no es utilizable, se ofrece el campo
-  // (con lo que trajo la consulta, si trajo algo): sin esto el servidor rechaza
-  // el alta y no habría dónde completarlo (el paso "Persona" no existe en este
-  // modo). La condición mira SOLO el guardado, no lo tipeado: si mirara lo
-  // tipeado, el campo desaparecería en plena escritura.
-  const pedirTelefono = persona !== null && persona.tipo !== 'nueva' && !ultimos10Digitos(persona.telefono)
-  const mostrado = telefonoParaMostrar(telefono)
+  const mostrado = estado.telefonoRapido?.mostrado ?? (crudo?.trim() || null)
   return (
     <dl className="divide-y rounded-xl border bg-card text-sm">
       <div className="flex justify-between gap-4 px-4 py-3">
@@ -54,16 +39,6 @@ function ResumenRapido({ estado, despachar, datos }: {
           {mostrado && <span className="block text-muted-foreground">{mostrado}</span>}
         </dd>
       </div>
-      {pedirTelefono && persona && (
-        <div className="px-4 py-3">
-          <label className="block space-y-1">
-            <span>Teléfono de {persona.nombre} (falta o está incompleto)</span>
-            <input type="tel" inputMode="tel" value={estado.telefonoFaltante}
-              onChange={e => despachar({ tipo: 'telefonoFaltante', texto: e.target.value })}
-              placeholder="11 5555-5555" className="h-11 w-full rounded-lg border bg-background px-3 text-base" />
-          </label>
-        </div>
-      )}
       <div className="flex justify-between gap-4 px-4 py-3">
         <dt className="text-muted-foreground">Propiedad</dt>
         <dd className="min-w-0 break-words text-right font-medium">{estado.propiedad?.address ?? '—'}</dd>
@@ -132,7 +107,7 @@ export function PasoCuando({ estado, despachar, rapido }: {
         <h2 tabIndex={-1} className={CLASE_TITULO_PASO}>¿Cuándo?</h2>
         <p className="text-sm text-muted-foreground">Horario de Argentina. Te avisamos si el asesor ya tiene algo a esa hora.</p>
       </div>
-      {estado.rapido && rapido && <ResumenRapido estado={estado} despachar={despachar} datos={rapido} />}
+      {estado.rapido && rapido && <ResumenRapido estado={estado} datos={rapido} />}
       <SelectorDiaHora hoy={fechaEnArgentina(new Date())} fecha={estado.fecha} hora={estado.hora}
         onFecha={f => despachar({ tipo: 'elegirFecha', fecha: f })}
         onHora={h => despachar({ tipo: 'elegirHora', hora: h })} avisos={avisos} />

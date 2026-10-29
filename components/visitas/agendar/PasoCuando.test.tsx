@@ -32,33 +32,35 @@ afterEach(() => { process.off('unhandledRejection', anotar) })
 
 describe('PasoCuando — modo rápido', () => {
   const PROPIEDAD = { id: PROP, address: 'Doblas 248', neighborhood: null, foto: null, asesorId: ASESOR }
-  function rapido(telefonoGuardado: string | null, telefono?: string): EstadoAgendar {
+  // El formateado y la validez los calcula el llamador (con leerTelefono): acá
+  // se pasan a mano, el paso no lee teléfonos.
+  function rapido(telefonoGuardado: string | null, telefono?: string, mostrado: string | null = null, valido = true): EstadoAgendar {
     return estadoInicial({ propiedad: PROPIEDAD, rapido: {
       origen: 'portal',
       persona: { tipo: 'consulta', id: 'c1', nombre: 'Ana Gómez', telefono: telefonoGuardado, detalle: 'Zonaprop' },
       ...(telefono ? { telefono } : {}),
+      telefonoMostrado: mostrado, telefonoValido: valido,
     } })
   }
   const datos = { nombreAsesor: 'Lucas', puedeElegirAsesor: false, onCambiarAsesor: vi.fn() }
   beforeEach(() => { vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ data: [] }), { status: 200 }))) })
 
   it('muestra persona con el teléfono formateado, la propiedad y el asesor', () => {
-    render(<PasoCuando estado={rapido('1158234521', '+5491158234521')} despachar={vi.fn()} rapido={datos} />)
+    render(<PasoCuando estado={rapido('1158234521', '+5491158234521', '+54 9 11 5823-4521')} despachar={vi.fn()} rapido={datos} />)
     expect(screen.getByText('Ana Gómez')).toBeInTheDocument()
     expect(screen.getByText('+54 9 11 5823-4521')).toBeInTheDocument()
     expect(screen.getByText('Doblas 248')).toBeInTheDocument()
     expect(screen.getByText('Lucas')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Cambiar/ })).not.toBeInTheDocument()
   })
-  it('un teléfono que no se puede leer se muestra tal cual', () => {
-    render(<PasoCuando estado={rapido('4941-0027')} despachar={vi.fn()} rapido={datos} />)
+  it('un teléfono que no se pudo leer se muestra tal cual', () => {
+    render(<PasoCuando estado={rapido('4941-0027', undefined, null, false)} despachar={vi.fn()} rapido={datos} />)
     expect(screen.getByText('4941-0027')).toBeInTheDocument()
   })
-  it('con teléfono guardado incompleto ofrece completarlo y lo despacha', () => {
-    const despachar = vi.fn()
-    render(<PasoCuando estado={rapido('123')} despachar={despachar} rapido={datos} />)
-    fireEvent.change(screen.getByLabelText(/Teléfono de Ana Gómez/), { target: { value: '11 4444-5555' } })
-    expect(despachar).toHaveBeenCalledWith({ tipo: 'telefonoFaltante', texto: '11 4444-5555' })
+  it('no ofrece corregir el teléfono acá (se corrige en Consultas, antes de abrir)', () => {
+    render(<PasoCuando estado={rapido('123', undefined, null, false)} despachar={vi.fn()} rapido={datos} />)
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Teléfono de Ana Gómez/)).not.toBeInTheDocument()
   })
   it('"Cambiar" aparece solo si se puede elegir asesor y lleva al paso', () => {
     const onCambiarAsesor = vi.fn()

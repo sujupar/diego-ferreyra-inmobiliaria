@@ -13,7 +13,7 @@ import { Check } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import {
-  estadoInicial, reducirAgendar, pasosVisibles, siguientePaso, pasoAnterior, errorDelPaso, armarPedido, textoAgendarRapido,
+  estadoInicial, reducirAgendar, pasosVisibles, siguientePaso, pasoAnterior, errorDelPaso, armarPedido, textoAgendarRapido, errorTelefonoRapido,
   type PasoAgendar, type PropiedadElegida, type InicioRapido,
 } from '@/lib/visitas/agendar-estado'
 import { puedeVerTodasLasVisitas } from '@/lib/visitas/acceso'
@@ -188,6 +188,10 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, rapido, o
   // este efecto, así que el mensaje de `avanzar()` sigue visible hasta que
   // pasa algo de verdad.
   useEffect(() => { setErrorPaso(null) }, [estado])
+  // Modo rápido: el error del envío se ve debajo de "Día y hora". Si después
+  // se cambia el día o la hora, ese error ya no habla de lo que está en
+  // pantalla — se limpia (fuera del modo rápido queda como estaba).
+  useEffect(() => { if (estado.rapido) setErrorEnvio(null) }, [estado])
 
   const valorDelPaso = (p: PasoAgendar): string => {
     if (p === 'propiedad') return estado.propiedad?.address ?? ''
@@ -268,7 +272,13 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, rapido, o
    * elegir, el asesor) y manda. El doble envío lo frena `enviandoRef`.
    */
   function agendarRapido() {
-    const aRevisar: PasoAgendar[] = opciones.puedeElegirAsesor ? ['cuando', 'persona', 'asesor'] : ['cuando', 'persona']
+    const errorHorario = errorDelPaso(estado, 'cuando')
+    if (errorHorario) { setErrorPaso(errorHorario); return }
+    // El teléfono se corrige en Consultas, no acá: si el llamador lo marcó
+    // como inválido, no se manda nada.
+    const errorTelefono = errorTelefonoRapido(estado)
+    if (errorTelefono) { setErrorPaso(errorTelefono); return }
+    const aRevisar: PasoAgendar[] = opciones.puedeElegirAsesor ? ['persona', 'asesor'] : ['persona']
     for (const p of aRevisar) {
       const e = errorDelPaso(estado, p)
       if (e) { setErrorPaso(e); return }

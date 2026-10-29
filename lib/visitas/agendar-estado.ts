@@ -41,9 +41,17 @@ export interface EstadoAgendar {
    * vino y qué propiedad miró. Solo queda elegir día y hora.
    */
   rapido: boolean
+  /**
+   * Solo en modo rápido: el teléfono como lo leyó el llamador. Lo calcula quien
+   * abre la ventana (con `leerTelefono`) para no meter libphonenumber en este
+   * bundle. `null` fuera del modo rápido.
+   */
+  telefonoRapido: { mostrado: string | null; valido: boolean } | null
 }
 
 export interface OpcionesPasos { puedeElegirAsesor: boolean }
+
+export const ERROR_TELEFONO_RAPIDO = 'El teléfono de esta persona no sirve para WhatsApp. Corregilo desde la consulta.'
 
 /**
  * Lo que trae quien abre la ventana desde una consulta (sección Consultas).
@@ -54,8 +62,25 @@ export interface InicioRapido {
   origen: OrigenVisita
   origenDetalle?: string
   persona: PersonaElegida
-  /** Teléfono ya leído de la consulta; va a `telefonoFaltante` y viaja en el pedido. */
+  /**
+   * Teléfono canónico ya revisado (la hoja "revisar teléfono" de Consultas corre
+   * ANTES de abrir la ventana); va a `telefonoFaltante` y viaja en el pedido.
+   */
   telefono?: string
+  /** `leerTelefono(rapido.telefono ?? persona.telefono).mostrado` si se pudo leer; si no, `null`. */
+  telefonoMostrado: string | null
+  /** `leerTelefono(...).ok`. Si es `false`, el botón rápido no manda (la ventana no corrige teléfonos). */
+  telefonoValido: boolean
+}
+
+/**
+ * Freno del modo rápido: la ventana ya no tiene paso "Persona" para corregir
+ * el teléfono, así que si el llamador lo marcó como inválido no se manda.
+ * Usa la lectura completa (`leerTelefono`) del llamador, no `ultimos10Digitos`:
+ * un número de 10 o más dígitos igual puede ser inválido.
+ */
+export function errorTelefonoRapido(e: EstadoAgendar): string | null {
+  return e.rapido && e.telefonoRapido && !e.telefonoRapido.valido ? ERROR_TELEFONO_RAPIDO : null
 }
 
 export function estadoInicial(o: {
@@ -81,6 +106,7 @@ export function estadoInicial(o: {
     confirmada: true,
     notas: '',
     rapido: rapido !== null,
+    telefonoRapido: rapido ? { mostrado: rapido.telefonoMostrado, valido: rapido.telefonoValido } : null,
   }
 }
 
