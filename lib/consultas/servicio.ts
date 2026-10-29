@@ -8,6 +8,7 @@ import 'server-only'
  * Los permisos los decide quien llama (rol y usuario de la SESIÓN); acá se
  * traducen a alcance. Nunca recibe el alcance del navegador.
  */
+import { createClient } from '@supabase/supabase-js'
 import * as datos from './datos'
 import { consultasEnBandeja } from './bandeja'
 import type { PeriodoConsultas } from './tipos'
@@ -33,4 +34,23 @@ export async function cargarPeriodo(p: {
     consultas: consultasEnBandeja(leido.filas, leido.visitas, leido.propiedades, leido.asesores),
     truncado: leido.truncado,
   }
+}
+
+/**
+ * Asesores activos para el filtro de asesor (la misma lista que
+ * `GET /api/users/advisors`), leídos acá para que viajen con la página en vez
+ * de costar un pedido más desde el navegador.
+ */
+export async function asesoresActivos(): Promise<Array<{ id: string; full_name: string }>> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) throw new Error('Faltan las credenciales de Supabase en el servidor')
+  const { data, error } = await createClient(url, key)
+    .from('profiles')
+    .select('id, full_name')
+    .in('role', ['asesor', 'dueno'])
+    .eq('is_active', true)
+    .order('full_name')
+  if (error) throw new Error(`asesores activos: ${error.message}`)
+  return (data ?? []).map((r) => ({ id: String(r.id), full_name: String(r.full_name ?? '') }))
 }

@@ -7,6 +7,8 @@
     "lib/consultas/**/*.ts",
     "lib/visitas/**/*.ts",
     "lib/nav/*.ts",
+    "lib/filters/use-filtros-url.ts",
+    "lib/integrations/portal-inquiries/parsers/zonaprop.ts",
     "app/api/consultas/**/*.ts",
     "app/api/portal-inquiries/**/*.ts",
     "app/(dashboard)/consultas/**/*.tsx",

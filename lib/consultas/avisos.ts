@@ -112,7 +112,7 @@ export function agruparAvisos(filas: readonly FilaSinPropiedad[]): { avisos: Avi
   }
   const avisos = [...porClave.values()]
     .sort((x, y) => y.n - x.n || ms(y.ultima) - ms(x.ultima))
-    .map(({ msTitulo: _t, msUrl: _u, ...aviso }) => aviso)
+    .map((a): AvisoSinPropiedad => ({ portal: a.portal, codigo: a.codigo, titulo: a.titulo, url: a.url, n: a.n, ultima: a.ultima }))
   return { avisos, sueltas }
 }
 
