@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getUser } from '@/lib/auth/get-user'
-import { searchRealEstateNews } from '@/lib/news/perplexity'
+import { scanRealEstateNews } from '@/lib/news/perplexity'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -14,8 +14,12 @@ export async function POST() {
 
   const mock = !process.env.PERPLEXITY_API_KEY
   try {
-    const candidates = await searchRealEstateNews({ mock })
-    return NextResponse.json(mock ? { candidates, mock: true } : { candidates })
+    const { candidates, failedQueries } = await scanRealEstateNews({ mock })
+    return NextResponse.json({
+      candidates,
+      ...(mock ? { mock: true } : {}),
+      ...(failedQueries > 0 ? { failedQueries } : {}),
+    })
   } catch (e) {
     const error = e instanceof Error ? e.message : 'Error al escanear noticias'
     return NextResponse.json({ error })

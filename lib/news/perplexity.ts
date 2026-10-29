@@ -33,6 +33,7 @@ const DOMAIN_FILTER = [
 ]
 
 const MAX_RESULTS_PER_QUERY = 5
+const REQUEST_TIMEOUT_MS = 8000
 
 type PerplexityResult = {
   title?: string
@@ -52,9 +53,12 @@ function medioFromUrl(url: string): string {
 
 function toCandidate(r: PerplexityResult): NewsCandidate | null {
   const url = (r.url || '').trim()
-  const fecha = (r.date || r.last_updated || '').trim()
-  // Regla de calidad: nunca devolver una pieza sin url o sin fecha.
-  if (!url.startsWith('http') || !fecha) return null
+  const rawFecha = (r.date || r.last_updated || '').trim()
+  // Regla de calidad: nunca devolver una pieza sin url o con fecha ausente/inválida.
+  if (!url.startsWith('http') || !rawFecha) return null
+  const ts = Date.parse(rawFecha)
+  if (Number.isNaN(ts)) return null
+  const fecha = new Date(ts).toISOString().slice(0, 10)
   const medio = medioFromUrl(url)
   if (!medio) return null
   return {
@@ -106,6 +110,7 @@ async function searchOne(apiKey: string, query: string): Promise<PerplexityResul
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     body: JSON.stringify({
       query,
       max_results: MAX_RESULTS_PER_QUERY,
@@ -123,10 +128,14 @@ async function searchOne(apiKey: string, query: string): Promise<PerplexityResul
   return Array.isArray(data?.results) ? data.results : []
 }
 
-export async function searchRealEstateNews(
+export type ScanResult = { candidates: NewsCandidate[]; failedQueries: number }
+
+// Igual que searchRealEstateNews pero informa cuántas queries fallaron
+// (falla parcial), para que la UI distinga "sin noticias" de "la query falló".
+export async function scanRealEstateNews(
   opts: { mock?: boolean } = {},
-): Promise<NewsCandidate[]> {
-  if (opts.mock) return mockCandidates()
+): Promise<ScanResult> {
+  if (opts.mock) return { candidates: mockCandidates(), failedQueries: 0 }
 
   const apiKey = process.env.PERPLEXITY_API_KEY
   if (!apiKey) {
@@ -151,11 +160,18 @@ export async function searchRealEstateNews(
     } catch (e) {
       failures++
       lastError = e instanceof Error ? e.message : String(e)
+      console.warn(`[news/perplexity] query fallida "${query.slice(0, 50)}": ${lastError}`)
     }
   }
 
   if (failures === NEWS_QUERIES.length) {
     throw new Error(`No se pudo consultar Perplexity (${lastError}). Intentá de nuevo en unos minutos.`)
   }
-  return out
+  return { candidates: out, failedQueries: failures }
+}
+
+export async function searchRealEstateNews(
+  opts: { mock?: boolean } = {},
+): Promise<NewsCandidate[]> {
+  return (await scanRealEstateNews(opts)).candidates
 }
