@@ -37,7 +37,10 @@ const textoDe = new WeakMap<ConsultaEnBandeja, { texto: string; digitos: string 
 function indice(c: ConsultaEnBandeja): { texto: string; digitos: string } {
   let i = textoDe.get(c)
   if (!i) {
-    const partes = [c.nombre, c.telefono, c.email, c.aviso_direccion, c.propiedad?.address, c.propiedad?.neighborhood, c.mensaje]
+    // También el título y el código del aviso: en ZonaProp es lo único que dice
+    // qué se consultó ("2 ambientes", "Martínez") cuando no hay propiedad.
+    const partes = [c.nombre, c.telefono, c.email, c.aviso_direccion, c.aviso_titulo, c.aviso_codigo,
+      c.propiedad?.address, c.propiedad?.neighborhood, c.mensaje]
     // El teléfono se guarda también en su forma de WhatsApp: "1161400496" tiene
     // que encontrar a quien lo dejó como "011 15 6140-0496".
     const digitos = [soloDigitos(c.telefono ?? ''), c.tel.ok ? c.tel.whatsapp : ''].join(' ')

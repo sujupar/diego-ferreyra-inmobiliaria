@@ -62,6 +62,13 @@ describe('coincideBusqueda', () => {
     expect(coincideBusqueda(ana, 'ana palermo')).toBe(false)
   })
 
+  it('busca en el título y el código del aviso (lo único que hay cuando no hay propiedad)', () => {
+    const sinProp = c({ propiedad: null, property_id: null, aviso_codigo: '2DLPOM',
+      aviso_titulo: '📩 ¡Recibiste una nueva consulta por el aviso Departamento 2 Ambientes en Martínez! CÓD:2DLPOM' })
+    expect(coincideBusqueda(sinProp, 'ambientes martinez')).toBe(true)
+    expect(coincideBusqueda(sinProp, '2dlpom')).toBe(true)
+  })
+
   it('busca en la dirección de la propiedad y en el email', () => {
     expect(coincideBusqueda(ana, 'doblas')).toBe(true)
     expect(coincideBusqueda(ana, 'ana@x.com')).toBe(true)
