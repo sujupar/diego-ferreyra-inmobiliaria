@@ -39,6 +39,8 @@ const ETIQUETA: Record<PasoAgendar, string> = {
  * ignora — evita que un doble clic rápido salte la pantalla de revisión. */
 const VENTANA_DEBOUNCE_CONFIRMAR_MS = 700
 
+export const MENSAJE_RAPIDO_BLOQUEADO = 'Esta consulta no se puede agendar desde acá: la propiedad no está disponible o no es tuya.'
+
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -321,7 +323,9 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, rapido, o
           del paso. No sacar ninguna de esas clases sin mirarlo en un celular. */}
       <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-[900px]">
         <DialogTitle className="sr-only">Agendar visita</DialogTitle>
-        <DialogDescription className="sr-only">Paso {indice + 1} de {pasos.length}: {ETIQUETA[estado.paso]}</DialogDescription>
+        <DialogDescription className="sr-only">
+          {estado.rapidoBloqueado ? 'No se puede agendar desde esta consulta.' : `Paso ${indice + 1} de ${pasos.length}: ${ETIQUETA[estado.paso]}`}
+        </DialogDescription>
         <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] md:min-h-[560px] md:grid-cols-[236px_1fr]">
           <aside className="hidden flex-col gap-5 border-r bg-secondary/60 p-5 md:flex">
             <div>
@@ -355,7 +359,7 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, rapido, o
               scrolleando en una pantalla muy baja). */}
           <div className="flex min-h-0 min-w-0 flex-col">
             <div className="h-1 shrink-0 bg-secondary md:hidden" aria-hidden="true">
-              <div className="h-1 bg-brand transition-[width]" style={{ width: `${((indice + 1) / pasos.length) * 100}%` }} />
+              <div className="h-1 bg-brand transition-[width]" style={{ width: `${pasos.length > 0 ? ((indice + 1) / pasos.length) * 100 : 0}%` }} />
             </div>
             {/* El lugar para la X de cerrar (en celular mide 44px, arriba a la
                 derecha) NO va acá: en todo el contenido le comía 40px a cada fila
@@ -370,7 +374,13 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, rapido, o
                   <Button type="button" variant="outline" onClick={() => setIntentoInicial(n => n + 1)}>Reintentar</Button>
                 </div>
               )}
-              {listo && (
+              {listo && estado.rapidoBloqueado && (
+                <div className={cn('space-y-2', LUGAR_PARA_LA_X)}>
+                  {avisoPropiedad && <p role="alert" className="text-sm text-destructive">{avisoPropiedad}</p>}
+                  <p className="text-sm text-muted-foreground">{MENSAJE_RAPIDO_BLOQUEADO}</p>
+                </div>
+              )}
+              {listo && !estado.rapidoBloqueado && (
                 <>
                   {avisoPropiedad && estado.paso === 'propiedad' && (
                     <p role="alert" className={cn('text-sm text-destructive', LUGAR_PARA_LA_X)}>{avisoPropiedad}</p>
@@ -404,6 +414,9 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, rapido, o
               {/* Modo rápido en "Día y hora": no hay paso anterior, así que el
                   botón de la izquierda cierra. El principal agenda directo y
                   dice el día y la hora, para que se vea qué se va a guardar. */}
+              {listo && estado.rapidoBloqueado ? (
+                <Button variant="outline" className="ml-auto min-h-11" onClick={() => onOpenChange(false)}>Cerrar</Button>
+              ) : (<>
               {rapidoEnCuando ? (
                 <Button variant="outline" className="min-h-11" onClick={() => onOpenChange(false)} disabled={enviando}>Cancelar</Button>
               ) : (
@@ -417,6 +430,7 @@ export function AgendarVisitaDialog({ open, onOpenChange, propiedadId, rapido, o
                   : rapidoEnAsesor ? 'Listo'
                   : esUltimo ? (duplicado && !duplicado.mismoInstante ? 'Agendar igual' : 'Agendar') : 'Siguiente'}
               </Button>
+              </>)}
             </div>
           </div>
         </div>

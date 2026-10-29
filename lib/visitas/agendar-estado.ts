@@ -47,6 +47,14 @@ export interface EstadoAgendar {
    * bundle. `null` fuera del modo rápido.
    */
   telefonoRapido: { mostrado: string | null; valido: boolean } | null
+  /**
+   * Se pidió el modo rápido pero la propiedad de la consulta no se pudo cargar
+   * (no está disponible, o un asesor abrió una que no es suya). NO se cae al
+   * flujo normal: ahí se podía elegir otra propiedad u otra persona y, al
+   * terminar, la hoja "Listo" de Consultas mostraba la dirección y el teléfono
+   * de la CONSULTA, no lo que se agendó. La ventana solo avisa y deja cerrar.
+   */
+  rapidoBloqueado: boolean
 }
 
 export interface OpcionesPasos { puedeElegirAsesor: boolean }
@@ -89,8 +97,8 @@ export function estadoInicial(o: {
   rapido?: InicioRapido | null
 }): EstadoAgendar {
   const propiedad = o.propiedad ?? null
-  // Sin propiedad no hay modo rápido: si la propiedad de la consulta no se
-  // pudo cargar (no está disponible), la ventana arranca el flujo normal.
+  // Sin propiedad no hay modo rápido; si se lo pidió, la ventana queda
+  // bloqueada (ver `rapidoBloqueado`) en vez de arrancar el flujo normal.
   const rapido = propiedad ? o.rapido ?? null : null
   return {
     paso: rapido ? 'cuando' : propiedad ? 'origen' : 'propiedad',
@@ -107,10 +115,13 @@ export function estadoInicial(o: {
     notas: '',
     rapido: rapido !== null,
     telefonoRapido: rapido ? { mostrado: rapido.telefonoMostrado, valido: rapido.telefonoValido } : null,
+    rapidoBloqueado: propiedad === null && o.rapido != null,
   }
 }
 
 export function pasosVisibles(e: EstadoAgendar, o: OpcionesPasos): PasoAgendar[] {
+  // Bloqueada: no hay ningún paso para recorrer, solo el aviso y "Cerrar".
+  if (e.rapidoBloqueado) return []
   // En modo rápido solo existe "cuándo". "Asesor" aparece mientras se está en
   // él (se llega con "Cambiar") y "Confirmar" solo cuando el servidor avisó un
   // duplicado (409): ahí se muestra la revisión con "Agendar igual".

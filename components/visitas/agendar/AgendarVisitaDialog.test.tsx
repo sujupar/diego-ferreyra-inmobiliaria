@@ -544,14 +544,38 @@ describe('AgendarVisitaDialog — modo rápido desde una consulta', () => {
     await waitFor(() => expect(screen.queryByText('La propiedad ya no está disponible')).not.toBeInTheDocument())
   })
 
-  it('si la propiedad no está disponible, vuelve al flujo normal con el aviso', async () => {
+  it('si la propiedad no está disponible, NO cae al flujo normal: avisa y solo deja cerrar', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/visits/propiedades')) return json([])
+      if (url === '/api/visits' && init?.method === 'POST') return json({ id: VISITA_ID }, 201)
+      return mockPorDefecto()(url)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const onOpenChange = vi.fn()
+    render(<AgendarVisitaDialog open onOpenChange={onOpenChange} propiedadId={PROP.id} rapido={RAPIDO} />)
+    expect(await screen.findByText('Esa propiedad no está disponible para agendar.')).toBeInTheDocument()
+    expect(screen.getByText('Esta consulta no se puede agendar desde acá: la propiedad no está disponible o no es tuya.')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '¿Cuándo?' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '¿Qué propiedad van a visitar?' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Siguiente' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Atrás' })).not.toBeInTheDocument()
+    // La X del diálogo también se llama "Cerrar" (por aria-label): el del pie no lo tiene.
+    const cerrarDelPie = screen.getAllByRole('button', { name: 'Cerrar' }).find(b => !b.hasAttribute('aria-label'))
+    expect(cerrarDelPie).toBeDefined()
+    if (cerrarDelPie) fireEvent.click(cerrarDelPie)
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(fetchMock.mock.calls.some(([u, i]) => u === '/api/visits' && i?.method === 'POST')).toBe(false)
+  })
+
+  it('sin modo rápido, una propiedad no disponible sigue cayendo al paso "Propiedad" con el aviso', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url.startsWith('/api/visits/propiedades')) return json([])
       return mockPorDefecto()(url)
     }))
-    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} rapido={RAPIDO} />)
+    render(<AgendarVisitaDialog open onOpenChange={vi.fn()} propiedadId={PROP.id} />)
     expect(await screen.findByText('Esa propiedad no está disponible para agendar.')).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '¿Cuándo?' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Esta consulta no se puede agendar desde acá/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Siguiente' })).toBeInTheDocument()
   })
 
   it('un asesor ve quién la muestra pero no "Cambiar"', async () => {

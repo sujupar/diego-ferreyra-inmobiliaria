@@ -112,11 +112,20 @@ describe('modo rápido (agendar desde una consulta)', () => {
     expect(pasosVisibles(e, { puedeElegirAsesor: false })).toEqual(['cuando'])
     expect(pasosVisibles(e, { puedeElegirAsesor: true })).toEqual(['cuando'])
   })
-  it('sin propiedad el modo rápido no se aplica (flujo normal)', () => {
+  it('sin propiedad el modo rápido queda BLOQUEADO (no cae al flujo normal)', () => {
     const e = estadoInicial({ propiedad: null, rapido: RAPIDO })
     expect(e.rapido).toBe(false)
-    expect(e.paso).toBe('propiedad')
+    expect(e.rapidoBloqueado).toBe(true)
     expect(e.persona).toBeNull()
+    expect(pasosVisibles(e, { puedeElegirAsesor: true })).toEqual([])
+  })
+  it('sin rápido y sin propiedad no hay bloqueo (flujo normal desde "Propiedad")', () => {
+    const e = estadoInicial({ propiedad: null })
+    expect(e.rapidoBloqueado).toBe(false)
+    expect(e.paso).toBe('propiedad')
+  })
+  it('rápido con propiedad no queda bloqueado', () => {
+    expect(estadoInicial({ propiedad: PROP, rapido: RAPIDO }).rapidoBloqueado).toBe(false)
   })
   it('sin rápido, todo igual que antes', () => {
     const e = estadoInicial({ propiedad: PROP })
