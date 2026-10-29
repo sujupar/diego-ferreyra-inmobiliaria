@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false },
+  "include": [
+    "next-env.d.ts",
+    "types/**/*.ts",
+    "lib/consultas/**/*.ts",
+    "lib/visitas/**/*.ts",
+    "lib/nav/*.ts",
+    "app/api/consultas/**/*.ts",
+    "app/api/portal-inquiries/**/*.ts",
+    "app/(dashboard)/consultas/**/*.tsx",
+    "app/(dashboard)/inbox/**/*.tsx",
+    "components/consultas/**/*.tsx",
+    "components/visitas/**/*.tsx",
+    "components/properties/PropertyInquiriesCard.tsx",
+    "components/metrics/PropertyInquiriesPanel.tsx"
+  ],
+  "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
+}
