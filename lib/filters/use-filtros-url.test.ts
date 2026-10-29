@@ -478,6 +478,9 @@ describe('useFiltrosUrl — soloNavegador (Consultas)', () => {
     expect(escrituras).toEqual([])
     expect(replaceState).toHaveBeenCalledTimes(1)
     expect(String(replaceState.mock.calls[0][2])).toBe('/properties?status=approved')
+    // Con el estado interno de Next (lo que hay en history.state) Next NO
+    // sincroniza useSearchParams: tiene que ir null (bug visto en la vista previa).
+    expect(replaceState.mock.calls[0][0]).toBeNull()
     expect(vista.result.current.filtros.status).toBe('approved')
     replaceState.mockRestore()
   })

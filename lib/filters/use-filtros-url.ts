@@ -359,7 +359,11 @@ export function useFiltrosUrl<T extends Record<string, string>>({
     // `replace` y no `push`: con push, cada ajuste del rango de fechas deja una
     // entrada en el historial y el botón Atrás se vuelve inusable.
     const href = busqueda ? `${pathname}?${busqueda}` : pathname
-    if (soloNavegador) window.history.replaceState(window.history.state, '', href)
+    // `null` y NO `window.history.state`: Next reconoce su propio estado interno
+    // en el historial y, si se lo devuelve, trata el cambio como suyo y NO
+    // actualiza `useSearchParams` (la dirección cambiaba pero la lista no se
+    // filtraba; verificado en la vista previa). Con `null` lo sincroniza.
+    if (soloNavegador) window.history.replaceState(null, '', href)
     else router.replace(href, { scroll: false })
     return { estado: 'escrito', rechazadas }
   }, [construirBusqueda, defectos, igual, leerDe, pathname, router, soloNavegador])
