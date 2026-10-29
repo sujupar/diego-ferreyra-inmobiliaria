@@ -70,8 +70,10 @@ export interface FiltroMasBaratas {
   /** null = la nuestra no tiene precio, m² o moneda: no se filtró. */
   valorM2Nuestro: number | null
   descartadasPorPrecio: number
-  /** Sin precio, sin m² o en otra moneda: no se pueden comparar. */
+  /** Sin precio o sin m²: no se pueden comparar. */
   sinComparar: number
+  /** Publicadas en otra moneda: tampoco se comparan (una propiedad en pesos pierde casi todo: se dice por qué). */
+  otraMoneda: number
 }
 
 /**
@@ -81,11 +83,12 @@ export interface FiltroMasBaratas {
  */
 export function filtroMasBaratas(ref: Referencia, avisos: AvisoDeListado[]): FiltroMasBaratas {
   const nuestro = ref.moneda ? valorM2(ref.precio, ref.m2) : null
-  if (nuestro === null) return { avisos, valorM2Nuestro: null, descartadasPorPrecio: 0, sinComparar: 0 }
-  const r: FiltroMasBaratas = { avisos: [], valorM2Nuestro: nuestro, descartadasPorPrecio: 0, sinComparar: 0 }
+  if (nuestro === null) return { avisos, valorM2Nuestro: null, descartadasPorPrecio: 0, sinComparar: 0, otraMoneda: 0 }
+  const r: FiltroMasBaratas = { avisos: [], valorM2Nuestro: nuestro, descartadasPorPrecio: 0, sinComparar: 0, otraMoneda: 0 }
   for (const a of avisos) {
     const suyo = valorM2(a.precio, a.m2)
-    if (suyo === null || a.moneda !== ref.moneda) r.sinComparar++
+    if (suyo === null) r.sinComparar++
+    else if (a.moneda !== ref.moneda) r.otraMoneda++
     else if (suyo >= nuestro) r.descartadasPorPrecio++
     else r.avisos.push(a)
   }
@@ -127,13 +130,19 @@ function puntuar(ref: Referencia, a: AvisoDeListado, d: DetalleCandidata | undef
   return c
 }
 
-/** Nuestra propiedad afuera, un aviso repetido entre portales (misma dirección y precio) una sola vez, tope 12. */
-export function ordenarCandidatas(ref: Referencia, avisos: AvisoDeListado[], detalles: Record<string, DetalleCandidata> = {}): Candidata[] {
+/** Nuestra propiedad afuera y un aviso repetido entre portales (misma dirección y precio) una sola vez. */
+export function deduplicarAvisos(nuestraDireccion: string, avisos: AvisoDeListado[]): AvisoDeListado[] {
   const unicas: AvisoDeListado[] = []
-  for (const a of filtroMasBaratas(ref, avisos).avisos) {
-    if (mismaDireccion(ref.direccion, a.direccion)) continue
+  for (const a of avisos) {
+    if (mismaDireccion(nuestraDireccion, a.direccion)) continue
     if (unicas.some(u => u.url === a.url || (u.precio === a.precio && mismaDireccion(u.direccion, a.direccion)))) continue
     unicas.push(a)
   }
+  return unicas
+}
+
+/** Deduplicadas, solo las más baratas por m², ordenadas por parecido, tope 12. */
+export function ordenarCandidatas(ref: Referencia, avisos: AvisoDeListado[], detalles: Record<string, DetalleCandidata> = {}): Candidata[] {
+  const unicas = filtroMasBaratas(ref, deduplicarAvisos(ref.direccion, avisos)).avisos
   return unicas.map(a => puntuar(ref, a, detalles[a.url])).sort((x, y) => y.puntaje - x.puntaje).slice(0, MAX_CANDIDATAS)
 }

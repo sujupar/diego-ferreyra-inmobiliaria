@@ -86,13 +86,17 @@ describe('Competidoras', () => {
 })
 
 describe('filtro por valor del m² (pedido del dueño: solo competidoras más baratas por m²)', () => {
-  const filtro = { valorM2Nuestro: 2128, descartadasPorPrecio: 5, sinComparar: 2, moneda: 'USD' }
+  const filtro = { valorM2Nuestro: 2128, descartadasPorPrecio: 5, sinComparar: 2, otraMoneda: 0, moneda: 'USD' }
   it('el aviso dice con qué valor se filtró y cuántas quedaron afuera', () => {
     expect(textoDelFiltro(filtro)).toBe('Se muestran solo las que valen menos por m² que la nuestra (USD 2.128/m²): 5 descartadas por valer igual o más y 2 sin precio o m² para comparar.')
     expect(textoDelFiltro({ ...filtro, descartadasPorPrecio: 1, sinComparar: 0 })).toBe('Se muestran solo las que valen menos por m² que la nuestra (USD 2.128/m²): 1 descartada por valer igual o más.')
   })
   it('sin precio o m² en la ficha lo dice y no filtra', () => {
-    expect(textoDelFiltro({ valorM2Nuestro: null, descartadasPorPrecio: 0, sinComparar: 0, moneda: 'USD' })).toMatch(/falta el precio o los m² en la ficha/)
+    expect(textoDelFiltro({ valorM2Nuestro: null, descartadasPorPrecio: 0, sinComparar: 0, otraMoneda: 0, moneda: 'USD' })).toMatch(/falta el precio o los m² en la ficha/)
+  })
+  it('una propiedad en pesos dice que las demás están publicadas en otra moneda', () => {
+    expect(textoDelFiltro({ valorM2Nuestro: 900000, descartadasPorPrecio: 0, sinComparar: 0, otraMoneda: 20, moneda: 'ARS' }))
+      .toBe('Se muestran solo las que valen menos por m² que la nuestra (ARS 900.000/m²): 20 publicadas en otra moneda (no se pueden comparar).')
   })
   it('una elegida a mano más cara por m² (misma moneda) se marca; una más barata o en otra moneda, no', () => {
     const c = (valorM2: number | null, moneda: 'USD' | 'ARS' = 'USD') => ({ valorM2, moneda }) as Competidora

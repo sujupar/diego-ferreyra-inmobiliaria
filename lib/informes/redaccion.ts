@@ -103,7 +103,7 @@ export function datosParaRedactar(e: { informe: Informe; propiedad: PropiedadDel
     } : null,
     reserva: okDe('reserva')?.reservada ?? null,
     meta: meta ? { alcance: meta.alcance, impresiones: meta.impresiones, clientesPotenciales: meta.resultados } : null,
-    instagram: ig ? { reels: ig.reels.length, reproduccionesAcumuladas: ig.reels.reduce((a, x) => a + x.reproducciones, 0) } : null,
+    instagram: ig ? { reels: ig.cantidadReels ?? ig.reels.length, reproduccionesAcumuladas: ig.reels.reduce((a, x) => a + x.reproducciones, 0) } : null,
     competidoras: i.competidoras.map(c => ({
       direccion: c.direccion, barrio: c.barrio, precio: c.precio, moneda: c.moneda, m2: c.m2, valorM2: c.valorM2,
       ambientes: c.ambientes, antiguedad: c.antiguedad, bajoDePrecio: c.bajoDePrecio, publicadoHace: c.publicadoHace,

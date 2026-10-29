@@ -85,13 +85,16 @@ export function aplicarAjustes(fuentes: Fuentes, a: Ajustes | undefined): Fuente
       reproducciones: n(x.reproducciones, suma('reproducciones')), alcance: n(x.alcance, suma('alcance')),
       meGusta: n(x.meGusta, suma('meGusta')), comentarios: n(x.comentarios, suma('comentarios')),
       guardados: suma('guardados'), compartidos: suma('compartidos'),
-    }] })
+    }], cantidadReels: Math.max(reels.length, 1) })
   }
   return f
 }
 
-/** Se corrigió algo DESPUÉS de que la plataforma escribió los textos: hay que "Volver a escribir". */
+/**
+ * Se corrigió algo DESPUÉS de que la plataforma escribió los textos: hay que "Volver a escribir". No compara horas
+ * (el reloj del navegador y el del servidor pueden no coincidir): al escribir, el servidor BORRA `ajustesEn`, así que
+ * si existe, la corrección es posterior.
+ */
 export function textosDesactualizados(m: { ajustesEn?: string; redaccion?: Redaccion }): boolean {
-  if (!m.ajustesEn || !m.redaccion?.generadoEn) return false
-  return Date.parse(m.ajustesEn) > Date.parse(m.redaccion.generadoEn)
+  return !!m.ajustesEn && !!m.redaccion?.generadoEn
 }

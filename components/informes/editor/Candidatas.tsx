@@ -19,7 +19,7 @@ function estadoDeLaBusqueda(portal: 'argenprop' | 'mercadolibre', b: BusquedaPor
  * "Ver en el portal" para mirarlas antes de elegirlas. Elegir = pasa a las competidoras del informe.
  */
 /** Con qué valor del m² se filtró (lo arma el servidor con `filtroDeCompetencia`). */
-export interface FiltroDeCompetencia { valorM2Nuestro: number | null; descartadasPorPrecio: number; sinComparar: number; moneda: string | null }
+export interface FiltroDeCompetencia { valorM2Nuestro: number | null; descartadasPorPrecio: number; sinComparar: number; otraMoneda: number; moneda: string | null }
 
 /** El aviso de arriba de la lista: con qué se filtró y cuántas quedaron afuera (o por qué no se pudo filtrar). */
 export function textoDelFiltro(f: FiltroDeCompetencia): string {
@@ -27,6 +27,7 @@ export function textoDelFiltro(f: FiltroDeCompetencia): string {
   const afuera = [
     f.descartadasPorPrecio ? `${f.descartadasPorPrecio} descartada${f.descartadasPorPrecio === 1 ? '' : 's'} por valer igual o más` : '',
     f.sinComparar ? `${f.sinComparar} sin precio o m² para comparar` : '',
+    f.otraMoneda ? `${f.otraMoneda} publicada${f.otraMoneda === 1 ? '' : 's'} en otra moneda (no se pueden comparar)` : '',
   ].filter(Boolean).join(' y ')
   return `Se muestran solo las que valen menos por m² que la nuestra (${f.moneda ?? 'USD'} ${miles.format(f.valorM2Nuestro)}/m²)${afuera ? `: ${afuera}` : ''}.`
 }

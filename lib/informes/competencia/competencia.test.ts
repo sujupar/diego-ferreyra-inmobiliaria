@@ -183,16 +183,32 @@ describe('filtroMasBaratas (pedido del dueño: solo las que valen MENOS por m² 
   it('sin precio, sin m² o en otra moneda no se puede comparar: queda afuera y se cuenta aparte', () => {
     const r = filtroMasBaratas(ref, [aviso({ precio: null }), aviso({ m2: null }), aviso({ moneda: 'ARS', precio: 100000000 }), aviso({ direccion: 'Ok' })])
     expect(r.avisos.map(a => a.direccion)).toEqual(['Ok'])
-    expect(r.sinComparar).toBe(3)
+    expect(r.sinComparar).toBe(2)
+    // Otra moneda se cuenta aparte: una propiedad en pesos pierde casi todo (los portales publican en dólares) y la
+    // pantalla tiene que decir por qué.
+    expect(r.otraMoneda).toBe(1)
   })
   it('si la nuestra no tiene precio o m², no filtra nada (y lo dice con valorM2Nuestro null)', () => {
     const avisos = [aviso({ precio: 900000 }), aviso({})]
-    expect(filtroMasBaratas({ ...ref, precio: null }, avisos)).toEqual({ avisos, valorM2Nuestro: null, descartadasPorPrecio: 0, sinComparar: 0 })
+    expect(filtroMasBaratas({ ...ref, precio: null }, avisos)).toEqual({ avisos, valorM2Nuestro: null, descartadasPorPrecio: 0, sinComparar: 0, otraMoneda: 0 })
     expect(filtroMasBaratas({ ...ref, m2: null }, avisos).avisos).toHaveLength(2)
   })
   it('ordenarCandidatas ya devuelve solo las más baratas y cada una con su valor del m²', () => {
     const r = ordenarCandidatas(ref, [aviso({ direccion: 'Cara 1', precio: 300000 }), aviso({ direccion: 'Barata 1', precio: 180000 })])
     expect(r.map(c => c.direccion)).toEqual(['Barata 1'])
     expect(r[0].valorM2).toBe(1800)
+  })
+})
+
+describe('deduplicarAvisos (la lista y el conteo de descartadas usan la MISMA deduplicación)', () => {
+  it('un aviso repetido entre portales (misma dirección y precio) cuenta una vez; nuestra propiedad, ninguna', async () => {
+    const { deduplicarAvisos } = await import('./puntaje')
+    const base = { titulo: null, moneda: 'USD' as const, m2: 100, ambientes: 3, dormitorios: 2, banos: 1, cocheras: null, antiguedad: 10, foto: null, vistas: null, inmobiliaria: null }
+    const r = deduplicarAvisos('Roque Pérez 3059', [
+      { ...base, portal: 'argenprop', url: 'https://a/1', direccion: 'Quesada 3250', precio: 300000 },
+      { ...base, portal: 'mercadolibre', url: 'https://m/1', direccion: 'Quesada 3250, Coghlan', precio: 300000 },
+      { ...base, portal: 'argenprop', url: 'https://a/2', direccion: 'Roque Pérez 3059', precio: 200000 },
+    ])
+    expect(r.map(a => a.url)).toEqual(['https://a/1'])
   })
 })

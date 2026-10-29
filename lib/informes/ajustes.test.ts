@@ -51,6 +51,8 @@ describe('aplicarAjustes (lo cargado a mano gana sobre lo que trajo la plataform
   it('instagram: los totales cargados a mano reemplazan a los reels (lo que no se cargó, sale de la suma automática)', () => {
     const f = aplicarAjustes(fuentes, { instagram: { reproducciones: 1000 } })
     expect(f.instagram?.datos?.reels).toEqual([{ permalink: null, publicadoEn: null, reproducciones: 1000, alcance: 120, meGusta: 8, comentarios: 3, guardados: 1, compartidos: 0 }])
+    // Los textos no pueden decir "1 reel" si había 2: la cantidad real viaja aparte.
+    expect(f.instagram?.datos?.cantidadReels).toBe(2)
   })
 
   it('un ajuste vacío (todos los campos borrados) no cambia nada: es "volver al automático"', () => {
@@ -64,9 +66,11 @@ describe('hayAjustes y textosDesactualizados', () => {
     expect(hayAjustes({ visitas: {} }, 'visitas')).toBe(false)
     expect(hayAjustes(undefined, 'meta')).toBe(false)
   })
-  it('avisa "Volver a escribir" solo si se corrigió DESPUÉS de que la plataforma escribió los textos', () => {
-    expect(textosDesactualizados({ ajustesEn: '2026-10-29T12:00:00Z', redaccion: { generadoEn: '2026-10-29T11:00:00Z', original: {}, revisar: [] } })).toBe(true)
-    expect(textosDesactualizados({ ajustesEn: '2026-10-29T10:00:00Z', redaccion: { generadoEn: '2026-10-29T11:00:00Z', original: {}, revisar: [] } })).toBe(false)
+  it('avisa "Volver a escribir" si hay textos escritos y una corrección posterior (al escribir, el servidor borra la marca)', () => {
+    const redaccion = { generadoEn: '2026-10-29T11:00:00Z', original: {}, revisar: [] }
+    // No compara horas: el reloj del navegador y el del servidor pueden no coincidir.
+    expect(textosDesactualizados({ ajustesEn: '2026-10-29T10:00:00Z', redaccion })).toBe(true)
+    expect(textosDesactualizados({ redaccion })).toBe(false)
     expect(textosDesactualizados({ ajustesEn: '2026-10-29T12:00:00Z' })).toBe(false)
   })
 })

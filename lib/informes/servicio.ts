@@ -15,8 +15,7 @@ import { respuestaOpenAI } from '@/lib/ai/openai-responses'
 import { scrapeProperty } from '@/lib/scraper'
 import { urlBusquedaArgenprop, urlBusquedaMercadoLibre } from './competencia/busqueda'
 import { esLinkDelPortal, parsearListadoArgenprop, parsearListadoMercadoLibre } from './competencia/listados'
-import { filtroMasBaratas, ordenarCandidatas, type Candidata, type DetalleCandidata, type FiltroMasBaratas, type Referencia } from './competencia/puntaje'
-import { mismaDireccion } from './aviso-ml'
+import { deduplicarAvisos, filtroMasBaratas, ordenarCandidatas, type Candidata, type DetalleCandidata, type FiltroMasBaratas, type Referencia } from './competencia/puntaje'
 import { traerListado } from './competencia/traer'
 import { FUENTES, type Capturas, type FuenteGuardada, type Fuentes, type Informe, type NombreCaptura, type NombreFuente, type PropiedadDelInforme, type BusquedaPortal } from './tipos'
 
@@ -101,7 +100,10 @@ export async function escribirTextos(i: Informe, ahora: Date, forzar: boolean): 
   if (!fresco) throw new ErrorInforme(404, 'No encontramos el informe')
   exigirBorrador(fresco)
   const textos = combinarTextos({ actuales: fresco.manual.textos ?? {}, original: fresco.manual.redaccion?.original ?? {}, nuevos: v.textos, forzar })
-  const manual = { ...fresco.manual, textos, redaccion: { generadoEn: ahora.toISOString(), original: v.textos, revisar: v.revisar } }
+  // Los textos nuevos ya usan las correcciones a mano: se borra la marca de "datos corregidos después".
+  const { ajustesEn: _corregidoAntes, ...sinMarca } = fresco.manual
+  void _corregidoAntes
+  const manual = { ...sinMarca, textos, redaccion: { generadoEn: ahora.toISOString(), original: v.textos, revisar: v.revisar } }
   if (!(await datos.guardarCambios(i.id, { manual }))) throw new ErrorInforme(409, 'El informe ya está listo')
   return { ...fresco, manual }
 }
@@ -195,8 +197,9 @@ export function candidatasOrdenadas(i: Informe, p: PropiedadDelInforme): Candida
 /** Lo que la pantalla dice arriba de la lista: con qué valor del m² se filtró y cuántas quedaron afuera. */
 export function filtroDeCompetencia(i: Informe, p: PropiedadDelInforme): Omit<FiltroMasBaratas, 'avisos'> & { moneda: string | null } {
   const ref = referenciaDe(p)
-  const f = filtroMasBaratas(ref, avisosDe(i).filter(a => !mismaDireccion(ref.direccion, a.direccion)))
-  return { valorM2Nuestro: f.valorM2Nuestro, descartadasPorPrecio: f.descartadasPorPrecio, sinComparar: f.sinComparar, moneda: ref.moneda ?? null }
+  // La MISMA deduplicación que la lista: un aviso repetido entre portales no cuenta dos veces en "descartadas".
+  const f = filtroMasBaratas(ref, deduplicarAvisos(ref.direccion, avisosDe(i)))
+  return { valorM2Nuestro: f.valorM2Nuestro, descartadasPorPrecio: f.descartadasPorPrecio, sinComparar: f.sinComparar, otraMoneda: f.otraMoneda, moneda: ref.moneda ?? null }
 }
 
 // ─── Capturas ────────────────────────────────────────────────────────────────

@@ -82,7 +82,11 @@ export interface ReelInstagram {
 }
 
 /** Instagram da las métricas del reel ACUMULADAS desde su publicación, no por período: se rotula. */
-export interface DatosInstagram { reels: ReelInstagram[] }
+export interface DatosInstagram {
+  reels: ReelInstagram[]
+  /** Cuántos reels hay de verdad cuando `reels` es un total cargado a mano (si no, `reels.length`). */
+  cantidadReels?: number
+}
 
 export interface DatosPorFuente {
   consultas: DatosConsultas

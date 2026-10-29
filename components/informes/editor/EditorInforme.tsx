@@ -339,6 +339,8 @@ export function EditorInforme({ informeId }: { informeId: string }) {
       delete ajustes[fuente]
       return { ...x, ajustes, ajustesEn: new Date().toISOString() }
     })
+    // Los campos guardan lo tipeado en su estado: se re-montan para mostrar lo automático.
+    setVersionCampos(v => v + 1)
   }
 
   async function guardarCompetidoras(lista: Competidora[]) {
@@ -459,7 +461,7 @@ export function EditorInforme({ informeId }: { informeId: string }) {
           {FUENTES.map(n => (
             <FilaFuente key={n} nombre={n} vista={vista} trayendo={trayendo === n} deshabilitado={listo || trayendo !== null} onReintentar={() => reintentar(n)}
               ajustes={m.ajustes} bloqueado={bloqueado} onAjustar={(campo, v) => ajustar(n, campo, v)} onAutomatico={() => volverAlAutomatico(n)}
-              onPendiente={onPendiente} />
+              onPendiente={onPendiente} version={versionCampos} />
           ))}
         </ul>
         <div className="rounded-lg bg-muted/50 p-3 text-sm">
@@ -660,12 +662,14 @@ function Volver({ propertyId }: { propertyId?: string }) {
   )
 }
 
-function FilaFuente({ nombre, vista, trayendo, deshabilitado, onReintentar, ajustes, bloqueado, onAjustar, onAutomatico, onPendiente }: {
+function FilaFuente({ nombre, vista, trayendo, deshabilitado, onReintentar, ajustes, bloqueado, onAjustar, onAutomatico, onPendiente, version }: {
   nombre: NombreFuente; vista: VistaInforme; trayendo: boolean; deshabilitado: boolean; onReintentar: () => void
   ajustes: Ajustes | undefined; bloqueado: boolean
   onAjustar: (campo: string, valor: number | boolean | string | null | undefined) => void
   onAutomatico: () => void
   onPendiente: AvisarPendiente
+  /** Sube al volver al automático o al rechazarse un guardado: los campos se re-montan con el valor vigente. */
+  version: number
 }) {
   const [abierto, setAbierto] = useState(false)
   const f = vista.informe.fuentes[nombre]
@@ -697,7 +701,7 @@ function FilaFuente({ nombre, vista, trayendo, deshabilitado, onReintentar, ajus
       {abierto ? (
         <div className="space-y-3 rounded-md bg-muted/40 p-3">
           <p className="text-xs text-muted-foreground">Lo que cargues acá vale en todo el informe (resumen, textos y PDF). Un campo vacío usa lo que trae la plataforma.</p>
-          <AjusteDeFuente nombre={nombre} fuentes={vista.informe.fuentes} ajustes={ajustes} deshabilitado={bloqueado}
+          <AjusteDeFuente key={`${nombre}-${version}`} nombre={nombre} fuentes={vista.informe.fuentes} ajustes={ajustes} deshabilitado={bloqueado}
             onCambiar={onAjustar} onPendiente={onPendiente} />
           {aMano ? (
             <Button type="button" variant="outline" size="sm" className="min-h-11" disabled={bloqueado} onClick={onAutomatico}>
