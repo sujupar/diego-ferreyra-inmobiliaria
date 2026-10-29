@@ -44,6 +44,8 @@ export interface Referencia {
   antiguedad: number | null
   disposicion?: Disposicion | null
   estado?: Estado | null
+  /** Sin moneda no se puede comparar el valor del m² (y no se filtra). */
+  moneda?: 'USD' | 'ARS' | null
 }
 
 export interface Candidata extends AvisoDeListado {
@@ -55,9 +57,43 @@ export interface Candidata extends AvisoDeListado {
   publicadoHace: string | null
   /** Ya se abrió el aviso para leer disposición y estado. */
   abierta: boolean
+  /** Precio ÷ m², redondeado; null si falta alguno. */
+  valorM2: number | null
 }
 
 export const MAX_CANDIDATAS = 12
+
+const valorM2 = (precio: number | null, m2: number | null) => (precio && m2 && m2 > 0 ? Math.round(precio / m2) : null)
+
+export interface FiltroMasBaratas {
+  avisos: AvisoDeListado[]
+  /** null = la nuestra no tiene precio, m² o moneda: no se filtró. */
+  valorM2Nuestro: number | null
+  descartadasPorPrecio: number
+  /** Sin precio o sin m²: no se pueden comparar. */
+  sinComparar: number
+  /** Publicadas en otra moneda: tampoco se comparan (una propiedad en pesos pierde casi todo: se dice por qué). */
+  otraMoneda: number
+}
+
+/**
+ * Pedido del dueño (2026-10-29): las competidoras del informe valen MENOS por m² que la nuestra (estrictamente
+ * menos). Se compara en la misma moneda; lo que no se puede comparar queda afuera. Si la nuestra no tiene precio o
+ * m², no se puede filtrar y la lista va entera (la pantalla lo avisa).
+ */
+export function filtroMasBaratas(ref: Referencia, avisos: AvisoDeListado[]): FiltroMasBaratas {
+  const nuestro = ref.moneda ? valorM2(ref.precio, ref.m2) : null
+  if (nuestro === null) return { avisos, valorM2Nuestro: null, descartadasPorPrecio: 0, sinComparar: 0, otraMoneda: 0 }
+  const r: FiltroMasBaratas = { avisos: [], valorM2Nuestro: nuestro, descartadasPorPrecio: 0, sinComparar: 0, otraMoneda: 0 }
+  for (const a of avisos) {
+    const suyo = valorM2(a.precio, a.m2)
+    if (suyo === null) r.sinComparar++
+    else if (a.moneda !== ref.moneda) r.otraMoneda++
+    else if (suyo >= nuestro) r.descartadasPorPrecio++
+    else r.avisos.push(a)
+  }
+  return r
+}
 
 const cerca = (a: number | null, b: number | null, tolerancia: number) => a !== null && b !== null && b > 0 && Math.abs(a - b) / b <= tolerancia
 
@@ -72,6 +108,7 @@ function puntuar(ref: Referencia, a: AvisoDeListado, d: DetalleCandidata | undef
     orientacion: d?.orientacion ?? null,
     publicadoHace: d?.publicadoHace ?? null,
     abierta: !!d && !d.error,
+    valorM2: valorM2(a.precio, a.m2),
     puntaje: 0,
     porque: [],
   }
@@ -93,13 +130,19 @@ function puntuar(ref: Referencia, a: AvisoDeListado, d: DetalleCandidata | undef
   return c
 }
 
-/** Nuestra propiedad afuera, un aviso repetido entre portales (misma dirección y precio) una sola vez, tope 12. */
-export function ordenarCandidatas(ref: Referencia, avisos: AvisoDeListado[], detalles: Record<string, DetalleCandidata> = {}): Candidata[] {
+/** Nuestra propiedad afuera y un aviso repetido entre portales (misma dirección y precio) una sola vez. */
+export function deduplicarAvisos(nuestraDireccion: string, avisos: AvisoDeListado[]): AvisoDeListado[] {
   const unicas: AvisoDeListado[] = []
   for (const a of avisos) {
-    if (mismaDireccion(ref.direccion, a.direccion)) continue
+    if (mismaDireccion(nuestraDireccion, a.direccion)) continue
     if (unicas.some(u => u.url === a.url || (u.precio === a.precio && mismaDireccion(u.direccion, a.direccion)))) continue
     unicas.push(a)
   }
+  return unicas
+}
+
+/** Deduplicadas, solo las más baratas por m², ordenadas por parecido, tope 12. */
+export function ordenarCandidatas(ref: Referencia, avisos: AvisoDeListado[], detalles: Record<string, DetalleCandidata> = {}): Candidata[] {
+  const unicas = filtroMasBaratas(ref, deduplicarAvisos(ref.direccion, avisos)).avisos
   return unicas.map(a => puntuar(ref, a, detalles[a.url])).sort((x, y) => y.puntaje - x.puntaje).slice(0, MAX_CANDIDATAS)
 }

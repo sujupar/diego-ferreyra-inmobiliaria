@@ -62,5 +62,10 @@ export function mezclarTrasEscribir(e: { local: Manual; confirmadoAntes: Manual;
   const manual: Manual = { ...e.local, textos }
   if (e.servidor.redaccion) manual.redaccion = e.servidor.redaccion
   else delete manual.redaccion
+  // La marca de "datos corregidos después de escribir": el servidor la borró. Solo queda si se corrigió en el medio.
+  if (e.local.ajustesEn === e.confirmadoAntes.ajustesEn) {
+    if (e.servidor.ajustesEn) manual.ajustesEn = e.servidor.ajustesEn
+    else delete manual.ajustesEn
+  }
   return { manual, hayQueMandar: !igualesProfundo(manual, e.servidor) }
 }

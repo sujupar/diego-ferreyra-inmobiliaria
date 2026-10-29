@@ -37,6 +37,16 @@ const manual = z.object({
     }).partial().strict(),
     revisar: z.array(z.enum(['resumenMetricas', 'accionesRealizadas', 'accionesARealizar', 'resumenConsultas', 'analisisFinal'])).max(5),
   }).strict(),
+  // Correcciones a mano de lo automático (lib/informes/ajustes.ts). Montos en la moneda de la campaña.
+  ajustes: z.object({
+    consultas: z.object({ zonaprop: conteo, argenprop: conteo, mercadolibre: conteo, redes: conteo, otros: conteo }).partial().strict(),
+    visitas: z.object({ realizadas: conteo }).partial().strict(),
+    reserva: z.object({ reservada: z.boolean(), fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable() }).partial().strict(),
+    mercadolibre: z.object({ visitas: conteo, interesados: conteo, preguntas: conteo, whatsapp: conteo, llamadas: conteo, vistasTelefono: conteo }).partial().strict(),
+    meta: z.object({ alcance: conteo, impresiones: conteo, resultados: conteo, gasto: conteo }).partial().strict(),
+    instagram: z.object({ reproducciones: conteo, alcance: conteo, meGusta: conteo, comentarios: conteo }).partial().strict(),
+  }).partial().strict(),
+  ajustesEn: z.string().max(40),
 }).partial().strict()
 
 const numeroONull = z.number().min(0).max(TOPES_COMPETIDORA.numero).nullable().optional()

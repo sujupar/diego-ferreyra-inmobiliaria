@@ -15,7 +15,7 @@ import { respuestaOpenAI } from '@/lib/ai/openai-responses'
 import { scrapeProperty } from '@/lib/scraper'
 import { urlBusquedaArgenprop, urlBusquedaMercadoLibre } from './competencia/busqueda'
 import { esLinkDelPortal, parsearListadoArgenprop, parsearListadoMercadoLibre } from './competencia/listados'
-import { ordenarCandidatas, type Candidata, type DetalleCandidata } from './competencia/puntaje'
+import { deduplicarAvisos, filtroMasBaratas, ordenarCandidatas, type Candidata, type DetalleCandidata, type FiltroMasBaratas, type Referencia } from './competencia/puntaje'
 import { traerListado } from './competencia/traer'
 import { FUENTES, type Capturas, type FuenteGuardada, type Fuentes, type Informe, type NombreCaptura, type NombreFuente, type PropiedadDelInforme, type BusquedaPortal } from './tipos'
 
@@ -100,7 +100,10 @@ export async function escribirTextos(i: Informe, ahora: Date, forzar: boolean): 
   if (!fresco) throw new ErrorInforme(404, 'No encontramos el informe')
   exigirBorrador(fresco)
   const textos = combinarTextos({ actuales: fresco.manual.textos ?? {}, original: fresco.manual.redaccion?.original ?? {}, nuevos: v.textos, forzar })
-  const manual = { ...fresco.manual, textos, redaccion: { generadoEn: ahora.toISOString(), original: v.textos, revisar: v.revisar } }
+  // Los textos nuevos ya usan las correcciones a mano: se borra la marca de "datos corregidos después".
+  const { ajustesEn: _corregidoAntes, ...sinMarca } = fresco.manual
+  void _corregidoAntes
+  const manual = { ...sinMarca, textos, redaccion: { generadoEn: ahora.toISOString(), original: v.textos, revisar: v.revisar } }
   if (!(await datos.guardarCambios(i.id, { manual }))) throw new ErrorInforme(409, 'El informe ya está listo')
   return { ...fresco, manual }
 }
@@ -176,12 +179,27 @@ export async function abrirCandidata(i: Informe, url: string): Promise<DetalleCa
 }
 
 /** Las candidatas ordenadas por parecido a la propiedad (lo que muestra la pantalla). */
-export function candidatasOrdenadas(i: Informe, p: PropiedadDelInforme): Candidata[] {
-  const avisos = [...(i.candidatas.argenprop?.avisos ?? []), ...(i.candidatas.mercadolibre?.avisos ?? [])]
-  return ordenarCandidatas({
+function referenciaDe(p: PropiedadDelInforme): Referencia {
+  return {
     direccion: p.direccion, ambientes: p.ambientes ?? null, m2: p.m2 ?? null, precio: p.precio, antiguedad: p.antiguedad ?? null,
     disposicion: p.disposicion ?? null, estado: p.estadoConservacion ?? null,
-  }, avisos, i.candidatas.detalles)
+    moneda: p.moneda === 'USD' || p.moneda === 'ARS' ? p.moneda : null,
+  }
+}
+
+const avisosDe = (i: Informe) => [...(i.candidatas.argenprop?.avisos ?? []), ...(i.candidatas.mercadolibre?.avisos ?? [])]
+
+/** Solo las que valen menos por m² que la nuestra (`filtroMasBaratas`), ordenadas por parecido. */
+export function candidatasOrdenadas(i: Informe, p: PropiedadDelInforme): Candidata[] {
+  return ordenarCandidatas(referenciaDe(p), avisosDe(i), i.candidatas.detalles)
+}
+
+/** Lo que la pantalla dice arriba de la lista: con qué valor del m² se filtró y cuántas quedaron afuera. */
+export function filtroDeCompetencia(i: Informe, p: PropiedadDelInforme): Omit<FiltroMasBaratas, 'avisos'> & { moneda: string | null } {
+  const ref = referenciaDe(p)
+  // La MISMA deduplicación que la lista: un aviso repetido entre portales no cuenta dos veces en "descartadas".
+  const f = filtroMasBaratas(ref, deduplicarAvisos(ref.direccion, avisosDe(i)))
+  return { valorM2Nuestro: f.valorM2Nuestro, descartadasPorPrecio: f.descartadasPorPrecio, sinComparar: f.sinComparar, otraMoneda: f.otraMoneda, moneda: ref.moneda ?? null }
 }
 
 // ─── Capturas ────────────────────────────────────────────────────────────────
@@ -277,6 +295,7 @@ export interface VistaInforme {
   capturasUrl: Partial<Record<NombreCaptura, string>>
   pdfUrl: string | null
   candidatas: Candidata[]
+  filtroCompetencia: ReturnType<typeof filtroDeCompetencia>
 }
 
 export async function vistaDelInforme(i: Informe): Promise<VistaInforme> {
@@ -291,5 +310,6 @@ export async function vistaDelInforme(i: Informe): Promise<VistaInforme> {
   return {
     informe: i, propiedad, resumen: resumenDeMetricas(i.fuentes, i.manual), paginas: paginasDelInforme(i),
     faltantes: faltantes(i), capturasUrl, pdfUrl, candidatas: candidatasOrdenadas(i, propiedad),
+    filtroCompetencia: filtroDeCompetencia(i, propiedad),
   }
 }

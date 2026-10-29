@@ -69,3 +69,18 @@ describe('ESPERA_AL_TIPEAR_MS', () => {
     expect(ESPERA_AL_TIPEAR_MS).toBeLessThanOrEqual(2_000)
   })
 })
+
+describe('mezclarTrasEscribir y la marca de "datos corregidos"', () => {
+  it('la marca que ya estaba antes de escribir no vuelve (el servidor la borró al escribir los textos)', () => {
+    const antes: Manual = { ajustesEn: 'x', ajustes: { visitas: { realizadas: 3 } } }
+    const servidor: Manual = { ajustes: { visitas: { realizadas: 3 } }, textos: { analisisFinal: 'nuevo' } }
+    expect(mezclarTrasEscribir({ local: antes, confirmadoAntes: antes, servidor }).manual.ajustesEn).toBeUndefined()
+  })
+  it('una corrección hecha MIENTRAS escribía sí queda marcada', () => {
+    const antes: Manual = {}
+    const local: Manual = { ajustesEn: 'y', ajustes: { visitas: { realizadas: 3 } } }
+    const r = mezclarTrasEscribir({ local, confirmadoAntes: antes, servidor: { textos: { analisisFinal: 'nuevo' } } })
+    expect(r.manual.ajustesEn).toBe('y')
+    expect(r.manual.ajustes).toEqual({ visitas: { realizadas: 3 } })
+  })
+})

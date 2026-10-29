@@ -8,7 +8,7 @@ import { valorDelM2 } from '@/lib/informes/resumen'
 import { sanearCambios, TOPES_COMPETIDORA } from '@/lib/informes/sanear'
 import type { Competidora } from '@/lib/informes/tipos'
 import { buscarCompetidora } from './api'
-import { Candidatas } from './Candidatas'
+import { Candidatas, type FiltroDeCompetencia } from './Candidatas'
 import { competidoraDesdeCandidata } from '@/lib/informes/editor'
 import type { Candidata } from '@/lib/informes/competencia/puntaje'
 import type { BusquedaPortal } from '@/lib/informes/tipos'
@@ -34,6 +34,7 @@ function esHttps(v: string): boolean {
  */
 export interface BusquedaDeCompetencia {
   candidatas: Candidata[]
+  filtro?: FiltroDeCompetencia
   argenprop: BusquedaPortal | undefined
   mercadolibre: BusquedaPortal | undefined
   progreso: string | null
@@ -106,7 +107,7 @@ export function Competidoras({ iniciales, onGuardar, deshabilitado, busqueda, on
       ) : null}
       {lista.length ? <p className="text-sm font-medium">Elegidas para el informe ({lista.length} de {MAX_COMPETIDORAS})</p> : null}
       {lista.map((c, i) => (
-        <FichaCompetidora key={c.url} indice={i} c={c} deshabilitado={deshabilitado} onPendiente={onPendiente}
+        <FichaCompetidora key={c.url} indice={i} c={c} deshabilitado={deshabilitado} onPendiente={onPendiente} filtro={busqueda?.filtro}
           onCambiar={cambios => actualizar(i, cambios)}
           onQuitar={() => void cambiar(lista.filter((_, j) => j !== i))} />
       ))}
@@ -139,10 +140,17 @@ export function Competidoras({ iniciales, onGuardar, deshabilitado, busqueda, on
   )
 }
 
+/** Elegida a mano y más cara por m² que la nuestra, en la misma moneda (las candidatas de la plataforma ya vienen filtradas). */
+export function masCara(c: Competidora, f: FiltroDeCompetencia | undefined): boolean {
+  return !!f?.valorM2Nuestro && c.valorM2 !== null && c.moneda === f.moneda && c.valorM2 >= f.valorM2Nuestro
+}
+
 type CampoNumerico = 'precio' | 'm2' | 'valorM2' | 'ambientes' | 'dormitorios' | 'banos' | 'cocheras' | 'antiguedad' | 'visualizaciones'
 
-function FichaCompetidora({ indice, c, onCambiar, onQuitar, deshabilitado, onPendiente }: {
+function FichaCompetidora({ indice, c, onCambiar, onQuitar, deshabilitado, onPendiente, filtro }: {
   indice: number
+  /** Para marcar una elegida a mano que vale más por m² que la nuestra (no se filtra: la eligió una persona). */
+  filtro?: FiltroDeCompetencia
   onPendiente?: AvisarPendiente
   c: Competidora
   onCambiar: (cambios: Partial<Competidora>) => void
@@ -184,6 +192,11 @@ function FichaCompetidora({ indice, c, onCambiar, onQuitar, deshabilitado, onPen
         </div>
         {numero('m2', 'Superficie', 'm²')}
         {numero('valorM2', 'Valor del m²')}
+        {masCara(c, filtro) ? (
+          <p className="text-xs font-medium text-orange-700 sm:col-span-2">
+            Vale más por m² que la nuestra ({c.moneda} {c.valorM2?.toLocaleString('es-AR')} contra {filtro?.moneda} {filtro?.valorM2Nuestro?.toLocaleString('es-AR')}).
+          </p>
+        ) : null}
         {numero('ambientes', 'Ambientes')}
         {numero('dormitorios', 'Dormitorios')}
         {numero('banos', 'Baños')}

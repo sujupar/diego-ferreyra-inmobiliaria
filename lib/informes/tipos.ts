@@ -20,6 +20,8 @@ export interface FuenteGuardada<T> {
   actualizadoEn: string | null
   datos: T | null
   error: string | null
+  /** Tiene datos cargados a mano (`manual.ajustes`). Solo en memoria: lo pone `aplicarAjustes`, nunca va a la base. */
+  aMano?: boolean
 }
 
 export interface DatosConsultas {
@@ -80,7 +82,11 @@ export interface ReelInstagram {
 }
 
 /** Instagram da las métricas del reel ACUMULADAS desde su publicación, no por período: se rotula. */
-export interface DatosInstagram { reels: ReelInstagram[] }
+export interface DatosInstagram {
+  reels: ReelInstagram[]
+  /** Cuántos reels hay de verdad cuando `reels` es un total cargado a mano (si no, `reels.length`). */
+  cantidadReels?: number
+}
 
 export interface DatosPorFuente {
   consultas: DatosConsultas
@@ -120,6 +126,19 @@ export interface Redaccion {
   revisar: Array<keyof Textos>
 }
 
+/**
+ * Correcciones a mano de lo que trajo la plataforma (pedido del dueño, 2026-10-29): un dato que llegó en cero, sin
+ * datos o con error se puede cargar a mano. Campo vacío = se usa lo automático. Las aplica `aplicarAjustes`.
+ */
+export interface Ajustes {
+  consultas?: Partial<DatosConsultas['porPortal']>
+  visitas?: { realizadas?: number }
+  reserva?: { reservada?: boolean; fecha?: string | null }
+  mercadolibre?: { visitas?: number; interesados?: number; preguntas?: number; whatsapp?: number; llamadas?: number; vistasTelefono?: number }
+  meta?: { alcance?: number; impresiones?: number; resultados?: number; gasto?: number }
+  instagram?: { reproducciones?: number; alcance?: number; meGusta?: number; comentarios?: number }
+}
+
 export interface Manual {
   zonaprop?: ManualZonaprop
   argenprop?: ManualArgenprop
@@ -127,6 +146,9 @@ export interface Manual {
   tiktok?: ManualTiktok
   textos?: Textos
   redaccion?: Redaccion
+  ajustes?: Ajustes
+  /** Cuándo se tocó un ajuste por última vez: si es después de `redaccion.generadoEn`, los textos quedaron viejos. */
+  ajustesEn?: string
 }
 
 export interface Competidora {
@@ -177,7 +199,10 @@ export interface Informe {
   hasta: string
   origen: 'ciclo' | 'manual'
   estado: 'borrador' | 'listo'
+  /** Lo automático CON las correcciones a mano aplicadas: lo que usan el resumen, los textos y el PDF. */
   fuentes: Fuentes
+  /** Lo que trajo la plataforma, sin correcciones (para mostrar "automático: 0" y saber qué falta traer). */
+  fuentesAutomaticas?: Fuentes
   manual: Manual
   competidoras: Competidora[]
   candidatas: CandidatasGuardadas
