@@ -285,6 +285,33 @@ describe('/consultas — bandeja', () => {
     expect(pedidos).toHaveLength(1)
   })
 
+  it('si falla el período nuevo, se ve SOLO el error: no quedan los datos del anterior como si fueran del nuevo', async () => {
+    respuestas = [null]
+    montar()
+    await screen.findByText('Martina Gómez')
+    await userEvent.click(screen.getByRole('button', { name: '30 días' }))
+    expect(await screen.findByText('No pudimos cargar las consultas')).toBeInTheDocument()
+    expect(screen.queryByText('Martina Gómez')).not.toBeInTheDocument()
+    // Volver al período que estaba guardado lo muestra sin pedir.
+    await userEvent.click(screen.getByRole('button', { name: '7 días' }))
+    expect(await screen.findByText('Martina Gómez')).toBeInTheDocument()
+    expect(pedidos).toHaveLength(1)
+  })
+
+  it('si falla la actualización después de agendar, se avisa y "Reintentar" vuelve a pedir', async () => {
+    respuestas = [null]
+    montar()
+    await userEvent.click(await screen.findByRole('button', { name: 'Agendar visita' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Simular agendada' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Volver a consultas' }))
+    expect(await screen.findByText(/No pudimos actualizar la lista/)).toBeInTheDocument()
+    expect(screen.getByText('Martina Gómez')).toBeInTheDocument()
+    respuestas = [periodo([c({ estado: { tipo: 'con_visita', visitaId: 'v-9', scheduled_at: '2026-10-30T20:00:00Z' } })])]
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+    expect(await screen.findByRole('link', { name: 'Visita vie 30 · 17:00' })).toBeInTheDocument()
+    expect(screen.queryByText(/No pudimos actualizar la lista/)).not.toBeInTheDocument()
+  })
+
   it('el aviso de un período cortado lo dice', async () => {
     montar({ inicial: { ...periodo([c()]), truncado: true } })
     expect(await screen.findByText(/Mostrando las 3\.000 consultas más recientes/)).toBeInTheDocument()

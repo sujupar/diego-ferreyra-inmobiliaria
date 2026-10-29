@@ -9,6 +9,7 @@ describe('codigoAgrupable', () => {
     expect(codigoAgrupable('zonaprop', 'DHO6481365')).toBe(true)
     expect(codigoAgrupable('argenprop', '20538824')).toBe(true)
     expect(codigoAgrupable('mercadolibre', 'MLA3853548186')).toBe(true)
+    expect(codigoAgrupable('zonaprop', 'DF-101')).toBe(true)
   })
 
   it('no agrupan: vacío, nulo, un pedazo de enlace, o la REF de ZonaProp (cambia en cada mail)', () => {
@@ -17,6 +18,8 @@ describe('codigoAgrupable', () => {
     expect(codigoAgrupable('zonaprop', 'https')).toBe(false)
     expect(codigoAgrupable('zonaprop', 'HTTP')).toBe(false)
     expect(codigoAgrupable('zonaprop', 'https://www.zonaprop.com.ar/x')).toBe(false)
+    expect(codigoAgrupable('zonaprop', 'www')).toBe(false)
+    expect(codigoAgrupable('zonaprop', 'zonaprop.com')).toBe(false)
     expect(codigoAgrupable('zonaprop', '309710959')).toBe(false)
     expect(codigoAgrupable('zonaprop', '3097109591')).toBe(false)
   })

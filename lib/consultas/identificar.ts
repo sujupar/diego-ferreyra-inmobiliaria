@@ -18,6 +18,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { codigoAgrupable } from './avisos'
 
+/** Los portales con avisos (las landings no tienen código de aviso). */
+const PORTALES_CON_AVISO = ['zonaprop', 'argenprop', 'mercadolibre']
+
 /** Un pedido que no se puede cumplir por el dato, no por la base: la ruta lo devuelve tal cual. */
 export class ConsultaNoConectable extends Error {
   constructor(readonly status: 400 | 404, mensaje: string) {
@@ -47,6 +50,7 @@ export interface DatosAviso {
 export async function identificarAviso(
   sb: SupabaseClient,
   d: DatosAviso,
+  opciones: { soloSinPropiedad?: boolean } = {},
 ): Promise<{ mapId: string; actualizadas: number }> {
   const record = {
     portal: d.portal,
@@ -79,7 +83,7 @@ export async function identificarAviso(
     mapId = String(creado.id)
   }
 
-  const { data: actualizadas, error: errUpd } = await sb
+  let corregir = sb
     .from('portal_inquiries')
     .update({
       assigned_to: d.assignedTo,
@@ -90,7 +94,11 @@ export async function identificarAviso(
     })
     .eq('portal', d.portal)
     .eq('property_external_code', d.externalCode)
-    .select('id')
+  // Desde Consultas se conectan solo las que NO tienen propiedad: una que ya
+  // tenía otra (quizás con una visita agendada ahí) no se mueve sin que nadie lo
+  // decida. La pantalla de identificación de avisos sí corrige todo el aviso.
+  if (opciones.soloSinPropiedad) corregir = corregir.is('property_id', null)
+  const { data: actualizadas, error: errUpd } = await corregir.select('id')
   if (errUpd) fallo('Corregir las consultas del aviso', errUpd)
 
   return { mapId, actualizadas: (actualizadas ?? []).length }
@@ -111,7 +119,7 @@ async function leerPropiedad(sb: SupabaseClient, propertyId: string): Promise<{ 
 }
 
 /**
- * Todas las consultas de un aviso (portal + código) quedan con la propiedad.
+ * Las consultas SIN propiedad de un aviso (portal + código) quedan con la propiedad.
  * Con asesor, se recuerda el aviso (las próximas entran solas). Sin asesor NO:
  * recordar dejaría en el mapa un aviso que rutea a nadie —las consultas futuras
  * llegarían "identificadas" sin que ningún asesor se entere—, y tampoco se le
@@ -126,7 +134,7 @@ async function conectarPorCodigo(
     const r = await identificarAviso(sb, {
       portal: d.portal, externalCode: d.codigo, address: direccion, assignedTo: asesor,
       propertyId: d.propertyId, externalUrl: d.url,
-    })
+    }, { soloSinPropiedad: true })
     return { actualizadas: r.actualizadas, recordado: true }
   }
   const { data, error } = await sb
@@ -134,6 +142,7 @@ async function conectarPorCodigo(
     .update({ property_id: d.propertyId, property_address: direccion, is_unmatched: false })
     .eq('portal', d.portal)
     .eq('property_external_code', d.codigo)
+    .is('property_id', null)
     .select('id')
   if (error) fallo('Conectar las consultas del aviso', error)
   return { actualizadas: (data ?? []).length, recordado: false }
@@ -149,19 +158,30 @@ export async function conectarAviso(
   sb: SupabaseClient,
   d: { portal: string; codigo: string; propertyId: string },
 ): Promise<{ actualizadas: number; recordado: boolean }> {
-  if (!codigoAgrupable(d.portal, d.codigo)) {
+  if (!PORTALES_CON_AVISO.includes(d.portal) || !codigoAgrupable(d.portal, d.codigo)) {
     throw new ConsultaNoConectable(400, 'Ese código no identifica un aviso: conectá esas consultas de a una')
   }
-  // El enlace del aviso, si alguna consulta lo trajo: se guarda en el mapa. Un
-  // aviso tiene a lo sumo unas decenas de consultas: se elige acá.
-  const { data: delAviso, error } = await sb
+  // Un aviso tiene a lo sumo unas decenas de consultas: se leen todas acá.
+  const { data, error } = await sb
     .from('portal_inquiries')
-    .select('property_url')
+    .select('property_id, property_url, received_at')
     .eq('portal', d.portal)
     .eq('property_external_code', d.codigo)
-  if (error) fallo('Leer el enlace del aviso', error)
-  const conUrl = (Array.isArray(delAviso) ? delAviso : []).find((f) => typeof f?.property_url === 'string' && f.property_url)
-  const url = conUrl && typeof conUrl.property_url === 'string' ? conUrl.property_url : null
+  if (error) fallo('Leer las consultas del aviso', error)
+  const delAviso = (Array.isArray(data) ? data : []) as Array<Record<string, unknown>>
+  // Sin consultas pendientes no se escribe nada: un código mal tipeado dejaría
+  // en el mapa una regla de ruteo para un aviso que no existe.
+  if (!delAviso.some((f) => f.property_id === null || f.property_id === undefined)) {
+    throw new ConsultaNoConectable(404, 'Ese aviso ya no tiene consultas sin propiedad')
+  }
+  // El enlace del aviso que trajo la consulta MÁS NUEVA: se guarda en el mapa.
+  let url: string | null = null
+  let cuando = Number.NEGATIVE_INFINITY
+  for (const f of delAviso) {
+    const t = typeof f.received_at === 'string' ? Date.parse(f.received_at) : Number.NaN
+    const ms = Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t
+    if (typeof f.property_url === 'string' && f.property_url && (url === null || ms > cuando)) { url = f.property_url; cuando = ms }
+  }
   return conectarPorCodigo(sb, { ...d, url })
 }
 
@@ -181,7 +201,7 @@ export async function conectarConsulta(
 ): Promise<{ actualizadas: number; recordado: boolean; agrupable: boolean }> {
   const { data: consulta, error: errConsulta } = await sb
     .from('portal_inquiries')
-    .select('id, portal, property_external_code, property_url')
+    .select('id, portal, property_external_code, property_url, property_id')
     .eq('id', d.consultaId)
     .maybeSingle()
   if (errConsulta) fallo('Leer la consulta', errConsulta)
@@ -208,7 +228,8 @@ export async function conectarConsulta(
   // El código va TAL CUAL está guardado: la corrección hacia atrás compara por
   // igualdad exacta, y un código recortado dejaría afuera a esta misma consulta.
   const codigo = typeof consulta.property_external_code === 'string' ? consulta.property_external_code : null
-  if (codigo !== null && codigoAgrupable(portal, codigo)) {
+  const yaTeniaPropiedad = typeof consulta.property_id === 'string' && consulta.property_id !== ''
+  if (codigo !== null && codigoAgrupable(portal, codigo) && !yaTeniaPropiedad) {
     const r = await conectarPorCodigo(sb, {
       portal, codigo, propertyId: d.propertyId,
       url: typeof consulta.property_url === 'string' ? consulta.property_url : null,
@@ -216,6 +237,8 @@ export async function conectarConsulta(
     return { ...r, agrupable: true }
   }
 
+  // Sin código que agrupe, o una consulta que ya tenía propiedad (corrección
+  // puntual): se toca SOLO esa. Corregir una no mueve las demás del aviso.
   const { direccion, asesor } = await leerPropiedad(sb, d.propertyId)
   const { data: actualizadas, error: errUpd } = await sb
     .from('portal_inquiries')

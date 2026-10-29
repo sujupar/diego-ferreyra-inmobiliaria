@@ -211,7 +211,14 @@ export function calcularEstadisticas(
       return { clave: etiqueta, etiqueta }
     }, total).map(sinFilas).sort(porCantidad),
     porAsesor: verTodo
-      ? agrupar(consultas, (c) => ({ clave: c.asesor_nombre ?? 'sin', etiqueta: c.asesor_nombre ?? 'Sin asesor' }), total).map(sinFilas).sort(porCantidad)
+      // Por PERSONA (id), no por nombre: dos asesores con el mismo nombre no se
+      // suman, y uno sin nombre cargado no se mezcla con "Sin asesor". Es el
+      // mismo asesor que usa el filtro de la Bandeja.
+      ? agrupar(consultas, (c) => {
+        const id = c.asesor_propiedad ?? c.assigned_to
+        if (!id) return { clave: 'sin', etiqueta: 'Sin asesor' }
+        return { clave: id, etiqueta: c.asesor_nombre ?? 'Asesor sin nombre' }
+      }, total).map(sinFilas).sort(porCantidad)
       : null,
   }
 }

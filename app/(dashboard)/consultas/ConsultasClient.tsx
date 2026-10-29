@@ -130,55 +130,68 @@ export function ConsultasClient({ yo, asesores, inicial, errorInicial }: {
       ? new Map([[clavePeriodo(leidos.valor.desde, leidos.valor.hasta), errorInicial]])
       : new Map())
   const [ultimoMostrado, setUltimoMostrado] = useState<PeriodoConsultas | null>(inicial)
-  const [reintento, setReintento] = useState(0)
-  const pedidoVigente = useRef(0)
 
   const claveActual = leidos.ok ? clavePeriodo(leidos.valor.desde, leidos.valor.hasta) : null
+  // El período que se está MIRANDO, leído por las respuestas que llegan tarde:
+  // una respuesta de otro período se guarda (si salió bien) pero no toca la vista.
+  const claveVista = useRef(claveActual)
+  useEffect(() => { claveVista.current = claveActual }, [claveActual])
+
   const periodoActual = claveActual ? periodos.get(claveActual) ?? null : null
   // Mientras llega un período nuevo se sigue viendo el ÚLTIMO que se mostró
   // (atenuado), nunca la pantalla vacía. Se ajusta durante el render (patrón de
   // React para estado derivado de props/estado): así, al volver a un período
   // guardado y pedir otro, lo que queda a la vista es el que se estaba mirando.
   if (periodoActual && periodoActual !== ultimoMostrado) setUltimoMostrado(periodoActual)
-  const periodo = periodoActual ?? ultimoMostrado
-  const errorPeriodo = !leidos.ok ? leidos.error
-    : claveActual && !periodoActual ? errores.get(claveActual) ?? null : null
+  const errorDelPeriodo = claveActual ? errores.get(claveActual) ?? null : null
+  // Sin el período pedido y con error: se muestra SOLO el error. Dejar a la
+  // vista los datos del período anterior haría creer que son los del nuevo.
+  const errorPeriodo = !leidos.ok ? leidos.error : !periodoActual ? errorDelPeriodo : null
+  // Con el período a la vista y un error: falló la ACTUALIZACIÓN (después de
+  // agendar o conectar). La lista sigue, pero puede estar vieja: se avisa.
+  const errorActualizar = periodoActual ? errorDelPeriodo : null
+  const periodo = errorPeriodo ? null : periodoActual ?? ultimoMostrado
   const cargandoPeriodo = !!claveActual && !periodoActual && !errorPeriodo
   const qsPeriodo = paramsDelPeriodo(aplicados)
 
   async function pedirPeriodo(clave: string, qs: string): Promise<void> {
-    const n = ++pedidoVigente.current
+    const anotarError = (mensaje: string) => {
+      // Un fallo de un período que ya no se mira no se anota: si la persona
+      // vuelve a él, se pide de nuevo en vez de mostrarle un error viejo.
+      if (clave === claveVista.current) setErrores((m) => new Map(m).set(clave, mensaje))
+    }
     try {
       const r = await leerPeriodo(await fetch(`/api/consultas${qs ? `?${qs}` : ''}`))
       if (r.ok) {
-        // Se guarda aunque ya no sea el vigente: si la persona vuelve a ese período, está.
+        // Se guarda aunque ya no sea el que se mira: si la persona vuelve a ese período, está.
         setPeriodos((m) => new Map(m).set(clave, r.data))
-        if (n === pedidoVigente.current) setUltimoMostrado(r.data)
-        setErrores((m) => { const c = new Map(m); c.delete(clave); return c })
-      } else if (n === pedidoVigente.current) {
-        setErrores((m) => new Map(m).set(clave, r.error))
+        if (clave === claveVista.current) setUltimoMostrado(r.data)
+        setErrores((m) => { if (!m.has(clave)) return m; const c = new Map(m); c.delete(clave); return c })
+      } else {
+        anotarError(r.error)
       }
     } catch {
-      if (n === pedidoVigente.current) setErrores((m) => new Map(m).set(clave, 'No hay conexión. Probá de nuevo.'))
+      anotarError('No hay conexión. Probá de nuevo.')
     }
   }
 
   useEffect(() => {
     if (!claveActual || periodos.has(claveActual) || errores.has(claveActual)) return
     void pedirPeriodo(claveActual, qsPeriodo)
-    // Solo cuando cambia el período (o se pide reintentar); `periodos` y `errores` se leen al momento.
+    // Solo cuando cambia el período; `periodos` y `errores` se leen al momento.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [claveActual, reintento])
+  }, [claveActual])
 
   /**
    * Después de agendar o conectar: se vuelve a pedir el período a la vista, y los
    * demás guardados se descartan (pueden mostrar una consulta sin la visita que
-   * se acaba de agendar). La lista no se vacía mientras tanto.
+   * se acaba de agendar), con sus errores. La lista no se vacía mientras tanto.
    */
   function refrescar() {
     if (!claveActual) return
     const clave = claveActual
     setPeriodos((m) => { const c = new Map<string, PeriodoConsultas>(); const actual = m.get(clave); if (actual) c.set(clave, actual); return c })
+    setErrores(new Map())
     void pedirPeriodo(clave, qsPeriodo)
   }
 
@@ -186,7 +199,7 @@ export function ConsultasClient({ yo, asesores, inicial, errorInicial }: {
     if (!claveActual) return
     const clave = claveActual
     setErrores((m) => { const c = new Map(m); c.delete(clave); return c })
-    setReintento((n) => n + 1)
+    void pedirPeriodo(clave, qsPeriodo)
   }
 
   const [pestana, setPestana] = useState<'bandeja' | 'estadisticas'>('bandeja')
@@ -326,6 +339,13 @@ export function ConsultasClient({ yo, asesores, inicial, errorInicial }: {
         <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/40 p-4 text-sm">
           <span>{errorPeriodo}</span>
           {leidos.ok && <Button type="button" variant="outline" className="min-h-11" onClick={reintentar}>Reintentar</Button>}
+        </div>
+      )}
+
+      {errorActualizar && (
+        <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/40 p-3 text-sm">
+          <span>No pudimos actualizar la lista ({errorActualizar}). Lo que ves puede no incluir el último cambio.</span>
+          <Button type="button" variant="outline" className="min-h-11" onClick={reintentar}>Reintentar</Button>
         </div>
       )}
 

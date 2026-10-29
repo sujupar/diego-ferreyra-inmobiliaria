@@ -80,7 +80,7 @@ describe('AgendarDesdeConsulta', () => {
     fireEvent.click(await screen.findByRole('radio', { name: /Tarija 4000/ }))
     // Sin casilla: la hoja dice que se conecta el aviso entero.
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
-    expect(screen.getByText(/todas las consultas de este aviso/)).toBeInTheDocument()
+    expect(screen.getByText(/todas las consultas sin propiedad de este aviso/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /^Seguir/ }))
     await agendarHoyALas10()
     expect(await screen.findByRole('heading', { name: /Visita agendada/ })).toBeInTheDocument()

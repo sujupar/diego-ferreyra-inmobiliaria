@@ -39,7 +39,7 @@ function esLista(v: Record<string, unknown>): v is Lista {
 }
 
 export function TarjetaAviso({ aviso, onConectar }: { aviso: AvisoSinPropiedad; onConectar: () => void }) {
-  const enlace = enlaceSeguro(aviso.url)
+  const enlace = enlaceSeguro(aviso.url, aviso.portal)
   return (
     <li className="flex flex-col gap-2 rounded-xl border bg-card p-3">
       <div className="flex min-w-0 flex-col gap-0.5">

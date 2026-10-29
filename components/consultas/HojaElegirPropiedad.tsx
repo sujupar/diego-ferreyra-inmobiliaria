@@ -69,7 +69,7 @@ export function HojaElegirPropiedad({ consulta: c, puedeIdentificar, siguienteEs
     }
   }
 
-  const enlaceAviso = enlaceSeguro(c.aviso_url)
+  const enlaceAviso = enlaceSeguro(c.aviso_url, c.portal)
 
   const pie = puedeIdentificar ? (
     <Button type="button" onClick={seguir} disabled={!elegida || enviando}
@@ -108,7 +108,10 @@ export function HojaElegirPropiedad({ consulta: c, puedeIdentificar, siguienteEs
           <BuscadorDePropiedades textosDelAviso={textosDelAviso} elegida={elegida} onElegir={setElegida} />
           <p className="rounded-xl border bg-muted/40 p-3 text-sm">
             {agrupable
-              ? <>Se conectan <strong>todas las consultas de este aviso</strong>{elegida ? <> con <strong>{elegida.address}</strong></> : ''}, y las que lleguen después entran solas.</>
+              ? <>Se conectan <strong>todas las consultas sin propiedad de este aviso</strong>{elegida ? <> con <strong>{elegida.address}</strong></> : ''}
+                {elegida && !elegida.assigned_to
+                  ? '. La propiedad no tiene asesor: las próximas consultas de este aviso no se van a conectar solas.'
+                  : ', y las que lleguen después entran solas.'}</>
               : 'Esta consulta no trae el código del aviso: se conecta solo esta.'}
           </p>
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

@@ -216,3 +216,63 @@ describe('conectarAviso', () => {
     await expect(conectarAviso(sb.cliente, { portal: 'zonaprop', codigo: 'ZP123', propertyId: 'p-sin-asesor' })).rejects.toThrow('boom')
   })
 })
+
+describe('conectar NO pisa consultas que ya tenían otra propiedad (revisión adversarial)', () => {
+  const OTRA = '77777777-7777-4777-8777-777777777777'
+  const conUnaYaConectada = () => base({ portal_inquiries: [
+    consulta({ id: 'c1' }), consulta({ id: 'c2' }),
+    consulta({ id: 'ya', property_id: OTRA, assigned_to: OTRO_ASESOR, property_address: 'Otra 100' }),
+  ] })
+
+  it('conectarAviso: solo las sin propiedad; la que ya tenía otra queda igual', async () => {
+    const sb = conUnaYaConectada()
+    const r = await conectarAviso(sb.cliente, { portal: 'zonaprop', codigo: 'ZP123', propertyId: PROP })
+    expect(r).toEqual({ actualizadas: 2, recordado: true })
+    expect(fila(sb, 'ya')).toMatchObject({ property_id: OTRA, assigned_to: OTRO_ASESOR, property_address: 'Otra 100' })
+  })
+
+  it('conectarAviso sin asesor: tampoco la mueve', async () => {
+    const sb = conUnaYaConectada()
+    await conectarAviso(sb.cliente, { portal: 'zonaprop', codigo: 'ZP123', propertyId: 'p-sin-asesor' })
+    expect(fila(sb, 'ya')).toMatchObject({ property_id: OTRA })
+  })
+
+  it('conectarConsulta desde una consulta del aviso: tampoco la mueve', async () => {
+    const sb = conUnaYaConectada()
+    const r = await conectarConsulta(sb.cliente, { consultaId: 'c1', propertyId: PROP })
+    expect(r.actualizadas).toBe(2)
+    expect(fila(sb, 'ya')).toMatchObject({ property_id: OTRA })
+  })
+
+  it('reconectar la que ya tenía propiedad corrige SOLO esa, no el aviso entero', async () => {
+    const sb = conUnaYaConectada()
+    const r = await conectarConsulta(sb.cliente, { consultaId: 'ya', propertyId: PROP })
+    expect(r).toEqual({ actualizadas: 1, recordado: false, agrupable: false })
+    expect(fila(sb, 'ya')).toMatchObject({ property_id: PROP, assigned_to: ASESOR })
+    expect(fila(sb, 'c1')!.property_id).toBeNull()
+    expect(sb.tablas.portal_property_map).toHaveLength(0)
+  })
+
+  it('conectarAviso de un aviso sin consultas pendientes: 404 y el mapa no se toca', async () => {
+    const sb = base()
+    await expect(conectarAviso(sb.cliente, { portal: 'zonaprop', codigo: 'NO-EXISTE1', propertyId: PROP }))
+      .rejects.toMatchObject({ status: 404 })
+    expect(sb.tablas.portal_property_map).toHaveLength(0)
+  })
+
+  it('conectarAviso con un portal que no tiene avisos (landing, inventado): 400', async () => {
+    const sb = base()
+    for (const portal of ['landing', 'properati']) {
+      await expect(conectarAviso(sb.cliente, { portal, codigo: 'ZP123', propertyId: PROP })).rejects.toMatchObject({ status: 400 })
+    }
+  })
+
+  it('el enlace que se guarda en el mapa es el de la consulta más nueva', async () => {
+    const sb = base({ portal_inquiries: [
+      consulta({ id: 'v', property_url: 'https://www.zonaprop.com.ar/viejo', received_at: '2026-01-01T00:00:00Z' }),
+      consulta({ id: 'n', property_url: 'https://www.zonaprop.com.ar/nuevo', received_at: '2026-10-01T00:00:00Z' }),
+    ] })
+    await conectarAviso(sb.cliente, { portal: 'zonaprop', codigo: 'ZP123', propertyId: PROP })
+    expect(sb.tablas.portal_property_map[0]).toMatchObject({ external_url: 'https://www.zonaprop.com.ar/nuevo' })
+  })
+})

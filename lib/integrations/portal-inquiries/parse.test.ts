@@ -83,6 +83,16 @@ describe('parser ZonaProp', () => {
     })!
     expect(conEnlace.propertyCode).toBe('307527468')
   })
+
+  it('un enlace sin https ("www.…") tampoco es un código', () => {
+    const conWww = parseInquiry({ ...zonapropEmail, subject: '📱 ¡Consultaron tu WhatsApp en el aviso Casa! CÓD:www.zonaprop.com.ar/x - REF:#307527468#' })!
+    expect(conWww.propertyCode).toBe('307527468')
+  })
+
+  it('un código con guion se toma entero, no cortado en el guion', () => {
+    const conGuion = parseInquiry({ ...zonapropEmail, subject: '📩 ¡Recibiste una nueva consulta por el aviso Casa! CÓD:DF-101 - REF:#307527468#' })!
+    expect(conGuion.propertyCode).toBe('DF-101')
+  })
 })
 
 // --- Argenprop (formato real) --------------------------------------------

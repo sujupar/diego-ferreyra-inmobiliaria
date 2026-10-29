@@ -15,7 +15,7 @@ import type { ConsultaEnBandeja } from './tipos'
  * No agrupan:
  *  - vacío;
  *  - un pedazo de enlace: el lector del mail tomó `CÓD:https://…` como código
- *    `https` (5 consultas reales). Recordarlo crearía un "aviso" falso al que
+ *    `https` (5 consultas reales); lo mismo valdría para `www`. Recordarlo crearía un "aviso" falso al que
  *    irían a parar consultas de cualquier propiedad;
  *  - en ZonaProp, un número de 9 o más dígitos: es la REF, que cambia en CADA
  *    mail (cuando el asunto no trae el CÓD, el lector guarda la REF). Los
@@ -24,7 +24,7 @@ import type { ConsultaEnBandeja } from './tipos'
 export function codigoAgrupable(portal: string, codigo: string | null | undefined): boolean {
   const c = codigo?.trim() ?? ''
   if (!c) return false
-  if (/[/:]/.test(c) || /^https?$/i.test(c)) return false
+  if (/[/:.]/.test(c) || /^(https?|www)$/i.test(c)) return false
   if (portal === 'zonaprop' && /^\d{9,}$/.test(c)) return false
   return true
 }

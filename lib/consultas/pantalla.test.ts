@@ -137,12 +137,21 @@ describe('contarFiltrosActivos', () => {
 })
 
 describe('enlaceSeguro', () => {
-  it('solo https', () => {
-    expect(enlaceSeguro('https://www.zonaprop.com.ar/x')).toBe('https://www.zonaprop.com.ar/x')
-    expect(enlaceSeguro('javascript:alert(1)')).toBeNull()
-    expect(enlaceSeguro('http://x.com')).toBeNull()
-    expect(enlaceSeguro(null)).toBeNull()
-    expect(enlaceSeguro('https://')).toBeNull()
+  it('solo https y del dominio exacto del portal (o un subdominio suyo)', () => {
+    expect(enlaceSeguro('https://www.zonaprop.com.ar/x', 'zonaprop')).toBe('https://www.zonaprop.com.ar/x')
+    expect(enlaceSeguro('https://www.argenprop.com/aviso--1', 'argenprop')).toBe('https://www.argenprop.com/aviso--1')
+    expect(enlaceSeguro('https://departamento.mercadolibre.com.ar/MLA-1', 'mercadolibre')).toBe('https://departamento.mercadolibre.com.ar/MLA-1')
+  })
+
+  it('rechaza: otro esquema, otro dominio, un dominio que solo lo CONTIENE, y el portal equivocado', () => {
+    expect(enlaceSeguro('javascript:alert(1)', 'zonaprop')).toBeNull()
+    expect(enlaceSeguro('http://www.zonaprop.com.ar/x', 'zonaprop')).toBeNull()
+    expect(enlaceSeguro('https://mandrillapp.com/track/click/1', 'mercadolibre')).toBeNull()
+    expect(enlaceSeguro('https://zonaprop.com.ar.estafa.com/x', 'zonaprop')).toBeNull()
+    expect(enlaceSeguro('https://falsozonaprop.com.ar/x', 'zonaprop')).toBeNull()
+    expect(enlaceSeguro('https://www.argenprop.com/x', 'zonaprop')).toBeNull()
+    expect(enlaceSeguro('https://www.zonaprop.com.ar/x', 'landing')).toBeNull()
+    expect(enlaceSeguro(null, 'zonaprop')).toBeNull()
   })
 })
 

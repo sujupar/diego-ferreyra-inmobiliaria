@@ -94,7 +94,7 @@ describe('calcularEstadisticas', () => {
 
   it('por mes (hora argentina), por canal (ML = Pregunta) y por asesor; el asesor no ve la de asesor', () => {
     const filas = [
-      c({ id: '1', recibida_at: '2026-10-01T02:00:00Z', canal: 'whatsapp' }), // 30/9 23:00 en Argentina
+      c({ id: '1', recibida_at: '2026-10-01T02:00:00Z', canal: 'whatsapp', asesor_propiedad: 'a1' }), // 30/9 23:00 en Argentina
       c({ id: '2', recibida_at: '2026-10-05T12:00:00Z', portal: 'mercadolibre', asesor_nombre: null }),
     ]
     const e = calcularEstadisticas(filas, { desde: '2026-09-01', hasta: '2026-10-28' }, true)
@@ -102,5 +102,19 @@ describe('calcularEstadisticas', () => {
     expect(e.porCanal.map((f) => f.etiqueta).sort()).toEqual(['Pregunta', 'WhatsApp'])
     expect(e.porAsesor?.map((f) => f.etiqueta).sort()).toEqual(['Lucas', 'Sin asesor'])
     expect(calcularEstadisticas(filas, periodo, false).porAsesor).toBeNull()
+  })
+})
+
+describe('por asesor: por persona, no por nombre', () => {
+  it('dos asesores con el mismo nombre no se suman; uno sin nombre no cae en "Sin asesor"', () => {
+    const e = calcularEstadisticas([
+      c({ id: '1', asesor_propiedad: 'a1', asesor_nombre: 'Lucas' }),
+      c({ id: '2', asesor_propiedad: 'a2', asesor_nombre: 'Lucas' }),
+      c({ id: '3', asesor_propiedad: 'a3', asesor_nombre: null }),
+      c({ id: '4', asesor_propiedad: null, assigned_to: null, asesor_nombre: null }),
+    ], periodo, true)
+    expect(e.porAsesor?.map((f) => [f.clave, f.etiqueta, f.consultas]).sort()).toEqual([
+      ['a1', 'Lucas', 1], ['a2', 'Lucas', 1], ['a3', 'Asesor sin nombre', 1], ['sin', 'Sin asesor', 1],
+    ])
   })
 })
