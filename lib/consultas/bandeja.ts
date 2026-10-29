@@ -23,10 +23,27 @@ function instante(v: string): number {
   return Number.isNaN(ms) ? Number.NEGATIVE_INFINITY : ms
 }
 
+/**
+ * Memoria de `whatsappDe` por texto crudo. `estadoDeConsulta` compara cada
+ * consulta contra TODAS las visitas, y leer un teléfono pasa por libphonenumber
+ * (lento): sin esto, un mes de consultas × visitas son decenas de miles de
+ * lecturas por pedido y la ruta se acerca al techo de tiempo de Netlify. Es solo
+ * un caché de una función determinística: no cambia ningún resultado. Tiene tope
+ * para que un proceso largo no acumule teléfonos sin fin.
+ */
+const MAX_TELEFONOS_EN_MEMORIA = 5000
+const telefonosLeidos = new Map<string, string | null>()
+
 /** El teléfono de WhatsApp (`549…`) o `null` si no sirve para comparar personas. */
 function whatsappDe(crudo: string | null): string | null {
+  const clave = crudo ?? ''
+  const guardado = telefonosLeidos.get(clave)
+  if (guardado !== undefined) return guardado
   const t = leerTelefono(crudo)
-  return t.ok ? t.whatsapp : null
+  const valor = t.ok ? t.whatsapp : null
+  if (telefonosLeidos.size >= MAX_TELEFONOS_EN_MEMORIA) telefonosLeidos.clear()
+  telefonosLeidos.set(clave, valor)
+  return valor
 }
 
 /**

@@ -70,6 +70,19 @@ describe('estadoDeConsulta', () => {
     expect(e.tipo).toBe('visito')
   })
 
+  it('con muchas consultas y visitas responde rápido y sigue encontrando la correcta', () => {
+    const visitas = Array.from({ length: 2000 }, (_, i) =>
+      visita({ id: `v-${i}`, property_id: `p-${i % 50}`, client_phone: `+54911${String(50000000 + i)}` }))
+    const inicio = performance.now()
+    let conVisita = 0
+    for (let i = 0; i < 500; i++) {
+      const c = consulta({ id: `c-${i}`, property_id: `p-${i % 50}`, telefono: `+54911${String(50000000 + i)}` })
+      if (estadoDeConsulta(c, visitas).tipo === 'con_visita') conVisita++
+    }
+    expect(conVisita).toBe(500)
+    expect(performance.now() - inicio).toBeLessThan(3000)
+  })
+
   it('entre varias gana la más reciente', () => {
     const e = estadoDeConsulta(consulta(), [
       visita({ id: 'v-vieja', portal_inquiry_id: 'c-1', status: 'completed', scheduled_at: '2026-10-01T15:00:00Z' }),
