@@ -701,7 +701,7 @@ function FilaFuente({ nombre, vista, trayendo, deshabilitado, onReintentar, ajus
       {abierto ? (
         <div className="space-y-3 rounded-md bg-muted/40 p-3">
           <p className="text-xs text-muted-foreground">Lo que cargues acá vale en todo el informe (resumen, textos y PDF). Un campo vacío usa lo que trae la plataforma.</p>
-          <AjusteDeFuente key={`${nombre}-${version}`} nombre={nombre} fuentes={vista.informe.fuentes} ajustes={ajustes} deshabilitado={bloqueado}
+          <AjusteDeFuente key={`${nombre}-${version}`} nombre={nombre} automaticas={automaticas} ajustes={ajustes} deshabilitado={bloqueado}
             onCambiar={onAjustar} onPendiente={onPendiente} />
           {aMano ? (
             <Button type="button" variant="outline" size="sm" className="min-h-11" disabled={bloqueado} onClick={onAutomatico}>

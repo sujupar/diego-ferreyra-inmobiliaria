@@ -43,15 +43,23 @@ export const CAMPOS_DE_AJUSTE: Record<Exclude<NombreFuente, 'reserva'>, CampoNum
   ],
 }
 
+function valorAjustado(a: Ajustes | undefined, fuente: NombreFuente, campo: string): number | undefined {
+  const v = (a?.[fuente] as Record<string, unknown> | undefined)?.[campo]
+  return typeof v === 'number' ? v : undefined
+}
+
 function sumaReels(f: Fuentes, k: 'reproducciones' | 'alcance' | 'meGusta' | 'comentarios'): number | undefined {
   const reels = ok(f, 'instagram')?.reels
   return reels?.length ? reels.reduce((s, r) => s + r[k], 0) : undefined
 }
 
-export function AjusteDeFuente({ nombre, fuentes, ajustes, deshabilitado, onCambiar, onPendiente }: {
+export function AjusteDeFuente({ nombre, automaticas, ajustes, deshabilitado, onCambiar, onPendiente }: {
   nombre: NombreFuente
-  /** Lo que vale hoy (con correcciones): con eso arrancan los campos. */
-  fuentes: Fuentes
+  /**
+   * Lo que trajo la plataforma. Cada campo arranca con lo corregido si lo hay y si no con esto: se arma con lo que
+   * ya está en memoria, sin esperar la recarga (si no, "Volver al automático" mostraba el número viejo).
+   */
+  automaticas: Fuentes
   ajustes: Ajustes | undefined
   deshabilitado: boolean
   /** Guarda un campo del ajuste de esta fuente (`undefined` = vacío). */
@@ -59,7 +67,7 @@ export function AjusteDeFuente({ nombre, fuentes, ajustes, deshabilitado, onCamb
   onPendiente?: AvisarPendiente
 }) {
   if (nombre === 'reserva') {
-    const r = ok(fuentes, 'reserva')
+    const r = ok(automaticas, 'reserva')
     const reservada = ajustes?.reserva?.reservada ?? r?.reservada ?? false
     const fecha = ajustes?.reserva?.fecha ?? r?.fecha?.slice(0, 10) ?? ''
     return (
@@ -83,7 +91,7 @@ export function AjusteDeFuente({ nombre, fuentes, ajustes, deshabilitado, onCamb
     <div className="grid gap-3 sm:grid-cols-2">
       {CAMPOS_DE_AJUSTE[nombre].map(c => (
         <CampoNumero key={c.campo} id={`ajuste-${nombre}-${c.campo}`} etiqueta={c.etiqueta} deshabilitado={deshabilitado}
-          valor={c.valor(fuentes)} alTipear onPendiente={onPendiente} onGuardar={v => onCambiar(c.campo, v)} />
+          valor={valorAjustado(ajustes, nombre, c.campo) ?? c.valor(automaticas)} alTipear onPendiente={onPendiente} onGuardar={v => onCambiar(c.campo, v)} />
       ))}
     </div>
   )

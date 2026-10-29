@@ -235,9 +235,12 @@ describe('EditorInforme', () => {
       expect(await screen.findByText('Cargado a mano')).toBeInTheDocument()
       expect(screen.getByText(/^Automático:/)).toBeInTheDocument()
       await userEvent.click(screen.getByRole('button', { name: 'Corregir a mano: Visitas y ficha de visitas' }))
+      expect(screen.getByLabelText('Visitas realizadas')).toHaveValue('3')
       await userEvent.click(screen.getByRole('button', { name: /Volver al automático/ }))
       await waitFor(() => expect(api.guardarManual).toHaveBeenCalled())
       expect(api.guardarManual.mock.calls.at(-1)?.[1].ajustes).toEqual({})
+      // El campo muestra lo automático YA (en el navegador real quedaba el 3 hasta recargar).
+      expect(screen.getByLabelText('Visitas realizadas')).toHaveValue('')
     })
 
     it('si se corrigió después de que la plataforma escribió los textos, pide "Volver a escribir"', async () => {
