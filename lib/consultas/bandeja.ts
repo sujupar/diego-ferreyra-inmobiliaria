@@ -3,13 +3,14 @@
  * su botón de agendar, cuántas veces consultó la misma persona, qué entra en la
  * página y cómo se agrupa por día.
  *
- * La ruta trae las filas y las visitas de la base; todo lo que se decide sobre
- * ellas vive acá, sin red ni base, para poder probarlo entero.
+ * El servidor trae las filas y las visitas de la base y decide acá el estado de
+ * cada consulta; la pantalla usa este mismo módulo (vía ./vista.ts) para
+ * filtrar y contar. Sin red ni base, para poder probarlo entero.
  * Módulo puro y seguro para el navegador.
  */
 import { leerTelefono, type TelefonoLeido } from './telefono'
 import type {
-  AccionAgendar, ConsultaEnBandeja, ConsultaFila, ConteoOpcion, EstadoConsulta, RespuestaBandeja, TarjetasBandeja,
+  AccionAgendar, ConsultaEnBandeja, ConsultaFila, ConteoOpcion, EstadoConsulta, TarjetasBandeja, VistaBandeja,
   VisitaDeConsulta,
 } from './tipos'
 import type { FiltrosConsultas } from './filtros'
@@ -129,8 +130,8 @@ function pasaEstado(f: ConsultaEnBandeja, estado: FiltrosConsultas['estado']): b
  */
 export function armarBandeja(
   filas: readonly ConsultaEnBandeja[],
-  f: Pick<FiltrosConsultas, 'estado' | 'telefonoRevisar' | 'pagina'>,
-): Pick<RespuestaBandeja, 'filas' | 'total' | 'tarjetas'> {
+  f: Pick<FiltrosConsultas, 'estado' | 'telefonoRevisar'> & { visibles: number },
+): Pick<VistaBandeja, 'filas' | 'total' | 'tarjetas'> {
   const tarjetas: TarjetasBandeja = { sinVisita: 0, sinPropiedad: 0, telefonoRevisar: 0 }
   for (const fila of filas) {
     if (fila.estado.tipo === 'sin_visita') tarjetas.sinVisita++
@@ -144,8 +145,8 @@ export function armarBandeja(
       if (porFecha !== 0 && !Number.isNaN(porFecha)) return porFecha
       return a.id < b.id ? 1 : a.id > b.id ? -1 : 0
     })
-  const inicio = (Math.max(1, Math.trunc(f.pagina)) - 1) * POR_PAGINA
-  return { filas: filtradas.slice(inicio, inicio + POR_PAGINA), total: filtradas.length, tarjetas }
+  const visibles = Math.max(POR_PAGINA, Math.trunc(f.visibles) || POR_PAGINA)
+  return { filas: filtradas.slice(0, visibles), total: filtradas.length, tarjetas }
 }
 
 type DatosPropiedad = { address: string; neighborhood: string | null }
@@ -218,16 +219,23 @@ export function contarPorPortal(filas: readonly ConsultaFila[], elegido: string 
 /**
  * Los números del selector de propiedad. "Sin propiedad identificada" va
  * PRIMERO: es lo que el equipo tiene que resolver, no una propiedad más.
+ * La dirección sale de la propia consulta (`propiedad`, ya resuelta); la
+ * elegida que no está entre las filas se muestra igual, con lo que se sepa de ella.
  */
 export function contarPorPropiedad(
-  filas: readonly ConsultaFila[],
-  propiedades: ReadonlyMap<string, DatosPropiedad>,
+  filas: readonly ConsultaEnBandeja[],
   elegido: string | null,
+  direccionElegida: string | null = null,
 ): ConteoOpcion[] {
   const n = contar(filas, (f) => f.property_id)
-  if (elegido && elegido !== SIN_PROPIEDAD.valor && !n.has(elegido)) n.set(elegido, 0)
+  const direcciones = new Map<string, string>()
+  for (const f of filas) if (f.property_id && f.propiedad?.address) direcciones.set(f.property_id, f.propiedad.address)
+  if (elegido && elegido !== SIN_PROPIEDAD.valor && !n.has(elegido)) {
+    n.set(elegido, 0)
+    if (direccionElegida) direcciones.set(elegido, direccionElegida)
+  }
   const resto = [...n].map(([valor, cantidad]) => ({
-    valor, etiqueta: propiedades.get(valor)?.address || 'Propiedad sin dirección', n: cantidad,
+    valor, etiqueta: direcciones.get(valor) || 'Propiedad sin dirección', n: cantidad,
   })).sort(porCantidad)
   const sin = filas.filter((f) => f.property_id === null).length
   return sin > 0 || elegido === SIN_PROPIEDAD.valor ? [{ ...SIN_PROPIEDAD, n: sin }, ...resto] : resto

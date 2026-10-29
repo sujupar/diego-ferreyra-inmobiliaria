@@ -5,9 +5,8 @@ import type { ConsultaFila } from '@/lib/consultas/tipos'
 const { estado, datosMock } = vi.hoisted(() => ({
   estado: { role: 'coordinador', id: '11111111-1111-4111-8111-111111111111', activo: true, logueado: true },
   datosMock: {
-    consultasDelPeriodo: vi.fn(),
-    visitasParaConsultas: vi.fn(),
-    propiedadesYAsesores: vi.fn(),
+    leerPeriodo: vi.fn(),
+    MAX_CONSULTAS_PERIODO: 3000,
   },
 }))
 
@@ -39,12 +38,10 @@ function pedir(qs = '') {
 }
 
 beforeEach(() => {
-  Object.values(datosMock).forEach(m => m.mockReset())
+  datosMock.leerPeriodo.mockReset()
   estado.role = 'coordinador'; estado.activo = true; estado.logueado = true
   estado.id = '11111111-1111-4111-8111-111111111111'
-  datosMock.consultasDelPeriodo.mockResolvedValue({ filas: [], truncado: false })
-  datosMock.visitasParaConsultas.mockResolvedValue([])
-  datosMock.propiedadesYAsesores.mockResolvedValue({ propiedades: new Map(), asesores: new Map() })
+  datosMock.leerPeriodo.mockResolvedValue({ filas: [], visitas: [], propiedades: new Map(), asesores: new Map(), truncado: false })
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2099-01-10T15:00:00Z'))
 })
 afterEach(() => { vi.useRealTimers() })
@@ -60,7 +57,7 @@ describe('GET /api/consultas', () => {
   it('abogado: 403 y no toca la base', async () => {
     estado.role = 'abogado'
     expect((await pedir()).status).toBe(403)
-    expect(datosMock.consultasDelPeriodo).not.toHaveBeenCalled()
+    expect(datosMock.leerPeriodo).not.toHaveBeenCalled()
   })
 
   it('rol desconocido: 403', async () => {
@@ -68,33 +65,22 @@ describe('GET /api/consultas', () => {
     expect((await pedir()).status).toBe(403)
   })
 
-  it('asesor con ?asesor=<otro>: alcance propio y el filtro de asesor se ignora', async () => {
+  it('asesor: UNA lectura con alcance propio, aunque pida ?asesor=<otro> o una propiedad ajena', async () => {
     estado.role = 'asesor'; estado.id = ASESOR
-    expect((await pedir(`asesor=${OTRO}`)).status).toBe(200)
-    expect(datosMock.consultasDelPeriodo).toHaveBeenCalledTimes(1)
-    expect(datosMock.consultasDelPeriodo.mock.calls[0][0]).toMatchObject({
-      alcance: { tipo: 'propio', usuarioId: ASESOR }, asesor: null,
-    })
+    expect((await pedir(`asesor=${OTRO}&propiedad=${AJENA}`)).status).toBe(200)
+    expect(datosMock.leerPeriodo).toHaveBeenCalledTimes(1)
+    expect(datosMock.leerPeriodo.mock.calls[0][0].alcance).toEqual({ tipo: 'propio', usuarioId: ASESOR })
   })
 
-  it('asesor con ?propiedad=<ajena>: todas las lecturas van con alcance propio', async () => {
-    estado.role = 'asesor'; estado.id = ASESOR
-    expect((await pedir(`propiedad=${AJENA}`)).status).toBe(200)
-    const llamadas = datosMock.consultasDelPeriodo.mock.calls.map(c => c[0])
-    expect(llamadas.length).toBeGreaterThan(0)
-    for (const f of llamadas) expect(f.alcance).toEqual({ tipo: 'propio', usuarioId: ASESOR })
-    expect(llamadas[0]).toMatchObject({ propiedad: AJENA })
-  })
-
-  it('quien ve todo: alcance todo y el filtro de asesor pasa', async () => {
-    await pedir(`asesor=${OTRO}`)
-    expect(datosMock.consultasDelPeriodo.mock.calls[0][0]).toMatchObject({ alcance: { tipo: 'todo' }, asesor: OTRO })
+  it('quien ve todo: alcance todo', async () => {
+    await pedir()
+    expect(datosMock.leerPeriodo.mock.calls[0][0].alcance).toEqual({ tipo: 'todo' })
   })
 
   it('?periodo=zzz → período por defecto (7 días), no 400', async () => {
     const res = await pedir('periodo=zzz')
     expect(res.status).toBe(200)
-    expect(datosMock.consultasDelPeriodo.mock.calls[0][0]).toMatchObject({
+    expect(datosMock.leerPeriodo.mock.calls[0][0]).toMatchObject({
       desde: '2099-01-04T00:00:00.000-03:00', hasta: '2099-01-10T23:59:59.999999-03:00',
     })
     expect((await res.json()).periodo).toEqual({ desde: '2099-01-04', hasta: '2099-01-10', etiqueta: 'Últimos 7 días' })
@@ -104,91 +90,41 @@ describe('GET /api/consultas', () => {
     const res = await pedir('from=2026-10-05&to=2026-10-01')
     expect(res.status).toBe(400)
     expect(typeof (await res.json()).error).toBe('string')
-    expect(datosMock.consultasDelPeriodo).not.toHaveBeenCalled()
+    expect(datosMock.leerPeriodo).not.toHaveBeenCalled()
   })
 
-  it('la búsqueda llega normalizada a la base', async () => {
-    await pedir('q=%20%20Ana%20%20')
-    expect(datosMock.consultasDelPeriodo.mock.calls[0][0]).toMatchObject({ q: 'Ana' })
-  })
-
-  it('responde la bandeja: porPagina 25, tarjetas, conteos, estado y nombres', async () => {
-    datosMock.consultasDelPeriodo.mockResolvedValue({
+  it('responde el período entero con cada consulta decidida (estado, asesor, propiedad)', async () => {
+    datosMock.leerPeriodo.mockResolvedValue({
       filas: [
         fila({ id: 'a', portal: 'zonaprop' }),
         fila({ id: 'b', portal: 'argenprop', property_id: null, asesor_propiedad: null, telefono: null }),
       ],
-      truncado: false,
-    })
-    datosMock.visitasParaConsultas.mockResolvedValue([
-      { id: 'v1', property_id: PROP, portal_inquiry_id: 'a', lead_id: null, client_phone: null, status: 'scheduled', scheduled_at: '2099-01-12T14:00:00Z' },
-    ])
-    datosMock.propiedadesYAsesores.mockResolvedValue({
+      visitas: [
+        { id: 'v1', property_id: PROP, portal_inquiry_id: 'a', lead_id: null, client_phone: null, status: 'scheduled', scheduled_at: '2099-01-12T14:00:00Z' },
+      ],
       propiedades: new Map([[PROP, { address: 'Doblas 248', neighborhood: 'Caballito' }]]),
       asesores: new Map([[ASESOR, 'Lucas']]),
+      truncado: false,
     })
-    const res = await pedir()
+    const res = await pedir('portal=zonaprop')
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body).toMatchObject({
-      total: 2, pagina: 1, porPagina: 25,
-      tarjetas: { sinVisita: 1, sinPropiedad: 1, telefonoRevisar: 1 },
-      porPortal: [{ valor: 'argenprop', etiqueta: 'Argenprop', n: 1 }, { valor: 'zonaprop', etiqueta: 'ZonaProp', n: 1 }],
-      porPropiedad: [
-        { valor: 'sin', etiqueta: 'Sin propiedad identificada', n: 1 },
-        { valor: PROP, etiqueta: 'Doblas 248', n: 1 },
-      ],
+    // El filtro de portal NO se aplica en el servidor: viaja el período entero.
+    expect(body.consultas).toHaveLength(2)
+    expect(body.truncado).toBe(false)
+    expect(body.consultas.find((f: { id: string }) => f.id === 'a')).toMatchObject({
+      estado: { tipo: 'con_visita', visitaId: 'v1' }, asesor_nombre: 'Lucas', propiedad: { address: 'Doblas 248' },
     })
-    expect(body.truncado).toBeUndefined()
-    const a = body.filas.find((f: { id: string }) => f.id === 'a')
-    expect(a).toMatchObject({ estado: { tipo: 'con_visita', visitaId: 'v1' }, asesor_nombre: 'Lucas', propiedad: { address: 'Doblas 248' } })
-    // Visitas: por los ids de las consultas de portal y las propiedades traídas.
-    expect(datosMock.visitasParaConsultas).toHaveBeenCalledWith([PROP], ['a', 'b'])
-    expect(datosMock.propiedadesYAsesores.mock.calls[0][0]).toEqual([PROP])
-    expect(datosMock.propiedadesYAsesores.mock.calls[0][1]).toEqual([ASESOR])
+    expect(body.consultas.find((f: { id: string }) => f.id === 'b')).toMatchObject({ accion: 'elegir_propiedad' })
   })
 
-  it('sin filtro de portal ni propiedad, una sola lectura de consultas', async () => {
-    await pedir()
-    expect(datosMock.consultasDelPeriodo).toHaveBeenCalledTimes(1)
-  })
-
-  it('con filtro de portal, los conteos de portal salen de una lectura SIN ese filtro', async () => {
-    datosMock.consultasDelPeriodo.mockImplementation(async (f: { portal: string | null }) => ({
-      filas: f.portal ? [fila({ id: 'z', portal: 'zonaprop' })]
-        : [fila({ id: 'z', portal: 'zonaprop' }), fila({ id: 'm', portal: 'mercadolibre' })],
-      truncado: false,
-    }))
-    const body = await (await pedir('portal=zonaprop')).json()
-    expect(datosMock.consultasDelPeriodo).toHaveBeenCalledTimes(2)
-    expect(datosMock.consultasDelPeriodo.mock.calls[1][0]).toMatchObject({ portal: null })
-    expect(body.total).toBe(1)
-    expect(body.porPortal.map((o: { valor: string }) => o.valor).sort()).toEqual(['mercadolibre', 'zonaprop'])
-  })
-
-  it('con filtro de propiedad, los conteos de propiedad salen de una lectura SIN ese filtro', async () => {
-    datosMock.consultasDelPeriodo.mockImplementation(async (f: { propiedad: string | null }) => ({
-      filas: f.propiedad ? [fila({ id: 'x', property_id: null })]
-        : [fila({ id: 'x', property_id: null }), fila({ id: 'y' })],
-      truncado: false,
-    }))
-    const body = await (await pedir('propiedad=sin')).json()
-    expect(datosMock.consultasDelPeriodo.mock.calls[1][0]).toMatchObject({ propiedad: null })
-    expect(body.porPropiedad.map((o: { valor: string }) => o.valor)).toEqual(['sin', PROP])
-  })
-
-  it('pagina y avisa si la lectura quedó truncada', async () => {
-    datosMock.consultasDelPeriodo.mockResolvedValue({
-      filas: Array.from({ length: 30 }, (_, i) => fila({ id: `c-${String(i).padStart(2, '0')}` })),
-      truncado: true,
-    })
-    const body = await (await pedir('pagina=2')).json()
-    expect(body).toMatchObject({ pagina: 2, total: 30, truncado: true })
-    expect(body.filas).toHaveLength(5)
+  it('avisa si el período quedó cortado', async () => {
+    datosMock.leerPeriodo.mockResolvedValue({ filas: [fila()], visitas: [], propiedades: new Map(), asesores: new Map(), truncado: true })
+    expect((await (await pedir()).json()).truncado).toBe(true)
   })
 
   it('si la base falla: 500 con mensaje en castellano', async () => {
-    datosMock.consultasDelPeriodo.mockRejectedValue(new Error('boom'))
+    datosMock.leerPeriodo.mockRejectedValue(new Error('boom'))
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const res = await pedir()
     expect(res.status).toBe(500)
