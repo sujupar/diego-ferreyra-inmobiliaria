@@ -16,6 +16,7 @@ export default defineConfig({
       'lib/consultas/**/*.test.ts',
       'app/api/consultas/**/*.test.ts',
       'components/consultas/**/*.test.tsx',
+      'components/filters/BusquedaTexto.test.tsx',
       'app/*/consultas/**/*.test.tsx',
       'lib/visitas/persona.test.ts',
       'lib/visitas/agendar-estado.test.ts',
