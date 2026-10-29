@@ -116,11 +116,18 @@ export async function conectarConsulta(
   if (!consulta) {
     const { data: lead, error: errLead } = await sb
       .from('property_leads')
-      .select('id')
+      .select('id, property_id')
       .eq('id', d.consultaId)
       .maybeSingle()
     if (errLead) fallo('Leer la consulta de landing', errLead)
-    if (lead) throw new ConsultaNoConectable(400, 'Esta consulta ya tiene propiedad')
+    // Un registro de landing nace con su propiedad (columna NOT NULL); si alguna
+    // vez llegara sin ella, decir "ya tiene propiedad" sería falso: se dice que
+    // estas consultas no se conectan desde acá.
+    if (lead) {
+      throw new ConsultaNoConectable(400, lead.property_id
+        ? 'Esta consulta ya tiene propiedad'
+        : 'Las consultas de landing no se conectan desde acá')
+    }
     throw new ConsultaNoConectable(404, 'No encontramos la consulta')
   }
 

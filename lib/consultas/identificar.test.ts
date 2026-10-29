@@ -140,6 +140,13 @@ describe('conectarConsulta', () => {
     expect(e).toMatchObject({ status: 400, message: 'Esta consulta ya tiene propiedad' })
   })
 
+  it('consulta de landing SIN propiedad: 400 "Las consultas de landing no se conectan desde acá"', async () => {
+    const sb = base({ property_leads: [{ id: 'l2', property_id: null }] })
+    const e = await conectarConsulta(sb.cliente, { consultaId: 'l2', propertyId: PROP, recordar: false }).catch((x) => x)
+    expect(e).toBeInstanceOf(ConsultaNoConectable)
+    expect(e).toMatchObject({ status: 400, message: 'Las consultas de landing no se conectan desde acá' })
+  })
+
   it('consulta inexistente: 404', async () => {
     const sb = base()
     const e = await conectarConsulta(sb.cliente, { consultaId: 'nada', propertyId: PROP, recordar: false }).catch((x) => x)
