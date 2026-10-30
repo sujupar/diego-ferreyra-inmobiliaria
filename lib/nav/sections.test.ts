@@ -45,6 +45,16 @@ describe('getNavSections — permisos del menú', () => {
     expect(navHrefs(getNavSections('abogado'))).not.toContain('/noticias')
   })
 
+  it('Publicaciones vive en Marketing solo para admin, dueño y coordinador (los que deja pasar la API)', () => {
+    for (const role of ['admin', 'dueno', 'coordinador'] as const) {
+      const marketing = getNavSections(role).find((g) => g.label === 'Marketing')
+      expect(navHrefs(marketing ? [marketing] : [])).toContain('/publicaciones')
+    }
+    for (const role of ['asesor', 'abogado', 'agent', 'viewer'] as const) {
+      expect(navHrefs(getNavSections(role))).not.toContain('/publicaciones')
+    }
+  })
+
   it('el asesor no ve administración, métricas ni avisos', () => {
     const hrefs = navHrefs(getNavSections('asesor'))
     expect(hrefs).not.toContain('/settings')
