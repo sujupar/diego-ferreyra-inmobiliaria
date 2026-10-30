@@ -10,7 +10,8 @@ El dueño quiere identificar los avisos sin propiedad desde **un solo lugar** (C
 - **El mail del portal sí trae el aviso:**
   - **ZonaProp:** el enlace va por un redireccionador (`link.zonaprop.com.ar/ls/click…`) que lleva al aviso real (`zonaprop.com.ar/propiedades/clasificado/…-60360354.html`). Funciona también en mails de agosto. Además trae la foto principal (`imgar.zonapropcdn.com/avisos/…`).
   - **Argenprop:** trae el enlace directo (`argenprop.com/aviso--20538824`) y la foto (`argenprop.com/static-content/…`).
-- **"Avisos por identificar" (`/avisos`)** hace en 3 pasos lo que Consultas ya hace en uno: link → dirección → asesor. Lo único que tiene de más es poder identificar un aviso cuya propiedad **no está cargada** (por eso pide la dirección).
+- **"Avisos por identificar" (`/avisos`)** hace en 3 pasos lo que Consultas ya hace en uno: link → dirección → asesor. Pedía la dirección para el caso de una propiedad no cargada, que **no existe**: todas las propiedades están cargadas en la plataforma (dueño, 2026-10-30). Un aviso sin propiedad es solo un cruce que el sistema no logró hacer.
+- **Hoy el código mezcla dos cosas distintas:** al conectar, `conectarAviso`/`conectarConsulta` copian `properties.assigned_to` (quién la CAPTÓ) como asesor del aviso y de las consultas. Pero quién la MUESTRA es otra persona y define otra comisión (dueño, 2026-10-30): si la captó Diego y la muestra Lucas, Lucas cobra 20 %; si Lucas la captó, cobra 50 %. La plataforma ya tiene dónde guardar quién la muestra: `portal_property_map.assigned_to` (por aviso), que pasa a cada consulta (`portal_inquiries.assigned_to`) y es a quien `notify.ts` le manda el WhatsApp.
 
 ## 3. Qué ve el usuario
 **Consultas → "Conectar avisos" (hoja "Avisos sin propiedad"):** cada aviso muestra:
@@ -21,7 +22,7 @@ El dueño quiere identificar los avisos sin propiedad desde **un solo lugar** (C
 
 **Al tocar "Conectar":**
 1. **Elegir la propiedad** de la lista, que es lo principal. Arriba van las sugeridas, como hoy.
-2. **"¿Quién la muestra?"**, con el asesor de la propiedad ya elegido. Se puede cambiar, y si la propiedad no tiene asesor hay que elegir uno.
+2. **"¿Quién la muestra?"** (obligatorio). Si otro aviso de esa misma propiedad ya tiene quién la muestra, viene elegido; si no, se elige de la lista. **Nunca se completa con quién la captó.**
 3. **"Conectar N consultas"**, que conecta todas las consultas del aviso. Las próximas entran solas.
 
 La dirección no se pide: sale de la propiedad.
@@ -39,14 +40,13 @@ La dirección no se pide: sale de la propiedad.
   - Si algo falla, la consulta entra igual, sin enlace. Nunca se frena una consulta por esto.
   - **Nunca se abre** el píxel de apertura del mail (`wf/open`).
 - **Para lo que ya entró:** un script lee el mail original de UNA consulta por aviso sin propiedad y completa el enlace y la foto de todas las de ese aviso. Simula por defecto y escribe con `--commit`.
-- **"Quién la muestra":**
-  - si la propiedad no tenía asesor, el elegido queda **también como asesor de la propiedad** (así las próximas consultas entran solas);
-  - si tenía uno y se elige otro, se **cambia el asesor de la propiedad**.
-  - Es lo mismo que "reasignar asesor" del CRM, y solo lo pueden hacer operaciones.
+- **"Quién la muestra"** se guarda en el aviso (`portal_property_map.assigned_to`) y en sus consultas sin propiedad (`portal_inquiries.assigned_to`). **No toca `properties.assigned_to`** (quién la captó). Las próximas consultas de ese aviso entran conectadas y le llegan a quien la muestra. Conectar no manda ningún mensaje por las consultas viejas. Solo operaciones.
 - **Migración:** `portal_inquiries.property_photo_url text`. Se agrega a la vista `consultas_unificadas` y a `consultas_del_periodo`.
 
 ## 5. Qué queda afuera
 - Leer la ficha del portal para sacar la dirección (no hace falta: la propiedad la trae).
+- Una opción para avisos de propiedades "no cargadas": no existen.
+- Cambiar quién CAPTÓ una propiedad (eso sigue en el CRM).
 - Cambiar cómo se reconocen solas las consultas de avisos ya conectados.
 - MercadoLibre: sus consultas ya vienen con su aviso.
 
@@ -55,7 +55,7 @@ La dirección no se pide: sale de la propiedad.
 2. Una consulta NUEVA de ZonaProp entra con `property_url` del aviso real (sin utm) y su foto; si el redireccionador falla, entra igual sin enlace.
 3. Después del script, los avisos que ya estaban en la hoja tienen enlace (los que tengan mail legible).
 4. Conectar: elegir la propiedad → aparece su asesor ya elegido → "Conectar N consultas" → todas las consultas del aviso quedan con esa propiedad y ese asesor; la siguiente consulta del mismo código entra conectada sola.
-5. Si la propiedad no tenía asesor, después de conectar la ficha de la propiedad muestra el asesor elegido.
+5. Al conectar con "quién la muestra" = Lucas una propiedad que captó Diego: el aviso y sus consultas quedan con Lucas, y la propiedad sigue con Diego como asesor (`properties.assigned_to` sin cambios).
 6. No se pide dirección en ningún paso.
 7. "Avisos por identificar" no está en el menú; `/avisos` lleva a Consultas con la hoja abierta; el cartel de Inicio también.
 8. Un asesor no ve la hoja ni puede conectar (403), igual que hoy.
@@ -64,4 +64,4 @@ La dirección no se pide: sale de la propiedad.
 - **Migración antes del deploy:** el cron escribe `property_photo_url`. Sin la columna, se rompería la entrada de consultas. Por eso la columna va primero.
 - **Seguir un enlace de un mail es entrada de terceros:** se valida el host exacto y el esquema https; nunca se usa `includes`.
 - **Tiempo del cron:** son 5 s de techo por consulta nueva de ZonaProp, y entran pocas por corrida. Si se pasa del presupuesto, la consulta entra sin enlace.
-- **Cambiar el asesor de una propiedad** cambia a quién le llegan sus consultas: la hoja lo dice antes de confirmar.
+- **Mezclar quién la capta con quién la muestra** cambia la comisión. Hay un test que verifica que conectar no escribe `properties.assigned_to`.
