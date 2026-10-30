@@ -2419,6 +2419,26 @@ Spec `docs/superpowers/specs/2026-10-29-consultas-rapidas-y-estadisticas-design.
 - **QA en la vista previa con la Mac cargada:** el 2026-10-29 la Mac tenía carga promedio 130–158 en 8 núcleos y el navegador de pruebas se trababa en CUALQUIER pantalla (tareas de 10–33 s con la página quieta, también en `/visits`). Antes de culpar al código: `uptime` y comparar con otra pantalla. Las mediciones de `chrome-devtools` que esperan dentro de `evaluate_script` cortan por tiempo: lanzar la medición dentro de la página (guardar en `window.__x`) y leerla en otra llamada. La vista previa de Netlify además estuvo inestable (`/api/auth/me` 10–57 s) mientras producción respondía en ~1 s: la velocidad final se mide en producción.
 - **Pruebas:** `npx vitest run -c vitest.consultas.config.ts` (556). Script de QA de avisos (no se commitea): consultas `[TEST` con un código propio, conectar desde la hoja, `matchProperty` real para la consulta siguiente, y borrar consultas + fila del mapa.
 
+## Consultas — conectar avisos viendo el aviso y eligiendo quién la muestra (PR #68, 2026-10-30)
+
+Spec `docs/superpowers/specs/2026-10-30-conectar-avisos-design.md`; plan homónimo.
+
+- **DECISIÓN DEL DUEÑO: quién la MUESTRA no es quién la CAPTÓ.** Son comisiones distintas: si la captó Diego y la muestra Lucas, Lucas cobra el 20 %; si la captó Lucas, el 50 %. Quién la muestra vive en `portal_property_map.assigned_to` y `portal_inquiries.assigned_to` (a esa persona le manda el WhatsApp `notify.ts`). Quién la captó es `properties.assigned_to`. **Conectar un aviso nunca escribe `properties`**, y hay un test que lo verifica.
+  - **Síntoma que lo originó:** `conectarAviso`/`conectarConsulta` copiaban `properties.assigned_to` al aviso. La plataforma mezclaba las dos cosas.
+  - **Trampa encontrada en la revisión:** `syncPortalPropertyMap` (al publicar en ML o Argenprop) escribe al CAPTADOR en el aviso. Por eso `quienMuestraLaPropiedad` salta a quien coincide con `properties.assigned_to`. Si de verdad la muestra quien la captó, se elige a mano.
+  - `muestraId` es obligatorio en `POST /api/consultas/avisos` y en `POST /api/consultas/[id]/propiedad`. Tiene que ser un asesor o dueño activo, validado en el servidor. El aviso se recuerda aunque la propiedad no tenga asesor.
+- **Todas las propiedades están cargadas** (dueño). Un aviso sin propiedad es solo un cruce que no se hizo, nunca una "propiedad no cargada". Por eso se sacó "Avisos por identificar" (`/avisos` → `/consultas?avisos=1`, que abre la hoja solo para operaciones). El cartel de Inicio cuenta `GET /api/consultas/avisos`.
+- **Hoja:** foto + "Ver aviso en <portal>" → nuestra propiedad (lo principal) → "¿Quién la muestra?" → conectar. Pegar el link es la salida secundaria (`resolve-link`, solo sirve para avisos publicados desde la plataforma). En el celular, al elegir la propiedad la hoja baja sola hasta el selector: quedaba debajo de las 36 propiedades y el botón gris no se entendía (visto en el QA).
+- **El enlace y la foto del aviso salen del MAIL** (`lib/integrations/portal-inquiries/aviso-del-mail.ts`), en `property_url` y `property_photo_url`. La segunda es una columna nueva, migración `20261030000001`, solo https.
+  - Argenprop: el lector ya armaba `argenprop.com/aviso--N`. La foto es la primera de `www.argenprop.com/static-content/`.
+  - ZonaProp no pone el enlace del aviso: pone redireccionadores `http://link.zonaprop.com.ar/ls/click?upn=…`. El cron los sigue con `redirect:'manual'` (nunca descarga la página) y acepta solo `https://www.zonaprop.com.ar/propiedades/clasificado/…html`, sin utm. La foto es de `imgar.zonapropcdn.com/avisos/`.
+  - Se prueba primero el enlace que más se repite en el mail (el del aviso aparece ~7 veces), con tope de 4. **Nunca** se sigue uno de "darse de baja" o "preferencias": con un redireccionador, el GET ya ejecuta la acción. **Nunca** se toca `/wf/open`, el píxel de apertura.
+  - Solo para consultas SIN propiedad, en los primeros 5 s de la corrida, con 3 s por consulta y 5 s por corrida. El enlace no puede demorar el aviso al asesor.
+  - Los mails de ZonaProp "vieron tu teléfono" (código = la REF de 9 dígitos) no traen el aviso: quedan sin enlace.
+- **Relleno:** `scripts/completar-enlaces-avisos.ts [--commit]` lee un mail por aviso y completa enlace y foto sin pisar lo que hay.
+- **Detección:** `SELECT portal, count(*), count(property_url), count(property_photo_url) FROM portal_inquiries WHERE property_id IS NULL GROUP BY 1;`. Si las consultas nuevas de ZonaProp entran sin enlace, mirar `sinEnlaceAviso` en `portal_inquiry_poll_state.last_run_stats`.
+- **Pruebas:** `npx vitest run -c vitest.consultas.config.ts` (622). Las 2 de `page.movil.test.tsx` fallan desde antes de este PR, por el entorno de pruebas: en el navegador real el detalle de una consulta sí abre en el celular (verificado en la vista previa).
+
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
 
 - **El protocolo de las seis etapas está ARRIBA de todo en este archivo**; la versión narrativa en `docs/proceso-de-desarrollo.md`. Se aplica a todo pedido, por chico que sea.
