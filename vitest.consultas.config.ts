@@ -19,6 +19,8 @@ export default defineConfig({
       'components/filters/BusquedaTexto.test.tsx',
       'lib/filters/use-filtros-url.test.ts',
       'lib/integrations/portal-inquiries/parse.test.ts',
+      'lib/integrations/portal-inquiries/aviso-del-mail.test.ts',
+      'components/inbox/UnidentifiedBanner.test.tsx',
       'app/*/consultas/**/*.test.tsx',
       'lib/visitas/persona.test.ts',
       'lib/visitas/agendar-estado.test.ts',

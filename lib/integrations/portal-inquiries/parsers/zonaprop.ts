@@ -29,7 +29,9 @@ export function parseZonaprop(email: RawEmail): ParsedInquiry {
     leadPhone: extractPhone(text),
     message: valueAfterLabel(text, ['mensaje', 'consulta', 'comentario']),
     propertyCode: cod ?? ref,
-    propertyUrl: null, // las URLs del email son trackers (link.zonaprop), no el aviso
+    // Las URLs del mail son redireccionadores de clic (link.zonaprop), no el aviso.
+    // El parser no sale a la red: el cron los sigue (`resolverAvisoZonaprop`).
+    propertyUrl: null,
     propertyAddress: null, // ZonaProp no incluye la dirección; se matchea por CÓD/título
     propertyTitle: titleFromSubject(subj),
   }
