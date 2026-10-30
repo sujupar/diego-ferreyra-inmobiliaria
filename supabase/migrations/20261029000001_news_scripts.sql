@@ -38,11 +38,7 @@ BEGIN
   END IF;
 END $$;
 
--- Secreto del cron `guionizar_pendientes` (mismo mecanismo que el resto de los
--- crons en cron_config). El valor '__SECRETO__' es un PLACEHOLDER: no es un
--- secreto real. Julian lo reemplaza por el secreto real en el SQL Editor antes
--- de correr esta línea (o la fila queda con el placeholder y el cron no
--- autentica). ON CONFLICT DO NOTHING: si la fila ya existe, no la pisa.
-INSERT INTO public.cron_config (key, value)
-VALUES ('guionizar_pendientes', '__SECRETO__')
-ON CONFLICT (key) DO NOTHING;
+-- El job pg_cron ('guionizar_pendientes') y su secreto en cron_config viven en su propia
+-- migración: supabase/migrations/20261030000001_cron_guionizar_pendientes.sql (se aplica
+-- DESPUÉS del deploy, con scripts/apply-cron-guionizar-pendientes-pg.ts). Esta migración es
+-- solo la tabla.

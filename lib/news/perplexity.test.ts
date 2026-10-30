@@ -70,8 +70,13 @@ describe('searchRealEstateNews', () => {
     let n = 0
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => {
       n++
-      if (n <= 3) return { ok: false, status: 429, json: async () => ({}) }
-      return { ok: true, json: async () => ({ results: [{ title: 't', url: `https://x.com/${n}`, snippet: 's', date: '2026-10-27' }] }) }
+      // `n` fijado en una variable propia de ESTA llamada: con las 7 queries en paralelo
+      // (Promise.allSettled), las 7 invocaciones de fetch corren sincrónicamente antes de
+      // que cualquier .json() se resuelva — si el closure de abajo leyera `n` en vez de
+      // `miN`, las 7 promesas de json() verían el mismo valor final (7).
+      const miN = n
+      if (miN <= 3) return { ok: false, status: 429, json: async () => ({}) }
+      return { ok: true, json: async () => ({ results: [{ title: 't', url: `https://x.com/${miN}`, snippet: 's', date: '2026-10-27' }] }) }
     }))
     const res = await scanRealEstateNews()
     expect(res.failedQueries).toBe(3)
@@ -85,5 +90,34 @@ describe('searchRealEstateNews', () => {
     vi.stubGlobal('fetch', fetchMock)
     await searchRealEstateNews()
     expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal)
+  })
+})
+
+describe('scanRealEstateNews — el mock nunca se activa en silencio (anti-goal: nada inventado a Diego)', () => {
+  it('NEWS_SCAN_MOCK=1 fuera de producción (NODE_ENV=test, el default de vitest) sí usa el mock', async () => {
+    vi.stubEnv('PERPLEXITY_API_KEY', '')
+    vi.stubEnv('NEWS_SCAN_MOCK', '1')
+    const res = await scanRealEstateNews()
+    expect(res.candidates.length).toBeGreaterThanOrEqual(1)
+    expect(res.failedQueries).toBe(0)
+  })
+
+  it('NEWS_SCAN_MOCK=1 EN PRODUCCIÓN no activa el mock: sin key, lanza el error legible', async () => {
+    vi.stubEnv('PERPLEXITY_API_KEY', '')
+    vi.stubEnv('NEWS_SCAN_MOCK', '1')
+    vi.stubEnv('NODE_ENV', 'production')
+    await expect(scanRealEstateNews()).rejects.toThrow(/PERPLEXITY_API_KEY/)
+  })
+
+  it('sin PERPLEXITY_API_KEY y sin NEWS_SCAN_MOCK, aunque NODE_ENV no sea producción, lanza el error (nunca cae a mock por default)', async () => {
+    vi.stubEnv('PERPLEXITY_API_KEY', '')
+    vi.stubEnv('NEWS_SCAN_MOCK', '')
+    await expect(scanRealEstateNews()).rejects.toThrow(/PERPLEXITY_API_KEY/)
+  })
+
+  it('opts.mock===true gana siempre, incluso en producción (uso explícito de tests)', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    const res = await scanRealEstateNews({ mock: true })
+    expect(res.candidates.length).toBeGreaterThanOrEqual(1)
   })
 })

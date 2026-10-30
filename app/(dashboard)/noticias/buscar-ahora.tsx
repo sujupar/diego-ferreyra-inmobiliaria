@@ -37,7 +37,8 @@ export default function BuscarAhora() {
     setLoading(true); setError(null); setSent(false); setSelected(new Set())
     try {
       const r = await fetch('/api/news/scan', { method: 'POST' })
-      const d = await r.json()
+      const d = await r.json().catch(() => null)
+      if (!d) throw new Error('El servidor tardó demasiado o no respondió. Probá de nuevo en un rato.')
       if (!r.ok || d.error) throw new Error(d.error || 'No se pudo buscar')
       setCandidates(d.candidates ?? [])
       setMock(!!d.mock)

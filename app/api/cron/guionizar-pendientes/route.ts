@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getPendingScripts, markListo, markError, expireStaleScripts } from '@/lib/news/scripts-repo'
-import { guionizarPieza, sanitizeError } from '@/lib/news/guionizar'
+import { guionizarPieza, sanitizeError, GEMINI_TIMEOUT_MS } from '@/lib/news/guionizar'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-// Techo real de Netlify ~26s (maxDuration no aplica): cortamos el loop antes para que
-// markListo/markError corran y ninguna pieza quede colgada en 'guionizando'.
-const PRESUPUESTO_MS = 22_000
+// Techo real de Netlify ~26s (maxDuration no aplica, ver CLAUDE.md "REGLA DURA"). Fórmula
+// del repo: PRESUPUESTO_MS = 26_000 - peor_trabajo_ms - 1_000. El peor trabajo de ESTE loop
+// es UNA llamada a Gemini (GEMINI_TIMEOUT_MS=18_000), así que el presupuesto da 7_000: en la
+// práctica corta ANTES de arrancar una segunda pieza (una pieza por corrida, correcto y
+// seguro — el resto lo toma la corrida siguiente, cada minuto).
+const PRESUPUESTO_MS = 26_000 - GEMINI_TIMEOUT_MS - 1_000
 const MAX_EDAD_HORAS = 6
 
 /**
@@ -20,15 +23,28 @@ const MAX_EDAD_HORAS = 6
  */
 async function isAuthorized(provided: string | null): Promise<boolean> {
   if (!provided) return false
+  // Un marcador sin reemplazar ('__SECRETO__', público en el repo) nunca autoriza, aunque
+  // alguien pegue la migración en el SQL Editor sin reemplazar el placeholder.
+  if (provided === '__SECRETO__') return false
   if (process.env.CRON_SECRET && provided === process.env.CRON_SECRET) return true
   try {
     const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
     const { data } = await sb.from('cron_config').select('value').eq('key', 'guionizar_pendientes').maybeSingle()
     const dbSecret = (data as { value?: string } | null)?.value
-    return !!dbSecret && provided === dbSecret
+    return !!dbSecret && dbSecret !== '__SECRETO__' && provided === dbSecret
   } catch {
     return false
   }
+}
+
+/** GET solo responde `?ping=1` (verificación de deploy, scripts/apply-cron-guionizar-pendientes-pg.ts).
+ * Nunca ejecuta trabajo: un GET sin ese query param es 'forbidden', igual que un POST sin
+ * secreto — así no hace falta un mecanismo de autenticación nuevo para el ping. */
+export async function GET(req: NextRequest): Promise<Response> {
+  if (new URL(req.url).searchParams.get('ping') === '1') {
+    return NextResponse.json({ ok: true, route: 'guionizar-pendientes' })
+  }
+  return NextResponse.json({ error: 'forbidden' }, { status: 403 })
 }
 
 export async function POST(req: NextRequest): Promise<Response> {

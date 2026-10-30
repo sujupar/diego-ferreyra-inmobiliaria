@@ -130,12 +130,24 @@ async function searchOne(apiKey: string, query: string): Promise<PerplexityResul
 
 export type ScanResult = { candidates: NewsCandidate[]; failedQueries: number }
 
+/**
+ * El mock SOLO se activa explícitamente: `opts.mock===true` (tests), o
+ * `NEWS_SCAN_MOCK=1` Y `NODE_ENV !== 'production'` (prueba manual fuera de prod). Nunca
+ * cae a mock por la sola ausencia de PERPLEXITY_API_KEY — ese era el riesgo real: una
+ * noticia INVENTADA llegando a Diego en producción viola el anti-goal del spec ("nada
+ * fabricado/falso llega a Diego"). Sin key y sin este flag, se lanza un error legible.
+ */
+function debeUsarMock(opts: { mock?: boolean }): boolean {
+  if (opts.mock === true) return true
+  return process.env.NEWS_SCAN_MOCK === '1' && process.env.NODE_ENV !== 'production'
+}
+
 // Igual que searchRealEstateNews pero informa cuántas queries fallaron
 // (falla parcial), para que la UI distinga "sin noticias" de "la query falló".
 export async function scanRealEstateNews(
   opts: { mock?: boolean } = {},
 ): Promise<ScanResult> {
-  if (opts.mock) return { candidates: mockCandidates(), failedQueries: 0 }
+  if (debeUsarMock(opts)) return { candidates: mockCandidates(), failedQueries: 0 }
 
   const apiKey = process.env.PERPLEXITY_API_KEY
   if (!apiKey) {
@@ -147,20 +159,25 @@ export async function scanRealEstateNews(
   let failures = 0
   let lastError = ''
 
-  // Secuencial para no pegarle al rate limit.
-  for (const query of NEWS_QUERIES) {
-    try {
-      const results = await searchOne(apiKey, query)
-      for (const r of results) {
-        const c = toCandidate(r)
-        if (!c || seen.has(c.url)) continue
-        seen.add(c.url)
-        out.push(c)
-      }
-    } catch (e) {
+  // En paralelo: las 7 queries a la vez, cada una con su propio AbortSignal.timeout(8000).
+  // Secuencial (peor caso 7×8s=56s) pasaba el techo real de Netlify (~26s, ver CLAUDE.md
+  // "REGLA DURA"). En paralelo el peor caso es ~8-9s.
+  const settled = await Promise.allSettled(NEWS_QUERIES.map((query) => searchOne(apiKey, query)))
+
+  for (let i = 0; i < settled.length; i++) {
+    const outcome = settled[i]
+    const query = NEWS_QUERIES[i]
+    if (outcome.status === 'rejected') {
       failures++
-      lastError = e instanceof Error ? e.message : String(e)
+      lastError = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason)
       console.warn(`[news/perplexity] query fallida "${query.slice(0, 50)}": ${lastError}`)
+      continue
+    }
+    for (const r of outcome.value) {
+      const c = toCandidate(r)
+      if (!c || seen.has(c.url)) continue
+      seen.add(c.url)
+      out.push(c)
     }
   }
 
