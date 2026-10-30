@@ -16,6 +16,12 @@
 
 const API = 'https://graph.facebook.com/v21.0'
 
+/**
+ * Techo de cada llamada a Meta. Sin él, una respuesta lenta se comía el tiempo de
+ * la función de Netlify (~26 s) y la cortaban a mitad, sin error legible.
+ */
+export const TECHO_META_MS = 8_000
+
 /** Error de Instagram con los códigos de Meta a mano, para poder traducirlo. */
 export class ErrorInstagram extends Error {
   readonly httpStatus: number
@@ -71,6 +77,7 @@ export async function cuentaInstagram(): Promise<{ igId: string; token: string }
 
   const res = await fetch(
     `${API}/me/accounts?fields=instagram_business_account&access_token=${encodeURIComponent(token)}`,
+    { signal: AbortSignal.timeout(TECHO_META_MS) },
   )
   const texto = await res.text()
   let cuerpo: { data?: Array<{ instagram_business_account?: { id?: string } }> } = {}
@@ -203,6 +210,7 @@ async function llamarConToken<T>(ruta: string, init: RequestInit, token: string)
   const url = `${base}${separador}access_token=${encodeURIComponent(token)}`
 
   const res = await fetch(url, {
+    signal: AbortSignal.timeout(TECHO_META_MS),
     ...init,
     headers: { 'content-type': 'application/json', ...(init.headers ?? {}) },
   })

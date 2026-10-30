@@ -17,8 +17,12 @@ import { avanzarFacebook, avanzarInstagram } from '../publicador/redes'
 import { correrPublicador, type Candidato, type ResumenPublicador } from '../publicador/runner'
 import type { EnvioFila, VideoFila } from '../tipos'
 
-/** El pg_net corta a 30 s y Netlify alrededor de 26: con 18 queda margen para la última llamada. */
-const PRESUPUESTO_MS = 18_000
+/**
+ * Ventana para EMPEZAR un envío. Netlify corta alrededor de 26 s y una etapa son
+ * hasta 2 llamadas a Meta de 8 s como máximo cada una (TECHO_META_MS): empezando
+ * antes de los 10 s, la última termina antes del corte.
+ */
+const PRESUPUESTO_MS = 10_000
 const MAX_POR_CORRIDA = 6
 /** Lo que dura la reserva de un envío: si la función muere, a los 3 minutos otra corrida lo retoma. */
 const RESERVA_MS = 3 * 60_000
@@ -38,6 +42,9 @@ export async function candidatos(ahora: Date): Promise<Candidato[]> {
     .lte('publicacion_videos.programado_para', iso)
     .eq('publicacion_videos.pausado', false)
     .eq('publicacion_videos.publicacion_tandas.estado', 'confirmada')
+    // Primero los que nunca arrancaron (proximo_intento nulo): así los que esperan
+    // a que Meta procese no le quitan el lugar a lo que ya tiene que salir.
+    .order('proximo_intento', { ascending: true, nullsFirst: true })
     .order('created_at', { ascending: true })
     .limit(MAX_POR_CORRIDA)
   if (error) throw new Error(`DB: ${error.message}`)
@@ -60,7 +67,7 @@ export async function reservar(envio: EnvioFila, ahora: Date): Promise<boolean> 
   return (data ?? []).length > 0
 }
 
-export async function guardar(envioId: string, cambios: Record<string, unknown>): Promise<void> {
+export async function guardar(envioId: string, cambios: Record<string, unknown>): Promise<boolean> {
   // Condicional: si alguien canceló la red mientras Meta trabajaba, no se revive.
   const { data, error } = await publicacionesDb()
     .from('publicacion_envios')
@@ -69,7 +76,9 @@ export async function guardar(envioId: string, cambios: Record<string, unknown>)
     .in('estado', ['programado', 'en_curso'])
     .select('id')
   if (error) throw new Error(`DB: ${error.message}`)
-  if ((data ?? []).length === 0) console.warn('[publicador] el envío cambió mientras se publicaba', envioId, cambios.estado)
+  const escribio = (data ?? []).length > 0
+  if (!escribio) console.warn('[publicador] el envío cambió mientras se publicaba', envioId, cambios.estado)
+  return escribio
 }
 
 async function automatica(): Promise<boolean> {
@@ -86,17 +95,14 @@ async function automatica(): Promise<boolean> {
 export async function limpiarArchivosViejos(ahora: Date, limite = 20): Promise<number> {
   const db = publicacionesDb()
   const hace30 = new Date(ahora.getTime() - 30 * 86_400_000).toISOString()
-  const { data, error } = await db
-    .from('publicacion_videos')
-    .select('id, video_path, audio_path, publicacion_envios(estado, updated_at)')
-    .is('archivo_borrado_at', null)
-    .not('video_path', 'is', null)
-    .lt('created_at', hace30)
-    .limit(limite)
+  // El filtro fuerte lo hace la base (ver la migración 20261030000001).
+  const { data, error } = await db.rpc('publicacion_videos_para_limpiar', { limite, antes: hace30 })
   if (error) throw new Error(`DB: ${error.message}`)
   let borrados = 0
-  for (const v of (data ?? []) as { id: string; video_path: string; audio_path: string | null; publicacion_envios: Pick<EnvioFila, 'estado' | 'updated_at'>[] }[]) {
-    if (!listoParaBorrar(v.publicacion_envios ?? [], ahora)) continue
+  for (const v of (data ?? []) as { id: string; video_path: string; audio_path: string | null }[]) {
+    // Segunda verificación, con la regla pura: borrar es lo único que no tiene vuelta atrás.
+    const { data: envios } = await db.from('publicacion_envios').select('estado, updated_at').eq('video_id', v.id)
+    if (!listoParaBorrar((envios ?? []) as Pick<EnvioFila, 'estado' | 'updated_at'>[], ahora)) continue
     const paths = [v.video_path, v.audio_path].filter((p): p is string => !!p)
     const { error: e1 } = await db.storage.from(BUCKET).remove(paths)
     if (e1) {
@@ -120,20 +126,26 @@ export async function correrPublicacion(): Promise<ResumenPublicador & { archivo
     urlPublica,
     presupuestoMs: PRESUPUESTO_MS,
     redes: {
-      instagram: (e, p) =>
-        avanzarInstagram(e, p, {
-          crearContenedor: crearContenedorReel,
-          estadoContenedor,
-          publicarContenedor,
-        }),
-      facebook: (e, p) =>
-        avanzarFacebook(e, p, {
-          iniciar: iniciarReel,
-          subir: subirPorUrl,
-          publicar: publicarReel,
-          videoComun: publicarVideoComun,
-          estado: estadoReel,
-        }),
+      instagram: (e, p, ctx) =>
+        avanzarInstagram(
+          e,
+          p,
+          { crearContenedor: crearContenedorReel, estadoContenedor, publicarContenedor },
+          ctx,
+        ),
+      facebook: (e, p, ctx) =>
+        avanzarFacebook(
+          e,
+          p,
+          {
+            iniciar: iniciarReel,
+            subir: subirPorUrl,
+            publicar: publicarReel,
+            videoComun: publicarVideoComun,
+            estado: estadoReel,
+          },
+          ctx,
+        ),
     },
   })
   // La limpieza solo con tiempo de sobra: publicar a horario es lo que importa.

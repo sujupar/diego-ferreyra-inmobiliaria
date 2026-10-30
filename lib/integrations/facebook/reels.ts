@@ -10,7 +10,7 @@
  * Después se consulta `GET /{video}?fields=status` hasta que la fase de
  * publicación diga `complete`. Cada paso es una etapa del cron, nunca dos juntas.
  */
-import { ErrorInstagram, paginaDeLaCuenta, paginaFetch } from '@/lib/integrations/instagram/client'
+import { ErrorInstagram, paginaDeLaCuenta, paginaFetch, TECHO_META_MS } from '@/lib/integrations/instagram/client'
 
 const RUPLOAD = 'https://rupload.facebook.com/video-upload/v21.0'
 
@@ -44,6 +44,22 @@ export function interpretarEstadoFb(json: unknown): EstadoReelFb {
   return 'procesando'
 }
 
+/**
+ * ¿Se puede pedir publicar? Solo con la subida completa y la publicación SIN
+ * empezar. Pedirlo mientras Facebook todavía baja el archivo da un error que no
+ * significa nada; pedirlo dos veces (la función murió después del primer pedido)
+ * puede marcar como fallido algo que sí salió.
+ */
+export function fasesFb(json: unknown): { listoParaPublicar: boolean; publicacionPedida: boolean } {
+  const s = (json as CuerpoEstado | null)?.status
+  const publicacion = s?.publishing_phase?.status
+  const publicacionPedida = !!publicacion && publicacion !== 'not_started'
+  return {
+    listoParaPublicar: s?.uploading_phase?.status === 'complete' && !publicacionPedida,
+    publicacionPedida,
+  }
+}
+
 /** Facebook a veces devuelve el enlace relativo ("/reel/123/"). Solo https. */
 export function enlaceAbsoluto(enlace: string | undefined | null): string | null {
   if (!enlace) return null
@@ -68,6 +84,8 @@ export async function subirPorUrl(videoId: string, url: string): Promise<void> {
   const res = await fetch(`${RUPLOAD}/${encodeURIComponent(videoId)}`, {
     method: 'POST',
     headers: { Authorization: `OAuth ${pageToken}`, file_url: url },
+    // Antes del corte de Netlify. Subir por URL es repetible: si se corta, se vuelve a pedir.
+    signal: AbortSignal.timeout(TECHO_META_MS),
   })
   const texto = await res.text()
   let cuerpo: { success?: boolean; error?: { message?: string; code?: number } } = {}
@@ -111,9 +129,16 @@ export async function publicarVideoComun(url: string, descripcion: string): Prom
   return r.id
 }
 
-export async function estadoReel(videoId: string): Promise<{ estado: EstadoReelFb; enlace: string | null }> {
+export interface EstadoCompletoFb {
+  estado: EstadoReelFb
+  enlace: string | null
+  listoParaPublicar: boolean
+  publicacionPedida: boolean
+}
+
+export async function estadoReel(videoId: string): Promise<EstadoCompletoFb> {
   const r = await paginaFetch<CuerpoEstado & { permalink_url?: string }>(
     `/${encodeURIComponent(videoId)}?fields=status,permalink_url`,
   )
-  return { estado: interpretarEstadoFb(r), enlace: enlaceAbsoluto(r.permalink_url) }
+  return { estado: interpretarEstadoFb(r), enlace: enlaceAbsoluto(r.permalink_url), ...fasesFb(r) }
 }

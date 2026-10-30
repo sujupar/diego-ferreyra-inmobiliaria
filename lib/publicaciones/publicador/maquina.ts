@@ -64,10 +64,34 @@ export function clasificarError(e: unknown): ErrorClasificado {
   if (status !== undefined && status >= 500) {
     return { transitorio: true, mensaje: 'Meta no respondió bien. Se reintenta solo.' }
   }
-  if (status === undefined && code === undefined && ['TypeError', 'AbortError', 'TimeoutError'].includes(x.name ?? '')) {
+  const esDeMeta = status !== undefined || code !== undefined
+  if (!esDeMeta && ['TypeError', 'AbortError', 'TimeoutError'].includes(x.name ?? '')) {
     return { transitorio: true, mensaje: 'Se cortó la conexión con Meta. Se reintenta solo.' }
   }
+  if (!esDeMeta && /^DB: /.test(x.message ?? '')) {
+    return { transitorio: true, mensaje: 'Falló la base de datos de la plataforma. Se reintenta solo.' }
+  }
+  // Sin códigos de Meta, el error es nuestro: decir qué pasó sin culpar a Meta.
+  if (!esDeMeta) return { transitorio: false, mensaje: `No se pudo publicar: ${crudo}` }
   return { transitorio: false, mensaje: `Meta rechazó la publicación: ${crudo}` }
+}
+
+/**
+ * "Reintentar" un envío fallido. NO borra la etapa ni los identificadores: con
+ * ellos, la etapa le pregunta primero a Meta en qué quedó. Un envío puede figurar
+ * fallido y estar publicado (se cortó justo después de publicar); arrancar de cero
+ * ahí publicaba un segundo post idéntico. La marca `reintento` le dice a la etapa
+ * que, si Meta CONFIRMA el error, ahí sí arranque de nuevo.
+ */
+export function cambiosDeReintento(envio: Pick<EnvioFila, 'etapa' | 'ids_externos'>): Record<string, unknown> {
+  return {
+    estado: envio.etapa === null ? 'programado' : 'en_curso',
+    etapa: envio.etapa,
+    ids_externos: { ...(envio.ids_externos ?? {}), reintento: true },
+    intentos: 0,
+    proximo_intento: null,
+    ultimo_error: null,
+  }
 }
 
 /** Lo que dice la fila de una red cuando el chip solo no alcanza. */

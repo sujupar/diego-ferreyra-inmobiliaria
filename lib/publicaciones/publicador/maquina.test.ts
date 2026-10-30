@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clasificarError, esperaDeReintento, motivoEnPantalla, puedeSalir } from './maquina'
+import { cambiosDeReintento, clasificarError, esperaDeReintento, motivoEnPantalla, puedeSalir } from './maquina'
 
 const AHORA = new Date('2026-10-30T15:00:00Z')
 const envio = { estado: 'programado' as const, proximo_intento: null as string | null, ultimo_error: null as string | null }
@@ -75,8 +75,37 @@ describe('clasificarError', () => {
     expect(r.mensaje).toMatch(/^Meta rechazó la publicación/)
   })
 
+  it('un error de nuestra base no se muestra como rechazo de Meta y se reintenta', () => {
+    const r = clasificarError(new Error('DB: connection reset'))
+    expect(r.transitorio).toBe(true)
+    expect(r.mensaje).not.toMatch(/Meta/)
+  })
+
+  it('un error propio (sin códigos de Meta) dice qué pasó sin culpar a Meta', () => {
+    const r = clasificarError(new Error('Facebook no confirmó la publicación del reel.'))
+    expect(r.transitorio).toBe(false)
+    expect(r.mensaje).toBe('No se pudo publicar: Facebook no confirmó la publicación del reel.')
+  })
+
   it('un permiso vencido se explica para el administrador', () => {
     expect(clasificarError({ code: 190, httpStatus: 401, message: 'x' }).mensaje).toMatch(/administrador/)
+  })
+})
+
+describe('cambiosDeReintento', () => {
+  it('conserva la etapa y los identificadores y deja la marca de reintento (así primero se le pregunta a Meta)', () => {
+    expect(cambiosDeReintento({ etapa: 'contenedor', ids_externos: { creation_id: 'c1' } })).toEqual({
+      estado: 'en_curso',
+      etapa: 'contenedor',
+      ids_externos: { creation_id: 'c1', reintento: true },
+      intentos: 0,
+      proximo_intento: null,
+      ultimo_error: null,
+    })
+  })
+
+  it('un envío que nunca arrancó vuelve a programado', () => {
+    expect(cambiosDeReintento({ etapa: null, ids_externos: {} })).toMatchObject({ estado: 'programado', etapa: null, ids_externos: { reintento: true } })
   })
 })
 

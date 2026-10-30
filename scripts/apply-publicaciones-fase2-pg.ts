@@ -31,6 +31,12 @@ async function main() {
     )
     if (idx.n !== 1) throw new Error('no quedó el índice publicacion_envios_pendientes_idx')
     console.log('✓ índice de envíos pendientes')
+    const { rows: [fn] } = await c.query(
+      `SELECT has_function_privilege('authenticated', 'public.publicacion_videos_para_limpiar(int, timestamptz)', 'EXECUTE') AS auth,
+              has_function_privilege('service_role', 'public.publicacion_videos_para_limpiar(int, timestamptz)', 'EXECUTE') AS srv`,
+    )
+    if (fn.auth !== false || fn.srv !== true) throw new Error('la función de limpieza tiene permisos equivocados')
+    console.log('✓ función de limpieza (solo service_role)')
     console.log('\nOK publicaciones fase 2')
   } finally {
     await c.end()

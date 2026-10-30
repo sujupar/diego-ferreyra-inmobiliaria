@@ -9,7 +9,7 @@
 import type { EnvioFila, Plataforma, VideoFila } from '../tipos'
 import { esRutaPropia } from '../validacion'
 import { clasificarError, esperaDeReintento, puedeSalir } from './maquina'
-import type { EnvioEnCurso, Pieza, ResultadoEtapa } from './redes'
+import type { Contexto, EnvioEnCurso, Pieza, ResultadoEtapa } from './redes'
 
 export interface Candidato {
   envio: EnvioFila
@@ -17,7 +17,7 @@ export interface Candidato {
   estadoTanda: 'borrador' | 'confirmada'
 }
 
-type Red = (envio: EnvioEnCurso, pieza: Pieza) => Promise<ResultadoEtapa>
+type Red = (envio: EnvioEnCurso, pieza: Pieza, ctx: Contexto) => Promise<ResultadoEtapa>
 
 export interface DepsRunner {
   ahora: () => Date
@@ -25,7 +25,8 @@ export interface DepsRunner {
   candidatos: (ahora: Date) => Promise<Candidato[]>
   /** Reserva atómica del envío (UPDATE condicional). `false` = otra corrida lo tomó. */
   reservar: (envio: EnvioFila, ahora: Date) => Promise<boolean>
-  guardar: (envioId: string, cambios: Record<string, unknown>) => Promise<void>
+  /** `false` si no escribió nada (el envío ya no está pendiente: lo cancelaron). */
+  guardar: (envioId: string, cambios: Record<string, unknown>) => Promise<boolean | void>
   urlPublica: (path: string) => string
   redes: Partial<Record<Plataforma, Red>>
   presupuestoMs: number
@@ -67,55 +68,90 @@ export async function correrPublicador(d: DepsRunner): Promise<ResumenPublicador
     }
     resumen.avanzados++
 
-    // Nunca se le pasa a Meta un archivo que no sea el de este video.
-    if (!video.video_path || !esRutaPropia(video.video_path, video.tanda_id, video.id)) {
-      await d.guardar(envio.id, {
-        estado: 'fallido',
-        proximo_intento: null,
-        ultimo_error: 'El archivo del video no es válido. Volvé a subirlo.',
-      })
+    // Nunca se le pasa a Meta un archivo que no sea el de este video, ni uno ya borrado.
+    const problemaArchivo = !video.video_path || !esRutaPropia(video.video_path, video.tanda_id, video.id)
+      ? 'El archivo del video no es válido. Volvé a subirlo.'
+      : video.archivo_borrado_at
+        ? 'El archivo del video ya se borró (pasaron 30 días desde que terminó). Subilo de nuevo en otra tanda.'
+        : null
+    if (problemaArchivo) {
+      await guardarSinCortar(d, envio.id, { estado: 'fallido', proximo_intento: null, ultimo_error: problemaArchivo }, resumen)
       resumen.fallidos++
       continue
     }
 
     const pieza: Pieza = {
-      videoUrl: d.urlPublica(video.video_path),
+      videoUrl: d.urlPublica(video.video_path as string),
       descripcion: video.descripcion,
       duracionSeg: video.duracion_seg,
     }
+    const ctx: Contexto = {
+      ahora,
+      // Anotación previa a un pedido que no se puede repetir. Si no se puede
+      // guardar, tira: el pedido no se manda.
+      antes: async (etapa) => {
+        // `false` = no escribió nada: lo cancelaron en el medio. Entonces no se manda.
+        if ((await d.guardar(envio.id, { etapa, estado: 'en_curso' })) === false) {
+          throw new Error('El envío se canceló mientras se publicaba: no se mandó nada.')
+        }
+      },
+    }
 
+    let r: ResultadoEtapa
     try {
-      const r = await red({ etapa: envio.etapa, ids_externos: envio.ids_externos ?? {} }, pieza)
-      const cambios: Record<string, unknown> = {
-        estado: r.estado,
-        etapa: r.etapa,
-        ids_externos: r.ids,
-        ultimo_error: r.estado === 'fallido' ? (r.error ?? 'No se pudo publicar') : null,
-        proximo_intento: r.estado === 'en_curso' ? new Date(d.ahora().getTime() + (r.esperarMs ?? 0)).toISOString() : null,
-      }
-      if (r.enlace !== undefined) cambios.enlace = r.enlace
-      await d.guardar(envio.id, cambios)
-      if (r.estado === 'publicado') resumen.publicados++
-      if (r.estado === 'fallido') resumen.fallidos++
-      resumen.detalle.push(`${envio.plataforma} ${envio.id}: ${r.estado} (${r.etapa ?? 'inicio'})`)
+      r = await red({ etapa: envio.etapa, ids_externos: envio.ids_externos ?? {} }, pieza, ctx)
     } catch (e) {
       const clasificado = clasificarError(e)
       const intentos = (envio.intentos ?? 0) + 1
       const espera = clasificado.transitorio ? esperaDeReintento(intentos) : null
       console.error('[publicador]', envio.plataforma, envio.id, e)
       if (espera !== null) {
-        await d.guardar(envio.id, {
+        await guardarSinCortar(d, envio.id, {
           intentos,
           ultimo_error: clasificado.mensaje,
           proximo_intento: new Date(d.ahora().getTime() + espera).toISOString(),
-        })
+        }, resumen)
         resumen.reintentos++
       } else {
-        await d.guardar(envio.id, { estado: 'fallido', intentos, ultimo_error: clasificado.mensaje, proximo_intento: null })
+        await guardarSinCortar(d, envio.id, { estado: 'fallido', intentos, ultimo_error: clasificado.mensaje, proximo_intento: null }, resumen)
         resumen.fallidos++
       }
       resumen.detalle.push(`${envio.plataforma} ${envio.id}: error — ${clasificado.mensaje}`)
+      continue
     }
+
+    const cambios: Record<string, unknown> = {
+      estado: r.estado,
+      etapa: r.etapa,
+      ids_externos: r.ids,
+      ultimo_error: r.estado === 'fallido' ? (r.error ?? 'No se pudo publicar') : null,
+      proximo_intento: r.estado === 'en_curso' ? new Date(d.ahora().getTime() + (r.esperarMs ?? 0)).toISOString() : null,
+    }
+    if (r.enlace !== undefined) cambios.enlace = r.enlace && r.enlace.startsWith('https://') ? r.enlace : null
+    // Si esto falla, NO se clasifica como error de la publicación: lo de Meta ya
+    // pasó. La reserva vence en 3 minutos y la corrida siguiente le pregunta a
+    // Meta en qué quedó (las etapas siempre preguntan antes de publicar).
+    if (!(await guardarSinCortar(d, envio.id, cambios, resumen))) continue
+    if (r.estado === 'publicado') resumen.publicados++
+    if (r.estado === 'fallido') resumen.fallidos++
+    resumen.detalle.push(`${envio.plataforma} ${envio.id}: ${r.estado} (${r.etapa ?? 'inicio'})`)
   }
   return resumen
+}
+
+/** Un guardado que falla no corta la corrida: se anota y el resto de los envíos sigue. */
+async function guardarSinCortar(
+  d: DepsRunner,
+  envioId: string,
+  cambios: Record<string, unknown>,
+  resumen: ResumenPublicador,
+): Promise<boolean> {
+  try {
+    await d.guardar(envioId, cambios)
+    return true
+  } catch (e) {
+    console.error('[publicador] no se pudo guardar', envioId, e)
+    resumen.detalle.push(`${envioId}: no se pudo guardar (${e instanceof Error ? e.message : 'error'}); se retoma en 3 minutos`)
+    return false
+  }
 }

@@ -134,6 +134,80 @@ describe('correrPublicador', () => {
     expect(ig).not.toHaveBeenCalled()
   })
 
+  it('si falla el guardado DESPUÉS de publicar, no lo marca fallido (la corrida siguiente lo reconoce en Meta)', async () => {
+    let llamadas = 0
+    const d = deps({
+      candidatos: async () => [candidato('facebook')],
+      guardar: async () => {
+        llamadas++
+        throw new Error('DB: se cortó')
+      },
+      redes: {
+        instagram: vi.fn(),
+        facebook: async () => ({ etapa: 'publicando', ids: { video_id: 'f1' }, estado: 'publicado', enlace: 'https://www.facebook.com/reel/1/' }),
+      },
+    })
+    const r = await correrPublicador(d)
+    expect(llamadas).toBe(1)
+    expect(r.fallidos).toBe(0)
+    expect(r.detalle.join(' ')).toMatch(/no se pudo guardar/)
+  })
+
+  it('la anotación previa se guarda con la etapa y sin tocar el estado', async () => {
+    const d = deps({
+      candidatos: async () => [candidato('facebook')],
+      redes: {
+        instagram: vi.fn(),
+        facebook: async (_e, _p, ctx) => {
+          await ctx.antes('video_comun_enviado')
+          return { etapa: 'publicando', ids: { video_id: 'v' }, estado: 'en_curso' }
+        },
+      },
+    })
+    await correrPublicador(d)
+    expect(d.guardados[0].cambios).toEqual({ etapa: 'video_comun_enviado', estado: 'en_curso' })
+  })
+
+  it('si lo cancelaron justo antes del pedido que publica, no se manda nada', async () => {
+    const enviado = vi.fn()
+    const d = deps({
+      candidatos: async () => [candidato('facebook')],
+      guardar: async () => false,
+      redes: {
+        instagram: vi.fn(),
+        facebook: async (_e, _p, ctx) => {
+          await ctx.antes('video_comun_enviado')
+          enviado()
+          return { etapa: 'publicando', ids: {}, estado: 'en_curso' }
+        },
+      },
+    })
+    await correrPublicador(d)
+    expect(enviado).not.toHaveBeenCalled()
+  })
+
+  it('no se publica un video cuyo archivo ya se borró', async () => {
+    const c = candidato('instagram')
+    c.video.archivo_borrado_at = '2026-10-01T00:00:00Z'
+    const ig = vi.fn()
+    const d = deps({ candidatos: async () => [c], redes: { instagram: ig, facebook: vi.fn() } })
+    await correrPublicador(d)
+    expect(ig).not.toHaveBeenCalled()
+    expect(String(d.guardados[0].cambios.ultimo_error)).toMatch(/se borró/)
+  })
+
+  it('un enlace que no es https no se guarda', async () => {
+    const d = deps({
+      candidatos: async () => [candidato('instagram')],
+      redes: {
+        instagram: async () => ({ etapa: 'contenedor', ids: {}, estado: 'publicado', enlace: 'javascript:alert(1)' }),
+        facebook: vi.fn(),
+      },
+    })
+    await correrPublicador(d)
+    expect(d.guardados[0].cambios.enlace).toBeNull()
+  })
+
   it('al quedarse sin tiempo deja el resto para la corrida siguiente', async () => {
     let t = AHORA.getTime()
     const d = deps({

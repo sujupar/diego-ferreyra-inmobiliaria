@@ -12,6 +12,7 @@ import {
 } from '../calendario'
 import { BUCKET, publicacionesDb, urlPublica } from '../db'
 import { sincronizarEnvios } from '../envios'
+import { cambiosDeReintento } from '../publicador/maquina'
 import { ajustarDescripcion, ajustarTituloYoutube } from '../textos'
 import type { EnvioFila, Plataforma, TandaFila, VideoFila, VideoVista } from '../tipos'
 import {
@@ -440,21 +441,18 @@ export async function listarPublicado(dias = DIAS_PUBLICADO): Promise<{ videos: 
   return { videos: [...porVideo.values()] }
 }
 
-/** "Reintentar": un envío fallido vuelve a arrancar de cero en la próxima corrida. */
+/** "Reintentar": la próxima corrida le pregunta a Meta en qué quedó (ver `cambiosDeReintento`). */
 export async function reintentarEnvio(id: string): Promise<EnvioFila> {
-  const { data, error } = await publicacionesDb()
+  const db = publicacionesDb()
+  const { data: actual, error: e1 } = await db.from('publicacion_envios').select('*').eq('id', id).maybeSingle()
+  dbError(e1)
+  if (!actual) throw new ErrorHttp(404, 'El envío no existe')
+  const { data, error } = await db
     .from('publicacion_envios')
-    .update({
-      estado: 'programado',
-      etapa: null,
-      ids_externos: {},
-      intentos: 0,
-      proximo_intento: null,
-      ultimo_error: null,
-      enlace: null,
-    })
+    .update(cambiosDeReintento(actual as EnvioFila))
     .eq('id', id)
     .eq('estado', 'fallido')
+    .eq('updated_at', (actual as EnvioFila).updated_at)
     .select('*')
     .maybeSingle()
   dbError(error)
