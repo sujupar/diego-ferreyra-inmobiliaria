@@ -6,9 +6,11 @@ import { conectarConsulta, ConsultaNoConectable } from '@/lib/consultas/identifi
 
 /**
  * POST /api/consultas/[id]/propiedad — conecta una consulta sin propiedad con
- * su propiedad (la pantalla lo pide antes de agendar la visita). Con
- * `recordar: true` además recuerda el aviso: las consultas pasadas y futuras de
- * ese mismo aviso quedan con esa propiedad (ver lib/consultas/identificar.ts).
+ * su propiedad (la pantalla lo pide antes de agendar la visita). Si su código
+ * identifica al aviso, se conectan TODAS las consultas de ese aviso y se
+ * recuerda (ver lib/consultas/identificar.ts). `recordar` ya no decide nada: se
+ * acepta y se ignora para que una pestaña abierta con la pantalla vieja no
+ * reciba un 400.
  *
  * Solo operaciones (admin, dueño, coordinador), igual que identificar un aviso
  * en /api/portal-inquiries/identify: recordar cambia a quién se le avisan las
@@ -21,7 +23,7 @@ const ROLES_PERMITIDOS = ['admin', 'dueno', 'coordinador']
 const Id = z.string().uuid()
 const Cuerpo = z.object({
   propertyId: z.string().uuid(),
-  recordar: z.boolean(),
+  recordar: z.boolean().optional(),
 })
 
 function error(status: number, mensaje: string) {
@@ -53,7 +55,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const r = await conectarConsulta(clienteServicio(), {
       consultaId: id,
       propertyId: parsed.data.propertyId,
-      recordar: parsed.data.recordar,
     })
     return NextResponse.json(r)
   } catch (e) {

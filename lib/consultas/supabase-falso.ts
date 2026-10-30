@@ -27,6 +27,7 @@ export function crearSupabaseFalso(inicial: Record<string, Fila[]>): SupabaseFal
 
   function from(tabla: string) {
     const filtros: Array<[string, unknown]> = []
+    const filtrosNulos: Array<[string, null]> = []
     let op: Op = 'select'
     let cambios: Fila | null = null
     let modo: 'muchas' | 'maybeSingle' | 'single' = 'muchas'
@@ -44,7 +45,8 @@ export function crearSupabaseFalso(inicial: Record<string, Fila[]>): SupabaseFal
         filas.push(nueva)
         resultado = [nueva]
       } else {
-        resultado = filas.filter((f) => filtros.every(([c, v]) => f[c] === v))
+        resultado = filas.filter((f) => filtros.every(([c, v]) => f[c] === v)
+          && filtrosNulos.every(([c]) => f[c] === null || f[c] === undefined))
         if (op === 'update') for (const f of resultado) Object.assign(f, cambios)
       }
       const copia = resultado.map((f) => ({ ...f }))
@@ -59,6 +61,8 @@ export function crearSupabaseFalso(inicial: Record<string, Fila[]>): SupabaseFal
       update: (obj: Fila) => { op = 'update'; cambios = obj; return b },
       insert: (obj: Fila) => { op = 'insert'; cambios = obj; return b },
       eq: (col: string, v: unknown) => { filtros.push([col, v]); return b },
+      // Solo `is(col, null)`, lo único que usan estos módulos. Una celda ausente cuenta como null.
+      is: (col: string, v: null) => { filtrosNulos.push([col, v]); return b },
       maybeSingle: () => { modo = 'maybeSingle'; return Promise.resolve(ejecutar()) },
       single: () => { modo = 'single'; return Promise.resolve(ejecutar()) },
       then: <T>(ok: (r: { data: unknown; error: { message: string } | null }) => T, ko?: (e: unknown) => T) =>

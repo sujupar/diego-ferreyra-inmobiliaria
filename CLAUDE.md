@@ -251,7 +251,8 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 
 ## Supabase
 - CLI no conecta (auth issue) — el usuario corre SQL en el Dashboard SQL Editor manualmente.
-- **PERO las migraciones SÍ se pueden aplicar desde acá (descubierto 2026-07-18):** conexión directa Postgres vía session pooler `aws-0-us-west-2.pooler.supabase.com:5432`, user `postgres.mncsnastmcjdjxrehdep`, password en `SUPABASE_DB_PASSWORD` (.env.local), con `npm i --no-save pg`. Ejemplo: `scripts/apply-plans-migration-pg.ts`. La conexión directa `db.<ref>.supabase.co` es IPv6-only (esta red no tiene ruta IPv6) y el `SUPABASE_ACCESS_TOKEN` de .env.local es un placeholder (Management API da 401).
+- **PERO las migraciones SÍ se pueden aplicar desde acá (descubierto 2026-07-18):** conexión directa Postgres vía session pooler `aws-0-us-west-2.pooler.supabase.com:5432`, user `postgres.mncsnastmcjdjxrehdep`, password en `SUPABASE_DB_PASSWORD` (.env.local), con `npm i --no-save pg`. Ejemplo: `scripts/apply-plans-migration-pg.ts`. La conexión directa `db.<ref>.supabase.co` es IPv6-only (esta red no tiene ruta IPv6).
+- **Management API de Supabase: SÍ anda desde el 2026-10-30.** El dueño generó un token personal nuevo (`SUPABASE_ACCESS_TOKEN` en .env.local; el anterior estaba vencido y daba 401). Sirve para configuración que NO es SQL (claves de firma, ajustes de Auth): `https://api.supabase.com/v1/projects/mncsnastmcjdjxrehdep/...` con `Authorization: Bearer`.
 - **OJO: hay más de un proyecto en el Dashboard.** El de la app es `mncsnastmcjdjxrehdep` (= `NEXT_PUBLIC_SUPABASE_URL`). El 2026-07-18 el usuario corrió una migración "en el Dashboard" y la columna no apareció — la corrió en otro proyecto. Verificar siempre contra la API (`select` de la columna) después de una migración manual.
 - RLS habilitada granular por rol (admin, dueno, coordinador, asesor, abogado) desde migración `20260505000001_rls_per_role_safe.sql`.
 
@@ -1239,6 +1240,17 @@ Genera carruseles de campaña (largo variable, narrativa de curiosidad) a partir
 - **Regla:** contra `appraisals` (y cualquier tabla con imágenes incrustadas) pedir SIEMPRE columnas explícitas, sin `property_images`, salvo de UNA fila por id. Vale para scripts, rutas y consultas de diagnóstico.
 - **Deuda de fondo:** las fotos del sujeto deberían vivir en Storage (como las de propiedades), no en la fila. Mientras sigan ahí, la tabla es una mina.
 - **Detection:** si Supabase deja de responder entero, mirar `pg_postmaster_start_time()` (¿se reinició?) y `cron.job_run_details` (desde qué minuto fallan los jobs de cada minuto) y cruzarlo con lo que se corrió en ese minuto.
+
+### La sesión se valida por su FIRMA, sin viajar a Supabase (2026-10-30, PR #65)
+
+- **Symptom:** todo pedido a la plataforma tardaba ~0,5 s de más: el middleware, el layout y la página le preguntaban a Supabase "¿esta sesión sigue viva?" (`auth.getUser()`, ~0,17 s cada vez, en fila), y el perfil se leía dos veces por pantalla.
+- **Fix:** `leerSesion` (`lib/auth/sesion.ts`) usa `auth.getClaims()`, que verifica la firma con la clave pública del proyecto (se baja una vez y queda en memoria 10 min). `getUser` (`lib/auth/get-user.ts`) va envuelta en `cache()` de React: una validación y una lectura del perfil por pantalla. El perfil (rol, `is_active`) se sigue leyendo en CADA pedido.
+- **Requisito del lado de Supabase (hecho el 2026-10-30 por la Management API):** el proyecto firma con una clave asimétrica **ES256** (`in_use`); la clave compartida vieja (HS256) quedó como `previously_used`. Con HS256, `getClaims` vuelve a llamar a `getUser` por dentro: seguro, pero sin ganancia.
+- **NUNCA revocar la clave vieja (HS256).** Las claves `NEXT_PUBLIC_SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` son tokens firmados con ella: revocarla deja la plataforma entera sin base. Si algún día se quiere revocar, antes hay que pasar a las claves nuevas de API (`sb_publishable_…` / `sb_secret_…`) y cambiarlas en Netlify.
+- **Lo que se cedió (decisión del dueño):** una sesión cerrada desde OTRO dispositivo, o robada, sigue valiendo hasta que vence su token (1 hora). Desactivar a alguien o cambiarle el rol sigue frenándolo en el pedido siguiente (verificado en la vista previa).
+- **Medido (mediana de 8, con sesión real):** `/api/auth/me` 0,67 s → 0,31 s; `/consultas` 0,89 s → 0,71 s. El piso de Netlify (~0,14 s) no cambia.
+- **Detection:** `curl -s https://mncsnastmcjdjxrehdep.supabase.co/auth/v1/.well-known/jwks.json` tiene que traer una clave ES256. Si viene `{"keys":[]}`, alguien volvió a la clave compartida y todo vuelve a tardar ~0,5 s más (sin romperse).
+- **Pruebas:** `npx vitest run --config vitest.sesion.config.ts` (114, incluye las del middleware).
 
 ### Gotcha CRÍTICO: Turbopack panica por el acento de la carpeta "Gestión" en el path
 
@@ -2346,6 +2358,22 @@ Las fases 2 (Instagram + Facebook), 3 (YouTube + Drive) y 4 (TikTok) tienen plan
   clave de API del Drive), habilitar la API de Drive, sumar los redirect URIs
   `https://inmodf.com.ar/api/oauth/tiktok/callback` y `.../google/callback`, y cargar en Netlify
   `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_API_KEY`.
+
+## Sección Consultas — Entrega 2: carga instantánea, conectar avisos y Estadísticas (PR #63, 2026-10-29)
+
+Spec `docs/superpowers/specs/2026-10-29-consultas-rapidas-y-estadisticas-design.md`; plan homónimo.
+
+- **Por qué tardaba ~6 s:** CADA pedido a la plataforma cuesta ~1 s de piso (el middleware y la ruta validan la sesión contra Supabase Auth; hasta `/api/auth/me`, que no lee nada, tarda eso) y la pantalla encadenaba página → `/api/auth/me` → `/api/consultas` (que hacía 2–4 lecturas en dos tandas). **Regla para pantallas rápidas: pedir lo menos posible, no "paginar en el servidor".**
+- **Cómo es ahora:** `page.tsx` arma el período en el servidor (`cargarPeriodo` en `lib/consultas/servicio.ts`) con UNA llamada a la función SQL `consultas_del_periodo` (migración `20261029000002`, solo `service_role`, el alcance del asesor lo fija el servidor). Filtros, búsqueda, "Ver más" y Estadísticas se calculan EN MEMORIA (`lib/consultas/vista.ts`, `estadisticas.ts`; 3.000 consultas en < 50 ms). Solo cambiar el período vuelve a pedir (`GET /api/consultas`), y cada período visto queda guardado. Tope 3.000 por período con aviso.
+- **TRAMPA — `router.replace` vuelve a pedir la página entera:** con una página dinámica, cada cambio de filtro por el router de Next re-renderiza en el servidor (~1 s). `useFiltrosUrl({ soloNavegador: true })` escribe con `history.replaceState`, que Next sincroniza con `useSearchParams` sin ir al servidor.
+- **TRAMPA dentro de la trampa — el estado tiene que ser `null`:** `history.replaceState(window.history.state, …)` NO actualiza `useSearchParams`: Next reconoce su propio estado interno (`__NA`) y trata el cambio como suyo. La dirección cambiaba y la lista no se filtraba. Las pruebas no lo agarraron (el simulacro lee `location`); se vio recién en la vista previa.
+- **Conectar avisos (una conexión, todas las consultas):** las consultas sin propiedad se agrupan por portal + código (`codigoAgrupable` en `lib/consultas/avisos.ts`). NO agrupan: vacío, `https`/`www`/algo con `.:/`, y en ZonaProp un número de 9+ dígitos (es la REF, cambia en cada mail). Hoja "Avisos sin propiedad" (`/api/consultas/avisos`, solo operaciones) con sugeridas por calle/barrio. Ya no existe la casilla "Recordar": conectar una consulta con código conecta el aviso entero.
+- **Se conectan SOLO las consultas sin propiedad** (hallazgo de la revisión adversarial): una que ya tenía otra propiedad —quizás con visita agendada— no se mueve; reconectar una consulta corrige solo esa. `identificarAviso(…, { soloSinPropiedad: true })`; la pantalla vieja `/api/portal-inquiries/identify` sigue corrigiendo todo el aviso.
+- **Enlaces a avisos:** `enlaceSeguro(url, portal)` exige `https` y el dominio EXACTO del portal o un subdominio (nunca `includes`).
+- **Lector de ZonaProp:** `CÓD:https://…` / `CÓD:www.…` ya no se toman como código (cae a la REF) y `DF-101` se toma entero.
+- **Celular — `<fieldset>` no se achica:** por defecto mide al menos su contenido (`min-inline-size: min-content`); con direcciones largas las tarjetas del buscador medían 511 px en una hoja de 390. Todo `<fieldset>` dentro de un flex lleva `min-w-0`.
+- **QA en la vista previa con la Mac cargada:** el 2026-10-29 la Mac tenía carga promedio 130–158 en 8 núcleos y el navegador de pruebas se trababa en CUALQUIER pantalla (tareas de 10–33 s con la página quieta, también en `/visits`). Antes de culpar al código: `uptime` y comparar con otra pantalla. Las mediciones de `chrome-devtools` que esperan dentro de `evaluate_script` cortan por tiempo: lanzar la medición dentro de la página (guardar en `window.__x`) y leerla en otra llamada. La vista previa de Netlify además estuvo inestable (`/api/auth/me` 10–57 s) mientras producción respondía en ~1 s: la velocidad final se mide en producción.
+- **Pruebas:** `npx vitest run -c vitest.consultas.config.ts` (556). Script de QA de avisos (no se commitea): consultas `[TEST` con un código propio, conectar desde la hoja, `matchProperty` real para la consulta siguiente, y borrar consultas + fila del mapa.
 
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
 

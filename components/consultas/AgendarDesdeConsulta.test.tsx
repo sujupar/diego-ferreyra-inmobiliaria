@@ -70,15 +70,17 @@ function indiceDe(url: string): number {
 }
 
 describe('AgendarDesdeConsulta', () => {
-  it('sin propiedad y coordinador: conecta la propiedad (recordando el aviso) ANTES de agendar', async () => {
+  it('sin propiedad y coordinador: conecta el aviso entero ANTES de agendar', async () => {
     const onTerminado = vi.fn()
     render(<AgendarDesdeConsulta consulta={consulta({ property_id: null, propiedad: null, accion: 'elegir_propiedad' })}
       puedeIdentificar onTerminado={onTerminado} onCerrar={vi.fn()} />)
     expect(await screen.findByRole('heading', { name: '¿Qué propiedad quiere ver?' })).toBeInTheDocument()
-    // Primero las del barrio que nombra el aviso.
-    expect(await screen.findByText('Primero las de Boedo')).toBeInTheDocument()
+    // La del barrio que nombra el aviso va arriba, como sugerida.
+    expect(await screen.findByText('Sugeridas para este aviso')).toBeInTheDocument()
     fireEvent.click(await screen.findByRole('radio', { name: /Tarija 4000/ }))
-    expect(screen.getByRole('checkbox', { name: /Recordar que este aviso es Tarija 4000/ })).toBeChecked()
+    // Sin casilla: la hoja dice que se conecta el aviso entero.
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.getByText(/todas las consultas sin propiedad de este aviso/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /^Seguir/ }))
     await agendarHoyALas10()
     expect(await screen.findByRole('heading', { name: /Visita agendada/ })).toBeInTheDocument()
@@ -88,7 +90,7 @@ describe('AgendarDesdeConsulta', () => {
     expect(conexion).toBeGreaterThanOrEqual(0)
     expect(alta).toBeGreaterThan(conexion)
     const cuerpo = JSON.parse((fetchMock.mock.calls[conexion][1] as RequestInit).body as string) as unknown
-    expect(cuerpo).toEqual({ propertyId: TARIJA.id, recordar: true })
+    expect(cuerpo).toEqual({ propertyId: TARIJA.id })
     const visita = JSON.parse((fetchMock.mock.calls[alta][1] as RequestInit).body as string) as Record<string, unknown>
     expect(visita).toMatchObject({ propiedadId: TARIJA.id, persona: { tipo: 'consulta', id: CONSULTA_ID } })
   }, 20000)
@@ -148,7 +150,7 @@ describe('AgendarDesdeConsulta', () => {
     expect(usar).toBeEnabled()
   })
 
-  it('si no se pudo recordar el aviso, avisa sin frenar y sigue a agendar', async () => {
+  it('si la propiedad no tiene asesor (el aviso no se recordó), avisa sin frenar y sigue a agendar', async () => {
     const { toast } = await import('sonner')
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === `/api/consultas/${CONSULTA_ID}/propiedad` && init?.method === 'POST') {
@@ -162,7 +164,7 @@ describe('AgendarDesdeConsulta', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Seguir/ }))
     await screen.findByRole('heading', { name: '¿Cuándo?' }, { timeout: 4000 })
     await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(
-      'No se pudo recordar el aviso (la propiedad no tiene asesor o el aviso no tiene código). Esta consulta sí quedó conectada.',
+      'La propiedad no tiene asesor: las próximas consultas de este aviso no se van a conectar solas. Asigná un asesor a la propiedad.',
     ))
   }, 20000)
 

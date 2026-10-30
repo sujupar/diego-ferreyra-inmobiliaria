@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": [
+    "next-env.d.ts",
+    "types/**/*.d.ts",
+    "lib/auth/sesion.ts",
+    "lib/auth/sesion.test.ts",
+    "lib/auth/get-user.ts",
+    "lib/supabase/middleware.ts",
+    "lib/supabase/middleware.test.ts",
+    "app/api/auth/me/route.ts",
+    "middleware.ts"
+  ]
+}

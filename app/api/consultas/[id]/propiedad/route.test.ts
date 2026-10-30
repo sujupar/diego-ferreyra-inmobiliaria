@@ -44,7 +44,11 @@ describe('POST /api/consultas/[id]/propiedad', () => {
     const res = await pedir(CONSULTA, { propertyId: PROP, recordar: true })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ actualizadas: 3, recordado: true })
-    expect(conectarMock).toHaveBeenCalledWith({ cliente: 'falso' }, { consultaId: CONSULTA, propertyId: PROP, recordar: true })
+    expect(conectarMock).toHaveBeenCalledWith({ cliente: 'falso' }, { consultaId: CONSULTA, propertyId: PROP })
+  })
+
+  it('sin `recordar` (pantalla nueva) también es válido', async () => {
+    expect((await pedir(CONSULTA, { propertyId: PROP })).status).toBe(200)
   })
 
   it.each(['admin', 'dueno'])('%s también puede', async (role) => {
@@ -75,7 +79,7 @@ describe('POST /api/consultas/[id]/propiedad', () => {
     ['sin propertyId', { recordar: true }],
     ['propertyId no uuid', { propertyId: 'x', recordar: true }],
     ['recordar no booleano', { propertyId: PROP, recordar: 'si' }],
-    ['sin recordar', { propertyId: PROP }],
+    ['recordar que no es sí/no', { propertyId: PROP, recordar: 'si' }],
   ])('cuerpo inválido (%s): 400', async (_n, body) => {
     expect((await pedir(CONSULTA, body)).status).toBe(400)
     expect(conectarMock).not.toHaveBeenCalled()

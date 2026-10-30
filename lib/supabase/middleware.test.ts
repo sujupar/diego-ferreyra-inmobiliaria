@@ -12,10 +12,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
  * nombre del test dice cuál es el embudo que se rompió.
  */
 
-const getUser = vi.fn()
+const getClaims = vi.fn()
 
 vi.mock('@supabase/ssr', () => ({
-    createServerClient: () => ({ auth: { getUser } }),
+    createServerClient: () => ({ auth: { getClaims } }),
 }))
 
 const { updateSession, esApiPublica, esPaginaPublica, esRutaApi, API_PUBLICAS } =
@@ -44,11 +44,11 @@ function navegacion(pathname: string) {
 }
 
 function conSesion() {
-    getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } })
+    getClaims.mockResolvedValue({ data: { claims: { sub: 'user-1' } }, error: null })
 }
 
 function sinSesion() {
-    getUser.mockResolvedValue({ data: { user: null } })
+    getClaims.mockResolvedValue({ data: null, error: null })
 }
 
 /** `true` si el middleware dejó pasar (ni 401 ni redirect a /login). */
@@ -58,7 +58,7 @@ async function pasa(pathname: string, method = 'GET'): Promise<boolean> {
 }
 
 beforeEach(() => {
-    getUser.mockReset()
+    getClaims.mockReset()
     sinSesion()
 })
 
@@ -159,9 +159,9 @@ describe('rutas de API públicas — pasan SIN sesión', () => {
     })
 
     it('no consulta la sesión para resolver una ruta pública', async () => {
-        // Si el embudo dependiera de getUser(), una caída de Supabase lo tiraría.
+        // Si el embudo dependiera de la sesión, una caída de Supabase lo tiraría.
         await pasa('/api/funnel/submit', 'POST')
-        expect(getUser).not.toHaveBeenCalled()
+        expect(getClaims).not.toHaveBeenCalled()
     })
 })
 
@@ -345,7 +345,7 @@ describe('rutas de página — sin cambios de comportamiento', () => {
 
     it('una página pública no consulta la sesión', async () => {
         await pasa('/login')
-        expect(getUser).not.toHaveBeenCalled()
+        expect(getClaims).not.toHaveBeenCalled()
     })
 })
 

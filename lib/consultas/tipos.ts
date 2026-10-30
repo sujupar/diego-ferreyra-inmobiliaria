@@ -71,19 +71,28 @@ export interface ConteoOpcion {
   n: number
 }
 
-export interface RespuestaBandeja {
+/**
+ * Lo que viaja del servidor a la pantalla: el período ENTERO, con cada consulta
+ * ya decidida (estado, teléfono, acción, propiedad, asesor). Filtrar, paginar y
+ * calcular las estadísticas pasa en la pantalla, sin volver a pedir nada: cada
+ * pedido a la plataforma cuesta ~1 s de piso (spec Entrega 2 §2).
+ */
+export interface PeriodoConsultas {
+  periodo: { desde: string; hasta: string; etiqueta: string }
+  consultas: ConsultaEnBandeja[]
+  /**
+   * `true` si el período tenía más consultas de las que viajan (las más nuevas
+   * primero): los totales son de lo traído y la pantalla tiene que decirlo.
+   */
+  truncado: boolean
+}
+
+/** Lo que muestra la Bandeja con los filtros puestos (lib/consultas/vista.ts). */
+export interface VistaBandeja {
+  /** Las primeras `visibles` del resultado filtrado. */
   filas: ConsultaEnBandeja[]
   total: number
-  pagina: number
-  porPagina: 25
   tarjetas: TarjetasBandeja
   porPortal: ConteoOpcion[]
   porPropiedad: ConteoOpcion[]
-  periodo: { desde: string; hasta: string; etiqueta: string }
-  /**
-   * Solo presente (y `true`) si la base tenía más consultas de las que se leen
-   * en un pedido (20.000): los totales y conteos son de lo leído, no del período
-   * entero, y la pantalla tiene que poder decirlo.
-   */
-  truncado?: true
 }

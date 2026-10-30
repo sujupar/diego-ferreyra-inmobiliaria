@@ -72,6 +72,27 @@ describe('parser ZonaProp', () => {
   it('teléfono del body', () => expect(r.leadPhone).toMatch(/5323/))
   it('código = CÓD del anunciante', () => expect(r.propertyCode).toBe('2CBSS6'))
   it('título del aviso desde el asunto', () => expect(r.propertyTitle).toMatch(/Venta Casa 4 Ambientes/))
+
+  // Caso real (5 consultas): el anunciante cargó un ENLACE donde va el código.
+  // Tomar "https" como código juntaba consultas de avisos distintos bajo un
+  // aviso falso. Sin CÓD de verdad queda la REF (que no agrupa).
+  it('un enlace en el lugar del CÓD no se toma como código', () => {
+    const conEnlace = parseInquiry({
+      ...zonapropEmail,
+      subject: '📱 ¡Consultaron tu WhatsApp en el aviso Casa 4 Ambientes con Jardín en San Andrés. Apt ...! CÓD:https://www.youtube.com/x - REF:#307527468#',
+    })!
+    expect(conEnlace.propertyCode).toBe('307527468')
+  })
+
+  it('un enlace sin https ("www.…") tampoco es un código', () => {
+    const conWww = parseInquiry({ ...zonapropEmail, subject: '📱 ¡Consultaron tu WhatsApp en el aviso Casa! CÓD:www.zonaprop.com.ar/x - REF:#307527468#' })!
+    expect(conWww.propertyCode).toBe('307527468')
+  })
+
+  it('un código con guion se toma entero, no cortado en el guion', () => {
+    const conGuion = parseInquiry({ ...zonapropEmail, subject: '📩 ¡Recibiste una nueva consulta por el aviso Casa! CÓD:DF-101 - REF:#307527468#' })!
+    expect(conGuion.propertyCode).toBe('DF-101')
+  })
 })
 
 // --- Argenprop (formato real) --------------------------------------------
