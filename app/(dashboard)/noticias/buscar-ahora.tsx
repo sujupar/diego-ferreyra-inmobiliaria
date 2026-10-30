@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { CheckCircle2, ExternalLink, Search, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import Piezas from './piezas'
 
@@ -112,7 +114,7 @@ export default function BuscarAhora() {
 
         {loading && (
           <div className="space-y-3" aria-hidden>
-            {[0, 1, 2].map((i) => <div key={i} className="h-24 rounded-xl border bg-muted/40 animate-pulse" />)}
+            {[0, 1, 2].map((i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
           </div>
         )}
 
@@ -139,17 +141,25 @@ export default function BuscarAhora() {
                     const on = selected.has(i)
                     return (
                       <li key={c.url + i}>
-                        <label
+                        <div
+                          role="checkbox"
+                          aria-checked={on}
+                          tabIndex={0}
+                          onClick={() => toggle(i)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(i) }
+                          }}
                           className={cn(
                             'flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition-all hover:shadow-sm',
                             on && 'border-primary bg-primary/5 ring-1 ring-primary/30',
                           )}
                         >
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             checked={on}
-                            onChange={() => toggle(i)}
-                            className="mt-1 size-5 shrink-0 accent-[var(--color-primary,#15803d)] cursor-pointer"
+                            onCheckedChange={() => toggle(i)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="mt-1 shrink-0"
+                            aria-label={`Seleccionar ${c.titulo}`}
                           />
                           <div className="min-w-0 flex-1">
                             <p className="font-medium leading-snug">{c.titulo}</p>
@@ -165,7 +175,7 @@ export default function BuscarAhora() {
                             </p>
                             {c.resumen && <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{c.resumen}</p>}
                           </div>
-                        </label>
+                        </div>
                       </li>
                     )
                   })}

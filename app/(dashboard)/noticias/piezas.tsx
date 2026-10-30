@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ChevronDown, ExternalLink, Copy, Check } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import type { NewsScript } from '@/lib/news/scripts-repo'
 
@@ -122,7 +123,7 @@ export default function Piezas({ refreshKey = 0 }: { refreshKey?: number }) {
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {!scripts && !error && (
         <div className="space-y-3" aria-hidden>
-          {[0, 1].map((i) => <div key={i} className="h-20 rounded-xl border bg-muted/40 animate-pulse" />)}
+          {[0, 1].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
         </div>
       )}
       {scripts && scripts.length === 0 && (
