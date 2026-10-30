@@ -26,6 +26,8 @@ export const TAMANO_LOTE = 50
 export const EJEMPLOS_OBJETIVO = 100
 /** Cuántos reels se leen como máximo: en la cuenta, ~95 % de los posts recientes son reels y ~95 % de esos NO son avisos. */
 export const MAX_REELS_A_LEER = 400
+export const GUIA_MAX_EJEMPLOS = 40
+export const GUIA_MAX_CARACTERES = 1000
 
 type Clasificando = Extract<EstadoEstilo, { etapa: 'clasificando' }>
 type Candidato = Clasificando['candidatos'][number]
@@ -126,7 +128,13 @@ export function promptGuia(ejemplos: { caption: string }[]): { system: string; u
     '- qué NO hace nunca',
     'Basate SOLO en los ejemplos. Máximo 2.500 caracteres.',
   ].join('\n')
-  const user = ejemplos.map((e, i) => `--- ${i + 1} ---\n${e.caption}`).join('\n\n')
+  // 40 ejemplos recortados alcanzan para describir un estilo y hacen que la llamada
+  // entre en el tiempo de Netlify: con los 100 enteros (~60 mil tokens) se arriesgaba
+  // a cortarse siempre, y sin guía no se puede escribir ninguna descripción.
+  const user = ejemplos
+    .slice(0, GUIA_MAX_EJEMPLOS)
+    .map((e, i) => `--- ${i + 1} ---\n${e.caption.slice(0, GUIA_MAX_CARACTERES)}`)
+    .join('\n\n')
   return { system, user }
 }
 

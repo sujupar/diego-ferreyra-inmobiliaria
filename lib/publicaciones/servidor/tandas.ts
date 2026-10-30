@@ -3,7 +3,13 @@
  * validan con Zod y llaman acá.
  */
 import type { z } from 'zod'
-import { armarCalendario, mananaEnArgentina, type HorariosPorDefecto, type Ritmo } from '../calendario'
+import {
+  armarCalendario,
+  hayHorariosAutomaticosVencidos,
+  mananaEnArgentina,
+  type HorariosPorDefecto,
+  type Ritmo,
+} from '../calendario'
 import { BUCKET, publicacionesDb, urlPublica } from '../db'
 import { sincronizarEnvios } from '../envios'
 import { ajustarDescripcion, ajustarTituloYoutube } from '../textos'
@@ -160,11 +166,18 @@ export async function altaVideos(
     }
   })
   const db = publicacionesDb()
-  const { error } = await db.from('publicacion_videos').insert(filas)
+  // Dos pedidos con el mismo archivo pueden llegar juntos: la UNIQUE de la base
+  // decide, y solo los que de verdad se insertaron reciben URL de subida.
+  const { data: insertadas, error } = await db
+    .from('publicacion_videos')
+    .upsert(filas, { onConflict: 'tanda_id,nombre_archivo,tamano_bytes', ignoreDuplicates: true })
+    .select('id')
   dbError(error)
+  const ids = new Set((insertadas ?? []).map((f) => f.id as string))
+  for (const f of filas) if (!ids.has(f.id)) repetidos.push(f.nombre_archivo)
 
   const videos = await Promise.all(
-    filas.map(async (f) => {
+    filas.filter((f) => ids.has(f.id)).map(async (f) => {
       const { data, error: e } = await db.storage.from(BUCKET).createSignedUploadUrl(f.video_path, { upsert: true })
       if (e || !data) throw new Error(`Storage: ${e?.message ?? 'sin URL'}`)
       return {
@@ -223,7 +236,10 @@ export async function actualizarVideo(id: string, cambios: z.infer<typeof patchV
     patch.descripcion = ajustarDescripcion(cambios.descripcion)
     patch.descripcion_editada = true
   }
-  if (cambios.titulo_youtube !== undefined) patch.titulo_youtube = ajustarTituloYoutube(cambios.titulo_youtube)
+  if (cambios.titulo_youtube !== undefined) {
+    patch.titulo_youtube = ajustarTituloYoutube(cambios.titulo_youtube)
+    patch.titulo_editado = true
+  }
   if (cambios.redes !== undefined) {
     const redes = [...new Set(cambios.redes)]
     if (redes.length === 0) throw new ErrorHttp(400, 'Si no va a ninguna red, quitá el video')
@@ -336,13 +352,22 @@ export async function aplicarCalendario(tandaId: string): Promise<VideoConUrls[]
 
 export async function confirmarTanda(tandaId: string): Promise<{ videos: number; envios: number }> {
   const tanda = await leerTanda(tandaId)
-  const videos = await videosDeTanda(tandaId)
+  let videos = await videosDeTanda(tandaId)
   if (videos.length === 0) throw new ErrorHttp(409, 'La tanda no tiene videos')
   const sinTerminar = videos.filter((v) => v.etapa !== 'listo')
   if (sinTerminar.length) throw new ErrorHttp(409, `Faltan terminar ${sinTerminar.length} video(s)`)
   if (videos.some((v) => !v.programado_para)) throw new ErrorHttp(409, 'Hay videos sin día y hora')
-  if (tanda.estado === 'borrador' && videos.some((v) => Date.parse(v.programado_para!) <= Date.now())) {
-    throw new ErrorHttp(409, 'Hay videos con un horario que ya pasó: volvé a elegir el ritmo o cambiá la hora')
+  if (tanda.estado === 'borrador') {
+    // "Todos ya" arranca a los 5 minutos y revisar lleva más: los horarios del ritmo
+    // que se vencieron se vuelven a armar desde ahora, en vez de rebotar.
+    if (tanda.ritmo && hayHorariosAutomaticosVencidos(videos, new Date())) {
+      await aplicarCalendario(tandaId)
+      videos = await videosDeTanda(tandaId)
+    }
+    const manualVencido = videos.find((v) => Date.parse(v.programado_para!) <= Date.now())
+    if (manualVencido) {
+      throw new ErrorHttp(409, `El horario de "${manualVencido.nombre_archivo}" ya pasó: cambiale la hora`)
+    }
   }
 
   const db = publicacionesDb()

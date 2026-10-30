@@ -94,7 +94,8 @@ export function NuevaTanda({ onProgramada }: { onProgramada: () => void }) {
               ...v,
               descripcion: x.descripcion_editada ? x.descripcion : v.descripcion,
               descripcion_editada: x.descripcion_editada || v.descripcion_editada,
-              titulo_youtube: x.titulo_youtube || v.titulo_youtube,
+              titulo_youtube: x.titulo_editado ? x.titulo_youtube : v.titulo_youtube,
+              titulo_editado: x.titulo_editado || v.titulo_editado,
               redes: x.redes,
               programado_para: x.programado_para,
               hora_manual: x.hora_manual,
@@ -121,7 +122,12 @@ export function NuevaTanda({ onProgramada }: { onProgramada: () => void }) {
         const locales = new Map(prev.map((v) => [v.id, v]))
         return r.videos.map((v) => {
           const x = locales.get(v.id)
-          return x?.descripcion_editada ? { ...v, descripcion: x.descripcion, descripcion_editada: true } : v
+          if (!x) return v
+          return {
+            ...v,
+            ...(x.descripcion_editada ? { descripcion: x.descripcion, descripcion_editada: true } : {}),
+            ...(x.titulo_editado ? { titulo_youtube: x.titulo_youtube, titulo_editado: true } : {}),
+          }
         })
       })
       setPaso(3)
@@ -156,7 +162,30 @@ export function NuevaTanda({ onProgramada }: { onProgramada: () => void }) {
     }
   }
 
-  const elegir = async (lista: File[]) => {
+  // Un segundo arrastre mientras el primero todavía se da de alta crearía otra tanda
+  // (la primera aún no volvió) o duplicaría archivos: se encola hasta que termine.
+  const eligiendoAhora = useRef<Promise<void>>(Promise.resolve())
+  const elegir = (lista: File[]) => {
+    eligiendoAhora.current = eligiendoAhora.current.then(() => elegirAhora(lista))
+    return eligiendoAhora.current
+  }
+
+  // La tanda más reciente, leída fuera del closure: el alta encolada necesita la que
+  // creó el arrastre anterior, no la que había cuando se soltó el archivo.
+  const tandaActual = useRef<TandaFila | null>(null)
+  tandaActual.current = tanda
+  const videosActuales = useRef<VideoVista[]>([])
+  videosActuales.current = videos
+
+  useEffect(() => {
+    const avisar = (e: BeforeUnloadEvent) => {
+      if (cola.estaTrabajando()) e.preventDefault()
+    }
+    window.addEventListener('beforeunload', avisar)
+    return () => window.removeEventListener('beforeunload', avisar)
+  }, [cola])
+
+  const elegirAhora = async (lista: File[]) => {
     const validos: File[] = []
     for (const f of lista) {
       const problema = problemaDeArchivo(f)
@@ -166,14 +195,15 @@ export function NuevaTanda({ onProgramada }: { onProgramada: () => void }) {
     if (validos.length === 0) return
     setAgregando(true)
     try {
-      let actual = tanda
+      let actual = tandaActual.current
       if (!actual) {
         actual = (await api<{ tanda: TandaFila }>('/api/publicaciones/tandas', { method: 'POST' })).tanda
+        tandaActual.current = actual
         setTanda(actual)
       }
       // Un archivo que ya estaba a medio subir (se cerró la pestaña) se reengancha, no se duplica.
       const pendientes = new Map(
-        videos.filter((v) => v.etapa === 'subiendo' && !archivos.current.has(v.id)).map((v) => [clave(v.nombre_archivo, v.tamano_bytes), v.id]),
+        videosActuales.current.filter((v) => v.etapa === 'subiendo' && !archivos.current.has(v.id)).map((v) => [clave(v.nombre_archivo, v.tamano_bytes), v.id]),
       )
       const nuevos: File[] = []
       for (const f of validos) {
@@ -207,6 +237,7 @@ export function NuevaTanda({ onProgramada }: { onProgramada: () => void }) {
         if (r.repetidos.length > 0) toast.info(`Ya está en la tanda: ${r.repetidos.join(', ')}`)
       }
       const det = await api<{ tanda: TandaFila; videos: VideoVista[] }>(`/api/publicaciones/tandas/${actual.id}`)
+      videosActuales.current = det.videos
       setVideos(det.videos)
       setEligiendo(true)
     } catch (e) {

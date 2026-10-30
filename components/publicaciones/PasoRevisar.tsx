@@ -57,7 +57,10 @@ export function PasoRevisar({ tandaId, videos, estadoGuardado, onVideos, guardar
 
   const cambiar = (id: string, campos: CambiosVideo) => {
     // descripcion_editada solo en pantalla: el servidor lo marca solo al recibir la descripción.
-    const marca = campos.descripcion !== undefined ? { descripcion_editada: true } : {}
+    const marca = {
+      ...(campos.descripcion !== undefined ? { descripcion_editada: true } : {}),
+      ...(campos.titulo_youtube !== undefined ? { titulo_editado: true } : {}),
+    }
     onVideos(videos.map((v) => (v.id === id ? { ...v, ...campos, ...marca } : v)))
     guardar(id, campos)
   }

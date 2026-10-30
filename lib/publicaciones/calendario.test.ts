@@ -3,6 +3,7 @@ import {
   aHoraArgentina,
   armarCalendario,
   fraseCalendario,
+  hayHorariosAutomaticosVencidos,
   mananaEnArgentina,
   reasignarHorarios,
   type HorariosPorDefecto,
@@ -192,6 +193,30 @@ describe('reasignarHorarios', () => {
       ['y', A],
       ['x', B],
     ])
+  })
+})
+
+describe('hayHorariosAutomaticosVencidos', () => {
+  const ahora = new Date('2026-10-29T15:30:00Z')
+  it('"Todos ya" armado hace 20 minutos está vencido', () => {
+    expect(
+      hayHorariosAutomaticosVencidos(
+        [{ programado_para: '2026-10-29T15:15:00.000Z', hora_manual: false }],
+        ahora,
+      ),
+    ).toBe(true)
+  })
+
+  it('una hora manual vencida no cuenta: esa la tiene que cambiar la persona', () => {
+    expect(
+      hayHorariosAutomaticosVencidos([{ programado_para: '2026-10-29T15:15:00.000Z', hora_manual: true }], ahora),
+    ).toBe(false)
+  })
+
+  it('horarios futuros no están vencidos', () => {
+    expect(
+      hayHorariosAutomaticosVencidos([{ programado_para: '2026-10-30T22:00:00.000Z', hora_manual: false }], ahora),
+    ).toBe(false)
   })
 })
 

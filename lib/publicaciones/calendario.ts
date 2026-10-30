@@ -163,6 +163,21 @@ export function fraseCalendario(fechas: Date[], ritmo: Ritmo): string {
 }
 
 /**
+ * ¿Algún horario puesto por el ritmo ya pasó? Pasa siempre con "Todos ya" (arranca
+ * a los 5 minutos y revisar 20 descripciones lleva más): al confirmar, el servidor
+ * vuelve a armar el calendario en vez de rebotar. Las horas manuales no cuentan:
+ * esas las eligió la persona y solo ella las cambia.
+ */
+export function hayHorariosAutomaticosVencidos(
+  videos: { programado_para: string | null; hora_manual: boolean }[],
+  ahora: Date,
+): boolean {
+  return videos.some(
+    (v) => !v.hora_manual && v.programado_para !== null && Date.parse(v.programado_para) <= ahora.getTime(),
+  )
+}
+
+/**
  * Al reordenar arrastrando, los horarios se quedan quietos y los videos se mueven:
  * el que queda primero toma el horario más temprano. Un video con hora puesta a
  * mano conserva la suya y no consume ningún horario del resto.

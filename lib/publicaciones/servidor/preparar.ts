@@ -10,7 +10,7 @@ import { estiloVigente, type EstadoEstilo } from '../estilo'
 import { siguienteAccion } from '../preparacion'
 import { SIN_VOZ, type Segmento, type VideoFila } from '../tipos'
 import { aplicarResultadoDescripcion, escribirDescripcion } from './describir'
-import { tieneVoz, transcribirAudio } from './transcribir'
+import { TARDO_DEMASIADO, tieneVoz, transcribirAudio } from './transcribir'
 
 export class EstiloNoAprendido extends Error {
   constructor() {
@@ -27,6 +27,7 @@ const ERRORES_LEGIBLES = [
   'Falta configurar la clave de OpenAI',
   'El audio es demasiado largo para transcribir (más de 13 minutos)',
   'No se pudo transcribir el audio',
+  TARDO_DEMASIADO,
 ]
 
 function legible(e: unknown, etapa: string): string {
@@ -79,29 +80,33 @@ async function describir(v: VideoFila): Promise<void> {
   const ia = await escribirDescripcion(segmentos, estilo.guia, estilo.ejemplos.map((e) => e.caption))
 
   // Releer justo antes de escribir: la persona pudo editar mientras la IA escribía.
-  const fresco = await leerVideo(v.id)
-  if (fresco.etapa !== 'describiendo') return
-  const final = aplicarResultadoDescripcion(fresco, ia)
-  const comun = { titulo_youtube: final.titulo_youtube, etapa: 'listo', error_etapa: null, ultimo_error: null }
-
-  // Primero intento escribir también la descripción, SOLO si sigue sin editar.
-  const { data: escritas, error: e1 } = await db
+  // La escritura es condicional a las marcas que se leyeron: si en el medio la
+  // persona tocó la descripción o el título, no se escribe nada y se vuelve a leer.
+  for (let intento = 0; intento < 3; intento++) {
+    const fresco = await leerVideo(v.id)
+    if (fresco.etapa !== 'describiendo') return
+    const final = aplicarResultadoDescripcion(fresco, ia)
+    const patch: Record<string, unknown> = { etapa: 'listo', error_etapa: null, ultimo_error: null }
+    if (!fresco.descripcion_editada) patch.descripcion = final.descripcion
+    if (!fresco.titulo_editado) patch.titulo_youtube = final.titulo_youtube
+    const { data: escritas, error } = await db
+      .from('publicacion_videos')
+      .update(patch)
+      .eq('id', v.id)
+      .eq('etapa', 'describiendo')
+      .eq('descripcion_editada', fresco.descripcion_editada)
+      .eq('titulo_editado', fresco.titulo_editado)
+      .select('id')
+    if (error) throw new Error(`DB: ${error.message}`)
+    if ((escritas ?? []).length > 0) return
+  }
+  // Siguen editando sin parar: se cierra la etapa sin tocar ningún texto.
+  const { error } = await db
     .from('publicacion_videos')
-    .update({ ...comun, descripcion: final.descripcion })
+    .update({ etapa: 'listo', error_etapa: null, ultimo_error: null })
     .eq('id', v.id)
     .eq('etapa', 'describiendo')
-    .eq('descripcion_editada', false)
-    .select('id')
-  if (e1) throw new Error(`DB: ${e1.message}`)
-  if ((escritas ?? []).length > 0) return
-
-  // La editaron en el medio: se respeta lo suyo y solo se cierra la etapa.
-  const { error: e3 } = await db
-    .from('publicacion_videos')
-    .update(comun)
-    .eq('id', v.id)
-    .eq('etapa', 'describiendo')
-  if (e3) throw new Error(`DB: ${e3.message}`)
+  if (error) throw new Error(`DB: ${error.message}`)
 }
 
 export async function avanzarPreparacion(videoId: string): Promise<VideoFila> {

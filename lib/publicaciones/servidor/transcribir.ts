@@ -6,6 +6,9 @@
 import type { Segmento } from '../tipos'
 
 const TOPE_AUDIO_BYTES = 25 * 1024 * 1024
+/** Techo de cada llamada a la IA de Publicaciones. */
+export const TECHO_IA_MS = 20_000
+export const TARDO_DEMASIADO = 'La IA tardó demasiado en responder. Tocá Reintentar.'
 
 /**
  * Frases que whisper "escucha" sobre música o silencio. Si es lo único que hay,
@@ -55,11 +58,19 @@ export async function transcribirAudio(wav: Blob): Promise<Segmento[]> {
   form.append('timestamp_granularities[]', 'segment')
   form.append('language', 'es')
 
-  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}` },
-    body: form,
-  })
+  let res: Response
+  try {
+    res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}` },
+      body: form,
+      // Antes del corte de Netlify (~26 s): así el error es legible y no queda colgado.
+      signal: AbortSignal.timeout(TECHO_IA_MS),
+    })
+  } catch (e) {
+    if (e instanceof Error && e.name === 'TimeoutError') throw new Error(TARDO_DEMASIADO)
+    throw e
+  }
   const json: unknown = await res.json().catch(() => null)
   if (!res.ok) {
     console.error('[publicaciones] whisper', res.status, JSON.stringify(json).slice(0, 400))

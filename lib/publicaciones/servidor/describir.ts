@@ -7,7 +7,7 @@
 import { openaiText } from '@/lib/social/openai'
 import { ajustarDescripcion, ajustarTituloYoutube, problemasDeTexto } from '../textos'
 import type { Segmento, VideoFila } from '../tipos'
-import { textoPlano } from './transcribir'
+import { TARDO_DEMASIADO, TECHO_IA_MS, textoPlano } from './transcribir'
 
 const MAX_EJEMPLOS = 30
 
@@ -64,13 +64,14 @@ export const SCHEMA_DESCRIPCION = {
 
 /** Lo que escribió la persona gana siempre sobre lo que escribe la IA. */
 export function aplicarResultadoDescripcion(
-  video: Pick<VideoFila, 'descripcion' | 'descripcion_editada' | 'titulo_youtube'>,
+  video: Pick<VideoFila, 'descripcion' | 'descripcion_editada' | 'titulo_youtube' | 'titulo_editado'>,
   ia: { descripcion: string; titulo_youtube: string },
 ): { descripcion: string; titulo_youtube: string } {
-  if (!video.descripcion_editada) return ia
+  // Cada campo con su marca: un título escrito a mano (o vaciado a propósito) no lo
+  // pisa la IA aunque la descripción la haya escrito ella.
   return {
-    descripcion: video.descripcion,
-    titulo_youtube: video.titulo_youtube.trim() ? video.titulo_youtube : ia.titulo_youtube,
+    descripcion: video.descripcion_editada ? video.descripcion : ia.descripcion,
+    titulo_youtube: video.titulo_editado ? video.titulo_youtube : ia.titulo_youtube,
   }
 }
 
@@ -96,7 +97,15 @@ export async function escribirDescripcion(
   ejemplos: string[],
 ): Promise<{ descripcion: string; titulo_youtube: string }> {
   const { system, user } = promptDescripcion(segmentos, guia, ejemplos)
-  const ia = await openaiText<{ descripcion: string; titulo_youtube: string }>(system, user, SCHEMA_DESCRIPCION)
+  let ia: { descripcion: string; titulo_youtube: string }
+  try {
+    ia = await openaiText<{ descripcion: string; titulo_youtube: string }>(system, user, SCHEMA_DESCRIPCION, {
+      timeoutMs: TECHO_IA_MS,
+    })
+  } catch (e) {
+    if (e instanceof Error && e.name === 'TimeoutError') throw new Error(TARDO_DEMASIADO)
+    throw e
+  }
   const transcripcion = textoPlano(segmentos)
   const descripcion = quitarFrasesConProblemas(ia.descripcion, problemasDeTexto(ia.descripcion, transcripcion))
   return {

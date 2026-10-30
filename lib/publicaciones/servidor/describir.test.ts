@@ -46,22 +46,27 @@ describe('tieneVoz', () => {
 describe('aplicarResultadoDescripcion', () => {
   const ia = { descripcion: 'Descripción de la IA', titulo_youtube: 'Título de la IA' }
 
+  const base = { descripcion: '', descripcion_editada: false, titulo_youtube: '', titulo_editado: false }
+
   it('sin edición usa lo de la IA', () => {
-    expect(
-      aplicarResultadoDescripcion({ descripcion: '', descripcion_editada: false, titulo_youtube: '' }, ia),
-    ).toEqual(ia)
+    expect(aplicarResultadoDescripcion(base, ia)).toEqual(ia)
   })
 
-  it('con descripción editada conserva la descripción y completa el título vacío', () => {
+  it('con descripción editada conserva la descripción y completa el título', () => {
     expect(
-      aplicarResultadoDescripcion({ descripcion: 'La escribí yo', descripcion_editada: true, titulo_youtube: '' }, ia),
+      aplicarResultadoDescripcion({ ...base, descripcion: 'La escribí yo', descripcion_editada: true }, ia),
     ).toEqual({ descripcion: 'La escribí yo', titulo_youtube: 'Título de la IA' })
   })
 
-  it('con descripción editada no pisa un título que ya existe', () => {
-    expect(
-      aplicarResultadoDescripcion({ descripcion: 'La escribí yo', descripcion_editada: true, titulo_youtube: 'Mío' }, ia),
-    ).toEqual({ descripcion: 'La escribí yo', titulo_youtube: 'Mío' })
+  it('un título escrito por la persona gana aunque la descripción no esté editada', () => {
+    expect(aplicarResultadoDescripcion({ ...base, titulo_youtube: 'Mío', titulo_editado: true }, ia)).toEqual({
+      descripcion: 'Descripción de la IA',
+      titulo_youtube: 'Mío',
+    })
+  })
+
+  it('un título que la persona vació a propósito queda vacío', () => {
+    expect(aplicarResultadoDescripcion({ ...base, titulo_editado: true }, ia).titulo_youtube).toBe('')
   })
 })
 

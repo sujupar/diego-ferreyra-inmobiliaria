@@ -46,6 +46,17 @@ CREATE TABLE IF NOT EXISTS public.publicacion_videos (
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now()
 );
+-- Agregados tras la revisión de la rama (idempotentes: la tabla ya existía).
+-- Un título escrito (o vaciado) por la persona no lo pisa la IA.
+ALTER TABLE public.publicacion_videos ADD COLUMN IF NOT EXISTS titulo_editado boolean NOT NULL DEFAULT false;
+-- El mismo archivo soltado dos veces rápido no se duplica aunque los dos pedidos lleguen juntos.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'publicacion_videos_archivo_key') THEN
+    ALTER TABLE public.publicacion_videos
+      ADD CONSTRAINT publicacion_videos_archivo_key UNIQUE (tanda_id, nombre_archivo, tamano_bytes);
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS publicacion_videos_tanda_idx ON public.publicacion_videos (tanda_id, orden);
 CREATE INDEX IF NOT EXISTS publicacion_videos_programado_idx ON public.publicacion_videos (programado_para);
 

@@ -40,12 +40,19 @@ export function PestanaProgramado() {
   }, [cargar])
 
   const cambiar = async (v: VideoProgramado, campos: CambiosVideo) => {
-    const marca = campos.descripcion !== undefined ? { descripcion_editada: true } : {}
+    const marca = {
+      ...(campos.descripcion !== undefined ? { descripcion_editada: true } : {}),
+      ...(campos.titulo_youtube !== undefined ? { titulo_editado: true } : {}),
+    }
     setVideos((prev) => (prev ?? []).map((x) => (x.id === v.id ? { ...x, ...campos, ...marca } : x)))
     autoguardado.guardar(v.id, campos)
     // Cambiar redes o pausar crea/cancela envíos: se recarga para mostrar el estado real.
     if (campos.redes || campos.pausado !== undefined || campos.programado_para) {
-      await autoguardado.vaciar()
+      try {
+        await autoguardado.vaciar()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'No se pudo guardar')
+      }
       await cargar()
     }
   }

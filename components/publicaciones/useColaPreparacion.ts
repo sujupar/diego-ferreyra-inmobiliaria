@@ -150,5 +150,6 @@ export function useColaPreparacion({ videos, archivos, espacios, onVideo }: Opci
     }
   }, [])
 
-  return { progreso, errores, reintentar, trabajando: enCurso.current.size > 0 }
+  const estaTrabajando = useCallback(() => enCurso.current.size > 0, [])
+  return { progreso, errores, reintentar, estaTrabajando }
 }

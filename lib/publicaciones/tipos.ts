@@ -49,6 +49,7 @@ export interface VideoFila {
   descripcion: string
   descripcion_editada: boolean
   titulo_youtube: string
+  titulo_editado: boolean
   redes: Plataforma[]
   programado_para: string | null
   hora_manual: boolean

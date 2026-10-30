@@ -24,6 +24,16 @@ import {
   type MediaInstagram,
 } from '../estilo'
 import { ErrorHttp } from './http'
+import { TARDO_DEMASIADO, TECHO_IA_MS } from './transcribir'
+
+async function conTecho<T>(llamada: () => Promise<T>): Promise<T> {
+  try {
+    return await llamada()
+  } catch (e) {
+    if (e instanceof Error && e.name === 'TimeoutError') throw new ErrorHttp(504, TARDO_DEMASIADO)
+    throw e
+  }
+}
 
 async function leerEstado(): Promise<{ estilo: EstadoEstilo; updated_at: string }> {
   const { data, error } = await publicacionesDb()
@@ -67,7 +77,9 @@ async function leerReels(): Promise<MediaInstagram[]> {
 export async function avanzarAprendizaje(empezar = false): Promise<EstadoEstilo> {
   const { estilo, updated_at } = await leerEstado()
 
-  if (estilo.etapa === 'sin_aprender' || (estilo.etapa === 'listo' && empezar)) {
+  // `empezar` desde CUALQUIER etapa: si un aprendizaje quedó trabado a mitad (la IA
+  // falló siempre en el mismo paso), "Volver a aprender" es la salida.
+  if (estilo.etapa === 'sin_aprender' || empezar) {
     let media: MediaInstagram[]
     try {
       media = await leerReels()
@@ -85,10 +97,10 @@ export async function avanzarAprendizaje(empezar = false): Promise<EstadoEstilo>
   if (estilo.etapa === 'clasificando') {
     const lote = siguienteLote(estilo)
     const { system, user } = promptClasificacion(lote)
-    const r = await openaiText<{ resultados: { id: string; es_diego_hablando: boolean }[] }>(
-      system,
-      user,
-      SCHEMA_CLASIFICACION,
+    const r = await conTecho(() =>
+      openaiText<{ resultados: { id: string; es_diego_hablando: boolean }[] }>(system, user, SCHEMA_CLASIFICACION, {
+        timeoutMs: TECHO_IA_MS,
+      }),
     )
     return guardar(aplicarClasificacion(estilo, r.resultados ?? []), updated_at)
   }
@@ -99,7 +111,7 @@ export async function avanzarAprendizaje(empezar = false): Promise<EstadoEstilo>
       return guardar(estilo.anterior ?? { etapa: 'sin_aprender' }, updated_at)
     }
     const { system, user } = promptGuia(estilo.ejemplos)
-    const r = await openaiText<{ guia: string }>(system, user, SCHEMA_GUIA)
+    const r = await conTecho(() => openaiText<{ guia: string }>(system, user, SCHEMA_GUIA, { timeoutMs: TECHO_IA_MS }))
     return guardar(
       { etapa: 'listo', guia: r.guia.trim(), ejemplos: estilo.ejemplos, aprendido_en: new Date().toISOString(), anterior: null },
       updated_at,

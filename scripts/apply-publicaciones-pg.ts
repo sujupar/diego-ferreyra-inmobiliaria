@@ -94,6 +94,31 @@ async function main() {
     }
     exigir(codigo === '23505', 'un envío duplicado (video, red) rebota con 23505')
 
+    const { rows: [col] } = await c.query(
+      `SELECT count(*)::int AS n FROM information_schema.columns
+        WHERE table_name = 'publicacion_videos' AND column_name = 'titulo_editado'`,
+    )
+    exigir(col.n === 1, 'columna titulo_editado presente')
+
+    // El mismo archivo dos veces en una tanda tiene que rebotar con 23505.
+    await c.query('BEGIN')
+    let codigo2: string | undefined
+    try {
+      const { rows: [t] } = await c.query(`INSERT INTO public.publicacion_tandas DEFAULT VALUES RETURNING id`)
+      for (let i = 0; i < 2; i++) {
+        await c.query(
+          `INSERT INTO public.publicacion_videos (tanda_id, orden, nombre_archivo, tamano_bytes)
+           VALUES ($1, $2, '[TEST] mismo.mp4', 1000)`,
+          [t.id, i],
+        )
+      }
+    } catch (e) {
+      codigo2 = (e as { code?: string }).code
+    } finally {
+      await c.query('ROLLBACK')
+    }
+    exigir(codigo2 === '23505', 'el mismo archivo dos veces en una tanda rebota con 23505')
+
     console.log('\nOK publicaciones')
   } finally {
     await c.end()

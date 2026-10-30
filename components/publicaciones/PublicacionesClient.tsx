@@ -40,7 +40,9 @@ export function PublicacionesClient() {
           <TabsTrigger value="programado">Programado</TabsTrigger>
           <TabsTrigger value="publicado">Publicado</TabsTrigger>
         </TabsList>
-        <TabsContent value="nueva" className="pt-4">
+        {/* forceMount: la tanda NO se desmonta al cambiar de pestaña. Desmontarla
+            perdía los archivos en memoria y dejaba subidas huérfanas corriendo. */}
+        <TabsContent value="nueva" forceMount className="pt-4 data-[state=inactive]:hidden">
           <NuevaTanda
             key={vueltaNueva}
             onProgramada={() => {

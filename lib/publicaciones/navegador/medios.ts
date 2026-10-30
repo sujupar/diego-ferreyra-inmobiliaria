@@ -8,6 +8,7 @@
  * `fuente` es el archivo elegido o, al retomar una tanda, la URL pública del
  * video ya subido (el bucket es público y sirve CORS).
  */
+import { crearTurno } from '../turno'
 import { codificarWav } from '../wav'
 
 const FRECUENCIA = 16_000
@@ -88,7 +89,14 @@ export async function extraerMiniatura(
  * Audio mono a 16 kHz en WAV. Un video SIN pista de audio no es un error: sale un
  * segundo de silencio y la transcripción lo marca como "sin voz".
  */
-export async function extraerAudio(fuente: File | string): Promise<Blob> {
+const turnoDeAudio = crearTurno()
+
+/** De a un video por vez aunque la cola prepare dos: ver `lib/publicaciones/turno.ts`. */
+export function extraerAudio(fuente: File | string): Promise<Blob> {
+  return turnoDeAudio(() => extraerAudioAhora(fuente))
+}
+
+async function extraerAudioAhora(fuente: File | string): Promise<Blob> {
   const bytes =
     typeof fuente === 'string'
       ? await fetch(fuente).then((r) => {

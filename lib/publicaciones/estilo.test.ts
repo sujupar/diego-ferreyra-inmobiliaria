@@ -6,6 +6,7 @@ import {
   candidatosDeMedia,
   estiloVigente,
   promptClasificacion,
+  promptGuia,
   siguienteLote,
   type EstadoEstilo,
 } from './estilo'
@@ -81,6 +82,15 @@ describe('aplicarClasificacion', () => {
     const e = { ...estado(60, 50), anterior }
     const r = aplicarClasificacion(e, todosSi(siguienteLote(e)))
     expect(estiloVigente(r)?.guia).toBe('vieja')
+  })
+})
+
+describe('promptGuia', () => {
+  it('usa como mucho 40 ejemplos de hasta 1.000 caracteres (para entrar en el tiempo de Netlify)', () => {
+    const ejemplos = Array.from({ length: 100 }, (_, i) => ({ caption: `ej-${i + 1} ` + 'x'.repeat(2000) }))
+    const { user } = promptGuia(ejemplos)
+    expect(user.match(/ej-\d+ /g)).toHaveLength(40)
+    expect(user.length).toBeLessThan(45_000)
   })
 })
 
