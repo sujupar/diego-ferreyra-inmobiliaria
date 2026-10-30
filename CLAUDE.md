@@ -2278,6 +2278,75 @@ La Entrega 2 (pestaña Estadísticas, criterio 13) está pendiente.
 - **Nada se manda solo:** "Confirmarle por WhatsApp" es un enlace `wa.me` armado (`lib/consultas/confirmar.ts`).
 - **Pruebas:** `npx vitest run -c vitest.consultas.config.ts` (420) y `-p tsconfig.consultas.json`. El QA se hizo en la vista previa con 3 consultas `[TEST QA consultas]` sobre Diaz Velez 3841 (ya borradas). Carga en `portal_inquiries`: `gmail_message_id` es obligatorio.
 
+## Publicaciones — Fase 1: carga, descripciones y calendario (PR #66, 2026-10-30)
+
+Spec `docs/superpowers/specs/2026-10-29-publicacion-masiva-contenido-design.md`; plan
+`docs/superpowers/plans/2026-10-29-publicaciones-fase1-carga-descripciones-calendario.md`.
+Las fases 2 (Instagram + Facebook), 3 (YouTube + Drive) y 4 (TikTok) tienen planes aparte.
+
+- **Qué hay:** `/publicaciones` (menú Marketing, solo admin/dueño/coordinador; el asesor y el
+  abogado reciben 403 de `contenidoAuth`). Nueva tanda → Cargar → Ritmo → Revisar → "Programar N
+  videos". Pestañas Programado y Publicado (vacía hasta la fase 2), y Ajustes en el panel lateral.
+  **En esta fase NO se publica nada**: `publicacion_ajustes.publicacion_automatica=false` y no
+  existe todavía ningún proceso que lea `publicacion_envios`. Ese interruptor lo cambian solo admin
+  y dueño, y el servidor lo repite (403).
+- **Base:** migración `20261029000010_publicaciones.sql` (aplicada y verificada con
+  `scripts/apply-publicaciones-pg.ts`, que aborta si algo no cuadra). Tablas `publicacion_tandas`,
+  `_videos`, `_envios` (UNIQUE video+red), `_conexiones` (RLS SIN políticas: tokens de las redes),
+  `_ajustes` (fila única) y bucket PÚBLICO `contenido-videos` (200 MB; las redes descargan el video
+  por URL). UNIQUE `(tanda_id, nombre_archivo, tamano_bytes)`: soltar el mismo archivo dos veces
+  rápido no lo duplica.
+- **Una etapa por pedido, siempre** (regla dura de Netlify): el navegador sube por URL firmada y saca
+  la miniatura y el audio WAV mono de 16 kHz (no hay ffmpeg en el servidor); `POST
+  /videos/[id]/preparar` hace UNA etapa (transcribir con whisper-1, o describir con gpt-4.1) y el
+  cliente loopea. Aprender el estilo es igual: leer reels → clasificar de a 50 → escribir la guía.
+  Todas las llamadas a OpenAI llevan techo de 20 s (`TECHO_IA_MS`) para fallar limpio antes del corte
+  de Netlify. Medido: transcribir 2–3 s, describir 1,5 s, cada etapa del estilo menos de 8 s.
+- **Estilo de Diego:** se aprende de su Instagram (392 reels leídos; la IA eligió 100 donde habla;
+  la guía usa 40 ejemplos recortados a 1.000 caracteres para no pasarse de tiempo). Queda en
+  `publicacion_ajustes.estilo`, se ve y se edita en Ajustes. "Volver a aprender" arranca desde
+  cualquier etapa y conserva la guía anterior hasta terminar.
+- **TRAMPA (encontrada en el QA real): whisper inventa voz sobre música.** Sobre un tono de 8 s
+  devolvió "SUBTITULO SOLOCHILENOS40ALVERNESTO" y la IA escribió una descripción sobre algo que
+  nadie dijo. Sus probabilidades NO sirven para detectarlo (`no_speech_prob` de la alucinación era
+  MÁS BAJO que el de la voz real de Diego). `tieneVoz` decide por palabras por segundo (≥0,8; Diego
+  habla a ~3, la alucinación tenía 0,25) y descarta palabras largas con números pegados. Sin voz →
+  `listo` con descripción vacía y el aviso "Sin voz: escribí la descripción".
+- **Lo que escribió la persona gana siempre:** `descripcion_editada` y `titulo_editado` (dos marcas,
+  una por campo). La IA escribe condicionado a las marcas que leyó; si en el medio la persona tocó
+  algo, vuelve a leer y no pisa.
+- **Autoguardado:** `ColaDeGuardado` (`lib/publicaciones/cola-guardado.ts`, pura y testeada): un
+  pedido por video a la vez (si no, uno viejo puede llegar después y pisar al nuevo), reintento solo
+  si falla, y `vaciar` TIRA si algo no se guardó: "Programar" no sigue con un texto viejo. Al cerrar
+  la pestaña se manda lo pendiente con `keepalive` y el navegador avisa.
+- **"Todos ya" se recalcula al confirmar:** arranca a los 5 minutos y revisar lleva más.
+  `confirmarTanda` vuelve a armar los horarios del ritmo que se vencieron (`hayHorariosAutomaticosVencidos`);
+  una hora puesta a mano y vencida se rebota con el nombre del video.
+- **Pestañas:** la de "Nueva tanda" lleva `forceMount`. Desmontarla al ir a Programado perdía los
+  archivos en memoria y dejaba subidas huérfanas.
+- **Audio en el navegador de a un video por vez** (`crearTurno`): cada video se carga entero en
+  memoria y su audio decodificado pesa otro tanto. Dos a la vez hacen caer la pestaña de un celular.
+- **QA (cómo se hizo, para repetirlo):** 3 reels reales de Diego bajados de la cuenta
+  (`media_url` de la Graph API) + un tono de 8 s hecho con ffmpeg, guardados en
+  `.superpowers/qa-videos/` (dentro del proyecto: el MCP solo sube archivos de ahí). El `<input
+  type=file>` está oculto con `aria-hidden`: hay que quitárselo por script para que aparezca en el
+  snapshot. El arrastre del MCP NO mueve una lista de dnd-kit (escucha el puntero); el teclado sí:
+  foco en el asa, Espacio, flechas, Espacio. Después del QA, `scripts/_qa-limpiar.ts`-style: borrar
+  solo tandas cuyos videos son todos `[TEST]`. **Nunca dejar envíos de prueba**: la fase 2 los
+  publicaría al prender el interruptor.
+- **Detección:**
+  ```sql
+  SELECT etapa, count(*) FROM publicacion_videos GROUP BY 1;   -- muchos 'error' = mirar ultimo_error
+  SELECT estado, plataforma, count(*) FROM publicacion_envios GROUP BY 1, 2;
+  SELECT publicacion_automatica, estilo->>'etapa' FROM publicacion_ajustes;
+  ```
+- **Pruebas:** `npx vitest run --config vitest.publicaciones.config.ts` (~0,5 s, 186) y
+  `npx tsc --noEmit -p tsconfig.publicaciones.json`. Render: `scripts/publicaciones-ui.probe.tsx`.
+- **Pendiente del dueño antes de las fases 3 y 4:** claves de TikTok y de Google (client id/secret +
+  clave de API del Drive), habilitar la API de Drive, sumar los redirect URIs
+  `https://inmodf.com.ar/api/oauth/tiktok/callback` y `.../google/callback`, y cargar en Netlify
+  `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_API_KEY`.
+
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
 
 - **El protocolo de las seis etapas está ARRIBA de todo en este archivo**; la versión narrativa en `docs/proceso-de-desarrollo.md`. Se aplica a todo pedido, por chico que sea.
