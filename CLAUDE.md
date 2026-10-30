@@ -2359,6 +2359,50 @@ Las fases 2 (Instagram + Facebook), 3 (YouTube + Drive) y 4 (TikTok) tienen plan
   `https://inmodf.com.ar/api/oauth/tiktok/callback` y `.../google/callback`, y cargar en Netlify
   `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_API_KEY`.
 
+### Publicaciones — Fase 2: Instagram y Facebook (PR #67, 2026-10-30)
+
+Plan `docs/superpowers/plans/2026-10-30-publicaciones-fase2-instagram-facebook.md`.
+
+- **Cómo sale:** job pg_cron `publicaciones-publicar` cada 2 min → `/api/cron/publicaciones-publicar`
+  (auth doble env/`cron_config`, `?ping=1`). Avanza UNA etapa por envío por corrida. Con
+  `publicacion_automatica=false` responde `motivo:'apagado'` sin tocar nada.
+  Reglas puras en `lib/publicaciones/publicador/` (`maquina`, `redes`, `runner`, `limpieza`).
+  Dependencias reales en `servidor/publicador.ts`.
+- **Instagram:** contenedor REELS → estado → `media_publish`. Reusa `lib/integrations/instagram/publicar.ts`.
+  Un contenedor se publica UNA vez, así que repetir `media_publish` no duplica. Lo único que
+  duplicaría es crear otro contenedor, y eso solo pasa si Meta confirma que el anterior venció o dio error.
+- **Facebook:** Reels de la Página (`lib/integrations/facebook/reels.ts`): iniciar → `rupload` con
+  `file_url` → `finish` → estado. **La API de Reels solo acepta de 3 a 90 s**: los más largos van como
+  video normal de la Página (`/{página}/videos` con `file_url`), que publica en UN solo pedido.
+- **Las cinco reglas contra el post duplicado (revisión adversarial, todas con prueba):**
+  1. Antes de publicar se le pregunta a Meta si ya salió.
+  2. El video normal de Facebook se anota ANTES de mandarlo (`ctx.antes`). Si no se sabe qué pasó, queda
+     fallido con "Revisá la Página": nunca se reintenta solo.
+  3. **"Reintentar" NO borra los identificadores** (`cambiosDeReintento`): deja la marca `reintento` y la
+     etapa vuelve a preguntar. Solo arranca de cero si Meta confirma el error. Antes, un envío "fallido"
+     que en realidad había salido se publicaba de nuevo al tocar Reintentar.
+  4. `finish` de Facebook solo con la subida completa y la publicación sin empezar (`fasesFb`).
+  5. Si falla el guardado DESPUÉS de publicar, no se marca fallido: la reserva vence y la corrida
+     siguiente lo reconoce.
+- **Tiempo:** cada llamada a Meta tiene techo de 8 s (`TECHO_META_MS` en el cliente compartido, vale
+  también para reels de propiedades y privados) y un envío solo empieza en los primeros 10 s de la corrida.
+  Plazo máximo de 12 h por envío (`PLAZO_MAXIMO_MS`) y hasta 2 contenedores vencidos.
+- **Reserva:** `proximo_intento = now + 3 min` con `.eq('updated_at', leído)`. La cola pone primero los
+  envíos que nunca arrancaron.
+- **Limpieza de 30 días:** función SQL `publicacion_videos_para_limpiar` (solo `service_role`, migración
+  `20261030000001`). Filtra en SQL porque los videos con una red pendiente para siempre ocupaban todos los
+  lugares. Marca `archivo_borrado_at`; un fallido no cuenta como terminado.
+- **Pantalla:** `EstadoRedes` (enlace / motivo + Reintentar / "Esperando: publicación automática apagada").
+  Pestaña Publicado con filtros por red y período. Aviso en la revisión para videos de más de 90 s con Facebook.
+- **Trampa de QA:** al insertar filas a mano con columnas distintas, supabase-js manda `null` en las
+  que faltan y la base rechaza TODO el lote (p. ej. `ids_externos` es NOT NULL). Siempre las mismas
+  columnas y mirar el `error`.
+- **Verificación:**
+  ```sql
+  SELECT status_code, left(content,160) FROM net._http_response WHERE content LIKE '%avanzados%' ORDER BY created DESC LIMIT 5;
+  SELECT plataforma, estado, count(*) FROM publicacion_envios GROUP BY 1, 2;
+  ```
+
 ## Sección Consultas — Entrega 2: carga instantánea, conectar avisos y Estadísticas (PR #63, 2026-10-29)
 
 Spec `docs/superpowers/specs/2026-10-29-consultas-rapidas-y-estadisticas-design.md`; plan homónimo.

@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, CalendarClock, Loader2, Pause, Play, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import type { VideoProgramado } from '@/lib/publicaciones/tipos'
+import type { EnvioFila, VideoProgramado } from '@/lib/publicaciones/tipos'
 import { FilaRevision, type CambiosVideo } from './FilaRevision'
 import { diaLargo } from './formato'
 import { api } from './leer-json'
@@ -19,6 +19,7 @@ const ARRANCADOS = new Set(['en_curso', 'publicado'])
 export function PestanaProgramado() {
   const [videos, setVideos] = useState<VideoProgramado[] | null>(null)
   const [automatica, setAutomatica] = useState(true)
+  const [reintentando, setReintentando] = useState<string | null>(null)
   const autoguardado = useAutoguardado()
 
   const cargar = useCallback(
@@ -54,6 +55,19 @@ export function PestanaProgramado() {
         toast.error(e instanceof Error ? e.message : 'No se pudo guardar')
       }
       await cargar()
+    }
+  }
+
+  const reintentar = async (e: EnvioFila) => {
+    setReintentando(e.id)
+    try {
+      await api(`/api/publicaciones/envios/${e.id}/reintentar`, { method: 'POST' })
+      toast.success('Se vuelve a intentar en la próxima vuelta (2 minutos)')
+      await cargar()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo reintentar')
+    } finally {
+      setReintentando(null)
     }
   }
 
@@ -109,6 +123,7 @@ export function PestanaProgramado() {
                     envios={v.envios}
                     editable={editable}
                     onCambio={(c) => void cambiar(v, c)}
+                    estadoRedes={{ automatica, reintentando, onReintentar: (e) => void reintentar(e) }}
                     acciones={
                       editable && (
                         <>

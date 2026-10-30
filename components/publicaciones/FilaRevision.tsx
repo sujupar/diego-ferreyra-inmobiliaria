@@ -13,11 +13,13 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { aHoraArgentina } from '@/lib/publicaciones/calendario'
+import { MAX_REEL_FB_SEG } from '@/lib/publicaciones/publicador/redes'
 import { LIMITES } from '@/lib/publicaciones/textos'
 import { SIN_VOZ, type EnvioFila, type Plataforma, type VideoVista } from '@/lib/publicaciones/tipos'
 import { Miniatura } from './FilaVideo'
 import { duracion } from './formato'
-import { IconosRedes, REDES } from './IconosRedes'
+import { EstadoRedes } from './EstadoRedes'
+import { IconosRedes } from './IconosRedes'
 
 /** YouTube trata como Short solo lo que dura hasta 3 minutos. */
 const TOPE_SHORT_SEG = 180
@@ -33,17 +35,11 @@ interface Props {
   envios?: EnvioFila[]
   arrastre?: { attributes: DraggableAttributes; listeners: DraggableSyntheticListeners }
   acciones?: React.ReactNode
+  /** En Programado: para explicar por qué no salió y ofrecer Reintentar. */
+  estadoRedes?: { automatica: boolean; reintentando?: string | null; onReintentar?: (e: EnvioFila) => void }
 }
 
-const ESTADO_ENVIO: Record<string, string> = {
-  programado: 'Programado',
-  en_curso: 'Publicando',
-  publicado: 'Publicado',
-  fallido: 'Falló',
-  cancelado: 'Cancelado',
-}
-
-export function FilaRevision({ video, editable, onCambio, envios, arrastre, acciones }: Props) {
+export function FilaRevision({ video, editable, onCambio, envios, arrastre, acciones, estadoRedes }: Props) {
   const [abierto, setAbierto] = useState(false)
   const [verVideo, setVerVideo] = useState(false)
   const ar = video.programado_para ? aHoraArgentina(new Date(video.programado_para)) : null
@@ -119,18 +115,16 @@ export function FilaRevision({ video, editable, onCambio, envios, arrastre, acci
             {video.pausado && <Badge variant="outline">Pausado</Badge>}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <IconosRedes redes={video.redes} deshabilitado={!editable} onCambio={(redes: Plataforma[]) => onCambio({ redes })} />
-            {envios && envios.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {envios.map((e) => (
-                  <Badge key={e.plataforma} variant={e.estado === 'cancelado' ? 'outline' : 'secondary'} className="text-[11px]">
-                    {REDES[e.plataforma].nombre.replace(' (borrador)', '')}: {ESTADO_ENVIO[e.estado]}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
+          <IconosRedes redes={video.redes} deshabilitado={!editable} onCambio={(redes: Plataforma[]) => onCambio({ redes })} />
+          {envios && envios.length > 0 && (
+            <EstadoRedes
+              envios={envios}
+              video={video}
+              automatica={estadoRedes?.automatica ?? true}
+              reintentando={estadoRedes?.reintentando}
+              onReintentar={estadoRedes?.onReintentar}
+            />
+          )}
 
           {sinVoz && (
             <p className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
@@ -140,6 +134,12 @@ export function FilaRevision({ video, editable, onCambio, envios, arrastre, acci
           {(video.duracion_seg ?? 0) > TOPE_SHORT_SEG && video.redes.includes('youtube') && (
             <p className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
               <AlertTriangle className="h-3.5 w-3.5" aria-hidden /> YouTube: va como video común, no como Short ({duracion(video.duracion_seg)})
+            </p>
+          )}
+
+          {(video.duracion_seg ?? 0) > MAX_REEL_FB_SEG && video.redes.includes('facebook') && (
+            <p className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5" aria-hidden /> Facebook: va como video normal de la página (los Reels llegan hasta 90 segundos)
             </p>
           )}
 

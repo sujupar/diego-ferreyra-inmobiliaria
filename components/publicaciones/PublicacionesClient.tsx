@@ -55,7 +55,7 @@ export function PublicacionesClient() {
           {pestana === 'programado' && <PestanaProgramado />}
         </TabsContent>
         <TabsContent value="publicado" className="pt-4">
-          <PestanaPublicado />
+          {pestana === 'publicado' && <PestanaPublicado />}
         </TabsContent>
       </Tabs>
 

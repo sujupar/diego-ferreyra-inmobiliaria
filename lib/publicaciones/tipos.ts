@@ -54,6 +54,8 @@ export interface VideoFila {
   programado_para: string | null
   hora_manual: boolean
   pausado: boolean
+  /** Cuándo la limpieza de 30 días borró el archivo de Storage (ya no hay video para ver). */
+  archivo_borrado_at: string | null
   created_at: string
   updated_at: string
 }
