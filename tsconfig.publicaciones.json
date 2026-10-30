@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false },
+  "include": [
+    "next-env.d.ts",
+    "lib/publicaciones/**/*.ts",
+    "app/api/publicaciones/**/*.ts",
+    "app/(dashboard)/publicaciones/**/*.tsx",
+    "components/publicaciones/**/*.ts",
+    "components/publicaciones/**/*.tsx",
+    "lib/nav/sections.ts",
+    "lib/social/openai.ts",
+    "lib/contenido/route-auth.ts"
+  ],
+  "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
+}
