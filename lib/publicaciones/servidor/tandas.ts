@@ -412,3 +412,52 @@ export async function listarProgramado(): Promise<{
   })
   return { videos, publicacion_automatica: aj?.publicacion_automatica === true }
 }
+
+// ---------- Publicado y reintentos ----------
+
+/** Días hacia atrás que muestra la pestaña Publicado. */
+export const DIAS_PUBLICADO = 60
+
+export async function listarPublicado(dias = DIAS_PUBLICADO): Promise<{ videos: (VideoConUrls & { envios: EnvioFila[] })[] }> {
+  const desde = new Date(Date.now() - dias * 86_400_000).toISOString()
+  const { data, error } = await publicacionesDb()
+    .from('publicacion_envios')
+    .select('*, publicacion_videos!inner(*)')
+    .in('estado', ['publicado', 'fallido'])
+    .gte('updated_at', desde)
+    .order('updated_at', { ascending: false })
+    .limit(500)
+  dbError(error)
+  const porVideo = new Map<string, VideoConUrls & { envios: EnvioFila[] }>()
+  for (const fila of data ?? []) {
+    const f = { ...(fila as Record<string, unknown>) }
+    const v = f.publicacion_videos as VideoFila
+    delete f.publicacion_videos
+    const actual = porVideo.get(v.id) ?? { ...conUrls(v), envios: [] }
+    actual.envios.push(f as unknown as EnvioFila)
+    porVideo.set(v.id, actual)
+  }
+  return { videos: [...porVideo.values()] }
+}
+
+/** "Reintentar": un envío fallido vuelve a arrancar de cero en la próxima corrida. */
+export async function reintentarEnvio(id: string): Promise<EnvioFila> {
+  const { data, error } = await publicacionesDb()
+    .from('publicacion_envios')
+    .update({
+      estado: 'programado',
+      etapa: null,
+      ids_externos: {},
+      intentos: 0,
+      proximo_intento: null,
+      ultimo_error: null,
+      enlace: null,
+    })
+    .eq('id', id)
+    .eq('estado', 'fallido')
+    .select('*')
+    .maybeSingle()
+  dbError(error)
+  if (!data) throw new ErrorHttp(409, 'Ese envío no está fallido (puede que ya se haya reintentado).')
+  return data as EnvioFila
+}
