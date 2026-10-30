@@ -102,10 +102,11 @@ export function motivoEnPantalla(
   ahora: Date,
 ): string | null {
   if (envio.estado === 'fallido') return envio.ultimo_error ?? 'No se pudo publicar'
-  if (envio.estado === 'en_curso') return 'Publicando…'
-  if (envio.estado !== 'programado') return null
+  if (envio.estado !== 'programado' && envio.estado !== 'en_curso') return null
   const yaEsHora = !!video.programado_para && Date.parse(video.programado_para) <= ahora.getTime()
+  // Con el interruptor apagado nada avanza, aunque haya quedado a medio camino.
   if (yaEsHora && !automatica) return 'Esperando: publicación automática apagada'
+  if (envio.estado === 'en_curso') return 'Publicando…'
   if (envio.ultimo_error && envio.proximo_intento && Date.parse(envio.proximo_intento) > ahora.getTime()) {
     return `Reintenta solo: ${envio.ultimo_error}`
   }

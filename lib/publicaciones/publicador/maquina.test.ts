@@ -114,6 +114,10 @@ describe('motivoEnPantalla', () => {
     expect(motivoEnPantalla(envio, video, false, AHORA)).toBe('Esperando: publicación automática apagada')
   })
 
+  it('un envío a medio camino con el interruptor apagado también dice que está esperando (no "Publicando")', () => {
+    expect(motivoEnPantalla({ ...envio, estado: 'en_curso' }, video, false, AHORA)).toBe('Esperando: publicación automática apagada')
+  })
+
   it('antes de la hora no dice nada', () => {
     expect(motivoEnPantalla(envio, { ...video, programado_para: '2026-10-31T00:00:00Z' }, false, AHORA)).toBeNull()
   })

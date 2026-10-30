@@ -42,15 +42,16 @@ export function EstadoRedes({ envios, video, automatica, reintentando, onReinten
               variant={e.estado === 'fallido' ? 'destructive' : e.estado === 'cancelado' ? 'outline' : 'secondary'}
               className="text-[11px]"
             >
-              {e.estado === 'en_curso' && <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden />}
-              {nombre}: {ETIQUETA[e.estado] ?? e.estado}
+              {e.estado === 'en_curso' && automatica && <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden />}
+              {/* Con el interruptor apagado no hay nada "publicándose", aunque haya quedado a mitad. */}
+              {nombre}: {e.estado === 'en_curso' && !automatica ? 'Programado' : (ETIQUETA[e.estado] ?? e.estado)}
             </Badge>
             {e.estado === 'publicado' && e.enlace && (
               <a href={e.enlace} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
                 Ver en {nombre} <ExternalLink className="h-3 w-3" aria-hidden />
               </a>
             )}
-            {motivo && e.estado !== 'en_curso' && <span className="text-muted-foreground">{motivo}</span>}
+            {motivo && motivo !== 'Publicando…' && <span className="text-muted-foreground">{motivo}</span>}
             {e.estado === 'fallido' && onReintentar && (
               <Button size="sm" variant="outline" className="h-7" disabled={reintentando === e.id} onClick={() => onReintentar(e)}>
                 <RotateCcw className="mr-1 h-3 w-3" aria-hidden /> Reintentar
