@@ -68,7 +68,9 @@ export async function identificarAviso(
     address: d.address,
     assigned_to: d.assignedTo,
     property_id: d.propertyId,
-    external_url: d.externalUrl || null,
+    // Sin enlace nuevo no se pisa el que el mapa ya tenía (lo pudo haber
+    // guardado el cron o el scraper): un null borraría el "Ver aviso".
+    ...(d.externalUrl ? { external_url: d.externalUrl } : {}),
     active: true,
     // Fija cuál es el aviso más reciente de la propiedad (`quienMuestraLaPropiedad`).
     updated_at: new Date().toISOString(),
@@ -147,9 +149,19 @@ async function validarQuienMuestra(sb: SupabaseClient, muestraId: string): Promi
 /**
  * Quién muestra hoy la propiedad, según sus avisos ya conectados: el del aviso
  * activo más reciente. Sirve para proponerlo al conectar otro aviso de la misma
- * propiedad. Sin avisos, null: NUNCA se propone a quien la captó (otra comisión).
+ * propiedad. NUNCA se propone a quien la captó (otra comisión): publicar desde
+ * la plataforma (`syncPortalPropertyMap`) deja al captador en el aviso, así que
+ * quien coincide con `properties.assigned_to` se salta. Si de verdad la muestra
+ * quien la captó, se elige a mano. Sin nadie, null.
  */
 export async function quienMuestraLaPropiedad(sb: SupabaseClient, propertyId: string): Promise<string | null> {
+  const { data: propiedad, error: errProp } = await sb
+    .from('properties')
+    .select('id, assigned_to')
+    .eq('id', propertyId)
+    .maybeSingle()
+  if (errProp) fallo('Leer la propiedad', errProp)
+  const captador = typeof propiedad?.assigned_to === 'string' ? propiedad.assigned_to : null
   // Una propiedad tiene a lo sumo un aviso por portal: se leen todos y se elige acá.
   const { data, error } = await sb
     .from('portal_property_map')
@@ -160,7 +172,7 @@ export async function quienMuestraLaPropiedad(sb: SupabaseClient, propertyId: st
   let elegido: string | null = null
   let cuando = Number.NEGATIVE_INFINITY
   for (const f of (Array.isArray(data) ? data : []) as Array<Record<string, unknown>>) {
-    if (typeof f.assigned_to !== 'string' || !f.assigned_to) continue
+    if (typeof f.assigned_to !== 'string' || !f.assigned_to || f.assigned_to === captador) continue
     const t = typeof f.updated_at === 'string' ? Date.parse(f.updated_at) : Number.NaN
     const ms = Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t
     if (elegido === null || ms > cuando) { elegido = f.assigned_to; cuando = ms }

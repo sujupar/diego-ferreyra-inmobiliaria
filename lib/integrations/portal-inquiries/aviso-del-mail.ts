@@ -17,7 +17,15 @@
  * avisa al portal que el mail se abrió.
  */
 
-const MAX_ENLACES_DE_CLIC = 8
+/** Pocos: cada GET a un redireccionador cuenta como un clic del destinatario. */
+const MAX_ENLACES_DE_CLIC = 4
+
+/**
+ * Botones que NO se siguen nunca: con un redireccionador, el GET ya ejecuta la
+ * acción en el portal (darse de baja, cambiar preferencias), aunque no se baje
+ * la página de destino.
+ */
+const TEXTO_PELIGROSO = /baja|desuscrib|unsubscribe|preferencia|configur|dejar de recibir/i
 
 /** `&amp;` y compañía, tal como vienen dentro de un atributo HTML. */
 function desescapar(valor: string): string {
@@ -59,18 +67,31 @@ export function fotoDelAviso(portal: string, html: string): string | null {
   return null
 }
 
-/** Los redireccionadores de clic del mail de ZonaProp, sin repetir y en orden. */
+/**
+ * Los redireccionadores de clic del mail de ZonaProp, sin repetir. Primero el
+ * que más se repite: en el mail real el del aviso aparece 7 veces (foto, título,
+ * botones) y el logo o el panel, una. Así casi siempre basta un solo pedido.
+ * Los de "darse de baja" y "preferencias" se descartan por el texto del enlace.
+ */
 export function enlacesDeClicZonaprop(html: string): string[] {
-  const vistos: string[] = []
-  for (const valor of atributos(html, 'href')) {
+  const veces = new Map<string, number>()
+  const prohibidos = new Set<string>()
+  for (const m of (html ?? '').matchAll(/<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+    const valor = desescapar(m[1].trim())
     const u = leerUrl(valor)
     // El mail los trae en http: es el redireccionador, no el destino (el destino sí se exige https).
     if (!u || (u.protocol !== 'http:' && u.protocol !== 'https:')) continue
     if (u.hostname !== 'link.zonaprop.com.ar' || u.pathname !== '/ls/click') continue
-    if (!vistos.includes(valor)) vistos.push(valor)
-    if (vistos.length >= MAX_ENLACES_DE_CLIC) break
+    const texto = m[2].replace(/<[^>]*>/g, ' ')
+    if (TEXTO_PELIGROSO.test(texto)) { prohibidos.add(valor); continue }
+    veces.set(valor, (veces.get(valor) ?? 0) + 1)
   }
-  return vistos
+  // `sort` es estable: a igual cantidad, el orden del mail.
+  return [...veces.entries()]
+    .filter(([valor]) => !prohibidos.has(valor))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, MAX_ENLACES_DE_CLIC)
+    .map(([valor]) => valor)
 }
 
 /** El destino de un clic, si es la ficha de un aviso; sin `utm_` ni ancla. */

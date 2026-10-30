@@ -64,8 +64,19 @@ describe('fotoDelAviso', () => {
 })
 
 describe('enlacesDeClicZonaprop', () => {
-  it('los de clic, sin repetir, en orden, y nunca el píxel de apertura', () => {
-    expect(enlacesDeClicZonaprop(MAIL_ZP)).toEqual([CLIC_LOGO, CLIC_AVISO, CLIC_PANEL])
+  it('sin repetir, el que más se repite primero (el del aviso), y nunca el píxel de apertura', () => {
+    expect(enlacesDeClicZonaprop(MAIL_ZP)).toEqual([CLIC_AVISO, CLIC_LOGO, CLIC_PANEL])
+  })
+
+  it('nunca un enlace de darse de baja o de preferencias (un GET ya ejecuta la acción)', () => {
+    const html = `${MAIL_ZP}
+      <a href="http://link.zonaprop.com.ar/ls/click?upn=BAJA">Darse de baja</a>
+      <a href="http://link.zonaprop.com.ar/ls/click?upn=BAJA2"><span>Desuscribirme</span></a>
+      <a href="http://link.zonaprop.com.ar/ls/click?upn=PREF">Preferencias de email</a>
+      <a href="http://link.zonaprop.com.ar/ls/click?upn=UNSUB">Unsubscribe</a>`
+    const enlaces = enlacesDeClicZonaprop(html)
+    expect(enlaces.some((e) => /BAJA|PREF|UNSUB/.test(e))).toBe(false)
+    expect(enlaces).toContain(CLIC_AVISO)
   })
 
   it('ignora un host parecido', () => {
@@ -73,8 +84,8 @@ describe('enlacesDeClicZonaprop', () => {
   })
 
   it('tiene tope', () => {
-    const muchos = Array.from({ length: 20 }, (_, i) => `<a href="http://link.zonaprop.com.ar/ls/click?upn=${i}">`).join('')
-    expect(enlacesDeClicZonaprop(muchos)).toHaveLength(8)
+    const muchos = Array.from({ length: 20 }, (_, i) => `<a href="http://link.zonaprop.com.ar/ls/click?upn=${i}">x</a>`).join('')
+    expect(enlacesDeClicZonaprop(muchos)).toHaveLength(4)
   })
 })
 
@@ -101,7 +112,8 @@ describe('resolverAvisoZonaprop', () => {
     const red = redFalsa(DESTINOS)
     const url = await resolverAvisoZonaprop(MAIL_ZP, { fetch: red, techoMs: 5000 })
     expect(url).toBe('https://www.zonaprop.com.ar/propiedades/clasificado/veclapin-venta-departamento-60360354.html')
-    expect(red).toHaveBeenCalledTimes(2)
+    // El del aviso es el que más se repite: es el primero que se prueba.
+    expect(red).toHaveBeenCalledTimes(1)
     expect(red.mock.calls.every(([, init]) => (init as RequestInit).redirect === 'manual')).toBe(true)
   })
 

@@ -311,6 +311,17 @@ describe('conectar NO pisa consultas que ya tenían otra propiedad (revisión ad
   })
 })
 
+describe('conectar no borra lo que el mapa ya sabía', () => {
+  it('si la consulta no trae enlace, el enlace del aviso que ya estaba en el mapa queda', async () => {
+    const sb = base({
+      portal_inquiries: [consulta({ id: 'c1', property_url: null })],
+      portal_property_map: [{ id: 'm1', portal: 'zonaprop', external_code: 'ZP123', external_url: 'https://www.zonaprop.com.ar/bueno.html', active: true }],
+    })
+    await conectarAviso(sb.cliente, { portal: 'zonaprop', codigo: 'ZP123', propertyId: PROP, muestraId: MUESTRA })
+    expect(sb.tablas.portal_property_map[0]).toMatchObject({ external_url: 'https://www.zonaprop.com.ar/bueno.html', assigned_to: MUESTRA })
+  })
+})
+
 describe('quienMuestraLaPropiedad', () => {
   it('el de su aviso activo más reciente', async () => {
     const sb = base({ portal_property_map: [
@@ -321,6 +332,16 @@ describe('quienMuestraLaPropiedad', () => {
       { id: 'e', property_id: 'otra', assigned_to: CAPTADOR, active: true, updated_at: '2026-12-01T00:00:00Z' },
     ] })
     await expect(quienMuestraLaPropiedad(sb.cliente, PROP)).resolves.toBe(MUESTRA)
+  })
+
+  it('nunca propone a quien la captó (la publicación desde la plataforma deja al captador en el aviso)', async () => {
+    const sb = base({ portal_property_map: [
+      { id: 'pub', property_id: PROP, assigned_to: CAPTADOR, active: true, updated_at: '2026-12-01T00:00:00Z', notes: `property:${PROP}` },
+      { id: 'b', property_id: PROP, assigned_to: MUESTRA, active: true, updated_at: '2026-10-01T00:00:00Z' },
+    ] })
+    await expect(quienMuestraLaPropiedad(sb.cliente, PROP)).resolves.toBe(MUESTRA)
+    const soloCaptador = base({ portal_property_map: [{ id: 'pub', property_id: PROP, assigned_to: CAPTADOR, active: true }] })
+    await expect(quienMuestraLaPropiedad(soloCaptador.cliente, PROP)).resolves.toBeNull()
   })
 
   it('sin avisos con alguien: null (nunca cae en quien la captó)', async () => {

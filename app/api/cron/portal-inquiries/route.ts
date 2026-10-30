@@ -55,9 +55,11 @@ const PRESUPUESTO_RESPUESTAS_MS = 12_000
  * solo mientras la corrida esté lejos del corte de Netlify: insertar la consulta
  * importa más que su enlace. Sin tiempo, entra sin enlace.
  */
-const TECHO_ENLACE_MS = 4_000
-const PRESUPUESTO_ENLACES_MS = 8_000
-const LIMITE_PARA_BUSCAR_ENLACES_MS = 10_000
+const TECHO_ENLACE_MS = 3_000
+const PRESUPUESTO_ENLACES_MS = 5_000
+// Bien antes del tope de las respuestas automáticas (12 s): el enlace no puede
+// comerse el tiempo del aviso al asesor ni el de contestarle al interesado.
+const LIMITE_PARA_BUSCAR_ENLACES_MS = 5_000
 
 export async function GET(req: NextRequest) {
   const inicioCron = Date.now()
