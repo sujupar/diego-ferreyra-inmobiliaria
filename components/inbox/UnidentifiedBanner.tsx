@@ -3,11 +3,12 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, ChevronRight } from 'lucide-react'
-import { cargarAvisos, type Fallo } from './avisos-carga'
+import { contarAvisosSinPropiedad, type Fallo } from './avisos-carga'
 
 /**
- * Cartel del inicio: aparece SOLO si hay avisos sin identificar (o si no se
- * pudieron leer). Es la vía por la que la coordinadora se entera de que hay
+ * Cartel del inicio: aparece SOLO si hay avisos sin propiedad (o si no se
+ * pudieron leer). Cuenta y lleva a la hoja "Avisos sin propiedad" de Consultas
+ * (`/consultas?avisos=1`): desde el 2026-10-30 los avisos se conectan solo ahí. Es la vía por la que la coordinadora se entera de que hay
  * trabajo pendiente sin entrar a la pantalla (decisión del usuario: nada de
  * WhatsApp ni emails nuevos).
  *
@@ -28,18 +29,18 @@ export function UnidentifiedBanner() {
 
   useEffect(() => {
     let cancelled = false
-    cargarAvisos(fetch)
+    contarAvisosSinPropiedad(fetch)
       .then(r => {
         if (cancelled) return
         if (r.ok) {
-          setEstado(r.valor.length > 0 ? { fase: 'cuenta', count: r.valor.length } : { fase: 'callado' })
+          setEstado(r.valor > 0 ? { fase: 'cuenta', count: r.valor } : { fase: 'callado' })
           return
         }
         // "No te corresponde" no es una alerta; cualquier otra cosa sí.
         setEstado(r.fallo.sesionVencida || r.fallo.reintentable ? { fase: 'error', fallo: r.fallo } : { fase: 'callado' })
       })
       .catch(() => {
-        /* `cargarAvisos` no lanza; esto es cinturón y tiradores. */
+        /* `contarAvisosSinPropiedad` no lanza; esto es cinturón y tiradores. */
       })
     return () => {
       cancelled = true
@@ -53,10 +54,10 @@ export function UnidentifiedBanner() {
 
   if (estado.fase === 'error') {
     return (
-      <Link href="/avisos" className={clases}>
+      <Link href="/consultas?avisos=1" className={clases}>
         <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">No pudimos revisar los avisos sin identificar</p>
+          <p className="text-sm font-medium">No pudimos revisar los avisos sin propiedad</p>
           <p className="text-xs text-muted-foreground">
             {estado.fallo.motivo} Puede haber consultas esperando: entrá a revisarlo.
           </p>
@@ -69,14 +70,14 @@ export function UnidentifiedBanner() {
   }
 
   return (
-    <Link href="/avisos" className={clases}>
+    <Link href="/consultas?avisos=1" className={clases}>
       <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium">
-          {estado.count} aviso{estado.count === 1 ? '' : 's'} sin identificar
+          {estado.count} aviso{estado.count === 1 ? '' : 's'} sin propiedad
         </p>
         <p className="text-xs text-muted-foreground">
-          Hay consultas que no sabemos de qué propiedad son. Identificalas para que lleguen al asesor correcto.
+          Hay consultas que no sabemos de qué propiedad son. Conectalas para que le lleguen a quien la muestra.
         </p>
       </div>
       <span className="text-sm font-medium text-[color:var(--brand)] inline-flex items-center whitespace-nowrap">

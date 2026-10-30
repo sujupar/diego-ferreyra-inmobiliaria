@@ -98,12 +98,14 @@ async function leerPeriodo(res: Response): Promise<{ ok: true; data: PeriodoCons
   return { ok: false, error: 'Algo falló. Probá de nuevo.' }
 }
 
-export function ConsultasClient({ yo, asesores, inicial, errorInicial }: {
+export function ConsultasClient({ yo, asesores, inicial, errorInicial, abrirAvisos = false }: {
   yo: Yo
   asesores: AsesorOpcion[]
   /** El período de la dirección, armado en el servidor; null si falló al leerlo. */
   inicial: PeriodoConsultas | null
   errorInicial: string | null
+  /** Abrir de entrada la hoja "Avisos sin propiedad" (`?avisos=1`). */
+  abrirAvisos?: boolean
 }) {
   const { filtros: mostrado, aplicados, aplicar, limpiar } = useFiltrosUrl({
     defectos: FILTROS_DEFECTO_CONSULTAS, permitidos: PERMITIDOS, normalizar, soloNavegador: true,
@@ -208,7 +210,19 @@ export function ConsultasClient({ yo, asesores, inicial, errorInicial }: {
   const [detalleAbierto, setDetalleAbierto] = useState(false)
   const [consultaAgendando, setConsultaAgendando] = useState<ConsultaEnBandeja | null>(null)
   const [hojaFiltros, setHojaFiltros] = useState(false)
-  const [hojaAvisos, setHojaAvisos] = useState(false)
+  // `/consultas?avisos=1` (la dirección vieja `/avisos` y el cartel de Inicio)
+  // llega con la hoja abierta. Solo para quien puede conectar.
+  const [hojaAvisos, setHojaAvisos] = useState(() => abrirAvisos && puedeIdentificar)
+  function cerrarHojaAvisos() {
+    setHojaAvisos(false)
+    // Sin `avisos=1` en la dirección, recargar no la vuelve a abrir. Estado
+    // `null`: con el de Next, `useSearchParams` no se entera (ver CLAUDE.md § Consultas E2).
+    const url = new URL(window.location.href)
+    if (url.searchParams.has('avisos')) {
+      url.searchParams.delete('avisos')
+      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+    }
+  }
 
   // "Ver más" vale para ESTE filtro: al cambiar cualquier filtro vuelve a 25.
   const claveFiltros = JSON.stringify({ ...aplicados, periodoMostrado: periodo?.periodo.desde ?? '' })
@@ -410,13 +424,14 @@ export function ConsultasClient({ yo, asesores, inicial, errorInicial }: {
           key={consultaAgendando.id}
           consulta={consultaAgendando}
           puedeIdentificar={puedeIdentificar}
+          asesores={asesores}
           onTerminado={() => { setConsultaAgendando(null); refrescar() }}
           onCerrar={(cambio) => { setConsultaAgendando(null); if (cambio) refrescar() }}
         />
       )}
 
       {hojaAvisos && (
-        <HojaAvisosSinPropiedad onConectado={refrescar} onCerrar={() => setHojaAvisos(false)} />
+        <HojaAvisosSinPropiedad asesores={asesores} onConectado={refrescar} onCerrar={cerrarHojaAvisos} />
       )}
     </div>
   )

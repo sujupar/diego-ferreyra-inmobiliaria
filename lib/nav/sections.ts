@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import {
-  LayoutDashboard, ListChecks, Inbox, Flag, Columns3, Contact, CalendarCheck, ClipboardList,
+  LayoutDashboard, ListChecks, Inbox, Columns3, Contact, CalendarCheck, ClipboardList,
   Building2, Megaphone, Newspaper, BarChart3, Filter, Settings, Wrench, UserCog, FileText, MessageSquareText, Send,
 } from 'lucide-react'
 import type { Role } from '@/types/auth.types'
@@ -39,7 +39,6 @@ const PENDIENTES: NavItem = { href: '/tasks', label: 'Pendientes', icon: ListChe
 const INBOX: NavItem = { href: '/inbox', label: 'Inbox', icon: Inbox, badge: 'inbox' }
 // Consultas de portales y publicidad: sección propia desde 2026-10-29 (antes era una pestaña del Inbox).
 const CONSULTAS: NavItem = { href: '/consultas', label: 'Consultas', icon: MessageSquareText }
-const AVISOS: NavItem = { href: '/avisos', label: 'Avisos por identificar', icon: Flag }
 const CRM: NavItem = { href: '/crm', label: 'CRM', icon: Columns3 }
 const VISITAS: NavItem = { href: '/visits', label: 'Visitas', icon: CalendarCheck }
 const REDES: NavItem = { href: '/redes-sociales', label: 'Redes sociales', icon: Megaphone }
@@ -110,7 +109,7 @@ export function getNavSections(role: Role): NavGroup[] {
           { label: 'Propiedades', icon: Building2, items: [LISTADO, NUEVA_PROPIEDAD, INFORMES] },
         ],
       },
-      { label: 'Comercial', entries: [INBOX, CONSULTAS, AVISOS, CRM, CONTACTOS, VISITAS] },
+      { label: 'Comercial', entries: [INBOX, CONSULTAS, CRM, CONTACTOS, VISITAS] },
       { label: 'Marketing', entries: [REDES, PUBLICACIONES, NOTICIAS] },
     ]
   }
@@ -139,7 +138,7 @@ export function getNavSections(role: Role): NavGroup[] {
         },
       ],
     },
-    { label: 'Comercial', entries: [INBOX, CONSULTAS, AVISOS, CRM, CONTACTOS, VISITAS] },
+    { label: 'Comercial', entries: [INBOX, CONSULTAS, CRM, CONTACTOS, VISITAS] },
     { label: 'Marketing', entries: marketing },
   ]
 

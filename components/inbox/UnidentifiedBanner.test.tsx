@@ -21,8 +21,8 @@ function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 }
 
-function aviso(code: string) {
-  return { portal: 'zonaprop', externalCode: code, title: null, inquiryCount: 1, lastInquiryAt: '2026-08-06T12:00:00Z', lastLeadName: null }
+function aviso(codigo: string) {
+  return { portal: 'zonaprop', codigo, titulo: null, url: null, foto: null, n: 1, ultima: '2026-10-30T12:00:00Z' }
 }
 
 async function montar(status: number, body: unknown) {
@@ -37,19 +37,21 @@ describe('UnidentifiedBanner', () => {
     vi.unstubAllGlobals()
   })
 
-  it('con avisos pendientes muestra cuántos', async () => {
-    await montar(200, { data: [aviso('A'), aviso('B')] })
-    await waitFor(() => expect(screen.getByText('2 avisos sin identificar')).toBeTruthy())
+  it('con avisos pendientes muestra cuántos y lleva a la hoja de Consultas', async () => {
+    await montar(200, { avisos: [aviso('A'), aviso('B')], sueltas: 0 })
+    await waitFor(() => expect(screen.getByText('2 avisos sin propiedad')).toBeTruthy())
+    expect(screen.getByRole('link').getAttribute('href')).toBe('/consultas?avisos=1')
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe('/api/consultas/avisos')
   })
 
   it('con la cola vacía no dibuja nada', async () => {
-    const container = await montar(200, { data: [] })
+    const container = await montar(200, { avisos: [], sueltas: 0 })
     await waitFor(() => expect(container.textContent).toBe(''))
   })
 
   it('un 500 NO se calla: avisa que no se pudo revisar', async () => {
     await montar(500, { error: 'boom' })
-    await waitFor(() => expect(screen.getByText('No pudimos revisar los avisos sin identificar')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('No pudimos revisar los avisos sin propiedad')).toBeTruthy())
   })
 
   it('un 403 sí se calla — ese rol no tiene nada que hacer en esta cola', async () => {

@@ -55,6 +55,12 @@ describe('getNavSections — permisos del menú', () => {
     }
   })
 
+  it('"Avisos por identificar" ya no está en el menú de nadie (se conecta desde Consultas)', () => {
+    for (const rol of ['admin', 'dueno', 'coordinador', 'asesor', 'abogado'] as const) {
+      expect(navHrefs(getNavSections(rol))).not.toContain('/avisos')
+    }
+  })
+
   it('el asesor no ve administración, métricas ni avisos', () => {
     const hrefs = navHrefs(getNavSections('asesor'))
     expect(hrefs).not.toContain('/settings')
@@ -64,9 +70,9 @@ describe('getNavSections — permisos del menú', () => {
     expect(hrefs).not.toContain('/properties/review')
   })
 
-  it('el coordinador ve avisos pero NO "Nueva tasación" ni administración', () => {
+  it('el coordinador ve Consultas (ahí conecta los avisos) pero NO "Nueva tasación" ni administración', () => {
     const hrefs = navHrefs(getNavSections('coordinador'))
-    expect(hrefs).toContain('/avisos')
+    expect(hrefs).toContain('/consultas')
     expect(hrefs).toContain('/properties/new')
     expect(hrefs).not.toContain('/appraisal/new')
     expect(hrefs).not.toContain('/settings')

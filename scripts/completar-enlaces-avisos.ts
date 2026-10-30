@@ -7,7 +7,7 @@
  * Simula por defecto. Con --commit escribe.
  *   node --env-file=../../../.env.local --import tsx scripts/completar-enlaces-avisos.ts [--commit]
  */
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { getMessage } from '@/lib/integrations/gmail/core'
 import { codigoAgrupable } from '@/lib/consultas/avisos'
 import { fotoDelAviso, resolverAvisoZonaprop } from '@/lib/integrations/portal-inquiries/aviso-del-mail'
@@ -24,7 +24,7 @@ interface Fila {
   received_at: string | null
 }
 
-async function leerSinPropiedad(sb: ReturnType<typeof createClient>): Promise<Fila[]> {
+async function leerSinPropiedad(sb: SupabaseClient): Promise<Fila[]> {
   const filas: Fila[] = []
   for (let desde = 0; ; desde += 1000) {
     const { data, error } = await sb.from('portal_inquiries')

@@ -21,6 +21,7 @@ export default defineConfig({
       'lib/integrations/portal-inquiries/parse.test.ts',
       'lib/integrations/portal-inquiries/aviso-del-mail.test.ts',
       'components/inbox/UnidentifiedBanner.test.tsx',
+      'components/inbox/avisos-carga.test.ts',
       'app/*/consultas/**/*.test.tsx',
       'lib/visitas/persona.test.ts',
       'lib/visitas/agendar-estado.test.ts',
