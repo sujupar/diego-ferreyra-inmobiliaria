@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { leerSesion } from '@/lib/auth/sesion'
 
 export async function GET() {
   try {
     const cookieStore = await cookies()
     const supabase = createClient(cookieStore)
 
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await leerSesion(supabase)
     if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
     // Check impersonation
