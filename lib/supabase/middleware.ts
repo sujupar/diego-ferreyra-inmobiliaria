@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { leerSesion } from '@/lib/auth/sesion'
 
 /**
  * Rutas de PÁGINA (no `/api/`) que no requieren sesión. Se comparan por PREFIJO. `/p/`, `/v/`,
@@ -269,7 +270,7 @@ export async function updateSession(request: NextRequest) {
     const pathname = request.nextUrl.pathname
     const esApi = esRutaApi(pathname)
 
-    // Se decide ANTES de llamar a getUser() — si no, una ruta pública dependería
+    // Se decide ANTES de leer la sesión — si no, una ruta pública dependería
     // de que Supabase conteste, y el embudo se caería con la red de Supabase.
     const esPublica = esApi
         ? esApiPublica(pathname, request.method)
@@ -278,7 +279,10 @@ export async function updateSession(request: NextRequest) {
         return supabaseResponse
     }
 
-    const { data: { user } } = await supabase.auth.getUser()
+    // `leerSesion` verifica la firma sin viajar a Supabase (ver lib/auth/sesion.ts).
+    // También renueva el token vencido y escribe las cookies nuevas por `setAll`,
+    // igual que hacía `getUser()`.
+    const user = await leerSesion(supabase)
 
     if (!user) {
         // Una ruta de API contesta 401 en JSON, NO un redirect a `/login`: quien
