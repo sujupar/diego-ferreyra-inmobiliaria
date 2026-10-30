@@ -103,9 +103,16 @@ export function buildScenePrompt(p: { escena: string; gesto: string; luz: string
 
 // ---- Texto → JSON estructurado ----
 /** Llama al modelo de texto forzando salida JSON contra un schema. Devuelve el objeto parseado. */
-export async function openaiText<T = any>(system: string, user: string, schema: { name: string; schema: object }): Promise<T> {
+export async function openaiText<T = any>(
+  system: string,
+  user: string,
+  schema: { name: string; schema: object },
+  opciones: { timeoutMs?: number } = {},
+): Promise<T> {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
+    // Opcional: con techo, una llamada lenta falla limpia en vez de que Netlify mate la función.
+    signal: opciones.timeoutMs ? AbortSignal.timeout(opciones.timeoutMs) : undefined,
     headers: { Authorization: `Bearer ${key()}`, 'content-type': 'application/json' },
     body: JSON.stringify({
       model: TEXT_MODEL,
