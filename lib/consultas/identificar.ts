@@ -1,7 +1,14 @@
 /**
  * Conectar consultas sin propiedad con su propiedad. Una conexión vale para el
  * AVISO entero (spec Entrega 2 §3.2): todas sus consultas quedan con esa
- * propiedad y, si la propiedad tiene asesor, el aviso se recuerda.
+ * propiedad y con QUIEN LA MUESTRA, y el aviso se recuerda.
+ *
+ * Quien la muestra NO es quien la captó (dueño, 2026-10-30): son comisiones
+ * distintas —si la captó Diego y la muestra Lucas, Lucas cobra el 20 %; si la
+ * captó Lucas, el 50 %—. Por eso se elige aparte, se guarda en el aviso
+ * (`portal_property_map.assigned_to`) y en sus consultas (`assigned_to`, a quien
+ * `notify.ts` le manda el WhatsApp), y acá NUNCA se escribe `properties`. Antes
+ * se copiaba `properties.assigned_to`: eso mezclaba las dos cosas.
  *
  * Recordar = completar la fila del aviso en `portal_property_map` (portal +
  * código). Desde ahí las consultas que YA entraron por ese aviso se corrigen
@@ -20,6 +27,9 @@ import { codigoAgrupable } from './avisos'
 
 /** Los portales con avisos (las landings no tienen código de aviso). */
 const PORTALES_CON_AVISO = ['zonaprop', 'argenprop', 'mercadolibre']
+
+/** Quiénes muestran propiedades: los mismos de la lista de asesores (`asesoresActivos`). */
+const ROLES_QUE_MUESTRAN = ['asesor', 'dueno']
 
 /** Un pedido que no se puede cumplir por el dato, no por la base: la ruta lo devuelve tal cual. */
 export class ConsultaNoConectable extends Error {
@@ -60,6 +70,8 @@ export async function identificarAviso(
     property_id: d.propertyId,
     external_url: d.externalUrl || null,
     active: true,
+    // Fija cuál es el aviso más reciente de la propiedad (`quienMuestraLaPropiedad`).
+    updated_at: new Date().toISOString(),
   }
 
   // Si leer el mapa falla y se siguiera de largo, se insertaría una SEGUNDA
@@ -104,48 +116,73 @@ export async function identificarAviso(
   return { mapId, actualizadas: (actualizadas ?? []).length }
 }
 
-async function leerPropiedad(sb: SupabaseClient, propertyId: string): Promise<{ direccion: string; asesor: string | null }> {
+async function direccionDeLaPropiedad(sb: SupabaseClient, propertyId: string): Promise<string> {
   const { data: propiedad, error } = await sb
     .from('properties')
-    .select('id, address, assigned_to')
+    .select('id, address')
     .eq('id', propertyId)
     .maybeSingle()
   if (error) fallo('Leer la propiedad', error)
   if (!propiedad) throw new ConsultaNoConectable(404, 'No encontramos la propiedad')
-  return {
-    direccion: typeof propiedad.address === 'string' ? propiedad.address : '',
-    asesor: typeof propiedad.assigned_to === 'string' ? propiedad.assigned_to : null,
+  return typeof propiedad.address === 'string' ? propiedad.address : ''
+}
+
+/**
+ * Quien la muestra tiene que ser alguien que muestra propiedades y sigue activo:
+ * un id cualquiera mandaría el WhatsApp de las consultas futuras a nadie (o a un
+ * abogado). Se valida ANTES de escribir nada.
+ */
+async function validarQuienMuestra(sb: SupabaseClient, muestraId: string): Promise<void> {
+  const { data, error } = await sb
+    .from('profiles')
+    .select('id, role, is_active')
+    .eq('id', muestraId)
+    .maybeSingle()
+  if (error) fallo('Leer quién muestra la propiedad', error)
+  if (!data || data.is_active !== true || !ROLES_QUE_MUESTRAN.includes(String(data.role))) {
+    throw new ConsultaNoConectable(400, 'Elegí quién muestra la propiedad')
   }
 }
 
 /**
- * Las consultas SIN propiedad de un aviso (portal + código) quedan con la propiedad.
- * Con asesor, se recuerda el aviso (las próximas entran solas). Sin asesor NO:
- * recordar dejaría en el mapa un aviso que rutea a nadie —las consultas futuras
- * llegarían "identificadas" sin que ningún asesor se entere—, y tampoco se le
- * borra el asesor que ya tenía cada consulta.
+ * Quién muestra hoy la propiedad, según sus avisos ya conectados: el del aviso
+ * activo más reciente. Sirve para proponerlo al conectar otro aviso de la misma
+ * propiedad. Sin avisos, null: NUNCA se propone a quien la captó (otra comisión).
+ */
+export async function quienMuestraLaPropiedad(sb: SupabaseClient, propertyId: string): Promise<string | null> {
+  // Una propiedad tiene a lo sumo un aviso por portal: se leen todos y se elige acá.
+  const { data, error } = await sb
+    .from('portal_property_map')
+    .select('assigned_to, updated_at')
+    .eq('property_id', propertyId)
+    .eq('active', true)
+  if (error) fallo('Leer los avisos de la propiedad', error)
+  let elegido: string | null = null
+  let cuando = Number.NEGATIVE_INFINITY
+  for (const f of (Array.isArray(data) ? data : []) as Array<Record<string, unknown>>) {
+    if (typeof f.assigned_to !== 'string' || !f.assigned_to) continue
+    const t = typeof f.updated_at === 'string' ? Date.parse(f.updated_at) : Number.NaN
+    const ms = Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t
+    if (elegido === null || ms > cuando) { elegido = f.assigned_to; cuando = ms }
+  }
+  return elegido
+}
+
+/**
+ * Las consultas SIN propiedad de un aviso (portal + código) quedan con la
+ * propiedad y con quien la muestra, y el aviso se recuerda: las próximas entran
+ * solas y le llegan a esa persona.
  */
 async function conectarPorCodigo(
   sb: SupabaseClient,
-  d: { portal: string; codigo: string; propertyId: string; url: string | null },
+  d: { portal: string; codigo: string; propertyId: string; url: string | null; muestraId: string },
 ): Promise<{ actualizadas: number; recordado: boolean }> {
-  const { direccion, asesor } = await leerPropiedad(sb, d.propertyId)
-  if (asesor) {
-    const r = await identificarAviso(sb, {
-      portal: d.portal, externalCode: d.codigo, address: direccion, assignedTo: asesor,
-      propertyId: d.propertyId, externalUrl: d.url,
-    }, { soloSinPropiedad: true })
-    return { actualizadas: r.actualizadas, recordado: true }
-  }
-  const { data, error } = await sb
-    .from('portal_inquiries')
-    .update({ property_id: d.propertyId, property_address: direccion, is_unmatched: false })
-    .eq('portal', d.portal)
-    .eq('property_external_code', d.codigo)
-    .is('property_id', null)
-    .select('id')
-  if (error) fallo('Conectar las consultas del aviso', error)
-  return { actualizadas: (data ?? []).length, recordado: false }
+  const direccion = await direccionDeLaPropiedad(sb, d.propertyId)
+  const r = await identificarAviso(sb, {
+    portal: d.portal, externalCode: d.codigo, address: direccion, assignedTo: d.muestraId,
+    propertyId: d.propertyId, externalUrl: d.url,
+  }, { soloSinPropiedad: true })
+  return { actualizadas: r.actualizadas, recordado: true }
 }
 
 /**
@@ -156,11 +193,12 @@ async function conectarPorCodigo(
  */
 export async function conectarAviso(
   sb: SupabaseClient,
-  d: { portal: string; codigo: string; propertyId: string },
+  d: { portal: string; codigo: string; propertyId: string; muestraId: string },
 ): Promise<{ actualizadas: number; recordado: boolean }> {
   if (!PORTALES_CON_AVISO.includes(d.portal) || !codigoAgrupable(d.portal, d.codigo)) {
     throw new ConsultaNoConectable(400, 'Ese código no identifica un aviso: conectá esas consultas de a una')
   }
+  await validarQuienMuestra(sb, d.muestraId)
   // Un aviso tiene a lo sumo unas decenas de consultas: se leen todas acá.
   const { data, error } = await sb
     .from('portal_inquiries')
@@ -197,8 +235,9 @@ export async function conectarAviso(
  */
 export async function conectarConsulta(
   sb: SupabaseClient,
-  d: { consultaId: string; propertyId: string },
+  d: { consultaId: string; propertyId: string; muestraId: string },
 ): Promise<{ actualizadas: number; recordado: boolean; agrupable: boolean }> {
+  await validarQuienMuestra(sb, d.muestraId)
   const { data: consulta, error: errConsulta } = await sb
     .from('portal_inquiries')
     .select('id, portal, property_external_code, property_url, property_id')
@@ -231,7 +270,7 @@ export async function conectarConsulta(
   const yaTeniaPropiedad = typeof consulta.property_id === 'string' && consulta.property_id !== ''
   if (codigo !== null && codigoAgrupable(portal, codigo) && !yaTeniaPropiedad) {
     const r = await conectarPorCodigo(sb, {
-      portal, codigo, propertyId: d.propertyId,
+      portal, codigo, propertyId: d.propertyId, muestraId: d.muestraId,
       url: typeof consulta.property_url === 'string' ? consulta.property_url : null,
     })
     return { ...r, agrupable: true }
@@ -239,15 +278,14 @@ export async function conectarConsulta(
 
   // Sin código que agrupe, o una consulta que ya tenía propiedad (corrección
   // puntual): se toca SOLO esa. Corregir una no mueve las demás del aviso.
-  const { direccion, asesor } = await leerPropiedad(sb, d.propertyId)
+  const direccion = await direccionDeLaPropiedad(sb, d.propertyId)
   const { data: actualizadas, error: errUpd } = await sb
     .from('portal_inquiries')
     .update({
       property_id: d.propertyId,
       property_address: direccion,
       is_unmatched: false,
-      // Si la propiedad no tiene asesor, no se le borra el que ya tenía la consulta.
-      ...(asesor ? { assigned_to: asesor } : {}),
+      assigned_to: d.muestraId,
     })
     .eq('id', d.consultaId)
     .select('id')

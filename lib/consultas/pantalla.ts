@@ -155,6 +155,28 @@ const DOMINIO_DEL_PORTAL: Readonly<Record<string, string>> = {
  * enlace de otro dominio en un mail del portal no se muestra: no hay forma de
  * saber a dónde lleva.
  */
+/**
+ * Dónde guarda cada portal las fotos de sus avisos. Host EXACTO: la foto viene
+ * de un mail de terceros y termina en un <img> de la plataforma.
+ */
+const FOTOS_DEL_PORTAL: Record<string, { host: string; ruta: string }> = {
+  zonaprop: { host: 'imgar.zonapropcdn.com', ruta: '/avisos/' },
+  argenprop: { host: 'www.argenprop.com', ruta: '/static-content/' },
+}
+
+/** La foto del aviso si es `https`, del portal del aviso y de su carpeta de fotos; si no, null. */
+export function fotoSegura(url: string | null | undefined, portal: string): string | null {
+  if (!url || !Object.hasOwn(FOTOS_DEL_PORTAL, portal)) return null
+  const { host, ruta } = FOTOS_DEL_PORTAL[portal]
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'https:' || u.hostname !== host || !u.pathname.startsWith(ruta)) return null
+    return u.toString()
+  } catch {
+    return null
+  }
+}
+
 export function enlaceSeguro(url: string | null | undefined, portal: string): string | null {
   if (!url) return null
   const dominio = Object.hasOwn(DOMINIO_DEL_PORTAL, portal) ? DOMINIO_DEL_PORTAL[portal] : null

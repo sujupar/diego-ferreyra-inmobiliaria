@@ -54,7 +54,7 @@ describe('tituloDelAviso', () => {
 })
 
 function fila(p: Partial<FilaSinPropiedad>): FilaSinPropiedad {
-  return { portal: 'zonaprop', codigo: '2DLPOM', asunto: null, direccion: null, url: null, recibida_at: '2026-10-01T10:00:00Z', ...p }
+  return { portal: 'zonaprop', codigo: '2DLPOM', asunto: null, direccion: null, url: null, foto: null, recibida_at: '2026-10-01T10:00:00Z', ...p }
 }
 
 describe('agruparAvisos', () => {
@@ -66,10 +66,19 @@ describe('agruparAvisos', () => {
       fila({ portal: 'argenprop', codigo: '20538824', asunto: 'x contactó por Alvarez Jonte 3500 en Villa del Parque', url: 'https://www.argenprop.com/aviso--20538824' }),
     ])
     expect(r.avisos).toEqual([
-      { portal: 'zonaprop', codigo: '2DLPOM', titulo: 'Título nuevo', url: null, n: 3, ultima: '2026-10-20T10:00:00Z' },
-      { portal: 'argenprop', codigo: '20538824', titulo: 'Alvarez Jonte 3500 en Villa del Parque', url: 'https://www.argenprop.com/aviso--20538824', n: 1, ultima: '2026-10-01T10:00:00Z' },
+      { portal: 'zonaprop', codigo: '2DLPOM', titulo: 'Título nuevo', url: null, foto: null, n: 3, ultima: '2026-10-20T10:00:00Z' },
+      { portal: 'argenprop', codigo: '20538824', titulo: 'Alvarez Jonte 3500 en Villa del Parque', url: 'https://www.argenprop.com/aviso--20538824', foto: null, n: 1, ultima: '2026-10-01T10:00:00Z' },
     ])
     expect(r.sueltas).toBe(0)
+  })
+
+  it('la foto es la de la consulta más nueva que la trae', () => {
+    const r = agruparAvisos([
+      fila({ recibida_at: '2026-10-01T10:00:00Z', foto: 'https://imgar.zonapropcdn.com/avisos/vieja.jpg' }),
+      fila({ recibida_at: '2026-10-20T10:00:00Z', foto: 'https://imgar.zonapropcdn.com/avisos/nueva.jpg' }),
+      fila({ recibida_at: '2026-10-25T10:00:00Z', foto: null }),
+    ])
+    expect(r.avisos[0].foto).toBe('https://imgar.zonapropcdn.com/avisos/nueva.jpg')
   })
 
   it('el mismo código en dos portales son dos avisos', () => {

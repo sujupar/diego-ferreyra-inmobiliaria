@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   textoTelefono, etiquetaCanal, textoVisita, unirSinRepetir, inicioRapidoDe, otrasDeLaPersona,
-  contarFiltrosActivos, enlaceSeguro, textoPropiedad, nombreVisible,
+  contarFiltrosActivos, enlaceSeguro, fotoSegura, textoPropiedad, nombreVisible,
 } from './pantalla'
 import { leerTelefono } from './telefono'
 import { FILTROS_DEFECTO_CONSULTAS } from './filtros'
@@ -133,6 +133,22 @@ describe('contarFiltrosActivos', () => {
   it('cada filtro puesto cuenta uno; el rango de fechas cuenta como el período', () => {
     expect(contarFiltrosActivos({ ...FILTROS_DEFECTO_CONSULTAS, portal: 'zonaprop', q: 'ana' })).toBe(2)
     expect(contarFiltrosActivos({ ...FILTROS_DEFECTO_CONSULTAS, periodo: 'personalizado', from: '2026-10-01', to: '2026-10-05' })).toBe(1)
+  })
+})
+
+describe('fotoSegura', () => {
+  it('acepta la foto del portal del aviso', () => {
+    expect(fotoSegura('https://imgar.zonapropcdn.com/avisos/1/a.jpg', 'zonaprop')).toBe('https://imgar.zonapropcdn.com/avisos/1/a.jpg')
+    expect(fotoSegura('https://www.argenprop.com/static-content/a.jpg', 'argenprop')).toBe('https://www.argenprop.com/static-content/a.jpg')
+  })
+
+  it('rechaza otro host, uno parecido, http o la foto de otro portal', () => {
+    expect(fotoSegura('https://imgar.zonapropcdn.com.evil.com/avisos/a.jpg', 'zonaprop')).toBeNull()
+    expect(fotoSegura('http://imgar.zonapropcdn.com/avisos/a.jpg', 'zonaprop')).toBeNull()
+    expect(fotoSegura('https://imgar.zonapropcdn.com/avisos/a.jpg', 'argenprop')).toBeNull()
+    expect(fotoSegura('javascript:alert(1)', 'zonaprop')).toBeNull()
+    expect(fotoSegura(null, 'zonaprop')).toBeNull()
+    expect(fotoSegura('https://imgar.zonapropcdn.com/a.jpg', 'landing')).toBeNull()
   })
 })
 

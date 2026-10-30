@@ -19,7 +19,7 @@ export async function avisosSinPropiedad(sb: SupabaseClient): Promise<{ avisos: 
     // Orden fijo y único: paginar sin orden repite o saltea filas.
     const { data, error } = await sb
       .from('portal_inquiries')
-      .select('id, portal, property_external_code, raw_subject, property_address, property_url, received_at, created_at')
+      .select('id, portal, property_external_code, raw_subject, property_address, property_url, property_photo_url, received_at, created_at')
       .is('property_id', null)
       .order('id', { ascending: true })
       .range(desde, desde + TAMANO_PAGINA - 1)
@@ -33,6 +33,7 @@ export async function avisosSinPropiedad(sb: SupabaseClient): Promise<{ avisos: 
         asunto: texto(r.raw_subject),
         direccion: texto(r.property_address),
         url: texto(r.property_url),
+        foto: texto(r.property_photo_url),
         recibida_at: String(r.received_at ?? r.created_at ?? ''),
       })
     }
