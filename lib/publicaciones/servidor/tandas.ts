@@ -31,7 +31,7 @@ export function conUrls(v: VideoFila): VideoConUrls {
     ...v,
     miniatura_url: v.miniatura_path ? urlPublica(v.miniatura_path) : null,
     // El video solo existe del todo cuando terminó de subirse.
-    video_url: v.video_path && v.etapa !== 'subiendo' ? urlPublica(v.video_path) : null,
+    video_url: v.video_path && v.etapa !== 'subiendo' && !v.archivo_borrado_at ? urlPublica(v.video_path) : null,
   }
 }
 
