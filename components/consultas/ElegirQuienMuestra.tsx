@@ -37,6 +37,12 @@ export function ElegirQuienMuestra({ asesores, propiedadId, valor, onCambiar }: 
   const lista = useRef(asesores)
   useEffect(() => { alCambiar.current = onCambiar; lista.current = asesores })
 
+  // Aparece DEBAJO de la lista de propiedades (36 hoy): en el celular quedaba
+  // fuera de la pantalla y el botón "Conectar" gris sin explicación (visto en el
+  // QA). Al aparecer, la hoja baja hasta acá.
+  const caja = useRef<HTMLLabelElement>(null)
+  useEffect(() => { caja.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }) }, [])
+
   useEffect(() => {
     let vigente = true
     fetch(`/api/consultas/avisos/quien-muestra?propiedad=${encodeURIComponent(propiedadId)}`)
@@ -51,7 +57,7 @@ export function ElegirQuienMuestra({ asesores, propiedadId, valor, onCambiar }: 
   }, [propiedadId])
 
   return (
-    <label className="flex flex-col gap-1.5 text-sm font-semibold">
+    <label ref={caja} className="flex flex-col gap-1.5 text-sm font-semibold">
       ¿Quién la muestra?
       <select
         value={valor ?? ''}
