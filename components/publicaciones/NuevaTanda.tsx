@@ -10,12 +10,24 @@ import { Loader2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import type { HorariosPorDefecto, Ritmo } from '@/lib/publicaciones/calendario'
 import type { TandaFila, VideoVista } from '@/lib/publicaciones/tipos'
 import { TAMANO_MAXIMO } from '@/lib/publicaciones/validacion'
 import { fechaCorta } from './formato'
 import { api } from './leer-json'
 import { PasoCargar } from './PasoCargar'
+import { PasoRevisar } from './PasoRevisar'
+import { PasoRitmo } from './PasoRitmo'
+import { useAutoguardado } from './useAutoguardado'
 import { useColaPreparacion, type EspacioSubida } from './useColaPreparacion'
+
+/** Los mismos de la migración: por si la lectura de Ajustes falla. */
+const HORARIOS_DE_FABRICA: HorariosPorDefecto = {
+  '1': ['19:00'],
+  '2': ['12:30', '19:00'],
+  '3': ['09:00', '13:00', '19:00'],
+  semana: ['19:00'],
+}
 
 interface Borrador {
   id: string
@@ -49,6 +61,8 @@ export function NuevaTanda({ onProgramada }: { onProgramada: () => void }) {
   const [paso, setPaso] = useState<Paso>(1)
   const [eligiendo, setEligiendo] = useState(false) // ya pasó la pantalla de "seguir o empezar"
   const [agregando, setAgregando] = useState(false)
+  const [horarios, setHorarios] = useState<HorariosPorDefecto | null>(null)
+  const [guardandoRitmo, setGuardandoRitmo] = useState(false)
   const archivos = useRef(new Map<string, File>())
   const espacios = useRef(new Map<string, EspacioSubida>())
 
@@ -61,9 +75,62 @@ export function NuevaTanda({ onProgramada }: { onProgramada: () => void }) {
       })
   }, [])
 
-  const onVideo = useCallback((v: VideoVista) => {
-    setVideos((prev) => prev.map((x) => (x.id === v.id ? v : x)))
+  useEffect(() => {
+    api<{ ajustes: { horarios: HorariosPorDefecto } }>('/api/publicaciones/ajustes')
+      .then((r) => setHorarios(r.ajustes.horarios))
+      .catch(() => setHorarios(HORARIOS_DE_FABRICA))
   }, [])
+
+  /**
+   * Lo que llega de la cola (la IA terminó, se subió la miniatura) se mezcla con
+   * lo que la persona ya cambió en pantalla: su texto y su calendario ganan.
+   */
+  const onVideo = useCallback((v: VideoVista) => {
+    setVideos((prev) =>
+      prev.map((x) =>
+        x.id !== v.id
+          ? x
+          : {
+              ...v,
+              descripcion: x.descripcion_editada ? x.descripcion : v.descripcion,
+              descripcion_editada: x.descripcion_editada || v.descripcion_editada,
+              titulo_youtube: x.titulo_youtube || v.titulo_youtube,
+              redes: x.redes,
+              programado_para: x.programado_para,
+              hora_manual: x.hora_manual,
+              orden: x.orden,
+            },
+      ),
+    )
+  }, [])
+
+  const autoguardado = useAutoguardado()
+
+  const aplicarRitmo = async (ritmo: Ritmo, inicio: string, soloHabiles: boolean) => {
+    if (!tanda) return
+    setGuardandoRitmo(true)
+    try {
+      await autoguardado.vaciar()
+      const t = await api<{ tanda: TandaFila }>(`/api/publicaciones/tandas/${tanda.id}`, {
+        method: 'PATCH',
+        body: { ritmo, inicio, solo_habiles: soloHabiles },
+      })
+      const r = await api<{ videos: VideoVista[] }>(`/api/publicaciones/tandas/${tanda.id}/calendario`, { method: 'POST' })
+      setTanda(t.tanda)
+      setVideos((prev) => {
+        const locales = new Map(prev.map((v) => [v.id, v]))
+        return r.videos.map((v) => {
+          const x = locales.get(v.id)
+          return x?.descripcion_editada ? { ...v, descripcion: x.descripcion, descripcion_editada: true } : v
+        })
+      })
+      setPaso(3)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo armar el calendario')
+    } finally {
+      setGuardandoRitmo(false)
+    }
+  }
 
   const cola = useColaPreparacion({ videos, archivos: archivos.current, espacios: espacios.current, onVideo })
 
@@ -232,10 +299,27 @@ export function NuevaTanda({ onProgramada }: { onProgramada: () => void }) {
           onSiguiente={() => setPaso(2)}
         />
       )}
-      {paso !== 1 && tanda && (
-        <p className="text-sm text-muted-foreground">
-          {videos.length} videos en la tanda. ({tanda.id.slice(0, 8)}) — onProgramada: {String(!!onProgramada)}
-        </p>
+      {paso === 2 && tanda && (
+        <PasoRitmo
+          cantidad={videos.filter((v) => !v.hora_manual).length || videos.length}
+          ritmoInicial={tanda.ritmo}
+          inicioInicial={tanda.inicio}
+          soloHabilesInicial={tanda.solo_habiles}
+          horarios={horarios ?? HORARIOS_DE_FABRICA}
+          guardando={guardandoRitmo}
+          onConfirmar={(r, i, s) => void aplicarRitmo(r, i, s)}
+        />
+      )}
+      {paso === 3 && tanda && (
+        <PasoRevisar
+          tandaId={tanda.id}
+          videos={videos}
+          estadoGuardado={autoguardado.estado}
+          onVideos={setVideos}
+          guardar={autoguardado.guardar}
+          vaciar={autoguardado.vaciar}
+          onProgramada={onProgramada}
+        />
       )}
     </div>
   )
