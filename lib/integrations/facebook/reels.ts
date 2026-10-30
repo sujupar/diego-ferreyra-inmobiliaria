@@ -95,6 +95,22 @@ export async function publicarReel(videoId: string, descripcion: string): Promis
   if (r.success !== true) throw new Error('Facebook no confirmó la publicación del reel.')
 }
 
+/**
+ * Video normal de la Página, para los de más de 90 segundos (la API de Reels no
+ * los acepta). Un solo pedido: Facebook baja el archivo de la URL y lo procesa
+ * solo; su estado se consulta igual que el de un reel.
+ */
+export async function publicarVideoComun(url: string, descripcion: string): Promise<string> {
+  if (!url.startsWith('https://')) throw new Error('La URL del video tiene que ser https:// para que Facebook la descargue.')
+  const { pageId } = await paginaDeLaCuenta()
+  const r = await paginaFetch<{ id?: string }>(`/${pageId}/videos`, {
+    method: 'POST',
+    body: JSON.stringify({ file_url: url, description: descripcion, published: true }),
+  })
+  if (!r.id) throw new Error('Facebook aceptó el video pero no devolvió su identificador.')
+  return r.id
+}
+
 export async function estadoReel(videoId: string): Promise<{ estado: EstadoReelFb; enlace: string | null }> {
   const r = await paginaFetch<CuerpoEstado & { permalink_url?: string }>(
     `/${encodeURIComponent(videoId)}?fields=status,permalink_url`,
