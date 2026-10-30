@@ -72,5 +72,11 @@ export interface EnvioFila {
   updated_at: string
 }
 
+/** Un video como lo ve la pantalla: con las URLs públicas ya armadas. */
+export type VideoVista = VideoFila & { miniatura_url: string | null; video_url: string | null }
+
+/** Un video programado, con el estado de cada red. */
+export type VideoProgramado = VideoVista & { envios: EnvioFila[] }
+
 /** Marca que `describir` deja en `ultimo_error` cuando el video no tiene voz. */
 export const SIN_VOZ = 'sin_voz'

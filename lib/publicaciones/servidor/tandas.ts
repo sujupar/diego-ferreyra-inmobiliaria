@@ -7,7 +7,7 @@ import { armarCalendario, mananaEnArgentina, type HorariosPorDefecto, type Ritmo
 import { BUCKET, publicacionesDb, urlPublica } from '../db'
 import { sincronizarEnvios } from '../envios'
 import { ajustarDescripcion, ajustarTituloYoutube } from '../textos'
-import type { EnvioFila, Plataforma, TandaFila, VideoFila } from '../tipos'
+import type { EnvioFila, Plataforma, TandaFila, VideoFila, VideoVista } from '../tipos'
 import {
   altaVideosSchema,
   detectarDuplicados,
@@ -18,7 +18,7 @@ import {
 } from '../validacion'
 import { ErrorHttp } from './http'
 
-export type VideoConUrls = VideoFila & { miniatura_url: string | null; video_url: string | null }
+export type VideoConUrls = VideoVista
 
 export function conUrls(v: VideoFila): VideoConUrls {
   return {
@@ -135,7 +135,10 @@ export async function borrarTanda(id: string): Promise<void> {
 export async function altaVideos(
   tandaId: string,
   alta: z.infer<typeof altaVideosSchema>,
-): Promise<{ videos: { id: string; nombre: string; signedUrl: string; token: string; path: string }[]; repetidos: string[] }> {
+): Promise<{
+  videos: { id: string; nombre: string; tamano: number; signedUrl: string; token: string; path: string }[]
+  repetidos: string[]
+}> {
   const tanda = await leerTanda(tandaId)
   if (tanda.estado !== 'borrador') throw new ErrorHttp(409, 'Esta tanda ya está programada: empezá una nueva')
   const existentes = await videosDeTanda(tandaId)
@@ -164,7 +167,14 @@ export async function altaVideos(
     filas.map(async (f) => {
       const { data, error: e } = await db.storage.from(BUCKET).createSignedUploadUrl(f.video_path, { upsert: true })
       if (e || !data) throw new Error(`Storage: ${e?.message ?? 'sin URL'}`)
-      return { id: f.id, nombre: f.nombre_archivo, signedUrl: data.signedUrl, token: data.token, path: f.video_path }
+      return {
+        id: f.id,
+        nombre: f.nombre_archivo,
+        tamano: f.tamano_bytes,
+        signedUrl: data.signedUrl,
+        token: data.token,
+        path: f.video_path,
+      }
     }),
   )
   return { videos, repetidos }
@@ -369,11 +379,11 @@ export async function listarProgramado(): Promise<{
   const { data: aj, error: e2 } = await db.from('publicacion_ajustes').select('publicacion_automatica').maybeSingle()
   dbError(e2)
   const videos = (data ?? []).map((fila) => {
-    const { publicacion_envios, publicacion_tandas: _t, ...v } = fila as VideoFila & {
-      publicacion_envios: EnvioFila[]
-      publicacion_tandas: unknown
-    }
-    return { ...conUrls(v as VideoFila), envios: publicacion_envios ?? [] }
+    const v = { ...(fila as Record<string, unknown>) }
+    const envios = (v.publicacion_envios as EnvioFila[] | null) ?? []
+    delete v.publicacion_envios
+    delete v.publicacion_tandas
+    return { ...conUrls(v as unknown as VideoFila), envios }
   })
   return { videos, publicacion_automatica: aj?.publicacion_automatica === true }
 }
