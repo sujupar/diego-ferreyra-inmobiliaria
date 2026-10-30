@@ -19,6 +19,7 @@ const ALUCINACIONES = [
   /suscr[ií]bete/i,
   /amara\.org/i,
   /subt[ií]tulos (realizados|por)/i,
+  /^\W*subt[ií]tulos?\b/i,
   /^\W*$/,
 ]
 
@@ -34,11 +35,30 @@ export function segmentosDeWhisper(json: unknown): Segmento[] {
     .filter((s) => s.texto.length > 0)
 }
 
-export function tieneVoz(segmentos: Segmento[]): boolean {
+/** Una persona hablando dice ~2,5 palabras por segundo; por debajo de esto es música con ruido. */
+const MIN_PALABRAS_POR_SEGUNDO = 0.8
+/** "SOLOCHILENOS40ALVERNESTO": una palabra larga con números pegados no la dice nadie. */
+const PALABRA_INVENTADA = /^(?=.*\p{L})(?=.*\d)[\p{L}\d]{12,}$/u
+
+/**
+ * ¿El video tiene a alguien hablando? Las probabilidades de whisper NO sirven para
+ * decidirlo (medido el 2026-10-30: su alucinación sobre un tono de 8 s tenía
+ * `no_speech_prob` MÁS BAJO que la voz real de Diego). Lo que sí separa es la
+ * densidad: cuántas palabras por segundo de audio.
+ */
+export function tieneVoz(segmentos: Segmento[], duracionSeg?: number | null): boolean {
   const reales = segmentos
     .map((s) => s.texto.replace(/\[[^\]]*\]|\([^)]*\)/g, '').trim())
     .filter((t) => t.length > 0 && !ALUCINACIONES.some((re) => re.test(t)))
-  return reales.join(' ').replace(/\W/g, '').length >= 12
+  const palabras = reales
+    .join(' ')
+    .split(/\s+/)
+    .map((p) => p.replace(/[^\p{L}\d]/gu, ''))
+    .filter((p) => p.length > 0 && !PALABRA_INVENTADA.test(p))
+  if (palabras.join('').length < 12) return false
+  const duracion = duracionSeg && duracionSeg > 0 ? duracionSeg : Math.max(0, ...segmentos.map((s) => s.fin))
+  if (duracion <= 0) return true
+  return palabras.length / duracion >= MIN_PALABRAS_POR_SEGUNDO
 }
 
 export function textoPlano(segmentos: Segmento[]): string {

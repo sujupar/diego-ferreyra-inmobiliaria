@@ -41,6 +41,19 @@ describe('tieneVoz', () => {
   it('una frase real tiene voz', () => {
     expect(tieneVoz(segmentosDeWhisper(WHISPER))).toBe(true)
   })
+
+  it('la alucinación real sobre un tono de 8 s (QA del 2026-10-30) no cuenta como voz', () => {
+    expect(tieneVoz([{ inicio: 0, fin: 8, texto: 'SUBTITULO SOLOCHILENOS40ALVERNESTO' }], 8)).toBe(false)
+  })
+
+  it('tres palabras sueltas en un minuto de música no son un video hablado', () => {
+    expect(tieneVoz([{ inicio: 20, fin: 23, texto: 'Bueno, muchas gracias amigos' }], 60)).toBe(false)
+  })
+
+  it('Diego hablando un minuto entero sí tiene voz', () => {
+    const texto = 'si estás por comprar una propiedad tenés que ver este video hasta el final mirá recién '
+    expect(tieneVoz([{ inicio: 0, fin: 60, texto: texto.repeat(8) }], 60)).toBe(true)
+  })
 })
 
 describe('aplicarResultadoDescripcion', () => {

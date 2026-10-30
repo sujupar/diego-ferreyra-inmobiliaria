@@ -62,7 +62,7 @@ async function describir(v: VideoFila): Promise<void> {
   const db = publicacionesDb()
   const segmentos: Segmento[] = v.transcripcion ?? []
 
-  if (!tieneVoz(segmentos)) {
+  if (!tieneVoz(segmentos, v.duracion_seg)) {
     const { error } = await db
       .from('publicacion_videos')
       .update({ etapa: 'listo', error_etapa: null, ultimo_error: SIN_VOZ })
