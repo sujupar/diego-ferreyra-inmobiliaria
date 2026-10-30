@@ -69,6 +69,7 @@ async function ConsultasConDatos({ user, searchParams }: { user: UserWithProfile
       asesores={asesores.status === 'fulfilled' ? asesores.value : []}
       inicial={inicial}
       errorInicial={errorInicial}
+      abrirAvisos={sp.get('avisos') === '1'}
     />
   )
 }

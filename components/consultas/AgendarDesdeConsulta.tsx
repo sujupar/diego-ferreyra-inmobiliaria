@@ -21,6 +21,7 @@ import type { ConsultaEnBandeja } from '@/lib/consultas/tipos'
 import { HojaElegirPropiedad, type PropiedadParaAgendar } from './HojaElegirPropiedad'
 import { HojaRevisarTelefono } from './HojaRevisarTelefono'
 import { HojaVisitaAgendada } from './HojaVisitaAgendada'
+import type { AsesorParaMostrar } from './ElegirQuienMuestra'
 
 interface Visita { id: string; fecha: string; hora: string }
 
@@ -28,6 +29,8 @@ interface Props {
   consulta: ConsultaEnBandeja
   /** Admin, dueño o coordinador: los únicos que conectan un aviso con su propiedad. */
   puedeIdentificar: boolean
+  /** Quiénes pueden mostrar una propiedad: se elige al conectar el aviso. */
+  asesores: readonly AsesorParaMostrar[]
   /** Se agendó la visita y la persona tocó "Volver a consultas" (o cerró): re-pedir la bandeja. */
   onTerminado: (visita: Visita) => void
   /**
@@ -37,7 +40,7 @@ interface Props {
   onCerrar: (cambioLaConsulta: boolean) => void
 }
 
-export function AgendarDesdeConsulta({ consulta: c, puedeIdentificar, onTerminado, onCerrar }: Props) {
+export function AgendarDesdeConsulta({ consulta: c, puedeIdentificar, asesores, onTerminado, onCerrar }: Props) {
   const [paso, setPaso] = useState<PasoDesdeConsulta | 'listo'>(() => pasoInicial(c))
   const [propiedad, setPropiedad] = useState<PropiedadParaAgendar | null>(null)
   const [telefono, setTelefono] = useState<TelefonoAceptado | null>(null)
@@ -56,6 +59,7 @@ export function AgendarDesdeConsulta({ consulta: c, puedeIdentificar, onTerminad
       <HojaElegirPropiedad
         consulta={c}
         puedeIdentificar={puedeIdentificar}
+        asesores={asesores}
         siguienteEsTelefono={pasoTrasPropiedad(c) === 'telefono'}
         onConectada={(p) => { setPropiedad(p); setPaso(pasoTrasPropiedad(c)) }}
         onCerrar={cerrar}
@@ -97,6 +101,7 @@ export function AgendarDesdeConsulta({ consulta: c, puedeIdentificar, onTerminad
       <HojaElegirPropiedad
         consulta={c}
         puedeIdentificar={puedeIdentificar}
+        asesores={asesores}
         siguienteEsTelefono={!telefono && pasoTrasPropiedad(c) === 'telefono'}
         onConectada={(p) => { setPropiedad(p); setPaso(telefono ? 'agendar' : pasoTrasPropiedad(c)) }}
         onCerrar={cerrar}

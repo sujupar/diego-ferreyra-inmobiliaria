@@ -1,25 +1,28 @@
 'use client'
 
 /**
- * Hoja "Avisos sin propiedad" (spec Entrega 2 §3.2): una tarjeta por aviso con
- * cuántas consultas tiene; tocar "Conectar", elegir la propiedad (con
- * sugeridas) y un toque más conecta TODAS sus consultas. Las que lleguen
- * después por ese aviso entran solas.
+ * Hoja "Avisos sin propiedad" (spec Entrega 2 §3.2 y 2026-10-30-conectar-avisos):
+ * una tarjeta por aviso con su foto y "Ver aviso" para reconocerlo en el portal.
+ * "Conectar" → elegir NUESTRA propiedad (lo principal: todas están cargadas) →
+ * "¿Quién la muestra?" (no es quien la captó) → conecta TODAS sus consultas.
+ * Las que lleguen después por ese aviso entran solas y le llegan a quien la
+ * muestra. Pegar el link del aviso es la salida secundaria.
  *
  * Los números son de TODAS las consultas sin propiedad de cada aviso, no solo
  * las del período: tienen que coincidir con lo que se va a conectar.
  * Solo para operaciones (la ruta devuelve 403 al resto).
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ArrowLeft, ExternalLink, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { enlaceSeguro, etiquetaPortal } from '@/lib/consultas/pantalla'
+import { enlaceSeguro, etiquetaPortal, fotoSegura } from '@/lib/consultas/pantalla'
 import type { AvisoSinPropiedad } from '@/lib/consultas/avisos'
 import { formatearFechaHora } from '@/lib/visitas/horario'
 import { HojaArmazon } from './HojaArmazon'
 import { BuscadorDePropiedades, type PropiedadParaAgendar } from './BuscadorDePropiedades'
-import { AVISO_SIN_ASESOR } from './HojaElegirPropiedad'
+import { ElegirQuienMuestra, type AsesorParaMostrar } from './ElegirQuienMuestra'
+import { PegarLinkDelAviso } from './PegarLinkDelAviso'
 
 type Lista = { avisos: AvisoSinPropiedad[]; sueltas: number }
 
@@ -38,34 +41,58 @@ function esLista(v: Record<string, unknown>): v is Lista {
   return Array.isArray(v.avisos) && typeof v.sueltas === 'number'
 }
 
-export function TarjetaAviso({ aviso, onConectar }: { aviso: AvisoSinPropiedad; onConectar: () => void }) {
-  const enlace = enlaceSeguro(aviso.url, aviso.portal)
+/** El aviso como se ve en el portal: foto (si el mail la trajo), portal, código y título. */
+function CabeceraAviso({ aviso, children }: { aviso: AvisoSinPropiedad; children?: ReactNode }) {
+  const foto = fotoSegura(aviso.foto, aviso.portal)
   return (
-    <li className="flex flex-col gap-2 rounded-xl border bg-card p-3">
+    <div className="flex min-w-0 gap-3">
+      {foto && (
+        // eslint-disable-next-line @next/next/no-img-element -- foto del CDN del portal; next/image exigiría declarar sus dominios
+        <img src={foto} alt="" loading="lazy" referrerPolicy="no-referrer"
+          className="h-20 w-28 shrink-0 rounded-lg border object-cover" />
+      )}
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="text-xs font-semibold text-muted-foreground">{etiquetaPortal(aviso.portal)} · código {aviso.codigo}</span>
         <span className="break-words font-semibold">{aviso.titulo ?? 'Aviso sin título'}</span>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function VerAviso({ aviso }: { aviso: AvisoSinPropiedad }) {
+  const enlace = enlaceSeguro(aviso.url, aviso.portal)
+  if (!enlace) return null
+  return (
+    <Button asChild variant="outline" className="min-h-11">
+      <a href={enlace} target="_blank" rel="noopener noreferrer">
+        Ver aviso en {etiquetaPortal(aviso.portal)} <ExternalLink className="h-4 w-4" aria-hidden="true" />
+      </a>
+    </Button>
+  )
+}
+
+export function TarjetaAviso({ aviso, onConectar }: { aviso: AvisoSinPropiedad; onConectar: () => void }) {
+  return (
+    <li className="flex flex-col gap-2 rounded-xl border bg-card p-3">
+      <CabeceraAviso aviso={aviso}>
         <span className="text-sm text-muted-foreground">
           {aviso.n === 1 ? '1 consulta' : `${aviso.n} consultas`} · la última {formatearFechaHora(aviso.ultima)}
         </span>
-      </div>
+      </CabeceraAviso>
       <div className="flex flex-wrap gap-2">
         <Button type="button" className="min-h-11 flex-1 bg-brand text-brand-foreground hover:bg-brand/90" onClick={onConectar}>
           Conectar
         </Button>
-        {enlace && (
-          <Button asChild variant="outline" className="min-h-11">
-            <a href={enlace} target="_blank" rel="noopener noreferrer">
-              Ver aviso <ExternalLink className="h-4 w-4" aria-hidden="true" />
-            </a>
-          </Button>
-        )}
+        <VerAviso aviso={aviso} />
       </div>
     </li>
   )
 }
 
-export function HojaAvisosSinPropiedad({ onConectado, onCerrar }: {
+export function HojaAvisosSinPropiedad({ asesores, onConectado, onCerrar }: {
+  /** Quiénes pueden mostrar una propiedad (asesores y dueños activos). */
+  asesores: readonly AsesorParaMostrar[]
   /** Después de conectar un aviso: la bandeja vuelve a pedir el período. */
   onConectado: () => void
   onCerrar: () => void
@@ -75,6 +102,12 @@ export function HojaAvisosSinPropiedad({ onConectado, onCerrar }: {
   const [recarga, setRecarga] = useState(0)
   const [aviso, setAviso] = useState<AvisoSinPropiedad | null>(null)
   const [elegida, setElegida] = useState<PropiedadParaAgendar | null>(null)
+  const [muestraId, setMuestraId] = useState<string | null>(null)
+  // Otra propiedad, otra persona que la muestra: se vuelve a elegir (o a proponer).
+  function elegirPropiedad(p: PropiedadParaAgendar) {
+    if (p.id !== elegida?.id) setMuestraId(null)
+    setElegida(p)
+  }
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -98,22 +131,22 @@ export function HojaAvisosSinPropiedad({ onConectado, onCerrar }: {
   function elegirAviso(a: AvisoSinPropiedad | null) {
     setAviso(a)
     setElegida(null)
+    setMuestraId(null)
     setError(null)
   }
 
   async function conectar() {
-    if (!aviso || !elegida || enviando) return
+    if (!aviso || !elegida || !muestraId || enviando) return
     setEnviando(true)
     setError(null)
     try {
       const r = await leerJson(await fetch('/api/consultas/avisos', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ portal: aviso.portal, codigo: aviso.codigo, propertyId: elegida.id }),
+        body: JSON.stringify({ portal: aviso.portal, codigo: aviso.codigo, propertyId: elegida.id, muestraId }),
       }))
       if (!r.ok) { setError(r.error); return }
       const n = typeof r.cuerpo.actualizadas === 'number' ? r.cuerpo.actualizadas : aviso.n
       toast.success(n === 1 ? `Se conectó 1 consulta con ${elegida.address}` : `Se conectaron ${n} consultas con ${elegida.address}`)
-      if (r.cuerpo.recordado !== true) toast.warning(AVISO_SIN_ASESOR)
       const conectado = aviso
       setLista((l) => l && { ...l, avisos: l.avisos.filter((a) => !(a.portal === conectado.portal && a.codigo === conectado.codigo)) })
       elegirAviso(null)
@@ -127,28 +160,39 @@ export function HojaAvisosSinPropiedad({ onConectado, onCerrar }: {
 
   if (aviso) {
     const n = aviso.n === 1 ? 'la consulta' : `las ${aviso.n} consultas`
+    const quien = asesores.find((a) => a.id === muestraId)?.full_name
     return (
       <HojaArmazon
         titulo="¿Qué propiedad es este aviso?"
-        descripcion={`${etiquetaPortal(aviso.portal)} · código ${aviso.codigo}${aviso.titulo ? ` · «${aviso.titulo}»` : ''}`}
+        descripcion="Mirá el aviso en el portal, elegí nuestra propiedad y quién la muestra."
         onCerrar={onCerrar}
         pie={(
           <div className="flex gap-2">
             <Button type="button" variant="outline" className="min-h-12" onClick={() => elegirAviso(null)} aria-label="Volver a los avisos">
               <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             </Button>
-            <Button type="button" onClick={conectar} disabled={!elegida || enviando}
+            <Button type="button" onClick={conectar} disabled={!elegida || !muestraId || enviando}
               className="min-h-12 flex-1 bg-brand text-base text-brand-foreground hover:bg-brand/90">
               {enviando ? 'Conectando…' : aviso.n === 1 ? 'Conectar 1 consulta' : `Conectar ${aviso.n} consultas`}
             </Button>
           </div>
         )}
       >
-        <BuscadorDePropiedades textosDelAviso={textosDelAviso} elegida={elegida} onElegir={setElegida} />
+        <div className="flex flex-col gap-2 rounded-xl border bg-card p-3">
+          <CabeceraAviso aviso={aviso} />
+          <VerAviso aviso={aviso} />
+        </div>
+        <BuscadorDePropiedades textosDelAviso={textosDelAviso} elegida={elegida} onElegir={elegirPropiedad} />
+        <PegarLinkDelAviso onEncontrada={elegirPropiedad} />
+        {elegida && (
+          <ElegirQuienMuestra key={elegida.id} asesores={asesores} propiedadId={elegida.id} valor={muestraId} onCambiar={setMuestraId} />
+        )}
         {elegida && (
           <p className="rounded-xl border border-brand/40 bg-brand-soft/30 p-3 text-sm" role="status">
             Se van a conectar <strong>{n}</strong> de este aviso a <strong>{elegida.address}</strong>
-            {elegida.assigned_to ? ', y las que lleguen después entran solas.' : '. La propiedad no tiene asesor: las próximas consultas de este aviso no se van a conectar solas.'}
+            {quien
+              ? <>; las recibe <strong>{quien}</strong>, y las que lleguen después entran solas.</>
+              : '. Falta elegir quién la muestra.'}
           </p>
         )}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

@@ -23,6 +23,8 @@ const ROLES_PERMITIDOS = ['admin', 'dueno', 'coordinador']
 const Id = z.string().uuid()
 const Cuerpo = z.object({
   propertyId: z.string().uuid(),
+  // Quien la MUESTRA (no quien la captó): a esa persona le llegan las consultas.
+  muestraId: z.string().uuid(),
   recordar: z.boolean().optional(),
 })
 
@@ -49,12 +51,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const body = await req.json().catch(() => null)
   const parsed = Cuerpo.safeParse(body)
-  if (!parsed.success) return error(400, 'Faltan datos para conectar la consulta')
+  if (!parsed.success) {
+    const sinMuestra = parsed.error.issues.every((i) => i.path[0] === 'muestraId')
+    return error(400, sinMuestra ? 'Elegí quién muestra la propiedad' : 'Faltan datos para conectar la consulta')
+  }
 
   try {
     const r = await conectarConsulta(clienteServicio(), {
       consultaId: id,
       propertyId: parsed.data.propertyId,
+      muestraId: parsed.data.muestraId,
     })
     return NextResponse.json(r)
   } catch (e) {

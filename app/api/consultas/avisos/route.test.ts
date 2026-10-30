@@ -23,6 +23,7 @@ import { GET, POST } from './route'
 import { ConsultaNoConectable } from '@/lib/consultas/identificar'
 
 const PROP = '33333333-3333-4333-8333-333333333333'
+const MUESTRA = '44444444-4444-4444-8444-444444444444'
 
 function pedirPost(body: unknown) {
   return POST(new NextRequest('http://local/api/consultas/avisos', { method: 'POST', body: JSON.stringify(body) }))
@@ -58,32 +59,40 @@ describe('GET /api/consultas/avisos', () => {
 
 describe('POST /api/consultas/avisos', () => {
   it('conecta el aviso entero con el código TAL CUAL llegó', async () => {
-    const res = await pedirPost({ portal: 'zonaprop', codigo: '2DLPOM', propertyId: PROP })
+    const res = await pedirPost({ portal: 'zonaprop', codigo: '2DLPOM', propertyId: PROP, muestraId: MUESTRA })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ actualizadas: 26, recordado: true })
-    expect(conectarMock).toHaveBeenCalledWith({ cliente: 'falso' }, { portal: 'zonaprop', codigo: '2DLPOM', propertyId: PROP })
+    expect(conectarMock).toHaveBeenCalledWith({ cliente: 'falso' }, { portal: 'zonaprop', codigo: '2DLPOM', propertyId: PROP, muestraId: MUESTRA })
   })
 
   it.each(['admin', 'dueno'])('%s también puede', async (role) => {
     estado.role = role
-    expect((await pedirPost({ portal: 'zonaprop', codigo: '2DLPOM', propertyId: PROP })).status).toBe(200)
+    expect((await pedirPost({ portal: 'zonaprop', codigo: '2DLPOM', propertyId: PROP, muestraId: MUESTRA })).status).toBe(200)
   })
 
   it.each(['asesor', 'abogado', 'inventado'])('%s: 403 y no toca la base', async (role) => {
     estado.role = role
-    expect((await pedirPost({ portal: 'zonaprop', codigo: '2DLPOM', propertyId: PROP })).status).toBe(403)
+    expect((await pedirPost({ portal: 'zonaprop', codigo: '2DLPOM', propertyId: PROP, muestraId: MUESTRA })).status).toBe(403)
     expect(conectarMock).not.toHaveBeenCalled()
   })
 
   it('cuerpo inválido: 400', async () => {
-    expect((await pedirPost({ portal: 'zonaprop', codigo: '', propertyId: PROP })).status).toBe(400)
+    expect((await pedirPost({ portal: 'zonaprop', codigo: '', propertyId: PROP, muestraId: MUESTRA })).status).toBe(400)
     expect((await pedirPost({ portal: 'zonaprop', codigo: 'X', propertyId: 'no-uuid' })).status).toBe(400)
+    expect(conectarMock).not.toHaveBeenCalled()
+  })
+
+  it('sin quién la muestra (o no es un id): 400 y no toca la base', async () => {
+    const res = await pedirPost({ portal: 'zonaprop', codigo: '2DLPOM', propertyId: PROP })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Elegí quién muestra la propiedad')
+    expect((await pedirPost({ portal: 'zonaprop', codigo: '2DLPOM', propertyId: PROP, muestraId: 'lucas' })).status).toBe(400)
     expect(conectarMock).not.toHaveBeenCalled()
   })
 
   it('un código que no agrupa: el 400 del módulo llega tal cual', async () => {
     conectarMock.mockRejectedValue(new ConsultaNoConectable(400, 'Ese código no identifica un aviso: conectá esas consultas de a una'))
-    const res = await pedirPost({ portal: 'zonaprop', codigo: 'https', propertyId: PROP })
+    const res = await pedirPost({ portal: 'zonaprop', codigo: 'https', propertyId: PROP, muestraId: MUESTRA })
     expect(res.status).toBe(400)
     expect((await res.json()).error).toMatch(/no identifica un aviso/)
   })
@@ -91,7 +100,7 @@ describe('POST /api/consultas/avisos', () => {
   it('error de la base: 500 en castellano', async () => {
     conectarMock.mockRejectedValue(new Error('boom'))
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const res = await pedirPost({ portal: 'zonaprop', codigo: '2DLPOM', propertyId: PROP })
+    const res = await pedirPost({ portal: 'zonaprop', codigo: '2DLPOM', propertyId: PROP, muestraId: MUESTRA })
     expect(res.status).toBe(500)
     expect((await res.json()).error).toBe('No pudimos conectar el aviso con la propiedad')
   })

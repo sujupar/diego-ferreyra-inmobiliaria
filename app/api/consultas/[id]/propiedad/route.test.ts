@@ -22,6 +22,7 @@ import { ConsultaNoConectable } from '@/lib/consultas/identificar'
 
 const CONSULTA = '66666666-6666-4666-8666-666666666666'
 const PROP = '33333333-3333-4333-8333-333333333333'
+const MUESTRA = '44444444-4444-4444-8444-444444444444'
 
 function pedir(id: string, body: unknown) {
   const req = new NextRequest(`http://local/api/consultas/${id}/propiedad`, {
@@ -41,45 +42,47 @@ beforeEach(() => {
 
 describe('POST /api/consultas/[id]/propiedad', () => {
   it('coordinador: 200 con lo que devolvió conectarConsulta', async () => {
-    const res = await pedir(CONSULTA, { propertyId: PROP, recordar: true })
+    const res = await pedir(CONSULTA, { propertyId: PROP, muestraId: MUESTRA, recordar: true })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ actualizadas: 3, recordado: true })
-    expect(conectarMock).toHaveBeenCalledWith({ cliente: 'falso' }, { consultaId: CONSULTA, propertyId: PROP })
+    expect(conectarMock).toHaveBeenCalledWith({ cliente: 'falso' }, { consultaId: CONSULTA, propertyId: PROP, muestraId: MUESTRA })
   })
 
   it('sin `recordar` (pantalla nueva) también es válido', async () => {
-    expect((await pedir(CONSULTA, { propertyId: PROP })).status).toBe(200)
+    expect((await pedir(CONSULTA, { propertyId: PROP, muestraId: MUESTRA })).status).toBe(200)
   })
 
   it.each(['admin', 'dueno'])('%s también puede', async (role) => {
     estado.role = role
-    expect((await pedir(CONSULTA, { propertyId: PROP, recordar: false })).status).toBe(200)
+    expect((await pedir(CONSULTA, { propertyId: PROP, muestraId: MUESTRA, recordar: false })).status).toBe(200)
   })
 
   it.each(['asesor', 'abogado', 'inventado'])('%s: 403 y no toca la base', async (role) => {
     estado.role = role
-    expect((await pedir(CONSULTA, { propertyId: PROP, recordar: true })).status).toBe(403)
+    expect((await pedir(CONSULTA, { propertyId: PROP, muestraId: MUESTRA, recordar: true })).status).toBe(403)
     expect(conectarMock).not.toHaveBeenCalled()
   })
 
   it('sin sesión o inactivo: 401', async () => {
     estado.logueado = false
-    expect((await pedir(CONSULTA, { propertyId: PROP, recordar: true })).status).toBe(401)
+    expect((await pedir(CONSULTA, { propertyId: PROP, muestraId: MUESTRA, recordar: true })).status).toBe(401)
     estado.logueado = true; estado.activo = false
-    expect((await pedir(CONSULTA, { propertyId: PROP, recordar: true })).status).toBe(401)
+    expect((await pedir(CONSULTA, { propertyId: PROP, muestraId: MUESTRA, recordar: true })).status).toBe(401)
     expect(conectarMock).not.toHaveBeenCalled()
   })
 
   it('id que no es uuid: 400', async () => {
-    expect((await pedir('abc', { propertyId: PROP, recordar: true })).status).toBe(400)
+    expect((await pedir('abc', { propertyId: PROP, muestraId: MUESTRA, recordar: true })).status).toBe(400)
     expect(conectarMock).not.toHaveBeenCalled()
   })
 
   it.each([
     ['sin propertyId', { recordar: true }],
     ['propertyId no uuid', { propertyId: 'x', recordar: true }],
-    ['recordar no booleano', { propertyId: PROP, recordar: 'si' }],
-    ['recordar que no es sí/no', { propertyId: PROP, recordar: 'si' }],
+    ['recordar no booleano', { propertyId: PROP, muestraId: MUESTRA, recordar: 'si' }],
+    ['recordar que no es sí/no', { propertyId: PROP, muestraId: MUESTRA, recordar: 'si' }],
+    ['sin quién la muestra', { propertyId: PROP }],
+    ['quién la muestra no es un id', { propertyId: PROP, muestraId: 'lucas' }],
   ])('cuerpo inválido (%s): 400', async (_n, body) => {
     expect((await pedir(CONSULTA, body)).status).toBe(400)
     expect(conectarMock).not.toHaveBeenCalled()
@@ -91,14 +94,14 @@ describe('POST /api/consultas/[id]/propiedad', () => {
 
   it('consulta o propiedad inexistente: 404 con el mensaje', async () => {
     conectarMock.mockRejectedValue(new ConsultaNoConectable(404, 'No encontramos la consulta'))
-    const res = await pedir(CONSULTA, { propertyId: PROP, recordar: true })
+    const res = await pedir(CONSULTA, { propertyId: PROP, muestraId: MUESTRA, recordar: true })
     expect(res.status).toBe(404)
     expect((await res.json()).error).toBe('No encontramos la consulta')
   })
 
   it('consulta de landing: 400 con el mensaje', async () => {
     conectarMock.mockRejectedValue(new ConsultaNoConectable(400, 'Esta consulta ya tiene propiedad'))
-    const res = await pedir(CONSULTA, { propertyId: PROP, recordar: true })
+    const res = await pedir(CONSULTA, { propertyId: PROP, muestraId: MUESTRA, recordar: true })
     expect(res.status).toBe(400)
     expect((await res.json()).error).toBe('Esta consulta ya tiene propiedad')
   })
@@ -106,7 +109,7 @@ describe('POST /api/consultas/[id]/propiedad', () => {
   it('error de la base: 500 en castellano, sin el detalle técnico', async () => {
     conectarMock.mockRejectedValue(new Error('connection reset'))
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const res = await pedir(CONSULTA, { propertyId: PROP, recordar: true })
+    const res = await pedir(CONSULTA, { propertyId: PROP, muestraId: MUESTRA, recordar: true })
     expect(res.status).toBe(500)
     expect((await res.json()).error).toBe('No pudimos conectar la consulta con la propiedad')
   })

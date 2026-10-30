@@ -5,6 +5,7 @@ import { buildGmailQuery, detectPortal, isLeadEmail, parseByPortal } from '@/lib
 import { esConsultaDeVerdad } from '@/lib/integrations/portal-inquiries/es-consulta'
 import { anotarDescartado, yaFueDescartado } from '@/lib/integrations/portal-inquiries/descartados'
 import { matchProperty } from '@/lib/integrations/portal-inquiries/match'
+import { fotoDelAviso, resolverAvisoZonaprop } from '@/lib/integrations/portal-inquiries/aviso-del-mail'
 import { notifyInquiry } from '@/lib/integrations/portal-inquiries/notify'
 import { evaluateDrought } from '@/lib/integrations/portal-inquiries/drought'
 import { elegirPlantillaDelAviso } from '@/lib/integrations/portal-inquiries/plantilla-del-aviso'
@@ -47,6 +48,19 @@ export const maxDuration = 60 // segundos
  */
 const PRESUPUESTO_RESPUESTAS_MS = 12_000
 
+/**
+ * Buscar el enlace real de un aviso de ZonaProp sigue redireccionadores del mail
+ * (ver `aviso-del-mail.ts`). Solo se hace con consultas SIN propiedad (son las
+ * que el equipo tiene que reconocer), con techo por consulta y por corrida, y
+ * solo mientras la corrida esté lejos del corte de Netlify: insertar la consulta
+ * importa más que su enlace. Sin tiempo, entra sin enlace.
+ */
+const TECHO_ENLACE_MS = 3_000
+const PRESUPUESTO_ENLACES_MS = 5_000
+// Bien antes del tope de las respuestas automáticas (12 s): el enlace no puede
+// comerse el tiempo del aviso al asesor ni el de contestarle al interesado.
+const LIMITE_PARA_BUSCAR_ENLACES_MS = 5_000
+
 export async function GET(req: NextRequest) {
   const inicioCron = Date.now()
   const secret = req.headers.get('x-cron-secret')
@@ -79,9 +93,14 @@ export async function GET(req: NextRequest) {
     respuestaOmitida: 0,
     respuestaRequiereAtencion: 0,
     respuestaPendientes: [] as Array<{ id: string; motivo: string }>,
+    // Consultas de ZonaProp sin propiedad a las que no se les encontró el enlace
+    // del aviso (redireccionador caído o mail con otro formato). Si crece, mirar
+    // un mail real con scripts/completar-enlaces-avisos.ts.
+    sinEnlaceAviso: 0,
     errors: 0,
     errorDetails: [] as Array<{ id: string; message: string }>,
   }
+  let gastadoEnEnlaces = 0
 
   // Campos de la alerta de sequía (migración 20260727000001). Se setean tras
   // evaluar; si la migración aún no corrió, el fallback de persistState evita
@@ -181,6 +200,20 @@ export async function GET(req: NextRequest) {
         const isUnmatched = !match.assignedTo
         if (isUnmatched) stats.unmatched++
 
+        const fotoAviso = fotoDelAviso(parsed.portal, full.html)
+        let enlaceAviso = parsed.propertyUrl
+        if (parsed.portal === 'zonaprop' && !enlaceAviso && !match.propertyId
+          && gastadoEnEnlaces < PRESUPUESTO_ENLACES_MS
+          && Date.now() - inicioCron < LIMITE_PARA_BUSCAR_ENLACES_MS) {
+          const inicioEnlace = Date.now()
+          enlaceAviso = await resolverAvisoZonaprop(full.html, {
+            fetch: (url, init) => fetch(url, init),
+            techoMs: Math.min(TECHO_ENLACE_MS, PRESUPUESTO_ENLACES_MS - gastadoEnEnlaces),
+          })
+          gastadoEnEnlaces += Date.now() - inicioEnlace
+          if (!enlaceAviso) stats.sinEnlaceAviso++
+        }
+
         // Auto-aprendizaje del mapa: si matcheó por DIRECCIÓN y la consulta trae
         // código, guardamos ese código en la fila del mapa → las próximas consultas
         // de ese aviso (que pueden venir SIN dirección, típico de algunos portales)
@@ -219,7 +252,7 @@ export async function GET(req: NextRequest) {
                 external_code: parsed.propertyCode,
                 title: parsed.propertyTitle,
                 address: parsed.propertyAddress,
-                external_url: parsed.propertyUrl,
+                external_url: enlaceAviso,
                 active: true,
                 notes: 'AUTO-REGISTRADO desde una consulta sin mapear — completar dirección y asesor',
               })
@@ -243,7 +276,8 @@ export async function GET(req: NextRequest) {
             lead_phone: parsed.leadPhone,
             lead_message: parsed.message,
             property_external_code: parsed.propertyCode,
-            property_url: parsed.propertyUrl,
+            property_url: enlaceAviso,
+            property_photo_url: fotoAviso,
             property_address: parsed.propertyAddress ?? match.address, // si el email no trajo dirección pero matcheó, guardamos la del mapa (identificable en el inbox)
             matched_map_id: match.mapId,
             property_id: match.propertyId, // FK real a properties (null = sin identificar)

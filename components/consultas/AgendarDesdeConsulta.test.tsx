@@ -15,6 +15,9 @@ const ASESOR = '22222222-2222-4222-8222-222222222222'
 const TARIJA = { id: '33333333-3333-4333-8333-333333333333', address: 'Tarija 4000', neighborhood: 'Boedo', foto: null, assigned_to: ASESOR }
 const QUESADA = { id: '44444444-4444-4444-8444-444444444444', address: 'Quesada 3500', neighborhood: 'Coghlan', foto: null, assigned_to: ASESOR }
 const VISITA_ID = '55555555-5555-4555-8555-555555555555'
+/** Quien MUESTRA la propiedad: no es quien la captó (dueño, 2026-10-30). */
+const MUESTRA = '66666666-6666-4666-8666-666666666666'
+const ASESORES = [{ id: ASESOR, full_name: 'Lucas' }, { id: MUESTRA, full_name: 'Paula' }]
 
 function consulta(p: Partial<ConsultaEnBandeja> = {}): ConsultaEnBandeja {
   const telefono = p.telefono === undefined ? '+5491161400496' : p.telefono
@@ -44,6 +47,7 @@ function mockFetch() {
     if (url === '/api/visits' && init?.method === 'POST') return json({ id: VISITA_ID }, 201)
     if (url.startsWith('/api/visits/propiedades?id=')) return json([TARIJA])
     if (url.startsWith('/api/visits/propiedades')) return json([QUESADA, TARIJA])
+    if (url.startsWith('/api/consultas/avisos/quien-muestra')) return new Response(JSON.stringify({ muestraId: null }), { status: 200 })
     if (url.startsWith('/api/users/advisors')) return json([{ id: ASESOR, full_name: 'Lucas' }])
     if (url.startsWith('/api/visits/agenda-del-asesor')) return json([])
     return new Response('{}', { status: 404 })
@@ -65,6 +69,11 @@ async function agendarHoyALas10() {
   fireEvent.click(await screen.findByRole('button', { name: /^Agendar \S+ \d+ · 10:00$/ }))
 }
 
+/** "¿Quién la muestra?": obligatorio antes de conectar. */
+async function elegirQuienMuestra() {
+  fireEvent.change(await screen.findByRole('combobox', { name: /Quién la muestra/ }), { target: { value: MUESTRA } })
+}
+
 function indiceDe(url: string): number {
   return fetchMock.mock.calls.findIndex(([u, init]) => u === url && (init as RequestInit | undefined)?.method === 'POST')
 }
@@ -73,7 +82,7 @@ describe('AgendarDesdeConsulta', () => {
   it('sin propiedad y coordinador: conecta el aviso entero ANTES de agendar', async () => {
     const onTerminado = vi.fn()
     render(<AgendarDesdeConsulta consulta={consulta({ property_id: null, propiedad: null, accion: 'elegir_propiedad' })}
-      puedeIdentificar onTerminado={onTerminado} onCerrar={vi.fn()} />)
+      puedeIdentificar asesores={ASESORES} onTerminado={onTerminado} onCerrar={vi.fn()} />)
     expect(await screen.findByRole('heading', { name: '¿Qué propiedad quiere ver?' })).toBeInTheDocument()
     // La del barrio que nombra el aviso va arriba, como sugerida.
     expect(await screen.findByText('Sugeridas para este aviso')).toBeInTheDocument()
@@ -81,6 +90,9 @@ describe('AgendarDesdeConsulta', () => {
     // Sin casilla: la hoja dice que se conecta el aviso entero.
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     expect(screen.getByText(/todas las consultas sin propiedad de este aviso/)).toBeInTheDocument()
+    // Sin quién la muestra no se puede seguir: es obligatorio y nunca se completa con quien la captó.
+    expect(screen.getByRole('button', { name: /^Seguir/ })).toBeDisabled()
+    await elegirQuienMuestra()
     fireEvent.click(screen.getByRole('button', { name: /^Seguir/ }))
     await agendarHoyALas10()
     expect(await screen.findByRole('heading', { name: /Visita agendada/ })).toBeInTheDocument()
@@ -90,14 +102,14 @@ describe('AgendarDesdeConsulta', () => {
     expect(conexion).toBeGreaterThanOrEqual(0)
     expect(alta).toBeGreaterThan(conexion)
     const cuerpo = JSON.parse((fetchMock.mock.calls[conexion][1] as RequestInit).body as string) as unknown
-    expect(cuerpo).toEqual({ propertyId: TARIJA.id })
+    expect(cuerpo).toEqual({ propertyId: TARIJA.id, muestraId: MUESTRA })
     const visita = JSON.parse((fetchMock.mock.calls[alta][1] as RequestInit).body as string) as Record<string, unknown>
     expect(visita).toMatchObject({ propiedadId: TARIJA.id, persona: { tipo: 'consulta', id: CONSULTA_ID } })
   }, 20000)
 
   it('teléfono "4941-0027": "Usar este número" se habilita con la característica y la visita lleva el canónico', async () => {
     render(<AgendarDesdeConsulta consulta={consulta({ telefono: '4941-0027', accion: 'revisar_telefono' })}
-      puedeIdentificar onTerminado={vi.fn()} onCerrar={vi.fn()} />)
+      puedeIdentificar asesores={ASESORES} onTerminado={vi.fn()} onCerrar={vi.fn()} />)
     expect(await screen.findByRole('heading', { name: 'Revisá el teléfono' })).toBeInTheDocument()
     expect(screen.getByText('Tiene 8 números: le falta la característica.', { exact: false })).toBeInTheDocument()
     const usar = screen.getByRole('button', { name: 'Usar este número' })
@@ -124,7 +136,7 @@ describe('AgendarDesdeConsulta', () => {
   it('asesor y sin propiedad: pide a un coordinador y no hay botón Seguir', async () => {
     rol = 'asesor'
     render(<AgendarDesdeConsulta consulta={consulta({ property_id: null, propiedad: null, accion: 'elegir_propiedad' })}
-      puedeIdentificar={false} onTerminado={vi.fn()} onCerrar={vi.fn()} />)
+      puedeIdentificar={false} asesores={ASESORES} onTerminado={vi.fn()} onCerrar={vi.fn()} />)
     expect(await screen.findByText(/Pedile a un coordinador que identifique este aviso/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Seguir/ })).not.toBeInTheDocument()
     expect(fetchMock.mock.calls.some(([u]) => String(u).startsWith(`/api/consultas/${CONSULTA_ID}/propiedad`))).toBe(false)
@@ -132,7 +144,7 @@ describe('AgendarDesdeConsulta', () => {
 
   it('MercadoLibre sin teléfono: lo pide por el chat del portal, sin campo de nombre', async () => {
     render(<AgendarDesdeConsulta consulta={consulta({ portal: 'mercadolibre', telefono: null, accion: 'pedir_telefono' })}
-      puedeIdentificar onTerminado={vi.fn()} onCerrar={vi.fn()} />)
+      puedeIdentificar asesores={ASESORES} onTerminado={vi.fn()} onCerrar={vi.fn()} />)
     expect(await screen.findByText('MercadoLibre no comparte el contacto. Pedile el celular por el chat del portal.')).toBeInTheDocument()
     expect(screen.queryByLabelText(/Nombre/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Usar este número' })).toBeDisabled()
@@ -140,7 +152,7 @@ describe('AgendarDesdeConsulta', () => {
 
   it('número de otro país: solo se acepta empezando con +', async () => {
     render(<AgendarDesdeConsulta consulta={consulta({ telefono: '4941-0027', accion: 'revisar_telefono' })}
-      puedeIdentificar onTerminado={vi.fn()} onCerrar={vi.fn()} />)
+      puedeIdentificar asesores={ASESORES} onTerminado={vi.fn()} onCerrar={vi.fn()} />)
     fireEvent.click(await screen.findByRole('button', { name: 'Es un número de otro país' }))
     const libre = screen.getByLabelText('Número completo con código de país')
     const usar = screen.getByRole('button', { name: 'Usar este número' })
@@ -150,29 +162,24 @@ describe('AgendarDesdeConsulta', () => {
     expect(usar).toBeEnabled()
   })
 
-  it('si la propiedad no tiene asesor (el aviso no se recordó), avisa sin frenar y sigue a agendar', async () => {
-    const { toast } = await import('sonner')
+  it('propone a quien ya muestra otro aviso de la propiedad, nunca a quien la captó', async () => {
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === `/api/consultas/${CONSULTA_ID}/propiedad` && init?.method === 'POST') {
-        return new Response(JSON.stringify({ actualizadas: 1, recordado: false }), { status: 200 })
-      }
+      if (url.startsWith('/api/consultas/avisos/quien-muestra')) return new Response(JSON.stringify({ muestraId: MUESTRA }), { status: 200 })
       return mockFetch()(url, init)
     })
     render(<AgendarDesdeConsulta consulta={consulta({ property_id: null, propiedad: null, accion: 'elegir_propiedad' })}
-      puedeIdentificar onTerminado={vi.fn()} onCerrar={vi.fn()} />)
+      puedeIdentificar asesores={ASESORES} onTerminado={vi.fn()} onCerrar={vi.fn()} />)
     fireEvent.click(await screen.findByRole('radio', { name: /Tarija 4000/ }))
-    fireEvent.click(screen.getByRole('button', { name: /^Seguir/ }))
-    await screen.findByRole('heading', { name: '¿Cuándo?' }, { timeout: 4000 })
-    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(
-      'La propiedad no tiene asesor: las próximas consultas de este aviso no se van a conectar solas. Asigná un asesor a la propiedad.',
-    ))
-  }, 20000)
+    await waitFor(() => expect(screen.getByRole('combobox', { name: /Quién la muestra/ })).toHaveValue(MUESTRA))
+    expect(screen.getByRole('button', { name: /^Seguir/ })).toBeEnabled()
+  })
 
   it('cancelar después de conectar la propiedad avisa onCerrar(true): la bandeja se re-pide', async () => {
     const onCerrar = vi.fn()
     render(<AgendarDesdeConsulta consulta={consulta({ property_id: null, propiedad: null, accion: 'elegir_propiedad' })}
-      puedeIdentificar onTerminado={vi.fn()} onCerrar={onCerrar} />)
+      puedeIdentificar asesores={ASESORES} onTerminado={vi.fn()} onCerrar={onCerrar} />)
     fireEvent.click(await screen.findByRole('radio', { name: /Tarija 4000/ }))
+    await elegirQuienMuestra()
     fireEvent.click(screen.getByRole('button', { name: /^Seguir/ }))
     await screen.findByRole('heading', { name: '¿Cuándo?' }, { timeout: 4000 })
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
@@ -182,7 +189,7 @@ describe('AgendarDesdeConsulta', () => {
   it('cancelar sin haber conectado nada avisa onCerrar(false)', async () => {
     const onCerrar = vi.fn()
     render(<AgendarDesdeConsulta consulta={consulta({ property_id: null, propiedad: null, accion: 'elegir_propiedad' })}
-      puedeIdentificar onTerminado={vi.fn()} onCerrar={onCerrar} />)
+      puedeIdentificar asesores={ASESORES} onTerminado={vi.fn()} onCerrar={onCerrar} />)
     await screen.findByRole('heading', { name: '¿Qué propiedad quiere ver?' })
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }))
     await waitFor(() => expect(onCerrar).toHaveBeenCalledWith(false))
@@ -190,7 +197,7 @@ describe('AgendarDesdeConsulta', () => {
 
   it('la búsqueda inicial pide el inventario entero (limite=200) para ordenar por barrio', async () => {
     render(<AgendarDesdeConsulta consulta={consulta({ property_id: null, propiedad: null, accion: 'elegir_propiedad' })}
-      puedeIdentificar onTerminado={vi.fn()} onCerrar={vi.fn()} />)
+      puedeIdentificar asesores={ASESORES} onTerminado={vi.fn()} onCerrar={vi.fn()} />)
     await screen.findByRole('radio', { name: /Tarija 4000/ })
     expect(fetchMock.mock.calls.some(([u]) => String(u) === '/api/visits/propiedades?q=&limite=200')).toBe(true)
   })
@@ -198,7 +205,7 @@ describe('AgendarDesdeConsulta', () => {
   it('al agendar no se repite el toast de la ventana: la confirmación es la hoja "Visita agendada"', async () => {
     const { toast } = await import('sonner')
     vi.mocked(toast.success).mockClear()
-    render(<AgendarDesdeConsulta consulta={consulta()} puedeIdentificar onTerminado={vi.fn()} onCerrar={vi.fn()} />)
+    render(<AgendarDesdeConsulta consulta={consulta()} puedeIdentificar asesores={ASESORES} onTerminado={vi.fn()} onCerrar={vi.fn()} />)
     await agendarHoyALas10()
     await screen.findByRole('heading', { name: /Visita agendada/ })
     expect(toast.success).not.toHaveBeenCalled()
@@ -212,8 +219,9 @@ describe('AgendarDesdeConsulta', () => {
       return mockFetch()(url, init)
     })
     render(<AgendarDesdeConsulta consulta={consulta({ property_id: null, propiedad: null, accion: 'elegir_propiedad' })}
-      puedeIdentificar onTerminado={vi.fn()} onCerrar={vi.fn()} />)
+      puedeIdentificar asesores={ASESORES} onTerminado={vi.fn()} onCerrar={vi.fn()} />)
     fireEvent.click(await screen.findByRole('radio', { name: /Tarija 4000/ }))
+    await elegirQuienMuestra()
     fireEvent.click(screen.getByRole('button', { name: /^Seguir/ }))
     expect(await screen.findByRole('alert')).toHaveTextContent('No tenés permiso para conectar consultas con propiedades')
     expect(screen.getByRole('heading', { name: '¿Qué propiedad quiere ver?' })).toBeInTheDocument()

@@ -67,6 +67,8 @@ export interface FilaSinPropiedad {
   asunto: string | null
   direccion: string | null
   url: string | null
+  /** La foto del aviso que trajo el mail (`property_photo_url`). */
+  foto: string | null
   recibida_at: string
 }
 
@@ -76,6 +78,7 @@ export interface AvisoSinPropiedad {
   codigo: string
   titulo: string | null
   url: string | null
+  foto: string | null
   /** Consultas sin propiedad de este aviso (todas, no solo las del período). */
   n: number
   ultima: string
@@ -88,11 +91,11 @@ function ms(v: string): number {
 
 /**
  * Una tarjeta por aviso, la de más consultas primero (a igual cantidad, la más
- * reciente). El título y el enlace salen de la consulta MÁS NUEVA que los trae:
+ * reciente). El título, el enlace y la foto salen de la consulta MÁS NUEVA que los trae:
  * si el aviso cambió de título, el equipo ve el actual.
  */
 export function agruparAvisos(filas: readonly FilaSinPropiedad[]): { avisos: AvisoSinPropiedad[]; sueltas: number } {
-  const porClave = new Map<string, AvisoSinPropiedad & { msTitulo: number; msUrl: number }>()
+  const porClave = new Map<string, AvisoSinPropiedad & { msTitulo: number; msUrl: number; msFoto: number }>()
   let sueltas = 0
   for (const f of filas) {
     if (!codigoAgrupable(f.portal, f.codigo) || f.codigo === null) { sueltas++; continue }
@@ -101,18 +104,19 @@ export function agruparAvisos(filas: readonly FilaSinPropiedad[]): { avisos: Avi
     const titulo = tituloDelAviso(f.portal, f.asunto, f.direccion)
     let a = porClave.get(clave)
     if (!a) {
-      a = { portal: f.portal, codigo: f.codigo, titulo: null, url: null, n: 0, ultima: f.recibida_at,
-        msTitulo: Number.NEGATIVE_INFINITY, msUrl: Number.NEGATIVE_INFINITY }
+      a = { portal: f.portal, codigo: f.codigo, titulo: null, url: null, foto: null, n: 0, ultima: f.recibida_at,
+        msTitulo: Number.NEGATIVE_INFINITY, msUrl: Number.NEGATIVE_INFINITY, msFoto: Number.NEGATIVE_INFINITY }
       porClave.set(clave, a)
     }
     a.n++
     if (cuando > ms(a.ultima)) a.ultima = f.recibida_at
     if (titulo && cuando >= a.msTitulo) { a.titulo = titulo; a.msTitulo = cuando }
     if (f.url && cuando >= a.msUrl) { a.url = f.url; a.msUrl = cuando }
+    if (f.foto && cuando >= a.msFoto) { a.foto = f.foto; a.msFoto = cuando }
   }
   const avisos = [...porClave.values()]
     .sort((x, y) => y.n - x.n || ms(y.ultima) - ms(x.ultima))
-    .map((a): AvisoSinPropiedad => ({ portal: a.portal, codigo: a.codigo, titulo: a.titulo, url: a.url, n: a.n, ultima: a.ultima }))
+    .map((a): AvisoSinPropiedad => ({ portal: a.portal, codigo: a.codigo, titulo: a.titulo, url: a.url, foto: a.foto, n: a.n, ultima: a.ultima }))
   return { avisos, sueltas }
 }
 

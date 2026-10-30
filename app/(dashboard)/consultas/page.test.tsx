@@ -69,7 +69,7 @@ let respuestas: Array<PeriodoConsultas | null>
 let pedidos: string[]
 let posts: Array<{ url: string; body: unknown }>
 
-function montar(opciones: { rol?: string; inicial?: PeriodoConsultas | null; errorInicial?: string | null; url?: string } = {}) {
+function montar(opciones: { rol?: string; inicial?: PeriodoConsultas | null; errorInicial?: string | null; url?: string; abrirAvisos?: boolean } = {}) {
   window.history.replaceState(null, '', `/consultas${opciones.url ? `?${opciones.url}` : ''}`)
   return render(
     <ConsultasClient
@@ -77,6 +77,7 @@ function montar(opciones: { rol?: string; inicial?: PeriodoConsultas | null; err
       asesores={[{ id: LUCAS, full_name: 'Lucas Pérez' }]}
       inicial={opciones.inicial === undefined ? periodo([c()]) : opciones.inicial}
       errorInicial={opciones.errorInicial ?? null}
+      abrirAvisos={opciones.abrirAvisos}
     />,
   )
 }
@@ -92,6 +93,7 @@ beforeEach(() => {
     if (url.startsWith('/api/visits/propiedades')) {
       return json(200, { data: [{ id: PROP, address: 'Entre Ríos 2333', neighborhood: 'Martínez', foto: null, assigned_to: LUCAS }] })
     }
+    if (url.startsWith('/api/consultas/avisos/quien-muestra')) return json(200, { muestraId: null })
     if (url === '/api/consultas/avisos') {
       return json(200, { avisos: [{ portal: 'zonaprop', codigo: '2DLPOM', titulo: 'Departamento 2 Ambientes en Martínez', url: null, n: 26, ultima: '2026-10-28T10:00:00Z' }], sueltas: 2 })
     }
@@ -338,11 +340,26 @@ describe('/consultas — avisos sin propiedad', () => {
     expect(await screen.findByText('Sugeridas para este aviso')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('radio', { name: /Entre Ríos 2333/ }))
     expect(screen.getByText(/Se van a conectar/)).toHaveTextContent('Se van a conectar las 26 consultas de este aviso a Entre Ríos 2333')
+    // Quién la muestra es obligatorio y no se completa con quien la captó.
+    expect(screen.getByRole('button', { name: 'Conectar 26 consultas' })).toBeDisabled()
+    await userEvent.selectOptions(await screen.findByRole('combobox', { name: /Quién la muestra/ }), LUCAS)
     await userEvent.click(screen.getByRole('button', { name: 'Conectar 26 consultas' }))
-    await waitFor(() => expect(posts).toEqual([{ url: '/api/consultas/avisos', body: { portal: 'zonaprop', codigo: '2DLPOM', propertyId: PROP } }]))
+    await waitFor(() => expect(posts).toEqual([{ url: '/api/consultas/avisos', body: { portal: 'zonaprop', codigo: '2DLPOM', propertyId: PROP, muestraId: LUCAS } }]))
     // La bandeja vuelve a pedir el período para mostrar las consultas ya conectadas.
     await waitFor(() => expect(pedidos).toHaveLength(1))
     expect(await screen.findByText('No quedan avisos sin propiedad. 🎉')).toBeInTheDocument()
+  })
+
+  it('con ?avisos=1 (el cartel de Inicio, la dirección vieja /avisos) llega con la hoja abierta', async () => {
+    montar({ inicial: conSinPropiedad(), abrirAvisos: true, url: 'avisos=1' })
+    const hoja = await screen.findByRole('dialog')
+    expect(await within(hoja).findByText('Departamento 2 Ambientes en Martínez')).toBeInTheDocument()
+  })
+
+  it('el asesor con ?avisos=1 NO ve la hoja (no puede conectar)', async () => {
+    montar({ rol: 'asesor', inicial: conSinPropiedad(), abrirAvisos: true, url: 'avisos=1' })
+    await screen.findAllByText('Martina Gómez')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('el asesor no ve el aviso de "Conectar avisos"', async () => {

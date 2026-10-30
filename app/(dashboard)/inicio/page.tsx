@@ -299,6 +299,9 @@ export default function InicioPage() {
   const permitidas = new Set(navHrefs(getNavSections(identidad.role)))
   const tarjetasVisibles = TARJETAS.filter(t => permitidas.has(t.href))
   const hoy = fechaLocalHoy()
+  // Los mismos roles que pueden conectar avisos (`/api/consultas/avisos`): el
+  // asesor ve Consultas pero no tiene avisos para conectar.
+  const puedeConectarAvisos = ['admin', 'dueno', 'coordinador'].includes(identidad.role)
 
   return (
     <div className="space-y-6">
@@ -310,11 +313,12 @@ export default function InicioPage() {
         coordinadora se entera": esa premisa dejó de ser cierta el día que
         cambió el destino. Vuelve al lugar que su nombre promete.
 
-        Va gateado por el menú (misma fuente de verdad que las tarjetas): quien
-        no tiene `/avisos` no dispara un pedido que le va a dar 403. El cartel
-        además se dibuja solo si hay algo que resolver — con cero avisos, nada.
+        Desde el 2026-10-30 cuenta la hoja "Avisos sin propiedad" de Consultas
+        (la pantalla `/avisos` se sacó). Solo para quien puede conectar avisos:
+        el resto recibiría un 403. El cartel además se dibuja solo si hay algo
+        que resolver — con cero avisos, nada.
       */}
-      {permitidas.has('/avisos') && <UnidentifiedBanner />}
+      {permitidas.has('/consultas') && puedeConectarAvisos && <UnidentifiedBanner />}
 
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Inicio</h1>

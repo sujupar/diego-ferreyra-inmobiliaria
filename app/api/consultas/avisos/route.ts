@@ -9,8 +9,9 @@ import { conectarAviso, ConsultaNoConectable } from '@/lib/consultas/identificar
  * Avisos sin propiedad (spec Entrega 2 §3.2):
  *  - GET  → una tarjeta por aviso con cuántas consultas tiene, y cuántas
  *           consultas no se pueden agrupar.
- *  - POST { portal, codigo, propertyId } → conecta TODAS las consultas de ese
- *           aviso con la propiedad, en una sola llamada.
+ *  - POST { portal, codigo, propertyId, muestraId } → conecta TODAS las
+ *           consultas de ese aviso con la propiedad y con quien la muestra
+ *           (que NO es quien la captó), en una sola llamada.
  *
  * Solo operaciones (admin, dueño, coordinador), igual que conectar una consulta
  * suelta: conectar un aviso decide a quién le llegan sus consultas futuras.
@@ -24,6 +25,7 @@ const Cuerpo = z.object({
   // Tal cual está guardado (la conexión compara por igualdad exacta): sin trim.
   codigo: z.string().min(1).max(120),
   propertyId: z.string().uuid(),
+  muestraId: z.string().uuid(),
 })
 
 function error(status: number, mensaje: string) {
@@ -60,7 +62,10 @@ export async function POST(req: NextRequest) {
   if (negado) return negado
   const body = await req.json().catch(() => null)
   const parsed = Cuerpo.safeParse(body)
-  if (!parsed.success) return error(400, 'Faltan datos para conectar el aviso')
+  if (!parsed.success) {
+    const sinMuestra = parsed.error.issues.every((i) => i.path[0] === 'muestraId')
+    return error(400, sinMuestra ? 'Elegí quién muestra la propiedad' : 'Faltan datos para conectar el aviso')
+  }
   try {
     return NextResponse.json(await conectarAviso(clienteServicio(), parsed.data))
   } catch (e) {
