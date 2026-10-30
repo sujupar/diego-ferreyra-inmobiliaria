@@ -76,6 +76,26 @@ export const patchTandaSchema = z
   .partial()
   .strict()
 
+export const horariosSchema = z
+  .object({
+    '1': z.array(horario).length(1),
+    '2': z.array(horario).length(2),
+    '3': z.array(horario).length(3),
+    semana: z.array(horario).length(1),
+  })
+  .strict()
+
+export const patchAjustesSchema = z
+  .object({
+    guia: z.string().trim().min(1).max(6000),
+    horarios: horariosSchema,
+    publicacion_automatica: z.boolean(),
+  })
+  .partial()
+  .strict()
+
+export const aprenderSchema = z.object({ empezar: z.boolean().optional() }).strict()
+
 /** `video` = volver a subir el archivo (al retomar una tanda sin el archivo en memoria). */
 export const archivoSchema = z.object({ kind: z.enum(['miniatura', 'audio', 'video']) }).strict()
 
