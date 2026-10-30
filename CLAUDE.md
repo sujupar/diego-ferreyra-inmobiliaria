@@ -251,7 +251,8 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 
 ## Supabase
 - CLI no conecta (auth issue) — el usuario corre SQL en el Dashboard SQL Editor manualmente.
-- **PERO las migraciones SÍ se pueden aplicar desde acá (descubierto 2026-07-18):** conexión directa Postgres vía session pooler `aws-0-us-west-2.pooler.supabase.com:5432`, user `postgres.mncsnastmcjdjxrehdep`, password en `SUPABASE_DB_PASSWORD` (.env.local), con `npm i --no-save pg`. Ejemplo: `scripts/apply-plans-migration-pg.ts`. La conexión directa `db.<ref>.supabase.co` es IPv6-only (esta red no tiene ruta IPv6) y el `SUPABASE_ACCESS_TOKEN` de .env.local es un placeholder (Management API da 401).
+- **PERO las migraciones SÍ se pueden aplicar desde acá (descubierto 2026-07-18):** conexión directa Postgres vía session pooler `aws-0-us-west-2.pooler.supabase.com:5432`, user `postgres.mncsnastmcjdjxrehdep`, password en `SUPABASE_DB_PASSWORD` (.env.local), con `npm i --no-save pg`. Ejemplo: `scripts/apply-plans-migration-pg.ts`. La conexión directa `db.<ref>.supabase.co` es IPv6-only (esta red no tiene ruta IPv6).
+- **Management API de Supabase: SÍ anda desde el 2026-10-30.** El dueño generó un token personal nuevo (`SUPABASE_ACCESS_TOKEN` en .env.local; el anterior estaba vencido y daba 401). Sirve para configuración que NO es SQL (claves de firma, ajustes de Auth): `https://api.supabase.com/v1/projects/mncsnastmcjdjxrehdep/...` con `Authorization: Bearer`.
 - **OJO: hay más de un proyecto en el Dashboard.** El de la app es `mncsnastmcjdjxrehdep` (= `NEXT_PUBLIC_SUPABASE_URL`). El 2026-07-18 el usuario corrió una migración "en el Dashboard" y la columna no apareció — la corrió en otro proyecto. Verificar siempre contra la API (`select` de la columna) después de una migración manual.
 - RLS habilitada granular por rol (admin, dueno, coordinador, asesor, abogado) desde migración `20260505000001_rls_per_role_safe.sql`.
 
@@ -1239,6 +1240,17 @@ Genera carruseles de campaña (largo variable, narrativa de curiosidad) a partir
 - **Regla:** contra `appraisals` (y cualquier tabla con imágenes incrustadas) pedir SIEMPRE columnas explícitas, sin `property_images`, salvo de UNA fila por id. Vale para scripts, rutas y consultas de diagnóstico.
 - **Deuda de fondo:** las fotos del sujeto deberían vivir en Storage (como las de propiedades), no en la fila. Mientras sigan ahí, la tabla es una mina.
 - **Detection:** si Supabase deja de responder entero, mirar `pg_postmaster_start_time()` (¿se reinició?) y `cron.job_run_details` (desde qué minuto fallan los jobs de cada minuto) y cruzarlo con lo que se corrió en ese minuto.
+
+### La sesión se valida por su FIRMA, sin viajar a Supabase (2026-10-30, PR #65)
+
+- **Symptom:** todo pedido a la plataforma tardaba ~0,5 s de más: el middleware, el layout y la página le preguntaban a Supabase "¿esta sesión sigue viva?" (`auth.getUser()`, ~0,17 s cada vez, en fila), y el perfil se leía dos veces por pantalla.
+- **Fix:** `leerSesion` (`lib/auth/sesion.ts`) usa `auth.getClaims()`, que verifica la firma con la clave pública del proyecto (se baja una vez y queda en memoria 10 min). `getUser` (`lib/auth/get-user.ts`) va envuelta en `cache()` de React: una validación y una lectura del perfil por pantalla. El perfil (rol, `is_active`) se sigue leyendo en CADA pedido.
+- **Requisito del lado de Supabase (hecho el 2026-10-30 por la Management API):** el proyecto firma con una clave asimétrica **ES256** (`in_use`); la clave compartida vieja (HS256) quedó como `previously_used`. Con HS256, `getClaims` vuelve a llamar a `getUser` por dentro: seguro, pero sin ganancia.
+- **NUNCA revocar la clave vieja (HS256).** Las claves `NEXT_PUBLIC_SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` son tokens firmados con ella: revocarla deja la plataforma entera sin base. Si algún día se quiere revocar, antes hay que pasar a las claves nuevas de API (`sb_publishable_…` / `sb_secret_…`) y cambiarlas en Netlify.
+- **Lo que se cedió (decisión del dueño):** una sesión cerrada desde OTRO dispositivo, o robada, sigue valiendo hasta que vence su token (1 hora). Desactivar a alguien o cambiarle el rol sigue frenándolo en el pedido siguiente (verificado en la vista previa).
+- **Medido (mediana de 8, con sesión real):** `/api/auth/me` 0,67 s → 0,31 s; `/consultas` 0,89 s → 0,71 s. El piso de Netlify (~0,14 s) no cambia.
+- **Detection:** `curl -s https://mncsnastmcjdjxrehdep.supabase.co/auth/v1/.well-known/jwks.json` tiene que traer una clave ES256. Si viene `{"keys":[]}`, alguien volvió a la clave compartida y todo vuelve a tardar ~0,5 s más (sin romperse).
+- **Pruebas:** `npx vitest run --config vitest.sesion.config.ts` (114, incluye las del middleware).
 
 ### Gotcha CRÍTICO: Turbopack panica por el acento de la carpeta "Gestión" en el path
 
