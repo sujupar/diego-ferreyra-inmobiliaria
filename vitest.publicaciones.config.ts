@@ -9,7 +9,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['lib/publicaciones/**/*.test.ts', 'lib/nav/**/*.test.ts'],
+    include: ['lib/publicaciones/**/*.test.ts', 'lib/nav/**/*.test.ts', 'lib/integrations/facebook/**/*.test.ts'],
     exclude: ['**/node_modules/**'],
   },
   resolve: {

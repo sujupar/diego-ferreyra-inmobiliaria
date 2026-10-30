@@ -4,6 +4,8 @@
   "include": [
     "next-env.d.ts",
     "lib/publicaciones/**/*.ts",
+    "lib/integrations/facebook/**/*.ts",
+    "app/api/cron/publicaciones-publicar/**/*.ts",
     "app/api/publicaciones/**/*.ts",
     "app/(dashboard)/publicaciones/**/*.tsx",
     "components/publicaciones/**/*.ts",
