@@ -18,12 +18,17 @@ interface Listado {
   nombre: string | null
   archivos: ArchivoDrive[]
   subcarpetas: number
+}
+
+export interface ElegidoDrive {
+  id: string
   resourceKey: string | null
 }
 
 interface Props {
   deshabilitado: boolean
-  onTraer: (ids: string[], resourceKey: string | null) => Promise<void>
+  /** `true` si se dieron de alta: recién ahí se limpia la lista (si falla, lo elegido queda). */
+  onTraer: (archivos: ElegidoDrive[]) => Promise<boolean>
 }
 
 export function ElegirDeDrive({ deshabilitado, onTraer }: Props) {
@@ -54,9 +59,13 @@ export function ElegirDeDrive({ deshabilitado, onTraer }: Props) {
     if (!listado || elegidos.size === 0) return
     setTrayendo(true)
     try {
-      await onTraer([...elegidos], listado.resourceKey)
-      setListado(null)
-      setEnlace('')
+      const elegidosDrive = listado.archivos
+        .filter((a) => a.apto && elegidos.has(a.id))
+        .map((a) => ({ id: a.id, resourceKey: a.resourceKey ?? null }))
+      if (await onTraer(elegidosDrive)) {
+        setListado(null)
+        setEnlace('')
+      }
     } finally {
       setTrayendo(false)
     }

@@ -12,8 +12,8 @@ export async function POST(req: Request, { params }: Ctx) {
   if (auth.error || !auth.user) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {
     const { id } = await params
-    const { ids, resourceKey } = await leerBody(req, altaDriveSchema)
-    return NextResponse.json(await altaVideosDrive(id, ids, resourceKey))
+    const { archivos } = await leerBody(req, altaDriveSchema)
+    return NextResponse.json(await altaVideosDrive(id, archivos))
   } catch (e) {
     return respuestaDeError(e, 'alta videos drive')
   }

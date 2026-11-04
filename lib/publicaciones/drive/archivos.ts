@@ -10,10 +10,13 @@ export interface ArchivoCrudoDrive {
   name?: string
   mimeType?: string
   size?: string
+  resourceKey?: string
 }
 
 export interface ArchivoDrive {
   id: string
+  /** Solo en archivos de enlaces viejos: sin ella, Drive no deja verlo ni bajarlo. Cada archivo tiene la suya. */
+  resourceKey?: string
   nombre: string
   tamano: number
   tipo: 'video/mp4' | 'video/quicktime' | null
@@ -35,5 +38,6 @@ export function clasificarArchivo(a: ArchivoCrudoDrive): ArchivoDrive {
   else if (!Number.isFinite(tamano)) motivo = 'Drive no informa su tamaño'
   else if (tamano <= 0) motivo = 'El archivo está vacío'
   else if (tamano > TAMANO_MAXIMO) motivo = 'Pesa más de 200 MB'
-  return { id: a.id, nombre, tamano: Number.isFinite(tamano) ? tamano : 0, tipo, apto: motivo === null, motivo }
+  const base = { id: a.id, nombre, tamano: Number.isFinite(tamano) ? tamano : 0, tipo, apto: motivo === null, motivo }
+  return a.resourceKey && /^[A-Za-z0-9_-]{1,100}$/.test(a.resourceKey) ? { ...base, resourceKey: a.resourceKey } : base
 }

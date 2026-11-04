@@ -74,13 +74,15 @@ export function useColaPreparacion({ videos, archivos, espacios, onVideo }: Opci
       if (v.etapa === 'subiendo' && v.origen === 'drive') {
         // El servidor copia de Drive lo que entra en un pedido; se repite hasta que termina.
         let sinAvance = 0
-        let copiado = Number(v.drive_copiado_bytes ?? 0)
+        // -1: la primera respuesta siempre cuenta como avance. Y un número MENOR también es
+        // avance: la subida venció y se reabrió desde cero, no es que esté trabada.
+        let copiado = -1
         while (v.etapa === 'subiendo') {
           const r = await api<{ video: VideoVista; copiado: number }>(`/api/publicaciones/videos/${v.id}/traer`, { method: 'POST' })
           v = r.video
           onVideoRef.current(v)
           setProgreso((prev) => ({ ...prev, [v.id]: Math.min(100, (r.copiado / Math.max(1, Number(v.tamano_bytes))) * 100) }))
-          sinAvance = r.copiado > copiado ? 0 : sinAvance + 1
+          sinAvance = r.copiado !== copiado ? 0 : sinAvance + 1
           copiado = r.copiado
           if (sinAvance >= VUELTAS_SIN_AVANCE && v.etapa === 'subiendo') {
             throw new Error('La copia desde Drive no avanza. Tocá Reintentar.')

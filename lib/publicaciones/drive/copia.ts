@@ -11,9 +11,15 @@
 
 /** Supabase exige partes de exactamente 6 MB (salvo la última) en la subida reanudable. */
 export const PARTE = 6 * 1024 * 1024
-/** Con menos que esto por delante, no se empieza otra parte: bajarla y subirla tarda ~1-3 s. */
-const MIN_RESTANTE_MS = 3_000
-const TECHO_DESCARGA_MS = 8_000
+/**
+ * Lo máximo que se espera a Drive para bajar una parte, y lo máximo que se
+ * espera a Storage para subirla. Otra parte se empieza solo si entran LAS DOS
+ * en el peor caso: el presupuesto tiene que contar lo que puede tardar, no lo
+ * que suele tardar, porque pasarse del corte de Netlify devuelve una página
+ * de error en vez de la respuesta.
+ */
+export const TECHO_OPERACION_MS = 3_000
+const TECHO_MINIMO_MS = 1_000
 
 export interface DepsCopia {
   ahora(): number
@@ -22,7 +28,7 @@ export interface DepsCopia {
   offsetDeSubida(url: string): Promise<number | null>
   descargar(desde: number, hasta: number, techoMs: number): Promise<Uint8Array<ArrayBuffer>>
   /** Devuelve el nuevo offset que confirma el almacenamiento. */
-  subirParte(url: string, offset: number, bytes: Uint8Array<ArrayBuffer>): Promise<number>
+  subirParte(url: string, offset: number, bytes: Uint8Array<ArrayBuffer>, techoMs: number): Promise<number>
 }
 
 export interface EstadoCopia {
@@ -40,21 +46,26 @@ export async function avanzarCopia(estado: EstadoCopia, deps: DepsCopia, presupu
   const inicio = deps.ahora()
   let url = estado.subidaUrl
   let offset: number | null = url ? await deps.offsetDeSubida(url) : null
+  let creadaAhora = false
   if (url === null || offset === null) {
     url = await deps.crearSubida(estado.total)
     offset = 0
+    creadaAhora = true
   }
   if (offset > estado.total) throw new Error('El almacenamiento tiene más bytes que el video de Drive')
 
   let partes = 0
   while (offset < estado.total) {
     const restante = presupuestoMs - (deps.ahora() - inicio)
-    // Al menos una parte por llamada: si no, un presupuesto chico no avanzaría nunca.
-    if (partes > 0 && restante < MIN_RESTANTE_MS) break
+    if (partes > 0 && restante < 2 * TECHO_OPERACION_MS) break
+    // Abrir la subida ya es avanzar: si se llevó el tiempo, la parte va en el pedido siguiente.
+    // Con la subida ya abierta, al menos una parte por pedido: si no, no se avanzaría nunca.
+    if (partes === 0 && creadaAhora && restante < 2 * TECHO_MINIMO_MS) break
+    const techo = Math.min(TECHO_OPERACION_MS, Math.max(TECHO_MINIMO_MS, Math.floor(restante / 2)))
     const hasta: number = Math.min(offset + PARTE, estado.total) - 1
-    const bytes = await deps.descargar(offset, hasta, Math.min(TECHO_DESCARGA_MS, Math.max(MIN_RESTANTE_MS, restante)))
+    const bytes = await deps.descargar(offset, hasta, techo)
     if (bytes.length !== hasta - offset + 1) throw new Error('Drive devolvió una parte incompleta del video')
-    const nuevo = await deps.subirParte(url, offset, bytes)
+    const nuevo = await deps.subirParte(url, offset, bytes, techo)
     if (nuevo !== offset + bytes.length) throw new Error('El almacenamiento no confirmó la parte subida')
     offset = nuevo
     partes++

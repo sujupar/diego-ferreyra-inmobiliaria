@@ -42,6 +42,22 @@ describe('listarCarpeta', () => {
     expect(new URL(llamadas[2].url).searchParams.get('pageToken')).toBe('p2')
   })
 
+  it('cada archivo de la carpeta lleva SU clave de recurso, no la de la carpeta', async () => {
+    const { f, llamadas } = falso([
+      json({ id: 'C1', name: 'Vieja', mimeType: 'application/vnd.google-apps.folder' }),
+      json({ files: [{ id: 'a', name: 'uno.mp4', mimeType: 'video/mp4', size: '100', resourceKey: '0-propia' }] }),
+    ])
+    const r = await clienteDrive('K', f).listar({ id: 'C1', tipo: 'carpeta', resourceKey: '0-carpeta' })
+    expect(r.archivos[0].resourceKey).toBe('0-propia')
+    expect(new URL(llamadas[1].url).searchParams.get('fields')).toContain('resourceKey')
+  })
+
+  it('un enlace viejo a un archivo suelto conserva su clave', async () => {
+    const { f } = falso([json({ id: 'v', name: 'a.mp4', mimeType: 'video/mp4', size: '1' })])
+    const r = await clienteDrive('K', f).listar({ id: 'v', tipo: 'archivo', resourceKey: '0-xyz' })
+    expect(r.archivos[0].resourceKey).toBe('0-xyz')
+  })
+
   it('un enlace a un archivo devuelve ese solo archivo', async () => {
     const { f } = falso([json({ id: 'v', name: 'solo.mov', mimeType: 'video/quicktime', size: '10' })])
     const r = await clienteDrive('K', f).listar({ id: 'v', tipo: 'archivo' })
@@ -116,6 +132,27 @@ describe('descargarParte', () => {
   it('una parte más corta que lo pedido es un error (no se copia un archivo roto)', async () => {
     const { f } = falso([new Response(new Uint8Array([1, 2]), { status: 206 })])
     await expect(clienteDrive('K', f).descargarParte('v', 10, 13)).rejects.toThrow(/incompleta/)
+  })
+
+  it('un 200 al principio con el archivo entero es un error, sin leerlo todo a memoria', async () => {
+    let leido = false
+    // highWaterMark 0: el stream no se adelanta a leer; solo lee si alguien lo consume.
+    const cuerpo = new ReadableStream(
+      {
+        pull() {
+          leido = true
+        },
+      },
+      { highWaterMark: 0 },
+    )
+    const { f } = falso([new Response(cuerpo, { status: 200, headers: { 'content-length': '209715200' } })])
+    await expect(clienteDrive('K', f).descargarParte('v', 0, 3)).rejects.toThrow(/rango/)
+    expect(leido).toBe(false)
+  })
+
+  it('un 200 al principio con el largo justo (archivo chico) sirve', async () => {
+    const { f } = falso([new Response(new Uint8Array([9, 9, 9, 9]), { status: 200, headers: { 'content-length': '4' } })])
+    expect(Array.from(await clienteDrive('K', f).descargarParte('v', 0, 3))).toEqual([9, 9, 9, 9])
   })
 
   it('un 200 entero en medio del archivo es un error (ignoró el rango)', async () => {

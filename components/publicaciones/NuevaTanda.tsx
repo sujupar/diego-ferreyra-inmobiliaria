@@ -15,6 +15,7 @@ import type { TandaFila, VideoVista } from '@/lib/publicaciones/tipos'
 import { TAMANO_MAXIMO } from '@/lib/publicaciones/validacion'
 import { fechaCorta } from './formato'
 import { api } from './leer-json'
+import type { ElegidoDrive } from './ElegirDeDrive'
 import { PasoCargar } from './PasoCargar'
 import { PasoRevisar } from './PasoRevisar'
 import { PasoRitmo } from './PasoRitmo'
@@ -248,12 +249,13 @@ export function NuevaTanda({ onProgramada }: { onProgramada: () => void }) {
   }
 
   /** Por la misma cola que los arrastres: así dos altas seguidas no crean dos tandas. */
-  const traerDrive = (ids: string[], resourceKey: string | null) => {
-    eligiendoAhora.current = eligiendoAhora.current.then(() => traerDriveAhora(ids, resourceKey))
-    return eligiendoAhora.current
+  const traerDrive = (elegidos: ElegidoDrive[]): Promise<boolean> => {
+    const resultado = eligiendoAhora.current.then(() => traerDriveAhora(elegidos))
+    eligiendoAhora.current = resultado.then(() => undefined)
+    return resultado
   }
 
-  const traerDriveAhora = async (ids: string[], resourceKey: string | null) => {
+  const traerDriveAhora = async (elegidos: ElegidoDrive[]): Promise<boolean> => {
     setAgregando(true)
     try {
       let actual = tandaActual.current
@@ -264,7 +266,7 @@ export function NuevaTanda({ onProgramada }: { onProgramada: () => void }) {
       }
       const r = await api<{ agregados: number; repetidos: string[]; descartados: { nombre: string; motivo: string }[] }>(
         `/api/publicaciones/tandas/${actual.id}/videos/drive`,
-        { method: 'POST', body: { ids, resourceKey } },
+        { method: 'POST', body: { archivos: elegidos } },
       )
       if (r.repetidos.length > 0) toast.info(`Ya está en la tanda: ${r.repetidos.join(', ')}`)
       for (const d of r.descartados) toast.error(`${d.nombre}: ${d.motivo}`)
@@ -272,8 +274,10 @@ export function NuevaTanda({ onProgramada }: { onProgramada: () => void }) {
       videosActuales.current = det.videos
       setVideos(det.videos)
       setEligiendo(true)
+      return true
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'No se pudieron traer los videos de Drive')
+      return false
     } finally {
       setAgregando(false)
     }

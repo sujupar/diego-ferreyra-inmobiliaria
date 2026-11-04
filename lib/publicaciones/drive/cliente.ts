@@ -30,7 +30,7 @@ export interface ListadoDrive {
 
 export interface ClienteDrive {
   listar(enlace: EnlaceDrive): Promise<ListadoDrive>
-  leerArchivo(id: string, resourceKey?: string): Promise<ArchivoDrive>
+  leerArchivo(id: string, resourceKey?: string, techoMs?: number): Promise<ArchivoDrive>
   descargarParte(id: string, desde: number, hasta: number, resourceKey?: string, techoMs?: number): Promise<Uint8Array<ArrayBuffer>>
 }
 
@@ -76,8 +76,13 @@ export function clienteDrive(clave: string, f: typeof fetch = fetch): ClienteDri
   const cabeceras = (id: string, resourceKey?: string): HeadersInit =>
     resourceKey ? { 'X-Goog-Drive-Resource-Keys': `${id}/${resourceKey}` } : {}
 
-  const metadata = async (id: string, resourceKey?: string) =>
-    (await (await pedir({ fields: 'id,name,mimeType,size' }, `/${id}`, { headers: cabeceras(id, resourceKey) })).json()) as ArchivoCrudoDrive
+  const metadata = async (id: string, resourceKey?: string, techoMs = TECHO_MS): Promise<ArchivoCrudoDrive> => {
+    const crudo = (await (
+      await pedir({ fields: 'id,name,mimeType,size,resourceKey' }, `/${id}`, { headers: cabeceras(id, resourceKey) }, techoMs)
+    ).json()) as ArchivoCrudoDrive
+    // Drive no siempre repite la clave con la que se lo pidió: la del enlace es la buena.
+    return resourceKey && !crudo.resourceKey ? { ...crudo, resourceKey } : crudo
+  }
 
   return {
     async listar(enlace) {
@@ -91,7 +96,7 @@ export function clienteDrive(clave: string, f: typeof fetch = fetch): ClienteDri
         const params: Record<string, string> = {
           // El id ya se validó contra el alfabeto de Drive (enlace.ts): no puede cerrar la comilla.
           q: `'${enlace.id}' in parents and trashed = false`,
-          fields: 'nextPageToken,files(id,name,mimeType,size)',
+          fields: 'nextPageToken,files(id,name,mimeType,size,resourceKey)',
           pageSize: '100',
           orderBy: 'name',
           includeItemsFromAllDrives: 'true',
@@ -111,8 +116,8 @@ export function clienteDrive(clave: string, f: typeof fetch = fetch): ClienteDri
       return { nombre: raiz.name ?? null, archivos, subcarpetas }
     },
 
-    async leerArchivo(id, resourceKey) {
-      return clasificarArchivo(await metadata(id, resourceKey))
+    async leerArchivo(id, resourceKey, techoMs) {
+      return clasificarArchivo(await metadata(id, resourceKey, techoMs))
     },
 
     async descargarParte(id, desde, hasta, resourceKey, techoMs = TECHO_MS) {
@@ -122,9 +127,18 @@ export function clienteDrive(clave: string, f: typeof fetch = fetch): ClienteDri
         { headers: { ...cabeceras(id, resourceKey), Range: `bytes=${desde}-${hasta}` } },
         techoMs,
       )
-      if (res.status !== 206 && desde !== 0) throw new Error('Drive ignoró el rango pedido')
+      const esperado = hasta - desde + 1
+      if (res.status !== 206) {
+        // Un 200 es el archivo ENTERO: solo sirve si el archivo mide justo lo pedido. Si no, se
+        // corta antes de leerlo (podrían ser 200 MB a memoria y pasarse del tiempo).
+        const largo = Number(res.headers.get('content-length'))
+        if (desde !== 0 || largo !== esperado) {
+          await res.body?.cancel().catch(() => undefined)
+          throw new Error('Drive ignoró el rango pedido')
+        }
+      }
       const bytes = new Uint8Array(await res.arrayBuffer())
-      if (bytes.length !== hasta - desde + 1) throw new Error('Drive devolvió una parte incompleta del video')
+      if (bytes.length !== esperado) throw new Error('Drive devolvió una parte incompleta del video')
       return bytes
     },
   }

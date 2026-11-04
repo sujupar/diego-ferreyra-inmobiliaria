@@ -13,18 +13,22 @@ import { ErrorHttp } from './http'
 import { crearSubida, offsetDeSubida, subirParte } from './subida-reanudable'
 import { conUrls, dbError, leerTanda, leerVideo, videosDeTanda, type VideoConUrls } from './tandas'
 
-/** Lo que una llamada a `traer` copia como mucho: deja margen al corte de Netlify (~10 s). */
-const PRESUPUESTO_MS = 6_500
+/**
+ * Tiempo de un pedido a `traer`, contado desde que entra: deja margen al corte de
+ * Netlify (~10 s) para la autenticación y el guardado final. Las esperas a Google
+ * y a Storage tienen techo propio, así el peor caso también entra.
+ */
+const PRESUPUESTO_MS = 7_000
+const TECHO_CONSULTA_MS = 3_000
 
 function cliente() {
   return clienteDrive(process.env.GOOGLE_API_KEY?.trim() ?? '')
 }
 
-export async function listarDrive(texto: string): Promise<ListadoDrive & { resourceKey: string | null }> {
+export async function listarDrive(texto: string): Promise<ListadoDrive> {
   const enlace = leerEnlaceDrive(texto)
   if (!enlace) throw new ErrorHttp(400, 'Ese enlace no es de Google Drive. Copiá el enlace de la carpeta o del video desde Drive.')
-  const listado = await cliente().listar(enlace)
-  return { ...listado, resourceKey: enlace.resourceKey ?? null }
+  return cliente().listar(enlace)
 }
 
 export interface AltaDrive {
@@ -37,14 +41,27 @@ export interface AltaDrive {
  * Da de alta los archivos elegidos. La metadata se vuelve a pedir a Drive: el
  * tamaño que manda el navegador no se usa (de él depende la copia entera).
  */
-export async function altaVideosDrive(tandaId: string, ids: string[], resourceKey: string | null): Promise<AltaDrive> {
+export async function altaVideosDrive(
+  tandaId: string,
+  elegidos: { id: string; resourceKey: string | null }[],
+): Promise<AltaDrive> {
   const tanda = await leerTanda(tandaId)
   if (tanda.estado !== 'borrador') throw new ErrorHttp(409, 'Esta tanda ya está programada: empezá una nueva')
-  const unicos = [...new Set(ids)].slice(0, MAX_VIDEOS_POR_ALTA)
+  const unicos = [...new Map(elegidos.map((e) => [e.id, e])).values()].slice(0, MAX_VIDEOS_POR_ALTA)
   const drive = cliente()
-  const leidos: ArchivoDrive[] = await Promise.all(unicos.map((id) => drive.leerArchivo(id, resourceKey ?? undefined)))
+  // Cada uno por su lado: un archivo que Drive no deja ver no tiene por qué frenar a los demás.
+  const lecturas = await Promise.allSettled(unicos.map((e) => drive.leerArchivo(e.id, e.resourceKey ?? undefined)))
+  const leidos: ArchivoDrive[] = []
+  const descartados: { nombre: string; motivo: string }[] = []
+  lecturas.forEach((r, i) => {
+    if (r.status === 'fulfilled') leidos.push(r.value)
+    else descartados.push({ nombre: `Archivo ${i + 1} de Drive`, motivo: r.reason instanceof ErrorHttp ? r.reason.message : 'Drive no lo dejó leer' })
+  })
+  if (leidos.length === 0 && descartados.length > 0 && descartados.every((d) => d.motivo === descartados[0].motivo)) {
+    throw new ErrorHttp(502, descartados[0].motivo)
+  }
 
-  const descartados = leidos.filter((a) => !a.apto).map((a) => ({ nombre: a.nombre, motivo: a.motivo ?? 'No se puede traer' }))
+  for (const a of leidos) if (!a.apto) descartados.push({ nombre: a.nombre, motivo: a.motivo ?? 'No se puede traer' })
   const aptos = leidos.filter((a) => a.apto)
   const existentes = await videosDeTanda(tandaId)
   const { nuevos, repetidos } = detectarDuplicados(existentes, aptos)
@@ -58,7 +75,7 @@ export async function altaVideosDrive(tandaId: string, ids: string[], resourceKe
       tanda_id: tandaId,
       orden: ++orden,
       origen: 'drive',
-      drive_file_id: refDeDrive(a.id, resourceKey ?? undefined),
+      drive_file_id: refDeDrive(a.id, a.resourceKey),
       nombre_archivo: a.nombre,
       tamano_bytes: a.tamano,
       video_path: `tandas/${tandaId}/${id}/video.${a.tipo === 'video/quicktime' ? 'mov' : 'mp4'}`,
@@ -77,6 +94,7 @@ export async function altaVideosDrive(tandaId: string, ids: string[], resourceKe
 
 /** Copia lo que entra en un pedido. Al terminar, el video pasa a `extrayendo` y sigue como cualquier otro. */
 export async function traerDeDrive(videoId: string): Promise<{ video: VideoConUrls; copiado: number }> {
+  const inicio = Date.now()
   const v = await leerVideo(videoId)
   if (v.origen !== 'drive') throw new ErrorHttp(409, 'Este video no viene de Drive')
   if (v.etapa !== 'subiendo') return { video: conUrls(v), copiado: Number(v.tamano_bytes) }
@@ -87,7 +105,7 @@ export async function traerDeDrive(videoId: string): Promise<{ video: VideoConUr
   const total = Number(v.tamano_bytes)
   if (!v.drive_subida_url) {
     // Antes de empezar: si en Drive lo reemplazaron por otro, el tamaño dado de alta ya no sirve.
-    const actual = await drive.leerArchivo(ref.id, ref.resourceKey)
+    const actual = await drive.leerArchivo(ref.id, ref.resourceKey, TECHO_CONSULTA_MS)
     if (actual.tamano !== total) {
       throw new ErrorHttp(409, 'El archivo cambió en Drive después de elegirlo. Quitalo y volvé a traerlo.')
     }
@@ -99,12 +117,13 @@ export async function traerDeDrive(videoId: string): Promise<{ video: VideoConUr
       { total, subidaUrl: v.drive_subida_url },
       {
         ahora: () => Date.now(),
-        crearSubida: (t) => crearSubida(v.video_path!, t, tipo),
+        // `video_path` se chequeó arriba; TypeScript no lo sigue dentro del cierre.
+        crearSubida: (t) => crearSubida(v.video_path ?? '', t, tipo),
         offsetDeSubida,
         descargar: (desde, hasta, techoMs) => drive.descargarParte(ref.id, desde, hasta, ref.resourceKey, techoMs),
         subirParte,
       },
-      PRESUPUESTO_MS,
+      PRESUPUESTO_MS - (Date.now() - inicio),
     )
   } catch (e) {
     if (e instanceof ErrorHttp) throw e

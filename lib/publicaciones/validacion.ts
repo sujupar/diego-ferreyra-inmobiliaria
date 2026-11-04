@@ -55,8 +55,10 @@ export const listarDriveSchema = z.object({ enlace: z.string().trim().min(1).max
 const idDrive = z.string().regex(/^[A-Za-z0-9_-]{10,200}$/)
 export const altaDriveSchema = z
   .object({
-    ids: z.array(idDrive).min(1).max(MAX_VIDEOS_POR_ALTA),
-    resourceKey: z.string().regex(/^[A-Za-z0-9_-]{1,100}$/).nullable(),
+    archivos: z
+      .array(z.object({ id: idDrive, resourceKey: z.string().regex(/^[A-Za-z0-9_-]{1,100}$/).nullable() }).strict())
+      .min(1)
+      .max(MAX_VIDEOS_POR_ALTA),
   })
   .strict()
 
@@ -124,9 +126,12 @@ export function transicionPermitida(
   actual: EtapaPreparacion,
   nueva: EtapaPreparacion,
   errorEtapa: EtapaPreparacion | null,
+  origen: 'subida' | 'drive' = 'subida',
 ): boolean {
   if (actual === 'error') return nueva === (errorEtapa ?? 'extrayendo')
-  if (actual === 'subiendo') return nueva === 'extrayendo'
+  // Uno de Drive lo termina la copia del servidor (`traerDeDrive`), que sabe si llegó el último byte.
+  // Si el navegador pudiera hacerlo, un video a medio copiar seguiría como si estuviera entero.
+  if (actual === 'subiendo') return origen !== 'drive' && nueva === 'extrayendo'
   if (actual === 'extrayendo') return nueva === 'transcribiendo'
   return false
 }

@@ -5,7 +5,8 @@
  */
 import { BUCKET } from '../db'
 
-const TECHO_MS = 8_000
+/** Abrir la subida y preguntar cuánto tiene: el pedido entero tiene ~10 s, no se espera más que esto. */
+const TECHO_MS = 3_000
 
 function base(): string {
   return (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/+$/, '')
@@ -57,13 +58,13 @@ export async function offsetDeSubida(url: string): Promise<number | null> {
   return Number.isFinite(offset) ? offset : null
 }
 
-export async function subirParte(url: string, offset: number, bytes: Uint8Array<ArrayBuffer>): Promise<number> {
+export async function subirParte(url: string, offset: number, bytes: Uint8Array<ArrayBuffer>, techoMs: number): Promise<number> {
   if (!esDeNuestroStorage(url)) throw new Error('Dirección de subida inesperada')
   const res = await fetch(url, {
     method: 'PATCH',
     headers: { ...cabeceras(), 'upload-offset': String(offset), 'content-type': 'application/offset+octet-stream' },
     body: bytes,
-    signal: AbortSignal.timeout(TECHO_MS),
+    signal: AbortSignal.timeout(techoMs),
   })
   if (res.status !== 204) throw new Error(`Storage rechazó una parte (${res.status}): ${(await res.text()).slice(0, 200)}`)
   return Number(res.headers.get('upload-offset'))

@@ -226,7 +226,7 @@ export async function actualizarVideo(id: string, cambios: z.infer<typeof patchV
     patch[k] = p
   }
   if (cambios.etapa !== undefined && cambios.etapa !== v.etapa) {
-    if (!transicionPermitida(v.etapa, cambios.etapa, v.error_etapa)) {
+    if (!transicionPermitida(v.etapa, cambios.etapa, v.error_etapa, v.origen)) {
       throw new ErrorHttp(409, 'El video no está en un paso que permita eso')
     }
     patch.etapa = cambios.etapa
