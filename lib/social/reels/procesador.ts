@@ -24,7 +24,7 @@ import type { ComentarioDelAviso } from '@/lib/integrations/instagram/webhook'
 import { decidirBoton, decidirQueHacer, type AjustesGlobales } from './decision'
 import { elegirRespuesta, tienePrivado } from './respuestas'
 import { PRIVADO_POR_DEFECTO, SEGUIMIENTO_POR_DEFECTO } from './textos-por-defecto'
-import { enlaceDelReel } from './enlace'
+import { enlaceDelReel, enlacePersonalizadoConMarcas } from './enlace'
 import type { FilaReel } from './servicio'
 
 function admin() {
@@ -92,7 +92,9 @@ async function destinoDelPrivado(
   reel: { id: string; property_id: string | null; enlace_destino?: string | null },
   plataforma: Plataforma,
 ): Promise<string | null> {
-  if (reel.enlace_destino) return reel.enlace_destino.startsWith('https://') ? reel.enlace_destino : null
+  if (reel.enlace_destino) {
+    return reel.enlace_destino.startsWith('https://') ? enlacePersonalizadoConMarcas(reel.enlace_destino, reel.id, plataforma) : null
+  }
   if (!reel.property_id) return null
   return enlaceDeLaLanding(reel.property_id, reel.id, plataforma)
 }

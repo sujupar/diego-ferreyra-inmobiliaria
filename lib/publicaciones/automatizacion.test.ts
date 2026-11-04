@@ -4,9 +4,36 @@ import {
   conLineaDePalabra,
   lineaDePalabra,
   mencionaPalabra,
+  BOTON_PERSONALIZADO,
+  PRIVADO_PERSONALIZADO,
+  privadoParaTipo,
   sinConfirmar,
   validarAutomatizacion,
 } from './automatizacion'
+import { BOTON_POR_DEFECTO, PRIVADO_POR_DEFECTO } from '@/lib/social/reels/textos-por-defecto'
+
+describe('privadoParaTipo (el texto de fábrica habla de la propiedad)', () => {
+  const fabrica = { dm_texto: PRIVADO_POR_DEFECTO, dm_boton: BOTON_POR_DEFECTO }
+
+  it('personalizado con el texto de fábrica: pasa al general', () => {
+    expect(privadoParaTipo(fabrica, 'personalizado')).toEqual({ dm_texto: PRIVADO_PERSONALIZADO, dm_boton: BOTON_PERSONALIZADO })
+  })
+
+  it('volver a propiedad con el general: vuelve al de fábrica', () => {
+    expect(privadoParaTipo({ dm_texto: PRIVADO_PERSONALIZADO, dm_boton: BOTON_PERSONALIZADO }, 'propiedad')).toEqual(fabrica)
+  })
+
+  it('un texto escrito a mano no se toca nunca', () => {
+    const propio = { dm_texto: 'Te paso el link para tasar tu casa', dm_boton: 'Tasar' }
+    expect(privadoParaTipo(propio, 'personalizado')).toEqual(propio)
+    expect(privadoParaTipo(propio, 'propiedad')).toEqual(propio)
+  })
+
+  it('el general no habla de una propiedad y el botón entra en el tope', () => {
+    expect(PRIVADO_PERSONALIZADO.toLowerCase()).not.toContain('propiedad')
+    expect(BOTON_PERSONALIZADO.length).toBeLessThanOrEqual(20)
+  })
+})
 
 describe('automatizacionPorDefecto', () => {
   it('arranca en Modo prueba, sin palabra y con los textos de fábrica de los reels', () => {

@@ -25,3 +25,42 @@ export function enlaceDelReel(
   })
   return `${base}/p/${encodeURIComponent(slug)}?${marcas.toString()}`
 }
+
+/** Hosts de WhatsApp: abren un chat, no una página, y no leen marcas de origen. */
+const HOSTS_WHATSAPP = new Set(['wa.me', 'api.whatsapp.com', 'whatsapp.com', 'www.whatsapp.com', 'web.whatsapp.com'])
+
+/** ¿A este enlace se le pueden agregar marcas de origen? (host exacto, nunca `includes`). */
+export function llevaMarcas(enlace: string): boolean {
+  try {
+    const url = new URL(enlace)
+    return url.protocol === 'https:' && !HOSTS_WHATSAPP.has(url.hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
+/**
+ * El enlace de un comentario "personalizado" de Publicaciones, con las marcas de
+ * origen (pedido del dueño, 2026-11-04: todo lo que entra tiene que poder medirse).
+ * No es de una propiedad, así que la campaña es `publicaciones` y el reel va en
+ * `utm_content`. Una marca que la persona ya escribió en el enlace se respeta.
+ * A WhatsApp no se le agrega nada: no las lee y no hay página donde medirlas.
+ */
+export function enlacePersonalizadoConMarcas(
+  enlace: string,
+  reelId: string,
+  plataforma: 'instagram' | 'facebook',
+): string {
+  if (!llevaMarcas(enlace)) return enlace
+  const url = new URL(enlace)
+  const marcas: Record<string, string> = {
+    utm_source: plataforma,
+    utm_medium: 'reel',
+    utm_campaign: 'publicaciones',
+    utm_content: `reel_${reelId.slice(0, 8)}`,
+  }
+  for (const [clave, valor] of Object.entries(marcas)) {
+    if (!url.searchParams.has(clave)) url.searchParams.set(clave, valor)
+  }
+  return url.toString()
+}
