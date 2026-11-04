@@ -1,5 +1,5 @@
 /**
- * Aplica `20261104000001_panel_metricas.sql` (solo tablas y funciones NUEVAS) y
+ * Aplica `20261104000003_panel_metricas.sql` (solo tablas y funciones NUEVAS) y
  * verifica que existan, que la RLS esté prendida y que las dos funciones de
  * lectura respondan. Idempotente: se puede correr de nuevo.
  */
@@ -11,7 +11,7 @@ async function main() {
     user: 'postgres.mncsnastmcjdjxrehdep', password: process.env.SUPABASE_DB_PASSWORD,
     database: 'postgres', ssl: { rejectUnauthorized: false } })
   await c.connect()
-  await c.query(readFileSync('supabase/migrations/20261104000001_panel_metricas.sql', 'utf8'))
+  await c.query(readFileSync('supabase/migrations/20261104000003_panel_metricas.sql', 'utf8'))
   const { rows: t } = await c.query(`SELECT relname, relrowsecurity FROM pg_class
     WHERE relnamespace = 'public'::regnamespace AND relname IN ('ventas','gastos_fijos','hitos_metricas','meta_reach_cache') ORDER BY 1`)
   const { rows: v } = await c.query(`SELECT count(*)::int n, coalesce(sum(visitas),0)::int visitas FROM get_panel_visitas('2026-10-01','2026-10-31')`)

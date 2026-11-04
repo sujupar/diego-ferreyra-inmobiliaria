@@ -21,7 +21,7 @@ Meta: usable en la reunión del viernes 2026-11-06.
 6. **Plata en tablas nuevas**: `ventas`, `gastos_fijos`, `hitos_metricas`. Escritura por API con permiso, lectura
    de plata con `metrics.view`. RLS con `is_operations_user()`.
 
-## Migración `20261104000001_panel_metricas.sql`
+## Migración `20261104000003_panel_metricas.sql`
 
 - `ventas`: property_id (FK SET NULL), direccion, captada_en (date), reservada_en (date), escriturada_en (date),
   precio, moneda, pct_vendedor, pct_comprador, otra_inmobiliaria_usd, honorario_cobrado_usd (real; si null se
