@@ -109,6 +109,37 @@ describe('markUsada / markRefError / expireStaleRefs', () => {
     await expireStaleRefs(6, 'viejo')
     expect(update.mock.calls[0][0]).toMatchObject({ estado_uso: 'error', guion_error: 'viejo' })
     expect(eq).toHaveBeenCalledWith('estado_uso', 'guionizando')
-    expect(lt.mock.calls[0][0]).toBe('created_at')
+    expect(lt.mock.calls[0][0]).toBe('updated_at')
+  })
+})
+
+describe('expireStaleRefs: reloj desde el claim (updated_at), no desde created_at', () => {
+  it('ref del backfill (created_at viejo) recién claimeada NO expira; una colgada (updated_at viejo) SÍ', async () => {
+    const now = Date.now()
+    const dias = (d: number) => new Date(now - d * 86400_000).toISOString()
+    const rows = [
+      { id: 'nueva', estado_uso: 'guionizando', created_at: dias(20), updated_at: new Date(now - 60_000).toISOString() },
+      { id: 'colgada', estado_uso: 'guionizando', created_at: dias(20), updated_at: dias(1) },
+    ] as Array<Record<string, unknown>>
+    fromMock.mockImplementation(() => ({
+      update: (patch: Record<string, unknown>) => {
+        const eqs: Array<[string, unknown]> = []
+        const lts: Array<[string, string]> = []
+        const chain = {
+          eq: (k: string, v: unknown) => { eqs.push([k, v]); return chain },
+          lt: async (k: string, v: string) => {
+            lts.push([k, v])
+            for (const r of rows) {
+              if (eqs.every(([ek, ev]) => r[ek] === ev) && lts.every(([lk, lv]) => (r[lk] as string) < lv)) Object.assign(r, patch)
+            }
+            return { error: null }
+          },
+        }
+        return chain
+      },
+    }))
+    await expireStaleRefs(6, 'viejo')
+    expect(rows.find((r) => r.id === 'nueva')!.estado_uso).toBe('guionizando')
+    expect(rows.find((r) => r.id === 'colgada')!.estado_uso).toBe('error')
   })
 })

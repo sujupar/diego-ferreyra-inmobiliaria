@@ -104,6 +104,6 @@ export async function expireStaleRefs(maxAgeHours: number, msg: string): Promise
     .from('video_refs')
     .update({ estado_uso: 'error', guion_error: msg, updated_at: new Date().toISOString() })
     .eq('estado_uso', 'guionizando')
-    .lt('created_at', cutoff)
+    .lt('updated_at', cutoff)
   if (error) throw new Error(error.message)
 }
