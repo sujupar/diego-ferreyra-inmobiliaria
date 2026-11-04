@@ -80,9 +80,15 @@ volver a reconstruir nada, **la plataforma pide los datos de la operación en el
   se comparte con otra inmobiliaria (cuánto se lleva). La venta cuenta en el **mes de la reserva** (así lo cuenta
   Diego).
 - **Al marcar "Vendida"**: se confirma lo anterior y se agrega fecha de escritura y **honorario cobrado real**.
-- **Reparto**, con valores sugeridos que se pueden corregir, una línea cada uno: otra inmobiliaria, asesor que
-  vendió (Lucas 20% si muestra, 50% si capta), referidor (ej. la abogada, 20%), Julián (20%, solo si el dueño
-  llegó por embudo). **Limpio de Diego = cobrado − reparto**, calculado, no tipeado.
+- **Reparto** (regla confirmada por el dueño el 2026-11-04, coincide con las cuentas de Diego): **todas las
+  partes salen del mismo honorario cobrado** (lo que quedó para nosotros, ya descontada la otra inmobiliaria si
+  la hubo), y cada una se aplica **solo si corresponde**:
+  - Lucas: 20% si mostró/vendió, 50% si captó él.
+  - Julián: 20% si el dueño llegó por embudo.
+  - Referidor (ej. la abogada): 20% si hubo.
+  - **Limpio de Diego = cobrado − las partes que aplican**, calculado, no tipeado.
+  Los % sugeridos se pueden corregir en cada venta (ej. Baigorria, donde se ajustaron los porcentajes).
+  Comprobación: Tupac Amaru 4.400 × 60% = 2.640 · Díaz Vélez 8.260 × 60% = 4.956.
 - **Origen del dueño** y quién captó vienen precargados de la propiedad; si faltan, son obligatorios.
 - **Gastos de esa propiedad** (fotos, video, recorrido, destaques, cartel, anuncios de la propiedad): opcionales,
   se restan como costo de vender.
