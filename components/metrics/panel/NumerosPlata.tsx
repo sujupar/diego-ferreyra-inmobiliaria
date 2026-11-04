@@ -20,7 +20,10 @@ function Tarjeta({ titulo, valor, sub, ayuda, v, bueno }: { titulo: string; valo
 export function NumerosPlata({ panel }: { panel: Panel }) {
   const a = panel.actual, b = panel.anterior
   const pa = a.plata, pb = b?.plata
-  const invA = pa.publicidadCaptacionUsd, invB = pb?.publicidadCaptacionUsd
+  const invA = pa.publicidadCaptacionUsd
+  // Sin ningún día con gasto de Meta en el período comparado (antes de 01/2026) no hay dato: no es $0.
+  const bSinMeta = !!b && b.canales.tasacion.diasConGasto + b.canales.clase.diasConGasto === 0
+  const invB = bSinMeta ? null : pb?.publicidadCaptacionUsd
   return (
     <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
       <Tarjeta titulo="Facturación" valor={usd(pa.facturacionUsd)} v={variacion(pa.facturacionUsd, pb?.facturacionUsd)}
@@ -29,11 +32,11 @@ export function NumerosPlata({ panel }: { panel: Panel }) {
       <Tarjeta titulo="Margen bruto" valor={usd(pa.margenBrutoUsd)} v={variacion(pa.margenBrutoUsd, pb?.margenBrutoUsd)}
         sub={pa.margenBrutoPct == null ? undefined : `${pct(pa.margenBrutoPct, 0)} de lo facturado`}
         ayuda="Facturación − reparto (asesor, Julián, referidor) − gastos de cada propiedad vendida. Es lo que le queda a Diego de las ventas." />
-      <Tarjeta titulo="Margen neto" valor={usd(pa.margenNetoUsd)} v={variacion(pa.margenNetoUsd, pb?.margenNetoUsd)}
+      <Tarjeta titulo="Margen neto" valor={usd(pa.margenNetoUsd)} v={bSinMeta ? null : variacion(pa.margenNetoUsd, pb?.margenNetoUsd)}
         sub={pa.sinImpuestos ? 'sin impuestos cargados' : pa.gastosAConfirmar ? 'gastos a confirmar' : pa.margenNetoPct == null ? undefined : `${pct(pa.margenNetoPct, 0)} de lo facturado`}
         ayuda="Margen bruto − gastos fijos del período (prorrateados por día) − impuestos − toda la publicidad de Meta (captación y anuncios de propiedades)." />
       <Tarjeta titulo="Costo por captación" valor={usd(a.adquisicion.costoPorCaptacionUsd)} bueno="baja"
-        v={variacion(a.adquisicion.costoPorCaptacionUsd, b?.adquisicion.costoPorCaptacionUsd)}
+        v={bSinMeta ? null : variacion(a.adquisicion.costoPorCaptacionUsd, b?.adquisicion.costoPorCaptacionUsd)}
         sub={`${a.adquisicion.captaciones} captaciones del embudo · máximo ${usd(a.adquisicion.costoMaximoUsd)}`}
         ayuda="Publicidad de los embudos de tasación y clase ÷ propiedades captadas que vinieron de esos embudos en el período. El máximo es lo que se puede pagar por captación dejando 3 a 1: beneficio por captación ÷ 3." />
       <Tarjeta titulo="Inversión en Meta" valor={usd(invA)} v={variacion(invA, invB)} bueno="baja"
