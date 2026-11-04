@@ -26,11 +26,15 @@ export function EmbudoCanal({ embudo, panel, alcance, vista, onVista }: {
 }) {
   const a = panel.actual.canales[embudo], b = panel.anterior?.canales[embudo]
   const dias = diasEntre(panel.parametros.rango)
+  // El gasto de Meta está cargado desde 01/2026: un período comparado sin
+  // ningún día con gasto NO costó $0, no tiene dato. Mostrar 0 inventaría
+  // variaciones de +900%.
+  const antesMeta = <T,>(x: T | undefined) => (b && b.diasConGasto === 0 ? null : x)
   const filas: { label: string; ayuda: string; valor: number | null; antes: number | null | undefined; pctPaso?: number | null; pctSol?: number | null; costo?: number | null; esPlata?: boolean; texto?: string }[] = [
-    { label: 'Inversión', ayuda: `Gasto en Meta de las campañas de este embudo, en USD al blue de cada día. Hay gasto cargado en ${a.diasConGasto} de ${dias} días.`, valor: a.inversionUsd, antes: b?.inversionUsd, esPlata: true },
+    { label: 'Inversión', ayuda: `Gasto en Meta de las campañas de este embudo, en USD al blue de cada día. Hay gasto cargado en ${a.diasConGasto} de ${dias} días.`, valor: a.inversionUsd, antes: antesMeta(b?.inversionUsd), esPlata: true },
     { label: 'Alcance', ayuda: 'Personas únicas que vieron un anuncio en el período (Meta). No se suma por día: una persona que lo vio dos días es una.', valor: alcance ?? null, antes: undefined, texto: alcance === undefined ? 'cargando…' : undefined },
-    { label: 'Clics al anuncio', ayuda: 'Clics en el enlace del anuncio (Meta).', valor: a.clics, antes: b?.clics, costo: a.costoPorClic },
-    { label: 'Visitas a la landing', ayuda: 'Desde el 20/7/2026, personas distintas por día que entraron a la landing, medidas por la plataforma (sin robots; recargar no suma). Antes, las visitas que informa Meta. Tasación nov-25 a mar-26: sin dato.', valor: a.visitas, antes: b?.visitas, pctPaso: a.visitas != null && a.clics ? a.visitas / a.clics : null },
+    { label: 'Clics al anuncio', ayuda: 'Clics en el enlace del anuncio (Meta).', valor: a.clics, antes: antesMeta(b?.clics), costo: a.costoPorClic },
+    { label: 'Visitas a la landing', ayuda: 'Desde el 20/7/2026, personas distintas por día que entraron a la landing, medidas por la plataforma (sin robots; recargar no suma). Antes, las visitas que informa Meta. Tasación nov-25 a mar-26: sin dato.', valor: a.visitas, antes: antesMeta(b?.visitas), pctPaso: a.visitas != null && a.clics ? a.visitas / a.clics : null },
     ...a.pasos.map((p, i) => ({
       label: i === 0 ? NOMBRE_SOLICITUD[embudo] : ETAPA[p.etapa].label,
       ayuda: ETAPA[p.etapa].ayuda,
