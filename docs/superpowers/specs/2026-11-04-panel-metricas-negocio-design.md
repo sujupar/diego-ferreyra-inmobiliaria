@@ -62,7 +62,7 @@ como 0: dice "sin dato".
 | --- | --- | --- |
 | Inversión, impresiones, clics, visitas Meta | `meta_ads_daily` (sync diario) | OK desde 01/2026 |
 | Alcance | API de Meta por rango (no es sumable por día) con caché | falta |
-| Visitas a la landing, A/B | `landing_page_visits` | OK desde 06/2026 |
+| Visitas a la landing, A/B | `landing_page_visits`: personas distintas por día (misma IP el mismo día = una), sin robots, sin la landing "alto valor" | OK desde 20/07/2026 (antes, las de Meta) |
 | Video | `video_view_state` | OK desde 06/2026 |
 | Solicitudes / registros | `funnel_lead_submissions` + `deals` | OK desde 20/07/2026 |
 | Agendadas, realizadas, entregadas, captadas | `deals`, `deal_stage_history`, `appraisals`, `properties` | incompleto (captaciones cargadas sin la persona) |
@@ -92,8 +92,10 @@ volver a reconstruir nada, **la plataforma pide los datos de la operación en el
 - **Origen del dueño** y quién captó vienen precargados de la propiedad; si faltan, son obligatorios.
 - **Gastos de esa propiedad** (fotos, video, recorrido, destaques, cartel, anuncios de la propiedad): opcionales,
   se restan como costo de vender.
-- Una venta con datos incompletos aparece en el panel como **"faltan datos"** con el link para completarla, y
-  genera una tarea al que la marcó. Nunca cuenta como $0.
+- Una venta con datos incompletos aparece en el panel como **"faltan datos"** (y en la ficha, con el botón
+  "Completar"). Nunca cuenta como $0. La venta se crea sola al cambiar el estado, así que aunque nadie complete
+  el formulario, la operación ya está en el panel. El formulario solo lo ven quienes tienen permiso de métricas
+  (admin, dueño): los porcentajes del reparto son plata del negocio.
 - Las ventas viejas sin ficha en la plataforma (ej. Piedras) se cargan en la pantalla "Ventas" del panel, con el
   mismo formulario.
 - Gastos fijos e impuestos: pantalla "Gastos" con el gasto mensual vigente de cada concepto; se carga una vez y
@@ -121,3 +123,13 @@ Consultas de compradores y visitas a propiedades (ya tienen su sección), tráfi
 5. El planificador con N=8 y las tasas del período muestra inversión semanal y mensual con su cuenta visible.
 6. Cambiar fechas, embudo o comparación actualiza todo en menos de 3 segundos.
 7. Abogado y asesor no ven el panel (solo admin, dueño, coordinador).
+
+## Ajustes durante la construcción (2026-11-04)
+
+- **Visitas:** se cuentan personas por día, no cargas de página (recargar no suma). La landing "alto valor" queda
+  afuera: sin campaña desde mayo, sin solicitudes, ~1.000 cargas desde agosto que inflaban tasación.
+- **Corte de visitas propias = 20/07/2026** (landings propias). En junio la medición registró 17 cargas: no sirve.
+  Antes de esa fecha se usan las de Meta. Desde el 20/7 la plataforma cuenta más que Meta (ago-26: 930 contra
+  643) porque Meta solo cuenta la visita si llega a cargar su píxel.
+- **Verificado contra "Meta y embudos mes a mes":** solicitudes, agendadas y hechas de tasación y clase coinciden
+  mes a mes. Captaciones: +1 en agosto (firmada después del 22/9, cuando se armó el documento).
