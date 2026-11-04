@@ -21,11 +21,11 @@ describe('getNavSections — permisos del menú', () => {
     expect(groups[0].label).toBeNull()
   })
 
-  it('el asesor ve las mismas 10 rutas de siempre más Inicio, Noticias, Informes quincenales y Consultas (14)', () => {
+  it('el asesor ve las mismas 10 rutas de siempre más Inicio, Noticias, Referencias, Informes quincenales y Consultas (15)', () => {
     const hrefs = navHrefs(getNavSections('asesor'))
     expect(hrefs.sort()).toEqual([
       '/appraisal/new', '/appraisals', '/consultas', '/contacts', '/crm', '/inbox', '/informes', '/inicio',
-      '/noticias', '/pipeline/new', '/properties', '/redes-sociales', '/tasks', '/visits',
+      '/noticias', '/pipeline/new', '/properties', '/redes-sociales', '/referencias', '/tasks', '/visits',
     ])
   })
 
@@ -43,6 +43,14 @@ describe('getNavSections — permisos del menú', () => {
     }
     // El abogado no tiene Marketing → tampoco Noticias.
     expect(navHrefs(getNavSections('abogado'))).not.toContain('/noticias')
+  })
+
+  it('Referencias vive en Marketing para los roles que ven Marketing (asesor, coordinador, admin, dueño)', () => {
+    for (const role of ['asesor', 'coordinador', 'admin', 'dueno'] as const) {
+      expect(navHrefs(getNavSections(role))).toContain('/referencias')
+    }
+    // El abogado no tiene Marketing → tampoco Referencias.
+    expect(navHrefs(getNavSections('abogado'))).not.toContain('/referencias')
   })
 
   it('Publicaciones vive en Marketing solo para admin, dueño y coordinador (los que deja pasar la API)', () => {
