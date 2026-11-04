@@ -53,6 +53,29 @@ export function automatizacionPorDefecto(): AutomatizacionVideo {
   }
 }
 
+/**
+ * El privado de fábrica dice "Te dejo la ficha completa de la propiedad" y el botón "Ver la
+ * propiedad": en un personalizado (una landing de tasación, un WhatsApp) eso le miente a la
+ * persona. Si el texto sigue siendo el de fábrica, cada tipo arranca con el suyo. Lo que
+ * alguien escribió a mano no se toca.
+ */
+export const PRIVADO_PERSONALIZADO = '¡Hola! Gracias por comentar 🙌 Te dejo toda la info acá 👇'
+export const BOTON_PERSONALIZADO = 'Ver más'
+
+export function privadoParaTipo(
+  m: { dm_texto: string; dm_boton: string },
+  tipo: TipoAutomatizacion,
+): { dm_texto: string; dm_boton: string } {
+  const [desdeTexto, desdeBoton, aTexto, aBoton] =
+    tipo === 'personalizado'
+      ? [PRIVADO_POR_DEFECTO, BOTON_POR_DEFECTO, PRIVADO_PERSONALIZADO, BOTON_PERSONALIZADO]
+      : [PRIVADO_PERSONALIZADO, BOTON_PERSONALIZADO, PRIVADO_POR_DEFECTO, BOTON_POR_DEFECTO]
+  return {
+    dm_texto: m.dm_texto.trim() === desdeTexto ? aTexto : m.dm_texto,
+    dm_boton: m.dm_boton.trim() === desdeBoton ? aBoton : m.dm_boton,
+  }
+}
+
 const forma = z
   .object({
     // Opcionales con valor por defecto: las configuraciones guardadas antes no los tenían.

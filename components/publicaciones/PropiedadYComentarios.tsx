@@ -30,6 +30,7 @@ import {
   conLineaDePalabra,
   limpiarEnlace,
   mencionaPalabra,
+  privadoParaTipo,
   validarAutomatizacion,
   type AutomatizacionVideo,
   type TipoAutomatizacion,
@@ -180,7 +181,12 @@ export function PropiedadYComentarios({ video, editable, onCambio }: Props) {
       return
     }
     // Se conservan palabra y mensajes al cambiar de tipo; el tipo nuevo arranca sin confirmar.
-    const nuevo: Borrador = conModo({ ...borrador, tipo: o, confirmada: false })
+    const nuevo: Borrador = conModo({
+      ...borrador,
+      tipo: o,
+      confirmada: false,
+      mensajes: { ...borrador.mensajes, ...privadoParaTipo(borrador.mensajes, o) },
+    })
     setBorrador(nuevo)
     if (o === 'propiedad' && !video.property_id) return // se guarda al elegir la propiedad
     const config = validarAutomatizacion(aConfig(nuevo))
