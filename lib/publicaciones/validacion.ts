@@ -50,6 +50,16 @@ export const altaVideosSchema = z
   })
   .strict()
 
+export const listarDriveSchema = z.object({ enlace: z.string().trim().min(1).max(2000) }).strict()
+
+const idDrive = z.string().regex(/^[A-Za-z0-9_-]{10,200}$/)
+export const altaDriveSchema = z
+  .object({
+    ids: z.array(idDrive).min(1).max(MAX_VIDEOS_POR_ALTA),
+    resourceKey: z.string().regex(/^[A-Za-z0-9_-]{1,100}$/).nullable(),
+  })
+  .strict()
+
 /** Etapas que el navegador puede pedir; `listo` y `error` las pone solo el servidor. */
 const ETAPAS_DEL_CLIENTE = ['subiendo', 'extrayendo', 'transcribiendo', 'describiendo'] as const
 

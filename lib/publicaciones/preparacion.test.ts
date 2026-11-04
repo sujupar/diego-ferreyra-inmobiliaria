@@ -41,6 +41,12 @@ describe('etiquetaEtapa', () => {
   it('redondea el progreso', () => {
     expect(etiquetaEtapa('subiendo', 41.6)).toBe('Subiendo 42 %')
   })
+
+  it('un video de Drive dice que se está trayendo de Drive', () => {
+    expect(etiquetaEtapa('subiendo', 42, 'drive')).toBe('Trayendo de Drive 42 %')
+    expect(etiquetaEtapa('subiendo', undefined, 'drive')).toBe('Trayendo de Drive')
+    expect(etiquetaEtapa('transcribiendo', undefined, 'drive')).toBe('Escuchando el audio')
+  })
 })
 
 describe('reintentar', () => {

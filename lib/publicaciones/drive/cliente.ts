@@ -31,7 +31,7 @@ export interface ListadoDrive {
 export interface ClienteDrive {
   listar(enlace: EnlaceDrive): Promise<ListadoDrive>
   leerArchivo(id: string, resourceKey?: string): Promise<ArchivoDrive>
-  descargarParte(id: string, desde: number, hasta: number, resourceKey?: string, techoMs?: number): Promise<Uint8Array>
+  descargarParte(id: string, desde: number, hasta: number, resourceKey?: string, techoMs?: number): Promise<Uint8Array<ArrayBuffer>>
 }
 
 interface ErrorDeGoogle {

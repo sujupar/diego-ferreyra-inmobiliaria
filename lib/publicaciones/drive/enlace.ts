@@ -15,6 +15,22 @@ export interface EnlaceDrive {
 const ID_DRIVE = /^[A-Za-z0-9_-]{10,200}$/
 const CLAVE_RECURSO = /^[A-Za-z0-9_-]{1,100}$/
 
+/**
+ * Lo que se guarda en `publicacion_videos.drive_file_id`: el id y, si el enlace
+ * era de los viejos, su clave de recurso (sin ella Drive no deja descargarlo).
+ * Los dos puntos no existen en el alfabeto de Drive: separan sin ambigüedad.
+ */
+export function refDeDrive(id: string, resourceKey?: string): string {
+  return resourceKey ? `${id}:${resourceKey}` : id
+}
+
+export function leerRefDeDrive(ref: string): { id: string; resourceKey?: string } | null {
+  const [id, clave, sobra] = ref.split(':')
+  if (sobra !== undefined || !ID_DRIVE.test(id)) return null
+  if (clave === undefined) return { id }
+  return CLAVE_RECURSO.test(clave) ? { id, resourceKey: clave } : null
+}
+
 export function leerEnlaceDrive(texto: string): EnlaceDrive | null {
   let limpio = texto.trim()
   if (!limpio) return null

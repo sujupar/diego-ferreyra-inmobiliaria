@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { leerEnlaceDrive } from './enlace'
+import { leerEnlaceDrive, leerRefDeDrive, refDeDrive } from './enlace'
+
+describe('refDeDrive / leerRefDeDrive', () => {
+  it('sin clave de recurso es el id tal cual', () => {
+    expect(refDeDrive('abcdefghij12')).toBe('abcdefghij12')
+    expect(leerRefDeDrive('abcdefghij12')).toEqual({ id: 'abcdefghij12' })
+  })
+
+  it('con clave de recurso viajan juntos y se separan sin ambigüedad', () => {
+    expect(leerRefDeDrive(refDeDrive('abcdefghij12', '0-xyz'))).toEqual({ id: 'abcdefghij12', resourceKey: '0-xyz' })
+  })
+
+  it('una referencia con caracteres ajenos a Drive no se lee', () => {
+    expect(leerRefDeDrive("abc' or 1=1")).toBeNull()
+  })
+})
 
 const ID = '1AbC_dEf-GhIjKlMnOpQrStUvWxYz0123'
 

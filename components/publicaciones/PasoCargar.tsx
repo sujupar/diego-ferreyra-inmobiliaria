@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { ArrowRight, Loader2, UploadCloud } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { VideoVista } from '@/lib/publicaciones/tipos'
+import { ElegirDeDrive } from './ElegirDeDrive'
 import { FilaVideo } from './FilaVideo'
 
 interface Props {
@@ -13,6 +14,7 @@ interface Props {
   faltaArchivo: (v: VideoVista) => boolean
   agregando: boolean
   onElegir: (archivos: File[]) => void
+  onTraerDrive: (ids: string[], resourceKey: string | null) => Promise<void>
   onReintentar: (v: VideoVista) => void
   onQuitar: (v: VideoVista) => void
   onSiguiente: () => void
@@ -25,6 +27,7 @@ export function PasoCargar({
   faltaArchivo,
   agregando,
   onElegir,
+  onTraerDrive,
   onReintentar,
   onQuitar,
   onSiguiente,
@@ -80,6 +83,8 @@ export function PasoCargar({
           }}
         />
       </div>
+
+      <ElegirDeDrive deshabilitado={agregando} onTraer={onTraerDrive} />
 
       {videos.length > 0 && (
         <>

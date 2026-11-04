@@ -36,7 +36,7 @@ export function conUrls(v: VideoFila): VideoConUrls {
   }
 }
 
-function dbError(e: { message: string } | null): void {
+export function dbError(e: { message: string } | null): void {
   if (e) throw new Error(`DB: ${e.message}`)
 }
 
@@ -47,7 +47,7 @@ export async function leerTanda(id: string): Promise<TandaFila> {
   return data as TandaFila
 }
 
-async function videosDeTanda(tandaId: string): Promise<VideoFila[]> {
+export async function videosDeTanda(tandaId: string): Promise<VideoFila[]> {
   const { data, error } = await publicacionesDb()
     .from('publicacion_videos')
     .select('*')
@@ -57,7 +57,7 @@ async function videosDeTanda(tandaId: string): Promise<VideoFila[]> {
   return (data ?? []) as VideoFila[]
 }
 
-async function leerVideo(id: string): Promise<VideoFila> {
+export async function leerVideo(id: string): Promise<VideoFila> {
   const { data, error } = await publicacionesDb().from('publicacion_videos').select('*').eq('id', id).maybeSingle()
   dbError(error)
   if (!data) throw new ErrorHttp(404, 'El video no existe')

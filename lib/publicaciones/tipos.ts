@@ -36,6 +36,9 @@ export interface VideoFila {
   orden: number
   origen: 'subida' | 'drive'
   drive_file_id: string | null
+  /** Subida reanudable a Storage en curso (solo videos de Drive a medio copiar). */
+  drive_subida_url: string | null
+  drive_copiado_bytes: number
   nombre_archivo: string
   tamano_bytes: number
   video_path: string | null

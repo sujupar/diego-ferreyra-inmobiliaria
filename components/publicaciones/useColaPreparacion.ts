@@ -26,8 +26,12 @@ interface Opciones {
   onVideo: (v: VideoVista) => void
 }
 
+/** Vueltas de `/traer` sin avance antes de rendirse (un video de 200 MB son ~10 vueltas con avance). */
+const VUELTAS_SIN_AVANCE = 3
+
 function necesitaTrabajo(v: VideoVista, archivos: Map<string, File>): boolean {
-  if (v.etapa === 'subiendo') return archivos.has(v.id)
+  // Uno de Drive no espera un archivo en memoria: lo trae el servidor.
+  if (v.etapa === 'subiendo') return v.origen === 'drive' || archivos.has(v.id)
   return v.etapa === 'extrayendo' || v.etapa === 'transcribiendo' || v.etapa === 'describiendo'
 }
 
@@ -65,6 +69,23 @@ export function useColaPreparacion({ videos, archivos, espacios, onVideo }: Opci
         })
         await subirConProgreso(e.signedUrl, blob, tipo)
         return e.path
+      }
+
+      if (v.etapa === 'subiendo' && v.origen === 'drive') {
+        // El servidor copia de Drive lo que entra en un pedido; se repite hasta que termina.
+        let sinAvance = 0
+        let copiado = Number(v.drive_copiado_bytes ?? 0)
+        while (v.etapa === 'subiendo') {
+          const r = await api<{ video: VideoVista; copiado: number }>(`/api/publicaciones/videos/${v.id}/traer`, { method: 'POST' })
+          v = r.video
+          onVideoRef.current(v)
+          setProgreso((prev) => ({ ...prev, [v.id]: Math.min(100, (r.copiado / Math.max(1, Number(v.tamano_bytes))) * 100) }))
+          sinAvance = r.copiado > copiado ? 0 : sinAvance + 1
+          copiado = r.copiado
+          if (sinAvance >= VUELTAS_SIN_AVANCE && v.etapa === 'subiendo') {
+            throw new Error('La copia desde Drive no avanza. Tocá Reintentar.')
+          }
+        }
       }
 
       if (v.etapa === 'subiendo') {

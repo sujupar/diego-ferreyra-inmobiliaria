@@ -29,10 +29,12 @@ export function siguienteAccion(
   }
 }
 
-export function etiquetaEtapa(etapa: EtapaPreparacion, progresoSubida?: number): string {
+export function etiquetaEtapa(etapa: EtapaPreparacion, progresoSubida?: number, origen: 'subida' | 'drive' = 'subida'): string {
   switch (etapa) {
-    case 'subiendo':
-      return progresoSubida === undefined ? 'Subiendo' : `Subiendo ${Math.round(progresoSubida)} %`
+    case 'subiendo': {
+      const verbo = origen === 'drive' ? 'Trayendo de Drive' : 'Subiendo'
+      return progresoSubida === undefined ? verbo : `${verbo} ${Math.round(progresoSubida)} %`
+    }
     case 'extrayendo':
       return 'Preparando el audio'
     case 'transcribiendo':

@@ -20,9 +20,9 @@ export interface DepsCopia {
   crearSubida(total: number): Promise<string>
   /** Cuántos bytes tiene ya la subida; `null` si venció o no existe. */
   offsetDeSubida(url: string): Promise<number | null>
-  descargar(desde: number, hasta: number, techoMs: number): Promise<Uint8Array>
+  descargar(desde: number, hasta: number, techoMs: number): Promise<Uint8Array<ArrayBuffer>>
   /** Devuelve el nuevo offset que confirma el almacenamiento. */
-  subirParte(url: string, offset: number, bytes: Uint8Array): Promise<number>
+  subirParte(url: string, offset: number, bytes: Uint8Array<ArrayBuffer>): Promise<number>
 }
 
 export interface EstadoCopia {
@@ -39,7 +39,7 @@ export interface AvanceCopia {
 export async function avanzarCopia(estado: EstadoCopia, deps: DepsCopia, presupuestoMs: number): Promise<AvanceCopia> {
   const inicio = deps.ahora()
   let url = estado.subidaUrl
-  let offset = url ? await deps.offsetDeSubida(url) : null
+  let offset: number | null = url ? await deps.offsetDeSubida(url) : null
   if (url === null || offset === null) {
     url = await deps.crearSubida(estado.total)
     offset = 0
@@ -51,7 +51,7 @@ export async function avanzarCopia(estado: EstadoCopia, deps: DepsCopia, presupu
     const restante = presupuestoMs - (deps.ahora() - inicio)
     // Al menos una parte por llamada: si no, un presupuesto chico no avanzaría nunca.
     if (partes > 0 && restante < MIN_RESTANTE_MS) break
-    const hasta = Math.min(offset + PARTE, estado.total) - 1
+    const hasta: number = Math.min(offset + PARTE, estado.total) - 1
     const bytes = await deps.descargar(offset, hasta, Math.min(TECHO_DESCARGA_MS, Math.max(MIN_RESTANTE_MS, restante)))
     if (bytes.length !== hasta - offset + 1) throw new Error('Drive devolvió una parte incompleta del video')
     const nuevo = await deps.subirParte(url, offset, bytes)
