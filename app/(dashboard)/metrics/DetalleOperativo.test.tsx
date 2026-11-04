@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import MetricsPage from './page'
+import MetricsPage from './DetalleOperativo'
 
 /**
  * D36 y D10 — el tablero de Métricas.

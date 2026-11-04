@@ -66,7 +66,9 @@ describe('PropertyCommercialStatusCard', () => {
     await user.click(screen.getByRole('button', { name: /confirmar/i }))
 
     expect(await screen.findByText(/necesitás escribir el motivo/i)).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    // No guardó nada. (Una vendida además pide sus datos de la operación al
+    // montar, así que no se cuentan las lecturas: solo que no hubo POST.)
+    expect(fetchMock.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'POST')).toHaveLength(0)
   })
 
   it('un cambio válido llama a la ruta y avisa al padre', async () => {
