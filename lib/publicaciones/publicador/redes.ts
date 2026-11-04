@@ -26,12 +26,20 @@ export interface Pieza {
   videoUrl: string
   descripcion: string
   duracionSeg?: number | null
+  /** YouTube: el título (si está vacío se arma uno) y el peso, que la subida reanudable declara al abrirse. */
+  titulo?: string
+  tamanoBytes?: number
 }
 
 export interface Contexto {
   ahora: Date
   /** Guarda la etapa ANTES de un pedido que no se puede repetir. Si falla, no se manda nada. */
   antes: (etapa: string) => Promise<void>
+  /**
+   * Hasta cuándo puede trabajar esta etapa (ms desde epoch). Solo la usa YouTube,
+   * que sube por partes y tiene que cortar antes del límite de Netlify.
+   */
+  plazo?: number
 }
 
 export interface ResultadoEtapa {

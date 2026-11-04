@@ -25,6 +25,14 @@ type ResumenEstilo =
   | { etapa: 'clasificando'; elegidos: number; revisados: number; total: number; vigente: boolean }
   | { etapa: 'listo'; guia: string; ejemplos: { caption: string; fecha: string }[]; aprendido_en: string; vigente: true }
 
+interface Conexion {
+  plataforma: 'youtube' | 'tiktok'
+  conectada: boolean
+  cuenta: string | null
+  desde: string | null
+  configurada: boolean
+}
+
 interface Ajustes {
   publicacion_automatica: boolean
   horarios: HorariosPorDefecto
@@ -47,6 +55,8 @@ function textoProgreso(e: ResumenEstilo): string {
 export function PanelAjustes({ abierto, onCerrar }: { abierto: boolean; onCerrar: () => void }) {
   const [ajustes, setAjustes] = useState<Ajustes | null>(null)
   const [puede, setPuede] = useState(false)
+  const [conexiones, setConexiones] = useState<Conexion[]>([])
+  const [puedeConectar, setPuedeConectar] = useState(false)
   const [horarios, setHorarios] = useState<HorariosPorDefecto | null>(null)
   const [guia, setGuia] = useState('')
   const [aprendiendo, setAprendiendo] = useState<string | null>(null)
@@ -54,9 +64,13 @@ export function PanelAjustes({ abierto, onCerrar }: { abierto: boolean; onCerrar
 
   const cargar = useCallback(async () => {
     try {
-      const r = await api<{ ajustes: Ajustes; puedeCambiarInterruptor: boolean }>('/api/publicaciones/ajustes')
+      const r = await api<{ ajustes: Ajustes; puedeCambiarInterruptor: boolean; conexiones: Conexion[]; puedeConectar: boolean }>(
+        '/api/publicaciones/ajustes',
+      )
       setAjustes(r.ajustes)
       setPuede(r.puedeCambiarInterruptor)
+      setConexiones(r.conexiones ?? [])
+      setPuedeConectar(r.puedeConectar === true)
       setHorarios(r.ajustes.horarios)
       if (r.ajustes.estilo.etapa === 'listo') setGuia(r.ajustes.estilo.guia)
     } catch (e) {
@@ -244,17 +258,37 @@ export function PanelAjustes({ abierto, onCerrar }: { abierto: boolean; onCerrar
 
             <section className="space-y-2">
               <h3 className="font-medium">Cuentas</h3>
-              <ul className="space-y-1.5 text-sm">
+              <ul className="space-y-2 text-sm">
                 {PLATAFORMAS.map((p) => {
                   const { nombre, Icono } = REDES[p]
-                  return { n: nombre.replace(' (borrador)', ''), Icono }
-                }).map(({ n, Icono }) => (
-                  <li key={n} className="flex items-center gap-2">
-                    <Icono className="h-4 w-4 text-muted-foreground" /> {n}
-                    <span className="ml-auto text-xs text-muted-foreground">Se conecta en la próxima etapa</span>
-                  </li>
-                ))}
+                  const n = nombre.replace(' (borrador)', '')
+                  const c = conexiones.find((x) => x.plataforma === p)
+                  return (
+                    <li key={p} className="flex flex-wrap items-center gap-2">
+                      <Icono className="h-4 w-4 text-muted-foreground" /> {n}
+                      <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+                        {p === 'instagram' || p === 'facebook' ? (
+                          'Conectado con la cuenta de Meta'
+                        ) : !c?.configurada ? (
+                          'Falta configurar (avisale al administrador)'
+                        ) : (
+                          <>
+                            {c.conectada ? `Conectado: ${c.cuenta ?? 'cuenta'}` : 'Sin conectar'}
+                            {puedeConectar && (
+                              <Button asChild size="sm" variant={c.conectada ? 'ghost' : 'outline'} className="h-7">
+                                <a href={`/api/oauth/${p === 'youtube' ? 'google' : 'tiktok'}/start`}>
+                                  {c.conectada ? 'Volver a conectar' : 'Conectar'}
+                                </a>
+                              </Button>
+                            )}
+                          </>
+                        )}
+                      </span>
+                    </li>
+                  )
+                })}
               </ul>
+              {!puedeConectar && <p className="text-xs text-muted-foreground">Las cuentas las conectan el administrador o el dueño.</p>}
             </section>
           </div>
         )}

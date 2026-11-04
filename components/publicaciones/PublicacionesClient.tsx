@@ -4,8 +4,9 @@
  * Publicaciones: subir videos en tanda, elegir el ritmo, revisar y programar.
  * Pestañas: Nueva tanda · Programado · Publicado. Ajustes en el panel lateral.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Settings } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { NuevaTanda } from './NuevaTanda'
@@ -15,10 +16,36 @@ import { PestanaPublicado } from './PestanaPublicado'
 
 type Pestana = 'nueva' | 'programado' | 'publicado'
 
+/** Lo que se le dice a la persona al volver de conectar una cuenta (Google o TikTok vuelven con `?conexion=`). */
+const AL_VOLVER: Record<string, { ok: boolean; texto: string }> = {
+  youtube_ok: { ok: true, texto: 'YouTube quedó conectado.' },
+  tiktok_ok: { ok: true, texto: 'TikTok quedó conectado.' },
+  cancelada: { ok: false, texto: 'No se conectó: se canceló el permiso.' },
+  vencido: { ok: false, texto: 'Pasaron más de 10 minutos. Tocá Conectar de nuevo.' },
+  invalida: { ok: false, texto: 'No se pudo verificar la conexión. Tocá Conectar de nuevo desde esta pantalla.' },
+  sin_permiso: { ok: false, texto: 'Las cuentas las conectan el administrador o el dueño.' },
+  sin_configurar: { ok: false, texto: 'Falta configurar las claves de esa red. Avisale al administrador.' },
+  fallo: { ok: false, texto: 'La red no aceptó la conexión. Probá de nuevo en un rato.' },
+}
+
 export function PublicacionesClient() {
   const [pestana, setPestana] = useState<Pestana>('nueva')
   const [vueltaNueva, setVueltaNueva] = useState(0)
   const [ajustes, setAjustes] = useState(false)
+
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    const r = url.searchParams.get('conexion')
+    if (!r) return
+    const aviso = AL_VOLVER[r] ?? AL_VOLVER.fallo
+    if (aviso.ok) toast.success(aviso.texto)
+    else toast.error(aviso.texto)
+    url.searchParams.delete('conexion')
+    // null y no history.state: con el estado de Next, el router no se entera (lección de /consultas).
+    window.history.replaceState(null, '', url.pathname + url.search)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- se abre UNA vez al volver de la red, no en cada render.
+    setAjustes(true)
+  }, [])
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6 px-4 py-6 md:px-6">

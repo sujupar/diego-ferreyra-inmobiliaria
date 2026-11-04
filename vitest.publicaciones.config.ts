@@ -9,7 +9,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['lib/publicaciones/**/*.test.ts', 'lib/nav/**/*.test.ts', 'lib/integrations/facebook/**/*.test.ts', 'lib/integrations/instagram/**/*.test.ts', 'lib/social/reels/**/*.test.ts'],
+    include: ['lib/publicaciones/**/*.test.ts', 'lib/nav/**/*.test.ts', 'lib/integrations/facebook/**/*.test.ts', 'lib/integrations/youtube/**/*.test.ts', 'lib/integrations/tiktok/**/*.test.ts', 'lib/integrations/instagram/**/*.test.ts', 'lib/social/reels/**/*.test.ts'],
     exclude: ['**/node_modules/**'],
   },
   resolve: {

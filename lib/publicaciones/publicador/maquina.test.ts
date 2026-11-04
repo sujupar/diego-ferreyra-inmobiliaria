@@ -87,6 +87,30 @@ describe('clasificarError', () => {
     expect(r.mensaje).toBe('No se pudo publicar: Facebook no confirmó la publicación del reel.')
   })
 
+  it('un error de YouTube se explica como de YouTube', () => {
+    const r = clasificarError({ httpStatus: 400, motivo: 'invalidTitle', message: 'YouTube 400 al abrir la subida: x' }, 'YouTube')
+    expect(r.transitorio).toBe(false)
+    expect(r.mensaje).toMatch(/^YouTube rechazó la publicación/)
+  })
+
+  it('el límite diario de YouTube espera y se reintenta solo', () => {
+    for (const motivo of ['quotaExceeded', 'uploadLimitExceeded', 'rateLimitExceeded']) {
+      const r = clasificarError({ httpStatus: 403, motivo, message: 'x' }, 'YouTube')
+      expect(r.transitorio).toBe(true)
+      expect(r.mensaje).toMatch(/límite/)
+    }
+  })
+
+  it('YouTube sin conectar dice qué hacer y espera (no se pierde el envío)', () => {
+    const e = Object.assign(new Error('YouTube no está conectado. Conectalo en Ajustes de Publicaciones.'), { name: 'ConexionVencida' })
+    const r = clasificarError(e, 'YouTube')
+    expect(r).toEqual({ transitorio: true, mensaje: 'YouTube no está conectado. Conectalo en Ajustes de Publicaciones.' })
+  })
+
+  it('un 401 de YouTube pide reconectar YouTube, no habla de Meta', () => {
+    expect(clasificarError({ httpStatus: 401, message: 'x' }, 'YouTube').mensaje).toMatch(/YouTube/)
+  })
+
   it('un permiso vencido se explica para el administrador', () => {
     expect(clasificarError({ code: 190, httpStatus: 401, message: 'x' }).mensaje).toMatch(/administrador/)
   })

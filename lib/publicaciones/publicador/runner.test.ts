@@ -226,6 +226,38 @@ describe('correrPublicador', () => {
   })
 })
 
+describe('correrPublicador — red sin conectar', () => {
+  it('el envío espera con el motivo a la vista, sin gastar intentos ni llamar a la red', async () => {
+    const youtube = vi.fn()
+    const yt = candidato('instagram', 'yt1')
+    yt.envio = { ...yt.envio, plataforma: 'youtube' }
+    const d = deps({
+      candidatos: async () => [yt],
+      redes: { youtube },
+      redPendiente: async (p) => (p === 'youtube' ? 'YouTube no está conectado. Conectalo en Ajustes de Publicaciones.' : null),
+    })
+    const r = await correrPublicador(d)
+    expect(youtube).not.toHaveBeenCalled()
+    expect(r.fallidos).toBe(0)
+    const g = d.guardados.find((x) => x.id === 'yt1')!
+    expect(g.cambios).toEqual({
+      ultimo_error: 'YouTube no está conectado. Conectalo en Ajustes de Publicaciones.',
+      proximo_intento: new Date(AHORA.getTime() + 10 * 60_000).toISOString(),
+    })
+  })
+
+  it('YouTube recibe el título, el peso del archivo y un plazo para cortar a tiempo', async () => {
+    const youtube = vi.fn(async () => ({ etapa: 'subiendo', ids: {}, estado: 'en_curso' as const, esperarMs: 0 }))
+    const yt = candidato('instagram', 'yt2')
+    yt.envio = { ...yt.envio, plataforma: 'youtube' }
+    yt.video = { ...yt.video, titulo_youtube: 'Título', tamano_bytes: 1234 }
+    await correrPublicador(deps({ candidatos: async () => [yt], redes: { youtube } }))
+    const [, pieza, ctx] = youtube.mock.calls[0] as unknown as [unknown, { titulo: string; tamanoBytes: number }, { plazo: number }]
+    expect(pieza).toMatchObject({ titulo: 'Título', tamanoBytes: 1234 })
+    expect(ctx.plazo).toBeGreaterThan(AHORA.getTime())
+  })
+})
+
 describe('correrPublicador — al publicar', () => {
   const publicado = async () => ({ etapa: 'contenedor', ids: { media_id: 'm1' }, estado: 'publicado' as const, enlace: null })
   const enCurso = async () => ({ etapa: 'iniciado', ids: {}, estado: 'en_curso' as const, esperarMs: 0 })

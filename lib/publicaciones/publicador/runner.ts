@@ -8,7 +8,7 @@
  */
 import type { EnvioFila, Plataforma, VideoFila } from '../tipos'
 import { esRutaPropia } from '../validacion'
-import { clasificarError, esperaDeReintento, puedeSalir } from './maquina'
+import { clasificarError, esperaDeReintento, puedeSalir, type RedQuePublica } from './maquina'
 import type { Contexto, EnvioEnCurso, Pieza, ResultadoEtapa } from './redes'
 
 export interface Candidato {
@@ -36,7 +36,19 @@ export interface DepsRunner {
    * ya salió); lo anota quien lo implementa.
    */
   alPublicar?: (c: Candidato, r: ResultadoEtapa) => Promise<void>
+  /**
+   * Si la red no puede publicar todavía (YouTube o TikTok sin conectar), el
+   * motivo. El envío ESPERA con ese motivo a la vista: no gasta intentos ni
+   * se marca fallido, sale solo cuando la cuenta se conecta.
+   */
+  redPendiente?: (plataforma: Plataforma) => Promise<string | null>
 }
+
+/** Cada cuánto se vuelve a mirar un envío que espera a que se conecte su red. */
+const ESPERA_RED_PENDIENTE_MS = 10 * 60_000
+/** Una etapa no trabaja después de esto, contado desde que arrancó la corrida (Netlify corta ~26 s). */
+const PLAZO_ETAPA_MS = 20_000
+const NOMBRE_RED: Record<Plataforma, RedQuePublica> = { instagram: 'Meta', facebook: 'Meta', youtube: 'YouTube', tiktok: 'TikTok' }
 
 export interface ResumenPublicador {
   motivo?: 'apagado'
@@ -72,6 +84,16 @@ export async function correrPublicador(d: DepsRunner): Promise<ResumenPublicador
       resumen.detalle.push(`${envio.id}: lo tomó otra corrida`)
       continue
     }
+
+    const pendiente = d.redPendiente ? await d.redPendiente(envio.plataforma) : null
+    if (pendiente) {
+      await guardarSinCortar(d, envio.id, {
+        ultimo_error: pendiente,
+        proximo_intento: new Date(d.ahora().getTime() + ESPERA_RED_PENDIENTE_MS).toISOString(),
+      }, resumen)
+      resumen.detalle.push(`${envio.plataforma} ${envio.id}: espera — ${pendiente}`)
+      continue
+    }
     resumen.avanzados++
 
     // Nunca se le pasa a Meta un archivo que no sea el de este video, ni uno ya borrado.
@@ -90,9 +112,12 @@ export async function correrPublicador(d: DepsRunner): Promise<ResumenPublicador
       videoUrl: d.urlPublica(video.video_path as string),
       descripcion: video.descripcion,
       duracionSeg: video.duracion_seg,
+      titulo: video.titulo_youtube,
+      tamanoBytes: Number(video.tamano_bytes),
     }
     const ctx: Contexto = {
       ahora,
+      plazo: inicio + PLAZO_ETAPA_MS,
       // Anotación previa a un pedido que no se puede repetir. Si no se puede
       // guardar, tira: el pedido no se manda.
       antes: async (etapa) => {
@@ -107,7 +132,7 @@ export async function correrPublicador(d: DepsRunner): Promise<ResumenPublicador
     try {
       r = await red({ etapa: envio.etapa, ids_externos: envio.ids_externos ?? {} }, pieza, ctx)
     } catch (e) {
-      const clasificado = clasificarError(e)
+      const clasificado = clasificarError(e, NOMBRE_RED[envio.plataforma])
       const intentos = (envio.intentos ?? 0) + 1
       const espera = clasificado.transitorio ? esperaDeReintento(intentos) : null
       console.error('[publicador]', envio.plataforma, envio.id, e)
