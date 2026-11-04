@@ -36,6 +36,9 @@ export interface VideoFila {
   orden: number
   origen: 'subida' | 'drive'
   drive_file_id: string | null
+  /** Subida reanudable a Storage en curso (solo videos de Drive a medio copiar). */
+  drive_subida_url: string | null
+  drive_copiado_bytes: number
   nombre_archivo: string
   tamano_bytes: number
   video_path: string | null
@@ -54,6 +57,14 @@ export interface VideoFila {
   programado_para: string | null
   hora_manual: boolean
   pausado: boolean
+  /** La propiedad del video: si tiene, responde los comentarios al publicarse (ver `automatizacion`). */
+  property_id: string | null
+  /** Palabra, frases, privado y modo (`AutomatizacionVideo`); se valida al guardar y otra vez al conectar. */
+  automatizacion: unknown
+  /** El reel de `property_reels` con el que quedó conectado al publicarse. */
+  reel_id: string | null
+  /** Por qué no se pudo conectar (el video salió igual). */
+  automatizacion_error: string | null
   /** Cuándo la limpieza de 30 días borró el archivo de Storage (ya no hay video para ver). */
   archivo_borrado_at: string | null
   created_at: string

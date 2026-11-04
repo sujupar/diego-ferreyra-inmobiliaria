@@ -92,7 +92,8 @@ async function etapaCrearContenedor(reel: FilaReel, resumen: ResumenCorrida): Pr
   // corrida pueden haber pasado horas y la landing podría haberse despublicado.
   // Publicar un reel que invita a pedir información, sin lugar adonde mandar a
   // la persona, es peor que no publicarlo.
-  if (!(await landingSigueViva(reel.property_id))) {
+  // Los de la ficha siempre tienen propiedad; uno sin propiedad (personalizado de Publicaciones) no se sube por acá.
+  if (!reel.property_id || !(await landingSigueViva(reel.property_id))) {
     await marcar(reel.id, {
       estado: 'fallido',
       ultimo_error: 'La landing de la propiedad no está publicada. Publicala y reintentá.',

@@ -9,6 +9,7 @@ import { CheckCircle2, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { aHoraArgentina } from '@/lib/publicaciones/calendario'
 import type { EnvioFila, Plataforma, VideoVista } from '@/lib/publicaciones/tipos'
+import { EstadoComentarios } from './EstadoComentarios'
 import { EstadoRedes } from './EstadoRedes'
 import { Miniatura } from './FilaVideo'
 import { diaLargo } from './formato'
@@ -17,7 +18,7 @@ import { api } from './leer-json'
 
 type VideoPublicado = VideoVista & { envios: EnvioFila[] }
 
-const REDES_FASE: Plataforma[] = ['instagram', 'facebook']
+const REDES_FASE: Plataforma[] = ['instagram', 'facebook', 'youtube', 'tiktok']
 const PERIODOS = [
   { dias: 7, etiqueta: 'Últimos 7 días' },
   { dias: 30, etiqueta: 'Últimos 30 días' },
@@ -135,6 +136,7 @@ export function PestanaPublicado() {
                     reintentando={reintentando}
                     onReintentar={(e) => void reintentar(e)}
                   />
+                  <EstadoComentarios video={v} envios={v.envios} onConectado={() => void cargar()} />
                 </div>
               </li>
             )

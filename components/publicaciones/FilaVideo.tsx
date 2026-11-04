@@ -63,11 +63,11 @@ export function FilaVideo({ video, progreso, errorLocal, faltaArchivo, onReinten
             ) : (
               <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
             )}
-            {sinVoz ? 'Sin voz: escribí la descripción' : etiquetaEtapa(video.etapa, progreso)}
+            {sinVoz ? 'Sin voz: escribí la descripción' : etiquetaEtapa(video.etapa, progreso, video.origen)}
           </p>
         )}
         {video.etapa === 'subiendo' && progreso !== undefined && (
-          <Progress value={progreso} className="h-1.5" aria-label="Progreso de subida" />
+          <Progress value={progreso} className="h-1.5" aria-label={video.origen === 'drive' ? 'Progreso de la copia desde Drive' : 'Progreso de subida'} />
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1">

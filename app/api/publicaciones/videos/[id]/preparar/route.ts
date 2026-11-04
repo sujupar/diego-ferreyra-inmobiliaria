@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { contenidoAuth } from '@/lib/contenido/route-auth'
 import { avanzarPreparacion, EstiloNoAprendido, VideoNoEncontrado } from '@/lib/publicaciones/servidor/preparar'
+import { conUrls } from '@/lib/publicaciones/servidor/tandas'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -12,7 +13,8 @@ export async function POST(_req: Request, { params }: Ctx) {
   const { id } = await params
   try {
     const video = await avanzarPreparacion(id)
-    return NextResponse.json({ video })
+    // Con las URLs armadas: sin ellas la pantalla perdía la miniatura y el video hasta recargar.
+    return NextResponse.json({ video: conUrls(video) })
   } catch (e) {
     if (e instanceof EstiloNoAprendido) return NextResponse.json({ error: e.message }, { status: 409 })
     if (e instanceof VideoNoEncontrado) return NextResponse.json({ error: e.message }, { status: 404 })

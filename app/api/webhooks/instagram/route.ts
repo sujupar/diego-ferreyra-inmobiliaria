@@ -22,6 +22,7 @@
  * El único caso que NO responde 200 es la firma inválida: ahí 403, a propósito.
  */
 import { NextRequest, NextResponse } from 'next/server'
+import { leerComentariosDePagina } from '@/lib/integrations/facebook/webhook'
 import { parsearAviso, verificarFirmaInstagram } from '@/lib/integrations/instagram/webhook'
 import { leerAjustes, procesarBoton, procesarComentario } from '@/lib/social/reels/procesador'
 
@@ -59,7 +60,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  const { comentarios, botones } = parsearAviso(cuerpo)
+  // Por esta misma dirección llegan los de Instagram (objeto `instagram`) y los de la
+  // Página de Facebook (objeto `page`, campo `feed`): misma firma, mismo procesador.
+  const aviso = parsearAviso(cuerpo)
+  const comentarios = [...aviso.comentarios, ...leerComentariosDePagina(cuerpo)]
+  const { botones } = aviso
   if (comentarios.length === 0 && botones.length === 0) {
     return NextResponse.json({ ok: true, nada: true })
   }

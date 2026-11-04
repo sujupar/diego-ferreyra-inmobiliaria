@@ -2413,6 +2413,47 @@ Plan `docs/superpowers/plans/2026-10-30-publicaciones-fase2-instagram-facebook.m
   SELECT plataforma, estado, count(*) FROM publicacion_envios GROUP BY 1, 2;
   ```
 
+### Publicaciones — Drive, comentarios (IG+FB), YouTube y TikTok (PR #70, 2026-11-04)
+
+Specs: `2026-10-29-publicacion-masiva-contenido-design.md` (Drive/YouTube/TikTok) y
+`2026-11-04-publicaciones-comentarios-y-privado-design.md` (aprobado). Planes homónimos en `docs/superpowers/plans/`.
+
+- **Drive:** enlace de carpeta o archivo (host EXACTO `drive.google.com`, id validado: viaja dentro de
+  `'ID' in parents`), solo lo compartido "Cualquier persona con el enlace" con `GOOGLE_API_KEY` (lo privado
+  exigiría el permiso restringido de Drive). El servidor copia Drive → Storage por partes de 6 MB con la
+  **subida reanudable (TUS) de Supabase**, verificada el 2026-11-04: partes de 6 MB exactos, `HEAD` devuelve
+  el offset. **Dónde quedó se le pregunta a Storage, nunca a nuestra base.** Un video de Drive solo sale de
+  `subiendo` por la copia del servidor (`transicionPermitida(…, 'drive')`).
+- **Comentarios y privado desde Publicaciones:** el video guarda `property_id` + `automatizacion` (validada con
+  las reglas de los reels). Al publicarse, `conectarAlPublicar` crea (o completa) UNA fila de `property_reels`
+  para las dos redes (`ig_media_id`, `fb_video_id`, `fb_post_id`). Sin landing publicada queda Apagado con
+  aviso. Nunca tira: un fallo queda en `automatizacion_error` con "Conectar de nuevo".
+  - **Facebook:** el webhook es la misma ruta (`object:'page'`, campo `feed`). La app tiene que estar
+    suscrita al objeto `page`: `scripts/suscribir-webhook-instagram.ts --con-mensajes --con-facebook`
+    DESPUÉS del deploy. El reel de la Página tiene `post_id` SIN la página (`1092…`); la publicación del aviso
+    es `{página}_{post}` (verificado 2026-11-04). Respuesta pública `POST /{comentario}/comments` con token de
+    Página; el privado sale por el MISMO `POST /{página}/messages` (`recipient.comment_id`) que Instagram.
+    **En Modo prueba, Facebook siempre simula** (no da usuario para reconocer cuentas de prueba).
+- **YouTube:** OAuth Google (`/api/oauth/google/start|callback`, solo admin/dueño, `state` firmado + nonce
+  en cookie, solo `youtube.upload` + `youtube.readonly`). Subida reanudable de YouTube por partes de 8 MB.
+  **La sesión se anota en la base ANTES del primer byte** (`ctx.anotarIds`): sin eso, un corte en la última
+  parte (Google ya creó el video, la respuesta no llegó) hacía subir un SEGUNDO video público. Ante la duda se
+  pregunta a la sesión (`bytes */total`). Proyecto sin auditar → YouTube lo deja privado aunque se pida
+  público: queda `ids.privado` y la pantalla lo avisa. Falta pedir la auditoría (formulario "YouTube API
+  Services – Audit and Quota Extension").
+- **TikTok:** OAuth (`/api/oauth/tiktok/*`, `video.upload`), subida en partes a la **bandeja de borradores**
+  (`inbox`, `FILE_UPLOAD`: TikTok no baja de una URL de Supabase sin verificar el dominio). Partes de 8 MB y la
+  última se queda con el resto. Queda "En borradores" y se termina desde la app. TikTok cambia la llave de
+  renovación en cada renovación: **guardarla o la próxima falla**. Pocos borradores pendientes a la vez
+  (`spam_risk_too_many_pending_share`): espera y reintenta.
+- **Reglas nuevas del publicador:** una red sin conectar deja sus envíos ESPERANDO con el motivo, sin gastar
+  intentos (`redPendiente`); un envío que nunca arrancó y está atrasado **más de 24 h no sale solo** (fallido
+  con "Reintentar": evita la ráfaga al prender el interruptor o conectar YouTube tarde); YouTube/TikTok se
+  rinden a las 12 h; `clasificarError(e, red)` habla de la red correcta.
+- **Conectar YouTube/TikTok solo anda en `inmodf.com.ar`**: es el único redirect registrado en Google y TikTok
+  (no en las vistas previas de Netlify).
+- **Pruebas:** `npx vitest run --config vitest.publicaciones.config.ts` (682, incluye reels e Instagram).
+
 ## Sección Consultas — Entrega 2: carga instantánea, conectar avisos y Estadísticas (PR #63, 2026-10-29)
 
 Spec `docs/superpowers/specs/2026-10-29-consultas-rapidas-y-estadisticas-design.md`; plan homónimo.

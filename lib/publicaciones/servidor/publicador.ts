@@ -11,10 +11,17 @@ import {
   subirPorUrl,
 } from '@/lib/integrations/facebook/reels'
 import { crearContenedorReel, estadoContenedor, publicarContenedor } from '@/lib/integrations/instagram/publicar'
+import { clienteTiktok } from '@/lib/integrations/tiktok/subida'
+import { clienteYoutube } from '@/lib/integrations/youtube/subida'
 import { BUCKET, publicacionesDb, urlPublica } from '../db'
 import { listoParaBorrar } from '../publicador/limpieza'
 import { avanzarFacebook, avanzarInstagram } from '../publicador/redes'
 import { correrPublicador, type Candidato, type ResumenPublicador } from '../publicador/runner'
+import { avanzarTiktok } from '../publicador/tiktok'
+import { avanzarYoutube } from '../publicador/youtube'
+import type { Plataforma } from '../tipos'
+import { configGoogle, configTiktok, llaveDeTiktok, llaveDeYoutube, resumenConexiones } from './conexiones'
+import { conectarAlPublicar } from './conexion'
 import type { EnvioFila, VideoFila } from '../tipos'
 
 /**
@@ -37,7 +44,7 @@ export async function candidatos(ahora: Date): Promise<Candidato[]> {
     .from('publicacion_envios')
     .select('*, publicacion_videos!inner(*, publicacion_tandas!inner(estado))')
     .in('estado', ['programado', 'en_curso'])
-    .in('plataforma', ['instagram', 'facebook'])
+    .in('plataforma', ['instagram', 'facebook', 'youtube', 'tiktok'])
     .or(`proximo_intento.is.null,proximo_intento.lte.${iso}`)
     .lte('publicacion_videos.programado_para', iso)
     .eq('publicacion_videos.pausado', false)
@@ -115,8 +122,31 @@ export async function limpiarArchivosViejos(ahora: Date, limite = 20): Promise<n
   return borrados
 }
 
+/** Una parte del video desde nuestro Storage (público), por rango: YouTube recibe los bytes, no un enlace. */
+async function leerParteDeStorage(url: string, desde: number, hasta: number, techoMs: number): Promise<Uint8Array<ArrayBuffer>> {
+  const res = await fetch(url, { headers: { Range: `bytes=${desde}-${hasta}` }, signal: AbortSignal.timeout(techoMs) })
+  if (res.status !== 206 && !(res.status === 200 && desde === 0)) throw new Error(`Storage no devolvió la parte del video (${res.status})`)
+  return new Uint8Array(await res.arrayBuffer())
+}
+
+/** Lo que una red necesita para publicar, preguntado UNA vez por corrida. */
+function redesPendientes(): (p: Plataforma) => Promise<string | null> {
+  let conexiones: Promise<Awaited<ReturnType<typeof resumenConexiones>>> | null = null
+  return async (p) => {
+    if (p !== 'youtube' && p !== 'tiktok') return null
+    if (p === 'youtube' && !configGoogle()) return 'Falta configurar la conexión con Google. Avisale al administrador.'
+    if (p === 'tiktok' && !configTiktok()) return 'Falta configurar la conexión con TikTok. Avisale al administrador.'
+    conexiones ??= resumenConexiones()
+    const c = (await conexiones).find((x) => x.plataforma === p)
+    if (c?.conectada) return null
+    return p === 'youtube' ? 'YouTube no está conectado. Conectalo en Ajustes de Publicaciones.' : 'TikTok no está conectado. Conectalo en Ajustes de Publicaciones.'
+  }
+}
+
 export async function correrPublicacion(): Promise<ResumenPublicador & { archivosBorrados: number }> {
   const inicio = Date.now()
+  const youtube = clienteYoutube(() => llaveDeYoutube(new Date()))
+  const tiktok = clienteTiktok(() => llaveDeTiktok(new Date()))
   const resumen = await correrPublicador({
     ahora: () => new Date(),
     automatica,
@@ -125,7 +155,50 @@ export async function correrPublicacion(): Promise<ResumenPublicador & { archivo
     guardar,
     urlPublica,
     presupuestoMs: PRESUPUESTO_MS,
+    redPendiente: redesPendientes(),
+    // Un video conectado a una propiedad empieza a responder comentarios apenas sale.
+    alPublicar: async (c, r) => {
+      // Sin configuración no hay nada que conectar (un personalizado no tiene propiedad, pero sí configuración).
+      if (!c.video.automatizacion) return
+      if (c.envio.plataforma !== 'instagram' && c.envio.plataforma !== 'facebook') return
+      // Si la corrida ya va muy avanzada, no se arriesga el corte de Netlify: queda para "Conectar de nuevo".
+      if (Date.now() - inicio > PRESUPUESTO_MS * 2) {
+        await publicacionesDb()
+          .from('publicacion_videos')
+          .update({ automatizacion_error: 'Salió, pero no hubo tiempo de conectar los comentarios. Tocá "Conectar de nuevo".' })
+          .eq('id', c.video.id)
+        return
+      }
+      await conectarAlPublicar(c.video.id, { plataforma: c.envio.plataforma, ids_externos: r.ids }, c.video.descripcion)
+    },
     redes: {
+      youtube: (e, p, ctx) =>
+        avanzarYoutube(
+          e,
+          p,
+          {
+            ahora: () => Date.now(),
+            crearSesion: youtube.crearSesion,
+            estadoSubida: youtube.estadoSubida,
+            leerParte: leerParteDeStorage,
+            subirParte: youtube.subirParte,
+            privacidad: youtube.privacidad,
+          },
+          ctx,
+        ),
+      tiktok: (e, p, ctx) =>
+        avanzarTiktok(
+          e,
+          p,
+          {
+            ahora: () => Date.now(),
+            iniciar: tiktok.iniciar,
+            estado: tiktok.estado,
+            leerParte: leerParteDeStorage,
+            subirParte: tiktok.subirParte,
+          },
+          ctx,
+        ),
       instagram: (e, p, ctx) =>
         avanzarInstagram(
           e,

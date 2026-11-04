@@ -13,6 +13,7 @@ import {
 import { BUCKET, publicacionesDb, urlPublica } from '../db'
 import { sincronizarEnvios } from '../envios'
 import { cambiosDeReintento } from '../publicador/maquina'
+import { sinConfirmar, validarAutomatizacion } from '../automatizacion'
 import { ajustarDescripcion, ajustarTituloYoutube } from '../textos'
 import type { EnvioFila, Plataforma, TandaFila, VideoFila, VideoVista } from '../tipos'
 import {
@@ -36,7 +37,7 @@ export function conUrls(v: VideoFila): VideoConUrls {
   }
 }
 
-function dbError(e: { message: string } | null): void {
+export function dbError(e: { message: string } | null): void {
   if (e) throw new Error(`DB: ${e.message}`)
 }
 
@@ -47,7 +48,7 @@ export async function leerTanda(id: string): Promise<TandaFila> {
   return data as TandaFila
 }
 
-async function videosDeTanda(tandaId: string): Promise<VideoFila[]> {
+export async function videosDeTanda(tandaId: string): Promise<VideoFila[]> {
   const { data, error } = await publicacionesDb()
     .from('publicacion_videos')
     .select('*')
@@ -57,7 +58,7 @@ async function videosDeTanda(tandaId: string): Promise<VideoFila[]> {
   return (data ?? []) as VideoFila[]
 }
 
-async function leerVideo(id: string): Promise<VideoFila> {
+export async function leerVideo(id: string): Promise<VideoFila> {
   const { data, error } = await publicacionesDb().from('publicacion_videos').select('*').eq('id', id).maybeSingle()
   dbError(error)
   if (!data) throw new ErrorHttp(404, 'El video no existe')
@@ -226,7 +227,7 @@ export async function actualizarVideo(id: string, cambios: z.infer<typeof patchV
     patch[k] = p
   }
   if (cambios.etapa !== undefined && cambios.etapa !== v.etapa) {
-    if (!transicionPermitida(v.etapa, cambios.etapa, v.error_etapa)) {
+    if (!transicionPermitida(v.etapa, cambios.etapa, v.error_etapa, v.origen)) {
       throw new ErrorHttp(409, 'El video no está en un paso que permita eso')
     }
     patch.etapa = cambios.etapa
@@ -256,6 +257,26 @@ export async function actualizarVideo(id: string, cambios: z.infer<typeof patchV
   }
   for (const k of ['hora_manual', 'orden', 'pausado', 'duracion_seg'] as const) {
     if (cambios[k] !== undefined) patch[k] = cambios[k]
+  }
+  if (cambios.property_id !== undefined) {
+    patch.property_id = cambios.property_id
+    // Sin propiedad no hay a quién mandar al privado: la configuración se va con ella.
+    if (cambios.property_id === null) patch.automatizacion = null
+  }
+  if (cambios.automatizacion !== undefined && cambios.property_id !== null) {
+    if (cambios.automatizacion === null) {
+      patch.automatizacion = null
+    } else {
+      const config = validarAutomatizacion(cambios.automatizacion)
+      if (!config.ok) throw new ErrorHttp(400, config.error)
+      if (config.valor.tipo === 'personalizado') {
+        // Un personalizado no es de una propiedad: lleva a su propio enlace.
+        patch.property_id = null
+      } else if (!(cambios.property_id ?? v.property_id)) {
+        throw new ErrorHttp(400, 'Elegí primero la propiedad del video')
+      }
+      patch.automatizacion = config.valor
+    }
   }
   if (Object.keys(patch).length === 0) return conUrls(v)
 
@@ -358,6 +379,10 @@ export async function confirmarTanda(tandaId: string): Promise<{ videos: number;
   const sinTerminar = videos.filter((v) => v.etapa !== 'listo')
   if (sinTerminar.length) throw new ErrorHttp(409, `Faltan terminar ${sinTerminar.length} video(s)`)
   if (videos.some((v) => !v.programado_para)) throw new ErrorHttp(409, 'Hay videos sin día y hora')
+  const pendientes = sinConfirmar(videos)
+  if (pendientes.length) {
+    throw new ErrorHttp(409, `Confirmá los comentarios de: ${pendientes.slice(0, 3).join(', ')}${pendientes.length > 3 ? '…' : ''}`)
+  }
   if (tanda.estado === 'borrador') {
     // "Todos ya" arranca a los 5 minutos y revisar lleva más: los horarios del ritmo
     // que se vencieron se vuelven a armar desde ahora, en vez de rebotar.

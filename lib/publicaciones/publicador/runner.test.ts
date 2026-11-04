@@ -225,3 +225,130 @@ describe('correrPublicador', () => {
     expect(d.redes.facebook).not.toHaveBeenCalled()
   })
 })
+
+describe('correrPublicador — cuidados de la revisión', () => {
+  it('lo que la red anota durante la etapa (la sesión abierta) se guarda en el envío aunque después tire', async () => {
+    const d = deps({
+      candidatos: async () => [candidato('instagram')],
+      redes: {
+        instagram: async (_e, _p, ctx) => {
+          await ctx.anotarIds?.('subiendo', { upload_url: 'U1' })
+          throw Object.assign(new Error('timeout'), { name: 'TimeoutError' })
+        },
+      },
+    })
+    await correrPublicador(d)
+    expect(d.guardados[0].cambios).toEqual({ etapa: 'subiendo', ids_externos: { upload_url: 'U1' }, estado: 'en_curso' })
+  })
+
+  it('un video que nunca arrancó y está atrasado más de un día no sale de golpe: queda para confirmar', async () => {
+    const red = vi.fn()
+    const c = candidato('instagram')
+    c.video = { ...c.video, programado_para: new Date(AHORA.getTime() - 26 * 3600_000).toISOString() }
+    const d = deps({ candidatos: async () => [c], redes: { instagram: red } })
+    await correrPublicador(d)
+    expect(red).not.toHaveBeenCalled()
+    expect(d.guardados[0].cambios).toMatchObject({ estado: 'fallido', ultimo_error: expect.stringMatching(/más de un día.*Reintentar/) })
+  })
+
+  it('con Reintentar, el atrasado sale igual', async () => {
+    const red = vi.fn(async () => ({ etapa: 'contenedor', ids: {}, estado: 'en_curso' as const, esperarMs: 0 }))
+    const c = candidato('instagram')
+    c.video = { ...c.video, programado_para: new Date(AHORA.getTime() - 26 * 3600_000).toISOString() }
+    c.envio = { ...c.envio, ids_externos: { reintento: true } }
+    await correrPublicador(deps({ candidatos: async () => [c], redes: { instagram: red } }))
+    expect(red).toHaveBeenCalled()
+  })
+
+  it('cuando se acaban los reintentos, el mensaje no promete que se reintenta solo', async () => {
+    const c = candidato('instagram')
+    c.envio = { ...c.envio, intentos: 5 }
+    const d = deps({
+      candidatos: async () => [c],
+      redes: {
+        instagram: async () => {
+          throw Object.assign(new Error('Instagram 503'), { httpStatus: 503 })
+        },
+      },
+    })
+    await correrPublicador(d)
+    const g = d.guardados.at(-1)!.cambios
+    expect(g.estado).toBe('fallido')
+    expect(String(g.ultimo_error)).not.toMatch(/Se reintenta solo/)
+    expect(String(g.ultimo_error)).toMatch(/Reintentar/)
+  })
+})
+
+describe('correrPublicador — red sin conectar', () => {
+  it('el envío espera con el motivo a la vista, sin gastar intentos ni llamar a la red', async () => {
+    const youtube = vi.fn()
+    const yt = candidato('instagram', 'yt1')
+    yt.envio = { ...yt.envio, plataforma: 'youtube' }
+    const d = deps({
+      candidatos: async () => [yt],
+      redes: { youtube },
+      redPendiente: async (p) => (p === 'youtube' ? 'YouTube no está conectado. Conectalo en Ajustes de Publicaciones.' : null),
+    })
+    const r = await correrPublicador(d)
+    expect(youtube).not.toHaveBeenCalled()
+    expect(r.fallidos).toBe(0)
+    const g = d.guardados.find((x) => x.id === 'yt1')!
+    expect(g.cambios).toEqual({
+      ultimo_error: 'YouTube no está conectado. Conectalo en Ajustes de Publicaciones.',
+      proximo_intento: new Date(AHORA.getTime() + 10 * 60_000).toISOString(),
+    })
+  })
+
+  it('YouTube recibe el título, el peso del archivo y un plazo para cortar a tiempo', async () => {
+    const youtube = vi.fn(async () => ({ etapa: 'subiendo', ids: {}, estado: 'en_curso' as const, esperarMs: 0 }))
+    const yt = candidato('instagram', 'yt2')
+    yt.envio = { ...yt.envio, plataforma: 'youtube' }
+    yt.video = { ...yt.video, titulo_youtube: 'Título', tamano_bytes: 1234 }
+    await correrPublicador(deps({ candidatos: async () => [yt], redes: { youtube } }))
+    const [, pieza, ctx] = youtube.mock.calls[0] as unknown as [unknown, { titulo: string; tamanoBytes: number }, { plazo: number }]
+    expect(pieza).toMatchObject({ titulo: 'Título', tamanoBytes: 1234 })
+    expect(ctx.plazo).toBeGreaterThan(AHORA.getTime())
+  })
+})
+
+describe('correrPublicador — al publicar', () => {
+  const publicado = async () => ({ etapa: 'contenedor', ids: { media_id: 'm1' }, estado: 'publicado' as const, enlace: null })
+  const enCurso = async () => ({ etapa: 'iniciado', ids: {}, estado: 'en_curso' as const, esperarMs: 0 })
+
+  it('avisa lo que salió (para conectar los comentarios), y solo eso', async () => {
+    const alPublicar = vi.fn(async () => undefined)
+    await correrPublicador(deps({ alPublicar, redes: { instagram: publicado, facebook: enCurso } }))
+    expect(alPublicar).toHaveBeenCalledTimes(1)
+    expect(alPublicar).toHaveBeenCalledWith(
+      expect.objectContaining({ envio: expect.objectContaining({ plataforma: 'instagram' }) }),
+      expect.objectContaining({ ids: { media_id: 'm1' } }),
+    )
+  })
+
+  it('si conectar falla, el envío igual queda publicado y la corrida sigue', async () => {
+    const d = deps({
+      alPublicar: async () => {
+        throw new Error('base caída')
+      },
+      redes: { instagram: publicado, facebook: publicado },
+    })
+    const r = await correrPublicador(d)
+    expect(r.publicados).toBe(2)
+    expect(d.guardados.filter((g) => g.cambios.estado === 'publicado')).toHaveLength(2)
+  })
+
+  it('si el guardado de "publicado" no se pudo escribir, no conecta todavía (la corrida siguiente lo reconoce)', async () => {
+    const alPublicar = vi.fn(async () => undefined)
+    await correrPublicador(
+      deps({
+        alPublicar,
+        guardar: async () => {
+          throw new Error('DB: caída')
+        },
+        redes: { instagram: publicado },
+        candidatos: async () => [candidato('instagram')],
+      }),
+    )
+    expect(alPublicar).not.toHaveBeenCalled()
+  })
+})

@@ -26,12 +26,27 @@ export interface Pieza {
   videoUrl: string
   descripcion: string
   duracionSeg?: number | null
+  /** YouTube: el título (si está vacío se arma uno) y el peso, que la subida reanudable declara al abrirse. */
+  titulo?: string
+  tamanoBytes?: number
 }
 
 export interface Contexto {
   ahora: Date
   /** Guarda la etapa ANTES de un pedido que no se puede repetir. Si falla, no se manda nada. */
   antes: (etapa: string) => Promise<void>
+  /**
+   * Hasta cuándo puede trabajar esta etapa (ms desde epoch). Solo la usa YouTube,
+   * que sube por partes y tiene que cortar antes del límite de Netlify.
+   */
+  plazo?: number
+  /**
+   * Guarda los identificadores de una subida YA ABIERTA antes de mandarle bytes.
+   * Sin esto, un corte en la última parte (la red recibió todo y creó el video,
+   * pero la respuesta no llegó) dejaba la base sin la sesión y la corrida
+   * siguiente subía un SEGUNDO video. Tira si el envío se canceló.
+   */
+  anotarIds?: (etapa: string, ids: Record<string, unknown>) => Promise<void>
 }
 
 export interface ResultadoEtapa {
@@ -53,10 +68,10 @@ export const PLAZO_MAXIMO_MS = 12 * 3600_000
 const MAX_RECREADOS = 2
 const UN_MINUTO = 60_000
 
-const PLAZO_VENCIDO = (red: string) =>
+export const PLAZO_VENCIDO = (red: string) =>
   `${red} no terminó de procesar el video en 12 horas. Revisá la cuenta y, si no salió, tocá Reintentar.`
 
-function vencioElPlazo(ids: Record<string, unknown>, ahora: Date): boolean {
+export function vencioElPlazo(ids: Record<string, unknown>, ahora: Date): boolean {
   const inicio = typeof ids.inicio_at === 'string' ? Date.parse(ids.inicio_at) : NaN
   return Number.isFinite(inicio) && ahora.getTime() - inicio > PLAZO_MAXIMO_MS
 }

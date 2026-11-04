@@ -19,6 +19,7 @@
  *   node --env-file=.env.local --import tsx scripts/suscribir-webhook-instagram.ts --verificar
  *   node --env-file=.env.local --import tsx scripts/suscribir-webhook-instagram.ts
  *   node --env-file=.env.local --import tsx scripts/suscribir-webhook-instagram.ts --con-mensajes   (con pages_messaging)
+ *   ... --con-mensajes --con-facebook   (también los comentarios de la Página de Facebook)
  */
 
 const API = 'https://graph.facebook.com/v21.0'
@@ -122,6 +123,19 @@ async function main() {
   })
   if (alta.error) throw new Error(`alta de la app: ${JSON.stringify(alta.error)}`)
   console.log('app suscrita al objeto instagram ✓')
+
+  // 1b) Los comentarios de la Página de Facebook (objeto `page`, campo `feed`) a la MISMA
+  // dirección: la ruta los reconoce por el objeto. Hasta el 2026-11-04 la app solo escuchaba
+  // `instagram`, así que los comentarios de los videos de Facebook nunca llegaban.
+  if (process.argv.includes('--con-facebook')) {
+    const altaPage = await pedir(`${API}/${appId}/subscriptions?access_token=${appId}|${appSecret}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ object: 'page', callback_url: callback, fields: 'feed', verify_token: verifyToken }),
+    })
+    if (altaPage.error) throw new Error(`alta del objeto page: ${JSON.stringify(altaPage.error)}`)
+    console.log('app suscrita al objeto page (comentarios de Facebook) ✓')
+  }
 
   // 2) La página (con SU token, no el de usuario de sistema).
   const { pageId, pageToken } = await tokenDePagina(token)

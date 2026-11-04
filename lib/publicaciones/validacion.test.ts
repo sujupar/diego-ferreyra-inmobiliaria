@@ -79,6 +79,11 @@ describe('transicionPermitida', () => {
     expect(transicionPermitida('extrayendo', 'transcribiendo', null)).toBe(true)
   })
 
+  it('un video de Drive no sale de "subiendo" por pedido del navegador: solo la copia del servidor lo termina', () => {
+    expect(transicionPermitida('subiendo', 'extrayendo', null, 'drive')).toBe(false)
+    expect(transicionPermitida('extrayendo', 'transcribiendo', null, 'drive')).toBe(true)
+  })
+
   it('no se puede saltar etapas ni volver atrás', () => {
     expect(transicionPermitida('subiendo', 'transcribiendo', null)).toBe(false)
     expect(transicionPermitida('listo', 'extrayendo', null)).toBe(false)

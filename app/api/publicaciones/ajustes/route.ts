@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { contenidoAuth } from '@/lib/contenido/route-auth'
 import { publicacionesDb } from '@/lib/publicaciones/db'
 import type { EstadoEstilo } from '@/lib/publicaciones/estilo'
+import { configGoogle, configTiktok, resumenConexiones } from '@/lib/publicaciones/servidor/conexiones'
 import { resumenEstilo } from '@/lib/publicaciones/servidor/estilo'
 import { ErrorHttp, leerBody, respuestaDeError } from '@/lib/publicaciones/servidor/http'
 import { patchAjustesSchema } from '@/lib/publicaciones/validacion'
@@ -27,10 +28,17 @@ export async function GET() {
   const auth = await contenidoAuth()
   if (auth.error || !auth.user) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {
-    const ajustes = await leer()
+    const [ajustes, conexiones] = await Promise.all([leer(), resumenConexiones()])
+    const puede = ROLES_INTERRUPTOR.includes(auth.user.profile.role)
     return NextResponse.json({
       ajustes,
-      puedeCambiarInterruptor: ROLES_INTERRUPTOR.includes(auth.user.profile.role),
+      puedeCambiarInterruptor: puede,
+      // Quién conecta cuentas: los mismos que prenden el interruptor. Nunca viajan las llaves, solo si hay.
+      conexiones: conexiones.map((c) => ({
+        ...c,
+        configurada: c.plataforma === 'youtube' ? !!configGoogle() : !!configTiktok(),
+      })),
+      puedeConectar: puede,
     })
   } catch (e) {
     return respuestaDeError(e, 'leer ajustes')

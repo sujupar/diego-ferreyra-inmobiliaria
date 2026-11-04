@@ -50,6 +50,18 @@ export const altaVideosSchema = z
   })
   .strict()
 
+export const listarDriveSchema = z.object({ enlace: z.string().trim().min(1).max(2000) }).strict()
+
+const idDrive = z.string().regex(/^[A-Za-z0-9_-]{10,200}$/)
+export const altaDriveSchema = z
+  .object({
+    archivos: z
+      .array(z.object({ id: idDrive, resourceKey: z.string().regex(/^[A-Za-z0-9_-]{1,100}$/).nullable() }).strict())
+      .min(1)
+      .max(MAX_VIDEOS_POR_ALTA),
+  })
+  .strict()
+
 /** Etapas que el navegador puede pedir; `listo` y `error` las pone solo el servidor. */
 const ETAPAS_DEL_CLIENTE = ['subiendo', 'extrayendo', 'transcribiendo', 'describiendo'] as const
 
@@ -67,6 +79,10 @@ export const patchVideoSchema = z
     miniatura_path: z.string().max(300),
     audio_path: z.string().max(300),
     video_path: z.string().max(300),
+    /** La propiedad del video (null = sin propiedad). El permiso lo chequea la ruta. */
+    property_id: z.uuid().nullable(),
+    /** La forma se valida con `validarAutomatizacion` en el servidor (mensaje legible). */
+    automatizacion: z.unknown().nullable(),
   })
   .partial()
   .strict()
@@ -114,9 +130,12 @@ export function transicionPermitida(
   actual: EtapaPreparacion,
   nueva: EtapaPreparacion,
   errorEtapa: EtapaPreparacion | null,
+  origen: 'subida' | 'drive' = 'subida',
 ): boolean {
   if (actual === 'error') return nueva === (errorEtapa ?? 'extrayendo')
-  if (actual === 'subiendo') return nueva === 'extrayendo'
+  // Uno de Drive lo termina la copia del servidor (`traerDeDrive`), que sabe si llegó el último byte.
+  // Si el navegador pudiera hacerlo, un video a medio copiar seguiría como si estuviera entero.
+  if (actual === 'subiendo') return origen !== 'drive' && nueva === 'extrayendo'
   if (actual === 'extrayendo') return nueva === 'transcribiendo'
   return false
 }

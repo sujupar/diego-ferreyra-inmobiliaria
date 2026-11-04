@@ -81,6 +81,8 @@ interface Props {
   palabraDeEjemplo: string
   /** Slug de la landing publicada; sin él se muestra que falta. */
   slugLanding: string | null
+  /** Publicaciones, comentario "personalizado": el botón lleva a este enlace en vez de a una landing. */
+  enlaceDestino?: string | null
   /** Si los privados están habilitados. Apagados → hoy se usan las frases de respaldo. */
   privadosActivos: boolean
   deshabilitado?: boolean
@@ -120,7 +122,7 @@ function Seccion({ numero, titulo, ayuda, children }: { numero: number; titulo: 
   )
 }
 
-export function RevisionMensajes({ valor, onCambiar, palabraDeEjemplo, slugLanding, privadosActivos, deshabilitado }: Props) {
+export function RevisionMensajes({ valor, onCambiar, palabraDeEjemplo, slugLanding, enlaceDestino, privadosActivos, deshabilitado }: Props) {
   const cambiar = (campos: Partial<MensajesEditables>) => onCambiar({ ...valor, ...campos })
   const cambiarFrase = (grupo: 'respuestas_con_privado' | 'respuestas_sin_privado', i: number, texto: string) => {
     const frases = [...valor[grupo]]
@@ -220,7 +222,13 @@ export function RevisionMensajes({ valor, onCambiar, palabraDeEjemplo, slugLandi
             <p className="mt-1 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
               <span className="flex min-w-0 items-center gap-1 break-all text-primary">
                 <Link2 className="h-3 w-3 shrink-0" aria-hidden />
-                {slugLanding ? `Abre ${BASE_ENLACE}/p/${slugLanding}` : 'Falta publicar la landing: sin ella no hay enlace para mandar'}
+                {enlaceDestino !== undefined
+                  ? enlaceDestino
+                    ? `Abre ${enlaceDestino.replace(/^https:\/\//, '')}`
+                    : 'Falta el enlace: poné a dónde lleva el botón'
+                  : slugLanding
+                    ? `Abre ${BASE_ENLACE}/p/${slugLanding}`
+                    : 'Falta publicar la landing: sin ella no hay enlace para mandar'}
               </span>
               <span className="shrink-0">{valor.dm_boton.trim().length}/{MAX_CARACTERES_BOTON}</span>
             </p>

@@ -49,31 +49,51 @@ export interface ErrorClasificado {
   mensaje: string
 }
 
-export function clasificarError(e: unknown): ErrorClasificado {
-  const x = (e ?? {}) as { code?: number; httpStatus?: number; message?: string; name?: string }
+/** Límites de cuota de YouTube (diarios o por usuario): esperar, no rendirse. */
+const MOTIVOS_DE_LIMITE_YT = new Set(['quotaExceeded', 'uploadLimitExceeded', 'rateLimitExceeded', 'userRateLimitExceeded'])
+
+export type RedQuePublica = 'Meta' | 'YouTube' | 'TikTok'
+
+export function clasificarError(e: unknown, red: RedQuePublica = 'Meta'): ErrorClasificado {
+  const x = (e ?? {}) as { code?: number; httpStatus?: number; message?: string; name?: string; motivo?: string | null }
   const code = typeof x.code === 'number' ? x.code : undefined
   const status = typeof x.httpStatus === 'number' ? x.httpStatus : undefined
-  const crudo = (x.message ?? String(e)).replace(/^(Instagram|Facebook) \d{3}: /, '').slice(0, 200)
+  const crudo = (x.message ?? String(e)).replace(/^(Instagram|Facebook|YouTube|TikTok) \d{3}( al [^:]+)?: /, '').slice(0, 200)
 
-  if (code === 190 || status === 401) {
+  // La cuenta no está conectada o se revocó el permiso: el mensaje ya dice qué hacer, y el envío espera.
+  if (x.name === 'ConexionVencida') return { transitorio: true, mensaje: x.message ?? `Volvé a conectar ${red}.` }
+  if (red === 'Meta' && (code === 190 || status === 401)) {
     return { transitorio: true, mensaje: 'El permiso de Meta venció o se revocó. Avisale al administrador.' }
   }
+  if (red !== 'Meta' && status === 401) {
+    return { transitorio: true, mensaje: `El permiso de ${red} venció. Volvé a conectar ${red} en Ajustes de Publicaciones.` }
+  }
+  // TikTok admite pocos borradores sin terminar a la vez: al publicar o borrar alguno en la app, se reintenta solo.
+  if (red === 'TikTok' && x.motivo === 'spam_risk_too_many_pending_share') {
+    return { transitorio: true, mensaje: 'TikTok tiene demasiados borradores sin terminar: publicá o borrá alguno en la app y se reintenta solo.' }
+  }
+  if (red === 'TikTok' && (x.motivo === 'rate_limit_exceeded' || x.motivo === 'spam_risk_too_many_posts')) {
+    return { transitorio: true, mensaje: 'TikTok pidió esperar (límite de subidas). Se reintenta solo.' }
+  }
+  if (red === 'YouTube' && x.motivo && MOTIVOS_DE_LIMITE_YT.has(x.motivo)) {
+    return { transitorio: true, mensaje: 'YouTube llegó al límite de subidas del día. Se reintenta solo.' }
+  }
   if ((code !== undefined && (CODIGOS_TRANSITORIOS.has(code) || (code >= 80001 && code <= 80014))) || status === 429) {
-    return { transitorio: true, mensaje: 'Meta pidió esperar (límite de publicaciones). Se reintenta solo.' }
+    return { transitorio: true, mensaje: `${red} pidió esperar (límite de publicaciones). Se reintenta solo.` }
   }
   if (status !== undefined && status >= 500) {
-    return { transitorio: true, mensaje: 'Meta no respondió bien. Se reintenta solo.' }
+    return { transitorio: true, mensaje: `${red} no respondió bien. Se reintenta solo.` }
   }
-  const esDeMeta = status !== undefined || code !== undefined
-  if (!esDeMeta && ['TypeError', 'AbortError', 'TimeoutError'].includes(x.name ?? '')) {
-    return { transitorio: true, mensaje: 'Se cortó la conexión con Meta. Se reintenta solo.' }
+  const esDeLaRed = status !== undefined || code !== undefined
+  if (!esDeLaRed && ['TypeError', 'AbortError', 'TimeoutError'].includes(x.name ?? '')) {
+    return { transitorio: true, mensaje: `Se cortó la conexión con ${red}. Se reintenta solo.` }
   }
-  if (!esDeMeta && /^DB: /.test(x.message ?? '')) {
+  if (!esDeLaRed && /^DB: /.test(x.message ?? '')) {
     return { transitorio: true, mensaje: 'Falló la base de datos de la plataforma. Se reintenta solo.' }
   }
-  // Sin códigos de Meta, el error es nuestro: decir qué pasó sin culpar a Meta.
-  if (!esDeMeta) return { transitorio: false, mensaje: `No se pudo publicar: ${crudo}` }
-  return { transitorio: false, mensaje: `Meta rechazó la publicación: ${crudo}` }
+  // Sin códigos de la red, el error es nuestro: decir qué pasó sin culpar a nadie.
+  if (!esDeLaRed) return { transitorio: false, mensaje: `No se pudo publicar: ${crudo}` }
+  return { transitorio: false, mensaje: `${red} rechazó la publicación: ${crudo}` }
 }
 
 /**

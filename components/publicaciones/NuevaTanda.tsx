@@ -15,6 +15,7 @@ import type { TandaFila, VideoVista } from '@/lib/publicaciones/tipos'
 import { TAMANO_MAXIMO } from '@/lib/publicaciones/validacion'
 import { fechaCorta } from './formato'
 import { api } from './leer-json'
+import type { ElegidoDrive } from './ElegirDeDrive'
 import { PasoCargar } from './PasoCargar'
 import { PasoRevisar } from './PasoRevisar'
 import { PasoRitmo } from './PasoRitmo'
@@ -203,7 +204,7 @@ export function NuevaTanda({ onProgramada }: { onProgramada: () => void }) {
       }
       // Un archivo que ya estaba a medio subir (se cerró la pestaña) se reengancha, no se duplica.
       const pendientes = new Map(
-        videosActuales.current.filter((v) => v.etapa === 'subiendo' && !archivos.current.has(v.id)).map((v) => [clave(v.nombre_archivo, v.tamano_bytes), v.id]),
+        videosActuales.current.filter((v) => v.etapa === 'subiendo' && v.origen !== 'drive' && !archivos.current.has(v.id)).map((v) => [clave(v.nombre_archivo, v.tamano_bytes), v.id]),
       )
       const nuevos: File[] = []
       for (const f of validos) {
@@ -242,6 +243,41 @@ export function NuevaTanda({ onProgramada }: { onProgramada: () => void }) {
       setEligiendo(true)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'No se pudieron agregar los videos')
+    } finally {
+      setAgregando(false)
+    }
+  }
+
+  /** Por la misma cola que los arrastres: así dos altas seguidas no crean dos tandas. */
+  const traerDrive = (elegidos: ElegidoDrive[]): Promise<boolean> => {
+    const resultado = eligiendoAhora.current.then(() => traerDriveAhora(elegidos))
+    eligiendoAhora.current = resultado.then(() => undefined)
+    return resultado
+  }
+
+  const traerDriveAhora = async (elegidos: ElegidoDrive[]): Promise<boolean> => {
+    setAgregando(true)
+    try {
+      let actual = tandaActual.current
+      if (!actual) {
+        actual = (await api<{ tanda: TandaFila }>('/api/publicaciones/tandas', { method: 'POST' })).tanda
+        tandaActual.current = actual
+        setTanda(actual)
+      }
+      const r = await api<{ agregados: number; repetidos: string[]; descartados: { nombre: string; motivo: string }[] }>(
+        `/api/publicaciones/tandas/${actual.id}/videos/drive`,
+        { method: 'POST', body: { archivos: elegidos } },
+      )
+      if (r.repetidos.length > 0) toast.info(`Ya está en la tanda: ${r.repetidos.join(', ')}`)
+      for (const d of r.descartados) toast.error(`${d.nombre}: ${d.motivo}`)
+      const det = await api<{ tanda: TandaFila; videos: VideoVista[] }>(`/api/publicaciones/tandas/${actual.id}`)
+      videosActuales.current = det.videos
+      setVideos(det.videos)
+      setEligiendo(true)
+      return true
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudieron traer los videos de Drive')
+      return false
     } finally {
       setAgregando(false)
     }
@@ -322,9 +358,10 @@ export function NuevaTanda({ onProgramada }: { onProgramada: () => void }) {
           videos={videos}
           progreso={cola.progreso}
           errores={cola.errores}
-          faltaArchivo={(v) => v.etapa === 'subiendo' && !archivos.current.has(v.id)}
+          faltaArchivo={(v) => v.etapa === 'subiendo' && v.origen !== 'drive' && !archivos.current.has(v.id)}
           agregando={agregando}
           onElegir={(l) => void elegir(l)}
+          onTraerDrive={traerDrive}
           onReintentar={(v) => void cola.reintentar(v)}
           onQuitar={(v) => void quitar(v)}
           onSiguiente={() => setPaso(2)}
