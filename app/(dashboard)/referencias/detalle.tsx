@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils'
 import type { VideoRef } from '@/lib/video-refs/repo'
 import { MultBadge, compacto, fechaCorta } from './grilla'
 
+const esHttp = (url: string) => /^https?:\/\//i.test(url)
+
 function Bloque({ titulo, texto }: { titulo: string; texto: string | null }) {
   if (!texto) return null
   return (
@@ -36,6 +38,7 @@ export default function Detalle({
         body: JSON.stringify({ id: r.id }),
       })
       const d = await res.json().catch(() => ({}))
+      if (res.status === 409) onChanged() // la ref ya cambió de estado: recargar para mostrar el real
       if (!res.ok) throw new Error(d.error || 'No se pudo iniciar el guion')
       onChanged() // la grilla recarga y empieza el poll cada 8s
     } catch (e) {
@@ -82,7 +85,7 @@ export default function Detalle({
                       .filter(Boolean).join(' · ')}
                   </p>
                 )}
-                {r.url_video && (
+                {r.url_video && esHttp(r.url_video) && (
                   <a
                     href={r.url_video} target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
