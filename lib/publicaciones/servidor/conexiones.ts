@@ -5,6 +5,7 @@
  */
 import { publicacionesDb } from '../db'
 import { ConexionVencida, refrescarGoogle, type ConfigGoogle, type TokensGoogle } from '../oauth/google'
+import { refrescarTiktok, type TokensTiktok } from '../oauth/tiktok'
 
 export type RedConectable = 'youtube' | 'tiktok'
 
@@ -67,6 +68,26 @@ export async function resumenConexiones(): Promise<ResumenConexion[]> {
     // Se informa SI hay llave, nunca la llave.
     return { plataforma: p, conectada: !!f?.tokens, cuenta: (f?.cuenta as string | null) ?? null, desde: (f?.updated_at as string | null) ?? null }
   })
+}
+
+/**
+ * La llave vigente de TikTok, renovándola si vence pronto. TikTok cambia también
+ * la llave de renovación en cada renovación: se guarda la nueva, o la próxima falla.
+ */
+export async function llaveDeTiktok(ahora: Date): Promise<string> {
+  const config = configTiktok()
+  if (!config) throw new ConexionVencida('Falta configurar la conexión con TikTok. Avisale al administrador.')
+  const db = publicacionesDb()
+  const { data, error } = await db.from('publicacion_conexiones').select('tokens').eq('plataforma', 'tiktok').maybeSingle()
+  if (error) throw new Error(`DB: ${error.message}`)
+  const t = data?.tokens as TokensTiktok | null | undefined
+  if (!t?.refresh_token) throw new ConexionVencida('TikTok no está conectado. Conectalo en Ajustes de Publicaciones.')
+  if (t.access_token && Date.parse(t.expira_en) - ahora.getTime() > MARGEN_MS) return t.access_token
+  const nueva = await refrescarTiktok(config, t.refresh_token, ahora)
+  const { error: e2 } = await db.from('publicacion_conexiones').update({ tokens: nueva, updated_at: ahora.toISOString() }).eq('plataforma', 'tiktok')
+  // Acá sí importa: si no se guarda la llave de renovación nueva, la vieja ya no sirve.
+  if (e2) throw new Error(`DB: no se pudo guardar la llave renovada de TikTok (${e2.message})`)
+  return nueva.access_token
 }
 
 /** Margen para no mandar una llave que vence en medio de una subida. */

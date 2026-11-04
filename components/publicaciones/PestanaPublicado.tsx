@@ -18,7 +18,7 @@ import { api } from './leer-json'
 
 type VideoPublicado = VideoVista & { envios: EnvioFila[] }
 
-const REDES_FASE: Plataforma[] = ['instagram', 'facebook']
+const REDES_FASE: Plataforma[] = ['instagram', 'facebook', 'youtube', 'tiktok']
 const PERIODOS = [
   { dias: 7, etiqueta: 'Últimos 7 días' },
   { dias: 30, etiqueta: 'Últimos 30 días' },

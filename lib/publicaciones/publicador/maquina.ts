@@ -68,6 +68,13 @@ export function clasificarError(e: unknown, red: RedQuePublica = 'Meta'): ErrorC
   if (red !== 'Meta' && status === 401) {
     return { transitorio: true, mensaje: `El permiso de ${red} venció. Volvé a conectar ${red} en Ajustes de Publicaciones.` }
   }
+  // TikTok admite pocos borradores sin terminar a la vez: al publicar o borrar alguno en la app, se reintenta solo.
+  if (red === 'TikTok' && x.motivo === 'spam_risk_too_many_pending_share') {
+    return { transitorio: true, mensaje: 'TikTok tiene demasiados borradores sin terminar: publicá o borrá alguno en la app y se reintenta solo.' }
+  }
+  if (red === 'TikTok' && (x.motivo === 'rate_limit_exceeded' || x.motivo === 'spam_risk_too_many_posts')) {
+    return { transitorio: true, mensaje: 'TikTok pidió esperar (límite de subidas). Se reintenta solo.' }
+  }
   if (red === 'YouTube' && x.motivo && MOTIVOS_DE_LIMITE_YT.has(x.motivo)) {
     return { transitorio: true, mensaje: 'YouTube llegó al límite de subidas del día. Se reintenta solo.' }
   }

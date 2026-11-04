@@ -11,14 +11,16 @@ import {
   subirPorUrl,
 } from '@/lib/integrations/facebook/reels'
 import { crearContenedorReel, estadoContenedor, publicarContenedor } from '@/lib/integrations/instagram/publicar'
+import { clienteTiktok } from '@/lib/integrations/tiktok/subida'
 import { clienteYoutube } from '@/lib/integrations/youtube/subida'
 import { BUCKET, publicacionesDb, urlPublica } from '../db'
 import { listoParaBorrar } from '../publicador/limpieza'
 import { avanzarFacebook, avanzarInstagram } from '../publicador/redes'
 import { correrPublicador, type Candidato, type ResumenPublicador } from '../publicador/runner'
+import { avanzarTiktok } from '../publicador/tiktok'
 import { avanzarYoutube } from '../publicador/youtube'
 import type { Plataforma } from '../tipos'
-import { configGoogle, llaveDeYoutube, resumenConexiones } from './conexiones'
+import { configGoogle, configTiktok, llaveDeTiktok, llaveDeYoutube, resumenConexiones } from './conexiones'
 import { conectarVideo, redDelEnvio } from './conexion'
 import type { EnvioFila, VideoFila } from '../tipos'
 
@@ -42,7 +44,7 @@ export async function candidatos(ahora: Date): Promise<Candidato[]> {
     .from('publicacion_envios')
     .select('*, publicacion_videos!inner(*, publicacion_tandas!inner(estado))')
     .in('estado', ['programado', 'en_curso'])
-    .in('plataforma', ['instagram', 'facebook', 'youtube'])
+    .in('plataforma', ['instagram', 'facebook', 'youtube', 'tiktok'])
     .or(`proximo_intento.is.null,proximo_intento.lte.${iso}`)
     .lte('publicacion_videos.programado_para', iso)
     .eq('publicacion_videos.pausado', false)
@@ -133,6 +135,7 @@ function redesPendientes(): (p: Plataforma) => Promise<string | null> {
   return async (p) => {
     if (p !== 'youtube' && p !== 'tiktok') return null
     if (p === 'youtube' && !configGoogle()) return 'Falta configurar la conexión con Google. Avisale al administrador.'
+    if (p === 'tiktok' && !configTiktok()) return 'Falta configurar la conexión con TikTok. Avisale al administrador.'
     conexiones ??= resumenConexiones()
     const c = (await conexiones).find((x) => x.plataforma === p)
     if (c?.conectada) return null
@@ -143,6 +146,7 @@ function redesPendientes(): (p: Plataforma) => Promise<string | null> {
 export async function correrPublicacion(): Promise<ResumenPublicador & { archivosBorrados: number }> {
   const inicio = Date.now()
   const youtube = clienteYoutube(() => llaveDeYoutube(new Date()))
+  const tiktok = clienteTiktok(() => llaveDeTiktok(new Date()))
   const resumen = await correrPublicador({
     ahora: () => new Date(),
     automatica,
@@ -169,6 +173,19 @@ export async function correrPublicacion(): Promise<ResumenPublicador & { archivo
             estadoSubida: youtube.estadoSubida,
             leerParte: leerParteDeStorage,
             subirParte: youtube.subirParte,
+          },
+          ctx,
+        ),
+      tiktok: (e, p, ctx) =>
+        avanzarTiktok(
+          e,
+          p,
+          {
+            ahora: () => Date.now(),
+            iniciar: tiktok.iniciar,
+            estado: tiktok.estado,
+            leerParte: leerParteDeStorage,
+            subirParte: tiktok.subirParte,
           },
           ctx,
         ),
