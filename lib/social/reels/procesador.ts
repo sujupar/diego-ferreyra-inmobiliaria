@@ -84,6 +84,19 @@ async function enlaceDeLaLanding(propertyId: string, reelId: string, plataforma:
 }
 
 /** En Instagram el reel se encuentra por su media; en Facebook, por la publicación de la Página. */
+/**
+ * A dónde lleva el botón del privado: el enlace propio de un "personalizado" (validado https al
+ * guardarse, y con un CHECK en la base), o la landing publicada de la propiedad.
+ */
+async function destinoDelPrivado(
+  reel: { id: string; property_id: string | null; enlace_destino?: string | null },
+  plataforma: Plataforma,
+): Promise<string | null> {
+  if (reel.enlace_destino) return reel.enlace_destino.startsWith('https://') ? reel.enlace_destino : null
+  if (!reel.property_id) return null
+  return enlaceDeLaLanding(reel.property_id, reel.id, plataforma)
+}
+
 async function reelPorMedia(igMediaId: string, plataforma: Plataforma = 'instagram'): Promise<FilaReel | null> {
   const { data } = await admin()
     .from('property_reels')
@@ -231,7 +244,7 @@ export async function procesarComentario(
     // El enlace va en el PRIMER privado: con el acceso estándar de Meta no hay
     // segundo mensaje (ver `mandarPrivadoConEnlace`). Sin landing publicada no
     // se manda nada: un enlace roto es peor que no mandar.
-    const enlace = await enlaceDeLaLanding(reel.property_id, reel.id, plataforma)
+    const enlace = await destinoDelPrivado(reel, plataforma)
     if (!enlace) {
       motivoSinPrivado = 'landing_no_publicada'
     } else {
@@ -301,12 +314,13 @@ export async function procesarBoton(
 
   const { data } = await admin()
     .from('property_reels')
-    .select('id, property_id, dm_seguimiento, automatizacion_activa, simulacro, estado')
+    .select('id, property_id, enlace_destino, dm_seguimiento, automatizacion_activa, simulacro, estado')
     .eq('id', reelId)
     .maybeSingle()
   const reel = data as {
     id: string
-    property_id: string
+    property_id: string | null
+    enlace_destino: string | null
     dm_seguimiento: string | null
     automatizacion_activa: boolean
     simulacro: boolean
@@ -328,7 +342,7 @@ export async function procesarBoton(
 
   // Sin landing publicada no hay nada que mandar. Mandar un enlace roto es peor
   // que no contestar: la persona lo toca, no pasa nada y se va.
-  const enlace = await enlaceDeLaLanding(reel.property_id, reel.id)
+  const enlace = await destinoDelPrivado(reel, 'instagram')
   if (!enlace) return { ok: false, motivo: 'landing_no_publicada' }
 
   await mandarTexto({

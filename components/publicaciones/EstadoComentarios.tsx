@@ -14,7 +14,7 @@ import { api } from './leer-json'
 
 export function EstadoComentarios({ video, envios, onConectado }: { video: VideoVista; envios: EnvioFila[]; onConectado: () => void }) {
   const [conectando, setConectando] = useState(false)
-  if (!video.property_id) return null
+  if (!video.automatizacion) return null
   // Ya salió en Instagram o Facebook y no quedó conectado (ni con un motivo): se ofrece conectar igual.
   const salioSinConectar =
     !video.reel_id && !video.automatizacion_error && envios.some((e) => e.estado === 'publicado' && (e.plataforma === 'instagram' || e.plataforma === 'facebook'))
@@ -35,7 +35,11 @@ export function EstadoComentarios({ video, envios, onConectado }: { video: Video
 
   return (
     <div className="space-y-1 text-xs">
-      {video.reel_id ? (
+      {video.reel_id && !video.property_id ? (
+        <p className="inline-flex items-center gap-1 text-muted-foreground">
+          <MessageCircle className="h-3.5 w-3.5" aria-hidden /> Responde comentarios (personalizado)
+        </p>
+      ) : video.reel_id ? (
         <a href={`/properties/${video.property_id}?tab=difusion`} className="inline-flex items-center gap-1 text-primary hover:underline">
           <MessageCircle className="h-3.5 w-3.5" aria-hidden /> Responde comentarios · administralo en la ficha de la propiedad
         </a>

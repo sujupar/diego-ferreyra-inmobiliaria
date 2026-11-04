@@ -4,6 +4,7 @@ import {
   conLineaDePalabra,
   lineaDePalabra,
   mencionaPalabra,
+  sinConfirmar,
   validarAutomatizacion,
 } from './automatizacion'
 
@@ -48,6 +49,52 @@ describe('validarAutomatizacion', () => {
     expect(validarAutomatizacion({ ...valida, modo: 'turbo' }).ok).toBe(false)
     expect(validarAutomatizacion({ ...valida, extra: 1 }).ok).toBe(false)
     expect(validarAutomatizacion(null).ok).toBe(false)
+  })
+})
+
+describe('validarAutomatizacion — tipo, destino y confirmación', () => {
+  const base = { ...automatizacionPorDefecto(), palabras: 'info' }
+
+  it('arranca sin confirmar y de tipo propiedad', () => {
+    expect(automatizacionPorDefecto()).toMatchObject({ tipo: 'propiedad', enlace: null, confirmada: false })
+  })
+
+  it('personalizado exige un enlace https al que lleve el botón', () => {
+    expect(validarAutomatizacion({ ...base, tipo: 'personalizado', enlace: null }).ok).toBe(false)
+    expect(validarAutomatizacion({ ...base, tipo: 'personalizado', enlace: 'http://wa.me/54911' }).ok).toBe(false)
+    expect(validarAutomatizacion({ ...base, tipo: 'personalizado', enlace: 'javascript:alert(1)' }).ok).toBe(false)
+    expect(validarAutomatizacion({ ...base, tipo: 'personalizado', enlace: 'https://wa.me/5491159109252?text=Hola' })).toMatchObject({
+      ok: true,
+      valor: { tipo: 'personalizado', enlace: 'https://wa.me/5491159109252?text=Hola' },
+    })
+  })
+
+  it('el enlace se limpia de espacios y uno sin https se completa', () => {
+    expect(validarAutomatizacion({ ...base, tipo: 'personalizado', enlace: '  wa.me/5491159109252 ' })).toMatchObject({
+      ok: true,
+      valor: { enlace: 'https://wa.me/5491159109252' },
+    })
+  })
+
+  it('de propiedad ignora el enlace (lleva a la landing)', () => {
+    expect(validarAutomatizacion({ ...base, tipo: 'propiedad', enlace: 'https://otro.com' })).toMatchObject({ ok: true, valor: { enlace: null } })
+  })
+
+  it('conserva si está confirmada', () => {
+    expect(validarAutomatizacion({ ...base, confirmada: true })).toMatchObject({ ok: true, valor: { confirmada: true } })
+  })
+})
+
+describe('sinConfirmar', () => {
+  const conf = (confirmada: boolean) => ({ ...automatizacionPorDefecto(), palabras: 'info', confirmada })
+  it('cuenta los videos con comentarios configurados pero sin confirmar', () => {
+    expect(
+      sinConfirmar([
+        { nombre_archivo: 'a', automatizacion: conf(false) },
+        { nombre_archivo: 'b', automatizacion: conf(true) },
+        { nombre_archivo: 'c', automatizacion: null },
+      ]),
+    ).toEqual(['a'])
   })
 })
 

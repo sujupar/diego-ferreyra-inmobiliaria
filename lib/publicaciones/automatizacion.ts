@@ -19,7 +19,15 @@ import {
 } from '@/lib/social/reels/textos-por-defecto'
 import { LIMITES } from './textos'
 
+export type TipoAutomatizacion = 'propiedad' | 'personalizado'
+
 export interface AutomatizacionVideo {
+  /** De una propiedad (el botón lleva a su landing) o personalizado (lleva a `enlace`). */
+  tipo: TipoAutomatizacion
+  /** Solo en personalizado: a dónde lleva el botón del privado (https). */
+  enlace: string | null
+  /** La persona tocó "Confirmar": sin esto no se programa ni se conecta. */
+  confirmada: boolean
   palabras: string
   respuestas_con_privado: string[]
   respuestas_sin_privado: string[]
@@ -32,6 +40,9 @@ export interface AutomatizacionVideo {
 /** Lo que aparece al conectar una propiedad: los textos de fábrica de la ficha, en Modo prueba (decisión del spec). */
 export function automatizacionPorDefecto(): AutomatizacionVideo {
   return {
+    tipo: 'propiedad',
+    enlace: null,
+    confirmada: false,
     palabras: '',
     respuestas_con_privado: [...FRASES_CON_PRIVADO],
     respuestas_sin_privado: [...FRASES_SIN_PRIVADO],
@@ -44,6 +55,10 @@ export function automatizacionPorDefecto(): AutomatizacionVideo {
 
 const forma = z
   .object({
+    // Opcionales con valor por defecto: las configuraciones guardadas antes no los tenían.
+    tipo: z.enum(['propiedad', 'personalizado']).default('propiedad'),
+    enlace: z.string().max(600).nullable().default(null),
+    confirmada: z.boolean().default(false),
     palabras: z.string().max(400),
     respuestas_con_privado: z.array(z.string().max(1000)).max(10),
     respuestas_sin_privado: z.array(z.string().max(1000)).max(10),
@@ -55,6 +70,24 @@ const forma = z
   .strict()
 
 export type Resultado<T> = { ok: true; valor: T } | { ok: false; error: string }
+
+/**
+ * El enlace del botón en un personalizado: solo https, sin espacios, con un dominio de verdad.
+ * Va en un mensaje a un cliente: un `javascript:` o un http sin cifrar no pueden pasar.
+ */
+export function limpiarEnlace(texto: string | null): string | null {
+  let t = (texto ?? '').trim()
+  if (!t) return null
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(t)) t = `https://${t}`
+  let u: URL
+  try {
+    u = new URL(t)
+  } catch {
+    return null
+  }
+  if (u.protocol !== 'https:' || !u.hostname.includes('.') || /\s/.test(t) || t.length > 500) return null
+  return u.toString()
+}
 
 export function validarAutomatizacion(entrada: unknown): Resultado<AutomatizacionVideo> {
   const f = forma.safeParse(entrada)
@@ -68,9 +101,16 @@ export function validarAutomatizacion(entrada: unknown): Resultado<Automatizacio
   const mensajes = validarMensajes(f.data)
   if (!mensajes.ok) return mensajes
   const m = mensajes.valor
+  const enlace = f.data.tipo === 'personalizado' ? limpiarEnlace(f.data.enlace) : null
+  if (f.data.tipo === 'personalizado' && !enlace) {
+    return { ok: false, error: 'Poné a dónde lleva el botón del privado: un enlace que empiece con https:// (por ejemplo, un WhatsApp).' }
+  }
   return {
     ok: true,
     valor: {
+      tipo: f.data.tipo,
+      enlace,
+      confirmada: f.data.confirmada,
       palabras: palabras.valor ?? '',
       respuestas_con_privado: m.respuestas_con_privado ?? [],
       respuestas_sin_privado: m.respuestas_sin_privado ?? [],
@@ -114,4 +154,19 @@ export function mencionaPalabra(descripcion: string, palabras: string): boolean 
   const primera = separarPalabras(palabras)[0]
   if (!primera) return true
   return normalizarParaComparar(descripcion).includes(normalizarParaComparar(primera))
+}
+
+/**
+ * Los videos que tienen comentarios configurados pero NO confirmados. Mientras haya
+ * alguno, no se programa la tanda: lo que va a responder lo aprueba una persona.
+ * Una configuración ilegible cuenta como sin confirmar (ante la duda, frena).
+ */
+export function sinConfirmar<V extends { nombre_archivo: string; automatizacion: unknown }>(videos: V[]): string[] {
+  return videos
+    .filter((v) => {
+      if (v.automatizacion === null || v.automatizacion === undefined) return false
+      const c = validarAutomatizacion(v.automatizacion)
+      return !c.ok || !c.valor.confirmada
+    })
+    .map((v) => v.nombre_archivo)
 }

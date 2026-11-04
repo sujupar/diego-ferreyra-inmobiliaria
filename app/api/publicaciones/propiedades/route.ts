@@ -9,6 +9,7 @@ const ID = /^[0-9a-f-]{36}$/i
 
 // GET ?q=texto  → propiedades cuya dirección lo contiene (para conectar un video).
 // GET ?id=uuid  → esa propiedad (para mostrar la ya elegida al recargar).
+// GET ?todas=1  → todas las propiedades en cartera (las del selector), por dirección.
 export async function GET(req: Request) {
   const auth = await contenidoAuth()
   if (auth.error || !auth.user) return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -16,14 +17,18 @@ export async function GET(req: Request) {
     const url = new URL(req.url)
     const id = url.searchParams.get('id')
     const patron = patronDeBusqueda(url.searchParams.get('q') ?? '')
+    const todas = url.searchParams.get('todas') === '1'
     // Los interruptores generales de la automatización: la pantalla avisa si están apagados.
     const ajustes = await leerAjustes()
     const instagram = { automatizacionGeneral: ajustes.automatizacion_habilitada, privadosActivos: ajustes.dm_habilitado }
-    if (!(id && ID.test(id)) && !patron) return NextResponse.json({ propiedades: [], instagram })
+    if (!(id && ID.test(id)) && !patron && !todas) return NextResponse.json({ propiedades: [], instagram })
 
     const db = publicacionesDb()
-    let q = db.from('properties').select('id, address, neighborhood').neq('status', 'descartada').limit(15)
-    q = id && ID.test(id) ? q.eq('id', id) : q.ilike('address', patron ?? '')
+    let q = db.from('properties').select('id, address, neighborhood').neq('status', 'descartada')
+    if (id && ID.test(id)) q = q.eq('id', id)
+    // Las que se pueden difundir: captadas y no vendidas ni dadas de baja.
+    else if (todas) q = q.eq('status', 'approved').in('commercial_status', ['disponible', 'reservada']).order('address').limit(500)
+    else q = q.ilike('address', patron ?? '').limit(15)
     const { data, error } = await q
     if (error) throw new Error(`DB: ${error.message}`)
     const filas = (data ?? []) as { id: string; address: string | null; neighborhood: string | null }[]

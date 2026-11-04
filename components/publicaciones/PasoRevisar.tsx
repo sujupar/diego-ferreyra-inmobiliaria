@@ -4,6 +4,7 @@
  * Paso 3: la lista en el orden en que van a salir. Arrastrar cambia el orden y
  * los horarios se quedan quietos (el que queda primero toma el más temprano).
  */
+import { sinConfirmar } from '@/lib/publicaciones/automatizacion'
 import { useState } from 'react'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -97,11 +98,15 @@ export function PasoRevisar({ tandaId, videos, estadoGuardado, onVideos, guardar
     }
   }
 
+  // Lo que va a responder a los comentarios lo aprueba una persona (el servidor lo frena igual).
+  const sinConfirmarComentarios = sinConfirmar(videos).length
   const motivo = sinTerminar
     ? `Faltan terminar ${sinTerminar} ${sinTerminar === 1 ? 'video' : 'videos'}`
     : sinHora
       ? `Hay ${sinHora} sin día y hora`
-      : null
+      : sinConfirmarComentarios
+        ? `Confirmá los comentarios de ${sinConfirmarComentarios} ${sinConfirmarComentarios === 1 ? 'video' : 'videos'}`
+        : null
 
   return (
     <div className="space-y-4">

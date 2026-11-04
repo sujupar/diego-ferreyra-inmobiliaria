@@ -3,7 +3,7 @@ import { automatizacionPorDefecto } from './automatizacion'
 import { planDeConexion } from './conexion'
 
 const AHORA = new Date('2026-11-04T15:00:00Z')
-const auto = { ...automatizacionPorDefecto(), palabras: 'doblas', modo: 'en_vivo' as const }
+const auto = { ...automatizacionPorDefecto(), palabras: 'doblas', modo: 'en_vivo' as const, confirmada: true }
 const base = {
   video: { id: 'v1', property_id: 'p1', automatizacion: auto, reel_id: null, descripcion: 'Texto\n\nComentá «DOBLAS»…' },
   landingPublicada: true,
@@ -73,6 +73,33 @@ describe('planDeConexion', () => {
   it('una configuración guardada que ya no es válida no se conecta (y lo explica)', () => {
     const p = planDeConexion({ ...base, video: { ...base.video, automatizacion: { ...auto, palabras: '' } }, red: { plataforma: 'instagram', igMediaId: 'm1' } })
     expect(p).toMatchObject({ accion: 'nada', motivo: 'configuracion_invalida' })
+  })
+
+  it('sin confirmar no se conecta (la persona no aprobó lo que se va a mandar)', () => {
+    const p = planDeConexion({ ...base, video: { ...base.video, automatizacion: { ...auto, confirmada: false } }, red: { plataforma: 'instagram', igMediaId: 'm1' } })
+    expect(p).toMatchObject({ accion: 'nada', motivo: 'sin_confirmar' })
+  })
+
+  it('personalizado: sin propiedad, con el enlace propio y sin pedir landing', () => {
+    const personalizado = { ...auto, tipo: 'personalizado' as const, enlace: 'https://wa.me/5491159109252' }
+    const p = planDeConexion({
+      ...base,
+      landingPublicada: false,
+      video: { ...base.video, property_id: null, automatizacion: personalizado },
+      red: { plataforma: 'instagram', igMediaId: 'm1' },
+    })
+    expect(p).toMatchObject({
+      accion: 'crear',
+      fila: { property_id: null, enlace_destino: 'https://wa.me/5491159109252', automatizacion_activa: true, simulacro: false },
+    })
+    expect(p).not.toHaveProperty('aviso')
+  })
+
+  it('de propiedad sin propiedad elegida no se conecta', () => {
+    expect(planDeConexion({ ...base, video: { ...base.video, property_id: null }, red: { plataforma: 'instagram', igMediaId: 'm1' } })).toMatchObject({
+      accion: 'nada',
+      motivo: 'sin_propiedad',
+    })
   })
 
   it('sin el id de la red no hay con qué conectar', () => {

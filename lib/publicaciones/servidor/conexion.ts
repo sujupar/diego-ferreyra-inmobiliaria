@@ -22,6 +22,7 @@ interface FilaVideoConexion {
 }
 
 const MOTIVOS: Record<string, string> = {
+  sin_confirmar: 'No se conectaron los comentarios: la configuración no estaba confirmada.',
   sin_id_de_la_red: 'No se pudo conectar: la red no devolvió el identificador de la publicación. Tocá "Conectar de nuevo".',
 }
 

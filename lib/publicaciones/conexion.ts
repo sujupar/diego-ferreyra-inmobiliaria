@@ -24,7 +24,7 @@ export interface VideoParaConectar {
 }
 
 export type PlanDeConexion =
-  | { accion: 'nada'; motivo: 'sin_propiedad' | 'sin_configuracion' | 'configuracion_invalida' | 'sin_id_de_la_red'; detalle?: string }
+  | { accion: 'nada'; motivo: 'sin_propiedad' | 'sin_configuracion' | 'configuracion_invalida' | 'sin_confirmar' | 'sin_id_de_la_red'; detalle?: string }
   | { accion: 'crear'; fila: Record<string, unknown>; aviso?: string }
   | { accion: 'completar'; reelId: string; cambios: Record<string, string> }
 
@@ -42,11 +42,14 @@ export function planDeConexion(a: {
   landingPublicada: boolean
   ahora: Date
 }): PlanDeConexion {
-  if (!a.video.property_id) return { accion: 'nada', motivo: 'sin_propiedad' }
   if (a.video.automatizacion === null || a.video.automatizacion === undefined) return { accion: 'nada', motivo: 'sin_configuracion' }
   // Se vuelve a validar: lo guardado pudo quedar viejo frente a una regla nueva.
   const config = validarAutomatizacion(a.video.automatizacion)
   if (!config.ok) return { accion: 'nada', motivo: 'configuracion_invalida', detalle: config.error }
+  const personalizado = config.valor.tipo === 'personalizado'
+  if (!personalizado && !a.video.property_id) return { accion: 'nada', motivo: 'sin_propiedad' }
+  // Lo que no se confirmó no le escribe a nadie: es lo que la persona aprueba antes de programar.
+  if (!config.valor.confirmada) return { accion: 'nada', motivo: 'sin_confirmar' }
   const ids = idsDeLaRed(a.red)
   if (!ids) return { accion: 'nada', motivo: 'sin_id_de_la_red' }
 
@@ -54,10 +57,13 @@ export function planDeConexion(a: {
 
   const c = config.valor
   // Sin landing, prendido mandaría un privado con un botón que no lleva a ningún lado.
-  const modo = a.landingPublicada ? c.modo : 'apagado'
+  // El personalizado lleva a su propio enlace: la landing no importa.
+  const tieneDestino = personalizado || a.landingPublicada
+  const modo = tieneDestino ? c.modo : 'apagado'
   const campos = camposDelModo(modo)
   const fila: Record<string, unknown> = {
-    property_id: a.video.property_id,
+    property_id: personalizado ? null : a.video.property_id,
+    enlace_destino: personalizado ? c.enlace : null,
     origen: 'existente',
     estado: 'publicado',
     publicado_en: a.ahora.toISOString(),
@@ -73,5 +79,5 @@ export function planDeConexion(a: {
     ig_media_id: null,
     ...ids,
   }
-  return !a.landingPublicada && c.modo !== 'apagado' ? { accion: 'crear', fila, aviso: AVISO_SIN_LANDING } : { accion: 'crear', fila }
+  return !tieneDestino && c.modo !== 'apagado' ? { accion: 'crear', fila, aviso: AVISO_SIN_LANDING } : { accion: 'crear', fila }
 }

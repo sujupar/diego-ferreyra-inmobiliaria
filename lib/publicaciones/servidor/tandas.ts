@@ -13,7 +13,7 @@ import {
 import { BUCKET, publicacionesDb, urlPublica } from '../db'
 import { sincronizarEnvios } from '../envios'
 import { cambiosDeReintento } from '../publicador/maquina'
-import { validarAutomatizacion } from '../automatizacion'
+import { sinConfirmar, validarAutomatizacion } from '../automatizacion'
 import { ajustarDescripcion, ajustarTituloYoutube } from '../textos'
 import type { EnvioFila, Plataforma, TandaFila, VideoFila, VideoVista } from '../tipos'
 import {
@@ -267,9 +267,14 @@ export async function actualizarVideo(id: string, cambios: z.infer<typeof patchV
     if (cambios.automatizacion === null) {
       patch.automatizacion = null
     } else {
-      if (!(cambios.property_id ?? v.property_id)) throw new ErrorHttp(400, 'Elegí primero la propiedad del video')
       const config = validarAutomatizacion(cambios.automatizacion)
       if (!config.ok) throw new ErrorHttp(400, config.error)
+      if (config.valor.tipo === 'personalizado') {
+        // Un personalizado no es de una propiedad: lleva a su propio enlace.
+        patch.property_id = null
+      } else if (!(cambios.property_id ?? v.property_id)) {
+        throw new ErrorHttp(400, 'Elegí primero la propiedad del video')
+      }
       patch.automatizacion = config.valor
     }
   }
@@ -374,6 +379,10 @@ export async function confirmarTanda(tandaId: string): Promise<{ videos: number;
   const sinTerminar = videos.filter((v) => v.etapa !== 'listo')
   if (sinTerminar.length) throw new ErrorHttp(409, `Faltan terminar ${sinTerminar.length} video(s)`)
   if (videos.some((v) => !v.programado_para)) throw new ErrorHttp(409, 'Hay videos sin día y hora')
+  const pendientes = sinConfirmar(videos)
+  if (pendientes.length) {
+    throw new ErrorHttp(409, `Confirmá los comentarios de: ${pendientes.slice(0, 3).join(', ')}${pendientes.length > 3 ? '…' : ''}`)
+  }
   if (tanda.estado === 'borrador') {
     // "Todos ya" arranca a los 5 minutos y revisar lleva más: los horarios del ritmo
     // que se vencieron se vuelven a armar desde ahora, en vez de rebotar.

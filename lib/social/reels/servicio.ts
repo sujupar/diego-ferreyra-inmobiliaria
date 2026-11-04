@@ -28,7 +28,10 @@ function admin() {
 
 export interface FilaReel {
   id: string
-  property_id: string
+  /** Null en los "personalizados" de Publicaciones: no son de una propiedad y llevan a `enlace_destino`. */
+  property_id: string | null
+  /** Solo personalizados: a dónde lleva el botón del privado (en vez de la landing). */
+  enlace_destino?: string | null
   origen: 'subido' | 'existente'
   video_url: string | null
   descripcion: string

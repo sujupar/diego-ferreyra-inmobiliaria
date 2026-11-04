@@ -158,7 +158,8 @@ export async function correrPublicacion(): Promise<ResumenPublicador & { archivo
     redPendiente: redesPendientes(),
     // Un video conectado a una propiedad empieza a responder comentarios apenas sale.
     alPublicar: async (c, r) => {
-      if (!c.video.property_id) return
+      // Sin configuración no hay nada que conectar (un personalizado no tiene propiedad, pero sí configuración).
+      if (!c.video.automatizacion) return
       if (c.envio.plataforma !== 'instagram' && c.envio.plataforma !== 'facebook') return
       // Si la corrida ya va muy avanzada, no se arriesga el corte de Netlify: queda para "Conectar de nuevo".
       if (Date.now() - inicio > PRESUPUESTO_MS * 2) {

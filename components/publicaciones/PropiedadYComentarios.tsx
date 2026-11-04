@@ -1,28 +1,38 @@
 'use client'
 
 /**
- * "Propiedad y comentarios": conectar el video a una propiedad y definir ahí
- * mismo qué responde cuando alguien comenta (público + privado con el botón a
- * la landing), en Instagram y Facebook. Las piezas son las de la ficha (palabras,
- * revisión de mensajes, modo) para que se vea y se valide EXACTAMENTE igual.
+ * "Comentarios" de un video: si responde, cómo, y a dónde lleva el privado.
  *
- * Solo se manda a guardar lo que pasa `validarAutomatizacion`, la misma regla
- * que aplica el servidor: así el autoguardado nunca choca contra un 400.
+ *  - No responder.
+ *  - De una propiedad: se ELIGE de la lista de propiedades en cartera; el botón del
+ *    privado lleva a su landing.
+ *  - Personalizado: no es de una propiedad; se escribe el mensaje y a dónde lleva
+ *    el botón (un WhatsApp, una landing de tasación…).
+ *
+ * En los dos casos hay que tocar "Confirmar": sin eso no se programa (lo frena
+ * también el servidor). Cambiar algo después vuelve a pedir confirmación, así lo
+ * que sale a los clientes es siempre lo último que una persona aprobó.
+ *
+ * Las piezas (palabras, mensajes, modo) son las de la ficha, con las mismas reglas.
+ * Solo se guarda lo que pasa `validarAutomatizacion`, igual que en el servidor.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Building2, ChevronDown, ChevronUp, Loader2, MessageCircle, X } from 'lucide-react'
+import { AlertTriangle, Building2, Check, ChevronDown, ChevronUp, Link2, Loader2, MessageCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { CampoPalabras } from '@/components/properties/reels/CampoPalabras'
 import { mensajesDelReel, RevisionMensajes, type MensajesEditables } from '@/components/properties/reels/RevisionMensajes'
 import { SelectorModo } from '@/components/properties/reels/SelectorModo'
 import {
   automatizacionPorDefecto,
   conLineaDePalabra,
+  limpiarEnlace,
   mencionaPalabra,
   validarAutomatizacion,
   type AutomatizacionVideo,
+  type TipoAutomatizacion,
 } from '@/lib/publicaciones/automatizacion'
 import type { PropiedadParaConectar } from '@/lib/publicaciones/propiedades'
 import type { VideoVista } from '@/lib/publicaciones/tipos'
@@ -36,21 +46,36 @@ interface Interruptores {
   privadosActivos: boolean
 }
 
+type Opcion = 'ninguno' | TipoAutomatizacion
+
 interface Borrador {
+  tipo: TipoAutomatizacion
+  enlace: string
   palabras: string
   mensajes: MensajesEditables
   modo: ModoReel
+  confirmada: boolean
 }
 
-function borradorDe(guardada: unknown): Borrador {
+function borradorDe(guardada: unknown, tipo?: TipoAutomatizacion): Borrador {
   const v = validarAutomatizacion(guardada)
   const a: AutomatizacionVideo = v.ok ? v.valor : automatizacionPorDefecto()
-  return { palabras: a.palabras, mensajes: mensajesDelReel(a), modo: a.modo }
+  return {
+    tipo: tipo ?? a.tipo,
+    enlace: a.enlace ?? '',
+    palabras: a.palabras,
+    mensajes: mensajesDelReel(a),
+    modo: a.modo,
+    confirmada: v.ok && a.confirmada,
+  }
 }
 
 function aConfig(b: Borrador): unknown {
   const utiles = (f: string[]) => f.map((x) => x.trim()).filter(Boolean)
   return {
+    tipo: b.tipo,
+    enlace: b.tipo === 'personalizado' ? b.enlace : null,
+    confirmada: b.confirmada,
     palabras: b.palabras,
     respuestas_con_privado: utiles(b.mensajes.respuestas_con_privado),
     respuestas_sin_privado: utiles(b.mensajes.respuestas_sin_privado),
@@ -61,6 +86,12 @@ function aConfig(b: Borrador): unknown {
   }
 }
 
+const OPCIONES: { valor: Opcion; titulo: string }[] = [
+  { valor: 'ninguno', titulo: 'No responder' },
+  { valor: 'propiedad', titulo: 'De una propiedad' },
+  { valor: 'personalizado', titulo: 'Personalizado' },
+]
+
 interface Props {
   video: VideoVista
   editable: boolean
@@ -69,104 +100,94 @@ interface Props {
 
 export function PropiedadYComentarios({ video, editable, onCambio }: Props) {
   const [abierto, setAbierto] = useState(false)
-  const [propiedad, setPropiedad] = useState<PropiedadParaConectar | null>(null)
+  const [propiedades, setPropiedades] = useState<PropiedadParaConectar[] | null>(null)
+  const [errorLista, setErrorLista] = useState<string | null>(null)
   const [interruptores, setInterruptores] = useState<Interruptores>({ automatizacionGeneral: false, privadosActivos: false })
-  const [busqueda, setBusqueda] = useState('')
-  const [resultados, setResultados] = useState<PropiedadParaConectar[] | null>(null)
-  const [buscando, setBuscando] = useState(false)
-  const [errorBusqueda, setErrorBusqueda] = useState<string | null>(null)
+  const [opcion, setOpcion] = useState<Opcion>(() => (video.automatizacion ? borradorDe(video.automatizacion).tipo : 'ninguno'))
   const [borrador, setBorrador] = useState<Borrador>(() => borradorDe(video.automatizacion))
   const [problema, setProblema] = useState<string | null>(null)
 
-  // La propiedad ya elegida (al recargar la página), para mostrar su nombre y si tiene landing.
+  // La lista de propiedades se pide al abrir (y una sola vez): son las que están en cartera.
   useEffect(() => {
-    if (!video.property_id || propiedad?.id === video.property_id) return
+    if (!abierto || propiedades !== null) return
     let vivo = true
-    api<{ propiedades: PropiedadParaConectar[]; instagram: Interruptores }>(`/api/publicaciones/propiedades?id=${video.property_id}`)
+    api<{ propiedades: PropiedadParaConectar[]; instagram: Interruptores }>('/api/publicaciones/propiedades?todas=1')
       .then((r) => {
         if (!vivo) return
-        setPropiedad(r.propiedades[0] ?? null)
+        setPropiedades(r.propiedades)
         setInterruptores(r.instagram)
       })
-      .catch(() => undefined)
+      .catch((e: unknown) => vivo && setErrorLista(e instanceof Error ? e.message : 'No se pudo cargar la lista de propiedades'))
     return () => {
       vivo = false
     }
-  }, [video.property_id, propiedad?.id])
+  }, [abierto, propiedades])
 
-  // Búsqueda con espera: una consulta cuando se deja de tipear, no una por tecla.
-  useEffect(() => {
-    // Con menos de 2 letras no se busca: la lista se esconde al renderizar (`buscable`).
-    if (busqueda.trim().length < 2) return
-    let vivo = true
-    const t = setTimeout(() => {
-      setBuscando(true)
-      setErrorBusqueda(null)
-      api<{ propiedades: PropiedadParaConectar[]; instagram: Interruptores }>(`/api/publicaciones/propiedades?q=${encodeURIComponent(busqueda)}`)
-        .then((r) => {
-          if (!vivo) return
-          setResultados(r.propiedades)
-          setInterruptores(r.instagram)
-        })
-        .catch((e: unknown) => vivo && setErrorBusqueda(e instanceof Error ? e.message : 'No se pudo buscar'))
-        .finally(() => vivo && setBuscando(false))
-    }, 300)
-    return () => {
-      vivo = false
-      clearTimeout(t)
-    }
-  }, [busqueda])
-
+  const propiedad = propiedades?.find((p) => p.id === video.property_id) ?? null
   const landing = propiedad?.landingPublicada ?? false
-  const buscable = busqueda.trim().length >= 2
-  const sinLinea = !!video.property_id && !!borrador.palabras && !mencionaPalabra(video.descripcion, borrador.palabras)
+  // A dónde lleva el botón del privado: para el modo y para mostrarlo en la revisión.
+  const hayDestino = borrador.tipo === 'personalizado' ? !!limpiarEnlace(borrador.enlace) : landing
+  const sinLinea = opcion !== 'ninguno' && !!borrador.palabras && !mencionaPalabra(video.descripcion, borrador.palabras)
 
-  /** Guarda el borrador si es válido; si no, muestra el motivo y no manda nada. */
-  const aplicar = (entrada: Borrador, palabrasCambiaron: boolean) => {
-    // Al escribir la PRIMERA palabra arranca en Modo prueba (decisión del spec): antes no podía estar en otro modo.
-    const primera = palabrasCambiaron && !separarPalabras(borrador.palabras).length && separarPalabras(entrada.palabras).length > 0
-    const nuevo = primera && landing && entrada.modo === 'apagado' ? { ...entrada, modo: 'prueba' as const } : entrada
+  /**
+   * Guarda el borrador si es válido. Cualquier cambio deja la configuración SIN confirmar
+   * (salvo el propio "Confirmar"): lo que sale es lo último que se aprobó.
+   */
+  const aplicar = (entrada: Borrador, opciones: { palabrasCambiaron?: boolean; confirmar?: boolean } = {}) => {
+    const primera =
+      !!opciones.palabrasCambiaron && !separarPalabras(borrador.palabras).length && separarPalabras(entrada.palabras).length > 0
+    // Al escribir la PRIMERA palabra arranca en Modo prueba (decisión del spec).
+    let nuevo: Borrador = primera && hayDestino && entrada.modo === 'apagado' ? { ...entrada, modo: 'prueba' } : entrada
+    nuevo = { ...nuevo, confirmada: !!opciones.confirmar }
     setBorrador(nuevo)
     const config = validarAutomatizacion(aConfig(nuevo))
     if (!config.ok) {
       setProblema(config.error)
+      if (opciones.confirmar) setBorrador({ ...nuevo, confirmada: false })
       return
     }
     setProblema(null)
     const campos: CambiosVideo = { automatizacion: config.valor }
     // La línea "Comentá «X»" va en la descripción visible. Mientras la IA todavía escribe, no se toca.
-    if (palabrasCambiaron && video.etapa === 'listo') campos.descripcion = conLineaDePalabra(video.descripcion, config.valor.palabras)
+    if (opciones.palabrasCambiaron && video.etapa === 'listo') campos.descripcion = conLineaDePalabra(video.descripcion, config.valor.palabras)
     onCambio(campos)
   }
 
-  const elegir = (p: PropiedadParaConectar) => {
-    setPropiedad(p)
-    setBusqueda('')
-    setResultados(null)
-    // Sin palabra todavía queda Apagado: la regla no deja otro modo sin palabra.
-    const inicial: Borrador = { ...borradorDe(null), modo: 'apagado' }
-    setBorrador(inicial)
+  const elegirOpcion = (o: Opcion) => {
+    setOpcion(o)
     setProblema(null)
-    const config = validarAutomatizacion(aConfig(inicial))
-    onCambio({ property_id: p.id, automatizacion: config.ok ? config.valor : null })
+    if (o === 'ninguno') {
+      setBorrador(borradorDe(null))
+      onCambio({
+        property_id: null,
+        automatizacion: null,
+        ...(video.etapa === 'listo' ? { descripcion: conLineaDePalabra(video.descripcion, '') } : {}),
+      })
+      return
+    }
+    // Se conservan palabra y mensajes al cambiar de tipo; el tipo nuevo arranca sin confirmar.
+    const nuevo: Borrador = { ...borrador, tipo: o, confirmada: false, modo: borrador.palabras ? borrador.modo : 'apagado' }
+    setBorrador(nuevo)
+    if (o === 'propiedad' && !video.property_id) return // se guarda al elegir la propiedad
+    const config = validarAutomatizacion(aConfig(nuevo))
+    if (config.ok) onCambio({ automatizacion: config.valor })
   }
 
-  const quitar = () => {
-    setPropiedad(null)
-    setBorrador(borradorDe(null))
-    setProblema(null)
-    onCambio({
-      property_id: null,
-      automatizacion: null,
-      ...(video.etapa === 'listo' ? { descripcion: conLineaDePalabra(video.descripcion, '') } : {}),
-    })
+  const elegirPropiedad = (id: string) => {
+    if (!id) return
+    const nuevo: Borrador = { ...borrador, tipo: 'propiedad', confirmada: false }
+    setBorrador(nuevo)
+    const config = validarAutomatizacion(aConfig({ ...nuevo, modo: nuevo.palabras ? nuevo.modo : 'apagado' }))
+    onCambio({ property_id: id, automatizacion: config.ok ? config.valor : null })
   }
 
   const resumen = useMemo(() => {
-    if (!video.property_id) return 'Sin propiedad'
-    const nombre = propiedad?.direccion ?? 'Propiedad'
-    return `${nombre} · ${ETIQUETA_MODO[borrador.modo]}`
-  }, [video.property_id, propiedad?.direccion, borrador.modo])
+    if (opcion === 'ninguno') return 'No responde'
+    const quien = opcion === 'personalizado' ? 'Personalizado' : (propiedad?.direccion ?? 'Elegí la propiedad')
+    return `${quien} · ${ETIQUETA_MODO[borrador.modo]}`
+  }, [opcion, propiedad?.direccion, borrador.modo])
+
+  const listoParaConfirmar = opcion !== 'ninguno' && (opcion === 'personalizado' || !!video.property_id)
 
   return (
     <div className="rounded-md border">
@@ -177,81 +198,104 @@ export function PropiedadYComentarios({ video, editable, onCambio }: Props) {
         onClick={() => setAbierto((a) => !a)}
       >
         <MessageCircle className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="font-medium">Propiedad y comentarios</span>
+        <span className="font-medium">Comentarios</span>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{resumen}</span>
-        {(sinLinea || problema) && <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" aria-label="Hay algo para revisar" />}
+        {opcion !== 'ninguno' &&
+          (borrador.confirmada ? (
+            <Badge variant="secondary" className="shrink-0 gap-1 text-[10px]">
+              <Check className="h-3 w-3" aria-hidden /> Confirmado
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="shrink-0 border-amber-500 text-[10px] text-amber-700 dark:text-amber-400">
+              Sin confirmar
+            </Badge>
+          ))}
         {abierto ? <ChevronUp className="h-4 w-4 shrink-0" aria-hidden /> : <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />}
       </button>
 
       {abierto && (
         <div className="space-y-3 border-t p-3">
-          {!video.property_id ? (
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">
-                Opcional. Si el video es de una propiedad, conectala y cuando salga va a responder los comentarios en Instagram y
-                Facebook, y mandar el privado con el botón a su landing.
-              </p>
-              <Input
-                aria-label="Buscar propiedad por dirección"
-                placeholder="Buscar por dirección…"
-                value={busqueda}
+          <div role="radiogroup" aria-label="Qué hace con los comentarios" className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {OPCIONES.map((o) => (
+              <Button
+                key={o.valor}
+                type="button"
+                role="radio"
+                aria-checked={opcion === o.valor}
+                variant={opcion === o.valor ? 'default' : 'outline'}
+                size="sm"
                 disabled={!editable}
-                onChange={(e) => setBusqueda(e.target.value)}
-              />
-              {buscando && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Buscando" />}
-              {errorBusqueda && <p className="text-xs text-destructive">{errorBusqueda}</p>}
-              {buscable && resultados && resultados.length === 0 && <p className="text-xs text-muted-foreground">No encontré propiedades con esa dirección.</p>}
-              {buscable && resultados && resultados.length > 0 && (
-                <ul className="max-h-56 space-y-1 overflow-y-auto">
-                  {resultados.map((p) => (
-                    <li key={p.id}>
-                      <button
-                        type="button"
-                        className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
-                        onClick={() => elegir(p)}
-                      >
-                        <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                        <span className="min-w-0 flex-1 truncate">
-                          {p.direccion}
-                          {p.barrio ? ` · ${p.barrio}` : ''}
-                        </span>
-                        {!p.landingPublicada && (
-                          <Badge variant="outline" className="shrink-0 text-[10px]">
-                            sin landing
-                          </Badge>
-                        )}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                <a href={`/properties/${video.property_id}`} className="min-w-0 flex-1 truncate text-sm font-medium hover:underline">
-                  {propiedad?.direccion ?? 'Propiedad'}
-                </a>
-                {editable && (
-                  <Button size="sm" variant="ghost" onClick={quitar}>
-                    <X className="mr-1 h-3.5 w-3.5" aria-hidden /> Quitar
-                  </Button>
-                )}
-              </div>
+                onClick={() => elegirOpcion(o.valor)}
+              >
+                {o.titulo}
+              </Button>
+            ))}
+          </div>
 
+          {opcion === 'ninguno' && (
+            <p className="text-xs text-muted-foreground">Este video no va a responder comentarios.</p>
+          )}
+
+          {opcion === 'propiedad' && (
+            <div className="space-y-1.5">
+              <Label htmlFor={`propiedad-${video.id}`} className="flex items-center gap-1.5">
+                <Building2 className="h-4 w-4 text-muted-foreground" aria-hidden /> Propiedad
+              </Label>
+              {propiedades === null && !errorLista ? (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Cargando propiedades" />
+              ) : errorLista ? (
+                <p className="text-xs text-destructive">{errorLista}</p>
+              ) : (
+                <select
+                  id={`propiedad-${video.id}`}
+                  className="h-10 w-full min-w-0 rounded-md border bg-background px-2 text-sm"
+                  value={video.property_id ?? ''}
+                  disabled={!editable}
+                  onChange={(e) => elegirPropiedad(e.target.value)}
+                >
+                  <option value="">Elegí la propiedad…</option>
+                  {(propiedades ?? []).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.direccion}
+                      {p.landingPublicada ? '' : ' (sin landing)'}
+                    </option>
+                  ))}
+                </select>
+              )}
               {propiedad && !landing && (
                 <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                  Publicá la landing de la propiedad: el botón del privado lleva ahí. Mientras tanto queda Apagado.
+                  Esta propiedad no tiene la landing publicada: el botón del privado lleva ahí. Mientras tanto queda Apagado.
                 </p>
               )}
+            </div>
+          )}
 
+          {opcion === 'personalizado' && (
+            <div className="space-y-1.5">
+              <Label htmlFor={`enlace-${video.id}`} className="flex items-center gap-1.5">
+                <Link2 className="h-4 w-4 text-muted-foreground" aria-hidden /> ¿A dónde lleva el botón del privado?
+              </Label>
+              <Input
+                id={`enlace-${video.id}`}
+                inputMode="url"
+                placeholder="https://wa.me/549… o https://…"
+                value={borrador.enlace}
+                disabled={!editable}
+                onChange={(e) => setBorrador({ ...borrador, enlace: e.target.value, confirmada: false })}
+                onBlur={() => aplicar(borrador)}
+              />
+              <p className="text-[11px] text-muted-foreground">Un WhatsApp, una landing de tasación o cualquier página que empiece con https://.</p>
+            </div>
+          )}
+
+          {listoParaConfirmar && (
+            <>
               <CampoPalabras
                 id={`palabras-${video.id}`}
                 valor={borrador.palabras}
                 deshabilitado={!editable}
-                onCambiar={(palabras) => aplicar({ ...borrador, palabras }, true)}
+                onCambiar={(palabras) => aplicar({ ...borrador, palabras }, { palabrasCambiaron: true })}
               />
               {sinLinea && (
                 <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
@@ -262,23 +306,24 @@ export function PropiedadYComentarios({ video, editable, onCambio }: Props) {
 
               <RevisionMensajes
                 valor={borrador.mensajes}
-                onCambiar={(mensajes) => aplicar({ ...borrador, mensajes }, false)}
+                onCambiar={(mensajes) => aplicar({ ...borrador, mensajes })}
                 palabraDeEjemplo={separarPalabras(borrador.palabras)[0] ?? 'INFO'}
                 slugLanding={propiedad?.landingSlug ?? null}
+                {...(opcion === 'personalizado' ? { enlaceDestino: limpiarEnlace(borrador.enlace) } : {})}
                 privadosActivos={interruptores.privadosActivos}
                 deshabilitado={!editable}
               />
 
               <SelectorModo
                 valor={borrador.modo}
-                onCambiar={(modo) => aplicar({ ...borrador, modo }, false)}
-                landingPublicada={landing}
+                onCambiar={(modo) => aplicar({ ...borrador, modo })}
+                landingPublicada={hayDestino}
                 hayPalabras={separarPalabras(borrador.palabras).length > 0}
                 automatizacionGeneral={interruptores.automatizacionGeneral}
                 deshabilitado={!editable}
               />
               <p className="text-[11px] text-muted-foreground">
-                En Facebook, el Modo prueba solo anota lo que habría respondido: para probarlo de verdad ahí, usá En vivo con un video de prueba.
+                Responde en Instagram y Facebook. En Facebook, el Modo prueba solo anota lo que habría respondido.
               </p>
 
               {problema && (
@@ -286,7 +331,20 @@ export function PropiedadYComentarios({ video, editable, onCambio }: Props) {
                   {problema}
                 </p>
               )}
-            </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">
+                {borrador.confirmada ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
+                    <Check className="h-3.5 w-3.5" aria-hidden /> Confirmado: así va a responder
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Revisá todo y confirmá para poder programar.</span>
+                )}
+                <Button size="sm" disabled={!editable || borrador.confirmada} onClick={() => aplicar(borrador, { confirmar: true })}>
+                  <Check className="mr-1 h-3.5 w-3.5" aria-hidden /> Confirmar
+                </Button>
+              </div>
+            </>
           )}
         </div>
       )}
