@@ -5,6 +5,8 @@ import { canAccessProperty } from '@/lib/auth/entity-access'
 import {
   buildStatusPatch, estadoComercialEfectivo, isCommercialStatus, validateStatusChange,
 } from '@/lib/properties/commercial-status'
+import { sincronizarVenta } from '@/lib/metrics/panel/venta-propiedad'
+import { hoyArgentina } from '@/lib/metrics/panel/rango'
 
 function admin() {
   return createClient(
@@ -123,7 +125,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
-    return NextResponse.json({ ok: true, ...(warning ? { warning } : {}) })
+    // La venta se registra sola (panel de métricas): al reservar o vender se
+    // crea con lo que ya se sabe y la ficha pide el resto. Nunca bloquea.
+    let ventaRegistrada = false
+    if (to !== from) {
+      try {
+        await sincronizarVenta(db, {
+          propertyId: id, to, soldPrice: patch.sold_price, soldCurrency: patch.sold_currency,
+          soldAt: patch.sold_at, hoy: hoyArgentina(), userId: user.id,
+        })
+        ventaRegistrada = to === 'reservada' || to === 'vendida'
+      } catch (e) {
+        console.error('[commercial-status] no se pudo registrar la venta:', e)
+        warning = warning ?? 'El estado se guardó, pero no se pudo registrar la venta en el panel de métricas.'
+      }
+    }
+
+    return NextResponse.json({ ok: true, ventaRegistrada, ...(warning ? { warning } : {}) })
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Error' }, { status: 500 })

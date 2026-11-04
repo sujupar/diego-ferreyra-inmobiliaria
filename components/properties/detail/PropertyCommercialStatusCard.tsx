@@ -11,6 +11,7 @@ import {
   type CommercialStatus,
 } from '@/lib/properties/commercial-status'
 import { formatMoney } from '@/lib/properties/detail-view'
+import { DatosOperacionVenta } from './DatosOperacionVenta'
 
 interface StatusEvent {
   id: string
@@ -47,6 +48,8 @@ export function PropertyCommercialStatusCard({
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [events, setEvents] = useState<StatusEvent[]>([])
+  /** Sube cada vez que se reserva o vende: abre "Datos de la operación". */
+  const [abrirVenta, setAbrirVenta] = useState(0)
 
   const loadEvents = useCallback(async () => {
     try {
@@ -109,6 +112,7 @@ export function PropertyCommercialStatusCard({
       if (data?.warning) toast.warning(data.warning)
       else toast.success(`Marcada como ${commercialStatusDef(target).label.toLowerCase()}`)
       setTarget(null)
+      if (data?.ventaRegistrada) setAbrirVenta(n => n + 1)
       await loadEvents()
       onChanged()
     } catch {
@@ -216,6 +220,10 @@ export function PropertyCommercialStatusCard({
               <Button variant="ghost" onClick={cancel} disabled={saving}>Cancelar</Button>
             </div>
           </div>
+        )}
+
+        {(current === 'reservada' || current === 'vendida') && (
+          <DatosOperacionVenta propertyId={propertyId} abrir={abrirVenta} />
         )}
 
         {events.length > 0 && (
