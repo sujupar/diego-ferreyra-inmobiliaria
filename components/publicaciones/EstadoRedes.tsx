@@ -56,6 +56,10 @@ export function EstadoRedes({ envios, video, automatica, reintentando, onReinten
                 Ver en {nombre} <ExternalLink className="h-3 w-3" aria-hidden />
               </a>
             )}
+            {e.estado === 'publicado' && e.plataforma === 'youtube' && e.ids_externos?.privado === true && (
+              // Google deja privado lo que sube un proyecto sin auditar, aunque se pida público.
+              <span className="text-amber-700 dark:text-amber-400">YouTube lo dejó privado hasta que Google apruebe la auditoría del proyecto</span>
+            )}
             {e.estado === 'publicado' && e.plataforma === 'tiktok' && (
               // TikTok lo deja en la bandeja de la app: falta tocar "Publicar" ahí (la API no publica directo todavía).
               <span className="text-muted-foreground">Terminá de publicarlo desde la app de TikTok (bandeja de entrada)</span>

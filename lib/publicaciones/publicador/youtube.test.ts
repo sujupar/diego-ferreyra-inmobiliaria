@@ -66,6 +66,46 @@ describe('avanzarYoutube', () => {
     expect(r.estado).toBe('publicado')
   })
 
+  it('la sesión se anota ANTES de mandar bytes: si se corta la última parte, la vuelta siguiente NO sube otro video', async () => {
+    const e = escenario(100)
+    const anotados: Record<string, unknown>[] = []
+    let llego = false
+    const deps: DepsYoutube = {
+      ...e.deps,
+      subirParte: async () => {
+        llego = true // Google recibió todo y creó el video…
+        throw Object.assign(new Error('timeout'), { name: 'TimeoutError' }) // …pero la respuesta no llegó a tiempo.
+      },
+    }
+    const c = { ...ctx(), anotarIds: async (_etapa: string, ids: Record<string, unknown>) => void anotados.push(ids) }
+    await expect(avanzarYoutube({ etapa: null, ids_externos: {} }, pieza(100), deps, c)).rejects.toThrow()
+    expect(llego).toBe(true)
+    expect(anotados[0]).toMatchObject({ upload_url: expect.stringContaining('upload_id=1') })
+    // La corrida siguiente arranca con lo anotado: le pregunta a la sesión y encuentra el video hecho.
+    const despues = escenario(100, { yaTerminada: 'VID_UNICO' })
+    const r = await avanzarYoutube({ etapa: 'subiendo', ids_externos: anotados[0] }, pieza(100), despues.deps, ctx())
+    expect(r).toMatchObject({ estado: 'publicado', ids: { video_id: 'VID_UNICO' } })
+    expect(despues.sesiones()).toBe(0)
+  })
+
+  it('pasadas 12 horas sin terminar, se avisa en vez de seguir para siempre', async () => {
+    const e = escenario(PARTE_YT * 3)
+    const viejo = new Date(AHORA.getTime() - 13 * 3600_000).toISOString()
+    const r = await avanzarYoutube(
+      { etapa: 'subiendo', ids_externos: { upload_url: 'https://www.googleapis.com/upload/youtube/v3/videos?upload_id=9', inicio_at: viejo } },
+      pieza(PARTE_YT * 3),
+      e.deps,
+      ctx(),
+    )
+    expect(r).toMatchObject({ estado: 'fallido', error: expect.stringMatching(/12 horas/) })
+  })
+
+  it('si YouTube lo dejó privado (proyecto sin auditar), queda anotado para avisarlo', async () => {
+    const e = escenario(10, { msPorParte: 10 })
+    const r = await avanzarYoutube({ etapa: null, ids_externos: {} }, pieza(10), { ...e.deps, privacidad: async () => 'private' }, ctx())
+    expect(r).toMatchObject({ estado: 'publicado', ids: { privado: true } })
+  })
+
   it('un video de más de 3 minutos enlaza como video común, no como Short', async () => {
     const e = escenario(10, { msPorParte: 10 })
     const r = await avanzarYoutube({ etapa: null, ids_externos: {} }, { ...pieza(10), duracionSeg: 240 }, e.deps, ctx())

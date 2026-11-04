@@ -60,6 +60,35 @@ describe('avanzarTiktok', () => {
     expect(r.ids.publish_id).toBe('P1')
   })
 
+  it('la subida se anota antes de mandar bytes y después de cada parte: un corte no inicia otro borrador', async () => {
+    const e = escenario({ msPorParte: 10 })
+    const anotados: Record<string, unknown>[] = []
+    let partes = 0
+    const deps: DepsTiktok = {
+      ...e.deps,
+      subirParte: async () => {
+        if (++partes === 2) throw Object.assign(new Error('timeout'), { name: 'TimeoutError' })
+        return 'parcial'
+      },
+    }
+    const c = { ...ctx(), anotarIds: async (_e: string, ids: Record<string, unknown>) => void anotados.push(ids) }
+    await expect(avanzarTiktok({ etapa: null, ids_externos: {} }, pieza(20 * MB), deps, c)).rejects.toThrow()
+    expect(anotados[0]).toMatchObject({ publish_id: 'P1', siguiente: 0 })
+    expect(anotados.at(-1)).toMatchObject({ publish_id: 'P1', siguiente: 1 })
+  })
+
+  it('pasadas 12 horas sin llegar a la bandeja, se avisa', async () => {
+    const e = escenario({ status: 'PROCESSING_UPLOAD' })
+    const viejo = new Date(AHORA.getTime() - 13 * 3600_000).toISOString()
+    const r = await avanzarTiktok(
+      { etapa: 'procesando', ids_externos: { publish_id: 'P1', siguiente: 2, upload_url: URL_SUBIDA, iniciado_at: viejo, inicio_at: viejo } },
+      pieza(20 * MB),
+      e.deps,
+      ctx(),
+    )
+    expect(r).toMatchObject({ estado: 'fallido', error: expect.stringMatching(/12 horas/) })
+  })
+
   it('un rechazo de TikTok se explica', async () => {
     const e = escenario({ status: 'FAILED', motivo: 'duration_check_failed' })
     const r = await avanzarTiktok({ etapa: 'procesando', ids_externos: { publish_id: 'P1', siguiente: 2, upload_url: URL_SUBIDA, iniciado_at: AHORA.toISOString() } }, pieza(20 * MB), e.deps, ctx())

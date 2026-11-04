@@ -136,7 +136,7 @@ export function PestanaPublicado() {
                     reintentando={reintentando}
                     onReintentar={(e) => void reintentar(e)}
                   />
-                  <EstadoComentarios video={v} onConectado={() => void cargar()} />
+                  <EstadoComentarios video={v} envios={v.envios} onConectado={() => void cargar()} />
                 </div>
               </li>
             )

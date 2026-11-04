@@ -7,7 +7,7 @@
  * una sesión VENCIDA (que nunca terminó) se reemplaza por otra.
  */
 import type { EstadoSubidaYt } from '@/lib/integrations/youtube/subida'
-import type { Contexto, EnvioEnCurso, Pieza, ResultadoEtapa } from './redes'
+import { PLAZO_VENCIDO, vencioElPlazo, type Contexto, type EnvioEnCurso, type Pieza, type ResultadoEtapa } from './redes'
 
 /** 8 MB: múltiplo de 256 KB, como exige YouTube para las partes intermedias. */
 export const PARTE_YT = 8 * 1024 * 1024
@@ -25,6 +25,8 @@ export interface DepsYoutube {
   estadoSubida(url: string, total: number): Promise<EstadoSubidaYt>
   leerParte(videoUrl: string, desde: number, hasta: number, techoMs: number): Promise<Uint8Array<ArrayBuffer>>
   subirParte(url: string, desde: number, bytes: Uint8Array<ArrayBuffer>, total: number, techoMs: number): Promise<Exclude<EstadoSubidaYt, { tipo: 'vencida' }>>
+  /** Opcional: con qué privacidad quedó. Un proyecto sin auditar hace que YouTube lo deje privado aunque se pida público. */
+  privacidad?(videoId: string): Promise<string | null>
 }
 
 /** El título que va a YouTube: el escrito, o la primera línea de la descripción, o el nombre del archivo. */
@@ -47,22 +49,33 @@ export async function avanzarYoutube(envio: EnvioEnCurso, pieza: Pieza, d: DepsY
   const plazo = ctx.plazo ?? d.ahora() + PLAZO_POR_DEFECTO_MS
   const ids: Record<string, unknown> = { ...envio.ids_externos }
   delete ids.reintento
-  const publicado = (videoId: string): ResultadoEtapa => ({
-    etapa: 'subiendo',
-    ids: { ...ids, video_id: videoId },
-    estado: 'publicado',
-    enlace: enlace(videoId, pieza.duracionSeg),
-  })
+  const publicado = async (videoId: string): Promise<ResultadoEtapa> => {
+    let privado = false
+    try {
+      privado = (await d.privacidad?.(videoId)) === 'private'
+    } catch {
+      // Solo es para avisar: el video ya está en YouTube.
+    }
+    return {
+      etapa: 'subiendo',
+      ids: { ...ids, video_id: videoId, ...(privado ? { privado: true } : {}) },
+      estado: 'publicado',
+      enlace: enlace(videoId, pieza.duracionSeg),
+    }
+  }
 
   let url = typeof ids.upload_url === 'string' ? ids.upload_url : null
   let offset = 0
   if (url) {
     const estado = await d.estadoSubida(url, total)
     if (estado.tipo === 'terminada') return publicado(estado.videoId)
+    if (vencioElPlazo(ids, ctx.ahora)) return { etapa: 'subiendo', ids, estado: 'fallido', error: PLAZO_VENCIDO('YouTube') }
     if (estado.tipo === 'vencida') url = null
     else offset = estado.offset
   }
   if (!url) {
+    // Abrir la sesión gasta tiempo: si no queda para abrirla con margen, va en la corrida siguiente.
+    if (plazo - d.ahora() < 2 * TECHO_MINIMO_MS) return { etapa: envio.etapa, ids, estado: 'en_curso', esperarMs: 0 }
     const sesiones = (typeof ids.sesiones === 'number' ? ids.sesiones : 0) + 1
     if (sesiones > MAX_SESIONES) {
       return { etapa: 'subiendo', ids, estado: 'fallido', error: 'YouTube no terminó de recibir el video. Tocá Reintentar.' }
@@ -75,6 +88,8 @@ export async function avanzarYoutube(envio: EnvioEnCurso, pieza: Pieza, d: DepsY
     })
     Object.assign(ids, { upload_url: url, sesiones, inicio_at: typeof ids.inicio_at === 'string' ? ids.inicio_at : ctx.ahora.toISOString() })
     offset = 0
+    // ANTES del primer byte: con la sesión guardada, cualquier corte se resuelve preguntándole a YouTube.
+    await ctx.anotarIds?.('subiendo', ids)
   }
 
   let partes = 0

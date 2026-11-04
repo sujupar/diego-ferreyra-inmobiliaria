@@ -5,8 +5,9 @@
  * muestra con "Conectar de nuevo". El video ya salió: esto no puede hacerlo fallar.
  */
 import { paginaDeLaCuenta, paginaFetch } from '@/lib/integrations/instagram/client'
+import { listarReelsPublicados } from '@/lib/integrations/instagram/publicar'
 import { landingPublicada } from '@/lib/social/reels/servicio'
-import { planDeConexion, type RedPublicada } from '../conexion'
+import { AVISO_SIN_LANDING, planDeConexion, type RedPublicada } from '../conexion'
 import { publicacionesDb } from '../db'
 import type { EnvioFila } from '../tipos'
 
@@ -16,6 +17,7 @@ interface FilaVideoConexion {
   automatizacion: unknown
   reel_id: string | null
   descripcion: string
+  automatizacion_error: string | null
   publicacion_tandas: { creada_por: string | null } | null
 }
 
@@ -45,7 +47,7 @@ export async function conectarVideo(videoId: string, red: RedPublicada): Promise
   const db = publicacionesDb()
   const { data, error } = await db
     .from('publicacion_videos')
-    .select('id, property_id, automatizacion, reel_id, descripcion, publicacion_tandas(creada_por)')
+    .select('id, property_id, automatizacion, reel_id, descripcion, automatizacion_error, publicacion_tandas(creada_por)')
     .eq('id', videoId)
     .maybeSingle()
   if (error || !data) return { ok: false, error: `No se pudo leer el video: ${error?.message ?? 'no existe'}` }
@@ -69,8 +71,9 @@ export async function conectarVideo(videoId: string, red: RedPublicada): Promise
       await anotar(videoId, motivo)
       return { ok: false, error: motivo }
     }
-    await anotar(videoId, null)
-    return { ok: true, error: null }
+    // El aviso "quedó Apagado porque falta la landing" sigue siendo cierto: completar la otra red no lo borra.
+    if (video.automatizacion_error !== AVISO_SIN_LANDING) await anotar(videoId, null)
+    return { ok: true, error: video.automatizacion_error === AVISO_SIN_LANDING ? AVISO_SIN_LANDING : null }
   }
 
   const { data: nuevo, error: e } = await db
@@ -89,31 +92,55 @@ export async function conectarVideo(videoId: string, red: RedPublicada): Promise
     }
   }
   // Condicional: si otra corrida conectó la otra red en el medio, gana la suya y la nuestra se le suma.
-  const { data: ganado } = await db
+  const { data: ganado, error: eGanar } = await db
     .from('publicacion_videos')
     .update({ reel_id: reelId, automatizacion_error: plan.aviso ?? null })
     .eq('id', videoId)
     .is('reel_id', null)
     .select('reel_id')
+  // Un error de base no es "perdí la carrera": el reel creado queda y se reintenta con "Conectar de nuevo".
+  if (eGanar) {
+    const motivo = `No se pudieron conectar los comentarios: ${eGanar.message}`
+    await anotar(videoId, motivo)
+    return { ok: false, error: motivo }
+  }
   if ((ganado ?? []).length === 0 && nuevo?.id) {
-    await db.from('property_reels').delete().eq('id', nuevo.id)
+    // Perdimos la carrera: el ganador es el reel que conectó la otra red. Primero se le suman nuestros
+    // ids y RECIÉN después se borra el nuestro (al revés, un id podía perderse sin aviso).
     const { data: actual } = await db.from('publicacion_videos').select('reel_id').eq('id', videoId).maybeSingle()
     const otro = actual?.reel_id as string | undefined
-    if (otro) {
+    if (otro && otro !== nuevo.id) {
       const ids = Object.fromEntries(
         Object.entries(plan.fila).filter(([k, v]) => ['ig_media_id', 'fb_video_id', 'fb_post_id'].includes(k) && v),
       )
-      await db.from('property_reels').update(ids).eq('id', otro)
+      await db.from('property_reels').delete().eq('id', nuevo.id)
+      const { error: eSumar } = await db.from('property_reels').update(ids).eq('id', otro)
+      if (eSumar) {
+        const motivo = `No se pudieron conectar los comentarios de esta red: ${eSumar.message}`
+        await anotar(videoId, motivo)
+        return { ok: false, error: motivo }
+      }
     }
   }
   return { ok: true, error: plan.aviso ?? null }
 }
 
 /** De un envío publicado, los identificadores que hacen falta para encontrar sus comentarios. */
-export async function redDelEnvio(envio: Pick<EnvioFila, 'plataforma' | 'ids_externos'>): Promise<RedPublicada | null> {
+export async function redDelEnvio(
+  envio: Pick<EnvioFila, 'plataforma' | 'ids_externos'>,
+  descripcion?: string,
+): Promise<RedPublicada | null> {
   const ids = envio.ids_externos ?? {}
   if (envio.plataforma === 'instagram') {
-    return typeof ids.media_id === 'string' ? { plataforma: 'instagram', igMediaId: ids.media_id } : { plataforma: 'instagram', igMediaId: '' }
+    if (typeof ids.media_id === 'string') return { plataforma: 'instagram', igMediaId: ids.media_id }
+    // Publicado "por recuperación" (se reconoció que ya había salido): no quedó el id. Se busca el reel
+    // reciente con EXACTAMENTE esta descripción; si hay cero o más de uno, no se adivina.
+    const texto = descripcion?.trim()
+    if (texto) {
+      const iguales = (await listarReelsPublicados(25)).filter((r) => (r.descripcion ?? '').trim() === texto)
+      if (iguales.length === 1) return { plataforma: 'instagram', igMediaId: iguales[0].id }
+    }
+    return { plataforma: 'instagram', igMediaId: '' }
   }
   if (envio.plataforma === 'facebook') {
     const videoId = typeof ids.video_id === 'string' ? ids.video_id : ''
@@ -123,9 +150,32 @@ export async function redDelEnvio(envio: Pick<EnvioFila, 'plataforma' | 'ids_ext
       paginaDeLaCuenta(),
       paginaFetch<{ post_id?: string }>(`/${encodeURIComponent(videoId)}?fields=post_id`),
     ])
-    return { plataforma: 'facebook', fbVideoId: videoId, fbPostId: v.post_id ? `${pageId}_${v.post_id}` : '' }
+    // Verificado el 2026-11-04: `post_id` viene sin la página ("1092248110314200"). Si algún día viniera
+    // completo ("{página}_{post}"), se usa tal cual.
+    const post = v.post_id ?? ''
+    return { plataforma: 'facebook', fbVideoId: videoId, fbPostId: post ? (post.includes('_') ? post : `${pageId}_${post}`) : '' }
   }
   return null
+}
+
+/**
+ * Lo que llama el publicador apenas sale un video. NUNCA tira: si algo falla (Meta no responde, la
+ * base se cae), queda anotado en el video con "Conectar de nuevo". Sin esto la pantalla decía
+ * "se conectan apenas sale" para siempre, sin ningún botón.
+ */
+export async function conectarAlPublicar(
+  videoId: string,
+  envio: Pick<EnvioFila, 'plataforma' | 'ids_externos'>,
+  descripcion: string,
+): Promise<void> {
+  try {
+    const red = await redDelEnvio(envio, descripcion)
+    if (red) await conectarVideo(videoId, red)
+  } catch (e) {
+    const detalle = e instanceof Error ? e.message : 'error desconocido'
+    console.error('[publicaciones/conexion] al publicar', videoId, detalle)
+    await anotar(videoId, `No se pudieron conectar los comentarios (${detalle.slice(0, 150)}). Tocá "Conectar de nuevo".`)
+  }
 }
 
 /** "Conectar de nuevo": vuelve a intentarlo con cada red donde el video ya salió. */
@@ -138,9 +188,10 @@ export async function reconectarVideo(videoId: string): Promise<{ ok: boolean; e
     .in('plataforma', ['instagram', 'facebook'])
   if (error) return { ok: false, error: `No se pudo leer el video: ${error.message}` }
   if ((data ?? []).length === 0) return { ok: false, error: 'El video todavía no salió en Instagram ni en Facebook.' }
+  const { data: v } = await publicacionesDb().from('publicacion_videos').select('descripcion').eq('id', videoId).maybeSingle()
   let ultimo: { ok: boolean; error: string | null } = { ok: true, error: null }
   for (const envio of data as Pick<EnvioFila, 'plataforma' | 'ids_externos'>[]) {
-    const red = await redDelEnvio(envio)
+    const red = await redDelEnvio(envio, (v?.descripcion as string | undefined) ?? undefined)
     if (!red) continue
     const r = await conectarVideo(videoId, red)
     // Gana el primer problema: "Conectar de nuevo" tiene que mostrar qué falló, aunque la otra red haya andado.

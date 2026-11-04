@@ -45,7 +45,7 @@ export type EstadoTiktok = 'PROCESSING_UPLOAD' | 'PROCESSING_DOWNLOAD' | 'SEND_T
 
 export interface ClienteTiktok {
   iniciar(a: { total: number; tamanoParte: number; cantidad: number }): Promise<{ publishId: string; uploadUrl: string }>
-  subirParte(url: string, desde: number, bytes: Uint8Array<ArrayBuffer>, total: number, techoMs: number): Promise<'parcial' | 'completa'>
+  subirParte(url: string, desde: number, bytes: Uint8Array<ArrayBuffer>, total: number, techoMs: number, tipo?: string): Promise<'parcial' | 'completa'>
   estado(publishId: string): Promise<{ status: EstadoTiktok; motivo: string | null }>
 }
 
@@ -94,12 +94,12 @@ export function clienteTiktok(llave: () => Promise<string>, f: typeof fetch = fe
       return { publishId: d.publish_id, uploadUrl: d.upload_url }
     },
 
-    async subirParte(url, desde, bytes, total, techoMs) {
+    async subirParte(url, desde, bytes, total, techoMs, tipo = 'video/mp4') {
       if (!esSubidaDeTiktok(url)) throw new ErrorTiktok('Dirección de subida inesperada', 0, null)
       const res = await f(url, {
         method: 'PUT',
         headers: {
-          'content-type': 'video/mp4',
+          'content-type': tipo,
           'content-length': String(bytes.length),
           'content-range': `bytes ${desde}-${desde + bytes.length - 1}/${total}`,
         },

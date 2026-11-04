@@ -29,6 +29,7 @@ export interface ClienteYoutube {
   crearSesion(a: { titulo: string; descripcion: string; total: number; tipo: string }): Promise<string>
   estadoSubida(url: string, total: number): Promise<EstadoSubidaYt>
   subirParte(url: string, desde: number, bytes: Uint8Array<ArrayBuffer>, total: number, techoMs: number): Promise<Exclude<EstadoSubidaYt, { tipo: 'vencida' }>>
+  privacidad(videoId: string): Promise<string | null>
 }
 
 function esSesionDeGoogle(url: string): boolean {
@@ -94,6 +95,16 @@ export function clienteYoutube(llave: () => Promise<string>, f: typeof fetch = f
       if (res.status === 200 || res.status === 201) return terminada(res)
       if (res.status === 404 || res.status === 410) return { tipo: 'vencida' }
       throw await error(res, 'consultar la subida')
+    },
+
+    async privacidad(videoId) {
+      const res = await f(`https://www.googleapis.com/youtube/v3/videos?part=status&id=${encodeURIComponent(videoId)}`, {
+        headers: { authorization: `Bearer ${await llave()}` },
+        signal: AbortSignal.timeout(TECHO_MS),
+      })
+      if (!res.ok) return null
+      const j = (await res.json().catch(() => ({}))) as { items?: { status?: { privacyStatus?: string } }[] }
+      return j.items?.[0]?.status?.privacyStatus ?? null
     },
 
     async subirParte(url, desde, bytes, total, techoMs) {

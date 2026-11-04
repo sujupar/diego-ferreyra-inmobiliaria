@@ -9,12 +9,15 @@ import { useState } from 'react'
 import { AlertTriangle, MessageCircle, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import type { VideoVista } from '@/lib/publicaciones/tipos'
+import type { EnvioFila, VideoVista } from '@/lib/publicaciones/tipos'
 import { api } from './leer-json'
 
-export function EstadoComentarios({ video, onConectado }: { video: VideoVista; onConectado: () => void }) {
+export function EstadoComentarios({ video, envios, onConectado }: { video: VideoVista; envios: EnvioFila[]; onConectado: () => void }) {
   const [conectando, setConectando] = useState(false)
   if (!video.property_id) return null
+  // Ya salió en Instagram o Facebook y no quedó conectado (ni con un motivo): se ofrece conectar igual.
+  const salioSinConectar =
+    !video.reel_id && !video.automatizacion_error && envios.some((e) => e.estado === 'publicado' && (e.plataforma === 'instagram' || e.plataforma === 'facebook'))
 
   const conectar = async () => {
     setConectando(true)
@@ -37,14 +40,14 @@ export function EstadoComentarios({ video, onConectado }: { video: VideoVista; o
           <MessageCircle className="h-3.5 w-3.5" aria-hidden /> Responde comentarios · administralo en la ficha de la propiedad
         </a>
       ) : (
-        !video.automatizacion_error && (
-          <p className="text-muted-foreground">Los comentarios se conectan apenas sale en Instagram o Facebook.</p>
-        )
+        !video.automatizacion_error &&
+        !salioSinConectar && <p className="text-muted-foreground">Los comentarios se conectan apenas sale en Instagram o Facebook.</p>
       )}
-      {video.automatizacion_error && (
+      {(video.automatizacion_error || salioSinConectar) && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-start gap-1 text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden /> {video.automatizacion_error}
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />{' '}
+            {video.automatizacion_error ?? 'Salió, pero los comentarios todavía no quedaron conectados.'}
           </span>
           <Button size="sm" variant="outline" className="h-7" disabled={conectando} onClick={() => void conectar()}>
             <RotateCcw className="mr-1 h-3 w-3" aria-hidden /> Conectar de nuevo

@@ -21,7 +21,7 @@ import { avanzarTiktok } from '../publicador/tiktok'
 import { avanzarYoutube } from '../publicador/youtube'
 import type { Plataforma } from '../tipos'
 import { configGoogle, configTiktok, llaveDeTiktok, llaveDeYoutube, resumenConexiones } from './conexiones'
-import { conectarVideo, redDelEnvio } from './conexion'
+import { conectarAlPublicar } from './conexion'
 import type { EnvioFila, VideoFila } from '../tipos'
 
 /**
@@ -159,8 +159,16 @@ export async function correrPublicacion(): Promise<ResumenPublicador & { archivo
     // Un video conectado a una propiedad empieza a responder comentarios apenas sale.
     alPublicar: async (c, r) => {
       if (!c.video.property_id) return
-      const red = await redDelEnvio({ plataforma: c.envio.plataforma, ids_externos: r.ids })
-      if (red) await conectarVideo(c.video.id, red)
+      if (c.envio.plataforma !== 'instagram' && c.envio.plataforma !== 'facebook') return
+      // Si la corrida ya va muy avanzada, no se arriesga el corte de Netlify: queda para "Conectar de nuevo".
+      if (Date.now() - inicio > PRESUPUESTO_MS * 2) {
+        await publicacionesDb()
+          .from('publicacion_videos')
+          .update({ automatizacion_error: 'Salió, pero no hubo tiempo de conectar los comentarios. Tocá "Conectar de nuevo".' })
+          .eq('id', c.video.id)
+        return
+      }
+      await conectarAlPublicar(c.video.id, { plataforma: c.envio.plataforma, ids_externos: r.ids }, c.video.descripcion)
     },
     redes: {
       youtube: (e, p, ctx) =>
@@ -173,6 +181,7 @@ export async function correrPublicacion(): Promise<ResumenPublicador & { archivo
             estadoSubida: youtube.estadoSubida,
             leerParte: leerParteDeStorage,
             subirParte: youtube.subirParte,
+            privacidad: youtube.privacidad,
           },
           ctx,
         ),

@@ -44,6 +44,14 @@ export interface DepsRunner {
   redPendiente?: (plataforma: Plataforma) => Promise<string | null>
 }
 
+/**
+ * Un envío que nunca arrancó y está atrasado más que esto no sale solo: con el
+ * interruptor apagado una semana, o YouTube conectado tarde, saldrían todos juntos
+ * de golpe. Queda fallido con "Reintentar" para que alguien decida.
+ */
+const ATRASO_MAXIMO_MS = 24 * 3600_000
+export const ATRASADO = 'Salía hace más de un día y no se publicó a tiempo. Tocá Reintentar para publicarlo igual.'
+
 /** Cada cuánto se vuelve a mirar un envío que espera a que se conecte su red. */
 const ESPERA_RED_PENDIENTE_MS = 10 * 60_000
 /** Una etapa no trabaja después de esto, contado desde que arrancó la corrida (Netlify corta ~26 s). */
@@ -85,6 +93,17 @@ export async function correrPublicador(d: DepsRunner): Promise<ResumenPublicador
       continue
     }
 
+    const atrasado =
+      envio.etapa === null &&
+      envio.ids_externos?.reintento !== true &&
+      !!video.programado_para &&
+      ahora.getTime() - Date.parse(video.programado_para) > ATRASO_MAXIMO_MS
+    if (atrasado) {
+      await guardarSinCortar(d, envio.id, { estado: 'fallido', proximo_intento: null, ultimo_error: ATRASADO }, resumen)
+      resumen.fallidos++
+      continue
+    }
+
     const pendiente = d.redPendiente ? await d.redPendiente(envio.plataforma) : null
     if (pendiente) {
       await guardarSinCortar(d, envio.id, {
@@ -118,6 +137,11 @@ export async function correrPublicador(d: DepsRunner): Promise<ResumenPublicador
     const ctx: Contexto = {
       ahora,
       plazo: inicio + PLAZO_ETAPA_MS,
+      anotarIds: async (etapa, ids) => {
+        if ((await d.guardar(envio.id, { etapa, ids_externos: ids, estado: 'en_curso' })) === false) {
+          throw new Error('El envío se canceló mientras se publicaba: no se mandó nada más.')
+        }
+      },
       // Anotación previa a un pedido que no se puede repetir. Si no se puede
       // guardar, tira: el pedido no se manda.
       antes: async (etapa) => {
@@ -144,7 +168,11 @@ export async function correrPublicador(d: DepsRunner): Promise<ResumenPublicador
         }, resumen)
         resumen.reintentos++
       } else {
-        await guardarSinCortar(d, envio.id, { estado: 'fallido', intentos, ultimo_error: clasificado.mensaje, proximo_intento: null }, resumen)
+        // Ya no se reintenta: el mensaje no puede seguir prometiendo que sí.
+        const mensaje = clasificado.transitorio
+          ? `${clasificado.mensaje.replace(/\s*Se reintenta solo\.?$/, '')} Ya se probó varias veces: tocá Reintentar.`
+          : clasificado.mensaje
+        await guardarSinCortar(d, envio.id, { estado: 'fallido', intentos, ultimo_error: mensaje, proximo_intento: null }, resumen)
         resumen.fallidos++
       }
       resumen.detalle.push(`${envio.plataforma} ${envio.id}: error — ${clasificado.mensaje}`)

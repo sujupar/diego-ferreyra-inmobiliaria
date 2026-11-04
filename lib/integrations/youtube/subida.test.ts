@@ -64,6 +64,14 @@ describe('estadoSubida', () => {
   })
 })
 
+describe('privacidad', () => {
+  it('lee con qué privacidad quedó el video', async () => {
+    const { f, llamadas } = falso([json({ items: [{ status: { privacyStatus: 'private' } }] })])
+    expect(await clienteYoutube(llave, f).privacidad('VID')).toBe('private')
+    expect(llamadas[0].url).toBe('https://www.googleapis.com/youtube/v3/videos?part=status&id=VID')
+  })
+})
+
 describe('subirParte', () => {
   it('manda el rango exacto y devuelve el nuevo punto', async () => {
     const { f, llamadas } = falso([new Response(null, { status: 308, headers: { range: 'bytes=0-3' } })])

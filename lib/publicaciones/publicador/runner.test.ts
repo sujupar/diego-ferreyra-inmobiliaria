@@ -226,6 +226,59 @@ describe('correrPublicador', () => {
   })
 })
 
+describe('correrPublicador — cuidados de la revisión', () => {
+  it('lo que la red anota durante la etapa (la sesión abierta) se guarda en el envío aunque después tire', async () => {
+    const d = deps({
+      candidatos: async () => [candidato('instagram')],
+      redes: {
+        instagram: async (_e, _p, ctx) => {
+          await ctx.anotarIds?.('subiendo', { upload_url: 'U1' })
+          throw Object.assign(new Error('timeout'), { name: 'TimeoutError' })
+        },
+      },
+    })
+    await correrPublicador(d)
+    expect(d.guardados[0].cambios).toEqual({ etapa: 'subiendo', ids_externos: { upload_url: 'U1' }, estado: 'en_curso' })
+  })
+
+  it('un video que nunca arrancó y está atrasado más de un día no sale de golpe: queda para confirmar', async () => {
+    const red = vi.fn()
+    const c = candidato('instagram')
+    c.video = { ...c.video, programado_para: new Date(AHORA.getTime() - 26 * 3600_000).toISOString() }
+    const d = deps({ candidatos: async () => [c], redes: { instagram: red } })
+    await correrPublicador(d)
+    expect(red).not.toHaveBeenCalled()
+    expect(d.guardados[0].cambios).toMatchObject({ estado: 'fallido', ultimo_error: expect.stringMatching(/más de un día.*Reintentar/) })
+  })
+
+  it('con Reintentar, el atrasado sale igual', async () => {
+    const red = vi.fn(async () => ({ etapa: 'contenedor', ids: {}, estado: 'en_curso' as const, esperarMs: 0 }))
+    const c = candidato('instagram')
+    c.video = { ...c.video, programado_para: new Date(AHORA.getTime() - 26 * 3600_000).toISOString() }
+    c.envio = { ...c.envio, ids_externos: { reintento: true } }
+    await correrPublicador(deps({ candidatos: async () => [c], redes: { instagram: red } }))
+    expect(red).toHaveBeenCalled()
+  })
+
+  it('cuando se acaban los reintentos, el mensaje no promete que se reintenta solo', async () => {
+    const c = candidato('instagram')
+    c.envio = { ...c.envio, intentos: 5 }
+    const d = deps({
+      candidatos: async () => [c],
+      redes: {
+        instagram: async () => {
+          throw Object.assign(new Error('Instagram 503'), { httpStatus: 503 })
+        },
+      },
+    })
+    await correrPublicador(d)
+    const g = d.guardados.at(-1)!.cambios
+    expect(g.estado).toBe('fallido')
+    expect(String(g.ultimo_error)).not.toMatch(/Se reintenta solo/)
+    expect(String(g.ultimo_error)).toMatch(/Reintentar/)
+  })
+})
+
 describe('correrPublicador — red sin conectar', () => {
   it('el envío espera con el motivo a la vista, sin gastar intentos ni llamar a la red', async () => {
     const youtube = vi.fn()

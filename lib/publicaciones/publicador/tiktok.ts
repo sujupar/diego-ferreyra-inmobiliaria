@@ -9,7 +9,7 @@
  * llega nunca a la bandeja: no hay borrador doble.
  */
 import { planDePartes, type EstadoTiktok } from '@/lib/integrations/tiktok/subida'
-import type { Contexto, EnvioEnCurso, Pieza, ResultadoEtapa } from './redes'
+import { PLAZO_VENCIDO, vencioElPlazo, type Contexto, type EnvioEnCurso, type Pieza, type ResultadoEtapa } from './redes'
 
 const TECHO_OPERACION_MS = 4_000
 const TECHO_MINIMO_MS = 1_500
@@ -24,7 +24,7 @@ export interface DepsTiktok {
   iniciar(a: { total: number; tamanoParte: number; cantidad: number }): Promise<{ publishId: string; uploadUrl: string }>
   estado(publishId: string): Promise<{ status: EstadoTiktok; motivo: string | null }>
   leerParte(videoUrl: string, desde: number, hasta: number, techoMs: number): Promise<Uint8Array<ArrayBuffer>>
-  subirParte(url: string, desde: number, bytes: Uint8Array<ArrayBuffer>, total: number, techoMs: number): Promise<'parcial' | 'completa'>
+  subirParte(url: string, desde: number, bytes: Uint8Array<ArrayBuffer>, total: number, techoMs: number, tipo: string): Promise<'parcial' | 'completa'>
 }
 
 export async function avanzarTiktok(envio: EnvioEnCurso, pieza: Pieza, d: DepsTiktok, ctx: Contexto): Promise<ResultadoEtapa> {
@@ -48,6 +48,8 @@ export async function avanzarTiktok(envio: EnvioEnCurso, pieza: Pieza, d: DepsTi
         return { etapa: envio.etapa, ids, estado: 'fallido', error: `TikTok no aceptó el video${e.motivo ? ` (${e.motivo})` : ''}. Revisalo y tocá Reintentar.` }
       }
       arrancar = true
+    } else if (vencioElPlazo(ids, ctx.ahora)) {
+      return { etapa: envio.etapa, ids, estado: 'fallido', error: PLAZO_VENCIDO('TikTok') }
     } else if (siguiente >= plan.cantidad) {
       // Ya subió todo: TikTok lo está procesando.
       return { etapa: 'procesando', ids, estado: 'en_curso', esperarMs: UN_MINUTO }
@@ -67,6 +69,8 @@ export async function avanzarTiktok(envio: EnvioEnCurso, pieza: Pieza, d: DepsTi
       inicio_at: typeof ids.inicio_at === 'string' ? ids.inicio_at : ctx.ahora.toISOString(),
     }
     siguiente = 0
+    // ANTES del primer byte: con la subida guardada, un corte no inicia un segundo borrador.
+    await ctx.anotarIds?.('subiendo', { ...ids, siguiente })
   }
 
   const url = ids.upload_url as string
@@ -77,9 +81,16 @@ export async function avanzarTiktok(envio: EnvioEnCurso, pieza: Pieza, d: DepsTi
     if (subidas === 0 && restante < 2 * TECHO_MINIMO_MS) break
     const techo = Math.min(TECHO_OPERACION_MS, Math.max(TECHO_MINIMO_MS, Math.floor(restante / 2)))
     const { desde, hasta } = plan.partes[siguiente]
-    const bytes = await d.leerParte(pieza.videoUrl, desde, hasta, techo)
-    if (bytes.length !== hasta - desde + 1) throw new Error('No se pudo leer una parte completa del video')
-    const r = await d.subirParte(url, desde, bytes, total, techo)
+    let r: 'parcial' | 'completa'
+    try {
+      const bytes = await d.leerParte(pieza.videoUrl, desde, hasta, techo)
+      if (bytes.length !== hasta - desde + 1) throw new Error('No se pudo leer una parte completa del video')
+      r = await d.subirParte(url, desde, bytes, total, techo, pieza.videoUrl.endsWith('.mov') ? 'video/quicktime' : 'video/mp4')
+    } catch (e) {
+      // Lo subido hasta acá queda anotado: la corrida siguiente sigue desde ahí, no desde el principio.
+      if (subidas > 0) await ctx.anotarIds?.('subiendo', { ...ids, siguiente })
+      throw e
+    }
     siguiente++
     subidas++
     if (r === 'completa') siguiente = plan.cantidad

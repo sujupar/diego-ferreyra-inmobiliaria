@@ -90,6 +90,12 @@ async function reelPorMedia(igMediaId: string, plataforma: Plataforma = 'instagr
     .select('*')
     .eq(plataforma === 'facebook' ? 'fb_post_id' : 'ig_media_id', igMediaId)
     .maybeSingle()
+  // Facebook: si el aviso trajera `{página}_{video}` en vez de `{página}_{post}`, se busca por el video.
+  if (!data && plataforma === 'facebook' && igMediaId.includes('_')) {
+    const sufijo = igMediaId.slice(igMediaId.indexOf('_') + 1)
+    const { data: porVideo } = await admin().from('property_reels').select('*').eq('fb_video_id', sufijo).maybeSingle()
+    return (porVideo as unknown as FilaReel) ?? null
+  }
   return (data as unknown as FilaReel) ?? null
 }
 
