@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { contenidoAuth } from '@/lib/contenido/route-auth'
-import { escuchaComentariosDeFacebook, paginaRecibeFeed } from '@/lib/integrations/facebook/suscripcion'
+import { camposParaAlta, escuchaComentariosDeFacebook, paginaRecibeFeed } from '@/lib/integrations/facebook/suscripcion'
 import { urlBase } from '@/lib/publicaciones/servidor/conexiones'
 
 /**
@@ -82,11 +82,19 @@ export async function POST() {
   const p = await preparar()
   if ('respuesta' in p) return p.respuesta
   try {
+    const actuales = await pedir(`${API}/${p.appId}/subscriptions?access_token=${p.appId}|${p.appSecret}`)
+    const errorLectura = mensajeDeError(actuales)
+    if (errorLectura) return NextResponse.json({ error: `No pude leer las suscripciones de la app: ${errorLectura}` }, { status: 502 })
+    // Ya está: no se vuelve a mandar nada.
+    if (escuchaComentariosDeFacebook(actuales.data, p.direccion)) {
+      return NextResponse.json({ ok: true, yaEstaba: true, ...(await estado(p.appId, p.appSecret, p.direccion)) })
+    }
     // Meta llama a la dirección con el desafío en este mismo momento; la contesta la ruta del webhook.
+    // Los campos van unidos con los que ya tenía: Meta REEMPLAZA la lista del objeto.
     const alta = await pedir(`${API}/${p.appId}/subscriptions?access_token=${p.appId}|${p.appSecret}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ object: 'page', callback_url: p.direccion, fields: 'feed', verify_token: p.verifyToken }),
+      body: JSON.stringify({ object: 'page', callback_url: p.direccion, fields: camposParaAlta(actuales.data), verify_token: p.verifyToken }),
     })
     const errorAlta = mensajeDeError(alta)
     if (errorAlta) return NextResponse.json({ error: `Meta rechazó el alta: ${errorAlta}` }, { status: 502 })

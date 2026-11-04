@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { escuchaComentariosDeFacebook, paginaRecibeFeed } from './suscripcion'
+import { camposParaAlta, escuchaComentariosDeFacebook, paginaRecibeFeed } from './suscripcion'
 
 const DIRECCION = 'https://inmodf.com.ar/api/webhooks/instagram'
 
@@ -45,5 +45,23 @@ describe('paginaRecibeFeed', () => {
     expect(paginaRecibeFeed([{ id: '999', subscribed_fields: ['feed'] }], '123')).toBe(false)
     expect(paginaRecibeFeed([{ id: '123', subscribed_fields: ['messages'] }], '123')).toBe(false)
     expect(paginaRecibeFeed(null, '123')).toBe(false)
+  })
+})
+
+describe('camposParaAlta (Meta REEMPLAZA los campos del objeto page)', () => {
+  it('sin suscripción previa al objeto page, pide solo feed', () => {
+    expect(camposParaAlta([{ object: 'instagram', fields: [{ name: 'comments' }] }])).toBe('feed')
+  })
+
+  it('conserva los campos que ya escuchaba y suma feed', () => {
+    expect(camposParaAlta([{ object: 'page', fields: [{ name: 'messages' }, { name: 'leadgen' }] }])).toBe('messages,leadgen,feed')
+  })
+
+  it('si ya tenía feed, no lo repite', () => {
+    expect(camposParaAlta([{ object: 'page', fields: ['feed', 'messages'] }])).toBe('feed,messages')
+  })
+
+  it('con una respuesta rara, pide solo feed', () => {
+    expect(camposParaAlta(null)).toBe('feed')
   })
 })

@@ -139,9 +139,11 @@ export function PropiedadYComentarios({ video, editable, onCambio }: Props) {
    * eligió un modo a mano, se respeta.
    */
   const conModo = (b: Borrador, landingPublicada = landing): Borrador => {
-    if (modoTocado) return b
     const listo = destinoDe(b, landingPublicada) && separarPalabras(b.palabras).length > 0
-    return { ...b, modo: listo ? 'en_vivo' : 'apagado' }
+    // Sin destino o sin palabra no puede responder: la pantalla no promete algo que el
+    // servidor igual apaga al publicar (aunque se haya elegido un modo a mano).
+    if (!listo) return { ...b, modo: 'apagado' }
+    return modoTocado ? b : { ...b, modo: 'en_vivo' }
   }
   const sinLinea = opcion !== 'ninguno' && !!borrador.palabras && !mencionaPalabra(video.descripcion, borrador.palabras)
 

@@ -24,6 +24,19 @@ export function escuchaComentariosDeFacebook(suscripcionesDeLaApp: unknown, dire
   })
 }
 
+/**
+ * Los campos a mandar al dar de alta el objeto `page`. Meta REEMPLAZA la lista de ese
+ * objeto: mandar solo `feed` dejaría de escuchar cualquier otro campo que ya tuviera.
+ * Por eso se conservan los actuales y se suma `feed`.
+ */
+export function camposParaAlta(suscripcionesDeLaApp: unknown): string {
+  const actual = Array.isArray(suscripcionesDeLaApp)
+    ? suscripcionesDeLaApp.find((s) => typeof s === 'object' && s && (s as { object?: unknown }).object === 'page')
+    : undefined
+  const campos = nombresDeCampos((actual as { fields?: unknown } | undefined)?.fields)
+  return (campos.includes('feed') ? campos : [...campos, 'feed']).join(',')
+}
+
 export function paginaRecibeFeed(appsDeLaPagina: unknown, appId: string): boolean {
   if (!Array.isArray(appsDeLaPagina)) return false
   return appsDeLaPagina.some((a) => {
