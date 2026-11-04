@@ -9,6 +9,7 @@ import { CheckCircle2, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { aHoraArgentina } from '@/lib/publicaciones/calendario'
 import type { EnvioFila, Plataforma, VideoVista } from '@/lib/publicaciones/tipos'
+import { EstadoComentarios } from './EstadoComentarios'
 import { EstadoRedes } from './EstadoRedes'
 import { Miniatura } from './FilaVideo'
 import { diaLargo } from './formato'
@@ -135,6 +136,7 @@ export function PestanaPublicado() {
                     reintentando={reintentando}
                     onReintentar={(e) => void reintentar(e)}
                   />
+                  <EstadoComentarios video={v} onConectado={() => void cargar()} />
                 </div>
               </li>
             )

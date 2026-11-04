@@ -3,6 +3,7 @@ import { contenidoAuth } from '@/lib/contenido/route-auth'
 import { publicacionesDb } from '@/lib/publicaciones/db'
 import { patronDeBusqueda, type PropiedadParaConectar } from '@/lib/publicaciones/propiedades'
 import { respuestaDeError } from '@/lib/publicaciones/servidor/http'
+import { leerAjustes } from '@/lib/social/reels/procesador'
 
 const ID = /^[0-9a-f-]{36}$/i
 
@@ -15,7 +16,10 @@ export async function GET(req: Request) {
     const url = new URL(req.url)
     const id = url.searchParams.get('id')
     const patron = patronDeBusqueda(url.searchParams.get('q') ?? '')
-    if (!(id && ID.test(id)) && !patron) return NextResponse.json({ propiedades: [] })
+    // Los interruptores generales de la automatización: la pantalla avisa si están apagados.
+    const ajustes = await leerAjustes()
+    const instagram = { automatizacionGeneral: ajustes.automatizacion_habilitada, privadosActivos: ajustes.dm_habilitado }
+    if (!(id && ID.test(id)) && !patron) return NextResponse.json({ propiedades: [], instagram })
 
     const db = publicacionesDb()
     let q = db.from('properties').select('id, address, neighborhood').neq('status', 'descartada').limit(15)
@@ -28,18 +32,19 @@ export async function GET(req: Request) {
       ? await db.from('property_landings').select('property_id, status, public_slug').in('property_id', filas.map((f) => f.id))
       : { data: [], error: null }
     if (e2) throw new Error(`DB: ${e2.message}`)
-    const publicadas = new Set(
+    const publicadas = new Map(
       ((landings ?? []) as { property_id: string; status: string; public_slug: string | null }[])
         .filter((l) => l.status === 'published' && !!l.public_slug)
-        .map((l) => l.property_id),
+        .map((l) => [l.property_id, l.public_slug as string]),
     )
     const propiedades: PropiedadParaConectar[] = filas.map((f) => ({
       id: f.id,
       direccion: f.address ?? '(sin dirección)',
       barrio: f.neighborhood,
       landingPublicada: publicadas.has(f.id),
+      landingSlug: publicadas.get(f.id) ?? null,
     }))
-    return NextResponse.json({ propiedades })
+    return NextResponse.json({ propiedades, instagram })
   } catch (e) {
     return respuestaDeError(e, 'buscar propiedades')
   }

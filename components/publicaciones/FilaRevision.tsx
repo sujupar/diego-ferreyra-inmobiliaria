@@ -20,12 +20,13 @@ import { Miniatura } from './FilaVideo'
 import { duracion } from './formato'
 import { EstadoRedes } from './EstadoRedes'
 import { IconosRedes } from './IconosRedes'
+import { PropiedadYComentarios } from './PropiedadYComentarios'
 
 /** YouTube trata como Short solo lo que dura hasta 3 minutos. */
 const TOPE_SHORT_SEG = 180
 
 export type CambiosVideo = Partial<
-  Pick<VideoVista, 'descripcion' | 'titulo_youtube' | 'redes' | 'programado_para' | 'hora_manual' | 'pausado'>
+  Pick<VideoVista, 'descripcion' | 'titulo_youtube' | 'redes' | 'programado_para' | 'hora_manual' | 'pausado' | 'property_id' | 'automatizacion'>
 >
 
 interface Props {
@@ -190,6 +191,9 @@ export function FilaRevision({ video, editable, onCambio, envios, arrastre, acci
                 Cerrar <ChevronUp className="h-3.5 w-3.5" aria-hidden />
               </button>
             </div>
+          )}
+          {(video.redes.includes('instagram') || video.redes.includes('facebook')) && (
+            <PropiedadYComentarios video={video} editable={editable} onCambio={onCambio} />
           )}
           {acciones && <div className="flex flex-wrap gap-2 pt-1">{acciones}</div>}
         </div>

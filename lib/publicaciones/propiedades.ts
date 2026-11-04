@@ -18,4 +18,6 @@ export interface PropiedadParaConectar {
   barrio: string | null
   /** Sin landing publicada el privado no tiene adónde llevar: la automatización queda apagada. */
   landingPublicada: boolean
+  /** El enlace público de la landing (para mostrar el privado tal como va a salir). */
+  landingSlug: string | null
 }
