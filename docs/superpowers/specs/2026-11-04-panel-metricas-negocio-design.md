@@ -71,8 +71,27 @@ como 0: dice "sin dato".
 | Cambios (hitos) | **tabla nueva `hitos_metricas`** | falta (se siembran los conocidos) |
 | Ene–jul 2026 (sistema viejo) | **carga histórica conciliada** en `metricas_historicas_mes` | reconstruida en el Mapa de métricas |
 
-Las ventas se cargan desde la ficha de la propiedad ("Vendida" ya existe) sumando honorario cobrado, puntas,
-asesor, referidor y reparto; las ventas viejas sin ficha se cargan en una pantalla "Ventas" del panel.
+### Cada venta nueva se registra sola (decisión del dueño, 2026-11-04)
+
+Las 17 ventas del documento de Diego se cargan ya (16 + Agüero, reservada en octubre). Y para que no haya que
+volver a reconstruir nada, **la plataforma pide los datos de la operación en el momento en que pasa**:
+
+- **Al marcar "Reservada"** en la ficha: fecha de reserva, precio, moneda, % al vendedor, % al comprador, y si
+  se comparte con otra inmobiliaria (cuánto se lleva). La venta cuenta en el **mes de la reserva** (así lo cuenta
+  Diego).
+- **Al marcar "Vendida"**: se confirma lo anterior y se agrega fecha de escritura y **honorario cobrado real**.
+- **Reparto**, con valores sugeridos que se pueden corregir, una línea cada uno: otra inmobiliaria, asesor que
+  vendió (Lucas 20% si muestra, 50% si capta), referidor (ej. la abogada, 20%), Julián (20%, solo si el dueño
+  llegó por embudo). **Limpio de Diego = cobrado − reparto**, calculado, no tipeado.
+- **Origen del dueño** y quién captó vienen precargados de la propiedad; si faltan, son obligatorios.
+- **Gastos de esa propiedad** (fotos, video, recorrido, destaques, cartel, anuncios de la propiedad): opcionales,
+  se restan como costo de vender.
+- Una venta con datos incompletos aparece en el panel como **"faltan datos"** con el link para completarla, y
+  genera una tarea al que la marcó. Nunca cuenta como $0.
+- Las ventas viejas sin ficha en la plataforma (ej. Piedras) se cargan en la pantalla "Ventas" del panel, con el
+  mismo formulario.
+- Gastos fijos e impuestos: pantalla "Gastos" con el gasto mensual vigente de cada concepto; se carga una vez y
+  se edita solo cuando cambia.
 
 ## Fuera de alcance (v1)
 
@@ -89,7 +108,10 @@ Consultas de compradores y visitas a propiedades (ya tienen su sección), tráfi
 1. Con el rango "año 2026", el embudo de tasación coincide (±1) con "Meta y embudos mes a mes".
 2. Ninguna persona aparece dos veces en el mismo paso; una agendada cuenta también como solicitud.
 3. Ningún registro de prueba (Julián, [TEST]) aparece en ningún número.
-4. Las 16 ventas cargadas dan USD 136.851 cobrados y USD 124.177 limpios.
+4. Las 16 ventas de dic-2025 a ago-2026 dan USD 136.851 cobrados y USD 124.177 limpios (salvo las 3 cuentas
+   marcadas para revisar: Baigorria, Maure, Santo Tomé).
+8. Marcar una propiedad como reservada o vendida pide los datos de la operación, y el panel la suma sola sin
+   ninguna carga adicional.
 5. El planificador con N=8 y las tasas del período muestra inversión semanal y mensual con su cuenta visible.
 6. Cambiar fechas, embudo o comparación actualiza todo en menos de 3 segundos.
 7. Abogado y asesor no ven el panel (solo admin, dueño, coordinador).
