@@ -13,6 +13,7 @@ import {
 import { BUCKET, publicacionesDb, urlPublica } from '../db'
 import { sincronizarEnvios } from '../envios'
 import { cambiosDeReintento } from '../publicador/maquina'
+import { validarAutomatizacion } from '../automatizacion'
 import { ajustarDescripcion, ajustarTituloYoutube } from '../textos'
 import type { EnvioFila, Plataforma, TandaFila, VideoFila, VideoVista } from '../tipos'
 import {
@@ -256,6 +257,21 @@ export async function actualizarVideo(id: string, cambios: z.infer<typeof patchV
   }
   for (const k of ['hora_manual', 'orden', 'pausado', 'duracion_seg'] as const) {
     if (cambios[k] !== undefined) patch[k] = cambios[k]
+  }
+  if (cambios.property_id !== undefined) {
+    patch.property_id = cambios.property_id
+    // Sin propiedad no hay a quién mandar al privado: la configuración se va con ella.
+    if (cambios.property_id === null) patch.automatizacion = null
+  }
+  if (cambios.automatizacion !== undefined && cambios.property_id !== null) {
+    if (cambios.automatizacion === null) {
+      patch.automatizacion = null
+    } else {
+      if (!(cambios.property_id ?? v.property_id)) throw new ErrorHttp(400, 'Elegí primero la propiedad del video')
+      const config = validarAutomatizacion(cambios.automatizacion)
+      if (!config.ok) throw new ErrorHttp(400, config.error)
+      patch.automatizacion = config.valor
+    }
   }
   if (Object.keys(patch).length === 0) return conUrls(v)
 

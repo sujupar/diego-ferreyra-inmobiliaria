@@ -12,6 +12,12 @@ describe('enlaceDelReel', () => {
     expect(url.searchParams.get('utm_content')).toBe('reel_1fb62134')
   })
 
+  it('un comentario de Facebook marca facebook como origen (el resto igual)', () => {
+    const url = new URL(enlaceDelReel('https://inmodf.com.ar', 'depto-doblas', '1fb62134-abf6', 'facebook'))
+    expect(url.searchParams.get('utm_source')).toBe('facebook')
+    expect(url.searchParams.get('utm_campaign')).toBe('propiedad_depto-doblas')
+  })
+
   it('no duplica la barra si la base termina en /', () => {
     expect(enlaceDelReel('https://inmodf.com.ar/', 'x', 'abcdefgh-1')).toMatch(/^https:\/\/inmodf\.com\.ar\/p\/x\?/)
   })

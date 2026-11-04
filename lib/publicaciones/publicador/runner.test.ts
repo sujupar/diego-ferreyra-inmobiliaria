@@ -225,3 +225,45 @@ describe('correrPublicador', () => {
     expect(d.redes.facebook).not.toHaveBeenCalled()
   })
 })
+
+describe('correrPublicador — al publicar', () => {
+  const publicado = async () => ({ etapa: 'contenedor', ids: { media_id: 'm1' }, estado: 'publicado' as const, enlace: null })
+  const enCurso = async () => ({ etapa: 'iniciado', ids: {}, estado: 'en_curso' as const, esperarMs: 0 })
+
+  it('avisa lo que salió (para conectar los comentarios), y solo eso', async () => {
+    const alPublicar = vi.fn(async () => undefined)
+    await correrPublicador(deps({ alPublicar, redes: { instagram: publicado, facebook: enCurso } }))
+    expect(alPublicar).toHaveBeenCalledTimes(1)
+    expect(alPublicar).toHaveBeenCalledWith(
+      expect.objectContaining({ envio: expect.objectContaining({ plataforma: 'instagram' }) }),
+      expect.objectContaining({ ids: { media_id: 'm1' } }),
+    )
+  })
+
+  it('si conectar falla, el envío igual queda publicado y la corrida sigue', async () => {
+    const d = deps({
+      alPublicar: async () => {
+        throw new Error('base caída')
+      },
+      redes: { instagram: publicado, facebook: publicado },
+    })
+    const r = await correrPublicador(d)
+    expect(r.publicados).toBe(2)
+    expect(d.guardados.filter((g) => g.cambios.estado === 'publicado')).toHaveLength(2)
+  })
+
+  it('si el guardado de "publicado" no se pudo escribir, no conecta todavía (la corrida siguiente lo reconoce)', async () => {
+    const alPublicar = vi.fn(async () => undefined)
+    await correrPublicador(
+      deps({
+        alPublicar,
+        guardar: async () => {
+          throw new Error('DB: caída')
+        },
+        redes: { instagram: publicado },
+        candidatos: async () => [candidato('instagram')],
+      }),
+    )
+    expect(alPublicar).not.toHaveBeenCalled()
+  })
+})

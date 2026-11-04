@@ -15,6 +15,7 @@ import { BUCKET, publicacionesDb, urlPublica } from '../db'
 import { listoParaBorrar } from '../publicador/limpieza'
 import { avanzarFacebook, avanzarInstagram } from '../publicador/redes'
 import { correrPublicador, type Candidato, type ResumenPublicador } from '../publicador/runner'
+import { conectarVideo, redDelEnvio } from './conexion'
 import type { EnvioFila, VideoFila } from '../tipos'
 
 /**
@@ -125,6 +126,12 @@ export async function correrPublicacion(): Promise<ResumenPublicador & { archivo
     guardar,
     urlPublica,
     presupuestoMs: PRESUPUESTO_MS,
+    // Un video conectado a una propiedad empieza a responder comentarios apenas sale.
+    alPublicar: async (c, r) => {
+      if (!c.video.property_id) return
+      const red = await redDelEnvio({ plataforma: c.envio.plataforma, ids_externos: r.ids })
+      if (red) await conectarVideo(c.video.id, red)
+    },
     redes: {
       instagram: (e, p, ctx) =>
         avanzarInstagram(

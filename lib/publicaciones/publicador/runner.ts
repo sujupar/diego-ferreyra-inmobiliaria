@@ -30,6 +30,12 @@ export interface DepsRunner {
   urlPublica: (path: string) => string
   redes: Partial<Record<Plataforma, Red>>
   presupuestoMs: number
+  /**
+   * Después de que un envío quedó guardado como publicado: conectar la
+   * automatización de comentarios. Lo que falle acá NO toca el envío (el video
+   * ya salió); lo anota quien lo implementa.
+   */
+  alPublicar?: (c: Candidato, r: ResultadoEtapa) => Promise<void>
 }
 
 export interface ResumenPublicador {
@@ -132,7 +138,17 @@ export async function correrPublicador(d: DepsRunner): Promise<ResumenPublicador
     // pasó. La reserva vence en 3 minutos y la corrida siguiente le pregunta a
     // Meta en qué quedó (las etapas siempre preguntan antes de publicar).
     if (!(await guardarSinCortar(d, envio.id, cambios, resumen))) continue
-    if (r.estado === 'publicado') resumen.publicados++
+    if (r.estado === 'publicado') {
+      resumen.publicados++
+      if (d.alPublicar) {
+        try {
+          await d.alPublicar(c, r)
+        } catch (e) {
+          console.error('[publicador] no se pudo conectar la automatización', envio.id, e)
+          resumen.detalle.push(`${envio.plataforma} ${envio.id}: publicado, sin conectar los comentarios`)
+        }
+      }
+    }
     if (r.estado === 'fallido') resumen.fallidos++
     resumen.detalle.push(`${envio.plataforma} ${envio.id}: ${r.estado} (${r.etapa ?? 'inicio'})`)
   }

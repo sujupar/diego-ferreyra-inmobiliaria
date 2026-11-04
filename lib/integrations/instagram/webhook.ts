@@ -26,6 +26,12 @@
 import { createHmac, timingSafeEqual } from 'crypto'
 
 export interface ComentarioDelAviso {
+  /** Sin valor = Instagram (todo lo anterior a Facebook se escribió así). */
+  plataforma?: 'instagram' | 'facebook'
+  /**
+   * De qué publicación es: en Instagram el id del media; en Facebook el id de la
+   * publicación de la Página (`{página}_{post}`), que es lo que trae el aviso `feed`.
+   */
   igMediaId: string
   comentarioId: string
   autorId: string

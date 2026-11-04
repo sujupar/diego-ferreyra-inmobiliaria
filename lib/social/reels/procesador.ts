@@ -16,6 +16,7 @@
  * manda una segunda respuesta y un segundo mensaje privado a la misma persona.
  */
 import { createClient } from '@supabase/supabase-js'
+import { esComentarioDeLaPagina, responderComentarioFb } from '@/lib/integrations/facebook/comentarios'
 import { esComentarioDeLaCuenta, responderComentario } from '@/lib/integrations/instagram/comentarios'
 import { leerDatoDelBoton, mandarPrivadoConEnlace, mandarTexto } from '@/lib/integrations/instagram/mensajes'
 import { esReintentable, mensajeLegible } from '@/lib/integrations/instagram/client'
@@ -69,7 +70,9 @@ export async function leerAjustes(): Promise<AjustesGlobales> {
  * El enlace a la landing publicada de la propiedad, con las marcas del reel, o
  * `null` si no hay landing publicada.
  */
-async function enlaceDeLaLanding(propertyId: string, reelId: string): Promise<string | null> {
+type Plataforma = 'instagram' | 'facebook'
+
+async function enlaceDeLaLanding(propertyId: string, reelId: string, plataforma: Plataforma = 'instagram'): Promise<string | null> {
   const { data } = await admin()
     .from('property_landings')
     .select('public_slug, status')
@@ -77,14 +80,15 @@ async function enlaceDeLaLanding(propertyId: string, reelId: string): Promise<st
     .maybeSingle()
   const fila = data as { public_slug?: string | null; status?: string } | null
   if (fila?.status !== 'published' || !fila.public_slug) return null
-  return enlaceDelReel(process.env.NEXT_PUBLIC_APP_URL ?? 'https://inmodf.com.ar', fila.public_slug, reelId)
+  return enlaceDelReel(process.env.NEXT_PUBLIC_APP_URL ?? 'https://inmodf.com.ar', fila.public_slug, reelId, plataforma)
 }
 
-async function reelPorMedia(igMediaId: string): Promise<FilaReel | null> {
+/** En Instagram el reel se encuentra por su media; en Facebook, por la publicación de la Página. */
+async function reelPorMedia(igMediaId: string, plataforma: Plataforma = 'instagram'): Promise<FilaReel | null> {
   const { data } = await admin()
     .from('property_reels')
     .select('*')
-    .eq('ig_media_id', igMediaId)
+    .eq(plataforma === 'facebook' ? 'fb_post_id' : 'ig_media_id', igMediaId)
     .maybeSingle()
   return (data as unknown as FilaReel) ?? null
 }
@@ -114,6 +118,7 @@ async function registrarComentario(
     .upsert(
       {
         reel_id: reelId,
+        plataforma: c.plataforma ?? 'instagram',
         ig_comment_id: c.comentarioId,
         ig_user_id: c.autorId,
         username: c.username,
@@ -179,7 +184,8 @@ export async function procesarComentario(
   ajustes: AjustesGlobales,
   ahora = new Date(),
 ): Promise<ResultadoComentario> {
-  const reel = await reelPorMedia(c.igMediaId)
+  const plataforma: Plataforma = c.plataforma ?? 'instagram'
+  const reel = await reelPorMedia(c.igMediaId, plataforma)
   // Un reel que no es nuestro: la cuenta tiene 1.200 publicaciones y la mayoría
   // no pasó nunca por la plataforma.
   if (!reel) return { accion: 'ignorado', motivo: 'reel_desconocido' }
@@ -193,7 +199,7 @@ export async function procesarComentario(
       creado_en: c.creadoEn,
       autor_ig_id: c.autorId,
       autor_username: c.username,
-      es_de_la_cuenta: await esComentarioDeLaCuenta(c.autorId),
+      es_de_la_cuenta: plataforma === 'facebook' ? await esComentarioDeLaPagina(c.autorId) : await esComentarioDeLaCuenta(c.autorId),
       ya_recibio_dm: await yaRecibioDm(reel.id, c.autorId),
     },
     ajustes,
@@ -219,7 +225,7 @@ export async function procesarComentario(
     // El enlace va en el PRIMER privado: con el acceso estándar de Meta no hay
     // segundo mensaje (ver `mandarPrivadoConEnlace`). Sin landing publicada no
     // se manda nada: un enlace roto es peor que no mandar.
-    const enlace = await enlaceDeLaLanding(reel.property_id, reel.id)
+    const enlace = await enlaceDeLaLanding(reel.property_id, reel.id, plataforma)
     if (!enlace) {
       motivoSinPrivado = 'landing_no_publicada'
     } else {
@@ -243,8 +249,9 @@ export async function procesarComentario(
   }
 
   try {
+    const responder = plataforma === 'facebook' ? responderComentarioFb : responderComentario
     await conReintento(() =>
-      responderComentario(c.comentarioId, elegirRespuesta(c.comentarioId, tienePrivado({ privadoEnviado, motivo: motivoSinPrivado }), {
+      responder(c.comentarioId, elegirRespuesta(c.comentarioId, tienePrivado({ privadoEnviado, motivo: motivoSinPrivado }), {
         con: reel.respuestas_con_privado,
         sin: reel.respuestas_sin_privado,
       })))

@@ -9,10 +9,16 @@
  *
  * Módulo PURO.
  */
-export function enlaceDelReel(baseUrl: string, slug: string, reelId: string): string {
+export function enlaceDelReel(
+  baseUrl: string,
+  slug: string,
+  reelId: string,
+  plataforma: 'instagram' | 'facebook' = 'instagram',
+): string {
   const base = baseUrl.replace(/\/+$/, '')
   const marcas = new URLSearchParams({
-    utm_source: 'instagram',
+    // De qué red vino quien comentó: el mismo reel puede estar en Instagram y en Facebook.
+    utm_source: plataforma,
     utm_medium: 'reel',
     utm_campaign: `propiedad_${slug}`,
     utm_content: `reel_${reelId.slice(0, 8)}`,

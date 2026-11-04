@@ -79,6 +79,10 @@ export const patchVideoSchema = z
     miniatura_path: z.string().max(300),
     audio_path: z.string().max(300),
     video_path: z.string().max(300),
+    /** La propiedad del video (null = sin propiedad). El permiso lo chequea la ruta. */
+    property_id: z.uuid().nullable(),
+    /** La forma se valida con `validarAutomatizacion` en el servidor (mensaje legible). */
+    automatizacion: z.unknown().nullable(),
   })
   .partial()
   .strict()
