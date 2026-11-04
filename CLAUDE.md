@@ -2439,8 +2439,11 @@ Specs: `2026-10-29-publicacion-masiva-contenido-design.md` (Drive/YouTube/TikTok
   - **Facebook:** el webhook es la misma ruta (`object:'page'`, campo `feed`). La app tiene que estar
     suscrita al objeto `page`. **El alta la hace el servidor:** `POST /api/publicaciones/facebook-comentarios`
     (admin/dueño; `GET` consulta). Existe porque `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` es secreta en Netlify y no
-    se puede copiar a `.env.local` (la local es distinta: el script devuelve 403 en el desafío). Solo toca la
-    suscripción de la APP: volver a mandar la de la Página con otros campos los REEMPLAZA y perdería `messages`. El reel de la Página tiene `post_id` SIN la página (`1092…`); la publicación del aviso
+    se puede copiar a `.env.local` (la local es distinta: el script devuelve 403 en el desafío). **Y la de
+    Netlify mide más de 64 caracteres: Meta rechaza el alta con "(#100) Param verify_token must be at most 64
+    characters long".** Por eso el alta manda `claveDeVerificacionDerivada(META_APP_SECRET)` (48 caracteres) y
+    el GET del webhook acepta las dos (`esClaveDeVerificacion`). Los campos del objeto `page` se mandan unidos
+    con los que ya tenía (`camposParaAlta`): Meta REEMPLAZA esa lista. La suscripción de la Página no se toca. El reel de la Página tiene `post_id` SIN la página (`1092…`); la publicación del aviso
     es `{página}_{post}` (verificado 2026-11-04). Respuesta pública `POST /{comentario}/comments` con token de
     Página; el privado sale por el MISMO `POST /{página}/messages` (`recipient.comment_id`) que Instagram.
     **En Modo prueba, Facebook siempre simula** (no da usuario para reconocer cuentas de prueba).

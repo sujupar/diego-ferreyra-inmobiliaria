@@ -1,8 +1,39 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createHmac } from 'crypto'
-import { parsearAviso, verificarFirmaInstagram } from './webhook'
+import { claveDeVerificacionDerivada, esClaveDeVerificacion, parsearAviso, verificarFirmaInstagram } from './webhook'
 
 const SECRETO = 'secreto-de-prueba'
+
+describe('clave de verificación del desafío', () => {
+  it('la derivada tiene menos de 64 caracteres (el tope de Meta) y es estable', () => {
+    const clave = claveDeVerificacionDerivada(SECRETO)
+    expect(clave.length).toBeLessThanOrEqual(64)
+    expect(clave.length).toBeGreaterThanOrEqual(32)
+    expect(claveDeVerificacionDerivada(SECRETO)).toBe(clave)
+  })
+
+  it('otro secreto da otra clave', () => {
+    expect(claveDeVerificacionDerivada('otro')).not.toBe(claveDeVerificacionDerivada(SECRETO))
+  })
+
+  it('acepta la de Netlify y la derivada', () => {
+    const opciones = { claveConfigurada: 'clave-de-netlify', secretoApp: SECRETO }
+    expect(esClaveDeVerificacion('clave-de-netlify', opciones)).toBe(true)
+    expect(esClaveDeVerificacion(claveDeVerificacionDerivada(SECRETO), opciones)).toBe(true)
+  })
+
+  it('rechaza cualquier otra, vacía o nula', () => {
+    const opciones = { claveConfigurada: 'clave-de-netlify', secretoApp: SECRETO }
+    expect(esClaveDeVerificacion('otra', opciones)).toBe(false)
+    expect(esClaveDeVerificacion('', opciones)).toBe(false)
+    expect(esClaveDeVerificacion(null, opciones)).toBe(false)
+  })
+
+  it('sin secreto de la app no hay derivada (y sin clave configurada no acepta nada)', () => {
+    expect(esClaveDeVerificacion(claveDeVerificacionDerivada(''), { claveConfigurada: undefined, secretoApp: '' })).toBe(false)
+    expect(esClaveDeVerificacion('x', { claveConfigurada: undefined, secretoApp: undefined })).toBe(false)
+  })
+})
 
 beforeEach(() => {
   process.env.META_APP_SECRET = SECRETO
