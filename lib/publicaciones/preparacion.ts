@@ -54,3 +54,25 @@ export function reintentar(v: Pick<VideoFila, 'etapa' | 'error_etapa'>): EtapaPr
   if (!v.error_etapa || v.error_etapa === 'error' || v.error_etapa === 'listo') return 'extrayendo'
   return v.error_etapa
 }
+
+/**
+ * Lo que se guarda al terminar el paso del navegador. La miniatura es OPCIONAL:
+ * algunos navegadores (Safari, o Chrome con la pestaña en segundo plano) no
+ * abren un video que no se ve, y frenar todo por la foto de portada dejaba el
+ * video trabado en "El video tardó demasiado en abrirse". Lo que importa es el
+ * audio; la duración, si no la dio el video, la da el audio.
+ */
+export function cambiosTrasExtraer(a: {
+  miniaturaPath: string | null
+  duracionVideo: number | null
+  audioPath: string
+  duracionAudio: number | null
+}): Record<string, unknown> {
+  const duracion = a.duracionVideo && a.duracionVideo > 0 ? a.duracionVideo : a.duracionAudio && a.duracionAudio > 0 ? a.duracionAudio : null
+  return {
+    ...(a.miniaturaPath ? { miniatura_path: a.miniaturaPath } : {}),
+    audio_path: a.audioPath,
+    ...(duracion !== null ? { duracion_seg: Math.round(duracion * 10) / 10 } : {}),
+    etapa: 'transcribiendo',
+  }
+}

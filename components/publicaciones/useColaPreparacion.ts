@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { extraerAudio, extraerMiniatura } from '@/lib/publicaciones/navegador/medios'
-import { reintentar as etapaDeReintento } from '@/lib/publicaciones/preparacion'
+import { cambiosTrasExtraer, reintentar as etapaDeReintento } from '@/lib/publicaciones/preparacion'
 import type { VideoVista } from '@/lib/publicaciones/tipos'
 import { api, subirConProgreso } from './leer-json'
 
@@ -110,16 +110,19 @@ export function useColaPreparacion({ videos, archivos, espacios, onVideo }: Opci
       if (v.etapa === 'extrayendo') {
         const fuente: File | string | null = archivos.get(v.id) ?? v.video_url
         if (!fuente) throw new Error('No encuentro el video para sacarle el audio')
-        const mini = await extraerMiniatura(fuente)
-        const miniatura_path = await subirArchivo('miniatura', mini.jpeg, 'image/jpeg')
+        // La miniatura es un extra: si el navegador no puede abrir el video, sigue sin portada.
+        let miniaturaPath: string | null = null
+        let duracionVideo: number | null = null
+        try {
+          const mini = await extraerMiniatura(fuente)
+          miniaturaPath = await subirArchivo('miniatura', mini.jpeg, 'image/jpeg')
+          duracionVideo = mini.duracionSeg
+        } catch (e) {
+          console.warn('[publicaciones] sin miniatura para', v.nombre_archivo, e)
+        }
         const audio = await extraerAudio(fuente)
-        const audio_path = await subirArchivo('audio', audio, 'audio/wav')
-        await patch({
-          miniatura_path,
-          audio_path,
-          duracion_seg: Math.round(mini.duracionSeg * 10) / 10,
-          etapa: 'transcribiendo',
-        })
+        const audioPath = await subirArchivo('audio', audio.wav, 'audio/wav')
+        await patch(cambiosTrasExtraer({ miniaturaPath, duracionVideo, audioPath, duracionAudio: audio.duracionSeg }))
       }
 
       // Servidor: una etapa por llamada hasta que termine.

@@ -13,7 +13,8 @@ import { codificarWav } from '../wav'
 
 const FRECUENCIA = 16_000
 const ALTO_MAXIMO = 720
-const ESPERA_MS = 30_000
+/** Para la miniatura: si el navegador no abre el video en este tiempo, el video sigue sin portada. */
+const ESPERA_MS = 15_000
 
 function urlDe(fuente: File | string): { url: string; liberar: () => void } {
   if (typeof fuente === 'string') return { url: fuente, liberar: () => {} }
@@ -54,9 +55,16 @@ export async function extraerMiniatura(
   video.muted = true
   video.playsInline = true
   video.preload = 'auto'
+  // EN la página aunque no se vea: Safari, y Chrome con la pestaña en segundo plano, no
+  // cargan un video que no está en el documento, y la miniatura nunca llegaba.
+  video.setAttribute('aria-hidden', 'true')
+  video.style.cssText = 'position:fixed;left:-10000px;top:0;width:2px;height:2px;opacity:0;pointer-events:none'
+  document.body.appendChild(video)
   try {
-    const cargado = esperar(video, 'loadeddata')
+    // `loadedmetadata` solo necesita la cabecera (llega antes que el primer cuadro); el cuadro se pide con el seek.
+    const cargado = esperar(video, 'loadedmetadata')
     video.src = url
+    video.load()
     await cargado
     const duracionSeg = Number.isFinite(video.duration) ? video.duration : 0
     const momento = Math.min(1, duracionSeg * 0.1)
@@ -64,6 +72,8 @@ export async function extraerMiniatura(
       const buscado = esperar(video, 'seeked')
       video.currentTime = momento
       await buscado
+    } else if (video.readyState < 2) {
+      await esperar(video, 'loadeddata')
     }
     const escala = Math.min(1, ALTO_MAXIMO / (video.videoHeight || ALTO_MAXIMO))
     const ancho = Math.round((video.videoWidth || 405) * escala)
@@ -81,6 +91,7 @@ export async function extraerMiniatura(
   } finally {
     video.removeAttribute('src')
     video.load()
+    video.remove()
     liberar()
   }
 }
@@ -92,11 +103,11 @@ export async function extraerMiniatura(
 const turnoDeAudio = crearTurno()
 
 /** De a un video por vez aunque la cola prepare dos: ver `lib/publicaciones/turno.ts`. */
-export function extraerAudio(fuente: File | string): Promise<Blob> {
+export function extraerAudio(fuente: File | string): Promise<{ wav: Blob; duracionSeg: number | null }> {
   return turnoDeAudio(() => extraerAudioAhora(fuente))
 }
 
-async function extraerAudioAhora(fuente: File | string): Promise<Blob> {
+async function extraerAudioAhora(fuente: File | string): Promise<{ wav: Blob; duracionSeg: number | null }> {
   const bytes =
     typeof fuente === 'string'
       ? await fetch(fuente).then((r) => {
@@ -111,7 +122,7 @@ async function extraerAudioAhora(fuente: File | string): Promise<Blob> {
   try {
     original = await ctx.decodeAudioData(bytes)
   } catch {
-    return codificarWav(new Float32Array(FRECUENCIA), FRECUENCIA)
+    return { wav: codificarWav(new Float32Array(FRECUENCIA), FRECUENCIA), duracionSeg: null }
   } finally {
     void ctx.close()
   }
@@ -123,5 +134,5 @@ async function extraerAudioAhora(fuente: File | string): Promise<Blob> {
   fuenteAudio.connect(offline.destination)
   fuenteAudio.start()
   const remuestreado = await offline.startRendering()
-  return codificarWav(remuestreado.getChannelData(0), FRECUENCIA)
+  return { wav: codificarWav(remuestreado.getChannelData(0), FRECUENCIA), duracionSeg: original.duration }
 }

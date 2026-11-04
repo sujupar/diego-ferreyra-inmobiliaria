@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { etiquetaEtapa, reintentar, siguienteAccion } from './preparacion'
+import { cambiosTrasExtraer, etiquetaEtapa, reintentar, siguienteAccion } from './preparacion'
 
 const base = { video_path: 'tandas/t/v/video.mp4', audio_path: null, miniatura_path: null }
 
@@ -46,6 +46,32 @@ describe('etiquetaEtapa', () => {
     expect(etiquetaEtapa('subiendo', 42, 'drive')).toBe('Trayendo de Drive 42 %')
     expect(etiquetaEtapa('subiendo', undefined, 'drive')).toBe('Trayendo de Drive')
     expect(etiquetaEtapa('transcribiendo', undefined, 'drive')).toBe('Escuchando el audio')
+  })
+})
+
+describe('cambiosTrasExtraer', () => {
+  it('con miniatura usa la duración del video', () => {
+    expect(cambiosTrasExtraer({ miniaturaPath: 'm.jpg', duracionVideo: 31.24, audioPath: 'a.wav', duracionAudio: 30 })).toEqual({
+      miniatura_path: 'm.jpg',
+      audio_path: 'a.wav',
+      duracion_seg: 31.2,
+      etapa: 'transcribiendo',
+    })
+  })
+
+  it('sin miniatura (el navegador no pudo abrir el video) el video SIGUE igual, con la duración del audio', () => {
+    expect(cambiosTrasExtraer({ miniaturaPath: null, duracionVideo: null, audioPath: 'a.wav', duracionAudio: 42.06 })).toEqual({
+      audio_path: 'a.wav',
+      duracion_seg: 42.1,
+      etapa: 'transcribiendo',
+    })
+  })
+
+  it('sin ninguna duración no inventa una', () => {
+    expect(cambiosTrasExtraer({ miniaturaPath: null, duracionVideo: null, audioPath: 'a.wav', duracionAudio: null })).toEqual({
+      audio_path: 'a.wav',
+      etapa: 'transcribiendo',
+    })
   })
 })
 
