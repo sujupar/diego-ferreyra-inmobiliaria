@@ -108,7 +108,12 @@ export function PropiedadYComentarios({ video, editable, onCambio }: Props) {
   const [borrador, setBorrador] = useState<Borrador>(() => borradorDe(video.automatizacion))
   const [problema, setProblema] = useState<string | null>(null)
   // Si la persona eligió un modo a mano (o ya había confirmado uno), no se lo cambiamos solos.
-  const [modoTocado, setModoTocado] = useState(() => borradorDe(video.automatizacion).confirmada)
+  // Al abrir solo cuenta como elegido a mano un Modo prueba confirmado: "Apagado" puede venir de que
+  // faltaba destino, y "En vivo" es el de siempre (si no, ir y volver de tipo dejaba todo Apagado).
+  const [modoTocado, setModoTocado] = useState(() => {
+    const b = borradorDe(video.automatizacion)
+    return b.confirmada && b.modo === 'prueba'
+  })
 
   // La lista de propiedades se pide al abrir (y una sola vez): son las que están en cartera.
   useEffect(() => {
