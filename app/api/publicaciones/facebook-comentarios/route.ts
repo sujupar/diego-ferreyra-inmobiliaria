@@ -1,16 +1,19 @@
 import { NextResponse } from 'next/server'
 import { contenidoAuth } from '@/lib/contenido/route-auth'
 import { camposParaAlta, escuchaComentariosDeFacebook, paginaRecibeFeed } from '@/lib/integrations/facebook/suscripcion'
+import { claveDeVerificacionDerivada } from '@/lib/integrations/instagram/webhook'
 import { urlBase } from '@/lib/publicaciones/servidor/conexiones'
 
 /**
  * Da de alta (POST) o consulta (GET) que Meta nos avise de los comentarios de la Página
  * de Facebook.
  *
- * Por qué es una ruta y no el script `suscribir-webhook-instagram.ts`: el alta exige la
- * clave de verificación del webhook (`INSTAGRAM_WEBHOOK_VERIFY_TOKEN`), que en Netlify
- * es secreta y no se puede copiar. Acá la usa el servidor desde sus propias variables,
- * la misma que ya verifica los avisos de Instagram, y no viaja a ningún lado.
+ * Por qué es una ruta y no el script `suscribir-webhook-instagram.ts`: el alta exige una
+ * clave de verificación que la ruta del webhook reconozca. La de Netlify
+ * (`INSTAGRAM_WEBHOOK_VERIFY_TOKEN`) es secreta, no se puede copiar, y además mide más de
+ * 64 caracteres: Meta la rechaza. Se usa la derivada del secreto de la app
+ * (`claveDeVerificacionDerivada`), que la ruta del webhook también acepta y nunca sale del
+ * servidor.
  *
  * Solo toca la suscripción de la APP (objeto `page`, campo `feed`). La de la Página NO
  * se toca: ya tiene `feed,messages` y volver a mandarla con otros campos los reemplaza
@@ -61,10 +64,11 @@ async function preparar() {
   }
   const appId = process.env.META_APP_ID
   const appSecret = process.env.META_APP_SECRET
-  const verifyToken = process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN
-  if (!appId || !appSecret || !verifyToken) {
+  if (!appId || !appSecret) {
     return { respuesta: NextResponse.json({ error: 'Faltan variables de Meta en el servidor' }, { status: 503 }) }
   }
+  // La derivada, no la de Netlify: esa mide más de 64 caracteres y Meta la rechaza (#100).
+  const verifyToken = claveDeVerificacionDerivada(appSecret)
   return { appId, appSecret, verifyToken, direccion: `${urlBase()}/api/webhooks/instagram` }
 }
 

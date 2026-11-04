@@ -23,7 +23,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { leerComentariosDePagina } from '@/lib/integrations/facebook/webhook'
-import { parsearAviso, verificarFirmaInstagram } from '@/lib/integrations/instagram/webhook'
+import { esClaveDeVerificacion, parsearAviso, verificarFirmaInstagram } from '@/lib/integrations/instagram/webhook'
 import { leerAjustes, procesarBoton, procesarComentario } from '@/lib/social/reels/procesador'
 
 export const maxDuration = 60
@@ -34,8 +34,12 @@ export async function GET(req: NextRequest) {
   const token = searchParams.get('hub.verify_token')
   const desafio = searchParams.get('hub.challenge')
 
-  const esperado = process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN
-  if (modo === 'subscribe' && esperado && token === esperado && desafio) {
+  // La de Netlify o la derivada del secreto de la app (la de Netlify pasa el tope de 64 de Meta).
+  const valida = esClaveDeVerificacion(token, {
+    claveConfigurada: process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN,
+    secretoApp: process.env.META_APP_SECRET,
+  })
+  if (modo === 'subscribe' && valida && desafio) {
     // Meta espera el desafío como TEXTO PLANO. Envuelto en JSON, rechaza el alta.
     return new NextResponse(desafio, { status: 200, headers: { 'content-type': 'text/plain' } })
   }

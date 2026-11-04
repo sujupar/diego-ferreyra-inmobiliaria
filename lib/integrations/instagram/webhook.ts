@@ -62,6 +62,34 @@ export function verificarFirmaInstagram(crudo: string, cabecera: string | null):
   return timingSafeEqual(provisto, esperado)
 }
 
+/**
+ * Clave para el desafío del alta, derivada del secreto de la app.
+ *
+ * Por qué existe: la `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` de Netlify mide más de 64 caracteres y
+ * Meta rechaza el alta con "(#100) Param verify_token must be at most 64 characters long"
+ * (2026-11-04). Esa variable es secreta en Netlify y no se puede leer para acortarla. Esta
+ * clave solo la puede armar quien tiene `META_APP_SECRET`, y los avisos se siguen validando
+ * con su firma: aceptarla no abre nada.
+ */
+export function claveDeVerificacionDerivada(secretoApp: string): string {
+  return createHmac('sha256', secretoApp).update('verificacion-webhook-inmodf', 'utf8').digest('hex').slice(0, 48)
+}
+
+function igualesSeguro(a: string, b: string): boolean {
+  const x = Buffer.from(a, 'utf8')
+  const y = Buffer.from(b, 'utf8')
+  return x.length === y.length && x.length > 0 && timingSafeEqual(x, y)
+}
+
+export function esClaveDeVerificacion(
+  token: string | null,
+  opciones: { claveConfigurada: string | undefined; secretoApp: string | undefined },
+): boolean {
+  if (!token) return false
+  if (opciones.claveConfigurada && igualesSeguro(token, opciones.claveConfigurada)) return true
+  return !!opciones.secretoApp && igualesSeguro(token, claveDeVerificacionDerivada(opciones.secretoApp))
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Lectura defensiva: nada de esto confía en la forma del cuerpo              */
 /* -------------------------------------------------------------------------- */
