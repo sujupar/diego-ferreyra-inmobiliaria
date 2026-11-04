@@ -41,7 +41,7 @@ navegador saca miniatura y audio desde la URL pública).
    pregunta el offset con HEAD (si la subida venció, empieza de nuevo), copia partes de 6 MB mientras quede
    tiempo. Tests: copia completa en varias vueltas, retoma desde el offset del HEAD, subida vencida, Drive que
    devuelve menos bytes → error, tamaño distinto al dado de alta → error.
-5. **Migración `20261104000001_publicaciones_drive.sql`:** `publicacion_videos.drive_subida_url text NULL`,
+5. **Migración `20261104000010_publicaciones_drive.sql`:** `publicacion_videos.drive_subida_url text NULL`,
    `drive_copiado_bytes bigint NOT NULL DEFAULT 0`. Aplicar con `scripts/apply-publicaciones-drive-pg.ts` y
    verificar con select ANTES del código.
 6. **Servidor + rutas:** `listarDrive(enlace)` → `POST /api/publicaciones/drive/listar`;

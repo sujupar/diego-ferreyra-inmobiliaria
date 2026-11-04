@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs'
 import { Client } from 'pg'
 
-const MIGRACION = 'supabase/migrations/20261104000001_publicaciones_drive.sql'
+const MIGRACION = 'supabase/migrations/20261104000010_publicaciones_drive.sql'
 
 function exigir(condicion: unknown, mensaje: string): void {
   if (!condicion) throw new Error(mensaje)

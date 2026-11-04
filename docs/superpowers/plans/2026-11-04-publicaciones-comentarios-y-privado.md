@@ -13,7 +13,7 @@
   (`POST /{página}/messages` con `recipient.comment_id`): se reusa `mandarPrivadoConEnlace`.
 
 ## Tareas
-1. **Migración `20261104000002_publicaciones_automatizacion.sql`**: `publicacion_videos.property_id` (FK
+1. **Migración `20261104000011_publicaciones_automatizacion.sql`**: `publicacion_videos.property_id` (FK
    properties, SET NULL), `automatizacion jsonb`, `reel_id` (FK property_reels, SET NULL),
    `automatizacion_error text`; `property_reels.fb_video_id` y `fb_post_id` (UNIQUE); `reel_comentarios.plataforma`
    (`instagram|facebook`, default `instagram`). Script de aplicación con verificación.
