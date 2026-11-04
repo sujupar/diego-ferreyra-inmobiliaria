@@ -16,7 +16,7 @@
  * Las piezas (palabras, mensajes, modo) son las de la ficha, con las mismas reglas.
  * Solo se guarda lo que pasa `validarAutomatizacion`, igual que en el servidor.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertTriangle, Building2, Check, ChevronDown, ChevronUp, Link2, Loader2, MessageCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -106,6 +106,8 @@ export function PropiedadYComentarios({ video, editable, onCambio }: Props) {
   const [opcion, setOpcion] = useState<Opcion>(() => (video.automatizacion ? borradorDe(video.automatizacion).tipo : 'ninguno'))
   const [borrador, setBorrador] = useState<Borrador>(() => borradorDe(video.automatizacion))
   const [problema, setProblema] = useState<string | null>(null)
+  // Si la persona eligió un modo a mano (o ya había confirmado uno), no se lo cambiamos solos.
+  const [modoTocado, setModoTocado] = useState(() => borradorDe(video.automatizacion).confirmada)
 
   // La lista de propiedades se pide al abrir (y una sola vez): son las que están en cartera.
   useEffect(() => {
@@ -126,7 +128,21 @@ export function PropiedadYComentarios({ video, editable, onCambio }: Props) {
   const propiedad = propiedades?.find((p) => p.id === video.property_id) ?? null
   const landing = propiedad?.landingPublicada ?? false
   // A dónde lleva el botón del privado: para el modo y para mostrarlo en la revisión.
-  const hayDestino = borrador.tipo === 'personalizado' ? !!limpiarEnlace(borrador.enlace) : landing
+  const destinoDe = (b: Borrador, landingPublicada = landing) =>
+    b.tipo === 'personalizado' ? !!limpiarEnlace(b.enlace) : landingPublicada
+  const hayDestino = destinoDe(borrador)
+
+  /**
+   * En Publicaciones el modo es En vivo apenas hay palabra y destino (decisión del dueño,
+   * 2026-11-04: el video sale publicado para todos, así que el Modo prueba no tiene sentido
+   * acá; la aprobación es el "Confirmar"). Sin destino o sin palabra, Apagado. Si la persona
+   * eligió un modo a mano, se respeta.
+   */
+  const conModo = (b: Borrador, landingPublicada = landing): Borrador => {
+    if (modoTocado) return b
+    const listo = destinoDe(b, landingPublicada) && separarPalabras(b.palabras).length > 0
+    return { ...b, modo: listo ? 'en_vivo' : 'apagado' }
+  }
   const sinLinea = opcion !== 'ninguno' && !!borrador.palabras && !mencionaPalabra(video.descripcion, borrador.palabras)
 
   /**
@@ -134,11 +150,7 @@ export function PropiedadYComentarios({ video, editable, onCambio }: Props) {
    * (salvo el propio "Confirmar"): lo que sale es lo último que se aprobó.
    */
   const aplicar = (entrada: Borrador, opciones: { palabrasCambiaron?: boolean; confirmar?: boolean } = {}) => {
-    const primera =
-      !!opciones.palabrasCambiaron && !separarPalabras(borrador.palabras).length && separarPalabras(entrada.palabras).length > 0
-    // Al escribir la PRIMERA palabra arranca en Modo prueba (decisión del spec).
-    let nuevo: Borrador = primera && hayDestino && entrada.modo === 'apagado' ? { ...entrada, modo: 'prueba' } : entrada
-    nuevo = { ...nuevo, confirmada: !!opciones.confirmar }
+    const nuevo: Borrador = { ...conModo(entrada), confirmada: !!opciones.confirmar }
     setBorrador(nuevo)
     const config = validarAutomatizacion(aConfig(nuevo))
     if (!config.ok) {
@@ -166,7 +178,7 @@ export function PropiedadYComentarios({ video, editable, onCambio }: Props) {
       return
     }
     // Se conservan palabra y mensajes al cambiar de tipo; el tipo nuevo arranca sin confirmar.
-    const nuevo: Borrador = { ...borrador, tipo: o, confirmada: false, modo: borrador.palabras ? borrador.modo : 'apagado' }
+    const nuevo: Borrador = conModo({ ...borrador, tipo: o, confirmada: false })
     setBorrador(nuevo)
     if (o === 'propiedad' && !video.property_id) return // se guarda al elegir la propiedad
     const config = validarAutomatizacion(aConfig(nuevo))
@@ -175,17 +187,17 @@ export function PropiedadYComentarios({ video, editable, onCambio }: Props) {
 
   const elegirPropiedad = (id: string) => {
     if (!id) return
-    const nuevo: Borrador = { ...borrador, tipo: 'propiedad', confirmada: false }
+    const elegida = propiedades?.find((p) => p.id === id)
+    const nuevo: Borrador = conModo({ ...borrador, tipo: 'propiedad', confirmada: false }, elegida?.landingPublicada ?? false)
     setBorrador(nuevo)
-    const config = validarAutomatizacion(aConfig({ ...nuevo, modo: nuevo.palabras ? nuevo.modo : 'apagado' }))
+    const config = validarAutomatizacion(aConfig(nuevo))
     onCambio({ property_id: id, automatizacion: config.ok ? config.valor : null })
   }
 
-  const resumen = useMemo(() => {
-    if (opcion === 'ninguno') return 'No responde'
-    const quien = opcion === 'personalizado' ? 'Personalizado' : (propiedad?.direccion ?? 'Elegí la propiedad')
-    return `${quien} · ${ETIQUETA_MODO[borrador.modo]}`
-  }, [opcion, propiedad?.direccion, borrador.modo])
+  const resumen =
+    opcion === 'ninguno'
+      ? 'No responde'
+      : `${opcion === 'personalizado' ? 'Personalizado' : (propiedad?.direccion ?? 'Elegí la propiedad')} · ${ETIQUETA_MODO[borrador.modo]}`
 
   const listoParaConfirmar = opcion !== 'ninguno' && (opcion === 'personalizado' || !!video.property_id)
 
@@ -311,12 +323,16 @@ export function PropiedadYComentarios({ video, editable, onCambio }: Props) {
                 slugLanding={propiedad?.landingSlug ?? null}
                 {...(opcion === 'personalizado' ? { enlaceDestino: limpiarEnlace(borrador.enlace) } : {})}
                 privadosActivos={interruptores.privadosActivos}
+                soloPrivado
                 deshabilitado={!editable}
               />
 
               <SelectorModo
                 valor={borrador.modo}
-                onCambiar={(modo) => aplicar({ ...borrador, modo })}
+                onCambiar={(modo) => {
+                  setModoTocado(true)
+                  aplicar({ ...borrador, modo })
+                }}
                 landingPublicada={hayDestino}
                 hayPalabras={separarPalabras(borrador.palabras).length > 0}
                 automatizacionGeneral={interruptores.automatizacionGeneral}

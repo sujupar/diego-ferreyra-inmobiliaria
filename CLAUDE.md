@@ -2428,9 +2428,19 @@ Specs: `2026-10-29-publicacion-masiva-contenido-design.md` (Drive/YouTube/TikTok
   las reglas de los reels). Al publicarse, `conectarAlPublicar` crea (o completa) UNA fila de `property_reels`
   para las dos redes (`ig_media_id`, `fb_video_id`, `fb_post_id`). Sin landing publicada queda Apagado con
   aviso. Nunca tira: un fallo queda en `automatizacion_error` con "Conectar de nuevo".
+  - **Tipo (decisión del dueño, 2026-11-04):** No responder / De una propiedad (lista de las de cartera) /
+    Personalizado (mensaje + a dónde lleva el botón, https). **Confirmar** en cada video, sin eso no se
+    programa (pantalla y servidor). La pantalla muestra SOLO el privado (`RevisionMensajes soloPrivado`):
+    las frases públicas quedan las de fábrica. El modo arranca **En vivo** apenas hay palabra y destino
+    (el video sale público para todos: el Modo prueba no tiene sentido acá); si se elige otro a mano, se respeta.
+  - **El enlace personalizado lleva UTM** (`enlacePersonalizadoConMarcas`): `utm_source` instagram|facebook,
+    `utm_medium=reel`, `utm_campaign=publicaciones`, `utm_content=reel_<id8>`. No pisa una marca que la persona
+    ya escribió. **WhatsApp (`wa.me`, `api.whatsapp.com`…) no lleva marcas**: no las lee.
   - **Facebook:** el webhook es la misma ruta (`object:'page'`, campo `feed`). La app tiene que estar
-    suscrita al objeto `page`: `scripts/suscribir-webhook-instagram.ts --con-mensajes --con-facebook`
-    DESPUÉS del deploy. El reel de la Página tiene `post_id` SIN la página (`1092…`); la publicación del aviso
+    suscrita al objeto `page`. **El alta la hace el servidor:** `POST /api/publicaciones/facebook-comentarios`
+    (admin/dueño; `GET` consulta). Existe porque `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` es secreta en Netlify y no
+    se puede copiar a `.env.local` (la local es distinta: el script devuelve 403 en el desafío). Solo toca la
+    suscripción de la APP: volver a mandar la de la Página con otros campos los REEMPLAZA y perdería `messages`. El reel de la Página tiene `post_id` SIN la página (`1092…`); la publicación del aviso
     es `{página}_{post}` (verificado 2026-11-04). Respuesta pública `POST /{comentario}/comments` con token de
     Página; el privado sale por el MISMO `POST /{página}/messages` (`recipient.comment_id`) que Instagram.
     **En Modo prueba, Facebook siempre simula** (no da usuario para reconocer cuentas de prueba).

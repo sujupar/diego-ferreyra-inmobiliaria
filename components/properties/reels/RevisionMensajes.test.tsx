@@ -19,6 +19,28 @@ function Probador({ inicial = mensajesDeFabrica(), privados = false, onCambio }:
 }
 
 describe('RevisionMensajes', () => {
+  it('soloPrivado (Publicaciones): no muestra las frases del comentario, sí el privado y su botón', () => {
+    render(
+      <RevisionMensajes valor={mensajesDeFabrica()} onCambiar={() => {}} palabraDeEjemplo="info" slugLanding={null}
+        enlaceDestino="https://inmobiliariadiegoferreyra.com/tasacion-directa" privadosActivos soloPrivado />,
+    )
+    expect(screen.queryByText('En el comentario')).toBeNull()
+    expect(screen.queryByLabelText('Frase 1 cuando el privado sale')).toBeNull()
+    expect(screen.queryByLabelText('Frase 1 si el privado no sale')).toBeNull()
+    expect(screen.getByText('Mensaje por privado')).toBeTruthy()
+    expect(screen.getByLabelText('Mensaje privado')).toBeTruthy()
+    expect(screen.getByLabelText('Texto del botón')).toBeTruthy()
+    expect(screen.getByText(/utm_medium = reel/)).toBeTruthy()
+  })
+
+  it('soloPrivado con un WhatsApp: avisa que ese enlace no lleva marcas', () => {
+    render(
+      <RevisionMensajes valor={mensajesDeFabrica()} onCambiar={() => {}} palabraDeEjemplo="info" slugLanding={null}
+        enlaceDestino="https://wa.me/5491159109252" privadosActivos soloPrivado />,
+    )
+    expect(screen.getByText(/Los enlaces de WhatsApp no llevan marcas/)).toBeTruthy()
+  })
+
   it('muestra las 3 frases, las 3 de respaldo, el privado y su botón, precargados', () => {
     render(<Probador />)
     FRASES_CON_PRIVADO.forEach((f, i) => expect((screen.getByLabelText(`Frase ${i + 1} cuando el privado sale`) as HTMLInputElement).value).toBe(f))

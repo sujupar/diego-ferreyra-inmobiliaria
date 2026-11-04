@@ -26,6 +26,7 @@ import {
 } from '@/lib/social/reels/textos-por-defecto'
 import { MAX_CARACTERES_BOTON, MAX_CARACTERES_PRIVADO, MAX_FRASES, validarMensajes } from '@/lib/social/reels/mensajes'
 import { prometePrivado } from '@/lib/social/reels/respuestas'
+import { llevaMarcas } from '@/lib/social/reels/enlace'
 
 export interface MensajesEditables {
   /** Siempre 3 casilleros (pueden quedar vacíos: se descartan al guardar). */
@@ -85,6 +86,11 @@ interface Props {
   enlaceDestino?: string | null
   /** Si los privados están habilitados. Apagados → hoy se usan las frases de respaldo. */
   privadosActivos: boolean
+  /**
+   * Publicaciones (pedido del dueño, 2026-11-04): se muestra SOLO el privado. Las frases
+   * del comentario quedan con los textos de fábrica; mostrarlas ahí era ruido.
+   */
+  soloPrivado?: boolean
   deshabilitado?: boolean
 }
 
@@ -105,14 +111,16 @@ function Burbuja({ de, nuestra, children }: { de: string; nuestra?: boolean; chi
   )
 }
 
-function Seccion({ numero, titulo, ayuda, children }: { numero: number; titulo: string; ayuda: string; children: React.ReactNode }) {
+function Seccion({ numero, titulo, ayuda, children }: { numero?: number; titulo: string; ayuda: string; children: React.ReactNode }) {
   return (
     <section className="space-y-3 rounded-lg border p-3" aria-label={titulo}>
       <div>
         <p className="text-sm font-medium">
-          <span className="mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[11px] text-primary-foreground">
-            {numero}
-          </span>
+          {numero !== undefined && (
+            <span className="mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[11px] text-primary-foreground">
+              {numero}
+            </span>
+          )}
           {titulo}
         </p>
         <p className="mt-0.5 text-xs text-muted-foreground">{ayuda}</p>
@@ -122,7 +130,7 @@ function Seccion({ numero, titulo, ayuda, children }: { numero: number; titulo: 
   )
 }
 
-export function RevisionMensajes({ valor, onCambiar, palabraDeEjemplo, slugLanding, enlaceDestino, privadosActivos, deshabilitado }: Props) {
+export function RevisionMensajes({ valor, onCambiar, palabraDeEjemplo, slugLanding, enlaceDestino, privadosActivos, soloPrivado, deshabilitado }: Props) {
   const cambiar = (campos: Partial<MensajesEditables>) => onCambiar({ ...valor, ...campos })
   const cambiarFrase = (grupo: 'respuestas_con_privado' | 'respuestas_sin_privado', i: number, texto: string) => {
     const frases = [...valor[grupo]]
@@ -135,6 +143,7 @@ export function RevisionMensajes({ valor, onCambiar, palabraDeEjemplo, slugLandi
 
   return (
     <div className="space-y-3">
+      {!soloPrivado && (
       <Seccion
         numero={1}
         titulo="En el comentario"
@@ -192,11 +201,16 @@ export function RevisionMensajes({ valor, onCambiar, palabraDeEjemplo, slugLandi
           )}
         </div>
       </Seccion>
+      )}
 
       <Seccion
-        numero={2}
-        titulo="Por privado"
-        ayuda="Le llega a su bandeja de Instagram (a veces a «Solicitudes de mensajes») con un botón que abre la landing de la propiedad."
+        {...(soloPrivado ? {} : { numero: 2 })}
+        titulo={soloPrivado ? 'Mensaje por privado' : 'Por privado'}
+        ayuda={
+          enlaceDestino !== undefined
+            ? 'Le llega por privado a quien comente una de las palabras, con un botón que abre el enlace que pusiste.'
+            : 'Le llega a su bandeja de Instagram (a veces a «Solicitudes de mensajes») con un botón que abre la landing de la propiedad.'
+        }
       >
         <Burbuja de={nuestra} nuestra>
           <Textarea
@@ -209,7 +223,9 @@ export function RevisionMensajes({ valor, onCambiar, palabraDeEjemplo, slugLandi
             onChange={(e) => cambiar({ dm_texto: e.target.value })}
           />
           <div className="mt-2 border-t pt-2">
-            <Label htmlFor="rm-boton" className="text-[10px] text-muted-foreground">Botón (abre la landing)</Label>
+            <Label htmlFor="rm-boton" className="text-[10px] text-muted-foreground">
+              {enlaceDestino !== undefined ? 'Botón (abre el enlace)' : 'Botón (abre la landing)'}
+            </Label>
             <Input
               id="rm-boton"
               aria-label="Texto del botón"
@@ -235,8 +251,11 @@ export function RevisionMensajes({ valor, onCambiar, palabraDeEjemplo, slugLandi
           </div>
         </Burbuja>
         <p className="text-[11px] text-muted-foreground">
-          El enlace lo agrega el sistema, con una marca para saber cuántas visitas trae este reel. Si
-          Instagram no acepta el botón, va escrito al final del mensaje.
+          {enlaceDestino && !llevaMarcas(enlaceDestino)
+            ? 'Los enlaces de WhatsApp no llevan marcas de origen: WhatsApp no las lee. Si Instagram no acepta el botón, el enlace va escrito al final del mensaje.'
+            : enlaceDestino !== undefined
+              ? 'Al enlace le agregamos marcas de origen (utm_source = instagram o facebook, utm_medium = reel, utm_campaign = publicaciones, utm_content = el reel) para medir de dónde viene cada visita. Si Instagram no acepta el botón, va escrito al final del mensaje.'
+              : 'El enlace lo agrega el sistema, con una marca para saber cuántas visitas trae este reel. Si Instagram no acepta el botón, va escrito al final del mensaje.'}
         </p>
       </Seccion>
 
@@ -247,10 +266,12 @@ export function RevisionMensajes({ valor, onCambiar, palabraDeEjemplo, slugLandi
         </p>
       )}
 
-      <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
-        <Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
-        Todo esto se puede cambiar después desde «Configurar».
-      </p>
+      {!soloPrivado && (
+        <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+          <Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+          Todo esto se puede cambiar después desde «Configurar».
+        </p>
+      )}
     </div>
   )
 }
