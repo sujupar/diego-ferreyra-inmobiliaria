@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, ListChecks, Inbox, Columns3, Contact, CalendarCheck, ClipboardList,
-  Building2, Megaphone, Newspaper, BarChart3, Filter, Settings, Wrench, UserCog, FileText, MessageSquareText, Send,
+  Building2, Megaphone, Newspaper, Clapperboard, BarChart3, Filter, Settings, Wrench, UserCog, FileText, MessageSquareText, Send,
 } from 'lucide-react'
 import type { Role } from '@/types/auth.types'
 import { hasPermission, hasAnyPermission, type Permission } from '@/lib/auth/roles'
@@ -43,6 +43,7 @@ const CRM: NavItem = { href: '/crm', label: 'CRM', icon: Columns3 }
 const VISITAS: NavItem = { href: '/visits', label: 'Visitas', icon: CalendarCheck }
 const REDES: NavItem = { href: '/redes-sociales', label: 'Redes sociales', icon: Megaphone }
 const NOTICIAS: NavItem = { href: '/noticias', label: 'Noticias', icon: Newspaper }
+const REFERENCIAS: NavItem = { href: '/referencias', label: 'Referencias', icon: Clapperboard }
 // Publicación en tanda de videos a Instagram/Facebook/YouTube/TikTok. Solo operaciones:
 // es lo que deja pasar /api/publicaciones (contenidoAuth: admin, dueño, coordinador).
 const PUBLICACIONES: NavItem = { href: '/publicaciones', label: 'Publicaciones', icon: Send }
@@ -95,7 +96,7 @@ export function getNavSections(role: Role): NavGroup[] {
           INFORMES,
         ],
       },
-      { label: 'Marketing', entries: [REDES, NOTICIAS] },
+      { label: 'Marketing', entries: [REDES, NOTICIAS, REFERENCIAS] },
     ]
   }
 
@@ -110,14 +111,14 @@ export function getNavSections(role: Role): NavGroup[] {
         ],
       },
       { label: 'Comercial', entries: [INBOX, CONSULTAS, CRM, CONTACTOS, VISITAS] },
-      { label: 'Marketing', entries: [REDES, PUBLICACIONES, NOTICIAS] },
+      { label: 'Marketing', entries: [REDES, PUBLICACIONES, NOTICIAS, REFERENCIAS] },
     ]
   }
 
   // admin, dueno y los roles heredados (agent, viewer) — igual que el `default:`
   // del switch anterior. Los guardas por permiso hacen el resto del filtrado.
   // Los roles heredados (agent, viewer) también caen acá y la API de Publicaciones les dice 403.
-  const marketing: NavItem[] = role === 'admin' || role === 'dueno' ? [REDES, PUBLICACIONES, NOTICIAS] : [REDES, NOTICIAS]
+  const marketing: NavItem[] = role === 'admin' || role === 'dueno' ? [REDES, PUBLICACIONES, NOTICIAS, REFERENCIAS] : [REDES, NOTICIAS, REFERENCIAS]
   if (can('metrics.view')) {
     marketing.push(
       { href: '/metrics', label: 'Métricas', icon: BarChart3 },
