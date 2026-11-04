@@ -13,7 +13,7 @@ import { rpcPaginado } from '@/lib/supabase/rpc-paginado'
 import { armarPersonas, type ContactoRow, type DealRow, type Embudo, type HistoriaRow, type InformeRow, type EnvioLanding } from './personas'
 import { armarBlue, embudoDeCampania, porVariante, resumirCanal, serie, type MetaDia, type VisitaDia, type Blue } from './embudo'
 import { adquisicion, calcularPlata, planificar, TASA_VENTA_DEFAULT, type GastoFijo } from './economia'
-import { rangoComparado, type Agrupar, type Comparar, type Rango } from './rango'
+import { enRango, rangoComparado, type Agrupar, type Comparar, type Rango } from './rango'
 import type { VentaRow } from './reparto'
 
 // Las tablas nuevas no están en los tipos generados: cliente sin tipar.
@@ -147,7 +147,16 @@ export async function armarPanel(p: ParametrosPanel) {
     }
     const publicidadCaptacionUsd = canales.tasacion.inversionUsd + canales.clase.inversionUsd
     const { plata, detalle } = calcularPlata({ ventas, gastos, publicidadCaptacionUsd, publicidadPropiedadesUsd, rango: r, tasaArs: blue })
-    const captaciones = canales.tasacion.pasos[4].cantidad + canales.clase.pasos[4].cantidad
+    // Una persona puede estar en los dos embudos (se registró a la clase y
+    // después pidió tasación): su captación cuenta UNA vez para el costo.
+    const captadas = new Set<string>()
+    for (const x of personas) {
+      const f = x.fechas.captada
+      if (!f) continue
+      const entra = p.vista === 'cohorte' ? enRango(x.fechas.solicitud, r) : enRango(f, r)
+      if (entra) captadas.add(x.identidad)
+    }
+    const captaciones = captadas.size
     const adq = adquisicion({ publicidadCaptacionUsd, captaciones, limpioPromedioPorVentaUsd: plata.limpioPromedioPorVentaUsd, tasaVenta: TASA_VENTA_DEFAULT })
     return { rango: r, canales, cohorte, plata, detalle, adquisicion: { ...adq, captaciones, tasaVenta: TASA_VENTA_DEFAULT } }
   }

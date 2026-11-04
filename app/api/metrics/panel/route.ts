@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { conPermisoMetricas, prohibido } from '@/lib/metrics/panel/permiso'
+import { accesoMetricas } from '@/lib/metrics/panel/permiso'
 import { armarPanel } from '@/lib/metrics/panel/servidor'
 import type { Agrupar, Comparar } from '@/lib/metrics/panel/rango'
 
@@ -9,7 +9,8 @@ const FECHA = /^\d{4}-\d{2}-\d{2}$/
 
 /** GET /api/metrics/panel?desde&hasta&comparar&agrupar&vista — todo el panel menos el alcance. */
 export async function GET(req: NextRequest) {
-  if (!(await conPermisoMetricas())) return prohibido()
+  const acceso = await accesoMetricas()
+  if ('respuesta' in acceso) return acceso.respuesta
   const sp = req.nextUrl.searchParams
   const desde = sp.get('desde') ?? '', hasta = sp.get('hasta') ?? ''
   if (!FECHA.test(desde) || !FECHA.test(hasta) || desde > hasta) {

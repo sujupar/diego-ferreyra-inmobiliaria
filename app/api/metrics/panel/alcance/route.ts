@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { conPermisoMetricas, prohibido } from '@/lib/metrics/panel/permiso'
+import { accesoMetricas } from '@/lib/metrics/panel/permiso'
 import { alcance } from '@/lib/metrics/panel/servidor'
 import { hoyArgentina } from '@/lib/metrics/panel/rango'
 
@@ -9,7 +9,8 @@ const FECHA = /^\d{4}-\d{2}-\d{2}$/
 
 /** GET /api/metrics/panel/alcance?desde&hasta — personas únicas alcanzadas por embudo (Meta). */
 export async function GET(req: NextRequest) {
-  if (!(await conPermisoMetricas())) return prohibido()
+  const acceso = await accesoMetricas()
+  if ('respuesta' in acceso) return acceso.respuesta
   const desde = req.nextUrl.searchParams.get('desde') ?? '', hasta = req.nextUrl.searchParams.get('hasta') ?? ''
   if (!FECHA.test(desde) || !FECHA.test(hasta) || desde > hasta) {
     return NextResponse.json({ error: 'Fechas inválidas.' }, { status: 400 })

@@ -28,20 +28,24 @@ export async function sincronizarVenta(db: SupabaseClient, i: {
   hoy: string
   userId: string
 }): Promise<void> {
-  const { data: abierta } = await db.from('ventas').select('id, estado, reservada_en, precio').eq('property_id', i.propertyId).neq('estado', 'caida').maybeSingle()
+  // supabase-js NO lanza: devuelve { error }. Sin esto una venta que no se
+  // guarda (tabla ausente, un CHECK) desaparece sin aviso.
+  const ok = <T extends { error: { message: string } | null }>(r: T): T => { if (r.error) throw new Error(r.error.message); return r }
+  const { data: abierta } = ok(await db.from('ventas').select('id, estado, reservada_en, precio').eq('property_id', i.propertyId).neq('estado', 'caida').maybeSingle())
 
   if (i.to !== 'reservada' && i.to !== 'vendida') {
-    if (abierta) await db.from('ventas').update({ estado: 'caida', updated_by: i.userId }).eq('id', abierta.id)
+    if (abierta) ok(await db.from('ventas').update({ estado: 'caida', updated_by: i.userId }).eq('id', abierta.id))
     return
   }
 
-  const { data: p } = await db.from('properties')
+  const { data: p } = ok(await db.from('properties')
     .select('address, asking_price, currency, origin, captured_at, created_at, assigned_to, profiles:assigned_to(full_name)')
-    .eq('id', i.propertyId).maybeSingle()
-  if (!p) return
+    .eq('id', i.propertyId).maybeSingle())
+  if (!p) throw new Error('No se encontró la propiedad.')
   const asesor = (p as { profiles?: { full_name?: string | null } | null }).profiles?.full_name ?? null
   const moneda = (i.soldCurrency ?? p.currency) === 'ARS' ? 'ARS' : 'USD'
-  const precio = i.soldPrice ?? abierta?.precio ?? p.asking_price ?? null
+  // Un precio de publicación en 0 no es un precio: queda vacío y el panel pide cargarlo.
+  const precio = i.soldPrice || abierta?.precio || p.asking_price || null
 
   if (abierta) {
     const cambios: Record<string, unknown> = { estado: i.to, updated_by: i.userId }
@@ -50,12 +54,12 @@ export async function sincronizarVenta(db: SupabaseClient, i: {
       if (i.soldAt) cambios.escriturada_en = i.soldAt
       if (!abierta.reservada_en) cambios.reservada_en = i.soldAt ?? i.hoy
     }
-    await db.from('ventas').update(cambios).eq('id', abierta.id)
+    ok(await db.from('ventas').update(cambios).eq('id', abierta.id))
     return
   }
 
   const origen = origenDesdePropiedad(p.origin)
-  await db.from('ventas').insert({
+  ok(await db.from('ventas').insert({
     property_id: i.propertyId,
     direccion: p.address,
     estado: i.to,
@@ -69,5 +73,5 @@ export async function sincronizarVenta(db: SupabaseClient, i: {
     ...partesSugeridas({ capto: asesor, vendio: null, origen, hayReferidor: false }),
     created_by: i.userId,
     updated_by: i.userId,
-  })
+  }))
 }

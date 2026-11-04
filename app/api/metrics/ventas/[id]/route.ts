@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { conPermisoMetricas, prohibido } from '@/lib/metrics/panel/permiso'
+import { accesoMetricas } from '@/lib/metrics/panel/permiso'
 import { db } from '@/lib/metrics/panel/servidor'
 import { limpiarVenta, validarVenta } from '@/lib/metrics/panel/reparto'
 
@@ -8,8 +8,9 @@ export const dynamic = 'force-dynamic'
 type Ctx = { params: Promise<{ id: string }> }
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {
-  const user = await conPermisoMetricas()
-  if (!user) return prohibido()
+  const acceso = await accesoMetricas()
+  if ('respuesta' in acceso) return acceso.respuesta
+  const { user } = acceso
   const { id } = await params
   const sb = db()
   const { data: actual } = await sb.from('ventas').select('*').eq('id', id).maybeSingle()
@@ -24,7 +25,8 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 
 /** Borra una venta cargada por error. Una operación que se cayó se marca "caida", no se borra. */
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
-  if (!(await conPermisoMetricas())) return prohibido()
+  const acceso = await accesoMetricas()
+  if ('respuesta' in acceso) return acceso.respuesta
   const { id } = await params
   const { error } = await db().from('ventas').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })

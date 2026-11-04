@@ -51,6 +51,8 @@ export interface Persona {
   embudo: Embudo
   /** Contacto de su primera solicitud. */
   contactId: string | null
+  /** Identidad (contacto, teléfono o email) para no contar dos veces a quien está en los dos embudos. */
+  identidad: string
   variante: string | null
   /** true si su primera solicitud vino del sistema viejo (fechas por etapa aproximadas). */
   historico: boolean
@@ -130,7 +132,18 @@ export function clasificar(d: DealRow, envios: Map<string, Set<string>>): Clasif
   return { embudo, via: importado ? 'import' : formViejo ? 'form_viejo' : 'landing_propia', colega, stageGhl }
 }
 
-const dia = (ts: string | null | undefined) => (ts ? ts.slice(0, 10) : null)
+const FECHA_AR = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+/**
+ * Día en hora ARGENTINA (como el gasto de Meta y las visitas). Una solicitud a
+ * las 22:30 del 31/10 es del 31/10, no del 1/11 como diría la fecha en UTC.
+ * Una fecha sola ('YYYY-MM-DD') se toma tal cual.
+ */
+export const dia = (ts: string | null | undefined): string | null => {
+  if (!ts) return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(ts)) return ts
+  const d = new Date(ts)
+  return Number.isNaN(d.getTime()) ? ts.slice(0, 10) : FECHA_AR.format(d)
+}
 const menor = (...xs: (string | null | undefined)[]) =>
   xs.filter((x): x is string => !!x).sort()[0] ?? null
 
@@ -264,7 +277,7 @@ export function armarPersonas(e: EntradaPersonas): ResultadoPersonas {
       if (f < piso) fechas[et] = piso
       piso = fechas[et]!
     }
-    personas.push({ embudo: c.embudo, contactId: d.contact_id, variante: d.landing_variant, historico: c.via === 'import', fechas })
+    personas.push({ embudo: c.embudo, contactId: d.contact_id, identidad: d.contact_id ?? (t ? 'p' + t : m ? 'e' + m : d.id), variante: d.landing_variant, historico: c.via === 'import', fechas })
   }
   return { personas, excluidas }
 }

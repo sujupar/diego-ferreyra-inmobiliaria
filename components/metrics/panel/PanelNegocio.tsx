@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Panel } from '@/lib/metrics/panel/servidor'
@@ -45,6 +45,8 @@ export function PanelNegocio() {
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [version, setVersion] = useState(0)
+  /** Número de la última carga: una respuesta de una carga anterior (más lenta) se descarta. */
+  const pedido = useRef(0)
 
   useEffect(() => { setFiltros(filtrosIniciales()) }, [])
   useEffect(() => {
@@ -53,20 +55,23 @@ export function PanelNegocio() {
   }, [filtros])
 
   const cargar = useCallback(async (f: Filtros) => {
+    const n = ++pedido.current
     setCargando(true); setError(null)
     const q = new URLSearchParams({ desde: f.rango.desde, hasta: f.rango.hasta, comparar: f.comparar, agrupar: f.agrupar, vista: f.vista })
     try {
       const r = await fetch(`/api/metrics/panel?${q}`)
       const data = await r.json().catch(() => null)
+      if (n !== pedido.current) return
       if (!r.ok || !data) throw new Error(data?.error ?? `No se pudo armar el panel (error ${r.status}).`)
       setPanel(data)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo armar el panel.')
-    } finally { setCargando(false) }
+      if (n === pedido.current) setError(e instanceof Error ? e.message : 'No se pudo armar el panel.')
+    } finally { if (n === pedido.current) setCargando(false) }
+    if (n !== pedido.current) return
     // El alcance lo trae Meta y puede tardar: va aparte para no frenar el resto.
     setAlcance(null)
     fetch(`/api/metrics/panel/alcance?desde=${f.rango.desde}&hasta=${f.rango.hasta}`)
-      .then(r => (r.ok ? r.json() : null)).then(setAlcance).catch(() => setAlcance(null))
+      .then(r => (r.ok ? r.json() : null)).then(a => { if (n === pedido.current) setAlcance(a) }).catch(() => { if (n === pedido.current) setAlcance(null) })
   }, [])
 
   useEffect(() => { if (filtros) cargar(filtros) }, [filtros?.rango.desde, filtros?.rango.hasta, filtros?.comparar, filtros?.agrupar, filtros?.vista, version]) // eslint-disable-line react-hooks/exhaustive-deps

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { armarPersonas, contactosDePrueba, type ContactoRow, type DealRow } from './personas'
+import { armarPersonas, contactosDePrueba, dia, type ContactoRow, type DealRow } from './personas'
 import { armarBlue, contarPasos, embudoDeCampania, porVariante, resumirCanal, serie } from './embudo'
 import { calcularVenta, partesSugeridas, validarVenta } from './reparto'
 import { adquisicion, calcularPlata, gastoDelPeriodo, planificar } from './economia'
@@ -14,6 +14,13 @@ const ct = (id: string, full_name: string, phone: string | null = null, email: s
 const envio = (deal_id: string, funnel = 'tasacion') => ({ deal_id, funnel })
 
 describe('personas', () => {
+  it('el día de cada paso es el de Argentina, no el de UTC', () => {
+    expect(dia('2026-11-01T01:30:00+00:00')).toBe('2026-10-31') // 22:30 del 31/10 en Argentina
+    expect(dia('2026-11-01T03:00:00Z')).toBe('2026-11-01')
+    expect(dia('2026-09-09')).toBe('2026-09-09')
+    expect(dia(null)).toBeNull()
+  })
+
   it('detecta las pruebas de Julián por email, nombre y su teléfono', () => {
     const p = contactosDePrueba([
       ct('j', 'Julian Parra', '+57 310 782 2955', 'contacto.julianparra@gmail.com'),

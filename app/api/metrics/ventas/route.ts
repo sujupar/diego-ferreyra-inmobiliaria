@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { conPermisoMetricas, prohibido } from '@/lib/metrics/panel/permiso'
+import { accesoMetricas } from '@/lib/metrics/panel/permiso'
 import { cargarBlue, cargarVentas, db } from '@/lib/metrics/panel/servidor'
 import { calcularVenta, limpiarVenta, validarVenta } from '@/lib/metrics/panel/reparto'
 
@@ -7,7 +7,8 @@ export const dynamic = 'force-dynamic'
 
 /** GET /api/metrics/ventas[?property_id=] — las ventas con su cálculo (o la abierta de una propiedad). */
 export async function GET(req: NextRequest) {
-  if (!(await conPermisoMetricas())) return prohibido()
+  const acceso = await accesoMetricas()
+  if ('respuesta' in acceso) return acceso.respuesta
   const propertyId = req.nextUrl.searchParams.get('property_id')
   try {
     const [todas, blue] = await Promise.all([cargarVentas(db()), cargarBlue()])
@@ -20,8 +21,9 @@ export async function GET(req: NextRequest) {
 
 /** POST /api/metrics/ventas — carga una venta (las que no tienen ficha en la plataforma). */
 export async function POST(req: NextRequest) {
-  const user = await conPermisoMetricas()
-  if (!user) return prohibido()
+  const acceso = await accesoMetricas()
+  if ('respuesta' in acceso) return acceso.respuesta
+  const { user } = acceso
   const body = limpiarVenta(await req.json().catch(() => ({})))
   const err = validarVenta(body)
   if (err) return NextResponse.json({ error: err }, { status: 400 })
