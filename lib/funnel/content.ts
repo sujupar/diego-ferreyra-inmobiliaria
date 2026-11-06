@@ -75,8 +75,9 @@ export const TASACION_B_CONTENT = {
     // el componente parte la línea por este texto para pintarlo de azul.
     highlight: 'cuánto te queda en mano',
     // Sin "impuestos que se podían evitar": sonaba a que siempre se pueden evitar.
+    // Sin la promesa de los 3 números en 72 horas: la sacó el dueño (2026-11-06).
     subhead:
-      'La mayoría mira solo el precio de publicación. Pero entre la negociación, impuestos, IVA, escritura y honorarios, podés terminar recibiendo miles de dólares menos. En 72 horas vas a conocer 3 números: a qué precio conviene publicar, cuánto puede pagar realmente el mercado y cuánto te quedaría neto después de vender.',
+      'La mayoría mira solo el precio de publicación. Pero entre la negociación, impuestos, IVA, escritura y honorarios, podés terminar recibiendo miles de dólares menos.',
     heroAmountBefore: 'US$221.000',
     heroAmountAfter: 'US$237.600',
     // Contraste directo. Antes decía "con la misma reserva", que no coincide con
