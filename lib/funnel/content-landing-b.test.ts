@@ -60,6 +60,20 @@ describe('landing B — textos del documento de Diego', () => {
     expect(C.cta.noteShort).toBe('Tasación profesional + simulación de costos. Sin costo y sin compromiso.')
   })
 
+  it('el formulario dice lo que de verdad pasa: te LLAMAMOS para coordinar (no se coordina por chat)', () => {
+    expect(C.form.footnote).toBe(
+      'Te llamamos para coordinar el día y la hora. Tasación profesional + simulación de costos, sin costo y sin compromiso.',
+    )
+    expect(C.form.footnote).not.toMatch(/Coordinás el día y la hora por WhatsApp/)
+  })
+
+  it('el formulario sigue la misma promesa que la página y no promete tiempos de respuesta', () => {
+    expect(C.form.title).toBe('Completá tus datos para saber cuánto te queda en mano')
+    expect(C.form.subtitle).toBe('Te escribimos por WhatsApp y te llamamos para coordinar la tasación.')
+    expect(C.form.submitLabel).toBe('Solicitar mi tasación profesional')
+    expect(`${C.form.title} ${C.form.subtitle} ${C.form.footnote}`).not.toMatch(/próximos (segundos|minutos)/)
+  })
+
   it('el pie muestra las dos matrículas (CABA y Zona Norte)', () => {
     expect(C.footerRole).toBe('Martillero Público · CUCICBA 8266 · CMCPSI 7217')
   })

@@ -60,7 +60,10 @@ export function FunnelLeadModal(props: FunnelLeadModalProps) {
         >
           ✕
         </button>
-        <h2 className="font-[family-name:var(--font-funnel-head)] text-xl font-bold text-[#0d2d49]">
+        {/* `px-7` deja libre la esquina de la ✕ (que va `absolute`). Sin eso, en
+            celular la última palabra de la primera línea del título quedaba
+            debajo de la cruz ("cuánt✕"). Simétrico para no correr el centrado. */}
+        <h2 className="px-7 font-[family-name:var(--font-funnel-head)] text-xl font-bold text-[#0d2d49]">
           {title}
         </h2>
         <p className="mb-4 mt-1 text-sm text-[#555]">{subtitle}</p>

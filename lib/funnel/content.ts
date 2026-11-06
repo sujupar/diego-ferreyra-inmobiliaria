@@ -107,10 +107,16 @@ export const TASACION_B_CONTENT = {
   finalHeading: 'Antes de elegir precio o inmobiliaria, sabé cuánto te va a quedar en mano.',
   footerRole: 'Martillero Público · CUCICBA 8266 · CMCPSI 7217',
   form: {
-    title: 'Completá estos datos para coordinar tu tasación',
-    subtitle: 'Te escribimos por WhatsApp en los próximos segundos.',
-    submitLabel: 'Solicitar mi tasación gratuita',
-    footnote: 'Coordinás el día y la hora por WhatsApp. Sin costo y sin compromiso.',
+    // Alineado con el documento de Diego (2026-11-06): la misma promesa que la
+    // página ("cuánto te queda en mano"), el mismo botón que el final, y sin
+    // prometer tiempos de respuesta.
+    title: 'Completá tus datos para saber cuánto te queda en mano',
+    subtitle: 'Te escribimos por WhatsApp y te llamamos para coordinar la tasación.',
+    submitLabel: 'Solicitar mi tasación profesional',
+    // Decía "Coordinás el día y la hora por WhatsApp", pero desde el 2026-08-27 se
+    // coordina POR TELÉFONO (ver el comentario del formulario de la variante A):
+    // le prometía a la persona algo que no iba a pasar.
+    footnote: 'Te llamamos para coordinar el día y la hora. Tasación profesional + simulación de costos, sin costo y sin compromiso.',
   },
 } as const
 
