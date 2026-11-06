@@ -47,7 +47,12 @@ const landing = () =>
   render(
     <TasacionNetaClient testimonials={[]} heroVideoUrl="v.mp4" heroPosterUrl="p.jpg" logoUrl="/logo.png" pixelId="" />,
   )
-const botones = () => screen.getAllByRole('button', { name: TASACION_B_CONTENT.cta.label })
+// Desde el 2026-11-06 los dos botones dicen cosas distintas (pedido de Diego):
+// el de debajo del video pide el número, el del final la tasación profesional.
+const botones = () => [
+  screen.getByRole('button', { name: TASACION_B_CONTENT.cta.label }),
+  screen.getByRole('button', { name: TASACION_B_CONTENT.cta.labelFinal }),
+]
 
 describe('TasacionNetaClient — botón de solicitar la tasación', () => {
   it('tiene los dos botones: debajo del video y al final', () => {
@@ -77,5 +82,29 @@ describe('TasacionNetaClient — botón de solicitar la tasación', () => {
     landing()
     await userEvent.setup().click(botones()[1])
     expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+})
+
+describe('TasacionNetaClient — textos de Diego (2026-11-06) tal como se ven', () => {
+  it('el titular se lee completo, con "cuánto te queda en mano" resaltado y sin palabras repetidas ni perdidas', () => {
+    landing()
+    const h1 = screen.getByRole('heading', { level: 1 })
+    expect(h1.textContent).toBe('No es cuánto publicás tu propiedad.Es cuánto te queda en mano el día que escriturás.')
+    expect(h1.querySelector('span')?.textContent).toBe('cuánto te queda en mano')
+  })
+
+  it('el caso de Luján se arma con los dos montos en su lugar', () => {
+    landing()
+    expect(
+      screen.getByText((_, el) =>
+        el?.tagName === 'P' &&
+        el.textContent === 'Misma propiedad. Mismo precio de publicación. US$221.000 vs. US$237.600 en mano. Una diferencia de US$16.600.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('el pie muestra las dos matrículas', () => {
+    landing()
+    expect(screen.getByText('Martillero Público · CUCICBA 8266 · CMCPSI 7217')).toBeInTheDocument()
   })
 })

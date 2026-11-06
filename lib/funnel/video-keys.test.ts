@@ -11,7 +11,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { VIDEO_KEYS, videoLabel, ordenarClavesDeVideo } from './video-keys'
+import { VIDEO_KEYS, videoLabel, ordenarClavesDeVideo, clavesVigentes } from './video-keys'
 
 const RAIZ = join(__dirname, '..', '..')
 
@@ -50,8 +50,20 @@ describe('claves de video de las landings', () => {
     expect(repetidas, 'dos landings registran su video con la misma clave: sus estadísticas se mezclan').toEqual([])
   })
 
-  it('toda clave usada está en el catálogo, y el catálogo no tiene claves que nadie use', () => {
-    expect(usadas.map((u) => u.clave).sort()).toEqual(Object.keys(VIDEO_KEYS).sort())
+  it('toda clave usada está en el catálogo, y el catálogo no tiene claves VIGENTES que nadie use', () => {
+    expect(usadas.map((u) => u.clave).sort()).toEqual(clavesVigentes().sort())
+  })
+
+  it('ninguna landing registra su video con una clave retirada (sus datos son de un video que ya no está)', () => {
+    const retiradas = Object.keys(VIDEO_KEYS).filter((k) => !clavesVigentes().includes(k))
+    expect(usadas.filter((u) => retiradas.includes(u.clave))).toEqual([])
+  })
+
+  it('el VSL corto de la B tiene clave propia: su retención no se mezcla con la del VSL largo', () => {
+    expect(usadas.map((u) => u.clave)).toContain('hero-tasacion-neta-corto')
+    expect(usadas.map((u) => u.clave)).not.toContain('hero-tasacion-neta')
+    expect(VIDEO_KEYS['hero-tasacion-neta-corto'].label).toMatch(/Versión B/)
+    expect(VIDEO_KEYS['hero-tasacion-neta-corto'].label).not.toBe(VIDEO_KEYS['hero-tasacion-neta'].label)
   })
 
   it('las dos versiones de tasación tienen claves y nombres distintos, y el nombre dice cuál es', () => {
@@ -76,6 +88,12 @@ describe('videoLabel', () => {
 describe('ordenarClavesDeVideo', () => {
   it('pone la Versión A antes que la B, sin importar el orden en que lleguen de la base', () => {
     expect(ordenarClavesDeVideo(['hero-tasacion-neta', 'hero-tasacion'])).toEqual(['hero-tasacion', 'hero-tasacion-neta'])
+  })
+
+  it('el VSL corto (vigente) va antes que el largo (retirado)', () => {
+    expect(ordenarClavesDeVideo(['hero-tasacion-neta', 'hero-tasacion-neta-corto'])).toEqual([
+      'hero-tasacion-neta-corto', 'hero-tasacion-neta',
+    ])
   })
 
   it('las claves que no conoce van al final, en el orden en que llegaron', () => {

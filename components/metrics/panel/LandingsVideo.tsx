@@ -7,7 +7,8 @@ import { num, pct } from './formato'
 const VARIANTE: Record<string, string> = { A: 'Versión A', B: 'Versión B ("Tasación Neta")', '-': 'Landing (sin prueba A/B)', alto_valor: 'Landing alto valor' }
 const VIDEO: Record<string, string> = {
   'hero-tasacion': 'Video de la landing de tasación (A)',
-  'hero-tasacion-neta': 'Video de la landing B "Tasación Neta"',
+  'hero-tasacion-neta-corto': 'Video de la landing B — VSL corto (desde el 6/11/2026)',
+  'hero-tasacion-neta': 'Video de la landing B — VSL largo (hasta el 6/11/2026)',
   'hero-clase': 'Video de la landing de la clase',
   'clase-completa': 'La clase completa',
 }
