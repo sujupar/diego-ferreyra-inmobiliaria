@@ -19,11 +19,15 @@ describe('landing B — textos del documento de Diego', () => {
     expect(C.hero.headlineB.startsWith(`Es ${C.hero.highlight} `)).toBe(true)
   })
 
-  it('la bajada nombra los costos y promete los 3 números en 72 horas, sin decir que los impuestos siempre se evitan', () => {
+  it('la bajada nombra los costos, sin decir que los impuestos siempre se evitan', () => {
     expect(C.hero.subhead).toBe(
-      'La mayoría mira solo el precio de publicación. Pero entre la negociación, impuestos, IVA, escritura y honorarios, podés terminar recibiendo miles de dólares menos. En 72 horas vas a conocer 3 números: a qué precio conviene publicar, cuánto puede pagar realmente el mercado y cuánto te quedaría neto después de vender.',
+      'La mayoría mira solo el precio de publicación. Pero entre la negociación, impuestos, IVA, escritura y honorarios, podés terminar recibiendo miles de dólares menos.',
     )
     expect(C.hero.subhead).not.toMatch(/se podían evitar/)
+  })
+
+  it('la bajada ya no promete los 3 números en 72 horas (pedido del dueño, 2026-11-06)', () => {
+    expect(C.hero.subhead).not.toMatch(/72 horas/)
   })
 
   it('el caso se cuenta como contraste directo, sin "la misma reserva" (no coincide con el video)', () => {
