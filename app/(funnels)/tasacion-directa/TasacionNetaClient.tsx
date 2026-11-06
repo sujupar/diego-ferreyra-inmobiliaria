@@ -194,7 +194,9 @@ export function TasacionNetaClient({
               // misma de la variante A: dos videos distintos (196 s y 711 s) con sus
               // estadísticas mezcladas en un solo bloque de Embudos. El catálogo y la
               // prueba que impide repetirla están en `lib/funnel/video-keys.ts`.
-              trackKey="hero-tasacion-neta"
+              // El VSL corto (desde el 6/11/2026) tiene su clave propia: con la del
+              // largo, la retención de dos videos distintos se mezclaría.
+              trackKey="hero-tasacion-neta-corto"
               funnel="tasacion"
               context="hero"
               warmup
@@ -230,7 +232,7 @@ export function TasacionNetaClient({
           <h2 className="mx-auto max-w-[760px] font-[family-name:var(--font-funnel-head)] text-[1.32rem] font-extrabold leading-tight tracking-[-.015em] text-[#152238] md:text-[2rem]">
             {C.finalHeading}
           </h2>
-          <Cta onClick={openModal} onPrime={prime} label={C.cta.label} note={C.cta.noteShort} />
+          <Cta onClick={openModal} onPrime={prime} label={C.cta.labelFinal} note={C.cta.noteShort} />
         </section>
       </div>
 
@@ -238,7 +240,7 @@ export function TasacionNetaClient({
         <div className="font-[family-name:var(--font-funnel-head)] font-extrabold tracking-wider text-[#152238]">
           DIEGO FERREYRA INMOBILIARIA
         </div>
-        <div>Martillero Público · CUCICBA 8266</div>
+        <div>{C.footerRole}</div>
         <div>© {new Date().getFullYear()} {BRAND.footer}</div>
       </footer>
 

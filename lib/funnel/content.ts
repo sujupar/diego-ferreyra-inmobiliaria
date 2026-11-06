@@ -65,37 +65,46 @@ export const TASACION_CONTENT = {
  */
 export const TASACION_B_CONTENT = {
   hero: {
-    // El argumento que el dueño identificó como el que más engancha en la
-    // práctica: la pérdida evitable. Va ARRIBA del titular y en chico — planta
-    // el dolor sin robarle el lugar al reencuadre, que es la tesis de la oferta.
-    kicker: 'Evitá perder miles de dólares de tu propiedad por errores evitables',
-    headlineA: 'No es cuánto pedís por tu propiedad.',
-    headlineB: 'Es cuánto te queda el día que escriturás.',
-    highlight: 'cuánto te queda',
+    // Textos del documento "Cambios en Landing" que pidió Diego (2026-11-06).
+    // Cada uno con su porqué está en `content-landing-b.test.ts`.
+    // Copete: abre una pregunta ("¿qué número?") en vez de anunciar la pérdida.
+    kicker: 'Antes de vender, hay un número más importante que el precio de publicación',
+    headlineA: 'No es cuánto publicás tu propiedad.',
+    headlineB: 'Es cuánto te queda en mano el día que escriturás.',
+    // Tiene que aparecer literal al principio de `headlineB` (después de "Es "):
+    // el componente parte la línea por este texto para pintarlo de azul.
+    highlight: 'cuánto te queda en mano',
+    // Sin "impuestos que se podían evitar": sonaba a que siempre se pueden evitar.
     subhead:
-      'La mayoría se enfoca en el precio de publicación y ahí es donde se pierde la plata: impuestos que se podían evitar, IVA, gastos de escritura y una mala negociación. En 72 horas te entregamos el plan completo de tu venta: a cuánto se vende de verdad, a cuánto no se vende, y cuánta plata te queda limpia.',
+      'La mayoría mira solo el precio de publicación. Pero entre la negociación, impuestos, IVA, escritura y honorarios, podés terminar recibiendo miles de dólares menos. En 72 horas vas a conocer 3 números: a qué precio conviene publicar, cuánto puede pagar realmente el mercado y cuánto te quedaría neto después de vender.',
     heroAmountBefore: 'US$221.000',
     heroAmountAfter: 'US$237.600',
+    // Contraste directo. Antes decía "con la misma reserva", que no coincide con
+    // el caso que cuenta el video (235.000 de oferta contra 247.500 de reserva).
     credit:
-      'Con el mismo método con el que un propietario que iba a quedarse con {antes} terminó con {despues} — por la misma propiedad, con la misma reserva.',
-    // Archivo PROPIO, distinto al de la variante A. Las dos apuntaban al mismo
-    // `tasacion-hero-web.mp4`, así que reemplazarlo habría cambiado las DOS
-    // landings a la vez y el experimento habría dejado de comparar lo que cree
-    // comparar. La A se queda con su video de 3:16; esta lleva el VSL completo.
-    videoPath: 'web/tasacion-neta-vsl-web.mp4',
-    posterPath: 'web/tasacion-neta-vsl-poster.jpg',
+      'Misma propiedad. Mismo precio de publicación. {antes} vs. {despues} en mano. Una diferencia de US$16.600.',
+    // Archivos PROPIOS, distintos a los de la variante A y a los del VSL largo
+    // (`tasacion-neta-vsl-web.mp4`, que queda en Storage sin uso). Reemplazar un
+    // archivo compartido cambia dos páginas a la vez sin que nada avise.
+    videoPath: 'web/tasacion-neta-vsl-corto-web.mp4',
+    posterPath: 'web/tasacion-neta-vsl-corto-poster.jpg',
   },
   qualifier: {
-    lead: '*Pedila solamente si',
-    body: 'sos el propietario (o uno de los propietarios) y la propiedad está en CABA o Zona Norte. No hace falta que tengas fecha para vender: si lo estás pensando, este es el momento de saber los números.',
+    lead: '*Pedila si',
+    body: 'sos propietario —o uno de los propietarios— de una propiedad en CABA o Zona Norte. No necesitás tener decidido vender. Si lo estás evaluando, conocer estos números es una decisión inteligente.',
   },
   cta: {
-    label: 'SOLICITAR MI TASACIÓN GRATUITA',
-    note: '100% gratuito, confidencial y sin compromiso. Te escribimos por WhatsApp en los próximos minutos.',
-    noteShort: '100% gratuito, confidencial y sin compromiso.',
+    // El botón de debajo del video pide EL NÚMERO, que es la categoría propia de
+    // la oferta; "tasación gratuita" la ofrecen todas las inmobiliarias.
+    label: 'QUIERO SABER CUÁNTO ME QUEDA',
+    // Sin "te escribimos en los próximos minutos": no se puede prometer siempre.
+    note: 'Tasación profesional + simulación de costos. Gratis, confidencial y sin compromiso.',
+    labelFinal: 'SOLICITAR MI TASACIÓN PROFESIONAL',
+    noteShort: 'Tasación profesional + simulación de costos. Sin costo y sin compromiso.',
   },
   testimonialsHeading: 'Algunos de nuestros casos',
-  finalHeading: 'Antes de publicar tu propiedad, sabé con cuánto te vas a quedar.',
+  finalHeading: 'Antes de elegir precio o inmobiliaria, sabé cuánto te va a quedar en mano.',
+  footerRole: 'Martillero Público · CUCICBA 8266 · CMCPSI 7217',
   form: {
     title: 'Completá estos datos para coordinar tu tasación',
     subtitle: 'Te escribimos por WhatsApp en los próximos segundos.',
