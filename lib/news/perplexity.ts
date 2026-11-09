@@ -51,6 +51,32 @@ function medioFromUrl(url: string): string {
   }
 }
 
+const RESUMEN_MAX_CHARS = 260
+
+// Perplexity devuelve el snippet como scrape crudo de la página: a veces trae el
+// encabezado markdown ("# Título..."), el título repetido al principio, y lo corta
+// a mitad de palabra con "...". Esto limpia eso para que el resumen se pueda leer
+// de un vistazo en la lista y en el detalle, sin tocar el dato real (nunca inventa
+// texto, solo recorta y despoja formato).
+function limpiarResumen(snippet: string, titulo: string): string {
+  let s = snippet.trim()
+  // Encabezados markdown ("# ", "## ", etc.) al inicio de cualquier línea.
+  s = s.replace(/^#{1,6}\s+/gm, '')
+  // Si el resumen arranca repitiendo el título, lo saca (ya se muestra aparte).
+  const tituloNorm = titulo.trim().toLowerCase()
+  if (tituloNorm && s.toLowerCase().startsWith(tituloNorm)) {
+    s = s.slice(titulo.trim().length).trim()
+  }
+  // Colapsa saltos de línea y espacios múltiples en uno solo.
+  s = s.replace(/\s+/g, ' ').trim()
+  if (s.length > RESUMEN_MAX_CHARS) {
+    const corte = s.slice(0, RESUMEN_MAX_CHARS)
+    const ultimoEspacio = corte.lastIndexOf(' ')
+    s = (ultimoEspacio > 0 ? corte.slice(0, ultimoEspacio) : corte).trim() + '…'
+  }
+  return s
+}
+
 function toCandidate(r: PerplexityResult): NewsCandidate | null {
   const url = (r.url || '').trim()
   const rawFecha = (r.date || r.last_updated || '').trim()
@@ -61,12 +87,13 @@ function toCandidate(r: PerplexityResult): NewsCandidate | null {
   const fecha = new Date(ts).toISOString().slice(0, 10)
   const medio = medioFromUrl(url)
   if (!medio) return null
+  const titulo = (r.title || '').trim() || 'Sin título'
   return {
-    titulo: (r.title || '').trim() || 'Sin título',
+    titulo,
     medio,
     fecha,
     url,
-    resumen: (r.snippet || '').trim(),
+    resumen: limpiarResumen(r.snippet || '', titulo),
   }
 }
 

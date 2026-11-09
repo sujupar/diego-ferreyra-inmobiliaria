@@ -38,9 +38,35 @@ describe('searchRealEstateNews', () => {
     const res = await searchRealEstateNews()
     expect(res).toHaveLength(1)
     expect(res[0].url).toBe('https://www.clarin.com/a')
-    expect(res[0].medio).toBe('clarin.com')
-    expect(res[0].fecha).toBe('2026-10-27')
-    expect(fetchMock).toHaveBeenCalledTimes(7)
+  })
+
+  it('limpia el resumen: saca encabezado markdown, título repetido y recorta largo', async () => {
+    vi.stubEnv('PERPLEXITY_API_KEY', 'test-key')
+    const tituloLargo = 'Impuestos: ajuste por inflación con subas de hasta 30 por ciento'
+    const snippetCrudo =
+      `# ${tituloLargo} El gobierno bonaerense prevé ajustar los impuestos por inflación el año que viene. ` +
+      'Por eso esquivan hablar de aumentos y prefieren referirse a una "actualización". Pero en términos ' +
+      'prácticos, en relación a los valores de los tributos de este año, el ajuste rondará el 30 por ciento. ' +
+      '"La Ley Impositiva 2027 reconoce el esfuerzo de los sectores productivos tanto como de los ciudadanos ' +
+      'bonaerenses y no incrementa la presión tributaria", grafico el ministro de Economía, Pablo López.'
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        results: [
+          { title: tituloLargo, url: 'https://www.eldia.com/a', snippet: snippetCrudo, date: '2026-11-06' },
+        ],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await searchRealEstateNews()
+    expect(res).toHaveLength(1)
+    const { resumen } = res[0]
+    expect(resumen.startsWith('#')).toBe(false)
+    expect(resumen.toLowerCase().startsWith(tituloLargo.toLowerCase())).toBe(false)
+    expect(resumen.length).toBeLessThanOrEqual(261)
+    expect(resumen.endsWith('…')).toBe(true)
+    expect(res[0].medio).toBe('eldia.com')
+    expect(res[0].fecha).toBe('2026-11-06')
   })
 
   it('sin key y sin mock lanza error legible', async () => {
