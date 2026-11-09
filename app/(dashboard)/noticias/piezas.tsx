@@ -22,6 +22,7 @@ function fechaCorta(iso: string | null): string {
 function Pieza({ s }: { s: NewsScript }) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [resumenOpen, setResumenOpen] = useState(false)
   const est = ESTADO[s.estado]
 
   async function copiar() {
@@ -62,7 +63,15 @@ function Pieza({ s }: { s: NewsScript }) {
           {s.resumen && (
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">Resumen</p>
-              <p className="text-sm leading-relaxed">{s.resumen}</p>
+              <p className={cn('text-sm leading-relaxed text-muted-foreground', !resumenOpen && 'line-clamp-3')}>{s.resumen}</p>
+              {s.resumen.length > 160 && (
+                <button
+                  type="button" onClick={() => setResumenOpen((o) => !o)} aria-expanded={resumenOpen}
+                  className="mt-1 text-xs text-primary hover:underline"
+                >
+                  {resumenOpen ? 'Ver menos' : 'Ver más'}
+                </button>
+              )}
             </div>
           )}
           {s.estado === 'listo' && s.guion && (

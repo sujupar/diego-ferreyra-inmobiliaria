@@ -137,7 +137,7 @@ export default function BuscarAhora() {
                 <p className="text-sm text-muted-foreground">
                   {candidates.length} noticias encontradas. Marcá las que quieras convertir en guion.
                 </p>
-                <ul className="space-y-3 pb-24">
+                <ul className="space-y-2 pb-24">
                   {candidates.map((c, i) => {
                     const on = selected.has(i)
                     return (
@@ -151,7 +151,7 @@ export default function BuscarAhora() {
                             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(i) }
                           }}
                           className={cn(
-                            'flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition-all hover:shadow-sm',
+                            'flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-all hover:shadow-sm',
                             on && 'border-primary bg-primary/5 ring-1 ring-primary/30',
                           )}
                         >
@@ -163,7 +163,7 @@ export default function BuscarAhora() {
                             aria-label={`Seleccionar ${c.titulo}`}
                           />
                           <div className="min-w-0 flex-1">
-                            <p className="font-medium leading-snug">{c.titulo}</p>
+                            <p className="font-medium leading-snug line-clamp-2">{c.titulo}</p>
                             <p className="text-xs text-muted-foreground mt-1 flex flex-wrap items-center gap-x-1.5">
                               <span>{c.medio}</span><span aria-hidden>·</span><span>{fechaCorta(c.fecha)}</span>
                               <a
@@ -174,7 +174,7 @@ export default function BuscarAhora() {
                                 <ExternalLink className="size-3" /> ver nota
                               </a>
                             </p>
-                            {c.resumen && <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{c.resumen}</p>}
+                            {c.resumen && <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{c.resumen}</p>}
                           </div>
                         </div>
                       </li>
