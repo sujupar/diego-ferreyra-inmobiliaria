@@ -6,6 +6,7 @@ import { ArgenpropAdapter } from '@/lib/portals/argenprop/adapter'
 import { mensajeYDetalle } from '@/lib/portals/types'
 import type { Database } from '@/types/database.types'
 import { puedeDifundir } from '@/lib/properties/difusion-access-server'
+import { syncPortalPropertyMap } from '@/lib/portals/mapa-avisos'
 
 function getAdmin() {
   return createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -16,28 +17,6 @@ async function authorize(propertyId: string, userId: string, role: string) {
   // Antes cada archivo tenía su copia de "si sos asesor, solo las tuyas" y
   // cambiarla significaba editar veinte archivos sin olvidarse ninguno.
   return puedeDifundir(propertyId, userId, role, 'difundir')
-}
-
-type PropertyRow = Database['public']['Tables']['properties']['Row']
-type LooseQuery = {
-  delete: () => LooseQuery
-  insert: (row: Record<string, unknown>) => Promise<unknown>
-  eq: (column: string, value: unknown) => LooseQuery & Promise<unknown>
-}
-
-/** BRIDGE publicación → routing de consultas (espejo del de ML, portal='argenprop'). */
-async function syncPortalPropertyMap(
-  supabase: ReturnType<typeof getAdmin>, property: PropertyRow, externalId: string, externalUrl: string,
-) {
-  const noteKey = `property:${property.id}`
-  const db = supabase as unknown as { from: (table: string) => LooseQuery }
-  await db.from('portal_property_map').delete().eq('portal', 'argenprop').eq('notes', noteKey)
-  await db.from('portal_property_map').insert({
-    portal: 'argenprop', external_code: externalId, external_url: externalUrl,
-    address: property.address, neighborhood: property.neighborhood,
-    title: property.title ?? property.address, assigned_to: property.assigned_to,
-    property_id: property.id, active: true, notes: noteKey,
-  })
 }
 
 /** POST → publica la propiedad en Argenprop (síncrono). */
@@ -105,7 +84,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     try {
       // external_code = avisoId numérico (lo que trae el email de consulta de Argenprop),
       // NO el IdOrigen alfanumérico → así las consultas matchean por código y por URL.
-      await syncPortalPropertyMap(supabase, property, String(pub.metadata?.avisoId ?? pub.externalId), pub.externalUrl)
+      await syncPortalPropertyMap(supabase, 'argenprop', property, String(pub.metadata?.avisoId ?? pub.externalId), pub.externalUrl)
     } catch (bridgeErr) {
       console.warn('[ap-publish] no se pudo sincronizar portal_property_map', bridgeErr)
     }

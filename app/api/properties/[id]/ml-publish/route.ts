@@ -6,6 +6,7 @@ import { MercadoLibreAdapter } from '@/lib/portals/mercadolibre/adapter'
 import { mensajeYDetalle } from '@/lib/portals/types'
 import type { Database } from '@/types/database.types'
 import { puedeDifundir } from '@/lib/properties/difusion-access-server'
+import { syncPortalPropertyMap } from '@/lib/portals/mapa-avisos'
 
 function getAdmin() {
   return createClient<Database>(
@@ -19,47 +20,6 @@ async function authorize(propertyId: string, userId: string, role: string) {
   // Antes cada archivo tenía su copia de "si sos asesor, solo las tuyas" y
   // cambiarla significaba editar veinte archivos sin olvidarse ninguno.
   return puedeDifundir(propertyId, userId, role, 'difundir')
-}
-
-type PropertyRow = Database['public']['Tables']['properties']['Row']
-
-// Cliente "suelto" para escribir en portal_property_map, tabla del sistema de
-// consultas (WIP, no tipada en database.types aún). Best-effort.
-type LooseQuery = {
-  delete: () => LooseQuery
-  insert: (row: Record<string, unknown>) => Promise<unknown>
-  eq: (column: string, value: unknown) => LooseQuery & Promise<unknown>
-}
-
-/**
- * BRIDGE publicación → routing de consultas. Registra el aviso recién publicado en
- * portal_property_map (external_code = id del aviso ML, external_url = permalink,
- * + dirección/título para fallback fuzzy, + assigned_to de la propiedad). Así, cuando
- * llega una consulta de ESTE aviso, el matcher la rutea al asesor correcto.
- * Idempotente por propiedad vía `notes` ("property:<id>"): borra la fila anterior de
- * esta propiedad antes de insertar la nueva (re-publicaciones generan nuevo id de aviso).
- */
-async function syncPortalPropertyMap(
-  supabase: ReturnType<typeof getAdmin>,
-  property: PropertyRow,
-  externalId: string,
-  externalUrl: string,
-) {
-  const noteKey = `property:${property.id}`
-  const db = supabase as unknown as { from: (table: string) => LooseQuery }
-  await db.from('portal_property_map').delete().eq('portal', 'mercadolibre').eq('notes', noteKey)
-  await db.from('portal_property_map').insert({
-    portal: 'mercadolibre',
-    external_code: externalId,
-    external_url: externalUrl,
-    address: property.address,
-    neighborhood: property.neighborhood,
-    title: property.title ?? property.address,
-    assigned_to: property.assigned_to,
-    property_id: property.id,
-    active: true,
-    notes: noteKey,
-  })
 }
 
 /**
@@ -200,7 +160,7 @@ export async function POST(
     // external_code/url) ruteen al asesor de la propiedad. Best-effort: si la tabla
     // del sistema de consultas no existe todavía, no rompemos el publish.
     try {
-      await syncPortalPropertyMap(supabase, property, pubResult.externalId, pubResult.externalUrl)
+      await syncPortalPropertyMap(supabase, 'mercadolibre', property, pubResult.externalId, pubResult.externalUrl)
     } catch (bridgeErr) {
       console.warn('[ml-publish] no se pudo sincronizar portal_property_map', bridgeErr)
     }
