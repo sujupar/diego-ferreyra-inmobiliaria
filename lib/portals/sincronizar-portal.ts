@@ -197,7 +197,9 @@ function fallo(portal: PortalSincronizable, error: string, status: number, extra
   return { ok: false, portal, error, status, ...extra }
 }
 
-export const MENSAJE_PRECIO_INVALIDO = 'El precio de la ficha no es válido; corregilo antes de actualizar los avisos.'
+export const MENSAJE_ML_PROCESANDO =
+  'MercadoLibre todavía está procesando el aviso recién publicado (tarda 1 a 3 minutos) y mientras tanto no deja cambiar el tipo. Probá de nuevo en un par de minutos.'
+export const MENSAJE_PRECIO_INVALIDO ='El precio de la ficha no es válido; corregilo antes de actualizar los avisos.'
 
 /** null = el precio de la ficha no sirve (NaN, ≤0 o ausente): no se manda a ningún portal. */
 export function precioDeFicha(ficha: FichaComercial): { monto: number; moneda: string } | null {
@@ -301,6 +303,14 @@ async function sincronizarMlReservado(deps: DepsMl, entrada: EntradaSincronizar)
     const cambiaCategoria = campos.some(d => d.campo === 'tipo' || d.campo === 'operacion')
     const precio = campos.some(d => d.campo === 'precio') ? precioDeFicha(ficha) : null
     if (campos.some(d => d.campo === 'precio') && !precio) return fallo(portal, MENSAJE_PRECIO_INVALIDO, 422)
+
+    // Recién publicado (`not_yet_active`, 1-3 min): ML responde
+    // `item.category_id.not_modifiable` al cambio de categoría (verificado en el
+    // QA del 2026-11-11), y el plan B tampoco sirve: el viejo no se puede cerrar
+    // desde ese estado. No es un rechazo de verdad → esperar, sin plan B.
+    if (cambiaCategoria && item.status === 'not_yet_active') {
+      return fallo(portal, MENSAJE_ML_PROCESANDO, 409)
+    }
 
     if (entrada.planB) {
       if (!cambiaCategoria) return fallo(portal, 'El plan B solo aplica cuando cambia el tipo o la operación.', 400)

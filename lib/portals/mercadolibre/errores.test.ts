@@ -25,6 +25,17 @@ describe('explicarErrorMl', () => {
     expect(texto).not.toMatch(/leaf category|MLA1472|\{|"/)
   })
 
+  it('category_id.not_modifiable NO culpa al mapeo (rechazo real del QA 2026-11-11)', () => {
+    const cuerpo = JSON.stringify({
+      cause: [{ type: 'error', code: 'item.category_id.not_modifiable', message: 'category_id is not modifiable.' }],
+      message: 'Cannot update item MLA2281956729 [status:not_yet_active, has_bids:false]',
+      error: 'validation_error', status: 400,
+    })
+    const texto = explicarErrorMl(400, cuerpo)
+    expect(texto).toMatch(/no deja cambiar la categoría/)
+    expect(texto).not.toMatch(/mapeo/)
+  })
+
   it('distingue credenciales, límite de pedidos y caída de ML', () => {
     expect(explicarErrorMl(401, '')).toMatch(/credenciales/i)
     expect(explicarErrorMl(403, '')).toMatch(/credenciales/i)

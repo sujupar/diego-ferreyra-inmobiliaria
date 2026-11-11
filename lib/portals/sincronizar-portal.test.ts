@@ -9,6 +9,7 @@ import {
   diferenciasDePortales,
   limiteReclamo,
   MENSAJE_EN_CURSO,
+  MENSAJE_ML_PROCESANDO,
   type DepsMl,
   type DepsAp,
   type DepsComunes,
@@ -137,6 +138,24 @@ describe('sincronizarMl', () => {
     expect(r).toMatchObject({ ok: false, error: 'ML rechazó el cambio', planBDisponible: true, status: 409 })
     expect(deps.auditar).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'failed', errorMessage: expect.stringContaining('ML 400 crudo') }))
     expect(deps.guardarListing).not.toHaveBeenCalled()
+  })
+
+  it('aviso recién publicado (not_yet_active) + cambio de tipo → esperar, sin PUT ni plan B', async () => {
+    for (const planB of [false, true]) {
+      const { deps } = depsMl({ leerAviso: vi.fn(async () => ({ ...itemDepto, status: 'not_yet_active' })) })
+      const r = await sincronizarMl(deps, { ficha: { ...fichaDepto, property_type: 'casa' }, listing: listingMl, planB })
+      expect(r).toMatchObject({ ok: false, status: 409, error: MENSAJE_ML_PROCESANDO })
+      if (!r.ok) expect(r.planBDisponible).toBeUndefined()
+      expect(deps.cambiarEnElLugar).not.toHaveBeenCalled()
+      expect(deps.publicarReemplazo).not.toHaveBeenCalled()
+      expect(deps.cerrar).not.toHaveBeenCalled()
+    }
+  })
+
+  it('aviso recién publicado + solo precio → se actualiza igual', async () => {
+    const { deps } = depsMl({ leerAviso: vi.fn(async () => ({ ...itemDepto, status: 'not_yet_active' })) })
+    const r = await sincronizarMl(deps, { ficha: { ...fichaDepto, asking_price: 75000 }, listing: listingMl })
+    expect(r).toMatchObject({ ok: true, accion: 'actualizado' })
   })
 
   it('categoría nueva sin atributos → no manda el PUT', async () => {
