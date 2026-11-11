@@ -11,6 +11,8 @@ import { ML_MAX_FOTOS_AVISO } from '../photo-limits'
 
 export interface MlItemVivo {
   id: string; title: string; status: string; category_id: string; price: number; permalink?: string
+  /** ML siempre lo devuelve; opcional para no obligar a los fixtures viejos a declararlo. */
+  currency_id?: string
   attributes: { id: string; value_id: string | null; value_name: string | null }[]
 }
 export interface CambiosMl { titulo?: string; valores: CambiosDeValores; precio?: number; fotos?: string[] }
