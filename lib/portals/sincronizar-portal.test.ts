@@ -3,6 +3,9 @@ import {
   sincronizarMl,
   sincronizarAp,
   diferenciasDePortales,
+  reclamoVigente,
+  limiteReclamo,
+  MENSAJE_EN_CURSO,
   type DepsMl,
   type DepsAp,
   type DepsComunes,
@@ -27,6 +30,8 @@ function comunes() {
     sincronizarMapa: vi.fn(async () => { llamadas.push('sincronizarMapa') }),
     auditar: vi.fn(async () => { llamadas.push('auditar') }),
     ahora: () => '2026-11-11T12:00:00.000Z',
+    reclamar: vi.fn(async () => { llamadas.push('reclamar'); return true }),
+    liberar: vi.fn(async () => { llamadas.push('liberar') }),
   }
   return { deps, llamadas }
 }
@@ -45,7 +50,7 @@ const rawCasa: MlRawAttribute[] = [
 ]
 
 const listingMl: ListingSincronizable = {
-  id: 'L1', external_id: 'MLA1', external_url: 'https://ml/MLA1',
+  id: 'L1', status: 'published', external_id: 'MLA1', external_url: 'https://ml/MLA1',
   metadata: { ml_attributes: { ROOMS: { value_name: '3' }, OPERATION_SUBTYPE: { value_id: 'x' } }, listing_type: 'silver', media_choice: 'video' },
 }
 
@@ -193,7 +198,7 @@ const avisoDepto: ApAvisoVivo = {
 }
 
 const listingAp: ListingSincronizable = {
-  id: 'L2', external_id: '60U6_abc', external_url: 'https://www.argenprop.com/departamento-en-venta--10',
+  id: 'L2', status: 'published', external_id: '60U6_abc', external_url: 'https://www.argenprop.com/departamento-en-venta--10',
   metadata: { aviso_id: 10, codigo: '60U6_abc' },
 }
 
@@ -206,6 +211,7 @@ function depsAp(over: Partial<DepsAp> = {}) {
     caracteristicasDeCategoria: vi.fn(async () => { llamadas.push('caracteristicas'); return new Set(['AMBIENTES']) }),
     republicar: vi.fn(async () => { llamadas.push('republicar'); return { avisoId: 99 } }),
     enviarAviso: vi.fn(async () => { llamadas.push('enviarAviso') }),
+    suspender: vi.fn(async () => { llamadas.push('suspender') }),
     urlPublica: (avisoId: number) => `https://www.argenprop.com/casa-en-venta--${avisoId}`,
     ...c.deps,
     ...over,
@@ -316,5 +322,128 @@ describe('diferenciasDePortales', () => {
       { portal: 'mercadolibre', error: 'MercadoLibre no responde' },
       { portal: 'argenprop', diferencias: [{ campo: 'tipo', antes: 'Departamento', despues: 'Casa' }], accion: 'republicar', externalUrl: 'https://ap/10', estado: 'paused' },
     ])
+  })
+})
+
+// ─── Fix round 1 ───────────────────────────────────────────────────────────
+
+describe('reserva del listing', () => {
+  const ahora = new Date('2026-11-11T12:00:00.000Z')
+  it('limiteReclamo = ahora − 3 min', () => {
+    expect(limiteReclamo(ahora)).toBe('2026-11-11T11:57:00.000Z')
+  })
+  it('reclamoVigente: reciente sí; vencida, ausente o ilegible no', () => {
+    expect(reclamoVigente('2026-11-11T11:58:00.000Z', ahora)).toBe(true)
+    expect(reclamoVigente('2026-11-11T11:56:59.000Z', ahora)).toBe(false)
+    expect(reclamoVigente(undefined, ahora)).toBe(false)
+    expect(reclamoVigente('basura', ahora)).toBe(false)
+  })
+  it('ML: si no se puede reservar → 409 y ninguna llamada al portal', async () => {
+    const { deps } = depsMl({ reclamar: vi.fn(async () => false) })
+    const r = await sincronizarMl(deps, { ficha: { ...fichaDepto, property_type: 'casa' }, listing: listingMl, planB: true })
+    expect(r).toMatchObject({ ok: false, error: MENSAJE_EN_CURSO, status: 409 })
+    expect(deps.leerAviso).not.toHaveBeenCalled()
+    expect(deps.publicarReemplazo).not.toHaveBeenCalled()
+    expect(deps.liberar).not.toHaveBeenCalled()
+  })
+  it('AP: si no se puede reservar → 409 y ninguna llamada al portal', async () => {
+    const { deps } = depsAp({ reclamar: vi.fn(async () => false) })
+    const r = await sincronizarAp(deps, { ficha: { ...fichaDepto, property_type: 'casa' }, listing: listingAp })
+    expect(r).toMatchObject({ ok: false, error: MENSAJE_EN_CURSO, status: 409 })
+    expect(deps.leerAviso).not.toHaveBeenCalled()
+    expect(deps.republicar).not.toHaveBeenCalled()
+  })
+  it('libera la reserva al terminar, haya salido bien o mal', async () => {
+    const bien = depsMl()
+    await sincronizarMl(bien.deps, { ficha: { ...fichaDepto, asking_price: 1 }, listing: listingMl })
+    expect(bien.llamadas[0]).toBe('reclamar')
+    expect(bien.llamadas.at(-1)).toBe('liberar')
+    const mal = depsAp({ leerAviso: vi.fn(async () => { throw new Error('caído') }) })
+    await sincronizarAp(mal.deps, { ficha: fichaDepto, listing: listingAp })
+    expect(mal.deps.liberar).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('avisos pausados', () => {
+  it('AP republicado de un listing pausado → se vuelve a suspender y la base sigue paused', async () => {
+    const { deps, llamadas } = depsAp()
+    const r = await sincronizarAp(deps, { ficha: { ...fichaDepto, property_type: 'casa' }, listing: { ...listingAp, status: 'paused' } })
+    expect(r.ok).toBe(true)
+    expect(deps.suspender).toHaveBeenCalledWith('60U6_abc')
+    expect(llamadas.indexOf('republicar')).toBeLessThan(llamadas.indexOf('suspender'))
+    expect(vi.mocked(deps.guardarListing).mock.calls[0][0]).not.toHaveProperty('status')
+  })
+  it('AP publicado → no suspende', async () => {
+    const { deps } = depsAp()
+    await sincronizarAp(deps, { ficha: { ...fichaDepto, property_type: 'casa' }, listing: listingAp })
+    expect(deps.suspender).not.toHaveBeenCalled()
+  })
+  it('ML plan B de un listing pausado → status paused y needs_pause_after_active', async () => {
+    const { deps } = depsMl()
+    await sincronizarMl(deps, { ficha: { ...fichaDepto, property_type: 'casa' }, listing: { ...listingMl, status: 'paused' }, planB: true })
+    expect(deps.guardarListing).toHaveBeenLastCalledWith(expect.objectContaining({
+      status: 'paused', external_id: 'MLA2',
+      metadata: expect.objectContaining({ needs_pause_after_active: true }),
+    }))
+  })
+})
+
+describe('plan B robusto', () => {
+  it('anota reemplazo_pendiente ANTES de cerrar el viejo y lo borra al final', async () => {
+    const { deps, llamadas } = depsMl()
+    await sincronizarMl(deps, { ficha: { ...fichaDepto, property_type: 'casa' }, listing: listingMl, planB: true })
+    const guardados = vi.mocked(deps.guardarListing).mock.calls.map(c => c[0])
+    expect(guardados[0]).toEqual({ metadata: expect.objectContaining({ reemplazo_pendiente: { nuevo: 'MLA2', url: 'https://ml/MLA2', desde: 'MLA1', listingType: 'silver' } }) })
+    expect(llamadas.indexOf('guardarListing')).toBeLessThan(llamadas.indexOf('cerrar'))
+    expect(guardados[1].metadata).not.toHaveProperty('reemplazo_pendiente')
+  })
+  it('reanuda un reemplazo a medias: cierra el viejo y apunta al nuevo, SIN publicar un tercero', async () => {
+    const { deps } = depsMl()
+    const listing = { ...listingMl, metadata: { ...listingMl.metadata, reemplazo_pendiente: { nuevo: 'MLA2', url: 'https://ml/MLA2', desde: 'MLA1' } } }
+    const r = await sincronizarMl(deps, { ficha: fichaDepto, listing })
+    expect(r).toMatchObject({ ok: true, accion: 'reemplazado', externalUrl: 'https://ml/MLA2' })
+    expect(deps.publicarReemplazo).not.toHaveBeenCalled()
+    expect(deps.cerrar).toHaveBeenCalledWith('MLA1')
+    const final = vi.mocked(deps.guardarListing).mock.calls.at(-1)?.[0]
+    expect(final).toMatchObject({ external_id: 'MLA2', external_url: 'https://ml/MLA2', metadata: { reemplaza_a: 'MLA1' } })
+    expect(final?.metadata).not.toHaveProperty('reemplazo_pendiente')
+    expect(deps.sincronizarMapa).toHaveBeenCalledWith('MLA2', 'https://ml/MLA2')
+  })
+  it('reanudando, si el viejo ya está cerrado no lo vuelve a cerrar', async () => {
+    const { deps } = depsMl({ leerAviso: vi.fn(async () => ({ ...itemDepto, status: 'closed' })) })
+    const listing = { ...listingMl, metadata: { reemplazo_pendiente: { nuevo: 'MLA2', url: 'https://ml/MLA2', desde: 'MLA1' } } }
+    const r = await sincronizarMl(deps, { ficha: fichaDepto, listing })
+    expect(r.ok).toBe(true)
+    expect(deps.cerrar).not.toHaveBeenCalled()
+  })
+  it('la categoría nueva sin campos aceptados → falla ANTES de publicar', async () => {
+    const { deps } = depsMl({ idsAceptados: vi.fn(async () => new Set<string>()) })
+    const r = await sincronizarMl(deps, { ficha: { ...fichaDepto, property_type: 'casa' }, listing: listingMl, planB: true })
+    expect(r.ok).toBe(false)
+    expect(deps.publicarReemplazo).not.toHaveBeenCalled()
+    expect(deps.cerrar).not.toHaveBeenCalled()
+  })
+})
+
+describe('Argenprop eliminado sin republicar y la base caída', () => {
+  it('igual devuelve el mensaje claro', async () => {
+    const err = new PortalAdapterError(MENSAJE_ELIMINADO_SIN_REPUBLICAR, 'argenprop', 'unknown', false, 'crudo')
+    const { deps } = depsAp({
+      republicar: vi.fn(async () => { throw err }),
+      guardarListing: vi.fn(async () => { throw new Error('db caída') }),
+    })
+    const r = await sincronizarAp(deps, { ficha: { ...fichaDepto, property_type: 'casa' }, listing: listingAp })
+    expect(r).toMatchObject({ ok: false, error: MENSAJE_ELIMINADO_SIN_REPUBLICAR })
+  })
+})
+
+describe('ML sin currency_id', () => {
+  it('mismo monto y ficha en ARS → nada (no inventa un cambio de moneda)', async () => {
+    const { currency_id: _omitida, ...sinMoneda } = itemDepto
+    void _omitida
+    const { deps } = depsMl({ leerAviso: vi.fn(async () => sinMoneda) })
+    const r = await sincronizarMl(deps, { ficha: { ...fichaDepto, currency: 'ARS' }, listing: listingMl })
+    expect(r).toMatchObject({ ok: true, accion: 'nada' })
+    expect(deps.cambiarEnElLugar).not.toHaveBeenCalled()
   })
 })

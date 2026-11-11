@@ -38,6 +38,8 @@ export type FichaSincronizable = FichaComercial & { photos: readonly unknown[] |
 
 export interface ListingSincronizable {
   id: string
+  /** Estado en la base ('published' | 'paused'): un pausado tiene que seguir pausado. */
+  status: string
   external_id: string
   external_url: string | null
   metadata: Record<string, unknown>
@@ -64,6 +66,13 @@ export interface DepsComunes {
   sincronizarMapa: (externalCode: string, externalUrl: string) => Promise<void>
   auditar: (evento: EventoAuditoria) => Promise<void>
   ahora: () => string
+  /**
+   * Reserva atómica del listing (UPDATE condicional en la base). Dos clics o dos
+   * pestañas a la vez podrían, si no, republicar dos veces o publicar dos reemplazos.
+   * `false` = otro proceso lo tiene tomado.
+   */
+  reclamar: () => Promise<boolean>
+  liberar: () => Promise<void>
 }
 
 export interface DepsMl extends DepsComunes {
@@ -84,6 +93,8 @@ export interface DepsAp extends DepsComunes {
   caracteristicasDeCategoria: (tipo: string) => Promise<ReadonlySet<string>>
   republicar: (codigo: string, dto: Record<string, unknown>) => Promise<{ avisoId: number }>
   enviarAviso: (dto: Record<string, unknown>) => Promise<void>
+  /** setEstado(codigo, 'suspendido'): un aviso pausado republicado vuelve a quedar pausado. */
+  suspender: (codigo: string) => Promise<void>
   /** apPublicUrl(property, avisoId). */
   urlPublica: (avisoId: number) => string
 }
@@ -104,6 +115,57 @@ const OPERACIONES_TEXTO: Record<string, string> = {
   venta: 'venta',
   alquiler: 'alquiler',
   temporario: 'alquiler temporario',
+}
+
+// ─── Reserva del listing ──────────────────────────────────────────────────
+
+export const CLAVE_RECLAMO = 'sync_en_curso'
+/** Una sincronización tarda segundos; pasado esto la reserva se da por abandonada (proceso cortado). */
+export const RECLAMO_TTL_MS = 3 * 60 * 1000
+export const MENSAJE_EN_CURSO = 'Ya se está actualizando este aviso; esperá un momento.'
+
+/** Reservas anteriores a este instante (ISO) están vencidas: es el límite del UPDATE condicional. */
+export function limiteReclamo(ahora: Date): string {
+  return new Date(ahora.getTime() - RECLAMO_TTL_MS).toISOString()
+}
+
+/** ¿Hay una reserva vigente? Un valor ilegible cuenta como vencida (no puede bloquear para siempre). */
+export function reclamoVigente(valor: unknown, ahora: Date): boolean {
+  if (typeof valor !== 'string') return false
+  const t = Date.parse(valor)
+  return Number.isFinite(t) && t >= ahora.getTime() - RECLAMO_TTL_MS
+}
+
+async function conReclamo(
+  deps: DepsComunes,
+  portal: PortalSincronizable,
+  trabajo: () => Promise<ResultadoSincronizar>,
+): Promise<ResultadoSincronizar> {
+  let reclamado: boolean
+  try {
+    reclamado = await deps.reclamar()
+  } catch (err) {
+    return fallo(portal, mensajeYDetalle(err).mensaje, 502)
+  }
+  if (!reclamado) return fallo(portal, MENSAJE_EN_CURSO, 409)
+  try {
+    return await trabajo()
+  } finally {
+    try { await deps.liberar() } catch (e) { console.warn('[sincronizar] no se pudo liberar la reserva (vence sola en 3 min)', e) }
+  }
+}
+
+// ─── Reemplazo de ML a medio hacer ────────────────────────────────────────
+
+export interface ReemplazoPendiente { nuevo: string; url: string; desde: string; listingType?: string }
+
+/** metadata.reemplazo_pendiente: el plan B publicó el nuevo pero no terminó de cerrar/guardar. */
+export function reemplazoPendiente(meta: Record<string, unknown>): ReemplazoPendiente | null {
+  const v = meta.reemplazo_pendiente
+  if (!esRegistro(v)) return null
+  const { nuevo, url, desde, listingType } = v
+  if (typeof nuevo !== 'string' || typeof url !== 'string' || typeof desde !== 'string') return null
+  return { nuevo, url, desde, ...(typeof listingType === 'string' ? { listingType } : {}) }
 }
 
 function fallo(portal: PortalSincronizable, error: string, status: number, extra: { planBDisponible?: boolean } = {}): ResultadoSincronizar {
@@ -168,8 +230,23 @@ async function mapaSeguro(deps: DepsComunes, code: string, url: string): Promise
 // ─── MercadoLibre ──────────────────────────────────────────────────────────
 
 export async function sincronizarMl(deps: DepsMl, entrada: EntradaSincronizar): Promise<ResultadoSincronizar> {
+  return conReclamo(deps, 'mercadolibre', () => sincronizarMlReservado(deps, entrada))
+}
+
+async function sincronizarMlReservado(deps: DepsMl, entrada: EntradaSincronizar): Promise<ResultadoSincronizar> {
   const { ficha, listing } = entrada
   const portal = 'mercadolibre'
+  // Un plan B anterior publicó el nuevo y se cortó: se TERMINA ese, nunca se publica un tercero.
+  const pendiente = reemplazoPendiente(listing.metadata)
+  if (pendiente && pendiente.desde === listing.external_id) {
+    try {
+      return await finalizarReemplazo(deps, listing, pendiente, [], true)
+    } catch (err) {
+      const { mensaje, paraElLog } = mensajeYDetalle(err)
+      await auditarSeguro(deps, { eventType: 'failed', errorMessage: paraElLog, payload: { origen: 'sincronizar', campos: [], accion: 'terminar_reemplazo', planB: true } })
+      return fallo(portal, mensaje, 502)
+    }
+  }
   // resolveCategory ya trata vacío como departamento/venta; acá solo se adapta el null de la ficha.
   const categoriaNueva = resolveCategory({ property_type: ficha.property_type ?? '', operation_type: ficha.operation_type ?? '' })
   if (!categoriaNueva) {
@@ -186,7 +263,7 @@ export async function sincronizarMl(deps: DepsMl, entrada: EntradaSincronizar): 
     if (item.status === 'closed') {
       return fallo(portal, 'El aviso de MercadoLibre está cerrado: no se puede actualizar.', 409)
     }
-    const dif = diferenciasMl(ficha, { category_id: item.category_id, price: item.price, currency_id: item.currency_id ?? '' })
+    const dif = diferenciasMl(ficha, { category_id: item.category_id, price: item.price, currency_id: item.currency_id ?? null })
     campos = dif.diferencias
     const urlActual = listing.external_url ?? item.permalink ?? null
     if (dif.accion === 'nada') {
@@ -238,6 +315,9 @@ async function planBMl(deps: DepsMl, entrada: EntradaSincronizar, categoriaNueva
   const { listing } = entrada
   const meta = listing.metadata
   const aceptados = await deps.idsAceptados(categoriaNueva)
+  if (aceptados.size === 0) {
+    throw new Error(`MercadoLibre no devolvió los campos de la categoría ${categoriaNueva}; no se publicó nada y el aviso actual sigue igual.`)
+  }
   // Mismas opciones que arma ml-publish desde el borrador, filtradas a la categoría NUEVA.
   const opts: MlPayloadOptions = {
     attributeOverrides: overridesAceptados(meta, aceptados),
@@ -247,39 +327,71 @@ async function planBMl(deps: DepsMl, entrada: EntradaSincronizar, categoriaNueva
   }
   // Si esto falla, el catch de sincronizarMl responde el error: el viejo NO se cerró.
   const nuevo = await deps.publicarReemplazo(opts)
+  const usado = nuevo.metadata?.listingTypeUsed
+  const pendiente: ReemplazoPendiente = {
+    nuevo: nuevo.externalId, url: nuevo.externalUrl, desde: listing.external_id,
+    ...(typeof usado === 'string' ? { listingType: usado } : {}),
+  }
+  // Se anota ANTES de cerrar el viejo: si el proceso se corta entre publicar y
+  // guardar, el próximo intento termina este reemplazo en vez de publicar otro.
+  try {
+    await deps.guardarListing({ metadata: { ...meta, reemplazo_pendiente: pendiente } })
+  } catch (e) {
+    console.error('[sincronizar] no se pudo anotar el reemplazo pendiente', e)
+  }
+  return finalizarReemplazo(deps, listing, pendiente, campos, false)
+}
 
+/**
+ * Cierra el viejo (si sigue abierto) y apunta listing + mapa al nuevo. Lo usa el
+ * plan B recién publicado y también la reanudación de uno que quedó a medias.
+ */
+async function finalizarReemplazo(
+  deps: DepsMl,
+  listing: ListingSincronizable,
+  p: ReemplazoPendiente,
+  campos: Diferencia[],
+  reanudando: boolean,
+): Promise<ResultadoSincronizar> {
   let errorAlCerrar: string | null = null
   try {
-    await deps.cerrar(listing.external_id)
+    const cerrado = reanudando && (await deps.leerAviso(p.desde)).status === 'closed'
+    if (!cerrado) await deps.cerrar(p.desde)
   } catch (err) {
     errorAlCerrar = mensajeYDetalle(err).paraElLog
   }
 
-  const usado = nuevo.metadata?.listingTypeUsed
+  const metaSinPendiente = Object.fromEntries(Object.entries(listing.metadata).filter(([k]) => k !== 'reemplazo_pendiente'))
+  const pausado = listing.status === 'paused'
   const avisoGuardado = await guardarTrasExito(deps, {
-    status: 'published',
-    external_id: nuevo.externalId,
-    external_url: nuevo.externalUrl,
+    // Un aviso pausado sigue pausado: el worker pausa el nuevo cuando ML lo active.
+    status: pausado ? 'paused' : 'published',
+    external_id: p.nuevo,
+    external_url: p.url,
     last_published_at: deps.ahora(),
-    last_error: errorAlCerrar ? `No se pudo cerrar el aviso anterior ${listing.external_id}: ${errorAlCerrar}` : null,
+    last_error: errorAlCerrar ? `No se pudo cerrar el aviso anterior ${p.desde}: ${errorAlCerrar}` : null,
     metadata: {
-      ...meta,
-      ...(typeof usado === 'string' ? { listing_type: usado } : {}),
-      reemplaza_a: listing.external_id,
+      ...metaSinPendiente,
+      ...(p.listingType ? { listing_type: p.listingType } : {}),
+      reemplaza_a: p.desde,
       // Igual que ml-publish: el worker verifica que ML haya bajado las fotos.
       needs_picture_check: true,
+      ...(pausado ? { needs_pause_after_active: true } : {}),
     },
   })
-  await mapaSeguro(deps, nuevo.externalId, nuevo.externalUrl)
+  await mapaSeguro(deps, p.nuevo, p.url)
   await auditarSeguro(deps, {
     eventType: 'published',
-    payload: { origen: 'sincronizar', campos, accion: 'reemplazar', planB: true, reemplaza_a: listing.external_id, externalId: nuevo.externalId },
+    payload: {
+      origen: 'sincronizar', campos, accion: reanudando ? 'terminar_reemplazo' : 'reemplazar', planB: true,
+      reemplaza_a: p.desde, externalId: p.nuevo,
+    },
     ...(errorAlCerrar ? { errorMessage: errorAlCerrar } : {}),
   })
   const mensaje = (errorAlCerrar
-    ? `Se publicó el aviso nuevo, pero no se pudo cerrar el anterior (${listing.external_id}): cerralo desde MercadoLibre.`
+    ? `Se publicó el aviso nuevo, pero no se pudo cerrar el anterior (${p.desde}): cerralo desde MercadoLibre.`
     : 'Listo: se publicó el aviso nuevo y se cerró el anterior.') + (avisoGuardado ?? '')
-  return { ok: true, portal: 'mercadolibre', accion: 'reemplazado', externalUrl: nuevo.externalUrl, mensaje }
+  return { ok: true, portal: 'mercadolibre', accion: 'reemplazado', externalUrl: p.url, mensaje }
 }
 
 // ─── Argenprop ─────────────────────────────────────────────────────────────
@@ -287,6 +399,10 @@ async function planBMl(deps: DepsMl, entrada: EntradaSincronizar, categoriaNueva
 const eliminado = (estado: string | undefined) => (estado ?? '').trim().toUpperCase() === 'ELIMINADO'
 
 export async function sincronizarAp(deps: DepsAp, entrada: EntradaSincronizar): Promise<ResultadoSincronizar> {
+  return conReclamo(deps, 'argenprop', () => sincronizarApReservado(deps, entrada))
+}
+
+async function sincronizarApReservado(deps: DepsAp, entrada: EntradaSincronizar): Promise<ResultadoSincronizar> {
   const { ficha, listing } = entrada
   const portal = 'argenprop'
   let campos: Diferencia[] = []
@@ -358,17 +474,32 @@ async function republicarAp(
     // Solo este mensaje significa "ya se eliminó": si falló el paso de eliminar,
     // el aviso sigue vivo y el listing no se marca failed.
     if (mensaje === MENSAJE_ELIMINADO_SIN_REPUBLICAR) {
-      await deps.guardarListing({ status: 'failed', last_error: paraElLog })
+      // Que la base no responda no cambia lo que hay que decirle a la persona.
+      try {
+        await deps.guardarListing({ status: 'failed', last_error: paraElLog })
+      } catch (e) {
+        console.error('[sincronizar] Argenprop eliminado sin republicar y no se pudo marcar failed', e)
+      }
     }
     await auditarSeguro(deps, { eventType: 'failed', errorMessage: paraElLog, payload: { origen: 'sincronizar', campos, accion: 'republicar' } })
     return fallo('argenprop', mensaje, 502)
   }
 
   const externalUrl = deps.urlPublica(avisoId)
+  // El POST deja el aviso vigente: si estaba pausado, se vuelve a suspender. El
+  // status de la base no se toca (sigue 'paused').
+  let errorAlSuspender: string | null = null
+  if (listing.status === 'paused') {
+    try {
+      await deps.suspender(listing.external_id)
+    } catch (err) {
+      errorAlSuspender = mensajeYDetalle(err).paraElLog
+    }
+  }
   const avisoGuardado = await guardarTrasExito(deps, {
     external_url: externalUrl,
     last_published_at: deps.ahora(),
-    last_error: null,
+    last_error: errorAlSuspender ? `Se republicó pero no se pudo volver a pausar: ${errorAlSuspender}` : null,
     metadata: { ...listing.metadata, aviso_id: avisoId, codigo: listing.external_id },
   })
   // external_code = IdAviso numérico, como en ap-publish (es lo que trae el email de consulta).
@@ -376,10 +507,13 @@ async function republicarAp(
   await auditarSeguro(deps, {
     eventType: 'published',
     payload: { origen: 'sincronizar', campos, accion: 'republicar', avisoAnterior: aviso.IdAviso, avisoId },
+    ...(errorAlSuspender ? { errorMessage: errorAlSuspender } : {}),
   })
   return {
     ok: true, portal: 'argenprop', accion: 'republicado', externalUrl,
-    mensaje: 'Listo: el aviso de Argenprop se volvió a publicar con el tipo correcto (cambió de número).' + (avisoGuardado ?? ''),
+    mensaje: 'Listo: el aviso de Argenprop se volvió a publicar con el tipo correcto (cambió de número).'
+      + (errorAlSuspender ? ' Ojo: quedó visible; pausalo desde la pantalla de Argenprop.' : '')
+      + (avisoGuardado ?? ''),
   }
 }
 
