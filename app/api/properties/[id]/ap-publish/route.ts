@@ -148,7 +148,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (action === 'baja') {
         await adapter.unpublish(listing.external_id) // suspende (reversible)
       } else {
-        await adapter.republicar(listing.external_id) // vuelve a Vigente
+        await adapter.reactivar(listing.external_id) // vuelve a Vigente
       }
     } catch (err) {
       const { mensaje } = mensajeYDetalle(err)

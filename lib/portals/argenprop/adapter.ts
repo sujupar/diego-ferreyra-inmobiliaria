@@ -2,6 +2,7 @@ import { apFetch, apGet } from './client'
 import { propertyToAvisoDto } from './mapping'
 import { apCodigo, apPublicUrl, type AttributeOverride } from './field-schema'
 import type { ApAvisoVivo } from './edicion'
+import { republicarAviso } from './cambio-categoria'
 import {
   resolveCabaBarrioId,
   resolveBarrioId,
@@ -29,6 +30,8 @@ export interface ApPublishOptions {
 
 /** Estados de aviso (sección 8). 'eliminado' es irreversible. */
 export type ApEstado = 'publicado' | 'suspendido' | 'reservado' | 'alquilado' | 'vendido' | 'entasacion' | 'historico' | 'eliminado'
+
+const cacheCaracteristicas = new Map<string, ReadonlySet<string>>()
 
 export class ArgenpropAdapter implements PortalAdapter {
   readonly name = 'argenprop' as const
@@ -214,9 +217,34 @@ export class ArgenpropAdapter implements PortalAdapter {
     await this.setEstado(externalId, 'suspendido')
   }
 
-  /** Re-publica un aviso suspendido (vuelve a Vigente). */
-  async republicar(externalId: string): Promise<void> {
+  /** Reactiva un aviso suspendido (vuelve a Vigente). */
+  async reactivar(externalId: string): Promise<void> {
     await this.setEstado(externalId, 'publicado')
+  }
+
+  /** Ids de características que acepta una categoría (cache en memoria por proceso). */
+  async caracteristicasDeCategoria(tipo: string): Promise<Set<string>> {
+    const hit = cacheCaracteristicas.get(tipo)
+    if (hit) return new Set(hit)
+    const lista = await apGet<{ Id: string }[]>(this.requireCreds(), `/v1/catalogo/categorias/${encodeURIComponent(tipo)}/caracteristicas`)
+    const ids = new Set((Array.isArray(lista) ? lista : []).map(c => c.Id))
+    cacheCaracteristicas.set(tipo, ids)
+    return new Set(ids)
+  }
+
+  /**
+   * Cambio de TIPO: Argenprop no lo admite por PUT (PUB001). Se elimina el aviso
+   * y se vuelve a crear con el MISMO Codigo (IdAviso nuevo). Ver republicarAviso.
+   */
+  async republicar(codigo: string, dto: Record<string, unknown>): Promise<{ avisoId: number }> {
+    const creds = this.requireCreds()
+    return republicarAviso(
+      {
+        eliminar: () => this.setEstado(codigo, 'eliminado'),
+        publicar: async d => (await apFetch<number>(creds, '/v1/avisos', { method: 'POST', body: JSON.stringify(d) })).Result,
+      },
+      dto,
+    )
   }
 
   async fetchMetrics(_externalId: string, _since: Date): Promise<PortalMetricsPoint[]> {
