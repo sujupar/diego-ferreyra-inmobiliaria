@@ -32,7 +32,7 @@ describe('armarAvisoConOperacionYPrecio', () => {
 })
 
 describe('armarAvisoRepublicado', () => {
-  const dto = armarAvisoRepublicado(aviso, { tipo: 'CASA', subtipo: 'PH' }, new Set(['AMBIENTES']), ['https://f/1.jpg'], 7) as any
+  const dto = armarAvisoRepublicado(aviso, { tipo: 'CASA' }, new Set(['AMBIENTES']), ['https://f/1.jpg'], 7) as any
   it('misma Codigo, Categoria nueva con Subtipo CASA', () => {
     expect(dto.Codigo).toBe('COD1')
     expect(dto.Categoria).toEqual({ Tipo: 'CASA', Subtipo: 'CASA' })
