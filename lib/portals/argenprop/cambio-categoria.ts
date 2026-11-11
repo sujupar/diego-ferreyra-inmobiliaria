@@ -119,8 +119,16 @@ export async function publicarConCodigoLibre(
       if (!esYaExiste(err)) throw err
       ultimo = err
       const existente = await deps.leerExistente(codigo)
-      if (existente && !existente.eliminado) return { avisoId: await deps.siExisteVivo(codigo, existente, conCodigo), codigo }
-      // Ocupado por un aviso eliminado: probar el código siguiente.
+      // "Ya existe" pero la lectura no lo ve: puede ser un aviso recién creado que
+      // todavía no aparece. Avanzar de código podría duplicarlo → frenar.
+      if (!existente) {
+        throw new PortalAdapterError(
+          'Argenprop dice que el aviso ya existe pero todavía no lo muestra. Esperá un minuto y probá de nuevo.',
+          'argenprop', 'unknown', true, err instanceof PortalAdapterError ? err.original : undefined,
+        )
+      }
+      if (!existente.eliminado) return { avisoId: await deps.siExisteVivo(codigo, existente, conCodigo), codigo }
+      // Ocupado por un aviso ELIMINADO: probar el código siguiente.
     }
   }
   const detalle = ultimo instanceof PortalAdapterError ? (ultimo.original ?? ultimo.message) : ultimo

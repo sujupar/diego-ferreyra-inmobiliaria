@@ -170,6 +170,12 @@ describe('publicarConCodigoLibre', () => {
     await expect(publicarConCodigoLibre({ publicar, leerExistente: async () => { throw new Error('red') }, siExisteVivo: vivo }, { Codigo: 'C' })).rejects.toThrow('red')
     expect(publicar).toHaveBeenCalledTimes(1)
   })
+  it('ENT002 pero la lectura no encuentra el aviso → frena, NO avanza de código (evita duplicar)', async () => {
+    const publicar = vi.fn(async () => { throw ent002() })
+    const err = await publicarConCodigoLibre({ publicar, leerExistente: sinAviso, siExisteVivo: vivo }, { Codigo: 'C' }).catch(e => e)
+    expect(err.message).toMatch(/todavía no lo muestra/)
+    expect(publicar).toHaveBeenCalledTimes(1)
+  })
   it('un error que no es ENT002 se propaga tal cual', async () => {
     await expect(publicarConCodigoLibre({ publicar: async () => { throw new Error('PUB003') }, leerExistente: sinAviso, siExisteVivo: vivo }, { Codigo: 'C' })).rejects.toThrow('PUB003')
   })
