@@ -113,7 +113,7 @@ export interface DepsAp extends DepsComunes {
   leerAviso: (codigo: string) => Promise<ApAvisoVivo>
   idAnunciante: () => number
   caracteristicasDeCategoria: (tipo: string) => Promise<ReadonlySet<string>>
-  republicar: (codigo: string, dto: Record<string, unknown>) => Promise<{ avisoId: number }>
+  republicar: (codigo: string, dto: Record<string, unknown>) => Promise<{ avisoId: number; codigo: string }>
   enviarAviso: (dto: Record<string, unknown>) => Promise<void>
   /** setEstado(codigo, 'suspendido'): un aviso pausado republicado vuelve a quedar pausado. */
   suspender: (codigo: string) => Promise<void>
@@ -519,8 +519,10 @@ async function republicarAp(
   )
 
   let avisoId: number
+  // Puede volver con otro Codigo (…r2) si Argenprop dejó el original ocupado.
+  let codigo: string
   try {
-    ;({ avisoId } = await deps.republicar(listing.external_id, dto))
+    ;({ avisoId, codigo } = await deps.republicar(listing.external_id, dto))
   } catch (err) {
     const { mensaje, paraElLog } = mensajeYDetalle(err)
     // Solo este mensaje significa "ya se eliminó": si falló el paso de eliminar,
@@ -543,16 +545,17 @@ async function republicarAp(
   let errorAlSuspender: string | null = null
   if (listing.status === 'paused') {
     try {
-      await deps.suspender(listing.external_id)
+      await deps.suspender(codigo)
     } catch (err) {
       errorAlSuspender = mensajeYDetalle(err).paraElLog
     }
   }
   const avisoGuardado = await guardarTrasExito(deps, {
+    ...(codigo !== listing.external_id ? { external_id: codigo } : {}),
     external_url: externalUrl,
     last_published_at: deps.ahora(),
     last_error: errorAlSuspender ? `Se republicó pero no se pudo volver a pausar: ${errorAlSuspender}` : null,
-    metadata: { poner: { aviso_id: avisoId, codigo: listing.external_id } },
+    metadata: { poner: { aviso_id: avisoId, codigo } },
   })
   // external_code = IdAviso numérico, como en ap-publish (es lo que trae el email de consulta).
   await mapaSeguro(deps, String(avisoId), externalUrl)

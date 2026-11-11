@@ -264,7 +264,7 @@ function depsAp(over: Partial<DepsAp> = {}) {
     leerAviso: vi.fn(async () => avisoDepto),
     idAnunciante: () => 7,
     caracteristicasDeCategoria: vi.fn(async () => { llamadas.push('caracteristicas'); return new Set(['AMBIENTES']) }),
-    republicar: vi.fn(async () => { llamadas.push('republicar'); return { avisoId: 99 } }),
+    republicar: vi.fn(async (codigo: string) => { llamadas.push('republicar'); return { avisoId: 99, codigo } }),
     enviarAviso: vi.fn(async () => { llamadas.push('enviarAviso') }),
     suspender: vi.fn(async () => { llamadas.push('suspender') }),
     urlPublica: (avisoId: number) => `https://www.argenprop.com/casa-en-venta--${avisoId}`,
@@ -274,6 +274,24 @@ function depsAp(over: Partial<DepsAp> = {}) {
   if (!over.releerListing) releerEco.add(deps)
   return { deps, llamadas }
 }
+
+describe('sincronizarAp con código alternativo', () => {
+  it('republicado con …r2 → guarda external_id y metadata.codigo nuevos y pausa ESE código', async () => {
+    const { deps } = depsAp({ republicar: vi.fn(async () => ({ avisoId: 99, codigo: '60U6_abcr2' })) })
+    const r = await sincronizarAp(deps, { ficha: { ...fichaDepto, property_type: 'casa' }, listing: { ...listingAp, status: 'paused' } })
+    expect(r.ok).toBe(true)
+    expect(deps.suspender).toHaveBeenCalledWith('60U6_abcr2')
+    expect(deps.guardarListing).toHaveBeenCalledWith(expect.objectContaining({
+      external_id: '60U6_abcr2',
+      metadata: { poner: { aviso_id: 99, codigo: '60U6_abcr2' } },
+    }))
+  })
+  it('mismo código → no reescribe external_id', async () => {
+    const { deps } = depsAp()
+    await sincronizarAp(deps, { ficha: { ...fichaDepto, property_type: 'casa' }, listing: listingAp })
+    expect(vi.mocked(deps.guardarListing).mock.calls.some(c => 'external_id' in c[0])).toBe(false)
+  })
+})
 
 describe('sincronizarAp', () => {
   it('ya coincide → nada', async () => {

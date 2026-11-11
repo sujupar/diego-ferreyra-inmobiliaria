@@ -6,6 +6,8 @@
     "types/**/*.ts",
     "lib/portals/**/*.ts",
     "app/api/properties/[id]/portales/**/*.ts",
+    "app/api/properties/[id]/ap-publish/**/*.ts",
+    "lib/portals/worker.ts",
     "components/properties/portales/**/*.tsx",
     "components/properties/portales/**/*.ts",
     "components/properties/detail/PropertyDetailsEditor.tsx",
