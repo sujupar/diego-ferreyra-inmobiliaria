@@ -7,6 +7,7 @@ import { commercialStatusDef } from '@/lib/properties/commercial-status'
 import { PropertyCommercialStatusCard } from '../PropertyCommercialStatusCard'
 import { BotonGenerarDescripcion } from '../../descripcion/BotonGenerarDescripcion'
 import { PropertyDetailsEditor } from '../PropertyDetailsEditor'
+import { AvisosDesincronizados } from '../../portales/AvisosDesincronizados'
 import { PropertyLocationEditor } from '../PropertyLocationEditor'
 import { leerRefArgenprop } from '@/lib/properties/location-selection'
 
@@ -87,7 +88,9 @@ export function OverviewTab({ property, isAbogado, onChanged }: { property: Over
 
   return (
     <div className="space-y-8">
-      {/* El abogado no ve ni toca datos comerciales. */}
+      {/* El abogado no ve ni toca datos comerciales ni los avisos. */}
+      {!isAbogado && <AvisosDesincronizados propertyId={property.id} onChanged={onChanged} />}
+
       {!isAbogado && (
         <PropertyCommercialStatusCard
           propertyId={property.id}

@@ -7,7 +7,9 @@
     "lib/portals/**/*.ts",
     "app/api/properties/[id]/portales/**/*.ts",
     "components/properties/portales/**/*.tsx",
-    "components/properties/detail/PropertyDetailsEditor.tsx"
+    "components/properties/portales/**/*.ts",
+    "components/properties/detail/PropertyDetailsEditor.tsx",
+    "components/properties/detail/tabs/OverviewTab.tsx"
   ],
   "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
 }
