@@ -1327,6 +1327,14 @@ export interface Database {
                 Args: { p_deal_id: string; p_patch: Json }
                 Returns: Json
             }
+            reclamar_sync_listing: {
+                Args: { p_listing: string; p_token: string; p_limite: string }
+                Returns: boolean
+            }
+            liberar_sync_listing: {
+                Args: { p_listing: string; p_token: string }
+                Returns: undefined
+            }
         }
         Enums: {
             [_ in never]: never
