@@ -5,9 +5,17 @@
  *  - Operación por PUT: OK, salvo AptoCredito=true hacia no-VENTA → 400 PUB003.
  *  - estado/eliminado + POST con el MISMO Codigo → 201 con IdAviso nuevo.
  */
-import { armarAvisoActualizado, type ApAvisoVivo } from './edicion'
+import { armarAvisoActualizado, aId, type ApAvisoVivo } from './edicion'
+import { AP_MAX_FOTOS_AVISO } from '../photo-limits'
 import type { ApField } from './field-schema'
 import { PortalAdapterError } from '../types'
+
+/** "venta" / "alquiler temporario" / etc. → VENTA | ALQUILER | ALQUILER_TEMPORAL. */
+export function normalizarOperacion(op: string): string {
+  const k = op.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/\s+/g, '_')
+  if (k === 'TEMPORARIO' || k === 'TEMPORAL' || k === 'ALQUILER_TEMPORARIO') return 'ALQUILER_TEMPORAL'
+  return k
+}
 
 export function armarAvisoConOperacionYPrecio(
   aviso: ApAvisoVivo,
@@ -21,7 +29,7 @@ export function armarAvisoConOperacionYPrecio(
     schema,
     idAnunciante,
   )
-  const operacion = cambios.operacion ?? aviso.Precio.Operacion
+  const operacion = cambios.operacion ? normalizarOperacion(cambios.operacion) : aviso.Precio.Operacion
   const precio = {
     ...(dto.Precio as Record<string, unknown>),
     Operacion: operacion,
@@ -37,21 +45,22 @@ export function armarAvisoRepublicado(
   caracteristicasAceptadas: ReadonlySet<string>,
   fotosFicha: string[],
   idAnunciante: number,
+  cambios: { operacion?: string; monto?: number; moneda?: string } = {},
 ): Record<string, unknown> {
-  // Base completa (Codigo, Titulo, Contacto, Localizacion con Ids, Precio...).
-  const { dto } = armarAvisoActualizado(aviso, { valores: {} }, [], idAnunciante)
-  const subtipo = nueva.tipo === 'CASA' ? undefined : nueva.subtipo
-  const caracteristicas = (dto.Caracteristicas as { Id: string; Valor: string | number | boolean }[])
+  // Base completa (Codigo, Titulo, Contacto, Localizacion con Ids, Precio...) con operación/precio aplicados.
+  const base = armarAvisoConOperacionYPrecio(aviso, cambios, [], idAnunciante)
+  // Forma probada: CASA se publicó con Subtipo 'CASA'.
+  const subtipo = nueva.subtipo ? aId(nueva.subtipo) : nueva.tipo === 'CASA' ? 'CASA' : undefined
+  const caracteristicas = (base.Caracteristicas as { Id: string; Valor: string | number | boolean }[])
     .filter(c => caracteristicasAceptadas.has(c.Id))
-  const multimedia = [
-    ...fotosFicha.map(Url => ({ Tipo: 'FOTO', Url })),
-    ...aviso.Multimedia.filter(m => m.Tipo !== 'FOTO'),
-  ]
+  const fotos = fotosFicha.length > 0
+    ? fotosFicha.slice(0, AP_MAX_FOTOS_AVISO).map(Url => ({ Tipo: 'FOTO', Url }))
+    : aviso.Multimedia.filter(m => m.Tipo === 'FOTO')
   return {
-    ...dto,
+    ...base,
     Categoria: { Tipo: nueva.tipo, ...(subtipo ? { Subtipo: subtipo } : {}) },
     Caracteristicas: caracteristicas,
-    Multimedia: multimedia,
+    Multimedia: [...fotos, ...aviso.Multimedia.filter(m => m.Tipo !== 'FOTO')],
   }
 }
 
@@ -63,7 +72,12 @@ export const MENSAJE_ELIMINADO_SIN_REPUBLICAR =
  * Si el POST falla dos veces el aviso ya no existe: error claro con el crudo.
  */
 export async function republicarAviso(
-  deps: { eliminar: () => Promise<void>; publicar: (dto: Record<string, unknown>) => Promise<number | undefined> },
+  deps: {
+    eliminar: () => Promise<void>
+    publicar: (dto: Record<string, unknown>) => Promise<number | undefined>
+    /** IdAviso del aviso ya existente (si el POST responde ENT002: ya se creó). */
+    leerIdExistente?: () => Promise<number | undefined>
+  },
   dto: Record<string, unknown>,
 ): Promise<{ avisoId: number }> {
   await deps.eliminar()
@@ -75,6 +89,13 @@ export async function republicarAviso(
       return { avisoId: id }
     } catch (err) {
       ultimo = err
+      const txt = `${err instanceof Error ? err.message : ''} ${err instanceof PortalAdapterError ? String(err.original ?? '') : ''}`
+      if (intento > 0 && deps.leerIdExistente && /ENT002|ya existe un aviso/i.test(txt)) {
+        try {
+          const id = await deps.leerIdExistente()
+          if (typeof id === 'number') return { avisoId: id }
+        } catch (e) { ultimo = e }
+      }
     }
   }
   const detalle = ultimo instanceof PortalAdapterError ? (ultimo.original ?? ultimo.message) : ultimo

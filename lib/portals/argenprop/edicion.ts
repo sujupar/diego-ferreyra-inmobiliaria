@@ -25,7 +25,7 @@ export interface CambiosAp { titulo?: string; descripcion?: string; valores: Cam
 const SI_NO = (b: boolean) => ({ value_name: b ? 'Sí' : 'No' })
 const esSi = (s: string | undefined) => /^(s[ií]|true|1)$/i.test((s ?? '').normalize('NFC').trim())
 // El GET devuelve "Muy_Bueno"/"Contra_Frente"; el catálogo y el PUT usan "MUY_BUENO".
-const aId = (s: string) => (/^[A-Za-z_]+$/.test(s) ? s.toUpperCase() : s)
+export const aId = (s: string) => (/^[A-Za-z_]+$/.test(s) ? s.toUpperCase() : s)
 
 export function normalizarAp(_id: string, v: string): string {
   const n = numeroArgentino(v)

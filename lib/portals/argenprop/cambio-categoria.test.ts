@@ -49,6 +49,28 @@ describe('armarAvisoRepublicado', () => {
     expect(dto.Localizacion.Localidad).toEqual({ Id: 'LOC_1' })
     expect(dto.Localizacion.Barrio).toEqual({ Id: 'B_1' })
   })
+  it('CASA sin subtipo → Subtipo CASA; con subtipo → mayúsculas', () => {
+    const d = armarAvisoRepublicado(aviso, { tipo: 'CASA' }, new Set(), [], 7) as any
+    expect(d.Categoria).toEqual({ Tipo: 'CASA', Subtipo: 'CASA' })
+    const e = armarAvisoRepublicado(aviso, { tipo: 'CASA', subtipo: 'Duplex' }, new Set(), [], 7) as any
+    expect(e.Categoria.Subtipo).toBe('DUPLEX')
+  })
+  it('31 fotos → 30; ficha sin fotos conserva las vivas', () => {
+    const f = Array.from({ length: 31 }, (_, i) => `https://f/${i}.jpg`)
+    const d = armarAvisoRepublicado(aviso, { tipo: 'CASA' }, new Set(), f, 7) as any
+    expect(d.Multimedia.filter((m: any) => m.Tipo === 'FOTO')).toHaveLength(30)
+    const v = armarAvisoRepublicado(aviso, { tipo: 'CASA' }, new Set(), [], 7) as any
+    expect(v.Multimedia).toContainEqual({ Tipo: 'FOTO', Url: 'https://sosiva/x.jpg' })
+  })
+  it('depto venta → casa alquiler en un solo republicado', () => {
+    const d = armarAvisoRepublicado(aviso, { tipo: 'CASA' }, new Set(), [], 7, { operacion: 'alquiler', monto: 900000, moneda: 'ARS' }) as any
+    expect(d.Precio).toMatchObject({ Operacion: 'ALQUILER', Monto: 900000, Moneda: 'ARS' })
+    expect(d.AptoCredito).toBe(false)
+  })
+  it('operación en minúsculas / temporario se normaliza', () => {
+    expect((armarAvisoConOperacionYPrecio(aviso, { operacion: 'alquiler temporario' }, [], 7) as any).Precio.Operacion).toBe('ALQUILER_TEMPORAL')
+    expect((armarAvisoConOperacionYPrecio(aviso, { operacion: 'venta' }, [], 7) as any).AptoCredito).toBe(true)
+  })
   it('subtipo se conserva en categorías no CASA', () => {
     const d = armarAvisoRepublicado(aviso, { tipo: 'DEPARTAMENTO', subtipo: 'PH' }, new Set(), [], 7) as any
     expect(d.Categoria).toEqual({ Tipo: 'DEPARTAMENTO', Subtipo: 'PH' })
@@ -68,6 +90,11 @@ describe('republicarAviso', () => {
   it('POST falla 1 vez y luego OK → IdAviso', async () => {
     const publicar = vi.fn().mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(999)
     expect(await republicarAviso({ eliminar: async () => {}, publicar }, {})).toEqual({ avisoId: 999 })
+  })
+  it('reintento con ENT002 → éxito leyendo el aviso vivo', async () => {
+    const publicar = vi.fn().mockRejectedValueOnce(new Error('boom')).mockRejectedValueOnce(new PortalAdapterError('dup', 'argenprop', 'unknown', false, 'Argenprop 400 ENT002 /v1/avisos'))
+    const r = await republicarAviso({ eliminar: async () => {}, publicar, leerIdExistente: async () => 555 }, {})
+    expect(r).toEqual({ avisoId: 555 })
   })
   it('si eliminar falla no publica', async () => {
     const publicar = vi.fn()

@@ -227,7 +227,10 @@ export class ArgenpropAdapter implements PortalAdapter {
     const hit = cacheCaracteristicas.get(tipo)
     if (hit) return new Set(hit)
     const lista = await apGet<{ Id: string }[]>(this.requireCreds(), `/v1/catalogo/categorias/${encodeURIComponent(tipo)}/caracteristicas`)
-    const ids = new Set((Array.isArray(lista) ? lista : []).map(c => c.Id))
+    if (!Array.isArray(lista) || lista.length === 0) {
+      throw new PortalAdapterError(`Argenprop no devolvió las características de la categoría ${tipo}; no se tocó el aviso.`, 'argenprop', 'unknown', true)
+    }
+    const ids = new Set(lista.map(c => c.Id))
     cacheCaracteristicas.set(tipo, ids)
     return new Set(ids)
   }
@@ -242,6 +245,7 @@ export class ArgenpropAdapter implements PortalAdapter {
       {
         eliminar: () => this.setEstado(codigo, 'eliminado'),
         publicar: async d => (await apFetch<number>(creds, '/v1/avisos', { method: 'POST', body: JSON.stringify(d) })).Result,
+        leerIdExistente: async () => (await this.leerAviso(codigo)).IdAviso,
       },
       dto,
     )
