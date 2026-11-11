@@ -33,9 +33,9 @@ describe('armarAvisoConOperacionYPrecio', () => {
 
 describe('armarAvisoRepublicado', () => {
   const dto = armarAvisoRepublicado(aviso, { tipo: 'CASA', subtipo: 'PH' }, new Set(['AMBIENTES']), ['https://f/1.jpg'], 7) as any
-  it('misma Codigo, Categoria nueva sin Subtipo en CASA', () => {
+  it('misma Codigo, Categoria nueva con Subtipo CASA', () => {
     expect(dto.Codigo).toBe('COD1')
-    expect(dto.Categoria).toEqual({ Tipo: 'CASA' })
+    expect(dto.Categoria).toEqual({ Tipo: 'CASA', Subtipo: 'CASA' })
   })
   it('descarta características no aceptadas', () => {
     expect(dto.Caracteristicas).toEqual([{ Id: 'AMBIENTES', Valor: 3 }])
