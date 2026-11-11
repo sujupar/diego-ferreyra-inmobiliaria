@@ -2,20 +2,28 @@ import { NextResponse } from 'next/server'
 import { diferenciasMl, diferenciasAp, type DiferenciasPortal } from '@/lib/portals/diferencias-con-ficha'
 import { diferenciasDePortales, reemplazoPendiente, sincronizarMl } from '@/lib/portals/sincronizar-portal'
 import { mensajeYDetalle } from '@/lib/portals/types'
+import { avisoMlCerrado, avisoApEliminado, errorDeAvisoInexistente, mensajeAvisoInexistente } from '@/lib/portals/aviso-muerto'
 import {
   autorizar, listingsVivos, adapterMl, adapterAp, fichaDe, depsComunes, depsMlPara,
   type ListingVivo, type PropertyRow,
 } from '../contexto'
 
+/** Un 404/ENT001 al leer = aviso borrado: se informa como error, no como diferencias. */
+const muerto = (portal: string) => (err: unknown): never => {
+  throw errorDeAvisoInexistente(err) ? new Error(mensajeAvisoInexistente(portal)) : err
+}
+
 async function leerDiferencias(property: PropertyRow, listing: ListingVivo): Promise<DiferenciasPortal> {
   const ficha = fichaDe(property)
   if (listing.portal === 'mercadolibre') {
     const ml = await adapterMl()
-    const { item } = await ml.leerAviso(listing.external_id)
+    const { item } = await ml.leerAviso(listing.external_id).catch(muerto('MercadoLibre'))
+    if (avisoMlCerrado(item.status)) throw new Error(mensajeAvisoInexistente('MercadoLibre'))
     return diferenciasMl(ficha, { category_id: item.category_id, price: item.price, currency_id: item.currency_id ?? null })
   }
   const ap = await adapterAp()
-  const aviso = await ap.leerAviso(listing.external_id)
+  const aviso = await ap.leerAviso(listing.external_id).catch(muerto('Argenprop'))
+  if (avisoApEliminado(aviso.Publicacion.EstadoPublicacion)) throw new Error(mensajeAvisoInexistente('Argenprop'))
   return diferenciasAp(ficha, {
     tipo: aviso.Categoria.Tipo,
     subtipo: aviso.Categoria.SubTipo ?? null,
