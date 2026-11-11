@@ -16,7 +16,8 @@ export interface FichaComercial {
   asking_price: number
   currency: string | null
 }
-export interface EstadoMl { category_id: string; price: number; currency_id: string }
+/** `currency_id: null` = ML no la informó: el precio se compara solo por monto. */
+export interface EstadoMl { category_id: string; price: number; currency_id: string | null }
 export interface EstadoAp { tipo: string; subtipo?: string | null; operacion: string; monto: number; moneda: string }
 
 /** `antes`/`despues` son textos legibles para mostrar al asesor ("Departamento", "USD 79.000"). */
@@ -63,12 +64,20 @@ function etiquetaPrecio(monto: number, moneda: string): string {
   return formatMoney(monto, codigo).replace(/^US\$|^\$/, codigo).replace(/\s/g, ' ')
 }
 
-function diferenciaPrecio(ficha: FichaComercial, monto: number, moneda: string): Diferencia | null {
-  const monedaFicha = ficha.currency || 'USD'
-  if (Math.round(ficha.asking_price) === Math.round(monto) && monedaFicha === moneda) return null
+const normalizarMoneda = (m: string | null | undefined) => (m ?? '').trim().toUpperCase()
+
+/**
+ * `moneda` vacía o null = desconocida (ML a veces no manda currency_id): sin
+ * saberla no se puede afirmar que "cambió la moneda", así que solo cuenta el monto.
+ */
+function diferenciaPrecio(ficha: FichaComercial, monto: number, moneda: string | null): Diferencia | null {
+  const monedaFicha = normalizarMoneda(ficha.currency) || 'USD'
+  const monedaAviso = normalizarMoneda(moneda)
+  const mismaMoneda = monedaAviso === '' || monedaAviso === monedaFicha
+  if (Math.round(ficha.asking_price) === Math.round(monto) && mismaMoneda) return null
   return {
     campo: 'precio',
-    antes: etiquetaPrecio(monto, moneda),
+    antes: etiquetaPrecio(monto, monedaAviso || monedaFicha),
     despues: etiquetaPrecio(ficha.asking_price, monedaFicha),
   }
 }

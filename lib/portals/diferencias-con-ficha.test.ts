@@ -70,3 +70,21 @@ describe('diferenciasAp', () => {
     expect(r.accion).toBe('republicar')
   })
 })
+
+describe('moneda normalizada', () => {
+  const vivo = { category_id: 'MLA401686', price: 79000, currency_id: 'USD' }
+  it('minúsculas en la ficha no son diferencia', () => {
+    expect(diferenciasMl({ ...fichaDepto, currency: 'usd' }, vivo).accion).toBe('nada')
+  })
+  it('ML sin currency_id y mismo monto → nada (no se inventa un cambio de moneda)', () => {
+    expect(diferenciasMl({ ...fichaDepto, currency: 'ARS' }, { ...vivo, currency_id: null }).accion).toBe('nada')
+  })
+  it('ML sin currency_id y otro monto → diferencia de precio', () => {
+    const r = diferenciasMl({ ...fichaDepto, asking_price: 75000 }, { ...vivo, currency_id: null })
+    expect(r.diferencias).toEqual([{ campo: 'precio', antes: 'USD 79.000', despues: 'USD 75.000' }])
+  })
+  it('Argenprop con moneda en minúsculas → nada', () => {
+    const r = diferenciasAp(fichaDepto, { tipo: 'DEPARTAMENTO', operacion: 'VENTA', monto: 79000, moneda: 'usd' })
+    expect(r.accion).toBe('nada')
+  })
+})
