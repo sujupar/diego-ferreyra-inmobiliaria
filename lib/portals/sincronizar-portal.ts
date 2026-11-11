@@ -45,13 +45,33 @@ export interface ListingSincronizable {
   metadata: Record<string, unknown>
 }
 
+/**
+ * Cambios de metadata como PARCHE, nunca como objeto completo: quien guarda
+ * relee la metadata ACTUAL y aplica solo esto (ver `fusionarMetadata`). Así no
+ * se pierden marcas que escribió otro mientras tanto (el trigger de la ficha,
+ * el worker, la reserva, otra pestaña).
+ */
+export interface ParcheMetadata {
+  poner?: Record<string, unknown>
+  quitar?: readonly string[]
+}
+
 export interface CambiosListing {
   status?: string
   external_id?: string
   external_url?: string
   last_published_at?: string
   last_error?: string | null
-  metadata?: Record<string, unknown>
+  metadata?: ParcheMetadata
+}
+
+/** Puro: aplica el parche sobre la metadata FRESCA; todo lo demás queda como está. */
+export function fusionarMetadata(fresca: unknown, parche: ParcheMetadata): Record<string, unknown> {
+  const base = esRegistro(fresca) ? fresca : {}
+  const quitar = new Set(parche.quitar ?? [])
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(base)) if (!quitar.has(k)) out[k] = v
+  return { ...out, ...(parche.poner ?? {}) }
 }
 
 export interface EventoAuditoria {
@@ -67,12 +87,14 @@ export interface DepsComunes {
   auditar: (evento: EventoAuditoria) => Promise<void>
   ahora: () => string
   /**
-   * Reserva atómica del listing (UPDATE condicional en la base). Dos clics o dos
-   * pestañas a la vez podrían, si no, republicar dos veces o publicar dos reemplazos.
-   * `false` = otro proceso lo tiene tomado.
+   * Reserva atómica del listing (RPC `reclamar_sync_listing`, que toca SOLO las
+   * claves de la reserva). Dos clics o dos pestañas a la vez podrían, si no,
+   * republicar dos veces o publicar dos reemplazos. `false` = otro la tiene.
    */
   reclamar: () => Promise<boolean>
   liberar: () => Promise<void>
+  /** Relee la fila DESPUÉS de reservar: el resto del pedido trabaja sobre esto. */
+  releerListing: () => Promise<ListingSincronizable | null>
 }
 
 export interface DepsMl extends DepsComunes {
@@ -119,27 +141,22 @@ const OPERACIONES_TEXTO: Record<string, string> = {
 
 // ─── Reserva del listing ──────────────────────────────────────────────────
 
-export const CLAVE_RECLAMO = 'sync_en_curso'
 /** Una sincronización tarda segundos; pasado esto la reserva se da por abandonada (proceso cortado). */
 export const RECLAMO_TTL_MS = 3 * 60 * 1000
 export const MENSAJE_EN_CURSO = 'Ya se está actualizando este aviso; esperá un momento.'
+export const MENSAJE_AVISO_CAMBIO = 'El aviso cambió mientras tanto; volvé a revisar.'
+const ESTADOS_SINCRONIZABLES = new Set(['published', 'paused'])
 
 /** Reservas anteriores a este instante (ISO) están vencidas: es el límite del UPDATE condicional. */
 export function limiteReclamo(ahora: Date): string {
   return new Date(ahora.getTime() - RECLAMO_TTL_MS).toISOString()
 }
 
-/** ¿Hay una reserva vigente? Un valor ilegible cuenta como vencida (no puede bloquear para siempre). */
-export function reclamoVigente(valor: unknown, ahora: Date): boolean {
-  if (typeof valor !== 'string') return false
-  const t = Date.parse(valor)
-  return Number.isFinite(t) && t >= ahora.getTime() - RECLAMO_TTL_MS
-}
-
 async function conReclamo(
   deps: DepsComunes,
   portal: PortalSincronizable,
-  trabajo: () => Promise<ResultadoSincronizar>,
+  entrada: EntradaSincronizar,
+  trabajo: (entrada: EntradaSincronizar) => Promise<ResultadoSincronizar>,
 ): Promise<ResultadoSincronizar> {
   let reclamado: boolean
   try {
@@ -149,7 +166,15 @@ async function conReclamo(
   }
   if (!reclamado) return fallo(portal, MENSAJE_EN_CURSO, 409)
   try {
-    return await trabajo()
+    // Lo leído antes de reservar puede estar viejo (otra pestaña terminó un plan B,
+    // el worker escribió marcas): se trabaja sobre la fila releída.
+    const fresco = await deps.releerListing()
+    if (!fresco || fresco.external_id !== entrada.listing.external_id || !ESTADOS_SINCRONIZABLES.has(fresco.status)) {
+      return fallo(portal, MENSAJE_AVISO_CAMBIO, 409)
+    }
+    return await trabajo({ ...entrada, listing: fresco })
+  } catch (err) {
+    return fallo(portal, mensajeYDetalle(err).mensaje, 502)
   } finally {
     try { await deps.liberar() } catch (e) { console.warn('[sincronizar] no se pudo liberar la reserva (vence sola en 3 min)', e) }
   }
@@ -230,7 +255,7 @@ async function mapaSeguro(deps: DepsComunes, code: string, url: string): Promise
 // ─── MercadoLibre ──────────────────────────────────────────────────────────
 
 export async function sincronizarMl(deps: DepsMl, entrada: EntradaSincronizar): Promise<ResultadoSincronizar> {
-  return conReclamo(deps, 'mercadolibre', () => sincronizarMlReservado(deps, entrada))
+  return conReclamo(deps, 'mercadolibre', entrada, e => sincronizarMlReservado(deps, e))
 }
 
 async function sincronizarMlReservado(deps: DepsMl, entrada: EntradaSincronizar): Promise<ResultadoSincronizar> {
@@ -335,7 +360,7 @@ async function planBMl(deps: DepsMl, entrada: EntradaSincronizar, categoriaNueva
   // Se anota ANTES de cerrar el viejo: si el proceso se corta entre publicar y
   // guardar, el próximo intento termina este reemplazo en vez de publicar otro.
   try {
-    await deps.guardarListing({ metadata: { ...meta, reemplazo_pendiente: pendiente } })
+    await deps.guardarListing({ metadata: { poner: { reemplazo_pendiente: pendiente } } })
   } catch (e) {
     console.error('[sincronizar] no se pudo anotar el reemplazo pendiente', e)
   }
@@ -361,7 +386,6 @@ async function finalizarReemplazo(
     errorAlCerrar = mensajeYDetalle(err).paraElLog
   }
 
-  const metaSinPendiente = Object.fromEntries(Object.entries(listing.metadata).filter(([k]) => k !== 'reemplazo_pendiente'))
   const pausado = listing.status === 'paused'
   const avisoGuardado = await guardarTrasExito(deps, {
     // Un aviso pausado sigue pausado: el worker pausa el nuevo cuando ML lo active.
@@ -371,12 +395,14 @@ async function finalizarReemplazo(
     last_published_at: deps.ahora(),
     last_error: errorAlCerrar ? `No se pudo cerrar el aviso anterior ${p.desde}: ${errorAlCerrar}` : null,
     metadata: {
-      ...metaSinPendiente,
-      ...(p.listingType ? { listing_type: p.listingType } : {}),
-      reemplaza_a: p.desde,
-      // Igual que ml-publish: el worker verifica que ML haya bajado las fotos.
-      needs_picture_check: true,
-      ...(pausado ? { needs_pause_after_active: true } : {}),
+      poner: {
+        ...(p.listingType ? { listing_type: p.listingType } : {}),
+        reemplaza_a: p.desde,
+        // Igual que ml-publish: el worker verifica que ML haya bajado las fotos.
+        needs_picture_check: true,
+        ...(pausado ? { needs_pause_after_active: true } : {}),
+      },
+      quitar: ['reemplazo_pendiente'],
     },
   })
   await mapaSeguro(deps, p.nuevo, p.url)
@@ -399,7 +425,7 @@ async function finalizarReemplazo(
 const eliminado = (estado: string | undefined) => (estado ?? '').trim().toUpperCase() === 'ELIMINADO'
 
 export async function sincronizarAp(deps: DepsAp, entrada: EntradaSincronizar): Promise<ResultadoSincronizar> {
-  return conReclamo(deps, 'argenprop', () => sincronizarApReservado(deps, entrada))
+  return conReclamo(deps, 'argenprop', entrada, e => sincronizarApReservado(deps, e))
 }
 
 async function sincronizarApReservado(deps: DepsAp, entrada: EntradaSincronizar): Promise<ResultadoSincronizar> {
@@ -500,7 +526,7 @@ async function republicarAp(
     external_url: externalUrl,
     last_published_at: deps.ahora(),
     last_error: errorAlSuspender ? `Se republicó pero no se pudo volver a pausar: ${errorAlSuspender}` : null,
-    metadata: { ...listing.metadata, aviso_id: avisoId, codigo: listing.external_id },
+    metadata: { poner: { aviso_id: avisoId, codigo: listing.external_id } },
   })
   // external_code = IdAviso numérico, como en ap-publish (es lo que trae el email de consulta).
   await mapaSeguro(deps, String(avisoId), externalUrl)

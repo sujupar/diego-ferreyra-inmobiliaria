@@ -13,7 +13,7 @@ import { ArgenpropAdapter } from '@/lib/portals/argenprop/adapter'
 import type { PortalSincronizable } from '@/lib/portals/diferencias-con-ficha'
 import type { Database, Json } from '@/types/database.types'
 import {
-  CLAVE_RECLAMO, limiteReclamo,
+  limiteReclamo, fusionarMetadata,
   type DepsComunes, type DepsMl, type DepsAp, type EventoAuditoria,
 } from '@/lib/portals/sincronizar-portal'
 import { getRawAttributes, fetchCategoryAttributes } from '@/lib/portals/mercadolibre/category-attributes'
@@ -127,25 +127,29 @@ export function fichaDe(property: PropertyRow) {
 // ─── Dependencias reales de la orquestación ───────────────────────────────
 
 /**
- * Escrituras en la base + la reserva del listing. La reserva es un UPDATE
- * condicional (PostgREST): solo toma la fila si `metadata.sync_en_curso` está
- * vacío o vencido; Postgres re-evalúa el WHERE tras el lock de la fila, así que
- * de dos pedidos simultáneos uno solo recibe la fila.
+ * Escrituras en la base + la reserva del listing. La reserva va por las RPC
+ * `reclamar_sync_listing` / `liberar_sync_listing` (migración
+ * 20261111000002), que tocan SOLO sus dos claves sobre la fila actual.
+ * Toda escritura de metadata relee la fila y aplica un PARCHE (`fusionarMetadata`):
+ * nunca se escribe una foto vieja encima de lo que otro guardó mientras tanto.
  */
 export function depsComunes(
   supabase: SupabaseClient<Database>, property: PropertyRow, listing: ListingVivo, user: UsuarioAutenticado,
 ): DepsComunes {
-  const token = new Date().toISOString()
-  let reservado = false
-  const conToken = (meta: Record<string, unknown>) => (reservado ? { ...meta, [CLAVE_RECLAMO]: token } : meta)
+  const token = crypto.randomUUID()
   return {
     async guardarListing(cambios) {
-      const { metadata, ...resto } = cambios
-      // Mientras dura la reserva, ninguna escritura de metadata la puede borrar.
-      const meta = metadata !== undefined ? conToken(metadata) : undefined
-      if (meta !== undefined && !esJson(meta)) throw new Error('metadata del listing no es JSON válido')
+      const { metadata: parche, ...resto } = cambios
+      let metadata: Json | undefined
+      if (parche) {
+        const { data, error } = await supabase.from('property_listings').select('metadata').eq('id', listing.id).maybeSingle()
+        if (error) throw new Error(`No se pudo leer el aviso en la plataforma: ${error.message}`)
+        const fusionada = fusionarMetadata(data?.metadata, parche)
+        if (!esJson(fusionada)) throw new Error('metadata del listing no es JSON válido')
+        metadata = fusionada
+      }
       const { error } = await supabase.from('property_listings')
-        .update({ ...resto, ...(meta !== undefined ? { metadata: meta } : {}) })
+        .update({ ...resto, ...(metadata !== undefined ? { metadata } : {}) })
         .eq('id', listing.id)
       if (error) throw new Error(`No se pudo guardar el aviso en la plataforma: ${error.message}`)
     },
@@ -157,29 +161,26 @@ export function depsComunes(
     }),
     ahora: () => new Date().toISOString(),
     async reclamar() {
-      const meta = { ...listing.metadata, [CLAVE_RECLAMO]: token }
-      if (!esJson(meta)) throw new Error('metadata del listing no es JSON válido')
-      const limite = limiteReclamo(new Date())
-      const { data, error } = await supabase.from('property_listings')
-        .update({ metadata: meta })
-        .eq('id', listing.id)
-        .or(`metadata->>${CLAVE_RECLAMO}.is.null,metadata->>${CLAVE_RECLAMO}.lt."${limite}"`)
-        .select('id')
+      const { data, error } = await supabase.rpc('reclamar_sync_listing', {
+        p_listing: listing.id, p_token: token, p_limite: limiteReclamo(new Date()),
+      })
       if (error) throw new Error(`No se pudo reservar el aviso: ${error.message}`)
-      reservado = (data ?? []).length > 0
-      return reservado
+      return data === true
     },
     async liberar() {
-      // Se relee para no pisar lo que la sincronización acaba de guardar.
-      const { data } = await supabase.from('property_listings').select('metadata').eq('id', listing.id).maybeSingle()
-      const actual = esRegistro(data?.metadata) ? data.metadata : {}
-      reservado = false
-      if (actual[CLAVE_RECLAMO] !== token) return
-      const sin = Object.fromEntries(Object.entries(actual).filter(([k]) => k !== CLAVE_RECLAMO))
-      if (!esJson(sin)) return
-      const { error } = await supabase.from('property_listings').update({ metadata: sin })
-        .eq('id', listing.id).eq(`metadata->>${CLAVE_RECLAMO}`, token)
+      const { error } = await supabase.rpc('liberar_sync_listing', { p_listing: listing.id, p_token: token })
       if (error) throw new Error(error.message)
+    },
+    async releerListing() {
+      const { data, error } = await supabase.from('property_listings')
+        .select('id, portal, status, external_id, external_url, metadata')
+        .eq('id', listing.id).maybeSingle()
+      if (error) throw new Error(`No se pudo releer el aviso: ${error.message}`)
+      if (!data?.external_id) return null
+      return {
+        id: data.id, status: data.status, external_id: data.external_id,
+        external_url: data.external_url, metadata: esRegistro(data.metadata) ? data.metadata : {},
+      }
     },
   }
 }
