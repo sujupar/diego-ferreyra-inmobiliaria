@@ -49,6 +49,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     try {
       pub = await (ap as ArgenpropAdapter).publish(property, {
         attributeOverrides: (meta.ap_attributes ?? {}) as Record<string, { value_name?: string; value_id?: string }>,
+        ...(typeof meta.codigo === 'string' && meta.codigo ? { codigo: meta.codigo } : {}),
       })
     } catch (err) {
       // Igual que ML: la persona ve `mensaje` (castellano); en la base queda

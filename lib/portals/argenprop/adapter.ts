@@ -2,7 +2,8 @@ import { apFetch, apGet } from './client'
 import { propertyToAvisoDto } from './mapping'
 import { apCodigo, apPublicUrl, type AttributeOverride } from './field-schema'
 import type { ApAvisoVivo } from './edicion'
-import { republicarAviso } from './cambio-categoria'
+import { republicarAviso, publicarConCodigoLibre, type AvisoExistente } from './cambio-categoria'
+import { avisoApEliminado, errorDeAvisoInexistente } from '../aviso-muerto'
 import {
   resolveCabaBarrioId,
   resolveBarrioId,
@@ -26,6 +27,8 @@ import type {
 
 export interface ApPublishOptions {
   attributeOverrides?: Record<string, AttributeOverride>
+  /** Codigo ya registrado del aviso (metadata.codigo); si falta, se deriva de la propiedad. */
+  codigo?: string
 }
 
 /** Estados de aviso (sección 8). 'eliminado' es irreversible. */
@@ -159,27 +162,20 @@ export class ArgenpropAdapter implements PortalAdapter {
     const v = this.validate(property)
     if (!v.ok) throw new PortalAdapterError(`Validación falló: ${v.errors.join(', ')}`, 'argenprop', 'validation', false)
     const creds = this.requireCreds()
-    const codigo = apCodigo(property)
+    // El Codigo ya registrado manda (puede ser un alternativo …r2): si no, el derivado de la propiedad.
+    const codigoPedido = opts.codigo ?? apCodigo(property)
     const { localidadId, barrioId } = await this.resolveLocalizacion(property)
     const dto = propertyToAvisoDto(property, {
-      idAnunciante: creds.idAnunciante, codigo, localidadId, barrioId,
+      idAnunciante: creds.idAnunciante, codigo: codigoPedido, localidadId, barrioId,
       attributeOverrides: opts.attributeOverrides,
     })
 
-    let avisoId: number | undefined
-    try {
-      const r = await apFetch<number>(creds, '/v1/avisos', { method: 'POST', body: JSON.stringify(dto) })
-      avisoId = r.Result
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      // ENT002 = ya existe un aviso con ese código → es una re-publicación → PUT (update).
-      if (/ENT002|ya existe un aviso/i.test(msg)) {
-        const r = await apFetch<number>(creds, '/v1/avisos', { method: 'PUT', body: JSON.stringify(dto) })
-        avisoId = r.Result
-      } else {
-        throw err
-      }
-    }
+    const { avisoId, codigo } = await publicarConCodigoLibre({
+      publicar: async d => (await apFetch<number>(creds, '/v1/avisos', { method: 'POST', body: JSON.stringify(d) })).Result,
+      leerExistente: c => this.leerExistente(c),
+      // Ya existe un aviso vivo con ese código → es una re-publicación → PUT (update).
+      siExisteVivo: async (_c, _e, d) => (await apFetch<number>(creds, '/v1/avisos', { method: 'PUT', body: JSON.stringify(d) })).Result,
+    }, dto as unknown as Record<string, unknown>)
 
     return {
       externalId: codigo, // el Codigo es nuestro handle para estados/lecturas
@@ -199,6 +195,17 @@ export class ArgenpropAdapter implements PortalAdapter {
 
   async leerAviso(codigo: string): Promise<ApAvisoVivo> {
     return apGet<ApAvisoVivo>(this.requireCreds(), `/v1/avisos/${encodeURIComponent(codigo)}`)
+  }
+
+  /** El aviso que ocupa un Codigo, o undefined si no hay ninguno (404 / ENT001). */
+  private async leerExistente(codigo: string): Promise<AvisoExistente | undefined> {
+    try {
+      const a = await this.leerAviso(codigo)
+      return { idAviso: a.IdAviso, eliminado: avisoApEliminado(a.Publicacion?.EstadoPublicacion), tipo: a.Categoria?.Tipo ?? '' }
+    } catch (err) {
+      if (errorDeAvisoInexistente(err)) return undefined
+      throw err
+    }
   }
 
   /** PUT /v1/avisos con el aviso COMPLETO (armarAvisoActualizado). */
@@ -239,13 +246,13 @@ export class ArgenpropAdapter implements PortalAdapter {
    * Cambio de TIPO: Argenprop no lo admite por PUT (PUB001). Se elimina el aviso
    * y se vuelve a crear con el MISMO Codigo (IdAviso nuevo). Ver republicarAviso.
    */
-  async republicar(codigo: string, dto: Record<string, unknown>): Promise<{ avisoId: number }> {
+  async republicar(codigo: string, dto: Record<string, unknown>): Promise<{ avisoId: number; codigo: string }> {
     const creds = this.requireCreds()
     return republicarAviso(
       {
         eliminar: () => this.setEstado(codigo, 'eliminado'),
         publicar: async d => (await apFetch<number>(creds, '/v1/avisos', { method: 'POST', body: JSON.stringify(d) })).Result,
-        leerIdExistente: async () => (await this.leerAviso(codigo)).IdAviso,
+        leerExistente: c => this.leerExistente(c),
       },
       dto,
     )

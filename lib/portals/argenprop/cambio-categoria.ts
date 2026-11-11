@@ -70,35 +70,107 @@ export function armarAvisoRepublicado(
 export const MENSAJE_ELIMINADO_SIN_REPUBLICAR =
   'El aviso de Argenprop se eliminó pero no se pudo volver a publicar. Publicalo desde el asistente de Argenprop.'
 
+/** Lo que importa de un aviso que ya ocupa un Codigo. */
+export interface AvisoExistente { idAviso: number; eliminado: boolean; tipo: string }
+
+/** Cuántos códigos alternativos (…r2, …r3, …r4) se prueban antes de rendirse. */
+export const MAX_CODIGOS_ALTERNATIVOS = 3
+
+/**
+ * `60U6_d8ca41a3347c` → `60U6_d8ca41a3347cr2`. La raíz es hexadecimal, así que la
+ * `r` nunca aparece en ella: un código ya alternativo (`…r2`) sigue con `…r3`.
+ */
+export function partirCodigo(codigo: string): { raiz: string; n: number } {
+  const m = codigo.match(/^(.*)r(\d+)$/)
+  return m ? { raiz: m[1], n: Number(m[2]) } : { raiz: codigo, n: 1 }
+}
+export const codigoNumero = (raiz: string, n: number): string => (n <= 1 ? raiz : `${raiz}r${n}`)
+
+function esYaExiste(err: unknown): boolean {
+  const txt = `${err instanceof Error ? err.message : ''} ${err instanceof PortalAdapterError ? String(err.original ?? '') : ''}`
+  return /ENT002|ya existe un aviso/i.test(txt)
+}
+
+/**
+ * POST del aviso cuidando el Codigo. Argenprop deja un aviso ELIMINADO ocupando su
+ * código: el POST responde ENT002 y un PUT encima responde PUB001 si cambió el
+ * tipo (caso real: Olmos 585, 2026-11-11). Ese código ya no sirve → se publica con
+ * el siguiente (`…r2`). Si el código lo ocupa un aviso VIVO, decide `siExisteVivo`
+ * (el asistente lo actualiza; la republicación lo acepta solo si ya es del tipo nuevo).
+ * Un error de lectura se propaga: nunca se publica a ciegas un posible duplicado.
+ */
+export async function publicarConCodigoLibre(
+  deps: {
+    publicar: (dto: Record<string, unknown>) => Promise<number | undefined>
+    /** undefined = el código no tiene aviso (404 / ENT001). */
+    leerExistente: (codigo: string) => Promise<AvisoExistente | undefined>
+    siExisteVivo: (codigo: string, existente: AvisoExistente, dto: Record<string, unknown>) => Promise<number | undefined>
+  },
+  dto: Record<string, unknown>,
+): Promise<{ avisoId: number | undefined; codigo: string }> {
+  const { raiz, n: desde } = partirCodigo(String(dto.Codigo))
+  let ultimo: unknown
+  for (let n = desde; n <= desde + MAX_CODIGOS_ALTERNATIVOS; n++) {
+    const codigo = codigoNumero(raiz, n)
+    const conCodigo = { ...dto, Codigo: codigo }
+    try {
+      return { avisoId: await deps.publicar(conCodigo), codigo }
+    } catch (err) {
+      if (!esYaExiste(err)) throw err
+      ultimo = err
+      const existente = await deps.leerExistente(codigo)
+      // "Ya existe" pero la lectura no lo ve: puede ser un aviso recién creado que
+      // todavía no aparece. Avanzar de código podría duplicarlo → frenar.
+      if (!existente) {
+        throw new PortalAdapterError(
+          'Argenprop dice que el aviso ya existe pero todavía no lo muestra. Esperá un minuto y probá de nuevo.',
+          'argenprop', 'unknown', true, err instanceof PortalAdapterError ? err.original : undefined,
+        )
+      }
+      if (!existente.eliminado) return { avisoId: await deps.siExisteVivo(codigo, existente, conCodigo), codigo }
+      // Ocupado por un aviso ELIMINADO: probar el código siguiente.
+    }
+  }
+  const detalle = ultimo instanceof PortalAdapterError ? (ultimo.original ?? ultimo.message) : ultimo
+  throw new PortalAdapterError(
+    'Argenprop tiene ocupados los códigos de aviso de esta propiedad por avisos eliminados. Avisale al equipo técnico.',
+    'argenprop', 'validation', false, detalle,
+  )
+}
+
 /**
  * Eliminar + POST con reintento único. Las llamadas de red se inyectan.
  * Si el POST falla dos veces el aviso ya no existe: error claro con el crudo.
+ * Devuelve el Codigo final: puede ser otro si el original quedó ocupado (ver
+ * publicarConCodigoLibre).
  */
 export async function republicarAviso(
   deps: {
     eliminar: () => Promise<void>
     publicar: (dto: Record<string, unknown>) => Promise<number | undefined>
-    /** IdAviso del aviso ya existente (si el POST responde ENT002: ya se creó). */
-    leerIdExistente?: () => Promise<number | undefined>
+    leerExistente: (codigo: string) => Promise<AvisoExistente | undefined>
   },
   dto: Record<string, unknown>,
-): Promise<{ avisoId: number }> {
+): Promise<{ avisoId: number; codigo: string }> {
   await deps.eliminar()
+  const tipoNuevo = (dto.Categoria as { Tipo?: string } | undefined)?.Tipo
   let ultimo: unknown
   for (let intento = 0; intento < 2; intento++) {
     try {
-      const id = await deps.publicar(dto)
-      if (typeof id !== 'number') throw new Error('Argenprop no devolvió el IdAviso del aviso republicado')
-      return { avisoId: id }
+      const r = await publicarConCodigoLibre({
+        publicar: deps.publicar,
+        leerExistente: deps.leerExistente,
+        // Vivo con este código y ya del tipo nuevo: lo creó el intento anterior
+        // (se perdió la respuesta). Vivo con el tipo VIEJO: no se eliminó → error.
+        siExisteVivo: async (codigo, existente) => {
+          if (existente.tipo === tipoNuevo) return existente.idAviso
+          throw new Error(`El aviso ${codigo} sigue publicado como ${existente.tipo}`)
+        },
+      }, dto)
+      if (typeof r.avisoId !== 'number') throw new Error('Argenprop no devolvió el IdAviso del aviso republicado')
+      return { avisoId: r.avisoId, codigo: r.codigo }
     } catch (err) {
       ultimo = err
-      const txt = `${err instanceof Error ? err.message : ''} ${err instanceof PortalAdapterError ? String(err.original ?? '') : ''}`
-      if (intento > 0 && deps.leerIdExistente && /ENT002|ya existe un aviso/i.test(txt)) {
-        try {
-          const id = await deps.leerIdExistente()
-          if (typeof id === 'number') return { avisoId: id }
-        } catch (e) { ultimo = e }
-      }
     }
   }
   const detalle = ultimo instanceof PortalAdapterError ? (ultimo.original ?? ultimo.message) : ultimo

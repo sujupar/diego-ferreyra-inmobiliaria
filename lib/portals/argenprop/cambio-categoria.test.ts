@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
-import { armarAvisoConOperacionYPrecio, armarAvisoRepublicado, republicarAviso, MENSAJE_ELIMINADO_SIN_REPUBLICAR } from './cambio-categoria'
+import {
+  armarAvisoConOperacionYPrecio, armarAvisoRepublicado, republicarAviso, MENSAJE_ELIMINADO_SIN_REPUBLICAR,
+  publicarConCodigoLibre, partirCodigo, codigoNumero, type AvisoExistente,
+} from './cambio-categoria'
 import type { ApAvisoVivo } from './edicion'
 import { PortalAdapterError } from '../types'
 
@@ -82,28 +85,98 @@ describe('armarAvisoRepublicado', () => {
   })
 })
 
+const ent002 = () => new PortalAdapterError('Argenprop rechazó el aviso: ya existe un aviso', 'argenprop', 'unknown', false, 'Argenprop 400 ENT002 /v1/avisos')
+const sinAviso = async (): Promise<AvisoExistente | undefined> => undefined
+const dtoCasa = { Codigo: 'COD1', Categoria: { Tipo: 'CASA' } }
+
 describe('republicarAviso', () => {
   it('POST falla 2 veces → error claro con el crudo', async () => {
     const eliminar = vi.fn().mockResolvedValue(undefined)
     const publicar = vi.fn().mockRejectedValue(new PortalAdapterError('x', 'argenprop', 'unknown', false, 'crudo'))
-    const err = await republicarAviso({ eliminar, publicar }, {}).catch(e => e)
+    const err = await republicarAviso({ eliminar, publicar, leerExistente: sinAviso }, dtoCasa).catch(e => e)
     expect(err).toBeInstanceOf(PortalAdapterError)
     expect(err.message).toBe(MENSAJE_ELIMINADO_SIN_REPUBLICAR)
     expect(err.original).toBe('crudo')
     expect(publicar).toHaveBeenCalledTimes(2)
   })
-  it('POST falla 1 vez y luego OK → IdAviso', async () => {
+  it('POST falla 1 vez y luego OK → IdAviso con el mismo código', async () => {
     const publicar = vi.fn().mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(999)
-    expect(await republicarAviso({ eliminar: async () => {}, publicar }, {})).toEqual({ avisoId: 999 })
+    expect(await republicarAviso({ eliminar: async () => {}, publicar, leerExistente: sinAviso }, dtoCasa)).toEqual({ avisoId: 999, codigo: 'COD1' })
   })
-  it('reintento con ENT002 → éxito leyendo el aviso vivo', async () => {
-    const publicar = vi.fn().mockRejectedValueOnce(new Error('boom')).mockRejectedValueOnce(new PortalAdapterError('dup', 'argenprop', 'unknown', false, 'Argenprop 400 ENT002 /v1/avisos'))
-    const r = await republicarAviso({ eliminar: async () => {}, publicar, leerIdExistente: async () => 555 }, {})
-    expect(r).toEqual({ avisoId: 555 })
+  it('reintento con ENT002 y el aviso vivo YA del tipo nuevo → éxito (el intento anterior llegó)', async () => {
+    const publicar = vi.fn().mockRejectedValueOnce(new Error('boom')).mockRejectedValueOnce(ent002())
+    const leerExistente = async () => ({ idAviso: 555, eliminado: false, tipo: 'CASA' })
+    expect(await republicarAviso({ eliminar: async () => {}, publicar, leerExistente }, dtoCasa)).toEqual({ avisoId: 555, codigo: 'COD1' })
+  })
+  it('ENT002 con el aviso vivo del tipo VIEJO → NO se da por republicado', async () => {
+    const publicar = vi.fn().mockRejectedValue(ent002())
+    const leerExistente = async () => ({ idAviso: 10, eliminado: false, tipo: 'DEPARTAMENTO' })
+    const err = await republicarAviso({ eliminar: async () => {}, publicar, leerExistente }, dtoCasa).catch(e => e)
+    expect(err.message).toBe(MENSAJE_ELIMINADO_SIN_REPUBLICAR)
+  })
+  it('código ocupado por el aviso ELIMINADO (caso Olmos) → publica con …r2 y lo devuelve', async () => {
+    const publicar = vi.fn(async (d: Record<string, unknown>) => { if (d.Codigo === 'COD1') throw ent002(); return 777 })
+    const leerExistente = vi.fn(async () => ({ idAviso: 10, eliminado: true, tipo: 'DEPARTAMENTO' }))
+    expect(await republicarAviso({ eliminar: async () => {}, publicar, leerExistente }, dtoCasa)).toEqual({ avisoId: 777, codigo: 'COD1r2' })
+    expect(publicar.mock.calls.map(c => c[0].Codigo)).toEqual(['COD1', 'COD1r2'])
+    expect(publicar.mock.calls[1][0].Categoria).toEqual({ Tipo: 'CASA' })
   })
   it('si eliminar falla no publica', async () => {
     const publicar = vi.fn()
-    await expect(republicarAviso({ eliminar: async () => { throw new Error('no') }, publicar }, {})).rejects.toThrow('no')
+    await expect(republicarAviso({ eliminar: async () => { throw new Error('no') }, publicar, leerExistente: sinAviso }, dtoCasa)).rejects.toThrow('no')
     expect(publicar).not.toHaveBeenCalled()
+  })
+})
+
+describe('códigos alternativos', () => {
+  it('partirCodigo / codigoNumero', () => {
+    expect(partirCodigo('60U6_d8ca41a3347c')).toEqual({ raiz: '60U6_d8ca41a3347c', n: 1 })
+    expect(partirCodigo('60U6_d8ca41a3347cr2')).toEqual({ raiz: '60U6_d8ca41a3347c', n: 2 })
+    expect(codigoNumero('60U6_d8ca41a3347c', 1)).toBe('60U6_d8ca41a3347c')
+    expect(codigoNumero('60U6_d8ca41a3347c', 3)).toBe('60U6_d8ca41a3347cr3')
+  })
+})
+
+describe('publicarConCodigoLibre', () => {
+  const vivo = vi.fn(async () => 4242)
+  it('POST OK → mismo código, sin leer nada', async () => {
+    const leerExistente = vi.fn(sinAviso)
+    expect(await publicarConCodigoLibre({ publicar: async () => 1, leerExistente, siExisteVivo: vivo }, { Codigo: 'C' })).toEqual({ avisoId: 1, codigo: 'C' })
+    expect(leerExistente).not.toHaveBeenCalled()
+  })
+  it('ENT002 con aviso vivo → decide siExisteVivo (el asistente hace PUT) con el mismo código', async () => {
+    const siExisteVivo = vi.fn(async () => 4242)
+    const r = await publicarConCodigoLibre({
+      publicar: async () => { throw ent002() },
+      leerExistente: async () => ({ idAviso: 4242, eliminado: false, tipo: 'CASA' }),
+      siExisteVivo,
+    }, { Codigo: 'C' })
+    expect(r).toEqual({ avisoId: 4242, codigo: 'C' })
+    expect(siExisteVivo).toHaveBeenCalledWith('C', expect.anything(), { Codigo: 'C' })
+  })
+  it('un código ya alternativo sigue numerando desde ahí (…r2 → …r3)', async () => {
+    const publicar = vi.fn(async (d: Record<string, unknown>) => { if (d.Codigo === 'Cr2') throw ent002(); return 9 })
+    const r = await publicarConCodigoLibre({ publicar, leerExistente: async () => ({ idAviso: 1, eliminado: true, tipo: 'X' }), siExisteVivo: vivo }, { Codigo: 'Cr2' })
+    expect(r).toEqual({ avisoId: 9, codigo: 'Cr3' })
+  })
+  it('todos los códigos ocupados por eliminados → error claro, sin loop infinito', async () => {
+    const publicar = vi.fn(async () => { throw ent002() })
+    const err = await publicarConCodigoLibre({ publicar, leerExistente: async () => ({ idAviso: 1, eliminado: true, tipo: 'X' }), siExisteVivo: vivo }, { Codigo: 'C' }).catch(e => e)
+    expect(err.message).toMatch(/ocupados los códigos/)
+    expect(publicar).toHaveBeenCalledTimes(4)
+  })
+  it('si no se puede leer el aviso que ocupa el código → error, nunca publica a ciegas otro código', async () => {
+    const publicar = vi.fn(async () => { throw ent002() })
+    await expect(publicarConCodigoLibre({ publicar, leerExistente: async () => { throw new Error('red') }, siExisteVivo: vivo }, { Codigo: 'C' })).rejects.toThrow('red')
+    expect(publicar).toHaveBeenCalledTimes(1)
+  })
+  it('ENT002 pero la lectura no encuentra el aviso → frena, NO avanza de código (evita duplicar)', async () => {
+    const publicar = vi.fn(async () => { throw ent002() })
+    const err = await publicarConCodigoLibre({ publicar, leerExistente: sinAviso, siExisteVivo: vivo }, { Codigo: 'C' }).catch(e => e)
+    expect(err.message).toMatch(/todavía no lo muestra/)
+    expect(publicar).toHaveBeenCalledTimes(1)
+  })
+  it('un error que no es ENT002 se propaga tal cual', async () => {
+    await expect(publicarConCodigoLibre({ publicar: async () => { throw new Error('PUB003') }, leerExistente: sinAviso, siExisteVivo: vivo }, { Codigo: 'C' })).rejects.toThrow('PUB003')
   })
 })
