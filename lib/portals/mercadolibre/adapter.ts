@@ -185,6 +185,21 @@ export class MercadoLibreAdapter implements PortalAdapter {
     }
   }
 
+  /** PUT del ítem en el mismo aviso (categoría y/o precio); conserva el id. */
+  async cambiarEnElLugar(externalId: string, body: Record<string, unknown>): Promise<void> {
+    await mlFetch(`/items/${encodeURIComponent(externalId)}`, { method: 'PUT', body: JSON.stringify(body) })
+  }
+
+  /** Plan B: publicar un aviso nuevo (el que cierra al viejo es quien llama, solo si esto salió bien). */
+  async publicarReemplazo(property: Property, opts: MlPayloadOptions = {}): Promise<PublishResult> {
+    return this.publish(property, opts)
+  }
+
+  /** Plan B: cerrar el aviso viejo. */
+  async cerrar(externalId: string): Promise<void> {
+    await this.unpublish(externalId)
+  }
+
   /**
    * unpublish cierra el item definitivamente (status: closed). NO se puede
    * reactivar después — para "ocultar temporalmente" usar pause() del wrapper
