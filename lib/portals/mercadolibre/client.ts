@@ -124,6 +124,11 @@ export function explicarErrorMl(status: number, cuerpo: string): string {
 
   const traducidas = causas.map(c => {
     const code = c.code ?? ''
+    // El mapeo está bien: es ML el que no deja mover ESTE aviso de categoría
+    // (p. ej. recién publicado, `not_yet_active`).
+    if (code === 'item.category_id.not_modifiable') {
+      return 'MercadoLibre no deja cambiar la categoría de este aviso en este momento.'
+    }
     if (code.includes('category_id')) {
       return 'La categoría de MercadoLibre no es válida para este tipo de propiedad. ' +
              'Avisale al equipo técnico: hay que revisar el mapeo de categorías.'

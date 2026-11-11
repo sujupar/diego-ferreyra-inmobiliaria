@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import dynamic from 'next/dynamic'
 import { Card, CardContent } from '@/components/ui/card'
 import { formatMoney, operationLabel, propertyTypeLabel } from '@/lib/properties/detail-view'
@@ -7,6 +8,7 @@ import { commercialStatusDef } from '@/lib/properties/commercial-status'
 import { PropertyCommercialStatusCard } from '../PropertyCommercialStatusCard'
 import { BotonGenerarDescripcion } from '../../descripcion/BotonGenerarDescripcion'
 import { PropertyDetailsEditor } from '../PropertyDetailsEditor'
+import { AvisosDesincronizados } from '../../portales/AvisosDesincronizados'
 import { PropertyLocationEditor } from '../PropertyLocationEditor'
 import { leerRefArgenprop } from '@/lib/properties/location-selection'
 
@@ -73,6 +75,9 @@ function Spec({ label, value }: { label: string; value: string }) {
 }
 
 export function OverviewTab({ property, isAbogado, onChanged }: { property: OverviewProperty; isAbogado: boolean; onChanged: () => void }) {
+  // Cada cambio de la ficha (o cierre del cuadro de avisos) vuelve a leer la franja.
+  const [version, setVersion] = useState(0)
+  const cambioEnFicha = () => { setVersion(v => v + 1); onChanged() }
   const amenities = amenityList(property.amenities)
   const hasCoords = property.latitude != null && property.longitude != null
 
@@ -87,7 +92,9 @@ export function OverviewTab({ property, isAbogado, onChanged }: { property: Over
 
   return (
     <div className="space-y-8">
-      {/* El abogado no ve ni toca datos comerciales. */}
+      {/* El abogado no ve ni toca datos comerciales ni los avisos. */}
+      {!isAbogado && <AvisosDesincronizados propertyId={property.id} onChanged={cambioEnFicha} refrescar={`${version}|${property.property_type}|${property.operation_type}|${property.asking_price}|${property.currency}`} />}
+
       {!isAbogado && (
         <PropertyCommercialStatusCard
           propertyId={property.id}
@@ -195,7 +202,7 @@ export function OverviewTab({ property, isAbogado, onChanged }: { property: Over
                 expensas: property.expensas,
                 description: property.description,
               }}
-              onChanged={onChanged}
+              onChanged={cambioEnFicha}
             />
           )}
         </section>

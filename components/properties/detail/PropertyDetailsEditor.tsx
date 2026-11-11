@@ -8,6 +8,7 @@ import { evaluarCambioDePrecio } from '@/lib/properties/price-guard'
 import { formatearMiles, parsearMonto } from '@/lib/properties/money-input'
 import { formatMoney } from '@/lib/properties/detail-view'
 import { PROPERTY_TYPES, PROPERTY_TYPE_LABELS } from '@/lib/properties/property-type'
+import { SincronizarPortalesDialog } from '@/components/properties/portales/SincronizarPortalesDialog'
 
 export interface FichaEditable {
   property_type?: string | null
@@ -88,6 +89,8 @@ export function PropertyDetailsEditor({ propertyId, valores, onChanged }: Props)
   const [error, setError] = useState<string | null>(null)
   const [pendiente, setPendiente] = useState<{ precio: number; moneda: string; motivo: string } | null>(null)
   const inicial = useRef<Record<string, string>>(aTexto(valores))
+  // "¿Actualizamos los avisos?" se abre solo tras guardar un dato que los portales muestran.
+  const [dialogoAvisos, setDialogoAvisos] = useState(false)
 
   const precioVigente = valores.asking_price ?? 0
   const monedaVigente = valores.currency ?? 'USD'
@@ -128,7 +131,11 @@ export function PropertyDetailsEditor({ propertyId, valores, onChanged }: Props)
       }
       inicial.current = { ...inicial.current, ...marcas }
       setEstado('guardado')
-      onChanged()
+      if (['property_type', 'operation_type', 'asking_price', 'currency'].some(k => k in saneado.patch)) {
+        setDialogoAvisos(true) // onChanged se llama al cerrarlo
+      } else {
+        onChanged()
+      }
       setTimeout(() => setEstado('quieto'), 2000)
     } catch {
       setError('No se pudo guardar el cambio. Revisá la conexión y probá de nuevo.')
@@ -213,17 +220,24 @@ export function PropertyDetailsEditor({ propertyId, valores, onChanged }: Props)
     }, true)
   }
 
-  if (!abierto) {
-    return (
-      <Button variant="outline" size="sm" className="mt-4" onClick={() => setAbierto(true)}>
-        <Pencil className="h-3.5 w-3.5 mr-1.5" />Modificar ficha
-      </Button>
-    )
-  }
+  const dialogo = (
+    <SincronizarPortalesDialog
+      propertyId={propertyId}
+      abierto={dialogoAvisos}
+      soloSiHayQueActualizar
+      onCerrar={() => { setDialogoAvisos(false); onChanged() }}
+    />
+  )
+
+  const boton = (
+    <Button variant="outline" size="sm" className="mt-4" onClick={() => setAbierto(true)}>
+      <Pencil className="h-3.5 w-3.5 mr-1.5" />Modificar ficha
+    </Button>
+  )
 
   const bloqueadoPorPrecio = pendiente !== null
 
-  return (
+  const panel = (
     <div className="mt-4 rounded-xl border bg-card p-4">
       <div className="flex items-baseline justify-between gap-3 mb-4">
         <p className="eyebrow">Modificar ficha</p>
@@ -390,10 +404,14 @@ export function PropertyDetailsEditor({ propertyId, valores, onChanged }: Props)
       <p className="mt-3 text-xs text-muted-foreground">
         Si la propiedad tiene landing publicada, estos datos se actualizan solos ahí; los
         textos que ya escribió la IA no se reescriben. Los avisos ya publicados en los
-        portales no se actualizan solos.
+        portales no se actualizan solos: si cambiás tipo, operación o precio, te
+        preguntamos si querés actualizarlos.
       </p>
     </div>
   )
+
+  // El cuadro de avisos se renderiza una sola vez, abierto o cerrado el panel.
+  return <>{dialogo}{abierto ? panel : boton}</>
 
   /** Los desplegables guardan al elegir: no hay estado intermedio que proteger. */
   function confirmarCampo(campo: string, valor: string) {
