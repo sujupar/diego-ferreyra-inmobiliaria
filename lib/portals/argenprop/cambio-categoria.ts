@@ -51,8 +51,11 @@ export function armarAvisoRepublicado(
   const base = armarAvisoConOperacionYPrecio(aviso, cambios, [], idAnunciante)
   // Forma probada: CASA se publicó con Subtipo 'CASA'.
   const subtipo = nueva.subtipo ? aId(nueva.subtipo) : nueva.tipo === 'CASA' ? 'CASA' : undefined
+  // SUPERFICIE_TOTAL se conserva aunque el catálogo de CASA no la liste: la sonda
+  // real (2026-11-11) mostró que Argenprop la acepta y la guarda para CASA; filtrarla
+  // haría perder la superficie total en un depto→casa.
   const caracteristicas = (base.Caracteristicas as { Id: string; Valor: string | number | boolean }[])
-    .filter(c => caracteristicasAceptadas.has(c.Id))
+    .filter(c => caracteristicasAceptadas.has(c.Id) || c.Id === 'SUPERFICIE_TOTAL')
   const fotos = fotosFicha.length > 0
     ? fotosFicha.slice(0, AP_MAX_FOTOS_AVISO).map(Url => ({ Tipo: 'FOTO', Url }))
     : aviso.Multimedia.filter(m => m.Tipo === 'FOTO')

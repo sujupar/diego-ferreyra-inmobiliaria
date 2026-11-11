@@ -40,6 +40,11 @@ describe('armarAvisoRepublicado', () => {
   it('descarta características no aceptadas', () => {
     expect(dto.Caracteristicas).toEqual([{ Id: 'AMBIENTES', Valor: 3 }])
   })
+  it('conserva SUPERFICIE_TOTAL aunque el catálogo no la acepte (la sonda mostró que CASA la guarda)', () => {
+    const conSup = { ...aviso, Caracteristicas: [...aviso.Caracteristicas, { Id: 'SUPERFICIE_TOTAL', Valor: 120 }] }
+    const d = armarAvisoRepublicado(conSup, { tipo: 'CASA' }, new Set(['AMBIENTES']), [], 7)
+    expect(d.Caracteristicas).toEqual([{ Id: 'AMBIENTES', Valor: 3 }, { Id: 'SUPERFICIE_TOTAL', Valor: 120 }])
+  })
   it('multimedia: fotos de la ficha + VIDEO vivo', () => {
     expect(dto.Multimedia).toEqual([{ Tipo: 'FOTO', Url: 'https://f/1.jpg' }, { Tipo: 'VIDEO', Url: 'https://yt/v' }])
   })
