@@ -69,9 +69,8 @@ export function textoAccion(f: Extract<FilaPortal, { tipo: 'diferencias' }>): st
     const tipo = f.diferencias.find(d => d.campo === 'tipo')?.despues ?? 'el tipo nuevo'
     return `Argenprop no deja cambiar el tipo de un aviso: lo vamos a eliminar y volver a publicar como ${tipo} con las mismas fotos y datos. El aviso cambia de número (el link viejo deja de andar).`
   }
-  const soloPrecio = f.diferencias.every(d => d.campo === 'precio')
-  if (f.portal === 'mercadolibre') return soloPrecio ? 'Se actualiza el precio del aviso.' : 'Se actualiza el mismo aviso.'
-  return soloPrecio ? 'Se actualiza el precio del aviso.' : 'Se actualiza el aviso.'
+  if (f.diferencias.every(d => d.campo === 'precio')) return 'Se actualiza el precio del aviso.'
+  return f.portal === 'mercadolibre' ? 'Se actualiza el mismo aviso.' : 'Se actualiza el aviso.'
 }
 
 /** Una línea por portal con diferencias: la primera. */
@@ -116,4 +115,14 @@ export function leerCuerpo(status: number, texto: string): unknown {
   try { return JSON.parse(texto) } catch {
     return { error: status === 504 ? 'El portal tardó demasiado. Probá de nuevo.' : `Error ${status}` }
   }
+}
+
+/** M3: el cuadro posterior al guardado solo se abre si hay algo para actualizar (un error solo no alcanza). */
+export function debeAbrirTrasGuardar(filas: readonly FilaPortal[]): boolean {
+  return filas.some(esAccionable)
+}
+
+/** M2: qué portales se pueden (re)mandar: los que no están listos ni en curso. */
+export function puedeMandarse(estado: 'idle' | 'enviando' | 'listo' | 'error' | 'planB'): boolean {
+  return estado === 'idle' || estado === 'error'
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  parsearFilas, filasAMostrar, lineaDiferencia, textoAccion, lineasFranja, interpretarRespuesta, leerCuerpo, esAccionable,
+  parsearFilas, filasAMostrar, lineaDiferencia, textoAccion, lineasFranja, interpretarRespuesta, leerCuerpo, esAccionable, debeAbrirTrasGuardar, puedeMandarse,
 } from './sincronizar-estado'
 
 const ap = {
@@ -72,5 +72,20 @@ describe('interpretarRespuesta', () => {
   })
   it('HTML de 504 → mensaje claro', () => {
     expect(leerCuerpo(504, '<html>')).toEqual({ error: 'El portal tardó demasiado. Probá de nuevo.' })
+  })
+})
+
+describe('debeAbrirTrasGuardar / puedeMandarse', () => {
+  it('solo abre si hay una fila accionable', () => {
+    expect(debeAbrirTrasGuardar(parsearFilas({ portales: [{ portal: 'mercadolibre', error: 'x' }] }))).toBe(false)
+    expect(debeAbrirTrasGuardar(parsearFilas({ portales: [{ portal: 'mercadolibre', error: 'x' }, ml] }))).toBe(true)
+    expect(debeAbrirTrasGuardar([])).toBe(false)
+  })
+  it('reintentables: idle y error', () => {
+    expect(puedeMandarse('error')).toBe(true)
+    expect(puedeMandarse('idle')).toBe(true)
+    expect(puedeMandarse('listo')).toBe(false)
+    expect(puedeMandarse('enviando')).toBe(false)
+    expect(puedeMandarse('planB')).toBe(false)
   })
 })

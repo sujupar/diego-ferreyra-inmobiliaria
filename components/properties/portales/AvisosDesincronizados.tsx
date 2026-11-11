@@ -10,7 +10,7 @@ import { leerCuerpo, lineasFranja, parsearFilas } from './sincronizar-estado'
  * Franja arriba de la ficha: avisa si un aviso publicado ya no coincide con la
  * ficha. Si el servidor responde 403 o falla, no muestra nada (nunca un error).
  */
-export function AvisosDesincronizados({ propertyId, onChanged }: { propertyId: string; onChanged: () => void }) {
+export function AvisosDesincronizados({ propertyId, onChanged, refrescar }: { propertyId: string; onChanged: () => void; refrescar: string | number }) {
   const [lineas, setLineas] = useState<{ portal: string; texto: string }[]>([])
   const [abierto, setAbierto] = useState(false)
 
@@ -26,7 +26,7 @@ export function AvisosDesincronizados({ propertyId, onChanged }: { propertyId: s
 
   // Carga al montar (lectura de red); el setState ocurre después del await.
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { void cargar() }, [cargar])
+  useEffect(() => { void cargar() }, [cargar, refrescar])
 
   const cerrar = useCallback(() => {
     setAbierto(false)

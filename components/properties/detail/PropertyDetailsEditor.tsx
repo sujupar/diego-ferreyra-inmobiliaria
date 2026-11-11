@@ -224,26 +224,20 @@ export function PropertyDetailsEditor({ propertyId, valores, onChanged }: Props)
     <SincronizarPortalesDialog
       propertyId={propertyId}
       abierto={dialogoAvisos}
+      soloSiHayQueActualizar
       onCerrar={() => { setDialogoAvisos(false); onChanged() }}
     />
   )
 
-  if (!abierto) {
-    return (
-      <>
-        <Button variant="outline" size="sm" className="mt-4" onClick={() => setAbierto(true)}>
-          <Pencil className="h-3.5 w-3.5 mr-1.5" />Modificar ficha
-        </Button>
-        {dialogo}
-      </>
-    )
-  }
+  const boton = (
+    <Button variant="outline" size="sm" className="mt-4" onClick={() => setAbierto(true)}>
+      <Pencil className="h-3.5 w-3.5 mr-1.5" />Modificar ficha
+    </Button>
+  )
 
   const bloqueadoPorPrecio = pendiente !== null
 
-  return (
-    <>
-    {dialogo}
+  const panel = (
     <div className="mt-4 rounded-xl border bg-card p-4">
       <div className="flex items-baseline justify-between gap-3 mb-4">
         <p className="eyebrow">Modificar ficha</p>
@@ -414,8 +408,10 @@ export function PropertyDetailsEditor({ propertyId, valores, onChanged }: Props)
         preguntamos si querés actualizarlos.
       </p>
     </div>
-    </>
   )
+
+  // El cuadro de avisos se renderiza una sola vez, abierto o cerrado el panel.
+  return <>{dialogo}{abierto ? panel : boton}</>
 
   /** Los desplegables guardan al elegir: no hay estado intermedio que proteger. */
   function confirmarCampo(campo: string, valor: string) {

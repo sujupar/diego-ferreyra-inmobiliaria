@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { PortalSincronizable } from '@/lib/portals/diferencias-con-ficha'
 import {
-  NOMBRE_PORTAL, esAccionable, filasAMostrar, interpretarRespuesta, leerCuerpo, lineaDiferencia,
+  NOMBRE_PORTAL, debeAbrirTrasGuardar, esAccionable, filasAMostrar, puedeMandarse, interpretarRespuesta, leerCuerpo, lineaDiferencia,
   parsearFilas, textoAccion, type FilaPortal,
 } from './sincronizar-estado'
 
@@ -20,6 +20,8 @@ type EstadoFila =
 interface Props {
   propertyId: string
   abierto: boolean
+  /** Modo post-guardado: no se abre si lo único que hay son errores de lectura. */
+  soloSiHayQueActualizar?: boolean
   /** Se llama al cerrar el cuadro (con o sin cambios): la ficha recarga. */
   onCerrar: () => void
 }
@@ -29,12 +31,12 @@ interface Props {
  * la ficha y los actualiza a pedido. Si al abrir no hay nada distinto, se cierra
  * solo sin mostrarse (así el asesor no ve un cuadro vacío después de guardar).
  */
-export function SincronizarPortalesDialog({ propertyId, abierto, onCerrar }: Props) {
+export function SincronizarPortalesDialog({ propertyId, abierto, onCerrar, soloSiHayQueActualizar }: Props) {
   // Se monta solo mientras está abierto: cada apertura arranca con el estado limpio.
-  return abierto ? <Cuadro propertyId={propertyId} onCerrar={onCerrar} /> : null
+  return abierto ? <Cuadro propertyId={propertyId} onCerrar={onCerrar} soloSiHayQueActualizar={soloSiHayQueActualizar} /> : null
 }
 
-function Cuadro({ propertyId, onCerrar }: Omit<Props, 'abierto'>) {
+function Cuadro({ propertyId, onCerrar, soloSiHayQueActualizar }: Omit<Props, 'abierto'>) {
   const [filas, setFilas] = useState<FilaPortal[] | null>(null)
   const [marcadas, setMarcadas] = useState<Record<string, boolean>>({})
   const [estados, setEstados] = useState<Partial<Record<PortalSincronizable, EstadoFila>>>({})
@@ -52,13 +54,13 @@ function Cuadro({ propertyId, onCerrar }: Omit<Props, 'abierto'>) {
       const cuerpo = leerCuerpo(r.status, await r.text())
       if (!r.ok) { onCerrarRef.current(); return }
       const visibles = filasAMostrar(parsearFilas(cuerpo))
-      if (visibles.length === 0) { onCerrarRef.current(); return }
+      if (visibles.length === 0 || (soloSiHayQueActualizar && !debeAbrirTrasGuardar(visibles))) { onCerrarRef.current(); return }
       setFilas(visibles)
       setMarcadas(Object.fromEntries(visibles.filter(esAccionable).map(f => [f.portal, true])))
     } catch {
       setErrorCarga('No se pudo revisar los avisos. Revisá la conexión.')
     }
-  }, [propertyId])
+  }, [propertyId, soloSiHayQueActualizar])
 
   // Carga al montar (lectura de red); el setState ocurre después del await.
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -90,11 +92,12 @@ function Cuadro({ propertyId, onCerrar }: Omit<Props, 'abierto'>) {
     setCorriendo(true)
     // En serie: cada request tiene que quedar corto (límite de tiempo de Netlify).
     for (const f of filas) {
-      if (esAccionable(f) && marcadas[f.portal]) await mandar(f.portal, false)
+      if (esAccionable(f) && marcadas[f.portal] && puedeMandarse((estados[f.portal] ?? { t: 'idle' }).t)) await mandar(f.portal, false)
     }
     setCorriendo(false)
     setTerminado(true)
   }
+  // Tras un ❌ se puede reintentar: el botón principal vuelve mientras haya filas marcadas y reintentables.
 
   async function planB(portal: PortalSincronizable) {
     setCorriendo(true)
@@ -102,7 +105,7 @@ function Cuadro({ propertyId, onCerrar }: Omit<Props, 'abierto'>) {
     setCorriendo(false)
   }
 
-  const hayMarcadas = (filas ?? []).some(f => esAccionable(f) && marcadas[f.portal])
+  const hayMarcadas = (filas ?? []).some(f => esAccionable(f) && marcadas[f.portal] && puedeMandarse((estados[f.portal] ?? { t: 'idle' }).t))
   const cerrar = () => { if (!corriendo) onCerrar() }
 
   return (
@@ -191,11 +194,11 @@ function Cuadro({ propertyId, onCerrar }: Omit<Props, 'abierto'>) {
 
         <div className="sticky bottom-0 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end bg-background pt-2">
           <Button variant="outline" className="h-11 sm:h-9" disabled={corriendo} onClick={cerrar}>
-            {terminado ? 'Cerrar' : 'Ahora no'}
+            {terminado || Object.keys(estados).length > 0 ? 'Cerrar' : 'Ahora no'}
           </Button>
-          {!terminado && (
+          {hayMarcadas && (
             <Button className="h-11 sm:h-9" disabled={corriendo || !hayMarcadas} onClick={() => void actualizar()}>
-              {corriendo ? 'Actualizando…' : 'Actualizar avisos'}
+              {corriendo ? 'Actualizando…' : terminado ? 'Reintentar' : 'Actualizar avisos'}
             </Button>
           )}
         </div>
