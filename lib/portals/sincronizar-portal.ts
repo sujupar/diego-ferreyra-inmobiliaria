@@ -197,7 +197,11 @@ function fallo(portal: PortalSincronizable, error: string, status: number, extra
   return { ok: false, portal, error, status, ...extra }
 }
 
-function precioDeFicha(ficha: FichaComercial): { monto: number; moneda: string } {
+export const MENSAJE_PRECIO_INVALIDO = 'El precio de la ficha no es válido; corregilo antes de actualizar los avisos.'
+
+/** null = el precio de la ficha no sirve (NaN, ≤0 o ausente): no se manda a ningún portal. */
+export function precioDeFicha(ficha: FichaComercial): { monto: number; moneda: string } | null {
+  if (typeof ficha.asking_price !== 'number' || !Number.isFinite(ficha.asking_price) || ficha.asking_price <= 0) return null
   return { monto: ficha.asking_price, moneda: (ficha.currency || 'USD').toUpperCase() }
 }
 
@@ -296,6 +300,7 @@ async function sincronizarMlReservado(deps: DepsMl, entrada: EntradaSincronizar)
     }
     const cambiaCategoria = campos.some(d => d.campo === 'tipo' || d.campo === 'operacion')
     const precio = campos.some(d => d.campo === 'precio') ? precioDeFicha(ficha) : null
+    if (campos.some(d => d.campo === 'precio') && !precio) return fallo(portal, MENSAJE_PRECIO_INVALIDO, 422)
 
     if (entrada.planB) {
       if (!cambiaCategoria) return fallo(portal, 'El plan B solo aplica cuando cambia el tipo o la operación.', 400)
@@ -453,6 +458,7 @@ async function sincronizarApReservado(deps: DepsAp, entrada: EntradaSincronizar)
     if (campos.some(d => d.campo === 'operacion')) cambios.operacion = ficha.operation_type || 'venta'
     if (campos.some(d => d.campo === 'precio')) {
       const p = precioDeFicha(ficha)
+      if (!p) return fallo(portal, MENSAJE_PRECIO_INVALIDO, 422)
       cambios.monto = p.monto
       cambios.moneda = p.moneda
     }

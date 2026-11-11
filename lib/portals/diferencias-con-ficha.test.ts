@@ -23,6 +23,10 @@ describe('diferenciasMl', () => {
     const r = diferenciasMl({ ...fichaDepto, asking_price: 75000 }, vivo)
     expect(r.diferencias).toEqual([{ campo: 'precio', antes: 'USD 79.000', despues: 'USD 75.000' }])
   })
+  it('precio de la ficha 0 / NaN → no se ofrece cambio de precio', () => {
+    expect(diferenciasMl({ ...fichaDepto, asking_price: 0 }, vivo).diferencias).toEqual([])
+    expect(diferenciasMl({ ...fichaDepto, asking_price: NaN }, vivo).accion).toBe('nada')
+  })
   it('moneda USD → ARS es diferencia de precio', () => {
     const r = diferenciasMl({ ...fichaDepto, currency: 'ARS' }, vivo)
     expect(r.diferencias.map(d => d.campo)).toEqual(['precio'])

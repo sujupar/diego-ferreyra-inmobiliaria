@@ -3,6 +3,8 @@ import {
   sincronizarMl as sincronizarMlReal,
   sincronizarAp as sincronizarApReal,
   fusionarMetadata,
+  precioDeFicha,
+  MENSAJE_PRECIO_INVALIDO,
   MENSAJE_AVISO_CAMBIO,
   diferenciasDePortales,
   limiteReclamo,
@@ -493,5 +495,28 @@ describe('relectura tras reservar', () => {
     const { deps } = depsMl({ releerListing: vi.fn(async () => ({ ...listingMl, status: 'paused' })) })
     await sincronizarMl(deps, { ficha: { ...fichaDepto, property_type: 'casa' }, listing: listingMl, planB: true })
     expect(deps.guardarListing).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'paused' }))
+  })
+})
+
+describe('precio de la ficha inválido', () => {
+  it('precioDeFicha devuelve null con NaN, 0, negativo o ausente', () => {
+    expect(precioDeFicha({ ...fichaDepto, asking_price: NaN })).toBeNull()
+    expect(precioDeFicha({ ...fichaDepto, asking_price: 0 })).toBeNull()
+    expect(precioDeFicha({ ...fichaDepto, asking_price: -5 })).toBeNull()
+    expect(precioDeFicha(JSON.parse('{"currency":"USD"}'))).toBeNull()
+    expect(precioDeFicha({ ...fichaDepto, asking_price: 75000 })).toEqual({ monto: 75000, moneda: 'USD' })
+    expect(MENSAJE_PRECIO_INVALIDO).toMatch(/precio de la ficha no es válido/)
+  })
+  it('ML con precio 0: no escribe ningún precio', async () => {
+    const { deps } = depsMl()
+    const r = await sincronizarMl(deps, { ficha: { ...fichaDepto, asking_price: 0 }, listing: listingMl })
+    expect(r).toMatchObject({ ok: true, accion: 'nada' })
+    expect(deps.cambiarEnElLugar).not.toHaveBeenCalled()
+  })
+  it('Argenprop con precio NaN: no escribe ningún precio', async () => {
+    const { deps } = depsAp()
+    const r = await sincronizarAp(deps, { ficha: { ...fichaDepto, asking_price: NaN }, listing: listingAp })
+    expect(r).toMatchObject({ ok: true, accion: 'nada' })
+    expect(deps.enviarAviso).not.toHaveBeenCalled()
   })
 })

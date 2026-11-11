@@ -71,6 +71,8 @@ const normalizarMoneda = (m: string | null | undefined) => (m ?? '').trim().toUp
  * saberla no se puede afirmar que "cambió la moneda", así que solo cuenta el monto.
  */
 function diferenciaPrecio(ficha: FichaComercial, monto: number, moneda: string | null): Diferencia | null {
+  // Precio de la ficha vacío/0/NaN: nunca se ofrece mandarlo a un portal.
+  if (!Number.isFinite(ficha.asking_price) || ficha.asking_price <= 0) return null
   const monedaFicha = normalizarMoneda(ficha.currency) || 'USD'
   const monedaAviso = normalizarMoneda(moneda)
   const mismaMoneda = monedaAviso === '' || monedaAviso === monedaFicha
