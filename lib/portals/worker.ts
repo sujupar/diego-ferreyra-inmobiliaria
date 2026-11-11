@@ -449,9 +449,12 @@ async function processPublishes(supabase: SB) {
       const publishOpts = await buildPublishOpts(listing.portal as PortalName, property, listing.metadata)
       const result = await adapter.publish(property, publishOpts)
       const usedTier = (result.metadata?.listingTypeUsed as string | undefined)
-      const mergedMeta = usedTier
-        ? { ...((listing.metadata as Record<string, unknown>) ?? {}), listing_type: usedTier }
-        : (listing.metadata as Record<string, unknown>)
+      // Argenprop: el Codigo final puede ser un alternativo (…r2) → metadata.codigo
+      // tiene que seguir a external_id, como en ap-publish.
+      const apMeta = listing.portal === 'argenprop' && result.metadata?.codigo
+        ? { codigo: result.metadata.codigo, aviso_id: result.metadata.avisoId ?? null }
+        : {}
+      const mergedMeta = { ...((listing.metadata as Record<string, unknown>) ?? {}), ...apMeta, ...(usedTier ? { listing_type: usedTier } : {}) }
       await supabase.from('property_listings').update({
         status: 'published',
         external_id: result.externalId,
