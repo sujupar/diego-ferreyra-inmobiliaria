@@ -152,6 +152,25 @@ describe('sincronizarMl', () => {
     }
   })
 
+  it('cambio de tipo → guarda el permalink nuevo que da ML y actualiza el mapa', async () => {
+    const leerAviso = vi.fn()
+      .mockResolvedValueOnce(itemDepto)
+      .mockResolvedValueOnce({ ...itemDepto, category_id: 'MLA401685', permalink: 'https://casa.ml/MLA1' })
+    const { deps } = depsMl({ leerAviso })
+    const r = await sincronizarMl(deps, { ficha: { ...fichaDepto, property_type: 'casa' }, listing: listingMl })
+    expect(r).toMatchObject({ ok: true, externalUrl: 'https://casa.ml/MLA1' })
+    expect(deps.guardarListing).toHaveBeenCalledWith(expect.objectContaining({ external_url: 'https://casa.ml/MLA1' }))
+    expect(deps.sincronizarMapa).toHaveBeenCalledWith('MLA1', 'https://casa.ml/MLA1')
+  })
+
+  it('cambio de tipo y la relectura falla → igual Listo, con la URL que había', async () => {
+    const leerAviso = vi.fn().mockResolvedValueOnce(itemDepto).mockRejectedValueOnce(new Error('red'))
+    const { deps } = depsMl({ leerAviso })
+    const r = await sincronizarMl(deps, { ficha: { ...fichaDepto, property_type: 'casa' }, listing: listingMl })
+    expect(r).toMatchObject({ ok: true, externalUrl: 'https://ml/MLA1' })
+    expect(deps.sincronizarMapa).not.toHaveBeenCalled()
+  })
+
   it('aviso recién publicado + solo precio → se actualiza igual', async () => {
     const { deps } = depsMl({ leerAviso: vi.fn(async () => ({ ...itemDepto, status: 'not_yet_active' })) })
     const r = await sincronizarMl(deps, { ficha: { ...fichaDepto, asking_price: 75000 }, listing: listingMl })

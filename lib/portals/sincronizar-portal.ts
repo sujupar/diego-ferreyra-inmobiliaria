@@ -341,9 +341,19 @@ async function sincronizarMlReservado(deps: DepsMl, entrada: EntradaSincronizar)
       await deps.cambiarEnElLugar(listing.external_id, armarCambioDePrecioMl(precio))
     }
 
-    const avisoGuardado = await guardarTrasExito(deps, { last_error: null })
+    // Al cambiar de categoría ML cambia el permalink (departamento.mercadolibre…
+    // → casa.mercadolibre…, mismo id; verificado en el QA). El viejo redirige,
+    // pero se guarda el nuevo. Si la relectura falla, el cambio ya está hecho.
+    let urlFinal = urlActual
+    if (cambiaCategoria) {
+      const releido = await deps.leerAviso(listing.external_id).catch(() => null)
+      if (releido?.permalink) urlFinal = releido.permalink
+    }
+    const cambiaUrl = !!urlFinal && urlFinal !== listing.external_url
+    const avisoGuardado = await guardarTrasExito(deps, { last_error: null, ...(cambiaUrl ? { external_url: urlFinal! } : {}) })
+    if (cambiaUrl) await mapaSeguro(deps, listing.external_id, urlFinal!)
     await auditarSeguro(deps, { eventType: 'updated', payload: { origen: 'sincronizar', campos, accion } })
-    return { ok: true, portal, accion: 'actualizado', externalUrl: urlActual, mensaje: 'Listo: el aviso de MercadoLibre quedó actualizado.' + (avisoGuardado ?? '') }
+    return { ok: true, portal, accion: 'actualizado', externalUrl: urlFinal, mensaje: 'Listo: el aviso de MercadoLibre quedó actualizado.' + (avisoGuardado ?? '') }
   } catch (err) {
     const { mensaje, paraElLog } = mensajeYDetalle(err)
     await auditarSeguro(deps, { eventType: 'failed', errorMessage: paraElLog, payload: { origen: 'sincronizar', campos, accion, ...(entrada.planB ? { planB: true } : {}) } })
