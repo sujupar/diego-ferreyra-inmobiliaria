@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useState } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -111,6 +112,15 @@ function LoginPage() {
                         Ingresar
                     </Button>
                 </form>
+
+                <div className="mt-4 text-center">
+                    <Link
+                        href="/recuperar-contrasena"
+                        className="text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+                    >
+                        ¿Olvidaste tu contraseña?
+                    </Link>
+                </div>
             </CardContent>
         </Card>
     )

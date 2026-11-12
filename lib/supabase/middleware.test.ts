@@ -111,6 +111,10 @@ describe('rutas de API públicas — pasan SIN sesión', () => {
         expect(await pasa('/api/auth/accept-invite', 'POST')).toBe(true)
     })
 
+    it('/api/auth/recuperar-contrasena (POST) — quien la pide perdió el acceso, no tiene sesión', async () => {
+        expect(await pasa('/api/auth/recuperar-contrasena', 'POST')).toBe(true)
+    })
+
     it('/api/webhooks/whatsapp (GET verificación y POST firmado) — lo llama Meta', async () => {
         expect(await pasa('/api/webhooks/whatsapp')).toBe(true)
         expect(await pasa('/api/webhooks/whatsapp', 'POST')).toBe(true)
@@ -261,6 +265,7 @@ describe('los prefijos públicos están acotados', () => {
         '/api/v-interno',
         '/api/webhooks/inventado',
         '/api/auth/accept-invite-falso',
+        '/api/auth/recuperar-contrasena-falso',
         '/api/auth/invite',
         '/api/auth/me',
         '/api/landing/track-visit-secreto',
@@ -315,6 +320,8 @@ describe('rutas de página — sin cambios de comportamiento', () => {
         '/accept-invite',
         '/privacidad',
         '/eliminacion-de-datos',
+        '/recuperar-contrasena',
+        '/restablecer-contrasena',
     ])('%s es pública', (ruta) => {
         expect(esPaginaPublica(ruta)).toBe(true)
     })

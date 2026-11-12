@@ -63,3 +63,22 @@ export async function alreadySentToRecipient(notificationType: string, entityId:
   }
   return (count ?? 0) > 0
 }
+
+/**
+ * Cuántos envíos (de cualquier estado) recibió `recipient` de este tipo desde
+ * `desdeIso`. Devuelve null si no se pudo contar: el llamador decide si eso
+ * frena o no (el límite de la recuperación de contraseña falla CERRADO).
+ */
+export async function contarEnviosRecientes(notificationType: string, recipient: string, desdeIso: string): Promise<number | null> {
+  const { count, error } = await getAdmin()
+    .from('email_notifications_log')
+    .select('id', { count: 'exact', head: true })
+    .eq('notification_type', notificationType)
+    .eq('recipient_email', recipient)
+    .gte('sent_at', desdeIso)
+  if (error) {
+    console.error('[email-log] contarEnviosRecientes failed:', error.message)
+    return null
+  }
+  return count ?? 0
+}
