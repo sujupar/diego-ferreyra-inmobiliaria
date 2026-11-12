@@ -12,6 +12,11 @@ const PAGINAS_PUBLICAS = [
     '/accept-invite',
     '/privacidad',
     '/eliminacion-de-datos',
+    // Recuperar el acceso: quien llega acá perdió la contraseña, así que por
+    // definición no tiene sesión. Sin estas dos, el enlace del email terminaba
+    // en el login (el bug que dejó a Diego afuera el 2026-11-12).
+    '/recuperar-contrasena',
+    '/restablecer-contrasena',
 ]
 
 /**
@@ -117,6 +122,15 @@ export const API_PUBLICAS: readonly RutaPublica[] = [
             'Valida la invitación (GET) y crea la cuenta (POST). Por definición la llama alguien que ' +
             'TODAVÍA NO tiene sesión: autenticarla dejaría a los invitados afuera. El resto de ' +
             '`/api/auth/*` (invite, me) sí exige sesión.',
+    },
+    {
+        ruta: '/api/auth/recuperar-contrasena',
+        tipo: 'exacta',
+        metodos: ['POST'],
+        motivo:
+            'Pide el enlace para elegir una contraseña nueva. La llama alguien que perdió la ' +
+            'contraseña, o sea SIN sesión. Responde siempre lo mismo (no revela qué emails ' +
+            'existen) y limita 3 envíos por email cada 15 minutos.',
     },
 
     // ── Webhooks: los llama un proveedor externo, se autentican por firma o secreto ──

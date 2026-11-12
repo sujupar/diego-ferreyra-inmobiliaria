@@ -75,6 +75,13 @@ export interface SendEmailInput {
    * `timeoutMs` en el cliente de Mailchimp.
    */
   timeoutMs?: number
+  /**
+   * true = se manda al destinatario REAL aunque el modo prueba esté prendido. Solo
+   * para emails que dan acceso a una cuenta (recuperar contraseña): desviarlos a la
+   * casilla de prueba le entregaría a otra persona la llave de esa cuenta, y dejaría
+   * al dueño real sin poder entrar mientras dure la prueba.
+   */
+  ignorarModoPrueba?: boolean
 }
 
 /** Techo efectivo: lo que pidió el llamador, o el default según haya adjuntos. */
@@ -183,7 +190,12 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     return result
   }
 
-  const { to, subject, testModeOn, originalTo } = await applyTestMode(input.to, input.subject)
+  const { to, subject, testModeOn, originalTo } = input.ignorarModoPrueba
+    ? (() => {
+        const destinatarios = Array.isArray(input.to) ? input.to : [input.to]
+        return { to: destinatarios, subject: input.subject, testModeOn: false, originalTo: destinatarios }
+      })()
+    : await applyTestMode(input.to, input.subject)
 
   for (const recipient of to) {
     // Idempotency check per recipient.
