@@ -19,7 +19,7 @@ export { pickPublishSource }
 import { getOrGenerateBridgedDescription } from '@/lib/marketing/portal-description-bridge'
 import { analyzePropertyPhotos } from '@/lib/marketing/property-vision-analyzer'
 import { deriveFunnelType, type PropertyFunnelType } from './funnel-type'
-import { buildFromTemplate, suggestTemplateId, getTemplate } from './templates'
+import { buildFromTemplate, suggestTemplateId, getTemplate, isSelectableTemplate } from './templates'
 import { buildLuxuryDocument } from './templates/luxury'
 import { buildConversionDocument } from './templates/conversion'
 import { resolveDeliverMedia } from '@/lib/properties/deliver-media'
@@ -329,7 +329,10 @@ export async function updateLanding(propertyId: string, patch: {
   }
 
   // Cambiar template → reconstruye content desde el template (con confirmación en la UI).
-  if (patch.templateId && patch.templateId !== current.template_id) {
+  // Solo se puede pasar a una plantilla ELEGIBLE (hoy, Lujo). Un id viejo que
+  // llegue por un pedido armado a mano se ignora: no hay que reconstruir la
+  // landing con una estructura que ya no se ofrece.
+  if (patch.templateId && patch.templateId !== current.template_id && isSelectableTemplate(patch.templateId)) {
     const property = await getProperty(propertyId)
     if (!property) throw new Error('property not found')
     const { templateId, document } = buildFromTemplate(patch.templateId, property)

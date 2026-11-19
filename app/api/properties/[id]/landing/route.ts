@@ -10,11 +10,11 @@ import { requireAuth } from '@/lib/auth/require-role'
 import {
   authorizeLanding, getLanding, startCoCreation, updateLanding, unpublishLanding, deleteLanding, setDeliverMedia,
 } from '@/lib/landing/landing-service'
-import { TEMPLATES } from '@/lib/landing/templates'
+import { SELECTABLE_TEMPLATES } from '@/lib/landing/templates'
 
 export const maxDuration = 60
 
-const templatesMeta = () => TEMPLATES.map(t => ({
+const templatesMeta = () => SELECTABLE_TEMPLATES.map(t => ({
   id: t.id, label: t.label, description: t.description, bestFor: t.bestFor,
 }))
 

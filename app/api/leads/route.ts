@@ -213,7 +213,7 @@ const LeadSchema = z.object({
     ])
     .default('landing'),
   utm: z.record(z.string(), z.string()).optional().default({}),
-  // Campos opcionales para Meta CAPI deduplication (vienen del LeadForm)
+  // Campos opcionales para Meta CAPI deduplication (vienen del popup de la landing)
   eventId: z.string().min(8).max(128).optional(),
   fbp: z.string().max(200).nullable().optional(),
   fbc: z.string().max(300).nullable().optional(),

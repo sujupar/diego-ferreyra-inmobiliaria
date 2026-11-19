@@ -10,7 +10,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
-import { buildFromTemplate, suggestTemplateId, TEMPLATES } from '@/lib/landing/templates'
+import { buildFromTemplate, suggestTemplateId, SELECTABLE_TEMPLATES } from '@/lib/landing/templates'
 import { deriveFunnelType } from '@/lib/landing/funnel-type'
 import type { Database } from '@/types/database.types'
 import type { LandingProperty } from '@/lib/landing/registry'
@@ -63,7 +63,7 @@ export async function GET(
       document,
       funnelType,
       suggestedTemplateId: suggested,
-      templates: TEMPLATES.map(t => ({
+      templates: SELECTABLE_TEMPLATES.map(t => ({
         id: t.id, label: t.label, description: t.description, bestFor: t.bestFor,
       })),
     })

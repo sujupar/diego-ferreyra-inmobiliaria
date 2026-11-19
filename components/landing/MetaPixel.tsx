@@ -23,7 +23,7 @@ interface MetaPixelProps {
  *   - PageView: automático al cargar la página
  *   - ViewContent: en mount, con content_ids = [propertyId]
  *
- * El evento Lead se dispara desde LeadForm cuando el submit es exitoso.
+ * El evento Lead se dispara desde LeadCaptureProvider (el popup) cuando el submit es exitoso.
  *
  * Si pixelId está vacío, no renderiza nada (kill switch via env).
  */
@@ -83,7 +83,7 @@ export function MetaPixel({ pixelId, propertyId, propertyTitle }: MetaPixelProps
 }
 
 /**
- * Dispara el evento Lead en el Pixel. Llamado desde LeadForm tras submit
+ * Dispara el evento Lead en el Pixel. Llamado desde el popup tras submit
  * exitoso. El `eventId` se pasa para deduplicación con el evento que CAPI
  * envía en paralelo desde el server.
  */
