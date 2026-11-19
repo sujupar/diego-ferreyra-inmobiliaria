@@ -32,7 +32,7 @@ export function legacyFallbackDocument(): LandingDocument {
       { id: 'tour', type: 'tour_3d' },
       { id: 'description', type: 'description' },
       { id: 'map', type: 'location_map' },
-      { id: 'form', type: 'lead_form' },
+      { id: 'cta-final', type: 'cta' },
     ],
     theme: {},
   }

@@ -92,3 +92,6 @@ GPT Portales/
 *.HEIC
 
 .superpowers/
+
+# Copias de seguridad que generan los scripts de datos (contenido de la base, no va al repo)
+scripts/backups/

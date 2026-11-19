@@ -21,7 +21,8 @@ function build(property: LandingProperty): LandingDocument {
     ...(video ? [video] : []),
     { id: 'description', type: 'description' },
     { id: 'map', type: 'location_map' },
-    { id: 'form', type: 'lead_form', ctaLabel: 'Quiero conocerla' },
+    // Botón que abre el popup — nunca un formulario dentro de la página.
+    { id: 'cta-final', type: 'cta' },
   ]
   return { version: 1, blocks, theme: { motion: 'on' } }
 }

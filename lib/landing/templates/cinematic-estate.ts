@@ -22,7 +22,8 @@ function build(property: LandingProperty): LandingDocument {
     { id: 'features', type: 'features' },
     { id: 'description', type: 'description' },
     { id: 'map', type: 'location_map' },
-    { id: 'form', type: 'lead_form', ctaLabel: 'Solicitar una visita privada' },
+    // Botón que abre el popup — nunca un formulario dentro de la página.
+    { id: 'cta-final', type: 'cta' },
   ]
   return { version: 1, blocks, theme: { motion: 'on' } }
 }

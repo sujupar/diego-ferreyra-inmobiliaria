@@ -6,7 +6,7 @@
  * (mode='public') y, en E1.6, para el editor (mode='edit').
  *
  * Server-render friendly: no usa estado de cliente. Los bloques interactivos
- * (LeadForm, VideoFile) son client components internamente.
+ * (VideoFile, CtaBand) son client components internamente.
  */
 import { Fragment } from 'react'
 import type { LandingDocument } from '@/lib/landing/schema'

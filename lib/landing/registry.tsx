@@ -20,7 +20,6 @@ import { LandingTour3DEmbed } from '@/components/landing/Tour3DEmbed'
 import { LandingDescription } from '@/components/landing/Description'
 import { LandingLocationMap } from '@/components/landing/LocationMap'
 import { LandingProofBar } from '@/components/landing/ProofBar'
-import { LandingLeadForm } from '@/components/landing/LeadForm'
 // E1.8 — conversión
 import { LandingIntangibleBenefits } from '@/components/landing/IntangibleBenefits'
 import { LandingBenefitShowcase } from '@/components/landing/BenefitShowcase'
@@ -205,17 +204,17 @@ export const BLOCK_REGISTRY: Record<LandingBlockType, BlockDef> = {
     },
   },
 
+  // Un formulario DENTRO de la página está prohibido (decisión del dueño,
+  // 2026-11-18): toda conversión pasa por el popup. El tipo `lead_form` sigue en
+  // el schema solo para poder LEER documentos viejos guardados en la base, y se
+  // dibuja como el mismo botón que `cta`. Su `ctaLabel` viejo ("Quiero
+  // conocerla") se ignora a propósito: el texto del botón es uno solo.
   lead_form: {
-    label: 'Formulario',
+    label: 'Botón de recorrido',
     locked: true,
-    render: (block, { property }) => {
+    render: (block) => {
       if (block.type !== 'lead_form') return null
-      return (
-        <LandingLeadForm
-          propertyId={property.id}
-          propertyTitle={heroTitle(property)}
-        />
-      )
+      return <LandingCtaBand label={CTA_RECORRIDO} source={block.id} />
     },
   },
 

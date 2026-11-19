@@ -17,8 +17,21 @@ import type { LandingDocument } from '@/lib/landing/schema'
 // cinematic quedan como alternativas / backwards-compat.
 export const DEFAULT_TEMPLATE_ID = 'luxury'
 
-/** Orden de presentación en la UI. */
+/** Todas las plantillas que el sistema sabe ARMAR (incluye las viejas, para landings existentes). */
 export const TEMPLATES: TemplateManifest[] = [luxuryTemplate, conversionTemplate, editorialDirecto, cinematicEstate]
+
+/**
+ * Las que el asesor puede ELEGIR (decisión del dueño, 2026-11-18): solo Lujo.
+ * Las viejas quedan en `TEMPLATES` para no romper landings ya guardadas con
+ * ellas, pero no se ofrecen: el 2026-11-18 alguien eligió "Editorial Directo"
+ * para una propiedad con campaña activa y la landing salió con un formulario
+ * en la página y estructura de ficha de portal.
+ */
+export const SELECTABLE_TEMPLATES: TemplateManifest[] = [luxuryTemplate]
+
+export function isSelectableTemplate(id: string | null | undefined): boolean {
+  return !!id && SELECTABLE_TEMPLATES.some(t => t.id === id)
+}
 
 const BY_ID = new Map(TEMPLATES.map(t => [t.id, t]))
 
