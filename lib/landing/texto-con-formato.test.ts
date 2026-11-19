@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bloquesDeTexto, tramosDe } from './texto-con-formato'
+import { bloquesDeTexto, textoPlano, tramosDe } from './texto-con-formato'
 
 describe('bloquesDeTexto', () => {
   it('### se vuelve un título sin los numerales (caso Salta 297)', () => {
@@ -54,5 +54,15 @@ describe('tramosDe', () => {
 
   it('el texto nunca se interpreta como HTML (se devuelve literal, lo escapa React)', () => {
     expect(tramosDe('<b>x</b>')).toEqual([{ texto: '<b>x</b>', negrita: false }])
+  })
+})
+
+describe('textoPlano', () => {
+  it('saca ### y ** y une en un renglón, cerrando el título con punto', () => {
+    expect(textoPlano('### UN 2 AMBIENTES EN MONSERRAT\n\nAl **frente**, con balcón.'))
+      .toBe('UN 2 AMBIENTES EN MONSERRAT. Al frente, con balcón.')
+  })
+  it('texto sin formato no cambia', () => {
+    expect(textoPlano('Hermoso depto.')).toBe('Hermoso depto.')
   })
 })

@@ -11,6 +11,7 @@ import { getPublishedLanding } from '@/lib/landing/get-landing'
 import { luxuryTemplate } from '@/lib/landing/templates/luxury'
 import { deriveFunnelType } from '@/lib/landing/funnel-type'
 import { destinoDeAlias } from '@/lib/landing/slug-alias'
+import { textoPlano } from '@/lib/landing/texto-con-formato'
 
 function getAdmin() {
   return createClient<Database>(
@@ -61,7 +62,8 @@ export async function generateMetadata({
   const title =
     property.title ?? `${property.property_type} en ${property.neighborhood}`
   const description = (
-    property.description ?? `${property.address}, ${property.neighborhood}`
+    (property.description && textoPlano(property.description)) ||
+    `${property.address}, ${property.neighborhood}`
   ).slice(0, 160)
   const heroImage = property.photos?.[0]
 

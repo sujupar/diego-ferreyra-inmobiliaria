@@ -67,3 +67,19 @@ export function bloquesDeTexto(texto: string): BloqueTexto[] {
     })
     .filter(b => b.tipo === 'titulo' || b.tramos.length > 0)
 }
+
+/**
+ * La misma descripción como texto plano de un renglón: para el resumen que
+ * muestran Google y la vista previa al compartir el link (WhatsApp, Facebook),
+ * donde no hay formato posible y los `###`/`**` se verían literales.
+ */
+export function textoPlano(texto: string): string {
+  return bloquesDeTexto(texto)
+    .map(b => {
+      if (b.tipo === 'parrafo') return b.tramos.map(t => t.texto).join('')
+      return /[.!?:]$/.test(b.texto) ? b.texto : `${b.texto}.`
+    })
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
