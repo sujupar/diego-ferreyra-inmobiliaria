@@ -79,8 +79,8 @@ describe('landing B — textos del documento de Diego', () => {
   })
 
   it('el video es el VSL corto, en archivos PROPIOS (no los de la variante A ni el VSL largo)', () => {
-    expect(C.hero.videoPath).toBe('web/tasacion-neta-vsl-corto-web.mp4')
-    expect(C.hero.posterPath).toBe('web/tasacion-neta-vsl-corto-poster.jpg')
+    expect(C.hero.videoPath).toBe('web/tasacion-b-animado-web.mp4')
+    expect(C.hero.posterPath).toBe('web/tasacion-b-animado-poster.jpg')
     expect(C.hero.videoPath).not.toBe(TASACION_CONTENT.hero.videoPath)
   })
 })
