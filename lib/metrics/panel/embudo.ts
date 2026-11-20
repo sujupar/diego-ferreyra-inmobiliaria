@@ -24,7 +24,11 @@ export function embudoDeCampania(nombre: string | null | undefined): EmbudoCampa
 
 export interface MetaDia {
   fecha: string
+  /** Id de la campaña en Meta (para unir una campaña [Auto] con su propiedad). */
+  campaniaId?: string
   campania: string
+  /** Registros que cuenta el píxel (CompleteRegistration). */
+  registros?: number
   /** ARS */
   gasto: number
   impresiones: number

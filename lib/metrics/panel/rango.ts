@@ -4,7 +4,15 @@
  */
 
 export type Agrupar = 'dia' | 'semana' | 'mes'
-export type Comparar = 'anterior' | 'anio_pasado' | 'ninguno'
+/**
+ * Contra qué se compara:
+ *  - 'anterior': los N días inmediatamente anteriores.
+ *  - 'mes_anterior': el MISMO TRAMO del mes anterior (1–20/11 → 1–20/10). Es lo
+ *    que usa el Tablero: comparar 20 días de noviembre contra 31 de octubre no
+ *    dice nada.
+ *  - 'anio_pasado': las mismas fechas del año anterior.
+ */
+export type Comparar = 'anterior' | 'mes_anterior' | 'anio_pasado' | 'ninguno'
 export interface Rango { desde: string; hasta: string }
 
 const DIA_MS = 86_400_000
@@ -44,9 +52,26 @@ export function claves(r: Rango, a: Agrupar): string[] {
   return out
 }
 
+/** Último día del mes de 'YYYY-MM'. */
+const finDeMes = (ym: string) => `${ym}-${String(new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).getUTCDate()).padStart(2, '0')}`
+
+/** La misma fecha un mes antes; si ese día no existe (31/3 → feb), el último del mes. */
+export function mesAntes(s: string): string {
+  const y = Number(s.slice(0, 4)), m = Number(s.slice(5, 7))
+  const ym = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`
+  const fin = finDeMes(ym)
+  return s.slice(8) > fin.slice(8) ? fin : `${ym}-${s.slice(8)}`
+}
+
 /** Período contra el que se compara. */
 export function rangoComparado(r: Rango, c: Comparar): Rango | null {
   if (c === 'ninguno') return null
+  if (c === 'mes_anterior') {
+    const desde = mesAntes(r.desde)
+    // Si el período termina el último día de su mes, el tramo comparado también (30/11 → 31/10).
+    const hasta = sumarDias(r.hasta, 1).slice(8) === '01' ? sumarDias(`${r.hasta.slice(0, 8)}01`, -1) : mesAntes(r.hasta)
+    return { desde, hasta: hasta < desde ? desde : hasta }
+  }
   if (c === 'anio_pasado') {
     const menosUno = (s: string) => `${Number(s.slice(0, 4)) - 1}${s.slice(4)}`
     // 29 de febrero → 28.

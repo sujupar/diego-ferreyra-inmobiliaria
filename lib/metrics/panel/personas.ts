@@ -49,6 +49,8 @@ export interface EnvioLanding { deal_id: string | null; funnel: string }
 /** Una persona del embudo, con la fecha en que llegó a cada paso (null = no llegó). */
 export interface Persona {
   embudo: Embudo
+  /** Proceso (deal) de su primera solicitud: el enlace al CRM. */
+  dealId: string
   /** Contacto de su primera solicitud. */
   contactId: string | null
   /** Identidad (contacto, teléfono o email) para no contar dos veces a quien está en los dos embudos. */
@@ -277,7 +279,7 @@ export function armarPersonas(e: EntradaPersonas): ResultadoPersonas {
       if (f < piso) fechas[et] = piso
       piso = fechas[et]!
     }
-    personas.push({ embudo: c.embudo, contactId: d.contact_id, identidad: d.contact_id ?? (t ? 'p' + t : m ? 'e' + m : d.id), variante: d.landing_variant, historico: c.via === 'import', fechas })
+    personas.push({ embudo: c.embudo, dealId: d.id, contactId: d.contact_id, identidad: d.contact_id ?? (t ? 'p' + t : m ? 'e' + m : d.id), variante: d.landing_variant, historico: c.via === 'import', fechas })
   }
   return { personas, excluidas }
 }

@@ -52,7 +52,8 @@ async function cargarPersonas(sb: SupabaseClient) {
     todas<InformeRow>((a, b) => sb.from('appraisals').select('contact_id, created_at').order('id').range(a, b)),
     todas<EnvioLanding>((a, b) => sb.from('funnel_lead_submissions').select('deal_id, funnel').order('id').range(a, b)),
   ])
-  return { ...armarPersonas({ deals, contactos, historia, informes, envios }), pruebas: contactosDePrueba(contactos).ids }
+  // Las filas crudas viajan también: el Tablero las usa (sin agendar, referidos) sin volver a bajarlas.
+  return { ...armarPersonas({ deals, contactos, historia, informes, envios }), pruebas: contactosDePrueba(contactos).ids, deals, contactos, historia }
 }
 
 /** Inicio del día `fecha` en Argentina (UTC−3, sin horario de verano), en ISO UTC. */
@@ -80,18 +81,24 @@ async function cargarFilasVideoCohortes(sb: SupabaseClient, r: Rango) {
   return { sesiones, videos, identidades: new Map(identidades.map(i => [i.anon_id, i.contact_id!])) }
 }
 
-interface MetaRaw { date: string; campaign_name: string | null; spend: number | string | null; impressions: number | string | null; clicks: number | string | null; landing_page_views: number | string | null; acciones: { action_type: string; value: string }[] | null }
+/** Registro de la landing de tasación/clase: el evento con el que optimizan los conjuntos de Meta. */
+export const ACCION_REGISTRO = 'offsite_conversion.fb_pixel_complete_registration'
+
+interface MetaRaw { date: string; campaign_id: string | null; campaign_name: string | null; spend: number | string | null; impressions: number | string | null; clicks: number | string | null; landing_page_views: number | string | null; acciones: { action_type: string; value: string }[] | null }
 
 async function cargarMeta(sb: SupabaseClient, r: Rango): Promise<MetaDia[]> {
   const rows = await todas<MetaRaw>((a, b) => sb.from('meta_ads_daily')
-    .select('date, campaign_name, spend, impressions, clicks, landing_page_views, acciones:raw_data->actions')
+    .select('date, campaign_id, campaign_name, spend, impressions, clicks, landing_page_views, acciones:raw_data->actions')
     .gte('date', r.desde).lte('date', r.hasta).order('date').order('campaign_id').range(a, b))
   const n = (x: unknown) => Number(x ?? 0) || 0
   return rows.map(m => {
     const linkClicks = m.acciones?.find(x => x.action_type === 'link_click')
+    const registros = m.acciones?.find(x => x.action_type === ACCION_REGISTRO)
     return {
       fecha: String(m.date).slice(0, 10),
+      campaniaId: m.campaign_id ?? '',
       campania: m.campaign_name ?? '',
+      registros: registros ? n(registros.value) : 0,
       gasto: n(m.spend),
       impresiones: n(m.impressions),
       clics: linkClicks ? n(linkClicks.value) : n(m.clicks),
@@ -138,10 +145,32 @@ export async function cargarGastos(sb: SupabaseClient) {
   return (data ?? []).map(g => ({ ...g, monto_usd: Number(g.monto_usd) })) as (GastoFijo & { id: string; notas: string | null })[]
 }
 
-export async function cargarHitos(sb: SupabaseClient) {
+export interface Hito {
+  id: string
+  fecha: string
+  embudo: Embudo | null
+  titulo: string
+  detalle: string | null
+  /** Columnas del Tablero (migración 20261120000001). undefined si la migración no se aplicó todavía. */
+  resultado_buscado?: string | null
+  meta_costo_registro_ars?: number | null
+  fecha_decision?: string | null
+}
+
+/** true si la base todavía no tiene las columnas nuevas de `hitos_metricas`. */
+export const faltaColumna = (e: { code?: string; message?: string } | null) =>
+  !!e && (e.code === '42703' || e.code === 'PGRST204' || /column .* does not exist|could not find the .* column/i.test(e.message ?? ''))
+
+export async function cargarHitos(sb: SupabaseClient): Promise<Hito[]> {
+  const completo = await sb.from('hitos_metricas').select('id, fecha, embudo, titulo, detalle, resultado_buscado, meta_costo_registro_ars, fecha_decision').order('fecha')
+  if (!completo.error) {
+    return ((completo.data ?? []) as Hito[]).map(h => ({ ...h, meta_costo_registro_ars: h.meta_costo_registro_ars == null ? null : Number(h.meta_costo_registro_ars) }))
+  }
+  // Sin la migración del Tablero: se sigue con las columnas de siempre.
+  if (!faltaColumna(completo.error)) throw new Error(completo.error.message)
   const { data, error } = await sb.from('hitos_metricas').select('id, fecha, embudo, titulo, detalle').order('fecha')
   if (error) throw new Error(error.message)
-  return (data ?? []) as { id: string; fecha: string; embudo: Embudo | null; titulo: string; detalle: string | null }[]
+  return (data ?? []) as Hito[]
 }
 
 export interface ParametrosPanel {
@@ -153,49 +182,73 @@ export interface ParametrosPanel {
 
 const EMBUDOS: Embudo[] = ['tasacion', 'clase']
 
-export async function armarPanel(p: ParametrosPanel) {
+/** Rango que cubre el período y su comparación. */
+export function rangoTotal(r: Rango, comp: Rango | null): Rango {
+  return comp ? { desde: comp.desde < r.desde ? comp.desde : r.desde, hasta: r.hasta > comp.hasta ? r.hasta : comp.hasta } : r
+}
+
+/**
+ * Baja TODO lo que necesitan el panel y el Tablero, una sola vez.
+ * `metaDesde`/`metaHasta`: rango extra para el gasto de Meta (el Tablero calcula
+ * el margen del año y el "después" de cada ajuste hasta hoy).
+ */
+export async function cargarDatos(p: ParametrosPanel, extra: { metaDesde?: string; metaHasta?: string } = {}) {
   const sb = db()
   const comp = rangoComparado(p.rango, p.comparar)
-  const total: Rango = comp ? { desde: comp.desde < p.rango.desde ? comp.desde : p.rango.desde, hasta: p.rango.hasta > comp.hasta ? p.rango.hasta : comp.hasta } : p.rango
+  const total = rangoTotal(p.rango, comp)
+  const rangoMeta: Rango = {
+    desde: extra.metaDesde && extra.metaDesde < total.desde ? extra.metaDesde : total.desde,
+    hasta: extra.metaHasta && extra.metaHasta > total.hasta ? extra.metaHasta : total.hasta,
+  }
 
-  const [{ personas, excluidas, pruebas }, meta, visitas, video, blue, ventas, gastos, hitos, filasCohortes] = await Promise.all([
-    cargarPersonas(sb), cargarMeta(sb, total), cargarVisitas(sb, total), cargarVideo(sb, p.rango),
+  const [{ personas, excluidas, pruebas, deals, contactos, historia }, meta, visitas, video, blue, ventas, gastos, hitos, filasCohortes] = await Promise.all([
+    cargarPersonas(sb), cargarMeta(sb, rangoMeta), cargarVisitas(sb, total), cargarVideo(sb, p.rango),
     cargarBlue(), cargarVentas(sb), cargarGastos(sb), cargarHitos(sb),
     // Un fallo acá no tumba el panel entero: la tarjeta dice "no disponible".
-    cargarFilasVideoCohortes(sb, p.rango).catch((err: unknown) => {
+    // Se baja el rango TOTAL (período + comparación): armarVideoCohortes filtra por fecha.
+    cargarFilasVideoCohortes(sb, total).catch((err: unknown) => {
       console.warn('[panel] video por registrados:', err instanceof Error ? err.message : err)
       return null
     }),
   ])
+  return { sb, comp, total, rangoMeta, personas, excluidas, pruebas, deals, contactos, historia, meta, visitas, video, blue, ventas, gastos, hitos, filasCohortes }
+}
+
+export type Datos = Awaited<ReturnType<typeof cargarDatos>>
+
+/** Embudos, plata y adquisición de un período (la misma cuenta para el panel y el Tablero). */
+export function calcularPeriodo(d: Datos, r: Rango, vista: 'eventos' | 'cohorte') {
+  const { personas, meta, visitas, blue, ventas, gastos } = d
+  const canales = Object.fromEntries(EMBUDOS.map(e => [e, resumirCanal(e, { personas, meta, visitas, blue, rango: r, vista })])) as Record<Embudo, ReturnType<typeof resumirCanal>>
+  const cohorte = Object.fromEntries(EMBUDOS.map(e => [e, resumirCanal(e, { personas, meta, visitas, blue, rango: r, vista: 'cohorte' })])) as Record<Embudo, ReturnType<typeof resumirCanal>>
+  let publicidadPropiedadesUsd = 0
+  for (const m of meta) {
+    if (embudoDeCampania(m.campania) !== 'propiedad' || m.fecha < r.desde || m.fecha > r.hasta) continue
+    const t = blue(m.fecha)
+    if (t) publicidadPropiedadesUsd += m.gasto / t
+  }
+  const publicidadCaptacionUsd = canales.tasacion.inversionUsd + canales.clase.inversionUsd
+  const { plata, detalle } = calcularPlata({ ventas, gastos, publicidadCaptacionUsd, publicidadPropiedadesUsd, rango: r, tasaArs: blue })
+  // Una persona puede estar en los dos embudos (se registró a la clase y
+  // después pidió tasación): su captación cuenta UNA vez para el costo.
+  const captadas = new Set<string>()
+  for (const x of personas) {
+    const f = x.fechas.captada
+    if (!f) continue
+    const entra = vista === 'cohorte' ? enRango(x.fechas.solicitud, r) : enRango(f, r)
+    if (entra) captadas.add(x.identidad)
+  }
+  const captaciones = captadas.size
+  const adq = adquisicion({ publicidadCaptacionUsd, captaciones, limpioPromedioPorVentaUsd: plata.limpioPromedioPorVentaUsd, tasaVenta: TASA_VENTA_DEFAULT })
+  return { rango: r, canales, cohorte, plata, detalle, adquisicion: { ...adq, captaciones, tasaVenta: TASA_VENTA_DEFAULT } }
+}
+
+export function armarPanelDe(p: ParametrosPanel, d: Datos) {
+  const { personas, visitas, meta, blue, pruebas, filasCohortes, comp } = d
   const videoCohortes = filasCohortes ? armarVideoCohortes({ ...filasCohortes, pruebas, rango: p.rango }) : null
 
-  const periodo = (r: Rango) => {
-    const canales = Object.fromEntries(EMBUDOS.map(e => [e, resumirCanal(e, { personas, meta, visitas, blue, rango: r, vista: p.vista })])) as Record<Embudo, ReturnType<typeof resumirCanal>>
-    const cohorte = Object.fromEntries(EMBUDOS.map(e => [e, resumirCanal(e, { personas, meta, visitas, blue, rango: r, vista: 'cohorte' })])) as Record<Embudo, ReturnType<typeof resumirCanal>>
-    let publicidadPropiedadesUsd = 0
-    for (const m of meta) {
-      if (embudoDeCampania(m.campania) !== 'propiedad' || m.fecha < r.desde || m.fecha > r.hasta) continue
-      const t = blue(m.fecha)
-      if (t) publicidadPropiedadesUsd += m.gasto / t
-    }
-    const publicidadCaptacionUsd = canales.tasacion.inversionUsd + canales.clase.inversionUsd
-    const { plata, detalle } = calcularPlata({ ventas, gastos, publicidadCaptacionUsd, publicidadPropiedadesUsd, rango: r, tasaArs: blue })
-    // Una persona puede estar en los dos embudos (se registró a la clase y
-    // después pidió tasación): su captación cuenta UNA vez para el costo.
-    const captadas = new Set<string>()
-    for (const x of personas) {
-      const f = x.fechas.captada
-      if (!f) continue
-      const entra = p.vista === 'cohorte' ? enRango(x.fechas.solicitud, r) : enRango(f, r)
-      if (entra) captadas.add(x.identidad)
-    }
-    const captaciones = captadas.size
-    const adq = adquisicion({ publicidadCaptacionUsd, captaciones, limpioPromedioPorVentaUsd: plata.limpioPromedioPorVentaUsd, tasaVenta: TASA_VENTA_DEFAULT })
-    return { rango: r, canales, cohorte, plata, detalle, adquisicion: { ...adq, captaciones, tasaVenta: TASA_VENTA_DEFAULT } }
-  }
-
-  const actual = periodo(p.rango)
-  const anterior = comp ? periodo(comp) : null
+  const actual = calcularPeriodo(d, p.rango, p.vista)
+  const anterior = comp ? calcularPeriodo(d, comp, p.vista) : null
 
   // Tasas para el planificador: cohorte de tasación del período (editables en pantalla).
   const ct = actual.cohorte.tasacion.pasos
@@ -214,13 +267,17 @@ export async function armarPanel(p: ParametrosPanel) {
     ventasDelPeriodo: actual.detalle,
     series: Object.fromEntries(EMBUDOS.map(e => [e, serie(e, { personas, meta, visitas, blue, rango: p.rango }, p.agrupar)])),
     variantes: porVariante(personas, visitas, p.rango),
-    video,
+    video: d.video,
     videoCohortes,
-    hitos: hitos.filter(h => h.fecha >= p.rango.desde && h.fecha <= p.rango.hasta),
+    hitos: d.hitos.filter(h => h.fecha >= p.rango.desde && h.fecha <= p.rango.hasta),
     plan: { tasas, ejemplo: planificar(8, tasas) },
-    excluidas,
+    excluidas: d.excluidas,
     generadoEn: new Date().toISOString(),
   }
+}
+
+export async function armarPanel(p: ParametrosPanel) {
+  return armarPanelDe(p, await cargarDatos(p))
 }
 
 export type Panel = Awaited<ReturnType<typeof armarPanel>>
