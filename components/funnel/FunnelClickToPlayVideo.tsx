@@ -6,6 +6,43 @@ import { VideoProgressTracker } from '@/lib/funnel/video-progress'
 import { getOrCreateAnonId } from '@/lib/funnel/anon-id'
 import { isHeatmapPreview } from '@/lib/funnel/heatmap-preview'
 import { vslBarFraction } from '@/lib/funnel/vsl-bar'
+import { almacenDelNavegador, guardarPendiente, tomarPendiente } from '@/lib/funnel/video-pendiente'
+
+/**
+ * Cada cuánto se manda el avance MIENTRAS el video se reproduce. El navegador de
+ * Instagram/Facebook cierra sin avisar: lo máximo que se pierde es este lapso.
+ * Antes eran 15 s y el primer envío salía en 0 s, por eso la mayoría de las
+ * vistas figuraban con 0–1 s aunque la persona hubiera mirado más.
+ */
+const LATIDO_MS = 5_000
+
+const URL_TRACK = '/api/track/video'
+
+function enviar(payload: unknown, useBeacon: boolean) {
+  try {
+    if (useBeacon && typeof navigator !== 'undefined' && navigator.sendBeacon) {
+      navigator.sendBeacon(URL_TRACK, new Blob([JSON.stringify(payload)], { type: 'application/json' }))
+    } else {
+      void fetch(URL_TRACK, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      }).catch(() => {})
+    }
+  } catch {
+    /* tracking best-effort */
+  }
+}
+
+/** `video.played` (TimeRanges) como lista de tramos [inicio, fin]. */
+function tramosReproducidos(v: HTMLVideoElement | null): [number, number][] {
+  const out: [number, number][] = []
+  const r = v?.played
+  if (!r) return out
+  for (let i = 0; i < r.length; i++) out.push([r.start(i), r.end(i)])
+  return out
+}
 
 interface FunnelClickToPlayVideoProps {
   src: string
@@ -71,8 +108,7 @@ export function FunnelClickToPlayVideo({
   const videoRef = useRef<HTMLVideoElement>(null)
   const trackerRef = useRef<VideoProgressTracker | null>(null)
   const anonIdRef = useRef<string>('')
-  const lastSampledSec = useRef<number>(-1)
-  const lastFlushMs = useRef<number>(0)
+  const latidoRef = useRef<number | undefined>(undefined)
   // Métricas de reproducción: intentos (clicks en play) y si el playback arrancó.
   const playIntentsRef = useRef<number>(0)
   const startedRef = useRef<boolean>(false)
@@ -81,6 +117,14 @@ export function FunnelClickToPlayVideo({
     (useBeacon: boolean) => {
       if (!trackKey) return
       if (isHeatmapPreview()) return // visor del panel: no trackear
+      // Lo visto sale de `video.played`, el registro exacto del navegador.
+      const tramos = tramosReproducidos(videoRef.current)
+      if (tramos.length > 0) {
+        if (!trackerRef.current) trackerRef.current = new VideoProgressTracker()
+        const d = videoRef.current?.duration
+        if (d && Number.isFinite(d)) trackerRef.current.setDuration(d)
+        trackerRef.current.syncPlayed(tramos)
+      }
       const tr = trackerRef.current
       // Mandamos también cuando solo hubo INTENTO (sin reproducción): así el panel
       // puede mostrar la tasa real de play y detectar bloqueos del navegador.
@@ -102,28 +146,29 @@ export function FunnelClickToPlayVideo({
         playIntents: playIntentsRef.current,
         playbackStarted: startedRef.current,
       }
-      const url = '/api/track/video'
-      try {
-        if (useBeacon && typeof navigator !== 'undefined' && navigator.sendBeacon) {
-          navigator.sendBeacon(url, new Blob([JSON.stringify(payload)], { type: 'application/json' }))
-        } else {
-          void fetch(url, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(payload),
-            keepalive: true,
-          }).catch(() => {})
-        }
-      } catch {
-        /* tracking best-effort */
-      }
+      // Respaldo en el teléfono por si este envío no llega (ver video-pendiente).
+      guardarPendiente(almacenDelNavegador(), trackKey, payload, Date.now())
+      enviar(payload, useBeacon)
     },
     [trackKey, funnel, context],
   )
 
+  function pararLatido() {
+    if (latidoRef.current !== undefined) {
+      window.clearInterval(latidoRef.current)
+      latidoRef.current = undefined
+    }
+  }
+
   // Flush al ocultar la pestaña / cerrar (sendBeacon, nunca en unload → respeta bfcache).
   useEffect(() => {
     if (!trackKey) return
+    // Lo que quedó sin llegar de una visita anterior se reenvía una vez. El
+    // servidor guarda el máximo de cada dato, así que no duplica nada.
+    if (!isHeatmapPreview()) {
+      const previo = tomarPendiente(almacenDelNavegador(), trackKey, Date.now())
+      if (previo) enviar(previo, false)
+    }
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') flush(true)
     }
@@ -133,6 +178,8 @@ export function FunnelClickToPlayVideo({
     return () => {
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('pagehide', onPageHide)
+      if (latidoRef.current !== undefined) window.clearInterval(latidoRef.current)
+      latidoRef.current = undefined
       flush(true) // flush final al desmontar
     }
   }, [trackKey, flush])
@@ -275,30 +322,25 @@ export function FunnelClickToPlayVideo({
   function handlePlaying() {
     startedRef.current = true
     setPaused(false)
-    if (trackKey) flush(false) // confirma la reproducción efectiva cuanto antes
+    if (!trackKey) return
+    flush(false) // confirma la reproducción efectiva cuanto antes
+    // Latido mientras se reproduce. `playing` se dispara también al reanudar y
+    // tras un corte de buffer: se reinicia para no tener dos a la vez.
+    pararLatido()
+    latidoRef.current = window.setInterval(() => flush(false), LATIDO_MS)
   }
   function handleTimeUpdate(e: SyntheticEvent<HTMLVideoElement>) {
+    // Solo la barra visual. Lo visto se mide con `video.played` en cada envío.
     const v = e.currentTarget
-    const t = v.currentTime
-    // La barra se actualiza en CADA timeupdate (~4/s) para que se vea fluida; el
-    // tracking sigue muestreando una vez por segundo, como antes.
-    if (vslBar && v.duration > 0) setFraction(vslBarFraction(t / v.duration))
-    if (!trackKey) return
-    const sec = Math.floor(t)
-    if (sec === lastSampledSec.current) return // throttle ~1/s
-    lastSampledSec.current = sec
-    ensureTracker().sample(t)
-    const now = Date.now()
-    if (now - lastFlushMs.current > 15_000) {
-      lastFlushMs.current = now
-      flush(false)
-    }
+    if (vslBar && v.duration > 0) setFraction(vslBarFraction(v.currentTime / v.duration))
   }
   function handlePause() {
     setPaused(true)
+    pararLatido()
     flush(false)
   }
   function handleEnded() {
+    pararLatido()
     setPaused(true)
     if (vslBar) setFraction(1)
     ensureTracker().markEnded()

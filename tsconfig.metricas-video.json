@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": [
+    "next-env.d.ts",
+    "types/**/*.d.ts",
+    "lib/funnel/video-progress.ts",
+    "lib/funnel/video-progress.test.ts",
+    "lib/funnel/video-pendiente.ts",
+    "lib/funnel/video-pendiente.test.ts",
+    "lib/funnel/video-keys.ts",
+    "lib/metrics/panel/video-cohortes.ts",
+    "lib/metrics/panel/video-cohortes.test.ts",
+    "lib/metrics/panel/servidor.ts",
+    "components/funnel/FunnelClickToPlayVideo.tsx",
+    "components/metrics/panel/VideoRegistrados.tsx",
+    "components/metrics/panel/LandingsVideo.tsx",
+    "components/metrics/panel/PanelNegocio.tsx"
+  ]
+}

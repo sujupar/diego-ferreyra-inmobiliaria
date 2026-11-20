@@ -45,7 +45,7 @@ export function LandingsVideo({ panel, embudos }: { panel: Panel; embudos: ('tas
                 <div key={v.video_key} className="space-y-1">
                   <div className="flex flex-wrap justify-between gap-2 text-sm">
                     <span>{VIDEO[v.video_key] ?? v.video_key}</span>
-                    <span className="text-muted-foreground text-xs tabular-n">{v.reproducciones} plays de {v.cargas} cargas ({pct(v.cargas ? v.reproducciones / v.cargas : null, 0)}) · {v.segundos_promedio ?? '—'} s vistos en promedio</span>
+                    <span className="text-muted-foreground text-xs tabular-n">arrancó en {v.reproducciones} de {v.cargas} que tocaron play ({pct(v.cargas ? v.reproducciones / v.cargas : null, 0)}) · {v.segundos_promedio ?? '—'} s vistos en promedio</span>
                   </div>
                   <div className="grid grid-cols-4 gap-1">
                     {tramos.map(([t, n]) => {

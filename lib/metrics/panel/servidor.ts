@@ -10,10 +10,12 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { rpcPaginado } from '@/lib/supabase/rpc-paginado'
-import { armarPersonas, type ContactoRow, type DealRow, type Embudo, type HistoriaRow, type InformeRow, type EnvioLanding } from './personas'
+import { VIDEO_KEYS, type VideoKeyDef } from '@/lib/funnel/video-keys'
+import { armarVideoCohortes, type SesionVideoRow, type VistaVideoRow } from './video-cohortes'
+import { armarPersonas, contactosDePrueba, type ContactoRow, type DealRow, type Embudo, type HistoriaRow, type InformeRow, type EnvioLanding } from './personas'
 import { armarBlue, embudoDeCampania, porVariante, resumirCanal, serie, type MetaDia, type VisitaDia, type Blue } from './embudo'
 import { adquisicion, calcularPlata, planificar, TASA_VENTA_DEFAULT, type GastoFijo } from './economia'
-import { enRango, rangoComparado, type Agrupar, type Comparar, type Rango } from './rango'
+import { enRango, rangoComparado, sumarDias, type Agrupar, type Comparar, type Rango } from './rango'
 import type { VentaRow } from './reparto'
 
 // Las tablas nuevas no están en los tipos generados: cliente sin tipar.
@@ -50,7 +52,32 @@ async function cargarPersonas(sb: SupabaseClient) {
     todas<InformeRow>((a, b) => sb.from('appraisals').select('contact_id, created_at').order('id').range(a, b)),
     todas<EnvioLanding>((a, b) => sb.from('funnel_lead_submissions').select('deal_id, funnel').order('id').range(a, b)),
   ])
-  return armarPersonas({ deals, contactos, historia, informes, envios })
+  return { ...armarPersonas({ deals, contactos, historia, informes, envios }), pruebas: contactosDePrueba(contactos).ids }
+}
+
+/** Inicio del día `fecha` en Argentina (UTC−3, sin horario de verano), en ISO UTC. */
+const inicioDiaAr = (fecha: string) => `${fecha}T03:00:00.000Z`
+
+/**
+ * Filas para "video: registrados vs no registrados". Volumen chico (cientos de
+ * visitas por mes), así que el cruce se hace en memoria con lógica pura
+ * (`video-cohortes.ts`) en vez de una función nueva en la base.
+ */
+async function cargarFilasVideoCohortes(sb: SupabaseClient, r: Rango) {
+  const desde = inicioDiaAr(r.desde)
+  const hasta = inicioDiaAr(sumarDias(r.hasta, 1))
+  const claves = Object.entries(VIDEO_KEYS as Record<string, VideoKeyDef>).filter(([, d]) => d.pagina).map(([k]) => k)
+  const paginas = [...new Set(claves.map(k => (VIDEO_KEYS as Record<string, VideoKeyDef>)[k].pagina!))]
+  const [sesiones, videos, identidades] = await Promise.all([
+    todas<SesionVideoRow>((a, b) => sb.from('heatmap_session_state').select('anon_id, page, contact_id, first_at')
+      .in('page', paginas).gte('first_at', desde).lt('first_at', hasta).order('id').range(a, b)),
+    // Una fila de video se actualiza DESPUÉS de que empezó la visita: alcanza con ese piso.
+    todas<VistaVideoRow>((a, b) => sb.from('video_view_state')
+      .select('anon_id, video_key, watch_seconds, duration_s, max_percent, completed, play_intents, playback_started, watched_buckets, contact_id')
+      .in('video_key', claves).gte('updated_at', desde).order('id').range(a, b)),
+    todas<{ anon_id: string; contact_id: string | null }>((a, b) => sb.from('anon_identity').select('anon_id, contact_id').not('contact_id', 'is', null).order('anon_id').range(a, b)),
+  ])
+  return { sesiones, videos, identidades: new Map(identidades.map(i => [i.anon_id, i.contact_id!])) }
 }
 
 interface MetaRaw { date: string; campaign_name: string | null; spend: number | string | null; impressions: number | string | null; clicks: number | string | null; landing_page_views: number | string | null; acciones: { action_type: string; value: string }[] | null }
@@ -131,10 +158,16 @@ export async function armarPanel(p: ParametrosPanel) {
   const comp = rangoComparado(p.rango, p.comparar)
   const total: Rango = comp ? { desde: comp.desde < p.rango.desde ? comp.desde : p.rango.desde, hasta: p.rango.hasta > comp.hasta ? p.rango.hasta : comp.hasta } : p.rango
 
-  const [{ personas, excluidas }, meta, visitas, video, blue, ventas, gastos, hitos] = await Promise.all([
+  const [{ personas, excluidas, pruebas }, meta, visitas, video, blue, ventas, gastos, hitos, filasCohortes] = await Promise.all([
     cargarPersonas(sb), cargarMeta(sb, total), cargarVisitas(sb, total), cargarVideo(sb, p.rango),
     cargarBlue(), cargarVentas(sb), cargarGastos(sb), cargarHitos(sb),
+    // Un fallo acá no tumba el panel entero: la tarjeta dice "no disponible".
+    cargarFilasVideoCohortes(sb, p.rango).catch((err: unknown) => {
+      console.warn('[panel] video por registrados:', err instanceof Error ? err.message : err)
+      return null
+    }),
   ])
+  const videoCohortes = filasCohortes ? armarVideoCohortes({ ...filasCohortes, pruebas, rango: p.rango }) : null
 
   const periodo = (r: Rango) => {
     const canales = Object.fromEntries(EMBUDOS.map(e => [e, resumirCanal(e, { personas, meta, visitas, blue, rango: r, vista: p.vista })])) as Record<Embudo, ReturnType<typeof resumirCanal>>
@@ -182,6 +215,7 @@ export async function armarPanel(p: ParametrosPanel) {
     series: Object.fromEntries(EMBUDOS.map(e => [e, serie(e, { personas, meta, visitas, blue, rango: p.rango }, p.agrupar)])),
     variantes: porVariante(personas, visitas, p.rango),
     video,
+    videoCohortes,
     hitos: hitos.filter(h => h.fecha >= p.rango.desde && h.fecha <= p.rango.hasta),
     plan: { tasas, ejemplo: planificar(8, tasas) },
     excluidas,
