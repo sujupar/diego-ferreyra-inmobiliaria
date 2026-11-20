@@ -109,3 +109,63 @@ describe('VideoProgressTracker', () => {
     })
   })
 })
+
+describe('VideoProgressTracker.syncPlayed (tramos de video.played)', () => {
+  it('un tramo continuo de 0 a 12,4 s cuenta 12 segundos y la profundidad acorde', () => {
+    const t = new VideoProgressTracker()
+    t.setDuration(100)
+    t.syncPlayed([[0, 12.4]])
+    expect(t.watchSeconds).toBe(12)
+    expect(t.maxPercent).toBe(12)
+  })
+
+  it('adelantar al 90 % y mirar 3 s cuenta ~3 s, no 90', () => {
+    const t = new VideoProgressTracker()
+    t.setDuration(100)
+    t.syncPlayed([[0, 0.3], [90, 93]])
+    expect(t.watchSeconds).toBe(3)
+    expect(t.maxPercent).toBe(93)
+  })
+
+  it('volver a mandar los mismos tramos no suma de nuevo (idempotente)', () => {
+    const t = new VideoProgressTracker()
+    t.setDuration(60)
+    t.syncPlayed([[0, 10]])
+    t.syncPlayed([[0, 10]])
+    t.syncPlayed([[0, 15]])
+    expect(t.watchSeconds).toBe(15)
+  })
+
+  it('tramos que se pisan cuentan cada segundo una sola vez', () => {
+    const t = new VideoProgressTracker()
+    t.setDuration(60)
+    t.syncPlayed([[0, 10], [5, 20]])
+    expect(t.watchSeconds).toBe(20)
+  })
+
+  it('llegar al final marca los cuartiles y completado', () => {
+    const t = new VideoProgressTracker()
+    t.setDuration(40)
+    t.syncPlayed([[0, 40]])
+    expect(t.completed).toBe(true)
+    expect(t.quartiles).toBe(
+      QUARTILE_BITS.p25 | QUARTILE_BITS.p50 | QUARTILE_BITS.p75 | QUARTILE_BITS.p95 | QUARTILE_BITS.p100,
+    )
+    expect(t.bucketString()).toBe('1'.repeat(100))
+  })
+
+  it('ignora valores rotos (NaN, infinito, al revés) sin romperse', () => {
+    const t = new VideoProgressTracker()
+    t.setDuration(30)
+    t.syncPlayed([[NaN, 5], [3, Infinity], [10, 4], [-2, 1]])
+    expect(t.watchSeconds).toBe(1) // solo [0,1] del último
+  })
+
+  it('no cuenta más allá de la duración', () => {
+    const t = new VideoProgressTracker()
+    t.setDuration(10)
+    t.syncPlayed([[0, 10.6]])
+    expect(t.watchSeconds).toBe(10)
+    expect(t.maxPercent).toBe(100)
+  })
+})

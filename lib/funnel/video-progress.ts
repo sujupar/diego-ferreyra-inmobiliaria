@@ -38,6 +38,32 @@ export class VideoProgressTracker {
   sample(t: number): void {
     if (!Number.isFinite(t) || t < 0) return
     this.seconds.add(Math.floor(t))
+    this.registrarProfundidad(t)
+  }
+
+  /**
+   * Suma los tramos que el NAVEGADOR registró como reproducidos (`video.played`).
+   * Es la fuente exacta: no depende de que `timeupdate` llegue a tiempo (el
+   * navegador lo frena en segundo plano o con poca batería) y no cuenta los
+   * saltos, porque un seek no agrega un tramo reproducido. Un segundo cuenta si
+   * se reprodujo al menos la mitad. Llamarla varias veces es idempotente.
+   */
+  syncPlayed(tramos: ReadonlyArray<readonly [number, number]>): void {
+    for (const [inicio, fin] of tramos) {
+      if (!Number.isFinite(inicio) || !Number.isFinite(fin)) continue
+      const a = Math.max(0, inicio)
+      const b = this._duration > 0 ? Math.min(fin, this._duration) : fin
+      if (b <= a) continue
+      // Tope defensivo: un tramo de más de 6 h es un dato roto, no un visionado.
+      const ultimo = Math.min(Math.floor(b), Math.floor(a) + 6 * 3600)
+      for (let s = Math.floor(a); s <= ultimo; s++) {
+        if (Math.min(b, s + 1) - Math.max(a, s) >= 0.5) this.seconds.add(s)
+      }
+      this.registrarProfundidad(b)
+    }
+  }
+
+  private registrarProfundidad(t: number): void {
     if (this._duration > 0) {
       const pct = Math.min(100, Math.round((t / this._duration) * 100))
       if (pct > this._maxPercent) this._maxPercent = pct
@@ -60,11 +86,16 @@ export class VideoProgressTracker {
   bucketString(buckets = 100): string | null {
     if (this._duration <= 0) return null
     const arr = new Array<string>(buckets).fill('0')
+    // Cada segundo marca TODOS los tramos que toca: en un video de menos de 100 s
+    // un segundo abarca más de un tramo, y marcar uno solo dejaba huecos falsos
+    // en la curva de retención.
     for (const sec of this.seconds) {
-      let b = Math.floor((sec / this._duration) * buckets)
-      if (b < 0) b = 0
-      if (b >= buckets) b = buckets - 1
-      arr[b] = '1'
+      let desde = Math.floor((sec / this._duration) * buckets)
+      let hasta = Math.ceil((Math.min(sec + 1, this._duration) / this._duration) * buckets) - 1
+      if (desde < 0) desde = 0
+      if (hasta >= buckets) hasta = buckets - 1
+      if (hasta < desde) hasta = desde
+      for (let b = desde; b <= hasta; b++) arr[b] = '1'
     }
     return arr.join('')
   }
