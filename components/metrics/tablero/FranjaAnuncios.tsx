@@ -40,8 +40,11 @@ export function FranjaAnuncios({ t, onCambio }: { t: Tablero; onCambio: () => vo
                 {a.campanias.map(c => (
                   <tr key={c.campaniaId} className="border-b last:border-0">
                     <td className="py-1.5 pr-2">
-                      <span className="text-xs text-muted-foreground">{TIPO[c.tipo]} · </span>
-                      {c.propiedadId ? <Link className="underline-offset-2 hover:underline" href={`/properties/${c.propiedadId}`}>{c.nombre}</Link> : c.nombre}
+                      {/* Tasación y clase se nombran por su embudo: el nombre interno de Meta
+                          (emojis, niveles) no le dice nada al que lee la reunión. */}
+                      {c.propiedadId
+                        ? <><span className="text-xs text-muted-foreground">{TIPO[c.tipo]} · </span><Link className="underline-offset-2 hover:underline" href={`/properties/${c.propiedadId}`}>{c.nombre}</Link></>
+                        : c.tipo === 'propiedad' ? <><span className="text-xs text-muted-foreground">{TIPO[c.tipo]} · </span>{c.nombre}</> : TIPO[c.tipo]}
                     </td>
                     <td className="text-right">{ars(c.gasto)}</td>
                     <td className="text-right">{num(c.visitas)}</td>
@@ -71,7 +74,7 @@ function TramoTexto({ etiqueta, t }: { etiqueta: string; t: Tramo | null }) {
   if (!t) return <span className="text-muted-foreground">{etiqueta}: todavía no hay días</span>
   return (
     <span className="tabular-n">
-      {etiqueta} ({fechaCorta(t.desde)} – {fechaCorta(t.hasta)}): {ars(t.gasto)} · {num(t.registros)} registros · <strong>{t.registros === 0 ? 'sin registros' : ars(t.costoPorRegistro)}</strong> por registro
+      {etiqueta} ({fechaCorta(t.desde)} – {fechaCorta(t.hasta)}): {ars(t.gasto)} · {num(t.registros)} {t.registros === 1 ? 'registro' : 'registros'} · {t.registros === 0 ? 'sin costo por registro' : <><strong>{ars(t.costoPorRegistro)}</strong> por registro</>}
     </span>
   )
 }
@@ -86,7 +89,7 @@ function ListaAjustes({ ajustes }: { ajustes: AjusteCalculado[] }) {
           {j.detalle && <p className="text-xs text-muted-foreground">{j.detalle}</p>}
           {(j.resultadoBuscado || j.metaCostoRegistroArs || j.fechaDecision) && (
             <p className="text-xs">
-              {j.resultadoBuscado && <>Busca: {j.resultadoBuscado}. </>}
+              {j.resultadoBuscado && <>Busca: {j.resultadoBuscado.replace(/[.\s]+$/, '')}. </>}
               {j.metaCostoRegistroArs && <>Meta: {ars(j.metaCostoRegistroArs)} por registro. </>}
               {j.fechaDecision && <>Se decide el {fechaCorta(j.fechaDecision)}.</>}
             </p>
