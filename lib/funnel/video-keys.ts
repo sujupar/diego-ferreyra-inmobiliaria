@@ -35,7 +35,10 @@ export const VIDEO_KEYS = {
   // El 2026-11-06 la B cambió el VSL largo (11:51) por uno corto (7:30). Son dos
   // videos distintos: con la misma clave, la retención por % de los dos se
   // mezclaría en un solo bloque (el mismo error que separó A y B el 19/9).
-  'hero-tasacion-neta-corto': { label: 'Video de la Versión B — VSL corto (desde el 6/11/2026)', orden: 18 },
+  // El 2026-11-19 la B pasó al video animado con voz en off, el mismo de la A.
+  // Clave propia: es otra página, y sus datos no se mezclan con los de la A.
+  'hero-tasacion-b-animado': { label: 'Video de la Versión B — video animado (desde el 19/11/2026)', orden: 16 },
+  'hero-tasacion-neta-corto': { label: 'Video de la Versión B — VSL corto (6/11 al 19/11/2026)', orden: 18, retirada: true },
   'hero-tasacion-neta': { label: 'Video de la Versión B — VSL largo (hasta el 6/11/2026)', orden: 20, retirada: true },
   'hero-clase': { label: 'Video del hero', orden: 30 },
   'clase-completa': { label: 'Clase completa (página de gracias)', orden: 40 },

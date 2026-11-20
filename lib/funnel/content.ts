@@ -84,11 +84,15 @@ export const TASACION_B_CONTENT = {
     // el caso que cuenta el video (235.000 de oferta contra 247.500 de reserva).
     credit:
       'Misma propiedad. Mismo precio de publicación. {antes} vs. {despues} en mano. Una diferencia de US$16.600.',
-    // Archivos PROPIOS, distintos a los de la variante A y a los del VSL largo
-    // (`tasacion-neta-vsl-web.mp4`, que queda en Storage sin uso). Reemplazar un
-    // archivo compartido cambia dos páginas a la vez sin que nada avise.
-    videoPath: 'web/tasacion-neta-vsl-corto-web.mp4',
-    posterPath: 'web/tasacion-neta-vsl-corto-poster.jpg',
+    // Desde el 2026-11-19 la B pasa el video animado con voz en off (3:16): el
+    // mismo que tenía la variante A, el que mejor retuvo (24 % lo ve casi entero,
+    // contra 3-6 % de los dos VSL de Diego). Es una COPIA byte a byte con nombre
+    // propio, no el archivo de la A: reemplazar un archivo compartido cambia dos
+    // páginas a la vez sin que nada avise. Los VSL largo y corto
+    // (`tasacion-neta-vsl-web.mp4`, `tasacion-neta-vsl-corto-web.mp4`) quedan en
+    // Storage sin uso.
+    videoPath: 'web/tasacion-b-animado-web.mp4',
+    posterPath: 'web/tasacion-b-animado-poster.jpg',
   },
   qualifier: {
     lead: '*Pedila si',

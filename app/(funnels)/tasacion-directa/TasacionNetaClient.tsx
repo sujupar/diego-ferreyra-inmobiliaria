@@ -195,8 +195,10 @@ export function TasacionNetaClient({
               // estadísticas mezcladas en un solo bloque de Embudos. El catálogo y la
               // prueba que impide repetirla están en `lib/funnel/video-keys.ts`.
               // El VSL corto (desde el 6/11/2026) tiene su clave propia: con la del
-              // largo, la retención de dos videos distintos se mezclaría.
-              trackKey="hero-tasacion-neta-corto"
+              // largo, la retención de dos videos distintos se mezclaría. Y el
+              // video animado (desde el 19/11/2026) también: es el mismo video
+              // que tuvo la A, pero en OTRA página, así que su clave es otra.
+              trackKey="hero-tasacion-b-animado"
               funnel="tasacion"
               context="hero"
               warmup
