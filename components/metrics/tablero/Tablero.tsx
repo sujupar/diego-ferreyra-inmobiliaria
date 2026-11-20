@@ -63,7 +63,7 @@ export function Tablero() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <label className="text-sm flex items-center gap-1.5">
-          <span className="text-muted-foreground">Período</span>
+          <span className="whitespace-nowrap text-muted-foreground">Período</span>
           <select className={sel} value={f.atajo} onChange={e => {
             const atajo = e.target.value as Filtros['atajo']
             setF(atajo === 'personalizado' ? { ...f, atajo } : { ...f, atajo, rango: rangoDeAtajo(atajo, hoyArgentina()) })
@@ -79,7 +79,7 @@ export function Tablero() {
           </span>
         )}
         <label className="text-sm flex items-center gap-1.5">
-          <span className="text-muted-foreground">Comparar con</span>
+          <span className="whitespace-nowrap text-muted-foreground">Comparar con</span>
           <select className={sel} value={f.comparar} onChange={e => setF({ ...f, comparar: e.target.value as Comparar })}>
             {COMPARAR.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
           </select>
