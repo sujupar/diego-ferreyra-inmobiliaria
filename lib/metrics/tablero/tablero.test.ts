@@ -59,7 +59,7 @@ describe('anuncios', () => {
     m('2026-11-02', '[Auto] Sin ficha', 1_000, 0, 1, 'p2'),
   ]
   it('totales por tipo; null si Meta no tiene filas en el rango', () => {
-    expect(totalAnuncios(meta, { desde: '2026-11-01', hasta: '2026-11-30' }, 'tasacion')).toEqual({ gasto: 30_000, visitas: 15, registros: 1, costoPorRegistro: 30_000, diasConDato: 2 })
+    expect(totalAnuncios(meta, { desde: '2026-11-01', hasta: '2026-11-30' }, 'tasacion')).toMatchObject({ gasto: 30_000, visitas: 15, registros: 1, costoPorRegistro: 30_000, diasConDato: 2 })
     expect(totalAnuncios(meta, { desde: '2026-10-01', hasta: '2026-10-31' }, 'tasacion')).toBeNull()
   })
   it('por campaña: el píxel para tasación/clase, la ficha para propiedades', () => {

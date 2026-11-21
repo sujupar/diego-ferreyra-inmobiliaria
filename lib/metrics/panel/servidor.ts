@@ -22,7 +22,7 @@ import type { VentaRow } from './reparto'
 export const db = (): SupabaseClient => createAdminClient() as unknown as SupabaseClient
 
 /** Trae TODAS las filas de una consulta (PostgREST corta en 1000 sin avisar). */
-async function todas<T>(armar: (desde: number, hasta: number) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>): Promise<T[]> {
+export async function todas<T>(armar: (desde: number, hasta: number) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>): Promise<T[]> {
   const out: T[] = []
   for (let p = 0; p < 50; p++) {
     const { data, error } = await armar(p * 1000, p * 1000 + 999)
@@ -192,17 +192,35 @@ export function rangoTotal(r: Rango, comp: Rango | null): Rango {
  * `metaDesde`/`metaHasta`: rango extra para el gasto de Meta (el Tablero calcula
  * el margen del año y el "después" de cada ajuste hasta hoy).
  */
-export async function cargarDatos(p: ParametrosPanel, extra: { metaDesde?: string; metaHasta?: string } = {}) {
+export async function cargarDatos(
+  p: ParametrosPanel,
+  extra: {
+    metaDesde?: string
+    metaHasta?: string
+    /** Rango comparado ya resuelto por quien llama (el Tablero compara contra un mes elegido). */
+    comparado?: Rango | null
+    /**
+     * Bajar las visitas también en este rango: el Tablero elige "el mejor mes"
+     * DESPUÉS de cargar, y ese mes puede caer antes o después del período elegido.
+     */
+    visitasDesde?: string
+    visitasHasta?: string
+  } = {},
+) {
   const sb = db()
-  const comp = rangoComparado(p.rango, p.comparar)
+  const comp = extra.comparado !== undefined ? extra.comparado : rangoComparado(p.rango, p.comparar)
   const total = rangoTotal(p.rango, comp)
   const rangoMeta: Rango = {
     desde: extra.metaDesde && extra.metaDesde < total.desde ? extra.metaDesde : total.desde,
     hasta: extra.metaHasta && extra.metaHasta > total.hasta ? extra.metaHasta : total.hasta,
   }
+  const rangoVisitas: Rango = {
+    desde: extra.visitasDesde && extra.visitasDesde < total.desde ? extra.visitasDesde : total.desde,
+    hasta: extra.visitasHasta && extra.visitasHasta > total.hasta ? extra.visitasHasta : total.hasta,
+  }
 
   const [{ personas, excluidas, pruebas, deals, contactos, historia }, meta, visitas, video, blue, ventas, gastos, hitos, filasCohortes] = await Promise.all([
-    cargarPersonas(sb), cargarMeta(sb, rangoMeta), cargarVisitas(sb, total), cargarVideo(sb, p.rango),
+    cargarPersonas(sb), cargarMeta(sb, rangoMeta), cargarVisitas(sb, rangoVisitas), cargarVideo(sb, p.rango),
     cargarBlue(), cargarVentas(sb), cargarGastos(sb), cargarHitos(sb),
     // Un fallo acá no tumba el panel entero: la tarjeta dice "no disponible".
     // Se baja el rango TOTAL (período + comparación): armarVideoCohortes filtra por fecha.
