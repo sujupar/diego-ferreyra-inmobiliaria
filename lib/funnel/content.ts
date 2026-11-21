@@ -99,12 +99,11 @@ export const TASACION_B_CONTENT = {
     body: 'sos propietario —o uno de los propietarios— de una propiedad en CABA o Zona Norte. No necesitás tener decidido vender. Si lo estás evaluando, conocer estos números es una decisión inteligente.',
   },
   cta: {
-    // El botón de debajo del video pide EL NÚMERO, que es la categoría propia de
-    // la oferta; "tasación gratuita" la ofrecen todas las inmobiliarias.
-    label: 'QUIERO SABER CUÁNTO ME QUEDA',
+    // Los dos botones dicen lo mismo, a pedido del dueño (2026-11-21).
+    label: 'SOLICITAR TASACIÓN PROFESIONAL',
     // Sin "te escribimos en los próximos minutos": no se puede prometer siempre.
     note: 'Tasación profesional + simulación de costos. Gratis, confidencial y sin compromiso.',
-    labelFinal: 'SOLICITAR MI TASACIÓN PROFESIONAL',
+    labelFinal: 'SOLICITAR TASACIÓN PROFESIONAL',
     noteShort: 'Tasación profesional + simulación de costos. Sin costo y sin compromiso.',
   },
   testimonialsHeading: 'Algunos de nuestros casos',
@@ -116,7 +115,7 @@ export const TASACION_B_CONTENT = {
     // prometer tiempos de respuesta.
     title: 'Completá tus datos para saber cuánto te queda en mano',
     subtitle: 'Te escribimos por WhatsApp y te llamamos para coordinar la tasación.',
-    submitLabel: 'Solicitar mi tasación profesional',
+    submitLabel: 'Solicitar tasación profesional',
     // Decía "Coordinás el día y la hora por WhatsApp", pero desde el 2026-08-27 se
     // coordina POR TELÉFONO (ver el comentario del formulario de la variante A):
     // le prometía a la persona algo que no iba a pasar.
