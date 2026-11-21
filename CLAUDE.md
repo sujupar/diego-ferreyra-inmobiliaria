@@ -248,6 +248,7 @@ Next.js 16 + React 19 + TypeScript 5 + Supabase + Resend + Netlify Functions. sh
 - Netlify auto-deploya en cada push a `main` (webhook nativo, NO usa GitHub Actions).
 - Site ID `b7e73ba5-3bfb-4604-b7bf-353169dd912a`.
 - Commit author DEBE ser `Sujupar <redstyle50@gmail.com>` o el deploy falla.
+- **Merge de PR:** usar `gh pr merge --rebase`, NUNCA `--squash`/`--merge`: esos dejan el commit de `main` a nombre de `sujupar <...@users.noreply.github.com>` y Netlify NO despliega (pasó con el PR #68 y el #89). Verificar siempre que la página cambió.
 
 ## Supabase
 - CLI no conecta (auth issue) — el usuario corre SQL en el Dashboard SQL Editor manualmente.
