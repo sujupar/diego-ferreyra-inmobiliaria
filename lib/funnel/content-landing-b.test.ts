@@ -45,8 +45,8 @@ describe('landing B — textos del documento de Diego', () => {
     expect(C.qualifier.lead).not.toMatch(/solamente/)
   })
 
-  it('el botón de debajo del video pide el número, no "la tasación gratuita"', () => {
-    expect(C.cta.label).toBe('QUIERO SABER CUÁNTO ME QUEDA')
+  it('el botón de debajo del video dice lo mismo que el final', () => {
+    expect(C.cta.label).toBe('SOLICITAR TASACIÓN PROFESIONAL')
     expect(C.cta.note).toBe('Tasación profesional + simulación de costos. Gratis, confidencial y sin compromiso.')
     expect(C.cta.note).not.toMatch(/próximos minutos/)
   })
@@ -56,7 +56,7 @@ describe('landing B — textos del documento de Diego', () => {
   })
 
   it('el botón final pide la tasación PROFESIONAL y repite lo que recibe', () => {
-    expect(C.cta.labelFinal).toBe('SOLICITAR MI TASACIÓN PROFESIONAL')
+    expect(C.cta.labelFinal).toBe('SOLICITAR TASACIÓN PROFESIONAL')
     expect(C.cta.noteShort).toBe('Tasación profesional + simulación de costos. Sin costo y sin compromiso.')
   })
 
@@ -70,7 +70,7 @@ describe('landing B — textos del documento de Diego', () => {
   it('el formulario sigue la misma promesa que la página y no promete tiempos de respuesta', () => {
     expect(C.form.title).toBe('Completá tus datos para saber cuánto te queda en mano')
     expect(C.form.subtitle).toBe('Te escribimos por WhatsApp y te llamamos para coordinar la tasación.')
-    expect(C.form.submitLabel).toBe('Solicitar mi tasación profesional')
+    expect(C.form.submitLabel).toBe('Solicitar tasación profesional')
     expect(`${C.form.title} ${C.form.subtitle} ${C.form.footnote}`).not.toMatch(/próximos (segundos|minutos)/)
   })
 
