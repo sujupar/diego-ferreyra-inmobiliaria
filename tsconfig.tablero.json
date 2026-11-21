@@ -11,6 +11,8 @@
     "app/(dashboard)/metrics/page.tsx",
     "app/api/metrics/tablero/route.ts",
     "app/api/metrics/tablero/anuncios-vivo/route.ts",
+    "app/api/metrics/tablero/reels/route.ts",
+    "components/metrics/tablero/*.ts",
     "app/api/metrics/hitos/route.ts",
     "app/api/metrics/panel/route.ts",
     "scripts/tablero-control.probe.ts",

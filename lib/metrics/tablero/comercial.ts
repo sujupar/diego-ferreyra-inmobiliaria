@@ -137,9 +137,32 @@ export interface LeadRow {
   created_at: string
   suspected_bot: boolean | null
   deleted_at: string | null
+  /** Solo para reconocer a la misma persona; nunca se muestra. */
+  email?: string | null
+  phone?: string | null
 }
 
 const low = (x: unknown) => (typeof x === 'string' ? x.toLowerCase() : '')
+
+/** Clave de la persona: email normalizado, o los últimos 10 dígitos del teléfono. null si no hay ninguno. */
+export function clavePersona(l: Pick<LeadRow, 'email' | 'phone'>): string | null {
+  const e = (l.email ?? '').trim().toLowerCase()
+  if (e) return 'e:' + e
+  const t = (l.phone ?? '').replace(/\D/g, '').slice(-10)
+  return t.length === 10 ? 't:' + t : null
+}
+
+/**
+ * De dónde vino un registro, con el nombre del anuncio cuando el enlace lo trae
+ * (`utm_content`). Meta deja literal `{{ad.id}}` cuando el anuncio no completa el
+ * parámetro: eso es "sin dato del anuncio", no un nombre.
+ */
+export function detalleOrigen(source: string | null, utm: Record<string, unknown> | null): string {
+  const o = origenRegistro(source, utm)
+  if (o !== 'meta') return ETIQUETA_ORIGEN[o]
+  const c = typeof utm?.utm_content === 'string' ? utm.utm_content.trim() : ''
+  return c && !c.includes('{{') ? `Anuncio «${c.slice(0, 80)}»` : 'Anuncio (sin dato del anuncio)'
+}
 
 /**
  * De dónde vino un registro. Orden: el cartel manda (se carga en la visita);
@@ -151,7 +174,7 @@ export function origenRegistro(source: string | null, utm: Record<string, unknow
   if (low(source).startsWith('visita:')) return 'cartel'
   const u = utm ?? {}
   if (low(u.utm_medium) === 'reel' || (low(u.utm_source) === 'instagram' && low(u.utm_content).startsWith('reel'))) return 'reel'
-  if (u.fbclid || ['meta', 'fb', 'facebook'].includes(low(u.utm_source)) || low(u.utm_medium).startsWith('paid')) return 'meta'
+  if (u.fbclid || ['meta', 'fb', 'facebook', 'ig'].includes(low(u.utm_source)) || low(u.utm_medium).startsWith('paid')) return 'meta'
   return 'directo'
 }
 
@@ -159,27 +182,43 @@ export interface RegistrosPropiedad {
   propiedadId: string
   direccion: string | null
   total: number
+  /** Personas distintas (mismo email o teléfono = una persona). */
+  personas: number
   porOrigen: Record<OrigenRegistro, number>
+  /** De dónde vinieron, con el nombre del anuncio cuando se sabe. De mayor a menor. */
+  detalle: { etiqueta: string; cantidad: number }[]
 }
 
 const vacio = (): Record<OrigenRegistro, number> => ({ cartel: 0, reel: 0, meta: 0, directo: 0 })
 
 /** Registros válidos (sin robots ni borrados) del período, por propiedad. */
 export function registrosPorPropiedad(leads: LeadRow[], r: Rango, direcciones: Map<string, string | null>) {
-  const M = new Map<string, RegistrosPropiedad>()
+  const M = new Map<string, RegistrosPropiedad & { _personas: Set<string>; _detalle: Map<string, number> }>()
   const totalPorOrigen = vacio()
+  const todas = new Set<string>()
   let total = 0
   for (const l of leads) {
     if (l.suspected_bot || l.deleted_at || !l.property_id || !enRango(dia(l.created_at), r)) continue
     const o = origenRegistro(l.source, l.utm)
-    const x = M.get(l.property_id) ?? { propiedadId: l.property_id, direccion: direcciones.get(l.property_id) ?? null, total: 0, porOrigen: vacio() }
+    const x = M.get(l.property_id) ?? { propiedadId: l.property_id, direccion: direcciones.get(l.property_id) ?? null, total: 0, personas: 0, porOrigen: vacio(), detalle: [], _personas: new Set<string>(), _detalle: new Map<string, number>() }
     x.total++
     x.porOrigen[o]++
+    // Sin email ni teléfono no se puede saber si es la misma persona: cuenta como una distinta.
+    const k = clavePersona(l) ?? `sin:${total}`
+    x._personas.add(k)
+    todas.add(k)
+    const et = detalleOrigen(l.source, l.utm)
+    x._detalle.set(et, (x._detalle.get(et) ?? 0) + 1)
     M.set(l.property_id, x)
     totalPorOrigen[o]++
     total++
   }
-  return { total, porOrigen: totalPorOrigen, porPropiedad: [...M.values()].sort((a, b) => b.total - a.total) }
+  const porPropiedad: RegistrosPropiedad[] = [...M.values()].map(({ _personas, _detalle, ...x }) => ({
+    ...x,
+    personas: _personas.size,
+    detalle: [..._detalle.entries()].map(([etiqueta, cantidad]) => ({ etiqueta, cantidad })).sort((a, b) => b.cantidad - a.cantidad),
+  }))
+  return { total, personas: todas.size, porOrigen: totalPorOrigen, porPropiedad: porPropiedad.sort((a, b) => b.total - a.total) }
 }
 
 /** Registros del período que vinieron de Meta, por propiedad (para el costo por registro de sus campañas). */

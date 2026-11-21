@@ -18,27 +18,48 @@ const div = (a: number, b: number) => (b ? a / b : null)
 export interface TotalAnuncios {
   /** ARS. */
   gasto: number
+  /** USD al dólar blue de cada día. null si falta el blue de algún día con gasto. */
+  gastoUsd: number | null
+  impresiones: number
+  /** Clics en el enlace. */
+  clics: number
   /** Visitas a la página que mide Meta (landing_page_view). */
   visitas: number
   registros: number
   costoPorRegistro: number | null
+  costoPorRegistroUsd: number | null
   /** Días del rango con fila en `meta_ads_daily` (si es 0, el período no tiene dato). */
   diasConDato: number
 }
 
-/** Totales de un tipo de campaña en el rango. null si Meta no tiene NINGUNA fila en ese rango (sin dato, no $0). */
-export function totalAnuncios(meta: MetaDia[], r: Rango, tipo: EmbudoCampania): TotalAnuncios | null {
-  let gasto = 0, visitas = 0, registros = 0
+/**
+ * Totales de un tipo de campaña en el rango. null si Meta no tiene NINGUNA fila
+ * en ese rango (sin dato, no $0). `blue` pasa cada día a USD; sin `blue`, el USD
+ * queda sin dato.
+ */
+export function totalAnuncios(meta: MetaDia[], r: Rango, tipo: EmbudoCampania, blue?: (fecha: string) => number | null): TotalAnuncios | null {
+  let gasto = 0, gastoUsd: number | null = blue ? 0 : null, impresiones = 0, clics = 0, visitas = 0, registros = 0
   const dias = new Set<string>()
   for (const m of meta) {
     if (!enRango(m.fecha, r) || embudoDeCampania(m.campania) !== tipo) continue
     dias.add(m.fecha)
     gasto += m.gasto
+    if (gastoUsd != null && m.gasto > 0) {
+      const t = blue?.(m.fecha)
+      gastoUsd = t ? gastoUsd + m.gasto / t : null
+    }
+    impresiones += m.impresiones
+    clics += m.clics
     visitas += m.visitasMeta
     registros += m.registros ?? 0
   }
   if (dias.size === 0) return null
-  return { gasto, visitas, registros, costoPorRegistro: div(gasto, registros), diasConDato: dias.size }
+  return {
+    gasto, gastoUsd, impresiones, clics, visitas, registros,
+    costoPorRegistro: div(gasto, registros),
+    costoPorRegistroUsd: gastoUsd == null ? null : div(gastoUsd, registros),
+    diasConDato: dias.size,
+  }
 }
 
 export interface FilaCampania {
@@ -52,6 +73,9 @@ export interface FilaCampania {
   registros: number | null
   fuenteRegistros: 'pixel' | 'pagina' | null
   costoPorRegistro: number | null
+  /** USD al blue de cada día; null si falta el blue de algún día con gasto o no se pasó `blue`. */
+  gastoUsd: number | null
+  costoPorRegistroUsd: number | null
 }
 
 export interface EnlaceCampania { propiedadId: string; nombre: string | null }
@@ -67,14 +91,19 @@ export function porCampania(
   r: Rango,
   enlaces: Map<string, EnlaceCampania>,
   registrosMetaPorPropiedad: Map<string, number>,
+  blue?: (fecha: string) => number | null,
 ): FilaCampania[] {
-  const M = new Map<string, { nombre: string; ultima: string; gasto: number; visitas: number; registros: number }>()
+  const M = new Map<string, { nombre: string; ultima: string; gasto: number; gastoUsd: number | null; visitas: number; registros: number }>()
   for (const m of meta) {
     if (!enRango(m.fecha, r)) continue
     const id = m.campaniaId || m.campania
-    const x = M.get(id) ?? { nombre: m.campania, ultima: m.fecha, gasto: 0, visitas: 0, registros: 0 }
+    const x = M.get(id) ?? { nombre: m.campania, ultima: m.fecha, gasto: 0, gastoUsd: blue ? 0 : null, visitas: 0, registros: 0 }
     if (m.fecha >= x.ultima) { x.ultima = m.fecha; x.nombre = m.campania }
     x.gasto += m.gasto
+    if (x.gastoUsd != null && m.gasto > 0) {
+      const t = blue?.(m.fecha)
+      x.gastoUsd = t ? x.gastoUsd + m.gasto / t : null
+    }
     x.visitas += m.visitasMeta
     x.registros += m.registros ?? 0
     M.set(id, x)
@@ -83,8 +112,12 @@ export function porCampania(
   for (const [id, x] of M) {
     if (x.gasto === 0 && x.visitas === 0) continue
     const tipo = embudoDeCampania(x.nombre)
+    const usd = { gastoUsd: x.gastoUsd }
     if (tipo !== 'propiedad') {
-      filas.push({ campaniaId: id, nombre: x.nombre, tipo, propiedadId: null, gasto: x.gasto, visitas: x.visitas, registros: x.registros, fuenteRegistros: 'pixel', costoPorRegistro: div(x.gasto, x.registros) })
+      filas.push({
+        campaniaId: id, nombre: x.nombre, tipo, propiedadId: null, gasto: x.gasto, visitas: x.visitas, registros: x.registros, fuenteRegistros: 'pixel',
+        costoPorRegistro: div(x.gasto, x.registros), ...usd, costoPorRegistroUsd: x.gastoUsd == null ? null : div(x.gastoUsd, x.registros),
+      })
       continue
     }
     const enlace = enlaces.get(id)
@@ -99,6 +132,8 @@ export function porCampania(
       registros,
       fuenteRegistros: enlace ? 'pagina' : null,
       costoPorRegistro: registros == null ? null : div(x.gasto, registros),
+      ...usd,
+      costoPorRegistroUsd: registros == null || x.gastoUsd == null ? null : div(x.gastoUsd, registros),
     })
   }
   return filas.sort((a, b) => ORDEN_TIPO[a.tipo] - ORDEN_TIPO[b.tipo] || b.gasto - a.gasto)
@@ -255,4 +290,38 @@ export function campaniaTasacionVigente(meta: MetaDia[]): string | null {
     if (!mejor || m.fecha > mejor.fecha) mejor = m
   }
   return mejor?.campaniaId ?? null
+}
+
+// ---------------------------------------------------------------------------
+// Campañas del período contra las del período comparado.
+// ---------------------------------------------------------------------------
+
+/**
+ * Clave para comparar campañas entre períodos: tasación y clase por su embudo
+ * (la campaña se rehace y cambia de id), cada propiedad por su ficha.
+ */
+export const claveCampania = (f: Pick<FilaCampania, 'tipo' | 'propiedadId' | 'campaniaId'>) =>
+  f.tipo === 'propiedad' ? `p:${f.propiedadId ?? f.campaniaId}` : f.tipo
+
+const sumaNula = (a: number | null, b: number | null) => (a == null || b == null ? null : a + b)
+
+/** Une las filas con la misma clave (dos campañas de tasación en el mismo mes son una fila). */
+export function consolidarCampanias(filas: FilaCampania[]): FilaCampania[] {
+  const M = new Map<string, FilaCampania>()
+  for (const f of filas) {
+    const k = claveCampania(f)
+    const x = M.get(k)
+    if (!x) { M.set(k, { ...f }); continue }
+    x.gasto += f.gasto
+    x.gastoUsd = sumaNula(x.gastoUsd, f.gastoUsd)
+    x.visitas += f.visitas
+    // Los registros de una propiedad son los de SU FICHA (no de cada campaña): dos
+    // campañas de la misma propiedad ya traen el mismo total; sumarlos lo duplicaría.
+    if (!(f.tipo === 'propiedad' && f.propiedadId)) x.registros = sumaNula(x.registros, f.registros)
+  }
+  return [...M.values()].map(x => ({
+    ...x,
+    costoPorRegistro: x.registros == null ? null : div(x.gasto, x.registros),
+    costoPorRegistroUsd: x.registros == null || x.gastoUsd == null ? null : div(x.gastoUsd, x.registros),
+  }))
 }

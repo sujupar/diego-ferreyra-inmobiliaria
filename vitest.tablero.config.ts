@@ -11,7 +11,7 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     include: [
-      'lib/metrics/tablero/tablero.test.ts',
+      'lib/metrics/tablero/*.test.ts',
       'lib/metrics/panel/panel.test.ts',
       'lib/metrics/panel/video-cohortes.test.ts',
     ],
