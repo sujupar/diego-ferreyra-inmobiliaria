@@ -25,6 +25,17 @@ describe('embudoGeneral: cada paso con su cantidad y el % sobre el paso anterior
     expect(e[2].cantidad).toBeNull()
     expect(e[3]).toMatchObject({ cantidad: 8, pct: null })
   })
+  it('meses sin visitas confiables de Meta (nov-25 a mar-26): visitas sin dato y las solicitudes sin %', () => {
+    const e = embudoGeneral({ impresiones: 28_357, clics: 1_050, visitasMeta: 59 }, pasos, { visitasConfiables: false, realizadasConDato: true })
+    expect(e[2]).toMatchObject({ cantidad: null, pct: null })
+    expect(e[3]).toMatchObject({ cantidad: 8, pct: null })
+  })
+  it('hasta feb-26 el sistema viejo no registraba la tasación hecha: hechas y captadas sin dato', () => {
+    const e = embudoGeneral({ impresiones: 1, clics: 1, visitasMeta: 1 }, pasos, { visitasConfiables: true, realizadasConDato: false })
+    expect(e[5]).toMatchObject({ cantidad: null, pct: null })
+    expect(e[6]).toMatchObject({ cantidad: null, pct: null })
+    expect(e[4]).toMatchObject({ cantidad: 2 })
+  })
   it('un paso anterior en 0 deja el % sin dato, nunca 0', () => {
     const e = embudoGeneral({ impresiones: 100, clics: 0, visitasMeta: 0 }, [paso('solicitud', 0), paso('agendada', 0), paso('realizada', 0), paso('entregada', 0), paso('captada', 0)])
     expect(e[2].pct).toBeNull()

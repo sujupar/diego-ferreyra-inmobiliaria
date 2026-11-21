@@ -89,7 +89,7 @@ export async function anunciosDelPeriodo(r: Rango): Promise<AnunciosEnVivo> {
       Promise.all(campanias.map(async id => {
         const [filas, fichas] = await Promise.all([
           todasLasPaginas<FilaInsightAnuncio>(`${id}/insights?level=ad&time_increment=1&time_range=${tr}&fields=ad_id,ad_name,adset_name,spend,impressions,inline_link_clicks,actions&limit=500`, token, limite),
-          todasLasPaginas<AnuncioRawFicha>(`${id}/ads?fields=id,effective_status,preview_shareable_link,adset{name},creative{thumbnail_url,instagram_permalink_url,body,title}&limit=200`, token, limite),
+          todasLasPaginas<AnuncioRawFicha>(`${id}/ads?fields=id,effective_status,preview_shareable_link,adset{name},creative.thumbnail_width(600).thumbnail_height(600){thumbnail_url,instagram_permalink_url,body,title}&limit=200`, token, limite),
         ])
         return { filas, fichas }
       })),

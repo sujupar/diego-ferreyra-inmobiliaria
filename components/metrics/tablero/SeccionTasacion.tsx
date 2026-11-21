@@ -19,14 +19,17 @@ export function SeccionTasacion({ t, onCambio }: { t: Tablero; onCambio: () => v
   const comp = t.comparacion.rango
   const colA = rangoCorto(t.parametros.rango), colB = comp ? rangoCorto(comp) : null
   const div = (x: number | null | undefined, y: number | null | undefined) => (x == null || !y ? null : x / y)
+  // Entre nov-25 y mar-26 Meta midió mal las visitas de tasación: ahí van "sin dato".
+  const visA = s.visitasConfiables.actual ? a?.visitas ?? null : null
+  const visB = s.visitasConfiables.anterior ? b?.visitas ?? null : null
 
   const filas: { nombre: string; act: ReactNode; ant: ReactNode; va: number | null; vb: number | null; bueno: 'sube' | 'baja'; puntos?: boolean }[] = [
     { nombre: 'Gasto total', act: <Plata u={a?.gastoUsd} a={a?.gasto} />, ant: <Plata u={b?.gastoUsd} a={b?.gasto} />, va: a?.gastoUsd ?? null, vb: b?.gastoUsd ?? null, bueno: 'baja' },
     { nombre: 'Gasto por día', act: <Plata u={div(a?.gastoUsd, s.diasActual)} a={div(a?.gasto, s.diasActual)} />, ant: <Plata u={div(b?.gastoUsd, s.diasAnterior)} a={div(b?.gasto, s.diasAnterior)} />, va: div(a?.gastoUsd, s.diasActual), vb: div(b?.gastoUsd, s.diasAnterior), bueno: 'baja' },
     { nombre: 'Registros', act: num(a?.registros), ant: num(b?.registros), va: a?.registros ?? null, vb: b?.registros ?? null, bueno: 'sube' },
     { nombre: 'Costo por registro', act: <Plata u={a?.costoPorRegistroUsd} a={a?.costoPorRegistro} />, ant: <Plata u={b?.costoPorRegistroUsd} a={b?.costoPorRegistro} />, va: a?.costoPorRegistroUsd ?? null, vb: b?.costoPorRegistroUsd ?? null, bueno: 'baja' },
-    { nombre: 'Visitas a la página', act: num(a?.visitas), ant: num(b?.visitas), va: a?.visitas ?? null, vb: b?.visitas ?? null, bueno: 'sube' },
-    { nombre: 'Costo por visita', act: <Plata u={div(a?.gastoUsd, a?.visitas)} a={div(a?.gasto, a?.visitas)} decimales={2} />, ant: <Plata u={div(b?.gastoUsd, b?.visitas)} a={div(b?.gasto, b?.visitas)} decimales={2} />, va: div(a?.gastoUsd, a?.visitas), vb: div(b?.gastoUsd, b?.visitas), bueno: 'baja' },
+    { nombre: 'Visitas a la página', act: num(visA), ant: num(visB), va: visA, vb: visB, bueno: 'sube' },
+    { nombre: 'Costo por visita', act: <Plata u={div(a?.gastoUsd, visA)} a={div(a?.gasto, visA)} decimales={2} />, ant: <Plata u={div(b?.gastoUsd, visB)} a={div(b?.gasto, visB)} decimales={2} />, va: div(a?.gastoUsd, visA), vb: div(b?.gastoUsd, visB), bueno: 'baja' },
     { nombre: 'CTR (clics ÷ impresiones)', act: pct(div(a?.clics, a?.impresiones), 2), ant: pct(div(b?.clics, b?.impresiones), 2), va: div(a?.clics, a?.impresiones), vb: div(b?.clics, b?.impresiones), bueno: 'sube', puntos: true },
   ]
 
@@ -96,7 +99,7 @@ export function SeccionTasacion({ t, onCambio }: { t: Tablero; onCambio: () => v
         </table>
       </Caja>
 
-      <Subtitulo fuente="Meta en vivo (se vuelve a leer cada 30 minutos). Cada fila suma todas las versiones y conjuntos de un mismo anuncio en el período. Activo = alguna versión está activa hoy.">Anuncios activos · lo que hicieron en el período</Subtitulo>
+      <Subtitulo fuente="Meta en vivo (se vuelve a leer cada 30 minutos). Cada fila suma todas las versiones y conjuntos de un mismo anuncio en el período. Activo = alguna versión está activa hoy. Incluye lo que va de hoy, que el resto de la página suma recién mañana: por eso el total puede dar un poco más que el de la campaña.">Anuncios activos · lo que hicieron en el período</Subtitulo>
       <AnunciosActivos rango={t.parametros.rango} />
     </Seccion>
   )

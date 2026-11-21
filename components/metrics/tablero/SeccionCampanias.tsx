@@ -85,7 +85,10 @@ export function SeccionCampanias({ t }: { t: Tablero }) {
   )
 }
 
-type RespReels = ({ disponible: true } & ResumenReels) | { disponible: false; motivo: string }
+/** "1 privado", "4 privados". */
+const cuenta = (n: number, palabra: string) => `${n} ${palabra}${n === 1 ? '' : 's'}`
+
+type RespReels =({ disponible: true } & ResumenReels) | { disponible: false; motivo: string }
 
 function Reels({ rango, colA }: { rango: Rango; colA: string }) {
   const [res, setRes] = useState<{ clave: string; valor: RespReels } | null>(null)
@@ -146,7 +149,7 @@ function Reels({ rango, colA }: { rango: Rango; colA: string }) {
       </Caja>
       <p className="text-xs text-muted-foreground tabular-n">
         {tt.personasRegistradas > 0 && <>Por cada persona registrada: {tt.vistasPorRegistro != null && <>{num(tt.vistasPorRegistro)} vistas, </>}{num(tt.personasComentaron / tt.personasRegistradas)} personas que comentaron, {num(tt.privadosPorRegistro)} privados y {num(tt.visitas / tt.personasRegistradas)} visitas. </>}
-        {colA}: {conR.map(f => `${f.direccion ?? 'reel'} ${f.periodo.comentarios} comentarios, ${f.periodo.privados} privados, ${f.periodo.visitas} visitas y ${f.periodo.registros} ${f.periodo.registros === 1 ? 'registro' : 'registros'}`).join(' · ')}.
+        {colA}: {conR.map(f => `${f.direccion ?? 'reel'} ${cuenta(f.periodo.comentarios, 'comentario')}, ${cuenta(f.periodo.privados, 'privado')}, ${cuenta(f.periodo.visitas, 'visita')} y ${cuenta(f.periodo.registros, 'registro')}`).join(' · ')}.
       </p>
     </div>
   )

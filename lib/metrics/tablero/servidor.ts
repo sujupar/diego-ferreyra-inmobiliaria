@@ -13,7 +13,7 @@ import 'server-only'
 import { getExperiment } from '@/lib/funnel/experiment'
 import { calcularPeriodo, cargarDatos, todas, type Datos } from '../panel/servidor'
 import { dia } from '../panel/personas'
-import { porVariante, resumirCanal } from '../panel/embudo'
+import { porVariante, resumirCanal, REALIZADAS_SIN_DATO_HASTA, VISITAS_META_SIN_DATO } from '../panel/embudo'
 import { hoyArgentina, rangoComparado, sumarDias, type Comparar, type Rango } from '../panel/rango'
 import { calcularAjustes, claveCampania, consolidarCampanias, porCampania, totalAnuncios, type EnlaceCampania, type FilaCampania } from './anuncios'
 import { consultasPorPortal, registrosMetaPorPropiedad, registrosPorPropiedad, type ConsultaRow, type LeadRow } from './comercial'
@@ -160,8 +160,10 @@ export async function armarTablero(p: ParametrosTablero, ahora = new Date()) {
     /** Último día con gasto de tasación cargado (Meta se sincroniza una vez por día: el día en curso llega al día siguiente). */
     ultimoDiaConGasto: ultimoDia || null,
     // Embudo por cohorte: de las solicitudes del período, cuántas avanzaron.
-    embudo: embudoGeneral(tas ? { impresiones: tas.impresiones, clics: tas.clics, visitasMeta: tas.visitas } : null, actual.cohorte.tasacion.pasos),
-    embudoAntes: anterior ? embudoGeneral(tasAntes ? { impresiones: tasAntes.impresiones, clics: tasAntes.clics, visitasMeta: tasAntes.visitas } : null, anterior.cohorte.tasacion.pasos) : null,
+    embudo: embudoGeneral(tas ? { impresiones: tas.impresiones, clics: tas.clics, visitasMeta: tas.visitas } : null, actual.cohorte.tasacion.pasos, calidad(p.rango)),
+    embudoAntes: anterior && comp ? embudoGeneral(tasAntes ? { impresiones: tasAntes.impresiones, clics: tasAntes.clics, visitasMeta: tasAntes.visitas } : null, anterior.cohorte.tasacion.pasos, calidad(comp)) : null,
+    /** Si Meta midió bien las visitas en cada período (en la tabla, "sin dato" si no). */
+    visitasConfiables: { actual: calidad(p.rango).visitasConfiables, anterior: comp ? calidad(comp).visitasConfiables : null },
     landing: {
       publicadas,
       actual: landingsAct.filter(v => varianteVigente(v, publicadas)),
@@ -228,6 +230,13 @@ export async function armarTablero(p: ParametrosTablero, ahora = new Date()) {
   }
 }
 
-const diasDe = (r: Rango) => Math.round((Date.parse(r.hasta) - Date.parse(r.desde)) / 86_400_000) + 1
+/** Qué datos de tasación son confiables en el rango (las mismas reglas que el panel validado). */
+function calidad(r: Rango) {
+  const sin = VISITAS_META_SIN_DATO.tasacion
+  const tocaSinVisitas = !!sin && r.desde <= sin.hasta && r.hasta >= sin.desde
+  return { visitasConfiables: !tocaSinVisitas, realizadasConDato: r.desde > REALIZADAS_SIN_DATO_HASTA }
+}
+
+const diasDe = (r: Rango) =>Math.round((Date.parse(r.hasta) - Date.parse(r.desde)) / 86_400_000) + 1
 
 export type Tablero = Awaited<ReturnType<typeof armarTablero>>

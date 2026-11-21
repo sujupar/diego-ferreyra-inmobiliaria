@@ -23,10 +23,24 @@ export interface PasoGeneral {
 
 const div = (a: number | null, b: number | null) => (a == null || !b ? null : a / b)
 
-export function embudoGeneral(meta: { impresiones: number; clics: number; visitasMeta: number } | null, pasos: Paso[]): PasoGeneral[] {
+/**
+ * `visitasConfiables: false` → el período toca meses en que Meta midió mal las
+ * visitas (VISITAS_META_SIN_DATO); `realizadasConDato: false` → toca meses en que
+ * el sistema viejo no registraba la tasación hecha (REALIZADAS_SIN_DATO_HASTA).
+ * En los dos casos el paso queda "sin dato": un 61 % de conversión inventado es
+ * peor que no mostrar nada.
+ */
+export function embudoGeneral(
+  meta: { impresiones: number; clics: number; visitasMeta: number } | null,
+  pasos: Paso[],
+  calidad: { visitasConfiables: boolean; realizadasConDato: boolean } = { visitasConfiables: true, realizadasConDato: true },
+): PasoGeneral[] {
   const de = (etapa: Paso['etapa']) => pasos.find(p => p.etapa === etapa)?.cantidad ?? null
-  const imp = meta?.impresiones ?? null, cli = meta?.clics ?? null, vis = meta?.visitasMeta ?? null
-  const sol = de('solicitud'), age = de('agendada'), rea = de('realizada'), cap = de('captada')
+  const imp = meta?.impresiones ?? null, cli = meta?.clics ?? null
+  const vis = calidad.visitasConfiables ? meta?.visitasMeta ?? null : null
+  const sol = de('solicitud'), age = de('agendada')
+  const rea = calidad.realizadasConDato ? de('realizada') : null
+  const cap = calidad.realizadasConDato ? de('captada') : null
   return [
     { clave: 'impresiones', etapa: 'Impresiones', cantidad: imp, pct: null, fuente: 'meta' },
     { clave: 'clics', etapa: 'Clics en el anuncio', cantidad: cli, pct: div(cli, imp), fuente: 'meta' },
