@@ -3,7 +3,7 @@
 ## Context
 
 Motivo y alcance: ver `proposal.md`. Lo aprobado por el dueño está en
-`../crm-sistema-diseno/maqueta/` (capturas en `maqueta/capturas/`, reglas en `GUIA.md`) y
+`../archive/2026-11-25-crm-sistema-diseno/maqueta/` (capturas en `maqueta/capturas/`, reglas en `GUIA.md`) y
 manda sobre cualquier otro documento. Las decisiones de la sección 8 del diseño general
 (`docs/superpowers/specs/2026-11-25-ficha-contacto-llamadas-inicio-design.md`) mandan sobre
 su sección 5.
@@ -491,7 +491,8 @@ Reglas de `decidirCadencia` (las de la spec `crm-cadencia-llamadas`):
   sobre un proceso ajeno (es un pedido explícito de la persona, y la tarea queda a nombre de
   quien registró). Solo la frena el intento fuera de orden.
 - **Asesor sobre un proceso que no es suyo** (`procesoPropio` falso: el proceso activo es
-  de otro asesor o no tiene asesor; opción conservadora, a confirmar con el dueño). La
+  de otro asesor o no tiene asesor; opción conservadora, confirmada por el dueño el
+  2026-11-25). La
   llamada o el WhatsApp se guardan igual, ligados a ese proceso y con su número, porque el
   dato no se pierde y la "última llamada" tiene que ser verdad para todos. Pero **no se
   mueve la cola de quien lleva el proceso**: "No atendió" y el WhatsApp marcado no agendan
@@ -571,7 +572,7 @@ Con `soloPropias` se aplica un filtro más sobre ese resultado: **queda solo lo 
   tareas ligadas solo al contacto de la coordinación (una `update_contact`, o una llamada
   que la coordinadora se agendó a mano): justo lo contrario de "no mueve la cola de otros".
   Para admin, dueño y coordinador no cambia nada: sin proceso siguen cerrando las tareas
-  ligadas solo al contacto. Opción conservadora, a confirmar con el dueño (tarea 1.6).
+  ligadas solo al contacto. Opción conservadora, confirmada por el dueño el 2026-11-25.
 
 El filtro por `created_at` es lo que impide que un reintento tardío cierre una tarea que
 creó una llamada posterior.
@@ -672,8 +673,8 @@ creado por él; **contacto sin dueño con un proceso asignado al asesor → pued
 tasación suya → puede; con un proceso de otro asesor → no puede; id inexistente.
 
 **Cambia la decisión 8.8 del diseño general** (que decía "`assigned_to` o `created_by`, u
-operaciones"): se amplía para el asesor. Motivo: no romper lo que hoy funciona. Necesita el
-OK del dueño (tarea 1.6).
+operaciones"): se amplía para el asesor. Motivo: no romper lo que hoy funciona. El dueño
+lo confirmó el 2026-11-25.
 
 ### D3. Tareas: se reutiliza `lib/supabase/tasks.ts` y se le suman cinco funciones
 
@@ -782,7 +783,8 @@ para todas:
 | `POST /api/deals` (existente) | Acepta `from_deal_id` o `contact_id` (D9). Sin ninguno de los dos, no cambia nada. |
 | `POST /api/deals/[id]/undo-lost` (nueva) | Deshace un "perdido" recién marcado (D9). |
 
-**Lo que ve un asesor dentro de la ficha (opción conservadora, a confirmar con el dueño).**
+**Lo que ve un asesor dentro de la ficha (opción conservadora, confirmada por el dueño el
+2026-11-25).**
 Poder abrir la ficha no es poder ver todo lo que cuelga del contacto. Cuando quien mira
 tiene alcance `propios`:
 
@@ -822,7 +824,7 @@ tiene alcance `propios`:
 
   No se busca "el proceso propio más reciente" para rellenar Detalles: el proceso de
   Detalles no cambia según quién mira; lo que cambia es cuánto se ve. Opción conservadora,
-  a confirmar con el dueño (tarea 1.6).
+  confirmada por el dueño el 2026-11-25.
 - La **actividad** (notas, llamadas, WhatsApp marcado) se ve completa: es la historia de la
   persona, y sin ella el asesor no sabe si ya la llamaron.
 
@@ -1059,13 +1061,14 @@ lib/crm/leer-json.ts       lee la respuesta tolerando un cuerpo que no es JSON (
   desajuste de hidratación y resuelve el menú lateral, que la maqueta no tenía. Cuentas:
   a 1280 con el menú abierto quedan 992 px (tres columnas); a 1024, 736 px (dos); a 390, una.
   Con el menú **colapsado** (3rem) quedan 960 px libres desde unos 1056 px de ventana: ahí
-  ya hay tres columnas, antes de los 1280 que pedía la spec aprobada (otra diferencia a
-  mostrarle al dueño).
+  ya hay tres columnas, antes de los 1280 que pedía la spec aprobada (otra diferencia
+  confirmada por el dueño).
   A 768 con el menú abierto quedan 480 px (pestañas); a 768 con el menú colapsado, 672 px
   (dos). Entre 768 y ~930 px de ventana con el menú abierto queda la vista de pestañas: dos
-  columnas ahí no entran (la columna de datos mide 17,5rem fijos). **Esto se aparta de la
-  spec aprobada `crm-sistema-diseno`** ("dos columnas entre 768 y 1279 px"); está escrito en
-  la spec de la ficha y necesita el OK del dueño antes de construir (tarea 1.6).
+  columnas ahí no entran (la columna de datos mide 17,5rem fijos). **Esto cambia la
+  spec vigente `crm-sistema-diseno`** ("dos columnas entre 768 y 1279 px"): el dueño lo
+  confirmó el 2026-11-25 y el requisito modificado está en `specs/crm-sistema-diseno/spec.md`
+  de este change.
 - **Cabecera fija:** `sticky top-0 z-20 -mx-4 -mt-4 px-4 md:-mx-6 md:-mt-6 md:px-6` con
   fondo opaco, dentro de `#contenido` (el que scrollea), igual que `PropertyTabsNav`. Los
   márgenes negativos siguen al relleno real de `#contenido` (`p-4 md:p-6`,
@@ -1143,7 +1146,7 @@ entonces:
 - **El lead no desaparece:** su proceso sigue en Solicitud y sigue en la columna Solicitud
   de `/crm`, y la cabecera de su ficha dice hace cuántos días fue la última llamada.
 - Lo que no hay hasta `crm-inicio` es una lista que junte "solicitudes sin ninguna tarea
-  pendiente". Es un hueco real y conocido; se le avisa al dueño (tarea 1.6).
+  pendiente". Es un hueco real y conocido; el dueño lo aceptó el 2026-11-25.
 
 ### D8. Anular
 
@@ -1353,8 +1356,8 @@ con `advance` (deja una perdida falsa en las métricas).
 ## Diferencias con lo aprobado
 
 Todo lo que este change hace distinto de la maqueta aprobada, de la spec `crm-sistema-diseno`
-o de la sección 8 del diseño general. **Se le muestran al dueño antes de construir (tarea
-1.6), no en el QA.**
+o de la sección 8 del diseño general. **Las veinte quedaron confirmadas por el dueño el
+2026-11-25 ("Ok a todo", tarea 1.6), antes de construir.**
 
 Con la maqueta y la spec `crm-sistema-diseno`:
 
@@ -1478,9 +1481,9 @@ Con la sección 8 del diseño general:
   marcar perdido apaga la etiqueta de su secuencia (`seq-solicita` o `seq-agendada`) y
   deshacer la vuelve a prender. Si la automatización de Mailchimp permite reingreso, la
   persona recibe otra vez el primer email. El plazo corto del "Deshacer" (10 minutos) lo
-  acota a errores recién cometidos, pero no lo evita. Se le pregunta al dueño antes de
-  construir (tarea 1.6); si no lo acepta, `undo-lost` deja de sincronizar y la persona
-  queda fuera de la secuencia hasta el próximo cambio de etapa.
+  acota a errores recién cometidos, pero no lo evita. El dueño lo aceptó el 2026-11-25:
+  `undo-lost` sincroniza con Mailchimp aunque la persona pueda recibir la secuencia otra
+  vez desde el primer email.
 - [Los procesos `[TEST]` coordinados o posteriores son candidatos a Mailchimp] → la
   etiqueta de secuencia no mira el origen para `scheduled` con día ni para `visited`, y
   `syncDealToMailchimp` crea el email en la audiencia si no existe. Lo dispara `undo-lost`
@@ -1531,10 +1534,9 @@ Con la sección 8 del diseño general:
   otro contacto con ese email o teléfono: revisá si es la misma persona"), y la pantalla
   lo muestra. Unificar contactos duplicados queda fuera de este change.
 - [El botón fijo "Coordinar tasación" no estaba en la maqueta] → es un botón más en el
-  bloque "Procesos"; se le muestra al dueño antes de construir (diferencia 14 de la lista
-  de arriba). Si lo
-  rechaza, se saca el botón y queda anotado el hueco: con el aviso cerrado, una solicitud
-  solo se puede coordinar cargando otra llamada "Agendó".
+  bloque "Procesos"; el dueño lo confirmó el 2026-11-25 (diferencia 14 de la lista
+  de arriba). Sin ese botón, con el aviso cerrado una solicitud solo se podría coordinar
+  cargando otra llamada "Agendó".
 - [Anular en dos escrituras] → si falla la parte de las tareas, la pantalla ofrece
   reintentar y la repetición completa lo que faltó (D8).
 - [El horario laboral (lunes a viernes, 9:00) es un supuesto] → es una constante en un solo
@@ -1584,63 +1586,63 @@ Con la sección 8 del diseño general:
 
 Las preguntas están separadas en dos grupos, porque no pesan igual.
 
-**A. Decisiones que cambian las specs o las tareas.** El método pide resolverlas con el
-dueño **antes** de dar por buenos estos artefactos, no después. Quien orquesta se las
-presenta **junto con los artefactos**, cuando pide el OK del change. Cada una está escrita
-en specs, diseño y tareas con la opción conservadora (la que muestra o toca menos); si el
-dueño elige otra, se actualizan specs y diseño y se vuelve a validar. La tarea 1.6 es el
-freno: no se construye nada sin su respuesta escrita.
+**A. Resueltas por el dueño el 2026-11-25.** Eran las decisiones que cambian las specs o
+las tareas. Se le presentaron junto con los artefactos y contestó "Ok a todo": quedó
+confirmada, en cada una, la opción prudente que ya estaba escrita en specs, diseño y
+tareas. No cambió ningún comportamiento. La tarea 1.6 queda cumplida.
 
 - **Las veinte diferencias de "Diferencias con lo aprobado".**
+  → Confirmadas las veinte.
+- **Permisos de contactos.**
+  → Coordinador, admin y dueño ven todos. El asesor, solo los suyos: los asignados a él,
+  los que creó, y los de un proceso o una tasación a su nombre. El abogado, ninguno.
 - **Qué ve un asesor en "Detalles" cuando la persona no tiene proceso abierto y su último
-  proceso, ya cerrado, es de otro asesor o no tiene asesor** (D4): se tomó que no ve nada
-  de ese proceso, tampoco la etapa ("Descartado"); solo el origen y el asesor del contacto.
-- **Asesor que llama a una persona sin proceso abierto** (D2): se tomó que cierra solo las
-  tareas que están a su nombre; las de la coordinación sobre esa persona quedan pendientes.
-  ¿Queda así, o su llamada también las cierra?
-- **Solicitud abierta y un proceso de clase gratuita más nuevo** (D2): hoy el proceso
-  activo es el más reciente, o sea el de la clase, y "Agendó" ofrece abrir un proceso
-  nuevo aunque haya una solicitud para convertir (que sí se puede convertir desde
-  "Procesos"). ¿En ese caso el activo tiene que ser la solicitud? Mientras no lo diga,
-  sigue siendo el más reciente.
-- **Qué ve un asesor en "Detalles" cuando el proceso activo (abierto) es de otro** (D4):
-  se tomó que ve solo la etapa; ni la propiedad, ni la campaña, ni el nombre del otro asesor.
-- **Asesor que registra una llamada sobre un proceso que no es suyo** (D2): se tomó la
-  opción que menos toca lo ajeno — la llamada queda guardada, pero no agenda la siguiente
-  ni cierra tareas de la coordinación o de otro asesor ("volver a llamar" sí le agenda su
-  propia tarea). ¿Queda así, o un asesor puede tomar una solicitud que no es suya y sacarla
-  de la cola de la coordinación con solo llamar?
+  proceso, ya cerrado, es de otro asesor o no tiene asesor** (D4).
+  → No ve nada de ese proceso, tampoco la etapa ("Descartado"); solo el origen y el asesor
+  del contacto.
+- **Asesor que llama a una persona sin proceso abierto** (D2).
+  → Cierra solo las tareas que están a su nombre; las de la coordinación sobre esa persona
+  quedan pendientes.
+- **Solicitud abierta y un proceso de clase gratuita más nuevo** (D2).
+  → El proceso activo sigue siendo el más reciente, o sea el de la clase. "Agendó" ofrece
+  abrir un proceso nuevo, y la solicitud se puede convertir desde "Procesos".
+- **Qué ve un asesor en "Detalles" cuando el proceso activo (abierto) es de otro** (D4).
+  → Solo la etapa; ni la propiedad, ni la campaña, ni el nombre del otro asesor.
+- **Asesor que registra una llamada sobre un proceso que no es suyo** (D2).
+  → La llamada queda guardada, pero no agenda la siguiente ni cierra tareas de la
+  coordinación o de otro asesor. "Volver a llamar" sí le agenda su propia tarea.
 - **La tarea "Llamar a {nombre}" que un asesor se agendó con "volver a llamar" sobre un
-  proceso que no es suyo** (D2): se tomó lo que hace la maqueta aprobada con cualquier
-  llamada de la cadencia — la próxima llamada de la coordinación la cierra y el aviso la
-  nombra. ¿Queda así, o esa tarea se respeta porque la persona le pidió a ese asesor un día
-  y una hora?
-- **Deshacer un "perdido" y los emails de Mailchimp** (D9): al deshacer, la persona vuelve
-  a su secuencia; según cómo esté armada la automatización, puede recibirla otra vez desde
-  el primer email. ¿La automatización permite reingreso? Si sí, ¿se acepta, o al deshacer
-  no se toca Mailchimp?
-- **Un proceso sin asesor, ¿lo ve un asesor en la ficha?** Se tomó que no (D4).
-- **Plazo del "Deshacer" de "Marcar proceso como perdido":** se tomó 10 minutos
-  (`MINUTOS_PARA_DESHACER`). ¿Alcanza?
-- **Qué ve un asesor en la ficha de un contacto que también atiende otro asesor** (D4): se
-  tomó la opción que muestra menos — ve la persona, la etapa del proceso activo y toda la
-  actividad (notas y llamadas), pero en Procesos, Tasaciones, Archivos y Tareas solo lo que
-  está a su nombre. ¿Queda así, o tiene que ver todo? ¿Y las notas de coordinación, las ve?
-- **Lead de la clase gratuita que acepta una tasación:** hoy se le abre un proceso nuevo
-  (queda el de la clase y el de la tasación). ¿Sigue así, o el proceso de la clase tiene que
-  pasar él mismo a Coordinada? Mientras no lo diga, sigue como hoy.
-- **Leads sin tarea hasta que salga el Inicio nuevo** (D7): ¿se acepta ese hueco, o este
-  change espera a `crm-inicio` para salir a producción?
+  proceso que no es suyo** (D2).
+  → La próxima llamada de la coordinación la cierra, como a cualquier tarea de llamada
+  pendiente de ese proceso, y el aviso la nombra. (La llamada que un asesor se creó a mano
+  con "+ Tarea" sigue sin tocarse: diferencia 20.)
+- **Botón fijo "Coordinar tasación" en el bloque "Procesos"** (D5, diferencia 14).
+  → Va.
+- **Deshacer un "perdido" y los emails de Mailchimp** (D9).
+  → Se acepta que, al deshacer, Mailchimp pueda reenviar la secuencia desde el primer email.
+- **Un proceso sin asesor, ¿lo ve un asesor en la ficha?** (D4).
+  → No.
+- **Plazo del "Deshacer" de "Marcar proceso como perdido".**
+  → 10 minutos (`MINUTOS_PARA_DESHACER`).
+- **Qué ve un asesor en la ficha de un contacto que también atiende otro asesor** (D4).
+  → Ve la persona, la etapa del proceso activo y toda la actividad (notas y llamadas); en
+  Procesos, Tasaciones, Archivos y Tareas, solo lo que está a su nombre.
+- **Lead de la clase gratuita que acepta una tasación.**
+  → Se le abre un proceso nuevo, como hoy (queda el de la clase y el de la tasación).
+- **Leads sin tarea hasta que salga el Inicio nuevo** (D7).
+  → Se acepta ese hueco hasta que salga `crm-inicio`; este change no lo espera.
 
-**B. Preguntas que se pueden contestar después.** No cambian specs ni tareas; se
-preguntan también en la tarea 1.6, pero ninguna frena los artefactos.
+**B. Siguen abiertas; no frenan.** No cambian specs ni tareas. Al dueño todavía no se le
+preguntaron: se trabaja con la opción por defecto de cada una y se le avisa en el reporte
+final.
 
-- **Horario laboral real de la coordinación** (hoy se supone lunes a viernes desde las 9:00):
-  es una constante en un archivo; se ajusta cuando la coordinadora lo confirme.
-- **Primera coordinación real desde la ficha:** no se prueba de punta a punta en el QA
-  porque manda un email real. ¿Alcanza con las pruebas automáticas y mirar juntos la
-  primera, o autoriza una prueba con un email real avisado?
-- **Los documentos del módulo entran a `main` antes de este OK** (tarea 1.2): son solo
-  documentos y la maqueta ya aprobada, pero disparan un deploy. Se le avisa antes de mergear.
-- **Cuenta "Julian Coordinador" (@passmail.com) para las pruebas:** va a recibir tareas
-  `[TEST]` durante el QA, que se borran al terminar. ¿Se puede usar?
+- **Horario laboral real de la coordinación.** Por defecto: lunes a viernes desde las 9:00.
+  Es una constante en un archivo; se ajusta cuando la coordinadora lo confirme.
+- **Primera coordinación real desde la ficha.** Por defecto: no se prueba de punta a punta
+  en el QA, porque manda un email real; alcanza con las pruebas automáticas y con mirar
+  juntos la primera.
+- **Cuenta "Julian Coordinador" (@passmail.com) para las pruebas.** Por defecto: se usa;
+  recibe tareas `[TEST]` durante el QA, que se borran al terminar.
+
+Ya no es una pregunta: los documentos del módulo entraron a `main` el 2026-11-25 con el
+PR #91 (tarea 1.2), solo documentos y la maqueta aprobada.

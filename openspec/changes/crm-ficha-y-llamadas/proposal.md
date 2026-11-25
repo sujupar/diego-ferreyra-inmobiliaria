@@ -47,7 +47,7 @@ Roles: coordinador, admin y dueño ven todos los contactos. El asesor ve los suy
 asignados a él, los que creó, y los de un proceso o una tasación a su nombre. El abogado,
 ninguno.
 
-**Supuestos a confirmar con el dueño antes de construir** (cambian o precisan lo decidido en
+**Decisiones confirmadas por el dueño (2026-11-25)** (cambian o precisan lo decidido en
 la sección 8 del diseño general o lo aprobado en la maqueta; el detalle está en
 `design.md`, "Diferencias con lo aprobado"):
 
@@ -86,10 +86,12 @@ la sección 8 del diseño general o lo aprobado en la maqueta; el detalle está 
 
 ### Modified Capabilities
 
-Ninguna en `openspec/specs/` (todavía no hay specs archivadas). Pero este change **se aparta
-de un requisito de `crm-sistema-diseno`**, que está aprobada y sin archivar: "La ficha se
-reacomoda según el ancho" (supuesto 5). La diferencia está escrita en la spec
-`crm-ficha-contacto` y necesita el OK del dueño.
+- `crm-sistema-diseno` (archivada y vigente en `openspec/specs/crm-sistema-diseno/spec.md`):
+  cambia el requisito "La ficha se reacomoda según el ancho". La ficha mira el ancho que le
+  queda después del menú lateral y no el de la ventana: entre 768 y unos 930 px con el menú
+  abierto usa pestañas y no dos columnas (decisión 5), y con el menú colapsado pasa a tres
+  columnas antes de los 1280 px. El cambio está en `specs/crm-sistema-diseno/spec.md` de
+  este change y el dueño lo confirmó el 2026-11-25.
 
 ## Impact
 
@@ -120,6 +122,7 @@ reacomoda según el ancho" (supuesto 5). La diferencia está escrita en la spec
   usa las rutas de contactos; con la regla de acceso de este change sigue funcionando para
   el asesor y se prueba en el QA.
 - No hay variables de entorno nuevas ni procesos programados.
-- Depende de `crm-sistema-diseno` aprobado. Deja anotado trabajo para
+- Depende de `crm-sistema-diseno`, aprobado y archivado (maqueta en
+  `openspec/changes/archive/2026-11-25-crm-sistema-diseno/maqueta/`). Deja anotado trabajo para
   `crm-tareas-y-campanita` (permiso de completar tareas, fechas en UTC) y para `crm-inicio`
   (bloque "Sin respuesta" y lista de solicitudes sin tarea).
