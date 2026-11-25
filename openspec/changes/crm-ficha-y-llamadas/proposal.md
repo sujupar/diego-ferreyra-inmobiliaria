@@ -11,35 +11,115 @@ hay tiempos, ni tasas, ni forma de mejorar ese paso.
 - La ficha de contacto (`/contacts/[id]`) se reemplaza por la ficha aprobada en
   `crm-sistema-diseno`: persona a la izquierda, nota/llamada y actividad al centro, tareas,
   tasaciones, procesos y archivos a la derecha; pestañas en celular.
-- Nota rápida sobre el contacto (editable y borrable por su autor).
+- Nota rápida sobre el contacto. La edita solo quien la escribió; la borra quien la
+  escribió o la coordinación (coordinador, admin, dueño). Lo borrado queda guardado en la
+  base con quién y cuándo.
 - Registrar llamada con resultado: agendó, volver a llamar, no le interesa, no atendió,
   número equivocado. Marca de "WhatsApp enviado" como tercer contacto (no envía nada).
+  Una llamada o una marca mal cargada se anula desde un menú en cada registro.
 - Cadencia automática: tras no atender una vez, tarea de llamada al día hábil siguiente;
   tras dos seguidas, tarea de enviar WhatsApp; "volver a llamar" pide día y hora.
-  Registrar una llamada cierra las tareas de llamada pendientes de ese proceso.
+  Registrar una llamada cierra las tareas de entrada del lead y las de llamada pendientes
+  de ese proceso, también las de otro coordinador.
 - "Días sin contacto" en la cabecera de la ficha.
+- **Coordinar convierte la solicitud.** Desde la ficha, "Coordinar tasación" abre el
+  formulario de hoy con los datos cargados y, al guardar, la misma solicitud pasa a
+  Coordinada. Hoy ese formulario siempre crea un proceso nuevo y la solicitud queda abierta.
+  El botón está en el aviso de la llamada y también fijo en el bloque "Procesos" de la
+  ficha, en cada solicitud, para que no se pierda al cerrar el aviso. Coordinar desde el
+  menú sigue exactamente igual.
+- **"Marcar proceso como perdido" con "Deshacer"**, que deja el proceso como estaba y no lo
+  cuenta como perdido en las métricas.
+- **Permisos de los contactos.** Hoy cualquier usuario con sesión, incluido el abogado,
+  puede leer y editar cualquier contacto si conoce su dirección. Se cierra: el abogado deja
+  de ver contactos, y el asesor ve solo los suyos. **Cambia algo que hoy "funciona":** un
+  asesor ya no puede abrir un contacto con el que no tiene ningún vínculo.
+- Se llega a la ficha tocando el nombre de la persona en el CRM, en el proceso y en la
+  lista de contactos.
 - En este change la actividad del centro muestra solo notas, llamadas y WhatsApp marcado;
   el resto de los eventos llega con `crm-linea-de-tiempo`.
 - **Queda afuera:** enviar WhatsApp o email, llamar desde la plataforma, cambiar la etapa
-  del proceso de forma automática, feriados en el horario laboral, estadísticas.
+  del proceso de forma automática, feriados en el horario laboral, estadísticas, la
+  campanita y la página de tareas, el bloque "Sin respuesta" del Inicio (hasta que exista,
+  ningún texto de la ficha lo nombra), y asignarle asesor a los contactos viejos.
 
-Roles: coordinador, admin y dueño ven todos los contactos; el asesor, los suyos (asignados
-o creados por él); el abogado, ninguno.
+Roles: coordinador, admin y dueño ven todos los contactos. El asesor ve los suyos: los
+asignados a él, los que creó, y los de un proceso o una tasación a su nombre. El abogado,
+ninguno.
+
+**Supuestos a confirmar con el dueño antes de construir** (cambian o precisan lo decidido en
+la sección 8 del diseño general o lo aprobado en la maqueta; el detalle está en
+`design.md`, "Diferencias con lo aprobado"):
+
+1. El asesor ve también el contacto de un proceso o una tasación a su nombre (la sección
+   8.8 decía solo asignados o creados por él). Sin esto se rompe el editor de contacto que
+   hoy usa en sus procesos.
+2. Sin proceso abierto no hay secuencia, pero "volver a llamar" igual agenda su tarea
+   (interpretación de 8.2 y 8.3).
+3. Una llamada cierra también las tareas que crea el agente de tasación por WhatsApp, y no
+   toca la llamada que un asesor se agendó a mano (precisión de 8.1).
+4. Una llamada atendida cierra la tarea "Enviar WhatsApp" pendiente (en la maqueta quedaba).
+5. Entre 768 y unos 930 px de ancho con el menú abierto, la ficha usa pestañas y no dos
+   columnas (la spec `crm-sistema-diseno` dice dos columnas desde 768 px).
+6. Los avisos no nombran «Sin respuesta» del Inicio hasta que ese bloque exista.
+7. A un lead de la clase gratuita que acepta una tasación se le abre un proceso nuevo, como hoy.
+8. **Cambia una ruta que ya existe:** a un asesor, la ficha y `GET /api/contacts/[id]` le
+   devuelven solo los procesos, tasaciones, archivos y tareas que están a su nombre. Lo de
+   otros asesores, y los procesos sin asesor, no se le listan (sí ve la persona, la etapa
+   del proceso activo y toda la actividad). Una tarea asignada a él la ve siempre.
+9. Al convertir una solicitud en Coordinada se completa "quién coordinó" (`created_by`) del
+   proceso si estaba vacío, para que el email de confirmación salga igual que hoy.
+10. Si un asesor registra una llamada y el proceso activo no es suyo (es de otro asesor o
+    todavía no tiene asesor), la llamada queda guardada pero no agenda la siguiente ni
+    cierra tareas de la coordinación o de otro asesor. "Volver a llamar" sí le agenda su
+    propia tarea.
+11. Tres diferencias más con la maqueta: el número de la llamada se cuenta por proceso y no
+    por persona; una tercera "No atendió" no duplica la tarea "Enviar WhatsApp" pendiente; y
+    "Tarea creada sola" se lee dentro del registro de la llamada.
 
 ## Capabilities
 
 ### New Capabilities
-- `crm-ficha-contacto`: qué muestra la ficha de un contacto y quién puede verla.
+- `crm-ficha-contacto`: qué muestra la ficha de un contacto, cómo se llega, quién puede verla y editarla, y cómo se coordina o se cierra un proceso desde ahí.
 - `crm-registro-actividad`: notas, llamadas con resultado y marca de WhatsApp sobre un contacto.
 - `crm-cadencia-llamadas`: qué tarea se crea o se cierra sola según el resultado de cada intento.
 
 ### Modified Capabilities
 
-Ninguna.
+Ninguna en `openspec/specs/` (todavía no hay specs archivadas). Pero este change **se aparta
+de un requisito de `crm-sistema-diseno`**, que está aprobada y sin archivar: "La ficha se
+reacomoda según el ancho" (supuesto 5). La diferencia está escrita en la spec
+`crm-ficha-contacto` y necesita el OK del dueño.
 
 ## Impact
 
-- Base: tabla nueva `contact_activities` con RLS e índices (migración antes del deploy).
-- Código: `app/(dashboard)/contacts/[id]`, `app/api/contacts/[id]/activities`, `lib/crm/`,
-  `components/crm/`; usa `lib/supabase/tasks.ts` para crear y cerrar tareas.
-- Depende de `crm-sistema-diseno` aprobado.
+- Base (migración antes del deploy):
+  - tabla nueva `contact_activities`, con CHECK, índices y RLS de solo lectura;
+  - `tasks`: **dos columnas nuevas opcionales** (`source_activity_id`,
+    `closed_by_activity_id`) y **cuatro índices**. No se toca ningún CHECK ni índice existente.
+- Rutas nuevas: `app/api/contacts/[id]/ficha`, `…/activities`, `…/tasks`,
+  `app/api/deals/[id]/undo-lost`.
+- Rutas que ya existen y cambian (caminos críticos):
+  - `app/api/contacts` y `app/api/contacts/[id]`: permiso por rol y lista cerrada de campos;
+  - `app/api/deals` (`POST`): acepta `from_deal_id` (convierte la solicitud) y `contact_id`
+    (usa ese contacto). Sin esos dos campos no cambia nada.
+- Mailchimp: convertir una solicitud y deshacer un "perdido" avisan a Mailchimp del cambio
+  de etapa, igual que cualquier cambio de etapa de hoy, para que la persona reciba la
+  secuencia de emails que le corresponde. No se agrega ningún envío nuevo.
+- Las tareas de la cadencia que queden pendientes cuando un proceso se cierra no se
+  completan solas: se ven en la ficha y se cierran a mano (limpiarlas queda para
+  `crm-tareas-y-campanita`).
+- Pantallas: `app/(dashboard)/contacts/[id]` (reemplazo), `app/(dashboard)/pipeline/new`
+  (precarga con `?deal=` y `?contact=`), y el enlace del nombre en `/crm`, `/pipeline/[id]`
+  y `/contacts`.
+- Código: `lib/crm/`, `lib/auth/` (`contact-access`, `entity-access`), `components/crm/`,
+  `lib/supabase/tasks.ts` (cinco funciones nuevas), `lib/supabase/cadencia.ts` (nuevo:
+  `aplicarCadencia`), `lib/supabase/deals.ts` (función nueva para convertir una solicitud),
+  `app/globals.css` (dos tokens).
+- Efecto sobre otras pantallas: `ContactEditor` en `/pipeline/[id]` y `/appraisals/[id]`
+  usa las rutas de contactos; con la regla de acceso de este change sigue funcionando para
+  el asesor y se prueba en el QA.
+- No hay variables de entorno nuevas ni procesos programados.
+- Depende de `crm-sistema-diseno` aprobado. Deja anotado trabajo para
+  `crm-tareas-y-campanita` (permiso de completar tareas, fechas en UTC) y para `crm-inicio`
+  (bloque "Sin respuesta" y lista de solicitudes sin tarea).

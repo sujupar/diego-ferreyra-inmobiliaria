@@ -36,3 +36,8 @@ Ninguna.
 - Código: `app/(dashboard)/inicio/page.tsx` (reemplazo), `components/inicio/`, una ruta de
   lectura para la cola de llamadas, `lib/crm/cola-llamadas.ts`.
 - Depende de `crm-ficha-y-llamadas` (cola y registro) y `crm-tareas-y-campanita` (tareas por vencimiento).
+- Pendiente que deja `crm-ficha-y-llamadas`: cuando exista el bloque "Sin respuesta tras
+  WhatsApp", volver a poner en los avisos de la ficha los textos de la maqueta que lo nombran
+  ("…queda en «Sin respuesta» del Inicio…"); hasta entonces la ficha usa textos que no lo
+  mencionan. Este change también tiene que juntar las solicitudes que quedaron sin ninguna
+  tarea pendiente (secuencia terminada, o tarea que no se pudo crear).
