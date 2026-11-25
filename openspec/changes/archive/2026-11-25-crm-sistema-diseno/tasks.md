@@ -27,7 +27,7 @@
 - [x] 4.2 Corregir los hallazgos de peso; verificar cada uno en la maqueta
 - [x] 4.3 Auditor 2 (otro agente nuevo) revisa la maqueta, la spec y la auditoría del auditor 1; registra en `auditoria.md`
 - [x] 4.4 Repetir 4.2–4.3 hasta cero hallazgos de peso; verificar que `auditoria.md` cierra con ambos auditores conformes
-- [ ] 4.5 Abrir el PR del change (solo documentos y maqueta) y mergearlo; verificar que producción no cambia
+- [x] 4.5 Abrir el PR del change (solo documentos y maqueta) y mergearlo; verificar que producción no cambia
 
 ## Workflow follow-up
 
