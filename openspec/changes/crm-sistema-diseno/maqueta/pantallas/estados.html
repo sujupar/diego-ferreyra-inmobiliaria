@@ -1,0 +1,249 @@
+<section class="pantalla" data-screen="estados" data-titulo="Sistema de diseño" data-seccion="Sobre la maqueta">
+  <div class="pagina">
+
+    <header class="pila pila--chica estados-intro">
+      <h1 class="titulo-pagina">Sistema de diseño</h1>
+      <p class="texto-suave">Las piezas con las que están armadas todas las pantallas del CRM. Son los colores, la letra y los íconos que la plataforma ya usa: acá no hay nada nuevo. Todo lo que se ve se puede tocar.</p>
+      <label class="estados-tecnico"><input type="checkbox" id="estados-ver-codigo"><span>Para quien programa: mostrar los nombres técnicos</span></label>
+    </header>
+
+    <!-- ═══ 1. Bloque en sus tres estados ═══ -->
+    <section class="pila" aria-labelledby="estados-t-bloque">
+      <div class="pila pila--chica">
+        <h2 class="eyebrow" id="estados-t-bloque">Un bloque, tres estados</h2>
+        <p class="texto-suave texto-chico">Cada bloque que trae datos tiene que saber mostrarse cargando, vacío y con error. Si un dato no se pudo consultar, nunca se muestra un cero.</p>
+      </div>
+      <div class="estados-rejilla estados-rejilla--3">
+        <div class="card">
+          <div class="card__cabecera"><h3 class="card__titulo">Cargando</h3><span class="badge badge--borde">Esqueleto</span></div>
+          <div class="card__cuerpo estados-bloque" id="estados-bloque-carga"></div>
+        </div>
+        <div class="card">
+          <div class="card__cabecera"><h3 class="card__titulo">Vacío</h3>
+            <button type="button" class="btn btn--fantasma btn--chico" id="estados-vaciar" hidden><i data-icono="refresh"></i>Vaciar de nuevo</button></div>
+          <div class="card__cuerpo estados-bloque" id="estados-bloque-vacio"></div>
+        </div>
+        <div class="card">
+          <div class="card__cabecera"><h3 class="card__titulo">Error</h3>
+            <button type="button" class="btn btn--fantasma btn--chico" id="estados-romper" hidden><i data-icono="triangle-alert"></i>Ver el error otra vez</button></div>
+          <div class="card__cuerpo estados-bloque" id="estados-bloque-error" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ 2. Tareas y línea de tiempo ═══ -->
+    <div class="estados-rejilla estados-rejilla--2">
+      <section class="card" aria-labelledby="estados-t-tareas">
+        <div class="card__cabecera"><h2 class="card__titulo" id="estados-t-tareas">Tarea, en cada estado</h2></div>
+        <div class="card__cuerpo">
+          <p class="texto-suave texto-chico">El vencimiento siempre se lee con ícono y texto; el color solo acompaña. Tocá el círculo para completarla.</p>
+          <ul class="lista" id="estados-tareas"></ul>
+          <p class="estados-codigo">.tarea · data-estado="vencida | hoy | proxima | sinfecha" · .tarea--hecha</p>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="estados-t-linea">
+        <div class="card__cabecera"><h2 class="card__titulo" id="estados-t-linea">Línea de tiempo: un evento de cada tipo</h2></div>
+        <div class="card__cuerpo">
+          <p class="texto-suave texto-chico">Ícono del tipo, título en un renglón, quién lo hizo y cuándo. Tocá la fecha (en el celular, cualquier parte del renglón) para ver el día y la hora exactos.</p>
+          <ul class="linea-tiempo" id="estados-linea"></ul>
+          <div class="pila pila--chica estados-condicional">
+            <p class="estados-condicional__t"><i data-icono="triangle-alert"></i><span><strong>Solo aparecen si se pueden medir.</strong> Hoy la plataforma no sabe si alguien abrió un email, hizo clic o leyó un WhatsApp. Dependen del cambio 3 (línea de tiempo); si no se pueden medir, no se muestran: por eso no están en la ficha.</span></p>
+            <ul class="linea-tiempo" id="estados-linea-condicional"></ul>
+          </div>
+          <p class="estados-codigo">.evento · data-tipo="registro | llamada | nota | whatsapp | etapa | tarea | video | email | consulta | tasacion"</p>
+        </div>
+      </section>
+    </div>
+
+    <!-- ═══ 3. Chips ═══ -->
+    <div class="estados-rejilla estados-rejilla--2">
+      <section class="card" aria-labelledby="estados-t-resultados">
+        <div class="card__cabecera"><h2 class="card__titulo" id="estados-t-resultados">Resultado de una llamada</h2></div>
+        <div class="card__cuerpo">
+          <div class="estados-sub">
+            <span class="eyebrow">Para elegir (un toque)</span>
+            <div class="estados-opciones" id="estados-opciones"></div>
+            <p class="estados-codigo">.opcion · aria-pressed</p>
+          </div>
+          <div class="estados-sub">
+            <span class="eyebrow">Texto completo</span>
+            <div class="estados-chips" id="estados-resultados-largos"></div>
+          </div>
+          <div class="estados-sub">
+            <span class="eyebrow">Texto corto (línea de tiempo)</span>
+            <div class="estados-chips" id="estados-resultados-cortos"></div>
+            <p class="estados-codigo">.resultado · data-resultado="agendo | volver | no_interesa | no_atendio | equivocado"</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="estados-t-etapas">
+        <div class="card__cabecera"><h2 class="card__titulo" id="estados-t-etapas">Etapas y etiquetas</h2></div>
+        <div class="card__cuerpo">
+          <div class="estados-sub">
+            <span class="eyebrow">Etapa del proceso</span>
+            <div class="estados-chips" id="estados-etapas"></div>
+            <p class="estados-codigo">.badge.etapa · data-etapa="solicitud | agendada | visita | entregada | captada | perdida"</p>
+          </div>
+          <div class="estados-sub">
+            <span class="eyebrow">Etiquetas</span>
+            <div class="estados-chips">
+              <span class="badge">Neutra</span>
+              <span class="badge badge--marca">Marca</span>
+              <span class="badge badge--suave">Suave</span>
+              <span class="badge badge--borde">Borde</span>
+              <span class="badge badge--alerta"><i data-icono="triangle-alert"></i>Alerta</span>
+              <span class="badge badge--numero">3</span>
+            </div>
+            <p class="estados-codigo">.badge · --marca · --suave · --borde · --alerta · --numero</p>
+          </div>
+          <div class="estados-sub">
+            <span class="eyebrow">Tipo de tarea</span>
+            <div class="estados-chips" id="estados-tipos"></div>
+            <p class="texto-suave texto-chico">Los mismos cinco al crear una tarea y al filtrar los pendientes.</p>
+          </div>
+          <div class="estados-sub">
+            <span class="eyebrow">Persona</span>
+            <div class="fila fila--envuelve">
+              <span class="avatar avatar--chico" aria-hidden="true">MI</span>
+              <span class="avatar" aria-hidden="true">MI</span>
+              <span class="avatar avatar--grande" aria-hidden="true">MI</span>
+              <span class="avatar avatar--neutro" aria-hidden="true">TA</span>
+            </div>
+            <p class="estados-codigo">.avatar · --chico · --grande · --neutro</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ═══ 4. Botones y controles ═══ -->
+    <div class="estados-rejilla estados-rejilla--2">
+      <section class="card" aria-labelledby="estados-t-botones">
+        <div class="card__cabecera"><h2 class="card__titulo" id="estados-t-botones">Botones</h2></div>
+        <div class="card__cuerpo">
+          <div class="estados-fila">
+            <button type="button" class="btn btn--marca" data-toast="Botón de marca: la acción principal de la pantalla (llamar, guardar)."><i data-icono="phone"></i>Llamar</button>
+            <span class="estados-nota"><span>La acción principal: llamar, guardar</span><span class="estados-codigo">.btn.btn--marca</span></span>
+          </div>
+          <div class="estados-fila">
+            <button type="button" class="btn" data-toast="Botón primario: confirma algo importante."><i data-icono="check"></i>Guardar</button>
+            <span class="estados-nota"><span>Confirma algo importante</span><span class="estados-codigo">.btn</span></span>
+          </div>
+          <div class="estados-fila">
+            <button type="button" class="btn btn--secundario" data-toast="Botón secundario: la alternativa a la acción principal."><i data-icono="plus"></i>Crear tarea</button>
+            <span class="estados-nota"><span>La alternativa a la acción principal</span><span class="estados-codigo">.btn.btn--secundario</span></span>
+          </div>
+          <div class="estados-fila">
+            <button type="button" class="btn btn--fantasma" data-toast="Botón fantasma: acciones de poco peso, como cancelar.">Cancelar</button>
+            <span class="estados-nota"><span>Acciones de poco peso, como cancelar</span><span class="estados-codigo">.btn.btn--fantasma</span></span>
+          </div>
+          <div class="estados-fila">
+            <button type="button" class="btn btn--peligro" data-toast="Botón de peligro: algo que no se deshace fácil."><i data-icono="x"></i>Descartar</button>
+            <span class="estados-nota"><span>Algo que no se deshace fácil</span><span class="estados-codigo">.btn.btn--peligro</span></span>
+          </div>
+          <div class="estados-fila">
+            <div class="fila">
+              <button type="button" class="btn btn--icono btn--secundario" aria-label="Posponer" data-toast="Botón de ícono: siempre lleva un nombre para lectores de pantalla."><i data-icono="clock"></i></button>
+              <button type="button" class="btn btn--icono btn--marca btn--redondo" aria-label="Agregar" data-toast="Botón de ícono redondo, de marca."><i data-icono="plus"></i></button>
+              <button type="button" class="btn btn--icono" aria-label="Más opciones" data-toast="Botón de ícono sin fondo."><i data-icono="more"></i></button>
+            </div>
+            <span class="estados-nota"><span>Solo ícono, con nombre para lectores de pantalla</span><span class="estados-codigo">.btn.btn--icono (+ aria-label)</span></span>
+          </div>
+          <div class="estados-fila">
+            <button type="button" class="btn btn--secundario btn--chico" data-toast="Botón chico: para cabeceras de bloque.">Chico</button>
+            <button type="button" class="btn btn--secundario" disabled>Deshabilitado</button>
+            <span class="estados-nota"><span>Chico (cabeceras de bloque) y deshabilitado</span><span class="estados-codigo">.btn--chico · disabled</span></span>
+          </div>
+          <p class="texto-suave texto-chico">En celular todo botón mide 44 px de alto o más; desde 768 px de ancho, 36 px.</p>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="estados-t-controles">
+        <div class="card__cabecera"><h2 class="card__titulo" id="estados-t-controles">Controles</h2></div>
+        <div class="card__cuerpo">
+          <div class="estados-sub">
+            <span class="eyebrow">Pestañas</span>
+            <div class="pestanas pestanas--iguales" role="tablist" aria-label="Ejemplo de pestañas">
+              <button type="button" class="pestana" role="tab" aria-selected="true" aria-controls="estados-p-actividad">Actividad</button>
+              <button type="button" class="pestana" role="tab" aria-selected="false" aria-controls="estados-p-datos">Datos</button>
+              <button type="button" class="pestana" role="tab" aria-selected="false" aria-controls="estados-p-tareas">Tareas</button>
+            </div>
+            <p id="estados-p-actividad" role="tabpanel" class="texto-suave texto-chico">Acá va la línea de tiempo de la persona.</p>
+            <p id="estados-p-datos" role="tabpanel" class="texto-suave texto-chico" hidden>Acá van sus datos y los de la propiedad.</p>
+            <p id="estados-p-tareas" role="tabpanel" class="texto-suave texto-chico" hidden>Acá van sus tareas, tasaciones y procesos.</p>
+          </div>
+          <div class="estados-sub">
+            <span class="eyebrow">Selector de dos opciones</span>
+            <div class="pestanas pestanas--segmento" role="tablist" aria-label="Ejemplo de selector">
+              <button type="button" class="pestana" role="tab" aria-selected="true" aria-controls="estados-s-nota"><i data-icono="sticky-note"></i>Nota</button>
+              <button type="button" class="pestana" role="tab" aria-selected="false" aria-controls="estados-s-llamada"><i data-icono="phone"></i>Registrar llamada</button>
+            </div>
+            <div id="estados-s-nota" role="tabpanel">
+              <label class="campo"><span class="campo__etiqueta">Nota</span>
+                <textarea class="entrada" placeholder="Escribí una nota…"></textarea>
+                <span class="campo__ayuda">La letra del campo mide 16 px en celular: el iPhone no hace zoom al tocarlo.</span></label>
+            </div>
+            <div id="estados-s-llamada" role="tabpanel" hidden>
+              <label class="campo"><span class="campo__etiqueta">¿Cuándo la volvés a llamar?</span>
+                <input class="entrada" type="datetime-local" aria-invalid="true" aria-describedby="estados-campo-error">
+                <span class="campo__error" id="estados-campo-error"><i data-icono="triangle-alert"></i>Elegí día y hora</span></label>
+            </div>
+          </div>
+          <div class="estados-sub">
+            <span class="eyebrow">Filtros</span>
+            <div class="filtros estados-filtros" aria-label="Ejemplo de filtros">
+              <button type="button" class="filtro" aria-pressed="true" data-valor="todo">Todo</button>
+              <button type="button" class="filtro" aria-pressed="false" data-valor="llamadas">Llamadas</button>
+              <button type="button" class="filtro" aria-pressed="false" data-valor="notas">Notas</button>
+              <button type="button" class="filtro" aria-pressed="false" data-valor="actividad">Actividad</button>
+            </div>
+            <p class="estados-codigo">.pestanas · .pestanas--segmento · .filtros · .campo · .entrada</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ═══ 5. Colores, letra y bordes ═══ -->
+    <section class="card" aria-labelledby="estados-t-paleta">
+      <div class="card__cabecera"><h2 class="card__titulo" id="estados-t-paleta">Colores</h2></div>
+      <div class="card__cuerpo">
+        <p class="texto-suave texto-chico">Son los de la plataforma. Los tres últimos no son colores nuevos: son el mismo gris y el mismo rojo, un poco más oscuros o más claros para que el texto chico se lea bien. Ningún significado depende solo del color: siempre hay ícono y texto.</p>
+        <div class="estados-paleta" id="estados-paleta"></div>
+      </div>
+    </section>
+
+    <div class="estados-rejilla estados-rejilla--2">
+      <section class="card" aria-labelledby="estados-t-tipo">
+        <div class="card__cabecera"><h2 class="card__titulo" id="estados-t-tipo">Letra</h2><span class="badge badge--borde">Geist</span></div>
+        <div class="card__cuerpo">
+          <div class="estados-tipo"><span class="titulo-pagina">Marcela Ibáñez</span><span class="estados-color__uso">Título de página · 20 px, negrita</span><span class="estados-codigo">.titulo-pagina</span></div>
+          <div class="estados-tipo"><span class="numero-grande">12</span><span class="estados-color__uso">Número grande · 28 px, cifras parejas</span><span class="estados-codigo">.numero-grande</span></div>
+          <div class="estados-tipo"><span class="titulo-bloque">Tareas de hoy</span><span class="estados-color__uso">Título de bloque · 14 px, seminegrita</span><span class="estados-codigo">.titulo-bloque</span></div>
+          <div class="estados-tipo"><span>Pidió que la llamen después de las 10.</span><span class="estados-color__uso">Texto base · 14 px</span><span class="estados-codigo">body</span></div>
+          <div class="estados-tipo"><span class="texto-suave texto-chico">Paula · ayer</span><span class="estados-color__uso">Texto chico · 12 px</span><span class="estados-codigo">.texto-chico.texto-suave</span></div>
+          <div class="estados-tipo"><span class="eyebrow">Para llamar ahora</span><span class="estados-color__uso">Rótulo · 10 px, mayúsculas espaciadas</span><span class="estados-codigo">.eyebrow</span></div>
+          <div class="estados-tipo"><span class="numero">11 5555-0142</span><span class="estados-color__uso">Números y teléfonos · Geist Mono</span><span class="estados-codigo">.numero</span></div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="estados-t-radios">
+        <div class="card__cabecera"><h2 class="card__titulo" id="estados-t-radios">Bordes redondeados</h2></div>
+        <div class="card__cuerpo">
+          <div class="estados-radios">
+            <div class="estados-radio"><span class="estados-radio__muestra" style="border-radius: var(--radius-sm)"></span><span class="estados-codigo">--radius-sm</span><span class="estados-color__uso">8 px · Chips de resultado</span></div>
+            <div class="estados-radio"><span class="estados-radio__muestra" style="border-radius: var(--radius-md)"></span><span class="estados-codigo">--radius-md</span><span class="estados-color__uso">10 px · Botones y campos</span></div>
+            <div class="estados-radio"><span class="estados-radio__muestra" style="border-radius: var(--radius-lg)"></span><span class="estados-codigo">--radius-lg</span><span class="estados-color__uso">12 px · Opciones y plegables</span></div>
+            <div class="estados-radio"><span class="estados-radio__muestra" style="border-radius: var(--radius-xl)"></span><span class="estados-codigo">--radius-xl</span><span class="estados-color__uso">16 px · Tarjetas y hojas</span></div>
+          </div>
+          <details class="plegable">
+            <summary>Sección plegable</summary>
+            <div class="plegable__cuerpo texto-suave texto-chico">Se usa para lo que no hace falta ver siempre, como las tareas sin fecha.</div>
+          </details>
+          <p class="estados-codigo">.plegable · .card · .card--plana · .card--marca</p>
+        </div>
+      </section>
+    </div>
+
+  </div>
+</section>
