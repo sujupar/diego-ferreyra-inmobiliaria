@@ -290,7 +290,7 @@ Cuando crea una tarea agrega a la línea de tiempo «Tarea creada sola · …»,
 
 ## 6. Datos sembrados
 
-Usuarios: `paula` (Paula, coordinadora), `tomas` (Tomás Agüero, asesor), `admin` (Dueño). Paula arranca con 6 avisos en la campanita, Tomás con 1 y el admin con 0 (sirve para mostrar «todo al día»).
+Usuarios: `paula` (Paula, coordinadora), `tomas` (Tomás Agüero, asesor), `admin` (Raúl Maidana, nombre ficticio del dueño). Paula arranca con 6 avisos en la campanita, Tomás con 1 y el admin con 0 (sirve para mostrar «todo al día»).
 
 | id | Persona | Propiedad | Situación |
 | --- | --- | --- | --- |
@@ -341,3 +341,38 @@ Parámetros de `ver.html`: `w`, `h`, `p` (pantalla), `q` (query para tu propio J
 - **Datos.** c4 ahora es de Embudo · Tasación. Nuevos: c10 Mirta Sosa (visita realizada) y c11 Jorge Altamirano (tasación entregada), los dos de Tomás. El admin se rotula «Vista del dueño».
 - **Ficha.** La cabecera dice «Última llamada: hace N días» (alerta solo en etapa Solicitud). Una tarea de tipo `tasacion` no se lista en Tareas si la persona ya tiene su tarjeta «Tasaciones agendadas». En la hoja del celular, «Guardar llamada» queda pegado abajo.
 - **#estados.** Los nombres técnicos (`.estados-codigo`) están ocultos hasta tildar «Para quien programa».
+
+## 10. Pulido después de la aprobación del dueño (2026-11-25)
+
+No cambia estructura, layout ni comportamiento. Son los 11 menores que dejó el segundo auditor.
+
+- **«Espera hace N min».** La primera llamada de alguien que recién entró (sin llamadas, con la tarea nacida al registrarse) dice «Espera hace 28 min» en el Inicio, la campanita y Pendientes. Sale de `MQ.fmt.vencimiento(t)` (`{ texto, estado: 'vencida', espera: true }`); sigue en el grupo Vencidas y usa el ícono de reloj. Nuevo: `MQ.fmt.duracion(min)`.
+- **Volver a llamar.** Al elegir un atajo o completar día y hora, los campos dejan de verse en rojo. En escritorio, al elegir «volver a llamar» la página se acomoda para que «Guardar llamada» quede entero.
+- **Foco.** Al llegar a la ficha desde «Registrar» del Inicio en celular, el foco queda en «No atendió».
+- **Email.** El evento dice «Se le envió el email …» (hoy se sabe que se envió, no que llegó).
+- **#estados.** Una tarjeta que ya muestra tareas se titula «Con datos»; vuelve a «Vacío» o «Error» al reiniciarla.
+- **Inicio del asesor.** Si hay visitas de hoy, el primer bloque aclara «Además tenés 1 visita hoy: está en «Mis visitas y tasaciones de hoy»» (opción `aparte` de `bloqueTareas`).
+- **Rol admin.** El aviso dice «Ahora ves la plataforma como la ve el dueño.» y la persona se llama Raúl Maidana (ficticio) en filtros, «Asignada a» y el botón de rol.
+- **Pendientes.** El selector de persona del celular dice «Mías», igual que el chip de escritorio.
+- **Tablet táctil.** `@media (min-width: 768px) and (pointer: coarse)`: se mantienen los 44 px y la letra de 16 px en campos. Con mouse no cambia nada. Si una pantalla achica un tocable desde 768, tiene que reponerlo en ese mismo media query.
+
+## 11. Correcciones de la auditoría final (2026-11-25)
+
+No cambia estructura, layout ni comportamiento.
+
+- **Foco en la hoja del «+».** Al pasar del menú a «Registrar llamada» el foco va a «No atendió»; al pasar a «Nota», al campo (enfocarlo dentro del mismo toque es lo que abre el teclado en iPhone). En escritorio, después de guardar, el foco va al aviso de lo que pasó (o al evento nuevo si no hay aviso).
+- **Volver a llamar en pantallas bajas.** En la hoja del celular, al elegir «volver a llamar» el cuerpo se desplaza lo justo para que Día y Hora no queden detrás de «Guardar llamada».
+- **Inicio, zona del nombre.** `.inicio-fila__texto` tiene 6 px de separación en táctil (3 px con mouse) y la zona ampliada de la fecha no sube sobre el nombre. La fecha exacta se ve tocando cualquier parte del bloque `data-fecha-fila`, que tiene 4 px más de zona abajo.
+- **Título de un evento.** En `#estados` vale lo mismo que en la ficha: si no entra, pasa a un segundo renglón; no se corta con «…».
+- **#estados.** «Para elegir» lista «No atendió» primero, como la ficha.
+- **Capturas.** `campanita-{390,1280}` salen del estado inicial (6 avisos). La campanita después de registrar una llamada es `flujo-campanita-tras-llamada-{390,1280}`.
+
+## 12. Correcciones de la segunda auditoría final (2026-11-25)
+
+No cambia estructura, layout ni comportamiento.
+
+- **Menú lateral en tablet táctil.** `.menu__item` baja a 32 px desde 1024 pensando en el mouse; en el bloque `@media (min-width: 768px) and (pointer: coarse)` vuelve a 44 px. Con mouse no cambia nada.
+- **«Espera» o «Vencida».** `esperaPrimeraLlamada` devuelve «Espera hace…» solo si la tarea venció en el mismo momento del registro (la persona entró en horario hábil: Patricia). Si entró fuera de horario y la tarea era para las 9:00 del día hábil siguiente, dice «Vencida hace…» (Marcela). La spec ya lo describe así, en dos escenarios.
+- **Título de una tarea en `#estados`.** Pasa a dos renglones, igual que en Pendientes, la ficha y el Inicio.
+- **Corregir la hora.** En escritorio, al abrir «¿Fue hace un rato? Corregir la hora» la página se acomoda para que «Guardar llamada» quede entero a la vista.
+

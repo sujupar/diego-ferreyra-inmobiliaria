@@ -217,7 +217,13 @@
       var caja = $('#ficha-composer'), foco = $(cual === 'nota' ? '.ficha-n__texto' : '.opcion', caja);
       caja.scrollIntoView({ block: 'start' });
       if (foco) foco.focus({ preventScroll: true });
-    } else { vista(cual); MQ.abrirHoja('ficha-hoja-mas'); }
+    } else {
+      vista(cual); MQ.abrirHoja('ficha-hoja-mas');
+      // La hoja se abrió directo en el formulario (sin pasar por el menú del «+»): el foco va a la primera opción de la llamada.
+      // En la nota va al panel y no al campo, para que no salte el teclado solo.
+      var fh = cual === 'llamada' ? $('.ficha-form-llamada .opcion', hojaMas) : $('.hoja__panel', hojaMas);
+      if (fh) { if (fh.classList.contains('hoja__panel') && !fh.hasAttribute('tabindex')) fh.setAttribute('tabindex', '-1'); fh.focus({ preventScroll: true }); }
+    }
   }
   function despuesDeGuardar() {
     reiniciarFormularios();
@@ -227,6 +233,12 @@
     $$('#ficha-filtros .filtro').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-valor') === 'todo')); });
     var cont = document.getElementById('contenido'); if (cont) cont.scrollTop = 0;
     pintar();
+    // En escritorio el botón que tenía el foco ya no existe: el foco va al aviso de lo que pasó o, si no hay, al evento nuevo.
+    // (En celular vuelve solo al «+» al cerrarse la hoja.)
+    if (esEscritorio()) {
+      var df = $('#ficha-aviso .ficha-aviso') || $('#ficha-linea .evento');
+      if (df) { df.setAttribute('tabindex', '-1'); df.focus({ preventScroll: true }); }
+    }
   }
   function avisarCambios() {
     MQ.emit('actividad', { motivo: 'deshecha', evento: null });
@@ -340,7 +352,15 @@
     var t = e.target, el, form;
 
     el = t.closest('[data-ficha-vista]');
-    if (el) { vista(el.getAttribute('data-ficha-vista')); return; }
+    if (el) {
+      var cualVista = el.getAttribute('data-ficha-vista');
+      vista(cualVista);
+      // El foco sigue al toque: en la llamada va a la primera opción («No atendió»); en la nota, al campo
+      // (enfocarlo dentro del mismo toque es lo que abre el teclado en iPhone).
+      var destino = cualVista === 'llamada' ? $('.ficha-form-llamada .opcion', hojaMas) : $('.ficha-form-nota .ficha-n__texto', hojaMas);
+      if (destino) destino.focus({ preventScroll: true });
+      return;
+    }
     if (t.closest('#ficha-hoja-volver')) { vista('menu'); return; }
 
     form = t.closest('.ficha-form-llamada');
@@ -354,7 +374,18 @@
         var g = $('.ficha-ll__guardar', form); g.hidden = false;
         // Queda un solo botón Guardar, ya enfocado. Con «volver a llamar» primero hay que elegir día y hora.
         // En la hoja del celular «Guardar llamada» queda pegado abajo (ficha.css), así que siempre se ve.
-        if (r === 'volver') $('.ficha-ll__volver', form).scrollIntoView({ block: 'nearest' }); else { g.focus({ preventScroll: true }); g.scrollIntoView({ block: 'nearest' }); }
+        // En escritorio, con «volver a llamar» se acomoda la página para que «Guardar llamada» quede entero a la vista.
+        if (r === 'volver') {
+          var bloqueV = $('.ficha-ll__volver', form);
+          bloqueV.scrollIntoView({ block: 'nearest' });
+          if (esEscritorio()) g.scrollIntoView({ block: 'nearest' });
+          else {
+            // En la hoja, «Guardar llamada» va pegado abajo y tapa lo que queda detrás: en pantallas bajas (360 × 740)
+            // se desplaza el cuerpo lo justo para que Día y Hora se vean enteros.
+            var cuerpoH = form.closest('.hoja__cuerpo'), falta = cuerpoH ? bloqueV.getBoundingClientRect().bottom + 12 - g.getBoundingClientRect().top : 0;
+            if (falta > 0) cuerpoH.scrollTop += falta;
+          }
+        } else { g.focus({ preventScroll: true }); g.scrollIntoView({ block: 'nearest' }); }
         return;
       }
       el = t.closest('[data-volver]');
@@ -362,6 +393,7 @@
         var p = el.getAttribute('data-volver').split('|'), f = MQ.dia(+p[0], p[1]);
         $('.ficha-ll__dia', form).value = f.slice(0, 10); $('.ficha-ll__hora-v', form).value = f.slice(11);
         $('.ficha-ll__volver-error', form).hidden = true;
+        $('.ficha-ll__dia', form).removeAttribute('aria-invalid'); $('.ficha-ll__hora-v', form).removeAttribute('aria-invalid');   // ya son válidos: fuera el borde rojo
         var gv = $('.ficha-ll__guardar', form); gv.focus({ preventScroll: true }); gv.scrollIntoView({ block: 'nearest' });
         return;   // base.js marca el atajo elegido
       }
@@ -372,7 +404,11 @@
     switch (el.getAttribute('data-ficha')) {
       case 'll-guardar': form = el.closest('.ficha-form-llamada'); guardarLlamada(form, $('.opcion[aria-pressed="true"]', form).getAttribute('data-resultado')); break;
       case 'll-whatsapp': guardarWhatsapp(el.closest('.ficha-form-llamada')); break;
-      case 'll-hora': var caja = $('.ficha-ll__atraso', el.parentNode); caja.hidden = !caja.hidden; el.setAttribute('aria-expanded', String(!caja.hidden)); break;
+      case 'll-hora': var caja = $('.ficha-ll__atraso', el.parentNode); caja.hidden = !caja.hidden; el.setAttribute('aria-expanded', String(!caja.hidden));
+        // En escritorio el formulario crece: se acomoda la página para que «Guardar llamada» siga entero a la vista.
+        var gh = $('.ficha-ll__guardar', el.closest('.ficha-form-llamada'));
+        if (!caja.hidden && esEscritorio() && gh && !gh.hidden) gh.scrollIntoView({ block: 'nearest' });
+        break;
       case 'nota-guardar': guardarNota(el.closest('.ficha-form-nota')); break;
       case 'abrir-llamada': abrirFormulario('llamada'); break;
       case 'abrir-nota': abrirFormulario('nota'); break;
@@ -386,6 +422,16 @@
       case 'bg-guardar': c0().background = $('#ficha-bg-texto').value.trim(); editandoBg = false; pintarBg(c0()); MQ.toast('Background guardado.'); break;
     }
   });
+  /* Día u hora corregidos a mano: el campo que ya tiene valor deja de verse en error, y con los dos completos se va el mensaje. */
+  function revisarVolver(e) {
+    var campo = e.target;
+    if (!campo.classList || !(campo.classList.contains('ficha-ll__dia') || campo.classList.contains('ficha-ll__hora-v'))) return;
+    var form = campo.closest('.ficha-form-llamada'), dia = $('.ficha-ll__dia', form), hora = $('.ficha-ll__hora-v', form);
+    if (campo.value) campo.removeAttribute('aria-invalid');
+    if (dia.value && hora.value) { dia.removeAttribute('aria-invalid'); hora.removeAttribute('aria-invalid'); $('.ficha-ll__volver-error', form).hidden = true; }
+  }
+  document.addEventListener('input', revisarVolver);
+  document.addEventListener('change', revisarVolver);
   $('#ficha-filtros').addEventListener('filtro', function (e) { filtro = e.detail.valor; pintarLinea(c0()); });
 
   /* ── Redibujar cuando cambia algo ────────────────────────────────── */

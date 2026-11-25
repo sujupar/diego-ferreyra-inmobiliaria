@@ -43,7 +43,7 @@
     eventoEj('llamada', 'Llamada 1', MQ.dia(-1, '10:15'), 'Paula', { resultado: 'no_atendio', intento: 1 }),
     eventoEj('consulta', 'Consultó por un aviso en ZonaProp', MQ.dia(-2, '21:48'), null, { detalle: 'Departamento 2 ambientes en Almagro · «¿Sigue disponible?»' }),
     eventoEj('video', 'Vio el video de la landing · 62 %', MQ.dia(-2, '18:24')),
-    eventoEj('email', 'Recibió el email «Recibimos tu solicitud de tasación»', MQ.dia(-2, '18:20')),
+    eventoEj('email', 'Se le envió el email «Recibimos tu solicitud de tasación»', MQ.dia(-2, '18:20')),
     eventoEj('registro', 'Se registró · Solicitud de tasación', MQ.dia(-2, '18:20'), null, { detalle: 'Anuncio de Meta · Departamento 3 ambientes en Caballito' })
   ];
   $('estados-linea').innerHTML = EVENTOS.map(function (e) { return ui.itemEvento(e); }).join('');
@@ -61,7 +61,8 @@
   var claves = Object.keys(MQ.RESULTADOS);
   $('estados-resultados-largos').innerHTML = claves.map(function (k) { return ui.chipResultado(k, true); }).join('');
   $('estados-resultados-cortos').innerHTML = claves.map(function (k) { return ui.chipResultado(k); }).join('');
-  $('estados-opciones').innerHTML = claves.map(function (k) {
+  // Mismo orden que en la ficha: «No atendió» primero, porque es el único que guarda con un toque.
+  $('estados-opciones').innerHTML = ['no_atendio'].concat(claves.filter(function (k) { return k !== 'no_atendio'; })).map(function (k) {
     var r = MQ.RESULTADOS[k];
     return '<button type="button" class="opcion" aria-pressed="' + (k === 'no_atendio') + '" data-resultado="' + k + '"><span class="opcion__icono">' + ui.icono(r.icono) + '</span><span>' + ui.esc(r.texto) +
       (k === 'volver' ? '<small>Pide día y hora</small>' : '') + '</span></button>';
@@ -99,7 +100,14 @@
   var btnVaciar = $('estados-vaciar'), btnRomper = $('estados-romper');
   var creadas = 0, reloj = null;
 
-  function conDatos(bloque, si) { bloque.classList.toggle('estados-bloque--datos', si); }
+  /* Cuando el bloque ya muestra tareas, la tarjeta deja de titularse «Vacío» o «Error»: dice «Con datos». */
+  function conDatos(bloque, si) {
+    bloque.classList.toggle('estados-bloque--datos', si);
+    var t = bloque.parentNode.querySelector('.card__titulo');
+    if (!t) return;
+    if (!t.getAttribute('data-titulo')) t.setAttribute('data-titulo', t.textContent);
+    t.textContent = si ? 'Con datos' : t.getAttribute('data-titulo');
+  }
 
   bCarga.innerHTML = ui.estadoCarga(3);
 

@@ -492,3 +492,17 @@ body.con-fab .toasts { bottom: calc(var(--barra-inferior-h) + 1rem + 3.5rem + 0.
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* ══ TABLET TÁCTIL (iPad y similares) ════════════════════════════════
+   Desde 768 px los controles se achican pensando en el mouse. Si lo que apunta es un dedo,
+   se mantienen los 44 px de alto y la letra de 16 px en los campos, sin importar el ancho.
+   Con mouse (computadora) no cambia nada. */
+@media (min-width: 768px) and (pointer: coarse) {
+  :root { --ctl: var(--tap); }
+  .barra-superior .btn--icono { width: var(--tap); min-height: var(--tap); }
+  .rol-btn { min-height: var(--tap); }
+  .entrada { font-size: 16px; }
+  .pestana, .pestanas--segmento .pestana, .filtro, .desplegable__item, .toast__accion { min-height: var(--tap); }
+  /* El menú lateral fijo (desde 1024) baja a 32 px pensando en el mouse: con dedo vuelve a 44 */
+  .menu__item { min-height: var(--tap); }
+}

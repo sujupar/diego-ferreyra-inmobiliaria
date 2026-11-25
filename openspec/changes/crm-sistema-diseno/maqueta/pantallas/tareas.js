@@ -73,7 +73,7 @@
   function puedeVerOtros() { return MQ.rol === 'coordinadora' || MQ.rol === 'admin'; }
   function usuarios() { return Object.keys(MQ.USUARIOS).map(function (r) { return MQ.USUARIOS[r]; }); }
   function opcionesPersona() {
-    var yo = MQ.usuario().id, ops = [{ valor: 'mias', texto: 'Mías', largo: 'Mis tareas' }];
+    var yo = MQ.usuario().id, ops = [{ valor: 'mias', texto: 'Mías', largo: 'Mías' }];
     usuarios().forEach(function (u) { if (u.id !== yo) ops.push({ valor: u.id, texto: u.nombre, largo: u.nombre }); });
     ops.push({ valor: 'todas', texto: 'Todo el equipo', largo: 'Todo el equipo' });
     return ops;
