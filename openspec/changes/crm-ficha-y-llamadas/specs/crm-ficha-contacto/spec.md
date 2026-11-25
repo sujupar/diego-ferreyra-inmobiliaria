@@ -95,8 +95,8 @@ del contacto MUST ignorarse.
 La ficha SHALL acomodarse según el ancho que le queda libre después del menú lateral, y no
 según el ancho de la ventana: tres columnas con 960 px o más, dos columnas entre 640 y
 959 px, y una columna con cabecera fija y pestañas con menos de 640 px, sin desplazamiento
-horizontal en ningún ancho. (Diferencia a propósito con `crm-sistema-diseno`: ver el
-escenario de 768 px con el menú abierto.)
+horizontal en ningún ancho. (Es el mismo corte que deja escrito el requisito modificado de
+`crm-sistema-diseno` en este change.)
 
 #### Scenario: Escritorio a 1280 px
 - **WHEN** se abre la ficha a 1280 px de ancho con el menú lateral abierto
@@ -108,7 +108,7 @@ escenario de 768 px con el menú abierto.)
 
 #### Scenario: 768 px con el menú abierto
 - **WHEN** se abre la ficha a 768 px de ancho con el menú lateral abierto
-- **THEN** se ve la vista de una columna con cabecera fija, pestañas y el botón "+", sin desplazamiento horizontal ni texto cortado (la spec `crm-sistema-diseno` pedía dos columnas desde 768 px de ventana, pero la maqueta no tenía el menú lateral de 240 px; esta diferencia necesita el visto bueno del dueño antes de construirse)
+- **THEN** se ve la vista de una columna con cabecera fija, pestañas y el botón "+", sin desplazamiento horizontal ni texto cortado (la spec `crm-sistema-diseno` pedía dos columnas desde 768 px de ventana, pero la maqueta no tenía el menú lateral de 240 px; el dueño confirmó esta diferencia el 2026-11-25)
 
 #### Scenario: 768 px con el menú colapsado
 - **WHEN** se abre la ficha a 768 px de ancho con el menú lateral colapsado
@@ -124,7 +124,7 @@ escenario de 768 px con el menú abierto.)
 
 #### Scenario: Tres columnas antes de 1280 px con el menú colapsado
 - **WHEN** se abre la ficha a 1100 px de ancho con el menú lateral colapsado
-- **THEN** se ven tres columnas, sin desplazamiento horizontal ni texto cortado (la spec `crm-sistema-diseno` pedía tres columnas recién desde 1280 px de ventana; con el menú colapsado quedan 960 px libres desde unos 1056 px de ventana, y esta diferencia también necesita el visto bueno del dueño)
+- **THEN** se ven tres columnas, sin desplazamiento horizontal ni texto cortado (la spec `crm-sistema-diseno` pedía tres columnas recién desde 1280 px de ventana; con el menú colapsado quedan 960 px libres desde unos 1056 px de ventana; el dueño también confirmó esta diferencia el 2026-11-25)
 
 ### Requirement: La cabecera fija del celular no se pierde al desplazar
 En celular, la cabecera con el nombre y el botón de llamar SHALL quedar visible mientras se

@@ -30,11 +30,11 @@ diseño).
 
 ### Estado
 
-**Abierto.** Faltan dos cosas antes de construir:
+**Abierto.** Falta una cosa antes de construir (la 2):
 
-1. **Respuestas del dueño.** El método pide resolver con él, antes de las tareas, las
-   preguntas que cambian lo que se construye. Están escritas con la opción más prudente en
-   `design.md` ("Open Questions") y la tarea 1.6 frena el trabajo hasta tener su respuesta.
+1. **Respuestas del dueño: recibidas el 2026-11-25.** Contestó "Ok a todo": quedó
+   confirmada la opción más prudente de cada pregunta que cambia lo que se construye
+   (`design.md`, "Open Questions", grupo A). El grupo B sigue abierto y no frena.
 2. **Verificación final.** Las correcciones de la ronda 3 las verificó quien las hizo
    (validación estricta incluida), no un auditor nuevo. Con las respuestas del dueño
    aplicadas, pasa una última ronda de dos auditores y recién ahí se cierra esta sección.
