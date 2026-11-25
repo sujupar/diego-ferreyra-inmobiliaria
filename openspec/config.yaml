@@ -1,0 +1,38 @@
+schema: spec-driven
+
+# Contexto del proyecto: restricciones que un agente no deduce leyendo el código.
+context: |
+  Todos los artefactos se escriben en castellano rioplatense, simple, sin jerga.
+  Plataforma interna de una inmobiliaria (Next.js 16 + React 19 + Supabase + Netlify).
+  Diseño de referencia del módulo CRM: docs/superpowers/specs/2026-11-25-ficha-contacto-llamadas-inicio-design.md
+  Toda pantalla nueva se diseña primero para celular (390 px) y después para escritorio (1280 px).
+  Nada de elementos que se ven pero no funcionan: si una sección no tiene datos reales, no aparece.
+  No se usan procesos programados (Netlify Scheduled Functions no corren en este sitio; pg_cron solo si no hay otra salida).
+  Nada envía mensajes a clientes ni cambia etapas de un deal de forma automática salvo que el change lo diga explícitamente.
+  Fechas y horas de tareas se interpretan en America/Argentina/Buenos_Aires.
+  Datos de prueba (contacto Julian Parra, títulos [TEST) quedan fuera de toda métrica.
+  Cada change sigue el protocolo de 6 etapas de CLAUDE.md y tiene su propio PR.
+
+rules:
+  proposal:
+    - Decir explícitamente qué queda afuera.
+    - Nombrar qué roles ven y usan lo nuevo (admin, dueno, coordinador, asesor, abogado).
+  specs:
+    - Cada requisito tiene al menos un escenario verificable en la interfaz o en la base.
+    - Incluir escenarios de celular cuando hay pantalla.
+    - Incluir escenarios de permisos (RLS) cuando se leen o escriben datos.
+  design:
+    - Toda migración lista sus CHECK, RLS e índices, y cómo se verifica contra mncsnastmcjdjxrehdep.
+    - Reglas de negocio en módulos puros de lib/ con tests; las rutas solo validan, llaman y persisten.
+  tasks:
+    - "La última sección de tareas es siempre 'Auditoría doble' - auditor 1 revisa el change contra sus escenarios; auditor 2 revisa el change y la auditoría del 1; se repite hasta cero hallazgos de peso y se registra en auditoria.md del change."
+    - Incluir una tarea de QA en la vista previa de Netlify (escritorio y celular) antes del merge.
+
+operations:
+  apply:
+    guidance:
+      - Trabajar en worktree propio desde origin/main; commit y push por tarea.
+      - Aplicar migraciones antes del deploy y verificar con un SELECT real.
+  archive:
+    guidance:
+      - Archivar solo después del deploy verificado en producción.
