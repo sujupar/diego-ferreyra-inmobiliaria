@@ -56,6 +56,10 @@
     vencimiento: function (t) {
       if (!t.vence) return { texto: 'Sin fecha', estado: 'sinfecha' };
       var d = new Date(t.vence), n = ahora(), dd = diasEntre(d, n), min = Math.round((n - d) / 60000);
+      // Primera llamada de alguien que recién entró: nadie llegó tarde todavía, así que «espera», no «vencida».
+      // Misma regla y mismo texto en el Inicio, la campanita y Pendientes. Sigue en el grupo de las vencidas.
+      var ce = esperaPrimeraLlamada(t);
+      if (ce) return { texto: 'Espera hace ' + fmt.duracion(Math.max(0, Math.round((n - new Date(ce.creado)) / 60000))), estado: 'vencida', espera: true };
       if (dd > 0) return { texto: 'Vencida hace ' + dd + (dd === 1 ? ' día' : ' días'), estado: 'vencida' };
       if (dd === 0) {
         if (t.todoElDia) return { texto: 'Hoy, todo el día', estado: 'hoy' };
@@ -65,6 +69,15 @@
       }
       if (dd === -1) return { texto: 'Mañana' + (t.todoElDia ? '' : ' ' + hora(d)), estado: 'proxima' };
       return { texto: diaCorto(d) + (t.todoElDia ? '' : ', ' + hora(d)), estado: 'proxima' };
+    },
+    /** 28 → "28 min" · 980 → "16 h 20 min" · 4000 → "2 días 18 h" */
+    duracion: function (min) {
+      min = Math.round(min);
+      if (min < 60) return min + ' min';
+      var h = Math.floor(min / 60), m = min % 60;
+      if (h < 48) return h + ' h' + (m ? ' ' + m + ' min' : '');
+      var dias = Math.floor(h / 24), hr = h % 24;
+      return dias + ' días' + (hr ? ' ' + hr + ' h' : '');
     },
     iniciales: function (nombre) {
       var p = String(nombre || '').trim().split(/\s+/);
@@ -100,7 +113,7 @@
   var USUARIOS = {
     coordinadora: { id: 'paula', nombre: 'Paula', rol: 'coordinadora', rolTexto: 'Coordinadora' },
     asesor:       { id: 'tomas', nombre: 'Tomás Agüero', rol: 'asesor', rolTexto: 'Asesor' },
-    admin:        { id: 'admin', nombre: 'Dueño', rol: 'admin', rolTexto: 'Vista del dueño' }
+    admin:        { id: 'admin', nombre: 'Raúl Maidana', rol: 'admin', rolTexto: 'Vista del dueño' }
   };
   function nombreDe(usuarioId) {
     for (var r in USUARIOS) if (USUARIOS[r].id === usuarioId) return USUARIOS[r].nombre;
@@ -178,7 +191,7 @@
   var actividad = [
     // c1 · Marcela Ibáñez — todavía sin llamadas: en ella se prueba la cadencia completa
     A('c1', 'registro', 'Se registró · Solicitud de tasación', dia(-1, '18:20'), null, { detalle: 'Anuncio de Meta «¿Cuánto te queda en mano?» · Departamento 3 ambientes en Caballito' }),
-    A('c1', 'email', 'Recibió el email «Recibimos tu solicitud de tasación»', dia(-1, '18:20')),
+    A('c1', 'email', 'Se le envió el email «Recibimos tu solicitud de tasación»', dia(-1, '18:20')),
     A('c1', 'tarea', 'Tarea creada · Llamar a Marcela Ibáñez', dia(-1, '18:20'), null, { detalle: null }),
     A('c1', 'whatsapp', 'WhatsApp automático · Confirmación de la solicitud', dia(-1, '18:21'), null, { origen: 'sistema' }),
     A('c1', 'video', 'Vio el video de la landing · 62 %', dia(-1, '18:24')),
@@ -266,6 +279,13 @@
   }
   /** Lo que avisa la campanita al rol actual. */
   function avisos(usuarioId) { return misTareas(usuarioId).filter(yaVencio); }
+  /** Si la tarea es la primera llamada de alguien que recién entró (sin llamadas y con la tarea nacida al registrarse), devuelve el contacto. */
+  function esperaPrimeraLlamada(t) {
+    if (!t || t.tipo !== 'llamada' || !t.contactoId || !t.vence || t.estado !== 'pendiente') return null;
+    var c = contacto(t.contactoId);
+    if (!c || t.vence > c.creado || llamadasDe(c.id).length || new Date(t.vence) > ahora()) return null;
+    return c;
+  }
   function llamadasDe(contactoId) { return actividad.filter(function (a) { return a.contactoId === contactoId && a.tipo === 'llamada'; }); }
   /** Días desde la última llamada (atendida o no). null si nunca se lo llamó. Una nota no cuenta. */
   function diasSinContacto(contactoId) {
@@ -456,7 +476,7 @@
     },
     vence: function (t) {
       var v = fmt.vencimiento(t);
-      return '<span class="vence" data-estado="' + v.estado + '"' + (t.vence ? ' title="' + esc(fmt.exacta(t.vence)) + '"' : '') + '>' + icono(v.estado === 'vencida' ? 'triangle-alert' : v.estado === 'sinfecha' ? 'calendar' : 'clock') + esc(v.texto) + '</span>';
+      return '<span class="vence" data-estado="' + v.estado + '"' + (t.vence ? ' title="' + esc(fmt.exacta(t.vence)) + '"' : '') + '>' + icono(v.espera ? 'clock' : v.estado === 'vencida' ? 'triangle-alert' : v.estado === 'sinfecha' ? 'calendar' : 'clock') + esc(v.texto) + '</span>';
     },
     /** opciones: { sinContacto: bool, conPersona: bool, acciones: 'html de botones' } */
     itemTarea: function (t, opciones) {
@@ -644,7 +664,7 @@
     }
 
     el = t.closest('[data-rol-opcion]');
-    if (el) { setRol(el.getAttribute('data-rol-opcion')); toast('Ahora ves la plataforma como ' + USUARIOS[MQ.rol].rolTexto.toLowerCase() + '.'); return; }
+    if (el) { setRol(el.getAttribute('data-rol-opcion')); toast(MQ.rol === 'admin' ? 'Ahora ves la plataforma como la ve el dueño.' : 'Ahora ves la plataforma como ' + USUARIOS[MQ.rol].rolTexto.toLowerCase() + '.'); return; }
 
     el = t.closest('[data-menu-abrir]');
     if (el) {

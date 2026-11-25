@@ -3,7 +3,8 @@
 ## Purpose
 
 Define las reglas visuales y de comportamiento que cumplen todas las pantallas del módulo
-CRM (ficha de contacto, llamadas, tareas, campanita e Inicio), en celular y en escritorio.
+CRM (ficha de contacto, llamadas, pendientes, campanita e Inicio), en celular y en escritorio.
+Describe la maqueta que el dueño aprobó el 2026-11-25 (`maqueta/index.html` y sus capturas).
 
 ## ADDED Requirements
 
@@ -26,19 +27,57 @@ de 768 px, sin desplazamiento horizontal en ningún ancho.
 
 #### Scenario: Celular
 - **WHEN** se abre la ficha a 390 px de ancho
-- **THEN** se ve una cabecera fija con nombre, etapa y botón de llamar, y las pestañas Actividad, Datos y Tareas, sin desplazamiento horizontal
+- **THEN** se ve una cabecera fija con nombre, etapa, botón de llamar y hace cuánto fue la última llamada (o "Sin llamar todavía"), y las pestañas Actividad, Datos y Tareas, sin desplazamiento horizontal
 
 #### Scenario: Tablet
 - **WHEN** se abre la ficha a 1024 px de ancho
 - **THEN** el contenido de la columna derecha aparece debajo de los datos de la persona y la actividad ocupa la otra columna
 
+#### Scenario: Sin enviar mensajes desde la ficha
+- **WHEN** se mira la ficha en cualquier ancho
+- **THEN** el email se muestra como texto y no hay ningún botón ni enlace para enviar un email o un WhatsApp
+
 ### Requirement: Registrar una llamada en pocos toques
 En celular, registrar el resultado de una llamada SHALL requerir como máximo tres toques
-desde la ficha, sin escribir texto obligatorio.
+desde la ficha, sin escribir texto obligatorio. Los resultados SHALL ser cinco: No atendió,
+Atendió y agendó, Atendió · volver a llamar, Atendió · no le interesa y Número equivocado.
+El detalle de la cadencia vive en la spec del change `crm-ficha-y-llamadas`.
 
 #### Scenario: No atendió
 - **WHEN** en la ficha en celular se toca el botón "+", luego "Registrar llamada", luego el resultado "No atendió"
-- **THEN** la llamada queda guardada (el resultado elegido guarda directamente o deja un único botón Guardar ya enfocado) y aparece primera en la línea de tiempo
+- **THEN** la llamada queda guardada con ese tercer toque y aparece primera en la línea de tiempo
+
+#### Scenario: Los demás resultados
+- **WHEN** se elige un resultado distinto de "No atendió"
+- **THEN** queda un único botón "Guardar llamada" y la llamada no se guarda hasta tocarlo
+
+#### Scenario: Volver a llamar
+- **WHEN** se elige "Atendió · volver a llamar"
+- **THEN** se piden día y hora futuros, con tres atajos ("Hoy 16:00", "Mañana 10:00", "Mañana 16:00"), y sin ellos no se puede guardar
+
+#### Scenario: Marcar WhatsApp enviado
+- **WHEN** se toca "Marcar WhatsApp enviado"
+- **THEN** queda anotado en la línea de tiempo y el texto aclara que la plataforma no envía ningún mensaje
+
+### Requirement: Después de guardar se ve qué pasó
+Después de guardar una llamada, la ficha SHALL mostrar un aviso que diga qué tarea se creó
+sola y cuál se completó sola, y un aviso breve con la acción "Deshacer".
+
+#### Scenario: Primera llamada sin atender
+- **WHEN** se registra "No atendió" en una persona que tenía la tarea "Llamar" pendiente
+- **THEN** el aviso dice que se agendó la "Llamada 2" con su día y hora, que la tarea "Llamar" se completó sola, y ofrece "Deshacer"
+
+### Requirement: La etapa nunca cambia sola
+Registrar una llamada o marcar un WhatsApp SHALL NOT cambiar la etapa del proceso. La etapa
+SHALL cambiar solo cuando la persona toca un botón explícito.
+
+#### Scenario: Atendió y agendó
+- **WHEN** se guarda una llamada con resultado "Atendió y agendó"
+- **THEN** la etapa sigue igual y el aviso ofrece el botón "Coordinar tasación"
+
+#### Scenario: No le interesa o número equivocado
+- **WHEN** se guarda una llamada con resultado "Atendió · no le interesa" o "Número equivocado"
+- **THEN** la etapa sigue igual y el aviso ofrece "Marcar proceso como perdido" y "Dejarlo abierto"
 
 ### Requirement: Nada de adorno
 Toda sección, botón o indicador visible SHALL tener datos reales o una acción que funciona.
@@ -52,6 +91,14 @@ Una sección sin datos no se muestra, salvo que ofrezca la acción de crear el p
 - **WHEN** un contacto no tiene tareas pendientes
 - **THEN** la sección Tareas muestra solo el botón para crear una
 
+#### Scenario: Evento que hoy no se puede medir
+- **WHEN** la plataforma no puede saber si alguien abrió un email, hizo clic o leyó un WhatsApp
+- **THEN** esos eventos no aparecen en la ficha
+
+#### Scenario: Email enviado a la persona
+- **WHEN** el inventario de emails del change `crm-linea-de-tiempo` no confirma que ese email se le envía a la persona
+- **THEN** el evento "Se le envió el email" no se muestra (en la maqueta ese evento es un ejemplo: que aparezca en la ficha real depende de ese inventario)
+
 ### Requirement: Estados de carga, vacío y error
 Cada bloque que trae datos SHALL tener estado de carga, de vacío y de error con reintento,
 y nunca mostrar un cero cuando el dato no se pudo consultar.
@@ -61,12 +108,17 @@ y nunca mostrar un cero cuando el dato no se pudo consultar.
 - **THEN** muestra "No se pudo cargar" con un botón Reintentar, y el resto de la pantalla sigue funcionando
 
 ### Requirement: Uso táctil
-En celular, todo elemento tocable SHALL medir al menos 44 × 44 px y todo campo de texto
-SHALL usar letra de 16 px o más.
+En celular y en toda pantalla táctil (incluidas las tablets desde 768 px), todo elemento
+tocable SHALL medir al menos 44 × 44 px y todo campo de texto SHALL usar letra de 16 px o
+más. Con mouse, desde 768 px los controles pueden medir 36 px y los campos usar 14 px.
 
 #### Scenario: Campo de nota en iPhone
 - **WHEN** se toca el campo de nota en un iPhone
 - **THEN** la pantalla no hace zoom automático
+
+#### Scenario: Tablet táctil
+- **WHEN** se abre cualquier pantalla en una tablet táctil de 768 px o más
+- **THEN** los botones siguen midiendo 44 px de alto y los campos siguen con letra de 16 px
 
 ### Requirement: Identidad visual existente
 Las pantallas SHALL usar únicamente los colores, tipografía, radios e íconos que la
@@ -80,27 +132,143 @@ plataforma ya define, y ningún significado SHALL depender solo del color.
 - **WHEN** una tarea está vencida
 - **THEN** lo dice con texto ("Vencida hace 2 días"), además del color
 
+#### Scenario: Primera llamada de un lead que entró en horario hábil
+- **WHEN** la tarea es la primera llamada de una persona sin llamadas, y esa tarea venció en el mismo momento en que la persona se registró (entró en horario hábil)
+- **THEN** dice "Espera hace 28 min" con ícono de reloj, contando desde que se registró, y figura en el grupo Vencidas
+
+#### Scenario: Primera llamada de un lead que entró fuera de horario
+- **WHEN** la persona se registró fuera de horario, su primera llamada quedó para las 9:00 del día hábil siguiente y esa hora ya pasó
+- **THEN** dice "Vencida hace 1 h", contando desde las 9:00 y no desde que se registró, y figura en el grupo Vencidas
+
 ### Requirement: Anatomía de un evento de la línea de tiempo
-Cada evento SHALL mostrar un ícono de su tipo, un título en una línea, quién lo hizo cuando
-aplica, y la fecha relativa con la fecha y hora exactas disponibles al tocar o pasar el cursor.
+Cada evento SHALL mostrar un ícono de su tipo, un título corto que puede ocupar hasta dos
+renglones antes que cortarse, quién lo hizo cuando aplica, y la fecha relativa. La fecha y
+hora exactas SHALL verse al pasar el cursor o al tocar la fecha; en pantallas táctiles, al
+tocar cualquier parte del renglón del evento.
 
 #### Scenario: Llamada registrada ayer
 - **WHEN** se mira una llamada registrada ayer a las 10:15
 - **THEN** se lee "Llamada 1 · No atendió", el nombre de quien la registró y "ayer", y al tocar la fecha se ve el día y la hora exactos
 
+#### Scenario: Título largo
+- **WHEN** el título de un evento no entra en un renglón
+- **THEN** pasa a un segundo renglón y no se corta con puntos suspensivos
+
+#### Scenario: Toque en el renglón
+- **WHEN** en un celular se toca cualquier parte del renglón de un evento
+- **THEN** la fecha relativa cambia por el día y la hora exactos
+
 ### Requirement: Campanita
 La campanita SHALL vivir en la barra superior en todos los anchos, mostrar la cantidad de
 avisos (con "99+" como tope visual) y abrirse como panel en escritorio y como hoja a
-pantalla completa en celular.
+pantalla completa en celular. El número SHALL contar solo las tareas vencidas o de ahora
+de quien mira, agrupadas en "Vencidas" y "Ahora". Las tareas sin fecha nunca avisan.
 
 #### Scenario: Sin avisos
 - **WHEN** no hay tareas que avisar
 - **THEN** la campanita no muestra número y al abrirla dice que está todo al día
 
+#### Scenario: Tarea de mañana
+- **WHEN** se registra un "No atendió" y se crea la "Llamada 2" para el día hábil siguiente
+- **THEN** esa tarea no suma al número y aparece en "Lo que viene", con la aclaración de que avisa a su hora
+
+#### Scenario: Completar desde la campanita
+- **WHEN** se toca "Completar" en un aviso
+- **THEN** la tarea se completa, el número baja en uno y se ofrece "Deshacer"
+
+#### Scenario: Posponer desde la campanita
+- **WHEN** se toca "Posponer" en un aviso
+- **THEN** se ofrecen "En 1 hora", "Mañana a las 9:00" y "Elegir día y hora", y al elegir una la tarea deja de contar hasta ese momento
+
+### Requirement: Página de pendientes
+La página de tareas SHALL llamarse "Pendientes" y agrupar las tareas en Vencidas, Hoy,
+Próximas y Sin fecha, con un resumen de cantidades exactas arriba. Sin fecha SHALL venir
+plegado, avisar que esas tareas no suenan en la campanita y ofrecer "Poner fecha".
+
+#### Scenario: Cuatro grupos
+- **WHEN** la coordinadora abre Pendientes
+- **THEN** ve los grupos Vencidas, Hoy y Próximas abiertos, Sin fecha plegado con su cantidad, y el resumen coincide con la suma de los grupos
+
+#### Scenario: Filtro por tipo
+- **WHEN** se mira el filtro de tipo
+- **THEN** en escritorio cada tipo es un botón con su cantidad; en celular el filtro es un selector que lista solo los nombres de los tipos, sin cantidad; en los dos casos un tipo sin tareas no se muestra
+
+#### Scenario: Filtro por persona
+- **WHEN** la coordinadora o el admin eligen "Mías", una persona o "Todo el equipo"
+- **THEN** la lista y el resumen muestran solo las tareas de esa selección
+
+#### Scenario: El asesor ve solo lo suyo
+- **WHEN** el asesor abre Pendientes
+- **THEN** ve solo sus tareas y no tiene el filtro "De quién"; le queda solo el filtro de tipo
+
+#### Scenario: Celular
+- **WHEN** se abre Pendientes a 390 px
+- **THEN** los filtros son selectores (dos para la coordinadora y el admin, uno para el asesor) y "Posponer" es un botón de ícono de 44 px con nombre para lectores de pantalla
+
 ### Requirement: El Inicio empieza por lo que hay que hacer
 El primer bloque del Inicio SHALL ser la lista de cosas para hacer ahora de ese rol, y cada
-ítem SHALL poder resolverse o abrirse desde ahí.
+ítem SHALL poder resolverse o abrirse desde ahí. Los bloques que en otro rol tienen botones
+de llamar, registrar o completar SHALL decir "Solo lectura" cuando el rol solo los consulta,
+y no ofrecer esos botones.
 
 #### Scenario: Coordinadora en celular
 - **WHEN** la coordinadora abre el Inicio en el celular
 - **THEN** lo primero que ve, sin desplazarse, es la lista "Para llamar ahora" con un botón de llamar por persona
+
+#### Scenario: Registrar desde el Inicio
+- **WHEN** la coordinadora toca "Registrar" en una persona de "Para llamar ahora"
+- **THEN** se abre la ficha de esa persona con "Registrar llamada" ya abierto
+
+#### Scenario: Sin respuesta tras WhatsApp
+- **WHEN** a una persona ya se la llamó sin éxito y se le marcó el WhatsApp como enviado
+- **THEN** figura en el bloque "Sin respuesta tras WhatsApp" del Inicio de la coordinadora, sin tarea, para decidir si se insiste o se cierra
+
+#### Scenario: Asesor
+- **WHEN** el asesor abre el Inicio
+- **THEN** el primer bloque es "Mis tareas vencidas y de hoy", donde cada tarea se completa con un tilde sin salir del Inicio y debajo hay un sub-bloque "Para mañana" cuando tiene tareas para el día siguiente; lo siguen sus procesos que esperan algo de él y sus visitas y tasaciones de hoy
+
+#### Scenario: Admin o dueño
+- **WHEN** el admin abre el Inicio
+- **THEN** el primer bloque es "Leads sin primer contacto", y los bloques de coordinación ("Para llamar ahora", "Sin respuesta tras WhatsApp" y "Tareas de hoy · coordinación") aparecen marcados "Solo lectura"
+
+#### Scenario: Espera de un lead sin primer contacto
+- **WHEN** el admin mira un lead en "Leads sin primer contacto"
+- **THEN** ve cuánto espera contando desde que la persona se registró, en tiempo de reloj y, si difiere, también en horas hábiles ("Espera hace 16 h 20 min de reloj · 1 h 40 min hábiles"), y quién la tiene que llamar; es una cuenta distinta del vencimiento de su tarea, que en "Para llamar ahora" puede decir "Vencida hace 1 h"
+
+#### Scenario: Bloques de la coordinadora después de las listas de llamadas
+- **WHEN** la coordinadora baja en el Inicio
+- **THEN** después de "Para llamar ahora" y "Sin respuesta tras WhatsApp" ve "Tareas de hoy" (cada tarea se completa con un tilde y hay un sub-bloque "Para mañana" cuando corresponde), "Tasaciones · hoy y mañana" y los números del día: "Solicitudes nuevas", "Llamadas hechas" y "Agendadas"
+
+### Requirement: Toda métrica muestra su base
+Toda métrica de tiempo SHALL mostrar la cantidad de casos sobre la que se calculó y separar
+el tiempo de reloj del tiempo en horas hábiles. Con menos de 20 casos SHALL avisar que son
+pocos.
+
+#### Scenario: Tiempo medio a la primera llamada
+- **WHEN** el admin mira "Tiempo medio a la primera llamada" calculado sobre 3 leads
+- **THEN** ve las horas hábiles y las horas de reloj por separado, la cantidad de leads y el aviso "Pocos casos"
+
+### Requirement: Piezas aprobadas que se detallan en otros changes
+La maqueta aprobada y sus capturas SHALL ser la referencia de las piezas que esta spec solo
+nombra. El detalle de cada una vive en las specs de `crm-ficha-y-llamadas`,
+`crm-linea-de-tiempo` y `crm-inicio`, que SHALL respetar lo que muestra la maqueta.
+
+#### Scenario: Filtros de la línea de tiempo
+- **WHEN** se mira la línea de tiempo de la ficha
+- **THEN** arriba hay cuatro filtros: Todo, Llamadas, Notas y Actividad
+
+#### Scenario: Background
+- **WHEN** se mira el bloque "Background" de la ficha
+- **THEN** ofrece "Editar" si ya tiene texto y "Agregar" si está vacío
+
+#### Scenario: Corregir la hora de una llamada
+- **WHEN** se registra una llamada
+- **THEN** se ofrece "¿Fue hace un rato? Corregir la hora"; si no se toca, la llamada queda con la hora del momento
+
+#### Scenario: Un solo formulario de nueva tarea
+- **WHEN** se crea una tarea desde la ficha o desde Pendientes
+- **THEN** se abre el mismo formulario "Nueva tarea", con los mismos cinco tipos: Llamada, Mensaje, Visita, Documentación y Otro
+
+#### Scenario: Tasaciones agendadas en la ficha
+- **WHEN** el contacto tiene una tasación agendada
+- **THEN** la columna derecha de la ficha muestra el bloque "Tasaciones agendadas"; si no tiene ninguna, el bloque no aparece

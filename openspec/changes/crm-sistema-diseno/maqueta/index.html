@@ -501,6 +501,20 @@ body.con-fab .toasts { bottom: calc(var(--barra-inferior-h) + 1rem + 3.5rem + 0.
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 
+/* ══ TABLET TÁCTIL (iPad y similares) ════════════════════════════════
+   Desde 768 px los controles se achican pensando en el mouse. Si lo que apunta es un dedo,
+   se mantienen los 44 px de alto y la letra de 16 px en los campos, sin importar el ancho.
+   Con mouse (computadora) no cambia nada. */
+@media (min-width: 768px) and (pointer: coarse) {
+  :root { --ctl: var(--tap); }
+  .barra-superior .btn--icono { width: var(--tap); min-height: var(--tap); }
+  .rol-btn { min-height: var(--tap); }
+  .entrada { font-size: 16px; }
+  .pestana, .pestanas--segmento .pestana, .filtro, .desplegable__item, .toast__accion { min-height: var(--tap); }
+  /* El menú lateral fijo (desde 1024) baja a 32 px pensando en el mouse: con dedo vuelve a 44 */
+  .menu__item { min-height: var(--tap); }
+}
+
 </style>
 <style>
 /* pantalla: inicio */
@@ -522,13 +536,14 @@ body.con-fab .toasts { bottom: calc(var(--barra-inferior-h) + 1rem + 3.5rem + 0.
 
 /* Fila de persona: nombre, datos y (si el rol puede) llamar + registrar */
 .inicio-fila { display: flex; flex-direction: column; gap: 0.625rem; padding: 0.375rem 0 0.875rem; min-width: 0; }
-.inicio-fila__info { display: flex; align-items: flex-start; gap: 0.75rem; min-width: 0; }
+.inicio-fila__info { display: flex; align-items: flex-start; gap: 0.75rem; min-width: 0; padding-bottom: 0.25rem; margin-bottom: -0.25rem; }   /* 4 px más de zona para el dedo, sin mover nada */
 .inicio-fila__info > .avatar { display: none; }
-.inicio-fila__texto { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 0.1875rem; }
+/* gap 6 px = lo que el nombre sobresale hacia abajo (margin -0.375rem): así su zona de 44 px no se pisa con el renglón siguiente */
+.inicio-fila__texto { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 0.375rem; }
 .inicio-fila__titulo { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-width: 0; }
 .inicio-fila__nombre { display: inline-flex; align-items: center; min-height: var(--tap); margin: -0.375rem 0; min-width: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
 .inicio-fila__nombre:hover { text-decoration: underline; text-underline-offset: 3px; }
-.inicio-fila__meta { font-size: 13px; line-height: 1.4; color: var(--texto-suave); clip-path: inset(-0.25rem -0.25rem -0.25rem 0); }
+.inicio-fila__meta { font-size: 13px; line-height: 1.4; color: var(--texto-suave); clip-path: inset(0 -0.25rem -0.25rem 0); }   /* la zona ampliada de la fecha no sube sobre el nombre: en táctil toda la fila muestra la fecha (data-fecha-fila) */
 .inicio-fila__meta .icono { width: 0.8125rem; height: 0.8125rem; flex-shrink: 0; }
 /* Datos separados por «·»: cada dato trae su punto a la izquierda y el primero de cada renglón queda recortado */
 .inicio-hechos { display: flex; flex-wrap: wrap; row-gap: 0.125rem; margin-left: -0.875rem; }
@@ -584,6 +599,7 @@ body.con-fab .toasts { bottom: calc(var(--barra-inferior-h) + 1rem + 3.5rem + 0.
   .inicio-fila__info > .avatar { display: inline-flex; }
   .inicio-fila__titulo { justify-content: flex-start; }
   .inicio-fila__nombre { min-height: 0; margin: 0; }
+  .inicio-fila__texto { gap: 0.1875rem; }
   .inicio-fila__acciones .btn { flex: 0 0 auto; }
   .inicio-fila--lectura { padding-bottom: 0.75rem; }
   .inicio-proceso { padding: 0.75rem 0; }
@@ -608,6 +624,12 @@ body.con-fab .toasts { bottom: calc(var(--barra-inferior-h) + 1rem + 3.5rem + 0.
 /* Sub-encabezado «Para mañana» dentro de la card de tareas */
 .inicio-manana { margin-top: -0.375rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
 .inicio-manana + .lista { margin-top: -0.5rem; }
+
+/* Tablet táctil: ver base.css («TABLET TÁCTIL»). El nombre vuelve a tener 44 px de alto para el dedo, como en celular. */
+@media (min-width: 768px) and (pointer: coarse) {
+  .inicio-fila__nombre { min-height: var(--tap); margin: -0.375rem 0; }
+  .inicio-fila__texto { gap: 0.375rem; }
+}
 
 /* pantalla: ficha */
 /* ══ FICHA DE CONTACTO ═══════════════════════════════════════════════
@@ -672,6 +694,7 @@ textarea.ficha-corta { min-height: 3.75rem; }
   .ficha-enlace-btn { min-height: 1.75rem; }
   .ficha-nota__pie .btn, .ficha-ll__guardar { align-self: flex-end; }
   .ficha-composer .ficha-ll__guardar, .ficha-composer .ficha-ll__wa .btn { width: auto; align-self: flex-start; }
+  .ficha-composer .ficha-ll__guardar { scroll-margin-bottom: 1rem; }   /* al acomodar la página queda entero a la vista, con aire abajo */
 }
 
 /* ── Aviso después de guardar (cadencia a la vista) ── */
@@ -738,6 +761,11 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
 .ficha .tarea__titulo { align-items: flex-start; }
 .ficha .tarea__titulo .icono { margin-top: 0.1875rem; }
 .ficha .tarea__titulo .truncar { white-space: normal; overflow: visible; }
+
+/* Tablet táctil: ver base.css («TABLET TÁCTIL») */
+@media (min-width: 768px) and (pointer: coarse) {
+  .ficha-enlace-btn { min-height: var(--tap); }
+}
 
 /* pantalla: tareas */
 /* ══ Pantalla #tareas + campanita ══════════════════════════════════════
@@ -889,6 +917,12 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
 .estados-bloque { min-height: 13.5rem; justify-content: center; }
 .estados-bloque > .lista, .estados-bloque > .pila { align-self: stretch; }
 .estados-bloque--datos { justify-content: flex-start; }
+
+/* Mismo criterio que en la ficha: un título largo pasa a un segundo renglón antes que cortarse con puntos suspensivos */
+[data-screen="estados"] .evento__titulo { flex-wrap: wrap; row-gap: 0.125rem; line-height: 1.35; padding: 0.125rem 0; }
+[data-screen="estados"] .evento__titulo > span:first-child { white-space: normal; overflow: visible; }
+/* Y lo mismo para el título de una tarea, igual que en Pendientes */
+[data-screen="estados"] .tarea__titulo .truncar { white-space: normal; overflow: visible; }
 
 </style>
 </head>
@@ -1292,7 +1326,7 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
       <section class="card" aria-labelledby="estados-t-linea">
         <div class="card__cabecera"><h2 class="card__titulo" id="estados-t-linea">Línea de tiempo: un evento de cada tipo</h2></div>
         <div class="card__cuerpo">
-          <p class="texto-suave texto-chico">Ícono del tipo, título en un renglón, quién lo hizo y cuándo. Tocá la fecha (en el celular, cualquier parte del renglón) para ver el día y la hora exactos.</p>
+          <p class="texto-suave texto-chico">Ícono del tipo, título corto (si no entra pasa a un segundo renglón, no se corta), quién lo hizo y cuándo. Tocá la fecha (en el celular, cualquier parte del renglón) para ver el día y la hora exactos.</p>
           <ul class="linea-tiempo" id="estados-linea"></ul>
           <div class="pila pila--chica estados-condicional">
             <p class="estados-condicional__t"><i data-icono="triangle-alert"></i><span><strong>Solo aparecen si se pueden medir.</strong> Hoy la plataforma no sabe si alguien abrió un email, hizo clic o leyó un WhatsApp. Dependen del cambio 3 (línea de tiempo); si no se pueden medir, no se muestran: por eso no están en la ficha.</span></p>
@@ -1309,7 +1343,7 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
         <div class="card__cabecera"><h2 class="card__titulo" id="estados-t-resultados">Resultado de una llamada</h2></div>
         <div class="card__cuerpo">
           <div class="estados-sub">
-            <span class="eyebrow">Para elegir (un toque)</span>
+            <span class="eyebrow">Para elegir («No atendió» guarda con un toque)</span>
             <div class="estados-opciones" id="estados-opciones"></div>
             <p class="estados-codigo">.opcion · aria-pressed</p>
           </div>
@@ -1402,7 +1436,7 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
             <button type="button" class="btn btn--secundario" disabled>Deshabilitado</button>
             <span class="estados-nota"><span>Chico (cabeceras de bloque) y deshabilitado</span><span class="estados-codigo">.btn--chico · disabled</span></span>
           </div>
-          <p class="texto-suave texto-chico">En celular todo botón mide 44 px de alto o más; desde 768 px de ancho, 36 px.</p>
+          <p class="texto-suave texto-chico">En celular y en tablets táctiles todo botón mide 44 px de alto o más; con mouse, desde 768 px de ancho, 36 px.</p>
         </div>
       </section>
 
@@ -1567,6 +1601,10 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
     vencimiento: function (t) {
       if (!t.vence) return { texto: 'Sin fecha', estado: 'sinfecha' };
       var d = new Date(t.vence), n = ahora(), dd = diasEntre(d, n), min = Math.round((n - d) / 60000);
+      // Primera llamada de alguien que recién entró: nadie llegó tarde todavía, así que «espera», no «vencida».
+      // Misma regla y mismo texto en el Inicio, la campanita y Pendientes. Sigue en el grupo de las vencidas.
+      var ce = esperaPrimeraLlamada(t);
+      if (ce) return { texto: 'Espera hace ' + fmt.duracion(Math.max(0, Math.round((n - new Date(ce.creado)) / 60000))), estado: 'vencida', espera: true };
       if (dd > 0) return { texto: 'Vencida hace ' + dd + (dd === 1 ? ' día' : ' días'), estado: 'vencida' };
       if (dd === 0) {
         if (t.todoElDia) return { texto: 'Hoy, todo el día', estado: 'hoy' };
@@ -1576,6 +1614,15 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
       }
       if (dd === -1) return { texto: 'Mañana' + (t.todoElDia ? '' : ' ' + hora(d)), estado: 'proxima' };
       return { texto: diaCorto(d) + (t.todoElDia ? '' : ', ' + hora(d)), estado: 'proxima' };
+    },
+    /** 28 → "28 min" · 980 → "16 h 20 min" · 4000 → "2 días 18 h" */
+    duracion: function (min) {
+      min = Math.round(min);
+      if (min < 60) return min + ' min';
+      var h = Math.floor(min / 60), m = min % 60;
+      if (h < 48) return h + ' h' + (m ? ' ' + m + ' min' : '');
+      var dias = Math.floor(h / 24), hr = h % 24;
+      return dias + ' días' + (hr ? ' ' + hr + ' h' : '');
     },
     iniciales: function (nombre) {
       var p = String(nombre || '').trim().split(/\s+/);
@@ -1611,7 +1658,7 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
   var USUARIOS = {
     coordinadora: { id: 'paula', nombre: 'Paula', rol: 'coordinadora', rolTexto: 'Coordinadora' },
     asesor:       { id: 'tomas', nombre: 'Tomás Agüero', rol: 'asesor', rolTexto: 'Asesor' },
-    admin:        { id: 'admin', nombre: 'Dueño', rol: 'admin', rolTexto: 'Vista del dueño' }
+    admin:        { id: 'admin', nombre: 'Raúl Maidana', rol: 'admin', rolTexto: 'Vista del dueño' }
   };
   function nombreDe(usuarioId) {
     for (var r in USUARIOS) if (USUARIOS[r].id === usuarioId) return USUARIOS[r].nombre;
@@ -1689,7 +1736,7 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
   var actividad = [
     // c1 · Marcela Ibáñez — todavía sin llamadas: en ella se prueba la cadencia completa
     A('c1', 'registro', 'Se registró · Solicitud de tasación', dia(-1, '18:20'), null, { detalle: 'Anuncio de Meta «¿Cuánto te queda en mano?» · Departamento 3 ambientes en Caballito' }),
-    A('c1', 'email', 'Recibió el email «Recibimos tu solicitud de tasación»', dia(-1, '18:20')),
+    A('c1', 'email', 'Se le envió el email «Recibimos tu solicitud de tasación»', dia(-1, '18:20')),
     A('c1', 'tarea', 'Tarea creada · Llamar a Marcela Ibáñez', dia(-1, '18:20'), null, { detalle: null }),
     A('c1', 'whatsapp', 'WhatsApp automático · Confirmación de la solicitud', dia(-1, '18:21'), null, { origen: 'sistema' }),
     A('c1', 'video', 'Vio el video de la landing · 62 %', dia(-1, '18:24')),
@@ -1777,6 +1824,13 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
   }
   /** Lo que avisa la campanita al rol actual. */
   function avisos(usuarioId) { return misTareas(usuarioId).filter(yaVencio); }
+  /** Si la tarea es la primera llamada de alguien que recién entró (sin llamadas y con la tarea nacida al registrarse), devuelve el contacto. */
+  function esperaPrimeraLlamada(t) {
+    if (!t || t.tipo !== 'llamada' || !t.contactoId || !t.vence || t.estado !== 'pendiente') return null;
+    var c = contacto(t.contactoId);
+    if (!c || t.vence > c.creado || llamadasDe(c.id).length || new Date(t.vence) > ahora()) return null;
+    return c;
+  }
   function llamadasDe(contactoId) { return actividad.filter(function (a) { return a.contactoId === contactoId && a.tipo === 'llamada'; }); }
   /** Días desde la última llamada (atendida o no). null si nunca se lo llamó. Una nota no cuenta. */
   function diasSinContacto(contactoId) {
@@ -1967,7 +2021,7 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
     },
     vence: function (t) {
       var v = fmt.vencimiento(t);
-      return '<span class="vence" data-estado="' + v.estado + '"' + (t.vence ? ' title="' + esc(fmt.exacta(t.vence)) + '"' : '') + '>' + icono(v.estado === 'vencida' ? 'triangle-alert' : v.estado === 'sinfecha' ? 'calendar' : 'clock') + esc(v.texto) + '</span>';
+      return '<span class="vence" data-estado="' + v.estado + '"' + (t.vence ? ' title="' + esc(fmt.exacta(t.vence)) + '"' : '') + '>' + icono(v.espera ? 'clock' : v.estado === 'vencida' ? 'triangle-alert' : v.estado === 'sinfecha' ? 'calendar' : 'clock') + esc(v.texto) + '</span>';
     },
     /** opciones: { sinContacto: bool, conPersona: bool, acciones: 'html de botones' } */
     itemTarea: function (t, opciones) {
@@ -2155,7 +2209,7 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
     }
 
     el = t.closest('[data-rol-opcion]');
-    if (el) { setRol(el.getAttribute('data-rol-opcion')); toast('Ahora ves la plataforma como ' + USUARIOS[MQ.rol].rolTexto.toLowerCase() + '.'); return; }
+    if (el) { setRol(el.getAttribute('data-rol-opcion')); toast(MQ.rol === 'admin' ? 'Ahora ves la plataforma como la ve el dueño.' : 'Ahora ves la plataforma como ' + USUARIOS[MQ.rol].rolTexto.toLowerCase() + '.'); return; }
 
     el = t.closest('[data-menu-abrir]');
     if (el) {
@@ -2430,6 +2484,7 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
   /** Cuánto hace que espera su primera llamada. Si el reloj y el horario laboral no coinciden, se dicen los dos. */
   function espera(c) {
     var reloj = minutosDesde(c.creado), habiles = Math.round(minutosHabiles(c.creado, MQ.iso(MQ.ahora())));
+    // Mismo texto que usan la campanita y Pendientes para esta tarea (base.js → fmt.vencimiento).
     var h = ['<span class="vence" data-estado="vencida">' + ui.icono('clock') + 'Espera hace ' + duracion(reloj) + (habiles !== reloj ? ' de reloj' : '') + '</span>'];
     if (habiles !== reloj) h.push(duracion(habiles) + ' hábiles');
     return h;
@@ -2475,6 +2530,11 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
     var cuerpo = lista.length
       ? '<ul class="lista">' + lista.map(function (t) { return o.lectura ? tareaLectura(t) : ui.itemTarea(t); }).join('') + '</ul>'
       : ui.estadoVacio({ icono: 'circle-check', ok: true, titulo: 'Todo al día', texto: 'No queda nada vencido ni para hoy.' });
+    /* Si de este bloque se sacaron visitas de hoy (van en su propio bloque), se dice: así el número coincide con Pendientes. */
+    if (o.aparte) {
+      var nAparte = tareasDeHoy(o.usuario).length - lista.length;
+      if (nAparte > 0) cuerpo += '<p class="texto-suave texto-chico">' + (nAparte === 1 ? 'Además tenés 1 visita hoy: está' : 'Además tenés ' + nAparte + ' visitas hoy: están') + ' en «' + esc(o.aparte) + '».</p>';
+    }
     /* Lo de mañana se lista (no solo se cuenta): ahí aparece la «Llamada 2» que agenda la cadencia. */
     var deManana = tareasDeManana(o.usuario);
     if (deManana.length) cuerpo += '<p class="eyebrow inicio-manana">Para mañana · ' + deManana.length + '</p><ul class="lista">' +
@@ -2556,7 +2616,7 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
     document.getElementById('inicio-fecha').textContent = DIAS[a.getDay()] + ' ' + a.getDate() + ' de ' + MESES[a.getMonth()] + ' · ' + fmt.hora(MQ.iso(a));
 
     if (rol === 'asesor') {
-      principal = bloqueTareas({ usuario: 'tomas', titulo: 'Mis tareas vencidas y de hoy', orden: 1, siempre: true,
+      principal = bloqueTareas({ usuario: 'tomas', titulo: 'Mis tareas vencidas y de hoy', orden: 1, siempre: true, aparte: 'Mis visitas y tasaciones de hoy',
         descartar: function (t) { return t.tipo === 'visita' || t.tipo === 'tasacion'; } }) + bloqueProcesos(3);
       lateral = bloqueAgenda(2);
     } else if (rol === 'admin') {
@@ -2798,7 +2858,13 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
       var caja = $('#ficha-composer'), foco = $(cual === 'nota' ? '.ficha-n__texto' : '.opcion', caja);
       caja.scrollIntoView({ block: 'start' });
       if (foco) foco.focus({ preventScroll: true });
-    } else { vista(cual); MQ.abrirHoja('ficha-hoja-mas'); }
+    } else {
+      vista(cual); MQ.abrirHoja('ficha-hoja-mas');
+      // La hoja se abrió directo en el formulario (sin pasar por el menú del «+»): el foco va a la primera opción de la llamada.
+      // En la nota va al panel y no al campo, para que no salte el teclado solo.
+      var fh = cual === 'llamada' ? $('.ficha-form-llamada .opcion', hojaMas) : $('.hoja__panel', hojaMas);
+      if (fh) { if (fh.classList.contains('hoja__panel') && !fh.hasAttribute('tabindex')) fh.setAttribute('tabindex', '-1'); fh.focus({ preventScroll: true }); }
+    }
   }
   function despuesDeGuardar() {
     reiniciarFormularios();
@@ -2808,6 +2874,12 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
     $$('#ficha-filtros .filtro').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-valor') === 'todo')); });
     var cont = document.getElementById('contenido'); if (cont) cont.scrollTop = 0;
     pintar();
+    // En escritorio el botón que tenía el foco ya no existe: el foco va al aviso de lo que pasó o, si no hay, al evento nuevo.
+    // (En celular vuelve solo al «+» al cerrarse la hoja.)
+    if (esEscritorio()) {
+      var df = $('#ficha-aviso .ficha-aviso') || $('#ficha-linea .evento');
+      if (df) { df.setAttribute('tabindex', '-1'); df.focus({ preventScroll: true }); }
+    }
   }
   function avisarCambios() {
     MQ.emit('actividad', { motivo: 'deshecha', evento: null });
@@ -2921,7 +2993,15 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
     var t = e.target, el, form;
 
     el = t.closest('[data-ficha-vista]');
-    if (el) { vista(el.getAttribute('data-ficha-vista')); return; }
+    if (el) {
+      var cualVista = el.getAttribute('data-ficha-vista');
+      vista(cualVista);
+      // El foco sigue al toque: en la llamada va a la primera opción («No atendió»); en la nota, al campo
+      // (enfocarlo dentro del mismo toque es lo que abre el teclado en iPhone).
+      var destino = cualVista === 'llamada' ? $('.ficha-form-llamada .opcion', hojaMas) : $('.ficha-form-nota .ficha-n__texto', hojaMas);
+      if (destino) destino.focus({ preventScroll: true });
+      return;
+    }
     if (t.closest('#ficha-hoja-volver')) { vista('menu'); return; }
 
     form = t.closest('.ficha-form-llamada');
@@ -2935,7 +3015,18 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
         var g = $('.ficha-ll__guardar', form); g.hidden = false;
         // Queda un solo botón Guardar, ya enfocado. Con «volver a llamar» primero hay que elegir día y hora.
         // En la hoja del celular «Guardar llamada» queda pegado abajo (ficha.css), así que siempre se ve.
-        if (r === 'volver') $('.ficha-ll__volver', form).scrollIntoView({ block: 'nearest' }); else { g.focus({ preventScroll: true }); g.scrollIntoView({ block: 'nearest' }); }
+        // En escritorio, con «volver a llamar» se acomoda la página para que «Guardar llamada» quede entero a la vista.
+        if (r === 'volver') {
+          var bloqueV = $('.ficha-ll__volver', form);
+          bloqueV.scrollIntoView({ block: 'nearest' });
+          if (esEscritorio()) g.scrollIntoView({ block: 'nearest' });
+          else {
+            // En la hoja, «Guardar llamada» va pegado abajo y tapa lo que queda detrás: en pantallas bajas (360 × 740)
+            // se desplaza el cuerpo lo justo para que Día y Hora se vean enteros.
+            var cuerpoH = form.closest('.hoja__cuerpo'), falta = cuerpoH ? bloqueV.getBoundingClientRect().bottom + 12 - g.getBoundingClientRect().top : 0;
+            if (falta > 0) cuerpoH.scrollTop += falta;
+          }
+        } else { g.focus({ preventScroll: true }); g.scrollIntoView({ block: 'nearest' }); }
         return;
       }
       el = t.closest('[data-volver]');
@@ -2943,6 +3034,7 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
         var p = el.getAttribute('data-volver').split('|'), f = MQ.dia(+p[0], p[1]);
         $('.ficha-ll__dia', form).value = f.slice(0, 10); $('.ficha-ll__hora-v', form).value = f.slice(11);
         $('.ficha-ll__volver-error', form).hidden = true;
+        $('.ficha-ll__dia', form).removeAttribute('aria-invalid'); $('.ficha-ll__hora-v', form).removeAttribute('aria-invalid');   // ya son válidos: fuera el borde rojo
         var gv = $('.ficha-ll__guardar', form); gv.focus({ preventScroll: true }); gv.scrollIntoView({ block: 'nearest' });
         return;   // base.js marca el atajo elegido
       }
@@ -2953,7 +3045,11 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
     switch (el.getAttribute('data-ficha')) {
       case 'll-guardar': form = el.closest('.ficha-form-llamada'); guardarLlamada(form, $('.opcion[aria-pressed="true"]', form).getAttribute('data-resultado')); break;
       case 'll-whatsapp': guardarWhatsapp(el.closest('.ficha-form-llamada')); break;
-      case 'll-hora': var caja = $('.ficha-ll__atraso', el.parentNode); caja.hidden = !caja.hidden; el.setAttribute('aria-expanded', String(!caja.hidden)); break;
+      case 'll-hora': var caja = $('.ficha-ll__atraso', el.parentNode); caja.hidden = !caja.hidden; el.setAttribute('aria-expanded', String(!caja.hidden));
+        // En escritorio el formulario crece: se acomoda la página para que «Guardar llamada» siga entero a la vista.
+        var gh = $('.ficha-ll__guardar', el.closest('.ficha-form-llamada'));
+        if (!caja.hidden && esEscritorio() && gh && !gh.hidden) gh.scrollIntoView({ block: 'nearest' });
+        break;
       case 'nota-guardar': guardarNota(el.closest('.ficha-form-nota')); break;
       case 'abrir-llamada': abrirFormulario('llamada'); break;
       case 'abrir-nota': abrirFormulario('nota'); break;
@@ -2967,6 +3063,16 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
       case 'bg-guardar': c0().background = $('#ficha-bg-texto').value.trim(); editandoBg = false; pintarBg(c0()); MQ.toast('Background guardado.'); break;
     }
   });
+  /* Día u hora corregidos a mano: el campo que ya tiene valor deja de verse en error, y con los dos completos se va el mensaje. */
+  function revisarVolver(e) {
+    var campo = e.target;
+    if (!campo.classList || !(campo.classList.contains('ficha-ll__dia') || campo.classList.contains('ficha-ll__hora-v'))) return;
+    var form = campo.closest('.ficha-form-llamada'), dia = $('.ficha-ll__dia', form), hora = $('.ficha-ll__hora-v', form);
+    if (campo.value) campo.removeAttribute('aria-invalid');
+    if (dia.value && hora.value) { dia.removeAttribute('aria-invalid'); hora.removeAttribute('aria-invalid'); $('.ficha-ll__volver-error', form).hidden = true; }
+  }
+  document.addEventListener('input', revisarVolver);
+  document.addEventListener('change', revisarVolver);
   $('#ficha-filtros').addEventListener('filtro', function (e) { filtro = e.detail.valor; pintarLinea(c0()); });
 
   /* ── Redibujar cuando cambia algo ────────────────────────────────── */
@@ -3069,7 +3175,7 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
   function puedeVerOtros() { return MQ.rol === 'coordinadora' || MQ.rol === 'admin'; }
   function usuarios() { return Object.keys(MQ.USUARIOS).map(function (r) { return MQ.USUARIOS[r]; }); }
   function opcionesPersona() {
-    var yo = MQ.usuario().id, ops = [{ valor: 'mias', texto: 'Mías', largo: 'Mis tareas' }];
+    var yo = MQ.usuario().id, ops = [{ valor: 'mias', texto: 'Mías', largo: 'Mías' }];
     usuarios().forEach(function (u) { if (u.id !== yo) ops.push({ valor: u.id, texto: u.nombre, largo: u.nombre }); });
     ops.push({ valor: 'todas', texto: 'Todo el equipo', largo: 'Todo el equipo' });
     return ops;
@@ -3436,7 +3542,7 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
     eventoEj('llamada', 'Llamada 1', MQ.dia(-1, '10:15'), 'Paula', { resultado: 'no_atendio', intento: 1 }),
     eventoEj('consulta', 'Consultó por un aviso en ZonaProp', MQ.dia(-2, '21:48'), null, { detalle: 'Departamento 2 ambientes en Almagro · «¿Sigue disponible?»' }),
     eventoEj('video', 'Vio el video de la landing · 62 %', MQ.dia(-2, '18:24')),
-    eventoEj('email', 'Recibió el email «Recibimos tu solicitud de tasación»', MQ.dia(-2, '18:20')),
+    eventoEj('email', 'Se le envió el email «Recibimos tu solicitud de tasación»', MQ.dia(-2, '18:20')),
     eventoEj('registro', 'Se registró · Solicitud de tasación', MQ.dia(-2, '18:20'), null, { detalle: 'Anuncio de Meta · Departamento 3 ambientes en Caballito' })
   ];
   $('estados-linea').innerHTML = EVENTOS.map(function (e) { return ui.itemEvento(e); }).join('');
@@ -3454,7 +3560,8 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
   var claves = Object.keys(MQ.RESULTADOS);
   $('estados-resultados-largos').innerHTML = claves.map(function (k) { return ui.chipResultado(k, true); }).join('');
   $('estados-resultados-cortos').innerHTML = claves.map(function (k) { return ui.chipResultado(k); }).join('');
-  $('estados-opciones').innerHTML = claves.map(function (k) {
+  // Mismo orden que en la ficha: «No atendió» primero, porque es el único que guarda con un toque.
+  $('estados-opciones').innerHTML = ['no_atendio'].concat(claves.filter(function (k) { return k !== 'no_atendio'; })).map(function (k) {
     var r = MQ.RESULTADOS[k];
     return '<button type="button" class="opcion" aria-pressed="' + (k === 'no_atendio') + '" data-resultado="' + k + '"><span class="opcion__icono">' + ui.icono(r.icono) + '</span><span>' + ui.esc(r.texto) +
       (k === 'volver' ? '<small>Pide día y hora</small>' : '') + '</span></button>';
@@ -3492,7 +3599,14 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
   var btnVaciar = $('estados-vaciar'), btnRomper = $('estados-romper');
   var creadas = 0, reloj = null;
 
-  function conDatos(bloque, si) { bloque.classList.toggle('estados-bloque--datos', si); }
+  /* Cuando el bloque ya muestra tareas, la tarjeta deja de titularse «Vacío» o «Error»: dice «Con datos». */
+  function conDatos(bloque, si) {
+    bloque.classList.toggle('estados-bloque--datos', si);
+    var t = bloque.parentNode.querySelector('.card__titulo');
+    if (!t) return;
+    if (!t.getAttribute('data-titulo')) t.setAttribute('data-titulo', t.textContent);
+    t.textContent = si ? 'Con datos' : t.getAttribute('data-titulo');
+  }
 
   bCarga.innerHTML = ui.estadoCarga(3);
 

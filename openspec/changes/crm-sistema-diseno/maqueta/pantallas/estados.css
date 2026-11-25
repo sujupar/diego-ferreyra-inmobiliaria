@@ -57,3 +57,9 @@
 .estados-bloque { min-height: 13.5rem; justify-content: center; }
 .estados-bloque > .lista, .estados-bloque > .pila { align-self: stretch; }
 .estados-bloque--datos { justify-content: flex-start; }
+
+/* Mismo criterio que en la ficha: un título largo pasa a un segundo renglón antes que cortarse con puntos suspensivos */
+[data-screen="estados"] .evento__titulo { flex-wrap: wrap; row-gap: 0.125rem; line-height: 1.35; padding: 0.125rem 0; }
+[data-screen="estados"] .evento__titulo > span:first-child { white-space: normal; overflow: visible; }
+/* Y lo mismo para el título de una tarea, igual que en Pendientes */
+[data-screen="estados"] .tarea__titulo .truncar { white-space: normal; overflow: visible; }

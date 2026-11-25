@@ -141,6 +141,7 @@
   /** Cuánto hace que espera su primera llamada. Si el reloj y el horario laboral no coinciden, se dicen los dos. */
   function espera(c) {
     var reloj = minutosDesde(c.creado), habiles = Math.round(minutosHabiles(c.creado, MQ.iso(MQ.ahora())));
+    // Mismo texto que usan la campanita y Pendientes para esta tarea (base.js → fmt.vencimiento).
     var h = ['<span class="vence" data-estado="vencida">' + ui.icono('clock') + 'Espera hace ' + duracion(reloj) + (habiles !== reloj ? ' de reloj' : '') + '</span>'];
     if (habiles !== reloj) h.push(duracion(habiles) + ' hábiles');
     return h;
@@ -186,6 +187,11 @@
     var cuerpo = lista.length
       ? '<ul class="lista">' + lista.map(function (t) { return o.lectura ? tareaLectura(t) : ui.itemTarea(t); }).join('') + '</ul>'
       : ui.estadoVacio({ icono: 'circle-check', ok: true, titulo: 'Todo al día', texto: 'No queda nada vencido ni para hoy.' });
+    /* Si de este bloque se sacaron visitas de hoy (van en su propio bloque), se dice: así el número coincide con Pendientes. */
+    if (o.aparte) {
+      var nAparte = tareasDeHoy(o.usuario).length - lista.length;
+      if (nAparte > 0) cuerpo += '<p class="texto-suave texto-chico">' + (nAparte === 1 ? 'Además tenés 1 visita hoy: está' : 'Además tenés ' + nAparte + ' visitas hoy: están') + ' en «' + esc(o.aparte) + '».</p>';
+    }
     /* Lo de mañana se lista (no solo se cuenta): ahí aparece la «Llamada 2» que agenda la cadencia. */
     var deManana = tareasDeManana(o.usuario);
     if (deManana.length) cuerpo += '<p class="eyebrow inicio-manana">Para mañana · ' + deManana.length + '</p><ul class="lista">' +
@@ -267,7 +273,7 @@
     document.getElementById('inicio-fecha').textContent = DIAS[a.getDay()] + ' ' + a.getDate() + ' de ' + MESES[a.getMonth()] + ' · ' + fmt.hora(MQ.iso(a));
 
     if (rol === 'asesor') {
-      principal = bloqueTareas({ usuario: 'tomas', titulo: 'Mis tareas vencidas y de hoy', orden: 1, siempre: true,
+      principal = bloqueTareas({ usuario: 'tomas', titulo: 'Mis tareas vencidas y de hoy', orden: 1, siempre: true, aparte: 'Mis visitas y tasaciones de hoy',
         descartar: function (t) { return t.tipo === 'visita' || t.tipo === 'tasacion'; } }) + bloqueProcesos(3);
       lateral = bloqueAgenda(2);
     } else if (rol === 'admin') {

@@ -60,6 +60,7 @@ textarea.ficha-corta { min-height: 3.75rem; }
   .ficha-enlace-btn { min-height: 1.75rem; }
   .ficha-nota__pie .btn, .ficha-ll__guardar { align-self: flex-end; }
   .ficha-composer .ficha-ll__guardar, .ficha-composer .ficha-ll__wa .btn { width: auto; align-self: flex-start; }
+  .ficha-composer .ficha-ll__guardar { scroll-margin-bottom: 1rem; }   /* al acomodar la página queda entero a la vista, con aire abajo */
 }
 
 /* ── Aviso después de guardar (cadencia a la vista) ── */
@@ -126,3 +127,8 @@ button.ficha-item:hover { background: var(--accent); box-shadow: 0 0 0 0.375rem 
 .ficha .tarea__titulo { align-items: flex-start; }
 .ficha .tarea__titulo .icono { margin-top: 0.1875rem; }
 .ficha .tarea__titulo .truncar { white-space: normal; overflow: visible; }
+
+/* Tablet táctil: ver base.css («TABLET TÁCTIL») */
+@media (min-width: 768px) and (pointer: coarse) {
+  .ficha-enlace-btn { min-height: var(--tap); }
+}
