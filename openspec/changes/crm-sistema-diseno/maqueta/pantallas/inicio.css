@@ -1,0 +1,104 @@
+/* ── Inicio por rol ─────────────────────────────────────────────────
+   Celular: una sola columna; el orden lo da `order` en cada bloque.
+   Desde 1024: dos columnas (lo que hay que hacer | el resto del día). */
+
+.inicio-saludo { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.125rem 0.75rem; }
+.inicio-saludo__fecha { font-size: 13px; color: var(--texto-suave); }
+
+.inicio-grilla { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+.inicio-col { display: contents; }
+.inicio-subtitulo { display: flex; align-items: center; gap: 0.375rem; padding-top: 0.25rem; }
+.inicio-subtitulo .icono { width: 0.875rem; height: 0.875rem; color: var(--texto-suave); }
+
+.inicio-lista > li:first-child { padding-top: 0; }
+.inicio-lista > li:last-child { padding-bottom: 0; }
+.inicio-bajada { font-size: 13px; color: var(--texto-suave); margin-top: -0.25rem; }
+
+/* Fila de persona: nombre, datos y (si el rol puede) llamar + registrar */
+.inicio-fila { display: flex; flex-direction: column; gap: 0.625rem; padding: 0.375rem 0 0.875rem; min-width: 0; }
+.inicio-fila__info { display: flex; align-items: flex-start; gap: 0.75rem; min-width: 0; }
+.inicio-fila__info > .avatar { display: none; }
+.inicio-fila__texto { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 0.1875rem; }
+.inicio-fila__titulo { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-width: 0; }
+.inicio-fila__nombre { display: inline-flex; align-items: center; min-height: var(--tap); margin: -0.375rem 0; min-width: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.inicio-fila__nombre:hover { text-decoration: underline; text-underline-offset: 3px; }
+.inicio-fila__meta { font-size: 13px; line-height: 1.4; color: var(--texto-suave); clip-path: inset(-0.25rem -0.25rem -0.25rem 0); }
+.inicio-fila__meta .icono { width: 0.8125rem; height: 0.8125rem; flex-shrink: 0; }
+/* Datos separados por «·»: cada dato trae su punto a la izquierda y el primero de cada renglón queda recortado */
+.inicio-hechos { display: flex; flex-wrap: wrap; row-gap: 0.125rem; margin-left: -0.875rem; }
+.inicio-hechos > span { position: relative; display: inline-flex; align-items: center; gap: 0.3125rem; padding-left: 0.875rem; min-width: 0; white-space: pre-wrap; }
+.inicio-hechos > span::before { content: '·'; position: absolute; left: 0; width: 0.875rem; text-align: center; }
+.inicio-fila__acciones { display: flex; gap: 0.5rem; min-width: 0; }
+.inicio-fila__acciones .btn { flex: 1 1 0; }
+.inicio-tel { font-variant-numeric: tabular-nums; }
+.inicio-fila--lectura { padding-bottom: 0.625rem; }
+
+/* Cita: hora a la izquierda, qué y con quién a la derecha */
+.inicio-cita { display: flex; align-items: center; gap: 0.875rem; padding: 0.625rem 0; min-width: 0; }
+.inicio-cita__cuando { flex-shrink: 0; width: 4rem; display: flex; flex-direction: column; align-items: center; padding: 0.375rem 0.25rem; border-radius: var(--radius-md); background: var(--brand-soft); color: var(--brand); line-height: 1.2; }
+.inicio-cita__cuando strong { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.inicio-cita__cuando span { font-size: 11px; font-weight: 500; }
+.inicio-cita__texto { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 0.125rem; }
+.inicio-cita__titulo { display: flex; align-items: center; gap: 0.375rem; font-size: 14px; font-weight: 500; }
+.inicio-cita__titulo .icono { flex-shrink: 0; color: var(--texto-suave); width: 0.875rem; height: 0.875rem; }
+
+/* Proceso que espera algo del asesor */
+.inicio-proceso { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0 0.75rem; min-width: 0; }
+.inicio-proceso__texto { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.inicio-proceso__titulo { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; font-size: 14px; font-weight: 600; }
+.inicio-proceso__espera { display: flex; align-items: flex-start; gap: 0.375rem; font-size: 13px; line-height: 1.4; }
+.inicio-proceso__espera .icono { width: 0.875rem; height: 0.875rem; flex-shrink: 0; margin-top: 0.15rem; color: var(--brand); }
+
+/* Los 3 números del día: fila compacta, nunca arriba de la lista */
+.inicio-numeros { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.inicio-numeros > div { display: flex; flex-direction: column; gap: 0.125rem; padding: 0 0.5rem; min-width: 0; overflow-wrap: normal; }
+.inicio-numeros > div:first-child { padding-left: 0; }
+.inicio-numeros > div + div { border-left: 1px solid var(--border); }
+.inicio-numeros dt { order: 2; font-size: 12px; line-height: 1.3; color: var(--texto-suave); }
+.inicio-numeros dd { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.2; }
+
+/* Tiempo medio a la primera llamada */
+.inicio-tiempos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+.inicio-tiempos > div { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius-lg); min-width: 0; }
+.inicio-tiempos__valor { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.inicio-tiempos__etiqueta { display: flex; align-items: center; gap: 0.3125rem; font-size: 12px; font-weight: 500; }
+.inicio-tiempos__etiqueta .icono { width: 0.8125rem; height: 0.8125rem; color: var(--texto-suave); flex-shrink: 0; }
+.inicio-tiempos__n { font-size: 12px; color: var(--texto-suave); }
+.inicio-aviso { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.625rem 0.75rem; border-radius: var(--radius-md); background: var(--secondary); font-size: 13px; line-height: 1.4; }
+.inicio-aviso .icono { flex-shrink: 0; margin-top: 0.125rem; }
+.inicio-aviso strong { font-weight: 600; }
+
+.inicio-pie { justify-content: space-between; flex-wrap: wrap; font-size: 13px; color: var(--texto-suave); }
+.inicio-pie .enlace { display: inline-flex; align-items: center; gap: 0.25rem; min-height: var(--ctl); }
+.inicio-tarea-lectura { padding: 0.125rem 0; }
+
+@media (min-width: 768px) {
+  .inicio-fila { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.75rem 0; }
+  .inicio-fila__info { flex: 1 1 15rem; align-items: center; }
+  .inicio-fila__info > .avatar { display: inline-flex; }
+  .inicio-fila__titulo { justify-content: flex-start; }
+  .inicio-fila__nombre { min-height: 0; margin: 0; }
+  .inicio-fila__acciones .btn { flex: 0 0 auto; }
+  .inicio-fila--lectura { padding-bottom: 0.75rem; }
+  .inicio-proceso { padding: 0.75rem 0; }
+}
+
+@media (min-width: 1024px) {
+  .inicio-grilla { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; }
+  .inicio-col { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+  /* En dos columnas no entran los botones al lado: van abajo, alineados con el texto */
+  .inicio-fila__acciones { flex: 1 1 100%; padding-left: 3rem; }
+}
+
+/* En el Inicio el título de una tarea no se corta: baja al renglón siguiente */
+.inicio-grilla .tarea__titulo { align-items: flex-start; }
+.inicio-grilla .tarea__titulo .icono { margin-top: 0.1875rem; flex-shrink: 0; }
+.inicio-grilla .tarea__titulo .truncar { white-space: normal; }
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .inicio-tiempos { grid-template-columns: minmax(0, 1fr); gap: 0.5rem; }
+}
+
+/* Sub-encabezado «Para mañana» dentro de la card de tareas */
+.inicio-manana { margin-top: -0.375rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+.inicio-manana + .lista { margin-top: -0.5rem; }

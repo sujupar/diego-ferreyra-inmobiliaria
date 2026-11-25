@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Maqueta CRM — ficha de contacto, tareas e Inicio</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="base.css">
+<!-- ESTILOS -->
+</head>
+<body data-rol="coordinadora">
+
+<!-- Menú lateral: fijo desde 1024 px; panel deslizable por debajo -->
+<div class="menu-fondo" data-menu-cerrar></div>
+<aside class="menu" id="menu" aria-label="Menú">
+  <div class="menu__cabecera">
+    <a class="menu__marca" href="#inicio" aria-label="Diego Ferreyra Inmobiliaria — ir al inicio">
+      <span class="menu__isotipo" aria-hidden="true">DF</span>
+      <span class="menu__nombre truncar">Diego Ferreyra<small>Inmobiliaria</small></span>
+    </a>
+    <button type="button" class="btn btn--icono menu__cerrar" data-menu-cerrar aria-label="Cerrar el menú"><i data-icono="x"></i></button>
+  </div>
+  <nav class="menu__cuerpo" aria-label="Navegación principal">
+    <div class="menu__grupo">
+      <a class="menu__item" href="#inicio" data-nav="inicio"><i data-icono="layout-dashboard"></i><span>Inicio</span></a>
+      <a class="menu__item" href="#tareas" data-nav="tareas"><i data-icono="list-checks"></i><span>Pendientes</span></a>
+    </div>
+    <div class="menu__grupo">
+      <div class="menu__etiqueta eyebrow">Comercial</div>
+      <button type="button" class="menu__item menu__item--fuera" data-toast="El Inbox queda como está hoy: no es parte de esta maqueta."><i data-icono="inbox"></i><span>Inbox</span><small class="menu__fuera">fuera de la maqueta</small></button>
+      <button type="button" class="menu__item menu__item--fuera" data-toast="El CRM queda como está hoy. Desde ahí, el nombre de cada persona abre su ficha."><i data-icono="columns"></i><span>CRM</span><small class="menu__fuera">fuera de la maqueta</small></button>
+      <a class="menu__item" href="#ficha" data-nav="ficha"><i data-icono="contact"></i><span>Contactos · ficha</span></a>
+    </div>
+    <div class="menu__grupo">
+      <div class="menu__etiqueta eyebrow">Sobre la maqueta</div>
+      <a class="menu__item" href="#estados" data-nav="estados"><i data-icono="layers"></i><span>Sistema de diseño</span></a>
+    </div>
+  </nav>
+</aside>
+
+<div class="app">
+  <header class="barra-superior">
+    <button type="button" class="btn btn--icono" data-menu-abrir aria-label="Abrir o cerrar el menú"><i data-icono="panel-left"></i></button>
+    <div class="barra-superior__titulos">
+      <div class="eyebrow truncar" id="seccion-pantalla" hidden></div>
+      <div class="barra-superior__titulo truncar" id="titulo-pantalla">Inicio</div>
+    </div>
+    <div class="barra-superior__derecha">
+      <!-- Campanita: el botón y su número los maneja base.js; el panel lo abre quien escuche MQ.on('campanita') -->
+      <button type="button" class="btn btn--icono campana" id="btn-campanita" aria-label="Avisos" aria-haspopup="dialog">
+        <i data-icono="bell"></i>
+        <span class="campana__numero" aria-hidden="true" hidden>0</span>
+      </button>
+      <!-- Conmutador de rol -->
+      <div class="desplegable">
+        <button type="button" class="rol-btn" id="rol-btn" data-desplegable-btn aria-haspopup="menu" aria-expanded="false" title="Ver la maqueta como otro rol">
+          <span class="avatar" aria-hidden="true">PA</span>
+          <span class="rol-btn__texto"><strong>Paula</strong><span>Coordinadora</span></span>
+          <i data-icono="chevron-down"></i>
+        </button>
+        <div class="desplegable__panel" role="menu" aria-label="Ver la maqueta como" hidden>
+          <div class="desplegable__titulo eyebrow">Ver la maqueta como</div>
+          <button type="button" class="desplegable__item" role="menuitemradio" aria-checked="true" data-rol-opcion="coordinadora"><i data-icono="phone"></i>Coordinadora · Paula<i data-icono="check" class="icono-marca"></i></button>
+          <button type="button" class="desplegable__item" role="menuitemradio" aria-checked="false" data-rol-opcion="asesor"><i data-icono="user"></i>Asesor · Tomás Agüero<i data-icono="check" class="icono-marca"></i></button>
+          <button type="button" class="desplegable__item" role="menuitemradio" aria-checked="false" data-rol-opcion="admin"><i data-icono="eye"></i>Admin · vista del dueño<i data-icono="check" class="icono-marca"></i></button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="contenido">
+<!-- PANTALLAS -->
+  </main>
+
+  <!-- Barra inferior: solo celular (< 768 px) -->
+  <nav class="barra-inferior" aria-label="Accesos rápidos">
+    <a class="barra-inferior__item" href="#inicio" data-nav="inicio"><i data-icono="layout-dashboard"></i><span>Inicio</span></a>
+    <a class="barra-inferior__item" href="#tareas" data-nav="tareas"><i data-icono="list-checks"></i><span>Pendientes</span></a>
+    <a class="barra-inferior__item" href="#ficha" data-nav="ficha"><i data-icono="contact"></i><span>Contacto</span></a>
+    <button type="button" class="barra-inferior__item" data-menu-abrir><i data-icono="menu"></i><span>Menú</span></button>
+  </nav>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="base.js"></script>
+<!-- SCRIPTS -->
+</body>
+</html>
