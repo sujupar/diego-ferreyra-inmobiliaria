@@ -250,7 +250,7 @@ Por qué así y no de otra forma:
   puede saber (qué tareas son automáticas y quién cerró una tarea ajena). Son columnas
   nuevas y opcionales: el código viejo no las nombra y sigue igual. **Las escribe solo el
   servidor** (revisión 12.1, S1): el trigger BEFORE `trg_tasks_columnas_cadencia_solo_servidor`
-  (migración `20261126000001`, verificada con `scripts/apply-tasks-cadencia-solo-servidor-pg.ts`)
+  (migración `20261126000002`, verificada con `scripts/apply-tasks-cadencia-solo-servidor-pg.ts`)
   rechaza con 42501 a una sesión que no es `service_role` que las mande al insertar o las cambie
   al editar; deja pasar la acción `ON DELETE SET NULL` de sus FK (`pg_trigger_depth() > 1`).
   Alternativa descartada: tipo de tarea nuevo `call_attempt` (obliga a tocar

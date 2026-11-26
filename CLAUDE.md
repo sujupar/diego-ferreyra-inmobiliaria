@@ -2565,7 +2565,7 @@ dueño): se construye DESPUÉS de mergear este, desde `origin/main` actualizado.
   `closed_by_activity_id`.
 - **Columnas nuevas de `tasks`:** `source_activity_id` (la creó la cadencia; índice único: un
   intento crea una sola tarea) y `closed_by_activity_id`. Las escribe SOLO el servidor: el trigger
-  `trg_tasks_columnas_cadencia_solo_servidor` (migración `20261126000001`,
+  `trg_tasks_columnas_cadencia_solo_servidor` (migración `20261126000002`,
   `scripts/apply-tasks-cadencia-solo-servidor-pg.ts`) rechaza con 42501 a una sesión de usuario
   que las toque y deja pasar la acción de las FK `ON DELETE SET NULL` (`pg_trigger_depth() > 1`;
   sin esa excepción, borrar un contacto con tareas de la cadencia fallaba). El resto de las
