@@ -5,6 +5,7 @@ import type { Role } from '@/types/auth.types'
 import { alcanceContactos, puedeReasignarContacto } from '@/lib/auth/contact-access'
 import { canAccessContact } from '@/lib/auth/entity-access'
 import { sanearDatosContacto, soloLoPropio } from '@/lib/crm/datos-contacto'
+import { esUuid } from '@/lib/crm/id-valido'
 
 // Todo corre con service role: esta ruta es la ÚNICA barrera (design.md D4). Un contacto
 // ajeno y uno inexistente reciben la MISMA respuesta, para no confirmar que existe.
@@ -19,6 +20,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (alcance === 'ninguno') return NextResponse.json(SIN_ACCESO, { status: 403 })
   try {
     const { id } = await params
+    // Un id que no es uuid no puede existir: 404, no el 500 de Postgres (revisión 12.1).
+    if (!esUuid(id)) return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     if (alcance === 'propios' && !(await canAccessContact(user, id))) {
       return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     }
@@ -38,6 +41,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (alcance === 'ninguno') return NextResponse.json(SIN_ACCESO, { status: 403 })
   try {
     const { id } = await params
+    // Un id que no es uuid no puede existir: 404, no el 500 de Postgres (revisión 12.1).
+    if (!esUuid(id)) return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     let body: unknown
     try {
       body = await request.json()
@@ -83,6 +88,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   }
   try {
     const { id } = await params
+    // Un id que no es uuid no puede existir: 404, no el 500 de Postgres (revisión 12.1).
+    if (!esUuid(id)) return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     const borrado = await deleteContact(id)
     if (!borrado) return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     return NextResponse.json({ success: true })

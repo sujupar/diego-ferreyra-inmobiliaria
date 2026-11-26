@@ -5,6 +5,7 @@ import { canAccessContact } from '@/lib/auth/entity-access'
 import { tareasVisiblesEnFicha } from '@/lib/crm/tareas-ficha'
 import { leerProcesosDelContacto } from '@/lib/supabase/actividades'
 import { getPendingTasksForContact } from '@/lib/supabase/tasks'
+import { esUuid } from '@/lib/crm/id-valido'
 
 // Todo corre con service role: esta ruta es la ÚNICA barrera (design.md D4).
 const NO_ENCONTRADO = { error: 'No encontramos este contacto' }
@@ -21,6 +22,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (alcance === 'ninguno') return NextResponse.json(SIN_ACCESO, { status: 403 })
   try {
     const { id } = await params
+    // Un id que no es uuid no puede existir: 404, no el 500 de Postgres (revisión 12.1).
+    if (!esUuid(id)) return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     if (alcance === 'propios' && !(await canAccessContact(user, id))) {
       return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     }

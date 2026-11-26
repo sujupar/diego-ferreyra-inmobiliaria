@@ -84,7 +84,7 @@ export function crearBaseSimulada() {
       }
       const creada = ahora()
       const nueva: FilaActividad = {
-        id: `act-${++secuencia}`,
+        id: `aaaaaaaa-0000-4000-8000-${String(++secuencia).padStart(12, '0')}`,
         contact_id: fila.contact_id,
         deal_id: fila.deal_id,
         kind: fila.kind,

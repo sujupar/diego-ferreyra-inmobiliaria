@@ -28,7 +28,7 @@ vi.mock('@/lib/supabase/contacts', () => ({
 
 import { GET, PUT, DELETE } from './route'
 
-const ctx = (id = 'c-1') => ({ params: Promise.resolve({ id }) })
+const ctx = (id = '0000000c-0000-4000-8000-000000000001') => ({ params: Promise.resolve({ id }) })
 const get = (id?: string) => GET(new Request('http://local/api/contacts/c-1') as never, ctx(id))
 const put = (body: unknown, id?: string) =>
   PUT(
@@ -41,7 +41,7 @@ const como = (role: string, id = `${role}-1`) => {
 }
 
 const datos = () => ({
-  contact: { id: 'c-1', full_name: 'Ana' },
+  contact: { id: '0000000c-0000-4000-8000-000000000001', full_name: 'Ana' },
   deals: [{ id: 'd-suyo', assigned_to: 'asesor-1' }, { id: 'd-otro', assigned_to: 'asesor-2' }],
   appraisals: [{ id: 'a-suya', assigned_to: null, user_id: 'asesor-1' }, { id: 'a-otra', assigned_to: 'asesor-2', user_id: null }],
   properties: [{ id: 'p-otra', assigned_to: 'asesor-2' }],
@@ -79,7 +79,7 @@ describe('GET /api/contacts/[id]', () => {
   it('asesor con solo un proceso del contacto (canAccessContact da sí) → 200', async () => {
     como('asesor')
     expect((await get()).status).toBe(200)
-    expect(m.canAccessContact).toHaveBeenCalledWith(expect.objectContaining({ id: 'asesor-1' }), 'c-1')
+    expect(m.canAccessContact).toHaveBeenCalledWith(expect.objectContaining({ id: 'asesor-1' }), '0000000c-0000-4000-8000-000000000001')
   })
   it('asesor ajeno → 404 y no se lee el contacto', async () => {
     como('asesor')
@@ -116,7 +116,7 @@ describe('PUT /api/contacts/[id]', () => {
   it('{ notes } solo → 200 y se guarda solo notes', async () => {
     const res = await put({ notes: 'Background' })
     expect(res.status).toBe(200)
-    expect(m.updateContact).toHaveBeenCalledWith('c-1', { notes: 'Background' })
+    expect(m.updateContact).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', { notes: 'Background' })
   })
   it('cuerpo vacío → 400', async () => {
     expect((await put({})).status).toBe(400)
@@ -137,7 +137,7 @@ describe('PUT /api/contacts/[id]', () => {
     como('asesor')
     const res = await put({ notes: 'x', assigned_to: 'asesor-1', created_by: 'otro' })
     expect(res.status).toBe(200)
-    expect(m.updateContact).toHaveBeenCalledWith('c-1', { notes: 'x' })
+    expect(m.updateContact).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', { notes: 'x' })
   })
   it('asesor que intenta reasignarse mandando solo assigned_to → 400', async () => {
     como('asesor')
@@ -167,11 +167,11 @@ describe('PUT /api/contacts/[id]', () => {
   it('el cuerpo exacto de ContactEditor con nulls → 200 y se guardan como null', async () => {
     const res = await put({ full_name: 'Ana', phone: null, email: null, origin: null, notes: null })
     expect(res.status).toBe(200)
-    expect(m.updateContact).toHaveBeenCalledWith('c-1', { full_name: 'Ana', phone: null, email: null, origin: null, notes: null })
+    expect(m.updateContact).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', { full_name: 'Ana', phone: null, email: null, origin: null, notes: null })
   })
   it('el mismo cuerpo con textos vacíos → 200 y se guardan como null', async () => {
     await put({ full_name: 'Ana', phone: '', email: '', origin: '', notes: '' })
-    expect(m.updateContact).toHaveBeenCalledWith('c-1', { full_name: 'Ana', phone: null, email: null, origin: null, notes: null })
+    expect(m.updateContact).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', { full_name: 'Ana', phone: null, email: null, origin: null, notes: null })
   })
   it('email viejo mal formado y se cambia solo el teléfono (cuerpo completo de ContactEditor) → 200', async () => {
     const res = await put({ full_name: 'Ana', phone: '11 2222 3333', email: 'ana@@mal', origin: 'referido', notes: null })
@@ -196,12 +196,12 @@ describe('PUT /api/contacts/[id]', () => {
   })
   it('coordinadora con assigned_to vacío → 200 sin asesor', async () => {
     expect((await put({ assigned_to: '' })).status).toBe(200)
-    expect(m.updateContact).toHaveBeenCalledWith('c-1', { assigned_to: null })
+    expect(m.updateContact).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', { assigned_to: null })
     expect(m.existePerfil).not.toHaveBeenCalled()
   })
   it('coordinadora reasigna a un perfil que existe → 200', async () => {
     expect((await put({ assigned_to: UUID })).status).toBe(200)
-    expect(m.updateContact).toHaveBeenCalledWith('c-1', { assigned_to: UUID })
+    expect(m.updateContact).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', { assigned_to: UUID })
   })
   it('contacto inexistente (no se actualizó ninguna fila) → 404', async () => {
     m.updateContact.mockResolvedValue(false)
@@ -232,7 +232,7 @@ describe('DELETE /api/contacts/[id] (tarea 5.3)', () => {
     const res = await borrar()
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ success: true })
-    expect(m.deleteContact).toHaveBeenCalledWith('c-1')
+    expect(m.deleteContact).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001')
   })
   it('admin sobre un contacto inexistente → 404', async () => {
     como('admin')
@@ -247,5 +247,23 @@ describe('DELETE /api/contacts/[id] (tarea 5.3)', () => {
     expect(res.status).toBe(500)
     expect(await res.json()).toEqual({ error: 'No se pudo borrar el contacto. Probá de nuevo.' })
     err.mockRestore()
+  })
+})
+
+describe('ids que no son uuid (revisión 12.1)', () => {
+  it('GET, PUT y DELETE con un id que no es uuid → 404 sin consultar la base (antes era un 500)', async () => {
+    expect((await get('no-es-uuid')).status).toBe(404)
+    expect((await put({ full_name: 'Ana' }, 'no-es-uuid')).status).toBe(404)
+    como('admin')
+    const borrar = await DELETE(new Request('http://local/api/contacts/x', { method: 'DELETE' }) as never, ctx('no-es-uuid'))
+    expect(borrar.status).toBe(404)
+    expect(m.getContact).not.toHaveBeenCalled()
+    expect(m.updateContact).not.toHaveBeenCalled()
+    expect(m.deleteContact).not.toHaveBeenCalled()
+  })
+  it('el asesor recibe el mismo 404, sin consultar permisos', async () => {
+    como('asesor')
+    expect((await get('1 OR 1=1')).status).toBe(404)
+    expect(m.canAccessContact).not.toHaveBeenCalled()
   })
 })

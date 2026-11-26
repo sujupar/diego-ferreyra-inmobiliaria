@@ -35,7 +35,7 @@ import { GET } from './route'
 // Next solo deja exportar los métodos desde un route.ts: el tamaño va escrito acá.
 const TAMANO_PAGINA = 50
 
-const get = (qs = '', id = 'c-1') =>
+const get = (qs = '', id = '0000000c-0000-4000-8000-000000000001') =>
   GET(new Request(`http://local/api/contacts/${id}/activities${qs}`) as never, { params: Promise.resolve({ id }) })
 const como = (role: string, id = `${role}-1`) => {
   m.estado.role = role
@@ -45,7 +45,7 @@ const como = (role: string, id = `${role}-1`) => {
 type Fila = Record<string, unknown>
 const fila = (id: string, c: Fila = {}): Fila => ({
   id,
-  contact_id: 'c-1',
+  contact_id: '0000000c-0000-4000-8000-000000000001',
   deal_id: 'd-1',
   kind: 'note',
   call_outcome: null,
@@ -106,12 +106,12 @@ describe('GET /api/contacts/[id]/activities — permisos', () => {
 describe('GET — filtros y página', () => {
   it('sin filtro → "todo", sin cursor, pide una fila de más para saber si hay más', async () => {
     await get()
-    expect(m.listarActividades).toHaveBeenCalledWith('c-1', 'todo', null, TAMANO_PAGINA + 1)
+    expect(m.listarActividades).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', 'todo', null, TAMANO_PAGINA + 1)
     expect(TAMANO_PAGINA).toBe(50)
   })
   it.each(['llamadas', 'notas', 'actividad'])('pasa el filtro %s a la lectura', async (filtro) => {
     await get(`?filtro=${filtro}`)
-    expect(m.listarActividades).toHaveBeenCalledWith('c-1', filtro, null, 51)
+    expect(m.listarActividades).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', filtro, null, 51)
   })
   it('filtro desconocido → 400', async () => {
     const res = await get('?filtro=whatsapp')
@@ -120,7 +120,7 @@ describe('GET — filtros y página', () => {
   })
   it('página 2: el cursor `antes` llega a la lectura normalizado a ISO', async () => {
     await get('?antes=2026-11-20T10:00:00Z')
-    expect(m.listarActividades).toHaveBeenCalledWith('c-1', 'todo', '2026-11-20T10:00:00.000Z', 51)
+    expect(m.listarActividades).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', 'todo', '2026-11-20T10:00:00.000Z', 51)
   })
   it('cursor que no es una fecha → 400', async () => {
     expect((await get('?antes=ayer')).status).toBe(400)
@@ -191,5 +191,13 @@ describe('GET — intento, autor y tarea agendada sola', () => {
     expect(res.status).toBe(500)
     expect((await res.json()).error).toMatch(/Probá de nuevo/)
     err.mockRestore()
+  })
+})
+
+describe('ids que no son uuid (revisión 12.1)', () => {
+  it('→ 404 sin consultar la base', async () => {
+    expect((await get('', 'no-es-uuid')).status).toBe(404)
+    expect(m.existeContacto).not.toHaveBeenCalled()
+    expect(m.listarActividades).not.toHaveBeenCalled()
   })
 })

@@ -25,6 +25,7 @@ export default defineConfig({
       'lib/supabase/tasks*.test.ts',
       'lib/supabase/cadencia*.test.ts',
       'lib/supabase/contactos*.test.ts',
+      'lib/supabase/actividades*.test.ts',
       'app/api/contacts/**/*.test.ts',
       'app/api/appraisals/*/contact/**/*.test.ts',
       'app/api/tasks/**/*.test.ts',

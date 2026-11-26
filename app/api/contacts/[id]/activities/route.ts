@@ -20,6 +20,7 @@ import {
   type FiltroActividad,
 } from '@/lib/supabase/actividades'
 import type { UserWithProfile } from '@/types/auth.types'
+import { esUuid } from '@/lib/crm/id-valido'
 
 // Todo corre con service role: esta ruta es la ÚNICA barrera (design.md D4). Un contacto
 // ajeno y uno inexistente reciben la MISMA respuesta, para no confirmar que existe.
@@ -88,6 +89,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (alcance === 'ninguno') return NextResponse.json(SIN_ACCESO, { status: 403 })
   try {
     const { id } = await params
+    // Un id que no es uuid no puede existir: 404, no el 500 de Postgres (revisión 12.1).
+    if (!esUuid(id)) return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     const sp = new URL(request.url).searchParams
     const filtroPedido = sp.get('filtro') ?? 'todo'
     const filtro = FILTROS.find((f) => f === filtroPedido)
@@ -143,6 +146,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (alcance === 'ninguno') return NextResponse.json(SIN_ACCESO, { status: 403 })
   try {
     const { id } = await params
+    // Un id que no es uuid no puede existir: 404, no el 500 de Postgres (revisión 12.1).
+    if (!esUuid(id)) return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     let cuerpo: unknown
     try {
       cuerpo = await request.json()

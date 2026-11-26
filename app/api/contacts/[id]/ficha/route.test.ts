@@ -30,7 +30,7 @@ import { GET } from './route'
 
 const AHORA = new Date('2026-11-25T15:00:00.000Z')
 const haceMin = (n: number) => new Date(AHORA.getTime() - n * 60_000).toISOString()
-const get = (id = 'c-1') => GET(new Request(`http://local/api/contacts/${id}/ficha`) as never, { params: Promise.resolve({ id }) })
+const get = (id = '0000000c-0000-4000-8000-000000000001') => GET(new Request(`http://local/api/contacts/${id}/ficha`) as never, { params: Promise.resolve({ id }) })
 const como = (role: string, id: string) => {
   m.estado.role = role
   m.estado.id = id
@@ -43,7 +43,7 @@ const proceso = (p: Partial<ProcesoDeFicha> & { id: string }): ProcesoDeFicha =>
   stage_changed_at: '2026-11-20T10:00:00.000Z', lost_at: null, visited_at: null, ...p,
 })
 const datos = (procesos: ProcesoDeFicha[] = [], ultimoIntentoEn: string | null = null): DatosFicha => ({
-  contacto: { id: 'c-1', full_name: '[TEST] Ana', phone: null, email: null, origin: null, notes: null, assigned_to: null, created_by: null },
+  contacto: { id: '0000000c-0000-4000-8000-000000000001', full_name: '[TEST] Ana', phone: null, email: null, origin: null, notes: null, assigned_to: null, created_by: null },
   procesos,
   tasaciones: [],
   propiedades: [],
@@ -150,5 +150,13 @@ describe('GET /api/contacts/[id]/ficha — datos', () => {
     const body = JSON.parse(texto)
     expect(body.procesos.map((p: { id: string }) => p.id)).toEqual(['d-mio'])
     expect(body.detalles.etapa).toEqual({ clave: 'solicitud', etiqueta: 'Solicitud' })
+  })
+})
+
+describe('ids que no son uuid (revisión 12.1)', () => {
+  it('→ 404 sin consultar la base', async () => {
+    expect((await get('no-es-uuid')).status).toBe(404)
+    expect(m.leerDatosDeFicha).not.toHaveBeenCalled()
+    expect(m.canAccessContact).not.toHaveBeenCalled()
   })
 })

@@ -48,7 +48,7 @@ import { POST } from './route'
 const MIERCOLES = new Date('2026-11-25T15:00:00.000Z') // miércoles 12:00 de Argentina
 let tokens = 0
 
-const reintentar = (activityId: string, id = 'c-1') =>
+const reintentar = (activityId: string, id = '0000000c-0000-4000-8000-000000000001') =>
   POST(new Request(`http://local/api/contacts/${id}/activities/${activityId}/cadencia`, { method: 'POST' }) as never, {
     params: Promise.resolve({ id, activityId }),
   })
@@ -61,7 +61,7 @@ const como = (role: string, id: string, nombre = id) => {
 /** Guarda una actividad SIN correr la cadencia: lo que deja un guardado cuya tarea falló. */
 async function guardada(cambios: Partial<FilaActividad> & { created_by: string | null }): Promise<FilaActividad> {
   const r = await b.insertarActividad({
-    contact_id: cambios.contact_id ?? 'c-1',
+    contact_id: cambios.contact_id ?? '0000000c-0000-4000-8000-000000000001',
     deal_id: cambios.deal_id === undefined ? 'd-sol' : cambios.deal_id,
     kind: cambios.kind ?? 'call',
     call_outcome: (cambios.kind ?? 'call') === 'call' ? (cambios.call_outcome ?? 'no_atendio') : null,
@@ -86,14 +86,14 @@ beforeEach(() => {
   m.base = b
   como('coordinador', 'coord-1', 'Cora Coordinadora')
   m.canAccessContact.mockResolvedValue(true)
-  b.contactos.set('c-1', '[TEST] Ana')
-  b.contactos.set('c-2', '[TEST] Beto')
+  b.contactos.set('0000000c-0000-4000-8000-000000000001', '[TEST] Ana')
+  b.contactos.set('0000000c-0000-4000-8000-000000000002', '[TEST] Beto')
   b.perfiles.set('coord-1', { role: 'coordinador', nombre: 'Cora Coordinadora' })
   b.perfiles.set('coord-2', { role: 'coordinador', nombre: 'Coca' })
   b.perfiles.set('asesor-1', { role: 'asesor', nombre: 'Aldo Asesor' })
   b.perfiles.set('asesor-2', { role: 'asesor', nombre: 'Berta Asesora' })
-  b.procesos.push({ id: 'd-sol', contact_id: 'c-1', stage: 'request', assigned_to: null, scheduled_date: null, origin: null, created_at: '2026-11-20T10:00:00Z' })
-  b.tarea({ id: 't-entrada', title: 'Contactar a [TEST] Ana', type: 'update_contact', channel: null, assigned_to: 'coord-1', deal_id: 'd-sol', contact_id: 'c-1' })
+  b.procesos.push({ id: 'd-sol', contact_id: '0000000c-0000-4000-8000-000000000001', stage: 'request', assigned_to: null, scheduled_date: null, origin: null, created_at: '2026-11-20T10:00:00Z' })
+  b.tarea({ id: 't-entrada', title: 'Contactar a [TEST] Ana', type: 'update_contact', channel: null, assigned_to: 'coord-1', deal_id: 'd-sol', contact_id: '0000000c-0000-4000-8000-000000000001' })
 })
 afterEach(() => vi.useRealTimers())
 
@@ -146,8 +146,8 @@ describe('POST …/cadencia — reintento', () => {
 
   it('reintento de otra persona → tarea al autor original y tareas a cerrar elegidas con el autor original', async () => {
     b.procesos[0].assigned_to = 'asesor-1'
-    b.tarea({ id: 't-manual-suya', title: 'Llamar (a mano)', assigned_to: 'asesor-1', deal_id: 'd-sol', contact_id: 'c-1' })
-    b.tarea({ id: 't-manual-otro', title: 'Llamar (a mano)', assigned_to: 'asesor-2', deal_id: 'd-sol', contact_id: 'c-1' })
+    b.tarea({ id: 't-manual-suya', title: 'Llamar (a mano)', assigned_to: 'asesor-1', deal_id: 'd-sol', contact_id: '0000000c-0000-4000-8000-000000000001' })
+    b.tarea({ id: 't-manual-otro', title: 'Llamar (a mano)', assigned_to: 'asesor-2', deal_id: 'd-sol', contact_id: '0000000c-0000-4000-8000-000000000001' })
     const a = await guardada({ created_by: 'asesor-1' })
     const body = await (await reintentar(a.id)).json()
     expect(tareasDe(a.id)[0]?.assigned_to).toBe('asesor-1')
@@ -167,7 +167,7 @@ describe('POST …/cadencia — reintento', () => {
 
   it('entró otra solicitud entre medio → la tarea queda con el deal_id de la actividad', async () => {
     const a = await guardada({ created_by: 'coord-1' })
-    b.procesos.push({ id: 'd-nueva', contact_id: 'c-1', stage: 'request', assigned_to: null, scheduled_date: null, origin: null, created_at: '2026-11-25T14:00:00Z' })
+    b.procesos.push({ id: 'd-nueva', contact_id: '0000000c-0000-4000-8000-000000000001', stage: 'request', assigned_to: null, scheduled_date: null, origin: null, created_at: '2026-11-25T14:00:00Z' })
     const body = await (await reintentar(a.id)).json()
     expect(tareasDe(a.id)[0]?.deal_id).toBe('d-sol')
     expect(body.cadencia.dealId).toBe('d-sol')
@@ -217,8 +217,8 @@ describe('POST …/cadencia — reintento', () => {
 
 describe('POST …/cadencia — lo que no se reintenta', () => {
   it('actividad de otro contacto → 404', async () => {
-    const a = await guardada({ created_by: 'coord-1', contact_id: 'c-2', deal_id: null })
-    const res = await reintentar(a.id, 'c-1')
+    const a = await guardada({ created_by: 'coord-1', contact_id: '0000000c-0000-4000-8000-000000000002', deal_id: null })
+    const res = await reintentar(a.id, '0000000c-0000-4000-8000-000000000001')
     expect(res.status).toBe(404)
     expect(await res.json()).toEqual({ error: 'No encontramos este contacto' })
     expect(tareasDe(a.id)).toHaveLength(0)
@@ -250,7 +250,7 @@ describe('POST …/cadencia — lo que no se reintenta', () => {
   })
 
   it('contacto inexistente para la coordinadora → 404', async () => {
-    expect((await reintentar('act-1', 'c-no-existe')).status).toBe(404)
+    expect((await reintentar('aaaaaaaa-0000-4000-8000-000000000001', 'c-no-existe')).status).toBe(404)
   })
 
   it('abogado → 403', async () => {
@@ -258,5 +258,12 @@ describe('POST …/cadencia — lo que no se reintenta', () => {
     como('abogado', 'abo-1')
     expect((await reintentar(a.id)).status).toBe(403)
     expect(tareasDe(a.id)).toHaveLength(0)
+  })
+})
+
+describe('ids que no son uuid (revisión 12.1)', () => {
+  it('contacto o registro que no es uuid → 404', async () => {
+    expect((await reintentar('no-es-uuid')).status).toBe(404)
+    expect((await reintentar('aaaaaaaa-0000-4000-8000-000000000001', 'no-es-uuid')).status).toBe(404)
   })
 })
