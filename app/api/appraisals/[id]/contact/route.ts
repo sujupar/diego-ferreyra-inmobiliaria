@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
 import { alcanceTasaciones, puedeEditarTasacion } from '@/lib/auth/appraisal-access'
+import { alcanceContactos } from '@/lib/auth/contact-access'
+import { canAccessContact } from '@/lib/auth/entity-access'
 
 function getAdmin() {
     return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -18,8 +20,14 @@ function getAdmin() {
  * 20260505000001_rls_per_role_safe.sql).
  */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+    // requireAuth fuera del try: lanza NEXT_REDIRECT y un catch lo volvería un 500.
+    const user = await requireAuth()
+    // crm-ficha-y-llamadas (D4, tarea 5.4): un rol sin alcance de contactos no vincula.
+    const alcanceDeContactos = alcanceContactos(user.profile.role)
+    if (alcanceDeContactos === 'ninguno') {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+    }
     try {
-        const user = await requireAuth()
         const { id } = await params
         const body = await request.json()
         const contactId = body?.contact_id
@@ -58,6 +66,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             if (!isOwner) {
                 return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
             }
+        }
+
+        // Recién después de comprobar que la tasación es suya (si no, por la diferencia
+        // entre 404 y 403 sabría algo de un contacto ajeno): para VINCULAR, un asesor
+        // tiene que poder ver ya ese contacto. Una tasación a su nombre le da acceso al
+        // contacto (D2), así que sin esto vincular cualquier id le abría su ficha.
+        if (contactId !== null && alcanceDeContactos === 'propios' && !(await canAccessContact(user, contactId))) {
+            return NextResponse.json({ error: 'No encontramos este contacto' }, { status: 404 })
         }
 
         const { error } = await supabase
