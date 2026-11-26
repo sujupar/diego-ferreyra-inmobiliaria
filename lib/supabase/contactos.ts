@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
 import { textoNotaDeVinculo } from '@/lib/crm/actividades'
+import type { DatosFicha, ProcesoDeFicha } from '@/lib/crm/ficha'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -122,4 +123,55 @@ export async function registrarNotaDeVinculo(datos: {
       body: textoNotaDeVinculo(datos.direccion),
     })
   if (error) throw new Error(`registrarNotaDeVinculo: ${error.message}`)
+}
+
+const COLUMNAS_PROCESO_FICHA =
+  'id, stage, created_at, assigned_to, scheduled_date, scheduled_time, origin, property_address, ' +
+  'neighborhood, property_type, property_type_other, rooms, covered_area, meta_campaign_name, ' +
+  'meta_adset_name, meta_ad_name, stage_changed_at, lost_at, visited_at'
+
+/**
+ * Lo que la ruta `ficha` necesita del contacto (D4), con service role: la ruta ya decidió
+ * el permiso y `armarFicha` (lib/crm/ficha.ts) recorta lo que un asesor no ve. `null` si
+ * el contacto no existe. Tira ante cualquier error: una lista que no se pudo leer no puede
+ * llegar vacía como si no hubiera nada.
+ */
+export async function leerDatosDeFicha(contactId: string): Promise<DatosFicha | null> {
+  const db = getAdmin()
+  const [contacto, procesos, tasaciones, propiedades, intento] = await Promise.all([
+    db.from('contacts').select('id, full_name, phone, email, origin, notes, assigned_to, created_by').eq('id', contactId).maybeSingle(),
+    db.from('deals').select(COLUMNAS_PROCESO_FICHA).eq('contact_id', contactId).order('created_at', { ascending: false }),
+    db
+      .from('appraisals')
+      .select('id, property_title, property_location, created_at, assigned_to, user_id')
+      .eq('contact_id', contactId)
+      .order('created_at', { ascending: false }),
+    db
+      .from('properties')
+      .select('id, address, neighborhood, created_at, assigned_to')
+      .eq('contact_id', contactId)
+      .order('created_at', { ascending: false }),
+    // El último contacto es de la PERSONA: NO se filtra por `deal_id` (cuenta el intento
+    // de cualquier proceso, abierto o cerrado, y el que no tiene proceso).
+    db
+      .from('contact_activities')
+      .select('occurred_at')
+      .eq('contact_id', contactId)
+      .in('kind', ['call', 'whatsapp_sent'])
+      .is('voided_at', null)
+      .order('occurred_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ])
+  for (const [nombre, r] of [['contacto', contacto], ['procesos', procesos], ['tasaciones', tasaciones], ['propiedades', propiedades], ['último intento', intento]] as const) {
+    if (r.error) throw new Error(`leerDatosDeFicha (${nombre}): ${r.error.message}`)
+  }
+  if (!contacto.data) return null
+  return {
+    contacto: contacto.data as DatosFicha['contacto'],
+    procesos: (procesos.data ?? []) as unknown as ProcesoDeFicha[],
+    tasaciones: (tasaciones.data ?? []) as DatosFicha['tasaciones'],
+    propiedades: (propiedades.data ?? []) as DatosFicha['propiedades'],
+    ultimoIntentoEn: (intento.data as { occurred_at: string } | null)?.occurred_at ?? null,
+  }
 }
