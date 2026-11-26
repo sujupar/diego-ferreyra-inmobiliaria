@@ -37,7 +37,8 @@
     "app/(dashboard)/pipeline/**/*.tsx",
     "scripts/tipos/pg.d.ts",
     "scripts/apply-contact-activities-pg.ts",
-    "scripts/_qa-ficha-datos.ts"
+    "scripts/_qa-ficha-datos.ts",
+    "scripts/_qa-convertir-solicitud.ts"
   ],
   "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
 }
