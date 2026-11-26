@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { tareasVisiblesEnFicha, vencimientoDeTarea } from './tareas-ficha'
+import { enlaceTareaCadencia, tareasVisiblesEnFicha, vencimientoDeTarea } from './tareas-ficha'
 
 const t = (id: string, type: string, deal_id: string | null, assigned_to: string | null) => ({ id, type, deal_id, assigned_to })
 const ids = (lista: { id: string }[]) => lista.map((x) => x.id)
@@ -79,5 +79,31 @@ describe('vencimientoDeTarea', () => {
   })
   it('con fecha inválida no vence (no rompe la lista)', () => {
     expect(vencimientoDeTarea({ due_date: 'mañana', due_time: null }, noche)).toEqual({ vencida: false, dias: null })
+  })
+})
+
+// Tarea 11.3 (D5): una tarea de la cadencia abierta desde /tasks lleva a la ficha, donde
+// se registra la llamada; cualquier otra, `null` (y /tasks sigue como hoy).
+describe('enlaceTareaCadencia', () => {
+  const t = (c: Partial<Parameters<typeof enlaceTareaCadencia>[0]> = {}) =>
+    enlaceTareaCadencia({ type: 'follow_up', source_activity_id: 'a-1', contact_id: 'c-1', deal_id: 'd-1', ...c })
+
+  it('follow_up de la cadencia con proceso → la ficha del contacto', () => {
+    expect(t()).toBe('/contacts/c-1')
+  })
+  it('follow_up de la cadencia sin proceso → la ficha del contacto', () => {
+    expect(t({ deal_id: null })).toBe('/contacts/c-1')
+  })
+  it('follow_up creada a mano sobre un proceso → null', () => {
+    expect(t({ source_activity_id: null })).toBeNull()
+  })
+  it.each(['update_contact', 'new_assignment'])('%s → null', (type) => {
+    expect(t({ type })).toBeNull()
+  })
+  it('de la cadencia pero sin contacto → null', () => {
+    expect(t({ contact_id: null })).toBeNull()
+  })
+  it('campos que faltan (una tarea vieja sin la columna) → null', () => {
+    expect(enlaceTareaCadencia({ type: 'follow_up', contact_id: 'c-1', deal_id: 'd-1' })).toBeNull()
   })
 })

@@ -24,6 +24,23 @@ export function tareasVisiblesEnFicha<T extends { type: string; deal_id: string 
 }
 
 /**
+ * A dónde lleva una tarea de la cadencia desde `/tasks` (D5, tarea 11.3): una `follow_up`
+ * que nació de una actividad (`source_activity_id`) y tiene contacto abre la ficha, donde
+ * se registra la llamada. Si abriera el proceso, la coordinadora no podría registrarla
+ * ahí, y el asesor con un "Llamar a…" sobre un proceso ajeno caería en una pantalla que le
+ * responde 403. Cualquier otra tarea → `null`, y `/tasks` decide como siempre.
+ */
+export function enlaceTareaCadencia(t: {
+  type: string
+  source_activity_id?: string | null
+  contact_id: string | null
+  deal_id?: string | null
+}): string | null {
+  if (t.type !== 'follow_up' || !t.source_activity_id || !t.contact_id) return null
+  return `/contacts/${t.contact_id}`
+}
+
+/**
  * `due_date`/`due_time` se leen SIEMPRE como hora de Argentina (decisión 8.4), nunca con
  * `toISOString()` (que corre las tareas de noche). Con fecha y hora vence cuando ese
  * momento pasó; con fecha sola, recién al día siguiente; sin fecha, nunca. `dias` cuenta

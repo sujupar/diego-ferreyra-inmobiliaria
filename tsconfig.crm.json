@@ -35,6 +35,8 @@
     "app/(dashboard)/contacts/**/*.tsx",
     "app/(dashboard)/crm/**/*.tsx",
     "app/(dashboard)/pipeline/**/*.tsx",
+    "app/(dashboard)/tasks/page.tsx",
+    "scripts/ficha-contacto.probe.tsx",
     "scripts/tipos/pg.d.ts",
     "scripts/apply-contact-activities-pg.ts",
     "scripts/_qa-ficha-datos.ts",

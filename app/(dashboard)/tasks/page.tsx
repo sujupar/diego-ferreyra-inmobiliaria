@@ -14,6 +14,7 @@ import {
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog'
 import { UnidentifiedBanner } from '@/components/inbox/UnidentifiedBanner'
 import type { VisitaListado } from '@/lib/visitas/tipos'
+import { enlaceTareaCadencia } from '@/lib/crm/tareas-ficha'
 import { formatearFechaHora } from '@/lib/visitas/horario'
 
 const TYPE_CONFIG: Record<string, { icon: typeof Bell; color: string; label: string; urgent?: boolean }> = {
@@ -82,6 +83,7 @@ interface Task {
   due_time: string | null
   all_day: boolean | null
   channel: 'call' | 'email' | 'message' | 'visit' | 'document' | 'other' | null
+  source_activity_id?: string | null // la actividad de la ficha que creó la tarea (cadencia)
 }
 
 /**
@@ -101,6 +103,10 @@ function fechaHoraCorta(d: string): string {
 }
 
 function getTaskLink(task: Task): string {
+  // Una tarea de la cadencia de llamadas abre la ficha del contacto, donde se registra la
+  // llamada (crm-ficha-y-llamadas, D5). Es el único cambio de este change en esta página.
+  const ficha = enlaceTareaCadencia(task)
+  if (ficha) return ficha
   // Para tareas de "actualizar contacto", abrimos directamente el editor
   // en la superficie más útil (deal > appraisal > contact directo).
   // El query param dispara el modal en la página destino.
