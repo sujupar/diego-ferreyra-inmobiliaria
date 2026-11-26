@@ -4,7 +4,7 @@
 // Toda función LANZA si la base devuelve error: supabase-js no lanza solo, y un error
 // tragado acá se vería como "no hay nada" en la ficha.
 import { createClient } from '@supabase/supabase-js'
-import type { Actividad, Intento } from '@/lib/crm/tipos'
+import type { Actividad, Intento, TareaCreadaPorActividad } from '@/lib/crm/tipos'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -143,6 +143,90 @@ export async function intentosNoAnulados(contactId: string, dealId: string | nul
   const { data, error } = await query
   if (error) throw new Error(`intentosNoAnulados: ${error.message}`)
   return (data ?? []) as Intento[]
+}
+
+export async function existeContacto(contactId: string): Promise<boolean> {
+  const { data, error } = await getAdmin().from('contacts').select('id').eq('id', contactId).maybeSingle()
+  if (error) throw new Error(`existeContacto: ${error.message}`)
+  return !!data
+}
+
+export type FiltroActividad = 'todo' | 'llamadas' | 'notas' | 'actividad'
+
+// `actividad` = lo que no es llamada ni nota: hoy, el WhatsApp marcado (D4).
+const TIPOS_POR_FILTRO: Record<FiltroActividad, Actividad['kind'][]> = {
+  todo: ['note', 'call', 'whatsapp_sent'],
+  llamadas: ['call'],
+  notas: ['note'],
+  actividad: ['whatsapp_sent'],
+}
+
+/**
+ * Una página de la actividad, sin anuladas, la más nueva primero. `antes` es el
+ * `occurred_at` del último registro de la página anterior. Límite conocido: dos registros
+ * con el MISMO `occurred_at` justo en el corte de página harían que el segundo no
+ * aparezca; con hora de servidor en milisegundos es prácticamente imposible.
+ */
+export async function listarActividades(
+  contactId: string,
+  filtro: FiltroActividad,
+  antes: string | null,
+  limite: number,
+): Promise<FilaActividad[]> {
+  let query = getAdmin()
+    .from('contact_activities')
+    .select(COLUMNAS_ACTIVIDAD)
+    .eq('contact_id', contactId)
+    .is('voided_at', null)
+    .in('kind', TIPOS_POR_FILTRO[filtro])
+  if (antes) query = query.lt('occurred_at', antes)
+  const { data, error } = await query
+    .order('occurred_at', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(limite)
+  if (error) throw new Error(`listarActividades: ${error.message}`)
+  return (data ?? []) as unknown as FilaActividad[]
+}
+
+/** Todas las llamadas no anuladas del contacto: el número de intento sale de acá, no de la página. */
+export async function llamadasNoAnuladasDelContacto(contactId: string): Promise<Intento[]> {
+  const { data, error } = await getAdmin()
+    .from('contact_activities')
+    .select('id, deal_id, kind, call_outcome, occurred_at, created_at')
+    .eq('contact_id', contactId)
+    .eq('kind', 'call')
+    .is('voided_at', null)
+  if (error) throw new Error(`llamadasNoAnuladasDelContacto: ${error.message}`)
+  return (data ?? []) as Intento[]
+}
+
+/** Nombre de cada perfil. Un id sin perfil no figura en el mapa. */
+export async function nombresDePerfiles(ids: string[]): Promise<Map<string, string>> {
+  const nombres = new Map<string, string>()
+  if (ids.length === 0) return nombres
+  const { data, error } = await getAdmin().from('profiles').select('id, full_name').in('id', ids)
+  if (error) throw new Error(`nombresDePerfiles: ${error.message}`)
+  for (const p of (data ?? []) as { id: string; full_name: string | null }[]) nombres.set(p.id, p.full_name ?? '')
+  return nombres
+}
+
+/**
+ * La tarea que creó cada actividad ("tarea agendada sola"). Una descartada (porque se
+ * anuló la actividad) no cuenta, igual que en `getTasksOfActivity`.
+ */
+export async function tareasCreadasPor(activityIds: string[]): Promise<Map<string, TareaCreadaPorActividad>> {
+  const tareas = new Map<string, TareaCreadaPorActividad>()
+  if (activityIds.length === 0) return tareas
+  const { data, error } = await getAdmin()
+    .from('tasks')
+    .select('id, title, due_date, due_time, source_activity_id')
+    .in('source_activity_id', activityIds)
+    .neq('status', 'dismissed')
+  if (error) throw new Error(`tareasCreadasPor: ${error.message}`)
+  for (const t of (data ?? []) as (TareaCreadaPorActividad & { source_activity_id: string })[]) {
+    tareas.set(t.source_activity_id, { id: t.id, title: t.title, due_date: t.due_date, due_time: t.due_time })
+  }
+  return tareas
 }
 
 /** La fila que ya usó ese identificador de guardado, de cualquier contacto y autor. */
