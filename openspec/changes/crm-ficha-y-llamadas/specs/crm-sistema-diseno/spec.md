@@ -29,7 +29,7 @@ ancho.
 
 #### Scenario: Celular
 - **WHEN** se abre la ficha a 390 px de ancho
-- **THEN** se ve una cabecera fija con nombre, etapa, botón de llamar y hace cuánto fue la última llamada (o "Sin llamar todavía"), y las pestañas Actividad, Datos y Tareas, sin desplazamiento horizontal
+- **THEN** se ve una cabecera fija con nombre, etapa, botón de llamar y hace cuánto fue el último contacto (o "Sin contacto todavía"), y las pestañas Actividad, Datos y Tareas, sin desplazamiento horizontal
 
 #### Scenario: Tablet
 - **WHEN** se abre la ficha a 1024 px de ancho con el menú lateral abierto
