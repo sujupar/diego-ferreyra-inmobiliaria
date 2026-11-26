@@ -2531,6 +2531,113 @@ Spec `docs/superpowers/specs/2026-10-30-conectar-avisos-design.md`; plan homóni
 - **Detección:** `SELECT portal, count(*), count(property_url), count(property_photo_url) FROM portal_inquiries WHERE property_id IS NULL GROUP BY 1;`. Si las consultas nuevas de ZonaProp entran sin enlace, mirar `sinEnlaceAviso` en `portal_inquiry_poll_state.last_run_stats`.
 - **Pruebas:** `npx vitest run -c vitest.consultas.config.ts` (622). Las 2 de `page.movil.test.tsx` fallan desde antes de este PR, por el entorno de pruebas: en el navegador real el detalle de una consulta sí abre en el celular (verificado en la vista previa).
 
+## CRM — Ficha de contacto y llamadas (PR #92, 2026-11-26)
+
+Change `openspec/changes/crm-ficha-y-llamadas/` (proposal, design D1–D10 + Risks, tasks,
+`auditoria.md`). El siguiente del módulo es **`crm-cartera-por-rol`** (specs ya aprobadas por el
+dueño): se construye DESPUÉS de mergear este, desde `origin/main` actualizado.
+
+- **Qué hay:** la ficha `/contacts/[id]` (cabecera, último contacto, alerta, Detalles, Procesos,
+  Archivos, Tareas e historial de llamadas, notas y WhatsApp), con "+ Nota", "Registrar llamada",
+  "Marcar WhatsApp enviado", coordinar una tasación desde la ficha y "Deshacer" un perdido.
+  Lectura en `GET /api/contacts/[id]/ficha` (`leerDatosDeFicha`); reglas puras en `lib/crm/`.
+- **Tabla `contact_activities`** (migración `20261125000001`, aplicada y verificada con
+  `scripts/apply-contact-activities-pg.ts`): `kind` = `note|call|whatsapp_sent`, `call_outcome`
+  (5 valores, catálogo en `lib/crm/tipos.ts`), `callback_at` solo con "volver a llamar",
+  `voided_at` para anular (nada se borra), `client_token` único contra el doble guardado (mismo
+  token con otros datos → 409) y `automatic` para las notas del sistema. Los CHECK van con
+  `DROP CONSTRAINT IF EXISTS` + `ADD` FUERA del `CREATE TABLE`: dentro de un
+  `CREATE TABLE IF NOT EXISTS`, re-correr el script ignoraría en silencio un CHECK cambiado. Al
+  sumar un valor se tocan JUNTOS el CHECK y el catálogo.
+- **RLS de SOLO LECTURA:** la tabla tiene política de `SELECT` (operaciones todo; asesor, lo de
+  sus contactos y procesos) y NINGUNA de escritura. Toda escritura va por rutas con permiso y
+  clave de servicio (`/api/contacts/[id]/activities` y `…/[activityId]`). Escribir ahí con la
+  sesión del usuario falla: es a propósito, no "falta una policy".
+- **Cadencia:** las REGLAS en `lib/crm/cadencia.ts` (puro: racha de "No atendió" → "Llamada N+1";
+  dos seguidas → "Enviar WhatsApp"; qué cierra cada intento, `tareasACerrar`) y la APLICACIÓN
+  contra la base en `lib/supabase/cadencia.ts`. La tarea nueva vence el día hábil siguiente de
+  Argentina a las 9:00 (`lib/crm/horario-laboral.ts`). **La cadencia NO cambia la etapa del
+  proceso ni manda mensajes**: solo crea y cierra tareas; perder o coordinar son acciones
+  explícitas. Un intento fuera de orden (cargado con hora anterior a otro) se guarda pero no crea
+  ni cierra nada. Una llamada sobre un proceso cierra también lo pendiente ligado SOLO al contacto
+  (hallazgo A1-1: todo "+ Tarea" de la ficha nace así); sobre un proceso ajeno o sin proceso, un
+  asesor cierra solo lo suyo (`cierraSoloPropias`). Anular un intento reabre lo que cerró, por
+  `closed_by_activity_id`.
+- **Columnas nuevas de `tasks`:** `source_activity_id` (la creó la cadencia; índice único: un
+  intento crea una sola tarea) y `closed_by_activity_id`. Las escribe SOLO el servidor: el trigger
+  `trg_tasks_columnas_cadencia_solo_servidor` (migración `20261126000001`,
+  `scripts/apply-tasks-cadencia-solo-servidor-pg.ts`) rechaza con 42501 a una sesión de usuario
+  que las toque y deja pasar la acción de las FK `ON DELETE SET NULL` (`pg_trigger_depth() > 1`;
+  sin esa excepción, borrar un contacto con tareas de la cadencia fallaba). El resto de las
+  columnas de `tasks` sigue escribible con sesión propia por la API de la base (policies viejas;
+  anotado para `crm-tareas-y-campanita`).
+- **Permiso de contactos por proceso:** `canAccessContact` (`lib/auth/entity-access.ts`, reglas en
+  `contact-access.ts`): operaciones ve todo; el asesor, si el contacto es suyo o lo creó **o si
+  tiene un proceso o una tasación de ese contacto a su nombre**; abogado y roles viejos, nada
+  (falla cerrado). Por eso las rutas que vinculan un contacto a un proceso o a una tasación piden
+  también permiso sobre el contacto. Son **cinco** las rutas que escriben `contact_id`: dos por id
+  (`PATCH /api/deals/[id]/contact` y `PATCH /api/appraisals/[id]/contact`, exigen
+  `canAccessContact` antes) y tres por email o teléfono (`POST /api/deals`, `POST /api/deals/manual`
+  y `PUT /api/deals/[id]/cliente`). **Una ruta nueva que escriba `contact_id` tiene que elegir:**
+  pedir permiso sobre el contacto, o dejar rastro (como `/cliente`, que deja una nota automática
+  cuando un asesor queda enganchado a alguien que antes no podía ver).
+- **Todo cambio de etapa por `update` directo** (fuera de `advance`) escribe `stage_changed_at` y
+  `updated_at` y sincroniza Mailchimp. Lo hacen coordinar desde la ficha y `undo-lost`.
+- **Coordinar desde la ficha:** `POST /api/deals` con `from_deal_id` convierte la solicitud que ya
+  existe en vez de crear otro proceso (las notas viejas no se pisan: lo nuevo va al final).
+  **Deshacer un perdido:** `POST /api/deals/[id]/undo-lost`, dentro de los 10 minutos, sin pasar por
+  `advance` (que dejaría `lost_at` cargado y podría pedir datos del cliente).
+- **El email del contacto se guarda en minúsculas y sin espacios** (`sanearDatosContacto`), que es
+  como lo busca `encontrarOCrearContacto`; si no, `/cliente` no lo encontraba y duplicaba.
+
+**Trampas encontradas en este change (no repetirlas):**
+- **"Archivos" cuelga del PROCESO, no de `appraisals.contact_id`.** Síntoma (QA): el bloque casi
+  nunca aparecía. Causa: en la base real casi ninguna tasación ni propiedad tiene `contact_id`;
+  cuelgan de `deals.appraisal_id`/`deals.property_id`. Fix: se suman las de los procesos del
+  contacto, sin repetir, con columnas explícitas (nunca `property_images`: ver § "NUNCA
+  `select('*')` sobre `appraisals`") y con el mismo filtro por asesor.
+- **Checkbox ovalado en pantallas táctiles.** Síntoma: el tilde de las tareas medía 17×22 en un
+  celular. Causa: la regla `@media (pointer: coarse)` de `app/globals.css` le ponía `relative` a
+  todo checkbox y le ganaba al `absolute inset-0` del input. Fix: salta también los checkbox y
+  radio `.absolute` (`:not(.absolute)`, como la X de los diálogos). Solo se ve emulando un celular
+  TÁCTIL, no achicando la ventana.
+- **"Hoy" en hora de Argentina en `getMyTasks` y `/tasks`.** Síntoma: de 21 a 24 h la "Llamada 2"
+  de mañana figuraba como de hoy (se cortaba en UTC). Siguen en UTC `POST /api/tasks` y
+  `AddTaskDialog` (anotado para `crm-tareas-y-campanita`).
+- **`PUT /api/tasks/[id]` ahora exige ser el dueño de la tarea u operaciones** (antes cualquiera
+  logueado completaba la tarea de otro). Un id que no es uuid da 404 (`esUuid`,
+  `lib/crm/id-valido.ts`) en las rutas de contactos, de tareas y en `undo-lost`: antes Postgres
+  respondía 22P02 y la ruta, 500.
+- **Quién MUESTRA vs quién CAPTÓ** (§ Consultas, PR #68) **no aplica acá:** la ficha y la cadencia
+  trabajan con `deals.assigned_to` y `contacts.assigned_to`, no con `portal_property_map`.
+
+**Datos de prueba — receta `scripts/_qa-ficha-datos.ts`** (base de PRODUCCIÓN; la vista previa usa
+la misma). Siempre en este orden, porque `crear` corta si ya hay datos de prueba:
+```
+node --env-file=.env.local --import tsx scripts/_qa-ficha-datos.ts borrar            # 1. limpiar lo propio
+node --env-file=.env.local --import tsx scripts/_qa-ficha-datos.ts verificar         # 2. tiene que dar 0
+node --env-file=.env.local --import tsx scripts/_qa-ficha-datos.ts crear solicitud   # 3. armar el caso
+```
+Todo va a nombre de `[TEST] Ficha QA`, con `origin` vacío (no cuenta en métricas ni entra a Meta),
+tareas solo a cuentas de prueba, insertado directo (no sale email ni WhatsApp). **Antes de crear un
+proceso suprime los dos emails de prueba en `mailchimp_suppressions`:** `undo-lost` y
+`reconcileMailchimp` darían de alta al email en la audiencia real. `borrar` filtra por los ids que
+guardó `crear` o, sin ese archivo (otra sesión), por el nombre y los emails exactos, nunca por un
+patrón `[TEST%`. `verificar` controla también `mailchimp_sync_state`/`_log`. Las situaciones base y
+aditivas están en el encabezado del script.
+
+**Pruebas:** `npx vitest run --config vitest.crm.config.ts` (~13 s, 1.450) y
+`npx tsc --noEmit -p tsconfig.crm.json`. Por iCloud (§ "iCloud vacía los archivos") se corren en
+una copia local: `rsync -a --exclude node_modules --exclude .git <worktree>/ /private/tmp/claude-501/wt-crm-local/`
+y desde ahí; se edita siempre en el worktree.
+
+**Detección:**
+```sql
+SELECT kind, call_outcome, count(*) FROM contact_activities WHERE voided_at IS NULL GROUP BY 1, 2;
+SELECT policyname, cmd FROM pg_policies WHERE tablename = 'contact_activities';  -- solo SELECT
+SELECT tgname FROM pg_trigger WHERE tgname = 'trg_tasks_columnas_cadencia_solo_servidor';
+```
+
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
 
 - **El protocolo de las seis etapas está ARRIBA de todo en este archivo**; la versión narrativa en `docs/proceso-de-desarrollo.md`. Se aplica a todo pedido, por chico que sea.

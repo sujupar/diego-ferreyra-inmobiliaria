@@ -38,3 +38,32 @@ Ninguna.
 - `app/(dashboard)/inicio` hoy depende del techo de 50: se ajusta en `crm-inicio`.
 - Sin migración, salvo índice por (assigned_to, status, due_date) si la lectura lo pide.
 - Depende de `crm-sistema-diseno`; independiente de la ficha.
+
+## Pendientes que deja `crm-ficha-y-llamadas`
+
+- `POST /api/tasks` y `AddTaskDialog` siguen con las fechas en UTC: de 21 a 24 h de Argentina no
+  se puede agendar una tarea para hoy. (`PUT /api/tasks/[id]` sin control de dueño y el "hoy" en
+  UTC de `getMyTasks` y `/tasks` ya se corrigieron en la revisión 12.1.)
+- El resto de las columnas de `tasks` se puede escribir con sesión propia por la API de la base
+  (policies de `20260505000001`). `source_activity_id` y `closed_by_activity_id` ya no: las cuida
+  el trigger `trg_tasks_columnas_cadencia_solo_servidor`.
+- El "+ Tarea" de la ficha todavía muestra "Email" y no los cinco tipos de la spec vigente de
+  `crm-sistema-diseno` (excepción temporal de la propuesta de la ficha).
+- Las tareas de la cadencia quedan pendientes cuando un proceso se cierra, y las tareas de
+  entrada quedan pendientes cuando se coordina sin registrar una llamada.
+- `getTaskLink` ya manda las tareas de la cadencia a la ficha; el resto de sus enlaces sigue sin
+  revisar. En particular: la tarea de entrada del lead (`update_contact` con proceso) todavía abre
+  `/pipeline/<id>?editContact=1` y no la ficha (desde donde se registra la Llamada 1), y la
+  `update_contact` ligada solo a un contacto abre la ficha con `?edit=1` (el editor encima).
+- El diálogo de borrar contactos de `/contacts` no avisa que se borra también el historial de
+  llamadas y notas, y las tareas de la cadencia de un contacto borrado quedan pendientes y sueltas.
+- Las tareas de la cadencia de un asesor quedan en su lista cuando le reasignan el proceso que le
+  daba acceso a la ficha.
+- `esElMismoGuardado` no compara la hora corregida: reenviar con el mismo token y otro "hace N
+  min" devuelve la fila vieja sin aviso.
+- Para el change que revise los permisos de procesos: `GET /api/deals/[id]` le sigue devolviendo
+  al abogado la persona completa de un proceso; y por la API directa de la base un asesor todavía
+  puede cambiar el `contact_id` de un proceso suyo (o insertar un proceso, o insertar/editar una
+  tasación suya) y así abrirse la ficha de un contacto ajeno: policies
+  `deals_update_owner_or_ops`, `deals_insert_authenticated`, `appraisals_insert_self_or_ops` y
+  `appraisals_update_owner_or_ops` de `20260505000001`.

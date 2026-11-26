@@ -41,3 +41,9 @@ Ninguna.
   ("…queda en «Sin respuesta» del Inicio…"); hasta entonces la ficha usa textos que no lo
   mencionan. Este change también tiene que juntar las solicitudes que quedaron sin ninguna
   tarea pendiente (secuencia terminada, o tarea que no se pudo crear).
+- Pendiente que deja `crm-ficha-y-llamadas`: la ficha necesita una entrada que la abra con
+  "Registrar llamada" ya abierto —la pide la spec vigente de `crm-sistema-diseno` para el botón
+  "Registrar" del Inicio—, leída en el servidor igual que `abrirEditor` (D5 de la ficha) y, en
+  celular, con el foco en "No atendió". La ficha no la construyó.
+- Pendiente que deja `crm-ficha-y-llamadas`: "Mis contactos" del asesor no lista los contactos
+  que ve solo por un proceso o una tasación a su nombre (sí puede abrir su ficha).
