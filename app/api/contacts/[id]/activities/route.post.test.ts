@@ -31,7 +31,7 @@ vi.mock('@/lib/supabase/actividades', () => ({
 
 import { POST } from './route'
 
-const ctx = (id = 'c-1') => ({ params: Promise.resolve({ id }) })
+const ctx = (id = '0000000c-0000-4000-8000-000000000001') => ({ params: Promise.resolve({ id }) })
 const post = (body: unknown, id?: string) =>
   POST(
     new Request('http://local/api/contacts/c-1/activities', {
@@ -76,7 +76,7 @@ describe('POST /api/contacts/[id]/activities — notas', () => {
     expect(res.status).toBe(201)
     const fila = m.insertarActividad.mock.calls[0][0]
     expect(fila).toEqual({
-      contact_id: 'c-1',
+      contact_id: '0000000c-0000-4000-8000-000000000001',
       deal_id: 'd-sol',
       kind: 'note',
       body: 'Prefiere que la llamen a la tarde',
@@ -214,7 +214,7 @@ describe('POST — client_token repetido en una nota', () => {
   it('mismo autor y contacto → 200 con la nota ya guardada, sin volver a insertar', async () => {
     m.insertarActividad.mockResolvedValue({ ok: false, motivo: 'token_repetido' })
     m.leerActividadPorToken.mockResolvedValue(
-      filaGuardada({ id: 'act-vieja', contact_id: 'c-1', deal_id: 'd-sol', kind: 'note', body: 'Hola', created_by: 'coord-1', client_token: TOKEN }),
+      filaGuardada({ id: 'act-vieja', contact_id: '0000000c-0000-4000-8000-000000000001', deal_id: 'd-sol', kind: 'note', body: 'Hola', created_by: 'coord-1', client_token: TOKEN }),
     )
     const res = await post({ kind: 'note', body: 'Hola', client_token: TOKEN })
     expect(res.status).toBe(200)
@@ -227,7 +227,7 @@ describe('POST — client_token repetido en una nota', () => {
   it('mismo autor y contacto con OTRO texto → 409 que lo dice', async () => {
     m.insertarActividad.mockResolvedValue({ ok: false, motivo: 'token_repetido' })
     m.leerActividadPorToken.mockResolvedValue(
-      filaGuardada({ id: 'act-vieja', contact_id: 'c-1', deal_id: 'd-sol', kind: 'note', body: 'Hola', created_by: 'coord-1', client_token: TOKEN }),
+      filaGuardada({ id: 'act-vieja', contact_id: '0000000c-0000-4000-8000-000000000001', deal_id: 'd-sol', kind: 'note', body: 'Hola', created_by: 'coord-1', client_token: TOKEN }),
     )
     const res = await post({ kind: 'note', body: 'Hola, corregido', client_token: TOKEN })
     expect(res.status).toBe(409)
@@ -237,7 +237,7 @@ describe('POST — client_token repetido en una nota', () => {
   it('token de otro autor → 409 sin datos del otro registro', async () => {
     m.insertarActividad.mockResolvedValue({ ok: false, motivo: 'token_repetido' })
     m.leerActividadPorToken.mockResolvedValue(
-      filaGuardada({ id: 'act-ajena', contact_id: 'c-1', deal_id: null, kind: 'note', body: 'Secreto', created_by: 'otro', client_token: TOKEN }),
+      filaGuardada({ id: 'act-ajena', contact_id: '0000000c-0000-4000-8000-000000000001', deal_id: null, kind: 'note', body: 'Secreto', created_by: 'otro', client_token: TOKEN }),
     )
     const res = await post({ kind: 'note', body: 'Hola', client_token: TOKEN })
     expect(res.status).toBe(409)
@@ -247,7 +247,7 @@ describe('POST — client_token repetido en una nota', () => {
   it('token usado en otro contacto → 409 sin datos', async () => {
     m.insertarActividad.mockResolvedValue({ ok: false, motivo: 'token_repetido' })
     m.leerActividadPorToken.mockResolvedValue(
-      filaGuardada({ id: 'act-ajena', contact_id: 'c-otro', deal_id: null, kind: 'note', body: 'Secreto', created_by: 'coord-1', client_token: TOKEN }),
+      filaGuardada({ id: 'act-ajena', contact_id: '0000000c-0000-4000-8000-000000000003', deal_id: null, kind: 'note', body: 'Secreto', created_by: 'coord-1', client_token: TOKEN }),
     )
     const res = await post({ kind: 'note', body: 'Hola', client_token: TOKEN })
     expect(res.status).toBe(409)
@@ -255,3 +255,11 @@ describe('POST — client_token repetido en una nota', () => {
   })
 })
 
+describe('ids que no son uuid (revisión 12.1)', () => {
+  it('→ 404 y no se guarda nada', async () => {
+    const res = await post({ kind: 'note', body: 'Hola', client_token: TOKEN }, 'no-es-uuid')
+    expect(res.status).toBe(404)
+    expect(m.leerProcesosDelContacto).not.toHaveBeenCalled()
+    expect(m.insertarActividad).not.toHaveBeenCalled()
+  })
+})

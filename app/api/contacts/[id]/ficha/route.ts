@@ -6,6 +6,7 @@ import { armarFicha, perfilesANombrar, procesosParaLeerHistorial, type UltimoCam
 import { nombresDePerfiles } from '@/lib/supabase/actividades'
 import { leerDatosDeFicha } from '@/lib/supabase/contactos'
 import { ultimoCambioDeEtapa } from '@/lib/supabase/deals'
+import { esUuid } from '@/lib/crm/id-valido'
 
 // Persona, proceso activo, detalles, último contacto, procesos, tasaciones agendadas y
 // archivos (design.md D4). Service role: la ruta es la ÚNICA barrera, y lo que un asesor
@@ -21,6 +22,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (alcance === 'ninguno') return NextResponse.json(SIN_ACCESO, { status: 403 })
   try {
     const { id } = await params
+    // Un id que no es uuid no puede existir: 404, no el 500 de Postgres (revisión 12.1).
+    if (!esUuid(id)) return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     if (alcance === 'propios' && !(await canAccessContact(user, id))) {
       return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     }

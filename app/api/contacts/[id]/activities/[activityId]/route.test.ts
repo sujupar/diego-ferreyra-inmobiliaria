@@ -32,7 +32,7 @@ vi.mock('@/lib/supabase/tasks', () => ({ undoTasksOfActivity: m.undoTasksOfActiv
 
 import { PATCH } from './route'
 
-const ctx = (id = 'c-1', activityId = 'act-1') => ({ params: Promise.resolve({ id, activityId }) })
+const ctx = (id = '0000000c-0000-4000-8000-000000000001', activityId = 'aaaaaaaa-0000-4000-8000-000000000001') => ({ params: Promise.resolve({ id, activityId }) })
 const patch = (body: unknown, id?: string, activityId?: string) =>
   PATCH(
     new Request('http://local/api/contacts/c-1/activities/act-1', {
@@ -48,8 +48,8 @@ const como = (role: string, id = `${role}-1`) => {
 
 type Fila = Record<string, unknown>
 const nota = (c: Fila = {}): Fila => ({
-  id: 'act-1',
-  contact_id: 'c-1',
+  id: 'aaaaaaaa-0000-4000-8000-000000000001',
+  contact_id: '0000000c-0000-4000-8000-000000000001',
   deal_id: 'd-1',
   kind: 'note',
   call_outcome: null,
@@ -104,9 +104,9 @@ describe('permisos y pertenencia', () => {
   })
   it('registro de otro contacto (la lectura filtra por contacto y no lo encuentra) → 404', async () => {
     m.leerActividadDelContacto.mockResolvedValue(null)
-    const res = await patch({ accion: 'anular' }, 'c-1', 'act-de-otro')
+    const res = await patch({ accion: 'anular' }, '0000000c-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-0000000000ff')
     expect(res.status).toBe(404)
-    expect(m.leerActividadDelContacto).toHaveBeenCalledWith('c-1', 'act-de-otro')
+    expect(m.leerActividadDelContacto).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-0000000000ff')
     expect(m.anularActividad).not.toHaveBeenCalled()
     expect(m.editarNota).not.toHaveBeenCalled()
   })
@@ -120,7 +120,7 @@ describe('Editar una nota', () => {
   it('el autor edita su nota → 200 con el texto nuevo y "editada"', async () => {
     const res = await patch({ accion: 'editar', body: '  Texto nuevo  ' })
     expect(res.status).toBe(200)
-    expect(m.editarNota).toHaveBeenCalledWith('c-1', 'act-1', 'Texto nuevo')
+    expect(m.editarNota).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000001', 'Texto nuevo')
     const body = await res.json()
     expect(body.actividad).toMatchObject({ body: 'Texto nuevo', editada: true, autor: { id: 'asesor-1' } })
   })
@@ -163,7 +163,7 @@ describe('Borrar una nota', () => {
   it('el autor borra su nota → 200, sin tocar tareas (una nota no es un intento)', async () => {
     const res = await patch({ accion: 'anular' })
     expect(res.status).toBe(200)
-    expect(m.anularActividad).toHaveBeenCalledWith('c-1', 'act-1', 'asesor-1')
+    expect(m.anularActividad).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000001', 'asesor-1')
     expect(m.undoTasksOfActivity).not.toHaveBeenCalled()
     expect(await res.json()).toEqual({ ok: true, tareas: { descartadas: 0, reabiertas: 0 } })
   })
@@ -178,7 +178,7 @@ describe('Borrar una nota', () => {
     m.leerActividadDelContacto.mockResolvedValue(nota({ automatic: true }))
     const res = await patch({ accion: 'anular' })
     expect(res.status).toBe(200)
-    expect(m.anularActividad).toHaveBeenCalledWith('c-1', 'act-1', 'coord-1')
+    expect(m.anularActividad).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000001', 'coord-1')
   })
   it('un asesor no borra la nota de la coordinadora → 403', async () => {
     m.leerActividadDelContacto.mockResolvedValue(nota({ created_by: 'coord-1' }))
@@ -189,7 +189,7 @@ describe('Borrar una nota', () => {
     como('coordinador', 'coord-1')
     const res = await patch({ accion: 'anular' })
     expect(res.status).toBe(200)
-    expect(m.anularActividad).toHaveBeenCalledWith('c-1', 'act-1', 'coord-1')
+    expect(m.anularActividad).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000001', 'coord-1')
   })
 })
 
@@ -199,8 +199,8 @@ describe('Anular una llamada o un WhatsApp marcado', () => {
     m.intentosNoAnulados.mockResolvedValue([intento('act-0', '2026-11-24T12:00:00.000Z')])
     const res = await patch({ accion: 'anular' })
     expect(res.status).toBe(200)
-    expect(m.intentosNoAnulados).toHaveBeenCalledWith('c-1', 'd-1')
-    expect(m.undoTasksOfActivity).toHaveBeenCalledWith('act-1')
+    expect(m.intentosNoAnulados).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', 'd-1')
+    expect(m.undoTasksOfActivity).toHaveBeenCalledWith('aaaaaaaa-0000-4000-8000-000000000001')
     expect(await res.json()).toEqual({ ok: true, tareas: { descartadas: 1, reabiertas: 2 } })
   })
   it('con un intento posterior → anula pero NO toca tareas', async () => {
@@ -216,7 +216,7 @@ describe('Anular una llamada o un WhatsApp marcado', () => {
     m.leerActividadDelContacto.mockResolvedValue(nota({ kind: 'whatsapp_sent', body: null }))
     const res = await patch({ accion: 'anular' })
     expect(res.status).toBe(200)
-    expect(m.undoTasksOfActivity).toHaveBeenCalledWith('act-1')
+    expect(m.undoTasksOfActivity).toHaveBeenCalledWith('aaaaaaaa-0000-4000-8000-000000000001')
   })
   it('un asesor no anula la llamada de la coordinadora → 403 y sigue en la actividad', async () => {
     m.leerActividadDelContacto.mockResolvedValue(llamada({ created_by: 'coord-1' }))
@@ -228,7 +228,7 @@ describe('Anular una llamada o un WhatsApp marcado', () => {
   it('llamada sin proceso: los intentos se leen con deal_id vacío', async () => {
     m.leerActividadDelContacto.mockResolvedValue(llamada({ deal_id: null }))
     await patch({ accion: 'anular' })
-    expect(m.intentosNoAnulados).toHaveBeenCalledWith('c-1', null)
+    expect(m.intentosNoAnulados).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', null)
   })
 })
 
@@ -270,5 +270,14 @@ describe('Anular dos veces (D8)', () => {
     expect(res.status).toBe(200)
     expect(m.anularActividad).not.toHaveBeenCalled()
     expect(m.undoTasksOfActivity).not.toHaveBeenCalled()
+  })
+})
+
+describe('ids que no son uuid (revisión 12.1)', () => {
+  it('contacto o registro que no es uuid → 404 sin leer ni escribir', async () => {
+    expect((await patch({ accion: 'anular' }, 'no-es-uuid')).status).toBe(404)
+    expect((await patch({ accion: 'anular' }, undefined, 'no-es-uuid')).status).toBe(404)
+    expect(m.leerActividadDelContacto).not.toHaveBeenCalled()
+    expect(m.anularActividad).not.toHaveBeenCalled()
   })
 })

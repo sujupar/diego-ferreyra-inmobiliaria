@@ -50,7 +50,7 @@ const TOKEN = '3f2b8c1e-4d5a-4b6c-9d7e-8f9a0b1c2d3e'
 const TOKEN_2 = '4a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d'
 const AHORA = new Date('2026-11-25T15:00:00.000Z') // miércoles 12:00 de Argentina
 
-const post = (body: unknown, id = 'c-1') =>
+const post = (body: unknown, id = '0000000c-0000-4000-8000-000000000001') =>
   POST(
     new Request(`http://local/api/contacts/${id}/activities`, { method: 'POST', body: JSON.stringify(body) }) as never,
     { params: Promise.resolve({ id }) },
@@ -76,14 +76,14 @@ beforeEach(() => {
   m.base = b
   como('coordinador', 'coord-1', 'Cora Coordinadora')
   m.canAccessContact.mockResolvedValue(true)
-  b.contactos.set('c-1', '[TEST] Ana')
+  b.contactos.set('0000000c-0000-4000-8000-000000000001', '[TEST] Ana')
   b.perfiles.set('coord-1', { role: 'coordinador', nombre: 'Cora Coordinadora' })
   b.perfiles.set('coord-2', { role: 'coordinador', nombre: 'Coca' })
   b.perfiles.set('asesor-1', { role: 'asesor', nombre: 'Aldo Asesor' })
   b.perfiles.set('asesor-2', { role: 'asesor', nombre: 'Berta Asesora' })
-  b.procesos.push({ id: 'd-sol', contact_id: 'c-1', stage: 'request', assigned_to: null, scheduled_date: null, origin: null, created_at: '2026-11-20T10:00:00Z' })
+  b.procesos.push({ id: 'd-sol', contact_id: '0000000c-0000-4000-8000-000000000001', stage: 'request', assigned_to: null, scheduled_date: null, origin: null, created_at: '2026-11-20T10:00:00Z' })
   // Tarea de entrada de la coordinación, creada antes que cualquier llamada.
-  b.tarea({ id: 't-entrada', title: 'Contactar a [TEST] Ana', type: 'update_contact', channel: null, assigned_to: 'coord-1', deal_id: 'd-sol', contact_id: 'c-1' })
+  b.tarea({ id: 't-entrada', title: 'Contactar a [TEST] Ana', type: 'update_contact', channel: null, assigned_to: 'coord-1', deal_id: 'd-sol', contact_id: '0000000c-0000-4000-8000-000000000001' })
 })
 afterEach(() => vi.useRealTimers())
 
@@ -193,8 +193,8 @@ describe('POST — orden y procesos', () => {
   })
 
   it('dos solicitudes abiertas → la llamada se liga a la más nueva y cierra solo sus tareas de entrada', async () => {
-    b.procesos.push({ id: 'd-sol-2', contact_id: 'c-1', stage: 'request', assigned_to: null, scheduled_date: null, origin: null, created_at: '2026-11-24T10:00:00Z' })
-    b.tarea({ id: 't-entrada-2', type: 'update_contact', channel: null, assigned_to: 'coord-1', deal_id: 'd-sol-2', contact_id: 'c-1' })
+    b.procesos.push({ id: 'd-sol-2', contact_id: '0000000c-0000-4000-8000-000000000001', stage: 'request', assigned_to: null, scheduled_date: null, origin: null, created_at: '2026-11-24T10:00:00Z' })
+    b.tarea({ id: 't-entrada-2', type: 'update_contact', channel: null, assigned_to: 'coord-1', deal_id: 'd-sol-2', contact_id: '0000000c-0000-4000-8000-000000000001' })
     const body = await (await post(llamada('no_atendio'))).json()
     expect(body.actividad.deal_id).toBe('d-sol-2')
     expect(body.cadencia.tareasCerradas.map((t: { id: string }) => t.id)).toEqual(['t-entrada-2'])
@@ -238,7 +238,7 @@ describe.each([
 ])('POST — asesor sobre un proceso que no es suyo (%s)', (_n, dueño) => {
   beforeEach(() => {
     b.procesos[0].assigned_to = dueño
-    b.tarea({ id: 't-cadencia-otro', title: 'Llamada 2 a [TEST] Ana', assigned_to: 'coord-1', deal_id: 'd-sol', contact_id: 'c-1', source_activity_id: 'act-viejo' })
+    b.tarea({ id: 't-cadencia-otro', title: 'Llamada 2 a [TEST] Ana', assigned_to: 'coord-1', deal_id: 'd-sol', contact_id: '0000000c-0000-4000-8000-000000000001', source_activity_id: 'act-viejo' })
     como('asesor', 'asesor-1')
   })
 
@@ -265,8 +265,8 @@ describe('POST — contacto sin proceso activo', () => {
   beforeEach(() => {
     b.procesos[0].stage = 'lost'
     b.tareas.length = 0
-    b.tarea({ id: 't-coord-contacto', type: 'update_contact', channel: null, assigned_to: 'coord-1', contact_id: 'c-1' })
-    b.tarea({ id: 't-asesor-contacto', title: 'Llamar a [TEST] Ana', assigned_to: 'asesor-1', contact_id: 'c-1' })
+    b.tarea({ id: 't-coord-contacto', type: 'update_contact', channel: null, assigned_to: 'coord-1', contact_id: '0000000c-0000-4000-8000-000000000001' })
+    b.tarea({ id: 't-asesor-contacto', title: 'Llamar a [TEST] Ana', assigned_to: 'asesor-1', contact_id: '0000000c-0000-4000-8000-000000000001' })
   })
 
   it('asesor → cierra solo las ligadas al contacto que están a su nombre', async () => {
@@ -349,8 +349,8 @@ describe('POST — guardado repetido y fallo parcial (tarea 6.3)', () => {
   })
 
   it('token usado en otro contacto → 409 sin datos', async () => {
-    b.contactos.set('c-2', '[TEST] Beto')
-    await post(llamada('no_atendio', { body: 'Secreto' }), 'c-2')
+    b.contactos.set('0000000c-0000-4000-8000-000000000002', '[TEST] Beto')
+    await post(llamada('no_atendio', { body: 'Secreto' }), '0000000c-0000-4000-8000-000000000002')
     const res = await post(llamada('no_atendio'))
     expect(res.status).toBe(409)
     expect(JSON.stringify(await res.json())).not.toContain('Secreto')

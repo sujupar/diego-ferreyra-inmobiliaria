@@ -6,6 +6,7 @@ import { esUltimoIntento, esquemaCambioActividad, puedeAnular, puedeEditarNota }
 import { armarActividadDeFicha } from '@/lib/crm/actividad-de-ficha'
 import { anularActividad, editarNota, intentosNoAnulados, leerActividadDelContacto } from '@/lib/supabase/actividades'
 import { undoTasksOfActivity } from '@/lib/supabase/tasks'
+import { esUuid } from '@/lib/crm/id-valido'
 
 // Todo corre con service role: esta ruta es la ÚNICA barrera (design.md D4). La
 // actividad se lee SIEMPRE por su id y el contacto de la URL: una de otro contacto da el
@@ -26,6 +27,8 @@ export async function PATCH(
   const usuario = { id: user.id, role: user.profile.role }
   try {
     const { id, activityId } = await params
+    // Un id que no es uuid no puede existir: 404, no el 500 de Postgres (revisión 12.1).
+    if (!esUuid(id) || !esUuid(activityId)) return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     let cuerpo: unknown
     try {
       cuerpo = await request.json()

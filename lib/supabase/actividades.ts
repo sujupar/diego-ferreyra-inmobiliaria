@@ -5,6 +5,7 @@
 // tragado acá se vería como "no hay nada" en la ficha.
 import { createClient } from '@supabase/supabase-js'
 import type { Actividad, Intento, TareaCreadaPorActividad } from '@/lib/crm/tipos'
+import { esUuid } from '@/lib/crm/id-valido'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -146,6 +147,9 @@ export async function intentosNoAnulados(contactId: string, dealId: string | nul
 }
 
 export async function existeContacto(contactId: string): Promise<boolean> {
+  // Un id que no es uuid no existe: sin esto Postgres responde 22P02 y quien llama lo
+  // vuelve un 500 (revisión 12.1). Lo usa también `POST /api/deals` con un `contact_id`.
+  if (!esUuid(contactId)) return false
   const { data, error } = await getAdmin().from('contacts').select('id').eq('id', contactId).maybeSingle()
   if (error) throw new Error(`existeContacto: ${error.message}`)
   return !!data

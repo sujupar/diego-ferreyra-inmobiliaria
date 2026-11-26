@@ -5,6 +5,7 @@ import { canAccessContact } from '@/lib/auth/entity-access'
 import { armarActividadDeFicha } from '@/lib/crm/actividad-de-ficha'
 import { existeContacto, leerActividadDelContacto, nombresDePerfiles } from '@/lib/supabase/actividades'
 import { aplicarCadencia } from '@/lib/supabase/cadencia'
+import { esUuid } from '@/lib/crm/id-valido'
 
 // "Reintentar" del aviso (design.md D7): completa, sin duplicar, lo que la cadencia debía
 // hacer después de guardar. Sin cuerpo: el resultado, el día pedido, el "ahora" de la
@@ -21,6 +22,8 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   if (alcance === 'ninguno') return NextResponse.json(SIN_ACCESO, { status: 403 })
   try {
     const { id, activityId } = await params
+    // Un id que no es uuid no puede existir: 404, no el 500 de Postgres (revisión 12.1).
+    if (!esUuid(id) || !esUuid(activityId)) return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     if (alcance === 'propios' && !(await canAccessContact(user, id))) {
       return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     }

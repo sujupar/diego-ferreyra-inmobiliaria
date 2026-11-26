@@ -25,7 +25,7 @@ vi.mock('@/lib/supabase/tasks', () => ({ getPendingTasksForContact: m.getPending
 
 import { GET } from './route'
 
-const get = (id = 'c-1') =>
+const get = (id = '0000000c-0000-4000-8000-000000000001') =>
   GET(new Request(`http://local/api/contacts/${id}/tasks`) as never, { params: Promise.resolve({ id }) })
 const como = (role: string, id = `${role}-1`) => {
   m.estado.role = role
@@ -50,7 +50,7 @@ const tarea = (id: string, c: Record<string, unknown> = {}) => ({
   assigned_name: 'Cora',
   created_at: '2026-11-20T10:00:00Z',
   deal_id: null,
-  contact_id: 'c-1',
+  contact_id: '0000000c-0000-4000-8000-000000000001',
   appraisal_id: null,
   source_activity_id: null,
   description: null,
@@ -91,7 +91,7 @@ const ids = async (res: Response) => ((await res.json()).tareas as { id: string 
 describe('GET /api/contacts/[id]/tasks', () => {
   it('lee las pendientes del contacto y de TODOS sus procesos', async () => {
     await get()
-    expect(m.getPendingTasksForContact).toHaveBeenCalledWith('c-1', ['d-suyo', 'd-otro', 'd-sin', 'd-agendada'])
+    expect(m.getPendingTasksForContact).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', ['d-suyo', 'd-otro', 'd-sin', 'd-agendada'])
   })
 
   it('a la coordinadora le vienen todas, salvo la de una tasación agendada; total = lo listado', async () => {
@@ -161,6 +161,14 @@ describe('GET /api/contacts/[id]/tasks', () => {
     const cuerpo = await res.json()
     expect(cuerpo.tareas.map((t: { id: string }) => t.id)).toEqual(['t-llamada-2'])
     expect(cuerpo.total).toBe(1)
-    expect(m.getPendingTasksForContact).toHaveBeenCalledWith('c-1', ['d-cerrado'])
+    expect(m.getPendingTasksForContact).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', ['d-cerrado'])
+  })
+})
+
+describe('ids que no son uuid (revisión 12.1)', () => {
+  it('→ 404 sin consultar la base', async () => {
+    expect((await get('no-es-uuid')).status).toBe(404)
+    expect(m.leerProcesosDelContacto).not.toHaveBeenCalled()
+    expect(m.getPendingTasksForContact).not.toHaveBeenCalled()
   })
 })
