@@ -42,3 +42,25 @@ export interface UsuarioMinimo {
   id: string
   role: string
 }
+
+/** La tarea que creó una actividad, tal como la dibuja la ficha ("tarea agendada sola"). */
+export interface TareaCreadaPorActividad {
+  id: string
+  title: string
+  due_date: string | null
+  due_time: string | null // columna `time`: llega como "09:00:00"
+}
+
+/**
+ * Un registro de la actividad tal como lo reciben la pantalla y las respuestas de las
+ * rutas (design.md D4). Sin `client_token`: es un dato del guardado, no de la ficha.
+ */
+export interface ActividadDeFicha extends Actividad {
+  intento: number | null
+  titulo: string
+  autor: { id: string; nombre: string } | null // null = el autor ya no existe
+  editada: boolean
+  tarea_creada: TareaCreadaPorActividad | null
+  puede_editar: boolean
+  puede_anular: boolean
+}
