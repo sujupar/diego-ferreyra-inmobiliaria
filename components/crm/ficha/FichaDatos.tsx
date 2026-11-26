@@ -36,6 +36,9 @@ function Background({
   const [borrador, setBorrador] = useState('')
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Lo recién guardado se ve enseguida, sin esperar a que la ficha vuelva a pedir sus datos.
+  const [guardado, setGuardado] = useState<string | null>(null)
+  const visible = guardado ?? texto
 
   const guardar = async () => {
     if (guardando) return
@@ -54,6 +57,7 @@ function Background({
         setError(r.error)
         return
       }
+      setGuardado(notes)
       onGuardado(notes)
       setEditando(false)
       avisar('Background guardado.')
@@ -70,13 +74,13 @@ function Background({
       type="button"
       className={cn(BOTON_CHICO, ALTO_CONTROL, 'hover:bg-accent')}
       onClick={() => {
-        setBorrador(texto ?? '')
+        setBorrador(visible ?? '')
         setError(null)
         setEditando(true)
       }}
     >
-      {texto ? <Pencil aria-hidden className="size-4" /> : <Plus aria-hidden className="size-4" />}
-      {texto ? 'Editar' : 'Agregar'}
+      {visible ? <Pencil aria-hidden className="size-4" /> : <Plus aria-hidden className="size-4" />}
+      {visible ? 'Editar' : 'Agregar'}
     </button>
   )
 
@@ -115,7 +119,7 @@ function Background({
   }
   return (
     <Tarjeta titulo="Background" accion={botonEditar}>
-      {texto ? <p className="whitespace-pre-line text-sm">{texto}</p> : null}
+      {visible ? <p className="whitespace-pre-line text-sm">{visible}</p> : null}
     </Tarjeta>
   )
 }
@@ -186,7 +190,8 @@ export function FichaDatos({
           <Dato etiqueta="Superficie">{d.superficie !== null ? `${d.superficie} m²` : null}</Dato>
         </div>
       </Tarjeta>
-      <Background contactoId={contactoId} texto={persona.notes} onGuardado={onBackgroundGuardado} avisar={avisar} />
+      {/* Con otra versión del texto (la trajo la ficha al recargar) se arranca de cero. */}
+      <Background key={persona.notes ?? ''} contactoId={contactoId} texto={persona.notes} onGuardado={onBackgroundGuardado} avisar={avisar} />
     </>
   )
 }
