@@ -14,4 +14,6 @@ export interface Deal {
   stage_changed_at: string
   created_at: string
   tags?: string[] | null
+  /** El contacto embebido de `GET /api/deals` (`contacts:contact_id (id, …)`); null si no tiene. */
+  contacts?: { id: string } | null
 }

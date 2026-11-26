@@ -6,6 +6,7 @@ import { getCRMStageInfo } from './crm-stages'
 import { ORIGIN_LABELS } from './constants'
 import { formatDate, timeAgo } from './format'
 import type { Deal } from './types'
+import { EnlaceContacto } from '@/components/crm/EnlaceContacto'
 
 interface Props {
   deals: (Deal & { crmStage: string })[]
@@ -13,6 +14,8 @@ interface Props {
   selectedIds: Set<string>
   onToggleSelection: (id: string) => void
   isGlobal: boolean
+  /** Rol de quien mira: el nombre enlaza a la ficha salvo para el abogado (y sin contacto). */
+  rol?: string | null
 }
 
 /**
@@ -21,15 +24,18 @@ interface Props {
  * ~700 líneas. La lógica de datos (fetch, filtros, selección) se queda en la
  * página; acá solo se recibe lo ya calculado.
  */
-export function DealsList({ deals, selectMode, selectedIds, onToggleSelection, isGlobal }: Props) {
+export function DealsList({ deals, selectMode, selectedIds, onToggleSelection, isGlobal, rol = null }: Props) {
   return (
     <div className="space-y-2">
       {deals.map((deal, idx) => {
         const stageInfo = getCRMStageInfo(deal.crmStage)
         const Icon = stageInfo.icon
         const isSelected = selectedIds.has(deal.id)
+        // crm-ficha-y-llamadas 11.1: el nombre abre la ficha y el resto de la tarjeta sigue
+        // abriendo el proceso. Un enlace adentro de otro no es HTML válido, así que la
+        // tarjeta usa un enlace "estirado" (capa encima de todo) y el nombre queda arriba de él.
         const rowInner = (
-          <div className={`group flex items-center gap-4 p-4 rounded-xl border bg-card transition-all duration-200 cursor-pointer hover:shadow-sm ${isSelected ? 'border-amber-400 bg-amber-50/40 dark:bg-amber-950/20' : 'hover:bg-muted/30'}`}>
+          <div className={`flex items-center gap-4 p-4 rounded-xl border bg-card transition-all duration-200 cursor-pointer group-hover:shadow-sm ${isSelected ? 'border-amber-400 bg-amber-50/40 dark:bg-amber-950/20' : 'group-hover:bg-muted/30'}`}>
               {selectMode && (
                 <input
                   type="checkbox"
@@ -55,7 +61,13 @@ export function DealsList({ deals, selectMode, selectedIds, onToggleSelection, i
               {/* Content */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className="font-semibold text-sm">{deal.contact_name}</span>
+                  <EnlaceContacto
+                    contactoId={selectMode ? null : deal.contacts?.id}
+                    rol={rol}
+                    className="relative z-[2] font-semibold text-sm"
+                  >
+                    {deal.contact_name}
+                  </EnlaceContacto>
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${stageInfo.badgeBg} ${stageInfo.badgeText}`}>
                     <Icon className="h-3 w-3" />
                     {stageInfo.label}
@@ -88,14 +100,22 @@ export function DealsList({ deals, selectMode, selectedIds, onToggleSelection, i
               </div>
             </div>
         )
-        return selectMode ? (
-          <div key={deal.id} onClick={() => onToggleSelection(deal.id)} role="button" tabIndex={0}>
+        if (selectMode) {
+          return (
+            <div key={deal.id} className="group" onClick={() => onToggleSelection(deal.id)} role="button" tabIndex={0}>
+              {rowInner}
+            </div>
+          )
+        }
+        return (
+          <div key={deal.id} className="group relative">
             {rowInner}
+            <Link
+              href={`/pipeline/${deal.id}`}
+              aria-label={`Abrir el proceso de ${deal.contact_name || 'este contacto'}`}
+              className="absolute inset-0 z-[1] rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
           </div>
-        ) : (
-          <Link key={deal.id} href={`/pipeline/${deal.id}`}>
-            {rowInner}
-          </Link>
         )
       })}
     </div>
