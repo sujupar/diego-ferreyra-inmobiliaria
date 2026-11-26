@@ -21,6 +21,10 @@ describe('EnlaceContacto (11.1)', () => {
     ['sin contacto', null, 'coordinador'],
     ['para el abogado', 'c-1', 'abogado'],
     ['sin rol conocido todavía', 'c-1', null],
+    // Revisión 12.1: los roles viejos y uno desconocido tampoco abren fichas (alcanceContactos = 'ninguno').
+    ['para el rol viejo agent', 'c-1', 'agent'],
+    ['para el rol viejo viewer', 'c-1', 'viewer'],
+    ['para un rol que no existe', 'c-1', 'cualquiera'],
   ])('%s queda como texto', (_caso, contactoId, rol) => {
     render(
       <EnlaceContacto contactoId={contactoId} rol={rol}>
