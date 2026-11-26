@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { existePerfil, getContact, updateContact } from '@/lib/supabase/contacts'
-import { requireAuth, requireRole } from '@/lib/auth/require-role'
+import { deleteContact, existePerfil, getContact, updateContact } from '@/lib/supabase/contacts'
+import { requireAuth } from '@/lib/auth/require-role'
+import type { Role } from '@/types/auth.types'
 import { alcanceContactos, puedeReasignarContacto } from '@/lib/auth/contact-access'
 import { canAccessContact } from '@/lib/auth/entity-access'
 import { sanearDatosContacto, soloLoPropio } from '@/lib/crm/datos-contacto'
@@ -10,6 +10,7 @@ import { sanearDatosContacto, soloLoPropio } from '@/lib/crm/datos-contacto'
 // ajeno y uno inexistente reciben la MISMA respuesta, para no confirmar que existe.
 const NO_ENCONTRADO = { error: 'No encontramos este contacto' }
 const SIN_ACCESO = { error: 'No tenés acceso a los contactos.' }
+const ROLES_QUE_BORRAN: Role[] = ['admin', 'dueno']
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // requireAuth fuera del try: lanza NEXT_REDIRECT y un catch lo volvería un 500.
@@ -74,18 +75,19 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
  * gracias a la migración 20260512000005 (ON DELETE SET NULL). Solo admin/dueño.
  */
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  // NO se usa `requireRole`: hace `redirect('/')`, y el `fetch` de la lista lo seguiría
+  // hasta un 200 y sacaría de la pantalla un contacto que no se borró (D4).
+  const user = await requireAuth()
+  if (!ROLES_QUE_BORRAN.includes(user.profile.role)) {
+    return NextResponse.json({ error: 'Solo un administrador o el dueño pueden borrar contactos.' }, { status: 403 })
+  }
   try {
-    await requireRole('admin', 'dueno')
     const { id } = await params
-    const supabase = createSupabaseClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    )
-    const { error } = await supabase.from('contacts').delete().eq('id', id)
-    if (error) throw error
+    const borrado = await deleteContact(id)
+    if (!borrado) return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('DELETE /api/contacts/[id] error:', error)
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Error' }, { status: 500 })
+    return NextResponse.json({ error: 'No se pudo borrar el contacto. Probá de nuevo.' }, { status: 500 })
   }
 }

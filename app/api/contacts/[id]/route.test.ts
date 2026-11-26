@@ -26,7 +26,7 @@ vi.mock('@/lib/supabase/contacts', () => ({
   deleteContact: m.deleteContact,
 }))
 
-import { GET, PUT } from './route'
+import { GET, PUT, DELETE } from './route'
 
 const ctx = (id = 'c-1') => ({ params: Promise.resolve({ id }) })
 const get = (id?: string) => GET(new Request('http://local/api/contacts/c-1') as never, ctx(id))
@@ -213,6 +213,39 @@ describe('PUT /api/contacts/[id]', () => {
     const res = await put({ notes: 'x' })
     expect(res.status).toBe(500)
     expect(await res.json()).toEqual({ error: 'No se pudo guardar. Probá de nuevo.' })
+    err.mockRestore()
+  })
+})
+
+describe('DELETE /api/contacts/[id] (tarea 5.3)', () => {
+  const borrar = () => DELETE(new Request('http://local/api/contacts/c-1', { method: 'DELETE' }) as never, ctx())
+  it.each(['coordinador', 'asesor', 'abogado', 'agent'])('%s → 403 en JSON y no se borra', async (rol) => {
+    como(rol)
+    const res = await borrar()
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: 'Solo un administrador o el dueño pueden borrar contactos.' })
+    expect(m.deleteContact).not.toHaveBeenCalled()
+  })
+  it.each(['admin', 'dueno'])('%s → borra como hoy', async (rol) => {
+    como(rol)
+    m.deleteContact.mockResolvedValue(true)
+    const res = await borrar()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ success: true })
+    expect(m.deleteContact).toHaveBeenCalledWith('c-1')
+  })
+  it('admin sobre un contacto inexistente → 404', async () => {
+    como('admin')
+    m.deleteContact.mockResolvedValue(false)
+    expect((await borrar()).status).toBe(404)
+  })
+  it('un error de la base → 500 sin el detalle', async () => {
+    como('admin')
+    m.deleteContact.mockRejectedValue(new Error('fk'))
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await borrar()
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: 'No se pudo borrar el contacto. Probá de nuevo.' })
     err.mockRestore()
   })
 })

@@ -8,12 +8,12 @@ function getAdmin() {
 
 export interface ContactInput {
   full_name: string
-  phone?: string
-  email?: string
-  origin?: string
-  assigned_to?: string
-  notes?: string
-  created_by?: string
+  phone?: string | null
+  email?: string | null
+  origin?: string | null
+  assigned_to?: string | null
+  notes?: string | null
+  created_by?: string | null
 }
 
 export async function createContact(input: ContactInput) {
