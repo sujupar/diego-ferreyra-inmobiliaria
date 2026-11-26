@@ -370,3 +370,96 @@ repiten en la vista previa a 390 y 1280 px: corregir una llamada después de un 
 tocar el tilde de una tarea ajena como asesor, cortar la red al reintentar, abrir el
 editor de un contacto sin acceso, y anular con la parte de tareas caída.
 
+## Auditoría del código (grupo 14) — Auditor 1 (2026-11-26)
+
+Auditor sin contexto previo. Leyó el change completo (propuesta, design, tasks con sus notas
+"Hecho:", las cuatro specs, esta auditoría), las anti-metas del diseño general y el código de
+`git diff origin/main...HEAD` (sin `openspec/` ni `docs/`). No tocó la base ni el navegador.
+Para cada requisito buscó la implementación y una prueba que se pondría en rojo si se la
+borrara.
+
+### Hallazgo de peso (1)
+
+**A1-1. Con proceso activo, una llamada no cierra las tareas ligadas solo al contacto.**
+
+- Spec `crm-cadencia-llamadas`, «Registrar una llamada cierra lo pendiente de ese proceso»:
+  "SHALL completar las tareas pendientes del proceso (o ligadas solo al contacto) que esa
+  llamada resuelve". `design.md` D2, reglas de `tareasACerrar` (línea ~624): "entra una
+  tarea si … es del proceso (`deal_id` igual) **o** está ligada solo al contacto (`deal_id`
+  vacío y `contact_id` igual)".
+- Código: `lib/crm/cadencia.ts:237-239`, `esDelMismoLugar` →
+  `dealId ? t.deal_id === dealId : !t.deal_id && t.contact_id === contactId`. Con proceso,
+  las ligadas solo al contacto quedan afuera.
+- Por qué importa: según el propio D3, **toda tarea creada con "+ Tarea" desde la ficha
+  queda ligada solo al contacto** (`AddTaskDialog` manda una sola entidad). Una llamada que
+  la coordinadora A se agenda a mano desde la ficha, y el "Llamar a {nombre}" que nació de un
+  "volver a llamar" sin proceso, no se cierran cuando después alguien llama sobre la
+  solicitud abierta: quedan duplicadas en Tareas y en `/tasks`. El escenario "Llamada que otra
+  coordinadora se agendó a mano" solo se cumple si la tarea tiene `deal_id`, que desde la
+  ficha no tiene nunca.
+- Prueba: ninguna lo fija en ningún sentido. `lib/crm/cadencia.test.ts` cubre "otro proceso",
+  "solo a otro contacto" y los casos sin proceso, pero no "ligada solo a ESTE contacto con
+  `dealId` presente".
+- Arreglo: decidir cuál manda (código o D2/spec). Si manda D2: en `tareasACerrar` aceptar
+  `t.deal_id === dealId || (!t.deal_id && t.contact_id === contactId)` (sin tocar
+  `hayTareaWhatsappDeCadenciaPendiente`, que a propósito mira solo el mismo proceso), con tests
+  para coordinadora (cierra la manual de otra coordinadora y el "Llamar a…" sin proceso) y
+  para asesor con `soloPropias`. Si manda el código: corregir la frase de la spec y de D2 y
+  agregar el test que fije la exclusión.
+
+### Lo pedido con atención especial
+
+- Nota automática de `/cliente` y `automatic`: el chequeo `canAccessContact` va antes de
+  escribir `deals.contact_id`, solo para asesor y solo cuando el proceso no tenía contacto; la
+  nota lleva `automatic: true` y el `deal_id`; `puedeEditarNota` la rechaza para todos y
+  `puedeAnular` solo la deja a operaciones; su falla no deshace el vínculo. Bien, con tests en
+  `app/api/deals/[id]/cliente/route.test.ts` y en la ruta de `[activityId]`.
+- Vincular por id (5.4): las dos `PATCH …/contact` miran primero rol (403), después dueño del
+  proceso o de la tasación (403) y recién después el contacto (404); desvincular no consulta.
+  Bien, con tests de orden.
+- `solicitud-para-asesor` y orden de la receta: la base crea la tarea de entrada solo para
+  "Julian Coordinador"; `crear` corta si hay datos previos y las aditivas exigen el archivo de
+  ids y su base. Bien.
+- Hallazgos de 12.1: los nueve más S1 están en el código como dice la tabla (trigger de
+  `tasks`, 409 por otros datos, `PUT /api/tasks` con dueño u operaciones, `esAsesorAsignable`,
+  `ANULADA_SIN_TAREAS`, `esUuid`, hoy de Argentina, `EnlaceContacto`).
+- Anti-metas: la ficha no tiene `mailto:`, `wa.me` ni envíos; "Marcar WhatsApp enviado" solo
+  inserta una actividad; la cadencia no toca `deals.stage`; la conversión y el perdido son
+  acciones explícitas. Sin bloques "próximamente" (un bloque sin datos no se dibuja).
+
+### Tabla escenario → implementación → prueba (agrupada por requisito)
+
+| Requisito / grupo de escenarios | Implementación | Prueba |
+| --- | --- | --- |
+| Cadencia: racha, WhatsApp, precedencia, fuera de orden, día hábil | `lib/crm/cadencia.ts`, `lib/crm/actividades.ts`, `lib/crm/horario-laboral.ts` | `cadencia.test.ts`, `horario-laboral.test.ts`, `actividades.test.ts` |
+| Cierre de tareas, `soloPropias`, proceso ajeno | `tareasACerrar`, `cierraSoloPropias` | `cadencia.test.ts` (falta el caso de A1-1) |
+| Reintento, autor borrado, otra persona, proceso cerrado, repetición tardía | `lib/supabase/cadencia.ts`, ruta `…/[activityId]/cadencia` | `lib/supabase/cadencia.test.ts`, `cadencia/route.test.ts` |
+| Anular, deshacer, deshacer a medias | ruta `…/[activityId]`, `undoTasksOfActivity` | `[activityId]/route.test.ts`, `tasks.cadencia.test.ts` |
+| Nota, llamada, WhatsApp, token, 409, hora corregida | `app/api/contacts/[id]/activities/route.ts`, `esquemaNuevaActividad` | `route.post.test.ts`, `route.llamadas.test.ts`, `route.get.test.ts`, `Formularios.test.tsx` |
+| CHECK y RLS de `contact_activities`, columnas de `tasks` | migraciones `20261125000001` y `20261126000001` | `apply-contact-activities-pg.ts`, `apply-tasks-cadencia-solo-servidor-pg.ts` (verificación contra la base) |
+| Quién abre la ficha, editar/borrar contacto, vincular | `contact-access.ts`, `canAccessContact`, rutas de contactos y `…/contact` | `contact-access.test.ts`, `entity-access.contacto.test.ts`, `contacts/[id]/route.test.ts`, `…/contact/route.test.ts` |
+| Cabecera, último contacto, alerta, Detalles, Procesos, Archivos | `lib/crm/ficha.ts`, `ultimo-contacto.ts`, `leerDatosDeFicha` | `ficha.test.ts`, `ultimo-contacto.test.ts`, `contactos.ficha.test.ts`, `ficha/route.test.ts`, `FichaDatos.test.tsx` |
+| Tareas de la ficha y enlace desde `/tasks` | `tareas-ficha.ts`, `…/tasks/route.ts`, `tasks/page.tsx` | `tareas-ficha.test.ts`, `tasks/route.test.ts`, `tasks/page.test.tsx` |
+| Coordinar sin duplicar | `POST /api/deals` (`convertirDesdeSolicitud`), `convertirSolicitud`, `FormCoordinarTasacion` | `convertir.test.ts`, `coordinar-contacto.test.ts`, `deals.convertir.test.ts`, `FormCoordinarTasacion.test.tsx` |
+| Perdido y deshacer | `undo-lost/route.ts`, `deshacer-perdido.ts`, `FichaContacto` | `undo-lost/route.test.ts`, `deshacer-perdido.test.ts`, `Toasts.test.tsx`, `FichaDatos.test.tsx` |
+| Avisos, toasts, hoja "+", medidas táctiles | `AvisoGuardado`, `HojaAgregar`, `FichaContacto`, `globals.css` | `AvisoGuardado.test.tsx`, `HojaAgregar.test.tsx`, `Toasts.test.tsx`, `Medidas.test.tsx`, `tilde-tactil.test.tsx` (el layout por ancho, solo QA 12.3/12.4) |
+
+### Menores
+
+1. `procesoActivo.id` (ficha) y `cadencia.dealId` viajan a un asesor aunque el proceso sea de otro: es solo el id, sin datos.
+2. `POST /api/deals/[id]/advance` (marcar perdido) sigue sin mirar de quién es el proceso: viene de antes y está en Risks; la ficha esconde el botón pero la red no lo frena.
+3. `esElMismoGuardado` no compara la hora corregida: reenviar con el mismo token y otro "hace N min" devuelve la fila vieja sin aviso (documentado en el comentario).
+4. En `/cliente`, un contacto recién creado para un proceso sin `assigned_to` nacería sin asesor y dejaría una nota automática falsa; hoy la ruta lo evita porque exige asesor antes.
+5. `tareasACerrar` cierra la llamada manual de cualquier `coordinador` pero no la de admin o dueño: literal a la spec, a tener presente si cambian los roles.
+
+
+### Corrección del hallazgo A1-1 (14.2, 2026-11-26)
+
+Manda D2 y la spec: una llamada sobre un proceso cierra también las tareas ligadas solo al
+contacto. `tareasACerrar` usa ahora `seCierraDesde` (proceso igual, o `deal_id` vacío y el
+mismo contacto); `hayTareaWhatsappDeCadenciaPendiente` sigue mirando solo el mismo proceso,
+a propósito. Tests primero, vistos fallar (3) y pasar: la manual de la coordinadora desde
+la ficha, el "Llamar a" de un volver a llamar sin proceso, otro contacto sin proceso no,
+otro proceso del mismo contacto no, y con `soloPropias` solo la del asesor. Suite crm
+1.444/1.444, `tsc` y `eslint` limpios. Los menores 1 a 5 quedan como están (aceptados o
+anteriores a este change); el 3 se anota para `crm-tareas-y-campanita`.

@@ -238,6 +238,17 @@ function esDelMismoLugar(t: TareaPendiente, dealId: string | null, contactId: st
   return dealId ? t.deal_id === dealId : !t.deal_id && t.contact_id === contactId
 }
 
+/**
+ * Para CERRAR (D2): del proceso de la actividad **o** ligada solo a este contacto, también
+ * cuando hay proceso. Toda tarea creada con "+ Tarea" desde la ficha nace ligada solo al
+ * contacto (AddTaskDialog manda una entidad), así que sin esto la llamada que alguien se
+ * agendó a mano no se cerraba nunca al llamar sobre la solicitud. No se usa para
+ * `hayTareaWhatsappDeCadenciaPendiente`, que a propósito mira solo el mismo proceso.
+ */
+function seCierraDesde(t: TareaPendiente, dealId: string | null, contactId: string): boolean {
+  return (dealId !== null && t.deal_id === dealId) || (!t.deal_id && t.contact_id === contactId)
+}
+
 const creadaAntes = (t: TareaPendiente, corte: string) => instante(t.created_at) < instante(corte)
 
 /**
@@ -259,7 +270,7 @@ export function tareasACerrar(
   },
 ): TareaPendiente[] {
   return pendientes.filter((t) => {
-    if (!creadaAntes(t, c.creadasAntesDe) || !esDelMismoLugar(t, c.dealId, c.contactId)) return false
+    if (!creadaAntes(t, c.creadasAntesDe) || !seCierraDesde(t, c.dealId, c.contactId)) return false
     if (c.soloPropias && t.assigned_to !== c.registranteId) return false
     if (t.type === 'update_contact') return !t.appraisal_id
     if (t.type !== 'follow_up') return false

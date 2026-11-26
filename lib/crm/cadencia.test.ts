@@ -691,6 +691,32 @@ describe('tareasACerrar — con soloPropias', () => {
   it('sin proceso no toma las tareas de los procesos del contacto', () => {
     expect(cierra([tarea({ deal_id: 'deal-1' })], { dealId: null })).toEqual([])
   })
+
+  it('con proceso, asesor en proceso ajeno: la llamada ligada solo al contacto se cierra si es suya, la de la coordinación no', () => {
+    const suya = tarea({ deal_id: null, assigned_to: ASESOR, assigned_role: 'asesor' })
+    const deCoord = tarea({ deal_id: null, assigned_to: COORD_A })
+    expect(cierra([suya, deCoord], { registranteId: ASESOR, soloPropias: true })).toEqual([suya.id])
+  })
+})
+
+describe('tareasACerrar — con proceso, también lo ligado solo al contacto (D2)', () => {
+  it('la llamada que una coordinadora se agendó a mano desde la ficha (sin proceso) se cierra al llamar sobre la solicitud', () => {
+    const t = tarea({ deal_id: null, assigned_to: COORD_B, assigned_role: 'coordinador' })
+    expect(cierra([t])).toEqual([t.id])
+  })
+
+  it('el "Llamar a" que nació de un volver a llamar sin proceso se cierra', () => {
+    const t = tarea({ deal_id: null, assigned_to: COORD_A, source_activity_id: 'act-vieja' })
+    expect(cierra([t])).toEqual([t.id])
+  })
+
+  it('una tarea de otro contacto sin proceso no se cierra', () => {
+    expect(cierra([tarea({ deal_id: null, contact_id: 'contacto-2' })])).toEqual([])
+  })
+
+  it('la tarea de otro proceso del mismo contacto sigue sin cerrarse', () => {
+    expect(cierra([tarea({ deal_id: 'deal-2' })])).toEqual([])
+  })
 })
 
 describe('cierraSoloPropias', () => {
