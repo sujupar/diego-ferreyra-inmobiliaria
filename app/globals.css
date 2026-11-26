@@ -303,9 +303,13 @@ body[data-scroll-locked] #contenido {
      `absolute top-2 right-2` y eso alcanza para ubicar el halo. Pisarlas con
      `relative` (esta regla gana a las utilidades de Tailwind) las sacaba de la
      esquina y las mandaba al FINAL del contenido en todo teléfono: visto en el
-     QA de visitas (2026-10-14), la X quedaba abajo de todo o fuera de alcance. */
-  input[type='checkbox'],
-  input[type='radio'],
+     QA de visitas (2026-10-14), la X quedaba abajo de todo o fuera de alcance.
+     Lo mismo en los tildes: el de las tareas de la ficha del contacto es un input
+     `absolute inset-0` invisible sobre un círculo dibujado; con `relative` pasaba a
+     ocupar lugar en el renglón y aplastaba el círculo a 17×22 en todo teléfono
+     (QA del CRM, 2026-11-26). Un `absolute` ya ubica el halo. */
+  input[type='checkbox']:not(.absolute),
+  input[type='radio']:not(.absolute),
   [data-slot='dialog-close']:not(.absolute),
   [data-slot='sheet-close']:not(.absolute) {
     position: relative;
