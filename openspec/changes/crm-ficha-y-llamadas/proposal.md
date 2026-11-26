@@ -21,11 +21,13 @@ hay tiempos, ni tasas, ni forma de mejorar ese paso.
   tras dos seguidas, tarea de enviar WhatsApp; "volver a llamar" pide día y hora.
   Registrar una llamada cierra las tareas de entrada del lead y las de llamada pendientes
   de ese proceso, también las de otro coordinador.
-- "Última llamada" en la cabecera de la ficha: hace cuánto fue la última ("Última llamada
+- "Última llamada" en la cabecera de la ficha: hace cuánto fue la última ("Última llamada:
   hace 2 días") o "Sin llamar todavía".
 - **Coordinar convierte la solicitud.** Desde la ficha, "Coordinar tasación" abre el
   formulario de hoy con los datos cargados y, al guardar, la misma solicitud pasa a
   Coordinada. Hoy ese formulario siempre crea un proceso nuevo y la solicitud queda abierta.
+  Las notas que la solicitud ya tenía no se pisan: lo que se escribe al coordinar se agrega
+  al final.
   El botón está en el aviso de la llamada y también fijo en el bloque "Procesos" de la
   ficha, en cada solicitud, para que no se pierda al cerrar el aviso. Coordinar desde el
   menú sigue exactamente igual.
@@ -37,12 +39,14 @@ hay tiempos, ni tasas, ni forma de mejorar ese paso.
   de ver contactos, y el asesor ve solo los suyos. **Cambia algo que hoy "funciona":** un
   asesor ya no puede abrir un contacto con el que no tiene ningún vínculo.
 - Se llega a la ficha tocando el nombre de la persona en el CRM, en el proceso y en la
-  lista de contactos.
+  lista de contactos. Una tarea de llamada o de WhatsApp creada por la cadencia, abierta
+  desde `/tasks`, también abre la ficha (hoy abriría el proceso, donde la llamada no se
+  registra).
 - En este change la actividad del centro muestra solo notas, llamadas y WhatsApp marcado;
   el resto de los eventos llega con `crm-linea-de-tiempo`.
 - **Queda afuera:** enviar WhatsApp o email, llamar desde la plataforma, cambiar la etapa
   del proceso de forma automática, feriados en el horario laboral, estadísticas, la
-  campanita y la página de tareas, el bloque "Sin respuesta" del Inicio (hasta que exista,
+  campanita y la página de tareas (salvo a dónde lleva una tarea de la cadencia), el bloque "Sin respuesta" del Inicio (hasta que exista,
   ningún texto de la ficha lo nombra), y asignarle asesor a los contactos viejos.
 
 Roles: coordinador, admin y dueño ven todos los contactos. El asesor ve los suyos: los
@@ -80,6 +84,11 @@ la sección 8 del diseño general o lo aprobado en la maqueta; el detalle está 
     por persona; una tercera "No atendió" no duplica la tarea "Enviar WhatsApp" pendiente; y
     "Tarea creada sola" se lee dentro del registro de la llamada.
 
+Dos respuestas más del dueño, del mismo día, que no están en la lista de arriba (el detalle
+está en `design.md`, "Open Questions", grupo A): sin proceso abierto, la llamada de un
+asesor cierra solo las tareas que están a su nombre; y se acepta que, al deshacer un
+"perdido", Mailchimp pueda volver a mandarle a la persona la secuencia desde el primer email.
+
 ## Capabilities
 
 ### New Capabilities
@@ -95,6 +104,13 @@ la sección 8 del diseño general o lo aprobado en la maqueta; el detalle está 
   abierto usa pestañas y no dos columnas (decisión 5), y con el menú colapsado pasa a tres
   columnas antes de los 1280 px. El cambio está en `specs/crm-sistema-diseno/spec.md` de
   este change y el dueño lo confirmó el 2026-11-25.
+- `crm-sistema-diseno`, requisito "La etapa nunca cambia sola": la spec vigente dice, sin
+  condiciones, que tras "Atendió y agendó" el aviso ofrece "Coordinar tasación" y tras "No
+  le interesa" ofrece "Marcar proceso como perdido". Se acota a quien puede coordinar o
+  cerrar ese proceso y a cuando corresponde (no con el proceso ya coordinado, ni sobre un
+  proceso ajeno, ni sin proceso), como ya dice `crm-cadencia-llamadas`. Sin este cambio, al
+  archivar quedarían dos specs vigentes que se contradicen. El requisito modificado está en
+  el mismo archivo del delta.
 - **Excepción temporal, sin cambio de spec:** la spec vigente de `crm-sistema-diseno` dice
   que "+ Tarea" abre el formulario con cinco tipos (Llamada, Mensaje, Visita, Documentación
   y Otro). En este change la ficha usa el formulario de tareas de hoy sin tocarlo, que
@@ -112,7 +128,8 @@ la sección 8 del diseño general o lo aprobado en la maqueta; el detalle está 
   `app/api/deals/[id]/undo-lost`.
 - Rutas que ya existen y cambian (caminos críticos):
   - `app/api/contacts` y `app/api/contacts/[id]`: permiso por rol (el abogado recibe 403
-    también en la lista y al crear) y lista cerrada de campos;
+    también en la lista y al crear), lista cerrada de campos, y el borrado responde 403 a
+    quien no es admin ni dueño (hoy responde 500);
   - `app/api/deals` (`POST`): acepta `from_deal_id` (convierte la solicitud) y `contact_id`
     (usa ese contacto). Sin esos dos campos no cambia nada.
 - Mailchimp: convertir una solicitud y deshacer un "perdido" avisan a Mailchimp del cambio
@@ -122,8 +139,8 @@ la sección 8 del diseño general o lo aprobado en la maqueta; el detalle está 
   completan solas: se ven en la ficha y se cierran a mano (limpiarlas queda para
   `crm-tareas-y-campanita`).
 - Pantallas: `app/(dashboard)/contacts/[id]` (reemplazo), `app/(dashboard)/pipeline/new`
-  (precarga con `?deal=` y `?contact=`), y el enlace del nombre en `/crm`, `/pipeline/[id]`
-  y `/contacts`.
+  (precarga con `?deal=` y `?contact=`), el enlace del nombre en `/crm`, `/pipeline/[id]`
+  y `/contacts`, y en `app/(dashboard)/tasks` solo a dónde lleva una tarea de la cadencia.
 - Código: `lib/crm/`, `lib/auth/` (`contact-access`, `entity-access`), `components/crm/`,
   `lib/supabase/tasks.ts` (cinco funciones nuevas), `lib/supabase/cadencia.ts` (nuevo:
   `aplicarCadencia`), `lib/supabase/deals.ts` (función nueva para convertir una solicitud),

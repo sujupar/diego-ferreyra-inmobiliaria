@@ -87,6 +87,10 @@ del contacto MUST ignorarse.
 - **WHEN** un abogado envía una edición de cualquier contacto
 - **THEN** recibe 403 y en la base el contacto no cambió
 
+#### Scenario: Borrar un contacto sin ser admin ni dueño
+- **WHEN** un coordinador o un asesor pide por la red borrar un contacto
+- **THEN** responde 403 con un mensaje de error, no una redirección ni un 200, y el contacto sigue en la base
+
 #### Scenario: Asesor edita el contacto desde su proceso, como hoy
 - **WHEN** un asesor abre `/pipeline/<id>` de un proceso asignado a él, cuyo contacto no tiene asesor asignado, toca "Editar" en el contacto, cambia el teléfono y guarda
 - **THEN** el editor abre con los datos cargados, el cambio se guarda y no aparece ningún error
@@ -292,7 +296,7 @@ cuando el proceso activo es de otro».
 
 #### Scenario: Contacto sin procesos
 - **WHEN** el contacto no tiene ningún proceso
-- **THEN** Detalles muestra solo el origen del contacto, si lo tiene, y el asesor
+- **THEN** Detalles muestra solo el origen del contacto, si lo tiene, y el asesor del contacto; si el contacto tampoco tiene asesor, dice "Asesor: Sin asignar todavía"
 
 ### Requirement: Detalles cuando el proceso activo es de otro
 Cuando el proceso del que salen los Detalles (el activo o, si no hay, el más reciente) no
@@ -337,7 +341,9 @@ sin salir de la ficha. Sin texto, muestra el botón "Agregar".
 La zona de actividad SHALL listar únicamente las notas, las llamadas y las marcas de
 "WhatsApp enviado" no anuladas del contacto, de la más nueva a la más vieja, de a 50 con
 "Ver más". Otros eventos (cambios de etapa, mensajes del sistema, emails, videos) no
-aparecen en este change.
+aparecen en este change. Cada registro cumple la anatomía de evento de `crm-sistema-diseno`:
+un título largo pasa a un segundo renglón sin cortarse, y en pantallas táctiles la fecha
+exacta se ve al tocar cualquier parte del renglón.
 
 #### Scenario: Orden
 - **WHEN** un contacto tiene una nota de ayer y una llamada de hoy
@@ -346,6 +352,14 @@ aparecen en este change.
 #### Scenario: Anatomía de una llamada
 - **WHEN** se mira una llamada registrada ayer a las 10:15 por Paula
 - **THEN** se lee "Llamada 1 · No atendió" con su ícono, "Paula" y "ayer", y al tocar la fecha se ven el día y la hora exactos
+
+#### Scenario: Título largo
+- **WHEN** el título de un registro no entra en un renglón (por ejemplo "Llamada 3 · Atendió · volver a llamar" a 390 px)
+- **THEN** pasa a un segundo renglón y no se corta con puntos suspensivos
+
+#### Scenario: Toque en el renglón
+- **WHEN** en un celular se toca cualquier parte del renglón de un registro, fuera del menú "⋯"
+- **THEN** la fecha relativa cambia por el día y la hora exactos, y al tocar de nuevo vuelve la relativa
 
 #### Scenario: Contacto sin actividad
 - **WHEN** el contacto no tiene notas, llamadas ni WhatsApp marcado
@@ -497,11 +511,15 @@ la puede convertir un coordinador, un admin o un dueño, y un asesor solo si est
 
 #### Scenario: Formulario precargado
 - **WHEN** una coordinadora toca "Coordinar tasación", en el aviso o en el bloque "Procesos", en la ficha de un contacto con una solicitud abierta
-- **THEN** se abre el formulario "Coordinar Tasación" con nombre, teléfono, email, dirección, barrio, tipo y ambientes ya completos con lo que se conoce
+- **THEN** se abre el formulario "Coordinar Tasación" con nombre, teléfono, email, dirección, barrio, tipo y ambientes ya completos con lo que se conoce; el campo de notas arranca vacío
 
 #### Scenario: La solicitud se convierte
 - **WHEN** se completa día, hora y asesor en ese formulario y se guarda
 - **THEN** el contacto sigue teniendo un solo proceso, ahora en etapa `scheduled` con ese día, hora y asesor, y se generan el aviso y la tarea al asesor igual que en una coordinación de hoy
+
+#### Scenario: Las notas de la solicitud no se pierden
+- **WHEN** se convierte una solicitud que ya tenía notas (el mensaje que dejó la persona, lo que anotó el agente de WhatsApp o el texto de una importación), con el campo de notas del formulario vacío o con un texto nuevo
+- **THEN** las notas anteriores siguen en el proceso, enteras; si se escribió un texto nuevo queda agregado al final, y si el campo quedó vacío las notas no cambian
 
 #### Scenario: Queda anotado quién coordinó
 - **WHEN** una coordinadora convierte una solicitud del embudo, que no tenía cargado quién la creó
@@ -539,9 +557,13 @@ la puede convertir un coordinador, un admin o un dueño, y un asesor solo si est
 - **WHEN** se guarda el formulario, con el email de la persona corregido, y el proceso ya había sido movido por otra persona
 - **THEN** no se modifica nada, tampoco el email del contacto, y la pantalla avisa "El proceso ya cambió de etapa"
 
+#### Scenario: Conversión pedida sobre un proceso que ya estaba coordinado
+- **WHEN** quien puede ver ese proceso envía por la red la conversión de un proceso que ya está en Coordinada o en una etapa posterior
+- **THEN** responde 409 con "El proceso ya cambió de etapa", y no 404; el proceso y el contacto no cambian y no sale ningún email
+
 #### Scenario: Asesor intenta convertir una solicitud ajena
 - **WHEN** un asesor envía por la red la conversión de una solicitud que no está asignada a él
-- **THEN** responde 404, el proceso no cambia y no queda a su nombre
+- **THEN** responde 404, el proceso no cambia y no queda a su nombre; el permiso se mira antes que la etapa y el origen, así que la respuesta es 404 también si ese proceso ya estaba coordinado o viene de la clase gratuita
 
 #### Scenario: Quien no puede convertir no ve el botón
 - **WHEN** el proceso ya está en Coordinada o en una etapa posterior, o viene de la clase gratuita, o quien mira es un asesor y la solicitud no está asignada a él
@@ -583,7 +605,7 @@ ficha, la pantalla SHALL volver a esa ficha.
 - **THEN** ningún ítem de "Procesos" muestra "Coordinar tasación"; para esa persona, coordinar es abrir un proceso nuevo, desde el aviso de "Atendió y agendó" o desde el menú, que reutiliza el contacto por su email o su teléfono como hoy
 
 #### Scenario: El botón en celular
-- **WHEN** en 390 px se mira una solicitud listada en "Procesos" que quien mira puede convertir
+- **WHEN** en 390 px se abre la pestaña Tareas y se mira, en el bloque "Procesos", una solicitud que quien mira puede convertir
 - **THEN** el botón "Coordinar tasación" se ve entero, mide 44 px o más de alto y no tapa el enlace al proceso
 
 ### Requirement: Cerrar el proceso lo decide la persona
@@ -595,7 +617,7 @@ ya se fue, en un botón "Deshacer" del ítem de ese proceso en "Procesos". Ningu
 
 #### Scenario: Marcar como perdido
 - **WHEN** se toca "Marcar proceso como perdido" en el aviso posterior a una llamada
-- **THEN** aparece "Proceso marcado como perdido." con "Deshacer", en la base el proceso está en etapa `lost`, y la cabecera deja de mostrar esa etapa
+- **THEN** aparece "Proceso marcado como perdido." con "Deshacer" y, debajo, "Se puede deshacer durante 10 minutos desde «Procesos» (en el celular, pestaña Tareas).", en la base el proceso está en etapa `lost`, y la cabecera deja de mostrar esa etapa
 
 #### Scenario: Proceso con tasación agendada
 - **WHEN** se marca como perdido un proceso que estaba en Coordinada con día y hora
@@ -606,7 +628,7 @@ ya se fue, en un botón "Deshacer" del ítem de ese proceso en "Procesos". Ningu
 - **THEN** el proceso vuelve a la etapa en la que estaba, la cabecera la muestra otra vez, y en la base `lost_at` queda vacío, de modo que ese proceso no cuenta como perdido en las métricas
 
 #### Scenario: Deshacer cuando el aviso ya se fue
-- **WHEN** se marca un proceso como perdido, el aviso desaparece, y cinco minutos después se mira "Procesos" en esa ficha (también después de recargarla)
+- **WHEN** se marca un proceso como perdido, el aviso desaparece, y cinco minutos después se mira "Procesos" en esa ficha (también después de recargarla; en 390 px, dentro de la pestaña Tareas)
 - **THEN** el ítem de ese proceso, en "Descartado", muestra un botón "Deshacer"; al tocarlo el proceso vuelve a la etapa en la que estaba, `lost_at` queda vacío y el botón desaparece
 
 #### Scenario: Pasados los diez minutos
@@ -637,6 +659,10 @@ ya se fue, en un botón "Deshacer" del ítem de ese proceso en "Procesos". Ningu
 - **WHEN** un asesor pide por la red deshacer o cerrar desde la ficha un proceso que no está asignado a él
 - **THEN** no ve el botón en pantalla, ni en el aviso ni en "Procesos", y el pedido de deshacer responde 404
 
+#### Scenario: Sin permiso para mover procesos
+- **WHEN** un abogado pide por la red deshacer el "perdido" de un proceso
+- **THEN** responde 403 con un mensaje de error, no una redirección, y el proceso sigue descartado
+
 #### Scenario: Rol viejo sin lugar en la ficha
 - **WHEN** un usuario con el rol viejo `agent` pide por la red deshacer el "perdido" de cualquier proceso
 - **THEN** responde 404 y el proceso sigue descartado
@@ -653,7 +679,9 @@ ya se fue, en un botón "Deshacer" del ítem de ese proceso en "Procesos". Ningu
 El nombre del contacto SHALL ser un enlace a su ficha en la lista de `/contacts`, en cada
 tarjeta de `/crm` y en la pantalla del proceso `/pipeline/<id>`. El enlace SHALL dibujarse
 solo para quien puede abrir esa ficha, y el resto de cada pantalla SHALL seguir funcionando
-como hoy.
+como hoy. Una tarea de llamada o de WhatsApp creada por la cadencia, abierta desde `/tasks`,
+SHALL abrir la ficha del contacto y no la pantalla del proceso; las demás tareas siguen
+abriendo lo mismo que hoy.
 
 #### Scenario: Desde el CRM
 - **WHEN** una coordinadora toca el nombre de la persona en una tarjeta de `/crm`
@@ -666,6 +694,14 @@ como hoy.
 #### Scenario: Desde la lista de contactos
 - **WHEN** se toca una persona en `/contacts`
 - **THEN** se abre su ficha nueva
+
+#### Scenario: Tarea de la cadencia desde la página de tareas
+- **WHEN** en `/tasks` se toca una tarea "Llamada 2 a {nombre}", "Enviar WhatsApp a {nombre}" o "Llamar a {nombre}" que creó la cadencia
+- **THEN** se abre `/contacts/<id>` de esa persona, donde se registra la llamada; también cuando la tarea es de un asesor y está ligada a un proceso que no es suyo, sin ninguna pantalla de error
+
+#### Scenario: Las demás tareas abren lo mismo que hoy
+- **WHEN** en `/tasks` se toca una tarea de seguimiento creada a mano sobre un proceso
+- **THEN** se abre `/pipeline/<id>` de ese proceso, como hoy
 
 #### Scenario: Asesor desde un proceso suyo
 - **WHEN** un asesor toca el nombre del contacto en `/crm` o en `/pipeline/<id>` de un proceso asignado a él, cuyo contacto entró por el embudo sin asesor asignado
