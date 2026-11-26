@@ -142,6 +142,24 @@ describe('armarFicha — lo que ve un asesor', () => {
     expect(f.procesos).toEqual([expect.objectContaining({ id: 'd-1', puede_convertir: true })])
   })
 
+  it('Archivos: la tasación que llega por el proceso de otro asesor no se lista; sin asesor tampoco (su enlace daría 403)', () => {
+    // `leerDatosDeFicha` ya sumó las tasaciones de los procesos (ROJO 1 del QA); el filtro
+    // del asesor es el de D4: `appraisals.assigned_to`/`user_id` = él, lo mismo que mira
+    // `canAccessAppraisal` para abrir `/appraisals/<id>`.
+    const f = ficha(
+      datos({
+        procesos: [proceso({ id: 'd-mio', assigned_to: 'asesor-1' }), proceso({ id: 'd-otro', assigned_to: 'asesor-2' })],
+        tasaciones: [
+          { id: 'ap-de-mi-proceso', property_title: 'Mía', property_location: null, created_at: '2026-11-02T00:00:00Z', assigned_to: 'asesor-1', user_id: null },
+          { id: 'ap-del-proceso-ajeno', property_title: 'Ajena', property_location: null, created_at: '2026-11-03T00:00:00Z', assigned_to: 'asesor-2', user_id: 'asesor-2' },
+          { id: 'ap-sin-asesor', property_title: 'Nadie', property_location: null, created_at: '2026-11-04T00:00:00Z', assigned_to: null, user_id: null },
+        ],
+      }),
+      ASESOR,
+    )
+    expect(f.archivos.tasaciones.map((a) => a.id)).toEqual(['ap-de-mi-proceso'])
+  })
+
   it('un proceso suyo y otro activo de otro asesor: listas solo con lo suyo, etapa visible, datos del ajeno en null', () => {
     const f = ficha(
       datos({

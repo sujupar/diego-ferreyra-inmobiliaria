@@ -528,6 +528,14 @@ pantalla de hoy. Para un asesor, cada bloque muestra solo lo que está a su nomb
 - **WHEN** el contacto tiene una tasación vinculada
 - **THEN** "Archivos" la muestra y al tocarla abre `/appraisals/<id>`
 
+#### Scenario: Tasación o propiedad que cuelga del proceso
+- **WHEN** la tasación o la propiedad no tiene contacto propio pero está en un proceso del contacto (`deals.appraisal_id` o `deals.property_id`)
+- **THEN** "Archivos" la muestra igual, y si además está ligada al contacto directamente aparece una sola vez
+
+#### Scenario: Asesor y la tasación del proceso de otro
+- **WHEN** un asesor abre la ficha de un contacto cuyo proceso de otro asesor tiene una tasación a nombre de ese otro asesor
+- **THEN** "Archivos" no la lista ni la respuesta por la red la devuelve
+
 ### Requirement: Cada bloque carga y falla por separado
 Los datos de la persona, la actividad y las tareas SHALL cargarse por separado, cada uno
 con su estado de carga y de error con "Reintentar". Un bloque que no pudo cargar MUST
