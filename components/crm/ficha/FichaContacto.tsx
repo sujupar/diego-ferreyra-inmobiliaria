@@ -277,6 +277,11 @@ export function FichaContacto({
       mostrarAvisoDe(r.data, r.data.actividad.kind === 'whatsapp_sent' ? 'whatsapp_sent' : 'call')
       void f.recargarTareas()
       void f.recargarActividad()
+    } catch (err) {
+      // Red cortada: sin este catch la promesa quedaba rechazada sin que nadie se enterara
+      // y el botón parecía no hacer nada (revisión 12.1). El aviso sigue con "Reintentar".
+      console.error('[ficha] no se pudo reintentar la cadencia', err)
+      mostrarToast('No se pudo agendar la siguiente. Revisá la conexión y probá de nuevo.', undefined, true)
     } finally {
       setOcupado(false)
     }
