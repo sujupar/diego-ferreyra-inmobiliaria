@@ -26,6 +26,7 @@
     "lib/crm/**/*.ts",
     "lib/supabase/tasks.ts",
     "lib/supabase/cadencia.ts",
+    "lib/supabase/actividades.ts",
     "app/api/contacts/**/*.ts",
     "app/api/appraisals/[id]/contact/route.ts",
     "app/api/tasks/**/*.ts",
