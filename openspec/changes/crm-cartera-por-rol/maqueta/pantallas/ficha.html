@@ -1,0 +1,100 @@
+<section class="pantalla ficha" data-screen="ficha" data-titulo="Marcela Ibáñez" data-seccion="Contactos">
+  <div class="ficha-grilla">
+
+    <!-- Cabecera: fija arriba en celular; tarjeta de la persona desde 768 -->
+    <header class="ficha-cab">
+      <div class="ficha-cab__persona" id="ficha-cab-persona"></div>
+      <a class="btn btn--marca btn--ancho ficha-cab__llamar" id="ficha-llamar" href="tel:+5491155550142"></a>
+      <p class="ficha-cab__email solo-escritorio" id="ficha-cab-email"></p>
+      <div class="pestanas pestanas--iguales solo-celular ficha-cab__pestanas" role="tablist" aria-label="Secciones de la ficha" id="ficha-pestanas">
+        <button type="button" class="pestana" role="tab" id="ficha-tab-actividad" aria-selected="true" aria-controls="ficha-p-actividad">Actividad</button>
+        <button type="button" class="pestana" role="tab" id="ficha-tab-datos" aria-selected="false" aria-controls="ficha-p-datos" tabindex="-1">Datos</button>
+        <button type="button" class="pestana" role="tab" id="ficha-tab-tareas" aria-selected="false" aria-controls="ficha-p-tareas" tabindex="-1">Tareas<span class="badge badge--numero" id="ficha-tab-tareas-n" hidden>0</span></button>
+      </div>
+    </header>
+
+    <!-- Columna izquierda / pestaña Datos -->
+    <div class="ficha-col ficha-persona" id="ficha-p-datos" role="tabpanel" aria-label="Datos de la persona" hidden>
+      <div class="card solo-celular">
+        <div class="card__cabecera"><h2 class="card__titulo">Contacto</h2></div>
+        <div class="card__cuerpo ficha-datos" id="ficha-contacto-datos"></div>
+      </div>
+      <div class="card">
+        <div class="card__cabecera"><h2 class="card__titulo">Detalles</h2></div>
+        <div class="card__cuerpo ficha-datos" id="ficha-detalles"></div>
+      </div>
+      <div class="card" id="ficha-bg"></div>
+    </div>
+
+    <!-- Columna central / pestaña Actividad -->
+    <div class="ficha-col ficha-centro" id="ficha-p-actividad" role="tabpanel" aria-label="Actividad">
+      <div class="card solo-escritorio ficha-composer" id="ficha-composer">
+        <div class="card__cuerpo">
+          <div class="pestanas pestanas--segmento" role="tablist" aria-label="Qué querés anotar">
+            <button type="button" class="pestana" role="tab" id="ficha-ctab-nota" aria-selected="true" aria-controls="ficha-c-nota"><i data-icono="sticky-note"></i>Nota</button>
+            <button type="button" class="pestana" role="tab" id="ficha-ctab-llamada" aria-selected="false" aria-controls="ficha-c-llamada" tabindex="-1"><i data-icono="phone"></i>Registrar llamada</button>
+          </div>
+          <div id="ficha-c-nota" role="tabpanel" class="ficha-form-nota"></div>
+          <div id="ficha-c-llamada" role="tabpanel" class="ficha-form-llamada" hidden></div>
+        </div>
+      </div>
+
+      <div id="ficha-aviso" aria-live="polite"></div>
+
+      <div class="card">
+        <div class="card__cabecera ficha-linea__cabecera">
+          <h2 class="card__titulo">Línea de tiempo</h2>
+        </div>
+        <div class="card__cuerpo">
+          <div class="filtros" id="ficha-filtros" aria-label="Filtrar la línea de tiempo">
+            <button type="button" class="filtro" aria-pressed="true" data-valor="todo">Todo</button>
+            <button type="button" class="filtro" aria-pressed="false" data-valor="llamadas">Llamadas</button>
+            <button type="button" class="filtro" aria-pressed="false" data-valor="notas">Notas</button>
+            <button type="button" class="filtro" aria-pressed="false" data-valor="actividad">Actividad</button>
+          </div>
+          <div id="ficha-linea"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Columna derecha / pestaña Tareas -->
+    <div class="ficha-col ficha-lado" id="ficha-p-tareas" role="tabpanel" aria-label="Tareas, tasaciones y procesos" hidden>
+      <div class="card" id="ficha-tareas"></div>
+      <div class="card" id="ficha-tasaciones" hidden></div>
+      <div class="card" id="ficha-procesos" hidden></div>
+      <div class="card" id="ficha-archivos" hidden></div>
+    </div>
+  </div>
+
+  <!-- Botón flotante: solo celular -->
+  <button type="button" class="fab" aria-label="Agregar nota o registrar llamada" data-abrir-hoja="ficha-hoja-mas"><i data-icono="plus"></i></button>
+</section>
+
+<!-- Hoja del "+" (celular): menú → Registrar llamada / Nota -->
+<div class="hoja" id="ficha-hoja-mas" role="dialog" aria-modal="true" aria-labelledby="ficha-hoja-mas-t" hidden>
+  <div class="hoja__fondo" data-cerrar-hoja></div>
+  <div class="hoja__panel">
+    <div class="hoja__cabecera">
+      <button type="button" class="btn btn--icono ficha-hoja__volver" id="ficha-hoja-volver" aria-label="Volver" hidden><i data-icono="chevron-left"></i></button>
+      <h2 class="hoja__titulo" id="ficha-hoja-mas-t">Agregar</h2>
+      <button type="button" class="btn btn--icono" data-cerrar-hoja aria-label="Cerrar"><i data-icono="x"></i></button>
+    </div>
+    <div class="hoja__cuerpo">
+      <div class="pila pila--chica" data-vista="menu">
+        <button type="button" class="opcion" data-ficha-vista="llamada" data-foco>
+          <span class="opcion__icono"><i data-icono="phone"></i></span>
+          <span class="crece">Registrar llamada<small>Qué pasó cuando llamaste</small></span>
+          <i data-icono="chevron-right"></i>
+        </button>
+        <button type="button" class="opcion" data-ficha-vista="nota">
+          <span class="opcion__icono"><i data-icono="sticky-note"></i></span>
+          <span class="crece">Nota<small>Algo para acordarse de esta persona</small></span>
+          <i data-icono="chevron-right"></i>
+        </button>
+      </div>
+      <div class="ficha-form-llamada" data-vista="llamada" hidden></div>
+      <div class="ficha-form-nota" data-vista="nota" hidden></div>
+    </div>
+  </div>
+</div>
+<!-- «+ Tarea» abre el formulario único de tareas (tareas.html → #tareas-hoja-nueva) con esta persona ya puesta: MQ.nuevaTarea({ contactoId }) -->

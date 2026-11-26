@@ -1,0 +1,146 @@
+/* CRM por rol y Contactos — piezas de lista: cabecera, selector de vista, barra de etapas, filtros con nombre, fila de proceso */
+
+/* Cabecera */
+.cartera-cab { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem 1rem; }
+.cartera-cab .titulo-pagina { font-size: 1.5rem; }
+.cartera-vercomo { flex: 1 1 100%; }
+.cartera-nuevo { flex: 0 0 auto; }
+@media (min-width: 768px) { .cartera-vercomo { flex: 0 0 18rem; } }
+
+/* Aviso «estás viendo la vista de otra persona» (discreto: borde, sin fondo de color fuerte) */
+.cartera-aviso { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 0.75rem; padding: 0.625rem 0.875rem; border: 1px solid color-mix(in oklch, var(--brand) 30%, var(--border)); border-radius: var(--radius-lg); background: var(--card); font-size: 13px; }
+.cartera-aviso > .icono { color: var(--brand); flex-shrink: 0; }
+.cartera-aviso p { min-width: 12rem; }
+
+/* Abiertos / Cerrados + barra de etapas */
+.cartera-controles { display: flex; flex-direction: column; gap: 0.75rem; }
+.cartera-seg { display: inline-flex; align-self: flex-start; background: var(--muted); padding: 0.1875rem; border-radius: var(--radius-lg); gap: 0.125rem; max-width: 100%; }
+.cartera-seg button { min-height: var(--ctl); padding: 0 0.875rem; border-radius: calc(var(--radius-lg) - 3px); font-size: 13px; font-weight: 500; color: var(--texto-suave); white-space: nowrap; }
+.cartera-seg button span { font-variant-numeric: tabular-nums; color: var(--texto-suave); font-weight: 400; margin-left: 0.25rem; }
+.cartera-seg button[aria-pressed="true"] { background: var(--card); color: var(--foreground); box-shadow: var(--sombra); font-weight: 600; }
+
+.be { display: flex; flex-direction: column; gap: 0.5rem; }
+.be__grupo { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+.be__base { font-size: 12px; color: var(--texto-suave); }
+.be__base strong { color: var(--foreground); font-weight: 600; font-variant-numeric: tabular-nums; }
+.be__lista { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0 0.25rem; }
+.be__etapa { display: inline-flex; align-items: baseline; gap: 0.375rem; min-height: var(--tap); padding: 0 0.5rem; border-radius: var(--radius-sm); font-size: 13px; color: var(--texto-suave); border: 1px solid transparent; }
+.be__etapa strong { color: var(--foreground); font-weight: 600; font-variant-numeric: tabular-nums; }
+.be__etapa:hover { background: var(--accent); }
+.be__etapa[aria-pressed="true"] { border-color: var(--foreground); color: var(--foreground); }
+.be__etapa { align-items: center; }
+@media (min-width: 768px) {
+  .cartera-controles { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 0.75rem 1.5rem; }
+  .cartera-seg { align-self: center; }
+  .be { flex-direction: row; flex-wrap: wrap; gap: 0.25rem 1.5rem; flex: 1 1 0; min-width: 0; }
+  .be__grupo { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 0 0.5rem; }
+  .be__etapa { min-height: 2rem; }
+}
+@media (min-width: 768px) and (pointer: coarse) { .be__etapa { min-height: var(--tap); } }
+
+/* Filtros con nombre */
+.cartera-filtros { display: flex; align-items: flex-end; gap: 0.5rem; flex-wrap: wrap; }
+.cartera-buscar { flex: 1 1 12rem; }
+.cartera-buscar__caja { position: relative; display: block; }
+.cartera-buscar__caja > .icono { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--texto-suave); pointer-events: none; }
+.cartera-buscar__caja .entrada { padding-left: 2.25rem; }
+.cartera-filtros__campos { display: none; }
+.cartera-btn-filtros { flex: 0 0 auto; }
+.cartera-campo .tareas-select { flex: none; width: 100%; }
+@media (min-width: 768px) {
+  .cartera-filtros__campos { display: contents; }
+  .cartera-btn-filtros { display: none; }
+  .cartera-buscar { flex: 1 1 12rem; }
+  .cartera-campo { flex: 1 1 8.5rem; max-width: 15rem; }
+}
+.cartera-activos { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; }
+.cartera-activo { height: auto; min-height: 2rem; padding: 0.25rem 0.375rem 0.25rem 0.625rem; white-space: normal; text-align: left; cursor: pointer; color: var(--foreground); }
+.cartera-activo .icono { width: 0.875rem; height: 0.875rem; color: var(--texto-suave); }
+@media (max-width: 767.98px), (pointer: coarse) { .cartera-activo { min-height: var(--tap); } }
+
+/* Grupos */
+.cartera-grupo { overflow: hidden; }
+.cartera-grupo__cab { flex-wrap: wrap; row-gap: 0.5rem; }
+.cartera-grupo__cab .card__titulo { display: flex; align-items: center; gap: 0.5rem; flex: 1 1 12rem; }
+.cartera-orden { display: flex; align-items: center; gap: 0.5rem; flex: 1 1 100%; }
+.cartera-orden > span:first-child { flex-shrink: 0; }
+.cartera-orden .tareas-select { flex: 1 1 auto; width: auto; }
+@media (min-width: 768px) { .cartera-orden { flex: 0 1 auto; } .cartera-orden .tareas-select { flex: none; width: 13.5rem; } }
+.cartera-grupo__texto { padding: 0.25rem 1rem 0.5rem; }
+.cartera-filas { padding: 0; }
+.cartera-total { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; padding: 0 0.25rem; }
+
+/* Fila de proceso: toda la fila abre la ficha */
+.fp, .fp-cabecera { display: grid; grid-template-columns: 2.25rem minmax(0, 1fr) 1rem; column-gap: 0.75rem; }
+.fp { row-gap: 0.25rem; padding: 0.75rem 1rem; align-items: start; color: inherit; text-decoration: none; min-height: var(--tap); }
+.fp:hover { background: var(--accent); }
+.fp:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.fp > .avatar { grid-column: 1; grid-row: 1 / span 6; }
+.fp > * { grid-column: 2; min-width: 0; }
+.fp__ir { grid-column: 3 !important; grid-row: 1; color: var(--texto-suave); align-self: center; }
+.fp__persona { display: flex; flex-direction: column; gap: 0.0625rem; }
+.fp__nombre { font-weight: 600; font-size: 15px; line-height: 1.3; }
+.fp__sub { font-size: 12px; color: var(--texto-suave); line-height: 1.35; }
+.fp__tas { display: flex; align-items: flex-start; gap: 0.25rem; font-size: 12px; color: var(--brand); font-weight: 500; line-height: 1.35; }
+.fp__tas .icono { width: 0.8125rem; height: 0.8125rem; flex-shrink: 0; margin-top: 0.1rem; }
+.fp__etapa { display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap; }
+/* En una lista, la etapa es un dato más: chip neutro (punto + texto). Lo que llama la atención es lo vencido. */
+.fp .etapa, .fp .etapa[data-etapa] { background: transparent; border-color: var(--border); color: var(--foreground); }
+.fp .etapa::before, .fp .etapa[data-etapa]::before { background: var(--muted-foreground); }
+.fp__ultimo, .fp__proximo, .fp__asesor { display: flex; gap: 0.375rem; align-items: baseline; font-size: 13px; }
+.fp-etq { flex: 0 0 6.25rem; font-size: 12px; color: var(--texto-suave); }
+.fp__etapa .fp-etq { display: none; }
+.fp-origen { font-size: 12px; color: var(--texto-suave); }
+.fp-dato { display: flex; flex-direction: column; min-width: 0; gap: 0.0625rem; line-height: 1.35; }
+.fp-dato__principal { font-weight: 500; }
+.fp-dato__sub { font-size: 12px; color: var(--texto-suave); }
+.fp-dato--nada { color: var(--texto-suave); }
+.fp-dato--alerta, .fp-dato[data-estado="vencida"] .fp-vence { color: var(--destructive-texto); font-weight: 500; }
+.fp-dato--alerta { flex-direction: row; align-items: center; gap: 0.25rem; }
+.fp-dato[data-estado="hoy"] .fp-vence { color: var(--brand); font-weight: 500; }
+.fp-vence { display: flex; align-items: flex-start; gap: 0.25rem; }
+.fp-vence .icono { margin-top: 0.1rem; }
+.fp-vence .icono, .fp-dato--alerta .icono { width: 0.875rem; height: 0.875rem; flex-shrink: 0; }
+.fp-quien { color: var(--texto-suave); font-weight: 400; }
+.fp-frio { color: var(--destructive-texto); display: inline-flex; align-items: center; gap: 0.25rem; }
+.fp-frio .icono { width: 0.875rem; height: 0.875rem; flex-shrink: 0; }
+.fp-cabecera { display: none; }
+@media (max-width: 1023.98px) { .fp__asesor--vacio { display: none; } }
+
+@media (min-width: 1024px) {
+  .fp, .fp-cabecera { grid-template-columns: 2.25rem minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1.7fr) 1rem; }
+  .fp.fp--asesor, .fp-cabecera.fp--asesor { grid-template-columns: 2.25rem minmax(0, 2fr) minmax(0, 0.95fr) minmax(0, 1.3fr) minmax(0, 1.6fr) minmax(0, 1.05fr) 1rem; }
+  .fp { align-items: center; padding: 0.625rem 1rem; }
+  .fp > *, .fp > .avatar { grid-row: 1 !important; grid-column: auto !important; }
+  .fp-etq { display: none; }
+  .fp-cabecera { display: grid; padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--texto-suave); font-weight: 500; }
+}
+
+/* Volver a la lista desde la ficha */
+.cartera-volver { display: inline-flex; align-items: center; gap: 0.25rem; min-height: var(--tap); padding: 0 var(--pad); font-size: 14px; font-weight: 500; color: var(--brand); text-decoration: none; }
+.cartera-volver .icono { width: 1rem; height: 1rem; }
+
+/* Lo trabado (vista del dueño) */
+.tr__cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+.tr-col { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.75rem 1rem 1rem; border-top: 1px solid var(--border); min-width: 0; }
+.tr-col .btn { align-self: flex-start; margin-top: auto; }
+.tr-col__cab { display: flex; align-items: center; gap: 0.5rem; }
+.tr-col__titulo { font-size: 14px; font-weight: 600; flex: 1 1 0; min-width: 0; }
+.tr-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.tr-item { display: flex; flex-direction: column; gap: 0.0625rem; padding: 0.375rem 0.5rem; margin: 0 -0.5rem; border-radius: var(--radius-sm); color: inherit; text-decoration: none; min-height: var(--tap); justify-content: center; }
+.tr-item:hover { background: var(--accent); }
+.tr-item__nombre { font-size: 14px; font-weight: 500; }
+.tr-item__det { font-size: 12px; color: var(--texto-suave); display: flex; align-items: flex-start; gap: 0.25rem; }
+.tr-item__det .icono { margin-top: 0.125rem; flex-shrink: 0; }
+.tr-item__det .icono { width: 0.875rem; height: 0.875rem; }
+.tr-item__det--alerta { color: var(--destructive-texto); }
+/* En el celular, lo trabado es un resumen: número, base y el botón que filtra la lista (los nombres están en la lista). */
+@media (max-width: 767.98px) {
+  .tr-lista, .tr-nota { display: none; }
+  .tr-col { gap: 0.375rem; padding-bottom: 0.75rem; }
+  .tr-col .btn { align-self: stretch; justify-content: center; }
+}
+@media (min-width: 1024px) {
+  .tr__cols { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tr-col + .tr-col { border-left: 1px solid var(--border); }
+}

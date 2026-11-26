@@ -1,0 +1,88 @@
+/* ══ Pantalla #tareas + campanita ══════════════════════════════════════
+   Solo estilos propios (prefijo tareas-). Lo demás viene de base.css. */
+
+/* Mismo ancho y mismo borde izquierdo que Inicio y Sistema de diseño (el .pagina de la base). */
+
+/* Cabecera: título + resumen a la izquierda, "Nueva tarea" a la derecha */
+.tareas-cabecera { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
+.tareas-resumen { font-size: 13px; margin-top: 0.125rem; }
+
+/* Filtros en celular: listas nativas */
+.tareas-selects { display: flex; gap: 0.5rem; min-width: 0; }
+.tareas-select { position: relative; display: block; flex: 1 1 0; min-width: 0; }
+.tareas-select > select { padding-right: 2.25rem; text-overflow: ellipsis; cursor: pointer; }
+.tareas-select > .icono { position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--texto-suave); }
+
+/* Filtros desde 768: chips que bajan de renglón en vez de desbordar */
+.tareas-chips { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+.tareas-chips__fila { display: flex; align-items: flex-start; gap: 0.75rem; min-width: 0; }
+.tareas-chips__etiqueta { width: 4.25rem; flex-shrink: 0; line-height: 2rem; }
+.tareas-chips__opciones { flex-wrap: wrap; overflow: visible; min-width: 0; }
+.tareas-filtro__n { font-variant-numeric: tabular-nums; font-weight: 400; opacity: 0.7; }
+
+/* Grupo (Vencidas / Hoy / Próximas) */
+.tareas-grupo .card__cabecera { padding-top: 0.75rem; }
+.tareas-grupo .card__cuerpo { padding: 0.25rem 1rem 0.5rem; gap: 0; }
+.tareas-grupo__icono { width: 1.75rem; height: 1.75rem; border-radius: 999px; background: var(--secondary); color: var(--texto-suave); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.tareas-grupo__icono .icono { width: 0.875rem; height: 0.875rem; }
+.tareas-grupo[data-grupo="vencida"] .tareas-grupo__icono { background: var(--destructive-suave); color: var(--destructive-texto); }
+.tareas-grupo[data-grupo="hoy"] .tareas-grupo__icono { background: var(--brand-soft); color: var(--brand); }
+.tareas-grupo__n { color: var(--texto-suave); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* Filas: el título baja de renglón en vez de cortarse */
+.tareas-lista .tarea__titulo { align-items: flex-start; }
+.tareas-lista .tarea__titulo .icono { margin-top: 0.1875rem; }
+.tareas-lista .tarea__titulo .truncar { white-space: normal; overflow: visible; }
+.tareas-lista .tarea--nueva { animation: mq-resaltar 1.6s ease both; }
+.tareas-posponer { padding: 0; color: var(--texto-suave); }           /* celular: cuadrado de 44 con ícono */
+.tareas-posponer:hover { color: var(--foreground); }
+.tareas-posponer > span { display: none; }
+@media (min-width: 768px) {
+  .tareas-posponer { padding: 0 0.75rem; }
+  .tareas-posponer > span { display: inline; }
+}
+
+/* Sin fecha (plegado) */
+.tareas-sinfecha > summary .icono { color: var(--texto-suave); }
+.tareas-sinfecha > summary > span[aria-hidden] { color: var(--texto-suave); font-weight: 400; }
+.tareas-sinfecha__n { font-variant-numeric: tabular-nums; }
+.tareas-sinfecha__nota { padding-bottom: 0.25rem; }
+#tareas-sinfecha-mas { margin-top: 0.75rem; }
+
+/* Hoja Nueva tarea */
+.tareas-n-tipos { flex-wrap: wrap; overflow: visible; }
+.tareas-n-tipos .filtro[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: var(--brand-foreground); }
+.tareas-n-cuando { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.75rem; }
+.tareas-n-cuando .entrada { min-width: 0; }
+.tareas-n-cuando .entrada:disabled { background: var(--muted); color: var(--muted-foreground); }
+.tareas-n-check { display: flex; align-items: center; gap: 0.625rem; min-height: var(--tap); cursor: pointer; font-size: 14px; font-weight: 500; margin-top: -0.25rem; }
+.tareas-n-check input { width: 1.25rem; height: 1.25rem; accent-color: var(--brand); flex-shrink: 0; margin: 0; }
+.tareas-n-check small { display: block; font-size: 12px; font-weight: 400; color: var(--texto-suave); }
+#tareas-n-ayuda { margin-top: -0.375rem; }
+.tareas-n-fijo { display: flex; align-items: center; gap: 0.5rem; min-height: var(--ctl); padding: 0 0.75rem; border-radius: var(--radius-md); background: var(--muted); font-size: 14px; }
+.tareas-n-fijo .icono { color: var(--texto-suave); }
+
+/* Hoja Posponer */
+.tareas-p-tarea { font-size: 13px; color: var(--texto-suave); }
+.tareas-p-tarea strong { color: var(--foreground); font-weight: 500; }
+
+/* Campanita */
+.tareas-campanita__cuerpo { padding-top: 0.75rem; gap: 1rem; }
+.tareas-campanita__grupo { display: flex; flex-direction: column; min-width: 0; }
+.tareas-campanita__encabezado { display: flex; align-items: center; gap: 0.375rem; padding-bottom: 0.125rem; font-size: 12px; font-weight: 600; color: var(--texto-suave); }
+.tareas-campanita__encabezado .icono { width: 0.875rem; height: 0.875rem; }
+.tareas-campanita__encabezado[data-grupo="vencida"] { color: var(--destructive-texto); }
+.tareas-campanita__encabezado[data-grupo="ahora"] { color: var(--brand); }
+.tareas-aviso { padding: 0.625rem 0 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; transition: opacity 0.2s; }
+.tareas-aviso .tarea__cuerpo { padding: 0; flex: none; }
+.tareas-aviso .tarea__titulo { align-items: flex-start; }
+.tareas-aviso .tarea__titulo .icono { margin-top: 0.1875rem; }
+.tareas-aviso__acciones { display: flex; gap: 0.5rem; }
+.tareas-aviso__acciones .btn { flex: 1 1 0; }
+.tareas-aviso--hecho { opacity: 0.45; }
+.tareas-aviso--hecho .tarea__titulo { text-decoration: line-through; }
+.tareas-campanita__pie .btn { flex: 1 1 0; }
+@media (min-width: 768px) {
+  .tareas-campanita__pie .btn { flex: 1 1 0; }
+  #tareas-campanita .hoja__cabecera { border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+}

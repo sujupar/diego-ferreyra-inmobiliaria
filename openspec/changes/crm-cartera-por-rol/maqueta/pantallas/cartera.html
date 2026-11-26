@@ -1,0 +1,28 @@
+<section class="pantalla" data-screen="crm-coordinacion" data-titulo="CRM" data-seccion="Comercial"><div class="pagina cartera" data-cartera="crm-coordinacion"></div></section>
+<section class="pantalla" data-screen="crm-asesor" data-titulo="CRM" data-seccion="Comercial"><div class="pagina cartera" data-cartera="crm-asesor"></div></section>
+<section class="pantalla" data-screen="crm-dueno" data-titulo="CRM" data-seccion="Comercial"><div class="pagina cartera" data-cartera="crm-dueno"></div></section>
+<section class="pantalla" data-screen="contactos-equipo" data-titulo="Contactos" data-seccion="Comercial"><div class="pagina cartera" data-cartera="contactos-equipo"></div></section>
+<section class="pantalla" data-screen="contactos-asesor" data-titulo="Contactos" data-seccion="Comercial"><div class="pagina cartera" data-cartera="contactos-asesor"></div></section>
+
+<div class="hoja" id="cartera-hoja-filtros" role="dialog" aria-modal="true" aria-labelledby="cartera-hoja-filtros-t" hidden>
+  <div class="hoja__fondo" data-cerrar-hoja></div>
+  <div class="hoja__panel">
+    <div class="hoja__cabecera"><h2 class="hoja__titulo" id="cartera-hoja-filtros-t">Filtros</h2>
+      <button type="button" class="btn btn--icono" data-cerrar-hoja aria-label="Cerrar"><i data-icono="x"></i></button></div>
+    <div class="hoja__cuerpo pila" id="cartera-hoja-filtros-cuerpo"></div>
+    <div class="hoja__pie"><button type="button" class="btn btn--secundario" data-quitar="todo">Limpiar filtros</button><button type="button" class="btn btn--marca" data-cerrar-hoja data-foco>Ver resultados</button></div>
+  </div>
+</div>
+
+<div class="hoja" id="cartera-hoja-fechas" role="dialog" aria-modal="true" aria-labelledby="cartera-hoja-fechas-t" hidden>
+  <div class="hoja__fondo" data-cerrar-hoja></div>
+  <div class="hoja__panel">
+    <div class="hoja__cabecera"><h2 class="hoja__titulo" id="cartera-hoja-fechas-t">Elegir fechas</h2>
+      <button type="button" class="btn btn--icono" data-cerrar-hoja aria-label="Cerrar"><i data-icono="x"></i></button></div>
+    <div class="hoja__cuerpo pila">
+      <label class="campo"><span class="campo__etiqueta">Desde</span><input class="entrada" type="date" id="cartera-desde" data-foco></label>
+      <label class="campo"><span class="campo__etiqueta">Hasta</span><input class="entrada" type="date" id="cartera-hasta"></label>
+    </div>
+    <div class="hoja__pie"><button type="button" class="btn btn--secundario" data-cerrar-hoja>Cancelar</button><button type="button" class="btn btn--marca" data-aplicar-fechas>Aplicar</button></div>
+  </div>
+</div>
