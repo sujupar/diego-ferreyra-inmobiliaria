@@ -22,7 +22,18 @@
     "app/(dashboard)/pipeline/new/page.tsx",
     "app/(dashboard)/scheduled-appraisals/[id]/page.tsx",
     "app/(dashboard)/_components/FlowHistoryCard.tsx",
-    "app/api/flow-history/route.ts"
+    "app/api/flow-history/route.ts",
+    "lib/crm/**/*.ts",
+    "lib/supabase/tasks.ts",
+    "lib/supabase/cadencia.ts",
+    "app/api/contacts/**/*.ts",
+    "app/api/appraisals/[id]/contact/route.ts",
+    "app/api/tasks/**/*.ts",
+    "components/crm/**/*.tsx",
+    "components/contacts/**/*.tsx",
+    "app/(dashboard)/contacts/**/*.tsx",
+    "app/(dashboard)/crm/**/*.tsx",
+    "app/(dashboard)/pipeline/**/*.tsx"
   ],
   "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
 }
