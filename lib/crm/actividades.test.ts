@@ -34,7 +34,7 @@ describe('esquemaNuevaActividad: nota', () => {
   it('rechaza la nota vacía con un mensaje en castellano', () => {
     const r = esquemaNuevaActividad.safeParse({ kind: 'note', body: '', client_token: TOKEN })
     expect(r.success).toBe(false)
-    expect(primerError(r)).toBe('Escribí la nota.')
+    expect(primerError(r)).toBe('Escribí algo para guardar la nota')
   })
   it('rechaza la nota de solo espacios', () => {
     expect(esquemaNuevaActividad.safeParse({ kind: 'note', body: '  \n\t ', client_token: TOKEN }).success).toBe(false)
