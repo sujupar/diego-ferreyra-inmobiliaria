@@ -247,7 +247,11 @@ Por qué así y no de otra forma:
   un JSON de la actividad: se consultan con un índice, permiten "deshacer" sin adivinar, dan
   el índice único que impide duplicar la tarea de la cadencia, y responden lo que hoy no se
   puede saber (qué tareas son automáticas y quién cerró una tarea ajena). Son columnas
-  nuevas y opcionales: el código viejo no las nombra y sigue igual.
+  nuevas y opcionales: el código viejo no las nombra y sigue igual. **Las escribe solo el
+  servidor** (revisión 12.1, S1): el trigger BEFORE `trg_tasks_columnas_cadencia_solo_servidor`
+  (migración `20261126000001`, verificada con `scripts/apply-tasks-cadencia-solo-servidor-pg.ts`)
+  rechaza con 42501 a una sesión que no es `service_role` que las mande al insertar o las cambie
+  al editar; deja pasar la acción `ON DELETE SET NULL` de sus FK (`pg_trigger_depth() > 1`).
   Alternativa descartada: tipo de tarea nuevo `call_attempt` (obliga a tocar
   `tasks_type_check` y cada pantalla que lista tipos).
 - **Alternativa descartada: una función de Postgres que guarde la llamada y las tareas en
@@ -1858,14 +1862,12 @@ en el reporte final.
   proceso, pero no figura en "Mis contactos". Se anota para `crm-inicio`.
 - [`PUT /api/tasks/[id]` no controla de quién es la tarea] → existe desde antes; la ficha lo
   usa para completar. Se corrige en `crm-tareas-y-campanita` y queda anotado en su propuesta.
-- [Las dos columnas nuevas de `tasks` se pueden escribir con sesión propia] → las políticas
-  de `tasks` que ya existen dejan insertar a cualquier usuario con sesión (`WITH CHECK
-  (true)`) y editar las propias. Un usuario interno podría, por la API de la base, crear
-  una tarea con el `source_activity_id` de una llamada ajena, y `createCadenceTask` la
-  daría por buena ante el 23505. No es alcanzable desde ninguna pantalla y solo afecta a
-  qué tarea figura como "creada" por esa llamada. Hueco conocido: cerrar la escritura
-  directa de `tasks` es de `crm-tareas-y-campanita` y queda anotado en su propuesta
-  (tarea 13.1).
+- [Las dos columnas nuevas de `tasks` se podían escribir con sesión propia] → **corregido en
+  la revisión 12.1 (S1)**: las políticas de `tasks` dejan insertar a cualquier usuario con
+  sesión (`WITH CHECK (true)`) y editar las propias, así que un usuario interno podía, por la
+  API de la base, crear una tarea con el `source_activity_id` de una llamada ajena. Ahora el
+  trigger de D1 lo rechaza. Lo que sigue abierto es el resto de la escritura directa de
+  `tasks` (cualquier otra columna), que es de `crm-tareas-y-campanita`.
 - [Las notas del proceso se leen y se escriben en dos pasos al convertir] → si el agente
   de WhatsApp agrega su nota justo entre la lectura y el `update` de la conversión, esa
   nota se pierde. La ventana es de milisegundos y hoy el agente de tasación está apagado;
