@@ -179,6 +179,11 @@ describe('rutas de API sin sesión — no pasan', () => {
         '/api/properties',
         '/api/deals',
         '/api/contacts',
+        // Ficha de contacto (crm-ficha-y-llamadas, escenario "Sin sesión"): el 401 lo da
+        // el middleware antes de llegar a la ruta.
+        '/api/contacts/00000000-0000-0000-0000-000000000001/ficha',
+        '/api/contacts/00000000-0000-0000-0000-000000000001/activities',
+        '/api/contacts/00000000-0000-0000-0000-000000000001/tasks',
         '/api/pipeline',
         '/api/admin/impersonate',
         '/api/marketing/reports/history',

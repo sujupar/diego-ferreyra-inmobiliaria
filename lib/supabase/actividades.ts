@@ -239,3 +239,38 @@ export async function leerActividadPorToken(clientToken: string): Promise<FilaAc
   if (error) throw new Error(`leerActividadPorToken: ${error.message}`)
   return (data as unknown as FilaActividad | null) ?? null
 }
+
+/** Lo que la cadencia necesita del proceso de la actividad (D4, paso 3a). */
+export interface ProcesoParaCadencia {
+  id: string
+  stage: string
+  assigned_to: string | null
+  scheduled_date: string | null
+  origin: string | null
+}
+
+/** El proceso por id; `null` si ya no existe (la cadencia lo trata como sin proceso). */
+export async function leerProcesoParaCadencia(dealId: string): Promise<ProcesoParaCadencia | null> {
+  const { data, error } = await getAdmin()
+    .from('deals')
+    .select('id, stage, assigned_to, scheduled_date, origin')
+    .eq('id', dealId)
+    .maybeSingle()
+  if (error) throw new Error(`leerProcesoParaCadencia: ${error.message}`)
+  return (data as ProcesoParaCadencia | null) ?? null
+}
+
+/** Nombre del contacto para el título de la tarea ("Llamada 2 a {nombre}"). */
+export async function nombreDelContacto(contactId: string): Promise<string> {
+  const { data, error } = await getAdmin().from('contacts').select('full_name').eq('id', contactId).maybeSingle()
+  if (error) throw new Error(`nombreDelContacto: ${error.message}`)
+  if (!data) throw new Error(`nombreDelContacto: el contacto ${contactId} no existe`)
+  return (data as { full_name: string | null }).full_name ?? ''
+}
+
+/** Rol del perfil, o `null` si ese usuario ya no existe (D4, paso 3b). */
+export async function rolDePerfil(userId: string): Promise<string | null> {
+  const { data, error } = await getAdmin().from('profiles').select('role').eq('id', userId).maybeSingle()
+  if (error) throw new Error(`rolDePerfil: ${error.message}`)
+  return (data as { role: string | null } | null)?.role ?? null
+}
