@@ -175,7 +175,7 @@ horizontal en ningún ancho. (Es el mismo corte que deja escrito el requisito mo
 
 #### Scenario: Celular a 390 px
 - **WHEN** se abre la ficha a 390 px de ancho
-- **THEN** se ve la cabecera fija con el nombre, la etapa, el estado de la última llamada y el botón de llamar, las pestañas "Actividad", "Datos" y "Tareas", y el botón "+", sin desplazamiento horizontal
+- **THEN** se ve la cabecera fija con el nombre, la etapa, el estado del último contacto y el botón de llamar, las pestañas "Actividad", "Datos" y "Tareas", y el botón "+", sin desplazamiento horizontal
 
 #### Scenario: Menú lateral colapsado
 - **WHEN** se colapsa el menú lateral con la ficha abierta a 1280 px
@@ -280,60 +280,68 @@ escritorio esa tarjeta no existe y el email va en la cabecera.
 - **WHEN** el contacto no tiene teléfono cargado
 - **THEN** no aparece el botón de llamar
 
-### Requirement: Estado de la última llamada
-La cabecera SHALL decir cuándo fue la última llamada registrada al contacto: "Sin llamar
-todavía", "Última llamada: hoy", "Última llamada: ayer" o "Última llamada: hace N días",
-contando días de calendario de Argentina. Solo cuentan las llamadas no anuladas, con
-cualquier resultado; una nota o un WhatsApp marcado no la mueven.
+### Requirement: Estado del último contacto
+La cabecera SHALL decir cuándo fue el último contacto con la persona ("Sin contacto
+todavía" o "Último contacto: hoy / ayer / hace N días"), en días de calendario de
+Argentina. Cuentan las llamadas y los WhatsApp marcados no anulados y las visitas de
+tasación realizadas de cualquiera de sus procesos; una nota no.
 
-#### Scenario: Nunca se llamó
-- **WHEN** el contacto no tiene ninguna llamada registrada
-- **THEN** la cabecera dice "Sin llamar todavía"
+#### Scenario: Nunca hubo contacto
+- **WHEN** el contacto no tiene ninguna llamada, ningún WhatsApp marcado ni ninguna visita realizada
+- **THEN** la cabecera dice "Sin contacto todavía"
 
 #### Scenario: Llamada de hoy
 - **WHEN** la última llamada se registró hoy
-- **THEN** la cabecera dice "Última llamada: hoy"
+- **THEN** la cabecera dice "Último contacto: hoy"
 
 #### Scenario: Llamada de hace tres días
-- **WHEN** la última llamada fue hace tres días de calendario
-- **THEN** la cabecera dice "Última llamada: hace 3 días"
+- **WHEN** el último contacto fue una llamada de hace tres días de calendario
+- **THEN** la cabecera dice "Último contacto: hace 3 días"
 
 #### Scenario: Una nota no cuenta
-- **WHEN** la última llamada fue hace tres días y hoy se guarda una nota o se marca un WhatsApp
-- **THEN** la cabecera sigue diciendo "Última llamada: hace 3 días"
+- **WHEN** la última llamada fue hace tres días y hoy se guarda una nota
+- **THEN** la cabecera sigue diciendo "Último contacto: hace 3 días"
+
+#### Scenario: Un WhatsApp marcado cuenta
+- **WHEN** la última llamada fue hace tres días y hoy se toca "Marcar WhatsApp enviado"
+- **THEN** la cabecera dice "Último contacto: hoy"
+
+#### Scenario: La visita de tasación cuenta
+- **WHEN** la última llamada fue hace cinco días y ayer se hizo la visita de tasación de uno de sus procesos (el proceso pasó a "Visita realizada")
+- **THEN** la cabecera dice "Último contacto: ayer"
 
 #### Scenario: La llamada anulada no cuenta
-- **WHEN** se anula la única llamada del contacto
-- **THEN** la cabecera vuelve a decir "Sin llamar todavía"
+- **WHEN** se anula la única llamada del contacto, que no tiene WhatsApp marcado ni visitas
+- **THEN** la cabecera vuelve a decir "Sin contacto todavía"
 
 #### Scenario: Cambio de día según Argentina
 - **WHEN** una llamada se registró a las 23:30 de Argentina y se mira la ficha a las 00:30 de Argentina del día siguiente
-- **THEN** la cabecera dice "Última llamada: ayer"
+- **THEN** la cabecera dice "Último contacto: ayer"
 
-#### Scenario: La última llamada es de la persona, no del proceso
+#### Scenario: El último contacto es de la persona, no del proceso
 - **WHEN** a la persona se la llamó ayer por un proceso viejo y hoy entra una solicitud nueva suya, todavía sin llamadas
-- **THEN** la cabecera dice "Última llamada: ayer", aunque la próxima llamada sobre la solicitud nueva vaya a ser su "Llamada 1" (el número de intento se cuenta por proceso; la última llamada, por persona)
+- **THEN** la cabecera dice "Último contacto: ayer", aunque la próxima llamada sobre la solicitud nueva vaya a ser su "Llamada 1" (el número de intento se cuenta por proceso; el último contacto, por persona)
 
 ### Requirement: Alerta solo cuando la solicitud está sin atender
-El estado de la última llamada SHALL mostrarse como alerta (ícono de aviso y texto, además
-del color) únicamente cuando el proceso activo está en Solicitud y nunca se llamó, o la
-última llamada fue hace dos días o más.
+El estado del último contacto SHALL mostrarse como alerta (ícono de aviso y texto, además
+del color) únicamente cuando el proceso activo está en Solicitud y nunca hubo contacto, o
+el último fue hace dos días o más.
 
-#### Scenario: Solicitud sin llamar
-- **WHEN** el proceso activo está en Solicitud y no hay llamadas
-- **THEN** "Sin llamar todavía" se muestra como alerta, con ícono de aviso
+#### Scenario: Solicitud sin contacto
+- **WHEN** el proceso activo está en Solicitud y no hay ningún contacto
+- **THEN** "Sin contacto todavía" se muestra como alerta, con ícono de aviso
 
 #### Scenario: Solicitud llamada ayer
-- **WHEN** el proceso activo está en Solicitud y la última llamada fue ayer
-- **THEN** "Última llamada: ayer" se muestra sin alerta
+- **WHEN** el proceso activo está en Solicitud y el último contacto fue ayer
+- **THEN** "Último contacto: ayer" se muestra sin alerta
 
-#### Scenario: Proceso coordinado sin llamadas
-- **WHEN** el proceso activo está en Coordinada y no hay llamadas
-- **THEN** "Sin llamar todavía" se muestra sin alerta
+#### Scenario: Proceso coordinado sin contacto
+- **WHEN** el proceso activo está en Coordinada y no hay ningún contacto
+- **THEN** "Sin contacto todavía" se muestra sin alerta
 
 #### Scenario: Solicitud nueva de alguien llamado ayer por otro proceso
-- **WHEN** el proceso activo es una solicitud nueva sin llamadas propias y la última llamada a la persona fue ayer, por un proceso anterior
-- **THEN** la cabecera dice "Última llamada: ayer" sin alerta, y no "Sin llamar todavía"; la alerta aparece recién cuando esa última llamada tenga dos días o más
+- **WHEN** el proceso activo es una solicitud nueva sin llamadas propias y el último contacto con la persona fue ayer, por un proceso anterior
+- **THEN** la cabecera dice "Último contacto: ayer" sin alerta, y no "Sin contacto todavía"; la alerta aparece recién cuando ese último contacto tenga dos días o más
 
 ### Requirement: Detalles solo con datos reales
 El bloque Detalles SHALL mostrar etapa, origen, campaña, conjunto, anuncio, asesor,

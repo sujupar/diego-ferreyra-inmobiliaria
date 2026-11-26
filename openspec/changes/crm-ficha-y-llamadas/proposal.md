@@ -21,8 +21,9 @@ hay tiempos, ni tasas, ni forma de mejorar ese paso.
   tras dos seguidas, tarea de enviar WhatsApp; "volver a llamar" pide día y hora.
   Registrar una llamada cierra las tareas de entrada del lead y las de llamada pendientes
   de ese proceso, también las de otro coordinador.
-- "Última llamada" en la cabecera de la ficha: hace cuánto fue la última ("Última llamada:
-  hace 2 días") o "Sin llamar todavía".
+- "Último contacto" en la cabecera de la ficha: hace cuánto fue el último ("Último contacto:
+  hace 2 días") o "Sin contacto todavía". Cuentan las llamadas, el WhatsApp marcado y la
+  visita de tasación realizada (decisión del dueño, 2026-11-26; antes decía "Última llamada").
 - **Coordinar convierte la solicitud.** Desde la ficha, "Coordinar tasación" abre el
   formulario de hoy con los datos cargados y, al guardar, la misma solicitud pasa a
   Coordinada. Hoy ese formulario siempre crea un proceso nuevo y la solicitud queda abierta.

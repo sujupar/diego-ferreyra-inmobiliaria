@@ -61,7 +61,7 @@ Estado del código que condiciona el diseño (verificado en el worktree):
 
 - Una sola fuente por dato: lo que carga una persona va a `contact_activities`; lo demás se
   lee de sus tablas.
-- Reglas (cadencia, numeración, día hábil, última llamada, permisos) en módulos puros con
+- Reglas (cadencia, numeración, día hábil, último contacto, permisos) en módulos puros con
   tests; las rutas solo validan, llaman y guardan.
 - Que la llamada nunca se pierda: es el dato que hoy no existe. Si algo secundario falla, la
   llamada queda y la pantalla lo dice.
@@ -554,7 +554,7 @@ Reglas de `decidirCadencia` (las de la spec `crm-cadencia-llamadas`):
   de otro asesor o no tiene asesor; opción conservadora, confirmada por el dueño el
   2026-11-25). La
   llamada o el WhatsApp se guardan igual, ligados a ese proceso y con su número, porque el
-  dato no se pierde y la "última llamada" tiene que ser verdad para todos. Pero **no se
+  dato no se pierde y el "último contacto" tiene que ser verdad para todos. Pero **no se
   mueve la cola de quien lleva el proceso**: "No atendió" y el WhatsApp marcado no agendan
   nada (`proceso_ajeno`), y el cierre de tareas se limita a las que están asignadas a quien
   registró (`soloPropias`). No se cierran las tareas de entrada de la coordinación, ni las
@@ -698,16 +698,24 @@ proceso ajeno, cuando después llama la coordinación → se cierra; la que ese 
 agendó a mano → no**; y la precedencia entera, con un caso que cumple dos condiciones a la vez por cada
 par de reglas vecinas).
 
-**`lib/crm/ultima-llamada.ts`**
+**`lib/crm/ultimo-contacto.ts`** (antes `ultima-llamada.ts`; diferencia 26)
 
 ```ts
-export interface UltimaLlamada { texto: string; dias: number | null; alerta: boolean }
-export function ultimaLlamada(ultimaEn: string | null, ahora: Date, etapaCRM: string | null): UltimaLlamada
+export interface UltimoContacto { texto: string; dias: number | null; alerta: boolean }
+export function masReciente(instantes: (string | null | undefined)[]): string | null
+export function ultimoContacto(ultimoEn: string | null, ahora: Date, etapaCRM: string | null): UltimoContacto
 ```
-Tests: los escenarios de "Estado de la última llamada" y de "Alerta solo cuando la solicitud
-está sin atender" (nunca, hoy, ayer, 2 días, 3 días, cruce de medianoche, cada etapa).
-`ultimaEn` no lo calcula este módulo: lo arma la ruta `ficha` (D4) y es de la **persona**,
-no del proceso activo.
+Textos: "Sin contacto todavía", "Último contacto: hoy", "Último contacto: ayer", "Último
+contacto: hace N días". Cuenta como contacto (decisión del dueño, 2026-11-26): una llamada
+con cualquier resultado, un WhatsApp marcado y una visita de tasación realizada; una nota
+no. `masReciente` elige el más nuevo de los tres comparando **instantes, no textos** (la
+base devuelve "+00:00" con microsegundos) y descarta una fecha ilegible.
+Tests: los escenarios de "Estado del último contacto" y de "Alerta solo cuando la solicitud
+está sin atender" (nunca, hoy, ayer, 2 días, 3 días, cruce de medianoche, cada etapa) y los
+de `masReciente` (visita que gana sobre la llamada, WhatsApp que gana, formatos distintos,
+fecha ilegible).
+`ultimoEn` no lo calcula `ultimoContacto`: lo arma la ruta `ficha` (D4) con `masReciente`
+y es de la **persona**, no del proceso activo.
 
 **`lib/crm/deshacer-perdido.ts`**
 
@@ -895,7 +903,7 @@ para todas:
 
 | Método y ruta | Qué hace |
 | --- | --- |
-| `GET /api/contacts/[id]/ficha` | Persona, proceso activo y su situación, detalles, asesor, última llamada (`ultimaEn` = el `occurred_at` más nuevo de las filas de `contact_activities` de ese contacto con `kind = 'call'` y `voided_at` vacío, **sin filtrar por `deal_id`**: cuenta la llamada de cualquier proceso, abierto o cerrado, y la que no tiene proceso), procesos (cada uno con `puede_convertir` = `puedeConvertirSolicitud` de quien mira sobre ese proceso, y con `deshacer_hasta` = el instante hasta el que quien mira puede deshacer su "perdido", o `null`: sale de `puedeDeshacerPerdido` + `puedeCerrarProceso`, y la última fila de `deal_stage_history` se lee solo para los procesos en `lost` cuyo `stage_changed_at` es de los últimos 10 minutos), tasaciones agendadas y archivos, calculados en el servidor con las funciones de D2. No devuelve permisos sueltos que ninguna pieza use: "Coordinar como proceso nuevo", "Abrir el proceso" y "Marcar proceso como perdido" existen solo en el aviso y salen de `cadencia.ofrecer`. |
+| `GET /api/contacts/[id]/ficha` | Persona, proceso activo y su situación, detalles, asesor, último contacto (`ultimoEn` = `masReciente` de dos fuentes: el `occurred_at` más nuevo de las filas de `contact_activities` de ese contacto con `kind` en `call` o `whatsapp_sent` y `voided_at` vacío, **sin filtrar por `deal_id`** —cuenta el intento de cualquier proceso, abierto o cerrado, y el que no tiene proceso—, y el `visited_at` más nuevo de **todos** los procesos del contacto, también los ajenos y los cerrados: es la columna que el trigger de etapas llena al pasar a `visited` y no se borra después; diferencia 26), procesos (cada uno con `puede_convertir` = `puedeConvertirSolicitud` de quien mira sobre ese proceso, y con `deshacer_hasta` = el instante hasta el que quien mira puede deshacer su "perdido", o `null`: sale de `puedeDeshacerPerdido` + `puedeCerrarProceso`, y la última fila de `deal_stage_history` se lee solo para los procesos en `lost` cuyo `stage_changed_at` es de los últimos 10 minutos), tasaciones agendadas y archivos, calculados en el servidor con las funciones de D2. No devuelve permisos sueltos que ninguna pieza use: "Coordinar como proceso nuevo", "Abrir el proceso" y "Marcar proceso como perdido" existen solo en el aviso y salen de `cadencia.ofrecer`. |
 | `GET /api/contacts/[id]/activities?filtro=todo\|llamadas\|notas\|actividad&antes=<iso>` | 50 registros no anulados + `hay_mas`, cada uno con `intento`, autor, tarea que creó y `puede_editar`/`puede_anular`. `llamadas` = solo `call`; `actividad` = lo que no es llamada ni nota (acá, `whatsapp_sent`). |
 | `POST /api/contacts/[id]/activities` | Guarda nota, llamada o WhatsApp y corre la cadencia. |
 | `PATCH /api/contacts/[id]/activities/[activityId]` | Edita una nota o anula un registro. |
@@ -1099,7 +1107,7 @@ app/(dashboard)/contacts/[id]/page.tsx      servidor: requireAuth + permiso → 
 components/crm/ficha/
   FichaContacto.tsx        cliente; pide ficha, actividad y tareas por separado; estado de pestaña, filtro, aviso y hoja
   use-ficha.ts             los tres pedidos, cada uno con cargando / error / reintentar
-  FichaCabecera.tsx        .ficha-cab: avatar, nombre, ChipEtapa, EstadoUltimaLlamada, "Llamar · …" (tel:)
+  FichaCabecera.tsx        .ficha-cab: avatar, nombre, ChipEtapa, EstadoUltimoContacto, "Llamar · …" (tel:)
   FichaPestanas.tsx        Actividad | Datos | Tareas (con número)
   FichaDatos.tsx           tarjeta Contacto (solo celular), Detalles, Background (editar en el lugar), "Editar contacto" → ContactEditor
   Composer.tsx             pestañas "Nota | Registrar llamada" (components/ui/tabs)
@@ -1397,7 +1405,7 @@ entonces:
   querés seguirla, agendá una con «+ Tarea»." Los textos de la maqueta se activan en
   `crm-inicio`, y queda anotado en su propuesta.
 - **El lead no desaparece:** su proceso sigue en Solicitud y sigue en la columna Solicitud
-  de `/crm`, y la cabecera de su ficha dice hace cuántos días fue la última llamada.
+  de `/crm`, y la cabecera de su ficha dice hace cuántos días fue el último contacto.
 - Lo que no hay hasta `crm-inicio` es una lista que junte "solicitudes sin ninguna tarea
   pendiente". Es un hueco real y conocido; el dueño lo aceptó el 2026-11-25.
 
@@ -1777,6 +1785,18 @@ en el reporte final.
     página de tareas quedaba afuera de este change; se toca solo ese enlace, porque sin
     eso la tarea "Llamar a {nombre}" de un asesor sobre un proceso ajeno lo llevaba a una
     pantalla sin datos (D5). Las demás tareas abren lo mismo que hoy.
+26. **"Último contacto" en vez de "Última llamada"** en la cabecera de la ficha. Lo pidió el
+    dueño el 2026-11-26, al aprobar la maqueta de `crm-cartera-por-rol` (respuesta 4 de su
+    propuesta), para que la ficha y la lista nueva digan lo mismo. Textos: "Sin contacto
+    todavía" y "Último contacto: hoy / ayer / hace N días". Cuentan las llamadas (cualquier
+    resultado), el WhatsApp marcado y la visita de tasación realizada; la nota no. La
+    visita sale de `deals.visited_at` (la columna que el trigger de etapas llena al pasar a
+    `visited`, migraciones `20260518000001` y `20260520000001`), no de una columna nueva.
+    Límite conocido: el 2026-11-26 había 24 procesos en `visited` o posterior sin
+    `visited_at` (cargados antes de esa columna o por importación): para esas personas la
+    visita no cuenta y vale solo lo registrado en la ficha. La alerta "solo en Solicitud"
+    no cambia de regla. Módulo `lib/crm/ultima-llamada.ts` renombrado a
+    `lib/crm/ultimo-contacto.ts`.
 
 ## Risks / Trade-offs
 
