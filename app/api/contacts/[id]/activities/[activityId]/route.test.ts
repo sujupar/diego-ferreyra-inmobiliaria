@@ -245,6 +245,12 @@ describe('Anular dos veces (D8)', () => {
     m.undoTasksOfActivity.mockRejectedValueOnce(new Error('se cortó'))
     const primera = await patch({ accion: 'anular' })
     expect(primera.status).toBe(500)
+    // Código distinguible (revisión 12.1): la pantalla saca el registro de la lista aunque
+    // las tareas no se hayan deshecho, y ofrece reintentar solo esa parte.
+    expect(await primera.json()).toEqual({
+      code: 'ANULADA_SIN_TAREAS',
+      error: 'Se anuló, pero no se pudieron deshacer sus tareas. Probá de nuevo.',
+    })
     expect(m.anularActividad).toHaveBeenCalledTimes(1)
 
     m.leerActividadDelContacto.mockResolvedValueOnce(llamada({ voided_at: '2026-11-26T10:00:00.000Z', voided_by: 'asesor-1' }))

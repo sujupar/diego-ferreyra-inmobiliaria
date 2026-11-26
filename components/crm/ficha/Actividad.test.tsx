@@ -8,6 +8,7 @@ import { Actividad } from './Actividad'
 import { ItemActividad } from './ItemActividad'
 import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba } from './datos-prueba'
 import { pedidosA, simularRed } from './red-prueba'
+import { toast } from 'sonner'
 import { FichaContacto } from './FichaContacto'
 import type { BloqueActividad, FiltroActividad } from './use-ficha'
 import type { ActividadDeFicha } from '@/lib/crm/tipos'
@@ -271,5 +272,40 @@ describe('ItemActividad: Borrar y Anular confirman', () => {
     await usr.click(await screen.findByRole('menuitem', { name: 'Anular' }))
     await usr.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Anular' }))
     expect(p.onAnular).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('Anular en la ficha cuando fallan las tareas (revisión 12.1)', () => {
+  it('ANULADA_SIN_TAREAS: el registro sale de la lista, el toast dice el mensaje real y "Reintentar" vuelve a pedir', async () => {
+    let anulada = false
+    let patches = 0
+    const llamada = actividadDePrueba({ id: 'a-7', kind: 'call', call_outcome: 'no_atendio', body: null, intento: 1, titulo: 'Llamada 1 · No atendió', puede_editar: false })
+    const red = simularRed({
+      [`${BASE}/ficha`]: { body: fichaDePrueba() },
+      [`${BASE}/activities`]: () => ({ body: { actividades: anulada ? [] : [llamada], hay_mas: false } }),
+      [`${BASE}/tasks`]: { body: { tareas: [tareaDePrueba()], total: 1 } },
+      [`PATCH ${BASE}/activities/a-7`]: () => {
+        anulada = true
+        patches++
+        return patches === 1
+          ? { status: 500, body: { code: 'ANULADA_SIN_TAREAS', error: 'Se anuló, pero no se pudieron deshacer sus tareas. Probá de nuevo.' } }
+          : { body: { ok: true, tareas: { descartadas: 1, reabiertas: 1 } } }
+      },
+    })
+    render(<FichaContacto contactoId={CONTACTO} rol="coordinador" usuarioId="u-1" abrirEditor={false} reloj={() => ahora} />)
+    const usr = u()
+    await screen.findByText('Llamada 1 ·', { exact: false })
+    await usr.click(screen.getByRole('button', { name: 'Más acciones' }))
+    await usr.click(await screen.findByRole('menuitem', { name: 'Anular' }))
+    await usr.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Anular' }))
+    await waitFor(() => expect(screen.queryByText('Llamada 1 ·', { exact: false })).not.toBeInTheDocument())
+    const llamadaError = vi.mocked(toast.error).mock.calls.find(
+      (c) => c[0] === 'Se anuló, pero no se pudieron deshacer sus tareas. Probá de nuevo.',
+    )
+    expect(llamadaError).toBeDefined()
+    const opciones = llamadaError?.[1] as { action?: { label: string; onClick: () => void } } | undefined
+    expect(opciones?.action?.label).toBe('Reintentar')
+    opciones?.action?.onClick()
+    await waitFor(() => expect(pedidosA(red, '/activities/a-7', 'PATCH')).toHaveLength(2))
   })
 })
