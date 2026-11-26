@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": [
+    "next-env.d.ts",
+    "types/**/*.d.ts",
+    "lib/marketing/exclusion-pidieron-tasacion.ts",
+    "lib/marketing/exclusion-pidieron-tasacion.test.ts",
+    "lib/marketing/meta-custom-audiences.ts",
+    "app/api/cron/meta-exclusion-sync/route.ts",
+    "scripts/apply-cron-meta-exclusion-sync-pg.ts"
+  ]
+}
