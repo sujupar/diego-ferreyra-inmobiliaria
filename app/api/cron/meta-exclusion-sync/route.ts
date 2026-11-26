@@ -7,6 +7,7 @@ import {
   PUBLICO_EXCLUIR_PIDIERON_TASACION,
   armarListaDeExclusion,
   decidirReemplazo,
+  problemaDeRecepcion,
   type ContactoDeProceso,
 } from '@/lib/marketing/exclusion-pidieron-tasacion'
 import { reemplazarListaDeClientes } from '@/lib/marketing/meta-custom-audiences'
@@ -99,11 +100,13 @@ async function handle(req: NextRequest): Promise<Response> {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
   const simular = searchParams.get('simular') === '1'
+  // ?forzar=1 (con el secreto): para una baja legítima de más del 20 %, que si no frenaría todos los días.
+  const forzar = searchParams.get('forzar') === '1'
 
   try {
     const lista = armarListaDeExclusion(await leerContactos(sb))
     const anterior = await cantidadAnterior(sb)
-    const decision = decidirReemplazo(lista.length, anterior)
+    const decision = decidirReemplazo(lista.length, anterior, forzar)
 
     if (simular) {
       return NextResponse.json({ ok: true, simulado: true, personas: lista.length, anterior, decision })
@@ -114,8 +117,10 @@ async function handle(req: NextRequest): Promise<Response> {
     }
 
     const r = await reemplazarListaDeClientes(PUBLICO_EXCLUIR_PIDIERON_TASACION, ESQUEMA_META, lista)
-    await anotar(sb, { added: lista.length, num_received: r.numReceived })
-    return NextResponse.json({ ok: true, enviadas: lista.length, recibidas: r.numReceived, invalidas: r.numInvalid, anterior })
+    const problema = problemaDeRecepcion(lista.length, r.numInvalid)
+    // Con problema queda como error: tampoco sirve de base para el freno de la próxima corrida.
+    await anotar(sb, { added: lista.length, num_received: r.numReceived, ...(problema ? { error: problema } : {}) })
+    return NextResponse.json({ ok: !problema, enviadas: lista.length, recibidas: r.numReceived, invalidas: r.numInvalid, anterior, ...(problema ? { problema } : {}) })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[meta-exclusion-sync] falló:', msg)

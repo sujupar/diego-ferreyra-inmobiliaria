@@ -89,13 +89,28 @@ export type DecisionReemplazo = { reemplazar: true } | { reemplazar: false; moti
  * La lista solo crece en la práctica (nadie deja de haber pedido tasación); una caída brusca casi
  * seguro es una consulta rota, y reemplazar con ella volvería a mostrarle los anuncios a cientos.
  */
-export function decidirReemplazo(cantidad: number, anterior: number | null): DecisionReemplazo {
+export function decidirReemplazo(cantidad: number, anterior: number | null, forzar = false): DecisionReemplazo {
   if (cantidad <= 0) return { reemplazar: false, motivo: 'La lista calculada tiene 0 personas.' }
-  if (anterior !== null && anterior > 0 && cantidad < anterior * FRACCION_MINIMA) {
+  // `forzar` existe para una baja LEGÍTIMA (p. ej. limpiar duplicados): sin él, el freno quedaría
+  // trabado para siempre. Nunca saltea el de 0 personas.
+  if (!forzar && anterior !== null && anterior > 0 && cantidad < anterior * FRACCION_MINIMA) {
     return {
       reemplazar: false,
       motivo: `La lista calculada tiene ${cantidad} personas y la corrida anterior mandó ${anterior}: cae más del ${Math.round((1 - FRACCION_MINIMA) * 100)} %.`,
     }
   }
   return { reemplazar: true }
+}
+
+/**
+ * Después de reemplazar: si Meta descartó como inválidas más del 20 % de las filas, la lista quedó
+ * más chica de lo calculado aunque la respuesta sea 200 (p. ej. un cambio de formato del cifrado).
+ * Ya no se puede deshacer, pero tiene que quedar a la vista como error.
+ */
+export function problemaDeRecepcion(enviadas: number, invalidas: number): string | null {
+  // Proporción directa: `enviadas * (1 - 0.8)` da 79,999… por redondeo y marcaba justo el 20 %.
+  if (enviadas > 0 && invalidas / enviadas > 0.2) {
+    return `Meta descartó ${invalidas} de ${enviadas} filas como inválidas.`
+  }
+  return null
 }

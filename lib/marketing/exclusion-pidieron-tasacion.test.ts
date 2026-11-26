@@ -6,6 +6,7 @@ import {
   decidirReemplazo,
   esContactoDePrueba,
   filaParaMeta,
+  problemaDeRecepcion,
 } from './exclusion-pidieron-tasacion'
 
 const sha = (v: string) => createHash('sha256').update(v).digest('hex')
@@ -73,6 +74,20 @@ describe('decidirReemplazo', () => {
   })
   it('reemplaza en la primera corrida (sin anterior)', () => {
     expect(decidirReemplazo(393, null).reemplazar).toBe(true)
+  })
+  it('forzar saltea la caída pero nunca el de 0 personas', () => {
+    expect(decidirReemplazo(300, 400, true).reemplazar).toBe(true)
+    expect(decidirReemplazo(0, 400, true).reemplazar).toBe(false)
+  })
+})
+
+describe('problemaDeRecepcion', () => {
+  it('avisa si Meta descarta más del 20 %', () => {
+    expect(problemaDeRecepcion(400, 81)).toContain('81 de 400')
+  })
+  it('no avisa con pocas inválidas', () => {
+    expect(problemaDeRecepcion(400, 80)).toBeNull()
+    expect(problemaDeRecepcion(393, 0)).toBeNull()
   })
 })
 

@@ -282,7 +282,8 @@ export async function reemplazarListaDeClientes(
     method: 'POST',
     body,
     // Techo propio: sin él, un Meta colgado se lleva la función entera y no queda anotado nada.
-    signal: AbortSignal.timeout(20_000),
+    // 15 s deja margen dentro del techo de Netlify (~26 s) para anotar la corrida en el log.
+    signal: AbortSignal.timeout(15_000),
   })
   const json = (await res.json().catch(() => ({}))) as {
     num_received?: number
