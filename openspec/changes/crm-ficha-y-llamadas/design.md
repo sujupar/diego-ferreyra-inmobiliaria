@@ -368,7 +368,9 @@ para que la ficha nunca ofrezca una conversión que la ruta va a rechazar.
 definición). El orden: (1) sin `pipeline.schedule`, o sin `pipeline.view_all` y con el
 proceso no asignado a él → `sin_permiso`; (2) `origin` o etapa `clase_gratuita` →
 `clase_gratuita`; (3) etapa que no es `request` ni `scheduled` sin día →
-`ya_cambio_de_etapa`; si no, `null`. La ficha usa el booleano; la ruta de conversión usa
+`ya_cambio_de_etapa`; si no, `null`. (En la ruta, quien no tiene `pipeline.schedule` no
+llega a esta función: la corta antes `requirePermission`; ver D9, paso 2.) La ficha usa
+el booleano; la ruta de conversión usa
 el motivo para decidir entre 404 y 409 (D9, paso 2): con el booleano solo, los 409 que
 pide la spec no se alcanzarían nunca. Se evalúa **por proceso**, no solo sobre
 el activo: la ruta `ficha` la calcula para cada proceso que lista (D4), y de ahí sale el
@@ -498,6 +500,13 @@ Reglas de `decidirCadencia` (las de la spec `crm-cadencia-llamadas`):
   7. racha 1 → "Llamada N+1 a {nombre}" (`call`).
 
   Las dos tareas, para `siguienteDiaHabil(cargadoEn)` a las `HORARIO_LABORAL.inicio`.
+
+  **Caso que queda escrito: la tarea "Enviar WhatsApp" completada a mano con el tilde, sin
+  tocar "Marcar WhatsApp enviado".** No hay WhatsApp marcado en la racha (punto 4) ni tarea
+  pendiente (punto 5), así que la próxima "No atendió" cae en el punto 6 y crea **otra**
+  "Enviar WhatsApp". Es a propósito: el tilde no deja ningún registro de que el mensaje
+  salió, y lo único que termina la secuencia es marcar el WhatsApp o que la persona
+  atienda. Mientras nadie lo marque, cada "No atendió" vuelve a pedirlo.
 - `volver_a_llamar` → "Llamar a {nombre}" en `volverEl`, con o sin proceso, y también
   sobre un proceso ajeno (es un pedido explícito de la persona, y la tarea queda a nombre de
   quien registró). Solo la frena el intento fuera de orden.
@@ -534,8 +543,10 @@ Reglas de `decidirCadencia` (las de la spec `crm-cadencia-llamadas`):
   - `sin_proceso`: "No atendió" sin proceso activo.
   - `proceso_ajeno`: "No atendió" o WhatsApp marcado sobre un proceso activo que no es de
     quien registró. Para el WhatsApp gana sobre `secuencia_terminada`. Texto del aviso:
-    "Quedó anotada. Este proceso lo lleva otra persona: no se agenda ni se cierra ninguna
-    tarea suya."
+    "Quedó anotada. Este proceso lo lleva otra persona: no se agenda la siguiente ni se
+    cierran las tareas de esa persona." (Se dice "de esa persona" y no "suya": cuando al
+    asesor sí se le cierra su propia "Llamar a…", el aviso lo dice en otro renglón, y
+    "suya" se podía leer como "tuya". La maqueta no tenía este texto.)
   - `no_corresponde`: el resultado nunca agenda nada (`agendo`, `no_interesa`,
     `numero_equivocado`). El aviso no dice nada sobre tareas; solo muestra `ofrecer`.
 - `ofrecer` sale de esta tabla, que es la misma de los escenarios de la spec (el texto y
@@ -1071,6 +1082,14 @@ lib/crm/leer-json.ts       lee la respuesta tolerando un cuerpo que no es JSON (
   (`tasks/page.tsx:110`), así que desde ahí la ficha nueva abre con el editor encima. Ese
   enlace no se toca en este change; que deje de llevar `?edit=1` queda anotado
   para `crm-tareas-y-campanita` (tarea 13.1).
+  **La tarea de entrada del lead tampoco cambia, y se dice:** es una `update_contact` con
+  proceso, así que desde `/tasks` sigue abriendo `/pipeline/<deal_id>?editContact=1`
+  (`tasks/page.tsx:107-108`): el proceso con el editor de contacto encima, no la ficha. El
+  diseño general (5.1) dice que desde las tareas se llega a la ficha; este change lo
+  cumple solo para las tareas de la cadencia (punto siguiente). La Llamada 1 de un lead
+  nuevo se registra entrando a la ficha por el nombre de la persona (desde ese proceso o
+  desde el CRM). Queda anotado para `crm-tareas-y-campanita` (tarea 13.1) y se le avisa al
+  dueño en el reporte final (tarea 13.5).
 - **A dónde lleva una tarea de la cadencia desde `/tasks`** (el único cambio de este change
   en esa página). Hoy `getTaskLink` manda toda tarea con proceso a `/pipeline/<deal_id>`
   (`tasks/page.tsx:116`, antes de mirar `contact_id`). Para la cadencia eso está mal por
@@ -1086,6 +1105,19 @@ lib/crm/leer-json.ts       lee la respuesta tolerando un cuerpo que no es JSON (
   ficha: registró una actividad sobre ese contacto, o es de la coordinación.
 - Después de guardar, en escritorio el cuadro vuelve a la pestaña "Nota" (como
   `despuesDeGuardar` de la maqueta); en celular, a la pestaña "Actividad".
+- **Comportamientos de la maqueta que no son texto ni medida** (GUIA.md, secciones 10 y
+  11; la maqueta manda, y estos no se ven en una captura, así que se escriben acá y se
+  prueban en 9.4):
+  - **Foco después de guardar, en escritorio:** va al aviso de lo que pasó
+    (`AvisoGuardado`) y, si no hay aviso (una nota), al registro nuevo de la lista. Quien
+    usa teclado o lector de pantalla se entera de lo que pasó sin buscarlo.
+  - **"Volver a llamar" deja el rojo al completarse:** si "Guardar llamada" marcó en rojo
+    Día y Hora por faltantes, al elegir un atajo o completar los dos campos dejan de
+    verse en rojo y el mensaje de error se va, sin esperar a otro "Guardar".
+  - **"Volver a llamar" en escritorio acomoda la página:** al elegir ese resultado se abre
+    el bloque "¿Cuándo hay que volver a llamar?" y la página se desplaza lo justo para que
+    "Guardar llamada" quede entero a la vista. En la hoja del celular pasa lo equivalente
+    (D6).
 - **"Marcar WhatsApp enviado" toma del formulario el comentario y la hora corregida**
   ("Hace 30 min" → `hace_minutos: 30`) y los manda con `kind: 'whatsapp_sent'`; no manda
   el resultado marcado ni el día y la hora de "volver a llamar". La maqueta tomaba solo el
@@ -1136,6 +1168,17 @@ lib/crm/leer-json.ts       lee la respuesta tolerando un cuerpo que no es JSON (
   `/pipeline/<id>` hace menos de 10 minutos (misma regla, D2). Un asesor lo ve solo en
   sus procesos (`puedeCerrarProceso`).
 - "Ver en Tareas" del aviso (celular) cambia a la pestaña Tareas de la ficha.
+- **Cuándo una tarea del bloque Tareas está vencida, y hace cuánto.** `due_date` y
+  `due_time` se leen **siempre como hora de Argentina** (decisión 8.4 del diseño general),
+  con `enArgentina` y `diasDeCalendarioEntre` de `horario-laboral.ts`; nunca con
+  `new Date().toISOString()`, que es lo que hace hoy `getMyTasks` (`tasks.ts:132`) y por
+  eso se corre de noche. Regla, en una función pura `vencimientoDeTarea(tarea, ahora)` de
+  `lib/crm/tareas-ficha.ts`: con fecha y hora, está vencida si ese momento de Argentina ya
+  pasó; con fecha sola, si la fecha es anterior al día de hoy en Argentina; sin fecha,
+  nunca. "Vencida hace N días" cuenta días de calendario de Argentina entre la fecha de la
+  tarea y hoy. Caso que la prueba fija: a las 22:00 de Argentina (ya es mañana en UTC),
+  una tarea para mañana a las 9:00 **no** está vencida, y una de anteayer dice "Vencida
+  hace 2 días", no 3.
 - `AddTaskDialog` se usa tal cual (incluye el tipo "Email" que la maqueta no muestra);
   unificarlo es del change de tareas.
 
@@ -1180,6 +1223,17 @@ lib/crm/leer-json.ts       lee la respuesta tolerando un cuerpo que no es JSON (
 - **Hoja "+":** `Sheet side="bottom"`, que ya respeta `--app-vh` (teclado) y `--safe-b`.
   "Guardar llamada" va pegado al pie de la hoja. Al guardar: se limpia, se cierra, pestaña
   Actividad, filtro "Todo", scroll de `#contenido` arriba y el registro nuevo resaltado.
+- **Foco dentro de la hoja "+"** (GUIA.md, sección 11; el punto de "Nota" se le avisó al
+  dueño en `aprobacion.md`). Al pasar del menú a "Registrar llamada", el foco va a "No
+  atendió". Al pasar a "Nota", el foco va al campo, **dentro del mismo toque** (en el
+  manejador del toque, no en un efecto ni con un temporizador): es lo único que abre el
+  teclado en iPhone. Por eso las dos vistas están siempre en el árbol de la hoja y se
+  muestran u ocultan; si el campo se montara recién después del toque, no habría a qué
+  darle foco a tiempo.
+- **"Volver a llamar" en pantallas bajas.** En la hoja, al elegir "Atendió · volver a
+  llamar" el cuerpo de la hoja se desplaza lo justo para que Día y Hora no queden detrás
+  de "Guardar llamada" (que va pegado al pie). Se mira a 390 px de ancho y poco alto
+  (tarea 10.3).
 - Campos con letra de 16 px; todo lo tocable de 44 px o más; `tel:` en el botón de llamar.
   **Vale para toda pantalla táctil, no solo para la vista de una columna:** las medidas
   chicas (36 px y 14 px) se aplican solo con `@media (hover: hover) and (pointer: fine)`,
@@ -1311,7 +1365,17 @@ hoy**, y los tests que ya existen tienen que seguir pasando sin tocarlos.
      - el proceso no existe, o `sin_permiso` (quien pide no tiene `pipeline.schedule`, o
        no tiene `pipeline.view_all` y el proceso no está asignado a él) → **404**, igual
        que si no existiera. Sin esto, un asesor con el id de cualquier solicitud podría
-       quedársela, porque la ruta le fuerza `assigned_to` = él;
+       quedársela, porque la ruta le fuerza `assigned_to` = él.
+       **En la práctica ese 404 es para el asesor con una solicitud ajena o sin asesor.**
+       Quien no tiene `pipeline.schedule` (hoy, el abogado) no llega a este paso: la ruta
+       empieza con `requirePermission('pipeline.schedule')` dentro del `try`
+       (`route.ts:62-64`), que redirige y termina en la respuesta de hoy (500, sin
+       escribir nada ni mandar email). Eso **no se cambia en este change**: es el
+       comportamiento de `POST /api/deals` para cualquier pedido, con o sin
+       `from_deal_id`, y pasarlo a `requireAuth` + `hasPermission` con 403 (como se hace
+       en `undo-lost`, que es una ruta nueva) tocaría el camino de coordinar de siempre.
+       La rama "sin `pipeline.schedule`" de `motivoNoConvertir` queda para la ficha, que
+       así no dibuja el botón;
      - `clase_gratuita` → **409** ("Este proceso viene de la clase gratuita: se coordina
        como un proceso nuevo"), sin cambiar nada: ese caso va por `contact_id`;
      - sin contacto (`contact_id` vacío) → **409** (texto y motivo, más abajo);
@@ -1361,7 +1425,12 @@ hoy**, y los tests que ya existen tienen que seguir pasando sin tocarlos.
      - las filas cambiadas se cuentan con `.select('id')`.
 
      Si no actualizó ninguna fila responde **409** ("El proceso ya cambió de etapa") y **no
-     se tocó nada, tampoco el contacto**;
+     se tocó nada, tampoco el contacto**.
+     **Efecto conocido cuando el proceso ya estaba en `scheduled` sin día:** la etapa no
+     cambia, así que el trigger de etapas no hace nada (sus dos funciones actúan solo si
+     `NEW.stage IS DISTINCT FROM OLD.stage`): no suma fila a `deal_stage_history` y
+     `scheduled_at` queda con la fecha de cuando se creó sin día, no con la de esta
+     coordinación. No se corrige acá (Risks); se prueba en 8.4;
   5. **después el contacto, solo si el paso 4 actualizó una fila:** si en el formulario se
      corrigió el nombre, el teléfono o el email, se actualizan en ese mismo contacto con los
      valores ya validados. Si esta escritura falla (con un reintento), la coordinación queda
@@ -1449,7 +1518,10 @@ del toast, 6 segundos, y el del ítem del proceso en "Procesos", los 10 minutos;
   la secuencia **desde el primer email**. Desde el código no se puede saber ni evitar: el
   dueño lo aceptó el 2026-11-25 y queda en Risks;
 - no manda emails ni WhatsApp, ni crea tareas. El historial suma una fila
-  `lost → <etapa>`: es lo que pasó de verdad y no se borra.
+  `lost → <etapa>`: es lo que pasó de verdad y no se borra. **Esa fila sí pesa en una
+  métrica** cuando la etapa a la que se vuelve es Tasación Entregada o Captada: el costo
+  por tasación y por captación de `/metrics` cuenta filas del historial, no `lost_at`
+  (Risks).
 
 Por qué entra en este change: sin la conversión, "Atendió y agendó" termina creando un
 segundo proceso y la solicitud original queda abierta para siempre; el paso "solicitud →
@@ -1480,6 +1552,12 @@ con `advance` (deja una perdida falsa en las métricas).
 - **Componentes** (`.test.tsx`, happy-dom, sin temporizadores simulados): `FormLlamada`
   ("No atendió" guarda con un toque; "volver a llamar" sin fecha muestra el error),
   `ItemActividad` (qué ofrece el menú según quién mira), `Actividad` (vacíos por filtro).
+  **Única excepción a "sin temporizadores simulados":** el test de 9.3 que comprueba que
+  el "Deshacer" de "Procesos" desaparece solo al llegar la hora. Ese test usa reloj
+  simulado y por eso **no usa `userEvent`** (se cuelga con el reloj simulado): no hace
+  ningún clic, solo dibuja, adelanta el reloj y mira. Los clics de ese botón van en
+  otros tests, con reloj real y un `deshacer_hasta` fijo.
+  Los tests de foco (9.4 y 10.3) miran `document.activeElement` después de cada paso.
   Si el worker no arranca a los 60 s, se reintenta una vez (CLAUDE.md).
 - **Base:** el script de D1.
 - **`eslint`:** `npx eslint <archivos tocados>` en cada tarea que toca código, además de
@@ -1555,8 +1633,11 @@ Con la sección 8 del diseño general:
     de tasación por WhatsApp (son del mismo tipo y del mismo proceso).
 
 **Precisiones agregadas en la verificación final (2026-11-25).** No estaban entre las
-veinte que cubrió el "Ok a todo": no cambian ninguna decisión confirmada, pero se le
-nombran al dueño en el reporte final (tarea 13.5).
+veinte que cubrió el "Ok a todo": no cambian ninguna decisión confirmada, pero **se le
+nombran al dueño al abrir el PR, antes de construir (tarea 1.5), y su respuesta se copia
+ahí**; se repiten en el reporte final (tarea 13.5). Dos cambian algo que se ve: la 21
+("volver a llamar" cargado fuera de orden no crea tarea) y la 25 (se toca un enlace de la
+página de tareas, que estaba afuera).
 
 21. **Un intento cargado fuera de orden no crea ni cierra tareas, tampoco con "volver a
     llamar".** 8.2 dice que "volver a llamar" "siempre crea la tarea" (diferencia 19). Si
@@ -1570,7 +1651,8 @@ nombran al dueño en el reporte final (tarea 13.5).
     dueño confirmó 10 minutos, y pasado el toast no quedaba ningún botón para usarlos (D5).
 
 **Precisiones agregadas en la verificación final, ronda 2 (2026-11-25).** Tampoco cambian
-ninguna decisión confirmada, y también se le nombran al dueño en el reporte final.
+ninguna decisión confirmada, y también se le nombran al dueño al abrir el PR (tarea 1.5) y
+en el reporte final.
 
 24. **El toast del perdido suma un renglón:** "Se puede deshacer durante 10 minutos desde
     «Procesos» (en el celular, pestaña Tareas)." En la maqueta decía solo "Proceso marcado
@@ -1634,8 +1716,51 @@ ninguna decisión confirmada, y también se le nombran al dueño en el reporte f
   la cadencia y las de llamada de coordinación; el aviso nombra cada tarea cerrada y
   "Deshacer" las reabre. Queda marcado en la base qué intento las cerró.
 - [Deshacer un "perdido" suma dos filas al historial de etapas] → `→ lost` y `lost → etapa`.
-  Es lo que pasó. `lost_at` se limpia, así que `vw_funnel_daily` no lo cuenta; se verifica
-  con un `select` en el QA (tarea 9.7).
+  Es lo que pasó. `lost_at` se limpia, así que `vw_funnel_daily` no lo cuenta como
+  perdido; se verifica con un `select` en el QA (tareas 8.5 y 9.7). **Lo que sí se
+  ensucia, con su alcance real:** el costo por tasación y por captación de `/metrics`
+  (`get_funnel_costs`, migración `20260806000004`) cuenta filas de `deal_stage_history`
+  con `to_stage = 'appraisal_sent'` o `'captured'`. Si se marca perdido y se deshace un
+  proceso que estaba en **Tasación Entregada o en Captada**, la fila nueva `lost → etapa`
+  cuenta como otra llegada a esa etapa. En las demás etapas no cambia ningún número. No
+  es nuevo de este change: hoy pasa igual con cualquier vuelta atrás de etapa. No se
+  corrige acá; se le avisa al dueño en el reporte final.
+- [Convertir un proceso que ya estaba en "agendada" sin día no deja rastro del momento]
+  → la etapa no cambia, el trigger no suma fila al historial y `scheduled_at` queda con
+  la fecha vieja (D9, paso 4). Para esos procesos, el momento de "agendada" que lee
+  cualquier métrica es el de antes, no el de la coordinación real. Son pocos (el CRM los
+  muestra como Solicitud) y no se toca el trigger en este change.
+- [Borrar un contacto borra para siempre sus llamadas y notas] → `contact_activities`
+  cuelga del contacto con `ON DELETE CASCADE` (D1). Admin y dueño pueden borrar un
+  contacto, también en lote desde `/contacts`: sus procesos siguen vivos sin persona
+  (`contact_id` vacío, como hoy), pero **el historial de llamadas, notas y WhatsApp
+  marcados se va con el contacto y no se recupera**, y las tareas de la cadencia de esa
+  persona quedan pendientes y sueltas (sin contacto y sin el registro que las creó). Se
+  acepta: un registro sin persona no se puede mostrar en ninguna ficha. Se le avisa al
+  dueño en el reporte final (tarea 13.5); que el diálogo de borrado de `/contacts` lo
+  diga queda anotado para `crm-tareas-y-campanita` (tarea 13.1), porque esa pantalla no
+  se toca acá.
+- [El abogado todavía puede leer la persona por la ruta de procesos] → este change le
+  cierra la ficha, la lista y las rutas de contactos. Pero `GET /api/deals/[id]`
+  (`canAccessDeal` deja pasar a todo rol que no sea asesor) devuelve el proceso con su
+  contacto completo, y no se toca. Con el id de un proceso, el abogado sigue leyendo
+  nombre, teléfono y email. Existe desde antes; queda anotado para el change que revise
+  los permisos de procesos (tarea 13.1) y el reporte al dueño lo dice así: "deja de ver
+  la ficha y la lista de contactos", no "deja de ver contactos".
+- [La tarea de entrada del lead puede nacer después de la primera llamada] → la crea la
+  cola del embudo, que corre cada minuto y reintenta (`side-effect-handlers.ts`). Si la
+  coordinadora registra la llamada antes de que esa tarea exista, la tarea nace después,
+  el corte `creadasAntesDe` la deja afuera y queda pendiente aunque ya se llamó. Es raro
+  (hay que llamar dentro del primer minuto, o con la cola atrasada). Se completa a mano
+  o la cierra la llamada siguiente. La regla no cambia: sin ese corte, un reintento
+  tardío cerraría tareas de una llamada posterior.
+- [La tarea de entrada del lead abre el proceso, no la ficha] → desde `/tasks`, la
+  `update_contact` de un lead nuevo sigue llevando a `/pipeline/<id>?editContact=1` (D5).
+  La Llamada 1 se registra entrando a la ficha por el nombre. Se anota para
+  `crm-tareas-y-campanita` y se le avisa al dueño.
+- [Completar con el tilde la tarea "Enviar WhatsApp" no termina la secuencia] → si nadie
+  toca "Marcar WhatsApp enviado", la próxima "No atendió" crea otra tarea "Enviar
+  WhatsApp" (D2). Es a propósito y está en un escenario de la spec.
 - [Convertir una solicitud completa `created_by` si estaba vacío] → cambia un dato del
   proceso que antes quedaba vacío para siempre. Se usa para el email de confirmación y como
   dueño secundario en `PATCH /api/deals/[id]/contact`; no entra en ninguna métrica del

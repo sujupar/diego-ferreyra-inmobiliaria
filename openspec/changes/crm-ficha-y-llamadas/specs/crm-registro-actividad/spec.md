@@ -97,7 +97,8 @@ toques desde la ficha.
 ### Requirement: Volver a llamar exige día y hora
 El resultado "Atendió · volver a llamar" SHALL pedir el día y la hora en que hay que volver
 a llamar, y MUST rechazar el guardado si faltan o si ese momento no es posterior al actual
-en hora de Argentina.
+en hora de Argentina. Los campos marcados en rojo por faltantes SHALL dejar de verse en
+rojo en cuanto se completan.
 
 #### Scenario: Con atajo
 - **WHEN** se elige "Atendió · volver a llamar", se toca el atajo "Mañana 10:00" y se guarda
@@ -106,6 +107,14 @@ en hora de Argentina.
 #### Scenario: Sin día ni hora
 - **WHEN** se elige "Atendió · volver a llamar" y se toca "Guardar llamada" sin elegir día ni hora
 - **THEN** se lee "Elegí día y hora para volver a llamar" y no se guarda nada
+
+#### Scenario: Los campos dejan el rojo al completarse
+- **WHEN** después de leer "Elegí día y hora para volver a llamar" se toca un atajo o se completan el día y la hora
+- **THEN** los campos Día y Hora dejan de verse en rojo y el mensaje de error desaparece, sin tocar "Guardar llamada" otra vez
+
+#### Scenario: En escritorio "Guardar llamada" queda a la vista
+- **WHEN** a 1280 px se elige "Atendió · volver a llamar" y el bloque de día y hora empuja el formulario hacia abajo
+- **THEN** la página se acomoda y el botón "Guardar llamada" se ve entero
 
 #### Scenario: Día y hora ya pasados
 - **WHEN** se eligen un día y una hora anteriores al momento actual
@@ -332,7 +341,8 @@ quedar un solo registro y la segunda respuesta SHALL devolver el registro ya gua
 Después de guardar una llamada o un WhatsApp, la ficha SHALL limpiar el formulario, cerrar
 la hoja en celular, volver a la actividad con el filtro en "Todo", mostrar el registro nuevo
 primero y resaltado, y mostrar un aviso con lo que pasó y lo que falta hacer. Los textos y
-botones para cada situación están en la spec `crm-cadencia-llamadas`.
+botones para cada situación están en la spec `crm-cadencia-llamadas`. En escritorio, el
+foco SHALL pasar al aviso o, si no hay aviso, al registro nuevo.
 
 #### Scenario: Aviso tras "No atendió"
 - **WHEN** se guarda la primera llamada como "No atendió"
@@ -349,6 +359,10 @@ botones para cada situación están en la spec `crm-cadencia-llamadas`.
 #### Scenario: En escritorio el cuadro vuelve a "Nota"
 - **WHEN** a 1280 px se guarda una llamada desde la pestaña "Registrar llamada"
 - **THEN** el cuadro vuelve a mostrar la pestaña "Nota", vacía
+
+#### Scenario: En escritorio el foco va al aviso
+- **WHEN** a 1280 px se guarda una llamada
+- **THEN** el foco queda en el aviso de lo que pasó; y al guardar una nota, que no tiene aviso, en el registro nuevo de la lista
 
 #### Scenario: "Ver en Tareas" en celular
 - **WHEN** en celular se guarda una llamada que agendó una tarea y se toca "Ver en Tareas" en el aviso

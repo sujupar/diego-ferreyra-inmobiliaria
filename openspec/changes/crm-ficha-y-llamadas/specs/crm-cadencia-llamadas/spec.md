@@ -43,6 +43,10 @@ excepciones de «Qué regla gana cuando se cruzan dos».
 - **WHEN** se registra una tercera "No atendió" seguida y la tarea "Enviar WhatsApp" que creó la cadencia para ese proceso sigue pendiente
 - **THEN** no se crea otra tarea y el aviso dice "Ya hay una tarea pendiente de enviarle WhatsApp: no se crea otra."
 
+#### Scenario: La tarea de WhatsApp se completó con el tilde, sin marcar el WhatsApp
+- **WHEN** la tarea "Enviar WhatsApp" que creó la cadencia se marcó como hecha con el tilde, nadie tocó "Marcar WhatsApp enviado", y se registra otra "No atendió" seguida
+- **THEN** se crea otra tarea "Enviar WhatsApp a {nombre}" para el día hábil siguiente a las 9:00, y no una tarea de llamada: el tilde solo no termina la secuencia
+
 #### Scenario: Un mensaje agendado a mano no frena la cadencia
 - **WHEN** se registra la segunda "No atendió" seguida y el proceso tiene pendiente una tarea de tipo mensaje creada a mano con "+ Tarea"
 - **THEN** igual se crea la tarea "Enviar WhatsApp a {nombre}" de la cadencia
@@ -60,7 +64,7 @@ o la de WhatsApp.
 
 #### Scenario: Proceso ajeno y además con WhatsApp en la racha
 - **WHEN** un asesor registra "No atendió" sobre un proceso que no es suyo y que ya tiene un WhatsApp marcado en la racha
-- **THEN** no se crea ninguna tarea y el aviso es el de proceso ajeno ("Quedó anotada. Este proceso lo lleva otra persona: no se agenda ni se cierra ninguna tarea suya.")
+- **THEN** no se crea ninguna tarea y el aviso es el de proceso ajeno ("Quedó anotada. Este proceso lo lleva otra persona: no se agenda la siguiente ni se cierran las tareas de esa persona.")
 
 #### Scenario: WhatsApp marcado y además tarea de WhatsApp pendiente
 - **WHEN** se registra una "No atendió" en una racha con un WhatsApp marcado y con la tarea "Enviar WhatsApp" de la cadencia todavía pendiente
@@ -316,7 +320,7 @@ otra persona. Ningún botón del aviso lleva a ese proceso.
 
 #### Scenario: No atendió sobre una solicitud sin asesor
 - **WHEN** un asesor registra "No atendió" en un contacto que creó él, cuyo proceso activo es una solicitud del embudo sin asesor, con la tarea de entrada pendiente para cada coordinador
-- **THEN** la llamada se guarda como "Llamada 1" con el `deal_id` de esa solicitud, no se crea la tarea "Llamada 2", las tareas de entrada de los coordinadores siguen pendientes, y el aviso dice "Quedó anotada. Este proceso lo lleva otra persona: no se agenda ni se cierra ninguna tarea suya."
+- **THEN** la llamada se guarda como "Llamada 1" con el `deal_id` de esa solicitud, no se crea la tarea "Llamada 2", las tareas de entrada de los coordinadores siguen pendientes, y el aviso dice "Quedó anotada. Este proceso lo lleva otra persona: no se agenda la siguiente ni se cierran las tareas de esa persona."
 
 #### Scenario: No atendió sobre el proceso de otro asesor
 - **WHEN** un asesor registra "No atendió" en un contacto que puede ver por un proceso viejo suyo, y el proceso activo está asignado a otro asesor

@@ -159,7 +159,8 @@ elemento de la lista.
 En celular, el botón "+" SHALL abrir una hoja titulada "Agregar" con las opciones
 "Registrar llamada" y "Nota". Dentro de cada una SHALL haber un botón "Volver" que regresa a
 ese menú sin perder lo escrito, y al cerrar la hoja y volver a abrirla SHALL mostrarse otra
-vez el menú.
+vez el menú. Al entrar a cada opción el foco SHALL quedar en su primer control, y Día y
+Hora MUST quedar a la vista.
 
 #### Scenario: Entrar y volver
 - **WHEN** se toca "+", después "Registrar llamada" y después "Volver"
@@ -176,6 +177,18 @@ vez el menú.
 #### Scenario: Teclado abierto
 - **WHEN** en celular se escribe un comentario con el teclado abierto
 - **THEN** el botón "Guardar llamada" sigue visible, pegado al pie de la hoja
+
+#### Scenario: Foco al entrar a "Registrar llamada"
+- **WHEN** en la hoja se toca "Registrar llamada"
+- **THEN** el foco queda en la opción "No atendió"
+
+#### Scenario: Foco al entrar a "Nota"
+- **WHEN** en la hoja se toca "Nota"
+- **THEN** el cursor queda en el campo de la nota sin tocar nada más, y en un iPhone se abre el teclado
+
+#### Scenario: Volver a llamar en una pantalla baja
+- **WHEN** en un celular de 390 px de ancho y poco alto se elige "Atendió · volver a llamar" en la hoja
+- **THEN** el cuerpo de la hoja se desplaza y los campos Día y Hora se ven enteros, por encima de "Guardar llamada"
 
 ### Requirement: Cabecera con la persona y su proceso activo
 La cabecera SHALL mostrar el nombre, el teléfono como enlace para llamar, el email, y la
@@ -425,6 +438,10 @@ listan solo las que están asignadas a él (ver «Quién puede abrir la ficha»)
 #### Scenario: Tarea vencida
 - **WHEN** una tarea del bloque venció hace dos días
 - **THEN** lo dice con texto ("Vencida hace 2 días"), además del color
+
+#### Scenario: El vencimiento se cuenta en hora de Argentina
+- **WHEN** a las 22:00 de Argentina se mira el bloque con una tarea para mañana a las 9:00 y otra de anteayer
+- **THEN** la de mañana no figura como vencida y la de anteayer dice "Vencida hace 2 días"
 
 #### Scenario: La tasación agendada no se repite
 - **WHEN** el contacto tiene una tasación agendada y la tarea "nueva asignación" de esa tasación

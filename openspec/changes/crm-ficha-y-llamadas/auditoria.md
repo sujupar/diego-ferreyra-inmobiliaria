@@ -105,3 +105,52 @@ borrado de una nota; dos situaciones nuevas en la receta (`sin-ningun-proceso` y
 `solicitud-y-clase`); la regla general de limpieza de los datos de prueba; en qué pestaña
 quedan en celular los botones fijos y el texto del toast del perdido (diferencia 24); y
 los 744 px, donde ya hay dos columnas sin menú lateral.
+
+### Verificación final, ronda 3 (2026-11-25)
+
+Dos niveles de auditoría revisaron otra vez el change completo. Cada hallazgo se comprobó
+contra el código o el documento antes de corregir. Los 16 eran ciertos; ninguno se
+descartó. Ninguna corrección cambia una decisión confirmada por el dueño.
+
+De peso (1):
+
+1. **La maqueta aprobada fija comportamientos que el change no nombraba en ningún lado.**
+   Foco al entrar a "Registrar llamada" ("No atendió") y a "Nota" (el campo: es lo que
+   abre el teclado en iPhone, y se le avisó al dueño); foco después de guardar en
+   escritorio (al aviso, o al registro nuevo); Día y Hora a la vista en la hoja con
+   "volver a llamar" en pantallas bajas; "Guardar llamada" entero en escritorio; y los
+   campos que dejan el rojo al completarse. Ahora están en D5 y D6, en escenarios de
+   `crm-ficha-contacto` y `crm-registro-actividad`, y en las tareas 9.4, 10.3, 12.3 y
+   12.6.
+
+Menores (15):
+
+- Las cinco precisiones 21 a 25 se le nombran al dueño al abrir el PR (tarea 1.5), antes
+  de construir, y no recién en el reporte final.
+- D10 decía "sin temporizadores simulados" y 9.3 pedía reloj simulado: queda escrita la
+  única excepción (ese test, sin `userEvent`).
+- La tarea de entrada del lead sigue abriendo el proceso con el editor encima, no la
+  ficha: dicho en D5, Risks, 13.1 y 13.5.
+- La fecha y hora del deploy se anota en la propuesta de `crm-estadisticas-llamadas` como
+  inicio de la cohorte de llamadas (13.3).
+- "Vencida hace N días" se calcula en hora de Argentina con `vencimientoDeTarea` (D5,
+  escenario nuevo, tareas 3.8 y 9.3).
+- El editor de contacto en `/appraisals/[id]` se cubre con el test de ruta, no con el QA
+  (propuesta corregida).
+- Deshacer un perdido sobre un proceso en Tasación Entregada o Captada cuenta otra
+  llegada en el costo por tasación y por captación de `/metrics`: en D9, Risks, 8.5 y 13.5.
+- Borrar un contacto borra para siempre sus llamadas y notas, y deja sueltas sus tareas
+  de la cadencia: en Risks, 13.1 y 13.5.
+- Convertir sin `pipeline.schedule` no da 404: la ruta corta antes y responde como hoy.
+  Aclarado en D2 y D9, con su caso en 8.1. No se cambia el comportamiento.
+- El abogado todavía puede leer la persona por la ruta de procesos: en Risks, 13.1, 13.5
+  y la propuesta ("deja de ver la ficha y la lista de contactos").
+- La tarea de entrada puede nacer después de la primera llamada y quedar pendiente: en Risks.
+- Escenario nuevo: la tarea "Enviar WhatsApp" completada con el tilde, sin marcar el
+  WhatsApp → la próxima "No atendió" crea otra. En la spec de cadencia, D2, Risks, 3.4 y 13.5.
+- El aviso de proceso ajeno ya no dice "ninguna tarea suya": dice "no se agenda la
+  siguiente ni se cierran las tareas de esa persona" (spec, D2 y 9.6).
+- Las tareas hablaban de "las tres specs": son tres specs nuevas y el delta de
+  `crm-sistema-diseno` (12.3, 14.1 y el follow-up).
+- Convertir un proceso que ya estaba en "agendada" sin día no suma fila al historial ni
+  cambia `scheduled_at`: en D9, Risks, y con una tercera corrida en 8.4.
