@@ -32,6 +32,7 @@ vi.mock('@/lib/supabase/deals', () => ({
 
 vi.mock('@/lib/supabase/tasks', () => ({ createTask: vi.fn(), createTaskForRole: vi.fn() }))
 vi.mock('@/lib/email/notifications/deal-created', () => ({ notifyDealCreated: vi.fn() }))
+vi.mock('@/lib/deals/asesor-asignable', () => ({ esAsesorAsignable: vi.fn(async () => true) }))
 vi.mock('@/lib/email/notify-with-escalation', () => ({ notifyWithEscalation: vi.fn() }))
 
 // El GET resuelve los nombres de los asesores con el cliente admin. El POST (test del

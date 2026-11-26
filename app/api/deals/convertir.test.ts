@@ -14,6 +14,7 @@ const m = vi.hoisted(() => ({
   convierte: true,
   guardarFallas: 0,
   otroContacto: false,
+  asignable: true,
   consultasDirectas: [] as string[],
   leerProcesoParaConvertir: vi.fn(),
   convertirSolicitud: vi.fn(),
@@ -42,6 +43,7 @@ vi.mock('@/lib/supabase/deals', () => ({
 }))
 vi.mock('@/lib/supabase/tasks', () => ({ createTask: m.createTask, createTaskForRole: vi.fn() }))
 vi.mock('@/lib/email/notifications/deal-created', () => ({ notifyDealCreated: m.notifyDealCreated }))
+vi.mock('@/lib/deals/asesor-asignable', () => ({ esAsesorAsignable: vi.fn(async () => m.asignable) }))
 vi.mock('@/lib/email/notify-with-escalation', () => ({
   notifyWithEscalation: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }))
@@ -107,6 +109,7 @@ beforeEach(() => {
   m.permisoFalla = false
   m.orden = []
   m.consultasDirectas = []
+  m.asignable = true
   m.proceso = { ...SOLICITUD }
   m.convierte = true
   m.guardarFallas = 0
@@ -237,6 +240,14 @@ describe('validación', () => {
     const res = await POST(pedido({ ...completo, contact_id: 'c-1' }))
     expect(res.status).toBe(400)
     expect((await res.json()).error).toBe('Mandá el proceso o el contacto, no los dos')
+    nadaEscrito()
+    expect(m.leerProcesoParaConvertir).not.toHaveBeenCalled()
+  })
+  it('asesor no asignable elegido por la coordinación → 400 sin leer ni convertir el proceso (revisión 12.1)', async () => {
+    m.asignable = false
+    const res = await POST(pedido(completo))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Ese usuario no puede tener procesos asignados (tiene que ser un asesor activo).')
     nadaEscrito()
     expect(m.leerProcesoParaConvertir).not.toHaveBeenCalled()
   })

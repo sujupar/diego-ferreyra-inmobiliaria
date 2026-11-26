@@ -21,6 +21,7 @@ import { notifyDealCreated } from '@/lib/email/notifications/deal-created'
 import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
 import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
 import { validarDatosCliente, puedeReasignarAsesor } from '@/lib/deals/proceso-manual'
+import { esAsesorAsignable } from '@/lib/deals/asesor-asignable'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -126,6 +127,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: errores.join(' '), errores }, { status: 400 })
     }
     const { nombre: nombreCliente, telefono: telefonoCliente, email: emailCliente } = cliente.valor
+    // El asesor que elige la coordinación tiene que ser un asesor o dueño ACTIVO, igual que
+    // al reasignar (`PUT /api/deals/[id]`) y al completar los datos (`/cliente`). Sin esto,
+    // un proceso quedaba a nombre de alguien dado de baja o de un abogado —sin dueño real—,
+    // y un id inexistente terminaba en un 500 por la FK (revisión 12.1, hallazgo 3). Va
+    // antes de la conversión y del alta normal: si no pasa, no se escribe nada. Un asesor
+    // coordina a su nombre y no hace falta mirarlo.
+    if (puedeReasignarAsesor(user.profile.role) && !(await esAsesorAsignable(getAdmin(), asesorId))) {
+      return NextResponse.json(
+        { error: 'Ese usuario no puede tener procesos asignados (tiene que ser un asesor activo).' },
+        { status: 400 },
+      )
+    }
 
     if (fromDealId) {
       return await convertirDesdeSolicitud({

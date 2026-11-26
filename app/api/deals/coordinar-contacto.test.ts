@@ -35,6 +35,7 @@ vi.mock('@/lib/supabase/deals', () => ({
 }))
 vi.mock('@/lib/supabase/tasks', () => ({ createTask: m.createTask }))
 vi.mock('@/lib/email/notifications/deal-created', () => ({ notifyDealCreated: m.notifyDealCreated }))
+vi.mock('@/lib/deals/asesor-asignable', () => ({ esAsesorAsignable: vi.fn(async () => true) }))
 vi.mock('@/lib/email/notify-with-escalation', () => ({
   notifyWithEscalation: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }))

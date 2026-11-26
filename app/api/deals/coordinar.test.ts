@@ -11,6 +11,8 @@ const { estado } = vi.hoisted(() => ({
     usuario: { id: 'coord-1', profile: { id: 'coord-1', role: 'coordinador' } },
     procesos: [] as Record<string, unknown>[],
     contactosCreados: [] as Record<string, unknown>[],
+    asignable: true,
+    consultasAsignable: [] as string[],
   },
 }))
 
@@ -24,6 +26,9 @@ vi.mock('@/lib/supabase/deals', () => ({
 }))
 vi.mock('@/lib/supabase/tasks', () => ({ createTask: vi.fn(async () => {}), createTaskForRole: vi.fn() }))
 vi.mock('@/lib/email/notifications/deal-created', () => ({ notifyDealCreated: vi.fn(async () => {}) }))
+vi.mock('@/lib/deals/asesor-asignable', () => ({
+  esAsesorAsignable: vi.fn(async (_db: unknown, id: string) => { estado.consultasAsignable.push(id); return estado.asignable }),
+}))
 vi.mock('@/lib/email/notify-with-escalation', () => ({ notifyWithEscalation: vi.fn(async () => {}) }))
 vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
@@ -60,6 +65,8 @@ beforeEach(() => {
   estado.usuario = { id: 'coord-1', profile: { id: 'coord-1', role: 'coordinador' } }
   estado.procesos = []
   estado.contactosCreados = []
+  estado.asignable = true
+  estado.consultasAsignable = []
 })
 
 describe('POST /api/deals — Coordinar tasación exige los datos del cliente', () => {
@@ -95,5 +102,17 @@ describe('POST /api/deals — Coordinar tasación exige los datos del cliente', 
     const res = await POST(pedido({ ...completo, assigned_to: 'otro-asesor' }))
     expect(res.status).toBe(200)
     expect(estado.procesos[0]).toMatchObject({ assigned_to: 'asesor-yo' })
+    // A sí mismo no se lo controla: es asesor por definición.
+    expect(estado.consultasAsignable).toHaveLength(0)
+  })
+
+  it('la coordinación con un asesor que no es asignable (de baja, abogado, inexistente) → 400 y no se crea nada (revisión 12.1)', async () => {
+    estado.asignable = false
+    const res = await POST(pedido(completo))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Ese usuario no puede tener procesos asignados (tiene que ser un asesor activo).')
+    expect(estado.consultasAsignable).toEqual(['asesor-9'])
+    expect(estado.procesos).toHaveLength(0)
+    expect(estado.contactosCreados).toHaveLength(0)
   })
 })
