@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import type { TaskChannel } from '@/lib/tasks/validate-task-input'
+import type { TareaPendiente } from '@/lib/crm/cadencia'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -164,24 +165,13 @@ export async function dismissTask(id: string) {
 
 /**
  * Una tarea pendiente tal como la usan la ficha (bloque Tareas) y la cadencia
- * (`tareasACerrar`). Los campos de `TareaPendiente` de `lib/crm/cadencia.ts` más lo que
- * dibuja el bloque. `assigned_role` y `assigned_name` NO son columnas de `tasks`: salen
- * del perfil del asignado (`profiles.role` / `full_name`), `null` si no hay asignado o
- * el perfil ya no existe.
+ * (`tareasACerrar`): `TareaPendiente` de `lib/crm/cadencia.ts` más lo que dibuja el
+ * bloque. `assigned_role` y `assigned_name` NO son columnas de `tasks`: salen del perfil
+ * del asignado (`profiles.role` / `full_name`), `null` si no hay asignado o el perfil ya
+ * no existe.
  */
-export interface TareaDeFicha {
-  id: string
-  title: string
-  type: string
-  channel: string | null
-  assigned_to: string | null
-  assigned_role: string | null
+export interface TareaDeFicha extends TareaPendiente {
   assigned_name: string | null
-  created_at: string
-  deal_id: string | null
-  contact_id: string | null
-  appraisal_id: string | null
-  source_activity_id: string | null
   description: string | null
   due_date: string | null
   due_time: string | null // columna `time`: llega como "09:00:00"
