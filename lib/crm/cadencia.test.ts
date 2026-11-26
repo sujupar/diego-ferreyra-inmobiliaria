@@ -353,11 +353,13 @@ describe('decidirCadencia — qué regla gana cuando se cruzan dos (No atendió)
     expect(decidir([NA(MAR_10)]).tarea).toEqual(LLAMADA_2_MIERCOLES)
   })
 
-  // DISCREPANCIA spec/design (reportada, sin decidir): la spec lista "tarea de WhatsApp de
-  // la cadencia ya pendiente" como excepción de TODA "No atendió"; D2 la limita a racha ≥ 2.
   // Caso alcanzable: NA, NA (crea WhatsApp), un asesor ajeno registra "Atendió" (no cierra
-  // la tarea de la coordinación), la coordinadora registra NA (racha 1). Se implementó D2.
-  it.todo('racha 1 con la tarea de WhatsApp de la cadencia pendiente (spec y D2 difieren)')
+  // la tarea de la coordinación), la coordinadora registra NA (racha 1). Manda la spec.
+  it('racha 1 con la tarea de WhatsApp de la cadencia pendiente → no crea "Llamada N+1"', () => {
+    expect(decidir([NA(MAR_10)], { hayTareaWhatsappDeCadenciaPendiente: true })).toMatchObject(
+      SIN_TAREA('whatsapp_ya_pendiente'),
+    )
+  })
 })
 
 describe('decidirCadencia — sin proceso activo y proceso ajeno', () => {

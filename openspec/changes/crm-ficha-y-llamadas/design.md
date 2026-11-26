@@ -532,7 +532,8 @@ Reglas de `decidirCadencia` (las de la spec `crm-cadencia-llamadas`):
   3. el proceso activo no es de quien registró (`procesoPropio` falso) → nada
      (`proceso_ajeno`; ver "Asesor sobre un proceso que no es suyo", más abajo);
   4. hay un WhatsApp marcado en la racha → nada (`whatsapp_ya_enviado`);
-  5. racha ≥ 2 y ya hay pendiente una tarea de WhatsApp **de la cadencia**, de otro intento
+  5. con cualquier racha (también 1: un asesor ajeno pudo registrar "Atendió" sin cerrar la
+     tarea de la coordinación), ya hay pendiente una tarea de WhatsApp **de la cadencia**, de otro intento
      **y de este mismo proceso** → nada (`whatsapp_ya_pendiente`; una tarea de mensaje
      creada a mano, o la de la cadencia de otro proceso, no frena);
   6. racha ≥ 2 → "Enviar WhatsApp a {nombre}" (`message`);
